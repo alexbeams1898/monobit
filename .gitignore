@@ -1,0 +1,51 @@
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
+.vscode/
+.idea/
+*.suo
+*.user
+*.sln.docstates
+
+# Build outputs
+build/
+dist/
+out/
+bin/
+*.o
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Logs & temp
+*.log
+*.tmp
+*.cache
+tmp/
+temp/
+
+# Node (if you end up using JS/TS tools)
+node_modules/
+npm-debug.log*
+
+# Python (if used for tooling)
+__pycache__/
+*.pyc
+*.pyo
+.env
+venv/
+
+# Game engine artifacts (covers most engines just in case)
+*.meta
+Library/
+Temp/
+Logs/
+UserSettings/
+
+# Assets you don't want tracked
+*.psd
+*.ai
