@@ -73,13 +73,27 @@ static void loadCollider(EntityManager& em, entt::entity entity, const json& j)
     em.registry().emplace<Collider>(entity, c);
 }
 
+static void loadAIController(EntityManager& em, entt::entity entity, const json& j)
+{
+    AIController ai;
+    const std::string behavior = j.value("behavior", std::string{"idle"});
+    if (behavior == "chase")
+        ai.state = AIController::State::Chase;
+    else if (behavior == "attack")
+        ai.state = AIController::State::Attack;
+    // else: default Idle
+    ai.speed = j.value("speed", 100.0f);
+    em.registry().emplace<AIController>(entity, ai);
+}
+
 // clang-format off
 static const std::unordered_map<std::string, LoaderFn> kComponentLoaders = {
-    {"transform", loadTransform},
-    {"velocity",  loadVelocity},
-    {"health",    loadHealth},
-    {"sprite",    loadSprite},
-    {"collider",  loadCollider},
+    {"transform",     loadTransform},
+    {"velocity",      loadVelocity},
+    {"health",        loadHealth},
+    {"sprite",        loadSprite},
+    {"collider",      loadCollider},
+    {"ai_controller", loadAIController},
 };
 // clang-format on
 

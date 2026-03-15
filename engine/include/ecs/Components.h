@@ -81,3 +81,26 @@ struct Input
     float moveX = 0.0f; // -1.0 = left,  0.0 = none, +1.0 = right
     float moveY = 0.0f; // -1.0 = up,    0.0 = none, +1.0 = down
 };
+
+// AIController — drives non-player entity behavior.
+//
+// Performance note: the player target is NOT stored here. ChaseSystem fetches
+// the player position once per frame (via the Input component tag) and sweeps
+// all AIControllers in one tight loop — no per-entity indirection, no random
+// memory lookups. This keeps the hot path O(n) and cache-friendly at 1000+
+// enemies.
+//
+// State is read from config at spawn ("behavior": "chase") and can be mutated
+// at runtime by any system (e.g. aggro: Idle → Chase on proximity).
+struct AIController
+{
+    enum class State
+    {
+        Idle,
+        Chase,
+        Attack
+    };
+
+    State state = State::Idle;
+    float speed = 100.0f;
+};

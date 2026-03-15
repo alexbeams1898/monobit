@@ -9,6 +9,7 @@ target_sources(engine PRIVATE
     src/systems/RenderSystem.cpp
     src/systems/CameraSystem.cpp
     src/systems/CollisionSystem.cpp
+    src/systems/ChaseSystem.cpp
 )
 
 target_include_directories(engine

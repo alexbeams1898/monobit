@@ -14,7 +14,7 @@
 
 // Helper: create an entity with a centered AABB collider.
 static entt::entity makeEntity(EntityManager& em, float x, float y, float w, float h,
-                                bool isSolid = true, bool dynamic = true)
+                               bool isSolid = true, bool dynamic = true)
 {
     auto e = em.create();
     em.registry().emplace<Transform>(e, Transform{x, y});
@@ -52,12 +52,12 @@ TEST_CASE("Dynamic entity is pushed out of static solid", "[collision]")
 {
     EntityManager em;
     // Static wall at (0, 0), dynamic player at (20, 0) — overlapping by 12px on X.
-    auto wall   = makeEntity(em, 0.0f, 0.0f, 32.0f, 32.0f, true, false);
+    auto wall = makeEntity(em, 0.0f, 0.0f, 32.0f, 32.0f, true, false);
     auto player = makeEntity(em, 20.0f, 0.0f, 32.0f, 32.0f, true, true);
 
     CollisionSystem::update(em);
 
-    auto& wallT   = em.registry().get<Transform>(wall);
+    auto& wallT = em.registry().get<Transform>(wall);
     auto& playerT = em.registry().get<Transform>(player);
 
     // Wall must not move — it is static (no Velocity).
@@ -120,7 +120,7 @@ TEST_CASE("Collision events are cleared between frames", "[collision]")
 
     // Move entities apart so they no longer overlap, then run again.
     auto view = em.registry().view<Transform>();
-    int idx   = 0;
+    int idx = 0;
     for (auto [entity, t] : view.each())
     {
         t.x = static_cast<float>(idx) * 200.0f;

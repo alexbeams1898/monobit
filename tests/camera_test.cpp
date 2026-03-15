@@ -39,10 +39,12 @@ TEST_CASE("CameraSystem tracks updated Transform position", "[camera]")
 
     CameraSystem::update(em);
 
-    em.registry().patch<Transform>(player, [](Transform& t) {
-        t.x = 640.0f;
-        t.y = 360.0f;
-    });
+    em.registry().patch<Transform>(player,
+                                   [](Transform& t)
+                                   {
+                                       t.x = 640.0f;
+                                       t.y = 360.0f;
+                                   });
 
     CameraSystem::update(em);
 
@@ -83,7 +85,7 @@ TEST_CASE("Camera tracks player position after movement in the same frame", "[ca
     MovementSystem::update(em, dt);
     CameraSystem::update(em);
 
-    const auto& t   = em.registry().get<Transform>(player);
+    const auto& t = em.registry().get<Transform>(player);
     const auto& cam = em.registry().get<Camera>(player);
 
     // Camera must match the player's new position, not the old one.

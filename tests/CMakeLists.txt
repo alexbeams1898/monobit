@@ -4,6 +4,7 @@ add_executable(engine-tests
     systems_test.cpp
     camera_test.cpp
     collision_test.cpp
+    chase_system_test.cpp
 )
 
 target_link_libraries(engine-tests

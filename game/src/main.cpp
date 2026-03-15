@@ -17,7 +17,7 @@ int main(int argc, char* argv[])
     // ConfigLoader returns entt::null on failure — guard before emplacing.
     auto& em = engine.entityManager();
     auto player = ConfigLoader::loadEntity(em, "config/entities/player.json");
-    ConfigLoader::loadEntity(em, "config/entities/guard.json");
+    ConfigLoader::loadEntity(em, "config/entities/correctional_officer.json");
 
     // Spawn a rectangular wall enclosure around the player (640, 360) and guard (700, 360).
     // Tiles are 32x32. The box runs from x=560 to x=752, y=272 to y=464.

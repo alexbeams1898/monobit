@@ -2,6 +2,7 @@
 
 #include "ecs/Components.h"
 #include "systems/CameraSystem.h"
+#include "systems/ChaseSystem.h"
 #include "systems/CollisionSystem.h"
 #include "systems/InputSystem.h"
 #include "systems/MovementSystem.h"
@@ -119,7 +120,8 @@ void Engine::processEvents()
 
 void Engine::update(double dt)
 {
-    ZoneScoped; // Tracy zone — visible in the profiler as "update"
+    ZoneScoped;                          // Tracy zone — visible in the profiler as "update"
+    ChaseSystem::update(entityManager_); // AI writes velocity before movement integrates it
     MovementSystem::update(entityManager_, dt);
     CollisionSystem::update(entityManager_); // resolve overlaps against final moved positions
     CameraSystem::update(entityManager_);    // snap camera to resolved position
