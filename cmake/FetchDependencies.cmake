@@ -42,6 +42,18 @@ set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(nlohmann_json)
 
 # ---------------------------------------------------------------------------
+# Catch2  (unit testing — C++ equivalent of Jest)
+# ---------------------------------------------------------------------------
+FetchContent_Declare(
+    Catch2
+    GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+    GIT_TAG        v3.7.1
+    GIT_SHALLOW    TRUE
+)
+set(CATCH_INSTALL_DOCS OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(Catch2)
+
+# ---------------------------------------------------------------------------
 # FMOD  (stub — replace with real SDK integration when ready)
 # Wire up: point FMOD_ROOT at the extracted FMOD SDK directory, then swap
 # this stub out for real include/link targets in a future issue.

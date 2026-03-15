@@ -58,3 +58,6 @@ jobs:
         run: |
           find engine game -name '*.cpp' | xargs \
             clang-tidy -p build --warnings-as-errors='*'
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
