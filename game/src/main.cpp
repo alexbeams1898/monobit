@@ -38,15 +38,17 @@ int main(int argc, char* argv[])
     constexpr float TOP = 272.0f;
     constexpr float BOTTOM = 464.0f;
     constexpr float STEP = 32.0f;
+    constexpr int COLS = static_cast<int>((RIGHT - LEFT) / STEP) + 1;
+    constexpr int INNER_ROWS = static_cast<int>((BOTTOM - TOP) / STEP) - 1;
 
-    for (float x = LEFT; x <= RIGHT; x += STEP) // top row
-        spawnWall(x, TOP);
-    for (float x = LEFT; x <= RIGHT; x += STEP) // bottom row
-        spawnWall(x, BOTTOM);
-    for (float y = TOP + STEP; y < BOTTOM; y += STEP) // left column (skip corners)
-        spawnWall(LEFT, y);
-    for (float y = TOP + STEP; y < BOTTOM; y += STEP) // right column (skip corners)
-        spawnWall(RIGHT, y);
+    for (int i = 0; i < COLS; ++i) // top row
+        spawnWall(LEFT + static_cast<float>(i) * STEP, TOP);
+    for (int i = 0; i < COLS; ++i) // bottom row
+        spawnWall(LEFT + static_cast<float>(i) * STEP, BOTTOM);
+    for (int i = 0; i < INNER_ROWS; ++i) // left column (skip corners)
+        spawnWall(LEFT, TOP + static_cast<float>(i + 1) * STEP);
+    for (int i = 0; i < INNER_ROWS; ++i) // right column (skip corners)
+        spawnWall(RIGHT, TOP + static_cast<float>(i + 1) * STEP);
 
     if (em.registry().valid(player))
     {
