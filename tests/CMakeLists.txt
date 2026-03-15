@@ -1,5 +1,6 @@
 add_executable(engine-tests
     ecs_test.cpp
+    config_test.cpp
 )
 
 target_link_libraries(engine-tests
@@ -16,4 +17,6 @@ if(_CATCH2_INCLUDES)
 endif()
 
 # Register with CTest so "cmake --build build --target test" runs everything.
+# WORKING_DIRECTORY = project root so config/entities/*.json paths resolve.
 add_test(NAME engine-tests COMMAND engine-tests)
+set_tests_properties(engine-tests PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
