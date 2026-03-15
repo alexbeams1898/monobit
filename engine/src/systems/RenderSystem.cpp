@@ -209,9 +209,10 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
         glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &texH);
         glBindTexture(GL_TEXTURE_2D, 0);
 
-        drawList.push_back({transform.x - sprite.srcW * 0.5f, // draw from top-left corner
-                            transform.y - sprite.srcH * 0.5f, sprite.srcX, sprite.srcY, sprite.srcW,
-                            sprite.srcH, sprite.layer, texId, texW, texH});
+        drawList.push_back({transform.x - static_cast<float>(sprite.srcW) * 0.5f, // top-left corner
+                            transform.y - static_cast<float>(sprite.srcH) * 0.5f, sprite.srcX,
+                            sprite.srcY, sprite.srcW, sprite.srcH, sprite.layer, texId, texW,
+                            texH});
     }
 
     // Sort ascending by layer — lower layers drawn first (appear behind).
@@ -220,8 +221,8 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
 
     // Build orthographic projection centred on the camera position.
     // The camera sits at the centre of the window; the world scrolls around it.
-    const float halfW = sWindowW * 0.5f;
-    const float halfH = sWindowH * 0.5f;
+    const float halfW = static_cast<float>(sWindowW) * 0.5f;
+    const float halfH = static_cast<float>(sWindowH) * 0.5f;
     float proj[16];
     buildOrtho(proj, camX - halfW, camX + halfW, camY + halfH, camY - halfH);
 
