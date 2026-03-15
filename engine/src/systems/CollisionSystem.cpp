@@ -10,8 +10,10 @@ void CollisionSystem::update(EntityManager& em)
     em.clearCollisionEvents();
 
     // Collect every entity that participates in collision.
+    // Sort by entity ID so pair-resolution order is deterministic across frames.
     auto view = em.registry().view<Transform, Collider>();
     std::vector<entt::entity> entities(view.begin(), view.end());
+    std::sort(entities.begin(), entities.end());
 
     // Two resolution passes per frame.
     // Pass 1 resolves the primary overlaps; pass 2 catches any secondary overlaps
