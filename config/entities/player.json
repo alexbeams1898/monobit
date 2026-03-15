@@ -4,7 +4,7 @@
         "transform": { "x": 640.0, "y": 360.0, "rotation": 0.0, "scale": 1.0 },
         "health":    { "current": 150, "max": 150 },
         "velocity":  { "dx": 0.0, "dy": 0.0 },
-        "collider":  { "width": 28.0, "height": 28.0, "is_solid": true },
-        "sprite":    { "texture_path": "assets/sprites.png", "src_x": 0, "src_y": 32, "src_w": 28, "src_h": 28, "layer": 2 }
+        "collider":  { "width": 32.0, "height": 32.0, "is_solid": true },
+        "sprite":    { "texture_path": "assets/sprites.png", "src_x": 0, "src_y": 32, "src_w": 32, "src_h": 32, "layer": 2 }
     }
 }

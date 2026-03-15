@@ -8,6 +8,7 @@ target_sources(engine PRIVATE
     src/systems/MovementSystem.cpp
     src/systems/RenderSystem.cpp
     src/systems/CameraSystem.cpp
+    src/systems/CollisionSystem.cpp
 )
 
 target_include_directories(engine
