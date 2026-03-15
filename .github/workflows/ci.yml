@@ -44,6 +44,18 @@ jobs:
             clang clang-tidy \
             libsdl2-dev libgl1-mesa-dev
 
+      # Cache the full build directory — preserves SDL2's configure results,
+      # compiled dep artifacts, and our own object files.
+      # Key covers all CMake and source files; any change busts only the
+      # affected objects (restore-keys falls back to nearest prior cache).
+      - name: Cache build directory
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: ${{ runner.os }}-build-${{ hashFiles('cmake/**', 'CMakeLists.txt', 'engine/**', 'game/**', 'tests/**') }}
+          restore-keys: |
+            ${{ runner.os }}-build-
+
       - name: Configure
         run: |
           cmake -S . -B build -G Ninja \
@@ -58,3 +70,6 @@ jobs:
         run: |
           find engine game -name '*.cpp' | xargs \
             clang-tidy -p build --warnings-as-errors='*'
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
