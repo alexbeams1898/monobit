@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+jobs:
+  # -----------------------------------------------------------------------
+  # 1. FORMAT CHECK  (clang-format)
+  #    Fails if any file differs from what clang-format would produce.
+  #    Same as running Prettier --check in a JS project.
+  # -----------------------------------------------------------------------
+  format:
+    name: Format check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: sudo apt-get install -y clang-format
+
+      - name: Check formatting
+        run: |
+          find engine game -name '*.cpp' -o -name '*.h' | \
+          xargs clang-format --dry-run --Werror
+
+  # -----------------------------------------------------------------------
+  # 2. BUILD + LINT  (clang-tidy runs during the build via CMake)
+  #    Also compiles everything — catches compiler errors on every PR.
+  # -----------------------------------------------------------------------
+  build:
+    name: Build and lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build \
+            clang clang-tidy \
+            libsdl2-dev libgl1-mesa-dev
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Lint (clang-tidy)
+        run: |
+          find engine game -name '*.cpp' | xargs \
+            clang-tidy -p build --warnings-as-errors='*'

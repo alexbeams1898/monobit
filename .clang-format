@@ -1,0 +1,38 @@
+BasedOnStyle: LLVM
+
+# Indentation
+IndentWidth:        4
+TabWidth:           4
+UseTab:             Never
+ContinuationIndentWidth: 4
+
+# Line length
+ColumnLimit: 100
+
+# Braces — Allman style (opening brace on its own line)
+BreakBeforeBraces: Allman
+
+# Keep short single-statement ifs on one line is off — always clear
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine:        false
+AllowShortFunctionsOnASingleLine:    None
+AllowShortBlocksOnASingleLine:       Never
+
+# Pointer/reference style:  int* x  (left-aligned)
+PointerAlignment:   Left
+ReferenceAlignment: Left
+
+# Include ordering — group system vs project headers
+SortIncludes:       CaseSensitive
+IncludeBlocks:      Regroup
+
+# Spacing
+SpaceBeforeParens:          ControlStatements
+SpaceInEmptyParentheses:    false
+SpacesInAngles:             Never
+
+# Constructor initializer lists
+BreakConstructorInitializers: BeforeColon
+ConstructorInitializerIndentWidth: 4
+
+# Trailing comma in function params — leave as-is
