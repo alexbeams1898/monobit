@@ -31,4 +31,9 @@ if(_JSON_INCLUDES)
     target_include_directories(engine SYSTEM PRIVATE ${_JSON_INCLUDES})
 endif()
 
+get_target_property(_ENTT_INCLUDES EnTT::EnTT INTERFACE_INCLUDE_DIRECTORIES)
+if(_ENTT_INCLUDES)
+    target_include_directories(engine SYSTEM PUBLIC ${_ENTT_INCLUDES})
+endif()
+
 target_compile_features(engine PUBLIC cxx_std_17)
