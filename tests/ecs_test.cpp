@@ -1,7 +1,7 @@
-#include <catch2/catch_test_macros.hpp>
-
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
+
+#include <catch2/catch_test_macros.hpp>
 
 // ---------------------------------------------------------------------------
 // ECS smoke tests — no window, no GPU, no SDL required.
