@@ -50,21 +50,12 @@ TEST_CASE("ConfigLoader loads player entity with correct values", "[config]")
     REQUIRE(health.max == 150);
 }
 
-TEST_CASE("ConfigLoader returns null for missing file", "[config]")
+TEST_CASE("ConfigLoader returns invalid entity for missing file", "[config]")
 {
     EntityManager em;
     auto entity = ConfigLoader::loadEntity(em, "config/entities/nonexistent.json");
-    REQUIRE(entity == entt::null);
-}
-
-TEST_CASE("ConfigLoader entity with no components block still gets Tag", "[config]")
-{
-    // Write a minimal in-memory JSON — not a file test, just verifies the
-    // loader doesn't crash on a stripped-down definition.
-    // (Full file-based test is the guard/player cases above.)
-    EntityManager em;
-    // Missing file → null, so we just check the null case covers this path.
-    auto entity = ConfigLoader::loadEntity(em, "config/entities/nonexistent.json");
-    REQUIRE(entity == entt::null);
+    // Can't use REQUIRE(entity == entt::null) — ambiguous operator== between
+    // Catch2 and entt. Check validity instead, which is the meaningful property.
+    REQUIRE_FALSE(em.registry().valid(entity));
     REQUIRE(em.registry().view<Tag>().size() == 0);
 }
