@@ -57,3 +57,15 @@ struct Tag
 {
     std::string name;
 };
+
+// Input — marks an entity as player-controlled and carries its movement intent.
+// moveX/moveY are set each frame by InputSystem from raw keyboard state.
+// MovementSystem reads these values and translates them into Velocity.
+//
+// Using floats rather than bools keeps the door open for analog input (gamepad
+// sticks) without changing this struct or any downstream system.
+struct Input
+{
+    float moveX = 0.0f; // -1.0 = left,  0.0 = none, +1.0 = right
+    float moveY = 0.0f; // -1.0 = up,    0.0 = none, +1.0 = down
+};

@@ -1,8 +1,8 @@
-#include <catch2/catch_test_macros.hpp>
-
 #include "ConfigLoader.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
+
+#include <catch2/catch_test_macros.hpp>
 
 // ---------------------------------------------------------------------------
 // ConfigLoader tests — no window, no GPU required.
