@@ -1,7 +1,12 @@
-// Prison Break Game — entry point
-// Placeholder until Issue #2 (SDL2 window + game loop) is implemented.
+#include "Engine.h"
 
 int main(int argc, char* argv[])
 {
+    Engine engine;
+
+    if (!engine.init("Prison Break", 1280, 720))
+        return 1;
+
+    engine.run();
     return 0;
 }

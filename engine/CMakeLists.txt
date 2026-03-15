@@ -1,7 +1,7 @@
 add_library(engine STATIC)
 
 target_sources(engine PRIVATE
-    src/engine.cpp
+    src/Engine.cpp
     # Systems, components, and other engine sources added here as they are built
 )
 
@@ -13,6 +13,7 @@ target_include_directories(engine
 target_link_libraries(engine
     PUBLIC
         SDL2::SDL2-static
+        OpenGL::GL
         EnTT::EnTT
         nlohmann_json::nlohmann_json
         FMOD::Core
