@@ -1,5 +1,6 @@
 #pragma once
 
+#include "TextureManager.h"
 #include "ecs/EntityManager.h"
 
 // Forward declaration — avoids pulling SDL2 headers into every file that includes Engine.h.
@@ -35,4 +36,5 @@ class Engine
     int windowH_ = 0;
 
     EntityManager entityManager_;
+    TextureManager textureManager_;
 };

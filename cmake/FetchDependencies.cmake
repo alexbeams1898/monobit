@@ -6,6 +6,23 @@ include(FetchContent)
 find_package(OpenGL REQUIRED)
 
 # ---------------------------------------------------------------------------
+# GLAD  (OpenGL 3.3 core function loader)
+# Generates glad.h + glad.c at configure time using Python.
+# Requires Python 3 — install on MSYS2 with: pacman -S python
+# ---------------------------------------------------------------------------
+FetchContent_Declare(
+    glad
+    GIT_REPOSITORY https://github.com/Dav1dde/glad.git
+    GIT_TAG        v0.1.36
+    GIT_SHALLOW    TRUE
+)
+set(GLAD_PROFILE   "core" CACHE STRING "" FORCE)
+set(GLAD_API       "gl=3.3" CACHE STRING "" FORCE)
+set(GLAD_GENERATOR "c" CACHE STRING "" FORCE)
+set(GLAD_EXTENSIONS "" CACHE STRING "" FORCE)
+FetchContent_MakeAvailable(glad)
+
+# ---------------------------------------------------------------------------
 # SDL2
 # ---------------------------------------------------------------------------
 FetchContent_Declare(
@@ -52,6 +69,20 @@ FetchContent_Declare(
 )
 set(CATCH_INSTALL_DOCS OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(Catch2)
+
+# ---------------------------------------------------------------------------
+# Tracy  (real-time profiler — disabled by default, enable with -DTRACY_ENABLE=ON)
+# When disabled all Tracy macros (FrameMark, ZoneScoped) compile to nothing.
+# To profile: build with -DTRACY_ENABLE=ON and connect the Tracy server app.
+# ---------------------------------------------------------------------------
+option(TRACY_ENABLE "Enable Tracy profiler client" OFF)
+FetchContent_Declare(
+    tracy
+    GIT_REPOSITORY https://github.com/wolfpld/tracy.git
+    GIT_TAG        v0.11.1
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(tracy)
 
 # ---------------------------------------------------------------------------
 # FMOD  (stub — replace with real SDK integration when ready)

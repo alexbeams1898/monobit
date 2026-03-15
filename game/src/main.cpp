@@ -17,9 +17,15 @@ int main(int argc, char* argv[])
     // ConfigLoader returns entt::null on failure — guard before emplacing.
     auto& em = engine.entityManager();
     auto player = ConfigLoader::loadEntity(em, "config/entities/player.json");
+    ConfigLoader::loadEntity(em, "config/entities/guard.json");
 
     if (em.registry().valid(player))
+    {
+        // Input marks the entity as player-controlled (read by InputSystem).
+        // Camera makes this entity the active viewpoint (read by CameraSystem + RenderSystem).
         em.registry().emplace<Input>(player);
+        em.registry().emplace<Camera>(player);
+    }
 
     engine.run();
     return 0;
