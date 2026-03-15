@@ -13,12 +13,18 @@ void ChaseSystem::update(EntityManager& em)
     float py = 0.0f;
     bool playerFound = false;
 
-    for (auto [entity, transform] : em.registry().view<Transform, Input>().each())
+    // Iterate only over Input-tagged entities, then fetch Transform separately.
+    // Avoids a structured binding with an unused 'input' variable.
+    for (auto entity : em.registry().view<Input>())
     {
-        px = transform.x;
-        py = transform.y;
-        playerFound = true;
-        break;
+        if (em.registry().all_of<Transform>(entity))
+        {
+            const auto& t = em.registry().get<Transform>(entity);
+            px = t.x;
+            py = t.y;
+            playerFound = true;
+        }
+        break; // only one player
     }
 
     if (!playerFound)
