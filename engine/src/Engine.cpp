@@ -2,6 +2,7 @@
 
 #include "ecs/Components.h"
 #include "systems/CameraSystem.h"
+#include "systems/CollisionSystem.h"
 #include "systems/InputSystem.h"
 #include "systems/MovementSystem.h"
 #include "systems/RenderSystem.h"
@@ -120,7 +121,8 @@ void Engine::update(double dt)
 {
     ZoneScoped; // Tracy zone — visible in the profiler as "update"
     MovementSystem::update(entityManager_, dt);
-    CameraSystem::update(entityManager_); // must run after movement so camera snaps to new position
+    CollisionSystem::update(entityManager_); // resolve overlaps against final moved positions
+    CameraSystem::update(entityManager_);    // snap camera to resolved position
 }
 
 void Engine::render()
