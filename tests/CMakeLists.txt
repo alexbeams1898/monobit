@@ -2,6 +2,7 @@ add_executable(engine-tests
     ecs_test.cpp
     config_test.cpp
     systems_test.cpp
+    camera_test.cpp
 )
 
 target_link_libraries(engine-tests

@@ -32,12 +32,14 @@ struct Health
 };
 
 // Sprite — identifies which texture to draw and which region of it.
-// textureId is an opaque handle issued by the (not-yet-built) texture manager.
+// texturePath is the relative path to the PNG asset (resolved by TextureManager).
+// textureId is the runtime GL handle — filled in by TextureManager::load() at render time.
 // layer controls draw order: lower = drawn first (background), higher = foreground.
 struct Sprite
 {
-    uint32_t textureId = 0;
-    int srcX = 0;
+    std::string texturePath; // e.g. "assets/sprites.png" — loaded from JSON config
+    uint32_t textureId = 0;  // GL texture handle — set at runtime, not in JSON
+    int srcX = 0;            // source rect within the texture atlas (pixels)
     int srcY = 0;
     int srcW = 0;
     int srcH = 0;
@@ -56,6 +58,16 @@ struct Collider
 struct Tag
 {
     std::string name;
+};
+
+// Camera — marks an entity as the active viewpoint.
+// CameraSystem snaps x/y to the tracked entity's Transform each frame.
+// Only one Camera with active=true should exist at a time.
+struct Camera
+{
+    float x = 0.0f; // world-space centre of the view (updated by CameraSystem)
+    float y = 0.0f;
+    bool active = true; // false = ignored by CameraSystem and RenderSystem
 };
 
 // Input — marks an entity as player-controlled and carries its movement intent.

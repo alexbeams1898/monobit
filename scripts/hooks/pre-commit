@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Auto-formats staged C++ files with clang-format before each commit.
+# Install with: bash scripts/install-hooks.sh
+
+CLANG_FORMAT="/c/msys64/mingw64/bin/clang-format.exe"
+
+FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(cpp|h)$')
+
+if [ -n "$FILES" ]; then
+    echo "$FILES" | xargs "$CLANG_FORMAT" -i
+    echo "$FILES" | xargs git add
+fi

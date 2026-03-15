@@ -1,30 +1,32 @@
 #pragma once
 
+#include "TextureManager.h"
 #include "ecs/EntityManager.h"
 
 // ---------------------------------------------------------------------------
-// RenderSystem — STUB, replaced in Issue #6.
+// RenderSystem — draws all entities with a Transform + Sprite component.
 //
-// Uses legacy OpenGL compatibility-profile functions (glBegin/glEnd, glOrtho)
-// to draw entities as colored rectangles so there is something visible before
-// real sprite rendering is built.
+// Uses OpenGL 3.3 core profile: VAO, VBO, vertex + fragment shaders.
+// One quad VAO is reused for every sprite — position and UV are set via
+// uniforms rather than re-uploading vertex data each frame.
 //
-// Requires the GL context to use SDL_GL_CONTEXT_PROFILE_COMPATIBILITY.
-// Issue #6 will switch back to core profile, add GLAD, and replace this with
-// VAO/VBO/shader-based rendering.
+// Draw order: sprites are sorted by layer (ascending) before drawing, so
+// floor tiles (layer 0) appear behind entities (layer 1+) and UI (layer 10+).
 //
-// Any entity with Transform + Collider is drawn as a teal quad.
-// The Collider dimensions supply the visual size (28x28 for the player).
+// The camera offset (camX, camY) is the world position of the active camera.
+// RenderSystem subtracts it from every world position so the view scrolls.
 // ---------------------------------------------------------------------------
 
 class RenderSystem
 {
   public:
-    // Set up the orthographic projection. Call once after the GL context is
-    // created. (0,0) maps to the top-left corner of the window.
+    // Set up shaders, VAO/VBO, and orthographic projection.
+    // Must be called once after gladLoadGL succeeds.
     static void init(int windowW, int windowH);
 
-    // Draw all entities that have Transform + Collider.
-    // Call from Engine::render() between glClear and SDL_GL_SwapWindow.
-    static void render(EntityManager& em);
+    // Draw all (Transform, Sprite) entities sorted by layer.
+    static void render(EntityManager& em, TextureManager& tm, float camX, float camY);
+
+    // Release shader program and VAO/VBO. Call before destroying the GL context.
+    static void shutdown();
 };
