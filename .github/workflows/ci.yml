@@ -44,16 +44,17 @@ jobs:
             clang clang-tidy \
             libsdl2-dev libgl1-mesa-dev
 
-      # Cache FetchContent source dirs keyed on FetchDependencies.cmake.
-      # On a cache hit CMake sees the sources already present and skips the
-      # git clones — cuts configure time from ~10 min to ~30 s.
-      - name: Cache FetchContent dependencies
+      # Cache the full build directory — preserves SDL2's configure results,
+      # compiled dep artifacts, and our own object files.
+      # Key covers all CMake and source files; any change busts only the
+      # affected objects (restore-keys falls back to nearest prior cache).
+      - name: Cache build directory
         uses: actions/cache@v4
         with:
-          path: build/_deps
-          key: ${{ runner.os }}-deps-${{ hashFiles('cmake/FetchDependencies.cmake') }}
+          path: build
+          key: ${{ runner.os }}-build-${{ hashFiles('cmake/**', 'CMakeLists.txt', 'engine/**', 'game/**', 'tests/**') }}
           restore-keys: |
-            ${{ runner.os }}-deps-
+            ${{ runner.os }}-build-
 
       - name: Configure
         run: |
