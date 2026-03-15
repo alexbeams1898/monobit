@@ -3,7 +3,9 @@ add_library(engine STATIC)
 target_sources(engine PRIVATE
     src/Engine.cpp
     src/ConfigLoader.cpp
-    # Systems, components, and other engine sources added here as they are built
+    src/systems/InputSystem.cpp
+    src/systems/MovementSystem.cpp
+    src/systems/RenderSystem.cpp
 )
 
 target_include_directories(engine

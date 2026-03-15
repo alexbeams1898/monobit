@@ -1,5 +1,9 @@
 #include "Engine.h"
 
+#include "systems/InputSystem.h"
+#include "systems/MovementSystem.h"
+#include "systems/RenderSystem.h"
+
 #include <SDL.h>
 #include <SDL_opengl.h>
 
@@ -21,11 +25,12 @@ bool Engine::init(const char* title, int width, int height)
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0)
         return false;
 
-    // Request an OpenGL 3.3 core context.
-    // "Core" means deprecated legacy features are removed — keeps things clean.
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    // OpenGL 2.1 compatibility profile — required by the stub RenderSystem which
+    // uses legacy glBegin/glOrtho calls. Issue #6 switches this to 3.3 core profile
+    // once GLAD is added and real VAO/VBO/shader rendering is in place.
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
 
     window = SDL_CreateWindow(title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height,
                               SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
@@ -36,9 +41,14 @@ bool Engine::init(const char* title, int width, int height)
     if (!glContext)
         return false;
 
-    // 0 = uncapped render rate — we control timing via the fixed timestep loop.
-    // Set to 1 to enable vsync later if needed.
-    SDL_GL_SetSwapInterval(0);
+    // Vsync on by default — will become a user setting in the options menu.
+    SDL_GL_SetSwapInterval(1);
+
+    windowW_ = width;
+    windowH_ = height;
+
+    // One-time projection setup for the stub renderer.
+    RenderSystem::init(windowW_, windowH_);
 
     return true;
 }
@@ -83,11 +93,15 @@ void Engine::processEvents()
         if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE)
             running = false;
     }
+
+    // InputSystem reads the keyboard state snapshot that SDL_PollEvent just refreshed.
+    // Must be called after the event loop, not inside the fixed-step update.
+    InputSystem::update(entityManager_);
 }
 
 void Engine::update(double dt)
 {
-    (void)dt; // suppress unused warning — systems plugged in here from Issue #3 onward
+    MovementSystem::update(entityManager_, dt);
 }
 
 void Engine::render()
@@ -95,7 +109,7 @@ void Engine::render()
     glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    // Render systems plugged in here from Issue #6 onward
+    RenderSystem::render(entityManager_);
 
     SDL_GL_SwapWindow(window);
 }
