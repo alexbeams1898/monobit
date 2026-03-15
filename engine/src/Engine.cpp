@@ -1,4 +1,5 @@
 #include "Engine.h"
+
 #include <SDL.h>
 #include <SDL_opengl.h>
 
@@ -9,8 +10,11 @@
 static constexpr double FIXED_TIMESTEP = 1.0 / 60.0;
 static constexpr double MAX_FRAME_TIME = 0.25;
 
-Engine::Engine()  = default;
-Engine::~Engine() { shutdown(); }
+Engine::Engine() = default;
+Engine::~Engine()
+{
+    shutdown();
+}
 
 bool Engine::init(const char* title, int width, int height)
 {
@@ -23,16 +27,14 @@ bool Engine::init(const char* title, int width, int height)
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
-    window = SDL_CreateWindow(
-        title,
-        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-        width, height,
-        SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN
-    );
-    if (!window) return false;
+    window = SDL_CreateWindow(title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height,
+                              SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
+    if (!window)
+        return false;
 
     glContext = SDL_GL_CreateContext(window);
-    if (!glContext) return false;
+    if (!glContext)
+        return false;
 
     // 0 = uncapped render rate — we control timing via the fixed timestep loop.
     // Set to 1 to enable vsync later if needed.
@@ -44,13 +46,14 @@ bool Engine::init(const char* title, int width, int height)
 void Engine::run()
 {
     running = true;
-    double previousTime = SDL_GetTicks64() / 1000.0;
-    double accumulator  = 0.0;
+    double previousTime = static_cast<double>(SDL_GetTicks64()) / 1000.0;
+    double accumulator = 0.0;
 
-    while (running) {
-        const double currentTime = SDL_GetTicks64() / 1000.0;
-        double frameTime         = currentTime - previousTime;
-        previousTime             = currentTime;
+    while (running)
+    {
+        const double currentTime = static_cast<double>(SDL_GetTicks64()) / 1000.0;
+        double frameTime = currentTime - previousTime;
+        previousTime = currentTime;
 
         if (frameTime > MAX_FRAME_TIME)
             frameTime = MAX_FRAME_TIME;
@@ -60,7 +63,8 @@ void Engine::run()
         processEvents();
 
         // Fixed-rate update — always steps in 1/60s increments
-        while (accumulator >= FIXED_TIMESTEP) {
+        while (accumulator >= FIXED_TIMESTEP)
+        {
             update(FIXED_TIMESTEP);
             accumulator -= FIXED_TIMESTEP;
         }
@@ -72,7 +76,8 @@ void Engine::run()
 void Engine::processEvents()
 {
     SDL_Event event;
-    while (SDL_PollEvent(&event)) {
+    while (SDL_PollEvent(&event))
+    {
         if (event.type == SDL_QUIT)
             running = false;
         if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE)
@@ -97,11 +102,13 @@ void Engine::render()
 
 void Engine::shutdown()
 {
-    if (glContext) {
+    if (glContext)
+    {
         SDL_GL_DeleteContext(glContext);
         glContext = nullptr;
     }
-    if (window) {
+    if (window)
+    {
         SDL_DestroyWindow(window);
         window = nullptr;
     }

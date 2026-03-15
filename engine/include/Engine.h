@@ -4,8 +4,9 @@
 // Only Engine.cpp needs to know the internals of SDL_Window.
 struct SDL_Window;
 
-class Engine {
-public:
+class Engine
+{
+  public:
     Engine();
     ~Engine();
 
@@ -13,12 +14,12 @@ public:
     void run();
     void shutdown();
 
-private:
+  private:
     void processEvents();
     void update(double dt);
     void render();
 
-    SDL_Window* window    = nullptr;
-    void*       glContext = nullptr;
-    bool        running   = false;
+    SDL_Window* window = nullptr;
+    void* glContext = nullptr;
+    bool running = false;
 };

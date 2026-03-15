@@ -19,4 +19,11 @@ target_link_libraries(engine
         FMOD::Core
 )
 
+# Mark SDL2 headers as system includes so clang-tidy ignores their internals.
+# Without this, bugprone-* and other checks fire on SDL2's own macros/typedefs.
+get_target_property(_SDL2_INCLUDES SDL2::SDL2-static INTERFACE_INCLUDE_DIRECTORIES)
+if(_SDL2_INCLUDES)
+    target_include_directories(engine SYSTEM PRIVATE ${_SDL2_INCLUDES})
+endif()
+
 target_compile_features(engine PUBLIC cxx_std_17)
