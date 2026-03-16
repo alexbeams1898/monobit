@@ -3,20 +3,22 @@
 #include "ecs/EntityManager.h"
 
 // ---------------------------------------------------------------------------
-// ChaseSystem — steers AI-controlled entities toward the player each tick.
+// ChaseSystem — steers AI-controlled entities using the flow field.
 //
 // Performance design (VS-style, scales to 1000+ enemies):
-//   1. Player position is fetched ONCE by querying for the Input component tag.
-//   2. A single loop sweeps all (AIController, Transform, Velocity) entities
-//      with pure arithmetic — no per-entity lookups, no allocations.
-//   3. Velocity is written; MovementSystem integrates it for free next pass.
+//   1. FlowFieldSystem runs first and performs a BFS from the player, storing
+//      a normalized direction in each grid cell. That BFS costs O(cells) and
+//      runs only when the player enters a new 32 px cell (~6 times/sec max).
+//   2. ChaseSystem does an O(1) grid lookup per enemy — no per-frame
+//      pathfinding, no per-entity indirection, just a table read + multiply.
+//   3. Because the flow field routes around wall cells, enemies navigate
+//      around obstacles without any explicit steering logic.
 //
-// Must run BEFORE MovementSystem in Engine::update() so that written velocities
-// are integrated in the same frame.
+// Must run AFTER FlowFieldSystem and BEFORE MovementSystem in Engine::update().
 // ---------------------------------------------------------------------------
 
 class ChaseSystem
 {
   public:
-    static void update(EntityManager& em);
+    static void update(EntityManager& em, double dt);
 };

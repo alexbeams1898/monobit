@@ -3,6 +3,7 @@
 #include "ecs/Components.h"
 
 #include <algorithm>
+#include <cmath>
 #include <glad/glad.h>
 #include <iostream>
 #include <vector>
@@ -221,10 +222,20 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
 
     // Build orthographic projection centred on the camera position.
     // The camera sits at the centre of the window; the world scrolls around it.
+    //
+    // Round to the nearest integer pixel before building the projection.
+    // Without this, sub-pixel camera positions (e.g. camX=641.67 at 200px/s,
+    // dt=1/60) give each tile a slightly different fractional screen offset.
+    // OpenGL's rasterizer then places adjacent tiles at different sub-pixel
+    // boundaries → 1-pixel gaps appear on the north/west (leading) edges of
+    // tiles whenever you move.  Integer snapping keeps all tiles on the same
+    // pixel grid every frame.
+    const float snapCamX = std::round(camX);
+    const float snapCamY = std::round(camY);
     const float halfW = static_cast<float>(sWindowW) * 0.5f;
     const float halfH = static_cast<float>(sWindowH) * 0.5f;
     float proj[16];
-    buildOrtho(proj, camX - halfW, camX + halfW, camY + halfH, camY - halfH);
+    buildOrtho(proj, snapCamX - halfW, snapCamX + halfW, snapCamY + halfH, snapCamY - halfH);
 
     glUseProgram(sProgram);
     glUniformMatrix4fv(glGetUniformLocation(sProgram, "uProjection"), 1, GL_FALSE, proj);

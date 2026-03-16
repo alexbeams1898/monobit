@@ -16,6 +16,64 @@ struct CollisionEvent
 };
 
 // ---------------------------------------------------------------------------
+// FlowField — a spatial direction map that tells AI entities which way to move
+// to reach the player along the shortest open path around walls.
+//
+// Stored on EntityManager (singleton — one per game world) so FlowFieldSystem
+// can write it and ChaseSystem can read it without coupling them together.
+//
+// The grid covers COLS * ROWS cells of CELL_SIZE world-units each.
+// A world position (wx, wy) maps to cell (wx / CELL_SIZE, wy / CELL_SIZE).
+//
+// CELL_SIZE=16 (half the tile size) is intentional: a 32px tile spans exactly
+// 2×2 cells, keeping tile edges on cell boundaries. At CELL_SIZE=32 a tile and
+// the free space immediately adjacent to it could share a cell, causing BFS to
+// treat reachable space as blocked or vice versa.
+//
+// FlowFieldSystem rebuilds this via BFS each time the player enters a new cell.
+// At CELL_SIZE=16 and player speed ≈200 px/s, that is at most ~12 rebuilds/sec.
+// Each BFS visits at most COLS*ROWS = 16384 cells — still trivially fast.
+// ---------------------------------------------------------------------------
+struct FlowField
+{
+    static constexpr int COLS = 128;
+    static constexpr int ROWS = 128;
+    static constexpr float CELL_SIZE = 16.0f;
+
+    struct Cell
+    {
+        float dx = 0.0f; // normalized direction toward player (or zero if no path)
+        float dy = 0.0f;
+    };
+
+    Cell cells[ROWS][COLS]{};
+
+    // Enemy density grid — binned by FlowFieldSystem each frame from current
+    // enemy positions.  Each cell holds the count of chasing enemies whose
+    // center falls within it, capped at 255.  Read by SteeringSystem to
+    // compute crowd-pressure separation vectors.
+    uint8_t density[ROWS][COLS]{};
+
+    // How many consecutive frames the player must occupy a new cell before a
+    // flow-field rebuild is triggered.  Rapid back-and-forth across a cell
+    // boundary keeps resetting this counter, so the field stays at the last
+    // stable position instead of flipping directions every frame.
+    // Exposed here (not buried in FlowFieldSystem.cpp) so tests can call
+    // FlowFieldSystem::update exactly this many times to prime the field.
+    static constexpr int STABILITY_FRAMES = 3;
+
+    // Player's last fully-built grid cell.
+    int lastPlayerCol = -1;
+    int lastPlayerRow = -1;
+
+    // Pending cell — the cell the player is currently in but hasn't stayed in
+    // long enough to trigger a rebuild yet.
+    int pendingCol = -1;
+    int pendingRow = -1;
+    int stableCount = 0;
+};
+
+// ---------------------------------------------------------------------------
 // EntityManager — thin owner of the entt::registry.
 //
 // Responsibilities:
@@ -62,6 +120,10 @@ class EntityManager
     {
         collisionEvents.clear();
     }
+
+    // Flow field — rebuilt by FlowFieldSystem via BFS whenever the player
+    // enters a new grid cell. Read by ChaseSystem every frame.
+    FlowField flowField;
 
   private:
     entt::registry registry_;

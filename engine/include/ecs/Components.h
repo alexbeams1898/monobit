@@ -103,4 +103,43 @@ struct AIController
 
     State state = State::Idle;
     float speed = 100.0f;
+
+    // How quickly this entity blends toward its desired velocity each second.
+    // Higher = snappier direction changes (guardlike); lower = sluggish turns.
+    // 0.0 = instant snap (no blending — legacy behaviour, useful for testing).
+    // Typical range: 4.0 (slow patrol) – 20.0 (fast aggro enemy).
+    float turnSpeed = 8.0f;
+
+    // Distance at which this entity transitions from Idle to Chase.
+    // 0.0 = no aggro check — entity starts in whatever state the config sets.
+    // AggroSystem performs the Idle→Chase transition each frame.
+    float aggroRadius = 0.0f;
+
+    // How aggressively this entity steers away from nearby enemies.
+    // Controls two forces that work together:
+    //   1. Grid crowd repulsion — steers away from cells with high occupancy
+    //      (medium-range, O(1) per entity).
+    //   2. Same-cell separation — within-cell offset push for co-located enemies
+    //      (close-range, O(n) total — see SteeringSystem).
+    // 0.0 = disabled (enemies stack). 0.6 = CO (moderate ring). 1.2 = warden.
+    // Raise for a looser mob; lower for a tighter, denser pack.
+    // Config field: "separation_strength".
+    float separationStrength = 1.0f;
+
+    // Arrival softening radius: start slowing this entity when it enters this
+    // distance from the player.  Speed scales linearly from full at arrivalRadius
+    // down to ~zero at the player's position.  The ring radius emerges naturally
+    // from the balance between the softened chase force and crowd separation —
+    // there is no hard stop boundary.  Larger values = softer, wider approach.
+    // 0 = disabled (full speed all the way in). Config field: "arrival_radius".
+    float arrivalRadius = 0.0f;
+
+    // Ring radius for the Attack formation.  When this entity transitions to
+    // Attack state (AggroSystem fires when dist ≤ arrivalRadius), it targets a
+    // point on the ring at this distance from the player — in its own approach
+    // direction.  Each entity holds a different slot on the ring, so surrounding
+    // emerges naturally without coordination.  The entity orbits the ring as the
+    // player moves; transitions back to Chase if the player breaks engagement.
+    // 0 = disabled (entity stays in Chase indefinitely). Config: "attack_radius".
+    float attackRadius = 0.0f;
 };

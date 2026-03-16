@@ -5,6 +5,10 @@ add_executable(engine-tests
     camera_test.cpp
     collision_test.cpp
     chase_system_test.cpp
+    movement_system_test.cpp
+    steering_system_test.cpp
+    aggro_system_test.cpp
+    spawner_system_test.cpp
 )
 
 target_link_libraries(engine-tests

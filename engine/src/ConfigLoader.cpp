@@ -76,13 +76,26 @@ static void loadCollider(EntityManager& em, entt::entity entity, const json& j)
 static void loadAIController(EntityManager& em, entt::entity entity, const json& j)
 {
     AIController ai;
+    ai.aggroRadius = j.value("aggro_radius", 0.0f);
+    ai.speed = j.value("speed", 100.0f);
+    ai.turnSpeed = j.value("turn_speed", 8.0f);
+    ai.separationStrength = j.value("separation_strength", 1.0f);
+    ai.arrivalRadius = j.value("arrival_radius", 0.0f);
+    ai.attackRadius = j.value("attack_radius", 0.0f);
+
     const std::string behavior = j.value("behavior", std::string{"idle"});
     if (behavior == "chase")
-        ai.state = AIController::State::Chase;
+    {
+        // If an aggro radius is set, start Idle — AggroSystem transitions to
+        // Chase when the player steps within range.  Without a radius, go
+        // straight to Chase so existing configs that omit aggro_radius are
+        // unaffected.
+        ai.state = (ai.aggroRadius > 0.0f) ? AIController::State::Idle : AIController::State::Chase;
+    }
     else if (behavior == "attack")
         ai.state = AIController::State::Attack;
     // else: default Idle
-    ai.speed = j.value("speed", 100.0f);
+
     em.registry().emplace<AIController>(entity, ai);
 }
 

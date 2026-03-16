@@ -8,6 +8,14 @@
 // ---------------------------------------------------------------------------
 // CollisionSystem tests — no window, no GPU, no SDL required.
 //
+// Since issue/8, CollisionSystem's responsibility is narrowed:
+//   - Emit CollisionEvent for every overlapping Collider pair.
+//   - Apply position correction ONLY for dynamic-vs-dynamic pairs (both have
+//     Velocity). Static-vs-dynamic correction is handled upstream by
+//     MovementSystem's velocity projection, which prevents penetration before
+//     integration. Forcing a static-dynamic overlap in a test is therefore an
+//     out-of-the-ordinary setup that CollisionSystem intentionally ignores.
+//
 // TextureManager and RenderSystem are NOT unit-tested here because they
 // require an active OpenGL context. Run the game to integration-test those.
 // ---------------------------------------------------------------------------
@@ -48,29 +56,26 @@ TEST_CASE("Overlapping entities emit a CollisionEvent", "[collision]")
     REQUIRE(em.collisionEvents.size() == 1);
 }
 
-TEST_CASE("Dynamic entity is pushed out of static solid", "[collision]")
+TEST_CASE("Static-vs-dynamic overlap: dynamic entity depenetrated, static never moves",
+          "[collision]")
 {
     EntityManager em;
-    // Static wall at (0, 0), dynamic player at (20, 0) — overlapping by 12px on X.
+    // Wall at (0,0), dynamic player forced at (20,0) — overlapping by 12px on X.
+    // In normal gameplay MovementSystem prevents this; here we force the overlap
+    // to verify the depenetration pass pushes the dynamic entity out of the static.
+    //
+    // overlapX = (16+16) - |20-0| = 32-20 = 12. Player pushed right by 12 → x=32.
     auto wall = makeEntity(em, 0.0f, 0.0f, 32.0f, 32.0f, true, false);
     auto player = makeEntity(em, 20.0f, 0.0f, 32.0f, 32.0f, true, true);
 
     CollisionSystem::update(em);
 
-    auto& wallT = em.registry().get<Transform>(wall);
-    auto& playerT = em.registry().get<Transform>(player);
+    // Static never moves.
+    REQUIRE(em.registry().get<Transform>(wall).x == Catch::Approx(0.0f));
+    // Dynamic is pushed out of the static to the boundary.
+    REQUIRE(em.registry().get<Transform>(player).x == Catch::Approx(32.0f));
 
-    // Wall must not move — it is static (no Velocity).
-    REQUIRE(wallT.x == Catch::Approx(0.0f));
-    REQUIRE(wallT.y == Catch::Approx(0.0f));
-
-    // Player must be pushed out so the boxes no longer overlap.
-    // Player was at x=20, wall at x=0; overlap on X = (16+16) - 20 = 12.
-    // Player gets pushed right by 12 + SEPARATION_BIAS(0.1) = 12.1 → ends up at x = 32.1.
-    REQUIRE(playerT.x == Catch::Approx(32.1f));
-    REQUIRE(playerT.y == Catch::Approx(0.0f));
-
-    // Event must still be recorded.
+    // Event is still emitted (useful for gameplay: combat hits, trigger zones).
     REQUIRE_FALSE(em.collisionEvents.empty());
 }
 
@@ -91,22 +96,51 @@ TEST_CASE("Static-vs-static solid records event but moves nothing", "[collision]
     REQUIRE(em.collisionEvents.size() == 1);
 }
 
-TEST_CASE("Dynamic entity is pushed out of two stacked solid walls", "[collision]")
+TEST_CASE("Dynamic-vs-dynamic solid: both pushed apart equally", "[collision]")
 {
     EntityManager em;
-    // Two walls side by side at x=0 and x=32 (just touching, not overlapping each other).
-    // Player at x=20 — overlapping the first wall.
-    makeEntity(em, 0.0f, 0.0f, 32.0f, 32.0f, true, false);  // wall 1
-    makeEntity(em, 32.0f, 0.0f, 32.0f, 32.0f, true, false); // wall 2 (touching wall 1)
-    auto player = makeEntity(em, 20.0f, 0.0f, 32.0f, 32.0f, true, true);
+    // Two dynamic 32x32 boxes: A at x=0, B at x=20 — overlap 12px on X.
+    auto a = makeEntity(em, 0.0f, 0.0f, 32.0f, 32.0f, true, true);
+    auto b = makeEntity(em, 20.0f, 0.0f, 32.0f, 32.0f, true, true);
 
     CollisionSystem::update(em);
 
-    // Player should be outside both walls — no overlap remains.
-    const auto& pt = em.registry().get<Transform>(player);
-    // Wall 1 right edge: 0 + 16 = 16. Player left edge after push: pt.x - 16.
-    // Player should be at x >= 16 (outside wall 1's right edge).
-    REQUIRE(pt.x - 16.0f >= -0.001f);
+    const auto& ta = em.registry().get<Transform>(a);
+    const auto& tb = em.registry().get<Transform>(b);
+
+    // Each pushed 6px in opposite directions (half of the 12px overlap).
+    REQUIRE(ta.x == Catch::Approx(-6.0f));
+    REQUIRE(tb.x == Catch::Approx(26.0f));
+
+    REQUIRE(em.collisionEvents.size() == 1);
+}
+
+TEST_CASE("Enemy push into wall: dynamic entity depenetrated after dynamic-vs-dynamic resolution",
+          "[collision]")
+{
+    EntityManager em;
+    // Regression: enemy overlaps player and CollisionSystem pushes player toward a wall.
+    // Without the depenetration pass the player lands inside the wall and becomes
+    // permanently stuck (MovementSystem sees a pre-existing overlap → zeroes velocity).
+    //
+    // Wall at (0,0) static. Player at (32,0) dynamic — touching wall's right face.
+    // Enemy at (58,0) dynamic — overlaps player by 6px on X.
+    //
+    // Dynamic-vs-dynamic: player pushed left by 3px to x=29 (inside wall).
+    //                     enemy pushed right by 3px to x=61.
+    // Depenetration:      player pushed right by 3px back to x=32 (wall boundary).
+    auto wall = makeEntity(em, 0.0f, 0.0f, 32.0f, 32.0f, true, false);   // static
+    auto player = makeEntity(em, 32.0f, 0.0f, 32.0f, 32.0f, true, true); // dynamic
+    auto enemy = makeEntity(em, 58.0f, 0.0f, 32.0f, 32.0f, true, true);  // dynamic
+
+    CollisionSystem::update(em);
+
+    REQUIRE(em.registry().get<Transform>(wall).x == Catch::Approx(0.0f));
+    REQUIRE(em.registry().get<Transform>(player).x == Catch::Approx(32.0f)); // not inside wall
+    REQUIRE(em.registry().get<Transform>(enemy).x == Catch::Approx(61.0f));
+
+    // Player-enemy collision event recorded.
+    REQUIRE(em.collisionEvents.size() == 1);
 }
 
 TEST_CASE("Collision events are cleared between frames", "[collision]")

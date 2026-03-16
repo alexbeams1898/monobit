@@ -1,12 +1,15 @@
 #include "Engine.h"
 
 #include "ecs/Components.h"
+#include "systems/AggroSystem.h"
 #include "systems/CameraSystem.h"
 #include "systems/ChaseSystem.h"
 #include "systems/CollisionSystem.h"
+#include "systems/FlowFieldSystem.h"
 #include "systems/InputSystem.h"
 #include "systems/MovementSystem.h"
 #include "systems/RenderSystem.h"
+#include "systems/SteeringSystem.h"
 
 // glad must be included before any SDL OpenGL header.
 #include <SDL.h>
@@ -120,11 +123,14 @@ void Engine::processEvents()
 
 void Engine::update(double dt)
 {
-    ZoneScoped;                          // Tracy zone — visible in the profiler as "update"
-    ChaseSystem::update(entityManager_); // AI writes velocity before movement integrates it
-    MovementSystem::update(entityManager_, dt);
-    CollisionSystem::update(entityManager_); // resolve overlaps against final moved positions
-    CameraSystem::update(entityManager_);    // snap camera to resolved position
+    ZoneScoped;
+    AggroSystem::update(entityManager_);     // Idle→Chase when player enters aggro radius
+    FlowFieldSystem::update(entityManager_); // BFS from player — rebuilds only on cell change
+    ChaseSystem::update(entityManager_, dt); // enemies read flow field → write velocity
+    SteeringSystem::update(entityManager_); // wall repulsion — deflects velocity before integration
+    MovementSystem::update(entityManager_, dt); // project velocity against statics → integrate
+    CollisionSystem::update(entityManager_);    // dynamic-vs-dynamic correction + events
+    CameraSystem::update(entityManager_);       // snap camera to final player position
 }
 
 void Engine::render()

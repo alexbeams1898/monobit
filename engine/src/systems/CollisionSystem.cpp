@@ -15,137 +15,110 @@ void CollisionSystem::update(EntityManager& em)
     std::vector<entt::entity> entities(view.begin(), view.end());
     std::sort(entities.begin(), entities.end());
 
-    // Two resolution passes per frame.
-    // Pass 1 resolves the primary overlaps; pass 2 catches any secondary overlaps
-    // that were introduced when fixing a corner (e.g. pushing the player out of
-    // wall A slightly changes the overlap with wall B).
-    // Events are only emitted on the first pass to avoid duplicates.
-    for (int pass = 0; pass < 2; ++pass)
+    for (size_t i = 0; i < entities.size(); ++i)
     {
-        for (size_t i = 0; i < entities.size(); ++i)
+        for (size_t j = i + 1; j < entities.size(); ++j)
         {
-            for (size_t j = i + 1; j < entities.size(); ++j)
-            {
-                const entt::entity ea = entities[i];
-                const entt::entity eb = entities[j];
+            const entt::entity ea = entities[i];
+            const entt::entity eb = entities[j];
 
-                auto& ta = view.get<Transform>(ea);
-                auto& ca = view.get<Collider>(ea);
-                auto& tb = view.get<Transform>(eb);
-                auto& cb = view.get<Collider>(eb);
+            auto& ta = view.get<Transform>(ea);
+            const auto& ca = view.get<Collider>(ea);
+            auto& tb = view.get<Transform>(eb);
+            const auto& cb = view.get<Collider>(eb);
 
-                // AABB overlap test (center-based, matching how RenderSystem draws sprites).
-                // overlapX/Y > 0 means the boxes are penetrating on that axis.
-                const float halfWA = ca.width * 0.5f;
-                const float halfHA = ca.height * 0.5f;
-                const float halfWB = cb.width * 0.5f;
-                const float halfHB = cb.height * 0.5f;
+            // AABB overlap test (center-based).
+            const float halfWA = ca.width * 0.5f;
+            const float halfHA = ca.height * 0.5f;
+            const float halfWB = cb.width * 0.5f;
+            const float halfHB = cb.height * 0.5f;
 
-                const float dx = ta.x - tb.x;
-                const float dy = ta.y - tb.y;
+            const float dx = ta.x - tb.x;
+            const float dy = ta.y - tb.y;
 
-                const float overlapX = (halfWA + halfWB) - std::abs(dx);
-                const float overlapY = (halfHA + halfHB) - std::abs(dy);
+            const float overlapX = (halfWA + halfWB) - std::abs(dx);
+            const float overlapY = (halfHA + halfHB) - std::abs(dy);
 
-                if (overlapX <= 0.0f || overlapY <= 0.0f)
-                    continue; // no overlap — next pair
+            if (overlapX <= 0.0f || overlapY <= 0.0f)
+                continue; // no overlap
 
-                // Emit a collision event on the first pass only (avoid duplicates).
-                if (pass == 0)
-                    em.collisionEvents.push_back({ea, eb});
+            // Emit a collision event for every overlapping pair — gameplay
+            // systems (combat, trigger zones) read these each frame.
+            em.collisionEvents.push_back({ea, eb});
 
-                // Only resolve solid pairs.
-                if (!ca.isSolid || !cb.isSolid)
-                    continue;
+            // CollisionSystem only corrects dynamic-vs-dynamic pairs (e.g.
+            // player colliding with a guard) by splitting the MTV evenly.
+            // Static-dynamic correction is handled below in the depenetration pass.
+            if (!ca.isSolid || !cb.isSolid)
+                continue;
 
-                const bool dynA = em.registry().all_of<Velocity>(ea);
-                const bool dynB = em.registry().all_of<Velocity>(eb);
+            const bool dynA = em.registry().all_of<Velocity>(ea);
+            const bool dynB = em.registry().all_of<Velocity>(eb);
 
-                if (!dynA && !dynB)
-                    continue; // two immovable statics — just recorded the event
+            if (!dynA || !dynB)
+                continue; // at least one is static — MovementSystem handles it
 
-                // Choose the push axis based on the velocity of the moving entity.
-                //
-                // Velocity-based selection produces correct wall sliding: if the entity
-                // is moving mostly to the right and hits a right wall, it gets pushed
-                // back left while vertical movement is left untouched (slide up/down).
-                //
-                // For 45° diagonals (|dx| == |dy|) or two-dynamic pairs (player vs
-                // guard) we fall back to the MTV (push along the smaller overlap axis).
-                //
-                // SEPARATION_BIAS: push a hair beyond the exact overlap so the entity
-                // ends up just outside the wall, preventing re-penetration next frame.
-                constexpr float SEPARATION_BIAS = 0.1f;
+            // Both dynamic: resolve with the minimum translation vector (MTV).
+            // Split the correction evenly so neither entity dominates.
+            float pushX = 0.0f;
+            float pushY = 0.0f;
 
-                float pushX = 0.0f;
-                float pushY = 0.0f;
+            if (overlapX < overlapY)
+                pushX = (dx >= 0.0f) ? overlapX : -overlapX;
+            else
+                pushY = (dy >= 0.0f) ? overlapY : -overlapY;
 
-                // Helper: set pushX/pushY from velocity magnitudes or MTV fallback.
-                auto selectAxis = [&](float absVx, float absVy)
-                {
-                    if (absVx > absVy)
-                    {
-                        // Moving primarily horizontally — resolve on X.
-                        const float mag = overlapX + SEPARATION_BIAS;
-                        pushX = (dx >= 0.0f) ? mag : -mag;
-                    }
-                    else if (absVy > absVx)
-                    {
-                        // Moving primarily vertically — resolve on Y.
-                        const float mag = overlapY + SEPARATION_BIAS;
-                        pushY = (dy >= 0.0f) ? mag : -mag;
-                    }
-                    else
-                    {
-                        // Equal magnitudes (45° or stationary) — use MTV.
-                        if (overlapX < overlapY)
-                        {
-                            const float mag = overlapX + SEPARATION_BIAS;
-                            pushX = (dx >= 0.0f) ? mag : -mag;
-                        }
-                        else
-                        {
-                            const float mag = overlapY + SEPARATION_BIAS;
-                            pushY = (dy >= 0.0f) ? mag : -mag;
-                        }
-                    }
-                };
-
-                if (dynA && !dynB)
-                {
-                    const auto& vel = em.registry().get<Velocity>(ea);
-                    selectAxis(std::abs(vel.dx), std::abs(vel.dy));
-                }
-                else if (!dynA && dynB)
-                {
-                    const auto& vel = em.registry().get<Velocity>(eb);
-                    selectAxis(std::abs(vel.dx), std::abs(vel.dy));
-                }
-                else
-                {
-                    // Both dynamic (e.g. player vs guard) — MTV, no velocity bias.
-                    selectAxis(0.0f, 0.0f);
-                }
-
-                if (dynA && !dynB)
-                {
-                    ta.x += pushX;
-                    ta.y += pushY;
-                }
-                else if (!dynA && dynB)
-                {
-                    tb.x -= pushX;
-                    tb.y -= pushY;
-                }
-                else
-                {
-                    // Both dynamic — split the correction evenly.
-                    ta.x += pushX * 0.5f;
-                    ta.y += pushY * 0.5f;
-                    tb.x -= pushX * 0.5f;
-                    tb.y -= pushY * 0.5f;
-                }
-            }
+            ta.x += pushX * 0.5f;
+            ta.y += pushY * 0.5f;
+            tb.x -= pushX * 0.5f;
+            tb.y -= pushY * 0.5f;
         }
-    } // end pass
+    }
+
+    // Static depenetration pass — correct any dynamic entity pushed into a
+    // static wall as a side effect of the dynamic-vs-dynamic resolution above.
+    //
+    // MovementSystem's velocity projection prevents dynamic entities from
+    // entering static solids on their own. However, when two dynamics collide,
+    // CollisionSystem moves them directly (bypassing MovementSystem). If a wall
+    // is behind either entity the push can land them inside it; MovementSystem
+    // then sees a pre-existing overlap and zeroes velocity every frame — entity
+    // is permanently stuck.
+    //
+    // This pass pushes each dynamic entity out of every static solid it now
+    // overlaps, on the axis of minimum penetration. The static is never moved.
+    for (auto ea : entities)
+    {
+        if (!em.registry().all_of<Velocity>(ea))
+            continue;
+        const auto& ca = view.get<Collider>(ea);
+        if (!ca.isSolid)
+            continue;
+        auto& ta = view.get<Transform>(ea);
+
+        for (auto eb : entities)
+        {
+            if (eb == ea)
+                continue;
+            if (em.registry().all_of<Velocity>(eb))
+                continue; // dynamic — skip, handled by the pair loop above
+            const auto& cb = view.get<Collider>(eb);
+            if (!cb.isSolid)
+                continue;
+            const auto& tb = view.get<Transform>(eb);
+
+            const float dx = ta.x - tb.x;
+            const float dy = ta.y - tb.y;
+            const float overlapX = (ca.width + cb.width) * 0.5f - std::abs(dx);
+            const float overlapY = (ca.height + cb.height) * 0.5f - std::abs(dy);
+
+            if (overlapX <= 0.0f || overlapY <= 0.0f)
+                continue;
+
+            if (overlapX < overlapY)
+                ta.x += (dx >= 0.0f) ? overlapX : -overlapX;
+            else
+                ta.y += (dy >= 0.0f) ? overlapY : -overlapY;
+        }
+    }
 }
