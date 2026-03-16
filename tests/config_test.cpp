@@ -2,6 +2,7 @@
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 // ---------------------------------------------------------------------------
@@ -9,27 +10,34 @@
 //
 // These tests read real JSON files from config/entities/.
 // CTest runs them with WORKING_DIRECTORY set to the project root so that
-// relative paths like "config/entities/guard.json" resolve correctly.
+// relative paths like "config/entities/player.json" resolve correctly.
 // ---------------------------------------------------------------------------
 
-TEST_CASE("ConfigLoader loads guard entity with correct components", "[config]")
+TEST_CASE("ConfigLoader loads correctional_officer with correct components", "[config]")
 {
     EntityManager em;
-    auto entity = ConfigLoader::loadEntity(em, "config/entities/guard.json");
+    auto entity = ConfigLoader::loadEntity(em, "config/entities/correctional_officer.json");
 
     REQUIRE(em.registry().valid(entity));
-    REQUIRE(em.registry().all_of<Tag, Transform, Health, Velocity, Collider, Sprite>(entity));
+    REQUIRE(em.registry().all_of<Tag, Transform, Health, Velocity, Collider, Sprite, AIController>(
+        entity));
 
     auto& tag = em.registry().get<Tag>(entity);
-    REQUIRE(tag.name == "guard");
+    REQUIRE(tag.name == "correctional_officer");
 
     auto& health = em.registry().get<Health>(entity);
-    REQUIRE(health.current == 100);
-    REQUIRE(health.max == 100);
+    REQUIRE(health.current == 60);
+    REQUIRE(health.max == 60);
 
     auto& collider = em.registry().get<Collider>(entity);
     REQUIRE(collider.width == 32.0f);
     REQUIRE(collider.isSolid);
+
+    auto& ai = em.registry().get<AIController>(entity);
+    REQUIRE(ai.state == AIController::State::Idle); // aggro_radius > 0 → starts Idle
+    REQUIRE(ai.speed == Catch::Approx(155.0f));
+    REQUIRE(ai.separationStrength == Catch::Approx(0.6f));
+    REQUIRE(ai.arrivalRadius == Catch::Approx(128.0f));
 }
 
 TEST_CASE("ConfigLoader loads player entity with correct values", "[config]")

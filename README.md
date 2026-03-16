@@ -146,12 +146,14 @@ top of it, own it completely.
 
 ## Status
 
-Early design phase. Engine not yet started. Core gameplay loop, systems, and
-architecture are being defined.
+Active development. Custom engine is running — windowing, input, OpenGL rendering,
+ECS, sprite atlas, camera system, JSON config loader, and enemy AI (flow field
+pathfinding, collision) are all implemented.
 
-Target platform: **Steam** (Windows/Mac/Linux). Cross-platform and browser
-support planned for later.
+Target platform: **Steam** (Windows/Mac/Linux). Cross-platform support planned for later.
 
 ---
 
-*More documentation to come as the design solidifies.*
+## Documentation
+
+- [docs/DESIGN.md](docs/DESIGN.md) — full game design document (gameplay, systems, enemies, narrative)
