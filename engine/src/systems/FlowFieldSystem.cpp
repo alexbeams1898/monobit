@@ -57,14 +57,14 @@ void FlowFieldSystem::update(EntityManager& em)
     // each enemy steers away from high-density neighbours, breaking up the glob.
     // O(n) — one pass over all enemies, O(1) write per enemy.
     // ---------------------------------------------------------------------------
-    for (int r = 0; r < FlowField::ROWS; ++r)
-        for (int c = 0; c < FlowField::COLS; ++c)
-            ff.density[r][c] = 0;
+    for (auto& row : ff.density)
+        for (auto& cell : row)
+            cell = 0;
 
     for (auto e : em.registry().view<AIController, Transform>())
     {
         const auto& ai = em.registry().get<AIController>(e);
-        if (ai.state != AIController::State::Chase)
+        if (ai.state == AIController::State::Idle)
             continue;
         const auto& t = em.registry().get<Transform>(e);
         const int ec = static_cast<int>(t.x / FlowField::CELL_SIZE);
@@ -88,9 +88,9 @@ void FlowFieldSystem::update(EntityManager& em)
     ff.lastPlayerRow = playerRow;
 
     // Reset all flow vectors.
-    for (int r = 0; r < FlowField::ROWS; ++r)
-        for (int c = 0; c < FlowField::COLS; ++c)
-            ff.cells[r][c] = {};
+    for (auto& row : ff.cells)
+        for (auto& cell : row)
+            cell = {};
 
     // Mark static solid cells as impassable (walls, etc.).
     // Dynamic entities (Velocity present) are not treated as obstacles —
