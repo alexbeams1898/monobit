@@ -304,13 +304,14 @@ TEST_CASE("FlowFieldSystem wall marking uses center-based coordinates, not top-l
     // Enemy center (48,48) → col=3, row=3.
     //
     // With correct marking (cols 2-3 blocked in rows 0-1):
-    //   BFS from (1,0): (1,0)→(1,1)→(1,2)→(2,2)→(3,2)→(3,3)
-    //   Cell (3,3) parent: (3,2). Direction: (0,-1) = move UP.
+    //   Cells (1,1),(1,2),(2,2),(3,2) are in the clearance zone (8-way adjacent to
+    //   wall cells). BFS routes left: (1,0)→(0,0)→(0,1)→(0,2)→(0,3)→(1,3)→(2,3)→(3,3).
+    //   Cell (3,3) parent: (2,3). Direction: (-1,0) = move WEST.
     //
-    // With wrong top-left marking (cols 3-4 blocked, col 2 free):
-    //   BFS can go (1,0)→(2,0)→(2,1)→(2,2)→(2,3)→(3,3)
-    //   Cell (3,3) parent: (2,3). Direction: (-1,0) = move LEFT.
-    //   The REQUIRE below catches this mismatch.
+    // With wrong top-left marking (cols 3-4 blocked in rows 1-2):
+    //   Cell (3,3) is adjacent to the misplaced walls (3,2)+(4,2) → clearance zone.
+    //   Clearance fill gives it direction toward nearest routable cell (3,4) = SOUTH.
+    //   The REQUIRE below (vel.dx == -60) catches this mismatch.
     makePlayer(em, 16.0f, 0.0f);
     makeWall(em, 48.0f, 16.0f);                      // center (48,16) 32x32 → cells (2-3, 0-1)
     auto enemy = makeEnemy(em, 48.0f, 48.0f, 60.0f); // center (48,48) → cell (3,3)
@@ -318,8 +319,8 @@ TEST_CASE("FlowFieldSystem wall marking uses center-based coordinates, not top-l
     runAI(em);
 
     const auto& vel = em.registry().get<Velocity>(enemy);
-    REQUIRE(vel.dx == Catch::Approx(0.0f));
-    REQUIRE(vel.dy == Catch::Approx(-60.0f)); // moving up — correct path around the wall
+    REQUIRE(vel.dx == Catch::Approx(-60.0f)); // moving west — correct path around the wall
+    REQUIRE(vel.dy == Catch::Approx(0.0f));
 }
 
 // ---------------------------------------------------------------------------
