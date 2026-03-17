@@ -1,10 +1,12 @@
 #include "systems/CombatSystem.h"
 
+#include "TileMap.h"
 #include "ecs/Components.h"
 
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <tracy/Tracy.hpp>
 
 // ---------------------------------------------------------------------------
 // Combat formula helpers — pure functions; read FormulaConfig, no side effects.
@@ -89,8 +91,10 @@ float computeDamage(const Weapon& w, const Stats& s, const FormulaConfig& f)
 
 // ---------------------------------------------------------------------------
 
+// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 void CombatSystem::update(EntityManager& em, double dt)
 {
+    ZoneScopedN("CombatSystem");
     const float fdt = static_cast<float>(dt);
     const FormulaConfig& f = em.formulas;
 
@@ -295,19 +299,26 @@ void CombatSystem::update(EntityManager& em, double dt)
             }
 
             // Spawn hitbox one half-width in front of the player.
+            // LOS check: don't spawn if a wall or obstacle sits between the
+            // player and the hitbox position — prevents hitting through obstacles.
             const float reach = 16.0f + 20.0f; // half collider + reach
             const float hx = transform.x + facingX * reach;
             const float hy = transform.y + facingY * reach;
 
-            if (em.registry().all_of<Stats>(entity))
+            const bool hitboxLos = !em.tile_map.valid() ||
+                                   em.tile_map.hasLineOfSight(transform.x, transform.y, hx, hy);
+            if (hitboxLos)
             {
-                const auto& stats = em.registry().get<Stats>(entity);
-                const float dmg = computeDamage(weapon, stats, f);
-                spawnHitbox(entity, hx, hy, 32.0f, dmg);
-            }
-            else
-            {
-                spawnHitbox(entity, hx, hy, 32.0f, weapon.base_damage);
+                if (em.registry().all_of<Stats>(entity))
+                {
+                    const auto& stats = em.registry().get<Stats>(entity);
+                    const float dmg = computeDamage(weapon, stats, f);
+                    spawnHitbox(entity, hx, hy, 32.0f, dmg);
+                }
+                else
+                {
+                    spawnHitbox(entity, hx, hy, 32.0f, weapon.base_damage);
+                }
             }
 
             const float cooldown =
@@ -322,6 +333,7 @@ void CombatSystem::update(EntityManager& em, double dt)
             // Yellow swing flash on the attacker (0.5s so it's clearly visible).
             em.registry().emplace_or_replace<AttackFeedback>(entity, AttackFeedback{0.5f});
 
+            TracyMessageL("PlayerAttack");
             std::cout << "[CombatSystem] Attack! dmg=";
             if (em.registry().all_of<Stats>(entity))
                 std::cout << computeDamage(weapon, em.registry().get<Stats>(entity), f);
@@ -341,10 +353,14 @@ void CombatSystem::update(EntityManager& em, double dt)
             if (em.registry().all_of<Stats>(entity))
                 dmg = computeDamage(weapon, em.registry().get<Stats>(entity), f) * 1.5f;
 
-            spawnHitbox(entity, hx, hy, 64.0f, dmg); // 64×64 hitbox
+            const bool skillLos = !em.tile_map.valid() ||
+                                  em.tile_map.hasLineOfSight(transform.x, transform.y, hx, hy);
+            if (skillLos)
+                spawnHitbox(entity, hx, hy, 64.0f, dmg); // 64×64 hitbox
             weapon.skill_cooldown_remaining = 5.0f;
             em.registry().emplace_or_replace<AttackLocked>(entity, AttackLocked{0.4f});
 
+            TracyMessageL("PlayerSkill");
             std::cout << "[CombatSystem] Haymaker! dmg=" << dmg << " skill cooldown=5.0s\n";
         }
 
@@ -400,6 +416,7 @@ void CombatSystem::update(EntityManager& em, double dt)
                 vel.dy = dodgeY * 300.0f;
             }
 
+            TracyMessageL("PlayerDodge");
             em.registry().emplace<Dodging>(entity, Dodging{0.25f});
             input.dodge_cooldown_remaining = 0.5f;
 

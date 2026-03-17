@@ -3,10 +3,12 @@
 #include "ecs/Components.h"
 
 #include <iostream>
+#include <tracy/Tracy.hpp>
 #include <vector>
 
 void DeathSystem::update(EntityManager& em)
 {
+    ZoneScopedN("DeathSystem");
     auto& reg = em.registry();
 
     // Collect all dead entities before destroying any (entt iterator safety).

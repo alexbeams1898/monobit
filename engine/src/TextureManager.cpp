@@ -27,8 +27,10 @@ uint32_t TextureManager::load(const std::string& path)
 
     if (!pixels)
     {
-        std::cerr << "[TextureManager] Failed to load: " << path << " — using fallback\n";
-        return makeFallback();
+        std::cerr << "[TextureManager] Failed to load: " << path << " - using fallback\n";
+        const uint32_t fb = makeFallback();
+        cache[path] = fb; // cache so the log only fires once per missing path
+        return fb;
     }
 
     // Upload to GPU.

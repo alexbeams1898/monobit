@@ -6,6 +6,7 @@
 #include <cmath>
 #include <glad/glad.h>
 #include <iostream>
+#include <tracy/Tracy.hpp>
 #include <vector>
 
 // ---------------------------------------------------------------------------
@@ -194,6 +195,7 @@ void RenderSystem::init(int windowW, int windowH)
 
 void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, float camY)
 {
+    ZoneScopedN("RenderSystem");
     // Collect all renderable entities into a vector so we can sort by layer.
     struct DrawEntry
     {

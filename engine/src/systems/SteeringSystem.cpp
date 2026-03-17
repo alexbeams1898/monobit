@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <tracy/Tracy.hpp>
 #include <vector>
 
 // Distance from wall surface (px) at which repulsion starts.
@@ -42,6 +43,7 @@ static constexpr float SKIP_DOT_THRESHOLD = -0.5f;
 
 void SteeringSystem::update(EntityManager& em)
 {
+    ZoneScopedN("SteeringSystem");
     // Gather static solid colliders once per frame so the inner loop is a
     // plain array sweep — no registry queries per entity.
     auto allColliders = em.registry().view<Transform, Collider>();

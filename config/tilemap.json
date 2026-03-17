@@ -1,0 +1,11 @@
+{
+    "width": 80,
+    "height": 60,
+    "room_count": 6,
+    "tiles": {
+        "0": { "sprite": "", "walkable": true  },
+        "1": { "sprite": "", "walkable": false },
+        "2": { "sprite": "", "walkable": true  },
+        "3": { "sprite": "", "walkable": false }
+    }
+}

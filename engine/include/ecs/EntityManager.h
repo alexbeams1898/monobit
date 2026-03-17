@@ -1,5 +1,7 @@
 #pragma once
 
+#include "TileMap.h"
+
 #include <entt/entt.hpp>
 #include <vector>
 
@@ -210,6 +212,13 @@ class EntityManager
     // ConfigLoader::loadFormulas(). Read by combat, movement, and leveling
     // systems every frame. Never write to this after startup.
     FormulaConfig formulas;
+
+    // Tile map — generated at startup by TileMapLoader::generate().
+    // Read by TileMapRenderer every frame for viewport-culled drawing.
+    // Future: FlowFieldSystem can read tile_map.at(c,r).walkable directly
+    // instead of querying wall entities.
+    TileMap tile_map;
+    TileConfig tile_config;
 
   private:
     entt::registry reg;

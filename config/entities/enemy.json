@@ -8,7 +8,7 @@
         "stats":         { "str": 2, "dex": 3, "end": 1, "lck": 1 },
         "weapon":        { "weight": 0.5, "str_scaling": "E", "dex_scaling": "E", "str_requirement": 0, "dex_requirement": 0, "base_damage": 8.0 },
         "facing":        {},
-        "ai_controller": { "behavior": "chase", "turn_speed": 4.0, "aggro_radius": 180.0, "separation_strength": 0.6, "arrival_radius": 128.0, "attack_radius": 48.0 },
+        "ai_controller": { "behavior": "chase", "turn_speed": 8.0, "aggro_radius": 180.0, "separation_strength": 0.6, "arrival_radius": 128.0, "attack_radius": 48.0 },
         "loot":          { "xp_drop": 20 },
         "poise":         {}
     }

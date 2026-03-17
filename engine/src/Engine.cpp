@@ -18,6 +18,7 @@
 #include "systems/RestSpotSystem.h"
 #include "systems/SpawnerSystem.h"
 #include "systems/SteeringSystem.h"
+#include "systems/TileMapRenderer.h"
 
 #include <string>
 
@@ -79,6 +80,7 @@ bool Engine::init(const char* title, int width, int height)
     window_h = height;
 
     RenderSystem::init(window_w, window_h);
+    TileMapRenderer::init();
     AudioSystem::init(); // non-fatal — game runs without audio if device unavailable
 
     return true;
@@ -192,6 +194,7 @@ void Engine::render()
         }
     }
 
+    TileMapRenderer::render(camX, camY, window_w, window_h);
     RenderSystem::render(entity_manager, texture_manager, camX, camY);
 
     SDL_GL_SwapWindow(window);
@@ -200,6 +203,7 @@ void Engine::render()
 void Engine::shutdown()
 {
     AudioSystem::shutdown();
+    TileMapRenderer::shutdown();
     RenderSystem::shutdown();
     texture_manager.clear();
 

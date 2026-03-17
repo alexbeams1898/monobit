@@ -4,6 +4,9 @@ Checks: >
   modernize-use-override,
   modernize-use-default-member-init,
   modernize-loop-convert,
+  performance-avoid-endl,
+  performance-for-range-copy,
+  performance-move-const-arg,
   performance-unnecessary-copy-initialization,
   performance-unnecessary-value-param,
   readability-const-return-type,
@@ -11,6 +14,7 @@ Checks: >
   readability-delete-null-pointer,
   readability-redundant-member-init,
   readability-identifier-naming,
+  readability-function-cognitive-complexity,
   -bugprone-easily-swappable-parameters,
   -bugprone-exception-escape
 
@@ -30,3 +34,8 @@ CheckOptions:
     value: lower_case
   - key:   readability-identifier-naming.PublicMemberCase
     value: lower_case
+  # Flag functions whose nesting depth / branching makes them hard to reason about.
+  # Triple-nested loops score ~9+ points; a threshold of 30 catches gratuitous nesting
+  # while leaving legitimately complex systems (BFS rebuild, collision) alone.
+  - key:   readability-function-cognitive-complexity.Threshold
+    value: '30'

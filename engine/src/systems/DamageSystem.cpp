@@ -5,6 +5,7 @@
 
 #include <cmath>
 #include <iostream>
+#include <tracy/Tracy.hpp>
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -33,6 +34,7 @@ static float computeDef(const Stats& s, int level, const FormulaConfig& f)
 // Apply incoming damage to a target entity, respecting Dodging i-frames,
 // Shield blocking/parry, DEF, and stat-requirement penalty.
 // Returns true if damage was applied (false = blocked / i-frames / parried).
+// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
                         entt::entity attacker)
 {
@@ -105,12 +107,14 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
     // Trigger red damage flash on the target.
     reg.emplace_or_replace<DamageFeedback>(target, DamageFeedback{0.2f});
 
+    TracyMessageL("EntityDamaged");
     std::cout << "[DamageSystem] Entity took " << dmg << " damage (" << health.current << "/"
               << health.max << " hp)\n";
 
     if (health.current <= 0 && !reg.all_of<Dead>(target))
     {
         reg.emplace<Dead>(target);
+        TracyMessageL("EntityDied");
         std::cout << "[DamageSystem] Entity died.\n";
     }
 
@@ -160,6 +164,7 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
 
 void DamageSystem::update(EntityManager& em)
 {
+    ZoneScopedN("DamageSystem");
     auto& reg = em.registry();
 
     // Propagate Input.block_held → Shield.blocking for all shielded entities.
