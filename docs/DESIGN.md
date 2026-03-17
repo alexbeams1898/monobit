@@ -8,33 +8,54 @@
 ## Narrative
 
 ### The Setup
-You are dead. Or close enough. You keep waking up in the same spot in Hell — the reason is
-intentionally unexplained early on and slowly revealed through progression. Each run you fight
-your way toward the exit, die or escape, and wake up again.
+You wake up somewhere unfamiliar. The world looks almost normal — a little off, maybe, but
+nothing you can't explain away. You fight your way toward the exit. If you make it, you escape
+and carry your progress forward. If you die, it's over — back to the meta world to try again.
+Each run the world gets stranger. The architecture shifts. The enemies stop looking quite human.
+The person guiding you through a radio starts saying things that don't quite add up.
 
-Bud is the player's guide. His exact nature and relationship to Hell is TBD — he may be a
-fellow damned soul, a demon who switched sides, or something weirder. He communicates via
-some in-universe equivalent of the walkie talkie. His role as the meta NPC between runs is
-unchanged — he's still the face of the meta store and the source of dark comedy commentary.
+You are in Hell. You just don't know it yet.
+
+The reason you keep ending up back here — and why everything is slowly getting more hellish —
+is intentionally unexplained early on and revealed through progression.
+
+### The Twist (Marketing Hook)
+The game is marketed as a real-world escape dungeon roguelike, not an escape from Hell.
+The hell setting is the reveal — discovered through play, not the store page. The world
+starts grounded and mundane. The uncanny creeps in gradually: strange geometry, enemies
+that are almost-human but not quite, visual corruption at the edges, Bud saying things
+a normal person wouldn't say. By the time it's undeniable, you're already deep in.
+
+**Never spoil the twist in marketing material, trailers, or the title screen.**
 
 ### Characters
 - **Bud** — guide, drinking buddy, meta NPC. Voice during runs. Appears between runs.
-  Not playable. Exact nature TBD — keep it funny.
+  Not playable. **Bud is a demon.** This is not revealed until late in the game. His humor
+  and helpfulness mask his true nature. As the player progresses through the layers, his
+  dialogue, behavior, and appearance grow increasingly uncanny and demonic. The gradual
+  reveal is a key narrative arc — never telegraph it early.
 - **Playable characters** — the damned. Custom character created at the start of a fresh save.
 
 ### Tone
 Comedic throughout. Body-gore humor — absurd rather than disturbing. Should never feel too
 extreme or mean-spirited. Hell is a fun place to be. Think Monty Python meets early Doom.
 
+### Inspirations
+- **Dante's Inferno / Divine Comedy** — layers of Hell structure, escalating strangeness,
+  the idea of a guide who may not be fully trustworthy
+- **Doom** — escape through layers of Hell, escalating demonic hostility, comedic brutality
+- **Vampire Survivors** — core loop, enemy escalation, auto-attack feel
+- **Dark Souls / Elden Ring** — stats, build variety, weapon scaling, crafting depth
+
 ---
 
 ## Core Gameplay Loop
 
-1. Spawn in prison map
+1. Spawn in the map — the world looks mundane at first
 2. Kill enemies → earn XP → level up → **VS-style popup fires mid-run** → pick a stat (STR/DEX/END/LCK) → back to fighting immediately
 3. Collect material drops from enemies and environment
 4. Field-craft a base weapon from materials (no station needed)
-5. Fight through escalating enemy waves separated by safe rooms
+5. Survive timed enemy waves — enemies spawn based on your position and how long you've been in the area; the map is open, explore freely between waves for chests, rest spots, and loot
 6. Find rest spots scattered in the map → heal, upgrade weapons, buy items
 7. Defeat the final boss/elite enemy → escape → run complete
 8. Carry money and meta progress forward
@@ -205,6 +226,16 @@ Planned stat mapping:
 This creates a distinct build identity: gun builds are DEX/LCK, melee builds are STR/DEX.
 Will be considered for implementation within this milestone once melee is built and feeling good.
 
+### Sprite Direction
+**4-directional with diagonal interpolation.**
+
+Entities have sprites for 4 cardinal directions (up, down, left, right). When moving or facing
+diagonally, the nearest dominant cardinal direction is used, potentially blended. Exact
+interpolation method TBD during implementation — try dominant-direction selection first.
+
+This is simpler than 8-directional sprite sets and gives tighter control over art budget,
+keeping the "runs on a calculator" philosophy in check.
+
 ---
 
 ## Weapons
@@ -361,9 +392,12 @@ Names are placeholders — TBD with Alex.
 - All drops are materials/parts — never whole weapons or armor
 
 ### Wave Structure
-- Wave-based with brief safe rooms between waves
-- Safe rooms contain: weapon upgrade station, healing. Kept simple.
-- Always an objective — waves should never feel aimless
+- **Open world, timed intervals** — the map is freely explorable; no room gating, no safe rooms.
+  Enemy waves spawn at timed intervals based on the player's current position and time elapsed
+  in the area. The longer you stay, the worse it gets.
+- Between waves: explore for chests, rest spots, crafting materials, upgrade stations
+- Enemy density and composition scale with time and position — pro-gen, not pre-scripted
+- Always an objective — the final boss/elite is the escape condition, not wave survival
 - Final boss/elite kill = run complete = escape
 
 ---
@@ -387,12 +421,16 @@ a cursed altar, a fellow damned NPC who patches you up. Alex decides.
 ## Map & Procedural Generation
 
 ### Map Feel
-- Open roaming space with hell visual theming — not a realistic simulation
-- No key/door/room gating — movement is free like VS
-- Hell aesthetic is dressing, not a mechanical system
+- Open roaming space — no key/door/room gating, movement is free like VS
+- **Aesthetic arc**: the world starts grounded and mundane (looks like somewhere real: warehouse,
+  office, parking structure, etc.). Hell theming creeps in as the player progresses deeper —
+  geometry distorts, colors shift, enemies grow less human. By the final layer it's undeniably,
+  fully Hell.
+- The shift is gradual and diegetic — the player experiences the reveal, not a cutscene
 - Tone: silly, low fidelity, practical. Funny where possible.
-- Visual direction TBD — could lean Dante's Inferno (circles, fire, brimstone), cartoonish
-  (Cuphead-hell, Helltaker-adjacent), or something weirder. Alex decides.
+- Visual reference points: Dante's Inferno (circles, fire, brimstone), Doom (demon design,
+  escalating brutality), early real-world environments as the mundane anchor. Alex decides
+  the execution.
 
 ### Procedural Generation Architecture
 **Core principle: separate structure (owned by engine) from visuals (supplied by modders).**
