@@ -61,7 +61,7 @@ int SpawnerSystem::load(EntityManager& em, const std::string& configPath)
 
 void SpawnerSystem::update(EntityManager& em, double dt)
 {
-    static constexpr float kSpawnInterval = 8.0f;  // seconds between spawns
+    static constexpr float kSpawnInterval = 4.0f;  // seconds between spawns
     static constexpr float kSpawnDistance = 550.f; // pixels from player center
     static constexpr const char* kEnemyPath = "config/entities/correctional_officer.json";
 
