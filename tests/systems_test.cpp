@@ -22,10 +22,10 @@ TEST_CASE("MovementSystem translates rightward input into position change", "[mo
     em.registry().emplace<Velocity>(e);
     em.registry().emplace<Input>(e, Input{1.0f, 0.0f});
 
-    MovementSystem::update(em, 1.0); // 1 second at 200 px/s
+    MovementSystem::update(em, 1.0); // 1 second at 150 px/s (base, no Stats)
 
     auto& t = em.registry().get<Transform>(e);
-    REQUIRE(t.x == Catch::Approx(300.0f)); // 100 + 200*1
+    REQUIRE(t.x == Catch::Approx(250.0f)); // 100 + 150*1
     REQUIRE(t.y == Catch::Approx(100.0f)); // unchanged
 }
 
@@ -37,10 +37,10 @@ TEST_CASE("MovementSystem translates leftward input into negative x movement", "
     em.registry().emplace<Velocity>(e);
     em.registry().emplace<Input>(e, Input{-1.0f, 0.0f});
 
-    MovementSystem::update(em, 0.5); // half a second
+    MovementSystem::update(em, 0.5); // half a second at 150 px/s (base, no Stats)
 
     auto& t = em.registry().get<Transform>(e);
-    REQUIRE(t.x == Catch::Approx(200.0f)); // 300 - 200*0.5
+    REQUIRE(t.x == Catch::Approx(225.0f)); // 300 - 150*0.5
     REQUIRE(t.y == Catch::Approx(100.0f));
 }
 

@@ -28,9 +28,9 @@ TEST_CASE("ConfigLoader loads correctional_officer with correct components", "[c
 
     LevelingSystem::applyInitialDerivations(em);
 
-    // CO: end=2, default formulas → maxHP = 50 + floor(100 * ln(3)) = 159
+    // CO: end=1, default formulas → maxHP = 50 + floor(100 * ln(2)) = 119
     auto& health = em.registry().get<Health>(entity);
-    REQUIRE(health.max == 159);
+    REQUIRE(health.max == 119);
     REQUIRE(health.current == health.max);
 
     auto& tag = em.registry().get<Tag>(entity);
