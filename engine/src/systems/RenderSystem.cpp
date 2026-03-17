@@ -200,8 +200,8 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
         float x, y;
         int src_x, src_y, src_w, src_h;
         int layer;
-        uint32_t texId;
-        int texW, texH;                        // full texture dimensions for UV normalisation
+        uint32_t tex_id;
+        int tex_w, tex_h;                      // full texture dimensions for UV normalisation
         float tr = 1.0f, tg = 1.0f, tb = 1.0f; // tint RGB (multiplied in shader)
         bool flip_x = false;                   // mirror sprite horizontally (facing left)
         bool flip_y = false;                   // mirror sprite vertically (facing up = back view)
@@ -216,14 +216,14 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
         if (sprite.texture_path.empty() && sprite.texture_id == 0)
             continue;
 
-        uint32_t texId = tm.load(sprite.texture_path);
+        uint32_t tex_id = tm.load(sprite.texture_path);
 
         // Query texture dimensions so we can convert pixel src rects to 0-1 UV.
-        glBindTexture(GL_TEXTURE_2D, texId);
-        GLint texW = 0;
-        GLint texH = 0;
-        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &texW);
-        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &texH);
+        glBindTexture(GL_TEXTURE_2D, tex_id);
+        GLint tex_w = 0;
+        GLint tex_h = 0;
+        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &tex_w);
+        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &tex_h);
         glBindTexture(GL_TEXTURE_2D, 0);
 
         // Tint priority (highest → lowest):
@@ -298,7 +298,7 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
         drawList.push_back(
             {transform.x - static_cast<float>(sprite.src_w) * 0.5f, // top-left corner
              transform.y - static_cast<float>(sprite.src_h) * 0.5f, sprite.src_x, sprite.src_y,
-             sprite.src_w, sprite.src_h, sprite.layer, texId, texW, texH, tr, tg, tb, flip_x,
+             sprite.src_w, sprite.src_h, sprite.layer, tex_id, tex_w, tex_h, tr, tg, tb, flip_x,
              flip_y, is_solid});
     }
 
@@ -344,11 +344,11 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
         }
         else
         {
-            glBindTexture(GL_TEXTURE_2D, e.texId);
+            glBindTexture(GL_TEXTURE_2D, e.tex_id);
 
             // Convert pixel src rect to 0-1 UV space for the atlas sample.
-            const float tw = static_cast<float>(e.texW > 0 ? e.texW : 1);
-            const float th = static_cast<float>(e.texH > 0 ? e.texH : 1);
+            const float tw = static_cast<float>(e.tex_w > 0 ? e.tex_w : 1);
+            const float th = static_cast<float>(e.tex_h > 0 ? e.tex_h : 1);
             // Flip trick: start UV at the far edge and use negative extent.
             // Shader: uv = uSrcRect.xy + vUV * uSrcRect.zw — negative zw mirrors the sample.
             const float uvX = e.flip_x ? static_cast<float>(e.src_x + e.src_w) / tw

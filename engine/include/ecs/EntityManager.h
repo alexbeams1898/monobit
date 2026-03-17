@@ -44,12 +44,12 @@ struct FormulaConfig
 
     struct
     {
-        float S = 1.5f;
-        float A = 1.25f;
-        float B = 1.0f;
-        float C = 0.75f;
-        float D = 0.5f;
-        float E = 0.25f;
+        float s = 1.5f;
+        float a = 1.25f;
+        float b = 1.0f;
+        float c = 0.75f;
+        float d = 0.5f;
+        float e = 0.25f;
     } grade_multipliers;
 
     struct
@@ -144,14 +144,14 @@ struct FlowField
     static constexpr int STABILITY_FRAMES = 3;
 
     // Player's last fully-built grid cell.
-    int lastPlayerCol = -1;
-    int lastPlayerRow = -1;
+    int last_player_col = -1;
+    int last_player_row = -1;
 
     // Pending cell — the cell the player is currently in but hasn't stayed in
     // long enough to trigger a rebuild yet.
-    int pendingCol = -1;
-    int pendingRow = -1;
-    int stableCount = 0;
+    int pending_col = -1;
+    int pending_row = -1;
+    int stable_count = 0;
 };
 
 // ---------------------------------------------------------------------------
@@ -175,36 +175,36 @@ class EntityManager
   public:
     entt::entity create()
     {
-        return registry_.create();
+        return reg.create();
     }
 
     void destroy(entt::entity entity)
     {
-        registry_.destroy(entity);
+        reg.destroy(entity);
     }
 
     entt::registry& registry()
     {
-        return registry_;
+        return reg;
     }
 
     const entt::registry& registry() const
     {
-        return registry_;
+        return reg;
     }
 
     // Collision events accumulated by CollisionSystem this frame.
     // Cleared at the start of each CollisionSystem::update() call.
-    std::vector<CollisionEvent> collisionEvents;
+    std::vector<CollisionEvent> collision_events;
 
     void clearCollisionEvents()
     {
-        collisionEvents.clear();
+        collision_events.clear();
     }
 
     // Flow field — rebuilt by FlowFieldSystem via BFS whenever the player
     // enters a new grid cell. Read by ChaseSystem every frame.
-    FlowField flowField;
+    FlowField flow_field;
 
     // Balance formulas — loaded once from config/balance/formulas.json by
     // ConfigLoader::loadFormulas(). Read by combat, movement, and leveling
@@ -212,5 +212,5 @@ class EntityManager
     FormulaConfig formulas;
 
   private:
-    entt::registry registry_;
+    entt::registry reg;
 };

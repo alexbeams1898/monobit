@@ -58,8 +58,8 @@ bool Engine::init(const char* title, int width, int height)
 
     SDL_ShowCursor(SDL_DISABLE);
 
-    glContext = SDL_GL_CreateContext(window);
-    if (!glContext)
+    gl_context = SDL_GL_CreateContext(window);
+    if (!gl_context)
         return false;
 
     // Load all OpenGL 3.3 core function pointers via GLAD.
@@ -67,18 +67,18 @@ bool Engine::init(const char* title, int width, int height)
     // on Windows, opengl32.dll only exposes GL 1.1; the driver fills in the rest.
     if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(SDL_GL_GetProcAddress)))
     {
-        SDL_GL_DeleteContext(glContext);
-        glContext = nullptr;
+        SDL_GL_DeleteContext(gl_context);
+        gl_context = nullptr;
         return false;
     }
 
     // Vsync on by default — will become a user setting in the options menu.
     SDL_GL_SetSwapInterval(1);
 
-    windowW_ = width;
-    windowH_ = height;
+    window_w = width;
+    window_h = height;
 
-    RenderSystem::init(windowW_, windowH_);
+    RenderSystem::init(window_w, window_h);
     AudioSystem::init(); // non-fatal — game runs without audio if device unavailable
 
     return true;
@@ -131,7 +131,7 @@ void Engine::processEvents()
 
     // InputSystem reads the keyboard state snapshot that SDL_PollEvent just refreshed.
     // Must be called after the event loop, not inside the fixed-step update.
-    InputSystem::update(entityManager_);
+    InputSystem::update(entity_manager);
 }
 
 void Engine::update(double dt)
@@ -140,24 +140,24 @@ void Engine::update(double dt)
     // InputSystem runs in processEvents() before the fixed-step loop —
     // see processEvents() for the call site.  The order here is the
     // per-tick combat/movement/collision sequence.
-    SpawnerSystem::update(entityManager_, dt); // timed wave spawner — enemies from outside bounds
-    CombatSystem::update(entityManager_, dt);  // cooldowns, hitbox spawn, dodge, skill, auto-attack
-    AggroSystem::update(entityManager_);       // Idle→Chase when player enters aggro radius
-    FlowFieldSystem::update(entityManager_);   // BFS from player — rebuilds only on cell change
-    ChaseSystem::update(entityManager_, dt);   // enemies read flow field → write velocity
-    SteeringSystem::update(entityManager_); // wall repulsion — deflects velocity before integration
-    MovementSystem::update(entityManager_, dt); // DEX-scaled speed, skip Dodging, FacingDirection
-    CollisionSystem::update(entityManager_);    // dynamic-vs-dynamic correction + events
-    DamageSystem::update(entityManager_);       // hitbox→health, enemy→player, shield/parry
-    DeathSystem::update(entityManager_);        // spawn XP pickups, destroy Dead entities
-    PickupSystem::update(entityManager_);       // auto-collect XP/money within radius
-    LevelingSystem::update(entityManager_);     // XP overflow → level up → stat points
-    RestSpotSystem::update(entityManager_, dt); // heal player to full when standing on rest spot
-    CameraSystem::update(entityManager_);       // snap camera to final player position
+    SpawnerSystem::update(entity_manager, dt); // timed wave spawner — enemies from outside bounds
+    CombatSystem::update(entity_manager, dt);  // cooldowns, hitbox spawn, dodge, skill, auto-attack
+    AggroSystem::update(entity_manager);       // Idle→Chase when player enters aggro radius
+    FlowFieldSystem::update(entity_manager);   // BFS from player — rebuilds only on cell change
+    ChaseSystem::update(entity_manager, dt);   // enemies read flow field → write velocity
+    SteeringSystem::update(entity_manager); // wall repulsion — deflects velocity before integration
+    MovementSystem::update(entity_manager, dt); // DEX-scaled speed, skip Dodging, FacingDirection
+    CollisionSystem::update(entity_manager);    // dynamic-vs-dynamic correction + events
+    DamageSystem::update(entity_manager);       // hitbox→health, enemy→player, shield/parry
+    DeathSystem::update(entity_manager);        // spawn XP pickups, destroy Dead entities
+    PickupSystem::update(entity_manager);       // auto-collect XP/money within radius
+    LevelingSystem::update(entity_manager);     // XP overflow → level up → stat points
+    RestSpotSystem::update(entity_manager, dt); // heal player to full when standing on rest spot
+    CameraSystem::update(entity_manager);       // snap camera to final player position
 
     // Title-bar HUD — cheapest possible stat display, no font rendering needed.
     for (auto [entity, input, health, stats, exp] :
-         entityManager_.registry().view<Input, Health, Stats, Experience>().each())
+         entity_manager.registry().view<Input, Health, Stats, Experience>().each())
     {
         std::string title =
             "Hell Escape"
@@ -180,9 +180,9 @@ void Engine::render()
     glClear(GL_COLOR_BUFFER_BIT);
 
     // Find the active camera position. Default to window centre if none exists.
-    float camX = static_cast<float>(windowW_) * 0.5f;
-    float camY = static_cast<float>(windowH_) * 0.5f;
-    for (auto [entity, camera] : entityManager_.registry().view<Camera>().each())
+    float camX = static_cast<float>(window_w) * 0.5f;
+    float camY = static_cast<float>(window_h) * 0.5f;
+    for (auto [entity, camera] : entity_manager.registry().view<Camera>().each())
     {
         if (camera.active)
         {
@@ -192,7 +192,7 @@ void Engine::render()
         }
     }
 
-    RenderSystem::render(entityManager_, textureManager_, camX, camY);
+    RenderSystem::render(entity_manager, texture_manager, camX, camY);
 
     SDL_GL_SwapWindow(window);
 }
@@ -201,12 +201,12 @@ void Engine::shutdown()
 {
     AudioSystem::shutdown();
     RenderSystem::shutdown();
-    textureManager_.clear();
+    texture_manager.clear();
 
-    if (glContext)
+    if (gl_context)
     {
-        SDL_GL_DeleteContext(glContext);
-        glContext = nullptr;
+        SDL_GL_DeleteContext(gl_context);
+        gl_context = nullptr;
     }
     if (window)
     {

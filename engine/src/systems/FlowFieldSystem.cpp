@@ -30,7 +30,7 @@ void FlowFieldSystem::update(EntityManager& em)
     const int playerCol = static_cast<int>(px / FlowField::CELL_SIZE);
     const int playerRow = static_cast<int>(py / FlowField::CELL_SIZE);
 
-    auto& ff = em.flowField;
+    auto& ff = em.flow_field;
 
     // Debounce: only rebuild after the player has been in the same cell for
     // STABILITY_FRAMES consecutive frames.
@@ -41,13 +41,13 @@ void FlowFieldSystem::update(EntityManager& em)
     // chases the oscillating target and makes zero net progress toward the
     // player. With debouncing, the field stays at the last stable position
     // during oscillation and only updates when the player commits to a new cell.
-    if (playerCol != ff.pendingCol || playerRow != ff.pendingRow)
+    if (playerCol != ff.pending_col || playerRow != ff.pending_row)
     {
-        ff.pendingCol = playerCol;
-        ff.pendingRow = playerRow;
-        ff.stableCount = 0;
+        ff.pending_col = playerCol;
+        ff.pending_row = playerRow;
+        ff.stable_count = 0;
     }
-    ++ff.stableCount;
+    ++ff.stable_count;
 
     // ---------------------------------------------------------------------------
     // Density binning pass — always runs every frame, independent of BFS.
@@ -76,16 +76,16 @@ void FlowFieldSystem::update(EntityManager& em)
 
     // BFS rebuild: only when the player has been stable for STABILITY_FRAMES
     // consecutive frames and the current BFS is outdated.
-    if (ff.stableCount < FlowField::STABILITY_FRAMES)
+    if (ff.stable_count < FlowField::STABILITY_FRAMES)
         return;
 
     // Player has been stable in this cell long enough — check if BFS is
     // already current for this position and skip if so.
-    if (playerCol == ff.lastPlayerCol && playerRow == ff.lastPlayerRow)
+    if (playerCol == ff.last_player_col && playerRow == ff.last_player_row)
         return;
 
-    ff.lastPlayerCol = playerCol;
-    ff.lastPlayerRow = playerRow;
+    ff.last_player_col = playerCol;
+    ff.last_player_row = playerRow;
 
     // Reset all flow vectors.
     for (auto& row : ff.cells)
@@ -184,7 +184,7 @@ void FlowFieldSystem::update(EntityManager& em)
     struct Item
     {
         int col, row;
-        int parentCol, parentRow;
+        int parent_col, parent_row;
     };
 
     std::queue<Item> q;

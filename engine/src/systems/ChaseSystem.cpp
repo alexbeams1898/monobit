@@ -10,7 +10,7 @@ void ChaseSystem::update(EntityManager& em, double dt)
     // Read the flow field built this frame by FlowFieldSystem.
     // Each cell contains a pre-normalized direction toward the player along the
     // shortest open path. O(1) lookup per enemy — no per-frame pathfinding.
-    const auto& ff = em.flowField;
+    const auto& ff = em.flow_field;
 
     // Cache player position — used for stop-condition math and direct-vector fallback.
     float px = 0.0f;

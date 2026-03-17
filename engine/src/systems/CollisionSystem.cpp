@@ -44,7 +44,7 @@ void CollisionSystem::update(EntityManager& em)
 
             // Emit a collision event for every overlapping pair — gameplay
             // systems (combat, trigger zones) read these each frame.
-            em.collisionEvents.push_back({ea, eb});
+            em.collision_events.push_back({ea, eb});
 
             // CollisionSystem only corrects dynamic-vs-dynamic pairs (e.g.
             // player colliding with a guard) by splitting the MTV evenly.

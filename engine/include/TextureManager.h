@@ -34,6 +34,6 @@ class TextureManager
     // Generate an 8x8 magenta checkerboard texture used when an asset is missing.
     uint32_t makeFallback();
 
-    std::unordered_map<std::string, uint32_t> cache_;
-    uint32_t fallbackId_ = 0;
+    std::unordered_map<std::string, uint32_t> cache;
+    uint32_t fallback_id = 0;
 };

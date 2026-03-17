@@ -167,7 +167,7 @@ void DamageSystem::update(EntityManager& em)
         shield.blocking = input.block_held;
 
     // --- Path 1: Hitbox → Health entity -----------------------------------
-    for (const auto& ev : em.collisionEvents)
+    for (const auto& ev : em.collision_events)
     {
         // Identify which entity is the hitbox and which is the target.
         entt::entity hitboxEnt = entt::null;

@@ -41,7 +41,7 @@ TEST_CASE("Non-overlapping entities emit no collision events", "[collision]")
 
     CollisionSystem::update(em);
 
-    REQUIRE(em.collisionEvents.empty());
+    REQUIRE(em.collision_events.empty());
 }
 
 TEST_CASE("Overlapping entities emit a CollisionEvent", "[collision]")
@@ -53,7 +53,7 @@ TEST_CASE("Overlapping entities emit a CollisionEvent", "[collision]")
 
     CollisionSystem::update(em);
 
-    REQUIRE(em.collisionEvents.size() == 1);
+    REQUIRE(em.collision_events.size() == 1);
 }
 
 TEST_CASE("Static-vs-dynamic overlap: dynamic entity depenetrated, static never moves",
@@ -76,7 +76,7 @@ TEST_CASE("Static-vs-dynamic overlap: dynamic entity depenetrated, static never 
     REQUIRE(em.registry().get<Transform>(player).x == Catch::Approx(32.0f));
 
     // Event is still emitted (useful for gameplay: combat hits, trigger zones).
-    REQUIRE_FALSE(em.collisionEvents.empty());
+    REQUIRE_FALSE(em.collision_events.empty());
 }
 
 TEST_CASE("Static-vs-static solid records event but moves nothing", "[collision]")
@@ -93,7 +93,7 @@ TEST_CASE("Static-vs-static solid records event but moves nothing", "[collision]
     REQUIRE(em.registry().get<Transform>(b).x == Catch::Approx(10.0f));
 
     // Event still emitted.
-    REQUIRE(em.collisionEvents.size() == 1);
+    REQUIRE(em.collision_events.size() == 1);
 }
 
 TEST_CASE("Dynamic-vs-dynamic solid: both pushed apart equally", "[collision]")
@@ -112,7 +112,7 @@ TEST_CASE("Dynamic-vs-dynamic solid: both pushed apart equally", "[collision]")
     REQUIRE(ta.x == Catch::Approx(-6.0f));
     REQUIRE(tb.x == Catch::Approx(26.0f));
 
-    REQUIRE(em.collisionEvents.size() == 1);
+    REQUIRE(em.collision_events.size() == 1);
 }
 
 TEST_CASE("Enemy push into wall: dynamic entity depenetrated after dynamic-vs-dynamic resolution",
@@ -140,7 +140,7 @@ TEST_CASE("Enemy push into wall: dynamic entity depenetrated after dynamic-vs-dy
     REQUIRE(em.registry().get<Transform>(enemy).x == Catch::Approx(61.0f));
 
     // Player-enemy collision event recorded.
-    REQUIRE(em.collisionEvents.size() == 1);
+    REQUIRE(em.collision_events.size() == 1);
 }
 
 TEST_CASE("Collision events are cleared between frames", "[collision]")
@@ -150,7 +150,7 @@ TEST_CASE("Collision events are cleared between frames", "[collision]")
     makeEntity(em, 10.0f, 0.0f, 32.0f, 32.0f, true, false);
 
     CollisionSystem::update(em); // emits 1 event
-    REQUIRE(em.collisionEvents.size() == 1);
+    REQUIRE(em.collision_events.size() == 1);
 
     // Move entities apart so they no longer overlap, then run again.
     auto view = em.registry().view<Transform>();
@@ -162,5 +162,5 @@ TEST_CASE("Collision events are cleared between frames", "[collision]")
     }
 
     CollisionSystem::update(em); // no overlap → events cleared, none added
-    REQUIRE(em.collisionEvents.empty());
+    REQUIRE(em.collision_events.empty());
 }

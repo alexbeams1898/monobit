@@ -156,7 +156,7 @@ void SteeringSystem::update(EntityManager& em)
         {
             static constexpr int CROWD_SAMPLE_RADIUS = 2;
 
-            const auto& ff = em.flowField;
+            const auto& ff = em.flow_field;
             const int ec = static_cast<int>(transform.x / FlowField::CELL_SIZE);
             const int er = static_cast<int>(transform.y / FlowField::CELL_SIZE);
             float crX = 0.0f;

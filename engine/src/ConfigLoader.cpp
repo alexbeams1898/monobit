@@ -325,12 +325,12 @@ bool ConfigLoader::loadFormulas(EntityManager& em, const std::string& filePath)
     if (j.contains("damage") && j["damage"].contains("grade_multipliers"))
     {
         const auto& gm = j["damage"]["grade_multipliers"];
-        f.grade_multipliers.S = gm.value("S", f.grade_multipliers.S);
-        f.grade_multipliers.A = gm.value("A", f.grade_multipliers.A);
-        f.grade_multipliers.B = gm.value("B", f.grade_multipliers.B);
-        f.grade_multipliers.C = gm.value("C", f.grade_multipliers.C);
-        f.grade_multipliers.D = gm.value("D", f.grade_multipliers.D);
-        f.grade_multipliers.E = gm.value("E", f.grade_multipliers.E);
+        f.grade_multipliers.s = gm.value("S", f.grade_multipliers.s);
+        f.grade_multipliers.a = gm.value("A", f.grade_multipliers.a);
+        f.grade_multipliers.b = gm.value("B", f.grade_multipliers.b);
+        f.grade_multipliers.c = gm.value("C", f.grade_multipliers.c);
+        f.grade_multipliers.d = gm.value("D", f.grade_multipliers.d);
+        f.grade_multipliers.e = gm.value("E", f.grade_multipliers.e);
     }
     if (j.contains("swing"))
     {

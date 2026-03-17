@@ -37,17 +37,17 @@ static float gradeToMultiplier(ScalingGrade g, const FormulaConfig& f)
     switch (g)
     {
     case ScalingGrade::S:
-        return f.grade_multipliers.S;
+        return f.grade_multipliers.s;
     case ScalingGrade::A:
-        return f.grade_multipliers.A;
+        return f.grade_multipliers.a;
     case ScalingGrade::B:
-        return f.grade_multipliers.B;
+        return f.grade_multipliers.b;
     case ScalingGrade::C:
-        return f.grade_multipliers.C;
+        return f.grade_multipliers.c;
     case ScalingGrade::D:
-        return f.grade_multipliers.D;
+        return f.grade_multipliers.d;
     default:
-        return f.grade_multipliers.E; // E
+        return f.grade_multipliers.e; // E
     }
 }
 

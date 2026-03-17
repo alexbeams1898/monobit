@@ -13,7 +13,7 @@ void DeathSystem::update(EntityManager& em)
     struct DeadEntry
     {
         entt::entity entity;
-        bool isPlayer;
+        bool is_player;
         float tx;
         float ty;
         int enemy_level; // (str+dex+end+lck) - 3: all-1s entity = level 1
@@ -23,7 +23,7 @@ void DeathSystem::update(EntityManager& em)
     std::vector<DeadEntry> dead;
     for (auto [entity] : reg.view<Dead>().each())
     {
-        const bool isPlayer = reg.all_of<Input>(entity);
+        const bool is_player = reg.all_of<Input>(entity);
         float tx = 0.0f;
         float ty = 0.0f;
         if (reg.all_of<Transform>(entity))
@@ -46,12 +46,12 @@ void DeathSystem::update(EntityManager& em)
         if (reg.all_of<Loot>(entity))
             xp_drop = reg.get<Loot>(entity).xp_drop;
 
-        dead.push_back({entity, isPlayer, tx, ty, enemy_level, xp_drop});
+        dead.push_back({entity, is_player, tx, ty, enemy_level, xp_drop});
     }
 
     for (const auto& entry : dead)
     {
-        if (entry.isPlayer)
+        if (entry.is_player)
         {
             std::cout << "[DeathSystem] Game Over. Press ESC to quit.\n";
             // Don't destroy the player — let them persist so ESC works.
