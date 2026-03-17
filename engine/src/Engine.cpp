@@ -20,6 +20,7 @@
 #include "systems/SteeringSystem.h"
 #include "systems/TileMapRenderer.h"
 
+#include <cmath>
 #include <string>
 
 // glad must be included before any SDL OpenGL header.
@@ -98,6 +99,7 @@ void Engine::run()
         double frameTime = currentTime - previousTime;
         previousTime = currentTime;
 
+        last_frame_time_ = last_frame_time_ * 0.97 + frameTime * 0.03; // EMA smoothing
         if (frameTime > MAX_FRAME_TIME)
             frameTime = MAX_FRAME_TIME;
 
@@ -161,14 +163,36 @@ void Engine::update(double dt)
     for (auto [entity, input, health, stats, exp] :
          entity_manager.registry().view<Input, Health, Stats, Experience>().each())
     {
+        const auto& f = entity_manager.formulas;
+
+        // Computed attack — base_damage + stat scaling from equipped weapon.
+        int atk = 5; // fist baseline
+        if (entity_manager.registry().all_of<Weapon>(entity))
+            atk = static_cast<int>(
+                computeDamage(entity_manager.registry().get<Weapon>(entity), stats, f));
+
+        // Computed defense — mirrors DamageSystem::computeDef formula.
+        const int def = static_cast<int>(std::min(
+            f.defense.cap, std::floor(static_cast<float>(stats.str) * f.defense.str_scale +
+                                      static_cast<float>(stats.end) * f.defense.end_scale +
+                                      static_cast<float>(exp.level) * f.defense.level_scale)));
+
+        // Poise threshold (0 = staggers on any hit).
+        const int poise = entity_manager.registry().all_of<Poise>(entity)
+                              ? static_cast<int>(entity_manager.registry().get<Poise>(entity).max)
+                              : 0;
+
+        const int fps = static_cast<int>(std::lround(1.0 / last_frame_time_));
         std::string title =
             "Hell Escape"
-            "  |  HP " +
-            std::to_string(health.current) + "/" + std::to_string(health.max) + "  |  LVL " +
-            std::to_string(exp.level) + "  XP " + std::to_string(exp.current_xp) + "/" +
-            std::to_string(exp.xp_to_next) + "  |  STR " + std::to_string(stats.str) + "  DEX " +
-            std::to_string(stats.dex) + "  END " + std::to_string(stats.end) + "  LCK " +
-            std::to_string(stats.lck) + "  pts " + std::to_string(exp.stat_points);
+            "  |  FPS " +
+            std::to_string(fps) + "/60  |  HP " + std::to_string(health.current) + "/" +
+            std::to_string(health.max) + "  |  LVL " + std::to_string(exp.level) + "  XP " +
+            std::to_string(exp.current_xp) + "/" + std::to_string(exp.xp_to_next) + "  |  STR " +
+            std::to_string(stats.str) + "  DEX " + std::to_string(stats.dex) + "  END " +
+            std::to_string(stats.end) + "  LCK " + std::to_string(stats.lck) + "  pts " +
+            std::to_string(exp.stat_points) + "  |  ATK " + std::to_string(atk) + "  DEF " +
+            std::to_string(def) + "  POISE " + std::to_string(poise);
         SDL_SetWindowTitle(window, title.c_str());
         break;
     }

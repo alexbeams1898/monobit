@@ -7,6 +7,116 @@
 #include <tracy/Tracy.hpp>
 #include <vector>
 
+// ---------------------------------------------------------------------------
+// Internal helpers — static free functions to keep update() readable.
+// ---------------------------------------------------------------------------
+
+static void checkAndResolvePair(EntityManager& em, entt::entity ea, Transform& ta,
+                                const Collider& ca, entt::entity eb, Transform& tb,
+                                const Collider& cb, bool resolve_both)
+{
+    const float dx = ta.x - tb.x;
+    const float dy = ta.y - tb.y;
+    const float overlapX = (ca.width + cb.width) * 0.5f - std::abs(dx);
+    const float overlapY = (ca.height + cb.height) * 0.5f - std::abs(dy);
+
+    if (overlapX <= 0.0f || overlapY <= 0.0f)
+        return;
+
+    em.collision_events.push_back({ea, eb});
+
+    if (!resolve_both || !ca.is_solid || !cb.is_solid)
+        return;
+
+    // Both dynamic and both solid: split MTV evenly.
+    float pushX = 0.0f;
+    float pushY = 0.0f;
+    if (overlapX < overlapY)
+        pushX = (dx >= 0.0f) ? overlapX : -overlapX;
+    else
+        pushY = (dy >= 0.0f) ? overlapY : -overlapY;
+
+    ta.x += pushX * 0.5f;
+    ta.y += pushY * 0.5f;
+    tb.x -= pushX * 0.5f;
+    tb.y -= pushY * 0.5f;
+}
+
+// Depenetrate entity against solid wall tiles in the tile map.
+static void depenetrateVsTileMap(const TileMap& tile_map, Transform& ta, const Collider& ca)
+{
+    if (!ca.is_solid)
+        return;
+
+    const float ts = static_cast<float>(TileMap::TILE_SIZE);
+    const float tile_half = static_cast<float>(TileMap::TILE_SIZE) * 0.5f;
+    const float hw = ca.width * 0.5f;
+    const float hh = ca.height * 0.5f;
+    const int col_min = static_cast<int>(std::floor((ta.x - hw) / ts));
+    const int col_max = static_cast<int>(std::floor((ta.x + hw) / ts));
+    const int row_min = static_cast<int>(std::floor((ta.y - hh) / ts));
+    const int row_max = static_cast<int>(std::floor((ta.y + hh) / ts));
+
+    for (int r = row_min; r <= row_max; ++r)
+    {
+        for (int c = col_min; c <= col_max; ++c)
+        {
+            if (!tile_map.in_bounds(c, r) || tile_map.at(c, r).walkable)
+                continue;
+
+            const float tile_cx = static_cast<float>(c * TileMap::TILE_SIZE) + tile_half;
+            const float tile_cy = static_cast<float>(r * TileMap::TILE_SIZE) + tile_half;
+            const float dx = ta.x - tile_cx;
+            const float dy = ta.y - tile_cy;
+            const float overlapX = hw + tile_half - std::abs(dx);
+            const float overlapY = hh + tile_half - std::abs(dy);
+
+            if (overlapX <= 0.0f || overlapY <= 0.0f)
+                continue;
+
+            if (overlapX < overlapY)
+                ta.x += (dx >= 0.0f) ? overlapX : -overlapX;
+            else
+                ta.y += (dy >= 0.0f) ? overlapY : -overlapY;
+        }
+    }
+}
+
+// Depenetrate entity against ECS static solids (unit-test fallback — no tile map).
+static void depenetrateVsECSStatics(EntityManager& em, entt::entity ea,
+                                    const std::vector<entt::entity>& statics)
+{
+    const auto& ca = em.registry().get<Collider>(ea);
+    if (!ca.is_solid)
+        return;
+    auto& ta = em.registry().get<Transform>(ea);
+
+    for (auto eb : statics)
+    {
+        const auto& cb = em.registry().get<Collider>(eb);
+        if (!cb.is_solid)
+            continue;
+        const auto& tb = em.registry().get<Transform>(eb);
+
+        const float dx = ta.x - tb.x;
+        const float dy = ta.y - tb.y;
+        const float overlapX = (ca.width + cb.width) * 0.5f - std::abs(dx);
+        const float overlapY = (ca.height + cb.height) * 0.5f - std::abs(dy);
+
+        if (overlapX <= 0.0f || overlapY <= 0.0f)
+            continue;
+
+        if (overlapX < overlapY)
+            ta.x += (dx >= 0.0f) ? overlapX : -overlapX;
+        else
+            ta.y += (dy >= 0.0f) ? overlapY : -overlapY;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
 void CollisionSystem::update(EntityManager& em)
 {
     ZoneScopedN("CollisionSystem");
@@ -28,53 +138,33 @@ void CollisionSystem::update(EntityManager& em)
             statics.push_back(e);
     }
 
-    // Helper: AABB overlap test + optional MTV resolution.
-    auto check_pair = [&](entt::entity ea, entt::entity eb, bool resolve_both)
-    {
-        auto& ta = view.get<Transform>(ea);
-        const auto& ca = view.get<Collider>(ea);
-        auto& tb = view.get<Transform>(eb);
-        const auto& cb = view.get<Collider>(eb);
+    // Static-vs-static pairs: emit event only — neither entity can move.
+    // Covers trigger zones, doors, and unit-test wall entities.
+    // O(n²) on the statics bucket — acceptable because n is provably tiny:
+    // wall tiles live in the tile map (not ECS), so statics only ever contains
+    // non-tile objects like rest spots, doors, or trigger zones (~1–10 entities).
+    for (size_t i = 0; i < statics.size(); ++i)
+        for (size_t j = i + 1; j < statics.size(); ++j)
+            checkAndResolvePair(
+                em, statics[i], view.get<Transform>(statics[i]), view.get<Collider>(statics[i]),
+                statics[j], view.get<Transform>(statics[j]), view.get<Collider>(statics[j]), false);
 
-        const float dx = ta.x - tb.x;
-        const float dy = ta.y - tb.y;
-        const float overlapX = (ca.width + cb.width) * 0.5f - std::abs(dx);
-        const float overlapY = (ca.height + cb.height) * 0.5f - std::abs(dy);
-
-        if (overlapX <= 0.0f || overlapY <= 0.0f)
-            return;
-
-        em.collision_events.push_back({ea, eb});
-
-        if (!resolve_both)
-            return;
-        if (!ca.is_solid || !cb.is_solid)
-            return;
-
-        // Both dynamic and both solid: split MTV evenly.
-        float pushX = 0.0f;
-        float pushY = 0.0f;
-        if (overlapX < overlapY)
-            pushX = (dx >= 0.0f) ? overlapX : -overlapX;
-        else
-            pushY = (dy >= 0.0f) ? overlapY : -overlapY;
-
-        ta.x += pushX * 0.5f;
-        ta.y += pushY * 0.5f;
-        tb.x -= pushX * 0.5f;
-        tb.y -= pushY * 0.5f;
-    };
+    // Dynamic-vs-ECS-static pairs: emit event only (doors, trigger zones).
+    // Must run BEFORE dynamic-vs-dynamic so we check initial positions.  If it ran
+    // after, the dyn-vs-dyn push can land a dynamic inside a static — generating a
+    // phantom wall event that the depenetration pass then silently corrects.
+    for (auto dyn : dynamics)
+        for (auto sta : statics)
+            checkAndResolvePair(em, dyn, view.get<Transform>(dyn), view.get<Collider>(dyn), sta,
+                                view.get<Transform>(sta), view.get<Collider>(sta), false);
 
     // Dynamic-vs-dynamic pairs: resolve with split MTV.
     for (size_t i = 0; i < dynamics.size(); ++i)
         for (size_t j = i + 1; j < dynamics.size(); ++j)
-            check_pair(dynamics[i], dynamics[j], true);
-
-    // Dynamic-vs-ECS-static pairs: emit event only (for future non-tile collidables
-    // such as doors or trigger zones; wall tiles are handled via tile map below).
-    for (auto dyn : dynamics)
-        for (auto sta : statics)
-            check_pair(dyn, sta, false);
+            checkAndResolvePair(em, dynamics[i], view.get<Transform>(dynamics[i]),
+                                view.get<Collider>(dynamics[i]), dynamics[j],
+                                view.get<Transform>(dynamics[j]), view.get<Collider>(dynamics[j]),
+                                true);
 
     // Static depenetration pass — correct any dynamic entity pushed into a
     // solid wall as a side effect of the dynamic-vs-dynamic resolution above.
@@ -92,82 +182,12 @@ void CollisionSystem::update(EntityManager& em)
     // a tile map.
     if (em.tile_map.valid())
     {
-        const float ts = static_cast<float>(TileMap::TILE_SIZE);
-        const float tile_half = static_cast<float>(TileMap::TILE_SIZE) * 0.5f;
-
         for (auto ea : dynamics)
-        {
-            const auto& ca = view.get<Collider>(ea);
-            if (!ca.is_solid)
-                continue;
-            auto& ta = view.get<Transform>(ea);
-
-            const float hw = ca.width * 0.5f;
-            const float hh = ca.height * 0.5f;
-            const int col_min = static_cast<int>(std::floor((ta.x - hw) / ts));
-            const int col_max = static_cast<int>(std::floor((ta.x + hw) / ts));
-            const int row_min = static_cast<int>(std::floor((ta.y - hh) / ts));
-            const int row_max = static_cast<int>(std::floor((ta.y + hh) / ts));
-
-            for (int r = row_min; r <= row_max; ++r)
-            {
-                for (int c = col_min; c <= col_max; ++c)
-                {
-                    if (!em.tile_map.in_bounds(c, r) || em.tile_map.at(c, r).walkable)
-                        continue;
-
-                    const float tile_cx =
-                        static_cast<float>(c * TileMap::TILE_SIZE + TileMap::TILE_SIZE / 2);
-                    const float tile_cy =
-                        static_cast<float>(r * TileMap::TILE_SIZE + TileMap::TILE_SIZE / 2);
-                    const float dx = ta.x - tile_cx;
-                    const float dy = ta.y - tile_cy;
-                    const float overlapX = hw + tile_half - std::abs(dx);
-                    const float overlapY = hh + tile_half - std::abs(dy);
-
-                    if (overlapX <= 0.0f || overlapY <= 0.0f)
-                        continue;
-
-                    if (overlapX < overlapY)
-                        ta.x += (dx >= 0.0f) ? overlapX : -overlapX;
-                    else
-                        ta.y += (dy >= 0.0f) ? overlapY : -overlapY;
-                }
-            }
-        }
+            depenetrateVsTileMap(em.tile_map, view.get<Transform>(ea), view.get<Collider>(ea));
     }
     else
     {
-        // ECS fallback — used in unit tests without a tile map.
         for (auto ea : dynamics)
-        {
-            if (!em.registry().all_of<Velocity>(ea))
-                continue;
-            const auto& ca = view.get<Collider>(ea);
-            if (!ca.is_solid)
-                continue;
-            auto& ta = view.get<Transform>(ea);
-
-            for (auto eb : statics)
-            {
-                const auto& cb = view.get<Collider>(eb);
-                if (!cb.is_solid)
-                    continue;
-                const auto& tb = view.get<Transform>(eb);
-
-                const float dx = ta.x - tb.x;
-                const float dy = ta.y - tb.y;
-                const float overlapX = (ca.width + cb.width) * 0.5f - std::abs(dx);
-                const float overlapY = (ca.height + cb.height) * 0.5f - std::abs(dy);
-
-                if (overlapX <= 0.0f || overlapY <= 0.0f)
-                    continue;
-
-                if (overlapX < overlapY)
-                    ta.x += (dx >= 0.0f) ? overlapX : -overlapX;
-                else
-                    ta.y += (dy >= 0.0f) ? overlapY : -overlapY;
-            }
-        }
+            depenetrateVsECSStatics(em, ea, statics);
     }
 }

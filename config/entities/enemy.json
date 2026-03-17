@@ -1,5 +1,5 @@
 {
-    "tag": "correctional_officer",
+    "tag": "enemy",
     "components": {
         "transform":     { "x": 880.0, "y": 220.0, "rotation": 0.0, "scale": 1.0 },
         "velocity":      { "dx": 0.0, "dy": 0.0 },

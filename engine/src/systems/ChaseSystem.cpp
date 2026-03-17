@@ -59,7 +59,7 @@ static std::pair<float, float> computeAttackVelocity(const FlowField& ff, float 
     const float ddy = py - tf.y;
     const float dist = std::sqrt(ddx * ddx + ddy * ddy);
 
-    if (dist <= FlowField::CELL_SIZE)
+    if (dist < 1.0f)
         return {0.0f, 0.0f};
 
     const int ffCol = static_cast<int>(tf.x / FlowField::CELL_SIZE);
@@ -76,7 +76,10 @@ static std::pair<float, float> computeAttackVelocity(const FlowField& ff, float 
         }
     }
 
-    const float scale = std::min(1.0f, dist / ai.attack_radius);
+    // Arrival at slot: enemy is on the ring when dist == attack_radius.
+    // slotDist measures approach remaining; ramps to 0 at the ring boundary.
+    const float slotDist = std::max(0.0f, dist - ai.attack_radius);
+    const float scale = std::min(1.0f, slotDist / ai.attack_radius);
     return {navDx * spd * scale, navDy * spd * scale};
 }
 

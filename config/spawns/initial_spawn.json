@@ -1,8 +1,8 @@
 {
     "spawns": [
-        { "entity": "config/entities/correctional_officer.json", "x": 800.0, "y": 200.0 },
-        { "entity": "config/entities/correctional_officer.json", "x": 450.0, "y": 200.0 },
-        { "entity": "config/entities/correctional_officer.json", "x": 820.0, "y": 480.0 },
-        { "entity": "config/entities/correctional_officer.json", "x": 420.0, "y": 480.0 }
+        { "entity": "config/entities/enemy.json", "x": 800.0, "y": 200.0 },
+        { "entity": "config/entities/enemy.json", "x": 450.0, "y": 200.0 },
+        { "entity": "config/entities/enemy.json", "x": 820.0, "y": 480.0 },
+        { "entity": "config/entities/enemy.json", "x": 420.0, "y": 480.0 }
     ]
 }

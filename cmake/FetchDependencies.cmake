@@ -38,7 +38,10 @@ FetchContent_Declare(
 )
 set(SDL_SHARED  OFF CACHE BOOL "" FORCE)
 set(SDL_STATIC  ON  CACHE BOOL "" FORCE)
+# SDL2 2.30.9 declares an old cmake_minimum_required — same pattern as GLAD.
+set(CMAKE_WARN_DEPRECATED FALSE CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(SDL2)
+set(CMAKE_WARN_DEPRECATED TRUE CACHE BOOL "" FORCE)
 
 # ---------------------------------------------------------------------------
 # entt  (header-only ECS)

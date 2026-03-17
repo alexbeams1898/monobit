@@ -119,6 +119,51 @@ static void buildModel(float mat[16], float x, float y, float w, float h)
 }
 
 // ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+// Compute tint RGB for an entity based on its current status components.
+// Priority: damage flash > attack flash > staggered > level-up ready > weapon cooldown.
+static void computeTint(EntityManager& em, entt::entity entity, float& tr, float& tg, float& tb)
+{
+    if (em.registry().all_of<DamageFeedback>(entity))
+    {
+        tr = 0.2f;
+        tg = 0.4f; // blue
+    }
+    else if (em.registry().all_of<AttackFeedback>(entity))
+    {
+        tg = 0.5f;
+        tb = 0.0f; // orange
+    }
+    else if (em.registry().all_of<Staggered>(entity))
+    {
+        tr = 0.6f;
+        tg = 0.0f;
+        tb = 1.0f; // purple
+    }
+    else if (em.registry().all_of<Experience>(entity) &&
+             em.registry().get<Experience>(entity).stat_points > 0)
+    {
+        tr = 1.0f;
+        tg = 0.9f;
+        tb = 0.0f; // gold
+    }
+    else if (em.registry().all_of<Weapon>(entity))
+    {
+        // Fade smoothly from dim blue-grey (just swung) back to white (ready).
+        const float cooldown = em.registry().get<Weapon>(entity).swing_cooldown_remaining;
+        if (cooldown > 0.0f)
+        {
+            const float t = std::min(cooldown, 1.0f);
+            tr = 1.0f - t * 0.35f; // 1.0 → 0.65
+            tg = 1.0f - t * 0.35f;
+            tb = 1.0f - t * 0.15f; // 1.0 → 0.85
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -228,51 +273,10 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
         glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &tex_h);
         glBindTexture(GL_TEXTURE_2D, 0);
 
-        // Tint priority (highest → lowest):
-        //   damage flash  → blue
-        //   attack flash  → orange
-        //   staggered     → purple (can't act — obvious feedback)
-        //   level-up ready→ gold   (stat_points > 0, persistent until spent)
-        //   weapon cooldown→ dim blue-grey fade
+        // Tint priority: damage flash > attack flash > staggered > level-up ready > cooldown.
         // Orange + blue are safe for red-green color blindness.
         float tr = 1.0f, tg = 1.0f, tb = 1.0f;
-        if (em.registry().all_of<DamageFeedback>(entity))
-        {
-            tr = 0.2f;
-            tg = 0.4f; // blue
-        }
-        else if (em.registry().all_of<AttackFeedback>(entity))
-        {
-            tg = 0.5f;
-            tb = 0.0f; // orange
-        }
-        else if (em.registry().all_of<Staggered>(entity))
-        {
-            tr = 0.6f;
-            tg = 0.0f;
-            tb = 1.0f; // purple
-        }
-        else if (em.registry().all_of<Experience>(entity) &&
-                 em.registry().get<Experience>(entity).stat_points > 0)
-        {
-            tr = 1.0f;
-            tg = 0.9f;
-            tb = 0.0f; // gold
-        }
-        else if (em.registry().all_of<Weapon>(entity))
-        {
-            // Fade smoothly from dim blue-grey (just swung) back to white (ready).
-            // t=1 at the moment of swing; t=0 once cooldown expires.
-            // Clamped to 1 s so long cooldowns don't produce a harsher tint than short ones.
-            const float cooldown = em.registry().get<Weapon>(entity).swing_cooldown_remaining;
-            if (cooldown > 0.0f)
-            {
-                const float t = std::min(cooldown, 1.0f);
-                tr = 1.0f - t * 0.35f; // 1.0 → 0.65
-                tg = 1.0f - t * 0.35f;
-                tb = 1.0f - t * 0.15f; // 1.0 → 0.85
-            }
-        }
+        computeTint(em, entity, tr, tg, tb);
 
         // Flip sprite based on facing direction.
         // flip_x: facing left  → mirror horizontally.

@@ -41,6 +41,87 @@ static constexpr float REPULSION_STRENGTH = 0.5f;
 // approach and bounce). CollisionSystem handles actual can't-overlap.
 static constexpr float SKIP_DOT_THRESHOLD = -0.5f;
 
+// Accumulate same-cell crowd repulsion into (crX, crY).
+// If the entity shares its 16-px cell with others, push outward using the
+// within-cell offset as the direction (each enemy gets a unique spread direction).
+static void applySameCellRepulsion(const FlowField& ff, int ec, int er, const Transform& transform,
+                                   float velNormX, float velNormY, float& crX, float& crY)
+{
+    if (ec < 0 || ec >= FlowField::COLS || er < 0 || er >= FlowField::ROWS)
+        return;
+    const int ownCount = static_cast<int>(ff.density[er][ec]);
+    if (ownCount <= 1)
+        return;
+    const float cellCX = (static_cast<float>(ec) + 0.5f) * FlowField::CELL_SIZE;
+    const float cellCY = (static_cast<float>(er) + 0.5f) * FlowField::CELL_SIZE;
+    const float offX = transform.x - cellCX;
+    const float offY = transform.y - cellCY;
+    const float offLen = std::sqrt(offX * offX + offY * offY);
+    if (offLen < 0.5f)
+        return;
+    const float offNX = offX / offLen;
+    const float offNY = offY / offLen;
+    if (velNormX * offNX + velNormY * offNY < SKIP_DOT_THRESHOLD)
+        return;
+    const float sameWeight = static_cast<float>(ownCount - 1) * 2.0f;
+    crX += offNX * sameWeight;
+    crY += offNY * sameWeight;
+}
+
+// Compute and apply crowd repulsion from the density grid to vel.
+// Samples a 5×5 cell window (cross-cell) + same-cell offset pass.
+static void applyCrowdRepulsion(const FlowField& ff, const Transform& transform, Velocity& vel,
+                                float origSpeed, float velNormX, float velNormY,
+                                float separation_strength)
+{
+    static constexpr int CROWD_SAMPLE_RADIUS = 2;
+
+    const int ec = static_cast<int>(transform.x / FlowField::CELL_SIZE);
+    const int er = static_cast<int>(transform.y / FlowField::CELL_SIZE);
+
+    float crX = 0.0f;
+    float crY = 0.0f;
+
+    // Cross-cell pass: sample neighbouring cells, repel away from occupied ones.
+    for (int dr = -CROWD_SAMPLE_RADIUS; dr <= CROWD_SAMPLE_RADIUS; ++dr)
+    {
+        for (int dc = -CROWD_SAMPLE_RADIUS; dc <= CROWD_SAMPLE_RADIUS; ++dc)
+        {
+            if (dr == 0 && dc == 0)
+                continue;
+            const int nc = ec + dc;
+            const int nr = er + dr;
+            if (nc < 0 || nc >= FlowField::COLS || nr < 0 || nr >= FlowField::ROWS)
+                continue;
+            const int count = ff.density[nr][nc];
+            if (count == 0)
+                continue;
+            const float rDx = static_cast<float>(-dc);
+            const float rDy = static_cast<float>(-dr);
+            const float rLen = std::sqrt(rDx * rDx + rDy * rDy);
+            crX += (rDx / rLen) * static_cast<float>(count);
+            crY += (rDy / rLen) * static_cast<float>(count);
+        }
+    }
+
+    // Same-cell pass: push outward from cell center when density > 1.
+    applySameCellRepulsion(ff, ec, er, transform, velNormX, velNormY, crX, crY);
+
+    const float crMag = std::sqrt(crX * crX + crY * crY);
+    if (crMag > 0.0f)
+    {
+        vel.dx += (crX / crMag) * origSpeed * separation_strength;
+        vel.dy += (crY / crMag) * origSpeed * separation_strength;
+        // Cap at origSpeed — crowd separation must not accelerate the entity.
+        const float crNewMag = std::sqrt(vel.dx * vel.dx + vel.dy * vel.dy);
+        if (crNewMag > origSpeed)
+        {
+            vel.dx = (vel.dx / crNewMag) * origSpeed;
+            vel.dy = (vel.dy / crNewMag) * origSpeed;
+        }
+    }
+}
+
 void SteeringSystem::update(EntityManager& em)
 {
     ZoneScopedN("SteeringSystem");
@@ -131,107 +212,11 @@ void SteeringSystem::update(EntityManager& em)
 
         // --- Crowd repulsion -----------------------------------------------
         // Read the enemy density grid (populated by FlowFieldSystem this frame)
-        // and steer away from cells with high occupancy.  Enemies spread into a
-        // natural ring rather than piling into a solid glob.
-        //
-        // Two passes:
-        //   Cross-cell — sample the 5×5 window of neighbouring cells, repel
-        //     away from occupied ones.  O(1) per entity (fixed 25-cell window).
-        //   Same-cell — when density[ec][er] > 1, another enemy shares this
-        //     exact 16 px cell.  "Repel away from cell offset" has no direction
-        //     from the grid, so use the entity's own within-cell offset as the
-        //     outward push: each enemy's micro-position gives a unique spread
-        //     direction, separating co-located enemies toward different cell
-        //     edges without any pairwise distance check (O(n) total).
-        //
-        // Both passes apply SKIP_DOT_THRESHOLD: forces directly opposing
-        // forward motion are skipped to prevent oscillation (two enemies
-        // converging along the same axis would push each other back and
-        // forth without it). CollisionSystem handles actual overlap.
-        //
-        // Cap at origSpeed (not renorm): lateral crowd deflects direction
-        // (speed preserved); head-on crowd slows the entity — correct, since
-        // you naturally slow pressing into a crowd.
-        //
+        // and steer away from cells with high occupancy.  See applyCrowdRepulsion
+        // for the full two-pass (cross-cell + same-cell) algorithm description.
         // separation_strength = 0 → disabled; 0.6 = CO; 1.2 = warden.
         if (ai.separation_strength > 0.0f)
-        {
-            static constexpr int CROWD_SAMPLE_RADIUS = 2;
-
-            const auto& ff = em.flow_field;
-            const int ec = static_cast<int>(transform.x / FlowField::CELL_SIZE);
-            const int er = static_cast<int>(transform.y / FlowField::CELL_SIZE);
-            float crX = 0.0f;
-            float crY = 0.0f;
-
-            // Cross-cell pass.
-            for (int dr = -CROWD_SAMPLE_RADIUS; dr <= CROWD_SAMPLE_RADIUS; ++dr)
-            {
-                for (int dc = -CROWD_SAMPLE_RADIUS; dc <= CROWD_SAMPLE_RADIUS; ++dc)
-                {
-                    if (dr == 0 && dc == 0)
-                        continue; // own cell handled in same-cell pass below
-                    const int nc = ec + dc;
-                    const int nr = er + dr;
-                    if (nc < 0 || nc >= FlowField::COLS || nr < 0 || nr >= FlowField::ROWS)
-                        continue;
-                    const int count = ff.density[nr][nc];
-                    if (count == 0)
-                        continue;
-                    const float rDx = static_cast<float>(-dc);
-                    const float rDy = static_cast<float>(-dr);
-                    const float rLen = std::sqrt(rDx * rDx + rDy * rDy);
-                    crX += (rDx / rLen) * static_cast<float>(count);
-                    crY += (rDy / rLen) * static_cast<float>(count);
-                }
-            }
-
-            // Same-cell pass — enemies sharing this 16 px cell.
-            // Use within-cell offset as the unique outward direction per entity.
-            // Weighted 2× an adjacent cell (closer = stronger) and filtered by
-            // SKIP_DOT_THRESHOLD so it can't cause oscillation when the offset
-            // happens to point opposite to forward motion.
-            if (ec >= 0 && ec < FlowField::COLS && er >= 0 && er < FlowField::ROWS)
-            {
-                const int ownCount = static_cast<int>(ff.density[er][ec]);
-                if (ownCount > 1)
-                {
-                    const float cellCX = (static_cast<float>(ec) + 0.5f) * FlowField::CELL_SIZE;
-                    const float cellCY = (static_cast<float>(er) + 0.5f) * FlowField::CELL_SIZE;
-                    const float offX = transform.x - cellCX;
-                    const float offY = transform.y - cellCY;
-                    const float offLen = std::sqrt(offX * offX + offY * offY);
-                    if (offLen >= 0.5f)
-                    {
-                        const float offNX = offX / offLen;
-                        const float offNY = offY / offLen;
-                        // Skip if the offset direction opposes forward motion —
-                        // same rule as walls and cross-cell crowd.
-                        if (velNormX * offNX + velNormY * offNY >= SKIP_DOT_THRESHOLD)
-                        {
-                            const float sameWeight = static_cast<float>(ownCount - 1) * 2.0f;
-                            crX += offNX * sameWeight;
-                            crY += offNY * sameWeight;
-                        }
-                    }
-                }
-            }
-
-            const float crMag = std::sqrt(crX * crX + crY * crY);
-            if (crMag > 0.0f)
-            {
-                vel.dx += (crX / crMag) * origSpeed * ai.separation_strength;
-                vel.dy += (crY / crMag) * origSpeed * ai.separation_strength;
-                // Cap at origSpeed — crowd separation must not accelerate the
-                // entity beyond its configured speed.  Below origSpeed is fine:
-                // an entity pressing head-on into a crowd naturally slows down.
-                const float crNewMag = std::sqrt(vel.dx * vel.dx + vel.dy * vel.dy);
-                if (crNewMag > origSpeed)
-                {
-                    vel.dx = (vel.dx / crNewMag) * origSpeed;
-                    vel.dy = (vel.dy / crNewMag) * origSpeed;
-                }
-            }
-        }
+            applyCrowdRepulsion(em.flow_field, transform, vel, origSpeed, velNormX, velNormY,
+                                ai.separation_strength);
     }
 }

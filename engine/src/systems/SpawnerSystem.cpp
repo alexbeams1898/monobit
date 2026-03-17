@@ -67,7 +67,7 @@ void SpawnerSystem::update(EntityManager& em, double dt)
     static constexpr float kSpawnInterval = 4.0f; // seconds between spawns
     static constexpr float kSpawnNear = 330.f;    // min spawn distance from player (px)
     static constexpr float kSpawnFar = 825.f;     // max spawn distance from player (px)
-    static constexpr const char* kEnemyPath = "config/entities/correctional_officer.json";
+    static constexpr const char* kEnemyPath = "config/entities/enemy.json";
 
     static float timer = kSpawnInterval;
 

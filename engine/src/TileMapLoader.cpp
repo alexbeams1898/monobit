@@ -2,12 +2,17 @@
 
 #include <algorithm>
 #include <chrono>
-#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <nlohmann/json.hpp>
 #include <random>
 #include <sstream>
+
+// POSIX directory iteration — avoids <filesystem>/<codecvt> which is broken
+// when MSYS2 ucrt64 headers are mixed with the mingw64 linker runtime.
+// dirent.h is available on Linux, macOS, and MSYS2/MinGW.
+#include <dirent.h>
+#include <sys/stat.h>
 
 using json = nlohmann::json;
 
@@ -146,28 +151,40 @@ std::vector<Room> TileMapLoader::loadRooms(const std::string& dir)
 {
     std::vector<Room> rooms;
 
-    std::error_code ec;
-    if (!std::filesystem::is_directory(dir, ec))
+    // Check directory exists via POSIX stat.
+    struct stat st;
+    if (stat(dir.c_str(), &st) != 0 || !S_ISDIR(st.st_mode))
     {
         std::cout << "[TileMapLoader] Rooms directory not found: " << dir << "\n";
         return rooms;
     }
 
-    for (const auto& entry : std::filesystem::directory_iterator(dir, ec))
+    DIR* dp = opendir(dir.c_str());
+    if (!dp)
     {
-        if (entry.path().extension() != ".room")
+        std::cout << "[TileMapLoader] Cannot open rooms directory: " << dir << "\n";
+        return rooms;
+    }
+
+    struct dirent* de;
+    while ((de = readdir(dp)) != nullptr)
+    {
+        const std::string name = de->d_name;
+        // Skip entries that don't end in ".room".
+        if (name.size() < 5 || name.compare(name.size() - 5, 5, ".room") != 0)
             continue;
 
-        std::ifstream f(entry.path());
+        const std::string path = dir + "/" + name;
+        std::ifstream f(path);
         if (!f.is_open())
         {
-            std::cout << "[TileMapLoader] Cannot open room: " << entry.path() << "\n";
+            std::cout << "[TileMapLoader] Cannot open room: " << path << "\n";
             continue;
         }
 
         const std::string text((std::istreambuf_iterator<char>(f)),
                                std::istreambuf_iterator<char>());
-        Room room = parseRoom(text, entry.path().filename().string());
+        Room room = parseRoom(text, name);
 
         if (room.width < 3 || room.height < 3)
         {
@@ -180,6 +197,7 @@ std::vector<Room> TileMapLoader::loadRooms(const std::string& dir)
                   << rooms.back().width << "x" << rooms.back().height << ")\n";
     }
 
+    closedir(dp);
     return rooms;
 }
 
