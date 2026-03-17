@@ -15,5 +15,5 @@ if not exist "%TRACY%" (
     exit /b 1
 )
 
-echo Launching Tracy profiler — connect your game build to start recording.
+echo Launching Tracy profiler - connect your game build to start recording.
 start "" "%TRACY%"
