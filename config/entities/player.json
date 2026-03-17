@@ -6,7 +6,7 @@
         "collider":         { "width": 32.0, "height": 32.0, "is_solid": true },
         "sprite":           { "texture_path": "assets/sprites.png", "src_x": 0, "src_y": 32, "src_w": 32, "src_h": 32, "layer": 2 },
         "stats":            { "str": 5, "dex": 5, "end": 5, "lck": 5 },
-        "weapon":           { "weight": 0.5, "str_scaling": "E", "dex_scaling": "D", "str_requirement": 0, "dex_requirement": 0, "base_damage": 8.0 },
+        "weapon":           { "weight": 0.5, "str_scaling": "B", "dex_scaling": "C", "str_requirement": 0, "dex_requirement": 0, "base_damage": 8.0 },
         "facing":           {},
         "experience":       {},
         "auto_attack_mode": {},

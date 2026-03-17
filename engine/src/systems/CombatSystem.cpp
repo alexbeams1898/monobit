@@ -73,16 +73,14 @@ float computeSwingCooldown(const Weapon& w, const Stats& s, const FormulaConfig&
     return std::max(0.05f, cooldown);
 }
 
-// Damage from one swing: base + floor(statValue * gradeMultiplier).
-// Uses whichever scaling (STR or DEX) gives the higher multiplier.
+// Damage from one swing: base + both stat contributions added independently.
+// Both STR and DEX always contribute; their grades control the per-point weight.
 float computeDamage(const Weapon& w, const Stats& s, const FormulaConfig& f)
 {
     const float strMult = gradeToMultiplier(w.str_scaling, f);
     const float dexMult = gradeToMultiplier(w.dex_scaling, f);
-    const float statValue =
-        (strMult >= dexMult) ? static_cast<float>(s.str) : static_cast<float>(s.dex);
-    const float scalingMult = std::max(strMult, dexMult);
-    return w.base_damage + std::floor(statValue * scalingMult);
+    return w.base_damage + std::floor(static_cast<float>(s.str) * strMult) +
+           std::floor(static_cast<float>(s.dex) * dexMult);
 }
 
 // Expose helpers to other translation units (DamageSystem, tests).
@@ -369,7 +367,7 @@ void CombatSystem::update(EntityManager& em, double dt)
                                !isStaggered && !em.registry().all_of<Dodging>(entity));
         if (input.dodge && canDodge)
         {
-            // Context-sensitive direction (Souls-style):
+            // Context-sensitive direction:
             // If any active enemy is within engagement range → backstep
             // (step opposite to current facing, away from the threat).
             // Otherwise → normal roll in last movement/facing direction.

@@ -99,7 +99,7 @@ void Engine::run()
         double frameTime = currentTime - previousTime;
         previousTime = currentTime;
 
-        last_frame_time_ = last_frame_time_ * 0.97 + frameTime * 0.03; // EMA smoothing
+        last_frame_time = last_frame_time * 0.97 + frameTime * 0.03; // EMA smoothing
         if (frameTime > MAX_FRAME_TIME)
             frameTime = MAX_FRAME_TIME;
 
@@ -124,6 +124,7 @@ void Engine::run()
 
 void Engine::processEvents()
 {
+    bool focus_lost = false;
     SDL_Event event;
     while (SDL_PollEvent(&event))
     {
@@ -131,11 +132,31 @@ void Engine::processEvents()
             running = false;
         if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE)
             running = false;
+        if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_FOCUS_LOST)
+            focus_lost = true;
     }
 
     // InputSystem reads the keyboard state snapshot that SDL_PollEvent just refreshed.
     // Must be called after the event loop, not inside the fixed-step update.
     InputSystem::update(entity_manager);
+
+    // If the window lost focus this frame (Alt-Tab, controller/keyboard disconnect, etc.)
+    // zero out all inputs so the player doesn't keep sliding.
+    // Note: this covers OS-level focus loss. A keyboard that physically dies while the
+    // window remains focused won't trigger this — see GitHub issue #34 for that edge case.
+    if (focus_lost)
+    {
+        for (auto [entity, inp] : entity_manager.registry().view<Input>().each())
+        {
+            inp.move_x = 0.0f;
+            inp.move_y = 0.0f;
+            inp.attack = false;
+            inp.dodge = false;
+            inp.skill = false;
+            inp.block_held = false;
+            inp.block_just_pressed = false;
+        }
+    }
 }
 
 void Engine::update(double dt)
@@ -182,7 +203,7 @@ void Engine::update(double dt)
                               ? static_cast<int>(entity_manager.registry().get<Poise>(entity).max)
                               : 0;
 
-        const int fps = static_cast<int>(std::lround(1.0 / last_frame_time_));
+        const int fps = static_cast<int>(std::lround(1.0 / last_frame_time));
         std::string title =
             "Hell Escape"
             "  |  FPS " +

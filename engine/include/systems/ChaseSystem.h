@@ -5,7 +5,7 @@
 // ---------------------------------------------------------------------------
 // ChaseSystem — steers AI-controlled entities using the flow field.
 //
-// Performance design (VS-style, scales to 1000+ enemies):
+// Scales to 1000+ enemies at O(1) per entity per frame:
 //   1. FlowFieldSystem runs first and performs a BFS from the player, storing
 //      a normalized direction in each grid cell. That BFS costs O(cells) and
 //      runs only when the player enters a new 32 px cell (~6 times/sec max).

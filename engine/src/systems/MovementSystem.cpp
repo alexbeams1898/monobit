@@ -160,7 +160,7 @@ void MovementSystem::update(EntityManager& em, double dt)
 
     // Pass 3: Update FacingDirection.
     // Exception: skip while Dodging so the player's facing stays locked during
-    // a dodge (backstep/roll direction doesn't redirect attacks — Souls-style).
+    // a dodge (facing stays locked so dodge direction doesn't redirect attacks).
     //
     // Player (has Input): use the raw input direction, NOT the post-projection
     // velocity. When pressed against a wall the X or Y velocity axis is zeroed,

@@ -117,9 +117,14 @@ Soft cap: 75% — player can never be fully invincible.
 
 ### Damage (weapon grade scaling)
 ```
-finalDamage = baseDamage + floor(statValue * gradeMultiplier)
+finalDamage = baseDamage + floor(str * strGradeMult) + floor(dex * dexGradeMult)
 ```
+Both stats always contribute. Grades control the per-point weight, not which stat is used.
 Grade multipliers: S=1.5x · A=1.25x · B=1.0x · C=0.75x · D=0.5x · E=0.25x
+
+Grade letters are cosmetic buckets. The underlying value is a float; the letter is what the player
+sees. When weapon upgrades are added, reinforcing a weapon increases the underlying scaling value,
+which naturally bumps the displayed grade — no special rules needed.
 
 ### XP Curve
 ```
@@ -251,8 +256,35 @@ keeping the "runs on a calculator" philosophy in check.
 ### Weapon Config Fields
 Every weapon definition includes:
 - `weight` — float. Drives swing cooldown physics and carry weight. Light weapons (shiv ~0.5) swing fast; heavy weapons (mace ~3.0, two-handed sword ~5.0) swing slow but hit hard.
-- `str_scaling` / `dex_scaling` — grade (S/A/B/C/D/E). Drives both damage bonus and swing speed bias.
+- `str_scaling` / `dex_scaling` — grade (S/A/B/C/D/E). Drives both damage bonus and swing speed bias. Both always contribute additively — grade determines weight, not which stat wins.
 - `str_requirement` / `dex_requirement` — stat floor for full effectiveness. Below threshold applies exponential penalty (see Combat System).
+
+### Weapon Scaling Design Intent
+Every weapon should have a logical real-world reason for its scaling split. Think through each
+weapon: what physical qualities does it reward? A heavy weapon rewards raw power (STR). A fast
+precise weapon rewards control and timing (DEX). Most weapons reward both to varying degrees.
+
+Design these thoughtfully per weapon — don't assign grades arbitrarily. The grade split is part
+of the weapon's identity and affects which builds it supports.
+
+**Confirmed weapons:**
+
+| Weapon | str_scaling | dex_scaling | Notes |
+|--------|-------------|-------------|-------|
+| Fists  | B           | C           | Power is the engine; DEX tightens timing and speed |
+
+_More to be added as weapons are designed._
+
+### Ranged Weapons
+Guns and thrown projectiles follow different rules than melee:
+- **High flat base damage** — significantly more than melee baseline. No stat scaling on damage.
+- **Light attack = fire** — the trigger maps to the standard light attack input.
+- **LCK scales accuracy** — all shots have a slight angular spread. Higher LCK tightens the cone.
+  Low LCK should feel noticeably imprecise; high LCK feels surgical. Nothing punishing at baseline —
+  the variation is flavor and build incentive, not a death sentence.
+- **STR = hard requirement only** — needed to hold and control the weapon. Does not scale damage.
+- **DEX = turn/aim speed** — how fast the player can track a target. Not damage.
+- Guns are found/dropped, not crafted from scratch. Ammo is the constraint.
 
 ### Weapon Slots
 - **Dual one-handed** — two weapons attacking independently (VS-style chaos feel)
@@ -274,6 +306,20 @@ Every weapon definition includes:
 ### Stat Requirements
 - Must meet stat requirements to equip a base weapon (souls-style)
 - Upgrade path inherits base requirements — no new stat gates per upgrade
+
+---
+
+## Encumbrance
+Carrying too much slows you down. Equipment weight (weapons + armor) is compared against
+carry capacity (derived from STR + END). Three tiers:
+- **Light** (under ~40% capacity) — full speed, no penalty
+- **Medium** (40–70%) — moderate speed reduction
+- **Heavy** (70–100%) — significant speed reduction
+- **Overencumbered** (over 100%) — unable to run; walk only
+
+The carry weight formula (`str_scale: 20, end_scale: 10`) already exists in `formulas.json`.
+Encumbrance tiers and exact speed penalties are to be tuned during gameplay balancing.
+_Not yet implemented._
 
 ---
 
