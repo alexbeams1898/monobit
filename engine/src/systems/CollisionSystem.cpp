@@ -49,7 +49,7 @@ void CollisionSystem::update(EntityManager& em)
             // CollisionSystem only corrects dynamic-vs-dynamic pairs (e.g.
             // player colliding with a guard) by splitting the MTV evenly.
             // Static-dynamic correction is handled below in the depenetration pass.
-            if (!ca.isSolid || !cb.isSolid)
+            if (!ca.is_solid || !cb.is_solid)
                 continue;
 
             const bool dynA = em.registry().all_of<Velocity>(ea);
@@ -92,7 +92,7 @@ void CollisionSystem::update(EntityManager& em)
         if (!em.registry().all_of<Velocity>(ea))
             continue;
         const auto& ca = view.get<Collider>(ea);
-        if (!ca.isSolid)
+        if (!ca.is_solid)
             continue;
         auto& ta = view.get<Transform>(ea);
 
@@ -103,7 +103,7 @@ void CollisionSystem::update(EntityManager& em)
             if (em.registry().all_of<Velocity>(eb))
                 continue; // dynamic — skip, handled by the pair loop above
             const auto& cb = view.get<Collider>(eb);
-            if (!cb.isSolid)
+            if (!cb.is_solid)
                 continue;
             const auto& tb = view.get<Transform>(eb);
 

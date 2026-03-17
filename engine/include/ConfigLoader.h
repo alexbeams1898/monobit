@@ -31,4 +31,10 @@ class ConfigLoader
     // Load one entity definition from filePath and add it to em.
     // Returns entt::null if the file cannot be opened or is malformed.
     static entt::entity loadEntity(EntityManager& em, const std::string& filePath);
+
+    // Parse config/balance/formulas.json and populate em.formulas.
+    // Call once at startup before any system that reads em.formulas.
+    // Returns true on success; false if the file cannot be opened or parsed
+    // (em.formulas keeps its hardcoded defaults in that case).
+    static bool loadFormulas(EntityManager& em, const std::string& filePath);
 };

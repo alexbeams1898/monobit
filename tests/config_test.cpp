@@ -31,13 +31,12 @@ TEST_CASE("ConfigLoader loads correctional_officer with correct components", "[c
 
     auto& collider = em.registry().get<Collider>(entity);
     REQUIRE(collider.width == 32.0f);
-    REQUIRE(collider.isSolid);
+    REQUIRE(collider.is_solid);
 
     auto& ai = em.registry().get<AIController>(entity);
     REQUIRE(ai.state == AIController::State::Idle); // aggro_radius > 0 → starts Idle
-    REQUIRE(ai.speed == Catch::Approx(155.0f));
-    REQUIRE(ai.separationStrength == Catch::Approx(0.6f));
-    REQUIRE(ai.arrivalRadius == Catch::Approx(128.0f));
+    REQUIRE(ai.separation_strength == Catch::Approx(0.6f));
+    REQUIRE(ai.arrival_radius == Catch::Approx(128.0f));
 }
 
 TEST_CASE("ConfigLoader loads player entity with correct values", "[config]")

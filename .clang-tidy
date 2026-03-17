@@ -10,6 +10,7 @@ Checks: >
   readability-container-size-empty,
   readability-delete-null-pointer,
   readability-redundant-member-init,
+  readability-identifier-naming,
   -bugprone-easily-swappable-parameters,
   -bugprone-exception-escape
 
@@ -22,3 +23,10 @@ HeaderFilterRegex: '(engine|game)/.*\.(h|hpp)$'
 CheckOptions:
   - key:   modernize-loop-convert.MinConfidence
     value: reasonable
+  # Enforce snake_case for struct/class member variables.
+  # Covers both plain members (MemberCase) and the public-struct fields
+  # used throughout this codebase (PublicMemberCase).
+  - key:   readability-identifier-naming.MemberCase
+    value: lower_case
+  - key:   readability-identifier-naming.PublicMemberCase
+    value: lower_case

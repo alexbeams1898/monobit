@@ -9,6 +9,8 @@ add_executable(engine-tests
     steering_system_test.cpp
     aggro_system_test.cpp
     spawner_system_test.cpp
+    combat_test.cpp
+    leveling_test.cpp
 )
 
 target_link_libraries(engine-tests

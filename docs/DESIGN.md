@@ -1,4 +1,4 @@
-# Prison Break Game — Design Document
+# Hell Escape — Design Document
 
 > Living document. Nothing is fully locked in unless explicitly stated.
 > Updated by Claude as design decisions are made.
@@ -8,30 +8,34 @@
 ## Narrative
 
 ### The Setup
-Bud is a corrupt cop and the player's drinking buddy. He guides a rotating cast of inmates out
-of the prison one run at a time via walkie talkie. The player character keeps waking up in their
-cell — the reason is intentionally unexplained early on and slowly revealed through progression.
-Bud exists in some kind of alternate layer that is hinted at but not yet defined.
+You are dead. Or close enough. You keep waking up in the same spot in Hell — the reason is
+intentionally unexplained early on and slowly revealed through progression. Each run you fight
+your way toward the exit, die or escape, and wake up again.
+
+Bud is the player's guide. His exact nature and relationship to Hell is TBD — he may be a
+fellow damned soul, a demon who switched sides, or something weirder. He communicates via
+some in-universe equivalent of the walkie talkie. His role as the meta NPC between runs is
+unchanged — he's still the face of the meta store and the source of dark comedy commentary.
 
 ### Characters
-- **Bud** — corrupt cop, drinking buddy, meta NPC. Voice on the walkie talkie. May appear in
-  the meta store / between-run screens. Not playable. TBD on full role.
-- **Playable characters** — inmates. Custom character created at the start of a fresh save.
+- **Bud** — guide, drinking buddy, meta NPC. Voice during runs. Appears between runs.
+  Not playable. Exact nature TBD — keep it funny.
+- **Playable characters** — the damned. Custom character created at the start of a fresh save.
 
 ### Tone
 Comedic throughout. Body-gore humor — absurd rather than disturbing. Should never feel too
-extreme or mean-spirited. Think Monty Python meets early Doom.
+extreme or mean-spirited. Hell is a fun place to be. Think Monty Python meets early Doom.
 
 ---
 
 ## Core Gameplay Loop
 
 1. Spawn in prison map
-2. Kill enemies → earn XP → level up → allocate stat points
+2. Kill enemies → earn XP → level up → **VS-style popup fires mid-run** → pick a stat (STR/DEX/END/LCK) → back to fighting immediately
 3. Collect material drops from enemies and environment
 4. Field-craft a base weapon from materials (no station needed)
 5. Fight through escalating enemy waves separated by safe rooms
-6. Find upgrade stations in the map → upgrade weapons using materials
+6. Find rest spots scattered in the map → heal, upgrade weapons, buy items
 7. Defeat the final boss/elite enemy → escape → run complete
 8. Carry money and meta progress forward
 
@@ -60,11 +64,146 @@ Happens once at the start of a fresh save. Should take under two minutes.
 | Stat | Function |
 |------|----------|
 | STR | Attack power. Scales with heavy/two-handed weapons. |
-| DEX | Attack speed. Scales with light/one-handed weapons. |
+| DEX | Attack speed + movement speed. Scales with light/one-handed weapons. |
 | END | Max health. |
 | LCK | Rare drop rate + ranged weapon accuracy. Offsets the rarity curve on most-used weapon drops. |
 | DEF | **Derived — not leveled.** Calculated from STR + END + overall level + equipped armor. Works like Elden Ring's defense system. |
 | Poise | **Derived — not leveled.** Calculated from equipped armor weight and tier. Determines knockback resistance and stagger threshold. High poise = barely flinch; low/no armor = gets bowled over. Mechanically simulated "mass." |
+
+---
+
+## Stat Formulas
+
+Log curve applied to all stats — high early gains, soft diminishing returns at scale.
+All constants live in `config/balance/formulas.json` — that file is the source of truth.
+Never hardcode formula constants in engine code.
+
+```
+maxHP          = baseHP + floor(hpScale * log(END + 1))
+moveSpeed      = baseMoveSpeed * (1 + floor(speedScale * log(DEX + 1)) / 100)
+carryWeight    = floor(strCarryScale * log(STR + 1)) + floor(endCarryScale * log(END + 1))
+dropMultiplier = 1 + floor(lckScale * log(LCK + 1)) / 100
+```
+
+Swing cooldown is weapon-physics based — see Combat System section.
+
+### DEF Derivation
+```
+DEF = floor((STR * strDefScale) + (END * endDefScale) + (level * levelDefScale) + armorValue)
+finalDamageTaken = max(1, incomingDamage * (1 - min(DEF, defCap) / 100))
+```
+Soft cap: 75% — player can never be fully invincible.
+
+### Damage (weapon grade scaling)
+```
+finalDamage = baseDamage + floor(statValue * gradeMultiplier)
+```
+Grade multipliers: S=1.5x · A=1.25x · B=1.0x · C=0.75x · D=0.5x · E=0.25x
+
+### XP Curve
+```
+xpToNextLevel = xpBase * (level ^ xpExponent)
+```
+
+### `formulas.json` shape
+```json
+{
+  "hp": { "base": 50, "scale": 100 },
+  "movement": { "base": 150, "dex_scale": 30 },
+  "carry_weight": { "str_scale": 20, "end_scale": 10 },
+  "defense": { "str_scale": 0.3, "end_scale": 0.5, "level_scale": 0.2, "cap": 75 },
+  "luck": { "drop_scale": 15 },
+  "damage": {
+    "grade_multipliers": { "S": 1.5, "A": 1.25, "B": 1.0, "C": 0.75, "D": 0.5, "E": 0.25 }
+  },
+  "swing": { "weight_scale": 100, "stat_scale": 40, "two_handed_str_bonus": 0.3 },
+  "stat_requirement": { "penalty_rate": 0.15 },
+  "leveling": { "xp_base": 100, "xp_exponent": 1.5, "points_per_level": 1 }
+}
+```
+
+---
+
+## Combat System
+
+### Attack Modes
+**Manual mode is the default game.** Auto mode is a meta-store unlock — see Meta Progression.
+
+**Manual mode** — Souls-inspired, skill ceiling
+- Directional attacks (Crystalis / Symphony of the Night / Tales of Mana feel)
+- Controls work like Elden Ring, simplified for top-down 2D
+- Attack commitment: each swing locks you into its animation — no cancelling into dodge or another attack until it resolves
+- Dodge roll with i-frames; flat per-roll cooldown (no stamina bar)
+- Shield block active; parry window on timed input — negates damage and staggers attacker
+- Special attacks (weapon skills) triggered via dedicated input — see Weapon Skills
+
+**Auto mode** — VS-inspired, unlocked via meta-store
+- Weapons auto-fire on cooldown with smart targeting (nearest/most dangerous enemy)
+- Player still controls movement manually — skill expression is positioning, not attack timing
+- No attack commitment — weapons fire independently on their own timers
+- Shield auto-blocks attacks within the player's frontal arc (±90° from facing direction, determined by movement input). Side and back hits bypass the shield — positioning still matters.
+- Special attacks require manual input in auto mode (unless Auto-Parry upgrade is purchased — see Meta Progression)
+
+Both modes use the same swing cooldown formula. Auto fires when the timer expires; manual fires on player input if the timer has elapsed.
+
+### Swing Cooldown (Physics Formula)
+Cooldown is driven by the weapon's weight and a stat blend determined by its scaling profile.
+The weapon's `dex_scaling` grade maps to a `dexBias` float (S → ~1.0, E → ~0.0); `strBias = 1 - dexBias`.
+
+```
+effectiveStat = (STR * strBias) + (DEX * dexBias)
+swingCooldown = (weaponWeight * weightScale)
+              / (1 + floor(effectiveStat * statScale * log(effectiveStat + 1)) / 100)
+```
+
+Two-handed: STR contribution amplified by `two_handed_str_bonus` (shifts dexBias toward 0).
+All constants in `formulas.json` under `"swing"`.
+
+**Emergent behavior:**
+- Light DEX weapon (shiv) + high DEX → blazing fast
+- Light DEX weapon + high STR / low DEX → decent speed, but clearly suboptimal
+- Heavy STR weapon (mace) + high STR → surprisingly snappy for the weight
+- Heavy STR weapon + high DEX → painfully slow — fighting the physics
+- No hard gates: wrong-stat builds feel clunky, not broken
+
+### No Stamina Bar
+Stamina replaced by per-system mechanics:
+- **Attacks** — limited by animation lock (commitment)
+- **Dodge rolls** — flat cooldown per roll
+- **Shields** — guard break: absorbing too many consecutive blocked hits staggers the player. Punish moment, not gradual drain.
+
+### Weapon Skills (Ashes of War equivalent)
+Every weapon can have a special attack — a unique skill attached to it, exactly like Elden Ring's Ashes of War. Triggered via a dedicated input (L2/LT on controller, separate key on keyboard).
+
+- Each weapon defines its own skill in config — a spinning attack, a dash strike, a ground slam, etc.
+- Skill has its own cooldown, tuned per skill, longer than the regular swing cooldown. Both cooldowns are visible in the UI separately.
+- No FP or resource cost — just the cooldown timer. No extra bars.
+- Skills **evolve alongside weapon upgrades** — the same upgrade path that improves base stats also changes or enhances the skill (e.g., a basic lunge becomes a piercing lunge that hits through enemies at tier 3)
+- In **auto mode**: skills require manual input — never auto-fired
+- In **auto mode with Auto-Parry upgrade**: parry specifically can auto-trigger (see Meta Progression)
+
+### Stat Requirements (Soft Penalty)
+Weapons and armor have stat requirements. Below threshold applies an exponential penalty to damage and swing speed:
+
+```
+deficit       = max(0, requirement - stat)
+penaltyFactor = exp(-deficit * penaltyRate)
+```
+
+`penaltyRate` in `formulas.json` under `"stat_requirement"`. Steep enough curve that heavily under-spec'd weapons are effectively unusable; "barely below" is workable in a pinch. Creates a satisfying "build coming online" moment when the threshold is hit.
+
+### Ranged Weapons (Guns)
+**Deferred — design intent only.**
+
+Guns will not use the melee swing formula. Attack power is attributed to the gun itself (barrel, bullet type, mechanism — all crafted). Guns still have `weight` for carry weight purposes.
+
+Planned stat mapping:
+- **DEX** → accuracy + fire rate (steady hands, quick trigger)
+- **LCK** → spread behavior, crit chance
+- **STR** → no contribution (strength doesn't move bullets faster)
+
+This creates a distinct build identity: gun builds are DEX/LCK, melee builds are STR/DEX.
+Will be considered for implementation within this milestone once melee is built and feeling good.
 
 ---
 
@@ -78,10 +217,17 @@ Happens once at the start of a fresh save. Should take under two minutes.
 - Not all recipes are known from the start — discovered during runs, permanently unlocked via
   meta progression
 
+### Weapon Config Fields
+Every weapon definition includes:
+- `weight` — float. Drives swing cooldown physics and carry weight. Light weapons (shiv ~0.5) swing fast; heavy weapons (mace ~3.0, two-handed sword ~5.0) swing slow but hit hard.
+- `str_scaling` / `dex_scaling` — grade (S/A/B/C/D/E). Drives both damage bonus and swing speed bias.
+- `str_requirement` / `dex_requirement` — stat floor for full effectiveness. Below threshold applies exponential penalty (see Combat System).
+
 ### Weapon Slots
 - **Dual one-handed** — two weapons attacking independently (VS-style chaos feel)
 - **One two-handed** — single weapon, bonus STR scaling, hits harder
-- Two-handed favors STR builds; dual one-handers favor DEX builds
+- **One-handed + shield** — gives up dual-wield for parry and guard break protection. STR/END build path.
+- Two-handed favors STR builds; dual one-handers favor DEX builds; shield builds favor STR/END
 
 ### Crafting Tiers
 - **Field crafting** — combine world-drop materials using a basic starting tool. No station needed.
@@ -134,6 +280,40 @@ Happens once at the start of a fresh save. Should take under two minutes.
 
 ---
 
+## Loot & Drop System
+
+Two distinct drop types — different pickup mechanics, different purpose.
+
+### Money Drops
+- Chance-based per kill; LCK influences rate and money drop chance
+- **Auto-collected on proximity** (VS-style) — no manual action needed
+- Also found in chests and other TBD sources
+- Displays as bill/money icon ($1 / $5 / $20 / $50 / $100)
+- Carries over on death into meta progression
+
+### Inventory Item Drops (materials, crafting components)
+- **Manual pickup** — small souls-style proximity radius; player consciously decides what to grab
+- Displays as item icon; bean with rarity glow as performance fallback at scale
+- These are the crafting materials the weapon evolution system runs on
+
+### Rarity Tiers
+Communicated via glow intensity, size, and animation — not just color.
+
+| Tier | Visual |
+|------|--------|
+| Common | No glow |
+| Uncommon | Soft glow |
+| Rare | Medium glow |
+| Epic | Strong glow |
+| Legendary | Large, pulsing, animated. Unmistakable presence. |
+
+### Adaptive Drop Seeding
+Engine tracks the player's most-used weapon and nudges rare drops toward completing
+that weapon's upgrade path. Player feels lucky; the game is being fair. LCK offsets
+the rarity curve further on top of this.
+
+---
+
 ## Terminology
 
 | Term | Definition |
@@ -160,22 +340,24 @@ Happens once at the start of a fresh save. Should take under two minutes.
 - Start small, expand via schema — every enemy is a config entry
 - Rank hierarchy maps directly to wave progression
 - Appearance and drops become progressively stranger and more off-putting
-- Final boss of each map = fully unhinged, clearly supernatural/demonic
+- Final boss of each map = fully unhinged, clearly demonic royalty
 - Gore is comedic — absurd rather than disturbing
 - Gore animation and sound design must scale — design for simultaneous events from day one
 
 ### Rank Hierarchy (first map)
-1. Correctional Officer — basic grunt, minimal gear
-2. Senior Officer — slightly more experienced
-3. Sergeant — first supervisory rank
-4. Lieutenant — mid-level, better drops
-5. Captain — commands others, serious gear, firearm parts
-6. Warden — final boss/elite. Fully unhinged. Specifics TBD.
+Names are placeholders — TBD with Alex.
+
+1. **Lost Soul** — basic grunt. The scraped-together damned. Minimal threat alone.
+2. **Shade** — slightly smarter, slightly meaner
+3. **Imp** — first "real" demon. Faster, more aggressive
+4. **Greater Demon** — mid-level. Better drops. Starts to feel dangerous in groups.
+5. **Fiend** — commands others. Serious gear. Rare material drops.
+6. **Demon Lord** — final boss/elite. Fully unhinged. Specifics TBD.
 
 ### Equipment & Drop Mapping
-- Basic officers: radio components, keys, baton pieces → stage 1 weapon materials
-- Riot/tactical officers: helmet fragments, shield pieces, vest parts
-- Higher ranks: firearm parts, rare materials → higher upgrade tier recipes
+- Lost Souls / Shades: bone fragments, cursed trinkets → stage 1 weapon materials
+- Imps / Greater Demons: hellfire components, demon hide pieces
+- Higher ranks: rare infernal materials → higher upgrade tier recipes
 - All drops are materials/parts — never whole weapons or armor
 
 ### Wave Structure
@@ -186,13 +368,31 @@ Happens once at the start of a fresh save. Should take under two minutes.
 
 ---
 
+## Rest Spots
+
+Service hubs scattered procedurally throughout the map. Found by exploring — not guaranteed nearby.
+**Not respawn points.** Death ends the run regardless.
+
+What a rest spot offers (expandable):
+- **Heal** — restore HP
+- **Weapon upgrades** — using materials collected during the run
+- **Items** — buy consumables (TBD)
+- Anything else we want to add later
+
+In-world name TBD — "rest spot" is a placeholder. Could be a campfire, a soul anchor,
+a cursed altar, a fellow damned NPC who patches you up. Alex decides.
+
+---
+
 ## Map & Procedural Generation
 
 ### Map Feel
-- Open roaming space with prison visual theming — not a realistic simulation
+- Open roaming space with hell visual theming — not a realistic simulation
 - No key/door/room gating — movement is free like VS
-- Prison aesthetic is dressing, not a mechanical system
+- Hell aesthetic is dressing, not a mechanical system
 - Tone: silly, low fidelity, practical. Funny where possible.
+- Visual direction TBD — could lean Dante's Inferno (circles, fire, brimstone), cartoonish
+  (Cuphead-hell, Helltaker-adjacent), or something weirder. Alex decides.
 
 ### Procedural Generation Architecture
 **Core principle: separate structure (owned by engine) from visuals (supplied by modders).**
@@ -235,6 +435,15 @@ Purchases include:
 - Crafting materials (softens bad runs)
 - QOL improvements
 - Character appearance redesign token
+- **Auto-Attack Module** (see below)
+
+### Auto-Attack Module
+Permanent unlock. Grants the ability to toggle auto mode during runs. Buy once, available on all future runs.
+
+- **Tier 1 — Auto-Attack**: Weapons auto-fire on cooldown with smart targeting. Shield auto-blocks attacks within frontal arc. Special attacks (weapon skills) still require manual input.
+- **Tier 2 upgrade — Auto-Parry**: Parry timing is handled automatically when a shield is equipped. Purchased as a separate follow-up upgrade.
+
+This is intentionally a QOL/accessibility item, not a power unlock. Manual combat is the intended base game. Players who want the VS-style experience earn it through meta progression.
 
 ### QOL: Portable Weapon Upgrader
 - Allows weapon upgrading without finding a station in the map
@@ -246,3 +455,50 @@ Purchases include:
 - Extremely rare items found during runs that permanently affect meta progression
 - Example: a crafting guide that permanently unlocks a recipe for future runs
 - Creates tension between rushing to the exit and exploring the map
+
+---
+
+## Controls
+
+DS1 PC layout adapted for top-down 2D. Designed to map cleanly to iOS virtual buttons.
+
+| Action | PC | iOS virtual |
+|---|---|---|
+| Move | WASD | Joystick |
+| Light attack | LMB | Attack btn |
+| Dodge / roll | Space | Dodge btn |
+| Block | RMB (hold) | Block btn (hold) |
+| Parry / Weapon skill | Q — context-sensitive: fires parry window if blocking, weapon skill otherwise | Skill btn |
+| Use item | R | Item btn |
+| Cycle item | Scroll / Tab | Swipe |
+| Interact | F | Interact btn |
+| Stat upgrade (level-up popup) | [1] STR  [2] DEX  [3] END  [4] LCK | Tap card in popup |
+
+iOS target: 5 virtual buttons (attack, dodge, block, skill, item) + joystick. Manageable.
+
+---
+
+## Config Directory Structure
+
+```
+config/
+  entities/   — defines what things ARE (player, enemies, weapons, armor)
+  spawns/     — defines enemy wave composition and spawn rules
+  balance/    — defines how the game BEHAVES (formulas, leveling, tuning)
+    formulas.json
+```
+
+**Mod override strategy:** deep merge — mod files override only the keys they define;
+base game values fill everything else. Engine validates all configs at load time.
+
+---
+
+## Passive Leveling
+
+**Deferred — design intent only. Not scheduled for implementation yet.**
+
+- Additive on top of the main level-up system
+- Actions grow relevant stats via micro-XP (Oblivion-inspired): frequent sword swings
+  nudge STR/DEX, taking hits nudges END, etc.
+- Soft cap required — passive gains must not break build identity or upset balance
+- Implementation approach TBD

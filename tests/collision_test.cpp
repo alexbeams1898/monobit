@@ -22,11 +22,11 @@
 
 // Helper: create an entity with a centered AABB collider.
 static entt::entity makeEntity(EntityManager& em, float x, float y, float w, float h,
-                               bool isSolid = true, bool dynamic = true)
+                               bool is_solid = true, bool dynamic = true)
 {
     auto e = em.create();
     em.registry().emplace<Transform>(e, Transform{x, y});
-    em.registry().emplace<Collider>(e, Collider{w, h, isSolid});
+    em.registry().emplace<Collider>(e, Collider{w, h, is_solid});
     if (dynamic)
         em.registry().emplace<Velocity>(e, Velocity{0.0f, 0.0f});
     return e;

@@ -50,7 +50,7 @@ TEST_CASE("MovementSystem does not move entity with zero input", "[movement]")
     auto e = em.create();
     em.registry().emplace<Transform>(e, Transform{50.0f, 75.0f});
     em.registry().emplace<Velocity>(e);
-    em.registry().emplace<Input>(e); // moveX=0, moveY=0 by default
+    em.registry().emplace<Input>(e); // move_x=0, move_y=0 by default
 
     MovementSystem::update(em, 1.0);
 

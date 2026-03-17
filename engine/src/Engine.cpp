@@ -2,14 +2,24 @@
 
 #include "ecs/Components.h"
 #include "systems/AggroSystem.h"
+#include "systems/AudioSystem.h"
 #include "systems/CameraSystem.h"
 #include "systems/ChaseSystem.h"
 #include "systems/CollisionSystem.h"
+#include "systems/CombatSystem.h"
+#include "systems/DamageSystem.h"
+#include "systems/DeathSystem.h"
 #include "systems/FlowFieldSystem.h"
 #include "systems/InputSystem.h"
+#include "systems/LevelingSystem.h"
 #include "systems/MovementSystem.h"
+#include "systems/PickupSystem.h"
 #include "systems/RenderSystem.h"
+#include "systems/RestSpotSystem.h"
+#include "systems/SpawnerSystem.h"
 #include "systems/SteeringSystem.h"
+
+#include <string>
 
 // glad must be included before any SDL OpenGL header.
 #include <SDL.h>
@@ -46,6 +56,8 @@ bool Engine::init(const char* title, int width, int height)
     if (!window)
         return false;
 
+    SDL_ShowCursor(SDL_DISABLE);
+
     glContext = SDL_GL_CreateContext(window);
     if (!glContext)
         return false;
@@ -67,6 +79,7 @@ bool Engine::init(const char* title, int width, int height)
     windowH_ = height;
 
     RenderSystem::init(windowW_, windowH_);
+    AudioSystem::init(); // non-fatal — game runs without audio if device unavailable
 
     return true;
 }
@@ -124,13 +137,39 @@ void Engine::processEvents()
 void Engine::update(double dt)
 {
     ZoneScoped;
-    AggroSystem::update(entityManager_);     // Idle→Chase when player enters aggro radius
-    FlowFieldSystem::update(entityManager_); // BFS from player — rebuilds only on cell change
-    ChaseSystem::update(entityManager_, dt); // enemies read flow field → write velocity
+    // InputSystem runs in processEvents() before the fixed-step loop —
+    // see processEvents() for the call site.  The order here is the
+    // per-tick combat/movement/collision sequence.
+    SpawnerSystem::update(entityManager_, dt); // timed wave spawner — enemies from outside bounds
+    CombatSystem::update(entityManager_, dt);  // cooldowns, hitbox spawn, dodge, skill, auto-attack
+    AggroSystem::update(entityManager_);       // Idle→Chase when player enters aggro radius
+    FlowFieldSystem::update(entityManager_);   // BFS from player — rebuilds only on cell change
+    ChaseSystem::update(entityManager_, dt);   // enemies read flow field → write velocity
     SteeringSystem::update(entityManager_); // wall repulsion — deflects velocity before integration
-    MovementSystem::update(entityManager_, dt); // project velocity against statics → integrate
+    MovementSystem::update(entityManager_, dt); // DEX-scaled speed, skip Dodging, FacingDirection
     CollisionSystem::update(entityManager_);    // dynamic-vs-dynamic correction + events
+    DamageSystem::update(entityManager_);       // hitbox→health, enemy→player, shield/parry
+    DeathSystem::update(entityManager_);        // spawn XP pickups, destroy Dead entities
+    PickupSystem::update(entityManager_);       // auto-collect XP/money within radius
+    LevelingSystem::update(entityManager_);     // XP overflow → level up → stat points
+    RestSpotSystem::update(entityManager_, dt); // heal player to full when standing on rest spot
     CameraSystem::update(entityManager_);       // snap camera to final player position
+
+    // Title-bar HUD — cheapest possible stat display, no font rendering needed.
+    for (auto [entity, input, health, stats, exp] :
+         entityManager_.registry().view<Input, Health, Stats, Experience>().each())
+    {
+        std::string title =
+            "Hell Escape"
+            "  |  HP " +
+            std::to_string(health.current) + "/" + std::to_string(health.max) + "  |  LVL " +
+            std::to_string(exp.level) + "  XP " + std::to_string(exp.current_xp) + "/" +
+            std::to_string(exp.xp_to_next) + "  |  STR " + std::to_string(stats.str) + "  DEX " +
+            std::to_string(stats.dex) + "  END " + std::to_string(stats.end) + "  LCK " +
+            std::to_string(stats.lck) + "  pts " + std::to_string(exp.stat_points);
+        SDL_SetWindowTitle(window, title.c_str());
+        break;
+    }
 }
 
 void Engine::render()
@@ -160,6 +199,7 @@ void Engine::render()
 
 void Engine::shutdown()
 {
+    AudioSystem::shutdown();
     RenderSystem::shutdown();
     textureManager_.clear();
 

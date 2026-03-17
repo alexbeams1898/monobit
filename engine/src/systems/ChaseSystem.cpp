@@ -28,11 +28,24 @@ void ChaseSystem::update(EntityManager& em, double dt)
         break;
     }
 
+    const FormulaConfig& f = em.formulas;
+
     for (auto [entity, ai, transform, vel] :
          em.registry().view<AIController, Transform, Velocity>().each())
     {
         if (ai.state == AIController::State::Idle)
             continue;
+
+        // Derive movement speed from DEX — same formula as the player in MovementSystem.
+        // Entities without Stats use the base speed directly.
+        float speed = f.movement.base;
+        if (em.registry().all_of<Stats>(entity))
+        {
+            const int dex = em.registry().get<Stats>(entity).dex;
+            speed *= (1.0f +
+                      std::floor(f.movement.dex_scale * std::log(static_cast<float>(dex) + 1.0f)) /
+                          100.0f);
+        }
 
         float targetDx = 0.0f;
         float targetDy = 0.0f;
@@ -72,8 +85,8 @@ void ChaseSystem::update(EntityManager& em, double dt)
                     // Zero flow field: no BFS path reached this cell (e.g. fully
                     // walled off). Fall back entirely to direct vector — at least
                     // the entity drifts toward a wall face and doesn't freeze.
-                    targetDx = (ddx / dist) * ai.speed;
-                    targetDy = (ddy / dist) * ai.speed;
+                    targetDx = (ddx / dist) * speed;
+                    targetDy = (ddy / dist) * speed;
                 }
                 else
                 {
@@ -93,8 +106,8 @@ void ChaseSystem::update(EntityManager& em, double dt)
                     // below handles smooth direction transitions at cell boundaries.
                     // Direct vector is kept only as a fallback for unreachable cells
                     // (zero flow field above).
-                    targetDx = cell.dx * ai.speed;
-                    targetDy = cell.dy * ai.speed;
+                    targetDx = cell.dx * speed;
+                    targetDy = cell.dy * speed;
                 }
             }
         }
@@ -119,8 +132,8 @@ void ChaseSystem::update(EntityManager& em, double dt)
             const float toDy = transform.y - py;
             dist = std::sqrt(toDx * toDx + toDy * toDy);
             const float invDist = (dist > 0.0f) ? 1.0f / dist : 0.0f;
-            const float slotX = px + toDx * invDist * ai.attackRadius;
-            const float slotY = py + toDy * invDist * ai.attackRadius;
+            const float slotX = px + toDx * invDist * ai.attack_radius;
+            const float slotY = py + toDy * invDist * ai.attack_radius;
 
             const float dsx = slotX - transform.x;
             const float dsy = slotY - transform.y;
@@ -135,29 +148,29 @@ void ChaseSystem::update(EntityManager& em, double dt)
             else
             {
                 // Soft arrival at slot: speed scales linearly from full at
-                // attackRadius distance down to zero at CELL_SIZE.  The entity
+                // attack_radius distance down to zero at CELL_SIZE.  The entity
                 // drifts smoothly onto the ring and holds position with the player
                 // as they move; it never fully freezes unless the player stops.
-                const float scale = std::min(1.0f, slotDist / ai.attackRadius);
-                targetDx = (dsx / slotDist) * ai.speed * scale;
-                targetDy = (dsy / slotDist) * ai.speed * scale;
+                const float scale = std::min(1.0f, slotDist / ai.attack_radius);
+                targetDx = (dsx / slotDist) * speed * scale;
+                targetDy = (dsy / slotDist) * speed * scale;
             }
         }
 
         // Velocity blending — smooths direction changes at cell boundaries and
         // softens the Chase → Attack transition.  Same exponential lerp for both
         // states:
-        //   blend = 1 − exp(−turnSpeed × dt) ≈ turnSpeed × dt for small dt
-        // At 60 Hz with turnSpeed=8: blend ≈ 0.13 → visibly smooth but still
-        // responsive. Set turnSpeed=0 for instant snap (legacy / debug).
-        if (ai.turnSpeed <= 0.0f)
+        //   blend = 1 − exp(−turn_speed × dt) ≈ turn_speed × dt for small dt
+        // At 60 Hz with turn_speed=8: blend ≈ 0.13 → visibly smooth but still
+        // responsive. Set turn_speed=0 for instant snap (legacy / debug).
+        if (ai.turn_speed <= 0.0f)
         {
             vel.dx = targetDx;
             vel.dy = targetDy;
         }
         else
         {
-            const float blend = 1.0f - std::exp(-ai.turnSpeed * static_cast<float>(dt));
+            const float blend = 1.0f - std::exp(-ai.turn_speed * static_cast<float>(dt));
             vel.dx += (targetDx - vel.dx) * blend;
             vel.dy += (targetDy - vel.dy) * blend;
         }
@@ -167,20 +180,20 @@ void ChaseSystem::update(EntityManager& em, double dt)
         // Applying this to targetDx/Dy BEFORE blending doesn't work: at
         // turn_speed=4 the blend factor is ~6% per frame at 60 Hz, so actual
         // velocity barely tracks the softened target before the enemy crosses
-        // the zone. The effect is imperceptible regardless of arrivalRadius.
+        // the zone. The effect is imperceptible regardless of arrival_radius.
         //
-        // Post-blend cap is immediate: maxSpeed = ai.speed * (dist/arrivalRadius).
-        // At the edge of the zone: maxSpeed = ai.speed (no reduction).
+        // Post-blend cap is immediate: maxSpeed = speed * (dist/arrival_radius).
+        // At the edge of the zone: maxSpeed = speed (no reduction).
         // At dist=0:               maxSpeed = 0 (fully stopped).
         //
         // Attack state has its own per-slot arrival scaling above.
         if (ai.state == AIController::State::Chase && playerFound &&
-            ai.arrivalRadius > FlowField::CELL_SIZE && dist < ai.arrivalRadius)
+            ai.arrival_radius > FlowField::CELL_SIZE && dist < ai.arrival_radius)
         {
             const float curSpeed = std::sqrt(vel.dx * vel.dx + vel.dy * vel.dy);
             if (curSpeed > 0.0f)
             {
-                const float maxSpeed = ai.speed * (dist / ai.arrivalRadius);
+                const float maxSpeed = speed * (dist / ai.arrival_radius);
                 if (curSpeed > maxSpeed)
                 {
                     vel.dx = (vel.dx / curSpeed) * maxSpeed;

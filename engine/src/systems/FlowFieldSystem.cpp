@@ -101,7 +101,7 @@ void FlowFieldSystem::update(EntityManager& em)
         if (em.registry().all_of<Velocity>(e))
             continue; // dynamic — not a wall
         const auto& col = em.registry().get<Collider>(e);
-        if (!col.isSolid)
+        if (!col.is_solid)
             continue;
         const auto& t = em.registry().get<Transform>(e);
 

@@ -2,10 +2,14 @@
     "tag": "correctional_officer",
     "components": {
         "transform":     { "x": 880.0, "y": 220.0, "rotation": 0.0, "scale": 1.0 },
-        "health":        { "current": 60, "max": 60 },
         "velocity":      { "dx": 0.0, "dy": 0.0 },
         "collider":      { "width": 32.0, "height": 32.0, "is_solid": true },
         "sprite":        { "texture_path": "assets/sprites.png", "src_x": 0, "src_y": 0, "src_w": 32, "src_h": 32, "layer": 1 },
-        "ai_controller": { "behavior": "chase", "speed": 155.0, "turn_speed": 4.0, "aggro_radius": 180.0, "separation_strength": 0.6, "arrival_radius": 128.0, "attack_radius": 48.0 }
+        "stats":         { "str": 2, "dex": 3, "end": 1, "lck": 1 },
+        "weapon":        { "weight": 0.5, "str_scaling": "E", "dex_scaling": "E", "str_requirement": 0, "dex_requirement": 0, "base_damage": 8.0 },
+        "facing":        {},
+        "ai_controller": { "behavior": "chase", "turn_speed": 4.0, "aggro_radius": 180.0, "separation_strength": 0.6, "arrival_radius": 128.0, "attack_radius": 48.0 },
+        "loot":          { "xp_drop": 20 },
+        "poise":         {}
     }
 }
