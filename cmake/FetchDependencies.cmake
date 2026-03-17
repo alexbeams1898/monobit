@@ -20,7 +20,12 @@ set(GLAD_PROFILE   "core" CACHE STRING "" FORCE)
 set(GLAD_API       "gl=3.3" CACHE STRING "" FORCE)
 set(GLAD_GENERATOR "c" CACHE STRING "" FORCE)
 set(GLAD_EXTENSIONS "" CACHE STRING "" FORCE)
+# GLAD v0.1.36 declares cmake_minimum_required(VERSION 2.8) which triggers a
+# CMake deprecation warning. This is GLAD's code, not ours — suppress it for
+# this subdirectory only, then restore normal warning behaviour.
+set(CMAKE_WARN_DEPRECATED FALSE CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(glad)
+set(CMAKE_WARN_DEPRECATED TRUE CACHE BOOL "" FORCE)
 
 # ---------------------------------------------------------------------------
 # SDL2
@@ -83,6 +88,23 @@ FetchContent_Declare(
     GIT_SHALLOW    TRUE
 )
 FetchContent_MakeAvailable(tracy)
+
+# ---------------------------------------------------------------------------
+# miniaudio  (header-only audio — single file, zero dependencies)
+# Handles SFX mixing, music looping, and device output.
+# MINIAUDIO_IMPLEMENTATION must be defined in exactly one .cpp file (AudioSystem.cpp).
+# ---------------------------------------------------------------------------
+FetchContent_Declare(
+    miniaudio
+    GIT_REPOSITORY https://github.com/mackron/miniaudio.git
+    GIT_TAG        0.11.21
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(miniaudio)
+
+add_library(miniaudio_iface INTERFACE)
+add_library(miniaudio::miniaudio ALIAS miniaudio_iface)
+target_include_directories(miniaudio_iface SYSTEM INTERFACE ${miniaudio_SOURCE_DIR})
 
 # ---------------------------------------------------------------------------
 # FMOD  (stub — replace with real SDK integration when ready)

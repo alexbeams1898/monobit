@@ -46,13 +46,14 @@ in vec2 vUV;
 
 uniform sampler2D uTexture;
 uniform vec4      uSrcRect; // (x, y, w, h) in 0-1 UV space
+uniform vec4      uTint;    // (r, g, b, a) multiplied into the sampled color
 
 out vec4 fragColor;
 
 void main()
 {
     vec2 uv = uSrcRect.xy + vUV * uSrcRect.zw;
-    fragColor = texture(uTexture, uv);
+    fragColor = texture(uTexture, uv) * uTint;
 }
 )glsl";
 
@@ -64,6 +65,7 @@ void main()
 static GLuint sProgram = 0;
 static GLuint sVAO = 0;
 static GLuint sVBO = 0;
+static GLuint sWhiteTex = 0; // 1×1 white texture used for solid-color primitives (facing dot)
 static int sWindowW = 0;
 static int sWindowH = 0;
 
@@ -178,6 +180,16 @@ void RenderSystem::init(int windowW, int windowH)
     // Enable alpha blending so transparent PNG regions are invisible.
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    // 1×1 white RGBA texture — used to draw solid-color quads (e.g. facing dot)
+    // without needing a dedicated atlas region.
+    const uint8_t white[4] = {255, 255, 255, 255};
+    glGenTextures(1, &sWhiteTex);
+    glBindTexture(GL_TEXTURE_2D, sWhiteTex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, white);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, float camY)
@@ -186,10 +198,14 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
     struct DrawEntry
     {
         float x, y;
-        int srcX, srcY, srcW, srcH;
+        int src_x, src_y, src_w, src_h;
         int layer;
-        uint32_t texId;
-        int texW, texH; // full texture dimensions for UV normalisation
+        uint32_t tex_id;
+        int tex_w, tex_h;                      // full texture dimensions for UV normalisation
+        float tr = 1.0f, tg = 1.0f, tb = 1.0f; // tint RGB (multiplied in shader)
+        bool flip_x = false;                   // mirror sprite horizontally (facing left)
+        bool flip_y = false;                   // mirror sprite vertically (facing up = back view)
+        bool solid_color = false;              // if true, render as flat color using white tex
     };
 
     std::vector<DrawEntry> drawList;
@@ -197,23 +213,93 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
 
     for (auto [entity, transform, sprite] : em.registry().view<Transform, Sprite>().each())
     {
-        if (sprite.texturePath.empty() && sprite.textureId == 0)
+        if (sprite.texture_path.empty() && sprite.texture_id == 0)
             continue;
 
-        uint32_t texId = tm.load(sprite.texturePath);
+        uint32_t tex_id = tm.load(sprite.texture_path);
 
         // Query texture dimensions so we can convert pixel src rects to 0-1 UV.
-        glBindTexture(GL_TEXTURE_2D, texId);
-        GLint texW = 0;
-        GLint texH = 0;
-        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &texW);
-        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &texH);
+        glBindTexture(GL_TEXTURE_2D, tex_id);
+        GLint tex_w = 0;
+        GLint tex_h = 0;
+        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &tex_w);
+        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &tex_h);
         glBindTexture(GL_TEXTURE_2D, 0);
 
-        drawList.push_back({transform.x - static_cast<float>(sprite.srcW) * 0.5f, // top-left corner
-                            transform.y - static_cast<float>(sprite.srcH) * 0.5f, sprite.srcX,
-                            sprite.srcY, sprite.srcW, sprite.srcH, sprite.layer, texId, texW,
-                            texH});
+        // Tint priority (highest → lowest):
+        //   damage flash  → blue
+        //   attack flash  → orange
+        //   staggered     → purple (can't act — obvious feedback)
+        //   level-up ready→ gold   (stat_points > 0, persistent until spent)
+        //   weapon cooldown→ dim blue-grey fade
+        // Orange + blue are safe for red-green color blindness.
+        float tr = 1.0f, tg = 1.0f, tb = 1.0f;
+        if (em.registry().all_of<DamageFeedback>(entity))
+        {
+            tr = 0.2f;
+            tg = 0.4f; // blue
+        }
+        else if (em.registry().all_of<AttackFeedback>(entity))
+        {
+            tg = 0.5f;
+            tb = 0.0f; // orange
+        }
+        else if (em.registry().all_of<Staggered>(entity))
+        {
+            tr = 0.6f;
+            tg = 0.0f;
+            tb = 1.0f; // purple
+        }
+        else if (em.registry().all_of<Experience>(entity) &&
+                 em.registry().get<Experience>(entity).stat_points > 0)
+        {
+            tr = 1.0f;
+            tg = 0.9f;
+            tb = 0.0f; // gold
+        }
+        else if (em.registry().all_of<Weapon>(entity))
+        {
+            // Fade smoothly from dim blue-grey (just swung) back to white (ready).
+            // t=1 at the moment of swing; t=0 once cooldown expires.
+            // Clamped to 1 s so long cooldowns don't produce a harsher tint than short ones.
+            const float cooldown = em.registry().get<Weapon>(entity).swing_cooldown_remaining;
+            if (cooldown > 0.0f)
+            {
+                const float t = std::min(cooldown, 1.0f);
+                tr = 1.0f - t * 0.35f; // 1.0 → 0.65
+                tg = 1.0f - t * 0.35f;
+                tb = 1.0f - t * 0.15f; // 1.0 → 0.85
+            }
+        }
+
+        // Flip sprite based on facing direction.
+        // flip_x: facing left  → mirror horizontally.
+        // flip_y: facing up    → mirror vertically (back-of-character view).
+        bool flip_x = false;
+        bool flip_y = false;
+        if (em.registry().all_of<FacingDirection>(entity))
+        {
+            const auto& facing = em.registry().get<FacingDirection>(entity);
+            flip_x = facing.dx < -0.1f;
+            flip_y = facing.dy < -0.1f;
+        }
+
+        // SolidColor overrides texture rendering with a flat colored square.
+        bool is_solid = false;
+        if (em.registry().all_of<SolidColor>(entity))
+        {
+            const auto& sc = em.registry().get<SolidColor>(entity);
+            tr = sc.r;
+            tg = sc.g;
+            tb = sc.b;
+            is_solid = true;
+        }
+
+        drawList.push_back(
+            {transform.x - static_cast<float>(sprite.src_w) * 0.5f, // top-left corner
+             transform.y - static_cast<float>(sprite.src_h) * 0.5f, sprite.src_x, sprite.src_y,
+             sprite.src_w, sprite.src_h, sprite.layer, tex_id, tex_w, tex_h, tr, tg, tb, flip_x,
+             flip_y, is_solid});
     }
 
     // Sort ascending by layer — lower layers drawn first (appear behind).
@@ -245,20 +331,58 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
 
     for (const auto& e : drawList)
     {
-        glBindTexture(GL_TEXTURE_2D, e.texId);
-
-        // Model matrix: position at (e.x, e.y), scale to (srcW, srcH) pixels.
+        // Model matrix: position at (e.x, e.y), scale to (src_w, src_h) pixels.
         float model[16];
-        buildModel(model, e.x, e.y, static_cast<float>(e.srcW), static_cast<float>(e.srcH));
+        buildModel(model, e.x, e.y, static_cast<float>(e.src_w), static_cast<float>(e.src_h));
         glUniformMatrix4fv(glGetUniformLocation(sProgram, "uModel"), 1, GL_FALSE, model);
 
-        // Convert pixel src rect to 0-1 UV space for the atlas sample.
-        const float tw = static_cast<float>(e.texW > 0 ? e.texW : 1);
-        const float th = static_cast<float>(e.texH > 0 ? e.texH : 1);
-        glUniform4f(glGetUniformLocation(sProgram, "uSrcRect"), static_cast<float>(e.srcX) / tw,
-                    static_cast<float>(e.srcY) / th, static_cast<float>(e.srcW) / tw,
-                    static_cast<float>(e.srcH) / th);
+        if (e.solid_color)
+        {
+            // Flat color: sample the 1×1 white texture, tint to the entity's color.
+            glBindTexture(GL_TEXTURE_2D, sWhiteTex);
+            glUniform4f(glGetUniformLocation(sProgram, "uSrcRect"), 0.0f, 0.0f, 1.0f, 1.0f);
+        }
+        else
+        {
+            glBindTexture(GL_TEXTURE_2D, e.tex_id);
 
+            // Convert pixel src rect to 0-1 UV space for the atlas sample.
+            const float tw = static_cast<float>(e.tex_w > 0 ? e.tex_w : 1);
+            const float th = static_cast<float>(e.tex_h > 0 ? e.tex_h : 1);
+            // Flip trick: start UV at the far edge and use negative extent.
+            // Shader: uv = uSrcRect.xy + vUV * uSrcRect.zw — negative zw mirrors the sample.
+            const float uvX = e.flip_x ? static_cast<float>(e.src_x + e.src_w) / tw
+                                       : static_cast<float>(e.src_x) / tw;
+            const float uvW =
+                e.flip_x ? -static_cast<float>(e.src_w) / tw : static_cast<float>(e.src_w) / tw;
+            const float uvY = e.flip_y ? static_cast<float>(e.src_y + e.src_h) / th
+                                       : static_cast<float>(e.src_y) / th;
+            const float uvH =
+                e.flip_y ? -static_cast<float>(e.src_h) / th : static_cast<float>(e.src_h) / th;
+            glUniform4f(glGetUniformLocation(sProgram, "uSrcRect"), uvX, uvY, uvW, uvH);
+        }
+
+        glUniform4f(glGetUniformLocation(sProgram, "uTint"), e.tr, e.tg, e.tb, 1.0f);
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+    }
+
+    // Facing dot — 6×6 black square drawn at the front edge of every entity
+    // that has a FacingDirection component.  Uses the 1×1 white texture tinted black.
+    // Offset = 10 px in facing direction from center; dot top-left is 3 px back from that.
+    static constexpr float kDotSize = 6.0f;
+    static constexpr float kDotOffset = 10.0f;
+
+    glBindTexture(GL_TEXTURE_2D, sWhiteTex);
+    glUniform4f(glGetUniformLocation(sProgram, "uSrcRect"), 0.0f, 0.0f, 1.0f, 1.0f);
+    glUniform4f(glGetUniformLocation(sProgram, "uTint"), 0.0f, 0.0f, 0.0f, 1.0f); // black
+
+    for (auto [entity, transform, facing] : em.registry().view<Transform, FacingDirection>().each())
+    {
+        const float dotX = transform.x + facing.dx * kDotOffset - kDotSize * 0.5f;
+        const float dotY = transform.y + facing.dy * kDotOffset - kDotSize * 0.5f;
+        float model[16];
+        buildModel(model, dotX, dotY, kDotSize, kDotSize);
+        glUniformMatrix4fv(glGetUniformLocation(sProgram, "uModel"), 1, GL_FALSE, model);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
     }
 
@@ -282,5 +406,10 @@ void RenderSystem::shutdown()
     {
         glDeleteProgram(sProgram);
         sProgram = 0;
+    }
+    if (sWhiteTex != 0)
+    {
+        glDeleteTextures(1, &sWhiteTex);
+        sWhiteTex = 0;
     }
 }

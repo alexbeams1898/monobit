@@ -4,6 +4,87 @@
 #include <vector>
 
 // ---------------------------------------------------------------------------
+// FormulaConfig — all balance constants loaded once from config/balance/formulas.json.
+// Stored here so every system can read from em.formulas without coupling to
+// the JSON parser or re-loading the file each frame.
+// All fields carry sensible defaults so tests don't need a real JSON file.
+// ---------------------------------------------------------------------------
+struct FormulaConfig
+{
+    struct
+    {
+        float base = 50.f;
+        float scale = 100.f;
+    } hp;
+
+    struct
+    {
+        float base = 150.f;
+        float dex_scale = 30.f;
+    } movement;
+
+    struct
+    {
+        float str_scale = 20.f;
+        float end_scale = 10.f;
+    } carry_weight;
+
+    struct
+    {
+        float str_scale = 0.3f;
+        float end_scale = 0.5f;
+        float level_scale = 0.2f;
+        float cap = 75.f;
+    } defense;
+
+    struct
+    {
+        float drop_scale = 15.f;
+    } luck;
+
+    struct
+    {
+        float s = 1.5f;
+        float a = 1.25f;
+        float b = 1.0f;
+        float c = 0.75f;
+        float d = 0.5f;
+        float e = 0.25f;
+    } grade_multipliers;
+
+    struct
+    {
+        float weight_scale = 100.f;
+        float stat_scale = 40.f;
+        float two_handed_str_bonus = 0.3f;
+    } swing;
+
+    struct
+    {
+        float penalty_rate = 0.15f;
+    } stat_requirement;
+
+    struct
+    {
+        // poise_damage per hit = attacker weapon weight * weight_scale
+        float weight_scale = 20.0f;
+        // how long the hit-stagger lasts (brief flinch — not guard-break length)
+        float stagger_duration = 0.15f;
+        // seconds of no hits before accumulated poise damage resets
+        float decay_window = 5.0f;
+    } poise;
+
+    struct
+    {
+        float xp_base = 100.f;
+        float xp_exponent = 1.5f;
+        float points_per_level = 1.f;
+    } leveling;
+
+    bool loaded = false;
+};
+
+// ---------------------------------------------------------------------------
 // CollisionEvent — emitted by CollisionSystem each frame for every overlapping
 // pair of entities that both carry a Collider.
 // Stored in EntityManager so any system can read this frame's collisions without
@@ -63,14 +144,14 @@ struct FlowField
     static constexpr int STABILITY_FRAMES = 3;
 
     // Player's last fully-built grid cell.
-    int lastPlayerCol = -1;
-    int lastPlayerRow = -1;
+    int last_player_col = -1;
+    int last_player_row = -1;
 
     // Pending cell — the cell the player is currently in but hasn't stayed in
     // long enough to trigger a rebuild yet.
-    int pendingCol = -1;
-    int pendingRow = -1;
-    int stableCount = 0;
+    int pending_col = -1;
+    int pending_row = -1;
+    int stable_count = 0;
 };
 
 // ---------------------------------------------------------------------------
@@ -94,37 +175,42 @@ class EntityManager
   public:
     entt::entity create()
     {
-        return registry_.create();
+        return reg.create();
     }
 
     void destroy(entt::entity entity)
     {
-        registry_.destroy(entity);
+        reg.destroy(entity);
     }
 
     entt::registry& registry()
     {
-        return registry_;
+        return reg;
     }
 
     const entt::registry& registry() const
     {
-        return registry_;
+        return reg;
     }
 
     // Collision events accumulated by CollisionSystem this frame.
     // Cleared at the start of each CollisionSystem::update() call.
-    std::vector<CollisionEvent> collisionEvents;
+    std::vector<CollisionEvent> collision_events;
 
     void clearCollisionEvents()
     {
-        collisionEvents.clear();
+        collision_events.clear();
     }
 
     // Flow field — rebuilt by FlowFieldSystem via BFS whenever the player
     // enters a new grid cell. Read by ChaseSystem every frame.
-    FlowField flowField;
+    FlowField flow_field;
+
+    // Balance formulas — loaded once from config/balance/formulas.json by
+    // ConfigLoader::loadFormulas(). Read by combat, movement, and leveling
+    // systems every frame. Never write to this after startup.
+    FormulaConfig formulas;
 
   private:
-    entt::registry registry_;
+    entt::registry reg;
 };

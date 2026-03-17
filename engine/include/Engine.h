@@ -21,7 +21,7 @@ class Engine
     // entities and attach components before calling run().
     EntityManager& entityManager()
     {
-        return entityManager_;
+        return entity_manager;
     }
 
   private:
@@ -30,11 +30,11 @@ class Engine
     void render();
 
     SDL_Window* window = nullptr;
-    void* glContext = nullptr;
+    void* gl_context = nullptr;
     bool running = false;
-    int windowW_ = 0;
-    int windowH_ = 0;
+    int window_w = 0;
+    int window_h = 0;
 
-    EntityManager entityManager_;
-    TextureManager textureManager_;
+    EntityManager entity_manager;
+    TextureManager texture_manager;
 };

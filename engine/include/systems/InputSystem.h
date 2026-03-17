@@ -9,7 +9,7 @@
 // drained the event queue. SDL_GetKeyboardState reflects the latest state only
 // after PollEvent runs, so order matters.
 //
-// Writes moveX/moveY to every entity that has an Input component. Today that
+// Writes move_x/move_y to every entity that has an Input component. Today that
 // is just the player, but the system doesn't need to know that.
 //
 // Does NOT write to Velocity directly — that is MovementSystem's job. Keeping

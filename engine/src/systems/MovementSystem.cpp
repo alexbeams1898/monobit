@@ -5,10 +5,6 @@
 #include <cmath>
 #include <vector>
 
-// Pixels per second at full input deflection.
-// Will eventually come from a component or entity config value.
-static constexpr float PLAYER_SPEED = 200.0f;
-
 // How much to shrink the entity's bounding box for movement projection checks.
 // Applied as an inset on each side (so a 32x32 entity uses a 30x30 test box).
 //
@@ -31,24 +27,53 @@ static bool aabbOverlap(float ax, float ay, float aw, float ah, float bx, float 
 void MovementSystem::update(EntityManager& em, double dt)
 {
     const float fdt = static_cast<float>(dt);
+    const FormulaConfig& f = em.formulas;
+
+    // Pass 0: Stagger lock — zero velocity for any entity that can't move.
+    // Must run before Pass 1 (player input) and after ChaseSystem/SteeringSystem
+    // (which set enemy velocity earlier this frame) so both are covered.
+    for (auto entity : em.registry().view<Staggered, Velocity>())
+    {
+        auto& vel = em.registry().get<Velocity>(entity);
+        vel.dx = 0.0f;
+        vel.dy = 0.0f;
+    }
 
     // Pass 1: Input intent → Velocity.
-    // Only entities with both Input and Velocity are affected here.
+    // Player speed is derived from DEX stat using the formula:
+    //   finalSpeed = base * (1 + floor(dex_scale * log(DEX + 1)) / 100)
+    // Entities without Stats fall back to f.movement.base (150 px/s default).
+    //
+    // Skip velocity update if the entity is Dodging (dodge impulse carries through)
+    // or Staggered (guard break / parry result locks movement briefly).
     for (auto [entity, input, vel] : em.registry().view<Input, Velocity>().each())
     {
-        vel.dx = input.moveX * PLAYER_SPEED;
-        vel.dy = input.moveY * PLAYER_SPEED;
+        // Dodging and Staggered states override normal movement.
+        if (em.registry().all_of<Dodging>(entity) || em.registry().all_of<Staggered>(entity))
+            continue;
+
+        float speed = f.movement.base;
+        if (em.registry().all_of<Stats>(entity))
+        {
+            const int dex = em.registry().get<Stats>(entity).dex;
+            speed *= (1.0f +
+                      std::floor(f.movement.dex_scale * std::log(static_cast<float>(dex) + 1.0f)) /
+                          100.0f);
+        }
+
+        vel.dx = input.move_x * speed;
+        vel.dy = input.move_y * speed;
     }
 
     // Gather static solid colliders for axis-projection checks below.
-    // "Static" = has Collider + isSolid, but no Velocity component.
+    // "Static" = has Collider + is_solid, but no Velocity component.
     // Collected once per frame so the inner loop doesn't re-query the registry.
     auto allColliders = em.registry().view<Transform, Collider>();
     std::vector<entt::entity> statics;
     statics.reserve(64);
     for (auto e : allColliders)
     {
-        if (!em.registry().all_of<Velocity>(e) && allColliders.get<Collider>(e).isSolid)
+        if (!em.registry().all_of<Velocity>(e) && allColliders.get<Collider>(e).is_solid)
             statics.push_back(e);
     }
 
@@ -113,5 +138,19 @@ void MovementSystem::update(EntityManager& em, double dt)
 
         transform.x = nx;
         transform.y = ny;
+    }
+
+    // Pass 3: Update FacingDirection from current velocity for all entities.
+    // This runs after position integration so the facing reflects where the
+    // entity actually moved this frame (wall projections may zero an axis).
+    for (auto [entity, vel, facing] : em.registry().view<Velocity, FacingDirection>().each())
+    {
+        const float len = std::sqrt(vel.dx * vel.dx + vel.dy * vel.dy);
+        if (len > 0.0f)
+        {
+            facing.dx = vel.dx / len;
+            facing.dy = vel.dy / len;
+        }
+        // If vel is zero, keep the last known facing direction.
     }
 }

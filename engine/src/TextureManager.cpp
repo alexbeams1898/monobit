@@ -14,8 +14,8 @@ uint32_t TextureManager::load(const std::string& path)
         return makeFallback();
 
     // Cache hit — return immediately without touching disk or GPU.
-    auto it = cache_.find(path);
-    if (it != cache_.end())
+    auto it = cache.find(path);
+    if (it != cache.end())
         return it->second;
 
     // Load pixel data from disk.
@@ -46,31 +46,31 @@ uint32_t TextureManager::load(const std::string& path)
     stbi_image_free(pixels);
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    cache_[path] = static_cast<uint32_t>(texId);
+    cache[path] = static_cast<uint32_t>(texId);
     return static_cast<uint32_t>(texId);
 }
 
 void TextureManager::clear()
 {
-    for (auto& [path, id] : cache_)
+    for (auto& [path, id] : cache)
     {
         GLuint texId = static_cast<GLuint>(id);
         glDeleteTextures(1, &texId);
     }
-    cache_.clear();
+    cache.clear();
 
-    if (fallbackId_ != 0)
+    if (fallback_id != 0)
     {
-        GLuint texId = static_cast<GLuint>(fallbackId_);
+        GLuint texId = static_cast<GLuint>(fallback_id);
         glDeleteTextures(1, &texId);
-        fallbackId_ = 0;
+        fallback_id = 0;
     }
 }
 
 uint32_t TextureManager::makeFallback()
 {
-    if (fallbackId_ != 0)
-        return fallbackId_;
+    if (fallback_id != 0)
+        return fallback_id;
 
     // 8x8 magenta (255,0,255) / black checkerboard — unmistakably "missing texture".
     constexpr int size = 8;
@@ -96,6 +96,6 @@ uint32_t TextureManager::makeFallback()
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, size, size, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    fallbackId_ = static_cast<uint32_t>(texId);
-    return fallbackId_;
+    fallback_id = static_cast<uint32_t>(texId);
+    return fallback_id;
 }

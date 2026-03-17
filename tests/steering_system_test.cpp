@@ -18,7 +18,7 @@
 //   CROWD_SAMPLE_RADIUS  = 2 cells — neighbour window for crowd repulsion
 // ---------------------------------------------------------------------------
 
-static entt::entity makeEnemy(EntityManager& em, float x, float y, float speed, float vx = 0.0f,
+static entt::entity makeEnemy(EntityManager& em, float x, float y, float /*speed*/, float vx = 0.0f,
                               float vy = 0.0f,
                               AIController::State state = AIController::State::Chase)
 {
@@ -27,7 +27,6 @@ static entt::entity makeEnemy(EntityManager& em, float x, float y, float speed, 
     em.registry().emplace<Velocity>(e, Velocity{vx, vy});
     AIController ai;
     ai.state = state;
-    ai.speed = speed;
     em.registry().emplace<AIController>(e, ai);
     return e;
 }
@@ -149,10 +148,10 @@ TEST_CASE("SteeringSystem crowd repulsion deflects away from dense neighbour", "
     // Expected: vel.dy < 0 (pushed north, away from south crowd).
     auto enemy = makeEnemy(em, 100.0f, 100.0f, 80.0f, 80.0f, 0.0f);
     AIController ai = em.registry().get<AIController>(enemy);
-    ai.separationStrength = 1.0f;
+    ai.separation_strength = 1.0f;
     em.registry().replace<AIController>(enemy, ai);
 
-    em.flowField.density[7][6] = 3; // 3 enemies one cell to the south
+    em.flow_field.density[7][6] = 3; // 3 enemies one cell to the south
 
     SteeringSystem::update(em);
 
@@ -168,10 +167,10 @@ TEST_CASE("SteeringSystem crowd repulsion preserves speed for lateral crowd", "[
     EntityManager em;
     auto enemy = makeEnemy(em, 100.0f, 100.0f, 80.0f, 80.0f, 0.0f);
     AIController ai = em.registry().get<AIController>(enemy);
-    ai.separationStrength = 1.0f;
+    ai.separation_strength = 1.0f;
     em.registry().replace<AIController>(enemy, ai);
 
-    em.flowField.density[7][6] = 3; // lateral — perpendicular to vel
+    em.flow_field.density[7][6] = 3; // lateral — perpendicular to vel
 
     SteeringSystem::update(em);
 
@@ -180,16 +179,16 @@ TEST_CASE("SteeringSystem crowd repulsion preserves speed for lateral crowd", "[
     REQUIRE(mag == Catch::Approx(80.0f).margin(0.5f));
 }
 
-TEST_CASE("SteeringSystem crowd repulsion disabled when separationStrength is zero",
+TEST_CASE("SteeringSystem crowd repulsion disabled when separation_strength is zero",
           "[steering][crowd]")
 {
     EntityManager em;
     auto enemy = makeEnemy(em, 100.0f, 100.0f, 80.0f, 80.0f, 0.0f);
     AIController ai = em.registry().get<AIController>(enemy);
-    ai.separationStrength = 0.0f; // disabled
+    ai.separation_strength = 0.0f; // disabled
     em.registry().replace<AIController>(enemy, ai);
 
-    em.flowField.density[6][7] = 10; // high density — but should be ignored
+    em.flow_field.density[6][7] = 10; // high density — but should be ignored
 
     SteeringSystem::update(em);
 
@@ -207,7 +206,7 @@ TEST_CASE("SteeringSystem same-cell repulsion deflects toward own cell edge", "[
     // dot(east=(1,0), offN=(+0.71,−0.71)) = +0.71 ≥ SKIP_DOT_THRESHOLD → not skipped.
     // Force pushes NE — vel.dy becomes negative (northward component added).
     auto enemy = makeEnemy(em, 108.0f, 100.0f, 80.0f, 80.0f, 0.0f);
-    em.flowField.density[6][6] = 2;
+    em.flow_field.density[6][6] = 2;
 
     SteeringSystem::update(em);
 

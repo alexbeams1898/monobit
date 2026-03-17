@@ -14,6 +14,13 @@ target_sources(engine PRIVATE
     src/systems/FlowFieldSystem.cpp
     src/systems/SteeringSystem.cpp
     src/systems/SpawnerSystem.cpp
+    src/systems/CombatSystem.cpp
+    src/systems/DamageSystem.cpp
+    src/systems/DeathSystem.cpp
+    src/systems/PickupSystem.cpp
+    src/systems/LevelingSystem.cpp
+    src/systems/RestSpotSystem.cpp
+    src/systems/AudioSystem.cpp
 )
 
 target_include_directories(engine
@@ -30,7 +37,13 @@ target_link_libraries(engine
         FMOD::Core
         glad
         TracyClient
+        miniaudio::miniaudio
 )
+
+# miniaudio on Windows requires these system libs (WASAPI/WinMM/COM).
+if(WIN32)
+    target_link_libraries(engine PUBLIC winmm ole32)
+endif()
 
 target_compile_features(engine PUBLIC cxx_std_17)
 

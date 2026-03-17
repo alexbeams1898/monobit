@@ -49,7 +49,7 @@ void SteeringSystem::update(EntityManager& em)
     statics.reserve(64);
     for (auto e : allColliders)
     {
-        if (!em.registry().all_of<Velocity>(e) && allColliders.get<Collider>(e).isSolid)
+        if (!em.registry().all_of<Velocity>(e) && allColliders.get<Collider>(e).is_solid)
             statics.push_back(e);
     }
 
@@ -151,12 +151,12 @@ void SteeringSystem::update(EntityManager& em)
         // (speed preserved); head-on crowd slows the entity — correct, since
         // you naturally slow pressing into a crowd.
         //
-        // separationStrength = 0 → disabled; 0.6 = CO; 1.2 = warden.
-        if (ai.separationStrength > 0.0f)
+        // separation_strength = 0 → disabled; 0.6 = CO; 1.2 = warden.
+        if (ai.separation_strength > 0.0f)
         {
             static constexpr int CROWD_SAMPLE_RADIUS = 2;
 
-            const auto& ff = em.flowField;
+            const auto& ff = em.flow_field;
             const int ec = static_cast<int>(transform.x / FlowField::CELL_SIZE);
             const int er = static_cast<int>(transform.y / FlowField::CELL_SIZE);
             float crX = 0.0f;
@@ -218,8 +218,8 @@ void SteeringSystem::update(EntityManager& em)
             const float crMag = std::sqrt(crX * crX + crY * crY);
             if (crMag > 0.0f)
             {
-                vel.dx += (crX / crMag) * origSpeed * ai.separationStrength;
-                vel.dy += (crY / crMag) * origSpeed * ai.separationStrength;
+                vel.dx += (crX / crMag) * origSpeed * ai.separation_strength;
+                vel.dy += (crY / crMag) * origSpeed * ai.separation_strength;
                 // Cap at origSpeed — crowd separation must not accelerate the
                 // entity beyond its configured speed.  Below origSpeed is fine:
                 // an entity pressing head-on into a crowd naturally slows down.

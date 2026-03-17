@@ -19,13 +19,13 @@ static entt::entity makePlayer(EntityManager& em, float x, float y)
     return e;
 }
 
-static entt::entity makeEnemy(EntityManager& em, float x, float y, float aggroRadius)
+static entt::entity makeEnemy(EntityManager& em, float x, float y, float aggro_radius)
 {
     auto e = em.create();
     em.registry().emplace<Transform>(e, Transform{x, y});
     AIController ai;
     ai.state = AIController::State::Idle;
-    ai.aggroRadius = aggroRadius;
+    ai.aggro_radius = aggro_radius;
     em.registry().emplace<AIController>(e, ai);
     return e;
 }
@@ -104,7 +104,7 @@ TEST_CASE("AggroSystem: no player — no transition", "[aggro]")
 // Chase → Attack and Attack → Chase transition tests
 // ---------------------------------------------------------------------------
 
-TEST_CASE("AggroSystem: Chase enemy enters Attack when inside arrivalRadius", "[aggro][attack]")
+TEST_CASE("AggroSystem: Chase enemy enters Attack when inside arrival_radius", "[aggro][attack]")
 {
     EntityManager em;
     makePlayer(em, 0.0f, 0.0f);
@@ -113,17 +113,17 @@ TEST_CASE("AggroSystem: Chase enemy enters Attack when inside arrivalRadius", "[
                                       [](AIController& ai)
                                       {
                                           ai.state = AIController::State::Chase;
-                                          ai.arrivalRadius = 200.0f;
-                                          ai.attackRadius = 48.0f;
+                                          ai.arrival_radius = 200.0f;
+                                          ai.attack_radius = 48.0f;
                                       });
 
     AggroSystem::update(em);
 
-    // dist=100 ≤ arrivalRadius=200 and attackRadius > 0 → Attack
+    // dist=100 ≤ arrival_radius=200 and attack_radius > 0 → Attack
     REQUIRE(em.registry().get<AIController>(enemy).state == AIController::State::Attack);
 }
 
-TEST_CASE("AggroSystem: Chase enemy stays Chase when outside arrivalRadius", "[aggro][attack]")
+TEST_CASE("AggroSystem: Chase enemy stays Chase when outside arrival_radius", "[aggro][attack]")
 {
     EntityManager em;
     makePlayer(em, 0.0f, 0.0f);
@@ -132,55 +132,55 @@ TEST_CASE("AggroSystem: Chase enemy stays Chase when outside arrivalRadius", "[a
                                       [](AIController& ai)
                                       {
                                           ai.state = AIController::State::Chase;
-                                          ai.arrivalRadius = 200.0f;
-                                          ai.attackRadius = 48.0f;
+                                          ai.arrival_radius = 200.0f;
+                                          ai.attack_radius = 48.0f;
                                       });
 
     AggroSystem::update(em);
 
-    // dist=300 > arrivalRadius=200 → stays Chase
+    // dist=300 > arrival_radius=200 → stays Chase
     REQUIRE(em.registry().get<AIController>(enemy).state == AIController::State::Chase);
 }
 
 TEST_CASE("AggroSystem: Attack enemy returns to Chase when player runs away", "[aggro][attack]")
 {
     EntityManager em;
-    makePlayer(em, 400.0f, 0.0f); // far — beyond arrivalRadius * 1.2
+    makePlayer(em, 400.0f, 0.0f); // far — beyond arrival_radius * 1.2
     auto enemy = makeEnemy(em, 0.0f, 0.0f, 300.0f);
     em.registry().patch<AIController>(enemy,
                                       [](AIController& ai)
                                       {
                                           ai.state = AIController::State::Attack;
-                                          ai.arrivalRadius = 128.0f;
-                                          ai.attackRadius = 48.0f;
+                                          ai.arrival_radius = 128.0f;
+                                          ai.attack_radius = 48.0f;
                                       });
 
     AggroSystem::update(em);
 
-    // dist=400 > arrivalRadius*1.2 = 153.6 → back to Chase
+    // dist=400 > arrival_radius*1.2 = 153.6 → back to Chase
     REQUIRE(em.registry().get<AIController>(enemy).state == AIController::State::Chase);
 }
 
 TEST_CASE("AggroSystem: Attack enemy holds Attack when player is still close", "[aggro][attack]")
 {
     EntityManager em;
-    makePlayer(em, 100.0f, 0.0f); // within arrivalRadius
+    makePlayer(em, 100.0f, 0.0f); // within arrival_radius
     auto enemy = makeEnemy(em, 0.0f, 0.0f, 300.0f);
     em.registry().patch<AIController>(enemy,
                                       [](AIController& ai)
                                       {
                                           ai.state = AIController::State::Attack;
-                                          ai.arrivalRadius = 128.0f;
-                                          ai.attackRadius = 48.0f;
+                                          ai.arrival_radius = 128.0f;
+                                          ai.attack_radius = 48.0f;
                                       });
 
     AggroSystem::update(em);
 
-    // dist=100 ≤ arrivalRadius*1.2 = 153.6 → stays Attack
+    // dist=100 ≤ arrival_radius*1.2 = 153.6 → stays Attack
     REQUIRE(em.registry().get<AIController>(enemy).state == AIController::State::Attack);
 }
 
-TEST_CASE("AggroSystem: Chase enemy with no attackRadius never transitions to Attack",
+TEST_CASE("AggroSystem: Chase enemy with no attack_radius never transitions to Attack",
           "[aggro][attack]")
 {
     EntityManager em;
@@ -190,12 +190,12 @@ TEST_CASE("AggroSystem: Chase enemy with no attackRadius never transitions to At
                                       [](AIController& ai)
                                       {
                                           ai.state = AIController::State::Chase;
-                                          ai.arrivalRadius = 200.0f;
-                                          ai.attackRadius = 0.0f; // disabled
+                                          ai.arrival_radius = 200.0f;
+                                          ai.attack_radius = 0.0f; // disabled
                                       });
 
     AggroSystem::update(em);
 
-    // attackRadius=0 → Chase→Attack never fires
+    // attack_radius=0 → Chase→Attack never fires
     REQUIRE(em.registry().get<AIController>(enemy).state == AIController::State::Chase);
 }

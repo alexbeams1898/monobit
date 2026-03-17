@@ -1,0 +1,12 @@
+{
+  "hp":            { "base": 5,   "scale": 100 },
+  "movement":      { "base": 150, "dex_scale": 30 },
+  "carry_weight":  { "str_scale": 20, "end_scale": 10 },
+  "defense":       { "str_scale": 0.3, "end_scale": 0.5, "level_scale": 0.2, "cap": 75 },
+  "luck":          { "drop_scale": 15 },
+  "damage":        { "grade_multipliers": { "S": 1.5, "A": 1.25, "B": 1.0, "C": 0.75, "D": 0.5, "E": 0.25 } },
+  "swing":         { "weight_scale": 5, "stat_scale": 40, "two_handed_str_bonus": 0.3 },
+  "stat_requirement": { "penalty_rate": 0.15 },
+  "leveling":      { "xp_base": 100, "xp_exponent": 1.5, "points_per_level": 1 },
+  "poise":         { "weight_scale": 20, "stagger_duration": 0.5, "decay_window": 5.0 }
+}

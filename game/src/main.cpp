@@ -1,6 +1,7 @@
 #include "ConfigLoader.h"
 #include "Engine.h"
 #include "ecs/Components.h"
+#include "systems/LevelingSystem.h"
 #include "systems/SpawnerSystem.h"
 
 int main(int argc, char* argv[])
@@ -10,14 +11,20 @@ int main(int argc, char* argv[])
 
     Engine engine;
 
-    if (!engine.init("Prison Break", 1280, 720))
+    if (!engine.init("Hell Escape", 1280, 720))
         return 1;
 
     // Load the player entity from config, then attach an Input component so
     // InputSystem treats it as player-controlled.
     // ConfigLoader returns entt::null on failure — guard before emplacing.
     auto& em = engine.entityManager();
+
+    // Load balance formulas first — all systems read from em.formulas.
+    // Falls back to hardcoded defaults if the file is missing (safe for tests).
+    ConfigLoader::loadFormulas(em, "config/balance/formulas.json");
+
     auto player = ConfigLoader::loadEntity(em, "config/entities/player.json");
+    ConfigLoader::loadEntity(em, "config/entities/rest_spot.json");
     SpawnerSystem::load(em, "config/spawns/initial_spawn.json");
 
     // Spawn a rectangular wall enclosure centred on (640, 360).
@@ -110,6 +117,10 @@ int main(int argc, char* argv[])
         const auto& pt = em.registry().get<Transform>(player);
         em.registry().emplace<Camera>(player, Camera{pt.x, pt.y, true});
     }
+
+    // Derive Health.max from END stats for all stat-based entities.
+    // Must run after all entities are loaded so every Stats component is present.
+    LevelingSystem::applyInitialDerivations(em);
 
     engine.run();
     return 0;

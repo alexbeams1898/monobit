@@ -1,6 +1,7 @@
 #include "ConfigLoader.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
+#include "systems/LevelingSystem.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -19,25 +20,30 @@ TEST_CASE("ConfigLoader loads correctional_officer with correct components", "[c
     auto entity = ConfigLoader::loadEntity(em, "config/entities/correctional_officer.json");
 
     REQUIRE(em.registry().valid(entity));
-    REQUIRE(em.registry().all_of<Tag, Transform, Health, Velocity, Collider, Sprite, AIController>(
-        entity));
+    // Health is derived by LevelingSystem — not present until applyInitialDerivations.
+    REQUIRE(em.registry()
+                .all_of<Tag, Transform, Stats, Weapon, Velocity, Collider, Sprite, AIController>(
+                    entity));
+    REQUIRE_FALSE(em.registry().all_of<Health>(entity));
+
+    LevelingSystem::applyInitialDerivations(em);
+
+    // CO: end=1, default formulas → maxHP = 50 + floor(100 * ln(2)) = 119
+    auto& health = em.registry().get<Health>(entity);
+    REQUIRE(health.max == 119);
+    REQUIRE(health.current == health.max);
 
     auto& tag = em.registry().get<Tag>(entity);
     REQUIRE(tag.name == "correctional_officer");
 
-    auto& health = em.registry().get<Health>(entity);
-    REQUIRE(health.current == 60);
-    REQUIRE(health.max == 60);
-
     auto& collider = em.registry().get<Collider>(entity);
     REQUIRE(collider.width == 32.0f);
-    REQUIRE(collider.isSolid);
+    REQUIRE(collider.is_solid);
 
     auto& ai = em.registry().get<AIController>(entity);
     REQUIRE(ai.state == AIController::State::Idle); // aggro_radius > 0 → starts Idle
-    REQUIRE(ai.speed == Catch::Approx(155.0f));
-    REQUIRE(ai.separationStrength == Catch::Approx(0.6f));
-    REQUIRE(ai.arrivalRadius == Catch::Approx(128.0f));
+    REQUIRE(ai.separation_strength == Catch::Approx(0.6f));
+    REQUIRE(ai.arrival_radius == Catch::Approx(128.0f));
 }
 
 TEST_CASE("ConfigLoader loads player entity with correct values", "[config]")
@@ -54,8 +60,14 @@ TEST_CASE("ConfigLoader loads player entity with correct values", "[config]")
     REQUIRE(transform.x == 640.0f);
     REQUIRE(transform.y == 360.0f);
 
+    // Health is derived — must call applyInitialDerivations first.
+    REQUIRE_FALSE(em.registry().all_of<Health>(entity));
+    LevelingSystem::applyInitialDerivations(em);
+
+    // Player: end=5, default formulas → maxHP = 50 + floor(100 * ln(6)) = 229
     auto& health = em.registry().get<Health>(entity);
-    REQUIRE(health.max == 150);
+    REQUIRE(health.max == 229);
+    REQUIRE(health.current == health.max);
 }
 
 TEST_CASE("ConfigLoader returns invalid entity for missing file", "[config]")

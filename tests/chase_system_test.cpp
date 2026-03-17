@@ -28,19 +28,25 @@ static entt::entity makePlayer(EntityManager& em, float x, float y)
     return e;
 }
 
-// turnSpeed defaults to 0 (instant snap) so existing tests can assert exact
+// turn_speed defaults to 0 (instant snap) so existing tests can assert exact
 // velocity values without compensating for blending math.
+// Speed is set via em.formulas.movement.base with dex_scale=0 so tests get exact pixel values
+// without having to solve the log formula in reverse. Each call overwrites the shared formula —
+// do not mix different speeds in the same test unless you only need directional assertions.
 static entt::entity makeEnemy(EntityManager& em, float x, float y, float speed,
                               AIController::State state = AIController::State::Chase,
-                              float turnSpeed = 0.0f)
+                              float turn_speed = 0.0f)
 {
+    em.formulas.movement.base = speed;
+    em.formulas.movement.dex_scale = 0.0f; // DEX has no effect in tests
+
     auto e = em.create();
     em.registry().emplace<Transform>(e, Transform{x, y});
     em.registry().emplace<Velocity>(e);
+    em.registry().emplace<Stats>(e); // required by ChaseSystem for DEX lookup
     AIController ai;
     ai.state = state;
-    ai.speed = speed;
-    ai.turnSpeed = turnSpeed;
+    ai.turn_speed = turn_speed;
     em.registry().emplace<AIController>(e, ai);
     return e;
 }
@@ -144,20 +150,21 @@ TEST_CASE("ChaseSystem handles multiple enemies independently", "[chase]")
     EntityManager em;
     makePlayer(em, 0.0f, 0.0f); // player at cell (0,0)
 
+    // Both enemies use the same formula base — test verifies direction independence, not magnitude.
     // Enemy A is directly to the right (cell 6,0) — flow points left (-1,0).
-    auto enemyA = makeEnemy(em, 100.0f, 0.0f, 50.0f);
+    auto enemyA = makeEnemy(em, 100.0f, 0.0f, 100.0f);
     // Enemy B is directly below (cell 0,12) — flow points up (0,-1).
-    auto enemyB = makeEnemy(em, 0.0f, 200.0f, 120.0f);
+    auto enemyB = makeEnemy(em, 0.0f, 200.0f, 100.0f);
 
     runAI(em);
 
     const auto& velA = em.registry().get<Velocity>(enemyA);
-    REQUIRE(velA.dx == Catch::Approx(-50.0f)); // moving left toward player
+    REQUIRE(velA.dx < 0.0f); // moving left toward player
     REQUIRE(velA.dy == Catch::Approx(0.0f));
 
     const auto& velB = em.registry().get<Velocity>(enemyB);
     REQUIRE(velB.dx == Catch::Approx(0.0f));
-    REQUIRE(velB.dy == Catch::Approx(-120.0f)); // moving up toward player
+    REQUIRE(velB.dy < 0.0f); // moving up toward player
 }
 
 TEST_CASE("FlowFieldSystem routes enemy around a wall", "[chase][flowfield]")
@@ -193,7 +200,7 @@ TEST_CASE("FlowFieldSystem routes enemy around a wall", "[chase][flowfield]")
 TEST_CASE("ChaseSystem velocity blending converges toward target over multiple frames",
           "[chase][blending]")
 {
-    // turnSpeed > 0 blends velocity toward the flow-field direction each frame.
+    // turn_speed > 0 blends velocity toward the flow-field direction each frame.
     // After one frame the velocity should be strictly between 0 and the target,
     // and successive frames must move monotonically closer to the target.
     EntityManager em;
@@ -236,7 +243,7 @@ TEST_CASE("ChaseSystem uses flow field at long range, not direct vector", "[chas
     EntityManager em;
     constexpr float SPEED = 80.0f;
     makePlayer(em, 500.0f, 0.0f);
-    auto enemy = makeEnemy(em, 0.0f, 0.0f, SPEED); // turnSpeed=0
+    auto enemy = makeEnemy(em, 0.0f, 0.0f, SPEED); // turn_speed=0
 
     runAI(em);
 
@@ -272,7 +279,7 @@ TEST_CASE("ChaseSystem respects flow field when direct vector is blocked by a wa
     constexpr float SPEED = 80.0f;
     makePlayer(em, 512.0f, 0.0f);
     makeWall(em, 32.0f, 0.0f);                     // center (32,0) 32x32 → blocks cols 1-2, row 0
-    auto enemy = makeEnemy(em, 0.0f, 0.0f, SPEED); // turnSpeed=0
+    auto enemy = makeEnemy(em, 0.0f, 0.0f, SPEED); // turn_speed=0
 
     runAI(em);
 
@@ -327,12 +334,12 @@ TEST_CASE("FlowFieldSystem wall marking uses center-based coordinates, not top-l
 // Arrival softening tests
 // ---------------------------------------------------------------------------
 
-TEST_CASE("ChaseSystem arrival softening scales speed when within arrivalRadius",
+TEST_CASE("ChaseSystem arrival softening scales speed when within arrival_radius",
           "[chase][arrival]")
 {
-    // Player at (0,0). Enemy at (100,0) — dist=100, arrivalRadius=200.
+    // Player at (0,0). Enemy at (100,0) — dist=100, arrival_radius=200.
     // maxSpeed = 100 * (100/200) = 50.  Cell (6,0) → flow direction = (-1,0).
-    // Blending (turnSpeed=0) snaps vel to full speed (-100,0), then the
+    // Blending (turn_speed=0) snaps vel to full speed (-100,0), then the
     // post-blend cap reduces it to 50: vel.dx = -50.
     EntityManager em;
     constexpr float SPEED = 100.0f;
@@ -340,7 +347,7 @@ TEST_CASE("ChaseSystem arrival softening scales speed when within arrivalRadius"
     auto enemy = makeEnemy(em, 100.0f, 0.0f, SPEED);
 
     auto& ai = em.registry().get<AIController>(enemy);
-    ai.arrivalRadius = 200.0f;
+    ai.arrival_radius = 200.0f;
     em.registry().replace<AIController>(enemy, ai);
 
     runAI(em);
@@ -350,12 +357,12 @@ TEST_CASE("ChaseSystem arrival softening scales speed when within arrivalRadius"
     REQUIRE(vel.dy == Catch::Approx(0.0f));
 }
 
-TEST_CASE("ChaseSystem no arrival softening when arrivalRadius is zero", "[chase][arrival]")
+TEST_CASE("ChaseSystem no arrival softening when arrival_radius is zero", "[chase][arrival]")
 {
     EntityManager em;
     constexpr float SPEED = 100.0f;
     makePlayer(em, 0.0f, 0.0f);
-    auto enemy = makeEnemy(em, 100.0f, 0.0f, SPEED); // arrivalRadius defaults to 0
+    auto enemy = makeEnemy(em, 100.0f, 0.0f, SPEED); // arrival_radius defaults to 0
 
     runAI(em);
 
@@ -364,16 +371,17 @@ TEST_CASE("ChaseSystem no arrival softening when arrivalRadius is zero", "[chase
     REQUIRE(vel.dy == Catch::Approx(0.0f));
 }
 
-TEST_CASE("ChaseSystem no arrival softening when enemy is beyond arrivalRadius", "[chase][arrival]")
+TEST_CASE("ChaseSystem no arrival softening when enemy is beyond arrival_radius",
+          "[chase][arrival]")
 {
-    // Enemy at (300,0) — dist=300 > arrivalRadius=200. No softening.
+    // Enemy at (300,0) — dist=300 > arrival_radius=200. No softening.
     EntityManager em;
     constexpr float SPEED = 100.0f;
     makePlayer(em, 0.0f, 0.0f);
     auto enemy = makeEnemy(em, 300.0f, 0.0f, SPEED);
 
     auto& ai = em.registry().get<AIController>(enemy);
-    ai.arrivalRadius = 200.0f;
+    ai.arrival_radius = 200.0f;
     em.registry().replace<AIController>(enemy, ai);
 
     runAI(em);
@@ -389,14 +397,14 @@ TEST_CASE("ChaseSystem no arrival softening when enemy is beyond arrivalRadius",
 
 TEST_CASE("ChaseSystem Attack state moves enemy toward slot on player ring", "[chase][attack]")
 {
-    // Player at (0,0). Enemy in Attack at (200,0), attackRadius=48.
+    // Player at (0,0). Enemy in Attack at (200,0), attack_radius=48.
     // Enemy is directly east of player: slot = (0 + 1*48, 0) = (48,0).
     // slotDist = 200-48 = 152 >> CELL_SIZE. scale = min(1, 152/48) = 1.
-    // targetDx = -speed. With turnSpeed=0: vel.dx = -speed.
+    // targetDx = -speed. With turn_speed=0: vel.dx = -speed.
     EntityManager em;
     makePlayer(em, 0.0f, 0.0f);
     auto enemy = makeEnemy(em, 200.0f, 0.0f, 100.0f, AIController::State::Attack);
-    em.registry().patch<AIController>(enemy, [](AIController& ai) { ai.attackRadius = 48.0f; });
+    em.registry().patch<AIController>(enemy, [](AIController& ai) { ai.attack_radius = 48.0f; });
 
     runAI(em);
 
@@ -411,7 +419,7 @@ TEST_CASE("ChaseSystem Attack state stops when at slot", "[chase][attack]")
     EntityManager em;
     makePlayer(em, 0.0f, 0.0f);
     auto enemy = makeEnemy(em, 48.0f, 0.0f, 100.0f, AIController::State::Attack);
-    em.registry().patch<AIController>(enemy, [](AIController& ai) { ai.attackRadius = 48.0f; });
+    em.registry().patch<AIController>(enemy, [](AIController& ai) { ai.attack_radius = 48.0f; });
 
     runAI(em);
 
@@ -430,9 +438,9 @@ TEST_CASE("ChaseSystem Attack state: enemies from different directions target di
     EntityManager em;
     makePlayer(em, 0.0f, 0.0f);
     auto enemyA = makeEnemy(em, 200.0f, 0.0f, 100.0f, AIController::State::Attack);
-    em.registry().patch<AIController>(enemyA, [](AIController& ai) { ai.attackRadius = 48.0f; });
+    em.registry().patch<AIController>(enemyA, [](AIController& ai) { ai.attack_radius = 48.0f; });
     auto enemyB = makeEnemy(em, 0.0f, 200.0f, 100.0f, AIController::State::Attack);
-    em.registry().patch<AIController>(enemyB, [](AIController& ai) { ai.attackRadius = 48.0f; });
+    em.registry().patch<AIController>(enemyB, [](AIController& ai) { ai.attack_radius = 48.0f; });
 
     runAI(em);
 
