@@ -205,8 +205,9 @@ void TileMapRenderer::upload(const TileMap& map, const TileConfig& config, Textu
         const float tw = static_cast<float>(atlasW);
         const float th = static_cast<float>(atlasH);
         const float tileF = 32.0f;
-        return {tuv.col * tileF / tw, tuv.row * tileF / th, (tuv.col + 1) * tileF / tw,
-                (tuv.row + 1) * tileF / th};
+        const float c = static_cast<float>(tuv.col);
+        const float r = static_cast<float>(tuv.row);
+        return {c * tileF / tw, r * tileF / th, (c + 1.0f) * tileF / tw, (r + 1.0f) * tileF / th};
     };
 
     UVRect floorUV = makeUV(config.floor_uv);
