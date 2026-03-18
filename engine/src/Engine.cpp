@@ -18,7 +18,9 @@
 #include "systems/RestSpotSystem.h"
 #include "systems/SpawnerSystem.h"
 #include "systems/SteeringSystem.h"
+#include "systems/TileMapRenderer.h"
 
+#include <cmath>
 #include <string>
 
 // glad must be included before any SDL OpenGL header.
@@ -79,6 +81,7 @@ bool Engine::init(const char* title, int width, int height)
     window_h = height;
 
     RenderSystem::init(window_w, window_h);
+    TileMapRenderer::init();
     AudioSystem::init(); // non-fatal — game runs without audio if device unavailable
 
     return true;
@@ -96,6 +99,7 @@ void Engine::run()
         double frameTime = currentTime - previousTime;
         previousTime = currentTime;
 
+        last_frame_time = last_frame_time * 0.97 + frameTime * 0.03; // EMA smoothing
         if (frameTime > MAX_FRAME_TIME)
             frameTime = MAX_FRAME_TIME;
 
@@ -106,10 +110,18 @@ void Engine::run()
         // Fixed-rate update — always steps in 1/60s increments.
         while (accumulator >= FIXED_TIMESTEP)
         {
+            // Snapshot positions before this tick for render interpolation.
+            for (auto [entity, transform] : entity_manager.registry().view<Transform>().each())
+            {
+                auto& prev = entity_manager.registry().get_or_emplace<PreviousTransform>(entity);
+                prev.x = transform.x;
+                prev.y = transform.y;
+            }
             update(FIXED_TIMESTEP);
             accumulator -= FIXED_TIMESTEP;
         }
 
+        entity_manager.render_alpha = static_cast<float>(accumulator / FIXED_TIMESTEP);
         render();
 
         // Tracy frame marker — marks the end of one complete frame.
@@ -120,6 +132,7 @@ void Engine::run()
 
 void Engine::processEvents()
 {
+    bool focus_lost = false;
     SDL_Event event;
     while (SDL_PollEvent(&event))
     {
@@ -127,11 +140,83 @@ void Engine::processEvents()
             running = false;
         if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE)
             running = false;
+        if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_FOCUS_LOST)
+            focus_lost = true;
     }
 
     // InputSystem reads the keyboard state snapshot that SDL_PollEvent just refreshed.
     // Must be called after the event loop, not inside the fixed-step update.
-    InputSystem::update(entity_manager);
+    InputSystem::update(entity_manager, window_w, window_h);
+
+    // If the window lost focus this frame (Alt-Tab, controller/keyboard disconnect, etc.)
+    // zero out all inputs so the player doesn't keep sliding.
+    // Note: this covers OS-level focus loss. A keyboard that physically dies while the
+    // window remains focused won't trigger this — see GitHub issue #34 for that edge case.
+    if (focus_lost)
+    {
+        for (auto [entity, inp] : entity_manager.registry().view<Input>().each())
+        {
+            inp.move_x = 0.0f;
+            inp.move_y = 0.0f;
+            inp.attack = false;
+            inp.dodge = false;
+            inp.sprint = false;
+            inp.skill = false;
+            inp.block_held = false;
+            inp.block_just_pressed = false;
+        }
+    }
+
+    // Player facing: derived from mouse position (per-frame input), not physics.
+    // Updated here instead of in the fixed-step loop so facing always reflects the
+    // current mouse position — avoids stale-facing wobble on 0-update frames.
+    //
+    // render_dx/dy blends toward dx/dy for smooth visual rotation (dot, future
+    // sprite direction). Gameplay reads dx/dy directly for instant combat response.
+    // Blend factor 0.25 at 60fps ≈ 98% converged in 200ms — responsive and smooth.
+    static constexpr float RENDER_FACING_BLEND = 0.25f;
+    for (auto [entity, input, facing] :
+         entity_manager.registry().view<Input, FacingDirection>().each())
+    {
+        if (entity_manager.registry().all_of<Dodging>(entity))
+            continue;
+        const float len = std::sqrt(input.last_facing_x * input.last_facing_x +
+                                    input.last_facing_y * input.last_facing_y);
+        if (len > 0.0f)
+        {
+            facing.dx = input.last_facing_x / len;
+            facing.dy = input.last_facing_y / len;
+        }
+
+        // Smooth visual facing toward gameplay facing.
+        facing.render_dx += (facing.dx - facing.render_dx) * RENDER_FACING_BLEND;
+        facing.render_dy += (facing.dy - facing.render_dy) * RENDER_FACING_BLEND;
+        const float rl =
+            std::sqrt(facing.render_dx * facing.render_dx + facing.render_dy * facing.render_dy);
+        if (rl > 0.0f)
+        {
+            facing.render_dx /= rl;
+            facing.render_dy /= rl;
+        }
+    }
+}
+
+// 0.0 = no scaling → "-"; otherwise first threshold the value meets (s → e).
+static const char* gradeChar(float v, const FormulaConfig& f)
+{
+    if (v <= 0.0f)
+        return "-";
+    if (v >= f.grade_thresholds.s)
+        return "S";
+    if (v >= f.grade_thresholds.a)
+        return "A";
+    if (v >= f.grade_thresholds.b)
+        return "B";
+    if (v >= f.grade_thresholds.c)
+        return "C";
+    if (v >= f.grade_thresholds.d)
+        return "D";
+    return "E";
 }
 
 void Engine::update(double dt)
@@ -159,14 +244,43 @@ void Engine::update(double dt)
     for (auto [entity, input, health, stats, exp] :
          entity_manager.registry().view<Input, Health, Stats, Experience>().each())
     {
+        const auto& f = entity_manager.formulas;
+
+        // Computed attack — base_damage + stat scaling from equipped weapon.
+        int atk = 5; // fist baseline
+        std::string weaponGrade;
+        if (entity_manager.registry().all_of<Weapon>(entity))
+        {
+            const auto& w = entity_manager.registry().get<Weapon>(entity);
+            atk = static_cast<int>(computeDamage(w, stats, f));
+
+            const std::string& wname = w.name.empty() ? std::string("?") : w.name;
+            weaponGrade = "  ---  " + wname + "  str " + gradeChar(w.str_scaling, f) + " / dex " +
+                          gradeChar(w.dex_scaling, f);
+        }
+
+        // Computed defense — mirrors DamageSystem::computeDef formula.
+        const int def = static_cast<int>(std::min(
+            f.defense.cap, std::floor(static_cast<float>(stats.str) * f.defense.str_scale +
+                                      static_cast<float>(stats.end) * f.defense.end_scale +
+                                      static_cast<float>(exp.level) * f.defense.level_scale)));
+
+        // Poise threshold (0 = staggers on any hit).
+        const int poise = entity_manager.registry().all_of<Poise>(entity)
+                              ? static_cast<int>(entity_manager.registry().get<Poise>(entity).max)
+                              : 0;
+
+        const int fps = static_cast<int>(std::lround(1.0 / last_frame_time));
         std::string title =
             "Hell Escape"
-            "  |  HP " +
-            std::to_string(health.current) + "/" + std::to_string(health.max) + "  |  LVL " +
-            std::to_string(exp.level) + "  XP " + std::to_string(exp.current_xp) + "/" +
-            std::to_string(exp.xp_to_next) + "  |  STR " + std::to_string(stats.str) + "  DEX " +
-            std::to_string(stats.dex) + "  END " + std::to_string(stats.end) + "  LCK " +
-            std::to_string(stats.lck) + "  pts " + std::to_string(exp.stat_points);
+            "  |  FPS " +
+            std::to_string(fps) + "/60  |  HP " + std::to_string(health.current) + "/" +
+            std::to_string(health.max) + "  |  LVL " + std::to_string(exp.level) + "  XP " +
+            std::to_string(exp.current_xp) + "/" + std::to_string(exp.xp_to_next) + "  |  STR " +
+            std::to_string(stats.str) + "  DEX " + std::to_string(stats.dex) + "  END " +
+            std::to_string(stats.end) + "  LCK " + std::to_string(stats.lck) + "  pts " +
+            std::to_string(exp.stat_points) + "  |  ATK " + std::to_string(atk) + "  DEF " +
+            std::to_string(def) + "  POISE " + std::to_string(poise) + weaponGrade;
         SDL_SetWindowTitle(window, title.c_str());
         break;
     }
@@ -176,22 +290,36 @@ void Engine::render()
 {
     ZoneScoped; // Tracy zone — visible in the profiler as "render"
 
+    const float a = entity_manager.render_alpha;
+
     glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    // Find the active camera position. Default to window centre if none exists.
+    // Find the active camera position, interpolated between previous and current
+    // tick using the accumulator remainder (alpha). This eliminates the visual
+    // wobble caused by rendering at stale positions between fixed-rate updates.
     float camX = static_cast<float>(window_w) * 0.5f;
     float camY = static_cast<float>(window_h) * 0.5f;
     for (auto [entity, camera] : entity_manager.registry().view<Camera>().each())
     {
         if (camera.active)
         {
-            camX = camera.x;
-            camY = camera.y;
+            const auto* prev = entity_manager.registry().try_get<PreviousTransform>(entity);
+            if (prev)
+            {
+                camX = prev->x + (camera.x - prev->x) * a;
+                camY = prev->y + (camera.y - prev->y) * a;
+            }
+            else
+            {
+                camX = camera.x;
+                camY = camera.y;
+            }
             break;
         }
     }
 
+    TileMapRenderer::render(camX, camY, window_w, window_h);
     RenderSystem::render(entity_manager, texture_manager, camX, camY);
 
     SDL_GL_SwapWindow(window);
@@ -200,6 +328,7 @@ void Engine::render()
 void Engine::shutdown()
 {
     AudioSystem::shutdown();
+    TileMapRenderer::shutdown();
     RenderSystem::shutdown();
     texture_manager.clear();
 

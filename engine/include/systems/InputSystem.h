@@ -20,5 +20,5 @@
 class InputSystem
 {
   public:
-    static void update(EntityManager& em);
+    static void update(EntityManager& em, int windowW, int windowH);
 };

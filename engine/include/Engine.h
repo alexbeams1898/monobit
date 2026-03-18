@@ -37,4 +37,5 @@ class Engine
 
     EntityManager entity_manager;
     TextureManager texture_manager;
+    double last_frame_time = 1.0 / 60.0; // seconds; used for title-bar FPS display
 };

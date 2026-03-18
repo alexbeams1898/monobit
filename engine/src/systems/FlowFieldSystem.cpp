@@ -1,12 +1,16 @@
 #include "systems/FlowFieldSystem.h"
 
+#include "TileMap.h"
 #include "ecs/Components.h"
 
 #include <cmath>
 #include <queue>
+#include <tracy/Tracy.hpp>
 
+// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 void FlowFieldSystem::update(EntityManager& em)
 {
+    ZoneScopedN("FlowFieldSystem");
     // Locate the player — identified by the Input component tag.
     float px = 0.0f;
     float py = 0.0f;
@@ -92,32 +96,68 @@ void FlowFieldSystem::update(EntityManager& em)
         for (auto& cell : row)
             cell = {};
 
-    // Mark static solid cells as impassable (walls, etc.).
-    // Dynamic entities (Velocity present) are not treated as obstacles —
-    // enemies can overlap each other, only static geometry blocks movement.
+    // Mark static solid cells as impassable.
+    //
+    // Tile map path: iterate non-walkable tiles and convert each to its 2x2
+    // cell footprint. No ECS iteration needed — O(map_w * map_h) with zero
+    // entity overhead.
+    // ECS fallback: used by standalone tests that set up explicit wall entities
+    // without a tile map (e.g. flow-field and chase system tests).
     bool walls[FlowField::ROWS][FlowField::COLS]{};
-    for (auto e : em.registry().view<Transform, Collider>())
-    {
-        if (em.registry().all_of<Velocity>(e))
-            continue; // dynamic — not a wall
-        const auto& col = em.registry().get<Collider>(e);
-        if (!col.is_solid)
-            continue;
-        const auto& t = em.registry().get<Transform>(e);
 
-        // Mark every cell the tile's bounding box overlaps.
-        // Transform stores the CENTER of the entity (same as CollisionSystem
-        // and RenderSystem), so the bounding box runs from
-        // (t.x - width/2) to (t.x + width/2 - 1) on each axis.
-        // A 32 px tile spans exactly 2 × 2 cells at CELL_SIZE=16.
-        const int cStart = static_cast<int>((t.x - col.width * 0.5f) / FlowField::CELL_SIZE);
-        const int cEnd = static_cast<int>((t.x + col.width * 0.5f - 1.0f) / FlowField::CELL_SIZE);
-        const int rStart = static_cast<int>((t.y - col.height * 0.5f) / FlowField::CELL_SIZE);
-        const int rEnd = static_cast<int>((t.y + col.height * 0.5f - 1.0f) / FlowField::CELL_SIZE);
-        for (int rr = rStart; rr <= rEnd; ++rr)
-            for (int cc = cStart; cc <= cEnd; ++cc)
-                if (cc >= 0 && cc < FlowField::COLS && rr >= 0 && rr < FlowField::ROWS)
-                    walls[rr][cc] = true;
+    // Each 32px tile maps to exactly 2x2 flow field cells at CELL_SIZE=16.
+    // Unrolled — no inner loop needed.
+    auto markWallTile = [&](int col, int row)
+    {
+        const int c0 =
+            static_cast<int>(static_cast<float>(col * TileMap::TILE_SIZE) / FlowField::CELL_SIZE);
+        const int r0 =
+            static_cast<int>(static_cast<float>(row * TileMap::TILE_SIZE) / FlowField::CELL_SIZE);
+        const int c1 = c0 + 1;
+        const int r1 = r0 + 1;
+        if (r0 < FlowField::ROWS && c0 < FlowField::COLS)
+            walls[r0][c0] = true;
+        if (r0 < FlowField::ROWS && c1 < FlowField::COLS)
+            walls[r0][c1] = true;
+        if (r1 < FlowField::ROWS && c0 < FlowField::COLS)
+            walls[r1][c0] = true;
+        if (r1 < FlowField::ROWS && c1 < FlowField::COLS)
+            walls[r1][c1] = true;
+    };
+
+    if (em.tile_map.valid())
+    {
+        for (int row = 0; row < em.tile_map.height; ++row)
+            for (int col = 0; col < em.tile_map.width; ++col)
+                if (!em.tile_map.at(col, row).walkable)
+                    markWallTile(col, row);
+    }
+    else
+    {
+        // ECS fallback — dynamic entities (Velocity present) are not obstacles.
+        for (auto e : em.registry().view<Transform, Collider>())
+        {
+            if (em.registry().all_of<Velocity>(e))
+                continue;
+            const auto& col_comp = em.registry().get<Collider>(e);
+            if (!col_comp.is_solid)
+                continue;
+            const auto& t = em.registry().get<Transform>(e);
+            // Transform stores the CENTER; bounding box runs from
+            // (t.x - width/2) to (t.x + width/2 - 1). A 32 px tile = 2x2 cells.
+            const int cStart =
+                static_cast<int>((t.x - col_comp.width * 0.5f) / FlowField::CELL_SIZE);
+            const int cEnd =
+                static_cast<int>((t.x + col_comp.width * 0.5f - 1.0f) / FlowField::CELL_SIZE);
+            const int rStart =
+                static_cast<int>((t.y - col_comp.height * 0.5f) / FlowField::CELL_SIZE);
+            const int rEnd =
+                static_cast<int>((t.y + col_comp.height * 0.5f - 1.0f) / FlowField::CELL_SIZE);
+            for (int rr = rStart; rr <= rEnd; ++rr)
+                for (int cc = cStart; cc <= cEnd; ++cc)
+                    if (cc >= 0 && cc < FlowField::COLS && rr >= 0 && rr < FlowField::ROWS)
+                        walls[rr][cc] = true;
+        }
     }
 
     // ---------------------------------------------------------------------------
@@ -141,39 +181,31 @@ void FlowFieldSystem::update(EntityManager& em)
     // 1 center cell remains passable. The door is 4 tiles = 128 px = 8 cells,
     // leaving 6 routable center cells — far above the minimum.
     // ---------------------------------------------------------------------------
+    // Returns true if any of the 8 neighbours (cardinal + diagonal) of (r,c) is a wall.
+    // Cardinal neighbours catch cells beside wall faces; diagonal neighbours catch cells
+    // near wall corners — without diagonal, a cell just outside a door jamb corner passes
+    // the 4-way test but still clips a 32px entity → MovementSystem freezes it.
+    static constexpr int CDIRS[8][2] = {
+        {-1, 0},  {1, 0},  {0, -1}, {0, 1}, // cardinal
+        {-1, -1}, {-1, 1}, {1, -1}, {1, 1}  // diagonal
+    };
+    auto hasWallNeighbor = [&](int r, int c) -> bool
+    {
+        for (const auto& cd : CDIRS)
+        {
+            const int nr = r + cd[1];
+            const int nc = c + cd[0];
+            if (nr >= 0 && nr < FlowField::ROWS && nc >= 0 && nc < FlowField::COLS && walls[nr][nc])
+                return true;
+        }
+        return false;
+    };
+
     bool clearance[FlowField::ROWS][FlowField::COLS]{};
     for (int r = 0; r < FlowField::ROWS; ++r)
-    {
         for (int c = 0; c < FlowField::COLS; ++c)
-        {
-            if (walls[r][c])
-                continue; // wall cells are already excluded from BFS
-            // If any of the 8 neighbours (cardinal + diagonal) is a wall, this
-            // cell is a clearance zone.  Cardinal neighbours catch cells beside
-            // wall faces; diagonal neighbours catch cells near wall corners.
-            // Without diagonal checking, a cell just outside a door jamb corner
-            // passes the clearance test (no cardinal wall neighbour) but still
-            // lets a 32 px entity clip the corner — MovementSystem blocks it and
-            // the entity freezes.  8-way adjacency is symmetric: the same cell
-            // that is clearance approaching from the south is also clearance
-            // approaching from the north, east, or west.
-            static constexpr int CDIRS[8][2] = {
-                {-1, 0},  {1, 0},  {0, -1}, {0, 1}, // cardinal
-                {-1, -1}, {-1, 1}, {1, -1}, {1, 1}  // diagonal
-            };
-            for (const auto& cd : CDIRS)
-            {
-                const int nr = r + cd[1];
-                const int nc = c + cd[0];
-                if (nr >= 0 && nr < FlowField::ROWS && nc >= 0 && nc < FlowField::COLS &&
-                    walls[nr][nc])
-                {
-                    clearance[r][c] = true;
-                    break;
-                }
-            }
-        }
-    }
+            if (!walls[r][c] && hasWallNeighbor(r, c))
+                clearance[r][c] = true;
 
     // BFS outward from the player's cell.
     // Each cell stores the direction back toward its BFS parent — one step

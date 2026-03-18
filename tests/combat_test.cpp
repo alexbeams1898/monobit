@@ -27,8 +27,8 @@ static Weapon makeFist()
 {
     Weapon w;
     w.weight = 0.5f;
-    w.str_scaling = ScalingGrade::E;
-    w.dex_scaling = ScalingGrade::E;
+    w.str_scaling = 0.25f; // E-tier
+    w.dex_scaling = 0.25f; // E-tier
     w.str_requirement = 0;
     w.dex_requirement = 0;
     w.base_damage = 5.0f;
@@ -109,8 +109,8 @@ TEST_CASE("Swing cooldown — S-grade DEX weapon faster with high DEX than high 
 
     Weapon knife;
     knife.weight = 0.5f;
-    knife.str_scaling = ScalingGrade::E;
-    knife.dex_scaling = ScalingGrade::S; // pure DEX weapon
+    knife.str_scaling = 0.25f; // E-tier — minimal STR scaling
+    knife.dex_scaling = 1.5f;  // S-tier — pure DEX weapon
     knife.base_damage = 5.0f;
 
     const auto highDEX = makeStats(1, 20, 5, 5);
@@ -123,47 +123,46 @@ TEST_CASE("Swing cooldown — S-grade DEX weapon faster with high DEX than high 
 // Damage tests
 // ---------------------------------------------------------------------------
 
-TEST_CASE("Damage — fist (E/E) + str=5: base + floor(5 * 0.25)", "[combat]")
+TEST_CASE("Damage — fist (E/E) + str=5/dex=5: both scaling terms added", "[combat]")
 {
     const auto f = defaultFormulas();
     const auto w = makeFist(); // base_damage=5, E/E scaling (mult=0.25)
     const auto s = makeStats(5, 5, 5, 5);
 
-    // Both grades E → mult=0.25, both stats=5.  Max(strMult, dexMult)=0.25.
-    // expected = 5 + floor(5 * 0.25) = 5 + 1 = 6
+    // Additive: 5 + floor(5 * 0.25) + floor(5 * 0.25) = 5 + 1 + 1 = 7
     const float dmg = computeDamage(w, s, f);
-    REQUIRE(dmg == Catch::Approx(6.0f));
+    REQUIRE(dmg == Catch::Approx(7.0f));
 }
 
-TEST_CASE("Damage — S-grade weapon uses the better (S) multiplier", "[combat]")
+TEST_CASE("Damage — S/E weapon: STR dominates, negligible DEX term", "[combat]")
 {
     const auto f = defaultFormulas();
 
     Weapon sword;
     sword.base_damage = 10.0f;
-    sword.str_scaling = ScalingGrade::S; // 1.5x
-    sword.dex_scaling = ScalingGrade::E; // 0.25x
+    sword.str_scaling = 1.5f;  // S-tier
+    sword.dex_scaling = 0.25f; // E-tier
     sword.weight = 1.0f;
 
     const auto s = makeStats(10, 1, 5, 5);
 
-    // Uses STR (mult=1.5): 10 + floor(10 * 1.5) = 10 + 15 = 25
+    // Additive: 10 + floor(10 * 1.5) + floor(1 * 0.25) = 10 + 15 + 0 = 25
     REQUIRE(computeDamage(sword, s, f) == Catch::Approx(25.0f));
 }
 
-TEST_CASE("Damage — weapon with D STR scaling + str=5", "[combat]")
+TEST_CASE("Damage — D/D weapon + str=5/dex=5: both terms add", "[combat]")
 {
     const auto f = defaultFormulas();
 
     Weapon w;
     w.base_damage = 8.0f;
-    w.str_scaling = ScalingGrade::D; // 0.5x
-    w.dex_scaling = ScalingGrade::D; // 0.5x (tie → uses STR branch)
+    w.str_scaling = 0.5f; // D-tier
+    w.dex_scaling = 0.5f; // D-tier
     w.weight = 0.5f;
 
     const auto s = makeStats(5, 5, 5, 5);
-    // expected = 8 + floor(5 * 0.5) = 8 + 2 = 10
-    REQUIRE(computeDamage(w, s, f) == Catch::Approx(10.0f));
+    // Additive: 8 + floor(5 * 0.5) + floor(5 * 0.5) = 8 + 2 + 2 = 12
+    REQUIRE(computeDamage(w, s, f) == Catch::Approx(12.0f));
 }
 
 // ---------------------------------------------------------------------------
@@ -173,13 +172,13 @@ TEST_CASE("Damage — weapon with D STR scaling + str=5", "[combat]")
 TEST_CASE("HP derivation — end=5 gives expected maxHP", "[combat]")
 {
     // maxHP = base + floor(scale * log(END + 1))
-    //       = 50 + floor(100 * log(6))
-    //       = 50 + floor(179.17...) = 50 + 179 = 229
+    //       = 5 + floor(100 * log(6))
+    //       = 5 + floor(179.17...) = 5 + 179 = 184
     const FormulaConfig f; // defaults match formulas.json values
 
     const int expectedMax =
         static_cast<int>(f.hp.base + std::floor(f.hp.scale * std::log(5.0f + 1.0f)));
-    REQUIRE(expectedMax == 229);
+    REQUIRE(expectedMax == 184);
 }
 
 TEST_CASE("HP derivation — end=1 gives minimum HP", "[combat]")

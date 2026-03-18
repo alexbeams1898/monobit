@@ -21,6 +21,8 @@ target_sources(engine PRIVATE
     src/systems/LevelingSystem.cpp
     src/systems/RestSpotSystem.cpp
     src/systems/AudioSystem.cpp
+    src/TileMapLoader.cpp
+    src/systems/TileMapRenderer.cpp
 )
 
 target_include_directories(engine

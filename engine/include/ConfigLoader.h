@@ -37,4 +37,9 @@ class ConfigLoader
     // Returns true on success; false if the file cannot be opened or parsed
     // (em.formulas keeps its hardcoded defaults in that case).
     static bool loadFormulas(EntityManager& em, const std::string& filePath);
+
+    // Parse config/audio/sounds.json and populate em.sounds.
+    // Call once at startup. Returns true on success; false if the file cannot
+    // be opened (em.sounds keeps its hardcoded defaults in that case).
+    static bool loadSounds(EntityManager& em, const std::string& filePath);
 };

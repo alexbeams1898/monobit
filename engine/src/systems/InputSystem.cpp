@@ -6,14 +6,26 @@
 #include <cmath>
 #include <iostream>
 
-void InputSystem::update(EntityManager& em)
+static void warnNoStatPoints(EntityManager& em, entt::entity entity, bool anyAlloc)
+{
+    if (!anyAlloc)
+        return;
+    if (!em.registry().all_of<Experience>(entity))
+        return;
+    if (em.registry().get<Experience>(entity).stat_points <= 0)
+        std::cout << "[InputSystem] No stat points available.\n";
+}
+
+void InputSystem::update(EntityManager& em, int windowW, int windowH)
 {
     // SDL_GetKeyboardState returns a pointer into SDL's internal key table.
     // It is updated by SDL_PollEvent — call this after the event loop, not before.
     const Uint8* keys = SDL_GetKeyboardState(nullptr);
 
-    // Mouse button state — LMB = attack, RMB = block.
-    const Uint32 mouseButtons = SDL_GetMouseState(nullptr, nullptr);
+    // Mouse button + position state — LMB = attack, RMB = block, position = aim.
+    int mouseScreenX = 0;
+    int mouseScreenY = 0;
+    const Uint32 mouseButtons = SDL_GetMouseState(&mouseScreenX, &mouseScreenY);
     const bool lmbHeld = (mouseButtons & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
     const bool rmbHeld = (mouseButtons & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
 
@@ -41,8 +53,24 @@ void InputSystem::update(EntityManager& em)
     // --- Combat / action inputs --------------------------------------------
     // Attack: LMB (primary) or E (keyboard backup).
     const bool attackHeld = lmbHeld || keys[SDL_SCANCODE_E] != 0;
-    // Dodge: Space.
-    const bool dodgeHeld = keys[SDL_SCANCODE_SPACE] != 0;
+
+    // Space: tap (<200ms) = dodge (edge trigger), hold (≥200ms) = sprint (continuous).
+    // Track press timestamp so we can distinguish intent on release.
+    static bool prevSpace = false;
+    static Uint64 spacePressedAt = 0;
+    static constexpr Uint64 SPRINT_THRESHOLD_MS = 200;
+    const bool spaceHeld = keys[SDL_SCANCODE_SPACE] != 0;
+    const bool spaceJustPressed = spaceHeld && !prevSpace;
+    const bool spaceJustReleased = !spaceHeld && prevSpace;
+    if (spaceJustPressed)
+        spacePressedAt = SDL_GetTicks64();
+    const Uint64 spaceHeldMs = spaceHeld ? (SDL_GetTicks64() - spacePressedAt) : 0;
+    const bool sprintActive = spaceHeld && spaceHeldMs >= SPRINT_THRESHOLD_MS;
+    // Dodge fires once on release if it was a short tap.
+    const bool dodgeJust =
+        spaceJustReleased && (SDL_GetTicks64() - spacePressedAt) < SPRINT_THRESHOLD_MS;
+    prevSpace = spaceHeld;
+
     // Skill / parry: Q (context-sensitive in CombatSystem).
     const bool skillHeld = keys[SDL_SCANCODE_Q] != 0;
     // Block: RMB (hold).
@@ -54,7 +82,7 @@ void InputSystem::update(EntityManager& em)
     const bool autoJust = curP && !prevP;
     prevP = curP;
 
-    // Block edge-detect (for parry window — Shift + RMB, or just RMB tap).
+    // Block edge-detect (for parry window).
     static bool prevBlock = false;
     const bool blockJust = block_held && !prevBlock;
     prevBlock = block_held;
@@ -80,15 +108,29 @@ void InputSystem::update(EntityManager& em)
         input.move_x = mx;
         input.move_y = my;
 
-        // Persist last non-zero facing direction for hitbox targeting.
-        if (mx != 0.0f || my != 0.0f)
+        // Aim: mouse position controls facing when cursor is away from screen
+        // center. WASD controls facing only when cursor is in the dead zone.
+        // Screen-space direction works because the camera centers on the player.
         {
-            input.last_facing_x = mx;
-            input.last_facing_y = my;
+            const float sdx = static_cast<float>(mouseScreenX) - static_cast<float>(windowW) * 0.5f;
+            const float sdy = static_cast<float>(mouseScreenY) - static_cast<float>(windowH) * 0.5f;
+            const float slen = std::sqrt(sdx * sdx + sdy * sdy);
+
+            if (slen > 8.0f)
+            {
+                input.last_facing_x = sdx / slen;
+                input.last_facing_y = sdy / slen;
+            }
+            else if (mx != 0.0f || my != 0.0f)
+            {
+                input.last_facing_x = mx;
+                input.last_facing_y = my;
+            }
         }
 
         input.attack = attackHeld;
-        input.dodge = dodgeHeld;
+        input.dodge = dodgeJust;
+        input.sprint = sprintActive;
         input.skill = skillHeld;
         input.block_held = block_held;
         input.block_just_pressed = blockJust;
@@ -99,12 +141,6 @@ void InputSystem::update(EntityManager& em)
         input.alloc_end = alloc3;
         input.alloc_lck = alloc4;
 
-        // Debug stat-alloc hint when points are available (only fires on key press).
-        if ((alloc1 || alloc2 || alloc3 || alloc4) && em.registry().all_of<Experience>(entity))
-        {
-            const auto& exp = em.registry().get<Experience>(entity);
-            if (exp.stat_points <= 0)
-                std::cout << "[InputSystem] No stat points available.\n";
-        }
+        warnNoStatPoints(em, entity, alloc1 || alloc2 || alloc3 || alloc4);
     }
 }

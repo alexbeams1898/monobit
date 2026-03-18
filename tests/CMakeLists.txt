@@ -11,6 +11,7 @@ add_executable(engine-tests
     spawner_system_test.cpp
     combat_test.cpp
     leveling_test.cpp
+    tilemap_test.cpp
 )
 
 target_link_libraries(engine-tests

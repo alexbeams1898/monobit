@@ -1,65 +1,29 @@
 #include "systems/CombatSystem.h"
 
+#include "TileMap.h"
 #include "ecs/Components.h"
+#include "systems/AudioSystem.h"
 
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <tracy/Tracy.hpp>
 
 // ---------------------------------------------------------------------------
 // Combat formula helpers — pure functions; read FormulaConfig, no side effects.
 // ---------------------------------------------------------------------------
 
-// Map ScalingGrade to a dex_bias in [0,1].
-// S = strongest DEX bias (fast light weapon); E = no DEX bias (pure STR).
-static float gradeToDexBias(ScalingGrade g)
-{
-    switch (g)
-    {
-    case ScalingGrade::S:
-        return 1.0f;
-    case ScalingGrade::A:
-        return 0.8f;
-    case ScalingGrade::B:
-        return 0.6f;
-    case ScalingGrade::C:
-        return 0.4f;
-    case ScalingGrade::D:
-        return 0.2f;
-    default:
-        return 0.0f; // E
-    }
-}
-
-// Map ScalingGrade to the grade multiplier from FormulaConfig.
-static float gradeToMultiplier(ScalingGrade g, const FormulaConfig& f)
-{
-    switch (g)
-    {
-    case ScalingGrade::S:
-        return f.grade_multipliers.s;
-    case ScalingGrade::A:
-        return f.grade_multipliers.a;
-    case ScalingGrade::B:
-        return f.grade_multipliers.b;
-    case ScalingGrade::C:
-        return f.grade_multipliers.c;
-    case ScalingGrade::D:
-        return f.grade_multipliers.d;
-    default:
-        return f.grade_multipliers.e; // E
-    }
-}
-
-// Swing cooldown physics: driven by weapon weight and the stat blend encoded
-// in the weapon's scaling grades.
-//   effectiveStat = (STR * strBias) + (DEX * dexBias)
+// Swing cooldown: driven by weapon weight and a proportional stat blend.
+// DEX bias = dex_scaling / (str_scaling + dex_scaling) — a weapon with higher
+// DEX scaling has swing speed driven more by DEX than STR.
+//   effectiveStat = STR * strBias + DEX * dexBias
 //   cooldown = (weight * weightScale) / (1 + floor(effectiveStat * statScale *
-//   log(effectiveStat+1)) / 100)
-// Min-clamped to 0.05 s (hard cap at 20 attacks/sec).
+//              log(effectiveStat+1)) / 100)
+// Min-clamped to 0.05 s (hard cap at 20 swings/sec).
 float computeSwingCooldown(const Weapon& w, const Stats& s, const FormulaConfig& f)
 {
-    const float dexBias = gradeToDexBias(w.dex_scaling);
+    const float total = w.str_scaling + w.dex_scaling;
+    const float dexBias = total > 0.0f ? w.dex_scaling / total : 0.5f;
     const float strBias = 1.0f - dexBias;
     const float effectiveStat =
         (static_cast<float>(s.str) * strBias) + (static_cast<float>(s.dex) * dexBias);
@@ -71,16 +35,12 @@ float computeSwingCooldown(const Weapon& w, const Stats& s, const FormulaConfig&
     return std::max(0.05f, cooldown);
 }
 
-// Damage from one swing: base + floor(statValue * gradeMultiplier).
-// Uses whichever scaling (STR or DEX) gives the higher multiplier.
-float computeDamage(const Weapon& w, const Stats& s, const FormulaConfig& f)
+// Damage from one swing: base + both stat contributions added independently.
+// Both STR and DEX always contribute; scaling floats control the per-point weight.
+float computeDamage(const Weapon& w, const Stats& s, const FormulaConfig& /*f*/)
 {
-    const float strMult = gradeToMultiplier(w.str_scaling, f);
-    const float dexMult = gradeToMultiplier(w.dex_scaling, f);
-    const float statValue =
-        (strMult >= dexMult) ? static_cast<float>(s.str) : static_cast<float>(s.dex);
-    const float scalingMult = std::max(strMult, dexMult);
-    return w.base_damage + std::floor(statValue * scalingMult);
+    return w.base_damage + std::floor(static_cast<float>(s.str) * w.str_scaling) +
+           std::floor(static_cast<float>(s.dex) * w.dex_scaling);
 }
 
 // Expose helpers to other translation units (DamageSystem, tests).
@@ -89,8 +49,10 @@ float computeDamage(const Weapon& w, const Stats& s, const FormulaConfig& f)
 
 // ---------------------------------------------------------------------------
 
+// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 void CombatSystem::update(EntityManager& em, double dt)
 {
+    ZoneScopedN("CombatSystem");
     const float fdt = static_cast<float>(dt);
     const FormulaConfig& f = em.formulas;
 
@@ -295,19 +257,26 @@ void CombatSystem::update(EntityManager& em, double dt)
             }
 
             // Spawn hitbox one half-width in front of the player.
+            // LOS check: don't spawn if a wall or obstacle sits between the
+            // player and the hitbox position — prevents hitting through obstacles.
             const float reach = 16.0f + 20.0f; // half collider + reach
             const float hx = transform.x + facingX * reach;
             const float hy = transform.y + facingY * reach;
 
-            if (em.registry().all_of<Stats>(entity))
+            const bool hitboxLos = !em.tile_map.valid() ||
+                                   em.tile_map.hasLineOfSight(transform.x, transform.y, hx, hy);
+            if (hitboxLos)
             {
-                const auto& stats = em.registry().get<Stats>(entity);
-                const float dmg = computeDamage(weapon, stats, f);
-                spawnHitbox(entity, hx, hy, 32.0f, dmg);
-            }
-            else
-            {
-                spawnHitbox(entity, hx, hy, 32.0f, weapon.base_damage);
+                if (em.registry().all_of<Stats>(entity))
+                {
+                    const auto& stats = em.registry().get<Stats>(entity);
+                    const float dmg = computeDamage(weapon, stats, f);
+                    spawnHitbox(entity, hx, hy, 32.0f, dmg);
+                }
+                else
+                {
+                    spawnHitbox(entity, hx, hy, 32.0f, weapon.base_damage);
+                }
             }
 
             const float cooldown =
@@ -322,6 +291,8 @@ void CombatSystem::update(EntityManager& em, double dt)
             // Yellow swing flash on the attacker (0.5s so it's clearly visible).
             em.registry().emplace_or_replace<AttackFeedback>(entity, AttackFeedback{0.5f});
 
+            TracyMessageL("PlayerAttack");
+            AudioSystem::playSfx(em.sounds.player_attack.path, em.sounds.player_attack.volume);
             std::cout << "[CombatSystem] Attack! dmg=";
             if (em.registry().all_of<Stats>(entity))
                 std::cout << computeDamage(weapon, em.registry().get<Stats>(entity), f);
@@ -341,10 +312,15 @@ void CombatSystem::update(EntityManager& em, double dt)
             if (em.registry().all_of<Stats>(entity))
                 dmg = computeDamage(weapon, em.registry().get<Stats>(entity), f) * 1.5f;
 
-            spawnHitbox(entity, hx, hy, 64.0f, dmg); // 64×64 hitbox
+            const bool skillLos = !em.tile_map.valid() ||
+                                  em.tile_map.hasLineOfSight(transform.x, transform.y, hx, hy);
+            if (skillLos)
+                spawnHitbox(entity, hx, hy, 64.0f, dmg); // 64×64 hitbox
             weapon.skill_cooldown_remaining = 5.0f;
             em.registry().emplace_or_replace<AttackLocked>(entity, AttackLocked{0.4f});
 
+            TracyMessageL("PlayerSkill");
+            AudioSystem::playSfx(em.sounds.player_skill.path, em.sounds.player_skill.volume);
             std::cout << "[CombatSystem] Haymaker! dmg=" << dmg << " skill cooldown=5.0s\n";
         }
 
@@ -353,7 +329,7 @@ void CombatSystem::update(EntityManager& em, double dt)
                                !isStaggered && !em.registry().all_of<Dodging>(entity));
         if (input.dodge && canDodge)
         {
-            // Context-sensitive direction (Souls-style):
+            // Context-sensitive direction:
             // If any active enemy is within engagement range → backstep
             // (step opposite to current facing, away from the threat).
             // Otherwise → normal roll in last movement/facing direction.
@@ -400,6 +376,8 @@ void CombatSystem::update(EntityManager& em, double dt)
                 vel.dy = dodgeY * 300.0f;
             }
 
+            TracyMessageL("PlayerDodge");
+            AudioSystem::playSfx(em.sounds.player_dodge.path, em.sounds.player_dodge.volume);
             em.registry().emplace<Dodging>(entity, Dodging{0.25f});
             input.dodge_cooldown_remaining = 0.5f;
 

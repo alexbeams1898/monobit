@@ -58,5 +58,8 @@ UserSettings/
 *.psd
 *.ai
 
+# Tracy traces
+traces/
+
 # Claude
 .claude/

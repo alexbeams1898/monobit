@@ -1,14 +1,16 @@
 #include "systems/SpawnerSystem.h"
 
 #include "ConfigLoader.h"
+#include "TileMap.h"
 #include "ecs/Components.h"
 #include "systems/LevelingSystem.h"
 
-#include <cmath>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <nlohmann/json.hpp>
+#include <tracy/Tracy.hpp>
+#include <vector>
 
 using json = nlohmann::json;
 
@@ -61,9 +63,11 @@ int SpawnerSystem::load(EntityManager& em, const std::string& configPath)
 
 void SpawnerSystem::update(EntityManager& em, double dt)
 {
-    static constexpr float kSpawnInterval = 4.0f;  // seconds between spawns
-    static constexpr float kSpawnDistance = 550.f; // pixels from player center
-    static constexpr const char* kEnemyPath = "config/entities/correctional_officer.json";
+    ZoneScopedN("SpawnerSystem");
+    static constexpr float kSpawnInterval = 4.0f; // seconds between spawns
+    static constexpr float kSpawnNear = 330.f;    // min spawn distance from player (px)
+    static constexpr float kSpawnFar = 825.f;     // max spawn distance from player (px)
+    static constexpr const char* kEnemyPath = "config/entities/enemy.json";
 
     static float timer = kSpawnInterval;
 
@@ -93,10 +97,41 @@ void SpawnerSystem::update(EntityManager& em, double dt)
         return;
     timer = kSpawnInterval;
 
-    // Random angle → spawn position just outside camera view.
-    const float angle = static_cast<float>(std::rand() % 360) * (3.14159f / 180.f);
-    const float spawnX = playerX + std::cos(angle) * kSpawnDistance;
-    const float spawnY = playerY + std::sin(angle) * kSpawnDistance;
+    // Collect all walkable tiles within the spawn distance band and pick one at random.
+    // Sampling from known walkable positions guarantees a valid spawn every time —
+    // the old angle→snap approach frequently failed on sparse maps where most of the
+    // spawn radius circle falls inside wall-only areas.
+    // Cost: O(map tiles) = O(4800) once every kSpawnInterval seconds — negligible.
+    if (!em.tile_map.valid())
+        return;
+
+    const float ts = static_cast<float>(TileMap::TILE_SIZE);
+    const float nearSq = kSpawnNear * kSpawnNear;
+    const float farSq = kSpawnFar * kSpawnFar;
+
+    std::vector<std::pair<int, int>> candidates;
+    for (int r = 0; r < em.tile_map.height; ++r)
+    {
+        for (int c = 0; c < em.tile_map.width; ++c)
+        {
+            if (!em.tile_map.at(c, r).walkable)
+                continue;
+            const float cx = static_cast<float>(c) * ts + ts * 0.5f;
+            const float cy = static_cast<float>(r) * ts + ts * 0.5f;
+            const float dx = cx - playerX;
+            const float dy = cy - playerY;
+            const float dSq = dx * dx + dy * dy;
+            if (dSq >= nearSq && dSq <= farSq)
+                candidates.emplace_back(c, r);
+        }
+    }
+
+    if (candidates.empty())
+        return;
+
+    const auto& chosen = candidates[static_cast<std::size_t>(std::rand()) % candidates.size()];
+    const float spawnX = static_cast<float>(chosen.first) * ts + ts * 0.5f;
+    const float spawnY = static_cast<float>(chosen.second) * ts + ts * 0.5f;
 
     auto entity = ConfigLoader::loadEntity(em, kEnemyPath);
     if (!em.registry().valid(entity))
@@ -111,5 +146,6 @@ void SpawnerSystem::update(EntityManager& em, double dt)
 
     LevelingSystem::deriveHealth(em, entity);
 
+    TracyMessageL("EnemySpawned");
     std::cout << "[SpawnerSystem] Spawned enemy at (" << spawnX << ", " << spawnY << ")\n";
 }

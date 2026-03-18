@@ -8,33 +8,74 @@
 ## Narrative
 
 ### The Setup
-You are dead. Or close enough. You keep waking up in the same spot in Hell — the reason is
-intentionally unexplained early on and slowly revealed through progression. Each run you fight
-your way toward the exit, die or escape, and wake up again.
+You wake up somewhere unfamiliar. The world looks almost normal — a little off, maybe, but
+nothing you can't explain away. You fight your way toward the exit. If you make it, you escape
+and carry your progress forward. If you die, it's over — back to the meta world to try again.
+Each run the world gets stranger. The architecture shifts. The enemies stop looking quite human.
+The person guiding you through a radio starts saying things that don't quite add up.
 
-Bud is the player's guide. His exact nature and relationship to Hell is TBD — he may be a
-fellow damned soul, a demon who switched sides, or something weirder. He communicates via
-some in-universe equivalent of the walkie talkie. His role as the meta NPC between runs is
-unchanged — he's still the face of the meta store and the source of dark comedy commentary.
+You are in Hell. You just don't know it yet.
+
+The reason you keep ending up back here — and why everything is slowly getting more hellish —
+is intentionally unexplained early on and revealed through progression.
+
+### The Twist (Marketing Hook)
+The game is marketed as a real-world escape dungeon roguelike, not an escape from Hell.
+The hell setting is the reveal — discovered through play, not the store page. The world
+starts grounded and mundane. The uncanny creeps in gradually: strange geometry, enemies
+that are almost-human but not quite, visual corruption at the edges, Bud saying things
+a normal person wouldn't say. By the time it's undeniable, you're already deep in.
+
+**Never spoil the twist in marketing material, trailers, or the title screen.**
 
 ### Characters
 - **Bud** — guide, drinking buddy, meta NPC. Voice during runs. Appears between runs.
-  Not playable. Exact nature TBD — keep it funny.
+  Not playable. **Bud is a demon.** This is not revealed until late in the game. His humor
+  and helpfulness mask his true nature. As the player progresses through the layers, his
+  dialogue, behavior, and appearance grow increasingly uncanny and demonic. The gradual
+  reveal is a key narrative arc — never telegraph it early.
 - **Playable characters** — the damned. Custom character created at the start of a fresh save.
 
 ### Tone
 Comedic throughout. Body-gore humor — absurd rather than disturbing. Should never feel too
 extreme or mean-spirited. Hell is a fun place to be. Think Monty Python meets early Doom.
 
+### Inspirations & Literary Influences
+- **Dante's Inferno / Divine Comedy** — layers of Hell structure, escalating strangeness,
+  the idea of a guide who may not be fully trustworthy. The 9 circles of Hell are a candidate
+  structure for zone progression. Dante's self-reference as "the pilgrim" in the poem.
+- **Paradise Lost (Milton)** — the grandeur and tragedy of fallen beings, Hell as a place
+  with its own politics and hierarchy
+- **No Exit (Sartre)** — "Hell is other people." Ironic for an escape game. The philosophical
+  dimension of inescapable punishment.
+- **Ars Goetia** — the 72 demons as a reference catalogue for enemy/boss design, naming,
+  and hierarchy
+- **Doom** — escape through layers of Hell, escalating demonic hostility, comedic brutality,
+  episode progression from mundane to pure hell
+- **Vampire Survivors** — core loop, enemy escalation, auto-attack feel
+- **Dark Souls / Elden Ring** — stats, build variety, weapon scaling, crafting depth, lock-on
+- **Hades** — twin-stick movement model, top-down action feel
+
+### Design Principles from Source Material
+- **Contrapasso** (Divine Comedy) — punishment mirrors sin. Used as a design principle for
+  enemy behavior per zone. Each zone's enemies should have mechanically distinct behavior that
+  reflects the zone's thematic sin. Not just flavor — it forces diverse enemy design naturally.
+
+### Title Candidates
+Under consideration — no final decision yet.
+- **"The Pilgrim"** — Dante's self-reference in the poem. Sounds like an adventure game, has
+  thematic depth, doesn't spoil the hell twist.
+- **"No Exit"** — Sartre. Ironic for an escape game. No existing game with that name.
+
 ---
 
 ## Core Gameplay Loop
 
-1. Spawn in prison map
+1. Spawn in the map — the world looks mundane at first
 2. Kill enemies → earn XP → level up → **VS-style popup fires mid-run** → pick a stat (STR/DEX/END/LCK) → back to fighting immediately
 3. Collect material drops from enemies and environment
 4. Field-craft a base weapon from materials (no station needed)
-5. Fight through escalating enemy waves separated by safe rooms
+5. Survive timed enemy waves — enemies spawn based on your position and how long you've been in the area; the map is open, explore freely between waves for chests, rest spots, and loot
 6. Find rest spots scattered in the map → heal, upgrade weapons, buy items
 7. Defeat the final boss/elite enemy → escape → run complete
 8. Carry money and meta progress forward
@@ -96,9 +137,14 @@ Soft cap: 75% — player can never be fully invincible.
 
 ### Damage (weapon grade scaling)
 ```
-finalDamage = baseDamage + floor(statValue * gradeMultiplier)
+finalDamage = baseDamage + floor(str * strGradeMult) + floor(dex * dexGradeMult)
 ```
+Both stats always contribute. Grades control the per-point weight, not which stat is used.
 Grade multipliers: S=1.5x · A=1.25x · B=1.0x · C=0.75x · D=0.5x · E=0.25x
+
+Grade letters are cosmetic buckets. The underlying value is a float; the letter is what the player
+sees. When weapon upgrades are added, reinforcing a weapon increases the underlying scaling value,
+which naturally bumps the displayed grade — no special rules needed.
 
 ### XP Curve
 ```
@@ -205,6 +251,16 @@ Planned stat mapping:
 This creates a distinct build identity: gun builds are DEX/LCK, melee builds are STR/DEX.
 Will be considered for implementation within this milestone once melee is built and feeling good.
 
+### Sprite Direction
+**4-directional minimum. 8-directional ideal. Left/right flip only is ruled out.**
+
+Left/right flip is incompatible with directional parry/poise combat — the player needs to
+visually distinguish facing direction for block arcs and attack hitboxes.
+
+4 cardinal direction sprites (up, down, left, right) with dominant-direction selection for
+diagonals is the practical starting point. 8-directional is the goal if the art budget allows.
+Exact interpolation method TBD during implementation — try dominant-direction selection first.
+
 ---
 
 ## Weapons
@@ -220,8 +276,35 @@ Will be considered for implementation within this milestone once melee is built 
 ### Weapon Config Fields
 Every weapon definition includes:
 - `weight` — float. Drives swing cooldown physics and carry weight. Light weapons (shiv ~0.5) swing fast; heavy weapons (mace ~3.0, two-handed sword ~5.0) swing slow but hit hard.
-- `str_scaling` / `dex_scaling` — grade (S/A/B/C/D/E). Drives both damage bonus and swing speed bias.
+- `str_scaling` / `dex_scaling` — grade (S/A/B/C/D/E). Drives both damage bonus and swing speed bias. Both always contribute additively — grade determines weight, not which stat wins.
 - `str_requirement` / `dex_requirement` — stat floor for full effectiveness. Below threshold applies exponential penalty (see Combat System).
+
+### Weapon Scaling Design Intent
+Every weapon should have a logical real-world reason for its scaling split. Think through each
+weapon: what physical qualities does it reward? A heavy weapon rewards raw power (STR). A fast
+precise weapon rewards control and timing (DEX). Most weapons reward both to varying degrees.
+
+Design these thoughtfully per weapon — don't assign grades arbitrarily. The grade split is part
+of the weapon's identity and affects which builds it supports.
+
+**Confirmed weapons:**
+
+| Weapon | str_scaling | dex_scaling | Notes |
+|--------|-------------|-------------|-------|
+| Fists  | B           | C           | Power is the engine; DEX tightens timing and speed |
+
+_More to be added as weapons are designed._
+
+### Ranged Weapons
+Guns and thrown projectiles follow different rules than melee:
+- **High flat base damage** — significantly more than melee baseline. No stat scaling on damage.
+- **Light attack = fire** — the trigger maps to the standard light attack input.
+- **LCK scales accuracy** — all shots have a slight angular spread. Higher LCK tightens the cone.
+  Low LCK should feel noticeably imprecise; high LCK feels surgical. Nothing punishing at baseline —
+  the variation is flavor and build incentive, not a death sentence.
+- **STR = hard requirement only** — needed to hold and control the weapon. Does not scale damage.
+- **DEX = turn/aim speed** — how fast the player can track a target. Not damage.
+- Guns are found/dropped, not crafted from scratch. Ammo is the constraint.
 
 ### Weapon Slots
 - **Dual one-handed** — two weapons attacking independently (VS-style chaos feel)
@@ -243,6 +326,20 @@ Every weapon definition includes:
 ### Stat Requirements
 - Must meet stat requirements to equip a base weapon (souls-style)
 - Upgrade path inherits base requirements — no new stat gates per upgrade
+
+---
+
+## Encumbrance
+Carrying too much slows you down. Equipment weight (weapons + armor) is compared against
+carry capacity (derived from STR + END). Three tiers:
+- **Light** (under ~40% capacity) — full speed, no penalty
+- **Medium** (40–70%) — moderate speed reduction
+- **Heavy** (70–100%) — significant speed reduction
+- **Overencumbered** (over 100%) — unable to run; walk only
+
+The carry weight formula (`str_scale: 20, end_scale: 10`) already exists in `formulas.json`.
+Encumbrance tiers and exact speed penalties are to be tuned during gameplay balancing.
+_Not yet implemented._
 
 ---
 
@@ -337,6 +434,10 @@ the rarity curve further on top of this.
 ## Enemy Design
 
 ### Philosophy
+- **Hybrid deliberate/chaos.** Default state: guards are individually dangerous, sparse, require
+  thought. Alarm state: VS-style enemy flood, earned by being messy. The emotional core is a heist
+  movie — tension, earned chaos, recovery. Never both dangerous AND numerous simultaneously unless
+  the player caused it.
 - Start small, expand via schema — every enemy is a config entry
 - Rank hierarchy maps directly to wave progression
 - Appearance and drops become progressively stranger and more off-putting
@@ -361,10 +462,34 @@ Names are placeholders — TBD with Alex.
 - All drops are materials/parts — never whole weapons or armor
 
 ### Wave Structure
-- Wave-based with brief safe rooms between waves
-- Safe rooms contain: weapon upgrade station, healing. Kept simple.
-- Always an objective — waves should never feel aimless
+- **Open world, timed intervals** — the map is freely explorable; no room gating, no safe rooms.
+  Enemy waves spawn at timed intervals based on the player's current position and time elapsed
+  in the area. The longer you stay, the worse it gets.
+- Between waves: explore for chests, rest spots, crafting materials, upgrade stations
+- Enemy density and composition scale with time and position — pro-gen, not pre-scripted
+- Always an objective — the final boss/elite is the escape condition, not wave survival
 - Final boss/elite kill = run complete = escape
+
+---
+
+## Alarm / Escalation System
+
+Subject to tuning based on feel.
+
+Guards patrol by default. Triggering an alarm floods the area with enemies — the VS moment.
+Three levels maximum to keep it readable. Players should always know what state they're in
+and why. Escalation is theatrical and legible, never a hidden meter that punishes unexpectedly.
+
+| Level | State | Enemies |
+|-------|-------|---------|
+| 0 | Calm | Guards patrol. Sparse, individually dangerous. Heist-movie tension. |
+| 1 | Alert | More guards, faster response. Still manageable with care. |
+| 2 | Alarm | VS-style flood. Earned chaos. Quantity over individual threat. |
+
+- **Resting resets alarm level** — gives rest spots a second purpose beyond healing
+- Alarm triggers TBD — being spotted, killing loudly, taking too long, player choice
+- Visual/audio cues must make the current state unmistakable at a glance
+- The transition between states is the game's emotional rhythm: stealth/tension → chaos → recovery
 
 ---
 
@@ -387,12 +512,16 @@ a cursed altar, a fellow damned NPC who patches you up. Alex decides.
 ## Map & Procedural Generation
 
 ### Map Feel
-- Open roaming space with hell visual theming — not a realistic simulation
-- No key/door/room gating — movement is free like VS
-- Hell aesthetic is dressing, not a mechanical system
+- Open roaming space — no key/door/room gating, movement is free like VS
+- **Aesthetic arc**: early zones feel like corrupted familiar spaces — liminal, uncanny, distorted
+  but recognizable. Zones get progressively more hellish as the player descends. Reference:
+  Doom 1 episode progression (E1 = UAC base with hints of something wrong, E2 = corrupted
+  facility, E3 = pure hell). The shift is gradual and diegetic — the player experiences the
+  reveal, not a cutscene.
 - Tone: silly, low fidelity, practical. Funny where possible.
-- Visual direction TBD — could lean Dante's Inferno (circles, fire, brimstone), cartoonish
-  (Cuphead-hell, Helltaker-adjacent), or something weirder. Alex decides.
+- Visual reference points: Dante's Inferno (circles, fire, brimstone), Doom (demon design,
+  escalating brutality, episode progression), early real-world environments as the mundane
+  anchor. Alex decides the execution.
 
 ### Procedural Generation Architecture
 **Core principle: separate structure (owned by engine) from visuals (supplied by modders).**
@@ -405,10 +534,32 @@ sprites mapped to tile types.
   is a tile-type grid with metadata tags.
 - **BSP (Binary Space Partitioning)** — strong candidate for base generation algorithm.
 
+#### Room Templates
+ASCII format, stored in `config/rooms/` as plain text files. Dropping a new `.room` file in the
+directory is all a modder needs to add a room type.
+
+| Character | Tile type |
+|-----------|-----------|
+| `.` | Floor |
+| `W` | Wall |
+| `D` | Door frame |
+| `X` | Obstacle |
+| `E` | Enemy spawn point |
+| `C` | Chest spawn point |
+| `R` | Rest spot |
+
+Engine parses at load time. Additional marker characters can be added as new entity types are
+designed — the mapping lives in config, not hardcoded.
+
+#### Seeding
+Each run gets a new random seed. Seed is stored and logged for debug reproducibility only —
+players never see it. Same seed = same map for bug reproduction purposes. Seed is logged to
+console at generation time and stored in the run's metadata.
+
 #### Modder Asset Schema
 Modders supply:
 - Sprites for each tile type
-- Room templates as tile-type grids
+- Room templates as tile-type grids (ASCII `.room` files)
 - Metadata tags per room (combat area, loot area, boss arena, upgrade station)
 - Rank hierarchy enemy subset for their map
 - Engine fills any missing assets with base game defaults
@@ -460,21 +611,58 @@ This is intentionally a QOL/accessibility item, not a power unlock. Manual comba
 
 ## Controls
 
-DS1 PC layout adapted for top-down 2D. Designed to map cleanly to iOS virtual buttons.
+Hades movement model + Souls lock-on layer. Subject to tuning based on feel.
+
+### Movement & Aiming
+- **WASD** — world-relative movement. W always means up on screen. Predictable dodge direction.
+- **Mouse** — character always faces toward cursor when unlocked. Independent of movement direction.
+  Twin-stick feel: WASD moves, mouse aims.
+
+### Input Modes
+Three modes, contextually switched:
+
+1. **Free aim (default)** — WASD moves, mouse aims. Twin-stick. Primary PC mode.
+2. **Lock-on** — Tab/MMB toggles. Facing snaps to target enemy. A/D become strafes,
+   S becomes backstep (Dark Souls model). Unlock to return to free aim.
+3. **Keyboard-only fallback** — when no mouse movement is detected, WASD controls both
+   movement and facing (pre-mouse behavior). For gamepad / accessibility / "runs on a
+   calculator" portability.
+
+Lock-on is a toggle, not a hold.
+
+### Aim Smoothing (Turn Sensitivity)
+Visual facing uses an exponential blend toward the gameplay facing direction. This filters
+mouse micro-tremor while keeping rotation fluid. The blend factor is exposed as a player
+setting ("Aim Smoothing" or "Turn Sensitivity"):
+
+- **High sensitivity (0.5-0.8)** — snappy, near-instant, competitive
+- **Medium (0.2-0.4)** — smooth, filtered (default 0.25)
+- **Low (0.05-0.15)** — heavy smoothing, cinematic
+
+Gameplay facing (`FacingDirection.dx/dy`) is always instant — combat targeting has zero
+latency. Only the visual representation (`render_dx/dy`) is smoothed.
+
+Future: encumbrance or heavy armor could reduce the blend factor, making turning feel
+sluggish. DEX could push it higher. Subtle but felt.
+
+### Input Map
 
 | Action | PC | iOS virtual |
 |---|---|---|
 | Move | WASD | Joystick |
+| Aim | Mouse position | Joystick direction |
 | Light attack | LMB | Attack btn |
-| Dodge / roll | Space | Dodge btn |
+| Sprint | Space (hold ≥200ms) | Sprint btn (hold) |
+| Dodge / roll | Space (tap <200ms) | Dodge btn (tap) |
 | Block | RMB (hold) | Block btn (hold) |
 | Parry / Weapon skill | Q — context-sensitive: fires parry window if blocking, weapon skill otherwise | Skill btn |
+| Lock-on toggle | Tab / MMB | Lock btn |
 | Use item | R | Item btn |
-| Cycle item | Scroll / Tab | Swipe |
+| Cycle item | Scroll | Swipe |
 | Interact | F | Interact btn |
 | Stat upgrade (level-up popup) | [1] STR  [2] DEX  [3] END  [4] LCK | Tap card in popup |
 
-iOS target: 5 virtual buttons (attack, dodge, block, skill, item) + joystick. Manageable.
+iOS target: 6 virtual buttons (attack, dodge, block, skill, lock, item) + joystick. Manageable.
 
 ---
 

@@ -1,6 +1,7 @@
 #include "systems/LevelingSystem.h"
 
 #include "ecs/Components.h"
+#include "systems/AudioSystem.h"
 
 #include <cmath>
 #include <iostream>
@@ -82,6 +83,15 @@ void LevelingSystem::applyInitialDerivations(EntityManager& em)
             auto& exp = reg.get<Experience>(entity);
             exp.xp_to_next = deriveXpToNext(exp.level, f);
         }
+
+        // poise.max = floor(END * end_scale + STR * str_scale).
+        // Flat bonuses from armor/shields are added on top (not yet implemented).
+        if (reg.all_of<Poise>(entity))
+        {
+            auto& poise = reg.get<Poise>(entity);
+            poise.max = std::floor(static_cast<float>(stats.end) * f.poise.end_scale +
+                                   static_cast<float>(stats.str) * f.poise.str_scale);
+        }
     }
 }
 
@@ -100,6 +110,7 @@ void LevelingSystem::update(EntityManager& em)
             exp.stat_points += static_cast<int>(f.leveling.points_per_level);
             exp.xp_to_next = deriveXpToNext(exp.level, f);
 
+            AudioSystem::playSfx(em.sounds.level_up.path, em.sounds.level_up.volume);
             std::cout << "[LevelingSystem] Level up! Now level " << exp.level << ". Next level at "
                       << exp.xp_to_next << " XP.\n";
 

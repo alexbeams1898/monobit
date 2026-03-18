@@ -4,9 +4,88 @@
 
 #include <algorithm>
 #include <cmath>
+#include <tracy/Tracy.hpp>
+
+// ---------------------------------------------------------------------------
+// Free helpers — extracted to keep ChaseSystem::update()'s cognitive
+// complexity below the project threshold.  Each represents one AI state.
+// ---------------------------------------------------------------------------
+
+// Chase-state target velocity.
+// Uses the flow field exclusively for navigation; falls back to a direct
+// vector only when the cell has no BFS path (fully walled off).
+// Sets distOut to the current distance to the player (used by arrival
+// softening in the outer loop).
+static std::pair<float, float> computeChaseVelocity(const FlowField& ff, float px, float py,
+                                                    bool playerFound, const Transform& tf,
+                                                    float spd, float& distOut)
+{
+    const int col = static_cast<int>(tf.x / FlowField::CELL_SIZE);
+    const int row = static_cast<int>(tf.y / FlowField::CELL_SIZE);
+    if (col < 0 || col >= FlowField::COLS || row < 0 || row >= FlowField::ROWS)
+        return {0.0f, 0.0f};
+
+    if (!playerFound)
+        return {0.0f, 0.0f};
+
+    const float ddx = px - tf.x;
+    const float ddy = py - tf.y;
+    distOut = std::sqrt(ddx * ddx + ddy * ddy);
+
+    if (distOut <= FlowField::CELL_SIZE)
+        return {0.0f, 0.0f};
+
+    const auto& cell = ff.cells[row][col];
+    if (cell.dx == 0.0f && cell.dy == 0.0f)
+    {
+        // Zero flow field: no BFS path reached this cell.
+        // Fall back entirely to direct vector — at least the entity drifts
+        // toward a wall face and doesn't freeze.
+        return {(ddx / distOut) * spd, (ddy / distOut) * spd};
+    }
+
+    return {cell.dx * spd, cell.dy * spd};
+}
+
+// Attack-state target velocity.
+// Uses the flow field for navigation (same as Chase) so obstacles between
+// the enemy and the player are routed around rather than charged through.
+// Speed is scaled by proximity for a soft arrival at the player.
+static std::pair<float, float> computeAttackVelocity(const FlowField& ff, float px, float py,
+                                                     const AIController& ai, const Transform& tf,
+                                                     float spd)
+{
+    const float ddx = px - tf.x;
+    const float ddy = py - tf.y;
+    const float dist = std::sqrt(ddx * ddx + ddy * ddy);
+
+    if (dist < 1.0f)
+        return {0.0f, 0.0f};
+
+    const int ffCol = static_cast<int>(tf.x / FlowField::CELL_SIZE);
+    const int ffRow = static_cast<int>(tf.y / FlowField::CELL_SIZE);
+    float navDx = ddx / dist;
+    float navDy = ddy / dist;
+    if (ffCol >= 0 && ffCol < FlowField::COLS && ffRow >= 0 && ffRow < FlowField::ROWS)
+    {
+        const auto& cell = ff.cells[ffRow][ffCol];
+        if (cell.dx != 0.0f || cell.dy != 0.0f)
+        {
+            navDx = cell.dx;
+            navDy = cell.dy;
+        }
+    }
+
+    // Arrival at slot: enemy is on the ring when dist == attack_radius.
+    // slotDist measures approach remaining; ramps to 0 at the ring boundary.
+    const float slotDist = std::max(0.0f, dist - ai.attack_radius);
+    const float scale = std::min(1.0f, slotDist / ai.attack_radius);
+    return {navDx * spd * scale, navDy * spd * scale};
+}
 
 void ChaseSystem::update(EntityManager& em, double dt)
 {
+    ZoneScopedN("ChaseSystem");
     // Read the flow field built this frame by FlowFieldSystem.
     // Each cell contains a pre-normalized direction toward the player along the
     // shortest open path. O(1) lookup per enemy — no per-frame pathfinding.
@@ -47,69 +126,24 @@ void ChaseSystem::update(EntityManager& em, double dt)
                           100.0f);
         }
 
+        if (ai.sprint)
+        {
+            speed *= ai.sprint_multiplier;
+            transform.scale = 1.1f;
+        }
+        else
+        {
+            transform.scale = 1.0f;
+        }
+
         float targetDx = 0.0f;
         float targetDy = 0.0f;
-        float dist = 0.0f; // distance to player — used in both branches
+        float dist = 0.0f;
 
         if (ai.state == AIController::State::Chase)
         {
-            const int col = static_cast<int>(transform.x / FlowField::CELL_SIZE);
-            const int row = static_cast<int>(transform.y / FlowField::CELL_SIZE);
-
-            // Entities outside the grid get no movement — safe default.
-            if (col < 0 || col >= FlowField::COLS || row < 0 || row >= FlowField::ROWS)
-            {
-                vel.dx = 0.0f;
-                vel.dy = 0.0f;
-                continue;
-            }
-
-            const auto& cell = ff.cells[row][col];
-
-            if (!playerFound)
-            {
-                // No player — stay still.
-            }
-            else
-            {
-                const float ddx = px - transform.x;
-                const float ddy = py - transform.y;
-                dist = std::sqrt(ddx * ddx + ddy * ddy);
-
-                if (dist <= FlowField::CELL_SIZE)
-                {
-                    // At the player's cell — stop.
-                }
-                else if (cell.dx == 0.0f && cell.dy == 0.0f)
-                {
-                    // Zero flow field: no BFS path reached this cell (e.g. fully
-                    // walled off). Fall back entirely to direct vector — at least
-                    // the entity drifts toward a wall face and doesn't freeze.
-                    targetDx = (ddx / dist) * speed;
-                    targetDy = (ddy / dist) * speed;
-                }
-                else
-                {
-                    // Use the flow field exclusively.
-                    //
-                    // A previous version blended in the direct vector at long range
-                    // (dist > DIRECT_CHASE_FAR) for smoother far-range tracking. This
-                    // caused enemies to charge through walls when the player was on the
-                    // other side: at long range directWeight reached 1.0, overriding
-                    // flow field routing. The flowDotDirect suppression (dot ≤ 0) only
-                    // caught opposite-direction cases — not near-perpendicular ones.
-                    // Example: flow=south (routing around right wall), direct=east-ish
-                    // (player far east), dot = +0.14 → blend fires → enemy charges east
-                    // into right wall and freezes permanently.
-                    //
-                    // The flow field routes correctly in all cases. Velocity blending
-                    // below handles smooth direction transitions at cell boundaries.
-                    // Direct vector is kept only as a fallback for unreachable cells
-                    // (zero flow field above).
-                    targetDx = cell.dx * speed;
-                    targetDy = cell.dy * speed;
-                }
-            }
+            std::tie(targetDx, targetDy) =
+                computeChaseVelocity(ff, px, py, playerFound, transform, speed, dist);
         }
         else if (ai.state == AIController::State::Attack)
         {
@@ -119,42 +153,7 @@ void ChaseSystem::update(EntityManager& em, double dt)
                 vel.dy = 0.0f;
                 continue;
             }
-
-            // Slot = point on the attack ring directly in this entity's current
-            // direction from the player.  Each entity approaches from a different
-            // angle, so each targets a unique point on the ring — surrounding
-            // emerges naturally without explicit slot assignment.
-            //
-            // As the player moves, the slot moves with them.  The entity chases
-            // its (moving) slot, orbiting with the player at attack range.
-            // Transitions back to Chase (via AggroSystem) if the player runs away.
-            const float toDx = transform.x - px;
-            const float toDy = transform.y - py;
-            dist = std::sqrt(toDx * toDx + toDy * toDy);
-            const float invDist = (dist > 0.0f) ? 1.0f / dist : 0.0f;
-            const float slotX = px + toDx * invDist * ai.attack_radius;
-            const float slotY = py + toDy * invDist * ai.attack_radius;
-
-            const float dsx = slotX - transform.x;
-            const float dsy = slotY - transform.y;
-            const float slotDist = std::sqrt(dsx * dsx + dsy * dsy);
-
-            if (slotDist <= FlowField::CELL_SIZE)
-            {
-                // At the slot — hold position.
-                targetDx = 0.0f;
-                targetDy = 0.0f;
-            }
-            else
-            {
-                // Soft arrival at slot: speed scales linearly from full at
-                // attack_radius distance down to zero at CELL_SIZE.  The entity
-                // drifts smoothly onto the ring and holds position with the player
-                // as they move; it never fully freezes unless the player stops.
-                const float scale = std::min(1.0f, slotDist / ai.attack_radius);
-                targetDx = (dsx / slotDist) * speed * scale;
-                targetDy = (dsy / slotDist) * speed * scale;
-            }
+            std::tie(targetDx, targetDy) = computeAttackVelocity(ff, px, py, ai, transform, speed);
         }
 
         // Velocity blending — smooths direction changes at cell boundaries and

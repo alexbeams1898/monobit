@@ -1,8 +1,11 @@
 #include "systems/MovementSystem.h"
 
+#include "TileMap.h"
 #include "ecs/Components.h"
+#include "systems/AudioSystem.h"
 
 #include <cmath>
+#include <tracy/Tracy.hpp>
 #include <vector>
 
 // How much to shrink the entity's bounding box for movement projection checks.
@@ -24,8 +27,10 @@ static bool aabbOverlap(float ax, float ay, float aw, float ah, float bx, float 
     return std::abs(ax - bx) < (aw + bw) * 0.5f && std::abs(ay - by) < (ah + bh) * 0.5f;
 }
 
+// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 void MovementSystem::update(EntityManager& em, double dt)
 {
+    ZoneScopedN("MovementSystem");
     const float fdt = static_cast<float>(dt);
     const FormulaConfig& f = em.formulas;
 
@@ -40,8 +45,8 @@ void MovementSystem::update(EntityManager& em, double dt)
     }
 
     // Pass 1: Input intent → Velocity.
-    // Player speed is derived from DEX stat using the formula:
-    //   finalSpeed = base * (1 + floor(dex_scale * log(DEX + 1)) / 100)
+    // Walk speed: base * (1 + floor(dex_scale * log(DEX + 1)) / 100)
+    // Sprint: walk speed × sprint_multiplier while input.sprint is true.
     // Entities without Stats fall back to f.movement.base (150 px/s default).
     //
     // Skip velocity update if the entity is Dodging (dodge impulse carries through)
@@ -60,37 +65,66 @@ void MovementSystem::update(EntityManager& em, double dt)
                       std::floor(f.movement.dex_scale * std::log(static_cast<float>(dex) + 1.0f)) /
                           100.0f);
         }
+        if (input.sprint)
+            speed *= f.movement.sprint_multiplier;
 
-        vel.dx = input.move_x * speed;
-        vel.dy = input.move_y * speed;
-    }
+        // Sprint visual: slight size increase while sprinting.
+        if (em.registry().all_of<Transform>(entity))
+            em.registry().get<Transform>(entity).scale = input.sprint ? 1.15f : 1.0f;
 
-    // Gather static solid colliders for axis-projection checks below.
-    // "Static" = has Collider + is_solid, but no Velocity component.
-    // Collected once per frame so the inner loop doesn't re-query the registry.
-    auto allColliders = em.registry().view<Transform, Collider>();
-    std::vector<entt::entity> statics;
-    statics.reserve(64);
-    for (auto e : allColliders)
-    {
-        if (!em.registry().all_of<Velocity>(e) && allColliders.get<Collider>(e).is_solid)
-            statics.push_back(e);
+        // Blend toward target velocity for a natural acceleration feel.
+        // Sprint ramps up slowly (sprint_blend); returning to walk snaps faster (walk_blend).
+        const float blend = input.sprint ? f.movement.sprint_blend : f.movement.walk_blend;
+        const float fdt = static_cast<float>(dt);
+        const float t = 1.0f - std::exp(-blend * fdt);
+        vel.dx += (input.move_x * speed - vel.dx) * t;
+        vel.dy += (input.move_y * speed - vel.dy) * t;
+
+        // Footstep cadence: play a step sound at regular intervals while moving.
+        const bool moving = (input.move_x != 0.0f || input.move_y != 0.0f);
+        if (moving)
+        {
+            input.step_timer -= fdt;
+            if (input.step_timer <= 0.0f)
+            {
+                const float cadence = input.sprint ? 0.25f : 0.4f;
+                input.step_timer = cadence;
+                const auto& sfx = input.sprint ? em.sounds.footstep_run : em.sounds.footstep_walk;
+                AudioSystem::playSfx(sfx.path, sfx.volume);
+            }
+        }
+        else
+        {
+            input.step_timer = 0.0f;
+        }
+
+        // Tick wall bump cooldown.
+        input.wall_bump_cooldown = std::max(0.0f, input.wall_bump_cooldown - fdt);
     }
 
     // Pass 2: Velocity → Transform with static wall projection.
     //
-    // For each dynamic entity, X and Y movement are tested against every
-    // static solid independently:
-    //   - Compute the candidate new position on that axis.
-    //   - If it would overlap a static solid, zero the velocity on that axis
-    //     and keep the current position — the entity slides along the wall
-    //     rather than penetrating or bouncing.
-    //   - The Y test uses the resolved X (after the X test) so corner slides
-    //     are handled correctly.
+    // When the tile map is present, walls are looked up by tile coordinate —
+    // O(~4 tile lookups) per axis check regardless of map size. This replaces
+    // the old O(n_static) scan over thousands of wall ECS entities.
     //
-    // This projection approach prevents overlaps from ever reaching
-    // CollisionSystem, so CollisionSystem can focus exclusively on
-    // dynamic-vs-dynamic interactions.
+    // Fall back to ECS statics when no tile map is available (unit tests that
+    // set up explicit wall entities without generating a full tile map).
+    const bool use_tile_map = em.tile_map.valid();
+    const float ts = static_cast<float>(TileMap::TILE_SIZE);
+
+    auto allColliders = em.registry().view<Transform, Collider>();
+    std::vector<entt::entity> statics;
+    if (!use_tile_map)
+    {
+        statics.reserve(64);
+        for (auto e : allColliders)
+        {
+            if (!em.registry().all_of<Velocity>(e) && allColliders.get<Collider>(e).is_solid)
+                statics.push_back(e);
+        }
+    }
+
     for (auto [entity, vel, transform] : em.registry().view<Velocity, Transform>().each())
     {
         const Collider* col = em.registry().try_get<Collider>(entity);
@@ -106,33 +140,65 @@ void MovementSystem::update(EntityManager& em, double dt)
         // Slightly smaller than the entity's true collider — see MOVEMENT_INSET.
         const float mw = col->width - MOVEMENT_INSET;
         const float mh = col->height - MOVEMENT_INSET;
+        const float hw = mw * 0.5f;
+        const float hh = mh * 0.5f;
+
+        // Returns true if the inset box centered at (cx, cy) overlaps any solid wall.
+        // Tile map path: O(~4) direct array lookups.
+        // ECS fallback path: O(n_statics) AABB scan (for tests without a tile map).
+        auto touches_wall = [&](float cx, float cy) -> bool
+        {
+            if (use_tile_map)
+            {
+                const int cmin = static_cast<int>(std::floor((cx - hw) / ts));
+                const int cmax = static_cast<int>(std::floor((cx + hw) / ts));
+                const int rmin = static_cast<int>(std::floor((cy - hh) / ts));
+                const int rmax = static_cast<int>(std::floor((cy + hh) / ts));
+                for (int r = rmin; r <= rmax; ++r)
+                    for (int c = cmin; c <= cmax; ++c)
+                        if (em.tile_map.in_bounds(c, r) && !em.tile_map.at(c, r).walkable)
+                            return true;
+                return false;
+            }
+            for (auto se : statics)
+            {
+                const auto& st = allColliders.get<Transform>(se);
+                const auto& sc = allColliders.get<Collider>(se);
+                if (aabbOverlap(cx, cy, mw, mh, st.x, st.y, sc.width, sc.height))
+                    return true;
+            }
+            return false;
+        };
 
         // X-axis projection: candidate position after horizontal movement.
         float nx = transform.x + vel.dx * fdt;
-        for (auto se : statics)
+        bool hitWallX = false;
+        if (touches_wall(nx, transform.y))
         {
-            const auto& st = allColliders.get<Transform>(se);
-            const auto& sc = allColliders.get<Collider>(se);
-            if (aabbOverlap(nx, transform.y, mw, mh, st.x, st.y, sc.width, sc.height))
-            {
-                vel.dx = 0.0f;
-                nx = transform.x; // stay in place on X
-                break;
-            }
+            hitWallX = (vel.dx != 0.0f);
+            vel.dx = 0.0f;
+            nx = transform.x;
         }
 
         // Y-axis projection: candidate position after vertical movement.
         // Uses resolved X (nx) so a corner slide doesn't re-trigger the X wall.
         float ny = transform.y + vel.dy * fdt;
-        for (auto se : statics)
+        bool hitWallY = false;
+        if (touches_wall(nx, ny))
         {
-            const auto& st = allColliders.get<Transform>(se);
-            const auto& sc = allColliders.get<Collider>(se);
-            if (aabbOverlap(nx, ny, mw, mh, st.x, st.y, sc.width, sc.height))
+            hitWallY = (vel.dy != 0.0f);
+            vel.dy = 0.0f;
+            ny = transform.y;
+        }
+
+        // Wall bump sound — player only, with cooldown to prevent spam.
+        if ((hitWallX || hitWallY) && em.registry().all_of<Input>(entity))
+        {
+            auto& input = em.registry().get<Input>(entity);
+            if (input.wall_bump_cooldown <= 0.0f)
             {
-                vel.dy = 0.0f;
-                ny = transform.y; // stay in place on Y
-                break;
+                AudioSystem::playSfx(em.sounds.wall_bump.path, em.sounds.wall_bump.volume);
+                input.wall_bump_cooldown = 0.2f;
             }
         }
 
@@ -140,17 +206,46 @@ void MovementSystem::update(EntityManager& em, double dt)
         transform.y = ny;
     }
 
-    // Pass 3: Update FacingDirection from current velocity for all entities.
-    // This runs after position integration so the facing reflects where the
-    // entity actually moved this frame (wall projections may zero an axis).
+    // Pass 3: Update FacingDirection for AI entities only.
+    // Player facing is updated per-frame in Engine::processEvents() (mouse-derived,
+    // not physics — must not be tied to the fixed-step tick rate).
+    // AI entities derive facing from velocity with turn-speed blending.
+    // Exception: skip while Dodging so facing stays locked during a dodge.
     for (auto [entity, vel, facing] : em.registry().view<Velocity, FacingDirection>().each())
     {
-        const float len = std::sqrt(vel.dx * vel.dx + vel.dy * vel.dy);
-        if (len > 0.0f)
+        if (em.registry().all_of<Dodging>(entity))
+            continue;
+        if (em.registry().all_of<Input>(entity))
+            continue; // player — handled in processEvents()
+
+        const float dlen = std::sqrt(vel.dx * vel.dx + vel.dy * vel.dy);
+        if (dlen > 0.0f)
         {
-            facing.dx = vel.dx / len;
-            facing.dy = vel.dy / len;
+            const float targetX = vel.dx / dlen;
+            const float targetY = vel.dy / dlen;
+
+            if (const AIController* aic = em.registry().try_get<AIController>(entity);
+                aic && aic->turn_speed > 0.0f)
+            {
+                const float blend = 1.0f - std::exp(-aic->turn_speed * fdt);
+                facing.dx += (targetX - facing.dx) * blend;
+                facing.dy += (targetY - facing.dy) * blend;
+                const float fl = std::sqrt(facing.dx * facing.dx + facing.dy * facing.dy);
+                if (fl > 0.0f)
+                {
+                    facing.dx /= fl;
+                    facing.dy /= fl;
+                }
+            }
+            else
+            {
+                facing.dx = targetX;
+                facing.dy = targetY;
+            }
         }
-        // If vel is zero, keep the last known facing direction.
+
+        // AI visual facing = gameplay facing (already smoothed by turn_speed).
+        facing.render_dx = facing.dx;
+        facing.render_dy = facing.dy;
     }
 }
