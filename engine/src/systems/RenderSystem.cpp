@@ -242,120 +242,127 @@ static void buildSrcRect(int src_x, int src_y, int src_w, int src_h, int tex_w, 
     uvH = flip_y ? -static_cast<float>(src_h) / th : static_cast<float>(src_h) / th;
 }
 
+// ---------------------------------------------------------------------------
+// DrawEntry — one renderable sprite to be sorted and drawn.
+// ---------------------------------------------------------------------------
+
+struct DrawEntry
+{
+    float x, y;
+    float sort_y;
+    int src_x, src_y, src_w, src_h;
+    int layer;
+    int sub_layer;
+    uint32_t tex_id;
+    int tex_w, tex_h;
+    float tr, tg, tb;
+    bool flip_x;
+    bool flip_y;
+    bool solid_color;
+    float draw_scale;
+};
+
+// Build a DrawEntry for a single sprite entity. Returns false if skipped.
+static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::entity entity,
+                                 const Transform& transform, const Sprite& sprite, float alpha,
+                                 DrawEntry& out)
+{
+    if (sprite.texture_path.empty() && sprite.texture_id == 0)
+        return false;
+
+    const uint32_t tex_id = tm.load(sprite.texture_path);
+    int tex_w = 0, tex_h = 0;
+    tm.getDimensions(sprite.texture_path, tex_w, tex_h);
+
+    auto& reg = em.registry();
+    const auto* bp = reg.try_get<BodyPart>(entity);
+
+    // Tint: body-part children inherit from parent.
+    float tr = 1.0f, tg = 1.0f, tb = 1.0f;
+    entt::entity tintEntity = entity;
+    if (bp && reg.valid(bp->parent))
+        tintEntity = bp->parent;
+    computeTint(em, tintEntity, tr, tg, tb);
+
+    // Animated entities handle direction via sheet columns; others use flip.
+    bool flip_x = false, flip_y = false;
+    if (!reg.all_of<Animation>(entity) && reg.all_of<FacingDirection>(entity))
+    {
+        const auto& facing = reg.get<FacingDirection>(entity);
+        flip_x = facing.render_dx < -0.1f;
+        flip_y = facing.render_dy < -0.1f;
+    }
+
+    // SolidColor overrides texture with flat color.
+    bool is_solid = false;
+    if (reg.all_of<SolidColor>(entity))
+    {
+        const auto& sc = reg.get<SolidColor>(entity);
+        tr = sc.r;
+        tg = sc.g;
+        tb = sc.b;
+        is_solid = true;
+    }
+
+    // Interpolate position and snap to pixel grid.
+    float drawX = transform.x, drawY = transform.y;
+    if (const auto* prev = reg.try_get<PreviousTransform>(entity))
+    {
+        drawX = prev->x + (transform.x - prev->x) * alpha;
+        drawY = prev->y + (transform.y - prev->y) * alpha;
+    }
+    drawX = std::round(drawX);
+    drawY = std::round(drawY);
+
+    const float scale = transform.scale;
+
+    // Top-down perspective offset: body-part children look up parent's collider.
+    const Collider* col = reg.try_get<Collider>(entity);
+    if (!col && bp && reg.valid(bp->parent))
+        col = reg.try_get<Collider>(bp->parent);
+
+    float yOffset = 0.0f;
+    if (col)
+        yOffset = (static_cast<float>(sprite.src_h) * scale - col->height) * 0.5f;
+
+    const float sortY = col ? drawY + col->height * 0.5f : drawY;
+    const int subLayer = (bp && bp->faces_aim) ? 1 : 0;
+
+    out = {drawX - static_cast<float>(sprite.src_w) * scale * 0.5f,
+           drawY - static_cast<float>(sprite.src_h) * scale * 0.5f - yOffset,
+           sortY,
+           sprite.src_x,
+           sprite.src_y,
+           sprite.src_w,
+           sprite.src_h,
+           sprite.layer,
+           subLayer,
+           tex_id,
+           tex_w,
+           tex_h,
+           tr,
+           tg,
+           tb,
+           flip_x,
+           flip_y,
+           is_solid,
+           scale};
+    return true;
+}
+
 void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, float camY)
 {
     ZoneScopedN("RenderSystem");
     const float alpha = em.render_alpha;
-
-    // Collect all renderable entities into a vector so we can sort by layer.
-    struct DrawEntry
-    {
-        float x, y;
-        float sort_y; // foot Y in world space (for depth sorting)
-        int src_x, src_y, src_w, src_h;
-        int layer;
-        int sub_layer = 0; // tie-breaker within same layer+sort_y (body parts)
-        uint32_t tex_id;
-        int tex_w, tex_h;                      // full texture dimensions for UV normalisation
-        float tr = 1.0f, tg = 1.0f, tb = 1.0f; // tint RGB (multiplied in shader)
-        bool flip_x = false;                   // mirror sprite horizontally (facing left)
-        bool flip_y = false;                   // mirror sprite vertically (facing up = back view)
-        bool solid_color = false;              // if true, render as flat color using white tex
-        float draw_scale = 1.0f;               // uniform scale for the model matrix only
-    };
 
     std::vector<DrawEntry> drawList;
     drawList.reserve(64);
 
     for (auto [entity, transform, sprite] : em.registry().view<Transform, Sprite>().each())
     {
-        if (sprite.texture_path.empty() && sprite.texture_id == 0)
-            continue;
-
-        uint32_t tex_id = tm.load(sprite.texture_path);
-
-        // Texture dimensions for UV normalization — cached at load time,
-        // no GPU readback needed (see Issue #32).
-        int tex_w = 0;
-        int tex_h = 0;
-        tm.getDimensions(sprite.texture_path, tex_w, tex_h);
-
-        // Tint priority: damage flash > level-up ready > cooldown.
-        // Body-part children read tint from their parent entity.
-        float tr = 1.0f, tg = 1.0f, tb = 1.0f;
-        entt::entity tintEntity = entity;
-        if (const auto* bp = em.registry().try_get<BodyPart>(entity))
-            if (em.registry().valid(bp->parent))
-                tintEntity = bp->parent;
-        computeTint(em, tintEntity, tr, tg, tb);
-
-        // Flip sprite based on facing direction.
-        // Animated entities handle direction via sprite sheet columns instead.
-        // flip_x: facing left  → mirror horizontally.
-        // flip_y: facing up    → mirror vertically (back-of-character view).
-        bool flip_x = false;
-        bool flip_y = false;
-        if (!em.registry().all_of<Animation>(entity) &&
-            em.registry().all_of<FacingDirection>(entity))
-        {
-            const auto& facing = em.registry().get<FacingDirection>(entity);
-            flip_x = facing.render_dx < -0.1f;
-            flip_y = facing.render_dy < -0.1f;
-        }
-
-        // SolidColor overrides texture rendering with a flat colored square.
-        bool is_solid = false;
-        if (em.registry().all_of<SolidColor>(entity))
-        {
-            const auto& sc = em.registry().get<SolidColor>(entity);
-            tr = sc.r;
-            tg = sc.g;
-            tb = sc.b;
-            is_solid = true;
-        }
-
-        // Interpolate between previous and current position, then snap to the
-        // integer pixel grid. The camera is integer-snapped too — without matching
-        // grids, sprites oscillate ±0.5px relative to the camera each frame.
-        float drawX = transform.x;
-        float drawY = transform.y;
-        if (const auto* prev = em.registry().try_get<PreviousTransform>(entity))
-        {
-            drawX = prev->x + (transform.x - prev->x) * alpha;
-            drawY = prev->y + (transform.y - prev->y) * alpha;
-        }
-        drawX = std::round(drawX);
-        drawY = std::round(drawY);
-
-        const float sc = transform.scale;
-
-        // Top-down perspective offset: when the sprite is taller than the
-        // collider, shift the sprite up so its bottom edge aligns with the
-        // collider bottom. Without this, the character's feet visually overlap
-        // walls on the south side while north walls look correct.
-        // Body-part children look up the parent's collider for the offset.
-        float yOffset = 0.0f;
-        const Collider* col = em.registry().try_get<Collider>(entity);
-        if (!col)
-            if (const auto* bp = em.registry().try_get<BodyPart>(entity))
-                if (em.registry().valid(bp->parent))
-                    col = em.registry().try_get<Collider>(bp->parent);
-        if (col)
-            yOffset = (static_cast<float>(sprite.src_h) * sc - col->height) * 0.5f;
-
-        // Foot Y = bottom of collider in world space. Used for depth sorting
-        // so entities further south (higher Y) draw in front of those to the north.
-        const float sortY = col ? drawY + col->height * 0.5f : drawY;
-
-        // Sub-layer: upper body parts draw on top of lower body parts at the same depth.
-        const auto* bp = em.registry().try_get<BodyPart>(entity);
-        const int subLayer = (bp && bp->faces_aim) ? 1 : 0;
-
-        drawList.push_back({drawX - static_cast<float>(sprite.src_w) * sc * 0.5f, // top-left corner
-                            drawY - static_cast<float>(sprite.src_h) * sc * 0.5f - yOffset, sortY,
-                            sprite.src_x, sprite.src_y, sprite.src_w, sprite.src_h, sprite.layer,
-                            subLayer, tex_id, tex_w, tex_h, tr, tg, tb, flip_x, flip_y, is_solid,
-                            sc});
+        DrawEntry entry{};
+        if (buildSpriteDrawEntry(em, tm, entity, transform, sprite, alpha, entry))
+            drawList.push_back(entry);
     }
 
     // Sort: layer > foot Y > sub_layer.

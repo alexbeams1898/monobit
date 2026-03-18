@@ -221,8 +221,8 @@ static bool emplaceAnimationFromSheet(EntityManager& em, entt::entity entity,
     loadState("death", AnimState::Death);
 
     int maxF = 1;
-    for (int i = 0; i < Animation::STATE_COUNT; ++i)
-        maxF = std::max(maxF, anim.states[i].frames);
+    for (const auto& state : anim.states)
+        maxF = std::max(maxF, state.frames);
     anim.max_frames_per_state = maxF;
 
     em.registry().emplace<Animation>(entity, anim);

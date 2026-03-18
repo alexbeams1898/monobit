@@ -5,6 +5,19 @@
 #include <cmath>
 #include <tracy/Tracy.hpp>
 
+// Snap a velocity vector to the nearest cardinal direction.
+// No hysteresis — WASD input is digital, so ties (exact diagonals) get a
+// fixed preference: vertical wins. Predictable every time.
+static CardinalDir snapToCardinal(float dx, float dy)
+{
+    const float ax = std::abs(dx);
+    const float ay = std::abs(dy);
+
+    if (ay >= ax)
+        return dy > 0.0f ? CardinalDir::South : CardinalDir::North;
+    return dx > 0.0f ? CardinalDir::East : CardinalDir::West;
+}
+
 // Snap a facing vector to the nearest cardinal direction with hysteresis.
 // Once a direction is set, require the off-axis component to exceed the
 // on-axis by at least HYSTERESIS_RATIO before switching. Prevents jitter
@@ -78,6 +91,90 @@ static AnimState resolveBodyPartState(entt::registry& reg, entt::entity parent, 
     return AnimState::Idle;
 }
 
+// Resolve cardinal direction for a body-part child entity.
+static void updateBodyPartDirection(entt::registry& reg, const BodyPart& bp, Animation& anim)
+{
+    if (bp.faces_aim)
+    {
+        const auto* facing = reg.try_get<FacingDirection>(bp.parent);
+        if (facing)
+            anim.dir = snapWithHysteresis(facing->render_dx, facing->render_dy, anim.dir);
+    }
+    else
+    {
+        // Prefer raw input intent over post-collision velocity so wall contact
+        // doesn't flip the walk direction (e.g. W+D into a north wall stays North).
+        const auto* input = reg.try_get<Input>(bp.parent);
+        if (input && (input->move_x != 0.0f || input->move_y != 0.0f))
+        {
+            anim.dir = snapToCardinal(input->move_x, input->move_y);
+            return;
+        }
+        const auto* vel = reg.try_get<Velocity>(bp.parent);
+        if (vel && (vel->dx * vel->dx + vel->dy * vel->dy) > 1.0f)
+            anim.dir = snapToCardinal(vel->dx, vel->dy);
+    }
+}
+
+// Resolve cardinal direction for a standalone entity.
+static void updateStandaloneDirection(entt::registry& reg, entt::entity entity, Animation& anim)
+{
+    if (anim.state == AnimState::Walk)
+    {
+        // Prefer raw input intent (player) over post-collision velocity.
+        const auto* input = reg.try_get<Input>(entity);
+        if (input && (input->move_x != 0.0f || input->move_y != 0.0f))
+        {
+            anim.dir = snapToCardinal(input->move_x, input->move_y);
+            return;
+        }
+        const auto* vel = reg.try_get<Velocity>(entity);
+        if (vel)
+            anim.dir = snapToCardinal(vel->dx, vel->dy);
+    }
+    else if (const auto* facing = reg.try_get<FacingDirection>(entity))
+    {
+        anim.dir = snapWithHysteresis(facing->render_dx, facing->render_dy, anim.dir);
+    }
+}
+
+// Advance animation frame timer, handling sprint speed-up and death clamping.
+static void advanceAnimation(entt::registry& reg, entt::entity entity, const BodyPart* bp,
+                             Animation& anim, float dt)
+{
+    const auto& sd = anim.states[static_cast<int>(anim.state)];
+    float frameDuration = sd.duration;
+
+    if (anim.state == AnimState::Walk)
+    {
+        entt::entity sprintEntity = (bp && reg.valid(bp->parent)) ? bp->parent : entity;
+        const auto* input = reg.try_get<Input>(sprintEntity);
+        const auto* ai = reg.try_get<AIController>(sprintEntity);
+        const bool sprinting = (input && input->sprint) || (ai && ai->sprint);
+        if (sprinting)
+            frameDuration *= 0.65f;
+    }
+
+    if (frameDuration > 0.0f && sd.frames > 1)
+    {
+        anim.frame_timer += dt;
+        while (anim.frame_timer >= frameDuration)
+        {
+            anim.frame_timer -= frameDuration;
+
+            if (anim.state == AnimState::Death)
+            {
+                if (anim.frame_index < sd.frames - 1)
+                    anim.frame_index++;
+            }
+            else
+            {
+                anim.frame_index = (anim.frame_index + 1) % sd.frames;
+            }
+        }
+    }
+}
+
 void AnimationSystem::update(EntityManager& em, float dt)
 {
     ZoneScopedN("AnimationSystem");
@@ -102,74 +199,16 @@ void AnimationSystem::update(EntityManager& em, float dt)
         }
 
         // --- 3. Cardinal direction with hysteresis ---
-        // Body parts read direction from the parent entity.
-        // Lower body (faces_aim=false): direction from parent's Velocity.
-        // Upper body (faces_aim=true):  direction from parent's FacingDirection.
-        // Standalone entities: Walk uses own Velocity, other states use own FacingDirection.
-
         if (bp && reg.valid(bp->parent))
-        {
-            if (bp->faces_aim)
-            {
-                const auto* facing = reg.try_get<FacingDirection>(bp->parent);
-                if (facing)
-                    anim.dir = snapWithHysteresis(facing->render_dx, facing->render_dy, anim.dir);
-            }
-            else
-            {
-                const auto* vel = reg.try_get<Velocity>(bp->parent);
-                if (vel && (vel->dx * vel->dx + vel->dy * vel->dy) > 1.0f)
-                    anim.dir = snapWithHysteresis(vel->dx, vel->dy, anim.dir);
-            }
-        }
-        else if (anim.state == AnimState::Walk)
-        {
-            const auto* vel = reg.try_get<Velocity>(entity);
-            if (vel)
-                anim.dir = snapWithHysteresis(vel->dx, vel->dy, anim.dir);
-        }
-        else if (const auto* facing = reg.try_get<FacingDirection>(entity))
-        {
-            anim.dir = snapWithHysteresis(facing->render_dx, facing->render_dy, anim.dir);
-        }
+            updateBodyPartDirection(reg, *bp, anim);
+        else
+            updateStandaloneDirection(reg, entity, anim);
 
         // --- 4. Advance frame timer ---
-        // Sprint speeds up walk cycle for lower body only.
-
-        const auto& sd = anim.states[static_cast<int>(anim.state)];
-        float frameDuration = sd.duration;
-        if (anim.state == AnimState::Walk)
-        {
-            // For body parts, check parent's Input/AIController for sprint.
-            entt::entity sprintEntity = (bp && reg.valid(bp->parent)) ? bp->parent : entity;
-            const auto* input = reg.try_get<Input>(sprintEntity);
-            const auto* ai = reg.try_get<AIController>(sprintEntity);
-            const bool sprinting = (input && input->sprint) || (ai && ai->sprint);
-            if (sprinting)
-                frameDuration *= 0.65f;
-        }
-
-        if (frameDuration > 0.0f && sd.frames > 1)
-        {
-            anim.frame_timer += dt;
-            while (anim.frame_timer >= frameDuration)
-            {
-                anim.frame_timer -= frameDuration;
-
-                if (anim.state == AnimState::Death)
-                {
-                    if (anim.frame_index < sd.frames - 1)
-                        anim.frame_index++;
-                }
-                else
-                {
-                    anim.frame_index = (anim.frame_index + 1) % sd.frames;
-                }
-            }
-        }
+        advanceAnimation(reg, entity, bp, anim, dt);
 
         // --- 5. Compute sprite src rect ---
-
+        const auto& sd = anim.states[static_cast<int>(anim.state)];
         const int dirOffset = static_cast<int>(anim.dir) * anim.max_frames_per_state;
         const int col = dirOffset + anim.frame_index;
         const int row = sd.row;

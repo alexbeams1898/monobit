@@ -18,8 +18,8 @@ Checks: >
   -bugprone-easily-swappable-parameters,
   -bugprone-exception-escape
 
-# Treat warnings as errors in CI — keeps the bar high
-WarningsAsErrors: ''
+# Treat warnings as errors locally and in CI — keeps the bar high
+WarningsAsErrors: '*'
 
 # Only lint our own headers, not SDL2/entt/etc in _deps
 HeaderFilterRegex: '(engine|game)/.*\.(h|hpp)$'
