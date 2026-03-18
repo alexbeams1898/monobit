@@ -252,14 +252,33 @@ This creates a distinct build identity: gun builds are DEX/LCK, melee builds are
 Will be considered for implementation within this milestone once melee is built and feeling good.
 
 ### Sprite Direction
-**4-directional minimum. 8-directional ideal. Left/right flip only is ruled out.**
+**4-directional with dominant-axis selection.** Left/right flip only is ruled out — incompatible
+with directional parry/poise combat.
 
-Left/right flip is incompatible with directional parry/poise combat — the player needs to
-visually distinguish facing direction for block arcs and attack hitboxes.
+Direction determined by dominant axis of the facing vector. Ties go vertical (South).
+Uses `FacingDirection.render_dx/dy` (smoothed) for visual direction selection.
 
-4 cardinal direction sprites (up, down, left, right) with dominant-direction selection for
-diagonals is the practical starting point. 8-directional is the goal if the art budget allows.
-Exact interpolation method TBD during implementation — try dominant-direction selection first.
+### Split-Body Rendering (Player)
+Player rendered as two overlapping sprite layers: lower body (legs) faces movement direction,
+upper body (torso/head) faces aim direction (mouse). Each body part is a child entity with
+independent Animation and Sprite components.
+
+| Player Action | Lower Body | Upper Body |
+|---|---|---|
+| Standing idle | Idle, last velocity dir | Idle, aim dir |
+| Walking | Walk, velocity dir | Idle, aim dir |
+| Walking + attacking | Walk, velocity dir | Attack, aim dir |
+| Standing + attacking | Idle, last dir | Attack, aim dir |
+| Hit | Hit | Hit |
+| Death | Death | Death |
+
+**LPC asset limitation (accepted):** LPC sprites have no torso-twist frames. The vertical
+split at y=35 (within each 64x64 frame) means only head and slight shoulders visually rotate.
+Full torso rotation requires custom art — planned for future, likely alongside character
+creation system.
+
+**Enemies** use single-sprite animation (no split-body). Skeleton sprites sourced from the
+LPC skeleton universal sheet.
 
 ---
 

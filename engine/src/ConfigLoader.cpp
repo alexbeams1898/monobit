@@ -54,14 +54,13 @@ static void loadHealth(EntityManager& em, entt::entity entity, const json& j)
 
 static void loadSprite(EntityManager& em, entt::entity entity, const json& j)
 {
-    Sprite s;
-    s.texture_path = j.value("texture_path", std::string{});
-    s.src_x = j.value("src_x", 0);
-    s.src_y = j.value("src_y", 0);
-    s.src_w = j.value("src_w", 0);
-    s.src_h = j.value("src_h", 0);
-    s.layer = j.value("layer", 0);
-    em.registry().emplace<Sprite>(entity, s);
+    auto& s = em.registry().get_or_emplace<Sprite>(entity);
+    s.texture_path = j.value("texture_path", s.texture_path);
+    s.src_x = j.value("src_x", s.src_x);
+    s.src_y = j.value("src_y", s.src_y);
+    s.src_w = j.value("src_w", s.src_w);
+    s.src_h = j.value("src_h", s.src_h);
+    s.layer = j.value("layer", s.layer);
 }
 
 static void loadCollider(EntityManager& em, entt::entity entity, const json& j)
@@ -164,6 +163,117 @@ static void loadLoot(EntityManager& em, entt::entity entity, const json& j)
     em.registry().emplace<Loot>(entity, l);
 }
 
+// Shared helper: parse a sprite sheet sidecar JSON and emplace Animation + Sprite
+// on the given entity. Used by both loadAnimation and loadBodyParts.
+static bool emplaceAnimationFromSheet(EntityManager& em, entt::entity entity,
+                                      const std::string& sheetPath)
+{
+    if (sheetPath.empty())
+        return false;
+
+    std::ifstream sheetFile(sheetPath);
+    if (!sheetFile.is_open())
+    {
+        std::cerr << "[ConfigLoader] Cannot open animation sheet: " << sheetPath << "\n";
+        return false;
+    }
+
+    json sheetData;
+    try
+    {
+        sheetFile >> sheetData;
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "[ConfigLoader] Error parsing animation sheet " << sheetPath << ": "
+                  << e.what() << "\n";
+        return false;
+    }
+
+    Animation anim;
+    anim.frame_width = sheetData.value("frame_width", 32);
+    anim.frame_height = sheetData.value("frame_height", 32);
+
+    if (sheetData.contains("texture"))
+    {
+        auto& spr = em.registry().get_or_emplace<Sprite>(entity);
+        spr.texture_path = sheetData.value("texture", spr.texture_path);
+        spr.src_w = anim.frame_width;
+        spr.src_h = anim.frame_height;
+    }
+
+    auto loadState = [&](const char* name, AnimState state)
+    {
+        if (sheetData.contains("states") && sheetData["states"].contains(name))
+        {
+            const auto& s = sheetData["states"][name];
+            auto& sd = anim.states[static_cast<int>(state)];
+            sd.row = s.value("row", 0);
+            sd.frames = s.value("frames", 1);
+            sd.duration = s.value("duration", 0.0f);
+        }
+    };
+
+    loadState("idle", AnimState::Idle);
+    loadState("walk", AnimState::Walk);
+    loadState("attack", AnimState::Attack);
+    loadState("hit", AnimState::Hit);
+    loadState("death", AnimState::Death);
+
+    int maxF = 1;
+    for (const auto& state : anim.states)
+        maxF = std::max(maxF, state.frames);
+    anim.max_frames_per_state = maxF;
+
+    em.registry().emplace<Animation>(entity, anim);
+    return true;
+}
+
+static void loadAnimation(EntityManager& em, entt::entity entity, const json& j)
+{
+    const std::string sheetPath = j.value("sheet", std::string{});
+    if (!emplaceAnimationFromSheet(em, entity, sheetPath))
+        em.registry().emplace<Animation>(entity);
+}
+
+// Create child entities for split-body rendering. Each child gets its own
+// Sprite + Animation with an independent direction source (velocity or aim).
+// The parent keeps all gameplay components but has no Sprite/Animation.
+static void loadBodyParts(EntityManager& em, entt::entity parent, const json& j)
+{
+    const Transform* parentTransform = em.registry().try_get<Transform>(parent);
+
+    for (const auto& part : j)
+    {
+        auto child = em.create();
+
+        BodyPart bp;
+        bp.parent = parent;
+        bp.faces_aim = part.value("faces_aim", false);
+        em.registry().emplace<BodyPart>(child, bp);
+
+        // Copy parent position so the child renders at the correct spot.
+        Transform t;
+        if (parentTransform)
+        {
+            t.x = parentTransform->x;
+            t.y = parentTransform->y;
+            t.scale = parentTransform->scale;
+        }
+        em.registry().emplace<Transform>(child, t);
+
+        // Load animation sheet (also creates Sprite component on the child).
+        const std::string sheetPath = part.value("sheet", std::string{});
+        emplaceAnimationFromSheet(em, child, sheetPath);
+
+        // Set the sprite layer from draw_order for z-ordering within the character.
+        if (em.registry().all_of<Sprite>(child))
+            em.registry().get<Sprite>(child).layer = part.value("draw_order", 0);
+
+        em.registry().emplace<Tag>(child, Tag{"body_part"});
+    }
+}
+
 static void loadAIController(EntityManager& em, entt::entity entity, const json& j)
 {
     AIController ai;
@@ -208,9 +318,11 @@ static const std::unordered_map<std::string, LoaderFn> kComponentLoaders = {
     {"shield",           loadShield},
     {"poise",            loadPoise},
     {"loot",             loadLoot},
+    {"animation",        loadAnimation},
     {"ai_controller",    loadAIController},
     {"rest_spot",        loadRestSpot},
     {"solid_color",      loadSolidColor},
+    {"body_parts",       loadBodyParts},
 };
 // clang-format on
 
@@ -397,6 +509,7 @@ bool ConfigLoader::loadSounds(EntityManager& em, const std::string& filePath)
     load("death", s.death);
     load("pickup", s.pickup);
     load("level_up", s.level_up);
+    load("stat_allocate", s.stat_allocate);
     load("wall_bump", s.wall_bump);
     load("footstep_walk", s.footstep_walk);
     load("footstep_run", s.footstep_run);

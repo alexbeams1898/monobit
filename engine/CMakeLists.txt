@@ -20,6 +20,7 @@ target_sources(engine PRIVATE
     src/systems/PickupSystem.cpp
     src/systems/LevelingSystem.cpp
     src/systems/RestSpotSystem.cpp
+    src/systems/AnimationSystem.cpp
     src/systems/AudioSystem.cpp
     src/TileMapLoader.cpp
     src/systems/TileMapRenderer.cpp

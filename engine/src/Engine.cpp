@@ -2,6 +2,7 @@
 
 #include "ecs/Components.h"
 #include "systems/AggroSystem.h"
+#include "systems/AnimationSystem.h"
 #include "systems/AudioSystem.h"
 #include "systems/CameraSystem.h"
 #include "systems/ChaseSystem.h"
@@ -100,6 +101,7 @@ void Engine::run()
         previousTime = currentTime;
 
         last_frame_time = last_frame_time * 0.97 + frameTime * 0.03; // EMA smoothing
+        frame_dt = frameTime; // raw wall-clock dt for animation timing
         if (frameTime > MAX_FRAME_TIME)
             frameTime = MAX_FRAME_TIME;
 
@@ -234,11 +236,24 @@ void Engine::update(double dt)
     MovementSystem::update(entity_manager, dt); // DEX-scaled speed, skip Dodging, FacingDirection
     CollisionSystem::update(entity_manager);    // dynamic-vs-dynamic correction + events
     DamageSystem::update(entity_manager);       // hitbox→health, enemy→player, shield/parry
-    DeathSystem::update(entity_manager);        // spawn XP pickups, destroy Dead entities
+    DeathSystem::update(entity_manager, dt);    // spawn XP pickups, destroy Dead entities
     PickupSystem::update(entity_manager);       // auto-collect XP/money within radius
     LevelingSystem::update(entity_manager);     // XP overflow → level up → stat points
     RestSpotSystem::update(entity_manager, dt); // heal player to full when standing on rest spot
     CameraSystem::update(entity_manager);       // snap camera to final player position
+
+    // Sync body-part children to their parent's position.
+    // Must run after all movement/correction systems so children have the
+    // final parent position before the next PreviousTransform snapshot.
+    for (auto [child, bp, t] : entity_manager.registry().view<BodyPart, Transform>().each())
+    {
+        if (entity_manager.registry().valid(bp.parent))
+        {
+            const auto& pt = entity_manager.registry().get<Transform>(bp.parent);
+            t.x = pt.x;
+            t.y = pt.y;
+        }
+    }
 
     // Title-bar HUD — cheapest possible stat display, no font rendering needed.
     for (auto [entity, input, health, stats, exp] :
@@ -319,6 +334,19 @@ void Engine::render()
         }
     }
 
+    // Sync body-part positions before animation (covers first-frame edge case
+    // where no tick has run yet but we're about to render).
+    for (auto [child, bp, t] : entity_manager.registry().view<BodyPart, Transform>().each())
+    {
+        if (entity_manager.registry().valid(bp.parent))
+        {
+            const auto& pt = entity_manager.registry().get<Transform>(bp.parent);
+            t.x = pt.x;
+            t.y = pt.y;
+        }
+    }
+
+    AnimationSystem::update(entity_manager, static_cast<float>(frame_dt));
     TileMapRenderer::render(camX, camY, window_w, window_h);
     RenderSystem::render(entity_manager, texture_manager, camX, camY);
 

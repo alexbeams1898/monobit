@@ -31,6 +31,21 @@ struct TileConfig
         bool walkable = true;
     };
     std::unordered_map<int, Entry> tiles; // tile_id → visual + nav info
+
+    // Tileset atlas — a single PNG containing all tile sprites.
+    // When non-empty, TileMapRenderer uses textured quads instead of flat colors.
+    std::string tileset_path;
+
+    // Per-tile-type atlas position (column, row in 32px grid).
+    struct TileUV
+    {
+        int col = 0;
+        int row = 0;
+    };
+    TileUV floor_uv{0, 0};
+    TileUV wall_uv{0, 1};
+    TileUV door_uv{0, 2};
+    TileUV obstacle_uv{1, 1};
 };
 
 // ---------------------------------------------------------------------------

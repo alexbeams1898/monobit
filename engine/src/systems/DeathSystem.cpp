@@ -1,17 +1,52 @@
 #include "systems/DeathSystem.h"
 
 #include "ecs/Components.h"
+#include "systems/AudioSystem.h"
 
 #include <iostream>
 #include <tracy/Tracy.hpp>
 #include <vector>
 
-void DeathSystem::update(EntityManager& em)
+// Spawn XP pickup, cascade-destroy body-part children, then destroy entity.
+static void processEnemyDeath(EntityManager& em, entt::entity entity, float tx, float ty,
+                              int xp_drop, int enemy_level)
+{
+    auto& reg = em.registry();
+    const int xpValue = xp_drop * enemy_level;
+
+    const auto pickup = em.create();
+    reg.emplace<Transform>(pickup, Transform{tx, ty, 0.0f, 1.0f});
+    reg.emplace<Pickup>(pickup, Pickup{xpValue, 0, 48.0f});
+    reg.emplace<Tag>(pickup, Tag{"xp_pickup"});
+
+    AudioSystem::playSfx(em.sounds.death.path, em.sounds.death.volume);
+    std::cout << "[DeathSystem] Enemy died (lvl " << enemy_level << ") - spawned " << xpValue
+              << " XP pickup.\n";
+
+    std::vector<entt::entity> children;
+    for (auto [child, bp] : reg.view<BodyPart>().each())
+        if (bp.parent == entity)
+            children.push_back(child);
+    for (auto child : children)
+        em.destroy(child);
+
+    em.destroy(entity);
+}
+
+void DeathSystem::update(EntityManager& em, double dt)
 {
     ZoneScopedN("DeathSystem");
     auto& reg = em.registry();
 
-    // Collect all dead entities before destroying any (entt iterator safety).
+    // Tick death timers first — entities waiting for death animation to finish.
+    for (auto [entity, dead] : reg.view<Dead>().each())
+    {
+        if (dead.timer > 0.0f)
+            dead.timer -= static_cast<float>(dt);
+    }
+
+    // Collect all dead entities whose timer has expired before destroying any
+    // (entt iterator safety).
     struct DeadEntry
     {
         entt::entity entity;
@@ -23,8 +58,12 @@ void DeathSystem::update(EntityManager& em)
     };
 
     std::vector<DeadEntry> dead;
-    for (auto [entity] : reg.view<Dead>().each())
+    for (auto [entity, deadComp] : reg.view<Dead>().each())
     {
+        // Wait for death animation to finish.
+        if (deadComp.timer > 0.0f)
+            continue;
+
         const bool is_player = reg.all_of<Input>(entity);
         float tx = 0.0f;
         float ty = 0.0f;
@@ -56,30 +95,14 @@ void DeathSystem::update(EntityManager& em)
         if (entry.is_player)
         {
             std::cout << "[DeathSystem] Game Over. Press ESC to quit.\n";
-            // Don't destroy the player — let them persist so ESC works.
-            // Remove Dead tag so the log doesn't repeat every frame.
             reg.remove<Dead>(entry.entity);
-            // Zero health so they can't act, but don't destroy the entity.
             if (reg.all_of<Health>(entry.entity))
                 reg.get<Health>(entry.entity).current = 0;
         }
         else
         {
-            // XP = xp_drop * enemy_level
-            // enemy_level = stat_sum - 3 (floored at 1).
-            // Base enemy (all 1s) → level 1 → xp_drop XP.
-            // CO (2+3+1+1=7) → level 4 → 4× xp_drop.
-            const int xpValue = entry.xp_drop * entry.enemy_level;
-
-            const auto pickup = em.create();
-            reg.emplace<Transform>(pickup, Transform{entry.tx, entry.ty, 0.0f, 1.0f});
-            reg.emplace<Pickup>(pickup, Pickup{xpValue, 0, 48.0f});
-            reg.emplace<Tag>(pickup, Tag{"xp_pickup"});
-
-            std::cout << "[DeathSystem] Enemy died (lvl " << entry.enemy_level << ") - spawned "
-                      << xpValue << " XP pickup.\n";
-
-            em.destroy(entry.entity);
+            processEnemyDeath(em, entry.entity, entry.tx, entry.ty, entry.xp_drop,
+                              entry.enemy_level);
         }
     }
 }

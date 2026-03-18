@@ -116,8 +116,15 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
 
     if (health.current <= 0 && !reg.all_of<Dead>(target))
     {
-        reg.emplace<Dead>(target);
-        AudioSystem::playSfx(em.sounds.death.path, em.sounds.death.volume);
+        // Set death timer from animation duration so death anim plays out.
+        float deathTimer = 0.0f;
+        if (reg.all_of<Animation>(target))
+        {
+            const auto& anim = reg.get<Animation>(target);
+            const auto& deathState = anim.states[static_cast<int>(AnimState::Death)];
+            deathTimer = static_cast<float>(deathState.frames) * deathState.duration;
+        }
+        reg.emplace<Dead>(target, Dead{deathTimer});
         TracyMessageL("EntityDied");
         std::cout << "[DamageSystem] Entity died.\n";
     }

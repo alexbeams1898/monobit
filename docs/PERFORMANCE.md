@@ -131,6 +131,91 @@ imperceptible for a top-down 2D game.
 
 ---
 
+### [Issue #32] GPU Readback Fix — TextureManager Dimension Cache
+
+**Problem:** `RenderSystem` called `glGetTexLevelParameteriv` per entity per frame to get
+texture dimensions for UV normalization. This is a GPU pipeline sync — the CPU stalls waiting
+for the GPU to respond. At 1000 enemies, that's 4000 GL sync calls per frame.
+
+**Fix:** `TextureManager` now stores a `TextureInfo` struct (GL handle + width + height) in its
+cache, populated at load time from `stbi_load` results. New `getDimensions()` method does an
+O(1) hash lookup. `RenderSystem` replaced 4 GL calls per entity with one hash lookup.
+
+**Cost:** 8 extra bytes per cached texture (two ints). Negligible.
+
+---
+
+### [Issue #32] Animation System
+
+**Architecture:** Sprite sheet animation driven by ECS components.
+
+- `Animation` component: 76 bytes per entity (state data array, frame index, timer, dimensions)
+- `AnimationSystem::update()` runs once per frame at wall-clock dt (not fixed-step)
+- State resolution is O(1) per entity — priority check against existing components
+- Direction snapping is O(1) — dominant axis comparison
+- Frame advance is O(1) — timer comparison + modulo
+- Sprite src rect update is O(1) — two multiplications
+
+**Sheet layout:** Rows = animation states (idle/walk/attack/hit/death). Columns = direction
+blocks (South/West/East/North) x frames. Column = `dir * max_frames_per_state + frame_index`.
+
+**Death animation persistence:** `Dead` component carries a timer derived from the animation's
+death state (frames x duration). `DeathSystem` ticks the timer and only destroys the entity
+when it reaches zero. No-animation entities still destroy instantly (timer = 0).
+
+**Cost at 1000 entities:** ~1000 hash lookups for state resolution + ~1000 src rect updates.
+No allocations, no branching hot paths. Negligible vs render cost.
+
+---
+
+### [Issue #32] TileMapRenderer — Textured Tiles
+
+**Change:** TileMapRenderer upgraded from flat-color triangles to textured tiles using a
+dungeon tileset atlas. Dual-mode shader supports both textured and color-only rendering via
+`uUseTexture` uniform. UVs baked into the static VBO at map generation time — zero per-frame
+UV computation.
+
+**Vertex layout:** 8 floats per vertex (pos.xy, uv.uv, color.rgba) vs previous 6 (pos.xy,
+color.rgba). 33% more VBO memory but still a single static upload — no per-frame cost.
+
+---
+
+### [Issue #32] Split-Body Rendering (Player)
+
+**Problem:** Player sprite faces movement direction, but in a twin-stick game the upper body
+should face aim direction (mouse). Standard single-sprite animation can't represent two
+facing directions simultaneously.
+
+**Fix:** Player rendered as two child entities (lower body + upper body), each with independent
+Animation and Sprite components. Lower body faces velocity direction with walk/idle states;
+upper body faces FacingDirection (mouse aim) with attack/idle states.
+
+**Architecture:** Child entities linked via `BodyPart` component (`parent`, `faces_aim` flag).
+Parent entity keeps all gameplay components (Transform, Health, Stats, etc.) but has no
+Sprite or Animation. Children inherit position from parent each frame.
+
+**State resolution per body part:**
+- Lower body (`faces_aim=false`): Dead > Hit > Walk > Idle. Direction from parent Velocity.
+- Upper body (`faces_aim=true`): Dead > Hit > Attack > Idle. Direction from parent FacingDirection.
+
+**Sprite split method:** LPC body base is a full-body silhouette. Both sheets include the body
+base but apply a vertical alpha mask at `BODY_SPLIT_Y=35` within each 64x64 frame. Lower body
+keeps only rows >= 35 (legs/feet), upper body keeps only rows < 35 (head/shoulders).
+
+**Limitation (accepted):** LPC sprites have no torso-twist frames. The split at y=35 means
+only head and slight shoulders visually rotate. Full torso rotation requires custom art
+(planned for future). This is a known LPC asset limitation, not an engine limitation.
+
+**Cost:** Two extra entities per split-body character. Two extra Animation state lookups and
+Sprite draws per frame. Position sync loop is O(n_body_parts) — negligible. No impact on
+enemies or other single-sprite entities.
+
+**Enemy sprites:** Enemies use a pre-composited LPC skeleton universal sheet (832x1344),
+remapped at build time to our 5-row format. No layer compositing or split-body — single
+Animation + Sprite entity per enemy.
+
+---
+
 ## Tracy Profiling Notes
 
 Profiling setup: `cmake.configureArgs: ["-DTRACY_ENABLE=ON"]` in `.vscode/settings.json`.

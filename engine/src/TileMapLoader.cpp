@@ -134,6 +134,24 @@ TileConfig TileMapLoader::loadConfig(const std::string& path)
                 cfg.tiles[tile_id] = e;
             }
         }
+
+        cfg.tileset_path = j.value("tileset", std::string{});
+
+        if (j.contains("tile_uv"))
+        {
+            auto readUV = [&](const char* key, TileConfig::TileUV& uv)
+            {
+                if (j["tile_uv"].contains(key))
+                {
+                    uv.col = j["tile_uv"][key].value("col", uv.col);
+                    uv.row = j["tile_uv"][key].value("row", uv.row);
+                }
+            };
+            readUV("floor", cfg.floor_uv);
+            readUV("wall", cfg.wall_uv);
+            readUV("door", cfg.door_uv);
+            readUV("obstacle", cfg.obstacle_uv);
+        }
     }
     catch (const std::exception& ex)
     {

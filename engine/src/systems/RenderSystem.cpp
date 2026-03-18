@@ -2,6 +2,7 @@
 
 #include "ecs/Components.h"
 
+#include <SDL.h>
 #include <algorithm>
 #include <cmath>
 #include <glad/glad.h>
@@ -128,19 +129,9 @@ static void computeTint(EntityManager& em, entt::entity entity, float& tr, float
 {
     if (em.registry().all_of<DamageFeedback>(entity))
     {
-        tr = 0.2f;
-        tg = 0.4f; // blue
-    }
-    else if (em.registry().all_of<AttackFeedback>(entity))
-    {
-        tg = 0.5f;
-        tb = 0.0f; // orange
-    }
-    else if (em.registry().all_of<Staggered>(entity))
-    {
-        tr = 0.6f;
-        tg = 0.0f;
-        tb = 1.0f; // purple
+        tr = 10.0f;
+        tg = 10.0f;
+        tb = 10.0f; // white flash (clamped by GPU)
     }
     else if (em.registry().all_of<Experience>(entity) &&
              em.registry().get<Experience>(entity).stat_points > 0)
@@ -156,9 +147,9 @@ static void computeTint(EntityManager& em, entt::entity entity, float& tr, float
         if (cooldown > 0.0f)
         {
             const float t = std::min(cooldown, 1.0f);
-            tr = 1.0f - t * 0.35f; // 1.0 → 0.65
-            tg = 1.0f - t * 0.35f;
-            tb = 1.0f - t * 0.15f; // 1.0 → 0.85
+            tr = 1.0f - t * 0.15f; // 1.0 → 0.85
+            tg = 1.0f - t * 0.15f;
+            tb = 1.0f - t * 0.05f; // 1.0 → 0.95
         }
     }
 }
@@ -251,95 +242,142 @@ static void buildSrcRect(int src_x, int src_y, int src_w, int src_h, int tex_w, 
     uvH = flip_y ? -static_cast<float>(src_h) / th : static_cast<float>(src_h) / th;
 }
 
+// ---------------------------------------------------------------------------
+// DrawEntry — one renderable sprite to be sorted and drawn.
+// ---------------------------------------------------------------------------
+
+struct DrawEntry
+{
+    float x, y;
+    float sort_y;
+    int src_x, src_y, src_w, src_h;
+    int layer;
+    int sub_layer;
+    uint32_t tex_id;
+    int tex_w, tex_h;
+    float tr, tg, tb;
+    bool flip_x;
+    bool flip_y;
+    bool solid_color;
+    float draw_scale;
+};
+
+// Build a DrawEntry for a single sprite entity. Returns false if skipped.
+static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::entity entity,
+                                 const Transform& transform, const Sprite& sprite, float alpha,
+                                 DrawEntry& out)
+{
+    if (sprite.texture_path.empty() && sprite.texture_id == 0)
+        return false;
+
+    const uint32_t tex_id = tm.load(sprite.texture_path);
+    int tex_w = 0, tex_h = 0;
+    tm.getDimensions(sprite.texture_path, tex_w, tex_h);
+
+    auto& reg = em.registry();
+    const auto* bp = reg.try_get<BodyPart>(entity);
+
+    // Tint: body-part children inherit from parent.
+    float tr = 1.0f, tg = 1.0f, tb = 1.0f;
+    entt::entity tintEntity = entity;
+    if (bp && reg.valid(bp->parent))
+        tintEntity = bp->parent;
+    computeTint(em, tintEntity, tr, tg, tb);
+
+    // Animated entities handle direction via sheet columns; others use flip.
+    bool flip_x = false, flip_y = false;
+    if (!reg.all_of<Animation>(entity) && reg.all_of<FacingDirection>(entity))
+    {
+        const auto& facing = reg.get<FacingDirection>(entity);
+        flip_x = facing.render_dx < -0.1f;
+        flip_y = facing.render_dy < -0.1f;
+    }
+
+    // SolidColor overrides texture with flat color.
+    bool is_solid = false;
+    if (reg.all_of<SolidColor>(entity))
+    {
+        const auto& sc = reg.get<SolidColor>(entity);
+        tr = sc.r;
+        tg = sc.g;
+        tb = sc.b;
+        is_solid = true;
+    }
+
+    // Interpolate position and snap to pixel grid.
+    float drawX = transform.x, drawY = transform.y;
+    if (const auto* prev = reg.try_get<PreviousTransform>(entity))
+    {
+        drawX = prev->x + (transform.x - prev->x) * alpha;
+        drawY = prev->y + (transform.y - prev->y) * alpha;
+    }
+    drawX = std::round(drawX);
+    drawY = std::round(drawY);
+
+    const float scale = transform.scale;
+
+    // Top-down perspective offset: body-part children look up parent's collider.
+    const Collider* col = reg.try_get<Collider>(entity);
+    if (!col && bp && reg.valid(bp->parent))
+        col = reg.try_get<Collider>(bp->parent);
+
+    float yOffset = 0.0f;
+    if (col)
+        yOffset = (static_cast<float>(sprite.src_h) * scale - col->height) * 0.5f;
+
+    const float sortY = col ? drawY + col->height * 0.5f : drawY;
+    const int subLayer = (bp && bp->faces_aim) ? 1 : 0;
+
+    out = {drawX - static_cast<float>(sprite.src_w) * scale * 0.5f,
+           drawY - static_cast<float>(sprite.src_h) * scale * 0.5f - yOffset,
+           sortY,
+           sprite.src_x,
+           sprite.src_y,
+           sprite.src_w,
+           sprite.src_h,
+           sprite.layer,
+           subLayer,
+           tex_id,
+           tex_w,
+           tex_h,
+           tr,
+           tg,
+           tb,
+           flip_x,
+           flip_y,
+           is_solid,
+           scale};
+    return true;
+}
+
 void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, float camY)
 {
     ZoneScopedN("RenderSystem");
     const float alpha = em.render_alpha;
-
-    // Collect all renderable entities into a vector so we can sort by layer.
-    struct DrawEntry
-    {
-        float x, y;
-        int src_x, src_y, src_w, src_h;
-        int layer;
-        uint32_t tex_id;
-        int tex_w, tex_h;                      // full texture dimensions for UV normalisation
-        float tr = 1.0f, tg = 1.0f, tb = 1.0f; // tint RGB (multiplied in shader)
-        bool flip_x = false;                   // mirror sprite horizontally (facing left)
-        bool flip_y = false;                   // mirror sprite vertically (facing up = back view)
-        bool solid_color = false;              // if true, render as flat color using white tex
-        float draw_scale = 1.0f;               // uniform scale for the model matrix only
-    };
 
     std::vector<DrawEntry> drawList;
     drawList.reserve(64);
 
     for (auto [entity, transform, sprite] : em.registry().view<Transform, Sprite>().each())
     {
-        if (sprite.texture_path.empty() && sprite.texture_id == 0)
-            continue;
-
-        uint32_t tex_id = tm.load(sprite.texture_path);
-
-        // Query texture dimensions so we can convert pixel src rects to 0-1 UV.
-        glBindTexture(GL_TEXTURE_2D, tex_id);
-        GLint tex_w = 0;
-        GLint tex_h = 0;
-        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &tex_w);
-        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &tex_h);
-        glBindTexture(GL_TEXTURE_2D, 0);
-
-        // Tint priority: damage flash > attack flash > staggered > level-up ready > cooldown.
-        // Orange + blue are safe for red-green color blindness.
-        float tr = 1.0f, tg = 1.0f, tb = 1.0f;
-        computeTint(em, entity, tr, tg, tb);
-
-        // Flip sprite based on facing direction.
-        // flip_x: facing left  → mirror horizontally.
-        // flip_y: facing up    → mirror vertically (back-of-character view).
-        bool flip_x = false;
-        bool flip_y = false;
-        if (em.registry().all_of<FacingDirection>(entity))
-        {
-            const auto& facing = em.registry().get<FacingDirection>(entity);
-            flip_x = facing.render_dx < -0.1f;
-            flip_y = facing.render_dy < -0.1f;
-        }
-
-        // SolidColor overrides texture rendering with a flat colored square.
-        bool is_solid = false;
-        if (em.registry().all_of<SolidColor>(entity))
-        {
-            const auto& sc = em.registry().get<SolidColor>(entity);
-            tr = sc.r;
-            tg = sc.g;
-            tb = sc.b;
-            is_solid = true;
-        }
-
-        // Interpolate between previous and current position, then snap to the
-        // integer pixel grid. The camera is integer-snapped too — without matching
-        // grids, sprites oscillate ±0.5px relative to the camera each frame.
-        float drawX = transform.x;
-        float drawY = transform.y;
-        if (const auto* prev = em.registry().try_get<PreviousTransform>(entity))
-        {
-            drawX = prev->x + (transform.x - prev->x) * alpha;
-            drawY = prev->y + (transform.y - prev->y) * alpha;
-        }
-        drawX = std::round(drawX);
-        drawY = std::round(drawY);
-
-        const float sc = transform.scale;
-        drawList.push_back({drawX - static_cast<float>(sprite.src_w) * sc * 0.5f, // top-left corner
-                            drawY - static_cast<float>(sprite.src_h) * sc * 0.5f, sprite.src_x,
-                            sprite.src_y, sprite.src_w, sprite.src_h, sprite.layer, tex_id, tex_w,
-                            tex_h, tr, tg, tb, flip_x, flip_y, is_solid, sc});
+        DrawEntry entry{};
+        if (buildSpriteDrawEntry(em, tm, entity, transform, sprite, alpha, entry))
+            drawList.push_back(entry);
     }
 
-    // Sort ascending by layer — lower layers drawn first (appear behind).
+    // Sort: layer > foot Y > sub_layer.
+    // Layer separates ground/tiles from character sprites.
+    // Foot Y gives top-down depth: higher Y = further south = drawn in front.
+    // Sub-layer ensures upper body draws on top of lower body for the same character.
     std::sort(drawList.begin(), drawList.end(),
-              [](const DrawEntry& a, const DrawEntry& b) { return a.layer < b.layer; });
+              [](const DrawEntry& a, const DrawEntry& b)
+              {
+                  if (a.layer != b.layer)
+                      return a.layer < b.layer;
+                  if (a.sort_y != b.sort_y)
+                      return a.sort_y < b.sort_y;
+                  return a.sub_layer < b.sub_layer;
+              });
 
     // Build orthographic projection centred on the camera position.
     // The camera sits at the centre of the window; the world scrolls around it.
@@ -392,6 +430,42 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
     }
 
+    // Crosshair — small + shape at the mouse world position. Gives the player
+    // a persistent aim indicator, especially useful while walking (sprite faces
+    // movement direction, crosshair shows attack direction).
+    {
+        int mx = 0, my = 0;
+        SDL_GetMouseState(&mx, &my);
+        const float worldX = snapCamX + static_cast<float>(mx) - halfW;
+        const float worldY = snapCamY + static_cast<float>(my) - halfH;
+
+        static constexpr float kArmLen = 6.0f; // half-length of each arm
+        static constexpr float kThick = 2.0f;  // bar thickness
+        static constexpr float kGap = 2.0f;    // gap from center
+
+        glBindTexture(GL_TEXTURE_2D, sWhiteTex);
+        glUniform4f(glGetUniformLocation(sProgram, "uSrcRect"), 0.0f, 0.0f, 1.0f, 1.0f);
+        glUniform4f(glGetUniformLocation(sProgram, "uTint"), 1.0f, 1.0f, 1.0f, 0.8f);
+
+        // Horizontal bar (left arm)
+        float cModel[16];
+        buildModel(cModel, worldX - kGap - kArmLen, worldY - kThick * 0.5f, kArmLen, kThick);
+        glUniformMatrix4fv(glGetUniformLocation(sProgram, "uModel"), 1, GL_FALSE, cModel);
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+        // Horizontal bar (right arm)
+        buildModel(cModel, worldX + kGap, worldY - kThick * 0.5f, kArmLen, kThick);
+        glUniformMatrix4fv(glGetUniformLocation(sProgram, "uModel"), 1, GL_FALSE, cModel);
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+        // Vertical bar (top arm)
+        buildModel(cModel, worldX - kThick * 0.5f, worldY - kGap - kArmLen, kThick, kArmLen);
+        glUniformMatrix4fv(glGetUniformLocation(sProgram, "uModel"), 1, GL_FALSE, cModel);
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+        // Vertical bar (bottom arm)
+        buildModel(cModel, worldX - kThick * 0.5f, worldY + kGap, kThick, kArmLen);
+        glUniformMatrix4fv(glGetUniformLocation(sProgram, "uModel"), 1, GL_FALSE, cModel);
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+    }
+
     // Facing dot — 6×6 black square drawn at the front edge of every entity
     // that has a FacingDirection component.  Uses the 1×1 white texture tinted black.
     // Offset = 10 px in facing direction from center; dot top-left is 3 px back from that.
@@ -404,6 +478,10 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
 
     for (auto [entity, transform, facing] : em.registry().view<Transform, FacingDirection>().each())
     {
+        // Skip animated sprites (direction shown via sheet columns) and
+        // entities without Sprite (e.g. player parent with body-part children).
+        if (em.registry().all_of<Animation>(entity) || !em.registry().all_of<Sprite>(entity))
+            continue;
         float anchorX = std::round(transform.x);
         float anchorY = std::round(transform.y);
         if (const auto* prev = em.registry().try_get<PreviousTransform>(entity))
