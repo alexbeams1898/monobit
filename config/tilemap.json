@@ -2,6 +2,13 @@
     "width": 80,
     "height": 60,
     "room_count": 6,
+    "tileset": "assets/tiles/dungeon_tiles.png",
+    "tile_uv": {
+        "floor":    { "col": 0, "row": 0 },
+        "wall":     { "col": 0, "row": 1 },
+        "door":     { "col": 0, "row": 2 },
+        "obstacle": { "col": 1, "row": 1 }
+    },
     "tiles": {
         "0": { "sprite": "", "walkable": true  },
         "1": { "sprite": "", "walkable": false },

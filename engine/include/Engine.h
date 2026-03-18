@@ -24,6 +24,11 @@ class Engine
         return entity_manager;
     }
 
+    TextureManager& textureManager()
+    {
+        return texture_manager;
+    }
+
   private:
     void processEvents();
     void update(double dt);
@@ -38,4 +43,5 @@ class Engine
     EntityManager entity_manager;
     TextureManager texture_manager;
     double last_frame_time = 1.0 / 60.0; // seconds; used for title-bar FPS display
+    double frame_dt = 1.0 / 60.0;        // raw wall-clock frame time for animation
 };

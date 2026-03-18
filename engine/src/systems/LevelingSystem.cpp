@@ -143,6 +143,7 @@ void LevelingSystem::update(EntityManager& em)
         {
             stat++;
             expRef.stat_points--;
+            AudioSystem::playSfx(em.sounds.stat_allocate.path, em.sounds.stat_allocate.volume);
 
             // Recalculate HP if END changed.
             if (reg.all_of<Health>(ent))

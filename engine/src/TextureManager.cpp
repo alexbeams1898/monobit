@@ -16,7 +16,7 @@ uint32_t TextureManager::load(const std::string& path)
     // Cache hit — return immediately without touching disk or GPU.
     auto it = cache.find(path);
     if (it != cache.end())
-        return it->second;
+        return it->second.id;
 
     // Load pixel data from disk.
     // stbi_load returns RGBA data (4 bytes per pixel), origin at top-left.
@@ -29,7 +29,7 @@ uint32_t TextureManager::load(const std::string& path)
     {
         std::cerr << "[TextureManager] Failed to load: " << path << " - using fallback\n";
         const uint32_t fb = makeFallback();
-        cache[path] = fb; // cache so the log only fires once per missing path
+        cache[path] = {fb, fallback_width, fallback_height};
         return fb;
     }
 
@@ -48,15 +48,34 @@ uint32_t TextureManager::load(const std::string& path)
     stbi_image_free(pixels);
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    cache[path] = static_cast<uint32_t>(texId);
-    return static_cast<uint32_t>(texId);
+    TextureInfo info;
+    info.id = static_cast<uint32_t>(texId);
+    info.width = width;
+    info.height = height;
+    cache[path] = info;
+    return info.id;
+}
+
+void TextureManager::getDimensions(const std::string& path, int& width, int& height) const
+{
+    auto it = cache.find(path);
+    if (it != cache.end())
+    {
+        width = it->second.width;
+        height = it->second.height;
+    }
+    else
+    {
+        width = 0;
+        height = 0;
+    }
 }
 
 void TextureManager::clear()
 {
-    for (auto& [path, id] : cache)
+    for (auto& [path, info] : cache)
     {
-        GLuint texId = static_cast<GLuint>(id);
+        GLuint texId = static_cast<GLuint>(info.id);
         glDeleteTextures(1, &texId);
     }
     cache.clear();
@@ -99,5 +118,7 @@ uint32_t TextureManager::makeFallback()
     glBindTexture(GL_TEXTURE_2D, 0);
 
     fallback_id = static_cast<uint32_t>(texId);
+    fallback_width = size;
+    fallback_height = size;
     return fallback_id;
 }

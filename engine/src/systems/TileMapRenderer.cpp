@@ -7,35 +7,47 @@
 #include <vector>
 
 // ---------------------------------------------------------------------------
-// Shaders — simplified for static geometry.
-// World-space position and color are baked into the VBO at upload time,
-// so only uProjection is needed per frame (no per-tile uniforms).
+// Shaders -- textured tile rendering with color fallback.
+//
+// When a tileset is loaded, UV coordinates sample the tileset atlas.
+// When no tileset is loaded, uUseTexture=0 and flat colors are used.
 // ---------------------------------------------------------------------------
 
 static const char* kVertSrc = R"glsl(
 #version 330 core
 layout(location = 0) in vec2 aPos;
-layout(location = 1) in vec4 aColor;
+layout(location = 1) in vec2 aUV;
+layout(location = 2) in vec4 aColor;
 
 uniform mat4 uProjection;
 
+out vec2 vUV;
 out vec4 vColor;
 
 void main()
 {
     gl_Position = uProjection * vec4(aPos, 0.0, 1.0);
+    vUV = aUV;
     vColor = aColor;
 }
 )glsl";
 
 static const char* kFragSrc = R"glsl(
 #version 330 core
+in vec2 vUV;
 in vec4 vColor;
+
+uniform sampler2D uTileset;
+uniform int       uUseTexture;
+
 out vec4 fragColor;
 
 void main()
 {
-    fragColor = vColor;
+    if (uUseTexture != 0)
+        fragColor = texture(uTileset, vUV);
+    else
+        fragColor = vColor;
 }
 )glsl";
 
@@ -46,7 +58,9 @@ void main()
 static GLuint sTMProgram = 0;
 static GLuint sTMVao = 0;
 static GLuint sTMVbo = 0;
-static int sTMVertexCount = 0; // set by upload(), read by render()
+static int sTMVertexCount = 0;
+static uint32_t sTilesetTexId = 0;
+static bool sHasTileset = false;
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -69,7 +83,6 @@ static GLuint compileTMShader(GLenum type, const char* src)
     return shader;
 }
 
-// Column-major orthographic projection (same convention as RenderSystem).
 static void buildTMOrtho(float mat[16], float left, float right, float bottom, float top)
 {
     const float rml = right - left;
@@ -82,7 +95,7 @@ static void buildTMOrtho(float mat[16], float left, float right, float bottom, f
     // clang-format on
 }
 
-// Return tint color for a tile type when no sprite is present.
+// Flat-color fallback when no tileset is configured.
 static void tileTypeTint(TileType type, float& r, float& g, float& b)
 {
     switch (type)
@@ -136,36 +149,77 @@ void TileMapRenderer::init()
     glDeleteShader(vert);
     glDeleteShader(frag);
 
-    // Create VAO/VBO with the new vertex layout: vec2 pos + vec4 color (24 bytes/vertex).
-    // No data yet — upload() fills this after map generation.
+    // Vertex layout: vec2 pos + vec2 uv + vec4 color = 8 floats per vertex.
     glGenVertexArrays(1, &sTMVao);
     glGenBuffers(1, &sTMVbo);
 
     glBindVertexArray(sTMVao);
     glBindBuffer(GL_ARRAY_BUFFER, sTMVbo);
 
-    // aPos  — location 0, 2 floats, offset 0
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 6 * sizeof(float), reinterpret_cast<void*>(0));
+    const int stride = 8 * static_cast<int>(sizeof(float));
+    // aPos -- location 0
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void*>(0));
     glEnableVertexAttribArray(0);
-    // aColor — location 1, 4 floats, offset 8 bytes (after aPos)
-    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 6 * sizeof(float),
+    // aUV -- location 1
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride,
                           reinterpret_cast<void*>(2 * sizeof(float)));
     glEnableVertexAttribArray(1);
+    // aColor -- location 2
+    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, stride,
+                          reinterpret_cast<void*>(4 * sizeof(float)));
+    glEnableVertexAttribArray(2);
 
     glBindVertexArray(0);
 }
 
-void TileMapRenderer::upload(const TileMap& map)
+void TileMapRenderer::upload(const TileMap& map, const TileConfig& config, TextureManager& tm)
 {
     if (!map.valid())
         return;
 
-    // Build interleaved vertex data for all tiles.
-    // Each tile = 2 triangles = 6 vertices × 6 floats (x, y, r, g, b, a).
-    const std::size_t tile_count =
+    // Load tileset texture if configured.
+    int atlasW = 0;
+    int atlasH = 0;
+    sHasTileset = false;
+
+    if (!config.tileset_path.empty())
+    {
+        sTilesetTexId = tm.load(config.tileset_path);
+        tm.getDimensions(config.tileset_path, atlasW, atlasH);
+        sHasTileset = (atlasW > 0 && atlasH > 0);
+    }
+
+    // Pre-compute UV rects for each tile type.
+    struct UVRect
+    {
+        float u0 = 0.0f;
+        float v0 = 0.0f;
+        float u1 = 1.0f;
+        float v1 = 1.0f;
+    };
+
+    auto makeUV = [&](const TileConfig::TileUV& tuv) -> UVRect
+    {
+        if (!sHasTileset)
+            return {0.0f, 0.0f, 1.0f, 1.0f};
+        const float tw = static_cast<float>(atlasW);
+        const float th = static_cast<float>(atlasH);
+        const float tileF = 32.0f;
+        return {tuv.col * tileF / tw, tuv.row * tileF / th, (tuv.col + 1) * tileF / tw,
+                (tuv.row + 1) * tileF / th};
+    };
+
+    UVRect floorUV = makeUV(config.floor_uv);
+    UVRect wallUV = makeUV(config.wall_uv);
+    UVRect doorUV = makeUV(config.door_uv);
+    UVRect obstacleUV = makeUV(config.obstacle_uv);
+
+    // Build interleaved vertex data.
+    // Each tile = 2 triangles = 6 vertices x 8 floats.
+    const auto tile_count =
         static_cast<std::size_t>(map.width) * static_cast<std::size_t>(map.height);
     std::vector<float> verts;
-    verts.reserve(tile_count * 36); // 6 verts * 6 floats
+    verts.reserve(tile_count * 48); // 6 verts * 8 floats
 
     const float ts = static_cast<float>(TileMap::TILE_SIZE);
 
@@ -175,35 +229,54 @@ void TileMapRenderer::upload(const TileMap& map)
         {
             const auto& tile = map.at(col, row);
 
-            float tr = 0.0f, tg = 0.0f, tb = 0.0f;
-            tileTypeTint(tile.type, tr, tg, tb);
+            float tr = 1.0f, tg = 1.0f, tb = 1.0f;
+            if (!sHasTileset)
+                tileTypeTint(tile.type, tr, tg, tb);
+
+            UVRect uv;
+            switch (tile.type)
+            {
+            case TileType::Floor:
+                uv = floorUV;
+                break;
+            case TileType::Wall:
+                uv = wallUV;
+                break;
+            case TileType::DoorFrame:
+                uv = doorUV;
+                break;
+            case TileType::Obstacle:
+                uv = obstacleUV;
+                break;
+            }
 
             const float x0 = static_cast<float>(col) * ts;
             const float y0 = static_cast<float>(row) * ts;
             const float x1 = x0 + ts;
             const float y1 = y0 + ts;
 
-            // Two triangles (CCW), 6 vertices.
-            auto push = [&](float x, float y)
+            auto push = [&](float x, float y, float u, float v)
             {
                 verts.push_back(x);
                 verts.push_back(y);
+                verts.push_back(u);
+                verts.push_back(v);
                 verts.push_back(tr);
                 verts.push_back(tg);
                 verts.push_back(tb);
                 verts.push_back(1.0f);
             };
 
-            push(x0, y0);
-            push(x1, y0);
-            push(x1, y1); // triangle 1
-            push(x0, y0);
-            push(x1, y1);
-            push(x0, y1); // triangle 2
+            push(x0, y0, uv.u0, uv.v0);
+            push(x1, y0, uv.u1, uv.v0);
+            push(x1, y1, uv.u1, uv.v1); // tri 1
+            push(x0, y0, uv.u0, uv.v0);
+            push(x1, y1, uv.u1, uv.v1);
+            push(x0, y1, uv.u0, uv.v1); // tri 2
         }
     }
 
-    sTMVertexCount = static_cast<int>(verts.size() / 6);
+    sTMVertexCount = static_cast<int>(verts.size() / 8);
 
     glBindVertexArray(sTMVao);
     glBindBuffer(GL_ARRAY_BUFFER, sTMVbo);
@@ -221,16 +294,23 @@ void TileMapRenderer::render(float camX, float camY, int windowW, int windowH)
     const float half_w = static_cast<float>(windowW) * 0.5f;
     const float half_h = static_cast<float>(windowH) * 0.5f;
 
-    // Camera snapped to integer pixels — prevents 1-pixel gaps between tiles.
     const float snap_x = std::round(camX);
     const float snap_y = std::round(camY);
 
-    // Orthographic projection centered on camera (Y-down: bottom > top in call).
     float proj[16];
     buildTMOrtho(proj, snap_x - half_w, snap_x + half_w, snap_y + half_h, snap_y - half_h);
 
     glUseProgram(sTMProgram);
     glUniformMatrix4fv(glGetUniformLocation(sTMProgram, "uProjection"), 1, GL_FALSE, proj);
+    glUniform1i(glGetUniformLocation(sTMProgram, "uUseTexture"), sHasTileset ? 1 : 0);
+
+    if (sHasTileset)
+    {
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(sTilesetTexId));
+        glUniform1i(glGetUniformLocation(sTMProgram, "uTileset"), 0);
+    }
+
     glBindVertexArray(sTMVao);
     glDrawArrays(GL_TRIANGLES, 0, sTMVertexCount);
     glBindVertexArray(0);
@@ -255,4 +335,6 @@ void TileMapRenderer::shutdown()
         sTMProgram = 0;
     }
     sTMVertexCount = 0;
+    sTilesetTexId = 0;
+    sHasTileset = false;
 }

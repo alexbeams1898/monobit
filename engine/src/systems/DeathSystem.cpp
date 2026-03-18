@@ -1,17 +1,26 @@
 #include "systems/DeathSystem.h"
 
 #include "ecs/Components.h"
+#include "systems/AudioSystem.h"
 
 #include <iostream>
 #include <tracy/Tracy.hpp>
 #include <vector>
 
-void DeathSystem::update(EntityManager& em)
+void DeathSystem::update(EntityManager& em, double dt)
 {
     ZoneScopedN("DeathSystem");
     auto& reg = em.registry();
 
-    // Collect all dead entities before destroying any (entt iterator safety).
+    // Tick death timers first — entities waiting for death animation to finish.
+    for (auto [entity, dead] : reg.view<Dead>().each())
+    {
+        if (dead.timer > 0.0f)
+            dead.timer -= static_cast<float>(dt);
+    }
+
+    // Collect all dead entities whose timer has expired before destroying any
+    // (entt iterator safety).
     struct DeadEntry
     {
         entt::entity entity;
@@ -23,8 +32,12 @@ void DeathSystem::update(EntityManager& em)
     };
 
     std::vector<DeadEntry> dead;
-    for (auto [entity] : reg.view<Dead>().each())
+    for (auto [entity, deadComp] : reg.view<Dead>().each())
     {
+        // Wait for death animation to finish.
+        if (deadComp.timer > 0.0f)
+            continue;
+
         const bool is_player = reg.all_of<Input>(entity);
         float tx = 0.0f;
         float ty = 0.0f;
@@ -76,8 +89,17 @@ void DeathSystem::update(EntityManager& em)
             reg.emplace<Pickup>(pickup, Pickup{xpValue, 0, 48.0f});
             reg.emplace<Tag>(pickup, Tag{"xp_pickup"});
 
+            AudioSystem::playSfx(em.sounds.death.path, em.sounds.death.volume);
             std::cout << "[DeathSystem] Enemy died (lvl " << entry.enemy_level << ") - spawned "
                       << xpValue << " XP pickup.\n";
+
+            // Cascade-destroy body-part children before the parent.
+            std::vector<entt::entity> children;
+            for (auto [child, bp] : reg.view<BodyPart>().each())
+                if (bp.parent == entry.entity)
+                    children.push_back(child);
+            for (auto child : children)
+                em.destroy(child);
 
             em.destroy(entry.entity);
         }

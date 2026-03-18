@@ -119,6 +119,7 @@ struct SoundConfig
     SoundEntry death{"assets/sfx/death.wav", 0.5f};
     SoundEntry pickup{"assets/sfx/pickup.wav", 0.4f};
     SoundEntry level_up{"assets/sfx/levelup.wav", 0.6f};
+    SoundEntry stat_allocate{"assets/sfx/stat_allocate.wav", 0.5f};
     SoundEntry wall_bump{"assets/sfx/wall_bump.wav", 0.3f};
     SoundEntry footstep_walk{"assets/sfx/footstep_walk.wav", 0.15f};
     SoundEntry footstep_run{"assets/sfx/footstep_run.wav", 0.25f};

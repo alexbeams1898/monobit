@@ -17,5 +17,5 @@
 class DeathSystem
 {
   public:
-    static void update(EntityManager& em);
+    static void update(EntityManager& em, double dt);
 };

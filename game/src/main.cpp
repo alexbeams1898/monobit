@@ -95,7 +95,7 @@ int main(int argc, char* argv[])
     // Generate the tile map — populates em.tile_map / em.tile_config and
     // returns the world-space centre of the first placed room (player spawn).
     auto [px, py] = TileMapLoader::generate(em, "config/tilemap.json", "config/rooms");
-    TileMapRenderer::upload(em.tile_map); // bake static VBO — one draw call per frame
+    TileMapRenderer::upload(em.tile_map, em.tile_config, engine.textureManager());
 
     // Player — placed at the first room's centre.
     auto player = ConfigLoader::loadEntity(em, "config/entities/player.json");

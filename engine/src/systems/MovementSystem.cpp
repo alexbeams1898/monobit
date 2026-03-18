@@ -68,10 +68,6 @@ void MovementSystem::update(EntityManager& em, double dt)
         if (input.sprint)
             speed *= f.movement.sprint_multiplier;
 
-        // Sprint visual: slight size increase while sprinting.
-        if (em.registry().all_of<Transform>(entity))
-            em.registry().get<Transform>(entity).scale = input.sprint ? 1.15f : 1.0f;
-
         // Blend toward target velocity for a natural acceleration feel.
         // Sprint ramps up slowly (sprint_blend); returning to walk snaps faster (walk_blend).
         const float blend = input.sprint ? f.movement.sprint_blend : f.movement.walk_blend;

@@ -1,0 +1,12 @@
+{
+    "texture": "assets/sprites/campfire.png",
+    "frame_width": 64,
+    "frame_height": 64,
+    "states": {
+        "idle":   { "row": 0, "frames": 5, "duration": 0.15 },
+        "walk":   { "row": 0, "frames": 5, "duration": 0.15 },
+        "attack": { "row": 0, "frames": 5, "duration": 0.15 },
+        "hit":    { "row": 0, "frames": 1, "duration": 0.0 },
+        "death":  { "row": 0, "frames": 1, "duration": 0.0 }
+    }
+}

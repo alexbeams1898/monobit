@@ -240,10 +240,14 @@ struct Loot
     int money_drop = 0;
 };
 
-// Dead — empty tag emplaced by DamageSystem when Health.current reaches zero.
-// Swept by DeathSystem at the end of each frame; entity is destroyed then.
+// Dead — emplaced by DamageSystem when Health.current reaches zero.
+// DeathSystem ticks the timer down each frame; entity is destroyed when it
+// reaches zero. If an Animation component exists, the timer is set to the
+// death animation's total duration so the anim plays out before removal.
+// Non-animated entities get timer=0 and are destroyed immediately.
 struct Dead
 {
+    float timer = 0.0f;
 };
 
 // Dodging — active while the player is in a dodge roll.
@@ -393,4 +397,66 @@ struct AIController
     float sprint_multiplier = 0.0f;
     float sprint_threshold = 0.0f;
     bool sprint = false;
+};
+
+// ---------------------------------------------------------------------------
+// Animation system components
+// ---------------------------------------------------------------------------
+
+enum class AnimState : uint8_t
+{
+    Idle = 0,
+    Walk,
+    Attack,
+    Hit,
+    Death
+};
+
+enum class CardinalDir : uint8_t
+{
+    South = 0, // facing down (toward camera) — default
+    West,
+    East,
+    North
+};
+
+// Per-state frame metadata loaded from sprite sheet sidecar JSON.
+struct AnimStateData
+{
+    int row = 0;           // which row in the sheet this state occupies
+    int frames = 1;        // number of frames in this strip
+    float duration = 0.0f; // seconds per frame (0 = static, no advance)
+};
+
+// Animation — runtime animation state for an animated entity.
+// AnimationSystem reads this to update the Sprite src rect each frame.
+//
+// Sprite sheet layout:
+//   Row = state (from JSON). Column = dir * max_frames + frame_index.
+//   Direction column blocks: South 0..N-1, West N..2N-1, East 2N..3N-1, North 3N..4N-1
+//   where N = max_frames_per_state.
+struct Animation
+{
+    AnimState state = AnimState::Idle;
+    CardinalDir dir = CardinalDir::South;
+    int frame_index = 0;
+    float frame_timer = 0.0f;
+
+    static constexpr int STATE_COUNT = 5;
+    AnimStateData states[STATE_COUNT]{};
+
+    int frame_width = 32;
+    int frame_height = 32;
+    int max_frames_per_state = 1;
+};
+
+// Links a child entity to a parent for split-body rendering.
+// The child has its own Sprite + Animation; AnimationSystem resolves state
+// and direction from the parent's gameplay components.
+//   faces_aim = false  (lower body): state = Dead > Hit > Walk > Idle, dir from Velocity
+//   faces_aim = true   (upper body): state = Dead > Hit > Attack > Idle, dir from FacingDirection
+struct BodyPart
+{
+    entt::entity parent = entt::null;
+    bool faces_aim = false;
 };
