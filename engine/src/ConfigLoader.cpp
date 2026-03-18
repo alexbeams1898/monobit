@@ -97,28 +97,13 @@ static void loadExperience(EntityManager& em, entt::entity entity, const json& j
     em.registry().emplace<Experience>(entity, e);
 }
 
-// Parse a grade string ("S"–"E") to ScalingGrade enum.
-static ScalingGrade parseGrade(const std::string& s)
-{
-    if (s == "S")
-        return ScalingGrade::S;
-    if (s == "A")
-        return ScalingGrade::A;
-    if (s == "B")
-        return ScalingGrade::B;
-    if (s == "C")
-        return ScalingGrade::C;
-    if (s == "D")
-        return ScalingGrade::D;
-    return ScalingGrade::E;
-}
-
 static void loadWeapon(EntityManager& em, entt::entity entity, const json& j)
 {
     Weapon w;
+    w.name = j.value("name", std::string{});
     w.weight = j.value("weight", 0.5f);
-    w.str_scaling = parseGrade(j.value("str_scaling", std::string{"E"}));
-    w.dex_scaling = parseGrade(j.value("dex_scaling", std::string{"E"}));
+    w.str_scaling = j.value("str_scaling", 0.25f);
+    w.dex_scaling = j.value("dex_scaling", 0.25f);
     w.str_requirement = j.value("str_requirement", 0);
     w.dex_requirement = j.value("dex_requirement", 0);
     w.base_damage = j.value("base_damage", 5.0f);
@@ -188,6 +173,8 @@ static void loadAIController(EntityManager& em, entt::entity entity, const json&
     ai.arrival_radius = j.value("arrival_radius", 0.0f);
     ai.attack_radius = j.value("attack_radius", 0.0f);
     ai.tier = j.value("tier", 1);
+    ai.sprint_multiplier = j.value("sprint_multiplier", 0.0f);
+    ai.sprint_threshold = j.value("sprint_threshold", 0.0f);
 
     const std::string behavior = j.value("behavior", std::string{"idle"});
     if (behavior == "chase")
@@ -305,6 +292,10 @@ bool ConfigLoader::loadFormulas(EntityManager& em, const std::string& filePath)
     {
         f.movement.base = j["movement"].value("base", f.movement.base);
         f.movement.dex_scale = j["movement"].value("dex_scale", f.movement.dex_scale);
+        f.movement.sprint_multiplier =
+            j["movement"].value("sprint_multiplier", f.movement.sprint_multiplier);
+        f.movement.sprint_blend = j["movement"].value("sprint_blend", f.movement.sprint_blend);
+        f.movement.walk_blend = j["movement"].value("walk_blend", f.movement.walk_blend);
     }
     if (j.contains("carry_weight"))
     {
@@ -322,15 +313,15 @@ bool ConfigLoader::loadFormulas(EntityManager& em, const std::string& filePath)
     {
         f.luck.drop_scale = j["luck"].value("drop_scale", f.luck.drop_scale);
     }
-    if (j.contains("damage") && j["damage"].contains("grade_multipliers"))
+    if (j.contains("damage") && j["damage"].contains("grade_thresholds"))
     {
-        const auto& gm = j["damage"]["grade_multipliers"];
-        f.grade_multipliers.s = gm.value("S", f.grade_multipliers.s);
-        f.grade_multipliers.a = gm.value("A", f.grade_multipliers.a);
-        f.grade_multipliers.b = gm.value("B", f.grade_multipliers.b);
-        f.grade_multipliers.c = gm.value("C", f.grade_multipliers.c);
-        f.grade_multipliers.d = gm.value("D", f.grade_multipliers.d);
-        f.grade_multipliers.e = gm.value("E", f.grade_multipliers.e);
+        const auto& gt = j["damage"]["grade_thresholds"];
+        f.grade_thresholds.s = gt.value("S", f.grade_thresholds.s);
+        f.grade_thresholds.a = gt.value("A", f.grade_thresholds.a);
+        f.grade_thresholds.b = gt.value("B", f.grade_thresholds.b);
+        f.grade_thresholds.c = gt.value("C", f.grade_thresholds.c);
+        f.grade_thresholds.d = gt.value("D", f.grade_thresholds.d);
+        f.grade_thresholds.e = gt.value("E", f.grade_thresholds.e);
     }
     if (j.contains("swing"))
     {
@@ -353,6 +344,8 @@ bool ConfigLoader::loadFormulas(EntityManager& em, const std::string& filePath)
     }
     if (j.contains("poise"))
     {
+        f.poise.end_scale = j["poise"].value("end_scale", f.poise.end_scale);
+        f.poise.str_scale = j["poise"].value("str_scale", f.poise.str_scale);
         f.poise.weight_scale = j["poise"].value("weight_scale", f.poise.weight_scale);
         f.poise.stagger_duration = j["poise"].value("stagger_duration", f.poise.stagger_duration);
         f.poise.decay_window = j["poise"].value("decay_window", f.poise.decay_window);
@@ -360,5 +353,55 @@ bool ConfigLoader::loadFormulas(EntityManager& em, const std::string& filePath)
 
     f.loaded = true;
     std::cout << "[ConfigLoader] Loaded formulas from " << filePath << "\n";
+    return true;
+}
+
+bool ConfigLoader::loadSounds(EntityManager& em, const std::string& filePath)
+{
+    std::ifstream file(filePath);
+    if (!file.is_open())
+    {
+        std::cerr << "[ConfigLoader] Cannot open sounds: " << filePath
+                  << " — using hardcoded defaults\n";
+        return false;
+    }
+
+    json j;
+    try
+    {
+        file >> j;
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "[ConfigLoader] Error parsing " << filePath << ": " << e.what()
+                  << " — using hardcoded defaults\n";
+        return false;
+    }
+
+    SoundConfig& s = em.sounds;
+
+    auto load = [&](const char* key, SoundEntry& entry)
+    {
+        if (j.contains(key))
+        {
+            entry.path = j[key].value("path", entry.path);
+            entry.volume = j[key].value("volume", entry.volume);
+        }
+    };
+
+    load("player_attack", s.player_attack);
+    load("player_skill", s.player_skill);
+    load("player_dodge", s.player_dodge);
+    load("hit", s.hit);
+    load("parry", s.parry);
+    load("death", s.death);
+    load("pickup", s.pickup);
+    load("level_up", s.level_up);
+    load("wall_bump", s.wall_bump);
+    load("footstep_walk", s.footstep_walk);
+    load("footstep_run", s.footstep_run);
+
+    s.loaded = true;
+    std::cout << "[ConfigLoader] Loaded sounds from " << filePath << "\n";
     return true;
 }

@@ -2,6 +2,7 @@
 
 #include "TileMap.h"
 #include "ecs/Components.h"
+#include "systems/AudioSystem.h"
 
 #include <cmath>
 #include <tracy/Tracy.hpp>
@@ -44,8 +45,8 @@ void MovementSystem::update(EntityManager& em, double dt)
     }
 
     // Pass 1: Input intent → Velocity.
-    // Player speed is derived from DEX stat using the formula:
-    //   finalSpeed = base * (1 + floor(dex_scale * log(DEX + 1)) / 100)
+    // Walk speed: base * (1 + floor(dex_scale * log(DEX + 1)) / 100)
+    // Sprint: walk speed × sprint_multiplier while input.sprint is true.
     // Entities without Stats fall back to f.movement.base (150 px/s default).
     //
     // Skip velocity update if the entity is Dodging (dodge impulse carries through)
@@ -64,9 +65,41 @@ void MovementSystem::update(EntityManager& em, double dt)
                       std::floor(f.movement.dex_scale * std::log(static_cast<float>(dex) + 1.0f)) /
                           100.0f);
         }
+        if (input.sprint)
+            speed *= f.movement.sprint_multiplier;
 
-        vel.dx = input.move_x * speed;
-        vel.dy = input.move_y * speed;
+        // Sprint visual: slight size increase while sprinting.
+        if (em.registry().all_of<Transform>(entity))
+            em.registry().get<Transform>(entity).scale = input.sprint ? 1.15f : 1.0f;
+
+        // Blend toward target velocity for a natural acceleration feel.
+        // Sprint ramps up slowly (sprint_blend); returning to walk snaps faster (walk_blend).
+        const float blend = input.sprint ? f.movement.sprint_blend : f.movement.walk_blend;
+        const float fdt = static_cast<float>(dt);
+        const float t = 1.0f - std::exp(-blend * fdt);
+        vel.dx += (input.move_x * speed - vel.dx) * t;
+        vel.dy += (input.move_y * speed - vel.dy) * t;
+
+        // Footstep cadence: play a step sound at regular intervals while moving.
+        const bool moving = (input.move_x != 0.0f || input.move_y != 0.0f);
+        if (moving)
+        {
+            input.step_timer -= fdt;
+            if (input.step_timer <= 0.0f)
+            {
+                const float cadence = input.sprint ? 0.25f : 0.4f;
+                input.step_timer = cadence;
+                const auto& sfx = input.sprint ? em.sounds.footstep_run : em.sounds.footstep_walk;
+                AudioSystem::playSfx(sfx.path, sfx.volume);
+            }
+        }
+        else
+        {
+            input.step_timer = 0.0f;
+        }
+
+        // Tick wall bump cooldown.
+        input.wall_bump_cooldown = std::max(0.0f, input.wall_bump_cooldown - fdt);
     }
 
     // Pass 2: Velocity → Transform with static wall projection.
@@ -139,8 +172,10 @@ void MovementSystem::update(EntityManager& em, double dt)
 
         // X-axis projection: candidate position after horizontal movement.
         float nx = transform.x + vel.dx * fdt;
+        bool hitWallX = false;
         if (touches_wall(nx, transform.y))
         {
+            hitWallX = (vel.dx != 0.0f);
             vel.dx = 0.0f;
             nx = transform.x;
         }
@@ -148,51 +183,47 @@ void MovementSystem::update(EntityManager& em, double dt)
         // Y-axis projection: candidate position after vertical movement.
         // Uses resolved X (nx) so a corner slide doesn't re-trigger the X wall.
         float ny = transform.y + vel.dy * fdt;
+        bool hitWallY = false;
         if (touches_wall(nx, ny))
         {
+            hitWallY = (vel.dy != 0.0f);
             vel.dy = 0.0f;
             ny = transform.y;
+        }
+
+        // Wall bump sound — player only, with cooldown to prevent spam.
+        if ((hitWallX || hitWallY) && em.registry().all_of<Input>(entity))
+        {
+            auto& input = em.registry().get<Input>(entity);
+            if (input.wall_bump_cooldown <= 0.0f)
+            {
+                AudioSystem::playSfx(em.sounds.wall_bump.path, em.sounds.wall_bump.volume);
+                input.wall_bump_cooldown = 0.2f;
+            }
         }
 
         transform.x = nx;
         transform.y = ny;
     }
 
-    // Pass 3: Update FacingDirection.
-    // Exception: skip while Dodging so the player's facing stays locked during
-    // a dodge (facing stays locked so dodge direction doesn't redirect attacks).
-    //
-    // Player (has Input): use the raw input direction, NOT the post-projection
-    // velocity. When pressed against a wall the X or Y velocity axis is zeroed,
-    // but the player clearly intends to face that direction — use what they pressed.
-    //
-    // AI / other entities: use velocity as before (no raw intent signal available).
+    // Pass 3: Update FacingDirection for AI entities only.
+    // Player facing is updated per-frame in Engine::processEvents() (mouse-derived,
+    // not physics — must not be tied to the fixed-step tick rate).
+    // AI entities derive facing from velocity with turn-speed blending.
+    // Exception: skip while Dodging so facing stays locked during a dodge.
     for (auto [entity, vel, facing] : em.registry().view<Velocity, FacingDirection>().each())
     {
         if (em.registry().all_of<Dodging>(entity))
             continue;
+        if (em.registry().all_of<Input>(entity))
+            continue; // player — handled in processEvents()
 
-        float dirX = vel.dx;
-        float dirY = vel.dy;
-
-        if (const Input* inp = em.registry().try_get<Input>(entity))
+        const float dlen = std::sqrt(vel.dx * vel.dx + vel.dy * vel.dy);
+        if (dlen > 0.0f)
         {
-            // Use raw input intent so facing updates even when a wall blocks movement.
-            dirX = inp->move_x;
-            dirY = inp->move_y;
-        }
+            const float targetX = vel.dx / dlen;
+            const float targetY = vel.dy / dlen;
 
-        const float len = std::sqrt(dirX * dirX + dirY * dirY);
-        if (len > 0.0f)
-        {
-            const float targetX = dirX / len;
-            const float targetY = dirY / len;
-
-            // AI entities: blend facing toward the target direction using the
-            // same turn_speed that ChaseSystem uses for velocity blending.
-            // This prevents "googly eyes" — rapid velocity oscillation from
-            // crowd-separation forces would flip facing every frame without
-            // smoothing. The player snaps instantly (no AIController).
             if (const AIController* aic = em.registry().try_get<AIController>(entity);
                 aic && aic->turn_speed > 0.0f)
             {
@@ -212,6 +243,9 @@ void MovementSystem::update(EntityManager& em, double dt)
                 facing.dy = targetY;
             }
         }
-        // If zero, keep the last known facing direction.
+
+        // AI visual facing = gameplay facing (already smoothed by turn_speed).
+        facing.render_dx = facing.dx;
+        facing.render_dy = facing.dy;
     }
 }

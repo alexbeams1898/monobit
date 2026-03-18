@@ -59,7 +59,7 @@ UserSettings/
 *.ai
 
 # Tracy traces
-traces/*.tracy
+traces/
 
 # Claude
 .claude/

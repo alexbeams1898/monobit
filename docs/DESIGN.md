@@ -40,12 +40,32 @@ a normal person wouldn't say. By the time it's undeniable, you're already deep i
 Comedic throughout. Body-gore humor — absurd rather than disturbing. Should never feel too
 extreme or mean-spirited. Hell is a fun place to be. Think Monty Python meets early Doom.
 
-### Inspirations
+### Inspirations & Literary Influences
 - **Dante's Inferno / Divine Comedy** — layers of Hell structure, escalating strangeness,
-  the idea of a guide who may not be fully trustworthy
-- **Doom** — escape through layers of Hell, escalating demonic hostility, comedic brutality
+  the idea of a guide who may not be fully trustworthy. The 9 circles of Hell are a candidate
+  structure for zone progression. Dante's self-reference as "the pilgrim" in the poem.
+- **Paradise Lost (Milton)** — the grandeur and tragedy of fallen beings, Hell as a place
+  with its own politics and hierarchy
+- **No Exit (Sartre)** — "Hell is other people." Ironic for an escape game. The philosophical
+  dimension of inescapable punishment.
+- **Ars Goetia** — the 72 demons as a reference catalogue for enemy/boss design, naming,
+  and hierarchy
+- **Doom** — escape through layers of Hell, escalating demonic hostility, comedic brutality,
+  episode progression from mundane to pure hell
 - **Vampire Survivors** — core loop, enemy escalation, auto-attack feel
-- **Dark Souls / Elden Ring** — stats, build variety, weapon scaling, crafting depth
+- **Dark Souls / Elden Ring** — stats, build variety, weapon scaling, crafting depth, lock-on
+- **Hades** — twin-stick movement model, top-down action feel
+
+### Design Principles from Source Material
+- **Contrapasso** (Divine Comedy) — punishment mirrors sin. Used as a design principle for
+  enemy behavior per zone. Each zone's enemies should have mechanically distinct behavior that
+  reflects the zone's thematic sin. Not just flavor — it forces diverse enemy design naturally.
+
+### Title Candidates
+Under consideration — no final decision yet.
+- **"The Pilgrim"** — Dante's self-reference in the poem. Sounds like an adventure game, has
+  thematic depth, doesn't spoil the hell twist.
+- **"No Exit"** — Sartre. Ironic for an escape game. No existing game with that name.
 
 ---
 
@@ -232,14 +252,14 @@ This creates a distinct build identity: gun builds are DEX/LCK, melee builds are
 Will be considered for implementation within this milestone once melee is built and feeling good.
 
 ### Sprite Direction
-**4-directional with diagonal interpolation.**
+**4-directional minimum. 8-directional ideal. Left/right flip only is ruled out.**
 
-Entities have sprites for 4 cardinal directions (up, down, left, right). When moving or facing
-diagonally, the nearest dominant cardinal direction is used, potentially blended. Exact
-interpolation method TBD during implementation — try dominant-direction selection first.
+Left/right flip is incompatible with directional parry/poise combat — the player needs to
+visually distinguish facing direction for block arcs and attack hitboxes.
 
-This is simpler than 8-directional sprite sets and gives tighter control over art budget,
-keeping the "runs on a calculator" philosophy in check.
+4 cardinal direction sprites (up, down, left, right) with dominant-direction selection for
+diagonals is the practical starting point. 8-directional is the goal if the art budget allows.
+Exact interpolation method TBD during implementation — try dominant-direction selection first.
 
 ---
 
@@ -414,6 +434,10 @@ the rarity curve further on top of this.
 ## Enemy Design
 
 ### Philosophy
+- **Hybrid deliberate/chaos.** Default state: guards are individually dangerous, sparse, require
+  thought. Alarm state: VS-style enemy flood, earned by being messy. The emotional core is a heist
+  movie — tension, earned chaos, recovery. Never both dangerous AND numerous simultaneously unless
+  the player caused it.
 - Start small, expand via schema — every enemy is a config entry
 - Rank hierarchy maps directly to wave progression
 - Appearance and drops become progressively stranger and more off-putting
@@ -448,6 +472,27 @@ Names are placeholders — TBD with Alex.
 
 ---
 
+## Alarm / Escalation System
+
+Subject to tuning based on feel.
+
+Guards patrol by default. Triggering an alarm floods the area with enemies — the VS moment.
+Three levels maximum to keep it readable. Players should always know what state they're in
+and why. Escalation is theatrical and legible, never a hidden meter that punishes unexpectedly.
+
+| Level | State | Enemies |
+|-------|-------|---------|
+| 0 | Calm | Guards patrol. Sparse, individually dangerous. Heist-movie tension. |
+| 1 | Alert | More guards, faster response. Still manageable with care. |
+| 2 | Alarm | VS-style flood. Earned chaos. Quantity over individual threat. |
+
+- **Resting resets alarm level** — gives rest spots a second purpose beyond healing
+- Alarm triggers TBD — being spotted, killing loudly, taking too long, player choice
+- Visual/audio cues must make the current state unmistakable at a glance
+- The transition between states is the game's emotional rhythm: stealth/tension → chaos → recovery
+
+---
+
 ## Rest Spots
 
 Service hubs scattered procedurally throughout the map. Found by exploring — not guaranteed nearby.
@@ -468,15 +513,15 @@ a cursed altar, a fellow damned NPC who patches you up. Alex decides.
 
 ### Map Feel
 - Open roaming space — no key/door/room gating, movement is free like VS
-- **Aesthetic arc**: the world starts grounded and mundane (looks like somewhere real: warehouse,
-  office, parking structure, etc.). Hell theming creeps in as the player progresses deeper —
-  geometry distorts, colors shift, enemies grow less human. By the final layer it's undeniably,
-  fully Hell.
-- The shift is gradual and diegetic — the player experiences the reveal, not a cutscene
+- **Aesthetic arc**: early zones feel like corrupted familiar spaces — liminal, uncanny, distorted
+  but recognizable. Zones get progressively more hellish as the player descends. Reference:
+  Doom 1 episode progression (E1 = UAC base with hints of something wrong, E2 = corrupted
+  facility, E3 = pure hell). The shift is gradual and diegetic — the player experiences the
+  reveal, not a cutscene.
 - Tone: silly, low fidelity, practical. Funny where possible.
 - Visual reference points: Dante's Inferno (circles, fire, brimstone), Doom (demon design,
-  escalating brutality), early real-world environments as the mundane anchor. Alex decides
-  the execution.
+  escalating brutality, episode progression), early real-world environments as the mundane
+  anchor. Alex decides the execution.
 
 ### Procedural Generation Architecture
 **Core principle: separate structure (owned by engine) from visuals (supplied by modders).**
@@ -489,10 +534,32 @@ sprites mapped to tile types.
   is a tile-type grid with metadata tags.
 - **BSP (Binary Space Partitioning)** — strong candidate for base generation algorithm.
 
+#### Room Templates
+ASCII format, stored in `config/rooms/` as plain text files. Dropping a new `.room` file in the
+directory is all a modder needs to add a room type.
+
+| Character | Tile type |
+|-----------|-----------|
+| `.` | Floor |
+| `W` | Wall |
+| `D` | Door frame |
+| `X` | Obstacle |
+| `E` | Enemy spawn point |
+| `C` | Chest spawn point |
+| `R` | Rest spot |
+
+Engine parses at load time. Additional marker characters can be added as new entity types are
+designed — the mapping lives in config, not hardcoded.
+
+#### Seeding
+Each run gets a new random seed. Seed is stored and logged for debug reproducibility only —
+players never see it. Same seed = same map for bug reproduction purposes. Seed is logged to
+console at generation time and stored in the run's metadata.
+
 #### Modder Asset Schema
 Modders supply:
 - Sprites for each tile type
-- Room templates as tile-type grids
+- Room templates as tile-type grids (ASCII `.room` files)
 - Metadata tags per room (combat area, loot area, boss arena, upgrade station)
 - Rank hierarchy enemy subset for their map
 - Engine fills any missing assets with base game defaults
@@ -544,21 +611,58 @@ This is intentionally a QOL/accessibility item, not a power unlock. Manual comba
 
 ## Controls
 
-DS1 PC layout adapted for top-down 2D. Designed to map cleanly to iOS virtual buttons.
+Hades movement model + Souls lock-on layer. Subject to tuning based on feel.
+
+### Movement & Aiming
+- **WASD** — world-relative movement. W always means up on screen. Predictable dodge direction.
+- **Mouse** — character always faces toward cursor when unlocked. Independent of movement direction.
+  Twin-stick feel: WASD moves, mouse aims.
+
+### Input Modes
+Three modes, contextually switched:
+
+1. **Free aim (default)** — WASD moves, mouse aims. Twin-stick. Primary PC mode.
+2. **Lock-on** — Tab/MMB toggles. Facing snaps to target enemy. A/D become strafes,
+   S becomes backstep (Dark Souls model). Unlock to return to free aim.
+3. **Keyboard-only fallback** — when no mouse movement is detected, WASD controls both
+   movement and facing (pre-mouse behavior). For gamepad / accessibility / "runs on a
+   calculator" portability.
+
+Lock-on is a toggle, not a hold.
+
+### Aim Smoothing (Turn Sensitivity)
+Visual facing uses an exponential blend toward the gameplay facing direction. This filters
+mouse micro-tremor while keeping rotation fluid. The blend factor is exposed as a player
+setting ("Aim Smoothing" or "Turn Sensitivity"):
+
+- **High sensitivity (0.5-0.8)** — snappy, near-instant, competitive
+- **Medium (0.2-0.4)** — smooth, filtered (default 0.25)
+- **Low (0.05-0.15)** — heavy smoothing, cinematic
+
+Gameplay facing (`FacingDirection.dx/dy`) is always instant — combat targeting has zero
+latency. Only the visual representation (`render_dx/dy`) is smoothed.
+
+Future: encumbrance or heavy armor could reduce the blend factor, making turning feel
+sluggish. DEX could push it higher. Subtle but felt.
+
+### Input Map
 
 | Action | PC | iOS virtual |
 |---|---|---|
 | Move | WASD | Joystick |
+| Aim | Mouse position | Joystick direction |
 | Light attack | LMB | Attack btn |
-| Dodge / roll | Space | Dodge btn |
+| Sprint | Space (hold ≥200ms) | Sprint btn (hold) |
+| Dodge / roll | Space (tap <200ms) | Dodge btn (tap) |
 | Block | RMB (hold) | Block btn (hold) |
 | Parry / Weapon skill | Q — context-sensitive: fires parry window if blocking, weapon skill otherwise | Skill btn |
+| Lock-on toggle | Tab / MMB | Lock btn |
 | Use item | R | Item btn |
-| Cycle item | Scroll / Tab | Swipe |
+| Cycle item | Scroll | Swipe |
 | Interact | F | Interact btn |
 | Stat upgrade (level-up popup) | [1] STR  [2] DEX  [3] END  [4] LCK | Tap card in popup |
 
-iOS target: 5 virtual buttons (attack, dodge, block, skill, item) + joystick. Manageable.
+iOS target: 6 virtual buttons (attack, dodge, block, skill, lock, item) + joystick. Manageable.
 
 ---
 

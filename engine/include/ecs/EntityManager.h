@@ -3,6 +3,7 @@
 #include "TileMap.h"
 
 #include <entt/entt.hpp>
+#include <string>
 #include <vector>
 
 // ---------------------------------------------------------------------------
@@ -15,7 +16,7 @@ struct FormulaConfig
 {
     struct
     {
-        float base = 50.f;
+        float base = 5.f;
         float scale = 100.f;
     } hp;
 
@@ -23,6 +24,9 @@ struct FormulaConfig
     {
         float base = 150.f;
         float dex_scale = 30.f;
+        float sprint_multiplier = 1.6f;
+        float sprint_blend = 8.0f; // ramp-up rate when transitioning to sprint
+        float walk_blend = 20.0f;  // ramp-down rate when returning to walk
     } movement;
 
     struct
@@ -44,6 +48,9 @@ struct FormulaConfig
         float drop_scale = 15.f;
     } luck;
 
+    // Display thresholds only — not used in damage calculation.
+    // Given a weapon's raw scaling float, the UI shows the letter whose
+    // threshold it meets or exceeds (checked S → E in order).
     struct
     {
         float s = 1.5f;
@@ -52,7 +59,7 @@ struct FormulaConfig
         float c = 0.75f;
         float d = 0.5f;
         float e = 0.25f;
-    } grade_multipliers;
+    } grade_thresholds;
 
     struct
     {
@@ -68,6 +75,10 @@ struct FormulaConfig
 
     struct
     {
+        // poise_max = floor(END * end_scale + STR * str_scale) at spawn.
+        // Armor and shields add flat bonuses on top (future).
+        float end_scale = 2.0f;
+        float str_scale = 1.0f;
         // poise_damage per hit = attacker weapon weight * weight_scale
         float weight_scale = 20.0f;
         // how long the hit-stagger lasts (brief flinch — not guard-break length)
@@ -83,6 +94,34 @@ struct FormulaConfig
         float points_per_level = 1.f;
     } leveling;
 
+    bool loaded = false;
+};
+
+// ---------------------------------------------------------------------------
+// SoundConfig — event-to-file mappings loaded from config/audio/sounds.json.
+// Same pattern as FormulaConfig: singleton on EntityManager, loaded once at
+// startup, read-only during gameplay. Defaults match the placeholder sounds
+// so the game runs identically even without the JSON file.
+// ---------------------------------------------------------------------------
+struct SoundEntry
+{
+    std::string path;
+    float volume = 0.5f;
+};
+
+struct SoundConfig
+{
+    SoundEntry player_attack{"assets/sfx/attack.wav", 0.5f};
+    SoundEntry player_skill{"assets/sfx/skill.wav", 0.6f};
+    SoundEntry player_dodge{"assets/sfx/dodge.wav", 0.5f};
+    SoundEntry hit{"assets/sfx/hit.wav", 0.4f};
+    SoundEntry parry{"assets/sfx/parry.wav", 0.6f};
+    SoundEntry death{"assets/sfx/death.wav", 0.5f};
+    SoundEntry pickup{"assets/sfx/pickup.wav", 0.4f};
+    SoundEntry level_up{"assets/sfx/levelup.wav", 0.6f};
+    SoundEntry wall_bump{"assets/sfx/wall_bump.wav", 0.3f};
+    SoundEntry footstep_walk{"assets/sfx/footstep_walk.wav", 0.15f};
+    SoundEntry footstep_run{"assets/sfx/footstep_run.wav", 0.25f};
     bool loaded = false;
 };
 
@@ -212,6 +251,16 @@ class EntityManager
     // ConfigLoader::loadFormulas(). Read by combat, movement, and leveling
     // systems every frame. Never write to this after startup.
     FormulaConfig formulas;
+
+    // Sound mappings — loaded once from config/audio/sounds.json by
+    // ConfigLoader::loadSounds(). Read by combat, damage, movement, pickup,
+    // and leveling systems. Never write to this after startup.
+    SoundConfig sounds;
+
+    // Render interpolation factor — set by Engine each frame to
+    // accumulator / FIXED_TIMESTEP. RenderSystem reads this to blend
+    // between PreviousTransform and Transform for smooth rendering.
+    float render_alpha = 1.0f;
 
     // Tile map — generated at startup by TileMapLoader::generate().
     // Read by TileMapRenderer every frame for viewport-culled drawing.

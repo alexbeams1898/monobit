@@ -1,6 +1,7 @@
 #include "systems/DamageSystem.h"
 
 #include "ecs/Components.h"
+#include "systems/AudioSystem.h"
 #include "systems/CombatSystem.h" // computeDamage
 
 #include <cmath>
@@ -60,6 +61,7 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
                 if (attacker != entt::null)
                 {
                     reg.emplace_or_replace<Staggered>(attacker, Staggered{0.5f});
+                    AudioSystem::playSfx(em.sounds.parry.path, em.sounds.parry.volume);
                     std::cout << "[DamageSystem] Parry! Attacker staggered.\n";
                 }
                 return false; // damage fully negated
@@ -107,6 +109,7 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
     // Trigger red damage flash on the target.
     reg.emplace_or_replace<DamageFeedback>(target, DamageFeedback{0.2f});
 
+    AudioSystem::playSfx(em.sounds.hit.path, em.sounds.hit.volume);
     TracyMessageL("EntityDamaged");
     std::cout << "[DamageSystem] Entity took " << dmg << " damage (" << health.current << "/"
               << health.max << " hp)\n";
@@ -114,6 +117,7 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
     if (health.current <= 0 && !reg.all_of<Dead>(target))
     {
         reg.emplace<Dead>(target);
+        AudioSystem::playSfx(em.sounds.death.path, em.sounds.death.volume);
         TracyMessageL("EntityDied");
         std::cout << "[DamageSystem] Entity died.\n";
     }

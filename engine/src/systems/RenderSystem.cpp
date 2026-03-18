@@ -238,9 +238,24 @@ void RenderSystem::init(int windowW, int windowH)
     glBindTexture(GL_TEXTURE_2D, 0);
 }
 
+// Converts a pixel src rect to normalized UV (x, y, w, h) for atlas sampling.
+// Flip trick: start at far edge with negative extent — shader mirrors the sample.
+static void buildSrcRect(int src_x, int src_y, int src_w, int src_h, int tex_w, int tex_h,
+                         bool flip_x, bool flip_y, float& uvX, float& uvY, float& uvW, float& uvH)
+{
+    const float tw = static_cast<float>(tex_w > 0 ? tex_w : 1);
+    const float th = static_cast<float>(tex_h > 0 ? tex_h : 1);
+    uvX = flip_x ? static_cast<float>(src_x + src_w) / tw : static_cast<float>(src_x) / tw;
+    uvW = flip_x ? -static_cast<float>(src_w) / tw : static_cast<float>(src_w) / tw;
+    uvY = flip_y ? static_cast<float>(src_y + src_h) / th : static_cast<float>(src_y) / th;
+    uvH = flip_y ? -static_cast<float>(src_h) / th : static_cast<float>(src_h) / th;
+}
+
 void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, float camY)
 {
     ZoneScopedN("RenderSystem");
+    const float alpha = em.render_alpha;
+
     // Collect all renderable entities into a vector so we can sort by layer.
     struct DrawEntry
     {
@@ -253,6 +268,7 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
         bool flip_x = false;                   // mirror sprite horizontally (facing left)
         bool flip_y = false;                   // mirror sprite vertically (facing up = back view)
         bool solid_color = false;              // if true, render as flat color using white tex
+        float draw_scale = 1.0f;               // uniform scale for the model matrix only
     };
 
     std::vector<DrawEntry> drawList;
@@ -286,8 +302,8 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
         if (em.registry().all_of<FacingDirection>(entity))
         {
             const auto& facing = em.registry().get<FacingDirection>(entity);
-            flip_x = facing.dx < -0.1f;
-            flip_y = facing.dy < -0.1f;
+            flip_x = facing.render_dx < -0.1f;
+            flip_y = facing.render_dy < -0.1f;
         }
 
         // SolidColor overrides texture rendering with a flat colored square.
@@ -301,11 +317,24 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
             is_solid = true;
         }
 
-        drawList.push_back(
-            {transform.x - static_cast<float>(sprite.src_w) * 0.5f, // top-left corner
-             transform.y - static_cast<float>(sprite.src_h) * 0.5f, sprite.src_x, sprite.src_y,
-             sprite.src_w, sprite.src_h, sprite.layer, tex_id, tex_w, tex_h, tr, tg, tb, flip_x,
-             flip_y, is_solid});
+        // Interpolate between previous and current position, then snap to the
+        // integer pixel grid. The camera is integer-snapped too — without matching
+        // grids, sprites oscillate ±0.5px relative to the camera each frame.
+        float drawX = transform.x;
+        float drawY = transform.y;
+        if (const auto* prev = em.registry().try_get<PreviousTransform>(entity))
+        {
+            drawX = prev->x + (transform.x - prev->x) * alpha;
+            drawY = prev->y + (transform.y - prev->y) * alpha;
+        }
+        drawX = std::round(drawX);
+        drawY = std::round(drawY);
+
+        const float sc = transform.scale;
+        drawList.push_back({drawX - static_cast<float>(sprite.src_w) * sc * 0.5f, // top-left corner
+                            drawY - static_cast<float>(sprite.src_h) * sc * 0.5f, sprite.src_x,
+                            sprite.src_y, sprite.src_w, sprite.src_h, sprite.layer, tex_id, tex_w,
+                            tex_h, tr, tg, tb, flip_x, flip_y, is_solid, sc});
     }
 
     // Sort ascending by layer — lower layers drawn first (appear behind).
@@ -339,7 +368,8 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
     {
         // Model matrix: position at (e.x, e.y), scale to (src_w, src_h) pixels.
         float model[16];
-        buildModel(model, e.x, e.y, static_cast<float>(e.src_w), static_cast<float>(e.src_h));
+        buildModel(model, e.x, e.y, static_cast<float>(e.src_w) * e.draw_scale,
+                   static_cast<float>(e.src_h) * e.draw_scale);
         glUniformMatrix4fv(glGetUniformLocation(sProgram, "uModel"), 1, GL_FALSE, model);
 
         if (e.solid_color)
@@ -352,19 +382,9 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
         {
             glBindTexture(GL_TEXTURE_2D, e.tex_id);
 
-            // Convert pixel src rect to 0-1 UV space for the atlas sample.
-            const float tw = static_cast<float>(e.tex_w > 0 ? e.tex_w : 1);
-            const float th = static_cast<float>(e.tex_h > 0 ? e.tex_h : 1);
-            // Flip trick: start UV at the far edge and use negative extent.
-            // Shader: uv = uSrcRect.xy + vUV * uSrcRect.zw — negative zw mirrors the sample.
-            const float uvX = e.flip_x ? static_cast<float>(e.src_x + e.src_w) / tw
-                                       : static_cast<float>(e.src_x) / tw;
-            const float uvW =
-                e.flip_x ? -static_cast<float>(e.src_w) / tw : static_cast<float>(e.src_w) / tw;
-            const float uvY = e.flip_y ? static_cast<float>(e.src_y + e.src_h) / th
-                                       : static_cast<float>(e.src_y) / th;
-            const float uvH =
-                e.flip_y ? -static_cast<float>(e.src_h) / th : static_cast<float>(e.src_h) / th;
+            float uvX = 0.0f, uvY = 0.0f, uvW = 0.0f, uvH = 0.0f;
+            buildSrcRect(e.src_x, e.src_y, e.src_w, e.src_h, e.tex_w, e.tex_h, e.flip_x, e.flip_y,
+                         uvX, uvY, uvW, uvH);
             glUniform4f(glGetUniformLocation(sProgram, "uSrcRect"), uvX, uvY, uvW, uvH);
         }
 
@@ -384,8 +404,18 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
 
     for (auto [entity, transform, facing] : em.registry().view<Transform, FacingDirection>().each())
     {
-        const float dotX = transform.x + facing.dx * kDotOffset - kDotSize * 0.5f;
-        const float dotY = transform.y + facing.dy * kDotOffset - kDotSize * 0.5f;
+        float anchorX = std::round(transform.x);
+        float anchorY = std::round(transform.y);
+        if (const auto* prev = em.registry().try_get<PreviousTransform>(entity))
+        {
+            anchorX = std::round(prev->x + (transform.x - prev->x) * alpha);
+            anchorY = std::round(prev->y + (transform.y - prev->y) * alpha);
+        }
+
+        // render_dx/dy is smoothed toward the gameplay facing — fluid rotation
+        // that filters mouse micro-tremor without robotic snapping.
+        const float dotX = std::round(anchorX + facing.render_dx * kDotOffset) - kDotSize * 0.5f;
+        const float dotY = std::round(anchorY + facing.render_dy * kDotOffset) - kDotSize * 0.5f;
         float model[16];
         buildModel(model, dotX, dotY, kDotSize, kDotSize);
         glUniformMatrix4fv(glGetUniformLocation(sProgram, "uModel"), 1, GL_FALSE, model);

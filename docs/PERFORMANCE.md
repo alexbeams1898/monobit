@@ -100,6 +100,37 @@ or broad-phase grid when n_dyn approaches 100+.
 
 ---
 
+### Render Interpolation (Fixed-Timestep Wobble Fix)
+
+**Problem:** The fixed-timestep loop (60 Hz) leaves an accumulator remainder after all ticks.
+Entities render at their last-updated positions, but that position is stale by up to 16ms.
+The remainder fluctuates semi-randomly each frame (vsync vs tick-rate drift), causing visible
+wobble on all moving entities — especially the facing dot indicator.
+
+**Fix:** Classic Gaffer-on-Games interpolation. Each fixed tick, `PreviousTransform` snapshots
+the entity's position before systems update it. At render time, `render_alpha = accumulator /
+FIXED_TIMESTEP` blends between previous and current:
+
+```
+displayPos = prev + (curr - prev) * alpha
+```
+
+Applied to: sprite draw positions, camera position, facing dot anchor.
+
+**Cost:** One `PreviousTransform` copy (2 floats) per entity per tick. O(n) with negligible
+constant. No allocations — `get_or_emplace` after the first frame is a pure get.
+
+**Trade-off:** Adds ~16ms of visual latency (rendering a blend of past and present). At 60Hz,
+imperceptible for a top-down 2D game.
+
+**Additional fixes applied alongside:**
+- Player facing moved out of fixed-step loop into `processEvents()` — mouse position is a
+  per-frame input, not physics. Eliminates stale-facing on 0-update frames.
+- Facing dot position rounded to integer pixels — eliminates sub-pixel oscillation caused by
+  camera integer-snapping vs unsnapped dot position.
+
+---
+
 ## Tracy Profiling Notes
 
 Profiling setup: `cmake.configureArgs: ["-DTRACY_ENABLE=ON"]` in `.vscode/settings.json`.

@@ -5,10 +5,79 @@
 #include "systems/LevelingSystem.h"
 #include "systems/TileMapRenderer.h"
 
+#include <csignal>
+#include <cstdio>
+#include <ctime>
+#include <exception>
+
+// ---------------------------------------------------------------------------
+// Crash reporter — writes crash.log when the process dies unexpectedly.
+// Keeps the file minimal: timestamp + cause. No game state yet; add once
+// the save system exists so there is something worth preserving.
+// ---------------------------------------------------------------------------
+
+// Not async-signal-safe to use fopen/fprintf in a signal handler, but for a
+// crash reporter "best effort" beats "nothing" — the process is dead anyway.
+static void writeCrashLog(const char* reason)
+{
+    FILE* f = fopen("crash.log", "w");
+    if (!f)
+        return;
+
+    time_t t = time(nullptr);
+    char timebuf[64] = {};
+    strftime(timebuf, sizeof(timebuf), "%Y-%m-%d %H:%M:%S", localtime(&t));
+
+    fprintf(f, "crashed at %s\n", timebuf);
+    fprintf(f, "cause:     %s\n", reason);
+    fclose(f);
+}
+
+static void signalHandler(int sig)
+{
+    const char* name = "unknown signal";
+    if (sig == SIGSEGV)
+        name = "SIGSEGV (segmentation fault)";
+    else if (sig == SIGABRT)
+        name = "SIGABRT (abort / assert)";
+    else if (sig == SIGFPE)
+        name = "SIGFPE (floating-point exception)";
+    else if (sig == SIGILL)
+        name = "SIGILL (illegal instruction)";
+    writeCrashLog(name);
+    _exit(1);
+}
+
+static void terminateHandler()
+{
+    // Best-effort: re-throw inside terminate to recover the exception message.
+    static char buf[256] = "std::terminate (no active exception)";
+    try
+    {
+        throw;
+    }
+    catch (const std::exception& e)
+    {
+        snprintf(buf, sizeof(buf), "unhandled exception: %s", e.what());
+    }
+    catch (...)
+    {
+        snprintf(buf, sizeof(buf), "unhandled exception (unknown type)");
+    }
+    writeCrashLog(buf);
+    _exit(1);
+}
+
 int main(int argc, char* argv[])
 {
     (void)argc;
     (void)argv;
+
+    signal(SIGSEGV, signalHandler);
+    signal(SIGABRT, signalHandler);
+    signal(SIGFPE, signalHandler);
+    signal(SIGILL, signalHandler);
+    std::set_terminate(terminateHandler);
 
     Engine engine;
 
@@ -19,6 +88,9 @@ int main(int argc, char* argv[])
 
     // Load balance formulas first — all systems read from em.formulas.
     ConfigLoader::loadFormulas(em, "config/balance/formulas.json");
+
+    // Load sound mappings — all systems read from em.sounds.
+    ConfigLoader::loadSounds(em, "config/audio/sounds.json");
 
     // Generate the tile map — populates em.tile_map / em.tile_config and
     // returns the world-space centre of the first placed room (player spawn).

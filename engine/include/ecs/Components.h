@@ -24,6 +24,15 @@ struct Transform
     float scale = 1.0f;
 };
 
+// Snapshot of the previous tick's position for render interpolation.
+// Engine copies Transform → PreviousTransform at the start of each fixed update.
+// RenderSystem blends between the two using the accumulator remainder (alpha).
+struct PreviousTransform
+{
+    float x = 0.0f;
+    float y = 0.0f;
+};
+
 struct Velocity
 {
     float dx = 0.0f;
@@ -87,11 +96,12 @@ struct Input
     float move_y = 0.0f; // -1.0 = up,    0.0 = none, +1.0 = down
 
     // Combat inputs — set by InputSystem each frame.
-    bool attack = false;             // Space — held state, gated by swing cooldown
-    bool dodge = false;              // Left Shift — held state, gated by dodge cooldown
+    bool attack = false;             // LMB / E — held state, gated by swing cooldown
+    bool dodge = false;              // Space tap (<200ms) — edge trigger, fires once per tap
+    bool sprint = false;             // Space hold (>200ms) — continuous while held
     bool skill = false;              // Q — held state, gated by skill cooldown
-    bool block_held = false;         // E held
-    bool block_just_pressed = false; // E edge-detect (low→high this frame)
+    bool block_held = false;         // RMB held
+    bool block_just_pressed = false; // RMB edge-detect (low→high this frame)
 
     // Auto-attack toggle — P key handled in InputSystem, stored on AutoAttackMode component.
     // Kept here only as a transient "toggle pressed this frame" flag.
@@ -105,6 +115,12 @@ struct Input
     float last_facing_x = 1.0f;
     float last_facing_y = 0.0f;
 
+    // Footstep cadence timer — counts down; plays a step sound when it hits zero.
+    float step_timer = 0.0f;
+
+    // Wall bump sound cooldown — prevents spamming on sustained wall contact.
+    float wall_bump_cooldown = 0.0f;
+
     // Debug stat-allocation — pressed this frame (set by InputSystem, consumed by LevelingSystem).
     bool alloc_str = false;
     bool alloc_dex = false;
@@ -115,20 +131,6 @@ struct Input
 // ---------------------------------------------------------------------------
 // Stat system — universal rulebook applied to ALL entities (player and enemies).
 // ---------------------------------------------------------------------------
-
-// Scaling grade — encodes how strongly a weapon scales with STR or DEX.
-// Maps to a multiplier used in damage and a dex_bias used in swing-cooldown.
-// S = best scaling, E = negligible.  Never hardcode the numeric values here;
-// gradeMultiplier() and gradeToDexBias() read from FormulaConfig at runtime.
-enum class ScalingGrade
-{
-    S,
-    A,
-    B,
-    C,
-    D,
-    E
-};
 
 // Stats — base stats for any entity.  All systems that care about combat
 // read these values directly; none store derived copies.
@@ -155,12 +157,15 @@ struct Experience
 
 // Weapon — equipped weapon state and runtime cooldown timers.
 // All static weapon data (weight, scaling) comes from entity config JSON.
-// Both player and enemies carry this; fist (weight=0.5, E/E) is the default.
+// Scaling values are raw floats (e.g. 1.0 = B-tier, 1.5 = S-tier).
+// Grade letters (S/A/B/C/D/E) are computed from these floats at display time
+// using the grade_thresholds table in FormulaConfig.
 struct Weapon
 {
+    std::string name; // display name (e.g. "Fist", "Iron Sword")
     float weight = 0.5f;
-    ScalingGrade str_scaling = ScalingGrade::E;
-    ScalingGrade dex_scaling = ScalingGrade::E;
+    float str_scaling = 0.25f; // per-point STR damage multiplier
+    float dex_scaling = 0.25f; // per-point DEX damage multiplier
     int str_requirement = 0;
     int dex_requirement = 0;
     float base_damage = 5.0f;
@@ -177,6 +182,11 @@ struct FacingDirection
 {
     float dx = 1.0f; // default: face right
     float dy = 0.0f;
+    // Smoothed visual facing for render (dot indicator, future sprite selection).
+    // Blended toward dx/dy each frame — filters micro-tremor while staying fluid.
+    // Gameplay systems (CombatSystem) read dx/dy directly for instant response.
+    float render_dx = 1.0f;
+    float render_dy = 0.0f;
 };
 
 // ---------------------------------------------------------------------------
@@ -375,4 +385,12 @@ struct AIController
     // tier=1 is the baseline (default). Zone spawners set tier=2, 3, etc. to produce
     // harder variants of the same enemy type without needing a separate config file.
     int tier = 1;
+
+    // Sprint: when in Chase state and the player is beyond sprint_threshold px,
+    // this entity sprints at sprint_multiplier × base speed.
+    // 0.0 sprint_multiplier = disabled (no sprint). Config fields: "sprint_multiplier",
+    // "sprint_threshold". Runtime flag set each frame by AggroSystem.
+    float sprint_multiplier = 0.0f;
+    float sprint_threshold = 0.0f;
+    bool sprint = false;
 };

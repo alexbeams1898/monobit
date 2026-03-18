@@ -5,6 +5,15 @@
 
 #include <tracy/Tracy.hpp>
 
+static void updateSprintFlag(AIController& ai, float distSq)
+{
+    if (ai.state == AIController::State::Chase && ai.sprint_multiplier > 0.0f &&
+        ai.sprint_threshold > 0.0f)
+        ai.sprint = distSq > ai.sprint_threshold * ai.sprint_threshold;
+    else
+        ai.sprint = false;
+}
+
 void AggroSystem::update(EntityManager& em)
 {
     ZoneScopedN("AggroSystem");
@@ -76,5 +85,7 @@ void AggroSystem::update(EntityManager& em)
             if (distSq > hysteresis * hysteresis)
                 ai.state = AIController::State::Chase;
         }
+
+        updateSprintFlag(ai, distSq);
     }
 }

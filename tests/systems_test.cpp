@@ -40,7 +40,7 @@ TEST_CASE("MovementSystem translates leftward input into negative x movement", "
     MovementSystem::update(em, 0.5); // half a second at 150 px/s (base, no Stats)
 
     auto& t = em.registry().get<Transform>(e);
-    REQUIRE(t.x == Catch::Approx(225.0f)); // 300 - 150*0.5
+    REQUIRE(t.x == Catch::Approx(225.0f).margin(0.1f)); // 300 - 150*0.5, ±0.1px for blend
     REQUIRE(t.y == Catch::Approx(100.0f));
 }
 

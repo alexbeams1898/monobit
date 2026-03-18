@@ -126,6 +126,16 @@ void ChaseSystem::update(EntityManager& em, double dt)
                           100.0f);
         }
 
+        if (ai.sprint)
+        {
+            speed *= ai.sprint_multiplier;
+            transform.scale = 1.1f;
+        }
+        else
+        {
+            transform.scale = 1.0f;
+        }
+
         float targetDx = 0.0f;
         float targetDy = 0.0f;
         float dist = 0.0f;

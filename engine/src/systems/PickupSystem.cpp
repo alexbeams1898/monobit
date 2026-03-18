@@ -1,6 +1,7 @@
 #include "systems/PickupSystem.h"
 
 #include "ecs/Components.h"
+#include "systems/AudioSystem.h"
 
 #include <cmath>
 #include <iostream>
@@ -44,6 +45,7 @@ void PickupSystem::update(EntityManager& em)
         if (pickup.xp_value > 0)
         {
             playerXP.current_xp += pickup.xp_value;
+            AudioSystem::playSfx(em.sounds.pickup.path, em.sounds.pickup.volume);
             std::cout << "[PickupSystem] +" << pickup.xp_value
                       << " XP (total: " << playerXP.current_xp << ")\n";
         }
