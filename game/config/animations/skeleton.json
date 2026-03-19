@@ -1,0 +1,12 @@
+{
+    "texture": "assets/sprites/skeleton_sheet.png",
+    "frame_width": 64,
+    "frame_height": 64,
+    "states": {
+        "idle":   { "row": 0, "frames": 2, "duration": 0.4 },
+        "walk":   { "row": 1, "frames": 9, "duration": 0.1 },
+        "attack": { "row": 2, "frames": 6, "duration": 0.07 },
+        "hit":    { "row": 3, "frames": 1, "duration": 0.0 },
+        "death":  { "row": 4, "frames": 2, "duration": 0.4 }
+    }
+}

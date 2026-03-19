@@ -87,6 +87,12 @@ void InputSystem::update(EntityManager& em, int windowW, int windowH)
     const bool blockJust = block_held && !prevBlock;
     prevBlock = block_held;
 
+    // Wave start (R) — edge-detect, consumed by WaveSystem.
+    static bool prevR = false;
+    const bool curR = keys[SDL_SCANCODE_R] != 0;
+    const bool waveStartJust = curR && !prevR;
+    prevR = curR;
+
     // Debug stat allocation (1/2/3/4) — edge-detect per key.
     static bool prev1 = false, prev2 = false, prev3 = false, prev4 = false;
     const bool cur1 = keys[SDL_SCANCODE_1] != 0;
@@ -135,6 +141,8 @@ void InputSystem::update(EntityManager& em, int windowW, int windowH)
         input.block_held = block_held;
         input.block_just_pressed = blockJust;
         input.auto_toggle_just_pressed = autoJust;
+
+        input.start_wave = waveStartJust;
 
         input.alloc_str = alloc1;
         input.alloc_dex = alloc2;

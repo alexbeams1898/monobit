@@ -42,4 +42,9 @@ class ConfigLoader
     // Call once at startup. Returns true on success; false if the file cannot
     // be opened (em.sounds keeps its hardcoded defaults in that case).
     static bool loadSounds(EntityManager& em, const std::string& filePath);
+
+    // Parse config/waves.json and populate em.wave_config.
+    // Call once at startup. Returns true on success; false if the file cannot
+    // be opened or parsed (em.wave_config stays empty in that case).
+    static bool loadWaves(EntityManager& em, const std::string& filePath);
 };

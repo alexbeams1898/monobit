@@ -1,24 +1,10 @@
 #include "Engine.h"
 
 #include "ecs/Components.h"
-#include "systems/AggroSystem.h"
 #include "systems/AnimationSystem.h"
 #include "systems/AudioSystem.h"
-#include "systems/CameraSystem.h"
-#include "systems/ChaseSystem.h"
-#include "systems/CollisionSystem.h"
-#include "systems/CombatSystem.h"
-#include "systems/DamageSystem.h"
-#include "systems/DeathSystem.h"
-#include "systems/FlowFieldSystem.h"
 #include "systems/InputSystem.h"
-#include "systems/LevelingSystem.h"
-#include "systems/MovementSystem.h"
-#include "systems/PickupSystem.h"
 #include "systems/RenderSystem.h"
-#include "systems/RestSpotSystem.h"
-#include "systems/SpawnerSystem.h"
-#include "systems/SteeringSystem.h"
 #include "systems/TileMapRenderer.h"
 
 #include <cmath>
@@ -203,44 +189,12 @@ void Engine::processEvents()
     }
 }
 
-// 0.0 = no scaling → "-"; otherwise first threshold the value meets (s → e).
-static const char* gradeChar(float v, const FormulaConfig& f)
-{
-    if (v <= 0.0f)
-        return "-";
-    if (v >= f.grade_thresholds.s)
-        return "S";
-    if (v >= f.grade_thresholds.a)
-        return "A";
-    if (v >= f.grade_thresholds.b)
-        return "B";
-    if (v >= f.grade_thresholds.c)
-        return "C";
-    if (v >= f.grade_thresholds.d)
-        return "D";
-    return "E";
-}
-
 void Engine::update(double dt)
 {
     ZoneScoped;
-    // InputSystem runs in processEvents() before the fixed-step loop —
-    // see processEvents() for the call site.  The order here is the
-    // per-tick combat/movement/collision sequence.
-    SpawnerSystem::update(entity_manager, dt); // timed wave spawner — enemies from outside bounds
-    CombatSystem::update(entity_manager, dt);  // cooldowns, hitbox spawn, dodge, skill, auto-attack
-    AggroSystem::update(entity_manager);       // Idle→Chase when player enters aggro radius
-    FlowFieldSystem::update(entity_manager);   // BFS from player — rebuilds only on cell change
-    ChaseSystem::update(entity_manager, dt);   // enemies read flow field → write velocity
-    SteeringSystem::update(entity_manager); // wall repulsion — deflects velocity before integration
-    MovementSystem::update(entity_manager, dt); // DEX-scaled speed, skip Dodging, FacingDirection
-    CollisionSystem::update(entity_manager);    // dynamic-vs-dynamic correction + events
-    DamageSystem::update(entity_manager);       // hitbox→health, enemy→player, shield/parry
-    DeathSystem::update(entity_manager, dt);    // spawn XP pickups, destroy Dead entities
-    PickupSystem::update(entity_manager);       // auto-collect XP/money within radius
-    LevelingSystem::update(entity_manager);     // XP overflow → level up → stat points
-    RestSpotSystem::update(entity_manager, dt); // heal player to full when standing on rest spot
-    CameraSystem::update(entity_manager);       // snap camera to final player position
+
+    if (game_update)
+        game_update(*this, entity_manager, dt);
 
     // Sync body-part children to their parent's position.
     // Must run after all movement/correction systems so children have the
@@ -254,51 +208,17 @@ void Engine::update(double dt)
             t.y = pt.y;
         }
     }
+}
 
-    // Title-bar HUD — cheapest possible stat display, no font rendering needed.
-    for (auto [entity, input, health, stats, exp] :
-         entity_manager.registry().view<Input, Health, Stats, Experience>().each())
-    {
-        const auto& f = entity_manager.formulas;
+void Engine::setGameUpdate(GameUpdateFn fn)
+{
+    game_update = fn;
+}
 
-        // Computed attack — base_damage + stat scaling from equipped weapon.
-        int atk = 5; // fist baseline
-        std::string weaponGrade;
-        if (entity_manager.registry().all_of<Weapon>(entity))
-        {
-            const auto& w = entity_manager.registry().get<Weapon>(entity);
-            atk = static_cast<int>(computeDamage(w, stats, f));
-
-            const std::string& wname = w.name.empty() ? std::string("?") : w.name;
-            weaponGrade = "  ---  " + wname + "  str " + gradeChar(w.str_scaling, f) + " / dex " +
-                          gradeChar(w.dex_scaling, f);
-        }
-
-        // Computed defense — mirrors DamageSystem::computeDef formula.
-        const int def = static_cast<int>(std::min(
-            f.defense.cap, std::floor(static_cast<float>(stats.str) * f.defense.str_scale +
-                                      static_cast<float>(stats.end) * f.defense.end_scale +
-                                      static_cast<float>(exp.level) * f.defense.level_scale)));
-
-        // Poise threshold (0 = staggers on any hit).
-        const int poise = entity_manager.registry().all_of<Poise>(entity)
-                              ? static_cast<int>(entity_manager.registry().get<Poise>(entity).max)
-                              : 0;
-
-        const int fps = static_cast<int>(std::lround(1.0 / last_frame_time));
-        std::string title =
-            "Hell Escape"
-            "  |  FPS " +
-            std::to_string(fps) + "/60  |  HP " + std::to_string(health.current) + "/" +
-            std::to_string(health.max) + "  |  LVL " + std::to_string(exp.level) + "  XP " +
-            std::to_string(exp.current_xp) + "/" + std::to_string(exp.xp_to_next) + "  |  STR " +
-            std::to_string(stats.str) + "  DEX " + std::to_string(stats.dex) + "  END " +
-            std::to_string(stats.end) + "  LCK " + std::to_string(stats.lck) + "  pts " +
-            std::to_string(exp.stat_points) + "  |  ATK " + std::to_string(atk) + "  DEF " +
-            std::to_string(def) + "  POISE " + std::to_string(poise) + weaponGrade;
+void Engine::setWindowTitle(const std::string& title)
+{
+    if (window)
         SDL_SetWindowTitle(window, title.c_str());
-        break;
-    }
 }
 
 void Engine::render()

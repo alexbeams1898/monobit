@@ -260,6 +260,7 @@ struct DrawEntry
     bool flip_y;
     bool solid_color;
     float draw_scale;
+    float ta;
 };
 
 // Build a DrawEntry for a single sprite entity. Returns false if skipped.
@@ -279,10 +280,18 @@ static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::en
 
     // Tint: body-part children inherit from parent.
     float tr = 1.0f, tg = 1.0f, tb = 1.0f;
+    float ta = 1.0f;
     entt::entity tintEntity = entity;
     if (bp && reg.valid(bp->parent))
         tintEntity = bp->parent;
     computeTint(em, tintEntity, tr, tg, tb);
+
+    // Particle alpha fade: quadratic falloff over lifetime.
+    if (const auto* particle = reg.try_get<Particle>(entity))
+    {
+        float t = particle->age / particle->lifetime;
+        ta = (1.0f - t) * (1.0f - t);
+    }
 
     // Animated entities handle direction via sheet columns; others use flip.
     bool flip_x = false, flip_y = false;
@@ -346,7 +355,8 @@ static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::en
            flip_x,
            flip_y,
            is_solid,
-           scale};
+           scale,
+           ta};
     return true;
 }
 
@@ -426,7 +436,7 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
             glUniform4f(glGetUniformLocation(sProgram, "uSrcRect"), uvX, uvY, uvW, uvH);
         }
 
-        glUniform4f(glGetUniformLocation(sProgram, "uTint"), e.tr, e.tg, e.tb, 1.0f);
+        glUniform4f(glGetUniformLocation(sProgram, "uTint"), e.tr, e.tg, e.tb, e.ta);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
     }
 

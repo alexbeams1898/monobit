@@ -1,9 +1,11 @@
 #include "ConfigLoader.h"
 #include "Engine.h"
+#include "GameLoop.h"
 #include "TileMapLoader.h"
 #include "ecs/Components.h"
 #include "systems/LevelingSystem.h"
 #include "systems/TileMapRenderer.h"
+#include "systems/WaveSystem.h"
 
 #include <csignal>
 #include <cstdio>
@@ -92,6 +94,9 @@ int main(int argc, char* argv[])
     // Load sound mappings — all systems read from em.sounds.
     ConfigLoader::loadSounds(em, "config/audio/sounds.json");
 
+    // Load wave definitions — WaveSystem reads from em.wave_config.
+    ConfigLoader::loadWaves(em, "config/waves.json");
+
     // Generate the tile map — populates em.tile_map / em.tile_config and
     // returns the world-space centre of the first placed room (player spawn).
     auto [px, py] = TileMapLoader::generate(em, "config/tilemap.json", "config/rooms");
@@ -106,22 +111,14 @@ int main(int argc, char* argv[])
         t.y = py;
     }
 
-    // Spawn entities from tile map markers.
-    // 'E' → enemy, 'R' → rest spot.
-    // Room templates author these; the generator collects them into
-    // em.tile_map.spawn_points during generation.
+    // Spawn non-enemy entities from tile map markers.
+    // 'R' → rest spot. Enemy spawning is handled by WaveSystem.
     for (const auto& sp : em.tile_map.spawn_points)
     {
-        const char* path = nullptr;
-        if (sp.type == 'E')
-            path = "config/entities/enemy.json";
-        else if (sp.type == 'R')
-            path = "config/entities/rest_spot.json";
-
-        if (!path)
+        if (sp.type != 'R')
             continue;
 
-        auto entity = ConfigLoader::loadEntity(em, path);
+        auto entity = ConfigLoader::loadEntity(em, "config/entities/rest_spot.json");
         if (!em.registry().valid(entity))
             continue;
 
@@ -140,6 +137,10 @@ int main(int argc, char* argv[])
     // Derive Health.max from END stats for all stat-based entities.
     LevelingSystem::applyInitialDerivations(em);
 
+    // Auto-start wave 1 so enemies begin spawning immediately.
+    WaveSystem::startNextWave(em);
+
+    engine.setGameUpdate(&gameUpdate);
     engine.run();
     return 0;
 }

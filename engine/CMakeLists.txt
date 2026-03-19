@@ -5,21 +5,10 @@ target_sources(engine PRIVATE
     src/ConfigLoader.cpp
     src/TextureManager.cpp
     src/systems/InputSystem.cpp
-    src/systems/MovementSystem.cpp
     src/systems/RenderSystem.cpp
     src/systems/CameraSystem.cpp
     src/systems/CollisionSystem.cpp
-    src/systems/AggroSystem.cpp
-    src/systems/ChaseSystem.cpp
     src/systems/FlowFieldSystem.cpp
-    src/systems/SteeringSystem.cpp
-    src/systems/SpawnerSystem.cpp
-    src/systems/CombatSystem.cpp
-    src/systems/DamageSystem.cpp
-    src/systems/DeathSystem.cpp
-    src/systems/PickupSystem.cpp
-    src/systems/LevelingSystem.cpp
-    src/systems/RestSpotSystem.cpp
     src/systems/AnimationSystem.cpp
     src/systems/AudioSystem.cpp
     src/TileMapLoader.cpp
@@ -83,3 +72,22 @@ endif()
 # clang-tidy from firing on its internals. Lives in vendor/stb/ so it is
 # excluded from the find engine game ... clang-format check.
 target_include_directories(engine SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/vendor/stb)
+
+# ---------------------------------------------------------------------------
+# Engine tests -- only test engine code, no game dependency.
+# ---------------------------------------------------------------------------
+add_executable(engine-tests
+    tests/ecs_test.cpp
+    tests/collision_test.cpp
+    tests/tilemap_test.cpp
+    tests/animation_test.cpp
+)
+target_link_libraries(engine-tests PRIVATE engine Catch2::Catch2WithMain)
+
+get_target_property(_CATCH2_INCLUDES Catch2::Catch2 INTERFACE_INCLUDE_DIRECTORIES)
+if(_CATCH2_INCLUDES)
+    target_include_directories(engine-tests SYSTEM PRIVATE ${_CATCH2_INCLUDES})
+endif()
+
+add_test(NAME engine-tests COMMAND engine-tests)
+set_tests_properties(engine-tests PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/game)

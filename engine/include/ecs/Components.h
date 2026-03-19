@@ -9,12 +9,22 @@
 #include <entt/entt.hpp>
 
 // ---------------------------------------------------------------------------
-// Core ECS components — pure data only, no methods, no logic.
+// ECS components — pure data only, no methods, no logic.
 // Systems operate on these; components just hold state.
 //
 // All structs are small and default-constructible so entt can manage them
 // efficiently in its sparse-set storage.
+//
+// LAYOUT: Engine components first (generic infrastructure any 2D game could
+// use), then game components (specific to this game's rules and mechanics).
+// Both live here because ConfigLoader needs all of them and it lives in the
+// engine. When the engine becomes its own repo, game components move to the
+// game repo's headers.
 // ---------------------------------------------------------------------------
+
+// ===========================================================================
+// ENGINE COMPONENTS — generic infrastructure (rendering, spatial, input, anim)
+// ===========================================================================
 
 struct Transform
 {
@@ -121,6 +131,9 @@ struct Input
     // Wall bump sound cooldown — prevents spamming on sustained wall contact.
     float wall_bump_cooldown = 0.0f;
 
+    // Wave start — edge-detected R key press, consumed by WaveSystem.
+    bool start_wave = false;
+
     // Debug stat-allocation — pressed this frame (set by InputSystem, consumed by LevelingSystem).
     bool alloc_str = false;
     bool alloc_dex = false;
@@ -128,9 +141,10 @@ struct Input
     bool alloc_lck = false;
 };
 
-// ---------------------------------------------------------------------------
-// Stat system — universal rulebook applied to ALL entities (player and enemies).
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// GAME COMPONENTS — specific to this game's rules and mechanics.
+// These will move to game/ when the engine becomes its own repo.
+// ===========================================================================
 
 // Stats — base stats for any entity.  All systems that care about combat
 // read these values directly; none store derived copies.
@@ -232,12 +246,14 @@ struct Pickup
 };
 
 // Loot — reward data dropped when an entity dies.
-// xp_drop is the base XP value; DeathSystem scales it by the entity's stat sum.
-// Semantically separate from AIController (loot != AI behavior).
+// xp_drop is the base XP value; DeathSystem scales it by the entity's level.
+// level is set by WaveSystem at spawn (wave-based scaling). Defaults to 1
+// for non-wave entities.
 struct Loot
 {
     int xp_drop = 20;
     int money_drop = 0;
+    int level = 1;
 };
 
 // Dead — emplaced by DamageSystem when Health.current reaches zero.
@@ -459,4 +475,31 @@ struct BodyPart
 {
     entt::entity parent = entt::null;
     bool faces_aim = false;
+};
+
+// Essence — per-stat natural talent (0-100 scale).
+// Rolled randomly for enemies at spawn. Player starts at 0; modifiable
+// through meta-progression. Stored separately from Stats so the bonus
+// can be inspected, displayed, and adjusted independently.
+struct Essence
+{
+    int str = 0;
+    int dex = 0;
+    int end = 0;
+    int lck = 0;
+};
+
+// Particle — entities that age, shrink, and self-destruct.
+struct Particle
+{
+    float lifetime = 1.0f;
+    float age = 0.0f;
+    float start_scale = 1.0f;
+    float end_scale = 0.3f;
+};
+
+// Marks an entity as part of the active wave for wave-clear detection.
+// Emplaced by WaveSystem at spawn time, not by ConfigLoader.
+struct WaveEnemy
+{
 };

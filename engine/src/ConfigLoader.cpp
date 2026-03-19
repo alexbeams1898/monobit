@@ -463,6 +463,23 @@ bool ConfigLoader::loadFormulas(EntityManager& em, const std::string& filePath)
         f.poise.decay_window = j["poise"].value("decay_window", f.poise.decay_window);
     }
 
+    if (j.contains("dodge"))
+    {
+        f.dodge.duration = j["dodge"].value("duration", f.dodge.duration);
+        f.dodge.cooldown = j["dodge"].value("cooldown", f.dodge.cooldown);
+    }
+
+    if (j.contains("essence"))
+    {
+        f.essence.min = j["essence"].value("min", f.essence.min);
+        f.essence.max = j["essence"].value("max", f.essence.max);
+    }
+
+    if (j.contains("xp_drop"))
+    {
+        f.xp_drop.log_scale = j["xp_drop"].value("log_scale", f.xp_drop.log_scale);
+    }
+
     f.loaded = true;
     std::cout << "[ConfigLoader] Loaded formulas from " << filePath << "\n";
     return true;
@@ -513,8 +530,94 @@ bool ConfigLoader::loadSounds(EntityManager& em, const std::string& filePath)
     load("wall_bump", s.wall_bump);
     load("footstep_walk", s.footstep_walk);
     load("footstep_run", s.footstep_run);
+    load("rest_heal", s.rest_heal);
+    load("game_over", s.game_over);
 
     s.loaded = true;
     std::cout << "[ConfigLoader] Loaded sounds from " << filePath << "\n";
+    return true;
+}
+
+bool ConfigLoader::loadWaves(EntityManager& em, const std::string& filePath)
+{
+    std::ifstream file(filePath);
+    if (!file.is_open())
+    {
+        std::cerr << "[ConfigLoader] Cannot open waves: " << filePath << "\n";
+        return false;
+    }
+
+    json j;
+    try
+    {
+        file >> j;
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "[ConfigLoader] Error parsing " << filePath << ": " << e.what() << "\n";
+        return false;
+    }
+
+    WaveConfig& wc = em.wave_config;
+    wc.spawn_near = j.value("spawn_near", wc.spawn_near);
+    wc.spawn_far = j.value("spawn_far", wc.spawn_far);
+
+    auto& gen = wc.gen;
+
+    // Enemy pool.
+    if (j.contains("enemies") && j["enemies"].is_array())
+    {
+        for (const auto& ej : j["enemies"])
+        {
+            WaveEnemyEntry entry;
+            entry.config_path = ej.value("config", std::string{});
+            entry.from_wave = ej.value("from_wave", 1);
+            entry.weight = ej.value("weight", 1);
+            gen.enemies.push_back(std::move(entry));
+        }
+    }
+
+    // Scaling parameters.
+    gen.start_count = j.value("start_count", gen.start_count);
+    gen.count_growth = j.value("count_growth", gen.count_growth);
+    gen.max_count = j.value("max_count", gen.max_count);
+    gen.start_interval = j.value("start_interval", gen.start_interval);
+    gen.interval_decay = j.value("interval_decay", gen.interval_decay);
+    gen.min_interval = j.value("min_interval", gen.min_interval);
+    gen.start_burst = j.value("start_burst", gen.start_burst);
+    gen.burst_growth_every = j.value("burst_growth_every", gen.burst_growth_every);
+    gen.max_burst = j.value("max_burst", gen.max_burst);
+    gen.safe_room_every = j.value("safe_room_every", gen.safe_room_every);
+    gen.max_waves = j.value("max_waves", gen.max_waves);
+    gen.level_growth = j.value("level_growth", gen.level_growth);
+    gen.stat_per_level = j.value("stat_per_level", gen.stat_per_level);
+
+    // Manual overrides keyed by wave number string.
+    if (j.contains("overrides") && j["overrides"].is_object())
+    {
+        for (const auto& [key, val] : j["overrides"].items())
+        {
+            int waveNum = std::stoi(key);
+            WaveOverride ov;
+            ov.spawn_interval = val.value("spawn_interval", 0.5f);
+            ov.burst_size = val.value("burst_size", 1);
+            ov.safe_room_after = val.value("safe_room_after", false);
+            if (val.contains("enemies") && val["enemies"].is_array())
+            {
+                for (const auto& gj : val["enemies"])
+                {
+                    WaveOverride::Group g;
+                    g.config_path = gj.value("config", std::string{});
+                    g.count = gj.value("count", 1);
+                    ov.enemies.push_back(std::move(g));
+                }
+            }
+            gen.overrides[waveNum] = std::move(ov);
+        }
+    }
+
+    wc.loaded = true;
+    std::cout << "[ConfigLoader] Loaded wave rules from " << filePath << " ("
+              << gen.enemies.size() << " enemy types)\n";
     return true;
 }
