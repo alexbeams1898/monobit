@@ -1,6 +1,8 @@
 #include "systems/PickupSystem.h"
 
 #include "ecs/Components.h"
+#include "ecs/GameComponents.h"
+#include "ecs/GameConfig.h"
 #include "systems/AudioSystem.h"
 
 #include <cmath>
@@ -11,12 +13,12 @@ void PickupSystem::update(EntityManager& em)
 {
     auto& reg = em.registry();
 
-    // Find the player (has Input + Transform + Experience).
+    // Find the player (has PlayerActions + Transform + Experience).
     entt::entity playerEnt = entt::null;
     float playerX = 0.0f;
     float playerY = 0.0f;
 
-    for (auto [entity, input, transform] : reg.view<Input, Transform>().each())
+    for (auto [entity, actions, transform] : reg.view<PlayerActions, Transform>().each())
     {
         playerEnt = entity;
         playerX = transform.x;
@@ -39,13 +41,15 @@ void PickupSystem::update(EntityManager& em)
             toCollect.push_back(entity);
     }
 
+    auto& snd = reg.ctx().get<SoundConfig>();
+
     for (auto e : toCollect)
     {
         const auto& pickup = reg.get<Pickup>(e);
         if (pickup.xp_value > 0)
         {
             playerXP.current_xp += pickup.xp_value;
-            AudioSystem::playSfx(em.sounds.pickup.path, em.sounds.pickup.volume);
+            AudioSystem::playSfx(snd.pickup.path, snd.pickup.volume);
             std::cout << "[PickupSystem] +" << pickup.xp_value
                       << " XP (total: " << playerXP.current_xp << ")\n";
         }

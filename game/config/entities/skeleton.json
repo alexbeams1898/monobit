@@ -10,7 +10,7 @@
         "weapon":        { "name": "Fist", "weight": 0.5, "str_scaling": 0.25, "dex_scaling": 0.0, "str_requirement": 0, "dex_requirement": 0, "base_damage": 8.0 },
         "facing":        {},
         "ai_controller": { "behavior": "chase", "turn_speed": 5.0, "aggro_radius": 180.0, "separation_strength": 0.6, "arrival_radius": 128.0, "attack_radius": 48.0, "sprint_multiplier": 1.4, "sprint_threshold": 24.0 },
-        "loot":          { "xp_drop": 20 },
+        "loot":          { "xp_drop": 55 },
         "poise":         {}
     }
 }

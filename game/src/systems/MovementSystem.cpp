@@ -2,7 +2,10 @@
 
 #include "TileMap.h"
 #include "ecs/Components.h"
+#include "ecs/GameComponents.h"
+#include "ecs/GameConfig.h"
 #include "systems/AudioSystem.h"
+#include "systems/CombatSystem.h"
 
 #include <cmath>
 #include <tracy/Tracy.hpp>
@@ -32,7 +35,8 @@ void MovementSystem::update(EntityManager& em, double dt)
 {
     ZoneScopedN("MovementSystem");
     const float fdt = static_cast<float>(dt);
-    const FormulaConfig& f = em.formulas;
+    const FormulaConfig& f = em.registry().ctx().get<FormulaConfig>();
+    const SoundConfig& snd = em.registry().ctx().get<SoundConfig>();
 
     // Pass 0: Stagger lock — zero velocity for any entity that can't move.
     // Must run before Pass 1 (player input) and after ChaseSystem/SteeringSystem
@@ -44,14 +48,14 @@ void MovementSystem::update(EntityManager& em, double dt)
         vel.dy = 0.0f;
     }
 
-    // Pass 1: Input intent → Velocity.
+    // Pass 1: PlayerActions intent -> Velocity.
     // Walk speed: base * (1 + floor(dex_scale * log(DEX + 1)) / 100)
-    // Sprint: walk speed × sprint_multiplier while input.sprint is true.
+    // Sprint: walk speed × sprint_multiplier while actions.sprint is true.
     // Entities without Stats fall back to f.movement.base (150 px/s default).
     //
     // Skip velocity update if the entity is Dodging (dodge impulse carries through)
     // or Staggered (guard break / parry result locks movement briefly).
-    for (auto [entity, input, vel] : em.registry().view<Input, Velocity>().each())
+    for (auto [entity, actions, vel] : em.registry().view<PlayerActions, Velocity>().each())
     {
         // Dodging and Staggered states override normal movement.
         if (em.registry().all_of<Dodging>(entity) || em.registry().all_of<Staggered>(entity))
@@ -65,37 +69,59 @@ void MovementSystem::update(EntityManager& em, double dt)
                       std::floor(f.movement.dex_scale * std::log(static_cast<float>(dex) + 1.0f)) /
                           100.0f);
         }
-        if (input.sprint)
+
+        // Sprint drains stamina continuously; blocked when empty.
+        if (actions.sprint && em.registry().all_of<Stamina>(entity))
+        {
+            auto& sta = em.registry().get<Stamina>(entity);
+            const float wWeight = em.registry().all_of<Weapon>(entity)
+                                      ? em.registry().get<Weapon>(entity).weight
+                                      : 1.0f;
+            const float drain = wWeight * f.stamina.sprint_effort * static_cast<float>(dt);
+            if (sta.current > 0.0f)
+            {
+                deductStamina(em.registry(), entity, drain, f);
+            }
+            else
+            {
+                actions.sprint = false;
+            }
+        }
+
+        if (actions.sprint)
             speed *= f.movement.sprint_multiplier;
+
+        if (auto* facing = em.registry().try_get<FacingDirection>(entity))
+            facing->sprinting = actions.sprint;
 
         // Blend toward target velocity for a natural acceleration feel.
         // Sprint ramps up slowly (sprint_blend); returning to walk snaps faster (walk_blend).
-        const float blend = input.sprint ? f.movement.sprint_blend : f.movement.walk_blend;
+        const float blend = actions.sprint ? f.movement.sprint_blend : f.movement.walk_blend;
         const float fdt = static_cast<float>(dt);
         const float t = 1.0f - std::exp(-blend * fdt);
-        vel.dx += (input.move_x * speed - vel.dx) * t;
-        vel.dy += (input.move_y * speed - vel.dy) * t;
+        vel.dx += (actions.move_x * speed - vel.dx) * t;
+        vel.dy += (actions.move_y * speed - vel.dy) * t;
 
         // Footstep cadence: play a step sound at regular intervals while moving.
-        const bool moving = (input.move_x != 0.0f || input.move_y != 0.0f);
+        const bool moving = (actions.move_x != 0.0f || actions.move_y != 0.0f);
         if (moving)
         {
-            input.step_timer -= fdt;
-            if (input.step_timer <= 0.0f)
+            actions.step_timer -= fdt;
+            if (actions.step_timer <= 0.0f)
             {
-                const float cadence = input.sprint ? 0.25f : 0.4f;
-                input.step_timer = cadence;
-                const auto& sfx = input.sprint ? em.sounds.footstep_run : em.sounds.footstep_walk;
+                const float cadence = actions.sprint ? 0.25f : 0.4f;
+                actions.step_timer = cadence;
+                const auto& sfx = actions.sprint ? snd.footstep_run : snd.footstep_walk;
                 AudioSystem::playSfx(sfx.path, sfx.volume);
             }
         }
         else
         {
-            input.step_timer = 0.0f;
+            actions.step_timer = 0.0f;
         }
 
         // Tick wall bump cooldown.
-        input.wall_bump_cooldown = std::max(0.0f, input.wall_bump_cooldown - fdt);
+        actions.wall_bump_cooldown = std::max(0.0f, actions.wall_bump_cooldown - fdt);
     }
 
     // Pass 2: Velocity → Transform with static wall projection.
@@ -188,13 +214,13 @@ void MovementSystem::update(EntityManager& em, double dt)
         }
 
         // Wall bump sound — player only, with cooldown to prevent spam.
-        if ((hitWallX || hitWallY) && em.registry().all_of<Input>(entity))
+        if ((hitWallX || hitWallY) && em.registry().all_of<PlayerActions>(entity))
         {
-            auto& input = em.registry().get<Input>(entity);
-            if (input.wall_bump_cooldown <= 0.0f)
+            auto& actions = em.registry().get<PlayerActions>(entity);
+            if (actions.wall_bump_cooldown <= 0.0f)
             {
-                AudioSystem::playSfx(em.sounds.wall_bump.path, em.sounds.wall_bump.volume);
-                input.wall_bump_cooldown = 0.2f;
+                AudioSystem::playSfx(snd.wall_bump.path, snd.wall_bump.volume);
+                actions.wall_bump_cooldown = 0.2f;
             }
         }
 
@@ -211,8 +237,8 @@ void MovementSystem::update(EntityManager& em, double dt)
     {
         if (em.registry().all_of<Dodging>(entity))
             continue;
-        if (em.registry().all_of<Input>(entity))
-            continue; // player — handled in processEvents()
+        if (em.registry().all_of<PlayerActions>(entity))
+            continue; // player — handled in gamePerFrame()
 
         const float dlen = std::sqrt(vel.dx * vel.dx + vel.dy * vel.dy);
         if (dlen > 0.0f)

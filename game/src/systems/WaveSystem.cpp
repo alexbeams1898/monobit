@@ -1,72 +1,23 @@
 #include "systems/WaveSystem.h"
 
 #include "ConfigLoader.h"
+#include "SpawnUtils.h"
 #include "TileMap.h"
 #include "ecs/Components.h"
+#include "ecs/GameComponents.h"
+#include "ecs/GameConfig.h"
 #include "systems/LevelingSystem.h"
 
 #include <cmath>
-#include <ctime>
 #include <iostream>
 #include <random>
 #include <tracy/Tracy.hpp>
 #include <vector>
 
-// ---------------------------------------------------------------------------
-// RNG for essence rolls and spawn position selection.
-// ---------------------------------------------------------------------------
-static std::mt19937& getRng()
-{
-    static std::mt19937 rng(static_cast<unsigned>(std::time(nullptr)));
-    return rng;
-}
-
-// ---------------------------------------------------------------------------
-// Find a random walkable tile within [nearDist, farDist] of (px, py).
-// Returns false if no candidates exist.
-// ---------------------------------------------------------------------------
-static bool findSpawnPosition(const TileMap& tm, float px, float py, float nearDist, float farDist,
-                              float& out_x, float& out_y)
-{
-    if (!tm.valid())
-        return false;
-
-    const float ts = static_cast<float>(TileMap::TILE_SIZE);
-    const float nearSq = nearDist * nearDist;
-    const float farSq = farDist * farDist;
-
-    std::vector<std::pair<int, int>> candidates;
-    for (int r = 0; r < tm.height; ++r)
-    {
-        for (int c = 0; c < tm.width; ++c)
-        {
-            if (!tm.at(c, r).walkable)
-                continue;
-            const float cx = static_cast<float>(c) * ts + ts * 0.5f;
-            const float cy = static_cast<float>(r) * ts + ts * 0.5f;
-            const float dx = cx - px;
-            const float dy = cy - py;
-            const float dSq = dx * dx + dy * dy;
-            if (dSq >= nearSq && dSq <= farSq)
-                candidates.emplace_back(c, r);
-        }
-    }
-
-    if (candidates.empty())
-        return false;
-
-    auto& rng = getRng();
-    std::uniform_int_distribution<std::size_t> dist(0, candidates.size() - 1);
-    const auto& chosen = candidates[dist(rng)];
-    out_x = static_cast<float>(chosen.first) * ts + ts * 0.5f;
-    out_y = static_cast<float>(chosen.second) * ts + ts * 0.5f;
-    return true;
-}
-
 // Find player position. Returns false if no player exists.
 static bool findPlayer(EntityManager& em, float& px, float& py)
 {
-    for (auto e : em.registry().view<Input>())
+    for (auto e : em.registry().view<PlayerActions>())
     {
         if (em.registry().all_of<Transform>(e))
         {
@@ -97,11 +48,20 @@ static bool spawnOneEnemy(EntityManager& em, const ActiveWave& wave, WaveState& 
         return false;
 
     const auto& group = wave.enemies[ws.spawn_group_index];
+    auto& wc = em.registry().ctx().get<WaveConfig>();
 
     float sx = 0.0f;
     float sy = 0.0f;
-    if (!findSpawnPosition(em.tile_map, px, py, em.wave_config.spawn_near, em.wave_config.spawn_far,
-                           sx, sy))
+    const int roomCount = static_cast<int>(em.tile_map.placed_rooms.size());
+    bool spawned = false;
+    if (roomCount > 0)
+    {
+        const int targetRoom = SpawnUtils::nextSpawnRoom(roomCount);
+        spawned =
+            SpawnUtils::findSpawnInRoom(em.tile_map, targetRoom, px, py, wc.spawn_near, sx, sy);
+    }
+    if (!spawned &&
+        !SpawnUtils::findSpawnPosition(em.tile_map, px, py, wc.spawn_near, wc.spawn_far, sx, sy))
         return false;
 
     auto entity = ConfigLoader::loadEntity(em, group.config_path);
@@ -113,11 +73,10 @@ static bool spawnOneEnemy(EntityManager& em, const ActiveWave& wave, WaveState& 
     t.y = sy;
 
     // Wave level scaling: higher waves produce stronger enemies.
-    const auto& gen = em.wave_config.gen;
+    const auto& gen = wc.gen;
     const int enemy_level =
         1 +
-        static_cast<int>(
-            std::floor(static_cast<float>(ws.current_wave - 1) * gen.level_growth));
+        static_cast<int>(std::floor(static_cast<float>(ws.current_wave - 1) * gen.level_growth));
 
     // Store wave level on Loot for XP calculation at death.
     if (em.registry().all_of<Loot>(entity))
@@ -139,8 +98,9 @@ static bool spawnOneEnemy(EntityManager& em, const ActiveWave& wave, WaveState& 
 
         // Roll essence: random 0-100 per stat, scaled proportionally to base stat.
         // bonus = floor(essence_value * base_stat / 100)
-        const auto& ess = em.formulas.essence;
-        auto& rng = getRng();
+        auto& f = em.registry().ctx().get<FormulaConfig>();
+        const auto& ess = f.essence;
+        auto& rng = SpawnUtils::getRng();
         std::uniform_int_distribution<int> dist(ess.min, ess.max);
 
         const int es = dist(rng);
@@ -160,10 +120,9 @@ static bool spawnOneEnemy(EntityManager& em, const ActiveWave& wave, WaveState& 
 
         em.registry().emplace<Essence>(entity, Essence{es, ed, ee, el});
 
-        std::cout << "[WaveSystem] " << name << " Lv" << enemy_level << "  ess[" << es << ","
-                  << ed << "," << ee << "," << el << "]  STR=" << stats.str
-                  << " DEX=" << stats.dex << " END=" << stats.end << " LCK=" << stats.lck
-                  << "\n";
+        std::cout << "[WaveSystem] " << name << " Lv" << enemy_level << "  ess[" << es << "," << ed
+                  << "," << ee << "," << el << "]  STR=" << stats.str << " DEX=" << stats.dex
+                  << " END=" << stats.end << " LCK=" << stats.lck << "\n";
     }
 
     LevelingSystem::deriveHealth(em, entity);
@@ -199,9 +158,9 @@ ActiveWave WaveSystem::generateWave(const WaveGenRules& gen, int wave_number)
     ActiveWave aw;
 
     // Enemy count: floor(start * growth^(N-1)), clamped.
-    int count = static_cast<int>(std::floor(
-        static_cast<float>(gen.start_count) *
-        std::pow(gen.count_growth, static_cast<float>(wave_number - 1))));
+    int count = static_cast<int>(
+        std::floor(static_cast<float>(gen.start_count) *
+                   std::pow(gen.count_growth, static_cast<float>(wave_number - 1))));
     count = std::min(count, gen.max_count);
     count = std::max(count, 1);
 
@@ -267,8 +226,7 @@ ActiveWave WaveSystem::generateWave(const WaveGenRules& gen, int wave_number)
     aw.burst_size = std::min(aw.burst_size, gen.max_burst);
 
     // Safe room periodicity.
-    aw.safe_room_after =
-        (gen.safe_room_every > 0) && (wave_number % gen.safe_room_every == 0);
+    aw.safe_room_after = (gen.safe_room_every > 0) && (wave_number % gen.safe_room_every == 0);
 
     return aw;
 }
@@ -280,19 +238,19 @@ ActiveWave WaveSystem::generateWave(const WaveGenRules& gen, int wave_number)
 void WaveSystem::update(EntityManager& em, double dt)
 {
     ZoneScopedN("WaveSystem");
-    auto& ws = em.wave_state;
-    const auto& wc = em.wave_config;
+    auto& ws = em.registry().ctx().get<WaveState>();
+    const auto& wc = em.registry().ctx().get<WaveConfig>();
 
     if (!wc.loaded)
         return;
 
     // Check for player wave-start input.
-    for (auto e : em.registry().view<Input>())
+    for (auto e : em.registry().view<PlayerActions>())
     {
-        auto& inp = em.registry().get<Input>(e);
-        if (inp.start_wave)
+        auto& actions = em.registry().get<PlayerActions>(e);
+        if (actions.start_wave)
         {
-            inp.start_wave = false;
+            actions.start_wave = false;
             startNextWave(em);
         }
         break;
@@ -308,6 +266,10 @@ void WaveSystem::update(EntityManager& em, double dt)
 
     case WaveState::Phase::Spawning:
     {
+        // Wait for GameLoop to regenerate the map before spawning.
+        if (ws.needs_map_regen)
+            break;
+
         ws.spawn_timer -= static_cast<float>(dt);
         if (ws.spawn_timer > 0.0f)
             break;
@@ -377,10 +339,10 @@ void WaveSystem::update(EntityManager& em, double dt)
 
 bool WaveSystem::startNextWave(EntityManager& em)
 {
-    auto& ws = em.wave_state;
-    const auto& wc = em.wave_config;
+    auto& ws = em.registry().ctx().get<WaveState>();
+    const auto& wc = em.registry().ctx().get<WaveConfig>();
 
-    // Death restart: destroy all enemies, heal player, reset to wave 0.
+    // Death restart: destroy all enemies + old player, recreate player fresh.
     if (ws.phase == WaveState::Phase::GameOver)
     {
         auto& reg = em.registry();
@@ -400,15 +362,33 @@ bool WaveSystem::startNextWave(EntityManager& em)
             reg.destroy(e);
         }
 
-        // Restore player HP.
-        for (auto pe : reg.view<Input>())
+        // Destroy old player and recreate from config.
+        entt::entity oldPlayer = entt::null;
+        float spawnX = 0.0f;
+        float spawnY = 0.0f;
+        for (auto pe : reg.view<PlayerActions>())
         {
-            if (reg.all_of<Health>(pe))
+            oldPlayer = pe;
+            if (reg.all_of<Transform>(pe))
             {
-                auto& h = reg.get<Health>(pe);
-                h.current = h.max;
+                const auto& t = reg.get<Transform>(pe);
+                spawnX = t.x;
+                spawnY = t.y;
             }
             break;
+        }
+        if (oldPlayer != entt::null)
+            reg.destroy(oldPlayer);
+
+        auto newPlayer = ConfigLoader::loadEntity(em, "config/entities/player.json");
+        if (reg.valid(newPlayer))
+        {
+            auto& t = reg.get<Transform>(newPlayer);
+            t.x = spawnX;
+            t.y = spawnY;
+            reg.emplace<PlayerActions>(newPlayer);
+            reg.emplace<Camera>(newPlayer, Camera{spawnX, spawnY, true});
+            LevelingSystem::applyInitialDerivations(em);
         }
 
         ws.current_wave = 0;
@@ -437,7 +417,9 @@ bool WaveSystem::startNextWave(EntityManager& em)
     ws.spawn_timer = 0.0f; // spawn first burst immediately
     ws.spawn_group_index = 0;
     ws.spawn_group_progress = 0;
+    ws.needs_map_regen = true;
     ws.phase = WaveState::Phase::Spawning;
+    SpawnUtils::resetSpawnRoomCounter();
 
     TracyMessageL("WaveStarted");
     std::cout << "[WaveSystem] Wave " << next << " started (" << ws.enemies_total

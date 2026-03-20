@@ -1,7 +1,9 @@
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
+#include "ecs/GameComponents.h"
 #include "systems/ChaseSystem.h"
 #include "systems/FlowFieldSystem.h"
+#include "test_helpers.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -19,26 +21,27 @@
 // to match this grid-aligned behavior.
 // ---------------------------------------------------------------------------
 
-// Helpers — create a player entity (has Input tag) and an enemy entity.
+// Helpers -- create a player entity (has PlayerActions) and an enemy entity.
 static entt::entity makePlayer(EntityManager& em, float x, float y)
 {
     auto e = em.create();
     em.registry().emplace<Transform>(e, Transform{x, y});
-    em.registry().emplace<Input>(e);
+    em.registry().emplace<PlayerActions>(e);
     return e;
 }
 
 // turn_speed defaults to 0 (instant snap) so existing tests can assert exact
 // velocity values without compensating for blending math.
-// Speed is set via em.formulas.movement.base with dex_scale=0 so tests get exact pixel values
-// without having to solve the log formula in reverse. Each call overwrites the shared formula —
+// Speed is set via FormulaConfig.movement.base with dex_scale=0 so tests get exact pixel values
+// without having to solve the log formula in reverse. Each call overwrites the shared formula --
 // do not mix different speeds in the same test unless you only need directional assertions.
 static entt::entity makeEnemy(EntityManager& em, float x, float y, float speed,
                               AIController::State state = AIController::State::Chase,
                               float turn_speed = 0.0f)
 {
-    em.formulas.movement.base = speed;
-    em.formulas.movement.dex_scale = 0.0f; // DEX has no effect in tests
+    auto& f = em.registry().ctx().get<FormulaConfig>();
+    f.movement.base = speed;
+    f.movement.dex_scale = 0.0f; // DEX has no effect in tests
 
     auto e = em.create();
     em.registry().emplace<Transform>(e, Transform{x, y});
@@ -48,6 +51,7 @@ static entt::entity makeEnemy(EntityManager& em, float x, float y, float speed,
     ai.state = state;
     ai.turn_speed = turn_speed;
     em.registry().emplace<AIController>(e, ai);
+    em.registry().emplace<NavAgent>(e);
     return e;
 }
 
@@ -67,14 +71,26 @@ static entt::entity makeWall(EntityManager& em, float x, float y)
 // the player sitting still for N consecutive game frames.
 static void runAI(EntityManager& em, double dt = 1.0 / 60.0)
 {
+    float px = 0.0f, py = 0.0f;
+    for (auto e : em.registry().view<PlayerActions>())
+    {
+        if (em.registry().all_of<Transform>(e))
+        {
+            const auto& t = em.registry().get<Transform>(e);
+            px = t.x;
+            py = t.y;
+        }
+        break;
+    }
     for (int i = 0; i < FlowField::STABILITY_FRAMES; ++i)
-        FlowFieldSystem::update(em);
+        FlowFieldSystem::update(em, px, py);
     ChaseSystem::update(em, dt);
 }
 
 TEST_CASE("ChaseSystem moves entity directly toward player on x-axis", "[chase]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     // Player at (100,0) → cell (6,0). Enemy at (0,0) → cell (0,0).
     // No walls — BFS gives direction (1,0) at cell (0,0).
     makePlayer(em, 100.0f, 0.0f);
@@ -91,6 +107,7 @@ TEST_CASE("ChaseSystem speed is preserved for cardinal approach", "[chase]")
 {
     // Velocity magnitude should equal ai.speed for a clear line-of-sight path.
     EntityManager em;
+    emplaceGameConfigs(em);
     makePlayer(em, 500.0f, 0.0f);                  // player cell (31,0)
     auto enemy = makeEnemy(em, 0.0f, 0.0f, 80.0f); // cell (0,0)
 
@@ -104,6 +121,7 @@ TEST_CASE("ChaseSystem speed is preserved for cardinal approach", "[chase]")
 TEST_CASE("ChaseSystem does not move idle entity", "[chase]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     makePlayer(em, 100.0f, 0.0f);
     auto enemy = makeEnemy(em, 0.0f, 0.0f, 100.0f, AIController::State::Idle);
 
@@ -120,7 +138,8 @@ TEST_CASE("ChaseSystem does not move idle entity", "[chase]")
 TEST_CASE("ChaseSystem does nothing when no player exists", "[chase]")
 {
     EntityManager em;
-    // No player entity (no Input component) — FlowFieldSystem skips rebuild,
+    emplaceGameConfigs(em);
+    // No player entity (no PlayerActions) -- FlowFieldSystem skips rebuild,
     // all cells remain (0,0), ChaseSystem writes zero velocity.
     auto enemy = makeEnemy(em, 0.0f, 0.0f, 100.0f);
 
@@ -134,6 +153,7 @@ TEST_CASE("ChaseSystem does nothing when no player exists", "[chase]")
 TEST_CASE("ChaseSystem produces zero velocity when enemy is at player's cell", "[chase]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     // Enemy on top of player — same grid cell, flow direction = (0,0).
     makePlayer(em, 0.0f, 0.0f);
     auto enemy = makeEnemy(em, 0.0f, 0.0f, 100.0f);
@@ -148,6 +168,7 @@ TEST_CASE("ChaseSystem produces zero velocity when enemy is at player's cell", "
 TEST_CASE("ChaseSystem handles multiple enemies independently", "[chase]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     makePlayer(em, 0.0f, 0.0f); // player at cell (0,0)
 
     // Both enemies use the same formula base — test verifies direction independence, not magnitude.
@@ -170,6 +191,7 @@ TEST_CASE("ChaseSystem handles multiple enemies independently", "[chase]")
 TEST_CASE("FlowFieldSystem routes enemy around a wall", "[chase][flowfield]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     // Transform stores CENTERS. Wall center (32,0) 32x32 spans x=16..47, y=-16..15.
     // With CELL_SIZE=16, marked cells: col=1..2 (x=16..47), row=0 (y=0..15 only —
     // the top half at y<0 is out of bounds and skipped).
@@ -204,6 +226,7 @@ TEST_CASE("ChaseSystem velocity blending converges toward target over multiple f
     // After one frame the velocity should be strictly between 0 and the target,
     // and successive frames must move monotonically closer to the target.
     EntityManager em;
+    emplaceGameConfigs(em);
     // Player far to the right — clean cardinal path, no walls.
     makePlayer(em, 500.0f, 0.0f);
     constexpr float SPEED = 80.0f;
@@ -241,6 +264,7 @@ TEST_CASE("ChaseSystem uses flow field at long range, not direct vector", "[chas
     // Player due east at 500 px (> old FAR threshold of 320). No walls.
     // BFS routes east from enemy → flow field direction = (+1,0) → vel.dx = speed.
     EntityManager em;
+    emplaceGameConfigs(em);
     constexpr float SPEED = 80.0f;
     makePlayer(em, 500.0f, 0.0f);
     auto enemy = makeEnemy(em, 0.0f, 0.0f, SPEED); // turn_speed=0
@@ -276,6 +300,7 @@ TEST_CASE("ChaseSystem respects flow field when direct vector is blocked by a wa
     // Flow field: BFS routes south then east around the wall.
     // Fill pass gives (0,0) direction south (0,+1) → vel.dy = +speed.
     EntityManager em;
+    emplaceGameConfigs(em);
     constexpr float SPEED = 80.0f;
     makePlayer(em, 512.0f, 0.0f);
     makeWall(em, 32.0f, 0.0f);                     // center (32,0) 32x32 → blocks cols 1-2, row 0
@@ -292,6 +317,7 @@ TEST_CASE("FlowFieldSystem wall marking uses center-based coordinates, not top-l
           "[chase][flowfield]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     // Regression: wall marking must use Transform.x/y as CENTERS (matching
     // CollisionSystem and RenderSystem), not as top-left corners.
     //
@@ -342,6 +368,7 @@ TEST_CASE("ChaseSystem arrival softening scales speed when within arrival_radius
     // Blending (turn_speed=0) snaps vel to full speed (-100,0), then the
     // post-blend cap reduces it to 50: vel.dx = -50.
     EntityManager em;
+    emplaceGameConfigs(em);
     constexpr float SPEED = 100.0f;
     makePlayer(em, 0.0f, 0.0f);
     auto enemy = makeEnemy(em, 100.0f, 0.0f, SPEED);
@@ -360,6 +387,7 @@ TEST_CASE("ChaseSystem arrival softening scales speed when within arrival_radius
 TEST_CASE("ChaseSystem no arrival softening when arrival_radius is zero", "[chase][arrival]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     constexpr float SPEED = 100.0f;
     makePlayer(em, 0.0f, 0.0f);
     auto enemy = makeEnemy(em, 100.0f, 0.0f, SPEED); // arrival_radius defaults to 0
@@ -376,6 +404,7 @@ TEST_CASE("ChaseSystem no arrival softening when enemy is beyond arrival_radius"
 {
     // Enemy at (300,0) — dist=300 > arrival_radius=200. No softening.
     EntityManager em;
+    emplaceGameConfigs(em);
     constexpr float SPEED = 100.0f;
     makePlayer(em, 0.0f, 0.0f);
     auto enemy = makeEnemy(em, 300.0f, 0.0f, SPEED);
@@ -402,6 +431,7 @@ TEST_CASE("ChaseSystem Attack state moves enemy toward slot on player ring", "[c
     // slotDist = 200-48 = 152 >> CELL_SIZE. scale = min(1, 152/48) = 1.
     // targetDx = -speed. With turn_speed=0: vel.dx = -speed.
     EntityManager em;
+    emplaceGameConfigs(em);
     makePlayer(em, 0.0f, 0.0f);
     auto enemy = makeEnemy(em, 200.0f, 0.0f, 100.0f, AIController::State::Attack);
     em.registry().patch<AIController>(enemy, [](AIController& ai) { ai.attack_radius = 48.0f; });
@@ -417,6 +447,7 @@ TEST_CASE("ChaseSystem Attack state stops when at slot", "[chase][attack]")
 {
     // Enemy already on the ring: dist to slot = 0.
     EntityManager em;
+    emplaceGameConfigs(em);
     makePlayer(em, 0.0f, 0.0f);
     auto enemy = makeEnemy(em, 48.0f, 0.0f, 100.0f, AIController::State::Attack);
     em.registry().patch<AIController>(enemy, [](AIController& ai) { ai.attack_radius = 48.0f; });
@@ -436,6 +467,7 @@ TEST_CASE("ChaseSystem Attack state: enemies from different directions target di
     // Enemy A east of player (200,0) → slot (48,0) → moves left.
     // Enemy B south of player (0,200) → slot (0,48) → moves up.
     EntityManager em;
+    emplaceGameConfigs(em);
     makePlayer(em, 0.0f, 0.0f);
     auto enemyA = makeEnemy(em, 200.0f, 0.0f, 100.0f, AIController::State::Attack);
     em.registry().patch<AIController>(enemyA, [](AIController& ai) { ai.attack_radius = 48.0f; });

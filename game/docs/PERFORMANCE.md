@@ -7,8 +7,10 @@ Updated as new decisions are made.
 
 ## Goal
 
-1000+ simultaneous enemies at 60 Hz on low-end hardware.
-See CLAUDE.md "Performance Philosophy" for first principles.
+Smooth 60 Hz on low-end hardware with enough headroom that enemy count never becomes a
+bottleneck. The game design is souls-like (small groups of meaningful enemies, not swarms),
+so actual enemy counts will be modest — but the engine should be efficient enough that this
+is never a question. See CLAUDE.md "Performance Philosophy" for first principles.
 
 ---
 
@@ -124,8 +126,9 @@ constant. No allocations — `get_or_emplace` after the first frame is a pure ge
 imperceptible for a top-down 2D game.
 
 **Additional fixes applied alongside:**
-- Player facing moved out of fixed-step loop into `processEvents()` — mouse position is a
-  per-frame input, not physics. Eliminates stale-facing on 0-update frames.
+- Player facing moved out of fixed-step loop into the game's per-frame callback
+  (`gamePerFrame`) — mouse position is a per-frame input, not physics. Eliminates
+  stale-facing on 0-update frames.
 - Facing dot position rounded to integer pixels — eliminates sub-pixel oscillation caused by
   camera integer-snapping vs unsnapped dot position.
 
@@ -190,13 +193,13 @@ facing directions simultaneously.
 Animation and Sprite components. Lower body faces velocity direction with walk/idle states;
 upper body faces FacingDirection (mouse aim) with attack/idle states.
 
-**Architecture:** Child entities linked via `BodyPart` component (`parent`, `faces_aim` flag).
+**Architecture:** Child entities linked via `BodyPart` component (`parent`, `direction_from_facing` flag).
 Parent entity keeps all gameplay components (Transform, Health, Stats, etc.) but has no
 Sprite or Animation. Children inherit position from parent each frame.
 
 **State resolution per body part:**
-- Lower body (`faces_aim=false`): Dead > Hit > Walk > Idle. Direction from parent Velocity.
-- Upper body (`faces_aim=true`): Dead > Hit > Attack > Idle. Direction from parent FacingDirection.
+- Lower body (`direction_from_facing=false`): Dead > Hit > Walk > Idle. Direction from parent Velocity.
+- Upper body (`direction_from_facing=true`): Dead > Hit > Attack > Idle. Direction from parent FacingDirection.
 
 **Sprite split method:** LPC body base is a full-body silhouette. Both sheets include the body
 base but apply a vertical alpha mask at `BODY_SPLIT_Y=35` within each 64x64 frame. Lower body

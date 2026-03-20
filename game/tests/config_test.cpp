@@ -1,7 +1,9 @@
 #include "ConfigLoader.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
+#include "ecs/GameComponents.h"
 #include "systems/LevelingSystem.h"
+#include "test_helpers.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -17,6 +19,7 @@
 TEST_CASE("ConfigLoader loads skeleton entity with correct components", "[config]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     auto entity = ConfigLoader::loadEntity(em, "config/entities/skeleton.json");
 
     REQUIRE(em.registry().valid(entity));
@@ -49,6 +52,7 @@ TEST_CASE("ConfigLoader loads skeleton entity with correct components", "[config
 TEST_CASE("ConfigLoader loads player entity with correct values", "[config]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     auto entity = ConfigLoader::loadEntity(em, "config/entities/player.json");
 
     REQUIRE(em.registry().valid(entity));
@@ -64,9 +68,9 @@ TEST_CASE("ConfigLoader loads player entity with correct values", "[config]")
     REQUIRE_FALSE(em.registry().all_of<Health>(entity));
     LevelingSystem::applyInitialDerivations(em);
 
-    // Player: end=5, default formulas → maxHP = 5 + floor(100 * ln(6)) = 184
+    // Player: end=1, default formulas -> maxHP = 5 + floor(100 * ln(2)) = 74
     auto& health = em.registry().get<Health>(entity);
-    REQUIRE(health.max == 184);
+    REQUIRE(health.max == 74);
     REQUIRE(health.current == health.max);
 }
 

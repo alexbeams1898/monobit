@@ -1,6 +1,8 @@
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
+#include "ecs/GameComponents.h"
 #include "systems/LevelingSystem.h"
+#include "test_helpers.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -30,7 +32,7 @@ static entt::entity makeCharacter(EntityManager& em, int str = 5, int dex = 5, i
 TEST_CASE("applyInitialDerivations — derives Health from END for stat entity", "[leveling]")
 {
     EntityManager em;
-    // formulas keep defaults (match formulas.json values)
+    emplaceGameConfigs(em);
 
     const auto e = makeCharacter(em, 5, 5, 5, 5);
     LevelingSystem::applyInitialDerivations(em);
@@ -46,6 +48,7 @@ TEST_CASE("applyInitialDerivations — derives Health from END for stat entity",
 TEST_CASE("applyInitialDerivations — higher END gives higher max HP", "[leveling]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
 
     const auto eLow = makeCharacter(em, 5, 5, 1, 5);   // end=1
     const auto eHigh = makeCharacter(em, 5, 5, 10, 5); // end=10
@@ -59,6 +62,7 @@ TEST_CASE("applyInitialDerivations — higher END gives higher max HP", "[leveli
 TEST_CASE("applyInitialDerivations — entity without Stats is not given Health", "[leveling]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
 
     // Wall-like entity: no Stats component.
     const auto wall = em.create();
@@ -71,6 +75,7 @@ TEST_CASE("applyInitialDerivations — entity without Stats is not given Health"
 TEST_CASE("applyInitialDerivations — entity with existing Health gets max overridden", "[leveling]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
 
     const auto e = em.create();
     em.registry().emplace<Stats>(e, Stats{5, 5, 5, 5});
@@ -86,6 +91,7 @@ TEST_CASE("applyInitialDerivations — entity with existing Health gets max over
 TEST_CASE("applyInitialDerivations — sets xp_to_next on Experience", "[leveling]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     const auto e = makeCharacter(em);
     LevelingSystem::applyInitialDerivations(em);
 
@@ -122,6 +128,7 @@ TEST_CASE("XP threshold — level 2 threshold is higher than level 1", "[levelin
 TEST_CASE("Level up — exactly hitting threshold increments level", "[leveling]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     const auto e = makeCharacter(em);
     LevelingSystem::applyInitialDerivations(em);
 
@@ -138,6 +145,7 @@ TEST_CASE("Level up — exactly hitting threshold increments level", "[leveling]
 TEST_CASE("Level up — XP overflow carries over to next level", "[leveling]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     const auto e = makeCharacter(em);
     LevelingSystem::applyInitialDerivations(em);
 
@@ -154,6 +162,7 @@ TEST_CASE("Level up — XP overflow carries over to next level", "[leveling]")
 TEST_CASE("Level up — multiple levels in one update (huge XP gain)", "[leveling]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     const auto e = makeCharacter(em);
     LevelingSystem::applyInitialDerivations(em);
 
@@ -173,6 +182,7 @@ TEST_CASE("Level up — multiple levels in one update (huge XP gain)", "[levelin
 TEST_CASE("Level up — not enough XP: no level change", "[leveling]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     const auto e = makeCharacter(em);
     LevelingSystem::applyInitialDerivations(em);
 
@@ -187,21 +197,22 @@ TEST_CASE("Level up — not enough XP: no level change", "[leveling]")
 }
 
 // ---------------------------------------------------------------------------
-// Stat allocation via Input flags
+// Stat allocation via PlayerActions flags
 // ---------------------------------------------------------------------------
 
 TEST_CASE("Stat allocation — alloc_str increments STR and spends a point", "[leveling]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     const auto e = makeCharacter(em);
     LevelingSystem::applyInitialDerivations(em);
 
     // Give the player some stat points to spend.
     em.registry().get<Experience>(e).stat_points = 1;
 
-    // Attach an Input component (required by allocation path).
-    em.registry().emplace<Input>(e);
-    em.registry().get<Input>(e).alloc_str = true;
+    // Attach a PlayerActions component (required by allocation path).
+    em.registry().emplace<PlayerActions>(e);
+    em.registry().get<PlayerActions>(e).alloc_str = true;
 
     LevelingSystem::update(em);
 
@@ -214,13 +225,14 @@ TEST_CASE("Stat allocation — alloc_str increments STR and spends a point", "[l
 TEST_CASE("Stat allocation — alloc_end increases Health.max", "[leveling]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     const auto e = makeCharacter(em);
     LevelingSystem::applyInitialDerivations(em);
 
     const int prevMax = em.registry().get<Health>(e).max;
     em.registry().get<Experience>(e).stat_points = 1;
-    em.registry().emplace<Input>(e);
-    em.registry().get<Input>(e).alloc_end = true;
+    em.registry().emplace<PlayerActions>(e);
+    em.registry().get<PlayerActions>(e).alloc_end = true;
 
     LevelingSystem::update(em);
 
@@ -232,11 +244,12 @@ TEST_CASE("Stat allocation — alloc_end increases Health.max", "[leveling]")
 TEST_CASE("Stat allocation — no points available: stat unchanged", "[leveling]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     const auto e = makeCharacter(em);
     LevelingSystem::applyInitialDerivations(em);
 
-    em.registry().emplace<Input>(e);
-    em.registry().get<Input>(e).alloc_dex = true;
+    em.registry().emplace<PlayerActions>(e);
+    em.registry().get<PlayerActions>(e).alloc_dex = true;
     // stat_points stays 0 (not set)
 
     LevelingSystem::update(em);

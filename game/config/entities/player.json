@@ -5,14 +5,15 @@
         "velocity":         { "dx": 0.0, "dy": 0.0 },
         "collider":         { "width": 32.0, "height": 32.0, "is_solid": true },
         "facing":           {},
-        "stats":            { "str": 5, "dex": 5, "end": 5, "lck": 5 },
+        "stats":            { "str": 1, "dex": 1, "end": 1, "lck": 1 },
         "weapon":           { "name": "Fist", "weight": 0.5, "str_scaling": 1.0, "dex_scaling": 0.75, "str_requirement": 0, "dex_requirement": 0, "base_damage": 8.0 },
         "experience":       {},
         "auto_attack_mode": {},
         "poise":            {},
+        "stamina":          {},
         "body_parts": [
-            { "sheet": "config/animations/player_lower.json", "draw_order": 2, "faces_aim": false },
-            { "sheet": "config/animations/player_upper.json", "draw_order": 2, "faces_aim": true }
+            { "sheet": "config/animations/player_lower.json", "draw_order": 2, "direction_from_facing": false },
+            { "sheet": "config/animations/player_upper.json", "draw_order": 2, "direction_from_facing": true }
         ]
     }
 }

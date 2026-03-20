@@ -24,8 +24,23 @@ class Engine
     using GameUpdateFn = void (*)(Engine&, EntityManager&, double);
     void setGameUpdate(GameUpdateFn fn);
 
+    // Per-frame callback. Called once per render frame after SDL event polling,
+    // before the fixed-step loop. Use for input that must track the display rate
+    // (e.g. mouse-aim facing) rather than the fixed tick rate.
+    using PerFrameFn = void (*)(Engine&, EntityManager&, double);
+    void setPerFrameUpdate(PerFrameFn fn);
+
     // Set the window title string (for game-side HUD display).
     void setWindowTitle(const std::string& title);
+
+    int windowWidth() const
+    {
+        return window_w;
+    }
+    int windowHeight() const
+    {
+        return window_h;
+    }
 
     // EMA-smoothed frame time for FPS calculation.
     double lastFrameTime() const
@@ -62,4 +77,5 @@ class Engine
     double frame_dt = 1.0 / 60.0;        // raw wall-clock frame time for animation
 
     GameUpdateFn game_update = nullptr;
+    PerFrameFn per_frame_update = nullptr;
 };

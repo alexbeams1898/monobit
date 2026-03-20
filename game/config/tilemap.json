@@ -1,18 +1,12 @@
 {
-    "width": 80,
-    "height": 60,
+    "width": 160,
+    "height": 120,
     "room_count": 6,
     "tileset": "assets/tiles/dungeon_tiles.png",
-    "tile_uv": {
-        "floor":    { "col": 0, "row": 0 },
-        "wall":     { "col": 0, "row": 1 },
-        "door":     { "col": 0, "row": 2 },
-        "obstacle": { "col": 1, "row": 1 }
-    },
     "tiles": {
-        "0": { "sprite": "", "walkable": true  },
-        "1": { "sprite": "", "walkable": false },
-        "2": { "sprite": "", "walkable": true  },
-        "3": { "sprite": "", "walkable": false }
+        "0": { "sprite": "", "walkable": true,  "uv_col": 0, "uv_row": 0 },
+        "1": { "sprite": "", "walkable": false, "uv_col": 0, "uv_row": 1 },
+        "2": { "sprite": "", "walkable": true,  "uv_col": 0, "uv_row": 2 },
+        "3": { "sprite": "", "walkable": false, "uv_col": 1, "uv_row": 1 }
     }
 }

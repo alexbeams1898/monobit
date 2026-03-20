@@ -1,16 +1,16 @@
 #include "systems/SpawnerSystem.h"
 
 #include "ConfigLoader.h"
+#include "SpawnUtils.h"
 #include "TileMap.h"
 #include "ecs/Components.h"
+#include "ecs/GameComponents.h"
 #include "systems/LevelingSystem.h"
 
-#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <nlohmann/json.hpp>
 #include <tracy/Tracy.hpp>
-#include <vector>
 
 using json = nlohmann::json;
 
@@ -76,15 +76,15 @@ void SpawnerSystem::update(EntityManager& em, double dt)
     float playerX = 0.f, playerY = 0.f;
     bool found = false;
     bool player_moving = false;
-    for (auto e : em.registry().view<Input>())
+    for (auto e : em.registry().view<PlayerActions>())
     {
         if (em.registry().all_of<Transform>(e))
         {
             const auto& t = em.registry().get<Transform>(e);
-            const auto& inp = em.registry().get<Input>(e);
+            const auto& actions = em.registry().get<PlayerActions>(e);
             playerX = t.x;
             playerY = t.y;
-            player_moving = inp.move_x != 0.0f || inp.move_y != 0.0f;
+            player_moving = actions.move_x != 0.0f || actions.move_y != 0.0f;
             found = true;
         }
         break;
@@ -97,41 +97,11 @@ void SpawnerSystem::update(EntityManager& em, double dt)
         return;
     timer = kSpawnInterval;
 
-    // Collect all walkable tiles within the spawn distance band and pick one at random.
-    // Sampling from known walkable positions guarantees a valid spawn every time —
-    // the old angle→snap approach frequently failed on sparse maps where most of the
-    // spawn radius circle falls inside wall-only areas.
-    // Cost: O(map tiles) = O(4800) once every kSpawnInterval seconds — negligible.
-    if (!em.tile_map.valid())
+    float spawnX = 0.0f;
+    float spawnY = 0.0f;
+    if (!SpawnUtils::findSpawnPosition(em.tile_map, playerX, playerY, kSpawnNear, kSpawnFar, spawnX,
+                                       spawnY))
         return;
-
-    const float ts = static_cast<float>(TileMap::TILE_SIZE);
-    const float nearSq = kSpawnNear * kSpawnNear;
-    const float farSq = kSpawnFar * kSpawnFar;
-
-    std::vector<std::pair<int, int>> candidates;
-    for (int r = 0; r < em.tile_map.height; ++r)
-    {
-        for (int c = 0; c < em.tile_map.width; ++c)
-        {
-            if (!em.tile_map.at(c, r).walkable)
-                continue;
-            const float cx = static_cast<float>(c) * ts + ts * 0.5f;
-            const float cy = static_cast<float>(r) * ts + ts * 0.5f;
-            const float dx = cx - playerX;
-            const float dy = cy - playerY;
-            const float dSq = dx * dx + dy * dy;
-            if (dSq >= nearSq && dSq <= farSq)
-                candidates.emplace_back(c, r);
-        }
-    }
-
-    if (candidates.empty())
-        return;
-
-    const auto& chosen = candidates[static_cast<std::size_t>(std::rand()) % candidates.size()];
-    const float spawnX = static_cast<float>(chosen.first) * ts + ts * 0.5f;
-    const float spawnY = static_cast<float>(chosen.second) * ts + ts * 0.5f;
 
     auto entity = ConfigLoader::loadEntity(em, kEnemyPath);
     if (!em.registry().valid(entity))

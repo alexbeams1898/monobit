@@ -1,15 +1,17 @@
 #include "ecs/Components.h"
-#include "ecs/EntityManager.h"
+#include "ecs/GameComponents.h"
 #include "systems/WaveSystem.h"
+#include "test_helpers.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 // Helper: set up a minimal auto-gen config.
 static void setupAutoGen(EntityManager& em, int max_waves = 0, int start_count = 3,
-                          int safe_room_every = 0)
+                         int safe_room_every = 0)
 {
-    auto& gen = em.wave_config.gen;
+    auto& wc = em.registry().ctx().get<WaveConfig>();
+    auto& gen = wc.gen;
     gen.enemies.push_back({"config/entities/skeleton.json", 1, 1});
     gen.start_count = start_count;
     gen.count_growth = 1.0f; // flat count for predictable tests
@@ -22,7 +24,7 @@ static void setupAutoGen(EntityManager& em, int max_waves = 0, int start_count =
     gen.max_burst = 1;
     gen.safe_room_every = safe_room_every;
     gen.max_waves = max_waves;
-    em.wave_config.loaded = true;
+    wc.loaded = true;
 }
 
 // ---------------------------------------------------------------------------
@@ -32,8 +34,10 @@ static void setupAutoGen(EntityManager& em, int max_waves = 0, int start_count =
 TEST_CASE("WaveState starts in Idle phase", "[wave]")
 {
     EntityManager em;
-    REQUIRE(em.wave_state.phase == WaveState::Phase::Idle);
-    REQUIRE(em.wave_state.current_wave == 0);
+    emplaceGameConfigs(em);
+    auto& ws = em.registry().ctx().get<WaveState>();
+    REQUIRE(ws.phase == WaveState::Phase::Idle);
+    REQUIRE(ws.current_wave == 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -43,22 +47,26 @@ TEST_CASE("WaveState starts in Idle phase", "[wave]")
 TEST_CASE("startNextWave: Idle to Spawning", "[wave]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     setupAutoGen(em, 1, 3);
 
     bool started = WaveSystem::startNextWave(em);
     REQUIRE(started);
-    REQUIRE(em.wave_state.phase == WaveState::Phase::Spawning);
-    REQUIRE(em.wave_state.current_wave == 1);
-    REQUIRE(em.wave_state.enemies_total == 3);
-    REQUIRE(em.wave_state.enemies_spawned == 0);
+    auto& ws = em.registry().ctx().get<WaveState>();
+    REQUIRE(ws.phase == WaveState::Phase::Spawning);
+    REQUIRE(ws.current_wave == 1);
+    REQUIRE(ws.enemies_total == 3);
+    REQUIRE(ws.enemies_spawned == 0);
 }
 
 TEST_CASE("startNextWave: past max_waves returns false", "[wave]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     setupAutoGen(em, 1);
-    em.wave_state.current_wave = 1;
-    em.wave_state.phase = WaveState::Phase::Idle;
+    auto& ws = em.registry().ctx().get<WaveState>();
+    ws.current_wave = 1;
+    ws.phase = WaveState::Phase::Idle;
 
     REQUIRE_FALSE(WaveSystem::startNextWave(em));
 }
@@ -66,8 +74,9 @@ TEST_CASE("startNextWave: past max_waves returns false", "[wave]")
 TEST_CASE("startNextWave: from Active returns false", "[wave]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     setupAutoGen(em, 1);
-    em.wave_state.phase = WaveState::Phase::Active;
+    em.registry().ctx().get<WaveState>().phase = WaveState::Phase::Active;
 
     REQUIRE_FALSE(WaveSystem::startNextWave(em));
 }
@@ -75,8 +84,9 @@ TEST_CASE("startNextWave: from Active returns false", "[wave]")
 TEST_CASE("startNextWave: from Spawning returns false", "[wave]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     setupAutoGen(em, 1);
-    em.wave_state.phase = WaveState::Phase::Spawning;
+    em.registry().ctx().get<WaveState>().phase = WaveState::Phase::Spawning;
 
     REQUIRE_FALSE(WaveSystem::startNextWave(em));
 }
@@ -84,30 +94,34 @@ TEST_CASE("startNextWave: from Spawning returns false", "[wave]")
 TEST_CASE("startNextWave: from SafeRoom transitions to Spawning", "[wave]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     setupAutoGen(em, 2, 3);
 
     // Simulate having completed wave 1 and being in SafeRoom.
-    em.wave_state.phase = WaveState::Phase::SafeRoom;
-    em.wave_state.current_wave = 1;
+    auto& ws = em.registry().ctx().get<WaveState>();
+    ws.phase = WaveState::Phase::SafeRoom;
+    ws.current_wave = 1;
 
     bool started = WaveSystem::startNextWave(em);
     REQUIRE(started);
-    REQUIRE(em.wave_state.phase == WaveState::Phase::Spawning);
-    REQUIRE(em.wave_state.current_wave == 2);
-    REQUIRE(em.wave_state.enemies_total == 3);
+    REQUIRE(ws.phase == WaveState::Phase::Spawning);
+    REQUIRE(ws.current_wave == 2);
+    REQUIRE(ws.enemies_total == 3);
 }
 
 TEST_CASE("startNextWave: infinite waves (max_waves=0) never blocks", "[wave]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     setupAutoGen(em, 0, 1); // infinite
 
+    auto& ws = em.registry().ctx().get<WaveState>();
     for (int i = 0; i < 100; ++i)
     {
-        em.wave_state.phase = WaveState::Phase::Idle;
+        ws.phase = WaveState::Phase::Idle;
         REQUIRE(WaveSystem::startNextWave(em));
     }
-    REQUIRE(em.wave_state.current_wave == 100);
+    REQUIRE(ws.current_wave == 100);
 }
 
 // ---------------------------------------------------------------------------
@@ -117,9 +131,11 @@ TEST_CASE("startNextWave: infinite waves (max_waves=0) never blocks", "[wave]")
 TEST_CASE("Wave clears when all WaveEnemy entities are Dead", "[wave]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     setupAutoGen(em, 1);
-    em.wave_state.phase = WaveState::Phase::Active;
-    em.wave_state.current_wave = 1;
+    auto& ws = em.registry().ctx().get<WaveState>();
+    ws.phase = WaveState::Phase::Active;
+    ws.current_wave = 1;
 
     auto e1 = em.create();
     em.registry().emplace<WaveEnemy>(e1);
@@ -128,22 +144,24 @@ TEST_CASE("Wave clears when all WaveEnemy entities are Dead", "[wave]")
 
     // Both alive -- wave stays Active.
     WaveSystem::update(em, 0.016);
-    REQUIRE(em.wave_state.phase == WaveState::Phase::Active);
+    REQUIRE(ws.phase == WaveState::Phase::Active);
 
     // Mark both Dead.
     em.registry().emplace<Dead>(e1);
     em.registry().emplace<Dead>(e2);
 
     WaveSystem::update(em, 0.016);
-    REQUIRE(em.wave_state.phase == WaveState::Phase::Cleared);
+    REQUIRE(ws.phase == WaveState::Phase::Cleared);
 }
 
 TEST_CASE("Alive count excludes Dead entities", "[wave]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     setupAutoGen(em, 1);
-    em.wave_state.phase = WaveState::Phase::Active;
-    em.wave_state.current_wave = 1;
+    auto& ws = em.registry().ctx().get<WaveState>();
+    ws.phase = WaveState::Phase::Active;
+    ws.current_wave = 1;
 
     auto e1 = em.create();
     em.registry().emplace<WaveEnemy>(e1);
@@ -155,7 +173,7 @@ TEST_CASE("Alive count excludes Dead entities", "[wave]")
 
     // 2 alive (e1, e3) -- wave stays Active.
     WaveSystem::update(em, 0.016);
-    REQUIRE(em.wave_state.phase == WaveState::Phase::Active);
+    REQUIRE(ws.phase == WaveState::Phase::Active);
 }
 
 // ---------------------------------------------------------------------------
@@ -165,38 +183,44 @@ TEST_CASE("Alive count excludes Dead entities", "[wave]")
 TEST_CASE("Cleared transitions to SafeRoom when safe_room_every triggers", "[wave]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     setupAutoGen(em, 5, 1, 1); // safe_room_every=1 so every wave triggers
 
     // Start and populate active_def for wave 1.
     WaveSystem::startNextWave(em);
-    em.wave_state.phase = WaveState::Phase::Cleared;
+    auto& ws = em.registry().ctx().get<WaveState>();
+    ws.phase = WaveState::Phase::Cleared;
 
     WaveSystem::update(em, 0.016);
-    REQUIRE(em.wave_state.phase == WaveState::Phase::SafeRoom);
+    REQUIRE(ws.phase == WaveState::Phase::SafeRoom);
 }
 
 TEST_CASE("Cleared transitions to Idle when safe_room_every is 0", "[wave]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     setupAutoGen(em, 5, 1, 0); // safe_room_every=0
 
     WaveSystem::startNextWave(em);
-    em.wave_state.phase = WaveState::Phase::Cleared;
+    auto& ws = em.registry().ctx().get<WaveState>();
+    ws.phase = WaveState::Phase::Cleared;
 
     WaveSystem::update(em, 0.016);
-    REQUIRE(em.wave_state.phase == WaveState::Phase::Idle);
+    REQUIRE(ws.phase == WaveState::Phase::Idle);
 }
 
 TEST_CASE("Cleared transitions to Complete on last wave", "[wave]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     setupAutoGen(em, 1, 1); // max_waves=1
 
     WaveSystem::startNextWave(em);
-    em.wave_state.phase = WaveState::Phase::Cleared;
+    auto& ws = em.registry().ctx().get<WaveState>();
+    ws.phase = WaveState::Phase::Cleared;
 
     WaveSystem::update(em, 0.016);
-    REQUIRE(em.wave_state.phase == WaveState::Phase::Complete);
+    REQUIRE(ws.phase == WaveState::Phase::Complete);
 }
 
 // ---------------------------------------------------------------------------
@@ -206,31 +230,35 @@ TEST_CASE("Cleared transitions to Complete on last wave", "[wave]")
 TEST_CASE("WaveSystem update is no-op without loaded config", "[wave]")
 {
     EntityManager em;
-    // wave_config.loaded is false by default.
+    emplaceGameConfigs(em);
+    // WaveConfig.loaded is false by default.
     WaveSystem::update(em, 0.016);
-    REQUIRE(em.wave_state.phase == WaveState::Phase::Idle);
+    auto& ws = em.registry().ctx().get<WaveState>();
+    REQUIRE(ws.phase == WaveState::Phase::Idle);
 }
 
 // ---------------------------------------------------------------------------
-// Input-triggered wave start
+// Key-triggered wave start
 // ---------------------------------------------------------------------------
 
 TEST_CASE("start_wave input triggers startNextWave", "[wave]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     setupAutoGen(em, 1, 2);
 
-    // Create a player entity with Input component.
+    // Create a player entity with PlayerActions component.
     auto player = em.create();
-    auto& inp = em.registry().emplace<Input>(player);
-    inp.start_wave = true;
+    auto& actions = em.registry().emplace<PlayerActions>(player);
+    actions.start_wave = true;
 
     WaveSystem::update(em, 0.016);
 
     // start_wave consumed, wave started.
-    REQUIRE(em.registry().get<Input>(player).start_wave == false);
-    REQUIRE(em.wave_state.phase == WaveState::Phase::Spawning);
-    REQUIRE(em.wave_state.current_wave == 1);
+    auto& ws = em.registry().ctx().get<WaveState>();
+    REQUIRE(em.registry().get<PlayerActions>(player).start_wave == false);
+    REQUIRE(ws.phase == WaveState::Phase::Spawning);
+    REQUIRE(ws.current_wave == 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -434,31 +462,39 @@ TEST_CASE("WaveGenRules level scaling defaults", "[wave]")
 TEST_CASE("startNextWave: from GameOver resets to wave 1", "[wave]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     setupAutoGen(em, 0, 3);
-    em.wave_state.phase = WaveState::Phase::GameOver;
-    em.wave_state.current_wave = 5;
+    auto& ws = em.registry().ctx().get<WaveState>();
+    ws.phase = WaveState::Phase::GameOver;
+    ws.current_wave = 5;
 
     auto player = em.create();
-    em.registry().emplace<Input>(player);
+    em.registry().emplace<PlayerActions>(player);
     em.registry().emplace<Health>(player, Health{0, 100});
+    em.registry().emplace<Transform>(player, Transform{100.0f, 200.0f});
 
     bool started = WaveSystem::startNextWave(em);
     REQUIRE(started);
-    REQUIRE(em.wave_state.current_wave == 1);
-    REQUIRE(em.wave_state.phase == WaveState::Phase::Spawning);
-    REQUIRE(em.registry().get<Health>(player).current == 100);
+    REQUIRE(ws.current_wave == 1);
+    REQUIRE(ws.phase == WaveState::Phase::Spawning);
+    // Old player destroyed; new one loaded from config (fails gracefully in
+    // test env where player.json is absent, so just verify cleanup + state).
+    REQUIRE_FALSE(em.registry().valid(player));
 }
 
 TEST_CASE("startNextWave: GameOver destroys wave enemies", "[wave]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     setupAutoGen(em, 0, 1);
-    em.wave_state.phase = WaveState::Phase::GameOver;
-    em.wave_state.current_wave = 3;
+    auto& ws = em.registry().ctx().get<WaveState>();
+    ws.phase = WaveState::Phase::GameOver;
+    ws.current_wave = 3;
 
     auto player = em.create();
-    em.registry().emplace<Input>(player);
+    em.registry().emplace<PlayerActions>(player);
     em.registry().emplace<Health>(player, Health{0, 50});
+    em.registry().emplace<Transform>(player, Transform{0.0f, 0.0f});
 
     auto enemy = em.create();
     em.registry().emplace<WaveEnemy>(enemy);
@@ -466,19 +502,22 @@ TEST_CASE("startNextWave: GameOver destroys wave enemies", "[wave]")
     WaveSystem::startNextWave(em);
 
     REQUIRE_FALSE(em.registry().valid(enemy));
-    REQUIRE(em.wave_state.current_wave == 1);
+    REQUIRE_FALSE(em.registry().valid(player));
+    REQUIRE(ws.current_wave == 1);
 }
 
 TEST_CASE("startNextWave: GameOver no-op state waits for input", "[wave]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     setupAutoGen(em, 0, 1);
-    em.wave_state.phase = WaveState::Phase::GameOver;
-    em.wave_state.current_wave = 2;
+    auto& ws = em.registry().ctx().get<WaveState>();
+    ws.phase = WaveState::Phase::GameOver;
+    ws.current_wave = 2;
 
     // Update without input -- stays in GameOver.
     WaveSystem::update(em, 0.016);
-    REQUIRE(em.wave_state.phase == WaveState::Phase::GameOver);
+    REQUIRE(ws.phase == WaveState::Phase::GameOver);
 }
 
 // ---------------------------------------------------------------------------
@@ -486,14 +525,17 @@ TEST_CASE("startNextWave: GameOver no-op state waits for input", "[wave]")
 TEST_CASE("enemies_total sums all groups from generated wave", "[wave]")
 {
     EntityManager em;
-    auto& gen = em.wave_config.gen;
+    emplaceGameConfigs(em);
+    auto& wc = em.registry().ctx().get<WaveConfig>();
+    auto& gen = wc.gen;
     gen.enemies.push_back({"enemy_a.json", 1, 3});
     gen.enemies.push_back({"enemy_b.json", 1, 2});
     gen.start_count = 10;
     gen.count_growth = 1.0f;
     gen.max_waves = 1;
-    em.wave_config.loaded = true;
+    wc.loaded = true;
 
     WaveSystem::startNextWave(em);
-    REQUIRE(em.wave_state.enemies_total == 10);
+    auto& ws = em.registry().ctx().get<WaveState>();
+    REQUIRE(ws.enemies_total == 10);
 }

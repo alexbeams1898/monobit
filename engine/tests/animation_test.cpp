@@ -128,75 +128,86 @@ TEST_CASE("Cardinal direction snapping - exact 45 degrees goes vertical", "[anim
 // State transitions
 // ---------------------------------------------------------------------------
 
-TEST_CASE("State transition - velocity != 0 sets Walk", "[animation]")
-{
-    EntityManager em;
-    auto e = makeAnimatedEntity(em);
-    em.registry().get<Velocity>(e).dx = 100.0f;
-
-    AnimationSystem::update(em, 0.016f);
-    REQUIRE(em.registry().get<Animation>(e).state == AnimState::Walk);
-}
-
-TEST_CASE("State transition - zero velocity sets Idle", "[animation]")
+TEST_CASE("Walk state advances frames when set externally", "[animation]")
 {
     EntityManager em;
     auto e = makeAnimatedEntity(em, AnimState::Walk);
+    em.registry().get<Velocity>(e).dx = 100.0f;
 
-    AnimationSystem::update(em, 0.016f);
-    REQUIRE(em.registry().get<Animation>(e).state == AnimState::Idle);
+    // Walk: 4 frames, 0.1s each. After 0.1s, should advance.
+    AnimationSystem::update(em, 0.1f);
+    REQUIRE(em.registry().get<Animation>(e).state == AnimState::Walk);
+    REQUIRE(em.registry().get<Animation>(e).frame_index == 1);
 }
 
-TEST_CASE("State transition - AttackLocked sets Attack", "[animation]")
+TEST_CASE("Idle state stays at frame 0 (single-frame state)", "[animation]")
 {
     EntityManager em;
     auto e = makeAnimatedEntity(em);
-    em.registry().emplace<AttackLocked>(e, AttackLocked{0.5f});
+
+    AnimationSystem::update(em, 0.016f);
+    REQUIRE(em.registry().get<Animation>(e).state == AnimState::Idle);
+    REQUIRE(em.registry().get<Animation>(e).frame_index == 0);
+}
+
+TEST_CASE("State transition - Attack state is preserved from external setter", "[animation]")
+{
+    EntityManager em;
+    auto e = makeAnimatedEntity(em, AnimState::Attack);
 
     AnimationSystem::update(em, 0.016f);
     REQUIRE(em.registry().get<Animation>(e).state == AnimState::Attack);
 }
 
-TEST_CASE("State transition - DamageFeedback sets Hit", "[animation]")
+TEST_CASE("State transition - Hit state is preserved from external setter", "[animation]")
 {
     EntityManager em;
-    auto e = makeAnimatedEntity(em);
-    em.registry().emplace<DamageFeedback>(e, DamageFeedback{0.1f});
+    auto e = makeAnimatedEntity(em, AnimState::Hit);
 
     AnimationSystem::update(em, 0.016f);
     REQUIRE(em.registry().get<Animation>(e).state == AnimState::Hit);
 }
 
-TEST_CASE("State transition - Dead sets Death", "[animation]")
+TEST_CASE("Death state is preserved from external setter", "[animation]")
 {
     EntityManager em;
-    auto e = makeAnimatedEntity(em);
-    em.registry().emplace<Dead>(e);
+    auto e = makeAnimatedEntity(em, AnimState::Death);
 
     AnimationSystem::update(em, 0.016f);
     REQUIRE(em.registry().get<Animation>(e).state == AnimState::Death);
 }
 
-TEST_CASE("State priority - Dead overrides AttackLocked", "[animation]")
+TEST_CASE("State change resets frame when switching to Death", "[animation]")
 {
     EntityManager em;
-    auto e = makeAnimatedEntity(em);
-    em.registry().emplace<AttackLocked>(e, AttackLocked{0.5f});
-    em.registry().emplace<Dead>(e);
+    auto e = makeAnimatedEntity(em, AnimState::Walk);
+    em.registry().get<Velocity>(e).dx = 100.0f;
 
+    // Advance a few frames in Walk.
+    AnimationSystem::update(em, 0.2f);
+    REQUIRE(em.registry().get<Animation>(e).frame_index == 2);
+
+    // External state setter switches to Death.
+    em.registry().get<Animation>(e).state = AnimState::Death;
     AnimationSystem::update(em, 0.016f);
     REQUIRE(em.registry().get<Animation>(e).state == AnimState::Death);
+    REQUIRE(em.registry().get<Animation>(e).frame_index == 0);
 }
 
-TEST_CASE("State priority - Hit overrides Attack", "[animation]")
+TEST_CASE("State change resets frame when switching to Hit", "[animation]")
 {
     EntityManager em;
-    auto e = makeAnimatedEntity(em);
-    em.registry().emplace<AttackLocked>(e, AttackLocked{0.5f});
-    em.registry().emplace<DamageFeedback>(e, DamageFeedback{0.1f});
+    auto e = makeAnimatedEntity(em, AnimState::Walk);
+    em.registry().get<Velocity>(e).dx = 100.0f;
 
+    AnimationSystem::update(em, 0.2f);
+    REQUIRE(em.registry().get<Animation>(e).frame_index == 2);
+
+    // External state setter switches to Hit.
+    em.registry().get<Animation>(e).state = AnimState::Hit;
     AnimationSystem::update(em, 0.016f);
     REQUIRE(em.registry().get<Animation>(e).state == AnimState::Hit);
+    REQUIRE(em.registry().get<Animation>(e).frame_index == 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -228,8 +239,7 @@ TEST_CASE("Frame loops on non-terminal animations", "[animation]")
 TEST_CASE("Death animation holds last frame", "[animation]")
 {
     EntityManager em;
-    auto e = makeAnimatedEntity(em);
-    em.registry().emplace<Dead>(e);
+    auto e = makeAnimatedEntity(em, AnimState::Death);
 
     // Death: 5 frames, 0.12s each. Total = 0.6s. After 1.0s, should be on frame 4.
     AnimationSystem::update(em, 1.0f);
@@ -247,8 +257,8 @@ TEST_CASE("State change resets frame index and timer", "[animation]")
     AnimationSystem::update(em, 0.2f);
     REQUIRE(em.registry().get<Animation>(e).frame_index == 2);
 
-    // Transition to Idle.
-    em.registry().get<Velocity>(e).dx = 0.0f;
+    // External setter transitions to Idle.
+    em.registry().get<Animation>(e).state = AnimState::Idle;
     AnimationSystem::update(em, 0.016f);
     REQUIRE(em.registry().get<Animation>(e).state == AnimState::Idle);
     REQUIRE(em.registry().get<Animation>(e).frame_index == 0);
@@ -326,13 +336,14 @@ TEST_CASE("Sprite src rect advances column with frame index", "[animation]")
 
 // Helper: create a parent entity with gameplay components but no Sprite/Animation,
 // plus a body-part child with Sprite+Animation linked to the parent.
-static entt::entity makeBodyPartChild(EntityManager& em, entt::entity parent, bool faces_aim)
+static entt::entity makeBodyPartChild(EntityManager& em, entt::entity parent,
+                                      bool direction_from_facing)
 {
     auto child = em.create();
 
     BodyPart bp;
     bp.parent = parent;
-    bp.faces_aim = faces_aim;
+    bp.direction_from_facing = direction_from_facing;
     em.registry().emplace<BodyPart>(child, bp);
     em.registry().emplace<Transform>(child);
 
@@ -370,38 +381,41 @@ static entt::entity makeParentEntity(EntityManager& em)
     return e;
 }
 
-TEST_CASE("Lower body walks when parent has velocity", "[animation][bodypart]")
+TEST_CASE("Lower body direction follows parent velocity", "[animation][bodypart]")
 {
     EntityManager em;
     auto parent = makeParentEntity(em);
     auto lower = makeBodyPartChild(em, parent, false);
-    em.registry().get<Velocity>(parent).dx = 100.0f;
+    em.registry().get<Animation>(lower).state = AnimState::Walk;
+    em.registry().get<Velocity>(parent).dy = -100.0f; // moving north
 
     AnimationSystem::update(em, 0.016f);
-    REQUIRE(em.registry().get<Animation>(lower).state == AnimState::Walk);
+    REQUIRE(em.registry().get<Animation>(lower).dir == CardinalDir::North);
 }
 
-TEST_CASE("Upper body attacks when parent has AttackLocked", "[animation][bodypart]")
+TEST_CASE("Upper body preserves Attack state set externally", "[animation][bodypart]")
 {
     EntityManager em;
     auto parent = makeParentEntity(em);
     auto upper = makeBodyPartChild(em, parent, true);
-    em.registry().emplace<AttackLocked>(parent, AttackLocked{0.5f});
+    em.registry().get<Animation>(upper).state = AnimState::Attack;
 
     AnimationSystem::update(em, 0.016f);
     REQUIRE(em.registry().get<Animation>(upper).state == AnimState::Attack);
 }
 
-TEST_CASE("Lower body ignores AttackLocked - stays Walk", "[animation][bodypart]")
+TEST_CASE("Lower body preserves Walk state independently of upper", "[animation][bodypart]")
 {
     EntityManager em;
     auto parent = makeParentEntity(em);
     auto lower = makeBodyPartChild(em, parent, false);
-    em.registry().get<Velocity>(parent).dx = 100.0f;
-    em.registry().emplace<AttackLocked>(parent, AttackLocked{0.5f});
+    auto upper = makeBodyPartChild(em, parent, true);
+    em.registry().get<Animation>(lower).state = AnimState::Walk;
+    em.registry().get<Animation>(upper).state = AnimState::Attack;
 
     AnimationSystem::update(em, 0.016f);
     REQUIRE(em.registry().get<Animation>(lower).state == AnimState::Walk);
+    REQUIRE(em.registry().get<Animation>(upper).state == AnimState::Attack);
 }
 
 TEST_CASE("Upper body ignores Velocity - stays Idle", "[animation][bodypart]")
@@ -415,26 +429,28 @@ TEST_CASE("Upper body ignores Velocity - stays Idle", "[animation][bodypart]")
     REQUIRE(em.registry().get<Animation>(upper).state == AnimState::Idle);
 }
 
-TEST_CASE("Both body parts show Death when parent is Dead", "[animation][bodypart]")
+TEST_CASE("Both body parts advance Death state set externally", "[animation][bodypart]")
 {
     EntityManager em;
     auto parent = makeParentEntity(em);
     auto lower = makeBodyPartChild(em, parent, false);
     auto upper = makeBodyPartChild(em, parent, true);
-    em.registry().emplace<Dead>(parent);
+    em.registry().get<Animation>(lower).state = AnimState::Death;
+    em.registry().get<Animation>(upper).state = AnimState::Death;
 
     AnimationSystem::update(em, 0.016f);
     REQUIRE(em.registry().get<Animation>(lower).state == AnimState::Death);
     REQUIRE(em.registry().get<Animation>(upper).state == AnimState::Death);
 }
 
-TEST_CASE("Both body parts show Hit when parent has DamageFeedback", "[animation][bodypart]")
+TEST_CASE("Both body parts advance Hit state set externally", "[animation][bodypart]")
 {
     EntityManager em;
     auto parent = makeParentEntity(em);
     auto lower = makeBodyPartChild(em, parent, false);
     auto upper = makeBodyPartChild(em, parent, true);
-    em.registry().emplace<DamageFeedback>(parent, DamageFeedback{0.1f});
+    em.registry().get<Animation>(lower).state = AnimState::Hit;
+    em.registry().get<Animation>(upper).state = AnimState::Hit;
 
     AnimationSystem::update(em, 0.016f);
     REQUIRE(em.registry().get<Animation>(lower).state == AnimState::Hit);
@@ -490,7 +506,7 @@ TEST_CASE("Death cascade destroys body-part children", "[animation][bodypart]")
 TEST_CASE("Standalone entities unaffected by body-part logic", "[animation][bodypart]")
 {
     EntityManager em;
-    auto standalone = makeAnimatedEntity(em);
+    auto standalone = makeAnimatedEntity(em, AnimState::Walk);
     em.registry().get<Velocity>(standalone).dx = 100.0f;
 
     // Also create a body-part setup in the same registry.
@@ -499,9 +515,9 @@ TEST_CASE("Standalone entities unaffected by body-part logic", "[animation][body
 
     AnimationSystem::update(em, 0.016f);
 
-    // Standalone walks from its own velocity (existing behavior).
+    // Standalone keeps its externally-set Walk state.
     REQUIRE(em.registry().get<Animation>(standalone).state == AnimState::Walk);
-    // Body-part child also walks from parent velocity (0,0 = idle since parent has no velocity).
+    // Body-part child keeps its default Idle state.
     REQUIRE(em.registry().get<Animation>(lower).state == AnimState::Idle);
 }
 

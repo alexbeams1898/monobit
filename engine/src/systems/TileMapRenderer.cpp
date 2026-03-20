@@ -95,34 +95,6 @@ static void buildTMOrtho(float mat[16], float left, float right, float bottom, f
     // clang-format on
 }
 
-// Flat-color fallback when no tileset is configured.
-static void tileTypeTint(TileType type, float& r, float& g, float& b)
-{
-    switch (type)
-    {
-    case TileType::Floor:
-        r = 0.20f;
-        g = 0.20f;
-        b = 0.20f;
-        break;
-    case TileType::Wall:
-        r = 0.15f;
-        g = 0.12f;
-        b = 0.10f;
-        break;
-    case TileType::DoorFrame:
-        r = 0.35f;
-        g = 0.30f;
-        b = 0.25f;
-        break;
-    case TileType::Obstacle:
-        r = 0.25f;
-        g = 0.18f;
-        b = 0.12f;
-        break;
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -189,32 +161,6 @@ void TileMapRenderer::upload(const TileMap& map, const TileConfig& config, Textu
         sHasTileset = (atlasW > 0 && atlasH > 0);
     }
 
-    // Pre-compute UV rects for each tile type.
-    struct UVRect
-    {
-        float u0 = 0.0f;
-        float v0 = 0.0f;
-        float u1 = 1.0f;
-        float v1 = 1.0f;
-    };
-
-    auto makeUV = [&](const TileConfig::TileUV& tuv) -> UVRect
-    {
-        if (!sHasTileset)
-            return {0.0f, 0.0f, 1.0f, 1.0f};
-        const float tw = static_cast<float>(atlasW);
-        const float th = static_cast<float>(atlasH);
-        const float tileF = 32.0f;
-        const float c = static_cast<float>(tuv.col);
-        const float r = static_cast<float>(tuv.row);
-        return {c * tileF / tw, r * tileF / th, (c + 1.0f) * tileF / tw, (r + 1.0f) * tileF / th};
-    };
-
-    UVRect floorUV = makeUV(config.floor_uv);
-    UVRect wallUV = makeUV(config.wall_uv);
-    UVRect doorUV = makeUV(config.door_uv);
-    UVRect obstacleUV = makeUV(config.obstacle_uv);
-
     // Build interleaved vertex data.
     // Each tile = 2 triangles = 6 vertices x 8 floats.
     const auto tile_count =
@@ -230,25 +176,32 @@ void TileMapRenderer::upload(const TileMap& map, const TileConfig& config, Textu
         {
             const auto& tile = map.at(col, row);
 
+            // Look up visual (UV + fallback color) from config.
             float tr = 1.0f, tg = 1.0f, tb = 1.0f;
-            if (!sHasTileset)
-                tileTypeTint(tile.type, tr, tg, tb);
+            float u0 = 0.0f, v0 = 0.0f, u1 = 1.0f, v1 = 1.0f;
 
-            UVRect uv;
-            switch (tile.type)
+            auto vit = config.tile_visuals.find(tile.tile_id);
+            if (vit != config.tile_visuals.end())
             {
-            case TileType::Floor:
-                uv = floorUV;
-                break;
-            case TileType::Wall:
-                uv = wallUV;
-                break;
-            case TileType::DoorFrame:
-                uv = doorUV;
-                break;
-            case TileType::Obstacle:
-                uv = obstacleUV;
-                break;
+                const auto& vis = vit->second;
+                if (sHasTileset)
+                {
+                    const float tw = static_cast<float>(atlasW);
+                    const float th = static_cast<float>(atlasH);
+                    const float tileF = 32.0f;
+                    const float c = static_cast<float>(vis.uv_col);
+                    const float r = static_cast<float>(vis.uv_row);
+                    u0 = c * tileF / tw;
+                    v0 = r * tileF / th;
+                    u1 = (c + 1.0f) * tileF / tw;
+                    v1 = (r + 1.0f) * tileF / th;
+                }
+                else
+                {
+                    tr = vis.r;
+                    tg = vis.g;
+                    tb = vis.b;
+                }
             }
 
             const float x0 = static_cast<float>(col) * ts;
@@ -268,12 +221,12 @@ void TileMapRenderer::upload(const TileMap& map, const TileConfig& config, Textu
                 verts.push_back(1.0f);
             };
 
-            push(x0, y0, uv.u0, uv.v0);
-            push(x1, y0, uv.u1, uv.v0);
-            push(x1, y1, uv.u1, uv.v1); // tri 1
-            push(x0, y0, uv.u0, uv.v0);
-            push(x1, y1, uv.u1, uv.v1);
-            push(x0, y1, uv.u0, uv.v1); // tri 2
+            push(x0, y0, u0, v0);
+            push(x1, y0, u1, v0);
+            push(x1, y1, u1, v1); // tri 1
+            push(x0, y0, u0, v0);
+            push(x1, y1, u1, v1);
+            push(x0, y1, u0, v1); // tri 2
         }
     }
 

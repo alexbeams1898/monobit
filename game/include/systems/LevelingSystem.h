@@ -12,7 +12,7 @@
 //
 // update(): runs every frame after PickupSystem.  Detects XP overflow,
 //   increments level, awards stat points, and logs to console.  Also
-//   processes debug stat-allocation key presses from Input.alloc_str/Dex/End/Lck.
+//   processes debug stat-allocation key presses from PlayerActions.alloc_str/Dex/End/Lck.
 // ---------------------------------------------------------------------------
 
 class LevelingSystem

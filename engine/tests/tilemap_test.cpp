@@ -1,4 +1,3 @@
-#include "ConfigLoader.h"
 #include "TileMap.h"
 #include "TileMapLoader.h"
 #include "ecs/Components.h"
@@ -36,18 +35,18 @@ TEST_CASE("TileMapLoader parses room tile types correctly", "[tilemap]")
     REQUIRE(room.width == 9);
     REQUIRE(room.height == 5);
 
-    // Corners must be Wall.
-    REQUIRE(room.tiles[0 * 9 + 0] == TileType::Wall); // top-left
-    REQUIRE(room.tiles[0 * 9 + 8] == TileType::Wall); // top-right
-    REQUIRE(room.tiles[4 * 9 + 0] == TileType::Wall); // bottom-left
-    REQUIRE(room.tiles[4 * 9 + 8] == TileType::Wall); // bottom-right
+    // Corners must be Solid.
+    REQUIRE(room.tiles[0 * 9 + 0] == TileMap::SOLID_ID); // top-left
+    REQUIRE(room.tiles[0 * 9 + 8] == TileMap::SOLID_ID); // top-right
+    REQUIRE(room.tiles[4 * 9 + 0] == TileMap::SOLID_ID); // bottom-left
+    REQUIRE(room.tiles[4 * 9 + 8] == TileMap::SOLID_ID); // bottom-right
 
-    // Interior must be Floor.
-    REQUIRE(room.tiles[1 * 9 + 1] == TileType::Floor);
-    REQUIRE(room.tiles[2 * 9 + 4] == TileType::Floor);
+    // Interior must be Walkable.
+    REQUIRE(room.tiles[1 * 9 + 1] == TileMap::WALKABLE_ID);
+    REQUIRE(room.tiles[2 * 9 + 4] == TileMap::WALKABLE_ID);
 
-    // Bottom-centre is now a solid Wall (corridors punch through, no D marker needed).
-    REQUIRE(room.tiles[4 * 9 + 4] == TileType::Wall);
+    // Bottom-centre is solid (corridors punch through, no D marker needed).
+    REQUIRE(room.tiles[4 * 9 + 4] == TileMap::SOLID_ID);
 }
 
 TEST_CASE("TileMapLoader parses Obstacle tiles", "[tilemap]")
@@ -60,22 +59,20 @@ TEST_CASE("TileMapLoader parses Obstacle tiles", "[tilemap]")
 
     REQUIRE(room.width == 3);
     REQUIRE(room.height == 3);
-    REQUIRE(room.tiles[1 * 3 + 1] == TileType::Obstacle);
+    REQUIRE(room.tiles[1 * 3 + 1] == 3); // obstacle tile_id
 }
 
 // ---------------------------------------------------------------------------
 // Walkability flags
 // ---------------------------------------------------------------------------
 
-TEST_CASE("TileMap walkability: Floor is walkable, Wall and Obstacle are not", "[tilemap]")
+TEST_CASE("TileMap walkability: walkable vs solid tiles", "[tilemap]")
 {
     TileMap map;
     map.width = 3;
     map.height = 1;
     map.tiles = {
-        {TileType::Floor, 0, true},
-        {TileType::Wall, 1, false},
-        {TileType::Obstacle, 3, false},
+        {TileMap::WALKABLE_ID, true}, {TileMap::SOLID_ID, false}, {3, false}, // obstacle
     };
 
     REQUIRE(map.at(0, 0).walkable == true);
@@ -110,9 +107,9 @@ TEST_CASE("TileMapLoader collects spawn points from room template", "[tilemap]")
     REQUIRE(c_sp.row == 2);
     REQUIRE(c_sp.type == 'C');
 
-    // Both E and C tiles should be Floor in the grid (not a separate type).
-    REQUIRE(room.tiles[1 * 5 + 2] == TileType::Floor);
-    REQUIRE(room.tiles[2 * 5 + 2] == TileType::Floor);
+    // Both E and C tiles should be Walkable in the grid (not a separate type).
+    REQUIRE(room.tiles[1 * 5 + 2] == TileMap::WALKABLE_ID);
+    REQUIRE(room.tiles[2 * 5 + 2] == TileMap::WALKABLE_ID);
 }
 
 // ---------------------------------------------------------------------------
@@ -171,7 +168,81 @@ TEST_CASE("TileMapRenderer culling: range clamps to map bounds at edges", "[tile
 }
 
 // ---------------------------------------------------------------------------
-// Wall collider creation
+// Tile-based collision (no ECS colliders for solid tiles)
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// PlacedRoom + findRoomAt
+// ---------------------------------------------------------------------------
+
+TEST_CASE("findRoomAt returns correct room index inside a room", "[tilemap]")
+{
+    TileMap map;
+    map.width = 20;
+    map.height = 20;
+    map.tiles.assign(400, {TileMap::SOLID_ID, false});
+
+    // Place a room at tile (5, 3) with size 8x6.
+    map.placed_rooms.push_back({5, 3, 8, 6});
+
+    // World center of tile (7, 5) = (7*32+16, 5*32+16) = (240, 176).
+    REQUIRE(map.findRoomAt(240.0f, 176.0f) == 0);
+}
+
+TEST_CASE("findRoomAt returns -1 in a corridor", "[tilemap]")
+{
+    TileMap map;
+    map.width = 20;
+    map.height = 20;
+    map.tiles.assign(400, {TileMap::SOLID_ID, false});
+
+    map.placed_rooms.push_back({5, 3, 8, 6});
+
+    // Tile (1, 1) = (48, 48) — outside the room.
+    REQUIRE(map.findRoomAt(48.0f, 48.0f) == -1);
+}
+
+TEST_CASE("findRoomAt distinguishes multiple rooms", "[tilemap]")
+{
+    TileMap map;
+    map.width = 40;
+    map.height = 20;
+    map.tiles.assign(800, {TileMap::SOLID_ID, false});
+
+    map.placed_rooms.push_back({2, 2, 6, 4});   // room 0
+    map.placed_rooms.push_back({20, 5, 10, 8}); // room 1
+
+    // Inside room 0: tile (4, 3) = (144, 112).
+    REQUIRE(map.findRoomAt(144.0f, 112.0f) == 0);
+
+    // Inside room 1: tile (25, 9) = (816, 304).
+    REQUIRE(map.findRoomAt(816.0f, 304.0f) == 1);
+
+    // Between rooms: tile (12, 4) = (400, 144).
+    REQUIRE(map.findRoomAt(400.0f, 144.0f) == -1);
+}
+
+TEST_CASE("generate populates placed_rooms", "[tilemap]")
+{
+    EntityManager em;
+
+    TileMapLoader::generate(em, "config/tilemap.json", "config/rooms", 12345u);
+
+    // With room_count=6, we should have at least some rooms placed.
+    REQUIRE(em.tile_map.placed_rooms.size() >= 2);
+
+    // Each placed room should be within map bounds.
+    for (const auto& rm : em.tile_map.placed_rooms)
+    {
+        REQUIRE(rm.col >= 0);
+        REQUIRE(rm.row >= 0);
+        REQUIRE(rm.col + rm.width <= em.tile_map.width);
+        REQUIRE(rm.row + rm.height <= em.tile_map.height);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Full generation test
 // ---------------------------------------------------------------------------
 
 TEST_CASE("TileMapLoader::generate builds TileMap with valid layout", "[tilemap]")
@@ -179,7 +250,6 @@ TEST_CASE("TileMapLoader::generate builds TileMap with valid layout", "[tilemap]
     // Uses real config + room files. CTest WORKING_DIRECTORY is the project root,
     // so the paths resolve correctly.
     EntityManager em;
-    ConfigLoader::loadFormulas(em, "config/balance/formulas.json");
 
     auto [px, py] = TileMapLoader::generate(em, "config/tilemap.json", "config/rooms",
                                             /*seed=*/12345u);
@@ -187,12 +257,12 @@ TEST_CASE("TileMapLoader::generate builds TileMap with valid layout", "[tilemap]
     REQUIRE(em.tile_map.valid());
     REQUIRE(em.tile_map.seed == 12345u);
 
-    // Tile (0,0) is always Wall — the map starts fully walled and rooms are
+    // Tile (0,0) is always Solid — the map starts fully solid and rooms are
     // carved out; corners are never inside a placed room.
-    REQUIRE(em.tile_map.at(0, 0).type == TileType::Wall);
+    REQUIRE(em.tile_map.at(0, 0).tile_id == TileMap::SOLID_ID);
     REQUIRE(em.tile_map.at(0, 0).walkable == false);
 
-    // Wall tiles are the physics source via the tile map — no ECS Collider
+    // Solid tiles are the physics source via the tile map — no ECS Collider
     // entities are spawned. This keeps the ECS sparse set small and lets
     // MovementSystem / CollisionSystem / FlowFieldSystem do O(~4) tile lookups
     // instead of O(n_wall) entity scans.

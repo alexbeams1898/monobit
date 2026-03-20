@@ -1,6 +1,8 @@
 #include "systems/ChaseSystem.h"
 
 #include "ecs/Components.h"
+#include "ecs/GameComponents.h"
+#include "ecs/GameConfig.h"
 
 #include <algorithm>
 #include <cmath>
@@ -95,7 +97,7 @@ void ChaseSystem::update(EntityManager& em, double dt)
     float px = 0.0f;
     float py = 0.0f;
     bool playerFound = false;
-    for (auto e : em.registry().view<Input>())
+    for (auto e : em.registry().view<PlayerActions>())
     {
         if (em.registry().all_of<Transform>(e))
         {
@@ -107,7 +109,7 @@ void ChaseSystem::update(EntityManager& em, double dt)
         break;
     }
 
-    const FormulaConfig& f = em.formulas;
+    auto& f = em.registry().ctx().get<FormulaConfig>();
 
     for (auto [entity, ai, transform, vel] :
          em.registry().view<AIController, Transform, Velocity>().each())

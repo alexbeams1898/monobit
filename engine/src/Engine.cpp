@@ -3,7 +3,6 @@
 #include "ecs/Components.h"
 #include "systems/AnimationSystem.h"
 #include "systems/AudioSystem.h"
-#include "systems/InputSystem.h"
 #include "systems/RenderSystem.h"
 #include "systems/TileMapRenderer.h"
 
@@ -95,6 +94,9 @@ void Engine::run()
 
         processEvents();
 
+        if (per_frame_update)
+            per_frame_update(*this, entity_manager, frame_dt);
+
         // Fixed-rate update — always steps in 1/60s increments.
         while (accumulator >= FIXED_TIMESTEP)
         {
@@ -120,7 +122,6 @@ void Engine::run()
 
 void Engine::processEvents()
 {
-    bool focus_lost = false;
     SDL_Event event;
     while (SDL_PollEvent(&event))
     {
@@ -128,64 +129,6 @@ void Engine::processEvents()
             running = false;
         if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE)
             running = false;
-        if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_FOCUS_LOST)
-            focus_lost = true;
-    }
-
-    // InputSystem reads the keyboard state snapshot that SDL_PollEvent just refreshed.
-    // Must be called after the event loop, not inside the fixed-step update.
-    InputSystem::update(entity_manager, window_w, window_h);
-
-    // If the window lost focus this frame (Alt-Tab, controller/keyboard disconnect, etc.)
-    // zero out all inputs so the player doesn't keep sliding.
-    // Note: this covers OS-level focus loss. A keyboard that physically dies while the
-    // window remains focused won't trigger this — see GitHub issue #34 for that edge case.
-    if (focus_lost)
-    {
-        for (auto [entity, inp] : entity_manager.registry().view<Input>().each())
-        {
-            inp.move_x = 0.0f;
-            inp.move_y = 0.0f;
-            inp.attack = false;
-            inp.dodge = false;
-            inp.sprint = false;
-            inp.skill = false;
-            inp.block_held = false;
-            inp.block_just_pressed = false;
-        }
-    }
-
-    // Player facing: derived from mouse position (per-frame input), not physics.
-    // Updated here instead of in the fixed-step loop so facing always reflects the
-    // current mouse position — avoids stale-facing wobble on 0-update frames.
-    //
-    // render_dx/dy blends toward dx/dy for smooth visual rotation (dot, future
-    // sprite direction). Gameplay reads dx/dy directly for instant combat response.
-    // Blend factor 0.25 at 60fps ≈ 98% converged in 200ms — responsive and smooth.
-    static constexpr float RENDER_FACING_BLEND = 0.25f;
-    for (auto [entity, input, facing] :
-         entity_manager.registry().view<Input, FacingDirection>().each())
-    {
-        if (entity_manager.registry().all_of<Dodging>(entity))
-            continue;
-        const float len = std::sqrt(input.last_facing_x * input.last_facing_x +
-                                    input.last_facing_y * input.last_facing_y);
-        if (len > 0.0f)
-        {
-            facing.dx = input.last_facing_x / len;
-            facing.dy = input.last_facing_y / len;
-        }
-
-        // Smooth visual facing toward gameplay facing.
-        facing.render_dx += (facing.dx - facing.render_dx) * RENDER_FACING_BLEND;
-        facing.render_dy += (facing.dy - facing.render_dy) * RENDER_FACING_BLEND;
-        const float rl =
-            std::sqrt(facing.render_dx * facing.render_dx + facing.render_dy * facing.render_dy);
-        if (rl > 0.0f)
-        {
-            facing.render_dx /= rl;
-            facing.render_dy /= rl;
-        }
     }
 }
 
@@ -213,6 +156,11 @@ void Engine::update(double dt)
 void Engine::setGameUpdate(GameUpdateFn fn)
 {
     game_update = fn;
+}
+
+void Engine::setPerFrameUpdate(PerFrameFn fn)
+{
+    per_frame_update = fn;
 }
 
 void Engine::setWindowTitle(const std::string& title)

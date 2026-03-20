@@ -1,6 +1,8 @@
 #include "ConfigLoader.h"
 
 #include "ecs/Components.h"
+#include "ecs/GameComponents.h"
+#include "ecs/GameConfig.h"
 
 #include <fstream>
 #include <functional>
@@ -9,20 +11,6 @@
 #include <unordered_map>
 
 using json = nlohmann::json;
-
-// ---------------------------------------------------------------------------
-// Component loader table.
-//
-// Each entry maps a JSON key (e.g. "transform") to a function that reads
-// that block and emplaces the corresponding component onto the entity.
-//
-// Adding a new component = add one static function below + one line in the
-// table. The main loadEntity loop never needs to change.
-//
-// JS analogy: this is an object whose keys are component names and whose
-// values are handler functions — exactly like a Redux action-type dispatch
-// table.
-// ---------------------------------------------------------------------------
 
 using LoaderFn = std::function<void(EntityManager&, entt::entity, const json&)>;
 
@@ -72,10 +60,6 @@ static void loadCollider(EntityManager& em, entt::entity entity, const json& j)
     em.registry().emplace<Collider>(entity, c);
 }
 
-// ---------------------------------------------------------------------------
-// Stat system loaders
-// ---------------------------------------------------------------------------
-
 static void loadStats(EntityManager& em, entt::entity entity, const json& j)
 {
     Stats s;
@@ -111,7 +95,6 @@ static void loadWeapon(EntityManager& em, entt::entity entity, const json& j)
 
 static void loadFacingDirection(EntityManager& em, entt::entity entity, const json& /*j*/)
 {
-    // No JSON fields — attach with default (facing right).
     em.registry().emplace<FacingDirection>(entity);
 }
 
@@ -153,8 +136,6 @@ static void loadPoise(EntityManager& em, entt::entity entity, const json& j)
     em.registry().emplace<Poise>(entity, p);
 }
 
-// ---------------------------------------------------------------------------
-
 static void loadLoot(EntityManager& em, entt::entity entity, const json& j)
 {
     Loot l;
@@ -163,8 +144,6 @@ static void loadLoot(EntityManager& em, entt::entity entity, const json& j)
     em.registry().emplace<Loot>(entity, l);
 }
 
-// Shared helper: parse a sprite sheet sidecar JSON and emplace Animation + Sprite
-// on the given entity. Used by both loadAnimation and loadBodyParts.
 static bool emplaceAnimationFromSheet(EntityManager& em, entt::entity entity,
                                       const std::string& sheetPath)
 {
@@ -236,9 +215,6 @@ static void loadAnimation(EntityManager& em, entt::entity entity, const json& j)
         em.registry().emplace<Animation>(entity);
 }
 
-// Create child entities for split-body rendering. Each child gets its own
-// Sprite + Animation with an independent direction source (velocity or aim).
-// The parent keeps all gameplay components but has no Sprite/Animation.
 static void loadBodyParts(EntityManager& em, entt::entity parent, const json& j)
 {
     const Transform* parentTransform = em.registry().try_get<Transform>(parent);
@@ -249,10 +225,9 @@ static void loadBodyParts(EntityManager& em, entt::entity parent, const json& j)
 
         BodyPart bp;
         bp.parent = parent;
-        bp.faces_aim = part.value("faces_aim", false);
+        bp.direction_from_facing = part.value("direction_from_facing", false);
         em.registry().emplace<BodyPart>(child, bp);
 
-        // Copy parent position so the child renders at the correct spot.
         Transform t;
         if (parentTransform)
         {
@@ -262,16 +237,21 @@ static void loadBodyParts(EntityManager& em, entt::entity parent, const json& j)
         }
         em.registry().emplace<Transform>(child, t);
 
-        // Load animation sheet (also creates Sprite component on the child).
         const std::string sheetPath = part.value("sheet", std::string{});
         emplaceAnimationFromSheet(em, child, sheetPath);
 
-        // Set the sprite layer from draw_order for z-ordering within the character.
         if (em.registry().all_of<Sprite>(child))
             em.registry().get<Sprite>(child).layer = part.value("draw_order", 0);
 
         em.registry().emplace<Tag>(child, Tag{"body_part"});
     }
+}
+
+static void loadStamina(EntityManager& em, entt::entity entity, const json& /*j*/)
+{
+    // Max stamina is formula-derived from END in LevelingSystem::applyInitialDerivations.
+    // Just emplace an empty component so the stamina system knows this entity uses stamina.
+    em.registry().emplace<Stamina>(entity);
 }
 
 static void loadAIController(EntityManager& em, entt::entity entity, const json& j)
@@ -289,18 +269,17 @@ static void loadAIController(EntityManager& em, entt::entity entity, const json&
     const std::string behavior = j.value("behavior", std::string{"idle"});
     if (behavior == "chase")
     {
-        // If an aggro radius is set, start Idle — AggroSystem transitions to
-        // Chase when the player steps within range.  Without a radius, go
-        // straight to Chase so existing configs that omit aggro_radius are
-        // unaffected.
         ai.state =
             (ai.aggro_radius > 0.0f) ? AIController::State::Idle : AIController::State::Chase;
     }
     else if (behavior == "attack")
         ai.state = AIController::State::Attack;
-    // else: default Idle
 
     em.registry().emplace<AIController>(entity, ai);
+
+    NavAgent nav;
+    nav.separation_strength = ai.separation_strength;
+    em.registry().emplace<NavAgent>(entity, nav);
 }
 
 // clang-format off
@@ -315,6 +294,7 @@ static const std::unordered_map<std::string, LoaderFn> kComponentLoaders = {
     {"weapon",           loadWeapon},
     {"facing",           loadFacingDirection},
     {"auto_attack_mode", loadAutoAttackMode},
+    {"stamina",          loadStamina},
     {"shield",           loadShield},
     {"poise",            loadPoise},
     {"loot",             loadLoot},
@@ -325,8 +305,6 @@ static const std::unordered_map<std::string, LoaderFn> kComponentLoaders = {
     {"body_parts",       loadBodyParts},
 };
 // clang-format on
-
-// ---------------------------------------------------------------------------
 
 entt::entity ConfigLoader::loadEntity(EntityManager& em, const std::string& filePath)
 {
@@ -350,7 +328,6 @@ entt::entity ConfigLoader::loadEntity(EntityManager& em, const std::string& file
 
     auto entity = em.create();
 
-    // Tag — always attached; name comes from the "tag" field or is left empty.
     Tag tag;
     tag.name = data.value("tag", std::string{});
     em.registry().emplace<Tag>(entity, tag);
@@ -377,7 +354,7 @@ bool ConfigLoader::loadFormulas(EntityManager& em, const std::string& filePath)
     if (!file.is_open())
     {
         std::cerr << "[ConfigLoader] Cannot open formulas: " << filePath
-                  << " — using hardcoded defaults\n";
+                  << " -- using hardcoded defaults\n";
         return false;
     }
 
@@ -389,11 +366,11 @@ bool ConfigLoader::loadFormulas(EntityManager& em, const std::string& filePath)
     catch (const std::exception& e)
     {
         std::cerr << "[ConfigLoader] Error parsing " << filePath << ": " << e.what()
-                  << " — using hardcoded defaults\n";
+                  << " -- using hardcoded defaults\n";
         return false;
     }
 
-    FormulaConfig& f = em.formulas;
+    FormulaConfig& f = em.registry().ctx().get<FormulaConfig>();
 
     if (j.contains("hp"))
     {
@@ -478,6 +455,21 @@ bool ConfigLoader::loadFormulas(EntityManager& em, const std::string& filePath)
     if (j.contains("xp_drop"))
     {
         f.xp_drop.log_scale = j["xp_drop"].value("log_scale", f.xp_drop.log_scale);
+        f.xp_drop.min_fraction = j["xp_drop"].value("min_fraction", f.xp_drop.min_fraction);
+    }
+
+    if (j.contains("stamina"))
+    {
+        f.stamina.swing_effort = j["stamina"].value("swing_effort", f.stamina.swing_effort);
+        f.stamina.dodge_effort = j["stamina"].value("dodge_effort", f.stamina.dodge_effort);
+        f.stamina.skill_effort = j["stamina"].value("skill_effort", f.stamina.skill_effort);
+        f.stamina.sprint_effort = j["stamina"].value("sprint_effort", f.stamina.sprint_effort);
+        f.stamina.base = j["stamina"].value("base", f.stamina.base);
+        f.stamina.end_scale = j["stamina"].value("end_scale", f.stamina.end_scale);
+        f.stamina.recovery_rate = j["stamina"].value("recovery_rate", f.stamina.recovery_rate);
+        f.stamina.recovery_delay = j["stamina"].value("recovery_delay", f.stamina.recovery_delay);
+        f.stamina.exhaustion_stagger =
+            j["stamina"].value("exhaustion_stagger", f.stamina.exhaustion_stagger);
     }
 
     f.loaded = true;
@@ -491,7 +483,7 @@ bool ConfigLoader::loadSounds(EntityManager& em, const std::string& filePath)
     if (!file.is_open())
     {
         std::cerr << "[ConfigLoader] Cannot open sounds: " << filePath
-                  << " — using hardcoded defaults\n";
+                  << " -- using hardcoded defaults\n";
         return false;
     }
 
@@ -503,11 +495,11 @@ bool ConfigLoader::loadSounds(EntityManager& em, const std::string& filePath)
     catch (const std::exception& e)
     {
         std::cerr << "[ConfigLoader] Error parsing " << filePath << ": " << e.what()
-                  << " — using hardcoded defaults\n";
+                  << " -- using hardcoded defaults\n";
         return false;
     }
 
-    SoundConfig& s = em.sounds;
+    SoundConfig& s = em.registry().ctx().get<SoundConfig>();
 
     auto load = [&](const char* key, SoundEntry& entry)
     {
@@ -532,6 +524,7 @@ bool ConfigLoader::loadSounds(EntityManager& em, const std::string& filePath)
     load("footstep_run", s.footstep_run);
     load("rest_heal", s.rest_heal);
     load("game_over", s.game_over);
+    load("low_stamina_heartbeat", s.low_stamina_heartbeat);
 
     s.loaded = true;
     std::cout << "[ConfigLoader] Loaded sounds from " << filePath << "\n";
@@ -558,13 +551,12 @@ bool ConfigLoader::loadWaves(EntityManager& em, const std::string& filePath)
         return false;
     }
 
-    WaveConfig& wc = em.wave_config;
+    WaveConfig& wc = em.registry().ctx().get<WaveConfig>();
     wc.spawn_near = j.value("spawn_near", wc.spawn_near);
     wc.spawn_far = j.value("spawn_far", wc.spawn_far);
 
     auto& gen = wc.gen;
 
-    // Enemy pool.
     if (j.contains("enemies") && j["enemies"].is_array())
     {
         for (const auto& ej : j["enemies"])
@@ -577,7 +569,6 @@ bool ConfigLoader::loadWaves(EntityManager& em, const std::string& filePath)
         }
     }
 
-    // Scaling parameters.
     gen.start_count = j.value("start_count", gen.start_count);
     gen.count_growth = j.value("count_growth", gen.count_growth);
     gen.max_count = j.value("max_count", gen.max_count);
@@ -592,7 +583,6 @@ bool ConfigLoader::loadWaves(EntityManager& em, const std::string& filePath)
     gen.level_growth = j.value("level_growth", gen.level_growth);
     gen.stat_per_level = j.value("stat_per_level", gen.stat_per_level);
 
-    // Manual overrides keyed by wave number string.
     if (j.contains("overrides") && j["overrides"].is_object())
     {
         for (const auto& [key, val] : j["overrides"].items())
@@ -617,7 +607,7 @@ bool ConfigLoader::loadWaves(EntityManager& em, const std::string& filePath)
     }
 
     wc.loaded = true;
-    std::cout << "[ConfigLoader] Loaded wave rules from " << filePath << " ("
-              << gen.enemies.size() << " enemy types)\n";
+    std::cout << "[ConfigLoader] Loaded wave rules from " << filePath << " (" << gen.enemies.size()
+              << " enemy types)\n";
     return true;
 }

@@ -12,5 +12,6 @@
     "footstep_walk":  { "path": "assets/sfx/footstep_walk.wav",  "volume": 0.15 },
     "footstep_run":   { "path": "assets/sfx/footstep_run.wav",   "volume": 0.25 },
     "rest_heal":      { "path": "assets/sfx/rest_heal.wav",      "volume": 0.5 },
-    "game_over":      { "path": "assets/sfx/game_over.wav",      "volume": 0.6 }
+    "game_over":              { "path": "assets/sfx/game_over.wav",      "volume": 0.6 },
+    "low_stamina_heartbeat":  { "path": "assets/sfx/heartbeat.wav",      "volume": 0.5 }
 }

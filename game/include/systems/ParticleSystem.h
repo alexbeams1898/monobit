@@ -10,4 +10,8 @@ class ParticleSystem
 
     // Spawn a burst of ember mote particles at (x, y).
     static void spawnEmberBurst(EntityManager& em, float x, float y, int count);
+
+  private:
+    // Single gentle particle for the continuous stat-point indicator.
+    static void spawnEmberTrickle(entt::registry& reg, float x, float y);
 };

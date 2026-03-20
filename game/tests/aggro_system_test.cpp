@@ -1,5 +1,6 @@
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
+#include "ecs/GameComponents.h"
 #include "systems/AggroSystem.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -15,7 +16,7 @@ static entt::entity makePlayer(EntityManager& em, float x, float y)
 {
     auto e = em.create();
     em.registry().emplace<Transform>(e, Transform{x, y});
-    em.registry().emplace<Input>(e);
+    em.registry().emplace<PlayerActions>(e);
     return e;
 }
 
@@ -92,7 +93,7 @@ TEST_CASE("AggroSystem: already-Chase enemy is unaffected", "[aggro]")
 TEST_CASE("AggroSystem: no player — no transition", "[aggro]")
 {
     EntityManager em;
-    // No player entity (no Input component)
+    // No player entity (no PlayerActions component)
     auto enemy = makeEnemy(em, 0.0f, 0.0f, 300.0f);
 
     AggroSystem::update(em);

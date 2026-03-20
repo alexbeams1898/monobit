@@ -5,7 +5,7 @@
 :: Requires the game to be built with -DTRACY_ENABLE=ON (set in .vscode/settings.json).
 :: Tracy binary lives in tools/tracy/ (gitignored — re-download if missing).
 
-set TRACY=%~dp0..\tools\tracy\tracy-profiler.exe
+set TRACY=%~dp0..\..\tools\tracy\tracy-profiler.exe
 
 if not exist "%TRACY%" (
     echo Tracy not found at tools\tracy\tracy-profiler.exe

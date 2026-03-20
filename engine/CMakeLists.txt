@@ -2,17 +2,16 @@ add_library(engine STATIC)
 
 target_sources(engine PRIVATE
     src/Engine.cpp
-    src/ConfigLoader.cpp
     src/TextureManager.cpp
-    src/systems/InputSystem.cpp
     src/systems/RenderSystem.cpp
     src/systems/CameraSystem.cpp
     src/systems/CollisionSystem.cpp
-    src/systems/FlowFieldSystem.cpp
     src/systems/AnimationSystem.cpp
     src/systems/AudioSystem.cpp
     src/TileMapLoader.cpp
     src/systems/TileMapRenderer.cpp
+    src/systems/FlowFieldSystem.cpp
+    src/systems/SteeringSystem.cpp
 )
 
 target_include_directories(engine

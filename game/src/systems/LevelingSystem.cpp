@@ -1,6 +1,8 @@
 #include "systems/LevelingSystem.h"
 
 #include "ecs/Components.h"
+#include "ecs/GameComponents.h"
+#include "ecs/GameConfig.h"
 #include "systems/AudioSystem.h"
 #include "systems/ParticleSystem.h"
 
@@ -29,7 +31,8 @@ void LevelingSystem::deriveHealth(EntityManager& em, entt::entity entity)
     if (!reg.all_of<Stats>(entity))
         return;
 
-    const int maxHP = deriveMaxHP(reg.get<Stats>(entity).end, em.formulas);
+    const FormulaConfig& f = reg.ctx().get<FormulaConfig>();
+    const int maxHP = deriveMaxHP(reg.get<Stats>(entity).end, f);
     if (reg.all_of<Health>(entity))
     {
         auto& health = reg.get<Health>(entity);
@@ -44,8 +47,8 @@ void LevelingSystem::deriveHealth(EntityManager& em, entt::entity entity)
 
 void LevelingSystem::applyInitialDerivations(EntityManager& em)
 {
-    const FormulaConfig& f = em.formulas;
     auto& reg = em.registry();
+    const FormulaConfig& f = reg.ctx().get<FormulaConfig>();
 
     // Derive Health for every entity that has Stats.
     // Walls and non-stat entities are unaffected (they have no Stats component).
@@ -93,13 +96,23 @@ void LevelingSystem::applyInitialDerivations(EntityManager& em)
             poise.max = std::floor(static_cast<float>(stats.end) * f.poise.end_scale +
                                    static_cast<float>(stats.str) * f.poise.str_scale);
         }
+
+        // Stamina pool: max = base + end_scale * log(END + 1). Starts full.
+        if (reg.all_of<Stamina>(entity))
+        {
+            auto& sta = reg.get<Stamina>(entity);
+            sta.max_stamina = f.stamina.base +
+                              f.stamina.end_scale * std::log(static_cast<float>(stats.end) + 1.0f);
+            sta.current = sta.max_stamina;
+        }
     }
 }
 
 void LevelingSystem::update(EntityManager& em)
 {
-    const FormulaConfig& f = em.formulas;
     auto& reg = em.registry();
+    const FormulaConfig& f = reg.ctx().get<FormulaConfig>();
+    const SoundConfig& snd = reg.ctx().get<SoundConfig>();
 
     // --- XP overflow / level-up -------------------------------------------
     for (auto [entity, exp] : reg.view<Experience>().each())
@@ -111,7 +124,7 @@ void LevelingSystem::update(EntityManager& em)
             exp.stat_points += static_cast<int>(f.leveling.points_per_level);
             exp.xp_to_next = deriveXpToNext(exp.level, f);
 
-            AudioSystem::playSfx(em.sounds.level_up.path, em.sounds.level_up.volume);
+            AudioSystem::playSfx(snd.level_up.path, snd.level_up.volume);
             if (reg.all_of<Transform>(entity))
             {
                 const auto& t = reg.get<Transform>(entity);
@@ -134,11 +147,21 @@ void LevelingSystem::update(EntityManager& em)
         }
     }
 
-    // --- Debug stat allocation (Input.alloc_str/Dex/End/Lck) ---------------
-    for (auto [entity, input, stats, exp] : reg.view<Input, Stats, Experience>().each())
+    // --- Debug stat allocation (PlayerActions.alloc_str/Dex/End/Lck) ---------------
+    for (auto [entity, actions, stats, exp] : reg.view<PlayerActions, Stats, Experience>().each())
     {
         if (exp.stat_points <= 0)
+        {
+            if (actions.alloc_str || actions.alloc_dex || actions.alloc_end || actions.alloc_lck)
+            {
+                std::cout << "[LevelingSystem] No stat points available.\n";
+                actions.alloc_str = false;
+                actions.alloc_dex = false;
+                actions.alloc_end = false;
+                actions.alloc_lck = false;
+            }
             continue;
+        }
 
         // Extract local refs — C++17 lambdas cannot capture structured bindings directly.
         auto& expRef = exp;
@@ -149,7 +172,7 @@ void LevelingSystem::update(EntityManager& em)
         {
             stat++;
             expRef.stat_points--;
-            AudioSystem::playSfx(em.sounds.stat_allocate.path, em.sounds.stat_allocate.volume);
+            AudioSystem::playSfx(snd.stat_allocate.path, snd.stat_allocate.volume);
 
             // Recalculate HP if END changed.
             if (reg.all_of<Health>(ent))
@@ -161,6 +184,26 @@ void LevelingSystem::update(EntityManager& em)
                 health.current = std::min(health.current + delta, health.max);
             }
 
+            // Recalculate stamina pool if END changed.
+            if (reg.all_of<Stamina>(ent))
+            {
+                auto& sta = reg.get<Stamina>(ent);
+                const float newMax =
+                    f.stamina.base +
+                    f.stamina.end_scale * std::log(static_cast<float>(statsRef.end) + 1.0f);
+                const float delta = newMax - sta.max_stamina;
+                sta.max_stamina = newMax;
+                sta.current = std::min(sta.current + delta, sta.max_stamina);
+            }
+
+            // Recalculate poise threshold from STR + END.
+            if (reg.all_of<Poise>(ent))
+            {
+                auto& p = reg.get<Poise>(ent);
+                p.max = std::floor(static_cast<float>(statsRef.end) * f.poise.end_scale +
+                                   static_cast<float>(statsRef.str) * f.poise.str_scale);
+            }
+
             const int hp_cur = reg.all_of<Health>(ent) ? reg.get<Health>(ent).current : 0;
             const int hp_max = reg.all_of<Health>(ent) ? reg.get<Health>(ent).max : 0;
             std::cout << "[Stats] " << name << " is now " << stat
@@ -170,25 +213,25 @@ void LevelingSystem::update(EntityManager& em)
                       << hp_max << "\n";
         };
 
-        if (input.alloc_str)
+        if (actions.alloc_str)
         {
             allocate(stats.str, "STR");
-            input.alloc_str = false;
+            actions.alloc_str = false;
         }
-        if (input.alloc_dex)
+        if (actions.alloc_dex)
         {
             allocate(stats.dex, "DEX");
-            input.alloc_dex = false;
+            actions.alloc_dex = false;
         }
-        if (input.alloc_end)
+        if (actions.alloc_end)
         {
             allocate(stats.end, "END");
-            input.alloc_end = false;
+            actions.alloc_end = false;
         }
-        if (input.alloc_lck)
+        if (actions.alloc_lck)
         {
             allocate(stats.lck, "LCK");
-            input.alloc_lck = false;
+            actions.alloc_lck = false;
         }
     }
 }

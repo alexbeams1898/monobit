@@ -10,21 +10,6 @@
 #include <tracy/Tracy.hpp>
 #include <vector>
 
-// ---------------------------------------------------------------------------
-// Shaders (inline — no asset loading required for engine-owned shaders).
-//
-// Vertex shader:
-//   - Receives a unit quad [0,1]x[0,1] in local space.
-//   - uModel scales and translates it to world-space pixel coordinates.
-//   - uProjection converts pixel coordinates to OpenGL's NDC (-1..1) space
-//     with (0,0) at the top-left corner of the window.
-//
-// Fragment shader:
-//   - Samples the bound texture atlas at the UV computed from uSrcRect.
-//   - uSrcRect = (x, y, w, h) in 0-1 UV space, describing which region of
-//     the atlas to use for this sprite.
-// ---------------------------------------------------------------------------
-
 static const char* kVertexShaderSrc = R"glsl(
 #version 330 core
 layout(location = 0) in vec2 aPos;
@@ -59,21 +44,12 @@ void main()
 }
 )glsl";
 
-// ---------------------------------------------------------------------------
-// Static state — kept in this translation unit; accessed only through the
-// public static methods. Fine for a single-window game.
-// ---------------------------------------------------------------------------
-
 static GLuint sProgram = 0;
 static GLuint sVAO = 0;
 static GLuint sVBO = 0;
-static GLuint sWhiteTex = 0; // 1×1 white texture used for solid-color primitives (facing dot)
+static GLuint sWhiteTex = 0;
 static int sWindowW = 0;
 static int sWindowH = 0;
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 static GLuint compileShader(GLenum type, const char* src)
 {
@@ -92,13 +68,10 @@ static GLuint compileShader(GLenum type, const char* src)
     return shader;
 }
 
-// Build a column-major 4x4 orthographic projection matrix.
-// Maps pixel coordinates (origin top-left) to OpenGL NDC (-1..1).
-// The camera offset shifts the world so the camera tracks the player.
 static void buildOrtho(float mat[16], float left, float right, float bottom, float top)
 {
-    const float rml = right - left; // right minus left
-    const float tmb = top - bottom; // top minus bottom
+    const float rml = right - left;
+    const float tmb = top - bottom;
 
     // clang-format off
     mat[ 0] = 2.0f / rml;  mat[ 4] = 0.0f;         mat[ 8] = 0.0f;  mat[12] = -(right + left) / rml;
@@ -108,7 +81,6 @@ static void buildOrtho(float mat[16], float left, float right, float bottom, flo
     // clang-format on
 }
 
-// Build a column-major 4x4 model matrix: translate to (x,y), then scale to (w,h).
 static void buildModel(float mat[16], float x, float y, float w, float h)
 {
     // clang-format off
@@ -119,51 +91,23 @@ static void buildModel(float mat[16], float x, float y, float w, float h)
     // clang-format on
 }
 
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
-// Compute tint RGB for an entity based on its current status components.
-// Priority: damage flash > attack flash > staggered > level-up ready > weapon cooldown.
+// Applies TintOverride if present, otherwise leaves tint at default white.
+// TintSystem (game) owns all tint priority logic and clears/sets TintOverride each frame.
 static void computeTint(EntityManager& em, entt::entity entity, float& tr, float& tg, float& tb)
 {
-    if (em.registry().all_of<DamageFeedback>(entity))
+    if (const auto* tint = em.registry().try_get<TintOverride>(entity))
     {
-        tr = 10.0f;
-        tg = 10.0f;
-        tb = 10.0f; // white flash (clamped by GPU)
-    }
-    else if (em.registry().all_of<Experience>(entity) &&
-             em.registry().get<Experience>(entity).stat_points > 0)
-    {
-        tr = 1.0f;
-        tg = 0.9f;
-        tb = 0.0f; // gold
-    }
-    else if (em.registry().all_of<Weapon>(entity))
-    {
-        // Fade smoothly from dim blue-grey (just swung) back to white (ready).
-        const float cooldown = em.registry().get<Weapon>(entity).swing_cooldown_remaining;
-        if (cooldown > 0.0f)
-        {
-            const float t = std::min(cooldown, 1.0f);
-            tr = 1.0f - t * 0.15f; // 1.0 → 0.85
-            tg = 1.0f - t * 0.15f;
-            tb = 1.0f - t * 0.05f; // 1.0 → 0.95
-        }
+        tr = tint->r;
+        tg = tint->g;
+        tb = tint->b;
     }
 }
-
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
 
 void RenderSystem::init(int windowW, int windowH)
 {
     sWindowW = windowW;
     sWindowH = windowH;
 
-    // Compile and link shaders.
     GLuint vert = compileShader(GL_VERTEX_SHADER, kVertexShaderSrc);
     GLuint frag = compileShader(GL_FRAGMENT_SHADER, kFragmentShaderSrc);
 
@@ -184,15 +128,12 @@ void RenderSystem::init(int windowW, int windowH)
     glDeleteShader(vert);
     glDeleteShader(frag);
 
-    // Unit quad: two triangles covering [0,1]x[0,1], UV matches position.
-    // Layout: x, y, u, v  (2 floats position + 2 floats UV per vertex).
     // clang-format off
     const float vertices[] = {
-        // pos       uv
-        0.0f, 0.0f,  0.0f, 0.0f, // top-left
-        1.0f, 0.0f,  1.0f, 0.0f, // top-right
-        1.0f, 1.0f,  1.0f, 1.0f, // bottom-right
-        0.0f, 1.0f,  0.0f, 1.0f, // bottom-left
+        0.0f, 0.0f,  0.0f, 0.0f,
+        1.0f, 0.0f,  1.0f, 0.0f,
+        1.0f, 1.0f,  1.0f, 1.0f,
+        0.0f, 1.0f,  0.0f, 1.0f,
     };
     // clang-format on
 
@@ -203,23 +144,18 @@ void RenderSystem::init(int windowW, int windowH)
     glBindBuffer(GL_ARRAY_BUFFER, sVBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
-    // Attribute 0: position (vec2)
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), reinterpret_cast<void*>(0));
     glEnableVertexAttribArray(0);
 
-    // Attribute 1: UV (vec2)
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
                           reinterpret_cast<void*>(2 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
     glBindVertexArray(0);
 
-    // Enable alpha blending so transparent PNG regions are invisible.
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    // 1×1 white RGBA texture — used to draw solid-color quads (e.g. facing dot)
-    // without needing a dedicated atlas region.
     const uint8_t white[4] = {255, 255, 255, 255};
     glGenTextures(1, &sWhiteTex);
     glBindTexture(GL_TEXTURE_2D, sWhiteTex);
@@ -229,8 +165,6 @@ void RenderSystem::init(int windowW, int windowH)
     glBindTexture(GL_TEXTURE_2D, 0);
 }
 
-// Converts a pixel src rect to normalized UV (x, y, w, h) for atlas sampling.
-// Flip trick: start at far edge with negative extent — shader mirrors the sample.
 static void buildSrcRect(int src_x, int src_y, int src_w, int src_h, int tex_w, int tex_h,
                          bool flip_x, bool flip_y, float& uvX, float& uvY, float& uvW, float& uvH)
 {
@@ -241,10 +175,6 @@ static void buildSrcRect(int src_x, int src_y, int src_w, int src_h, int tex_w, 
     uvY = flip_y ? static_cast<float>(src_y + src_h) / th : static_cast<float>(src_y) / th;
     uvH = flip_y ? -static_cast<float>(src_h) / th : static_cast<float>(src_h) / th;
 }
-
-// ---------------------------------------------------------------------------
-// DrawEntry — one renderable sprite to be sorted and drawn.
-// ---------------------------------------------------------------------------
 
 struct DrawEntry
 {
@@ -263,7 +193,6 @@ struct DrawEntry
     float ta;
 };
 
-// Build a DrawEntry for a single sprite entity. Returns false if skipped.
 static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::entity entity,
                                  const Transform& transform, const Sprite& sprite, float alpha,
                                  DrawEntry& out)
@@ -278,7 +207,6 @@ static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::en
     auto& reg = em.registry();
     const auto* bp = reg.try_get<BodyPart>(entity);
 
-    // Tint: body-part children inherit from parent.
     float tr = 1.0f, tg = 1.0f, tb = 1.0f;
     float ta = 1.0f;
     entt::entity tintEntity = entity;
@@ -286,14 +214,12 @@ static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::en
         tintEntity = bp->parent;
     computeTint(em, tintEntity, tr, tg, tb);
 
-    // Particle alpha fade: quadratic falloff over lifetime.
     if (const auto* particle = reg.try_get<Particle>(entity))
     {
         float t = particle->age / particle->lifetime;
         ta = (1.0f - t) * (1.0f - t);
     }
 
-    // Animated entities handle direction via sheet columns; others use flip.
     bool flip_x = false, flip_y = false;
     if (!reg.all_of<Animation>(entity) && reg.all_of<FacingDirection>(entity))
     {
@@ -302,7 +228,6 @@ static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::en
         flip_y = facing.render_dy < -0.1f;
     }
 
-    // SolidColor overrides texture with flat color.
     bool is_solid = false;
     if (reg.all_of<SolidColor>(entity))
     {
@@ -313,7 +238,6 @@ static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::en
         is_solid = true;
     }
 
-    // Interpolate position and snap to pixel grid.
     float drawX = transform.x, drawY = transform.y;
     if (const auto* prev = reg.try_get<PreviousTransform>(entity))
     {
@@ -325,7 +249,6 @@ static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::en
 
     const float scale = transform.scale;
 
-    // Top-down perspective offset: body-part children look up parent's collider.
     const Collider* col = reg.try_get<Collider>(entity);
     if (!col && bp && reg.valid(bp->parent))
         col = reg.try_get<Collider>(bp->parent);
@@ -335,7 +258,7 @@ static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::en
         yOffset = (static_cast<float>(sprite.src_h) * scale - col->height) * 0.5f;
 
     const float sortY = col ? drawY + col->height * 0.5f : drawY;
-    const int subLayer = (bp && bp->faces_aim) ? 1 : 0;
+    const int subLayer = (bp && bp->direction_from_facing) ? 1 : 0;
 
     out = {drawX - static_cast<float>(sprite.src_w) * scale * 0.5f,
            drawY - static_cast<float>(sprite.src_h) * scale * 0.5f - yOffset,
@@ -375,10 +298,6 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
             drawList.push_back(entry);
     }
 
-    // Sort: layer > foot Y > sub_layer.
-    // Layer separates ground/tiles from character sprites.
-    // Foot Y gives top-down depth: higher Y = further south = drawn in front.
-    // Sub-layer ensures upper body draws on top of lower body for the same character.
     std::sort(drawList.begin(), drawList.end(),
               [](const DrawEntry& a, const DrawEntry& b)
               {
@@ -389,16 +308,6 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
                   return a.sub_layer < b.sub_layer;
               });
 
-    // Build orthographic projection centred on the camera position.
-    // The camera sits at the centre of the window; the world scrolls around it.
-    //
-    // Round to the nearest integer pixel before building the projection.
-    // Without this, sub-pixel camera positions (e.g. camX=641.67 at 200px/s,
-    // dt=1/60) give each tile a slightly different fractional screen offset.
-    // OpenGL's rasterizer then places adjacent tiles at different sub-pixel
-    // boundaries → 1-pixel gaps appear on the north/west (leading) edges of
-    // tiles whenever you move.  Integer snapping keeps all tiles on the same
-    // pixel grid every frame.
     const float snapCamX = std::round(camX);
     const float snapCamY = std::round(camY);
     const float halfW = static_cast<float>(sWindowW) * 0.5f;
@@ -414,7 +323,6 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
 
     for (const auto& e : drawList)
     {
-        // Model matrix: position at (e.x, e.y), scale to (src_w, src_h) pixels.
         float model[16];
         buildModel(model, e.x, e.y, static_cast<float>(e.src_w) * e.draw_scale,
                    static_cast<float>(e.src_h) * e.draw_scale);
@@ -422,7 +330,6 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
 
         if (e.solid_color)
         {
-            // Flat color: sample the 1×1 white texture, tint to the entity's color.
             glBindTexture(GL_TEXTURE_2D, sWhiteTex);
             glUniform4f(glGetUniformLocation(sProgram, "uSrcRect"), 0.0f, 0.0f, 1.0f, 1.0f);
         }
@@ -440,56 +347,46 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
     }
 
-    // Crosshair — small + shape at the mouse world position. Gives the player
-    // a persistent aim indicator, especially useful while walking (sprite faces
-    // movement direction, crosshair shows attack direction).
+    // Crosshair
     {
         int mx = 0, my = 0;
         SDL_GetMouseState(&mx, &my);
         const float worldX = snapCamX + static_cast<float>(mx) - halfW;
         const float worldY = snapCamY + static_cast<float>(my) - halfH;
 
-        static constexpr float kArmLen = 6.0f; // half-length of each arm
-        static constexpr float kThick = 2.0f;  // bar thickness
-        static constexpr float kGap = 2.0f;    // gap from center
+        static constexpr float kArmLen = 6.0f;
+        static constexpr float kThick = 2.0f;
+        static constexpr float kGap = 2.0f;
 
         glBindTexture(GL_TEXTURE_2D, sWhiteTex);
         glUniform4f(glGetUniformLocation(sProgram, "uSrcRect"), 0.0f, 0.0f, 1.0f, 1.0f);
         glUniform4f(glGetUniformLocation(sProgram, "uTint"), 1.0f, 1.0f, 1.0f, 0.8f);
 
-        // Horizontal bar (left arm)
         float cModel[16];
         buildModel(cModel, worldX - kGap - kArmLen, worldY - kThick * 0.5f, kArmLen, kThick);
         glUniformMatrix4fv(glGetUniformLocation(sProgram, "uModel"), 1, GL_FALSE, cModel);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-        // Horizontal bar (right arm)
         buildModel(cModel, worldX + kGap, worldY - kThick * 0.5f, kArmLen, kThick);
         glUniformMatrix4fv(glGetUniformLocation(sProgram, "uModel"), 1, GL_FALSE, cModel);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-        // Vertical bar (top arm)
         buildModel(cModel, worldX - kThick * 0.5f, worldY - kGap - kArmLen, kThick, kArmLen);
         glUniformMatrix4fv(glGetUniformLocation(sProgram, "uModel"), 1, GL_FALSE, cModel);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-        // Vertical bar (bottom arm)
         buildModel(cModel, worldX - kThick * 0.5f, worldY + kGap, kThick, kArmLen);
         glUniformMatrix4fv(glGetUniformLocation(sProgram, "uModel"), 1, GL_FALSE, cModel);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
     }
 
-    // Facing dot — 6×6 black square drawn at the front edge of every entity
-    // that has a FacingDirection component.  Uses the 1×1 white texture tinted black.
-    // Offset = 10 px in facing direction from center; dot top-left is 3 px back from that.
+    // Facing dot
     static constexpr float kDotSize = 6.0f;
     static constexpr float kDotOffset = 10.0f;
 
     glBindTexture(GL_TEXTURE_2D, sWhiteTex);
     glUniform4f(glGetUniformLocation(sProgram, "uSrcRect"), 0.0f, 0.0f, 1.0f, 1.0f);
-    glUniform4f(glGetUniformLocation(sProgram, "uTint"), 0.0f, 0.0f, 0.0f, 1.0f); // black
+    glUniform4f(glGetUniformLocation(sProgram, "uTint"), 0.0f, 0.0f, 0.0f, 1.0f);
 
     for (auto [entity, transform, facing] : em.registry().view<Transform, FacingDirection>().each())
     {
-        // Skip animated sprites (direction shown via sheet columns) and
-        // entities without Sprite (e.g. player parent with body-part children).
         if (em.registry().all_of<Animation>(entity) || !em.registry().all_of<Sprite>(entity))
             continue;
         float anchorX = std::round(transform.x);
@@ -500,8 +397,6 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
             anchorY = std::round(prev->y + (transform.y - prev->y) * alpha);
         }
 
-        // render_dx/dy is smoothed toward the gameplay facing — fluid rotation
-        // that filters mouse micro-tremor without robotic snapping.
         const float dotX = std::round(anchorX + facing.render_dx * kDotOffset) - kDotSize * 0.5f;
         const float dotY = std::round(anchorY + facing.render_dy * kDotOffset) - kDotSize * 0.5f;
         float model[16];

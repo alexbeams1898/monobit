@@ -2,6 +2,7 @@
 
 #include "TileMap.h"
 #include "ecs/Components.h"
+#include "ecs/GameComponents.h"
 
 #include <tracy/Tracy.hpp>
 
@@ -17,12 +18,11 @@ static void updateSprintFlag(AIController& ai, float distSq)
 void AggroSystem::update(EntityManager& em)
 {
     ZoneScopedN("AggroSystem");
-    // Fetch player position once — identified by the Input component tag.
     float px = 0.0f;
     float py = 0.0f;
     bool playerFound = false;
 
-    for (auto e : em.registry().view<Input>())
+    for (auto e : em.registry().view<PlayerActions>())
     {
         if (em.registry().all_of<Transform>(e))
         {
@@ -87,5 +87,8 @@ void AggroSystem::update(EntityManager& em)
         }
 
         updateSprintFlag(ai, distSq);
+
+        if (em.registry().all_of<FacingDirection>(entity))
+            em.registry().get<FacingDirection>(entity).sprinting = ai.sprint;
     }
 }

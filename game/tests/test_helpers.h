@@ -1,0 +1,15 @@
+#pragma once
+
+#include "ecs/EntityManager.h"
+#include "ecs/GameConfig.h"
+
+// Emplace all game config singletons into the registry context.
+// Call once per EntityManager in test setup. Safe to call before any
+// system that reads FormulaConfig, SoundConfig, WaveConfig, or WaveState.
+inline void emplaceGameConfigs(EntityManager& em)
+{
+    em.registry().ctx().emplace<FormulaConfig>();
+    em.registry().ctx().emplace<SoundConfig>();
+    em.registry().ctx().emplace<WaveConfig>();
+    em.registry().ctx().emplace<WaveState>();
+}

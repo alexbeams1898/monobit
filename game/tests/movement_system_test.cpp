@@ -1,6 +1,7 @@
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "systems/MovementSystem.h"
+#include "test_helpers.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -14,7 +15,7 @@
 // This inset prevents "corner sticking" — getting caught on adjacent tile
 // corners when sliding along a wall — while still blocking head-on collisions.
 //
-// InputSystem depends on SDL keyboard state and is integration-tested by
+// InputMappingSystem depends on SDL keyboard state and is integration-tested by
 // running the game. Here we set Velocity directly to test the projection path.
 // ---------------------------------------------------------------------------
 
@@ -44,6 +45,7 @@ static entt::entity makeWall(EntityManager& em, float x, float y, float w = 32.0
 TEST_CASE("Entity with no walls nearby moves freely", "[movement]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     auto e = makeDynamic(em, 0.0f, 0.0f);
     em.registry().get<Velocity>(e) = {100.0f, 50.0f};
 
@@ -57,6 +59,7 @@ TEST_CASE("Entity with no walls nearby moves freely", "[movement]")
 TEST_CASE("Entity moving right blocked by wall: X velocity zeroed", "[movement]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     // Entity at (0,0) moving right at 200 px/s → moves 3.33 px in 1/60 s.
     // Effective (inset) half-width = (32-2)/2 = 15. New right edge = 3.33+15 = 18.33.
     // Wall at (33,0): left edge = 33-16 = 17. Overlap = 18.33-17 = 1.33 px → blocked.
@@ -76,6 +79,7 @@ TEST_CASE("Entity moving right blocked by wall: X velocity zeroed", "[movement]"
 TEST_CASE("Entity moving down blocked by wall: Y velocity zeroed", "[movement]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     auto entity = makeDynamic(em, 0.0f, 0.0f);
     makeWall(em, 0.0f, 33.0f); // wall just below — same inset math as X test
     em.registry().get<Velocity>(entity) = {0.0f, 200.0f};
@@ -92,6 +96,7 @@ TEST_CASE("Entity moving down blocked by wall: Y velocity zeroed", "[movement]")
 TEST_CASE("Entity slides along wall: blocked on X, free on Y", "[movement]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     // Wall to the right, no wall below — entity should move only on Y.
     auto entity = makeDynamic(em, 0.0f, 0.0f);
     makeWall(em, 33.0f, 0.0f); // blocks X
@@ -114,6 +119,7 @@ TEST_CASE("Entity slides along wall: blocked on X, free on Y", "[movement]")
 TEST_CASE("Entity with no collider integrates unconditionally", "[movement]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     // Entity with Velocity but no Collider — no projection, free movement.
     auto e = em.create();
     em.registry().emplace<Transform>(e, Transform{0.0f, 0.0f});

@@ -2,6 +2,8 @@
 
 #include "TileMap.h"
 #include "ecs/Components.h"
+#include "ecs/GameComponents.h"
+#include "ecs/GameConfig.h"
 #include "systems/AudioSystem.h"
 
 #include <cmath>
@@ -48,12 +50,23 @@ float computeDamage(const Weapon& w, const Stats& s, const FormulaConfig& /*f*/)
 
 // ---------------------------------------------------------------------------
 
+void deductStamina(entt::registry& reg, entt::entity entity, float cost, const FormulaConfig& f)
+{
+    auto& sta = reg.get<Stamina>(entity);
+    const float before = sta.current;
+    sta.current = std::max(0.0f, sta.current - cost);
+    sta.recovery_timer = f.stamina.recovery_delay;
+    if (before > 0.0f && sta.current <= 0.0f)
+        reg.emplace_or_replace<Staggered>(entity, Staggered{f.stamina.exhaustion_stagger});
+}
+
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
 void CombatSystem::update(EntityManager& em, double dt)
 {
     ZoneScopedN("CombatSystem");
     const float fdt = static_cast<float>(dt);
-    const FormulaConfig& f = em.formulas;
+    const FormulaConfig& f = em.registry().ctx().get<FormulaConfig>();
+    const SoundConfig& snd = em.registry().ctx().get<SoundConfig>();
 
     // --- 1. Destroy hitboxes spawned last frame ----------------------------
     // Collect first; entt iterators are invalidated by destroy() mid-sweep.
@@ -70,6 +83,19 @@ void CombatSystem::update(EntityManager& em, double dt)
     {
         weapon.swing_cooldown_remaining = std::max(0.0f, weapon.swing_cooldown_remaining - fdt);
         weapon.skill_cooldown_remaining = std::max(0.0f, weapon.skill_cooldown_remaining - fdt);
+    }
+
+    // Stamina recovery: after recovery_delay with no deduction, regen at recovery_rate/s.
+    for (auto [entity, sta] : em.registry().view<Stamina>().each())
+    {
+        if (sta.recovery_timer > 0.0f)
+        {
+            sta.recovery_timer -= fdt;
+        }
+        else if (sta.current < sta.max_stamina)
+        {
+            sta.current = std::min(sta.max_stamina, sta.current + f.stamina.recovery_rate * fdt);
+        }
     }
 
     // AttackLocked — remove when expired.
@@ -142,9 +168,9 @@ void CombatSystem::update(EntityManager& em, double dt)
         }
     }
 
-    // Dodge cooldown (stored on Input component — player only).
-    for (auto [entity, input] : em.registry().view<Input>().each())
-        input.dodge_cooldown_remaining = std::max(0.0f, input.dodge_cooldown_remaining - fdt);
+    // Dodge cooldown (stored on PlayerActions component — player only).
+    for (auto [entity, actions] : em.registry().view<PlayerActions>().each())
+        actions.dodge_cooldown_remaining = std::max(0.0f, actions.dodge_cooldown_remaining - fdt);
 
     // DamageFeedback — red flash; remove when expired.
     {
@@ -172,10 +198,11 @@ void CombatSystem::update(EntityManager& em, double dt)
             em.registry().remove<AttackFeedback>(e);
     }
 
-    // --- 3. Auto-attack mode toggle (P key, edge-detect on Input) ----------
-    for (auto [entity, input, autoMode] : em.registry().view<Input, AutoAttackMode>().each())
+    // --- 3. Auto-attack mode toggle (P key, edge-detect on PlayerActions) ----------
+    for (auto [entity, actions, autoMode] :
+         em.registry().view<PlayerActions, AutoAttackMode>().each())
     {
-        if (input.auto_toggle_just_pressed)
+        if (actions.auto_toggle_just_pressed)
         {
             autoMode.enabled = !autoMode.enabled;
             std::cout << "[CombatSystem] Auto-attack mode: " << (autoMode.enabled ? "ON" : "OFF")
@@ -184,9 +211,9 @@ void CombatSystem::update(EntityManager& em, double dt)
     }
 
     // --- 4. Parry window — opened by block_just_pressed + Shield -------------
-    for (auto [entity, input] : em.registry().view<Input>().each())
+    for (auto [entity, actions] : em.registry().view<PlayerActions>().each())
     {
-        if (input.block_just_pressed && em.registry().all_of<Shield>(entity) &&
+        if (actions.block_just_pressed && em.registry().all_of<Shield>(entity) &&
             !em.registry().all_of<Parrying>(entity))
         {
             em.registry().emplace<Parrying>(entity, Parrying{0.15f});
@@ -203,11 +230,18 @@ void CombatSystem::update(EntityManager& em, double dt)
         em.registry().emplace<Hitbox>(hitboxEnt, Hitbox{damage, owner});
     };
 
-    for (auto [entity, input, weapon, transform, facing] :
-         em.registry().view<Input, Weapon, Transform, FacingDirection>().each())
+    for (auto [entity, actions, weapon, transform, facing] :
+         em.registry().view<PlayerActions, Weapon, Transform, FacingDirection>().each())
     {
         const bool isAttackLocked = em.registry().all_of<AttackLocked>(entity);
         const bool isStaggered = em.registry().all_of<Staggered>(entity);
+
+        // Stamina cost helpers — cost = weapon.weight * effort multiplier.
+        const float swingCost = weapon.weight * f.stamina.swing_effort;
+        const float skillCost = weapon.weight * f.stamina.skill_effort;
+        const float dodgeCost = weapon.weight * f.stamina.dodge_effort;
+        const bool hasSta = em.registry().all_of<Stamina>(entity);
+        const float staCurrent = hasSta ? em.registry().get<Stamina>(entity).current : 999.0f;
 
         // ---- Normal attack ------------------------------------------------
         bool fireAttack = false;
@@ -215,12 +249,12 @@ void CombatSystem::update(EntityManager& em, double dt)
         {
             const auto& autoMode = em.registry().get<AutoAttackMode>(entity);
             if (autoMode.enabled)
-                fireAttack =
-                    (weapon.swing_cooldown_remaining <= 0.0f && !isAttackLocked && !isStaggered);
+                fireAttack = (weapon.swing_cooldown_remaining <= 0.0f && !isAttackLocked &&
+                              !isStaggered && staCurrent >= swingCost);
         }
         if (!fireAttack)
-            fireAttack = (input.attack && weapon.swing_cooldown_remaining <= 0.0f &&
-                          !isAttackLocked && !isStaggered);
+            fireAttack = (actions.attack && weapon.swing_cooldown_remaining <= 0.0f &&
+                          !isAttackLocked && !isStaggered && staCurrent >= swingCost);
 
         if (fireAttack)
         {
@@ -290,8 +324,11 @@ void CombatSystem::update(EntityManager& em, double dt)
             // Yellow swing flash on the attacker (0.5s so it's clearly visible).
             em.registry().emplace_or_replace<AttackFeedback>(entity, AttackFeedback{0.5f});
 
+            if (hasSta)
+                deductStamina(em.registry(), entity, swingCost, f);
+
             TracyMessageL("PlayerAttack");
-            AudioSystem::playSfx(em.sounds.player_attack.path, em.sounds.player_attack.volume);
+            AudioSystem::playSfx(snd.player_attack.path, snd.player_attack.volume);
             std::cout << "[CombatSystem] Attack! dmg=";
             if (em.registry().all_of<Stats>(entity))
                 std::cout << computeDamage(weapon, em.registry().get<Stats>(entity), f);
@@ -301,8 +338,8 @@ void CombatSystem::update(EntityManager& em, double dt)
         }
 
         // ---- Weapon skill ------------------------------------------------
-        if (input.skill && weapon.skill_cooldown_remaining <= 0.0f && !isAttackLocked &&
-            !isStaggered)
+        if (actions.skill && weapon.skill_cooldown_remaining <= 0.0f && !isAttackLocked &&
+            !isStaggered && staCurrent >= skillCost)
         {
             const float reach = 16.0f + 40.0f; // bigger reach for skill
             const float hx = transform.x + facing.dx * reach;
@@ -318,15 +355,18 @@ void CombatSystem::update(EntityManager& em, double dt)
             weapon.skill_cooldown_remaining = 5.0f;
             em.registry().emplace_or_replace<AttackLocked>(entity, AttackLocked{0.4f});
 
+            if (hasSta)
+                deductStamina(em.registry(), entity, skillCost, f);
+
             TracyMessageL("PlayerSkill");
-            AudioSystem::playSfx(em.sounds.player_skill.path, em.sounds.player_skill.volume);
+            AudioSystem::playSfx(snd.player_skill.path, snd.player_skill.volume);
             std::cout << "[CombatSystem] Haymaker! dmg=" << dmg << " skill cooldown=5.0s\n";
         }
 
         // ---- Dodge -------------------------------------------------------
-        const bool canDodge = (input.dodge_cooldown_remaining <= 0.0f && !isAttackLocked &&
-                               !isStaggered && !em.registry().all_of<Dodging>(entity));
-        if (input.dodge && canDodge)
+        const bool canDodge = (actions.dodge_cooldown_remaining <= 0.0f && !isStaggered &&
+                               !em.registry().all_of<Dodging>(entity) && staCurrent >= dodgeCost);
+        if (actions.dodge && canDodge)
         {
             // Context-sensitive direction:
             // If any active enemy is within engagement range → backstep
@@ -359,13 +399,10 @@ void CombatSystem::update(EntityManager& em, double dt)
             }
             else
             {
-                // Normal roll: last movement direction, or facing fallback.
-                dodgeX = (input.last_facing_x != 0.0f || input.last_facing_y != 0.0f)
-                             ? input.last_facing_x
-                             : facing.dx;
-                dodgeY = (input.last_facing_x != 0.0f || input.last_facing_y != 0.0f)
-                             ? input.last_facing_y
-                             : facing.dy;
+                // Normal roll: current movement direction, or facing fallback.
+                const bool moving = actions.move_x != 0.0f || actions.move_y != 0.0f;
+                dodgeX = moving ? actions.move_x : facing.dx;
+                dodgeY = moving ? actions.move_y : facing.dy;
             }
 
             if (em.registry().all_of<Velocity>(entity))
@@ -376,9 +413,12 @@ void CombatSystem::update(EntityManager& em, double dt)
             }
 
             TracyMessageL("PlayerDodge");
-            AudioSystem::playSfx(em.sounds.player_dodge.path, em.sounds.player_dodge.volume);
+            AudioSystem::playSfx(snd.player_dodge.path, snd.player_dodge.volume);
             em.registry().emplace<Dodging>(entity, Dodging{f.dodge.duration});
-            input.dodge_cooldown_remaining = f.dodge.cooldown;
+            actions.dodge_cooldown_remaining = f.dodge.cooldown;
+
+            if (hasSta)
+                deductStamina(em.registry(), entity, dodgeCost, f);
 
             std::cout << "[CombatSystem] " << (nearEnemy ? "Backstep!\n" : "Dodge roll!\n");
         }
@@ -391,7 +431,7 @@ void CombatSystem::update(EntityManager& em, double dt)
     {
         entt::entity playerEnt = entt::null;
         Transform playerTransform{};
-        for (auto e : em.registry().view<Input>())
+        for (auto e : em.registry().view<PlayerActions>())
         {
             playerEnt = e;
             playerTransform = em.registry().get<Transform>(e);

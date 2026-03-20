@@ -2,12 +2,14 @@
 
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
+#include "ecs/GameComponents.h"
+#include "ecs/GameConfig.h"
 
 // ---------------------------------------------------------------------------
 // CombatSystem — player attack input, weapon cooldown ticking, hitbox
 // lifecycle, dodge roll, weapon skill, and auto-attack mode.
 //
-// Runs second in the update loop (after InputSystem, before movement).
+// Runs second in the update loop (after InputMappingSystem, before movement).
 // This ensures hitboxes are spawned before CollisionSystem runs so hits
 // register in the same frame the attack fires.
 //
@@ -35,6 +37,10 @@ float computeSwingCooldown(const Weapon& w, const Stats& s, const FormulaConfig&
 
 // Compute raw damage for one swing (before DEF and penalty are applied).
 float computeDamage(const Weapon& w, const Stats& s, const FormulaConfig& f);
+
+// Deduct stamina cost from an entity. Resets recovery delay.
+// If the deduction depletes stamina to 0, emplaces Staggered (exhaustion stumble).
+void deductStamina(entt::registry& reg, entt::entity entity, float cost, const FormulaConfig& f);
 
 class CombatSystem
 {

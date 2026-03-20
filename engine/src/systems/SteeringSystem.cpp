@@ -15,11 +15,11 @@ static constexpr float REPULSION_RADIUS = 20.0f;
 
 // How hard the repulsion deflects the velocity.
 // At REPULSION_STRENGTH=0.5 and zero proximity (weight=1.0), a lateral wall
-// deflects direction by arctan(0.5) ≈ 27°. At REPULSION_RADIUS distance
-// (weight→0) the force fades to zero.
+// deflects direction by arctan(0.5) ~ 27 degrees. At REPULSION_RADIUS distance
+// (weight->0) the force fades to zero.
 //
-// Must stay < 1.0: at REPULSION_STRENGTH ≥ 1.0 a wall behind or beside the
-// entity can push velocity past zero and flip its direction — causing the
+// Must stay < 1.0: at REPULSION_STRENGTH >= 1.0 a wall behind or beside the
+// entity can push velocity past zero and flip its direction -- causing the
 // entity to bounce back and forth rather than steer past the wall.
 // Increase for sharper avoidance; decrease for more gradual steering.
 static constexpr float REPULSION_STRENGTH = 0.5f;
@@ -27,23 +27,20 @@ static constexpr float REPULSION_STRENGTH = 0.5f;
 // Dot-product threshold for skipping a force contribution.
 //
 // Applied to both wall repulsion and crowd separation:
-//   dot = -1.0 → force exactly opposes velocity (entity dead ahead) → skip
-//   dot =  0.0 → force is perpendicular (entity to the side)        → apply
-//   dot = +1.0 → force aligns with velocity (entity behind)         → apply
+//   dot = -1.0 -> force exactly opposes velocity (entity dead ahead) -> skip
+//   dot =  0.0 -> force is perpendicular (entity to the side)        -> apply
+//   dot = +1.0 -> force aligns with velocity (entity behind)         -> apply
 //
-// -0.5 is cos(120°): forces are skipped only when the source is within a
-// 60° cone in front of the entity. Sources outside that cone — including
-// those diagonally ahead — still contribute lateral steering.
+// -0.5 is cos(120 degrees): forces are skipped only when the source is within a
+// 60 degree cone in front of the entity. Sources outside that cone -- including
+// those diagonally ahead -- still contribute lateral steering.
 //
 // For walls: prevents head-on repulsion that fights MovementSystem.
-// For enemies: prevents same-direction enemies from oscillating against
-// each other (e.g. two enemies converging east/west fight each other's
-// approach and bounce). CollisionSystem handles actual can't-overlap.
+// For entities: prevents same-direction entities from oscillating against
+// each other. CollisionSystem handles actual can't-overlap.
 static constexpr float SKIP_DOT_THRESHOLD = -0.5f;
 
 // Accumulate same-cell crowd repulsion into (crX, crY).
-// If the entity shares its 16-px cell with others, push outward using the
-// within-cell offset as the direction (each enemy gets a unique spread direction).
 static void applySameCellRepulsion(const FlowField& ff, int ec, int er, const Transform& transform,
                                    float velNormX, float velNormY, float& crX, float& crY)
 {
@@ -69,7 +66,7 @@ static void applySameCellRepulsion(const FlowField& ff, int ec, int er, const Tr
 }
 
 // Compute and apply crowd repulsion from the density grid to vel.
-// Samples a 5×5 cell window (cross-cell) + same-cell offset pass.
+// Samples a 5x5 cell window (cross-cell) + same-cell offset pass.
 static void applyCrowdRepulsion(const FlowField& ff, const Transform& transform, Velocity& vel,
                                 float origSpeed, float velNormX, float velNormY,
                                 float separation_strength)
@@ -112,7 +109,7 @@ static void applyCrowdRepulsion(const FlowField& ff, const Transform& transform,
     {
         vel.dx += (crX / crMag) * origSpeed * separation_strength;
         vel.dy += (crY / crMag) * origSpeed * separation_strength;
-        // Cap at origSpeed — crowd separation must not accelerate the entity.
+        // Cap at origSpeed -- crowd separation must not accelerate the entity.
         const float crNewMag = std::sqrt(vel.dx * vel.dx + vel.dy * vel.dy);
         if (crNewMag > origSpeed)
         {
@@ -126,7 +123,7 @@ void SteeringSystem::update(EntityManager& em)
 {
     ZoneScopedN("SteeringSystem");
     // Gather static solid colliders once per frame so the inner loop is a
-    // plain array sweep — no registry queries per entity.
+    // plain array sweep -- no registry queries per entity.
     auto allColliders = em.registry().view<Transform, Collider>();
     std::vector<entt::entity> statics;
     statics.reserve(64);
@@ -136,13 +133,10 @@ void SteeringSystem::update(EntityManager& em)
             statics.push_back(e);
     }
 
-    for (auto [entity, ai, transform, vel] :
-         em.registry().view<AIController, Transform, Velocity>().each())
+    for (auto [entity, nav, transform, vel] :
+         em.registry().view<NavAgent, Transform, Velocity>().each())
     {
-        if (ai.state == AIController::State::Idle)
-            continue;
-
-        // Only deflect moving entities.  If the entity is stopped there is no
+        // Only deflect moving entities. If the entity is stopped there is no
         // meaningful direction to preserve, and renormalizing to zero would
         // produce a divide-by-zero.
         const float origSpeed = std::sqrt(vel.dx * vel.dx + vel.dy * vel.dy);
@@ -179,7 +173,7 @@ void SteeringSystem::update(EntityManager& em)
             const float repDirX = dx / dist;
             const float repDirY = dy / dist;
 
-            // Skip walls that are roughly in front — their repulsion would
+            // Skip walls that are roughly in front -- their repulsion would
             // oppose forward momentum and cause bouncing. MovementSystem
             // already handles head-on wall contact via axis projection.
             const float velDotRep = velNormX * repDirX + velNormY * repDirY;
@@ -194,9 +188,6 @@ void SteeringSystem::update(EntityManager& em)
 
         if (repX != 0.0f || repY != 0.0f)
         {
-            // Scale repulsion by the entity's current speed (same units as velocity)
-            // and blend it into the velocity. This changes the direction without the
-            // caller needing to know the raw magnitude of the repulsion vector.
             vel.dx += repX * origSpeed * REPULSION_STRENGTH;
             vel.dy += repY * origSpeed * REPULSION_STRENGTH;
 
@@ -211,12 +202,8 @@ void SteeringSystem::update(EntityManager& em)
         }
 
         // --- Crowd repulsion -----------------------------------------------
-        // Read the enemy density grid (populated by FlowFieldSystem this frame)
-        // and steer away from cells with high occupancy.  See applyCrowdRepulsion
-        // for the full two-pass (cross-cell + same-cell) algorithm description.
-        // separation_strength = 0 → disabled; 0.6 = CO; 1.2 = warden.
-        if (ai.separation_strength > 0.0f)
+        if (nav.separation_strength > 0.0f)
             applyCrowdRepulsion(em.flow_field, transform, vel, origSpeed, velNormX, velNormY,
-                                ai.separation_strength);
+                                nav.separation_strength);
     }
 }

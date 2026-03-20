@@ -1,6 +1,8 @@
 #include "systems/DamageSystem.h"
 
 #include "ecs/Components.h"
+#include "ecs/GameComponents.h"
+#include "ecs/GameConfig.h"
 #include "systems/AudioSystem.h"
 #include "systems/CombatSystem.h" // computeDamage
 
@@ -40,6 +42,8 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
                         entt::entity attacker)
 {
     auto& reg = em.registry();
+    const FormulaConfig& f = reg.ctx().get<FormulaConfig>();
+    const SoundConfig& snd = reg.ctx().get<SoundConfig>();
 
     // I-frames: ignore if target is currently dodging.
     if (reg.all_of<Dodging>(target))
@@ -61,7 +65,7 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
                 if (attacker != entt::null)
                 {
                     reg.emplace_or_replace<Staggered>(attacker, Staggered{0.5f});
-                    AudioSystem::playSfx(em.sounds.parry.path, em.sounds.parry.volume);
+                    AudioSystem::playSfx(snd.parry.path, snd.parry.volume);
                     std::cout << "[DamageSystem] Parry! Attacker staggered.\n";
                 }
                 return false; // damage fully negated
@@ -83,7 +87,7 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
     float penalty = 1.0f;
     if (attacker != entt::null && reg.all_of<Weapon, Stats>(attacker))
     {
-        penalty = computePenalty(reg.get<Weapon>(attacker), reg.get<Stats>(attacker), em.formulas);
+        penalty = computePenalty(reg.get<Weapon>(attacker), reg.get<Stats>(attacker), f);
     }
     rawDamage *= penalty;
 
@@ -95,7 +99,7 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
             level = reg.get<Experience>(target).level;
 
         const auto& stats = reg.get<Stats>(target);
-        const float def = computeDef(stats, level, em.formulas);
+        const float def = computeDef(stats, level, f);
         rawDamage = std::max(1.0f, rawDamage * (1.0f - def / 100.0f));
     }
 
@@ -109,7 +113,7 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
     // Trigger red damage flash on the target.
     reg.emplace_or_replace<DamageFeedback>(target, DamageFeedback{0.2f});
 
-    AudioSystem::playSfx(em.sounds.hit.path, em.sounds.hit.volume);
+    AudioSystem::playSfx(snd.hit.path, snd.hit.volume);
     TracyMessageL("EntityDamaged");
     std::cout << "[DamageSystem] Entity took " << dmg << " damage (" << health.current << "/"
               << health.max << " hp)\n";
@@ -125,7 +129,7 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
             deathTimer = static_cast<float>(deathState.frames) * deathState.duration;
         }
         reg.emplace<Dead>(target, Dead{deathTimer});
-        AudioSystem::playSfx(em.sounds.death.path, em.sounds.death.volume);
+        AudioSystem::playSfx(snd.death.path, snd.death.volume);
         TracyMessageL("EntityDied");
         std::cout << "[DamageSystem] Entity died.\n";
     }
@@ -140,7 +144,7 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
         // Poise damage scales from attacker weapon weight; bare-fist baseline = 1.
         float poiseDmg = 1.0f;
         if (attacker != entt::null && reg.all_of<Weapon>(attacker))
-            poiseDmg = reg.get<Weapon>(attacker).weight * em.formulas.poise.weight_scale;
+            poiseDmg = reg.get<Weapon>(attacker).weight * f.poise.weight_scale;
 
         const std::string targetName =
             reg.all_of<Tag>(target) ? reg.get<Tag>(target).name : "entity";
@@ -150,7 +154,7 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
             // Zero poise (no armor): any hit staggers.
             if (!reg.all_of<Staggered>(target))
             {
-                reg.emplace<Staggered>(target, Staggered{em.formulas.poise.stagger_duration});
+                reg.emplace<Staggered>(target, Staggered{f.poise.stagger_duration});
                 std::cout << "[Poise] " << targetName << ": staggered (no poise)\n";
             }
         }
@@ -162,8 +166,7 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
             if (poise.current >= poise.max)
             {
                 poise.current = 0.0f;
-                reg.emplace_or_replace<Staggered>(target,
-                                                  Staggered{em.formulas.poise.stagger_duration});
+                reg.emplace_or_replace<Staggered>(target, Staggered{f.poise.stagger_duration});
                 std::cout << "[Poise] " << targetName << ": staggered (poise broken)\n";
             }
         }
@@ -178,14 +181,15 @@ void DamageSystem::update(EntityManager& em)
 {
     ZoneScopedN("DamageSystem");
 
-    if (em.wave_state.phase == WaveState::Phase::GameOver)
+    auto& waveState = em.registry().ctx().get<WaveState>();
+    if (waveState.phase == WaveState::Phase::GameOver)
         return;
 
     auto& reg = em.registry();
 
-    // Propagate Input.block_held → Shield.blocking for all shielded entities.
-    for (auto [entity, input, shield] : reg.view<Input, Shield>().each())
-        shield.blocking = input.block_held;
+    // Propagate PlayerActions.block_held → Shield.blocking for all shielded entities.
+    for (auto [entity, actions, shield] : reg.view<PlayerActions, Shield>().each())
+        shield.blocking = actions.block_held;
 
     // --- Path 1: Hitbox → Health entity -----------------------------------
     for (const auto& ev : em.collision_events)

@@ -1,26 +1,26 @@
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
+#include "ecs/GameComponents.h"
 #include "systems/MovementSystem.h"
+#include "test_helpers.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 // ---------------------------------------------------------------------------
 // MovementSystem tests — no window, no GPU, no SDL required.
-//
-// InputSystem is NOT unit-tested here because it reads SDL_GetKeyboardState,
-// which requires SDL to be initialised and hardware key state to be injected.
-// It is covered by running the game (integration test). MovementSystem owns
-// all the arithmetic, so that is where the unit tests live.
 // ---------------------------------------------------------------------------
 
 TEST_CASE("MovementSystem translates rightward input into position change", "[movement]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     auto e = em.create();
     em.registry().emplace<Transform>(e, Transform{100.0f, 100.0f});
     em.registry().emplace<Velocity>(e);
-    em.registry().emplace<Input>(e, Input{1.0f, 0.0f});
+    PlayerActions pa;
+    pa.move_x = 1.0f;
+    em.registry().emplace<PlayerActions>(e, pa);
 
     MovementSystem::update(em, 1.0); // 1 second at 150 px/s (base, no Stats)
 
@@ -32,10 +32,13 @@ TEST_CASE("MovementSystem translates rightward input into position change", "[mo
 TEST_CASE("MovementSystem translates leftward input into negative x movement", "[movement]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     auto e = em.create();
     em.registry().emplace<Transform>(e, Transform{300.0f, 100.0f});
     em.registry().emplace<Velocity>(e);
-    em.registry().emplace<Input>(e, Input{-1.0f, 0.0f});
+    PlayerActions pa;
+    pa.move_x = -1.0f;
+    em.registry().emplace<PlayerActions>(e, pa);
 
     MovementSystem::update(em, 0.5); // half a second at 150 px/s (base, no Stats)
 
@@ -47,10 +50,11 @@ TEST_CASE("MovementSystem translates leftward input into negative x movement", "
 TEST_CASE("MovementSystem does not move entity with zero input", "[movement]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     auto e = em.create();
     em.registry().emplace<Transform>(e, Transform{50.0f, 75.0f});
     em.registry().emplace<Velocity>(e);
-    em.registry().emplace<Input>(e); // move_x=0, move_y=0 by default
+    em.registry().emplace<PlayerActions>(e);
 
     MovementSystem::update(em, 1.0);
 
@@ -62,10 +66,14 @@ TEST_CASE("MovementSystem does not move entity with zero input", "[movement]")
 TEST_CASE("MovementSystem does not move entity when dt is zero", "[movement]")
 {
     EntityManager em;
+    emplaceGameConfigs(em);
     auto e = em.create();
     em.registry().emplace<Transform>(e, Transform{100.0f, 200.0f});
     em.registry().emplace<Velocity>(e);
-    em.registry().emplace<Input>(e, Input{1.0f, 1.0f});
+    PlayerActions pa;
+    pa.move_x = 1.0f;
+    pa.move_y = 1.0f;
+    em.registry().emplace<PlayerActions>(e, pa);
 
     MovementSystem::update(em, 0.0);
 
@@ -74,15 +82,15 @@ TEST_CASE("MovementSystem does not move entity when dt is zero", "[movement]")
     REQUIRE(t.y == Catch::Approx(200.0f));
 }
 
-TEST_CASE("MovementSystem integrates pre-existing velocity without an Input component",
-          "[movement]")
+TEST_CASE("MovementSystem integrates pre-existing velocity without PlayerActions", "[movement]")
 {
-    // Pass 2 (Velocity → Transform) must run for entities that have no Input —
-    // this is how AI-controlled entities will move once AI systems are added.
+    // Pass 2 (Velocity -> Transform) must run for entities that have no PlayerActions --
+    // this is how AI-controlled entities move.
     EntityManager em;
+    emplaceGameConfigs(em);
     auto e = em.create();
     em.registry().emplace<Transform>(e, Transform{0.0f, 0.0f});
-    em.registry().emplace<Velocity>(e, Velocity{50.0f, -30.0f}); // no Input
+    em.registry().emplace<Velocity>(e, Velocity{50.0f, -30.0f});
 
     MovementSystem::update(em, 2.0);
 
@@ -91,14 +99,17 @@ TEST_CASE("MovementSystem integrates pre-existing velocity without an Input comp
     REQUIRE(t.y == Catch::Approx(-60.0f)); // -30*2
 }
 
-TEST_CASE("MovementSystem entity with Input but no Velocity does not move", "[movement]")
+TEST_CASE("MovementSystem entity with PlayerActions but no Velocity does not move", "[movement]")
 {
-    // Input alone is not enough — the entity also needs a Velocity component.
-    // (Pass 1 requires both Input and Velocity; Pass 2 requires Velocity and Transform.)
+    // PlayerActions alone is not enough -- the entity also needs a Velocity component.
     EntityManager em;
+    emplaceGameConfigs(em);
     auto e = em.create();
     em.registry().emplace<Transform>(e, Transform{100.0f, 100.0f});
-    em.registry().emplace<Input>(e, Input{1.0f, 1.0f}); // no Velocity
+    PlayerActions pa;
+    pa.move_x = 1.0f;
+    pa.move_y = 1.0f;
+    em.registry().emplace<PlayerActions>(e, pa);
 
     MovementSystem::update(em, 1.0);
 

@@ -1,5 +1,7 @@
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
+#include "ecs/GameComponents.h"
+#include "ecs/GameConfig.h"
 #include "systems/CombatSystem.h"
 
 #include <catch2/catch_approx.hpp>
@@ -223,4 +225,161 @@ TEST_CASE("Dodge formula defaults", "[combat]")
     const FormulaConfig f;
     REQUIRE(f.dodge.duration == Catch::Approx(0.25f));
     REQUIRE(f.dodge.cooldown == Catch::Approx(0.35f));
+}
+
+// ---------------------------------------------------------------------------
+// Stamina pool tests
+// ---------------------------------------------------------------------------
+
+// Helper: create a Stamina component initialized like LevelingSystem does.
+static Stamina makeStamina(const FormulaConfig& f, int end)
+{
+    Stamina sta;
+    sta.max_stamina =
+        f.stamina.base + f.stamina.end_scale * std::log(static_cast<float>(end) + 1.0f);
+    sta.current = sta.max_stamina;
+    return sta;
+}
+
+// Helper: tick recovery matching CombatSystem logic.
+static void tickRecovery(Stamina& sta, const FormulaConfig& f, float dt)
+{
+    if (sta.recovery_timer > 0.0f)
+        sta.recovery_timer -= dt;
+    else if (sta.current < sta.max_stamina)
+        sta.current = std::min(sta.max_stamina, sta.current + f.stamina.recovery_rate * dt);
+}
+
+// Helper: deduct stamina cost (matching CombatSystem deduction pattern).
+static void deductStamina(Stamina& sta, const FormulaConfig& f, float cost)
+{
+    sta.current = std::max(0.0f, sta.current - cost);
+    sta.recovery_timer = f.stamina.recovery_delay;
+}
+
+TEST_CASE("Stamina defaults match expected values", "[combat]")
+{
+    const FormulaConfig f;
+    REQUIRE(f.stamina.swing_effort == Catch::Approx(3.0f));
+    REQUIRE(f.stamina.dodge_effort == Catch::Approx(5.0f));
+    REQUIRE(f.stamina.skill_effort == Catch::Approx(4.0f));
+    REQUIRE(f.stamina.sprint_effort == Catch::Approx(1.0f));
+    REQUIRE(f.stamina.base == Catch::Approx(5.0f));
+    REQUIRE(f.stamina.end_scale == Catch::Approx(3.0f));
+    REQUIRE(f.stamina.recovery_rate == Catch::Approx(2.5f));
+    REQUIRE(f.stamina.recovery_delay == Catch::Approx(1.0f));
+}
+
+TEST_CASE("Stamina — starts full at max", "[combat]")
+{
+    const FormulaConfig f;
+    auto sta = makeStamina(f, 5);
+    REQUIRE(sta.current == Catch::Approx(sta.max_stamina));
+    REQUIRE(sta.max_stamina > 0.0f);
+}
+
+TEST_CASE("Stamina — swing deducts weapon.weight * swing_effort", "[combat]")
+{
+    const FormulaConfig f;
+    auto sta = makeStamina(f, 5);
+    const float cost = 0.5f * f.stamina.swing_effort; // fist weight=0.5
+    deductStamina(sta, f, cost);
+    REQUIRE(sta.current == Catch::Approx(sta.max_stamina - cost));
+}
+
+TEST_CASE("Stamina — dodge costs more than swing", "[combat]")
+{
+    const FormulaConfig f;
+    const float weight = 2.0f;
+    auto staSwing = makeStamina(f, 5);
+    auto staDodge = makeStamina(f, 5);
+    deductStamina(staSwing, f, weight * f.stamina.swing_effort);
+    deductStamina(staDodge, f, weight * f.stamina.dodge_effort);
+    REQUIRE(staDodge.current < staSwing.current);
+}
+
+TEST_CASE("Stamina — heavier weapon costs more per action", "[combat]")
+{
+    const FormulaConfig f;
+    auto staLight = makeStamina(f, 5);
+    auto staHeavy = makeStamina(f, 5);
+    deductStamina(staLight, f, 1.0f * f.stamina.swing_effort);
+    deductStamina(staHeavy, f, 5.0f * f.stamina.swing_effort);
+    REQUIRE(staHeavy.current < staLight.current);
+}
+
+TEST_CASE("Stamina — higher END gives larger pool", "[combat]")
+{
+    const FormulaConfig f;
+    auto staLow = makeStamina(f, 3);
+    auto staHigh = makeStamina(f, 20);
+    REQUIRE(staHigh.max_stamina > staLow.max_stamina);
+}
+
+TEST_CASE("Stamina — clamped to zero (never negative)", "[combat]")
+{
+    const FormulaConfig f;
+    auto sta = makeStamina(f, 1);
+    deductStamina(sta, f, 999.0f); // way more than pool
+    REQUIRE(sta.current == Catch::Approx(0.0f));
+}
+
+TEST_CASE("Stamina — no recovery during delay period", "[combat]")
+{
+    const FormulaConfig f;
+    auto sta = makeStamina(f, 5);
+    deductStamina(sta, f, 3.0f);
+    const float afterDeduct = sta.current;
+
+    // Tick 10 frames at 16ms each = 160ms (well within 600ms delay).
+    for (int i = 0; i < 10; ++i)
+        tickRecovery(sta, f, 0.016f);
+
+    REQUIRE(sta.current == Catch::Approx(afterDeduct));
+}
+
+TEST_CASE("Stamina — recovers after delay expires", "[combat]")
+{
+    const FormulaConfig f;
+    auto sta = makeStamina(f, 5);
+    deductStamina(sta, f, 3.0f);
+    const float afterDeduct = sta.current;
+
+    // Burn through the full delay.
+    tickRecovery(sta, f, f.stamina.recovery_delay + 0.001f);
+    REQUIRE(sta.current == Catch::Approx(afterDeduct)); // delay just expired
+
+    // Now recover for 0.5s: recovery_rate=2.5/s => +1.25
+    tickRecovery(sta, f, 0.5f);
+    REQUIRE(sta.current == Catch::Approx(afterDeduct + 1.25f));
+}
+
+TEST_CASE("Stamina — recovery caps at max", "[combat]")
+{
+    const FormulaConfig f;
+    auto sta = makeStamina(f, 5);
+    deductStamina(sta, f, 1.0f);
+    // Burn delay, then recover way past max.
+    tickRecovery(sta, f, f.stamina.recovery_delay + 0.001f);
+    tickRecovery(sta, f, 100.0f);
+    REQUIRE(sta.current == Catch::Approx(sta.max_stamina));
+}
+
+TEST_CASE("Stamina — new deduction resets recovery delay", "[combat]")
+{
+    const FormulaConfig f;
+    auto sta = makeStamina(f, 5);
+    deductStamina(sta, f, 1.0f);
+
+    // Almost through delay.
+    tickRecovery(sta, f, f.stamina.recovery_delay - 0.05f);
+    // Deduct again — resets delay.
+    deductStamina(sta, f, 1.0f);
+    REQUIRE(sta.recovery_timer == Catch::Approx(f.stamina.recovery_delay));
+
+    // Tick same partial time — should NOT recover yet.
+    tickRecovery(sta, f, f.stamina.recovery_delay - 0.05f);
+    const float snapshot = sta.current;
+    tickRecovery(sta, f, 0.01f); // still in delay
+    REQUIRE(sta.current == Catch::Approx(snapshot));
 }

@@ -33,7 +33,7 @@ if(ENABLE_SANITIZERS)
     add_link_options(-fsanitize=address,undefined)
 endif()
 
+enable_testing()
+
 add_subdirectory(engine)
 add_subdirectory(game)
-
-enable_testing()

@@ -183,15 +183,18 @@ for i in range(walk_n):
     walk_samples.append(tap + grit)
 write_wav("footstep_walk.wav", walk_samples)
 
-# footstep_run.wav — harder tap (short, louder, slightly lower)
+# footstep_run.wav — quick, higher-pitched tap (thinner version of walk)
 random.seed(44)
-run_n = int(SAMPLE_RATE * 0.05)
+run_n = int(SAMPLE_RATE * 0.035)
 run_samples = []
 for i in range(run_n):
     t = i / SAMPLE_RATE
     env = 1.0 - (i / run_n)
-    tap = math.sin(2 * math.pi * 160 * t) * 0.25 * (env ** 2)
-    grit = (random.random() * 2 - 1) * 0.15 * (env ** 2)
+    # Higher fundamental (320 Hz) + light overtone for brightness.
+    tap = math.sin(2 * math.pi * 320 * t) * 0.18 * (env ** 2)
+    tap += math.sin(2 * math.pi * 640 * t) * 0.06 * (env ** 3)
+    # Minimal grit for a cleaner, thinner feel.
+    grit = (random.random() * 2 - 1) * 0.05 * (env ** 3)
     run_samples.append(tap + grit)
 write_wav("footstep_run.wav", run_samples)
 

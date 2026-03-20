@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ecs/EntityManager.h"
+#include "ecs/GameConfig.h"
 
 class WaveSystem
 {

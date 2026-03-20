@@ -86,17 +86,47 @@ Under consideration — no final decision yet.
 
 ---
 
+## Progression Model
+
+Two layers coexist. The meta layer is primary — it defines who your character is.
+
+### Meta progression (persistent RPG) — DECIDED
+Each run starts at the player's current meta-progression stats. The character carries power
+forward across runs. The world scales to match — a veteran character faces harder enemies
+than a fresh one. Meta progression is the true RPG layer; runs are the gameplay unit.
+
+**Death penalty:** Minimal or none. VS philosophy — losing a run should never feel like
+wasted time. Any death consequence would be very minor. Exact mechanic TBD.
+
+### In-run progression (roguelike) — MECHANICS UNDECIDED
+How the player gains power during a run is not locked. Options under consideration:
+- XP → level up → pick a stat (current placeholder implementation)
+- Rare item drops that raise stats or Essence mid-run
+- A hybrid where how you play (which stats you use) influences meta-progression outcomes
+- Some combination of the above
+
+The interesting design space: in-run behavior feeding back into meta character development
+in a meaningful way. Full design exploration tracked separately (see GitHub issue TBD).
+
+### Essence — CONCEPT CONFIRMED, MECHANICS TBD
+Per-stat meta resource (str/dex/end/lck fields, 0–100+ scale). Earning/spending mechanics,
+caps, and relationship to in-run leveling are all open. The `Essence` component exists in
+code as a placeholder; how it's modified is not yet designed.
+
+---
+
 ## Character Creation
 
 Happens once at the start of a fresh save. Should take under two minutes.
 
 - **Name** — purely flavor
-- **Stat allocation** — fixed pool distributed across STR, DEX, END, LCK before the first run.
-  This is the primary build decision.
 - **Starting perk** — chosen from a list. Sets tonal build identity.
 - **Appearance** — locked after creation. A meta store item allows redesign.
 - **Starting armor** — the clothes on your character's back. No special gear. Everything else
   is found in runs.
+
+(No stat allocation at creation — stats start at 1/1/1/1 always. Build identity comes from
+perk choice and what you invest Essence into over time.)
 
 ---
 
@@ -256,11 +286,25 @@ All constants in `formulas.json` under `"swing"`.
 - Heavy STR weapon + high DEX → painfully slow — fighting the physics
 - No hard gates: wrong-stat builds feel clunky, not broken
 
-### No Stamina Bar
-Stamina replaced by per-system mechanics:
-- **Attacks** — limited by animation lock (commitment)
-- **Dodge rolls** — flat cooldown per roll
-- **Shields** — guard break: absorbing too many consecutive blocked hits staggers the player. Punish moment, not gradual drain.
+### Stamina (Elden Ring style)
+Single stamina pool, drained by combat actions at rates proportional to weapon weight.
+Heavier weapons cost more per action. Higher END stat increases the pool via `base + end_scale * ln(END + 1)`.
+
+| Action | Cost formula | Fist (w=0.5) |
+|--------|-------------|--------------|
+| Swing | weight * 3.0 | 1.5 |
+| Dodge | weight * 5.0 | 2.5 |
+| Skill | weight * 4.0 | 2.0 |
+| Sprint | weight * 1.0 | 0.5/s |
+
+Recovery: 2.5/s after 1.0s delay since last deduction. Recovery delay is longer than any
+weapon cooldown, so rapid attacks get zero regen. At END=1, the player has ~7 stamina --
+enough for 4 fist swings or a swing-dodge-swing combo before running dry.
+
+Hitting 0 stamina = 0.6s exhaustion stagger (Staggered component). Below 40% stamina,
+visual desaturation + heartbeat audio kick in as a warning.
+
+**Shields** — guard break: absorbing too many consecutive blocked hits staggers the player. Punish moment, not gradual drain.
 
 ### Weapon Skills (Ashes of War equivalent)
 Every weapon can have a special attack — a unique skill attached to it, exactly like Elden Ring's Ashes of War. Triggered via a dedicated input (L2/LT on controller, separate key on keyboard).
@@ -524,6 +568,59 @@ Names are placeholders — TBD with Alex.
 - Higher ranks: rare infernal materials → higher upgrade tier recipes
 - All drops are materials/parts — never whole weapons or armor
 
+### AI Abilities (Intelligence Scaling)
+Enemy AI behaviors unlock based on level thresholds or are innate to the enemy type. Think
+Pokemon move-learning: some enemies hatch knowing how to dodge, others earn it at a certain
+level. The player never sees a tooltip — they just notice the enemy is harder to fight.
+
+**Two paths to an ability:**
+- **Innate** — the enemy type has it from spawn (e.g. a mini-boss always parries)
+- **Level-gated** — earned at a threshold (e.g. skeleton learns dodge at level 3)
+
+**Scaling with mastery:** Abilities are not binary. They carry data (cooldown, reaction time,
+success chance) that improves with level. The scaling input is levels above the unlock
+threshold — or full level for innate abilities. A skeleton that unlocked dodge at level 3
+and is now level 7 has 4 levels of mastery: faster reaction, shorter cooldown. An innate
+dodger at level 7 has 7 levels of mastery.
+
+**Config shape (per entity JSON, `ai_abilities` block):**
+```json
+"ai_abilities": {
+  "dodge": {
+    "level": 3,
+    "base_cooldown": 2.0,
+    "cooldown_per_level": -0.15,
+    "base_reaction": 0.5,
+    "reaction_per_level": -0.03
+  },
+  "parry": {
+    "level": 5,
+    "base_window": 0.2,
+    "window_per_level": 0.01
+  },
+  "flank": {
+    "innate": true,
+    "base_angle": 45,
+    "angle_per_level": 2
+  }
+}
+```
+
+**ECS implementation:** Each ability maps to a component + system. `DodgeSystem` only
+processes entities with `CanDodge`. When an enemy spawns at or levels past a threshold, the
+ability component is emplaced with data computed from the mastery level. No monolithic AI
+function — cost is proportional to how many enemies carry each ability.
+
+**Design lever:** A level 10 skeleton that unlocked dodge at level 3 (7 levels of mastery)
+feels different from a mini-boss with innate dodge at level 10 (10 levels of mastery). Same
+ability, different feel. Enemy personality emerges from config alone.
+
+**Candidate abilities (initial set, expandable):**
+- **Dodge** — evade incoming attacks. Scales: reaction time, cooldown, distance
+- **Parry** — deflect and counter. Scales: parry window duration, counter damage
+- **Flank** — approach from the side/rear. Scales: flanking angle, commitment
+- More TBD as enemy types are designed
+
 ### Wave Structure
 Waves are auto-generated from rules in `config/waves.json`. Player starts each wave manually
 (R key during rest phase). Enemy count, spawn interval, burst size, and composition all scale
@@ -597,6 +694,12 @@ a cursed altar, a fellow damned NPC who patches you up. Alex decides.
   anchor. Alex decides the execution.
 
 ### Procedural Generation Architecture
+
+> **Current status:** The procgen system is temporary scaffolding. Random room placement +
+> corridor carving serves as a testbed for spawning, AI, and combat. Hand-authored maps
+> will replace it. Don't over-invest in the procgen itself — keep changes cheap and
+> easy to rip out.
+
 **Core principle: separate structure (owned by engine) from visuals (supplied by modders).**
 The engine enforces rules — how spaces connect, wall placement, room flow. Modders supply
 sprites mapped to tile types.
@@ -780,23 +883,25 @@ prison-break-game/
   tools/                   Engine dev tools (Tracy analyzer)
 ```
 
-**Engine (8 systems):** InputSystem, RenderSystem, CameraSystem, CollisionSystem,
-FlowFieldSystem, AnimationSystem, AudioSystem, TileMapRenderer.
+**Engine (8 systems):** RenderSystem, CameraSystem, CollisionSystem, AnimationSystem,
+AudioSystem, TileMapRenderer, FlowFieldSystem, SteeringSystem.
 
-**Game (12 systems):** WaveSystem, CombatSystem, DamageSystem, DeathSystem,
-LevelingSystem, PickupSystem, RestSpotSystem, AggroSystem, ChaseSystem,
-SteeringSystem, MovementSystem, SpawnerSystem.
+**Game (15 systems):** WaveSystem, CombatSystem, DamageSystem, DeathSystem,
+LevelingSystem, PickupSystem, RestSpotSystem, ParticleSystem, AggroSystem, ChaseSystem,
+MovementSystem, SpawnerSystem, TintSystem, InputMappingSystem, AnimStateSystem.
 
 **Boundary rule:** "Could this system work unchanged in a completely different 2D game?"
 Yes = engine. No = game. The engine knows nothing about the game — it provides a
-callback slot (`GameUpdateFn`) that the game registers via `engine.setGameUpdate()`.
+callback slots: `GameUpdateFn` (fixed-step tick) via `engine.setGameUpdate()` and
+`PerFrameFn` (per-frame, before ticks) via `engine.setPerFrameUpdate()`.
 
 ```
 Engine::run()
+  per-frame callback              game handles mouse-facing, per-frame input
   fixed-step loop
-    Engine::processEvents()        engine handles SDL input
+    Engine::processEvents()        engine handles SDL events
     Engine::update(dt)
-      game_update(engine, em, dt)  GAME code runs here (12 systems)
+      game_update(engine, em, dt)  GAME code runs here (15 systems)
       body-part position sync      engine generic feature
     Engine::render()
       AnimationSystem::update()

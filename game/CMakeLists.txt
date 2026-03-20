@@ -1,6 +1,9 @@
 # Game-specific logic -- static library linked by both the game exe and tests.
 add_library(game-systems STATIC
     src/GameLoop.cpp
+    src/ConfigLoader.cpp
+    src/systems/InputMappingSystem.cpp
+    src/systems/AnimStateSystem.cpp
     src/systems/WaveSystem.cpp
     src/systems/CombatSystem.cpp
     src/systems/DamageSystem.cpp
@@ -10,10 +13,11 @@ add_library(game-systems STATIC
     src/systems/RestSpotSystem.cpp
     src/systems/AggroSystem.cpp
     src/systems/ChaseSystem.cpp
-    src/systems/SteeringSystem.cpp
     src/systems/MovementSystem.cpp
     src/systems/ParticleSystem.cpp
     src/systems/SpawnerSystem.cpp
+    src/systems/TintSystem.cpp
+    src/SpawnUtils.cpp
 )
 
 target_include_directories(game-systems PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
