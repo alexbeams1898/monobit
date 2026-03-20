@@ -15,6 +15,7 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/Dav1dde/glad.git
     GIT_TAG        v0.1.36
     GIT_SHALLOW    TRUE
+    SYSTEM
 )
 set(GLAD_PROFILE   "core" CACHE STRING "" FORCE)
 set(GLAD_API       "gl=3.3" CACHE STRING "" FORCE)
@@ -35,6 +36,7 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
     GIT_TAG        release-2.30.9
     GIT_SHALLOW    TRUE
+    SYSTEM
 )
 set(SDL_SHARED  OFF CACHE BOOL "" FORCE)
 set(SDL_STATIC  ON  CACHE BOOL "" FORCE)
@@ -51,6 +53,7 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/skypjack/entt.git
     GIT_TAG        v3.14.0
     GIT_SHALLOW    TRUE
+    SYSTEM
 )
 FetchContent_MakeAvailable(entt)
 
@@ -62,6 +65,7 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/nlohmann/json.git
     GIT_TAG        v3.11.3
     GIT_SHALLOW    TRUE
+    SYSTEM
 )
 set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(nlohmann_json)
@@ -74,6 +78,7 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/catchorg/Catch2.git
     GIT_TAG        v3.7.1
     GIT_SHALLOW    TRUE
+    SYSTEM
 )
 set(CATCH_INSTALL_DOCS OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(Catch2)
@@ -89,6 +94,7 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/wolfpld/tracy.git
     GIT_TAG        v0.11.1
     GIT_SHALLOW    TRUE
+    SYSTEM
 )
 FetchContent_MakeAvailable(tracy)
 
@@ -102,6 +108,7 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/mackron/miniaudio.git
     GIT_TAG        0.11.21
     GIT_SHALLOW    TRUE
+    SYSTEM
 )
 FetchContent_MakeAvailable(miniaudio)
 

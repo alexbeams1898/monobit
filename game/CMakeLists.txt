@@ -65,10 +65,5 @@ add_executable(game-tests
 )
 target_link_libraries(game-tests PRIVATE game-systems Catch2::Catch2WithMain)
 
-get_target_property(_CATCH2_INCLUDES Catch2::Catch2 INTERFACE_INCLUDE_DIRECTORIES)
-if(_CATCH2_INCLUDES)
-    target_include_directories(game-tests SYSTEM PRIVATE ${_CATCH2_INCLUDES})
-endif()
-
 add_test(NAME game-tests COMMAND game-tests)
 set_tests_properties(game-tests PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/game)
