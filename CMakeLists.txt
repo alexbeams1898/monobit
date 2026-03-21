@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.25)
 project(PrisonBreakGame VERSION 0.1.0 LANGUAGES CXX)
 
 # GLAD v0.1.36 declares cmake_minimum_required(VERSION 2.8), which CMake 4.x
@@ -33,8 +33,7 @@ if(ENABLE_SANITIZERS)
     add_link_options(-fsanitize=address,undefined)
 endif()
 
+enable_testing()
+
 add_subdirectory(engine)
 add_subdirectory(game)
-
-enable_testing()
-add_subdirectory(tests)

@@ -8,7 +8,7 @@
 #include <random>
 #include <sstream>
 
-// POSIX directory iteration — avoids <filesystem>/<codecvt> which is broken
+// POSIX directory iteration -- avoids <filesystem>/<codecvt> which is broken
 // when MSYS2 ucrt64 headers are mixed with the mingw64 linker runtime.
 // dirent.h is available on Linux, macOS, and MSYS2/MinGW.
 #include <dirent.h>
@@ -17,19 +17,14 @@
 using json = nlohmann::json;
 
 // ---------------------------------------------------------------------------
-// parseRoom — converts an ASCII template string into a Room struct.
+// parseRoom -- converts an ASCII template string into a Room struct.
 //
 // Character mapping:
-//   '.' → Floor     (tile_id=0, walkable)
-//   'W' → Wall      (tile_id=1, not walkable)
-//   'X' → Obstacle  (tile_id=3, not walkable)
-//   'E' → Floor tile + SpawnPoint{type='E'}  (enemy)
-//   'C' → Floor tile + SpawnPoint{type='C'}  (chest)
-//   'R' → Floor tile + SpawnPoint{type='R'}  (rest spot)
-// Note: 'D' (DoorFrame) is no longer used — corridors punch through solid walls,
-//       so room templates don't need to pre-mark door positions.
-//   'R' → Floor tile + SpawnPoint{type='R'}  (rest spot)
-//   ' '  (space) treated as Floor (blank filler in narrow templates)
+//   '.' / ' ' -> WALKABLE_ID (walkable)
+//   'W'       -> SOLID_ID  (solid)
+//   'X'       -> tile_id 3 (solid)
+//   Other letters -> WALKABLE_ID + SpawnPoint with that character as type
+//                    (game interprets the marker meaning)
 // ---------------------------------------------------------------------------
 Room TileMapLoader::parseRoom(const std::string& text, const std::string& name)
 {
@@ -56,23 +51,22 @@ Room TileMapLoader::parseRoom(const std::string& text, const std::string& name)
         else if (col_count != room.width)
         {
             std::cout << "[TileMapLoader] Warning: room '" << name << "' row " << row << " width "
-                      << col_count << " != expected " << room.width << " — padding/truncating\n";
+                      << col_count << " != expected " << room.width << " -- padding/truncating\n";
         }
 
         for (int col = 0; col < room.width; ++col)
         {
             const char ch = (col < col_count) ? line[static_cast<std::size_t>(col)] : '.';
-            TileType type = TileType::Floor;
+            int tile_id = TileMap::WALKABLE_ID;
             char spawn = 0;
 
             switch (ch)
             {
             case 'W':
-                type = TileType::Wall;
+                tile_id = TileMap::SOLID_ID;
                 break;
-
             case 'X':
-                type = TileType::Obstacle;
+                tile_id = 3; // solid non-wall tile
                 break;
             case 'E':
                 spawn = 'E';
@@ -84,10 +78,10 @@ Room TileMapLoader::parseRoom(const std::string& text, const std::string& name)
                 spawn = 'R';
                 break;
             default:
-                break; // '.' and ' ' → Floor
+                break; // '.' and ' ' -> walkable tile
             }
 
-            room.tiles.push_back(type);
+            room.tiles.push_back(tile_id);
             if (spawn != 0)
                 room.spawn_points.push_back({col, row, spawn});
         }
@@ -99,23 +93,26 @@ Room TileMapLoader::parseRoom(const std::string& text, const std::string& name)
 }
 
 // ---------------------------------------------------------------------------
-// loadConfig — parses config/tilemap.json.
+// loadConfig -- parses config/tilemap.json.
 // Falls back to hardcoded defaults if the file is missing.
 // ---------------------------------------------------------------------------
 TileConfig TileMapLoader::loadConfig(const std::string& path)
 {
     TileConfig cfg;
 
-    // Sensible defaults so the game works even without the config file.
-    cfg.tiles[0] = {"assets/tiles/floor.png", true};
-    cfg.tiles[1] = {"assets/tiles/wall.png", false};
-    cfg.tiles[2] = {"assets/tiles/door_frame.png", true};
-    cfg.tiles[3] = {"assets/tiles/obstacle.png", false};
+    // Minimal structural defaults -- walkable/solid distinction only.
+    // Game's tilemap.json config provides sprite paths, visuals, and full tile set.
+    cfg.tiles[TileMap::WALKABLE_ID] = {"", true};
+    cfg.tiles[TileMap::SOLID_ID] = {"", false};
+
+    // Fallback flat colors (dark grey for walkable, darker for solid).
+    cfg.tile_visuals[TileMap::WALKABLE_ID] = {0, 0, 0.20f, 0.20f, 0.20f};
+    cfg.tile_visuals[TileMap::SOLID_ID] = {0, 0, 0.10f, 0.10f, 0.10f};
 
     std::ifstream f(path);
     if (!f.is_open())
     {
-        std::cout << "[TileMapLoader] Cannot open config: " << path << " — using defaults\n";
+        std::cout << "[TileMapLoader] Cannot open config: " << path << " -- using defaults\n";
         return cfg;
     }
 
@@ -132,38 +129,36 @@ TileConfig TileMapLoader::loadConfig(const std::string& path)
                                        cfg.tiles.count(tile_id) ? cfg.tiles[tile_id].sprite : "");
                 e.walkable = entry.value("walkable", true);
                 cfg.tiles[tile_id] = e;
+
+                // Read visual overrides from the same entry.
+                if (entry.contains("uv_col") || entry.contains("uv_row") || entry.contains("r"))
+                {
+                    TileConfig::TileVisual vis = cfg.tile_visuals.count(tile_id)
+                                                     ? cfg.tile_visuals[tile_id]
+                                                     : TileConfig::TileVisual{};
+                    vis.uv_col = entry.value("uv_col", vis.uv_col);
+                    vis.uv_row = entry.value("uv_row", vis.uv_row);
+                    vis.r = entry.value("r", vis.r);
+                    vis.g = entry.value("g", vis.g);
+                    vis.b = entry.value("b", vis.b);
+                    cfg.tile_visuals[tile_id] = vis;
+                }
             }
         }
 
         cfg.tileset_path = j.value("tileset", std::string{});
-
-        if (j.contains("tile_uv"))
-        {
-            auto readUV = [&](const char* key, TileConfig::TileUV& uv)
-            {
-                if (j["tile_uv"].contains(key))
-                {
-                    uv.col = j["tile_uv"][key].value("col", uv.col);
-                    uv.row = j["tile_uv"][key].value("row", uv.row);
-                }
-            };
-            readUV("floor", cfg.floor_uv);
-            readUV("wall", cfg.wall_uv);
-            readUV("door", cfg.door_uv);
-            readUV("obstacle", cfg.obstacle_uv);
-        }
     }
     catch (const std::exception& ex)
     {
         std::cout << "[TileMapLoader] Parse error in " << path << ": " << ex.what()
-                  << " — using defaults\n";
+                  << " -- using defaults\n";
     }
 
     return cfg;
 }
 
 // ---------------------------------------------------------------------------
-// loadRooms — scans 'dir' for *.room files and parses each one.
+// loadRooms -- scans 'dir' for *.room files and parses each one.
 // ---------------------------------------------------------------------------
 std::vector<Room> TileMapLoader::loadRooms(const std::string& dir)
 {
@@ -187,22 +182,22 @@ std::vector<Room> TileMapLoader::loadRooms(const std::string& dir)
     struct dirent* de;
     while ((de = readdir(dp)) != nullptr)
     {
-        const std::string name = de->d_name;
+        const std::string fileName = de->d_name;
         // Skip entries that don't end in ".room".
-        if (name.size() < 5 || name.compare(name.size() - 5, 5, ".room") != 0)
+        if (fileName.size() < 5 || fileName.compare(fileName.size() - 5, 5, ".room") != 0)
             continue;
 
-        const std::string path = dir + "/" + name;
-        std::ifstream f(path);
-        if (!f.is_open())
+        const std::string filePath = dir + "/" + fileName;
+        std::ifstream roomFile(filePath);
+        if (!roomFile.is_open())
         {
-            std::cout << "[TileMapLoader] Cannot open room: " << path << "\n";
+            std::cout << "[TileMapLoader] Cannot open room: " << filePath << "\n";
             continue;
         }
 
-        const std::string text((std::istreambuf_iterator<char>(f)),
+        const std::string text((std::istreambuf_iterator<char>(roomFile)),
                                std::istreambuf_iterator<char>());
-        Room room = parseRoom(text, name);
+        Room room = parseRoom(text, fileName);
 
         if (room.width < 3 || room.height < 3)
         {
@@ -220,7 +215,7 @@ std::vector<Room> TileMapLoader::loadRooms(const std::string& dir)
 }
 
 // ---------------------------------------------------------------------------
-// canPlace — returns true if the room can be stamped at (col, row) without
+// canPlace -- returns true if the room can be stamped at (col, row) without
 // overlapping any existing non-Wall tiles (+ a 2-tile border margin).
 // ---------------------------------------------------------------------------
 bool TileMapLoader::canPlace(const TileMap& map, const Room& room, int col, int row)
@@ -240,7 +235,7 @@ bool TileMapLoader::canPlace(const TileMap& map, const Room& room, int col, int 
     {
         for (int c = c0; c < c1; ++c)
         {
-            if (map.at(c, r).type != TileType::Wall)
+            if (map.at(c, r).tile_id != TileMap::SOLID_ID)
                 return false;
         }
     }
@@ -248,7 +243,7 @@ bool TileMapLoader::canPlace(const TileMap& map, const Room& room, int col, int 
 }
 
 // ---------------------------------------------------------------------------
-// stampRoom — copies room tiles into the TileMap at (origin_col, origin_row).
+// stampRoom -- copies room tiles into the TileMap at (origin_col, origin_row).
 // ---------------------------------------------------------------------------
 void TileMapLoader::stampRoom(TileMap& map, const Room& room, int origin_col, int origin_row)
 {
@@ -256,33 +251,25 @@ void TileMapLoader::stampRoom(TileMap& map, const Room& room, int origin_col, in
     {
         for (int c = 0; c < room.width; ++c)
         {
-            const TileType type =
+            const int id =
                 room.tiles[static_cast<std::size_t>(r) * static_cast<std::size_t>(room.width) +
                            static_cast<std::size_t>(c)];
             auto& tile = map.at(origin_col + c, origin_row + r);
-            tile.type = type;
-            tile.walkable = (type == TileType::Floor);
-            tile.tile_id = static_cast<int>(type);
+            tile.tile_id = id;
+            tile.walkable = (id == TileMap::WALKABLE_ID);
         }
     }
 }
 
 // ---------------------------------------------------------------------------
-// placeRooms — randomly places rooms on the map.
-//
-// Algorithm (v0 — random placement):
-//   For each of 'count' room slots, pick a random template from the pool and
-//   try up to MAX_TRIES random positions. If a valid position is found, stamp
-//   the room and record its center.
-//
-// TODO: upgrade to BSP partitioning (issue #XX)
+// placeRooms -- randomly places rooms on the map.
 // ---------------------------------------------------------------------------
 void TileMapLoader::placeRooms(TileMap& map, const std::vector<Room>& rooms, std::mt19937& rng,
                                int count, std::vector<std::pair<int, int>>& centers)
 {
     if (rooms.empty())
     {
-        std::cout << "[TileMapLoader] No room templates — map will be all walls\n";
+        std::cout << "[TileMapLoader] No room templates -- map will be all solid\n";
         return;
     }
 
@@ -293,15 +280,15 @@ void TileMapLoader::placeRooms(TileMap& map, const std::vector<Room>& rooms, std
     // Slot 1 = one rest room (guaranteed if templates exist).
     // Slots 2..N = random normal rooms.
     std::vector<const Room*> normal_rooms, rest_rooms;
-    for (const auto& r : rooms)
+    for (const auto& roomRef : rooms)
     {
-        if (r.name.find("rest") != std::string::npos)
-            rest_rooms.push_back(&r);
+        if (roomRef.name.find("rest") != std::string::npos)
+            rest_rooms.push_back(&roomRef);
         else
-            normal_rooms.push_back(&r);
+            normal_rooms.push_back(&roomRef);
     }
     if (normal_rooms.empty())
-        normal_rooms = rest_rooms; // graceful fallback — use everything
+        normal_rooms = rest_rooms; // graceful fallback -- use everything
 
     const Room& start_room = **std::max_element(
         normal_rooms.begin(), normal_rooms.end(),
@@ -330,33 +317,35 @@ void TileMapLoader::placeRooms(TileMap& map, const std::vector<Room>& rooms, std
             if (col_dist.a() > col_dist.b() || row_dist.a() > row_dist.b())
                 break; // room is too large for the map
 
-            const int col = col_dist(rng);
-            const int row = row_dist(rng);
+            const int placedCol = col_dist(rng);
+            const int placedRow = row_dist(rng);
 
-            if (canPlace(map, room, col, row))
+            if (canPlace(map, room, placedCol, placedRow))
             {
-                stampRoom(map, room, col, row);
+                stampRoom(map, room, placedCol, placedRow);
 
                 // Record world-space center for corridor connections.
-                const int cx = col + room.width / 2;
-                const int cy = row + room.height / 2;
+                const int cx = placedCol + room.width / 2;
+                const int cy = placedRow + room.height / 2;
                 centers.push_back({cx, cy});
 
+                // Store room rect for runtime queries (e.g. spawn scoping).
+                map.placed_rooms.push_back({placedCol, placedRow, room.width, room.height});
+
                 // Collect spawn points as world-space positions.
-                // Spawn char tiles were stamped as Floor; record their world center.
                 for (const auto& sp : room.spawn_points)
                 {
                     map.spawn_points.push_back(
-                        {static_cast<float>((col + sp.col) * TileMap::TILE_SIZE) +
+                        {static_cast<float>((placedCol + sp.col) * TileMap::TILE_SIZE) +
                              TileMap::TILE_SIZE * 0.5f,
-                         static_cast<float>((row + sp.row) * TileMap::TILE_SIZE) +
+                         static_cast<float>((placedRow + sp.row) * TileMap::TILE_SIZE) +
                              TileMap::TILE_SIZE * 0.5f,
                          sp.type});
                 }
 
                 placed = true;
-                std::cout << "[TileMapLoader] Placed room '" << room.name << "' at (" << col << ","
-                          << row << ")\n";
+                std::cout << "[TileMapLoader] Placed room '" << room.name << "' at (" << placedCol
+                          << "," << placedRow << ")\n";
                 break;
             }
         }
@@ -368,11 +357,7 @@ void TileMapLoader::placeRooms(TileMap& map, const std::vector<Room>& rooms, std
 }
 
 // ---------------------------------------------------------------------------
-// connectRooms — connects adjacent room centers with 3-tile-wide L-corridors.
-//
-// Rooms are sorted by center X so corridors tend to run left-to-right.
-// Each room connects to its right neighbor: horizontal run first, then vertical.
-// Corridor width = 3 tiles (≥48 px) — required by FlowField clearance rules.
+// connectRooms -- connects adjacent room centers with 3-tile-wide L-corridors.
 // ---------------------------------------------------------------------------
 void TileMapLoader::connectRooms(TileMap& map, const std::vector<std::pair<int, int>>& centers)
 {
@@ -397,11 +382,10 @@ void TileMapLoader::connectRooms(TileMap& map, const std::vector<std::pair<int, 
                 if (!map.in_bounds(c, r))
                     continue;
                 auto& tile = map.at(c, r);
-                if (tile.type == TileType::Wall)
+                if (tile.tile_id == TileMap::SOLID_ID)
                 {
-                    tile.type = TileType::Floor;
+                    tile.tile_id = TileMap::WALKABLE_ID;
                     tile.walkable = true;
-                    tile.tile_id = 0;
                 }
             }
         }
@@ -419,11 +403,10 @@ void TileMapLoader::connectRooms(TileMap& map, const std::vector<std::pair<int, 
                 if (!map.in_bounds(c, r))
                     continue;
                 auto& tile = map.at(c, r);
-                if (tile.type == TileType::Wall)
+                if (tile.tile_id == TileMap::SOLID_ID)
                 {
-                    tile.type = TileType::Floor;
+                    tile.tile_id = TileMap::WALKABLE_ID;
                     tile.walkable = true;
-                    tile.tile_id = 0;
                 }
             }
         }
@@ -440,7 +423,7 @@ void TileMapLoader::connectRooms(TileMap& map, const std::vector<std::pair<int, 
 }
 
 // ---------------------------------------------------------------------------
-// generate — full pipeline: config → rooms → procgen → ECS entities.
+// generate -- full pipeline: config -> rooms -> procgen -> ECS entities.
 // ---------------------------------------------------------------------------
 std::pair<float, float> TileMapLoader::generate(EntityManager& em,
                                                 const std::string& tilemapConfigPath,
@@ -457,7 +440,7 @@ std::pair<float, float> TileMapLoader::generate(EntityManager& em,
     // --- Load config + rooms --------------------------------------------
     TileConfig config = loadConfig(tilemapConfigPath);
 
-    // Read map dimensions from JSON; fall back to 80×60.
+    // Read map dimensions from JSON; fall back to 80x60.
     int map_width = 80;
     int map_height = 60;
     int room_count = 6;
@@ -479,24 +462,20 @@ std::pair<float, float> TileMapLoader::generate(EntityManager& em,
         }
     }
 
-    std::vector<Room> rooms = loadRooms(roomsDir);
+    std::vector<Room> roomList = loadRooms(roomsDir);
 
-    // --- Build TileMap (all Wall initially) -----------------------------
+    // --- Build TileMap (all Solid initially) -----------------------------
     TileMap map;
     map.width = map_width;
     map.height = map_height;
     map.seed = seed;
     map.tiles.assign(static_cast<std::size_t>(map_width) * static_cast<std::size_t>(map_height),
-                     TileMap::Tile{TileType::Wall, 1, false});
+                     TileMap::Tile{TileMap::SOLID_ID, false});
 
     // --- Place rooms + connect ------------------------------------------
     std::vector<std::pair<int, int>> centers;
-    placeRooms(map, rooms, rng, room_count, centers);
+    placeRooms(map, roomList, rng, room_count, centers);
     connectRooms(map, centers);
-
-    // Wall tiles are no longer mirrored as ECS entities. MovementSystem,
-    // CollisionSystem, and FlowFieldSystem all query em.tile_map directly,
-    // keeping the ECS sparse set small and eliminating O(n_walls) entity scans.
 
     // --- Write to EntityManager -----------------------------------------
     em.tile_map = std::move(map);

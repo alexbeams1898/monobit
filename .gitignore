@@ -29,6 +29,9 @@ cmake_install.cmake
 install_manifest.txt
 CTestTestfile.cmake
 
+# Packaged builds
+*.zip
+
 # Logs & temp
 *.log
 *.tmp

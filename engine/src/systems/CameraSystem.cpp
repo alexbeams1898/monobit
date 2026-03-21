@@ -4,11 +4,8 @@
 
 void CameraSystem::update(EntityManager& em)
 {
-    // The player entity carries Transform + Camera + Input.
-    // Snap the camera position to the player's world position each frame.
-    // Smooth follow / lerp is a future improvement once core gameplay is stable.
-    for (auto [entity, transform, camera, _input] :
-         em.registry().view<Transform, Camera, Input>().each())
+    // Snap the active camera to its entity's position each frame.
+    for (auto [entity, transform, camera] : em.registry().view<Transform, Camera>().each())
     {
         if (!camera.active)
             continue;

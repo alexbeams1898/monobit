@@ -1,0 +1,21 @@
+{
+    "spawn_near": 330.0,
+    "spawn_far": 825.0,
+    "enemies": [
+        { "config": "config/entities/skeleton.json", "from_wave": 1, "weight": 1 }
+    ],
+    "start_count": 9,
+    "count_growth": 1.5,
+    "max_count": 200,
+    "start_interval": 1.0,
+    "interval_decay": 0.95,
+    "min_interval": 0.15,
+    "start_burst": 1,
+    "burst_growth_every": 5,
+    "max_burst": 10,
+    "safe_room_every": 3,
+    "max_waves": 0,
+    "level_growth": 0.5,
+    "stat_per_level": 1,
+    "overrides": {}
+}

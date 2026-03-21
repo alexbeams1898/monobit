@@ -7,21 +7,9 @@
 #include <vector>
 
 // ---------------------------------------------------------------------------
-// TileType — the four tile categories the engine understands.
-// walkable is derived from TileType by TileMapLoader and stored on each Tile.
-// ---------------------------------------------------------------------------
-enum class TileType : uint8_t
-{
-    Floor = 0,     // open ground — walkable
-    Wall = 1,      // solid block — blocks movement and pathfinding
-    DoorFrame = 2, // reserved for future use (corridor/transition tile)
-    Obstacle = 3,  // interior obstruction (pillar, crate) — blocks movement
-};
-
-// ---------------------------------------------------------------------------
-// TileConfig — loaded once from config/tilemap.json.
-// Maps tile_id → sprite path + walkable flag.
-// Engine falls back to a colored rectangle if the sprite file is missing.
+// TileConfig -- loaded once from config/tilemap.json.
+// Maps tile_id -> sprite path + walkable flag + visual info.
+// Engine falls back to a colored rectangle if no tileset is configured.
 // ---------------------------------------------------------------------------
 struct TileConfig
 {
@@ -30,39 +18,37 @@ struct TileConfig
         std::string sprite;
         bool walkable = true;
     };
-    std::unordered_map<int, Entry> tiles; // tile_id → visual + nav info
+    std::unordered_map<int, Entry> tiles; // tile_id -> sprite + nav info
 
-    // Tileset atlas — a single PNG containing all tile sprites.
+    // Tileset atlas -- a single PNG containing all tile sprites.
     // When non-empty, TileMapRenderer uses textured quads instead of flat colors.
     std::string tileset_path;
 
-    // Per-tile-type atlas position (column, row in 32px grid).
-    struct TileUV
+    // Per-tile-id visual: atlas position + fallback RGB color.
+    struct TileVisual
     {
-        int col = 0;
-        int row = 0;
+        int uv_col = 0;
+        int uv_row = 0;
+        float r = 0.2f, g = 0.2f, b = 0.2f; // flat color when no tileset
     };
-    TileUV floor_uv{0, 0};
-    TileUV wall_uv{0, 1};
-    TileUV door_uv{0, 2};
-    TileUV obstacle_uv{1, 1};
+    std::unordered_map<int, TileVisual> tile_visuals;
 };
 
 // ---------------------------------------------------------------------------
-// Room — a parsed ASCII room template from config/rooms/*.room.
+// Room -- a parsed ASCII room template from config/rooms/*.room.
 // Used by TileMapLoader during procedural generation; not stored at runtime.
 // ---------------------------------------------------------------------------
 struct Room
 {
     int width = 0;
     int height = 0;
-    std::vector<TileType> tiles; // row-major: tiles[y * width + x]
+    std::vector<int> tiles; // row-major tile_ids: tiles[y * width + x]
 
     struct SpawnPoint
     {
         int col;
         int row;
-        char type; // 'E' = enemy, 'C' = chest
+        char type; // single-char marker from .room template
     };
     std::vector<SpawnPoint> spawn_points;
 
@@ -70,11 +56,11 @@ struct Room
 };
 
 // ---------------------------------------------------------------------------
-// TileMap — the live 2-D grid owned by EntityManager.
+// TileMap -- the live 2-D grid owned by EntityManager.
 // Stored as a flat vector (row-major) for cache-friendly traversal.
 //
 // Coordinate convention:
-//   World position (wx, wy) → tile cell (wx / TILE_SIZE, wy / TILE_SIZE).
+//   World position (wx, wy) -> tile cell (wx / TILE_SIZE, wy / TILE_SIZE).
 //   Tile top-left corner in world space = (col * TILE_SIZE, row * TILE_SIZE).
 //   TileMapRenderer uses top-left; all ECS systems use CENTER (col*32+16, row*32+16).
 // ---------------------------------------------------------------------------
@@ -82,25 +68,52 @@ struct TileMap
 {
     static constexpr int TILE_SIZE = 32;
 
+    // Tile IDs are game-defined integers; engine only uses SOLID_ID/WALKABLE_ID
+    // for procedural generation (corridor carving, initial fill).
+    static constexpr int SOLID_ID = 1;
+    static constexpr int WALKABLE_ID = 0;
+
     int width = 0;  // columns
     int height = 0; // rows
 
     struct Tile
     {
-        TileType type = TileType::Wall;
-        int tile_id = 1;       // index into TileConfig::tiles
-        bool walkable = false; // pre-computed from type at generation time
+        int tile_id = SOLID_ID;
+        bool walkable = false; // pre-computed at generation time
     };
     std::vector<Tile> tiles; // row-major: tiles[row * width + col]
 
-    // Spawn points collected from room template E/C markers.
-    // Stored here for SpawnerSystem (#11) to consume; not acted on in this PR.
+    // Spawn points collected from room template markers.
     struct SpawnPoint
     {
         float x, y; // world center of the tile
-        char type;  // 'E' or 'C'
+        char type;  // marker character from .room template
     };
     std::vector<SpawnPoint> spawn_points;
+
+    // Placed rooms -- stored during generation for runtime queries
+    // (e.g. "which room is the player in?"). Tile coordinates.
+    struct PlacedRoom
+    {
+        int col, row;      // top-left tile coordinate
+        int width, height; // size in tiles
+    };
+    std::vector<PlacedRoom> placed_rooms;
+
+    // Returns index into placed_rooms for the room containing world position
+    // (wx, wy), or -1 if the position is in a corridor or outside any room.
+    int findRoomAt(float wx, float wy) const
+    {
+        const int tc = static_cast<int>(wx) / TILE_SIZE;
+        const int tr = static_cast<int>(wy) / TILE_SIZE;
+        for (int i = 0; i < static_cast<int>(placed_rooms.size()); ++i)
+        {
+            const auto& rm = placed_rooms[static_cast<std::size_t>(i)];
+            if (tc >= rm.col && tc < rm.col + rm.width && tr >= rm.row && tr < rm.row + rm.height)
+                return i;
+        }
+        return -1;
+    }
 
     uint32_t seed = 0; // generation seed - logged at startup for reproducibility
 
@@ -124,9 +137,9 @@ struct TileMap
     }
 
     // Returns true if the straight line from (x1,y1) to (x2,y2) passes through
-    // only walkable tiles. Uses DDA grid traversal — visits every cell the segment
+    // only walkable tiles. Uses DDA grid traversal -- visits every cell the segment
     // enters, never misses a cell, never revisits one.
-    // Use this for LOS checks (aggro, hitbox validity) — O(tiles crossed).
+    // Use this for LOS checks (aggro, hitbox validity) -- O(tiles crossed).
     bool hasLineOfSight(float x1, float y1, float x2, float y2) const
     {
         const float dx = x2 - x1;

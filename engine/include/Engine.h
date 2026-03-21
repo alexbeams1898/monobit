@@ -3,6 +3,8 @@
 #include "TextureManager.h"
 #include "ecs/EntityManager.h"
 
+#include <string>
+
 // Forward declaration — avoids pulling SDL2 headers into every file that includes Engine.h.
 // Only Engine.cpp needs to know the internals of SDL_Window.
 struct SDL_Window;
@@ -16,6 +18,35 @@ class Engine
     bool init(const char* title, int width, int height);
     void run();
     void shutdown();
+
+    // Game-side logic callback. Called once per fixed-step tick.
+    // Engine passes itself so the game can call setWindowTitle() / lastFrameTime().
+    using GameUpdateFn = void (*)(Engine&, EntityManager&, double);
+    void setGameUpdate(GameUpdateFn fn);
+
+    // Per-frame callback. Called once per render frame after SDL event polling,
+    // before the fixed-step loop. Use for input that must track the display rate
+    // (e.g. mouse-aim facing) rather than the fixed tick rate.
+    using PerFrameFn = void (*)(Engine&, EntityManager&, double);
+    void setPerFrameUpdate(PerFrameFn fn);
+
+    // Set the window title string (for game-side HUD display).
+    void setWindowTitle(const std::string& title);
+
+    int windowWidth() const
+    {
+        return window_w;
+    }
+    int windowHeight() const
+    {
+        return window_h;
+    }
+
+    // EMA-smoothed frame time for FPS calculation.
+    double lastFrameTime() const
+    {
+        return last_frame_time;
+    }
 
     // Exposed so game code (main.cpp, future scene managers) can create
     // entities and attach components before calling run().
@@ -44,4 +75,7 @@ class Engine
     TextureManager texture_manager;
     double last_frame_time = 1.0 / 60.0; // seconds; used for title-bar FPS display
     double frame_dt = 1.0 / 60.0;        // raw wall-clock frame time for animation
+
+    GameUpdateFn game_update = nullptr;
+    PerFrameFn per_frame_update = nullptr;
 };
