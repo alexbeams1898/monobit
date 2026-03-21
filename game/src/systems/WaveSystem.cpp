@@ -235,6 +235,34 @@ ActiveWave WaveSystem::generateWave(const WaveGenRules& gen, int wave_number)
 // State machine
 // ---------------------------------------------------------------------------
 
+// Spawning phase: drip-feed enemies in bursts at the configured interval.
+static void tickSpawning(EntityManager& em, WaveState& ws, double dt)
+{
+    if (ws.needs_map_regen)
+        return;
+
+    ws.spawn_timer -= static_cast<float>(dt);
+    if (ws.spawn_timer > 0.0f)
+        return;
+
+    const auto& wave = ws.active_def;
+    ws.spawn_timer = wave.spawn_interval;
+
+    float px = 0.0f;
+    float py = 0.0f;
+    if (!findPlayer(em, px, py))
+        return;
+
+    for (int i = 0; i < wave.burst_size && ws.enemies_spawned < ws.enemies_total; ++i)
+        spawnOneEnemy(em, wave, ws, px, py);
+
+    if (ws.enemies_spawned >= ws.enemies_total)
+    {
+        ws.phase = WaveState::Phase::Active;
+        std::cout << "[WaveSystem] All enemies spawned for wave " << ws.current_wave << "\n";
+    }
+}
+
 void WaveSystem::update(EntityManager& em, double dt)
 {
     ZoneScopedN("WaveSystem");
@@ -265,33 +293,8 @@ void WaveSystem::update(EntityManager& em, double dt)
         break;
 
     case WaveState::Phase::Spawning:
-    {
-        // Wait for GameLoop to regenerate the map before spawning.
-        if (ws.needs_map_regen)
-            break;
-
-        ws.spawn_timer -= static_cast<float>(dt);
-        if (ws.spawn_timer > 0.0f)
-            break;
-
-        const auto& wave = ws.active_def;
-        ws.spawn_timer = wave.spawn_interval;
-
-        float px = 0.0f;
-        float py = 0.0f;
-        if (!findPlayer(em, px, py))
-            break;
-
-        for (int i = 0; i < wave.burst_size && ws.enemies_spawned < ws.enemies_total; ++i)
-            spawnOneEnemy(em, wave, ws, px, py);
-
-        if (ws.enemies_spawned >= ws.enemies_total)
-        {
-            ws.phase = WaveState::Phase::Active;
-            std::cout << "[WaveSystem] All enemies spawned for wave " << ws.current_wave << "\n";
-        }
+        tickSpawning(em, ws, dt);
         break;
-    }
 
     case WaveState::Phase::Active:
     {

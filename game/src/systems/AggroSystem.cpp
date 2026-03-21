@@ -59,19 +59,13 @@ void AggroSystem::update(EntityManager& em)
         }
         else if (ai.state == AIController::State::Chase && ai.attack_radius > 0.0f)
         {
-            // Enter Attack formation when the player is within arrival radius AND
-            // has a clear line of sight (no wall or obstacle in between).
-            // Without the LOS check an enemy stops at an obstacle between them
-            // and never navigates around it to actually reach the player.
-            if (ai.arrival_radius > 0.0f && distSq <= ai.arrival_radius * ai.arrival_radius)
+            // Enter Attack when within arrival radius AND line of sight is clear.
+            if (ai.arrival_radius > 0.0f && distSq <= ai.arrival_radius * ai.arrival_radius &&
+                (!em.tile_map.valid() ||
+                 em.tile_map.hasLineOfSight(transform.x, transform.y, px, py)))
             {
-                const bool los = !em.tile_map.valid() ||
-                                 em.tile_map.hasLineOfSight(transform.x, transform.y, px, py);
-                if (los)
-                {
-                    ai.state = AIController::State::Attack;
-                    TracyMessageL("EnemyAttack");
-                }
+                ai.state = AIController::State::Attack;
+                TracyMessageL("EnemyAttack");
             }
         }
         else if (ai.state == AIController::State::Attack)

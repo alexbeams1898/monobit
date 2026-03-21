@@ -55,124 +55,70 @@ static const char* gradeChar(float v, const FormulaConfig& f)
     return "E";
 }
 
-void gameUpdate(Engine& engine, EntityManager& em, double dt)
+// When WaveSystem signals a new wave, regenerate the tile map and reposition entities.
+static void handleMapRegen(Engine& engine, EntityManager& em)
 {
-    ZoneScopedN("gameUpdate");
-
     auto& waveState = em.registry().ctx().get<WaveState>();
+    if (!waveState.needs_map_regen)
+        return;
 
-    // GameOver: freeze all gameplay. Only WaveSystem runs (handles R-key restart).
-    if (waveState.phase == WaveState::Phase::GameOver)
+    waveState.needs_map_regen = false;
+
+    // Destroy old rest spots and pickups (belong to previous map layout).
     {
-        InputMappingSystem::update(em);
-        WaveSystem::update(em, dt);
-    }
-    else
-    {
-        // System call order matters:
-        // 0. Input mapping (game actions from raw SDL input).
-        // 1. Spawning/waves first (new entities enter the world).
-        // 2. Combat decisions (hitbox spawning, dodge).
-        // 3. Animation state resolution (after combat, before render).
-        // 4. Tint (after combat + anim state, before render).
-        // 5. AI (aggro, pathfinding, chase, steering).
-        // 6. Movement + collision.
-        // 7. Damage resolution.
-        // 8. Death + cleanup.
-        // 9. Progression (pickups, leveling, rest).
-        // 10. Camera (snaps to final player position).
-        InputMappingSystem::update(em);
-        WaveSystem::update(em, dt);
-        CombatSystem::update(em, dt);
-        AnimStateSystem::update(em);
-        TintSystem::update(em, dt);
-        AggroSystem::update(em);
-        {
-            float px = 0.0f, py = 0.0f;
-            for (auto pe : em.registry().view<PlayerActions>())
-            {
-                if (em.registry().all_of<Transform>(pe))
-                {
-                    const auto& pt = em.registry().get<Transform>(pe);
-                    px = pt.x;
-                    py = pt.y;
-                }
-                break;
-            }
-            FlowFieldSystem::update(em, px, py);
-        }
-        ChaseSystem::update(em, dt);
-        SteeringSystem::update(em);
-        MovementSystem::update(em, dt);
-        CollisionSystem::update(em);
-        DamageSystem::update(em);
-        DeathSystem::update(em, dt);
-        PickupSystem::update(em);
-        LevelingSystem::update(em);
-        RestSpotSystem::update(em, dt);
-        ParticleSystem::update(em, dt);
-        CameraSystem::update(em);
+        std::vector<entt::entity> old;
+        for (auto e : em.registry().view<RestSpot>())
+            old.push_back(e);
+        for (auto e : em.registry().view<Pickup>())
+            old.push_back(e);
+        for (auto e : old)
+            if (em.registry().valid(e))
+                em.registry().destroy(e);
     }
 
-    // Map regen: when WaveSystem signals a new wave, regenerate the tile map
-    // and reposition entities. Engine& is only available here in GameLoop.
-    if (waveState.needs_map_regen)
+    // Regenerate tile map and re-upload to GPU.
+    auto [px, py] = TileMapLoader::generate(em, "config/tilemap.json", "config/rooms");
+    TileMapRenderer::upload(em.tile_map, em.tile_config, engine.textureManager());
+
+    // Force flow field rebuild (wall layout changed).
+    em.flow_field.last_player_col = -1;
+    em.flow_field.last_player_row = -1;
+
+    // Reposition player at new spawn point.
+    for (auto pe : em.registry().view<PlayerActions>())
     {
-        waveState.needs_map_regen = false;
-
-        // Destroy old rest spots and pickups (belong to previous map layout).
+        if (em.registry().all_of<Transform>(pe))
         {
-            std::vector<entt::entity> old;
-            for (auto e : em.registry().view<RestSpot>())
-                old.push_back(e);
-            for (auto e : em.registry().view<Pickup>())
-                old.push_back(e);
-            for (auto e : old)
-                if (em.registry().valid(e))
-                    em.registry().destroy(e);
+            auto& t = em.registry().get<Transform>(pe);
+            t.x = px;
+            t.y = py;
         }
-
-        // Regenerate tile map and re-upload to GPU.
-        auto [px, py] = TileMapLoader::generate(em, "config/tilemap.json", "config/rooms");
-        TileMapRenderer::upload(em.tile_map, em.tile_config, engine.textureManager());
-
-        // Force flow field rebuild (wall layout changed).
-        em.flow_field.last_player_col = -1;
-        em.flow_field.last_player_row = -1;
-
-        // Reposition player at new spawn point.
-        for (auto pe : em.registry().view<PlayerActions>())
+        if (em.registry().all_of<Camera>(pe))
         {
-            if (em.registry().all_of<Transform>(pe))
-            {
-                auto& t = em.registry().get<Transform>(pe);
-                t.x = px;
-                t.y = py;
-            }
-            if (em.registry().all_of<Camera>(pe))
-            {
-                auto& cam = em.registry().get<Camera>(pe);
-                cam.x = px;
-                cam.y = py;
-            }
-            break;
+            auto& cam = em.registry().get<Camera>(pe);
+            cam.x = px;
+            cam.y = py;
         }
-
-        // Spawn rest spots from new map markers.
-        for (const auto& sp : em.tile_map.spawn_points)
-        {
-            if (sp.type != 'R')
-                continue;
-            auto entity = ConfigLoader::loadEntity(em, "config/entities/rest_spot.json");
-            if (!em.registry().valid(entity))
-                continue;
-            auto& t = em.registry().get<Transform>(entity);
-            t.x = sp.x;
-            t.y = sp.y;
-        }
+        break;
     }
 
-    // Title-bar HUD — cheapest possible stat display, no font rendering needed.
+    // Spawn rest spots from new map markers.
+    for (const auto& sp : em.tile_map.spawn_points)
+    {
+        if (sp.type != 'R')
+            continue;
+        auto entity = ConfigLoader::loadEntity(em, "config/entities/rest_spot.json");
+        if (!em.registry().valid(entity))
+            continue;
+        auto& t = em.registry().get<Transform>(entity);
+        t.x = sp.x;
+        t.y = sp.y;
+    }
+}
+
+// Title-bar HUD -- cheapest possible stat display, no font rendering needed.
+static void updateTitleBar(Engine& engine, EntityManager& em)
+{
     for (auto [entity, actions, health, stats, exp] :
          em.registry().view<PlayerActions, Health, Stats, Experience>().each())
     {
@@ -257,6 +203,69 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
         engine.setWindowTitle(title);
         break;
     }
+}
+
+void gameUpdate(Engine& engine, EntityManager& em, double dt)
+{
+    ZoneScopedN("gameUpdate");
+
+    auto& waveState = em.registry().ctx().get<WaveState>();
+
+    // GameOver: freeze all gameplay. Only WaveSystem runs (handles R-key restart).
+    if (waveState.phase == WaveState::Phase::GameOver)
+    {
+        InputMappingSystem::update(em);
+        WaveSystem::update(em, dt);
+    }
+    else
+    {
+        // System call order matters:
+        // 0. Input mapping (game actions from raw SDL input).
+        // 1. Spawning/waves first (new entities enter the world).
+        // 2. Combat decisions (hitbox spawning, dodge).
+        // 3. Animation state resolution (after combat, before render).
+        // 4. Tint (after combat + anim state, before render).
+        // 5. AI (aggro, pathfinding, chase, steering).
+        // 6. Movement + collision.
+        // 7. Damage resolution.
+        // 8. Death + cleanup.
+        // 9. Progression (pickups, leveling, rest).
+        // 10. Camera (snaps to final player position).
+        InputMappingSystem::update(em);
+        WaveSystem::update(em, dt);
+        CombatSystem::update(em, dt);
+        AnimStateSystem::update(em);
+        TintSystem::update(em, dt);
+        AggroSystem::update(em);
+        {
+            float px = 0.0f, py = 0.0f;
+            for (auto pe : em.registry().view<PlayerActions>())
+            {
+                if (em.registry().all_of<Transform>(pe))
+                {
+                    const auto& pt = em.registry().get<Transform>(pe);
+                    px = pt.x;
+                    py = pt.y;
+                }
+                break;
+            }
+            FlowFieldSystem::update(em, px, py);
+        }
+        ChaseSystem::update(em, dt);
+        SteeringSystem::update(em);
+        MovementSystem::update(em, dt);
+        CollisionSystem::update(em);
+        DamageSystem::update(em);
+        DeathSystem::update(em, dt);
+        PickupSystem::update(em);
+        LevelingSystem::update(em);
+        RestSpotSystem::update(em, dt);
+        ParticleSystem::update(em, dt);
+        CameraSystem::update(em);
+    }
+
+    handleMapRegen(engine, em);
+    updateTitleBar(engine, em);
 }
 
 void gamePerFrame(Engine& engine, EntityManager& em, double /*dt*/)

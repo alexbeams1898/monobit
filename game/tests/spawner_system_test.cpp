@@ -88,6 +88,7 @@ static TileMap buildTestMap()
     return tm;
 }
 
+// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 TEST_CASE("SpawnUtils: spawn position lands inside the player's room", "[spawn]")
 {
     TileMap tm = buildTestMap();
@@ -135,6 +136,7 @@ TEST_CASE("SpawnUtils: spawn position avoids minimum distance from player", "[sp
     }
 }
 
+// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 TEST_CASE("SpawnUtils: corridor fallback picks nearest room", "[spawn]")
 {
     // Two rooms, player in corridor between them.
