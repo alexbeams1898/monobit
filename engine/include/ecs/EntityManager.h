@@ -95,6 +95,12 @@ class EntityManager
     // accumulator / FIXED_TIMESTEP.
     float render_alpha = 1.0f;
 
+    // Buffered input events -- captured per-frame by Engine::processEvents(),
+    // consumed per-tick by InputMappingSystem. Prevents brief key/mouse taps
+    // from being lost when they happen between fixed-step ticks.
+    std::vector<int> key_down_events;
+    std::vector<uint8_t> mouse_down_events;
+
     // Tile map -- generated at startup by TileMapLoader::generate().
     TileMap tile_map;
     TileConfig tile_config;

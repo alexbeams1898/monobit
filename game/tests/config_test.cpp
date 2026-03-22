@@ -31,9 +31,9 @@ TEST_CASE("ConfigLoader loads skeleton entity with correct components", "[config
 
     LevelingSystem::applyInitialDerivations(em);
 
-    // skeleton: end=1, default formulas → maxHP = 5 + floor(100 * ln(2)) = 74
+    // skeleton: base_hp=5, end=1 → maxHP = 5 + floor(30 * ln(2)) = 25
     auto& health = em.registry().get<Health>(entity);
-    REQUIRE(health.max == 74);
+    REQUIRE(health.max == 25);
     REQUIRE(health.current == health.max);
 
     auto& tag = em.registry().get<Tag>(entity);
@@ -68,9 +68,9 @@ TEST_CASE("ConfigLoader loads player entity with correct values", "[config]")
     REQUIRE_FALSE(em.registry().all_of<Health>(entity));
     LevelingSystem::applyInitialDerivations(em);
 
-    // Player: end=1, default formulas -> maxHP = 5 + floor(100 * ln(2)) = 74
+    // Player: base_hp=50, end=1 → maxHP = 50 + floor(30 * ln(2)) = 70
     auto& health = em.registry().get<Health>(entity);
-    REQUIRE(health.max == 74);
+    REQUIRE(health.max == 70);
     REQUIRE(health.current == health.max);
 }
 

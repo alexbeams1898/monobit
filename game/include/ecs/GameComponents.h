@@ -2,6 +2,7 @@
 
 #include <entt/entt.hpp>
 #include <string>
+#include <vector>
 
 // ---------------------------------------------------------------------------
 // Game components -- specific to this game's rules and mechanics.
@@ -28,6 +29,12 @@ struct PlayerActions
     bool block_just_pressed = false;
     bool auto_toggle_just_pressed = false;
     bool start_wave = false;
+    bool craft = false;
+    bool cycle_weapon = false;
+    bool interact = false;
+    bool mouse_click = false;
+    float mouse_world_x = 0.0f;
+    float mouse_world_y = 0.0f;
     bool alloc_str = false;
     bool alloc_dex = false;
     bool alloc_end = false;
@@ -83,13 +90,32 @@ struct AttackFeedback
 // RPG / progression components
 // ---------------------------------------------------------------------------
 
-// Stats -- base stats for any entity.
+// Stats -- base stats for any entity. Levelable by the player.
 struct Stats
 {
     int str = 1;
     int dex = 1;
     int end = 1;
     int lck = 1;
+};
+
+// Body -- physical material properties of a creature. Not levelable.
+// Represents what the creature IS made of (bone, flesh, demon hide, etc.).
+// See DESIGN.md "HP vs DEF — Design Philosophy".
+// Includes natural weapon stats (unarmed attack) -- a skeleton's bony fist
+// hits differently than a human's. Defaults match FormulaConfig::fist
+// (tuned for the player). Most enemies should have weaker unarmed scaling
+// so that a trained, unarmed player still feels dangerous.
+struct Body
+{
+    int base_hp = 0;
+    int base_defense = 0;
+
+    // Natural weapon (unarmed attack derived from body composition).
+    float unarmed_damage = 5.0f;
+    float unarmed_weight = 0.5f;
+    float unarmed_str_scaling = 1.0f;
+    float unarmed_dex_scaling = 0.75f;
 };
 
 // Experience -- tracks level progression and unspent stat allocation points.
@@ -138,20 +164,21 @@ struct Poise
     float decay_timer = 0.0f;
 };
 
+// DropEntry -- one possible material drop from a dying entity.
+struct DropEntry
+{
+    std::string config_path;
+    int min_qty = 1;
+    int max_qty = 1;
+    float base_chance = 1.0f;
+};
+
 // Loot -- reward data dropped when an entity dies.
 struct Loot
 {
     int xp_drop = 20;
-    int money_drop = 0;
     int level = 1;
-};
-
-// Pickup -- an XP or money drop left by dead enemies.
-struct Pickup
-{
-    int xp_value = 0;
-    int money_value = 0;
-    float radius = 48.0f;
+    std::vector<DropEntry> drops;
 };
 
 // RestSpot -- a static entity the player can stand on to restore HP.
@@ -209,4 +236,115 @@ struct Stamina
 // Marks an entity as part of the active wave for wave-clear detection.
 struct WaveEnemy
 {
+};
+
+// ---------------------------------------------------------------------------
+// Item / inventory / equipment components
+// ---------------------------------------------------------------------------
+
+enum class ItemCategory : uint8_t
+{
+    Weapon,
+    Armor,
+    Consumable,
+    KeyItem,
+    Material,
+    Money
+};
+
+enum class QualityTier : uint8_t
+{
+    Crude = 0,
+    Common,
+    Fine,
+    Superior,
+    Masterwork
+};
+
+enum class ArmorSlot : uint8_t
+{
+    Head,
+    Chest,
+    Legs,
+    Feet
+};
+
+enum class EquipSlot : uint8_t
+{
+    MainHand,
+    OffHand,
+    Head,
+    Chest,
+    Legs,
+    Feet,
+    Accessory1,
+    Accessory2
+};
+
+// One concrete item instance. Template data lives in ItemDef (looked up via
+// config_path from ItemRegistry). Instance data is per-copy.
+struct ItemInstance
+{
+    std::string config_path;
+    QualityTier quality = QualityTier::Common;
+    float durability = 100.0f;
+    int upgrade_level = 0;
+    int quantity = 1; // >1 only for stackable items
+    bool empty() const
+    {
+        return config_path.empty();
+    }
+};
+
+// Pickup -- a collectible entity left by dead enemies (XP or item).
+struct Pickup
+{
+    int xp_value = 0;
+    float radius = 48.0f;
+    ItemInstance item;
+};
+
+// Bag of items the entity carries.
+struct Inventory
+{
+    std::vector<ItemInstance> items;
+    int max_slots = 20;
+};
+
+// Currently equipped items. Each slot holds a copy of the ItemInstance.
+// Empty slot = config_path.empty(). EquipmentSystem syncs these to
+// Weapon/Shield components each frame.
+struct Equipment
+{
+    ItemInstance main_hand;
+    ItemInstance off_hand;
+    ItemInstance head;
+    ItemInstance chest;
+    ItemInstance legs;
+    ItemInstance feet;
+    ItemInstance accessory_1;
+    ItemInstance accessory_2;
+    bool two_handing = false;
+
+    // Index into Inventory::items for the currently equipped weapon.
+    // -1 = fists (no inventory slot). Used by Tab cycling to avoid ambiguity
+    // when multiple weapons share the same config_path + quality.
+    int main_hand_slot = -1;
+
+    // EquipmentSystem compares these to detect slot changes.
+    std::string synced_main_hand;
+    std::string synced_off_hand;
+};
+
+// Wallet -- persistent money balance for the player.
+struct Wallet
+{
+    int money = 0;
+};
+
+// InteractTarget -- set by PickupSystem each frame to indicate the pickup
+// the player is currently targeting (mouse hover or proximity).
+struct InteractTarget
+{
+    entt::entity entity = entt::null;
 };

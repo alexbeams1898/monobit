@@ -1,0 +1,9 @@
+{
+    "name": "$1 Bill",
+    "description": "A crumpled dollar bill. Barely worth bending down for.",
+    "category": "money",
+    "rarity": "common",
+    "value": 1,
+    "stackable": true,
+    "max_stack": 99
+}

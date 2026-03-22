@@ -1,17 +1,17 @@
 {
     "player_attack":  { "path": "assets/sfx/attack.wav",         "volume": 0.5 },
-    "player_skill":   { "path": "assets/sfx/skill.wav",          "volume": 0.6 },
-    "player_dodge":   { "path": "assets/sfx/dodge.wav",          "volume": 0.5 },
-    "hit":            { "path": "assets/sfx/hit.wav",            "volume": 0.4 },
-    "parry":          { "path": "assets/sfx/parry.wav",          "volume": 0.6 },
+    "player_skill":   { "path": "assets/sfx/skill.wav",          "volume": 0.55 },
+    "player_dodge":   { "path": "assets/sfx/dodge.wav",          "volume": 0.45 },
+    "hit":            { "path": "assets/sfx/hit.wav",            "volume": 0.5 },
+    "parry":          { "path": "assets/sfx/parry.wav",          "volume": 0.55 },
     "death":          { "path": "assets/sfx/death.wav",          "volume": 0.5 },
     "pickup":         { "path": "assets/sfx/pickup.wav",         "volume": 0.4 },
-    "level_up":       { "path": "assets/sfx/levelup.wav",        "volume": 0.6 },
-    "stat_allocate":  { "path": "assets/sfx/stat_allocate.wav",  "volume": 0.5 },
-    "wall_bump":      { "path": "assets/sfx/wall_bump.wav",      "volume": 0.3 },
-    "footstep_walk":  { "path": "assets/sfx/footstep_walk.wav",  "volume": 0.15 },
-    "footstep_run":   { "path": "assets/sfx/footstep_run.wav",   "volume": 0.25 },
-    "rest_heal":      { "path": "assets/sfx/rest_heal.wav",      "volume": 0.5 },
+    "level_up":       { "path": "assets/sfx/levelup.wav",        "volume": 0.55 },
+    "stat_allocate":  { "path": "assets/sfx/stat_allocate.wav",  "volume": 0.45 },
+    "wall_bump":      { "path": "assets/sfx/wall_bump.wav",      "volume": 0.35 },
+    "footstep_walk":  { "path": "assets/sfx/footstep_walk.wav",  "volume": 0.3 },
+    "footstep_run":   { "path": "assets/sfx/footstep_run.wav",   "volume": 0.35 },
+    "rest_heal":      { "path": "assets/sfx/rest_heal.wav",      "volume": 0.45 },
     "game_over":              { "path": "assets/sfx/game_over.wav",      "volume": 0.6 },
-    "low_stamina_heartbeat":  { "path": "assets/sfx/heartbeat.wav",      "volume": 0.5 }
+    "low_stamina_heartbeat":  { "path": "assets/sfx/heartbeat.wav",      "volume": 0.45 }
 }

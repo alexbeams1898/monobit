@@ -138,8 +138,76 @@ perk choice and what you invest Essence into over time.)
 | DEX | Attack speed + movement speed. Scales with light/one-handed weapons. |
 | END | Max health. |
 | LCK | Rare drop rate + ranged weapon accuracy. Offsets the rarity curve on most-used weapon drops. |
-| DEF | **Derived — not leveled.** Calculated from STR + END + overall level + equipped armor. Works like Elden Ring's defense system. |
+| DEF | **Derived — not leveled.** Calculated from base defense + STR + END + overall level + equipped armor. See "HP vs DEF" section below. |
 | Poise | **Derived — not leveled.** Calculated from equipped armor weight and tier. Determines knockback resistance and stagger threshold. High poise = barely flinch; low/no armor = gets bowled over. Mechanically simulated "mass." |
+
+---
+
+## HP vs DEF — Design Philosophy
+
+### What is HP?
+
+HP (hit points) was invented for naval wargames in the 1960s — ships had hit points
+representing structural integrity. A battleship could absorb more cannon hits than a
+destroyer. Pure physical durability.
+
+When Dave Arneson brought HP to Dungeons & Dragons (1974), the meaning shifted. Gary Gygax
+explicitly wrote that HP is *not* just meat — it abstracts:
+- Physical toughness (the body's ability to endure)
+- Combat instinct (dodging, rolling with blows)
+- Luck and divine favor
+- Will to keep fighting
+
+That's why a level 20 fighter survives a 100-foot fall that kills a commoner — they're not
+physically 20x tougher, they're better at *surviving*. HP is **narrative resilience**: the
+total capacity to endure punishment before going down.
+
+### What is DEF?
+
+DEF is fundamentally different. DEF is the **physical reality of what happens when force meets
+material**. It's not abstract — it's concrete. When a club strikes bone, how much energy
+transfers into harm vs deflects off the surface? DEF is damage *mitigation per hit*.
+
+A glass cannon with high HP and 0 DEF takes full damage on every hit but survives many. A tank
+with lower HP but high DEF barely feels small hits. These are genuinely different survival
+strategies.
+
+### Base Defense = Material Science
+
+Every creature has an inherent damage threshold — the minimum force needed to cause real harm.
+Below that threshold, the hit is absorbed by the body's physical structure without meaningful
+injury. This is **base defense**: the body's innate material resistance, independent of any
+stat investment, training, or equipped armor.
+
+This mirrors how `base_damage` works for weapons: a fist has inherent striking power from its
+mass and rigidity — any punch hurts at least a little, regardless of STR. By the same logic,
+a body has inherent shock absorption from its mass and structure, regardless of END.
+
+Base defense is **per-entity** because it represents what the creature is physically made of:
+
+| Creature | Base DEF | Reasoning |
+|----------|----------|-----------|
+| Human (player) | 3 | Skin, muscle, fat padding, bone structure — absorbs minor impacts |
+| Skeleton | 2 | Bone is hard but brittle. Strikes glance off curved surfaces, no soft tissue to cut. But no muscle mass for shock absorption. |
+| Slime (future) | 0 | Amorphous, no structure — everything passes through. High HP compensates. |
+| Demon (future) | 5+ | Supernatural hide, thick scales, otherworldly resilience |
+
+This value is defined per entity in JSON config as its own component (`"body": { "base_defense": 3 }`),
+separate from `"stats"` — because stats are levelable character traits, while body properties
+are fixed material science. The `Body` component will grow to include damage type resistances,
+hit effect material type, and mass as those systems are built.
+
+**Natural weapons (unarmed attack)** also live in `Body` — a creature's physical composition
+determines how hard it hits barehanded, just as it determines how hard it is to damage.
+The player's unarmed scaling is intentionally stronger than most enemies: living human muscle
+responds to STR/DEX training better than magically-animated bones or mindless flesh.
+A trained, unarmed player should still feel dangerous.
+
+| Creature | Unarmed DMG | STR Scale | DEX Scale | Reasoning |
+|----------|-------------|-----------|-----------|-----------|
+| Human (player) | 5.0 | 1.0 | 0.75 | Full muscle engagement, benefits heavily from training |
+| Skeleton | 3.0 | 0.25 | 0.0 | No muscle mass behind the strike — magic provides motion, not force |
+| Demon (future) | 8.0+ | 0.8 | 0.3 | Supernatural claws, raw strength matters more than finesse |
 
 ---
 
@@ -160,9 +228,10 @@ Swing cooldown is weapon-physics based — see Combat System section.
 
 ### DEF Derivation
 ```
-DEF = floor((STR * strDefScale) + (END * endDefScale) + (level * levelDefScale) + armorValue)
+DEF = floor(base_defense + (STR * strDefScale) + (END * endDefScale) + (level * levelDefScale) + armorValue)
 finalDamageTaken = max(1, incomingDamage * (1 - min(DEF, defCap) / 100))
 ```
+`base_defense` is per-entity (material science — see above). Stat scaling and armor stack on top.
 Soft cap: 75% — player can never be fully invincible.
 
 ### Damage (weapon grade scaling)
@@ -231,16 +300,19 @@ wave 5 = Lv3 (+2 all), wave 11 = Lv6 (+5 all).
   "movement":         { "base": 150, "dex_scale": 30, "sprint_multiplier": 1.6, "sprint_blend": 8.0, "walk_blend": 20.0 },
   "carry_weight":     { "str_scale": 20, "end_scale": 10 },
   "defense":          { "str_scale": 0.3, "end_scale": 0.5, "level_scale": 0.2, "cap": 75 },
-  "luck":             { "drop_scale": 15 },
+  "luck":             { "drop_scale": 15, "quality_scale": 3, "quality_thresholds": [30, 60, 80, 95] },
   "damage":           { "grade_thresholds": { "S": 1.5, "A": 1.25, "B": 1.0, "C": 0.75, "D": 0.5, "E": 0.25 } },
   "swing":            { "weight_scale": 5, "stat_scale": 160, "two_handed_str_bonus": 0.3 },
   "stat_requirement": { "penalty_rate": 0.15 },
   "leveling":         { "xp_base": 100, "xp_exponent": 1.5, "points_per_level": 1 },
   "poise":            { "end_scale": 2.0, "str_scale": 1.0, "weight_scale": 20, "stagger_duration": 0.5, "decay_window": 5.0 },
   "essence":          { "min": 0, "max": 100 },
-  "xp_drop":          { "log_scale": 0.6 }
+  "xp_drop":          { "log_scale": 1.5, "min_fraction": 0.1, "level_penalty": 0.15 },
+  "fist":             { "weight": 0.5, "base_damage": 5.0, "str_scaling": 1.0, "dex_scaling": 0.75 }
 }
 ```
+Note: `base_defense` is per-entity (in entity JSON `"body"` block), not a formula constant.
+See "HP vs DEF" section above.
 
 ---
 
@@ -384,7 +456,7 @@ LPC skeleton universal sheet.
 Every weapon definition includes:
 - `weight` — float. Drives swing cooldown physics and carry weight. Light weapons (shiv ~0.5) swing fast; heavy weapons (mace ~3.0, two-handed sword ~5.0) swing slow but hit hard.
 - `str_scaling` / `dex_scaling` — grade (S/A/B/C/D/E). Drives both damage bonus and swing speed bias. Both always contribute additively — grade determines weight, not which stat wins.
-- `str_requirement` / `dex_requirement` — stat floor for full effectiveness. Below threshold applies exponential penalty (see Combat System).
+- `str_requirement` / `dex_requirement` — stat floor for full effectiveness. Below threshold applies exponential penalty (see Combat System). **Rule: all weapons must have at least 1 STR and 1 DEX requirement.** Fists (unarmed) are the only exception (0/0).
 
 ### Weapon Scaling Design Intent
 Every weapon should have a logical real-world reason for its scaling split. Think through each
@@ -420,6 +492,8 @@ Guns and thrown projectiles follow different rules than melee:
 - Two-handed favors STR builds; dual one-handers favor DEX builds; shield builds favor STR/END
 
 ### Crafting Tiers
+- **No stat requirements for crafting.** Any player can craft any recipe as long as they have the
+  ingredients. Stat requirements only gate *using* (equipping) the crafted item, not making it.
 - **Field crafting** — combine world-drop materials using a basic starting tool. No station needed.
 - **Upgrade stations** — scattered randomly in the map. Used for all upgrades beyond base.
 
@@ -486,30 +560,59 @@ _Not yet implemented._
 
 ## Loot & Drop System
 
-Two distinct drop types — different pickup mechanics, different purpose.
+Unified drop system — all drops (materials, money, crafting components) use the same
+pipeline. Every drop is an item in the drop table with a rarity tier and drop chance.
 
-### Money Drops
-- Chance-based per kill; LCK influences rate and money drop chance
-- **Auto-collected on proximity** (VS-style) — no manual action needed
+### Pickup Mechanics
+- **All pickups auto-collect on proximity** — walk near it, pick it up
+- Player does NOT know what an item is until they collect it — only the rarity glow is
+  visible on the ground. The reveal happens on pickup.
+- Money items (category "money") add to Wallet instead of inventory
 - Also found in chests and other TBD sources
-- Displays as bill/money icon ($1 / $5 / $20 / $50 / $100)
-- Carries over on death into meta progression
 
-### Inventory Item Drops (materials, crafting components)
-- **Manual pickup** — small souls-style proximity radius; player consciously decides what to grab
-- Displays as item icon; bean with rarity glow as performance fallback at scale
-- These are the crafting materials the weapon evolution system runs on
+### Money as Items
+Money denominations are regular items in the drop table, each with its own rarity:
 
-### Rarity Tiers
-Communicated via glow intensity, size, and animation — not just color.
+| Item | Rarity | Value |
+|------|--------|-------|
+| $1 Bill | Common | $1 |
+| $5 Bill | Uncommon | $5 |
+| $20 Bill | Rare | $20 |
+| $50 Bill | Epic | $50 |
+| $100 Bill | Legendary | $100 |
 
-| Tier | Visual |
-|------|--------|
-| Common | No glow |
-| Uncommon | Soft glow |
-| Rare | Medium glow |
-| Epic | Strong glow |
-| Legendary | Large, pulsing, animated. Unmistakable presence. |
+Money carries over on death into meta progression.
+
+### Item Quality
+Each item instance has a quality tier, rolled on drop, influenced by LCK:
+
+| Tier | When |
+|------|------|
+| Crude | Low LCK, bad roll |
+| Common | Default |
+| Fine | Moderate LCK |
+| Superior | High LCK |
+| Masterwork | Very high LCK or lucky roll |
+
+Quality of crafting materials determines quality of crafted output (averaged).
+Formula: `score = random(0,100) + lck * quality_scale + total_essence * essence_quality_scale`,
+mapped against configurable thresholds in `formulas.json`. Enemy Essence (sum of all four
+stats) boosts the quality roll -- tougher enemies drop better-quality items.
+
+### Rarity Tiers (Visual)
+Communicated via purple-tinted glow — intensity escalates with rarity. Player sees
+the glow but not the item identity until pickup (Elden Ring style).
+
+| Tier | Glow | RGB |
+|------|------|-----|
+| Very Common | No glow (neutral grey) | (0.35, 0.35, 0.35) |
+| Common | Dim grey-violet | (0.45, 0.4, 0.5) |
+| Uncommon | Soft purple | (0.55, 0.4, 0.7) |
+| Rare | Medium violet | (0.6, 0.3, 0.85) |
+| Epic | Bright violet | (0.75, 0.25, 0.95) |
+| Legendary | Brilliant white-violet | (0.9, 0.8, 1.0) |
+
+Future: glow intensity, size, and animation will reinforce rarity beyond just color.
 
 ### Adaptive Drop Seeding
 Engine tracks the player's most-used weapon and nudges rare drops toward completing
@@ -886,9 +989,10 @@ prison-break-game/
 **Engine (8 systems):** RenderSystem, CameraSystem, CollisionSystem, AnimationSystem,
 AudioSystem, TileMapRenderer, FlowFieldSystem, SteeringSystem.
 
-**Game (15 systems):** WaveSystem, CombatSystem, DamageSystem, DeathSystem,
+**Game (16 systems):** WaveSystem, CombatSystem, DamageSystem, DeathSystem,
 LevelingSystem, PickupSystem, RestSpotSystem, ParticleSystem, AggroSystem, ChaseSystem,
-MovementSystem, SpawnerSystem, TintSystem, InputMappingSystem, AnimStateSystem.
+MovementSystem, SpawnerSystem, TintSystem, InputMappingSystem, AnimStateSystem,
+EquipmentSystem.
 
 **Boundary rule:** "Could this system work unchanged in a completely different 2D game?"
 Yes = engine. No = game. The engine knows nothing about the game — it provides a
@@ -901,7 +1005,7 @@ Engine::run()
   fixed-step loop
     Engine::processEvents()        engine handles SDL events
     Engine::update(dt)
-      game_update(engine, em, dt)  GAME code runs here (15 systems)
+      game_update(engine, em, dt)  GAME code runs here (16 systems)
       body-part position sync      engine generic feature
     Engine::render()
       AnimationSystem::update()

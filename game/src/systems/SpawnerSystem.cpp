@@ -114,7 +114,7 @@ void SpawnerSystem::update(EntityManager& em, double dt)
     t.x = spawnX;
     t.y = spawnY;
 
-    LevelingSystem::deriveHealth(em, entity);
+    LevelingSystem::deriveInitialStats(em, entity);
 
     TracyMessageL("EnemySpawned");
     std::cout << "[SpawnerSystem] Spawned enemy at (" << spawnX << ", " << spawnY << ")\n";

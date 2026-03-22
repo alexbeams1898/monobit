@@ -24,13 +24,14 @@ static float computePenalty(const Weapon& w, const Stats& s, const FormulaConfig
            std::exp(-static_cast<float>(dexDeficit) * f.stat_requirement.penalty_rate);
 }
 
-// Compute DEF percentage (0–cap) from stats + level.
+// Compute DEF percentage (0–cap) from Body material + stats + level.
 // Returns a value in [0, cap]; applies as `finalDmg = max(1, raw * (1 - DEF/100))`.
-static float computeDef(const Stats& s, int level, const FormulaConfig& f)
+static float computeDef(const Stats& s, int baseDef, int level, const FormulaConfig& f)
 {
-    const float def = std::floor(static_cast<float>(s.str) * f.defense.str_scale +
-                                 static_cast<float>(s.end) * f.defense.end_scale +
-                                 static_cast<float>(level) * f.defense.level_scale);
+    const float def =
+        std::floor(static_cast<float>(baseDef) + static_cast<float>(s.str) * f.defense.str_scale +
+                   static_cast<float>(s.end) * f.defense.end_scale +
+                   static_cast<float>(level) * f.defense.level_scale);
     return std::min(def, f.defense.cap);
 }
 
@@ -99,7 +100,8 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
             level = reg.get<Experience>(target).level;
 
         const auto& stats = reg.get<Stats>(target);
-        const float def = computeDef(stats, level, f);
+        const int baseDef = reg.all_of<Body>(target) ? reg.get<Body>(target).base_defense : 0;
+        const float def = computeDef(stats, baseDef, level, f);
         rawDamage = std::max(1.0f, rawDamage * (1.0f - def / 100.0f));
     }
 
@@ -115,8 +117,9 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
 
     AudioSystem::playSfx(snd.hit.path, snd.hit.volume);
     TracyMessageL("EntityDamaged");
-    std::cout << "[DamageSystem] Entity took " << dmg << " damage (" << health.current << "/"
-              << health.max << " hp)\n";
+    const std::string name = reg.all_of<Tag>(target) ? reg.get<Tag>(target).name : "entity";
+    std::cout << "[DamageSystem] " << name << " took " << dmg << " damage (" << health.current
+              << "/" << health.max << " hp)\n";
 
     if (health.current <= 0 && !reg.all_of<Dead>(target))
     {
@@ -131,7 +134,7 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
         reg.emplace<Dead>(target, Dead{deathTimer});
         AudioSystem::playSfx(snd.death.path, snd.death.volume);
         TracyMessageL("EntityDied");
-        std::cout << "[DamageSystem] Entity died.\n";
+        std::cout << "[DamageSystem] " << name << " died.\n";
     }
 
     // Poise damage — accumulate per hit; stagger when threshold is breached.

@@ -40,7 +40,7 @@ bool Engine::init(const char* title, int width, int height)
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
     window = SDL_CreateWindow(title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height,
-                              SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
+                              SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
     if (!window)
         return false;
 
@@ -129,6 +129,20 @@ void Engine::processEvents()
             running = false;
         if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE)
             running = false;
+        if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_RESIZED)
+        {
+            window_w = event.window.data1;
+            window_h = event.window.data2;
+            RenderSystem::resize(window_w, window_h);
+        }
+
+        // Buffer one-shot input events so they survive across fixed-step ticks.
+        // Without this, a brief key tap between two ticks is lost because
+        // SDL_GetKeyboardState shows the key already released.
+        if (event.type == SDL_KEYDOWN && event.key.repeat == 0)
+            entity_manager.key_down_events.push_back(event.key.keysym.scancode);
+        if (event.type == SDL_MOUSEBUTTONDOWN)
+            entity_manager.mouse_down_events.push_back(event.button.button);
     }
 }
 

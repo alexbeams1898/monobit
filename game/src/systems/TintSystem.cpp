@@ -6,6 +6,7 @@
 #include "systems/AudioSystem.h"
 
 #include <algorithm>
+#include <tracy/Tracy.hpp>
 
 // Health redness kicks in below this HP fraction.
 static constexpr float HP_RED_THRESHOLD = 0.6f;
@@ -17,6 +18,7 @@ static constexpr float HEARTBEAT_INTERVAL_LOW = 0.7f;
 
 void TintSystem::update(EntityManager& em, double dt)
 {
+    ZoneScopedN("TintSystem");
     auto& reg = em.registry();
     const SoundConfig& snd = reg.ctx().get<SoundConfig>();
 

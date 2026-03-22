@@ -1,0 +1,8 @@
+{
+    "name": "Bone Shard",
+    "description": "A jagged fragment of animated bone. Retains faint necromantic energy.",
+    "category": "material",
+    "rarity": "very_common",
+    "stackable": true,
+    "max_stack": 99
+}

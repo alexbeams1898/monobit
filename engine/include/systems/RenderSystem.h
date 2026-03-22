@@ -24,6 +24,9 @@ class RenderSystem
     // Must be called once after gladLoadGL succeeds.
     static void init(int windowW, int windowH);
 
+    // Update viewport and projection after window resize.
+    static void resize(int windowW, int windowH);
+
     // Draw all (Transform, Sprite) entities sorted by layer.
     static void render(EntityManager& em, TextureManager& tm, float camX, float camY);
 

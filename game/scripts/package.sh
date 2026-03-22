@@ -29,10 +29,28 @@ cp "$BUILD_BIN/prison-break-game.exe" "$STAGE_DIR/$NAME.exe"
 cp -r "$BUILD_BIN/assets" "$STAGE_DIR/assets"
 cp -r "$BUILD_BIN/config" "$STAGE_DIR/config"
 
-# Copy any DLLs the exe needs (SDL2, etc.).
+# Auto-detect and bundle all non-system DLLs the exe needs.
+# Uses ldd to find every dependency, then filters out Windows system DLLs
+# (anything under /c/windows). This catches MinGW runtime libs, SDL2, etc.
+# automatically -- no manual DLL list to maintain.
+echo "Scanning DLL dependencies..."
+dll_count=0
+while IFS= read -r dll_path; do
+    dll_name=$(basename "$dll_path")
+    cp "$dll_path" "$STAGE_DIR/$dll_name"
+    echo "  + $dll_name"
+    dll_count=$((dll_count + 1))
+done < <(ldd "$STAGE_DIR/$NAME.exe" 2>/dev/null \
+    | grep -i '\.dll' \
+    | grep -iv '/c/windows/' \
+    | awk '{print $3}' \
+    | sort -u)
+
+# Also grab any DLLs that ended up in the build dir (e.g. from FetchContent).
 for dll in "$BUILD_BIN"/*.dll; do
     [ -f "$dll" ] && cp "$dll" "$STAGE_DIR/"
 done
+echo "Bundled $dll_count DLLs."
 
 # Zip it up.
 rm -f "$NAME.zip"

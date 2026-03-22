@@ -20,6 +20,17 @@ class ConfigLoader
     // Parse config/audio/sounds.json and populate SoundConfig in ctx.
     static bool loadSounds(EntityManager& em, const std::string& filePath);
 
+    // Parse config/audio/music.json and populate MusicConfig in ctx.
+    static bool loadMusic(EntityManager& em, const std::string& filePath);
+
     // Parse config/waves.json and populate WaveConfig in ctx.
     static bool loadWaves(EntityManager& em, const std::string& filePath);
+
+    // Scan a directory (recursively) for item definition JSONs and populate
+    // ItemRegistry in ctx. Call once at startup before loading entities.
+    static bool loadItemDefs(EntityManager& em, const std::string& dirPath);
+
+    // Scan a directory (recursively) for recipe JSONs and populate
+    // RecipeRegistry in ctx.
+    static bool loadRecipes(EntityManager& em, const std::string& dirPath);
 };

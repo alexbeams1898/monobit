@@ -1,0 +1,13 @@
+{
+    "default_volume": 0.3,
+    "tracks": [
+        { "path": "assets/music/From the Dark Past.ogg" },
+        { "path": "assets/music/Gateways.ogg" },
+        { "path": "assets/music/Hades.ogg" },
+        { "path": "assets/music/Life Eternal.ogg" },
+        { "path": "assets/music/On Fire.ogg" },
+        { "path": "assets/music/Purgatory.ogg" },
+        { "path": "assets/music/Sacrifice.ogg" },
+        { "path": "assets/music/The ritualist.ogg" }
+    ]
+}

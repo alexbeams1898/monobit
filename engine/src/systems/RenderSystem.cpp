@@ -165,6 +165,13 @@ void RenderSystem::init(int windowW, int windowH)
     glBindTexture(GL_TEXTURE_2D, 0);
 }
 
+void RenderSystem::resize(int windowW, int windowH)
+{
+    sWindowW = windowW;
+    sWindowH = windowH;
+    glViewport(0, 0, windowW, windowH);
+}
+
 static void buildSrcRect(int src_x, int src_y, int src_w, int src_h, int tex_w, int tex_h,
                          bool flip_x, bool flip_y, float& uvX, float& uvY, float& uvW, float& uvH)
 {
@@ -191,18 +198,22 @@ struct DrawEntry
     bool solid_color;
     float draw_scale;
     float ta;
+    float glow_scale;
+    float glow_alpha;
 };
 
 static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::entity entity,
                                  const Transform& transform, const Sprite& sprite, float alpha,
                                  DrawEntry& out)
 {
-    if (sprite.texture_path.empty() && sprite.texture_id == 0)
+    const bool hasSolidColor = em.registry().all_of<SolidColor>(entity);
+    if (sprite.texture_path.empty() && sprite.texture_id == 0 && !hasSolidColor)
         return false;
 
-    const uint32_t tex_id = tm.load(sprite.texture_path);
+    const uint32_t tex_id = sprite.texture_path.empty() ? 0 : tm.load(sprite.texture_path);
     int tex_w = 0, tex_h = 0;
-    tm.getDimensions(sprite.texture_path, tex_w, tex_h);
+    if (!sprite.texture_path.empty())
+        tm.getDimensions(sprite.texture_path, tex_w, tex_h);
 
     auto& reg = em.registry();
     const auto* bp = reg.try_get<BodyPart>(entity);
@@ -260,6 +271,14 @@ static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::en
     const float sortY = col ? drawY + col->height * 0.5f : drawY;
     const int subLayer = (bp && bp->direction_from_facing) ? 1 : 0;
 
+    float glowScale = 0.0f;
+    float glowAlpha = 0.0f;
+    if (const auto* glow = reg.try_get<Glow>(entity))
+    {
+        glowScale = glow->scale;
+        glowAlpha = glow->alpha;
+    }
+
     out = {drawX - static_cast<float>(sprite.src_w) * scale * 0.5f,
            drawY - static_cast<float>(sprite.src_h) * scale * 0.5f - yOffset,
            sortY,
@@ -279,7 +298,9 @@ static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::en
            flip_y,
            is_solid,
            scale,
-           ta};
+           ta,
+           glowScale,
+           glowAlpha};
     return true;
 }
 
@@ -323,6 +344,24 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
 
     for (const auto& e : drawList)
     {
+        // Draw glow halo behind the entity (larger, semi-transparent).
+        if (e.glow_scale > 0.0f)
+        {
+            const float gw = static_cast<float>(e.src_w) * e.draw_scale * e.glow_scale;
+            const float gh = static_cast<float>(e.src_h) * e.draw_scale * e.glow_scale;
+            const float baseW = static_cast<float>(e.src_w) * e.draw_scale;
+            const float baseH = static_cast<float>(e.src_h) * e.draw_scale;
+            const float gx = e.x - (gw - baseW) * 0.5f;
+            const float gy = e.y - (gh - baseH) * 0.5f;
+            float glowModel[16];
+            buildModel(glowModel, gx, gy, gw, gh);
+            glUniformMatrix4fv(glGetUniformLocation(sProgram, "uModel"), 1, GL_FALSE, glowModel);
+            glBindTexture(GL_TEXTURE_2D, sWhiteTex);
+            glUniform4f(glGetUniformLocation(sProgram, "uSrcRect"), 0.0f, 0.0f, 1.0f, 1.0f);
+            glUniform4f(glGetUniformLocation(sProgram, "uTint"), e.tr, e.tg, e.tb, e.glow_alpha);
+            glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+        }
+
         float model[16];
         buildModel(model, e.x, e.y, static_cast<float>(e.src_w) * e.draw_scale,
                    static_cast<float>(e.src_h) * e.draw_scale);

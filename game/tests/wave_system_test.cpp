@@ -31,12 +31,12 @@ static void setupAutoGen(EntityManager& em, int max_waves = 0, int start_count =
 // Default state
 // ---------------------------------------------------------------------------
 
-TEST_CASE("WaveState starts in Idle phase", "[wave]")
+TEST_CASE("WaveState starts in SafeRoom phase", "[wave]")
 {
     EntityManager em;
     emplaceGameConfigs(em);
     auto& ws = em.registry().ctx().get<WaveState>();
-    REQUIRE(ws.phase == WaveState::Phase::Idle);
+    REQUIRE(ws.phase == WaveState::Phase::SafeRoom);
     REQUIRE(ws.current_wave == 0);
 }
 
@@ -195,7 +195,7 @@ TEST_CASE("Cleared transitions to SafeRoom when safe_room_every triggers", "[wav
     REQUIRE(ws.phase == WaveState::Phase::SafeRoom);
 }
 
-TEST_CASE("Cleared transitions to Idle when safe_room_every is 0", "[wave]")
+TEST_CASE("Cleared transitions to SafeRoom when safe_room_every is 0", "[wave]")
 {
     EntityManager em;
     emplaceGameConfigs(em);
@@ -206,7 +206,7 @@ TEST_CASE("Cleared transitions to Idle when safe_room_every is 0", "[wave]")
     ws.phase = WaveState::Phase::Cleared;
 
     WaveSystem::update(em, 0.016);
-    REQUIRE(ws.phase == WaveState::Phase::Idle);
+    REQUIRE(ws.phase == WaveState::Phase::SafeRoom);
 }
 
 TEST_CASE("Cleared transitions to Complete on last wave", "[wave]")
@@ -234,7 +234,7 @@ TEST_CASE("WaveSystem update is no-op without loaded config", "[wave]")
     // WaveConfig.loaded is false by default.
     WaveSystem::update(em, 0.016);
     auto& ws = em.registry().ctx().get<WaveState>();
-    REQUIRE(ws.phase == WaveState::Phase::Idle);
+    REQUIRE(ws.phase == WaveState::Phase::SafeRoom);
 }
 
 // ---------------------------------------------------------------------------

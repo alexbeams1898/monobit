@@ -4,6 +4,7 @@
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
 
+#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <iostream>
@@ -68,6 +69,18 @@ static void loadStats(EntityManager& em, entt::entity entity, const json& j)
     s.end = j.value("end", 1);
     s.lck = j.value("lck", 1);
     em.registry().emplace<Stats>(entity, s);
+}
+
+static void loadBody(EntityManager& em, entt::entity entity, const json& j)
+{
+    Body b;
+    b.base_hp = j.value("base_hp", 0);
+    b.base_defense = j.value("base_defense", 0);
+    b.unarmed_damage = j.value("unarmed_damage", b.unarmed_damage);
+    b.unarmed_weight = j.value("unarmed_weight", b.unarmed_weight);
+    b.unarmed_str_scaling = j.value("unarmed_str_scaling", b.unarmed_str_scaling);
+    b.unarmed_dex_scaling = j.value("unarmed_dex_scaling", b.unarmed_dex_scaling);
+    em.registry().emplace<Body>(entity, b);
 }
 
 static void loadExperience(EntityManager& em, entt::entity entity, const json& j)
@@ -140,8 +153,19 @@ static void loadLoot(EntityManager& em, entt::entity entity, const json& j)
 {
     Loot l;
     l.xp_drop = j.value("xp_drop", 20);
-    l.money_drop = j.value("money_drop", 0);
-    em.registry().emplace<Loot>(entity, l);
+    if (j.contains("drops") && j["drops"].is_array())
+    {
+        for (const auto& dj : j["drops"])
+        {
+            DropEntry d;
+            d.config_path = dj.value("item", std::string{});
+            d.min_qty = dj.value("min", 1);
+            d.max_qty = dj.value("max", 1);
+            d.base_chance = dj.value("chance", 1.0f);
+            l.drops.push_back(std::move(d));
+        }
+    }
+    em.registry().emplace<Loot>(entity, std::move(l));
 }
 
 static bool emplaceAnimationFromSheet(EntityManager& em, entt::entity entity,
@@ -254,6 +278,44 @@ static void loadStamina(EntityManager& em, entt::entity entity, const json& /*j*
     em.registry().emplace<Stamina>(entity);
 }
 
+static void loadInventory(EntityManager& em, entt::entity entity, const json& j)
+{
+    Inventory inv;
+    inv.max_slots = j.value("max_slots", 20);
+    em.registry().emplace<Inventory>(entity, std::move(inv));
+}
+
+static void loadEquipment(EntityManager& em, entt::entity entity, const json& /*j*/)
+{
+    em.registry().emplace<Equipment>(entity);
+
+    // Ensure entity always has a Weapon component (unarmed defaults) so there
+    // is never a frame where CombatSystem sees no Weapon.
+    // Body's natural weapon takes priority; FormulaConfig::fist is the fallback.
+    if (!em.registry().all_of<Weapon>(entity))
+    {
+        Weapon w;
+        w.name = "Fist";
+        const Body* body = em.registry().try_get<Body>(entity);
+        if (body != nullptr)
+        {
+            w.weight = body->unarmed_weight;
+            w.base_damage = body->unarmed_damage;
+            w.str_scaling = body->unarmed_str_scaling;
+            w.dex_scaling = body->unarmed_dex_scaling;
+        }
+        else
+        {
+            const auto& f = em.registry().ctx().get<FormulaConfig>();
+            w.weight = f.fist.weight;
+            w.base_damage = f.fist.base_damage;
+            w.str_scaling = f.fist.str_scaling;
+            w.dex_scaling = f.fist.dex_scaling;
+        }
+        em.registry().emplace<Weapon>(entity, w);
+    }
+}
+
 static void loadAIController(EntityManager& em, entt::entity entity, const json& j)
 {
     AIController ai;
@@ -303,6 +365,9 @@ static const std::unordered_map<std::string, LoaderFn> kComponentLoaders = {
     {"rest_spot",        loadRestSpot},
     {"solid_color",      loadSolidColor},
     {"body_parts",       loadBodyParts},
+    {"inventory",        loadInventory},
+    {"equipment",        loadEquipment},
+    {"body",             loadBody},
 };
 // clang-format on
 
@@ -401,6 +466,15 @@ bool ConfigLoader::loadFormulas(EntityManager& em, const std::string& filePath)
     if (j.contains("luck"))
     {
         f.luck.drop_scale = j["luck"].value("drop_scale", f.luck.drop_scale);
+        f.luck.quality_scale = j["luck"].value("quality_scale", f.luck.quality_scale);
+        f.luck.essence_quality_scale =
+            j["luck"].value("essence_quality_scale", f.luck.essence_quality_scale);
+        if (j["luck"].contains("quality_thresholds") && j["luck"]["quality_thresholds"].is_array())
+        {
+            const auto& qt = j["luck"]["quality_thresholds"];
+            for (int i = 0; i < 4 && i < static_cast<int>(qt.size()); ++i)
+                f.luck.quality_thresholds[i] = qt[i].get<float>();
+        }
     }
     if (j.contains("damage") && j["damage"].contains("grade_thresholds"))
     {
@@ -428,6 +502,7 @@ bool ConfigLoader::loadFormulas(EntityManager& em, const std::string& filePath)
     {
         f.leveling.xp_base = j["leveling"].value("xp_base", f.leveling.xp_base);
         f.leveling.xp_exponent = j["leveling"].value("xp_exponent", f.leveling.xp_exponent);
+        f.leveling.xp_offset = j["leveling"].value("xp_offset", f.leveling.xp_offset);
         f.leveling.points_per_level =
             j["leveling"].value("points_per_level", f.leveling.points_per_level);
     }
@@ -456,6 +531,8 @@ bool ConfigLoader::loadFormulas(EntityManager& em, const std::string& filePath)
     {
         f.xp_drop.log_scale = j["xp_drop"].value("log_scale", f.xp_drop.log_scale);
         f.xp_drop.min_fraction = j["xp_drop"].value("min_fraction", f.xp_drop.min_fraction);
+        f.xp_drop.level_penalty = j["xp_drop"].value("level_penalty", f.xp_drop.level_penalty);
+        f.xp_drop.essence_scale = j["xp_drop"].value("essence_scale", f.xp_drop.essence_scale);
     }
 
     if (j.contains("stamina"))
@@ -464,12 +541,22 @@ bool ConfigLoader::loadFormulas(EntityManager& em, const std::string& filePath)
         f.stamina.dodge_effort = j["stamina"].value("dodge_effort", f.stamina.dodge_effort);
         f.stamina.skill_effort = j["stamina"].value("skill_effort", f.stamina.skill_effort);
         f.stamina.sprint_effort = j["stamina"].value("sprint_effort", f.stamina.sprint_effort);
+        f.stamina.sprint_dex_scale =
+            j["stamina"].value("sprint_dex_scale", f.stamina.sprint_dex_scale);
         f.stamina.base = j["stamina"].value("base", f.stamina.base);
         f.stamina.end_scale = j["stamina"].value("end_scale", f.stamina.end_scale);
         f.stamina.recovery_rate = j["stamina"].value("recovery_rate", f.stamina.recovery_rate);
         f.stamina.recovery_delay = j["stamina"].value("recovery_delay", f.stamina.recovery_delay);
         f.stamina.exhaustion_stagger =
             j["stamina"].value("exhaustion_stagger", f.stamina.exhaustion_stagger);
+    }
+
+    if (j.contains("fist"))
+    {
+        f.fist.weight = j["fist"].value("weight", f.fist.weight);
+        f.fist.base_damage = j["fist"].value("base_damage", f.fist.base_damage);
+        f.fist.str_scaling = j["fist"].value("str_scaling", f.fist.str_scaling);
+        f.fist.dex_scaling = j["fist"].value("dex_scaling", f.fist.dex_scaling);
     }
 
     f.loaded = true;
@@ -528,6 +615,46 @@ bool ConfigLoader::loadSounds(EntityManager& em, const std::string& filePath)
 
     s.loaded = true;
     std::cout << "[ConfigLoader] Loaded sounds from " << filePath << "\n";
+    return true;
+}
+
+bool ConfigLoader::loadMusic(EntityManager& em, const std::string& filePath)
+{
+    std::ifstream file(filePath);
+    if (!file.is_open())
+    {
+        std::cerr << "[ConfigLoader] Cannot open music config: " << filePath << "\n";
+        return false;
+    }
+
+    json j;
+    try
+    {
+        file >> j;
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "[ConfigLoader] Error parsing " << filePath << ": " << e.what() << "\n";
+        return false;
+    }
+
+    MusicConfig& mc = em.registry().ctx().get<MusicConfig>();
+    mc.default_volume = j.value("default_volume", 0.6f);
+
+    if (j.contains("tracks") && j["tracks"].is_array())
+    {
+        for (const auto& t : j["tracks"])
+        {
+            MusicConfig::Track track;
+            track.path = t.value("path", "");
+            track.volume = t.value("volume", mc.default_volume);
+            if (!track.path.empty())
+                mc.tracks.push_back(std::move(track));
+        }
+    }
+
+    std::cout << "[ConfigLoader] Loaded " << mc.tracks.size() << " music tracks from " << filePath
+              << "\n";
     return true;
 }
 
@@ -610,4 +737,182 @@ bool ConfigLoader::loadWaves(EntityManager& em, const std::string& filePath)
     std::cout << "[ConfigLoader] Loaded wave rules from " << filePath << " (" << gen.enemies.size()
               << " enemy types)\n";
     return true;
+}
+
+// ---------------------------------------------------------------------------
+// Item definition loading
+// ---------------------------------------------------------------------------
+
+static ItemCategory parseCategory(const std::string& s)
+{
+    if (s == "weapon")
+        return ItemCategory::Weapon;
+    if (s == "armor")
+        return ItemCategory::Armor;
+    if (s == "consumable")
+        return ItemCategory::Consumable;
+    if (s == "key_item")
+        return ItemCategory::KeyItem;
+    if (s == "money")
+        return ItemCategory::Money;
+    return ItemCategory::Material;
+}
+
+static Rarity parseRarity(const std::string& s)
+{
+    if (s == "very_common")
+        return Rarity::VeryCommon;
+    if (s == "uncommon")
+        return Rarity::Uncommon;
+    if (s == "rare")
+        return Rarity::Rare;
+    if (s == "epic")
+        return Rarity::Epic;
+    if (s == "legendary")
+        return Rarity::Legendary;
+    return Rarity::Common;
+}
+
+static ArmorSlot parseArmorSlot(const std::string& s)
+{
+    if (s == "head")
+        return ArmorSlot::Head;
+    if (s == "legs")
+        return ArmorSlot::Legs;
+    if (s == "feet")
+        return ArmorSlot::Feet;
+    return ArmorSlot::Chest;
+}
+
+bool ConfigLoader::loadItemDefs(EntityManager& em, const std::string& dirPath)
+{
+    namespace fs = std::filesystem;
+
+    auto& registry = em.registry().ctx().get<ItemRegistry>();
+    int count = 0;
+
+    std::error_code ec;
+    for (const auto& entry : fs::recursive_directory_iterator(dirPath, ec))
+    {
+        if (!entry.is_regular_file() || entry.path().extension() != ".json")
+            continue;
+
+        std::ifstream file(entry.path());
+        if (!file.is_open())
+            continue;
+
+        json j;
+        try
+        {
+            file >> j;
+        }
+        catch (const std::exception& e)
+        {
+            std::cerr << "[ConfigLoader] Error parsing item " << entry.path() << ": " << e.what()
+                      << "\n";
+            continue;
+        }
+
+        // Normalize path to use forward slashes and be relative to the exe.
+        std::string configPath = entry.path().generic_string();
+
+        ItemDef def;
+        def.config_path = configPath;
+        def.name = j.value("name", std::string{});
+        def.description = j.value("description", std::string{});
+        def.category = parseCategory(j.value("category", std::string{"material"}));
+        def.rarity = parseRarity(j.value("rarity", std::string{"common"}));
+
+        def.base_damage = j.value("base_damage", 0.0f);
+        def.weight = j.value("weight", 0.5f);
+        def.str_scaling = j.value("str_scaling", 0.0f);
+        def.dex_scaling = j.value("dex_scaling", 0.0f);
+        def.str_requirement = j.value("str_requirement", 0);
+        def.dex_requirement = j.value("dex_requirement", 0);
+        def.two_handed = j.value("two_handed", false);
+
+        def.armor_slot = parseArmorSlot(j.value("armor_slot", std::string{"chest"}));
+        def.defense_bonus = j.value("defense_bonus", 0.0f);
+        def.poise_bonus = j.value("poise_bonus", 0.0f);
+        def.max_guard = j.value("max_guard", 0.0f);
+
+        def.max_durability = j.value("max_durability", 100.0f);
+        def.stackable = j.value("stackable", false);
+        def.max_stack = j.value("max_stack", 1);
+        def.value = j.value("value", 0);
+
+        registry.defs[configPath] = std::move(def);
+        ++count;
+    }
+
+    if (ec)
+    {
+        std::cerr << "[ConfigLoader] Error scanning item dir " << dirPath << ": " << ec.message()
+                  << "\n";
+    }
+
+    registry.loaded = (count > 0);
+    std::cout << "[ConfigLoader] Loaded " << count << " item definitions from " << dirPath << "\n";
+    return count > 0;
+}
+
+bool ConfigLoader::loadRecipes(EntityManager& em, const std::string& dirPath)
+{
+    namespace fs = std::filesystem;
+
+    auto& registry = em.registry().ctx().get<RecipeRegistry>();
+    int count = 0;
+
+    std::error_code ec;
+    for (const auto& entry : fs::recursive_directory_iterator(dirPath, ec))
+    {
+        if (!entry.is_regular_file() || entry.path().extension() != ".json")
+            continue;
+
+        std::ifstream file(entry.path());
+        if (!file.is_open())
+            continue;
+
+        json j;
+        try
+        {
+            file >> j;
+        }
+        catch (const std::exception& e)
+        {
+            std::cerr << "[ConfigLoader] Error parsing recipe " << entry.path() << ": " << e.what()
+                      << "\n";
+            continue;
+        }
+
+        RecipeDef recipe;
+        recipe.config_path = entry.path().generic_string();
+        recipe.name = j.value("name", std::string{});
+        recipe.output_item = j.value("output", std::string{});
+        recipe.output_quantity = j.value("output_quantity", 1);
+
+        if (j.contains("inputs") && j["inputs"].is_array())
+        {
+            for (const auto& ij : j["inputs"])
+            {
+                RecipeIngredient ing;
+                ing.config_path = ij.value("item", std::string{});
+                ing.quantity = ij.value("quantity", 1);
+                recipe.inputs.push_back(std::move(ing));
+            }
+        }
+
+        registry.recipes.push_back(std::move(recipe));
+        ++count;
+    }
+
+    if (ec)
+    {
+        std::cerr << "[ConfigLoader] Error scanning recipe dir " << dirPath << ": " << ec.message()
+                  << "\n";
+    }
+
+    registry.loaded = (count > 0);
+    std::cout << "[ConfigLoader] Loaded " << count << " recipes from " << dirPath << "\n";
+    return count > 0;
 }

@@ -169,13 +169,13 @@ TEST_CASE("Damage — D/D weapon + str=5/dex=5: both terms add", "[combat]")
 TEST_CASE("HP derivation — end=5 gives expected maxHP", "[combat]")
 {
     // maxHP = base + floor(scale * log(END + 1))
-    //       = 5 + floor(100 * log(6))
-    //       = 5 + floor(179.17...) = 5 + 179 = 184
+    //       = 5 + floor(30 * log(6))
+    //       = 5 + floor(53.75) = 5 + 53 = 58
     const FormulaConfig f; // defaults match formulas.json values
 
     const int expectedMax =
         static_cast<int>(f.hp.base + std::floor(f.hp.scale * std::log(5.0f + 1.0f)));
-    REQUIRE(expectedMax == 184);
+    REQUIRE(expectedMax == 58);
 }
 
 TEST_CASE("HP derivation — end=1 gives minimum HP", "[combat]")
@@ -261,9 +261,9 @@ TEST_CASE("Stamina defaults match expected values", "[combat]")
 {
     const FormulaConfig f;
     REQUIRE(f.stamina.swing_effort == Catch::Approx(3.0f));
-    REQUIRE(f.stamina.dodge_effort == Catch::Approx(5.0f));
+    REQUIRE(f.stamina.dodge_effort == Catch::Approx(2.5f));
     REQUIRE(f.stamina.skill_effort == Catch::Approx(4.0f));
-    REQUIRE(f.stamina.sprint_effort == Catch::Approx(1.0f));
+    REQUIRE(f.stamina.sprint_effort == Catch::Approx(2.0f));
     REQUIRE(f.stamina.base == Catch::Approx(5.0f));
     REQUIRE(f.stamina.end_scale == Catch::Approx(3.0f));
     REQUIRE(f.stamina.recovery_rate == Catch::Approx(2.5f));
@@ -287,7 +287,7 @@ TEST_CASE("Stamina — swing deducts weapon.weight * swing_effort", "[combat]")
     REQUIRE(sta.current == Catch::Approx(sta.max_stamina - cost));
 }
 
-TEST_CASE("Stamina — dodge costs more than swing", "[combat]")
+TEST_CASE("Stamina — dodge costs less than swing", "[combat]")
 {
     const FormulaConfig f;
     const float weight = 2.0f;
@@ -295,7 +295,7 @@ TEST_CASE("Stamina — dodge costs more than swing", "[combat]")
     auto staDodge = makeStamina(f, 5);
     deductStamina(staSwing, f, weight * f.stamina.swing_effort);
     deductStamina(staDodge, f, weight * f.stamina.dodge_effort);
-    REQUIRE(staDodge.current < staSwing.current);
+    REQUIRE(staDodge.current > staSwing.current);
 }
 
 TEST_CASE("Stamina — heavier weapon costs more per action", "[combat]")

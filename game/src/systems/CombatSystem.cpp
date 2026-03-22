@@ -243,6 +243,16 @@ void CombatSystem::update(EntityManager& em, double dt)
         const bool hasSta = em.registry().all_of<Stamina>(entity);
         const float staCurrent = hasSta ? em.registry().get<Stamina>(entity).current : 999.0f;
 
+        // Suppress LMB attack when clicking on a highlighted pickup.
+        // InteractTarget persists from the previous frame (PickupSystem runs after us).
+        bool clickOnPickup = false;
+        if (actions.mouse_click && em.registry().all_of<InteractTarget>(entity))
+        {
+            const auto& it = em.registry().get<InteractTarget>(entity);
+            if (it.entity != entt::null && em.registry().valid(it.entity))
+                clickOnPickup = true;
+        }
+
         // ---- Normal attack ------------------------------------------------
         bool fireAttack = false;
         if (em.registry().all_of<AutoAttackMode>(entity))
@@ -252,9 +262,23 @@ void CombatSystem::update(EntityManager& em, double dt)
                 fireAttack = (weapon.swing_cooldown_remaining <= 0.0f && !isAttackLocked &&
                               !isStaggered && staCurrent >= swingCost);
         }
-        if (!fireAttack)
+        if (!fireAttack && !clickOnPickup)
             fireAttack = (actions.attack && weapon.swing_cooldown_remaining <= 0.0f &&
                           !isAttackLocked && !isStaggered && staCurrent >= swingCost);
+
+        // Audio + visual feedback when attack pressed but stamina too low.
+        if (!fireAttack && actions.attack && !clickOnPickup &&
+            weapon.swing_cooldown_remaining <= 0.0f && !isAttackLocked && !isStaggered &&
+            staCurrent < swingCost)
+        {
+            AudioSystem::playSfx(snd.low_stamina_heartbeat.path, snd.low_stamina_heartbeat.volume);
+            if (em.registry().all_of<Velocity>(entity))
+            {
+                auto& vel = em.registry().get<Velocity>(entity);
+                vel.dx -= facing.dx * 40.0f;
+                vel.dy -= facing.dy * 40.0f;
+            }
+        }
 
         if (fireAttack)
         {
@@ -422,6 +446,19 @@ void CombatSystem::update(EntityManager& em, double dt)
 
             std::cout << "[CombatSystem] " << (nearEnemy ? "Backstep!\n" : "Dodge roll!\n");
         }
+
+        // Audio + visual feedback when dodge pressed but stamina too low.
+        if (actions.dodge && !canDodge && actions.dodge_cooldown_remaining <= 0.0f &&
+            !isStaggered && !em.registry().all_of<Dodging>(entity) && staCurrent < dodgeCost)
+        {
+            AudioSystem::playSfx(snd.low_stamina_heartbeat.path, snd.low_stamina_heartbeat.volume);
+            if (em.registry().all_of<Velocity>(entity))
+            {
+                auto& vel = em.registry().get<Velocity>(entity);
+                vel.dx -= facing.dx * 40.0f;
+                vel.dy -= facing.dy * 40.0f;
+            }
+        }
     }
 
     // --- 6. Enemy attacks — hitbox-based, range-gated by attack_radius ------
@@ -451,6 +488,12 @@ void CombatSystem::update(EntityManager& em, double dt)
                     continue;
                 if (ai.state != AIController::State::Chase &&
                     ai.state != AIController::State::Attack)
+                    continue;
+
+                // Stamina gate — can't swing without enough stamina.
+                const float swingCost = weapon.weight * f.stamina.swing_effort;
+                if (em.registry().all_of<Stamina>(entity) &&
+                    em.registry().get<Stamina>(entity).current < swingCost)
                     continue;
 
                 const float dx = playerTransform.x - transform.x;
@@ -483,6 +526,10 @@ void CombatSystem::update(EntityManager& em, double dt)
                     fd.dx = nx;
                     fd.dy = ny;
                 }
+
+                // Stamina cost — same formula as player swings.
+                if (em.registry().all_of<Stamina>(entity))
+                    deductStamina(em.registry(), entity, swingCost, f);
 
                 // Yellow swing flash.
                 em.registry().emplace_or_replace<AttackFeedback>(entity, AttackFeedback{0.5f});

@@ -12,4 +12,7 @@ inline void emplaceGameConfigs(EntityManager& em)
     em.registry().ctx().emplace<SoundConfig>();
     em.registry().ctx().emplace<WaveConfig>();
     em.registry().ctx().emplace<WaveState>();
+    em.registry().ctx().emplace<ItemRegistry>();
+    em.registry().ctx().emplace<RecipeRegistry>();
+    em.registry().ctx().emplace<MusicConfig>();
 }

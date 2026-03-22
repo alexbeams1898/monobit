@@ -9,11 +9,13 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <tracy/Tracy.hpp>
 
 static constexpr float kHealCooldown = 5.0f; // seconds before the spot can heal again
 
 void RestSpotSystem::update(EntityManager& em, double dt)
 {
+    ZoneScopedN("RestSpotSystem");
     const float fdt = static_cast<float>(dt);
     auto& reg = em.registry();
 
@@ -53,6 +55,7 @@ void RestSpotSystem::update(EntityManager& em, double dt)
 
         playerHealth.current = playerHealth.max;
         spot.cooldown = kHealCooldown;
+        TracyMessageL("RestHeal");
         AudioSystem::playSfx(snd.rest_heal.path, snd.rest_heal.volume);
         ParticleSystem::spawnEmberBurst(em, playerX, playerY, 4);
         std::cout << "[RestSpot] HP restored to " << playerHealth.max << ".\n";

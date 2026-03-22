@@ -4,13 +4,31 @@
 #include "ecs/GameComponents.h"
 
 #include <SDL.h>
+#include <algorithm>
 #include <cmath>
+#include <tracy/Tracy.hpp>
 
 // InputMappingSystem -- maps raw SDL input to game action booleans.
 // All key-to-action bindings live here. To rebind a key, change it here only.
+//
+// One-shot inputs (dodge, craft, stat alloc, etc.) read from the event buffer
+// filled by Engine::processEvents(). This guarantees brief key taps are never
+// lost between fixed-step ticks. Continuous inputs (move, attack, sprint) still
+// poll SDL_GetKeyboardState for the current held state.
+
+static bool hasKey(const std::vector<int>& events, int scancode)
+{
+    return std::find(events.begin(), events.end(), scancode) != events.end();
+}
+
+static bool hasMouse(const std::vector<uint8_t>& events, uint8_t button)
+{
+    return std::find(events.begin(), events.end(), button) != events.end();
+}
 
 void InputMappingSystem::update(EntityManager& em)
 {
+    ZoneScopedN("InputMappingSystem");
     const Uint8* keys = SDL_GetKeyboardState(nullptr);
 
     int mouseX = 0;
@@ -37,48 +55,28 @@ void InputMappingSystem::update(EntityManager& em)
         my /= mlen;
     }
 
+    // Continuous (held) inputs -- polled from current keyboard/mouse state.
     const bool attackHeld = lmbHeld || keys[SDL_SCANCODE_E] != 0;
     const bool skillHeld = keys[SDL_SCANCODE_Q] != 0;
     const bool blockHeld = rmbHeld;
     const bool sprintHeld = keys[SDL_SCANCODE_LSHIFT] != 0 || keys[SDL_SCANCODE_RSHIFT] != 0;
 
-    // Edge-detect: dodge (Space).
-    static bool prevSpace = false;
-    const bool spaceHeld = keys[SDL_SCANCODE_SPACE] != 0;
-    const bool dodgeJust = spaceHeld && !prevSpace;
-    prevSpace = spaceHeld;
+    // One-shot inputs -- from event buffer so brief taps between ticks aren't lost.
+    const auto& kd = em.key_down_events;
+    const auto& md = em.mouse_down_events;
 
-    // Edge-detect: auto-attack toggle (P).
-    static bool prevP = false;
-    const bool curP = keys[SDL_SCANCODE_P] != 0;
-    const bool autoJust = curP && !prevP;
-    prevP = curP;
-
-    // Edge-detect: block parry window.
-    static bool prevBlock = false;
-    const bool blockJust = blockHeld && !prevBlock;
-    prevBlock = blockHeld;
-
-    // Edge-detect: wave start (R).
-    static bool prevR = false;
-    const bool curR = keys[SDL_SCANCODE_R] != 0;
-    const bool waveStartJust = curR && !prevR;
-    prevR = curR;
-
-    // Edge-detect: stat allocation (1/2/3/4).
-    static bool prev1 = false, prev2 = false, prev3 = false, prev4 = false;
-    const bool cur1 = keys[SDL_SCANCODE_1] != 0;
-    const bool cur2 = keys[SDL_SCANCODE_2] != 0;
-    const bool cur3 = keys[SDL_SCANCODE_3] != 0;
-    const bool cur4 = keys[SDL_SCANCODE_4] != 0;
-    const bool alloc1 = cur1 && !prev1;
-    const bool alloc2 = cur2 && !prev2;
-    const bool alloc3 = cur3 && !prev3;
-    const bool alloc4 = cur4 && !prev4;
-    prev1 = cur1;
-    prev2 = cur2;
-    prev3 = cur3;
-    prev4 = cur4;
+    const bool dodgeJust = hasKey(kd, SDL_SCANCODE_SPACE);
+    const bool autoJust = hasKey(kd, SDL_SCANCODE_P);
+    const bool blockJust = hasMouse(md, SDL_BUTTON_RIGHT);
+    const bool waveStartJust = hasKey(kd, SDL_SCANCODE_R);
+    const bool craftJust = hasKey(kd, SDL_SCANCODE_C);
+    const bool cycleWeaponJust = hasKey(kd, SDL_SCANCODE_TAB);
+    const bool interactJust = hasKey(kd, SDL_SCANCODE_F);
+    const bool lmbJust = hasMouse(md, SDL_BUTTON_LEFT);
+    const bool alloc1 = hasKey(kd, SDL_SCANCODE_1);
+    const bool alloc2 = hasKey(kd, SDL_SCANCODE_2);
+    const bool alloc3 = hasKey(kd, SDL_SCANCODE_3);
+    const bool alloc4 = hasKey(kd, SDL_SCANCODE_4);
 
     for (auto [entity, actions] : em.registry().view<PlayerActions>().each())
     {
@@ -92,6 +90,10 @@ void InputMappingSystem::update(EntityManager& em)
         actions.block_just_pressed = blockJust;
         actions.auto_toggle_just_pressed = autoJust;
         actions.start_wave = waveStartJust;
+        actions.craft = craftJust;
+        actions.cycle_weapon = cycleWeaponJust;
+        actions.interact = interactJust;
+        actions.mouse_click = lmbJust;
         actions.alloc_str = alloc1;
         actions.alloc_dex = alloc2;
         actions.alloc_end = alloc3;
@@ -101,4 +103,8 @@ void InputMappingSystem::update(EntityManager& em)
         // for walk-direction snapping without knowing about game components.
         em.registry().emplace_or_replace<MovementIntent>(entity, MovementIntent{mx, my});
     }
+
+    // Clear event buffers after consumption so they don't fire again next tick.
+    em.key_down_events.clear();
+    em.mouse_down_events.clear();
 }

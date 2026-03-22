@@ -77,7 +77,12 @@ void MovementSystem::update(EntityManager& em, double dt)
             const float wWeight = em.registry().all_of<Weapon>(entity)
                                       ? em.registry().get<Weapon>(entity).weight
                                       : 1.0f;
-            const float drain = wWeight * f.stamina.sprint_effort * static_cast<float>(dt);
+            const int dexSprint =
+                em.registry().all_of<Stats>(entity) ? em.registry().get<Stats>(entity).dex : 1;
+            const float drain =
+                wWeight * f.stamina.sprint_effort /
+                (1.0f + static_cast<float>(dexSprint) * f.stamina.sprint_dex_scale) *
+                static_cast<float>(dt);
             if (sta.current > 0.0f)
             {
                 deductStamina(em.registry(), entity, drain, f);
