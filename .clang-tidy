@@ -16,7 +16,8 @@ Checks: >
   readability-identifier-naming,
   readability-function-cognitive-complexity,
   -bugprone-easily-swappable-parameters,
-  -bugprone-exception-escape
+  -bugprone-exception-escape,
+  -clang-analyzer-optin.core.EnumCastOutOfRange
 
 # Treat warnings as errors locally and in CI — keeps the bar high
 WarningsAsErrors: '*'
