@@ -175,5 +175,11 @@ void PickupSystem::update(EntityManager& em)
     reg.get_or_emplace<InteractTarget>(playerEnt).entity = target;
 
     if ((wantInteract || (wantClick && hoverTarget != entt::null)) && target != entt::null)
+    {
         collectPickup(em, playerEnt, target);
+
+        // Suppress attack so CombatSystem doesn't swing on the same click.
+        if (wantClick && reg.all_of<PlayerActions>(playerEnt))
+            reg.get<PlayerActions>(playerEnt).attack = false;
+    }
 }

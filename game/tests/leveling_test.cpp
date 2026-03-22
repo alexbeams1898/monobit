@@ -40,8 +40,8 @@ TEST_CASE("applyInitialDerivations — derives Health from END for stat entity",
     REQUIRE(em.registry().all_of<Health>(e));
     const auto& h = em.registry().get<Health>(e);
 
-    // No Body → fallback hp.base=5. maxHP = 5 + floor(30 * ln(6)) = 5 + 53 = 58
-    REQUIRE(h.max == 58);
+    // No Body → fallback hp.base=5, no Experience → level=1. maxHP = 5 + 15*5 + 5*1 = 85
+    REQUIRE(h.max == 85);
     REQUIRE(h.current == h.max);
 }
 
@@ -84,8 +84,9 @@ TEST_CASE("applyInitialDerivations — entity with existing Health gets max over
     LevelingSystem::applyInitialDerivations(em);
 
     const auto& h = em.registry().get<Health>(e);
-    REQUIRE(h.max == 58); // overridden by formula (no Body → fallback base=5)
-    REQUIRE(h.current == 58);
+    // Linear HP: base(5) + scale(15)*END(5) + level_scale(5)*level(1) = 85
+    REQUIRE(h.max == 85);
+    REQUIRE(h.current == 85);
 }
 
 TEST_CASE("applyInitialDerivations — sets xp_to_next on Experience", "[leveling]")

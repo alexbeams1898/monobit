@@ -1,7 +1,7 @@
 {
     "name": "Bone Club",
     "inputs": [
-        { "item": "config/items/materials/bone_shard.json", "quantity": 3 }
+        { "item": "config/items/materials/bone_shard.json", "quantity": 5 }
     ],
     "output": "config/items/weapons/bone_club.json",
     "output_quantity": 1

@@ -54,10 +54,22 @@ static bool spawnOneEnemy(EntityManager& em, const ActiveWave& wave, WaveState& 
     float sx = 0.0f;
     float sy = 0.0f;
     const int roomCount = static_cast<int>(em.tile_map.placed_rooms.size());
+
+    // Find the rest room (contains the 'R' spawn point) so we skip it.
+    int restRoom = -1;
+    for (const auto& sp : em.tile_map.spawn_points)
+    {
+        if (sp.type == 'R')
+        {
+            restRoom = em.tile_map.findRoomAt(sp.x, sp.y);
+            break;
+        }
+    }
+
     bool spawned = false;
     if (roomCount > 0)
     {
-        const int targetRoom = SpawnUtils::nextSpawnRoom(roomCount);
+        const int targetRoom = SpawnUtils::nextSpawnRoom(roomCount, restRoom);
         spawned =
             SpawnUtils::findSpawnInRoom(em.tile_map, targetRoom, px, py, wc.spawn_near, sx, sy);
     }

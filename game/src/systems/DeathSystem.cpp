@@ -246,10 +246,19 @@ static void spawnDrops(EntityManager& em, const Loot& loot, float deathX, float 
 
         const ItemDef* def = itemReg.find(drop.config_path);
         const Rarity rarity = (def != nullptr) ? def->rarity : Rarity::Common;
-        emplacePickupVisuals(em, pickup, rarityColor(rarity), rarity, quality);
+        const bool isMoney = (def != nullptr && def->category == ItemCategory::Money);
+        if (isMoney)
+        {
+            // Money: flat green, no glow, no rarity/quality visuals.
+            emplacePickupVisuals(em, pickup, SolidColor{0.2f, 0.75f, 0.3f}, Rarity::VeryCommon,
+                                 QualityTier::Common);
+        }
+        else
+        {
+            emplacePickupVisuals(em, pickup, rarityColor(rarity), rarity, quality);
+        }
 
         const std::string itemName = (def != nullptr) ? def->name : drop.config_path;
-        const bool isMoney = (def != nullptr && def->category == ItemCategory::Money);
         std::cout << "[Drop] " << qty << "x " << itemName << " (Rarity: " << rarityName(rarity);
         if (!isMoney)
             std::cout << ", Quality: " << qualityName(quality);
@@ -267,10 +276,13 @@ static void processEnemyDeath(EntityManager& em, entt::entity entity, const Loot
     const FormulaConfig& f = reg.ctx().get<FormulaConfig>();
 
     int playerLevel = 1;
+    int playerLck = 1;
     for (auto pe : reg.view<PlayerActions>())
     {
         if (reg.all_of<Experience>(pe))
             playerLevel = reg.get<Experience>(pe).level;
+        if (reg.all_of<Stats>(pe))
+            playerLck = reg.get<Stats>(pe).lck;
         break;
     }
 
@@ -298,14 +310,13 @@ static void processEnemyDeath(EntityManager& em, entt::entity entity, const Loot
     if (reg.all_of<Transform>(entity) && !loot.drops.empty())
     {
         const auto& t = reg.get<Transform>(entity);
-        const int lck = reg.all_of<Stats>(entity) ? reg.get<Stats>(entity).lck : 0;
         int totalEssence = 0;
         if (reg.all_of<Essence>(entity))
         {
             const auto& e = reg.get<Essence>(entity);
             totalEssence = e.str + e.dex + e.end + e.lck;
         }
-        spawnDrops(em, loot, t.x, t.y, lck, totalEssence, f);
+        spawnDrops(em, loot, t.x, t.y, playerLck, totalEssence, f);
     }
 
     // Log kill with stats + essence for balance visibility.

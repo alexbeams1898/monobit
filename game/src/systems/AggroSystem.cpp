@@ -58,7 +58,9 @@ void AggroSystem::update(EntityManager& em)
 
         if (ai.state == AIController::State::Idle)
         {
-            if (ai.aggro_radius > 0.0f && distSq <= ai.aggro_radius * ai.aggro_radius)
+            if (ai.aggro_radius > 0.0f && distSq <= ai.aggro_radius * ai.aggro_radius &&
+                (!em.tile_map.valid() ||
+                 em.tile_map.hasLineOfSight(transform.x, transform.y, px, py)))
             {
                 ai.state = AIController::State::Chase;
                 TracyMessageL("EnemyAggro");

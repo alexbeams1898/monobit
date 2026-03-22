@@ -16,12 +16,24 @@ static int resolveBaseHP(entt::registry& reg, entt::entity entity, const Formula
     return (body != nullptr) ? body->base_hp : static_cast<int>(f.hp.base);
 }
 
-// Compute max HP: baseHP + floor(scale * log(END + 1)).
-// baseHP comes from the entity's Body (innate toughness of its physical form).
-static int deriveMaxHP(int baseHP, int end, const FormulaConfig& f)
+// Resolve entity level: Experience.level for players, AIController.tier for enemies, else 1.
+static int resolveLevel(entt::registry& reg, entt::entity entity)
 {
-    return baseHP +
-           static_cast<int>(std::floor(f.hp.scale * std::log(static_cast<float>(end) + 1.0f)));
+    const Experience* exp = reg.try_get<Experience>(entity);
+    if (exp != nullptr)
+        return exp->level;
+    const AIController* ai = reg.try_get<AIController>(entity);
+    if (ai != nullptr)
+        return ai->tier;
+    return 1;
+}
+
+// Compute max HP: baseHP + scale * END + level_scale * level.
+// baseHP comes from the entity's Body (innate toughness of its physical form).
+// END provides the primary HP investment; level gives passive growth.
+static int deriveMaxHP(int baseHP, int end, int level, const FormulaConfig& f)
+{
+    return baseHP + static_cast<int>(f.hp.scale) * end + static_cast<int>(f.hp.level_scale) * level;
 }
 
 // Compute next-level XP threshold:
@@ -43,7 +55,8 @@ void LevelingSystem::deriveHealth(EntityManager& em, entt::entity entity)
 
     const FormulaConfig& f = reg.ctx().get<FormulaConfig>();
     const int baseHP = resolveBaseHP(reg, entity, f);
-    const int maxHP = deriveMaxHP(baseHP, reg.get<Stats>(entity).end, f);
+    const int level = resolveLevel(reg, entity);
+    const int maxHP = deriveMaxHP(baseHP, reg.get<Stats>(entity).end, level, f);
     if (reg.all_of<Health>(entity))
     {
         auto& health = reg.get<Health>(entity);
@@ -80,7 +93,8 @@ void LevelingSystem::applyInitialDerivations(EntityManager& em)
         }
 
         const int baseHP = resolveBaseHP(reg, entity, f);
-        const int maxHP = deriveMaxHP(baseHP, stats.end, f);
+        const int level = resolveLevel(reg, entity);
+        const int maxHP = deriveMaxHP(baseHP, stats.end, level, f);
 
         if (reg.all_of<Health>(entity))
         {
@@ -136,7 +150,8 @@ static void allocateStat(entt::registry& reg, entt::entity entity, int& stat,
     {
         auto& health = reg.get<Health>(entity);
         const int baseHP = resolveBaseHP(reg, entity, f);
-        const int newMax = deriveMaxHP(baseHP, stats.end, f);
+        const int level = resolveLevel(reg, entity);
+        const int newMax = deriveMaxHP(baseHP, stats.end, level, f);
         const int delta = newMax - health.max;
         health.max = newMax;
         health.current = std::min(health.current + delta, health.max);
@@ -171,7 +186,8 @@ void LevelingSystem::deriveInitialStats(EntityManager& em, entt::entity entity)
 
     // Health
     const int baseHP = resolveBaseHP(reg, entity, f);
-    const int maxHP = deriveMaxHP(baseHP, stats.end, f);
+    const int level = resolveLevel(reg, entity);
+    const int maxHP = deriveMaxHP(baseHP, stats.end, level, f);
     if (reg.all_of<Health>(entity))
     {
         auto& health = reg.get<Health>(entity);

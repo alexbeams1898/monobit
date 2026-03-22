@@ -29,7 +29,7 @@ float computeSwingCooldown(const Weapon& w, const Stats& s, const FormulaConfig&
     const float strBias = 1.0f - dexBias;
     const float effectiveStat =
         (static_cast<float>(s.str) * strBias) + (static_cast<float>(s.dex) * dexBias);
-    const float numerator = w.weight * f.swing.weight_scale;
+    const float numerator = f.swing.base_swing_time + w.weight * f.swing.weight_scale;
     const float reduction = f.swing.stat_scale * std::sqrt(effectiveStat) / 100.0f;
     const float denom = 1.0f + reduction;
     const float cooldown = numerator / denom;
@@ -236,10 +236,10 @@ void CombatSystem::update(EntityManager& em, double dt)
         const bool isAttackLocked = em.registry().all_of<AttackLocked>(entity);
         const bool isStaggered = em.registry().all_of<Staggered>(entity);
 
-        // Stamina cost helpers — cost = weapon.weight * effort multiplier.
-        const float swingCost = weapon.weight * f.stamina.swing_effort;
-        const float skillCost = weapon.weight * f.stamina.skill_effort;
-        const float dodgeCost = weapon.weight * f.stamina.dodge_effort;
+        // Stamina cost helpers — base motion cost + weight surcharge.
+        const float swingCost = f.stamina.base_swing_cost + weapon.weight * f.stamina.swing_effort;
+        const float skillCost = f.stamina.base_swing_cost + weapon.weight * f.stamina.skill_effort;
+        const float dodgeCost = f.stamina.base_swing_cost + weapon.weight * f.stamina.dodge_effort;
         const bool hasSta = em.registry().all_of<Stamina>(entity);
         const float staCurrent = hasSta ? em.registry().get<Stamina>(entity).current : 999.0f;
 
@@ -339,7 +339,7 @@ void CombatSystem::update(EntityManager& em, double dt)
             const float cooldown =
                 em.registry().all_of<Stats>(entity)
                     ? computeSwingCooldown(weapon, em.registry().get<Stats>(entity), f)
-                    : weapon.weight * f.swing.weight_scale / 1.0f;
+                    : f.swing.base_swing_time + weapon.weight * f.swing.weight_scale;
             weapon.swing_cooldown_remaining = cooldown;
 
             // Attack commitment: locks new attacks/dodges for 60% of the cooldown.
@@ -491,7 +491,8 @@ void CombatSystem::update(EntityManager& em, double dt)
                     continue;
 
                 // Stamina gate — can't swing without enough stamina.
-                const float swingCost = weapon.weight * f.stamina.swing_effort;
+                const float swingCost =
+                    f.stamina.base_swing_cost + weapon.weight * f.stamina.swing_effort;
                 if (em.registry().all_of<Stamina>(entity) &&
                     em.registry().get<Stamina>(entity).current < swingCost)
                     continue;

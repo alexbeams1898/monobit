@@ -306,9 +306,12 @@ TEST_CASE("High essence enemy drops higher quality items", "[drops]")
     drop.min_qty = 1;
     drop.max_qty = 1;
 
-    // High LCK guarantees Masterwork: lck=32 * quality_scale=3.0 = +96 > 95 threshold.
-    // Essence adds a small bonus on top (total=200 * 0.05 = +10).
-    auto e = spawnEnemy(em, {drop}, /*lck=*/32);
+    // Quality uses *player* LCK. Give the player high LCK so every roll hits Masterwork.
+    // playerLck=40 * quality_scale=3 = 120, min score = 120 >= Masterwork threshold (120).
+    auto player = spawnPlayer(em);
+    em.registry().emplace<Stats>(player, Stats{1, 1, 1, 40});
+
+    auto e = spawnEnemy(em, {drop}, /*lck=*/0);
     Essence ess;
     ess.str = 50;
     ess.dex = 50;

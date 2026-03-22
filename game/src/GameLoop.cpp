@@ -357,6 +357,7 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
         // 10. Progression (pickups, leveling, rest).
         // 11. Camera (snaps to final player position).
         InputMappingSystem::update(em);
+        PickupSystem::update(em);
         EquipmentSystem::update(em);
         WaveSystem::update(em, dt);
         CombatSystem::update(em, dt);
@@ -383,7 +384,6 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
         CollisionSystem::update(em);
         DamageSystem::update(em);
         DeathSystem::update(em, dt);
-        PickupSystem::update(em);
         CraftingSystem::update(em);
         LevelingSystem::update(em);
         RestSpotSystem::update(em, dt);

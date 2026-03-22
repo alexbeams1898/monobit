@@ -441,6 +441,7 @@ bool ConfigLoader::loadFormulas(EntityManager& em, const std::string& filePath)
     {
         f.hp.base = j["hp"].value("base", f.hp.base);
         f.hp.scale = j["hp"].value("scale", f.hp.scale);
+        f.hp.level_scale = j["hp"].value("level_scale", f.hp.level_scale);
     }
     if (j.contains("movement"))
     {
@@ -488,6 +489,7 @@ bool ConfigLoader::loadFormulas(EntityManager& em, const std::string& filePath)
     }
     if (j.contains("swing"))
     {
+        f.swing.base_swing_time = j["swing"].value("base_swing_time", f.swing.base_swing_time);
         f.swing.weight_scale = j["swing"].value("weight_scale", f.swing.weight_scale);
         f.swing.stat_scale = j["swing"].value("stat_scale", f.swing.stat_scale);
         f.swing.two_handed_str_bonus =
@@ -537,6 +539,8 @@ bool ConfigLoader::loadFormulas(EntityManager& em, const std::string& filePath)
 
     if (j.contains("stamina"))
     {
+        f.stamina.base_swing_cost =
+            j["stamina"].value("base_swing_cost", f.stamina.base_swing_cost);
         f.stamina.swing_effort = j["stamina"].value("swing_effort", f.stamina.swing_effort);
         f.stamina.dodge_effort = j["stamina"].value("dodge_effort", f.stamina.dodge_effort);
         f.stamina.skill_effort = j["stamina"].value("skill_effort", f.stamina.skill_effort);

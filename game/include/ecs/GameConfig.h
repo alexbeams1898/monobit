@@ -20,7 +20,8 @@ struct FormulaConfig
     struct
     {
         float base = 5.f;
-        float scale = 30.f;
+        float scale = 15.f;
+        float level_scale = 5.f;
     } hp;
 
     struct
@@ -50,8 +51,8 @@ struct FormulaConfig
     {
         float drop_scale = 15.f;
         float quality_scale = 3.f;
-        float essence_quality_scale = 0.05f;
-        float quality_thresholds[4] = {30.f, 60.f, 80.f, 95.f};
+        float essence_quality_scale = 0.01f;
+        float quality_thresholds[4] = {55.f, 85.f, 102.f, 120.f};
     } luck;
 
     struct
@@ -66,8 +67,9 @@ struct FormulaConfig
 
     struct
     {
-        float weight_scale = 3.f;
-        float stat_scale = 160.f;
+        float base_swing_time = 0.8f;
+        float weight_scale = 0.5f;
+        float stat_scale = 80.f;
         float two_handed_str_bonus = 0.3f;
     } swing;
 
@@ -117,14 +119,15 @@ struct FormulaConfig
 
     struct
     {
-        float swing_effort = 3.0f;
+        float base_swing_cost = 3.0f;
+        float swing_effort = 0.5f;
         float dodge_effort = 2.5f;
         float skill_effort = 4.0f;
         float sprint_effort = 2.0f;
         float sprint_dex_scale = 0.15f;
-        float base = 5.0f;
-        float end_scale = 3.0f;
-        float recovery_rate = 2.5f;
+        float base = 10.0f;
+        float end_scale = 20.0f;
+        float recovery_rate = 8.0f;
         float recovery_delay = 1.0f;
         float exhaustion_stagger = 0.6f;
     } stamina;

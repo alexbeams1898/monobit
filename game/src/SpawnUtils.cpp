@@ -157,12 +157,17 @@ bool findSpawnInRoom(const TileMap& tm, int roomIdx, float px, float py, float n
 
 static int sSpawnRoomCounter = 0;
 
-int nextSpawnRoom(int room_count)
+int nextSpawnRoom(int room_count, int skip_room)
 {
     if (room_count <= 0)
         return 0;
-    const int idx = sSpawnRoomCounter % room_count;
+    int idx = sSpawnRoomCounter % room_count;
     sSpawnRoomCounter++;
+    if (idx == skip_room)
+    {
+        idx = sSpawnRoomCounter % room_count;
+        sSpawnRoomCounter++;
+    }
     return idx;
 }
 
