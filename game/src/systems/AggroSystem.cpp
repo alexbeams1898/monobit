@@ -10,9 +10,16 @@ static void updateSprintFlag(AIController& ai, float distSq)
 {
     if (ai.state == AIController::State::Chase && ai.sprint_multiplier > 0.0f &&
         ai.sprint_threshold > 0.0f)
-        ai.sprint = distSq > ai.sprint_threshold * ai.sprint_threshold;
+    {
+        // Don't sprint inside attack range — save stamina for swings.
+        const float minDist =
+            (ai.attack_radius > ai.sprint_threshold) ? ai.attack_radius : ai.sprint_threshold;
+        ai.sprint = distSq > minDist * minDist;
+    }
     else
+    {
         ai.sprint = false;
+    }
 }
 
 void AggroSystem::update(EntityManager& em)
@@ -51,7 +58,9 @@ void AggroSystem::update(EntityManager& em)
 
         if (ai.state == AIController::State::Idle)
         {
-            if (ai.aggro_radius > 0.0f && distSq <= ai.aggro_radius * ai.aggro_radius)
+            if (ai.aggro_radius > 0.0f && distSq <= ai.aggro_radius * ai.aggro_radius &&
+                (!em.tile_map.valid() ||
+                 em.tile_map.hasLineOfSight(transform.x, transform.y, px, py)))
             {
                 ai.state = AIController::State::Chase;
                 TracyMessageL("EnemyAggro");

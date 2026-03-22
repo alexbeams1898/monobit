@@ -1,16 +1,17 @@
 {
-  "hp":            { "base": 5,   "scale": 100 },
+  "hp":            { "base": 5,   "scale": 15, "level_scale": 5 },
   "movement":      { "base": 150, "dex_scale": 30, "sprint_multiplier": 1.6, "sprint_blend": 8.0, "walk_blend": 20.0 },
   "carry_weight":  { "str_scale": 20, "end_scale": 10 },
   "defense":       { "str_scale": 0.3, "end_scale": 0.5, "level_scale": 0.2, "cap": 75 },
-  "luck":          { "drop_scale": 15 },
+  "luck":          { "drop_scale": 15, "quality_scale": 3, "essence_quality_scale": 0.01, "quality_thresholds": [55, 85, 102, 120] },
   "damage":        { "grade_thresholds": { "S": 1.5, "A": 1.25, "B": 1.0, "C": 0.75, "D": 0.5, "E": 0.25 } },
-  "swing":         { "weight_scale": 5, "stat_scale": 160, "two_handed_str_bonus": 0.3 },
+  "swing":         { "base_swing_time": 0.8, "weight_scale": 0.5, "stat_scale": 80, "two_handed_str_bonus": 0.3 },
   "stat_requirement": { "penalty_rate": 0.15 },
-  "leveling":      { "xp_base": 100, "xp_exponent": 1.5, "points_per_level": 1 },
+  "leveling":      { "xp_base": 0.069, "xp_exponent": 3.5, "xp_offset": 7, "points_per_level": 1 },
   "poise":         { "end_scale": 2.0, "str_scale": 1.0, "weight_scale": 3, "stagger_duration": 0.5, "decay_window": 5.0 },
   "dodge":         { "duration": 0.25, "cooldown": 0.35 },
   "essence":       { "min": 0, "max": 100 },
-  "xp_drop":       { "log_scale": 1.5, "min_fraction": 0.1 },
-  "stamina":       { "swing_effort": 3.0, "dodge_effort": 5.0, "skill_effort": 4.0, "sprint_effort": 1.0, "base": 5.0, "end_scale": 3.0, "recovery_rate": 2.5, "recovery_delay": 1.0, "exhaustion_stagger": 0.6 }
+  "xp_drop":       { "log_scale": 1.5, "min_fraction": 0.1, "level_penalty": 0.15, "essence_scale": 0.001 },
+  "stamina":       { "base_swing_cost": 3.0, "swing_effort": 0.5, "dodge_effort": 2.5, "skill_effort": 4.0, "sprint_effort": 2.0, "sprint_dex_scale": 0.15, "base": 10.0, "end_scale": 20.0, "recovery_rate": 8.0, "recovery_delay": 1.0, "exhaustion_stagger": 0.6 },
+  "fist":          { "weight": 0.5, "base_damage": 6.0, "str_scaling": 1.0, "dex_scaling": 0.75 }
 }

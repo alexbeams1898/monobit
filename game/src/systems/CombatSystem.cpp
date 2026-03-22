@@ -29,7 +29,7 @@ float computeSwingCooldown(const Weapon& w, const Stats& s, const FormulaConfig&
     const float strBias = 1.0f - dexBias;
     const float effectiveStat =
         (static_cast<float>(s.str) * strBias) + (static_cast<float>(s.dex) * dexBias);
-    const float numerator = w.weight * f.swing.weight_scale;
+    const float numerator = f.swing.base_swing_time + w.weight * f.swing.weight_scale;
     const float reduction = f.swing.stat_scale * std::sqrt(effectiveStat) / 100.0f;
     const float denom = 1.0f + reduction;
     const float cooldown = numerator / denom;
@@ -236,12 +236,22 @@ void CombatSystem::update(EntityManager& em, double dt)
         const bool isAttackLocked = em.registry().all_of<AttackLocked>(entity);
         const bool isStaggered = em.registry().all_of<Staggered>(entity);
 
-        // Stamina cost helpers — cost = weapon.weight * effort multiplier.
-        const float swingCost = weapon.weight * f.stamina.swing_effort;
-        const float skillCost = weapon.weight * f.stamina.skill_effort;
-        const float dodgeCost = weapon.weight * f.stamina.dodge_effort;
+        // Stamina cost helpers — base motion cost + weight surcharge.
+        const float swingCost = f.stamina.base_swing_cost + weapon.weight * f.stamina.swing_effort;
+        const float skillCost = f.stamina.base_swing_cost + weapon.weight * f.stamina.skill_effort;
+        const float dodgeCost = f.stamina.base_swing_cost + weapon.weight * f.stamina.dodge_effort;
         const bool hasSta = em.registry().all_of<Stamina>(entity);
         const float staCurrent = hasSta ? em.registry().get<Stamina>(entity).current : 999.0f;
+
+        // Suppress LMB attack when clicking on a highlighted pickup.
+        // InteractTarget persists from the previous frame (PickupSystem runs after us).
+        bool clickOnPickup = false;
+        if (actions.mouse_click && em.registry().all_of<InteractTarget>(entity))
+        {
+            const auto& it = em.registry().get<InteractTarget>(entity);
+            if (it.entity != entt::null && em.registry().valid(it.entity))
+                clickOnPickup = true;
+        }
 
         // ---- Normal attack ------------------------------------------------
         bool fireAttack = false;
@@ -252,9 +262,23 @@ void CombatSystem::update(EntityManager& em, double dt)
                 fireAttack = (weapon.swing_cooldown_remaining <= 0.0f && !isAttackLocked &&
                               !isStaggered && staCurrent >= swingCost);
         }
-        if (!fireAttack)
+        if (!fireAttack && !clickOnPickup)
             fireAttack = (actions.attack && weapon.swing_cooldown_remaining <= 0.0f &&
                           !isAttackLocked && !isStaggered && staCurrent >= swingCost);
+
+        // Audio + visual feedback when attack pressed but stamina too low.
+        if (!fireAttack && actions.attack && !clickOnPickup &&
+            weapon.swing_cooldown_remaining <= 0.0f && !isAttackLocked && !isStaggered &&
+            staCurrent < swingCost)
+        {
+            AudioSystem::playSfx(snd.low_stamina_heartbeat.path, snd.low_stamina_heartbeat.volume);
+            if (em.registry().all_of<Velocity>(entity))
+            {
+                auto& vel = em.registry().get<Velocity>(entity);
+                vel.dx -= facing.dx * 40.0f;
+                vel.dy -= facing.dy * 40.0f;
+            }
+        }
 
         if (fireAttack)
         {
@@ -315,7 +339,7 @@ void CombatSystem::update(EntityManager& em, double dt)
             const float cooldown =
                 em.registry().all_of<Stats>(entity)
                     ? computeSwingCooldown(weapon, em.registry().get<Stats>(entity), f)
-                    : weapon.weight * f.swing.weight_scale / 1.0f;
+                    : f.swing.base_swing_time + weapon.weight * f.swing.weight_scale;
             weapon.swing_cooldown_remaining = cooldown;
 
             // Attack commitment: locks new attacks/dodges for 60% of the cooldown.
@@ -422,6 +446,19 @@ void CombatSystem::update(EntityManager& em, double dt)
 
             std::cout << "[CombatSystem] " << (nearEnemy ? "Backstep!\n" : "Dodge roll!\n");
         }
+
+        // Audio + visual feedback when dodge pressed but stamina too low.
+        if (actions.dodge && !canDodge && actions.dodge_cooldown_remaining <= 0.0f &&
+            !isStaggered && !em.registry().all_of<Dodging>(entity) && staCurrent < dodgeCost)
+        {
+            AudioSystem::playSfx(snd.low_stamina_heartbeat.path, snd.low_stamina_heartbeat.volume);
+            if (em.registry().all_of<Velocity>(entity))
+            {
+                auto& vel = em.registry().get<Velocity>(entity);
+                vel.dx -= facing.dx * 40.0f;
+                vel.dy -= facing.dy * 40.0f;
+            }
+        }
     }
 
     // --- 6. Enemy attacks — hitbox-based, range-gated by attack_radius ------
@@ -451,6 +488,13 @@ void CombatSystem::update(EntityManager& em, double dt)
                     continue;
                 if (ai.state != AIController::State::Chase &&
                     ai.state != AIController::State::Attack)
+                    continue;
+
+                // Stamina gate — can't swing without enough stamina.
+                const float swingCost =
+                    f.stamina.base_swing_cost + weapon.weight * f.stamina.swing_effort;
+                if (em.registry().all_of<Stamina>(entity) &&
+                    em.registry().get<Stamina>(entity).current < swingCost)
                     continue;
 
                 const float dx = playerTransform.x - transform.x;
@@ -483,6 +527,10 @@ void CombatSystem::update(EntityManager& em, double dt)
                     fd.dx = nx;
                     fd.dy = ny;
                 }
+
+                // Stamina cost — same formula as player swings.
+                if (em.registry().all_of<Stamina>(entity))
+                    deductStamina(em.registry(), entity, swingCost, f);
 
                 // Yellow swing flash.
                 em.registry().emplace_or_replace<AttackFeedback>(entity, AttackFeedback{0.5f});

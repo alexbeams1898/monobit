@@ -24,7 +24,8 @@ bool findSpawnInRoom(const TileMap& tm, int roomIdx, float px, float py, float n
 
 // Pick a room index for the next spawn, distributing evenly across all rooms.
 // Uses an internal counter that increments each call.
-int nextSpawnRoom(int room_count);
+// skip_room: room index to exclude (e.g. rest room). Pass -1 to skip none.
+int nextSpawnRoom(int room_count, int skip_room = -1);
 
 // Reset the room round-robin counter (call at wave start).
 void resetSpawnRoomCounter();

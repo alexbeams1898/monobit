@@ -1,0 +1,9 @@
+{
+    "name": "$50 Bill",
+    "description": "Fifty bucks. Hell's economy must be booming.",
+    "category": "money",
+    "rarity": "epic",
+    "value": 50,
+    "stackable": true,
+    "max_stack": 99
+}

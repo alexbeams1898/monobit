@@ -1,5 +1,7 @@
 #pragma once
 
+#include "GameComponents.h"
+
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -18,7 +20,8 @@ struct FormulaConfig
     struct
     {
         float base = 5.f;
-        float scale = 100.f;
+        float scale = 15.f;
+        float level_scale = 5.f;
     } hp;
 
     struct
@@ -47,6 +50,9 @@ struct FormulaConfig
     struct
     {
         float drop_scale = 15.f;
+        float quality_scale = 3.f;
+        float essence_quality_scale = 0.01f;
+        float quality_thresholds[4] = {55.f, 85.f, 102.f, 120.f};
     } luck;
 
     struct
@@ -61,8 +67,9 @@ struct FormulaConfig
 
     struct
     {
-        float weight_scale = 100.f;
-        float stat_scale = 160.f;
+        float base_swing_time = 0.8f;
+        float weight_scale = 0.5f;
+        float stat_scale = 80.f;
         float two_handed_str_bonus = 0.3f;
     } swing;
 
@@ -82,17 +89,20 @@ struct FormulaConfig
 
     struct
     {
-        float xp_base = 100.f;
-        float xp_exponent = 1.5f;
+        float xp_base = 0.069f;
+        float xp_exponent = 3.5f;
+        float xp_offset = 7.f;
         float points_per_level = 1.f;
     } leveling;
 
     struct
     {
         float log_scale = 1.5f;
-        // XP multiplier = max(min_fraction, enemy_level / player_level).
-        // Kills on lower-level enemies pay less XP; floor prevents 0.
+        // XP multiplier = max(min_fraction, 1 - level_penalty * level_diff).
+        // Gentle linear falloff per level the player is above the enemy.
         float min_fraction = 0.1f;
+        float level_penalty = 0.15f;
+        float essence_scale = 0.005f;
     } xp_drop;
 
     struct
@@ -109,16 +119,26 @@ struct FormulaConfig
 
     struct
     {
-        float swing_effort = 3.0f;
-        float dodge_effort = 5.0f;
+        float base_swing_cost = 3.0f;
+        float swing_effort = 0.5f;
+        float dodge_effort = 2.5f;
         float skill_effort = 4.0f;
-        float sprint_effort = 1.0f;
-        float base = 5.0f;
-        float end_scale = 3.0f;
-        float recovery_rate = 2.5f;
+        float sprint_effort = 2.0f;
+        float sprint_dex_scale = 0.15f;
+        float base = 10.0f;
+        float end_scale = 20.0f;
+        float recovery_rate = 8.0f;
         float recovery_delay = 1.0f;
         float exhaustion_stagger = 0.6f;
     } stamina;
+
+    struct
+    {
+        float weight = 0.5f;
+        float base_damage = 5.0f;
+        float str_scaling = 1.0f;
+        float dex_scaling = 0.75f;
+    } fist;
 
     bool loaded = false;
 };
@@ -150,6 +170,21 @@ struct SoundConfig
     SoundEntry game_over{"assets/sfx/game_over.wav", 0.6f};
     SoundEntry low_stamina_heartbeat{"assets/sfx/heartbeat.wav", 0.5f};
     bool loaded = false;
+};
+
+// ---------------------------------------------------------------------------
+// MusicConfig -- background music tracks, loaded from config/audio/music.json.
+// ---------------------------------------------------------------------------
+struct MusicConfig
+{
+    struct Track
+    {
+        std::string path;
+        float volume = 0.6f;
+    };
+    std::vector<Track> tracks;
+    float default_volume = 0.6f;
+    int last_track_index = -1; // avoid repeating the same track back-to-back
 };
 
 // ---------------------------------------------------------------------------
@@ -232,7 +267,7 @@ struct WaveState
         Complete
     };
 
-    Phase phase = Phase::Idle;
+    Phase phase = Phase::SafeRoom;
     int current_wave = 0;
     int enemies_spawned = 0;
     int enemies_total = 0;
@@ -244,4 +279,126 @@ struct WaveState
     bool needs_map_regen = false;
 
     ActiveWave active_def;
+};
+
+// ---------------------------------------------------------------------------
+// ItemDef -- item template/blueprint. Read-only after loading.
+// ---------------------------------------------------------------------------
+
+enum class Rarity : uint8_t
+{
+    VeryCommon = 0,
+    Common,
+    Uncommon,
+    Rare,
+    Epic,
+    Legendary
+};
+
+inline const char* rarityName(Rarity r)
+{
+    switch (r)
+    {
+    case Rarity::VeryCommon:
+        return "Very Common";
+    case Rarity::Common:
+        return "Common";
+    case Rarity::Uncommon:
+        return "Uncommon";
+    case Rarity::Rare:
+        return "Rare";
+    case Rarity::Epic:
+        return "Epic";
+    case Rarity::Legendary:
+        return "Legendary";
+    }
+    return "Common";
+}
+
+inline const char* qualityName(QualityTier q)
+{
+    switch (q)
+    {
+    case QualityTier::Crude:
+        return "Crude";
+    case QualityTier::Common:
+        return "Common";
+    case QualityTier::Fine:
+        return "Fine";
+    case QualityTier::Superior:
+        return "Superior";
+    case QualityTier::Masterwork:
+        return "Masterwork";
+    }
+    return "Common";
+}
+
+struct ItemDef
+{
+    std::string config_path;
+    std::string name;
+    std::string description;
+    ItemCategory category = ItemCategory::Material;
+    Rarity rarity = Rarity::Common;
+
+    // Weapon-specific (only meaningful when category == Weapon).
+    float base_damage = 0.0f;
+    float weight = 0.5f;
+    float str_scaling = 0.0f;
+    float dex_scaling = 0.0f;
+    int str_requirement = 0;
+    int dex_requirement = 0;
+    bool two_handed = false;
+
+    // Armor-specific (only meaningful when category == Armor).
+    ArmorSlot armor_slot = ArmorSlot::Chest;
+    float defense_bonus = 0.0f;
+    float poise_bonus = 0.0f;
+
+    // Shield (armor in off-hand; max_guard > 0 means this is a shield).
+    float max_guard = 0.0f;
+
+    float max_durability = 100.0f;
+    bool stackable = false;
+    int max_stack = 1;
+    int value = 0; // Money denomination (only meaningful for Money category).
+};
+
+// ---------------------------------------------------------------------------
+// ItemRegistry -- all loaded item definitions, keyed by config path.
+// ---------------------------------------------------------------------------
+struct ItemRegistry
+{
+    std::unordered_map<std::string, ItemDef> defs;
+    bool loaded = false;
+
+    const ItemDef* find(const std::string& path) const
+    {
+        auto it = defs.find(path);
+        return (it != defs.end()) ? &it->second : nullptr;
+    }
+};
+
+// ---------------------------------------------------------------------------
+// RecipeRegistry -- crafting recipes loaded from config/recipes/.
+// ---------------------------------------------------------------------------
+struct RecipeIngredient
+{
+    std::string config_path;
+    int quantity = 1;
+};
+
+struct RecipeDef
+{
+    std::string config_path;
+    std::string name;
+    std::vector<RecipeIngredient> inputs;
+    std::string output_item;
+    int output_quantity = 1;
+};
+
+struct RecipeRegistry
+{
+    std::vector<RecipeDef> recipes;
+    bool loaded = false;
 };

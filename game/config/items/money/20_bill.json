@@ -1,0 +1,9 @@
+{
+    "name": "$20 Bill",
+    "description": "A crisp twenty. Someone was saving this for something.",
+    "category": "money",
+    "rarity": "rare",
+    "value": 20,
+    "stackable": true,
+    "max_stack": 99
+}

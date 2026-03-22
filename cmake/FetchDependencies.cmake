@@ -114,7 +114,9 @@ FetchContent_MakeAvailable(miniaudio)
 
 add_library(miniaudio_iface INTERFACE)
 add_library(miniaudio::miniaudio ALIAS miniaudio_iface)
-target_include_directories(miniaudio_iface SYSTEM INTERFACE ${miniaudio_SOURCE_DIR})
+target_include_directories(miniaudio_iface SYSTEM INTERFACE
+    ${miniaudio_SOURCE_DIR}
+    ${miniaudio_SOURCE_DIR}/extras)
 
 # ---------------------------------------------------------------------------
 # FMOD  (stub — replace with real SDK integration when ready)

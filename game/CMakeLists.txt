@@ -18,6 +18,10 @@ add_library(game-systems STATIC
     src/systems/SpawnerSystem.cpp
     src/systems/TintSystem.cpp
     src/SpawnUtils.cpp
+    src/InventoryOps.cpp
+    src/CraftingOps.cpp
+    src/systems/EquipmentSystem.cpp
+    src/systems/CraftingSystem.cpp
 )
 
 target_include_directories(game-systems PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -26,6 +30,11 @@ target_link_libraries(game-systems PUBLIC engine)
 # Game executable.
 add_executable(prison-break-game src/main.cpp)
 target_link_libraries(prison-break-game PRIVATE game-systems)
+
+# Static-link MinGW runtime so the exe runs without libgcc/libstdc++ DLLs.
+if(MINGW)
+    target_link_options(prison-break-game PRIVATE -static-libgcc -static-libstdc++)
+endif()
 
 # Sync assets and config to the build output on every build.
 #
@@ -62,6 +71,10 @@ add_executable(game-tests
     tests/leveling_test.cpp
     tests/particle_system_test.cpp
     tests/wave_system_test.cpp
+    tests/inventory_test.cpp
+    tests/equipment_system_test.cpp
+    tests/drop_system_test.cpp
+    tests/crafting_test.cpp
 )
 target_link_libraries(game-tests PRIVATE game-systems Catch2::Catch2WithMain)
 

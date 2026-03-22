@@ -3,6 +3,7 @@
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
+#include "systems/CombatSystem.h"
 
 #include <algorithm>
 #include <cmath>
@@ -85,15 +86,57 @@ static std::pair<float, float> computeAttackVelocity(const FlowField& ff, float 
     return {navDx * spd * scale, navDy * spd * scale};
 }
 
+// Compute base movement speed from DEX, apply sprint multiplier and stamina drain.
+static float computeEnemySpeed(EntityManager& em, entt::entity entity, AIController& ai,
+                               Transform& transform, const FormulaConfig& f, float dt)
+{
+    float speed = f.movement.base;
+    if (em.registry().all_of<Stats>(entity))
+    {
+        const int dex = em.registry().get<Stats>(entity).dex;
+        speed *=
+            (1.0f +
+             std::floor(f.movement.dex_scale * std::log(static_cast<float>(dex) + 1.0f)) / 100.0f);
+    }
+
+    if (ai.sprint && em.registry().all_of<Stamina>(entity))
+    {
+        auto& sta = em.registry().get<Stamina>(entity);
+        if (sta.current > 0.0f)
+        {
+            const float wWeight = em.registry().all_of<Weapon>(entity)
+                                      ? em.registry().get<Weapon>(entity).weight
+                                      : 1.0f;
+            const int dexSprint =
+                em.registry().all_of<Stats>(entity) ? em.registry().get<Stats>(entity).dex : 1;
+            const float drain =
+                wWeight * f.stamina.sprint_effort /
+                (1.0f + static_cast<float>(dexSprint) * f.stamina.sprint_dex_scale) * dt;
+            deductStamina(em.registry(), entity, drain, f);
+        }
+        else
+        {
+            ai.sprint = false;
+        }
+    }
+
+    if (ai.sprint)
+    {
+        speed *= ai.sprint_multiplier;
+        transform.scale = 1.1f;
+    }
+    else
+    {
+        transform.scale = 1.0f;
+    }
+    return speed;
+}
+
 void ChaseSystem::update(EntityManager& em, double dt)
 {
     ZoneScopedN("ChaseSystem");
-    // Read the flow field built this frame by FlowFieldSystem.
-    // Each cell contains a pre-normalized direction toward the player along the
-    // shortest open path. O(1) lookup per enemy — no per-frame pathfinding.
     const auto& ff = em.flow_field;
 
-    // Cache player position — used for stop-condition math and direct-vector fallback.
     float px = 0.0f;
     float py = 0.0f;
     bool playerFound = false;
@@ -110,6 +153,7 @@ void ChaseSystem::update(EntityManager& em, double dt)
     }
 
     auto& f = em.registry().ctx().get<FormulaConfig>();
+    const float fdt = static_cast<float>(dt);
 
     for (auto [entity, ai, transform, vel] :
          em.registry().view<AIController, Transform, Velocity>().each())
@@ -117,26 +161,7 @@ void ChaseSystem::update(EntityManager& em, double dt)
         if (ai.state == AIController::State::Idle)
             continue;
 
-        // Derive movement speed from DEX — same formula as the player in MovementSystem.
-        // Entities without Stats use the base speed directly.
-        float speed = f.movement.base;
-        if (em.registry().all_of<Stats>(entity))
-        {
-            const int dex = em.registry().get<Stats>(entity).dex;
-            speed *= (1.0f +
-                      std::floor(f.movement.dex_scale * std::log(static_cast<float>(dex) + 1.0f)) /
-                          100.0f);
-        }
-
-        if (ai.sprint)
-        {
-            speed *= ai.sprint_multiplier;
-            transform.scale = 1.1f;
-        }
-        else
-        {
-            transform.scale = 1.0f;
-        }
+        const float speed = computeEnemySpeed(em, entity, ai, transform, f, fdt);
 
         float targetDx = 0.0f;
         float targetDy = 0.0f;
@@ -158,12 +183,6 @@ void ChaseSystem::update(EntityManager& em, double dt)
             std::tie(targetDx, targetDy) = computeAttackVelocity(ff, px, py, ai, transform, speed);
         }
 
-        // Velocity blending — smooths direction changes at cell boundaries and
-        // softens the Chase → Attack transition.  Same exponential lerp for both
-        // states:
-        //   blend = 1 − exp(−turn_speed × dt) ≈ turn_speed × dt for small dt
-        // At 60 Hz with turn_speed=8: blend ≈ 0.13 → visibly smooth but still
-        // responsive. Set turn_speed=0 for instant snap (legacy / debug).
         if (ai.turn_speed <= 0.0f)
         {
             vel.dx = targetDx;
@@ -171,23 +190,11 @@ void ChaseSystem::update(EntityManager& em, double dt)
         }
         else
         {
-            const float blend = 1.0f - std::exp(-ai.turn_speed * static_cast<float>(dt));
+            const float blend = 1.0f - std::exp(-ai.turn_speed * fdt);
             vel.dx += (targetDx - vel.dx) * blend;
             vel.dy += (targetDy - vel.dy) * blend;
         }
 
-        // Arrival softening — Chase state only.
-        //
-        // Applying this to targetDx/Dy BEFORE blending doesn't work: at
-        // turn_speed=4 the blend factor is ~6% per frame at 60 Hz, so actual
-        // velocity barely tracks the softened target before the enemy crosses
-        // the zone. The effect is imperceptible regardless of arrival_radius.
-        //
-        // Post-blend cap is immediate: maxSpeed = speed * (dist/arrival_radius).
-        // At the edge of the zone: maxSpeed = speed (no reduction).
-        // At dist=0:               maxSpeed = 0 (fully stopped).
-        //
-        // Attack state has its own per-slot arrival scaling above.
         if (ai.state == AIController::State::Chase && playerFound &&
             ai.arrival_radius > FlowField::CELL_SIZE && dist < ai.arrival_radius)
         {

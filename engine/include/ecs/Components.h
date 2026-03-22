@@ -109,6 +109,13 @@ struct SolidColor
     float b = 1.0f;
 };
 
+// Glow -- rendered as a larger, semi-transparent halo behind the entity.
+struct Glow
+{
+    float scale = 2.5f;
+    float alpha = 0.25f;
+};
+
 // Dead -- emplaced when Health reaches zero. Universal lifecycle marker.
 // Timer is set from the death animation duration; entity is destroyed when it expires.
 struct Dead

@@ -40,8 +40,8 @@ TEST_CASE("applyInitialDerivations — derives Health from END for stat entity",
     REQUIRE(em.registry().all_of<Health>(e));
     const auto& h = em.registry().get<Health>(e);
 
-    // maxHP = 5 + floor(100 * log(6)) = 5 + 179 = 184
-    REQUIRE(h.max == 184);
+    // No Body → fallback hp.base=5, no Experience → level=1. maxHP = 5 + 15*5 + 5*1 = 85
+    REQUIRE(h.max == 85);
     REQUIRE(h.current == h.max);
 }
 
@@ -84,8 +84,9 @@ TEST_CASE("applyInitialDerivations — entity with existing Health gets max over
     LevelingSystem::applyInitialDerivations(em);
 
     const auto& h = em.registry().get<Health>(e);
-    REQUIRE(h.max == 184); // overridden by formula
-    REQUIRE(h.current == 184);
+    // Linear HP: base(5) + scale(15)*END(5) + level_scale(5)*level(1) = 85
+    REQUIRE(h.max == 85);
+    REQUIRE(h.current == 85);
 }
 
 TEST_CASE("applyInitialDerivations — sets xp_to_next on Experience", "[leveling]")
@@ -95,29 +96,32 @@ TEST_CASE("applyInitialDerivations — sets xp_to_next on Experience", "[levelin
     const auto e = makeCharacter(em);
     LevelingSystem::applyInitialDerivations(em);
 
-    // xp_to_next = xp_base * level^exponent = 100 * 1^1.5 = 100
+    // xp_to_next = xp_base * (level + xp_offset)^exponent = 0.069 * 8^3.5 = 99
     const auto& exp = em.registry().get<Experience>(e);
-    REQUIRE(exp.xp_to_next == 100);
+    REQUIRE(exp.xp_to_next == 99);
 }
 
 // ---------------------------------------------------------------------------
 // XP threshold formula
 // ---------------------------------------------------------------------------
 
-TEST_CASE("XP threshold — level 1 requires 100 XP", "[leveling]")
+TEST_CASE("XP threshold — level 1 requires 99 XP", "[leveling]")
 {
-    // xpToNext = xp_base * level ^ xp_exponent = 100 * 1^1.5 = 100
+    // xpToNext = xp_base * (level + xp_offset) ^ xp_exponent = 0.069 * 8^3.5 = 99
     const FormulaConfig f;
     const int threshold =
-        static_cast<int>(f.leveling.xp_base * std::pow(1.0f, f.leveling.xp_exponent));
-    REQUIRE(threshold == 100);
+        static_cast<int>(f.leveling.xp_base * std::pow(static_cast<float>(1) + f.leveling.xp_offset,
+                                                       f.leveling.xp_exponent));
+    REQUIRE(threshold == 99);
 }
 
 TEST_CASE("XP threshold — level 2 threshold is higher than level 1", "[leveling]")
 {
     const FormulaConfig f;
-    const int t1 = static_cast<int>(f.leveling.xp_base * std::pow(1.0f, f.leveling.xp_exponent));
-    const int t2 = static_cast<int>(f.leveling.xp_base * std::pow(2.0f, f.leveling.xp_exponent));
+    const int t1 = static_cast<int>(f.leveling.xp_base *
+                                    std::pow(1.0f + f.leveling.xp_offset, f.leveling.xp_exponent));
+    const int t2 = static_cast<int>(f.leveling.xp_base *
+                                    std::pow(2.0f + f.leveling.xp_offset, f.leveling.xp_exponent));
     REQUIRE(t2 > t1);
 }
 
@@ -133,12 +137,12 @@ TEST_CASE("Level up — exactly hitting threshold increments level", "[leveling]
     LevelingSystem::applyInitialDerivations(em);
 
     auto& exp = em.registry().get<Experience>(e);
-    exp.current_xp = 100; // exactly level 1 threshold
+    exp.current_xp = 99; // exactly level 1 threshold
 
     LevelingSystem::update(em);
 
     REQUIRE(exp.level == 2);
-    REQUIRE(exp.current_xp == 0); // 100 - 100 = 0 carried over
+    REQUIRE(exp.current_xp == 0); // 99 - 99 = 0 carried over
     REQUIRE(exp.stat_points == 1);
 }
 
@@ -150,12 +154,12 @@ TEST_CASE("Level up — XP overflow carries over to next level", "[leveling]")
     LevelingSystem::applyInitialDerivations(em);
 
     auto& exp = em.registry().get<Experience>(e);
-    exp.current_xp = 150; // 50 excess after level-up
+    exp.current_xp = 130; // 31 excess after level-up (99 threshold)
 
     LevelingSystem::update(em);
 
     REQUIRE(exp.level == 2);
-    REQUIRE(exp.current_xp == 50);
+    REQUIRE(exp.current_xp == 31);
     REQUIRE(exp.stat_points == 1);
 }
 
@@ -167,9 +171,9 @@ TEST_CASE("Level up — multiple levels in one update (huge XP gain)", "[levelin
     LevelingSystem::applyInitialDerivations(em);
 
     auto& exp = em.registry().get<Experience>(e);
-    // Level 1→2: 100 XP, Level 2→3: 100*2^1.5 ≈ 282 XP.
-    // Give enough to clear both: 100 + 282 + 1 = 383
-    exp.current_xp = 383;
+    // Level 1→2: 99 XP, Level 2→3: 0.069*9^3.5 = 150 XP.
+    // Give enough to clear both: 99 + 150 + 1 = 250
+    exp.current_xp = 250;
 
     LevelingSystem::update(em);
 

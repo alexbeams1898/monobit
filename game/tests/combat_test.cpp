@@ -166,24 +166,23 @@ TEST_CASE("Damage — D/D weapon + str=5/dex=5: both terms add", "[combat]")
 // HP derivation
 // ---------------------------------------------------------------------------
 
-TEST_CASE("HP derivation — end=5 gives expected maxHP", "[combat]")
+TEST_CASE("HP derivation — end=5 level=1 gives expected maxHP", "[combat]")
 {
-    // maxHP = base + floor(scale * log(END + 1))
-    //       = 5 + floor(100 * log(6))
-    //       = 5 + floor(179.17...) = 5 + 179 = 184
-    const FormulaConfig f; // defaults match formulas.json values
+    // maxHP = base + scale*END + level_scale*level = 5 + 15*5 + 5*1 = 85
+    const FormulaConfig f;
 
-    const int expectedMax =
-        static_cast<int>(f.hp.base + std::floor(f.hp.scale * std::log(5.0f + 1.0f)));
-    REQUIRE(expectedMax == 184);
+    const int expectedMax = static_cast<int>(f.hp.base) + static_cast<int>(f.hp.scale) * 5 +
+                            static_cast<int>(f.hp.level_scale) * 1;
+    REQUIRE(expectedMax == 85);
 }
 
-TEST_CASE("HP derivation — end=1 gives minimum HP", "[combat]")
+TEST_CASE("HP derivation — end=1 level=1 gives minimum HP", "[combat]")
 {
     const FormulaConfig f;
-    const int maxHP = static_cast<int>(f.hp.base + std::floor(f.hp.scale * std::log(2.0f)));
+    const int maxHP = static_cast<int>(f.hp.base) + static_cast<int>(f.hp.scale) * 1 +
+                      static_cast<int>(f.hp.level_scale) * 1;
     REQUIRE(maxHP > 0);
-    REQUIRE(maxHP < 120); // should be modest for a level-1-END character
+    REQUIRE(maxHP < 120);
 }
 
 // ---------------------------------------------------------------------------
@@ -260,13 +259,14 @@ static void deductStamina(Stamina& sta, const FormulaConfig& f, float cost)
 TEST_CASE("Stamina defaults match expected values", "[combat]")
 {
     const FormulaConfig f;
-    REQUIRE(f.stamina.swing_effort == Catch::Approx(3.0f));
-    REQUIRE(f.stamina.dodge_effort == Catch::Approx(5.0f));
+    REQUIRE(f.stamina.base_swing_cost == Catch::Approx(3.0f));
+    REQUIRE(f.stamina.swing_effort == Catch::Approx(0.5f));
+    REQUIRE(f.stamina.dodge_effort == Catch::Approx(2.5f));
     REQUIRE(f.stamina.skill_effort == Catch::Approx(4.0f));
-    REQUIRE(f.stamina.sprint_effort == Catch::Approx(1.0f));
-    REQUIRE(f.stamina.base == Catch::Approx(5.0f));
-    REQUIRE(f.stamina.end_scale == Catch::Approx(3.0f));
-    REQUIRE(f.stamina.recovery_rate == Catch::Approx(2.5f));
+    REQUIRE(f.stamina.sprint_effort == Catch::Approx(2.0f));
+    REQUIRE(f.stamina.base == Catch::Approx(10.0f));
+    REQUIRE(f.stamina.end_scale == Catch::Approx(20.0f));
+    REQUIRE(f.stamina.recovery_rate == Catch::Approx(8.0f));
     REQUIRE(f.stamina.recovery_delay == Catch::Approx(1.0f));
 }
 
@@ -287,14 +287,16 @@ TEST_CASE("Stamina — swing deducts weapon.weight * swing_effort", "[combat]")
     REQUIRE(sta.current == Catch::Approx(sta.max_stamina - cost));
 }
 
-TEST_CASE("Stamina — dodge costs more than swing", "[combat]")
+TEST_CASE("Stamina — dodge costs more than swing (heavier evasion effort)", "[combat]")
 {
     const FormulaConfig f;
     const float weight = 2.0f;
+    const float swingCost = f.stamina.base_swing_cost + weight * f.stamina.swing_effort;
+    const float dodgeCost = f.stamina.base_swing_cost + weight * f.stamina.dodge_effort;
     auto staSwing = makeStamina(f, 5);
     auto staDodge = makeStamina(f, 5);
-    deductStamina(staSwing, f, weight * f.stamina.swing_effort);
-    deductStamina(staDodge, f, weight * f.stamina.dodge_effort);
+    deductStamina(staSwing, f, swingCost);
+    deductStamina(staDodge, f, dodgeCost);
     REQUIRE(staDodge.current < staSwing.current);
 }
 
@@ -342,16 +344,16 @@ TEST_CASE("Stamina — recovers after delay expires", "[combat]")
 {
     const FormulaConfig f;
     auto sta = makeStamina(f, 5);
-    deductStamina(sta, f, 3.0f);
+    deductStamina(sta, f, 20.0f);
     const float afterDeduct = sta.current;
 
     // Burn through the full delay.
     tickRecovery(sta, f, f.stamina.recovery_delay + 0.001f);
     REQUIRE(sta.current == Catch::Approx(afterDeduct)); // delay just expired
 
-    // Now recover for 0.5s: recovery_rate=2.5/s => +1.25
-    tickRecovery(sta, f, 0.5f);
-    REQUIRE(sta.current == Catch::Approx(afterDeduct + 1.25f));
+    // Now recover for 0.25s: recovery_rate=8.0/s => +2.0 (well under cap)
+    tickRecovery(sta, f, 0.25f);
+    REQUIRE(sta.current == Catch::Approx(afterDeduct + 2.0f));
 }
 
 TEST_CASE("Stamina — recovery caps at max", "[combat]")

@@ -6,6 +6,7 @@
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
+#include "systems/AudioSystem.h"
 #include "systems/LevelingSystem.h"
 
 #include <cmath>
@@ -53,10 +54,22 @@ static bool spawnOneEnemy(EntityManager& em, const ActiveWave& wave, WaveState& 
     float sx = 0.0f;
     float sy = 0.0f;
     const int roomCount = static_cast<int>(em.tile_map.placed_rooms.size());
+
+    // Find the rest room (contains the 'R' spawn point) so we skip it.
+    int restRoom = -1;
+    for (const auto& sp : em.tile_map.spawn_points)
+    {
+        if (sp.type == 'R')
+        {
+            restRoom = em.tile_map.findRoomAt(sp.x, sp.y);
+            break;
+        }
+    }
+
     bool spawned = false;
     if (roomCount > 0)
     {
-        const int targetRoom = SpawnUtils::nextSpawnRoom(roomCount);
+        const int targetRoom = SpawnUtils::nextSpawnRoom(roomCount, restRoom);
         spawned =
             SpawnUtils::findSpawnInRoom(em.tile_map, targetRoom, px, py, wc.spawn_near, sx, sy);
     }
@@ -125,7 +138,7 @@ static bool spawnOneEnemy(EntityManager& em, const ActiveWave& wave, WaveState& 
                   << " END=" << stats.end << " LCK=" << stats.lck << "\n";
     }
 
-    LevelingSystem::deriveHealth(em, entity);
+    LevelingSystem::deriveInitialStats(em, entity);
     em.registry().emplace<WaveEnemy>(entity);
 
     ws.spawn_group_progress++;
@@ -319,25 +332,70 @@ void WaveSystem::update(EntityManager& em, double dt)
         if (wc.gen.max_waves > 0 && ws.current_wave >= wc.gen.max_waves)
         {
             ws.phase = WaveState::Phase::Complete;
+            AudioSystem::stopMusic();
             TracyMessageL("RunComplete");
             std::cout << "[WaveSystem] All waves cleared! Run complete.\n";
         }
         else
         {
-            if (ws.active_def.safe_room_after)
-            {
-                ws.phase = WaveState::Phase::SafeRoom;
-                std::cout << "[WaveSystem] Safe room - press R for next wave\n";
-            }
-            else
-            {
-                ws.phase = WaveState::Phase::Idle;
-                std::cout << "[WaveSystem] Press R for next wave\n";
-            }
+            ws.phase = WaveState::Phase::SafeRoom;
+            std::cout << "[WaveSystem] Safe room - press R for next wave\n";
         }
         break;
     }
     }
+}
+
+// Death restart: destroy all enemies + old player, recreate player fresh.
+static void handleDeathRestart(EntityManager& em, WaveState& ws)
+{
+    auto& reg = em.registry();
+
+    std::vector<entt::entity> toDestroy;
+    for (auto e : reg.view<WaveEnemy>())
+        toDestroy.push_back(e);
+    for (auto e : toDestroy)
+    {
+        std::vector<entt::entity> children;
+        for (auto [child, bp] : reg.view<BodyPart>().each())
+            if (bp.parent == e)
+                children.push_back(child);
+        for (auto child : children)
+            reg.destroy(child);
+        reg.destroy(e);
+    }
+
+    entt::entity oldPlayer = entt::null;
+    float spawnX = 0.0f;
+    float spawnY = 0.0f;
+    for (auto pe : reg.view<PlayerActions>())
+    {
+        oldPlayer = pe;
+        if (reg.all_of<Transform>(pe))
+        {
+            const auto& t = reg.get<Transform>(pe);
+            spawnX = t.x;
+            spawnY = t.y;
+        }
+        break;
+    }
+    if (oldPlayer != entt::null)
+        reg.destroy(oldPlayer);
+
+    auto newPlayer = ConfigLoader::loadEntity(em, "config/entities/player.json");
+    if (reg.valid(newPlayer))
+    {
+        auto& t = reg.get<Transform>(newPlayer);
+        t.x = spawnX;
+        t.y = spawnY;
+        reg.emplace<PlayerActions>(newPlayer);
+        reg.emplace<Camera>(newPlayer, Camera{spawnX, spawnY, true});
+        LevelingSystem::applyInitialDerivations(em);
+    }
+
+    ws.current_wave = 0;
+    TracyMessageL("DeathRestart");
+    std::cout << "[WaveSystem] Restarting from wave 1.\n";
 }
 
 bool WaveSystem::startNextWave(EntityManager& em)
@@ -345,59 +403,8 @@ bool WaveSystem::startNextWave(EntityManager& em)
     auto& ws = em.registry().ctx().get<WaveState>();
     const auto& wc = em.registry().ctx().get<WaveConfig>();
 
-    // Death restart: destroy all enemies + old player, recreate player fresh.
     if (ws.phase == WaveState::Phase::GameOver)
-    {
-        auto& reg = em.registry();
-
-        // Destroy all wave enemies (with body-part cascade).
-        std::vector<entt::entity> toDestroy;
-        for (auto e : reg.view<WaveEnemy>())
-            toDestroy.push_back(e);
-        for (auto e : toDestroy)
-        {
-            std::vector<entt::entity> children;
-            for (auto [child, bp] : reg.view<BodyPart>().each())
-                if (bp.parent == e)
-                    children.push_back(child);
-            for (auto child : children)
-                reg.destroy(child);
-            reg.destroy(e);
-        }
-
-        // Destroy old player and recreate from config.
-        entt::entity oldPlayer = entt::null;
-        float spawnX = 0.0f;
-        float spawnY = 0.0f;
-        for (auto pe : reg.view<PlayerActions>())
-        {
-            oldPlayer = pe;
-            if (reg.all_of<Transform>(pe))
-            {
-                const auto& t = reg.get<Transform>(pe);
-                spawnX = t.x;
-                spawnY = t.y;
-            }
-            break;
-        }
-        if (oldPlayer != entt::null)
-            reg.destroy(oldPlayer);
-
-        auto newPlayer = ConfigLoader::loadEntity(em, "config/entities/player.json");
-        if (reg.valid(newPlayer))
-        {
-            auto& t = reg.get<Transform>(newPlayer);
-            t.x = spawnX;
-            t.y = spawnY;
-            reg.emplace<PlayerActions>(newPlayer);
-            reg.emplace<Camera>(newPlayer, Camera{spawnX, spawnY, true});
-            LevelingSystem::applyInitialDerivations(em);
-        }
-
-        ws.current_wave = 0;
-        TracyMessageL("DeathRestart");
-        std::cout << "[WaveSystem] Restarting from wave 1.\n";
-    }
+        handleDeathRestart(em, ws);
 
     if (ws.phase != WaveState::Phase::Idle && ws.phase != WaveState::Phase::SafeRoom &&
         ws.phase != WaveState::Phase::GameOver)
@@ -428,5 +435,30 @@ bool WaveSystem::startNextWave(EntityManager& em)
     std::cout << "[WaveSystem] Wave " << next << " started (" << ws.enemies_total
               << " enemies, interval=" << ws.active_def.spawn_interval
               << "s, burst=" << ws.active_def.burst_size << ")\n";
+
+    // Pick a random music track, avoiding back-to-back repeats.
+    auto& mc = em.registry().ctx().get<MusicConfig>();
+    if (!mc.tracks.empty())
+    {
+        auto& rng = SpawnUtils::getRng();
+        int idx = 0;
+        if (mc.tracks.size() == 1)
+        {
+            idx = 0;
+        }
+        else
+        {
+            std::uniform_int_distribution<int> dist(0, static_cast<int>(mc.tracks.size()) - 1);
+            do
+            {
+                idx = dist(rng);
+            } while (idx == mc.last_track_index);
+        }
+        mc.last_track_index = idx;
+        const auto& track = mc.tracks[idx];
+        AudioSystem::playMusic(track.path, track.volume);
+        std::cout << "[Music] Playing: " << track.path << "\n";
+    }
+
     return true;
 }

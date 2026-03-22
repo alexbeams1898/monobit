@@ -1,9 +1,19 @@
+// Two-phase stb_vorbis include for miniaudio OGG/Vorbis support.
+// Phase 1: header-only (gives miniaudio the function declarations).
+#define STB_VORBIS_HEADER_ONLY
+#include <stb_vorbis.c> // NOLINT(bugprone-suspicious-include)
+
 // MINIAUDIO_IMPLEMENTATION must be defined in exactly one translation unit.
 #define MINIAUDIO_IMPLEMENTATION
+#include <miniaudio.h>
+
+// Phase 2: full implementation (after miniaudio, so macros don't leak).
+#undef STB_VORBIS_HEADER_ONLY
 #include "systems/AudioSystem.h"
 
 #include <iostream>
-#include <miniaudio.h>
+#include <stb_vorbis.c> // NOLINT(bugprone-suspicious-include)
+#include <vector>
 
 // ---------------------------------------------------------------------------
 // Static state
@@ -14,6 +24,41 @@ static bool sInitialized = false;
 
 static ma_sound sMusicSound;
 static bool sMusicLoaded = false;
+
+// Managed SFX voices -- each playSfx creates a ma_sound with per-sound volume.
+// Finished sounds are cleaned up lazily on the next playSfx call.
+static constexpr int MAX_SFX_VOICES = 32;
+
+struct SfxVoice
+{
+    ma_sound sound;
+    bool active = false;
+};
+static std::vector<SfxVoice> sSfxVoices(MAX_SFX_VOICES);
+
+// Sweep the voice pool and uninit any sounds that have finished playing.
+static void cleanupFinishedVoices()
+{
+    for (auto& v : sSfxVoices)
+    {
+        if (v.active && !ma_sound_is_playing(&v.sound))
+        {
+            ma_sound_uninit(&v.sound);
+            v.active = false;
+        }
+    }
+}
+
+// Find an inactive slot. Returns nullptr if the pool is full.
+static SfxVoice* findFreeVoice()
+{
+    for (auto& v : sSfxVoices)
+    {
+        if (!v.active)
+            return &v;
+    }
+    return nullptr;
+}
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -39,6 +84,16 @@ void AudioSystem::shutdown()
     if (!sInitialized)
         return;
 
+    // Clean up all active SFX voices.
+    for (auto& v : sSfxVoices)
+    {
+        if (v.active)
+        {
+            ma_sound_uninit(&v.sound);
+            v.active = false;
+        }
+    }
+
     if (sMusicLoaded)
     {
         ma_sound_uninit(&sMusicSound);
@@ -54,18 +109,23 @@ void AudioSystem::playSfx(const std::string& path, float volume)
     if (!sInitialized)
         return;
 
-    // ma_engine_play_sound is fire-and-forget: the engine allocates an internal
-    // voice, plays to completion, and frees it automatically.  Safe at high call rates.
-    ma_result result = ma_engine_play_sound(&sEngine, path.c_str(), nullptr);
+    cleanupFinishedVoices();
+
+    SfxVoice* slot = findFreeVoice();
+    if (slot == nullptr)
+        return; // pool full, drop the sound
+
+    ma_result result =
+        ma_sound_init_from_file(&sEngine, path.c_str(), 0, nullptr, nullptr, &slot->sound);
     if (result != MA_SUCCESS)
     {
         std::cerr << "[AudioSystem] playSfx failed for: " << path << " (error " << result << ")\n";
         return;
     }
 
-    // volume per-sound is not directly available on fire-and-forget calls;
-    // use setMasterVolume() or upgrade to ma_sound for per-sound control.
-    (void)volume;
+    ma_sound_set_volume(&slot->sound, volume);
+    ma_sound_start(&slot->sound);
+    slot->active = true;
 }
 
 void AudioSystem::playMusic(const std::string& path, float volume)
@@ -80,7 +140,7 @@ void AudioSystem::playMusic(const std::string& path, float volume)
         sMusicLoaded = false;
     }
 
-    ma_result result = ma_sound_init_from_file(&sEngine, path.c_str(), MA_SOUND_FLAG_STREAM,
+    ma_result result = ma_sound_init_from_file(&sEngine, path.c_str(), MA_SOUND_FLAG_DECODE,
                                                nullptr, nullptr, &sMusicSound);
     if (result != MA_SUCCESS)
     {

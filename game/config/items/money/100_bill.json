@@ -1,0 +1,9 @@
+{
+    "name": "$100 Bill",
+    "description": "A hundred-dollar bill. You can almost smell the sulfur.",
+    "category": "money",
+    "rarity": "legendary",
+    "value": 100,
+    "stackable": true,
+    "max_stack": 99
+}

@@ -25,6 +25,10 @@ class LevelingSystem
     // No-op if the entity has no Stats component.
     static void deriveHealth(EntityManager& em, entt::entity entity);
 
+    // Derive Health, Stamina, and Poise from Stats for a single entity.
+    // Call this for dynamically spawned entities that may carry any of those components.
+    static void deriveInitialStats(EntityManager& em, entt::entity entity);
+
     // Per-frame update: XP → level-up, stat point allocation.
     static void update(EntityManager& em);
 };

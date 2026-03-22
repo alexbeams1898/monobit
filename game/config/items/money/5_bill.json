@@ -1,0 +1,9 @@
+{
+    "name": "$5 Bill",
+    "description": "A five-spot. Not bad for a dead guy's pocket.",
+    "category": "money",
+    "rarity": "uncommon",
+    "value": 5,
+    "stackable": true,
+    "max_stack": 99
+}
