@@ -115,8 +115,8 @@ void AudioSystem::playSfx(const std::string& path, float volume)
     if (slot == nullptr)
         return; // pool full, drop the sound
 
-    ma_result result =
-        ma_sound_init_from_file(&sEngine, path.c_str(), 0, nullptr, nullptr, &slot->sound);
+    ma_result result = ma_sound_init_from_file(&sEngine, path.c_str(), MA_SOUND_FLAG_DECODE,
+                                               nullptr, nullptr, &slot->sound);
     if (result != MA_SUCCESS)
     {
         std::cerr << "[AudioSystem] playSfx failed for: " << path << " (error " << result << ")\n";

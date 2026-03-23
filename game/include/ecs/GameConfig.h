@@ -402,3 +402,35 @@ struct RecipeRegistry
     std::vector<RecipeDef> recipes;
     bool loaded = false;
 };
+
+// ---------------------------------------------------------------------------
+// UIState -- tracks which UI screen is currently open.
+// ---------------------------------------------------------------------------
+struct UIState
+{
+    enum class Screen
+    {
+        None,
+        Menu,
+        LevelUp
+    };
+
+    // Menu tabs.
+    enum class Tab
+    {
+        Status = 0,
+        Inventory = 1,
+        Equipment = 2,
+        Crafting = 3
+    };
+    static constexpr int TAB_COUNT = 4;
+
+    Screen active_screen = Screen::None;
+    Tab menu_tab = Tab::Status;
+    bool show_hud = true;
+
+    bool isScreenOpen() const
+    {
+        return active_screen != Screen::None;
+    }
+};

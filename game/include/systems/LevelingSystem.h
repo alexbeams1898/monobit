@@ -2,6 +2,13 @@
 
 #include "ecs/EntityManager.h"
 
+struct FormulaConfig;
+struct SoundConfig;
+
+// Allocate one stat point to the given stat and recalculate derived attributes.
+void allocateStat(entt::registry& reg, entt::entity entity, int& stat, const FormulaConfig& f,
+                  const SoundConfig& snd);
+
 // ---------------------------------------------------------------------------
 // LevelingSystem — XP-to-level-up logic and initial stat derivations.
 //

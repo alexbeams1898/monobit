@@ -1,11 +1,17 @@
 #include "ConfigLoader.h"
 #include "Engine.h"
+#include "FontManager.h"
 #include "GameLoop.h"
 #include "TileMapLoader.h"
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
+#include "renderers/HudRenderer.h"
+#include "renderers/InteractionPromptRenderer.h"
+#include "screens/LevelUpScreen.h"
+#include "screens/PauseMenu.h"
 #include "systems/LevelingSystem.h"
+#include "systems/NotificationSystem.h"
 #include "systems/TileMapRenderer.h"
 #include "systems/WaveSystem.h"
 
@@ -97,6 +103,7 @@ int main(int argc, char* argv[])
     em.registry().ctx().emplace<WaveState>();
     em.registry().ctx().emplace<ItemRegistry>();
     em.registry().ctx().emplace<RecipeRegistry>();
+    em.registry().ctx().emplace<UIState>();
 
     // Load balance formulas first -- all systems read from ctx<FormulaConfig>.
     ConfigLoader::loadFormulas(em, "config/balance/formulas.json");
@@ -167,8 +174,18 @@ int main(int argc, char* argv[])
     // the player at the bonfire via handleMapRegen).
     WaveSystem::startNextWave(em);
 
+    // Load fonts for UI rendering.
+    FontHandle bodyFont = FontManager::loadFont("assets/fonts/cinzel.ttf", 28.0f);
+    FontHandle titleFont = FontManager::loadFont("assets/fonts/cinzel.ttf", 36.0f);
+    HudRenderer::init(bodyFont, titleFont);
+    NotificationSystem::init(bodyFont, titleFont);
+    InteractionPromptRenderer::init(bodyFont);
+    PauseMenu::init(bodyFont, titleFont, &engine.textureManager());
+    LevelUpScreen::init(bodyFont, titleFont);
+
     engine.setGameUpdate(&gameUpdate);
     engine.setPerFrameUpdate(&gamePerFrame);
+    engine.setRenderUI(&gameRenderUI);
     engine.run();
     return 0;
 }

@@ -1,5 +1,7 @@
 #include "Engine.h"
 
+#include "FontManager.h"
+#include "UIRenderer.h"
 #include "ecs/Components.h"
 #include "systems/AnimationSystem.h"
 #include "systems/AudioSystem.h"
@@ -68,6 +70,8 @@ bool Engine::init(const char* title, int width, int height)
 
     RenderSystem::init(window_w, window_h);
     TileMapRenderer::init();
+    FontManager::init();
+    UIRenderer::init(window_w, window_h);
     AudioSystem::init(); // non-fatal — game runs without audio if device unavailable
 
     return true;
@@ -127,13 +131,12 @@ void Engine::processEvents()
     {
         if (event.type == SDL_QUIT)
             running = false;
-        if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE)
-            running = false;
         if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_RESIZED)
         {
             window_w = event.window.data1;
             window_h = event.window.data2;
             RenderSystem::resize(window_w, window_h);
+            UIRenderer::resize(window_w, window_h);
         }
 
         // Buffer one-shot input events so they survive across fixed-step ticks.
@@ -175,6 +178,11 @@ void Engine::setGameUpdate(GameUpdateFn fn)
 void Engine::setPerFrameUpdate(PerFrameFn fn)
 {
     per_frame_update = fn;
+}
+
+void Engine::setRenderUI(RenderUIFn fn)
+{
+    render_ui = fn;
 }
 
 void Engine::setWindowTitle(const std::string& title)
@@ -232,12 +240,20 @@ void Engine::render()
     TileMapRenderer::render(camX, camY, window_w, window_h);
     RenderSystem::render(entity_manager, texture_manager, camX, camY);
 
+    // UI layer: screen-space overlay drawn after world content.
+    UIRenderer::beginFrame();
+    if (render_ui)
+        render_ui(*this, entity_manager);
+    UIRenderer::endFrame();
+
     SDL_GL_SwapWindow(window);
 }
 
 void Engine::shutdown()
 {
     AudioSystem::shutdown();
+    UIRenderer::shutdown();
+    FontManager::shutdown();
     TileMapRenderer::shutdown();
     RenderSystem::shutdown();
     texture_manager.clear();

@@ -134,9 +134,8 @@ void LevelingSystem::applyInitialDerivations(EntityManager& em)
     }
 }
 
-// Allocate one stat point and recalculate derived attributes (HP, stamina, poise).
-static void allocateStat(entt::registry& reg, entt::entity entity, int& stat,
-                         const FormulaConfig& f, const SoundConfig& snd)
+void allocateStat(entt::registry& reg, entt::entity entity, int& stat, const FormulaConfig& f,
+                  const SoundConfig& snd)
 {
     stat++;
     auto& exp = reg.get<Experience>(entity);

@@ -69,10 +69,18 @@ void CombatSystem::update(EntityManager& em, double dt)
     const SoundConfig& snd = em.registry().ctx().get<SoundConfig>();
 
     // --- 1. Destroy hitboxes spawned last frame ----------------------------
-    // Collect first; entt iterators are invalidated by destroy() mid-sweep.
+    // Check for player-owned misses before destroying.
     std::vector<entt::entity> toDestroy;
     for (auto entity : em.registry().view<Hitbox>())
+    {
+        const auto& hb = em.registry().get<Hitbox>(entity);
+        if (!hb.hit_something && hb.owner != entt::null &&
+            em.registry().all_of<PlayerActions>(hb.owner))
+        {
+            AudioSystem::playSfx(snd.player_attack.path, snd.player_attack.volume);
+        }
         toDestroy.push_back(entity);
+    }
     for (auto e : toDestroy)
         em.destroy(e);
 
@@ -352,7 +360,6 @@ void CombatSystem::update(EntityManager& em, double dt)
                 deductStamina(em.registry(), entity, swingCost, f);
 
             TracyMessageL("PlayerAttack");
-            AudioSystem::playSfx(snd.player_attack.path, snd.player_attack.volume);
             std::cout << "[CombatSystem] Attack! dmg=";
             if (em.registry().all_of<Stats>(entity))
                 std::cout << computeDamage(weapon, em.registry().get<Stats>(entity), f);

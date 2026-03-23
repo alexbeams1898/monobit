@@ -30,8 +30,20 @@ class Engine
     using PerFrameFn = void (*)(Engine&, EntityManager&, double);
     void setPerFrameUpdate(PerFrameFn fn);
 
+    // UI render callback. Called once per frame after world rendering, between
+    // UIRenderer::beginFrame() and UIRenderer::endFrame(). Game code uses
+    // UIRenderer draw calls here to render HUD, menus, notifications, etc.
+    using RenderUIFn = void (*)(Engine&, EntityManager&);
+    void setRenderUI(RenderUIFn fn);
+
     // Set the window title string (for game-side HUD display).
     void setWindowTitle(const std::string& title);
+
+    // Request the engine to stop running (used by pause menu Quit option).
+    void requestQuit()
+    {
+        running = false;
+    }
 
     int windowWidth() const
     {
@@ -78,4 +90,5 @@ class Engine
 
     GameUpdateFn game_update = nullptr;
     PerFrameFn per_frame_update = nullptr;
+    RenderUIFn render_ui = nullptr;
 };

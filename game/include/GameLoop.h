@@ -10,3 +10,7 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt);
 // Per-frame callback. Runs once per render frame after SDL event polling,
 // before the fixed-step loop. Handles mouse-aim facing at display rate.
 void gamePerFrame(Engine& engine, EntityManager& em, double dt);
+
+// UI render callback. Called once per frame between UIRenderer::beginFrame()
+// and endFrame(). Draws HUD, menus, notifications, interaction prompts.
+void gameRenderUI(Engine& engine, EntityManager& em);

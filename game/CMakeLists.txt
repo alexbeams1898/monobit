@@ -22,6 +22,13 @@ add_library(game-systems STATIC
     src/CraftingOps.cpp
     src/systems/EquipmentSystem.cpp
     src/systems/CraftingSystem.cpp
+    src/systems/NotificationSystem.cpp
+    src/renderers/HudRenderer.cpp
+    src/renderers/InteractionPromptRenderer.cpp
+    src/screens/PauseMenu.cpp
+    src/screens/InventoryScreen.cpp
+    src/screens/CraftingScreen.cpp
+    src/screens/LevelUpScreen.cpp
 )
 
 target_include_directories(game-systems PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
