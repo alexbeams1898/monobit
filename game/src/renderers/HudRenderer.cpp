@@ -50,6 +50,73 @@ static void drawBarWithLabel(float x, float y, float w, float h, float fill, con
     drawBar(x, bar_y, w, h, fill, fg, bg);
 }
 
+static void renderWaveInfo(EntityManager& em, float ww)
+{
+    const auto& ws = em.registry().ctx().get<WaveState>();
+    const auto& wc = em.registry().ctx().get<WaveConfig>();
+    if (!wc.loaded)
+        return;
+
+    std::string waveStr = "Wave " + std::to_string(ws.current_wave);
+    if (wc.gen.max_waves > 0)
+        waveStr += "/" + std::to_string(wc.gen.max_waves);
+
+    std::string phaseStr;
+    if (ws.phase == WaveState::Phase::Idle || ws.phase == WaveState::Phase::SafeRoom)
+        phaseStr = "Press R to start";
+    else if (ws.phase == WaveState::Phase::GameOver)
+        phaseStr = "GAME OVER - Press R";
+    else if (ws.phase == WaveState::Phase::Complete)
+        phaseStr = "COMPLETE";
+
+    const float title_h = FontManager::lineHeight(sTitleFont);
+    TextSize waveSz = UIRenderer::measureText(sTitleFont, waveStr);
+    UIRenderer::drawText(sTitleFont, waveStr, ww - waveSz.width - BAR_X, BAR_Y_START, TEXT_GOLD);
+
+    if (!phaseStr.empty())
+    {
+        TextSize phaseSz = UIRenderer::measureText(sBodyFont, phaseStr);
+        UIRenderer::drawText(sBodyFont, phaseStr, ww - phaseSz.width - BAR_X,
+                             BAR_Y_START + title_h + BAR_GAP, TEXT_WHITE);
+    }
+}
+
+static void renderStatusCondition(EntityManager& em, entt::entity entity, float x, float y)
+{
+    std::string status = "Good";
+    Color statusColor{0.4f, 0.8f, 0.45f, 1.0f};
+
+    if (em.registry().all_of<Staggered>(entity))
+    {
+        status = "Staggered";
+        statusColor = {0.85f, 0.35f, 0.35f, 1.0f};
+    }
+    else if (em.registry().all_of<Stamina>(entity) && em.registry().all_of<Weapon>(entity))
+    {
+        const auto& sta = em.registry().get<Stamina>(entity);
+        const auto& w = em.registry().get<Weapon>(entity);
+        const auto& f = em.registry().ctx().get<FormulaConfig>();
+        const float swingCost = f.stamina.base_swing_cost + w.weight * f.stamina.swing_effort;
+        if (sta.max_stamina < swingCost)
+        {
+            status = "Overburdened";
+            statusColor = {0.85f, 0.5f, 0.2f, 1.0f};
+        }
+        else if (sta.current < swingCost)
+        {
+            status = "Exhausted";
+            statusColor = {0.85f, 0.65f, 0.2f, 1.0f};
+        }
+        else if (sta.current < sta.max_stamina * 0.4f)
+        {
+            status = "Tired";
+            statusColor = {0.75f, 0.75f, 0.3f, 1.0f};
+        }
+    }
+
+    UIRenderer::drawText(sBodyFont, "Status: " + status, x, y, statusColor);
+}
+
 void HudRenderer::init(FontHandle body_font, FontHandle title_font)
 {
     sBodyFont = body_font;
@@ -93,7 +160,6 @@ void HudRenderer::render(EntityManager& em, int window_w, int window_h)
                 "HP " + std::to_string(health.current) + "/" + std::to_string(health.max);
             drawBarWithLabel(BAR_X, y, BAR_W, BAR_H, fill, HP_BAR, HP_BG, sBodyFont, label);
             y += section_h + BAR_GAP;
-
         }
 
         // Stamina bar.
@@ -105,7 +171,6 @@ void HudRenderer::render(EntityManager& em, int window_w, int window_h)
             const std::string label = "STA " + std::to_string(pct) + "%";
             drawBarWithLabel(BAR_X, y, BAR_W, BAR_H, fill, STA_BAR, STA_BG, sBodyFont, label);
             y += section_h + BAR_GAP;
-
         }
 
         // XP bar.
@@ -118,7 +183,6 @@ void HudRenderer::render(EntityManager& em, int window_w, int window_h)
                                       std::to_string(exp.xp_to_next);
             drawBarWithLabel(BAR_X, y, BAR_W, BAR_H, fill, XP_BAR, XP_BG, sBodyFont, label);
             y += section_h + BAR_GAP;
-
         }
 
         // Money (bottom-left).
@@ -134,75 +198,11 @@ void HudRenderer::render(EntityManager& em, int window_w, int window_h)
         }
 
         // Wave info (top-right).
-        {
-            const auto& ws = em.registry().ctx().get<WaveState>();
-            const auto& wc = em.registry().ctx().get<WaveConfig>();
-            if (wc.loaded)
-            {
-                std::string waveStr = "Wave " + std::to_string(ws.current_wave);
-                if (wc.gen.max_waves > 0)
-                    waveStr += "/" + std::to_string(wc.gen.max_waves);
-
-                std::string phaseStr;
-                if (ws.phase == WaveState::Phase::Idle || ws.phase == WaveState::Phase::SafeRoom)
-                    phaseStr = "Press R to start";
-                else if (ws.phase == WaveState::Phase::GameOver)
-                    phaseStr = "GAME OVER - Press R";
-                else if (ws.phase == WaveState::Phase::Complete)
-                    phaseStr = "COMPLETE";
-
-                const float title_h = FontManager::lineHeight(sTitleFont);
-                TextSize waveSz = UIRenderer::measureText(sTitleFont, waveStr);
-                UIRenderer::drawText(sTitleFont, waveStr, ww - waveSz.width - BAR_X,
-                                     BAR_Y_START, TEXT_GOLD);
-
-                if (!phaseStr.empty())
-                {
-                    TextSize phaseSz = UIRenderer::measureText(sBodyFont, phaseStr);
-                    UIRenderer::drawText(sBodyFont, phaseStr, ww - phaseSz.width - BAR_X,
-                                         BAR_Y_START + title_h + BAR_GAP, TEXT_WHITE);
-                }
-            }
-        }
+        renderWaveInfo(em, ww);
 
         // Status condition.
-        {
-            std::string status = "Good";
-            Color statusColor{0.4f, 0.8f, 0.45f, 1.0f};
-
-            if (em.registry().all_of<Staggered>(entity))
-            {
-                status = "Staggered";
-                statusColor = {0.85f, 0.35f, 0.35f, 1.0f};
-            }
-            else if (em.registry().all_of<Stamina>(entity) &&
-                     em.registry().all_of<Weapon>(entity))
-            {
-                const auto& sta = em.registry().get<Stamina>(entity);
-                const auto& w = em.registry().get<Weapon>(entity);
-                const auto& f = em.registry().ctx().get<FormulaConfig>();
-                const float swingCost =
-                    f.stamina.base_swing_cost + w.weight * f.stamina.swing_effort;
-                if (sta.max_stamina < swingCost)
-                {
-                    status = "Overburdened";
-                    statusColor = {0.85f, 0.5f, 0.2f, 1.0f};
-                }
-                else if (sta.current < swingCost)
-                {
-                    status = "Exhausted";
-                    statusColor = {0.85f, 0.65f, 0.2f, 1.0f};
-                }
-                else if (sta.current < sta.max_stamina * 0.4f)
-                {
-                    status = "Tired";
-                    statusColor = {0.75f, 0.75f, 0.3f, 1.0f};
-                }
-            }
-
-            UIRenderer::drawText(sBodyFont, "Status: " + status, BAR_X, y, statusColor);
-            y += label_h + BAR_GAP;
-        }
+        renderStatusCondition(em, entity, BAR_X, y);
+        y += label_h + BAR_GAP;
 
         // Stat allocation hint (only when points are available).
         if (exp.stat_points > 0)

@@ -27,18 +27,6 @@ static constexpr float SLOT_SIZE = 28.0f;
 static constexpr float SLOT_GAP = 4.0f;
 static constexpr int GRID_COLS = 5;
 
-void InventoryScreen::init(FontHandle body_font, FontHandle title_font)
-{
-    sBodyFont = body_font;
-    sTitleFont = title_font;
-    sSelectedSlot = 0;
-}
-
-void InventoryScreen::reset()
-{
-    sSelectedSlot = 0;
-}
-
 static Color rarityColor(Rarity r)
 {
     switch (r)
@@ -57,6 +45,77 @@ static Color rarityColor(Rarity r)
         return {1.0f, 0.7f, 0.2f, 1.0f};
     }
     return TEXT_WHITE;
+}
+
+static void renderInventoryGrid(const Inventory& inv, const ItemRegistry& items, float panel_x,
+                                float ey, int total_slots)
+{
+    for (int i = 0; i < total_slots; ++i)
+    {
+        const int col = i % GRID_COLS;
+        const int row = i / GRID_COLS;
+        const float sx = panel_x + 24.0f + static_cast<float>(col) * (SLOT_SIZE + SLOT_GAP);
+        const float sy = ey + static_cast<float>(row) * (SLOT_SIZE + SLOT_GAP);
+
+        const bool selected = (i == sSelectedSlot);
+        const Color bg = selected ? SLOT_SELECTED : SLOT_BG;
+        UIRenderer::drawRect(sx, sy, SLOT_SIZE, SLOT_SIZE, bg);
+
+        if (i < static_cast<int>(inv.items.size()) && !inv.items[static_cast<size_t>(i)].empty())
+        {
+            const auto& item = inv.items[static_cast<size_t>(i)];
+            const ItemDef* def = items.find(item.config_path);
+            // Draw first letter of item name as placeholder icon.
+            const std::string letter =
+                (def != nullptr && !def->name.empty()) ? def->name.substr(0, 1) : "?";
+            const Rarity r = (def != nullptr) ? def->rarity : Rarity::Common;
+            UIRenderer::drawText(sBodyFont, letter, sx + 8.0f, sy + 6.0f, rarityColor(r));
+
+            // Quantity badge.
+            if (item.quantity > 1)
+            {
+                const std::string qty = std::to_string(item.quantity);
+                UIRenderer::drawText(sBodyFont, qty, sx + SLOT_SIZE - 12.0f, sy + SLOT_SIZE - 14.0f,
+                                     TEXT_WHITE);
+            }
+        }
+        else
+        {
+            UIRenderer::drawRect(sx + 2.0f, sy + 2.0f, SLOT_SIZE - 4.0f, SLOT_SIZE - 4.0f,
+                                 SLOT_EMPTY);
+        }
+    }
+}
+
+static void renderItemDetail(const Inventory& inv, const ItemRegistry& items, float panel_x,
+                             float detail_y)
+{
+    if (sSelectedSlot < static_cast<int>(inv.items.size()) &&
+        !inv.items[static_cast<size_t>(sSelectedSlot)].empty())
+    {
+        const auto& item = inv.items[static_cast<size_t>(sSelectedSlot)];
+        const ItemDef* def = items.find(item.config_path);
+
+        if (def != nullptr)
+        {
+            UIRenderer::drawText(sBodyFont, def->name, panel_x + 16.0f, detail_y,
+                                 rarityColor(def->rarity));
+            UIRenderer::drawText(sBodyFont, def->description, panel_x + 16.0f,
+                                 detail_y + FontManager::lineHeight(sBodyFont) + 2.0f, TEXT_DIM);
+        }
+    }
+}
+
+void InventoryScreen::init(FontHandle body_font, FontHandle title_font)
+{
+    sBodyFont = body_font;
+    sTitleFont = title_font;
+    sSelectedSlot = 0;
+}
+
+void InventoryScreen::reset()
+{
+    sSelectedSlot = 0;
 }
 
 void InventoryScreen::render(EntityManager& em, int window_w, int window_h)
@@ -151,60 +210,11 @@ void InventoryScreen::render(EntityManager& em, int window_w, int window_h)
         const int total_slots = inv.max_slots;
         sSelectedSlot = ((sSelectedSlot % total_slots) + total_slots) % total_slots; // wrap around
 
-        for (int i = 0; i < total_slots; ++i)
-        {
-            const int col = i % GRID_COLS;
-            const int row = i / GRID_COLS;
-            const float sx = panel_x + 24.0f + static_cast<float>(col) * (SLOT_SIZE + SLOT_GAP);
-            const float sy = ey + static_cast<float>(row) * (SLOT_SIZE + SLOT_GAP);
-
-            const bool selected = (i == sSelectedSlot);
-            const Color bg = selected ? SLOT_SELECTED : SLOT_BG;
-            UIRenderer::drawRect(sx, sy, SLOT_SIZE, SLOT_SIZE, bg);
-
-            if (i < static_cast<int>(inv.items.size()) &&
-                !inv.items[static_cast<size_t>(i)].empty())
-            {
-                const auto& item = inv.items[static_cast<size_t>(i)];
-                const ItemDef* def = items.find(item.config_path);
-                // Draw first letter of item name as placeholder icon.
-                const std::string letter =
-                    (def != nullptr && !def->name.empty()) ? def->name.substr(0, 1) : "?";
-                const Rarity r = (def != nullptr) ? def->rarity : Rarity::Common;
-                UIRenderer::drawText(sBodyFont, letter, sx + 8.0f, sy + 6.0f, rarityColor(r));
-
-                // Quantity badge.
-                if (item.quantity > 1)
-                {
-                    const std::string qty = std::to_string(item.quantity);
-                    UIRenderer::drawText(sBodyFont, qty, sx + SLOT_SIZE - 12.0f,
-                                         sy + SLOT_SIZE - 14.0f, TEXT_WHITE);
-                }
-            }
-            else
-            {
-                UIRenderer::drawRect(sx + 2.0f, sy + 2.0f, SLOT_SIZE - 4.0f, SLOT_SIZE - 4.0f,
-                                     SLOT_EMPTY);
-            }
-        }
+        renderInventoryGrid(inv, items, panel_x, ey, total_slots);
 
         // Selected item detail.
-        if (sSelectedSlot < static_cast<int>(inv.items.size()) &&
-            !inv.items[static_cast<size_t>(sSelectedSlot)].empty())
-        {
-            const auto& item = inv.items[static_cast<size_t>(sSelectedSlot)];
-            const ItemDef* def = items.find(item.config_path);
-            const float detail_y = panel_y + panel_h - 60.0f;
-
-            if (def != nullptr)
-            {
-                UIRenderer::drawText(sBodyFont, def->name, panel_x + 16.0f, detail_y,
-                                     rarityColor(def->rarity));
-                UIRenderer::drawText(sBodyFont, def->description, panel_x + 16.0f,
-                                     detail_y + FontManager::lineHeight(sBodyFont) + 2.0f,
-                                     TEXT_DIM);
-            }
-        }
+        const float detail_y = panel_y + panel_h - 60.0f;
+        renderItemDetail(inv, items, panel_x, detail_y);
     }
 
     // Controls hint.

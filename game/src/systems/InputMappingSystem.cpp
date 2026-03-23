@@ -74,8 +74,7 @@ void InputMappingSystem::update(EntityManager& em)
     const bool interactJust = hasKey(kd, SDL_SCANCODE_F);
     const bool lmbJust = hasMouse(md, SDL_BUTTON_LEFT);
     const bool inventoryJust = hasKey(kd, SDL_SCANCODE_I);
-    const bool pauseJust =
-        hasKey(kd, SDL_SCANCODE_ESCAPE) || hasKey(kd, SDL_SCANCODE_TAB);
+    const bool pauseJust = hasKey(kd, SDL_SCANCODE_ESCAPE) || hasKey(kd, SDL_SCANCODE_TAB);
 
     for (auto [entity, actions] : em.registry().view<PlayerActions>().each())
     {

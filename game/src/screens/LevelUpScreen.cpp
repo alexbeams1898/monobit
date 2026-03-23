@@ -22,7 +22,7 @@ static int sLevelOnOpen = 0;
 static constexpr int STAT_COUNT = 4;
 static const char* STAT_NAMES[STAT_COUNT] = {"Strength", "Dexterity", "Endurance", "Luck"};
 static const char* STAT_DESCS[STAT_COUNT] = {"Damage, carry weight", "Speed, attack speed",
-                                              "HP, stamina, poise", "Drop rate, item quality"};
+                                             "HP, stamina, poise", "Drop rate, item quality"};
 
 static constexpr Color OVERLAY{0.0f, 0.0f, 0.0f, 0.65f};
 static constexpr Color PANEL_BG{0.06f, 0.06f, 0.09f, 0.95f};
@@ -40,6 +40,73 @@ static int hoveredRow(float mx, float my, float cx, float cy, float cw, float ro
         return -1;
     int idx = static_cast<int>((my - (cy - 2.0f)) / row_h);
     return (idx >= 0 && idx < count) ? idx : -1;
+}
+
+// Returns true if the screen was auto-closed (caller should return early).
+static bool handleAutoClose(UIState& ui, const Experience& exp, float dt)
+{
+    if (exp.stat_points <= 0)
+    {
+        if (sAutoCloseTimer < 0.0f)
+            sAutoCloseTimer = 0.5f;
+        sAutoCloseTimer -= dt;
+        if (sAutoCloseTimer <= 0.0f)
+        {
+            NotificationSystem::push("Level Up! (Lv " + std::to_string(sLevelOnOpen) + ")",
+                                     {1.0f, 0.85f, 0.3f, 1.0f});
+            sLevelOnOpen = 0;
+            ui.active_screen = UIState::Screen::None;
+            return true;
+        }
+    }
+    else
+    {
+        sAutoCloseTimer = -1.0f;
+    }
+    return false;
+}
+
+static void renderStatRows(EntityManager& em, entt::entity player, Stats& stats,
+                           const Experience& exp, const FormulaConfig& f, const SoundConfig& snd,
+                           float cx, float cw, float& y, float line_h, float mx, float my)
+{
+    int hover = hoveredRow(mx, my, cx, y, cw, line_h, STAT_COUNT);
+    if (hover >= 0)
+        sSel = hover;
+
+    int* stat_ptrs[STAT_COUNT] = {&stats.str, &stats.dex, &stats.end, &stats.lck};
+
+    for (int i = 0; i < STAT_COUNT; ++i)
+    {
+        const bool selected = (i == sSel);
+
+        if (selected)
+            UIRenderer::drawRect(cx - 4.0f, y - 2.0f, cw + 8.0f, line_h, SELECTED_BG);
+
+        const std::string prefix = selected ? "> " : "  ";
+        UIRenderer::drawText(sBodyFont,
+                             prefix + STAT_NAMES[i] + "  " + std::to_string(*stat_ptrs[i]), cx, y,
+                             selected ? TEXT_WHITE : STAT_COLOR);
+
+        // Description on the right.
+        const float desc_x = cx + 220.0f;
+        UIRenderer::drawText(sBodyFont, STAT_DESCS[i], desc_x, y, TEXT_DIM);
+
+        // Mouse click allocates.
+        if (selected && exp.stat_points > 0)
+        {
+            if (mx >= cx - 4.0f && mx < cx + cw + 4.0f && my >= y - 2.0f && my < y - 2.0f + line_h)
+            {
+                for (uint8_t btn : em.mouse_down_events)
+                {
+                    if (btn == SDL_BUTTON_LEFT)
+                        allocateStat(em.registry(), player, *stat_ptrs[i], f, snd);
+                }
+            }
+        }
+
+        y += line_h;
+    }
 }
 
 void LevelUpScreen::init(FontHandle body_font, FontHandle title_font)
@@ -91,24 +158,8 @@ void LevelUpScreen::render(EntityManager& em, int window_w, int window_h)
         sLevelOnOpen = exp.level;
 
     // Auto-close when all points spent.
-    if (exp.stat_points <= 0)
-    {
-        if (sAutoCloseTimer < 0.0f)
-            sAutoCloseTimer = 0.5f;
-        sAutoCloseTimer -= dt;
-        if (sAutoCloseTimer <= 0.0f)
-        {
-            NotificationSystem::push("Level Up! (Lv " + std::to_string(sLevelOnOpen) + ")",
-                                     {1.0f, 0.85f, 0.3f, 1.0f});
-            sLevelOnOpen = 0;
-            ui.active_screen = UIState::Screen::None;
-            return;
-        }
-    }
-    else
-    {
-        sAutoCloseTimer = -1.0f;
-    }
+    if (handleAutoClose(ui, exp, dt))
+        return;
 
     // Mouse position.
     int mouseX = 0, mouseY = 0;
@@ -136,14 +187,12 @@ void LevelUpScreen::render(EntityManager& em, int window_w, int window_h)
     // Title.
     const std::string title = "Level Up!";
     TextSize tsz = UIRenderer::measureText(sTitleFont, title);
-    UIRenderer::drawText(sTitleFont, title, panel_x + (panel_w - tsz.width) * 0.5f, y,
-                         TITLE_COLOR);
+    UIRenderer::drawText(sTitleFont, title, panel_x + (panel_w - tsz.width) * 0.5f, y, TITLE_COLOR);
     y += title_h + 4.0f;
 
     // Points remaining.
-    const std::string pts =
-        "You have " + std::to_string(exp.stat_points) + " stat point" +
-        (exp.stat_points != 1 ? "s" : "") + ".";
+    const std::string pts = "You have " + std::to_string(exp.stat_points) + " stat point" +
+                            (exp.stat_points != 1 ? "s" : "") + ".";
     TextSize psz = UIRenderer::measureText(sBodyFont, pts);
     UIRenderer::drawText(sBodyFont, pts, panel_x + (panel_w - psz.width) * 0.5f, y, TEXT_WHITE);
     y += line_h + 4.0f;
@@ -152,46 +201,10 @@ void LevelUpScreen::render(EntityManager& em, int window_w, int window_h)
     UIRenderer::drawRect(cx, y, cw, 1.0f, SEP_COLOR);
     y += 10.0f;
 
-    // Stat rows -- hover pre-pass.
-    const float stat_y_start = y;
-    int hover = hoveredRow(mx, my, cx, stat_y_start, cw, line_h, STAT_COUNT);
-    if (hover >= 0)
-        sSel = hover;
+    // Stat rows.
+    renderStatRows(em, player, stats, exp, f, snd, cx, cw, y, line_h, mx, my);
 
     int* stat_ptrs[STAT_COUNT] = {&stats.str, &stats.dex, &stats.end, &stats.lck};
-
-    for (int i = 0; i < STAT_COUNT; ++i)
-    {
-        const bool selected = (i == sSel);
-
-        if (selected)
-            UIRenderer::drawRect(cx - 4.0f, y - 2.0f, cw + 8.0f, line_h, SELECTED_BG);
-
-        const std::string prefix = selected ? "> " : "  ";
-        UIRenderer::drawText(sBodyFont,
-                             prefix + STAT_NAMES[i] + "  " + std::to_string(*stat_ptrs[i]), cx, y,
-                             selected ? TEXT_WHITE : STAT_COLOR);
-
-        // Description on the right.
-        const float desc_x = cx + 220.0f;
-        UIRenderer::drawText(sBodyFont, STAT_DESCS[i], desc_x, y, TEXT_DIM);
-
-        // Mouse click allocates.
-        if (selected && exp.stat_points > 0)
-        {
-            if (mx >= cx - 4.0f && mx < cx + cw + 4.0f && my >= y - 2.0f &&
-                my < y - 2.0f + line_h)
-            {
-                for (uint8_t btn : em.mouse_down_events)
-                {
-                    if (btn == SDL_BUTTON_LEFT)
-                        allocateStat(em.registry(), player, *stat_ptrs[i], f, snd);
-                }
-            }
-        }
-
-        y += line_h;
-    }
 
     // Separator.
     y += 6.0f;
@@ -215,5 +228,4 @@ void LevelUpScreen::render(EntityManager& em, int window_w, int window_h)
                  exp.stat_points > 0)
             allocateStat(em.registry(), player, *stat_ptrs[sSel], f, snd);
     }
-
 }

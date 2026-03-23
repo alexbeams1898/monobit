@@ -126,6 +126,21 @@ static void updateTitleBar(Engine& engine, EntityManager& /*em*/)
     engine.setWindowTitle("Hell Escape  |  FPS " + std::to_string(fps) + "/60");
 }
 
+// Toggle a menu screen to a specific tab: close if already on that tab, open if no screen is up.
+static void toggleMenuScreen(UIState& ui, UIState::Tab tab)
+{
+    if (ui.active_screen == UIState::Screen::Menu && ui.menu_tab == tab)
+    {
+        ui.active_screen = UIState::Screen::None;
+    }
+    else if (ui.active_screen == UIState::Screen::None)
+    {
+        ui.active_screen = UIState::Screen::Menu;
+        ui.menu_tab = tab;
+        PauseMenu::reset();
+    }
+}
+
 // Handle UI screen toggle inputs and suppress gameplay when a screen is open.
 static void updateUIState(EntityManager& em)
 {
@@ -146,9 +161,8 @@ static void updateUIState(EntityManager& em)
                     em.registry().all_of<Experience>(entity))
                 {
                     const auto& exp = em.registry().get<Experience>(entity);
-                    NotificationSystem::push(
-                        "Level Up! (Lv " + std::to_string(exp.level) + ")",
-                        {1.0f, 0.85f, 0.3f, 1.0f});
+                    NotificationSystem::push("Level Up! (Lv " + std::to_string(exp.level) + ")",
+                                             {1.0f, 0.85f, 0.3f, 1.0f});
                 }
                 ui.active_screen = UIState::Screen::None;
             }
@@ -156,35 +170,11 @@ static void updateUIState(EntityManager& em)
 
         // I key opens menu to Inventory tab (or closes if already on it).
         if (actions.toggle_inventory)
-        {
-            if (ui.active_screen == UIState::Screen::Menu &&
-                ui.menu_tab == UIState::Tab::Inventory)
-            {
-                ui.active_screen = UIState::Screen::None;
-            }
-            else if (ui.active_screen == UIState::Screen::None)
-            {
-                ui.active_screen = UIState::Screen::Menu;
-                ui.menu_tab = UIState::Tab::Inventory;
-                PauseMenu::reset();
-            }
-        }
+            toggleMenuScreen(ui, UIState::Tab::Inventory);
 
         // C key opens menu to Crafting tab (or closes if already on it).
         if (actions.craft)
-        {
-            if (ui.active_screen == UIState::Screen::Menu &&
-                ui.menu_tab == UIState::Tab::Crafting)
-            {
-                ui.active_screen = UIState::Screen::None;
-            }
-            else if (ui.active_screen == UIState::Screen::None)
-            {
-                ui.active_screen = UIState::Screen::Menu;
-                ui.menu_tab = UIState::Tab::Crafting;
-                PauseMenu::reset();
-            }
-        }
+            toggleMenuScreen(ui, UIState::Tab::Crafting);
 
         // Auto-open level-up screen when the player gains stat points.
         if (ui.active_screen == UIState::Screen::None)

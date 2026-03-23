@@ -53,10 +53,10 @@ static void collectPickup(EntityManager& em, entt::entity playerEnt, entt::entit
         const std::string itemName = (def != nullptr) ? def->name : "item";
         const Rarity rarity = (def != nullptr) ? def->rarity : Rarity::Common;
         AudioSystem::playSfx(snd.pickup.path, snd.pickup.volume);
-        NotificationSystem::push(
-            "+" + std::to_string(pickup.item.quantity) + " " + itemName + " (" +
-                rarityName(rarity) + ", " + qualityName(pickup.item.quality) + ")",
-            {0.8f, 0.8f, 0.8f, 1.0f});
+        NotificationSystem::push("+" + std::to_string(pickup.item.quantity) + " " + itemName +
+                                     " (" + rarityName(rarity) + ", " +
+                                     qualityName(pickup.item.quality) + ")",
+                                 {0.8f, 0.8f, 0.8f, 1.0f});
         TracyMessageL("ItemPickedUp");
         em.destroy(pickupEnt);
         return;

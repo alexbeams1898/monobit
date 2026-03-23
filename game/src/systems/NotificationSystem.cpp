@@ -85,8 +85,8 @@ void NotificationSystem::render(float dt, int window_w, int window_h)
 
         // Background panel.
         const Color bg{0.0f, 0.0f, 0.0f, 0.5f * alpha};
-        UIRenderer::drawRect(x - NOTIF_PAD_X, y - NOTIF_PAD_Y,
-                             sz.width + NOTIF_PAD_X * 2.0f, sz.height + NOTIF_PAD_Y * 2.0f, bg);
+        UIRenderer::drawRect(x - NOTIF_PAD_X, y - NOTIF_PAD_Y, sz.width + NOTIF_PAD_X * 2.0f,
+                             sz.height + NOTIF_PAD_Y * 2.0f, bg);
 
         UIRenderer::drawText(font, n.text, x, y, c);
         baseline_y -= sz.height + NOTIF_PAD_Y * 2.0f + 4.0f;
