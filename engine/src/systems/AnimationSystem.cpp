@@ -1,6 +1,7 @@
 #include "systems/AnimationSystem.h"
 
 #include "ecs/Components.h"
+#include "utils/DirectionUtils.h"
 
 #include <cmath>
 #include <tracy/Tracy.hpp>
@@ -15,39 +16,13 @@
 // This system detects state changes via anim.prev_state, resets the frame
 // counter on change, then advances the frame timer.
 
-// Snap a velocity vector to the nearest cardinal direction.
-// No hysteresis -- WASD input is digital; ties (exact diagonals) prefer vertical.
-static CardinalDir snapToCardinal(float dx, float dy)
-{
-    const float ax = std::abs(dx);
-    const float ay = std::abs(dy);
-    if (ay >= ax)
-        return dy > 0.0f ? CardinalDir::South : CardinalDir::North;
-    return dx > 0.0f ? CardinalDir::East : CardinalDir::West;
-}
+using engine::direction::dirToColumnIndex;
+using engine::direction::snapFacing;
+using engine::direction::snapMovement;
 
-// Snap a facing vector to the nearest cardinal direction with hysteresis.
-// Once a direction is set, require the off-axis component to exceed the
-// on-axis by at least HYSTERESIS_RATIO before switching. Prevents jitter
-// at axis boundaries (e.g. mouse near 45 degrees from player).
-static constexpr float HYSTERESIS_RATIO = 0.15f;
-
-static CardinalDir snapWithHysteresis(float dx, float dy, CardinalDir current)
-{
-    const float ax = std::abs(dx);
-    const float ay = std::abs(dy);
-    const bool currentIsHorizontal = (current == CardinalDir::East || current == CardinalDir::West);
-
-    if (currentIsHorizontal)
-    {
-        if (ay > ax + ax * HYSTERESIS_RATIO)
-            return dy > 0.0f ? CardinalDir::South : CardinalDir::North;
-        return dx > 0.0f ? CardinalDir::East : CardinalDir::West;
-    }
-    if (ax > ay + ay * HYSTERESIS_RATIO)
-        return dx > 0.0f ? CardinalDir::East : CardinalDir::West;
-    return dy > 0.0f ? CardinalDir::South : CardinalDir::North;
-}
+// ---------------------------------------------------------------------------
+// Per-entity direction update
+// ---------------------------------------------------------------------------
 
 static void updateBodyPartDirection(entt::registry& reg, const BodyPart& bp, Animation& anim)
 {
@@ -55,7 +30,8 @@ static void updateBodyPartDirection(entt::registry& reg, const BodyPart& bp, Ani
     {
         const auto* facing = reg.try_get<FacingDirection>(bp.parent);
         if (facing)
-            anim.dir = snapWithHysteresis(facing->render_dx, facing->render_dy, anim.dir);
+            anim.dir =
+                snapFacing(facing->render_dx, facing->render_dy, anim.dir, anim.direction_count);
     }
     else
     {
@@ -64,33 +40,36 @@ static void updateBodyPartDirection(entt::registry& reg, const BodyPart& bp, Ani
         const auto* intent = reg.try_get<MovementIntent>(bp.parent);
         if (intent && (intent->dx != 0.0f || intent->dy != 0.0f))
         {
-            anim.dir = snapToCardinal(intent->dx, intent->dy);
+            anim.dir = snapMovement(intent->dx, intent->dy, anim.direction_count);
             return;
         }
         const auto* vel = reg.try_get<Velocity>(bp.parent);
         if (vel && (vel->dx * vel->dx + vel->dy * vel->dy) > 1.0f)
-            anim.dir = snapToCardinal(vel->dx, vel->dy);
+            anim.dir = snapMovement(vel->dx, vel->dy, anim.direction_count);
     }
 }
 
 static void updateStandaloneDirection(entt::registry& reg, entt::entity entity, Animation& anim)
 {
+    if (anim.direction_count <= 1)
+        return;
+
     if (anim.state == AnimState::Walk)
     {
         // Prefer MovementIntent over post-collision Velocity for direction snapping.
         const auto* intent = reg.try_get<MovementIntent>(entity);
         if (intent && (intent->dx != 0.0f || intent->dy != 0.0f))
         {
-            anim.dir = snapToCardinal(intent->dx, intent->dy);
+            anim.dir = snapMovement(intent->dx, intent->dy, anim.direction_count);
             return;
         }
         const auto* vel = reg.try_get<Velocity>(entity);
         if (vel)
-            anim.dir = snapToCardinal(vel->dx, vel->dy);
+            anim.dir = snapMovement(vel->dx, vel->dy, anim.direction_count);
     }
     else if (const auto* facing = reg.try_get<FacingDirection>(entity))
     {
-        anim.dir = snapWithHysteresis(facing->render_dx, facing->render_dy, anim.dir);
+        anim.dir = snapFacing(facing->render_dx, facing->render_dy, anim.dir, anim.direction_count);
     }
 }
 
@@ -144,7 +123,7 @@ void AnimationSystem::update(EntityManager& em, float dt)
             anim.prev_state = anim.state;
         }
 
-        // --- 2. Cardinal direction ---
+        // --- 2. Direction ---
         const BodyPart* bp = reg.try_get<BodyPart>(entity);
         if (bp && reg.valid(bp->parent))
             updateBodyPartDirection(reg, *bp, anim);
@@ -156,12 +135,15 @@ void AnimationSystem::update(EntityManager& em, float dt)
 
         // --- 4. Compute sprite src rect ---
         const auto& sd = anim.states[static_cast<int>(anim.state)];
-        const int dirOffset = static_cast<int>(anim.dir) * anim.max_frames_per_state;
+        const auto mapping =
+            dirToColumnIndex(anim.dir, anim.direction_count, anim.unique_diagonals);
+        const int dirOffset = mapping.column * anim.max_frames_per_state;
         const int col = dirOffset + anim.frame_index;
 
         sprite.src_x = col * anim.frame_width;
         sprite.src_y = sd.row * anim.frame_height;
         sprite.src_w = anim.frame_width;
         sprite.src_h = anim.frame_height;
+        sprite.flip_x = mapping.flip;
     }
 }

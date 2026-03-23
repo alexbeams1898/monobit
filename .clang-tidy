@@ -15,6 +15,7 @@ Checks: >
   readability-redundant-member-init,
   readability-identifier-naming,
   readability-function-cognitive-complexity,
+  readability-function-size,
   -bugprone-easily-swappable-parameters,
   -bugprone-exception-escape,
   -clang-analyzer-optin.core.EnumCastOutOfRange
@@ -40,3 +41,12 @@ CheckOptions:
   # while leaving legitimately complex systems (BFS rebuild, collision) alone.
   - key:   readability-function-cognitive-complexity.Threshold
     value: '30'
+  # Catch functions that grow beyond ~250 lines before they become god-functions.
+  # Existing systems (FlowField 207 LOC, Movement 243 LOC) are at the boundary;
+  # CombatSystem (482 LOC) is NOLINT'd pending its own refactor ticket.
+  - key:   readability-function-size.LineThreshold
+    value: '250'
+  - key:   readability-function-size.StatementThreshold
+    value: '210'
+  - key:   readability-function-size.NestingThreshold
+    value: '5'

@@ -1,5 +1,7 @@
 #include "systems/TileMapRenderer.h"
 
+#include "gl/ShaderUtils.h"
+
 #include <cmath>
 #include <glad/glad.h>
 #include <iostream>
@@ -63,46 +65,13 @@ static uint32_t sTilesetTexId = 0;
 static bool sHasTileset = false;
 
 // ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
-static GLuint compileTMShader(GLenum type, const char* src)
-{
-    GLuint shader = glCreateShader(type);
-    glShaderSource(shader, 1, &src, nullptr);
-    glCompileShader(shader);
-
-    GLint ok = 0;
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &ok);
-    if (!ok)
-    {
-        char log[512];
-        glGetShaderInfoLog(shader, sizeof(log), nullptr, log);
-        std::cerr << "[TileMapRenderer] Shader compile error:\n" << log << "\n";
-    }
-    return shader;
-}
-
-static void buildTMOrtho(float mat[16], float left, float right, float bottom, float top)
-{
-    const float rml = right - left;
-    const float tmb = top - bottom;
-    // clang-format off
-    mat[ 0] = 2.0f / rml;  mat[ 4] = 0.0f;        mat[ 8] = 0.0f;   mat[12] = -(right + left)   / rml;
-    mat[ 1] = 0.0f;        mat[ 5] = 2.0f / tmb;  mat[ 9] = 0.0f;   mat[13] = -(top   + bottom) / tmb;
-    mat[ 2] = 0.0f;        mat[ 6] = 0.0f;         mat[10] = -1.0f;  mat[14] = 0.0f;
-    mat[ 3] = 0.0f;        mat[ 7] = 0.0f;         mat[11] = 0.0f;   mat[15] = 1.0f;
-    // clang-format on
-}
-
-// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
 void TileMapRenderer::init()
 {
-    GLuint vert = compileTMShader(GL_VERTEX_SHADER, kVertSrc);
-    GLuint frag = compileTMShader(GL_FRAGMENT_SHADER, kFragSrc);
+    GLuint vert = engine::gl::compileShader(GL_VERTEX_SHADER, kVertSrc);
+    GLuint frag = engine::gl::compileShader(GL_FRAGMENT_SHADER, kFragSrc);
 
     sTMProgram = glCreateProgram();
     glAttachShader(sTMProgram, vert);
@@ -252,7 +221,8 @@ void TileMapRenderer::render(float camX, float camY, int windowW, int windowH)
     const float snap_y = std::round(camY);
 
     float proj[16];
-    buildTMOrtho(proj, snap_x - half_w, snap_x + half_w, snap_y + half_h, snap_y - half_h);
+    engine::gl::buildOrtho(proj, snap_x - half_w, snap_x + half_w, snap_y + half_h,
+                           snap_y - half_h);
 
     glUseProgram(sTMProgram);
     glUniformMatrix4fv(glGetUniformLocation(sTMProgram, "uProjection"), 1, GL_FALSE, proj);

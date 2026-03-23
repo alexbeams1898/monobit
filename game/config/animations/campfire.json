@@ -2,6 +2,7 @@
     "texture": "assets/sprites/campfire.png",
     "frame_width": 64,
     "frame_height": 64,
+    "direction_count": 1,
     "states": {
         "idle":   { "row": 0, "frames": 5, "duration": 0.15 },
         "walk":   { "row": 0, "frames": 5, "duration": 0.15 },

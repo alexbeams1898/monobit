@@ -82,6 +82,7 @@ add_executable(game-tests
     tests/equipment_system_test.cpp
     tests/drop_system_test.cpp
     tests/crafting_test.cpp
+    tests/animation_test.cpp
 )
 target_link_libraries(game-tests PRIVATE game-systems Catch2::Catch2WithMain)
 
