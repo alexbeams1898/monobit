@@ -228,6 +228,9 @@ static bool emplaceAnimationFromSheet(EntityManager& em, entt::entity entity,
         maxF = std::max(maxF, state.frames);
     anim.max_frames_per_state = maxF;
 
+    anim.direction_count = sheetData.value("direction_count", 4);
+    anim.unique_diagonals = sheetData.value("unique_diagonals", false);
+
     em.registry().emplace<Animation>(entity, anim);
     return true;
 }

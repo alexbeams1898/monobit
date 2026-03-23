@@ -1,6 +1,7 @@
 #include "systems/RenderSystem.h"
 
 #include "ecs/Components.h"
+#include "gl/ShaderUtils.h"
 
 #include <SDL.h>
 #include <algorithm>
@@ -51,46 +52,6 @@ static GLuint sWhiteTex = 0;
 static int sWindowW = 0;
 static int sWindowH = 0;
 
-static GLuint compileShader(GLenum type, const char* src)
-{
-    GLuint shader = glCreateShader(type);
-    glShaderSource(shader, 1, &src, nullptr);
-    glCompileShader(shader);
-
-    GLint ok = 0;
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &ok);
-    if (!ok)
-    {
-        char log[512];
-        glGetShaderInfoLog(shader, sizeof(log), nullptr, log);
-        std::cerr << "[RenderSystem] Shader compile error:\n" << log << "\n";
-    }
-    return shader;
-}
-
-static void buildOrtho(float mat[16], float left, float right, float bottom, float top)
-{
-    const float rml = right - left;
-    const float tmb = top - bottom;
-
-    // clang-format off
-    mat[ 0] = 2.0f / rml;  mat[ 4] = 0.0f;         mat[ 8] = 0.0f;  mat[12] = -(right + left) / rml;
-    mat[ 1] = 0.0f;        mat[ 5] = 2.0f / tmb;   mat[ 9] = 0.0f;  mat[13] = -(top + bottom) / tmb;
-    mat[ 2] = 0.0f;        mat[ 6] = 0.0f;          mat[10] = -1.0f; mat[14] = 0.0f;
-    mat[ 3] = 0.0f;        mat[ 7] = 0.0f;          mat[11] = 0.0f;  mat[15] = 1.0f;
-    // clang-format on
-}
-
-static void buildModel(float mat[16], float x, float y, float w, float h)
-{
-    // clang-format off
-    mat[ 0] = w;     mat[ 4] = 0.0f;  mat[ 8] = 0.0f;  mat[12] = x;
-    mat[ 1] = 0.0f;  mat[ 5] = h;     mat[ 9] = 0.0f;  mat[13] = y;
-    mat[ 2] = 0.0f;  mat[ 6] = 0.0f;  mat[10] = 1.0f;  mat[14] = 0.0f;
-    mat[ 3] = 0.0f;  mat[ 7] = 0.0f;  mat[11] = 0.0f;  mat[15] = 1.0f;
-    // clang-format on
-}
-
 // Applies TintOverride if present, otherwise leaves tint at default white.
 // TintSystem (game) owns all tint priority logic and clears/sets TintOverride each frame.
 static void computeTint(EntityManager& em, entt::entity entity, float& tr, float& tg, float& tb)
@@ -108,8 +69,8 @@ void RenderSystem::init(int windowW, int windowH)
     sWindowW = windowW;
     sWindowH = windowH;
 
-    GLuint vert = compileShader(GL_VERTEX_SHADER, kVertexShaderSrc);
-    GLuint frag = compileShader(GL_FRAGMENT_SHADER, kFragmentShaderSrc);
+    GLuint vert = engine::gl::compileShader(GL_VERTEX_SHADER, kVertexShaderSrc);
+    GLuint frag = engine::gl::compileShader(GL_FRAGMENT_SHADER, kFragmentShaderSrc);
 
     sProgram = glCreateProgram();
     glAttachShader(sProgram, vert);
@@ -232,7 +193,11 @@ static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::en
     }
 
     bool flip_x = false, flip_y = false;
-    if (!reg.all_of<Animation>(entity) && reg.all_of<FacingDirection>(entity))
+    if (reg.all_of<Animation>(entity))
+    {
+        flip_x = sprite.flip_x;
+    }
+    else if (reg.all_of<FacingDirection>(entity))
     {
         const auto& facing = reg.get<FacingDirection>(entity);
         flip_x = facing.render_dx < -0.1f;
@@ -334,7 +299,8 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
     const float halfW = static_cast<float>(sWindowW) * 0.5f;
     const float halfH = static_cast<float>(sWindowH) * 0.5f;
     float proj[16];
-    buildOrtho(proj, snapCamX - halfW, snapCamX + halfW, snapCamY + halfH, snapCamY - halfH);
+    engine::gl::buildOrtho(proj, snapCamX - halfW, snapCamX + halfW, snapCamY + halfH,
+                           snapCamY - halfH);
 
     glUseProgram(sProgram);
     glUniformMatrix4fv(glGetUniformLocation(sProgram, "uProjection"), 1, GL_FALSE, proj);
@@ -354,7 +320,7 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
             const float gx = e.x - (gw - baseW) * 0.5f;
             const float gy = e.y - (gh - baseH) * 0.5f;
             float glowModel[16];
-            buildModel(glowModel, gx, gy, gw, gh);
+            engine::gl::buildModel(glowModel, gx, gy, gw, gh);
             glUniformMatrix4fv(glGetUniformLocation(sProgram, "uModel"), 1, GL_FALSE, glowModel);
             glBindTexture(GL_TEXTURE_2D, sWhiteTex);
             glUniform4f(glGetUniformLocation(sProgram, "uSrcRect"), 0.0f, 0.0f, 1.0f, 1.0f);
@@ -363,8 +329,8 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
         }
 
         float model[16];
-        buildModel(model, e.x, e.y, static_cast<float>(e.src_w) * e.draw_scale,
-                   static_cast<float>(e.src_h) * e.draw_scale);
+        engine::gl::buildModel(model, e.x, e.y, static_cast<float>(e.src_w) * e.draw_scale,
+                               static_cast<float>(e.src_h) * e.draw_scale);
         glUniformMatrix4fv(glGetUniformLocation(sProgram, "uModel"), 1, GL_FALSE, model);
 
         if (e.solid_color)
@@ -402,16 +368,18 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
         glUniform4f(glGetUniformLocation(sProgram, "uTint"), 1.0f, 1.0f, 1.0f, 0.8f);
 
         float cModel[16];
-        buildModel(cModel, worldX - kGap - kArmLen, worldY - kThick * 0.5f, kArmLen, kThick);
+        engine::gl::buildModel(cModel, worldX - kGap - kArmLen, worldY - kThick * 0.5f, kArmLen,
+                               kThick);
         glUniformMatrix4fv(glGetUniformLocation(sProgram, "uModel"), 1, GL_FALSE, cModel);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-        buildModel(cModel, worldX + kGap, worldY - kThick * 0.5f, kArmLen, kThick);
+        engine::gl::buildModel(cModel, worldX + kGap, worldY - kThick * 0.5f, kArmLen, kThick);
         glUniformMatrix4fv(glGetUniformLocation(sProgram, "uModel"), 1, GL_FALSE, cModel);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-        buildModel(cModel, worldX - kThick * 0.5f, worldY - kGap - kArmLen, kThick, kArmLen);
+        engine::gl::buildModel(cModel, worldX - kThick * 0.5f, worldY - kGap - kArmLen, kThick,
+                               kArmLen);
         glUniformMatrix4fv(glGetUniformLocation(sProgram, "uModel"), 1, GL_FALSE, cModel);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-        buildModel(cModel, worldX - kThick * 0.5f, worldY + kGap, kThick, kArmLen);
+        engine::gl::buildModel(cModel, worldX - kThick * 0.5f, worldY + kGap, kThick, kArmLen);
         glUniformMatrix4fv(glGetUniformLocation(sProgram, "uModel"), 1, GL_FALSE, cModel);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
     }
@@ -439,7 +407,7 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
         const float dotX = std::round(anchorX + facing.render_dx * kDotOffset) - kDotSize * 0.5f;
         const float dotY = std::round(anchorY + facing.render_dy * kDotOffset) - kDotSize * 0.5f;
         float model[16];
-        buildModel(model, dotX, dotY, kDotSize, kDotSize);
+        engine::gl::buildModel(model, dotX, dotY, kDotSize, kDotSize);
         glUniformMatrix4fv(glGetUniformLocation(sProgram, "uModel"), 1, GL_FALSE, model);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
     }

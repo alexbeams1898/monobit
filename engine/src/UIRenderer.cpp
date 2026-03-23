@@ -1,5 +1,7 @@
 #include "UIRenderer.h"
 
+#include "gl/ShaderUtils.h"
+
 #include <cstring>
 #include <glad/glad.h>
 #include <iostream>
@@ -77,35 +79,6 @@ static std::vector<Batch> sBatches;
 static GLuint sCurrentTex = 0;
 static bool sCurrentIsFont = false;
 
-static GLuint compileShader(GLenum type, const char* src)
-{
-    GLuint shader = glCreateShader(type);
-    glShaderSource(shader, 1, &src, nullptr);
-    glCompileShader(shader);
-    GLint ok = 0;
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &ok);
-    if (!ok)
-    {
-        char log[512];
-        glGetShaderInfoLog(shader, sizeof(log), nullptr, log);
-        std::cerr << "[UIRenderer] Shader compile error:\n" << log << "\n";
-    }
-    return shader;
-}
-
-static void buildOrtho(float mat[16], float left, float right, float bottom, float top)
-{
-    const float rml = right - left;
-    const float tmb = top - bottom;
-    std::memset(mat, 0, 16 * sizeof(float));
-    mat[0] = 2.0f / rml;
-    mat[5] = 2.0f / tmb;
-    mat[10] = -1.0f;
-    mat[12] = -(right + left) / rml;
-    mat[13] = -(top + bottom) / tmb;
-    mat[15] = 1.0f;
-}
-
 static void pushQuad(float x, float y, float w, float h, float u0, float v0, float u1, float v1,
                      const Color& c)
 {
@@ -138,8 +111,8 @@ void UIRenderer::init(int window_w, int window_h)
     sWindowW = window_w;
     sWindowH = window_h;
 
-    GLuint vert = compileShader(GL_VERTEX_SHADER, kVertSrc);
-    GLuint frag = compileShader(GL_FRAGMENT_SHADER, kFragSrc);
+    GLuint vert = engine::gl::compileShader(GL_VERTEX_SHADER, kVertSrc);
+    GLuint frag = engine::gl::compileShader(GL_FRAGMENT_SHADER, kFragSrc);
 
     sProgram = glCreateProgram();
     glAttachShader(sProgram, vert);
@@ -261,7 +234,8 @@ void UIRenderer::endFrame()
 
     // Set up projection and state.
     float proj[16];
-    buildOrtho(proj, 0.0f, static_cast<float>(sWindowW), static_cast<float>(sWindowH), 0.0f);
+    engine::gl::buildOrtho(proj, 0.0f, static_cast<float>(sWindowW), static_cast<float>(sWindowH),
+                           0.0f);
 
     glUseProgram(sProgram);
     glUniformMatrix4fv(glGetUniformLocation(sProgram, "uProjection"), 1, GL_FALSE, proj);

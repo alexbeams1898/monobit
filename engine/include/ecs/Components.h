@@ -55,6 +55,7 @@ struct Sprite
     int src_w = 0;
     int src_h = 0;
     int layer = 0;
+    bool flip_x = false;
 };
 
 struct Collider
@@ -149,9 +150,13 @@ enum class AnimState : uint8_t
 enum class CardinalDir : uint8_t
 {
     South = 0,
+    SouthWest,
     West,
+    NorthWest,
+    North,
+    NorthEast,
     East,
-    North
+    SouthEast
 };
 
 struct AnimStateData
@@ -178,6 +183,8 @@ struct Animation
     int frame_width = 32;
     int frame_height = 32;
     int max_frames_per_state = 1;
+    int direction_count = 4;       // 1 (omnidirectional), 4 (cardinal), or 8 (octant)
+    bool unique_diagonals = false; // true = 8 unique dir columns; false = NE/SE mirrored from NW/SW
 };
 
 // Links a child entity to a parent for split-body rendering.

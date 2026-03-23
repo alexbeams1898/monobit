@@ -14,6 +14,8 @@ target_sources(engine PRIVATE
     src/systems/TileMapRenderer.cpp
     src/systems/FlowFieldSystem.cpp
     src/systems/SteeringSystem.cpp
+    src/utils/DirectionUtils.cpp
+    src/gl/ShaderUtils.cpp
 )
 
 target_include_directories(engine
