@@ -67,7 +67,7 @@ FontHandle FontManager::loadFont(const std::string& path, float size_px)
     fclose(f);
 
     // Bake glyph atlas.
-    std::vector<unsigned char> atlas(ATLAS_SIZE * ATLAS_SIZE);
+    std::vector<unsigned char> atlas(static_cast<size_t>(ATLAS_SIZE) * ATLAS_SIZE);
     stbtt_bakedchar cdata[CHAR_COUNT]{};
     int result = stbtt_BakeFontBitmap(ttf_buf.data(), 0, size_px, atlas.data(), ATLAS_SIZE,
                                       ATLAS_SIZE, FIRST_CHAR, CHAR_COUNT, cdata);

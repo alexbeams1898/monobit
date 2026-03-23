@@ -164,8 +164,10 @@ void UIRenderer::init(int window_w, int window_h)
 
     glBindVertexArray(sVAO);
     glBindBuffer(GL_ARRAY_BUFFER, sVBO);
-    glBufferData(GL_ARRAY_BUFFER, MAX_QUADS * FLOATS_PER_QUAD * sizeof(float), nullptr,
-                 GL_DYNAMIC_DRAW);
+    glBufferData(
+        GL_ARRAY_BUFFER,
+        static_cast<GLsizeiptr>(static_cast<size_t>(MAX_QUADS) * FLOATS_PER_QUAD * sizeof(float)),
+        nullptr, GL_DYNAMIC_DRAW);
 
     // Position (location 0)
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, FLOATS_PER_VERT * sizeof(float),
@@ -193,7 +195,7 @@ void UIRenderer::init(int window_w, int window_h)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    sVertexData.reserve(MAX_QUADS * FLOATS_PER_QUAD);
+    sVertexData.reserve(static_cast<size_t>(MAX_QUADS) * FLOATS_PER_QUAD);
     sBatches.reserve(32);
 }
 
@@ -245,7 +247,8 @@ void UIRenderer::endFrame()
     // Upload vertex data.
     glBindBuffer(GL_ARRAY_BUFFER, sVBO);
     const auto dataSize = static_cast<GLsizeiptr>(sVertexData.size() * sizeof(float));
-    const auto bufSize = static_cast<GLsizeiptr>(MAX_QUADS * FLOATS_PER_QUAD * sizeof(float));
+    const auto bufSize =
+        static_cast<GLsizeiptr>(static_cast<size_t>(MAX_QUADS) * FLOATS_PER_QUAD * sizeof(float));
     if (dataSize > bufSize)
     {
         // Grow VBO if batch exceeds pre-allocated size.

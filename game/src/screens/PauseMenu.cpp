@@ -87,6 +87,35 @@ static int hoveredSlot(float mx, float my, float cx, float cy, int cols, int tot
     return (idx >= 0 && idx < total) ? idx : -1;
 }
 
+// Input helpers -- flatten nested for+if patterns for event checking.
+static bool mouseClicked(const EntityManager& em, uint8_t button)
+{
+    for (uint8_t btn : em.mouse_down_events)
+        if (btn == button)
+            return true;
+    return false;
+}
+
+static bool keyPressed(const EntityManager& em, int scancode)
+{
+    for (int key : em.key_down_events)
+        if (key == scancode)
+            return true;
+    return false;
+}
+
+static bool confirmKeyPressed(const EntityManager& em)
+{
+    return keyPressed(em, SDL_SCANCODE_RETURN) || keyPressed(em, SDL_SCANCODE_KP_ENTER) ||
+           keyPressed(em, SDL_SCANCODE_F);
+}
+
+static bool isMouseInRow(float mx, float my, float cx, float cw, float row_y, float line_h)
+{
+    return mx >= cx - 4.0f && mx < cx + cw + 4.0f && my >= row_y - 2.0f &&
+           my < row_y - 2.0f + line_h;
+}
+
 // Draw text with word wrapping within max_width. Returns total height used.
 static float drawTextWrapped(FontHandle font, const std::string& text, float x, float y,
                              float max_width, const Color& color)
@@ -529,7 +558,7 @@ static float renderWeaponStats(const Weapon& w, const Stats& stats, const Formul
     const float cooldown = has_stats ? computeSwingCooldown(w, stats, f)
                                      : (f.swing.base_swing_time + w.weight * f.swing.weight_scale);
     const float speed = 1.0f / std::max(cooldown, 0.05f);
-    const char* speed_tier = "Normal";
+    const char* speed_tier = nullptr;
     if (speed < 1.0f)
         speed_tier = "Very Slow";
     else if (speed < 1.5f)
@@ -637,6 +666,34 @@ static void performEquipAction(EntityManager& em, entt::entity player, const Pic
         InventoryOps::equipItem(mut_inv, mut_eq, entry.inv_index, items);
 }
 
+// Draw picker rows and handle mouse clicks on them.
+static void drawPickerRows(EntityManager& em, entt::entity player,
+                           const std::vector<PickerEntry>& picker, EquipSlot slot_enum,
+                           const ItemRegistry& items, float cx, float y, float cw, float line_h,
+                           float mx, float my)
+{
+    for (int i = 0; i < static_cast<int>(picker.size()); ++i)
+    {
+        const bool selected = (i == sEquipPickSel);
+        if (selected)
+            UIRenderer::drawRect(cx - 4.0f, y - 2.0f, cw + 8.0f, line_h, SELECTED_BG);
+
+        const std::string prefix = selected ? "> " : "  ";
+        const Color text_color =
+            (picker[static_cast<size_t>(i)].inv_index < 0) ? TEXT_DIM : TEXT_WHITE;
+        UIRenderer::drawText(sBodyFont, prefix + picker[static_cast<size_t>(i)].label, cx, y,
+                             selected ? TEXT_WHITE : text_color);
+
+        if (isMouseInRow(mx, my, cx, cw, y, line_h) && mouseClicked(em, SDL_BUTTON_LEFT))
+        {
+            sEquipPickSel = i;
+            performEquipAction(em, player, picker[static_cast<size_t>(i)], slot_enum, items);
+            sEquipPicking = false;
+        }
+        y += line_h;
+    }
+}
+
 // Render the equipment picker (item selection for a slot). Returns true if right-click was
 // consumed.
 static bool renderEquipPicker(EntityManager& em, entt::entity player, const Equipment& eq,
@@ -658,7 +715,6 @@ static bool renderEquipPicker(EntityManager& em, entt::entity player, const Equi
 
     auto picker = buildPickerList(*inv, items, slot_enum, slot_occupied);
 
-    // Header.
     UIRenderer::drawText(sBodyFont,
                          std::string("Select for ") + EQUIP_SLOT_NAMES[sContentSel] + ":", cx, ey,
                          TITLE_COLOR);
@@ -678,75 +734,101 @@ static bool renderEquipPicker(EntityManager& em, entt::entity player, const Equi
         if (pickerHover >= 0)
             sEquipPickSel = pickerHover;
 
-        for (int i = 0; i < static_cast<int>(picker.size()); ++i)
+        drawPickerRows(em, player, picker, slot_enum, items, cx, y, cw, line_h, mx, my);
+
+        if (confirmKeyPressed(em))
         {
-            const bool selected = (i == sEquipPickSel);
-
-            if (selected)
-                UIRenderer::drawRect(cx - 4.0f, y - 2.0f, cw + 8.0f, line_h, SELECTED_BG);
-
-            const std::string prefix = selected ? "> " : "  ";
-            Color text_color = TEXT_WHITE;
-            if (picker[static_cast<size_t>(i)].inv_index < 0)
-                text_color = TEXT_DIM;
-
-            UIRenderer::drawText(sBodyFont, prefix + picker[static_cast<size_t>(i)].label, cx, y,
-                                 selected ? TEXT_WHITE : text_color);
-
-            // Mouse click on picker row.
-            if (mx >= cx - 4.0f && mx < cx + cw + 4.0f && my >= y - 2.0f && my < y - 2.0f + line_h)
-            {
-                for (uint8_t btn : em.mouse_down_events)
-                {
-                    if (btn == SDL_BUTTON_LEFT)
-                    {
-                        sEquipPickSel = i;
-                        performEquipAction(em, player, picker[static_cast<size_t>(i)], slot_enum,
-                                           items);
-                        sEquipPicking = false;
-                    }
-                }
-            }
-
-            y += line_h;
-        }
-
-        // Enter/F equips selected item.
-        for (int key : em.key_down_events)
-        {
-            if (key == SDL_SCANCODE_RETURN || key == SDL_SCANCODE_KP_ENTER || key == SDL_SCANCODE_F)
-            {
-                performEquipAction(em, player, picker[static_cast<size_t>(sEquipPickSel)],
-                                   slot_enum, items);
-                sEquipPicking = false;
-            }
-        }
-    }
-
-    // Right-click returns to slot selection.
-    bool rmbConsumed = false;
-    for (uint8_t btn : em.mouse_down_events)
-    {
-        if (btn == SDL_BUTTON_RIGHT)
-        {
+            performEquipAction(em, player, picker[static_cast<size_t>(sEquipPickSel)], slot_enum,
+                               items);
             sEquipPicking = false;
-            rmbConsumed = true;
         }
     }
 
-    // W/S navigates the picker list.
-    for (int key : em.key_down_events)
-    {
-        if (key == SDL_SCANCODE_UP || key == SDL_SCANCODE_W)
-        {
-            sEquipPickSel--;
-        }
-        else if (key == SDL_SCANCODE_DOWN || key == SDL_SCANCODE_S)
-        {
-            sEquipPickSel++;
-        }
-    }
+    bool rmbConsumed = mouseClicked(em, SDL_BUTTON_RIGHT);
+    if (rmbConsumed)
+        sEquipPicking = false;
+
+    if (keyPressed(em, SDL_SCANCODE_UP) || keyPressed(em, SDL_SCANCODE_W))
+        sEquipPickSel--;
+    if (keyPressed(em, SDL_SCANCODE_DOWN) || keyPressed(em, SDL_SCANCODE_S))
+        sEquipPickSel++;
+
     return rmbConsumed;
+}
+
+// Draw the equipment slot list and handle mouse clicks.
+static void renderEquipSlotList(EntityManager& em, const Equipment& eq, const ItemRegistry& items,
+                                float cx, float ey, float cw, float line_h, float mx, float my)
+{
+    float y = ey;
+    for (int i = 0; i < EQUIP_SLOT_COUNT; ++i)
+    {
+        const bool selected = (sContentSel == i && sBottomSel < 0);
+        const ItemInstance& slot = InventoryOps::slotRef(eq, EQUIP_SLOT_ENUMS[i]);
+
+        if (selected)
+            UIRenderer::drawRect(cx - 4.0f, y - 2.0f, cw + 8.0f, line_h, SELECTED_BG);
+
+        std::string text = std::string(EQUIP_SLOT_NAMES[i]) + ": ";
+        if (slot.empty())
+        {
+            text += (EQUIP_SLOT_ENUMS[i] == EquipSlot::MainHand) ? "(Fists)" : "(empty)";
+            UIRenderer::drawText(sBodyFont, text, cx, y, selected ? TEXT_WHITE : TEXT_DIM);
+        }
+        else
+        {
+            const ItemDef* def = items.find(slot.config_path);
+            const std::string name = (def != nullptr) ? def->name : "???";
+            text += std::string(qualityName(slot.quality)) + " " + name;
+            UIRenderer::drawText(sBodyFont, text, cx, y, TEXT_WHITE);
+        }
+
+        if (isMouseInRow(mx, my, cx, cw, y, line_h) && mouseClicked(em, SDL_BUTTON_LEFT))
+        {
+            sContentSel = i;
+            sEquipPicking = true;
+            sEquipPickSel = 0;
+        }
+
+        y += line_h;
+    }
+}
+
+// Render the stat panel for the currently selected equipment slot.
+static void renderEquipStatPanel(EntityManager& em, entt::entity player, const Equipment& eq,
+                                 const ItemRegistry& items, float cx, float y, float cw)
+{
+    y += 12.0f;
+    const EquipSlot sel_slot = EQUIP_SLOT_ENUMS[sContentSel];
+    const ItemInstance& sel_item = InventoryOps::slotRef(eq, sel_slot);
+    const ItemDef* def = sel_item.empty() ? nullptr : items.find(sel_item.config_path);
+    const float val_x = cx + 120.0f;
+
+    const bool has_stats = em.registry().all_of<Stats>(player);
+    const Stats& stats = has_stats ? em.registry().get<Stats>(player) : Stats{1, 1, 1, 1};
+    const auto& f = em.registry().ctx().get<FormulaConfig>();
+
+    if (sel_slot == EquipSlot::MainHand)
+    {
+        const bool has_weapon = em.registry().all_of<Weapon>(player);
+        const Weapon fist_w{"Fists", f.fist.weight,     f.fist.str_scaling, f.fist.dex_scaling, 0,
+                            0,       f.fist.base_damage};
+        const Weapon& w = has_weapon ? em.registry().get<Weapon>(player) : fist_w;
+        renderWeaponStats(w, stats, f, def, has_stats, cx, y, cw, val_x);
+    }
+    else if (sel_slot == EquipSlot::OffHand && def != nullptr && def->max_guard > 0.0f)
+    {
+        renderShieldStats(*def, em, player, cx, y, cw, val_x);
+    }
+    else if (def != nullptr && def->category == ItemCategory::Armor)
+    {
+        renderArmorStats(*def, cx, y, cw, val_x);
+    }
+    else if (sel_item.empty())
+    {
+        const std::string empty_label = (sel_slot == EquipSlot::MainHand) ? "(Fists)" : "(empty)";
+        UIRenderer::drawText(sBodyFont, empty_label, cx, y, TEXT_DIM);
+    }
 }
 
 // Returns true if right-click was consumed (e.g. closing the picker).
@@ -761,114 +843,119 @@ static bool renderEquipmentTab(EntityManager& em, float cx, float cy, float cw, 
     const float line_h = FontManager::lineHeight(sBodyFont) + 6.0f;
     float ey = drawTabHeading("Equipment", cx, cy, cw);
 
-    if (!sEquipPicking)
-    {
-        int hover = hoveredRow(mx, my, cx, ey, cw, line_h, EQUIP_SLOT_COUNT);
-        if (hover >= 0)
-        {
-            sContentSel = hover;
-            sBottomSel = -1;
-        }
-
-        float y = ey;
-        for (int i = 0; i < EQUIP_SLOT_COUNT; ++i)
-        {
-            const bool selected = (sContentSel == i && sBottomSel < 0);
-            const ItemInstance& slot = InventoryOps::slotRef(eq, EQUIP_SLOT_ENUMS[i]);
-
-            if (selected)
-                UIRenderer::drawRect(cx - 4.0f, y - 2.0f, cw + 8.0f, line_h, SELECTED_BG);
-
-            std::string text = std::string(EQUIP_SLOT_NAMES[i]) + ": ";
-            if (slot.empty())
-            {
-                if (EQUIP_SLOT_ENUMS[i] == EquipSlot::MainHand)
-                    text += "(Fists)";
-                else
-                    text += "(empty)";
-                UIRenderer::drawText(sBodyFont, text, cx, y, selected ? TEXT_WHITE : TEXT_DIM);
-            }
-            else
-            {
-                const ItemDef* def = items.find(slot.config_path);
-                const std::string name = (def != nullptr) ? def->name : "???";
-                text += std::string(qualityName(slot.quality)) + " " + name;
-                UIRenderer::drawText(sBodyFont, text, cx, y, TEXT_WHITE);
-            }
-
-            // Mouse click on slot row.
-            if (mx >= cx - 4.0f && mx < cx + cw + 4.0f && my >= y - 2.0f && my < y - 2.0f + line_h)
-            {
-                for (uint8_t btn : em.mouse_down_events)
-                {
-                    if (btn == SDL_BUTTON_LEFT)
-                    {
-                        sContentSel = i;
-                        sEquipPicking = true;
-                        sEquipPickSel = 0;
-                    }
-                }
-            }
-
-            y += line_h;
-        }
-
-        // Souls-style stat panel for the selected slot.
-        {
-            y += 12.0f;
-            const EquipSlot sel_slot = EQUIP_SLOT_ENUMS[sContentSel];
-            const ItemInstance& sel_item = InventoryOps::slotRef(eq, sel_slot);
-            const ItemDef* def = sel_item.empty() ? nullptr : items.find(sel_item.config_path);
-            const float val_x = cx + 120.0f;
-
-            const bool has_stats = em.registry().all_of<Stats>(player);
-            const Stats& stats = has_stats ? em.registry().get<Stats>(player) : Stats{1, 1, 1, 1};
-            const auto& f = em.registry().ctx().get<FormulaConfig>();
-
-            if (sel_slot == EquipSlot::MainHand)
-            {
-                const bool has_weapon = em.registry().all_of<Weapon>(player);
-                const Weapon fist_w{
-                    "Fists", f.fist.weight,     f.fist.str_scaling, f.fist.dex_scaling, 0,
-                    0,       f.fist.base_damage};
-                const Weapon& w = has_weapon ? em.registry().get<Weapon>(player) : fist_w;
-                y = renderWeaponStats(w, stats, f, def, has_stats, cx, y, cw, val_x);
-            }
-            else if (sel_slot == EquipSlot::OffHand && def != nullptr && def->max_guard > 0.0f)
-            {
-                y = renderShieldStats(*def, em, player, cx, y, cw, val_x);
-            }
-            else if (def != nullptr && def->category == ItemCategory::Armor)
-            {
-                y = renderArmorStats(*def, cx, y, cw, val_x);
-            }
-            else if (sel_item.empty())
-            {
-                const std::string empty_label =
-                    (sel_slot == EquipSlot::MainHand) ? "(Fists)" : "(empty)";
-                UIRenderer::drawText(sBodyFont, empty_label, cx, y, TEXT_DIM);
-            }
-        }
-
-        // Enter/F opens picker for selected slot.
-        if (sBottomSel < 0)
-        {
-            for (int key : em.key_down_events)
-            {
-                if (key == SDL_SCANCODE_RETURN || key == SDL_SCANCODE_KP_ENTER ||
-                    key == SDL_SCANCODE_F)
-                {
-                    sEquipPicking = true;
-                    sEquipPickSel = 0;
-                }
-            }
-        }
-    }
-    else
-    {
+    if (sEquipPicking)
         return renderEquipPicker(em, player, eq, items, cx, ey, cw, mx, my);
+
+    int hover = hoveredRow(mx, my, cx, ey, cw, line_h, EQUIP_SLOT_COUNT);
+    if (hover >= 0)
+    {
+        sContentSel = hover;
+        sBottomSel = -1;
     }
+
+    renderEquipSlotList(em, eq, items, cx, ey, cw, line_h, mx, my);
+    renderEquipStatPanel(em, player, eq, items, cx,
+                         ey + line_h * static_cast<float>(EQUIP_SLOT_COUNT), cw);
+
+    if (sBottomSel < 0 && confirmKeyPressed(em))
+    {
+        sEquipPicking = true;
+        sEquipPickSel = 0;
+    }
+
     return false;
+}
+
+// Select a color based on disabled/hovered state.
+static const Color& selectBtnColor(bool disabled, bool hovered, const Color& normal,
+                                   const Color& hover, const Color& dis)
+{
+    if (disabled)
+        return dis;
+    if (hovered)
+        return hover;
+    return normal;
+}
+
+static constexpr Color CRAFT_BTN_BG{0.12f, 0.18f, 0.14f, 0.8f};
+static constexpr Color CRAFT_BTN_HL{0.18f, 0.28f, 0.22f, 0.9f};
+static constexpr Color CRAFT_BTN_DISABLED_BG{0.10f, 0.10f, 0.10f, 0.6f};
+static constexpr Color CRAFT_BTN_TXT{0.5f, 0.8f, 0.5f, 1.0f};
+static constexpr Color CRAFT_BTN_TXT_HL{0.6f, 0.95f, 0.6f, 1.0f};
+static constexpr Color CRAFT_BTN_TXT_DISABLED{0.35f, 0.35f, 0.35f, 0.6f};
+static constexpr Color CRAFT_BTN_BORDER{0.4f, 0.7f, 0.45f, 0.6f};
+static constexpr Color CRAFT_BTN_BORDER_HL{0.5f, 0.85f, 0.55f, 0.9f};
+static constexpr Color CRAFT_BTN_BORDER_DISABLED{0.25f, 0.25f, 0.25f, 0.4f};
+
+// Render the craft button, handle click/key, execute craft.
+static void renderCraftButton(EntityManager& em, entt::entity player, const Inventory* inv,
+                              const RecipeDef& recipe, const ItemRegistry& items, float cx,
+                              float dy, float cw, float mx, float my)
+{
+    const bool canCraftNow = (inv != nullptr) && CraftingOps::canCraft(*inv, recipe, items);
+
+    const std::string craft_label = "Craft [F]";
+    TextSize craft_sz = UIRenderer::measureText(sTitleFont, craft_label);
+    const float craft_pad_x = 24.0f;
+    const float craft_pad_y = 8.0f;
+    const float craft_bw = craft_sz.width + craft_pad_x * 2.0f;
+    const float craft_bh = craft_sz.height + craft_pad_y * 2.0f;
+    const float craft_bx = cx + (cw - craft_bw) * 0.5f;
+    const float craft_by = dy;
+
+    const bool craft_hover = canCraftNow && (mx >= craft_bx && mx < craft_bx + craft_bw &&
+                                             my >= craft_by && my < craft_by + craft_bh);
+    const bool disabled = !canCraftNow;
+
+    UIRenderer::drawRect(
+        craft_bx, craft_by, craft_bw, craft_bh,
+        selectBtnColor(disabled, craft_hover, CRAFT_BTN_BG, CRAFT_BTN_HL, CRAFT_BTN_DISABLED_BG));
+    const float cb = 1.5f;
+    const Color& cbc = selectBtnColor(disabled, craft_hover, CRAFT_BTN_BORDER, CRAFT_BTN_BORDER_HL,
+                                      CRAFT_BTN_BORDER_DISABLED);
+    UIRenderer::drawRect(craft_bx, craft_by, craft_bw, cb, cbc);
+    UIRenderer::drawRect(craft_bx, craft_by + craft_bh - cb, craft_bw, cb, cbc);
+    UIRenderer::drawRect(craft_bx, craft_by, cb, craft_bh, cbc);
+    UIRenderer::drawRect(craft_bx + craft_bw - cb, craft_by, cb, craft_bh, cbc);
+
+    UIRenderer::drawText(sTitleFont, craft_label, craft_bx + craft_pad_x, craft_by + craft_pad_y,
+                         selectBtnColor(disabled, craft_hover, CRAFT_BTN_TXT, CRAFT_BTN_TXT_HL,
+                                        CRAFT_BTN_TXT_DISABLED));
+
+    dy += craft_bh + 8.0f;
+
+    bool tryCraft = (canCraftNow && craft_hover && mouseClicked(em, SDL_BUTTON_LEFT)) ||
+                    (canCraftNow && sBottomSel < 0 && confirmKeyPressed(em));
+
+    if (tryCraft && inv != nullptr && player != entt::null)
+    {
+        auto& mut_inv = em.registry().get<Inventory>(player);
+        if (CraftingOps::craft(mut_inv, recipe, items))
+        {
+            TracyMessageL("ItemCrafted");
+            const auto& snd = em.registry().ctx().get<SoundConfig>();
+            AudioSystem::playSfx(snd.pickup.path, snd.pickup.volume);
+            NotificationSystem::push("Crafted " + recipe.name + "!", {0.4f, 0.8f, 0.45f, 1.0f});
+            sCraftMsg = "Crafted " + recipe.name + "!";
+            sCraftMsgColor = HAVE_COLOR;
+            sCraftMsgTimer = CRAFT_MSG_DURATION;
+        }
+        else
+        {
+            sCraftMsg = "Missing materials";
+            sCraftMsgColor = NEED_COLOR;
+            sCraftMsgTimer = CRAFT_MSG_DURATION;
+        }
+    }
+
+    if (sCraftMsgTimer > 0.0f)
+    {
+        dy += 8.0f;
+        const float alpha = std::min(1.0f, sCraftMsgTimer / 0.5f);
+        Color fc = sCraftMsgColor;
+        fc.a *= alpha;
+        UIRenderer::drawText(sBodyFont, sCraftMsg, cx, dy, fc);
+    }
 }
 
 // Render the detail panel for the selected recipe (result, requirements, craft button).
@@ -902,103 +989,7 @@ static void renderRecipeDetail(EntityManager& em, entt::entity player, const Inv
         dy += line_h;
     }
 
-    // Craft button.
-    dy += 12.0f;
-    static constexpr Color CRAFT_BTN_BG{0.12f, 0.18f, 0.14f, 0.8f};
-    static constexpr Color CRAFT_BTN_HL{0.18f, 0.28f, 0.22f, 0.9f};
-    static constexpr Color CRAFT_BTN_DISABLED_BG{0.10f, 0.10f, 0.10f, 0.6f};
-    static constexpr Color CRAFT_BTN_TXT{0.5f, 0.8f, 0.5f, 1.0f};
-    static constexpr Color CRAFT_BTN_TXT_HL{0.6f, 0.95f, 0.6f, 1.0f};
-    static constexpr Color CRAFT_BTN_TXT_DISABLED{0.35f, 0.35f, 0.35f, 0.6f};
-    static constexpr Color CRAFT_BTN_BORDER{0.4f, 0.7f, 0.45f, 0.6f};
-    static constexpr Color CRAFT_BTN_BORDER_HL{0.5f, 0.85f, 0.55f, 0.9f};
-    static constexpr Color CRAFT_BTN_BORDER_DISABLED{0.25f, 0.25f, 0.25f, 0.4f};
-
-    const bool canCraftNow = (inv != nullptr) && CraftingOps::canCraft(*inv, recipe, items);
-
-    const std::string craft_label = "Craft [F]";
-    TextSize craft_sz = UIRenderer::measureText(sTitleFont, craft_label);
-    const float craft_pad_x = 24.0f;
-    const float craft_pad_y = 8.0f;
-    const float craft_bw = craft_sz.width + craft_pad_x * 2.0f;
-    const float craft_bh = craft_sz.height + craft_pad_y * 2.0f;
-    const float craft_bx = cx + (cw - craft_bw) * 0.5f;
-    const float craft_by = dy;
-
-    const bool craft_hover = canCraftNow && (mx >= craft_bx && mx < craft_bx + craft_bw &&
-                                             my >= craft_by && my < craft_by + craft_bh);
-
-    const Color& btn_bg = !canCraftNow  ? CRAFT_BTN_DISABLED_BG
-                          : craft_hover ? CRAFT_BTN_HL
-                                        : CRAFT_BTN_BG;
-    UIRenderer::drawRect(craft_bx, craft_by, craft_bw, craft_bh, btn_bg);
-    // Border.
-    const float cb = 1.5f;
-    const Color& cbc = !canCraftNow  ? CRAFT_BTN_BORDER_DISABLED
-                       : craft_hover ? CRAFT_BTN_BORDER_HL
-                                     : CRAFT_BTN_BORDER;
-    UIRenderer::drawRect(craft_bx, craft_by, craft_bw, cb, cbc);
-    UIRenderer::drawRect(craft_bx, craft_by + craft_bh - cb, craft_bw, cb, cbc);
-    UIRenderer::drawRect(craft_bx, craft_by, cb, craft_bh, cbc);
-    UIRenderer::drawRect(craft_bx + craft_bw - cb, craft_by, cb, craft_bh, cbc);
-
-    const Color& btn_txt = !canCraftNow  ? CRAFT_BTN_TXT_DISABLED
-                           : craft_hover ? CRAFT_BTN_TXT_HL
-                                         : CRAFT_BTN_TXT;
-    UIRenderer::drawText(sTitleFont, craft_label, craft_bx + craft_pad_x, craft_by + craft_pad_y,
-                         btn_txt);
-
-    dy += craft_bh + 8.0f;
-
-    // Craft on button click or F key (only when affordable).
-    bool tryCraft = false;
-    if (canCraftNow && craft_hover)
-    {
-        for (uint8_t btn : em.mouse_down_events)
-        {
-            if (btn == SDL_BUTTON_LEFT)
-                tryCraft = true;
-        }
-    }
-    if (canCraftNow && sBottomSel < 0)
-    {
-        for (int key : em.key_down_events)
-        {
-            if (key == SDL_SCANCODE_RETURN || key == SDL_SCANCODE_KP_ENTER || key == SDL_SCANCODE_F)
-                tryCraft = true;
-        }
-    }
-
-    if (tryCraft && inv != nullptr && player != entt::null)
-    {
-        auto& mut_inv = em.registry().get<Inventory>(player);
-        if (CraftingOps::craft(mut_inv, recipe, items))
-        {
-            TracyMessageL("ItemCrafted");
-            const auto& snd = em.registry().ctx().get<SoundConfig>();
-            AudioSystem::playSfx(snd.pickup.path, snd.pickup.volume);
-            NotificationSystem::push("Crafted " + recipe.name + "!", {0.4f, 0.8f, 0.45f, 1.0f});
-            sCraftMsg = "Crafted " + recipe.name + "!";
-            sCraftMsgColor = HAVE_COLOR;
-            sCraftMsgTimer = CRAFT_MSG_DURATION;
-        }
-        else
-        {
-            sCraftMsg = "Missing materials";
-            sCraftMsgColor = NEED_COLOR;
-            sCraftMsgTimer = CRAFT_MSG_DURATION;
-        }
-    }
-
-    // Inline craft feedback.
-    if (sCraftMsgTimer > 0.0f)
-    {
-        dy += 8.0f;
-        const float alpha = std::min(1.0f, sCraftMsgTimer / 0.5f);
-        Color fc = sCraftMsgColor;
-        fc.a *= alpha;
-        UIRenderer::drawText(sBodyFont, sCraftMsg, cx, dy, fc);
-    }
+    renderCraftButton(em, player, inv, recipe, items, cx, dy + 12.0f, cw, mx, my);
 }
 
 static void renderCraftingTab(EntityManager& em, float cx, float cy, float cw, float /*ch*/,
@@ -1110,93 +1101,90 @@ static void computeMaxContentIndex(EntityManager& em, UIState::Tab menu_tab, int
     }
 }
 
+// Handle up-arrow navigation in the pause menu.
+static void handleNavUp(UIState::Tab menu_tab, bool hasContent)
+{
+    if (sBottomSel >= 0)
+    {
+        sBottomSel = -1;
+        return;
+    }
+    if (!hasContent)
+        return;
+    if (menu_tab == UIState::Tab::Inventory)
+        sContentSel -= GRID_COLS;
+    else
+        sContentSel--;
+}
+
+// Handle down-arrow navigation in the pause menu.
+static void handleNavDown(UIState::Tab menu_tab, int maxContentIdx, bool hasContent)
+{
+    if (sBottomSel >= 0)
+        return;
+    if (!hasContent)
+    {
+        sBottomSel = 0;
+        return;
+    }
+    const bool atBottom = (menu_tab == UIState::Tab::Inventory)
+                              ? (sContentSel + GRID_COLS > maxContentIdx)
+                              : (sContentSel >= maxContentIdx);
+    if (atBottom)
+    {
+        sBottomSel = 0;
+        return;
+    }
+    if (menu_tab == UIState::Tab::Inventory)
+        sContentSel += GRID_COLS;
+    else
+        sContentSel++;
+}
+
+// Handle left/right arrow navigation.
+static void handleNavHorizontal(int direction)
+{
+    if (sBottomSel >= 0)
+        sBottomSel = (sBottomSel == 0) ? 1 : 0;
+    else
+        sContentSel += direction;
+}
+
 // Handle keyboard navigation in the pause menu. Returns true if quit was triggered.
 static bool handleMenuKeyInput(EntityManager& em, UIState& ui, int tab, int maxContentIdx,
                                bool hasContent)
 {
-    bool quit = false;
-    for (int key : em.key_down_events)
+    if (keyPressed(em, SDL_SCANCODE_Q))
     {
-        if (key == SDL_SCANCODE_Q)
-        {
-            ui.menu_tab =
-                static_cast<UIState::Tab>((tab - 1 + UIState::TAB_COUNT) % UIState::TAB_COUNT);
-            sContentSel = 0;
-            sBottomSel = -1;
-            sEquipPicking = false;
-        }
-        else if (key == SDL_SCANCODE_E)
-        {
-            ui.menu_tab = static_cast<UIState::Tab>((tab + 1) % UIState::TAB_COUNT);
-            sContentSel = 0;
-            sBottomSel = -1;
-            sEquipPicking = false;
-        }
-        else if (key == SDL_SCANCODE_UP || key == SDL_SCANCODE_W)
-        {
-            if (sBottomSel >= 0)
-                sBottomSel = -1;
-            else if (hasContent)
-            {
-                if (ui.menu_tab == UIState::Tab::Inventory)
-                    sContentSel -= GRID_COLS;
-                else
-                    sContentSel--;
-            }
-        }
-        else if (key == SDL_SCANCODE_DOWN || key == SDL_SCANCODE_S)
-        {
-            if (sBottomSel >= 0)
-            {
-                // Already on bottom bar.
-            }
-            else if (!hasContent)
-            {
-                sBottomSel = 0;
-            }
-            else
-            {
-                bool atBottom = false;
-                if (ui.menu_tab == UIState::Tab::Inventory)
-                    atBottom = (sContentSel + GRID_COLS > maxContentIdx);
-                else
-                    atBottom = (sContentSel >= maxContentIdx);
-
-                if (atBottom)
-                    sBottomSel = 0;
-                else
-                {
-                    if (ui.menu_tab == UIState::Tab::Inventory)
-                        sContentSel += GRID_COLS;
-                    else
-                        sContentSel++;
-                }
-            }
-        }
-        else if (key == SDL_SCANCODE_LEFT || key == SDL_SCANCODE_A)
-        {
-            if (sBottomSel >= 0)
-                sBottomSel = (sBottomSel == 0) ? 1 : 0;
-            else
-                sContentSel--;
-        }
-        else if (key == SDL_SCANCODE_RIGHT || key == SDL_SCANCODE_D)
-        {
-            if (sBottomSel >= 0)
-                sBottomSel = (sBottomSel == 0) ? 1 : 0;
-            else
-                sContentSel++;
-        }
-        else if (key == SDL_SCANCODE_RETURN || key == SDL_SCANCODE_KP_ENTER ||
-                 key == SDL_SCANCODE_F)
-        {
-            if (sBottomSel == 0)
-                ui.active_screen = UIState::Screen::None;
-            else if (sBottomSel == 1)
-                quit = true;
-        }
+        ui.menu_tab =
+            static_cast<UIState::Tab>((tab - 1 + UIState::TAB_COUNT) % UIState::TAB_COUNT);
+        sContentSel = 0;
+        sBottomSel = -1;
+        sEquipPicking = false;
     }
-    return quit;
+    if (keyPressed(em, SDL_SCANCODE_E))
+    {
+        ui.menu_tab = static_cast<UIState::Tab>((tab + 1) % UIState::TAB_COUNT);
+        sContentSel = 0;
+        sBottomSel = -1;
+        sEquipPicking = false;
+    }
+    if (keyPressed(em, SDL_SCANCODE_UP) || keyPressed(em, SDL_SCANCODE_W))
+        handleNavUp(ui.menu_tab, hasContent);
+    if (keyPressed(em, SDL_SCANCODE_DOWN) || keyPressed(em, SDL_SCANCODE_S))
+        handleNavDown(ui.menu_tab, maxContentIdx, hasContent);
+    if (keyPressed(em, SDL_SCANCODE_LEFT) || keyPressed(em, SDL_SCANCODE_A))
+        handleNavHorizontal(-1);
+    if (keyPressed(em, SDL_SCANCODE_RIGHT) || keyPressed(em, SDL_SCANCODE_D))
+        handleNavHorizontal(1);
+    if (confirmKeyPressed(em))
+    {
+        if (sBottomSel == 0)
+            ui.active_screen = UIState::Screen::None;
+        else if (sBottomSel == 1)
+            return true;
+    }
+    return false;
 }
 
 // Draw the tab bar at the top of the pause menu panel.
