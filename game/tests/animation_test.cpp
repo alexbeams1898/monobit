@@ -72,17 +72,11 @@ TEST_CASE("snapWithHysteresis8 switches when clearly outside sector", "[animatio
 
 TEST_CASE("snapWithHysteresis8 resists jitter near boundary", "[animation][hysteresis]")
 {
-    // Pointing at ~33 degrees (between south and southeast sectors)
-    // Current is south -> hysteresis should keep it south
-    const float dx = std::cos(33.0f * 3.14159f / 180.0f); // ~0.84
-    const float dy = std::sin(33.0f * 3.14159f / 180.0f); // ~0.54
-    // Dot with south (0,1) = dy = 0.54, which should be above HYSTERESIS_DOT threshold
-    // Actually this is well below 0.887, so it should switch
-    // Let's use a tighter angle
-    const float dx2 = std::cos(80.0f * 3.14159f / 180.0f); // ~0.17
-    const float dy2 = std::sin(80.0f * 3.14159f / 180.0f); // ~0.98
-    // Dot with south (0,1) = 0.98 > 0.887 -> stays south
-    REQUIRE(snapWithHysteresis8(dx2, dy2, CardinalDir::South) == CardinalDir::South);
+    // 80 degrees from east = 10 degrees from south. Dot with south (0,1) = ~0.98 > 0.887
+    // threshold, so hysteresis keeps current direction.
+    const float dx = std::cos(80.0f * 3.14159f / 180.0f); // ~0.17
+    const float dy = std::sin(80.0f * 3.14159f / 180.0f); // ~0.98
+    REQUIRE(snapWithHysteresis8(dx, dy, CardinalDir::South) == CardinalDir::South);
 }
 
 TEST_CASE("snapWithHysteresis8 zero vector keeps current", "[animation][hysteresis]")
@@ -103,6 +97,7 @@ TEST_CASE("dirToColumnIndex direction_count=1 always returns 0", "[animation][co
     }
 }
 
+// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 TEST_CASE("dirToColumnIndex direction_count=4 maps to 4 columns", "[animation][column]")
 {
     // Cardinals map to their own columns

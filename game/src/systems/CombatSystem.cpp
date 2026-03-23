@@ -60,7 +60,7 @@ void deductStamina(entt::registry& reg, entt::entity entity, float cost, const F
         reg.emplace_or_replace<Staggered>(entity, Staggered{f.stamina.exhaustion_stagger});
 }
 
-// NOLINTNEXTLINE(readability-function-cognitive-complexity)
+// NOLINTNEXTLINE(readability-function-cognitive-complexity,readability-function-size)
 void CombatSystem::update(EntityManager& em, double dt)
 {
     ZoneScopedN("CombatSystem");
