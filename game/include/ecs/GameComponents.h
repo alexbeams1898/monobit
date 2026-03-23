@@ -39,6 +39,8 @@ struct PlayerActions
     bool alloc_dex = false;
     bool alloc_end = false;
     bool alloc_lck = false;
+    bool toggle_inventory = false;
+    bool toggle_pause = false;
     float dodge_cooldown_remaining = 0.0f;
     float step_timer = 0.0f;
     float wall_bump_cooldown = 0.0f;
@@ -53,6 +55,7 @@ struct Hitbox
 {
     float damage = 0.0f;
     entt::entity owner = entt::null;
+    bool hit_something = false;
 };
 
 // Dodging -- active while the player is in a dodge roll. Grants i-frames.

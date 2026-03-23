@@ -215,7 +215,7 @@ void DamageSystem::update(EntityManager& em)
         if (hitboxEnt == entt::null)
             continue;
 
-        const auto& hb = reg.get<Hitbox>(hitboxEnt);
+        auto& hb = reg.get<Hitbox>(hitboxEnt);
 
         // Don't damage the owner of the hitbox.
         if (targetEnt == hb.owner)
@@ -225,7 +225,8 @@ void DamageSystem::update(EntityManager& em)
         if (reg.all_of<Dead>(targetEnt))
             continue;
 
-        applyDamage(em, targetEnt, hb.damage, hb.owner);
+        if (applyDamage(em, targetEnt, hb.damage, hb.owner))
+            hb.hit_something = true;
     }
     // Path 2 (enemy direct overlap → player) removed. Enemies now spawn hitboxes
     // via CombatSystem section 6, which flows through Path 1 above.

@@ -139,6 +139,39 @@ def noise_burst(duration, volume=0.3, seed=42):
 
 print("Generating placeholder sounds...")
 
+# --- swing_miss.wav --- comical whistle whoosh for swings that miss
+# Descending cartoon whistle with breathy noise. Quick and funny.
+random.seed(101)
+miss_dur = 0.3
+miss_n = int(SAMPLE_RATE * miss_dur)
+miss_noise = [(random.random() * 2 - 1) for _ in range(miss_n)]
+miss_lp = 0.0
+miss_samples = []
+for i in range(miss_n):
+    t = i / SAMPLE_RATE
+    progress = i / miss_n
+    # Fast attack, smooth tail
+    if progress < 0.05:
+        env = progress / 0.05
+    else:
+        env = (1.0 - progress) / 0.95
+    env = env ** 0.7
+    # Ascending whistle -- low to high, cartoon style
+    whistle_freq = 600 + 1600 * progress
+    whistle = math.sin(2 * math.pi * whistle_freq * t) * 0.4 * env
+    # Second harmonic for richness
+    whistle += math.sin(2 * math.pi * whistle_freq * 2 * t) * 0.08 * env
+    # Breathy noise underneath for air feel
+    cutoff = 4000 - 2000 * progress
+    rc = 1.0 / (2.0 * math.pi * cutoff)
+    dt_sample = 1.0 / SAMPLE_RATE
+    alpha = dt_sample / (rc + dt_sample)
+    miss_lp += alpha * (miss_noise[i] - miss_lp)
+    breath = miss_lp * 0.15 * env
+    miss_samples.append(whistle + breath)
+miss_samples = reverb(miss_samples, delay_ms=30, feedback=0.2, mix=0.15)
+write_wav("swing_miss.wav", miss_samples)
+
 # --- attack.wav --- sword swing whoosh
 # Band-passed noise sweep (high->low) with metallic ring, distortion, and reverb.
 random.seed(99)

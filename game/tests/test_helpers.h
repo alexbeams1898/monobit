@@ -15,4 +15,5 @@ inline void emplaceGameConfigs(EntityManager& em)
     em.registry().ctx().emplace<ItemRegistry>();
     em.registry().ctx().emplace<RecipeRegistry>();
     em.registry().ctx().emplace<MusicConfig>();
+    em.registry().ctx().emplace<UIState>();
 }

@@ -70,13 +70,11 @@ void InputMappingSystem::update(EntityManager& em)
     const bool blockJust = hasMouse(md, SDL_BUTTON_RIGHT);
     const bool waveStartJust = hasKey(kd, SDL_SCANCODE_R);
     const bool craftJust = hasKey(kd, SDL_SCANCODE_C);
-    const bool cycleWeaponJust = hasKey(kd, SDL_SCANCODE_TAB);
+    const bool cycleWeaponJust = hasKey(kd, SDL_SCANCODE_X);
     const bool interactJust = hasKey(kd, SDL_SCANCODE_F);
     const bool lmbJust = hasMouse(md, SDL_BUTTON_LEFT);
-    const bool alloc1 = hasKey(kd, SDL_SCANCODE_1);
-    const bool alloc2 = hasKey(kd, SDL_SCANCODE_2);
-    const bool alloc3 = hasKey(kd, SDL_SCANCODE_3);
-    const bool alloc4 = hasKey(kd, SDL_SCANCODE_4);
+    const bool inventoryJust = hasKey(kd, SDL_SCANCODE_I);
+    const bool pauseJust = hasKey(kd, SDL_SCANCODE_ESCAPE) || hasKey(kd, SDL_SCANCODE_TAB);
 
     for (auto [entity, actions] : em.registry().view<PlayerActions>().each())
     {
@@ -94,17 +92,14 @@ void InputMappingSystem::update(EntityManager& em)
         actions.cycle_weapon = cycleWeaponJust;
         actions.interact = interactJust;
         actions.mouse_click = lmbJust;
-        actions.alloc_str = alloc1;
-        actions.alloc_dex = alloc2;
-        actions.alloc_end = alloc3;
-        actions.alloc_lck = alloc4;
+        actions.toggle_inventory = inventoryJust;
+        actions.toggle_pause = pauseJust;
 
         // MovementIntent bridge: lets engine AnimationSystem read movement direction
         // for walk-direction snapping without knowing about game components.
         em.registry().emplace_or_replace<MovementIntent>(entity, MovementIntent{mx, my});
     }
 
-    // Clear event buffers after consumption so they don't fire again next tick.
-    em.key_down_events.clear();
-    em.mouse_down_events.clear();
+    // Event buffers (key_down_events, mouse_down_events) are cleared after
+    // the render UI pass so that UI screens can read them. See gameRenderUI().
 }

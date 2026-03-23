@@ -1,5 +1,5 @@
 {
-    "player_attack":  { "path": "assets/sfx/attack.wav",         "volume": 0.5 },
+    "player_attack":  { "path": "assets/sfx/swing_miss.wav",      "volume": 0.55 },
     "player_skill":   { "path": "assets/sfx/skill.wav",          "volume": 0.55 },
     "player_dodge":   { "path": "assets/sfx/dodge.wav",          "volume": 0.45 },
     "hit":            { "path": "assets/sfx/hit.wav",            "volume": 0.5 },

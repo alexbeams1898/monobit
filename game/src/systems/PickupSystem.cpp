@@ -5,6 +5,7 @@
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
 #include "systems/AudioSystem.h"
+#include "systems/NotificationSystem.h"
 
 #include <cmath>
 #include <iostream>
@@ -32,9 +33,10 @@ static void collectPickup(EntityManager& em, entt::entity playerEnt, entt::entit
         {
             if (reg.all_of<Wallet>(playerEnt))
             {
-                reg.get<Wallet>(playerEnt).money += def->value * pickup.item.quantity;
+                const int amount = def->value * pickup.item.quantity;
+                reg.get<Wallet>(playerEnt).money += amount;
                 AudioSystem::playSfx(snd.pickup.path, snd.pickup.volume);
-                std::cout << "[PickupSystem] +$" << (def->value * pickup.item.quantity) << "\n";
+                NotificationSystem::push("+$" + std::to_string(amount), {0.2f, 0.85f, 0.3f, 1.0f});
             }
             TracyMessageL("ItemPickedUp");
             em.destroy(pickupEnt);
@@ -51,9 +53,10 @@ static void collectPickup(EntityManager& em, entt::entity playerEnt, entt::entit
         const std::string itemName = (def != nullptr) ? def->name : "item";
         const Rarity rarity = (def != nullptr) ? def->rarity : Rarity::Common;
         AudioSystem::playSfx(snd.pickup.path, snd.pickup.volume);
-        std::cout << "[PickupSystem] +" << pickup.item.quantity << " " << itemName
-                  << " (Rarity: " << rarityName(rarity)
-                  << ", Quality: " << qualityName(pickup.item.quality) << ")\n";
+        NotificationSystem::push("+" + std::to_string(pickup.item.quantity) + " " + itemName +
+                                     " (" + rarityName(rarity) + ", " +
+                                     qualityName(pickup.item.quality) + ")",
+                                 {0.8f, 0.8f, 0.8f, 1.0f});
         TracyMessageL("ItemPickedUp");
         em.destroy(pickupEnt);
         return;
@@ -65,8 +68,8 @@ static void collectPickup(EntityManager& em, entt::entity playerEnt, entt::entit
         auto& xp = reg.get<Experience>(playerEnt);
         xp.current_xp += pickup.xp_value;
         AudioSystem::playSfx(snd.pickup.path, snd.pickup.volume);
-        std::cout << "[PickupSystem] +" << pickup.xp_value << " XP (total: " << xp.current_xp
-                  << ")\n";
+        NotificationSystem::push("+" + std::to_string(pickup.xp_value) + " XP",
+                                 {0.3f, 0.5f, 1.0f, 1.0f});
     }
     em.destroy(pickupEnt);
 }
