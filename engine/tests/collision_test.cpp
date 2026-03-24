@@ -143,6 +143,54 @@ TEST_CASE("Enemy push into wall: dynamic entity depenetrated after dynamic-vs-dy
     REQUIRE(em.collision_events.size() == 1);
 }
 
+TEST_CASE("Cross-cell-boundary collision still detected", "[collision]")
+{
+    EntityManager em;
+    // Two 32x32 dynamics straddling a 64px cell boundary (cell 0 | cell 1 at x=64).
+    // A at x=60: right edge at 76 (crosses into cell 1).
+    // B at x=68: left edge at 52 (in cell 0). Overlap = 32 - 8 = 24px on X.
+    auto a = makeEntity(em, 60.0f, 32.0f, 32.0f, 32.0f, true, true);
+    auto b = makeEntity(em, 68.0f, 32.0f, 32.0f, 32.0f, true, true);
+
+    CollisionSystem::update(em);
+
+    REQUIRE(em.collision_events.size() == 1);
+
+    // Each pushed 12px apart (half of 24px overlap).
+    REQUIRE(em.registry().get<Transform>(a).x == Catch::Approx(48.0f));
+    REQUIRE(em.registry().get<Transform>(b).x == Catch::Approx(80.0f));
+}
+
+TEST_CASE("Distant entities produce no collision events", "[collision]")
+{
+    EntityManager em;
+    // Four 32x32 dynamics spread far apart — none overlap.
+    makeEntity(em, 32.0f, 32.0f, 32.0f, 32.0f, true, true);
+    makeEntity(em, 200.0f, 32.0f, 32.0f, 32.0f, true, true);
+    makeEntity(em, 32.0f, 200.0f, 32.0f, 32.0f, true, true);
+    makeEntity(em, 200.0f, 200.0f, 32.0f, 32.0f, true, true);
+
+    CollisionSystem::update(em);
+
+    REQUIRE(em.collision_events.empty());
+}
+
+TEST_CASE("No duplicate events for multi-cell entities", "[collision]")
+{
+    EntityManager em;
+    // Two 32x32 dynamics near a cell corner (64, 64). Both span 4 cells.
+    // A at (63, 63): spans cells (0,0), (1,0), (0,1), (1,1).
+    // B at (65, 63): spans cells (0,0), (1,0), (0,1), (1,1).
+    // They share all 4 cells. Overlap = 32 - 2 = 30px on X.
+    // Must produce exactly 1 event, not 4.
+    makeEntity(em, 63.0f, 63.0f, 32.0f, 32.0f, true, true);
+    makeEntity(em, 65.0f, 63.0f, 32.0f, 32.0f, true, true);
+
+    CollisionSystem::update(em);
+
+    REQUIRE(em.collision_events.size() == 1);
+}
+
 TEST_CASE("Collision events are cleared between frames", "[collision]")
 {
     EntityManager em;
