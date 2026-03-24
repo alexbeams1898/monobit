@@ -3,6 +3,7 @@
 #include "TileMap.h"
 #include "ecs/Components.h"
 
+#include <algorithm>
 #include <cmath>
 #include <tracy/Tracy.hpp>
 #include <vector>
@@ -114,6 +115,147 @@ static void depenetrateVsECSStatics(EntityManager& em, entt::entity ea,
 }
 
 // ---------------------------------------------------------------------------
+// Broad-phase spatial grid for dynamic-vs-dynamic pair pruning.
+// Two-pass (count + scatter) into a flat array avoids per-cell heap
+// allocation. Vectors persist across frames via static local in update().
+// ---------------------------------------------------------------------------
+namespace
+{
+
+struct SpatialGrid
+{
+    static constexpr float CELL_SIZE = 64.0f;
+    static constexpr float INV_CELL_SIZE = 1.0f / CELL_SIZE;
+
+    int cols = 0;
+    int rows = 0;
+
+    std::vector<int> cell_counts;
+    std::vector<int> offsets;
+    std::vector<int> entries;
+
+    struct CellRange
+    {
+        int col_min = 0;
+        int col_max = 0;
+        int row_min = 0;
+        int row_max = 0;
+    };
+    std::vector<CellRange> ranges;
+
+    size_t numCells() const
+    {
+        return static_cast<size_t>(cols) * static_cast<size_t>(rows);
+    }
+
+    void init(float world_w, float world_h)
+    {
+        cols = static_cast<int>(world_w * INV_CELL_SIZE) + 1;
+        rows = static_cast<int>(world_h * INV_CELL_SIZE) + 1;
+        cell_counts.assign(numCells(), 0);
+        offsets.resize(numCells());
+    }
+
+    void countPass(const std::vector<entt::entity>& dynamics, const entt::registry& reg)
+    {
+        ranges.resize(dynamics.size());
+        for (size_t i = 0; i < dynamics.size(); ++i)
+        {
+            const auto& t = reg.get<Transform>(dynamics[i]);
+            const auto& c = reg.get<Collider>(dynamics[i]);
+            const float hw = c.width * 0.5f;
+            const float hh = c.height * 0.5f;
+
+            auto& r = ranges[i];
+            r.col_min = std::max(0, static_cast<int>((t.x - hw) * INV_CELL_SIZE));
+            r.col_max = std::min(cols - 1, static_cast<int>((t.x + hw) * INV_CELL_SIZE));
+            r.row_min = std::max(0, static_cast<int>((t.y - hh) * INV_CELL_SIZE));
+            r.row_max = std::min(rows - 1, static_cast<int>((t.y + hh) * INV_CELL_SIZE));
+
+            for (int row = r.row_min; row <= r.row_max; ++row)
+                for (int col = r.col_min; col <= r.col_max; ++col)
+                    ++cell_counts[static_cast<size_t>(row) * static_cast<size_t>(cols) +
+                                  static_cast<size_t>(col)];
+        }
+    }
+
+    void buildPass()
+    {
+        const size_t nc = numCells();
+        int total = 0;
+        for (size_t i = 0; i < nc; ++i)
+        {
+            offsets[i] = total;
+            total += cell_counts[i];
+        }
+
+        entries.resize(static_cast<size_t>(total));
+
+        // Reset counts to use as write cursors.
+        for (size_t i = 0; i < nc; ++i)
+            cell_counts[i] = 0;
+
+        for (size_t i = 0; i < ranges.size(); ++i)
+        {
+            const auto& r = ranges[i];
+            for (int row = r.row_min; row <= r.row_max; ++row)
+            {
+                for (int col = r.col_min; col <= r.col_max; ++col)
+                {
+                    const size_t cell = static_cast<size_t>(row) * static_cast<size_t>(cols) +
+                                        static_cast<size_t>(col);
+                    entries[static_cast<size_t>(offsets[cell]) +
+                            static_cast<size_t>(cell_counts[cell])] = static_cast<int>(i);
+                    ++cell_counts[cell];
+                }
+            }
+        }
+    }
+};
+
+} // anonymous namespace
+
+// Broad-phase grid query: test only pairs sharing a grid cell.
+static void resolveDynVsDyn(EntityManager& em, const std::vector<entt::entity>& dynamics,
+                            SpatialGrid& grid)
+{
+    auto view = em.registry().view<Transform, Collider>();
+    const size_t nc = grid.numCells();
+    for (size_t cell = 0; cell < nc; ++cell)
+    {
+        const int start = grid.offsets[cell];
+        const int count = grid.cell_counts[cell];
+        if (count < 2)
+            continue;
+
+        for (int a = start; a < start + count; ++a)
+        {
+            const int idx_i = grid.entries[static_cast<size_t>(a)];
+            for (int b = a + 1; b < start + count; ++b)
+            {
+                const int idx_j = grid.entries[static_cast<size_t>(b)];
+
+                // Deduplicate: only process pair in its first shared cell.
+                const auto& ri = grid.ranges[static_cast<size_t>(idx_i)];
+                const auto& rj = grid.ranges[static_cast<size_t>(idx_j)];
+                const size_t shared = static_cast<size_t>(std::max(ri.row_min, rj.row_min)) *
+                                          static_cast<size_t>(grid.cols) +
+                                      static_cast<size_t>(std::max(ri.col_min, rj.col_min));
+                if (cell != shared)
+                    continue;
+
+                checkAndResolvePair(em, dynamics[static_cast<size_t>(idx_i)],
+                                    view.get<Transform>(dynamics[static_cast<size_t>(idx_i)]),
+                                    view.get<Collider>(dynamics[static_cast<size_t>(idx_i)]),
+                                    dynamics[static_cast<size_t>(idx_j)],
+                                    view.get<Transform>(dynamics[static_cast<size_t>(idx_j)]),
+                                    view.get<Collider>(dynamics[static_cast<size_t>(idx_j)]), true);
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -158,13 +300,34 @@ void CollisionSystem::update(EntityManager& em)
             checkAndResolvePair(em, dyn, view.get<Transform>(dyn), view.get<Collider>(dyn), sta,
                                 view.get<Transform>(sta), view.get<Collider>(sta), false);
 
-    // Dynamic-vs-dynamic pairs: resolve with split MTV.
-    for (size_t i = 0; i < dynamics.size(); ++i)
-        for (size_t j = i + 1; j < dynamics.size(); ++j)
-            checkAndResolvePair(em, dynamics[i], view.get<Transform>(dynamics[i]),
-                                view.get<Collider>(dynamics[i]), dynamics[j],
-                                view.get<Transform>(dynamics[j]), view.get<Collider>(dynamics[j]),
-                                true);
+    // Dynamic-vs-dynamic pairs: grid-accelerated broad phase + MTV.
+    if (dynamics.size() > 1)
+    {
+        float world_w = 0.0f;
+        float world_h = 0.0f;
+        if (em.tile_map.valid())
+        {
+            world_w = static_cast<float>(em.tile_map.width * TileMap::TILE_SIZE);
+            world_h = static_cast<float>(em.tile_map.height * TileMap::TILE_SIZE);
+        }
+        else
+        {
+            // Unit tests: derive bounds from entity positions.
+            for (auto e : view)
+            {
+                const auto& t = view.get<Transform>(e);
+                const auto& c = view.get<Collider>(e);
+                world_w = std::max(world_w, t.x + c.width);
+                world_h = std::max(world_h, t.y + c.height);
+            }
+        }
+
+        static SpatialGrid grid;
+        grid.init(world_w, world_h);
+        grid.countPass(dynamics, em.registry());
+        grid.buildPass();
+        resolveDynVsDyn(em, dynamics, grid);
+    }
 
     // Static depenetration pass — correct any dynamic entity pushed into a
     // solid wall as a side effect of the dynamic-vs-dynamic resolution above.
