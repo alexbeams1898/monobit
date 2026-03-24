@@ -321,6 +321,7 @@ void WaveSystem::update(EntityManager& em, double dt)
         if (alive == 0)
         {
             ws.phase = WaveState::Phase::Cleared;
+            ws.cleared_timer = 0.0f;
             TracyMessageL("WaveCleared");
             std::cout << "[WaveSystem] Wave " << ws.current_wave << " cleared!\n";
         }
@@ -329,17 +330,38 @@ void WaveSystem::update(EntityManager& em, double dt)
 
     case WaveState::Phase::Cleared:
     {
-        if (wc.gen.max_waves > 0 && ws.current_wave >= wc.gen.max_waves)
+        // Play wave-clear SFX on the first frame.
+        if (ws.cleared_timer == 0.0f)
         {
-            ws.phase = WaveState::Phase::Complete;
-            AudioSystem::stopMusic();
-            TracyMessageL("RunComplete");
-            std::cout << "[WaveSystem] All waves cleared! Run complete.\n";
+            const auto& sc = em.registry().ctx().get<SoundConfig>();
+            AudioSystem::playSfx(sc.wave_clear.path, sc.wave_clear.volume);
         }
-        else
+
+        ws.cleared_timer += static_cast<float>(dt);
+
+        static constexpr float WAVE_ADVANCE_DELAY = 2.0f;
+        if (ws.cleared_timer >= WAVE_ADVANCE_DELAY)
         {
-            ws.phase = WaveState::Phase::SafeRoom;
-            std::cout << "[WaveSystem] Safe room - press R for next wave\n";
+            if (wc.gen.max_waves > 0 && ws.current_wave >= wc.gen.max_waves)
+            {
+                ws.phase = WaveState::Phase::Complete;
+                AudioSystem::stopMusic();
+
+                if (auto* t = em.registry().ctx().get<MusicConfig>().get("victory"))
+                    AudioSystem::playMusic(t->path, t->volume);
+
+                TracyMessageL("RunComplete");
+                std::cout << "[WaveSystem] All waves cleared! Run complete.\n";
+            }
+            else if (ws.active_def.safe_room_after)
+            {
+                ws.phase = WaveState::Phase::SafeRoom;
+                std::cout << "[WaveSystem] Safe room after wave " << ws.current_wave << ".\n";
+            }
+            else
+            {
+                startNextWave(em);
+            }
         }
         break;
     }
@@ -407,7 +429,7 @@ bool WaveSystem::startNextWave(EntityManager& em)
         handleDeathRestart(em, ws);
 
     if (ws.phase != WaveState::Phase::Idle && ws.phase != WaveState::Phase::SafeRoom &&
-        ws.phase != WaveState::Phase::GameOver)
+        ws.phase != WaveState::Phase::Cleared && ws.phase != WaveState::Phase::GameOver)
         return false;
 
     int next = ws.current_wave + 1;
@@ -417,6 +439,7 @@ bool WaveSystem::startNextWave(EntityManager& em)
         return false;
 
     ws.current_wave = next;
+    em.registry().ctx().get<RunStats>().wave = next;
     ws.active_def = generateWave(wc.gen, next);
 
     ws.enemies_total = 0;

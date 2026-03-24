@@ -146,6 +146,8 @@ void Engine::processEvents()
             entity_manager.key_down_events.push_back(event.key.keysym.scancode);
         if (event.type == SDL_MOUSEBUTTONDOWN)
             entity_manager.mouse_down_events.push_back(event.button.button);
+        if (event.type == SDL_TEXTINPUT)
+            entity_manager.text_input_buffer += event.text.text;
     }
 }
 

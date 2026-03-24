@@ -619,6 +619,8 @@ bool ConfigLoader::loadSounds(EntityManager& em, const std::string& filePath)
     load("rest_heal", s.rest_heal);
     load("game_over", s.game_over);
     load("low_stamina_heartbeat", s.low_stamina_heartbeat);
+    load("ui_click", s.ui_click);
+    load("wave_clear", s.wave_clear);
 
     s.loaded = true;
     std::cout << "[ConfigLoader] Loaded sounds from " << filePath << "\n";
@@ -660,8 +662,23 @@ bool ConfigLoader::loadMusic(EntityManager& em, const std::string& filePath)
         }
     }
 
-    std::cout << "[ConfigLoader] Loaded " << mc.tracks.size() << " music tracks from " << filePath
-              << "\n";
+    // Auto-parse named tracks: any top-level key that is an object with a
+    // "path" field (skip "tracks" array and "default_volume" scalar).
+    for (auto& [key, val] : j.items())
+    {
+        if (key == "tracks" || key == "default_volume")
+            continue;
+        if (!val.is_object())
+            continue;
+        MusicConfig::Track track;
+        track.path = val.value("path", "");
+        track.volume = val.value("volume", mc.default_volume);
+        if (!track.path.empty())
+            mc.named[key] = std::move(track);
+    }
+
+    std::cout << "[ConfigLoader] Loaded " << mc.tracks.size() << " music tracks, "
+              << mc.named.size() << " named tracks from " << filePath << "\n";
     return true;
 }
 
@@ -922,4 +939,38 @@ bool ConfigLoader::loadRecipes(EntityManager& em, const std::string& dirPath)
     registry.loaded = (count > 0);
     std::cout << "[ConfigLoader] Loaded " << count << " recipes from " << dirPath << "\n";
     return count > 0;
+}
+
+bool ConfigLoader::loadScoring(EntityManager& em, const std::string& filePath)
+{
+    std::ifstream file(filePath);
+    if (!file.is_open())
+    {
+        std::cerr << "[ConfigLoader] Cannot open scoring: " << filePath << " -- using defaults\n";
+        return false;
+    }
+
+    json j;
+    try
+    {
+        file >> j;
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "[ConfigLoader] Error parsing " << filePath << ": " << e.what()
+                  << " -- using defaults\n";
+        return false;
+    }
+
+    ScoringConfig& sc = em.registry().ctx().get<ScoringConfig>();
+    sc.kill_weight = j.value("kill_weight", sc.kill_weight);
+    sc.wave_weight = j.value("wave_weight", sc.wave_weight);
+    sc.time_bonus_weight = j.value("time_bonus_weight", sc.time_bonus_weight);
+    sc.xp_weight = j.value("xp_weight", sc.xp_weight);
+    sc.money_weight = j.value("money_weight", sc.money_weight);
+    sc.escape_bonus = j.value("escape_bonus", sc.escape_bonus);
+    sc.loaded = true;
+
+    std::cout << "[ConfigLoader] Loaded scoring config from " << filePath << "\n";
+    return true;
 }

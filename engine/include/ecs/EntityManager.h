@@ -101,6 +101,15 @@ class EntityManager
     std::vector<int> key_down_events;
     std::vector<uint8_t> mouse_down_events;
 
+    // Text input buffer -- captured from SDL_TEXTINPUT events for name entry.
+    std::string text_input_buffer;
+
+    // Input consumption flags -- set by high-priority systems (UI, pickups) to
+    // prevent lower-priority systems (combat) from acting on the same input.
+    // Reset at the start of each game tick.
+    bool lmb_consumed = false;
+    bool rmb_consumed = false;
+
     // Tile map -- generated at startup by TileMapLoader::generate().
     TileMap tile_map;
     TileConfig tile_config;

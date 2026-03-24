@@ -2,31 +2,33 @@
 #include "Engine.h"
 #include "FontManager.h"
 #include "GameLoop.h"
-#include "TileMapLoader.h"
+#include "SaveManager.h"
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
+#include "renderers/DebugOverlay.h"
 #include "renderers/HudRenderer.h"
 #include "renderers/InteractionPromptRenderer.h"
+#include "screens/CharCreateScreen.h"
+#include "screens/GameOverScreen.h"
+#include "screens/HighScoresScreen.h"
 #include "screens/LevelUpScreen.h"
+#include "screens/LoadGameScreen.h"
+#include "screens/MainMenuScreen.h"
 #include "screens/PauseMenu.h"
-#include "systems/LevelingSystem.h"
+#include "screens/RunSummaryScreen.h"
+#include "screens/VictoryScreen.h"
+#include "systems/AudioSystem.h"
 #include "systems/NotificationSystem.h"
-#include "systems/TileMapRenderer.h"
-#include "systems/WaveSystem.h"
 
 #include <csignal>
 #include <cstdio>
 #include <ctime>
 #include <exception>
 // ---------------------------------------------------------------------------
-// Crash reporter — writes crash.log when the process dies unexpectedly.
-// Keeps the file minimal: timestamp + cause. No game state yet; add once
-// the save system exists so there is something worth preserving.
+// Crash reporter
 // ---------------------------------------------------------------------------
 
-// Not async-signal-safe to use fopen/fprintf in a signal handler, but for a
-// crash reporter "best effort" beats "nothing" — the process is dead anyway.
 static void writeCrashLog(const char* reason)
 {
     FILE* f = fopen("crash.log", "w");
@@ -59,7 +61,6 @@ static void signalHandler(int sig)
 
 static void terminateHandler()
 {
-    // Best-effort: re-throw inside terminate to recover the exception message.
     static char buf[256] = "std::terminate (no active exception)";
     try
     {
@@ -104,84 +105,47 @@ int main(int argc, char* argv[])
     em.registry().ctx().emplace<ItemRegistry>();
     em.registry().ctx().emplace<RecipeRegistry>();
     em.registry().ctx().emplace<UIState>();
+    em.registry().ctx().emplace<GameState>();
+    em.registry().ctx().emplace<RunStats>();
+    em.registry().ctx().emplace<ScoringConfig>();
+    em.registry().ctx().emplace<SaveData>();
 
-    // Load balance formulas first -- all systems read from ctx<FormulaConfig>.
+    // Load configs.
     ConfigLoader::loadFormulas(em, "config/balance/formulas.json");
-
-    // Load item definitions -- must come before loadEntity so equipment loaders
-    // can reference item defs.
     ConfigLoader::loadItemDefs(em, "config/items");
-
-    // Load recipes -- must come after item defs so references are valid.
     ConfigLoader::loadRecipes(em, "config/recipes");
-
-    // Load sound mappings -- all systems read from ctx<SoundConfig>.
     ConfigLoader::loadSounds(em, "config/audio/sounds.json");
-
-    // Load music track list -- WaveSystem picks a random track per wave.
     ConfigLoader::loadMusic(em, "config/audio/music.json");
-
-    // Load wave definitions -- WaveSystem reads from ctx<WaveConfig>.
     ConfigLoader::loadWaves(em, "config/waves.json");
+    ConfigLoader::loadScoring(em, "config/balance/scoring.json");
 
-    // Generate the tile map — populates em.tile_map / em.tile_config and
-    // returns the world-space centre of the first placed room (player spawn).
-    auto [px, py] = TileMapLoader::generate(em, "config/tilemap.json", "config/rooms");
-    TileMapRenderer::upload(em.tile_map, em.tile_config, engine.textureManager());
+    // Load saved data (characters, high scores).
+    em.registry().ctx().get<SaveData>() = SaveManager::load();
 
-    // Spawn non-enemy entities from tile map markers.
-    // 'R' -> rest spot. Enemy spawning is handled by WaveSystem.
-    float restX = px;
-    float restY = py;
-    for (const auto& sp : em.tile_map.spawn_points)
-    {
-        if (sp.type != 'R')
-            continue;
+    // Start at main menu -- world is created when the player selects a character.
+    em.registry().ctx().get<GameState>().phase = GameState::Phase::MainMenu;
 
-        auto entity = ConfigLoader::loadEntity(em, "config/entities/rest_spot.json");
-        if (!em.registry().valid(entity))
-            continue;
+    // Play main menu music.
+    if (auto* t = em.registry().ctx().get<MusicConfig>().get("main_menu"))
+        AudioSystem::playMusic(t->path, t->volume);
 
-        auto& t = em.registry().get<Transform>(entity);
-        t.x = sp.x;
-        t.y = sp.y;
-        restX = sp.x;
-        restY = sp.y;
-    }
-
-    // Player — placed at the bonfire (rest spot) so they start in the safe room.
-    auto player = ConfigLoader::loadEntity(em, "config/entities/player.json");
-    if (em.registry().valid(player))
-    {
-        auto& t = em.registry().get<Transform>(player);
-        t.x = restX;
-        t.y = restY;
-    }
-
-    if (em.registry().valid(player))
-    {
-        em.registry().emplace<PlayerActions>(player);
-        em.registry().emplace<Wallet>(player);
-        em.registry().emplace<InteractTarget>(player);
-        const auto& pt = em.registry().get<Transform>(player);
-        em.registry().emplace<Camera>(player, Camera{pt.x, pt.y, true});
-    }
-
-    // Derive Health.max from END stats for all stat-based entities.
-    LevelingSystem::applyInitialDerivations(em);
-
-    // Auto-start wave 1 (plays music, sets needs_map_regen which places
-    // the player at the bonfire via handleMapRegen).
-    WaveSystem::startNextWave(em);
-
-    // Load fonts for UI rendering.
+    // Load fonts and init all UI screens.
     FontHandle bodyFont = FontManager::loadFont("assets/fonts/cinzel.ttf", 28.0f);
     FontHandle titleFont = FontManager::loadFont("assets/fonts/cinzel.ttf", 36.0f);
+    FontHandle bigTitleFont = FontManager::loadFont("assets/fonts/cinzel.ttf", 72.0f);
     HudRenderer::init(bodyFont, titleFont);
     NotificationSystem::init(bodyFont, titleFont);
     InteractionPromptRenderer::init(bodyFont);
+    DebugOverlay::init(bodyFont);
     PauseMenu::init(bodyFont, titleFont, &engine.textureManager());
     LevelUpScreen::init(bodyFont, titleFont);
+    MainMenuScreen::init(bodyFont, titleFont, bigTitleFont);
+    CharCreateScreen::init(bodyFont, titleFont);
+    LoadGameScreen::init(bodyFont, titleFont, bigTitleFont);
+    GameOverScreen::init(bodyFont, titleFont, bigTitleFont);
+    VictoryScreen::init(bodyFont, titleFont, bigTitleFont);
+    RunSummaryScreen::init(bodyFont, titleFont);
+    HighScoresScreen::init(bodyFont, titleFont);
 
     engine.setGameUpdate(&gameUpdate);
     engine.setPerFrameUpdate(&gamePerFrame);

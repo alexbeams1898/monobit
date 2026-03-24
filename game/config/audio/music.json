@@ -1,13 +1,25 @@
 {
     "default_volume": 0.3,
     "tracks": [
-        { "path": "assets/music/From the Dark Past.ogg" },
-        { "path": "assets/music/Gateways.ogg" },
-        { "path": "assets/music/Hades.ogg" },
-        { "path": "assets/music/Life Eternal.ogg" },
-        { "path": "assets/music/On Fire.ogg" },
-        { "path": "assets/music/Purgatory.ogg" },
-        { "path": "assets/music/Sacrifice.ogg" },
-        { "path": "assets/music/The ritualist.ogg" }
-    ]
+        { "path": "assets/music/from_the_dark_past.ogg" },
+        { "path": "assets/music/gateways.ogg" },
+        { "path": "assets/music/hades.ogg" },
+        { "path": "assets/music/life_eternal.ogg" },
+        { "path": "assets/music/on_fire.ogg" },
+        { "path": "assets/music/purgatory.ogg" },
+        { "path": "assets/music/sacrifice.ogg" },
+        { "path": "assets/music/the_ritualist.ogg" },
+        { "path": "assets/music/blood_soaked_earth.ogg" },
+        { "path": "assets/music/bone_grinders_ballad.ogg" },
+        { "path": "assets/music/mutilations_melody.ogg" },
+        { "path": "assets/music/putrid_desecration.ogg" },
+        { "path": "assets/music/the_slicing_strain.ogg" },
+        { "path": "assets/music/visceral_vengeance.ogg" }
+    ],
+    "victory": { "path": "assets/music/victory_fanfare.ogg", "volume": 0.6 },
+    "boss": { "path": "assets/music/grave_rot_requiem.ogg", "volume": 0.35 },
+    "game_over": { "path": "assets/music/game_over.ogg", "volume": 1.0 },
+    "game_over_ambient": { "path": "assets/music/game_over_ambient.ogg", "volume": 0.7 },
+    "scream": { "path": "assets/music/scream.ogg", "volume": 0.6 },
+    "main_menu": { "path": "assets/music/main_menu.ogg", "volume": 0.7 }
 }

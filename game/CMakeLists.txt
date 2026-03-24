@@ -29,6 +29,16 @@ add_library(game-systems STATIC
     src/screens/InventoryScreen.cpp
     src/screens/CraftingScreen.cpp
     src/screens/LevelUpScreen.cpp
+    src/SaveManager.cpp
+    src/WorldInit.cpp
+    src/renderers/DebugOverlay.cpp
+    src/screens/MainMenuScreen.cpp
+    src/screens/CharCreateScreen.cpp
+    src/screens/LoadGameScreen.cpp
+    src/screens/GameOverScreen.cpp
+    src/screens/VictoryScreen.cpp
+    src/screens/RunSummaryScreen.cpp
+    src/screens/HighScoresScreen.cpp
 )
 
 target_include_directories(game-systems PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)

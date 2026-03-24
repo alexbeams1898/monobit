@@ -33,4 +33,7 @@ class ConfigLoader
     // Scan a directory (recursively) for recipe JSONs and populate
     // RecipeRegistry in ctx.
     static bool loadRecipes(EntityManager& em, const std::string& dirPath);
+
+    // Parse config/balance/scoring.json and populate ScoringConfig in ctx.
+    static bool loadScoring(EntityManager& em, const std::string& filePath);
 };

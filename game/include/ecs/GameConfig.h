@@ -169,6 +169,8 @@ struct SoundConfig
     SoundEntry rest_heal{"assets/sfx/rest_heal.wav", 0.5f};
     SoundEntry game_over{"assets/sfx/game_over.wav", 0.6f};
     SoundEntry low_stamina_heartbeat{"assets/sfx/heartbeat.wav", 0.5f};
+    SoundEntry ui_click{"assets/sfx/ui_click.wav", 0.35f};
+    SoundEntry wave_clear{"assets/sfx/wave_clear.wav", 0.5f};
     bool loaded = false;
 };
 
@@ -183,8 +185,15 @@ struct MusicConfig
         float volume = 0.6f;
     };
     std::vector<Track> tracks;
+    std::unordered_map<std::string, Track> named;
     float default_volume = 0.6f;
     int last_track_index = -1; // avoid repeating the same track back-to-back
+
+    const Track* get(const std::string& key) const
+    {
+        auto it = named.find(key);
+        return (it != named.end() && !it->second.path.empty()) ? &it->second : nullptr;
+    }
 };
 
 // ---------------------------------------------------------------------------
@@ -274,6 +283,8 @@ struct WaveState
     float spawn_timer = 0.0f;
     int spawn_group_index = 0;
     int spawn_group_progress = 0;
+
+    float cleared_timer = 0.0f; // countdown before auto-advancing to next wave
 
     // Set by startNextWave; consumed by GameLoop to regen the tile map.
     bool needs_map_regen = false;
@@ -433,4 +444,89 @@ struct UIState
     {
         return active_screen != Screen::None;
     }
+};
+
+// ---------------------------------------------------------------------------
+// GameState -- top-level application state machine.
+// UIState.Screen handles in-game overlays (pause menu, level-up).
+// GameState controls which major application mode is active.
+// ---------------------------------------------------------------------------
+struct GameState
+{
+    enum class Phase
+    {
+        MainMenu,
+        CharCreate,
+        LoadGame,
+        Playing,
+        Victory,
+        GameOver,
+        RunSummary,
+        HighScores
+    };
+
+    Phase phase = Phase::MainMenu;
+    bool world_initialized = false;
+    std::string active_character; // name of the character for the current run
+};
+
+// ---------------------------------------------------------------------------
+// RunStats -- accumulated statistics for the current run.
+// Stored in registry ctx, reset at the start of each new game.
+// ---------------------------------------------------------------------------
+struct RunStats
+{
+    int kills = 0;
+    float time = 0.0f;
+    int wave = 0;
+    int xp_earned = 0;
+    int money = 0;
+    int score = 0;
+};
+
+// ---------------------------------------------------------------------------
+// ScoringConfig -- configurable score formula weights.
+// Loaded from config/balance/scoring.json.
+// ---------------------------------------------------------------------------
+struct ScoringConfig
+{
+    float kill_weight = 10.0f;
+    float wave_weight = 100.0f;
+    float time_bonus_weight = 5.0f;
+    float xp_weight = 1.0f;
+    float money_weight = 2.0f;
+    float escape_bonus = 5000.0f;
+    bool loaded = false;
+};
+
+// ---------------------------------------------------------------------------
+// PlayerProfile -- persistent character identity.
+// ---------------------------------------------------------------------------
+struct PlayerProfile
+{
+    std::string name;
+};
+
+// ---------------------------------------------------------------------------
+// Run -- one completed run's snapshot.
+// ---------------------------------------------------------------------------
+struct Run
+{
+    RunStats stats;
+    std::string character_name;
+    std::string timestamp;
+    bool escaped = false;
+};
+
+// ---------------------------------------------------------------------------
+// SaveData -- top-level persistent data. Loaded/saved to saves/save.json.
+// Schema version enables forward-compatible migrations.
+// ---------------------------------------------------------------------------
+struct SaveData
+{
+    static constexpr int CURRENT_VERSION = 1;
+
+    int schema_version = CURRENT_VERSION;
+    std::vector<PlayerProfile> characters;
+    std::vector<Run> runs;
 };

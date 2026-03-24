@@ -24,6 +24,8 @@ static bool sInitialized = false;
 
 static ma_sound sMusicSound;
 static bool sMusicLoaded = false;
+static bool sMusicMuted = false;
+static float sMusicRequestedVolume = 0.8f; // volume requested by caller (preserved across mute)
 
 // Managed SFX voices -- each playSfx creates a ma_sound with per-sound volume.
 // Finished sounds are cleaned up lazily on the next playSfx call.
@@ -104,7 +106,7 @@ void AudioSystem::shutdown()
     sInitialized = false;
 }
 
-void AudioSystem::playSfx(const std::string& path, float volume)
+void AudioSystem::playSfx(const std::string& path, float volume, float pitch)
 {
     if (!sInitialized)
         return;
@@ -124,11 +126,13 @@ void AudioSystem::playSfx(const std::string& path, float volume)
     }
 
     ma_sound_set_volume(&slot->sound, volume);
+    if (pitch != 1.0f)
+        ma_sound_set_pitch(&slot->sound, pitch);
     ma_sound_start(&slot->sound);
     slot->active = true;
 }
 
-void AudioSystem::playMusic(const std::string& path, float volume)
+void AudioSystem::playMusic(const std::string& path, float volume, bool loop)
 {
     if (!sInitialized)
         return;
@@ -149,8 +153,9 @@ void AudioSystem::playMusic(const std::string& path, float volume)
         return;
     }
 
-    ma_sound_set_looping(&sMusicSound, MA_TRUE);
-    ma_sound_set_volume(&sMusicSound, volume);
+    ma_sound_set_looping(&sMusicSound, loop ? MA_TRUE : MA_FALSE);
+    sMusicRequestedVolume = volume;
+    ma_sound_set_volume(&sMusicSound, sMusicMuted ? 0.0f : volume);
     ma_sound_start(&sMusicSound);
     sMusicLoaded = true;
 }
@@ -169,6 +174,26 @@ void AudioSystem::setMusicVolume(float volume)
         return;
 
     ma_sound_set_volume(&sMusicSound, volume);
+}
+
+float AudioSystem::getMusicVolume()
+{
+    if (!sInitialized || !sMusicLoaded)
+        return 0.0f;
+
+    return ma_sound_get_volume(&sMusicSound);
+}
+
+void AudioSystem::toggleMusicMute()
+{
+    sMusicMuted = !sMusicMuted;
+    if (sInitialized && sMusicLoaded)
+        ma_sound_set_volume(&sMusicSound, sMusicMuted ? 0.0f : sMusicRequestedVolume);
+}
+
+bool AudioSystem::isMusicMuted()
+{
+    return sMusicMuted;
 }
 
 void AudioSystem::setMasterVolume(float volume)

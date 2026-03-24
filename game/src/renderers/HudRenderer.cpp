@@ -7,6 +7,7 @@
 
 #include <SDL.h>
 #include <algorithm>
+#include <cstdio>
 #include <string>
 #include <tracy/Tracy.hpp>
 
@@ -183,6 +184,20 @@ void HudRenderer::render(EntityManager& em, int window_w, int window_h)
                                       std::to_string(exp.xp_to_next);
             drawBarWithLabel(BAR_X, y, BAR_W, BAR_H, fill, XP_BAR, XP_BG, sBodyFont, label);
             y += section_h + BAR_GAP;
+        }
+
+        // Time (bottom-left, above money).
+        {
+            const auto& runStats = em.registry().ctx().get<RunStats>();
+            const int totalSec = static_cast<int>(runStats.time);
+            char timeBuf[16];
+            std::snprintf(timeBuf, sizeof(timeBuf), "%d:%02d", totalSec / 60, totalSec % 60);
+            static constexpr Color TIME_LABEL{0.6f, 0.58f, 0.52f, 0.9f};
+            static constexpr Color TIME_VALUE{0.85f, 0.82f, 0.75f, 1.0f};
+            const std::string tlabel = "Time: ";
+            UIRenderer::drawText(sTitleFont, tlabel, BAR_X, wh - 80.0f, TIME_LABEL);
+            TextSize tlsz = UIRenderer::measureText(sTitleFont, tlabel);
+            UIRenderer::drawText(sTitleFont, timeBuf, BAR_X + tlsz.width, wh - 80.0f, TIME_VALUE);
         }
 
         // Money (bottom-left).
