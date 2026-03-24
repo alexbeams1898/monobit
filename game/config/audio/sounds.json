@@ -13,5 +13,7 @@
     "footstep_run":   { "path": "assets/sfx/footstep_run.wav",   "volume": 0.35 },
     "rest_heal":      { "path": "assets/sfx/rest_heal.wav",      "volume": 0.45 },
     "game_over":              { "path": "assets/sfx/game_over.wav",      "volume": 0.6 },
-    "low_stamina_heartbeat":  { "path": "assets/sfx/heartbeat.wav",      "volume": 0.45 }
+    "low_stamina_heartbeat":  { "path": "assets/sfx/heartbeat.wav",      "volume": 0.45 },
+    "ui_click":               { "path": "assets/sfx/ui_click.wav",       "volume": 0.35 },
+    "wave_clear":             { "path": "assets/sfx/wave_clear.wav",    "volume": 0.5  }
 }

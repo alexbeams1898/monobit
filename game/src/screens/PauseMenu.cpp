@@ -1207,6 +1207,9 @@ static void renderTabBar(EntityManager& em, UIState& ui, float panel_x, float pa
                     ui.menu_tab = static_cast<UIState::Tab>(i);
                     sContentSel = 0;
                     sBottomSel = -1;
+                    const auto& snd = em.registry().ctx().get<SoundConfig>();
+                    if (!snd.ui_click.path.empty())
+                        AudioSystem::playSfx(snd.ui_click.path, snd.ui_click.volume);
                 }
             }
         }
@@ -1221,6 +1224,20 @@ static void renderTabBar(EntityManager& em, UIState& ui, float panel_x, float pa
 }
 
 // Draw the bottom bar (hint + Resume/Quit buttons + click handling). Returns true if quit.
+// Draw a single bottom-bar button; returns true if hovered.
+static bool drawBottomBtn(const std::string& text, float bx, float by, float pad_x, float pad_y,
+                          float btn_w, float btn_h, float mx, float my, int selIdx, Color hlColor,
+                          Color normalColor)
+{
+    bool hover = (mx >= bx && mx < bx + btn_w && my >= by && my < by + btn_h);
+    if (hover)
+        sBottomSel = selIdx;
+    bool active = hover || (sBottomSel == selIdx);
+    UIRenderer::drawRect(bx, by, btn_w, btn_h, active ? BTN_BG_HL : BTN_BG);
+    UIRenderer::drawText(sBodyFont, text, bx + pad_x, by + pad_y, active ? hlColor : normalColor);
+    return hover;
+}
+
 static bool renderBottomBar(EntityManager& em, UIState& ui, float panel_x, float panel_w,
                             float bottom_area_y, float mx, float my, bool equipRmbConsumed)
 {
@@ -1240,10 +1257,8 @@ static bool renderBottomBar(EntityManager& em, UIState& ui, float panel_x, float
     const float btn_pad_y = 6.0f;
     const float btn_gap = 24.0f;
 
-    const std::string resume_text = "Resume";
-    const std::string quit_text = "Quit Game";
-    TextSize rsz = UIRenderer::measureText(sBodyFont, resume_text);
-    TextSize qsz = UIRenderer::measureText(sBodyFont, quit_text);
+    TextSize rsz = UIRenderer::measureText(sBodyFont, "Resume");
+    TextSize qsz = UIRenderer::measureText(sBodyFont, "Quit Game");
 
     const float rBtn_w = rsz.width + btn_pad_x * 2.0f;
     const float qBtn_w = qsz.width + btn_pad_x * 2.0f;
@@ -1251,31 +1266,19 @@ static bool renderBottomBar(EntityManager& em, UIState& ui, float panel_x, float
     const float total_btn_w = rBtn_w + btn_gap + qBtn_w;
     const float btn_start_x = panel_x + (panel_w - total_btn_w) * 0.5f;
 
-    // Resume button.
-    const float rBx = btn_start_x;
-    bool rHover = (mx >= rBx && mx < rBx + rBtn_w && my >= btn_y && my < btn_y + btn_h);
-    if (rHover)
-        sBottomSel = 0;
-    bool rSel = (sBottomSel == 0);
-    UIRenderer::drawRect(rBx, btn_y, rBtn_w, btn_h, (rHover || rSel) ? BTN_BG_HL : BTN_BG);
-    UIRenderer::drawText(sBodyFont, resume_text, rBx + btn_pad_x, btn_y + btn_pad_y,
-                         (rHover || rSel) ? BTN_RESUME_HL : BTN_NORMAL);
-
-    // Quit button.
-    const float qBx = btn_start_x + rBtn_w + btn_gap;
-    bool qHover = (mx >= qBx && mx < qBx + qBtn_w && my >= btn_y && my < btn_y + btn_h);
-    if (qHover)
-        sBottomSel = 1;
-    bool qSel = (sBottomSel == 1);
-    UIRenderer::drawRect(qBx, btn_y, qBtn_w, btn_h, (qHover || qSel) ? BTN_BG_HL : BTN_BG);
-    UIRenderer::drawText(sBodyFont, quit_text, qBx + btn_pad_x, btn_y + btn_pad_y,
-                         (qHover || qSel) ? BTN_QUIT_HL : BTN_QUIT);
+    bool rHover = drawBottomBtn("Resume", btn_start_x, btn_y, btn_pad_x, btn_pad_y, rBtn_w, btn_h,
+                                mx, my, 0, BTN_RESUME_HL, BTN_NORMAL);
+    bool qHover = drawBottomBtn("Quit Game", btn_start_x + rBtn_w + btn_gap, btn_y, btn_pad_x,
+                                btn_pad_y, qBtn_w, btn_h, mx, my, 1, BTN_QUIT_HL, BTN_QUIT);
 
     // Mouse click on buttons.
     for (uint8_t btn : em.mouse_down_events)
     {
-        if (btn == SDL_BUTTON_LEFT)
+        if (btn == SDL_BUTTON_LEFT && (rHover || qHover))
         {
+            const auto& snd = em.registry().ctx().get<SoundConfig>();
+            if (!snd.ui_click.path.empty())
+                AudioSystem::playSfx(snd.ui_click.path, snd.ui_click.volume);
             if (rHover)
                 ui.active_screen = UIState::Screen::None;
             if (qHover)

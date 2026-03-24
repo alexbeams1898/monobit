@@ -398,4 +398,46 @@ hb_samples = lowpass(hb_samples, 200)
 hb_samples = compress(hb_samples, threshold=0.2, ratio=3.0)
 write_wav("heartbeat.wav", hb_samples)
 
+# --- ui_click.wav --- soft rounded pop for menu interactions
+click_n = int(SAMPLE_RATE * 0.06)
+click_samples = []
+for i in range(click_n):
+    t = i / SAMPLE_RATE
+    progress = i / click_n
+    # Soft attack + gentle decay for a warm pop feel
+    if progress < 0.1:
+        env = progress / 0.1
+    else:
+        env = (1.0 - progress) ** 1.5
+    # Lower fundamental (warmer), soft harmonic
+    s = math.sin(2 * math.pi * 900 * t) * 0.25 * env
+    s += math.sin(2 * math.pi * 1350 * t) * 0.08 * env
+    click_samples.append(s)
+click_samples = lowpass(click_samples, 3000)
+click_samples = reverb(click_samples, delay_ms=20, feedback=0.15, mix=0.1)
+write_wav("ui_click.wav", click_samples)
+
+# --- wave_clear.wav --- warbling teleport whoosh with rising shimmer
+wc_dur = 1.2
+wc_n = int(SAMPLE_RATE * wc_dur)
+wc_samples = []
+for i in range(wc_n):
+    t = i / SAMPLE_RATE
+    progress = i / wc_n
+    # Bell curve envelope: swell up then fade
+    env = math.sin(math.pi * progress) ** 0.7
+    # Rising warble: base frequency sweeps up with vibrato
+    base_freq = 300 + 800 * progress
+    vibrato = math.sin(2 * math.pi * 6 * t) * 40
+    freq = base_freq + vibrato
+    s = math.sin(2 * math.pi * freq * t) * 0.3 * env
+    # Shimmery octave harmonic
+    s += math.sin(2 * math.pi * freq * 2 * t) * 0.12 * env
+    # High sparkle overtone
+    s += math.sin(2 * math.pi * freq * 3 * t) * 0.05 * env
+    wc_samples.append(s)
+wc_samples = reverb(wc_samples, delay_ms=80, feedback=0.45, mix=0.4)
+wc_samples = compress(wc_samples, threshold=0.3, ratio=3.0)
+write_wav("wave_clear.wav", wc_samples)
+
 print("Done!")

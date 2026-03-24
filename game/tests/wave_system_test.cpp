@@ -190,23 +190,27 @@ TEST_CASE("Cleared transitions to SafeRoom when safe_room_every triggers", "[wav
     WaveSystem::startNextWave(em);
     auto& ws = em.registry().ctx().get<WaveState>();
     ws.phase = WaveState::Phase::Cleared;
+    ws.cleared_timer = 1.99f; // Skip SFX trigger (needs AudioSystem), just test transition.
 
-    WaveSystem::update(em, 0.016);
+    // Advance past the 2-second auto-advance delay.
+    WaveSystem::update(em, 3.0);
     REQUIRE(ws.phase == WaveState::Phase::SafeRoom);
 }
 
-TEST_CASE("Cleared transitions to SafeRoom when safe_room_every is 0", "[wave]")
+TEST_CASE("Cleared advances to next wave when safe_room_every is 0", "[wave]")
 {
     EntityManager em;
     emplaceGameConfigs(em);
-    setupAutoGen(em, 5, 1, 0); // safe_room_every=0
+    setupAutoGen(em, 5, 1, 0); // safe_room_every=0 -> no safe rooms
 
     WaveSystem::startNextWave(em);
     auto& ws = em.registry().ctx().get<WaveState>();
     ws.phase = WaveState::Phase::Cleared;
+    ws.cleared_timer = 1.99f; // Skip SFX trigger (needs AudioSystem), just test transition.
 
-    WaveSystem::update(em, 0.016);
-    REQUIRE(ws.phase == WaveState::Phase::SafeRoom);
+    // Advance past the 2-second auto-advance delay.
+    WaveSystem::update(em, 3.0);
+    REQUIRE(ws.phase == WaveState::Phase::Spawning);
 }
 
 TEST_CASE("Cleared transitions to Complete on last wave", "[wave]")
@@ -218,8 +222,10 @@ TEST_CASE("Cleared transitions to Complete on last wave", "[wave]")
     WaveSystem::startNextWave(em);
     auto& ws = em.registry().ctx().get<WaveState>();
     ws.phase = WaveState::Phase::Cleared;
+    ws.cleared_timer = 1.99f; // Skip SFX trigger (needs AudioSystem), just test transition.
 
-    WaveSystem::update(em, 0.016);
+    // Advance past the 2-second auto-advance delay.
+    WaveSystem::update(em, 3.0);
     REQUIRE(ws.phase == WaveState::Phase::Complete);
 }
 

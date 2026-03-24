@@ -17,6 +17,27 @@ static constexpr float MOUSE_HOVER_RADIUS = 32.0f;
 // Proximity radius for F-key fallback when mouse isn't hovering over anything.
 static constexpr float PROXIMITY_RADIUS = 48.0f;
 
+// Play pickup SFX with pitch/volume scaled by item rarity and quality.
+// Higher rarity + quality = higher pitch + louder + shimmer layer.
+static void playPickupSfx(const SoundConfig& snd, Rarity rarity, QualityTier quality)
+{
+    // Rarity: 0 (VeryCommon) to 5 (Legendary). Quality: 0 (Crude) to 4 (Masterwork).
+    const int rt = static_cast<int>(rarity);
+    const int qt = static_cast<int>(quality);
+    const float tier = static_cast<float>(rt) * 0.6f + static_cast<float>(qt) * 0.4f;
+
+    // Pitch: 0.6 (common junk) -> 2.0 (legendary masterwork).
+    const float pitch = 0.6f + tier * 0.28f;
+    // Volume: base pickup volume scaled up for rarer items.
+    const float vol = snd.pickup.volume * (1.0f + tier * 0.15f);
+
+    AudioSystem::playSfx(snd.pickup.path, vol, pitch);
+
+    // Shimmer layer for Rare+ items: a second voice at higher pitch, lower volume.
+    if (rt >= static_cast<int>(Rarity::Rare))
+        AudioSystem::playSfx(snd.pickup.path, vol * 0.5f, pitch * 1.6f);
+}
+
 static void collectPickup(EntityManager& em, entt::entity playerEnt, entt::entity pickupEnt)
 {
     auto& reg = em.registry();
@@ -35,6 +56,7 @@ static void collectPickup(EntityManager& em, entt::entity playerEnt, entt::entit
             {
                 const int amount = def->value * pickup.item.quantity;
                 reg.get<Wallet>(playerEnt).money += amount;
+                reg.ctx().get<RunStats>().money += amount;
                 AudioSystem::playSfx(snd.pickup.path, snd.pickup.volume);
                 NotificationSystem::push("+$" + std::to_string(amount), {0.2f, 0.85f, 0.3f, 1.0f});
             }
@@ -52,7 +74,7 @@ static void collectPickup(EntityManager& em, entt::entity playerEnt, entt::entit
 
         const std::string itemName = (def != nullptr) ? def->name : "item";
         const Rarity rarity = (def != nullptr) ? def->rarity : Rarity::Common;
-        AudioSystem::playSfx(snd.pickup.path, snd.pickup.volume);
+        playPickupSfx(snd, rarity, pickup.item.quality);
         NotificationSystem::push("+" + std::to_string(pickup.item.quantity) + " " + itemName +
                                      " (" + rarityName(rarity) + ", " +
                                      qualityName(pickup.item.quality) + ")",
@@ -181,8 +203,8 @@ void PickupSystem::update(EntityManager& em)
     {
         collectPickup(em, playerEnt, target);
 
-        // Suppress attack so CombatSystem doesn't swing on the same click.
-        if (wantClick && reg.all_of<PlayerActions>(playerEnt))
-            reg.get<PlayerActions>(playerEnt).attack = false;
+        // Mark click as consumed so CombatSystem doesn't swing on it.
+        if (wantClick)
+            em.lmb_consumed = true;
     }
 }

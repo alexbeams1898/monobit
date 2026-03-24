@@ -251,15 +251,8 @@ void CombatSystem::update(EntityManager& em, double dt)
         const bool hasSta = em.registry().all_of<Stamina>(entity);
         const float staCurrent = hasSta ? em.registry().get<Stamina>(entity).current : 999.0f;
 
-        // Suppress LMB attack when clicking on a highlighted pickup.
-        // InteractTarget persists from the previous frame (PickupSystem runs after us).
-        bool clickOnPickup = false;
-        if (actions.mouse_click && em.registry().all_of<InteractTarget>(entity))
-        {
-            const auto& it = em.registry().get<InteractTarget>(entity);
-            if (it.entity != entt::null && em.registry().valid(it.entity))
-                clickOnPickup = true;
-        }
+        // Suppress LMB attack when a higher-priority system consumed the click.
+        const bool clickConsumed = em.lmb_consumed;
 
         // ---- Normal attack ------------------------------------------------
         bool fireAttack = false;
@@ -270,12 +263,12 @@ void CombatSystem::update(EntityManager& em, double dt)
                 fireAttack = (weapon.swing_cooldown_remaining <= 0.0f && !isAttackLocked &&
                               !isStaggered && staCurrent >= swingCost);
         }
-        if (!fireAttack && !clickOnPickup)
+        if (!fireAttack && !clickConsumed)
             fireAttack = (actions.attack && weapon.swing_cooldown_remaining <= 0.0f &&
                           !isAttackLocked && !isStaggered && staCurrent >= swingCost);
 
         // Audio + visual feedback when attack pressed but stamina too low.
-        if (!fireAttack && actions.attack && !clickOnPickup &&
+        if (!fireAttack && actions.attack && !clickConsumed &&
             weapon.swing_cooldown_remaining <= 0.0f && !isAttackLocked && !isStaggered &&
             staCurrent < swingCost)
         {

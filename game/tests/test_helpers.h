@@ -16,4 +16,8 @@ inline void emplaceGameConfigs(EntityManager& em)
     em.registry().ctx().emplace<RecipeRegistry>();
     em.registry().ctx().emplace<MusicConfig>();
     em.registry().ctx().emplace<UIState>();
+    em.registry().ctx().emplace<GameState>();
+    em.registry().ctx().emplace<RunStats>();
+    em.registry().ctx().emplace<ScoringConfig>();
+    em.registry().ctx().emplace<SaveData>();
 }

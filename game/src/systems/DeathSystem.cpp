@@ -3,7 +3,6 @@
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
-#include "systems/AudioSystem.h"
 
 #include <algorithm>
 #include <cmath>
@@ -306,6 +305,11 @@ static void processEnemyDeath(EntityManager& em, entt::entity entity, const Loot
         }
     }
 
+    // Accumulate run stats.
+    auto& runStats = reg.ctx().get<RunStats>();
+    runStats.kills++;
+    runStats.xp_earned += xpValue;
+
     // Spawn drops before destroying the entity.
     if (reg.all_of<Transform>(entity) && !loot.drops.empty())
     {
@@ -347,7 +351,6 @@ void DeathSystem::update(EntityManager& em, double dt)
 {
     ZoneScopedN("DeathSystem");
     auto& reg = em.registry();
-    const SoundConfig& snd = reg.ctx().get<SoundConfig>();
     auto& waveState = reg.ctx().get<WaveState>();
 
     // Tick death timers first -- entities waiting for death animation to finish.
@@ -390,11 +393,9 @@ void DeathSystem::update(EntityManager& em, double dt)
     {
         if (entry.is_player)
         {
-            AudioSystem::playSfx(snd.game_over.path, snd.game_over.volume);
-            std::cout << "[DeathSystem] Game Over. Press R to restart.\n";
+            std::cout << "[DeathSystem] Game Over.\n";
 
             // Destroy body-part children so the player sprite disappears.
-            // Parent stays alive for GameOver state and restart.
             std::vector<entt::entity> children;
             for (auto [child, bp] : reg.view<BodyPart>().each())
                 if (bp.parent == entry.entity)
@@ -406,7 +407,6 @@ void DeathSystem::update(EntityManager& em, double dt)
             if (reg.all_of<Health>(entry.entity))
                 reg.get<Health>(entry.entity).current = 0;
             waveState.phase = WaveState::Phase::GameOver;
-            AudioSystem::stopMusic();
         }
         else
         {
