@@ -92,13 +92,29 @@ that texture. Expected to cut render time by 10-50x at 1000+ enemies.
 
 ---
 
-### [Issue #29] CollisionSystem — NOT YET Spatially Partitioned
+### [Issue #29] CollisionSystem — Spatial Grid Broad-Phase
 
-**Status:** Tracked as Issue #29.
+**Problem:** Dynamic-vs-dynamic collision was O(n_dyn^2). At 1000 enemies, the naive pair
+loop would hit ~500K pair checks per frame.
 
-Current: dynamic-vs-static uses tile map (O(~4) per entity — fine indefinitely).
-Dynamic-vs-dynamic: `O(n_dyn^2)`. Fine at low enemy counts; will need a spatial hash
-or broad-phase grid when n_dyn approaches 100+.
+**Fix:** Uniform spatial grid (64px cells, 2x typical 32px entity diameter). Two-pass
+count+scatter algorithm into a flat array — no per-cell heap allocation. Vectors persist
+across frames via `static` local (grow-only, no realloc after warmup).
+
+Deduplication for multi-cell entities: for each candidate pair, compute the first shared
+cell (top-left of the overlap of their cell ranges). Only process the pair in that cell.
+O(1) per pair — 4 int comparisons + 1 multiply. No hash sets or bitsets.
+
+**Memory:** ~70 KB total for an 80x60 cell grid (counts + offsets + entries arrays).
+
+**Result (Tracy):**
+
+| Metric | Before (trace 14) | After (trace 29) | 1000-enemy stress test |
+|---|---|---|---|
+| CollisionSystem avg | 0.46 ms | 0.03 ms | 1.18 ms |
+| CollisionSystem max | — | — | 1.74 ms |
+
+15x improvement at normal enemy counts. Scales near-linearly with entity count.
 
 ---
 
@@ -231,3 +247,9 @@ Initial trace (Issue #9, pre tile-map, ~5 enemies):
 
 Only 2 Tracy zones visible because instrumentation is shallow (top-level render/update
 only). Issue #27 will add `ZoneScoped` to individual systems.
+
+1000-enemy stress test (Issue #29, spatial grid):
+- `CollisionSystem`: 1.18 ms avg, 1.74 ms max
+- `RenderSystem`: 6.49 ms avg (draw-call-per-entity bottleneck, Issue #28)
+- `TileMapRenderer`: 5.86 ms avg (Issue #31)
+- `WaveSystem`: 75.5 ms max spike (alive-count scan)
