@@ -13,7 +13,7 @@
 static FontHandle sBodyFont = INVALID_FONT;
 static FontHandle sTitleFont = INVALID_FONT;
 static std::string sName;
-static int sSel = 0; // 0 = Start, 1 = Back
+static int sSel = -1; // -1 = none, 0 = Start, 1 = Back
 static constexpr int MAX_NAME_LEN = 20;
 
 static constexpr Color OVERLAY{0.0f, 0.0f, 0.0f, 0.92f};
@@ -60,7 +60,7 @@ void CharCreateScreen::init(FontHandle body_font, FontHandle title_font)
 void CharCreateScreen::reset()
 {
     sName.clear();
-    sSel = 0;
+    sSel = -1;
     SDL_StartTextInput();
 }
 
@@ -85,7 +85,7 @@ static CharCreateScreen::Action handleCharCreateInput(const EntityManager& em,
     // Tab/arrow toggles between Start and Back.
     if (keyPressed(em, SDL_SCANCODE_TAB) || keyPressed(em, SDL_SCANCODE_DOWN) ||
         keyPressed(em, SDL_SCANCODE_UP))
-        sSel = (sSel + 1) % 2;
+        sSel = sSel < 0 ? 0 : (sSel + 1) % 2;
 
     if (keyPressed(em, SDL_SCANCODE_ESCAPE))
     {
@@ -93,7 +93,7 @@ static CharCreateScreen::Action handleCharCreateInput(const EntityManager& em,
         return CharCreateScreen::Action::Back;
     }
 
-    if (!keyPressed(em, SDL_SCANCODE_RETURN) && !keyPressed(em, SDL_SCANCODE_KP_ENTER))
+    if (sSel < 0 || (!keyPressed(em, SDL_SCANCODE_RETURN) && !keyPressed(em, SDL_SCANCODE_KP_ENTER)))
         return CharCreateScreen::Action::None;
 
     CharCreateScreen::Action result = CharCreateScreen::Action::None;
@@ -171,6 +171,7 @@ CharCreateScreen::Action CharCreateScreen::render(EntityManager& em, int window_
     const char* labels[2] = {"Start", "Back"};
     float by = fy + field_h + 40.0f;
 
+    bool anyHovered = false;
     for (int i = 0; i < 2; ++i)
     {
         const bool disabled = (i == 0 && !isNameValid());
@@ -180,7 +181,10 @@ CharCreateScreen::Action CharCreateScreen::render(EntityManager& em, int window_
 
         const bool hovered = !disabled && (mx >= bx && mx < bx + bw && my >= by && my < by + btn_h);
         if (hovered)
+        {
             sSel = i;
+            anyHovered = true;
+        }
 
         const bool selected = (i == sSel);
         UIRenderer::drawRect(bx, by, bw, btn_h, (selected && !disabled) ? BTN_BG_HL : BTN_BG);
@@ -205,6 +209,8 @@ CharCreateScreen::Action CharCreateScreen::render(EntityManager& em, int window_
 
         by += btn_h + btn_gap;
     }
+    if (!anyHovered && em.key_down_events.empty())
+        sSel = -1;
 
     return result;
 }

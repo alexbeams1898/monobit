@@ -20,4 +20,8 @@ inline void emplaceGameConfigs(EntityManager& em)
     em.registry().ctx().emplace<RunStats>();
     em.registry().ctx().emplace<ScoringConfig>();
     em.registry().ctx().emplace<SaveData>();
+    em.registry().ctx().emplace<WeaponTierRegistry>();
+    em.registry().ctx().emplace<EvolutionRegistry>();
+    em.registry().ctx().emplace<Compendium>();
+    em.registry().ctx().emplace<AttackTokenPool>();
 }

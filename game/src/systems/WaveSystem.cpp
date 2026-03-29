@@ -1,7 +1,8 @@
 #include "systems/WaveSystem.h"
 
 #include "ConfigLoader.h"
-#include "SpawnUtils.h"
+#include "ecs/AppState.h"
+#include "ops/SpawnUtils.h"
 #include "TileMap.h"
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
@@ -276,6 +277,9 @@ static void tickSpawning(EntityManager& em, WaveState& ws, double dt)
     }
 }
 
+static constexpr float TRANSITION_DELAY = 1.0f;
+static void commitWaveStart(EntityManager& em);
+
 void WaveSystem::update(EntityManager& em, double dt)
 {
     ZoneScopedN("WaveSystem");
@@ -285,24 +289,18 @@ void WaveSystem::update(EntityManager& em, double dt)
     if (!wc.loaded)
         return;
 
-    // Check for player wave-start input.
-    for (auto e : em.registry().view<PlayerActions>())
-    {
-        auto& actions = em.registry().get<PlayerActions>(e);
-        if (actions.start_wave)
-        {
-            actions.start_wave = false;
-            startNextWave(em);
-        }
-        break;
-    }
-
     switch (ws.phase)
     {
     case WaveState::Phase::Idle:
     case WaveState::Phase::SafeRoom:
     case WaveState::Phase::GameOver:
     case WaveState::Phase::Complete:
+        break;
+
+    case WaveState::Phase::Transitioning:
+        ws.transition_timer += static_cast<float>(dt);
+        if (ws.transition_timer >= TRANSITION_DELAY)
+            commitWaveStart(em);
         break;
 
     case WaveState::Phase::Spawning:
@@ -330,13 +328,6 @@ void WaveSystem::update(EntityManager& em, double dt)
 
     case WaveState::Phase::Cleared:
     {
-        // Play wave-clear SFX on the first frame.
-        if (ws.cleared_timer == 0.0f)
-        {
-            const auto& sc = em.registry().ctx().get<SoundConfig>();
-            AudioSystem::playSfx(sc.wave_clear.path, sc.wave_clear.volume);
-        }
-
         ws.cleared_timer += static_cast<float>(dt);
 
         static constexpr float WAVE_ADVANCE_DELAY = 2.0f;
@@ -353,14 +344,57 @@ void WaveSystem::update(EntityManager& em, double dt)
                 TracyMessageL("RunComplete");
                 std::cout << "[WaveSystem] All waves cleared! Run complete.\n";
             }
-            else if (ws.active_def.safe_room_after)
-            {
-                ws.phase = WaveState::Phase::SafeRoom;
-                std::cout << "[WaveSystem] Safe room after wave " << ws.current_wave << ".\n";
-            }
             else
             {
-                startNextWave(em);
+                ws.phase = WaveState::Phase::SafeRoom;
+
+                // Spawn ladder at the player-start marker ('P').
+                float lx = 0.0f;
+                float ly = 0.0f;
+                bool found = false;
+                for (const auto& sp : em.tile_map.spawn_points)
+                {
+                    if (sp.type == 'P')
+                    {
+                        lx = sp.x;
+                        ly = sp.y;
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (found)
+                {
+                    auto ladder = ConfigLoader::loadEntity(em, "config/entities/ladder.json");
+                    if (em.registry().valid(ladder))
+                    {
+                        auto& lt = em.registry().get<Transform>(ladder);
+                        lt.x = lx;
+                        lt.y = ly;
+                        lt.scale = 0.0f;
+
+                        // Camera pan to show the ladder materializing.
+                        for (auto pe : em.registry().view<PlayerActions>())
+                        {
+                            if (em.registry().all_of<Camera>(pe))
+                            {
+                                const auto& cam = em.registry().get<Camera>(pe);
+                                CameraPan pan;
+                                pan.start_x = cam.x;
+                                pan.start_y = cam.y;
+                                pan.target_x = lx;
+                                pan.target_y = ly;
+                                em.registry().emplace<CameraPan>(pe, pan);
+                            }
+                            break;
+                        }
+
+                        const auto& sc = em.registry().ctx().get<SoundConfig>();
+                        if (!sc.ladder_appear.path.empty())
+                            AudioSystem::playSfx(sc.ladder_appear.path,
+                                                 sc.ladder_appear.volume);
+                    }
+                }
             }
         }
         break;
@@ -420,37 +454,25 @@ static void handleDeathRestart(EntityManager& em, WaveState& ws)
     std::cout << "[WaveSystem] Restarting from wave 1.\n";
 }
 
-bool WaveSystem::startNextWave(EntityManager& em)
+// Phase 2 of wave start: set up spawning after the transition delay.
+static void commitWaveStart(EntityManager& em)
 {
     auto& ws = em.registry().ctx().get<WaveState>();
     const auto& wc = em.registry().ctx().get<WaveConfig>();
 
-    if (ws.phase == WaveState::Phase::GameOver)
-        handleDeathRestart(em, ws);
-
-    if (ws.phase != WaveState::Phase::Idle && ws.phase != WaveState::Phase::SafeRoom &&
-        ws.phase != WaveState::Phase::Cleared && ws.phase != WaveState::Phase::GameOver)
-        return false;
-
-    int next = ws.current_wave + 1;
-
-    // Check max_waves cap (0 = infinite).
-    if (wc.gen.max_waves > 0 && next > wc.gen.max_waves)
-        return false;
-
-    ws.current_wave = next;
-    em.registry().ctx().get<RunStats>().wave = next;
-    ws.active_def = generateWave(wc.gen, next);
+    int next = ws.current_wave;
+    ws.active_def = WaveSystem::generateWave(wc.gen, next);
 
     ws.enemies_total = 0;
     for (const auto& g : ws.active_def.enemies)
         ws.enemies_total += g.count;
 
     ws.enemies_spawned = 0;
-    ws.spawn_timer = 0.0f; // spawn first burst immediately
+    ws.spawn_timer = 0.0f;
     ws.spawn_group_index = 0;
     ws.spawn_group_progress = 0;
-    ws.needs_map_regen = true;
+    // Wave 1 map is already built by WorldInit::createWorld -- skip regen.
+    ws.needs_map_regen = (ws.current_wave > 1);
     ws.phase = WaveState::Phase::Spawning;
     SpawnUtils::resetSpawnRoomCounter();
 
@@ -481,6 +503,40 @@ bool WaveSystem::startNextWave(EntityManager& em)
         const auto& track = mc.tracks[idx];
         AudioSystem::playMusic(track.path, track.volume);
         std::cout << "[Music] Playing: " << track.path << "\n";
+    }
+}
+
+bool WaveSystem::startNextWave(EntityManager& em)
+{
+    auto& ws = em.registry().ctx().get<WaveState>();
+    const auto& wc = em.registry().ctx().get<WaveConfig>();
+
+    if (ws.phase == WaveState::Phase::GameOver)
+        handleDeathRestart(em, ws);
+
+    if (ws.phase != WaveState::Phase::Idle && ws.phase != WaveState::Phase::SafeRoom &&
+        ws.phase != WaveState::Phase::Cleared && ws.phase != WaveState::Phase::GameOver)
+        return false;
+
+    int next = ws.current_wave + 1;
+    if (wc.gen.max_waves > 0 && next > wc.gen.max_waves)
+        return false;
+
+    ws.current_wave = next;
+    em.registry().ctx().get<RunStats>().wave = next;
+
+    // First wave starts immediately; subsequent waves play teleport SFX
+    // and delay 1 second so the sound finishes before the map switches.
+    if (next == 1)
+    {
+        commitWaveStart(em);
+    }
+    else
+    {
+        const auto& sc = em.registry().ctx().get<SoundConfig>();
+        AudioSystem::playSfx(sc.wave_clear.path, sc.wave_clear.volume);
+        ws.transition_timer = 0.0f;
+        ws.phase = WaveState::Phase::Transitioning;
     }
 
     return true;

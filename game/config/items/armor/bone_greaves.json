@@ -1,0 +1,13 @@
+{
+    "name": "Bone Greaves",
+    "description": "Segmented bone plates strapped to the thighs.",
+    "icon": "assets/sprites/icons/bone_greaves.png",
+    "category": "armor",
+    "rarity": "common",
+    "armor_slot": "legs",
+    "defense_bonus": 5.0,
+    "poise_bonus": 3.0,
+    "weight": 2.5,
+    "max_durability": 90.0,
+    "stackable": false
+}

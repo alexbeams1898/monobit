@@ -63,7 +63,7 @@ bool HighScoresScreen::render(EntityManager& em, int window_w, int window_h)
 
     // Panel.
     const float panel_w = 740.0f;
-    const float panel_h = 520.0f;
+    const float panel_h = 550.0f;
     const float px = (ww - panel_w) * 0.5f;
     const float py = (wh - panel_h) * 0.5f;
     UIRenderer::drawRect(px, py, panel_w, panel_h, PANEL_BG);
@@ -119,13 +119,13 @@ bool HighScoresScreen::render(EntityManager& em, int window_w, int window_h)
         }
     }
 
-    // Back button.
-    const float btn_y = py + panel_h - 60.0f;
+    // Back button (anchored 20px from panel bottom).
     const std::string backLabel = "Back";
     TextSize bsz = UIRenderer::measureText(sTitleFont, backLabel);
     const float bw = bsz.width + 60.0f;
     const float bh = bsz.height + 20.0f;
     const float bx = (ww - bw) * 0.5f;
+    const float btn_y = py + panel_h - 20.0f - bh;
 
     int mouseX = 0;
     int mouseY = 0;

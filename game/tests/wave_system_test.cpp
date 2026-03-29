@@ -244,30 +244,6 @@ TEST_CASE("WaveSystem update is no-op without loaded config", "[wave]")
 }
 
 // ---------------------------------------------------------------------------
-// Key-triggered wave start
-// ---------------------------------------------------------------------------
-
-TEST_CASE("start_wave input triggers startNextWave", "[wave]")
-{
-    EntityManager em;
-    emplaceGameConfigs(em);
-    setupAutoGen(em, 1, 2);
-
-    // Create a player entity with PlayerActions component.
-    auto player = em.create();
-    auto& actions = em.registry().emplace<PlayerActions>(player);
-    actions.start_wave = true;
-
-    WaveSystem::update(em, 0.016);
-
-    // start_wave consumed, wave started.
-    auto& ws = em.registry().ctx().get<WaveState>();
-    REQUIRE(em.registry().get<PlayerActions>(player).start_wave == false);
-    REQUIRE(ws.phase == WaveState::Phase::Spawning);
-    REQUIRE(ws.current_wave == 1);
-}
-
-// ---------------------------------------------------------------------------
 // Auto-wave generation formulas
 // ---------------------------------------------------------------------------
 

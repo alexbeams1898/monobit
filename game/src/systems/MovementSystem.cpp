@@ -70,6 +70,19 @@ void MovementSystem::update(EntityManager& em, double dt)
                           100.0f);
         }
 
+        // Equip load speed modifier.
+        if (em.registry().all_of<ArmorStats>(entity))
+        {
+            const int tier = em.registry().get<ArmorStats>(entity).load_tier;
+            if (tier == 3)
+                speed *= f.equip_load.overloaded_speed;
+            else if (tier == 2)
+                speed *= f.equip_load.heavy_speed;
+            else if (tier == 1)
+                speed *= f.equip_load.medium_speed;
+            // tier 0 (light) = full speed, no modifier
+        }
+
         // Sprint drains stamina continuously; blocked when empty.
         if (actions.sprint && em.registry().all_of<Stamina>(entity))
         {
@@ -93,15 +106,37 @@ void MovementSystem::update(EntityManager& em, double dt)
             }
         }
 
-        if (actions.sprint)
-            speed *= f.movement.sprint_multiplier;
-
+        // Backpedal: moving opposite to aim direction slows the player.
+        bool backpedal = false;
         if (auto* facing = em.registry().try_get<FacingDirection>(entity))
+        {
+            const bool moving = (actions.move_x != 0.0f || actions.move_y != 0.0f);
+            const float dot = actions.move_x * facing->dx + actions.move_y * facing->dy;
+            backpedal = moving && (dot < 0.0f);
+            facing->backpedaling = backpedal;
             facing->sprinting = actions.sprint;
 
+            // Walk animation speed: sprint+backpedal = jog (sprint slowed by backpedal ratio).
+            if (actions.sprint && backpedal)
+                facing->walk_anim_speed =
+                    f.movement.sprint_anim_speed * f.movement.backpedal_anim_speed;
+            else if (actions.sprint)
+                facing->walk_anim_speed = f.movement.sprint_anim_speed;
+            else if (backpedal)
+                facing->walk_anim_speed = f.movement.backpedal_anim_speed;
+            else
+                facing->walk_anim_speed = 1.0f;
+        }
+
+        if (actions.sprint)
+            speed *= f.movement.sprint_multiplier;
+        if (backpedal)
+            speed *= f.movement.backpedal_multiplier;
+
         // Blend toward target velocity for a natural acceleration feel.
-        // Sprint ramps up slowly (sprint_blend); returning to walk snaps faster (walk_blend).
-        const float blend = actions.sprint ? f.movement.sprint_blend : f.movement.walk_blend;
+        // Sprint ramps up slowly (sprint_blend); backpedal and walk snap faster (walk_blend).
+        const float blend =
+            (actions.sprint && !backpedal) ? f.movement.sprint_blend : f.movement.walk_blend;
         const float fdt = static_cast<float>(dt);
         const float t = 1.0f - std::exp(-blend * fdt);
         vel.dx += (actions.move_x * speed - vel.dx) * t;

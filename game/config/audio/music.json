@@ -1,5 +1,5 @@
 {
-    "default_volume": 0.3,
+    "default_volume": 0.25,
     "tracks": [
         { "path": "assets/music/from_the_dark_past.ogg" },
         { "path": "assets/music/gateways.ogg" },

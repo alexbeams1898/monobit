@@ -1,4 +1,4 @@
-#include "InventoryOps.h"
+#include "ops/InventoryOps.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
 

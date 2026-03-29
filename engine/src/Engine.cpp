@@ -3,6 +3,7 @@
 #include "FontManager.h"
 #include "UIRenderer.h"
 #include "ecs/Components.h"
+#include "utils/DebugDraw.h"
 #include "systems/AnimationSystem.h"
 #include "systems/AudioSystem.h"
 #include "systems/RenderSystem.h"
@@ -113,6 +114,17 @@ void Engine::run()
             }
             update(FIXED_TIMESTEP);
             accumulator -= FIXED_TIMESTEP;
+
+            // After a heavy synchronous operation (map gen), snap the clock
+            // forward so no catch-up ticks fire and the FPS counter stays clean.
+            if (timing_reset_pending)
+            {
+                timing_reset_pending = false;
+                previousTime = static_cast<double>(SDL_GetTicks64()) / 1000.0;
+                accumulator = 0.0;
+                last_frame_time = 1.0 / 60.0;
+                break;
+            }
         }
 
         entity_manager.render_alpha = static_cast<float>(accumulator / FIXED_TIMESTEP);
@@ -146,6 +158,8 @@ void Engine::processEvents()
             entity_manager.key_down_events.push_back(event.key.keysym.scancode);
         if (event.type == SDL_MOUSEBUTTONDOWN)
             entity_manager.mouse_down_events.push_back(event.button.button);
+        if (event.type == SDL_MOUSEWHEEL)
+            entity_manager.mouse_wheel_y += event.wheel.y;
         if (event.type == SDL_TEXTINPUT)
             entity_manager.text_input_buffer += event.text.text;
     }
@@ -182,6 +196,11 @@ void Engine::setPerFrameUpdate(PerFrameFn fn)
     per_frame_update = fn;
 }
 
+void Engine::setRenderDebug(RenderDebugFn fn)
+{
+    render_debug = fn;
+}
+
 void Engine::setRenderUI(RenderUIFn fn)
 {
     render_ui = fn;
@@ -211,8 +230,11 @@ void Engine::render()
     {
         if (camera.active)
         {
+            // During a camera pan, the pan system owns Camera.x/y and applies
+            // its own smoothstep -- skip render interpolation to avoid fighting
+            // with PreviousTransform (which tracks the entity's physical position).
             const auto* prev = entity_manager.registry().try_get<PreviousTransform>(entity);
-            if (prev)
+            if (prev && !entity_manager.registry().all_of<CameraPan>(entity))
             {
                 camX = prev->x + (camera.x - prev->x) * a;
                 camY = prev->y + (camera.y - prev->y) * a;
@@ -244,11 +266,20 @@ void Engine::render()
 
     // UI layer: screen-space overlay drawn after world content.
     UIRenderer::beginFrame();
+    DebugDraw::setCamera(camX, camY, window_w, window_h);
+    if (render_debug)
+        render_debug(*this, entity_manager);
     if (render_ui)
         render_ui(*this, entity_manager);
     UIRenderer::endFrame();
 
     SDL_GL_SwapWindow(window);
+}
+
+void Engine::swapBuffers()
+{
+    if (window)
+        SDL_GL_SwapWindow(window);
 }
 
 void Engine::shutdown()

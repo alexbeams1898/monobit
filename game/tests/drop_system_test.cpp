@@ -307,7 +307,7 @@ TEST_CASE("High essence enemy drops higher quality items", "[drops]")
     drop.max_qty = 1;
 
     // Quality uses *player* LCK. Give the player high LCK so every roll hits Masterwork.
-    // playerLck=40 * quality_scale=3 = 120, min score = 120 >= Masterwork threshold (120).
+    // playerLck=40 * quality_scale=3 = 120, roll range 0-50, min score = 120 >= threshold.
     auto player = spawnPlayer(em);
     em.registry().emplace<Stats>(player, Stats{1, 1, 1, 40});
 

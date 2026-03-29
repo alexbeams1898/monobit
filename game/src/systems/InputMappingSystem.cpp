@@ -68,7 +68,6 @@ void InputMappingSystem::update(EntityManager& em)
     const bool dodgeJust = hasKey(kd, SDL_SCANCODE_SPACE);
     const bool autoJust = hasKey(kd, SDL_SCANCODE_P);
     const bool blockJust = hasMouse(md, SDL_BUTTON_RIGHT);
-    const bool waveStartJust = hasKey(kd, SDL_SCANCODE_R);
     const bool craftJust = hasKey(kd, SDL_SCANCODE_C);
     const bool cycleWeaponJust = hasKey(kd, SDL_SCANCODE_X);
     const bool interactJust = hasKey(kd, SDL_SCANCODE_F);
@@ -87,7 +86,6 @@ void InputMappingSystem::update(EntityManager& em)
         actions.block_held = blockHeld;
         actions.block_just_pressed = blockJust;
         actions.auto_toggle_just_pressed = autoJust;
-        actions.start_wave = waveStartJust;
         actions.craft = craftJust;
         actions.cycle_weapon = cycleWeaponJust;
         actions.interact = interactJust;

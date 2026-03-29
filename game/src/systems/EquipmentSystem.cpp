@@ -5,6 +5,7 @@
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
 
+#include <cmath>
 #include <iostream>
 #include <tracy/Tracy.hpp>
 #include <vector>
@@ -27,7 +28,7 @@ static void weaponFromDef(Weapon& w, const ItemDef& def)
 // Body's natural weapon takes priority; FormulaConfig::fist is the fallback.
 static void weaponFromFist(Weapon& w, const Body* body, const FormulaConfig& f)
 {
-    w.name = "Fist";
+    w.name = "Unarmed";
     if (body != nullptr)
     {
         w.weight = body->unarmed_weight;
@@ -87,7 +88,7 @@ static void cycleWeapon(const ItemRegistry& items, const Inventory& inv, Equipme
 
     const ItemDef* nextDef =
         equip.main_hand.empty() ? nullptr : items.find(equip.main_hand.config_path);
-    std::string name = "Fists";
+    std::string name = "Unarmed";
     if (nextDef != nullptr)
         name = std::string(qualityName(equip.main_hand.quality)) + " " + nextDef->name;
     TracyMessageL("WeaponSwitch");
@@ -100,12 +101,119 @@ static void cycleWeapon(const ItemRegistry& items, const Inventory& inv, Equipme
     std::cout << "\n";
 }
 
+// Accumulate weight from a single equipped slot.
+static float slotWeight(const ItemInstance& slot, const ItemRegistry& items)
+{
+    if (slot.empty())
+        return 0.0f;
+    const ItemDef* def = items.find(slot.config_path);
+    return (def != nullptr) ? def->weight : 0.0f;
+}
+
+// Recompute ArmorStats from all equipped armor, shield, weapon, and accessories.
+static void recomputeArmorStats(entt::registry& reg, entt::entity entity, const Equipment& equip,
+                                const ItemRegistry& items, const FormulaConfig& f)
+{
+    auto& armor = reg.get_or_emplace<ArmorStats>(entity);
+    armor.total_defense = 0.0f;
+    armor.total_poise_bonus = 0.0f;
+    armor.total_weight = 0.0f;
+
+    // Sum armor defense + poise from armor slots.
+    for (const auto* slot : {&equip.head, &equip.chest, &equip.legs, &equip.feet})
+    {
+        if (slot->empty())
+            continue;
+        const ItemDef* def = items.find(slot->config_path);
+        if (def == nullptr)
+            continue;
+        armor.total_defense += def->defense_bonus;
+        armor.total_poise_bonus += def->poise_bonus;
+    }
+
+    // Sum weight from ALL equipped slots (weapons, armor, shield, accessories).
+    armor.total_weight += slotWeight(equip.main_hand, items);
+    armor.total_weight += slotWeight(equip.off_hand, items);
+    armor.total_weight += slotWeight(equip.head, items);
+    armor.total_weight += slotWeight(equip.chest, items);
+    armor.total_weight += slotWeight(equip.legs, items);
+    armor.total_weight += slotWeight(equip.feet, items);
+    armor.total_weight += slotWeight(equip.accessory_1, items);
+    armor.total_weight += slotWeight(equip.accessory_2, items);
+
+    // Compute equip load ratio and tier.
+    float capacity = f.equip_load.base_capacity;
+    if (reg.all_of<Stats>(entity))
+    {
+        const auto& s = reg.get<Stats>(entity);
+        capacity += static_cast<float>(s.str) * f.equip_load.str_scale +
+                    static_cast<float>(s.end) * f.equip_load.end_scale;
+    }
+    armor.equip_load_ratio = (capacity > 0.0f) ? (armor.total_weight / capacity) : 1.0f;
+
+    if (armor.equip_load_ratio > f.equip_load.heavy_threshold)
+        armor.load_tier = 3; // overloaded
+    else if (armor.equip_load_ratio > f.equip_load.medium_threshold)
+        armor.load_tier = 2; // heavy
+    else if (armor.equip_load_ratio > f.equip_load.light_threshold)
+        armor.load_tier = 1; // medium
+    else
+        armor.load_tier = 0; // light
+
+    // Base poise from stats + flat bonus from equipped armor.
+    if (reg.all_of<Poise>(entity))
+    {
+        float base = 0.0f;
+        if (reg.all_of<Stats>(entity))
+        {
+            const auto& s = reg.get<Stats>(entity);
+            base = std::floor(static_cast<float>(s.end) * f.poise.end_scale +
+                              static_cast<float>(s.str) * f.poise.str_scale);
+        }
+        reg.get<Poise>(entity).max = base + armor.total_poise_bonus;
+    }
+}
+
 // Sync Equipment slot → Weapon/Shield components when the equipped item changes.
 static void syncEquipmentSlots(entt::registry& reg, entt::entity entity, Equipment& equip,
                                const ItemRegistry& items, const FormulaConfig& f)
 {
     if (equip.main_hand.config_path != equip.synced_main_hand)
     {
+        // Save current weapon XP to the old weapon before switching.
+        if (reg.all_of<PlayerActions>(entity) && reg.all_of<WeaponXP>(entity) &&
+            equip.synced_main_hand != "__unsynced__")
+        {
+            const auto& wxp = reg.get<WeaponXP>(entity);
+            if (equip.synced_main_hand.empty())
+            {
+                // Was unarmed -- save to Body.
+                auto* body = reg.try_get<Body>(entity);
+                if (body != nullptr)
+                {
+                    body->unarmed_xp_level = wxp.level;
+                    body->unarmed_xp_current = wxp.current_xp;
+                }
+            }
+            else
+            {
+                // Was a real weapon -- find it in inventory by config_path and save.
+                auto* inv = reg.try_get<Inventory>(entity);
+                if (inv != nullptr)
+                {
+                    for (auto& item : inv->items)
+                    {
+                        if (item.config_path == equip.synced_main_hand)
+                        {
+                            item.weapon_xp_level = wxp.level;
+                            item.weapon_xp_current = wxp.current_xp;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
         equip.synced_main_hand = equip.main_hand.config_path;
         auto& w = reg.get_or_emplace<Weapon>(entity);
 
@@ -124,6 +232,26 @@ static void syncEquipmentSlots(entt::registry& reg, entt::entity entity, Equipme
                 const Body* body = reg.try_get<Body>(entity);
                 weaponFromFist(w, body, f);
             }
+        }
+
+        // Ensure weapon XP tracking is active, then load XP from the new slot.
+        auto& wxp = reg.get_or_emplace<WeaponXP>(entity);
+        if (reg.all_of<PlayerActions>(entity))
+        {
+            if (equip.main_hand.empty())
+            {
+                const auto* body = reg.try_get<Body>(entity);
+                wxp.level = body ? body->unarmed_xp_level : 1;
+                wxp.current_xp = body ? body->unarmed_xp_current : 0.0f;
+            }
+            else
+            {
+                wxp.level = equip.main_hand.weapon_xp_level;
+                wxp.current_xp = equip.main_hand.weapon_xp_current;
+            }
+            wxp.xp_to_next = f.weapon_xp.base_xp *
+                             std::pow(static_cast<float>(wxp.level),
+                                      f.weapon_xp.exponent);
         }
     }
 
@@ -164,5 +292,8 @@ void EquipmentSystem::update(EntityManager& em)
     }
 
     for (auto [entity, equip] : reg.view<Equipment>().each())
+    {
         syncEquipmentSlots(reg, entity, equip, items, f);
+        recomputeArmorStats(reg, entity, equip, items, f);
+    }
 }

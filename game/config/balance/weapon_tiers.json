@@ -1,0 +1,6 @@
+{
+    "dagger":      { "damage_per_level": 0.8,  "scaling_per_level": 0.02,  "xp_rate": 1.0 },
+    "short_sword": { "damage_per_level": 1.0,  "scaling_per_level": 0.025, "xp_rate": 0.7 },
+    "greatsword":  { "damage_per_level": 1.5,  "scaling_per_level": 0.035, "xp_rate": 1.0 },
+    "club":        { "damage_per_level": 1.5,  "scaling_per_level": 0.015, "xp_rate": 1.0 }
+}

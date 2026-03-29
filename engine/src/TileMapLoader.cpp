@@ -77,6 +77,9 @@ Room TileMapLoader::parseRoom(const std::string& text, const std::string& name)
             case 'R':
                 spawn = 'R';
                 break;
+            case 'P':
+                spawn = 'P';
+                break;
             default:
                 break; // '.' and ' ' -> walkable tile
             }
@@ -357,9 +360,12 @@ void TileMapLoader::placeRooms(TileMap& map, const std::vector<Room>& rooms, std
 }
 
 // ---------------------------------------------------------------------------
-// connectRooms -- connects adjacent room centers with 3-tile-wide L-corridors.
+// connectRooms -- connects adjacent room centers with L-shaped floor corridors.
+// corridor_half controls width: ±corridor_half tiles from center.
+// e.g. corridor_half=2 → 5 tiles wide (160px).
 // ---------------------------------------------------------------------------
-void TileMapLoader::connectRooms(TileMap& map, const std::vector<std::pair<int, int>>& centers)
+void TileMapLoader::connectRooms(TileMap& map, const std::vector<std::pair<int, int>>& centers,
+                                 int corridor_half)
 {
     if (centers.size() < 2)
         return;
@@ -376,7 +382,7 @@ void TileMapLoader::connectRooms(TileMap& map, const std::vector<std::pair<int, 
         const int c1 = std::max(col_from, col_to);
         for (int c = c0; c <= c1; ++c)
         {
-            for (int dr = -1; dr <= 1; ++dr)
+            for (int dr = -corridor_half; dr <= corridor_half; ++dr)
             {
                 const int r = row + dr;
                 if (!map.in_bounds(c, r))
@@ -397,7 +403,7 @@ void TileMapLoader::connectRooms(TileMap& map, const std::vector<std::pair<int, 
         const int r1 = std::max(row_from, row_to);
         for (int r = r0; r <= r1; ++r)
         {
-            for (int dc = -1; dc <= 1; ++dc)
+            for (int dc = -corridor_half; dc <= corridor_half; ++dc)
             {
                 const int c = col + dc;
                 if (!map.in_bounds(c, r))
@@ -427,7 +433,8 @@ void TileMapLoader::connectRooms(TileMap& map, const std::vector<std::pair<int, 
 // ---------------------------------------------------------------------------
 std::pair<float, float> TileMapLoader::generate(EntityManager& em,
                                                 const std::string& tilemapConfigPath,
-                                                const std::string& roomsDir, uint32_t seed)
+                                                const std::string& roomsDir, uint32_t seed,
+                                                int level)
 {
     // --- Seed -----------------------------------------------------------
     if (seed == 0)
@@ -441,9 +448,11 @@ std::pair<float, float> TileMapLoader::generate(EntityManager& em,
     TileConfig config = loadConfig(tilemapConfigPath);
 
     // Read map dimensions from JSON; fall back to 80x60.
+    // Grid scales with 'level': base + level * growth, clamped to max.
     int map_width = 80;
     int map_height = 60;
     int room_count = 6;
+    int corridor_half = 2;
     {
         std::ifstream f(tilemapConfigPath);
         if (f.is_open())
@@ -451,9 +460,17 @@ std::pair<float, float> TileMapLoader::generate(EntityManager& em,
             try
             {
                 const json j = json::parse(f);
-                map_width = j.value("width", map_width);
-                map_height = j.value("height", map_height);
+                const int base_w = j.value("base_width", j.value("width", map_width));
+                const int base_h = j.value("base_height", j.value("height", map_height));
+                const int grow_w = j.value("width_growth", 0);
+                const int grow_h = j.value("height_growth", 0);
+                const int max_w = j.value("max_width", 999);
+                const int max_h = j.value("max_height", 999);
+
+                map_width = std::min(base_w + level * grow_w, max_w);
+                map_height = std::min(base_h + level * grow_h, max_h);
                 room_count = j.value("room_count", room_count);
+                corridor_half = j.value("corridor_half", corridor_half);
             }
             catch (...)
             {
@@ -462,7 +479,15 @@ std::pair<float, float> TileMapLoader::generate(EntityManager& em,
         }
     }
 
-    std::vector<Room> roomList = loadRooms(roomsDir);
+    // Cache room templates -- .room files never change at runtime.
+    static std::string sCachedDir;
+    static std::vector<Room> sCachedRooms;
+    if (sCachedDir != roomsDir || sCachedRooms.empty())
+    {
+        sCachedDir = roomsDir;
+        sCachedRooms = loadRooms(roomsDir);
+    }
+    const std::vector<Room>& roomList = sCachedRooms;
 
     // --- Build TileMap (all Solid initially) -----------------------------
     TileMap map;
@@ -475,7 +500,7 @@ std::pair<float, float> TileMapLoader::generate(EntityManager& em,
     // --- Place rooms + connect ------------------------------------------
     std::vector<std::pair<int, int>> centers;
     placeRooms(map, roomList, rng, room_count, centers);
-    connectRooms(map, centers);
+    connectRooms(map, centers, corridor_half);
 
     // --- Write to EntityManager -----------------------------------------
     em.tile_map = std::move(map);

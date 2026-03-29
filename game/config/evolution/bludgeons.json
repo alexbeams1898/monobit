@@ -1,0 +1,27 @@
+{
+    "family": "bludgeons",
+    "nodes": {
+        "bone_club": {
+            "weapon": "config/items/weapons/bone_club.json",
+            "evolutions": [
+                { "target": "mace", "min_level": 5, "material": "config/items/materials/bone_shard.json", "material_qty": 3 }
+            ]
+        },
+        "mace": {
+            "weapon": "config/items/weapons/mace.json",
+            "evolutions": [
+                { "target": "warhammer", "min_level": 10, "material": "config/items/materials/bone_shard.json", "material_qty": 5 }
+            ]
+        },
+        "warhammer": {
+            "weapon": "config/items/weapons/warhammer.json",
+            "evolutions": [
+                { "target": "great_maul", "min_level": 15, "material": "config/items/materials/bone_shard.json", "material_qty": 8 }
+            ]
+        },
+        "great_maul": {
+            "weapon": "config/items/weapons/great_maul.json",
+            "evolutions": []
+        }
+    }
+}

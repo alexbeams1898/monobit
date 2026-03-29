@@ -87,6 +87,7 @@ SaveData load(const std::string& path)
         {
             PlayerProfile p;
             p.name = c.value("name", std::string{});
+            p.money = c.value("money", 0);
             if (!p.name.empty())
                 data.characters.push_back(std::move(p));
         }
@@ -97,6 +98,10 @@ SaveData load(const std::string& path)
         for (const auto& r : j["runs"])
             data.runs.push_back(runFromJson(r));
     }
+
+    // Migrate old global money into first character if present.
+    if (j.contains("money") && !data.characters.empty())
+        data.characters[0].money += j.value("money", 0);
 
     std::cout << "[SaveManager] Loaded " << data.characters.size() << " characters, "
               << data.runs.size() << " runs from " << path << "\n";
@@ -123,7 +128,7 @@ bool save(const SaveData& data, const std::string& path)
 
     j["characters"] = json::array();
     for (const auto& c : data.characters)
-        j["characters"].push_back({{"name", c.name}});
+        j["characters"].push_back({{"name", c.name}, {"money", c.money}});
 
     j["runs"] = json::array();
     for (const auto& r : data.runs)
@@ -148,6 +153,20 @@ void addCharacter(SaveData& data, const std::string& name)
     data.characters.push_back(std::move(p));
 }
 
+void deleteCharacter(SaveData& data, const std::string& name)
+{
+    auto& chars = data.characters;
+    chars.erase(std::remove_if(chars.begin(), chars.end(),
+                               [&](const PlayerProfile& p) { return p.name == name; }),
+                chars.end());
+
+    auto& runs = data.runs;
+    runs.erase(
+        std::remove_if(runs.begin(), runs.end(),
+                       [&](const Run& r) { return r.character_name == name; }),
+        runs.end());
+}
+
 void recordRun(SaveData& data, const Run& run)
 {
     data.runs.push_back(run);
@@ -168,11 +187,13 @@ int computeScore(const RunStats& stats, const ScoringConfig& cfg, bool escaped)
     float score = 0.0f;
     score += static_cast<float>(stats.kills) * cfg.kill_weight;
     score += static_cast<float>(stats.wave) * cfg.wave_weight;
-    score += stats.time * cfg.time_bonus_weight;
     score += static_cast<float>(stats.xp_earned) * cfg.xp_weight;
     score += static_cast<float>(stats.money) * cfg.money_weight;
+    score -= stats.time * cfg.time_penalty_weight;
+    if (score < 0.0f)
+        score = 0.0f;
     if (escaped)
-        score += cfg.escape_bonus;
+        score *= cfg.escape_multiplier;
     return static_cast<int>(score);
 }
 

@@ -1,0 +1,15 @@
+{
+    "name": "Bone Shield",
+    "description": "A broad shield of layered bone. Blocks well but heavy.",
+    "icon": "assets/sprites/icons/bone_shield.png",
+    "category": "armor",
+    "rarity": "common",
+    "armor_slot": "chest",
+    "defense_bonus": 0.0,
+    "poise_bonus": 0.0,
+    "max_guard": 60.0,
+    "parry_window": 0.15,
+    "weight": 3.0,
+    "max_durability": 90.0,
+    "stackable": false
+}

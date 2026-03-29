@@ -25,15 +25,15 @@ void FlowFieldSystem::update(EntityManager& em, float targetX, float targetY)
     }
     ++ff.stable_count;
 
-    // Density binning -- count moving NavAgent entities per cell.
+    // Density binning -- count all NavAgent entities per cell.
+    // Stopped entities are included so other systems (orbit gating,
+    // crowd repulsion) can detect stacking even at zero velocity.
     for (auto& row : ff.density)
         for (auto& cell : row)
             cell = 0;
 
-    for (auto [e, nav, t, vel] : em.registry().view<NavAgent, Transform, Velocity>().each())
+    for (auto [e, nav, t] : em.registry().view<NavAgent, Transform>().each())
     {
-        if (vel.dx * vel.dx + vel.dy * vel.dy < 1.0f)
-            continue;
         const int ec = static_cast<int>(t.x / FlowField::CELL_SIZE);
         const int er = static_cast<int>(t.y / FlowField::CELL_SIZE);
         if (ec >= 0 && ec < FlowField::COLS && er >= 0 && er < FlowField::ROWS)

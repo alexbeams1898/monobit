@@ -1,0 +1,8 @@
+{
+    "name": "Shiv",
+    "inputs": [
+        { "item": "config/items/materials/bone_shard.json", "quantity": 3 }
+    ],
+    "output": "config/items/weapons/shiv.json",
+    "output_quantity": 1
+}

@@ -13,7 +13,7 @@
 static FontHandle sBodyFont = INVALID_FONT;
 static FontHandle sTitleFont = INVALID_FONT;
 static FontHandle sBigTitleFont = INVALID_FONT;
-static int sSel = 0;
+static int sSel = -1;
 
 static constexpr Color OVERLAY{0.0f, 0.0f, 0.0f, 0.92f};
 static constexpr Color TITLE_COLOR{0.9f, 0.78f, 0.45f, 1.0f};
@@ -45,7 +45,7 @@ void MainMenuScreen::init(FontHandle body_font, FontHandle title_font, FontHandl
 
 void MainMenuScreen::reset()
 {
-    sSel = 0;
+    sSel = -1;
 }
 
 MainMenuScreen::Action MainMenuScreen::render(EntityManager& em, int window_w, int window_h)
@@ -71,14 +71,15 @@ MainMenuScreen::Action MainMenuScreen::render(EntityManager& em, int window_w, i
     const char* const* labels = hasChars ? kLabelsWithLoad : kLabelsNoLoad;
     const int btnCount = hasChars ? 4 : 3;
 
-    // Keyboard nav.
+    // Keyboard nav -- first press snaps to item 0 if nothing selected.
     if (keyPressed(em, SDL_SCANCODE_UP) || keyPressed(em, SDL_SCANCODE_W))
-        sSel = (sSel - 1 + btnCount) % btnCount;
+        sSel = sSel < 0 ? 0 : (sSel - 1 + btnCount) % btnCount;
     if (keyPressed(em, SDL_SCANCODE_DOWN) || keyPressed(em, SDL_SCANCODE_S))
-        sSel = (sSel + 1) % btnCount;
+        sSel = sSel < 0 ? 0 : (sSel + 1) % btnCount;
 
     Action result = Action::None;
-    if (keyPressed(em, SDL_SCANCODE_RETURN) || keyPressed(em, SDL_SCANCODE_KP_ENTER))
+    if (sSel >= 0 &&
+        (keyPressed(em, SDL_SCANCODE_RETURN) || keyPressed(em, SDL_SCANCODE_KP_ENTER)))
     {
         result = actions[sSel];
         if (result != Action::None && !snd.ui_click.path.empty())
@@ -109,6 +110,7 @@ MainMenuScreen::Action MainMenuScreen::render(EntityManager& em, int window_w, i
         static_cast<float>(btnCount) * btn_h + static_cast<float>(btnCount - 1) * btn_gap;
     float by = (wh - total_h) * 0.5f + wh * 0.05f;
 
+    bool anyHovered = false;
     for (int i = 0; i < btnCount; ++i)
     {
         const std::string label = labels[i];
@@ -118,7 +120,10 @@ MainMenuScreen::Action MainMenuScreen::render(EntityManager& em, int window_w, i
 
         const bool hovered = (mx >= bx && mx < bx + bw && my >= by && my < by + btn_h);
         if (hovered)
+        {
             sSel = i;
+            anyHovered = true;
+        }
 
         const bool selected = (i == sSel);
         UIRenderer::drawRect(bx, by, bw, btn_h, selected ? BTN_BG_HL : BTN_BG);
@@ -133,6 +138,14 @@ MainMenuScreen::Action MainMenuScreen::render(EntityManager& em, int window_w, i
         }
 
         by += btn_h + btn_gap;
+    }
+    if (!anyHovered && !em.key_down_events.empty())
+    {
+        // Keyboard took over -- keep sSel.
+    }
+    else if (!anyHovered)
+    {
+        sSel = -1;
     }
 
     return result;

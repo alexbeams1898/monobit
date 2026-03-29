@@ -1,4 +1,4 @@
-#include "CraftingOps.h"
+#include "ops/CraftingOps.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
 

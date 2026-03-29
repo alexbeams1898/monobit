@@ -1,6 +1,6 @@
 #include "systems/PickupSystem.h"
 
-#include "InventoryOps.h"
+#include "ops/InventoryOps.h"
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
@@ -72,13 +72,25 @@ static void collectPickup(EntityManager& em, entt::entity playerEnt, entt::entit
         if (!InventoryOps::addItem(inv, pickup.item, items))
             return; // Inventory full -- leave pickup in world.
 
+        // Discovery check: mark as newly discovered if first time picking up.
+        auto& compendium = reg.ctx().get<Compendium>();
+        const bool isNew = compendium.discover(pickup.item.config_path);
+        if (isNew)
+        {
+            auto& last = inv.items.back();
+            last.newly_discovered = true;
+        }
+
         const std::string itemName = (def != nullptr) ? def->name : "item";
         const Rarity rarity = (def != nullptr) ? def->rarity : Rarity::Common;
         playPickupSfx(snd, rarity, pickup.item.quality);
+        const std::string newTag = isNew ? " (NEW!)" : "";
+        const Color notifColor = isNew ? Color{0.95f, 0.9f, 0.4f, 1.0f}
+                                       : Color{0.8f, 0.8f, 0.8f, 1.0f};
         NotificationSystem::push("+" + std::to_string(pickup.item.quantity) + " " + itemName +
                                      " (" + rarityName(rarity) + ", " +
-                                     qualityName(pickup.item.quality) + ")",
-                                 {0.8f, 0.8f, 0.8f, 1.0f});
+                                     qualityName(pickup.item.quality) + ")" + newTag,
+                                 notifColor);
         TracyMessageL("ItemPickedUp");
         em.destroy(pickupEnt);
         return;

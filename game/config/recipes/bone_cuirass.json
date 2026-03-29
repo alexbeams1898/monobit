@@ -1,0 +1,8 @@
+{
+    "name": "Bone Cuirass",
+    "inputs": [
+        { "item": "config/items/materials/bone_shard.json", "quantity": 5 }
+    ],
+    "output": "config/items/armor/bone_cuirass.json",
+    "output_quantity": 1
+}

@@ -16,6 +16,9 @@ bool save(const SaveData& data, const std::string& path = "saves/save.json");
 // Add a character to the save data.
 void addCharacter(SaveData& data, const std::string& name);
 
+// Remove a character and all their runs from save data.
+void deleteCharacter(SaveData& data, const std::string& name);
+
 // Record a completed run. Inserts into sorted runs list.
 void recordRun(SaveData& data, const Run& run);
 

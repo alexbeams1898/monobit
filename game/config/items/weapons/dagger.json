@@ -1,0 +1,17 @@
+{
+    "name": "Dagger",
+    "description": "A lightweight blade that favors quick, precise strikes.",
+    "icon": "assets/sprites/icons/dagger.png",
+    "category": "weapon",
+    "rarity": "uncommon",
+    "base_damage": 14.0,
+    "weight": 0.8,
+    "str_scaling": 0.4,
+    "dex_scaling": 1.2,
+    "str_requirement": 2,
+    "dex_requirement": 2,
+    "two_handed": false,
+    "weapon_tier": "dagger",
+    "max_durability": 85.0,
+    "stackable": false
+}

@@ -22,8 +22,8 @@ static AnimState resolveStandaloneState(entt::registry& reg, entt::entity entity
     return AnimState::Idle;
 }
 
-// Lower body (direction_from_facing=false): Dead > Hit > Walk > Idle  (no Attack).
-// Upper body (direction_from_facing=true):  Dead > Hit > Attack > Idle (no Walk).
+// Upper body (direction_from_facing=true):  Dead > Hit > Attack > Idle.
+// Lower body (direction_from_facing=false): Dead > Hit > Attack > Walk > Idle.
 static AnimState resolveBodyPartState(entt::registry& reg, entt::entity parent,
                                       bool direction_from_facing)
 {
@@ -39,6 +39,8 @@ static AnimState resolveBodyPartState(entt::registry& reg, entt::entity parent,
     }
     else
     {
+        if (reg.all_of<AttackLocked>(parent))
+            return AnimState::Attack;
         const auto* vel = reg.try_get<Velocity>(parent);
         const float speedSq = vel ? (vel->dx * vel->dx + vel->dy * vel->dy) : 0.0f;
         if (speedSq > 1.0f)

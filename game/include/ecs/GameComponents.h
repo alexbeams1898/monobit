@@ -28,7 +28,6 @@ struct PlayerActions
     bool block_held = false;
     bool block_just_pressed = false;
     bool auto_toggle_just_pressed = false;
-    bool start_wave = false;
     bool craft = false;
     bool cycle_weapon = false;
     bool interact = false;
@@ -119,6 +118,10 @@ struct Body
     float unarmed_weight = 0.5f;
     float unarmed_str_scaling = 1.0f;
     float unarmed_dex_scaling = 0.75f;
+
+    // Unarmed fighting XP (persists across weapon switches).
+    int unarmed_xp_level = 1;
+    float unarmed_xp_current = 0.0f;
 };
 
 // Experience -- tracks level progression and unspent stat allocation points.
@@ -145,12 +148,32 @@ struct Weapon
     float skill_cooldown_remaining = 0.0f;
 };
 
+// WeaponXP -- tracks weapon leveling through combat use.
+// Attached to entities whose equipped weapon is earning XP.
+struct WeaponXP
+{
+    int level = 1;
+    float current_xp = 0.0f;
+    float xp_to_next = 50.0f;
+};
+
 // Shield -- one-handed shield equipped in the off-hand slot.
 struct Shield
 {
     float guard_health = 100.0f;
     float max_guard = 100.0f;
     bool blocking = false;
+};
+
+// ArmorStats -- aggregated defensive stats from all equipped armor pieces.
+// Computed by EquipmentSystem each time equipment changes.
+struct ArmorStats
+{
+    float total_defense = 0.0f;
+    float total_poise_bonus = 0.0f;
+    float total_weight = 0.0f;
+    float equip_load_ratio = 0.0f;
+    int load_tier = 0; // 0=light, 1=medium, 2=heavy, 3=overloaded
 };
 
 // Parrying -- brief invulnerability + stagger window opened by a timed block.
@@ -210,13 +233,31 @@ struct AIController
     State state = State::Idle;
     float turn_speed = 8.0f;
     float aggro_radius = 0.0f;
+    float deaggro_radius = 0.0f; // Chase -> Idle leash (0 = never deaggro)
     float separation_strength = 1.0f;
     float arrival_radius = 0.0f;
     float attack_radius = 0.0f;
+    float speed_multiplier = 1.0f;
     int tier = 1;
     float sprint_multiplier = 0.0f;
     float sprint_threshold = 0.0f;
+    float orbit_speed = 0.5f;  // slot rotation speed multiplier (0=stationary, 1=base rate)
+
+    // Assigned angular position around the player for attack positioning.
+    // NO_SLOT sentinel is outside atan2's [-pi, pi] range so negative angles
+    // (enemy north of player) don't collide with the "unassigned" check.
+    static constexpr float NO_SLOT = -100.0f;
+    float slot_angle = NO_SLOT;
     bool sprint = false;
+    float token_cooldown = 0.0f; // time until entity can claim an attack token
+};
+
+// Limits concurrent enemy attackers. Stored in entt::registry::ctx().
+// Holders vector is at most max_tokens elements (default 2).
+struct AttackTokenPool
+{
+    int max_tokens = 2;
+    std::vector<entt::entity> holders;
 };
 
 // Essence -- per-stat natural talent (0-100 scale).
@@ -252,7 +293,8 @@ enum class ItemCategory : uint8_t
     Consumable,
     KeyItem,
     Material,
-    Money
+    Money,
+    Accessory
 };
 
 enum class QualityTier : uint8_t
@@ -291,8 +333,11 @@ struct ItemInstance
     std::string config_path;
     QualityTier quality = QualityTier::Common;
     float durability = 100.0f;
-    int upgrade_level = 0;
     int quantity = 1; // >1 only for stackable items
+    float evolution_bonus = 0.0f; // carry-forward stat bonus from prior evolution
+    bool newly_discovered = false; // first-time pickup; UI shows "!" badge
+    int weapon_xp_level = 1;
+    float weapon_xp_current = 0.0f;
     bool empty() const
     {
         return config_path.empty();
@@ -335,8 +380,9 @@ struct Equipment
     int main_hand_slot = -1;
 
     // EquipmentSystem compares these to detect slot changes.
-    std::string synced_main_hand;
-    std::string synced_off_hand;
+    // Sentinel ensures the first update always triggers sync (even for fists).
+    std::string synced_main_hand = "__unsynced__";
+    std::string synced_off_hand = "__unsynced__";
 };
 
 // Wallet -- persistent money balance for the player.
@@ -350,4 +396,45 @@ struct Wallet
 struct InteractTarget
 {
     entt::entity entity = entt::null;
+};
+
+// HitSound -- per-entity sound played when the entity takes damage.
+// Overrides the global SoundConfig::hit for this entity.
+struct HitSound
+{
+    std::string path;
+    float volume = 0.5f;
+    float min_pitch = 0.9f;
+    float max_pitch = 1.1f;
+};
+
+// Ladder -- spawns after a wave clears. Player walks to it and interacts to descend.
+struct Ladder
+{
+    float radius = 48.0f;
+    float spawn_timer = 0.0f;
+    float spawn_duration = 0.5f;
+    bool spawning = true;
+};
+
+// AmbientSound -- plays random sounds from a pool at random intervals.
+// Mode enum allows future playback algorithms without structural changes.
+struct AmbientSound
+{
+    enum class Mode
+    {
+        RandomInterval
+    };
+
+    std::vector<std::string> paths;
+    float volume = 0.3f;
+    float min_interval = 3.0f;
+    float max_interval = 8.0f;
+    float max_distance = 400.0f;
+    float min_pitch = 0.7f;
+    float max_pitch = 0.9f;
+    Mode mode = Mode::RandomInterval;
+    float timer = 0.0f;
+    int shuffle_index = 0;
+    std::vector<int> shuffle_order;
 };

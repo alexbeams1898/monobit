@@ -490,6 +490,23 @@ void CombatSystem::update(EntityManager& em, double dt)
                     ai.state != AIController::State::Attack)
                     continue;
 
+                // Token gate: Attack-state enemies need a token to swing.
+                if (ai.state == AIController::State::Attack)
+                {
+                    const auto& pool = em.registry().ctx().get<AttackTokenPool>();
+                    bool hasToken = false;
+                    for (auto h : pool.holders)
+                    {
+                        if (h == entity)
+                        {
+                            hasToken = true;
+                            break;
+                        }
+                    }
+                    if (!hasToken)
+                        continue;
+                }
+
                 // Stamina gate — can't swing without enough stamina.
                 const float swingCost =
                     f.stamina.base_swing_cost + weapon.weight * f.stamina.swing_effort;
@@ -519,6 +536,10 @@ void CombatSystem::update(EntityManager& em, double dt)
                     em.registry().all_of<Stats>(entity)
                         ? computeSwingCooldown(weapon, em.registry().get<Stats>(entity), f)
                         : 1.0f;
+
+                // Token holder keeps its token through swing cooldown so it stays
+                // at the attack ring and swings again when ready. Token is only
+                // freed on death or state change (manageAttackTokens cleanup).
 
                 // Update facing direction toward player.
                 if (em.registry().all_of<FacingDirection>(entity))

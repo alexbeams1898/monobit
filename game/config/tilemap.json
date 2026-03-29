@@ -1,7 +1,12 @@
 {
-    "width": 160,
-    "height": 120,
+    "base_width": 80,
+    "base_height": 60,
+    "width_growth": 2,
+    "height_growth": 2,
+    "max_width": 160,
+    "max_height": 120,
     "room_count": 6,
+    "corridor_half": 2,
     "tileset": "assets/tiles/dungeon_tiles.png",
     "tiles": {
         "0": { "sprite": "", "walkable": true,  "uv_col": 0, "uv_row": 0 },

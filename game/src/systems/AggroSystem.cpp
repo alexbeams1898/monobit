@@ -4,7 +4,21 @@
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 
+#include <cstdio>
+#include <cstring>
 #include <tracy/Tracy.hpp>
+
+static void tracyEntityMsg(const char* event, entt::entity entity, float dist = -1.0f)
+{
+    static char buf[64]; // NOLINT(concurrency-mt-unsafe) -- single-threaded game loop
+    if (dist >= 0.0f)
+        std::snprintf(buf, sizeof(buf), "%s e%u d=%.0f",
+                      event, static_cast<unsigned>(entt::to_integral(entity)), dist);
+    else
+        std::snprintf(buf, sizeof(buf), "%s e%u",
+                      event, static_cast<unsigned>(entt::to_integral(entity)));
+    TracyMessage(buf, std::strlen(buf));
+}
 
 static void updateSprintFlag(AIController& ai, float distSq)
 {
@@ -63,18 +77,28 @@ void AggroSystem::update(EntityManager& em)
                  em.tile_map.hasLineOfSight(transform.x, transform.y, px, py)))
             {
                 ai.state = AIController::State::Chase;
-                TracyMessageL("EnemyAggro");
+                tracyEntityMsg("EnemyAggro", entity, std::sqrt(distSq));
             }
         }
-        else if (ai.state == AIController::State::Chase && ai.attack_radius > 0.0f)
+        else if (ai.state == AIController::State::Chase)
         {
+            // Leash: give up chase if player is too far away.
+            if (ai.deaggro_radius > 0.0f &&
+                distSq > ai.deaggro_radius * ai.deaggro_radius)
+            {
+                ai.state = AIController::State::Idle;
+                tracyEntityMsg("EnemyDeaggro", entity, std::sqrt(distSq));
+                continue;
+            }
+
             // Enter Attack when within arrival radius AND line of sight is clear.
-            if (ai.arrival_radius > 0.0f && distSq <= ai.arrival_radius * ai.arrival_radius &&
+            if (ai.attack_radius > 0.0f && ai.arrival_radius > 0.0f &&
+                distSq <= ai.arrival_radius * ai.arrival_radius &&
                 (!em.tile_map.valid() ||
                  em.tile_map.hasLineOfSight(transform.x, transform.y, px, py)))
             {
                 ai.state = AIController::State::Attack;
-                TracyMessageL("EnemyAttack");
+                tracyEntityMsg("EnemyAttack", entity, std::sqrt(distSq));
             }
         }
         else if (ai.state == AIController::State::Attack)
@@ -86,7 +110,10 @@ void AggroSystem::update(EntityManager& em)
                 ai.arrival_radius > 0.0f ? ai.arrival_radius : ai.attack_radius * 2.0f;
             const float hysteresis = breakRadius * 1.2f;
             if (distSq > hysteresis * hysteresis)
+            {
                 ai.state = AIController::State::Chase;
+                tracyEntityMsg("EnemyBreakOff", entity, std::sqrt(distSq));
+            }
         }
 
         updateSprintFlag(ai, distSq);

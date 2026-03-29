@@ -1,0 +1,17 @@
+{
+    "name": "Great Maul",
+    "description": "A colossal stone-headed maul. Only the strongest can wield it, but nothing survives the impact.",
+    "icon": "assets/sprites/icons/great_maul.png",
+    "category": "weapon",
+    "rarity": "epic",
+    "base_damage": 42.0,
+    "weight": 6.0,
+    "str_scaling": 1.5,
+    "dex_scaling": 0.1,
+    "str_requirement": 16,
+    "dex_requirement": 4,
+    "two_handed": true,
+    "weapon_tier": "club",
+    "max_durability": 140.0,
+    "stackable": false
+}

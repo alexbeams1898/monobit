@@ -3,6 +3,7 @@
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
+#include "systems/WeaponXPSystem.h"
 
 #include <algorithm>
 #include <cmath>
@@ -31,7 +32,7 @@ static int computeXpDrop(int base_xp, int enemy_level, int player_level, int tot
 static QualityTier rollQuality(int lck, int total_essence, const FormulaConfig& f,
                                std::mt19937& rng)
 {
-    std::uniform_int_distribution<int> dist(0, 100);
+    std::uniform_int_distribution<int> dist(0, 50);
     const float score = static_cast<float>(dist(rng)) +
                         static_cast<float>(lck) * f.luck.quality_scale +
                         static_cast<float>(total_essence) * f.luck.essence_quality_scale;
@@ -303,6 +304,25 @@ static void processEnemyDeath(EntityManager& em, entt::entity entity, const Loot
             reg.get<Experience>(pe).current_xp += xpValue;
             break;
         }
+    }
+
+    // Grant weapon XP on kill.
+    {
+        int enemyHp = 0;
+        float enemyDmg = 0.0f;
+        int enemyStats = 0;
+        if (reg.all_of<Health>(entity))
+            enemyHp = reg.get<Health>(entity).max;
+        if (reg.all_of<Weapon>(entity))
+            enemyDmg = reg.get<Weapon>(entity).base_damage;
+        if (reg.all_of<Stats>(entity))
+        {
+            const auto& s = reg.get<Stats>(entity);
+            enemyStats = s.str + s.dex + s.end + s.lck;
+        }
+        const float power =
+            WeaponXPSystem::computeEnemyPower(loot.level, enemyHp, enemyDmg, enemyStats, f);
+        WeaponXPSystem::grantXP(em, power, f.weapon_xp.kill_multiplier);
     }
 
     // Accumulate run stats.

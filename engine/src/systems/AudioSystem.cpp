@@ -156,6 +156,7 @@ void AudioSystem::playMusic(const std::string& path, float volume, bool loop)
     ma_sound_set_looping(&sMusicSound, loop ? MA_TRUE : MA_FALSE);
     sMusicRequestedVolume = volume;
     ma_sound_set_volume(&sMusicSound, sMusicMuted ? 0.0f : volume);
+    ma_sound_seek_to_pcm_frame(&sMusicSound, 0);
     ma_sound_start(&sMusicSound);
     sMusicLoaded = true;
 }

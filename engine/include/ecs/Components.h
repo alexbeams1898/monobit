@@ -98,8 +98,13 @@ struct FacingDirection
     float render_dy = 0.0f;
 
     // Set by game systems (MovementSystem for player, AggroSystem for AI).
-    // Read by AnimationSystem for walk animation speed-up.
+    // Read by AnimationSystem for walk animation speed-up / reverse playback.
     bool sprinting = false;
+    bool backpedaling = false;
+
+    // Walk animation frame duration multiplier. < 1.0 = faster, > 1.0 = slower.
+    // Set by game MovementSystem based on sprint/backpedal state.
+    float walk_anim_speed = 1.0f;
 };
 
 // SolidColor -- overrides sprite rendering with a flat colored square.
@@ -198,6 +203,33 @@ struct BodyPart
 struct NavAgent
 {
     float separation_strength = 1.0f;
+    // Set by ChaseSystem each frame: 1.0 = full speed, 0.0 = arrived at target.
+    // SteeringSystem multiplies separation by this to prevent crowd repulsion
+    // from dominating when the entity is slowing down for arrival.
+    float arrival_scale = 1.0f;
+};
+
+// CameraPan -- drives a smooth camera movement to a target and back.
+// Emplaced on a Camera entity to trigger a cutscene pan. CameraPanSystem
+// owns Camera.x/y while this is active; CameraSystem skips the entity.
+struct CameraPan
+{
+    enum class Phase
+    {
+        ToTarget,
+        Hold,
+        Return,
+        Done
+    };
+
+    float target_x = 0.0f;
+    float target_y = 0.0f;
+    float start_x = 0.0f;
+    float start_y = 0.0f;
+    float progress = 0.0f;
+    float pan_speed = 1.5f;
+    float hold_duration = 0.8f;
+    Phase phase = Phase::ToTarget;
 };
 
 // Particle -- entities that age, shrink, and self-destruct.

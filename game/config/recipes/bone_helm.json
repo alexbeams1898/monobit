@@ -1,0 +1,8 @@
+{
+    "name": "Bone Helm",
+    "inputs": [
+        { "item": "config/items/materials/bone_shard.json", "quantity": 3 }
+    ],
+    "output": "config/items/armor/bone_helm.json",
+    "output_quantity": 1
+}

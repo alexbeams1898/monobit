@@ -1,0 +1,11 @@
+{
+    "name": "Bone Ring",
+    "description": "A ring carved from a single piece of dense bone. Empowers the wearer.",
+    "icon": "assets/sprites/icons/bone_ring.png",
+    "category": "accessory",
+    "rarity": "rare",
+    "str_bonus": 2,
+    "end_bonus": 1,
+    "weight": 0.1,
+    "stackable": false
+}

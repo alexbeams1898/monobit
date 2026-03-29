@@ -1,0 +1,13 @@
+{
+    "name": "Bone Boots",
+    "description": "Lightweight boots reinforced with bone splints.",
+    "icon": "assets/sprites/icons/bone_boots.png",
+    "category": "armor",
+    "rarity": "common",
+    "armor_slot": "feet",
+    "defense_bonus": 2.0,
+    "poise_bonus": 1.0,
+    "weight": 1.0,
+    "max_durability": 70.0,
+    "stackable": false
+}

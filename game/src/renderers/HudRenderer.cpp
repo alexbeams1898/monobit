@@ -1,5 +1,6 @@
 #include "renderers/HudRenderer.h"
 
+#include "renderers/ItemStatRenderer.h"
 #include "UIRenderer.h"
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
@@ -13,6 +14,7 @@
 
 static FontHandle sBodyFont = INVALID_FONT;
 static FontHandle sTitleFont = INVALID_FONT;
+static TextureManager* sTexMgr = nullptr;
 
 // Layout constants.
 static constexpr float BAR_X = 20.0f;
@@ -30,10 +32,14 @@ static constexpr Color STA_BAR{0.15f, 0.55f, 0.50f, 0.9f};
 static constexpr Color STA_BG{0.05f, 0.20f, 0.18f, 0.6f};
 static constexpr Color XP_BAR{0.80f, 0.62f, 0.15f, 0.9f};
 static constexpr Color XP_BG{0.28f, 0.22f, 0.05f, 0.6f};
+static constexpr Color WPN_BAR{0.45f, 0.55f, 0.85f, 0.9f};
+static constexpr Color WPN_BG{0.12f, 0.15f, 0.30f, 0.6f};
 static constexpr Color TEXT_WHITE{1.0f, 1.0f, 1.0f, 1.0f};
 static constexpr Color TEXT_GOLD{1.0f, 0.85f, 0.3f, 1.0f};
 static constexpr Color MONEY_GREEN{0.2f, 0.85f, 0.3f, 1.0f};
 static constexpr Color PANEL_BG{0.0f, 0.0f, 0.0f, 0.4f};
+static constexpr Color SECTION_SEP{0.4f, 0.38f, 0.30f, 0.35f};
+static constexpr Color SECTION_LABEL{0.6f, 0.58f, 0.50f, 0.7f};
 
 static void drawBar(float x, float y, float w, float h, float fill, const Color& fg,
                     const Color& bg)
@@ -63,10 +69,8 @@ static void renderWaveInfo(EntityManager& em, float ww)
         waveStr += "/" + std::to_string(wc.gen.max_waves);
 
     std::string phaseStr;
-    if (ws.phase == WaveState::Phase::Idle || ws.phase == WaveState::Phase::SafeRoom)
-        phaseStr = "Press R to start";
-    else if (ws.phase == WaveState::Phase::GameOver)
-        phaseStr = "GAME OVER - Press R";
+    if (ws.phase == WaveState::Phase::SafeRoom)
+        phaseStr = "Find the ladder";
     else if (ws.phase == WaveState::Phase::Complete)
         phaseStr = "COMPLETE";
 
@@ -118,10 +122,11 @@ static void renderStatusCondition(EntityManager& em, entt::entity entity, float 
     UIRenderer::drawText(sBodyFont, "Status: " + status, x, y, statusColor);
 }
 
-void HudRenderer::init(FontHandle body_font, FontHandle title_font)
+void HudRenderer::init(FontHandle body_font, FontHandle title_font, TextureManager* tm)
 {
     sBodyFont = body_font;
     sTitleFont = title_font;
+    sTexMgr = tm;
 }
 
 void HudRenderer::render(EntityManager& em, int window_w, int window_h)
@@ -139,18 +144,63 @@ void HudRenderer::render(EntityManager& em, int window_w, int window_h)
          em.registry().view<PlayerActions, Health, Stats, Experience>().each())
     {
         const float label_h = FontManager::lineHeight(sBodyFont);
+        const float title_h = FontManager::lineHeight(sTitleFont);
         // Each section = label + 2px + bar.
         const float section_h = label_h + 2.0f + BAR_H;
 
-        // Panel: includes bars + status line + optional allocation hint.
+        // Character name heading: portrait icon scaled to match title font.
+        const float portrait_sz = title_h;
+        const float char_h = title_h + BAR_GAP;
+
+        // Weapon XP bar shown only when a weapon is equipped.
+        const bool has_wpn_xp = em.registry().all_of<WeaponXP, Weapon>(entity);
+        // Weapon section: separator + title-font name + gap + bar section.
+        const float sep_h = has_wpn_xp
+                                ? (1.0f + BAR_GAP + title_h + BAR_GAP + section_h + BAR_GAP)
+                                : 0.0f;
+
+        // Panel: char name + bars + status + optional alloc hint + weapon section.
         const float status_h = label_h + BAR_GAP;
         const float alloc_h = (exp.stat_points > 0) ? (label_h + BAR_GAP) : 0.0f;
-        const float panel_h =
-            PADDING * 2.0f + section_h * 3.0f + BAR_GAP * 2.0f + status_h + alloc_h;
+        const float panel_h = PADDING * 2.0f + char_h + section_h * 3.0f + BAR_GAP * 2.0f +
+                              status_h + alloc_h + sep_h;
         UIRenderer::drawRect(BAR_X - PADDING, BAR_Y_START - PADDING, BAR_W + PADDING * 2.0f,
                              panel_h, PANEL_BG);
 
         float y = BAR_Y_START;
+
+        // Character name heading with player head icon.
+        {
+            const auto& gs = em.registry().ctx().get<GameState>();
+            float name_x = BAR_X;
+            if (sTexMgr != nullptr)
+            {
+                static const std::string headPath = "assets/sprites/player_upper.png";
+                const uint32_t tex = sTexMgr->load(headPath);
+                if (tex != 0)
+                {
+                    int sheetW = 0;
+                    int sheetH = 0;
+                    sTexMgr->getDimensions(headPath, sheetW, sheetH);
+                    // South-facing idle frame 0: crop center of upper half.
+                    const float fw = 64.0f; // frame width
+                    const float fh = 64.0f; // frame height
+                    const float crop = 24.0f; // square crop size in frame px
+                    const float cx = fw * 0.5f;  // frame center x
+                    const float cy = fh * 0.15f; // head near top of frame
+                    const float u0 = (cx - crop * 0.5f) / static_cast<float>(sheetW);
+                    const float v0 = cy / static_cast<float>(sheetH);
+                    const float u1 = (cx + crop * 0.5f) / static_cast<float>(sheetW);
+                    const float v1 = (cy + crop) / static_cast<float>(sheetH);
+                    UIRenderer::drawTexturedRect(BAR_X, y, portrait_sz, portrait_sz,
+                                                 tex, u0, v0, u1, v1,
+                                                 {1.0f, 1.0f, 1.0f, 1.0f});
+                    name_x = BAR_X + portrait_sz + 4.0f;
+                }
+            }
+            UIRenderer::drawText(sTitleFont, gs.active_character, name_x, y, TEXT_GOLD);
+            y += char_h;
+        }
 
         // HP bar.
         {
@@ -163,7 +213,19 @@ void HudRenderer::render(EntityManager& em, int window_w, int window_h)
             y += section_h + BAR_GAP;
         }
 
-        // Stamina bar.
+        // XP bar (next to HP -- both are character progression).
+        {
+            const float fill = exp.xp_to_next > 0 ? static_cast<float>(exp.current_xp) /
+                                                        static_cast<float>(exp.xp_to_next)
+                                                  : 0.0f;
+            const std::string label = "LVL " + std::to_string(exp.level) + "  XP " +
+                                      std::to_string(exp.current_xp) + "/" +
+                                      std::to_string(exp.xp_to_next);
+            drawBarWithLabel(BAR_X, y, BAR_W, BAR_H, fill, XP_BAR, XP_BG, sBodyFont, label);
+            y += section_h + BAR_GAP;
+        }
+
+        // Stamina bar (next to Status -- both are combat condition).
         if (em.registry().all_of<Stamina>(entity))
         {
             const auto& sta = em.registry().get<Stamina>(entity);
@@ -174,16 +236,42 @@ void HudRenderer::render(EntityManager& em, int window_w, int window_h)
             y += section_h + BAR_GAP;
         }
 
-        // XP bar.
+        // Status condition (grouped with player bars).
+        renderStatusCondition(em, entity, BAR_X, y);
+        y += label_h + BAR_GAP;
+
+        // Stat allocation hint (only when points are available).
+        if (exp.stat_points > 0)
         {
-            const float fill = exp.xp_to_next > 0 ? static_cast<float>(exp.current_xp) /
-                                                        static_cast<float>(exp.xp_to_next)
-                                                  : 0.0f;
-            const std::string label = "LVL " + std::to_string(exp.level) + "  XP " +
-                                      std::to_string(exp.current_xp) + "/" +
-                                      std::to_string(exp.xp_to_next);
-            drawBarWithLabel(BAR_X, y, BAR_W, BAR_H, fill, XP_BAR, XP_BG, sBodyFont, label);
-            y += section_h + BAR_GAP;
+            UIRenderer::drawText(sBodyFont, "Level Up! [Tab]", BAR_X, y, TEXT_GOLD);
+            y += label_h + BAR_GAP;
+        }
+
+        // Weapon section -- separated from player stats.
+        if (has_wpn_xp)
+        {
+            UIRenderer::drawRect(BAR_X, y, BAR_W, 1.0f, SECTION_SEP);
+            y += 1.0f + BAR_GAP;
+            const auto& w = em.registry().get<Weapon>(entity);
+            const auto& equip = em.registry().get<Equipment>(entity);
+            const ItemDef* wpnDef = em.registry().ctx().get<ItemRegistry>().find(
+                equip.main_hand.config_path);
+            const float icon_sz = title_h;
+            ItemStatRenderer::drawItemIcon(wpnDef, BAR_X, y, icon_sz);
+            const float name_x = (wpnDef && !wpnDef->icon_path.empty())
+                                     ? BAR_X + icon_sz + 4.0f
+                                     : BAR_X;
+            UIRenderer::drawText(sTitleFont, w.name, name_x, y, TEXT_GOLD);
+            y += title_h + BAR_GAP;
+
+            const auto& wxp = em.registry().get<WeaponXP>(entity);
+            const float fill = wxp.xp_to_next > 0.0f ? wxp.current_xp / wxp.xp_to_next : 0.0f;
+            const int xp_cur = static_cast<int>(wxp.current_xp);
+            const int xp_max = static_cast<int>(wxp.xp_to_next);
+            const std::string label =
+                "Lv" + std::to_string(wxp.level) + "  " + std::to_string(xp_cur) + "/" +
+                std::to_string(xp_max);
+            drawBarWithLabel(BAR_X, y, BAR_W, BAR_H, fill, WPN_BAR, WPN_BG, sBodyFont, label);
         }
 
         // Time (bottom-left, above money).
@@ -214,16 +302,6 @@ void HudRenderer::render(EntityManager& em, int window_w, int window_h)
 
         // Wave info (top-right).
         renderWaveInfo(em, ww);
-
-        // Status condition.
-        renderStatusCondition(em, entity, BAR_X, y);
-        y += label_h + BAR_GAP;
-
-        // Stat allocation hint (only when points are available).
-        if (exp.stat_points > 0)
-        {
-            UIRenderer::drawText(sBodyFont, "Level Up! [Tab]", BAR_X, y, TEXT_GOLD);
-        }
 
         break; // only one player
     }

@@ -5,6 +5,7 @@
 #include "systems/FlowFieldSystem.h"
 #include "test_helpers.h"
 
+#include <algorithm>
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
@@ -424,14 +425,21 @@ TEST_CASE("ChaseSystem no arrival softening when enemy is beyond arrival_radius"
 // Attack state (battle formation) tests
 // ---------------------------------------------------------------------------
 
-TEST_CASE("ChaseSystem Attack state moves enemy toward slot on player ring", "[chase][attack]")
+static bool testHoldsToken(EntityManager& em, entt::entity entity)
 {
-    // Player at (0,0). Enemy in Attack at (200,0), attack_radius=48.
-    // Enemy is directly east of player: slot = (0 + 1*48, 0) = (48,0).
-    // slotDist = 200-48 = 152 >> CELL_SIZE. scale = min(1, 152/48) = 1.
-    // targetDx = -speed. With turn_speed=0: vel.dx = -speed.
+    const auto& pool = em.registry().ctx().get<AttackTokenPool>();
+    return std::find(pool.holders.begin(), pool.holders.end(), entity) != pool.holders.end();
+}
+
+TEST_CASE("ChaseSystem Attack state: non-holder moves toward slot position", "[chase][attack]")
+{
+    // Player at (0,0). Non-holder at (200,0), attack_radius=48, wait_radius=96.
+    // Slot assigned at bearing 0 (east) → slot position = (96, 0).
+    // Enemy moves left from (200,0) toward (96,0).
     EntityManager em;
     emplaceGameConfigs(em);
+    em.registry().ctx().get<AttackTokenPool>().max_tokens = 0;
+    em.registry().ctx().get<FormulaConfig>().combat_ai.wait_radius_mult = 2.0f;
     makePlayer(em, 0.0f, 0.0f);
     auto enemy = makeEnemy(em, 200.0f, 0.0f, 100.0f, AIController::State::Attack);
     em.registry().patch<AIController>(enemy, [](AIController& ai) { ai.attack_radius = 48.0f; });
@@ -439,17 +447,20 @@ TEST_CASE("ChaseSystem Attack state moves enemy toward slot on player ring", "[c
     runAI(em);
 
     const auto& vel = em.registry().get<Velocity>(enemy);
-    REQUIRE(vel.dx < 0.0f); // moving left toward slot
+    REQUIRE(vel.dx < 0.0f); // moving left toward slot at (96, 0)
     REQUIRE(vel.dy == Catch::Approx(0.0f));
 }
 
-TEST_CASE("ChaseSystem Attack state stops when at slot", "[chase][attack]")
+TEST_CASE("ChaseSystem Attack state: non-holder stops when at slot position", "[chase][attack]")
 {
-    // Enemy already on the ring: dist to slot = 0.
+    // Enemy already at the wait ring: dist to slot = 0.
+    // wait_radius = 48 * 2.0 = 96. Enemy at (96, 0).
     EntityManager em;
     emplaceGameConfigs(em);
+    em.registry().ctx().get<AttackTokenPool>().max_tokens = 0;
+    em.registry().ctx().get<FormulaConfig>().combat_ai.wait_radius_mult = 2.0f;
     makePlayer(em, 0.0f, 0.0f);
-    auto enemy = makeEnemy(em, 48.0f, 0.0f, 100.0f, AIController::State::Attack);
+    auto enemy = makeEnemy(em, 96.0f, 0.0f, 100.0f, AIController::State::Attack);
     em.registry().patch<AIController>(enemy, [](AIController& ai) { ai.attack_radius = 48.0f; });
 
     runAI(em);
@@ -459,15 +470,16 @@ TEST_CASE("ChaseSystem Attack state stops when at slot", "[chase][attack]")
     REQUIRE(vel.dy == Catch::Approx(0.0f));
 }
 
-TEST_CASE("ChaseSystem Attack state: enemies from different directions target different slots",
+TEST_CASE("ChaseSystem Attack state: enemies from different bearings target different slots",
           "[chase][attack]")
 {
-    // Two enemies in Attack from opposite sides — they should move toward
-    // opposing points on the ring, not the same spot.
-    // Enemy A east of player (200,0) → slot (48,0) → moves left.
-    // Enemy B south of player (0,200) → slot (0,48) → moves up.
+    // Two non-holders from opposite sides get opposing slot positions.
+    // Enemy A east (200,0) → slot at (96,0) → moves left.
+    // Enemy B south (0,200) → slot at (0,96) → moves up.
     EntityManager em;
     emplaceGameConfigs(em);
+    em.registry().ctx().get<AttackTokenPool>().max_tokens = 0;
+    em.registry().ctx().get<FormulaConfig>().combat_ai.wait_radius_mult = 2.0f;
     makePlayer(em, 0.0f, 0.0f);
     auto enemyA = makeEnemy(em, 200.0f, 0.0f, 100.0f, AIController::State::Attack);
     em.registry().patch<AIController>(enemyA, [](AIController& ai) { ai.attack_radius = 48.0f; });
@@ -478,8 +490,181 @@ TEST_CASE("ChaseSystem Attack state: enemies from different directions target di
 
     const auto& velA = em.registry().get<Velocity>(enemyA);
     const auto& velB = em.registry().get<Velocity>(enemyB);
-    REQUIRE(velA.dx < 0.0f); // A moves left toward (48,0)
+    REQUIRE(velA.dx < 0.0f); // A moves left toward slot at (96, 0)
     REQUIRE(velA.dy == Catch::Approx(0.0f));
     REQUIRE(velB.dx == Catch::Approx(0.0f));
-    REQUIRE(velB.dy < 0.0f); // B moves up toward (0,48)
+    REQUIRE(velB.dy < 0.0f); // B moves up toward slot at (0, 96)
+}
+
+TEST_CASE("ChaseSystem Attack state: slot assigned at current bearing", "[chase][attack]")
+{
+    EntityManager em;
+    emplaceGameConfigs(em);
+    em.registry().ctx().get<AttackTokenPool>().max_tokens = 0;
+    makePlayer(em, 0.0f, 0.0f);
+    // Enemy at (100, 100) → bearing = atan2(100, 100) = pi/4.
+    auto enemy = makeEnemy(em, 100.0f, 100.0f, 100.0f, AIController::State::Attack);
+    em.registry().patch<AIController>(enemy, [](AIController& ai) { ai.attack_radius = 48.0f; });
+
+    runAI(em);
+
+    const float expected = std::atan2(100.0f, 100.0f);
+    REQUIRE(em.registry().get<AIController>(enemy).slot_angle == Catch::Approx(expected));
+}
+
+TEST_CASE("ChaseSystem Attack state: token holder keeps slot for directional approach",
+          "[chase][attack]")
+{
+    EntityManager em;
+    emplaceGameConfigs(em);
+    em.registry().ctx().get<AttackTokenPool>().max_tokens = 1;
+    makePlayer(em, 0.0f, 0.0f);
+    auto enemy = makeEnemy(em, 100.0f, 0.0f, 100.0f, AIController::State::Attack);
+    em.registry().patch<AIController>(enemy, [](AIController& ai) { ai.attack_radius = 48.0f; });
+
+    runAI(em);
+
+    REQUIRE(testHoldsToken(em, enemy));
+    // Token holders keep their slot so they approach from a designated direction.
+    REQUIRE(em.registry().get<AIController>(enemy).slot_angle != AIController::NO_SLOT);
+}
+
+TEST_CASE("ChaseSystem Attack state: slot rotates while waiting", "[chase][attack]")
+{
+    EntityManager em;
+    emplaceGameConfigs(em);
+    em.registry().ctx().get<AttackTokenPool>().max_tokens = 0;
+    em.registry().ctx().get<FormulaConfig>().combat_ai.wait_radius_mult = 2.0f;
+    makePlayer(em, 0.0f, 0.0f);
+    auto enemy = makeEnemy(em, 96.0f, 0.0f, 100.0f, AIController::State::Attack);
+    em.registry().patch<AIController>(enemy,
+                                      [](AIController& ai)
+                                      {
+                                          ai.attack_radius = 48.0f;
+                                          ai.orbit_speed = 1.0f;
+                                      });
+
+    // Frame 1: slot assigned at bearing 0.
+    runAI(em);
+    const float angle1 = em.registry().get<AIController>(enemy).slot_angle;
+    REQUIRE(angle1 == Catch::Approx(0.0f));
+
+    // Frame 2: slot should have rotated.
+    runAI(em);
+    const float angle2 = em.registry().get<AIController>(enemy).slot_angle;
+    REQUIRE(angle2 != Catch::Approx(angle1));
+}
+
+// ---------------------------------------------------------------------------
+// Attack token pool tests
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Attack token pool limits concurrent holders", "[chase][token]")
+{
+    EntityManager em;
+    emplaceGameConfigs(em);
+    em.registry().ctx().get<AttackTokenPool>().max_tokens = 2;
+    makePlayer(em, 0.0f, 0.0f);
+    auto a = makeEnemy(em, 100.0f, 0.0f, 100.0f, AIController::State::Attack);
+    em.registry().patch<AIController>(a, [](AIController& ai) { ai.attack_radius = 48.0f; });
+    auto b = makeEnemy(em, 0.0f, 100.0f, 100.0f, AIController::State::Attack);
+    em.registry().patch<AIController>(b, [](AIController& ai) { ai.attack_radius = 48.0f; });
+    auto c = makeEnemy(em, -100.0f, 0.0f, 100.0f, AIController::State::Attack);
+    em.registry().patch<AIController>(c, [](AIController& ai) { ai.attack_radius = 48.0f; });
+
+    runAI(em);
+
+    int tokenCount = 0;
+    if (testHoldsToken(em, a)) ++tokenCount;
+    if (testHoldsToken(em, b)) ++tokenCount;
+    if (testHoldsToken(em, c)) ++tokenCount;
+    REQUIRE(tokenCount == 2);
+}
+
+TEST_CASE("Attack token nearest enemy gets priority", "[chase][token]")
+{
+    EntityManager em;
+    emplaceGameConfigs(em);
+    em.registry().ctx().get<AttackTokenPool>().max_tokens = 1;
+    makePlayer(em, 0.0f, 0.0f);
+    auto close = makeEnemy(em, 60.0f, 0.0f, 100.0f, AIController::State::Attack);
+    em.registry().patch<AIController>(close, [](AIController& ai) { ai.attack_radius = 48.0f; });
+    auto far = makeEnemy(em, 200.0f, 0.0f, 100.0f, AIController::State::Attack);
+    em.registry().patch<AIController>(far, [](AIController& ai) { ai.attack_radius = 48.0f; });
+
+    runAI(em);
+
+    REQUIRE(testHoldsToken(em, close));
+    REQUIRE_FALSE(testHoldsToken(em, far));
+}
+
+TEST_CASE("Attack token dead holder frees token", "[chase][token]")
+{
+    EntityManager em;
+    emplaceGameConfigs(em);
+    em.registry().ctx().get<AttackTokenPool>().max_tokens = 1;
+    makePlayer(em, 0.0f, 0.0f);
+    auto a = makeEnemy(em, 60.0f, 0.0f, 100.0f, AIController::State::Attack);
+    em.registry().patch<AIController>(a, [](AIController& ai) { ai.attack_radius = 48.0f; });
+    auto b = makeEnemy(em, 120.0f, 0.0f, 100.0f, AIController::State::Attack);
+    em.registry().patch<AIController>(b, [](AIController& ai) { ai.attack_radius = 48.0f; });
+
+    runAI(em);
+    REQUIRE(testHoldsToken(em, a));
+    REQUIRE_FALSE(testHoldsToken(em, b));
+
+    // Kill holder — token should transfer next frame.
+    em.registry().emplace<Dead>(a, Dead{1.0f});
+    runAI(em);
+    REQUIRE(testHoldsToken(em, b));
+}
+
+TEST_CASE("Attack token holder keeps token across frames", "[chase][token]")
+{
+    EntityManager em;
+    emplaceGameConfigs(em);
+    em.registry().ctx().get<AttackTokenPool>().max_tokens = 1;
+    makePlayer(em, 0.0f, 0.0f);
+    auto a = makeEnemy(em, 60.0f, 0.0f, 100.0f, AIController::State::Attack);
+    em.registry().patch<AIController>(a, [](AIController& ai) { ai.attack_radius = 48.0f; });
+
+    runAI(em);
+    REQUIRE(testHoldsToken(em, a));
+
+    // Token persists across multiple frames (no release after swing).
+    runAI(em);
+    REQUIRE(testHoldsToken(em, a));
+    runAI(em);
+    REQUIRE(testHoldsToken(em, a));
+}
+
+TEST_CASE("Attack token non-holder navigates to slot at wider radius", "[chase][token]")
+{
+    // With max_tokens=1 and 2 enemies, the non-holder should navigate to
+    // its slot position at the wait ring (attack_radius * wait_radius_mult).
+    EntityManager em;
+    emplaceGameConfigs(em);
+    em.registry().ctx().get<AttackTokenPool>().max_tokens = 1;
+    auto& f = em.registry().ctx().get<FormulaConfig>();
+    f.combat_ai.wait_radius_mult = 2.0f;
+    makePlayer(em, 0.0f, 0.0f);
+
+    // Holder closer (gets token) at 100px east. Waiter at 200px south.
+    auto holder = makeEnemy(em, 100.0f, 0.0f, 100.0f, AIController::State::Attack);
+    em.registry().patch<AIController>(holder, [](AIController& ai) { ai.attack_radius = 48.0f; });
+    auto waiter = makeEnemy(em, 0.0f, 200.0f, 100.0f, AIController::State::Attack);
+    em.registry().patch<AIController>(waiter, [](AIController& ai) { ai.attack_radius = 48.0f; });
+
+    runAI(em);
+
+    // Holder approaches player — velocity points left.
+    REQUIRE(testHoldsToken(em, holder));
+    const auto& hv = em.registry().get<Velocity>(holder);
+    REQUIRE(hv.dx < 0.0f);
+
+    // Waiter navigates to slot at (0, 96) — straight north from (0, 200).
+    REQUIRE_FALSE(testHoldsToken(em, waiter));
+    const auto& wv = em.registry().get<Velocity>(waiter);
+    REQUIRE(wv.dy < 0.0f);                 // moving north toward slot
+    REQUIRE(std::abs(wv.dx) < 1.0f);       // minimal horizontal movement
 }

@@ -1,0 +1,13 @@
+{
+    "name": "Bone Helm",
+    "description": "A crude helmet fashioned from fused bone fragments.",
+    "icon": "assets/sprites/icons/bone_helm.png",
+    "category": "armor",
+    "rarity": "common",
+    "armor_slot": "head",
+    "defense_bonus": 3.0,
+    "poise_bonus": 2.0,
+    "weight": 1.5,
+    "max_durability": 80.0,
+    "stackable": false
+}

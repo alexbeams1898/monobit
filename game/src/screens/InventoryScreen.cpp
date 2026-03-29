@@ -4,6 +4,7 @@
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
+#include "renderers/ItemStatRenderer.h"
 
 #include <SDL.h>
 #include <string>
@@ -65,11 +66,9 @@ static void renderInventoryGrid(const Inventory& inv, const ItemRegistry& items,
         {
             const auto& item = inv.items[static_cast<size_t>(i)];
             const ItemDef* def = items.find(item.config_path);
-            // Draw first letter of item name as placeholder icon.
-            const std::string letter =
-                (def != nullptr && !def->name.empty()) ? def->name.substr(0, 1) : "?";
-            const Rarity r = (def != nullptr) ? def->rarity : Rarity::Common;
-            UIRenderer::drawText(sBodyFont, letter, sx + 8.0f, sy + 6.0f, rarityColor(r));
+            const float icon_pad = 2.0f;
+            ItemStatRenderer::drawItemIcon(def, sx + icon_pad, sy + icon_pad,
+                                           SLOT_SIZE - icon_pad * 2.0f);
 
             // Quantity badge.
             if (item.quantity > 1)
@@ -218,6 +217,6 @@ void InventoryScreen::render(EntityManager& em, int window_w, int window_h)
     }
 
     // Controls hint.
-    UIRenderer::drawText(sBodyFont, "[I] Close   [Arrows] Navigate", panel_x + 16.0f,
+    UIRenderer::drawText(sBodyFont, "[I] Close   [W/S] Navigate", panel_x + 16.0f,
                          panel_y + panel_h - 24.0f, TEXT_DIM);
 }

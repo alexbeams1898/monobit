@@ -14,7 +14,7 @@
 
 static FontHandle sBodyFont = INVALID_FONT;
 static FontHandle sTitleFont = INVALID_FONT;
-static int sSel = 0;
+static int sSel = -1;
 static float sAutoCloseTimer = -1.0f;
 static uint32_t sLastTicks = 0;
 static int sLevelOnOpen = 0;
@@ -24,7 +24,7 @@ static const char* STAT_NAMES[STAT_COUNT] = {"Strength", "Dexterity", "Endurance
 static const char* STAT_DESCS[STAT_COUNT] = {"Damage, carry weight", "Speed, attack speed",
                                              "HP, stamina, poise", "Drop rate, item quality"};
 
-static constexpr Color OVERLAY{0.0f, 0.0f, 0.0f, 0.65f};
+static constexpr Color OVERLAY{0.0f, 0.0f, 0.0f, 0.75f};
 static constexpr Color PANEL_BG{0.06f, 0.06f, 0.09f, 0.95f};
 static constexpr Color TITLE_COLOR{1.0f, 0.85f, 0.3f, 1.0f};
 static constexpr Color TEXT_WHITE{0.92f, 0.90f, 0.88f, 1.0f};
@@ -73,6 +73,8 @@ static void renderStatRows(EntityManager& em, entt::entity player, Stats& stats,
     int hover = hoveredRow(mx, my, cx, y, cw, line_h, STAT_COUNT);
     if (hover >= 0)
         sSel = hover;
+    else if (em.key_down_events.empty())
+        sSel = -1;
 
     int* stat_ptrs[STAT_COUNT] = {&stats.str, &stats.dex, &stats.end, &stats.lck};
 
@@ -117,7 +119,7 @@ void LevelUpScreen::init(FontHandle body_font, FontHandle title_font)
 
 void LevelUpScreen::reset()
 {
-    sSel = 0;
+    sSel = -1;
     sAutoCloseTimer = -1.0f;
     sLastTicks = 0;
 }
@@ -220,10 +222,11 @@ void LevelUpScreen::render(EntityManager& em, int window_w, int window_h)
     for (int key : em.key_down_events)
     {
         if (key == SDL_SCANCODE_UP || key == SDL_SCANCODE_W)
-            sSel = ((sSel - 1) + STAT_COUNT) % STAT_COUNT;
+            sSel = sSel < 0 ? 0 : ((sSel - 1) + STAT_COUNT) % STAT_COUNT;
         else if (key == SDL_SCANCODE_DOWN || key == SDL_SCANCODE_S)
-            sSel = (sSel + 1) % STAT_COUNT;
-        else if ((key == SDL_SCANCODE_RETURN || key == SDL_SCANCODE_KP_ENTER ||
+            sSel = sSel < 0 ? 0 : (sSel + 1) % STAT_COUNT;
+        else if (sSel >= 0 &&
+                 (key == SDL_SCANCODE_RETURN || key == SDL_SCANCODE_KP_ENTER ||
                   key == SDL_SCANCODE_F) &&
                  exp.stat_points > 0)
             allocateStat(em.registry(), player, *stat_ptrs[sSel], f, snd);

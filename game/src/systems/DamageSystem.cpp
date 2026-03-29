@@ -5,10 +5,18 @@
 #include "ecs/GameConfig.h"
 #include "systems/AudioSystem.h"
 #include "systems/CombatSystem.h" // computeDamage
+#include "systems/WeaponXPSystem.h"
 
 #include <cmath>
 #include <iostream>
+#include <random>
 #include <tracy/Tracy.hpp>
+
+static std::mt19937& damageRng()
+{
+    static std::mt19937 gen{std::random_device{}()};
+    return gen;
+}
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -54,11 +62,30 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
     if (attacker != entt::null && reg.all_of<Staggered>(attacker))
         return false;
 
-    // Shield block / parry.
+    // Shield block / parry (with frontal arc check).
     if (reg.all_of<Shield>(target))
     {
         auto& shield = reg.get<Shield>(target);
-        if (shield.blocking && shield.guard_health > 0.0f)
+
+        // Frontal arc: attacks from behind (>90 degrees from facing) bypass the shield.
+        bool fromFront = true;
+        if (shield.blocking && attacker != entt::null && reg.all_of<Transform>(attacker) &&
+            reg.all_of<Transform, FacingDirection>(target))
+        {
+            const auto& tgt = reg.get<Transform>(target);
+            const auto& atk = reg.get<Transform>(attacker);
+            const auto& face = reg.get<FacingDirection>(target);
+            const float toAtkX = atk.x - tgt.x;
+            const float toAtkY = atk.y - tgt.y;
+            const float len = std::sqrt(toAtkX * toAtkX + toAtkY * toAtkY);
+            if (len > 0.0f)
+            {
+                const float dot = (toAtkX / len) * face.dx + (toAtkY / len) * face.dy;
+                fromFront = (dot > 0.0f); // dot <= 0 = behind the defender
+            }
+        }
+
+        if (shield.blocking && shield.guard_health > 0.0f && fromFront)
         {
             // Parry window: negate damage and stagger the attacker.
             if (reg.all_of<Parrying>(target))
@@ -92,6 +119,12 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
     }
     rawDamage *= penalty;
 
+    // Flat armor DR (applied before percentage-based DEF).
+    if (reg.all_of<ArmorStats>(target))
+    {
+        rawDamage = std::max(0.0f, rawDamage - reg.get<ArmorStats>(target).total_defense);
+    }
+
     // DEF reduction on the target.
     if (reg.all_of<Health, Stats>(target))
     {
@@ -115,7 +148,23 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
     // Trigger red damage flash on the target.
     reg.emplace_or_replace<DamageFeedback>(target, DamageFeedback{0.2f});
 
-    AudioSystem::playSfx(snd.hit.path, snd.hit.volume);
+    if (!snd.hit_paths.empty())
+    {
+        auto dist = std::uniform_int_distribution<size_t>(0, snd.hit_paths.size() - 1);
+        AudioSystem::playSfx(snd.hit_paths[dist(damageRng())], snd.hit.volume);
+    }
+    else
+    {
+        AudioSystem::playSfx(snd.hit.path, snd.hit.volume);
+    }
+
+    // Per-entity hit sound layered on top of the global hit SFX.
+    if (reg.all_of<HitSound>(target))
+    {
+        const auto& hs = reg.get<HitSound>(target);
+        std::uniform_real_distribution<float> pitchDist(hs.min_pitch, hs.max_pitch);
+        AudioSystem::playSfx(hs.path, hs.volume, pitchDist(damageRng()));
+    }
     TracyMessageL("EntityDamaged");
     const std::string name = reg.all_of<Tag>(target) ? reg.get<Tag>(target).name : "entity";
     std::cout << "[DamageSystem] " << name << " took " << dmg << " damage (" << health.current
@@ -226,7 +275,33 @@ void DamageSystem::update(EntityManager& em)
             continue;
 
         if (applyDamage(em, targetEnt, hb.damage, hb.owner))
+        {
             hb.hit_something = true;
+
+            // Grant weapon XP trickle on hit (player-only).
+            if (hb.owner != entt::null && reg.all_of<PlayerActions>(hb.owner))
+            {
+                const FormulaConfig& fc = reg.ctx().get<FormulaConfig>();
+                int enemyHp = 0;
+                float enemyDmg = 0.0f;
+                int enemyStats = 0;
+                int enemyLevel = 1;
+                if (reg.all_of<Health>(targetEnt))
+                    enemyHp = reg.get<Health>(targetEnt).max;
+                if (reg.all_of<Weapon>(targetEnt))
+                    enemyDmg = reg.get<Weapon>(targetEnt).base_damage;
+                if (reg.all_of<Stats>(targetEnt))
+                {
+                    const auto& s = reg.get<Stats>(targetEnt);
+                    enemyStats = s.str + s.dex + s.end + s.lck;
+                }
+                if (reg.all_of<Loot>(targetEnt))
+                    enemyLevel = reg.get<Loot>(targetEnt).level;
+                const float power = WeaponXPSystem::computeEnemyPower(enemyLevel, enemyHp,
+                                                                      enemyDmg, enemyStats, fc);
+                WeaponXPSystem::grantXP(em, power, fc.weapon_xp.hit_multiplier);
+            }
+        }
     }
     // Path 2 (enemy direct overlap → player) removed. Enemies now spawn hitboxes
     // via CombatSystem section 6, which flows through Path 1 above.

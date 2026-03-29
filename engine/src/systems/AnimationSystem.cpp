@@ -35,17 +35,43 @@ static void updateBodyPartDirection(entt::registry& reg, const BodyPart& bp, Ani
     }
     else
     {
-        // Prefer MovementIntent (raw directional input before collision) over post-collision
-        // Velocity so wall contact doesn't flip the walk-direction animation.
-        const auto* intent = reg.try_get<MovementIntent>(bp.parent);
-        if (intent && (intent->dx != 0.0f || intent->dy != 0.0f))
+        // When backpedaling, lower body faces aim direction (same as upper body)
+        // so the character visually faces the enemy while stepping backward.
+        const auto* facing = reg.try_get<FacingDirection>(bp.parent);
+        if (facing && facing->backpedaling)
         {
-            anim.dir = snapMovement(intent->dx, intent->dy, anim.direction_count);
+            anim.dir =
+                snapFacing(facing->render_dx, facing->render_dy, anim.dir, anim.direction_count);
             return;
         }
-        const auto* vel = reg.try_get<Velocity>(bp.parent);
-        if (vel && (vel->dx * vel->dx + vel->dy * vel->dy) > 1.0f)
-            anim.dir = snapMovement(vel->dx, vel->dy, anim.direction_count);
+
+        // MovementIntent = authoritative direction (raw input before collision).
+        // Velocity = fallback for entities without intent (AI).
+        // When intent exists but is zero, the player stopped -- don't let
+        // decaying blend velocity flip the animation direction.
+        const auto* intent = reg.try_get<MovementIntent>(bp.parent);
+        if (intent)
+        {
+            if (intent->dx != 0.0f || intent->dy != 0.0f)
+            {
+                anim.dir = snapMovement(intent->dx, intent->dy, anim.direction_count);
+                return;
+            }
+        }
+        else
+        {
+            const auto* vel = reg.try_get<Velocity>(bp.parent);
+            if (vel && (vel->dx * vel->dx + vel->dy * vel->dy) > 1.0f)
+            {
+                anim.dir = snapMovement(vel->dx, vel->dy, anim.direction_count);
+                return;
+            }
+        }
+
+        // Idle: full body turns to face aim direction
+        if (facing)
+            anim.dir =
+                snapFacing(facing->render_dx, facing->render_dy, anim.dir, anim.direction_count);
     }
 }
 
@@ -56,16 +82,19 @@ static void updateStandaloneDirection(entt::registry& reg, entt::entity entity, 
 
     if (anim.state == AnimState::Walk)
     {
-        // Prefer MovementIntent over post-collision Velocity for direction snapping.
+        // MovementIntent = authoritative; Velocity = fallback for entities without intent.
         const auto* intent = reg.try_get<MovementIntent>(entity);
-        if (intent && (intent->dx != 0.0f || intent->dy != 0.0f))
+        if (intent)
         {
-            anim.dir = snapMovement(intent->dx, intent->dy, anim.direction_count);
-            return;
+            if (intent->dx != 0.0f || intent->dy != 0.0f)
+                anim.dir = snapMovement(intent->dx, intent->dy, anim.direction_count);
         }
-        const auto* vel = reg.try_get<Velocity>(entity);
-        if (vel)
-            anim.dir = snapMovement(vel->dx, vel->dy, anim.direction_count);
+        else
+        {
+            const auto* vel = reg.try_get<Velocity>(entity);
+            if (vel)
+                anim.dir = snapMovement(vel->dx, vel->dy, anim.direction_count);
+        }
     }
     else if (const auto* facing = reg.try_get<FacingDirection>(entity))
     {
@@ -79,14 +108,16 @@ static void advanceAnimation(entt::registry& reg, entt::entity entity, const Bod
     const auto& sd = anim.states[static_cast<int>(anim.state)];
     float frameDuration = sd.duration;
 
+    bool reverse = false;
     if (anim.state == AnimState::Walk)
     {
-        const entt::entity sprintEntity = (bp && reg.valid(bp->parent)) ? bp->parent : entity;
-        const auto* facing = reg.try_get<FacingDirection>(sprintEntity);
-        const bool sprinting = facing && facing->sprinting;
-        static constexpr float SPRINT_ANIM_SPEED = 0.65f;
-        if (sprinting)
-            frameDuration *= SPRINT_ANIM_SPEED;
+        const entt::entity walkEntity = (bp && reg.valid(bp->parent)) ? bp->parent : entity;
+        const auto* facing = reg.try_get<FacingDirection>(walkEntity);
+        if (facing)
+        {
+            frameDuration *= facing->walk_anim_speed;
+            reverse = facing->backpedaling;
+        }
     }
 
     if (frameDuration > 0.0f && sd.frames > 1)
@@ -99,6 +130,10 @@ static void advanceAnimation(entt::registry& reg, entt::entity entity, const Bod
             {
                 if (anim.frame_index < sd.frames - 1)
                     anim.frame_index++;
+            }
+            else if (reverse)
+            {
+                anim.frame_index = (anim.frame_index - 1 + sd.frames) % sd.frames;
             }
             else
             {

@@ -41,7 +41,8 @@ class TileMapLoader
     //   6. Log seed to stdout
     // Returns (playerX, playerY) — world-space center of the first placed room.
     static std::pair<float, float> generate(EntityManager& em, const std::string& tilemapConfigPath,
-                                            const std::string& roomsDir, uint32_t seed = 0);
+                                            const std::string& roomsDir, uint32_t seed = 0,
+                                            int level = 0);
 
   private:
     static TileConfig loadConfig(const std::string& path);
@@ -52,8 +53,10 @@ class TileMapLoader
     static void placeRooms(TileMap& map, const std::vector<Room>& rooms, std::mt19937& rng,
                            int count, std::vector<std::pair<int, int>>& centers);
 
-    // Connect adjacent room centers with 3-tile-wide L-shaped floor corridors.
-    static void connectRooms(TileMap& map, const std::vector<std::pair<int, int>>& centers);
+    // Connect adjacent room centers with L-shaped floor corridors.
+    // corridor_half = tiles from center to edge (e.g. 2 = 5 tiles wide).
+    static void connectRooms(TileMap& map, const std::vector<std::pair<int, int>>& centers,
+                             int corridor_half);
 
     // Stamp a room's tiles into the TileMap at (origin_col, origin_row).
     static void stampRoom(TileMap& map, const Room& room, int origin_col, int origin_row);

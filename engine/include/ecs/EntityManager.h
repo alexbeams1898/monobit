@@ -101,6 +101,9 @@ class EntityManager
     std::vector<int> key_down_events;
     std::vector<uint8_t> mouse_down_events;
 
+    // Mouse wheel delta -- accumulated per-frame, positive = scroll up.
+    int mouse_wheel_y = 0;
+
     // Text input buffer -- captured from SDL_TEXTINPUT events for name entry.
     std::string text_input_buffer;
 

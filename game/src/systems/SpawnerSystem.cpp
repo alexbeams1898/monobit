@@ -1,7 +1,7 @@
 #include "systems/SpawnerSystem.h"
 
 #include "ConfigLoader.h"
-#include "SpawnUtils.h"
+#include "ops/SpawnUtils.h"
 #include "TileMap.h"
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"

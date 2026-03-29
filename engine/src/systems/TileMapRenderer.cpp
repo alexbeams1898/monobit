@@ -2,6 +2,7 @@
 
 #include "gl/ShaderUtils.h"
 
+#include <algorithm>
 #include <cmath>
 #include <glad/glad.h>
 #include <iostream>
@@ -64,6 +65,16 @@ static int sTMVertexCount = 0;
 static uint32_t sTilesetTexId = 0;
 static bool sHasTileset = false;
 
+// Cached uniform locations — avoids glGetUniformLocation per frame.
+static GLint sLocProjection = -1;
+static GLint sLocUseTexture = -1;
+static GLint sLocTileset = -1;
+
+// Map dimensions for frustum culling (set in upload, read in render).
+static int sMapWidth = 0;
+static int sMapHeight = 0;
+static float sTileSize = 0.0f;
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -89,6 +100,10 @@ void TileMapRenderer::init()
 
     glDeleteShader(vert);
     glDeleteShader(frag);
+
+    sLocProjection = glGetUniformLocation(sTMProgram, "uProjection");
+    sLocUseTexture = glGetUniformLocation(sTMProgram, "uUseTexture");
+    sLocTileset = glGetUniformLocation(sTMProgram, "uTileset");
 
     // Vertex layout: vec2 pos + vec2 uv + vec4 color = 8 floats per vertex.
     glGenVertexArrays(1, &sTMVao);
@@ -199,6 +214,9 @@ void TileMapRenderer::upload(const TileMap& map, const TileConfig& config, Textu
         }
     }
 
+    sMapWidth = map.width;
+    sMapHeight = map.height;
+    sTileSize = ts;
     sTMVertexCount = static_cast<int>(verts.size() / 8);
 
     glBindVertexArray(sTMVao);
@@ -206,6 +224,14 @@ void TileMapRenderer::upload(const TileMap& map, const TileConfig& config, Textu
     glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(verts.size() * sizeof(float)),
                  verts.data(), GL_STATIC_DRAW);
     glBindVertexArray(0);
+}
+
+void TileMapRenderer::clear()
+{
+    sTMVertexCount = 0;
+    sMapWidth = 0;
+    sMapHeight = 0;
+    sTileSize = 0.0f;
 }
 
 void TileMapRenderer::render(float camX, float camY, int windowW, int windowH)
@@ -225,18 +251,44 @@ void TileMapRenderer::render(float camX, float camY, int windowW, int windowH)
                            snap_y - half_h);
 
     glUseProgram(sTMProgram);
-    glUniformMatrix4fv(glGetUniformLocation(sTMProgram, "uProjection"), 1, GL_FALSE, proj);
-    glUniform1i(glGetUniformLocation(sTMProgram, "uUseTexture"), sHasTileset ? 1 : 0);
+    glUniformMatrix4fv(sLocProjection, 1, GL_FALSE, proj);
+    glUniform1i(sLocUseTexture, sHasTileset ? 1 : 0);
 
     if (sHasTileset)
     {
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(sTilesetTexId));
-        glUniform1i(glGetUniformLocation(sTMProgram, "uTileset"), 0);
+        glUniform1i(sLocTileset, 0);
     }
 
     glBindVertexArray(sTMVao);
-    glDrawArrays(GL_TRIANGLES, 0, sTMVertexCount);
+
+    // Frustum cull: draw only tiles visible on screen (row + column).
+    // One draw call per visible row, each spanning only visible columns.
+    if (sMapWidth > 0 && sMapHeight > 0 && sTileSize > 0.0f)
+    {
+        static constexpr int VERTS_PER_TILE = 6;
+        int row0 = static_cast<int>((snap_y - half_h) / sTileSize) - 1;
+        int row1 = static_cast<int>((snap_y + half_h) / sTileSize) + 1;
+        int col0 = static_cast<int>((snap_x - half_w) / sTileSize) - 1;
+        int col1 = static_cast<int>((snap_x + half_w) / sTileSize) + 1;
+        row0 = std::max(row0, 0);
+        row1 = std::min(row1, sMapHeight - 1);
+        col0 = std::max(col0, 0);
+        col1 = std::min(col1, sMapWidth - 1);
+
+        const int colSpan = (col1 - col0 + 1) * VERTS_PER_TILE;
+        for (int r = row0; r <= row1; ++r)
+        {
+            const int first = (r * sMapWidth + col0) * VERTS_PER_TILE;
+            glDrawArrays(GL_TRIANGLES, first, colSpan);
+        }
+    }
+    else
+    {
+        glDrawArrays(GL_TRIANGLES, 0, sTMVertexCount);
+    }
+
     glBindVertexArray(0);
     glUseProgram(0);
 }
@@ -261,4 +313,7 @@ void TileMapRenderer::shutdown()
     sTMVertexCount = 0;
     sTilesetTexId = 0;
     sHasTileset = false;
+    sMapWidth = 0;
+    sMapHeight = 0;
+    sTileSize = 0.0f;
 }

@@ -41,6 +41,9 @@ static constexpr float REPULSION_STRENGTH = 0.5f;
 static constexpr float SKIP_DOT_THRESHOLD = -0.5f;
 
 // Accumulate same-cell crowd repulsion into (crX, crY).
+// When the push direction aligns with velocity (entities in a line),
+// the push is rotated to perpendicular so trailing entities spread
+// sideways instead of being filtered by the dot threshold.
 static void applySameCellRepulsion(const FlowField& ff, int ec, int er, const Transform& transform,
                                    float velNormX, float velNormY, float& crX, float& crY)
 {
@@ -56,20 +59,41 @@ static void applySameCellRepulsion(const FlowField& ff, int ec, int er, const Tr
     const float offLen = std::sqrt(offX * offX + offY * offY);
     if (offLen < 0.5f)
         return;
-    const float offNX = offX / offLen;
-    const float offNY = offY / offLen;
-    if (velNormX * offNX + velNormY * offNY < SKIP_DOT_THRESHOLD)
-        return;
+    float pushX = offX / offLen;
+    float pushY = offY / offLen;
+
+    // Forward-aligned push (leading entity): rotate to perpendicular
+    // so it spreads sideways instead of accelerating forward.
+    // Backward-aligned push (trailing entity): keep as-is — the
+    // deceleration creates longitudinal spacing (cushion distance).
+    const float alignDot = velNormX * pushX + velNormY * pushY;
+    if (alignDot > 0.7f)
+    {
+        const float cross = velNormX * pushY - velNormY * pushX;
+        if (cross >= 0.0f)
+        {
+            pushX = -velNormY;
+            pushY = velNormX;
+        }
+        else
+        {
+            pushX = velNormY;
+            pushY = -velNormX;
+        }
+    }
+
     const float sameWeight = static_cast<float>(ownCount - 1) * 2.0f;
-    crX += offNX * sameWeight;
-    crY += offNY * sameWeight;
+    crX += pushX * sameWeight;
+    crY += pushY * sameWeight;
 }
 
 // Compute and apply crowd repulsion from the density grid to vel.
 // Samples a 5x5 cell window (cross-cell) + same-cell offset pass.
+// wallAwayX/Y is the accumulated wall-repulsion normal from the wall pass;
+// any crowd-repulsion component that pushes toward a nearby wall is stripped.
 static void applyCrowdRepulsion(const FlowField& ff, const Transform& transform, Velocity& vel,
                                 float origSpeed, float velNormX, float velNormY,
-                                float separation_strength)
+                                float separation_strength, float wallAwayX, float wallAwayY)
 {
     static constexpr int CROWD_SAMPLE_RADIUS = 2;
 
@@ -105,17 +129,41 @@ static void applyCrowdRepulsion(const FlowField& ff, const Transform& transform,
     applySameCellRepulsion(ff, ec, er, transform, velNormX, velNormY, crX, crY);
 
     const float crMag = std::sqrt(crX * crX + crY * crY);
-    if (crMag > 0.0f)
+    if (crMag <= 0.0f)
+        return;
+
+    float dirX = crX / crMag;
+    float dirY = crY / crMag;
+
+    // Strip the wall-facing component so crowd repulsion never pushes toward
+    // a wall the entity is already being deflected from.
+    const float wallLen = std::sqrt(wallAwayX * wallAwayX + wallAwayY * wallAwayY);
+    if (wallLen > 0.0f)
     {
-        vel.dx += (crX / crMag) * origSpeed * separation_strength;
-        vel.dy += (crY / crMag) * origSpeed * separation_strength;
-        // Cap at origSpeed -- crowd separation must not accelerate the entity.
-        const float crNewMag = std::sqrt(vel.dx * vel.dx + vel.dy * vel.dy);
-        if (crNewMag > origSpeed)
+        const float wnx = wallAwayX / wallLen;
+        const float wny = wallAwayY / wallLen;
+        const float dot = dirX * wnx + dirY * wny;
+        if (dot < 0.0f)
         {
-            vel.dx = (vel.dx / crNewMag) * origSpeed;
-            vel.dy = (vel.dy / crNewMag) * origSpeed;
+            dirX -= dot * wnx;
+            dirY -= dot * wny;
+            // Re-normalize after projection.
+            const float pLen = std::sqrt(dirX * dirX + dirY * dirY);
+            if (pLen < 0.01f)
+                return;
+            dirX /= pLen;
+            dirY /= pLen;
         }
+    }
+
+    vel.dx += dirX * origSpeed * separation_strength;
+    vel.dy += dirY * origSpeed * separation_strength;
+    // Cap at origSpeed -- crowd separation must not accelerate the entity.
+    const float crNewMag = std::sqrt(vel.dx * vel.dx + vel.dy * vel.dy);
+    if (crNewMag > origSpeed)
+    {
+        vel.dx = (vel.dx / crNewMag) * origSpeed;
+        vel.dy = (vel.dy / crNewMag) * origSpeed;
     }
 }
 
@@ -202,8 +250,9 @@ void SteeringSystem::update(EntityManager& em)
         }
 
         // --- Crowd repulsion -----------------------------------------------
-        if (nav.separation_strength > 0.0f)
+        const float effectiveSeparation = nav.separation_strength * nav.arrival_scale;
+        if (effectiveSeparation > 0.0f)
             applyCrowdRepulsion(em.flow_field, transform, vel, origSpeed, velNormX, velNormY,
-                                nav.separation_strength);
+                                effectiveSeparation, repX, repY);
     }
 }

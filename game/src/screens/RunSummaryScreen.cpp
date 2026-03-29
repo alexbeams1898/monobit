@@ -133,13 +133,13 @@ bool RunSummaryScreen::render(EntityManager& em, int window_w, int window_h)
                              {GOLD.r, GOLD.g, GOLD.b, blink});
     }
 
-    // Continue button.
-    const float btn_y = py + panel_h - 60.0f;
+    // Continue button (anchored 20px from panel bottom).
     const std::string cont = "Continue";
     TextSize csz = UIRenderer::measureText(sTitleFont, cont);
     const float bw = csz.width + 60.0f;
     const float bh = csz.height + 20.0f;
     const float bx = (ww - bw) * 0.5f;
+    const float btn_y = py + panel_h - 20.0f - bh;
 
     int mouseX = 0;
     int mouseY = 0;
