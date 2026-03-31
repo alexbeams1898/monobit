@@ -121,7 +121,7 @@ static void renderStatusCondition(EntityManager& em, entt::entity entity, float 
     UIRenderer::drawText(sBodyFont, "Status: " + status, x, y, statusColor);
 }
 
-static void renderPortraitAndName(EntityManager& em, entt::entity entity, float& y,
+static void renderPortraitAndName(EntityManager& em, entt::entity /*entity*/, float& y,
                                   float portrait_sz, float char_h)
 {
     const auto& gs = em.registry().ctx().get<GameState>();

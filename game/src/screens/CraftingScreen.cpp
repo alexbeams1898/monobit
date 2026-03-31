@@ -596,12 +596,12 @@ void CraftingScreen::render(EntityManager& em, int window_w, int window_h)
         return;
     }
 
-    entt::entity player = findPlayerEntity(em.registry());
+    const entt::entity player = findPlayerEntity(em.registry());
     const Inventory* inv = (player != entt::null && em.registry().all_of<Inventory>(player))
                                ? &em.registry().get<Inventory>(player)
                                : nullptr;
 
-    std::vector<DisplayRow> displayRows = buildDisplayRows(recipes, items);
+    const std::vector<DisplayRow> displayRows = buildDisplayRows(recipes, items);
     std::vector<int> navOrder;
     for (const auto& row : displayRows)
         if (!row.is_header)
