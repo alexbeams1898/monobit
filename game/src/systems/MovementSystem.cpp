@@ -164,10 +164,10 @@ void applyPlayerInput(entt::registry& reg, float fdt, const FormulaConfig& f,
 // Check if an inset box centered at (cx,cy) overlaps any solid wall.
 // Tile map path: O(~4) direct array lookups.
 // ECS fallback: O(n_statics) AABB scan (for tests without a tile map).
-bool touchesWall(
-    const EntityManager& em, bool use_tile_map, const std::vector<entt::entity>& statics,
-    entt::basic_view<entt::get_t<Transform, Collider>, entt::exclude_t<>>& allColliders, float cx,
-    float cy, float mw, float mh)
+template <typename ViewT>
+bool touchesWall(const EntityManager& em, bool use_tile_map,
+                 const std::vector<entt::entity>& statics, ViewT& allColliders, float cx, float cy,
+                 float mw, float mh)
 {
     const float hw = mw * 0.5f;
     const float hh = mh * 0.5f;
@@ -186,8 +186,8 @@ bool touchesWall(
     }
     for (auto se : statics)
     {
-        const auto& st = allColliders.get<Transform>(se);
-        const auto& sc = allColliders.get<Collider>(se);
+        const auto& st = allColliders.template get<Transform>(se);
+        const auto& sc = allColliders.template get<Collider>(se);
         if (aabbOverlap(cx, cy, mw, mh, st.x, st.y, sc.width, sc.height))
             return true;
     }
