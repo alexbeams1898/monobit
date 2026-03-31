@@ -18,28 +18,29 @@ static constexpr Color SELECTED_BG{0.2f, 0.3f, 0.25f, 0.6f};
 static constexpr Color SEPARATOR{0.3f, 0.4f, 0.35f, 0.5f};
 static constexpr Color HINT_COLOR{0.5f, 0.48f, 0.46f, 0.8f};
 
-MenuDialog::Result MenuDialog::render(EntityManager& em, const Options& opts, float window_w,
-                                      float window_h)
+namespace
 {
-    Result result;
-    const int itemCount = static_cast<int>(opts.items.size());
-    if (itemCount == 0)
-        return result;
 
-    int& sel = *opts.selection;
-    if (sel >= 0)
-        sel = std::clamp(sel, 0, itemCount - 1);
+struct MenuInputResult
+{
+    bool dismissed = false;
+    bool activate = false;
+};
 
-    // --- Input ---
+static MenuInputResult handleMenuInput(EntityManager& em, const MenuDialog::Options& opts, int& sel,
+                                       int itemCount)
+{
+    MenuInputResult res;
+
     if (opts.close_on_escape && keyPressed(em, SDL_SCANCODE_ESCAPE))
     {
-        result.dismissed = true;
-        return result;
+        res.dismissed = true;
+        return res;
     }
     if (opts.close_on_rmb && mouseClicked(em, SDL_BUTTON_RIGHT))
     {
-        result.dismissed = true;
-        return result;
+        res.dismissed = true;
+        return res;
     }
 
     // Find next/prev enabled item, wrapping around. Returns -1 if none enabled.
@@ -65,23 +66,36 @@ MenuDialog::Result MenuDialog::render(EntityManager& em, const Options& opts, fl
         sel = findEnabled(start, 1);
     }
 
-    bool activate = false;
     if (sel >= 0 && (keyPressed(em, SDL_SCANCODE_RETURN) || keyPressed(em, SDL_SCANCODE_KP_ENTER)))
-        activate = true;
+        res.activate = true;
 
-    // --- Measure content ---
+    return res;
+}
+
+struct MenuLayout
+{
+    float panel_w, panel_h, content_w, max_label_w, desc_gap;
+    float px, py, cx, cw;
+    float title_h, line_h, sep_gap;
+    TextSize tsz, hsz;
+};
+
+static MenuLayout measureMenuContent(const MenuDialog::Options& opts, int itemCount, float window_w,
+                                     float window_h)
+{
+    MenuLayout l{};
     const float pad = opts.padding;
-    const float title_h = FontManager::lineHeight(opts.title_font);
-    const float line_h = FontManager::lineHeight(opts.body_font) + 8.0f;
-    const float desc_gap = 16.0f; // space between label column and description column
+    l.title_h = FontManager::lineHeight(opts.title_font);
+    l.line_h = FontManager::lineHeight(opts.body_font) + 8.0f;
+    l.desc_gap = 16.0f; // space between label column and description column
 
     // Compute column widths.
-    float max_label_w = 0.0f;
+    l.max_label_w = 0.0f;
     float max_desc_w = 0.0f;
     for (const auto& item : opts.items)
     {
         const TextSize lsz = UIRenderer::measureText(opts.body_font, "> " + item.label);
-        max_label_w = std::max(max_label_w, lsz.width);
+        l.max_label_w = std::max(l.max_label_w, lsz.width);
         if (!item.description.empty())
         {
             const TextSize dsz = UIRenderer::measureText(opts.body_font, item.description);
@@ -89,74 +103,58 @@ MenuDialog::Result MenuDialog::render(EntityManager& em, const Options& opts, fl
         }
     }
 
-    float content_w = max_label_w;
+    l.content_w = l.max_label_w;
     if (max_desc_w > 0.0f)
-        content_w += desc_gap + max_desc_w;
+        l.content_w += l.desc_gap + max_desc_w;
 
     // Title width.
-    const TextSize tsz = UIRenderer::measureText(opts.title_font, opts.title);
-    content_w = std::max(content_w, tsz.width);
+    l.tsz = UIRenderer::measureText(opts.title_font, opts.title);
+    l.content_w = std::max(l.content_w, l.tsz.width);
 
     // Hint width.
-    TextSize hsz{};
+    l.hsz = {};
     if (!opts.hint.empty())
-        hsz = UIRenderer::measureText(opts.body_font, opts.hint);
-    content_w = std::max(content_w, hsz.width);
+        l.hsz = UIRenderer::measureText(opts.body_font, opts.hint);
+    l.content_w = std::max(l.content_w, l.hsz.width);
 
-    content_w = std::max(content_w, opts.min_width - pad * 2.0f);
-    const float panel_w = content_w + pad * 2.0f;
+    l.content_w = std::max(l.content_w, opts.min_width - pad * 2.0f);
+    l.panel_w = l.content_w + pad * 2.0f;
 
     // Heights: padding + title + sep + items + sep + hint + padding.
-    const float sep_gap = 14.0f; // space around separator lines
-    const float hint_block = opts.hint.empty() ? 0.0f : (sep_gap + 1.0f + sep_gap + hsz.height);
-    const float panel_h = pad + title_h + sep_gap + 1.0f + sep_gap +
-                          static_cast<float>(itemCount) * line_h + hint_block + pad;
+    l.sep_gap = 14.0f; // space around separator lines
+    const float hint_block =
+        opts.hint.empty() ? 0.0f : (l.sep_gap + 1.0f + l.sep_gap + l.hsz.height);
+    l.panel_h = pad + l.title_h + l.sep_gap + 1.0f + l.sep_gap +
+                static_cast<float>(itemCount) * l.line_h + hint_block + pad;
 
-    const float px = (window_w - panel_w) * 0.5f;
-    const float py = (window_h - panel_h) * 0.5f;
-    const float cx = px + pad;
-    const float cw = content_w;
+    l.px = (window_w - l.panel_w) * 0.5f;
+    l.py = (window_h - l.panel_h) * 0.5f;
+    l.cx = l.px + pad;
+    l.cw = l.content_w;
 
-    int mouseX = 0;
-    int mouseY = 0;
-    SDL_GetMouseState(&mouseX, &mouseY);
-    const float mx = static_cast<float>(mouseX);
-    const float my = static_cast<float>(mouseY);
+    return l;
+}
 
-    // --- Draw ---
-    if (opts.darken_background)
-        UIRenderer::drawRect(0.0f, 0.0f, window_w, window_h, OVERLAY);
-    UIRenderer::drawRect(px, py, panel_w, panel_h, PANEL_BG);
+static bool drawMenuItems(const MenuDialog::Options& opts, int& sel, bool activate,
+                          const MenuLayout& l, float y, float mx, float my, EntityManager& em)
+{
+    const float desc_x = l.cx + l.max_label_w + l.desc_gap;
+    const int itemCount = static_cast<int>(opts.items.size());
 
-    float y = py + pad;
-
-    // Title (centered).
-    UIRenderer::drawText(opts.title_font, opts.title, px + (panel_w - tsz.width) * 0.5f, y,
-                         TITLE_COLOR);
-    y += title_h + sep_gap;
-
-    // Separator.
-    UIRenderer::drawRect(cx, y, cw, 1.0f, SEPARATOR);
-    y += 1.0f + sep_gap;
-
-    // Description column x-offset.
-    const float desc_x = cx + max_label_w + desc_gap;
-
-    // Option rows.
     for (int i = 0; i < itemCount; ++i)
     {
-        const bool hovered =
-            (mx >= cx - 4.0f && mx < cx + cw + 4.0f && my >= y - 2.0f && my < y - 2.0f + line_h);
+        const bool hovered = (mx >= l.cx - 4.0f && mx < l.cx + l.cw + 4.0f && my >= y - 2.0f &&
+                              my < y - 2.0f + l.line_h);
         if (hovered && opts.items[i].enabled)
             sel = i;
 
         const bool selected = (i == sel);
         if (selected)
-            UIRenderer::drawRect(cx - 4.0f, y - 2.0f, cw + 8.0f, line_h, SELECTED_BG);
+            UIRenderer::drawRect(l.cx - 4.0f, y - 2.0f, l.cw + 8.0f, l.line_h, SELECTED_BG);
 
         const std::string prefix = selected ? "> " : "  ";
         const Color& labelColor = opts.items[i].enabled ? TEXT_WHITE : DISABLED_COLOR;
-        UIRenderer::drawText(opts.body_font, prefix + opts.items[i].label, cx, y,
+        UIRenderer::drawText(opts.body_font, prefix + opts.items[i].label, l.cx, y,
                              selected ? labelColor : TEXT_DIM);
 
         if (!opts.items[i].description.empty())
@@ -167,20 +165,65 @@ MenuDialog::Result MenuDialog::render(EntityManager& em, const Options& opts, fl
         if (hovered && mouseClicked(em, SDL_BUTTON_LEFT))
             activate = true;
 
-        y += line_h;
+        y += l.line_h;
     }
 
-    // Hint.
+    return activate;
+}
+
+} // anonymous namespace
+
+MenuDialog::Result MenuDialog::render(EntityManager& em, const Options& opts, float window_w,
+                                      float window_h)
+{
+    Result result;
+    const int itemCount = static_cast<int>(opts.items.size());
+    if (itemCount == 0)
+        return result;
+
+    int& sel = *opts.selection;
+    if (sel >= 0)
+        sel = std::clamp(sel, 0, itemCount - 1);
+
+    auto input = handleMenuInput(em, opts, sel, itemCount);
+    if (input.dismissed)
+    {
+        result.dismissed = true;
+        return result;
+    }
+
+    const MenuLayout l = measureMenuContent(opts, itemCount, window_w, window_h);
+
+    int mouseX = 0;
+    int mouseY = 0;
+    SDL_GetMouseState(&mouseX, &mouseY);
+    const float mx = static_cast<float>(mouseX);
+    const float my = static_cast<float>(mouseY);
+
+    if (opts.darken_background)
+        UIRenderer::drawRect(0.0f, 0.0f, window_w, window_h, OVERLAY);
+    UIRenderer::drawRect(l.px, l.py, l.panel_w, l.panel_h, PANEL_BG);
+
+    float y = l.py + opts.padding;
+    UIRenderer::drawText(opts.title_font, opts.title, l.px + (l.panel_w - l.tsz.width) * 0.5f, y,
+                         TITLE_COLOR);
+    y += l.title_h + l.sep_gap;
+
+    UIRenderer::drawRect(l.cx, y, l.cw, 1.0f, SEPARATOR);
+    y += 1.0f + l.sep_gap;
+
+    const bool activate = drawMenuItems(opts, sel, input.activate, l, y, mx, my, em);
+    y += static_cast<float>(itemCount) * l.line_h;
+
     if (!opts.hint.empty())
     {
-        y += sep_gap;
-        UIRenderer::drawRect(cx, y, cw, 1.0f, SEPARATOR);
-        y += 1.0f + sep_gap;
-        UIRenderer::drawText(opts.body_font, opts.hint, px + (panel_w - hsz.width) * 0.5f, y,
+        y += l.sep_gap;
+        UIRenderer::drawRect(l.cx, y, l.cw, 1.0f, SEPARATOR);
+        y += 1.0f + l.sep_gap;
+        UIRenderer::drawText(opts.body_font, opts.hint, l.px + (l.panel_w - l.hsz.width) * 0.5f, y,
                              HINT_COLOR);
     }
 
-    // Activate.
     if (activate && sel >= 0 && sel < itemCount && opts.items[sel].enabled)
         result.selected = sel;
 

@@ -290,12 +290,14 @@ static void renderRecipeDetail(const RecipeDef& recipe, const ItemDef* output_de
 }
 
 // Render the craft button, separator, and hint text.
-static void renderCraftFooter(EntityManager& em, const RecipeRegistry& recipes,
-                              const ItemRegistry& items, const SoundConfig& snd,
-                              const Inventory* inv, entt::entity player, bool canCraft,
+static void renderCraftFooter(EntityManager& em, entt::entity player, bool canCraft,
                               const CraftLayout& lay, float btn_h, const std::string& hintText,
                               const TextSize& hintsz)
 {
+    const auto& recipes = em.registry().ctx().get<RecipeRegistry>();
+    const auto& items = em.registry().ctx().get<ItemRegistry>();
+    const auto& snd = em.registry().ctx().get<SoundConfig>();
+
     float fy = lay.scroll_bottom;
 
     const std::string craftLabel = "Craft";
@@ -380,6 +382,183 @@ static std::vector<DisplayRow> buildDisplayRows(const RecipeRegistry& recipes,
     return rows;
 }
 
+static entt::entity findPlayerEntity(entt::registry& reg)
+{
+    for (auto e : reg.view<PlayerActions>())
+        return e;
+    return entt::null;
+}
+
+static void validateSelection(const std::vector<int>& navOrder)
+{
+    if (sSelectedRecipe >= 0 && !navOrder.empty())
+    {
+        bool found = false;
+        for (const int idx : navOrder)
+            if (idx == sSelectedRecipe)
+            {
+                found = true;
+                break;
+            }
+        if (!found)
+            sSelectedRecipe = -1;
+    }
+}
+
+static void handleKeyboardNav(EntityManager& em, const std::vector<int>& navOrder)
+{
+    if (navOrder.empty())
+        return;
+
+    int navPos = -1;
+    for (int i = 0; i < static_cast<int>(navOrder.size()); ++i)
+        if (navOrder[static_cast<size_t>(i)] == sSelectedRecipe)
+        {
+            navPos = i;
+            break;
+        }
+
+    if (keyPressed(em, SDL_SCANCODE_UP) || keyPressed(em, SDL_SCANCODE_W))
+    {
+        if (navPos < 0)
+            navPos = static_cast<int>(navOrder.size()) - 1;
+        else
+            navPos = (navPos - 1 + static_cast<int>(navOrder.size())) %
+                     static_cast<int>(navOrder.size());
+        sSelectedRecipe = navOrder[static_cast<size_t>(navPos)];
+    }
+    if (keyPressed(em, SDL_SCANCODE_DOWN) || keyPressed(em, SDL_SCANCODE_S))
+    {
+        if (navPos < 0)
+            navPos = 0;
+        else
+            navPos = (navPos + 1) % static_cast<int>(navOrder.size());
+        sSelectedRecipe = navOrder[static_cast<size_t>(navPos)];
+    }
+}
+
+static bool handleCraftAction(EntityManager& em, const RecipeRegistry& recipes,
+                              const ItemRegistry& items, const SoundConfig& snd,
+                              const Inventory*& inv, entt::entity player, bool canCraft)
+{
+    if (sSelectedRecipe < 0 ||
+        !(keyPressed(em, SDL_SCANCODE_RETURN) || keyPressed(em, SDL_SCANCODE_KP_ENTER)) ||
+        !canCraft || player == entt::null)
+        return canCraft;
+
+    auto& playerInv = em.registry().get<Inventory>(player);
+    const auto& recipe = recipes.recipes[static_cast<size_t>(sSelectedRecipe)];
+    if (CraftingOps::craft(playerInv, recipe, items))
+    {
+        const ItemDef* output_def = items.find(recipe.output_item);
+        const std::string name = (output_def != nullptr) ? output_def->name : recipe.output_item;
+        NotificationSystem::push("Crafted " + name, {0.3f, 0.9f, 0.3f, 1.0f});
+        playSfx(snd);
+        // Re-fetch inventory pointer after mutation.
+        inv = &em.registry().get<Inventory>(player);
+        canCraft = CraftingOps::canCraft(*inv, recipe, items);
+    }
+    return canCraft;
+}
+
+static void measureRecipeRows(const std::vector<DisplayRow>& displayRows, float line_h,
+                              float header_gap, float& content_w, float& list_h)
+{
+    for (size_t i = 0; i < displayRows.size(); ++i)
+    {
+        const auto& row = displayRows[i];
+        if (row.is_header)
+        {
+            if (i > 0)
+                list_h += header_gap;
+            const TextSize hsz = UIRenderer::measureText(sBodyFont, row.text);
+            content_w = std::max(content_w, hsz.width);
+            list_h += line_h;
+        }
+        else
+        {
+            const float row_icon_w = line_h - 4.0f + 4.0f; // icon + gap
+            const TextSize rsz = UIRenderer::measureText(sBodyFont, "> " + row.text);
+            content_w = std::max(content_w, row_icon_w + rsz.width);
+            list_h += line_h;
+        }
+    }
+}
+
+static void handleAutoScroll(const std::vector<DisplayRow>& displayRows, float visible_scroll_h,
+                             float max_scroll, float line_h, float header_gap)
+{
+    if (visible_scroll_h <= 0.0f)
+        return;
+
+    float itemY = 0.0f;
+    for (size_t i = 0; i < displayRows.size(); ++i)
+    {
+        const auto& row = displayRows[i];
+        if (!row.is_header && row.recipe_index == sSelectedRecipe)
+            break;
+        if (row.is_header && i > 0)
+            itemY += header_gap;
+        itemY += line_h;
+    }
+    if (itemY < sScrollOffset)
+        sScrollOffset = itemY;
+    else if (itemY + line_h > sScrollOffset + visible_scroll_h)
+        sScrollOffset = itemY + line_h - visible_scroll_h;
+    sScrollOffset = std::clamp(sScrollOffset, 0.0f, max_scroll);
+}
+
+static void drawRecipeList(const std::vector<DisplayRow>& displayRows, EntityManager& em,
+                           const CraftLayout& lay, float header_gap, float& y)
+{
+    const auto& recipes = em.registry().ctx().get<RecipeRegistry>();
+    const auto& items = em.registry().ctx().get<ItemRegistry>();
+
+    for (size_t i = 0; i < displayRows.size(); ++i)
+    {
+        const auto& row = displayRows[i];
+
+        if (row.is_header)
+        {
+            if (i > 0)
+                y += header_gap;
+            UIRenderer::drawText(sBodyFont, row.text, lay.cx, y, HEADER_COLOR);
+            y += lay.line_h;
+            continue;
+        }
+
+        const bool inScroll = (lay.my >= lay.scroll_top && lay.my < lay.scroll_bottom);
+        const bool hovered =
+            inScroll && (lay.mx >= lay.cx - 4.0f && lay.mx < lay.cx + lay.cw + 4.0f &&
+                         lay.my >= y - 2.0f && lay.my < y - 2.0f + lay.line_h);
+        if (hovered)
+        {
+            sHoveredRecipe = row.recipe_index;
+            if (mouseClicked(em, SDL_BUTTON_LEFT))
+                sSelectedRecipe = row.recipe_index;
+        }
+
+        const bool selected = (row.recipe_index == sSelectedRecipe);
+        if (selected)
+            UIRenderer::drawRect(lay.cx - 4.0f, y - 2.0f, lay.cw + 8.0f, lay.line_h, SELECTED_BG);
+        else if (hovered)
+            UIRenderer::drawRect(lay.cx - 4.0f, y - 2.0f, lay.cw + 8.0f, lay.line_h, HOVERED_BG);
+
+        const float icon_sz = lay.line_h - 4.0f;
+        const float text_x = lay.cx + icon_sz + 4.0f;
+        const ItemDef* row_def =
+            (row.recipe_index >= 0)
+                ? items.find(recipes.recipes[static_cast<size_t>(row.recipe_index)].output_item)
+                : nullptr;
+        ItemStatRenderer::drawItemIcon(row_def, lay.cx, y, icon_sz);
+        const std::string prefix = selected ? "> " : "  ";
+        UIRenderer::drawText(sBodyFont, prefix + row.text, text_x, y,
+                             selected ? TEXT_WHITE : TEXT_DIM);
+
+        y += lay.line_h;
+    }
+}
+
 void CraftingScreen::init(FontHandle body_font, FontHandle title_font)
 {
     sBodyFont = body_font;
@@ -407,10 +586,8 @@ void CraftingScreen::render(EntityManager& em, int window_w, int window_h)
     auto& ui = em.registry().ctx().get<UIState>();
     const int recipe_count = static_cast<int>(recipes.recipes.size());
 
-    // Draw overlay first so there's no flash frame when transitioning screens.
     UIRenderer::drawRect(0.0f, 0.0f, ww, wh, OVERLAY);
 
-    // Close on Escape, C, or RMB -- return to sanctuary.
     if (keyPressed(em, SDL_SCANCODE_ESCAPE) || keyPressed(em, SDL_SCANCODE_C) ||
         mouseClicked(em, SDL_BUTTON_RIGHT))
     {
@@ -419,135 +596,44 @@ void CraftingScreen::render(EntityManager& em, int window_w, int window_h)
         return;
     }
 
-    // Find player + inventory.
-    entt::entity player = entt::null;
-    for (auto e : em.registry().view<PlayerActions>())
-    {
-        player = e;
-        break;
-    }
+    entt::entity player = findPlayerEntity(em.registry());
     const Inventory* inv = (player != entt::null && em.registry().all_of<Inventory>(player))
                                ? &em.registry().get<Inventory>(player)
                                : nullptr;
 
-    // Build display rows and ordered recipe index list for navigation.
     std::vector<DisplayRow> displayRows = buildDisplayRows(recipes, items);
     std::vector<int> navOrder;
     for (const auto& row : displayRows)
         if (!row.is_header)
             navOrder.push_back(row.recipe_index);
 
-    // Validate selection: if selected recipe is no longer in the list, deselect.
-    if (sSelectedRecipe >= 0 && !navOrder.empty())
-    {
-        bool found = false;
-        for (const int idx : navOrder)
-            if (idx == sSelectedRecipe)
-            {
-                found = true;
-                break;
-            }
-        if (!found)
-            sSelectedRecipe = -1;
-    }
-
-    // Clear hover each frame; mouse hover will re-set it below.
+    validateSelection(navOrder);
     sHoveredRecipe = -1;
+    handleKeyboardNav(em, navOrder);
 
-    // Keyboard navigation follows display order (skips headers).
-    if (!navOrder.empty())
-    {
-        int navPos = -1;
-        for (int i = 0; i < static_cast<int>(navOrder.size()); ++i)
-            if (navOrder[static_cast<size_t>(i)] == sSelectedRecipe)
-            {
-                navPos = i;
-                break;
-            }
-
-        if (keyPressed(em, SDL_SCANCODE_UP) || keyPressed(em, SDL_SCANCODE_W))
-        {
-            if (navPos < 0)
-                navPos = static_cast<int>(navOrder.size()) - 1;
-            else
-                navPos = (navPos - 1 + static_cast<int>(navOrder.size())) %
-                         static_cast<int>(navOrder.size());
-            sSelectedRecipe = navOrder[static_cast<size_t>(navPos)];
-        }
-        if (keyPressed(em, SDL_SCANCODE_DOWN) || keyPressed(em, SDL_SCANCODE_S))
-        {
-            if (navPos < 0)
-                navPos = 0;
-            else
-                navPos = (navPos + 1) % static_cast<int>(navOrder.size());
-            sSelectedRecipe = navOrder[static_cast<size_t>(navPos)];
-        }
-    }
-
-    // Check if selected recipe is craftable.
     bool canCraft = false;
     if (sSelectedRecipe >= 0 && recipe_count > 0 && inv != nullptr)
     {
         const auto& recipe = recipes.recipes[static_cast<size_t>(sSelectedRecipe)];
         canCraft = CraftingOps::canCraft(*inv, recipe, items);
     }
-
-    // Craft on Enter (requires a selected recipe).
-    if (sSelectedRecipe >= 0 &&
-        (keyPressed(em, SDL_SCANCODE_RETURN) || keyPressed(em, SDL_SCANCODE_KP_ENTER)) &&
-        canCraft && player != entt::null)
-    {
-        auto& playerInv = em.registry().get<Inventory>(player);
-        const auto& recipe = recipes.recipes[static_cast<size_t>(sSelectedRecipe)];
-        if (CraftingOps::craft(playerInv, recipe, items))
-        {
-            const ItemDef* output_def = items.find(recipe.output_item);
-            const std::string name =
-                (output_def != nullptr) ? output_def->name : recipe.output_item;
-            NotificationSystem::push("Crafted " + name, {0.3f, 0.9f, 0.3f, 1.0f});
-            playSfx(snd);
-            // Re-fetch inventory pointer after mutation.
-            inv = &em.registry().get<Inventory>(player);
-            canCraft = CraftingOps::canCraft(*inv, recipe, items);
-        }
-    }
+    canCraft = handleCraftAction(em, recipes, items, snd, inv, player, canCraft);
 
     // --- Measure content for auto-sizing ---
     const float pad = 24.0f;
     const float title_h = FontManager::lineHeight(sTitleFont);
     const float line_h = FontManager::lineHeight(sBodyFont) + 6.0f;
     const float sep_gap = 12.0f;
-    const float header_gap = 4.0f; // extra space before category headers
+    const float header_gap = 4.0f;
     const float btn_h = 32.0f;
 
-    // Title.
     const std::string titleText = "Crafting";
     const TextSize tsz = UIRenderer::measureText(sTitleFont, titleText);
     float content_w = tsz.width;
 
-    // Recipe list rows.
     float list_h = 0.0f;
-    for (size_t i = 0; i < displayRows.size(); ++i)
-    {
-        const auto& row = displayRows[i];
-        if (row.is_header)
-        {
-            if (i > 0)
-                list_h += header_gap;
-            const TextSize hsz = UIRenderer::measureText(sBodyFont, row.text);
-            content_w = std::max(content_w, hsz.width);
-            list_h += line_h;
-        }
-        else
-        {
-            const float row_icon_w = line_h - 4.0f + 4.0f; // icon + gap
-            const TextSize rsz = UIRenderer::measureText(sBodyFont, "> " + row.text);
-            content_w = std::max(content_w, row_icon_w + rsz.width);
-            list_h += line_h;
-        }
-    }
+    measureRecipeRows(displayRows, line_h, header_gap, content_w, list_h);
 
-    // Measure ALL recipes to compute stable panel width and max detail height.
     float detail_h = 0.0f;
     bool anyHasRequirements = false;
     const float stat_line = FontManager::lineHeight(sBodyFont) + 4.0f;
@@ -555,56 +641,33 @@ void CraftingScreen::render(EntityManager& em, int window_w, int window_h)
         measureAllRecipes(recipes, items, stat_line, line_h, content_w, detail_h,
                           anyHasRequirements);
 
-    // Hint.
     const std::string hintText = "[Esc] Back   [W/S] Navigate   [Enter] Craft";
     const TextSize hintsz = UIRenderer::measureText(sBodyFont, hintText);
     content_w = std::max(content_w, hintsz.width);
-
     content_w = std::max(content_w, 340.0f);
     const float panel_w = content_w + pad * 2.0f;
 
-    // Total height.
     const float header_h = pad + title_h + sep_gap + 1.0f + sep_gap;
     const float footer_h = btn_h + sep_gap + 1.0f + sep_gap + hintsz.height + pad;
     const float scrollable_h =
         list_h + ((recipe_count > 0) ? (sep_gap + 1.0f + sep_gap + detail_h) : 0.0f);
     const float ideal_panel_h = header_h + scrollable_h + footer_h;
-    const float max_panel_h = wh - 60.0f; // 30px margin top + bottom
+    const float max_panel_h = wh - 60.0f;
     const float panel_h = std::min(ideal_panel_h, max_panel_h);
     const float visible_scroll_h = panel_h - header_h - footer_h;
     const float max_scroll = std::max(0.0f, scrollable_h - visible_scroll_h);
 
-    // Mouse wheel scroll.
     if (em.mouse_wheel_y != 0)
         sScrollOffset -= static_cast<float>(em.mouse_wheel_y) * line_h;
     sScrollOffset = std::clamp(sScrollOffset, 0.0f, max_scroll);
 
-    // Auto-scroll to keep keyboard-selected item visible.
-    if (!navOrder.empty() && visible_scroll_h > 0.0f)
-    {
-        float itemY = 0.0f;
-        for (size_t i = 0; i < displayRows.size(); ++i)
-        {
-            const auto& row = displayRows[i];
-            if (!row.is_header && row.recipe_index == sSelectedRecipe)
-                break;
-            if (row.is_header && i > 0)
-                itemY += header_gap;
-            itemY += line_h;
-        }
-        if (itemY < sScrollOffset)
-            sScrollOffset = itemY;
-        else if (itemY + line_h > sScrollOffset + visible_scroll_h)
-            sScrollOffset = itemY + line_h - visible_scroll_h;
-        sScrollOffset = std::clamp(sScrollOffset, 0.0f, max_scroll);
-    }
+    if (!navOrder.empty())
+        handleAutoScroll(displayRows, visible_scroll_h, max_scroll, line_h, header_gap);
 
     const float px = (ww - panel_w) * 0.5f;
     const float py = (wh - panel_h) * 0.5f;
     const float cx = px + pad;
     const float cw = content_w;
-
-    // Visible scroll bounds (screen-space Y range for content clipping).
     const float scroll_top = py + header_h;
     const float scroll_bottom = py + panel_h - footer_h;
 
@@ -614,73 +677,25 @@ void CraftingScreen::render(EntityManager& em, int window_w, int window_h)
     const float mx = static_cast<float>(mouseX);
     const float my = static_cast<float>(mouseY);
 
-    // --- Draw ---
-    // Overlay already drawn above (before input check) to prevent flash on close.
+    const CraftLayout lay{px, cx, cw, panel_w, line_h, sep_gap, scroll_top, scroll_bottom, mx, my};
+
     UIRenderer::drawRect(px, py, panel_w, panel_h, PANEL_BG);
 
     float y = py + pad;
-
-    // Title (centered).
     UIRenderer::drawText(sTitleFont, titleText, px + (panel_w - tsz.width) * 0.5f, y, TITLE_COLOR);
     y += title_h + sep_gap;
 
-    // Separator.
     UIRenderer::drawRect(cx, y, cw, 1.0f, SEPARATOR);
     y += 1.0f + sep_gap;
 
-    // Begin scrollable content with scissor clipping.
     UIRenderer::flush();
     glEnable(GL_SCISSOR_TEST);
     glScissor(static_cast<int>(px), static_cast<int>(wh - scroll_bottom), static_cast<int>(panel_w),
               static_cast<int>(scroll_bottom - scroll_top));
     y -= sScrollOffset;
 
-    // Recipe list.
-    for (size_t i = 0; i < displayRows.size(); ++i)
-    {
-        const auto& row = displayRows[i];
+    drawRecipeList(displayRows, em, lay, header_gap, y);
 
-        if (row.is_header)
-        {
-            if (i > 0)
-                y += header_gap;
-            UIRenderer::drawText(sBodyFont, row.text, cx, y, HEADER_COLOR);
-            y += line_h;
-            continue;
-        }
-
-        // Selectable recipe row.
-        const bool inScroll = (my >= scroll_top && my < scroll_bottom);
-        const bool hovered = inScroll && (mx >= cx - 4.0f && mx < cx + cw + 4.0f &&
-                                          my >= y - 2.0f && my < y - 2.0f + line_h);
-        if (hovered)
-        {
-            sHoveredRecipe = row.recipe_index;
-            if (mouseClicked(em, SDL_BUTTON_LEFT))
-                sSelectedRecipe = row.recipe_index;
-        }
-
-        const bool selected = (row.recipe_index == sSelectedRecipe);
-        if (selected)
-            UIRenderer::drawRect(cx - 4.0f, y - 2.0f, cw + 8.0f, line_h, SELECTED_BG);
-        else if (hovered)
-            UIRenderer::drawRect(cx - 4.0f, y - 2.0f, cw + 8.0f, line_h, HOVERED_BG);
-
-        const float icon_sz = line_h - 4.0f;
-        const float text_x = cx + icon_sz + 4.0f;
-        const ItemDef* row_def =
-            (row.recipe_index >= 0)
-                ? items.find(recipes.recipes[static_cast<size_t>(row.recipe_index)].output_item)
-                : nullptr;
-        ItemStatRenderer::drawItemIcon(row_def, cx, y, icon_sz);
-        const std::string prefix = selected ? "> " : "  ";
-        UIRenderer::drawText(sBodyFont, prefix + row.text, text_x, y,
-                             selected ? TEXT_WHITE : TEXT_DIM);
-
-        y += line_h;
-    }
-
-    // Detail section -- shows info for the hovered recipe (falls back to selected).
     const int displayRecipe = (sHoveredRecipe >= 0) ? sHoveredRecipe : sSelectedRecipe;
     if (displayRecipe >= 0 && recipe_count > 0)
     {
@@ -688,16 +703,11 @@ void CraftingScreen::render(EntityManager& em, int window_w, int window_h)
         const ItemDef* output_def = items.find(recipe.output_item);
         const std::string outputName =
             (output_def != nullptr) ? output_def->name : recipe.output_item;
-        const CraftLayout lay{px, cx, cw, panel_w, line_h, sep_gap, scroll_top, scroll_bottom,
-                              mx, my};
         renderRecipeDetail(recipe, output_def, outputName, inv, player, em, lay, y);
     }
 
-    // End scrollable content.
     UIRenderer::flush();
     glDisable(GL_SCISSOR_TEST);
 
-    // Fixed footer.
-    const CraftLayout lay{px, cx, cw, panel_w, line_h, sep_gap, scroll_top, scroll_bottom, mx, my};
-    renderCraftFooter(em, recipes, items, snd, inv, player, canCraft, lay, btn_h, hintText, hintsz);
+    renderCraftFooter(em, player, canCraft, lay, btn_h, hintText, hintsz);
 }

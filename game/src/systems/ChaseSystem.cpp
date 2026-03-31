@@ -322,10 +322,10 @@ static float computeEnemySpeed(EntityManager& em, entt::entity entity, AIControl
 
 struct MoveResult
 {
-    float targetDx = 0.0f;
-    float targetDy = 0.0f;
+    float target_dx = 0.0f;
+    float target_dy = 0.0f;
     float dist = 0.0f;
-    float arrivalScale = 1.0f;
+    float arrival_scale = 1.0f;
     bool skip = false;
 };
 
@@ -436,13 +436,13 @@ static MoveResult computeTokenHolderMove(const FlowField& ff, const TileMap& til
     {
         vel.dx = 0.0f;
         vel.dy = 0.0f;
-        mr.arrivalScale = 0.0f;
+        mr.arrival_scale = 0.0f;
         return mr;
     }
     const AttackContext actx{ai.attack_radius, ai.slot_angle};
-    std::tie(mr.targetDx, mr.targetDy) = computeAttackVelocity(
-        ff, tile_map, px, py, actx, tf, speed, mr.arrivalScale, f.combat_ai.attack_arrival_dist);
-    mr.arrivalScale = 0.3f;
+    std::tie(mr.target_dx, mr.target_dy) = computeAttackVelocity(
+        ff, tile_map, px, py, actx, tf, speed, mr.arrival_scale, f.combat_ai.attack_arrival_dist);
+    mr.arrival_scale = 0.3f;
     return mr;
 }
 
@@ -464,8 +464,8 @@ static MoveResult computeWaiterMove(const FlowField& ff, const TileMap& tile_map
     }
 
     const AttackContext actx{targetRadius, ai.slot_angle};
-    std::tie(mr.targetDx, mr.targetDy) = computeAttackVelocity(
-        ff, tile_map, px, py, actx, tf, speed * f.combat_ai.waiter_speed_scale, mr.arrivalScale,
+    std::tie(mr.target_dx, mr.target_dy) = computeAttackVelocity(
+        ff, tile_map, px, py, actx, tf, speed * f.combat_ai.waiter_speed_scale, mr.arrival_scale,
         f.combat_ai.attack_arrival_dist);
     return mr;
 }
@@ -488,7 +488,7 @@ static MoveResult handleAttackState(const FlowField& ff, const TileMap& tile_map
 
     if (playerSprinting)
     {
-        std::tie(mr.targetDx, mr.targetDy) = computeChaseVelocity(
+        std::tie(mr.target_dx, mr.target_dy) = computeChaseVelocity(
             ff, px, py, playerFound, tf, speed, mr.dist, entity, f.combat_ai.chase_spread);
         return mr;
     }
@@ -496,9 +496,8 @@ static MoveResult handleAttackState(const FlowField& ff, const TileMap& tile_map
     const bool hasToken = holdsToken(pool, entity);
     const float waitR = ai.attack_radius * f.combat_ai.wait_radius_mult;
 
-    if (ai.slot_angle == AIController::NO_SLOT)
-        assignSlotAngle(reg, entity, ai, tf, px, py, tile_map, f);
-    else if (!isSlotWalkable(tile_map, px, py, ai.slot_angle, waitR))
+    if (ai.slot_angle == AIController::NO_SLOT ||
+        !isSlotWalkable(tile_map, px, py, ai.slot_angle, waitR))
         assignSlotAngle(reg, entity, ai, tf, px, py, tile_map, f);
     else if (!hasToken)
         rotateSlotIfArrived(ai, tf, px, py, f, entity, fdt, tile_map);
@@ -602,7 +601,7 @@ void ChaseSystem::update(EntityManager& em, double dt)
 
         if (ai.state == AIController::State::Chase)
         {
-            std::tie(mr.targetDx, mr.targetDy) =
+            std::tie(mr.target_dx, mr.target_dy) =
                 computeChaseVelocity(ff, px, py, playerFound, transform, speed, mr.dist, entity,
                                      f.combat_ai.chase_spread);
         }
@@ -614,7 +613,7 @@ void ChaseSystem::update(EntityManager& em, double dt)
                 continue;
         }
 
-        blendVelocity(vel, mr.targetDx, mr.targetDy, ai.turn_speed, fdt);
+        blendVelocity(vel, mr.target_dx, mr.target_dy, ai.turn_speed, fdt);
 
         if (ai.state == AIController::State::Chase && playerFound)
             applyChaseArrival(vel, mr.dist, ai.arrival_radius, speed);
@@ -622,6 +621,6 @@ void ChaseSystem::update(EntityManager& em, double dt)
         checkStuck(ai, entity, transform, vel, px, py);
 
         if (em.registry().all_of<NavAgent>(entity))
-            em.registry().get<NavAgent>(entity).arrival_scale = mr.arrivalScale;
+            em.registry().get<NavAgent>(entity).arrival_scale = mr.arrival_scale;
     }
 }

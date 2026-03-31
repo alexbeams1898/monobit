@@ -34,50 +34,11 @@ void MainMenuScreen::reset()
     sSel = -1;
 }
 
-MainMenuScreen::Action MainMenuScreen::render(EntityManager& em, int window_w, int window_h)
+static MainMenuScreen::Action drawMenuButtons(EntityManager& em, const char* const* labels,
+                                              const MainMenuScreen::Action* actions, int btnCount,
+                                              const SoundConfig& snd, float ww, float wh)
 {
-    ZoneScopedN("MainMenuScreen");
-
-    const float ww = static_cast<float>(window_w);
-    const float wh = static_cast<float>(window_h);
-    const auto& saveData = em.registry().ctx().get<SaveData>();
-    const auto& snd = em.registry().ctx().get<SoundConfig>();
-
-    // Determine visible buttons. Load Game only if characters exist.
-    const bool hasChars = !saveData.characters.empty();
-
-    static constexpr Action kActionsWithLoad[] = {Action::NewGame, Action::LoadGame,
-                                                  Action::HighScores, Action::Quit};
-    static constexpr Action kActionsNoLoad[] = {Action::NewGame, Action::HighScores, Action::Quit};
-    static constexpr const char* kLabelsWithLoad[] = {"New Game", "Load Game", "High Scores",
-                                                      "Quit"};
-    static constexpr const char* kLabelsNoLoad[] = {"New Game", "High Scores", "Quit"};
-
-    const Action* actions = hasChars ? kActionsWithLoad : kActionsNoLoad;
-    const char* const* labels = hasChars ? kLabelsWithLoad : kLabelsNoLoad;
-    const int btnCount = hasChars ? 4 : 3;
-
-    // Keyboard nav -- first press snaps to item 0 if nothing selected.
-    if (keyPressed(em, SDL_SCANCODE_UP) || keyPressed(em, SDL_SCANCODE_W))
-        sSel = sSel < 0 ? 0 : (sSel - 1 + btnCount) % btnCount;
-    if (keyPressed(em, SDL_SCANCODE_DOWN) || keyPressed(em, SDL_SCANCODE_S))
-        sSel = sSel < 0 ? 0 : (sSel + 1) % btnCount;
-
-    Action result = Action::None;
-    if (sSel >= 0 && (keyPressed(em, SDL_SCANCODE_RETURN) || keyPressed(em, SDL_SCANCODE_KP_ENTER)))
-    {
-        result = actions[sSel];
-        if (result != Action::None && !snd.ui_click.path.empty())
-            AudioSystem::playSfx(snd.ui_click.path, snd.ui_click.volume);
-    }
-
-    // Draw.
-    UIRenderer::drawRect(0.0f, 0.0f, ww, wh, OVERLAY_OPAQUE);
-
-    // Title.
-    const std::string title = "HELL ESCAPE";
-    const TextSize tsz = UIRenderer::measureText(sBigTitleFont, title);
-    UIRenderer::drawText(sBigTitleFont, title, (ww - tsz.width) * 0.5f, wh * 0.2f, TITLE_COLOR);
+    MainMenuScreen::Action result = MainMenuScreen::Action::None;
 
     // Buttons.
     int mouseX = 0;
@@ -118,7 +79,7 @@ MainMenuScreen::Action MainMenuScreen::render(EntityManager& em, int window_w, i
         if (hovered && mouseClicked(em, SDL_BUTTON_LEFT))
         {
             result = actions[i];
-            if (result != Action::None && !snd.ui_click.path.empty())
+            if (result != MainMenuScreen::Action::None && !snd.ui_click.path.empty())
                 AudioSystem::playSfx(snd.ui_click.path, snd.ui_click.volume);
         }
 
@@ -132,6 +93,64 @@ MainMenuScreen::Action MainMenuScreen::render(EntityManager& em, int window_w, i
     {
         sSel = -1;
     }
+
+    return result;
+}
+
+static MainMenuScreen::Action handleKeyboardInput(const EntityManager& em, const SoundConfig& snd,
+                                                  const MainMenuScreen::Action* actions,
+                                                  int btnCount)
+{
+    using Action = MainMenuScreen::Action;
+
+    if (keyPressed(em, SDL_SCANCODE_UP) || keyPressed(em, SDL_SCANCODE_W))
+        sSel = sSel < 0 ? 0 : (sSel - 1 + btnCount) % btnCount;
+    if (keyPressed(em, SDL_SCANCODE_DOWN) || keyPressed(em, SDL_SCANCODE_S))
+        sSel = sSel < 0 ? 0 : (sSel + 1) % btnCount;
+
+    if (sSel >= 0 && (keyPressed(em, SDL_SCANCODE_RETURN) || keyPressed(em, SDL_SCANCODE_KP_ENTER)))
+    {
+        const Action result = actions[sSel];
+        if (result != Action::None && !snd.ui_click.path.empty())
+            AudioSystem::playSfx(snd.ui_click.path, snd.ui_click.volume);
+        return result;
+    }
+    return Action::None;
+}
+
+MainMenuScreen::Action MainMenuScreen::render(EntityManager& em, int window_w, int window_h)
+{
+    ZoneScopedN("MainMenuScreen");
+
+    const float ww = static_cast<float>(window_w);
+    const float wh = static_cast<float>(window_h);
+    const auto& saveData = em.registry().ctx().get<SaveData>();
+    const auto& snd = em.registry().ctx().get<SoundConfig>();
+
+    const bool hasChars = !saveData.characters.empty();
+
+    static constexpr Action kActionsWithLoad[] = {Action::NewGame, Action::LoadGame,
+                                                  Action::HighScores, Action::Quit};
+    static constexpr Action kActionsNoLoad[] = {Action::NewGame, Action::HighScores, Action::Quit};
+    static constexpr const char* kLabelsWithLoad[] = {"New Game", "Load Game", "High Scores",
+                                                      "Quit"};
+    static constexpr const char* kLabelsNoLoad[] = {"New Game", "High Scores", "Quit"};
+
+    const Action* actions = hasChars ? kActionsWithLoad : kActionsNoLoad;
+    const char* const* labels = hasChars ? kLabelsWithLoad : kLabelsNoLoad;
+    const int btnCount = hasChars ? 4 : 3;
+
+    Action result = handleKeyboardInput(em, snd, actions, btnCount);
+
+    UIRenderer::drawRect(0.0f, 0.0f, ww, wh, OVERLAY_OPAQUE);
+
+    const std::string title = "HELL ESCAPE";
+    const TextSize tsz = UIRenderer::measureText(sBigTitleFont, title);
+    UIRenderer::drawText(sBigTitleFont, title, (ww - tsz.width) * 0.5f, wh * 0.2f, TITLE_COLOR);
+
+    const Action btnResult = drawMenuButtons(em, labels, actions, btnCount, snd, ww, wh);
+    if (result == Action::None)
+        result = btnResult;
 
     return result;
 }
