@@ -529,7 +529,7 @@ void ChaseSystem::update(EntityManager& em, double dt)
                     }
                     else
                     {
-                        AttackContext actx{targetRadius, ai.slot_angle};
+                        const AttackContext actx{targetRadius, ai.slot_angle};
                         std::tie(targetDx, targetDy) =
                             computeAttackVelocity(ff, em.tile_map, px, py, actx, transform, speed,
                                                   arrivalScale, f.combat_ai.attack_arrival_dist);
@@ -539,7 +539,7 @@ void ChaseSystem::update(EntityManager& em, double dt)
                 else
                 {
                     // Non-holders drift slowly toward their slot.
-                    AttackContext actx{targetRadius, ai.slot_angle};
+                    const AttackContext actx{targetRadius, ai.slot_angle};
                     std::tie(targetDx, targetDy) =
                         computeAttackVelocity(ff, em.tile_map, px, py, actx, transform,
                                               speed * f.combat_ai.waiter_speed_scale, arrivalScale,

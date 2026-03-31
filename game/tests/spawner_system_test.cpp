@@ -48,7 +48,7 @@ TEST_CASE("SpawnerSystem applies position overrides — no two enemies share a p
         if (tag.name == "skeleton")
         {
             const auto& t = view.get<Transform>(entity);
-            positions.push_back({t.x, t.y});
+            positions.emplace_back(t.x, t.y);
         }
     }
 
@@ -91,7 +91,7 @@ static TileMap buildTestMap()
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
 TEST_CASE("SpawnUtils: spawn position lands inside the player's room", "[spawn]")
 {
-    TileMap tm = buildTestMap();
+    const TileMap tm = buildTestMap();
 
     // Player at room center: tile (10, 10) = (336, 336).
     const float px = 336.0f;
@@ -102,7 +102,7 @@ TEST_CASE("SpawnUtils: spawn position lands inside the player's room", "[spawn]"
     // Repeat a few times to check consistency.
     for (int i = 0; i < 20; ++i)
     {
-        bool ok = SpawnUtils::findSpawnPosition(tm, px, py, 330.0f, 825.0f, sx, sy);
+        const bool ok = SpawnUtils::findSpawnPosition(tm, px, py, 330.0f, 825.0f, sx, sy);
         REQUIRE(ok);
 
         // Spawn must be inside room bounds: tiles [5..14] -> world [160..480].
@@ -116,7 +116,7 @@ TEST_CASE("SpawnUtils: spawn position lands inside the player's room", "[spawn]"
 
 TEST_CASE("SpawnUtils: spawn position avoids minimum distance from player", "[spawn]")
 {
-    TileMap tm = buildTestMap();
+    const TileMap tm = buildTestMap();
 
     const float px = 336.0f;
     const float py = 336.0f;
@@ -126,7 +126,7 @@ TEST_CASE("SpawnUtils: spawn position avoids minimum distance from player", "[sp
     for (int i = 0; i < 20; ++i)
     {
         // nearDist=96 so room-scoped fallback applies (room is 320px wide).
-        bool ok = SpawnUtils::findSpawnPosition(tm, px, py, 96.0f, 825.0f, sx, sy);
+        const bool ok = SpawnUtils::findSpawnPosition(tm, px, py, 96.0f, 825.0f, sx, sy);
         REQUIRE(ok);
 
         const float dx = sx - px;
@@ -170,7 +170,7 @@ TEST_CASE("SpawnUtils: corridor fallback picks nearest room", "[spawn]")
     float sy = 0.0f;
     for (int i = 0; i < 20; ++i)
     {
-        bool ok = SpawnUtils::findSpawnPosition(tm, px, py, 100.0f, 2000.0f, sx, sy);
+        const bool ok = SpawnUtils::findSpawnPosition(tm, px, py, 100.0f, 2000.0f, sx, sy);
         REQUIRE(ok);
 
         // Should spawn in room 0 (cols 2-7, rows 2-7) since it's closer.

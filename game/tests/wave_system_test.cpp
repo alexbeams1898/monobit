@@ -50,7 +50,7 @@ TEST_CASE("startNextWave: Idle to Spawning", "[wave]")
     emplaceGameConfigs(em);
     setupAutoGen(em, 1, 3);
 
-    bool started = WaveSystem::startNextWave(em);
+    const bool started = WaveSystem::startNextWave(em);
     REQUIRE(started);
     auto& ws = em.registry().ctx().get<WaveState>();
     REQUIRE(ws.phase == WaveState::Phase::Spawning);
@@ -102,7 +102,7 @@ TEST_CASE("startNextWave: from SafeRoom transitions to Spawning", "[wave]")
     ws.phase = WaveState::Phase::SafeRoom;
     ws.current_wave = 1;
 
-    bool started = WaveSystem::startNextWave(em);
+    const bool started = WaveSystem::startNextWave(em);
     REQUIRE(started);
     REQUIRE(ws.phase == WaveState::Phase::Spawning);
     REQUIRE(ws.current_wave == 2);
@@ -421,14 +421,14 @@ TEST_CASE("generateWave: weighted distribution", "[wave]")
 
 TEST_CASE("Essence defaults in FormulaConfig", "[wave][essence]")
 {
-    FormulaConfig f;
+    const FormulaConfig f;
     REQUIRE(f.essence.min == 0);
     REQUIRE(f.essence.max == 100);
 }
 
 TEST_CASE("WaveGenRules level scaling defaults", "[wave]")
 {
-    WaveGenRules gen;
+    const WaveGenRules gen;
     REQUIRE(gen.level_growth == Catch::Approx(0.5f));
     REQUIRE(gen.stat_per_level == 1);
 }
@@ -455,7 +455,7 @@ TEST_CASE("startNextWave: from GameOver resets to wave 1", "[wave]")
     em.registry().emplace<Health>(player, Health{0, 100});
     em.registry().emplace<Transform>(player, Transform{100.0f, 200.0f});
 
-    bool started = WaveSystem::startNextWave(em);
+    const bool started = WaveSystem::startNextWave(em);
     REQUIRE(started);
     REQUIRE(ws.current_wave == 1);
     REQUIRE(ws.phase == WaveState::Phase::Spawning);

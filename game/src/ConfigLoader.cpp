@@ -909,7 +909,7 @@ bool ConfigLoader::loadWaves(EntityManager& em, const std::string& filePath)
     {
         for (const auto& [key, val] : j["overrides"].items())
         {
-            int waveNum = std::stoi(key);
+            const int waveNum = std::stoi(key);
             WaveOverride ov;
             ov.spawn_interval = val.value("spawn_interval", 0.5f);
             ov.burst_size = val.value("burst_size", 1);
@@ -1011,7 +1011,7 @@ bool ConfigLoader::loadItemDefs(EntityManager& em, const std::string& dirPath)
         }
 
         // Normalize path to use forward slashes and be relative to the exe.
-        std::string configPath = entry.path().generic_string();
+        const std::string configPath = entry.path().generic_string();
 
         ItemDef def;
         def.config_path = configPath;
@@ -1195,6 +1195,27 @@ bool ConfigLoader::loadWeaponTiers(EntityManager& em, const std::string& filePat
     return count > 0;
 }
 
+static EvolutionNode parseEvolutionNode(const json& nodeJson)
+{
+    EvolutionNode node;
+    node.weapon_config_path = nodeJson.value("weapon", std::string{});
+
+    if (nodeJson.contains("evolutions") && nodeJson["evolutions"].is_array())
+    {
+        for (const auto& ej : nodeJson["evolutions"])
+        {
+            EvolutionPath path;
+            path.target_node = ej.value("target", std::string{});
+            path.min_level = ej.value("min_level", 1);
+            path.material_config_path = ej.value("material", std::string{});
+            path.material_qty = ej.value("material_qty", 1);
+            node.evolutions.push_back(std::move(path));
+        }
+    }
+
+    return node;
+}
+
 bool ConfigLoader::loadEvolutionTrees(EntityManager& em, const std::string& dirPath)
 {
     namespace fs = std::filesystem;
@@ -1230,25 +1251,7 @@ bool ConfigLoader::loadEvolutionTrees(EntityManager& em, const std::string& dirP
         if (j.contains("nodes") && j["nodes"].is_object())
         {
             for (auto it = j["nodes"].begin(); it != j["nodes"].end(); ++it)
-            {
-                EvolutionNode node;
-                node.weapon_config_path = it.value().value("weapon", std::string{});
-
-                if (it.value().contains("evolutions") && it.value()["evolutions"].is_array())
-                {
-                    for (const auto& ej : it.value()["evolutions"])
-                    {
-                        EvolutionPath path;
-                        path.target_node = ej.value("target", std::string{});
-                        path.min_level = ej.value("min_level", 1);
-                        path.material_config_path = ej.value("material", std::string{});
-                        path.material_qty = ej.value("material_qty", 1);
-                        node.evolutions.push_back(std::move(path));
-                    }
-                }
-
-                family.nodes[it.key()] = std::move(node);
-            }
+                family.nodes[it.key()] = parseEvolutionNode(it.value());
         }
 
         const int familyIdx = static_cast<int>(registry.families.size());

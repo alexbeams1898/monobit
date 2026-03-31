@@ -81,8 +81,8 @@ static float sTileSize = 0.0f;
 
 void TileMapRenderer::init()
 {
-    GLuint vert = engine::gl::compileShader(GL_VERTEX_SHADER, kVertSrc);
-    GLuint frag = engine::gl::compileShader(GL_FRAGMENT_SHADER, kFragSrc);
+    const GLuint vert = engine::gl::compileShader(GL_VERTEX_SHADER, kVertSrc);
+    const GLuint frag = engine::gl::compileShader(GL_FRAGMENT_SHADER, kFragSrc);
 
     sTMProgram = glCreateProgram();
     glAttachShader(sTMProgram, vert);

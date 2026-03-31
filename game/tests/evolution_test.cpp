@@ -63,7 +63,7 @@ TEST_CASE("InventoryOps::canEvolve checks level and materials", "[evolution]")
 
 TEST_CASE("InventoryOps::canEvolve flat upgrade needs no materials", "[evolution]")
 {
-    Inventory inv;
+    const Inventory inv;
     Equipment equip;
     WeaponXP wxp;
     wxp.level = 5;
@@ -97,7 +97,7 @@ TEST_CASE("InventoryOps::evolveWeapon replaces weapon and resets XP", "[evolutio
     path.material_config_path = "config/items/materials/bone_shard.json";
     path.material_qty = 1;
 
-    ItemRegistry registry;
+    const ItemRegistry registry;
     const float carry_factor = 0.15f;
 
     REQUIRE(InventoryOps::evolveWeapon(inv, equip, wxp, path, "config/items/weapons/dagger.json",
@@ -138,7 +138,7 @@ TEST_CASE("InventoryOps::evolveWeapon accumulates carry-forward bonus", "[evolut
     path.min_level = 5;
     // Flat upgrade, no materials.
 
-    ItemRegistry registry;
+    const ItemRegistry registry;
     const float carry_factor = 0.15f;
 
     REQUIRE(InventoryOps::evolveWeapon(inv, equip, wxp, path, "config/items/weapons/dagger.json",

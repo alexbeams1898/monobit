@@ -190,7 +190,9 @@ std::vector<Room> TileMapLoader::loadRooms(const std::string& dir)
         if (fileName.size() < 5 || fileName.compare(fileName.size() - 5, 5, ".room") != 0)
             continue;
 
-        const std::string filePath = dir + "/" + fileName;
+        std::string filePath = dir;
+        filePath += "/";
+        filePath += fileName;
         std::ifstream roomFile(filePath);
         if (!roomFile.is_open())
         {
@@ -330,7 +332,7 @@ void TileMapLoader::placeRooms(TileMap& map, const std::vector<Room>& rooms, std
                 // Record world-space center for corridor connections.
                 const int cx = placedCol + room.width / 2;
                 const int cy = placedRow + room.height / 2;
-                centers.push_back({cx, cy});
+                centers.emplace_back(cx, cy);
 
                 // Store room rect for runtime queries (e.g. spawn scoping).
                 map.placed_rooms.push_back({placedCol, placedRow, room.width, room.height});

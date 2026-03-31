@@ -39,7 +39,7 @@ static void writeCrashLog(const char* reason)
     if (!f)
         return;
 
-    time_t t = time(nullptr);
+    const time_t t = time(nullptr);
     char timebuf[64] = {};
     strftime(timebuf, sizeof(timebuf), "%Y-%m-%d %H:%M:%S", localtime(&t));
 
@@ -141,9 +141,9 @@ int main(int argc, char* argv[])
     playMainMenuMusic(em);
 
     // Load fonts and init all UI screens.
-    FontHandle bodyFont = FontManager::loadFont("assets/fonts/cinzel.ttf", 28.0f);
-    FontHandle titleFont = FontManager::loadFont("assets/fonts/cinzel.ttf", 36.0f);
-    FontHandle bigTitleFont = FontManager::loadFont("assets/fonts/cinzel.ttf", 72.0f);
+    const FontHandle bodyFont = FontManager::loadFont("assets/fonts/cinzel.ttf", 28.0f);
+    const FontHandle titleFont = FontManager::loadFont("assets/fonts/cinzel.ttf", 36.0f);
+    const FontHandle bigTitleFont = FontManager::loadFont("assets/fonts/cinzel.ttf", 72.0f);
     gameLoopInit(titleFont);
     HudRenderer::init(bodyFont, titleFont, &engine.textureManager());
     NotificationSystem::init(bodyFont, titleFont);

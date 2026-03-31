@@ -29,7 +29,7 @@ void ParticleSystem::update(EntityManager& em, double dt)
         }
 
         // Lerp scale from start to end over lifetime.
-        float t = p.age / p.lifetime;
+        const float t = p.age / p.lifetime;
         auto& transform = view.get<Transform>(entity);
         transform.scale = p.start_scale + (p.end_scale - p.start_scale) * t;
     }
@@ -57,15 +57,15 @@ void ParticleSystem::spawnEmberTrickle(entt::registry& reg, float x, float y)
 {
     auto entity = reg.create();
 
-    float ox = static_cast<float>(std::rand() % 17 - 8); // -8 to +8
-    float oy = static_cast<float>(std::rand() % 17 - 8);
+    const float ox = static_cast<float>(std::rand() % 17 - 8); // -8 to +8
+    const float oy = static_cast<float>(std::rand() % 17 - 8);
 
     reg.emplace<Transform>(entity, x + ox, y + oy);
     reg.emplace<Tag>(entity, std::string("ember"));
 
     // Gentle upward float with minimal horizontal wander.
-    float vx = static_cast<float>(std::rand() % 11 - 5);    // -5 to +5
-    float vy = -8.0f - static_cast<float>(std::rand() % 8); // -8 to -15
+    const float vx = static_cast<float>(std::rand() % 11 - 5);    // -5 to +5
+    const float vy = -8.0f - static_cast<float>(std::rand() % 8); // -8 to -15
     reg.emplace<Velocity>(entity, vx, vy);
 
     Sprite spr;
@@ -94,15 +94,15 @@ void ParticleSystem::spawnEmberBurst(EntityManager& em, float x, float y, int co
         auto entity = reg.create();
 
         // Random offset from center (-6 to +6 px).
-        float ox = static_cast<float>(std::rand() % 13 - 6);
-        float oy = static_cast<float>(std::rand() % 13 - 6);
+        const float ox = static_cast<float>(std::rand() % 13 - 6);
+        const float oy = static_cast<float>(std::rand() % 13 - 6);
 
         reg.emplace<Transform>(entity, x + ox, y + oy, 1.0f);
         reg.emplace<Tag>(entity, std::string("ember"));
 
         // Upward drift with slight horizontal wander.
-        float vx = static_cast<float>(std::rand() % 21 - 10);     // -10 to +10
-        float vy = -15.0f - static_cast<float>(std::rand() % 21); // -15 to -35
+        const float vx = static_cast<float>(std::rand() % 21 - 10);     // -10 to +10
+        const float vy = -15.0f - static_cast<float>(std::rand() % 21); // -15 to -35
         reg.emplace<Velocity>(entity, vx, vy);
 
         // Sprite: ember.png, 8x8, layer 3 (above characters).

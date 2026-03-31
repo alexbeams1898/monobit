@@ -209,7 +209,7 @@ ActiveWave WaveSystem::generateWave(const WaveGenRules& gen, int wave_number)
         int assigned = 0;
         for (const auto& eg : eligible)
         {
-            int n = (count * eg.weight) / total_weight;
+            const int n = (count * eg.weight) / total_weight;
             if (n > 0)
             {
                 aw.enemies.push_back({eg.entry->config_path, n});
@@ -217,7 +217,7 @@ ActiveWave WaveSystem::generateWave(const WaveGenRules& gen, int wave_number)
             }
         }
         // Remainder to first eligible type.
-        int remainder = count - assigned;
+        const int remainder = count - assigned;
         if (remainder > 0)
         {
             if (aw.enemies.empty())
@@ -278,7 +278,86 @@ static void tickSpawning(EntityManager& em, WaveState& ws, double dt)
 }
 
 static constexpr float TRANSITION_DELAY = 1.0f;
+static constexpr float WAVE_ADVANCE_DELAY = 2.0f;
 static void commitWaveStart(EntityManager& em);
+
+// Count wave enemies that haven't died yet.
+static int countAliveWaveEnemies(EntityManager& em)
+{
+    int alive = 0;
+    for (auto e : em.registry().view<WaveEnemy>())
+    {
+        if (!em.registry().all_of<Dead>(e))
+            ++alive;
+    }
+    return alive;
+}
+
+// Victory: all waves cleared. Stop combat music, play victory fanfare.
+static void handleVictoryCompletion(EntityManager& em, WaveState& ws)
+{
+    ws.phase = WaveState::Phase::Complete;
+    AudioSystem::stopMusic();
+
+    if (auto* t = em.registry().ctx().get<MusicConfig>().get("victory"))
+        AudioSystem::playMusic(t->path, t->volume);
+
+    TracyMessageL("RunComplete");
+    std::cout << "[WaveSystem] All waves cleared! Run complete.\n";
+}
+
+// Spawn a ladder at the player-start marker, pan camera to it, play SFX.
+static void transitionToSafeRoom(EntityManager& em, WaveState& ws)
+{
+    ws.phase = WaveState::Phase::SafeRoom;
+
+    // Find the player-start spawn point ('P') for ladder placement.
+    float lx = 0.0f;
+    float ly = 0.0f;
+    bool found = false;
+    for (const auto& sp : em.tile_map.spawn_points)
+    {
+        if (sp.type == 'P')
+        {
+            lx = sp.x;
+            ly = sp.y;
+            found = true;
+            break;
+        }
+    }
+
+    if (!found)
+        return;
+
+    auto ladder = ConfigLoader::loadEntity(em, "config/entities/ladder.json");
+    if (!em.registry().valid(ladder))
+        return;
+
+    auto& lt = em.registry().get<Transform>(ladder);
+    lt.x = lx;
+    lt.y = ly;
+    lt.scale = 0.0f;
+
+    // Camera pan to show the ladder materializing.
+    for (auto pe : em.registry().view<PlayerActions>())
+    {
+        if (em.registry().all_of<Camera>(pe))
+        {
+            const auto& cam = em.registry().get<Camera>(pe);
+            CameraPan pan;
+            pan.start_x = cam.x;
+            pan.start_y = cam.y;
+            pan.target_x = lx;
+            pan.target_y = ly;
+            em.registry().emplace<CameraPan>(pe, pan);
+        }
+        break;
+    }
+
+    const auto& sc = em.registry().ctx().get<SoundConfig>();
+    if (!sc.ladder_appear.path.empty())
+        AudioSystem::playSfx(sc.ladder_appear.path, sc.ladder_appear.volume);
+}
 
 void WaveSystem::update(EntityManager& em, double dt)
 {
@@ -308,15 +387,7 @@ void WaveSystem::update(EntityManager& em, double dt)
         break;
 
     case WaveState::Phase::Active:
-    {
-        int alive = 0;
-        for (auto e : em.registry().view<WaveEnemy>())
-        {
-            if (!em.registry().all_of<Dead>(e))
-                ++alive;
-        }
-
-        if (alive == 0)
+        if (countAliveWaveEnemies(em) == 0)
         {
             ws.phase = WaveState::Phase::Cleared;
             ws.cleared_timer = 0.0f;
@@ -324,80 +395,17 @@ void WaveSystem::update(EntityManager& em, double dt)
             std::cout << "[WaveSystem] Wave " << ws.current_wave << " cleared!\n";
         }
         break;
-    }
 
     case WaveState::Phase::Cleared:
-    {
         ws.cleared_timer += static_cast<float>(dt);
-
-        static constexpr float WAVE_ADVANCE_DELAY = 2.0f;
         if (ws.cleared_timer >= WAVE_ADVANCE_DELAY)
         {
             if (wc.gen.max_waves > 0 && ws.current_wave >= wc.gen.max_waves)
-            {
-                ws.phase = WaveState::Phase::Complete;
-                AudioSystem::stopMusic();
-
-                if (auto* t = em.registry().ctx().get<MusicConfig>().get("victory"))
-                    AudioSystem::playMusic(t->path, t->volume);
-
-                TracyMessageL("RunComplete");
-                std::cout << "[WaveSystem] All waves cleared! Run complete.\n";
-            }
+                handleVictoryCompletion(em, ws);
             else
-            {
-                ws.phase = WaveState::Phase::SafeRoom;
-
-                // Spawn ladder at the player-start marker ('P').
-                float lx = 0.0f;
-                float ly = 0.0f;
-                bool found = false;
-                for (const auto& sp : em.tile_map.spawn_points)
-                {
-                    if (sp.type == 'P')
-                    {
-                        lx = sp.x;
-                        ly = sp.y;
-                        found = true;
-                        break;
-                    }
-                }
-
-                if (found)
-                {
-                    auto ladder = ConfigLoader::loadEntity(em, "config/entities/ladder.json");
-                    if (em.registry().valid(ladder))
-                    {
-                        auto& lt = em.registry().get<Transform>(ladder);
-                        lt.x = lx;
-                        lt.y = ly;
-                        lt.scale = 0.0f;
-
-                        // Camera pan to show the ladder materializing.
-                        for (auto pe : em.registry().view<PlayerActions>())
-                        {
-                            if (em.registry().all_of<Camera>(pe))
-                            {
-                                const auto& cam = em.registry().get<Camera>(pe);
-                                CameraPan pan;
-                                pan.start_x = cam.x;
-                                pan.start_y = cam.y;
-                                pan.target_x = lx;
-                                pan.target_y = ly;
-                                em.registry().emplace<CameraPan>(pe, pan);
-                            }
-                            break;
-                        }
-
-                        const auto& sc = em.registry().ctx().get<SoundConfig>();
-                        if (!sc.ladder_appear.path.empty())
-                            AudioSystem::playSfx(sc.ladder_appear.path, sc.ladder_appear.volume);
-                    }
-                }
-            }
+                transitionToSafeRoom(em, ws);
         }
         break;
-    }
     }
 }
 
@@ -460,7 +468,7 @@ static void commitWaveStart(EntityManager& em)
     auto& ws = em.registry().ctx().get<WaveState>();
     const auto& wc = em.registry().ctx().get<WaveConfig>();
 
-    int next = ws.current_wave;
+    const int next = ws.current_wave;
     ws.active_def = WaveSystem::generateWave(wc.gen, next);
 
     ws.enemies_total = 0;
@@ -518,7 +526,7 @@ bool WaveSystem::startNextWave(EntityManager& em)
         ws.phase != WaveState::Phase::Cleared && ws.phase != WaveState::Phase::GameOver)
         return false;
 
-    int next = ws.current_wave + 1;
+    const int next = ws.current_wave + 1;
     if (wc.gen.max_waves > 0 && next > wc.gen.max_waves)
         return false;
 

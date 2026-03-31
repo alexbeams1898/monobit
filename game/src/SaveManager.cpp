@@ -112,7 +112,7 @@ bool save(const SaveData& data, const std::string& path)
 {
     try
     {
-        std::filesystem::path dir = std::filesystem::path(path).parent_path();
+        const std::filesystem::path dir = std::filesystem::path(path).parent_path();
         if (!dir.empty())
             std::filesystem::create_directories(dir);
     }

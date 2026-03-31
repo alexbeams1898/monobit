@@ -22,6 +22,57 @@ static std::mt19937& damageRng()
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+namespace
+{
+
+// Resolve which entity is the hitbox and which is the target in a collision pair.
+// Returns {hitbox, target} or {null, null} if the pair is not a hitbox-vs-health collision.
+struct HitPair
+{
+    entt::entity hitbox = entt::null;
+    entt::entity target = entt::null;
+};
+
+HitPair resolveHitPair(entt::registry& reg, entt::entity a, entt::entity b)
+{
+    if (reg.all_of<Hitbox>(a) && reg.all_of<Health>(b))
+        return {a, b};
+    if (reg.all_of<Hitbox>(b) && reg.all_of<Health>(a))
+        return {b, a};
+    return {};
+}
+
+// Grant weapon XP trickle to the player on a successful hit.
+// Gathers enemy stats/health/weapon/loot to compute enemy power, then grants scaled XP.
+void grantHitXP(EntityManager& em, entt::entity target)
+{
+    auto& reg = em.registry();
+    const FormulaConfig& fc = reg.ctx().get<FormulaConfig>();
+
+    int enemyHp = 0;
+    float enemyDmg = 0.0f;
+    int enemyStats = 0;
+    int enemyLevel = 1;
+
+    if (reg.all_of<Health>(target))
+        enemyHp = reg.get<Health>(target).max;
+    if (reg.all_of<Weapon>(target))
+        enemyDmg = reg.get<Weapon>(target).base_damage;
+    if (reg.all_of<Stats>(target))
+    {
+        const auto& s = reg.get<Stats>(target);
+        enemyStats = s.str + s.dex + s.end + s.lck;
+    }
+    if (reg.all_of<Loot>(target))
+        enemyLevel = reg.get<Loot>(target).level;
+
+    const float power =
+        WeaponXPSystem::computeEnemyPower(enemyLevel, enemyHp, enemyDmg, enemyStats, fc);
+    WeaponXPSystem::grantXP(em, power, fc.weapon_xp.hit_multiplier);
+}
+
+} // anonymous namespace
+
 // Compute the stat-requirement penalty factor: exp(-deficit * penaltyRate).
 // Returns a value in (0, 1]; 1.0 = no penalty.
 static float computePenalty(const Weapon& w, const Stats& s, const FormulaConfig& f)
@@ -246,21 +297,7 @@ void DamageSystem::update(EntityManager& em)
     // --- Path 1: Hitbox → Health entity -----------------------------------
     for (const auto& ev : em.collision_events)
     {
-        // Identify which entity is the hitbox and which is the target.
-        entt::entity hitboxEnt = entt::null;
-        entt::entity targetEnt = entt::null;
-
-        if (reg.all_of<Hitbox>(ev.a) && reg.all_of<Health>(ev.b))
-        {
-            hitboxEnt = ev.a;
-            targetEnt = ev.b;
-        }
-        else if (reg.all_of<Hitbox>(ev.b) && reg.all_of<Health>(ev.a))
-        {
-            hitboxEnt = ev.b;
-            targetEnt = ev.a;
-        }
-
+        const auto [hitboxEnt, targetEnt] = resolveHitPair(reg, ev.a, ev.b);
         if (hitboxEnt == entt::null)
             continue;
 
@@ -280,27 +317,7 @@ void DamageSystem::update(EntityManager& em)
 
             // Grant weapon XP trickle on hit (player-only).
             if (hb.owner != entt::null && reg.all_of<PlayerActions>(hb.owner))
-            {
-                const FormulaConfig& fc = reg.ctx().get<FormulaConfig>();
-                int enemyHp = 0;
-                float enemyDmg = 0.0f;
-                int enemyStats = 0;
-                int enemyLevel = 1;
-                if (reg.all_of<Health>(targetEnt))
-                    enemyHp = reg.get<Health>(targetEnt).max;
-                if (reg.all_of<Weapon>(targetEnt))
-                    enemyDmg = reg.get<Weapon>(targetEnt).base_damage;
-                if (reg.all_of<Stats>(targetEnt))
-                {
-                    const auto& s = reg.get<Stats>(targetEnt);
-                    enemyStats = s.str + s.dex + s.end + s.lck;
-                }
-                if (reg.all_of<Loot>(targetEnt))
-                    enemyLevel = reg.get<Loot>(targetEnt).level;
-                const float power = WeaponXPSystem::computeEnemyPower(enemyLevel, enemyHp, enemyDmg,
-                                                                      enemyStats, fc);
-                WeaponXPSystem::grantXP(em, power, fc.weapon_xp.hit_multiplier);
-            }
+                grantHitXP(em, targetEnt);
         }
     }
     // Path 2 (enemy direct overlap → player) removed. Enemies now spawn hitboxes

@@ -76,8 +76,8 @@ void RenderSystem::init(int windowW, int windowH)
     sWindowW = windowW;
     sWindowH = windowH;
 
-    GLuint vert = engine::gl::compileShader(GL_VERTEX_SHADER, kVertexShaderSrc);
-    GLuint frag = engine::gl::compileShader(GL_FRAGMENT_SHADER, kFragmentShaderSrc);
+    const GLuint vert = engine::gl::compileShader(GL_VERTEX_SHADER, kVertexShaderSrc);
+    const GLuint frag = engine::gl::compileShader(GL_FRAGMENT_SHADER, kFragmentShaderSrc);
 
     sProgram = glCreateProgram();
     glAttachShader(sProgram, vert);
@@ -201,7 +201,7 @@ static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::en
 
     if (const auto* particle = reg.try_get<Particle>(entity))
     {
-        float t = particle->age / particle->lifetime;
+        const float t = particle->age / particle->lifetime;
         ta = (1.0f - t) * (1.0f - t);
     }
 

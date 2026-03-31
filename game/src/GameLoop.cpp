@@ -353,14 +353,15 @@ static void transitionToSummary(EntityManager& em, bool escaped)
     run.character_name = gs.active_character;
     run.escaped = escaped;
     // Timestamp.
-    time_t now = time(nullptr);
+    const time_t now = time(nullptr);
     char timeBuf[32] = {};
     strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%d %H:%M", localtime(&now));
     run.timestamp = timeBuf;
 
     // Check if high score before recording (recording sorts and trims).
     auto top = SaveManager::topRuns(saveData, 10);
-    bool isHighScore = (static_cast<int>(top.size()) < 10) || (score > top.back().stats.score);
+    const bool isHighScore =
+        (static_cast<int>(top.size()) < 10) || (score > top.back().stats.score);
 
     // Persist the player's current money to their character profile.
     for (auto pe : em.registry().view<PlayerActions>())
@@ -401,7 +402,7 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
 
     // Clear consumption flags only when the button is released, so a pickup
     // click doesn't trigger an attack on the next frame (held state persists).
-    uint32_t mouseState = SDL_GetMouseState(nullptr, nullptr);
+    const uint32_t mouseState = SDL_GetMouseState(nullptr, nullptr);
     if ((mouseState & SDL_BUTTON_LMASK) == 0)
         em.lmb_consumed = false;
     if ((mouseState & SDL_BUTTON_RMASK) == 0)

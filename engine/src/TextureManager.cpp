@@ -75,14 +75,14 @@ void TextureManager::clear()
 {
     for (auto& [path, info] : cache)
     {
-        GLuint texId = static_cast<GLuint>(info.id);
+        const GLuint texId = static_cast<GLuint>(info.id);
         glDeleteTextures(1, &texId);
     }
     cache.clear();
 
     if (fallback_id != 0)
     {
-        GLuint texId = static_cast<GLuint>(fallback_id);
+        const GLuint texId = static_cast<GLuint>(fallback_id);
         glDeleteTextures(1, &texId);
         fallback_id = 0;
     }

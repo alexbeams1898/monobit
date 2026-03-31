@@ -68,7 +68,7 @@ static SfxVoice* findFreeVoice()
 
 bool AudioSystem::init()
 {
-    ma_result result = ma_engine_init(nullptr, &sEngine);
+    const ma_result result = ma_engine_init(nullptr, &sEngine);
     if (result != MA_SUCCESS)
     {
         std::cerr << "[AudioSystem] Failed to initialize audio engine (error " << result
@@ -117,7 +117,7 @@ void AudioSystem::playSfx(const std::string& path, float volume, float pitch)
     if (slot == nullptr)
         return; // pool full, drop the sound
 
-    ma_result result =
+    const ma_result result =
         ma_sound_init_from_file(&sEngine, path.c_str(), MA_SOUND_FLAG_DECODE | MA_SOUND_FLAG_ASYNC,
                                 nullptr, nullptr, &slot->sound);
     if (result != MA_SUCCESS)
@@ -145,8 +145,8 @@ void AudioSystem::playMusic(const std::string& path, float volume, bool loop, in
         sMusicLoaded = false;
     }
 
-    ma_result result = ma_sound_init_from_file(&sEngine, path.c_str(), MA_SOUND_FLAG_STREAM,
-                                               nullptr, nullptr, &sMusicSound);
+    const ma_result result = ma_sound_init_from_file(&sEngine, path.c_str(), MA_SOUND_FLAG_STREAM,
+                                                     nullptr, nullptr, &sMusicSound);
     if (result != MA_SUCCESS)
     {
         std::cerr << "[AudioSystem] playMusic failed for: " << path << " (error " << result

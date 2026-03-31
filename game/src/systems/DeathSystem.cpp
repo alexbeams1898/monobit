@@ -161,9 +161,9 @@ static void clampToWalkable(const TileMap& tm, float& x, float& y)
     // Check all 4 corners of the pickup's 12x12 bounding box.
     constexpr float HALF = 6.0f;
     bool allWalkable = true;
-    for (float oy : {-HALF, HALF})
+    for (const float oy : {-HALF, HALF})
     {
-        for (float ox : {-HALF, HALF})
+        for (const float ox : {-HALF, HALF})
         {
             const int c = static_cast<int>(x + ox) / TileMap::TILE_SIZE;
             const int r = static_cast<int>(y + oy) / TileMap::TILE_SIZE;

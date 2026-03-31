@@ -47,7 +47,7 @@ static int consumeItem(Inventory& inv, const std::string& config_path, int quant
 
     int remaining = quantity;
     int qualitySum = 0;
-    for (int idx : matches)
+    for (const int idx : matches)
     {
         if (remaining <= 0)
             break;

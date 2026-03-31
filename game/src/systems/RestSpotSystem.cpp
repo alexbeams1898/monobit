@@ -15,6 +15,58 @@
 
 static constexpr float kHealCooldown = 5.0f; // seconds before the spot can heal again
 
+namespace
+{
+
+bool isInCombat(entt::registry& reg)
+{
+    for (auto [ai_ent, ai] : reg.view<AIController>().each())
+    {
+        if (ai.state != AIController::State::Idle)
+            return true;
+    }
+    return false;
+}
+
+void tryAutoHeal(EntityManager& em, entt::registry& reg, entt::entity playerEnt, float playerX,
+                 float playerY, RestSpot& spot, const SoundConfig& snd)
+{
+    auto& playerHealth = reg.get<Health>(playerEnt);
+    if (spot.cooldown > 0.0f || playerHealth.current >= playerHealth.max)
+        return;
+
+    if (isInCombat(reg))
+    {
+        spot.cooldown = 1.0f;
+        if (!snd.heal_blocked.path.empty())
+            AudioSystem::playSfx(snd.heal_blocked.path, snd.heal_blocked.volume);
+        return;
+    }
+
+    playerHealth.current = playerHealth.max;
+
+    // Restore stamina too.
+    if (reg.all_of<Stamina>(playerEnt))
+        reg.get<Stamina>(playerEnt).current = reg.get<Stamina>(playerEnt).max_stamina;
+
+    spot.cooldown = kHealCooldown;
+    TracyMessageL("RestHeal");
+    if (!snd.rest_heal_paths.empty())
+    {
+        static std::mt19937 rng{std::random_device{}()};
+        auto dist = std::uniform_int_distribution<size_t>(0, snd.rest_heal_paths.size() - 1);
+        AudioSystem::playSfx(snd.rest_heal_paths[dist(rng)], snd.rest_heal.volume);
+    }
+    else
+    {
+        AudioSystem::playSfx(snd.rest_heal.path, snd.rest_heal.volume);
+    }
+    ParticleSystem::spawnEmberBurst(em, playerX, playerY, 4);
+    std::cout << "[RestSpot] HP restored to " << playerHealth.max << ".\n";
+}
+
+} // namespace
+
 void RestSpotSystem::update(EntityManager& em, double dt)
 {
     ZoneScopedN("RestSpotSystem");
@@ -35,10 +87,7 @@ void RestSpotSystem::update(EntityManager& em, double dt)
     if (playerEnt == entt::null || !reg.all_of<Health>(playerEnt))
         return;
 
-    auto& playerHealth = reg.get<Health>(playerEnt);
-
-    auto& snd = reg.ctx().get<SoundConfig>();
-
+    const auto& snd = reg.ctx().get<SoundConfig>();
     auto& ui = reg.ctx().get<UIState>();
     bool playerInAnySpot = false;
 
@@ -56,51 +105,7 @@ void RestSpotSystem::update(EntityManager& em, double dt)
 
         playerInAnySpot = true;
 
-        // Auto-heal on entry (cooldown prevents spamming).
-        if (spot.cooldown <= 0.0f && playerHealth.current < playerHealth.max)
-        {
-            // Block healing if any enemy is aggroed.
-            bool inCombat = false;
-            for (auto [ai_ent, ai] : reg.view<AIController>().each())
-            {
-                if (ai.state != AIController::State::Idle)
-                {
-                    inCombat = true;
-                    break;
-                }
-            }
-
-            if (inCombat)
-            {
-                spot.cooldown = 1.0f;
-                if (!snd.heal_blocked.path.empty())
-                    AudioSystem::playSfx(snd.heal_blocked.path, snd.heal_blocked.volume);
-            }
-            else
-            {
-                playerHealth.current = playerHealth.max;
-
-                // Restore stamina too.
-                if (reg.all_of<Stamina>(playerEnt))
-                    reg.get<Stamina>(playerEnt).current = reg.get<Stamina>(playerEnt).max_stamina;
-
-                spot.cooldown = kHealCooldown;
-                TracyMessageL("RestHeal");
-                if (!snd.rest_heal_paths.empty())
-                {
-                    static std::mt19937 rng{std::random_device{}()};
-                    auto dist =
-                        std::uniform_int_distribution<size_t>(0, snd.rest_heal_paths.size() - 1);
-                    AudioSystem::playSfx(snd.rest_heal_paths[dist(rng)], snd.rest_heal.volume);
-                }
-                else
-                {
-                    AudioSystem::playSfx(snd.rest_heal.path, snd.rest_heal.volume);
-                }
-                ParticleSystem::spawnEmberBurst(em, playerX, playerY, 4);
-                std::cout << "[RestSpot] HP restored to " << playerHealth.max << ".\n";
-            }
-        }
+        tryAutoHeal(em, reg, playerEnt, playerX, playerY, spot, snd);
 
         // Open sanctuary menu on interact key or mouse click while in range.
         const auto& actions = reg.get<PlayerActions>(playerEnt);

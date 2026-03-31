@@ -174,45 +174,73 @@ static void recomputeArmorStats(entt::registry& reg, entt::entity entity, const 
     }
 }
 
+// Save current weapon XP back to inventory slot (real weapon) or Body (unarmed).
+static void saveWeaponXP(entt::registry& reg, entt::entity entity, const std::string& oldConfigPath)
+{
+    if (!reg.all_of<PlayerActions>(entity) || !reg.all_of<WeaponXP>(entity) ||
+        oldConfigPath == "__unsynced__")
+        return;
+
+    const auto& wxp = reg.get<WeaponXP>(entity);
+    if (oldConfigPath.empty())
+    {
+        // Was unarmed -- save to Body.
+        auto* body = reg.try_get<Body>(entity);
+        if (body != nullptr)
+        {
+            body->unarmed_xp_level = wxp.level;
+            body->unarmed_xp_current = wxp.current_xp;
+        }
+    }
+    else
+    {
+        // Was a real weapon -- find it in inventory by config_path and save.
+        auto* inv = reg.try_get<Inventory>(entity);
+        if (inv != nullptr)
+        {
+            for (auto& item : inv->items)
+            {
+                if (item.config_path == oldConfigPath)
+                {
+                    item.weapon_xp_level = wxp.level;
+                    item.weapon_xp_current = wxp.current_xp;
+                    break;
+                }
+            }
+        }
+    }
+}
+
+// Load weapon XP from the new inventory slot (real weapon) or Body (unarmed).
+static void loadWeaponXP(entt::registry& reg, entt::entity entity, const Equipment& equip,
+                         const FormulaConfig& f)
+{
+    auto& wxp = reg.get_or_emplace<WeaponXP>(entity);
+    if (!reg.all_of<PlayerActions>(entity))
+        return;
+
+    if (equip.main_hand.empty())
+    {
+        const auto* body = reg.try_get<Body>(entity);
+        wxp.level = body ? body->unarmed_xp_level : 1;
+        wxp.current_xp = body ? body->unarmed_xp_current : 0.0f;
+    }
+    else
+    {
+        wxp.level = equip.main_hand.weapon_xp_level;
+        wxp.current_xp = equip.main_hand.weapon_xp_current;
+    }
+    wxp.xp_to_next =
+        f.weapon_xp.base_xp * std::pow(static_cast<float>(wxp.level), f.weapon_xp.exponent);
+}
+
 // Sync Equipment slot → Weapon/Shield components when the equipped item changes.
 static void syncEquipmentSlots(entt::registry& reg, entt::entity entity, Equipment& equip,
                                const ItemRegistry& items, const FormulaConfig& f)
 {
     if (equip.main_hand.config_path != equip.synced_main_hand)
     {
-        // Save current weapon XP to the old weapon before switching.
-        if (reg.all_of<PlayerActions>(entity) && reg.all_of<WeaponXP>(entity) &&
-            equip.synced_main_hand != "__unsynced__")
-        {
-            const auto& wxp = reg.get<WeaponXP>(entity);
-            if (equip.synced_main_hand.empty())
-            {
-                // Was unarmed -- save to Body.
-                auto* body = reg.try_get<Body>(entity);
-                if (body != nullptr)
-                {
-                    body->unarmed_xp_level = wxp.level;
-                    body->unarmed_xp_current = wxp.current_xp;
-                }
-            }
-            else
-            {
-                // Was a real weapon -- find it in inventory by config_path and save.
-                auto* inv = reg.try_get<Inventory>(entity);
-                if (inv != nullptr)
-                {
-                    for (auto& item : inv->items)
-                    {
-                        if (item.config_path == equip.synced_main_hand)
-                        {
-                            item.weapon_xp_level = wxp.level;
-                            item.weapon_xp_current = wxp.current_xp;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
+        saveWeaponXP(reg, entity, equip.synced_main_hand);
 
         equip.synced_main_hand = equip.main_hand.config_path;
         auto& w = reg.get_or_emplace<Weapon>(entity);
@@ -234,24 +262,7 @@ static void syncEquipmentSlots(entt::registry& reg, entt::entity entity, Equipme
             }
         }
 
-        // Ensure weapon XP tracking is active, then load XP from the new slot.
-        auto& wxp = reg.get_or_emplace<WeaponXP>(entity);
-        if (reg.all_of<PlayerActions>(entity))
-        {
-            if (equip.main_hand.empty())
-            {
-                const auto* body = reg.try_get<Body>(entity);
-                wxp.level = body ? body->unarmed_xp_level : 1;
-                wxp.current_xp = body ? body->unarmed_xp_current : 0.0f;
-            }
-            else
-            {
-                wxp.level = equip.main_hand.weapon_xp_level;
-                wxp.current_xp = equip.main_hand.weapon_xp_current;
-            }
-            wxp.xp_to_next =
-                f.weapon_xp.base_xp * std::pow(static_cast<float>(wxp.level), f.weapon_xp.exponent);
-        }
+        loadWeaponXP(reg, entity, equip, f);
     }
 
     if (equip.off_hand.config_path != equip.synced_off_hand)

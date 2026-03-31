@@ -9,26 +9,65 @@
 #include <iostream>
 #include <tracy/Tracy.hpp>
 
+namespace
+{
+
 // Quality factor: higher quality = slower decay + gentler XP curve.
-static float qualityFactor(QualityTier q)
+float qualityFactor(QualityTier q)
 {
     return 1.0f + static_cast<float>(static_cast<int>(q)) * 0.1f;
 }
 
 // XP required to reach the next level. No hard cap -- curve steepens with level.
 // quality_factor softens the exponent: higher quality = gentler curve.
-static float xpToNext(int level, float base_xp, float exponent, float qf)
+float xpToNext(int level, float base_xp, float exponent, float qf)
 {
     return base_xp * std::pow(static_cast<float>(level), exponent / qf);
+}
+
+// Resolve a per-level growth value: item def override -> tier default -> hardcoded fallback.
+// item_value < 0 means "not overridden, use tier default".
+float resolveGrowth(const ItemDef* def, const WeaponTierRegistry& tiers, float item_value,
+                    float (*tier_field)(const WeaponTierDef&), float fallback)
+{
+    if (def != nullptr && item_value >= 0.0f)
+        return item_value;
+    if (def != nullptr)
+    {
+        const WeaponTierDef* td = tiers.find(def->weapon_tier);
+        if (td != nullptr)
+            return tier_field(*td);
+    }
+    return fallback;
+}
+
+// Compute XP threshold for next level, accounting for tier rate and weapon power.
+float computeXpThreshold(int level, float qf, const ItemDef* def, const WeaponTierRegistry& tiers,
+                         const FormulaConfig& f)
+{
+    float tierRate = 1.0f;
+    float powerRate = 1.0f;
+    if (def != nullptr)
+    {
+        const WeaponTierDef* td = tiers.find(def->weapon_tier);
+        if (td != nullptr)
+            tierRate = td->xp_rate;
+        powerRate =
+            f.weapon_xp.power_base + def->base_damage * f.weapon_xp.power_dmg_factor +
+            static_cast<float>(static_cast<int>(def->rarity)) * f.weapon_xp.power_rarity_factor;
+    }
+    return xpToNext(level, f.weapon_xp.base_xp, f.weapon_xp.exponent, qf) * tierRate * powerRate;
 }
 
 // Stat growth per level, with quality-driven decay.
 // Returns a multiplier in (0, 1] that decays toward zero as level rises.
 // Higher quality = slower decay.
-static float growthFactor(int level, float decay_rate, float qf)
+float growthFactor(int level, float decay_rate, float qf)
 {
     return qf / (1.0f + static_cast<float>(level) * decay_rate / qf);
 }
+
+} // namespace
 
 float WeaponXPSystem::computeEnemyPower(int level, int max_hp, float base_damage, int total_stats,
                                         const FormulaConfig& f)
@@ -79,27 +118,12 @@ void WeaponXPSystem::update(EntityManager& em)
             {
                 auto& w = reg.get<Weapon>(entity);
 
-                float dmgGrowth = 1.0f;
-                float scaleGrowth = 0.02f;
-
-                // Resolve growth values: per-weapon override > tier default > fallback.
-                if (def != nullptr && def->damage_per_level >= 0.0f)
-                    dmgGrowth = def->damage_per_level;
-                else if (def != nullptr)
-                {
-                    const WeaponTierDef* td = tiers.find(def->weapon_tier);
-                    if (td != nullptr)
-                        dmgGrowth = td->damage_per_level;
-                }
-
-                if (def != nullptr && def->scaling_per_level >= 0.0f)
-                    scaleGrowth = def->scaling_per_level;
-                else if (def != nullptr)
-                {
-                    const WeaponTierDef* td = tiers.find(def->weapon_tier);
-                    if (td != nullptr)
-                        scaleGrowth = td->scaling_per_level;
-                }
+                const float dmgGrowth = resolveGrowth(
+                    def, tiers, def ? def->damage_per_level : -1.0f,
+                    [](const WeaponTierDef& td) { return td.damage_per_level; }, 1.0f);
+                const float scaleGrowth = resolveGrowth(
+                    def, tiers, def ? def->scaling_per_level : -1.0f,
+                    [](const WeaponTierDef& td) { return td.scaling_per_level; }, 0.02f);
 
                 const float gf = growthFactor(wxp.level, f.weapon_xp.decay_rate, qf);
                 w.base_damage += dmgGrowth * gf;
@@ -113,21 +137,7 @@ void WeaponXPSystem::update(EntityManager& em)
                                          {0.9f, 0.78f, 0.45f, 1.0f});
             }
 
-            // Two layers: tier rate (weapon class) * power rate (individual weapon strength).
-            float tierRate = 1.0f;
-            float powerRate = 1.0f;
-            if (def != nullptr)
-            {
-                const WeaponTierDef* td = tiers.find(def->weapon_tier);
-                if (td != nullptr)
-                    tierRate = td->xp_rate;
-                powerRate = f.weapon_xp.power_base +
-                            def->base_damage * f.weapon_xp.power_dmg_factor +
-                            static_cast<float>(static_cast<int>(def->rarity)) *
-                                f.weapon_xp.power_rarity_factor;
-            }
-            wxp.xp_to_next = xpToNext(wxp.level, f.weapon_xp.base_xp, f.weapon_xp.exponent, qf) *
-                             tierRate * powerRate;
+            wxp.xp_to_next = computeXpThreshold(wxp.level, qf, def, tiers, f);
         }
     }
 }
