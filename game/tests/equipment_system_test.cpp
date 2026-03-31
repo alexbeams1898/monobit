@@ -62,7 +62,7 @@ TEST_CASE("EquipmentSystem: empty equipment gives fist defaults", "[equipment]")
 
     const auto& w = em.registry().get<Weapon>(entity);
     const auto& f = em.registry().ctx().get<FormulaConfig>();
-    REQUIRE(w.name == "Fist");
+    REQUIRE(w.name == "Unarmed");
     REQUIRE(w.base_damage == Catch::Approx(f.fist.base_damage));
     REQUIRE(w.str_scaling == Catch::Approx(f.fist.str_scaling));
     REQUIRE(w.dex_scaling == Catch::Approx(f.fist.dex_scaling));
@@ -113,7 +113,7 @@ TEST_CASE("EquipmentSystem: unequip weapon reverts to fist", "[equipment]")
     EquipmentSystem::update(em);
 
     const auto& w = em.registry().get<Weapon>(entity);
-    REQUIRE(w.name == "Fist");
+    REQUIRE(w.name == "Unarmed");
     REQUIRE(w.base_damage ==
             Catch::Approx(em.registry().ctx().get<FormulaConfig>().fist.base_damage));
 }
@@ -216,7 +216,7 @@ TEST_CASE("EquipmentSystem: Body natural weapon used when unarmed", "[equipment]
     EquipmentSystem::update(em);
 
     const auto& w = em.registry().get<Weapon>(entity);
-    REQUIRE(w.name == "Fist");
+    REQUIRE(w.name == "Unarmed");
     REQUIRE(w.base_damage == Catch::Approx(3.0f));
     REQUIRE(w.str_scaling == Catch::Approx(0.25f));
     REQUIRE(w.dex_scaling == Catch::Approx(0.0f));
@@ -238,7 +238,7 @@ TEST_CASE("EquipmentSystem: no Body falls back to FormulaConfig fist", "[equipme
 
     const auto& w = em.registry().get<Weapon>(entity);
     const auto& f = em.registry().ctx().get<FormulaConfig>();
-    REQUIRE(w.name == "Fist");
+    REQUIRE(w.name == "Unarmed");
     REQUIRE(w.base_damage == Catch::Approx(f.fist.base_damage));
     REQUIRE(w.str_scaling == Catch::Approx(f.fist.str_scaling));
     REQUIRE(w.dex_scaling == Catch::Approx(f.fist.dex_scaling));

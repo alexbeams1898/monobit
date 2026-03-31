@@ -145,7 +145,7 @@ TEST_CASE("EquipmentSystem: poise max set from armor bonus", "[armor]")
     auto player = em.create();
     em.registry().emplace<PlayerActions>(player);
     em.registry().emplace<Inventory>(player);
-    em.registry().emplace<Stats>(player);
+    em.registry().emplace<Stats>(player, Stats{0, 0, 0, 0});
     em.registry().emplace<Poise>(player, Poise{0.0f, 0.0f, 0.0f});
 
     Equipment equip;
