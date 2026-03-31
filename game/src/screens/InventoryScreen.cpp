@@ -105,7 +105,7 @@ void InventoryScreen::render(EntityManager& em, int window_w, int window_h)
     const float wh = static_cast<float>(window_h);
 
     // Process navigation from event buffer.
-    for (int key : em.key_down_events)
+    for (const int key : em.key_down_events)
     {
         if (key == SDL_SCANCODE_UP || key == SDL_SCANCODE_W)
             sSelectedSlot -= GRID_COLS;

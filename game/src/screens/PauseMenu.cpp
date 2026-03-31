@@ -61,15 +61,15 @@ static int hoveredSlot(float mx, float my, float cx, float cy, int cols, int tot
 {
     if (mx < cx || my < cy)
         return -1;
-    int col = static_cast<int>((mx - cx) / (SLOT_SIZE + SLOT_GAP));
-    int row = static_cast<int>((my - cy) / (SLOT_SIZE + SLOT_GAP));
+    const int col = static_cast<int>((mx - cx) / (SLOT_SIZE + SLOT_GAP));
+    const int row = static_cast<int>((my - cy) / (SLOT_SIZE + SLOT_GAP));
     if (col < 0 || col >= cols)
         return -1;
-    float lx = (mx - cx) - static_cast<float>(col) * (SLOT_SIZE + SLOT_GAP);
-    float ly = (my - cy) - static_cast<float>(row) * (SLOT_SIZE + SLOT_GAP);
+    const float lx = (mx - cx) - static_cast<float>(col) * (SLOT_SIZE + SLOT_GAP);
+    const float ly = (my - cy) - static_cast<float>(row) * (SLOT_SIZE + SLOT_GAP);
     if (lx > SLOT_SIZE || ly > SLOT_SIZE)
         return -1;
-    int idx = row * cols + col;
+    const int idx = row * cols + col;
     return (idx >= 0 && idx < total) ? idx : -1;
 }
 
@@ -96,14 +96,24 @@ static float drawTextWrapped(FontHandle font, const std::string& text, float x, 
     while (i <= text.size())
     {
         // Extract next word.
-        size_t start = i;
+        const size_t start = i;
         while (i < text.size() && text[i] != ' ')
             ++i;
-        std::string word = text.substr(start, i - start);
+        const std::string word = text.substr(start, i - start);
         ++i; // skip space
 
-        std::string candidate = line.empty() ? word : line + " " + word;
-        TextSize csz = UIRenderer::measureText(font, candidate);
+        std::string candidate;
+        if (line.empty())
+        {
+            candidate = word;
+        }
+        else
+        {
+            candidate = line;
+            candidate += " ";
+            candidate += word;
+        }
+        const TextSize csz = UIRenderer::measureText(font, candidate);
         if (csz.width > max_width && !line.empty())
         {
             UIRenderer::drawText(font, line, x, y + total_h, color);
@@ -129,9 +139,9 @@ static constexpr Color HEADING_SEP{0.4f, 0.35f, 0.25f, 0.5f};
 
 static float drawTabHeading(const char* text, float cx, float cy, float cw)
 {
-    TextSize sz = UIRenderer::measureText(sTitleFont, text);
+    const TextSize sz = UIRenderer::measureText(sTitleFont, text);
     UIRenderer::drawText(sTitleFont, text, cx + (cw - sz.width) * 0.5f, cy, HEADING_COLOR);
-    float y = cy + sz.height + 6.0f;
+    const float y = cy + sz.height + 6.0f;
     UIRenderer::drawRect(cx, y, cw, 1.0f, HEADING_SEP);
     return y + 10.0f;
 }
@@ -168,7 +178,7 @@ static entt::entity findPlayer(EntityManager& em)
 
 static void renderStatusTab(EntityManager& em, float cx, float cy, float cw, float ch)
 {
-    entt::entity player = findPlayer(em);
+    const entt::entity player = findPlayer(em);
     if (player == entt::null)
         return;
 
@@ -279,11 +289,11 @@ static void renderStatusTab(EntityManager& em, float cx, float cy, float cw, flo
 static void renderInventoryTab(EntityManager& em, float cx, float cy, float cw, float /*ch*/,
                                float mx, float my)
 {
-    entt::entity player = findPlayer(em);
+    const entt::entity player = findPlayer(em);
     if (player == entt::null || !em.registry().all_of<Inventory>(player))
         return;
 
-    float gy = drawTabHeading("Inventory", cx, cy, cw);
+    const float gy = drawTabHeading("Inventory", cx, cy, cw);
 
     const auto& inv = em.registry().get<Inventory>(player);
     const auto& items = em.registry().ctx().get<ItemRegistry>();
@@ -292,7 +302,7 @@ static void renderInventoryTab(EntityManager& em, float cx, float cy, float cw, 
     if (sContentSel >= 0)
         sContentSel = ((sContentSel % total_slots) + total_slots) % total_slots;
 
-    int hover = hoveredSlot(mx, my, cx, gy, GRID_COLS, total_slots);
+    const int hover = hoveredSlot(mx, my, cx, gy, GRID_COLS, total_slots);
     if (hover >= 0)
     {
         sContentSel = hover;
@@ -334,7 +344,7 @@ static void renderInventoryTab(EntityManager& em, float cx, float cy, float cw, 
             if (item.quantity > 1)
             {
                 const std::string qty = std::to_string(item.quantity);
-                TextSize qsz = UIRenderer::measureText(sBodyFont, qty);
+                const TextSize qsz = UIRenderer::measureText(sBodyFont, qty);
                 UIRenderer::drawText(sBodyFont, qty, sx + SLOT_SIZE - qsz.width - 3.0f,
                                      sy + SLOT_SIZE - qsz.height - 2.0f, TEXT_WHITE);
             }
@@ -546,7 +556,7 @@ static bool renderEquipPicker(EntityManager& em, entt::entity player, const Equi
     UIRenderer::drawText(sBodyFont,
                          std::string("Select for ") + EQUIP_SLOT_NAMES[sContentSel] + ":", cx, ey,
                          TITLE_COLOR);
-    float y = ey + line_h + 4.0f;
+    const float y = ey + line_h + 4.0f;
 
     if (picker.empty())
     {
@@ -558,7 +568,8 @@ static bool renderEquipPicker(EntityManager& em, entt::entity player, const Equi
             ((sEquipPickSel % static_cast<int>(picker.size())) + static_cast<int>(picker.size())) %
             static_cast<int>(picker.size());
 
-        int pickerHover = hoveredRow(mx, my, cx, y, cw, line_h, static_cast<int>(picker.size()));
+        const int pickerHover =
+            hoveredRow(mx, my, cx, y, cw, line_h, static_cast<int>(picker.size()));
         if (pickerHover >= 0)
             sEquipPickSel = pickerHover;
 
@@ -572,7 +583,7 @@ static bool renderEquipPicker(EntityManager& em, entt::entity player, const Equi
         }
     }
 
-    bool rmbConsumed = mouseClicked(em, SDL_BUTTON_RIGHT);
+    const bool rmbConsumed = mouseClicked(em, SDL_BUTTON_RIGHT);
     if (rmbConsumed)
         sEquipPicking = false;
 
@@ -650,8 +661,8 @@ static void renderEquipStatPanel(EntityManager& em, entt::entity player, const E
         else
         {
             // Unarmed fallback.
-            Weapon w{"Unarmed", f.fist.weight,     f.fist.str_scaling, f.fist.dex_scaling, 0,
-                     0,         f.fist.base_damage};
+            const Weapon w{"Unarmed", f.fist.weight,     f.fist.str_scaling, f.fist.dex_scaling, 0,
+                           0,         f.fist.base_damage};
             stat_bottom = ItemStatRenderer::renderWeaponStats(sBodyFont, w, stats, f, nullptr,
                                                               has_stats, cx, y, cw, val_x);
         }
@@ -678,7 +689,7 @@ static void renderEquipStatPanel(EntityManager& em, entt::entity player, const E
             const int xp_max = static_cast<int>(wxp.xp_to_next);
             const std::string xp_text =
                 std::to_string(xp_cur) + " / " + std::to_string(xp_max) + " XP";
-            TextSize xpsz = UIRenderer::measureText(sBodyFont, xp_text);
+            const TextSize xpsz = UIRenderer::measureText(sBodyFont, xp_text);
             UIRenderer::drawText(sBodyFont, xp_text, cx + cw - xpsz.width, bar_y, TEXT_DIM);
         }
     }
@@ -700,19 +711,19 @@ static void renderEquipStatPanel(EntityManager& em, entt::entity player, const E
 // Returns true if right-click was consumed (e.g. closing the picker).
 static bool renderEquipmentTab(EntityManager& em, float cx, float cy, float cw, float mx, float my)
 {
-    entt::entity player = findPlayer(em);
+    const entt::entity player = findPlayer(em);
     if (player == entt::null || !em.registry().all_of<Equipment>(player))
         return false;
 
     const auto& eq = em.registry().get<Equipment>(player);
     const auto& items = em.registry().ctx().get<ItemRegistry>();
     const float line_h = FontManager::lineHeight(sBodyFont) + 6.0f;
-    float ey = drawTabHeading("Equipment", cx, cy, cw);
+    const float ey = drawTabHeading("Equipment", cx, cy, cw);
 
     if (sEquipPicking)
         return renderEquipPicker(em, player, eq, items, cx, ey, cw, mx, my);
 
-    int hover = hoveredRow(mx, my, cx, ey, cw, line_h, EQUIP_SLOT_COUNT);
+    const int hover = hoveredRow(mx, my, cx, ey, cw, line_h, EQUIP_SLOT_COUNT);
     if (hover >= 0)
     {
         sContentSel = hover;
@@ -762,7 +773,7 @@ static void computeMaxContentIndex(EntityManager& em, UIState::Tab menu_tab, int
         break;
     case UIState::Tab::Inventory:
     {
-        entt::entity p = findPlayer(em);
+        const entt::entity p = findPlayer(em);
         if (p != entt::null && em.registry().all_of<Inventory>(p))
         {
             maxContentIdx = em.registry().get<Inventory>(p).max_slots - 1;
@@ -881,7 +892,7 @@ static int handleMenuKeyInput(EntityManager& em, UIState& ui, int tab, int maxCo
 
 // Draw the tab bar at the top of the pause menu panel.
 static void renderTabBar(EntityManager& em, UIState& ui, float panel_x, float panel_y,
-                         float panel_w, float tab_h, float tab_w, float mx, float my)
+                         float /*panel_w*/, float tab_h, float tab_w, float mx, float my)
 {
     for (int i = 0; i < UIState::TAB_COUNT; ++i)
     {
@@ -889,10 +900,10 @@ static void renderTabBar(EntityManager& em, UIState& ui, float panel_x, float pa
         const float ty = panel_y;
         const bool active = (i == static_cast<int>(ui.menu_tab));
 
-        bool hovered = (mx >= tx && mx < tx + tab_w && my >= ty && my < ty + tab_h);
+        const bool hovered = (mx >= tx && mx < tx + tab_w && my >= ty && my < ty + tab_h);
         if (hovered)
         {
-            for (uint8_t btn : em.mouse_down_events)
+            for (const uint8_t btn : em.mouse_down_events)
             {
                 if (btn == SDL_BUTTON_LEFT)
                 {
@@ -906,10 +917,10 @@ static void renderTabBar(EntityManager& em, UIState& ui, float panel_x, float pa
             }
         }
 
-        Color bg = active ? TAB_ACTIVE : (hovered ? TAB_HOVER : TAB_BG);
+        const Color bg = active ? TAB_ACTIVE : (hovered ? TAB_HOVER : TAB_BG);
         UIRenderer::drawRect(tx, ty, tab_w, tab_h, bg);
 
-        TextSize sz = UIRenderer::measureText(sBodyFont, TAB_NAMES[i]);
+        const TextSize sz = UIRenderer::measureText(sBodyFont, TAB_NAMES[i]);
         UIRenderer::drawText(sBodyFont, TAB_NAMES[i], tx + (tab_w - sz.width) * 0.5f,
                              ty + (tab_h - sz.height) * 0.5f, active ? TEXT_WHITE : TEXT_DIM);
     }
@@ -921,10 +932,10 @@ static bool drawBottomBtn(const std::string& text, float bx, float by, float pad
                           float btn_w, float btn_h, float mx, float my, int selIdx, Color hlColor,
                           Color normalColor)
 {
-    bool hover = (mx >= bx && mx < bx + btn_w && my >= by && my < by + btn_h);
+    const bool hover = (mx >= bx && mx < bx + btn_w && my >= by && my < by + btn_h);
     if (hover)
         sBottomSel = selIdx;
-    bool active = hover || (sBottomSel == selIdx);
+    const bool active = hover || (sBottomSel == selIdx);
     UIRenderer::drawRect(bx, by, btn_w, btn_h, active ? BTN_BG_HL : BTN_BG);
     UIRenderer::drawText(sBodyFont, text, bx + pad_x, by + pad_y, active ? hlColor : normalColor);
     return hover;
@@ -941,9 +952,9 @@ static int renderBottomBar(EntityManager& em, UIState& ui, float panel_x, float 
     const float btn_pad_y = 8.0f;
     const float btn_gap = 16.0f;
 
-    TextSize rsz = UIRenderer::measureText(sBodyFont, "Resume");
-    TextSize esz = UIRenderer::measureText(sBodyFont, "Escape Run");
-    TextSize qsz = UIRenderer::measureText(sBodyFont, "Quit Game");
+    const TextSize rsz = UIRenderer::measureText(sBodyFont, "Resume");
+    const TextSize esz = UIRenderer::measureText(sBodyFont, "Escape Run");
+    const TextSize qsz = UIRenderer::measureText(sBodyFont, "Quit Game");
 
     const float rBtn_w = rsz.width + btn_pad_x * 2.0f;
     const float eBtn_w = esz.width + btn_pad_x * 2.0f;
@@ -961,7 +972,7 @@ static int renderBottomBar(EntityManager& em, UIState& ui, float panel_x, float 
     // Controls hint (centered).
     const std::string hint = sEquipPicking ? "[W/S] Navigate   [F] Equip   [RMB] Back"
                                            : "[Q/E] Tab   [WASD] Navigate   [F] Select";
-    TextSize hintSz = UIRenderer::measureText(sBodyFont, hint);
+    const TextSize hintSz = UIRenderer::measureText(sBodyFont, hint);
     UIRenderer::drawText(sBodyFont, hint, panel_x + (panel_w - hintSz.width) * 0.5f, hint_y,
                          TEXT_DIM);
 
@@ -970,19 +981,19 @@ static int renderBottomBar(EntityManager& em, UIState& ui, float panel_x, float 
 
     // Buttons.
     float bx = btn_start_x;
-    bool rHover = drawBottomBtn("Resume", bx, btn_y, btn_pad_x, btn_pad_y, rBtn_w, btn_h, mx, my, 0,
-                                BTN_RESUME_HL, BTN_NORMAL);
+    const bool rHover = drawBottomBtn("Resume", bx, btn_y, btn_pad_x, btn_pad_y, rBtn_w, btn_h, mx,
+                                      my, 0, BTN_RESUME_HL, BTN_NORMAL);
     bx += rBtn_w + btn_gap;
-    bool eHover = drawBottomBtn("Escape Run", bx, btn_y, btn_pad_x, btn_pad_y, eBtn_w, btn_h, mx,
-                                my, 1, BTN_ESCAPE_HL, BTN_ESCAPE);
+    const bool eHover = drawBottomBtn("Escape Run", bx, btn_y, btn_pad_x, btn_pad_y, eBtn_w, btn_h,
+                                      mx, my, 1, BTN_ESCAPE_HL, BTN_ESCAPE);
     bx += eBtn_w + btn_gap;
-    bool qHover = drawBottomBtn("Quit Game", bx, btn_y, btn_pad_x, btn_pad_y, qBtn_w, btn_h, mx, my,
-                                2, BTN_QUIT_HL, BTN_QUIT);
+    const bool qHover = drawBottomBtn("Quit Game", bx, btn_y, btn_pad_x, btn_pad_y, qBtn_w, btn_h,
+                                      mx, my, 2, BTN_QUIT_HL, BTN_QUIT);
     if (!rHover && !eHover && !qHover && em.key_down_events.empty())
         sBottomSel = -1;
 
     // Mouse click on buttons.
-    for (uint8_t btn : em.mouse_down_events)
+    for (const uint8_t btn : em.mouse_down_events)
     {
         if (btn == SDL_BUTTON_LEFT && (rHover || eHover || qHover))
         {

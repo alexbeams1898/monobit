@@ -63,7 +63,7 @@ static void renderStatRows(EntityManager& em, entt::entity player, Stats& stats,
                            const Experience& exp, const FormulaConfig& f, const SoundConfig& snd,
                            float cx, float cw, float& y, float line_h, float mx, float my)
 {
-    int hover = hoveredRow(mx, my, cx, y, cw, line_h, STAT_COUNT);
+    const int hover = hoveredRow(mx, my, cx, y, cw, line_h, STAT_COUNT);
     if (hover >= 0)
         sSel = hover;
     else if (em.key_down_events.empty())
@@ -92,7 +92,7 @@ static void renderStatRows(EntityManager& em, entt::entity player, Stats& stats,
         {
             if (mx >= cx - 4.0f && mx < cx + cw + 4.0f && my >= y - 2.0f && my < y - 2.0f + line_h)
             {
-                for (uint8_t btn : em.mouse_down_events)
+                for (const uint8_t btn : em.mouse_down_events)
                 {
                     if (btn == SDL_BUTTON_LEFT)
                         allocateStat(em.registry(), player, *stat_ptrs[i], f, snd);
@@ -181,14 +181,14 @@ void LevelUpScreen::render(EntityManager& em, int window_w, int window_h)
 
     // Title.
     const std::string title = "Level Up!";
-    TextSize tsz = UIRenderer::measureText(sTitleFont, title);
+    const TextSize tsz = UIRenderer::measureText(sTitleFont, title);
     UIRenderer::drawText(sTitleFont, title, panel_x + (panel_w - tsz.width) * 0.5f, y, TITLE_COLOR);
     y += title_h + 4.0f;
 
     // Points remaining.
     const std::string pts = "You have " + std::to_string(exp.stat_points) + " stat point" +
                             (exp.stat_points != 1 ? "s" : "") + ".";
-    TextSize psz = UIRenderer::measureText(sBodyFont, pts);
+    const TextSize psz = UIRenderer::measureText(sBodyFont, pts);
     UIRenderer::drawText(sBodyFont, pts, panel_x + (panel_w - psz.width) * 0.5f, y, TEXT_WHITE);
     y += line_h + 4.0f;
 
@@ -208,11 +208,11 @@ void LevelUpScreen::render(EntityManager& em, int window_w, int window_h)
 
     // Hint.
     const std::string hint = "[F] Allocate   [Tab/ESC] Close";
-    TextSize hsz = UIRenderer::measureText(sBodyFont, hint);
+    const TextSize hsz = UIRenderer::measureText(sBodyFont, hint);
     UIRenderer::drawText(sBodyFont, hint, panel_x + (panel_w - hsz.width) * 0.5f, y, HINT_COLOR);
 
     // Keyboard input.
-    for (int key : em.key_down_events)
+    for (const int key : em.key_down_events)
     {
         if (key == SDL_SCANCODE_UP || key == SDL_SCANCODE_W)
             sSel = sSel < 0 ? 0 : ((sSel - 1) + STAT_COUNT) % STAT_COUNT;

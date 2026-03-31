@@ -74,12 +74,12 @@ static void renderWaveInfo(EntityManager& em, float ww)
         phaseStr = "COMPLETE";
 
     const float title_h = FontManager::lineHeight(sTitleFont);
-    TextSize waveSz = UIRenderer::measureText(sTitleFont, waveStr);
+    const TextSize waveSz = UIRenderer::measureText(sTitleFont, waveStr);
     UIRenderer::drawText(sTitleFont, waveStr, ww - waveSz.width - BAR_X, BAR_Y_START, TEXT_GOLD);
 
     if (!phaseStr.empty())
     {
-        TextSize phaseSz = UIRenderer::measureText(sBodyFont, phaseStr);
+        const TextSize phaseSz = UIRenderer::measureText(sBodyFont, phaseStr);
         UIRenderer::drawText(sBodyFont, phaseStr, ww - phaseSz.width - BAR_X,
                              BAR_Y_START + title_h + BAR_GAP, TEXT_WHITE);
     }
@@ -119,6 +119,80 @@ static void renderStatusCondition(EntityManager& em, entt::entity entity, float 
     }
 
     UIRenderer::drawText(sBodyFont, "Status: " + status, x, y, statusColor);
+}
+
+static void renderScorePanel(EntityManager& em, float wh)
+{
+    const auto& stats = em.registry().ctx().get<RunStats>();
+    const auto& cfg = em.registry().ctx().get<ScoringConfig>();
+    const int actualScore = SaveManager::computeScore(stats, cfg, false);
+
+    static int sDisplayed = 0;
+    static float sFlashTimer = 0.0f;
+    const bool ticking = sDisplayed < actualScore;
+    if (ticking)
+    {
+        const int diff = actualScore - sDisplayed;
+        const int step = std::max(1, diff / 15);
+        sDisplayed = std::min(sDisplayed + step, actualScore);
+        sFlashTimer = 0.25f;
+    }
+    else if (sDisplayed > actualScore)
+    {
+        sDisplayed = actualScore;
+    }
+    sFlashTimer = std::max(0.0f, sFlashTimer - 0.016f);
+
+    const std::string scoreStr = std::to_string(sDisplayed);
+    const TextSize numSz = UIRenderer::measureText(sTitleFont, scoreStr);
+    const TextSize lblSz = UIRenderer::measureText(sTitleFont, "SCORE");
+
+    const float contentW = std::max(numSz.width, lblSz.width);
+    const float pad = 14.0f;
+    const float minW = BAR_W * 0.6f;
+    const float panelW = std::max(minW, contentW + pad * 2.0f);
+    const float panelH = lblSz.height + 4.0f + numSz.height + pad * 2.0f;
+    const float panelX = BAR_X;
+    const float panelY = wh - panelH - 16.0f;
+
+    static constexpr Color SCORE_BG{0.02f, 0.01f, 0.04f, 0.7f};
+    UIRenderer::drawRect(panelX, panelY, panelW, panelH, SCORE_BG);
+
+    static constexpr Color BORDER{0.65f, 0.50f, 0.20f, 0.6f};
+    static constexpr Color BORDER_HL{0.90f, 0.75f, 0.30f, 0.85f};
+    const float flash = sFlashTimer * 4.0f;
+    const Color bc{
+        BORDER.r + (BORDER_HL.r - BORDER.r) * flash, BORDER.g + (BORDER_HL.g - BORDER.g) * flash,
+        BORDER.b + (BORDER_HL.b - BORDER.b) * flash, BORDER.a + (BORDER_HL.a - BORDER.a) * flash};
+    const float b = 1.5f;
+    UIRenderer::drawRect(panelX, panelY, panelW, b, bc);
+    UIRenderer::drawRect(panelX, panelY + panelH - b, panelW, b, bc);
+    UIRenderer::drawRect(panelX, panelY, b, panelH, bc);
+    UIRenderer::drawRect(panelX + panelW - b, panelY, b, panelH, bc);
+
+    const float cs = 4.0f;
+    UIRenderer::drawRect(panelX - 1.0f, panelY - 1.0f, cs, cs, bc);
+    UIRenderer::drawRect(panelX + panelW - cs + 1.0f, panelY - 1.0f, cs, cs, bc);
+    UIRenderer::drawRect(panelX - 1.0f, panelY + panelH - cs + 1.0f, cs, cs, bc);
+    UIRenderer::drawRect(panelX + panelW - cs + 1.0f, panelY + panelH - cs + 1.0f, cs, cs, bc);
+
+    const float lblX = panelX + (panelW - lblSz.width) * 0.5f;
+    const float lblY = panelY + pad;
+    static constexpr Color LBL_COLOR{0.55f, 0.45f, 0.30f, 0.85f};
+    UIRenderer::drawText(sTitleFont, "SCORE", lblX, lblY, LBL_COLOR);
+
+    const float numX = panelX + (panelW - numSz.width) * 0.5f;
+    const float numY = lblY + lblSz.height + 4.0f;
+
+    static constexpr Color SHADOW{0.0f, 0.0f, 0.0f, 0.6f};
+    UIRenderer::drawText(sTitleFont, scoreStr, numX + 2.0f, numY + 2.0f, SHADOW);
+
+    const Color glowColor{1.0f, 0.7f, 0.15f, 0.15f + flash * 0.2f};
+    UIRenderer::drawText(sTitleFont, scoreStr, numX - 1.0f, numY, glowColor);
+    UIRenderer::drawText(sTitleFont, scoreStr, numX + 1.0f, numY, glowColor);
+
+    const Color scoreColor{1.0f, 0.85f + flash * 0.15f, 0.3f + flash * 0.7f, 1.0f};
+    UIRenderer::drawText(sTitleFont, scoreStr, numX, numY, scoreColor);
 }
 
 void HudRenderer::init(FontHandle body_font, FontHandle title_font, TextureManager* tm)
@@ -247,7 +321,7 @@ void HudRenderer::render(EntityManager& em, int window_w, int window_h)
             const int money = em.registry().get<Wallet>(entity).money;
             static constexpr Color MONEY_LABEL{0.6f, 0.58f, 0.52f, 0.9f};
             UIRenderer::drawText(sBodyFont, "Money: ", BAR_X, y, MONEY_LABEL);
-            TextSize mlsz = UIRenderer::measureText(sBodyFont, "Money: ");
+            const TextSize mlsz = UIRenderer::measureText(sBodyFont, "Money: ");
             UIRenderer::drawText(sBodyFont, "$" + std::to_string(money), BAR_X + mlsz.width, y,
                                  MONEY_GREEN);
             y += label_h + BAR_GAP;
@@ -283,93 +357,9 @@ void HudRenderer::render(EntityManager& em, int window_w, int window_h)
             const std::string label = "Lv" + std::to_string(wxp.level) + "  " +
                                       std::to_string(xp_cur) + "/" + std::to_string(xp_max);
             drawBarWithLabel(BAR_X, y, BAR_W, BAR_H, fill, WPN_BAR, WPN_BG, sBodyFont, label);
-            y += section_h;
         }
 
-        // Score (bottom-left) -- gothic framed counter with rolling animation.
-        {
-            const auto& stats = em.registry().ctx().get<RunStats>();
-            const auto& cfg = em.registry().ctx().get<ScoringConfig>();
-            const int actualScore = SaveManager::computeScore(stats, cfg, false);
-
-            static int sDisplayed = 0;
-            static float sFlashTimer = 0.0f;
-            const bool ticking = sDisplayed < actualScore;
-            if (ticking)
-            {
-                const int diff = actualScore - sDisplayed;
-                const int step = std::max(1, diff / 15);
-                sDisplayed = std::min(sDisplayed + step, actualScore);
-                sFlashTimer = 0.25f;
-            }
-            else if (sDisplayed > actualScore)
-            {
-                sDisplayed = actualScore;
-            }
-            sFlashTimer = std::max(0.0f, sFlashTimer - 0.016f);
-
-            const std::string scoreStr = std::to_string(sDisplayed);
-            TextSize numSz = UIRenderer::measureText(sTitleFont, scoreStr);
-            TextSize lblSz = UIRenderer::measureText(sTitleFont, "SCORE");
-
-            // Panel dimensions — minimum width keeps the box punchy at low scores.
-            const float contentW = std::max(numSz.width, lblSz.width);
-            const float pad = 14.0f;
-            const float minW = BAR_W * 0.6f;
-            const float panelW = std::max(minW, contentW + pad * 2.0f);
-            const float panelH = lblSz.height + 4.0f + numSz.height + pad * 2.0f;
-            const float panelX = BAR_X;
-            const float panelY = wh - panelH - 16.0f;
-
-            // Dark backdrop.
-            static constexpr Color SCORE_BG{0.02f, 0.01f, 0.04f, 0.7f};
-            UIRenderer::drawRect(panelX, panelY, panelW, panelH, SCORE_BG);
-
-            // Gold border.
-            static constexpr Color BORDER{0.65f, 0.50f, 0.20f, 0.6f};
-            static constexpr Color BORDER_HL{0.90f, 0.75f, 0.30f, 0.85f};
-            const float flash = sFlashTimer * 4.0f;
-            const Color bc{BORDER.r + (BORDER_HL.r - BORDER.r) * flash,
-                           BORDER.g + (BORDER_HL.g - BORDER.g) * flash,
-                           BORDER.b + (BORDER_HL.b - BORDER.b) * flash,
-                           BORDER.a + (BORDER_HL.a - BORDER.a) * flash};
-            const float b = 1.5f;
-            UIRenderer::drawRect(panelX, panelY, panelW, b, bc);
-            UIRenderer::drawRect(panelX, panelY + panelH - b, panelW, b, bc);
-            UIRenderer::drawRect(panelX, panelY, b, panelH, bc);
-            UIRenderer::drawRect(panelX + panelW - b, panelY, b, panelH, bc);
-
-            // Corner accents (small squares at each corner).
-            const float cs = 4.0f;
-            UIRenderer::drawRect(panelX - 1.0f, panelY - 1.0f, cs, cs, bc);
-            UIRenderer::drawRect(panelX + panelW - cs + 1.0f, panelY - 1.0f, cs, cs, bc);
-            UIRenderer::drawRect(panelX - 1.0f, panelY + panelH - cs + 1.0f, cs, cs, bc);
-            UIRenderer::drawRect(panelX + panelW - cs + 1.0f, panelY + panelH - cs + 1.0f, cs, cs,
-                                 bc);
-
-            // "SCORE" label, centered.
-            const float lblX = panelX + (panelW - lblSz.width) * 0.5f;
-            const float lblY = panelY + pad;
-            static constexpr Color LBL_COLOR{0.55f, 0.45f, 0.30f, 0.85f};
-            UIRenderer::drawText(sTitleFont, "SCORE", lblX, lblY, LBL_COLOR);
-
-            // Score number, centered, with shadow + glow.
-            const float numX = panelX + (panelW - numSz.width) * 0.5f;
-            const float numY = lblY + lblSz.height + 4.0f;
-
-            // Shadow.
-            static constexpr Color SHADOW{0.0f, 0.0f, 0.0f, 0.6f};
-            UIRenderer::drawText(sTitleFont, scoreStr, numX + 2.0f, numY + 2.0f, SHADOW);
-
-            // Glow layer (wider, faint gold behind the number).
-            const Color glowColor{1.0f, 0.7f, 0.15f, 0.15f + flash * 0.2f};
-            UIRenderer::drawText(sTitleFont, scoreStr, numX - 1.0f, numY, glowColor);
-            UIRenderer::drawText(sTitleFont, scoreStr, numX + 1.0f, numY, glowColor);
-
-            // Main number.
-            const Color scoreColor{1.0f, 0.85f + flash * 0.15f, 0.3f + flash * 0.7f, 1.0f};
-            UIRenderer::drawText(sTitleFont, scoreStr, numX, numY, scoreColor);
-        }
+        renderScorePanel(em, wh);
 
         // Wave info (top-right).
         renderWaveInfo(em, ww);
@@ -384,7 +374,7 @@ bool HudRenderer::renderMenuButton(EntityManager& em, int window_w, int window_h
     const float wh = static_cast<float>(window_h);
 
     const std::string label = "Menu [Tab]";
-    TextSize sz = UIRenderer::measureText(sTitleFont, label);
+    const TextSize sz = UIRenderer::measureText(sTitleFont, label);
     const float pad = 6.0f;
     const float bx = ww - sz.width - pad * 2.0f - 20.0f;
     const float by = wh - sz.height - pad * 2.0f - 20.0f;
@@ -397,7 +387,7 @@ bool HudRenderer::renderMenuButton(EntityManager& em, int window_w, int window_h
     const float mx = static_cast<float>(mouseX);
     const float my = static_cast<float>(mouseY);
 
-    bool hovered = (mx >= bx && mx < bx + bw && my >= by && my < by + bh);
+    const bool hovered = (mx >= bx && mx < bx + bw && my >= by && my < by + bh);
 
     static constexpr Color BTN_BG{0.08f, 0.07f, 0.12f, 0.7f};
     static constexpr Color BTN_BG_HL{0.20f, 0.17f, 0.30f, 0.85f};
@@ -420,7 +410,7 @@ bool HudRenderer::renderMenuButton(EntityManager& em, int window_w, int window_h
 
     if (hovered)
     {
-        for (uint8_t btn : em.mouse_down_events)
+        for (const uint8_t btn : em.mouse_down_events)
         {
             if (btn == SDL_BUTTON_LEFT)
                 return true;

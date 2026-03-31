@@ -65,14 +65,14 @@ bool RunSummaryScreen::render(EntityManager& em, int window_w, int window_h)
 
     // Title.
     const std::string title = "Run Summary";
-    TextSize tsz = UIRenderer::measureText(sTitleFont, title);
+    const TextSize tsz = UIRenderer::measureText(sTitleFont, title);
     UIRenderer::drawText(sTitleFont, title, px + (panel_w - tsz.width) * 0.5f, y, TITLE_COLOR);
     y += FontManager::lineHeight(sTitleFont) + 16.0f;
 
     // Outcome.
     const std::string outcome = sEscaped ? "ESCAPED" : "DIED";
     const Color outcomeColor = sEscaped ? GOLD : Color{0.9f, 0.2f, 0.15f, 1.0f};
-    TextSize osz = UIRenderer::measureText(sTitleFont, outcome);
+    const TextSize osz = UIRenderer::measureText(sTitleFont, outcome);
     UIRenderer::drawText(sTitleFont, outcome, px + (panel_w - osz.width) * 0.5f, y, outcomeColor);
     y += FontManager::lineHeight(sTitleFont) + 16.0f;
 
@@ -110,7 +110,7 @@ bool RunSummaryScreen::render(EntityManager& em, int window_w, int window_h)
     if (sIsHighScore)
     {
         const std::string hs = "HIGH SCORE!";
-        TextSize hsz = UIRenderer::measureText(sTitleFont, hs);
+        const TextSize hsz = UIRenderer::measureText(sTitleFont, hs);
         const float blink = ((SDL_GetTicks() / 400) % 2 == 0) ? 1.0f : 0.6f;
         UIRenderer::drawText(sTitleFont, hs, px + (panel_w - hsz.width) * 0.5f, y,
                              {GOLD.r, GOLD.g, GOLD.b, blink});
@@ -119,7 +119,7 @@ bool RunSummaryScreen::render(EntityManager& em, int window_w, int window_h)
     // Continue button (anchored 20px from panel bottom).
     {
         const std::string cont = "Continue";
-        TextSize csz = UIRenderer::measureText(sTitleFont, cont);
+        const TextSize csz = UIRenderer::measureText(sTitleFont, cont);
         const float bw = csz.width + 60.0f;
         const float bh = csz.height + 20.0f;
         const float bx = (ww - bw) * 0.5f;

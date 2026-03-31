@@ -164,12 +164,12 @@ LoadGameScreen::Action LoadGameScreen::render(EntityManager& em, int window_w, i
 
     // Title (big font).
     const std::string title = "Load Game";
-    TextSize tsz = UIRenderer::measureText(sBigTitleFont, title);
+    const TextSize tsz = UIRenderer::measureText(sBigTitleFont, title);
     UIRenderer::drawText(sBigTitleFont, title, (ww - tsz.width) * 0.5f, wh * 0.12f, TITLE_COLOR);
 
     // Subtitle.
     const std::string subtitle = "Select a character";
-    TextSize ssz = UIRenderer::measureText(sBodyFont, subtitle);
+    const TextSize ssz = UIRenderer::measureText(sBodyFont, subtitle);
     const float subtitle_y = wh * 0.12f + FontManager::lineHeight(sBigTitleFont) + 8.0f;
     UIRenderer::drawText(sBodyFont, subtitle, (ww - ssz.width) * 0.5f, subtitle_y, TEXT_DIM);
 
@@ -193,7 +193,7 @@ LoadGameScreen::Action LoadGameScreen::render(EntityManager& em, int window_w, i
     float ly = panel_y;
 
     // [X] button dimensions.
-    TextSize xsz = UIRenderer::measureText(sBodyFont, "X");
+    const TextSize xsz = UIRenderer::measureText(sBodyFont, "X");
     const float del_w = xsz.width + 16.0f;
     const float del_h = xsz.height + 10.0f;
 
@@ -226,7 +226,7 @@ LoadGameScreen::Action LoadGameScreen::render(EntityManager& em, int window_w, i
         if (prof.money > 0)
         {
             const std::string moneyStr = "Money: " + std::to_string(prof.money);
-            TextSize mtsz = UIRenderer::measureText(sBodyFont, moneyStr);
+            const TextSize mtsz = UIRenderer::measureText(sBodyFont, moneyStr);
             const float money_x = lx + list_w - del_w - 20.0f - mtsz.width;
             const float money_y = ly + (row_h - mtsz.height) * 0.5f;
             UIRenderer::drawText(sBodyFont, moneyStr, money_x, money_y, MONEY_GREEN);
@@ -269,7 +269,7 @@ LoadGameScreen::Action LoadGameScreen::render(EntityManager& em, int window_w, i
 
     // Back button (anchored 20px from panel bottom).
     const std::string backLabel = "Back";
-    TextSize bsz = UIRenderer::measureText(sTitleFont, backLabel);
+    const TextSize bsz = UIRenderer::measureText(sTitleFont, backLabel);
     const float bw = bsz.width + 60.0f;
     const float bh = bsz.height + 20.0f;
     const float bx = (ww - bw) * 0.5f;

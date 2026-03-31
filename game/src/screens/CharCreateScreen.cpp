@@ -29,7 +29,7 @@ static constexpr Color BTN_DIM{0.35f, 0.35f, 0.35f, 0.6f};
 
 static bool isNameValid()
 {
-    for (char c : sName)
+    for (const char c : sName)
         if (c != ' ')
             return true;
     return false;
@@ -58,7 +58,7 @@ static CharCreateScreen::Action handleCharCreateInput(const EntityManager& em,
                                                       const SoundConfig& snd)
 {
     // Text input.
-    for (char c : em.text_input_buffer)
+    for (const char c : em.text_input_buffer)
     {
         if (static_cast<int>(sName.size()) < MAX_NAME_LEN && c >= 32)
             sName += c;
@@ -110,7 +110,7 @@ CharCreateScreen::Action CharCreateScreen::render(EntityManager& em, int window_
     UIRenderer::drawRect(0.0f, 0.0f, ww, wh, OVERLAY_OPAQUE);
 
     const std::string title = "Create Character";
-    TextSize tsz = UIRenderer::measureText(sTitleFont, title);
+    const TextSize tsz = UIRenderer::measureText(sTitleFont, title);
     UIRenderer::drawText(sTitleFont, title, (ww - tsz.width) * 0.5f, wh * 0.25f, TITLE_COLOR);
 
     // Name field.
@@ -129,7 +129,7 @@ CharCreateScreen::Action CharCreateScreen::render(EntityManager& em, int window_
     UIRenderer::drawRect(fx + field_w - 1.5f, fy, 1.5f, field_h, FIELD_BORDER);
 
     const float text_y = fy + (field_h - FontManager::lineHeight(sBodyFont)) * 0.5f;
-    float advance = UIRenderer::drawText(sBodyFont, sName, fx + 10.0f, text_y, TEXT_WHITE);
+    const float advance = UIRenderer::drawText(sBodyFont, sName, fx + 10.0f, text_y, TEXT_WHITE);
 
     // Blinking cursor.
     const uint32_t ticks = SDL_GetTicks();
@@ -160,7 +160,7 @@ CharCreateScreen::Action CharCreateScreen::render(EntityManager& em, int window_
     for (int i = 0; i < 2; ++i)
     {
         const bool disabled = (i == 0 && !isNameValid());
-        TextSize sz = UIRenderer::measureText(sTitleFont, labels[i]);
+        const TextSize sz = UIRenderer::measureText(sTitleFont, labels[i]);
         const float bw = sz.width + btn_pad_x * 2.0f;
         const float bx = (ww - bw) * 0.5f;
 

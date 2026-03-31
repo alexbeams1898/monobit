@@ -147,7 +147,7 @@ void dump()
     }
 
     // Filename with timestamp.
-    std::time_t now = std::time(nullptr);
+    const std::time_t now = std::time(nullptr);
     char timeBuf[64];
     std::strftime(timeBuf, sizeof(timeBuf), "%Y%m%d_%H%M%S", std::localtime(&now));
     const std::string path = std::string("debug/ai_dump_") + timeBuf + ".csv";

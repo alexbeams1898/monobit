@@ -71,7 +71,7 @@ static QualityTier previewOutputQuality(const Inventory& inv, const RecipeDef& r
         std::vector<std::pair<QualityTier, int>> stacks;
         for (const auto& slot : inv.items)
             if (slot.config_path == ing.config_path)
-                stacks.push_back({slot.quality, slot.quantity});
+                stacks.emplace_back(slot.quality, slot.quantity);
         std::sort(stacks.begin(), stacks.end(),
                   [](const auto& a, const auto& b) { return a.first < b.first; });
 
@@ -142,6 +142,200 @@ struct DisplayRow
     int recipe_index = -1;
     std::string text;
 };
+
+// Shared layout parameters for render sub-functions.
+struct CraftLayout
+{
+    float px, cx, cw, panel_w;
+    float line_h, sep_gap;
+    float scroll_top, scroll_bottom;
+    float mx, my;
+};
+
+// Measure all recipes to find the maximum content width and detail height.
+static void measureAllRecipes(const RecipeRegistry& recipes, const ItemRegistry& items,
+                              float stat_line, float line_h, float& content_w, float& detail_h,
+                              bool& anyHasRequirements)
+{
+    const int recipe_count = static_cast<int>(recipes.recipes.size());
+    for (int ri = 0; ri < recipe_count; ++ri)
+    {
+        const auto& r = recipes.recipes[static_cast<size_t>(ri)];
+        const ItemDef* odef = items.find(r.output_item);
+        const std::string oname = (odef != nullptr) ? odef->name : r.output_item;
+
+        const float name_icon_w = FontManager::lineHeight(sTitleFont) + 4.0f;
+        const TextSize nsz = UIRenderer::measureText(sTitleFont, oname);
+        content_w = std::max(content_w, name_icon_w + nsz.width);
+
+        if (odef != nullptr && !odef->description.empty())
+        {
+            const TextSize dsz = UIRenderer::measureText(sBodyFont, odef->description);
+            content_w = std::max(content_w, dsz.width);
+        }
+
+        std::string reqLine = "Requires: ";
+        for (size_t ii = 0; ii < r.inputs.size(); ++ii)
+        {
+            const ItemDef* idef = items.find(r.inputs[ii].config_path);
+            const std::string iname = (idef != nullptr) ? idef->name : r.inputs[ii].config_path;
+            reqLine += iname + " 99/99";
+            if (ii + 1 < r.inputs.size())
+                reqLine += ", ";
+        }
+        const TextSize rlsz = UIRenderer::measureText(sBodyFont, reqLine);
+        content_w = std::max(content_w, rlsz.width);
+
+        const std::string resultText = "Result: " + oname + " (Masterwork)";
+        const TextSize rtsz = UIRenderer::measureText(sBodyFont, resultText);
+        content_w = std::max(content_w, rtsz.width);
+
+        if (odef != nullptr && (odef->str_requirement > 0 || odef->dex_requirement > 0))
+            anyHasRequirements = true;
+    }
+
+    detail_h += FontManager::lineHeight(sTitleFont) + 4.0f;
+    detail_h += 1.0f + 6.0f;
+    detail_h += line_h;
+    detail_h += line_h;
+    detail_h += line_h;
+    detail_h += 4.0f * stat_line;
+    if (anyHasRequirements)
+        detail_h += stat_line;
+}
+
+// Render the detail section for the hovered/selected recipe.
+static void renderRecipeDetail(const RecipeDef& recipe, const ItemDef* output_def,
+                               const std::string& outputName, const Inventory* inv,
+                               entt::entity player, EntityManager& em, const CraftLayout& lay,
+                               float& y)
+{
+    y += lay.sep_gap;
+    UIRenderer::drawRect(lay.cx, y, lay.cw, 1.0f, SEPARATOR);
+    y += 1.0f + lay.sep_gap;
+
+    const float detail_icon_sz = FontManager::lineHeight(sTitleFont);
+    ItemStatRenderer::drawItemIcon(output_def, lay.cx, y, detail_icon_sz);
+    UIRenderer::drawText(sTitleFont, outputName, lay.cx + detail_icon_sz + 4.0f, y, TEXT_WHITE);
+    y += FontManager::lineHeight(sTitleFont) + 4.0f;
+
+    UIRenderer::drawRect(lay.cx, y, lay.cw, 1.0f, SEPARATOR);
+    y += 6.0f;
+
+    if (output_def != nullptr && !output_def->description.empty())
+    {
+        UIRenderer::drawText(sBodyFont, output_def->description, lay.cx, y, DESC_COLOR);
+        y += lay.line_h;
+    }
+
+    // Inline requires line.
+    {
+        const std::string reqLabel = "Requires: ";
+        UIRenderer::drawText(sBodyFont, reqLabel, lay.cx, y, TEXT_DIM);
+        float rx = lay.cx + UIRenderer::measureText(sBodyFont, reqLabel).width;
+
+        for (size_t ii = 0; ii < recipe.inputs.size(); ++ii)
+        {
+            const auto& ing = recipe.inputs[ii];
+            const ItemDef* idef = em.registry().ctx().get<ItemRegistry>().find(ing.config_path);
+            const std::string iname = (idef != nullptr) ? idef->name : ing.config_path;
+            const int have = (inv != nullptr) ? countItem(*inv, ing.config_path) : 0;
+            const Color c = (have >= ing.quantity) ? HAVE_COLOR : NEED_COLOR;
+            const std::string part =
+                iname + " " + std::to_string(have) + "/" + std::to_string(ing.quantity);
+            UIRenderer::drawText(sBodyFont, part, rx, y, c);
+            rx += UIRenderer::measureText(sBodyFont, part).width;
+            if (ii + 1 < recipe.inputs.size())
+            {
+                UIRenderer::drawText(sBodyFont, ", ", rx, y, TEXT_DIM);
+                rx += UIRenderer::measureText(sBodyFont, ", ").width;
+            }
+        }
+        y += lay.line_h;
+    }
+
+    // Result line with quality preview.
+    {
+        const bool craftable =
+            (inv != nullptr) &&
+            CraftingOps::canCraft(*inv, recipe, em.registry().ctx().get<ItemRegistry>());
+        const Color resultColor = craftable ? HAVE_COLOR : NEED_COLOR;
+
+        std::string resultText = "Result: " + outputName;
+        if (inv != nullptr && craftable)
+        {
+            const QualityTier q = previewOutputQuality(*inv, recipe);
+            resultText += " (";
+            resultText += qualityName(q);
+            resultText += ")";
+        }
+        else if (recipe.output_quantity > 1)
+        {
+            resultText += " x" + std::to_string(recipe.output_quantity);
+        }
+        UIRenderer::drawText(sBodyFont, resultText, lay.cx, y, resultColor);
+        y += lay.line_h;
+    }
+
+    // Item stat panel.
+    if (output_def != nullptr)
+    {
+        const bool has_stats = (player != entt::null && em.registry().all_of<Stats>(player));
+        const Stats& stats = has_stats ? em.registry().get<Stats>(player) : Stats{1, 1, 1, 1};
+        const auto& f = em.registry().ctx().get<FormulaConfig>();
+        const float val_x = lay.cx + 100.0f;
+        static_cast<void>(ItemStatRenderer::renderItemStats(
+            sBodyFont, *output_def, stats, f, has_stats, lay.cx, y, lay.cw, val_x, false));
+    }
+}
+
+// Render the craft button, separator, and hint text.
+static void renderCraftFooter(EntityManager& em, const RecipeRegistry& recipes,
+                              const ItemRegistry& items, const SoundConfig& snd,
+                              const Inventory* inv, entt::entity player, bool canCraft,
+                              const CraftLayout& lay, float btn_h, const std::string& hintText,
+                              const TextSize& hintsz)
+{
+    float fy = lay.scroll_bottom;
+
+    const std::string craftLabel = "Craft";
+    const TextSize csz = UIRenderer::measureText(sTitleFont, craftLabel);
+    const float btn_w = csz.width + 40.0f;
+    const float btn_x = lay.cx + (lay.cw - btn_w) * 0.5f;
+    const bool btnHovered = canCraft && lay.mx >= btn_x && lay.mx < btn_x + btn_w && lay.my >= fy &&
+                            lay.my < fy + btn_h;
+
+    Color btnBg = CRAFT_BTN_OFF;
+    Color btnText = CRAFT_BTN_TEXT_OFF;
+    if (canCraft)
+    {
+        btnBg = btnHovered ? CRAFT_BTN_HL : CRAFT_BTN_BG;
+        btnText = CRAFT_BTN_TEXT;
+    }
+    UIRenderer::drawRect(btn_x, fy, btn_w, btn_h, btnBg);
+    UIRenderer::drawText(sTitleFont, craftLabel, btn_x + (btn_w - csz.width) * 0.5f,
+                         fy + (btn_h - csz.height) * 0.5f, btnText);
+
+    if (btnHovered && mouseClicked(em, SDL_BUTTON_LEFT) && sSelectedRecipe >= 0 &&
+        player != entt::null)
+    {
+        auto& playerInv = em.registry().get<Inventory>(player);
+        const auto& recipe = recipes.recipes[static_cast<size_t>(sSelectedRecipe)];
+        if (CraftingOps::craft(playerInv, recipe, items))
+        {
+            const ItemDef* odef = items.find(recipe.output_item);
+            const std::string name = (odef != nullptr) ? odef->name : recipe.output_item;
+            NotificationSystem::push("Crafted " + name, {0.3f, 0.9f, 0.3f, 1.0f});
+            playSfx(snd);
+        }
+    }
+    fy += btn_h + lay.sep_gap;
+
+    UIRenderer::drawRect(lay.cx, fy, lay.cw, 1.0f, SEPARATOR);
+    fy += 1.0f + lay.sep_gap;
+    UIRenderer::drawText(sBodyFont, hintText, lay.px + (lay.panel_w - hintsz.width) * 0.5f, fy,
+                         HINT_COLOR);
+}
 
 // Build grouped display rows sorted by output item category.
 static std::vector<DisplayRow> buildDisplayRows(const RecipeRegistry& recipes,
@@ -247,7 +441,7 @@ void CraftingScreen::render(EntityManager& em, int window_w, int window_h)
     if (sSelectedRecipe >= 0 && !navOrder.empty())
     {
         bool found = false;
-        for (int idx : navOrder)
+        for (const int idx : navOrder)
             if (idx == sSelectedRecipe)
             {
                 found = true;
@@ -328,7 +522,7 @@ void CraftingScreen::render(EntityManager& em, int window_w, int window_h)
 
     // Title.
     const std::string titleText = "Crafting";
-    TextSize tsz = UIRenderer::measureText(sTitleFont, titleText);
+    const TextSize tsz = UIRenderer::measureText(sTitleFont, titleText);
     float content_w = tsz.width;
 
     // Recipe list rows.
@@ -340,80 +534,30 @@ void CraftingScreen::render(EntityManager& em, int window_w, int window_h)
         {
             if (i > 0)
                 list_h += header_gap;
-            TextSize hsz = UIRenderer::measureText(sBodyFont, row.text);
+            const TextSize hsz = UIRenderer::measureText(sBodyFont, row.text);
             content_w = std::max(content_w, hsz.width);
             list_h += line_h;
         }
         else
         {
             const float row_icon_w = line_h - 4.0f + 4.0f; // icon + gap
-            TextSize rsz = UIRenderer::measureText(sBodyFont, "> " + row.text);
+            const TextSize rsz = UIRenderer::measureText(sBodyFont, "> " + row.text);
             content_w = std::max(content_w, row_icon_w + rsz.width);
             list_h += line_h;
         }
     }
 
     // Measure ALL recipes to compute stable panel width and max detail height.
-    // This prevents the panel from resizing when hovering different recipes.
     float detail_h = 0.0f;
     bool anyHasRequirements = false;
     const float stat_line = FontManager::lineHeight(sBodyFont) + 4.0f;
     if (recipe_count > 0)
-    {
-        for (int ri = 0; ri < recipe_count; ++ri)
-        {
-            const auto& r = recipes.recipes[static_cast<size_t>(ri)];
-            const ItemDef* odef = items.find(r.output_item);
-            const std::string oname = (odef != nullptr) ? odef->name : r.output_item;
-
-            const float name_icon_w = FontManager::lineHeight(sTitleFont) + 4.0f;
-            TextSize nsz = UIRenderer::measureText(sTitleFont, oname);
-            content_w = std::max(content_w, name_icon_w + nsz.width);
-
-            if (odef != nullptr && !odef->description.empty())
-            {
-                TextSize dsz = UIRenderer::measureText(sBodyFont, odef->description);
-                content_w = std::max(content_w, dsz.width);
-            }
-
-            // Inline requires line: "Requires: Ing1 99/99, Ing2 99/99".
-            std::string reqLine = "Requires: ";
-            for (size_t ii = 0; ii < r.inputs.size(); ++ii)
-            {
-                const ItemDef* idef = items.find(r.inputs[ii].config_path);
-                const std::string iname = (idef != nullptr) ? idef->name : r.inputs[ii].config_path;
-                reqLine += iname + " 99/99";
-                if (ii + 1 < r.inputs.size())
-                    reqLine += ", ";
-            }
-            TextSize rlsz = UIRenderer::measureText(sBodyFont, reqLine);
-            content_w = std::max(content_w, rlsz.width);
-
-            // Result line: "Result: Name (Masterwork)".
-            const std::string resultText = "Result: " + oname + " (Masterwork)";
-            TextSize rtsz = UIRenderer::measureText(sBodyFont, resultText);
-            content_w = std::max(content_w, rtsz.width);
-
-            if (odef != nullptr && (odef->str_requirement > 0 || odef->dex_requirement > 0))
-                anyHasRequirements = true;
-        }
-
-        // Stable detail height based on worst-case layout.
-        detail_h += FontManager::lineHeight(sTitleFont) + 4.0f; // output name
-        detail_h += 1.0f + 6.0f;                                // separator + gap
-        detail_h += line_h;                                     // description (always reserve)
-        detail_h += line_h;                                     // requires (inline, one line)
-        detail_h += line_h;                                     // result line
-
-        // Stat panel without name header: damage + scaling + speed + weight = 4 lines.
-        detail_h += 4.0f * stat_line;
-        if (anyHasRequirements)
-            detail_h += stat_line;
-    }
+        measureAllRecipes(recipes, items, stat_line, line_h, content_w, detail_h,
+                          anyHasRequirements);
 
     // Hint.
     const std::string hintText = "[Esc] Back   [W/S] Navigate   [Enter] Craft";
-    TextSize hintsz = UIRenderer::measureText(sBodyFont, hintText);
+    const TextSize hintsz = UIRenderer::measureText(sBodyFont, hintText);
     content_w = std::max(content_w, hintsz.width);
 
     content_w = std::max(content_w, 340.0f);
@@ -540,133 +684,20 @@ void CraftingScreen::render(EntityManager& em, int window_w, int window_h)
     const int displayRecipe = (sHoveredRecipe >= 0) ? sHoveredRecipe : sSelectedRecipe;
     if (displayRecipe >= 0 && recipe_count > 0)
     {
-        y += sep_gap;
-        UIRenderer::drawRect(cx, y, cw, 1.0f, SEPARATOR);
-        y += 1.0f + sep_gap;
-
         const auto& recipe = recipes.recipes[static_cast<size_t>(displayRecipe)];
         const ItemDef* output_def = items.find(recipe.output_item);
         const std::string outputName =
             (output_def != nullptr) ? output_def->name : recipe.output_item;
-
-        // Output item name with icon.
-        const float detail_icon_sz = FontManager::lineHeight(sTitleFont);
-        ItemStatRenderer::drawItemIcon(output_def, cx, y, detail_icon_sz);
-        UIRenderer::drawText(sTitleFont, outputName, cx + detail_icon_sz + 4.0f, y, TEXT_WHITE);
-        y += FontManager::lineHeight(sTitleFont) + 4.0f;
-
-        // Separator under name.
-        UIRenderer::drawRect(cx, y, cw, 1.0f, SEPARATOR);
-        y += 6.0f;
-
-        // Description.
-        if (output_def != nullptr && !output_def->description.empty())
-        {
-            UIRenderer::drawText(sBodyFont, output_def->description, cx, y, DESC_COLOR);
-            y += line_h;
-        }
-
-        // Inline requires: "Requires: Bone Shard 2/2, Stone 1/1".
-        {
-            const std::string reqLabel = "Requires: ";
-            UIRenderer::drawText(sBodyFont, reqLabel, cx, y, TEXT_DIM);
-            float rx = cx + UIRenderer::measureText(sBodyFont, reqLabel).width;
-
-            for (size_t ii = 0; ii < recipe.inputs.size(); ++ii)
-            {
-                const auto& ing = recipe.inputs[ii];
-                const ItemDef* idef = items.find(ing.config_path);
-                const std::string iname = (idef != nullptr) ? idef->name : ing.config_path;
-                const int have = (inv != nullptr) ? countItem(*inv, ing.config_path) : 0;
-                const Color c = (have >= ing.quantity) ? HAVE_COLOR : NEED_COLOR;
-                const std::string part =
-                    iname + " " + std::to_string(have) + "/" + std::to_string(ing.quantity);
-                UIRenderer::drawText(sBodyFont, part, rx, y, c);
-                rx += UIRenderer::measureText(sBodyFont, part).width;
-                if (ii + 1 < recipe.inputs.size())
-                {
-                    UIRenderer::drawText(sBodyFont, ", ", rx, y, TEXT_DIM);
-                    rx += UIRenderer::measureText(sBodyFont, ", ").width;
-                }
-            }
-            y += line_h;
-        }
-
-        // Result line with quality preview.
-        {
-            const bool craftable = (inv != nullptr) && CraftingOps::canCraft(*inv, recipe, items);
-            const Color resultColor = craftable ? HAVE_COLOR : NEED_COLOR;
-
-            std::string resultText = "Result: " + outputName;
-            if (inv != nullptr && craftable)
-            {
-                const QualityTier q = previewOutputQuality(*inv, recipe);
-                resultText += " (";
-                resultText += qualityName(q);
-                resultText += ")";
-            }
-            else if (recipe.output_quantity > 1)
-            {
-                resultText += " x" + std::to_string(recipe.output_quantity);
-            }
-            UIRenderer::drawText(sBodyFont, resultText, cx, y, resultColor);
-            y += line_h;
-        }
-
-        // Item stat panel (no name header -- already shown above).
-        if (output_def != nullptr)
-        {
-            const bool has_stats = (player != entt::null && em.registry().all_of<Stats>(player));
-            const Stats& stats = has_stats ? em.registry().get<Stats>(player) : Stats{1, 1, 1, 1};
-            const auto& f = em.registry().ctx().get<FormulaConfig>();
-            const float val_x = cx + 100.0f;
-            y = ItemStatRenderer::renderItemStats(sBodyFont, *output_def, stats, f, has_stats, cx,
-                                                  y, cw, val_x, false);
-        }
+        const CraftLayout lay{px, cx, cw, panel_w, line_h, sep_gap, scroll_top, scroll_bottom,
+                              mx, my};
+        renderRecipeDetail(recipe, output_def, outputName, inv, player, em, lay, y);
     }
 
     // End scrollable content.
     UIRenderer::flush();
     glDisable(GL_SCISSOR_TEST);
 
-    // Fixed footer: craft button + separator + hint.
-    float fy = scroll_bottom;
-
-    // Craft button.
-    const std::string craftLabel = "Craft";
-    TextSize csz = UIRenderer::measureText(sTitleFont, craftLabel);
-    const float btn_w = csz.width + 40.0f;
-    const float btn_x = cx + (cw - btn_w) * 0.5f;
-    const bool btnHovered =
-        canCraft && mx >= btn_x && mx < btn_x + btn_w && my >= fy && my < fy + btn_h;
-
-    Color btnBg = CRAFT_BTN_OFF;
-    Color btnText = CRAFT_BTN_TEXT_OFF;
-    if (canCraft)
-    {
-        btnBg = btnHovered ? CRAFT_BTN_HL : CRAFT_BTN_BG;
-        btnText = CRAFT_BTN_TEXT;
-    }
-    UIRenderer::drawRect(btn_x, fy, btn_w, btn_h, btnBg);
-    UIRenderer::drawText(sTitleFont, craftLabel, btn_x + (btn_w - csz.width) * 0.5f,
-                         fy + (btn_h - csz.height) * 0.5f, btnText);
-
-    if (btnHovered && mouseClicked(em, SDL_BUTTON_LEFT) && sSelectedRecipe >= 0 &&
-        player != entt::null)
-    {
-        auto& playerInv = em.registry().get<Inventory>(player);
-        const auto& recipe = recipes.recipes[static_cast<size_t>(sSelectedRecipe)];
-        if (CraftingOps::craft(playerInv, recipe, items))
-        {
-            const ItemDef* odef = items.find(recipe.output_item);
-            const std::string name = (odef != nullptr) ? odef->name : recipe.output_item;
-            NotificationSystem::push("Crafted " + name, {0.3f, 0.9f, 0.3f, 1.0f});
-            playSfx(snd);
-        }
-    }
-    fy += btn_h + sep_gap;
-
-    UIRenderer::drawRect(cx, fy, cw, 1.0f, SEPARATOR);
-    fy += 1.0f + sep_gap;
-    UIRenderer::drawText(sBodyFont, hintText, px + (panel_w - hintsz.width) * 0.5f, fy, HINT_COLOR);
+    // Fixed footer.
+    const CraftLayout lay{px, cx, cw, panel_w, line_h, sep_gap, scroll_top, scroll_bottom, mx, my};
+    renderCraftFooter(em, recipes, items, snd, inv, player, canCraft, lay, btn_h, hintText, hintsz);
 }

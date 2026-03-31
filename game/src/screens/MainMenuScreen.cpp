@@ -76,7 +76,7 @@ MainMenuScreen::Action MainMenuScreen::render(EntityManager& em, int window_w, i
 
     // Title.
     const std::string title = "HELL ESCAPE";
-    TextSize tsz = UIRenderer::measureText(sBigTitleFont, title);
+    const TextSize tsz = UIRenderer::measureText(sBigTitleFont, title);
     UIRenderer::drawText(sBigTitleFont, title, (ww - tsz.width) * 0.5f, wh * 0.2f, TITLE_COLOR);
 
     // Buttons.
@@ -99,7 +99,7 @@ MainMenuScreen::Action MainMenuScreen::render(EntityManager& em, int window_w, i
     for (int i = 0; i < btnCount; ++i)
     {
         const std::string label = labels[i];
-        TextSize sz = UIRenderer::measureText(sTitleFont, label);
+        const TextSize sz = UIRenderer::measureText(sTitleFont, label);
         const float bw = sz.width + btn_pad_x * 2.0f;
         const float bx = (ww - bw) * 0.5f;
 

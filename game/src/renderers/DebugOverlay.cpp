@@ -122,7 +122,7 @@ void render(Engine& engine, EntityManager& em, int window_w, int window_h)
     float maxW = 0.0f;
     for (const auto& line : lines)
     {
-        TextSize sz = UIRenderer::measureText(sFont, line);
+        const TextSize sz = UIRenderer::measureText(sFont, line);
         if (sz.width > maxW)
             maxW = sz.width;
     }

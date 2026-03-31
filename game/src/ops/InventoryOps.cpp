@@ -95,8 +95,8 @@ bool addItem(Inventory& inv, const ItemInstance& item, const ItemRegistry& regis
         {
             if (existing.config_path == item.config_path && existing.quantity < maxStack)
             {
-                int space = maxStack - existing.quantity;
-                int toAdd = (item.quantity <= space) ? item.quantity : space;
+                const int space = maxStack - existing.quantity;
+                const int toAdd = (item.quantity <= space) ? item.quantity : space;
                 existing.quantity += toAdd;
                 if (toAdd >= item.quantity)
                     return true;
@@ -136,7 +136,7 @@ bool equipItem(Inventory& inv, Equipment& equip, int inv_index, const ItemRegist
         def->category != ItemCategory::Accessory)
         return false;
 
-    EquipSlot slot = targetSlot(*def);
+    const EquipSlot slot = targetSlot(*def);
     ItemInstance& target = slotRef(equip, slot);
 
     // 2-handed weapon clears off-hand.
@@ -234,7 +234,7 @@ bool canEvolve(const Inventory& inv, const Equipment& equip, const WeaponXP& wxp
 }
 
 bool evolveWeapon(Inventory& inv, Equipment& equip, WeaponXP& wxp, const EvolutionPath& path,
-                  const std::string& new_weapon_config, const ItemRegistry& registry,
+                  const std::string& new_weapon_config, const ItemRegistry& /*registry*/,
                   float carry_factor)
 {
     if (!canEvolve(inv, equip, wxp, path))

@@ -84,6 +84,29 @@ static void doEvolve(EntityManager& em, entt::entity player)
     NotificationSystem::push("Cannot evolve yet (level/materials)", {0.8f, 0.6f, 0.3f, 1.0f});
 }
 
+static bool checkCanEvolve(EntityManager& em, entt::entity player)
+{
+    if (!em.registry().all_of<Equipment, Inventory, WeaponXP>(player))
+        return false;
+    const auto& equip = em.registry().get<Equipment>(player);
+    if (equip.main_hand.empty())
+        return false;
+    const auto& evoReg = em.registry().ctx().get<EvolutionRegistry>();
+    const auto it = evoReg.weapon_to_node.find(equip.main_hand.config_path);
+    if (it == evoReg.weapon_to_node.end())
+        return false;
+    const auto& family = evoReg.families[it->second.first];
+    const auto nodeIt = family.nodes.find(it->second.second);
+    if (nodeIt == family.nodes.end())
+        return false;
+    const auto& inv = em.registry().get<Inventory>(player);
+    const auto& wxp = em.registry().get<WeaponXP>(player);
+    for (const auto& path : nodeIt->second.evolutions)
+        if (InventoryOps::canEvolve(inv, equip, wxp, path))
+            return true;
+    return false;
+}
+
 void SanctuaryScreen::init(FontHandle body_font, FontHandle title_font)
 {
     sBodyFont = body_font;
@@ -119,34 +142,7 @@ void SanctuaryScreen::render(EntityManager& em, int window_w, int window_h)
     std::vector<MenuDialog::Option> options;
 
     // 1. Evolve Weapon
-    bool canEvo = false;
-    if (em.registry().all_of<Equipment, Inventory, WeaponXP>(player))
-    {
-        const auto& equip = em.registry().get<Equipment>(player);
-        if (!equip.main_hand.empty())
-        {
-            const auto& evoReg = em.registry().ctx().get<EvolutionRegistry>();
-            auto it = evoReg.weapon_to_node.find(equip.main_hand.config_path);
-            if (it != evoReg.weapon_to_node.end())
-            {
-                const auto& family = evoReg.families[it->second.first];
-                auto nodeIt = family.nodes.find(it->second.second);
-                if (nodeIt != family.nodes.end())
-                {
-                    const auto& inv = em.registry().get<Inventory>(player);
-                    const auto& wxp = em.registry().get<WeaponXP>(player);
-                    for (const auto& path : nodeIt->second.evolutions)
-                    {
-                        if (InventoryOps::canEvolve(inv, equip, wxp, path))
-                        {
-                            canEvo = true;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-    }
+    const bool canEvo = checkCanEvolve(em, player);
     options.push_back(
         {"Evolve Weapon", canEvo ? "Transform your weapon" : "No evolutions ready", canEvo});
 

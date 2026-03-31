@@ -51,7 +51,7 @@ bool GameOverScreen::render(EntityManager& em, int window_w, int window_h, float
 
     // Title text.
     const std::string title = "YOU'RE DEAD";
-    TextSize tsz = UIRenderer::measureText(sBigTitleFont, title);
+    const TextSize tsz = UIRenderer::measureText(sBigTitleFont, title);
     const float textAlpha = std::min(1.0f, sTimer / FADE_DURATION);
     UIRenderer::drawText(sBigTitleFont, title, (ww - tsz.width) * 0.5f, wh * 0.35f,
                          {TEXT_RED.r, TEXT_RED.g, TEXT_RED.b, textAlpha});
@@ -60,7 +60,7 @@ bool GameOverScreen::render(EntityManager& em, int window_w, int window_h, float
     if (sTimer >= PROMPT_DELAY)
     {
         const std::string prompt = "Press any key to continue";
-        TextSize psz = UIRenderer::measureText(sTitleFont, prompt);
+        const TextSize psz = UIRenderer::measureText(sTitleFont, prompt);
         const float blink = ((SDL_GetTicks() / 600) % 2 == 0) ? 1.0f : 0.5f;
         UIRenderer::drawText(sTitleFont, prompt, (ww - psz.width) * 0.5f, wh * 0.55f,
                              {TEXT_DIM.r, TEXT_DIM.g, TEXT_DIM.b, blink});

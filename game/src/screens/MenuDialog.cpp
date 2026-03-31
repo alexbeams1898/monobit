@@ -47,7 +47,7 @@ MenuDialog::Result MenuDialog::render(EntityManager& em, const Options& opts, fl
     {
         for (int i = 0; i < itemCount; ++i)
         {
-            int idx = ((from + dir * (i + 1)) % itemCount + itemCount) % itemCount;
+            const int idx = ((from + dir * (i + 1)) % itemCount + itemCount) % itemCount;
             if (opts.items[idx].enabled)
                 return idx;
         }
@@ -56,12 +56,12 @@ MenuDialog::Result MenuDialog::render(EntityManager& em, const Options& opts, fl
 
     if (keyPressed(em, SDL_SCANCODE_UP) || keyPressed(em, SDL_SCANCODE_W))
     {
-        int start = (sel >= 0) ? sel : 0;
+        const int start = (sel >= 0) ? sel : 0;
         sel = findEnabled(start, -1);
     }
     if (keyPressed(em, SDL_SCANCODE_DOWN) || keyPressed(em, SDL_SCANCODE_S))
     {
-        int start = (sel >= 0) ? sel : itemCount - 1;
+        const int start = (sel >= 0) ? sel : itemCount - 1;
         sel = findEnabled(start, 1);
     }
 
@@ -80,11 +80,11 @@ MenuDialog::Result MenuDialog::render(EntityManager& em, const Options& opts, fl
     float max_desc_w = 0.0f;
     for (const auto& item : opts.items)
     {
-        TextSize lsz = UIRenderer::measureText(opts.body_font, "> " + item.label);
+        const TextSize lsz = UIRenderer::measureText(opts.body_font, "> " + item.label);
         max_label_w = std::max(max_label_w, lsz.width);
         if (!item.description.empty())
         {
-            TextSize dsz = UIRenderer::measureText(opts.body_font, item.description);
+            const TextSize dsz = UIRenderer::measureText(opts.body_font, item.description);
             max_desc_w = std::max(max_desc_w, dsz.width);
         }
     }
@@ -94,7 +94,7 @@ MenuDialog::Result MenuDialog::render(EntityManager& em, const Options& opts, fl
         content_w += desc_gap + max_desc_w;
 
     // Title width.
-    TextSize tsz = UIRenderer::measureText(opts.title_font, opts.title);
+    const TextSize tsz = UIRenderer::measureText(opts.title_font, opts.title);
     content_w = std::max(content_w, tsz.width);
 
     // Hint width.

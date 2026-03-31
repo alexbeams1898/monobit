@@ -132,6 +132,7 @@ void AggroSystem::update(EntityManager& em)
             if (playerSprinting)
             {
                 ai.state = AIController::State::Chase;
+                ai.slot_angle = AIController::NO_SLOT;
                 tracyEntityMsg("SprintBreakOff", entity, std::sqrt(distSq));
                 continue;
             }

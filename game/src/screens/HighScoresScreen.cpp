@@ -56,7 +56,7 @@ bool HighScoresScreen::render(EntityManager& em, int window_w, int window_h)
 
     // Title.
     const std::string title = "High Scores";
-    TextSize tsz = UIRenderer::measureText(sTitleFont, title);
+    const TextSize tsz = UIRenderer::measureText(sTitleFont, title);
     UIRenderer::drawText(sTitleFont, title, px + (panel_w - tsz.width) * 0.5f, y, TITLE_COLOR);
     y += FontManager::lineHeight(sTitleFont) + 16.0f;
 
@@ -99,7 +99,7 @@ bool HighScoresScreen::render(EntityManager& em, int window_w, int window_h)
 
     // Back button (anchored 20px from panel bottom).
     const std::string backLabel = "Back";
-    TextSize bsz = UIRenderer::measureText(sTitleFont, backLabel);
+    const TextSize bsz = UIRenderer::measureText(sTitleFont, backLabel);
     const float bw = bsz.width + 60.0f;
     const float bh = bsz.height + 20.0f;
     const float bx = (ww - bw) * 0.5f;

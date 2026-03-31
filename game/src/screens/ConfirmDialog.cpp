@@ -49,11 +49,11 @@ ConfirmDialog::Result ConfirmDialog::render(EntityManager& em, const Options& op
 
     // Width: max of title, all body lines, button row, and min_width.
     float content_w = opts.min_width;
-    TextSize tsz = UIRenderer::measureText(opts.title_font, opts.title);
+    const TextSize tsz = UIRenderer::measureText(opts.title_font, opts.title);
     content_w = std::max(content_w, tsz.width);
     for (const auto& line : opts.body_lines)
     {
-        TextSize lsz = UIRenderer::measureText(opts.body_font, line);
+        const TextSize lsz = UIRenderer::measureText(opts.body_font, line);
         content_w = std::max(content_w, lsz.width);
     }
     const float dlg_w = content_w + pad * 2.0f;
@@ -85,7 +85,7 @@ ConfirmDialog::Result ConfirmDialog::render(EntityManager& em, const Options& op
     float by = dy + pad + title_h + section_gap;
     for (const auto& line : opts.body_lines)
     {
-        TextSize lsz = UIRenderer::measureText(opts.body_font, line);
+        const TextSize lsz = UIRenderer::measureText(opts.body_font, line);
         UIRenderer::drawText(opts.body_font, line, dx + (dlg_w - lsz.width) * 0.5f, by, BODY_COLOR);
         by += body_line_h;
     }
@@ -100,7 +100,7 @@ ConfirmDialog::Result ConfirmDialog::render(EntityManager& em, const Options& op
     if (yesHover)
         sel = 0;
     UIRenderer::drawRect(yes_x, btn_y, btn_w, btn_h, (sel == 0) ? YES_BG_HL : YES_BG);
-    TextSize ysz = UIRenderer::measureText(opts.title_font, "Yes");
+    const TextSize ysz = UIRenderer::measureText(opts.title_font, "Yes");
     UIRenderer::drawText(opts.title_font, "Yes", yes_x + (btn_w - ysz.width) * 0.5f,
                          btn_y + (btn_h - ysz.height) * 0.5f, (sel == 0) ? TEXT_WHITE : BTN_NORMAL);
     if (yesHover && mouseClicked(em, SDL_BUTTON_LEFT))
@@ -111,7 +111,7 @@ ConfirmDialog::Result ConfirmDialog::render(EntityManager& em, const Options& op
     if (noHover)
         sel = 1;
     UIRenderer::drawRect(no_x, btn_y, btn_w, btn_h, (sel == 1) ? BTN_BG_HL : BTN_BG);
-    TextSize nsz = UIRenderer::measureText(opts.title_font, "No");
+    const TextSize nsz = UIRenderer::measureText(opts.title_font, "No");
     UIRenderer::drawText(opts.title_font, "No", no_x + (btn_w - nsz.width) * 0.5f,
                          btn_y + (btn_h - nsz.height) * 0.5f, (sel == 1) ? BTN_HOVER : BTN_NORMAL);
     if (noHover && mouseClicked(em, SDL_BUTTON_LEFT))
