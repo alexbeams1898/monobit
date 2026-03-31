@@ -8,6 +8,6 @@
 //                          EvolutionRegistry, Compendium, Rarity, qualityName
 //   ecs/AppState.h      -- UIState, GameState, RunStats, ScoringConfig, SaveData
 
+#include "ecs/AppState.h"
 #include "ecs/BalanceConfig.h"
 #include "ecs/ItemConfig.h"
-#include "ecs/AppState.h"

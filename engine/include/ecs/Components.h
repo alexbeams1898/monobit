@@ -63,6 +63,10 @@ struct Collider
     float width = 0.0f;
     float height = 0.0f;
     bool is_solid = true;
+    // Entities in the same non-zero group emit collision events but skip MTV
+    // resolution, allowing them to pass through each other. Group 0 (default)
+    // resolves with everything.
+    uint8_t collision_group = 0;
 };
 
 // Tag -- human-readable label for debug output and editor tooling.
@@ -207,6 +211,10 @@ struct NavAgent
     // SteeringSystem multiplies separation by this to prevent crowd repulsion
     // from dominating when the entity is slowing down for arrival.
     float arrival_scale = 1.0f;
+    // Smoothed steering force — exponentially blended each frame to prevent
+    // flickery direction changes when wall/crowd forces oscillate rapidly.
+    float smooth_steer_x = 0.0f;
+    float smooth_steer_y = 0.0f;
 };
 
 // CameraPan -- drives a smooth camera movement to a target and back.

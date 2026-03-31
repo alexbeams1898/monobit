@@ -82,18 +82,16 @@ void RestSpotSystem::update(EntityManager& em, double dt)
 
                 // Restore stamina too.
                 if (reg.all_of<Stamina>(playerEnt))
-                    reg.get<Stamina>(playerEnt).current =
-                        reg.get<Stamina>(playerEnt).max_stamina;
+                    reg.get<Stamina>(playerEnt).current = reg.get<Stamina>(playerEnt).max_stamina;
 
                 spot.cooldown = kHealCooldown;
                 TracyMessageL("RestHeal");
                 if (!snd.rest_heal_paths.empty())
                 {
                     static std::mt19937 rng{std::random_device{}()};
-                    auto dist = std::uniform_int_distribution<size_t>(
-                        0, snd.rest_heal_paths.size() - 1);
-                    AudioSystem::playSfx(snd.rest_heal_paths[dist(rng)],
-                                         snd.rest_heal.volume);
+                    auto dist =
+                        std::uniform_int_distribution<size_t>(0, snd.rest_heal_paths.size() - 1);
+                    AudioSystem::playSfx(snd.rest_heal_paths[dist(rng)], snd.rest_heal.volume);
                 }
                 else
                 {

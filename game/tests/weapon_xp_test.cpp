@@ -1,9 +1,8 @@
-#include "test_helpers.h"
-
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
 #include "systems/WeaponXPSystem.h"
+#include "test_helpers.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>

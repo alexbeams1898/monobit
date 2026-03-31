@@ -23,3 +23,6 @@ void gameRenderDebug(Engine& engine, EntityManager& em);
 // UI render callback. Called once per frame between UIRenderer::beginFrame()
 // and endFrame(). Draws HUD, menus, notifications, interaction prompts.
 void gameRenderUI(Engine& engine, EntityManager& em);
+
+// Play main menu music with random rare variant chance.
+void playMainMenuMusic(EntityManager& em);

@@ -1,6 +1,6 @@
-#include "ops/CraftingOps.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
+#include "ops/CraftingOps.h"
 
 #include <catch2/catch_test_macros.hpp>
 

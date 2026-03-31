@@ -31,12 +31,12 @@ static float growthFactor(int level, float decay_rate, float qf)
 }
 
 float WeaponXPSystem::computeEnemyPower(int level, int max_hp, float base_damage, int total_stats,
-                                         const FormulaConfig& f)
+                                        const FormulaConfig& f)
 {
     const auto& w = f.weapon_xp;
     return w.power_level_weight * static_cast<float>(level) +
-           w.power_hp_weight * static_cast<float>(max_hp) +
-           w.power_dmg_weight * base_damage + w.power_stat_weight * static_cast<float>(total_stats);
+           w.power_hp_weight * static_cast<float>(max_hp) + w.power_dmg_weight * base_damage +
+           w.power_stat_weight * static_cast<float>(total_stats);
 }
 
 void WeaponXPSystem::grantXP(EntityManager& em, float enemy_power, float source_multiplier)
@@ -63,7 +63,8 @@ void WeaponXPSystem::update(EntityManager& em)
     {
         // Process level-ups while XP exceeds threshold.
         // Fists use default quality; real weapons use their item quality.
-        const QualityTier qt = equip.main_hand.empty() ? QualityTier::Common : equip.main_hand.quality;
+        const QualityTier qt =
+            equip.main_hand.empty() ? QualityTier::Common : equip.main_hand.quality;
         const float qf = qualityFactor(qt);
 
         while (wxp.current_xp >= wxp.xp_to_next)
@@ -108,8 +109,8 @@ void WeaponXPSystem::update(EntityManager& em)
                 std::cout << "[WeaponXP] " << w.name << " leveled up to " << wxp.level
                           << " (dmg=" << w.base_damage << " str_s=" << w.str_scaling
                           << " dex_s=" << w.dex_scaling << ")\n";
-                NotificationSystem::push(
-                    w.name + " Lv" + std::to_string(wxp.level), {0.9f, 0.78f, 0.45f, 1.0f});
+                NotificationSystem::push(w.name + " Lv" + std::to_string(wxp.level),
+                                         {0.9f, 0.78f, 0.45f, 1.0f});
             }
 
             // Two layers: tier rate (weapon class) * power rate (individual weapon strength).
@@ -125,9 +126,8 @@ void WeaponXPSystem::update(EntityManager& em)
                             static_cast<float>(static_cast<int>(def->rarity)) *
                                 f.weapon_xp.power_rarity_factor;
             }
-            wxp.xp_to_next =
-                xpToNext(wxp.level, f.weapon_xp.base_xp, f.weapon_xp.exponent, qf) * tierRate *
-                powerRate;
+            wxp.xp_to_next = xpToNext(wxp.level, f.weapon_xp.base_xp, f.weapon_xp.exponent, qf) *
+                             tierRate * powerRate;
         }
     }
 }

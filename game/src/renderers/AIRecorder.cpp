@@ -111,8 +111,7 @@ void tick(EntityManager& em, int frame_number)
         {
             const bool hasT = holdsToken(pool, entity);
             const float radius =
-                hasT ? ai.attack_radius
-                     : ai.attack_radius * f.combat_ai.wait_radius_mult;
+                hasT ? ai.attack_radius : ai.attack_radius * f.combat_ai.wait_radius_mult;
             rec.target_x = px + std::cos(ai.slot_angle) * radius;
             rec.target_y = py + std::sin(ai.slot_angle) * radius;
         }
@@ -168,11 +167,10 @@ void dump()
     for (int i = 0; i < sCount; ++i)
     {
         const auto& r = sBuffer[static_cast<size_t>((start + i) % sCapacity)];
-        file << r.frame << ',' << r.entity_id << ',' << r.pos_x << ',' << r.pos_y << ','
-             << r.vel_dx << ',' << r.vel_dy << ',' << r.ai_state << ',' << r.slot_angle << ','
-             << (r.has_token ? 1 : 0) << ',' << r.flow_dx << ',' << r.flow_dy << ','
-             << r.target_x << ',' << r.target_y << ',' << r.player_x << ',' << r.player_y
-             << '\n';
+        file << r.frame << ',' << r.entity_id << ',' << r.pos_x << ',' << r.pos_y << ',' << r.vel_dx
+             << ',' << r.vel_dy << ',' << r.ai_state << ',' << r.slot_angle << ','
+             << (r.has_token ? 1 : 0) << ',' << r.flow_dx << ',' << r.flow_dy << ',' << r.target_x
+             << ',' << r.target_y << ',' << r.player_x << ',' << r.player_y << '\n';
     }
 
     std::cout << "[AIRecorder] Dumped " << sCount << " rows to " << path << "\n";

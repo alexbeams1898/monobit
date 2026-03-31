@@ -161,10 +161,9 @@ void deleteCharacter(SaveData& data, const std::string& name)
                 chars.end());
 
     auto& runs = data.runs;
-    runs.erase(
-        std::remove_if(runs.begin(), runs.end(),
-                       [&](const Run& r) { return r.character_name == name; }),
-        runs.end());
+    runs.erase(std::remove_if(runs.begin(), runs.end(),
+                              [&](const Run& r) { return r.character_name == name; }),
+               runs.end());
 }
 
 void recordRun(SaveData& data, const Run& run)
@@ -186,10 +185,11 @@ int computeScore(const RunStats& stats, const ScoringConfig& cfg, bool escaped)
 {
     float score = 0.0f;
     score += static_cast<float>(stats.kills) * cfg.kill_weight;
-    score += static_cast<float>(stats.wave) * cfg.wave_weight;
+    // Count completed waves (current wave is in-progress, not yet cleared).
+    const int completedWaves = std::max(0, stats.wave - 1);
+    score += static_cast<float>(completedWaves) * cfg.wave_weight;
     score += static_cast<float>(stats.xp_earned) * cfg.xp_weight;
     score += static_cast<float>(stats.money) * cfg.money_weight;
-    score -= stats.time * cfg.time_penalty_weight;
     if (score < 0.0f)
         score = 0.0f;
     if (escaped)

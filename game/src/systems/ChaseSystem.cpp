@@ -1,5 +1,6 @@
 #include "systems/ChaseSystem.h"
 
+#include "TileMap.h"
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
@@ -18,11 +19,24 @@ static void tracyEntityMsg(const char* event, entt::entity entity, float angle =
 {
     static char buf[64]; // NOLINT(concurrency-mt-unsafe) -- single-threaded game loop
     if (angle > -900.0f)
-        std::snprintf(buf, sizeof(buf), "%s e%u a=%.1f",
-                      event, static_cast<unsigned>(entt::to_integral(entity)), angle);
+        std::snprintf(buf, sizeof(buf), "%s e%u a=%.1f", event,
+                      static_cast<unsigned>(entt::to_integral(entity)), angle);
     else
-        std::snprintf(buf, sizeof(buf), "%s e%u",
-                      event, static_cast<unsigned>(entt::to_integral(entity)));
+        std::snprintf(buf, sizeof(buf), "%s e%u", event,
+                      static_cast<unsigned>(entt::to_integral(entity)));
+    TracyMessage(buf, std::strlen(buf));
+}
+
+// Log entity position, velocity, and AI state for debugging stuck scenarios.
+static void tracyAIDetail(const char* event,
+                          entt::entity entity, // NOLINT(readability-function-size)
+                          const Transform& tf, const Velocity& vel, const AIController& ai,
+                          float px, float py)
+{
+    static char buf[128]; // NOLINT(concurrency-mt-unsafe) -- single-threaded game loop
+    std::snprintf(buf, sizeof(buf), "%s e%u pos=(%.0f,%.0f) vel=(%.0f,%.0f) st=%d slot=%.1f", event,
+                  static_cast<unsigned>(entt::to_integral(entity)), tf.x, tf.y, vel.dx, vel.dy,
+                  static_cast<int>(ai.state), ai.slot_angle);
     TracyMessage(buf, std::strlen(buf));
 }
 
@@ -31,23 +45,12 @@ static void tracyEntityMsg(const char* event, entt::entity entity, float angle =
 // complexity below the project threshold.  Each represents one AI state.
 // ---------------------------------------------------------------------------
 
-// Per-entity lateral spread during chase.
-// Without this, all entities in the same flow field cell get the exact same
-// direction vector and converge into a single-file line.
-// Each entity gets a stable lateral bias based on its ID, applied as a
-// perpendicular offset to the flow direction.  The offset is part of the
-// target velocity so turn blending converges toward spread, not away from it.
-static constexpr float CHASE_SPREAD = 0.6f;
+// Per-entity lateral spread during chase. Read from FormulaConfig.combat_ai.chase_spread.
 
-// Chase-state target velocity.
-// Uses the flow field exclusively for navigation; falls back to a direct
-// vector only when the cell has no BFS path (fully walled off).
-// Sets distOut to the current distance to the player (used by arrival
-// softening in the outer loop).
 static std::pair<float, float> computeChaseVelocity(const FlowField& ff, float px, float py,
                                                     bool playerFound, const Transform& tf,
-                                                    float spd, float& distOut,
-                                                    entt::entity entity)
+                                                    float spd, float& distOut, entt::entity entity,
+                                                    float chaseSpread)
 {
     const int col = static_cast<int>(tf.x / FlowField::CELL_SIZE);
     const int row = static_cast<int>(tf.y / FlowField::CELL_SIZE);
@@ -81,8 +84,8 @@ static std::pair<float, float> computeChaseVelocity(const FlowField& ff, float p
     // for uniform distribution across entity IDs.
     const int id = static_cast<int>(entt::to_integral(entity));
     const float bias = static_cast<float>((id % 13) - 6) / 6.0f;
-    const float perpX = -fdy * bias * CHASE_SPREAD;
-    const float perpY = fdx * bias * CHASE_SPREAD;
+    const float perpX = -fdy * bias * chaseSpread;
+    const float perpY = fdx * bias * chaseSpread;
     fdx += perpX;
     fdy += perpY;
 
@@ -97,14 +100,48 @@ static std::pair<float, float> computeChaseVelocity(const FlowField& ff, float p
     return {fdx * spd, fdy * spd};
 }
 
-// Base rotation rate for slot-based circling (rad/s).
-// Scaled per-entity by AIController::orbit_speed.
-static constexpr float SLOT_ROTATION_SPEED = 0.5f;
+static constexpr float TWO_PI = 6.28318530f;
+static constexpr float PI = 3.14159265f;
 
-// Minimum angular gap between slot assignments (rad). Two enemies closer
-// than this get separated by offsetting the new arrival by GOLDEN_ANGLE.
-static constexpr float MIN_SLOT_GAP = 0.8f;
-static constexpr float GOLDEN_ANGLE = 2.399f; // 137.508 degrees
+// Normalize angle to [0, 2pi).
+static float wrapAngle(float a)
+{
+    return std::fmod(std::fmod(a, TWO_PI) + TWO_PI, TWO_PI);
+}
+
+// Find the angle that maximizes spacing from all existing slots.
+// Returns the midpoint of the largest angular gap, or fallback if no slots exist.
+static float findBestSlotAngle(entt::registry& reg, entt::entity self, float fallback)
+{
+    // Collect existing slot angles.
+    float angles[64]; // NOLINT -- fixed-size, no heap alloc
+    int count = 0;
+    for (auto [e, ai] : reg.view<AIController>().each())
+    {
+        if (e != self && ai.slot_angle != AIController::NO_SLOT && count < 64)
+            angles[count++] = wrapAngle(ai.slot_angle);
+    }
+    if (count == 0)
+        return fallback;
+
+    std::sort(angles, angles + count);
+
+    // Find the largest arc gap.
+    float bestGap = 0.0f;
+    float bestMid = fallback;
+    for (int i = 0; i < count; ++i)
+    {
+        const int next = (i + 1) % count;
+        const float gap =
+            (next == 0) ? (TWO_PI - angles[i] + angles[0]) : (angles[next] - angles[i]);
+        if (gap > bestGap)
+        {
+            bestGap = gap;
+            bestMid = angles[i] + gap * 0.5f;
+        }
+    }
+    return bestMid;
+}
 
 // Per-entity attack parameters computed from token status.
 struct AttackContext
@@ -116,11 +153,11 @@ struct AttackContext
 // Attack-state target velocity.
 // Non-holders navigate to their assigned slot position around the player.
 // Token holders navigate directly toward the player.
-// Uses the flow field as a fallback when a wall blocks the direct path.
-static std::pair<float, float> computeAttackVelocity(const FlowField& ff, float px, float py,
-                                                     const AttackContext& actx,
+// LoS-gated: direct nav when the path is clear, flow field when a wall blocks it.
+static std::pair<float, float> computeAttackVelocity(const FlowField& ff, const TileMap& tile_map,
+                                                     float px, float py, const AttackContext& actx,
                                                      const Transform& tf, float spd,
-                                                     float& scaleOut)
+                                                     float& scaleOut, float arrivalDist)
 {
     float goalX = px;
     float goalY = py;
@@ -143,31 +180,31 @@ static std::pair<float, float> computeAttackVelocity(const FlowField& ff, float 
     float nx = dx / dist;
     float ny = dy / dist;
 
-    // Flow field routes toward the player, not toward slot positions.
-    // For slot navigation: use flow field to get to the player AREA, then
-    // switch to direct nav so enemies fan out to their individual slots
-    // instead of all converging on the same flow field path.
-    const int col = static_cast<int>(tf.x / FlowField::CELL_SIZE);
-    const int row = static_cast<int>(tf.y / FlowField::CELL_SIZE);
-    if (col >= 0 && col < FlowField::COLS && row >= 0 && row < FlowField::ROWS)
+    // Decide nav mode: direct when the straight-line path is clear,
+    // flow field when a wall blocks it (gets them around obstacles).
+    bool useFlowField = false;
+    if (actx.slot_angle != AIController::NO_SLOT)
     {
-        const auto& cell = ff.cells[row][col];
-        if (cell.dx != 0.0f || cell.dy != 0.0f)
+        // Slotted: LoS check to slot position. DDA raycast, ~10-15 tile checks.
+        if (tile_map.valid() && !tile_map.hasLineOfSight(tf.x, tf.y, goalX, goalY))
+            useFlowField = true;
+    }
+    else
+    {
+        // No slot: use flow field when far from goal.
+        const float directThreshold = FlowField::CELL_SIZE * 3.0f;
+        if (dist > directThreshold)
+            useFlowField = true;
+    }
+
+    if (useFlowField)
+    {
+        const int col = static_cast<int>(tf.x / FlowField::CELL_SIZE);
+        const int row = static_cast<int>(tf.y / FlowField::CELL_SIZE);
+        if (col >= 0 && col < FlowField::COLS && row >= 0 && row < FlowField::ROWS)
         {
-            const float directThreshold = FlowField::CELL_SIZE * 3.0f;
-            if (actx.slot_angle != AIController::NO_SLOT)
-            {
-                // Distance to player determines when to leave the flow field.
-                const float dpx = px - tf.x;
-                const float dpy = py - tf.y;
-                const float distToPlayer = std::sqrt(dpx * dpx + dpy * dpy);
-                if (distToPlayer > directThreshold)
-                {
-                    nx = cell.dx;
-                    ny = cell.dy;
-                }
-            }
-            else if (dist > directThreshold)
+            const auto& cell = ff.cells[row][col];
+            if (cell.dx != 0.0f || cell.dy != 0.0f)
             {
                 nx = cell.dx;
                 ny = cell.dy;
@@ -175,8 +212,6 @@ static std::pair<float, float> computeAttackVelocity(const FlowField& ff, float 
         }
     }
 
-    // Arrival softening: decelerate over the last 16 px.
-    const float arrivalDist = 16.0f;
     const float speedScale = (dist < arrivalDist) ? dist / arrivalDist : 1.0f;
 
     scaleOut = speedScale;
@@ -207,19 +242,18 @@ static void manageAttackTokens(EntityManager& em, float px, float py, float dt)
     }
 
     // 2. Clean holders: remove dead, invalid, or non-Attack-state entities.
-    auto removeStart =
-        std::remove_if(pool.holders.begin(), pool.holders.end(),
-                       [&](entt::entity e)
-                       {
-                           if (!em.registry().valid(e))
-                               return true;
-                           if (em.registry().all_of<Dead>(e))
-                               return true;
-                           if (!em.registry().all_of<AIController>(e))
-                               return true;
-                           return em.registry().get<AIController>(e).state !=
-                                  AIController::State::Attack;
-                       });
+    auto removeStart = std::remove_if(pool.holders.begin(), pool.holders.end(),
+                                      [&](entt::entity e)
+                                      {
+                                          if (!em.registry().valid(e))
+                                              return true;
+                                          if (em.registry().all_of<Dead>(e))
+                                              return true;
+                                          if (!em.registry().all_of<AIController>(e))
+                                              return true;
+                                          return em.registry().get<AIController>(e).state !=
+                                                 AIController::State::Attack;
+                                      });
     if (removeStart != pool.holders.end())
         TracyMessageL("TokenRevoked");
     pool.holders.erase(removeStart, pool.holders.end());
@@ -229,8 +263,7 @@ static void manageAttackTokens(EntityManager& em, float px, float py, float dt)
     {
         float bestDistSq = std::numeric_limits<float>::max();
         entt::entity best = entt::null;
-        for (auto [entity, ai, tf] :
-             em.registry().view<AIController, Transform>().each())
+        for (auto [entity, ai, tf] : em.registry().view<AIController, Transform>().each())
         {
             if (ai.state != AIController::State::Attack)
                 continue;
@@ -311,6 +344,7 @@ void ChaseSystem::update(EntityManager& em, double dt)
 
     float px = 0.0f;
     float py = 0.0f;
+    bool playerSprinting = false;
     bool playerFound = false;
     for (auto e : em.registry().view<PlayerActions>())
     {
@@ -320,6 +354,7 @@ void ChaseSystem::update(EntityManager& em, double dt)
             px = pt.x;
             py = pt.y;
             playerFound = true;
+            playerSprinting = em.registry().get<PlayerActions>(e).sprint;
         }
         break;
     }
@@ -327,24 +362,57 @@ void ChaseSystem::update(EntityManager& em, double dt)
     auto& f = em.registry().ctx().get<FormulaConfig>();
     const float fdt = static_cast<float>(dt);
 
+    // Only run token management when enemies are in Attack state.
     if (playerFound)
-        manageAttackTokens(em, px, py, fdt);
+    {
+        bool hasAttackers = false;
+        const auto& pool = em.registry().ctx().get<AttackTokenPool>();
+        if (!pool.holders.empty())
+        {
+            hasAttackers = true;
+        }
+        else
+        {
+            for (auto [e, ai] : em.registry().view<AIController>().each())
+            {
+                if (ai.state == AIController::State::Attack)
+                {
+                    hasAttackers = true;
+                    break;
+                }
+            }
+        }
+        if (hasAttackers)
+            manageAttackTokens(em, px, py, fdt);
+    }
 
     const auto& pool = em.registry().ctx().get<AttackTokenPool>();
 
     for (auto [entity, ai, transform, vel] :
          em.registry().view<AIController, Transform, Velocity>().each())
     {
-        // Release slot when leaving Attack state.
-        if (ai.state != AIController::State::Attack && ai.slot_angle != AIController::NO_SLOT)
+        // Release slot only on full disengage (Idle). Preserving through
+        // Chase lets the enemy return to the same slot after a brief breakoff
+        // instead of thrashing between new assignments.
+        if (ai.state == AIController::State::Idle && ai.slot_angle != AIController::NO_SLOT)
             ai.slot_angle = AIController::NO_SLOT;
 
         if (ai.state == AIController::State::Idle)
         {
-            // Decelerate to stop (smooth blend, not instant snap).
-            const float blend = 1.0f - std::exp(-ai.turn_speed * fdt);
-            vel.dx -= vel.dx * blend;
-            vel.dy -= vel.dy * blend;
+            // Decelerate to stop. Hard-zero below 0.5 px/s to prevent
+            // asymptotic drift (velocity never reaching exactly zero).
+            const float spd = vel.dx * vel.dx + vel.dy * vel.dy;
+            if (spd < 0.25f) // 0.5^2
+            {
+                vel.dx = 0.0f;
+                vel.dy = 0.0f;
+            }
+            else
+            {
+                const float blend = 1.0f - std::exp(-ai.turn_speed * fdt);
+                vel.dx -= vel.dx * blend;
+                vel.dy -= vel.dy * blend;
+            }
             continue;
         }
 
@@ -357,8 +425,8 @@ void ChaseSystem::update(EntityManager& em, double dt)
 
         if (ai.state == AIController::State::Chase)
         {
-            std::tie(targetDx, targetDy) =
-                computeChaseVelocity(ff, px, py, playerFound, transform, speed, dist, entity);
+            std::tie(targetDx, targetDy) = computeChaseVelocity(
+                ff, px, py, playerFound, transform, speed, dist, entity, f.combat_ai.chase_spread);
         }
         else if (ai.state == AIController::State::Attack)
         {
@@ -368,106 +436,115 @@ void ChaseSystem::update(EntityManager& em, double dt)
                 vel.dy = 0.0f;
                 continue;
             }
-            const bool hasToken = holdsToken(pool, entity);
 
-            // All Attack-state enemies keep a slot angle — even token holders.
-            // Holders approach from their slot direction at the close ring;
-            // non-holders circle at the far ring. This prevents two holders
-            // from converging on the same point and walking through each other.
-            if (ai.slot_angle == AIController::NO_SLOT)
+            if (playerSprinting)
             {
-                // Assign slot near the enemy's approach direction.
-                // Search outward in alternating directions (±gap, ±2*gap, ...)
-                // so enemies from the same side get nearby slots and don't need
-                // to cross through each other to reach the far side.
-                const float bearing = std::atan2(transform.y - py, transform.x - px);
-                float candidate = bearing;
-                bool assigned = false;
-                for (int attempt = 0; attempt < 12 && !assigned; ++attempt)
-                {
-                    float test = bearing;
-                    if (attempt > 0)
-                    {
-                        const float offset =
-                            MIN_SLOT_GAP * static_cast<float>((attempt + 1) / 2);
-                        test = ((attempt % 2) == 1) ? bearing + offset : bearing - offset;
-                    }
-                    bool conflict = false;
-                    for (auto [other, oai] :
-                         em.registry().view<AIController>().each())
-                    {
-                        if (other == entity || oai.slot_angle == AIController::NO_SLOT)
-                            continue;
-                        float diff = test - oai.slot_angle;
-                        diff = std::fmod(diff + 3.14159265f, 6.28318530f) - 3.14159265f;
-                        if (std::abs(diff) < MIN_SLOT_GAP)
-                        {
-                            conflict = true;
-                            break;
-                        }
-                    }
-                    if (!conflict)
-                    {
-                        candidate = test;
-                        assigned = true;
-                    }
-                }
-                ai.slot_angle = candidate;
-                tracyEntityMsg("SlotAssigned", entity, candidate);
-            }
-            else if (!hasToken)
-            {
-                // Only rotate once close to the current slot — prevents enemies
-                // from chasing a moving target they can never reach.
-                const float slotX =
-                    px + std::cos(ai.slot_angle) * ai.attack_radius * f.combat_ai.wait_radius_mult;
-                const float slotY =
-                    py + std::sin(ai.slot_angle) * ai.attack_radius * f.combat_ai.wait_radius_mult;
-                const float sdx = slotX - transform.x;
-                const float sdy = slotY - transform.y;
-                if (sdx * sdx + sdy * sdy < 24.0f * 24.0f)
-                {
-                    const int id = static_cast<int>(entt::to_integral(entity));
-                    const float rotDir = ((id % 2) == 0) ? 1.0f : -1.0f;
-                    ai.slot_angle += rotDir * SLOT_ROTATION_SPEED * ai.orbit_speed * fdt;
-                }
-            }
-
-            // Holders approach from their slot direction at attack_radius.
-            // Non-holders circle at the wider wait ring.
-            const float targetRadius =
-                hasToken ? ai.attack_radius
-                         : ai.attack_radius * f.combat_ai.wait_radius_mult;
-
-            if (hasToken)
-            {
-                // Stop when within attack range — prevents pushing the player.
-                const float ddx = px - transform.x;
-                const float ddy = py - transform.y;
-                const float distToPlayer = std::sqrt(ddx * ddx + ddy * ddy);
-                if (distToPlayer <= ai.attack_radius)
-                {
-                    // Snap stop — bypass turn blending so the enemy doesn't
-                    // overshoot into the player.
-                    vel.dx = 0.0f;
-                    vel.dy = 0.0f;
-                    targetDx = 0.0f;
-                    targetDy = 0.0f;
-                    arrivalScale = 0.0f;
-                }
-                else
-                {
-                    AttackContext actx{targetRadius, ai.slot_angle};
-                    std::tie(targetDx, targetDy) =
-                        computeAttackVelocity(ff, px, py, actx, transform, speed, arrivalScale);
-                    arrivalScale = 0.3f;
-                }
+                std::tie(targetDx, targetDy) =
+                    computeChaseVelocity(ff, px, py, playerFound, transform, speed, dist, entity,
+                                         f.combat_ai.chase_spread);
             }
             else
             {
-                AttackContext actx{targetRadius, ai.slot_angle};
-                std::tie(targetDx, targetDy) =
-                    computeAttackVelocity(ff, px, py, actx, transform, speed, arrivalScale);
+                const bool hasToken = holdsToken(pool, entity);
+
+                // All Attack-state enemies keep a slot angle — even token holders.
+                // Holders approach from their slot direction at the close ring;
+                // non-holders circle at the far ring. This prevents two holders
+                // from converging on the same point and walking through each other.
+                if (ai.slot_angle == AIController::NO_SLOT)
+                {
+                    // Place slot in the largest angular gap between existing
+                    // slots so enemies distribute evenly around the player.
+                    const float bearing = std::atan2(transform.y - py, transform.x - px);
+                    const float bestAngle = findBestSlotAngle(em.registry(), entity, bearing);
+                    const float waitR = ai.attack_radius * f.combat_ai.wait_radius_mult;
+
+                    // Search near bestAngle, reject wall positions.
+                    float candidate = bestAngle;
+                    bool assigned = false;
+                    for (int attempt = 0; attempt < 12 && !assigned; ++attempt)
+                    {
+                        float test = bestAngle;
+                        if (attempt > 0)
+                        {
+                            const float offset =
+                                f.combat_ai.min_slot_gap * static_cast<float>((attempt + 1) / 2);
+                            test = ((attempt % 2) == 1) ? bestAngle + offset : bestAngle - offset;
+                        }
+
+                        // Reject if slot position is inside a wall.
+                        if (em.tile_map.valid())
+                        {
+                            const float sx = px + std::cos(test) * waitR;
+                            const float sy = py + std::sin(test) * waitR;
+                            const int tc = static_cast<int>(sx) / TileMap::TILE_SIZE;
+                            const int tr = static_cast<int>(sy) / TileMap::TILE_SIZE;
+                            if (!em.tile_map.in_bounds(tc, tr) || !em.tile_map.at(tc, tr).walkable)
+                                continue;
+                        }
+
+                        candidate = test;
+                        assigned = true;
+                    }
+                    ai.slot_angle = candidate;
+                    tracyEntityMsg("SlotAssigned", entity, candidate);
+                }
+                else if (!hasToken)
+                {
+                    // Only rotate once close to the current slot.
+                    const float slotX = px + std::cos(ai.slot_angle) * ai.attack_radius *
+                                                 f.combat_ai.wait_radius_mult;
+                    const float slotY = py + std::sin(ai.slot_angle) * ai.attack_radius *
+                                                 f.combat_ai.wait_radius_mult;
+                    const float sdx = slotX - transform.x;
+                    const float sdy = slotY - transform.y;
+                    const float slotArrDist = f.combat_ai.slot_arrive_dist;
+                    if (sdx * sdx + sdy * sdy < slotArrDist * slotArrDist)
+                    {
+                        const int id = static_cast<int>(entt::to_integral(entity));
+                        const float rotDir = ((id % 2) == 0) ? 1.0f : -1.0f;
+                        ai.slot_angle +=
+                            rotDir * f.combat_ai.slot_rotation_speed * ai.orbit_speed * fdt;
+                    }
+                }
+
+                // Holders approach from their slot direction at attack_radius.
+                // Non-holders circle at the wider wait ring.
+                const float targetRadius =
+                    hasToken ? ai.attack_radius : ai.attack_radius * f.combat_ai.wait_radius_mult;
+
+                if (hasToken)
+                {
+                    // Stop when within attack range.
+                    const float ddx = px - transform.x;
+                    const float ddy = py - transform.y;
+                    const float distToPlayer = std::sqrt(ddx * ddx + ddy * ddy);
+                    if (distToPlayer <= ai.attack_radius)
+                    {
+                        vel.dx = 0.0f;
+                        vel.dy = 0.0f;
+                        targetDx = 0.0f;
+                        targetDy = 0.0f;
+                        arrivalScale = 0.0f;
+                    }
+                    else
+                    {
+                        AttackContext actx{targetRadius, ai.slot_angle};
+                        std::tie(targetDx, targetDy) =
+                            computeAttackVelocity(ff, em.tile_map, px, py, actx, transform, speed,
+                                                  arrivalScale, f.combat_ai.attack_arrival_dist);
+                        arrivalScale = 0.3f;
+                    }
+                }
+                else
+                {
+                    // Non-holders drift slowly toward their slot.
+                    AttackContext actx{targetRadius, ai.slot_angle};
+                    std::tie(targetDx, targetDy) =
+                        computeAttackVelocity(ff, em.tile_map, px, py, actx, transform,
+                                              speed * f.combat_ai.waiter_speed_scale, arrivalScale,
+                                              f.combat_ai.attack_arrival_dist);
+                }
             }
         }
 
@@ -496,6 +573,23 @@ void ChaseSystem::update(EntityManager& em, double dt)
                     vel.dx = (vel.dx / curSpeed) * maxSpeed;
                     vel.dy = (vel.dy / curSpeed) * maxSpeed;
                 }
+            }
+        }
+
+        // Stuck detection: log when an active enemy has near-zero velocity.
+        // Rate-limited per entity via stuck_ticks to avoid flooding the trace.
+        {
+            const float spd = vel.dx * vel.dx + vel.dy * vel.dy;
+            if (spd < 1.0f && ai.state != AIController::State::Idle)
+            {
+                ++ai.stuck_ticks;
+                // Log once per second (~60 ticks) to avoid spam.
+                if (ai.stuck_ticks == 60)
+                    tracyAIDetail("EnemyStuck", entity, transform, vel, ai, px, py);
+            }
+            else
+            {
+                ai.stuck_ticks = 0;
             }
         }
 

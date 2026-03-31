@@ -4,6 +4,8 @@
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
+#include "screens/ScreenColors.h"
+#include "screens/ScreenInput.h"
 #include "systems/LevelingSystem.h"
 #include "systems/NotificationSystem.h"
 
@@ -11,6 +13,9 @@
 #include <algorithm>
 #include <string>
 #include <tracy/Tracy.hpp>
+
+using screen_input::hoveredRow;
+using namespace screen_colors;
 
 static FontHandle sBodyFont = INVALID_FONT;
 static FontHandle sTitleFont = INVALID_FONT;
@@ -24,23 +29,11 @@ static const char* STAT_NAMES[STAT_COUNT] = {"Strength", "Dexterity", "Endurance
 static const char* STAT_DESCS[STAT_COUNT] = {"Damage, carry weight", "Speed, attack speed",
                                              "HP, stamina, poise", "Drop rate, item quality"};
 
-static constexpr Color OVERLAY{0.0f, 0.0f, 0.0f, 0.75f};
-static constexpr Color PANEL_BG{0.06f, 0.06f, 0.09f, 0.95f};
 static constexpr Color TITLE_COLOR{1.0f, 0.85f, 0.3f, 1.0f};
-static constexpr Color TEXT_WHITE{0.92f, 0.90f, 0.88f, 1.0f};
-static constexpr Color TEXT_DIM{0.5f, 0.48f, 0.46f, 1.0f};
 static constexpr Color STAT_COLOR{0.65f, 0.75f, 0.9f, 1.0f};
 static constexpr Color SELECTED_BG{0.25f, 0.22f, 0.38f, 0.6f};
 static constexpr Color SEP_COLOR{0.4f, 0.35f, 0.25f, 0.5f};
 static constexpr Color HINT_COLOR{0.5f, 0.48f, 0.46f, 0.8f};
-
-static int hoveredRow(float mx, float my, float cx, float cy, float cw, float row_h, int count)
-{
-    if (mx < cx - 4.0f || mx >= cx + cw + 4.0f || my < cy - 2.0f)
-        return -1;
-    int idx = static_cast<int>((my - (cy - 2.0f)) / row_h);
-    return (idx >= 0 && idx < count) ? idx : -1;
-}
 
 // Returns true if the screen was auto-closed (caller should return early).
 static bool handleAutoClose(UIState& ui, const Experience& exp, float dt)

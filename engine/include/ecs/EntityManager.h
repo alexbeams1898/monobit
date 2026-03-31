@@ -53,6 +53,18 @@ struct FlowField
 };
 
 // ---------------------------------------------------------------------------
+// SteeringConfig -- tuning parameters for SteeringSystem wall/crowd forces.
+// Populated by game-side config loading; engine reads these at runtime.
+// ---------------------------------------------------------------------------
+struct SteeringConfig
+{
+    float repulsion_radius = 20.0f;
+    float repulsion_strength = 0.5f;
+    float blend_rate = 4.0f;
+    float skip_dot_threshold = -0.5f;
+};
+
+// ---------------------------------------------------------------------------
 // EntityManager -- thin owner of the entt::registry.
 // ---------------------------------------------------------------------------
 
@@ -116,6 +128,9 @@ class EntityManager
     // Tile map -- generated at startup by TileMapLoader::generate().
     TileMap tile_map;
     TileConfig tile_config;
+
+    // Steering parameters -- set by game-side config loading.
+    SteeringConfig steering_config;
 
   private:
     entt::registry reg;

@@ -224,7 +224,7 @@ void CombatSystem::update(EntityManager& em, double dt)
         if (actions.block_just_pressed && em.registry().all_of<Shield>(entity) &&
             !em.registry().all_of<Parrying>(entity))
         {
-            em.registry().emplace<Parrying>(entity, Parrying{0.15f});
+            em.registry().emplace<Parrying>(entity, Parrying{f.combat.parry_window});
         }
     }
 
@@ -317,7 +317,7 @@ void CombatSystem::update(EntityManager& em, double dt)
             // Spawn hitbox one half-width in front of the player.
             // LOS check: don't spawn if a wall or obstacle sits between the
             // player and the hitbox position — prevents hitting through obstacles.
-            const float reach = 16.0f + 20.0f; // half collider + reach
+            const float reach = f.combat.normal_reach;
             const float hx = transform.x + facingX * reach;
             const float hy = transform.y + facingY * reach;
 
@@ -329,11 +329,11 @@ void CombatSystem::update(EntityManager& em, double dt)
                 {
                     const auto& stats = em.registry().get<Stats>(entity);
                     const float dmg = computeDamage(weapon, stats, f);
-                    spawnHitbox(entity, hx, hy, 32.0f, dmg);
+                    spawnHitbox(entity, hx, hy, f.combat.normal_hitbox_size, dmg);
                 }
                 else
                 {
-                    spawnHitbox(entity, hx, hy, 32.0f, weapon.base_damage);
+                    spawnHitbox(entity, hx, hy, f.combat.normal_hitbox_size, weapon.base_damage);
                 }
             }
 
@@ -343,8 +343,8 @@ void CombatSystem::update(EntityManager& em, double dt)
                     : f.swing.base_swing_time + weapon.weight * f.swing.weight_scale;
             weapon.swing_cooldown_remaining = cooldown;
 
-            // Attack commitment: locks new attacks/dodges for 60% of the cooldown.
-            em.registry().emplace_or_replace<AttackLocked>(entity, AttackLocked{cooldown * 0.6f});
+            em.registry().emplace_or_replace<AttackLocked>(
+                entity, AttackLocked{cooldown * f.combat.attack_lock_fraction});
 
             // Yellow swing flash on the attacker (0.5s so it's clearly visible).
             em.registry().emplace_or_replace<AttackFeedback>(entity, AttackFeedback{0.5f});
@@ -365,19 +365,21 @@ void CombatSystem::update(EntityManager& em, double dt)
         if (actions.skill && weapon.skill_cooldown_remaining <= 0.0f && !isAttackLocked &&
             !isStaggered && staCurrent >= skillCost)
         {
-            const float reach = 16.0f + 40.0f; // bigger reach for skill
-            const float hx = transform.x + facing.dx * reach;
-            const float hy = transform.y + facing.dy * reach;
-            float dmg = weapon.base_damage * 1.5f;
+            const float skillReach = f.combat.skill_reach;
+            const float hx = transform.x + facing.dx * skillReach;
+            const float hy = transform.y + facing.dy * skillReach;
+            float dmg = weapon.base_damage * f.combat.skill_damage_mult;
             if (em.registry().all_of<Stats>(entity))
-                dmg = computeDamage(weapon, em.registry().get<Stats>(entity), f) * 1.5f;
+                dmg = computeDamage(weapon, em.registry().get<Stats>(entity), f) *
+                      f.combat.skill_damage_mult;
 
             const bool skillLos = !em.tile_map.valid() ||
                                   em.tile_map.hasLineOfSight(transform.x, transform.y, hx, hy);
             if (skillLos)
-                spawnHitbox(entity, hx, hy, 64.0f, dmg); // 64×64 hitbox
-            weapon.skill_cooldown_remaining = 5.0f;
-            em.registry().emplace_or_replace<AttackLocked>(entity, AttackLocked{0.4f});
+                spawnHitbox(entity, hx, hy, f.combat.skill_hitbox_size, dmg);
+            weapon.skill_cooldown_remaining = f.combat.skill_cooldown;
+            em.registry().emplace_or_replace<AttackLocked>(
+                entity, AttackLocked{f.combat.skill_lock_duration});
 
             if (hasSta)
                 deductStamina(em.registry(), entity, skillCost, f);
@@ -396,8 +398,8 @@ void CombatSystem::update(EntityManager& em, double dt)
             // If any active enemy is within engagement range → backstep
             // (step opposite to current facing, away from the threat).
             // Otherwise → normal roll in last movement/facing direction.
-            static constexpr float kEngagementRadius = 150.0f;
-            static constexpr float kEngagementRadiusSq = kEngagementRadius * kEngagementRadius;
+            const float kEngagementRadius = f.combat_ai.engagement_radius;
+            const float kEngagementRadiusSq = kEngagementRadius * kEngagementRadius;
 
             bool nearEnemy = false;
             for (auto [eEnemy, ai, tEnemy] : em.registry().view<AIController, Transform>().each())
@@ -432,8 +434,8 @@ void CombatSystem::update(EntityManager& em, double dt)
             if (em.registry().all_of<Velocity>(entity))
             {
                 auto& vel = em.registry().get<Velocity>(entity);
-                vel.dx = dodgeX * 300.0f;
-                vel.dy = dodgeY * 300.0f;
+                vel.dx = dodgeX * f.combat.dodge_speed;
+                vel.dy = dodgeY * f.combat.dodge_speed;
             }
 
             TracyMessageL("PlayerDodge");
@@ -529,13 +531,18 @@ void CombatSystem::update(EntityManager& em, double dt)
                 const float dmg = em.registry().all_of<Stats>(entity)
                                       ? computeDamage(weapon, em.registry().get<Stats>(entity), f)
                                       : weapon.base_damage;
-                spawnHitbox(entity, transform.x + nx * 24.f, transform.y + ny * 24.f, 32.f, dmg);
+                spawnHitbox(entity, transform.x + nx * f.combat_ai.enemy_reach,
+                            transform.y + ny * f.combat_ai.enemy_reach, f.combat.normal_hitbox_size,
+                            dmg);
 
-                // Reset swing cooldown.
-                weapon.swing_cooldown_remaining =
+                // Reset swing cooldown. AI attack_cooldown sets a minimum cadence.
+                float cooldown =
                     em.registry().all_of<Stats>(entity)
                         ? computeSwingCooldown(weapon, em.registry().get<Stats>(entity), f)
                         : 1.0f;
+                if (ai.attack_cooldown > 0.0f)
+                    cooldown = std::max(cooldown, ai.attack_cooldown);
+                weapon.swing_cooldown_remaining = cooldown;
 
                 // Token holder keeps its token through swing cooldown so it stays
                 // at the attack ring and swings again when ready. Token is only

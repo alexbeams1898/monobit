@@ -81,8 +81,8 @@ struct ItemDef
     int str_requirement = 0;
     int dex_requirement = 0;
     bool two_handed = false;
-    std::string weapon_tier; // references WeaponTierRegistry for growth defaults
-    float damage_per_level = -1.0f; // -1 = use tier default
+    std::string weapon_tier;         // references WeaponTierRegistry for growth defaults
+    float damage_per_level = -1.0f;  // -1 = use tier default
     float scaling_per_level = -1.0f; // -1 = use tier default
 
     // Armor-specific (only meaningful when category == Armor).

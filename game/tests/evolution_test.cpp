@@ -1,8 +1,7 @@
-#include "test_helpers.h"
-
-#include "ops/InventoryOps.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
+#include "ops/InventoryOps.h"
+#include "test_helpers.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -101,8 +100,8 @@ TEST_CASE("InventoryOps::evolveWeapon replaces weapon and resets XP", "[evolutio
     ItemRegistry registry;
     const float carry_factor = 0.15f;
 
-    REQUIRE(InventoryOps::evolveWeapon(inv, equip, wxp, path,
-                                       "config/items/weapons/dagger.json", registry, carry_factor));
+    REQUIRE(InventoryOps::evolveWeapon(inv, equip, wxp, path, "config/items/weapons/dagger.json",
+                                       registry, carry_factor));
 
     // Weapon replaced.
     REQUIRE(equip.main_hand.config_path == "config/items/weapons/dagger.json");
@@ -142,8 +141,8 @@ TEST_CASE("InventoryOps::evolveWeapon accumulates carry-forward bonus", "[evolut
     ItemRegistry registry;
     const float carry_factor = 0.15f;
 
-    REQUIRE(InventoryOps::evolveWeapon(inv, equip, wxp, path,
-                                       "config/items/weapons/dagger.json", registry, carry_factor));
+    REQUIRE(InventoryOps::evolveWeapon(inv, equip, wxp, path, "config/items/weapons/dagger.json",
+                                       registry, carry_factor));
 
     // bonus = old_bonus(2.0) + old_level(10) * carry_factor(0.15) = 2.0 + 1.5 = 3.5
     REQUIRE_THAT(equip.main_hand.evolution_bonus, WithinAbs(3.5f, 0.01f));

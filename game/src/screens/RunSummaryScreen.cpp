@@ -3,13 +3,18 @@
 #include "UIRenderer.h"
 #include "ecs/EntityManager.h"
 #include "ecs/GameConfig.h"
+#include "screens/ScreenColors.h"
+#include "screens/ScreenInput.h"
 #include "systems/AudioSystem.h"
 
 #include <SDL.h>
-#include <algorithm>
 #include <cstdio>
 #include <string>
 #include <tracy/Tracy.hpp>
+
+using screen_input::keyPressed;
+using screen_input::mouseClicked;
+using namespace screen_colors;
 
 static FontHandle sBodyFont = INVALID_FONT;
 static FontHandle sTitleFont = INVALID_FONT;
@@ -17,31 +22,9 @@ static bool sEscaped = false;
 static int sScore = 0;
 static bool sIsHighScore = false;
 
-static constexpr Color OVERLAY{0.0f, 0.0f, 0.0f, 0.92f};
 static constexpr Color TITLE_COLOR{0.9f, 0.78f, 0.45f, 1.0f};
-static constexpr Color TEXT_WHITE{0.92f, 0.90f, 0.88f, 1.0f};
-static constexpr Color TEXT_DIM{0.5f, 0.48f, 0.46f, 1.0f};
 static constexpr Color LABEL_COLOR{0.55f, 0.7f, 0.85f, 1.0f};
 static constexpr Color GOLD{0.95f, 0.85f, 0.4f, 1.0f};
-static constexpr Color PANEL_BG{0.06f, 0.06f, 0.09f, 0.92f};
-static constexpr Color BTN_NORMAL{0.7f, 0.68f, 0.65f, 1.0f};
-static constexpr Color BTN_HOVER{0.95f, 0.88f, 0.55f, 1.0f};
-static constexpr Color BTN_BG{0.1f, 0.1f, 0.12f, 0.5f};
-static constexpr Color BTN_BG_HL{0.18f, 0.16f, 0.25f, 0.7f};
-
-static bool mouseClicked(const EntityManager& em)
-{
-    for (uint8_t btn : em.mouse_down_events)
-        if (btn == SDL_BUTTON_LEFT)
-            return true;
-    return false;
-}
-
-static bool keyPressed(const EntityManager& em, int scancode)
-{
-    const auto& kd = em.key_down_events;
-    return std::find(kd.begin(), kd.end(), scancode) != kd.end();
-}
 
 void RunSummaryScreen::init(FontHandle body_font, FontHandle title_font)
 {
@@ -65,7 +48,7 @@ bool RunSummaryScreen::render(EntityManager& em, int window_w, int window_h)
     const auto& stats = em.registry().ctx().get<RunStats>();
     const auto& snd = em.registry().ctx().get<SoundConfig>();
 
-    UIRenderer::drawRect(0.0f, 0.0f, ww, wh, OVERLAY);
+    UIRenderer::drawRect(0.0f, 0.0f, ww, wh, OVERLAY_OPAQUE);
 
     // Panel.
     const float panel_w = 450.0f;
@@ -134,30 +117,33 @@ bool RunSummaryScreen::render(EntityManager& em, int window_w, int window_h)
     }
 
     // Continue button (anchored 20px from panel bottom).
-    const std::string cont = "Continue";
-    TextSize csz = UIRenderer::measureText(sTitleFont, cont);
-    const float bw = csz.width + 60.0f;
-    const float bh = csz.height + 20.0f;
-    const float bx = (ww - bw) * 0.5f;
-    const float btn_y = py + panel_h - 20.0f - bh;
-
-    int mouseX = 0;
-    int mouseY = 0;
-    SDL_GetMouseState(&mouseX, &mouseY);
-    const float mx = static_cast<float>(mouseX);
-    const float my = static_cast<float>(mouseY);
-
-    const bool hovered = (mx >= bx && mx < bx + bw && my >= btn_y && my < btn_y + bh);
-    UIRenderer::drawRect(bx, btn_y, bw, bh, hovered ? BTN_BG_HL : BTN_BG);
-    UIRenderer::drawText(sTitleFont, cont, bx + 30.0f, btn_y + 10.0f,
-                         hovered ? BTN_HOVER : BTN_NORMAL);
-
-    if ((hovered && mouseClicked(em)) || keyPressed(em, SDL_SCANCODE_RETURN) ||
-        keyPressed(em, SDL_SCANCODE_KP_ENTER))
     {
-        if (!snd.ui_click.path.empty())
-            AudioSystem::playSfx(snd.ui_click.path, snd.ui_click.volume);
-        return true;
+        const std::string cont = "Continue";
+        TextSize csz = UIRenderer::measureText(sTitleFont, cont);
+        const float bw = csz.width + 60.0f;
+        const float bh = csz.height + 20.0f;
+        const float bx = (ww - bw) * 0.5f;
+        const float btn_y = py + panel_h - 20.0f - bh;
+
+        int mouseX = 0;
+        int mouseY = 0;
+        SDL_GetMouseState(&mouseX, &mouseY);
+        const float mx = static_cast<float>(mouseX);
+        const float my = static_cast<float>(mouseY);
+
+        const bool hovered = (mx >= bx && mx < bx + bw && my >= btn_y && my < btn_y + bh);
+        const Color bg = hovered ? BTN_BG_HL : BTN_BG;
+        UIRenderer::drawRect(bx, btn_y, bw, bh, bg);
+        const Color txt = hovered ? BTN_HOVER : BTN_NORMAL;
+        UIRenderer::drawText(sTitleFont, cont, bx + 30.0f, btn_y + 10.0f, txt);
+
+        if ((hovered && mouseClicked(em, SDL_BUTTON_LEFT)) || keyPressed(em, SDL_SCANCODE_RETURN) ||
+            keyPressed(em, SDL_SCANCODE_KP_ENTER))
+        {
+            if (!snd.ui_click.path.empty())
+                AudioSystem::playSfx(snd.ui_click.path, snd.ui_click.volume);
+            return true;
+        }
     }
 
     return false;

@@ -1,9 +1,9 @@
 #include "systems/PickupSystem.h"
 
-#include "ops/InventoryOps.h"
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
+#include "ops/InventoryOps.h"
 #include "systems/AudioSystem.h"
 #include "systems/NotificationSystem.h"
 
@@ -13,9 +13,9 @@
 #include <vector>
 
 // Max world-space distance from mouse cursor to highlight a pickup.
-static constexpr float MOUSE_HOVER_RADIUS = 32.0f;
-// Proximity radius for F-key fallback when mouse isn't hovering over anything.
-static constexpr float PROXIMITY_RADIUS = 48.0f;
+static constexpr float MOUSE_HOVER_RADIUS = 48.0f;
+// Proximity radius for F-key and click collection range.
+static constexpr float PROXIMITY_RADIUS = 72.0f;
 
 // Play pickup SFX with pitch/volume scaled by item rarity and quality.
 // Higher rarity + quality = higher pitch + louder + shimmer layer.
@@ -85,8 +85,8 @@ static void collectPickup(EntityManager& em, entt::entity playerEnt, entt::entit
         const Rarity rarity = (def != nullptr) ? def->rarity : Rarity::Common;
         playPickupSfx(snd, rarity, pickup.item.quality);
         const std::string newTag = isNew ? " (NEW!)" : "";
-        const Color notifColor = isNew ? Color{0.95f, 0.9f, 0.4f, 1.0f}
-                                       : Color{0.8f, 0.8f, 0.8f, 1.0f};
+        const Color notifColor =
+            isNew ? Color{0.95f, 0.9f, 0.4f, 1.0f} : Color{0.8f, 0.8f, 0.8f, 1.0f};
         NotificationSystem::push("+" + std::to_string(pickup.item.quantity) + " " + itemName +
                                      " (" + rarityName(rarity) + ", " +
                                      qualityName(pickup.item.quality) + ")" + newTag,
@@ -189,7 +189,21 @@ void PickupSystem::update(EntityManager& em)
     entt::entity proxTarget = entt::null;
     findNearestPickup(reg, mouseWX, mouseWY, playerX, playerY, hoverTarget, proxTarget);
 
-    const entt::entity target = (hoverTarget != entt::null) ? hoverTarget : proxTarget;
+    // Only consider targets within pickup radius of the player.
+    entt::entity target = entt::null;
+    auto checkRange = [&](entt::entity e) -> bool
+    {
+        if (e == entt::null || !reg.all_of<Transform>(e))
+            return false;
+        const auto& tt = reg.get<Transform>(e);
+        const float dx = tt.x - playerX;
+        const float dy = tt.y - playerY;
+        return std::sqrt(dx * dx + dy * dy) <= PROXIMITY_RADIUS;
+    };
+    if (checkRange(hoverTarget))
+        target = hoverTarget;
+    else if (checkRange(proxTarget))
+        target = proxTarget;
 
     if (reg.all_of<InteractTarget>(playerEnt))
     {
@@ -211,7 +225,7 @@ void PickupSystem::update(EntityManager& em)
 
     reg.get_or_emplace<InteractTarget>(playerEnt).entity = target;
 
-    if ((wantInteract || (wantClick && hoverTarget != entt::null)) && target != entt::null)
+    if (target != entt::null && (wantInteract || (wantClick && hoverTarget != entt::null)))
     {
         collectPickup(em, playerEnt, target);
 

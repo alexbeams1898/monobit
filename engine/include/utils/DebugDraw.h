@@ -55,8 +55,8 @@ inline void rect(float world_x, float world_y, float w, float h, const Color& co
 }
 
 // Dotted line between two world positions.
-inline void line(float x1, float y1, float x2, float y2, const Color& color,
-                 float spacing = 6.0f, float dot_size = 2.0f)
+inline void line(float x1, float y1, float x2, float y2, const Color& color, float spacing = 6.0f,
+                 float dot_size = 2.0f)
 {
     const float dx = x2 - x1;
     const float dy = y2 - y1;
@@ -91,9 +91,21 @@ inline void circle(float world_cx, float world_cy, float radius, const Color& co
 }
 
 // Accessors for current camera state (useful for view culling).
-inline float camX() { return sCamX; }
-inline float camY() { return sCamY; }
-inline float halfW() { return sHalfW; }
-inline float halfH() { return sHalfH; }
+inline float camX()
+{
+    return sCamX;
+}
+inline float camY()
+{
+    return sCamY;
+}
+inline float halfW()
+{
+    return sHalfW;
+}
+inline float halfH()
+{
+    return sHalfH;
+}
 
 } // namespace DebugDraw

@@ -1,6 +1,5 @@
-#include "test_helpers.h"
-
 #include "ecs/GameConfig.h"
+#include "test_helpers.h"
 
 #include <catch2/catch_test_macros.hpp>
 

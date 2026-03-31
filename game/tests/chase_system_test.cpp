@@ -575,9 +575,12 @@ TEST_CASE("Attack token pool limits concurrent holders", "[chase][token]")
     runAI(em);
 
     int tokenCount = 0;
-    if (testHoldsToken(em, a)) ++tokenCount;
-    if (testHoldsToken(em, b)) ++tokenCount;
-    if (testHoldsToken(em, c)) ++tokenCount;
+    if (testHoldsToken(em, a))
+        ++tokenCount;
+    if (testHoldsToken(em, b))
+        ++tokenCount;
+    if (testHoldsToken(em, c))
+        ++tokenCount;
     REQUIRE(tokenCount == 2);
 }
 
@@ -665,6 +668,6 @@ TEST_CASE("Attack token non-holder navigates to slot at wider radius", "[chase][
     // Waiter navigates to slot at (0, 96) — straight north from (0, 200).
     REQUIRE_FALSE(testHoldsToken(em, waiter));
     const auto& wv = em.registry().get<Velocity>(waiter);
-    REQUIRE(wv.dy < 0.0f);                 // moving north toward slot
-    REQUIRE(std::abs(wv.dx) < 1.0f);       // minimal horizontal movement
+    REQUIRE(wv.dy < 0.0f);           // moving north toward slot
+    REQUIRE(std::abs(wv.dx) < 1.0f); // minimal horizontal movement
 }

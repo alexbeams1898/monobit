@@ -3,38 +3,24 @@
 #include "UIRenderer.h"
 #include "ecs/EntityManager.h"
 #include "ecs/GameConfig.h"
+#include "screens/ScreenColors.h"
+#include "screens/ScreenInput.h"
 #include "systems/AudioSystem.h"
 
 #include <SDL.h>
-#include <algorithm>
 #include <string>
 #include <tracy/Tracy.hpp>
+
+using screen_input::keyPressed;
+using screen_input::mouseClicked;
+using namespace screen_colors;
 
 static FontHandle sBodyFont = INVALID_FONT;
 static FontHandle sTitleFont = INVALID_FONT;
 static FontHandle sBigTitleFont = INVALID_FONT;
 static int sSel = -1;
 
-static constexpr Color OVERLAY{0.0f, 0.0f, 0.0f, 0.92f};
 static constexpr Color TITLE_COLOR{0.9f, 0.78f, 0.45f, 1.0f};
-static constexpr Color BTN_NORMAL{0.7f, 0.68f, 0.65f, 1.0f};
-static constexpr Color BTN_HOVER{0.95f, 0.88f, 0.55f, 1.0f};
-static constexpr Color BTN_BG{0.1f, 0.1f, 0.12f, 0.5f};
-static constexpr Color BTN_BG_HL{0.18f, 0.16f, 0.25f, 0.7f};
-
-static bool keyPressed(const EntityManager& em, int scancode)
-{
-    const auto& kd = em.key_down_events;
-    return std::find(kd.begin(), kd.end(), scancode) != kd.end();
-}
-
-static bool mouseClicked(const EntityManager& em)
-{
-    for (uint8_t btn : em.mouse_down_events)
-        if (btn == SDL_BUTTON_LEFT)
-            return true;
-    return false;
-}
 
 void MainMenuScreen::init(FontHandle body_font, FontHandle title_font, FontHandle big_title_font)
 {
@@ -78,8 +64,7 @@ MainMenuScreen::Action MainMenuScreen::render(EntityManager& em, int window_w, i
         sSel = sSel < 0 ? 0 : (sSel + 1) % btnCount;
 
     Action result = Action::None;
-    if (sSel >= 0 &&
-        (keyPressed(em, SDL_SCANCODE_RETURN) || keyPressed(em, SDL_SCANCODE_KP_ENTER)))
+    if (sSel >= 0 && (keyPressed(em, SDL_SCANCODE_RETURN) || keyPressed(em, SDL_SCANCODE_KP_ENTER)))
     {
         result = actions[sSel];
         if (result != Action::None && !snd.ui_click.path.empty())
@@ -87,7 +72,7 @@ MainMenuScreen::Action MainMenuScreen::render(EntityManager& em, int window_w, i
     }
 
     // Draw.
-    UIRenderer::drawRect(0.0f, 0.0f, ww, wh, OVERLAY);
+    UIRenderer::drawRect(0.0f, 0.0f, ww, wh, OVERLAY_OPAQUE);
 
     // Title.
     const std::string title = "HELL ESCAPE";
@@ -130,7 +115,7 @@ MainMenuScreen::Action MainMenuScreen::render(EntityManager& em, int window_w, i
         UIRenderer::drawText(sTitleFont, label, bx + btn_pad_x, by + btn_pad_y,
                              selected ? BTN_HOVER : BTN_NORMAL);
 
-        if (hovered && mouseClicked(em))
+        if (hovered && mouseClicked(em, SDL_BUTTON_LEFT))
         {
             result = actions[i];
             if (result != Action::None && !snd.ui_click.path.empty())

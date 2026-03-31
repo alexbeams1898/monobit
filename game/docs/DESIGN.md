@@ -1117,6 +1117,90 @@ iOS target: 6 virtual buttons (attack, dodge, block, skill, lock, item) + joysti
 
 ---
 
+## UI Architecture
+
+### Engine Layer: UIRenderer
+`UIRenderer` (engine) provides batched screen-space drawing primitives: `drawRect`,
+`drawTexturedRect`, `drawText`. All UI is built from these. No draw-line or draw-circle —
+complex shapes use dot grids (see AIDebugOverlay). Font management via `FontManager` with
+`FontHandle` IDs.
+
+### Game State Machine
+Two enums drive screen routing:
+
+- **`GameState::Phase`** — top-level app state: `MainMenu`, `CharCreate`, `LoadGame`,
+  `Playing`, `Victory`, `GameOver`, `RunSummary`, `HighScores`. Determines which full-screen
+  renders.
+- **`UIState::Screen`** — in-game overlay state: `None`, `Menu` (pause), `LevelUp`,
+  `Sanctuary`, `Crafting`. Active only during `Playing` phase.
+- **`UIState::Tab`** — pause menu tab: `Status`, `Inventory`, `Equipment`.
+
+`GameLoop` dispatches rendering based on these states. Screens are static namespaces with
+`init()` and `render()` functions — no inheritance, no virtual dispatch.
+
+### Screen Inventory
+
+**Full-screen menus** (own `GameState::Phase`):
+- `MainMenuScreen` — title, New Game / Load / High Scores / Quit
+- `CharCreateScreen` — name entry, start/back
+- `LoadGameScreen` — save slot list with delete confirmation
+- `HighScoresScreen` — score table
+- `RunSummaryScreen` — post-run stats breakdown
+- `GameOverScreen` — death screen
+- `VictoryScreen` — escape success screen
+
+**In-game overlays** (active during `Playing`):
+- `PauseMenu` — tabbed: Status (stats + equipped gear), Inventory (grid), Equipment (slots).
+  Resume / Escape Run / Quit buttons.
+- `LevelUpScreen` — stat picker popup (STR/DEX/END/LCK)
+- `CraftingScreen` — recipe list with material requirements
+- `SanctuaryScreen` — rest spot menu (Evolve / Craft / Leave) using `MenuDialog`
+- `InventoryScreen` — inventory grid (used as a sub-view within PauseMenu)
+
+**Reusable dialog templates:**
+- `ConfirmDialog` — centered Yes/No popup. Auto-sizes to content. Keyboard + mouse input.
+- `MenuDialog` — centered option list with labels + descriptions. Auto-sizes. Used by
+  SanctuaryScreen.
+
+Both measure text content first, then compute panel dimensions — never hardcode panel sizes.
+
+### Persistent HUD
+`HudRenderer` draws HP bar, stamina bar, XP bar, money, wave info, weapon name, and a
+clickable Menu button. Rendered every frame during `Playing` phase.
+
+### Other Renderers
+- `InteractionPromptRenderer` — "Press F" prompts near interactable entities
+- `ItemStatRenderer` — weapon/armor stat comparison tooltip. Owns `rarityColor()` for
+  consistent rarity coloring across all UI.
+- `DebugOverlay` (F3) — FPS, entity count, player coords, wave state
+- `AIDebugOverlay` (F4) — enemy AI state visualization (dot-based)
+- `AIRecorder` (F5) — CSV state dump of last 5s of AI data
+
+### Shared UI Utilities
+
+**`screens/ScreenColors.h`** — shared color palette used by all screens:
+- `TEXT_WHITE`, `TEXT_DIM` — standard text colors
+- `OVERLAY` (alpha 0.75) — in-game popup background
+- `OVERLAY_OPAQUE` (alpha 0.92) — full-screen menu background
+- `PANEL_BG` — default panel background
+- `BTN_NORMAL`, `BTN_HOVER`, `BTN_BG`, `BTN_BG_HL` — standard button colors
+
+Screens import via `using namespace screen_colors;`. Per-screen overrides (e.g.
+ConfirmDialog's red title, per-screen panel backgrounds) stay as local `constexpr` with
+unique names.
+
+**`screens/ScreenInput.h`** — shared input helpers:
+- `keyPressed(em, scancode)` — SDL scancode check against frame's key-down events
+- `mouseClicked(em, button)` — mouse button check (SDL_BUTTON_LEFT, SDL_BUTTON_RIGHT)
+- `hoveredRow(mx, my, cx, cy, cw, row_h, count)` — row hit-testing for list UIs
+
+### Notification System
+`NotificationSystem` manages timed popup messages (item pickups, level-ups, discoveries).
+Messages queue and display at screen top with fade-out. "(NEW!)" badge for first-time item
+discoveries.
+
+---
+
 ## Config Directory Structure
 
 ```

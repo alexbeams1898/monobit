@@ -1,11 +1,11 @@
 #include "screens/SanctuaryScreen.h"
 
-#include "ops/InventoryOps.h"
 #include "UIRenderer.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
+#include "ops/InventoryOps.h"
 #include "screens/CraftingScreen.h"
 #include "screens/MenuDialog.h"
 #include "systems/NotificationSystem.h"
@@ -147,8 +147,8 @@ void SanctuaryScreen::render(EntityManager& em, int window_w, int window_h)
             }
         }
     }
-    options.push_back({"Evolve Weapon", canEvo ? "Transform your weapon" : "No evolutions ready",
-                       canEvo});
+    options.push_back(
+        {"Evolve Weapon", canEvo ? "Transform your weapon" : "No evolutions ready", canEvo});
 
     // 2. Craft
     options.push_back({"Craft", "Open crafting menu", true});

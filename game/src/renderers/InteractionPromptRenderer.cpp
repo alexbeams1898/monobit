@@ -71,8 +71,7 @@ void InteractionPromptRenderer::render(EntityManager& em, float cam_x, float cam
     float playerX = 0.0f;
     float playerY = 0.0f;
     bool hasPlayer = false;
-    for (auto [entity, actions, transform] :
-         em.registry().view<PlayerActions, Transform>().each())
+    for (auto [entity, actions, transform] : em.registry().view<PlayerActions, Transform>().each())
     {
         playerX = transform.x;
         playerY = transform.y;
@@ -82,8 +81,7 @@ void InteractionPromptRenderer::render(EntityManager& em, float cam_x, float cam
     if (!hasPlayer)
         return;
 
-    for (auto [entity, spot, transform] :
-         em.registry().view<RestSpot, Transform>().each())
+    for (auto [entity, spot, transform] : em.registry().view<RestSpot, Transform>().each())
     {
         const float dx = transform.x - playerX;
         const float dy = transform.y - playerY;
@@ -96,8 +94,7 @@ void InteractionPromptRenderer::render(EntityManager& em, float cam_x, float cam
     }
 
     // Ladder prompt (only when not spawning).
-    for (auto [entity, ladder, transform] :
-         em.registry().view<Ladder, Transform>().each())
+    for (auto [entity, ladder, transform] : em.registry().view<Ladder, Transform>().each())
     {
         if (ladder.spawning)
             continue;

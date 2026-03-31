@@ -48,8 +48,8 @@
 #include "renderers/DebugOverlay.h"
 #include "renderers/HudRenderer.h"
 #include "renderers/InteractionPromptRenderer.h"
-#include "screens/CraftingScreen.h"
 #include "screens/CharCreateScreen.h"
+#include "screens/CraftingScreen.h"
 #include "screens/GameOverScreen.h"
 #include "screens/HighScoresScreen.h"
 #include "screens/LevelUpScreen.h"
@@ -66,6 +66,7 @@
 #include <cmath>
 #include <ctime>
 #include <glad/glad.h>
+#include <random>
 #include <string>
 #include <tracy/Tracy.hpp>
 
@@ -93,8 +94,8 @@ static void showLoadingOverlay(Engine& engine, int wave)
 
     const std::string text = "Wave " + std::to_string(wave);
     const auto ts = UIRenderer::measureText(sTitleFont, text);
-    UIRenderer::drawText(sTitleFont, text, (fw - ts.width) * 0.5f,
-                         (fh - ts.height) * 0.5f, {1.0f, 0.85f, 0.3f, 1.0f});
+    UIRenderer::drawText(sTitleFont, text, (fw - ts.width) * 0.5f, (fh - ts.height) * 0.5f,
+                         {1.0f, 0.85f, 0.3f, 1.0f});
 
     UIRenderer::endFrame();
     engine.swapBuffers();
@@ -103,6 +104,7 @@ static void showLoadingOverlay(Engine& engine, int wave)
 // When WaveSystem signals a new wave, regenerate the tile map and reposition entities.
 static void handleMapRegen(Engine& engine, EntityManager& em)
 {
+    ZoneScopedN("handleMapRegen");
     auto& waveState = em.registry().ctx().get<WaveState>();
     if (!waveState.needs_map_regen)
         return;
@@ -314,7 +316,24 @@ static void handleGlobalKeys(EntityManager& em)
 static void playTrack(EntityManager& em, const std::string& key, bool loop = true)
 {
     if (auto* t = em.registry().ctx().get<MusicConfig>().get(key))
-        AudioSystem::playMusic(t->path, t->volume, loop);
+        AudioSystem::playMusic(t->path, t->volume, loop, t->fade_in_ms);
+}
+
+// Play main menu music with a random chance of the rare (reversed) variant.
+void playMainMenuMusic(EntityManager& em)
+{
+    const auto& mc = em.registry().ctx().get<MusicConfig>();
+    std::string key = "main_menu";
+
+    if (mc.main_menu_rare_chance > 0.0f && mc.get("main_menu_rare") != nullptr)
+    {
+        static std::mt19937 rng(std::random_device{}());
+        std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+        if (dist(rng) < mc.main_menu_rare_chance)
+            key = "main_menu_rare";
+    }
+
+    playTrack(em, key);
 }
 
 // Transition helper: finalize run and go to summary.
@@ -366,6 +385,12 @@ static void transitionToSummary(EntityManager& em, bool escaped)
 
     RunSummaryScreen::reset(escaped, score, isHighScore);
     gs.phase = GameState::Phase::RunSummary;
+
+    if (escaped)
+    {
+        AudioSystem::stopMusic();
+        playTrack(em, "victory", false);
+    }
 }
 
 void gameUpdate(Engine& engine, EntityManager& em, double dt)
@@ -499,7 +524,7 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
         static int sRecorderFrame = 0;
         AIRecorder::tick(em, sRecorderFrame++);
     }
-    SteeringSystem::update(em);
+    SteeringSystem::update(em, dt);
     MovementSystem::update(em, dt);
     CollisionSystem::update(em);
     DamageSystem::update(em);
@@ -678,8 +703,7 @@ void gameRenderUI(Engine& engine, EntityManager& em)
                                  {0.0f, 0.0f, 0.0f, 1.0f});
             const std::string loadText = "Wave 1";
             const auto lts = UIRenderer::measureText(sTitleFont, loadText);
-            UIRenderer::drawText(sTitleFont, loadText,
-                                 (static_cast<float>(ww) - lts.width) * 0.5f,
+            UIRenderer::drawText(sTitleFont, loadText, (static_cast<float>(ww) - lts.width) * 0.5f,
                                  (static_cast<float>(wh) - lts.height) * 0.5f,
                                  {1.0f, 0.85f, 0.3f, 1.0f});
             break;
@@ -713,8 +737,7 @@ void gameRenderUI(Engine& engine, EntityManager& em)
                                  {0.0f, 0.0f, 0.0f, 1.0f});
             const std::string loadText = "Wave 1";
             const auto lts = UIRenderer::measureText(sTitleFont, loadText);
-            UIRenderer::drawText(sTitleFont, loadText,
-                                 (static_cast<float>(ww) - lts.width) * 0.5f,
+            UIRenderer::drawText(sTitleFont, loadText, (static_cast<float>(ww) - lts.width) * 0.5f,
                                  (static_cast<float>(wh) - lts.height) * 0.5f,
                                  {1.0f, 0.85f, 0.3f, 1.0f});
             break;
@@ -769,7 +792,7 @@ void gameRenderUI(Engine& engine, EntityManager& em)
             engine.requestTimingReset();
             MainMenuScreen::reset();
             gs.phase = GameState::Phase::MainMenu;
-            playTrack(em, "main_menu");
+            playMainMenuMusic(em);
         }
         break;
     }

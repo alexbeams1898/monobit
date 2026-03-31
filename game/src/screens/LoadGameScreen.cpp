@@ -5,12 +5,18 @@
 #include "ecs/EntityManager.h"
 #include "ecs/GameConfig.h"
 #include "screens/ConfirmDialog.h"
+#include "screens/ScreenColors.h"
+#include "screens/ScreenInput.h"
 #include "systems/AudioSystem.h"
 
 #include <SDL.h>
 #include <algorithm>
 #include <string>
 #include <tracy/Tracy.hpp>
+
+using screen_input::keyPressed;
+using screen_input::mouseClicked;
+using namespace screen_colors;
 
 static FontHandle sBodyFont = INVALID_FONT;
 static FontHandle sTitleFont = INVALID_FONT;
@@ -23,34 +29,12 @@ static bool sConfirmDelete = false;
 static int sDeleteTarget = 0;
 static int sConfirmSel = 1; // 0 = Yes, 1 = No (default to No for safety)
 
-static constexpr Color OVERLAY{0.0f, 0.0f, 0.0f, 0.92f};
 static constexpr Color TITLE_COLOR{0.9f, 0.78f, 0.45f, 1.0f};
-static constexpr Color PANEL_BG{0.06f, 0.06f, 0.09f, 0.92f};
-static constexpr Color TEXT_WHITE{0.92f, 0.90f, 0.88f, 1.0f};
-static constexpr Color TEXT_DIM{0.5f, 0.48f, 0.46f, 1.0f};
 static constexpr Color SELECTED_BG{0.25f, 0.22f, 0.38f, 0.6f};
 static constexpr Color HOVER_BG{0.15f, 0.13f, 0.22f, 0.4f};
-static constexpr Color BTN_NORMAL{0.7f, 0.68f, 0.65f, 1.0f};
-static constexpr Color BTN_HOVER{0.95f, 0.88f, 0.55f, 1.0f};
-static constexpr Color BTN_BG{0.1f, 0.1f, 0.12f, 0.5f};
-static constexpr Color BTN_BG_HL{0.18f, 0.16f, 0.25f, 0.7f};
 static constexpr Color DELETE_BG{0.4f, 0.08f, 0.08f, 0.6f};
 static constexpr Color DELETE_BG_HL{0.6f, 0.12f, 0.12f, 0.8f};
 static constexpr Color MONEY_GREEN{0.35f, 0.82f, 0.35f, 1.0f};
-
-static bool keyPressed(const EntityManager& em, int scancode)
-{
-    const auto& kd = em.key_down_events;
-    return std::find(kd.begin(), kd.end(), scancode) != kd.end();
-}
-
-static bool mouseClicked(const EntityManager& em)
-{
-    for (uint8_t btn : em.mouse_down_events)
-        if (btn == SDL_BUTTON_LEFT)
-            return true;
-    return false;
-}
 
 static void playSfx(const SoundConfig& snd)
 {
@@ -104,7 +88,8 @@ static LoadGameScreen::Action handleLoadInput(const EntityManager& em, const Sou
         return LoadGameScreen::Action::None;
     }
 
-    if (sSel < 0 || (!keyPressed(em, SDL_SCANCODE_RETURN) && !keyPressed(em, SDL_SCANCODE_KP_ENTER)))
+    if (sSel < 0 ||
+        (!keyPressed(em, SDL_SCANCODE_RETURN) && !keyPressed(em, SDL_SCANCODE_KP_ENTER)))
         return LoadGameScreen::Action::None;
 
     LoadGameScreen::Action result = LoadGameScreen::Action::None;
@@ -175,7 +160,7 @@ LoadGameScreen::Action LoadGameScreen::render(EntityManager& em, int window_w, i
     result = handleLoadInput(em, snd, saveData);
 
     // Draw.
-    UIRenderer::drawRect(0.0f, 0.0f, ww, wh, OVERLAY);
+    UIRenderer::drawRect(0.0f, 0.0f, ww, wh, OVERLAY_OPAQUE);
 
     // Title (big font).
     const std::string title = "Load Game";
@@ -219,8 +204,7 @@ LoadGameScreen::Action LoadGameScreen::render(EntityManager& em, int window_w, i
 
         // Row hover (exclude the [X] button area so row click = select, not delete).
         const float row_content_w = list_w - del_w - 12.0f;
-        const bool rowHovered =
-            mx >= lx && mx < lx + row_content_w && my >= ly && my < ly + row_h;
+        const bool rowHovered = mx >= lx && mx < lx + row_content_w && my >= ly && my < ly + row_h;
         if (rowHovered)
         {
             sSel = i;
@@ -261,11 +245,10 @@ LoadGameScreen::Action LoadGameScreen::render(EntityManager& em, int window_w, i
         }
 
         UIRenderer::drawRect(del_x, del_y, del_w, del_h, delHovered ? DELETE_BG_HL : DELETE_BG);
-        UIRenderer::drawText(sBodyFont, "X", del_x + 8.0f,
-                             del_y + (del_h - xsz.height) * 0.5f,
+        UIRenderer::drawText(sBodyFont, "X", del_x + 8.0f, del_y + (del_h - xsz.height) * 0.5f,
                              delHovered ? TEXT_WHITE : BTN_NORMAL);
 
-        if (delHovered && mouseClicked(em))
+        if (delHovered && mouseClicked(em, SDL_BUTTON_LEFT))
         {
             sDeleteTarget = i;
             sConfirmDelete = true;
@@ -274,7 +257,7 @@ LoadGameScreen::Action LoadGameScreen::render(EntityManager& em, int window_w, i
         }
 
         // Row click (select character).
-        if (rowHovered && mouseClicked(em))
+        if (rowHovered && mouseClicked(em, SDL_BUTTON_LEFT))
         {
             sSelectedName = saveData.characters[static_cast<size_t>(i)].name;
             result = Action::Select;
@@ -305,7 +288,7 @@ LoadGameScreen::Action LoadGameScreen::render(EntityManager& em, int window_w, i
     UIRenderer::drawText(sTitleFont, backLabel, bx + 30.0f, ly + 10.0f,
                          backSel ? BTN_HOVER : BTN_NORMAL);
 
-    if (backHover && mouseClicked(em))
+    if (backHover && mouseClicked(em, SDL_BUTTON_LEFT))
     {
         result = Action::Back;
         playSfx(snd);

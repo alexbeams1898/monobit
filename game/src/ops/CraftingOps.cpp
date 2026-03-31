@@ -42,9 +42,8 @@ static int consumeItem(Inventory& inv, const std::string& config_path, int quant
         if (inv.items[i].config_path == config_path)
             matches.push_back(i);
 
-    std::sort(matches.begin(), matches.end(), [&inv](int a, int b) {
-        return inv.items[a].quality < inv.items[b].quality;
-    });
+    std::sort(matches.begin(), matches.end(),
+              [&inv](int a, int b) { return inv.items[a].quality < inv.items[b].quality; });
 
     int remaining = quantity;
     int qualitySum = 0;

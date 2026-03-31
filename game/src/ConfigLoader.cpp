@@ -14,6 +14,36 @@
 
 using json = nlohmann::json;
 
+// Cache parsed JSON files in memory. First read hits disk; subsequent reads
+// serve from cache. Eliminates per-spawn disk I/O (skeleton.json + animation
+// sheet = 2 reads per enemy spawn without cache).
+static std::unordered_map<std::string, json> sJsonCache;
+
+static const json* cachedReadJson(const std::string& path)
+{
+    auto it = sJsonCache.find(path);
+    if (it != sJsonCache.end())
+        return &it->second;
+
+    std::ifstream file(path);
+    if (!file.is_open())
+    {
+        std::cerr << "[ConfigLoader] Cannot open: " << path << "\n";
+        return nullptr;
+    }
+
+    try
+    {
+        auto [inserted, _] = sJsonCache.emplace(path, json::parse(file));
+        return &inserted->second;
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "[ConfigLoader] Error parsing " << path << ": " << e.what() << "\n";
+        return nullptr;
+    }
+}
+
 using LoaderFn = std::function<void(EntityManager&, entt::entity, const json&)>;
 
 static void loadTransform(EntityManager& em, entt::entity entity, const json& j)
@@ -183,24 +213,11 @@ static bool emplaceAnimationFromSheet(EntityManager& em, entt::entity entity,
     if (sheetPath.empty())
         return false;
 
-    std::ifstream sheetFile(sheetPath);
-    if (!sheetFile.is_open())
-    {
-        std::cerr << "[ConfigLoader] Cannot open animation sheet: " << sheetPath << "\n";
+    const json* cached = cachedReadJson(sheetPath);
+    if (cached == nullptr)
         return false;
-    }
 
-    json sheetData;
-    try
-    {
-        sheetFile >> sheetData;
-    }
-    catch (const std::exception& e)
-    {
-        std::cerr << "[ConfigLoader] Error parsing animation sheet " << sheetPath << ": "
-                  << e.what() << "\n";
-        return false;
-    }
+    const json& sheetData = *cached;
 
     Animation anim;
     anim.frame_width = sheetData.value("frame_width", 32);
@@ -342,6 +359,7 @@ static void loadAIController(EntityManager& em, entt::entity entity, const json&
     ai.sprint_multiplier = j.value("sprint_multiplier", 0.0f);
     ai.sprint_threshold = j.value("sprint_threshold", 0.0f);
     ai.orbit_speed = j.value("orbit_speed", 0.5f);
+    ai.attack_cooldown = j.value("attack_cooldown", 0.0f);
 
     const std::string behavior = j.value("behavior", std::string{"idle"});
     if (behavior == "chase")
@@ -431,23 +449,11 @@ static const std::unordered_map<std::string, LoaderFn> kComponentLoaders = {
 
 entt::entity ConfigLoader::loadEntity(EntityManager& em, const std::string& filePath)
 {
-    std::ifstream file(filePath);
-    if (!file.is_open())
-    {
-        std::cerr << "[ConfigLoader] Cannot open: " << filePath << "\n";
+    const json* cached = cachedReadJson(filePath);
+    if (cached == nullptr)
         return entt::null;
-    }
 
-    json data;
-    try
-    {
-        file >> data;
-    }
-    catch (const std::exception& e)
-    {
-        std::cerr << "[ConfigLoader] Error parsing " << filePath << ": " << e.what() << "\n";
-        return entt::null;
-    }
+    const json& data = *cached;
 
     auto entity = em.create();
 
@@ -658,14 +664,12 @@ bool ConfigLoader::loadFormulas(EntityManager& em, const std::string& filePath)
         f.equip_load.str_scale = el.value("str_scale", f.equip_load.str_scale);
         f.equip_load.end_scale = el.value("end_scale", f.equip_load.end_scale);
         f.equip_load.light_threshold = el.value("light_threshold", f.equip_load.light_threshold);
-        f.equip_load.medium_threshold =
-            el.value("medium_threshold", f.equip_load.medium_threshold);
+        f.equip_load.medium_threshold = el.value("medium_threshold", f.equip_load.medium_threshold);
         f.equip_load.heavy_threshold = el.value("heavy_threshold", f.equip_load.heavy_threshold);
         f.equip_load.light_speed = el.value("light_speed", f.equip_load.light_speed);
         f.equip_load.medium_speed = el.value("medium_speed", f.equip_load.medium_speed);
         f.equip_load.heavy_speed = el.value("heavy_speed", f.equip_load.heavy_speed);
-        f.equip_load.overloaded_speed =
-            el.value("overloaded_speed", f.equip_load.overloaded_speed);
+        f.equip_load.overloaded_speed = el.value("overloaded_speed", f.equip_load.overloaded_speed);
     }
 
     if (j.contains("combat_ai"))
@@ -673,8 +677,50 @@ bool ConfigLoader::loadFormulas(EntityManager& em, const std::string& filePath)
         const auto& ca = j["combat_ai"];
         f.combat_ai.max_attack_tokens =
             ca.value("max_attack_tokens", f.combat_ai.max_attack_tokens);
-        f.combat_ai.wait_radius_mult =
-            ca.value("wait_radius_mult", f.combat_ai.wait_radius_mult);
+        f.combat_ai.wait_radius_mult = ca.value("wait_radius_mult", f.combat_ai.wait_radius_mult);
+        f.combat_ai.waiter_speed_scale =
+            ca.value("waiter_speed_scale", f.combat_ai.waiter_speed_scale);
+        f.combat_ai.kite_speed_threshold =
+            ca.value("kite_speed_threshold", f.combat_ai.kite_speed_threshold);
+        f.combat_ai.chase_spread = ca.value("chase_spread", f.combat_ai.chase_spread);
+        f.combat_ai.slot_rotation_speed =
+            ca.value("slot_rotation_speed", f.combat_ai.slot_rotation_speed);
+        f.combat_ai.min_slot_gap = ca.value("min_slot_gap", f.combat_ai.min_slot_gap);
+        f.combat_ai.attack_arrival_dist =
+            ca.value("attack_arrival_dist", f.combat_ai.attack_arrival_dist);
+        f.combat_ai.slot_arrive_dist = ca.value("slot_arrive_dist", f.combat_ai.slot_arrive_dist);
+        f.combat_ai.engagement_radius =
+            ca.value("engagement_radius", f.combat_ai.engagement_radius);
+        f.combat_ai.enemy_reach = ca.value("enemy_reach", f.combat_ai.enemy_reach);
+    }
+
+    if (j.contains("combat"))
+    {
+        const auto& cb = j["combat"];
+        f.combat.attack_lock_fraction =
+            cb.value("attack_lock_fraction", f.combat.attack_lock_fraction);
+        f.combat.normal_reach = cb.value("normal_reach", f.combat.normal_reach);
+        f.combat.skill_reach = cb.value("skill_reach", f.combat.skill_reach);
+        f.combat.normal_hitbox_size = cb.value("normal_hitbox_size", f.combat.normal_hitbox_size);
+        f.combat.skill_hitbox_size = cb.value("skill_hitbox_size", f.combat.skill_hitbox_size);
+        f.combat.skill_damage_mult = cb.value("skill_damage_mult", f.combat.skill_damage_mult);
+        f.combat.skill_cooldown = cb.value("skill_cooldown", f.combat.skill_cooldown);
+        f.combat.skill_lock_duration =
+            cb.value("skill_lock_duration", f.combat.skill_lock_duration);
+        f.combat.dodge_speed = cb.value("dodge_speed", f.combat.dodge_speed);
+        f.combat.parry_window = cb.value("parry_window", f.combat.parry_window);
+    }
+
+    if (j.contains("steering"))
+    {
+        const auto& st = j["steering"];
+        em.steering_config.repulsion_radius =
+            st.value("repulsion_radius", em.steering_config.repulsion_radius);
+        em.steering_config.repulsion_strength =
+            st.value("repulsion_strength", em.steering_config.repulsion_strength);
+        em.steering_config.blend_rate = st.value("blend_rate", em.steering_config.blend_rate);
+        em.steering_config.skip_dot_threshold =
+            st.value("skip_dot_threshold", em.steering_config.skip_dot_threshold);
     }
 
     f.loaded = true;
@@ -786,17 +832,18 @@ bool ConfigLoader::loadMusic(EntityManager& em, const std::string& filePath)
         }
     }
 
+    mc.main_menu_rare_chance = j.value("main_menu_rare_chance", 0.0f);
+
     // Auto-parse named tracks: any top-level key that is an object with a
-    // "path" field (skip "tracks" array and "default_volume" scalar).
+    // "path" field (skip "tracks" array and scalar values).
     for (auto& [key, val] : j.items())
     {
-        if (key == "tracks" || key == "default_volume")
-            continue;
-        if (!val.is_object())
+        if (key == "tracks" || !val.is_object())
             continue;
         MusicConfig::Track track;
         track.path = val.value("path", "");
         track.volume = val.value("volume", mc.default_volume);
+        track.fade_in_ms = val.value("fade_in_ms", 0);
         if (!track.path.empty())
             mc.named[key] = std::move(track);
     }

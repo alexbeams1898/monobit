@@ -1,6 +1,6 @@
-#include "ops/SpawnUtils.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
+#include "ops/SpawnUtils.h"
 #include "systems/SpawnerSystem.h"
 
 #include <catch2/catch_test_macros.hpp>

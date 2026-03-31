@@ -151,7 +151,8 @@ struct FormulaConfig
         float growth_bonus_per_quality = 0.1f;
         float decay_rate = 0.05f;
         float carry_factor = 0.15f;
-        // Weapon power XP scaling: effective_rate = tier_rate * (power_base + base_damage * power_dmg_factor + rarity * power_rarity_factor).
+        // Weapon power XP scaling: effective_rate = tier_rate * (power_base + base_damage *
+        // power_dmg_factor + rarity * power_rarity_factor).
         float power_base = 0.1f;
         float power_dmg_factor = 0.03f;
         float power_rarity_factor = 0.1f;
@@ -180,7 +181,30 @@ struct FormulaConfig
     {
         int max_attack_tokens = 2;
         float wait_radius_mult = 2.0f;
+        float waiter_speed_scale = 0.15f;
+        float kite_speed_threshold = 0.5f;
+        float chase_spread = 0.15f;
+        float slot_rotation_speed = 0.5f;
+        float min_slot_gap = 0.8f;
+        float attack_arrival_dist = 16.0f;
+        float slot_arrive_dist = 24.0f;
+        float engagement_radius = 150.0f;
+        float enemy_reach = 24.0f;
     } combat_ai;
+
+    struct
+    {
+        float attack_lock_fraction = 0.6f;
+        float normal_reach = 36.0f;
+        float skill_reach = 56.0f;
+        float normal_hitbox_size = 32.0f;
+        float skill_hitbox_size = 64.0f;
+        float skill_damage_mult = 1.5f;
+        float skill_cooldown = 5.0f;
+        float skill_lock_duration = 0.4f;
+        float dodge_speed = 300.0f;
+        float parry_window = 0.15f;
+    } combat;
 
     bool loaded = false;
 };
@@ -230,11 +254,13 @@ struct MusicConfig
     {
         std::string path;
         float volume = 0.6f;
+        int fade_in_ms = 0;
     };
     std::vector<Track> tracks;
     std::unordered_map<std::string, Track> named;
     float default_volume = 0.6f;
     int last_track_index = -1; // avoid repeating the same track back-to-back
+    float main_menu_rare_chance = 0.0f;
 
     const Track* get(const std::string& key) const
     {
@@ -332,7 +358,7 @@ struct WaveState
     int spawn_group_index = 0;
     int spawn_group_progress = 0;
 
-    float cleared_timer = 0.0f; // countdown before auto-advancing to next wave
+    float cleared_timer = 0.0f;    // countdown before auto-advancing to next wave
     float transition_timer = 0.0f; // countdown during Transitioning phase
 
     // Set by startNextWave; consumed by GameLoop to regen the tile map.

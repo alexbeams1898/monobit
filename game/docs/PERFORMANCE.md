@@ -282,6 +282,50 @@ Room files never change at runtime — eliminates repeated disk I/O on every wav
 
 ---
 
+### TileMapRenderer — Column Culling
+
+**Problem:** Row frustum culling (previous fix) still drew every column in each visible row.
+On wide maps (160 columns at wave 40), most columns are off-screen.
+
+**Fix:** Compute visible column range from camera X position and window width, same as existing
+row culling. Instead of one `glDrawArrays` per visible row, each row draws only the visible
+column span. Vertices per tile = 6 (two triangles), so offset/count math maps directly from
+tile coordinates.
+
+**Result (Tracy, 160x120 map):** TileMapRenderer avg dropped from 14.71ms to 0.00ms. On a
+1080p screen (~34 visible columns out of 160), draws ~21% of tiles per row. Combined with row
+culling, total visible tiles ≈ 6% of map.
+
+---
+
+### [Issue #65] AI Navigation — LoS-Gated Attack Velocity
+
+**Problem:** Slotted enemies (Attack state with assigned slot_angle) used direct navigation
+exclusively toward their slot position. When a wall or pillar blocked the straight-line path,
+they walked into the wall, got stuck, drifted beyond deaggro_radius, and disengaged.
+
+**Fix:** `computeAttackVelocity` checks `TileMap::hasLineOfSight` (DDA grid traversal) from
+the enemy to its slot goal position. If LoS is clear, direct nav spreads enemies around the
+player. If a wall blocks it, falls back to flow field navigation to get around the obstacle.
+
+**Cost:** One DDA raycast per slotted enemy per frame (~10-15 tile checks). Negligible vs
+existing flow field and collision costs.
+
+---
+
+### [Issue #65] AI Combat — Waiter Speed Scaling
+
+**Problem:** All enemies in Attack state moved at full speed regardless of token status,
+causing non-attackers to sprint to their slot positions and crowd the player.
+
+**Fix:** Non-token-holders move at a fraction of their normal speed (configurable via
+`formulas.json` `combat_ai.waiter_speed_scale`, default 0.15). They drift slowly toward their
+slot instead of sprinting — "waiters" circling at the outer ring rather than rushing in.
+
+**Cost:** One float multiply per non-holder per frame.
+
+---
+
 ## Tracy Profiling Notes
 
 Profiling setup: `cmake.configureArgs: ["-DTRACY_ENABLE=ON"]` in `.vscode/settings.json`.

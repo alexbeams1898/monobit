@@ -7,6 +7,8 @@
 #include "ecs/ItemConfig.h"
 #include "ops/CraftingOps.h"
 #include "renderers/ItemStatRenderer.h"
+#include "screens/ScreenColors.h"
+#include "screens/ScreenInput.h"
 #include "systems/AudioSystem.h"
 #include "systems/NotificationSystem.h"
 
@@ -17,18 +19,18 @@
 #include <tracy/Tracy.hpp>
 #include <vector>
 
+using screen_input::keyPressed;
+using screen_input::mouseClicked;
+using namespace screen_colors;
+
 static FontHandle sBodyFont = INVALID_FONT;
 static FontHandle sTitleFont = INVALID_FONT;
 static int sSelectedRecipe = 0;
 static int sHoveredRecipe = -1;
 static float sScrollOffset = 0.0f;
 
-static constexpr Color OVERLAY{0.0f, 0.0f, 0.0f, 0.75f};
-static constexpr Color PANEL_BG{0.06f, 0.06f, 0.09f, 0.95f};
 static constexpr Color TITLE_COLOR{1.0f, 0.85f, 0.3f, 1.0f};
 static constexpr Color HEADER_COLOR{0.6f, 0.85f, 0.7f, 0.8f};
-static constexpr Color TEXT_WHITE{0.92f, 0.90f, 0.88f, 1.0f};
-static constexpr Color TEXT_DIM{0.5f, 0.48f, 0.46f, 1.0f};
 static constexpr Color HAVE_COLOR{0.3f, 0.9f, 0.3f, 1.0f};
 static constexpr Color NEED_COLOR{0.9f, 0.3f, 0.3f, 1.0f};
 static constexpr Color SELECTED_BG{0.2f, 0.3f, 0.25f, 0.6f};
@@ -41,28 +43,6 @@ static constexpr Color CRAFT_BTN_HL{0.2f, 0.5f, 0.3f, 0.9f};
 static constexpr Color CRAFT_BTN_OFF{0.15f, 0.15f, 0.18f, 0.5f};
 static constexpr Color CRAFT_BTN_TEXT{0.9f, 0.88f, 0.8f, 1.0f};
 static constexpr Color CRAFT_BTN_TEXT_OFF{0.4f, 0.38f, 0.36f, 0.6f};
-
-static bool keyPressed(const EntityManager& em, int scancode)
-{
-    const auto& kd = em.key_down_events;
-    return std::find(kd.begin(), kd.end(), scancode) != kd.end();
-}
-
-static bool mouseClicked(const EntityManager& em)
-{
-    for (uint8_t btn : em.mouse_down_events)
-        if (btn == SDL_BUTTON_LEFT)
-            return true;
-    return false;
-}
-
-static bool rmbClicked(const EntityManager& em)
-{
-    for (uint8_t btn : em.mouse_down_events)
-        if (btn == SDL_BUTTON_RIGHT)
-            return true;
-    return false;
-}
 
 static void playSfx(const SoundConfig& snd)
 {
@@ -108,21 +88,27 @@ static QualityTier previewOutputQuality(const Inventory& inv, const RecipeDef& r
     }
 
     const int avg = (totalItems > 0) ? ((totalQuality + totalItems / 2) / totalItems) : 1;
-    return static_cast<QualityTier>(
-        std::min(avg, static_cast<int>(QualityTier::Masterwork)));
+    return static_cast<QualityTier>(std::min(avg, static_cast<int>(QualityTier::Masterwork)));
 }
 
 static int categoryOrder(ItemCategory c)
 {
     switch (c)
     {
-        case ItemCategory::Weapon: return 0;
-        case ItemCategory::Armor: return 1;
-        case ItemCategory::Accessory: return 2;
-        case ItemCategory::Consumable: return 3;
-        case ItemCategory::Material: return 4;
-        case ItemCategory::KeyItem: return 5;
-        case ItemCategory::Money: return 6;
+    case ItemCategory::Weapon:
+        return 0;
+    case ItemCategory::Armor:
+        return 1;
+    case ItemCategory::Accessory:
+        return 2;
+    case ItemCategory::Consumable:
+        return 3;
+    case ItemCategory::Material:
+        return 4;
+    case ItemCategory::KeyItem:
+        return 5;
+    case ItemCategory::Money:
+        return 6;
     }
     return 99;
 }
@@ -131,13 +117,20 @@ static const char* categoryName(ItemCategory c)
 {
     switch (c)
     {
-        case ItemCategory::Weapon: return "Weapons";
-        case ItemCategory::Armor: return "Armor";
-        case ItemCategory::Accessory: return "Accessories";
-        case ItemCategory::Consumable: return "Consumables";
-        case ItemCategory::Material: return "Materials";
-        case ItemCategory::KeyItem: return "Key Items";
-        case ItemCategory::Money: return "Currency";
+    case ItemCategory::Weapon:
+        return "Weapons";
+    case ItemCategory::Armor:
+        return "Armor";
+    case ItemCategory::Accessory:
+        return "Accessories";
+    case ItemCategory::Consumable:
+        return "Consumables";
+    case ItemCategory::Material:
+        return "Materials";
+    case ItemCategory::KeyItem:
+        return "Key Items";
+    case ItemCategory::Money:
+        return "Currency";
     }
     return "Other";
 }
@@ -173,9 +166,8 @@ static std::vector<DisplayRow> buildDisplayRows(const RecipeRegistry& recipes,
         entries.push_back({i, cat});
     }
 
-    std::sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) {
-        return categoryOrder(a.category) < categoryOrder(b.category);
-    });
+    std::sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b)
+              { return categoryOrder(a.category) < categoryOrder(b.category); });
 
     std::vector<DisplayRow> rows;
     ItemCategory prevCat = static_cast<ItemCategory>(255);
@@ -225,7 +217,8 @@ void CraftingScreen::render(EntityManager& em, int window_w, int window_h)
     UIRenderer::drawRect(0.0f, 0.0f, ww, wh, OVERLAY);
 
     // Close on Escape, C, or RMB -- return to sanctuary.
-    if (keyPressed(em, SDL_SCANCODE_ESCAPE) || keyPressed(em, SDL_SCANCODE_C) || rmbClicked(em))
+    if (keyPressed(em, SDL_SCANCODE_ESCAPE) || keyPressed(em, SDL_SCANCODE_C) ||
+        mouseClicked(em, SDL_BUTTON_RIGHT))
     {
         ui.active_screen = UIState::Screen::Sanctuary;
         playSfx(snd);
@@ -239,10 +232,9 @@ void CraftingScreen::render(EntityManager& em, int window_w, int window_h)
         player = e;
         break;
     }
-    const Inventory* inv =
-        (player != entt::null && em.registry().all_of<Inventory>(player))
-            ? &em.registry().get<Inventory>(player)
-            : nullptr;
+    const Inventory* inv = (player != entt::null && em.registry().all_of<Inventory>(player))
+                               ? &em.registry().get<Inventory>(player)
+                               : nullptr;
 
     // Build display rows and ordered recipe index list for navigation.
     std::vector<DisplayRow> displayRows = buildDisplayRows(recipes, items);
@@ -407,17 +399,16 @@ void CraftingScreen::render(EntityManager& em, int window_w, int window_h)
         }
 
         // Stable detail height based on worst-case layout.
-        detail_h += FontManager::lineHeight(sTitleFont) + 4.0f;  // output name
-        detail_h += 1.0f + 6.0f;                                  // separator + gap
-        detail_h += line_h;                                        // description (always reserve)
-        detail_h += line_h;                                        // requires (inline, one line)
-        detail_h += line_h;                                        // result line
+        detail_h += FontManager::lineHeight(sTitleFont) + 4.0f; // output name
+        detail_h += 1.0f + 6.0f;                                // separator + gap
+        detail_h += line_h;                                     // description (always reserve)
+        detail_h += line_h;                                     // requires (inline, one line)
+        detail_h += line_h;                                     // result line
 
         // Stat panel without name header: damage + scaling + speed + weight = 4 lines.
         detail_h += 4.0f * stat_line;
         if (anyHasRequirements)
             detail_h += stat_line;
-
     }
 
     // Hint.
@@ -486,8 +477,7 @@ void CraftingScreen::render(EntityManager& em, int window_w, int window_h)
     float y = py + pad;
 
     // Title (centered).
-    UIRenderer::drawText(sTitleFont, titleText, px + (panel_w - tsz.width) * 0.5f, y,
-                         TITLE_COLOR);
+    UIRenderer::drawText(sTitleFont, titleText, px + (panel_w - tsz.width) * 0.5f, y, TITLE_COLOR);
     y += title_h + sep_gap;
 
     // Separator.
@@ -497,8 +487,8 @@ void CraftingScreen::render(EntityManager& em, int window_w, int window_h)
     // Begin scrollable content with scissor clipping.
     UIRenderer::flush();
     glEnable(GL_SCISSOR_TEST);
-    glScissor(static_cast<int>(px), static_cast<int>(wh - scroll_bottom),
-              static_cast<int>(panel_w), static_cast<int>(scroll_bottom - scroll_top));
+    glScissor(static_cast<int>(px), static_cast<int>(wh - scroll_bottom), static_cast<int>(panel_w),
+              static_cast<int>(scroll_bottom - scroll_top));
     y -= sScrollOffset;
 
     // Recipe list.
@@ -522,7 +512,7 @@ void CraftingScreen::render(EntityManager& em, int window_w, int window_h)
         if (hovered)
         {
             sHoveredRecipe = row.recipe_index;
-            if (mouseClicked(em))
+            if (mouseClicked(em, SDL_BUTTON_LEFT))
                 sSelectedRecipe = row.recipe_index;
         }
 
@@ -536,8 +526,7 @@ void CraftingScreen::render(EntityManager& em, int window_w, int window_h)
         const float text_x = cx + icon_sz + 4.0f;
         const ItemDef* row_def =
             (row.recipe_index >= 0)
-                ? items.find(
-                      recipes.recipes[static_cast<size_t>(row.recipe_index)].output_item)
+                ? items.find(recipes.recipes[static_cast<size_t>(row.recipe_index)].output_item)
                 : nullptr;
         ItemStatRenderer::drawItemIcon(row_def, cx, y, icon_sz);
         const std::string prefix = selected ? "> " : "  ";
@@ -590,8 +579,8 @@ void CraftingScreen::render(EntityManager& em, int window_w, int window_h)
                 const std::string iname = (idef != nullptr) ? idef->name : ing.config_path;
                 const int have = (inv != nullptr) ? countItem(*inv, ing.config_path) : 0;
                 const Color c = (have >= ing.quantity) ? HAVE_COLOR : NEED_COLOR;
-                const std::string part = iname + " " + std::to_string(have) + "/" +
-                                         std::to_string(ing.quantity);
+                const std::string part =
+                    iname + " " + std::to_string(have) + "/" + std::to_string(ing.quantity);
                 UIRenderer::drawText(sBodyFont, part, rx, y, c);
                 rx += UIRenderer::measureText(sBodyFont, part).width;
                 if (ii + 1 < recipe.inputs.size())
@@ -605,8 +594,7 @@ void CraftingScreen::render(EntityManager& em, int window_w, int window_h)
 
         // Result line with quality preview.
         {
-            const bool craftable =
-                (inv != nullptr) && CraftingOps::canCraft(*inv, recipe, items);
+            const bool craftable = (inv != nullptr) && CraftingOps::canCraft(*inv, recipe, items);
             const Color resultColor = craftable ? HAVE_COLOR : NEED_COLOR;
 
             std::string resultText = "Result: " + outputName;
@@ -628,14 +616,12 @@ void CraftingScreen::render(EntityManager& em, int window_w, int window_h)
         // Item stat panel (no name header -- already shown above).
         if (output_def != nullptr)
         {
-            const bool has_stats =
-                (player != entt::null && em.registry().all_of<Stats>(player));
-            const Stats& stats =
-                has_stats ? em.registry().get<Stats>(player) : Stats{1, 1, 1, 1};
+            const bool has_stats = (player != entt::null && em.registry().all_of<Stats>(player));
+            const Stats& stats = has_stats ? em.registry().get<Stats>(player) : Stats{1, 1, 1, 1};
             const auto& f = em.registry().ctx().get<FormulaConfig>();
             const float val_x = cx + 100.0f;
-            y = ItemStatRenderer::renderItemStats(sBodyFont, *output_def, stats, f, has_stats,
-                                                  cx, y, cw, val_x, false);
+            y = ItemStatRenderer::renderItemStats(sBodyFont, *output_def, stats, f, has_stats, cx,
+                                                  y, cw, val_x, false);
         }
     }
 
@@ -665,7 +651,8 @@ void CraftingScreen::render(EntityManager& em, int window_w, int window_h)
     UIRenderer::drawText(sTitleFont, craftLabel, btn_x + (btn_w - csz.width) * 0.5f,
                          fy + (btn_h - csz.height) * 0.5f, btnText);
 
-    if (btnHovered && mouseClicked(em) && sSelectedRecipe >= 0 && player != entt::null)
+    if (btnHovered && mouseClicked(em, SDL_BUTTON_LEFT) && sSelectedRecipe >= 0 &&
+        player != entt::null)
     {
         auto& playerInv = em.registry().get<Inventory>(player);
         const auto& recipe = recipes.recipes[static_cast<size_t>(sSelectedRecipe)];
@@ -681,6 +668,5 @@ void CraftingScreen::render(EntityManager& em, int window_w, int window_h)
 
     UIRenderer::drawRect(cx, fy, cw, 1.0f, SEPARATOR);
     fy += 1.0f + sep_gap;
-    UIRenderer::drawText(sBodyFont, hintText, px + (panel_w - hintsz.width) * 0.5f, fy,
-                         HINT_COLOR);
+    UIRenderer::drawText(sBodyFont, hintText, px + (panel_w - hintsz.width) * 0.5f, fy, HINT_COLOR);
 }

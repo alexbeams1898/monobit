@@ -38,8 +38,7 @@ static constexpr Color REQ_UNMET{0.85f, 0.3f, 0.3f, 1.0f};
 static float drawNameHeader(FontHandle font, const ItemDef& def, float cx, float y, float cw)
 {
     const float stat_line = FontManager::lineHeight(font) + 4.0f;
-    UIRenderer::drawText(font, def.name, cx, y,
-                         ItemStatRenderer::rarityColor(def.rarity));
+    UIRenderer::drawText(font, def.name, cx, y, ItemStatRenderer::rarityColor(def.rarity));
     y += stat_line;
     UIRenderer::drawRect(cx, y, cw, 1.0f, SEP_COLOR);
     y += 6.0f;
@@ -102,8 +101,7 @@ float renderWeaponStats(FontHandle body_font, const Weapon& w, const Stats& stat
     if (show_name)
     {
         const std::string name = (def != nullptr) ? def->name : "Unarmed";
-        UIRenderer::drawText(body_font, name, cx, y,
-                             def ? rarityColor(def->rarity) : TEXT_DIM);
+        UIRenderer::drawText(body_font, name, cx, y, def ? rarityColor(def->rarity) : TEXT_DIM);
         y += stat_line;
         UIRenderer::drawRect(cx, y, cw, 1.0f, SEP_COLOR);
         y += 6.0f;
@@ -128,9 +126,8 @@ float renderWeaponStats(FontHandle body_font, const Weapon& w, const Stats& stat
     y += stat_line;
 
     // Speed.
-    const float cooldown = has_stats
-                               ? computeSwingCooldown(w, stats, f)
-                               : (f.swing.base_swing_time + w.weight * f.swing.weight_scale);
+    const float cooldown = has_stats ? computeSwingCooldown(w, stats, f)
+                                     : (f.swing.base_swing_time + w.weight * f.swing.weight_scale);
     const float speed = 1.0f / std::max(cooldown, 0.05f);
     const char* speed_tier = nullptr;
     if (speed < 1.0f)
@@ -151,8 +148,7 @@ float renderWeaponStats(FontHandle body_font, const Weapon& w, const Stats& stat
 
     // Weight.
     UIRenderer::drawText(body_font, "Weight", cx, y, LABEL_COLOR);
-    UIRenderer::drawText(body_font, formatWeight(w.weight),
-                         val_x, y, TEXT_WHITE);
+    UIRenderer::drawText(body_font, formatWeight(w.weight), val_x, y, TEXT_WHITE);
     y += stat_line;
 
     // Requirements (only for real weapons, not fists).
@@ -170,8 +166,7 @@ float renderWeaponStats(FontHandle body_font, const Weapon& w, const Stats& stat
                 req += "  ";
             req += "DEX " + std::to_string(w.dex_requirement);
         }
-        UIRenderer::drawText(body_font, req, val_x, y,
-                             (str_ok && dex_ok) ? REQ_MET : REQ_UNMET);
+        UIRenderer::drawText(body_font, req, val_x, y, (str_ok && dex_ok) ? REQ_MET : REQ_UNMET);
         y += stat_line;
     }
 
@@ -179,8 +174,8 @@ float renderWeaponStats(FontHandle body_font, const Weapon& w, const Stats& stat
 }
 
 float renderWeaponStatsFromDef(FontHandle body_font, const ItemDef& def, const Stats& stats,
-                               const FormulaConfig& f, bool has_stats, float cx, float y,
-                               float cw, float val_x, bool show_name)
+                               const FormulaConfig& f, bool has_stats, float cx, float y, float cw,
+                               float val_x, bool show_name)
 {
     Weapon w;
     w.name = def.name;
@@ -190,8 +185,7 @@ float renderWeaponStatsFromDef(FontHandle body_font, const ItemDef& def, const S
     w.dex_scaling = def.dex_scaling;
     w.str_requirement = def.str_requirement;
     w.dex_requirement = def.dex_requirement;
-    return renderWeaponStats(body_font, w, stats, f, &def, has_stats, cx, y, cw, val_x,
-                             show_name);
+    return renderWeaponStats(body_font, w, stats, f, &def, has_stats, cx, y, cw, val_x, show_name);
 }
 
 float renderShieldStats(FontHandle body_font, const ItemDef& def, float cx, float y, float cw,
@@ -207,8 +201,7 @@ float renderShieldStats(FontHandle body_font, const ItemDef& def, float cx, floa
     y += stat_line;
 
     UIRenderer::drawText(body_font, "Weight", cx, y, LABEL_COLOR);
-    UIRenderer::drawText(body_font, formatWeight(def.weight),
-                         val_x, y, TEXT_WHITE);
+    UIRenderer::drawText(body_font, formatWeight(def.weight), val_x, y, TEXT_WHITE);
     y += stat_line;
 
     return y;
@@ -227,8 +220,7 @@ float renderArmorStats(FontHandle body_font, const ItemDef& def, float cx, float
     y += stat_line;
 
     UIRenderer::drawText(body_font, "Weight", cx, y, LABEL_COLOR);
-    UIRenderer::drawText(body_font, formatWeight(def.weight),
-                         val_x, y, TEXT_WHITE);
+    UIRenderer::drawText(body_font, formatWeight(def.weight), val_x, y, TEXT_WHITE);
     y += stat_line;
 
     return y;
@@ -255,8 +247,7 @@ float renderItemStats(FontHandle body_font, const ItemDef& def, const Stats& sta
         y = drawNameHeader(body_font, def, cx, y, cw);
 
     UIRenderer::drawText(body_font, "Weight", cx, y, LABEL_COLOR);
-    UIRenderer::drawText(body_font, formatWeight(def.weight),
-                         val_x, y, TEXT_WHITE);
+    UIRenderer::drawText(body_font, formatWeight(def.weight), val_x, y, TEXT_WHITE);
     y += stat_line;
 
     return y;

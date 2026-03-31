@@ -249,9 +249,8 @@ static void syncEquipmentSlots(entt::registry& reg, entt::entity entity, Equipme
                 wxp.level = equip.main_hand.weapon_xp_level;
                 wxp.current_xp = equip.main_hand.weapon_xp_current;
             }
-            wxp.xp_to_next = f.weapon_xp.base_xp *
-                             std::pow(static_cast<float>(wxp.level),
-                                      f.weapon_xp.exponent);
+            wxp.xp_to_next =
+                f.weapon_xp.base_xp * std::pow(static_cast<float>(wxp.level), f.weapon_xp.exponent);
         }
     }
 

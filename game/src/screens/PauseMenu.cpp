@@ -1,11 +1,13 @@
 #include "screens/PauseMenu.h"
 
-#include "ops/InventoryOps.h"
-#include "renderers/ItemStatRenderer.h"
 #include "UIRenderer.h"
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
+#include "ops/InventoryOps.h"
+#include "renderers/ItemStatRenderer.h"
+#include "screens/ScreenColors.h"
+#include "screens/ScreenInput.h"
 #include "systems/AudioSystem.h"
 #include "systems/CombatSystem.h"
 #include "systems/NotificationSystem.h"
@@ -18,6 +20,11 @@
 #include <tracy/Tracy.hpp>
 #include <vector>
 
+using screen_input::hoveredRow;
+using screen_input::keyPressed;
+using screen_input::mouseClicked;
+using namespace screen_colors;
+
 static FontHandle sBodyFont = INVALID_FONT;
 static FontHandle sTitleFont = INVALID_FONT;
 static TextureManager* sTexMgr = nullptr;
@@ -25,14 +32,11 @@ static int sContentSel = -1;
 static int sBottomSel = -1; // -1 = content, 0 = Resume, 1 = Escape, 2 = Quit
 static bool sEquipPicking = false;
 static int sEquipPickSel = 0;
-static constexpr Color OVERLAY{0.0f, 0.0f, 0.0f, 0.75f};
-static constexpr Color PANEL_BG{0.06f, 0.06f, 0.09f, 0.92f};
+static constexpr Color PAUSE_BG{0.06f, 0.06f, 0.09f, 0.92f};
 static constexpr Color TAB_BG{0.10f, 0.10f, 0.14f, 0.9f};
 static constexpr Color TAB_ACTIVE{0.22f, 0.20f, 0.35f, 1.0f};
 static constexpr Color TAB_HOVER{0.16f, 0.15f, 0.24f, 1.0f};
 static constexpr Color TITLE_COLOR{0.9f, 0.78f, 0.45f, 1.0f};
-static constexpr Color TEXT_WHITE{0.92f, 0.90f, 0.88f, 1.0f};
-static constexpr Color TEXT_DIM{0.5f, 0.48f, 0.46f, 1.0f};
 static constexpr Color LABEL_COLOR{0.55f, 0.7f, 0.85f, 1.0f};
 static constexpr Color SELECTED_BG{0.25f, 0.22f, 0.38f, 0.6f};
 static constexpr Color SLOT_BG{0.12f, 0.12f, 0.14f, 0.8f};
@@ -40,29 +44,17 @@ static constexpr Color SLOT_SELECTED{0.28f, 0.25f, 0.42f, 0.9f};
 static constexpr Color SLOT_BORDER{0.75f, 0.65f, 0.35f, 0.8f};
 static constexpr Color SLOT_EMPTY{0.2f, 0.2f, 0.22f, 0.4f};
 static constexpr Color STAT_COLOR{0.65f, 0.75f, 0.9f, 1.0f};
-static constexpr Color BTN_NORMAL{0.7f, 0.68f, 0.65f, 1.0f};
 static constexpr Color BTN_RESUME_HL{0.95f, 0.88f, 0.55f, 1.0f};
 static constexpr Color BTN_ESCAPE{0.3f, 0.65f, 0.85f, 1.0f};
 static constexpr Color BTN_ESCAPE_HL{0.4f, 0.8f, 0.95f, 1.0f};
 static constexpr Color BTN_QUIT{0.75f, 0.3f, 0.3f, 1.0f};
 static constexpr Color BTN_QUIT_HL{0.95f, 0.4f, 0.35f, 1.0f};
-static constexpr Color BTN_BG{0.1f, 0.1f, 0.12f, 0.5f};
-static constexpr Color BTN_BG_HL{0.18f, 0.16f, 0.25f, 0.7f};
 
 static constexpr int GRID_COLS = 5;
 static constexpr float SLOT_SIZE = 40.0f;
 static constexpr float SLOT_GAP = 5.0f;
 
 static const char* TAB_NAMES[UIState::TAB_COUNT] = {"Status", "Inventory", "Equipment"};
-
-// O(1) hover hit-test for row-based lists. Returns hovered index or -1.
-static int hoveredRow(float mx, float my, float cx, float cy, float cw, float row_h, int count)
-{
-    if (mx < cx - 4.0f || mx >= cx + cw + 4.0f || my < cy - 2.0f)
-        return -1;
-    int idx = static_cast<int>((my - (cy - 2.0f)) / row_h);
-    return (idx >= 0 && idx < count) ? idx : -1;
-}
 
 // O(1) hover hit-test for a grid of slots. Returns hovered index or -1.
 static int hoveredSlot(float mx, float my, float cx, float cy, int cols, int total)
@@ -79,23 +71,6 @@ static int hoveredSlot(float mx, float my, float cx, float cy, int cols, int tot
         return -1;
     int idx = row * cols + col;
     return (idx >= 0 && idx < total) ? idx : -1;
-}
-
-// Input helpers -- flatten nested for+if patterns for event checking.
-static bool mouseClicked(const EntityManager& em, uint8_t button)
-{
-    for (uint8_t btn : em.mouse_down_events)
-        if (btn == button)
-            return true;
-    return false;
-}
-
-static bool keyPressed(const EntityManager& em, int scancode)
-{
-    for (int key : em.key_down_events)
-        if (key == scancode)
-            return true;
-    return false;
 }
 
 static bool confirmKeyPressed(const EntityManager& em)
@@ -383,7 +358,8 @@ static void renderInventoryTab(EntityManager& em, float cx, float cy, float cw, 
 
         if (def != nullptr)
         {
-            UIRenderer::drawText(sBodyFont, def->name, cx, grid_bottom, ItemStatRenderer::rarityColor(def->rarity));
+            UIRenderer::drawText(sBodyFont, def->name, cx, grid_bottom,
+                                 ItemStatRenderer::rarityColor(def->rarity));
             const float desc_y = grid_bottom + FontManager::lineHeight(sBodyFont) + 2.0f;
             drawTextWrapped(sBodyFont, def->description, cx, desc_y, cw, TEXT_DIM);
         }
@@ -669,13 +645,13 @@ static void renderEquipStatPanel(EntityManager& em, entt::entity player, const E
         if (def != nullptr && def->category == ItemCategory::Weapon)
         {
             stat_bottom = ItemStatRenderer::renderWeaponStatsFromDef(sBodyFont, *def, stats, f,
-                                                                      has_stats, cx, y, cw, val_x);
+                                                                     has_stats, cx, y, cw, val_x);
         }
         else
         {
             // Unarmed fallback.
-            Weapon w{"Unarmed", f.fist.weight, f.fist.str_scaling, f.fist.dex_scaling, 0, 0,
-                     f.fist.base_damage};
+            Weapon w{"Unarmed", f.fist.weight,     f.fist.str_scaling, f.fist.dex_scaling, 0,
+                     0,         f.fist.base_damage};
             stat_bottom = ItemStatRenderer::renderWeaponStats(sBodyFont, w, stats, f, nullptr,
                                                               has_stats, cx, y, cw, val_x);
         }
@@ -686,8 +662,7 @@ static void renderEquipStatPanel(EntityManager& em, entt::entity player, const E
             const auto& wxp = em.registry().get<WeaponXP>(player);
             const float bar_y = stat_bottom + 4.0f;
             const float bar_h = 10.0f;
-            const float fill =
-                wxp.xp_to_next > 0.0f ? wxp.current_xp / wxp.xp_to_next : 0.0f;
+            const float fill = wxp.xp_to_next > 0.0f ? wxp.current_xp / wxp.xp_to_next : 0.0f;
 
             static constexpr Color WPN_BAR{0.45f, 0.55f, 0.85f, 0.9f};
             static constexpr Color WPN_BG{0.12f, 0.15f, 0.30f, 0.6f};
@@ -696,8 +671,8 @@ static void renderEquipStatPanel(EntityManager& em, entt::entity player, const E
             UIRenderer::drawText(sBodyFont, lvl_text, cx, bar_y, LABEL_COLOR);
             const float lbl_h = FontManager::lineHeight(sBodyFont);
             UIRenderer::drawRect(cx, bar_y + lbl_h + 2.0f, cw, bar_h, WPN_BG);
-            UIRenderer::drawRect(cx, bar_y + lbl_h + 2.0f,
-                                 cw * std::clamp(fill, 0.0f, 1.0f), bar_h, WPN_BAR);
+            UIRenderer::drawRect(cx, bar_y + lbl_h + 2.0f, cw * std::clamp(fill, 0.0f, 1.0f), bar_h,
+                                 WPN_BAR);
 
             const int xp_cur = static_cast<int>(wxp.current_xp);
             const int xp_max = static_cast<int>(wxp.xp_to_next);
@@ -763,9 +738,6 @@ static bool renderEquipmentTab(EntityManager& em, float cx, float cy, float cw, 
 
     return false;
 }
-
-
-
 
 // ---------------------------------------------------------------------------
 // Helpers for PauseMenu::render
@@ -976,8 +948,7 @@ static int renderBottomBar(EntityManager& em, UIState& ui, float panel_x, float 
     const float rBtn_w = rsz.width + btn_pad_x * 2.0f;
     const float eBtn_w = esz.width + btn_pad_x * 2.0f;
     const float qBtn_w = qsz.width + btn_pad_x * 2.0f;
-    const float btn_h =
-        std::max({rsz.height, esz.height, qsz.height}) + btn_pad_y * 2.0f;
+    const float btn_h = std::max({rsz.height, esz.height, qsz.height}) + btn_pad_y * 2.0f;
     const float total_btn_w = rBtn_w + btn_gap + eBtn_w + btn_gap + qBtn_w;
     const float btn_start_x = panel_x + (panel_w - total_btn_w) * 0.5f;
 
@@ -995,19 +966,18 @@ static int renderBottomBar(EntityManager& em, UIState& ui, float panel_x, float 
                          TEXT_DIM);
 
     // Separator.
-    UIRenderer::drawRect(panel_x + sep_inset, sep_y, panel_w - sep_inset * 2.0f, 1.0f,
-                         HEADING_SEP);
+    UIRenderer::drawRect(panel_x + sep_inset, sep_y, panel_w - sep_inset * 2.0f, 1.0f, HEADING_SEP);
 
     // Buttons.
     float bx = btn_start_x;
-    bool rHover = drawBottomBtn("Resume", bx, btn_y, btn_pad_x, btn_pad_y, rBtn_w, btn_h, mx, my,
-                                0, BTN_RESUME_HL, BTN_NORMAL);
+    bool rHover = drawBottomBtn("Resume", bx, btn_y, btn_pad_x, btn_pad_y, rBtn_w, btn_h, mx, my, 0,
+                                BTN_RESUME_HL, BTN_NORMAL);
     bx += rBtn_w + btn_gap;
     bool eHover = drawBottomBtn("Escape Run", bx, btn_y, btn_pad_x, btn_pad_y, eBtn_w, btn_h, mx,
                                 my, 1, BTN_ESCAPE_HL, BTN_ESCAPE);
     bx += eBtn_w + btn_gap;
-    bool qHover = drawBottomBtn("Quit Game", bx, btn_y, btn_pad_x, btn_pad_y, qBtn_w, btn_h, mx,
-                                my, 2, BTN_QUIT_HL, BTN_QUIT);
+    bool qHover = drawBottomBtn("Quit Game", bx, btn_y, btn_pad_x, btn_pad_y, qBtn_w, btn_h, mx, my,
+                                2, BTN_QUIT_HL, BTN_QUIT);
     if (!rHover && !eHover && !qHover && em.key_down_events.empty())
         sBottomSel = -1;
 
@@ -1069,7 +1039,7 @@ int PauseMenu::render(EntityManager& em, int window_w, int window_h)
     const float panel_h = 700.0f;
     const float panel_x = (ww - panel_w) * 0.5f;
     const float panel_y = (wh - panel_h) * 0.5f;
-    UIRenderer::drawRect(panel_x, panel_y, panel_w, panel_h, PANEL_BG);
+    UIRenderer::drawRect(panel_x, panel_y, panel_w, panel_h, PAUSE_BG);
 
     // --- Draw: tab bar ---
     const float tab_h = FontManager::lineHeight(sBodyFont) + 12.0f;

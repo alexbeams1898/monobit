@@ -20,12 +20,23 @@ fi
 # Pick trace file — argument or most recent in traces/
 if [ -n "$1" ]; then
     TRACE="$1"
+    # Auto-resolve short names: "longboi" -> "traces/longboi.tracy"
+    if [ ! -f "$TRACE" ]; then
+        [ "${TRACE%.tracy}" = "$TRACE" ] && TRACE="${TRACE}.tracy"
+        [ ! -f "$TRACE" ] && TRACE="$TRACES_DIR/$TRACE"
+    fi
 else
     TRACE=$(ls -t "$TRACES_DIR"/*.tracy 2>/dev/null | head -1)
     if [ -z "$TRACE" ]; then
         echo "No .tracy files found in $TRACES_DIR/. Pass a file path as argument." >&2
         exit 1
     fi
+fi
+
+if [ ! -f "$TRACE" ]; then
+    echo "ERROR: File not found: $TRACE" >&2
+    echo "  Try: $0 traces/yourfile.tracy" >&2
+    exit 1
 fi
 
 echo "=== Trace: $TRACE ==="
@@ -41,13 +52,16 @@ echo "--- Zone summary (avg/min/max ms) ---"
 
 echo ""
 
-# --- Top 10 slowest frames (render only) ---
-echo "--- Top 10 slowest render frames ---"
-"$CSVEXPORT" -u "$TRACE" | awk -F',' '
-NR>1 && $1=="render" {print $5, $4}
-' | sort -rn | head -10 | awk '{
-    printf "  t=%7.3fs  duration=%7.2fms\n", $2/1e9, $1/1e6
-}'
+# --- Top 10 slowest zones (unmerged, with 30s timeout) ---
+echo "--- Top 10 slowest individual zone calls ---"
+TMPFILE=$(mktemp)
+if timeout 30 "$CSVEXPORT" -u "$TRACE" > "$TMPFILE" 2>/dev/null; then
+    awk -F',' 'NR>1 { printf "%-30s  t=%7.3fs  duration=%7.2fms\n", $1, $4/1e9, $5/1e6 }' \
+        "$TMPFILE" | sort -t= -k3 -rn | head -10
+else
+    echo "  (skipped -- unmerged export timed out after 30s; trace too large)"
+fi
+rm -f "$TMPFILE"
 
 echo ""
 

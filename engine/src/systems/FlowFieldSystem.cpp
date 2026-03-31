@@ -208,11 +208,11 @@ void FlowFieldSystem::update(EntityManager& em, float targetX, float targetY)
                 if (fillVis[nr][nc] || walls[nr][nc])
                     continue;
                 fillVis[nr][nc] = true;
-                const float ddx = static_cast<float>(col - nc);
-                const float ddy = static_cast<float>(row - nr);
-                const float len = std::sqrt(ddx * ddx + ddy * ddy);
-                ff.cells[nr][nc] = {ddx / len, ddy / len};
-                fillQ.push({nc, nr, nc, nr});
+                // Copy parent's BFS direction so clearance cells route
+                // around obstacles instead of pointing toward the nearest
+                // routable cell (which can aim into the obstacle).
+                ff.cells[nr][nc] = ff.cells[row][col];
+                fillQ.push({nc, nr, col, row});
             }
         }
     }

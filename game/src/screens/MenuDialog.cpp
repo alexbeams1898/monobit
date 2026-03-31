@@ -1,34 +1,22 @@
 #include "screens/MenuDialog.h"
 
 #include "ecs/EntityManager.h"
+#include "screens/ScreenColors.h"
+#include "screens/ScreenInput.h"
 
 #include <SDL.h>
 #include <algorithm>
 #include <cmath>
 
-static constexpr Color OVERLAY{0.0f, 0.0f, 0.0f, 0.75f};
-static constexpr Color PANEL_BG{0.06f, 0.06f, 0.09f, 0.95f};
+using screen_input::keyPressed;
+using screen_input::mouseClicked;
+using namespace screen_colors;
+
 static constexpr Color TITLE_COLOR{0.6f, 0.85f, 0.7f, 1.0f};
-static constexpr Color TEXT_WHITE{0.92f, 0.90f, 0.88f, 1.0f};
-static constexpr Color TEXT_DIM{0.5f, 0.48f, 0.46f, 1.0f};
 static constexpr Color DISABLED_COLOR{0.35f, 0.33f, 0.32f, 0.7f};
 static constexpr Color SELECTED_BG{0.2f, 0.3f, 0.25f, 0.6f};
 static constexpr Color SEPARATOR{0.3f, 0.4f, 0.35f, 0.5f};
 static constexpr Color HINT_COLOR{0.5f, 0.48f, 0.46f, 0.8f};
-
-static bool keyPressed(const EntityManager& em, int scancode)
-{
-    const auto& kd = em.key_down_events;
-    return std::find(kd.begin(), kd.end(), scancode) != kd.end();
-}
-
-static bool mouseClicked(const EntityManager& em, uint8_t button)
-{
-    for (uint8_t btn : em.mouse_down_events)
-        if (btn == button)
-            return true;
-    return false;
-}
 
 MenuDialog::Result MenuDialog::render(EntityManager& em, const Options& opts, float window_w,
                                       float window_h)
@@ -55,7 +43,8 @@ MenuDialog::Result MenuDialog::render(EntityManager& em, const Options& opts, fl
     }
 
     // Find next/prev enabled item, wrapping around. Returns -1 if none enabled.
-    auto findEnabled = [&](int from, int dir) -> int {
+    auto findEnabled = [&](int from, int dir) -> int
+    {
         for (int i = 0; i < itemCount; ++i)
         {
             int idx = ((from + dir * (i + 1)) % itemCount + itemCount) % itemCount;
@@ -118,10 +107,10 @@ MenuDialog::Result MenuDialog::render(EntityManager& em, const Options& opts, fl
     const float panel_w = content_w + pad * 2.0f;
 
     // Heights: padding + title + sep + items + sep + hint + padding.
-    const float sep_gap = 14.0f;     // space around separator lines
+    const float sep_gap = 14.0f; // space around separator lines
     const float hint_block = opts.hint.empty() ? 0.0f : (sep_gap + 1.0f + sep_gap + hsz.height);
     const float panel_h = pad + title_h + sep_gap + 1.0f + sep_gap +
-                           static_cast<float>(itemCount) * line_h + hint_block + pad;
+                          static_cast<float>(itemCount) * line_h + hint_block + pad;
 
     const float px = (window_w - panel_w) * 0.5f;
     const float py = (window_h - panel_h) * 0.5f;
@@ -156,8 +145,8 @@ MenuDialog::Result MenuDialog::render(EntityManager& em, const Options& opts, fl
     // Option rows.
     for (int i = 0; i < itemCount; ++i)
     {
-        const bool hovered = (mx >= cx - 4.0f && mx < cx + cw + 4.0f && my >= y - 2.0f &&
-                              my < y - 2.0f + line_h);
+        const bool hovered =
+            (mx >= cx - 4.0f && mx < cx + cw + 4.0f && my >= y - 2.0f && my < y - 2.0f + line_h);
         if (hovered && opts.items[i].enabled)
             sel = i;
 

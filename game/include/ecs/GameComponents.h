@@ -241,7 +241,8 @@ struct AIController
     int tier = 1;
     float sprint_multiplier = 0.0f;
     float sprint_threshold = 0.0f;
-    float orbit_speed = 0.5f;  // slot rotation speed multiplier (0=stationary, 1=base rate)
+    float orbit_speed = 0.5f;     // slot rotation speed multiplier (0=stationary, 1=base rate)
+    float attack_cooldown = 0.0f; // minimum seconds between attacks (overrides weapon swing speed)
 
     // Assigned angular position around the player for attack positioning.
     // NO_SLOT sentinel is outside atan2's [-pi, pi] range so negative angles
@@ -250,6 +251,7 @@ struct AIController
     float slot_angle = NO_SLOT;
     bool sprint = false;
     float token_cooldown = 0.0f; // time until entity can claim an attack token
+    int stuck_ticks = 0;         // consecutive ticks with near-zero velocity (debug)
 };
 
 // Limits concurrent enemy attackers. Stored in entt::registry::ctx().
@@ -333,8 +335,8 @@ struct ItemInstance
     std::string config_path;
     QualityTier quality = QualityTier::Common;
     float durability = 100.0f;
-    int quantity = 1; // >1 only for stackable items
-    float evolution_bonus = 0.0f; // carry-forward stat bonus from prior evolution
+    int quantity = 1;              // >1 only for stackable items
+    float evolution_bonus = 0.0f;  // carry-forward stat bonus from prior evolution
     bool newly_discovered = false; // first-time pickup; UI shows "!" badge
     int weapon_xp_level = 1;
     float weapon_xp_current = 0.0f;

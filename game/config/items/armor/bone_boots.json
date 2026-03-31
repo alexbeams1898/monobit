@@ -5,8 +5,8 @@
     "category": "armor",
     "rarity": "common",
     "armor_slot": "feet",
-    "defense_bonus": 2.0,
-    "poise_bonus": 1.0,
+    "defense_bonus": 0.5,
+    "poise_bonus": 0.5,
     "weight": 1.0,
     "max_durability": 70.0,
     "stackable": false

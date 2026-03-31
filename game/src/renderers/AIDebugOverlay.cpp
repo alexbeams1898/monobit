@@ -65,8 +65,7 @@ void renderEnemies(EntityManager& em)
         DebugDraw::circle(px, py, playerAtkRadius, RADIUS_COLOR);
 
     // Per-enemy visualization.
-    for (auto [entity, ai, transform] :
-         em.registry().view<AIController, Transform>().each())
+    for (auto [entity, ai, transform] : em.registry().view<AIController, Transform>().each())
     {
         const bool hasToken = entityHoldsToken(pool, entity);
 
@@ -84,8 +83,7 @@ void renderEnemies(EntityManager& em)
         if (ai.state == AIController::State::Attack && ai.slot_angle != AIController::NO_SLOT)
         {
             const float radius =
-                hasToken ? ai.attack_radius
-                         : ai.attack_radius * f.combat_ai.wait_radius_mult;
+                hasToken ? ai.attack_radius : ai.attack_radius * f.combat_ai.wait_radius_mult;
             const float slotX = px + std::cos(ai.slot_angle) * radius;
             const float slotY = py + std::sin(ai.slot_angle) * radius;
 
@@ -109,12 +107,10 @@ void renderFlowField(EntityManager& em)
     const float camY = DebugDraw::camY();
 
     // Visible cell range (with 1-cell margin).
-    const int minCol =
-        std::max(0, static_cast<int>((camX - halfW) / FlowField::CELL_SIZE) - 1);
+    const int minCol = std::max(0, static_cast<int>((camX - halfW) / FlowField::CELL_SIZE) - 1);
     const int maxCol =
         std::min(FlowField::COLS - 1, static_cast<int>((camX + halfW) / FlowField::CELL_SIZE) + 1);
-    const int minRow =
-        std::max(0, static_cast<int>((camY - halfH) / FlowField::CELL_SIZE) - 1);
+    const int minRow = std::max(0, static_cast<int>((camY - halfH) / FlowField::CELL_SIZE) - 1);
     const int maxRow =
         std::min(FlowField::ROWS - 1, static_cast<int>((camY + halfH) / FlowField::CELL_SIZE) + 1);
 

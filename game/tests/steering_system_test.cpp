@@ -7,6 +7,10 @@
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 
+// Large dt so the exponential steering blend converges fully in one call.
+// blend = 1 - exp(-6 * 10) ≈ 1.0 -- tests behave as if forces apply instantly.
+static constexpr double kTestDt = 10.0;
+
 // ---------------------------------------------------------------------------
 // SteeringSystem tests -- wall repulsion + crowd repulsion for NavAgent entities.
 //
@@ -45,7 +49,7 @@ TEST_CASE("SteeringSystem does nothing when no walls are nearby", "[steering]")
     makeWall(em, 200.0f, 0.0f);
     auto enemy = makeEnemy(em, 0.0f, 0.0f, 80.0f, 0.0f, -80.0f);
 
-    SteeringSystem::update(em);
+    SteeringSystem::update(em, kTestDt);
 
     const auto& vel = em.registry().get<Velocity>(enemy);
     REQUIRE(vel.dx == Catch::Approx(0.0f));
@@ -62,7 +66,7 @@ TEST_CASE("SteeringSystem deflects velocity away from a nearby wall", "[steering
     makeWall(em, 32.0f, 50.0f);
     auto enemy = makeEnemy(em, 0.0f, 50.0f, 80.0f, 0.0f, -80.0f);
 
-    SteeringSystem::update(em);
+    SteeringSystem::update(em, kTestDt);
 
     const auto& vel = em.registry().get<Velocity>(enemy);
     REQUIRE(vel.dx < 0.0f); // deflected west -- away from east wall
@@ -75,7 +79,7 @@ TEST_CASE("SteeringSystem preserves entity speed after deflection", "[steering]"
     makeWall(em, 32.0f, 50.0f);
     auto enemy = makeEnemy(em, 0.0f, 50.0f, 80.0f, 0.0f, -80.0f);
 
-    SteeringSystem::update(em);
+    SteeringSystem::update(em, kTestDt);
 
     const auto& vel = em.registry().get<Velocity>(enemy);
     const float mag = std::sqrt(vel.dx * vel.dx + vel.dy * vel.dy);
@@ -91,7 +95,7 @@ TEST_CASE("SteeringSystem does not affect entities without NavAgent", "[steering
     em.registry().emplace<Transform>(e, Transform{0.0f, 50.0f});
     em.registry().emplace<Velocity>(e, Velocity{0.0f, -80.0f});
 
-    SteeringSystem::update(em);
+    SteeringSystem::update(em, kTestDt);
 
     const auto& vel = em.registry().get<Velocity>(e);
     REQUIRE(vel.dx == Catch::Approx(0.0f));
@@ -112,7 +116,7 @@ TEST_CASE("SteeringSystem does not repel from a wall directly ahead", "[steering
     makeWall(em, 0.0f, 32.0f);
     auto enemy = makeEnemy(em, 0.0f, 0.0f, 80.0f, 0.0f, 80.0f);
 
-    SteeringSystem::update(em);
+    SteeringSystem::update(em, kTestDt);
 
     const auto& vel = em.registry().get<Velocity>(enemy);
     REQUIRE(vel.dx == Catch::Approx(0.0f));
@@ -128,7 +132,7 @@ TEST_CASE("SteeringSystem does not affect stopped entities", "[steering]")
     makeWall(em, 32.0f, 50.0f);
     auto enemy = makeEnemy(em, 0.0f, 50.0f, 80.0f, 0.0f, 0.0f);
 
-    SteeringSystem::update(em);
+    SteeringSystem::update(em, kTestDt);
 
     const auto& vel = em.registry().get<Velocity>(enemy);
     REQUIRE(vel.dx == Catch::Approx(0.0f));
@@ -149,7 +153,7 @@ TEST_CASE("SteeringSystem crowd repulsion deflects away from dense neighbour", "
 
     em.flow_field.density[7][6] = 3; // 3 enemies one cell to the south
 
-    SteeringSystem::update(em);
+    SteeringSystem::update(em, kTestDt);
 
     const auto& vel = em.registry().get<Velocity>(enemy);
     REQUIRE(vel.dy < 0.0f); // deflected north -- away from south crowd
@@ -165,7 +169,7 @@ TEST_CASE("SteeringSystem crowd repulsion preserves speed for lateral crowd", "[
 
     em.flow_field.density[7][6] = 3; // lateral -- perpendicular to vel
 
-    SteeringSystem::update(em);
+    SteeringSystem::update(em, kTestDt);
 
     const auto& vel = em.registry().get<Velocity>(enemy);
     const float mag = std::sqrt(vel.dx * vel.dx + vel.dy * vel.dy);
@@ -180,7 +184,7 @@ TEST_CASE("SteeringSystem crowd repulsion disabled when separation_strength is z
 
     em.flow_field.density[6][7] = 10; // high density -- but should be ignored
 
-    SteeringSystem::update(em);
+    SteeringSystem::update(em, kTestDt);
 
     const auto& vel = em.registry().get<Velocity>(enemy);
     REQUIRE(vel.dx == Catch::Approx(80.0f)); // unchanged
@@ -198,7 +202,7 @@ TEST_CASE("SteeringSystem same-cell repulsion deflects toward own cell edge", "[
     auto enemy = makeEnemy(em, 108.0f, 100.0f, 80.0f, 80.0f, 0.0f, 1.0f);
     em.flow_field.density[6][6] = 2;
 
-    SteeringSystem::update(em);
+    SteeringSystem::update(em, kTestDt);
 
     const auto& vel = em.registry().get<Velocity>(enemy);
     REQUIRE(vel.dy < 0.0f); // pushed north -- entity is NE of cell centre

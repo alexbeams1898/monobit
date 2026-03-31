@@ -38,8 +38,8 @@ float renderWeaponStats(FontHandle body_font, const Weapon& w, const Stats& stat
 
 // Convenience: build a Weapon from an ItemDef and render its stats.
 float renderWeaponStatsFromDef(FontHandle body_font, const ItemDef& def, const Stats& stats,
-                               const FormulaConfig& f, bool has_stats, float cx, float y,
-                               float cw, float val_x, bool show_name = true);
+                               const FormulaConfig& f, bool has_stats, float cx, float y, float cw,
+                               float val_x, bool show_name = true);
 
 // Draw shield stat panel (name, guard, weight).
 float renderShieldStats(FontHandle body_font, const ItemDef& def, float cx, float y, float cw,

@@ -29,6 +29,10 @@ static void checkAndResolvePair(EntityManager& em, entt::entity ea, Transform& t
     if (!resolve_both || !ca.is_solid || !cb.is_solid)
         return;
 
+    // Same non-zero collision group: soft overlap (no MTV push).
+    if (ca.collision_group != 0 && ca.collision_group == cb.collision_group)
+        return;
+
     // Both dynamic and both solid: split MTV evenly.
     float pushX = 0.0f;
     float pushY = 0.0f;

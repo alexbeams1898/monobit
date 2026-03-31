@@ -1,12 +1,12 @@
 #include "systems/WaveSystem.h"
 
 #include "ConfigLoader.h"
-#include "ecs/AppState.h"
-#include "ops/SpawnUtils.h"
 #include "TileMap.h"
+#include "ecs/AppState.h"
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
+#include "ops/SpawnUtils.h"
 #include "systems/AudioSystem.h"
 #include "systems/LevelingSystem.h"
 
@@ -391,8 +391,7 @@ void WaveSystem::update(EntityManager& em, double dt)
 
                         const auto& sc = em.registry().ctx().get<SoundConfig>();
                         if (!sc.ladder_appear.path.empty())
-                            AudioSystem::playSfx(sc.ladder_appear.path,
-                                                 sc.ladder_appear.volume);
+                            AudioSystem::playSfx(sc.ladder_appear.path, sc.ladder_appear.volume);
                     }
                 }
             }
@@ -457,6 +456,7 @@ static void handleDeathRestart(EntityManager& em, WaveState& ws)
 // Phase 2 of wave start: set up spawning after the transition delay.
 static void commitWaveStart(EntityManager& em)
 {
+    ZoneScopedN("commitWaveStart");
     auto& ws = em.registry().ctx().get<WaveState>();
     const auto& wc = em.registry().ctx().get<WaveConfig>();
 

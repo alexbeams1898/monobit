@@ -5,8 +5,8 @@
     "category": "armor",
     "rarity": "common",
     "armor_slot": "head",
-    "defense_bonus": 3.0,
-    "poise_bonus": 2.0,
+    "defense_bonus": 1.0,
+    "poise_bonus": 1.0,
     "weight": 1.5,
     "max_durability": 80.0,
     "stackable": false

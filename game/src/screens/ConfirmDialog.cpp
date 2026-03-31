@@ -1,36 +1,22 @@
 #include "screens/ConfirmDialog.h"
 
 #include "ecs/EntityManager.h"
+#include "screens/ScreenColors.h"
+#include "screens/ScreenInput.h"
 #include "systems/AudioSystem.h"
 
 #include <SDL.h>
 #include <algorithm>
 
-static constexpr Color OVERLAY{0.0f, 0.0f, 0.0f, 0.75f};
-static constexpr Color PANEL_BG{0.1f, 0.08f, 0.12f, 0.95f};
+using screen_input::keyPressed;
+using screen_input::mouseClicked;
+using namespace screen_colors;
+
+static constexpr Color DIALOG_BG{0.1f, 0.08f, 0.12f, 0.95f};
 static constexpr Color TITLE_COLOR{0.95f, 0.3f, 0.25f, 1.0f};
 static constexpr Color BODY_COLOR{0.5f, 0.48f, 0.46f, 1.0f};
-static constexpr Color BTN_BG{0.1f, 0.1f, 0.12f, 0.5f};
-static constexpr Color BTN_BG_HL{0.18f, 0.16f, 0.25f, 0.7f};
-static constexpr Color BTN_NORMAL{0.7f, 0.68f, 0.65f, 1.0f};
-static constexpr Color BTN_HOVER{0.95f, 0.88f, 0.55f, 1.0f};
 static constexpr Color YES_BG{0.4f, 0.08f, 0.08f, 0.6f};
 static constexpr Color YES_BG_HL{0.6f, 0.12f, 0.12f, 0.8f};
-static constexpr Color TEXT_WHITE{0.92f, 0.90f, 0.88f, 1.0f};
-
-static bool keyPressed(const EntityManager& em, int scancode)
-{
-    const auto& kd = em.key_down_events;
-    return std::find(kd.begin(), kd.end(), scancode) != kd.end();
-}
-
-static bool mouseClicked(const EntityManager& em)
-{
-    for (uint8_t btn : em.mouse_down_events)
-        if (btn == SDL_BUTTON_LEFT)
-            return true;
-    return false;
-}
 
 ConfirmDialog::Result ConfirmDialog::render(EntityManager& em, const Options& opts, float window_w,
                                             float window_h)
@@ -89,7 +75,7 @@ ConfirmDialog::Result ConfirmDialog::render(EntityManager& em, const Options& op
 
     // --- Draw ---
     UIRenderer::drawRect(0.0f, 0.0f, window_w, window_h, OVERLAY);
-    UIRenderer::drawRect(dx, dy, dlg_w, dlg_h, PANEL_BG);
+    UIRenderer::drawRect(dx, dy, dlg_w, dlg_h, DIALOG_BG);
 
     // Title (centered).
     UIRenderer::drawText(opts.title_font, opts.title, dx + (dlg_w - tsz.width) * 0.5f, dy + pad,
@@ -100,8 +86,7 @@ ConfirmDialog::Result ConfirmDialog::render(EntityManager& em, const Options& op
     for (const auto& line : opts.body_lines)
     {
         TextSize lsz = UIRenderer::measureText(opts.body_font, line);
-        UIRenderer::drawText(opts.body_font, line, dx + (dlg_w - lsz.width) * 0.5f, by,
-                             BODY_COLOR);
+        UIRenderer::drawText(opts.body_font, line, dx + (dlg_w - lsz.width) * 0.5f, by, BODY_COLOR);
         by += body_line_h;
     }
 
@@ -117,9 +102,8 @@ ConfirmDialog::Result ConfirmDialog::render(EntityManager& em, const Options& op
     UIRenderer::drawRect(yes_x, btn_y, btn_w, btn_h, (sel == 0) ? YES_BG_HL : YES_BG);
     TextSize ysz = UIRenderer::measureText(opts.title_font, "Yes");
     UIRenderer::drawText(opts.title_font, "Yes", yes_x + (btn_w - ysz.width) * 0.5f,
-                         btn_y + (btn_h - ysz.height) * 0.5f,
-                         (sel == 0) ? TEXT_WHITE : BTN_NORMAL);
-    if (yesHover && mouseClicked(em))
+                         btn_y + (btn_h - ysz.height) * 0.5f, (sel == 0) ? TEXT_WHITE : BTN_NORMAL);
+    if (yesHover && mouseClicked(em, SDL_BUTTON_LEFT))
         result = Result::Yes;
 
     // No button.
@@ -129,9 +113,8 @@ ConfirmDialog::Result ConfirmDialog::render(EntityManager& em, const Options& op
     UIRenderer::drawRect(no_x, btn_y, btn_w, btn_h, (sel == 1) ? BTN_BG_HL : BTN_BG);
     TextSize nsz = UIRenderer::measureText(opts.title_font, "No");
     UIRenderer::drawText(opts.title_font, "No", no_x + (btn_w - nsz.width) * 0.5f,
-                         btn_y + (btn_h - nsz.height) * 0.5f,
-                         (sel == 1) ? BTN_HOVER : BTN_NORMAL);
-    if (noHover && mouseClicked(em))
+                         btn_y + (btn_h - nsz.height) * 0.5f, (sel == 1) ? BTN_HOVER : BTN_NORMAL);
+    if (noHover && mouseClicked(em, SDL_BUTTON_LEFT))
         result = Result::No;
 
     return result;

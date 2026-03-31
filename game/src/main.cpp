@@ -11,8 +11,8 @@
 #include "renderers/HudRenderer.h"
 #include "renderers/InteractionPromptRenderer.h"
 #include "renderers/ItemStatRenderer.h"
-#include "screens/CraftingScreen.h"
 #include "screens/CharCreateScreen.h"
+#include "screens/CraftingScreen.h"
 #include "screens/GameOverScreen.h"
 #include "screens/HighScoresScreen.h"
 #include "screens/LevelUpScreen.h"
@@ -137,9 +137,8 @@ int main(int argc, char* argv[])
     // Start at main menu -- world is created when the player selects a character.
     em.registry().ctx().get<GameState>().phase = GameState::Phase::MainMenu;
 
-    // Play main menu music.
-    if (auto* t = em.registry().ctx().get<MusicConfig>().get("main_menu"))
-        AudioSystem::playMusic(t->path, t->volume);
+    // Play main menu music (random chance of rare reversed variant).
+    playMainMenuMusic(em);
 
     // Load fonts and init all UI screens.
     FontHandle bodyFont = FontManager::loadFont("assets/fonts/cinzel.ttf", 28.0f);

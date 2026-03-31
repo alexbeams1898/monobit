@@ -193,8 +193,8 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
         auto& poise = reg.get<Poise>(target);
         poise.decay_timer = 0.0f; // reset decay window on every hit
 
-        // Poise damage scales from attacker weapon weight; bare-fist baseline = 1.
-        float poiseDmg = 1.0f;
+        // Poise damage scales from attacker weapon weight.
+        float poiseDmg = 0.3f; // bare-fist baseline (no weapon component at all)
         if (attacker != entt::null && reg.all_of<Weapon>(attacker))
             poiseDmg = reg.get<Weapon>(attacker).weight * f.poise.weight_scale;
 
@@ -297,8 +297,8 @@ void DamageSystem::update(EntityManager& em)
                 }
                 if (reg.all_of<Loot>(targetEnt))
                     enemyLevel = reg.get<Loot>(targetEnt).level;
-                const float power = WeaponXPSystem::computeEnemyPower(enemyLevel, enemyHp,
-                                                                      enemyDmg, enemyStats, fc);
+                const float power = WeaponXPSystem::computeEnemyPower(enemyLevel, enemyHp, enemyDmg,
+                                                                      enemyStats, fc);
                 WeaponXPSystem::grantXP(em, power, fc.weapon_xp.hit_multiplier);
             }
         }

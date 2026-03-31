@@ -32,7 +32,9 @@ class AudioSystem
 
     // Start background music.  Replaces any currently playing track.
     // volume: 0.0 = silent, 1.0 = full.  loop: true = repeat, false = one-shot.
-    static void playMusic(const std::string& path, float volume = 0.8f, bool loop = true);
+    // fade_in_ms: if > 0, fade from silence to volume over this many ms (first play only).
+    static void playMusic(const std::string& path, float volume = 0.8f, bool loop = true,
+                          int fade_in_ms = 0);
 
     static void stopMusic();
     static void setMusicVolume(float volume); // 0.0–1.0

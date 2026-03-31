@@ -1,9 +1,8 @@
-#include "test_helpers.h"
-
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
 #include "systems/EquipmentSystem.h"
+#include "test_helpers.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -49,9 +48,9 @@ TEST_CASE("EquipmentSystem: ArmorStats aggregates defense from armor slots", "[a
     EquipmentSystem::update(em);
 
     const auto& armor = em.registry().get<ArmorStats>(player);
-    REQUIRE_THAT(armor.total_defense, WithinAbs(11.0f, 0.01f)); // 3 + 8
+    REQUIRE_THAT(armor.total_defense, WithinAbs(11.0f, 0.01f));    // 3 + 8
     REQUIRE_THAT(armor.total_poise_bonus, WithinAbs(7.0f, 0.01f)); // 2 + 5
-    REQUIRE_THAT(armor.total_weight, WithinAbs(5.0f, 0.01f)); // 1 + 4
+    REQUIRE_THAT(armor.total_weight, WithinAbs(5.0f, 0.01f));      // 1 + 4
 }
 
 TEST_CASE("EquipmentSystem: equip load tier computed from weight and stats", "[armor]")

@@ -3,11 +3,11 @@
 #include "FontManager.h"
 #include "UIRenderer.h"
 #include "ecs/Components.h"
-#include "utils/DebugDraw.h"
 #include "systems/AnimationSystem.h"
 #include "systems/AudioSystem.h"
 #include "systems/RenderSystem.h"
 #include "systems/TileMapRenderer.h"
+#include "utils/DebugDraw.h"
 
 #include <cmath>
 #include <string>

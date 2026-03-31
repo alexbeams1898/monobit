@@ -38,7 +38,7 @@ struct Options
     FontHandle body_font = INVALID_FONT;
     std::string title;
     std::vector<Option> items;
-    std::string hint;       // bottom hint text (e.g. "[Enter] Select  [Esc] Leave")
+    std::string hint;         // bottom hint text (e.g. "[Enter] Select  [Esc] Leave")
     int* selection = nullptr; // caller-owned cursor index
     float min_width = 360.0f;
     float padding = 24.0f;

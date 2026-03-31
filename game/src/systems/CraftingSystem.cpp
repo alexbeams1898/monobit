@@ -1,9 +1,9 @@
 #include "systems/CraftingSystem.h"
 
-#include "ops/CraftingOps.h"
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
+#include "ops/CraftingOps.h"
 #include "systems/AudioSystem.h"
 #include "systems/NotificationSystem.h"
 
