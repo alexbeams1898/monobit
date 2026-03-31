@@ -114,8 +114,8 @@ void LevelingSystem::applyInitialDerivations(EntityManager& em)
             exp.xp_to_next = deriveXpToNext(exp.level, f);
         }
 
-        // poise.max = floor(END * end_scale + STR * str_scale).
-        // Flat bonuses from armor/shields are added on top (not yet implemented).
+        // poise.max = floor(END * end_scale + STR * str_scale) + armor bonus.
+        // EquipmentSystem adds armor.total_poise_bonus on top each frame.
         if (reg.all_of<Poise>(entity))
         {
             auto& poise = reg.get<Poise>(entity);

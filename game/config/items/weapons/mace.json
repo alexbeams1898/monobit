@@ -1,0 +1,17 @@
+{
+    "name": "Mace",
+    "description": "An iron-headed bludgeon. Slow but devastating against armor.",
+    "icon": "assets/sprites/icons/mace.png",
+    "category": "weapon",
+    "rarity": "uncommon",
+    "base_damage": 18.0,
+    "weight": 3.0,
+    "str_scaling": 1.0,
+    "dex_scaling": 0.2,
+    "str_requirement": 7,
+    "dex_requirement": 2,
+    "two_handed": false,
+    "weapon_tier": "club",
+    "max_durability": 100.0,
+    "stackable": false
+}

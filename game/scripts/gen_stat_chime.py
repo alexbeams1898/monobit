@@ -87,7 +87,7 @@ def write_wav(filepath, samples):
 if __name__ == "__main__":
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_dir = os.path.dirname(script_dir)
-    out_path = os.path.join(project_dir, "assets", "sfx", "stat_allocate.wav")
+    out_path = os.path.join(project_dir, "assets", "sfx", "stat_allocate.ogg")
 
     samples = generate_chime()
     write_wav(out_path, samples)

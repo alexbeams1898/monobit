@@ -1,0 +1,9 @@
+{
+    "tag": "ladder",
+    "components": {
+        "transform":   { "x": 0.0, "y": 0.0, "rotation": 0.0, "scale": 0.0 },
+        "collider":    { "width": 32.0, "height": 32.0, "is_solid": false },
+        "sprite":      { "texture_path": "assets/sprites/icons/ladder.png", "src_x": 0, "src_y": 0, "src_w": 32, "src_h": 32, "layer": 1 },
+        "ladder":      { "radius": 48.0, "spawn_duration": 0.5 }
+    }
+}

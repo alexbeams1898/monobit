@@ -7,7 +7,7 @@ namespace engine::gl
 
 GLuint compileShader(GLenum type, const char* src)
 {
-    GLuint shader = glCreateShader(type);
+    const GLuint shader = glCreateShader(type);
     glShaderSource(shader, 1, &src, nullptr);
     glCompileShader(shader);
 

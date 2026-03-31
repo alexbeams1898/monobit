@@ -4,48 +4,29 @@
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
+#include "renderers/ItemStatRenderer.h"
+#include "screens/ScreenColors.h"
 
 #include <SDL.h>
 #include <string>
 #include <tracy/Tracy.hpp>
 
+using namespace screen_colors;
+
 static FontHandle sBodyFont = INVALID_FONT;
 static FontHandle sTitleFont = INVALID_FONT;
 static int sSelectedSlot = 0;
 
-static constexpr Color OVERLAY{0.0f, 0.0f, 0.0f, 0.75f};
 static constexpr Color TITLE_COLOR{1.0f, 0.85f, 0.3f, 1.0f};
 static constexpr Color SLOT_BG{0.15f, 0.15f, 0.15f, 0.8f};
 static constexpr Color SLOT_SELECTED{0.3f, 0.3f, 0.5f, 0.9f};
 static constexpr Color SLOT_EMPTY{0.4f, 0.4f, 0.4f, 0.5f};
-static constexpr Color TEXT_WHITE{1.0f, 1.0f, 1.0f, 1.0f};
-static constexpr Color TEXT_DIM{0.6f, 0.6f, 0.6f, 1.0f};
 static constexpr Color EQUIP_LABEL{0.5f, 0.8f, 1.0f, 1.0f};
-static constexpr Color PANEL_BG{0.08f, 0.08f, 0.12f, 0.9f};
+static constexpr Color INV_BG{0.08f, 0.08f, 0.12f, 0.9f};
 
 static constexpr float SLOT_SIZE = 28.0f;
 static constexpr float SLOT_GAP = 4.0f;
 static constexpr int GRID_COLS = 5;
-
-static Color rarityColor(Rarity r)
-{
-    switch (r)
-    {
-    case Rarity::VeryCommon:
-        return {0.5f, 0.5f, 0.5f, 1.0f};
-    case Rarity::Common:
-        return {0.8f, 0.8f, 0.8f, 1.0f};
-    case Rarity::Uncommon:
-        return {0.3f, 0.8f, 0.3f, 1.0f};
-    case Rarity::Rare:
-        return {0.3f, 0.5f, 1.0f, 1.0f};
-    case Rarity::Epic:
-        return {0.7f, 0.3f, 0.9f, 1.0f};
-    case Rarity::Legendary:
-        return {1.0f, 0.7f, 0.2f, 1.0f};
-    }
-    return TEXT_WHITE;
-}
 
 static void renderInventoryGrid(const Inventory& inv, const ItemRegistry& items, float panel_x,
                                 float ey, int total_slots)
@@ -65,11 +46,9 @@ static void renderInventoryGrid(const Inventory& inv, const ItemRegistry& items,
         {
             const auto& item = inv.items[static_cast<size_t>(i)];
             const ItemDef* def = items.find(item.config_path);
-            // Draw first letter of item name as placeholder icon.
-            const std::string letter =
-                (def != nullptr && !def->name.empty()) ? def->name.substr(0, 1) : "?";
-            const Rarity r = (def != nullptr) ? def->rarity : Rarity::Common;
-            UIRenderer::drawText(sBodyFont, letter, sx + 8.0f, sy + 6.0f, rarityColor(r));
+            const float icon_pad = 2.0f;
+            ItemStatRenderer::drawItemIcon(def, sx + icon_pad, sy + icon_pad,
+                                           SLOT_SIZE - icon_pad * 2.0f);
 
             // Quantity badge.
             if (item.quantity > 1)
@@ -99,7 +78,7 @@ static void renderItemDetail(const Inventory& inv, const ItemRegistry& items, fl
         if (def != nullptr)
         {
             UIRenderer::drawText(sBodyFont, def->name, panel_x + 16.0f, detail_y,
-                                 rarityColor(def->rarity));
+                                 ItemStatRenderer::rarityColor(def->rarity));
             UIRenderer::drawText(sBodyFont, def->description, panel_x + 16.0f,
                                  detail_y + FontManager::lineHeight(sBodyFont) + 2.0f, TEXT_DIM);
         }
@@ -126,7 +105,7 @@ void InventoryScreen::render(EntityManager& em, int window_w, int window_h)
     const float wh = static_cast<float>(window_h);
 
     // Process navigation from event buffer.
-    for (int key : em.key_down_events)
+    for (const int key : em.key_down_events)
     {
         if (key == SDL_SCANCODE_UP || key == SDL_SCANCODE_W)
             sSelectedSlot -= GRID_COLS;
@@ -156,7 +135,7 @@ void InventoryScreen::render(EntityManager& em, int window_w, int window_h)
     const float panel_h = 500.0f;
     const float panel_x = (ww - panel_w) * 0.5f;
     const float panel_y = (wh - panel_h) * 0.5f;
-    UIRenderer::drawRect(panel_x, panel_y, panel_w, panel_h, PANEL_BG);
+    UIRenderer::drawRect(panel_x, panel_y, panel_w, panel_h, INV_BG);
 
     // Title.
     UIRenderer::drawText(sTitleFont, "Inventory", panel_x + 16.0f, panel_y + 12.0f, TITLE_COLOR);
@@ -218,6 +197,6 @@ void InventoryScreen::render(EntityManager& em, int window_w, int window_h)
     }
 
     // Controls hint.
-    UIRenderer::drawText(sBodyFont, "[I] Close   [Arrows] Navigate", panel_x + 16.0f,
+    UIRenderer::drawText(sBodyFont, "[I] Close   [W/S] Navigate", panel_x + 16.0f,
                          panel_y + panel_h - 24.0f, TEXT_DIM);
 }

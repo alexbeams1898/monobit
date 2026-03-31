@@ -1,12 +1,17 @@
 {
-    "name": "Bone Club",
+    "name": "Club",
     "description": "A crude bludgeon lashed together from skeleton remains. Heavy but effective.",
+    "icon": "assets/sprites/icons/bone_club.png",
     "category": "weapon",
     "rarity": "common",
     "base_damage": 12.0,
     "weight": 2.0,
     "str_scaling": 0.8,
     "dex_scaling": 0.2,
-    "str_requirement": 3,
-    "dex_requirement": 1
+    "str_requirement": 2,
+    "dex_requirement": 1,
+    "two_handed": false,
+    "weapon_tier": "club",
+    "max_durability": 60.0,
+    "stackable": false
 }

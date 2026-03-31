@@ -1,0 +1,13 @@
+{
+    "name": "Bone Cuirass",
+    "description": "Interlocking bone plates protect the torso.",
+    "icon": "assets/sprites/icons/bone_cuirass.png",
+    "category": "armor",
+    "rarity": "common",
+    "armor_slot": "chest",
+    "defense_bonus": 2.5,
+    "poise_bonus": 2.0,
+    "weight": 4.0,
+    "max_durability": 100.0,
+    "stackable": false
+}

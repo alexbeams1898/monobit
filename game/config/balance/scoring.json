@@ -1,8 +1,8 @@
 {
     "kill_weight": 10.0,
     "wave_weight": 100.0,
-    "time_bonus_weight": 1.0,
+    "time_penalty_weight": 0.5,
     "xp_weight": 1.0,
     "money_weight": 2.0,
-    "escape_bonus": 5000.0
+    "escape_multiplier": 1.5
 }

@@ -50,7 +50,7 @@ TEST_CASE("startNextWave: Idle to Spawning", "[wave]")
     emplaceGameConfigs(em);
     setupAutoGen(em, 1, 3);
 
-    bool started = WaveSystem::startNextWave(em);
+    const bool started = WaveSystem::startNextWave(em);
     REQUIRE(started);
     auto& ws = em.registry().ctx().get<WaveState>();
     REQUIRE(ws.phase == WaveState::Phase::Spawning);
@@ -91,7 +91,7 @@ TEST_CASE("startNextWave: from Spawning returns false", "[wave]")
     REQUIRE_FALSE(WaveSystem::startNextWave(em));
 }
 
-TEST_CASE("startNextWave: from SafeRoom transitions to Spawning", "[wave]")
+TEST_CASE("startNextWave: from SafeRoom transitions to Transitioning for wave 2+", "[wave]")
 {
     EntityManager em;
     emplaceGameConfigs(em);
@@ -102,11 +102,11 @@ TEST_CASE("startNextWave: from SafeRoom transitions to Spawning", "[wave]")
     ws.phase = WaveState::Phase::SafeRoom;
     ws.current_wave = 1;
 
-    bool started = WaveSystem::startNextWave(em);
+    const bool started = WaveSystem::startNextWave(em);
     REQUIRE(started);
-    REQUIRE(ws.phase == WaveState::Phase::Spawning);
+    // Wave 2+ plays teleport SFX then delays before spawning.
+    REQUIRE(ws.phase == WaveState::Phase::Transitioning);
     REQUIRE(ws.current_wave == 2);
-    REQUIRE(ws.enemies_total == 3);
 }
 
 TEST_CASE("startNextWave: infinite waves (max_waves=0) never blocks", "[wave]")
@@ -197,11 +197,11 @@ TEST_CASE("Cleared transitions to SafeRoom when safe_room_every triggers", "[wav
     REQUIRE(ws.phase == WaveState::Phase::SafeRoom);
 }
 
-TEST_CASE("Cleared advances to next wave when safe_room_every is 0", "[wave]")
+TEST_CASE("Cleared always transitions to SafeRoom for ladder placement", "[wave]")
 {
     EntityManager em;
     emplaceGameConfigs(em);
-    setupAutoGen(em, 5, 1, 0); // safe_room_every=0 -> no safe rooms
+    setupAutoGen(em, 5, 1, 0); // safe_room_every=0
 
     WaveSystem::startNextWave(em);
     auto& ws = em.registry().ctx().get<WaveState>();
@@ -209,8 +209,9 @@ TEST_CASE("Cleared advances to next wave when safe_room_every is 0", "[wave]")
     ws.cleared_timer = 1.99f; // Skip SFX trigger (needs AudioSystem), just test transition.
 
     // Advance past the 2-second auto-advance delay.
+    // All cleared waves go to SafeRoom (ladder spawns for player to advance).
     WaveSystem::update(em, 3.0);
-    REQUIRE(ws.phase == WaveState::Phase::Spawning);
+    REQUIRE(ws.phase == WaveState::Phase::SafeRoom);
 }
 
 TEST_CASE("Cleared transitions to Complete on last wave", "[wave]")
@@ -241,30 +242,6 @@ TEST_CASE("WaveSystem update is no-op without loaded config", "[wave]")
     WaveSystem::update(em, 0.016);
     auto& ws = em.registry().ctx().get<WaveState>();
     REQUIRE(ws.phase == WaveState::Phase::SafeRoom);
-}
-
-// ---------------------------------------------------------------------------
-// Key-triggered wave start
-// ---------------------------------------------------------------------------
-
-TEST_CASE("start_wave input triggers startNextWave", "[wave]")
-{
-    EntityManager em;
-    emplaceGameConfigs(em);
-    setupAutoGen(em, 1, 2);
-
-    // Create a player entity with PlayerActions component.
-    auto player = em.create();
-    auto& actions = em.registry().emplace<PlayerActions>(player);
-    actions.start_wave = true;
-
-    WaveSystem::update(em, 0.016);
-
-    // start_wave consumed, wave started.
-    auto& ws = em.registry().ctx().get<WaveState>();
-    REQUIRE(em.registry().get<PlayerActions>(player).start_wave == false);
-    REQUIRE(ws.phase == WaveState::Phase::Spawning);
-    REQUIRE(ws.current_wave == 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -445,14 +422,14 @@ TEST_CASE("generateWave: weighted distribution", "[wave]")
 
 TEST_CASE("Essence defaults in FormulaConfig", "[wave][essence]")
 {
-    FormulaConfig f;
+    const FormulaConfig f;
     REQUIRE(f.essence.min == 0);
     REQUIRE(f.essence.max == 100);
 }
 
 TEST_CASE("WaveGenRules level scaling defaults", "[wave]")
 {
-    WaveGenRules gen;
+    const WaveGenRules gen;
     REQUIRE(gen.level_growth == Catch::Approx(0.5f));
     REQUIRE(gen.stat_per_level == 1);
 }
@@ -479,7 +456,7 @@ TEST_CASE("startNextWave: from GameOver resets to wave 1", "[wave]")
     em.registry().emplace<Health>(player, Health{0, 100});
     em.registry().emplace<Transform>(player, Transform{100.0f, 200.0f});
 
-    bool started = WaveSystem::startNextWave(em);
+    const bool started = WaveSystem::startNextWave(em);
     REQUIRE(started);
     REQUIRE(ws.current_wave == 1);
     REQUIRE(ws.phase == WaveState::Phase::Spawning);

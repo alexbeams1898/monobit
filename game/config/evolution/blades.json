@@ -1,0 +1,27 @@
+{
+    "family": "blades",
+    "nodes": {
+        "shiv": {
+            "weapon": "config/items/weapons/shiv.json",
+            "evolutions": [
+                { "target": "dagger", "min_level": 5 }
+            ]
+        },
+        "dagger": {
+            "weapon": "config/items/weapons/dagger.json",
+            "evolutions": [
+                { "target": "short_sword", "min_level": 10, "material": "config/items/materials/bone_shard.json", "material_qty": 3 }
+            ]
+        },
+        "short_sword": {
+            "weapon": "config/items/weapons/short_sword.json",
+            "evolutions": [
+                { "target": "longsword", "min_level": 15, "material": "config/items/materials/bone_shard.json", "material_qty": 5 }
+            ]
+        },
+        "longsword": {
+            "weapon": "config/items/weapons/longsword.json",
+            "evolutions": []
+        }
+    }
+}

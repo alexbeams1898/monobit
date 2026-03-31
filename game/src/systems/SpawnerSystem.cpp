@@ -1,10 +1,10 @@
 #include "systems/SpawnerSystem.h"
 
 #include "ConfigLoader.h"
-#include "SpawnUtils.h"
 #include "TileMap.h"
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
+#include "ops/SpawnUtils.h"
 #include "systems/LevelingSystem.h"
 
 #include <fstream>

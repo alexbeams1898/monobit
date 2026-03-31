@@ -214,8 +214,14 @@ Parent entity keeps all gameplay components (Transform, Health, Stats, etc.) but
 Sprite or Animation. Children inherit position from parent each frame.
 
 **State resolution per body part:**
-- Lower body (`direction_from_facing=false`): Dead > Hit > Walk > Idle. Direction from parent Velocity.
+- Lower body (`direction_from_facing=false`): Dead > Hit > Attack > Walk > Idle. Direction from parent Velocity (or FacingDirection when backpedaling).
 - Upper body (`direction_from_facing=true`): Dead > Hit > Attack > Idle. Direction from parent FacingDirection.
+
+**Backpedal:** When `FacingDirection.backpedaling` is true (movement opposes aim), the lower
+body switches to aim direction and walk frames advance in reverse. Speed multiplier
+(`backpedal_multiplier`) applied in MovementSystem. Animation speed slowed by 1.4x to match
+reduced movement. No new components or per-frame allocations -- single bool check in existing
+AnimationSystem loops.
 
 **Sprite split method:** LPC body base is a full-body silhouette. Both sheets include the body
 base but apply a vertical alpha mask at `BODY_SPLIT_Y=35` within each 64x64 frame. Lower body
@@ -232,6 +238,91 @@ enemies or other single-sprite entities.
 **Enemy sprites:** Enemies use a pre-composited LPC skeleton universal sheet (832x1344),
 remapped at build time to our 5-row format. No layer compositing or split-body — single
 Animation + Sprite entity per enemy.
+
+---
+
+### TileMapRenderer — Row Frustum Culling
+
+**Problem:** TileMapRenderer drew ALL tiles every frame (one `glDrawArrays` for the entire
+map). At wave 40 (160x120 = 19,200 tiles), Tracy showed 14.37ms avg — 86% of the 60Hz
+frame budget spent rasterizing off-screen tiles.
+
+**Fix:** Compute visible row range from camera position and window size. Single `glDrawArrays`
+call with offset + count covering only visible rows. Map width/height/tile size stored during
+`upload()`, used in `render()` for the calculation.
+
+**Result:** On a 1080p screen (34 visible rows out of 120), draws ~28% of tiles instead of
+100%. Saves ~10ms per frame on large maps. Row-only culling (not per-column) keeps it as a
+single draw call.
+
+---
+
+### Heavy Synchronous Operations — Timing Reset
+
+**Problem:** Map generation (600ms+), world create/destroy, and bulk entity spawns block the
+main thread. Two side effects:
+1. The fixed-step accumulator sees hundreds of ms of "missed" time → fires dozens of catch-up
+   ticks in one burst → entities teleport.
+2. The EMA-smoothed frame timer absorbs the spike → FPS counter shows ~30 for seconds even
+   though actual frame rate is fine.
+
+**Fix:** `Engine::requestTimingReset()` — called after any heavy synchronous operation. Zeros
+the accumulator (no catch-up ticks), snaps `previousTime` to current time (next frame sees a
+clean ~16ms delta), and resets the EMA to 1/60s.
+
+**Loading overlay pattern:** For wave-start map regen, `showLoadingOverlay()` in GameLoop.cpp
+renders a "Wave N" screen and calls `engine.swapBuffers()` before the heavy work. The overlay
+stays visible on screen during the freeze.
+
+**Room file caching:** `TileMapLoader::generate()` caches `loadRooms()` results in a static.
+Room files never change at runtime — eliminates repeated disk I/O on every wave start.
+
+**Wave 1 optimization:** `WorldInit::createWorld()` already generates the map, so
+`commitWaveStart()` skips `needs_map_regen` for wave 1 to avoid a redundant second generation.
+
+---
+
+### TileMapRenderer — Column Culling
+
+**Problem:** Row frustum culling (previous fix) still drew every column in each visible row.
+On wide maps (160 columns at wave 40), most columns are off-screen.
+
+**Fix:** Compute visible column range from camera X position and window width, same as existing
+row culling. Instead of one `glDrawArrays` per visible row, each row draws only the visible
+column span. Vertices per tile = 6 (two triangles), so offset/count math maps directly from
+tile coordinates.
+
+**Result (Tracy, 160x120 map):** TileMapRenderer avg dropped from 14.71ms to 0.00ms. On a
+1080p screen (~34 visible columns out of 160), draws ~21% of tiles per row. Combined with row
+culling, total visible tiles ≈ 6% of map.
+
+---
+
+### [Issue #65] AI Navigation — LoS-Gated Attack Velocity
+
+**Problem:** Slotted enemies (Attack state with assigned slot_angle) used direct navigation
+exclusively toward their slot position. When a wall or pillar blocked the straight-line path,
+they walked into the wall, got stuck, drifted beyond deaggro_radius, and disengaged.
+
+**Fix:** `computeAttackVelocity` checks `TileMap::hasLineOfSight` (DDA grid traversal) from
+the enemy to its slot goal position. If LoS is clear, direct nav spreads enemies around the
+player. If a wall blocks it, falls back to flow field navigation to get around the obstacle.
+
+**Cost:** One DDA raycast per slotted enemy per frame (~10-15 tile checks). Negligible vs
+existing flow field and collision costs.
+
+---
+
+### [Issue #65] AI Combat — Waiter Speed Scaling
+
+**Problem:** All enemies in Attack state moved at full speed regardless of token status,
+causing non-attackers to sprint to their slot positions and crowd the player.
+
+**Fix:** Non-token-holders move at a fraction of their normal speed (configurable via
+`formulas.json` `combat_ai.waiter_speed_scale`, default 0.15). They drift slowly toward their
+slot instead of sprinting — "waiters" circling at the outer ring rather than rushing in.
+
+**Cost:** One float multiply per non-holder per frame.
 
 ---
 

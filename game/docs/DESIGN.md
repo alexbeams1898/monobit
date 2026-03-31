@@ -297,7 +297,7 @@ wave 5 = Lv3 (+2 all), wave 11 = Lv6 (+5 all).
 ```json
 {
   "hp":               { "base": 5, "scale": 100 },
-  "movement":         { "base": 150, "dex_scale": 30, "sprint_multiplier": 1.6, "sprint_blend": 8.0, "walk_blend": 20.0 },
+  "movement":         { "base": 150, "dex_scale": 30, "sprint_multiplier": 1.6, "sprint_blend": 8.0, "walk_blend": 20.0, "backpedal_multiplier": 0.5, "sprint_anim_speed": 0.65, "backpedal_anim_speed": 1.4 },
   "carry_weight":     { "str_scale": 20, "end_scale": 10 },
   "defense":          { "str_scale": 0.3, "end_scale": 0.5, "level_scale": 0.2, "cap": 75 },
   "luck":             { "drop_scale": 15, "quality_scale": 3, "quality_thresholds": [30, 60, 80, 95] },
@@ -308,7 +308,14 @@ wave 5 = Lv3 (+2 all), wave 11 = Lv6 (+5 all).
   "poise":            { "end_scale": 2.0, "str_scale": 1.0, "weight_scale": 20, "stagger_duration": 0.5, "decay_window": 5.0 },
   "essence":          { "min": 0, "max": 100 },
   "xp_drop":          { "log_scale": 1.5, "min_fraction": 0.1, "level_penalty": 0.15 },
-  "fist":             { "weight": 0.5, "base_damage": 5.0, "str_scaling": 1.0, "dex_scaling": 0.75 }
+  "fist":             { "weight": 0.5, "base_damage": 5.0, "str_scaling": 1.0, "dex_scaling": 0.75 },
+  "weapon_xp":        { "kill_multiplier": 1.0, "hit_multiplier": 0.05, "base_xp": 50.0, "exponent": 2.0,
+                         "growth_bonus_per_quality": 0.1, "decay_rate": 0.05, "carry_factor": 0.15,
+                         "power_level_weight": 1.0, "power_hp_weight": 0.1, "power_dmg_weight": 0.5,
+                         "power_stat_weight": 0.2 },
+  "equip_load":       { "base_capacity": 40.0, "str_scale": 3.0, "end_scale": 1.5,
+                         "light_threshold": 0.3, "medium_threshold": 0.7, "heavy_threshold": 1.0,
+                         "light_speed": 1.0, "medium_speed": 0.9, "heavy_speed": 0.7, "overloaded_speed": 0.4 }
 }
 ```
 Note: `base_defense` is per-entity (in entity JSON `"body"` block), not a formula constant.
@@ -497,12 +504,89 @@ Guns and thrown projectiles follow different rules than melee:
 - **Field crafting** — combine world-drop materials using a basic starting tool. No station needed.
 - **Upgrade stations** — scattered randomly in the map. Used for all upgrades beyond base.
 
-### Weapon Evolution Tree
-- Multiple materials can produce the same base weapon type (e.g. keys → shiv, toothbrush → shiv)
-- Source materials influence starting stats via component data — same weapon type, different stat
-  bias depending on crafting path
-- Falls out naturally from ECS component data — no special rules needed
-- Early enemy drops feed directly into stage 1 crafting. Higher rank = better materials up the tree.
+### Weapon Tiers (Growth Classes)
+Each weapon belongs to a **tier** — a broad mechanical class that defines default per-level
+growth rates when the weapon gains XP. Tiers are loaded from `config/balance/weapon_tiers.json`.
+
+| Tier | damage_per_level | scaling_per_level | Archetype |
+|------|-----------------|-------------------|-----------|
+| dagger | 0.8 | 0.015 | Fast, light blades |
+| sword | 1.2 | 0.02 | Balanced blades |
+| club | 1.5 | 0.01 | Slow, heavy blunt |
+
+Individual weapons can override tier defaults via `"damage_per_level"` and `"scaling_per_level"`
+in their item JSON. Override value of -1 (or omitted) = use tier default.
+
+### Weapon XP & Leveling — DECIDED
+
+Weapons level through combat use. No hard level cap — growth naturally decays via quality-driven
+diminishing returns. Primary XP source is kills; secondary is a per-hit trickle.
+
+**XP sources:**
+- **Kill:** `enemy_power * kill_multiplier` (default 1.0)
+- **Hit:** `enemy_power * hit_multiplier` (default 0.05)
+
+**Enemy power rating:** Weighted sum of enemy stats:
+```
+power = level_weight * level + hp_weight * max_hp + dmg_weight * base_damage + stat_weight * total_stats
+```
+All weights configurable in `formulas.json` under `"weapon_xp"`.
+
+**Level-up formula:**
+```
+xp_to_next = base_xp * pow(level, exponent / quality_factor)
+quality_factor = 1.0 + quality_tier * 0.1
+```
+Higher quality weapons have a gentler XP curve (quality_factor softens the exponent).
+
+**Stat growth per level:**
+```
+growth_factor = quality_factor / (1 + level * decay_rate / quality_factor)
+damage_gain = damage_per_level * growth_factor
+scaling_gain = scaling_per_level * growth_factor
+```
+Growth decays toward zero as level rises. Higher quality = slower decay. No hard cap needed —
+the math naturally flattens.
+
+### Weapon Evolution Trees — DECIDED
+
+**Terminology** (Monster Hunter convention):
+- **Tree** — the entire weapon lineage for a weapon class (e.g. all bladed weapons)
+- **Branch** — a divergent path within the tree
+- **Base weapon / root** — the starting weapon (e.g. shiv)
+- **Final form** — terminal node with no further evolutions
+- **Node** — a specific weapon in the tree
+
+**File organization:** One JSON file per weapon class in `config/evolution/`:
+- `blades.json` — shiv → dagger → short sword → longsword (anything with an edge)
+- `bludgeons.json` — pipe → club → mace → warhammer (planned)
+- `ranged.json` — slingshot → crossbow → gun (planned)
+
+Files are named by weapon class, not by the root weapon. ConfigLoader scans the directory —
+adding a new tree = adding a new JSON file.
+
+**Starter weapons:** The root of each tree is a starter weapon — no stat requirements, low
+damage/scaling, common rarity. Designed to flat-evolve into the first real weapon in the tree.
+Every player can pick one up and use it immediately.
+
+**Evolution path types:**
+- **Flat upgrade** — level requirement only (no materials). `"target": "dagger", "min_level": 5`
+- **Branch upgrade** — level + materials. `"target": "short_sword", "min_level": 10, "material": "config/items/materials/bone_shard.json", "material_qty": 3`
+
+**Cross-tree evolution:** Rare special evolutions that cross into a different weapon class
+(e.g. sharpening a pipe into a blade). Signaled by an optional `"target_tree"` field on the
+evolution entry. If absent, target is in the same tree. If present, references a node in
+another tree file. Not yet implemented — will be added when a second tree exists.
+
+**Carry-forward bonus:** When a weapon evolves, a portion of progress carries forward:
+```
+evolution_bonus = old_bonus + old_level * carry_factor
+```
+The bonus accumulates across multiple evolutions, rewarding deep progression.
+
+**Implementation:** `EvolutionRegistry` stores all trees. `weapon_to_node` map provides O(1)
+reverse lookup from any weapon config_path to its family + node. Evolution execution via
+`InventoryOps::evolveWeapon()`.
 
 ### Stat Requirements
 - Must meet stat requirements to equip a base weapon (souls-style)
@@ -510,17 +594,69 @@ Guns and thrown projectiles follow different rules than melee:
 
 ---
 
-## Encumbrance
-Carrying too much slows you down. Equipment weight (weapons + armor) is compared against
-carry capacity (derived from STR + END). Three tiers:
-- **Light** (under ~40% capacity) — full speed, no penalty
-- **Medium** (40–70%) — moderate speed reduction
-- **Heavy** (70–100%) — significant speed reduction
-- **Overencumbered** (over 100%) — unable to run; walk only
+## Encumbrance — IMPLEMENTED
 
-The carry weight formula (`str_scale: 20, end_scale: 10`) already exists in `formulas.json`.
-Encumbrance tiers and exact speed penalties are to be tuned during gameplay balancing.
-_Not yet implemented._
+Equipment load compares total equipped weight against carry capacity. Affects movement speed.
+
+```
+capacity = base_capacity + STR * str_scale + END * end_scale
+equip_load_ratio = total_weight / capacity
+```
+
+| Tier | Ratio | Speed Multiplier | Default |
+|------|-------|-----------------|---------|
+| Light | < 30% | 1.0x | Full speed |
+| Medium | 30–70% | 0.9x | Slight reduction |
+| Heavy | 70–100% | 0.7x | Significant reduction |
+| Overloaded | > 100% | 0.4x | Near-crawl |
+
+All thresholds and speed multipliers configurable in `formulas.json` under `"equip_load"`.
+Weight is summed from ALL 8 equipment slots (weapon, shield, 4 armor pieces, 2 accessories).
+`ArmorStats.load_tier` is recomputed by `EquipmentSystem` every frame equipment changes.
+`MovementSystem` reads `load_tier` and applies the speed multiplier.
+
+---
+
+## Equipment Slots — DECIDED
+
+8 equipment slots, each holding one `ItemInstance`:
+
+| Slot | Category | Effect |
+|------|----------|--------|
+| Main Hand | Weapon | Synced to Weapon component by EquipmentSystem |
+| Off Hand | Shield (armor with max_guard > 0) | Synced to Shield component |
+| Head | Armor (ArmorSlot::Head) | Contributes defense + poise |
+| Chest | Armor (ArmorSlot::Chest) | Contributes defense + poise |
+| Legs | Armor (ArmorSlot::Legs) | Contributes defense + poise |
+| Feet | Armor (ArmorSlot::Feet) | Contributes defense + poise |
+| Accessory 1 | Accessory | Stat bonuses (planned) |
+| Accessory 2 | Accessory | Stat bonuses (planned) |
+
+`EquipmentSystem` detects slot changes each frame and syncs to runtime components
+(Weapon, Shield, ArmorStats). Tab cycling rotates through inventory weapons + fists.
+
+### ArmorStats — DECIDED
+
+Aggregated from all equipped armor pieces by `EquipmentSystem::recomputeArmorStats()`:
+- `total_defense` — flat damage reduction, applied BEFORE percentage-based DEF
+- `total_poise_bonus` — sets Poise.max (determines knockback/stagger resistance)
+- `total_weight` — sum of weight from all 8 equipped slots (not just armor)
+- `equip_load_ratio` — total_weight / carry capacity (see Encumbrance)
+- `load_tier` — 0=light, 1=medium, 2=heavy, 3=overloaded
+
+**Damage pipeline order:**
+1. Stat-requirement penalty on attacker (exp decay)
+2. Flat armor DR: `rawDamage = max(0, rawDamage - ArmorStats.total_defense)`
+3. Percentage DEF: `finalDamage = max(1, rawDamage * (1 - DEF/100))`
+
+### Shield Frontal Arc — DECIDED
+
+Shield blocking only works against attacks from the front. Attacks from behind (>90 degrees
+from facing direction) bypass the shield entirely.
+
+Implementation: dot product of normalized (attacker_pos - defender_pos) vector with defender's
+FacingDirection. `dot > 0` = front (blocked), `dot <= 0` = behind (bypasses shield).
+This applies to both normal blocks and parry windows.
 
 ---
 
@@ -529,7 +665,9 @@ _Not yet implemented._
 ### Functional Armor
 - Dropped by enemies as materials/parts — never as a complete item
 - Crafted or assembled like weapons
-- Base: boosts DEF (derived stat)
+- Base: flat DR (ArmorStats.total_defense) applied before percentage-based DEF
+- Also contributes poise bonus for stagger resistance
+- Weight affects equip load tier and movement speed
 - Rarer pieces add secondary stat bonuses
 - Full souls-style mix-and-match build variety is the long-term goal — start simple
 
@@ -618,6 +756,25 @@ Future: glow intensity, size, and animation will reinforce rarity beyond just co
 Engine tracks the player's most-used weapon and nudges rare drops toward completing
 that weapon's upgrade path. Player feels lucky; the game is being fair. LCK offsets
 the rarity curve further on top of this.
+
+---
+
+## Discovery / Compendium — DECIDED
+
+Tracks every unique item the player has ever picked up or evolved into. Persists across runs
+(meta-progression).
+
+**Behavior:**
+- When an item is picked up for the first time, it's added to the Compendium
+  (`unordered_set<string>` of config_paths).
+- The pickup notification shows "(NEW!)" in a distinct color for newly discovered items.
+- `ItemInstance.newly_discovered` flag is set on the instance for UI badge display.
+- When a weapon is evolved, the new weapon is automatically discovered.
+
+**Future plans:**
+- Compendium UI screen to browse all discovered items
+- Completion percentage tracking
+- Discovery-gated rewards (meta store unlocks, achievements)
 
 ---
 
@@ -766,16 +923,25 @@ and why. Escalation is theatrical and legible, never a hidden meter that punishe
 
 ---
 
-## Rest Spots
+## Rest Spots & Sanctuary — DECIDED
 
 Service hubs scattered procedurally throughout the map. Found by exploring — not guaranteed nearby.
 **Not respawn points.** Death ends the run regardless.
 
-What a rest spot offers (expandable):
-- **Heal** — restore HP
-- **Weapon upgrades** — using materials collected during the run
-- **Items** — buy consumables (TBD)
-- Anything else we want to add later
+**Behavior:**
+- **Auto-heal on proximity** — walking into the rest spot radius automatically restores HP
+  and stamina. No menu interaction needed. Cooldown prevents exploitation.
+- **Sanctuary menu auto-opens** — when the player enters the radius, the Sanctuary screen
+  opens automatically. Closes when the player leaves.
+
+**Sanctuary menu options:**
+- **Evolve Weapon** — if the equipped weapon has available evolution paths (level met +
+  materials in inventory), evolve it. Consumes materials, applies carry-forward bonus.
+- **Craft** — opens the crafting screen to build items from collected materials.
+- **Leave** — close the menu and keep moving.
+
+**Not a menu option:** Healing is automatic, not manual. The player doesn't choose to heal —
+they heal by being near the rest spot.
 
 In-world name TBD — "rest spot" is a placeholder. Could be a campfire, a soul anchor,
 a cursed altar, a fellow damned NPC who patches you up. Alex decides.
@@ -897,6 +1063,12 @@ Hades movement model + Souls lock-on layer. Subject to tuning based on feel.
 - **Mouse** — character always faces toward cursor when unlocked. Independent of movement direction.
   Twin-stick feel: WASD moves, mouse aims.
 
+### Backpedal
+When the player moves in the opposite direction of their aim (dot product < 0), they
+backpedal at reduced speed (`backpedal_multiplier`, default 0.5x). Both body parts face the
+aim direction, and the walk animation plays in reverse. Sprinting is disabled while
+backpedaling. Foundation for Souls-style retreating combat.
+
 ### Input Modes
 Three modes, contextually switched:
 
@@ -945,18 +1117,111 @@ iOS target: 6 virtual buttons (attack, dodge, block, skill, lock, item) + joysti
 
 ---
 
+## UI Architecture
+
+### Engine Layer: UIRenderer
+`UIRenderer` (engine) provides batched screen-space drawing primitives: `drawRect`,
+`drawTexturedRect`, `drawText`. All UI is built from these. No draw-line or draw-circle —
+complex shapes use dot grids (see AIDebugOverlay). Font management via `FontManager` with
+`FontHandle` IDs.
+
+### Game State Machine
+Two enums drive screen routing:
+
+- **`GameState::Phase`** — top-level app state: `MainMenu`, `CharCreate`, `LoadGame`,
+  `Playing`, `Victory`, `GameOver`, `RunSummary`, `HighScores`. Determines which full-screen
+  renders.
+- **`UIState::Screen`** — in-game overlay state: `None`, `Menu` (pause), `LevelUp`,
+  `Sanctuary`, `Crafting`. Active only during `Playing` phase.
+- **`UIState::Tab`** — pause menu tab: `Status`, `Inventory`, `Equipment`.
+
+`GameLoop` dispatches rendering based on these states. Screens are static namespaces with
+`init()` and `render()` functions — no inheritance, no virtual dispatch.
+
+### Screen Inventory
+
+**Full-screen menus** (own `GameState::Phase`):
+- `MainMenuScreen` — title, New Game / Load / High Scores / Quit
+- `CharCreateScreen` — name entry, start/back
+- `LoadGameScreen` — save slot list with delete confirmation
+- `HighScoresScreen` — score table
+- `RunSummaryScreen` — post-run stats breakdown
+- `GameOverScreen` — death screen
+- `VictoryScreen` — escape success screen
+
+**In-game overlays** (active during `Playing`):
+- `PauseMenu` — tabbed: Status (stats + equipped gear), Inventory (grid), Equipment (slots).
+  Resume / Escape Run / Quit buttons.
+- `LevelUpScreen` — stat picker popup (STR/DEX/END/LCK)
+- `CraftingScreen` — recipe list with material requirements
+- `SanctuaryScreen` — rest spot menu (Evolve / Craft / Leave) using `MenuDialog`
+- `InventoryScreen` — inventory grid (used as a sub-view within PauseMenu)
+
+**Reusable dialog templates:**
+- `ConfirmDialog` — centered Yes/No popup. Auto-sizes to content. Keyboard + mouse input.
+- `MenuDialog` — centered option list with labels + descriptions. Auto-sizes. Used by
+  SanctuaryScreen.
+
+Both measure text content first, then compute panel dimensions — never hardcode panel sizes.
+
+### Persistent HUD
+`HudRenderer` draws HP bar, stamina bar, XP bar, money, wave info, weapon name, and a
+clickable Menu button. Rendered every frame during `Playing` phase.
+
+### Other Renderers
+- `InteractionPromptRenderer` — "Press F" prompts near interactable entities
+- `ItemStatRenderer` — weapon/armor stat comparison tooltip. Owns `rarityColor()` for
+  consistent rarity coloring across all UI.
+- `DebugOverlay` (F3) — FPS, entity count, player coords, wave state
+- `AIDebugOverlay` (F4) — enemy AI state visualization (dot-based)
+- `AIRecorder` (F5) — CSV state dump of last 5s of AI data
+
+### Shared UI Utilities
+
+**`screens/ScreenColors.h`** — shared color palette used by all screens:
+- `TEXT_WHITE`, `TEXT_DIM` — standard text colors
+- `OVERLAY` (alpha 0.75) — in-game popup background
+- `OVERLAY_OPAQUE` (alpha 0.92) — full-screen menu background
+- `PANEL_BG` — default panel background
+- `BTN_NORMAL`, `BTN_HOVER`, `BTN_BG`, `BTN_BG_HL` — standard button colors
+
+Screens import via `using namespace screen_colors;`. Per-screen overrides (e.g.
+ConfirmDialog's red title, per-screen panel backgrounds) stay as local `constexpr` with
+unique names.
+
+**`screens/ScreenInput.h`** — shared input helpers:
+- `keyPressed(em, scancode)` — SDL scancode check against frame's key-down events
+- `mouseClicked(em, button)` — mouse button check (SDL_BUTTON_LEFT, SDL_BUTTON_RIGHT)
+- `hoveredRow(mx, my, cx, cy, cw, row_h, count)` — row hit-testing for list UIs
+
+### Notification System
+`NotificationSystem` manages timed popup messages (item pickups, level-ups, discoveries).
+Messages queue and display at screen top with fade-out. "(NEW!)" badge for first-time item
+discoveries.
+
+---
+
 ## Config Directory Structure
 
 ```
 config/
-  animations/ — sprite sheet layout definitions (sidecar JSONs)
-  audio/      — sound effect mappings (sounds.json)
-  entities/   — defines what things ARE (player, enemies, weapons, armor)
-  spawns/     — defines enemy wave composition and spawn rules
-  balance/    — defines how the game BEHAVES (formulas, leveling, tuning)
-  rooms/      — ASCII room templates for procedural generation
-  waves.json  — auto-wave generation rules and enemy pool
-  tilemap.json — tile definitions and generation parameters
+  animations/     — sprite sheet layout definitions (sidecar JSONs)
+  audio/          — sound effect and music mappings
+  balance/        — formulas, scoring, weapon tiers (how the game BEHAVES)
+  entities/       — defines what things ARE (player, enemies)
+  evolution/      — weapon evolution trees (one file per weapon class: blades.json, etc.)
+  items/          — item definitions, organized by category:
+    weapons/      — weapon JSONs (shiv.json, dagger.json, longsword.json, ...)
+    armor/        — armor JSONs (bone_helm.json, bone_cuirass.json, ...)
+    shields/      — shield JSONs (bone_shield.json, ...)
+    accessories/  — accessory JSONs (bone_ring.json, ...)
+    materials/    — crafting material JSONs (bone_shard.json, ...)
+    money/        — money denomination JSONs ($1.json, $5.json, ...)
+  recipes/        — crafting recipe JSONs (one per recipe)
+  rooms/          — ASCII room templates for procedural generation
+  spawns/         — enemy wave composition and spawn rules
+  waves.json      — auto-wave generation rules and enemy pool
+  tilemap.json    — tile definitions and generation parameters
 ```
 
 **Mod override strategy:** deep merge — mod files override only the keys they define;
@@ -989,10 +1254,10 @@ prison-break-game/
 **Engine (8 systems):** RenderSystem, CameraSystem, CollisionSystem, AnimationSystem,
 AudioSystem, TileMapRenderer, FlowFieldSystem, SteeringSystem.
 
-**Game (16 systems):** WaveSystem, CombatSystem, DamageSystem, DeathSystem,
+**Game (18 systems):** WaveSystem, CombatSystem, DamageSystem, DeathSystem,
 LevelingSystem, PickupSystem, RestSpotSystem, ParticleSystem, AggroSystem, ChaseSystem,
 MovementSystem, SpawnerSystem, TintSystem, InputMappingSystem, AnimStateSystem,
-EquipmentSystem.
+EquipmentSystem, WeaponXPSystem, NotificationSystem, CraftingSystem.
 
 **Boundary rule:** "Could this system work unchanged in a completely different 2D game?"
 Yes = engine. No = game. The engine knows nothing about the game — it provides a

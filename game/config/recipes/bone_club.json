@@ -1,5 +1,5 @@
 {
-    "name": "Bone Club",
+    "name": "Club",
     "inputs": [
         { "item": "config/items/materials/bone_shard.json", "quantity": 5 }
     ],

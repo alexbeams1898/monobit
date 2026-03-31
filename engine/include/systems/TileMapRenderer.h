@@ -19,6 +19,7 @@ class TileMapRenderer
   public:
     static void init();
     static void upload(const TileMap& map, const TileConfig& config, TextureManager& tm);
+    static void clear(); // zero vertex count so nothing renders
     static void render(float camX, float camY, int windowW, int windowH);
     static void shutdown();
 };

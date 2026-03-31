@@ -9,9 +9,40 @@
 #include <functional>
 #include <iostream>
 #include <nlohmann/json.hpp>
+#include <random>
 #include <unordered_map>
 
 using json = nlohmann::json;
+
+// Cache parsed JSON files in memory. First read hits disk; subsequent reads
+// serve from cache. Eliminates per-spawn disk I/O (skeleton.json + animation
+// sheet = 2 reads per enemy spawn without cache).
+static std::unordered_map<std::string, json> sJsonCache;
+
+static const json* cachedReadJson(const std::string& path)
+{
+    auto it = sJsonCache.find(path);
+    if (it != sJsonCache.end())
+        return &it->second;
+
+    std::ifstream file(path);
+    if (!file.is_open())
+    {
+        std::cerr << "[ConfigLoader] Cannot open: " << path << "\n";
+        return nullptr;
+    }
+
+    try
+    {
+        auto [inserted, _] = sJsonCache.emplace(path, json::parse(file));
+        return &inserted->second;
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "[ConfigLoader] Error parsing " << path << ": " << e.what() << "\n";
+        return nullptr;
+    }
+}
 
 using LoaderFn = std::function<void(EntityManager&, entt::entity, const json&)>;
 
@@ -142,6 +173,14 @@ static void loadRestSpot(EntityManager& em, entt::entity entity, const json& j)
     em.registry().emplace<RestSpot>(entity, r);
 }
 
+static void loadLadder(EntityManager& em, entt::entity entity, const json& j)
+{
+    Ladder l;
+    l.radius = j.value("radius", 48.0f);
+    l.spawn_duration = j.value("spawn_duration", 0.5f);
+    em.registry().emplace<Ladder>(entity, l);
+}
+
 static void loadPoise(EntityManager& em, entt::entity entity, const json& j)
 {
     Poise p;
@@ -174,24 +213,11 @@ static bool emplaceAnimationFromSheet(EntityManager& em, entt::entity entity,
     if (sheetPath.empty())
         return false;
 
-    std::ifstream sheetFile(sheetPath);
-    if (!sheetFile.is_open())
-    {
-        std::cerr << "[ConfigLoader] Cannot open animation sheet: " << sheetPath << "\n";
+    const json* cached = cachedReadJson(sheetPath);
+    if (cached == nullptr)
         return false;
-    }
 
-    json sheetData;
-    try
-    {
-        sheetFile >> sheetData;
-    }
-    catch (const std::exception& e)
-    {
-        std::cerr << "[ConfigLoader] Error parsing animation sheet " << sheetPath << ": "
-                  << e.what() << "\n";
-        return false;
-    }
+    const json& sheetData = *cached;
 
     Animation anim;
     anim.frame_width = sheetData.value("frame_width", 32);
@@ -323,13 +349,17 @@ static void loadAIController(EntityManager& em, entt::entity entity, const json&
 {
     AIController ai;
     ai.aggro_radius = j.value("aggro_radius", 0.0f);
+    ai.deaggro_radius = j.value("deaggro_radius", 0.0f);
     ai.turn_speed = j.value("turn_speed", 8.0f);
     ai.separation_strength = j.value("separation_strength", 1.0f);
     ai.arrival_radius = j.value("arrival_radius", 0.0f);
     ai.attack_radius = j.value("attack_radius", 0.0f);
+    ai.speed_multiplier = j.value("speed_multiplier", 1.0f);
     ai.tier = j.value("tier", 1);
     ai.sprint_multiplier = j.value("sprint_multiplier", 0.0f);
     ai.sprint_threshold = j.value("sprint_threshold", 0.0f);
+    ai.orbit_speed = j.value("orbit_speed", 0.5f);
+    ai.attack_cooldown = j.value("attack_cooldown", 0.0f);
 
     const std::string behavior = j.value("behavior", std::string{"idle"});
     if (behavior == "chase")
@@ -345,6 +375,46 @@ static void loadAIController(EntityManager& em, entt::entity entity, const json&
     NavAgent nav;
     nav.separation_strength = ai.separation_strength;
     em.registry().emplace<NavAgent>(entity, nav);
+}
+
+static void loadHitSound(EntityManager& em, entt::entity entity, const json& j)
+{
+    HitSound hs;
+    hs.path = j.value("path", std::string{});
+    hs.volume = j.value("volume", 0.5f);
+    hs.min_pitch = j.value("min_pitch", 0.9f);
+    hs.max_pitch = j.value("max_pitch", 1.1f);
+    em.registry().emplace<HitSound>(entity, std::move(hs));
+}
+
+static void loadAmbientSound(EntityManager& em, entt::entity entity, const json& j)
+{
+    AmbientSound amb;
+    if (j.contains("paths") && j["paths"].is_array())
+    {
+        for (const auto& p : j["paths"])
+            amb.paths.push_back(p.get<std::string>());
+    }
+    amb.volume = j.value("volume", 0.3f);
+    amb.min_interval = j.value("min_interval", 3.0f);
+    amb.max_interval = j.value("max_interval", 8.0f);
+    amb.max_distance = j.value("max_distance", 400.0f);
+    amb.min_pitch = j.value("min_pitch", 0.7f);
+    amb.max_pitch = j.value("max_pitch", 0.9f);
+
+    // Build initial shuffle order.
+    static std::mt19937 sRng{std::random_device{}()};
+    amb.shuffle_order.resize(amb.paths.size());
+    for (int i = 0; i < static_cast<int>(amb.paths.size()); ++i)
+        amb.shuffle_order[static_cast<size_t>(i)] = i;
+    std::shuffle(amb.shuffle_order.begin(), amb.shuffle_order.end(), sRng);
+
+    // Short initial timer so the first sound comes quickly after spawn.
+    // Range [0, min_interval] still staggers multiple spawns.
+    std::uniform_real_distribution<float> dist(0.0f, amb.min_interval);
+    amb.timer = dist(sRng);
+
+    em.registry().emplace<AmbientSound>(entity, std::move(amb));
 }
 
 // clang-format off
@@ -366,33 +436,24 @@ static const std::unordered_map<std::string, LoaderFn> kComponentLoaders = {
     {"animation",        loadAnimation},
     {"ai_controller",    loadAIController},
     {"rest_spot",        loadRestSpot},
+    {"ladder",           loadLadder},
     {"solid_color",      loadSolidColor},
     {"body_parts",       loadBodyParts},
     {"inventory",        loadInventory},
     {"equipment",        loadEquipment},
     {"body",             loadBody},
+    {"hit_sound",        loadHitSound},
+    {"ambient_sound",    loadAmbientSound},
 };
 // clang-format on
 
 entt::entity ConfigLoader::loadEntity(EntityManager& em, const std::string& filePath)
 {
-    std::ifstream file(filePath);
-    if (!file.is_open())
-    {
-        std::cerr << "[ConfigLoader] Cannot open: " << filePath << "\n";
+    const json* cached = cachedReadJson(filePath);
+    if (cached == nullptr)
         return entt::null;
-    }
 
-    json data;
-    try
-    {
-        file >> data;
-    }
-    catch (const std::exception& e)
-    {
-        std::cerr << "[ConfigLoader] Error parsing " << filePath << ": " << e.what() << "\n";
-        return entt::null;
-    }
+    const json& data = *cached;
 
     auto entity = em.create();
 
@@ -454,6 +515,12 @@ bool ConfigLoader::loadFormulas(EntityManager& em, const std::string& filePath)
             j["movement"].value("sprint_multiplier", f.movement.sprint_multiplier);
         f.movement.sprint_blend = j["movement"].value("sprint_blend", f.movement.sprint_blend);
         f.movement.walk_blend = j["movement"].value("walk_blend", f.movement.walk_blend);
+        f.movement.backpedal_multiplier =
+            j["movement"].value("backpedal_multiplier", f.movement.backpedal_multiplier);
+        f.movement.sprint_anim_speed =
+            j["movement"].value("sprint_anim_speed", f.movement.sprint_anim_speed);
+        f.movement.backpedal_anim_speed =
+            j["movement"].value("backpedal_anim_speed", f.movement.backpedal_anim_speed);
     }
     if (j.contains("carry_weight"))
     {
@@ -566,6 +633,96 @@ bool ConfigLoader::loadFormulas(EntityManager& em, const std::string& filePath)
         f.fist.dex_scaling = j["fist"].value("dex_scaling", f.fist.dex_scaling);
     }
 
+    if (j.contains("weapon_xp"))
+    {
+        const auto& wx = j["weapon_xp"];
+        f.weapon_xp.kill_multiplier = wx.value("kill_multiplier", f.weapon_xp.kill_multiplier);
+        f.weapon_xp.hit_multiplier = wx.value("hit_multiplier", f.weapon_xp.hit_multiplier);
+        f.weapon_xp.crit_multiplier = wx.value("crit_multiplier", f.weapon_xp.crit_multiplier);
+        f.weapon_xp.base_xp = wx.value("base_xp", f.weapon_xp.base_xp);
+        f.weapon_xp.exponent = wx.value("exponent", f.weapon_xp.exponent);
+        f.weapon_xp.growth_bonus_per_quality =
+            wx.value("growth_bonus_per_quality", f.weapon_xp.growth_bonus_per_quality);
+        f.weapon_xp.decay_rate = wx.value("decay_rate", f.weapon_xp.decay_rate);
+        f.weapon_xp.carry_factor = wx.value("carry_factor", f.weapon_xp.carry_factor);
+        f.weapon_xp.power_level_weight =
+            wx.value("power_level_weight", f.weapon_xp.power_level_weight);
+        f.weapon_xp.power_hp_weight = wx.value("power_hp_weight", f.weapon_xp.power_hp_weight);
+        f.weapon_xp.power_dmg_weight = wx.value("power_dmg_weight", f.weapon_xp.power_dmg_weight);
+        f.weapon_xp.power_stat_weight =
+            wx.value("power_stat_weight", f.weapon_xp.power_stat_weight);
+        f.weapon_xp.power_base = wx.value("power_base", f.weapon_xp.power_base);
+        f.weapon_xp.power_dmg_factor = wx.value("power_dmg_factor", f.weapon_xp.power_dmg_factor);
+        f.weapon_xp.power_rarity_factor =
+            wx.value("power_rarity_factor", f.weapon_xp.power_rarity_factor);
+    }
+
+    if (j.contains("equip_load"))
+    {
+        const auto& el = j["equip_load"];
+        f.equip_load.base_capacity = el.value("base_capacity", f.equip_load.base_capacity);
+        f.equip_load.str_scale = el.value("str_scale", f.equip_load.str_scale);
+        f.equip_load.end_scale = el.value("end_scale", f.equip_load.end_scale);
+        f.equip_load.light_threshold = el.value("light_threshold", f.equip_load.light_threshold);
+        f.equip_load.medium_threshold = el.value("medium_threshold", f.equip_load.medium_threshold);
+        f.equip_load.heavy_threshold = el.value("heavy_threshold", f.equip_load.heavy_threshold);
+        f.equip_load.light_speed = el.value("light_speed", f.equip_load.light_speed);
+        f.equip_load.medium_speed = el.value("medium_speed", f.equip_load.medium_speed);
+        f.equip_load.heavy_speed = el.value("heavy_speed", f.equip_load.heavy_speed);
+        f.equip_load.overloaded_speed = el.value("overloaded_speed", f.equip_load.overloaded_speed);
+    }
+
+    if (j.contains("combat_ai"))
+    {
+        const auto& ca = j["combat_ai"];
+        f.combat_ai.max_attack_tokens =
+            ca.value("max_attack_tokens", f.combat_ai.max_attack_tokens);
+        f.combat_ai.wait_radius_mult = ca.value("wait_radius_mult", f.combat_ai.wait_radius_mult);
+        f.combat_ai.waiter_speed_scale =
+            ca.value("waiter_speed_scale", f.combat_ai.waiter_speed_scale);
+        f.combat_ai.kite_speed_threshold =
+            ca.value("kite_speed_threshold", f.combat_ai.kite_speed_threshold);
+        f.combat_ai.chase_spread = ca.value("chase_spread", f.combat_ai.chase_spread);
+        f.combat_ai.slot_rotation_speed =
+            ca.value("slot_rotation_speed", f.combat_ai.slot_rotation_speed);
+        f.combat_ai.min_slot_gap = ca.value("min_slot_gap", f.combat_ai.min_slot_gap);
+        f.combat_ai.attack_arrival_dist =
+            ca.value("attack_arrival_dist", f.combat_ai.attack_arrival_dist);
+        f.combat_ai.slot_arrive_dist = ca.value("slot_arrive_dist", f.combat_ai.slot_arrive_dist);
+        f.combat_ai.engagement_radius =
+            ca.value("engagement_radius", f.combat_ai.engagement_radius);
+        f.combat_ai.enemy_reach = ca.value("enemy_reach", f.combat_ai.enemy_reach);
+    }
+
+    if (j.contains("combat"))
+    {
+        const auto& cb = j["combat"];
+        f.combat.attack_lock_fraction =
+            cb.value("attack_lock_fraction", f.combat.attack_lock_fraction);
+        f.combat.normal_reach = cb.value("normal_reach", f.combat.normal_reach);
+        f.combat.skill_reach = cb.value("skill_reach", f.combat.skill_reach);
+        f.combat.normal_hitbox_size = cb.value("normal_hitbox_size", f.combat.normal_hitbox_size);
+        f.combat.skill_hitbox_size = cb.value("skill_hitbox_size", f.combat.skill_hitbox_size);
+        f.combat.skill_damage_mult = cb.value("skill_damage_mult", f.combat.skill_damage_mult);
+        f.combat.skill_cooldown = cb.value("skill_cooldown", f.combat.skill_cooldown);
+        f.combat.skill_lock_duration =
+            cb.value("skill_lock_duration", f.combat.skill_lock_duration);
+        f.combat.dodge_speed = cb.value("dodge_speed", f.combat.dodge_speed);
+        f.combat.parry_window = cb.value("parry_window", f.combat.parry_window);
+    }
+
+    if (j.contains("steering"))
+    {
+        const auto& st = j["steering"];
+        em.steering_config.repulsion_radius =
+            st.value("repulsion_radius", em.steering_config.repulsion_radius);
+        em.steering_config.repulsion_strength =
+            st.value("repulsion_strength", em.steering_config.repulsion_strength);
+        em.steering_config.blend_rate = st.value("blend_rate", em.steering_config.blend_rate);
+        em.steering_config.skip_dot_threshold =
+            st.value("skip_dot_threshold", em.steering_config.skip_dot_threshold);
+    }
+
     f.loaded = true;
     std::cout << "[ConfigLoader] Loaded formulas from " << filePath << "\n";
     return true;
@@ -608,6 +765,11 @@ bool ConfigLoader::loadSounds(EntityManager& em, const std::string& filePath)
     load("player_skill", s.player_skill);
     load("player_dodge", s.player_dodge);
     load("hit", s.hit);
+    if (j.contains("hit") && j["hit"].contains("variations"))
+    {
+        for (const auto& v : j["hit"]["variations"])
+            s.hit_paths.push_back(v.get<std::string>());
+    }
     load("parry", s.parry);
     load("death", s.death);
     load("pickup", s.pickup);
@@ -617,10 +779,18 @@ bool ConfigLoader::loadSounds(EntityManager& em, const std::string& filePath)
     load("footstep_walk", s.footstep_walk);
     load("footstep_run", s.footstep_run);
     load("rest_heal", s.rest_heal);
+    if (j.contains("rest_heal") && j["rest_heal"].contains("variations"))
+    {
+        for (const auto& v : j["rest_heal"]["variations"])
+            s.rest_heal_paths.push_back(v.get<std::string>());
+    }
     load("game_over", s.game_over);
     load("low_stamina_heartbeat", s.low_stamina_heartbeat);
     load("ui_click", s.ui_click);
     load("wave_clear", s.wave_clear);
+    load("escape_run", s.escape_run);
+    load("heal_blocked", s.heal_blocked);
+    load("ladder_appear", s.ladder_appear);
 
     s.loaded = true;
     std::cout << "[ConfigLoader] Loaded sounds from " << filePath << "\n";
@@ -662,17 +832,18 @@ bool ConfigLoader::loadMusic(EntityManager& em, const std::string& filePath)
         }
     }
 
+    mc.main_menu_rare_chance = j.value("main_menu_rare_chance", 0.0f);
+
     // Auto-parse named tracks: any top-level key that is an object with a
-    // "path" field (skip "tracks" array and "default_volume" scalar).
+    // "path" field (skip "tracks" array and scalar values).
     for (auto& [key, val] : j.items())
     {
-        if (key == "tracks" || key == "default_volume")
-            continue;
-        if (!val.is_object())
+        if (key == "tracks" || !val.is_object())
             continue;
         MusicConfig::Track track;
         track.path = val.value("path", "");
         track.volume = val.value("volume", mc.default_volume);
+        track.fade_in_ms = val.value("fade_in_ms", 0);
         if (!track.path.empty())
             mc.named[key] = std::move(track);
     }
@@ -738,7 +909,7 @@ bool ConfigLoader::loadWaves(EntityManager& em, const std::string& filePath)
     {
         for (const auto& [key, val] : j["overrides"].items())
         {
-            int waveNum = std::stoi(key);
+            const int waveNum = std::stoi(key);
             WaveOverride ov;
             ov.spawn_interval = val.value("spawn_interval", 0.5f);
             ov.burst_size = val.value("burst_size", 1);
@@ -779,6 +950,8 @@ static ItemCategory parseCategory(const std::string& s)
         return ItemCategory::KeyItem;
     if (s == "money")
         return ItemCategory::Money;
+    if (s == "accessory")
+        return ItemCategory::Accessory;
     return ItemCategory::Material;
 }
 
@@ -838,12 +1011,13 @@ bool ConfigLoader::loadItemDefs(EntityManager& em, const std::string& dirPath)
         }
 
         // Normalize path to use forward slashes and be relative to the exe.
-        std::string configPath = entry.path().generic_string();
+        const std::string configPath = entry.path().generic_string();
 
         ItemDef def;
         def.config_path = configPath;
         def.name = j.value("name", std::string{});
         def.description = j.value("description", std::string{});
+        def.icon_path = j.value("icon", std::string{});
         def.category = parseCategory(j.value("category", std::string{"material"}));
         def.rarity = parseRarity(j.value("rarity", std::string{"common"}));
 
@@ -854,11 +1028,20 @@ bool ConfigLoader::loadItemDefs(EntityManager& em, const std::string& dirPath)
         def.str_requirement = j.value("str_requirement", 0);
         def.dex_requirement = j.value("dex_requirement", 0);
         def.two_handed = j.value("two_handed", false);
+        def.weapon_tier = j.value("weapon_tier", std::string{});
+        def.damage_per_level = j.value("damage_per_level", -1.0f);
+        def.scaling_per_level = j.value("scaling_per_level", -1.0f);
 
         def.armor_slot = parseArmorSlot(j.value("armor_slot", std::string{"chest"}));
         def.defense_bonus = j.value("defense_bonus", 0.0f);
         def.poise_bonus = j.value("poise_bonus", 0.0f);
         def.max_guard = j.value("max_guard", 0.0f);
+        def.parry_window = j.value("parry_window", 0.15f);
+
+        def.str_bonus = j.value("str_bonus", 0);
+        def.dex_bonus = j.value("dex_bonus", 0);
+        def.end_bonus = j.value("end_bonus", 0);
+        def.lck_bonus = j.value("lck_bonus", 0);
 
         def.max_durability = j.value("max_durability", 100.0f);
         def.stackable = j.value("stackable", false);
@@ -965,12 +1148,131 @@ bool ConfigLoader::loadScoring(EntityManager& em, const std::string& filePath)
     ScoringConfig& sc = em.registry().ctx().get<ScoringConfig>();
     sc.kill_weight = j.value("kill_weight", sc.kill_weight);
     sc.wave_weight = j.value("wave_weight", sc.wave_weight);
-    sc.time_bonus_weight = j.value("time_bonus_weight", sc.time_bonus_weight);
+    sc.time_penalty_weight = j.value("time_penalty_weight", sc.time_penalty_weight);
     sc.xp_weight = j.value("xp_weight", sc.xp_weight);
     sc.money_weight = j.value("money_weight", sc.money_weight);
-    sc.escape_bonus = j.value("escape_bonus", sc.escape_bonus);
+    sc.escape_multiplier = j.value("escape_multiplier", sc.escape_multiplier);
     sc.loaded = true;
 
     std::cout << "[ConfigLoader] Loaded scoring config from " << filePath << "\n";
     return true;
+}
+
+bool ConfigLoader::loadWeaponTiers(EntityManager& em, const std::string& filePath)
+{
+    std::ifstream file(filePath);
+    if (!file.is_open())
+    {
+        std::cout << "[ConfigLoader] No weapon tiers file: " << filePath << " -- using defaults\n";
+        return false;
+    }
+
+    json j;
+    try
+    {
+        file >> j;
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "[ConfigLoader] Error parsing " << filePath << ": " << e.what() << "\n";
+        return false;
+    }
+
+    auto& registry = em.registry().ctx().get<WeaponTierRegistry>();
+    int count = 0;
+    for (auto it = j.begin(); it != j.end(); ++it)
+    {
+        WeaponTierDef td;
+        td.damage_per_level = it.value().value("damage_per_level", 1.0f);
+        td.scaling_per_level = it.value().value("scaling_per_level", 0.02f);
+        td.xp_rate = it.value().value("xp_rate", 1.0f);
+        registry.tiers[it.key()] = td;
+        ++count;
+    }
+
+    registry.loaded = (count > 0);
+    std::cout << "[ConfigLoader] Loaded " << count << " weapon tiers from " << filePath << "\n";
+    return count > 0;
+}
+
+static EvolutionNode parseEvolutionNode(const json& nodeJson)
+{
+    EvolutionNode node;
+    node.weapon_config_path = nodeJson.value("weapon", std::string{});
+
+    if (nodeJson.contains("evolutions") && nodeJson["evolutions"].is_array())
+    {
+        for (const auto& ej : nodeJson["evolutions"])
+        {
+            EvolutionPath path;
+            path.target_node = ej.value("target", std::string{});
+            path.min_level = ej.value("min_level", 1);
+            path.material_config_path = ej.value("material", std::string{});
+            path.material_qty = ej.value("material_qty", 1);
+            node.evolutions.push_back(std::move(path));
+        }
+    }
+
+    return node;
+}
+
+bool ConfigLoader::loadEvolutionTrees(EntityManager& em, const std::string& dirPath)
+{
+    namespace fs = std::filesystem;
+
+    auto& registry = em.registry().ctx().get<EvolutionRegistry>();
+    int count = 0;
+
+    std::error_code ec;
+    for (const auto& entry : fs::directory_iterator(dirPath, ec))
+    {
+        if (!entry.is_regular_file() || entry.path().extension() != ".json")
+            continue;
+
+        std::ifstream file(entry.path());
+        if (!file.is_open())
+            continue;
+
+        json j;
+        try
+        {
+            file >> j;
+        }
+        catch (const std::exception& e)
+        {
+            std::cerr << "[ConfigLoader] Error parsing evolution tree " << entry.path() << ": "
+                      << e.what() << "\n";
+            continue;
+        }
+
+        EvolutionFamily family;
+        family.name = j.value("family", std::string{});
+
+        if (j.contains("nodes") && j["nodes"].is_object())
+        {
+            for (auto it = j["nodes"].begin(); it != j["nodes"].end(); ++it)
+                family.nodes[it.key()] = parseEvolutionNode(it.value());
+        }
+
+        const int familyIdx = static_cast<int>(registry.families.size());
+        for (const auto& [nodeId, node] : family.nodes)
+        {
+            if (!node.weapon_config_path.empty())
+                registry.weapon_to_node[node.weapon_config_path] = {familyIdx, nodeId};
+        }
+
+        registry.families.push_back(std::move(family));
+        ++count;
+    }
+
+    if (ec)
+    {
+        std::cout << "[ConfigLoader] Evolution dir not found: " << dirPath << " -- skipping\n";
+    }
+
+    registry.loaded = (count > 0);
+    if (count > 0)
+        std::cout << "[ConfigLoader] Loaded " << count << " evolution trees from " << dirPath
+                  << "\n";
+    return count > 0;
 }

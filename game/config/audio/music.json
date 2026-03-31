@@ -1,5 +1,5 @@
 {
-    "default_volume": 0.3,
+    "default_volume": 0.25,
     "tracks": [
         { "path": "assets/music/from_the_dark_past.ogg" },
         { "path": "assets/music/gateways.ogg" },
@@ -21,5 +21,7 @@
     "game_over": { "path": "assets/music/game_over.ogg", "volume": 1.0 },
     "game_over_ambient": { "path": "assets/music/game_over_ambient.ogg", "volume": 0.7 },
     "scream": { "path": "assets/music/scream.ogg", "volume": 0.6 },
-    "main_menu": { "path": "assets/music/main_menu.ogg", "volume": 0.7 }
+    "main_menu": { "path": "assets/music/main_menu_processed.ogg", "volume": 0.7, "fade_in_ms": 3000 },
+    "main_menu_rare": { "path": "assets/music/main_menu_reversed.ogg", "volume": 0.7, "fade_in_ms": 3000 },
+    "main_menu_rare_chance": 0.1
 }

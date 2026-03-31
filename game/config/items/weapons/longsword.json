@@ -1,0 +1,17 @@
+{
+    "name": "Longsword",
+    "description": "A heavy blade that demands strength to wield effectively.",
+    "icon": "assets/sprites/icons/longsword.png",
+    "category": "weapon",
+    "rarity": "rare",
+    "base_damage": 28.0,
+    "weight": 2.5,
+    "str_scaling": 1.0,
+    "dex_scaling": 0.6,
+    "str_requirement": 10,
+    "dex_requirement": 5,
+    "two_handed": false,
+    "weapon_tier": "greatsword",
+    "max_durability": 120.0,
+    "stackable": false
+}

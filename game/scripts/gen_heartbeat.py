@@ -14,7 +14,7 @@ OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "ass
 
 
 def write_wav(filepath, samples):
-    """Write 16-bit mono PCM .wav file."""
+    """Write 16-bit mono PCM .ogg file."""
     num = len(samples)
     data_size = num * 2
     with open(filepath, "wb") as f:
@@ -67,7 +67,7 @@ def generate_heartbeat():
 
 if __name__ == "__main__":
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-    out_path = os.path.join(OUTPUT_DIR, "heartbeat.wav")
+    out_path = os.path.join(OUTPUT_DIR, "heartbeat.ogg")
     samples = generate_heartbeat()
     write_wav(out_path, samples)
     duration_ms = len(samples) / SAMPLE_RATE * 1000

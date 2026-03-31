@@ -111,8 +111,8 @@ void UIRenderer::init(int window_w, int window_h)
     sWindowW = window_w;
     sWindowH = window_h;
 
-    GLuint vert = engine::gl::compileShader(GL_VERTEX_SHADER, kVertSrc);
-    GLuint frag = engine::gl::compileShader(GL_FRAGMENT_SHADER, kFragSrc);
+    const GLuint vert = engine::gl::compileShader(GL_VERTEX_SHADER, kVertSrc);
+    const GLuint frag = engine::gl::compileShader(GL_FRAGMENT_SHADER, kFragSrc);
 
     sProgram = glCreateProgram();
     glAttachShader(sProgram, vert);
@@ -210,29 +210,20 @@ void UIRenderer::beginFrame()
     sCurrentIsFont = false;
 }
 
-void UIRenderer::endFrame()
+static void submitBatches()
 {
-    ZoneScopedN("UIRenderer");
-
     if (sVertexData.empty())
         return;
 
-    // Upload vertex data.
     glBindBuffer(GL_ARRAY_BUFFER, sVBO);
     const auto dataSize = static_cast<GLsizeiptr>(sVertexData.size() * sizeof(float));
     const auto bufSize =
         static_cast<GLsizeiptr>(static_cast<size_t>(MAX_QUADS) * FLOATS_PER_QUAD * sizeof(float));
     if (dataSize > bufSize)
-    {
-        // Grow VBO if batch exceeds pre-allocated size.
         glBufferData(GL_ARRAY_BUFFER, dataSize, sVertexData.data(), GL_DYNAMIC_DRAW);
-    }
     else
-    {
         glBufferSubData(GL_ARRAY_BUFFER, 0, dataSize, sVertexData.data());
-    }
 
-    // Set up projection and state.
     float proj[16];
     engine::gl::buildOrtho(proj, 0.0f, static_cast<float>(sWindowW), static_cast<float>(sWindowH),
                            0.0f);
@@ -247,7 +238,6 @@ void UIRenderer::endFrame()
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glDisable(GL_DEPTH_TEST);
 
-    // Flush batches.
     int offset = 0;
     for (const auto& batch : sBatches)
     {
@@ -260,6 +250,21 @@ void UIRenderer::endFrame()
 
     glBindVertexArray(0);
     glUseProgram(0);
+}
+
+void UIRenderer::flush()
+{
+    submitBatches();
+    sVertexData.clear();
+    sBatches.clear();
+    sCurrentTex = 0;
+    sCurrentIsFont = false;
+}
+
+void UIRenderer::endFrame()
+{
+    ZoneScopedN("UIRenderer");
+    submitBatches();
 }
 
 void UIRenderer::drawRect(float x, float y, float w, float h, const Color& color)
@@ -291,7 +296,7 @@ float UIRenderer::drawText(FontHandle font, const std::string& text, float x, fl
     const float baseline = y + FontManager::ascent(font);
 
     float cursor_x = x;
-    for (char ch : text)
+    for (const char ch : text)
     {
         const GlyphInfo* g = FontManager::glyph(font, ch);
         if (!g)
@@ -312,8 +317,8 @@ float UIRenderer::drawText(FontHandle font, const std::string& text, float x, fl
 TextSize UIRenderer::measureText(FontHandle font, const std::string& text)
 {
     float w = 0.0f;
-    float h = FontManager::lineHeight(font);
-    for (char ch : text)
+    const float h = FontManager::lineHeight(font);
+    for (const char ch : text)
     {
         const GlyphInfo* g = FontManager::glyph(font, ch);
         if (g)

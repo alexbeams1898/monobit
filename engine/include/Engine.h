@@ -30,6 +30,13 @@ class Engine
     using PerFrameFn = void (*)(Engine&, EntityManager&, double);
     void setPerFrameUpdate(PerFrameFn fn);
 
+    // Debug render callback. Called once per frame after world rendering,
+    // between UIRenderer::beginFrame() and the UI render callback.
+    // DebugDraw::setCamera() is called automatically before this callback.
+    // Game code uses DebugDraw calls here to render world-space debug info.
+    using RenderDebugFn = void (*)(Engine&, EntityManager&);
+    void setRenderDebug(RenderDebugFn fn);
+
     // UI render callback. Called once per frame after world rendering, between
     // UIRenderer::beginFrame() and UIRenderer::endFrame(). Game code uses
     // UIRenderer draw calls here to render HUD, menus, notifications, etc.
@@ -72,6 +79,17 @@ class Engine
         return texture_manager;
     }
 
+    // Push the current back buffer to the display. Used by game code to show
+    // a loading overlay before a heavy synchronous operation (map regen).
+    void swapBuffers();
+
+    // After a heavy synchronous operation (map gen), reset the frame timer
+    // and accumulator so the FPS counter doesn't crater and no catch-up ticks fire.
+    void requestTimingReset()
+    {
+        timing_reset_pending = true;
+    }
+
   private:
     void processEvents();
     void update(double dt);
@@ -90,5 +108,7 @@ class Engine
 
     GameUpdateFn game_update = nullptr;
     PerFrameFn per_frame_update = nullptr;
+    RenderDebugFn render_debug = nullptr;
     RenderUIFn render_ui = nullptr;
+    bool timing_reset_pending = false;
 };

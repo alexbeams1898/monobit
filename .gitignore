@@ -64,5 +64,9 @@ UserSettings/
 # Tracy traces
 traces/
 
+# AI debug dumps
+debug/
+
 # Claude
 .claude/
+PLAN.md

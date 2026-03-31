@@ -1,0 +1,8 @@
+{
+    "name": "Bone Ring",
+    "inputs": [
+        { "item": "config/items/materials/bone_shard.json", "quantity": 10 }
+    ],
+    "output": "config/items/accessories/bone_ring.json",
+    "output_quantity": 1
+}

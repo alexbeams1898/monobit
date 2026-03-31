@@ -3,49 +3,33 @@
 #include "UIRenderer.h"
 #include "ecs/EntityManager.h"
 #include "ecs/GameConfig.h"
+#include "screens/ScreenColors.h"
+#include "screens/ScreenInput.h"
 #include "systems/AudioSystem.h"
 
 #include <SDL.h>
-#include <algorithm>
 #include <string>
 #include <tracy/Tracy.hpp>
+
+using screen_input::keyPressed;
+using screen_input::mouseClicked;
+using namespace screen_colors;
 
 static FontHandle sBodyFont = INVALID_FONT;
 static FontHandle sTitleFont = INVALID_FONT;
 static std::string sName;
-static int sSel = 0; // 0 = Start, 1 = Back
+static int sSel = -1; // -1 = none, 0 = Start, 1 = Back
 static constexpr int MAX_NAME_LEN = 20;
 
-static constexpr Color OVERLAY{0.0f, 0.0f, 0.0f, 0.92f};
 static constexpr Color TITLE_COLOR{0.9f, 0.78f, 0.45f, 1.0f};
-static constexpr Color TEXT_WHITE{0.92f, 0.90f, 0.88f, 1.0f};
-static constexpr Color TEXT_DIM{0.5f, 0.48f, 0.46f, 1.0f};
 static constexpr Color FIELD_BG{0.12f, 0.12f, 0.15f, 0.9f};
 static constexpr Color FIELD_BORDER{0.5f, 0.45f, 0.3f, 0.8f};
 static constexpr Color CURSOR_COLOR{0.9f, 0.78f, 0.45f, 1.0f};
-static constexpr Color BTN_NORMAL{0.7f, 0.68f, 0.65f, 1.0f};
-static constexpr Color BTN_HOVER{0.95f, 0.88f, 0.55f, 1.0f};
 static constexpr Color BTN_DIM{0.35f, 0.35f, 0.35f, 0.6f};
-static constexpr Color BTN_BG{0.1f, 0.1f, 0.12f, 0.5f};
-static constexpr Color BTN_BG_HL{0.18f, 0.16f, 0.25f, 0.7f};
-
-static bool keyPressed(const EntityManager& em, int scancode)
-{
-    const auto& kd = em.key_down_events;
-    return std::find(kd.begin(), kd.end(), scancode) != kd.end();
-}
-
-static bool mouseClicked(const EntityManager& em)
-{
-    for (uint8_t btn : em.mouse_down_events)
-        if (btn == SDL_BUTTON_LEFT)
-            return true;
-    return false;
-}
 
 static bool isNameValid()
 {
-    for (char c : sName)
+    for (const char c : sName)
         if (c != ' ')
             return true;
     return false;
@@ -60,7 +44,7 @@ void CharCreateScreen::init(FontHandle body_font, FontHandle title_font)
 void CharCreateScreen::reset()
 {
     sName.clear();
-    sSel = 0;
+    sSel = -1;
     SDL_StartTextInput();
 }
 
@@ -74,7 +58,7 @@ static CharCreateScreen::Action handleCharCreateInput(const EntityManager& em,
                                                       const SoundConfig& snd)
 {
     // Text input.
-    for (char c : em.text_input_buffer)
+    for (const char c : em.text_input_buffer)
     {
         if (static_cast<int>(sName.size()) < MAX_NAME_LEN && c >= 32)
             sName += c;
@@ -85,7 +69,7 @@ static CharCreateScreen::Action handleCharCreateInput(const EntityManager& em,
     // Tab/arrow toggles between Start and Back.
     if (keyPressed(em, SDL_SCANCODE_TAB) || keyPressed(em, SDL_SCANCODE_DOWN) ||
         keyPressed(em, SDL_SCANCODE_UP))
-        sSel = (sSel + 1) % 2;
+        sSel = sSel < 0 ? 0 : (sSel + 1) % 2;
 
     if (keyPressed(em, SDL_SCANCODE_ESCAPE))
     {
@@ -93,7 +77,8 @@ static CharCreateScreen::Action handleCharCreateInput(const EntityManager& em,
         return CharCreateScreen::Action::Back;
     }
 
-    if (!keyPressed(em, SDL_SCANCODE_RETURN) && !keyPressed(em, SDL_SCANCODE_KP_ENTER))
+    if (sSel < 0 ||
+        (!keyPressed(em, SDL_SCANCODE_RETURN) && !keyPressed(em, SDL_SCANCODE_KP_ENTER)))
         return CharCreateScreen::Action::None;
 
     CharCreateScreen::Action result = CharCreateScreen::Action::None;
@@ -122,10 +107,10 @@ CharCreateScreen::Action CharCreateScreen::render(EntityManager& em, int window_
     Action result = handleCharCreateInput(em, snd);
 
     // Draw.
-    UIRenderer::drawRect(0.0f, 0.0f, ww, wh, OVERLAY);
+    UIRenderer::drawRect(0.0f, 0.0f, ww, wh, OVERLAY_OPAQUE);
 
     const std::string title = "Create Character";
-    TextSize tsz = UIRenderer::measureText(sTitleFont, title);
+    const TextSize tsz = UIRenderer::measureText(sTitleFont, title);
     UIRenderer::drawText(sTitleFont, title, (ww - tsz.width) * 0.5f, wh * 0.25f, TITLE_COLOR);
 
     // Name field.
@@ -144,7 +129,7 @@ CharCreateScreen::Action CharCreateScreen::render(EntityManager& em, int window_
     UIRenderer::drawRect(fx + field_w - 1.5f, fy, 1.5f, field_h, FIELD_BORDER);
 
     const float text_y = fy + (field_h - FontManager::lineHeight(sBodyFont)) * 0.5f;
-    float advance = UIRenderer::drawText(sBodyFont, sName, fx + 10.0f, text_y, TEXT_WHITE);
+    const float advance = UIRenderer::drawText(sBodyFont, sName, fx + 10.0f, text_y, TEXT_WHITE);
 
     // Blinking cursor.
     const uint32_t ticks = SDL_GetTicks();
@@ -171,23 +156,27 @@ CharCreateScreen::Action CharCreateScreen::render(EntityManager& em, int window_
     const char* labels[2] = {"Start", "Back"};
     float by = fy + field_h + 40.0f;
 
+    bool anyHovered = false;
     for (int i = 0; i < 2; ++i)
     {
         const bool disabled = (i == 0 && !isNameValid());
-        TextSize sz = UIRenderer::measureText(sTitleFont, labels[i]);
+        const TextSize sz = UIRenderer::measureText(sTitleFont, labels[i]);
         const float bw = sz.width + btn_pad_x * 2.0f;
         const float bx = (ww - bw) * 0.5f;
 
         const bool hovered = !disabled && (mx >= bx && mx < bx + bw && my >= by && my < by + btn_h);
         if (hovered)
+        {
             sSel = i;
+            anyHovered = true;
+        }
 
         const bool selected = (i == sSel);
         UIRenderer::drawRect(bx, by, bw, btn_h, (selected && !disabled) ? BTN_BG_HL : BTN_BG);
         UIRenderer::drawText(sTitleFont, labels[i], bx + btn_pad_x, by + btn_pad_y,
                              disabled ? BTN_DIM : (selected ? BTN_HOVER : BTN_NORMAL));
 
-        if (hovered && mouseClicked(em))
+        if (hovered && mouseClicked(em, SDL_BUTTON_LEFT))
         {
             if (i == 0 && isNameValid())
             {
@@ -205,6 +194,8 @@ CharCreateScreen::Action CharCreateScreen::render(EntityManager& em, int window_
 
         by += btn_h + btn_gap;
     }
+    if (!anyHovered && em.key_down_events.empty())
+        sSel = -1;
 
     return result;
 }

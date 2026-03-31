@@ -68,7 +68,7 @@ static SfxVoice* findFreeVoice()
 
 bool AudioSystem::init()
 {
-    ma_result result = ma_engine_init(nullptr, &sEngine);
+    const ma_result result = ma_engine_init(nullptr, &sEngine);
     if (result != MA_SUCCESS)
     {
         std::cerr << "[AudioSystem] Failed to initialize audio engine (error " << result
@@ -117,8 +117,9 @@ void AudioSystem::playSfx(const std::string& path, float volume, float pitch)
     if (slot == nullptr)
         return; // pool full, drop the sound
 
-    ma_result result = ma_sound_init_from_file(&sEngine, path.c_str(), MA_SOUND_FLAG_DECODE,
-                                               nullptr, nullptr, &slot->sound);
+    const ma_result result =
+        ma_sound_init_from_file(&sEngine, path.c_str(), MA_SOUND_FLAG_DECODE | MA_SOUND_FLAG_ASYNC,
+                                nullptr, nullptr, &slot->sound);
     if (result != MA_SUCCESS)
     {
         std::cerr << "[AudioSystem] playSfx failed for: " << path << " (error " << result << ")\n";
@@ -132,7 +133,7 @@ void AudioSystem::playSfx(const std::string& path, float volume, float pitch)
     slot->active = true;
 }
 
-void AudioSystem::playMusic(const std::string& path, float volume, bool loop)
+void AudioSystem::playMusic(const std::string& path, float volume, bool loop, int fade_in_ms)
 {
     if (!sInitialized)
         return;
@@ -144,8 +145,8 @@ void AudioSystem::playMusic(const std::string& path, float volume, bool loop)
         sMusicLoaded = false;
     }
 
-    ma_result result = ma_sound_init_from_file(&sEngine, path.c_str(), MA_SOUND_FLAG_DECODE,
-                                               nullptr, nullptr, &sMusicSound);
+    const ma_result result = ma_sound_init_from_file(&sEngine, path.c_str(), MA_SOUND_FLAG_STREAM,
+                                                     nullptr, nullptr, &sMusicSound);
     if (result != MA_SUCCESS)
     {
         std::cerr << "[AudioSystem] playMusic failed for: " << path << " (error " << result
@@ -156,8 +157,17 @@ void AudioSystem::playMusic(const std::string& path, float volume, bool loop)
     ma_sound_set_looping(&sMusicSound, loop ? MA_TRUE : MA_FALSE);
     sMusicRequestedVolume = volume;
     ma_sound_set_volume(&sMusicSound, sMusicMuted ? 0.0f : volume);
+    ma_sound_seek_to_pcm_frame(&sMusicSound, 0);
     ma_sound_start(&sMusicSound);
     sMusicLoaded = true;
+
+    // Apply fade-in after start so the sound is already running when the
+    // fade begins. The fade overrides the volume set above.
+    if (fade_in_ms > 0 && !sMusicMuted)
+    {
+        ma_sound_set_fade_in_milliseconds(&sMusicSound, 0.0f, volume,
+                                          static_cast<ma_uint64>(fade_in_ms));
+    }
 }
 
 void AudioSystem::stopMusic()

@@ -83,7 +83,7 @@ TEST_CASE("Swing cooldown — heavier weapon is slower than lighter one (same st
     const auto f = defaultFormulas();
     const auto s = makeStats(5, 5, 5, 5);
 
-    Weapon light = makeFist(); // weight=0.5
+    const Weapon light = makeFist(); // weight=0.5
     Weapon heavy = makeFist();
     heavy.weight = 3.0f;
 

@@ -1,4 +1,4 @@
-"""Generate placeholder .wav files for game sound effects.
+"""Generate placeholder .ogg sound effects for the game.
 
 DSP effects applied per-sound for polished game-ready audio:
   - Soft-clip distortion (tanh waveshaping)
@@ -11,6 +11,8 @@ import struct
 import math
 import os
 import random
+import subprocess
+import tempfile
 
 SAMPLE_RATE = 22050
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "assets", "sfx")
@@ -31,23 +33,36 @@ def normalize(samples, target=0.9):
 
 
 def write_wav(filename, samples):
-    """Normalize then write 16-bit mono PCM .wav file."""
+    """Normalize, write temp WAV, encode to OGG Vorbis, delete temp WAV.
+    Accepts .ogg or .ogg filename -- always outputs .ogg."""
+    ogg_name = os.path.splitext(filename)[0] + ".ogg"
     samples = normalize(samples)
-    path = os.path.join(OUTPUT_DIR, filename)
     num = len(samples)
     data_size = num * 2
-    with open(path, "wb") as f:
-        f.write(b"RIFF")
-        f.write(struct.pack("<I", 36 + data_size))
-        f.write(b"WAVE")
-        f.write(b"fmt ")
-        f.write(struct.pack("<IHHIIHH", 16, 1, 1, SAMPLE_RATE, SAMPLE_RATE * 2, 2, 16))
-        f.write(b"data")
-        f.write(struct.pack("<I", data_size))
-        for s in samples:
-            clamped = max(-1.0, min(1.0, s))
-            f.write(struct.pack("<h", int(clamped * 32767)))
-    print(f"  {filename} ({num} samples, {num / SAMPLE_RATE:.2f}s)")
+
+    fd, tmp_wav = tempfile.mkstemp(suffix=".ogg")
+    os.close(fd)
+    try:
+        with open(tmp_wav, "wb") as f:
+            f.write(b"RIFF")
+            f.write(struct.pack("<I", 36 + data_size))
+            f.write(b"WAVE")
+            f.write(b"fmt ")
+            f.write(struct.pack("<IHHIIHH", 16, 1, 1, SAMPLE_RATE, SAMPLE_RATE * 2, 2, 16))
+            f.write(b"data")
+            f.write(struct.pack("<I", data_size))
+            for s in samples:
+                clamped = max(-1.0, min(1.0, s))
+                f.write(struct.pack("<h", int(clamped * 32767)))
+        ogg_path = os.path.join(OUTPUT_DIR, ogg_name)
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", tmp_wav, "-acodec", "libvorbis", "-q:a", "2", ogg_path],
+            check=True, capture_output=True,
+        )
+    finally:
+        if os.path.exists(tmp_wav):
+            os.remove(tmp_wav)
+    print(f"  {ogg_name} ({num} samples, {num / SAMPLE_RATE:.2f}s)")
 
 
 # ---------------------------------------------------------------------------
@@ -107,6 +122,39 @@ def highpass(samples, cutoff):
     return [s - l for s, l in zip(samples, lp)]
 
 
+def bitcrush(samples, bits=8, downsample=1, mix=0.3):
+    """Lo-fi effect: reduce bit depth and/or sample rate.
+    bits=16 is CD, 8=retro, 4=heavy. downsample=N holds every Nth sample."""
+    levels = 2 ** (bits - 1)
+    held = 0.0
+    crushed = []
+    for i, s in enumerate(samples):
+        if i % downsample == 0:
+            held = math.floor(s * levels) / levels
+        crushed.append(held)
+    return [d * (1 - mix) + c * mix for d, c in zip(samples, crushed)]
+
+
+def chorus(samples, voices=3, depth_ms=5.0, rate_hz=1.5, mix=0.5):
+    """Digital chorus: multiple delayed copies with LFO-modulated delay times.
+    depth_ms = max delay offset, rate_hz = LFO speed, mix = wet/dry blend."""
+    max_delay = int(SAMPLE_RATE * depth_ms / 1000.0)
+    base_delay = max_delay + 1
+    n = len(samples)
+    wet = [0.0] * n
+    for v in range(voices):
+        phase_offset = v * (2 * math.pi / voices)
+        for i in range(n):
+            t = i / SAMPLE_RATE
+            lfo = math.sin(2 * math.pi * rate_hz * t + phase_offset)
+            delay = base_delay + int(lfo * max_delay)
+            src = i - delay
+            if src >= 0:
+                wet[i] += samples[src]
+    voice_gain = 1.0 / voices
+    return [d * (1 - mix) + w * voice_gain * mix for d, w in zip(samples, wet)]
+
+
 # ---------------------------------------------------------------------------
 # Generators
 # ---------------------------------------------------------------------------
@@ -139,7 +187,7 @@ def noise_burst(duration, volume=0.3, seed=42):
 
 print("Generating placeholder sounds...")
 
-# --- swing_miss.wav --- comical whistle whoosh for swings that miss
+# --- swing_miss.ogg --- comical whistle whoosh for swings that miss
 # Descending cartoon whistle with breathy noise. Quick and funny.
 random.seed(101)
 miss_dur = 0.3
@@ -170,9 +218,9 @@ for i in range(miss_n):
     breath = miss_lp * 0.15 * env
     miss_samples.append(whistle + breath)
 miss_samples = reverb(miss_samples, delay_ms=30, feedback=0.2, mix=0.15)
-write_wav("swing_miss.wav", miss_samples)
+write_wav("swing_miss.ogg", miss_samples)
 
-# --- attack.wav --- sword swing whoosh
+# --- attack.ogg --- sword swing whoosh
 # Band-passed noise sweep (high->low) with metallic ring, distortion, and reverb.
 random.seed(99)
 attack_dur = 0.18
@@ -202,9 +250,9 @@ for i in range(attack_n):
     attack_samples.append((bandpassed * 0.6 + ring) * env)
 attack_samples = distort(attack_samples, 1.5)
 attack_samples = reverb(attack_samples, delay_ms=25, feedback=0.2, mix=0.15)
-write_wav("attack.wav", attack_samples)
+write_wav("attack.ogg", attack_samples)
 
-# --- skill.wav --- rising power chord + distorted impact
+# --- skill.ogg --- rising power chord + distorted impact
 skill_samples = []
 windup_n = int(SAMPLE_RATE * 0.15)
 for i in range(windup_n):
@@ -228,17 +276,18 @@ for i in range(impact_n):
 skill_samples = distort(skill_samples, 2.0)
 skill_samples = reverb(skill_samples, delay_ms=60, feedback=0.35, mix=0.3)
 skill_samples = compress(skill_samples, threshold=0.35, ratio=3.0)
-write_wav("skill.wav", skill_samples)
+write_wav("skill.ogg", skill_samples)
 
-# --- hit.wav --- punchy noise impact with distortion
-hit_samples = noise_burst(0.12, 0.5, seed=42)
-hit_samples = distort(hit_samples, 3.0)
-hit_samples = lowpass(hit_samples, 3000)
-hit_samples = compress(hit_samples, threshold=0.3, ratio=4.0)
-hit_samples = reverb(hit_samples, delay_ms=20, feedback=0.15, mix=0.1)
-write_wav("hit.wav", hit_samples)
+# --- hit_N.ogg --- punchy noise impact with distortion (4 variations to avoid phasing)
+for vi in range(4):
+    h = noise_burst(0.12, 0.5, seed=42 + vi)
+    h = distort(h, 3.0)
+    h = lowpass(h, 3000)
+    h = compress(h, threshold=0.3, ratio=4.0)
+    h = reverb(h, delay_ms=20, feedback=0.15, mix=0.1)
+    write_wav(f"hit_{vi + 1}.ogg", h)
 
-# --- dodge.wav --- rising sweep with subtle reverb
+# --- dodge.ogg --- rising sweep with subtle reverb
 sweep = []
 for i in range(int(SAMPLE_RATE * 0.15)):
     t = i / SAMPLE_RATE
@@ -247,15 +296,15 @@ for i in range(int(SAMPLE_RATE * 0.15)):
     env = 1.0 - progress
     sweep.append(math.sin(2 * math.pi * freq * t) * 0.3 * env)
 sweep = reverb(sweep, delay_ms=30, feedback=0.2, mix=0.2)
-write_wav("dodge.wav", sweep)
+write_wav("dodge.ogg", sweep)
 
-# --- parry.wav --- metallic ping with ring reverb
+# --- parry.ogg --- metallic ping with ring reverb
 parry = tone(880, 0.08, 0.5) + tone(1760, 0.06, 0.3)
 parry = reverb(parry, delay_ms=35, feedback=0.4, mix=0.3)
 parry = highpass(parry, 400)
-write_wav("parry.wav", parry)
+write_wav("parry.ogg", parry)
 
-# --- death.wav --- descending tone with distortion + reverb
+# --- death.ogg --- descending tone with distortion + reverb
 death = []
 for i in range(int(SAMPLE_RATE * 0.3)):
     t = i / SAMPLE_RATE
@@ -265,20 +314,20 @@ for i in range(int(SAMPLE_RATE * 0.3)):
     death.append(math.sin(2 * math.pi * freq * t) * 0.4 * env)
 death = distort(death, 2.0)
 death = reverb(death, delay_ms=50, feedback=0.3, mix=0.25)
-write_wav("death.wav", death)
+write_wav("death.ogg", death)
 
-# --- pickup.wav --- rising chime with sparkle reverb
+# --- pickup.ogg --- rising chime with sparkle reverb
 pickup = tone(660, 0.06, 0.3) + tone(880, 0.08, 0.3)
 pickup = reverb(pickup, delay_ms=45, feedback=0.3, mix=0.25)
-write_wav("pickup.wav", pickup)
+write_wav("pickup.ogg", pickup)
 
-# --- levelup.wav --- triumphant two-note with overdrive + reverb
+# --- levelup.ogg --- triumphant two-note with overdrive + reverb
 levelup = tone(440, 0.15, 0.4) + tone(660, 0.2, 0.4)
 levelup = distort(levelup, 1.3)
 levelup = reverb(levelup, delay_ms=80, feedback=0.35, mix=0.3)
-write_wav("levelup.wav", levelup)
+write_wav("levelup.ogg", levelup)
 
-# --- stat_allocate.wav --- crisp UI confirmation click
+# --- stat_allocate.ogg --- crisp UI confirmation click
 random.seed(88)
 alloc_n = int(SAMPLE_RATE * 0.06)
 alloc_samples = []
@@ -291,9 +340,9 @@ for i in range(alloc_n):
     pop = (random.random() * 2 - 1) * 0.08 * (env ** 3)
     alloc_samples.append(click + pop)
 alloc_samples = highpass(alloc_samples, 600)
-write_wav("stat_allocate.wav", alloc_samples)
+write_wav("stat_allocate.ogg", alloc_samples)
 
-# --- wall_bump.wav --- dull thud with distortion
+# --- wall_bump.ogg --- dull thud with distortion
 random.seed(55)
 bump_n = int(SAMPLE_RATE * 0.08)
 bump_samples = []
@@ -305,9 +354,9 @@ for i in range(bump_n):
     bump_samples.append(thud + grit)
 bump_samples = distort(bump_samples, 2.0)
 bump_samples = lowpass(bump_samples, 800)
-write_wav("wall_bump.wav", bump_samples)
+write_wav("wall_bump.ogg", bump_samples)
 
-# --- footstep_walk.wav --- soft tap (minimal effects to stay subtle)
+# --- footstep_walk.ogg --- soft tap (minimal effects to stay subtle)
 random.seed(33)
 walk_n = int(SAMPLE_RATE * 0.04)
 walk_samples = []
@@ -318,9 +367,9 @@ for i in range(walk_n):
     grit = (random.random() * 2 - 1) * 0.1 * (env ** 2)
     walk_samples.append(tap + grit)
 walk_samples = lowpass(walk_samples, 2000)
-write_wav("footstep_walk.wav", walk_samples)
+write_wav("footstep_walk.ogg", walk_samples)
 
-# --- footstep_run.wav --- quick bright tap
+# --- footstep_run.ogg --- quick bright tap
 random.seed(44)
 run_n = int(SAMPLE_RATE * 0.035)
 run_samples = []
@@ -332,24 +381,113 @@ for i in range(run_n):
     grit = (random.random() * 2 - 1) * 0.05 * (env ** 3)
     run_samples.append(tap + grit)
 run_samples = lowpass(run_samples, 3000)
-write_wav("footstep_run.wav", run_samples)
+write_wav("footstep_run.ogg", run_samples)
 
-# --- rest_heal.wav --- gentle ascending crystalline chime
-heal_samples = []
-# Three ascending notes with shimmer overtones
-for note_i, (freq, dur) in enumerate([(523, 0.12), (659, 0.12), (784, 0.16)]):
+# --- rest_heal variations --- choir pad with melancholic chord variations
+# Each rest heals plays a randomly selected variation for variety.
+
+def resonator(samples, freq_hz, decay=0.985, mix=0.15):
+    delay_n = max(1, int(SAMPLE_RATE / freq_hz))
+    buf = [0.0] * delay_n
+    out = list(samples)
+    for i in range(len(out)):
+        idx = i % delay_n
+        buf[idx] = buf[idx] * decay + out[i] * (1.0 - decay)
+        out[i] = out[i] * (1.0 - mix) + buf[idx] * mix
+    return out
+
+def gen_heal_variation(filename, voices, res_freqs, seed):
+    random.seed(seed)
+    dur = 2.5
     n = int(SAMPLE_RATE * dur)
-    for i in range(n):
-        t = i / SAMPLE_RATE
-        env = 1.0 - (i / n) ** 0.5
-        s = math.sin(2 * math.pi * freq * t) * 0.25 * env
-        s += math.sin(2 * math.pi * freq * 2 * t) * 0.08 * env  # octave shimmer
-        s += math.sin(2 * math.pi * freq * 3 * t) * 0.03 * env  # bright overtone
-        heal_samples.append(s)
-heal_samples = reverb(heal_samples, delay_ms=70, feedback=0.4, mix=0.35)
-write_wav("rest_heal.wav", heal_samples)
+    samples = [0.0] * n
+    for base, num_v, amp in voices:
+        for _ in range(num_v):
+            offset = (random.random() - 0.5) * 4.0
+            freq = base + offset
+            phase0 = random.random() * 2 * math.pi
+            for i in range(n):
+                t = i / SAMPLE_RATE
+                if t < 0.8:
+                    env = (t / 0.8) ** 0.5
+                elif t > dur - 1.0:
+                    env = ((dur - t) / 1.0) ** 0.7
+                else:
+                    env = 1.0
+                s = math.sin(2 * math.pi * freq * t + phase0) * amp
+                s += math.sin(2 * math.pi * freq * 2 * t + phase0) * amp * 0.3
+                samples[i] += s * env
+    samples = highpass(samples, 120)
+    samples = lowpass(samples, 5500)
+    samples = lowpass(samples, 5500)
+    samples = normalize(samples, target=0.25)
+    for rf, decay, mix in res_freqs:
+        samples = resonator(samples, rf, decay=decay, mix=mix)
+    samples = bitcrush(samples, bits=10, downsample=3, mix=0.25)
+    samples = reverb(samples, delay_ms=150, feedback=0.55, mix=0.7)
+    samples = reverb(samples, delay_ms=63, feedback=0.4, mix=0.5)
+    samples = normalize(samples, target=0.30)
+    write_wav(filename, samples)
 
-# --- game_over.wav --- dramatic low descending dissonance with heavy distortion
+# All variations are clean major 7th or minor 7th chords (+ 9th) with no
+# augmented intervals, tritones, or tension tones.  Resonator frequencies
+# are octave-up chord tones to reinforce, not fight, the harmony.
+
+# Variation 1: C#maj9 -- root position (warm, bright)
+gen_heal_variation("rest_heal_1.ogg", [
+    (138.59, 8, 0.025),  # C#3 root
+    (174.61, 8, 0.025),  # F3 (E#3) major 3rd
+    (207.65, 8, 0.025),  # G#3 perfect 5th
+    (261.63, 6, 0.020),  # C4 (B#3) major 7th
+    (311.13, 4, 0.014),  # D#4 9th
+], [(277.18, 0.993, 0.25), (349.23, 0.991, 0.20), (415.30, 0.989, 0.15)], seed=42)
+
+# Variation 2: F#m9 -- root position (mellow, smooth)
+gen_heal_variation("rest_heal_2.ogg", [
+    (185.00, 8, 0.025),  # F#3 root
+    (220.00, 8, 0.025),  # A3 minor 3rd
+    (277.18, 8, 0.025),  # C#4 perfect 5th
+    (329.63, 6, 0.020),  # E4 minor 7th
+    (415.30, 4, 0.014),  # G#4 9th
+], [(369.99, 0.993, 0.25), (440.00, 0.991, 0.20), (523.25, 0.989, 0.15)], seed=43)
+
+# Variation 3: Abmaj9 -- root position (rich, deep)
+gen_heal_variation("rest_heal_3.ogg", [
+    (103.83, 8, 0.025),  # Ab2 root
+    (130.81, 8, 0.025),  # C3 major 3rd
+    (155.56, 8, 0.025),  # Eb3 perfect 5th
+    (196.00, 6, 0.020),  # G3 major 7th
+    (233.08, 4, 0.014),  # Bb3 9th
+], [(207.65, 0.993, 0.25), (261.63, 0.991, 0.20), (311.13, 0.989, 0.15)], seed=44)
+
+# Variation 4: Ebm9 -- root position (dark, gentle)
+gen_heal_variation("rest_heal_4.ogg", [
+    (155.56, 8, 0.025),  # Eb3 root
+    (185.00, 8, 0.025),  # Gb3 minor 3rd
+    (233.08, 8, 0.025),  # Bb3 perfect 5th
+    (277.18, 6, 0.020),  # Db4 minor 7th
+    (349.23, 4, 0.014),  # F4 9th
+], [(311.13, 0.993, 0.25), (369.99, 0.991, 0.20), (466.16, 0.989, 0.15)], seed=45)
+
+# Variation 5: Bmaj9 -- root position (shimmery, warm)
+gen_heal_variation("rest_heal_5.ogg", [
+    (123.47, 8, 0.025),  # B2 root
+    (155.56, 8, 0.025),  # D#3 major 3rd
+    (185.00, 8, 0.025),  # F#3 perfect 5th
+    (233.08, 6, 0.020),  # A#3 major 7th
+    (277.18, 4, 0.014),  # C#4 9th
+], [(246.94, 0.993, 0.25), (311.13, 0.991, 0.20), (369.99, 0.989, 0.15)], seed=46)
+
+# Variation 6: Bbm9 -- root position (warm, dark)
+gen_heal_variation("rest_heal_6.ogg", [
+    (116.54, 8, 0.025),  # Bb2 root
+    (138.59, 8, 0.025),  # Db3 minor 3rd
+    (174.61, 8, 0.025),  # F3 perfect 5th
+    (207.65, 6, 0.020),  # Ab3 minor 7th
+    (261.63, 4, 0.014),  # C4 9th
+], [(233.08, 0.993, 0.25), (277.18, 0.991, 0.20), (349.23, 0.989, 0.15)], seed=47)
+
+# --- game_over.ogg --- dramatic low descending dissonance with heavy distortion
 random.seed(66)
 go_dur = 0.8
 go_n = int(SAMPLE_RATE * go_dur)
@@ -373,9 +511,9 @@ go_samples = distort(go_samples, 3.0)
 go_samples = lowpass(go_samples, 2000)
 go_samples = reverb(go_samples, delay_ms=100, feedback=0.4, mix=0.35)
 go_samples = compress(go_samples, threshold=0.3, ratio=3.0)
-write_wav("game_over.wav", go_samples)
+write_wav("game_over.ogg", go_samples)
 
-# --- heartbeat.wav --- two-pulse lub-dub pattern, low and thumpy
+# --- heartbeat.ogg --- two-pulse lub-dub pattern, low and thumpy
 hb_samples = []
 # Lub (stronger, lower)
 lub_n = int(SAMPLE_RATE * 0.08)
@@ -396,9 +534,9 @@ hb_samples.extend([0.0] * int(SAMPLE_RATE * 0.1))
 hb_samples = distort(hb_samples, 1.5)
 hb_samples = lowpass(hb_samples, 200)
 hb_samples = compress(hb_samples, threshold=0.2, ratio=3.0)
-write_wav("heartbeat.wav", hb_samples)
+write_wav("heartbeat.ogg", hb_samples)
 
-# --- ui_click.wav --- soft rounded pop for menu interactions
+# --- ui_click.ogg --- soft rounded pop for menu interactions
 click_n = int(SAMPLE_RATE * 0.06)
 click_samples = []
 for i in range(click_n):
@@ -415,9 +553,9 @@ for i in range(click_n):
     click_samples.append(s)
 click_samples = lowpass(click_samples, 3000)
 click_samples = reverb(click_samples, delay_ms=20, feedback=0.15, mix=0.1)
-write_wav("ui_click.wav", click_samples)
+write_wav("ui_click.ogg", click_samples)
 
-# --- wave_clear.wav --- warbling teleport whoosh with rising shimmer
+# --- wave_clear.ogg --- warbling teleport whoosh with rising shimmer
 wc_dur = 1.2
 wc_n = int(SAMPLE_RATE * wc_dur)
 wc_samples = []
@@ -436,8 +574,45 @@ for i in range(wc_n):
     # High sparkle overtone
     s += math.sin(2 * math.pi * freq * 3 * t) * 0.05 * env
     wc_samples.append(s)
+wc_samples = chorus(wc_samples, voices=4, depth_ms=8.0, rate_hz=1.5, mix=0.85)
 wc_samples = reverb(wc_samples, delay_ms=80, feedback=0.45, mix=0.4)
 wc_samples = compress(wc_samples, threshold=0.3, ratio=3.0)
-write_wav("wave_clear.wav", wc_samples)
+write_wav("wave_clear.ogg", wc_samples)
+
+# --- ladder_appear.ogg --- low stone rumble with rising tone (something emerging)
+la_dur = 0.8
+la_n = int(SAMPLE_RATE * la_dur)
+random.seed(777)
+la_noise = [(random.random() * 2 - 1) for _ in range(la_n)]
+la_samples = []
+la_lp = 0.0
+for i in range(la_n):
+    t = i / SAMPLE_RATE
+    progress = i / la_n
+    # Envelope: quick attack, sustain, fade
+    if progress < 0.05:
+        env = progress / 0.05
+    elif progress < 0.6:
+        env = 1.0
+    else:
+        env = (1.0 - progress) / 0.4
+    # Low rumble: filtered noise
+    cutoff = 150 + 200 * progress
+    rc = 1.0 / (2.0 * math.pi * cutoff)
+    dt_sample = 1.0 / SAMPLE_RATE
+    alpha = dt_sample / (rc + dt_sample)
+    la_lp += alpha * (la_noise[i] - la_lp)
+    s = la_lp * 0.6 * env
+    # Rising sub-bass tone (stone grinding)
+    sub_freq = 60 + 40 * progress
+    s += math.sin(2 * math.pi * sub_freq * t) * 0.3 * env
+    # Mid-tone accent rising (something materializing)
+    mid_freq = 200 + 300 * progress
+    s += math.sin(2 * math.pi * mid_freq * t) * 0.1 * env * progress
+    la_samples.append(s)
+la_samples = distort(la_samples, drive=1.5)
+la_samples = reverb(la_samples, delay_ms=60, feedback=0.35, mix=0.3)
+la_samples = compress(la_samples, threshold=0.3, ratio=3.0)
+write_wav("ladder_appear.ogg", la_samples)
 
 print("Done!")

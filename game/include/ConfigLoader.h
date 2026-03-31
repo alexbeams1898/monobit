@@ -36,4 +36,10 @@ class ConfigLoader
 
     // Parse config/balance/scoring.json and populate ScoringConfig in ctx.
     static bool loadScoring(EntityManager& em, const std::string& filePath);
+
+    // Parse config/balance/weapon_tiers.json and populate WeaponTierRegistry.
+    static bool loadWeaponTiers(EntityManager& em, const std::string& filePath);
+
+    // Scan config/evolution/ for per-family tree JSONs and populate EvolutionRegistry.
+    static bool loadEvolutionTrees(EntityManager& em, const std::string& dirPath);
 };

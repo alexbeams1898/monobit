@@ -4,6 +4,8 @@
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
+#include "screens/ScreenColors.h"
+#include "screens/ScreenInput.h"
 #include "systems/LevelingSystem.h"
 #include "systems/NotificationSystem.h"
 
@@ -12,9 +14,12 @@
 #include <string>
 #include <tracy/Tracy.hpp>
 
+using screen_input::hoveredRow;
+using namespace screen_colors;
+
 static FontHandle sBodyFont = INVALID_FONT;
 static FontHandle sTitleFont = INVALID_FONT;
-static int sSel = 0;
+static int sSel = -1;
 static float sAutoCloseTimer = -1.0f;
 static uint32_t sLastTicks = 0;
 static int sLevelOnOpen = 0;
@@ -24,23 +29,11 @@ static const char* STAT_NAMES[STAT_COUNT] = {"Strength", "Dexterity", "Endurance
 static const char* STAT_DESCS[STAT_COUNT] = {"Damage, carry weight", "Speed, attack speed",
                                              "HP, stamina, poise", "Drop rate, item quality"};
 
-static constexpr Color OVERLAY{0.0f, 0.0f, 0.0f, 0.65f};
-static constexpr Color PANEL_BG{0.06f, 0.06f, 0.09f, 0.95f};
 static constexpr Color TITLE_COLOR{1.0f, 0.85f, 0.3f, 1.0f};
-static constexpr Color TEXT_WHITE{0.92f, 0.90f, 0.88f, 1.0f};
-static constexpr Color TEXT_DIM{0.5f, 0.48f, 0.46f, 1.0f};
 static constexpr Color STAT_COLOR{0.65f, 0.75f, 0.9f, 1.0f};
 static constexpr Color SELECTED_BG{0.25f, 0.22f, 0.38f, 0.6f};
 static constexpr Color SEP_COLOR{0.4f, 0.35f, 0.25f, 0.5f};
 static constexpr Color HINT_COLOR{0.5f, 0.48f, 0.46f, 0.8f};
-
-static int hoveredRow(float mx, float my, float cx, float cy, float cw, float row_h, int count)
-{
-    if (mx < cx - 4.0f || mx >= cx + cw + 4.0f || my < cy - 2.0f)
-        return -1;
-    int idx = static_cast<int>((my - (cy - 2.0f)) / row_h);
-    return (idx >= 0 && idx < count) ? idx : -1;
-}
 
 // Returns true if the screen was auto-closed (caller should return early).
 static bool handleAutoClose(UIState& ui, const Experience& exp, float dt)
@@ -70,9 +63,11 @@ static void renderStatRows(EntityManager& em, entt::entity player, Stats& stats,
                            const Experience& exp, const FormulaConfig& f, const SoundConfig& snd,
                            float cx, float cw, float& y, float line_h, float mx, float my)
 {
-    int hover = hoveredRow(mx, my, cx, y, cw, line_h, STAT_COUNT);
+    const int hover = hoveredRow(mx, my, cx, y, cw, line_h, STAT_COUNT);
     if (hover >= 0)
         sSel = hover;
+    else if (em.key_down_events.empty())
+        sSel = -1;
 
     int* stat_ptrs[STAT_COUNT] = {&stats.str, &stats.dex, &stats.end, &stats.lck};
 
@@ -97,7 +92,7 @@ static void renderStatRows(EntityManager& em, entt::entity player, Stats& stats,
         {
             if (mx >= cx - 4.0f && mx < cx + cw + 4.0f && my >= y - 2.0f && my < y - 2.0f + line_h)
             {
-                for (uint8_t btn : em.mouse_down_events)
+                for (const uint8_t btn : em.mouse_down_events)
                 {
                     if (btn == SDL_BUTTON_LEFT)
                         allocateStat(em.registry(), player, *stat_ptrs[i], f, snd);
@@ -117,7 +112,7 @@ void LevelUpScreen::init(FontHandle body_font, FontHandle title_font)
 
 void LevelUpScreen::reset()
 {
-    sSel = 0;
+    sSel = -1;
     sAutoCloseTimer = -1.0f;
     sLastTicks = 0;
 }
@@ -186,14 +181,14 @@ void LevelUpScreen::render(EntityManager& em, int window_w, int window_h)
 
     // Title.
     const std::string title = "Level Up!";
-    TextSize tsz = UIRenderer::measureText(sTitleFont, title);
+    const TextSize tsz = UIRenderer::measureText(sTitleFont, title);
     UIRenderer::drawText(sTitleFont, title, panel_x + (panel_w - tsz.width) * 0.5f, y, TITLE_COLOR);
     y += title_h + 4.0f;
 
     // Points remaining.
     const std::string pts = "You have " + std::to_string(exp.stat_points) + " stat point" +
                             (exp.stat_points != 1 ? "s" : "") + ".";
-    TextSize psz = UIRenderer::measureText(sBodyFont, pts);
+    const TextSize psz = UIRenderer::measureText(sBodyFont, pts);
     UIRenderer::drawText(sBodyFont, pts, panel_x + (panel_w - psz.width) * 0.5f, y, TEXT_WHITE);
     y += line_h + 4.0f;
 
@@ -213,17 +208,18 @@ void LevelUpScreen::render(EntityManager& em, int window_w, int window_h)
 
     // Hint.
     const std::string hint = "[F] Allocate   [Tab/ESC] Close";
-    TextSize hsz = UIRenderer::measureText(sBodyFont, hint);
+    const TextSize hsz = UIRenderer::measureText(sBodyFont, hint);
     UIRenderer::drawText(sBodyFont, hint, panel_x + (panel_w - hsz.width) * 0.5f, y, HINT_COLOR);
 
     // Keyboard input.
-    for (int key : em.key_down_events)
+    for (const int key : em.key_down_events)
     {
         if (key == SDL_SCANCODE_UP || key == SDL_SCANCODE_W)
-            sSel = ((sSel - 1) + STAT_COUNT) % STAT_COUNT;
+            sSel = sSel < 0 ? 0 : ((sSel - 1) + STAT_COUNT) % STAT_COUNT;
         else if (key == SDL_SCANCODE_DOWN || key == SDL_SCANCODE_S)
-            sSel = (sSel + 1) % STAT_COUNT;
-        else if ((key == SDL_SCANCODE_RETURN || key == SDL_SCANCODE_KP_ENTER ||
+            sSel = sSel < 0 ? 0 : (sSel + 1) % STAT_COUNT;
+        else if (sSel >= 0 &&
+                 (key == SDL_SCANCODE_RETURN || key == SDL_SCANCODE_KP_ENTER ||
                   key == SDL_SCANCODE_F) &&
                  exp.stat_points > 0)
             allocateStat(em.registry(), player, *stat_ptrs[sSel], f, snd);

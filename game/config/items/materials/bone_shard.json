@@ -1,6 +1,7 @@
 {
     "name": "Bone Shard",
     "description": "A jagged fragment of animated bone. Retains faint necromantic energy.",
+    "icon": "assets/sprites/icons/bone_shard.png",
     "category": "material",
     "rarity": "very_common",
     "stackable": true,

@@ -1,8 +1,12 @@
 #include "screens/LoadGameScreen.h"
 
+#include "SaveManager.h"
 #include "UIRenderer.h"
 #include "ecs/EntityManager.h"
 #include "ecs/GameConfig.h"
+#include "screens/ConfirmDialog.h"
+#include "screens/ScreenColors.h"
+#include "screens/ScreenInput.h"
 #include "systems/AudioSystem.h"
 
 #include <SDL.h>
@@ -10,36 +14,143 @@
 #include <string>
 #include <tracy/Tracy.hpp>
 
+using screen_input::keyPressed;
+using screen_input::mouseClicked;
+using namespace screen_colors;
+
 static FontHandle sBodyFont = INVALID_FONT;
 static FontHandle sTitleFont = INVALID_FONT;
 static FontHandle sBigTitleFont = INVALID_FONT;
-static int sSel = 0;
+static int sSel = -1;
 static std::string sSelectedName;
 
-static constexpr Color OVERLAY{0.0f, 0.0f, 0.0f, 0.92f};
+// Confirmation dialog state.
+static bool sConfirmDelete = false;
+static int sDeleteTarget = 0;
+static int sConfirmSel = 1; // 0 = Yes, 1 = No (default to No for safety)
+
 static constexpr Color TITLE_COLOR{0.9f, 0.78f, 0.45f, 1.0f};
-static constexpr Color PANEL_BG{0.06f, 0.06f, 0.09f, 0.92f};
-static constexpr Color TEXT_WHITE{0.92f, 0.90f, 0.88f, 1.0f};
-static constexpr Color TEXT_DIM{0.5f, 0.48f, 0.46f, 1.0f};
 static constexpr Color SELECTED_BG{0.25f, 0.22f, 0.38f, 0.6f};
 static constexpr Color HOVER_BG{0.15f, 0.13f, 0.22f, 0.4f};
-static constexpr Color BTN_NORMAL{0.7f, 0.68f, 0.65f, 1.0f};
-static constexpr Color BTN_HOVER{0.95f, 0.88f, 0.55f, 1.0f};
-static constexpr Color BTN_BG{0.1f, 0.1f, 0.12f, 0.5f};
-static constexpr Color BTN_BG_HL{0.18f, 0.16f, 0.25f, 0.7f};
+static constexpr Color DELETE_BG{0.4f, 0.08f, 0.08f, 0.6f};
+static constexpr Color DELETE_BG_HL{0.6f, 0.12f, 0.12f, 0.8f};
+static constexpr Color MONEY_GREEN{0.35f, 0.82f, 0.35f, 1.0f};
 
-static bool keyPressed(const EntityManager& em, int scancode)
+static void playSfx(const SoundConfig& snd)
 {
-    const auto& kd = em.key_down_events;
-    return std::find(kd.begin(), kd.end(), scancode) != kd.end();
+    if (!snd.ui_click.path.empty())
+        AudioSystem::playSfx(snd.ui_click.path, snd.ui_click.volume);
 }
 
-static bool mouseClicked(const EntityManager& em)
+static bool handleDeleteConfirmation(EntityManager& em, SaveData& saveData, const SoundConfig& snd,
+                                     float ww, float wh)
 {
-    for (uint8_t btn : em.mouse_down_events)
-        if (btn == SDL_BUTTON_LEFT)
-            return true;
-    return false;
+    const int charCount = static_cast<int>(saveData.characters.size());
+    if (sDeleteTarget < charCount)
+    {
+        const std::string& charName = saveData.characters[static_cast<size_t>(sDeleteTarget)].name;
+
+        ConfirmDialog::Options opts;
+        opts.title_font = sTitleFont;
+        opts.body_font = sBodyFont;
+        opts.title = "Delete " + charName + "?";
+        opts.body_lines = {"This will also remove their run history."};
+        opts.selection = &sConfirmSel;
+
+        auto dlgResult = ConfirmDialog::render(em, opts, ww, wh);
+        if (dlgResult == ConfirmDialog::Result::Yes)
+        {
+            SaveManager::deleteCharacter(saveData, charName);
+            SaveManager::save(saveData);
+            sConfirmDelete = false;
+            const int newCount = static_cast<int>(saveData.characters.size());
+            if (sSel >= newCount && newCount > 0)
+                sSel = newCount - 1;
+            playSfx(snd);
+        }
+        else if (dlgResult == ConfirmDialog::Result::No)
+        {
+            sConfirmDelete = false;
+            playSfx(snd);
+        }
+    }
+    else
+    {
+        sConfirmDelete = false;
+    }
+    return true;
+}
+
+struct RowLayout
+{
+    float lx, list_w, row_h, row_pad;
+    float del_w, del_h;
+    TextSize xsz;
+    float mx, my;
+};
+
+static void drawCharacterRow(EntityManager& em, const SaveData& saveData, const SoundConfig& snd,
+                             int i, float ly, const RowLayout& lay, LoadGameScreen::Action& result,
+                             bool& anyHovered)
+{
+    const bool selected = (i == sSel);
+
+    const float row_content_w = lay.list_w - lay.del_w - 12.0f;
+    const bool rowHovered = lay.mx >= lay.lx && lay.mx < lay.lx + row_content_w && lay.my >= ly &&
+                            lay.my < ly + lay.row_h;
+    if (rowHovered)
+    {
+        sSel = i;
+        anyHovered = true;
+    }
+
+    if (selected)
+        UIRenderer::drawRect(lay.lx, ly, lay.list_w, lay.row_h, SELECTED_BG);
+    else if (rowHovered)
+        UIRenderer::drawRect(lay.lx, ly, lay.list_w, lay.row_h, HOVER_BG);
+
+    const auto& prof = saveData.characters[static_cast<size_t>(i)];
+    UIRenderer::drawText(sTitleFont, prof.name, lay.lx + 16.0f, ly + lay.row_pad,
+                         selected ? TEXT_WHITE : TEXT_DIM);
+
+    if (prof.money > 0)
+    {
+        const std::string moneyStr = "Money: " + std::to_string(prof.money);
+        const TextSize mtsz = UIRenderer::measureText(sBodyFont, moneyStr);
+        const float money_x = lay.lx + lay.list_w - lay.del_w - 20.0f - mtsz.width;
+        const float money_y = ly + (lay.row_h - mtsz.height) * 0.5f;
+        UIRenderer::drawText(sBodyFont, moneyStr, money_x, money_y, MONEY_GREEN);
+    }
+
+    const float del_x = lay.lx + lay.list_w - lay.del_w - 4.0f;
+    const float del_y = ly + (lay.row_h - lay.del_h) * 0.5f;
+    const bool delHovered = lay.mx >= del_x && lay.mx < del_x + lay.del_w && lay.my >= del_y &&
+                            lay.my < del_y + lay.del_h;
+
+    if (delHovered)
+    {
+        sSel = i;
+        anyHovered = true;
+    }
+
+    UIRenderer::drawRect(del_x, del_y, lay.del_w, lay.del_h, delHovered ? DELETE_BG_HL : DELETE_BG);
+    UIRenderer::drawText(sBodyFont, "X", del_x + 8.0f, del_y + (lay.del_h - lay.xsz.height) * 0.5f,
+                         delHovered ? TEXT_WHITE : BTN_NORMAL);
+
+    if (delHovered && mouseClicked(em, SDL_BUTTON_LEFT))
+    {
+        sDeleteTarget = i;
+        sConfirmDelete = true;
+        sConfirmSel = 1;
+        playSfx(snd);
+    }
+
+    if (rowHovered && mouseClicked(em, SDL_BUTTON_LEFT))
+    {
+        sSelectedName = saveData.characters[static_cast<size_t>(i)].name;
+        result = LoadGameScreen::Action::Select;
+        playSfx(snd);
+    }
 }
 
 void LoadGameScreen::init(FontHandle body_font, FontHandle title_font, FontHandle big_title_font)
@@ -51,8 +162,11 @@ void LoadGameScreen::init(FontHandle body_font, FontHandle title_font, FontHandl
 
 void LoadGameScreen::reset()
 {
-    sSel = 0;
+    sSel = -1;
     sSelectedName.clear();
+    sConfirmDelete = false;
+    sDeleteTarget = 0;
+    sConfirmSel = 1;
 }
 
 const char* LoadGameScreen::getSelectedName()
@@ -68,14 +182,25 @@ static LoadGameScreen::Action handleLoadInput(const EntityManager& em, const Sou
     const int totalItems = charCount + 1;
 
     if (keyPressed(em, SDL_SCANCODE_UP) || keyPressed(em, SDL_SCANCODE_W))
-        sSel = (sSel - 1 + totalItems) % totalItems;
+        sSel = sSel < 0 ? 0 : (sSel - 1 + totalItems) % totalItems;
     if (keyPressed(em, SDL_SCANCODE_DOWN) || keyPressed(em, SDL_SCANCODE_S))
-        sSel = (sSel + 1) % totalItems;
+        sSel = sSel < 0 ? 0 : (sSel + 1) % totalItems;
 
     if (keyPressed(em, SDL_SCANCODE_ESCAPE))
         return LoadGameScreen::Action::Back;
 
-    if (!keyPressed(em, SDL_SCANCODE_RETURN) && !keyPressed(em, SDL_SCANCODE_KP_ENTER))
+    // Delete key opens confirmation for the selected character.
+    if (keyPressed(em, SDL_SCANCODE_DELETE) && sSel >= 0 && sSel < charCount)
+    {
+        sDeleteTarget = sSel;
+        sConfirmDelete = true;
+        sConfirmSel = 1;
+        playSfx(snd);
+        return LoadGameScreen::Action::None;
+    }
+
+    if (sSel < 0 ||
+        (!keyPressed(em, SDL_SCANCODE_RETURN) && !keyPressed(em, SDL_SCANCODE_KP_ENTER)))
         return LoadGameScreen::Action::None;
 
     LoadGameScreen::Action result = LoadGameScreen::Action::None;
@@ -88,8 +213,7 @@ static LoadGameScreen::Action handleLoadInput(const EntityManager& em, const Sou
     {
         result = LoadGameScreen::Action::Back;
     }
-    if (!snd.ui_click.path.empty())
-        AudioSystem::playSfx(snd.ui_click.path, snd.ui_click.volume);
+    playSfx(snd);
     return result;
 }
 
@@ -99,25 +223,30 @@ LoadGameScreen::Action LoadGameScreen::render(EntityManager& em, int window_w, i
 
     const float ww = static_cast<float>(window_w);
     const float wh = static_cast<float>(window_h);
-    const auto& saveData = em.registry().ctx().get<SaveData>();
+    auto& saveData = em.registry().ctx().get<SaveData>();
     const auto& snd = em.registry().ctx().get<SoundConfig>();
     const int charCount = static_cast<int>(saveData.characters.size());
 
-    Action result = handleLoadInput(em, snd, saveData);
+    Action result = Action::None;
 
-    // Draw.
-    UIRenderer::drawRect(0.0f, 0.0f, ww, wh, OVERLAY);
+    if (sConfirmDelete)
+    {
+        handleDeleteConfirmation(em, saveData, snd, ww, wh);
+        return result;
+    }
 
-    // Title (big font).
+    result = handleLoadInput(em, snd, saveData);
+
+    UIRenderer::drawRect(0.0f, 0.0f, ww, wh, OVERLAY_OPAQUE);
+
     const std::string title = "Load Game";
-    TextSize tsz = UIRenderer::measureText(sBigTitleFont, title);
+    const TextSize tsz = UIRenderer::measureText(sBigTitleFont, title);
     UIRenderer::drawText(sBigTitleFont, title, (ww - tsz.width) * 0.5f, wh * 0.12f, TITLE_COLOR);
 
-    // Subtitle.
     const std::string subtitle = "Select a character";
-    TextSize ssz = UIRenderer::measureText(sBodyFont, subtitle);
-    UIRenderer::drawText(sBodyFont, subtitle, (ww - ssz.width) * 0.5f,
-                         wh * 0.12f + FontManager::lineHeight(sBigTitleFont) + 8.0f, TEXT_DIM);
+    const TextSize ssz = UIRenderer::measureText(sBodyFont, subtitle);
+    const float subtitle_y = wh * 0.12f + FontManager::lineHeight(sBigTitleFont) + 8.0f;
+    UIRenderer::drawText(sBodyFont, subtitle, (ww - ssz.width) * 0.5f, subtitle_y, TEXT_DIM);
 
     int mouseX = 0;
     int mouseY = 0;
@@ -125,70 +254,58 @@ LoadGameScreen::Action LoadGameScreen::render(EntityManager& em, int window_w, i
     const float mx = static_cast<float>(mouseX);
     const float my = static_cast<float>(mouseY);
 
-    // Character list panel.
     const float row_pad = 12.0f;
     const float row_h = FontManager::lineHeight(sTitleFont) + row_pad * 2.0f;
     const float list_w = 460.0f;
     const float list_h = static_cast<float>(charCount) * (row_h + 6.0f) + 40.0f;
-    const float panel_h = list_h + row_h + 60.0f; // room for back button
+    const float panel_h = list_h + row_h + 60.0f;
     const float lx = (ww - list_w) * 0.5f;
     const float panel_y = wh * 0.32f;
 
     UIRenderer::drawRect(lx - 20.0f, panel_y - 20.0f, list_w + 40.0f, panel_h, PANEL_BG);
 
-    float ly = panel_y;
+    const TextSize xsz = UIRenderer::measureText(sBodyFont, "X");
+    const float del_w = xsz.width + 16.0f;
+    const float del_h = xsz.height + 10.0f;
+    const RowLayout rowLay{lx, list_w, row_h, row_pad, del_w, del_h, xsz, mx, my};
 
+    float ly = panel_y;
+    bool anyHovered = false;
     for (int i = 0; i < charCount; ++i)
     {
-        const bool selected = (i == sSel);
-        const bool hovered = (mx >= lx && mx < lx + list_w && my >= ly && my < ly + row_h);
-        if (hovered)
-            sSel = i;
-
-        // Row background.
-        if (selected)
-            UIRenderer::drawRect(lx, ly, list_w, row_h, SELECTED_BG);
-        else if (hovered)
-            UIRenderer::drawRect(lx, ly, list_w, row_h, HOVER_BG);
-
-        // Character name (title font for bigger text).
-        UIRenderer::drawText(sTitleFont, saveData.characters[static_cast<size_t>(i)].name,
-                             lx + 16.0f, ly + row_pad, selected ? TEXT_WHITE : TEXT_DIM);
-
-        if (hovered && mouseClicked(em))
-        {
-            sSelectedName = saveData.characters[static_cast<size_t>(i)].name;
-            result = Action::Select;
-            if (!snd.ui_click.path.empty())
-                AudioSystem::playSfx(snd.ui_click.path, snd.ui_click.volume);
-        }
-
+        drawCharacterRow(em, saveData, snd, i, ly, rowLay, result, anyHovered);
         ly += row_h + 6.0f;
     }
 
     // Back button.
-    ly += 24.0f;
     const std::string backLabel = "Back";
-    TextSize bsz = UIRenderer::measureText(sTitleFont, backLabel);
+    const TextSize bsz = UIRenderer::measureText(sTitleFont, backLabel);
     const float bw = bsz.width + 60.0f;
     const float bh = bsz.height + 20.0f;
     const float bx = (ww - bw) * 0.5f;
+    const float visual_bottom = panel_y - 20.0f + panel_h;
+    ly = visual_bottom - 20.0f - bh;
 
-    const bool backSel = (sSel == charCount);
-    const bool backHover = (mx >= bx && mx < bx + bw && my >= ly && my < ly + bh);
+    const bool backHover = mx >= bx && mx < bx + bw && my >= ly && my < ly + bh;
     if (backHover)
+    {
         sSel = charCount;
+        anyHovered = true;
+    }
+    const bool backSel = (sSel == charCount);
 
     UIRenderer::drawRect(bx, ly, bw, bh, backSel ? BTN_BG_HL : BTN_BG);
     UIRenderer::drawText(sTitleFont, backLabel, bx + 30.0f, ly + 10.0f,
                          backSel ? BTN_HOVER : BTN_NORMAL);
 
-    if (backHover && mouseClicked(em))
+    if (backHover && mouseClicked(em, SDL_BUTTON_LEFT))
     {
         result = Action::Back;
-        if (!snd.ui_click.path.empty())
-            AudioSystem::playSfx(snd.ui_click.path, snd.ui_click.volume);
+        playSfx(snd);
     }
+
+    if (!anyHovered && em.key_down_events.empty())
+        sSel = -1;
 
     return result;
 }

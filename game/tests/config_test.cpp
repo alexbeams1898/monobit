@@ -45,7 +45,7 @@ TEST_CASE("ConfigLoader loads skeleton entity with correct components", "[config
 
     auto& ai = em.registry().get<AIController>(entity);
     REQUIRE(ai.state == AIController::State::Idle); // aggro_radius > 0 → starts Idle
-    REQUIRE(ai.separation_strength == Catch::Approx(0.6f));
+    REQUIRE(ai.separation_strength == Catch::Approx(0.4f));
     REQUIRE(ai.arrival_radius == Catch::Approx(128.0f));
 }
 

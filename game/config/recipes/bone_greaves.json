@@ -1,0 +1,8 @@
+{
+    "name": "Bone Greaves",
+    "inputs": [
+        { "item": "config/items/materials/bone_shard.json", "quantity": 4 }
+    ],
+    "output": "config/items/armor/bone_greaves.json",
+    "output_quantity": 1
+}

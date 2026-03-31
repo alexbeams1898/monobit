@@ -52,6 +52,13 @@ static GLuint sWhiteTex = 0;
 static int sWindowW = 0;
 static int sWindowH = 0;
 
+// Cached uniform locations -- avoid per-draw glGetUniformLocation string lookups.
+static GLint sLocProjection = -1;
+static GLint sLocModel = -1;
+static GLint sLocTexture = -1;
+static GLint sLocSrcRect = -1;
+static GLint sLocTint = -1;
+
 // Applies TintOverride if present, otherwise leaves tint at default white.
 // TintSystem (game) owns all tint priority logic and clears/sets TintOverride each frame.
 static void computeTint(EntityManager& em, entt::entity entity, float& tr, float& tg, float& tb)
@@ -69,8 +76,8 @@ void RenderSystem::init(int windowW, int windowH)
     sWindowW = windowW;
     sWindowH = windowH;
 
-    GLuint vert = engine::gl::compileShader(GL_VERTEX_SHADER, kVertexShaderSrc);
-    GLuint frag = engine::gl::compileShader(GL_FRAGMENT_SHADER, kFragmentShaderSrc);
+    const GLuint vert = engine::gl::compileShader(GL_VERTEX_SHADER, kVertexShaderSrc);
+    const GLuint frag = engine::gl::compileShader(GL_FRAGMENT_SHADER, kFragmentShaderSrc);
 
     sProgram = glCreateProgram();
     glAttachShader(sProgram, vert);
@@ -124,6 +131,12 @@ void RenderSystem::init(int windowW, int windowH)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glBindTexture(GL_TEXTURE_2D, 0);
+
+    sLocProjection = glGetUniformLocation(sProgram, "uProjection");
+    sLocModel = glGetUniformLocation(sProgram, "uModel");
+    sLocTexture = glGetUniformLocation(sProgram, "uTexture");
+    sLocSrcRect = glGetUniformLocation(sProgram, "uSrcRect");
+    sLocTint = glGetUniformLocation(sProgram, "uTint");
 }
 
 void RenderSystem::resize(int windowW, int windowH)
@@ -188,7 +201,7 @@ static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::en
 
     if (const auto* particle = reg.try_get<Particle>(entity))
     {
-        float t = particle->age / particle->lifetime;
+        const float t = particle->age / particle->lifetime;
         ta = (1.0f - t) * (1.0f - t);
     }
 
@@ -275,13 +288,16 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
     const float alpha = em.render_alpha;
 
     std::vector<DrawEntry> drawList;
-    drawList.reserve(64);
-
-    for (auto [entity, transform, sprite] : em.registry().view<Transform, Sprite>().each())
     {
-        DrawEntry entry{};
-        if (buildSpriteDrawEntry(em, tm, entity, transform, sprite, alpha, entry))
-            drawList.push_back(entry);
+        ZoneScopedN("RenderSystem::buildDrawList");
+        drawList.reserve(64);
+
+        for (auto [entity, transform, sprite] : em.registry().view<Transform, Sprite>().each())
+        {
+            DrawEntry entry{};
+            if (buildSpriteDrawEntry(em, tm, entity, transform, sprite, alpha, entry))
+                drawList.push_back(entry);
+        }
     }
 
     std::sort(drawList.begin(), drawList.end(),
@@ -303,53 +319,56 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
                            snapCamY - halfH);
 
     glUseProgram(sProgram);
-    glUniformMatrix4fv(glGetUniformLocation(sProgram, "uProjection"), 1, GL_FALSE, proj);
-    glUniform1i(glGetUniformLocation(sProgram, "uTexture"), 0);
+    glUniformMatrix4fv(sLocProjection, 1, GL_FALSE, proj);
+    glUniform1i(sLocTexture, 0);
     glActiveTexture(GL_TEXTURE0);
     glBindVertexArray(sVAO);
 
-    for (const auto& e : drawList)
     {
-        // Draw glow halo behind the entity (larger, semi-transparent).
-        if (e.glow_scale > 0.0f)
+        ZoneScopedN("RenderSystem::drawSprites");
+        for (const auto& e : drawList)
         {
-            const float gw = static_cast<float>(e.src_w) * e.draw_scale * e.glow_scale;
-            const float gh = static_cast<float>(e.src_h) * e.draw_scale * e.glow_scale;
-            const float baseW = static_cast<float>(e.src_w) * e.draw_scale;
-            const float baseH = static_cast<float>(e.src_h) * e.draw_scale;
-            const float gx = e.x - (gw - baseW) * 0.5f;
-            const float gy = e.y - (gh - baseH) * 0.5f;
-            float glowModel[16];
-            engine::gl::buildModel(glowModel, gx, gy, gw, gh);
-            glUniformMatrix4fv(glGetUniformLocation(sProgram, "uModel"), 1, GL_FALSE, glowModel);
-            glBindTexture(GL_TEXTURE_2D, sWhiteTex);
-            glUniform4f(glGetUniformLocation(sProgram, "uSrcRect"), 0.0f, 0.0f, 1.0f, 1.0f);
-            glUniform4f(glGetUniformLocation(sProgram, "uTint"), e.tr, e.tg, e.tb, e.glow_alpha);
+            // Draw glow halo behind the entity (larger, semi-transparent).
+            if (e.glow_scale > 0.0f)
+            {
+                const float gw = static_cast<float>(e.src_w) * e.draw_scale * e.glow_scale;
+                const float gh = static_cast<float>(e.src_h) * e.draw_scale * e.glow_scale;
+                const float baseW = static_cast<float>(e.src_w) * e.draw_scale;
+                const float baseH = static_cast<float>(e.src_h) * e.draw_scale;
+                const float gx = e.x - (gw - baseW) * 0.5f;
+                const float gy = e.y - (gh - baseH) * 0.5f;
+                float glowModel[16];
+                engine::gl::buildModel(glowModel, gx, gy, gw, gh);
+                glUniformMatrix4fv(sLocModel, 1, GL_FALSE, glowModel);
+                glBindTexture(GL_TEXTURE_2D, sWhiteTex);
+                glUniform4f(sLocSrcRect, 0.0f, 0.0f, 1.0f, 1.0f);
+                glUniform4f(sLocTint, e.tr, e.tg, e.tb, e.glow_alpha);
+                glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+            }
+
+            float model[16];
+            engine::gl::buildModel(model, e.x, e.y, static_cast<float>(e.src_w) * e.draw_scale,
+                                   static_cast<float>(e.src_h) * e.draw_scale);
+            glUniformMatrix4fv(sLocModel, 1, GL_FALSE, model);
+
+            if (e.solid_color)
+            {
+                glBindTexture(GL_TEXTURE_2D, sWhiteTex);
+                glUniform4f(sLocSrcRect, 0.0f, 0.0f, 1.0f, 1.0f);
+            }
+            else
+            {
+                glBindTexture(GL_TEXTURE_2D, e.tex_id);
+
+                float uvX = 0.0f, uvY = 0.0f, uvW = 0.0f, uvH = 0.0f;
+                buildSrcRect(e.src_x, e.src_y, e.src_w, e.src_h, e.tex_w, e.tex_h, e.flip_x,
+                             e.flip_y, uvX, uvY, uvW, uvH);
+                glUniform4f(sLocSrcRect, uvX, uvY, uvW, uvH);
+            }
+
+            glUniform4f(sLocTint, e.tr, e.tg, e.tb, e.ta);
             glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
         }
-
-        float model[16];
-        engine::gl::buildModel(model, e.x, e.y, static_cast<float>(e.src_w) * e.draw_scale,
-                               static_cast<float>(e.src_h) * e.draw_scale);
-        glUniformMatrix4fv(glGetUniformLocation(sProgram, "uModel"), 1, GL_FALSE, model);
-
-        if (e.solid_color)
-        {
-            glBindTexture(GL_TEXTURE_2D, sWhiteTex);
-            glUniform4f(glGetUniformLocation(sProgram, "uSrcRect"), 0.0f, 0.0f, 1.0f, 1.0f);
-        }
-        else
-        {
-            glBindTexture(GL_TEXTURE_2D, e.tex_id);
-
-            float uvX = 0.0f, uvY = 0.0f, uvW = 0.0f, uvH = 0.0f;
-            buildSrcRect(e.src_x, e.src_y, e.src_w, e.src_h, e.tex_w, e.tex_h, e.flip_x, e.flip_y,
-                         uvX, uvY, uvW, uvH);
-            glUniform4f(glGetUniformLocation(sProgram, "uSrcRect"), uvX, uvY, uvW, uvH);
-        }
-
-        glUniform4f(glGetUniformLocation(sProgram, "uTint"), e.tr, e.tg, e.tb, e.ta);
-        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
     }
 
     // Crosshair
@@ -364,23 +383,23 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
         static constexpr float kGap = 2.0f;
 
         glBindTexture(GL_TEXTURE_2D, sWhiteTex);
-        glUniform4f(glGetUniformLocation(sProgram, "uSrcRect"), 0.0f, 0.0f, 1.0f, 1.0f);
-        glUniform4f(glGetUniformLocation(sProgram, "uTint"), 1.0f, 1.0f, 1.0f, 0.8f);
+        glUniform4f(sLocSrcRect, 0.0f, 0.0f, 1.0f, 1.0f);
+        glUniform4f(sLocTint, 1.0f, 1.0f, 1.0f, 0.8f);
 
         float cModel[16];
         engine::gl::buildModel(cModel, worldX - kGap - kArmLen, worldY - kThick * 0.5f, kArmLen,
                                kThick);
-        glUniformMatrix4fv(glGetUniformLocation(sProgram, "uModel"), 1, GL_FALSE, cModel);
+        glUniformMatrix4fv(sLocModel, 1, GL_FALSE, cModel);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
         engine::gl::buildModel(cModel, worldX + kGap, worldY - kThick * 0.5f, kArmLen, kThick);
-        glUniformMatrix4fv(glGetUniformLocation(sProgram, "uModel"), 1, GL_FALSE, cModel);
+        glUniformMatrix4fv(sLocModel, 1, GL_FALSE, cModel);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
         engine::gl::buildModel(cModel, worldX - kThick * 0.5f, worldY - kGap - kArmLen, kThick,
                                kArmLen);
-        glUniformMatrix4fv(glGetUniformLocation(sProgram, "uModel"), 1, GL_FALSE, cModel);
+        glUniformMatrix4fv(sLocModel, 1, GL_FALSE, cModel);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
         engine::gl::buildModel(cModel, worldX - kThick * 0.5f, worldY + kGap, kThick, kArmLen);
-        glUniformMatrix4fv(glGetUniformLocation(sProgram, "uModel"), 1, GL_FALSE, cModel);
+        glUniformMatrix4fv(sLocModel, 1, GL_FALSE, cModel);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
     }
 
@@ -389,8 +408,8 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
     static constexpr float kDotOffset = 10.0f;
 
     glBindTexture(GL_TEXTURE_2D, sWhiteTex);
-    glUniform4f(glGetUniformLocation(sProgram, "uSrcRect"), 0.0f, 0.0f, 1.0f, 1.0f);
-    glUniform4f(glGetUniformLocation(sProgram, "uTint"), 0.0f, 0.0f, 0.0f, 1.0f);
+    glUniform4f(sLocSrcRect, 0.0f, 0.0f, 1.0f, 1.0f);
+    glUniform4f(sLocTint, 0.0f, 0.0f, 0.0f, 1.0f);
 
     for (auto [entity, transform, facing] : em.registry().view<Transform, FacingDirection>().each())
     {
@@ -408,7 +427,7 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
         const float dotY = std::round(anchorY + facing.render_dy * kDotOffset) - kDotSize * 0.5f;
         float model[16];
         engine::gl::buildModel(model, dotX, dotY, kDotSize, kDotSize);
-        glUniformMatrix4fv(glGetUniformLocation(sProgram, "uModel"), 1, GL_FALSE, model);
+        glUniformMatrix4fv(sLocModel, 1, GL_FALSE, model);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
     }
 

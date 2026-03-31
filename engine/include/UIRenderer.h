@@ -42,6 +42,10 @@ class UIRenderer
     // Flush all batched draws to the screen.
     static void endFrame();
 
+    // Draw all currently batched content without ending the frame.
+    // Allows GL state changes (e.g. glScissor) to take effect mid-frame.
+    static void flush();
+
     // Solid colored rectangle.
     static void drawRect(float x, float y, float w, float h, const Color& color);
 

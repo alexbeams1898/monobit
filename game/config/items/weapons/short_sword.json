@@ -1,0 +1,17 @@
+{
+    "name": "Short Sword",
+    "description": "A balanced blade. Good reach without the weight of a full sword.",
+    "icon": "assets/sprites/icons/short_sword.png",
+    "category": "weapon",
+    "rarity": "rare",
+    "base_damage": 20.0,
+    "weight": 1.5,
+    "str_scaling": 0.8,
+    "dex_scaling": 0.8,
+    "str_requirement": 6,
+    "dex_requirement": 6,
+    "two_handed": false,
+    "weapon_tier": "short_sword",
+    "max_durability": 100.0,
+    "stackable": false
+}

@@ -53,6 +53,18 @@ struct FlowField
 };
 
 // ---------------------------------------------------------------------------
+// SteeringConfig -- tuning parameters for SteeringSystem wall/crowd forces.
+// Populated by game-side config loading; engine reads these at runtime.
+// ---------------------------------------------------------------------------
+struct SteeringConfig
+{
+    float repulsion_radius = 20.0f;
+    float repulsion_strength = 0.5f;
+    float blend_rate = 4.0f;
+    float skip_dot_threshold = -0.5f;
+};
+
+// ---------------------------------------------------------------------------
 // EntityManager -- thin owner of the entt::registry.
 // ---------------------------------------------------------------------------
 
@@ -101,6 +113,9 @@ class EntityManager
     std::vector<int> key_down_events;
     std::vector<uint8_t> mouse_down_events;
 
+    // Mouse wheel delta -- accumulated per-frame, positive = scroll up.
+    int mouse_wheel_y = 0;
+
     // Text input buffer -- captured from SDL_TEXTINPUT events for name entry.
     std::string text_input_buffer;
 
@@ -113,6 +128,9 @@ class EntityManager
     // Tile map -- generated at startup by TileMapLoader::generate().
     TileMap tile_map;
     TileConfig tile_config;
+
+    // Steering parameters -- set by game-side config loading.
+    SteeringConfig steering_config;
 
   private:
     entt::registry reg;
