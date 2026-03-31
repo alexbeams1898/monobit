@@ -143,10 +143,13 @@ TEST_CASE("AggroSystem: Chase enemy stays Chase when outside arrival_radius", "[
     REQUIRE(em.registry().get<AIController>(enemy).state == AIController::State::Chase);
 }
 
-TEST_CASE("AggroSystem: Attack enemy returns to Chase when player runs away", "[aggro][attack]")
+TEST_CASE("AggroSystem: Attack enemy stays Attack when player is far but not sprinting",
+          "[aggro][attack]")
 {
+    // Slot positions track the player, so Attack-state enemies follow naturally.
+    // No distance-based breakoff -- deaggro_radius catches the "player left" case.
     EntityManager em;
-    makePlayer(em, 400.0f, 0.0f); // far — beyond arrival_radius * 1.2
+    makePlayer(em, 400.0f, 0.0f); // far -- beyond arrival_radius
     auto enemy = makeEnemy(em, 0.0f, 0.0f, 300.0f);
     em.registry().patch<AIController>(enemy,
                                       [](AIController& ai)
@@ -158,7 +161,25 @@ TEST_CASE("AggroSystem: Attack enemy returns to Chase when player runs away", "[
 
     AggroSystem::update(em);
 
-    // dist=400 > arrival_radius*1.2 = 153.6 → back to Chase
+    REQUIRE(em.registry().get<AIController>(enemy).state == AIController::State::Attack);
+}
+
+TEST_CASE("AggroSystem: Attack enemy returns to Chase when player sprints", "[aggro][attack]")
+{
+    EntityManager em;
+    auto player = makePlayer(em, 400.0f, 0.0f);
+    em.registry().get<PlayerActions>(player).sprint = true;
+    auto enemy = makeEnemy(em, 0.0f, 0.0f, 300.0f);
+    em.registry().patch<AIController>(enemy,
+                                      [](AIController& ai)
+                                      {
+                                          ai.state = AIController::State::Attack;
+                                          ai.arrival_radius = 128.0f;
+                                          ai.attack_radius = 48.0f;
+                                      });
+
+    AggroSystem::update(em);
+
     REQUIRE(em.registry().get<AIController>(enemy).state == AIController::State::Chase);
 }
 

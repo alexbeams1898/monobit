@@ -102,25 +102,26 @@ TEST_CASE("SteeringSystem does not affect entities without NavAgent", "[steering
     REQUIRE(vel.dy == Catch::Approx(-80.0f));
 }
 
-TEST_CASE("SteeringSystem does not repel from a wall directly ahead", "[steering]")
+TEST_CASE("SteeringSystem slides laterally when heading directly into a wall", "[steering]")
 {
-    // Regression: entity heading south, wall directly to the south.
-    // Without the dot-product filter the repulsion opposes forward motion and
-    // the entity bounces at the door threshold. With the filter, the head-on
-    // wall is skipped (dot ~ -1.0 < SKIP_DOT_THRESHOLD) and velocity is
-    // unchanged -- MovementSystem handles the actual blocking.
+    // Entity heading south, wall directly to the south.
+    // dot(velocity, repulsion) = -1 < skipDotThreshold (-0.5) -> perpendicular
+    // slide, not a backward push. This prevents bouncing at door thresholds
+    // while still deflecting the entity sideways. Speed is preserved.
     EntityManager em;
     // Wall center (0,32): north surface at y=16. Entity at (0,0) heading
     // south (vel.dy=+80). Closest wall point = (0,16), dist=16 < 20 -> in range.
-    // dot(south=(0,1), repulsion=(0,-1)) = -1 < -0.5 -> must be skipped.
     makeWall(em, 0.0f, 32.0f);
     auto enemy = makeEnemy(em, 0.0f, 0.0f, 80.0f, 0.0f, 80.0f);
 
     SteeringSystem::update(em, kTestDt);
 
     const auto& vel = em.registry().get<Velocity>(enemy);
-    REQUIRE(vel.dx == Catch::Approx(0.0f));
-    REQUIRE(vel.dy == Catch::Approx(80.0f)); // forward velocity untouched
+    REQUIRE(vel.dx > 0.0f); // lateral slide applied
+    REQUIRE(vel.dy > 0.0f); // still heading south
+    // Speed preserved after deflection.
+    const float mag = std::sqrt(vel.dx * vel.dx + vel.dy * vel.dy);
+    REQUIRE(mag == Catch::Approx(80.0f).margin(0.5f));
 }
 
 TEST_CASE("SteeringSystem does not affect stopped entities", "[steering]")

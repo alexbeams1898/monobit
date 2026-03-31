@@ -91,7 +91,7 @@ TEST_CASE("startNextWave: from Spawning returns false", "[wave]")
     REQUIRE_FALSE(WaveSystem::startNextWave(em));
 }
 
-TEST_CASE("startNextWave: from SafeRoom transitions to Spawning", "[wave]")
+TEST_CASE("startNextWave: from SafeRoom transitions to Transitioning for wave 2+", "[wave]")
 {
     EntityManager em;
     emplaceGameConfigs(em);
@@ -104,9 +104,9 @@ TEST_CASE("startNextWave: from SafeRoom transitions to Spawning", "[wave]")
 
     const bool started = WaveSystem::startNextWave(em);
     REQUIRE(started);
-    REQUIRE(ws.phase == WaveState::Phase::Spawning);
+    // Wave 2+ plays teleport SFX then delays before spawning.
+    REQUIRE(ws.phase == WaveState::Phase::Transitioning);
     REQUIRE(ws.current_wave == 2);
-    REQUIRE(ws.enemies_total == 3);
 }
 
 TEST_CASE("startNextWave: infinite waves (max_waves=0) never blocks", "[wave]")
@@ -197,11 +197,11 @@ TEST_CASE("Cleared transitions to SafeRoom when safe_room_every triggers", "[wav
     REQUIRE(ws.phase == WaveState::Phase::SafeRoom);
 }
 
-TEST_CASE("Cleared advances to next wave when safe_room_every is 0", "[wave]")
+TEST_CASE("Cleared always transitions to SafeRoom for ladder placement", "[wave]")
 {
     EntityManager em;
     emplaceGameConfigs(em);
-    setupAutoGen(em, 5, 1, 0); // safe_room_every=0 -> no safe rooms
+    setupAutoGen(em, 5, 1, 0); // safe_room_every=0
 
     WaveSystem::startNextWave(em);
     auto& ws = em.registry().ctx().get<WaveState>();
@@ -209,8 +209,9 @@ TEST_CASE("Cleared advances to next wave when safe_room_every is 0", "[wave]")
     ws.cleared_timer = 1.99f; // Skip SFX trigger (needs AudioSystem), just test transition.
 
     // Advance past the 2-second auto-advance delay.
+    // All cleared waves go to SafeRoom (ladder spawns for player to advance).
     WaveSystem::update(em, 3.0);
-    REQUIRE(ws.phase == WaveState::Phase::Spawning);
+    REQUIRE(ws.phase == WaveState::Phase::SafeRoom);
 }
 
 TEST_CASE("Cleared transitions to Complete on last wave", "[wave]")
