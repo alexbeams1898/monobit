@@ -90,7 +90,12 @@ static void renderStatusCondition(EntityManager& em, entt::entity entity, float 
     std::string status = "Good";
     Color statusColor{0.4f, 0.8f, 0.45f, 1.0f};
 
-    if (em.registry().all_of<Staggered>(entity))
+    if (em.registry().ctx().get<DebugFlags>().god_mode)
+    {
+        status = "God Mode";
+        statusColor = {1.0f, 0.84f, 0.0f, 1.0f};
+    }
+    else if (em.registry().all_of<Staggered>(entity))
     {
         status = "Staggered";
         statusColor = {0.85f, 0.35f, 0.35f, 1.0f};

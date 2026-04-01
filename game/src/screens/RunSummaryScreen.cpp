@@ -8,7 +8,6 @@
 #include "systems/AudioSystem.h"
 
 #include <SDL.h>
-#include <cstdio>
 #include <string>
 #include <tracy/Tracy.hpp>
 
@@ -83,14 +82,6 @@ bool RunSummaryScreen::render(EntityManager& em, int window_w, int window_h)
 
     UIRenderer::drawText(sBodyFont, "Kills", cx, y, LABEL_COLOR);
     UIRenderer::drawText(sBodyFont, std::to_string(stats.kills), val_x, y, TEXT_WHITE);
-    y += line_h;
-
-    // Time as MM:SS.
-    const int totalSec = static_cast<int>(stats.time);
-    char timeBuf[16];
-    std::snprintf(timeBuf, sizeof(timeBuf), "%d:%02d", totalSec / 60, totalSec % 60);
-    UIRenderer::drawText(sBodyFont, "Time", cx, y, LABEL_COLOR);
-    UIRenderer::drawText(sBodyFont, timeBuf, val_x, y, TEXT_WHITE);
     y += line_h;
 
     UIRenderer::drawText(sBodyFont, "XP Earned", cx, y, LABEL_COLOR);

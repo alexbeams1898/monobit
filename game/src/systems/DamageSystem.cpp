@@ -105,6 +105,10 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
     const FormulaConfig& f = reg.ctx().get<FormulaConfig>();
     const SoundConfig& snd = reg.ctx().get<SoundConfig>();
 
+    // God mode: player takes no damage.
+    if (reg.all_of<PlayerActions>(target) && reg.ctx().get<DebugFlags>().god_mode)
+        return false;
+
     // I-frames: ignore if target is currently dodging.
     if (reg.all_of<Dodging>(target))
         return false;

@@ -99,10 +99,7 @@ static void drawCharacterRow(EntityManager& em, const SaveData& saveData, const 
     const bool rowHovered = lay.mx >= lay.lx && lay.mx < lay.lx + row_content_w && lay.my >= ly &&
                             lay.my < ly + lay.row_h;
     if (rowHovered)
-    {
-        sSel = i;
         anyHovered = true;
-    }
 
     if (selected)
         UIRenderer::drawRect(lay.lx, ly, lay.list_w, lay.row_h, SELECTED_BG);
@@ -110,8 +107,9 @@ static void drawCharacterRow(EntityManager& em, const SaveData& saveData, const 
         UIRenderer::drawRect(lay.lx, ly, lay.list_w, lay.row_h, HOVER_BG);
 
     const auto& prof = saveData.characters[static_cast<size_t>(i)];
+    const bool highlighted = selected || rowHovered;
     UIRenderer::drawText(sTitleFont, prof.name, lay.lx + 16.0f, ly + lay.row_pad,
-                         selected ? TEXT_WHITE : TEXT_DIM);
+                         highlighted ? TEXT_WHITE : TEXT_DIM);
 
     if (prof.money > 0)
     {
@@ -128,10 +126,7 @@ static void drawCharacterRow(EntityManager& em, const SaveData& saveData, const 
                             lay.my < del_y + lay.del_h;
 
     if (delHovered)
-    {
-        sSel = i;
         anyHovered = true;
-    }
 
     UIRenderer::drawRect(del_x, del_y, lay.del_w, lay.del_h, delHovered ? DELETE_BG_HL : DELETE_BG);
     UIRenderer::drawText(sBodyFont, "X", del_x + 8.0f, del_y + (lay.del_h - lay.xsz.height) * 0.5f,
@@ -147,6 +142,7 @@ static void drawCharacterRow(EntityManager& em, const SaveData& saveData, const 
 
     if (rowHovered && mouseClicked(em, SDL_BUTTON_LEFT))
     {
+        sSel = i;
         sSelectedName = saveData.characters[static_cast<size_t>(i)].name;
         result = LoadGameScreen::Action::Select;
         playSfx(snd);
@@ -186,8 +182,11 @@ static LoadGameScreen::Action handleLoadInput(const EntityManager& em, const Sou
     if (keyPressed(em, SDL_SCANCODE_DOWN) || keyPressed(em, SDL_SCANCODE_S))
         sSel = sSel < 0 ? 0 : (sSel + 1) % totalItems;
 
-    if (keyPressed(em, SDL_SCANCODE_ESCAPE))
+    if (keyPressed(em, SDL_SCANCODE_ESCAPE) || mouseClicked(em, SDL_BUTTON_RIGHT))
+    {
+        screen_input::playClickSfx(em);
         return LoadGameScreen::Action::Back;
+    }
 
     // Delete key opens confirmation for the selected character.
     if (keyPressed(em, SDL_SCANCODE_DELETE) && sSel >= 0 && sSel < charCount)
@@ -288,24 +287,20 @@ LoadGameScreen::Action LoadGameScreen::render(EntityManager& em, int window_w, i
 
     const bool backHover = mx >= bx && mx < bx + bw && my >= ly && my < ly + bh;
     if (backHover)
-    {
-        sSel = charCount;
         anyHovered = true;
-    }
     const bool backSel = (sSel == charCount);
+    const bool backHighlighted = backSel || backHover;
 
-    UIRenderer::drawRect(bx, ly, bw, bh, backSel ? BTN_BG_HL : BTN_BG);
+    UIRenderer::drawRect(bx, ly, bw, bh, backSel ? BTN_BG_HL : (backHover ? HOVERED_BG : BTN_BG));
     UIRenderer::drawText(sTitleFont, backLabel, bx + 30.0f, ly + 10.0f,
-                         backSel ? BTN_HOVER : BTN_NORMAL);
+                         backHighlighted ? BTN_HOVER : BTN_NORMAL);
 
     if (backHover && mouseClicked(em, SDL_BUTTON_LEFT))
     {
+        sSel = charCount;
         result = Action::Back;
         playSfx(snd);
     }
-
-    if (!anyHovered && em.key_down_events.empty())
-        sSel = -1;
 
     return result;
 }

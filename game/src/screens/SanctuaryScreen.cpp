@@ -8,6 +8,8 @@
 #include "ops/InventoryOps.h"
 #include "screens/CraftingScreen.h"
 #include "screens/MenuDialog.h"
+#include "screens/ScreenInput.h"
+#include "systems/AudioSystem.h"
 #include "systems/NotificationSystem.h"
 
 #include <SDL.h>
@@ -164,6 +166,7 @@ void SanctuaryScreen::render(EntityManager& em, int window_w, int window_h)
 
     if (result.dismissed)
     {
+        screen_input::playClickSfx(em);
         ui.active_screen = UIState::Screen::None;
         return;
     }

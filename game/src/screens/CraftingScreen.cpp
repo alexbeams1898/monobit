@@ -34,7 +34,6 @@ static constexpr Color HEADER_COLOR{0.6f, 0.85f, 0.7f, 0.8f};
 static constexpr Color HAVE_COLOR{0.3f, 0.9f, 0.3f, 1.0f};
 static constexpr Color NEED_COLOR{0.9f, 0.3f, 0.3f, 1.0f};
 static constexpr Color SELECTED_BG{0.2f, 0.3f, 0.25f, 0.6f};
-static constexpr Color HOVERED_BG{0.15f, 0.18f, 0.2f, 0.35f};
 static constexpr Color SEPARATOR{0.3f, 0.4f, 0.35f, 0.5f};
 static constexpr Color HINT_COLOR{0.5f, 0.48f, 0.46f, 0.8f};
 static constexpr Color DESC_COLOR{0.7f, 0.68f, 0.55f, 0.9f};

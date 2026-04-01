@@ -57,7 +57,8 @@ struct GameState
         Victory,
         GameOver,
         RunSummary,
-        HighScores
+        HighScores,
+        Settings
     };
 
     Phase phase = Phase::MainMenu;
@@ -126,4 +127,13 @@ struct SaveData
     int schema_version = CURRENT_VERSION;
     std::vector<PlayerProfile> characters;
     std::vector<Run> runs;
+};
+
+// ---------------------------------------------------------------------------
+// DebugFlags -- runtime debug toggles (F6 = god mode, etc.).
+// Stored in registry ctx. Never persisted to save files.
+// ---------------------------------------------------------------------------
+struct DebugFlags
+{
+    bool god_mode = false;
 };

@@ -71,9 +71,10 @@ static CharCreateScreen::Action handleCharCreateInput(const EntityManager& em,
         keyPressed(em, SDL_SCANCODE_UP))
         sSel = sSel < 0 ? 0 : (sSel + 1) % 2;
 
-    if (keyPressed(em, SDL_SCANCODE_ESCAPE))
+    if (keyPressed(em, SDL_SCANCODE_ESCAPE) || mouseClicked(em, SDL_BUTTON_RIGHT))
     {
         SDL_StopTextInput();
+        screen_input::playClickSfx(em);
         return CharCreateScreen::Action::Back;
     }
 

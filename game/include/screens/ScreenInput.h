@@ -1,6 +1,8 @@
 #pragma once
 
 #include "ecs/EntityManager.h"
+#include "ecs/GameConfig.h"
+#include "systems/AudioSystem.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -28,6 +30,13 @@ inline int hoveredRow(float mx, float my, float cx, float cy, float cw, float ro
         return -1;
     const int idx = static_cast<int>((my - (cy - 2.0f)) / row_h);
     return (idx >= 0 && idx < count) ? idx : -1;
+}
+
+inline void playClickSfx(const EntityManager& em)
+{
+    const auto& snd = em.registry().ctx().get<SoundConfig>();
+    if (!snd.ui_click.path.empty())
+        AudioSystem::playSfx(snd.ui_click.path, snd.ui_click.volume);
 }
 
 } // namespace screen_input

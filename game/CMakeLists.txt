@@ -48,6 +48,7 @@ add_library(game-systems STATIC
     src/screens/RunSummaryScreen.cpp
     src/screens/HighScoresScreen.cpp
     src/screens/SanctuaryScreen.cpp
+    src/screens/SettingsScreen.cpp
 )
 
 target_include_directories(game-systems PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
