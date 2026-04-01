@@ -947,8 +947,10 @@ static bool drawBottomBtn(const std::string& text, float bx, float by, float pad
     const bool hover = (mx >= bx && mx < bx + btn_w && my >= by && my < by + btn_h);
     const bool selected = (sBottomSel == selIdx);
     const bool highlighted = hover || selected;
-    UIRenderer::drawRect(bx, by, btn_w, btn_h, selected ? BTN_BG_HL : (hover ? HOVERED_BG : BTN_BG));
-    UIRenderer::drawText(sBodyFont, text, bx + pad_x, by + pad_y, highlighted ? hlColor : normalColor);
+    UIRenderer::drawRect(bx, by, btn_w, btn_h,
+                         selected ? BTN_BG_HL : (hover ? HOVERED_BG : BTN_BG));
+    UIRenderer::drawText(sBodyFont, text, bx + pad_x, by + pad_y,
+                         highlighted ? hlColor : normalColor);
     return hover;
 }
 

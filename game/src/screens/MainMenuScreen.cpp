@@ -80,7 +80,8 @@ static MainMenuScreen::Action drawMenuButtons(EntityManager& em, const char* con
 
         const bool selected = (i == sSel);
         const bool highlighted = selected || hovered;
-        UIRenderer::drawRect(bx, by, bw, btn_h, selected ? BTN_BG_HL : (hovered ? HOVERED_BG : BTN_BG));
+        UIRenderer::drawRect(bx, by, bw, btn_h,
+                             selected ? BTN_BG_HL : (hovered ? HOVERED_BG : BTN_BG));
         UIRenderer::drawText(sTitleFont, label, bx + btn_pad_x, by + btn_pad_y,
                              highlighted ? BTN_HOVER : BTN_NORMAL);
 
@@ -122,9 +123,8 @@ MainMenuScreen::Action MainMenuScreen::render(EntityManager& em, int window_w, i
 
     const bool hasChars = !saveData.characters.empty();
 
-    static constexpr Action kActionsWithLoad[] = {Action::NewGame, Action::LoadGame,
-                                                  Action::HighScores, Action::Settings,
-                                                  Action::Quit};
+    static constexpr Action kActionsWithLoad[] = {
+        Action::NewGame, Action::LoadGame, Action::HighScores, Action::Settings, Action::Quit};
     static constexpr Action kActionsNoLoad[] = {Action::NewGame, Action::HighScores,
                                                 Action::Settings, Action::Quit};
     static constexpr const char* kLabelsWithLoad[] = {"New Game", "Load Game", "High Scores",

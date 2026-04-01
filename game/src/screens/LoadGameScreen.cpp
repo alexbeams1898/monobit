@@ -286,8 +286,6 @@ LoadGameScreen::Action LoadGameScreen::render(EntityManager& em, int window_w, i
     ly = visual_bottom - 20.0f - bh;
 
     const bool backHover = mx >= bx && mx < bx + bw && my >= ly && my < ly + bh;
-    if (backHover)
-        anyHovered = true;
     const bool backSel = (sSel == charCount);
     const bool backHighlighted = backSel || backHover;
 
