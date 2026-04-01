@@ -72,17 +72,46 @@ jobs:
         id: lint-files
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            # PR: lint .cpp files that changed, plus if any .h changed,
-            # lint all .cpp files (header changes can ripple everywhere).
             CHANGED=$(git diff --name-only --diff-filter=d \
               origin/${{ github.base_ref }}...HEAD -- 'engine/' 'game/')
-            HEADERS=$(echo "$CHANGED" | grep -E '\.h(pp)?$' || true)
-            if [ -n "$HEADERS" ]; then
-              # Header changed -- lint everything to catch ripple effects.
-              FILES=$(find engine game -name '*.cpp')
-            else
-              FILES=$(echo "$CHANGED" | grep -E '\.cpp$' || true)
+
+            # Directly changed .cpp files
+            CHANGED_CPPS=$(echo "$CHANGED" | grep -E '\.cpp$' || true)
+
+            # Changed headers -- use ninja deps to find affected .cpp files
+            CHANGED_HEADERS=$(echo "$CHANGED" | grep -E '\.h(pp)?$' || true)
+            HEADER_AFFECTED=""
+
+            if [ -n "$CHANGED_HEADERS" ]; then
+              echo "$CHANGED_HEADERS" | xargs -n1 basename > /tmp/changed-headers.txt
+              echo "Changed headers:"
+              cat /tmp/changed-headers.txt
+
+              # Parse ninja dependency graph: for each build target, check if
+              # any of its transitive deps match a changed header basename.
+              # If so, record the target's source .cpp file.
+              ninja -C build -t deps 2>/dev/null | awk '
+                BEGIN { while ((getline h < "/tmp/changed-headers.txt") > 0) wanted[h]=1 }
+                /\.o(bj)?: #deps/ { src="" }
+                /^    / {
+                  dep=$0; gsub(/^ +/,"",dep)
+                  if (src=="" && dep ~ /\.cpp$/) src=dep
+                  n=split(dep,parts,"/")
+                  if (parts[n] in wanted) affected[src]=1
+                }
+                END { for(f in affected) if(f!="") print f }
+              ' > /tmp/header-affected.txt
+
+              # ninja deps uses absolute paths -- strip repo root prefix
+              REPO_ROOT="${{ github.workspace }}/"
+              sed -i "s|${REPO_ROOT}||g" /tmp/header-affected.txt
+
+              HEADER_AFFECTED=$(cat /tmp/header-affected.txt)
             fi
+
+            # Union changed .cpp files + header-affected .cpp files
+            FILES=$(printf "%s\n%s" "$CHANGED_CPPS" "$HEADER_AFFECTED" | \
+              grep -E '\.cpp$' | sort -u)
           else
             # Push to master: lint everything.
             FILES=$(find engine game -name '*.cpp')
@@ -93,7 +122,9 @@ jobs:
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
             echo "$FILES" > /tmp/lint-files.txt
-            echo "Linting $(echo "$FILES" | wc -l) file(s)"
+            COUNT=$(echo "$FILES" | wc -l)
+            echo "Linting $COUNT file(s):"
+            cat /tmp/lint-files.txt
           fi
 
       - name: Lint (clang-tidy)
