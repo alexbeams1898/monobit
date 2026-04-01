@@ -9,7 +9,6 @@
 #include "systems/AudioSystem.h"
 
 #include <SDL.h>
-#include <cstdio>
 #include <string>
 #include <tracy/Tracy.hpp>
 
@@ -40,12 +39,11 @@ bool HighScoresScreen::render(EntityManager& em, int window_w, int window_h)
     const float ww = static_cast<float>(window_w);
     const float wh = static_cast<float>(window_h);
     const auto& saveData = em.registry().ctx().get<SaveData>();
-    const auto& snd = em.registry().ctx().get<SoundConfig>();
 
     UIRenderer::drawRect(0.0f, 0.0f, ww, wh, OVERLAY_OPAQUE);
 
     // Panel.
-    const float panel_w = 740.0f;
+    const float panel_w = 580.0f;
     const float panel_h = 550.0f;
     const float px = (ww - panel_w) * 0.5f;
     const float py = (wh - panel_h) * 0.5f;
@@ -71,11 +69,11 @@ bool HighScoresScreen::render(EntityManager& em, int window_w, int window_h)
     {
         // Header.
         UIRenderer::drawText(sBodyFont, "#", cx, y, TEXT_DIM);
-        UIRenderer::drawText(sBodyFont, "Name", cx + 40.0f, y, TEXT_DIM);
-        UIRenderer::drawText(sBodyFont, "Score", cx + 200.0f, y, TEXT_DIM);
-        UIRenderer::drawText(sBodyFont, "Wave", cx + 310.0f, y, TEXT_DIM);
-        UIRenderer::drawText(sBodyFont, "Kills", cx + 390.0f, y, TEXT_DIM);
-        UIRenderer::drawText(sBodyFont, "Result", cx + 470.0f, y, TEXT_DIM);
+        UIRenderer::drawText(sBodyFont, "Name", cx + 35.0f, y, TEXT_DIM);
+        UIRenderer::drawText(sBodyFont, "Score", cx + 180.0f, y, TEXT_DIM);
+        UIRenderer::drawText(sBodyFont, "Wave", cx + 280.0f, y, TEXT_DIM);
+        UIRenderer::drawText(sBodyFont, "Kills", cx + 350.0f, y, TEXT_DIM);
+        UIRenderer::drawText(sBodyFont, "Result", cx + 420.0f, y, TEXT_DIM);
         y += line_h;
 
         for (int i = 0; i < static_cast<int>(top.size()); ++i)
@@ -84,14 +82,14 @@ bool HighScoresScreen::render(EntityManager& em, int window_w, int window_h)
             const Color rowColor = (i == 0) ? GOLD : TEXT_WHITE;
 
             UIRenderer::drawText(sBodyFont, std::to_string(i + 1), cx, y, rowColor);
-            UIRenderer::drawText(sBodyFont, run.character_name, cx + 40.0f, y, rowColor);
-            UIRenderer::drawText(sBodyFont, std::to_string(run.stats.score), cx + 200.0f, y,
+            UIRenderer::drawText(sBodyFont, run.character_name, cx + 35.0f, y, rowColor);
+            UIRenderer::drawText(sBodyFont, std::to_string(run.stats.score), cx + 180.0f, y,
                                  rowColor);
-            UIRenderer::drawText(sBodyFont, std::to_string(run.stats.wave), cx + 310.0f, y,
+            UIRenderer::drawText(sBodyFont, std::to_string(run.stats.wave), cx + 280.0f, y,
                                  rowColor);
-            UIRenderer::drawText(sBodyFont, std::to_string(run.stats.kills), cx + 390.0f, y,
+            UIRenderer::drawText(sBodyFont, std::to_string(run.stats.kills), cx + 350.0f, y,
                                  rowColor);
-            UIRenderer::drawText(sBodyFont, run.escaped ? "Escaped" : "Died", cx + 470.0f, y,
+            UIRenderer::drawText(sBodyFont, run.escaped ? "Escaped" : "Died", cx + 420.0f, y,
                                  run.escaped ? GOLD : Color{0.9f, 0.2f, 0.15f, 1.0f});
             y += line_h;
         }
@@ -116,11 +114,11 @@ bool HighScoresScreen::render(EntityManager& em, int window_w, int window_h)
     UIRenderer::drawText(sTitleFont, backLabel, bx + 30.0f, btn_y + 10.0f,
                          hovered ? BTN_HOVER : BTN_NORMAL);
 
-    if ((hovered && mouseClicked(em, SDL_BUTTON_LEFT)) || keyPressed(em, SDL_SCANCODE_ESCAPE) ||
-        keyPressed(em, SDL_SCANCODE_RETURN) || keyPressed(em, SDL_SCANCODE_KP_ENTER))
+    if ((hovered && mouseClicked(em, SDL_BUTTON_LEFT)) || mouseClicked(em, SDL_BUTTON_RIGHT) ||
+        keyPressed(em, SDL_SCANCODE_ESCAPE) || keyPressed(em, SDL_SCANCODE_RETURN) ||
+        keyPressed(em, SDL_SCANCODE_KP_ENTER))
     {
-        if (!snd.ui_click.path.empty())
-            AudioSystem::playSfx(snd.ui_click.path, snd.ui_click.volume);
+        screen_input::playClickSfx(em);
         return true;
     }
 

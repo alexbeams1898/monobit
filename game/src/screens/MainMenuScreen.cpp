@@ -19,6 +19,7 @@ static FontHandle sBodyFont = INVALID_FONT;
 static FontHandle sTitleFont = INVALID_FONT;
 static FontHandle sBigTitleFont = INVALID_FONT;
 static int sSel = -1;
+static int sHovered = -1;
 
 static constexpr Color TITLE_COLOR{0.9f, 0.78f, 0.45f, 1.0f};
 
@@ -32,6 +33,7 @@ void MainMenuScreen::init(FontHandle body_font, FontHandle title_font, FontHandl
 void MainMenuScreen::reset()
 {
     sSel = -1;
+    sHovered = -1;
 }
 
 static MainMenuScreen::Action drawMenuButtons(EntityManager& em, const char* const* labels,
@@ -56,7 +58,7 @@ static MainMenuScreen::Action drawMenuButtons(EntityManager& em, const char* con
         static_cast<float>(btnCount) * btn_h + static_cast<float>(btnCount - 1) * btn_gap;
     float by = (wh - total_h) * 0.5f + wh * 0.05f;
 
-    bool anyHovered = false;
+    sHovered = -1;
     for (int i = 0; i < btnCount; ++i)
     {
         const std::string label = labels[i];
@@ -66,32 +68,24 @@ static MainMenuScreen::Action drawMenuButtons(EntityManager& em, const char* con
 
         const bool hovered = (mx >= bx && mx < bx + bw && my >= by && my < by + btn_h);
         if (hovered)
-        {
-            sSel = i;
-            anyHovered = true;
-        }
-
-        const bool selected = (i == sSel);
-        UIRenderer::drawRect(bx, by, bw, btn_h, selected ? BTN_BG_HL : BTN_BG);
-        UIRenderer::drawText(sTitleFont, label, bx + btn_pad_x, by + btn_pad_y,
-                             selected ? BTN_HOVER : BTN_NORMAL);
+            sHovered = i;
 
         if (hovered && mouseClicked(em, SDL_BUTTON_LEFT))
         {
+            sSel = i;
             result = actions[i];
             if (result != MainMenuScreen::Action::None && !snd.ui_click.path.empty())
                 AudioSystem::playSfx(snd.ui_click.path, snd.ui_click.volume);
         }
 
+        const bool selected = (i == sSel);
+        const bool highlighted = selected || hovered;
+        UIRenderer::drawRect(bx, by, bw, btn_h,
+                             selected ? BTN_BG_HL : (hovered ? HOVERED_BG : BTN_BG));
+        UIRenderer::drawText(sTitleFont, label, bx + btn_pad_x, by + btn_pad_y,
+                             highlighted ? BTN_HOVER : BTN_NORMAL);
+
         by += btn_h + btn_gap;
-    }
-    if (!anyHovered && !em.key_down_events.empty())
-    {
-        // Keyboard took over -- keep sSel.
-    }
-    else if (!anyHovered)
-    {
-        sSel = -1;
     }
 
     return result;
@@ -129,16 +123,17 @@ MainMenuScreen::Action MainMenuScreen::render(EntityManager& em, int window_w, i
 
     const bool hasChars = !saveData.characters.empty();
 
-    static constexpr Action kActionsWithLoad[] = {Action::NewGame, Action::LoadGame,
-                                                  Action::HighScores, Action::Quit};
-    static constexpr Action kActionsNoLoad[] = {Action::NewGame, Action::HighScores, Action::Quit};
+    static constexpr Action kActionsWithLoad[] = {
+        Action::NewGame, Action::LoadGame, Action::HighScores, Action::Settings, Action::Quit};
+    static constexpr Action kActionsNoLoad[] = {Action::NewGame, Action::HighScores,
+                                                Action::Settings, Action::Quit};
     static constexpr const char* kLabelsWithLoad[] = {"New Game", "Load Game", "High Scores",
-                                                      "Quit"};
-    static constexpr const char* kLabelsNoLoad[] = {"New Game", "High Scores", "Quit"};
+                                                      "Settings", "Quit"};
+    static constexpr const char* kLabelsNoLoad[] = {"New Game", "High Scores", "Settings", "Quit"};
 
     const Action* actions = hasChars ? kActionsWithLoad : kActionsNoLoad;
     const char* const* labels = hasChars ? kLabelsWithLoad : kLabelsNoLoad;
-    const int btnCount = hasChars ? 4 : 3;
+    const int btnCount = hasChars ? 5 : 4;
 
     Action result = handleKeyboardInput(em, snd, actions, btnCount);
 

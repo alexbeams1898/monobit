@@ -21,6 +21,7 @@
 #include "screens/PauseMenu.h"
 #include "screens/RunSummaryScreen.h"
 #include "screens/SanctuaryScreen.h"
+#include "screens/SettingsScreen.h"
 #include "screens/VictoryScreen.h"
 #include "systems/AudioSystem.h"
 #include "systems/NotificationSystem.h"
@@ -117,6 +118,7 @@ int main(int argc, char* argv[])
     em.registry().ctx().emplace<ScoringConfig>();
     em.registry().ctx().emplace<SaveData>();
     em.registry().ctx().emplace<AttackTokenPool>();
+    em.registry().ctx().emplace<DebugFlags>();
 
     // Load configs.
     ConfigLoader::loadFormulas(em, "config/balance/formulas.json");
@@ -161,6 +163,7 @@ int main(int argc, char* argv[])
     RunSummaryScreen::init(bodyFont, titleFont);
     HighScoresScreen::init(bodyFont, titleFont);
     SanctuaryScreen::init(bodyFont, titleFont);
+    SettingsScreen::init(bodyFont, titleFont);
     CraftingScreen::init(bodyFont, titleFont);
 
     engine.setGameUpdate(&gameUpdate);

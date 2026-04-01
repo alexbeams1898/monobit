@@ -303,14 +303,10 @@ static void renderInventoryTab(EntityManager& em, float cx, float cy, float cw, 
         sContentSel = ((sContentSel % total_slots) + total_slots) % total_slots;
 
     const int hover = hoveredSlot(mx, my, cx, gy, GRID_COLS, total_slots);
-    if (hover >= 0)
+    if (hover >= 0 && mouseClicked(em, SDL_BUTTON_LEFT))
     {
         sContentSel = hover;
         sBottomSel = -1;
-    }
-    else if (em.key_down_events.empty())
-    {
-        sContentSel = -1;
     }
 
     for (int i = 0; i < total_slots; ++i)
@@ -320,8 +316,14 @@ static void renderInventoryTab(EntityManager& em, float cx, float cy, float cw, 
         const float sx = cx + static_cast<float>(col) * (SLOT_SIZE + SLOT_GAP);
         const float sy = gy + static_cast<float>(row) * (SLOT_SIZE + SLOT_GAP);
         const bool selected = (i == sContentSel);
+        const bool hovered = (i == hover && !selected);
 
-        UIRenderer::drawRect(sx, sy, SLOT_SIZE, SLOT_SIZE, selected ? SLOT_SELECTED : SLOT_BG);
+        Color slotBg = SLOT_BG;
+        if (selected)
+            slotBg = SLOT_SELECTED;
+        else if (hovered)
+            slotBg = HOVERED_BG;
+        UIRenderer::drawRect(sx, sy, SLOT_SIZE, SLOT_SIZE, slotBg);
 
         // Selection border.
         if (selected)
@@ -502,14 +504,18 @@ static void performEquipAction(EntityManager& em, entt::entity player, const Pic
 static void drawPickerRows(EntityManager& em, entt::entity player,
                            const std::vector<PickerEntry>& picker, EquipSlot slot_enum,
                            const ItemRegistry& items, float cx, float y, float cw, float line_h,
-                           float mx, float my)
+                           float mx, float my, int hoverIdx)
 {
     for (int i = 0; i < static_cast<int>(picker.size()); ++i)
     {
         const bool selected = (i == sEquipPickSel);
+        const bool hovered = (i == hoverIdx && !selected);
         if (selected)
             UIRenderer::drawRect(cx - 4.0f, y - 2.0f, cw + 8.0f, line_h, SELECTED_BG);
+        else if (hovered)
+            UIRenderer::drawRect(cx - 4.0f, y - 2.0f, cw + 8.0f, line_h, HOVERED_BG);
 
+        const bool highlighted = selected || hovered;
         const std::string prefix = selected ? "> " : "  ";
         const Color text_color =
             (picker[static_cast<size_t>(i)].inv_index < 0) ? TEXT_DIM : TEXT_WHITE;
@@ -520,7 +526,7 @@ static void drawPickerRows(EntityManager& em, entt::entity player,
         const ItemDef* pdef = (pe.inv_index >= 0) ? items.find(pe.config_path) : nullptr;
         ItemStatRenderer::drawItemIcon(pdef, cx, y, icon_sz);
         UIRenderer::drawText(sBodyFont, prefix + pe.label, text_x, y,
-                             selected ? TEXT_WHITE : text_color);
+                             highlighted ? TEXT_WHITE : text_color);
 
         if (isMouseInRow(mx, my, cx, cw, y, line_h) && mouseClicked(em, SDL_BUTTON_LEFT))
         {
@@ -538,6 +544,11 @@ static bool renderEquipPicker(EntityManager& em, entt::entity player, const Equi
                               const ItemRegistry& items, float cx, float ey, float cw, float mx,
                               float my)
 {
+    if (sContentSel < 0 || sContentSel >= EQUIP_SLOT_COUNT)
+    {
+        sEquipPicking = false;
+        return false;
+    }
     const float line_h = FontManager::lineHeight(sBodyFont) + 6.0f;
     const EquipSlot slot_enum = EQUIP_SLOT_ENUMS[sContentSel];
     const ItemInstance& current_slot = InventoryOps::slotRef(eq, slot_enum);
@@ -570,10 +581,11 @@ static bool renderEquipPicker(EntityManager& em, entt::entity player, const Equi
 
         const int pickerHover =
             hoveredRow(mx, my, cx, y, cw, line_h, static_cast<int>(picker.size()));
-        if (pickerHover >= 0)
+        if (pickerHover >= 0 && mouseClicked(em, SDL_BUTTON_LEFT))
             sEquipPickSel = pickerHover;
 
-        drawPickerRows(em, player, picker, slot_enum, items, cx, y, cw, line_h, mx, my);
+        drawPickerRows(em, player, picker, slot_enum, items, cx, y, cw, line_h, mx, my,
+                       pickerHover);
 
         if (confirmKeyPressed(em))
         {
@@ -597,24 +609,29 @@ static bool renderEquipPicker(EntityManager& em, entt::entity player, const Equi
 
 // Draw the equipment slot list and handle mouse clicks.
 static void renderEquipSlotList(EntityManager& em, const Equipment& eq, const ItemRegistry& items,
-                                float cx, float ey, float cw, float line_h, float mx, float my)
+                                float cx, float ey, float cw, float line_h, float mx, float my,
+                                int hoverIdx)
 {
     float y = ey;
     for (int i = 0; i < EQUIP_SLOT_COUNT; ++i)
     {
         const bool selected = (sContentSel == i && sBottomSel < 0);
+        const bool hovered = (i == hoverIdx && !selected);
         const ItemInstance& slot = InventoryOps::slotRef(eq, EQUIP_SLOT_ENUMS[i]);
 
         if (selected)
             UIRenderer::drawRect(cx - 4.0f, y - 2.0f, cw + 8.0f, line_h, SELECTED_BG);
+        else if (hovered)
+            UIRenderer::drawRect(cx - 4.0f, y - 2.0f, cw + 8.0f, line_h, HOVERED_BG);
 
         const float icon_sz = line_h - 4.0f;
         const float text_x = cx + icon_sz + 4.0f;
         std::string text = std::string(EQUIP_SLOT_NAMES[i]) + ": ";
+        const bool highlighted = selected || hovered;
         if (slot.empty())
         {
             text += (EQUIP_SLOT_ENUMS[i] == EquipSlot::MainHand) ? "(Unarmed)" : "(empty)";
-            UIRenderer::drawText(sBodyFont, text, text_x, y, selected ? TEXT_WHITE : TEXT_DIM);
+            UIRenderer::drawText(sBodyFont, text, text_x, y, highlighted ? TEXT_WHITE : TEXT_DIM);
         }
         else
         {
@@ -724,17 +741,13 @@ static bool renderEquipmentTab(EntityManager& em, float cx, float cy, float cw, 
         return renderEquipPicker(em, player, eq, items, cx, ey, cw, mx, my);
 
     const int hover = hoveredRow(mx, my, cx, ey, cw, line_h, EQUIP_SLOT_COUNT);
-    if (hover >= 0)
+    if (hover >= 0 && mouseClicked(em, SDL_BUTTON_LEFT))
     {
         sContentSel = hover;
         sBottomSel = -1;
     }
-    else if (em.key_down_events.empty())
-    {
-        sContentSel = -1;
-    }
 
-    renderEquipSlotList(em, eq, items, cx, ey, cw, line_h, mx, my);
+    renderEquipSlotList(em, eq, items, cx, ey, cw, line_h, mx, my, hover);
     if (sContentSel >= 0)
     {
         renderEquipStatPanel(em, player, eq, items, cx,
@@ -910,9 +923,8 @@ static void renderTabBar(EntityManager& em, UIState& ui, float panel_x, float pa
                     ui.menu_tab = static_cast<UIState::Tab>(i);
                     sContentSel = -1;
                     sBottomSel = -1;
-                    const auto& snd = em.registry().ctx().get<SoundConfig>();
-                    if (!snd.ui_click.path.empty())
-                        AudioSystem::playSfx(snd.ui_click.path, snd.ui_click.volume);
+                    sEquipPicking = false;
+                    screen_input::playClickSfx(em);
                 }
             }
         }
@@ -933,11 +945,12 @@ static bool drawBottomBtn(const std::string& text, float bx, float by, float pad
                           Color normalColor)
 {
     const bool hover = (mx >= bx && mx < bx + btn_w && my >= by && my < by + btn_h);
-    if (hover)
-        sBottomSel = selIdx;
-    const bool active = hover || (sBottomSel == selIdx);
-    UIRenderer::drawRect(bx, by, btn_w, btn_h, active ? BTN_BG_HL : BTN_BG);
-    UIRenderer::drawText(sBodyFont, text, bx + pad_x, by + pad_y, active ? hlColor : normalColor);
+    const bool selected = (sBottomSel == selIdx);
+    const bool highlighted = hover || selected;
+    UIRenderer::drawRect(bx, by, btn_w, btn_h,
+                         selected ? BTN_BG_HL : (hover ? HOVERED_BG : BTN_BG));
+    UIRenderer::drawText(sBodyFont, text, bx + pad_x, by + pad_y,
+                         highlighted ? hlColor : normalColor);
     return hover;
 }
 
@@ -989,26 +1002,26 @@ static int renderBottomBar(EntityManager& em, UIState& ui, float panel_x, float 
     bx += eBtn_w + btn_gap;
     const bool qHover = drawBottomBtn("Quit Game", bx, btn_y, btn_pad_x, btn_pad_y, qBtn_w, btn_h,
                                       mx, my, 2, BTN_QUIT_HL, BTN_QUIT);
-    if (!rHover && !eHover && !qHover && em.key_down_events.empty())
-        sBottomSel = -1;
-
     // Mouse click on buttons.
+    const int clickedBtn = rHover ? 0 : (eHover ? 1 : (qHover ? 2 : -1));
     for (const uint8_t btn : em.mouse_down_events)
     {
-        if (btn == SDL_BUTTON_LEFT && (rHover || eHover || qHover))
+        if (btn == SDL_BUTTON_LEFT && clickedBtn >= 0)
         {
-            const auto& snd = em.registry().ctx().get<SoundConfig>();
-            if (!snd.ui_click.path.empty())
-                AudioSystem::playSfx(snd.ui_click.path, snd.ui_click.volume);
-            if (rHover)
+            sBottomSel = clickedBtn;
+            screen_input::playClickSfx(em);
+            if (clickedBtn == 0)
                 ui.active_screen = UIState::Screen::None;
-            if (eHover)
+            else if (clickedBtn == 1)
                 action = 2; // escape run
-            if (qHover)
+            else if (clickedBtn == 2)
                 action = 1; // quit app
         }
         if (btn == SDL_BUTTON_RIGHT && !equipRmbConsumed)
+        {
+            screen_input::playClickSfx(em);
             ui.active_screen = UIState::Screen::None;
+        }
     }
 
     return action;

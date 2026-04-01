@@ -58,6 +58,7 @@
 #include "screens/PauseMenu.h"
 #include "screens/RunSummaryScreen.h"
 #include "screens/SanctuaryScreen.h"
+#include "screens/SettingsScreen.h"
 #include "screens/VictoryScreen.h"
 #include "systems/AudioSystem.h"
 
@@ -686,6 +687,10 @@ void gameRenderUI(Engine& engine, EntityManager& em)
             HighScoresScreen::reset();
             gs.phase = GameState::Phase::HighScores;
             break;
+        case MainMenuScreen::Action::Settings:
+            SettingsScreen::reset();
+            gs.phase = GameState::Phase::Settings;
+            break;
         case MainMenuScreen::Action::Quit:
             engine.requestQuit();
             break;
@@ -806,6 +811,13 @@ void gameRenderUI(Engine& engine, EntityManager& em)
             gs.phase = GameState::Phase::MainMenu;
             // Menu music keeps playing (never stopped for HighScores).
         }
+        break;
+    }
+
+    case GameState::Phase::Settings:
+    {
+        SettingsScreen::render(em, ww, wh);
+        // SettingsScreen handles its own back-to-MainMenu transition.
         break;
     }
     }

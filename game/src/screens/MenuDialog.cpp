@@ -43,27 +43,19 @@ static MenuInputResult handleMenuInput(EntityManager& em, const MenuDialog::Opti
         return res;
     }
 
-    // Find next/prev enabled item, wrapping around. Returns -1 if none enabled.
-    auto findEnabled = [&](int from, int dir) -> int
-    {
-        for (int i = 0; i < itemCount; ++i)
-        {
-            const int idx = ((from + dir * (i + 1)) % itemCount + itemCount) % itemCount;
-            if (opts.items[idx].enabled)
-                return idx;
-        }
-        return -1;
-    };
-
     if (keyPressed(em, SDL_SCANCODE_UP) || keyPressed(em, SDL_SCANCODE_W))
     {
-        const int start = (sel >= 0) ? sel : 0;
-        sel = findEnabled(start, -1);
+        if (sel <= 0)
+            sel = itemCount - 1;
+        else
+            sel--;
     }
     if (keyPressed(em, SDL_SCANCODE_DOWN) || keyPressed(em, SDL_SCANCODE_S))
     {
-        const int start = (sel >= 0) ? sel : itemCount - 1;
-        sel = findEnabled(start, 1);
+        if (sel < 0 || sel >= itemCount - 1)
+            sel = 0;
+        else
+            sel++;
     }
 
     if (sel >= 0 && (keyPressed(em, SDL_SCANCODE_RETURN) || keyPressed(em, SDL_SCANCODE_KP_ENTER)))
@@ -143,27 +135,31 @@ static bool drawMenuItems(const MenuDialog::Options& opts, int& sel, bool activa
 
     for (int i = 0; i < itemCount; ++i)
     {
-        const bool hovered = (mx >= l.cx - 4.0f && mx < l.cx + l.cw + 4.0f && my >= y - 2.0f &&
-                              my < y - 2.0f + l.line_h);
-        if (hovered && opts.items[i].enabled)
+        const bool hovered = mx >= l.cx - 4.0f && mx < l.cx + l.cw + 4.0f && my >= y - 2.0f &&
+                             my < y - 2.0f + l.line_h;
+
+        if (hovered && opts.items[i].enabled && mouseClicked(em, SDL_BUTTON_LEFT))
+        {
             sel = i;
+            activate = true;
+        }
 
         const bool selected = (i == sel);
         if (selected)
             UIRenderer::drawRect(l.cx - 4.0f, y - 2.0f, l.cw + 8.0f, l.line_h, SELECTED_BG);
+        else if (hovered)
+            UIRenderer::drawRect(l.cx - 4.0f, y - 2.0f, l.cw + 8.0f, l.line_h, HOVERED_BG);
 
+        const bool highlighted = selected || hovered;
         const std::string prefix = selected ? "> " : "  ";
         const Color& labelColor = opts.items[i].enabled ? TEXT_WHITE : DISABLED_COLOR;
         UIRenderer::drawText(opts.body_font, prefix + opts.items[i].label, l.cx, y,
-                             selected ? labelColor : TEXT_DIM);
+                             highlighted ? labelColor : TEXT_DIM);
 
         if (!opts.items[i].description.empty())
         {
             UIRenderer::drawText(opts.body_font, opts.items[i].description, desc_x, y, TEXT_DIM);
         }
-
-        if (hovered && mouseClicked(em, SDL_BUTTON_LEFT))
-            activate = true;
 
         y += l.line_h;
     }

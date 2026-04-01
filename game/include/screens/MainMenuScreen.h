@@ -16,6 +16,7 @@ enum class Action
     NewGame,
     LoadGame,
     HighScores,
+    Settings,
     Quit
 };
 

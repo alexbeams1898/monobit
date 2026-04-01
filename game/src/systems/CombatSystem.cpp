@@ -52,6 +52,10 @@ float computeDamage(const Weapon& w, const Stats& s, const FormulaConfig& /*f*/)
 
 void deductStamina(entt::registry& reg, entt::entity entity, float cost, const FormulaConfig& f)
 {
+    // God mode: player never loses stamina.
+    if (reg.all_of<PlayerActions>(entity) && reg.ctx().get<DebugFlags>().god_mode)
+        return;
+
     auto& sta = reg.get<Stamina>(entity);
     const float before = sta.current;
     sta.current = std::max(0.0f, sta.current - cost);

@@ -24,4 +24,5 @@ inline void emplaceGameConfigs(EntityManager& em)
     em.registry().ctx().emplace<EvolutionRegistry>();
     em.registry().ctx().emplace<Compendium>();
     em.registry().ctx().emplace<AttackTokenPool>();
+    em.registry().ctx().emplace<DebugFlags>();
 }

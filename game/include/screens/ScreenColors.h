@@ -22,6 +22,9 @@ constexpr Color OVERLAY_OPAQUE{0.0f, 0.0f, 0.0f, 0.92f};
 // Panel background
 constexpr Color PANEL_BG{0.06f, 0.06f, 0.09f, 0.95f};
 
+// List item highlight (hover without selecting)
+constexpr Color HOVERED_BG{0.15f, 0.18f, 0.2f, 0.35f};
+
 // Standard button colors
 constexpr Color BTN_NORMAL{0.7f, 0.68f, 0.65f, 1.0f};
 constexpr Color BTN_HOVER{0.95f, 0.88f, 0.55f, 1.0f};
