@@ -204,6 +204,12 @@ struct FormulaConfig
         float skill_lock_duration = 0.4f;
         float dodge_speed = 300.0f;
         float parry_window = 0.15f;
+        float backstab_threshold = -0.3f;
+        float backstab_multiplier = 2.0f;
+        float riposte_multiplier = 2.5f;
+        float riposte_window = 0.8f;
+        float critical_lock_duration = 0.6f;
+        float lock_on_range = 300.0f;
     } combat;
 
     bool loaded = false;

@@ -38,6 +38,7 @@ struct PlayerActions
     bool alloc_dex = false;
     bool alloc_end = false;
     bool alloc_lck = false;
+    bool lock_on_toggle = false;
     bool toggle_inventory = false;
     bool toggle_pause = false;
     float dodge_cooldown_remaining = 0.0f;
@@ -84,6 +85,31 @@ struct DamageFeedback
 
 // AttackFeedback -- emplaced by CombatSystem when an entity swings.
 struct AttackFeedback
+{
+    float remaining = 0.0f;
+};
+
+// LockOnTarget -- souls-style focus on a single enemy.
+struct LockOnTarget
+{
+    entt::entity target = entt::null;
+};
+
+// RiposteWindow -- after a successful parry, next attack within this window is a critical.
+struct RiposteWindow
+{
+    float remaining = 0.0f;
+};
+
+// CriticalAttacking -- attacker frozen during critical animation (backstab/riposte).
+struct CriticalAttacking
+{
+    float remaining = 0.0f;
+    entt::entity target = entt::null;
+};
+
+// CriticalTarget -- target frozen and invulnerable during critical animation.
+struct CriticalTarget
 {
     float remaining = 0.0f;
 };

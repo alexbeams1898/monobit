@@ -210,6 +210,45 @@ void CombatSystem::update(EntityManager& em, double dt)
             em.registry().remove<AttackFeedback>(e);
     }
 
+    // RiposteWindow — remove when expired.
+    {
+        std::vector<entt::entity> expired;
+        for (auto [entity, rw] : em.registry().view<RiposteWindow>().each())
+        {
+            rw.remaining = std::max(0.0f, rw.remaining - fdt);
+            if (rw.remaining <= 0.0f)
+                expired.push_back(entity);
+        }
+        for (auto e : expired)
+            em.registry().remove<RiposteWindow>(e);
+    }
+
+    // CriticalAttacking — remove when expired.
+    {
+        std::vector<entt::entity> expired;
+        for (auto [entity, ca] : em.registry().view<CriticalAttacking>().each())
+        {
+            ca.remaining = std::max(0.0f, ca.remaining - fdt);
+            if (ca.remaining <= 0.0f)
+                expired.push_back(entity);
+        }
+        for (auto e : expired)
+            em.registry().remove<CriticalAttacking>(e);
+    }
+
+    // CriticalTarget — remove when expired.
+    {
+        std::vector<entt::entity> expired;
+        for (auto [entity, ct] : em.registry().view<CriticalTarget>().each())
+        {
+            ct.remaining = std::max(0.0f, ct.remaining - fdt);
+            if (ct.remaining <= 0.0f)
+                expired.push_back(entity);
+        }
+        for (auto e : expired)
+            em.registry().remove<CriticalTarget>(e);
+    }
+
     // --- 3. Auto-attack mode toggle (P key, edge-detect on PlayerActions) ----------
     for (auto [entity, actions, autoMode] :
          em.registry().view<PlayerActions, AutoAttackMode>().each())
@@ -247,6 +286,8 @@ void CombatSystem::update(EntityManager& em, double dt)
     {
         const bool isAttackLocked = em.registry().all_of<AttackLocked>(entity);
         const bool isStaggered = em.registry().all_of<Staggered>(entity);
+        const bool isCritLocked = em.registry().all_of<CriticalAttacking>(entity) ||
+                                  em.registry().all_of<CriticalTarget>(entity);
 
         // Stamina cost helpers — base motion cost + weight surcharge.
         const float swingCost = f.stamina.base_swing_cost + weapon.weight * f.stamina.swing_effort;
@@ -265,11 +306,12 @@ void CombatSystem::update(EntityManager& em, double dt)
             const auto& autoMode = em.registry().get<AutoAttackMode>(entity);
             if (autoMode.enabled)
                 fireAttack = (weapon.swing_cooldown_remaining <= 0.0f && !isAttackLocked &&
-                              !isStaggered && staCurrent >= swingCost);
+                              !isStaggered && !isCritLocked && staCurrent >= swingCost);
         }
         if (!fireAttack && !clickConsumed)
-            fireAttack = (actions.attack && weapon.swing_cooldown_remaining <= 0.0f &&
-                          !isAttackLocked && !isStaggered && staCurrent >= swingCost);
+            fireAttack =
+                (actions.attack && weapon.swing_cooldown_remaining <= 0.0f && !isAttackLocked &&
+                 !isStaggered && !isCritLocked && staCurrent >= swingCost);
 
         // Audio + visual feedback when attack pressed but stamina too low.
         if (!fireAttack && actions.attack && !clickConsumed &&
@@ -367,7 +409,7 @@ void CombatSystem::update(EntityManager& em, double dt)
 
         // ---- Weapon skill ------------------------------------------------
         if (actions.skill && weapon.skill_cooldown_remaining <= 0.0f && !isAttackLocked &&
-            !isStaggered && staCurrent >= skillCost)
+            !isStaggered && !isCritLocked && staCurrent >= skillCost)
         {
             const float skillReach = f.combat.skill_reach;
             const float hx = transform.x + facing.dx * skillReach;
@@ -394,8 +436,9 @@ void CombatSystem::update(EntityManager& em, double dt)
         }
 
         // ---- Dodge -------------------------------------------------------
-        const bool canDodge = (actions.dodge_cooldown_remaining <= 0.0f && !isStaggered &&
-                               !em.registry().all_of<Dodging>(entity) && staCurrent >= dodgeCost);
+        const bool canDodge =
+            (actions.dodge_cooldown_remaining <= 0.0f && !isStaggered && !isCritLocked &&
+             !em.registry().all_of<Dodging>(entity) && staCurrent >= dodgeCost);
         if (actions.dodge && canDodge)
         {
             // Context-sensitive direction:
@@ -421,7 +464,39 @@ void CombatSystem::update(EntityManager& em, double dt)
             }
 
             float dodgeX, dodgeY;
-            if (nearEnemy)
+            const auto* lockOn = em.registry().try_get<LockOnTarget>(entity);
+            const bool hasLockOn = lockOn != nullptr && em.registry().valid(lockOn->target);
+
+            if (hasLockOn)
+            {
+                // Lock-on dodge: WASD is relative to the facing axis (toward target).
+                // No input → backstep away from target.
+                const bool moving = actions.move_x != 0.0f || actions.move_y != 0.0f;
+                if (moving)
+                {
+                    // Build a local frame: forward = toward target, right = perpendicular.
+                    const float fwd_x = facing.dx;
+                    const float fwd_y = facing.dy;
+                    const float right_x = -fwd_y;
+                    const float right_y = fwd_x;
+                    // Map WASD to local axes: W=forward, S=back, A=left, D=right.
+                    dodgeX = fwd_x * actions.move_y + right_x * actions.move_x;
+                    dodgeY = fwd_y * actions.move_y + right_y * actions.move_x;
+                    const float len = std::sqrt(dodgeX * dodgeX + dodgeY * dodgeY);
+                    if (len > 0.001f)
+                    {
+                        dodgeX /= len;
+                        dodgeY /= len;
+                    }
+                }
+                else
+                {
+                    // No input → backstep away from target.
+                    dodgeX = -facing.dx;
+                    dodgeY = -facing.dy;
+                }
+            }
+            else if (nearEnemy)
             {
                 // Backstep: opposite of facing.
                 dodgeX = -facing.dx;
@@ -450,7 +525,9 @@ void CombatSystem::update(EntityManager& em, double dt)
             if (hasSta)
                 deductStamina(em.registry(), entity, dodgeCost, f);
 
-            std::cout << "[CombatSystem] " << (nearEnemy ? "Backstep!\n" : "Dodge roll!\n");
+            const char* dodgeType =
+                hasLockOn ? "Lock-on dodge!" : (nearEnemy ? "Backstep!" : "Dodge roll!");
+            std::cout << "[CombatSystem] " << dodgeType << "\n";
         }
 
         // Audio + visual feedback when dodge pressed but stamina too low.

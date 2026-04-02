@@ -709,6 +709,14 @@ bool ConfigLoader::loadFormulas(EntityManager& em, const std::string& filePath)
             cb.value("skill_lock_duration", f.combat.skill_lock_duration);
         f.combat.dodge_speed = cb.value("dodge_speed", f.combat.dodge_speed);
         f.combat.parry_window = cb.value("parry_window", f.combat.parry_window);
+        f.combat.backstab_threshold = cb.value("backstab_threshold", f.combat.backstab_threshold);
+        f.combat.backstab_multiplier =
+            cb.value("backstab_multiplier", f.combat.backstab_multiplier);
+        f.combat.riposte_multiplier = cb.value("riposte_multiplier", f.combat.riposte_multiplier);
+        f.combat.riposte_window = cb.value("riposte_window", f.combat.riposte_window);
+        f.combat.critical_lock_duration =
+            cb.value("critical_lock_duration", f.combat.critical_lock_duration);
+        f.combat.lock_on_range = cb.value("lock_on_range", f.combat.lock_on_range);
     }
 
     if (j.contains("steering"))

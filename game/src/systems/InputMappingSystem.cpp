@@ -72,6 +72,7 @@ void InputMappingSystem::update(EntityManager& em)
     const bool cycleWeaponJust = hasKey(kd, SDL_SCANCODE_X);
     const bool interactJust = hasKey(kd, SDL_SCANCODE_F);
     const bool lmbJust = hasMouse(md, SDL_BUTTON_LEFT);
+    const bool lockOnJust = hasMouse(md, SDL_BUTTON_MIDDLE);
     const bool inventoryJust = hasKey(kd, SDL_SCANCODE_I);
     const bool pauseJust = hasKey(kd, SDL_SCANCODE_ESCAPE) || hasKey(kd, SDL_SCANCODE_TAB);
 
@@ -90,6 +91,7 @@ void InputMappingSystem::update(EntityManager& em)
         actions.cycle_weapon = cycleWeaponJust;
         actions.interact = interactJust;
         actions.mouse_click = lmbJust;
+        actions.lock_on_toggle = lockOnJust;
         actions.toggle_inventory = inventoryJust;
         actions.toggle_pause = pauseJust;
 

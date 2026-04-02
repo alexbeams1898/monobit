@@ -44,6 +44,18 @@ void zeroStaggeredVelocities(entt::registry& reg)
         vel.dx = 0.0f;
         vel.dy = 0.0f;
     }
+    for (auto entity : reg.view<CriticalAttacking, Velocity>())
+    {
+        auto& vel = reg.get<Velocity>(entity);
+        vel.dx = 0.0f;
+        vel.dy = 0.0f;
+    }
+    for (auto entity : reg.view<CriticalTarget, Velocity>())
+    {
+        auto& vel = reg.get<Velocity>(entity);
+        vel.dx = 0.0f;
+        vel.dy = 0.0f;
+    }
 }
 
 // Compute base walk speed from stats and equip load.
@@ -138,7 +150,8 @@ void applyPlayerInput(entt::registry& reg, float fdt, const FormulaConfig& f,
 {
     for (auto [entity, actions, vel] : reg.view<PlayerActions, Velocity>().each())
     {
-        if (reg.all_of<Dodging>(entity) || reg.all_of<Staggered>(entity))
+        if (reg.all_of<Dodging>(entity) || reg.all_of<Staggered>(entity) ||
+            reg.all_of<CriticalAttacking>(entity) || reg.all_of<CriticalTarget>(entity))
             continue;
 
         float speed = computePlayerSpeed(reg, entity, f);
