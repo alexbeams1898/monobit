@@ -477,6 +477,51 @@ entt::entity ConfigLoader::loadEntity(EntityManager& em, const std::string& file
     return entity;
 }
 
+static void loadCombatAIConfig(const json& j, FormulaConfig& f)
+{
+    if (!j.contains("combat_ai"))
+        return;
+    const auto& ca = j["combat_ai"];
+    f.combat_ai.max_attack_tokens = ca.value("max_attack_tokens", f.combat_ai.max_attack_tokens);
+    f.combat_ai.wait_radius_mult = ca.value("wait_radius_mult", f.combat_ai.wait_radius_mult);
+    f.combat_ai.waiter_speed_scale = ca.value("waiter_speed_scale", f.combat_ai.waiter_speed_scale);
+    f.combat_ai.kite_speed_threshold =
+        ca.value("kite_speed_threshold", f.combat_ai.kite_speed_threshold);
+    f.combat_ai.chase_spread = ca.value("chase_spread", f.combat_ai.chase_spread);
+    f.combat_ai.slot_rotation_speed =
+        ca.value("slot_rotation_speed", f.combat_ai.slot_rotation_speed);
+    f.combat_ai.min_slot_gap = ca.value("min_slot_gap", f.combat_ai.min_slot_gap);
+    f.combat_ai.attack_arrival_dist =
+        ca.value("attack_arrival_dist", f.combat_ai.attack_arrival_dist);
+    f.combat_ai.slot_arrive_dist = ca.value("slot_arrive_dist", f.combat_ai.slot_arrive_dist);
+    f.combat_ai.engagement_radius = ca.value("engagement_radius", f.combat_ai.engagement_radius);
+    f.combat_ai.enemy_reach = ca.value("enemy_reach", f.combat_ai.enemy_reach);
+}
+
+static void loadCombatConfig(const json& j, FormulaConfig& f)
+{
+    if (!j.contains("combat"))
+        return;
+    const auto& cb = j["combat"];
+    f.combat.attack_lock_fraction = cb.value("attack_lock_fraction", f.combat.attack_lock_fraction);
+    f.combat.normal_reach = cb.value("normal_reach", f.combat.normal_reach);
+    f.combat.skill_reach = cb.value("skill_reach", f.combat.skill_reach);
+    f.combat.normal_hitbox_size = cb.value("normal_hitbox_size", f.combat.normal_hitbox_size);
+    f.combat.skill_hitbox_size = cb.value("skill_hitbox_size", f.combat.skill_hitbox_size);
+    f.combat.skill_damage_mult = cb.value("skill_damage_mult", f.combat.skill_damage_mult);
+    f.combat.skill_cooldown = cb.value("skill_cooldown", f.combat.skill_cooldown);
+    f.combat.skill_lock_duration = cb.value("skill_lock_duration", f.combat.skill_lock_duration);
+    f.combat.dodge_speed = cb.value("dodge_speed", f.combat.dodge_speed);
+    f.combat.parry_window = cb.value("parry_window", f.combat.parry_window);
+    f.combat.backstab_threshold = cb.value("backstab_threshold", f.combat.backstab_threshold);
+    f.combat.backstab_multiplier = cb.value("backstab_multiplier", f.combat.backstab_multiplier);
+    f.combat.riposte_multiplier = cb.value("riposte_multiplier", f.combat.riposte_multiplier);
+    f.combat.riposte_window = cb.value("riposte_window", f.combat.riposte_window);
+    f.combat.critical_lock_duration =
+        cb.value("critical_lock_duration", f.combat.critical_lock_duration);
+    f.combat.lock_on_range = cb.value("lock_on_range", f.combat.lock_on_range);
+}
+
 bool ConfigLoader::loadFormulas(EntityManager& em, const std::string& filePath)
 {
     std::ifstream file(filePath);
@@ -672,52 +717,8 @@ bool ConfigLoader::loadFormulas(EntityManager& em, const std::string& filePath)
         f.equip_load.overloaded_speed = el.value("overloaded_speed", f.equip_load.overloaded_speed);
     }
 
-    if (j.contains("combat_ai"))
-    {
-        const auto& ca = j["combat_ai"];
-        f.combat_ai.max_attack_tokens =
-            ca.value("max_attack_tokens", f.combat_ai.max_attack_tokens);
-        f.combat_ai.wait_radius_mult = ca.value("wait_radius_mult", f.combat_ai.wait_radius_mult);
-        f.combat_ai.waiter_speed_scale =
-            ca.value("waiter_speed_scale", f.combat_ai.waiter_speed_scale);
-        f.combat_ai.kite_speed_threshold =
-            ca.value("kite_speed_threshold", f.combat_ai.kite_speed_threshold);
-        f.combat_ai.chase_spread = ca.value("chase_spread", f.combat_ai.chase_spread);
-        f.combat_ai.slot_rotation_speed =
-            ca.value("slot_rotation_speed", f.combat_ai.slot_rotation_speed);
-        f.combat_ai.min_slot_gap = ca.value("min_slot_gap", f.combat_ai.min_slot_gap);
-        f.combat_ai.attack_arrival_dist =
-            ca.value("attack_arrival_dist", f.combat_ai.attack_arrival_dist);
-        f.combat_ai.slot_arrive_dist = ca.value("slot_arrive_dist", f.combat_ai.slot_arrive_dist);
-        f.combat_ai.engagement_radius =
-            ca.value("engagement_radius", f.combat_ai.engagement_radius);
-        f.combat_ai.enemy_reach = ca.value("enemy_reach", f.combat_ai.enemy_reach);
-    }
-
-    if (j.contains("combat"))
-    {
-        const auto& cb = j["combat"];
-        f.combat.attack_lock_fraction =
-            cb.value("attack_lock_fraction", f.combat.attack_lock_fraction);
-        f.combat.normal_reach = cb.value("normal_reach", f.combat.normal_reach);
-        f.combat.skill_reach = cb.value("skill_reach", f.combat.skill_reach);
-        f.combat.normal_hitbox_size = cb.value("normal_hitbox_size", f.combat.normal_hitbox_size);
-        f.combat.skill_hitbox_size = cb.value("skill_hitbox_size", f.combat.skill_hitbox_size);
-        f.combat.skill_damage_mult = cb.value("skill_damage_mult", f.combat.skill_damage_mult);
-        f.combat.skill_cooldown = cb.value("skill_cooldown", f.combat.skill_cooldown);
-        f.combat.skill_lock_duration =
-            cb.value("skill_lock_duration", f.combat.skill_lock_duration);
-        f.combat.dodge_speed = cb.value("dodge_speed", f.combat.dodge_speed);
-        f.combat.parry_window = cb.value("parry_window", f.combat.parry_window);
-        f.combat.backstab_threshold = cb.value("backstab_threshold", f.combat.backstab_threshold);
-        f.combat.backstab_multiplier =
-            cb.value("backstab_multiplier", f.combat.backstab_multiplier);
-        f.combat.riposte_multiplier = cb.value("riposte_multiplier", f.combat.riposte_multiplier);
-        f.combat.riposte_window = cb.value("riposte_window", f.combat.riposte_window);
-        f.combat.critical_lock_duration =
-            cb.value("critical_lock_duration", f.combat.critical_lock_duration);
-        f.combat.lock_on_range = cb.value("lock_on_range", f.combat.lock_on_range);
-    }
+    loadCombatAIConfig(j, f);
+    loadCombatConfig(j, f);
 
     if (j.contains("steering"))
     {

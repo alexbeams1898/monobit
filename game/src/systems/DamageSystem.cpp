@@ -214,7 +214,6 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
         reg.all_of<Staggered>(target))
     {
         rawDamage *= f.combat.riposte_multiplier;
-        isCritical = true;
         reg.remove<RiposteWindow>(attacker);
         reg.emplace_or_replace<CriticalAttacking>(
             attacker, CriticalAttacking{f.combat.critical_lock_duration, target});

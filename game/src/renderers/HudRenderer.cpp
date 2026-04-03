@@ -352,6 +352,58 @@ static void renderPlayerHud(EntityManager& em, entt::entity entity, float ww, fl
     renderWaveInfo(em, ww);
 }
 
+// Pulsing glow on enemies that are backstab/riposte-vulnerable.
+static void renderCritIndicators(EntityManager& em, entt::entity entity, float ww, float wh)
+{
+    auto& reg = em.registry();
+    const auto& cam = reg.get<Camera>(entity);
+    const auto& pt = reg.get<Transform>(entity);
+    const bool hasRiposte = reg.all_of<RiposteWindow>(entity);
+
+    const float ticks = static_cast<float>(SDL_GetTicks());
+    const float pulse = 0.5f + 0.5f * std::sin(ticks * 0.01f);
+
+    for (auto [eEnemy, ai, et] : reg.view<AIController, Transform>().each())
+    {
+        if (reg.all_of<Dead>(eEnemy))
+            continue;
+
+        bool showCrit = hasRiposte && reg.all_of<Staggered>(eEnemy);
+
+        if (!showCrit && reg.all_of<FacingDirection>(eEnemy))
+        {
+            const auto& ef = reg.get<FacingDirection>(eEnemy);
+            const float toAtkX = pt.x - et.x;
+            const float toAtkY = pt.y - et.y;
+            const float len = std::sqrt(toAtkX * toAtkX + toAtkY * toAtkY);
+            if (len > 0.0f && len < 80.0f)
+            {
+                const float dot = (toAtkX / len) * ef.dx + (toAtkY / len) * ef.dy;
+                showCrit = (dot <= -0.3f && ai.state != AIController::State::Attack);
+            }
+        }
+
+        if (!showCrit)
+            continue;
+
+        const float ex = et.x - cam.x + ww * 0.5f;
+        const float ey = et.y - cam.y + wh * 0.5f;
+        const float r = 10.0f + pulse * 4.0f;
+        const float alpha = 0.4f + pulse * 0.3f;
+        static constexpr Color CRIT_GLOW_BASE{1.0f, 0.3f, 0.1f, 1.0f};
+        const Color glow{CRIT_GLOW_BASE.r, CRIT_GLOW_BASE.g, CRIT_GLOW_BASE.b, alpha};
+
+        UIRenderer::drawRect(ex - r, ey - 1.5f, r * 2.0f, 3.0f, glow);
+        UIRenderer::drawRect(ex - 1.5f, ey - r, 3.0f, r * 2.0f, glow);
+
+        const float d = r * 0.7f;
+        UIRenderer::drawRect(ex - d - 1.0f, ey - d - 1.0f, 3.0f, 3.0f, glow);
+        UIRenderer::drawRect(ex + d - 1.0f, ey - d - 1.0f, 3.0f, 3.0f, glow);
+        UIRenderer::drawRect(ex - d - 1.0f, ey + d - 1.0f, 3.0f, 3.0f, glow);
+        UIRenderer::drawRect(ex + d - 1.0f, ey + d - 1.0f, 3.0f, 3.0f, glow);
+    }
+}
+
 void HudRenderer::render(EntityManager& em, int window_w, int window_h)
 {
     ZoneScopedN("HudRenderer");
@@ -386,66 +438,7 @@ void HudRenderer::render(EntityManager& em, int window_w, int window_h)
 
         // Critical opportunity spotlight: pulsing glow on enemy center.
         if (hasCamera && em.registry().all_of<Transform, FacingDirection>(entity))
-        {
-            const auto& cam = em.registry().get<Camera>(entity);
-            const auto& pt = em.registry().get<Transform>(entity);
-            const auto& pf = em.registry().get<FacingDirection>(entity);
-            const bool hasRiposte = em.registry().all_of<RiposteWindow>(entity);
-
-            // Pulse animation: cycles 0-1-0 over ~0.6s.
-            const float ticks = static_cast<float>(SDL_GetTicks());
-            const float pulse = 0.5f + 0.5f * std::sin(ticks * 0.01f);
-
-            for (auto [eEnemy, ai, et] : em.registry().view<AIController, Transform>().each())
-            {
-                if (em.registry().all_of<Dead>(eEnemy))
-                    continue;
-
-                bool showCrit = false;
-
-                // Riposte: staggered enemy + player has riposte window.
-                if (hasRiposte && em.registry().all_of<Staggered>(eEnemy))
-                    showCrit = true;
-
-                // Backstab: player is behind a non-attacking enemy.
-                if (!showCrit && em.registry().all_of<FacingDirection>(eEnemy))
-                {
-                    const auto& ef = em.registry().get<FacingDirection>(eEnemy);
-                    const float toAtkX = pt.x - et.x;
-                    const float toAtkY = pt.y - et.y;
-                    const float len = std::sqrt(toAtkX * toAtkX + toAtkY * toAtkY);
-                    if (len > 0.0f && len < 80.0f)
-                    {
-                        const float dot = (toAtkX / len) * ef.dx + (toAtkY / len) * ef.dy;
-                        if (dot <= -0.3f && ai.state != AIController::State::Attack)
-                            showCrit = true;
-                    }
-                }
-
-                if (!showCrit)
-                    continue;
-
-                const float ex = et.x - cam.x + ww * 0.5f;
-                const float ey = et.y - cam.y + wh * 0.5f;
-
-                // Pulsing spotlight: bright ring expanding/contracting.
-                const float r = 10.0f + pulse * 4.0f;
-                const float alpha = 0.4f + pulse * 0.3f;
-                static constexpr Color CRIT_GLOW_BASE{1.0f, 0.3f, 0.1f, 1.0f};
-                const Color glow{CRIT_GLOW_BASE.r, CRIT_GLOW_BASE.g, CRIT_GLOW_BASE.b, alpha};
-
-                // Draw ring as 4 rects (cross outline).
-                UIRenderer::drawRect(ex - r, ey - 1.5f, r * 2.0f, 3.0f, glow);
-                UIRenderer::drawRect(ex - 1.5f, ey - r, 3.0f, r * 2.0f, glow);
-
-                // Corner accents for a diamond feel.
-                const float d = r * 0.7f;
-                UIRenderer::drawRect(ex - d - 1.0f, ey - d - 1.0f, 3.0f, 3.0f, glow);
-                UIRenderer::drawRect(ex + d - 1.0f, ey - d - 1.0f, 3.0f, 3.0f, glow);
-                UIRenderer::drawRect(ex - d - 1.0f, ey + d - 1.0f, 3.0f, 3.0f, glow);
-                UIRenderer::drawRect(ex + d - 1.0f, ey + d - 1.0f, 3.0f, 3.0f, glow);
-            }
-        }
+            renderCritIndicators(em, entity, ww, wh);
         break;
     }
 }

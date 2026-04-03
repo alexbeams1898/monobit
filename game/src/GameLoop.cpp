@@ -582,6 +582,56 @@ static entt::entity findNearestEnemy(entt::registry& reg, float px, float py, fl
     return best;
 }
 
+// Handle lock-on toggle and per-frame validation. Returns the active LockOnTarget pointer
+// (nullptr if no lock-on).
+static LockOnTarget* updateLockOn(entt::registry& reg, entt::entity entity,
+                                  const PlayerActions& actions, const Transform& transform,
+                                  float lockOnRange)
+{
+    auto* lockOn = reg.try_get<LockOnTarget>(entity);
+
+    if (actions.lock_on_toggle)
+    {
+        if (lockOn != nullptr)
+        {
+            reg.remove<LockOnTarget>(entity);
+            return nullptr;
+        }
+        const entt::entity target = findNearestEnemy(reg, transform.x, transform.y, lockOnRange);
+        if (target != entt::null)
+        {
+            reg.emplace<LockOnTarget>(entity, LockOnTarget{target});
+            return &reg.get<LockOnTarget>(entity);
+        }
+        return nullptr;
+    }
+
+    if (lockOn == nullptr)
+        return nullptr;
+
+    // Validate each frame: dead, destroyed, or out of range → auto-switch or disengage.
+    bool invalid = !reg.valid(lockOn->target) || reg.all_of<Dead>(lockOn->target);
+    if (!invalid)
+    {
+        const auto& tt = reg.get<Transform>(lockOn->target);
+        const float dx = tt.x - transform.x;
+        const float dy = tt.y - transform.y;
+        if (dx * dx + dy * dy > lockOnRange * lockOnRange)
+            invalid = true;
+    }
+    if (!invalid)
+        return lockOn;
+
+    const entt::entity next = findNearestEnemy(reg, transform.x, transform.y, lockOnRange);
+    if (next != entt::null)
+    {
+        lockOn->target = next;
+        return lockOn;
+    }
+    reg.remove<LockOnTarget>(entity);
+    return nullptr;
+}
+
 void gamePerFrame(Engine& engine, EntityManager& em, double /*dt*/)
 {
     ZoneScopedN("gamePerFrame");
@@ -600,56 +650,8 @@ void gamePerFrame(Engine& engine, EntityManager& em, double /*dt*/)
     for (auto [entity, actions, facing, transform] :
          em.registry().view<PlayerActions, FacingDirection, Transform>().each())
     {
-        // Lock-on toggle (MMB).
-        auto* lockOn = em.registry().try_get<LockOnTarget>(entity);
-        if (actions.lock_on_toggle)
-        {
-            if (lockOn != nullptr)
-            {
-                em.registry().remove<LockOnTarget>(entity);
-                lockOn = nullptr;
-            }
-            else
-            {
-                entt::entity target = findNearestEnemy(em.registry(), transform.x, transform.y,
-                                                       f.combat.lock_on_range);
-                if (target != entt::null)
-                {
-                    em.registry().emplace<LockOnTarget>(entity, LockOnTarget{target});
-                    lockOn = &em.registry().get<LockOnTarget>(entity);
-                }
-            }
-        }
-
-        // Validate lock-on target each frame.
-        if (lockOn != nullptr)
-        {
-            bool invalid =
-                !em.registry().valid(lockOn->target) || em.registry().all_of<Dead>(lockOn->target);
-            if (!invalid)
-            {
-                const auto& tt = em.registry().get<Transform>(lockOn->target);
-                const float dx = tt.x - transform.x;
-                const float dy = tt.y - transform.y;
-                if (dx * dx + dy * dy > f.combat.lock_on_range * f.combat.lock_on_range)
-                    invalid = true;
-            }
-            if (invalid)
-            {
-                // Auto-switch to next nearest, or disengage.
-                entt::entity next = findNearestEnemy(em.registry(), transform.x, transform.y,
-                                                     f.combat.lock_on_range);
-                if (next != entt::null)
-                {
-                    lockOn->target = next;
-                }
-                else
-                {
-                    em.registry().remove<LockOnTarget>(entity);
-                    lockOn = nullptr;
-                }
-            }
-        }
+        const LockOnTarget* lockOn =
+            updateLockOn(em.registry(), entity, actions, transform, f.combat.lock_on_range);
 
         // Facing: lock-on overrides mouse aim.
         if (lockOn != nullptr)
