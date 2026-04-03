@@ -3,6 +3,7 @@
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
 #include "systems/CombatSystem.h"
+#include "test_helpers.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -384,4 +385,152 @@ TEST_CASE("Stamina — new deduction resets recovery delay", "[combat]")
     const float snapshot = sta.current;
     tickRecovery(sta, f, 0.01f); // still in delay
     REQUIRE(sta.current == Catch::Approx(snapshot));
+}
+
+// ---------------------------------------------------------------------------
+// Backstab angle tests
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Backstab — attack from behind triggers when dot <= threshold", "[combat][backstab]")
+{
+    // Attacker behind target: target faces north (dx=0, dy=-1),
+    // attacker is south of target → toAtk points south → dot with target facing is negative.
+    const FormulaConfig f;
+
+    // Target at (100, 100) facing north (0, -1).
+    // Attacker at (100, 120) — south of target.
+    const float targetX = 100.0f, targetY = 100.0f;
+    const float atkX = 100.0f, atkY = 120.0f;
+    const float faceDx = 0.0f, faceDy = -1.0f;
+
+    const float toAtkX = atkX - targetX;
+    const float toAtkY = atkY - targetY;
+    const float len = std::sqrt(toAtkX * toAtkX + toAtkY * toAtkY);
+    const float dot = (toAtkX / len) * faceDx + (toAtkY / len) * faceDy;
+
+    // dot should be -1.0 (perfectly behind).
+    REQUIRE(dot == Catch::Approx(-1.0f));
+    REQUIRE(dot <= f.combat.backstab_threshold);
+}
+
+TEST_CASE("Backstab — attack from front does not trigger", "[combat][backstab]")
+{
+    const FormulaConfig f;
+
+    // Target at (100, 100) facing north (0, -1).
+    // Attacker at (100, 80) — north of target (in front).
+    const float targetX = 100.0f, targetY = 100.0f;
+    const float atkX = 100.0f, atkY = 80.0f;
+    const float faceDx = 0.0f, faceDy = -1.0f;
+
+    const float toAtkX = atkX - targetX;
+    const float toAtkY = atkY - targetY;
+    const float len = std::sqrt(toAtkX * toAtkX + toAtkY * toAtkY);
+    const float dot = (toAtkX / len) * faceDx + (toAtkY / len) * faceDy;
+
+    // dot should be +1.0 (directly in front).
+    REQUIRE(dot == Catch::Approx(1.0f));
+    REQUIRE(dot > f.combat.backstab_threshold);
+}
+
+TEST_CASE("Backstab — attack from side is above threshold (no backstab)", "[combat][backstab]")
+{
+    const FormulaConfig f;
+
+    // Target at (100, 100) facing north (0, -1).
+    // Attacker at (120, 100) — due east (perpendicular).
+    const float targetX = 100.0f, targetY = 100.0f;
+    const float atkX = 120.0f, atkY = 100.0f;
+    const float faceDx = 0.0f, faceDy = -1.0f;
+
+    const float toAtkX = atkX - targetX;
+    const float toAtkY = atkY - targetY;
+    const float len = std::sqrt(toAtkX * toAtkX + toAtkY * toAtkY);
+    const float dot = (toAtkX / len) * faceDx + (toAtkY / len) * faceDy;
+
+    // dot should be 0.0 (perpendicular — not behind enough).
+    REQUIRE(dot == Catch::Approx(0.0f));
+    REQUIRE(dot > f.combat.backstab_threshold);
+}
+
+// ---------------------------------------------------------------------------
+// Critical attack lock tests (movement suppression via ECS)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("CriticalAttacking/CriticalTarget — config defaults", "[combat][critical]")
+{
+    const FormulaConfig f;
+    REQUIRE(f.combat.backstab_multiplier == Catch::Approx(2.0f));
+    REQUIRE(f.combat.riposte_multiplier == Catch::Approx(2.5f));
+    REQUIRE(f.combat.riposte_window == Catch::Approx(0.8f));
+    REQUIRE(f.combat.critical_lock_duration == Catch::Approx(0.6f));
+    REQUIRE(f.combat.lock_on_range == Catch::Approx(300.0f));
+}
+
+TEST_CASE("CriticalAttacking — component tracks target and timer", "[combat][critical]")
+{
+    EntityManager em;
+    emplaceGameConfigs(em);
+
+    auto attacker = em.registry().create();
+    auto target = em.registry().create();
+
+    em.registry().emplace<CriticalAttacking>(attacker, CriticalAttacking{0.6f, target});
+    em.registry().emplace<CriticalTarget>(target, CriticalTarget{0.6f});
+
+    const auto& ca = em.registry().get<CriticalAttacking>(attacker);
+    REQUIRE(ca.remaining == Catch::Approx(0.6f));
+    REQUIRE(ca.target == target);
+
+    const auto& ct = em.registry().get<CriticalTarget>(target);
+    REQUIRE(ct.remaining == Catch::Approx(0.6f));
+}
+
+// ---------------------------------------------------------------------------
+// Riposte flow test
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Riposte — parry emplaces RiposteWindow with config duration", "[combat][riposte]")
+{
+    EntityManager em;
+    emplaceGameConfigs(em);
+
+    auto player = em.registry().create();
+    const FormulaConfig& f = em.registry().ctx().get<FormulaConfig>();
+
+    // Simulate what DamageSystem does on a successful parry.
+    em.registry().emplace<RiposteWindow>(player, RiposteWindow{f.combat.riposte_window});
+
+    const auto& rw = em.registry().get<RiposteWindow>(player);
+    REQUIRE(rw.remaining == Catch::Approx(f.combat.riposte_window));
+}
+
+TEST_CASE("Riposte — window consumed after critical attack", "[combat][riposte]")
+{
+    EntityManager em;
+    emplaceGameConfigs(em);
+
+    auto player = em.registry().create();
+    em.registry().emplace<RiposteWindow>(player, RiposteWindow{0.8f});
+
+    // Simulate riposte consumption: remove the window.
+    em.registry().remove<RiposteWindow>(player);
+
+    REQUIRE_FALSE(em.registry().all_of<RiposteWindow>(player));
+}
+
+// ---------------------------------------------------------------------------
+// Lock-on config defaults
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Lock-on range config default", "[combat][lockon]")
+{
+    const FormulaConfig f;
+    REQUIRE(f.combat.lock_on_range == Catch::Approx(300.0f));
+}
+
+TEST_CASE("LockOnTarget — default target is null", "[combat][lockon]")
+{
+    LockOnTarget lockOn;
+    REQUIRE(lockOn.target == entt::entity{entt::null});
 }

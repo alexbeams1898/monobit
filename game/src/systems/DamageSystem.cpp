@@ -142,14 +142,17 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
 
         if (shield.blocking && shield.guard_health > 0.0f && fromFront)
         {
-            // Parry window: negate damage and stagger the attacker.
+            // Parry window: negate damage, stagger attacker, open riposte window.
             if (reg.all_of<Parrying>(target))
             {
                 if (attacker != entt::null)
                 {
                     reg.emplace_or_replace<Staggered>(attacker, Staggered{0.5f});
+                    reg.emplace_or_replace<RiposteWindow>(target,
+                                                          RiposteWindow{f.combat.riposte_window});
                     AudioSystem::playSfx(snd.parry.path, snd.parry.volume);
-                    std::cout << "[DamageSystem] Parry! Attacker staggered.\n";
+                    std::cout << "[DamageSystem] Parry! Attacker staggered. Riposte window open ("
+                              << f.combat.riposte_window << "s)\n";
                 }
                 return false; // damage fully negated
             }
@@ -164,6 +167,60 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
             }
             return false; // damage absorbed by shield
         }
+    }
+
+    // Backstab: attacker is behind target and target is not actively attacking.
+    bool isCritical = false;
+    if (attacker != entt::null && reg.all_of<Transform, FacingDirection>(target) &&
+        reg.all_of<Transform>(attacker))
+    {
+        const auto& tgt = reg.get<Transform>(target);
+        const auto& atk = reg.get<Transform>(attacker);
+        const auto& tgtFace = reg.get<FacingDirection>(target);
+        const float toAtkX = atk.x - tgt.x;
+        const float toAtkY = atk.y - tgt.y;
+        const float len = std::sqrt(toAtkX * toAtkX + toAtkY * toAtkY);
+        if (len > 0.0f)
+        {
+            // Negative dot = attacker is behind the target.
+            const float dot = (toAtkX / len) * tgtFace.dx + (toAtkY / len) * tgtFace.dy;
+
+            // Backstab targets that aren't actively attacking, OR are staggered
+            // (stagger freezes facing, rewarding repositioning after a guard break).
+            bool targetVulnerable = reg.all_of<Staggered>(target);
+            if (!targetVulnerable && reg.all_of<AIController>(target))
+            {
+                const auto& ai = reg.get<AIController>(target);
+                targetVulnerable = (ai.state != AIController::State::Attack);
+            }
+
+            if (dot <= f.combat.backstab_threshold && targetVulnerable)
+            {
+                rawDamage *= f.combat.backstab_multiplier;
+                isCritical = true;
+                reg.emplace_or_replace<CriticalAttacking>(
+                    attacker, CriticalAttacking{f.combat.critical_lock_duration, target});
+                reg.emplace_or_replace<CriticalTarget>(
+                    target, CriticalTarget{f.combat.critical_lock_duration});
+                TracyMessageL("Backstab");
+                std::cout << "[DamageSystem] BACKSTAB! x" << f.combat.backstab_multiplier
+                          << " damage\n";
+            }
+        }
+    }
+
+    // Riposte: attacker has a riposte window open and the target is staggered.
+    if (!isCritical && attacker != entt::null && reg.all_of<RiposteWindow>(attacker) &&
+        reg.all_of<Staggered>(target))
+    {
+        rawDamage *= f.combat.riposte_multiplier;
+        reg.remove<RiposteWindow>(attacker);
+        reg.emplace_or_replace<CriticalAttacking>(
+            attacker, CriticalAttacking{f.combat.critical_lock_duration, target});
+        reg.emplace_or_replace<CriticalTarget>(target,
+                                               CriticalTarget{f.combat.critical_lock_duration});
+        TracyMessageL("Riposte");
+        std::cout << "[DamageSystem] RIPOSTE! x" << f.combat.riposte_multiplier << " damage\n";
     }
 
     // Stat-requirement penalty on the attacker's weapon.

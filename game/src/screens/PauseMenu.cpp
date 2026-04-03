@@ -362,10 +362,11 @@ static void renderInventoryTab(EntityManager& em, float cx, float cy, float cw, 
     const int rows = (total_slots + GRID_COLS - 1) / GRID_COLS;
     const float grid_bottom = gy + static_cast<float>(rows) * (SLOT_SIZE + SLOT_GAP) + 8.0f;
 
-    if (sContentSel >= 0 && sContentSel < static_cast<int>(inv.items.size()) &&
-        !inv.items[static_cast<size_t>(sContentSel)].empty())
+    const int displaySlot = (hover >= 0) ? hover : sContentSel;
+    if (displaySlot >= 0 && displaySlot < static_cast<int>(inv.items.size()) &&
+        !inv.items[static_cast<size_t>(displaySlot)].empty())
     {
-        const auto& item = inv.items[static_cast<size_t>(sContentSel)];
+        const auto& item = inv.items[static_cast<size_t>(displaySlot)];
         const ItemDef* def = items.find(item.config_path);
 
         if (def != nullptr)
@@ -748,10 +749,14 @@ static bool renderEquipmentTab(EntityManager& em, float cx, float cy, float cw, 
     }
 
     renderEquipSlotList(em, eq, items, cx, ey, cw, line_h, mx, my, hover);
-    if (sContentSel >= 0)
+    const int displaySlot = (hover >= 0) ? hover : sContentSel;
+    if (displaySlot >= 0)
     {
+        const int savedSel = sContentSel;
+        sContentSel = displaySlot;
         renderEquipStatPanel(em, player, eq, items, cx,
                              ey + line_h * static_cast<float>(EQUIP_SLOT_COUNT), cw);
+        sContentSel = savedSel;
     }
 
     if (sBottomSel < 0 && sContentSel >= 0 && confirmKeyPressed(em))

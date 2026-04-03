@@ -540,36 +540,144 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     CameraPanSystem::update(em, dt);
     CameraSystem::update(em);
 
+    // Lock-on camera offset: blend camera toward the locked target.
+    for (auto [entity, lockOn, transform, camera] :
+         em.registry().view<LockOnTarget, Transform, Camera>().each())
+    {
+        if (!em.registry().valid(lockOn.target))
+            continue;
+        const auto& tt = em.registry().get<Transform>(lockOn.target);
+        static constexpr float LOCK_ON_CAM_WEIGHT = 0.3f;
+        static constexpr float CAM_BLEND = 0.1f;
+        const float goalX = transform.x + (tt.x - transform.x) * LOCK_ON_CAM_WEIGHT;
+        const float goalY = transform.y + (tt.y - transform.y) * LOCK_ON_CAM_WEIGHT;
+        camera.x += (goalX - camera.x) * CAM_BLEND;
+        camera.y += (goalY - camera.y) * CAM_BLEND;
+    }
+
     handleMapRegen(engine, em);
     updateTitleBar(engine, em);
+}
+
+// Find the nearest alive enemy within range. Returns entt::null if none found.
+static entt::entity findNearestEnemy(entt::registry& reg, float px, float py, float range)
+{
+    const float rangeSq = range * range;
+    float bestSq = std::numeric_limits<float>::max();
+    entt::entity best = entt::null;
+
+    for (auto [e, ai, t] : reg.view<AIController, Transform>().each())
+    {
+        if (reg.all_of<Dead>(e))
+            continue;
+        const float dx = t.x - px;
+        const float dy = t.y - py;
+        const float dSq = dx * dx + dy * dy;
+        if (dSq < bestSq && dSq <= rangeSq)
+        {
+            bestSq = dSq;
+            best = e;
+        }
+    }
+    return best;
+}
+
+// Handle lock-on toggle and per-frame validation. Returns the active LockOnTarget pointer
+// (nullptr if no lock-on).
+static LockOnTarget* updateLockOn(entt::registry& reg, entt::entity entity,
+                                  const PlayerActions& actions, const Transform& transform,
+                                  float lockOnRange)
+{
+    auto* lockOn = reg.try_get<LockOnTarget>(entity);
+
+    if (actions.lock_on_toggle)
+    {
+        if (lockOn != nullptr)
+        {
+            reg.remove<LockOnTarget>(entity);
+            return nullptr;
+        }
+        const entt::entity target = findNearestEnemy(reg, transform.x, transform.y, lockOnRange);
+        if (target != entt::null)
+        {
+            reg.emplace<LockOnTarget>(entity, LockOnTarget{target});
+            return &reg.get<LockOnTarget>(entity);
+        }
+        return nullptr;
+    }
+
+    if (lockOn == nullptr)
+        return nullptr;
+
+    // Validate each frame: dead, destroyed, or out of range → auto-switch or disengage.
+    bool invalid = !reg.valid(lockOn->target) || reg.all_of<Dead>(lockOn->target);
+    if (!invalid)
+    {
+        const auto& tt = reg.get<Transform>(lockOn->target);
+        const float dx = tt.x - transform.x;
+        const float dy = tt.y - transform.y;
+        if (dx * dx + dy * dy > lockOnRange * lockOnRange)
+            invalid = true;
+    }
+    if (!invalid)
+        return lockOn;
+
+    const entt::entity next = findNearestEnemy(reg, transform.x, transform.y, lockOnRange);
+    if (next != entt::null)
+    {
+        lockOn->target = next;
+        return lockOn;
+    }
+    reg.remove<LockOnTarget>(entity);
+    return nullptr;
 }
 
 void gamePerFrame(Engine& engine, EntityManager& em, double /*dt*/)
 {
     ZoneScopedN("gamePerFrame");
 
-    // Mouse aim only runs during gameplay.
     const auto& gs = em.registry().ctx().get<GameState>();
     if (gs.phase != GameState::Phase::Playing)
         return;
+
+    const auto& f = em.registry().ctx().get<FormulaConfig>();
 
     int mouseX = 0;
     int mouseY = 0;
     SDL_GetMouseState(&mouseX, &mouseY);
 
     static constexpr float RENDER_FACING_BLEND = 0.25f;
-    for (auto [entity, actions, facing] :
-         em.registry().view<PlayerActions, FacingDirection>().each())
+    for (auto [entity, actions, facing, transform] :
+         em.registry().view<PlayerActions, FacingDirection, Transform>().each())
     {
-        const float sdx =
-            static_cast<float>(mouseX) - static_cast<float>(engine.windowWidth()) * 0.5f;
-        const float sdy =
-            static_cast<float>(mouseY) - static_cast<float>(engine.windowHeight()) * 0.5f;
-        const float slen = std::sqrt(sdx * sdx + sdy * sdy);
-        if (slen > 8.0f)
+        const LockOnTarget* lockOn =
+            updateLockOn(em.registry(), entity, actions, transform, f.combat.lock_on_range);
+
+        // Facing: lock-on overrides mouse aim.
+        if (lockOn != nullptr)
         {
-            facing.dx = sdx / slen;
-            facing.dy = sdy / slen;
+            const auto& tt = em.registry().get<Transform>(lockOn->target);
+            const float dx = tt.x - transform.x;
+            const float dy = tt.y - transform.y;
+            const float len = std::sqrt(dx * dx + dy * dy);
+            if (len > 0.0f)
+            {
+                facing.dx = dx / len;
+                facing.dy = dy / len;
+            }
+        }
+        else
+        {
+            const float sdx =
+                static_cast<float>(mouseX) - static_cast<float>(engine.windowWidth()) * 0.5f;
+            const float sdy =
+                static_cast<float>(mouseY) - static_cast<float>(engine.windowHeight()) * 0.5f;
+            const float slen = std::sqrt(sdx * sdx + sdy * sdy);
+            if (slen > 8.0f)
+            {
+                facing.dx = sdx / slen;
+                facing.dy = sdy / slen;
+            }
         }
 
         facing.render_dx += (facing.dx - facing.render_dx) * RENDER_FACING_BLEND;
