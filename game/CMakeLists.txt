@@ -55,6 +55,15 @@ add_library(game-systems STATIC
 target_include_directories(game-systems PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(game-systems PUBLIC engine)
 
+# Generate Version.h from CMake project version (see root CMakeLists.txt).
+# Bumping the version there propagates to the binary on next configure.
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/Version.h.in
+    ${CMAKE_CURRENT_BINARY_DIR}/generated/Version.h
+    @ONLY
+)
+target_include_directories(game-systems PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/generated)
+
 # Game executable.
 add_executable(prison-break-game src/main.cpp)
 target_link_libraries(prison-break-game PRIVATE game-systems)

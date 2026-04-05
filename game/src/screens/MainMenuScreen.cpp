@@ -1,6 +1,7 @@
 #include "screens/MainMenuScreen.h"
 
 #include "UIRenderer.h"
+#include "Version.h"
 #include "ecs/EntityManager.h"
 #include "ecs/GameConfig.h"
 #include "screens/ScreenColors.h"
@@ -146,6 +147,13 @@ MainMenuScreen::Action MainMenuScreen::render(EntityManager& em, int window_w, i
     const Action btnResult = drawMenuButtons(em, labels, actions, btnCount, snd, ww, wh);
     if (result == Action::None)
         result = btnResult;
+
+    // Version label in bottom-right corner.
+    const std::string versionLabel = "v" GAME_VERSION;
+    const TextSize vsz = UIRenderer::measureText(sBodyFont, versionLabel);
+    constexpr float margin = 20.0f;
+    UIRenderer::drawText(sBodyFont, versionLabel, ww - vsz.width - margin, wh - vsz.height - margin,
+                         TEXT_DIM);
 
     return result;
 }
