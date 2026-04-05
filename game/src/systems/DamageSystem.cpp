@@ -150,10 +150,8 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
                     reg.emplace_or_replace<Staggered>(attacker, Staggered{0.5f});
                     reg.emplace_or_replace<RiposteWindow>(target,
                                                           RiposteWindow{f.combat.riposte_window});
-                    {
-                        const auto& pr = snd.get("parry");
-                        AudioSystem::playSfx(pr.path, pr.volume);
-                    }
+                    const auto& pr = snd.get("parry");
+                    AudioSystem::playSfx(pr.path, pr.volume);
                 }
                 return false; // damage fully negated
             }

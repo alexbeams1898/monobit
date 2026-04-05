@@ -263,8 +263,7 @@ static void spawnDrops(EntityManager& em, const Loot& loot, float deathX, float 
 
 // Grant XP directly to the player, cascade-destroy body-part children, then
 // destroy entity.
-static void processEnemyDeath(EntityManager& em, entt::entity entity, const Loot& loot,
-                              const std::string& name)
+static void processEnemyDeath(EntityManager& em, entt::entity entity, const Loot& loot)
 {
     auto& reg = em.registry();
     const FormulaConfig& f = reg.ctx().get<FormulaConfig>();
@@ -367,7 +366,6 @@ void DeathSystem::update(EntityManager& em, double dt)
         entt::entity entity;
         bool is_player;
         Loot loot;
-        std::string name;
     };
 
     std::vector<DeadEntry> dead;
@@ -382,11 +380,7 @@ void DeathSystem::update(EntityManager& em, double dt)
         if (reg.all_of<Loot>(entity))
             loot = reg.get<Loot>(entity);
 
-        std::string name = "???";
-        if (reg.all_of<Tag>(entity))
-            name = reg.get<Tag>(entity).name;
-
-        dead.push_back({entity, is_player, loot, std::move(name)});
+        dead.push_back({entity, is_player, loot});
     }
 
     for (const auto& entry : dead)
@@ -408,7 +402,7 @@ void DeathSystem::update(EntityManager& em, double dt)
         }
         else if (reg.all_of<Loot>(entry.entity))
         {
-            processEnemyDeath(em, entry.entity, entry.loot, entry.name);
+            processEnemyDeath(em, entry.entity, entry.loot);
         }
         else
         {

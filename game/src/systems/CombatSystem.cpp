@@ -491,28 +491,23 @@ void CombatSystem::update(EntityManager& em, double dt)
                                         ? InventoryOps::countItem(*inv, weapon.ammo_type)
                                         : 999;
 
-                if (rs != nullptr && rs->reloading)
+                // Can't fire if: reloading, magazine empty, or bow with no arrows.
+                const bool magazineEmpty =
+                    rs != nullptr && rs->magazine_size > 0 && rs->ammo_in_magazine <= 0;
+                const bool bowEmpty = rs != nullptr && rs->magazine_size == 0 && reserve <= 0;
+                const bool canFire =
+                    !(rs != nullptr && rs->reloading) && !magazineEmpty && !bowEmpty;
+
+                // Auto-reload when magazine runs out and we have reserve ammo.
+                if (magazineEmpty && reserve > 0)
                 {
-                    // Can't fire while reloading — skip.
+                    rs->reloading = true;
+                    rs->reload_timer = rs->reload_time;
+                    const auto& rl = snd.get("reload");
+                    AudioSystem::playSfx(rl.path, rl.volume);
                 }
-                else if (rs != nullptr && rs->magazine_size > 0 && rs->ammo_in_magazine <= 0)
-                {
-                    // Magazine empty — auto-reload if we have reserve ammo.
-                    if (reserve > 0)
-                    {
-                        rs->reloading = true;
-                        rs->reload_timer = rs->reload_time;
-                        {
-                            const auto& rl = snd.get("reload");
-                            AudioSystem::playSfx(rl.path, rl.volume);
-                        }
-                    }
-                }
-                else if (rs != nullptr && rs->magazine_size == 0 && reserve <= 0)
-                {
-                    // Bow with no arrows — can't fire.
-                }
-                else
+
+                if (canFire)
                 {
                     // Fire projectile(s).
                     const float dmg =
