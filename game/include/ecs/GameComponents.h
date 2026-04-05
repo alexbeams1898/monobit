@@ -39,6 +39,7 @@ struct PlayerActions
     bool alloc_end = false;
     bool alloc_lck = false;
     bool lock_on_toggle = false;
+    bool reload = false;
     bool toggle_inventory = false;
     bool toggle_pause = false;
     float dodge_cooldown_remaining = 0.0f;
@@ -172,6 +173,20 @@ struct Weapon
 
     float swing_cooldown_remaining = 0.0f;
     float skill_cooldown_remaining = 0.0f;
+
+    // Ranged weapon fields (set by EquipmentSystem from ItemDef).
+    bool ranged = false;
+    float projectile_speed = 400.0f;
+    float effective_range = 500.0f;
+    float spread = 0.0f;           // accuracy cone in degrees (0 = perfect)
+    int projectile_count = 1;      // per shot (>1 for shotgun-type weapons)
+    float projectile_size = 6.0f;  // collider width/height
+    int pierce = 0;                // enemies a projectile passes through
+    std::string projectile_sprite; // empty = fallback to colored square
+    std::string ammo_type;         // config_path of ammo item consumed per shot
+    std::string fire_sound;        // sound event key (e.g. "gunshot", "bow_release")
+    float fire_rate = 0.0f;        // shots/sec; >0 overrides swing cooldown formula
+    float stamina_cost = -1.0f;    // per-attack cost; <0 = use weight-based formula
 };
 
 // WeaponXP -- tracks weapon leveling through combat use.
@@ -465,4 +480,28 @@ struct AmbientSound
     float timer = 0.0f;
     int shuffle_index = 0;
     std::vector<int> shuffle_order;
+};
+
+// Projectile -- a moving damage entity (bullet, arrow) spawned by CombatSystem.
+// ProjectileSystem manages lifetime, wall destruction, and pierce logic.
+struct Projectile
+{
+    entt::entity owner = entt::null;
+    float max_range = 500.0f;
+    float spawn_x = 0.0f;
+    float spawn_y = 0.0f;
+    int pierce_remaining = 0; // 0 = destroy on first hit; >0 = pass through N enemies
+    float dir_x = 0.0f;       // normalized flight direction
+    float dir_y = 0.0f;
+    float speed = 0.0f; // pixels per second
+};
+
+// RangedState -- runtime magazine/reload state for a ranged weapon wielder.
+struct RangedState
+{
+    int ammo_in_magazine = 0;
+    int magazine_size = 0; // 0 = no magazine (bow-type)
+    float reload_timer = 0.0f;
+    float reload_time = 1.0f;
+    bool reloading = false;
 };

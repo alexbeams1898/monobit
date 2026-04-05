@@ -29,13 +29,13 @@ static void playPickupSfx(const SoundConfig& snd, Rarity rarity, QualityTier qua
     // Pitch: 0.6 (common junk) -> 2.0 (legendary masterwork).
     const float pitch = 0.6f + tier * 0.28f;
     // Volume: base pickup volume scaled up for rarer items.
-    const float vol = snd.pickup.volume * (1.0f + tier * 0.15f);
+    const float vol = snd.get("pickup").volume * (1.0f + tier * 0.15f);
 
-    AudioSystem::playSfx(snd.pickup.path, vol, pitch);
+    AudioSystem::playSfx(snd.get("pickup").path, vol, pitch);
 
     // Shimmer layer for Rare+ items: a second voice at higher pitch, lower volume.
     if (rt >= static_cast<int>(Rarity::Rare))
-        AudioSystem::playSfx(snd.pickup.path, vol * 0.5f, pitch * 1.6f);
+        AudioSystem::playSfx(snd.get("pickup").path, vol * 0.5f, pitch * 1.6f);
 }
 
 static void collectPickup(EntityManager& em, entt::entity playerEnt, entt::entity pickupEnt)
@@ -57,7 +57,7 @@ static void collectPickup(EntityManager& em, entt::entity playerEnt, entt::entit
                 const int amount = def->value * pickup.item.quantity;
                 reg.get<Wallet>(playerEnt).money += amount;
                 reg.ctx().get<RunStats>().money += amount;
-                AudioSystem::playSfx(snd.pickup.path, snd.pickup.volume);
+                AudioSystem::playSfx(snd.get("pickup").path, snd.get("pickup").volume);
                 NotificationSystem::push("+$" + std::to_string(amount), {0.2f, 0.85f, 0.3f, 1.0f});
             }
             TracyMessageL("ItemPickedUp");
@@ -101,7 +101,7 @@ static void collectPickup(EntityManager& em, entt::entity playerEnt, entt::entit
     {
         auto& xp = reg.get<Experience>(playerEnt);
         xp.current_xp += pickup.xp_value;
-        AudioSystem::playSfx(snd.pickup.path, snd.pickup.volume);
+        AudioSystem::playSfx(snd.get("pickup").path, snd.get("pickup").volume);
         NotificationSystem::push("+" + std::to_string(pickup.xp_value) + " XP",
                                  {0.3f, 0.5f, 1.0f, 1.0f});
     }

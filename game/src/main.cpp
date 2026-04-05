@@ -135,6 +135,7 @@ int main(int argc, char* argv[])
 
     // Load saved data (characters, high scores).
     em.registry().ctx().get<SaveData>() = SaveManager::load();
+    em.registry().ctx().get<DebugFlags>().god_mode = em.registry().ctx().get<SaveData>().god_mode;
 
     // Start at main menu -- world is created when the player selects a character.
     em.registry().ctx().get<GameState>().phase = GameState::Phase::MainMenu;

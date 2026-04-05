@@ -1,0 +1,9 @@
+{
+    "name": "Arrow",
+    "description": "A bone-tipped arrow.",
+    "icon": "assets/sprites/icons/arrow.png",
+    "category": "material",
+    "rarity": "very_common",
+    "stackable": true,
+    "max_stack": 99
+}

@@ -6,10 +6,12 @@
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
+#include "ops/InventoryOps.h"
 #include "systems/LevelingSystem.h"
 #include "systems/TileMapRenderer.h"
 #include "systems/WaveSystem.h"
 
+#include <string>
 #include <vector>
 
 namespace WorldInit
@@ -67,6 +69,47 @@ void createWorld(Engine& engine, EntityManager& em)
         }
         em.registry().emplace<InteractTarget>(player);
         em.registry().emplace<Camera>(player, Camera{spawnX, spawnY, true});
+    }
+
+    // God mode: seed inventory with every weapon + materials for testing.
+    const auto& dbg = em.registry().ctx().get<DebugFlags>();
+    if (dbg.god_mode && em.registry().valid(player) && em.registry().all_of<Inventory>(player))
+    {
+        auto& inv = em.registry().get<Inventory>(player);
+        const auto& items = em.registry().ctx().get<ItemRegistry>();
+
+        const std::string weaponPaths[] = {
+            "config/items/weapons/shiv.json",        "config/items/weapons/dagger.json",
+            "config/items/weapons/short_sword.json", "config/items/weapons/longsword.json",
+            "config/items/weapons/bone_club.json",   "config/items/weapons/mace.json",
+            "config/items/weapons/warhammer.json",   "config/items/weapons/great_maul.json",
+            "config/items/weapons/bow.json",         "config/items/weapons/pistol.json",
+            "config/items/weapons/semi_auto.json",
+        };
+        for (const auto& path : weaponPaths)
+        {
+            ItemInstance item;
+            item.config_path = path;
+            item.quality = QualityTier::Common;
+            InventoryOps::addItem(inv, item, items);
+        }
+
+        // Bone shards for crafting.
+        ItemInstance shards;
+        shards.config_path = "config/items/materials/bone_shard.json";
+        shards.quantity = 100;
+        InventoryOps::addItem(inv, shards, items);
+
+        // Ammo stacks.
+        ItemInstance arrows;
+        arrows.config_path = "config/items/ammo/arrow.json";
+        arrows.quantity = 99;
+        InventoryOps::addItem(inv, arrows, items);
+
+        ItemInstance bullets;
+        bullets.config_path = "config/items/ammo/bullet.json";
+        bullets.quantity = 99;
+        InventoryOps::addItem(inv, bullets, items);
     }
 
     LevelingSystem::applyInitialDerivations(em);

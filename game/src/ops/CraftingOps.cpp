@@ -65,7 +65,8 @@ static int consumeItem(Inventory& inv, const std::string& config_path, int quant
     return qualitySum;
 }
 
-bool craft(Inventory& inv, const RecipeDef& recipe, const ItemRegistry& registry)
+bool craft(Inventory& inv, const RecipeDef& recipe, const ItemRegistry& registry,
+           bool free_materials)
 {
     if (!canCraft(inv, recipe, registry))
         return false;
@@ -73,10 +74,13 @@ bool craft(Inventory& inv, const RecipeDef& recipe, const ItemRegistry& registry
     // Consume ingredients, tracking quality for output.
     int totalQuality = 0;
     int totalItems = 0;
-    for (const auto& ing : recipe.inputs)
+    if (!free_materials)
     {
-        totalQuality += consumeItem(inv, ing.config_path, ing.quantity);
-        totalItems += ing.quantity;
+        for (const auto& ing : recipe.inputs)
+        {
+            totalQuality += consumeItem(inv, ing.config_path, ing.quantity);
+            totalItems += ing.quantity;
+        }
     }
 
     // Output quality = rounded average of input qualities.

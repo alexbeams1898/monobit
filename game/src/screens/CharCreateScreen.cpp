@@ -91,8 +91,8 @@ static CharCreateScreen::Action handleCharCreateInput(const EntityManager& em,
     if (result != CharCreateScreen::Action::None)
     {
         SDL_StopTextInput();
-        if (!snd.ui_click.path.empty())
-            AudioSystem::playSfx(snd.ui_click.path, snd.ui_click.volume);
+        if (!snd.get("ui_click").path.empty())
+            AudioSystem::playSfx(snd.get("ui_click").path, snd.get("ui_click").volume);
     }
     return result;
 }
@@ -189,8 +189,8 @@ CharCreateScreen::Action CharCreateScreen::render(EntityManager& em, int window_
                 result = Action::Back;
                 SDL_StopTextInput();
             }
-            if (result != Action::None && !snd.ui_click.path.empty())
-                AudioSystem::playSfx(snd.ui_click.path, snd.ui_click.volume);
+            if (result != Action::None && !snd.get("ui_click").path.empty())
+                AudioSystem::playSfx(snd.get("ui_click").path, snd.get("ui_click").volume);
         }
 
         by += btn_h + btn_gap;

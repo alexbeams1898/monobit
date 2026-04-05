@@ -6,7 +6,6 @@
 #include "ecs/GameConfig.h"
 
 #include <cmath>
-#include <iostream>
 #include <tracy/Tracy.hpp>
 #include <vector>
 
@@ -22,6 +21,19 @@ static void weaponFromDef(Weapon& w, const ItemDef& def)
     w.dex_requirement = def.dex_requirement;
     w.swing_cooldown_remaining = 0.0f;
     w.skill_cooldown_remaining = 0.0f;
+
+    w.ranged = def.ranged;
+    w.projectile_speed = def.projectile_speed;
+    w.effective_range = def.effective_range;
+    w.spread = def.spread;
+    w.projectile_count = def.projectile_count;
+    w.projectile_size = def.projectile_size;
+    w.pierce = def.pierce;
+    w.projectile_sprite = def.projectile_sprite;
+    w.ammo_type = def.ammo_type;
+    w.fire_sound = def.fire_sound;
+    w.fire_rate = def.fire_rate;
+    w.stamina_cost = def.stamina_cost;
 }
 
 // Populate a Weapon component with unarmed defaults.
@@ -47,6 +59,7 @@ static void weaponFromFist(Weapon& w, const Body* body, const FormulaConfig& f)
     w.dex_requirement = 0;
     w.swing_cooldown_remaining = 0.0f;
     w.skill_cooldown_remaining = 0.0f;
+    w.ranged = false;
 }
 
 // Tab cycling: advance to the next weapon slot (or fists).
@@ -86,19 +99,7 @@ static void cycleWeapon(const ItemRegistry& items, const Inventory& inv, Equipme
         equip.main_hand.quantity = 1;
     }
 
-    const ItemDef* nextDef =
-        equip.main_hand.empty() ? nullptr : items.find(equip.main_hand.config_path);
-    std::string name = "Unarmed";
-    if (nextDef != nullptr)
-        name = std::string(qualityName(equip.main_hand.quality)) + " " + nextDef->name;
     TracyMessageL("WeaponSwitch");
-    std::cout << "[Equipment] Switched to " << name;
-    if (nextDef != nullptr && (nextDef->str_requirement > 0 || nextDef->dex_requirement > 0))
-    {
-        std::cout << "  (Requires: STR " << nextDef->str_requirement << " / DEX "
-                  << nextDef->dex_requirement << ")";
-    }
-    std::cout << "\n";
 }
 
 // Accumulate weight from a single equipped slot.
@@ -263,6 +264,26 @@ static void syncEquipmentSlots(entt::registry& reg, entt::entity entity, Equipme
         }
 
         loadWeaponXP(reg, entity, equip, f);
+
+        if (w.ranged)
+        {
+            auto& rs = reg.get_or_emplace<RangedState>(entity);
+            rs.magazine_size = 0;
+            rs.reload_time = 1.0f;
+            rs.reloading = false;
+            rs.reload_timer = 0.0f;
+            const ItemDef* rdef = items.find(equip.main_hand.config_path);
+            if (rdef != nullptr)
+            {
+                rs.magazine_size = rdef->magazine_size;
+                rs.reload_time = rdef->reload_time;
+            }
+            rs.ammo_in_magazine = rs.magazine_size;
+        }
+        else
+        {
+            reg.remove<RangedState>(entity);
+        }
     }
 
     if (equip.off_hand.config_path != equip.synced_off_hand)

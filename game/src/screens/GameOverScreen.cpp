@@ -74,8 +74,8 @@ bool GameOverScreen::render(EntityManager& em, int window_w, int window_h, float
             if (auto* t = mc.get("game_over_ambient"))
                 AudioSystem::playMusic(t->path, t->volume);
             const auto& snd = em.registry().ctx().get<SoundConfig>();
-            if (!snd.ui_click.path.empty())
-                AudioSystem::playSfx(snd.ui_click.path, snd.ui_click.volume);
+            if (!snd.get("ui_click").path.empty())
+                AudioSystem::playSfx(snd.get("ui_click").path, snd.get("ui_click").volume);
             return true;
         }
     }

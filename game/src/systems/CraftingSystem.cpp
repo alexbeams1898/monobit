@@ -7,7 +7,6 @@
 #include "systems/AudioSystem.h"
 #include "systems/NotificationSystem.h"
 
-#include <iostream>
 #include <tracy/Tracy.hpp>
 
 void CraftingSystem::update(EntityManager& em)
@@ -25,16 +24,17 @@ void CraftingSystem::update(EntityManager& em)
 
         const RecipeDef* recipe = CraftingOps::findCraftable(inv, recipes, items);
         if (recipe == nullptr)
-        {
-            std::cout << "[CraftingSystem] No craftable recipes available.\n";
             continue;
-        }
 
-        if (CraftingOps::craft(inv, *recipe, items))
+        const bool godMode = reg.ctx().get<DebugFlags>().god_mode;
+        if (CraftingOps::craft(inv, *recipe, items, godMode))
         {
             TracyMessageL("ItemCrafted");
             const auto& snd = reg.ctx().get<SoundConfig>();
-            AudioSystem::playSfx(snd.pickup.path, snd.pickup.volume);
+            {
+                const auto& pk = snd.get("pickup");
+                AudioSystem::playSfx(pk.path, pk.volume);
+            }
             NotificationSystem::push("Crafted " + recipe->name + "!", {0.3f, 0.9f, 0.3f, 1.0f});
         }
     }

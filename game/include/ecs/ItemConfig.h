@@ -85,6 +85,22 @@ struct ItemDef
     float damage_per_level = -1.0f;  // -1 = use tier default
     float scaling_per_level = -1.0f; // -1 = use tier default
 
+    // Ranged weapon fields (only meaningful when category == Weapon and ranged == true).
+    bool ranged = false;
+    float projectile_speed = 400.0f;
+    float effective_range = 500.0f;
+    int magazine_size = 0; // 0 = no reload (bow); >0 = needs reload
+    float reload_time = 1.5f;
+    float spread = 0.0f;           // accuracy cone in degrees
+    int projectile_count = 1;      // per shot (shotgun = multiple)
+    float projectile_size = 6.0f;  // collider width/height
+    int pierce = 0;                // enemies passed through before destroying
+    std::string projectile_sprite; // sprite path (empty = colored square fallback)
+    std::string ammo_type;         // config_path of ammo item consumed per shot
+    std::string fire_sound;        // sound event key (e.g. "gunshot", "bow_release")
+    float fire_rate = 0.0f;        // shots/sec; >0 overrides swing cooldown formula
+    float stamina_cost = -1.0f;    // per-attack stamina; <0 = use weight-based formula
+
     // Armor-specific (only meaningful when category == Armor).
     ArmorSlot armor_slot = ArmorSlot::Chest;
     float defense_bonus = 0.0f;

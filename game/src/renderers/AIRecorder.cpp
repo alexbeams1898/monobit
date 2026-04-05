@@ -55,7 +55,6 @@ void init(int max_entities, float history_seconds)
     sBuffer.resize(static_cast<size_t>(sCapacity));
     sWriteIndex = 0;
     sCount = 0;
-    std::cout << "[AIRecorder] Initialized: " << sCapacity << " record slots\n";
 }
 
 void tick(EntityManager& em, int frame_number)
@@ -131,10 +130,7 @@ void tick(EntityManager& em, int frame_number)
 void dump()
 {
     if (sCount == 0)
-    {
-        std::cout << "[AIRecorder] No data to dump.\n";
         return;
-    }
 
     try
     {
@@ -172,8 +168,6 @@ void dump()
              << (r.has_token ? 1 : 0) << ',' << r.flow_dx << ',' << r.flow_dy << ',' << r.target_x
              << ',' << r.target_y << ',' << r.player_x << ',' << r.player_y << '\n';
     }
-
-    std::cout << "[AIRecorder] Dumped " << sCount << " rows to " << path << "\n";
 }
 
 } // namespace AIRecorder

@@ -8,6 +8,7 @@ add_library(game-systems STATIC
     src/systems/CombatSystem.cpp
     src/systems/DamageSystem.cpp
     src/systems/DeathSystem.cpp
+    src/systems/ProjectileSystem.cpp
     src/systems/LevelingSystem.cpp
     src/systems/PickupSystem.cpp
     src/systems/RestSpotSystem.cpp
@@ -108,6 +109,7 @@ add_executable(game-tests
     tests/armor_defense_test.cpp
     tests/discovery_test.cpp
     tests/ladder_test.cpp
+    tests/projectile_test.cpp
 )
 target_link_libraries(game-tests PRIVATE game-systems Catch2::Catch2WithMain)
 

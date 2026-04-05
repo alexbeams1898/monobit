@@ -761,45 +761,19 @@ bool ConfigLoader::loadSounds(EntityManager& em, const std::string& filePath)
 
     SoundConfig& s = em.registry().ctx().get<SoundConfig>();
 
-    auto load = [&](const char* key, SoundEntry& entry)
+    // Iterate every key in the JSON object — fully data-driven.
+    for (auto& [key, val] : j.items())
     {
-        if (j.contains(key))
+        SoundEntry entry;
+        entry.path = val.value("path", std::string{});
+        entry.volume = val.value("volume", 0.5f);
+        if (val.contains("variations"))
         {
-            entry.path = j[key].value("path", entry.path);
-            entry.volume = j[key].value("volume", entry.volume);
+            for (const auto& v : val["variations"])
+                entry.variations.push_back(v.get<std::string>());
         }
-    };
-
-    load("player_attack", s.player_attack);
-    load("player_skill", s.player_skill);
-    load("player_dodge", s.player_dodge);
-    load("hit", s.hit);
-    if (j.contains("hit") && j["hit"].contains("variations"))
-    {
-        for (const auto& v : j["hit"]["variations"])
-            s.hit_paths.push_back(v.get<std::string>());
+        s.entries[key] = std::move(entry);
     }
-    load("parry", s.parry);
-    load("death", s.death);
-    load("pickup", s.pickup);
-    load("level_up", s.level_up);
-    load("stat_allocate", s.stat_allocate);
-    load("wall_bump", s.wall_bump);
-    load("footstep_walk", s.footstep_walk);
-    load("footstep_run", s.footstep_run);
-    load("rest_heal", s.rest_heal);
-    if (j.contains("rest_heal") && j["rest_heal"].contains("variations"))
-    {
-        for (const auto& v : j["rest_heal"]["variations"])
-            s.rest_heal_paths.push_back(v.get<std::string>());
-    }
-    load("game_over", s.game_over);
-    load("low_stamina_heartbeat", s.low_stamina_heartbeat);
-    load("ui_click", s.ui_click);
-    load("wave_clear", s.wave_clear);
-    load("escape_run", s.escape_run);
-    load("heal_blocked", s.heal_blocked);
-    load("ladder_appear", s.ladder_appear);
 
     s.loaded = true;
     std::cout << "[ConfigLoader] Loaded sounds from " << filePath << "\n";
@@ -1040,6 +1014,21 @@ bool ConfigLoader::loadItemDefs(EntityManager& em, const std::string& dirPath)
         def.weapon_tier = j.value("weapon_tier", std::string{});
         def.damage_per_level = j.value("damage_per_level", -1.0f);
         def.scaling_per_level = j.value("scaling_per_level", -1.0f);
+
+        def.ranged = j.value("ranged", false);
+        def.projectile_speed = j.value("projectile_speed", 400.0f);
+        def.effective_range = j.value("effective_range", 500.0f);
+        def.magazine_size = j.value("magazine_size", 0);
+        def.reload_time = j.value("reload_time", 1.5f);
+        def.spread = j.value("spread", 0.0f);
+        def.projectile_count = j.value("projectile_count", 1);
+        def.projectile_size = j.value("projectile_size", 6.0f);
+        def.pierce = j.value("pierce", 0);
+        def.projectile_sprite = j.value("projectile_sprite", std::string{});
+        def.ammo_type = j.value("ammo_type", std::string{});
+        def.fire_sound = j.value("fire_sound", std::string{});
+        def.fire_rate = j.value("fire_rate", 0.0f);
+        def.stamina_cost = j.value("stamina_cost", -1.0f);
 
         def.armor_slot = parseArmorSlot(j.value("armor_slot", std::string{"chest"}));
         def.defense_bonus = j.value("defense_bonus", 0.0f);

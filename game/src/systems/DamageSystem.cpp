@@ -8,7 +8,6 @@
 #include "systems/WeaponXPSystem.h"
 
 #include <cmath>
-#include <iostream>
 #include <random>
 #include <tracy/Tracy.hpp>
 
@@ -97,9 +96,10 @@ static float computeDef(const Stats& s, int baseDef, int level, const FormulaCon
 // Apply incoming damage to a target entity, respecting Dodging i-frames,
 // Shield blocking/parry, DEF, and stat-requirement penalty.
 // Returns true if damage was applied (false = blocked / i-frames / parried).
+// hitboxEnt: the entity carrying the Hitbox (needed to skip backstab for projectiles).
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
 static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
-                        entt::entity attacker)
+                        entt::entity attacker, entt::entity hitboxEnt)
 {
     auto& reg = em.registry();
     const FormulaConfig& f = reg.ctx().get<FormulaConfig>();
@@ -150,9 +150,8 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
                     reg.emplace_or_replace<Staggered>(attacker, Staggered{0.5f});
                     reg.emplace_or_replace<RiposteWindow>(target,
                                                           RiposteWindow{f.combat.riposte_window});
-                    AudioSystem::playSfx(snd.parry.path, snd.parry.volume);
-                    std::cout << "[DamageSystem] Parry! Attacker staggered. Riposte window open ("
-                              << f.combat.riposte_window << "s)\n";
+                    const auto& pr = snd.get("parry");
+                    AudioSystem::playSfx(pr.path, pr.volume);
                 }
                 return false; // damage fully negated
             }
@@ -163,16 +162,17 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
             {
                 shield.guard_health = 0.0f;
                 reg.emplace_or_replace<Staggered>(target, Staggered{1.0f});
-                std::cout << "[DamageSystem] Guard broken!\n";
             }
             return false; // damage absorbed by shield
         }
     }
 
     // Backstab: attacker is behind target and target is not actively attacking.
+    // Projectile hits skip backstab — it's a melee-positioning concept.
     bool isCritical = false;
-    if (attacker != entt::null && reg.all_of<Transform, FacingDirection>(target) &&
-        reg.all_of<Transform>(attacker))
+    const bool isProjectileHit = hitboxEnt != entt::null && reg.all_of<Projectile>(hitboxEnt);
+    if (!isProjectileHit && attacker != entt::null &&
+        reg.all_of<Transform, FacingDirection>(target) && reg.all_of<Transform>(attacker))
     {
         const auto& tgt = reg.get<Transform>(target);
         const auto& atk = reg.get<Transform>(attacker);
@@ -203,8 +203,6 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
                 reg.emplace_or_replace<CriticalTarget>(
                     target, CriticalTarget{f.combat.critical_lock_duration});
                 TracyMessageL("Backstab");
-                std::cout << "[DamageSystem] BACKSTAB! x" << f.combat.backstab_multiplier
-                          << " damage\n";
             }
         }
     }
@@ -220,7 +218,6 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
         reg.emplace_or_replace<CriticalTarget>(target,
                                                CriticalTarget{f.combat.critical_lock_duration});
         TracyMessageL("Riposte");
-        std::cout << "[DamageSystem] RIPOSTE! x" << f.combat.riposte_multiplier << " damage\n";
     }
 
     // Stat-requirement penalty on the attacker's weapon.
@@ -260,14 +257,15 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
     // Trigger red damage flash on the target.
     reg.emplace_or_replace<DamageFeedback>(target, DamageFeedback{0.2f});
 
-    if (!snd.hit_paths.empty())
+    const auto& hitSnd = snd.get("hit");
+    if (!hitSnd.variations.empty())
     {
-        auto dist = std::uniform_int_distribution<size_t>(0, snd.hit_paths.size() - 1);
-        AudioSystem::playSfx(snd.hit_paths[dist(damageRng())], snd.hit.volume);
+        auto dist = std::uniform_int_distribution<size_t>(0, hitSnd.variations.size() - 1);
+        AudioSystem::playSfx(hitSnd.variations[dist(damageRng())], hitSnd.volume);
     }
     else
     {
-        AudioSystem::playSfx(snd.hit.path, snd.hit.volume);
+        AudioSystem::playSfx(hitSnd.path, hitSnd.volume);
     }
 
     // Per-entity hit sound layered on top of the global hit SFX.
@@ -278,9 +276,14 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
         AudioSystem::playSfx(hs.path, hs.volume, pitchDist(damageRng()));
     }
     TracyMessageL("EntityDamaged");
-    const std::string name = reg.all_of<Tag>(target) ? reg.get<Tag>(target).name : "entity";
-    std::cout << "[DamageSystem] " << name << " took " << dmg << " damage (" << health.current
-              << "/" << health.max << " hp)\n";
+
+    // Force aggro on hit: if an idle enemy takes damage, switch to Chase.
+    if (reg.all_of<AIController>(target))
+    {
+        auto& ai = reg.get<AIController>(target);
+        if (ai.state == AIController::State::Idle)
+            ai.state = AIController::State::Chase;
+    }
 
     if (health.current <= 0 && !reg.all_of<Dead>(target))
     {
@@ -293,9 +296,11 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
             deathTimer = static_cast<float>(deathState.frames) * deathState.duration;
         }
         reg.emplace<Dead>(target, Dead{deathTimer});
-        AudioSystem::playSfx(snd.death.path, snd.death.volume);
+        {
+            const auto& dt = snd.get("death");
+            AudioSystem::playSfx(dt.path, dt.volume);
+        }
         TracyMessageL("EntityDied");
-        std::cout << "[DamageSystem] " << name << " died.\n";
     }
 
     // Poise damage — accumulate per hit; stagger when threshold is breached.
@@ -310,28 +315,21 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
         if (attacker != entt::null && reg.all_of<Weapon>(attacker))
             poiseDmg = reg.get<Weapon>(attacker).weight * f.poise.weight_scale;
 
-        const std::string targetName =
-            reg.all_of<Tag>(target) ? reg.get<Tag>(target).name : "entity";
-
         if (poise.max <= 0.0f)
         {
             // Zero poise (no armor): any hit staggers.
             if (!reg.all_of<Staggered>(target))
             {
                 reg.emplace<Staggered>(target, Staggered{f.poise.stagger_duration});
-                std::cout << "[Poise] " << targetName << ": staggered (no poise)\n";
             }
         }
         else
         {
             poise.current += poiseDmg;
-            std::cout << "[Poise] " << targetName << ": " << poise.current << "/" << poise.max
-                      << " (++" << poiseDmg << ")\n";
             if (poise.current >= poise.max)
             {
                 poise.current = 0.0f;
                 reg.emplace_or_replace<Staggered>(target, Staggered{f.poise.stagger_duration});
-                std::cout << "[Poise] " << targetName << ": staggered (poise broken)\n";
             }
         }
     }
@@ -372,7 +370,7 @@ void DamageSystem::update(EntityManager& em)
         if (reg.all_of<Dead>(targetEnt))
             continue;
 
-        if (applyDamage(em, targetEnt, hb.damage, hb.owner))
+        if (applyDamage(em, targetEnt, hb.damage, hb.owner, hitboxEnt))
         {
             hb.hit_something = true;
 

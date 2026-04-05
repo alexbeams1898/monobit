@@ -45,8 +45,8 @@ static constexpr Color CRAFT_BTN_TEXT_OFF{0.4f, 0.38f, 0.36f, 0.6f};
 
 static void playSfx(const SoundConfig& snd)
 {
-    if (!snd.ui_click.path.empty())
-        AudioSystem::playSfx(snd.ui_click.path, snd.ui_click.volume);
+    if (!snd.get("ui_click").path.empty())
+        AudioSystem::playSfx(snd.get("ui_click").path, snd.get("ui_click").volume);
 }
 
 static int countItem(const Inventory& inv, const std::string& config_path)
@@ -290,14 +290,14 @@ static void renderRecipeDetail(const RecipeDef& recipe, const ItemDef* output_de
 
 // Render the craft button, separator, and hint text.
 static void renderCraftFooter(EntityManager& em, entt::entity player, bool canCraft,
-                              const CraftLayout& lay, float btn_h, const std::string& hintText,
-                              const TextSize& hintsz)
+                              const CraftLayout& lay, float footer_y, float btn_h,
+                              const std::string& hintText, const TextSize& hintsz)
 {
     const auto& recipes = em.registry().ctx().get<RecipeRegistry>();
     const auto& items = em.registry().ctx().get<ItemRegistry>();
     const auto& snd = em.registry().ctx().get<SoundConfig>();
 
-    float fy = lay.scroll_bottom;
+    float fy = footer_y;
 
     const std::string craftLabel = "Craft";
     const TextSize csz = UIRenderer::measureText(sTitleFont, craftLabel);
@@ -322,7 +322,8 @@ static void renderCraftFooter(EntityManager& em, entt::entity player, bool canCr
     {
         auto& playerInv = em.registry().get<Inventory>(player);
         const auto& recipe = recipes.recipes[static_cast<size_t>(sSelectedRecipe)];
-        if (CraftingOps::craft(playerInv, recipe, items))
+        const bool godMode = em.registry().ctx().get<DebugFlags>().god_mode;
+        if (CraftingOps::craft(playerInv, recipe, items, godMode))
         {
             const ItemDef* odef = items.find(recipe.output_item);
             const std::string name = (odef != nullptr) ? odef->name : recipe.output_item;
@@ -447,7 +448,8 @@ static bool handleCraftAction(EntityManager& em, const RecipeRegistry& recipes,
 
     auto& playerInv = em.registry().get<Inventory>(player);
     const auto& recipe = recipes.recipes[static_cast<size_t>(sSelectedRecipe)];
-    if (CraftingOps::craft(playerInv, recipe, items))
+    const bool godCraft = em.registry().ctx().get<DebugFlags>().god_mode;
+    if (CraftingOps::craft(playerInv, recipe, items, godCraft))
     {
         const ItemDef* output_def = items.find(recipe.output_item);
         const std::string name = (output_def != nullptr) ? output_def->name : recipe.output_item;
@@ -648,26 +650,28 @@ void CraftingScreen::render(EntityManager& em, int window_w, int window_h)
 
     const float header_h = pad + title_h + sep_gap + 1.0f + sep_gap;
     const float footer_h = btn_h + sep_gap + 1.0f + sep_gap + hintsz.height + pad;
-    const float scrollable_h =
-        list_h + ((recipe_count > 0) ? (sep_gap + 1.0f + sep_gap + detail_h) : 0.0f);
-    const float ideal_panel_h = header_h + scrollable_h + footer_h;
+    const float detail_section_h =
+        (recipe_count > 0) ? (sep_gap + 1.0f + sep_gap + detail_h) : 0.0f;
+    const float ideal_panel_h = header_h + list_h + detail_section_h + footer_h;
     const float max_panel_h = wh - 60.0f;
     const float panel_h = std::min(ideal_panel_h, max_panel_h);
-    const float visible_scroll_h = panel_h - header_h - footer_h;
-    const float max_scroll = std::max(0.0f, scrollable_h - visible_scroll_h);
+    // Only the recipe list scrolls; detail + footer are pinned.
+    const float visible_list_h = panel_h - header_h - detail_section_h - footer_h;
+    const float max_scroll = std::max(0.0f, list_h - visible_list_h);
 
     if (em.mouse_wheel_y != 0)
         sScrollOffset -= static_cast<float>(em.mouse_wheel_y) * line_h;
     sScrollOffset = std::clamp(sScrollOffset, 0.0f, max_scroll);
 
     if (!navOrder.empty())
-        handleAutoScroll(displayRows, visible_scroll_h, max_scroll, line_h, header_gap);
+        handleAutoScroll(displayRows, visible_list_h, max_scroll, line_h, header_gap);
 
     const float px = (ww - panel_w) * 0.5f;
     const float py = (wh - panel_h) * 0.5f;
     const float cx = px + pad;
     const float cw = content_w;
     const float scroll_top = py + header_h;
+    const float list_bottom = scroll_top + visible_list_h;
     const float scroll_bottom = py + panel_h - footer_h;
 
     int mouseX = 0;
@@ -676,7 +680,8 @@ void CraftingScreen::render(EntityManager& em, int window_w, int window_h)
     const float mx = static_cast<float>(mouseX);
     const float my = static_cast<float>(mouseY);
 
-    const CraftLayout lay{px, cx, cw, panel_w, line_h, sep_gap, scroll_top, scroll_bottom, mx, my};
+    // Use list_bottom for scroll clipping so only the recipe list scrolls.
+    const CraftLayout lay{px, cx, cw, panel_w, line_h, sep_gap, scroll_top, list_bottom, mx, my};
 
     UIRenderer::drawRect(px, py, panel_w, panel_h, PANEL_BG);
 
@@ -687,14 +692,20 @@ void CraftingScreen::render(EntityManager& em, int window_w, int window_h)
     UIRenderer::drawRect(cx, y, cw, 1.0f, SEPARATOR);
     y += 1.0f + sep_gap;
 
+    // Scissor clip the recipe list only.
     UIRenderer::flush();
     glEnable(GL_SCISSOR_TEST);
-    glScissor(static_cast<int>(px), static_cast<int>(wh - scroll_bottom), static_cast<int>(panel_w),
-              static_cast<int>(scroll_bottom - scroll_top));
+    glScissor(static_cast<int>(px), static_cast<int>(wh - list_bottom), static_cast<int>(panel_w),
+              static_cast<int>(list_bottom - scroll_top));
     y -= sScrollOffset;
 
     drawRecipeList(displayRows, em, lay, header_gap, y);
 
+    UIRenderer::flush();
+    glDisable(GL_SCISSOR_TEST);
+
+    // Detail + footer render below the list, unclipped.
+    y = list_bottom;
     const int displayRecipe = (sHoveredRecipe >= 0) ? sHoveredRecipe : sSelectedRecipe;
     if (displayRecipe >= 0 && recipe_count > 0)
     {
@@ -705,8 +716,6 @@ void CraftingScreen::render(EntityManager& em, int window_w, int window_h)
         renderRecipeDetail(recipe, output_def, outputName, inv, player, em, lay, y);
     }
 
-    UIRenderer::flush();
-    glDisable(GL_SCISSOR_TEST);
-
-    renderCraftFooter(em, player, canCraft, lay, btn_h, hintText, hintsz);
+    const float footer_start = scroll_bottom;
+    renderCraftFooter(em, player, canCraft, lay, footer_start, btn_h, hintText, hintsz);
 }

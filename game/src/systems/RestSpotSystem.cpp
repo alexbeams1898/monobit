@@ -9,7 +9,6 @@
 #include <SDL.h>
 #include <algorithm>
 #include <cmath>
-#include <iostream>
 #include <random>
 #include <tracy/Tracy.hpp>
 
@@ -38,8 +37,9 @@ void tryAutoHeal(EntityManager& em, entt::registry& reg, entt::entity playerEnt,
     if (isInCombat(reg))
     {
         spot.cooldown = 1.0f;
-        if (!snd.heal_blocked.path.empty())
-            AudioSystem::playSfx(snd.heal_blocked.path, snd.heal_blocked.volume);
+        const auto& blocked = snd.get("heal_blocked");
+        if (!blocked.path.empty())
+            AudioSystem::playSfx(blocked.path, blocked.volume);
         return;
     }
 
@@ -51,18 +51,18 @@ void tryAutoHeal(EntityManager& em, entt::registry& reg, entt::entity playerEnt,
 
     spot.cooldown = kHealCooldown;
     TracyMessageL("RestHeal");
-    if (!snd.rest_heal_paths.empty())
+    const auto& heal = snd.get("rest_heal");
+    if (!heal.variations.empty())
     {
         static std::mt19937 rng{std::random_device{}()};
-        auto dist = std::uniform_int_distribution<size_t>(0, snd.rest_heal_paths.size() - 1);
-        AudioSystem::playSfx(snd.rest_heal_paths[dist(rng)], snd.rest_heal.volume);
+        auto dist = std::uniform_int_distribution<size_t>(0, heal.variations.size() - 1);
+        AudioSystem::playSfx(heal.variations[dist(rng)], heal.volume);
     }
     else
     {
-        AudioSystem::playSfx(snd.rest_heal.path, snd.rest_heal.volume);
+        AudioSystem::playSfx(heal.path, heal.volume);
     }
     ParticleSystem::spawnEmberBurst(em, playerX, playerY, 4);
-    std::cout << "[RestSpot] HP restored to " << playerHealth.max << ".\n";
 }
 
 } // namespace

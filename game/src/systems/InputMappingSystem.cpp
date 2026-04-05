@@ -73,6 +73,7 @@ void InputMappingSystem::update(EntityManager& em)
     const bool interactJust = hasKey(kd, SDL_SCANCODE_F);
     const bool lmbJust = hasMouse(md, SDL_BUTTON_LEFT);
     const bool lockOnJust = hasMouse(md, SDL_BUTTON_MIDDLE);
+    const bool reloadJust = hasKey(kd, SDL_SCANCODE_R);
     const bool inventoryJust = hasKey(kd, SDL_SCANCODE_I);
     const bool pauseJust = hasKey(kd, SDL_SCANCODE_ESCAPE) || hasKey(kd, SDL_SCANCODE_TAB);
 
@@ -92,6 +93,7 @@ void InputMappingSystem::update(EntityManager& em)
         actions.interact = interactJust;
         actions.mouse_click = lmbJust;
         actions.lock_on_toggle = lockOnJust;
+        actions.reload = reloadJust;
         actions.toggle_inventory = inventoryJust;
         actions.toggle_pause = pauseJust;
 

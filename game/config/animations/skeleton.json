@@ -8,6 +8,6 @@
         "walk":   { "row": 1, "frames": 9, "duration": 0.1 },
         "attack": { "row": 2, "frames": 6, "duration": 0.07 },
         "hit":    { "row": 3, "frames": 1, "duration": 0.0 },
-        "death":  { "row": 4, "frames": 2, "duration": 0.2 }
+        "death":  { "row": 4, "frames": 2, "duration": 0.1 }
     }
 }

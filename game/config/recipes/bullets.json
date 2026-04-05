@@ -1,0 +1,8 @@
+{
+    "name": "Bullets (x5)",
+    "inputs": [
+        { "item": "config/items/materials/bone_shard.json", "quantity": 1 }
+    ],
+    "output": "config/items/ammo/bullet.json",
+    "output_quantity": 5
+}

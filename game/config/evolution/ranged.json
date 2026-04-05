@@ -1,0 +1,21 @@
+{
+    "family": "ranged",
+    "nodes": {
+        "bow": {
+            "weapon": "config/items/weapons/bow.json",
+            "evolutions": [
+                { "target": "pistol", "min_level": 5 }
+            ]
+        },
+        "pistol": {
+            "weapon": "config/items/weapons/pistol.json",
+            "evolutions": [
+                { "target": "semi_auto", "min_level": 10, "material": "config/items/materials/bone_shard.json", "material_qty": 5 }
+            ]
+        },
+        "semi_auto": {
+            "weapon": "config/items/weapons/semi_auto.json",
+            "evolutions": []
+        }
+    }
+}

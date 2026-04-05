@@ -30,6 +30,14 @@ class AudioSystem
     // volume: 0.0 = silent, 1.0 = full.  pitch: 1.0 = normal, >1 = higher/faster.
     static void playSfx(const std::string& path, float volume = 1.0f, float pitch = 1.0f);
 
+    // Tracked SFX — returns a voice index (>= 0) that can be stopped later.
+    // Returns -1 if pool is full or audio is not initialized.
+    static int playSfxTracked(const std::string& path, float volume = 1.0f, float pitch = 1.0f,
+                              bool loop = false);
+
+    // Stop a tracked SFX by voice index (from playSfxTracked). Fades out over fade_ms.
+    static void stopSfx(int voice_index, int fade_ms = 50);
+
     // Start background music.  Replaces any currently playing track.
     // volume: 0.0 = silent, 1.0 = full.  loop: true = repeat, false = one-shot.
     // fade_in_ms: if > 0, fade from silence to volume over this many ms (first play only).

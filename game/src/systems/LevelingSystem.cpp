@@ -141,7 +141,10 @@ void allocateStat(entt::registry& reg, entt::entity entity, int& stat, const For
     auto& exp = reg.get<Experience>(entity);
     exp.stat_points--;
     TracyMessageL("StatAllocated");
-    AudioSystem::playSfx(snd.stat_allocate.path, snd.stat_allocate.volume);
+    {
+        const auto& sa = snd.get("stat_allocate");
+        AudioSystem::playSfx(sa.path, sa.volume);
+    }
 
     auto& stats = reg.get<Stats>(entity);
 
@@ -234,7 +237,10 @@ void LevelingSystem::update(EntityManager& em)
             exp.xp_to_next = deriveXpToNext(exp.level, f);
 
             TracyMessageL("LevelUp");
-            AudioSystem::playSfx(snd.level_up.path, snd.level_up.volume);
+            {
+                const auto& lu = snd.get("level_up");
+                AudioSystem::playSfx(lu.path, lu.volume);
+            }
             if (reg.all_of<Transform>(entity))
             {
                 const auto& t = reg.get<Transform>(entity);

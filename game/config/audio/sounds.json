@@ -1,6 +1,6 @@
 {
     "player_attack":  { "path": "assets/sfx/swing_miss.ogg",      "volume": 0.25 },
-    "player_skill":   { "path": "assets/sfx/skill.ogg",          "volume": 0.9 },
+    "player_skill":   { "path": "assets/sfx/skill.ogg",          "volume": 0.25 },
     "player_dodge":   { "path": "assets/sfx/dodge.ogg",          "volume": 0.8 },
     "hit":            { "path": "assets/sfx/hit_1.ogg",           "volume": 0.2,
                         "variations": [
@@ -17,7 +17,7 @@
     "wall_bump":      { "path": "assets/sfx/wall_bump.ogg",      "volume": 0.65 },
     "footstep_walk":  { "path": "assets/sfx/footstep_walk.ogg",  "volume": 0.35 },
     "footstep_run":   { "path": "assets/sfx/footstep_run.ogg",   "volume": 0.45 },
-    "rest_heal":      { "path": "assets/sfx/rest_heal_1.ogg",    "volume": 0.2,
+    "rest_heal":      { "path": "assets/sfx/rest_heal_1.ogg",    "volume": 0.6,
                         "variations": [
                             "assets/sfx/rest_heal_1.ogg",
                             "assets/sfx/rest_heal_2.ogg",
@@ -30,7 +30,16 @@
     "low_stamina_heartbeat":  { "path": "assets/sfx/heartbeat.ogg",      "volume": 0.8 },
     "ui_click":               { "path": "assets/sfx/ui_click.ogg",       "volume": 0.65 },
     "wave_clear":             { "path": "assets/sfx/wave_clear.ogg",    "volume": 0.2 },
-    "escape_run":             { "path": "assets/sfx/escape_run.ogg",   "volume": 0.18 },
+    "escape_run":             { "path": "assets/sfx/escape_run.ogg",   "volume": 0.08 },
     "heal_blocked":           { "path": "assets/sfx/heal_blocked.ogg", "volume": 0.45 },
-    "ladder_appear":          { "path": "assets/sfx/ladder_appear.ogg", "volume": 0.3 }
+    "ladder_appear":          { "path": "assets/sfx/ladder_appear.ogg", "volume": 0.3 },
+    "gunshot":                { "path": "assets/sfx/weapons/gunshot_1.ogg", "volume": 0.55,
+                                "variations": [
+                                    "assets/sfx/weapons/gunshot_1.ogg",
+                                    "assets/sfx/weapons/gunshot_2.ogg",
+                                    "assets/sfx/weapons/gunshot_3.ogg",
+                                    "assets/sfx/weapons/gunshot_4.ogg"
+                                ] },
+    "bow_release":            { "path": "assets/sfx/weapons/bow_release.ogg", "volume": 0.4 },
+    "reload":                 { "path": "assets/sfx/weapons/reload.ogg", "volume": 0.65 }
 }

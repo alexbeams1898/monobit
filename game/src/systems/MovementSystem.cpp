@@ -134,7 +134,7 @@ void tickFootsteps(PlayerActions& actions, const SoundConfig& snd, float fdt)
         {
             const float cadence = actions.sprint ? 0.25f : 0.4f;
             actions.step_timer = cadence;
-            const auto& sfx = actions.sprint ? snd.footstep_run : snd.footstep_walk;
+            const auto& sfx = snd.get(actions.sprint ? "footstep_run" : "footstep_walk");
             AudioSystem::playSfx(sfx.path, sfx.volume);
         }
     }
@@ -215,7 +215,10 @@ void playWallBump(entt::registry& reg, entt::entity entity, const SoundConfig& s
     auto& actions = reg.get<PlayerActions>(entity);
     if (actions.wall_bump_cooldown <= 0.0f)
     {
-        AudioSystem::playSfx(snd.wall_bump.path, snd.wall_bump.volume);
+        {
+            const auto& wb = snd.get("wall_bump");
+            AudioSystem::playSfx(wb.path, wb.volume);
+        }
         actions.wall_bump_cooldown = 0.2f;
     }
 }

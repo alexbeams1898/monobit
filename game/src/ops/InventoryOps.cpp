@@ -235,13 +235,13 @@ bool canEvolve(const Inventory& inv, const Equipment& equip, const WeaponXP& wxp
 
 bool evolveWeapon(Inventory& inv, Equipment& equip, WeaponXP& wxp, const EvolutionPath& path,
                   const std::string& new_weapon_config, const ItemRegistry& /*registry*/,
-                  float carry_factor)
+                  float carry_factor, bool free_materials)
 {
     if (!canEvolve(inv, equip, wxp, path))
         return false;
 
-    // Consume materials.
-    if (!path.material_config_path.empty())
+    // Consume materials (skipped in god mode).
+    if (!free_materials && !path.material_config_path.empty())
     {
         if (!consumeItems(inv, path.material_config_path, path.material_qty))
             return false;

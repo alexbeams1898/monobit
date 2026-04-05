@@ -7,7 +7,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <iostream>
 #include <random>
 #include <tracy/Tracy.hpp>
 #include <vector>
@@ -258,19 +257,13 @@ static void spawnDrops(EntityManager& em, const Loot& loot, float deathX, float 
             emplacePickupVisuals(em, pickup, rarityColor(rarity), rarity, quality);
         }
 
-        const std::string itemName = (def != nullptr) ? def->name : drop.config_path;
-        std::cout << "[Drop] " << qty << "x " << itemName << " (Rarity: " << rarityName(rarity);
-        if (!isMoney)
-            std::cout << ", Quality: " << qualityName(quality);
-        std::cout << ")\n";
         TracyMessageL("ItemDropped");
     }
 }
 
 // Grant XP directly to the player, cascade-destroy body-part children, then
 // destroy entity.
-static void processEnemyDeath(EntityManager& em, entt::entity entity, const Loot& loot,
-                              const std::string& name)
+static void processEnemyDeath(EntityManager& em, entt::entity entity, const Loot& loot)
 {
     auto& reg = em.registry();
     const FormulaConfig& f = reg.ctx().get<FormulaConfig>();
@@ -343,20 +336,6 @@ static void processEnemyDeath(EntityManager& em, entt::entity entity, const Loot
         spawnDrops(em, loot, t.x, t.y, playerLck, totalEssence, f);
     }
 
-    // Log kill with stats + essence for balance visibility.
-    std::cout << "[DeathSystem] " << name << " killed (Lv" << loot.level << ")";
-    if (reg.all_of<Stats>(entity))
-    {
-        const auto& s = reg.get<Stats>(entity);
-        std::cout << "  STR=" << s.str << " DEX=" << s.dex << " END=" << s.end << " LCK=" << s.lck;
-        if (reg.all_of<Essence>(entity))
-        {
-            const auto& e = reg.get<Essence>(entity);
-            std::cout << "  ess[" << e.str << "," << e.dex << "," << e.end << "," << e.lck << "]";
-        }
-    }
-    std::cout << "  -> +" << xpValue << " XP\n";
-
     std::vector<entt::entity> children;
     for (auto [child, bp] : reg.view<BodyPart>().each())
         if (bp.parent == entity)
@@ -387,7 +366,6 @@ void DeathSystem::update(EntityManager& em, double dt)
         entt::entity entity;
         bool is_player;
         Loot loot;
-        std::string name;
     };
 
     std::vector<DeadEntry> dead;
@@ -402,19 +380,13 @@ void DeathSystem::update(EntityManager& em, double dt)
         if (reg.all_of<Loot>(entity))
             loot = reg.get<Loot>(entity);
 
-        std::string name = "???";
-        if (reg.all_of<Tag>(entity))
-            name = reg.get<Tag>(entity).name;
-
-        dead.push_back({entity, is_player, loot, std::move(name)});
+        dead.push_back({entity, is_player, loot});
     }
 
     for (const auto& entry : dead)
     {
         if (entry.is_player)
         {
-            std::cout << "[DeathSystem] Game Over.\n";
-
             // Destroy body-part children so the player sprite disappears.
             std::vector<entt::entity> children;
             for (auto [child, bp] : reg.view<BodyPart>().each())
@@ -428,9 +400,13 @@ void DeathSystem::update(EntityManager& em, double dt)
                 reg.get<Health>(entry.entity).current = 0;
             waveState.phase = WaveState::Phase::GameOver;
         }
+        else if (reg.all_of<Loot>(entry.entity))
+        {
+            processEnemyDeath(em, entry.entity, entry.loot);
+        }
         else
         {
-            processEnemyDeath(em, entry.entity, entry.loot, entry.name);
+            em.destroy(entry.entity);
         }
     }
 }

@@ -34,9 +34,9 @@ inline int hoveredRow(float mx, float my, float cx, float cy, float cw, float ro
 
 inline void playClickSfx(const EntityManager& em)
 {
-    const auto& snd = em.registry().ctx().get<SoundConfig>();
-    if (!snd.ui_click.path.empty())
-        AudioSystem::playSfx(snd.ui_click.path, snd.ui_click.volume);
+    const auto& click = em.registry().ctx().get<SoundConfig>().get("ui_click");
+    if (!click.path.empty())
+        AudioSystem::playSfx(click.path, click.volume);
 }
 
 } // namespace screen_input
