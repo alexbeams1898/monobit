@@ -1,0 +1,9 @@
+{
+    "name": "Bullet",
+    "description": "A crude round for prison-made firearms.",
+    "icon": "assets/sprites/icons/bullet.png",
+    "category": "material",
+    "rarity": "very_common",
+    "stackable": true,
+    "max_stack": 99
+}

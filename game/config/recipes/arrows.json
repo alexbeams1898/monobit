@@ -1,0 +1,8 @@
+{
+    "name": "Arrows (x5)",
+    "inputs": [
+        { "item": "config/items/materials/bone_shard.json", "quantity": 1 }
+    ],
+    "output": "config/items/ammo/arrow.json",
+    "output_quantity": 5
+}

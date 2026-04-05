@@ -34,10 +34,10 @@ bool canEvolve(const Inventory& inv, const Equipment& equip, const WeaponXP& wxp
                const EvolutionPath& path);
 
 // Execute weapon evolution: consume materials, replace equipped weapon, reset weapon XP
-// with carry-forward bonus. Returns true on success.
+// with carry-forward bonus. If free_materials is true, materials are not consumed (god mode).
 bool evolveWeapon(Inventory& inv, Equipment& equip, WeaponXP& wxp, const EvolutionPath& path,
                   const std::string& new_weapon_config, const ItemRegistry& registry,
-                  float carry_factor);
+                  float carry_factor, bool free_materials = false);
 
 // Count total quantity of items with a given config_path in inventory.
 int countItem(const Inventory& inv, const std::string& config_path);

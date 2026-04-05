@@ -127,6 +127,7 @@ struct SaveData
     int schema_version = CURRENT_VERSION;
     std::vector<PlayerProfile> characters;
     std::vector<Run> runs;
+    bool god_mode = false;
 };
 
 // ---------------------------------------------------------------------------

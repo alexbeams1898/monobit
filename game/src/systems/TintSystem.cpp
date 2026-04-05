@@ -86,7 +86,8 @@ void TintSystem::update(EntityManager& em, double dt)
             const float t = 1.0f - frac / STAMINA_HEARTBEAT_THRESHOLD;
             const float interval =
                 HEARTBEAT_INTERVAL_HIGH + t * (HEARTBEAT_INTERVAL_LOW - HEARTBEAT_INTERVAL_HIGH);
-            AudioSystem::playSfx(snd.low_stamina_heartbeat.path, snd.low_stamina_heartbeat.volume);
+            const auto& hb = snd.get("low_stamina_heartbeat");
+            AudioSystem::playSfx(hb.path, hb.volume);
             heartbeatTimer = interval;
         }
         break;

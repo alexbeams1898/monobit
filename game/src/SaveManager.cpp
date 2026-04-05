@@ -103,6 +103,8 @@ SaveData load(const std::string& path)
     if (j.contains("money") && !data.characters.empty())
         data.characters[0].money += j.value("money", 0);
 
+    data.god_mode = j.value("god_mode", false);
+
     std::cout << "[SaveManager] Loaded " << data.characters.size() << " characters, "
               << data.runs.size() << " runs from " << path << "\n";
     return data;
@@ -133,6 +135,8 @@ bool save(const SaveData& data, const std::string& path)
     j["runs"] = json::array();
     for (const auto& r : data.runs)
         j["runs"].push_back(runToJson(r));
+
+    j["god_mode"] = data.god_mode;
 
     std::ofstream file(path);
     if (!file.is_open())

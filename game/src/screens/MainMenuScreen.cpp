@@ -74,8 +74,8 @@ static MainMenuScreen::Action drawMenuButtons(EntityManager& em, const char* con
         {
             sSel = i;
             result = actions[i];
-            if (result != MainMenuScreen::Action::None && !snd.ui_click.path.empty())
-                AudioSystem::playSfx(snd.ui_click.path, snd.ui_click.volume);
+            if (result != MainMenuScreen::Action::None && !snd.get("ui_click").path.empty())
+                AudioSystem::playSfx(snd.get("ui_click").path, snd.get("ui_click").volume);
         }
 
         const bool selected = (i == sSel);
@@ -105,8 +105,8 @@ static MainMenuScreen::Action handleKeyboardInput(const EntityManager& em, const
     if (sSel >= 0 && (keyPressed(em, SDL_SCANCODE_RETURN) || keyPressed(em, SDL_SCANCODE_KP_ENTER)))
     {
         const Action result = actions[sSel];
-        if (result != Action::None && !snd.ui_click.path.empty())
-            AudioSystem::playSfx(snd.ui_click.path, snd.ui_click.volume);
+        if (result != Action::None && !snd.get("ui_click").path.empty())
+            AudioSystem::playSfx(snd.get("ui_click").path, snd.get("ui_click").volume);
         return result;
     }
     return Action::None;

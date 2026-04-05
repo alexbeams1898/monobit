@@ -55,7 +55,8 @@ void LadderSystem::update(EntityManager& em, double dt)
         if (actions.interact)
         {
             const auto& sc = reg.ctx().get<SoundConfig>();
-            AudioSystem::playSfx(sc.wave_clear.path, sc.wave_clear.volume);
+            const auto& wcSnd = sc.get("wave_clear");
+            AudioSystem::playSfx(wcSnd.path, wcSnd.volume);
             WaveSystem::startNextWave(em);
             TracyMessageL("LadderAscend");
             return;

@@ -70,8 +70,9 @@ static void doEvolve(EntityManager& em, entt::entity player)
             continue;
 
         const std::string& newConfig = targetIt->second.weapon_config_path;
+        const bool godEvolve = reg.ctx().get<DebugFlags>().god_mode;
         if (InventoryOps::evolveWeapon(inv, equip, wxp, path, newConfig, items,
-                                       formulas.weapon_xp.carry_factor))
+                                       formulas.weapon_xp.carry_factor, godEvolve))
         {
             auto& compendium = reg.ctx().get<Compendium>();
             compendium.discover(newConfig);

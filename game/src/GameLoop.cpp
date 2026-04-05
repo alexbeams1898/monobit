@@ -36,6 +36,7 @@
 #include "systems/NotificationSystem.h"
 #include "systems/ParticleSystem.h"
 #include "systems/PickupSystem.h"
+#include "systems/ProjectileSystem.h"
 #include "systems/RestSpotSystem.h"
 #include "systems/SpawnerSystem.h"
 #include "systems/TintSystem.h"
@@ -116,7 +117,7 @@ static void handleMapRegen(Engine& engine, EntityManager& em)
 
     waveState.needs_map_regen = false;
 
-    // Destroy old rest spots, pickups, and ladders (belong to previous map layout).
+    // Destroy old rest spots, pickups, ladders, and in-flight projectiles.
     {
         std::vector<entt::entity> old;
         for (auto e : em.registry().view<RestSpot>())
@@ -124,6 +125,8 @@ static void handleMapRegen(Engine& engine, EntityManager& em)
         for (auto e : em.registry().view<Pickup>())
             old.push_back(e);
         for (auto e : em.registry().view<Ladder>())
+            old.push_back(e);
+        for (auto e : em.registry().view<Projectile>())
             old.push_back(e);
         for (auto e : old)
             if (em.registry().valid(e))
@@ -530,6 +533,7 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     MovementSystem::update(em, dt);
     CollisionSystem::update(em);
     DamageSystem::update(em);
+    ProjectileSystem::update(em, static_cast<float>(dt));
     DeathSystem::update(em, dt);
     CraftingSystem::update(em);
     LevelingSystem::update(em);
@@ -744,9 +748,9 @@ static void renderPlayingUI(Engine& engine, EntityManager& em, int ww, int wh, f
             engine.requestQuit();
         else if (menuResult == 2)
         {
-            const auto& snd = em.registry().ctx().get<SoundConfig>();
-            if (!snd.escape_run.path.empty())
-                AudioSystem::playSfx(snd.escape_run.path, snd.escape_run.volume);
+            const auto& escSnd = em.registry().ctx().get<SoundConfig>().get("escape_run");
+            if (!escSnd.path.empty())
+                AudioSystem::playSfx(escSnd.path, escSnd.volume);
             ui.active_screen = UIState::Screen::None;
             transitionToSummary(em, true);
         }

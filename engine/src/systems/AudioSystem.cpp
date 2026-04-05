@@ -133,6 +133,66 @@ void AudioSystem::playSfx(const std::string& path, float volume, float pitch)
     slot->active = true;
 }
 
+int AudioSystem::playSfxTracked(const std::string& path, float volume, float pitch, bool loop)
+{
+    if (!sInitialized)
+        return -1;
+
+    cleanupFinishedVoices();
+
+    // Find free slot and return its index.
+    for (int i = 0; i < static_cast<int>(sSfxVoices.size()); ++i)
+    {
+        if (sSfxVoices[i].active)
+            continue;
+
+        const ma_result result = ma_sound_init_from_file(&sEngine, path.c_str(),
+                                                         MA_SOUND_FLAG_DECODE | MA_SOUND_FLAG_ASYNC,
+                                                         nullptr, nullptr, &sSfxVoices[i].sound);
+        if (result != MA_SUCCESS)
+        {
+            std::cerr << "[AudioSystem] playSfxTracked failed for: " << path << " (error " << result
+                      << ")\n";
+            return -1;
+        }
+
+        ma_sound_set_volume(&sSfxVoices[i].sound, volume);
+        if (pitch != 1.0f)
+            ma_sound_set_pitch(&sSfxVoices[i].sound, pitch);
+        ma_sound_set_looping(&sSfxVoices[i].sound, loop ? MA_TRUE : MA_FALSE);
+        ma_sound_start(&sSfxVoices[i].sound);
+        sSfxVoices[i].active = true;
+        return i;
+    }
+
+    return -1; // pool full
+}
+
+void AudioSystem::stopSfx(int voice_index, int fade_ms)
+{
+    if (!sInitialized)
+        return;
+    if (voice_index < 0 || voice_index >= static_cast<int>(sSfxVoices.size()))
+        return;
+
+    auto& v = sSfxVoices[voice_index];
+    if (!v.active)
+        return;
+
+    if (fade_ms > 0)
+    {
+        // Fade to silence, then stop.
+        ma_sound_set_fade_in_milliseconds(&v.sound, -1.0f, 0.0f, static_cast<ma_uint64>(fade_ms));
+        ma_sound_set_stop_time_in_milliseconds(&v.sound, static_cast<ma_uint64>(fade_ms));
+    }
+    else
+    {
+        ma_sound_stop(&v.sound);
+        ma_sound_uninit(&v.sound);
+        v.active = false;
+    }
+}
+
 void AudioSystem::playMusic(const std::string& path, float volume, bool loop, int fade_in_ms)
 {
     if (!sInitialized)

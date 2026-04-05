@@ -68,6 +68,7 @@ void SettingsScreen::render(EntityManager& em, int window_w, int window_h)
         if (result.selected == 0)
         {
             dbg.god_mode = !dbg.god_mode;
+            em.registry().ctx().get<SaveData>().god_mode = dbg.god_mode;
             screen_input::playClickSfx(em);
         }
         else if (result.selected == 1)

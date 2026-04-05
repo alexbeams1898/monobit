@@ -11,7 +11,6 @@
 #include "systems/LevelingSystem.h"
 
 #include <cmath>
-#include <iostream>
 #include <random>
 #include <tracy/Tracy.hpp>
 #include <vector>
@@ -96,10 +95,6 @@ static bool spawnOneEnemy(EntityManager& em, const ActiveWave& wave, WaveState& 
     if (em.registry().all_of<Loot>(entity))
         em.registry().get<Loot>(entity).level = enemy_level;
 
-    std::string name = "???";
-    if (em.registry().all_of<Tag>(entity))
-        name = em.registry().get<Tag>(entity).name;
-
     if (em.registry().all_of<Stats>(entity))
     {
         auto& stats = em.registry().get<Stats>(entity);
@@ -133,10 +128,6 @@ static bool spawnOneEnemy(EntityManager& em, const ActiveWave& wave, WaveState& 
         stats.lck += bl;
 
         em.registry().emplace<Essence>(entity, Essence{es, ed, ee, el});
-
-        std::cout << "[WaveSystem] " << name << " Lv" << enemy_level << "  ess[" << es << "," << ed
-                  << "," << ee << "," << el << "]  STR=" << stats.str << " DEX=" << stats.dex
-                  << " END=" << stats.end << " LCK=" << stats.lck << "\n";
     }
 
     LevelingSystem::deriveInitialStats(em, entity);
@@ -271,10 +262,7 @@ static void tickSpawning(EntityManager& em, WaveState& ws, double dt)
         spawnOneEnemy(em, wave, ws, px, py);
 
     if (ws.enemies_spawned >= ws.enemies_total)
-    {
         ws.phase = WaveState::Phase::Active;
-        std::cout << "[WaveSystem] All enemies spawned for wave " << ws.current_wave << "\n";
-    }
 }
 
 static constexpr float TRANSITION_DELAY = 1.0f;
@@ -303,7 +291,6 @@ static void handleVictoryCompletion(EntityManager& em, WaveState& ws)
         AudioSystem::playMusic(t->path, t->volume);
 
     TracyMessageL("RunComplete");
-    std::cout << "[WaveSystem] All waves cleared! Run complete.\n";
 }
 
 // Spawn a ladder at the player-start marker, pan camera to it, play SFX.
@@ -355,8 +342,9 @@ static void transitionToSafeRoom(EntityManager& em, WaveState& ws)
     }
 
     const auto& sc = em.registry().ctx().get<SoundConfig>();
-    if (!sc.ladder_appear.path.empty())
-        AudioSystem::playSfx(sc.ladder_appear.path, sc.ladder_appear.volume);
+    const auto& ladderSnd = sc.get("ladder_appear");
+    if (!ladderSnd.path.empty())
+        AudioSystem::playSfx(ladderSnd.path, ladderSnd.volume);
 }
 
 void WaveSystem::update(EntityManager& em, double dt)
@@ -392,7 +380,6 @@ void WaveSystem::update(EntityManager& em, double dt)
             ws.phase = WaveState::Phase::Cleared;
             ws.cleared_timer = 0.0f;
             TracyMessageL("WaveCleared");
-            std::cout << "[WaveSystem] Wave " << ws.current_wave << " cleared!\n";
         }
         break;
 
@@ -458,7 +445,6 @@ static void handleDeathRestart(EntityManager& em, WaveState& ws)
 
     ws.current_wave = 0;
     TracyMessageL("DeathRestart");
-    std::cout << "[WaveSystem] Restarting from wave 1.\n";
 }
 
 // Phase 2 of wave start: set up spawning after the transition delay.
@@ -485,9 +471,6 @@ static void commitWaveStart(EntityManager& em)
     SpawnUtils::resetSpawnRoomCounter();
 
     TracyMessageL("WaveStarted");
-    std::cout << "[WaveSystem] Wave " << next << " started (" << ws.enemies_total
-              << " enemies, interval=" << ws.active_def.spawn_interval
-              << "s, burst=" << ws.active_def.burst_size << ")\n";
 
     // Pick a random music track, avoiding back-to-back repeats.
     auto& mc = em.registry().ctx().get<MusicConfig>();
@@ -510,7 +493,6 @@ static void commitWaveStart(EntityManager& em)
         mc.last_track_index = idx;
         const auto& track = mc.tracks[idx];
         AudioSystem::playMusic(track.path, track.volume);
-        std::cout << "[Music] Playing: " << track.path << "\n";
     }
 }
 
@@ -542,7 +524,8 @@ bool WaveSystem::startNextWave(EntityManager& em)
     else
     {
         const auto& sc = em.registry().ctx().get<SoundConfig>();
-        AudioSystem::playSfx(sc.wave_clear.path, sc.wave_clear.volume);
+        const auto& wcSnd = sc.get("wave_clear");
+        AudioSystem::playSfx(wcSnd.path, wcSnd.volume);
         ws.transition_timer = 0.0f;
         ws.phase = WaveState::Phase::Transitioning;
     }

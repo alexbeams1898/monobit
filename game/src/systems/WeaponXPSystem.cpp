@@ -6,7 +6,6 @@
 #include "systems/NotificationSystem.h"
 
 #include <cmath>
-#include <iostream>
 #include <tracy/Tracy.hpp>
 
 namespace
@@ -130,9 +129,6 @@ void WeaponXPSystem::update(EntityManager& em)
                 w.str_scaling += scaleGrowth * gf;
                 w.dex_scaling += scaleGrowth * gf;
 
-                std::cout << "[WeaponXP] " << w.name << " leveled up to " << wxp.level
-                          << " (dmg=" << w.base_damage << " str_s=" << w.str_scaling
-                          << " dex_s=" << w.dex_scaling << ")\n";
                 NotificationSystem::push(w.name + " Lv" + std::to_string(wxp.level),
                                          {0.9f, 0.78f, 0.45f, 1.0f});
             }

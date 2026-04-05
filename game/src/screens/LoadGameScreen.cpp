@@ -38,8 +38,8 @@ static constexpr Color MONEY_GREEN{0.35f, 0.82f, 0.35f, 1.0f};
 
 static void playSfx(const SoundConfig& snd)
 {
-    if (!snd.ui_click.path.empty())
-        AudioSystem::playSfx(snd.ui_click.path, snd.ui_click.volume);
+    if (!snd.get("ui_click").path.empty())
+        AudioSystem::playSfx(snd.get("ui_click").path, snd.get("ui_click").volume);
 }
 
 static bool handleDeleteConfirmation(EntityManager& em, SaveData& saveData, const SoundConfig& snd,

@@ -61,8 +61,8 @@ bool VictoryScreen::render(EntityManager& em, int window_w, int window_h, float 
         if (!em.key_down_events.empty() || !em.mouse_down_events.empty())
         {
             const auto& snd = em.registry().ctx().get<SoundConfig>();
-            if (!snd.ui_click.path.empty())
-                AudioSystem::playSfx(snd.ui_click.path, snd.ui_click.volume);
+            if (!snd.get("ui_click").path.empty())
+                AudioSystem::playSfx(snd.get("ui_click").path, snd.get("ui_click").volume);
             return true;
         }
     }

@@ -217,38 +217,35 @@ struct FormulaConfig
 
 // ---------------------------------------------------------------------------
 // SoundConfig -- event-to-file mappings loaded from config/audio/sounds.json.
+// Fully data-driven: every key in the JSON becomes an entry in the map.
+// Adding a new sound = adding a key to sounds.json. No C++ changes needed.
 // ---------------------------------------------------------------------------
 struct SoundEntry
 {
     std::string path;
     float volume = 0.5f;
+    std::vector<std::string> variations;
 };
 
 struct SoundConfig
 {
-    SoundEntry player_attack{"assets/sfx/attack.ogg", 0.5f};
-    SoundEntry player_skill{"assets/sfx/skill.ogg", 0.6f};
-    SoundEntry player_dodge{"assets/sfx/dodge.ogg", 0.5f};
-    SoundEntry hit{"assets/sfx/hit_1.ogg", 0.4f};
-    std::vector<std::string> hit_paths;
-    SoundEntry parry{"assets/sfx/parry.ogg", 0.6f};
-    SoundEntry death{"assets/sfx/death.ogg", 0.5f};
-    SoundEntry pickup{"assets/sfx/pickup.ogg", 0.4f};
-    SoundEntry level_up{"assets/sfx/levelup.ogg", 0.6f};
-    SoundEntry stat_allocate{"assets/sfx/stat_allocate.ogg", 0.5f};
-    SoundEntry wall_bump{"assets/sfx/wall_bump.ogg", 0.3f};
-    SoundEntry footstep_walk{"assets/sfx/footstep_walk.ogg", 0.15f};
-    SoundEntry footstep_run{"assets/sfx/footstep_run.ogg", 0.25f};
-    SoundEntry rest_heal{"assets/sfx/rest_heal.ogg", 0.5f};
-    std::vector<std::string> rest_heal_paths;
-    SoundEntry game_over{"assets/sfx/game_over.ogg", 0.6f};
-    SoundEntry low_stamina_heartbeat{"assets/sfx/heartbeat.ogg", 0.5f};
-    SoundEntry ui_click{"assets/sfx/ui_click.ogg", 0.35f};
-    SoundEntry wave_clear{"assets/sfx/wave_clear.ogg", 0.5f};
-    SoundEntry escape_run{"assets/sfx/escape_run.ogg", 0.5f};
-    SoundEntry heal_blocked{"assets/sfx/heal_blocked.ogg", 0.4f};
-    SoundEntry ladder_appear{"", 0.0f};
+    std::unordered_map<std::string, SoundEntry> entries;
     bool loaded = false;
+
+    // Lookup by key. Returns a static empty entry if key not found.
+    const SoundEntry& get(const std::string& key) const
+    {
+        auto it = entries.find(key);
+        if (it != entries.end())
+            return it->second;
+        static const SoundEntry empty{"", 0.0f, {}};
+        return empty;
+    }
+
+    bool hasKey(const std::string& key) const
+    {
+        return entries.count(key) != 0;
+    }
 };
 
 // ---------------------------------------------------------------------------

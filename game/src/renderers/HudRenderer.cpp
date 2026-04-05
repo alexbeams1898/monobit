@@ -5,6 +5,7 @@
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
+#include "ops/InventoryOps.h"
 #include "renderers/ItemStatRenderer.h"
 
 #include <SDL.h>
@@ -106,7 +107,9 @@ static void renderStatusCondition(EntityManager& em, entt::entity entity, float 
         const auto& sta = em.registry().get<Stamina>(entity);
         const auto& w = em.registry().get<Weapon>(entity);
         const auto& f = em.registry().ctx().get<FormulaConfig>();
-        const float swingCost = f.stamina.base_swing_cost + w.weight * f.stamina.swing_effort;
+        const float swingCost = w.stamina_cost >= 0.0f
+                                    ? w.stamina_cost
+                                    : f.stamina.base_swing_cost + w.weight * f.stamina.swing_effort;
         if (sta.max_stamina < swingCost)
         {
             status = "Overburdened";
@@ -173,6 +176,48 @@ static void renderWeaponSection(EntityManager& em, entt::entity entity, float& y
     const float name_x = (wpnDef && !wpnDef->icon_path.empty()) ? BAR_X + icon_sz + 4.0f : BAR_X;
     UIRenderer::drawText(sTitleFont, w.name, name_x, y, TEXT_GOLD);
     y += title_h + BAR_GAP;
+
+    // Ammo counter for ranged weapons (inventory pool + optional magazine).
+    if (w.ranged && !w.ammo_type.empty())
+    {
+        static constexpr Color AMMO_ORANGE{1.0f, 0.6f, 0.15f, 1.0f};
+        static constexpr Color AMMO_RED{1.0f, 0.2f, 0.2f, 1.0f};
+
+        const auto* inv = em.registry().try_get<Inventory>(entity);
+        const int reserve = inv != nullptr ? InventoryOps::countItem(*inv, w.ammo_type) : 0;
+        const auto* rs = em.registry().try_get<RangedState>(entity);
+        const bool hasMagazine = rs != nullptr && rs->magazine_size > 0;
+
+        std::string ammoStr;
+        Color ammoColor = TEXT_WHITE;
+
+        if (hasMagazine)
+        {
+            if (rs->reloading)
+            {
+                ammoStr = "RELOADING... (" + std::to_string(reserve) + ")";
+                ammoColor = AMMO_ORANGE;
+            }
+            else
+            {
+                ammoStr = std::to_string(rs->ammo_in_magazine) + "/" +
+                          std::to_string(rs->magazine_size) + " (" + std::to_string(reserve) + ")";
+                ammoColor = (rs->ammo_in_magazine > 0 || reserve > 0) ? TEXT_WHITE : AMMO_RED;
+            }
+        }
+        else
+        {
+            // Bow-type: just show inventory count.
+            const auto& items = em.registry().ctx().get<ItemRegistry>();
+            const ItemDef* ammoDef = items.find(w.ammo_type);
+            const std::string ammoName = ammoDef != nullptr ? ammoDef->name : "Ammo";
+            ammoStr = ammoName + ": " + std::to_string(reserve);
+            ammoColor = reserve > 0 ? TEXT_WHITE : AMMO_RED;
+        }
+
+        UIRenderer::drawText(sBodyFont, ammoStr, BAR_X, y, ammoColor);
+        y += BAR_H + BAR_GAP;
+    }
 
     const auto& wxp = em.registry().get<WeaponXP>(entity);
     const float fill = wxp.xp_to_next > 0.0f ? wxp.current_xp / wxp.xp_to_next : 0.0f;
@@ -276,15 +321,22 @@ static void renderPlayerHud(EntityManager& em, entt::entity entity, float ww, fl
     const float portrait_sz = title_h;
     const float char_h = title_h + BAR_GAP;
 
-    const bool has_wpn_xp = reg.all_of<WeaponXP, Weapon>(entity);
-    const float sep_h =
-        has_wpn_xp ? (1.0f + BAR_GAP + title_h + BAR_GAP + section_h + BAR_GAP) : 0.0f;
-    const bool has_wallet = reg.all_of<Wallet>(entity);
-    const float money_h = has_wallet ? (label_h + BAR_GAP) : 0.0f;
-    const float status_h = label_h + BAR_GAP;
-    const float alloc_h = (exp.stat_points > 0) ? (label_h + BAR_GAP) : 0.0f;
-    const float panel_h = PADDING * 2.0f + char_h + section_h * 3.0f + BAR_GAP * 2.0f + status_h +
-                          alloc_h + sep_h + money_h;
+    // Measure panel height dynamically so new lines (ammo, etc.) auto-expand.
+    float panel_h = PADDING * 2.0f + char_h + section_h * 3.0f + BAR_GAP * 2.0f;
+    panel_h += label_h + BAR_GAP; // status
+    if (reg.all_of<Wallet>(entity))
+        panel_h += label_h + BAR_GAP;
+    if (exp.stat_points > 0)
+        panel_h += label_h + BAR_GAP;
+    if (reg.all_of<WeaponXP, Weapon>(entity))
+    {
+        panel_h += 1.0f + BAR_GAP;    // separator
+        panel_h += title_h + BAR_GAP; // weapon name
+        if (reg.all_of<Weapon>(entity) && reg.get<Weapon>(entity).ranged &&
+            !reg.get<Weapon>(entity).ammo_type.empty())
+            panel_h += BAR_H + BAR_GAP; // ammo line
+        panel_h += section_h + BAR_GAP; // weapon XP bar
+    }
     UIRenderer::drawRect(BAR_X - PADDING, BAR_Y_START - PADDING, BAR_W + PADDING * 2.0f, panel_h,
                          PANEL_BG);
 
@@ -328,7 +380,7 @@ static void renderPlayerHud(EntityManager& em, entt::entity entity, float ww, fl
     renderStatusCondition(em, entity, BAR_X, y);
     y += label_h + BAR_GAP;
 
-    if (has_wallet)
+    if (reg.all_of<Wallet>(entity))
     {
         const int money = reg.get<Wallet>(entity).money;
         static constexpr Color MONEY_LABEL{0.6f, 0.58f, 0.52f, 0.9f};
@@ -345,7 +397,7 @@ static void renderPlayerHud(EntityManager& em, entt::entity entity, float ww, fl
         y += label_h + BAR_GAP;
     }
 
-    if (has_wpn_xp)
+    if (reg.all_of<WeaponXP, Weapon>(entity))
         renderWeaponSection(em, entity, y, title_h);
 
     renderScorePanel(em, wh);

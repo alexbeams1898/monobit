@@ -4,7 +4,6 @@
 #include "ecs/GameComponents.h"
 
 #include <cstdlib>
-#include <iostream>
 #include <tracy/Tracy.hpp>
 
 void ParticleSystem::update(EntityManager& em, double dt)
@@ -86,7 +85,6 @@ void ParticleSystem::spawnEmberTrickle(entt::registry& reg, float x, float y)
 void ParticleSystem::spawnEmberBurst(EntityManager& em, float x, float y, int count)
 {
     TracyMessageL("EmberBurst");
-    std::cout << "[ParticleSystem] Ember burst at (" << x << ", " << y << ") x" << count << "\n";
     auto& reg = em.registry();
 
     for (int i = 0; i < count; ++i)

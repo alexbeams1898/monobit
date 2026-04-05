@@ -4,11 +4,12 @@
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
+#include "ops/InventoryOps.h"
 #include "systems/AudioSystem.h"
 
 #include <cmath>
-#include <iostream>
 #include <limits>
+#include <random>
 #include <tracy/Tracy.hpp>
 
 // ---------------------------------------------------------------------------
@@ -64,6 +65,90 @@ void deductStamina(entt::registry& reg, entt::entity entity, float cost, const F
         reg.emplace_or_replace<Staggered>(entity, Staggered{f.stamina.exhaustion_stagger});
 }
 
+static std::mt19937& combatRng()
+{
+    static std::mt19937 gen{std::random_device{}()};
+    return gen;
+}
+
+// Spawn a projectile entity: Transform + Collider + Hitbox + Projectile + Sprite.
+// No Velocity — ProjectileSystem moves projectiles and checks wall overlap directly,
+// so MovementSystem doesn't deflect them along walls.
+static void spawnProjectile(EntityManager& em, entt::entity owner, float ox, float oy, float dirX,
+                            float dirY, const Weapon& weapon, float damage)
+{
+    const auto proj = em.create();
+    em.registry().emplace<Transform>(proj, Transform{ox, oy, 0.0f, 1.0f});
+    em.registry().emplace<Collider>(proj,
+                                    Collider{weapon.projectile_size, weapon.projectile_size, true});
+    em.registry().emplace<Hitbox>(proj, Hitbox{damage, owner});
+    em.registry().emplace<Projectile>(proj, Projectile{owner, weapon.effective_range, ox, oy,
+                                                       weapon.pierce, dirX, dirY,
+                                                       weapon.projectile_speed});
+    em.registry().emplace<Tag>(proj, Tag{"projectile"});
+
+    const float sz = weapon.projectile_size;
+    Sprite spr;
+    spr.src_w = static_cast<int>(sz);
+    spr.src_h = static_cast<int>(sz);
+    spr.layer = 2;
+    if (!weapon.projectile_sprite.empty())
+        spr.texture_path = weapon.projectile_sprite;
+    em.registry().emplace<Sprite>(proj, spr);
+    if (weapon.projectile_sprite.empty())
+        em.registry().emplace<SolidColor>(proj, SolidColor{1.0f, 1.0f, 0.6f});
+}
+
+// Spawn a brief muzzle flash at the fire point.
+static void spawnMuzzleFlash(EntityManager& em, float x, float y)
+{
+    const auto flash = em.create();
+    em.registry().emplace<Transform>(flash, Transform{x, y, 0.0f, 1.0f});
+    Sprite spr;
+    spr.src_w = 12;
+    spr.src_h = 12;
+    spr.layer = 2;
+    em.registry().emplace<Sprite>(flash, spr);
+    em.registry().emplace<SolidColor>(flash, SolidColor{1.0f, 0.95f, 0.7f});
+    em.registry().emplace<Dead>(flash, Dead{0.05f});
+}
+
+// Fire a ranged weapon: spawn projectile(s) with optional spread.
+static void fireRangedWeapon(EntityManager& em, entt::entity entity, const Weapon& weapon,
+                             const Transform& transform, float facingX, float facingY, float damage)
+{
+    static constexpr float DEG_TO_RAD = 3.14159265f / 180.0f;
+    static constexpr float MUZZLE_OFFSET = 20.0f;
+
+    for (int i = 0; i < weapon.projectile_count; ++i)
+    {
+        float dx = facingX;
+        float dy = facingY;
+
+        if (weapon.spread > 0.0f)
+        {
+            const float halfSpread = weapon.spread * 0.5f * DEG_TO_RAD;
+            std::uniform_real_distribution<float> dist(-halfSpread, halfSpread);
+            const float angle = dist(combatRng());
+            const float cosA = std::cos(angle);
+            const float sinA = std::sin(angle);
+            const float nx = dx * cosA - dy * sinA;
+            const float ny = dx * sinA + dy * cosA;
+            dx = nx;
+            dy = ny;
+        }
+
+        const float ox = transform.x + dx * MUZZLE_OFFSET;
+        const float oy = transform.y + dy * MUZZLE_OFFSET;
+        spawnProjectile(em, entity, ox, oy, dx, dy, weapon, damage);
+    }
+
+    // Muzzle flash at the fire point (one per volley, not per projectile).
+    const float fx = transform.x + facingX * MUZZLE_OFFSET;
+    const float fy = transform.y + facingY * MUZZLE_OFFSET;
+    spawnMuzzleFlash(em, fx, fy);
+}
+
 // NOLINTNEXTLINE(readability-function-cognitive-complexity,readability-function-size)
 void CombatSystem::update(EntityManager& em, double dt)
 {
@@ -74,14 +159,18 @@ void CombatSystem::update(EntityManager& em, double dt)
 
     // --- 1. Destroy hitboxes spawned last frame ----------------------------
     // Check for player-owned misses before destroying.
+    // Projectile entities also have Hitbox but are managed by ProjectileSystem.
     std::vector<entt::entity> toDestroy;
     for (auto entity : em.registry().view<Hitbox>())
     {
+        if (em.registry().all_of<Projectile>(entity))
+            continue;
         const auto& hb = em.registry().get<Hitbox>(entity);
         if (!hb.hit_something && hb.owner != entt::null &&
             em.registry().all_of<PlayerActions>(hb.owner))
         {
-            AudioSystem::playSfx(snd.player_attack.path, snd.player_attack.volume);
+            const auto& atk = snd.get("player_attack");
+            AudioSystem::playSfx(atk.path, atk.volume);
         }
         toDestroy.push_back(entity);
     }
@@ -95,6 +184,39 @@ void CombatSystem::update(EntityManager& em, double dt)
     {
         weapon.swing_cooldown_remaining = std::max(0.0f, weapon.swing_cooldown_remaining - fdt);
         weapon.skill_cooldown_remaining = std::max(0.0f, weapon.skill_cooldown_remaining - fdt);
+    }
+
+    // Reload timers (ranged weapons with magazines).
+    for (auto [entity, rs, weapon] : em.registry().view<RangedState, Weapon>().each())
+    {
+        if (!rs.reloading)
+            continue;
+        rs.reload_timer -= fdt;
+        if (rs.reload_timer > 0.0f)
+            continue;
+
+        rs.reloading = false;
+        rs.reload_timer = 0.0f;
+
+        // Fill magazine from inventory ammo pool.
+        auto* inv = em.registry().try_get<Inventory>(entity);
+        const bool godMode = em.registry().ctx().get<DebugFlags>().god_mode;
+        if (inv != nullptr && !weapon.ammo_type.empty())
+        {
+            const int reserve = InventoryOps::countItem(*inv, weapon.ammo_type);
+            const int needed = rs.magazine_size - rs.ammo_in_magazine;
+            const int fill = std::min(needed, reserve);
+            if (fill > 0)
+            {
+                if (!godMode)
+                    InventoryOps::consumeItems(*inv, weapon.ammo_type, fill);
+                rs.ammo_in_magazine += fill;
+            }
+        }
+        else
+        {
+            rs.ammo_in_magazine = rs.magazine_size;
+        }
     }
 
     // Stamina recovery: after recovery_delay with no deduction, regen at recovery_rate/s.
@@ -170,10 +292,6 @@ void CombatSystem::update(EntityManager& em, double dt)
             poise.decay_timer += fdt;
             if (poise.decay_timer >= f.poise.decay_window)
             {
-                const std::string name = em.registry().all_of<Tag>(entity)
-                                             ? em.registry().get<Tag>(entity).name
-                                             : "entity";
-                std::cout << "[Poise] " << name << ": decayed (reset to 0/" << poise.max << ")\n";
                 poise.current = 0.0f;
                 poise.decay_timer = 0.0f;
             }
@@ -256,8 +374,6 @@ void CombatSystem::update(EntityManager& em, double dt)
         if (actions.auto_toggle_just_pressed)
         {
             autoMode.enabled = !autoMode.enabled;
-            std::cout << "[CombatSystem] Auto-attack mode: " << (autoMode.enabled ? "ON" : "OFF")
-                      << "\n";
         }
     }
 
@@ -289,8 +405,11 @@ void CombatSystem::update(EntityManager& em, double dt)
         const bool isCritLocked = em.registry().all_of<CriticalAttacking>(entity) ||
                                   em.registry().all_of<CriticalTarget>(entity);
 
-        // Stamina cost helpers — base motion cost + weight surcharge.
-        const float swingCost = f.stamina.base_swing_cost + weapon.weight * f.stamina.swing_effort;
+        // Stamina cost: per-weapon override if >= 0, otherwise weight-based formula.
+        const float swingCost =
+            weapon.stamina_cost >= 0.0f
+                ? weapon.stamina_cost
+                : f.stamina.base_swing_cost + weapon.weight * f.stamina.swing_effort;
         const float skillCost = f.stamina.base_swing_cost + weapon.weight * f.stamina.skill_effort;
         const float dodgeCost = f.stamina.base_swing_cost + weapon.weight * f.stamina.dodge_effort;
         const bool hasSta = em.registry().all_of<Stamina>(entity);
@@ -318,7 +437,10 @@ void CombatSystem::update(EntityManager& em, double dt)
             weapon.swing_cooldown_remaining <= 0.0f && !isAttackLocked && !isStaggered &&
             staCurrent < swingCost)
         {
-            AudioSystem::playSfx(snd.low_stamina_heartbeat.path, snd.low_stamina_heartbeat.volume);
+            {
+                const auto& hb = snd.get("low_stamina_heartbeat");
+                AudioSystem::playSfx(hb.path, hb.volume);
+            }
             if (em.registry().all_of<Velocity>(entity))
             {
                 auto& vel = em.registry().get<Velocity>(entity);
@@ -360,52 +482,135 @@ void CombatSystem::update(EntityManager& em, double dt)
                 facing.dy = (facingX != 0.0f || facingY != 0.0f) ? facingY : facing.dy;
             }
 
-            // Spawn hitbox one half-width in front of the player.
-            // LOS check: don't spawn if a wall or obstacle sits between the
-            // player and the hitbox position — prevents hitting through obstacles.
-            const float reach = f.combat.normal_reach;
-            const float hx = transform.x + facingX * reach;
-            const float hy = transform.y + facingY * reach;
-
-            const bool hitboxLos = !em.tile_map.valid() ||
-                                   em.tile_map.hasLineOfSight(transform.x, transform.y, hx, hy);
-            if (hitboxLos)
+            if (weapon.ranged)
             {
-                if (em.registry().all_of<Stats>(entity))
+                // --- Ranged fire path ---
+                auto* rs = em.registry().try_get<RangedState>(entity);
+                auto* inv = em.registry().try_get<Inventory>(entity);
+                const int reserve = (inv != nullptr && !weapon.ammo_type.empty())
+                                        ? InventoryOps::countItem(*inv, weapon.ammo_type)
+                                        : 999;
+
+                if (rs != nullptr && rs->reloading)
                 {
-                    const auto& stats = em.registry().get<Stats>(entity);
-                    const float dmg = computeDamage(weapon, stats, f);
-                    spawnHitbox(entity, hx, hy, f.combat.normal_hitbox_size, dmg);
+                    // Can't fire while reloading — skip.
+                }
+                else if (rs != nullptr && rs->magazine_size > 0 && rs->ammo_in_magazine <= 0)
+                {
+                    // Magazine empty — auto-reload if we have reserve ammo.
+                    if (reserve > 0)
+                    {
+                        rs->reloading = true;
+                        rs->reload_timer = rs->reload_time;
+                        {
+                            const auto& rl = snd.get("reload");
+                            AudioSystem::playSfx(rl.path, rl.volume);
+                        }
+                    }
+                }
+                else if (rs != nullptr && rs->magazine_size == 0 && reserve <= 0)
+                {
+                    // Bow with no arrows — can't fire.
                 }
                 else
                 {
-                    spawnHitbox(entity, hx, hy, f.combat.normal_hitbox_size, weapon.base_damage);
+                    // Fire projectile(s).
+                    const float dmg =
+                        em.registry().all_of<Stats>(entity)
+                            ? computeDamage(weapon, em.registry().get<Stats>(entity), f)
+                            : weapon.base_damage;
+                    fireRangedWeapon(em, entity, weapon, transform, facingX, facingY, dmg);
+
+                    // Consume ammo: magazine weapons decrement magazine,
+                    // non-magazine weapons (bow) consume directly from inventory.
+                    // God mode: skip all ammo consumption — infinite magazine, infinite arrows.
+                    const bool godAmmo = em.registry().ctx().get<DebugFlags>().god_mode;
+                    if (!godAmmo)
+                    {
+                        if (rs != nullptr && rs->magazine_size > 0)
+                            rs->ammo_in_magazine--;
+                        else if (inv != nullptr && !weapon.ammo_type.empty())
+                            InventoryOps::consumeItems(*inv, weapon.ammo_type, 1);
+                    }
+
+                    const float cooldown =
+                        weapon.fire_rate > 0.0f
+                            ? (1.0f / weapon.fire_rate)
+                            : (em.registry().all_of<Stats>(entity)
+                                   ? computeSwingCooldown(weapon, em.registry().get<Stats>(entity),
+                                                          f)
+                                   : f.swing.base_swing_time +
+                                         weapon.weight * f.swing.weight_scale);
+                    weapon.swing_cooldown_remaining = cooldown;
+
+                    if (hasSta)
+                        deductStamina(em.registry(), entity, swingCost, f);
+
+                    // Play a per-shot sound with variation. Overlapping
+                    // fire-and-forget voices create a natural burst feel.
+                    if (!weapon.fire_sound.empty())
+                    {
+                        const auto& fireSnd = snd.get(weapon.fire_sound);
+                        std::string clipPath;
+                        if (!fireSnd.variations.empty())
+                        {
+                            auto dist = std::uniform_int_distribution<size_t>(
+                                0, fireSnd.variations.size() - 1);
+                            clipPath = fireSnd.variations[dist(combatRng())];
+                        }
+                        else
+                        {
+                            clipPath = fireSnd.path;
+                        }
+                        if (!clipPath.empty())
+                            AudioSystem::playSfx(clipPath, fireSnd.volume);
+                    }
+
+                    TracyMessageL("PlayerAttack");
                 }
             }
-
-            const float cooldown =
-                em.registry().all_of<Stats>(entity)
-                    ? computeSwingCooldown(weapon, em.registry().get<Stats>(entity), f)
-                    : f.swing.base_swing_time + weapon.weight * f.swing.weight_scale;
-            weapon.swing_cooldown_remaining = cooldown;
-
-            em.registry().emplace_or_replace<AttackLocked>(
-                entity, AttackLocked{cooldown * f.combat.attack_lock_fraction});
-
-            // Yellow swing flash on the attacker (0.5s so it's clearly visible).
-            em.registry().emplace_or_replace<AttackFeedback>(entity, AttackFeedback{0.5f});
-
-            if (hasSta)
-                deductStamina(em.registry(), entity, swingCost, f);
-
-            TracyMessageL("PlayerAttack");
-            std::cout << "[CombatSystem] Attack! dmg=";
-            if (em.registry().all_of<Stats>(entity))
-                std::cout << computeDamage(weapon, em.registry().get<Stats>(entity), f);
             else
-                std::cout << weapon.base_damage;
-            std::cout << " cooldown=" << cooldown << "s\n";
+            {
+                // --- Melee fire path ---
+                const float reach = f.combat.normal_reach;
+                const float hx = transform.x + facingX * reach;
+                const float hy = transform.y + facingY * reach;
+
+                const bool hitboxLos = !em.tile_map.valid() ||
+                                       em.tile_map.hasLineOfSight(transform.x, transform.y, hx, hy);
+                if (hitboxLos)
+                {
+                    if (em.registry().all_of<Stats>(entity))
+                    {
+                        const auto& stats = em.registry().get<Stats>(entity);
+                        const float dmg = computeDamage(weapon, stats, f);
+                        spawnHitbox(entity, hx, hy, f.combat.normal_hitbox_size, dmg);
+                    }
+                    else
+                    {
+                        spawnHitbox(entity, hx, hy, f.combat.normal_hitbox_size,
+                                    weapon.base_damage);
+                    }
+                }
+
+                const float cooldown =
+                    em.registry().all_of<Stats>(entity)
+                        ? computeSwingCooldown(weapon, em.registry().get<Stats>(entity), f)
+                        : f.swing.base_swing_time + weapon.weight * f.swing.weight_scale;
+                weapon.swing_cooldown_remaining = cooldown;
+
+                em.registry().emplace_or_replace<AttackLocked>(
+                    entity, AttackLocked{cooldown * f.combat.attack_lock_fraction});
+                em.registry().emplace_or_replace<AttackFeedback>(entity, AttackFeedback{0.5f});
+
+                if (hasSta)
+                    deductStamina(em.registry(), entity, swingCost, f);
+
+                TracyMessageL("PlayerAttack");
+            }
         }
+        // (No special trigger-release handling needed — per-shot sounds
+        // are fire-and-forget and trail off naturally.)
 
         // ---- Weapon skill ------------------------------------------------
         if (actions.skill && weapon.skill_cooldown_remaining <= 0.0f && !isAttackLocked &&
@@ -431,8 +636,10 @@ void CombatSystem::update(EntityManager& em, double dt)
                 deductStamina(em.registry(), entity, skillCost, f);
 
             TracyMessageL("PlayerSkill");
-            AudioSystem::playSfx(snd.player_skill.path, snd.player_skill.volume);
-            std::cout << "[CombatSystem] Haymaker! dmg=" << dmg << " skill cooldown=5.0s\n";
+            {
+                const auto& sk = snd.get("player_skill");
+                AudioSystem::playSfx(sk.path, sk.volume);
+            }
         }
 
         // ---- Dodge -------------------------------------------------------
@@ -518,28 +725,51 @@ void CombatSystem::update(EntityManager& em, double dt)
             }
 
             TracyMessageL("PlayerDodge");
-            AudioSystem::playSfx(snd.player_dodge.path, snd.player_dodge.volume);
+            {
+                const auto& dg = snd.get("player_dodge");
+                AudioSystem::playSfx(dg.path, dg.volume);
+            }
             em.registry().emplace<Dodging>(entity, Dodging{f.dodge.duration});
             actions.dodge_cooldown_remaining = f.dodge.cooldown;
 
             if (hasSta)
                 deductStamina(em.registry(), entity, dodgeCost, f);
-
-            const char* dodgeType =
-                hasLockOn ? "Lock-on dodge!" : (nearEnemy ? "Backstep!" : "Dodge roll!");
-            std::cout << "[CombatSystem] " << dodgeType << "\n";
         }
 
         // Audio + visual feedback when dodge pressed but stamina too low.
         if (actions.dodge && !canDodge && actions.dodge_cooldown_remaining <= 0.0f &&
             !isStaggered && !em.registry().all_of<Dodging>(entity) && staCurrent < dodgeCost)
         {
-            AudioSystem::playSfx(snd.low_stamina_heartbeat.path, snd.low_stamina_heartbeat.volume);
+            {
+                const auto& hb = snd.get("low_stamina_heartbeat");
+                AudioSystem::playSfx(hb.path, hb.volume);
+            }
             if (em.registry().all_of<Velocity>(entity))
             {
                 auto& vel = em.registry().get<Velocity>(entity);
                 vel.dx -= facing.dx * 40.0f;
                 vel.dy -= facing.dy * 40.0f;
+            }
+        }
+
+        // ---- Manual reload (R key) -------------------------------------------
+        if (actions.reload && em.registry().all_of<RangedState>(entity) && weapon.ranged)
+        {
+            auto& rs = em.registry().get<RangedState>(entity);
+            const auto* inv = em.registry().try_get<Inventory>(entity);
+            const int reserve = (inv != nullptr && !weapon.ammo_type.empty())
+                                    ? InventoryOps::countItem(*inv, weapon.ammo_type)
+                                    : 999;
+            const bool godMode = em.registry().ctx().get<DebugFlags>().god_mode;
+            if (!rs.reloading && rs.magazine_size > 0 &&
+                (godMode || (rs.ammo_in_magazine < rs.magazine_size && reserve > 0)))
+            {
+                rs.reloading = true;
+                rs.reload_timer = rs.reload_time;
+                {
+                    const auto& rl = snd.get("reload");
+                    AudioSystem::playSfx(rl.path, rl.volume);
+                }
             }
         }
     }

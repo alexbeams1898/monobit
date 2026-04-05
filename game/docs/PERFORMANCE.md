@@ -324,6 +324,22 @@ slot instead of sprinting — "waiters" circling at the outer ring rather than r
 
 **Cost:** One float multiply per non-holder per frame.
 
+### SoundConfig -- Map-Based Lookup
+
+**Before:** SoundConfig had ~25 hardcoded `SoundEntry` fields plus parallel `std::vector<std::string>`
+fields for variations. Adding a new sound key required: adding a field to the struct, adding to
+`soundByKey()` and `variationsByKey()` if-chains, adding parsing to `ConfigLoader::loadSounds()`,
+and updating every consumer. ~100 lines of boilerplate per sound key.
+
+**After:** Single `std::unordered_map<std::string, SoundEntry>` where `SoundEntry` contains
+`{path, volume, variations}`. `ConfigLoader::loadSounds()` iterates the JSON object in a 10-line
+loop -- any new key in sounds.json is automatically available. Consumers call `snd.get("key")`
+which returns a static empty entry on miss (safe).
+
+**Performance:** Map lookup is O(1) amortized (hash). Sound lookups happen at event time
+(attack, footstep, UI click) -- never in hot per-entity loops. The overhead vs direct field
+access is negligible. The real win is maintainability: zero C++ changes to add a sound.
+
 ---
 
 ## Tracy Profiling Notes

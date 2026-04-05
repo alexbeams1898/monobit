@@ -131,8 +131,8 @@ bool RunSummaryScreen::render(EntityManager& em, int window_w, int window_h)
         if ((hovered && mouseClicked(em, SDL_BUTTON_LEFT)) || keyPressed(em, SDL_SCANCODE_RETURN) ||
             keyPressed(em, SDL_SCANCODE_KP_ENTER))
         {
-            if (!snd.ui_click.path.empty())
-                AudioSystem::playSfx(snd.ui_click.path, snd.ui_click.volume);
+            if (!snd.get("ui_click").path.empty())
+                AudioSystem::playSfx(snd.get("ui_click").path, snd.get("ui_click").volume);
             return true;
         }
     }
