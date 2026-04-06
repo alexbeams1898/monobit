@@ -7,7 +7,8 @@ on:
       - 'CMakeLists.txt'  # bot's own bump commit -- don't self-retrigger
 
 permissions:
-  contents: write  # push the version bump commit, tag, and release
+  contents: write        # push the version bump commit, tag, and release
+  pull-requests: read    # gh pr view to read the source branch name
 
 jobs:
   # -----------------------------------------------------------------------
