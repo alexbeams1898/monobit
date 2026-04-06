@@ -201,7 +201,7 @@ static void handleMapRegen(Engine& engine, EntityManager& em)
 static void updateTitleBar(Engine& engine, EntityManager& /*em*/)
 {
     const int fps = static_cast<int>(std::lround(1.0 / engine.lastFrameTime()));
-    engine.setWindowTitle("Hell Escape  |  FPS " + std::to_string(fps) + "/60");
+    engine.setWindowTitle("Prison Escape Game  |  FPS " + std::to_string(fps) + "/60");
 }
 
 // Toggle a menu screen to a specific tab: close if already on that tab, open if no screen is up.

@@ -97,7 +97,7 @@ int main(int argc, char* argv[])
 
     Engine engine;
 
-    if (!engine.init("Hell Escape v" GAME_VERSION, 1920, 1080))
+    if (!engine.init("Prison Escape Game v" GAME_VERSION, 1920, 1080))
         return 1;
 
     auto& em = engine.entityManager();

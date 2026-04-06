@@ -1,4 +1,4 @@
-# Hell Escape — Design Document
+# Prison Escape Game — Design Document
 
 > Living document. Nothing is fully locked in unless explicitly stated.
 > Updated by Claude as design decisions are made.

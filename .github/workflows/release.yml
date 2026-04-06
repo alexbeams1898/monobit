@@ -159,6 +159,6 @@ jobs:
           NOTES: ${{ steps.notes.outputs.notes }}
         run: |
           gh release create "v$VERSION" \
-            "hell-escape-v$VERSION.zip" \
+            "prison-escape-game-v$VERSION.zip" \
             --title "v$VERSION" \
             --notes "$NOTES"

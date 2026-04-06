@@ -5,7 +5,7 @@
 #   ./game/scripts/package.sh [output-name]
 #
 # Bundles the game exe + assets + config into a zip ready to share.
-# Output name defaults to "hell-escape-v<VERSION>" where VERSION is read from
+# Output name defaults to "prison-escape-game-v<VERSION>" where VERSION is read from
 # the project() declaration in root CMakeLists.txt. Creates <name>.zip in repo root.
 
 set -e
@@ -14,7 +14,7 @@ BUILD_BIN="build/bin"
 
 # Extract version from root CMakeLists.txt: project(... VERSION X.Y.Z ...)
 VERSION=$(grep -oP 'project\([^)]*VERSION\s+\K[0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt || echo "unknown")
-NAME="${1:-hell-escape-v$VERSION}"
+NAME="${1:-prison-escape-game-v$VERSION}"
 STAGE_DIR="$NAME"
 
 if [ ! -f "$BUILD_BIN/prison-break-game.exe" ]; then
