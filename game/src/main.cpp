@@ -3,6 +3,7 @@
 #include "FontManager.h"
 #include "GameLoop.h"
 #include "SaveManager.h"
+#include "Version.h"
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
@@ -96,7 +97,7 @@ int main(int argc, char* argv[])
 
     Engine engine;
 
-    if (!engine.init("Hell Escape", 1920, 1080))
+    if (!engine.init("Prison Escape Game v" GAME_VERSION, 1920, 1080))
         return 1;
 
     auto& em = engine.entityManager();

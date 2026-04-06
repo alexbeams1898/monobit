@@ -1,0 +1,164 @@
+name: release
+
+on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - 'CMakeLists.txt'  # bot's own bump commit -- don't self-retrigger
+
+permissions:
+  contents: write  # push the version bump commit, tag, and release
+
+jobs:
+  # -----------------------------------------------------------------------
+  # 1. BUMP VERSION
+  #    Reads the merged PR's source branch prefix (patch/minor/major),
+  #    edits CMakeLists.txt, commits back as the GitHub Actions bot, tags.
+  #    chore/* and docs/* prefixes skip the release entirely.
+  # -----------------------------------------------------------------------
+  bump:
+    name: Bump version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      should_release: ${{ steps.bump.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine bump from merged PR branch prefix
+        id: bump
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Squash-merge commits end in " (#NNN)" -- extract PR number.
+          pr_num=$(git log -1 --pretty=%s | grep -oP '\(#\K\d+' || echo "")
+          if [ -z "$pr_num" ]; then
+            echo "No PR number in commit -- not a squash-merge. Skipping release."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          branch=$(gh pr view "$pr_num" --json headRefName -q .headRefName)
+          prefix="${branch%%/*}"
+          case "$prefix" in
+            patch) bump=patch ;;
+            minor) bump=minor ;;
+            major) bump=major ;;
+            chore|docs)
+              echo "Prefix '$prefix' -- no release."
+              echo "should_release=false" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+            *)
+              echo "::error::Branch '$branch' has unrecognized prefix '$prefix'. Expected patch/, minor/, major/, chore/, or docs/."
+              exit 1
+              ;;
+          esac
+          cur=$(grep -oP 'project\([^)]*VERSION\s+\K[0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt)
+          if [ -z "$cur" ]; then
+            echo "::error::Could not extract version from CMakeLists.txt"
+            exit 1
+          fi
+          IFS='.' read -r maj min pat <<< "$cur"
+          case "$bump" in
+            patch) pat=$((pat+1)) ;;
+            minor) min=$((min+1)); pat=0 ;;
+            major) maj=$((maj+1)); min=0; pat=0 ;;
+          esac
+          new="$maj.$min.$pat"
+          echo "Bumping $cur -> $new ($bump)"
+          sed -i "s/VERSION $cur /VERSION $new /" CMakeLists.txt
+          if ! grep -q "VERSION $new " CMakeLists.txt; then
+            echo "::error::sed failed to update CMakeLists.txt from $cur to $new"
+            exit 1
+          fi
+          echo "version=$new" >> "$GITHUB_OUTPUT"
+          echo "should_release=true" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and tag
+        if: steps.bump.outputs.should_release == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CMakeLists.txt
+          git commit -m "Bump version to ${{ steps.bump.outputs.version }}"
+          git tag "v${{ steps.bump.outputs.version }}"
+          git push
+          git push --tags
+
+  # -----------------------------------------------------------------------
+  # 2. BUILD AND RELEASE
+  #    Windows runner with MSYS2 MinGW64 -- matches local dev environment
+  #    exactly so package.sh (ldd + /c/windows/ filter) works unmodified.
+  #    Aggregates merged PR titles since the previous tag into release notes.
+  # -----------------------------------------------------------------------
+  release:
+    name: Build and release
+    needs: bump
+    if: needs.bump.outputs.should_release == 'true'
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master  # post-bump commit
+          fetch-depth: 0
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-SDL2
+            python
+            zip
+
+      - name: Configure and build
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+
+      - name: Package
+        run: ./game/scripts/package.sh
+
+      - name: Generate release notes
+        id: notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          prev_tag=$(git tag --sort=-v:refname | sed -n '2p')
+          if [ -z "$prev_tag" ]; then
+            notes="Initial release."
+          else
+            since=$(git log -1 --format=%aI "$prev_tag")
+            notes=$(gh pr list --state merged --base master \
+              --search "merged:>$since" \
+              --json number,title,url \
+              --jq '.[] | "- \(.title) ([#\(.number)](\(.url)))"')
+            if [ -z "$notes" ]; then
+              notes="Version bump."
+            fi
+          fi
+          {
+            echo "notes<<EOF"
+            echo "$notes"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.bump.outputs.version }}
+          NOTES: ${{ steps.notes.outputs.notes }}
+        run: |
+          gh release create "v$VERSION" \
+            "prison-escape-game-v$VERSION.zip" \
+            --title "v$VERSION" \
+            --notes "$NOTES"
