@@ -120,6 +120,7 @@ jobs:
             mingw-w64-x86_64-SDL2
             python
             zip
+            git
 
       - name: Configure and build
         run: |
