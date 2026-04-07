@@ -7,11 +7,22 @@
 namespace SaveManager
 {
 
-// Load save data from disk. Returns default SaveData if file doesn't exist.
-SaveData load(const std::string& path = "saves/save.json");
+// Platform-standard save directory (e.g. %APPDATA%/PrisonEscapeGame/ on Windows).
+// Cached after first call. Falls back to "saves/" if SDL_GetPrefPath fails.
+std::string getSaveDir();
 
-// Write save data to disk. Creates saves/ directory if needed.
-bool save(const SaveData& data, const std::string& path = "saves/save.json");
+// Full path to save file: getSaveDir() + "save.json".
+std::string defaultSavePath();
+
+// Copy old saves/save.json to the new %APPDATA% location if it exists and the
+// new location doesn't. Call once at startup before load().
+void migrateOldSave();
+
+// Load save data from disk. Returns default SaveData if file doesn't exist.
+SaveData load(const std::string& path = "");
+
+// Write save data to disk. Creates parent directory if needed.
+bool save(const SaveData& data, const std::string& path = "");
 
 // Add a character to the save data.
 void addCharacter(SaveData& data, const std::string& name);

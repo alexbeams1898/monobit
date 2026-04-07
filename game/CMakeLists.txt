@@ -23,6 +23,7 @@ add_library(game-systems STATIC
     src/ops/SpawnUtils.cpp
     src/ops/InventoryOps.cpp
     src/ops/CraftingOps.cpp
+    src/ops/UpdateChecker.cpp
     src/systems/EquipmentSystem.cpp
     src/systems/WeaponXPSystem.cpp
     src/systems/CraftingSystem.cpp
@@ -50,10 +51,20 @@ add_library(game-systems STATIC
     src/screens/HighScoresScreen.cpp
     src/screens/SanctuaryScreen.cpp
     src/screens/SettingsScreen.cpp
+    ${CMAKE_SOURCE_DIR}/vendor/miniz/miniz.c
+    ${CMAKE_SOURCE_DIR}/vendor/miniz/miniz_zip.c
+    ${CMAKE_SOURCE_DIR}/vendor/miniz/miniz_tinfl.c
+    ${CMAKE_SOURCE_DIR}/vendor/miniz/miniz_tdef.c
 )
 
 target_include_directories(game-systems PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(game-systems SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/vendor/miniz)
 target_link_libraries(game-systems PUBLIC engine)
+
+# WinHTTP for the in-game update checker (Windows only, part of the OS).
+if(WIN32)
+    target_link_libraries(game-systems PRIVATE winhttp)
+endif()
 
 # Generate Version.h from CMake project version (see root CMakeLists.txt).
 # Bumping the version there propagates to the binary on next configure.
@@ -119,6 +130,7 @@ add_executable(game-tests
     tests/discovery_test.cpp
     tests/ladder_test.cpp
     tests/projectile_test.cpp
+    tests/update_checker_test.cpp
 )
 target_link_libraries(game-tests PRIVATE game-systems Catch2::Catch2WithMain)
 
