@@ -120,6 +120,72 @@ static MainMenuScreen::Action handleKeyboardInput(const EntityManager& em, const
 // Update progress overlay
 // ---------------------------------------------------------------------------
 
+static void renderInstallButton(EntityManager& em, float px, float panelW, float btnY)
+{
+    int mouseX = 0;
+    int mouseY = 0;
+    SDL_GetMouseState(&mouseX, &mouseY);
+    const float mx = static_cast<float>(mouseX);
+    const float my = static_cast<float>(mouseY);
+
+    const std::string label = "Install & Restart";
+    const TextSize bsz = UIRenderer::measureText(sTitleFont, label);
+    const float bw = bsz.width + 60.0f;
+    const float bh = bsz.height + 20.0f;
+    const float bx = px + (panelW - bw) * 0.5f;
+
+    const bool hovered = (mx >= bx && mx < bx + bw && my >= btnY && my < btnY + bh);
+    UIRenderer::drawRect(bx, btnY, bw, bh, hovered ? BTN_BG_HL : BTN_BG);
+    UIRenderer::drawText(sTitleFont, label, bx + 30.0f, btnY + 10.0f,
+                         hovered ? BTN_HOVER : BTN_NORMAL);
+
+    if (hovered && mouseClicked(em, SDL_BUTTON_LEFT))
+    {
+        if (UpdateChecker::installAndRelaunch())
+            std::exit(0); // NOLINT(concurrency-mt-unsafe) -- intentional immediate exit
+    }
+}
+
+static void renderFailedButtons(EntityManager& em, float px, float panelW, float btnY)
+{
+    int mouseX = 0;
+    int mouseY = 0;
+    SDL_GetMouseState(&mouseX, &mouseY);
+    const float mx = static_cast<float>(mouseX);
+    const float my = static_cast<float>(mouseY);
+
+    const std::string retryLabel = "Retry";
+    const TextSize rsz = UIRenderer::measureText(sTitleFont, retryLabel);
+    const float rw = rsz.width + 60.0f;
+    const float rh = rsz.height + 20.0f;
+
+    const std::string closeLabel = "Close";
+    const TextSize csz = UIRenderer::measureText(sTitleFont, closeLabel);
+    const float cw = csz.width + 60.0f;
+
+    const float gap = 20.0f;
+    const float totalW = rw + gap + cw;
+    const float rx = px + (panelW - totalW) * 0.5f;
+    const float cx = rx + rw + gap;
+
+    const bool retryHov = (mx >= rx && mx < rx + rw && my >= btnY && my < btnY + rh);
+    UIRenderer::drawRect(rx, btnY, rw, rh, retryHov ? BTN_BG_HL : BTN_BG);
+    UIRenderer::drawText(sTitleFont, retryLabel, rx + 30.0f, btnY + 10.0f,
+                         retryHov ? BTN_HOVER : BTN_NORMAL);
+    if (retryHov && mouseClicked(em, SDL_BUTTON_LEFT))
+    {
+        UpdateChecker::resetState();
+        UpdateChecker::startDownload();
+    }
+
+    const bool closeHov = (mx >= cx && mx < cx + cw && my >= btnY && my < btnY + rh);
+    UIRenderer::drawRect(cx, btnY, cw, rh, closeHov ? BTN_BG_HL : BTN_BG);
+    UIRenderer::drawText(sTitleFont, closeLabel, cx + 30.0f, btnY + 10.0f,
+                         closeHov ? BTN_HOVER : BTN_NORMAL);
+    if (closeHov && mouseClicked(em, SDL_BUTTON_LEFT))
+        UpdateChecker::resetState();
+}
+
 static void renderUpdateProgress(EntityManager& em, float ww, float wh)
 {
     using UState = UpdateChecker::UpdateState;
@@ -133,7 +199,6 @@ static void renderUpdateProgress(EntityManager& em, float ww, float wh)
     constexpr float pad = 28.0f;
     const float panelW = std::max(barW, sts.width) + pad * 2.0f;
 
-    // Compute panel height based on state.
     const bool hasButton = (ustate == UState::ReadyToInstall || ustate == UState::Failed);
     const float btnRowH = hasButton ? 50.0f : 0.0f;
     const float panelH = pad + sts.height + pad + barH + btnRowH + pad;
@@ -143,11 +208,9 @@ static void renderUpdateProgress(EntityManager& em, float ww, float wh)
     UIRenderer::drawRect(0.0f, 0.0f, ww, wh, OVERLAY);
     UIRenderer::drawRect(px, py, panelW, panelH, PANEL_BG);
 
-    // Status text (centered).
     UIRenderer::drawText(sBodyFont, statusText, px + (panelW - sts.width) * 0.5f, py + pad,
                          TEXT_WHITE);
 
-    // Progress bar.
     const float barX = px + (panelW - barW) * 0.5f;
     const float barY = py + pad + sts.height + pad;
     static constexpr Color PROGRESS_BG{0.15f, 0.15f, 0.18f, 0.8f};
@@ -173,67 +236,11 @@ static void renderUpdateProgress(EntityManager& em, float ww, float wh)
     if (!hasButton)
         return;
 
-    // Button rendering.
-    int mouseX = 0;
-    int mouseY = 0;
-    SDL_GetMouseState(&mouseX, &mouseY);
-    const float mx = static_cast<float>(mouseX);
-    const float my = static_cast<float>(mouseY);
     const float btnY = barY + barH + 14.0f;
-
     if (ustate == UState::ReadyToInstall)
-    {
-        const std::string label = "Install & Restart";
-        const TextSize bsz = UIRenderer::measureText(sTitleFont, label);
-        const float bw = bsz.width + 60.0f;
-        const float bh = bsz.height + 20.0f;
-        const float bx = px + (panelW - bw) * 0.5f;
-
-        const bool hovered = (mx >= bx && mx < bx + bw && my >= btnY && my < btnY + bh);
-        UIRenderer::drawRect(bx, btnY, bw, bh, hovered ? BTN_BG_HL : BTN_BG);
-        UIRenderer::drawText(sTitleFont, label, bx + 30.0f, btnY + 10.0f,
-                             hovered ? BTN_HOVER : BTN_NORMAL);
-
-        if (hovered && mouseClicked(em, SDL_BUTTON_LEFT))
-        {
-            if (UpdateChecker::installAndRelaunch())
-                std::exit(0); // NOLINT(concurrency-mt-unsafe) -- intentional immediate exit
-        }
-    }
+        renderInstallButton(em, px, panelW, btnY);
     else if (ustate == UState::Failed)
-    {
-        // Retry button.
-        const std::string retryLabel = "Retry";
-        const TextSize rsz = UIRenderer::measureText(sTitleFont, retryLabel);
-        const float rw = rsz.width + 60.0f;
-        const float rh = rsz.height + 20.0f;
-
-        const std::string closeLabel = "Close";
-        const TextSize csz = UIRenderer::measureText(sTitleFont, closeLabel);
-        const float cw = csz.width + 60.0f;
-
-        const float gap = 20.0f;
-        const float totalW = rw + gap + cw;
-        const float rx = px + (panelW - totalW) * 0.5f;
-        const float cx = rx + rw + gap;
-
-        const bool retryHov = (mx >= rx && mx < rx + rw && my >= btnY && my < btnY + rh);
-        UIRenderer::drawRect(rx, btnY, rw, rh, retryHov ? BTN_BG_HL : BTN_BG);
-        UIRenderer::drawText(sTitleFont, retryLabel, rx + 30.0f, btnY + 10.0f,
-                             retryHov ? BTN_HOVER : BTN_NORMAL);
-        if (retryHov && mouseClicked(em, SDL_BUTTON_LEFT))
-        {
-            UpdateChecker::resetState();
-            UpdateChecker::startDownload();
-        }
-
-        const bool closeHov = (mx >= cx && mx < cx + cw && my >= btnY && my < btnY + rh);
-        UIRenderer::drawRect(cx, btnY, cw, rh, closeHov ? BTN_BG_HL : BTN_BG);
-        UIRenderer::drawText(sTitleFont, closeLabel, cx + 30.0f, btnY + 10.0f,
-                             closeHov ? BTN_HOVER : BTN_NORMAL);
-        if (closeHov && mouseClicked(em, SDL_BUTTON_LEFT))
-            UpdateChecker::resetState();
-    }
+        renderFailedButtons(em, px, panelW, btnY);
 }
 
 // ---------------------------------------------------------------------------

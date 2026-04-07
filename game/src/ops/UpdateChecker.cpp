@@ -48,14 +48,14 @@ static std::string sErrorMsg;
 
 static void setStatusMsg(const std::string& msg)
 {
-    std::lock_guard<std::mutex> lock(sMessageMutex);
+    const std::lock_guard<std::mutex> lock(sMessageMutex);
     sStatusMsg = msg;
 }
 
 static void setError(const std::string& msg)
 {
     {
-        std::lock_guard<std::mutex> lock(sMessageMutex);
+        const std::lock_guard<std::mutex> lock(sMessageMutex);
         sErrorMsg = msg;
         sStatusMsg = msg;
     }
@@ -119,8 +119,9 @@ std::string parseAssetDownloadUrl(const std::string& json_body)
                 return asset.value("browser_download_url", std::string{});
         }
     }
-    catch (...)
+    catch (const std::exception& e)
     {
+        std::cerr << "[UpdateChecker] JSON parse error: " << e.what() << "\n";
     }
     return {};
 }
@@ -137,7 +138,8 @@ std::string formatBytes(uint64_t bytes)
     if (bytes < 1024)
         return std::to_string(bytes) + " B";
     char buf[32];
-    if (bytes < 1024 * 1024)
+    constexpr uint64_t kMB = 1024ULL * 1024ULL;
+    if (bytes < kMB)
     {
         const double kb = static_cast<double>(bytes) / 1024.0;
         std::snprintf(buf, sizeof(buf), "%.1f KB", kb);
@@ -406,7 +408,9 @@ static bool extractZip(const std::string& zipPath, const std::string& destDir)
         if (entryPath.empty())
             continue;
 
-        const std::string fullPath = destDir + "/" + entryPath;
+        std::string fullPath = destDir;
+        fullPath += '/';
+        fullPath += entryPath;
 
         const bool isDir = stat.m_is_directory || (!entryPath.empty() && entryPath.back() == '/');
         if (isDir)
@@ -585,13 +589,13 @@ float downloadProgress()
 
 std::string statusMessage()
 {
-    std::lock_guard<std::mutex> lock(sMessageMutex);
+    const std::lock_guard<std::mutex> lock(sMessageMutex);
     return sStatusMsg;
 }
 
 std::string errorMessage()
 {
-    std::lock_guard<std::mutex> lock(sMessageMutex);
+    const std::lock_guard<std::mutex> lock(sMessageMutex);
     return sErrorMsg;
 }
 
@@ -609,7 +613,7 @@ void resetState()
     sState.store(UpdateState::Idle);
     sBytesDownloaded.store(0);
     sBytesTotal.store(-1);
-    std::lock_guard<std::mutex> lock(sMessageMutex);
+    const std::lock_guard<std::mutex> lock(sMessageMutex);
     sStatusMsg.clear();
     sErrorMsg.clear();
 }
