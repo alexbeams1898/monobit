@@ -1,5 +1,6 @@
 #include "SaveManager.h"
 
+#include <SDL.h>
 #include <algorithm>
 #include <cmath>
 #include <ctime>
@@ -12,6 +13,61 @@ using json = nlohmann::json;
 
 namespace SaveManager
 {
+
+// ---------------------------------------------------------------------------
+// Save directory resolution
+// ---------------------------------------------------------------------------
+
+std::string getSaveDir()
+{
+    static std::string cached;
+    if (!cached.empty())
+        return cached;
+
+    char* pref = SDL_GetPrefPath("PrisonEscapeGame", "PrisonEscapeGame");
+    if (pref)
+    {
+        cached = pref;
+        SDL_free(pref);
+    }
+    else
+    {
+        cached = "saves/";
+    }
+    return cached;
+}
+
+std::string defaultSavePath()
+{
+    return getSaveDir() + "save.json";
+}
+
+void migrateOldSave()
+{
+    constexpr const char* oldPath = "saves/save.json";
+    const std::string newPath = defaultSavePath();
+
+    if (!std::filesystem::exists(oldPath))
+        return;
+
+    if (std::filesystem::exists(newPath))
+    {
+        std::cout << "[SaveManager] Save already exists at " << newPath
+                  << " -- skipping migration\n";
+        return;
+    }
+
+    try
+    {
+        std::filesystem::create_directories(std::filesystem::path(newPath).parent_path());
+        std::filesystem::copy_file(oldPath, newPath);
+        std::cout << "[SaveManager] Migrated save from " << oldPath << " to " << newPath << "\n";
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "[SaveManager] Migration failed: " << e.what() << "\n";
+    }
+}
 
 // ---------------------------------------------------------------------------
 // JSON serialization helpers
@@ -60,9 +116,10 @@ static Run runFromJson(const json& j)
 
 SaveData load(const std::string& path)
 {
+    const std::string resolved = path.empty() ? defaultSavePath() : path;
     SaveData data;
 
-    std::ifstream file(path);
+    std::ifstream file(resolved);
     if (!file.is_open())
         return data;
 
@@ -73,7 +130,7 @@ SaveData load(const std::string& path)
     }
     catch (const std::exception& e)
     {
-        std::cerr << "[SaveManager] Error parsing " << path << ": " << e.what()
+        std::cerr << "[SaveManager] Error parsing " << resolved << ": " << e.what()
                   << " -- using defaults\n";
         return data;
     }
@@ -106,21 +163,22 @@ SaveData load(const std::string& path)
     data.god_mode = j.value("god_mode", false);
 
     std::cout << "[SaveManager] Loaded " << data.characters.size() << " characters, "
-              << data.runs.size() << " runs from " << path << "\n";
+              << data.runs.size() << " runs from " << resolved << "\n";
     return data;
 }
 
 bool save(const SaveData& data, const std::string& path)
 {
+    const std::string resolved = path.empty() ? defaultSavePath() : path;
     try
     {
-        const std::filesystem::path dir = std::filesystem::path(path).parent_path();
+        const std::filesystem::path dir = std::filesystem::path(resolved).parent_path();
         if (!dir.empty())
             std::filesystem::create_directories(dir);
     }
     catch (const std::exception& e)
     {
-        std::cerr << "[SaveManager] Cannot create directory for " << path << ": " << e.what()
+        std::cerr << "[SaveManager] Cannot create directory for " << resolved << ": " << e.what()
                   << "\n";
         return false;
     }
@@ -138,15 +196,15 @@ bool save(const SaveData& data, const std::string& path)
 
     j["god_mode"] = data.god_mode;
 
-    std::ofstream file(path);
+    std::ofstream file(resolved);
     if (!file.is_open())
     {
-        std::cerr << "[SaveManager] Cannot write " << path << "\n";
+        std::cerr << "[SaveManager] Cannot write " << resolved << "\n";
         return false;
     }
 
     file << j.dump(4);
-    std::cout << "[SaveManager] Saved to " << path << "\n";
+    std::cout << "[SaveManager] Saved to " << resolved << "\n";
     return true;
 }
 

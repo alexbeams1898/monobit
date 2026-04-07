@@ -37,7 +37,8 @@
 
 static void writeCrashLog(const char* reason)
 {
-    FILE* f = fopen("crash.log", "w");
+    const std::string path = SaveManager::getSaveDir() + "crash.log";
+    FILE* f = fopen(path.c_str(), "w");
     if (!f)
         return;
 
@@ -133,6 +134,9 @@ int main(int argc, char* argv[])
     ConfigLoader::loadMusic(em, "config/audio/music.json");
     ConfigLoader::loadWaves(em, "config/waves.json");
     ConfigLoader::loadScoring(em, "config/balance/scoring.json");
+
+    // Migrate old saves from build/bin/saves/ to %APPDATA% if needed.
+    SaveManager::migrateOldSave();
 
     // Load saved data (characters, high scores).
     em.registry().ctx().get<SaveData>() = SaveManager::load();

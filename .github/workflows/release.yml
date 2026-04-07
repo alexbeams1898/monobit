@@ -163,3 +163,15 @@ jobs:
             "prison-escape-game-v$VERSION.zip" \
             --title "v$VERSION" \
             --notes "$NOTES"
+
+      - name: Mirror release to public repo
+        env:
+          GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+          VERSION: ${{ needs.bump.outputs.version }}
+          NOTES: ${{ steps.notes.outputs.notes }}
+        run: |
+          gh release create "v$VERSION" \
+            "prison-escape-game-v$VERSION.zip" \
+            --repo alexbeams1898/prison-escape-game-releases \
+            --title "v$VERSION" \
+            --notes "$NOTES"
