@@ -253,8 +253,10 @@ struct RestSpot
 {
     float radius = 64.0f;
     float cooldown = 0.0f;
+    // Countdown of the currently-playing rest sound. Drains every frame even
+    // when the player is absent so a fresh entry can detect "previous sound
+    // still going" and skip retriggering. 0 = nothing playing.
     float sound_timer = 0.0f;
-    int sound_index = 0;
     bool player_present = false;
 };
 
@@ -321,6 +323,11 @@ struct Stamina
     float current = 0.0f;
     float max_stamina = 0.0f;
     float recovery_timer = 0.0f;
+    // Set when stamina hits 0; cleared when stamina recovers to max. While
+    // true, sprinting is blocked (walk only) -- forces the player to wait for
+    // a full bar before running again. Other stamina actions (attacks, dodges,
+    // blocking) are unaffected.
+    bool sprint_locked = false;
 };
 
 // Marks an entity as part of the active wave for wave-clear detection.

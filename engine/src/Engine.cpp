@@ -103,6 +103,10 @@ void Engine::run()
         if (per_frame_update)
             per_frame_update(*this, entity_manager, frame_dt);
 
+        // Reset per-frame tick counter so render UI can detect 0-tick frames
+        // and avoid clearing one-shot input buffers that no consumer saw yet.
+        entity_manager.ticks_this_frame = 0;
+
         // Fixed-rate update — always steps in 1/60s increments.
         while (accumulator >= FIXED_TIMESTEP)
         {
@@ -122,6 +126,7 @@ void Engine::run()
             }
             update(FIXED_TIMESTEP);
             accumulator -= FIXED_TIMESTEP;
+            ++entity_manager.ticks_this_frame;
 
             // After a heavy synchronous operation (map gen), snap the clock
             // forward so no catch-up ticks fire and the FPS counter stays clean.

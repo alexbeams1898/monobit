@@ -130,6 +130,12 @@ struct FacingDirection
     // Set by game MovementSystem based on sprint/backpedal state.
     float walk_anim_speed = 1.0f;
 
+    // Attack animation frame duration multiplier. < 1.0 = faster, > 1.0 = slower.
+    // Set by game CombatSystem each tick from the active AttackLocked window so
+    // a heavy weapon's swing animation stretches to match its longer cooldown.
+    // 1.0 = use the sheet's native attack frame duration.
+    float attack_anim_speed = 1.0f;
+
     // Crosshair position override. When aim_override_blend > 0, RenderSystem
     // lerps the crosshair from mouse toward (aim_override_x, aim_override_y).
     // 0.0 = fully at mouse, 1.0 = fully at override position.

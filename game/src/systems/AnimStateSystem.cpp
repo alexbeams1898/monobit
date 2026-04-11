@@ -5,13 +5,18 @@
 
 #include <tracy/Tracy.hpp>
 
-// Priority: Dead(Hit) > CriticalAttacking(Attack) > AttackLocked(Attack) > moving(Run/Walk) > Idle.
+// Priority: Dead(Hit) > Staggered(Idle) > CriticalAttacking(Attack) > AttackLocked(Attack)
+//           > moving(Run/Walk) > Idle.
 // Non-lethal hits use the TintSystem white flash instead of a dedicated anim row.
 // On death we play the hurt animation so the death moment has a visible reaction.
+// Staggered locks to Idle so the run/walk animation doesn't keep playing while the
+// entity is knocked still and movement input is being ignored.
 static AnimState resolveStandaloneState(entt::registry& reg, entt::entity entity)
 {
     if (reg.all_of<Dead>(entity))
         return AnimState::Hit;
+    if (reg.all_of<Staggered>(entity))
+        return AnimState::Idle;
     if (reg.all_of<CriticalAttacking>(entity))
         return AnimState::Attack;
     if (reg.all_of<AttackLocked>(entity))

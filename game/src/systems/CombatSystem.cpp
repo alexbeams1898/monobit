@@ -62,7 +62,12 @@ void deductStamina(entt::registry& reg, entt::entity entity, float cost, const F
     sta.current = std::max(0.0f, sta.current - cost);
     sta.recovery_timer = f.stamina.recovery_delay;
     if (before > 0.0f && sta.current <= 0.0f)
+    {
         reg.emplace_or_replace<Staggered>(entity, Staggered{f.stamina.exhaustion_stagger});
+        // Lock sprint until stamina is fully recovered. Other stamina actions
+        // (attacks, dodges, blocking) remain available.
+        sta.sprint_locked = true;
+    }
 }
 
 static std::mt19937& combatRng()
@@ -220,6 +225,7 @@ void CombatSystem::update(EntityManager& em, double dt)
     }
 
     // Stamina recovery: after recovery_delay with no deduction, regen at recovery_rate/s.
+    // Sprint lockout clears once stamina is back to full (Elden Ring style).
     for (auto [entity, sta] : em.registry().view<Stamina>().each())
     {
         if (sta.recovery_timer > 0.0f)
@@ -230,6 +236,8 @@ void CombatSystem::update(EntityManager& em, double dt)
         {
             sta.current = std::min(sta.max_stamina, sta.current + f.stamina.recovery_rate * fdt);
         }
+        if (sta.sprint_locked && sta.current >= sta.max_stamina)
+            sta.sprint_locked = false;
     }
 
     // AttackLocked — remove when expired.
@@ -594,9 +602,26 @@ void CombatSystem::update(EntityManager& em, double dt)
                         : f.swing.base_swing_time + weapon.weight * f.swing.weight_scale;
                 weapon.swing_cooldown_remaining = cooldown;
 
-                em.registry().emplace_or_replace<AttackLocked>(
-                    entity, AttackLocked{cooldown * f.combat.attack_lock_fraction});
+                const float lockDuration = cooldown * f.combat.attack_lock_fraction;
+                em.registry().emplace_or_replace<AttackLocked>(entity, AttackLocked{lockDuration});
                 em.registry().emplace_or_replace<AttackFeedback>(entity, AttackFeedback{0.5f});
+
+                // Stretch the attack animation to land exactly at the end of
+                // the AttackLocked window. Heavy weapons get a visibly longer
+                // windup; fast weapons keep their snappy native pace. Without
+                // this, heavy weapons used to play their swing twice because
+                // the lock window outlasted the native animation length.
+                if (em.registry().all_of<Animation, FacingDirection>(entity))
+                {
+                    const auto& a = em.registry().get<Animation>(entity);
+                    const auto& sd = a.states[static_cast<int>(AnimState::Attack)];
+                    const float nativeLen = static_cast<float>(sd.frames) * sd.duration;
+                    if (nativeLen > 0.0f && lockDuration > 0.0f)
+                    {
+                        auto& fd = em.registry().get<FacingDirection>(entity);
+                        fd.attack_anim_speed = lockDuration / nativeLen;
+                    }
+                }
 
                 if (hasSta)
                     deductStamina(em.registry(), entity, swingCost, f);

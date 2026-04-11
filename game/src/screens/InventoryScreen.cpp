@@ -24,9 +24,14 @@ static constexpr Color SLOT_EMPTY{0.4f, 0.4f, 0.4f, 0.5f};
 static constexpr Color EQUIP_LABEL{0.5f, 0.8f, 1.0f, 1.0f};
 static constexpr Color INV_BG{0.08f, 0.08f, 0.12f, 0.9f};
 
-static constexpr float SLOT_SIZE = 28.0f;
-static constexpr float SLOT_GAP = 4.0f;
-static constexpr int GRID_COLS = 5;
+// Touch-friendly slot size. Apple HIG's 44pt is a bare minimum that assumes
+// dense Retina mapping; on a 1920x1080 logical canvas that floor maps to a
+// pretty small finger target. 72px (50% above the floor) feels comfortable
+// for couch / phone play while still leaving the inventory panel visually
+// balanced against the pause menu. Mouse + keyboard play only benefits.
+static constexpr float SLOT_SIZE = 72.0f;
+static constexpr float SLOT_GAP = 10.0f;
+static constexpr int GRID_COLS = 10;
 
 static void renderInventoryGrid(const Inventory& inv, const ItemRegistry& items, float panel_x,
                                 float ey, int total_slots)
@@ -46,16 +51,17 @@ static void renderInventoryGrid(const Inventory& inv, const ItemRegistry& items,
         {
             const auto& item = inv.items[static_cast<size_t>(i)];
             const ItemDef* def = items.find(item.config_path);
-            const float icon_pad = 2.0f;
+            const float icon_pad = 6.0f;
             ItemStatRenderer::drawItemIcon(def, sx + icon_pad, sy + icon_pad,
                                            SLOT_SIZE - icon_pad * 2.0f);
 
-            // Quantity badge.
+            // Quantity badge: bottom-right corner of the slot.
             if (item.quantity > 1)
             {
                 const std::string qty = std::to_string(item.quantity);
-                UIRenderer::drawText(sBodyFont, qty, sx + SLOT_SIZE - 12.0f, sy + SLOT_SIZE - 14.0f,
-                                     TEXT_WHITE);
+                const TextSize qsz = UIRenderer::measureText(sBodyFont, qty);
+                UIRenderer::drawText(sBodyFont, qty, sx + SLOT_SIZE - qsz.width - 4.0f,
+                                     sy + SLOT_SIZE - qsz.height - 4.0f, TEXT_WHITE);
             }
         }
         else
@@ -130,9 +136,12 @@ void InventoryScreen::render(EntityManager& em, int window_w, int window_h)
     if (player == entt::null)
         return;
 
-    // Inventory panel.
-    const float panel_w = 420.0f;
-    const float panel_h = 500.0f;
+    // Inventory panel. Width fits a 10-col grid of 72px touch-target slots
+    // (10 * (72 + 10) - 10 + 24 left pad + 24 right pad = 858). Height fits
+    // 6 equipment label rows + 3 inventory grid rows (3 * 82 - 10 = 236) +
+    // detail/footer area.
+    const float panel_w = 880.0f;
+    const float panel_h = 640.0f;
     const float panel_x = (ww - panel_w) * 0.5f;
     const float panel_y = (wh - panel_h) * 0.5f;
     UIRenderer::drawRect(panel_x, panel_y, panel_w, panel_h, INV_BG);

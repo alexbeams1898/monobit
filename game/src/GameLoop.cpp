@@ -344,6 +344,7 @@ static void transitionToSummary(EntityManager& em, bool escaped)
     auto& stats = em.registry().ctx().get<RunStats>();
     const auto& cfg = em.registry().ctx().get<ScoringConfig>();
     auto& saveData = em.registry().ctx().get<SaveData>();
+    const bool godMode = em.registry().ctx().get<DebugFlags>().god_mode;
 
     const int score = SaveManager::computeScore(stats, cfg, escaped);
     stats.score = score;
@@ -353,6 +354,7 @@ static void transitionToSummary(EntityManager& em, bool escaped)
     run.stats = stats;
     run.character_name = gs.active_character;
     run.escaped = escaped;
+    run.god_mode = godMode;
     // Timestamp.
     const time_t now = time(nullptr);
     char timeBuf[32] = {};
@@ -360,9 +362,11 @@ static void transitionToSummary(EntityManager& em, bool escaped)
     run.timestamp = timeBuf;
 
     // Check if high score before recording (recording sorts and trims).
+    // God-mode runs never qualify for the leaderboard, so they're never a high
+    // score regardless of raw points.
     auto top = SaveManager::topRuns(saveData, 10);
     const bool isHighScore =
-        (static_cast<int>(top.size()) < 10) || (score > top.back().stats.score);
+        !godMode && ((static_cast<int>(top.size()) < 10) || (score > top.back().stats.score));
 
     // Persist the player's current money to their character profile.
     for (auto pe : em.registry().view<PlayerActions>())
@@ -385,7 +389,7 @@ static void transitionToSummary(EntityManager& em, bool escaped)
     SaveManager::recordRun(saveData, run);
     SaveManager::save(saveData);
 
-    RunSummaryScreen::reset(escaped, score, isHighScore);
+    RunSummaryScreen::reset(escaped, score, isHighScore, godMode);
     gs.phase = GameState::Phase::RunSummary;
 
     if (escaped)
@@ -417,6 +421,10 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     {
         gs.pending_world_create = false;
         WorldInit::createWorld(engine, em);
+        // Sync equipment immediately so Weapon/WeaponXP exist before the first
+        // HUD render. Without this, the weapon section "pops" into the player
+        // panel one frame after world load when EquipmentSystem first runs.
+        EquipmentSystem::update(em);
         gs.phase = GameState::Phase::Playing;
         engine.requestTimingReset();
         return;
@@ -831,6 +839,13 @@ static void renderPlayingUI(Engine& engine, EntityManager& em, int ww, int wh, f
 {
     auto& ui = em.registry().ctx().get<UIState>();
 
+    // Muffle the soundtrack while any UI overlay is open (pause menu, sanctuary,
+    // crafting, level-up). Crafting is reachable from inside sanctuary, so a
+    // sanctuary-only check would unmuffle the moment the player opens the
+    // crafting submenu. Cheap no-op when the cutoff matches the previous frame.
+    // 800 Hz gives an audible "behind a wall" feel.
+    AudioSystem::setMusicLowPass(ui.isScreenOpen() ? 800.0f : 0.0f);
+
     if (!ui.isScreenOpen())
     {
         HudRenderer::render(em, ww, wh);
@@ -1113,9 +1128,16 @@ void gameRenderUI(Engine& engine, EntityManager& em)
     // Debug overlay renders over everything in all states.
     DebugOverlay::render(engine, em, ww, wh);
 
-    // Clear event buffers after all UI screens have consumed them.
-    em.key_down_events.clear();
-    em.mouse_down_events.clear();
-    em.mouse_wheel_y = 0;
-    em.text_input_buffer.clear();
+    // Clear event buffers after all UI screens have consumed them. Only clear
+    // when at least one fixed-step tick ran this frame -- otherwise tick-loop
+    // consumers (InputMappingSystem, updateUIState, EquipmentSystem) never had
+    // a chance to see the events, and clearing here would silently lose brief
+    // taps of Tab/Z/X/etc. that arrived on a 0-tick frame.
+    if (em.ticks_this_frame > 0)
+    {
+        em.key_down_events.clear();
+        em.mouse_down_events.clear();
+        em.mouse_wheel_y = 0;
+        em.text_input_buffer.clear();
+    }
 }

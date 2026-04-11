@@ -4,6 +4,37 @@
 #include <iostream>
 #include <stb_image.h>
 
+namespace
+{
+
+// Default LPC humanoid sheet dimensions, used when a missing layer is the very first
+// (no other layer has set dimensions yet). Matches assemble_spritesheet.py output.
+constexpr int FALLBACK_W = 2048;
+constexpr int FALLBACK_H = 384;
+constexpr int CHECKER_TILE = 16;
+
+// Build a magenta-and-black checkerboard so missing layers are screamingly visible.
+// Magenta = (255, 0, 255), Black = (0, 0, 0). Fully opaque so it covers other layers.
+std::vector<uint8_t> makeCheckerboard(int w, int h)
+{
+    std::vector<uint8_t> buf(static_cast<size_t>(w) * static_cast<size_t>(h) * 4);
+    for (int y = 0; y < h; ++y)
+    {
+        for (int x = 0; x < w; ++x)
+        {
+            const bool on = ((x / CHECKER_TILE) + (y / CHECKER_TILE)) % 2 == 0;
+            const size_t off = (static_cast<size_t>(y) * static_cast<size_t>(w) + x) * 4;
+            buf[off + 0] = on ? 255 : 0;
+            buf[off + 1] = 0;
+            buf[off + 2] = on ? 255 : 0;
+            buf[off + 3] = 255;
+        }
+    }
+    return buf;
+}
+
+} // namespace
+
 std::string SpriteCompositor::buildCacheKey(const std::vector<std::string>& layer_paths)
 {
     std::string key;
@@ -38,7 +69,30 @@ uint32_t SpriteCompositor::composite(const std::vector<std::string>& layer_paths
         stbi_uc* pixels = stbi_load(path.c_str(), &w, &h, &channels, STBI_rgb_alpha);
         if (!pixels)
         {
-            std::cerr << "[SpriteCompositor] Failed to load layer: " << path << "\n";
+            // Loud failure: missing layers blast a magenta checkerboard so the bug
+            // is immediately visible in-game instead of silently rendering wrong.
+            std::cerr << "[SpriteCompositor] MISSING LAYER (rendering as magenta checker): " << path
+                      << "\n";
+            if (final_w == 0)
+            {
+                final_w = FALLBACK_W;
+                final_h = FALLBACK_H;
+                buffer = makeCheckerboard(final_w, final_h);
+            }
+            else
+            {
+                const std::vector<uint8_t> checker = makeCheckerboard(final_w, final_h);
+                const size_t pixel_count =
+                    static_cast<size_t>(final_w) * static_cast<size_t>(final_h);
+                for (size_t i = 0; i < pixel_count; ++i)
+                {
+                    const size_t off = i * 4;
+                    buffer[off + 0] = checker[off + 0];
+                    buffer[off + 1] = checker[off + 1];
+                    buffer[off + 2] = checker[off + 2];
+                    buffer[off + 3] = 255;
+                }
+            }
             continue;
         }
 

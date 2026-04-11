@@ -77,22 +77,40 @@ void createWorld(Engine& engine, EntityManager& em)
             player, Camera{.x = spawnX, .y = spawnY, .prev_x = spawnX, .prev_y = spawnY});
     }
 
-    // God mode: seed inventory with every weapon + materials for testing.
+    // God mode: seed inventory with every item in the game for testing.
     const auto& dbg = em.registry().ctx().get<DebugFlags>();
     if (dbg.god_mode && em.registry().valid(player) && em.registry().all_of<Inventory>(player))
     {
         auto& inv = em.registry().get<Inventory>(player);
         const auto& items = em.registry().ctx().get<ItemRegistry>();
 
-        const std::string weaponPaths[] = {
-            "config/items/weapons/shiv.json",        "config/items/weapons/dagger.json",
-            "config/items/weapons/short_sword.json", "config/items/weapons/longsword.json",
-            "config/items/weapons/bone_club.json",   "config/items/weapons/mace.json",
-            "config/items/weapons/warhammer.json",   "config/items/weapons/great_maul.json",
-            "config/items/weapons/bow.json",         "config/items/weapons/pistol.json",
+        // Bump slot capacity so everything fits without addItem dropping items.
+        inv.max_slots = 30;
+
+        const std::string singletonPaths[] = {
+            // Weapons.
+            "config/items/weapons/shiv.json",
+            "config/items/weapons/dagger.json",
+            "config/items/weapons/short_sword.json",
+            "config/items/weapons/longsword.json",
+            "config/items/weapons/bone_club.json",
+            "config/items/weapons/mace.json",
+            "config/items/weapons/warhammer.json",
+            "config/items/weapons/great_maul.json",
+            "config/items/weapons/bow.json",
+            "config/items/weapons/pistol.json",
             "config/items/weapons/semi_auto.json",
+            // Shield.
+            "config/items/shields/bone_shield.json",
+            // Armor.
+            "config/items/armor/bone_helm.json",
+            "config/items/armor/bone_cuirass.json",
+            "config/items/armor/bone_greaves.json",
+            "config/items/armor/bone_boots.json",
+            // Accessories.
+            "config/items/accessories/bone_ring.json",
         };
-        for (const auto& path : weaponPaths)
+        for (const auto& path : singletonPaths)
         {
             ItemInstance item;
             item.config_path = path;

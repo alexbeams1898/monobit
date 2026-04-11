@@ -113,6 +113,14 @@ class EntityManager
     std::vector<int> key_down_events;
     std::vector<uint8_t> mouse_down_events;
 
+    // Number of fixed-step ticks that have run during the current frame.
+    // Set by Engine: zeroed at the start of each frame, incremented per tick.
+    // Consumed by render UI to decide whether one-shot input buffers can be
+    // cleared this frame: if 0 ticks ran, the events must persist into the next
+    // frame so a tick consumer eventually sees them. Without this, brief key
+    // taps that arrive on a 0-tick frame are silently lost.
+    int ticks_this_frame = 0;
+
     // Mouse wheel delta -- accumulated per-frame, positive = scroll up.
     int mouse_wheel_y = 0;
 

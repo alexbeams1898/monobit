@@ -270,7 +270,7 @@ static void manageAttackTokens(EntityManager& em, float px, float py, float dt)
 }
 
 static float computeEnemySpeed(EntityManager& em, entt::entity entity, AIController& ai,
-                               Transform& transform, const FormulaConfig& f, float dt)
+                               const FormulaConfig& f, float dt)
 {
     float speed = f.movement.base;
     if (em.registry().all_of<Stats>(entity))
@@ -305,14 +305,7 @@ static float computeEnemySpeed(EntityManager& em, entt::entity entity, AIControl
     speed *= ai.speed_multiplier;
 
     if (ai.sprint)
-    {
         speed *= ai.sprint_multiplier;
-        transform.scale = 1.1f;
-    }
-    else
-    {
-        transform.scale = 1.0f;
-    }
     return speed;
 }
 
@@ -599,7 +592,7 @@ void ChaseSystem::update(EntityManager& em, double dt)
             continue;
         }
 
-        const float speed = computeEnemySpeed(em, entity, ai, transform, f, fdt);
+        const float speed = computeEnemySpeed(em, entity, ai, f, fdt);
         MoveResult mr;
 
         if (ai.state == AIController::State::Chase)

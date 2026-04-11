@@ -218,11 +218,15 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
         TracyMessageL("Riposte");
     }
 
-    // Stat-requirement penalty on the attacker's weapon.
+    // Stat-requirement penalty on the attacker's weapon. God mode bypasses
+    // the penalty entirely so the player can swing any weapon at full damage.
     float penalty = 1.0f;
     if (attacker != entt::null && reg.all_of<Weapon, Stats>(attacker))
     {
-        penalty = computePenalty(reg.get<Weapon>(attacker), reg.get<Stats>(attacker), f);
+        const bool attackerGodMode =
+            reg.all_of<PlayerActions>(attacker) && reg.ctx().get<DebugFlags>().god_mode;
+        if (!attackerGodMode)
+            penalty = computePenalty(reg.get<Weapon>(attacker), reg.get<Stats>(attacker), f);
     }
     rawDamage *= penalty;
 

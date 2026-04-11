@@ -83,13 +83,22 @@ float computePlayerSpeed(entt::registry& reg, entt::entity entity, const Formula
     return speed;
 }
 
-// Drain stamina while sprinting; disable sprint when empty.
+// Drain stamina while sprinting; disable sprint when empty or locked out.
 void tickSprintStamina(entt::registry& reg, entt::entity entity, PlayerActions& actions,
                        const FormulaConfig& f, float fdt)
 {
-    if (!actions.sprint || !reg.all_of<Stamina>(entity))
+    if (!reg.all_of<Stamina>(entity))
         return;
     auto& sta = reg.get<Stamina>(entity);
+    // Sprint lockout: cleared only when stamina recovers to max. While locked,
+    // shift+WASD drops to a walk so the player can't immediately re-stagger.
+    if (sta.sprint_locked)
+    {
+        actions.sprint = false;
+        return;
+    }
+    if (!actions.sprint)
+        return;
     const float wWeight = reg.all_of<Weapon>(entity) ? reg.get<Weapon>(entity).weight : 1.0f;
     const int dexSprint = reg.all_of<Stats>(entity) ? reg.get<Stats>(entity).dex : 1;
     const float drain = wWeight * f.stamina.sprint_effort /
@@ -168,9 +177,18 @@ void applyPlayerInput(entt::registry& reg, float fdt, const FormulaConfig& f,
 {
     for (auto [entity, actions, vel] : reg.view<PlayerActions, Velocity>().each())
     {
+        // Clear sprint state immediately when locked out so the run animation
+        // doesn't keep playing through stagger/dodge/critical interrupts. The
+        // early-return below would otherwise leave FacingDirection.sprinting
+        // stale, and AnimStateSystem would still resolve to Run.
         if (reg.all_of<Dodging>(entity) || reg.all_of<Staggered>(entity) ||
             reg.all_of<CriticalAttacking>(entity) || reg.all_of<CriticalTarget>(entity))
+        {
+            actions.sprint = false;
+            if (auto* facing = reg.try_get<FacingDirection>(entity))
+                facing->sprinting = false;
             continue;
+        }
 
         float speed = computePlayerSpeed(reg, entity, f);
         tickSprintStamina(reg, entity, actions, f, fdt);

@@ -644,22 +644,24 @@ static void renderEquipStatPanel(EntityManager& em, entt::entity player, const E
     const bool has_stats = em.registry().all_of<Stats>(player);
     const Stats& stats = has_stats ? em.registry().get<Stats>(player) : Stats{1, 1, 1, 1};
     const auto& f = em.registry().ctx().get<FormulaConfig>();
+    const bool god_mode = em.registry().ctx().get<DebugFlags>().god_mode;
 
     if (sel_slot == EquipSlot::MainHand)
     {
         float stat_bottom = y;
         if (def != nullptr && def->category == ItemCategory::Weapon)
         {
-            stat_bottom = ItemStatRenderer::renderWeaponStatsFromDef(sBodyFont, *def, stats, f,
-                                                                     has_stats, cx, y, cw, val_x);
+            stat_bottom = ItemStatRenderer::renderWeaponStatsFromDef(
+                sBodyFont, *def, stats, f, has_stats, cx, y, cw, val_x, true, god_mode);
         }
         else
         {
             // Unarmed fallback.
             const Weapon w{"Unarmed", f.fist.weight,     f.fist.str_scaling, f.fist.dex_scaling, 0,
                            0,         f.fist.base_damage};
-            stat_bottom = ItemStatRenderer::renderWeaponStats(sBodyFont, w, stats, f, nullptr,
-                                                              has_stats, cx, y, cw, val_x);
+            stat_bottom =
+                ItemStatRenderer::renderWeaponStats(sBodyFont, w, stats, f, nullptr, has_stats, cx,
+                                                    y, cw, val_x, true, god_mode);
         }
 
         // Weapon XP progress.

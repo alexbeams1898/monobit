@@ -4,6 +4,7 @@
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
+#include "systems/AudioSystem.h"
 #include "systems/NotificationSystem.h"
 
 #include <algorithm>
@@ -345,14 +346,22 @@ void EquipmentSystem::update(EntityManager& em)
     auto& reg = em.registry();
     const auto& items = reg.ctx().get<ItemRegistry>();
     const auto& f = reg.ctx().get<FormulaConfig>();
+    const auto& snd = reg.ctx().get<SoundConfig>();
 
     for (auto [entity, actions, inv, equip] :
          reg.view<PlayerActions, Inventory, Equipment>().each())
     {
+        const bool switched = actions.cycle_weapon || actions.cycle_weapon_prev;
         if (actions.cycle_weapon)
             cycleWeapon(items, inv, equip, 1);
         else if (actions.cycle_weapon_prev)
             cycleWeapon(items, inv, equip, -1);
+        if (switched)
+        {
+            const auto& reload = snd.get("reload");
+            if (!reload.path.empty())
+                AudioSystem::playSfx(reload.path, reload.volume);
+        }
     }
 
     for (auto [entity, equip] : reg.view<Equipment>().each())

@@ -94,7 +94,7 @@ const char* scalingGrade(float scaling)
 
 float renderWeaponStats(FontHandle body_font, const Weapon& w, const Stats& stats,
                         const FormulaConfig& f, const ItemDef* def, bool has_stats, float cx,
-                        float y, float cw, float val_x, bool show_name)
+                        float y, float cw, float val_x, bool show_name, bool god_mode)
 {
     const float stat_line = FontManager::lineHeight(body_font) + 4.0f;
 
@@ -107,12 +107,29 @@ float renderWeaponStats(FontHandle body_font, const Weapon& w, const Stats& stat
         y += 6.0f;
     }
 
-    // Damage: base (+bonus).
-    const float total = has_stats ? computeDamage(w, stats, f) : w.base_damage;
+    // Damage: base (+/-bonus). The bonus reflects the FULLY-resolved per-swing
+    // damage relative to the weapon's base, including the stat-requirement
+    // penalty (exp(-deficit * penalty_rate)) -- so an under-stat heavy weapon
+    // shows a negative bonus instead of a misleading raw scaling number.
+    // DEF/armor are target-side and stay out of the tooltip.
+    float total = has_stats ? computeDamage(w, stats, f) : w.base_damage;
+    if (has_stats && !god_mode)
+    {
+        const int strDeficit = std::max(0, w.str_requirement - stats.str);
+        const int dexDeficit = std::max(0, w.dex_requirement - stats.dex);
+        if (strDeficit > 0 || dexDeficit > 0)
+        {
+            const float penalty =
+                std::exp(-static_cast<float>(strDeficit) * f.stat_requirement.penalty_rate) *
+                std::exp(-static_cast<float>(dexDeficit) * f.stat_requirement.penalty_rate);
+            total *= penalty;
+        }
+    }
     const int bonus = static_cast<int>(total) - static_cast<int>(w.base_damage);
+    const std::string sign = bonus >= 0 ? "+" : "";
     UIRenderer::drawText(body_font, "Damage", cx, y, LABEL_COLOR);
     UIRenderer::drawText(body_font,
-                         std::to_string(static_cast<int>(w.base_damage)) + " (+" +
+                         std::to_string(static_cast<int>(w.base_damage)) + " (" + sign +
                              std::to_string(bonus) + ")",
                          val_x, y, TEXT_WHITE);
     y += stat_line;
@@ -175,7 +192,7 @@ float renderWeaponStats(FontHandle body_font, const Weapon& w, const Stats& stat
 
 float renderWeaponStatsFromDef(FontHandle body_font, const ItemDef& def, const Stats& stats,
                                const FormulaConfig& f, bool has_stats, float cx, float y, float cw,
-                               float val_x, bool show_name)
+                               float val_x, bool show_name, bool god_mode)
 {
     Weapon w;
     w.name = def.name;
@@ -185,7 +202,8 @@ float renderWeaponStatsFromDef(FontHandle body_font, const ItemDef& def, const S
     w.dex_scaling = def.dex_scaling;
     w.str_requirement = def.str_requirement;
     w.dex_requirement = def.dex_requirement;
-    return renderWeaponStats(body_font, w, stats, f, &def, has_stats, cx, y, cw, val_x, show_name);
+    return renderWeaponStats(body_font, w, stats, f, &def, has_stats, cx, y, cw, val_x, show_name,
+                             god_mode);
 }
 
 float renderShieldStats(FontHandle body_font, const ItemDef& def, float cx, float y, float cw,
@@ -228,11 +246,11 @@ float renderArmorStats(FontHandle body_font, const ItemDef& def, float cx, float
 
 float renderItemStats(FontHandle body_font, const ItemDef& def, const Stats& stats,
                       const FormulaConfig& f, bool has_stats, float cx, float y, float cw,
-                      float val_x, bool show_name)
+                      float val_x, bool show_name, bool god_mode)
 {
     if (def.category == ItemCategory::Weapon)
         return renderWeaponStatsFromDef(body_font, def, stats, f, has_stats, cx, y, cw, val_x,
-                                        show_name);
+                                        show_name, god_mode);
 
     // Shields are armor with max_guard > 0.
     if (def.max_guard > 0.0f)

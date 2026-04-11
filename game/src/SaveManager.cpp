@@ -96,7 +96,8 @@ static json runToJson(const Run& r)
     return {{"stats", runStatsToJson(r.stats)},
             {"character_name", r.character_name},
             {"timestamp", r.timestamp},
-            {"escaped", r.escaped}};
+            {"escaped", r.escaped},
+            {"god_mode", r.god_mode}};
 }
 
 static Run runFromJson(const json& j)
@@ -107,6 +108,7 @@ static Run runFromJson(const json& j)
     r.character_name = j.value("character_name", std::string{});
     r.timestamp = j.value("timestamp", std::string{});
     r.escaped = j.value("escaped", false);
+    r.god_mode = j.value("god_mode", false);
     return r;
 }
 
@@ -250,7 +252,16 @@ void recordRun(SaveData& data, const Run& run)
 
 std::vector<Run> topRuns(const SaveData& data, int count)
 {
-    std::vector<Run> sorted = data.runs;
+    // God-mode runs are excluded from the leaderboard. They are still recorded
+    // in data.runs so the player can see them in their personal history if we
+    // ever surface that, but they don't compete with legitimate runs.
+    std::vector<Run> sorted;
+    sorted.reserve(data.runs.size());
+    for (const auto& r : data.runs)
+    {
+        if (!r.god_mode)
+            sorted.push_back(r);
+    }
     std::sort(sorted.begin(), sorted.end(),
               [](const Run& a, const Run& b) { return a.stats.score > b.stats.score; });
     if (static_cast<int>(sorted.size()) > count)

@@ -220,8 +220,8 @@ static void renderWeaponSection(EntityManager& em, entt::entity entity, float& y
     const float fill = wxp.xp_to_next > 0.0f ? wxp.current_xp / wxp.xp_to_next : 0.0f;
     const int xp_cur = static_cast<int>(wxp.current_xp);
     const int xp_max = static_cast<int>(wxp.xp_to_next);
-    const std::string label = "Lv" + std::to_string(wxp.level) + "  " + std::to_string(xp_cur) +
-                              "/" + std::to_string(xp_max);
+    const std::string label = "LVL " + std::to_string(wxp.level) + "  XP " +
+                              std::to_string(xp_cur) + "/" + std::to_string(xp_max);
     drawBarWithLabel(BAR_X, y, BAR_W, BAR_H, fill, WPN_BAR, WPN_BG, sBodyFont, label);
 }
 

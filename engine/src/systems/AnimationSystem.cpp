@@ -60,13 +60,22 @@ static void advanceAnimation(entt::registry& reg, entt::entity entity, Animation
             reverse = facing->backpedaling;
         }
     }
+    else if (anim.state == AnimState::Attack)
+    {
+        const auto* facing = reg.try_get<FacingDirection>(entity);
+        if (facing && facing->attack_anim_speed > 0.0f)
+            frameDuration *= facing->attack_anim_speed;
+    }
 
     if (frameDuration > 0.0f && sd.frames > 1)
     {
-        // Death and Hit are one-shot: freeze on the last frame. Hit only plays
-        // during Dead (non-lethal hits use TintSystem flash), so freezing it is
-        // correct here -- otherwise the hurt pose would loop during death.
-        const bool freezeLast = (anim.state == AnimState::Death || anim.state == AnimState::Hit);
+        // Death, Hit and Attack are one-shot: freeze on the last frame. Hit
+        // only plays during Dead (non-lethal hits use TintSystem flash). Attack
+        // is gated by AttackLocked from the game side -- letting it loop made
+        // heavy weapons visibly play their swing twice when the lock window
+        // exceeded the animation length.
+        const bool freezeLast = (anim.state == AnimState::Death || anim.state == AnimState::Hit ||
+                                 anim.state == AnimState::Attack);
         anim.frame_timer += dt;
         while (anim.frame_timer >= frameDuration)
         {
