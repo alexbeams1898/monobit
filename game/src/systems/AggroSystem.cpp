@@ -52,14 +52,10 @@ static void updateSprintFlag(AIController& ai, float distSq, const Stamina* sta)
     }
 }
 
-void AggroSystem::update(EntityManager& em)
+// Find the player position + sprint state. Returns false if there is no
+// player entity with a Transform this frame.
+static bool findPlayer(EntityManager& em, float& px, float& py, bool& sprinting)
 {
-    ZoneScopedN("AggroSystem");
-    float px = 0.0f;
-    float py = 0.0f;
-    bool playerSprinting = false;
-    bool playerFound = false;
-
     for (auto e : em.registry().view<PlayerActions>())
     {
         if (em.registry().all_of<Transform>(e))
@@ -67,13 +63,89 @@ void AggroSystem::update(EntityManager& em)
             const auto& t = em.registry().get<Transform>(e);
             px = t.x;
             py = t.y;
-            playerFound = true;
-            playerSprinting = em.registry().get<PlayerActions>(e).sprint;
+            sprinting = em.registry().get<PlayerActions>(e).sprint;
+            return true;
         }
         break;
     }
+    return false;
+}
 
-    if (!playerFound)
+// Snap facing toward the player so newly-aggroed enemies don't run backward.
+static void snapFacingToPlayer(EntityManager& em, entt::entity entity, float dx, float dy,
+                               float distSq)
+{
+    auto* facing = em.registry().try_get<FacingDirection>(entity);
+    if (facing == nullptr)
+        return;
+    const float dist = std::sqrt(distSq);
+    if (dist <= 0.0f)
+        return;
+    facing->dx = dx / dist;
+    facing->dy = dy / dist;
+    facing->render_dx = facing->dx;
+    facing->render_dy = facing->dy;
+    facing->aim_dx = facing->dx;
+    facing->aim_dy = facing->dy;
+}
+
+// Idle -> Chase transition. True if the state flipped.
+static bool tryAggro(EntityManager& em, entt::entity entity, AIController& ai, float dx, float dy,
+                     float distSq, float px, float py, float tx, float ty)
+{
+    if (ai.aggro_radius <= 0.0f || distSq > ai.aggro_radius * ai.aggro_radius)
+        return false;
+    if (em.tile_map.valid() && !em.tile_map.hasLineOfSight(tx, ty, px, py))
+        return false;
+    ai.state = AIController::State::Chase;
+    snapFacingToPlayer(em, entity, dx, dy, distSq);
+    tracyEntityMsg("EnemyAggro", entity, std::sqrt(distSq));
+    return true;
+}
+
+// Chase state transitions: deaggro (too far) or advance to Attack.
+static void updateChaseState(EntityManager& em, entt::entity entity, AIController& ai, float distSq,
+                             float px, float py, float tx, float ty, bool playerSprinting)
+{
+    if (ai.deaggro_radius > 0.0f && distSq > ai.deaggro_radius * ai.deaggro_radius)
+    {
+        ai.state = AIController::State::Idle;
+        tracyEntityMsg("EnemyDeaggro", entity, std::sqrt(distSq));
+        return;
+    }
+
+    // Enter Attack when within arrival radius AND line of sight is clear.
+    // Suppress while the player is kiting — enemies stay in Chase (with sprint)
+    // and follow via flow field. Battle circle forms when the player stops.
+    const bool inAttackRange = !playerSprinting && ai.attack_radius > 0.0f &&
+                               ai.arrival_radius > 0.0f &&
+                               distSq <= ai.arrival_radius * ai.arrival_radius;
+    if (!inAttackRange)
+        return;
+    if (em.tile_map.valid() && !em.tile_map.hasLineOfSight(tx, ty, px, py))
+        return;
+    ai.state = AIController::State::Attack;
+    tracyEntityMsg("EnemyAttack", entity, std::sqrt(distSq));
+}
+
+// Attack state: break back to Chase when the player sprints away.
+static void updateAttackState(entt::entity entity, AIController& ai, float distSq,
+                              bool playerSprinting)
+{
+    if (!playerSprinting)
+        return;
+    ai.state = AIController::State::Chase;
+    ai.slot_angle = AIController::NO_SLOT;
+    tracyEntityMsg("SprintBreakOff", entity, std::sqrt(distSq));
+}
+
+void AggroSystem::update(EntityManager& em)
+{
+    ZoneScopedN("AggroSystem");
+    float px = 0.0f;
+    float py = 0.0f;
+    bool playerSprinting = false;
+    if (!findPlayer(em, px, py, playerSprinting))
         return;
 
     // Sweep all AI entities and manage state transitions.
@@ -81,7 +153,7 @@ void AggroSystem::update(EntityManager& em)
     //
     // Idle  → Chase  : player enters aggro_radius.
     // Chase → Attack : player enters arrival_radius (entity begins surrounding).
-    // Attack → Chase : player exits arrival_radius × 1.2 (hysteresis prevents flicker).
+    // Attack → Chase : player sprints away (slot positions track otherwise).
     for (auto [entity, ai, transform] : em.registry().view<AIController, Transform>().each())
     {
         const float dx = px - transform.x;
@@ -89,71 +161,12 @@ void AggroSystem::update(EntityManager& em)
         const float distSq = dx * dx + dy * dy;
 
         if (ai.state == AIController::State::Idle)
-        {
-            if (ai.aggro_radius > 0.0f && distSq <= ai.aggro_radius * ai.aggro_radius &&
-                (!em.tile_map.valid() ||
-                 em.tile_map.hasLineOfSight(transform.x, transform.y, px, py)))
-            {
-                ai.state = AIController::State::Chase;
-
-                // Snap facing toward player so the enemy doesn't run backward.
-                auto* facing = em.registry().try_get<FacingDirection>(entity);
-                if (facing)
-                {
-                    const float dist = std::sqrt(distSq);
-                    if (dist > 0.0f)
-                    {
-                        facing->dx = dx / dist;
-                        facing->dy = dy / dist;
-                        facing->render_dx = facing->dx;
-                        facing->render_dy = facing->dy;
-                        facing->aim_dx = facing->dx;
-                        facing->aim_dy = facing->dy;
-                    }
-                }
-
-                tracyEntityMsg("EnemyAggro", entity, std::sqrt(distSq));
-            }
-        }
+            tryAggro(em, entity, ai, dx, dy, distSq, px, py, transform.x, transform.y);
         else if (ai.state == AIController::State::Chase)
-        {
-            // Leash: give up chase if player is too far away.
-            if (ai.deaggro_radius > 0.0f && distSq > ai.deaggro_radius * ai.deaggro_radius)
-            {
-                ai.state = AIController::State::Idle;
-                tracyEntityMsg("EnemyDeaggro", entity, std::sqrt(distSq));
-                continue;
-            }
-
-            // Enter Attack when within arrival radius AND line of sight is clear.
-            // Suppress while the player is kiting — enemies stay in Chase (with
-            // sprint) and follow via flow field. Battle circle forms when the
-            // player stops.
-            if (!playerSprinting && ai.attack_radius > 0.0f && ai.arrival_radius > 0.0f &&
-                distSq <= ai.arrival_radius * ai.arrival_radius &&
-                (!em.tile_map.valid() ||
-                 em.tile_map.hasLineOfSight(transform.x, transform.y, px, py)))
-            {
-                ai.state = AIController::State::Attack;
-                tracyEntityMsg("EnemyAttack", entity, std::sqrt(distSq));
-            }
-        }
+            updateChaseState(em, entity, ai, distSq, px, py, transform.x, transform.y,
+                             playerSprinting);
         else if (ai.state == AIController::State::Attack)
-        {
-            // Revert to Chase when the player sprints — enemies need sprint
-            // speed to keep up. They'll re-enter Attack once the player
-            // stops and they close back into arrival_radius.
-            // No distance-based breakoff: slot positions track the player,
-            // so Attack-state enemies follow naturally. Deaggro (600px)
-            // catches the "player left" case.
-            if (playerSprinting)
-            {
-                ai.state = AIController::State::Chase;
-                ai.slot_angle = AIController::NO_SLOT;
-                tracyEntityMsg("SprintBreakOff", entity, std::sqrt(distSq));
-                continue;
-            }
-        }
+            updateAttackState(entity, ai, distSq, playerSprinting);
 
         const Stamina* sta = em.registry().try_get<Stamina>(entity);
         updateSprintFlag(ai, distSq, sta);

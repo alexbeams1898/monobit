@@ -604,6 +604,158 @@ static float renderSliderRow(EntityManager& em, const AppearanceConfig& cfg, int
     return cy + rowH;
 }
 
+// Apply keyboard input to the left/right arrows of the focused row (either a
+// slider or a text cycler).
+static void handleFocusedRowArrows(EntityManager& em, const AppearanceConfig& cfg, int catIdx)
+{
+    const bool isSlider = cfg.categories[catIdx].type == AppearanceCategoryType::Slider;
+    if (isSlider)
+    {
+        const SDL_Keymod mods = SDL_GetModState();
+        const int coarse = ((mods & KMOD_SHIFT) != 0) ? 5 : 1;
+        if (keyPressed(em, SDL_SCANCODE_LEFT))
+            stepSlider(em, cfg, catIdx, -coarse);
+        if (keyPressed(em, SDL_SCANCODE_RIGHT))
+            stepSlider(em, cfg, catIdx, coarse);
+        if (keyPressed(em, SDL_SCANCODE_HOME))
+            setSliderToMin(em, cfg, catIdx);
+        if (keyPressed(em, SDL_SCANCODE_END))
+            setSliderToMax(em, cfg, catIdx);
+    }
+    else
+    {
+        if (keyPressed(em, SDL_SCANCODE_LEFT))
+            cycleCategory(em, cfg, catIdx, -1);
+        if (keyPressed(em, SDL_SCANCODE_RIGHT))
+            cycleCategory(em, cfg, catIdx, 1);
+    }
+}
+
+// Handle all keyboard input for CharCreateScreen. Returns the pending Action
+// (None if no action was triggered this frame). Writes name edits to sName
+// and focus-row changes to sFocusRow.
+static CharCreateScreen::Action handleCharCreateKeyboard(EntityManager& em,
+                                                         const AppearanceConfig* cfg, int visCount,
+                                                         int confirmRow, int backRow, int firstRow)
+{
+    // Text input (new game mode only).
+    if (!sEditMode)
+    {
+        for (const char c : em.text_input_buffer)
+        {
+            if (static_cast<int>(sName.size()) < MAX_NAME_LEN && c >= 32)
+                sName += c;
+        }
+        if (keyPressed(em, SDL_SCANCODE_BACKSPACE) && !sName.empty())
+            sName.pop_back();
+    }
+
+    // Vertical navigation.
+    if (keyPressed(em, SDL_SCANCODE_DOWN) || keyPressed(em, SDL_SCANCODE_TAB))
+        sFocusRow = (sFocusRow < backRow) ? sFocusRow + 1 : firstRow;
+    if (keyPressed(em, SDL_SCANCODE_UP))
+        sFocusRow = (sFocusRow > firstRow) ? sFocusRow - 1 : backRow;
+
+    // Left/Right on category rows.
+    if (sFocusRow >= 0 && sFocusRow < visCount && cfg != nullptr)
+        handleFocusedRowArrows(em, *cfg, sVisibleCats[sFocusRow]);
+
+    CharCreateScreen::Action result = CharCreateScreen::Action::None;
+
+    // Escape or RMB = back. Set result and fall through so the rest of the
+    // frame draws normally -- an early return here would leave the frame
+    // blank, causing a visible flash on the transition to LoadGame.
+    if (keyPressed(em, SDL_SCANCODE_ESCAPE) || mouseClicked(em, SDL_BUTTON_RIGHT))
+    {
+        SDL_StopTextInput();
+        screen_input::playClickSfx(em);
+        result = CharCreateScreen::Action::Back;
+    }
+
+    // Enter.
+    if (keyPressed(em, SDL_SCANCODE_RETURN) || keyPressed(em, SDL_SCANCODE_KP_ENTER))
+    {
+        if (sFocusRow == confirmRow)
+        {
+            if (sEditMode)
+                result = CharCreateScreen::Action::Apply;
+            else if (isNameValid())
+                result = CharCreateScreen::Action::Start;
+        }
+        else if (sFocusRow == backRow)
+        {
+            result = CharCreateScreen::Action::Back;
+        }
+        if (result != CharCreateScreen::Action::None)
+        {
+            SDL_StopTextInput();
+            screen_input::playClickSfx(em);
+        }
+    }
+
+    return result;
+}
+
+// Draw the footer Start/Apply + Back/Cancel buttons. Updates sFocusRow on
+// hover and returns an action if the user clicks one.
+static CharCreateScreen::Action drawFooterButtons(EntityManager& em, float ww, float& cy, float mx,
+                                                  float my, int confirmRow, int backRow)
+{
+    cy += 24.0f;
+    const float btnPadX = 30.0f;
+    const float btnPadY = 10.0f;
+    const float btnGap = 16.0f;
+    const float btnLineH = FontManager::lineHeight(sTitleFont);
+    const float btnH = btnLineH + btnPadY * 2.0f;
+
+    const char* confirmLabel = sEditMode ? "Apply" : "Start";
+    const char* backLabel = sEditMode ? "Cancel" : "Back";
+    const bool confirmDisabled = !sEditMode && !isNameValid();
+
+    struct BtnDef
+    {
+        const char* label;
+        int row;
+        bool disabled;
+    };
+    const BtnDef buttons[2] = {{confirmLabel, confirmRow, confirmDisabled},
+                               {backLabel, backRow, false}};
+
+    CharCreateScreen::Action result = CharCreateScreen::Action::None;
+
+    for (const auto& btn : buttons)
+    {
+        const TextSize sz = UIRenderer::measureText(sTitleFont, btn.label);
+        const float bw = sz.width + btnPadX * 2.0f;
+        const float bx = (ww - bw) * 0.5f;
+        const bool hovered =
+            !btn.disabled && mx >= bx && mx < bx + bw && my >= cy && my < cy + btnH;
+        if (hovered)
+            sFocusRow = btn.row;
+        const bool selected = (sFocusRow == btn.row);
+        const Color bgColor = (selected && !btn.disabled) ? BTN_BG_HL : BTN_BG;
+        const Color fgColor =
+            btn.disabled ? BTN_DIM : (selected ? BTN_HOVER : BTN_NORMAL);
+        UIRenderer::drawRect(bx, cy, bw, btnH, bgColor);
+        UIRenderer::drawText(sTitleFont, btn.label, bx + btnPadX, cy + btnPadY, fgColor);
+
+        if (hovered && mouseClicked(em, SDL_BUTTON_LEFT) && !btn.disabled)
+        {
+            if (btn.row == confirmRow)
+                result = sEditMode ? CharCreateScreen::Action::Apply
+                                   : CharCreateScreen::Action::Start;
+            else
+                result = CharCreateScreen::Action::Back;
+            SDL_StopTextInput();
+            screen_input::playClickSfx(em);
+        }
+
+        cy += btnH + btnGap;
+    }
+
+    return result;
+}
+
 CharCreateScreen::Action CharCreateScreen::render(EntityManager& em, int window_w, int window_h)
 {
     ZoneScopedN("CharCreateScreen");
@@ -643,85 +795,7 @@ CharCreateScreen::Action CharCreateScreen::render(EntityManager& em, int window_
         sAnimFrame = (sAnimFrame + 1) % maxFrames;
     }
 
-    // --- Input ---
-    Action result = Action::None;
-
-    // Text input (new game mode only).
-    if (!sEditMode)
-    {
-        for (const char c : em.text_input_buffer)
-        {
-            if (static_cast<int>(sName.size()) < MAX_NAME_LEN && c >= 32)
-                sName += c;
-        }
-        if (keyPressed(em, SDL_SCANCODE_BACKSPACE) && !sName.empty())
-            sName.pop_back();
-    }
-
-    // Vertical navigation.
-    if (keyPressed(em, SDL_SCANCODE_DOWN) || keyPressed(em, SDL_SCANCODE_TAB))
-        sFocusRow = (sFocusRow < backRow) ? sFocusRow + 1 : firstRow;
-    if (keyPressed(em, SDL_SCANCODE_UP))
-        sFocusRow = (sFocusRow > firstRow) ? sFocusRow - 1 : backRow;
-
-    // Left/Right on category rows.
-    if (sFocusRow >= 0 && sFocusRow < visCount && cfg != nullptr)
-    {
-        const int catIdx = sVisibleCats[sFocusRow];
-        const bool isSlider = cfg->categories[catIdx].type == AppearanceCategoryType::Slider;
-        if (isSlider)
-        {
-            const SDL_Keymod mods = SDL_GetModState();
-            const int coarse = ((mods & KMOD_SHIFT) != 0) ? 5 : 1;
-            if (keyPressed(em, SDL_SCANCODE_LEFT))
-                stepSlider(em, *cfg, catIdx, -coarse);
-            if (keyPressed(em, SDL_SCANCODE_RIGHT))
-                stepSlider(em, *cfg, catIdx, coarse);
-            if (keyPressed(em, SDL_SCANCODE_HOME))
-                setSliderToMin(em, *cfg, catIdx);
-            if (keyPressed(em, SDL_SCANCODE_END))
-                setSliderToMax(em, *cfg, catIdx);
-        }
-        else
-        {
-            if (keyPressed(em, SDL_SCANCODE_LEFT))
-                cycleCategory(em, *cfg, catIdx, -1);
-            if (keyPressed(em, SDL_SCANCODE_RIGHT))
-                cycleCategory(em, *cfg, catIdx, 1);
-        }
-    }
-
-    // Escape or RMB = back. Set result and fall through so the rest of the
-    // frame draws normally -- an early return here would leave this frame
-    // blank (nothing drawn before line ~720), causing a visible flash on the
-    // transition to LoadGame.
-    if (keyPressed(em, SDL_SCANCODE_ESCAPE) || mouseClicked(em, SDL_BUTTON_RIGHT))
-    {
-        SDL_StopTextInput();
-        screen_input::playClickSfx(em);
-        result = Action::Back;
-    }
-
-    // Enter.
-    if (keyPressed(em, SDL_SCANCODE_RETURN) || keyPressed(em, SDL_SCANCODE_KP_ENTER))
-    {
-        if (sFocusRow == confirmRow)
-        {
-            if (sEditMode)
-                result = Action::Apply;
-            else if (isNameValid())
-                result = Action::Start;
-        }
-        else if (sFocusRow == backRow)
-        {
-            result = Action::Back;
-        }
-        if (result != Action::None)
-        {
-            SDL_StopTextInput();
-            screen_input::playClickSfx(em);
-        }
-    }
+    Action result = handleCharCreateKeyboard(em, cfg, visCount, confirmRow, backRow, firstRow);
 
     // --- Drawing ---
     UIRenderer::drawRect(0.0f, 0.0f, ww, wh, OVERLAY_OPAQUE);
@@ -843,7 +917,7 @@ CharCreateScreen::Action CharCreateScreen::render(EntityManager& em, int window_
             const bool inLeftCol = (vi < leftCount);
             const float colX = inLeftCol ? leftX : rightX;
             float& colCy = inLeftCol ? leftCy : rightCy;
-            RowLayout lay{colX, colCy, colW, rowH, mx, my};
+            const RowLayout lay{colX, colCy, colW, rowH, mx, my};
 
             if (cat.type == AppearanceCategoryType::Slider)
                 colCy = renderSliderRow(em, *cfg, vi, catIdx, focused, lay);
@@ -856,53 +930,9 @@ CharCreateScreen::Action CharCreateScreen::render(EntityManager& em, int window_
         cy = std::max(leftCy, rightCy);
     }
 
-    // Buttons.
-    cy += 24.0f;
-    const float btnPadX = 30.0f;
-    const float btnPadY = 10.0f;
-    const float btnGap = 16.0f;
-    const float btnLineH = FontManager::lineHeight(sTitleFont);
-    const float btnH = btnLineH + btnPadY * 2.0f;
-
-    const char* confirmLabel = sEditMode ? "Apply" : "Start";
-    const char* backLabel = sEditMode ? "Cancel" : "Back";
-    const bool confirmDisabled = !sEditMode && !isNameValid();
-
-    struct BtnDef
-    {
-        const char* label;
-        int row;
-        bool disabled;
-    };
-    const BtnDef buttons[2] = {{confirmLabel, confirmRow, confirmDisabled},
-                               {backLabel, backRow, false}};
-
-    for (const auto& btn : buttons)
-    {
-        const TextSize sz = UIRenderer::measureText(sTitleFont, btn.label);
-        const float bw = sz.width + btnPadX * 2.0f;
-        const float bx = (ww - bw) * 0.5f;
-        const bool hovered =
-            !btn.disabled && mx >= bx && mx < bx + bw && my >= cy && my < cy + btnH;
-        if (hovered)
-            sFocusRow = btn.row;
-        const bool selected = (sFocusRow == btn.row);
-        UIRenderer::drawRect(bx, cy, bw, btnH, (selected && !btn.disabled) ? BTN_BG_HL : BTN_BG);
-        UIRenderer::drawText(sTitleFont, btn.label, bx + btnPadX, cy + btnPadY,
-                             btn.disabled ? BTN_DIM : (selected ? BTN_HOVER : BTN_NORMAL));
-
-        if (hovered && mouseClicked(em, SDL_BUTTON_LEFT) && !btn.disabled)
-        {
-            if (btn.row == confirmRow)
-                result = sEditMode ? Action::Apply : Action::Start;
-            else
-                result = Action::Back;
-            SDL_StopTextInput();
-            screen_input::playClickSfx(em);
-        }
-
-        cy += btnH + btnGap;
-    }
+    const Action btnResult = drawFooterButtons(em, ww, cy, mx, my, confirmRow, backRow);
+    if (btnResult != Action::None)
+        result = btnResult;
 
     return result;
 }
