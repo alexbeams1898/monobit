@@ -17,7 +17,7 @@ static entt::entity makePlayer(EntityManager& em, float x, float y)
     auto e = em.create();
     em.registry().emplace<PlayerActions>(e);
     em.registry().emplace<Transform>(e, Transform{x, y});
-    em.registry().emplace<Camera>(e, Camera{x, y, true});
+    em.registry().emplace<Camera>(e, Camera{.x = x, .y = y, .prev_x = x, .prev_y = y});
     em.registry().emplace<Health>(e, Health{100, 100});
     return e;
 }

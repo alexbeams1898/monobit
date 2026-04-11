@@ -23,10 +23,10 @@ add_library(game-systems STATIC
     src/ops/SpawnUtils.cpp
     src/ops/InventoryOps.cpp
     src/ops/CraftingOps.cpp
+    src/ops/AppearanceOps.cpp
     src/ops/UpdateChecker.cpp
     src/systems/EquipmentSystem.cpp
     src/systems/WeaponXPSystem.cpp
-    src/systems/CraftingSystem.cpp
     src/systems/NotificationSystem.cpp
     src/renderers/HudRenderer.cpp
     src/renderers/InteractionPromptRenderer.cpp

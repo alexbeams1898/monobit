@@ -105,9 +105,7 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
     const FormulaConfig& f = reg.ctx().get<FormulaConfig>();
     const SoundConfig& snd = reg.ctx().get<SoundConfig>();
 
-    // God mode: player takes no damage.
-    if (reg.all_of<PlayerActions>(target) && reg.ctx().get<DebugFlags>().god_mode)
-        return false;
+    const bool godMode = reg.all_of<PlayerActions>(target) && reg.ctx().get<DebugFlags>().god_mode;
 
     // I-frames: ignore if target is currently dodging.
     if (reg.all_of<Dodging>(target))
@@ -135,7 +133,7 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
             const float len = std::sqrt(toAtkX * toAtkX + toAtkY * toAtkY);
             if (len > 0.0f)
             {
-                const float dot = (toAtkX / len) * face.dx + (toAtkY / len) * face.dy;
+                const float dot = (toAtkX / len) * face.aim_dx + (toAtkY / len) * face.aim_dy;
                 fromFront = (dot > 0.0f); // dot <= 0 = behind the defender
             }
         }
@@ -183,7 +181,7 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
         if (len > 0.0f)
         {
             // Negative dot = attacker is behind the target.
-            const float dot = (toAtkX / len) * tgtFace.dx + (toAtkY / len) * tgtFace.dy;
+            const float dot = (toAtkX / len) * tgtFace.aim_dx + (toAtkY / len) * tgtFace.aim_dy;
 
             // Backstab targets that aren't actively attacking, OR are staggered
             // (stagger freezes facing, rewarding repositioning after a guard break).
@@ -252,7 +250,8 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
         return false;
 
     auto& health = reg.get<Health>(target);
-    health.current = std::max(0, health.current - dmg);
+    if (!godMode)
+        health.current = std::max(0, health.current - dmg);
 
     // Trigger red damage flash on the target.
     reg.emplace_or_replace<DamageFeedback>(target, DamageFeedback{0.2f});
@@ -287,18 +286,28 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
 
     if (health.current <= 0 && !reg.all_of<Dead>(target))
     {
-        // Set death timer from animation duration so death anim plays out.
+        // Set death timer from the Hit row duration -- AnimStateSystem routes
+        // Dead -> Hit (hurt pose as the death reaction), so the timer must
+        // match whichever row actually plays on screen, not the unused Death row.
         float deathTimer = 0.0f;
         if (reg.all_of<Animation>(target))
         {
             const auto& anim = reg.get<Animation>(target);
-            const auto& deathState = anim.states[static_cast<int>(AnimState::Death)];
-            deathTimer = static_cast<float>(deathState.frames) * deathState.duration;
+            const auto& hitState = anim.states[static_cast<int>(AnimState::Hit)];
+            deathTimer = static_cast<float>(hitState.frames) * hitState.duration;
         }
         reg.emplace<Dead>(target, Dead{deathTimer});
+        if (reg.all_of<Velocity>(target))
+            reg.get<Velocity>(target) = {0.0f, 0.0f};
         {
             const auto& dt = snd.get("death");
             AudioSystem::playSfx(dt.path, dt.volume);
+        }
+        if (reg.all_of<DeathSound>(target))
+        {
+            const auto& ds = reg.get<DeathSound>(target);
+            std::uniform_real_distribution<float> pitchDist(ds.min_pitch, ds.max_pitch);
+            AudioSystem::playSfx(ds.path, ds.volume, pitchDist(damageRng()));
         }
         TracyMessageL("EntityDied");
     }

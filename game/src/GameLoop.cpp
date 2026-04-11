@@ -25,7 +25,6 @@
 #include "systems/AnimStateSystem.h"
 #include "systems/ChaseSystem.h"
 #include "systems/CombatSystem.h"
-#include "systems/CraftingSystem.h"
 #include "systems/DamageSystem.h"
 #include "systems/DeathSystem.h"
 #include "systems/EquipmentSystem.h"
@@ -177,6 +176,12 @@ static void handleMapRegen(Engine& engine, EntityManager& em)
             auto& cam = em.registry().get<Camera>(pe);
             cam.x = spawnX;
             cam.y = spawnY;
+            cam.prev_x = spawnX;
+            cam.prev_y = spawnY;
+            cam.offset_x = 0.0f;
+            cam.offset_y = 0.0f;
+            cam.prev_offset_x = 0.0f;
+            cam.prev_offset_y = 0.0f;
         }
         break;
     }
@@ -236,13 +241,6 @@ static void updateUIState(EntityManager& em)
             else if (ui.active_screen != UIState::Screen::Crafting)
             {
                 // CraftingScreen handles its own Escape.
-                if (ui.active_screen == UIState::Screen::LevelUp &&
-                    em.registry().all_of<Experience>(entity))
-                {
-                    const auto& exp = em.registry().get<Experience>(entity);
-                    NotificationSystem::push("Level Up! (Lv " + std::to_string(exp.level) + ")",
-                                             {1.0f, 0.85f, 0.3f, 1.0f});
-                }
                 ui.active_screen = UIState::Screen::None;
             }
         }
@@ -282,7 +280,6 @@ static void updateUIState(EntityManager& em)
             actions.block_just_pressed = false;
             actions.interact = false;
             actions.mouse_click = false;
-            actions.craft = false;
             // Consume mouse buttons so held-click doesn't trigger combat
             // after the screen closes. Persists until button is released.
             em.lmb_consumed = true;
@@ -461,17 +458,6 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     // When a UI screen is open, freeze the game world.
     if (ui.isScreenOpen())
     {
-        // Force player body-part animations to Idle so the portrait doesn't
-        // loop attack/hit animations while paused.
-        for (auto pe : em.registry().view<PlayerActions>())
-        {
-            for (auto [child, bp, anim] : em.registry().view<BodyPart, Animation>().each())
-            {
-                if (bp.parent == pe && anim.state != AnimState::Idle)
-                    anim.state = AnimState::Idle;
-            }
-            break;
-        }
         handleMapRegen(engine, em);
         updateTitleBar(engine, em);
         return;
@@ -506,10 +492,8 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     EquipmentSystem::update(em);
     WaveSystem::update(em, dt);
     CombatSystem::update(em, dt);
-    AnimStateSystem::update(em);
     TintSystem::update(em, dt);
     AggroSystem::update(em);
-    AmbientSoundSystem::update(em, dt);
     {
         float px = 0.0f, py = 0.0f;
         for (auto pe : em.registry().view<PlayerActions>())
@@ -532,10 +516,11 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     SteeringSystem::update(em, dt);
     MovementSystem::update(em, dt);
     CollisionSystem::update(em);
+    AnimStateSystem::update(em);
     DamageSystem::update(em);
+    AmbientSoundSystem::update(em, dt);
     ProjectileSystem::update(em, static_cast<float>(dt));
     DeathSystem::update(em, dt);
-    CraftingSystem::update(em);
     LevelingSystem::update(em);
     WeaponXPSystem::update(em);
     RestSpotSystem::update(em, dt);
@@ -544,19 +529,38 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     CameraPanSystem::update(em, dt);
     CameraSystem::update(em);
 
-    // Lock-on camera offset: blend camera toward the locked target.
-    for (auto [entity, lockOn, transform, camera] :
-         em.registry().view<LockOnTarget, Transform, Camera>().each())
+    // Lock-on camera offset: blend toward a fraction of the player-to-target
+    // vector. Stored as an additive offset so camera and player share the same
+    // interpolation base at render time (no step-size mismatch).
+    for (auto [entity, transform, camera] : em.registry().view<Transform, Camera>().each())
     {
-        if (!em.registry().valid(lockOn.target))
+        if (!camera.active)
             continue;
-        const auto& tt = em.registry().get<Transform>(lockOn.target);
-        static constexpr float LOCK_ON_CAM_WEIGHT = 0.3f;
-        static constexpr float CAM_BLEND = 0.1f;
-        const float goalX = transform.x + (tt.x - transform.x) * LOCK_ON_CAM_WEIGHT;
-        const float goalY = transform.y + (tt.y - transform.y) * LOCK_ON_CAM_WEIGHT;
-        camera.x += (goalX - camera.x) * CAM_BLEND;
-        camera.y += (goalY - camera.y) * CAM_BLEND;
+        const auto* lockOn = em.registry().try_get<LockOnTarget>(entity);
+        if (lockOn != nullptr && em.registry().valid(lockOn->target))
+        {
+            const auto& tt = em.registry().get<Transform>(lockOn->target);
+            static constexpr float LOCK_ON_CAM_WEIGHT = 0.3f;
+            static constexpr float CAM_BLEND_SPEED = 8.0f;
+            const float t = 1.0f - std::exp(-CAM_BLEND_SPEED * static_cast<float>(dt));
+            const float goalOffX = (tt.x - transform.x) * LOCK_ON_CAM_WEIGHT;
+            const float goalOffY = (tt.y - transform.y) * LOCK_ON_CAM_WEIGHT;
+            camera.offset_x += (goalOffX - camera.offset_x) * t;
+            camera.offset_y += (goalOffY - camera.offset_y) * t;
+        }
+        else
+        {
+            // Decay offset toward zero when no lock-on.
+            static constexpr float DECAY_SPEED = 12.0f;
+            const float t = 1.0f - std::exp(-DECAY_SPEED * static_cast<float>(dt));
+            camera.offset_x += (0.0f - camera.offset_x) * t;
+            camera.offset_y += (0.0f - camera.offset_y) * t;
+            if (std::abs(camera.offset_x) < 0.1f && std::abs(camera.offset_y) < 0.1f)
+            {
+                camera.offset_x = 0.0f;
+                camera.offset_y = 0.0f;
+            }
+        }
     }
 
     handleMapRegen(engine, em);
@@ -636,6 +640,88 @@ static LockOnTarget* updateLockOn(entt::registry& reg, entt::entity entity,
     return nullptr;
 }
 
+// Called after the tick loop, with final render_alpha. Updates positions that
+// must match render interpolation (crosshair on lock-on target).
+void gamePreRender(Engine& /*engine*/, EntityManager& em)
+{
+    const float a = em.render_alpha;
+    for (auto [entity, facing, lockOn] : em.registry().view<FacingDirection, LockOnTarget>().each())
+    {
+        if (!em.registry().valid(lockOn.target))
+            continue;
+        const auto& tt = em.registry().get<Transform>(lockOn.target);
+        float tx = tt.x;
+        float ty = tt.y;
+        if (const auto* tp = em.registry().try_get<PreviousTransform>(lockOn.target))
+        {
+            tx = tp->x + (tt.x - tp->x) * a;
+            ty = tp->y + (tt.y - tp->y) * a;
+        }
+        facing.aim_override_x = tx;
+        facing.aim_override_y = ty;
+    }
+}
+
+// Update aim_dx/aim_dy from mouse or lock-on target.
+void updateAimDirection(FacingDirection& facing, const Transform& transform,
+                        const LockOnTarget* lockOn, entt::registry& reg, float mouseScreenDx,
+                        float mouseScreenDy)
+{
+    if (lockOn != nullptr)
+    {
+        const auto& tt = reg.get<Transform>(lockOn->target);
+        const float adx = tt.x - transform.x;
+        const float ady = tt.y - transform.y;
+        const float alen = std::sqrt(adx * adx + ady * ady);
+        if (alen > 0.0f)
+        {
+            facing.aim_dx = adx / alen;
+            facing.aim_dy = ady / alen;
+        }
+    }
+    else
+    {
+        const float slen = std::sqrt(mouseScreenDx * mouseScreenDx + mouseScreenDy * mouseScreenDy);
+        if (slen > 8.0f)
+        {
+            facing.aim_dx = mouseScreenDx / slen;
+            facing.aim_dy = mouseScreenDy / slen;
+        }
+    }
+}
+
+// Resolve visual facing while moving:
+// WASD locks the sprite to either the movement direction or its exact opposite.
+// Only two visual states: forward walk or backpedal. No sideways facing.
+// Aim determines which: if aim is roughly opposite movement, face the reverse
+// of the WASD direction (backpedal). Otherwise face the WASD direction.
+static constexpr float BACKPEDAL_DOT = -0.15f;
+
+// Returns true if facing was set from WASD (snap render), false if from aim (blend render).
+bool resolveVisualFacing(FacingDirection& facing, const LockOnTarget* lockOn, bool isAttacking,
+                         bool isHeldRangedFire, float wasdX, float wasdY)
+{
+    const bool moving = (wasdX != 0.0f || wasdY != 0.0f);
+    if (moving && !isAttacking && !isHeldRangedFire && lockOn == nullptr)
+    {
+        const float dot = wasdX * facing.aim_dx + wasdY * facing.aim_dy;
+        if (dot < BACKPEDAL_DOT)
+        {
+            facing.dx = -wasdX;
+            facing.dy = -wasdY;
+        }
+        else
+        {
+            facing.dx = wasdX;
+            facing.dy = wasdY;
+        }
+        return true;
+    }
+    facing.dx = facing.aim_dx;
+    facing.dy = facing.aim_dy;
+    return false;
+}
+
 void gamePerFrame(Engine& engine, EntityManager& em, double /*dt*/)
 {
     ZoneScopedN("gamePerFrame");
@@ -650,6 +736,30 @@ void gamePerFrame(Engine& engine, EntityManager& em, double /*dt*/)
     int mouseY = 0;
     SDL_GetMouseState(&mouseX, &mouseY);
 
+    const float halfW = static_cast<float>(engine.windowWidth()) * 0.5f;
+    const float halfH = static_cast<float>(engine.windowHeight()) * 0.5f;
+    const float mouseScreenDx = static_cast<float>(mouseX) - halfW;
+    const float mouseScreenDy = static_cast<float>(mouseY) - halfH;
+
+    // Poll keyboard directly so visual facing reacts instantly (before tick loop).
+    const Uint8* keys = SDL_GetKeyboardState(nullptr);
+    float wasdX = 0.0f;
+    float wasdY = 0.0f;
+    if (keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_LEFT])
+        wasdX -= 1.0f;
+    if (keys[SDL_SCANCODE_D] || keys[SDL_SCANCODE_RIGHT])
+        wasdX += 1.0f;
+    if (keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_UP])
+        wasdY -= 1.0f;
+    if (keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_DOWN])
+        wasdY += 1.0f;
+    const float wasdLen = std::sqrt(wasdX * wasdX + wasdY * wasdY);
+    if (wasdLen > 0.0f)
+    {
+        wasdX /= wasdLen;
+        wasdY /= wasdLen;
+    }
+
     static constexpr float RENDER_FACING_BLEND = 0.25f;
     for (auto [entity, actions, facing, transform] :
          em.registry().view<PlayerActions, FacingDirection, Transform>().each())
@@ -657,50 +767,54 @@ void gamePerFrame(Engine& engine, EntityManager& em, double /*dt*/)
         const LockOnTarget* lockOn =
             updateLockOn(em.registry(), entity, actions, transform, f.combat.lock_on_range);
 
-        // Facing: lock-on overrides mouse aim.
+        // Crosshair blend ramp: toward 1 when locked, toward 0 when not.
+        static constexpr float AIM_BLEND_SPEED = 0.15f;
         if (lockOn != nullptr)
         {
-            const auto& tt = em.registry().get<Transform>(lockOn->target);
-            const float dx = tt.x - transform.x;
-            const float dy = tt.y - transform.y;
-            const float len = std::sqrt(dx * dx + dy * dy);
-            if (len > 0.0f)
-            {
-                facing.dx = dx / len;
-                facing.dy = dy / len;
-            }
+            facing.aim_override_blend += (1.0f - facing.aim_override_blend) * AIM_BLEND_SPEED;
         }
         else
         {
-            const float sdx =
-                static_cast<float>(mouseX) - static_cast<float>(engine.windowWidth()) * 0.5f;
-            const float sdy =
-                static_cast<float>(mouseY) - static_cast<float>(engine.windowHeight()) * 0.5f;
-            const float slen = std::sqrt(sdx * sdx + sdy * sdy);
-            if (slen > 8.0f)
-            {
-                facing.dx = sdx / slen;
-                facing.dy = sdy / slen;
-            }
+            facing.aim_override_blend += (0.0f - facing.aim_override_blend) * AIM_BLEND_SPEED;
+            if (facing.aim_override_blend < 0.01f)
+                facing.aim_override_blend = 0.0f;
         }
 
-        facing.render_dx += (facing.dx - facing.render_dx) * RENDER_FACING_BLEND;
-        facing.render_dy += (facing.dy - facing.render_dy) * RENDER_FACING_BLEND;
-        const float rl =
-            std::sqrt(facing.render_dx * facing.render_dx + facing.render_dy * facing.render_dy);
-        if (rl > 0.0f)
+        updateAimDirection(facing, transform, lockOn, em.registry(), mouseScreenDx, mouseScreenDy);
+
+        const bool isAttacking = em.registry().all_of<AttackLocked>(entity) ||
+                                 em.registry().all_of<CriticalAttacking>(entity);
+        const bool isHeldRangedFire = actions.attack && em.registry().all_of<Weapon>(entity) &&
+                                      em.registry().get<Weapon>(entity).ranged;
+        const bool wasMovementFacing =
+            resolveVisualFacing(facing, lockOn, isAttacking, isHeldRangedFire, wasdX, wasdY);
+
+        if (wasMovementFacing)
         {
-            facing.render_dx /= rl;
-            facing.render_dy /= rl;
+            // WASD-driven facing: snap instantly (no blend delay on direction flip).
+            facing.render_dx = facing.dx;
+            facing.render_dy = facing.dy;
+        }
+        else
+        {
+            // Aim-driven facing: smooth blend to prevent jitter from mouse movement.
+            facing.render_dx += (facing.dx - facing.render_dx) * RENDER_FACING_BLEND;
+            facing.render_dy += (facing.dy - facing.render_dy) * RENDER_FACING_BLEND;
+            const float rl = std::sqrt(facing.render_dx * facing.render_dx +
+                                       facing.render_dy * facing.render_dy);
+            if (rl > 0.0f)
+            {
+                facing.render_dx /= rl;
+                facing.render_dy /= rl;
+            }
         }
 
         if (em.registry().all_of<Camera>(entity))
         {
             const auto& cam = em.registry().get<Camera>(entity);
-            actions.mouse_world_x = static_cast<float>(mouseX) -
-                                    static_cast<float>(engine.windowWidth()) * 0.5f + cam.x;
-            actions.mouse_world_y = static_cast<float>(mouseY) -
-                                    static_cast<float>(engine.windowHeight()) * 0.5f + cam.y;
+            const float z = engine.cameraZoom();
+            actions.mouse_world_x = mouseScreenDx / z + cam.x;
+            actions.mouse_world_y = mouseScreenDy / z + cam.y;
         }
     }
 }
@@ -832,6 +946,15 @@ void gameRenderUI(Engine& engine, EntityManager& em)
             auto& saveData = em.registry().ctx().get<SaveData>();
             gs.active_character = CharCreateScreen::getName();
             SaveManager::addCharacter(saveData, gs.active_character);
+            // Store chosen appearance on the new character profile.
+            for (auto& prof : saveData.characters)
+            {
+                if (prof.name == gs.active_character)
+                {
+                    prof.appearance = CharCreateScreen::getSelections();
+                    break;
+                }
+            }
             SaveManager::save(saveData);
             AudioSystem::stopMusic();
             auto& ui = em.registry().ctx().get<UIState>();
@@ -839,10 +962,34 @@ void gameRenderUI(Engine& engine, EntityManager& em)
             ui.input_suppressed = true;
             gs.pending_world_create = true;
         }
+        else if (action == CharCreateScreen::Action::Apply)
+        {
+            // Edit mode: update appearance on existing profile, return to Load Game.
+            auto& saveData = em.registry().ctx().get<SaveData>();
+            for (auto& prof : saveData.characters)
+            {
+                if (prof.name == gs.active_character)
+                {
+                    prof.appearance = CharCreateScreen::getSelections();
+                    break;
+                }
+            }
+            SaveManager::save(saveData);
+            LoadGameScreen::reset();
+            gs.phase = GameState::Phase::LoadGame;
+        }
         else if (action == CharCreateScreen::Action::Back)
         {
-            MainMenuScreen::reset();
-            gs.phase = GameState::Phase::MainMenu;
+            if (CharCreateScreen::isEditMode())
+            {
+                LoadGameScreen::reset();
+                gs.phase = GameState::Phase::LoadGame;
+            }
+            else
+            {
+                MainMenuScreen::reset();
+                gs.phase = GameState::Phase::MainMenu;
+            }
         }
         break;
     }
@@ -869,6 +1016,23 @@ void gameRenderUI(Engine& engine, EntityManager& em)
             ui = UIState{};
             ui.input_suppressed = true;
             gs.pending_world_create = true;
+        }
+        else if (action == LoadGameScreen::Action::EditLook)
+        {
+            const std::string charName = LoadGameScreen::getSelectedName();
+            gs.active_character = charName;
+            const auto& saveData = em.registry().ctx().get<SaveData>();
+            std::unordered_map<std::string, std::string> appearance;
+            for (const auto& prof : saveData.characters)
+            {
+                if (prof.name == charName)
+                {
+                    appearance = prof.appearance;
+                    break;
+                }
+            }
+            CharCreateScreen::resetForEdit(charName, appearance);
+            gs.phase = GameState::Phase::CharCreate;
         }
         else if (action == LoadGameScreen::Action::Back)
         {

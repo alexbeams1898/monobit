@@ -42,4 +42,7 @@ class ConfigLoader
 
     // Scan config/evolution/ for per-family tree JSONs and populate EvolutionRegistry.
     static bool loadEvolutionTrees(EntityManager& em, const std::string& dirPath);
+
+    // Parse config/appearance/layers.json and populate AppearanceConfig in ctx.
+    static bool loadAppearanceConfig(EntityManager& em, const std::string& filePath);
 };

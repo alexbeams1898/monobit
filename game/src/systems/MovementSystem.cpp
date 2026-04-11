@@ -8,6 +8,7 @@
 #include "systems/CombatSystem.h"
 
 #include <cmath>
+#include <random>
 #include <tracy/Tracy.hpp>
 #include <vector>
 
@@ -107,8 +108,16 @@ bool updateFacingAndBackpedal(entt::registry& reg, entt::entity entity,
     if (!facing)
         return false;
     const bool moving = (actions.move_x != 0.0f || actions.move_y != 0.0f);
-    const float dot = actions.move_x * facing->dx + actions.move_y * facing->dy;
-    const bool backpedal = moving && (dot < 0.0f);
+    const float dot = actions.move_x * facing->aim_dx + actions.move_y * facing->aim_dy;
+    // Hysteresis prevents backpedal state from flickering when strafing
+    // (dot near zero). Must cross past the dead zone to toggle.
+    static constexpr float BACKPEDAL_ENTER = -0.15f; // dot must drop below this to start
+    static constexpr float BACKPEDAL_EXIT = 0.15f;   // dot must rise above this to stop
+    bool backpedal = facing->backpedaling;
+    if (!backpedal && moving && dot < BACKPEDAL_ENTER)
+        backpedal = true;
+    else if (backpedal && (!moving || dot > BACKPEDAL_EXIT))
+        backpedal = false;
     facing->backpedaling = backpedal;
     facing->sprinting = actions.sprint;
 
@@ -135,7 +144,16 @@ void tickFootsteps(PlayerActions& actions, const SoundConfig& snd, float fdt)
             const float cadence = actions.sprint ? 0.25f : 0.4f;
             actions.step_timer = cadence;
             const auto& sfx = snd.get(actions.sprint ? "footstep_run" : "footstep_walk");
-            AudioSystem::playSfx(sfx.path, sfx.volume);
+            if (!sfx.variations.empty())
+            {
+                static std::mt19937 rng{std::random_device{}()};
+                auto dist = std::uniform_int_distribution<size_t>(0, sfx.variations.size() - 1);
+                AudioSystem::playSfx(sfx.variations[dist(rng)], sfx.volume);
+            }
+            else
+            {
+                AudioSystem::playSfx(sfx.path, sfx.volume);
+            }
         }
     }
     else
@@ -163,11 +181,20 @@ void applyPlayerInput(entt::registry& reg, float fdt, const FormulaConfig& f,
         if (backpedal)
             speed *= f.movement.backpedal_multiplier;
 
-        const float blend =
-            (actions.sprint && !backpedal) ? f.movement.sprint_blend : f.movement.walk_blend;
-        const float t = 1.0f - std::exp(-blend * fdt);
-        vel.dx += (actions.move_x * speed - vel.dx) * t;
-        vel.dy += (actions.move_y * speed - vel.dy) * t;
+        const bool inputActive = (actions.move_x != 0.0f || actions.move_y != 0.0f);
+        if (inputActive)
+        {
+            const float blend =
+                (actions.sprint && !backpedal) ? f.movement.sprint_blend : f.movement.walk_blend;
+            const float t = 1.0f - std::exp(-blend * fdt);
+            vel.dx += (actions.move_x * speed - vel.dx) * t;
+            vel.dy += (actions.move_y * speed - vel.dy) * t;
+        }
+        else
+        {
+            vel.dx = 0.0f;
+            vel.dy = 0.0f;
+        }
 
         tickFootsteps(actions, snd, fdt);
         actions.wall_bump_cooldown = std::max(0.0f, actions.wall_bump_cooldown - fdt);
@@ -321,6 +348,8 @@ void updateAIFacing(entt::registry& reg, float fdt)
         // AI visual facing = gameplay facing (already smoothed by turn_speed).
         facing.render_dx = facing.dx;
         facing.render_dy = facing.dy;
+        facing.aim_dx = facing.dx;
+        facing.aim_dy = facing.dy;
     }
 }
 

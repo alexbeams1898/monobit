@@ -95,6 +95,23 @@ void AggroSystem::update(EntityManager& em)
                  em.tile_map.hasLineOfSight(transform.x, transform.y, px, py)))
             {
                 ai.state = AIController::State::Chase;
+
+                // Snap facing toward player so the enemy doesn't run backward.
+                auto* facing = em.registry().try_get<FacingDirection>(entity);
+                if (facing)
+                {
+                    const float dist = std::sqrt(distSq);
+                    if (dist > 0.0f)
+                    {
+                        facing->dx = dx / dist;
+                        facing->dy = dy / dist;
+                        facing->render_dx = facing->dx;
+                        facing->render_dy = facing->dy;
+                        facing->aim_dx = facing->dx;
+                        facing->aim_dy = facing->dy;
+                    }
+                }
+
                 tracyEntityMsg("EnemyAggro", entity, std::sqrt(distSq));
             }
         }

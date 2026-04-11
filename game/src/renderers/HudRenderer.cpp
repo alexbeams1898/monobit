@@ -7,6 +7,7 @@
 #include "ecs/GameConfig.h"
 #include "ops/InventoryOps.h"
 #include "renderers/ItemStatRenderer.h"
+#include "utils/DebugDraw.h"
 
 #include <SDL.h>
 #include <algorithm>
@@ -17,7 +18,6 @@
 
 static FontHandle sBodyFont = INVALID_FONT;
 static FontHandle sTitleFont = INVALID_FONT;
-static TextureManager* sTexMgr = nullptr;
 
 // Layout constants.
 static constexpr float BAR_X = 20.0f;
@@ -130,32 +130,29 @@ static void renderStatusCondition(EntityManager& em, entt::entity entity, float 
     UIRenderer::drawText(sBodyFont, "Status: " + status, x, y, statusColor);
 }
 
-static void renderPortraitAndName(EntityManager& em, entt::entity /*entity*/, float& y,
+static void renderPortraitAndName(EntityManager& em, entt::entity entity, float& y,
                                   float portrait_sz, float char_h)
 {
-    const auto& gs = em.registry().ctx().get<GameState>();
+    auto& reg = em.registry();
+    const auto& gs = reg.ctx().get<GameState>();
     float name_x = BAR_X;
-    if (sTexMgr != nullptr)
+
+    // Draw full south-facing idle frame (row 0, col 0) from the player's
+    // composited sprite texture. Sheet layout is cols = direction_count *
+    // max_frames_per_state, rows = Animation::STATE_COUNT.
+    const auto* spr = reg.try_get<Sprite>(entity);
+    const auto* anim = reg.try_get<Animation>(entity);
+    if (spr != nullptr && anim != nullptr && spr->texture_id != 0)
     {
-        static const std::string headPath = "assets/sprites/player_upper.png";
-        const uint32_t tex = sTexMgr->load(headPath);
-        if (tex != 0)
+        const int cols =
+            std::max(anim->direction_count, 1) * std::max(anim->max_frames_per_state, 1);
+        const int rows = Animation::STATE_COUNT;
+        if (cols > 0 && rows > 0)
         {
-            int sheetW = 0;
-            int sheetH = 0;
-            sTexMgr->getDimensions(headPath, sheetW, sheetH);
-            // South-facing idle frame 0: crop center of upper half.
-            const float fw = 64.0f;      // frame width
-            const float fh = 64.0f;      // frame height
-            const float crop = 24.0f;    // square crop size in frame px
-            const float cx = fw * 0.5f;  // frame center x
-            const float cy = fh * 0.15f; // head near top of frame
-            const float u0 = (cx - crop * 0.5f) / static_cast<float>(sheetW);
-            const float v0 = cy / static_cast<float>(sheetH);
-            const float u1 = (cx + crop * 0.5f) / static_cast<float>(sheetW);
-            const float v1 = (cy + crop) / static_cast<float>(sheetH);
-            UIRenderer::drawTexturedRect(BAR_X, y, portrait_sz, portrait_sz, tex, u0, v0, u1, v1,
-                                         {1.0f, 1.0f, 1.0f, 1.0f});
+            const float u1 = 1.0f / static_cast<float>(cols);
+            const float v1 = 1.0f / static_cast<float>(rows);
+            UIRenderer::drawTexturedRect(BAR_X, y, portrait_sz, portrait_sz, spr->texture_id, 0.0f,
+                                         0.0f, u1, v1, {1.0f, 1.0f, 1.0f, 1.0f});
             name_x = BAR_X + portrait_sz + 4.0f;
         }
     }
@@ -302,11 +299,10 @@ static void renderScorePanel(EntityManager& em, float wh)
     UIRenderer::drawText(sTitleFont, scoreStr, numX, numY, scoreColor);
 }
 
-void HudRenderer::init(FontHandle body_font, FontHandle title_font, TextureManager* tm)
+void HudRenderer::init(FontHandle body_font, FontHandle title_font, TextureManager* /*tm*/)
 {
     sBodyFont = body_font;
     sTitleFont = title_font;
-    sTexMgr = tm;
 }
 
 static void renderPlayerHud(EntityManager& em, entt::entity entity, float ww, float wh)
@@ -438,8 +434,9 @@ static void renderCritIndicators(EntityManager& em, entt::entity entity, float w
         if (!showCrit)
             continue;
 
-        const float ex = et.x - cam.x + ww * 0.5f;
-        const float ey = et.y - cam.y + wh * 0.5f;
+        const float z = DebugDraw::sZoom;
+        const float ex = (et.x - cam.x) * z + ww * 0.5f;
+        const float ey = (et.y - cam.y) * z + wh * 0.5f;
         const float r = 10.0f + pulse * 4.0f;
         const float alpha = 0.4f + pulse * 0.3f;
         static constexpr Color CRIT_GLOW_BASE{1.0f, 0.3f, 0.1f, 1.0f};
@@ -471,24 +468,8 @@ void HudRenderer::render(EntityManager& em, int window_w, int window_h)
     {
         renderPlayerHud(em, entity, ww, wh);
 
-        // Lock-on reticle: draw a diamond marker at the target's screen position.
-        const auto* lockOn = em.registry().try_get<LockOnTarget>(entity);
-        const bool hasCamera = em.registry().all_of<Camera>(entity);
-        if (lockOn != nullptr && em.registry().valid(lockOn->target) && hasCamera)
-        {
-            const auto& cam = em.registry().get<Camera>(entity);
-            const auto& tt = em.registry().get<Transform>(lockOn->target);
-            const float sx = tt.x - cam.x + ww * 0.5f;
-            const float sy = tt.y - cam.y + wh * 0.5f;
-
-            // Diamond: 4 small rects rotated 45 degrees (approximated as cross).
-            static constexpr float S = 6.0f;
-            static constexpr Color RETICLE{1.0f, 0.85f, 0.2f, 0.9f};
-            UIRenderer::drawRect(sx - S, sy - 1.0f, S * 2.0f, 2.0f, RETICLE);
-            UIRenderer::drawRect(sx - 1.0f, sy - S, 2.0f, S * 2.0f, RETICLE);
-        }
-
         // Critical opportunity spotlight: pulsing glow on enemy center.
+        const bool hasCamera = em.registry().all_of<Camera>(entity);
         if (hasCamera && em.registry().all_of<Transform, FacingDirection>(entity))
             renderCritIndicators(em, entity, ww, wh);
         break;

@@ -57,7 +57,7 @@ TEST_CASE("CameraSystem does not update inactive Camera", "[camera]")
     EntityManager em;
     auto player = em.create();
     em.registry().emplace<Transform>(player, Transform{500.0f, 500.0f});
-    em.registry().emplace<Camera>(player, Camera{0.0f, 0.0f, false}); // active = false
+    em.registry().emplace<Camera>(player, Camera{.active = false});
 
     CameraSystem::update(em);
 

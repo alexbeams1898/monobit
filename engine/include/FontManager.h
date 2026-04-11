@@ -1,7 +1,9 @@
 #pragma once
 
 #include <cstdint>
+#include <initializer_list>
 #include <string>
+#include <vector>
 
 // ---------------------------------------------------------------------------
 // FontManager -- loads .ttf fonts via stb_truetype and bakes glyph atlases.
@@ -12,6 +14,8 @@
 // Usage:
 //   FontManager::init();
 //   int font = FontManager::loadFont("assets/fonts/gothic.ttf", 24.0f);
+//   // Or load multiple sizes into one shared atlas (fewer batch breaks):
+//   auto handles = FontManager::loadFontGroup("assets/fonts/cinzel.ttf", {28, 36, 72});
 //   FontManager::shutdown();
 // ---------------------------------------------------------------------------
 
@@ -33,8 +37,14 @@ class FontManager
     static void shutdown();
 
     // Load a font at a specific pixel size. Returns a handle for drawText().
-    // Multiple calls with different sizes create separate atlas textures.
     static FontHandle loadFont(const std::string& path, float size_px);
+
+    // Load multiple sizes from one .ttf into a shared atlas texture.
+    // Returns one handle per size, in the same order as the sizes list.
+    // All handles share the same GL texture, eliminating batch breaks
+    // when switching between sizes.
+    static std::vector<FontHandle> loadFontGroup(const std::string& path,
+                                                 std::initializer_list<float> sizes);
 
     // Look up glyph metrics for a character (ASCII 32-126).
     static const GlyphInfo* glyph(FontHandle handle, char ch);

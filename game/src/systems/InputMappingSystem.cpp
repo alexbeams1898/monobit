@@ -68,8 +68,8 @@ void InputMappingSystem::update(EntityManager& em)
     const bool dodgeJust = hasKey(kd, SDL_SCANCODE_SPACE);
     const bool autoJust = hasKey(kd, SDL_SCANCODE_P);
     const bool blockJust = hasMouse(md, SDL_BUTTON_RIGHT);
-    const bool craftJust = hasKey(kd, SDL_SCANCODE_C);
     const bool cycleWeaponJust = hasKey(kd, SDL_SCANCODE_X);
+    const bool cycleWeaponPrevJust = hasKey(kd, SDL_SCANCODE_Z);
     const bool interactJust = hasKey(kd, SDL_SCANCODE_F);
     const bool lmbJust = hasMouse(md, SDL_BUTTON_LEFT);
     const bool lockOnJust = hasMouse(md, SDL_BUTTON_MIDDLE);
@@ -88,8 +88,8 @@ void InputMappingSystem::update(EntityManager& em)
         actions.block_held = blockHeld;
         actions.block_just_pressed = blockJust;
         actions.auto_toggle_just_pressed = autoJust;
-        actions.craft = craftJust;
         actions.cycle_weapon = cycleWeaponJust;
+        actions.cycle_weapon_prev = cycleWeaponPrevJust;
         actions.interact = interactJust;
         actions.mouse_click = lmbJust;
         actions.lock_on_toggle = lockOnJust;

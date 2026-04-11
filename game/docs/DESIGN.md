@@ -425,27 +425,48 @@ with directional parry/poise combat.
 Direction determined by dominant axis of the facing vector. Ties go vertical (South).
 Uses `FacingDirection.render_dx/dy` (smoothed) for visual direction selection.
 
-### Split-Body Rendering (Player)
-Player rendered as two overlapping sprite layers: lower body (legs) faces movement direction,
-upper body (torso/head) faces aim direction (mouse). Each body part is a child entity with
-independent Animation and Sprite components.
+### Paper-Doll Sprite Compositing (Player + Cop)
+Characters are single entities with a single Sprite and Animation. The final character
+texture is built at load time by **SpriteCompositor** (`engine/include/SpriteCompositor.h`),
+which CPU-side alpha-blends a stack of LPC layer PNGs (body, head, eyes, hair, beard, torso,
+legs, feet, headwear) into one GL texture. The composited texture is cached keyed by the
+joined layer path list, so every character that picks the same combination shares one
+texture.
 
-| Player Action | Lower Body | Upper Body |
-|---|---|---|
-| Standing idle | Idle, last velocity dir | Idle, aim dir |
-| Walking | Walk, velocity dir | Idle, aim dir |
-| Walking + attacking | Walk, velocity dir | Attack, aim dir |
-| Standing + attacking | Idle, last dir | Attack, aim dir |
-| Hit | Hit | Hit |
-| Death | Death | Death |
+The layer manifest lives in `game/config/appearance/layers.json` and is loaded into the
+`AppearanceConfig` registry singleton. Each category is either:
+- a **Select** category that contributes one sprite layer (body, hair, torso, etc.)
+- a **Slider** category that writes a numeric value (currently only `size` -> `Transform.scale`)
 
-**LPC asset limitation (accepted):** LPC sprites have no torso-twist frames. The vertical
-split at y=35 (within each 64x64 frame) means only head and slight shoulders visually rotate.
-Full torso rotation requires custom art — planned for future, likely alongside character
-creation system.
+Select categories support two special flags:
+- `linked_to` -- auto-resolve this category from another's selection (e.g. `head` links to
+  `body_color` so face variants match skin tone)
+- `combine_with` -- build the file name by joining two selections
+  (`hair_color` combine_with `hair_style` -> `long_black.png`)
 
-**Enemies** use single-sprite animation (no split-body). Skeleton sprites sourced from the
-LPC skeleton universal sheet.
+At character creation, `CharCreateScreen` reads the manifest and renders cycling selectors,
+**palette-swatch grids** (for colors with a `swatch` hex value set), and sliders. Clicking a
+swatch triggers a live re-composite of the preview.
+
+**Body facing:** The single character sprite faces according to the WASD-locked facing rules
+documented in `docs/CLAUDE.md` (see "WASD-locked facing"). The lower/upper split that the
+earlier #81 plan used is gone -- WASD locking gives the twin-stick feel and paper-doll
+compositing gives the visible-equipment feel, and neither needs multiple child entities.
+
+**LPC asset limitation (accepted):** LPC sprites have no torso-twist frames. The character
+always faces in a cardinal direction; there is no independent upper/lower rotation. This is
+fine for top-down action and matches every other game using LPC art.
+
+**Skeleton enemies** use a single hand-composited LPC skeleton sheet -- no SpriteCompositor,
+no AppearanceDef. Simpler and perfectly adequate for enemies with no customization.
+
+**Cop enemies** use the same AppearanceDef pipeline as the player, with layers fully
+pre-resolved in `config/entities/cop.json` (no selection UI). This lets enemy variants share
+the paper-doll system without paying runtime customization cost.
+
+See `docs/SPRITE-UPGRADE-NOTES.md` for the full implementation log, including what shipped
+vs. the original issue #81 plan and the asset pipeline
+(`fetch_lpc.py` -> `bake_palettes.py` -> `assemble_spritesheet.py`).
 
 ---
 

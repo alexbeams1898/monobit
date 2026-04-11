@@ -145,6 +145,41 @@ TEST_CASE("addItem fails when inventory full", "[inventory]")
     REQUIRE(inv.items.size() == 1);
 }
 
+TEST_CASE("addItem stackable remainder gets correct quantity", "[inventory]")
+{
+    auto reg = makeRegistry();
+    Inventory inv;
+    inv.max_slots = 5;
+
+    // Fill a stack almost to max (99).
+    InventoryOps::addItem(inv, makeItem("config/items/materials/scrap_metal.json", 95), reg);
+    REQUIRE(inv.items.size() == 1);
+    REQUIRE(inv.items[0].quantity == 95);
+
+    // Add 10 more — 4 merge into existing, 6 overflow to new slot.
+    REQUIRE(
+        InventoryOps::addItem(inv, makeItem("config/items/materials/scrap_metal.json", 10), reg));
+    REQUIRE(inv.items.size() == 2);
+    REQUIRE(inv.items[0].quantity == 99);
+    REQUIRE(inv.items[1].quantity == 6);
+}
+
+TEST_CASE("addItem stackable overflow with full inventory", "[inventory]")
+{
+    auto reg = makeRegistry();
+    Inventory inv;
+    inv.max_slots = 1;
+
+    // Fill one stack to max.
+    InventoryOps::addItem(inv, makeItem("config/items/materials/scrap_metal.json", 99), reg);
+
+    // Try to add more — no room for overflow slot.
+    REQUIRE_FALSE(
+        InventoryOps::addItem(inv, makeItem("config/items/materials/scrap_metal.json", 5), reg));
+    // Original stack unchanged.
+    REQUIRE(inv.items[0].quantity == 99);
+}
+
 // ---------------------------------------------------------------------------
 // removeItem tests
 // ---------------------------------------------------------------------------

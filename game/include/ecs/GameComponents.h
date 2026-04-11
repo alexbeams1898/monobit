@@ -28,8 +28,8 @@ struct PlayerActions
     bool block_held = false;
     bool block_just_pressed = false;
     bool auto_toggle_just_pressed = false;
-    bool craft = false;
     bool cycle_weapon = false;
+    bool cycle_weapon_prev = false;
     bool interact = false;
     bool mouse_click = false;
     float mouse_world_x = 0.0f;
@@ -253,6 +253,9 @@ struct RestSpot
 {
     float radius = 64.0f;
     float cooldown = 0.0f;
+    float sound_timer = 0.0f;
+    int sound_index = 0;
+    bool player_present = false;
 };
 
 // AutoAttackMode -- when enabled, CombatSystem fires weapons automatically.
@@ -418,8 +421,8 @@ struct Equipment
     bool two_handing = false;
 
     // Index into Inventory::items for the currently equipped weapon.
-    // -1 = fists (no inventory slot). Used by Tab cycling to avoid ambiguity
-    // when multiple weapons share the same config_path + quality.
+    // -1 = fists (no inventory slot). Used by X-key cycling to return the
+    // weapon to its original inventory position so order stays stable.
     int main_hand_slot = -1;
 
     // EquipmentSystem compares these to detect slot changes.
@@ -444,6 +447,15 @@ struct InteractTarget
 // HitSound -- per-entity sound played when the entity takes damage.
 // Overrides the global SoundConfig::hit for this entity.
 struct HitSound
+{
+    std::string path;
+    float volume = 0.5f;
+    float min_pitch = 0.9f;
+    float max_pitch = 1.1f;
+};
+
+// DeathSound -- per-entity sound played once when the entity dies.
+struct DeathSound
 {
     std::string path;
     float volume = 0.5f;
@@ -480,6 +492,24 @@ struct AmbientSound
     float timer = 0.0f;
     int shuffle_index = 0;
     std::vector<int> shuffle_order;
+};
+
+// AggroSound -- sounds played on a random timer while the entity is aggro'd
+// (AIController::State != Idle). First sound plays immediately on aggro.
+struct AggroSound
+{
+    std::vector<std::string> paths;
+    float volume = 0.4f;
+    float min_interval = 3.0f;
+    float max_interval = 8.0f;
+    float max_distance = 400.0f;
+    float min_pitch = 0.85f;
+    float max_pitch = 1.15f;
+    float timer = 0.0f;
+    bool was_aggro = false; // tracks state transition for immediate first sound
+    int shuffle_index = 0;
+    std::vector<int> shuffle_order;
+    int voice = -1; // tracked voice index for stopping on hit
 };
 
 // Projectile -- a moving damage entity (bullet, arrow) spawned by CombatSystem.

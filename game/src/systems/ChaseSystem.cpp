@@ -587,6 +587,9 @@ void ChaseSystem::update(EntityManager& em, double dt)
     for (auto [entity, ai, transform, vel] :
          em.registry().view<AIController, Transform, Velocity>().each())
     {
+        if (em.registry().all_of<Dead>(entity))
+            continue;
+
         if (ai.state == AIController::State::Idle && ai.slot_angle != AIController::NO_SLOT)
             ai.slot_angle = AIController::NO_SLOT;
 

@@ -88,28 +88,33 @@ bool addItem(Inventory& inv, const ItemInstance& item, const ItemRegistry& regis
     const bool stackable = def != nullptr && def->stackable;
     const int maxStack = (def != nullptr) ? def->max_stack : 1;
 
+    int remaining = item.quantity;
+
     if (stackable)
     {
-        // Try to merge into an existing stack.
+        // Merge into existing stacks as much as possible.
         for (auto& existing : inv.items)
         {
+            if (remaining <= 0)
+                break;
             if (existing.config_path == item.config_path && existing.quantity < maxStack)
             {
                 const int space = maxStack - existing.quantity;
-                const int toAdd = (item.quantity <= space) ? item.quantity : space;
+                const int toAdd = (remaining <= space) ? remaining : space;
                 existing.quantity += toAdd;
-                if (toAdd >= item.quantity)
-                    return true;
-                // Remainder needs a new slot (handled below).
-                // For simplicity, we don't split across multiple stacks here.
+                remaining -= toAdd;
             }
         }
+        if (remaining <= 0)
+            return true;
     }
 
     if (static_cast<int>(inv.items.size()) >= inv.max_slots)
-        return false;
+        return remaining <= 0;
 
-    inv.items.push_back(item);
+    ItemInstance remainder = item;
+    remainder.quantity = remaining;
+    inv.items.push_back(remainder);
     return true;
 }
 
@@ -162,7 +167,10 @@ bool equipItem(Inventory& inv, Equipment& equip, int inv_index, const ItemRegist
     target = std::move(incoming);
 
     if (slot == EquipSlot::MainHand)
+    {
         equip.two_handing = def->two_handed;
+        equip.main_hand_slot = inv_index;
+    }
 
     return true;
 }

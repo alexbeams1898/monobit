@@ -16,6 +16,11 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt);
 // before the fixed-step loop. Handles mouse-aim facing at display rate.
 void gamePerFrame(Engine& engine, EntityManager& em, double dt);
 
+// Pre-render callback. Runs after the tick loop with final render_alpha.
+// Updates positions that must match render interpolation (e.g. crosshair on
+// lock-on target).
+void gamePreRender(Engine& engine, EntityManager& em);
+
 // Debug render callback. Called once per frame between UIRenderer::beginFrame()
 // and the UI render callback. DebugDraw::setCamera() is already configured.
 void gameRenderDebug(Engine& engine, EntityManager& em);

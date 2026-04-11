@@ -121,6 +121,7 @@ int main(int argc, char* argv[])
     em.registry().ctx().emplace<SaveData>();
     em.registry().ctx().emplace<AttackTokenPool>();
     em.registry().ctx().emplace<DebugFlags>();
+    em.registry().ctx().emplace<AppearanceConfig>();
 
     // Load configs.
     ConfigLoader::loadFormulas(em, "config/balance/formulas.json");
@@ -134,6 +135,8 @@ int main(int argc, char* argv[])
     ConfigLoader::loadMusic(em, "config/audio/music.json");
     ConfigLoader::loadWaves(em, "config/waves.json");
     ConfigLoader::loadScoring(em, "config/balance/scoring.json");
+    ConfigLoader::loadAppearanceConfig(em, "config/appearance/layers.json");
+    em.registry().ctx().get<AppearanceConfig>().compositor = &engine.spriteCompositor();
 
     // Migrate old saves from build/bin/saves/ to %APPDATA% if needed.
     SaveManager::migrateOldSave();
@@ -148,10 +151,14 @@ int main(int argc, char* argv[])
     // Play main menu music (random chance of rare reversed variant).
     playMainMenuMusic(em);
 
-    // Load fonts and init all UI screens.
-    const FontHandle bodyFont = FontManager::loadFont("assets/fonts/cinzel.ttf", 28.0f);
-    const FontHandle titleFont = FontManager::loadFont("assets/fonts/cinzel.ttf", 36.0f);
-    const FontHandle bigTitleFont = FontManager::loadFont("assets/fonts/cinzel.ttf", 72.0f);
+    // Load all font sizes into one shared atlas (eliminates batch breaks
+    // when UIRenderer switches between sizes mid-frame).
+    const auto fonts =
+        FontManager::loadFontGroup("assets/fonts/cinzel.ttf", {28.0f, 34.0f, 36.0f, 72.0f});
+    const FontHandle bodyFont = fonts[0];
+    const FontHandle creatorBodyFont = fonts[1];
+    const FontHandle titleFont = fonts[2];
+    const FontHandle bigTitleFont = fonts[3];
     gameLoopInit(titleFont);
     HudRenderer::init(bodyFont, titleFont, &engine.textureManager());
     NotificationSystem::init(bodyFont, titleFont);
@@ -162,7 +169,7 @@ int main(int argc, char* argv[])
     PauseMenu::init(bodyFont, titleFont, &engine.textureManager());
     LevelUpScreen::init(bodyFont, titleFont);
     MainMenuScreen::init(bodyFont, titleFont, bigTitleFont);
-    CharCreateScreen::init(bodyFont, titleFont);
+    CharCreateScreen::init(creatorBodyFont, titleFont);
     LoadGameScreen::init(bodyFont, titleFont, bigTitleFont);
     GameOverScreen::init(bodyFont, titleFont, bigTitleFont);
     VictoryScreen::init(bodyFont, titleFont, bigTitleFont);
@@ -172,8 +179,10 @@ int main(int argc, char* argv[])
     SettingsScreen::init(bodyFont, titleFont);
     CraftingScreen::init(bodyFont, titleFont);
 
+    engine.setCameraZoom(2.0f);
     engine.setGameUpdate(&gameUpdate);
     engine.setPerFrameUpdate(&gamePerFrame);
+    engine.setPreRender(&gamePreRender);
     engine.setRenderDebug(&gameRenderDebug);
     engine.setRenderUI(&gameRenderUI);
     engine.run();

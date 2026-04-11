@@ -184,20 +184,25 @@ static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::en
     if (sprite.texture_path.empty() && sprite.texture_id == 0 && !hasSolidColor)
         return false;
 
-    const uint32_t tex_id = sprite.texture_path.empty() ? 0 : tm.load(sprite.texture_path);
+    const uint32_t tex_id =
+        sprite.texture_path.empty() ? sprite.texture_id : tm.load(sprite.texture_path);
     int tex_w = 0, tex_h = 0;
     if (!sprite.texture_path.empty())
+    {
         tm.getDimensions(sprite.texture_path, tex_w, tex_h);
+    }
+    else if (const auto* anim = em.registry().try_get<Animation>(entity))
+    {
+        // Pre-baked composite: derive sheet dims from animation layout.
+        tex_w = anim->frame_width * anim->max_frames_per_state * anim->direction_count;
+        tex_h = anim->frame_height * Animation::STATE_COUNT;
+    }
 
     auto& reg = em.registry();
-    const auto* bp = reg.try_get<BodyPart>(entity);
 
     float tr = 1.0f, tg = 1.0f, tb = 1.0f;
     float ta = 1.0f;
-    entt::entity tintEntity = entity;
-    if (bp && reg.valid(bp->parent))
-        tintEntity = bp->parent;
-    computeTint(em, tintEntity, tr, tg, tb);
+    computeTint(em, entity, tr, tg, tb);
 
     if (const auto* particle = reg.try_get<Particle>(entity))
     {
@@ -239,15 +244,13 @@ static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::en
     const float scale = transform.scale;
 
     const Collider* col = reg.try_get<Collider>(entity);
-    if (!col && bp && reg.valid(bp->parent))
-        col = reg.try_get<Collider>(bp->parent);
 
     float yOffset = 0.0f;
     if (col)
         yOffset = (static_cast<float>(sprite.src_h) * scale - col->height) * 0.5f;
 
     const float sortY = col ? drawY + col->height * 0.5f : drawY;
-    const int subLayer = (bp && bp->direction_from_facing) ? 1 : 0;
+    const int subLayer = 0;
 
     float glowScale = 0.0f;
     float glowAlpha = 0.0f;
@@ -282,7 +285,7 @@ static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::en
     return true;
 }
 
-void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, float camY)
+void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, float camY, float zoom)
 {
     ZoneScopedN("RenderSystem");
     const float alpha = em.render_alpha;
@@ -312,8 +315,8 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
 
     const float snapCamX = std::round(camX);
     const float snapCamY = std::round(camY);
-    const float halfW = static_cast<float>(sWindowW) * 0.5f;
-    const float halfH = static_cast<float>(sWindowH) * 0.5f;
+    const float halfW = static_cast<float>(sWindowW) * 0.5f / zoom;
+    const float halfH = static_cast<float>(sWindowH) * 0.5f / zoom;
     float proj[16];
     engine::gl::buildOrtho(proj, snapCamX - halfW, snapCamX + halfW, snapCamY + halfH,
                            snapCamY - halfH);
@@ -371,12 +374,25 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
         }
     }
 
-    // Crosshair
+    // Crosshair -- lerps between mouse position and aim override.
     {
         int mx = 0, my = 0;
         SDL_GetMouseState(&mx, &my);
-        const float worldX = snapCamX + static_cast<float>(mx) - halfW;
-        const float worldY = snapCamY + static_cast<float>(my) - halfH;
+        const float screenHalfW = static_cast<float>(sWindowW) * 0.5f;
+        const float screenHalfH = static_cast<float>(sWindowH) * 0.5f;
+        float crossX = snapCamX + (static_cast<float>(mx) - screenHalfW) / zoom;
+        float crossY = snapCamY + (static_cast<float>(my) - screenHalfH) / zoom;
+
+        for (auto [e, f] : em.registry().view<FacingDirection>().each())
+        {
+            if (f.aim_override_blend > 0.0f)
+            {
+                const float b = f.aim_override_blend;
+                crossX = crossX + (f.aim_override_x - crossX) * b;
+                crossY = crossY + (f.aim_override_y - crossY) * b;
+                break;
+            }
+        }
 
         static constexpr float kArmLen = 6.0f;
         static constexpr float kThick = 2.0f;
@@ -387,18 +403,18 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
         glUniform4f(sLocTint, 1.0f, 1.0f, 1.0f, 0.8f);
 
         float cModel[16];
-        engine::gl::buildModel(cModel, worldX - kGap - kArmLen, worldY - kThick * 0.5f, kArmLen,
+        engine::gl::buildModel(cModel, crossX - kGap - kArmLen, crossY - kThick * 0.5f, kArmLen,
                                kThick);
         glUniformMatrix4fv(sLocModel, 1, GL_FALSE, cModel);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-        engine::gl::buildModel(cModel, worldX + kGap, worldY - kThick * 0.5f, kArmLen, kThick);
+        engine::gl::buildModel(cModel, crossX + kGap, crossY - kThick * 0.5f, kArmLen, kThick);
         glUniformMatrix4fv(sLocModel, 1, GL_FALSE, cModel);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-        engine::gl::buildModel(cModel, worldX - kThick * 0.5f, worldY - kGap - kArmLen, kThick,
+        engine::gl::buildModel(cModel, crossX - kThick * 0.5f, crossY - kGap - kArmLen, kThick,
                                kArmLen);
         glUniformMatrix4fv(sLocModel, 1, GL_FALSE, cModel);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-        engine::gl::buildModel(cModel, worldX - kThick * 0.5f, worldY + kGap, kThick, kArmLen);
+        engine::gl::buildModel(cModel, crossX - kThick * 0.5f, crossY + kGap, kThick, kArmLen);
         glUniformMatrix4fv(sLocModel, 1, GL_FALSE, cModel);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
     }
@@ -414,6 +430,8 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
     for (auto [entity, transform, facing] : em.registry().view<Transform, FacingDirection>().each())
     {
         if (em.registry().all_of<Animation>(entity) || !em.registry().all_of<Sprite>(entity))
+            continue;
+        if (facing.aim_override_blend > 0.5f)
             continue;
         float anchorX = std::round(transform.x);
         float anchorY = std::round(transform.y);

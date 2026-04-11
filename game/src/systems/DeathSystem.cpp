@@ -261,8 +261,7 @@ static void spawnDrops(EntityManager& em, const Loot& loot, float deathX, float 
     }
 }
 
-// Grant XP directly to the player, cascade-destroy body-part children, then
-// destroy entity.
+// Grant XP directly to the player, then destroy entity.
 static void processEnemyDeath(EntityManager& em, entt::entity entity, const Loot& loot)
 {
     auto& reg = em.registry();
@@ -336,13 +335,6 @@ static void processEnemyDeath(EntityManager& em, entt::entity entity, const Loot
         spawnDrops(em, loot, t.x, t.y, playerLck, totalEssence, f);
     }
 
-    std::vector<entt::entity> children;
-    for (auto [child, bp] : reg.view<BodyPart>().each())
-        if (bp.parent == entity)
-            children.push_back(child);
-    for (auto child : children)
-        em.destroy(child);
-
     em.destroy(entity);
 }
 
@@ -387,14 +379,6 @@ void DeathSystem::update(EntityManager& em, double dt)
     {
         if (entry.is_player)
         {
-            // Destroy body-part children so the player sprite disappears.
-            std::vector<entt::entity> children;
-            for (auto [child, bp] : reg.view<BodyPart>().each())
-                if (bp.parent == entry.entity)
-                    children.push_back(child);
-            for (auto child : children)
-                em.destroy(child);
-
             reg.remove<Dead>(entry.entity);
             if (reg.all_of<Health>(entry.entity))
                 reg.get<Health>(entry.entity).current = 0;

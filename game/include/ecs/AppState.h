@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 // ---------------------------------------------------------------------------
@@ -103,6 +104,7 @@ struct PlayerProfile
 {
     std::string name;
     int money = 0;
+    std::unordered_map<std::string, std::string> appearance; // category_id -> option_id
 };
 
 // ---------------------------------------------------------------------------
@@ -122,7 +124,7 @@ struct Run
 // ---------------------------------------------------------------------------
 struct SaveData
 {
-    static constexpr int CURRENT_VERSION = 1;
+    static constexpr int CURRENT_VERSION = 2;
 
     int schema_version = CURRENT_VERSION;
     std::vector<PlayerProfile> characters;

@@ -444,16 +444,16 @@ void CombatSystem::update(EntityManager& em, double dt)
             if (em.registry().all_of<Velocity>(entity))
             {
                 auto& vel = em.registry().get<Velocity>(entity);
-                vel.dx -= facing.dx * 40.0f;
-                vel.dy -= facing.dy * 40.0f;
+                vel.dx -= facing.aim_dx * 40.0f;
+                vel.dy -= facing.aim_dy * 40.0f;
             }
         }
 
         if (fireAttack)
         {
             // In auto mode, aim toward the nearest chasing/attacking enemy.
-            float facingX = facing.dx;
-            float facingY = facing.dy;
+            float facingX = facing.aim_dx;
+            float facingY = facing.aim_dy;
 
             if (em.registry().all_of<AutoAttackMode>(entity) &&
                 em.registry().get<AutoAttackMode>(entity).enabled)
@@ -477,9 +477,9 @@ void CombatSystem::update(EntityManager& em, double dt)
                         }
                     }
                 }
-                // Update stored facing so MovementSystem sees the right direction.
-                facing.dx = (facingX != 0.0f || facingY != 0.0f) ? facingX : facing.dx;
-                facing.dy = (facingX != 0.0f || facingY != 0.0f) ? facingY : facing.dy;
+                // Update aim so hitbox/projectile fires toward the auto-target.
+                facing.aim_dx = (facingX != 0.0f || facingY != 0.0f) ? facingX : facing.aim_dx;
+                facing.aim_dy = (facingX != 0.0f || facingY != 0.0f) ? facingY : facing.aim_dy;
             }
 
             if (weapon.ranged)
@@ -612,8 +612,8 @@ void CombatSystem::update(EntityManager& em, double dt)
             !isStaggered && !isCritLocked && staCurrent >= skillCost)
         {
             const float skillReach = f.combat.skill_reach;
-            const float hx = transform.x + facing.dx * skillReach;
-            const float hy = transform.y + facing.dy * skillReach;
+            const float hx = transform.x + facing.aim_dx * skillReach;
+            const float hy = transform.y + facing.aim_dy * skillReach;
             float dmg = weapon.base_damage * f.combat.skill_damage_mult;
             if (em.registry().all_of<Stats>(entity))
                 dmg = computeDamage(weapon, em.registry().get<Stats>(entity), f) *
@@ -677,8 +677,8 @@ void CombatSystem::update(EntityManager& em, double dt)
                 if (moving)
                 {
                     // Build a local frame: forward = toward target, right = perpendicular.
-                    const float fwd_x = facing.dx;
-                    const float fwd_y = facing.dy;
+                    const float fwd_x = facing.aim_dx;
+                    const float fwd_y = facing.aim_dy;
                     const float right_x = -fwd_y;
                     const float right_y = fwd_x;
                     // Map WASD to local axes: W=forward, S=back, A=left, D=right.
@@ -694,22 +694,22 @@ void CombatSystem::update(EntityManager& em, double dt)
                 else
                 {
                     // No input → backstep away from target.
-                    dodgeX = -facing.dx;
-                    dodgeY = -facing.dy;
+                    dodgeX = -facing.aim_dx;
+                    dodgeY = -facing.aim_dy;
                 }
             }
             else if (nearEnemy)
             {
-                // Backstep: opposite of facing.
-                dodgeX = -facing.dx;
-                dodgeY = -facing.dy;
+                // Backstep: opposite of aim direction.
+                dodgeX = -facing.aim_dx;
+                dodgeY = -facing.aim_dy;
             }
             else
             {
-                // Normal roll: current movement direction, or facing fallback.
+                // Normal roll: current movement direction, or aim fallback.
                 const bool moving = actions.move_x != 0.0f || actions.move_y != 0.0f;
-                dodgeX = moving ? actions.move_x : facing.dx;
-                dodgeY = moving ? actions.move_y : facing.dy;
+                dodgeX = moving ? actions.move_x : facing.aim_dx;
+                dodgeY = moving ? actions.move_y : facing.aim_dy;
             }
 
             if (em.registry().all_of<Velocity>(entity))
@@ -742,8 +742,8 @@ void CombatSystem::update(EntityManager& em, double dt)
             if (em.registry().all_of<Velocity>(entity))
             {
                 auto& vel = em.registry().get<Velocity>(entity);
-                vel.dx -= facing.dx * 40.0f;
-                vel.dy -= facing.dy * 40.0f;
+                vel.dx -= facing.aim_dx * 40.0f;
+                vel.dy -= facing.aim_dy * 40.0f;
             }
         }
 
@@ -860,6 +860,8 @@ void CombatSystem::update(EntityManager& em, double dt)
                     auto& fd = em.registry().get<FacingDirection>(entity);
                     fd.dx = nx;
                     fd.dy = ny;
+                    fd.aim_dx = nx;
+                    fd.aim_dy = ny;
                 }
 
                 // Stamina cost — same formula as player swings.

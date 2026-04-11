@@ -6,6 +6,7 @@
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
+#include "ops/AppearanceOps.h"
 #include "ops/InventoryOps.h"
 #include "systems/LevelingSystem.h"
 #include "systems/TileMapRenderer.h"
@@ -59,16 +60,21 @@ void createWorld(Engine& engine, EntityManager& em)
         auto& wallet = em.registry().emplace<Wallet>(player);
         const auto& saveData = em.registry().ctx().get<SaveData>();
         const auto& charName = em.registry().ctx().get<GameState>().active_character;
+        std::unordered_map<std::string, std::string> savedAppearance;
         for (const auto& prof : saveData.characters)
         {
             if (prof.name == charName)
             {
                 wallet.money = prof.money;
+                savedAppearance = prof.appearance;
                 break;
             }
         }
+        AppearanceOps::resolveAppearance(em, player, engine.spriteCompositor(), savedAppearance);
+        AppearanceOps::applyAppearanceScale(em, player, savedAppearance);
         em.registry().emplace<InteractTarget>(player);
-        em.registry().emplace<Camera>(player, Camera{spawnX, spawnY, true});
+        em.registry().emplace<Camera>(
+            player, Camera{.x = spawnX, .y = spawnY, .prev_x = spawnX, .prev_y = spawnY});
     }
 
     // God mode: seed inventory with every weapon + materials for testing.

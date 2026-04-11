@@ -304,7 +304,7 @@ parry = reverb(parry, delay_ms=35, feedback=0.4, mix=0.3)
 parry = highpass(parry, 400)
 write_wav("parry.ogg", parry)
 
-# --- death.ogg --- descending tone with distortion + reverb
+# --- death.ogg --- descending tone with lowpass + gentle reverb
 death = []
 for i in range(int(SAMPLE_RATE * 0.3)):
     t = i / SAMPLE_RATE
@@ -312,8 +312,8 @@ for i in range(int(SAMPLE_RATE * 0.3)):
     freq = 400 - 300 * progress
     env = 1.0 - progress
     death.append(math.sin(2 * math.pi * freq * t) * 0.4 * env)
-death = distort(death, 2.0)
-death = reverb(death, delay_ms=50, feedback=0.3, mix=0.25)
+death = lowpass(death, 2000)
+death = reverb(death, delay_ms=30, feedback=0.15, mix=0.15)
 write_wav("death.ogg", death)
 
 # --- pickup.ogg --- rising chime with sparkle reverb
@@ -675,54 +675,7 @@ semi_samples = compress(semi_samples, threshold=0.25, ratio=4.0)
 semi_samples = reverb(semi_samples, delay_ms=20, feedback=0.15, mix=0.15)
 write_wav("weapons/gunshot_semi.ogg", semi_samples)
 
-# --- reload.ogg --- mechanical click-clack magazine insertion
-random.seed(220)
-reload_dur = 0.4
-reload_n = int(SAMPLE_RATE * reload_dur)
-reload_samples = [0.0] * reload_n
-# Click 1: magazine eject (t=0.0)
-for i in range(int(SAMPLE_RATE * 0.05)):
-    t = i / SAMPLE_RATE
-    env = (1.0 - i / (SAMPLE_RATE * 0.05)) ** 2
-    click = math.sin(2 * math.pi * 1800 * t) * 0.3 * env
-    click += (random.random() * 2 - 1) * 0.15 * env
-    reload_samples[i] += click
-# Slide sound (t=0.12)
-slide_start = int(SAMPLE_RATE * 0.12)
-for i in range(int(SAMPLE_RATE * 0.08)):
-    idx = slide_start + i
-    if idx >= reload_n:
-        break
-    t = i / SAMPLE_RATE
-    env = math.sin(math.pi * i / (SAMPLE_RATE * 0.08)) ** 0.5
-    slide = (random.random() * 2 - 1) * 0.2 * env
-    reload_samples[idx] += slide
-# Click 2: magazine insert (t=0.25)
-insert_start = int(SAMPLE_RATE * 0.25)
-for i in range(int(SAMPLE_RATE * 0.04)):
-    idx = insert_start + i
-    if idx >= reload_n:
-        break
-    t = i / SAMPLE_RATE
-    env = (1.0 - i / (SAMPLE_RATE * 0.04)) ** 2
-    click2 = math.sin(2 * math.pi * 2400 * t) * 0.35 * env
-    click2 += (random.random() * 2 - 1) * 0.1 * env
-    reload_samples[idx] += click2
-# Click 3: slide rack (t=0.32)
-rack_start = int(SAMPLE_RATE * 0.32)
-for i in range(int(SAMPLE_RATE * 0.06)):
-    idx = rack_start + i
-    if idx >= reload_n:
-        break
-    t = i / SAMPLE_RATE
-    env = (1.0 - i / (SAMPLE_RATE * 0.06)) ** 1.5
-    rack = math.sin(2 * math.pi * 1400 * t) * 0.25 * env
-    rack += (random.random() * 2 - 1) * 0.2 * env
-    reload_samples[idx] += rack
-reload_samples = highpass(reload_samples, 400)
-reload_samples = compress(reload_samples, threshold=0.3, ratio=3.0)
-reload_samples = reverb(reload_samples, delay_ms=25, feedback=0.15, mix=0.1)
-write_wav("weapons/reload.ogg", reload_samples)
+# --- reload.ogg --- NOT generated here. Uses a real recorded sound.
 
 # --- bow_release.ogg --- taut string snap with whooshing arrow
 random.seed(230)

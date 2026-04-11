@@ -74,6 +74,15 @@ static GLuint sWhiteTex = 0;
 static int sWindowW = 0;
 static int sWindowH = 0;
 
+// Cached uniform locations -- resolved once at init, constant after link.
+static GLint sLocProjection = -1;
+static GLint sLocTexture = -1;
+static GLint sLocIsFont = -1;
+
+// Cached ortho projection -- rebuilt only on resize.
+static float sProjection[16] = {};
+static bool sProjectionDirty = true;
+
 static std::vector<float> sVertexData;
 static std::vector<Batch> sBatches;
 static GLuint sCurrentTex = 0;
@@ -82,18 +91,23 @@ static bool sCurrentIsFont = false;
 static void pushQuad(float x, float y, float w, float h, float u0, float v0, float u1, float v1,
                      const Color& c)
 {
-    // clang-format off
-    const float verts[] = {
-        x,     y,     u0, v0, c.r, c.g, c.b, c.a,
-        x + w, y,     u1, v0, c.r, c.g, c.b, c.a,
-        x + w, y + h, u1, v1, c.r, c.g, c.b, c.a,
+    const size_t pos = sVertexData.size();
+    sVertexData.resize(pos + FLOATS_PER_QUAD);
+    float* d = sVertexData.data() + pos;
 
-        x,     y,     u0, v0, c.r, c.g, c.b, c.a,
-        x + w, y + h, u1, v1, c.r, c.g, c.b, c.a,
-        x,     y + h, u0, v1, c.r, c.g, c.b, c.a,
-    };
+    const float x1 = x + w;
+    const float y1 = y + h;
+
+    // clang-format off
+    // Triangle 1
+    *d++ = x;  *d++ = y;  *d++ = u0; *d++ = v0; *d++ = c.r; *d++ = c.g; *d++ = c.b; *d++ = c.a;
+    *d++ = x1; *d++ = y;  *d++ = u1; *d++ = v0; *d++ = c.r; *d++ = c.g; *d++ = c.b; *d++ = c.a;
+    *d++ = x1; *d++ = y1; *d++ = u1; *d++ = v1; *d++ = c.r; *d++ = c.g; *d++ = c.b; *d++ = c.a;
+    // Triangle 2
+    *d++ = x;  *d++ = y;  *d++ = u0; *d++ = v0; *d++ = c.r; *d++ = c.g; *d++ = c.b; *d++ = c.a;
+    *d++ = x1; *d++ = y1; *d++ = u1; *d++ = v1; *d++ = c.r; *d++ = c.g; *d++ = c.b; *d++ = c.a;
+    *d++ = x;  *d++ = y1; *d++ = u0; *d++ = v1; *d++ = c.r; *d++ = c.g; *d++ = c.b; *d++ = c.a;
     // clang-format on
-    sVertexData.insert(sVertexData.end(), verts, verts + FLOATS_PER_QUAD);
 }
 
 static void ensureBatch(GLuint tex, bool is_font)
@@ -130,6 +144,11 @@ void UIRenderer::init(int window_w, int window_h)
 
     glDeleteShader(vert);
     glDeleteShader(frag);
+
+    // Cache uniform locations (constant after link).
+    sLocProjection = glGetUniformLocation(sProgram, "uProjection");
+    sLocTexture = glGetUniformLocation(sProgram, "uTexture");
+    sLocIsFont = glGetUniformLocation(sProgram, "uIsFont");
 
     // Dynamic VBO for batched quads.
     glGenVertexArrays(1, &sVAO);
@@ -176,6 +195,7 @@ void UIRenderer::resize(int window_w, int window_h)
 {
     sWindowW = window_w;
     sWindowH = window_h;
+    sProjectionDirty = true;
 }
 
 void UIRenderer::shutdown()
@@ -215,22 +235,24 @@ static void submitBatches()
     if (sVertexData.empty())
         return;
 
+    // Buffer orphaning: allocate new backing store so the GPU can finish
+    // reading the previous frame's data without stalling the CPU.
     glBindBuffer(GL_ARRAY_BUFFER, sVBO);
     const auto dataSize = static_cast<GLsizeiptr>(sVertexData.size() * sizeof(float));
-    const auto bufSize =
-        static_cast<GLsizeiptr>(static_cast<size_t>(MAX_QUADS) * FLOATS_PER_QUAD * sizeof(float));
-    if (dataSize > bufSize)
-        glBufferData(GL_ARRAY_BUFFER, dataSize, sVertexData.data(), GL_DYNAMIC_DRAW);
-    else
-        glBufferSubData(GL_ARRAY_BUFFER, 0, dataSize, sVertexData.data());
+    glBufferData(GL_ARRAY_BUFFER, dataSize, nullptr, GL_DYNAMIC_DRAW);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, dataSize, sVertexData.data());
 
-    float proj[16];
-    engine::gl::buildOrtho(proj, 0.0f, static_cast<float>(sWindowW), static_cast<float>(sWindowH),
-                           0.0f);
+    // Rebuild ortho projection only when window size changes.
+    if (sProjectionDirty)
+    {
+        engine::gl::buildOrtho(sProjection, 0.0f, static_cast<float>(sWindowW),
+                               static_cast<float>(sWindowH), 0.0f);
+        sProjectionDirty = false;
+    }
 
     glUseProgram(sProgram);
-    glUniformMatrix4fv(glGetUniformLocation(sProgram, "uProjection"), 1, GL_FALSE, proj);
-    glUniform1i(glGetUniformLocation(sProgram, "uTexture"), 0);
+    glUniformMatrix4fv(sLocProjection, 1, GL_FALSE, sProjection);
+    glUniform1i(sLocTexture, 0);
     glActiveTexture(GL_TEXTURE0);
     glBindVertexArray(sVAO);
 
@@ -242,7 +264,7 @@ static void submitBatches()
     for (const auto& batch : sBatches)
     {
         glBindTexture(GL_TEXTURE_2D, batch.texture);
-        glUniform1i(glGetUniformLocation(sProgram, "uIsFont"), batch.is_font ? 1 : 0);
+        glUniform1i(sLocIsFont, batch.is_font ? 1 : 0);
         const int verts = batch.quad_count * VERTS_PER_QUAD;
         glDrawArrays(GL_TRIANGLES, offset, verts);
         offset += verts;

@@ -28,7 +28,9 @@ class RenderSystem
     static void resize(int windowW, int windowH);
 
     // Draw all (Transform, Sprite) entities sorted by layer.
-    static void render(EntityManager& em, TextureManager& tm, float camX, float camY);
+    // zoom: camera zoom factor (1.0 = no zoom, 2.0 = 2x magnification).
+    static void render(EntityManager& em, TextureManager& tm, float camX, float camY,
+                       float zoom = 1.0f);
 
     // Release shader program and VAO/VBO. Call before destroying the GL context.
     static void shutdown();
