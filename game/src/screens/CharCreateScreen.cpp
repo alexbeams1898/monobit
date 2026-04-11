@@ -838,7 +838,7 @@ static void drawPreview(float ww, float titleY, float titleH, const AppearanceCo
     outBottomY = previewBaseY + maxPreviewSize;
 }
 
-static void drawNameField(EntityManager& em, float ww, float& cy, float lineH, float mx, float my)
+static void drawNameField(float ww, float& cy, float lineH, float mx, float my)
 {
     const float fieldW = 480.0f;
     const float fieldX = (ww - fieldW) * 0.5f;
@@ -950,7 +950,7 @@ CharCreateScreen::Action CharCreateScreen::render(EntityManager& em, int window_
     const float my = static_cast<float>(mouseY);
 
     if (!sEditMode)
-        drawNameField(em, ww, cy, lineH, mx, my);
+        drawNameField(ww, cy, lineH, mx, my);
 
     if (cfg != nullptr && cfg->loaded && visCount > 0)
         drawCategoryColumns(em, *cfg, visCount, cx, cy, contentW, rowH, mx, my);

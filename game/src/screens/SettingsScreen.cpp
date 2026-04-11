@@ -37,8 +37,8 @@ void SettingsScreen::render(EntityManager& em, int window_w, int window_h)
     auto& dbg = em.registry().ctx().get<DebugFlags>();
 
     std::vector<MenuDialog::Option> options;
-    options.push_back({dbg.god_mode ? "God Mode: ON" : "God Mode: OFF",
-                       "Invincibility (For Testing)", true});
+    options.push_back(
+        {dbg.god_mode ? "God Mode: ON" : "God Mode: OFF", "Invincibility (For Testing)", true});
     options.push_back({"Back", "Return to main menu", true});
 
     // Full-screen opaque background (matches MainMenu) to prevent flash on transition.

@@ -659,9 +659,8 @@ static void renderEquipStatPanel(EntityManager& em, entt::entity player, const E
             // Unarmed fallback.
             const Weapon w{"Unarmed", f.fist.weight,     f.fist.str_scaling, f.fist.dex_scaling, 0,
                            0,         f.fist.base_damage};
-            stat_bottom =
-                ItemStatRenderer::renderWeaponStats(sBodyFont, w, stats, f, nullptr, has_stats, cx,
-                                                    y, cw, val_x, true, god_mode);
+            stat_bottom = ItemStatRenderer::renderWeaponStats(
+                sBodyFont, w, stats, f, nullptr, has_stats, cx, y, cw, val_x, true, god_mode);
         }
 
         // Weapon XP progress.

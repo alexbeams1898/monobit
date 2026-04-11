@@ -93,10 +93,10 @@ bool AudioSystem::init()
     // to the endpoint.
     const ma_uint32 channels = ma_engine_get_channels(&sEngine);
     const ma_uint32 sampleRate = ma_engine_get_sample_rate(&sEngine);
-    ma_lpf_node_config lpfCfg =
+    const ma_lpf_node_config lpfCfg =
         ma_lpf_node_config_init(channels, sampleRate, MUSIC_LPF_BYPASS_HZ, MUSIC_LPF_ORDER);
-    const ma_result lpfResult = ma_lpf_node_init(ma_engine_get_node_graph(&sEngine), &lpfCfg,
-                                                 nullptr, &sMusicLpfNode);
+    const ma_result lpfResult =
+        ma_lpf_node_init(ma_engine_get_node_graph(&sEngine), &lpfCfg, nullptr, &sMusicLpfNode);
     if (lpfResult == MA_SUCCESS)
     {
         // Attach the LPF node's output to the engine endpoint so its processed
@@ -263,8 +263,8 @@ void AudioSystem::playMusic(const std::string& path, float volume, bool loop, in
         ma_node_attach_output_bus(&sMusicSound, 0, &sMusicLpfNode, 0);
         const ma_uint32 lpfChannels = ma_engine_get_channels(&sEngine);
         const ma_uint32 lpfSampleRate = ma_engine_get_sample_rate(&sEngine);
-        const ma_lpf_config lpfCfg = ma_lpf_config_init(
-            ma_format_f32, lpfChannels, lpfSampleRate, MUSIC_LPF_BYPASS_HZ, MUSIC_LPF_ORDER);
+        const ma_lpf_config lpfCfg = ma_lpf_config_init(ma_format_f32, lpfChannels, lpfSampleRate,
+                                                        MUSIC_LPF_BYPASS_HZ, MUSIC_LPF_ORDER);
         ma_lpf_node_reinit(&lpfCfg, &sMusicLpfNode);
         sMusicLpfCurrentCutoff = 0.0f;
     }
