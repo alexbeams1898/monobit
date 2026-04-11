@@ -10,7 +10,89 @@ Updated as new decisions are made.
 Smooth 60 Hz on low-end hardware with enough headroom that enemy count never becomes a
 bottleneck. The game design is souls-like (small groups of meaningful enemies, not swarms),
 so actual enemy counts will be modest — but the engine should be efficient enough that this
-is never a question. See CLAUDE.md "Performance Philosophy" for first principles.
+is never a question.
+
+---
+
+## Portability target — "runs on a calculator"
+
+This game should be portable to everything. Doom ran on a pregnancy test. Vampire Survivors
+runs on a potato. That's the vibe. Every technical decision should keep this in mind:
+- No platform-specific APIs outside the abstraction layer (SDL2, OpenGL)
+- No unnecessary dependencies
+- Minimal memory footprint, minimal CPU budget
+- No features that assume a high-end GPU or multi-core CPU
+- If a system can run a 2D sprite game at 60 Hz, this game should run on it
+
+---
+
+## Performance Philosophy
+
+Target: 1000+ simultaneous enemies at 60 Hz. Every architectural decision should assume
+this is already here.
+
+- **Systems do the work, entities don't think.** Fetch one shared value (e.g. player pos)
+  once per frame, sweep all entities in a tight loop. No per-entity lookups into other entities.
+- **Avoid O(n²) unless n is provably tiny.** Flag with a comment and a plan.
+- **No unnecessary nested loops.** Before writing a nested loop, ask: can the inner loop be
+  eliminated with a lookup, a lambda, or by enumerating only the relevant subset directly?
+  Triple-nested loops are almost always a sign the algorithm needs rethinking. If a nested loop
+  is genuinely the right structure, add a comment explaining why.
+- **Prefer data-oriented layout.** entt sparse sets are contiguous. Keep components small and
+  flat. No pointers-to-pointers.
+- **Batch everything renderable.** One draw call per enemy is fatal at scale. RenderSystem
+  must use instanced rendering before enemy counts grow.
+- **Two tiers of AI complexity.** Enemy design is souls-style — small purposeful groups with
+  distinct behaviors, not blobs. The architecture scales to 1000+ if the design calls for it
+  (wave escalation endgame), but individual enemy behavior should feel intentional.
+  Fodder: simple ECS state machine + flow field, O(1) per frame, no allocations.
+  Elites/bosses: richer state machines or scripted attacks — fine because they're rare.
+  New enemy behaviors = new component + new system; cost is proportional to how many enemies
+  carry that component. Never grow a monolithic AI function.
+- **Measure before optimizing, but design for scale from the start.** Tracy is wired in.
+
+---
+
+## Tracy profiling conventions
+
+- Every system's `update()` function gets `ZoneScopedN("SystemName")` as its first line.
+- Every renderer's `render()` function gets `ZoneScopedN("RendererName")`.
+- **When adding a new system or renderer, add the zone immediately** — don't defer.
+- Key gameplay events use `TracyMessageL("EventName")` for timeline correlation:
+  `PlayerAttack`, `PlayerSkill`, `PlayerDodge`, `EntityDamaged`, `EntityDied`,
+  `EnemySpawned`, `EnemyAggro`, `EnemyAttack`.
+- **When adding a new significant gameplay event, add a `TracyMessageL` immediately.**
+- Trace files live in `traces/` (gitignored). Analyze with `./scripts/analyze-trace.sh`.
+
+---
+
+## Heavy synchronous operations and timing resets
+
+Any operation that blocks the main thread for more than ~1 frame (map generation, world
+create/destroy, bulk entity spawn) causes two problems:
+1. **Catch-up ticks** — the fixed-step accumulator sees hundreds of ms of "missed" time and
+   runs dozens of ticks in a burst. Entities teleport.
+2. **FPS counter crater** — the EMA-smoothed frame timer absorbs the spike and takes seconds
+   to recover, showing ~30 FPS even though actual frames are fine.
+
+**Fix:** Call `engine.requestTimingReset()` after any heavy synchronous operation. This zeros
+the accumulator, snaps `previousTime` forward, and resets the EMA. The timing reset is an
+engine concern — don't bake it into game-logic functions like `createWorld`/`destroyWorld`.
+The caller decides whether a timing reset is needed.
+
+**Loading overlay pattern:** For operations visible to the player (wave-start map regen),
+render a loading screen + call `engine.swapBuffers()` before the heavy work so the overlay
+stays on screen during the freeze. See `showLoadingOverlay()` in GameLoop.cpp.
+
+---
+
+## Audio file format standard
+
+All `.ogg` SFX must be **22050 Hz mono** (or 44100 Hz mono for sounds that need higher
+fidelity like death sounds). Never commit stereo or non-standard sample rates (e.g. 7350 Hz).
+miniaudio decodes + resamples on every `playSfx` call — exotic sample rates cause expensive
+runtime resampling that drops frames. When importing external audio, always re-encode:
+`ffmpeg -y -i input.ogg -ar 22050 -ac 1 -acodec libvorbis -q:a 3 output.ogg`
 
 ---
 
