@@ -5,6 +5,7 @@ on:
     branches: [master]
     paths-ignore:
       - 'CMakeLists.txt'  # bot's own bump commit -- don't self-retrigger
+  workflow_dispatch:
 
 permissions:
   contents: write        # push the version bump commit, tag, and release
@@ -118,6 +119,7 @@ jobs:
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-ninja
             mingw-w64-x86_64-SDL2
+            mingw-w64-x86_64-github-cli
             python
             zip
             git
