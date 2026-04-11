@@ -99,7 +99,7 @@ static float resolveTotalDamage(const Weapon& w, const Stats& stats, const Formu
 {
     if (!has_stats)
         return w.base_damage;
-    float total = computeDamage(w, stats, f);
+    const float total = computeDamage(w, stats, f);
     if (god_mode)
         return total;
     const int strDeficit = std::max(0, w.str_requirement - stats.str);
