@@ -880,6 +880,197 @@ static void renderPlayingUI(Engine& engine, EntityManager& em, int ww, int wh, f
     NotificationSystem::render(frameDt, ww, wh);
 }
 
+static void drawWorldLoadingOverlay(int ww, int wh)
+{
+    UIRenderer::drawRect(0.0f, 0.0f, static_cast<float>(ww), static_cast<float>(wh),
+                         {0.0f, 0.0f, 0.0f, 1.0f});
+    const std::string loadText = "Wave 1";
+    const auto lts = UIRenderer::measureText(sTitleFont, loadText);
+    UIRenderer::drawText(sTitleFont, loadText, (static_cast<float>(ww) - lts.width) * 0.5f,
+                         (static_cast<float>(wh) - lts.height) * 0.5f, {1.0f, 0.85f, 0.3f, 1.0f});
+}
+
+static void renderMainMenuPhase(Engine& engine, EntityManager& em, GameState& gs, int ww, int wh)
+{
+    const auto action = MainMenuScreen::render(em, ww, wh);
+    switch (action)
+    {
+    case MainMenuScreen::Action::NewGame:
+        CharCreateScreen::reset();
+        gs.phase = GameState::Phase::CharCreate;
+        break;
+    case MainMenuScreen::Action::LoadGame:
+        LoadGameScreen::reset();
+        gs.phase = GameState::Phase::LoadGame;
+        break;
+    case MainMenuScreen::Action::HighScores:
+        HighScoresScreen::reset();
+        gs.phase = GameState::Phase::HighScores;
+        break;
+    case MainMenuScreen::Action::Settings:
+        SettingsScreen::reset();
+        gs.phase = GameState::Phase::Settings;
+        break;
+    case MainMenuScreen::Action::Quit:
+        engine.requestQuit();
+        break;
+    case MainMenuScreen::Action::None:
+        break;
+    }
+}
+
+static void
+writeAppearanceToCharacter(SaveData& saveData, const std::string& name,
+                           const std::unordered_map<std::string, std::string>& appearance)
+{
+    for (auto& prof : saveData.characters)
+    {
+        if (prof.name == name)
+        {
+            prof.appearance = appearance;
+            return;
+        }
+    }
+}
+
+static void beginWorldLoad(EntityManager& em, GameState& gs)
+{
+    AudioSystem::stopMusic();
+    auto& ui = em.registry().ctx().get<UIState>();
+    ui = UIState{};
+    ui.input_suppressed = true;
+    gs.pending_world_create = true;
+}
+
+static void handleCharCreateAction(EntityManager& em, GameState& gs,
+                                   CharCreateScreen::Action action)
+{
+    auto& saveData = em.registry().ctx().get<SaveData>();
+    if (action == CharCreateScreen::Action::Start)
+    {
+        gs.active_character = CharCreateScreen::getName();
+        SaveManager::addCharacter(saveData, gs.active_character);
+        writeAppearanceToCharacter(saveData, gs.active_character,
+                                   CharCreateScreen::getSelections());
+        SaveManager::save(saveData);
+        beginWorldLoad(em, gs);
+    }
+    else if (action == CharCreateScreen::Action::Apply)
+    {
+        writeAppearanceToCharacter(saveData, gs.active_character,
+                                   CharCreateScreen::getSelections());
+        SaveManager::save(saveData);
+        LoadGameScreen::reset();
+        gs.phase = GameState::Phase::LoadGame;
+    }
+    else if (action == CharCreateScreen::Action::Back)
+    {
+        if (CharCreateScreen::isEditMode())
+        {
+            LoadGameScreen::reset();
+            gs.phase = GameState::Phase::LoadGame;
+        }
+        else
+        {
+            MainMenuScreen::reset();
+            gs.phase = GameState::Phase::MainMenu;
+        }
+    }
+}
+
+static void renderCharCreatePhase(EntityManager& em, GameState& gs, int ww, int wh)
+{
+    if (gs.pending_world_create)
+    {
+        drawWorldLoadingOverlay(ww, wh);
+        return;
+    }
+    handleCharCreateAction(em, gs, CharCreateScreen::render(em, ww, wh));
+}
+
+static std::unordered_map<std::string, std::string>
+loadCharacterAppearance(const SaveData& saveData, const std::string& name)
+{
+    for (const auto& prof : saveData.characters)
+    {
+        if (prof.name == name)
+            return prof.appearance;
+    }
+    return {};
+}
+
+static void handleLoadGameAction(EntityManager& em, GameState& gs, LoadGameScreen::Action action)
+{
+    if (action == LoadGameScreen::Action::Select)
+    {
+        gs.active_character = LoadGameScreen::getSelectedName();
+        beginWorldLoad(em, gs);
+    }
+    else if (action == LoadGameScreen::Action::EditLook)
+    {
+        const std::string charName = LoadGameScreen::getSelectedName();
+        gs.active_character = charName;
+        const auto& saveData = em.registry().ctx().get<SaveData>();
+        CharCreateScreen::resetForEdit(charName, loadCharacterAppearance(saveData, charName));
+        gs.phase = GameState::Phase::CharCreate;
+    }
+    else if (action == LoadGameScreen::Action::Back)
+    {
+        MainMenuScreen::reset();
+        gs.phase = GameState::Phase::MainMenu;
+    }
+}
+
+static void renderLoadGamePhase(EntityManager& em, GameState& gs, int ww, int wh)
+{
+    if (gs.pending_world_create)
+    {
+        drawWorldLoadingOverlay(ww, wh);
+        return;
+    }
+    handleLoadGameAction(em, gs, LoadGameScreen::render(em, ww, wh));
+}
+
+static void renderEndScreenPhase(Engine& engine, EntityManager& em, GameState& gs, int ww, int wh,
+                                 float frameDt)
+{
+    if (gs.phase == GameState::Phase::GameOver)
+    {
+        if (GameOverScreen::render(em, ww, wh, frameDt))
+        {
+            transitionToSummary(em, false);
+            engine.requestTimingReset();
+        }
+    }
+    else if (gs.phase == GameState::Phase::Victory)
+    {
+        if (VictoryScreen::render(em, ww, wh, frameDt))
+        {
+            transitionToSummary(em, true);
+            engine.requestTimingReset();
+        }
+    }
+    else if (gs.phase == GameState::Phase::RunSummary)
+    {
+        if (RunSummaryScreen::render(em, ww, wh))
+        {
+            WorldInit::destroyWorld(em);
+            engine.requestTimingReset();
+            MainMenuScreen::reset();
+            gs.phase = GameState::Phase::MainMenu;
+            playMainMenuMusic(em);
+        }
+    }
+    else if (gs.phase == GameState::Phase::HighScores)
+    {
+        if (HighScoresScreen::render(em, ww, wh))
+        {
+            MainMenuScreen::reset();
+            gs.phase = GameState::Phase::MainMenu;
+        }
+    }
+}
+
 void gameRenderUI(Engine& engine, EntityManager& em)
 {
     ZoneScopedN("gameRenderUI");
@@ -897,205 +1088,26 @@ void gameRenderUI(Engine& engine, EntityManager& em)
     switch (gs.phase)
     {
     case GameState::Phase::MainMenu:
-    {
-        auto action = MainMenuScreen::render(em, ww, wh);
-        switch (action)
-        {
-        case MainMenuScreen::Action::NewGame:
-            CharCreateScreen::reset();
-            gs.phase = GameState::Phase::CharCreate;
-            break;
-        case MainMenuScreen::Action::LoadGame:
-            LoadGameScreen::reset();
-            gs.phase = GameState::Phase::LoadGame;
-            break;
-        case MainMenuScreen::Action::HighScores:
-            HighScoresScreen::reset();
-            gs.phase = GameState::Phase::HighScores;
-            break;
-        case MainMenuScreen::Action::Settings:
-            SettingsScreen::reset();
-            gs.phase = GameState::Phase::Settings;
-            break;
-        case MainMenuScreen::Action::Quit:
-            engine.requestQuit();
-            break;
-        case MainMenuScreen::Action::None:
-            break;
-        }
+        renderMainMenuPhase(engine, em, gs, ww, wh);
         break;
-    }
-
     case GameState::Phase::CharCreate:
-    {
-        if (gs.pending_world_create)
-        {
-            // Loading screen: black background + "Wave 1" centered text.
-            UIRenderer::drawRect(0.0f, 0.0f, static_cast<float>(ww), static_cast<float>(wh),
-                                 {0.0f, 0.0f, 0.0f, 1.0f});
-            const std::string loadText = "Wave 1";
-            const auto lts = UIRenderer::measureText(sTitleFont, loadText);
-            UIRenderer::drawText(sTitleFont, loadText, (static_cast<float>(ww) - lts.width) * 0.5f,
-                                 (static_cast<float>(wh) - lts.height) * 0.5f,
-                                 {1.0f, 0.85f, 0.3f, 1.0f});
-            break;
-        }
-        auto action = CharCreateScreen::render(em, ww, wh);
-        if (action == CharCreateScreen::Action::Start)
-        {
-            auto& saveData = em.registry().ctx().get<SaveData>();
-            gs.active_character = CharCreateScreen::getName();
-            SaveManager::addCharacter(saveData, gs.active_character);
-            // Store chosen appearance on the new character profile.
-            for (auto& prof : saveData.characters)
-            {
-                if (prof.name == gs.active_character)
-                {
-                    prof.appearance = CharCreateScreen::getSelections();
-                    break;
-                }
-            }
-            SaveManager::save(saveData);
-            AudioSystem::stopMusic();
-            auto& ui = em.registry().ctx().get<UIState>();
-            ui = UIState{};
-            ui.input_suppressed = true;
-            gs.pending_world_create = true;
-        }
-        else if (action == CharCreateScreen::Action::Apply)
-        {
-            // Edit mode: update appearance on existing profile, return to Load Game.
-            auto& saveData = em.registry().ctx().get<SaveData>();
-            for (auto& prof : saveData.characters)
-            {
-                if (prof.name == gs.active_character)
-                {
-                    prof.appearance = CharCreateScreen::getSelections();
-                    break;
-                }
-            }
-            SaveManager::save(saveData);
-            LoadGameScreen::reset();
-            gs.phase = GameState::Phase::LoadGame;
-        }
-        else if (action == CharCreateScreen::Action::Back)
-        {
-            if (CharCreateScreen::isEditMode())
-            {
-                LoadGameScreen::reset();
-                gs.phase = GameState::Phase::LoadGame;
-            }
-            else
-            {
-                MainMenuScreen::reset();
-                gs.phase = GameState::Phase::MainMenu;
-            }
-        }
+        renderCharCreatePhase(em, gs, ww, wh);
         break;
-    }
-
     case GameState::Phase::LoadGame:
-    {
-        if (gs.pending_world_create)
-        {
-            UIRenderer::drawRect(0.0f, 0.0f, static_cast<float>(ww), static_cast<float>(wh),
-                                 {0.0f, 0.0f, 0.0f, 1.0f});
-            const std::string loadText = "Wave 1";
-            const auto lts = UIRenderer::measureText(sTitleFont, loadText);
-            UIRenderer::drawText(sTitleFont, loadText, (static_cast<float>(ww) - lts.width) * 0.5f,
-                                 (static_cast<float>(wh) - lts.height) * 0.5f,
-                                 {1.0f, 0.85f, 0.3f, 1.0f});
-            break;
-        }
-        auto action = LoadGameScreen::render(em, ww, wh);
-        if (action == LoadGameScreen::Action::Select)
-        {
-            gs.active_character = LoadGameScreen::getSelectedName();
-            AudioSystem::stopMusic();
-            auto& ui = em.registry().ctx().get<UIState>();
-            ui = UIState{};
-            ui.input_suppressed = true;
-            gs.pending_world_create = true;
-        }
-        else if (action == LoadGameScreen::Action::EditLook)
-        {
-            const std::string charName = LoadGameScreen::getSelectedName();
-            gs.active_character = charName;
-            const auto& saveData = em.registry().ctx().get<SaveData>();
-            std::unordered_map<std::string, std::string> appearance;
-            for (const auto& prof : saveData.characters)
-            {
-                if (prof.name == charName)
-                {
-                    appearance = prof.appearance;
-                    break;
-                }
-            }
-            CharCreateScreen::resetForEdit(charName, appearance);
-            gs.phase = GameState::Phase::CharCreate;
-        }
-        else if (action == LoadGameScreen::Action::Back)
-        {
-            MainMenuScreen::reset();
-            gs.phase = GameState::Phase::MainMenu;
-        }
+        renderLoadGamePhase(em, gs, ww, wh);
         break;
-    }
-
     case GameState::Phase::Playing:
         renderPlayingUI(engine, em, ww, wh, frameDt);
         break;
-
     case GameState::Phase::GameOver:
-    {
-        if (GameOverScreen::render(em, ww, wh, frameDt))
-        {
-            transitionToSummary(em, false);
-            engine.requestTimingReset();
-        }
-        break;
-    }
-
     case GameState::Phase::Victory:
-    {
-        if (VictoryScreen::render(em, ww, wh, frameDt))
-        {
-            transitionToSummary(em, true);
-            engine.requestTimingReset();
-        }
-        break;
-    }
-
     case GameState::Phase::RunSummary:
-    {
-        if (RunSummaryScreen::render(em, ww, wh))
-        {
-            WorldInit::destroyWorld(em);
-            engine.requestTimingReset();
-            MainMenuScreen::reset();
-            gs.phase = GameState::Phase::MainMenu;
-            playMainMenuMusic(em);
-        }
-        break;
-    }
-
     case GameState::Phase::HighScores:
-    {
-        if (HighScoresScreen::render(em, ww, wh))
-        {
-            MainMenuScreen::reset();
-            gs.phase = GameState::Phase::MainMenu;
-            // Menu music keeps playing (never stopped for HighScores).
-        }
+        renderEndScreenPhase(engine, em, gs, ww, wh, frameDt);
         break;
-    }
-
     case GameState::Phase::Settings:
-    {
         SettingsScreen::render(em, ww, wh);
-        // SettingsScreen handles its own back-to-MainMenu transition.
         break;
-    }
     }
 
     // Debug overlay renders over everything in all states.

@@ -43,7 +43,7 @@ void FontManager::shutdown()
         if (f.atlas_tex != 0)
         {
             bool already = false;
-            for (GLuint d : deleted)
+            for (const GLuint d : deleted)
             {
                 if (d == f.atlas_tex)
                 {
@@ -172,7 +172,7 @@ std::vector<FontHandle> FontManager::loadFontGroup(const std::string& path,
     std::vector<std::vector<stbtt_packedchar>> char_data(count);
 
     size_t idx = 0;
-    for (float sz : sizes)
+    for (const float sz : sizes)
     {
         char_data[idx].resize(CHAR_COUNT);
         ranges[idx].font_size = sz;
@@ -217,7 +217,7 @@ std::vector<FontHandle> FontManager::loadFontGroup(const std::string& path,
     // Create one FontData per size, all sharing the same atlas texture.
     // Only the first handle "owns" the texture (cleaned up in shutdown).
     idx = 0;
-    for (float sz : sizes)
+    for (const float sz : sizes)
     {
         const float scale = stbtt_ScaleForPixelHeight(&info, sz);
         FontData fd{};

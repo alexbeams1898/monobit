@@ -63,14 +63,14 @@ buildLayerPaths(EntityManager& em, const std::unordered_map<std::string, std::st
         if (cat.type == AppearanceCategoryType::Slider)
             continue;
 
-        std::string optionId = resolveOptionId(cat, selections);
+        const std::string optionId = resolveOptionId(cat, selections);
         if (optionId.empty() || optionId == "none")
         {
             paths.emplace_back();
             continue;
         }
 
-        std::string file = resolveFileName(cat, optionId, selections);
+        const std::string file = resolveFileName(cat, optionId, selections);
         if (file.empty())
             paths.emplace_back();
         else
@@ -154,7 +154,7 @@ void resolveAppearance(EntityManager& em, entt::entity entity, SpriteCompositor&
         return;
     }
 
-    uint32_t texId = compositor.composite(layers);
+    const uint32_t texId = compositor.composite(layers);
     if (texId == 0)
     {
         std::cerr << "[AppearanceOps] Composite failed for entity\n";

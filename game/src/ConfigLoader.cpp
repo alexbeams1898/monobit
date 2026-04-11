@@ -1312,6 +1312,51 @@ bool ConfigLoader::loadEvolutionTrees(EntityManager& em, const std::string& dirP
     return count > 0;
 }
 
+static AppearanceOption parseAppearanceOption(const json& opt)
+{
+    AppearanceOption o;
+    o.id = opt.value("id", std::string{});
+    o.label = opt.value("label", o.id);
+    o.file = opt.value("file", std::string{});
+    if (opt.contains("swatch"))
+    {
+        const std::string hex = opt.value("swatch", std::string{});
+        if (hex.size() == 7 && hex[0] == '#')
+        {
+            const uint32_t rgb = std::stoul(hex.substr(1), nullptr, 16);
+            o.swatch = (rgb << 8) | 0xFF;
+        }
+    }
+    return o;
+}
+
+static AppearanceCategory parseAppearanceCategory(const json& cat)
+{
+    AppearanceCategory c;
+    c.id = cat.value("id", std::string{});
+    c.label = cat.value("label", c.id);
+    c.required = cat.value("required", false);
+    c.path_prefix = cat.value("path_prefix", std::string{});
+    c.linked_to = cat.value("linked_to", std::string{});
+    c.combine_with = cat.value("combine_with", std::string{});
+
+    const std::string type_str = cat.value("type", std::string{"select"});
+    if (type_str == "slider")
+    {
+        c.type = AppearanceCategoryType::Slider;
+        c.min_value = cat.value("min", 0.0f);
+        c.max_value = cat.value("max", 1.0f);
+        c.step_value = cat.value("step", 0.01f);
+        c.default_value = cat.value("default", c.min_value);
+    }
+    else if (cat.contains("options") && cat["options"].is_array())
+    {
+        for (const auto& opt : cat["options"])
+            c.options.push_back(parseAppearanceOption(opt));
+    }
+    return c;
+}
+
 bool ConfigLoader::loadAppearanceConfig(EntityManager& em, const std::string& filePath)
 {
     std::ifstream file(filePath);
@@ -1338,48 +1383,7 @@ bool ConfigLoader::loadAppearanceConfig(EntityManager& em, const std::string& fi
     if (j.contains("categories") && j["categories"].is_array())
     {
         for (const auto& cat : j["categories"])
-        {
-            AppearanceCategory c;
-            c.id = cat.value("id", std::string{});
-            c.label = cat.value("label", c.id);
-            c.required = cat.value("required", false);
-            c.path_prefix = cat.value("path_prefix", std::string{});
-
-            c.linked_to = cat.value("linked_to", std::string{});
-            c.combine_with = cat.value("combine_with", std::string{});
-
-            const std::string type_str = cat.value("type", std::string{"select"});
-            if (type_str == "slider")
-            {
-                c.type = AppearanceCategoryType::Slider;
-                c.min_value = cat.value("min", 0.0f);
-                c.max_value = cat.value("max", 1.0f);
-                c.step_value = cat.value("step", 0.01f);
-                c.default_value = cat.value("default", c.min_value);
-            }
-            else if (cat.contains("options") && cat["options"].is_array())
-            {
-                for (const auto& opt : cat["options"])
-                {
-                    AppearanceOption o;
-                    o.id = opt.value("id", std::string{});
-                    o.label = opt.value("label", o.id);
-                    o.file = opt.value("file", std::string{});
-                    if (opt.contains("swatch"))
-                    {
-                        std::string hex = opt.value("swatch", std::string{});
-                        if (hex.size() == 7 && hex[0] == '#')
-                        {
-                            uint32_t rgb = std::stoul(hex.substr(1), nullptr, 16);
-                            o.swatch = (rgb << 8) | 0xFF;
-                        }
-                    }
-                    c.options.push_back(std::move(o));
-                }
-            }
-
-            cfg.categories.push_back(std::move(c));
-        }
+            cfg.categories.push_back(parseAppearanceCategory(cat));
     }
 
     cfg.loaded = true;

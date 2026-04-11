@@ -136,7 +136,7 @@ void SpriteCompositor::clear()
 {
     for (auto& [key, info] : cache)
     {
-        GLuint texId = static_cast<GLuint>(info.tex_id);
+        const GLuint texId = static_cast<GLuint>(info.tex_id);
         glDeleteTextures(1, &texId);
     }
     cache.clear();

@@ -202,7 +202,7 @@ static void rebuildVisibleCats(const AppearanceConfig& cfg)
             {
                 if (cfg.categories[j].id == cat.combine_with)
                 {
-                    std::string parentSel = getCatSelection(cfg, j);
+                    const std::string parentSel = getCatSelection(cfg, j);
                     if (parentSel.empty() || parentSel == "none")
                         goto skip;
                     break;
@@ -363,7 +363,7 @@ static void stepSlider(EntityManager& em, const AppearanceConfig& cfg, int catId
         return;
     if (catIdx >= static_cast<int>(sCatSliderValue.size()))
         return;
-    float v = sCatSliderValue[catIdx] + static_cast<float>(steps) * cat.step_value;
+    const float v = sCatSliderValue[catIdx] + static_cast<float>(steps) * cat.step_value;
     sCatSliderValue[catIdx] = snapSliderValue(cat, v);
     sCurrentSelections = buildSelections(cfg);
     screen_input::playClickSfx(em);
@@ -406,8 +406,8 @@ struct RowLayout
 {
     float cx;
     float cy;
-    float contentW;
-    float rowH;
+    float content_w;
+    float row_h;
     float mx;
     float my;
 };
@@ -419,7 +419,7 @@ static float renderSwatchRow(EntityManager& em, const AppearanceConfig& cfg, int
     const auto& cat = cfg.categories[catIdx];
     const float cx = lay.cx;
     const float cy = lay.cy;
-    const float contentW = lay.contentW;
+    const float contentW = lay.content_w;
     const float mx = lay.mx;
     const float my = lay.my;
 
@@ -491,8 +491,8 @@ static float renderCycleRow(EntityManager& em, const AppearanceConfig& cfg, int 
     const auto& cat = cfg.categories[catIdx];
     const float cx = lay.cx;
     const float cy = lay.cy;
-    const float contentW = lay.contentW;
-    const float rowH = lay.rowH;
+    const float contentW = lay.content_w;
+    const float rowH = lay.row_h;
     const float mx = lay.mx;
     const float my = lay.my;
 
@@ -533,8 +533,8 @@ static float renderSliderRow(EntityManager& em, const AppearanceConfig& cfg, int
     const auto& cat = cfg.categories[catIdx];
     const float cx = lay.cx;
     const float cy = lay.cy;
-    const float contentW = lay.contentW;
-    const float rowH = lay.rowH;
+    const float contentW = lay.content_w;
+    const float rowH = lay.row_h;
     const float mx = lay.mx;
     const float my = lay.my;
 
@@ -631,6 +631,43 @@ static void handleFocusedRowArrows(EntityManager& em, const AppearanceConfig& cf
     }
 }
 
+static void handleNameTextInput(EntityManager& em)
+{
+    for (const char c : em.text_input_buffer)
+    {
+        if (static_cast<int>(sName.size()) < MAX_NAME_LEN && c >= 32)
+            sName += c;
+    }
+    if (keyPressed(em, SDL_SCANCODE_BACKSPACE) && !sName.empty())
+        sName.pop_back();
+}
+
+static void handleVerticalNavigation(EntityManager& em, int firstRow, int backRow)
+{
+    if (keyPressed(em, SDL_SCANCODE_DOWN) || keyPressed(em, SDL_SCANCODE_TAB))
+        sFocusRow = (sFocusRow < backRow) ? sFocusRow + 1 : firstRow;
+    if (keyPressed(em, SDL_SCANCODE_UP))
+        sFocusRow = (sFocusRow > firstRow) ? sFocusRow - 1 : backRow;
+}
+
+static CharCreateScreen::Action confirmActionForRow()
+{
+    if (sEditMode)
+        return CharCreateScreen::Action::Apply;
+    if (isNameValid())
+        return CharCreateScreen::Action::Start;
+    return CharCreateScreen::Action::None;
+}
+
+static CharCreateScreen::Action handleEnterKey(int confirmRow, int backRow)
+{
+    if (sFocusRow == confirmRow)
+        return confirmActionForRow();
+    if (sFocusRow == backRow)
+        return CharCreateScreen::Action::Back;
+    return CharCreateScreen::Action::None;
+}
+
 // Handle all keyboard input for CharCreateScreen. Returns the pending Action
 // (None if no action was triggered this frame). Writes name edits to sName
 // and focus-row changes to sFocusRow.
@@ -638,25 +675,11 @@ static CharCreateScreen::Action handleCharCreateKeyboard(EntityManager& em,
                                                          const AppearanceConfig* cfg, int visCount,
                                                          int confirmRow, int backRow, int firstRow)
 {
-    // Text input (new game mode only).
     if (!sEditMode)
-    {
-        for (const char c : em.text_input_buffer)
-        {
-            if (static_cast<int>(sName.size()) < MAX_NAME_LEN && c >= 32)
-                sName += c;
-        }
-        if (keyPressed(em, SDL_SCANCODE_BACKSPACE) && !sName.empty())
-            sName.pop_back();
-    }
+        handleNameTextInput(em);
 
-    // Vertical navigation.
-    if (keyPressed(em, SDL_SCANCODE_DOWN) || keyPressed(em, SDL_SCANCODE_TAB))
-        sFocusRow = (sFocusRow < backRow) ? sFocusRow + 1 : firstRow;
-    if (keyPressed(em, SDL_SCANCODE_UP))
-        sFocusRow = (sFocusRow > firstRow) ? sFocusRow - 1 : backRow;
+    handleVerticalNavigation(em, firstRow, backRow);
 
-    // Left/Right on category rows.
     if (sFocusRow >= 0 && sFocusRow < visCount && cfg != nullptr)
         handleFocusedRowArrows(em, *cfg, sVisibleCats[sFocusRow]);
 
@@ -666,33 +689,20 @@ static CharCreateScreen::Action handleCharCreateKeyboard(EntityManager& em,
     // frame draws normally -- an early return here would leave the frame
     // blank, causing a visible flash on the transition to LoadGame.
     if (keyPressed(em, SDL_SCANCODE_ESCAPE) || mouseClicked(em, SDL_BUTTON_RIGHT))
+        result = CharCreateScreen::Action::Back;
+
+    if (keyPressed(em, SDL_SCANCODE_RETURN) || keyPressed(em, SDL_SCANCODE_KP_ENTER))
+    {
+        const auto enterResult = handleEnterKey(confirmRow, backRow);
+        if (enterResult != CharCreateScreen::Action::None)
+            result = enterResult;
+    }
+
+    if (result != CharCreateScreen::Action::None)
     {
         SDL_StopTextInput();
         screen_input::playClickSfx(em);
-        result = CharCreateScreen::Action::Back;
     }
-
-    // Enter.
-    if (keyPressed(em, SDL_SCANCODE_RETURN) || keyPressed(em, SDL_SCANCODE_KP_ENTER))
-    {
-        if (sFocusRow == confirmRow)
-        {
-            if (sEditMode)
-                result = CharCreateScreen::Action::Apply;
-            else if (isNameValid())
-                result = CharCreateScreen::Action::Start;
-        }
-        else if (sFocusRow == backRow)
-        {
-            result = CharCreateScreen::Action::Back;
-        }
-        if (result != CharCreateScreen::Action::None)
-        {
-            SDL_StopTextInput();
-            screen_input::playClickSfx(em);
-        }
-    }
-
     return result;
 }
 
@@ -734,16 +744,15 @@ static CharCreateScreen::Action drawFooterButtons(EntityManager& em, float ww, f
             sFocusRow = btn.row;
         const bool selected = (sFocusRow == btn.row);
         const Color bgColor = (selected && !btn.disabled) ? BTN_BG_HL : BTN_BG;
-        const Color fgColor =
-            btn.disabled ? BTN_DIM : (selected ? BTN_HOVER : BTN_NORMAL);
+        const Color fgColor = btn.disabled ? BTN_DIM : (selected ? BTN_HOVER : BTN_NORMAL);
         UIRenderer::drawRect(bx, cy, bw, btnH, bgColor);
         UIRenderer::drawText(sTitleFont, btn.label, bx + btnPadX, cy + btnPadY, fgColor);
 
         if (hovered && mouseClicked(em, SDL_BUTTON_LEFT) && !btn.disabled)
         {
             if (btn.row == confirmRow)
-                result = sEditMode ? CharCreateScreen::Action::Apply
-                                   : CharCreateScreen::Action::Start;
+                result =
+                    sEditMode ? CharCreateScreen::Action::Apply : CharCreateScreen::Action::Start;
             else
                 result = CharCreateScreen::Action::Back;
             SDL_StopTextInput();
@@ -756,34 +765,22 @@ static CharCreateScreen::Action drawFooterButtons(EntityManager& em, float ww, f
     return result;
 }
 
-CharCreateScreen::Action CharCreateScreen::render(EntityManager& em, int window_w, int window_h)
+static void lazyInitSelections(EntityManager& em, const AppearanceConfig& cfg)
 {
-    ZoneScopedN("CharCreateScreen");
+    if (sInitialized)
+        return;
+    if (!sPendingAppearance.empty())
+        initSelectionsFromMap(cfg, sPendingAppearance);
+    else
+        initSelectionsFromMap(cfg, {});
+    sPendingAppearance.clear();
+    recomposite(em);
+    sCurrentSelections = buildSelections(cfg);
+    sInitialized = true;
+}
 
-    const float ww = static_cast<float>(window_w);
-    const float wh = static_cast<float>(window_h);
-    const auto* cfg = em.registry().ctx().find<AppearanceConfig>();
-
-    // Lazy-init categories on first render (needs registry access).
-    if (!sInitialized && cfg != nullptr && cfg->loaded)
-    {
-        if (!sPendingAppearance.empty())
-            initSelectionsFromMap(*cfg, sPendingAppearance);
-        else
-            initSelectionsFromMap(*cfg, {});
-        sPendingAppearance.clear();
-        recomposite(em);
-        sCurrentSelections = buildSelections(*cfg);
-        sInitialized = true;
-    }
-
-    const int visCount = static_cast<int>(sVisibleCats.size());
-    const int confirmRow = visCount;
-    const int backRow = visCount + 1;
-    const int firstRow = sEditMode ? 0 : -1;
-
-    // Advance walk animation. Frame count is derived from the composited
-    // sheet width (max_frames_per_state = sheet_w / (NUM_DIRS * FRAME_PX)).
+static void advanceWalkAnim()
+{
     const int maxFrames = (sPreviewTexW > 0) ? (sPreviewTexW / (NUM_DIRS * FRAME_PX)) : 8;
     const uint32_t now = SDL_GetTicks();
     const float animDt = static_cast<float>(now - sLastTicks) * 0.001f;
@@ -794,56 +791,43 @@ CharCreateScreen::Action CharCreateScreen::render(EntityManager& em, int window_
         sAnimTimer -= WALK_FRAME_DURATION;
         sAnimFrame = (sAnimFrame + 1) % maxFrames;
     }
+}
 
-    Action result = handleCharCreateKeyboard(em, cfg, visCount, confirmRow, backRow, firstRow);
-
-    // --- Drawing ---
-    UIRenderer::drawRect(0.0f, 0.0f, ww, wh, OVERLAY_OPAQUE);
-
-    // Title.
-    const std::string title = sEditMode ? "Customize Character" : "Create Character";
-    const TextSize tsz = UIRenderer::measureText(sTitleFont, title);
-    const float titleY = wh * 0.06f;
-    UIRenderer::drawText(sTitleFont, title, (ww - tsz.width) * 0.5f, titleY, TITLE_COLOR);
-
-    // Preview. Reserve enough vertical space for the max slider value so the
-    // layout below doesn't shift as the player scales up or down.
-    float previewScale = 1.0f;
-    if (cfg != nullptr && cfg->loaded)
+static float getPreviewScale(const AppearanceConfig* cfg)
+{
+    if (cfg == nullptr || !cfg->loaded)
+        return 1.0f;
+    for (size_t i = 0; i < cfg->categories.size(); ++i)
     {
-        for (size_t i = 0; i < cfg->categories.size(); ++i)
-        {
-            if (cfg->categories[i].id == "size" &&
-                cfg->categories[i].type == AppearanceCategoryType::Slider &&
-                i < sCatSliderValue.size())
-            {
-                previewScale = sCatSliderValue[i];
-                break;
-            }
-        }
+        const auto& cat = cfg->categories[i];
+        if (cat.id == "size" && cat.type == AppearanceCategoryType::Slider &&
+            i < sCatSliderValue.size())
+            return sCatSliderValue[i];
     }
+    return 1.0f;
+}
 
+static void drawPreview(float ww, float titleY, float titleH, const AppearanceConfig* cfg,
+                        float& outBottomY)
+{
+    const float previewScale = getPreviewScale(cfg);
     const float basePreviewSize = 64.0f * PREVIEW_SCALE;
     const float maxPreviewSize = basePreviewSize * 1.20f; // matches layers.json max
     const float scaledPreviewSize = basePreviewSize * previewScale;
-    const float previewBaseY = titleY + tsz.height + 20.0f;
-    // Bottom-anchor: feet stay planted regardless of scale.
+    const float previewBaseY = titleY + titleH + 20.0f;
     const float previewFootY = previewBaseY + maxPreviewSize;
     const float previewY = previewFootY - scaledPreviewSize;
     const float previewX = (ww - scaledPreviewSize) * 0.5f;
 
     if (sPreviewTex != 0 && sPreviewTexW > 0 && sPreviewTexH > 0)
     {
-        // Row 1 = walk state. South direction = block 0. Frame = sAnimFrame.
         const int col = sAnimFrame;
         const int sheetCols = sPreviewTexW / FRAME_PX;
         const int sheetRows = sPreviewTexH / FRAME_PX;
-
         const float u0 = static_cast<float>(col) / static_cast<float>(sheetCols);
         const float u1 = static_cast<float>(col + 1) / static_cast<float>(sheetCols);
         const float v0 = 1.0f / static_cast<float>(sheetRows);
         const float v1 = 2.0f / static_cast<float>(sheetRows);
-
         UIRenderer::drawTexturedRect(previewX, previewY, scaledPreviewSize, scaledPreviewSize,
                                      sPreviewTex, u0, v0, u1, v1);
     }
@@ -851,9 +835,109 @@ CharCreateScreen::Action CharCreateScreen::render(EntityManager& em, int window_
     {
         UIRenderer::drawRect(previewX, previewY, scaledPreviewSize, scaledPreviewSize, FIELD_BG);
     }
+    outBottomY = previewBaseY + maxPreviewSize;
+}
 
-    // Content below preview. Use the max-scale footprint so layout is stable.
-    float cy = previewBaseY + maxPreviewSize + 24.0f;
+static void drawNameField(EntityManager& em, float ww, float& cy, float lineH, float mx, float my)
+{
+    const float fieldW = 480.0f;
+    const float fieldX = (ww - fieldW) * 0.5f;
+    const float fieldH = lineH + 16.0f;
+    UIRenderer::drawText(sBodyFont, "Name:", fieldX, cy, LABEL_COLOR);
+    const float fieldY = cy + lineH + 6.0f;
+    UIRenderer::drawRect(fieldX, fieldY, fieldW, fieldH, FIELD_BG);
+    UIRenderer::drawRect(fieldX, fieldY, fieldW, 1.5f, FIELD_BORDER);
+    UIRenderer::drawRect(fieldX, fieldY + fieldH - 1.5f, fieldW, 1.5f, FIELD_BORDER);
+    UIRenderer::drawRect(fieldX, fieldY, 1.5f, fieldH, FIELD_BORDER);
+    UIRenderer::drawRect(fieldX + fieldW - 1.5f, fieldY, 1.5f, fieldH, FIELD_BORDER);
+
+    const float textY = fieldY + (fieldH - lineH) * 0.5f;
+    const float adv = UIRenderer::drawText(sBodyFont, sName, fieldX + 12.0f, textY, TEXT_WHITE);
+
+    if ((SDL_GetTicks() / 500) % 2 == 0)
+    {
+        const float curX = fieldX + 12.0f + adv + 2.0f;
+        UIRenderer::drawRect(curX, textY, 2.0f, lineH, CURSOR_COLOR);
+    }
+
+    if (mx >= fieldX && mx < fieldX + fieldW && my >= fieldY && my < fieldY + fieldH)
+        sFocusRow = -1;
+
+    cy = fieldY + fieldH + 24.0f;
+}
+
+static float renderCategoryRow(EntityManager& em, const AppearanceConfig& cfg, int vi,
+                               const RowLayout& lay)
+{
+    const int catIdx = sVisibleCats[vi];
+    const auto& cat = cfg.categories[catIdx];
+    const bool focused = (sFocusRow == vi);
+    const int selIdx =
+        (catIdx < static_cast<int>(sCatSelection.size())) ? sCatSelection[catIdx] : 0;
+
+    if (cat.type == AppearanceCategoryType::Slider)
+        return renderSliderRow(em, cfg, vi, catIdx, focused, lay);
+    if (hasSwatch(cat))
+        return renderSwatchRow(em, cfg, vi, catIdx, focused, selIdx, lay);
+    return renderCycleRow(em, cfg, vi, catIdx, focused, selIdx, lay);
+}
+
+static void drawCategoryColumns(EntityManager& em, const AppearanceConfig& cfg, int visCount,
+                                float cx, float& cy, float contentW, float rowH, float mx, float my)
+{
+    const float colW = (contentW - COL_GAP) * 0.5f;
+    const float leftX = cx;
+    const float rightX = cx + colW + COL_GAP;
+    const int leftCount = (visCount + 1) / 2;
+
+    const float colStartY = cy;
+    float leftCy = colStartY;
+    float rightCy = colStartY;
+
+    for (int vi = 0; vi < visCount; ++vi)
+    {
+        const bool inLeftCol = (vi < leftCount);
+        const float colX = inLeftCol ? leftX : rightX;
+        float& colCy = inLeftCol ? leftCy : rightCy;
+        const RowLayout lay{colX, colCy, colW, rowH, mx, my};
+        colCy = renderCategoryRow(em, cfg, vi, lay);
+    }
+
+    cy = std::max(leftCy, rightCy);
+}
+
+CharCreateScreen::Action CharCreateScreen::render(EntityManager& em, int window_w, int window_h)
+{
+    ZoneScopedN("CharCreateScreen");
+
+    const float ww = static_cast<float>(window_w);
+    const float wh = static_cast<float>(window_h);
+    const auto* cfg = em.registry().ctx().find<AppearanceConfig>();
+
+    if (cfg != nullptr && cfg->loaded)
+        lazyInitSelections(em, *cfg);
+
+    const int visCount = static_cast<int>(sVisibleCats.size());
+    const int confirmRow = visCount;
+    const int backRow = visCount + 1;
+    const int firstRow = sEditMode ? 0 : -1;
+
+    advanceWalkAnim();
+
+    Action result = handleCharCreateKeyboard(em, cfg, visCount, confirmRow, backRow, firstRow);
+
+    // --- Drawing ---
+    UIRenderer::drawRect(0.0f, 0.0f, ww, wh, OVERLAY_OPAQUE);
+
+    const std::string title = sEditMode ? "Customize Character" : "Create Character";
+    const TextSize tsz = UIRenderer::measureText(sTitleFont, title);
+    const float titleY = wh * 0.06f;
+    UIRenderer::drawText(sTitleFont, title, (ww - tsz.width) * 0.5f, titleY, TITLE_COLOR);
+
+    float previewBottomY = 0.0f;
+    drawPreview(ww, titleY, tsz.height, cfg, previewBottomY);
+
+    float cy = previewBottomY + 24.0f;
     const float lineH = FontManager::lineHeight(sBodyFont);
     const float rowH = lineH + ROW_V_PAD;
     const float contentW = CONTENT_W;
@@ -865,70 +949,11 @@ CharCreateScreen::Action CharCreateScreen::render(EntityManager& em, int window_
     const float mx = static_cast<float>(mouseX);
     const float my = static_cast<float>(mouseY);
 
-    // Name field (new game only). Center a narrower input above the columns.
     if (!sEditMode)
-    {
-        const float fieldW = 480.0f;
-        const float fieldX = (ww - fieldW) * 0.5f;
-        const float fieldH = lineH + 16.0f;
-        UIRenderer::drawText(sBodyFont, "Name:", fieldX, cy, LABEL_COLOR);
-        const float fieldY = cy + lineH + 6.0f;
-        UIRenderer::drawRect(fieldX, fieldY, fieldW, fieldH, FIELD_BG);
-        UIRenderer::drawRect(fieldX, fieldY, fieldW, 1.5f, FIELD_BORDER);
-        UIRenderer::drawRect(fieldX, fieldY + fieldH - 1.5f, fieldW, 1.5f, FIELD_BORDER);
-        UIRenderer::drawRect(fieldX, fieldY, 1.5f, fieldH, FIELD_BORDER);
-        UIRenderer::drawRect(fieldX + fieldW - 1.5f, fieldY, 1.5f, fieldH, FIELD_BORDER);
+        drawNameField(em, ww, cy, lineH, mx, my);
 
-        const float textY = fieldY + (fieldH - lineH) * 0.5f;
-        const float adv = UIRenderer::drawText(sBodyFont, sName, fieldX + 12.0f, textY, TEXT_WHITE);
-
-        if ((SDL_GetTicks() / 500) % 2 == 0)
-        {
-            const float curX = fieldX + 12.0f + adv + 2.0f;
-            UIRenderer::drawRect(curX, textY, 2.0f, lineH, CURSOR_COLOR);
-        }
-
-        if (mx >= fieldX && mx < fieldX + fieldW && my >= fieldY && my < fieldY + fieldH)
-            sFocusRow = -1;
-
-        cy = fieldY + fieldH + 24.0f;
-    }
-
-    // Category selectors (only visible ones) laid out in two even columns.
     if (cfg != nullptr && cfg->loaded && visCount > 0)
-    {
-        const float colW = (contentW - COL_GAP) * 0.5f;
-        const float leftX = cx;
-        const float rightX = cx + colW + COL_GAP;
-        const int leftCount = (visCount + 1) / 2;
-
-        const float colStartY = cy;
-        float leftCy = colStartY;
-        float rightCy = colStartY;
-
-        for (int vi = 0; vi < visCount; ++vi)
-        {
-            const int catIdx = sVisibleCats[vi];
-            const auto& cat = cfg->categories[catIdx];
-            const bool focused = (sFocusRow == vi);
-            const int selIdx =
-                (catIdx < static_cast<int>(sCatSelection.size())) ? sCatSelection[catIdx] : 0;
-
-            const bool inLeftCol = (vi < leftCount);
-            const float colX = inLeftCol ? leftX : rightX;
-            float& colCy = inLeftCol ? leftCy : rightCy;
-            const RowLayout lay{colX, colCy, colW, rowH, mx, my};
-
-            if (cat.type == AppearanceCategoryType::Slider)
-                colCy = renderSliderRow(em, *cfg, vi, catIdx, focused, lay);
-            else if (hasSwatch(cat))
-                colCy = renderSwatchRow(em, *cfg, vi, catIdx, focused, selIdx, lay);
-            else
-                colCy = renderCycleRow(em, *cfg, vi, catIdx, focused, selIdx, lay);
-        }
-
-        cy = std::max(leftCy, rightCy);
-    }
+        drawCategoryColumns(em, *cfg, visCount, cx, cy, contentW, rowH, mx, my);
 
     const Action btnResult = drawFooterButtons(em, ww, cy, mx, my, confirmRow, backRow);
     if (btnResult != Action::None)
