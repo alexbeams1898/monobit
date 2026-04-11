@@ -116,7 +116,7 @@ bool RunSummaryScreen::render(EntityManager& em, int window_w, int window_h)
     // mutually exclusive (god runs never qualify for high scores).
     if (sGodMode)
     {
-        const std::string note = "God Mode - Not Scored";
+        const std::string note = "GOD MODE DOESN'T COUNT LOL";
         const TextSize nsz = UIRenderer::measureText(sBodyFont, note);
         UIRenderer::drawText(sBodyFont, note, px + (panel_w - nsz.width) * 0.5f, y,
                              Color{0.7f, 0.7f, 0.7f, 1.0f});
