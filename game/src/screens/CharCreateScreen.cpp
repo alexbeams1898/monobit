@@ -691,13 +691,15 @@ CharCreateScreen::Action CharCreateScreen::render(EntityManager& em, int window_
         }
     }
 
-    // Escape or RMB = back. CharCreate is its own phase so there's no parent
-    // screen to consume the click on the same frame.
+    // Escape or RMB = back. Set result and fall through so the rest of the
+    // frame draws normally -- an early return here would leave this frame
+    // blank (nothing drawn before line ~720), causing a visible flash on the
+    // transition to LoadGame.
     if (keyPressed(em, SDL_SCANCODE_ESCAPE) || mouseClicked(em, SDL_BUTTON_RIGHT))
     {
         SDL_StopTextInput();
         screen_input::playClickSfx(em);
-        return Action::Back;
+        result = Action::Back;
     }
 
     // Enter.
