@@ -1,25 +1,37 @@
 name: release
 
+# Triggered by every push to master. For each merged PR:
+#   1. Pull the PR body, prepend its `## Changelog` bullets to CHANGELOG.md
+#      under [Unreleased].
+#   2. If the branch prefix is patch/minor/major, bump the version in
+#      CMakeLists.txt, promote [Unreleased] to [X.Y.Z] - DATE, commit + tag,
+#      then build the game and publish releases to both repos using the
+#      [X.Y.Z] section as the release notes.
+#   3. If the branch prefix is chore/docs, only the changelog prepend commit
+#      is made -- no version bump, no build, no release.
+
 on:
   push:
     branches: [master]
     paths-ignore:
-      - 'CMakeLists.txt'  # bot's own bump commit -- don't self-retrigger
+      - 'CMakeLists.txt'  # bot's own version bump commit -- don't self-retrigger
+      - 'CHANGELOG.md'    # bot's own changelog commit -- don't self-retrigger
   workflow_dispatch:
 
 permissions:
   contents: write        # push the version bump commit, tag, and release
-  pull-requests: read    # gh pr view to read the source branch name
+  pull-requests: read    # gh pr view to read the source branch name + body
 
 jobs:
   # -----------------------------------------------------------------------
-  # 1. BUMP VERSION
-  #    Reads the merged PR's source branch prefix (patch/minor/major),
-  #    edits CMakeLists.txt, commits back as the GitHub Actions bot, tags.
-  #    chore/* and docs/* prefixes skip the release entirely.
+  # 1. PREPEND CHANGELOG + (CONDITIONALLY) BUMP VERSION
+  #    Reads the merged PR's body, prepends its Changelog bullets to
+  #    CHANGELOG.md [Unreleased]. If the branch prefix triggers a release,
+  #    also bumps CMakeLists.txt and promotes [Unreleased] to [X.Y.Z]. All
+  #    edits are committed in a single bot commit and tagged.
   # -----------------------------------------------------------------------
   bump:
-    name: Bump version
+    name: Changelog + version bump
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.bump.outputs.version }}
@@ -35,13 +47,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -e
           # Squash-merge commits end in " (#NNN)" -- extract PR number.
           pr_num=$(git log -1 --pretty=%s | grep -oP '\(#\K\d+' || echo "")
           if [ -z "$pr_num" ]; then
-            echo "No PR number in commit -- not a squash-merge. Skipping release."
+            echo "No PR number in commit -- not a squash-merge. Skipping."
             echo "should_release=false" >> "$GITHUB_OUTPUT"
+            echo "pr_num=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          echo "pr_num=$pr_num" >> "$GITHUB_OUTPUT"
           branch=$(gh pr view "$pr_num" --json headRefName -q .headRefName)
           prefix="${branch%%/*}"
           case "$prefix" in
@@ -49,7 +64,7 @@ jobs:
             minor) bump=minor ;;
             major) bump=major ;;
             chore|docs)
-              echo "Prefix '$prefix' -- no release."
+              echo "Prefix '$prefix' -- changelog only, no version bump."
               echo "should_release=false" >> "$GITHUB_OUTPUT"
               exit 0
               ;;
@@ -79,22 +94,62 @@ jobs:
           echo "version=$new" >> "$GITHUB_OUTPUT"
           echo "should_release=true" >> "$GITHUB_OUTPUT"
 
-      - name: Commit and tag
-        if: steps.bump.outputs.should_release == 'true'
+      - name: Prepend PR changelog into [Unreleased]
+        if: steps.bump.outputs.pr_num != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUM: ${{ steps.bump.outputs.pr_num }}
         run: |
+          set -e
+          gh pr view "$PR_NUM" --json body -q .body > /tmp/pr_body.md
+          python3 game/scripts/changelog.py prepend /tmp/pr_body.md
+
+      - name: Promote [Unreleased] to released version
+        if: steps.bump.outputs.should_release == 'true'
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          set -e
+          python3 game/scripts/changelog.py release "$VERSION"
+
+      - name: Commit, tag, push
+        if: steps.bump.outputs.pr_num != ''
+        env:
+          SHOULD_RELEASE: ${{ steps.bump.outputs.should_release }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          set -e
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add CMakeLists.txt
-          git commit -m "Bump version to ${{ steps.bump.outputs.version }}"
-          git tag "v${{ steps.bump.outputs.version }}"
-          git push
-          git push --tags
+
+          # Stage whatever changed (CHANGELOG.md always, CMakeLists.txt only on release).
+          git add CHANGELOG.md
+          if [ "$SHOULD_RELEASE" = "true" ]; then
+            git add CMakeLists.txt
+          fi
+
+          # If nothing actually changed (e.g. PR body was `skip` and not a release),
+          # exit cleanly without an empty commit.
+          if git diff --cached --quiet; then
+            echo "No changelog or version changes to commit."
+            exit 0
+          fi
+
+          if [ "$SHOULD_RELEASE" = "true" ]; then
+            git commit -m "Release v$VERSION"
+            git tag "v$VERSION"
+            git push
+            git push --tags
+          else
+            git commit -m "Update CHANGELOG.md"
+            git push
+          fi
 
   # -----------------------------------------------------------------------
   # 2. BUILD AND RELEASE
   #    Windows runner with MSYS2 MinGW64 -- matches local dev environment
   #    exactly so package.sh (ldd + /c/windows/ filter) works unmodified.
-  #    Aggregates merged PR titles since the previous tag into release notes.
+  #    Release notes come from CHANGELOG.md via changelog.py notes <version>.
   # -----------------------------------------------------------------------
   release:
     name: Build and release
@@ -132,49 +187,30 @@ jobs:
       - name: Package
         run: ./game/scripts/package.sh
 
-      - name: Generate release notes
-        id: notes
+      - name: Extract release notes from CHANGELOG.md
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.bump.outputs.version }}
         run: |
-          prev_tag=$(git tag --sort=-v:refname | sed -n '2p')
-          if [ -z "$prev_tag" ]; then
-            notes="Initial release."
-          else
-            since=$(git log -1 --format=%aI "$prev_tag")
-            notes=$(gh pr list --state merged --base master \
-              --search "merged:>$since" \
-              --json number,title,url \
-              --jq '.[] | "- \(.title) ([#\(.number)](\(.url)))"')
-            if [ -z "$notes" ]; then
-              notes="Version bump."
-            fi
-          fi
-          {
-            echo "notes<<EOF"
-            echo "$notes"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+          python3 game/scripts/changelog.py notes "$VERSION" > /tmp/release_notes.md
+          cat /tmp/release_notes.md
 
-      - name: Create GitHub Release
+      - name: Create GitHub Release on source repo
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.bump.outputs.version }}
-          NOTES: ${{ steps.notes.outputs.notes }}
         run: |
           gh release create "v$VERSION" \
             "prison-escape-game-v$VERSION.zip" \
             --title "v$VERSION" \
-            --notes "$NOTES"
+            --notes-file /tmp/release_notes.md
 
       - name: Mirror release to public repo
         env:
           GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
           VERSION: ${{ needs.bump.outputs.version }}
-          NOTES: ${{ steps.notes.outputs.notes }}
         run: |
           gh release create "v$VERSION" \
             "prison-escape-game-v$VERSION.zip" \
             --repo alexbeams1898/prison-escape-game-releases \
             --title "v$VERSION" \
-            --notes "$NOTES"
+            --notes-file /tmp/release_notes.md
