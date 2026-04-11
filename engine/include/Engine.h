@@ -1,5 +1,6 @@
 #pragma once
 
+#include "SpriteCompositor.h"
 #include "TextureManager.h"
 #include "ecs/EntityManager.h"
 
@@ -29,6 +30,13 @@ class Engine
     // (e.g. mouse-aim facing) rather than the fixed tick rate.
     using PerFrameFn = void (*)(Engine&, EntityManager&, double);
     void setPerFrameUpdate(PerFrameFn fn);
+
+    // Pre-render callback. Called once per frame after the fixed-step loop
+    // and after render_alpha is computed, but before rendering. Use for any
+    // per-frame state that needs the final render_alpha (e.g. interpolating
+    // aim override positions to match sprite interpolation).
+    using PreRenderFn = void (*)(Engine&, EntityManager&);
+    void setPreRender(PreRenderFn fn);
 
     // Debug render callback. Called once per frame after world rendering,
     // between UIRenderer::beginFrame() and the UI render callback.
@@ -61,6 +69,15 @@ class Engine
         return window_h;
     }
 
+    void setCameraZoom(float zoom)
+    {
+        camera_zoom = zoom;
+    }
+    float cameraZoom() const
+    {
+        return camera_zoom;
+    }
+
     // EMA-smoothed frame time for FPS calculation.
     double lastFrameTime() const
     {
@@ -77,6 +94,11 @@ class Engine
     TextureManager& textureManager()
     {
         return texture_manager;
+    }
+
+    SpriteCompositor& spriteCompositor()
+    {
+        return sprite_compositor;
     }
 
     // Push the current back buffer to the display. Used by game code to show
@@ -103,12 +125,15 @@ class Engine
 
     EntityManager entity_manager;
     TextureManager texture_manager;
+    SpriteCompositor sprite_compositor;
     double last_frame_time = 1.0 / 60.0; // seconds; used for title-bar FPS display
     double frame_dt = 1.0 / 60.0;        // raw wall-clock frame time for animation
 
     GameUpdateFn game_update = nullptr;
     PerFrameFn per_frame_update = nullptr;
+    PreRenderFn pre_render = nullptr;
     RenderDebugFn render_debug = nullptr;
     RenderUIFn render_ui = nullptr;
+    float camera_zoom = 1.0f;
     bool timing_reset_pending = false;
 };

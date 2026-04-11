@@ -234,14 +234,14 @@ void TileMapRenderer::clear()
     sTileSize = 0.0f;
 }
 
-void TileMapRenderer::render(float camX, float camY, int windowW, int windowH)
+void TileMapRenderer::render(float camX, float camY, int windowW, int windowH, float zoom)
 {
     ZoneScopedN("TileMapRenderer");
     if (sTMVertexCount == 0)
         return;
 
-    const float half_w = static_cast<float>(windowW) * 0.5f;
-    const float half_h = static_cast<float>(windowH) * 0.5f;
+    const float half_w = static_cast<float>(windowW) * 0.5f / zoom;
+    const float half_h = static_cast<float>(windowH) * 0.5f / zoom;
 
     const float snap_x = std::round(camX);
     const float snap_y = std::round(camY);

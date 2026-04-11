@@ -248,6 +248,7 @@ static bool emplaceAnimationFromSheet(EntityManager& em, entt::entity entity,
     loadState("attack", AnimState::Attack);
     loadState("hit", AnimState::Hit);
     loadState("death", AnimState::Death);
+    loadState("run", AnimState::Run);
 
     int maxF = 1;
     for (const auto& state : anim.states)
@@ -268,36 +269,35 @@ static void loadAnimation(EntityManager& em, entt::entity entity, const json& j)
         em.registry().emplace<Animation>(entity);
 }
 
-static void loadBodyParts(EntityManager& em, entt::entity parent, const json& j)
+static void loadAppearance(EntityManager& em, entt::entity entity, const json& j)
 {
-    const Transform* parentTransform = em.registry().try_get<Transform>(parent);
+    const std::string sheetPath = j.value("sheet", std::string{});
+    if (!emplaceAnimationFromSheet(em, entity, sheetPath))
+        em.registry().emplace<Animation>(entity);
 
-    for (const auto& part : j)
+    AppearanceDef def;
+    def.sheet_path = sheetPath;
+    def.sprite_layer = j.value("layer", 2);
+
+    if (j.contains("layers") && j["layers"].is_array())
     {
-        auto child = em.create();
-
-        BodyPart bp;
-        bp.parent = parent;
-        bp.direction_from_facing = part.value("direction_from_facing", false);
-        em.registry().emplace<BodyPart>(child, bp);
-
-        Transform t;
-        if (parentTransform)
-        {
-            t.x = parentTransform->x;
-            t.y = parentTransform->y;
-            t.scale = parentTransform->scale;
-        }
-        em.registry().emplace<Transform>(child, t);
-
-        const std::string sheetPath = part.value("sheet", std::string{});
-        emplaceAnimationFromSheet(em, child, sheetPath);
-
-        if (em.registry().all_of<Sprite>(child))
-            em.registry().get<Sprite>(child).layer = part.value("draw_order", 0);
-
-        em.registry().emplace<Tag>(child, Tag{"body_part"});
+        for (const auto& l : j["layers"])
+            def.layers.push_back(l.get<std::string>());
     }
+
+    if (j.contains("layer_manifest"))
+        def.layer_manifest = j.value("layer_manifest", std::string{});
+
+    if (j.contains("default_layers") && j["default_layers"].is_object())
+    {
+        for (auto& [key, val] : j["default_layers"].items())
+            def.default_layers[key] = val.get<std::string>();
+    }
+
+    auto& spr = em.registry().get_or_emplace<Sprite>(entity);
+    spr.layer = def.sprite_layer;
+
+    em.registry().emplace<AppearanceDef>(entity, std::move(def));
 }
 
 static void loadStamina(EntityManager& em, entt::entity entity, const json& /*j*/)
@@ -387,6 +387,16 @@ static void loadHitSound(EntityManager& em, entt::entity entity, const json& j)
     em.registry().emplace<HitSound>(entity, std::move(hs));
 }
 
+static void loadDeathSound(EntityManager& em, entt::entity entity, const json& j)
+{
+    DeathSound ds;
+    ds.path = j.value("path", std::string{});
+    ds.volume = j.value("volume", 0.5f);
+    ds.min_pitch = j.value("min_pitch", 0.9f);
+    ds.max_pitch = j.value("max_pitch", 1.1f);
+    em.registry().emplace<DeathSound>(entity, std::move(ds));
+}
+
 static void loadAmbientSound(EntityManager& em, entt::entity entity, const json& j)
 {
     AmbientSound amb;
@@ -417,6 +427,31 @@ static void loadAmbientSound(EntityManager& em, entt::entity entity, const json&
     em.registry().emplace<AmbientSound>(entity, std::move(amb));
 }
 
+static void loadAggroSound(EntityManager& em, entt::entity entity, const json& j)
+{
+    AggroSound aggro;
+    if (j.contains("paths") && j["paths"].is_array())
+    {
+        for (const auto& p : j["paths"])
+            aggro.paths.push_back(p.get<std::string>());
+    }
+    aggro.volume = j.value("volume", 0.4f);
+    aggro.min_interval = j.value("min_interval", 3.0f);
+    aggro.max_interval = j.value("max_interval", 8.0f);
+    aggro.max_distance = j.value("max_distance", 400.0f);
+    aggro.min_pitch = j.value("min_pitch", 0.85f);
+    aggro.max_pitch = j.value("max_pitch", 1.15f);
+
+    // Build initial shuffle order.
+    static std::mt19937 sRng{std::random_device{}()};
+    aggro.shuffle_order.resize(aggro.paths.size());
+    for (int i = 0; i < static_cast<int>(aggro.paths.size()); ++i)
+        aggro.shuffle_order[static_cast<size_t>(i)] = i;
+    std::shuffle(aggro.shuffle_order.begin(), aggro.shuffle_order.end(), sRng);
+
+    em.registry().emplace<AggroSound>(entity, std::move(aggro));
+}
+
 // clang-format off
 static const std::unordered_map<std::string, LoaderFn> kComponentLoaders = {
     {"transform",        loadTransform},
@@ -438,12 +473,14 @@ static const std::unordered_map<std::string, LoaderFn> kComponentLoaders = {
     {"rest_spot",        loadRestSpot},
     {"ladder",           loadLadder},
     {"solid_color",      loadSolidColor},
-    {"body_parts",       loadBodyParts},
     {"inventory",        loadInventory},
     {"equipment",        loadEquipment},
     {"body",             loadBody},
     {"hit_sound",        loadHitSound},
+    {"death_sound",      loadDeathSound},
     {"ambient_sound",    loadAmbientSound},
+    {"aggro_sound",      loadAggroSound},
+    {"appearance",       loadAppearance},
 };
 // clang-format on
 
@@ -1273,4 +1310,84 @@ bool ConfigLoader::loadEvolutionTrees(EntityManager& em, const std::string& dirP
         std::cout << "[ConfigLoader] Loaded " << count << " evolution trees from " << dirPath
                   << "\n";
     return count > 0;
+}
+
+static AppearanceOption parseAppearanceOption(const json& opt)
+{
+    AppearanceOption o;
+    o.id = opt.value("id", std::string{});
+    o.label = opt.value("label", o.id);
+    o.file = opt.value("file", std::string{});
+    if (opt.contains("swatch"))
+    {
+        const std::string hex = opt.value("swatch", std::string{});
+        if (hex.size() == 7 && hex[0] == '#')
+        {
+            const uint32_t rgb = std::stoul(hex.substr(1), nullptr, 16);
+            o.swatch = (rgb << 8) | 0xFF;
+        }
+    }
+    return o;
+}
+
+static AppearanceCategory parseAppearanceCategory(const json& cat)
+{
+    AppearanceCategory c;
+    c.id = cat.value("id", std::string{});
+    c.label = cat.value("label", c.id);
+    c.required = cat.value("required", false);
+    c.path_prefix = cat.value("path_prefix", std::string{});
+    c.linked_to = cat.value("linked_to", std::string{});
+    c.combine_with = cat.value("combine_with", std::string{});
+
+    const std::string type_str = cat.value("type", std::string{"select"});
+    if (type_str == "slider")
+    {
+        c.type = AppearanceCategoryType::Slider;
+        c.min_value = cat.value("min", 0.0f);
+        c.max_value = cat.value("max", 1.0f);
+        c.step_value = cat.value("step", 0.01f);
+        c.default_value = cat.value("default", c.min_value);
+    }
+    else if (cat.contains("options") && cat["options"].is_array())
+    {
+        for (const auto& opt : cat["options"])
+            c.options.push_back(parseAppearanceOption(opt));
+    }
+    return c;
+}
+
+bool ConfigLoader::loadAppearanceConfig(EntityManager& em, const std::string& filePath)
+{
+    std::ifstream file(filePath);
+    if (!file.is_open())
+    {
+        std::cout << "[ConfigLoader] No appearance config: " << filePath << " -- skipping\n";
+        return false;
+    }
+
+    json j;
+    try
+    {
+        file >> j;
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "[ConfigLoader] Error parsing " << filePath << ": " << e.what() << "\n";
+        return false;
+    }
+
+    auto& cfg = em.registry().ctx().get<AppearanceConfig>();
+    cfg.frame_size = j.value("frame_size", 64);
+
+    if (j.contains("categories") && j["categories"].is_array())
+    {
+        for (const auto& cat : j["categories"])
+            cfg.categories.push_back(parseAppearanceCategory(cat));
+    }
+
+    cfg.loaded = true;
+    std::cout << "[ConfigLoader] Loaded appearance config from " << filePath << " ("
+              << cfg.categories.size() << " categories)\n";
+    return true;
 }

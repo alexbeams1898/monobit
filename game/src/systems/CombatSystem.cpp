@@ -62,7 +62,12 @@ void deductStamina(entt::registry& reg, entt::entity entity, float cost, const F
     sta.current = std::max(0.0f, sta.current - cost);
     sta.recovery_timer = f.stamina.recovery_delay;
     if (before > 0.0f && sta.current <= 0.0f)
+    {
         reg.emplace_or_replace<Staggered>(entity, Staggered{f.stamina.exhaustion_stagger});
+        // Lock sprint until stamina is fully recovered. Other stamina actions
+        // (attacks, dodges, blocking) remain available.
+        sta.sprint_locked = true;
+    }
 }
 
 static std::mt19937& combatRng()
@@ -220,6 +225,7 @@ void CombatSystem::update(EntityManager& em, double dt)
     }
 
     // Stamina recovery: after recovery_delay with no deduction, regen at recovery_rate/s.
+    // Sprint lockout clears once stamina is back to full (Elden Ring style).
     for (auto [entity, sta] : em.registry().view<Stamina>().each())
     {
         if (sta.recovery_timer > 0.0f)
@@ -230,6 +236,8 @@ void CombatSystem::update(EntityManager& em, double dt)
         {
             sta.current = std::min(sta.max_stamina, sta.current + f.stamina.recovery_rate * fdt);
         }
+        if (sta.sprint_locked && sta.current >= sta.max_stamina)
+            sta.sprint_locked = false;
     }
 
     // AttackLocked — remove when expired.
@@ -444,16 +452,16 @@ void CombatSystem::update(EntityManager& em, double dt)
             if (em.registry().all_of<Velocity>(entity))
             {
                 auto& vel = em.registry().get<Velocity>(entity);
-                vel.dx -= facing.dx * 40.0f;
-                vel.dy -= facing.dy * 40.0f;
+                vel.dx -= facing.aim_dx * 40.0f;
+                vel.dy -= facing.aim_dy * 40.0f;
             }
         }
 
         if (fireAttack)
         {
             // In auto mode, aim toward the nearest chasing/attacking enemy.
-            float facingX = facing.dx;
-            float facingY = facing.dy;
+            float facingX = facing.aim_dx;
+            float facingY = facing.aim_dy;
 
             if (em.registry().all_of<AutoAttackMode>(entity) &&
                 em.registry().get<AutoAttackMode>(entity).enabled)
@@ -477,9 +485,9 @@ void CombatSystem::update(EntityManager& em, double dt)
                         }
                     }
                 }
-                // Update stored facing so MovementSystem sees the right direction.
-                facing.dx = (facingX != 0.0f || facingY != 0.0f) ? facingX : facing.dx;
-                facing.dy = (facingX != 0.0f || facingY != 0.0f) ? facingY : facing.dy;
+                // Update aim so hitbox/projectile fires toward the auto-target.
+                facing.aim_dx = (facingX != 0.0f || facingY != 0.0f) ? facingX : facing.aim_dx;
+                facing.aim_dy = (facingX != 0.0f || facingY != 0.0f) ? facingY : facing.aim_dy;
             }
 
             if (weapon.ranged)
@@ -594,9 +602,26 @@ void CombatSystem::update(EntityManager& em, double dt)
                         : f.swing.base_swing_time + weapon.weight * f.swing.weight_scale;
                 weapon.swing_cooldown_remaining = cooldown;
 
-                em.registry().emplace_or_replace<AttackLocked>(
-                    entity, AttackLocked{cooldown * f.combat.attack_lock_fraction});
+                const float lockDuration = cooldown * f.combat.attack_lock_fraction;
+                em.registry().emplace_or_replace<AttackLocked>(entity, AttackLocked{lockDuration});
                 em.registry().emplace_or_replace<AttackFeedback>(entity, AttackFeedback{0.5f});
+
+                // Stretch the attack animation to land exactly at the end of
+                // the AttackLocked window. Heavy weapons get a visibly longer
+                // windup; fast weapons keep their snappy native pace. Without
+                // this, heavy weapons used to play their swing twice because
+                // the lock window outlasted the native animation length.
+                if (em.registry().all_of<Animation, FacingDirection>(entity))
+                {
+                    const auto& a = em.registry().get<Animation>(entity);
+                    const auto& sd = a.states[static_cast<int>(AnimState::Attack)];
+                    const float nativeLen = static_cast<float>(sd.frames) * sd.duration;
+                    if (nativeLen > 0.0f && lockDuration > 0.0f)
+                    {
+                        auto& fd = em.registry().get<FacingDirection>(entity);
+                        fd.attack_anim_speed = lockDuration / nativeLen;
+                    }
+                }
 
                 if (hasSta)
                     deductStamina(em.registry(), entity, swingCost, f);
@@ -612,8 +637,8 @@ void CombatSystem::update(EntityManager& em, double dt)
             !isStaggered && !isCritLocked && staCurrent >= skillCost)
         {
             const float skillReach = f.combat.skill_reach;
-            const float hx = transform.x + facing.dx * skillReach;
-            const float hy = transform.y + facing.dy * skillReach;
+            const float hx = transform.x + facing.aim_dx * skillReach;
+            const float hy = transform.y + facing.aim_dy * skillReach;
             float dmg = weapon.base_damage * f.combat.skill_damage_mult;
             if (em.registry().all_of<Stats>(entity))
                 dmg = computeDamage(weapon, em.registry().get<Stats>(entity), f) *
@@ -677,8 +702,8 @@ void CombatSystem::update(EntityManager& em, double dt)
                 if (moving)
                 {
                     // Build a local frame: forward = toward target, right = perpendicular.
-                    const float fwd_x = facing.dx;
-                    const float fwd_y = facing.dy;
+                    const float fwd_x = facing.aim_dx;
+                    const float fwd_y = facing.aim_dy;
                     const float right_x = -fwd_y;
                     const float right_y = fwd_x;
                     // Map WASD to local axes: W=forward, S=back, A=left, D=right.
@@ -694,22 +719,22 @@ void CombatSystem::update(EntityManager& em, double dt)
                 else
                 {
                     // No input → backstep away from target.
-                    dodgeX = -facing.dx;
-                    dodgeY = -facing.dy;
+                    dodgeX = -facing.aim_dx;
+                    dodgeY = -facing.aim_dy;
                 }
             }
             else if (nearEnemy)
             {
-                // Backstep: opposite of facing.
-                dodgeX = -facing.dx;
-                dodgeY = -facing.dy;
+                // Backstep: opposite of aim direction.
+                dodgeX = -facing.aim_dx;
+                dodgeY = -facing.aim_dy;
             }
             else
             {
-                // Normal roll: current movement direction, or facing fallback.
+                // Normal roll: current movement direction, or aim fallback.
                 const bool moving = actions.move_x != 0.0f || actions.move_y != 0.0f;
-                dodgeX = moving ? actions.move_x : facing.dx;
-                dodgeY = moving ? actions.move_y : facing.dy;
+                dodgeX = moving ? actions.move_x : facing.aim_dx;
+                dodgeY = moving ? actions.move_y : facing.aim_dy;
             }
 
             if (em.registry().all_of<Velocity>(entity))
@@ -742,8 +767,8 @@ void CombatSystem::update(EntityManager& em, double dt)
             if (em.registry().all_of<Velocity>(entity))
             {
                 auto& vel = em.registry().get<Velocity>(entity);
-                vel.dx -= facing.dx * 40.0f;
-                vel.dy -= facing.dy * 40.0f;
+                vel.dx -= facing.aim_dx * 40.0f;
+                vel.dy -= facing.aim_dy * 40.0f;
             }
         }
 
@@ -860,6 +885,8 @@ void CombatSystem::update(EntityManager& em, double dt)
                     auto& fd = em.registry().get<FacingDirection>(entity);
                     fd.dx = nx;
                     fd.dy = ny;
+                    fd.aim_dx = nx;
+                    fd.aim_dy = ny;
                 }
 
                 // Stamina cost — same formula as player swings.

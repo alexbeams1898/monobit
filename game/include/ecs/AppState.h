@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 // ---------------------------------------------------------------------------
@@ -103,6 +104,7 @@ struct PlayerProfile
 {
     std::string name;
     int money = 0;
+    std::unordered_map<std::string, std::string> appearance; // category_id -> option_id
 };
 
 // ---------------------------------------------------------------------------
@@ -114,6 +116,10 @@ struct Run
     std::string character_name;
     std::string timestamp;
     bool escaped = false;
+    // Run was completed with god mode enabled. Such runs are excluded from the
+    // high-score leaderboard but still recorded so the player can review their
+    // own history. Defaults to false so legacy save files load correctly.
+    bool god_mode = false;
 };
 
 // ---------------------------------------------------------------------------
@@ -122,7 +128,7 @@ struct Run
 // ---------------------------------------------------------------------------
 struct SaveData
 {
-    static constexpr int CURRENT_VERSION = 1;
+    static constexpr int CURRENT_VERSION = 2;
 
     int schema_version = CURRENT_VERSION;
     std::vector<PlayerProfile> characters;

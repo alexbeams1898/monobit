@@ -4,6 +4,7 @@
         "transform":        { "x": 640.0, "y": 360.0, "rotation": 0.0, "scale": 1.0 },
         "velocity":         { "dx": 0.0, "dy": 0.0 },
         "collider":         { "width": 32.0, "height": 32.0, "is_solid": true },
+        "appearance":       { "sheet": "config/animations/lpc_humanoid.json", "layer_manifest": "config/appearance/layers.json", "default_layers": { "body_color": "tone_2", "head_variant": "base", "eyes": "brown", "legs_style": "pants", "legs_color": "blue", "feet_style": "boots", "feet_color": "brown", "torso_style": "shortsleeve", "torso_color": "white", "hair_style": "plain", "hair_color": "brown" } },
         "facing":           {},
         "stats":            { "str": 1, "dex": 1, "end": 1, "lck": 1 },
         "body":             { "base_hp": 50, "base_defense": 3, "unarmed_damage": 6.0, "unarmed_str_scaling": 1.0, "unarmed_dex_scaling": 0.75 },
@@ -12,10 +13,6 @@
         "experience":       {},
         "auto_attack_mode": {},
         "poise":            {},
-        "stamina":          {},
-        "body_parts": [
-            { "sheet": "config/animations/player_lower.json", "draw_order": 2, "direction_from_facing": false },
-            { "sheet": "config/animations/player_upper.json", "draw_order": 2, "direction_from_facing": true }
-        ]
+        "stamina":          {}
     }
 }

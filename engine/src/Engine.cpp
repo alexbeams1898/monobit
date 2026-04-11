@@ -10,6 +10,7 @@
 #include "utils/DebugDraw.h"
 
 #include <cmath>
+#include <cstdio>
 #include <string>
 
 // glad must be included before any SDL OpenGL header.
@@ -102,6 +103,10 @@ void Engine::run()
         if (per_frame_update)
             per_frame_update(*this, entity_manager, frame_dt);
 
+        // Reset per-frame tick counter so render UI can detect 0-tick frames
+        // and avoid clearing one-shot input buffers that no consumer saw yet.
+        entity_manager.ticks_this_frame = 0;
+
         // Fixed-rate update — always steps in 1/60s increments.
         while (accumulator >= FIXED_TIMESTEP)
         {
@@ -112,8 +117,16 @@ void Engine::run()
                 prev.x = transform.x;
                 prev.y = transform.y;
             }
+            for (auto [entity, camera] : entity_manager.registry().view<Camera>().each())
+            {
+                camera.prev_x = camera.x;
+                camera.prev_y = camera.y;
+                camera.prev_offset_x = camera.offset_x;
+                camera.prev_offset_y = camera.offset_y;
+            }
             update(FIXED_TIMESTEP);
             accumulator -= FIXED_TIMESTEP;
+            ++entity_manager.ticks_this_frame;
 
             // After a heavy synchronous operation (map gen), snap the clock
             // forward so no catch-up ticks fire and the FPS counter stays clean.
@@ -128,6 +141,8 @@ void Engine::run()
         }
 
         entity_manager.render_alpha = static_cast<float>(accumulator / FIXED_TIMESTEP);
+        if (pre_render)
+            pre_render(*this, entity_manager);
         render();
 
         // Tracy frame marker — marks the end of one complete frame.
@@ -171,19 +186,6 @@ void Engine::update(double dt)
 
     if (game_update)
         game_update(*this, entity_manager, dt);
-
-    // Sync body-part children to their parent's position.
-    // Must run after all movement/correction systems so children have the
-    // final parent position before the next PreviousTransform snapshot.
-    for (auto [child, bp, t] : entity_manager.registry().view<BodyPart, Transform>().each())
-    {
-        if (entity_manager.registry().valid(bp.parent))
-        {
-            const auto& pt = entity_manager.registry().get<Transform>(bp.parent);
-            t.x = pt.x;
-            t.y = pt.y;
-        }
-    }
 }
 
 void Engine::setGameUpdate(GameUpdateFn fn)
@@ -194,6 +196,11 @@ void Engine::setGameUpdate(GameUpdateFn fn)
 void Engine::setPerFrameUpdate(PerFrameFn fn)
 {
     per_frame_update = fn;
+}
+
+void Engine::setPreRender(PreRenderFn fn)
+{
+    pre_render = fn;
 }
 
 void Engine::setRenderDebug(RenderDebugFn fn)
@@ -230,14 +237,22 @@ void Engine::render()
     {
         if (camera.active)
         {
-            // During a camera pan, the pan system owns Camera.x/y and applies
-            // its own smoothstep -- skip render interpolation to avoid fighting
-            // with PreviousTransform (which tracks the entity's physical position).
-            const auto* prev = entity_manager.registry().try_get<PreviousTransform>(entity);
-            if (prev && !entity_manager.registry().all_of<CameraPan>(entity))
+            // Interpolate base position and offset separately. Both use the
+            // same alpha so they share the interpolation base — no step-size
+            // mismatch between camera and player sprite positions.
+            if (!entity_manager.registry().all_of<CameraPan>(entity))
             {
-                camX = prev->x + (camera.x - prev->x) * a;
-                camY = prev->y + (camera.y - prev->y) * a;
+                const float baseX = camera.prev_x + (camera.x - camera.prev_x) * a;
+                const float baseY = camera.prev_y + (camera.y - camera.prev_y) * a;
+                const float offX =
+                    camera.prev_offset_x + (camera.offset_x - camera.prev_offset_x) * a;
+                const float offY =
+                    camera.prev_offset_y + (camera.offset_y - camera.prev_offset_y) * a;
+                // Round the offset so it lands on integer pixels. Without this,
+                // the sprite (rounded) and camera (rounded) have independent
+                // rounding errors that don't cancel, causing 1-2px oscillation.
+                camX = baseX + std::round(offX);
+                camY = baseY + std::round(offY);
             }
             else
             {
@@ -248,25 +263,58 @@ void Engine::render()
         }
     }
 
-    // Sync body-part positions before animation (covers first-frame edge case
-    // where no tick has run yet but we're about to render).
-    for (auto [child, bp, t] : entity_manager.registry().view<BodyPart, Transform>().each())
+    // Per-frame camera/player position CSV for jitter diagnosis.
+    // Only active in Tracy-enabled builds.
+#ifdef TRACY_ENABLE
     {
-        if (entity_manager.registry().valid(bp.parent))
+        static FILE* jitterLog = nullptr;
+        static int jitterFrame = 0;
+        if (!jitterLog)
         {
-            const auto& pt = entity_manager.registry().get<Transform>(bp.parent);
-            t.x = pt.x;
-            t.y = pt.y;
+            jitterLog = std::fopen("jitter.csv", "w");
+            if (jitterLog)
+                std::fprintf(jitterLog, "frame,alpha,camX,camY,"
+                                        "offsetX,offsetY,prevOffsetX,prevOffsetY,"
+                                        "drawX,drawY,"
+                                        "screenX,screenY,frameDtMs\n");
+        }
+        if (jitterLog)
+        {
+            for (auto [pe, cam] : entity_manager.registry().view<Camera>().each())
+            {
+                if (!cam.active)
+                    continue;
+                const auto& tf = entity_manager.registry().get<Transform>(pe);
+                float drawX = tf.x;
+                float drawY = tf.y;
+                if (const auto* prev = entity_manager.registry().try_get<PreviousTransform>(pe))
+                {
+                    drawX = prev->x + (tf.x - prev->x) * a;
+                    drawY = prev->y + (tf.y - prev->y) * a;
+                }
+                std::fprintf(jitterLog,
+                             "%d,%.4f,%.4f,%.4f,"
+                             "%.4f,%.4f,%.4f,%.4f,"
+                             "%.4f,%.4f,"
+                             "%.4f,%.4f,%.3f\n",
+                             jitterFrame, a, camX, camY, cam.offset_x, cam.offset_y,
+                             cam.prev_offset_x, cam.prev_offset_y, drawX, drawY, drawX - camX,
+                             drawY - camY, frame_dt * 1000.0);
+                break;
+            }
+            jitterFrame++;
+            std::fflush(jitterLog);
         }
     }
+#endif
 
     AnimationSystem::update(entity_manager, static_cast<float>(frame_dt));
-    TileMapRenderer::render(camX, camY, window_w, window_h);
-    RenderSystem::render(entity_manager, texture_manager, camX, camY);
+    TileMapRenderer::render(camX, camY, window_w, window_h, camera_zoom);
+    RenderSystem::render(entity_manager, texture_manager, camX, camY, camera_zoom);
 
     // UI layer: screen-space overlay drawn after world content.
     UIRenderer::beginFrame();
-    DebugDraw::setCamera(camX, camY, window_w, window_h);
+    DebugDraw::setCamera(camX, camY, window_w, window_h, camera_zoom);
     if (render_debug)
         render_debug(*this, entity_manager);
     if (render_ui)
@@ -289,6 +337,7 @@ void Engine::shutdown()
     FontManager::shutdown();
     TileMapRenderer::shutdown();
     RenderSystem::shutdown();
+    sprite_compositor.clear();
     texture_manager.clear();
 
     if (gl_context)

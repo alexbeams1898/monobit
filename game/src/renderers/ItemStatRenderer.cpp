@@ -92,9 +92,57 @@ const char* scalingGrade(float scaling)
     return "E";
 }
 
+// Compute fully-resolved per-swing damage including stat-requirement penalty.
+// Returns the weapon's base damage when there are no stats to scale against.
+static float resolveTotalDamage(const Weapon& w, const Stats& stats, const FormulaConfig& f,
+                                bool has_stats, bool god_mode)
+{
+    if (!has_stats)
+        return w.base_damage;
+    const float total = computeDamage(w, stats, f);
+    if (god_mode)
+        return total;
+    const int strDeficit = std::max(0, w.str_requirement - stats.str);
+    const int dexDeficit = std::max(0, w.dex_requirement - stats.dex);
+    if (strDeficit == 0 && dexDeficit == 0)
+        return total;
+    const float penalty =
+        std::exp(-static_cast<float>(strDeficit) * f.stat_requirement.penalty_rate) *
+        std::exp(-static_cast<float>(dexDeficit) * f.stat_requirement.penalty_rate);
+    return total * penalty;
+}
+
+static const char* speedTierLabel(float speed)
+{
+    if (speed < 1.0f)
+        return "Very Slow";
+    if (speed < 1.5f)
+        return "Slow";
+    if (speed <= 2.5f)
+        return "Normal";
+    if (speed <= 4.0f)
+        return "Fast";
+    return "Very Fast";
+}
+
+// Build "STR N  DEX M" requirement text for whichever requirements are non-zero.
+static std::string buildRequirementText(const Weapon& w)
+{
+    std::string req;
+    if (w.str_requirement > 0)
+        req += "STR " + std::to_string(w.str_requirement);
+    if (w.dex_requirement > 0)
+    {
+        if (!req.empty())
+            req += "  ";
+        req += "DEX " + std::to_string(w.dex_requirement);
+    }
+    return req;
+}
+
 float renderWeaponStats(FontHandle body_font, const Weapon& w, const Stats& stats,
                         const FormulaConfig& f, const ItemDef* def, bool has_stats, float cx,
-                        float y, float cw, float val_x, bool show_name)
+                        float y, float cw, float val_x, bool show_name, bool god_mode)
 {
     const float stat_line = FontManager::lineHeight(body_font) + 4.0f;
 
@@ -107,12 +155,16 @@ float renderWeaponStats(FontHandle body_font, const Weapon& w, const Stats& stat
         y += 6.0f;
     }
 
-    // Damage: base (+bonus).
-    const float total = has_stats ? computeDamage(w, stats, f) : w.base_damage;
+    // Damage: base (+/-bonus). Bonus reflects fully-resolved per-swing damage
+    // including stat-requirement penalty so under-stat heavy weapons show a
+    // negative bonus instead of a misleading raw scaling number. DEF/armor are
+    // target-side and stay out of the tooltip.
+    const float total = resolveTotalDamage(w, stats, f, has_stats, god_mode);
     const int bonus = static_cast<int>(total) - static_cast<int>(w.base_damage);
+    const std::string sign = bonus >= 0 ? "+" : "";
     UIRenderer::drawText(body_font, "Damage", cx, y, LABEL_COLOR);
     UIRenderer::drawText(body_font,
-                         std::to_string(static_cast<int>(w.base_damage)) + " (+" +
+                         std::to_string(static_cast<int>(w.base_damage)) + " (" + sign +
                              std::to_string(bonus) + ")",
                          val_x, y, TEXT_WHITE);
     y += stat_line;
@@ -129,19 +181,9 @@ float renderWeaponStats(FontHandle body_font, const Weapon& w, const Stats& stat
     const float cooldown = has_stats ? computeSwingCooldown(w, stats, f)
                                      : (f.swing.base_swing_time + w.weight * f.swing.weight_scale);
     const float speed = 1.0f / std::max(cooldown, 0.05f);
-    const char* speed_tier = nullptr;
-    if (speed < 1.0f)
-        speed_tier = "Very Slow";
-    else if (speed < 1.5f)
-        speed_tier = "Slow";
-    else if (speed <= 2.5f)
-        speed_tier = "Normal";
-    else if (speed <= 4.0f)
-        speed_tier = "Fast";
-    else
-        speed_tier = "Very Fast";
     char speed_buf[32];
-    std::snprintf(speed_buf, sizeof(speed_buf), "%s (%.1f/s)", speed_tier, speed);
+    std::snprintf(speed_buf, sizeof(speed_buf), "%s (%.1f/s)", speedTierLabel(speed),
+                  static_cast<double>(speed));
     UIRenderer::drawText(body_font, "Speed", cx, y, LABEL_COLOR);
     UIRenderer::drawText(body_font, speed_buf, val_x, y, TEXT_WHITE);
     y += stat_line;
@@ -154,19 +196,11 @@ float renderWeaponStats(FontHandle body_font, const Weapon& w, const Stats& stat
     // Requirements (only for real weapons, not fists).
     if (def != nullptr && (w.str_requirement > 0 || w.dex_requirement > 0))
     {
-        UIRenderer::drawText(body_font, "Requires", cx, y, LABEL_COLOR);
         const bool str_ok = stats.str >= w.str_requirement;
         const bool dex_ok = stats.dex >= w.dex_requirement;
-        std::string req;
-        if (w.str_requirement > 0)
-            req += "STR " + std::to_string(w.str_requirement);
-        if (w.dex_requirement > 0)
-        {
-            if (!req.empty())
-                req += "  ";
-            req += "DEX " + std::to_string(w.dex_requirement);
-        }
-        UIRenderer::drawText(body_font, req, val_x, y, (str_ok && dex_ok) ? REQ_MET : REQ_UNMET);
+        UIRenderer::drawText(body_font, "Requires", cx, y, LABEL_COLOR);
+        UIRenderer::drawText(body_font, buildRequirementText(w), val_x, y,
+                             (str_ok && dex_ok) ? REQ_MET : REQ_UNMET);
         y += stat_line;
     }
 
@@ -175,7 +209,7 @@ float renderWeaponStats(FontHandle body_font, const Weapon& w, const Stats& stat
 
 float renderWeaponStatsFromDef(FontHandle body_font, const ItemDef& def, const Stats& stats,
                                const FormulaConfig& f, bool has_stats, float cx, float y, float cw,
-                               float val_x, bool show_name)
+                               float val_x, bool show_name, bool god_mode)
 {
     Weapon w;
     w.name = def.name;
@@ -185,7 +219,8 @@ float renderWeaponStatsFromDef(FontHandle body_font, const ItemDef& def, const S
     w.dex_scaling = def.dex_scaling;
     w.str_requirement = def.str_requirement;
     w.dex_requirement = def.dex_requirement;
-    return renderWeaponStats(body_font, w, stats, f, &def, has_stats, cx, y, cw, val_x, show_name);
+    return renderWeaponStats(body_font, w, stats, f, &def, has_stats, cx, y, cw, val_x, show_name,
+                             god_mode);
 }
 
 float renderShieldStats(FontHandle body_font, const ItemDef& def, float cx, float y, float cw,
@@ -228,11 +263,11 @@ float renderArmorStats(FontHandle body_font, const ItemDef& def, float cx, float
 
 float renderItemStats(FontHandle body_font, const ItemDef& def, const Stats& stats,
                       const FormulaConfig& f, bool has_stats, float cx, float y, float cw,
-                      float val_x, bool show_name)
+                      float val_x, bool show_name, bool god_mode)
 {
     if (def.category == ItemCategory::Weapon)
         return renderWeaponStatsFromDef(body_font, def, stats, f, has_stats, cx, y, cw, val_x,
-                                        show_name);
+                                        show_name, god_mode);
 
     // Shields are armor with max_guard > 0.
     if (def.max_guard > 0.0f)

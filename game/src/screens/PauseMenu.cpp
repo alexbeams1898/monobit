@@ -235,52 +235,29 @@ static void renderStatusTab(EntityManager& em, float cx, float cy, float cw, flo
                              {0.65f, 0.8f, 0.45f, 1.0f});
     }
 
-    // Character portrait -- draw player body-part sprites at bottom-center.
-    if (sTexMgr != nullptr)
+    // Character portrait -- draw the player's current sprite at bottom-center.
+    if (sTexMgr != nullptr && em.registry().all_of<Sprite>(player))
     {
         constexpr float PORTRAIT_SCALE = 4.0f;
-        struct PartDraw
+        const auto& sprite = em.registry().get<Sprite>(player);
+        if (!sprite.texture_path.empty())
         {
-            uint32_t tex_id;
-            int src_x, src_y, src_w, src_h;
-            int tex_total_w, tex_total_h;
-            int draw_order;
-        };
-        std::vector<PartDraw> parts;
-
-        for (auto [child, bp, sprite] : em.registry().view<BodyPart, Sprite>().each())
-        {
-            if (bp.parent != player || sprite.texture_path.empty())
-                continue;
             const uint32_t tex_id = sTexMgr->load(sprite.texture_path);
-            if (tex_id == 0)
-                continue;
             int tw = 0, th = 0;
             sTexMgr->getDimensions(sprite.texture_path, tw, th);
-            if (tw > 0 && th > 0)
-                parts.push_back({tex_id, sprite.src_x, sprite.src_y, sprite.src_w, sprite.src_h, tw,
-                                 th, sprite.layer});
-        }
-
-        if (!parts.empty())
-        {
-            std::sort(parts.begin(), parts.end(), [](const PartDraw& a, const PartDraw& b)
-                      { return a.draw_order < b.draw_order; });
-
-            const float frame_w = static_cast<float>(parts[0].src_w) * PORTRAIT_SCALE;
-            const float frame_h = static_cast<float>(parts[0].src_h) * PORTRAIT_SCALE;
-            const float px = cx + (cw - frame_w) * 0.5f;
-            const float py = cy + ch - frame_h - 8.0f;
-
-            for (const auto& p : parts)
+            if (tex_id != 0 && tw > 0 && th > 0)
             {
-                const float tw = static_cast<float>(p.tex_total_w);
-                const float th = static_cast<float>(p.tex_total_h);
-                const float u0 = static_cast<float>(p.src_x) / tw;
-                const float v0 = static_cast<float>(p.src_y) / th;
-                const float u1 = static_cast<float>(p.src_x + p.src_w) / tw;
-                const float v1 = static_cast<float>(p.src_y + p.src_h) / th;
-                UIRenderer::drawTexturedRect(px, py, frame_w, frame_h, p.tex_id, u0, v0, u1, v1);
+                const float frame_w = static_cast<float>(sprite.src_w) * PORTRAIT_SCALE;
+                const float frame_h = static_cast<float>(sprite.src_h) * PORTRAIT_SCALE;
+                const float px = cx + (cw - frame_w) * 0.5f;
+                const float py = cy + ch - frame_h - 8.0f;
+                const float u0 = static_cast<float>(sprite.src_x) / static_cast<float>(tw);
+                const float v0 = static_cast<float>(sprite.src_y) / static_cast<float>(th);
+                const float u1 =
+                    static_cast<float>(sprite.src_x + sprite.src_w) / static_cast<float>(tw);
+                const float v1 =
+                    static_cast<float>(sprite.src_y + sprite.src_h) / static_cast<float>(th);
+                UIRenderer::drawTexturedRect(px, py, frame_w, frame_h, tex_id, u0, v0, u1, v1);
             }
         }
     }
@@ -667,22 +644,23 @@ static void renderEquipStatPanel(EntityManager& em, entt::entity player, const E
     const bool has_stats = em.registry().all_of<Stats>(player);
     const Stats& stats = has_stats ? em.registry().get<Stats>(player) : Stats{1, 1, 1, 1};
     const auto& f = em.registry().ctx().get<FormulaConfig>();
+    const bool god_mode = em.registry().ctx().get<DebugFlags>().god_mode;
 
     if (sel_slot == EquipSlot::MainHand)
     {
         float stat_bottom = y;
         if (def != nullptr && def->category == ItemCategory::Weapon)
         {
-            stat_bottom = ItemStatRenderer::renderWeaponStatsFromDef(sBodyFont, *def, stats, f,
-                                                                     has_stats, cx, y, cw, val_x);
+            stat_bottom = ItemStatRenderer::renderWeaponStatsFromDef(
+                sBodyFont, *def, stats, f, has_stats, cx, y, cw, val_x, true, god_mode);
         }
         else
         {
             // Unarmed fallback.
             const Weapon w{"Unarmed", f.fist.weight,     f.fist.str_scaling, f.fist.dex_scaling, 0,
                            0,         f.fist.base_damage};
-            stat_bottom = ItemStatRenderer::renderWeaponStats(sBodyFont, w, stats, f, nullptr,
-                                                              has_stats, cx, y, cw, val_x);
+            stat_bottom = ItemStatRenderer::renderWeaponStats(
+                sBodyFont, w, stats, f, nullptr, has_stats, cx, y, cw, val_x, true, god_mode);
         }
 
         // Weapon XP progress.

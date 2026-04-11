@@ -28,30 +28,33 @@ inline float sCamX = 0.0f;
 inline float sCamY = 0.0f;
 inline float sHalfW = 0.0f;
 inline float sHalfH = 0.0f;
+inline float sZoom = 1.0f;
 
 // Must be called once per frame before any draw calls.
-inline void setCamera(float cam_x, float cam_y, int window_w, int window_h)
+inline void setCamera(float cam_x, float cam_y, int window_w, int window_h, float zoom = 1.0f)
 {
     sCamX = cam_x;
     sCamY = cam_y;
     sHalfW = static_cast<float>(window_w) * 0.5f;
     sHalfH = static_cast<float>(window_h) * 0.5f;
+    sZoom = zoom;
 }
 
 // Solid square centered at a world position.
 inline void dot(float world_x, float world_y, float size, const Color& color)
 {
-    const float sx = world_x - sCamX + sHalfW;
-    const float sy = world_y - sCamY + sHalfH;
-    UIRenderer::drawRect(sx - size * 0.5f, sy - size * 0.5f, size, size, color);
+    const float sx = (world_x - sCamX) * sZoom + sHalfW;
+    const float sy = (world_y - sCamY) * sZoom + sHalfH;
+    const float s = size * sZoom;
+    UIRenderer::drawRect(sx - s * 0.5f, sy - s * 0.5f, s, s, color);
 }
 
 // Solid rectangle in world coordinates (top-left origin).
 inline void rect(float world_x, float world_y, float w, float h, const Color& color)
 {
-    const float sx = world_x - sCamX + sHalfW;
-    const float sy = world_y - sCamY + sHalfH;
-    UIRenderer::drawRect(sx, sy, w, h, color);
+    const float sx = (world_x - sCamX) * sZoom + sHalfW;
+    const float sy = (world_y - sCamY) * sZoom + sHalfH;
+    UIRenderer::drawRect(sx, sy, w * sZoom, h * sZoom, color);
 }
 
 // Dotted line between two world positions.

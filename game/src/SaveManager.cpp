@@ -96,7 +96,8 @@ static json runToJson(const Run& r)
     return {{"stats", runStatsToJson(r.stats)},
             {"character_name", r.character_name},
             {"timestamp", r.timestamp},
-            {"escaped", r.escaped}};
+            {"escaped", r.escaped},
+            {"god_mode", r.god_mode}};
 }
 
 static Run runFromJson(const json& j)
@@ -107,6 +108,7 @@ static Run runFromJson(const json& j)
     r.character_name = j.value("character_name", std::string{});
     r.timestamp = j.value("timestamp", std::string{});
     r.escaped = j.value("escaped", false);
+    r.god_mode = j.value("god_mode", false);
     return r;
 }
 
@@ -145,6 +147,11 @@ SaveData load(const std::string& path)
             PlayerProfile p;
             p.name = c.value("name", std::string{});
             p.money = c.value("money", 0);
+            if (c.contains("appearance") && c["appearance"].is_object())
+            {
+                for (auto& [key, val] : c["appearance"].items())
+                    p.appearance[key] = val.get<std::string>();
+            }
             if (!p.name.empty())
                 data.characters.push_back(std::move(p));
         }
@@ -188,7 +195,17 @@ bool save(const SaveData& data, const std::string& path)
 
     j["characters"] = json::array();
     for (const auto& c : data.characters)
-        j["characters"].push_back({{"name", c.name}, {"money", c.money}});
+    {
+        json cj = {{"name", c.name}, {"money", c.money}};
+        if (!c.appearance.empty())
+        {
+            json app = json::object();
+            for (const auto& [k, v] : c.appearance)
+                app[k] = v;
+            cj["appearance"] = app;
+        }
+        j["characters"].push_back(cj);
+    }
 
     j["runs"] = json::array();
     for (const auto& r : data.runs)
@@ -235,7 +252,16 @@ void recordRun(SaveData& data, const Run& run)
 
 std::vector<Run> topRuns(const SaveData& data, int count)
 {
-    std::vector<Run> sorted = data.runs;
+    // God-mode runs are excluded from the leaderboard. They are still recorded
+    // in data.runs so the player can see them in their personal history if we
+    // ever surface that, but they don't compete with legitimate runs.
+    std::vector<Run> sorted;
+    sorted.reserve(data.runs.size());
+    for (const auto& r : data.runs)
+    {
+        if (!r.god_mode)
+            sorted.push_back(r);
+    }
     std::sort(sorted.begin(), sorted.end(),
               [](const Run& a, const Run& b) { return a.stats.score > b.stats.score; });
     if (static_cast<int>(sorted.size()) > count)
@@ -261,8 +287,8 @@ int computeScore(const RunStats& stats, const ScoringConfig& cfg, bool escaped)
 
 void migrate(SaveData& data)
 {
-    // v1 is current -- no migrations needed yet.
-    // Future: add migration steps here (v1->v2, v2->v3, etc.)
+    // v1->v2: added appearance map to PlayerProfile. No data migration needed --
+    // existing profiles get empty appearance (uses entity config defaults).
     data.schema_version = SaveData::CURRENT_VERSION;
 }
 

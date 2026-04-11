@@ -3,6 +3,7 @@ add_library(engine STATIC)
 target_sources(engine PRIVATE
     src/Engine.cpp
     src/TextureManager.cpp
+    src/SpriteCompositor.cpp
     src/FontManager.cpp
     src/UIRenderer.cpp
     src/systems/RenderSystem.cpp

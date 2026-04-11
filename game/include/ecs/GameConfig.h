@@ -9,5 +9,6 @@
 //   ecs/AppState.h      -- UIState, GameState, RunStats, ScoringConfig, SaveData
 
 #include "ecs/AppState.h"
+#include "ecs/AppearanceConfig.h"
 #include "ecs/BalanceConfig.h"
 #include "ecs/ItemConfig.h"

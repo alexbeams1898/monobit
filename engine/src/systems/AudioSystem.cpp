@@ -27,6 +27,15 @@ static bool sMusicLoaded = false;
 static bool sMusicMuted = false;
 static float sMusicRequestedVolume = 0.8f; // volume requested by caller (preserved across mute)
 
+// Low-pass filter node sitting between music sounds and the engine endpoint.
+// Always inserted in the chain; "disabled" by reinit with a near-Nyquist cutoff
+// so it's effectively transparent. This avoids re-attaching nodes at runtime.
+static ma_lpf_node sMusicLpfNode;
+static bool sMusicLpfReady = false;
+static float sMusicLpfCurrentCutoff = 0.0f; // 0 = bypass (transparent)
+static constexpr float MUSIC_LPF_BYPASS_HZ = 20000.0f;
+static constexpr ma_uint32 MUSIC_LPF_ORDER = 4;
+
 // Managed SFX voices -- each playSfx creates a ma_sound with per-sound volume.
 // Finished sounds are cleaned up lazily on the next playSfx call.
 static constexpr int MAX_SFX_VOICES = 32;
@@ -77,6 +86,31 @@ bool AudioSystem::init()
     }
 
     sInitialized = true;
+
+    // Insert a low-pass filter node into the music chain. Initialized at a
+    // near-Nyquist cutoff so it's effectively transparent until enabled by
+    // setMusicLowPass(). Music sounds attach to this node instead of directly
+    // to the endpoint.
+    const ma_uint32 channels = ma_engine_get_channels(&sEngine);
+    const ma_uint32 sampleRate = ma_engine_get_sample_rate(&sEngine);
+    const ma_lpf_node_config lpfCfg =
+        ma_lpf_node_config_init(channels, sampleRate, MUSIC_LPF_BYPASS_HZ, MUSIC_LPF_ORDER);
+    const ma_result lpfResult =
+        ma_lpf_node_init(ma_engine_get_node_graph(&sEngine), &lpfCfg, nullptr, &sMusicLpfNode);
+    if (lpfResult == MA_SUCCESS)
+    {
+        // Attach the LPF node's output to the engine endpoint so its processed
+        // audio reaches the device.
+        ma_node_attach_output_bus(&sMusicLpfNode, 0, ma_engine_get_endpoint(&sEngine), 0);
+        sMusicLpfReady = true;
+        sMusicLpfCurrentCutoff = 0.0f;
+    }
+    else
+    {
+        std::cerr << "[AudioSystem] Failed to init music low-pass node (error " << lpfResult
+                  << "). Music will play without filter.\n";
+    }
+
     std::cout << "[AudioSystem] Audio engine initialized.\n";
     return true;
 }
@@ -100,6 +134,12 @@ void AudioSystem::shutdown()
     {
         ma_sound_uninit(&sMusicSound);
         sMusicLoaded = false;
+    }
+
+    if (sMusicLpfReady)
+    {
+        ma_lpf_node_uninit(&sMusicLpfNode, nullptr);
+        sMusicLpfReady = false;
     }
 
     ma_engine_uninit(&sEngine);
@@ -214,6 +254,21 @@ void AudioSystem::playMusic(const std::string& path, float volume, bool loop, in
         return;
     }
 
+    // Route music through the low-pass node instead of straight to the endpoint
+    // so setMusicLowPass() can muffle it. Reset the LPF to bypass on every new
+    // track so a lingering muffle from a previous screen doesn't carry over
+    // (e.g. menu-open -> escape run -> victory track inherits the muffle).
+    if (sMusicLpfReady)
+    {
+        ma_node_attach_output_bus(&sMusicSound, 0, &sMusicLpfNode, 0);
+        const ma_uint32 lpfChannels = ma_engine_get_channels(&sEngine);
+        const ma_uint32 lpfSampleRate = ma_engine_get_sample_rate(&sEngine);
+        const ma_lpf_config lpfCfg = ma_lpf_config_init(ma_format_f32, lpfChannels, lpfSampleRate,
+                                                        MUSIC_LPF_BYPASS_HZ, MUSIC_LPF_ORDER);
+        ma_lpf_node_reinit(&lpfCfg, &sMusicLpfNode);
+        sMusicLpfCurrentCutoff = 0.0f;
+    }
+
     ma_sound_set_looping(&sMusicSound, loop ? MA_TRUE : MA_FALSE);
     sMusicRequestedVolume = volume;
     ma_sound_set_volume(&sMusicSound, sMusicMuted ? 0.0f : volume);
@@ -272,4 +327,24 @@ void AudioSystem::setMasterVolume(float volume)
         return;
 
     ma_engine_set_volume(&sEngine, volume);
+}
+
+void AudioSystem::setMusicLowPass(float cutoff_hz)
+{
+    if (!sInitialized || !sMusicLpfReady)
+        return;
+
+    // Treat anything <= 0 as "bypass": reinit the LPF at near-Nyquist so it has
+    // no audible effect, and remember that we're in bypass mode.
+    const float requested = (cutoff_hz <= 0.0f) ? 0.0f : cutoff_hz;
+    if (requested == sMusicLpfCurrentCutoff)
+        return; // no-op when already at the requested setting
+
+    const float effective = (requested <= 0.0f) ? MUSIC_LPF_BYPASS_HZ : requested;
+    const ma_uint32 channels = ma_engine_get_channels(&sEngine);
+    const ma_uint32 sampleRate = ma_engine_get_sample_rate(&sEngine);
+    const ma_lpf_config cfg =
+        ma_lpf_config_init(ma_format_f32, channels, sampleRate, effective, MUSIC_LPF_ORDER);
+    if (ma_lpf_node_reinit(&cfg, &sMusicLpfNode) == MA_SUCCESS)
+        sMusicLpfCurrentCutoff = requested;
 }

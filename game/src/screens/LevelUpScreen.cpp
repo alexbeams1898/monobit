@@ -66,8 +66,6 @@ static void renderStatRows(EntityManager& em, entt::entity player, Stats& stats,
     const int hover = hoveredRow(mx, my, cx, y, cw, line_h, STAT_COUNT);
     if (hover >= 0)
         sSel = hover;
-    else if (em.key_down_events.empty())
-        sSel = -1;
 
     int* stat_ptrs[STAT_COUNT] = {&stats.str, &stats.dex, &stats.end, &stats.lck};
 
@@ -162,16 +160,18 @@ void LevelUpScreen::render(EntityManager& em, int window_w, int window_h)
     const float mx = static_cast<float>(mouseX);
     const float my = static_cast<float>(mouseY);
 
-    // Layout.
-    const float panel_w = 520.0f;
-    const float panel_h = 340.0f;
-    const float panel_x = (ww - panel_w) * 0.5f;
-    const float panel_y = (wh - panel_h) * 0.5f;
+    // Layout — measure content to size panel.
     const float pad = 20.0f;
-    const float cx = panel_x + pad;
-    const float cw = panel_w - pad * 2.0f;
     const float line_h = FontManager::lineHeight(sBodyFont) + 6.0f;
     const float title_h = FontManager::lineHeight(sTitleFont);
+    // title + gap + points line + gap + sep + gap + 4 stat rows + gap + sep + gap + hint
+    const float panel_h = pad + title_h + 4.0f + line_h + 4.0f + 1.0f + 10.0f +
+                          line_h * STAT_COUNT + 6.0f + 1.0f + 10.0f + line_h + pad;
+    const float panel_w = 520.0f;
+    const float panel_x = (ww - panel_w) * 0.5f;
+    const float panel_y = (wh - panel_h) * 0.5f;
+    const float cx = panel_x + pad;
+    const float cw = panel_w - pad * 2.0f;
 
     // Draw overlay + panel.
     UIRenderer::drawRect(0.0f, 0.0f, ww, wh, OVERLAY);
@@ -207,7 +207,7 @@ void LevelUpScreen::render(EntityManager& em, int window_w, int window_h)
     y += 10.0f;
 
     // Hint.
-    const std::string hint = "[F] Allocate   [Tab/ESC] Close";
+    const std::string hint = "[W/S] Navigate   [F/LMB] Allocate";
     const TextSize hsz = UIRenderer::measureText(sBodyFont, hint);
     UIRenderer::drawText(sBodyFont, hint, panel_x + (panel_w - hsz.width) * 0.5f, y, HINT_COLOR);
 

@@ -1,0 +1,276 @@
+{
+    "frame_size": 64,
+    "categories": [
+        {
+            "id": "body_color",
+            "label": "Skin Tone",
+            "required": true,
+            "path_prefix": "assets/sprites/lpc/assembled/body/",
+            "options": [
+                { "id": "tone_1",  "label": "Light",   "file": "tone_1.png",  "swatch": "#F9D5BA" },
+                { "id": "tone_2",  "label": "Amber",   "file": "tone_2.png",  "swatch": "#FDD082" },
+                { "id": "tone_3",  "label": "Olive",   "file": "tone_3.png",  "swatch": "#D38B59" },
+                { "id": "tone_4",  "label": "Taupe",   "file": "tone_4.png",  "swatch": "#BA8454" },
+                { "id": "tone_5",  "label": "Bronze",  "file": "tone_5.png",  "swatch": "#AE6B3F" },
+                { "id": "tone_6",  "label": "Brown",   "file": "tone_6.png",  "swatch": "#9C663E" },
+                { "id": "tone_7",  "label": "Dark",    "file": "tone_7.png",  "swatch": "#603429" },
+                { "id": "tone_8",  "label": "Goblin",  "file": "tone_8.png",  "swatch": "#75AE23" },
+                { "id": "tone_9",  "label": "Swamp",   "file": "tone_9.png",  "swatch": "#508A48" },
+                { "id": "tone_10", "label": "Demonic", "file": "tone_10.png", "swatch": "#748DA4" },
+                { "id": "tone_11", "label": "Wraith",  "file": "tone_11.png", "swatch": "#C9D0EE" },
+                { "id": "tone_12", "label": "Undead",  "file": "tone_12.png", "swatch": "#D4D887" }
+            ]
+        },
+        {
+            "id": "head_variant",
+            "label": "Head Shape",
+            "required": true,
+            "path_prefix": "assets/sprites/lpc/assembled/head/",
+            "combine_with": "body_color",
+            "options": [
+                { "id": "base",    "label": "Standard", "file": "" },
+                { "id": "elderly", "label": "Elderly",  "file": "" },
+                { "id": "gaunt",   "label": "Gaunt",    "file": "" },
+                { "id": "plump",   "label": "Plump",    "file": "" },
+                { "id": "small",   "label": "Small",    "file": "" }
+            ]
+        },
+        {
+            "id": "eyes",
+            "label": "Eyes",
+            "required": false,
+            "path_prefix": "assets/sprites/lpc/assembled/eyes/",
+            "options": [
+                { "id": "brown", "label": "Brown", "file": "brown.png", "swatch": "#6B4226" },
+                { "id": "blue",  "label": "Blue",  "file": "blue.png",  "swatch": "#4682B4" },
+                { "id": "green", "label": "Green", "file": "green.png", "swatch": "#3A7D44" },
+                { "id": "gray",  "label": "Gray",  "file": "gray.png",  "swatch": "#808080" }
+            ]
+        },
+        {
+            "id": "hair_style",
+            "label": "Hair Style",
+            "required": false,
+            "path_prefix": "",
+            "options": [
+                { "id": "none",       "label": "None",       "file": "" },
+                { "id": "plain",      "label": "Plain",      "file": "" },
+                { "id": "buzzcut",    "label": "Buzzcut",    "file": "" },
+                { "id": "spiked",     "label": "Spiked",     "file": "" },
+                { "id": "messy",      "label": "Messy",      "file": "" },
+                { "id": "long",       "label": "Long",       "file": "" },
+                { "id": "shorthawk",  "label": "Mohawk",     "file": "" },
+                { "id": "flat_top",   "label": "Flat Top",   "file": "" },
+                { "id": "parted",     "label": "Parted",     "file": "" },
+                { "id": "cowlick",    "label": "Cowlick",    "file": "" },
+                { "id": "page",       "label": "Page",       "file": "" },
+                { "id": "curly",      "label": "Curly",      "file": "" },
+                { "id": "idol",       "label": "Idol",       "file": "" },
+                { "id": "bangs_bun",  "label": "Bangs Bun",  "file": "" },
+                { "id": "cornrows",   "label": "Cornrows",   "file": "" },
+                { "id": "dreadlocks", "label": "Dreadlocks", "file": "" },
+                { "id": "bob_side",   "label": "Side Bob",   "file": "" },
+                { "id": "bob_bangs",  "label": "Bob Bangs",  "file": "" }
+            ]
+        },
+        {
+            "id": "hair_color",
+            "label": "Hair Color",
+            "required": false,
+            "path_prefix": "assets/sprites/lpc/assembled/hair/",
+            "combine_with": "hair_style",
+            "options": [
+                { "id": "black",     "label": "Black",     "file": "", "swatch": "#1A1A1A" },
+                { "id": "charcoal",  "label": "Charcoal",  "file": "", "swatch": "#3A3A3A" },
+                { "id": "gray",      "label": "Gray",      "file": "", "swatch": "#9A9A9A" },
+                { "id": "brown",     "label": "Brown",     "file": "", "swatch": "#5A3A22" },
+                { "id": "ash_brown", "label": "Ash Brown", "file": "", "swatch": "#7A6A55" },
+                { "id": "chestnut",  "label": "Chestnut",  "file": "", "swatch": "#8B4A2E" },
+                { "id": "blonde",    "label": "Blonde",    "file": "", "swatch": "#D4B060" },
+                { "id": "red",       "label": "Red",       "file": "", "swatch": "#8B1A1A" },
+                { "id": "orange",    "label": "Orange",    "file": "", "swatch": "#D47820" },
+                { "id": "pink",      "label": "Pink",      "file": "", "swatch": "#D4508B" },
+                { "id": "blue",      "label": "Blue",      "file": "", "swatch": "#2E5BA8" },
+                { "id": "green",     "label": "Green",     "file": "", "swatch": "#2E8B4E" }
+            ]
+        },
+        {
+            "id": "facial_style",
+            "label": "Facial Hair",
+            "required": false,
+            "path_prefix": "",
+            "options": [
+                { "id": "none",      "label": "None",           "file": "" },
+                { "id": "shadow",    "label": "5 O'clock",      "file": "" },
+                { "id": "basic",     "label": "Short Beard",    "file": "" },
+                { "id": "winter",    "label": "Winter Beard",   "file": "" },
+                { "id": "bigstache", "label": "Big Stache",     "file": "" },
+                { "id": "french",    "label": "French Stache",  "file": "" },
+                { "id": "horseshoe", "label": "Horseshoe",      "file": "" },
+                { "id": "lampshade", "label": "Lampshade",      "file": "" },
+                { "id": "trimmed",   "label": "Trimmed",        "file": "" },
+                { "id": "medium",    "label": "Medium",         "file": "" },
+                { "id": "walrus",    "label": "Walrus",         "file": "" },
+                { "id": "chevron",   "label": "Chevron",        "file": "" },
+                { "id": "handlebar", "label": "Handlebar",      "file": "" }
+            ]
+        },
+        {
+            "id": "facial_color",
+            "label": "Facial Hair Color",
+            "required": false,
+            "path_prefix": "assets/sprites/lpc/assembled/facial/",
+            "combine_with": "facial_style",
+            "options": [
+                { "id": "black",     "label": "Black",     "file": "", "swatch": "#1A1A1A" },
+                { "id": "charcoal",  "label": "Charcoal",  "file": "", "swatch": "#3A3A3A" },
+                { "id": "gray",      "label": "Gray",      "file": "", "swatch": "#9A9A9A" },
+                { "id": "brown",     "label": "Brown",     "file": "", "swatch": "#5A3A22" },
+                { "id": "ash_brown", "label": "Ash Brown", "file": "", "swatch": "#7A6A55" },
+                { "id": "chestnut",  "label": "Chestnut",  "file": "", "swatch": "#8B4A2E" },
+                { "id": "blonde",    "label": "Blonde",    "file": "", "swatch": "#D4B060" },
+                { "id": "red",       "label": "Red",       "file": "", "swatch": "#8B1A1A" },
+                { "id": "orange",    "label": "Orange",    "file": "", "swatch": "#D47820" },
+                { "id": "pink",      "label": "Pink",      "file": "", "swatch": "#D4508B" },
+                { "id": "blue",      "label": "Blue",      "file": "", "swatch": "#2E5BA8" },
+                { "id": "green",     "label": "Green",     "file": "", "swatch": "#2E8B4E" }
+            ]
+        },
+        {
+            "id": "torso_style",
+            "label": "Torso",
+            "required": false,
+            "path_prefix": "",
+            "options": [
+                { "id": "none",        "label": "None",         "file": "" },
+                { "id": "shortsleeve", "label": "Short Sleeve", "file": "" },
+                { "id": "longsleeve",  "label": "Long Sleeve",  "file": "" }
+            ]
+        },
+        {
+            "id": "torso_color",
+            "label": "Shirt Color",
+            "required": false,
+            "path_prefix": "assets/sprites/lpc/assembled/torso/",
+            "combine_with": "torso_style",
+            "options": [
+                { "id": "white",  "label": "White",  "file": "", "swatch": "#E8E8E8" },
+                { "id": "black",  "label": "Black",  "file": "", "swatch": "#2A2A2A" },
+                { "id": "gray",   "label": "Gray",   "file": "", "swatch": "#707070" },
+                { "id": "brown",  "label": "Brown",  "file": "", "swatch": "#6B4226" },
+                { "id": "tan",    "label": "Tan",    "file": "", "swatch": "#C4A882" },
+                { "id": "red",    "label": "Red",    "file": "", "swatch": "#B02020" },
+                { "id": "orange", "label": "Orange", "file": "", "swatch": "#D4782A" },
+                { "id": "yellow", "label": "Yellow", "file": "", "swatch": "#D4C84A" },
+                { "id": "green",  "label": "Green",  "file": "", "swatch": "#3A7D44" },
+                { "id": "blue",   "label": "Blue",   "file": "", "swatch": "#3A5FAF" },
+                { "id": "purple", "label": "Purple", "file": "", "swatch": "#6B2E8B" },
+                { "id": "pink",   "label": "Pink",   "file": "", "swatch": "#D4508B" }
+            ]
+        },
+        {
+            "id": "legs_style",
+            "label": "Legs",
+            "required": false,
+            "path_prefix": "",
+            "options": [
+                { "id": "none",   "label": "None",   "file": "" },
+                { "id": "pants",  "label": "Pants",  "file": "" },
+                { "id": "shorts", "label": "Shorts", "file": "" }
+            ]
+        },
+        {
+            "id": "legs_color",
+            "label": "Pants Color",
+            "required": false,
+            "path_prefix": "assets/sprites/lpc/assembled/legs/",
+            "combine_with": "legs_style",
+            "options": [
+                { "id": "white",  "label": "White",  "file": "", "swatch": "#E8E8E8" },
+                { "id": "black",  "label": "Black",  "file": "", "swatch": "#2A2A2A" },
+                { "id": "gray",   "label": "Gray",   "file": "", "swatch": "#707070" },
+                { "id": "brown",  "label": "Brown",  "file": "", "swatch": "#6B4226" },
+                { "id": "tan",    "label": "Tan",    "file": "", "swatch": "#C4A882" },
+                { "id": "red",    "label": "Red",    "file": "", "swatch": "#B02020" },
+                { "id": "orange", "label": "Orange", "file": "", "swatch": "#D4782A" },
+                { "id": "yellow", "label": "Yellow", "file": "", "swatch": "#D4C84A" },
+                { "id": "green",  "label": "Green",  "file": "", "swatch": "#3A7D44" },
+                { "id": "blue",   "label": "Blue",   "file": "", "swatch": "#3A5FAF" },
+                { "id": "purple", "label": "Purple", "file": "", "swatch": "#6B2E8B" },
+                { "id": "pink",   "label": "Pink",   "file": "", "swatch": "#D4508B" }
+            ]
+        },
+        {
+            "id": "feet_style",
+            "label": "Feet",
+            "required": false,
+            "path_prefix": "",
+            "options": [
+                { "id": "none",  "label": "None",  "file": "" },
+                { "id": "shoes", "label": "Shoes", "file": "" },
+                { "id": "boots", "label": "Boots", "file": "" }
+            ]
+        },
+        {
+            "id": "feet_color",
+            "label": "Shoe Color",
+            "required": false,
+            "path_prefix": "assets/sprites/lpc/assembled/feet/",
+            "combine_with": "feet_style",
+            "options": [
+                { "id": "white",  "label": "White",  "file": "", "swatch": "#E8E8E8" },
+                { "id": "black",  "label": "Black",  "file": "", "swatch": "#2A2A2A" },
+                { "id": "gray",   "label": "Gray",   "file": "", "swatch": "#707070" },
+                { "id": "brown",  "label": "Brown",  "file": "", "swatch": "#6B4226" },
+                { "id": "tan",    "label": "Tan",    "file": "", "swatch": "#C4A882" },
+                { "id": "red",    "label": "Red",    "file": "", "swatch": "#B02020" },
+                { "id": "orange", "label": "Orange", "file": "", "swatch": "#D4782A" },
+                { "id": "yellow", "label": "Yellow", "file": "", "swatch": "#D4C84A" },
+                { "id": "green",  "label": "Green",  "file": "", "swatch": "#3A7D44" },
+                { "id": "blue",   "label": "Blue",   "file": "", "swatch": "#3A5FAF" },
+                { "id": "purple", "label": "Purple", "file": "", "swatch": "#6B2E8B" },
+                { "id": "pink",   "label": "Pink",   "file": "", "swatch": "#D4508B" }
+            ]
+        },
+        {
+            "id": "headwear_style",
+            "label": "Headwear",
+            "required": false,
+            "path_prefix": "",
+            "options": [
+                { "id": "none",   "label": "None",       "file": "" },
+                { "id": "bowler", "label": "Bowler Hat", "file": "" },
+                { "id": "tophat", "label": "Top Hat",    "file": "" }
+            ]
+        },
+        {
+            "id": "headwear_color",
+            "label": "Hat Color",
+            "required": false,
+            "path_prefix": "assets/sprites/lpc/assembled/headwear/",
+            "combine_with": "headwear_style",
+            "options": [
+                { "id": "black",  "label": "Black",  "file": "", "swatch": "#2A2A2A" },
+                { "id": "gray",   "label": "Gray",   "file": "", "swatch": "#707070" },
+                { "id": "brown",  "label": "Brown",  "file": "", "swatch": "#6B4226" },
+                { "id": "tan",    "label": "Tan",    "file": "", "swatch": "#C4A882" },
+                { "id": "white",  "label": "White",  "file": "", "swatch": "#E8E8E8" },
+                { "id": "red",    "label": "Red",    "file": "", "swatch": "#B02020" },
+                { "id": "blue",   "label": "Blue",   "file": "", "swatch": "#3A5FAF" },
+                { "id": "green",  "label": "Green",  "file": "", "swatch": "#3A7D44" },
+                { "id": "navy",   "label": "Navy",   "file": "", "swatch": "#1E2A5A" },
+                { "id": "purple", "label": "Purple", "file": "", "swatch": "#6B2E8B" }
+            ]
+        },
+        {
+            "id": "size",
+            "label": "Size",
+            "required": false,
+            "type": "slider",
+            "min": 0.85,
+            "max": 1.20,
+            "step": 0.01,
+            "default": 1.00
+        }
+    ]
+}

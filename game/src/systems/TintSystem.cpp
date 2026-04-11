@@ -16,6 +16,21 @@ static constexpr float STAMINA_HEARTBEAT_THRESHOLD = 0.4f;
 static constexpr float HEARTBEAT_INTERVAL_HIGH = 1.4f;
 static constexpr float HEARTBEAT_INTERVAL_LOW = 0.7f;
 
+// Apply progressive red tint if HP is below threshold. Returns true if applied.
+static bool tryApplyHealthTint(entt::registry& reg, entt::entity entity)
+{
+    const auto* hp = reg.try_get<Health>(entity);
+    if (!hp || hp->max <= 0)
+        return false;
+    const float hp_frac = static_cast<float>(hp->current) / static_cast<float>(hp->max);
+    if (hp_frac >= HP_RED_THRESHOLD)
+        return false;
+    const float intensity = 1.0f - hp_frac / HP_RED_THRESHOLD;
+    const float gb = 1.0f - intensity * 0.85f;
+    reg.emplace<TintOverride>(entity, TintOverride{1.2f, gb, gb});
+    return true;
+}
+
 void TintSystem::update(EntityManager& em, double dt)
 {
     ZoneScopedN("TintSystem");
@@ -33,7 +48,6 @@ void TintSystem::update(EntityManager& em, double dt)
     // --- Player-specific tints (entities with Experience) ---
     for (auto [entity, exp] : reg.view<Experience>().each())
     {
-        // Skip if DamageFeedback already set TintOverride.
         if (reg.all_of<TintOverride>(entity))
             continue;
 
@@ -44,21 +58,8 @@ void TintSystem::update(EntityManager& em, double dt)
             continue;
         }
 
-        // Low health: progressively redder below HP_RED_THRESHOLD.
-        if (reg.all_of<Health>(entity))
-        {
-            const auto& hp = reg.get<Health>(entity);
-            const float hp_frac =
-                hp.max > 0 ? static_cast<float>(hp.current) / static_cast<float>(hp.max) : 1.0f;
-
-            if (hp_frac < HP_RED_THRESHOLD)
-            {
-                const float intensity = 1.0f - hp_frac / HP_RED_THRESHOLD;
-                const float gb = 1.0f - intensity * 0.85f;
-                reg.emplace<TintOverride>(entity, TintOverride{1.2f, gb, gb});
-                continue;
-            }
-        }
+        if (tryApplyHealthTint(reg, entity))
+            continue;
 
         // Low stamina: desaturate toward grey below 40%.
         if (reg.all_of<Stamina>(entity))
@@ -72,6 +73,14 @@ void TintSystem::update(EntityManager& em, double dt)
                 reg.emplace<TintOverride>(entity, TintOverride{grey, grey, grey});
             }
         }
+    }
+
+    // --- Enemy low-health redness ---
+    for (auto [entity, ai, hp] : reg.view<AIController, Health>().each())
+    {
+        if (reg.all_of<TintOverride>(entity))
+            continue;
+        tryApplyHealthTint(reg, entity);
     }
 
     // --- Heartbeat: fires periodically when player stamina is low ---

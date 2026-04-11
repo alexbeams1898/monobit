@@ -20,6 +20,7 @@ static FontHandle sTitleFont = INVALID_FONT;
 static bool sEscaped = false;
 static int sScore = 0;
 static bool sIsHighScore = false;
+static bool sGodMode = false;
 
 static constexpr Color TITLE_COLOR{0.9f, 0.78f, 0.45f, 1.0f};
 static constexpr Color LABEL_COLOR{0.55f, 0.7f, 0.85f, 1.0f};
@@ -31,11 +32,12 @@ void RunSummaryScreen::init(FontHandle body_font, FontHandle title_font)
     sTitleFont = title_font;
 }
 
-void RunSummaryScreen::reset(bool escaped, int score, bool is_high_score)
+void RunSummaryScreen::reset(bool escaped, int score, bool is_high_score, bool god_mode)
 {
     sEscaped = escaped;
     sScore = score;
     sIsHighScore = is_high_score;
+    sGodMode = god_mode;
 }
 
 bool RunSummaryScreen::render(EntityManager& em, int window_w, int window_h)
@@ -92,13 +94,34 @@ bool RunSummaryScreen::render(EntityManager& em, int window_w, int window_h)
     UIRenderer::drawText(sBodyFont, "$" + std::to_string(stats.money), val_x, y, TEXT_WHITE);
     y += line_h + 8.0f;
 
-    // Score.
-    UIRenderer::drawText(sTitleFont, "Score", cx, y, LABEL_COLOR);
-    UIRenderer::drawText(sTitleFont, std::to_string(sScore), val_x, y, GOLD);
+    // Score. In god mode the score is shown dimmed and struck through to make
+    // it visually clear the number doesn't count.
+    {
+        const Color labelColor = sGodMode ? Color{0.4f, 0.4f, 0.4f, 1.0f} : LABEL_COLOR;
+        const Color valueColor = sGodMode ? Color{0.5f, 0.5f, 0.5f, 1.0f} : GOLD;
+        const std::string scoreStr = std::to_string(sScore);
+        UIRenderer::drawText(sTitleFont, "Score", cx, y, labelColor);
+        UIRenderer::drawText(sTitleFont, scoreStr, val_x, y, valueColor);
+        if (sGodMode)
+        {
+            // Draw a strikethrough across the value text.
+            const TextSize vsz = UIRenderer::measureText(sTitleFont, scoreStr);
+            const float strikeY = y + vsz.height * 0.5f - 1.0f;
+            UIRenderer::drawRect(val_x - 2.0f, strikeY, vsz.width + 4.0f, 2.0f, valueColor);
+        }
+    }
     y += FontManager::lineHeight(sTitleFont) + 8.0f;
 
-    // High score flash.
-    if (sIsHighScore)
+    // High score flash, or "god mode" notice when god mode was on. The two are
+    // mutually exclusive (god runs never qualify for high scores).
+    if (sGodMode)
+    {
+        const std::string note = "GOD MODE DOESN'T COUNT LOL";
+        const TextSize nsz = UIRenderer::measureText(sBodyFont, note);
+        UIRenderer::drawText(sBodyFont, note, px + (panel_w - nsz.width) * 0.5f, y,
+                             Color{0.7f, 0.7f, 0.7f, 1.0f});
+    }
+    else if (sIsHighScore)
     {
         const std::string hs = "HIGH SCORE!";
         const TextSize hsz = UIRenderer::measureText(sTitleFont, hs);

@@ -4,7 +4,10 @@
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
+#include "systems/AudioSystem.h"
+#include "systems/NotificationSystem.h"
 
+#include <algorithm>
 #include <cmath>
 #include <tracy/Tracy.hpp>
 #include <vector>
@@ -62,43 +65,72 @@ static void weaponFromFist(Weapon& w, const Body* body, const FormulaConfig& f)
     w.ranged = false;
 }
 
-// Tab cycling: advance to the next weapon slot (or fists).
-static void cycleWeapon(const ItemRegistry& items, const Inventory& inv, Equipment& equip)
+// Cycle: fists -> weapon 0 -> weapon 1 -> ... -> fists (dir=+1).
+// Z reverses: fists -> last weapon -> ... -> weapon 0 -> fists (dir=-1).
+// Returns current weapon to its original inventory slot first, rebuilds the
+// weapon list, finds where it landed, and advances to the next position.
+static void cycleWeapon(const ItemRegistry& items, Inventory& inv, Equipment& equip, int dir = 1)
 {
+    // Put current weapon back at its original inventory position.
+    const int returnSlot =
+        equip.main_hand.empty()
+            ? -1
+            : std::max(0, std::min(equip.main_hand_slot, static_cast<int>(inv.items.size())));
+    if (returnSlot >= 0)
+    {
+        inv.items.insert(inv.items.begin() + returnSlot, std::move(equip.main_hand));
+        equip.main_hand = {};
+        equip.main_hand_slot = -1;
+    }
+
+    // Gather inventory indices of all weapons (stable order).
     std::vector<int> weaponSlots;
-    weaponSlots.push_back(-1); // fists
     for (int i = 0; i < static_cast<int>(inv.items.size()); ++i)
     {
         const ItemDef* def = items.find(inv.items[i].config_path);
         if (def != nullptr && def->category == ItemCategory::Weapon)
             weaponSlots.push_back(i);
     }
-    if (weaponSlots.size() <= 1)
+
+    if (weaponSlots.empty())
         return;
 
-    int cur = 0;
-    for (int i = 0; i < static_cast<int>(weaponSlots.size()); ++i)
+    // Find which weapon-position the returned weapon is at (or -1 for fists).
+    int curWeaponPos = -1;
+    if (returnSlot >= 0)
     {
-        if (weaponSlots[i] == equip.main_hand_slot)
+        for (int i = 0; i < static_cast<int>(weaponSlots.size()); ++i)
         {
-            cur = i;
-            break;
+            if (weaponSlots[i] == returnSlot)
+            {
+                curWeaponPos = i;
+                break;
+            }
         }
     }
-    const int nextIdx = (cur + 1) % static_cast<int>(weaponSlots.size());
-    const int nextSlot = weaponSlots[nextIdx];
 
-    equip.main_hand_slot = nextSlot;
-    if (nextSlot == -1)
+    // Cycle positions: 0 = fists, 1..N = weapons in inventory order.
+    // curPos: 0 if fists, curWeaponPos+1 if a weapon was equipped.
+    const int curPos = (curWeaponPos >= 0) ? (curWeaponPos + 1) : 0;
+    const int total = 1 + static_cast<int>(weaponSlots.size());
+    const int nextPos = (curPos + dir + total) % total;
+
+    if (nextPos == 0)
     {
-        equip.main_hand = {};
-    }
-    else
-    {
-        equip.main_hand = inv.items[nextSlot];
-        equip.main_hand.quantity = 1;
+        NotificationSystem::push("Unarmed", {0.8f, 0.8f, 0.8f, 1.0f});
+        TracyMessageL("WeaponSwitch");
+        return;
     }
 
+    const int invIdx = weaponSlots[nextPos - 1];
+    equip.main_hand = std::move(inv.items[invIdx]);
+    equip.main_hand.quantity = 1;
+    equip.main_hand_slot = invIdx;
+    inv.items.erase(inv.items.begin() + invIdx);
+
+    const ItemDef* def = items.find(equip.main_hand.config_path);
+    const std::string name = (def != nullptr) ? def->name : "Unknown";
+    NotificationSystem::push("Equipped " + name, {0.8f, 0.8f, 0.8f, 1.0f});
     TracyMessageL("WeaponSwitch");
 }
 
@@ -314,12 +346,22 @@ void EquipmentSystem::update(EntityManager& em)
     auto& reg = em.registry();
     const auto& items = reg.ctx().get<ItemRegistry>();
     const auto& f = reg.ctx().get<FormulaConfig>();
+    const auto& snd = reg.ctx().get<SoundConfig>();
 
     for (auto [entity, actions, inv, equip] :
          reg.view<PlayerActions, Inventory, Equipment>().each())
     {
+        const bool switched = actions.cycle_weapon || actions.cycle_weapon_prev;
         if (actions.cycle_weapon)
-            cycleWeapon(items, inv, equip);
+            cycleWeapon(items, inv, equip, 1);
+        else if (actions.cycle_weapon_prev)
+            cycleWeapon(items, inv, equip, -1);
+        if (switched)
+        {
+            const auto& reload = snd.get("reload");
+            if (!reload.path.empty())
+                AudioSystem::playSfx(reload.path, reload.volume);
+        }
     }
 
     for (auto [entity, equip] : reg.view<Equipment>().each())

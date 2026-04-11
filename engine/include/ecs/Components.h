@@ -76,10 +76,22 @@ struct Tag
 };
 
 // Camera -- marks an entity as the active viewpoint.
+// CameraSystem snaps x/y to the entity's Transform each tick. prev_x/prev_y
+// are snapshotted before each tick for render interpolation.
+// Game-applied offsets (lock-on blend) go in offset_x/y so they share the
+// same interpolation base as the entity position — no step-size mismatch.
 struct Camera
 {
     float x = 0.0f;
     float y = 0.0f;
+    float prev_x = 0.0f;
+    float prev_y = 0.0f;
+    // Additive offset blended by game code (e.g. lock-on camera).
+    // Interpolated separately at render time and added to the base position.
+    float offset_x = 0.0f;
+    float offset_y = 0.0f;
+    float prev_offset_x = 0.0f;
+    float prev_offset_y = 0.0f;
     bool active = true;
 };
 
@@ -93,13 +105,21 @@ struct MovementIntent
     float dy = 0.0f;
 };
 
-// FacingDirection -- normalized direction the entity is facing.
+// FacingDirection -- visual facing + aim direction for an entity.
+// dx/dy = visual facing (determines sprite direction via render_dx/render_dy).
+// aim_dx/aim_dy = targeting direction (mouse/lock-on for player, same as dx/dy for AI).
 struct FacingDirection
 {
     float dx = 1.0f;
     float dy = 0.0f;
     float render_dx = 1.0f;
     float render_dy = 0.0f;
+
+    // Aim direction -- where the entity is targeting. Used for hitbox placement,
+    // projectile direction, dodge, shield arc, backstab detection.
+    // Game code keeps this synced: for players, mouse/lock-on; for AI, same as dx/dy.
+    float aim_dx = 1.0f;
+    float aim_dy = 0.0f;
 
     // Set by game systems (MovementSystem for player, AggroSystem for AI).
     // Read by AnimationSystem for walk animation speed-up / reverse playback.
@@ -109,6 +129,20 @@ struct FacingDirection
     // Walk animation frame duration multiplier. < 1.0 = faster, > 1.0 = slower.
     // Set by game MovementSystem based on sprint/backpedal state.
     float walk_anim_speed = 1.0f;
+
+    // Attack animation frame duration multiplier. < 1.0 = faster, > 1.0 = slower.
+    // Set by game CombatSystem each tick from the active AttackLocked window so
+    // a heavy weapon's swing animation stretches to match its longer cooldown.
+    // 1.0 = use the sheet's native attack frame duration.
+    float attack_anim_speed = 1.0f;
+
+    // Crosshair position override. When aim_override_blend > 0, RenderSystem
+    // lerps the crosshair from mouse toward (aim_override_x, aim_override_y).
+    // 0.0 = fully at mouse, 1.0 = fully at override position.
+    // Game code controls all ramping; engine just reads and lerps.
+    float aim_override_x = 0.0f;
+    float aim_override_y = 0.0f;
+    float aim_override_blend = 0.0f;
 };
 
 // SolidColor -- overrides sprite rendering with a flat colored square.
@@ -153,7 +187,8 @@ enum class AnimState : uint8_t
     Walk,
     Attack,
     Hit,
-    Death
+    Death,
+    Run
 };
 
 enum class CardinalDir : uint8_t
@@ -186,7 +221,7 @@ struct Animation
     int frame_index = 0;
     float frame_timer = 0.0f;
 
-    static constexpr int STATE_COUNT = 5;
+    static constexpr int STATE_COUNT = 6;
     AnimStateData states[STATE_COUNT]{};
 
     int frame_width = 32;
@@ -194,13 +229,6 @@ struct Animation
     int max_frames_per_state = 1;
     int direction_count = 4;       // 1 (omnidirectional), 4 (cardinal), or 8 (octant)
     bool unique_diagonals = false; // true = 8 unique dir columns; false = NE/SE mirrored from NW/SW
-};
-
-// Links a child entity to a parent for split-body rendering.
-struct BodyPart
-{
-    entt::entity parent = entt::null;
-    bool direction_from_facing = false;
 };
 
 // Marks an entity as a navigation agent for FlowFieldSystem/SteeringSystem.

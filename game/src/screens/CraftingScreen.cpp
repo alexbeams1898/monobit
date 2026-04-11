@@ -282,9 +282,11 @@ static void renderRecipeDetail(const RecipeDef& recipe, const ItemDef* output_de
         const bool has_stats = (player != entt::null && em.registry().all_of<Stats>(player));
         const Stats& stats = has_stats ? em.registry().get<Stats>(player) : Stats{1, 1, 1, 1};
         const auto& f = em.registry().ctx().get<FormulaConfig>();
+        const bool god_mode = em.registry().ctx().get<DebugFlags>().god_mode;
         const float val_x = lay.cx + 100.0f;
-        static_cast<void>(ItemStatRenderer::renderItemStats(
-            sBodyFont, *output_def, stats, f, has_stats, lay.cx, y, lay.cw, val_x, false));
+        static_cast<void>(ItemStatRenderer::renderItemStats(sBodyFont, *output_def, stats, f,
+                                                            has_stats, lay.cx, y, lay.cw, val_x,
+                                                            false, god_mode));
     }
 }
 

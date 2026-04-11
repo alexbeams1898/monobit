@@ -62,20 +62,27 @@ void InputMappingSystem::update(EntityManager& em)
     const bool sprintHeld = keys[SDL_SCANCODE_LSHIFT] != 0 || keys[SDL_SCANCODE_RSHIFT] != 0;
 
     // One-shot inputs -- from event buffer so brief taps between ticks aren't lost.
+    // Only fire on the FIRST tick of the frame; on later ticks within the same
+    // frame the buffer is still populated (it's cleared in gameRenderUI), but
+    // the press has already been delivered. Without this gate, a 2-tick frame
+    // would let cycle_weapon (and every other one-shot) fire twice from a
+    // single key press -- visible as "X skipped a weapon".
+    const bool firstTickOfFrame = (em.ticks_this_frame == 0);
     const auto& kd = em.key_down_events;
     const auto& md = em.mouse_down_events;
 
-    const bool dodgeJust = hasKey(kd, SDL_SCANCODE_SPACE);
-    const bool autoJust = hasKey(kd, SDL_SCANCODE_P);
-    const bool blockJust = hasMouse(md, SDL_BUTTON_RIGHT);
-    const bool craftJust = hasKey(kd, SDL_SCANCODE_C);
-    const bool cycleWeaponJust = hasKey(kd, SDL_SCANCODE_X);
-    const bool interactJust = hasKey(kd, SDL_SCANCODE_F);
-    const bool lmbJust = hasMouse(md, SDL_BUTTON_LEFT);
-    const bool lockOnJust = hasMouse(md, SDL_BUTTON_MIDDLE);
-    const bool reloadJust = hasKey(kd, SDL_SCANCODE_R);
-    const bool inventoryJust = hasKey(kd, SDL_SCANCODE_I);
-    const bool pauseJust = hasKey(kd, SDL_SCANCODE_ESCAPE) || hasKey(kd, SDL_SCANCODE_TAB);
+    const bool dodgeJust = firstTickOfFrame && hasKey(kd, SDL_SCANCODE_SPACE);
+    const bool autoJust = firstTickOfFrame && hasKey(kd, SDL_SCANCODE_P);
+    const bool blockJust = firstTickOfFrame && hasMouse(md, SDL_BUTTON_RIGHT);
+    const bool cycleWeaponJust = firstTickOfFrame && hasKey(kd, SDL_SCANCODE_X);
+    const bool cycleWeaponPrevJust = firstTickOfFrame && hasKey(kd, SDL_SCANCODE_Z);
+    const bool interactJust = firstTickOfFrame && hasKey(kd, SDL_SCANCODE_F);
+    const bool lmbJust = firstTickOfFrame && hasMouse(md, SDL_BUTTON_LEFT);
+    const bool lockOnJust = firstTickOfFrame && hasMouse(md, SDL_BUTTON_MIDDLE);
+    const bool reloadJust = firstTickOfFrame && hasKey(kd, SDL_SCANCODE_R);
+    const bool inventoryJust = firstTickOfFrame && hasKey(kd, SDL_SCANCODE_I);
+    const bool pauseJust =
+        firstTickOfFrame && (hasKey(kd, SDL_SCANCODE_ESCAPE) || hasKey(kd, SDL_SCANCODE_TAB));
 
     for (auto [entity, actions] : em.registry().view<PlayerActions>().each())
     {
@@ -88,8 +95,8 @@ void InputMappingSystem::update(EntityManager& em)
         actions.block_held = blockHeld;
         actions.block_just_pressed = blockJust;
         actions.auto_toggle_just_pressed = autoJust;
-        actions.craft = craftJust;
         actions.cycle_weapon = cycleWeaponJust;
+        actions.cycle_weapon_prev = cycleWeaponPrevJust;
         actions.interact = interactJust;
         actions.mouse_click = lmbJust;
         actions.lock_on_toggle = lockOnJust;

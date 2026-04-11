@@ -10,7 +10,89 @@ Updated as new decisions are made.
 Smooth 60 Hz on low-end hardware with enough headroom that enemy count never becomes a
 bottleneck. The game design is souls-like (small groups of meaningful enemies, not swarms),
 so actual enemy counts will be modest — but the engine should be efficient enough that this
-is never a question. See CLAUDE.md "Performance Philosophy" for first principles.
+is never a question.
+
+---
+
+## Portability target — "runs on a calculator"
+
+This game should be portable to everything. Doom ran on a pregnancy test. Vampire Survivors
+runs on a potato. That's the vibe. Every technical decision should keep this in mind:
+- No platform-specific APIs outside the abstraction layer (SDL2, OpenGL)
+- No unnecessary dependencies
+- Minimal memory footprint, minimal CPU budget
+- No features that assume a high-end GPU or multi-core CPU
+- If a system can run a 2D sprite game at 60 Hz, this game should run on it
+
+---
+
+## Performance Philosophy
+
+Target: 1000+ simultaneous enemies at 60 Hz. Every architectural decision should assume
+this is already here.
+
+- **Systems do the work, entities don't think.** Fetch one shared value (e.g. player pos)
+  once per frame, sweep all entities in a tight loop. No per-entity lookups into other entities.
+- **Avoid O(n²) unless n is provably tiny.** Flag with a comment and a plan.
+- **No unnecessary nested loops.** Before writing a nested loop, ask: can the inner loop be
+  eliminated with a lookup, a lambda, or by enumerating only the relevant subset directly?
+  Triple-nested loops are almost always a sign the algorithm needs rethinking. If a nested loop
+  is genuinely the right structure, add a comment explaining why.
+- **Prefer data-oriented layout.** entt sparse sets are contiguous. Keep components small and
+  flat. No pointers-to-pointers.
+- **Batch everything renderable.** One draw call per enemy is fatal at scale. RenderSystem
+  must use instanced rendering before enemy counts grow.
+- **Two tiers of AI complexity.** Enemy design is souls-style — small purposeful groups with
+  distinct behaviors, not blobs. The architecture scales to 1000+ if the design calls for it
+  (wave escalation endgame), but individual enemy behavior should feel intentional.
+  Fodder: simple ECS state machine + flow field, O(1) per frame, no allocations.
+  Elites/bosses: richer state machines or scripted attacks — fine because they're rare.
+  New enemy behaviors = new component + new system; cost is proportional to how many enemies
+  carry that component. Never grow a monolithic AI function.
+- **Measure before optimizing, but design for scale from the start.** Tracy is wired in.
+
+---
+
+## Tracy profiling conventions
+
+- Every system's `update()` function gets `ZoneScopedN("SystemName")` as its first line.
+- Every renderer's `render()` function gets `ZoneScopedN("RendererName")`.
+- **When adding a new system or renderer, add the zone immediately** — don't defer.
+- Key gameplay events use `TracyMessageL("EventName")` for timeline correlation:
+  `PlayerAttack`, `PlayerSkill`, `PlayerDodge`, `EntityDamaged`, `EntityDied`,
+  `EnemySpawned`, `EnemyAggro`, `EnemyAttack`.
+- **When adding a new significant gameplay event, add a `TracyMessageL` immediately.**
+- Trace files live in `traces/` (gitignored). Analyze with `./scripts/analyze-trace.sh`.
+
+---
+
+## Heavy synchronous operations and timing resets
+
+Any operation that blocks the main thread for more than ~1 frame (map generation, world
+create/destroy, bulk entity spawn) causes two problems:
+1. **Catch-up ticks** — the fixed-step accumulator sees hundreds of ms of "missed" time and
+   runs dozens of ticks in a burst. Entities teleport.
+2. **FPS counter crater** — the EMA-smoothed frame timer absorbs the spike and takes seconds
+   to recover, showing ~30 FPS even though actual frames are fine.
+
+**Fix:** Call `engine.requestTimingReset()` after any heavy synchronous operation. This zeros
+the accumulator, snaps `previousTime` forward, and resets the EMA. The timing reset is an
+engine concern — don't bake it into game-logic functions like `createWorld`/`destroyWorld`.
+The caller decides whether a timing reset is needed.
+
+**Loading overlay pattern:** For operations visible to the player (wave-start map regen),
+render a loading screen + call `engine.swapBuffers()` before the heavy work so the overlay
+stays on screen during the freeze. See `showLoadingOverlay()` in GameLoop.cpp.
+
+---
+
+## Audio file format standard
+
+All `.ogg` SFX must be **22050 Hz mono** (or 44100 Hz mono for sounds that need higher
+fidelity like death sounds). Never commit stereo or non-standard sample rates (e.g. 7350 Hz).
+miniaudio decodes + resamples on every `playSfx` call — exotic sample rates cause expensive
+runtime resampling that drops frames. When importing external audio, always re-encode:
+`ffmpeg -y -i input.ogg -ar 22050 -ac 1 -acodec libvorbis -q:a 3 output.ogg`
 
 ---
 
@@ -199,45 +281,62 @@ color.rgba). 33% more VBO memory but still a single static upload — no per-fra
 
 ---
 
-### [Issue #32] Split-Body Rendering (Player)
+### [Issue #81] Paper-Doll Sprite Compositing
 
-**Problem:** Player sprite faces movement direction, but in a twin-stick game the upper body
-should face aim direction (mouse). Standard single-sprite animation can't represent two
-facing directions simultaneously.
+**Problem:** The original issue #32 player used two child entities (lower + upper body) to
+get twin-stick facing. This scaled badly for customization (N layers = N child entities = N
+animation ticks + N draws per frame) and interacted awkwardly with equipment visibility.
 
-**Fix:** Player rendered as two child entities (lower body + upper body), each with independent
-Animation and Sprite components. Lower body faces velocity direction with walk/idle states;
-upper body faces FacingDirection (mouse aim) with attack/idle states.
+**Fix:** `SpriteCompositor` (`engine/include/SpriteCompositor.h`) builds the final character
+texture once, CPU-side, by alpha-blending a stack of LPC layer PNGs into a single GL
+texture. The character is then one entity with one Sprite and one Animation. WASD-locked
+facing (docs/CLAUDE.md) handles the twin-stick feel that the split was supposed to provide.
 
-**Architecture:** Child entities linked via `BodyPart` component (`parent`, `direction_from_facing` flag).
-Parent entity keeps all gameplay components (Transform, Health, Stats, etc.) but has no
-Sprite or Animation. Children inherit position from parent each frame.
+**Pipeline:**
+1. `fetch_lpc.py` pulls per-layer, per-animation PNGs from the upstream LiberatedPixelCup
+   repo into `game/assets/sprites/lpc/raw/`.
+2. `bake_palettes.py` reads upstream palette definition JSONs and bakes per-palette color
+   variants of the grayscale master PNGs (skin tones + clothing colors).
+3. `assemble_spritesheet.py` stitches per-animation PNGs into the 2048x384 character-sheet
+   layout (rows = Idle/Walk/Attack/Hit/Death/Run; columns = direction blocks x frames).
+4. At character creation / entity load, `AppearanceOps::resolveAppearance` calls
+   `SpriteCompositor::composite(layers)` which returns a cached GL texture ID. The entity's
+   `Sprite.texture_id` is set to that ID and the `AppearanceDef` component is removed.
 
-**State resolution per body part:**
-- Lower body (`direction_from_facing=false`): Dead > Hit > Attack > Walk > Idle. Direction from parent Velocity (or FacingDirection when backpedaling).
-- Upper body (`direction_from_facing=true`): Dead > Hit > Attack > Idle. Direction from parent FacingDirection.
+**Cache:** SpriteCompositor keys on the joined path list of all layers. Two characters with
+identical layer stacks share one GL texture. Swapping equipment will call composite again
+with the new layer list; if the new combination is already cached the lookup is O(1).
 
-**Backpedal:** When `FacingDirection.backpedaling` is true (movement opposes aim), the lower
-body switches to aim direction and walk frames advance in reverse. Speed multiplier
-(`backpedal_multiplier`) applied in MovementSystem. Animation speed slowed by 1.4x to match
-reduced movement. No new components or per-frame allocations -- single bool check in existing
-AnimationSystem loops.
+**Cost:**
+- **Composite call:** O(W*H*L) CPU blend, where L = layer count (~9-11 for current
+  characters). Runs once per unique layer combination. Negligible (sub-ms) at character
+  load; never during steady-state frames.
+- **Runtime:** zero extra cost vs. a single-sheet character. One entity, one animation, one
+  draw. This is strictly cheaper than the old split-body design.
+- **Memory:** one RGBA texture per unique character combination. With cache sharing, this
+  stays bounded -- all cops share one texture, the player's composited sheet is one texture,
+  etc.
 
-**Sprite split method:** LPC body base is a full-body silhouette. Both sheets include the body
-base but apply a vertical alpha mask at `BODY_SPLIT_Y=35` within each 64x64 frame. Lower body
-keeps only rows >= 35 (legs/feet), upper body keeps only rows < 35 (head/shoulders).
+**Dead -> Hit animation fix:** `AnimStateSystem` routes `Dead` to the `Hit` row (the LPC
+"hurt" pose reads as a death reaction). `AnimationSystem::advanceAnimation` freezes the
+last frame for both `Death` and `Hit` so the pose holds instead of looping. `DamageSystem`
+sizes the `Dead.timer` from the `Hit` row duration so the corpse lingers for exactly the
+animation length before `DeathSystem` destroys the entity.
 
-**Limitation (accepted):** LPC sprites have no torso-twist frames. The split at y=35 means
-only head and slight shoulders visually rotate. Full torso rotation requires custom art
-(planned for future). This is a known LPC asset limitation, not an engine limitation.
+**Enemy sprites:**
+- **Cops** go through the same AppearanceDef pipeline as the player, with layers fully
+  pre-resolved in `config/entities/cop.json`. Cached in the compositor so every cop shares
+  one texture.
+- **Skeletons** still use a single hand-composited LPC skeleton sheet. No AppearanceDef, no
+  compositor call. Kept as the baseline for entities that don't need customization.
 
-**Cost:** Two extra entities per split-body character. Two extra Animation state lookups and
-Sprite draws per frame. Position sync loop is O(n_body_parts) — negligible. No impact on
-enemies or other single-sprite entities.
+**Removed:** `BodyPart` component and its position-sync system. Old `player_lower` /
+`player_upper` animation sidecars and PNG masks deleted. The `BODY_SPLIT_Y=35` vertical
+alpha mask is gone -- LPC bodies now composite at full resolution.
 
-**Enemy sprites:** Enemies use a pre-composited LPC skeleton universal sheet (832x1344),
-remapped at build time to our 5-row format. No layer compositing or split-body — single
-Animation + Sprite entity per enemy.
+**See also:** `docs/SPRITE-UPGRADE-NOTES.md` has the full implementation log, including
+which layers ship today, what diverged from the original issue #81 plan, and the layer
+draw order.
 
 ---
 
@@ -324,6 +423,67 @@ slot instead of sprinting — "waiters" circling at the outer ring rather than r
 
 **Cost:** One float multiply per non-holder per frame.
 
+### Camera Interpolation — Own Prev Position
+
+**Problem:** Camera render interpolation used the player entity's `PreviousTransform` to blend
+between ticks. This works when the camera sits exactly on the player, but breaks when game code
+offsets `Camera.x/y` from the entity (e.g. lock-on camera blend toward an enemy). The offset
+isn't captured in `PreviousTransform` (which tracks physical position), so the camera offset
+snaps at tick boundaries instead of interpolating smoothly — visible as jitter during lock-on.
+
+**Fix:** Added `prev_x/prev_y` fields to the `Camera` component, snapshotted alongside
+`PreviousTransform` before each tick. Render interpolation now uses:
+```
+camX = camera.prev_x + (camera.x - camera.prev_x) * alpha
+```
+This captures any game-applied offset (lock-on blend, screenshake, etc.) and interpolates it.
+
+**Pre-render callback:** Positions that must match render interpolation (e.g. crosshair on a
+lock-on target) are computed in `gamePreRender`, which runs after the tick loop with the final
+`render_alpha`. This ensures the crosshair tracks the target's interpolated visual position,
+not the stale fixed-step position.
+
+**Engine callback order:**
+1. `per_frame_update` (mouse aim, input) — before tick loop
+2. Fixed-step tick loop (game systems)
+3. `pre_render` (interpolation-dependent state) — after tick loop, before render
+4. `render` (world + UI)
+
+**Cost:** 2 extra floats per Camera entity (one entity). One extra loop over cameras per tick
+(single entity — negligible).
+
+### Lock-On Camera Blend — Additive Offset Architecture
+
+**Previous approach (replaced):** `Camera.override_active` flag suppressed CameraSystem's
+entity-position snap, letting lock-on blend own `camera.x/y` directly. This caused two
+problems: the blend never accumulated (CameraSystem reset it each tick), and stale offsets
+persisted after release (required hard snap-on-release which could cause jumps).
+
+**Current approach:** Lock-on camera displacement stored as a separate additive offset
+(`Camera.offset_x/y`) with its own interpolation pair (`prev_offset_x/y`). CameraSystem
+always snaps `camera.x = transform.x` (never suppressed). The offset is computed in
+`gameUpdate` after CameraSystem: `goalOff = (enemy - player) * 0.3`, blended at
+`CAM_BLEND_SPEED = 8`. At render time, base and offset are interpolated separately with the
+same alpha, then summed. This ensures camera and player sprite share the exact same
+interpolation base — no step-size mismatch.
+
+**Release:** When lock-on ends, the offset decays smoothly via exponential blend
+(`DECAY_SPEED = 12`) in `gameUpdate`. No hard-zero — zeroing both offset and prev_offset
+simultaneously kills interpolation and causes a one-frame camera jump equal to the full
+offset magnitude.
+
+**Pixel rounding:** The interpolated offset is rounded to integers before adding to the
+camera base. Without this, the sprite position (independently rounded) and camera position
+(independently rounded) have rounding errors that don't cancel, causing 1-2px screen-space
+oscillation visible as player vibration during lock-on.
+
+**Jitter CSV diagnostic:** Per-frame CSV logging of camera/player positions, gated behind
+`TRACY_ENABLE`. Columns: frame, alpha, camX/Y, offsetX/Y, prevOffsetX/Y, drawX/Y,
+screenX/Y, frameDtMs. Essential for diagnosing interpolation bugs — the interpolated values
+alone mask whether the issue is in the raw position or the interpolation math.
+
+---
+
 ### SoundConfig -- Map-Based Lookup
 
 **Before:** SoundConfig had ~25 hardcoded `SoundEntry` fields plus parallel `std::vector<std::string>`
@@ -339,6 +499,82 @@ which returns a static empty entry on miss (safe).
 **Performance:** Map lookup is O(1) amortized (hash). Sound lookups happen at event time
 (attack, footstep, UI click) -- never in hot per-entity loops. The overhead vs direct field
 access is negligible. The real win is maintainability: zero C++ changes to add a sound.
+
+---
+
+### Lock-On Camera — Smooth Offset Decay on Release
+
+**Problem (jitter.csv analysis):** When lock-on ended (target died, player toggled off, or no
+replacement found), `gamePerFrame` hard-zeroed both `camera.offset_x/y` AND
+`camera.prev_offset_x/y` simultaneously. This killed render interpolation — both endpoints
+became zero instantly. The camera jumped the full offset distance (up to ~55px) in one frame.
+Visible as position discontinuities at frames 1880, 1939, 1960, 2021 in the CSV trace.
+
+**Existing smooth decay (unused):** `gameUpdate` already had an exponential decay path
+(`DECAY_SPEED = 12`) that smoothly blends offsets back to zero when no lock-on is active,
+with a 0.1px threshold snap at the end. This path was never reached because `gamePerFrame`
+(which runs before `gameUpdate`) already zeroed everything.
+
+**Fix:** Removed the hard-zero block from `gamePerFrame`. The existing smooth decay in
+`gameUpdate` now handles the transition. The `hadLockOn` tracking variable was removed since
+it's no longer needed.
+
+---
+
+### Lock-On Player Vibration — Backpedal Hysteresis + Offset Pixel-Rounding
+
+**Problem:** Player sprite visibly vibrated when locked on to an enemy, especially when
+strafing or positioned diagonally relative to the target.
+
+**Root cause 1 — backpedal flicker:** `updateFacingAndBackpedal()` in MovementSystem used a
+hard `dot < 0.0` threshold to toggle backpedaling. When strafing (movement perpendicular to
+facing), the dot product hovered near zero and oscillated across the threshold tick-to-tick.
+Each toggle flipped speed between 100% and 70% (`backpedal_multiplier`), creating a velocity
+oscillation visible as physical vibration.
+
+**Fix:** Hysteresis dead zone. Backpedal activates at `dot < -0.15` and deactivates at
+`dot > +0.15`. The ~17-degree dead zone on each side of perpendicular prevents flicker during
+strafing while still triggering correctly for actual backward movement.
+
+**Root cause 2 — independent pixel rounding:** RenderSystem rounds both the camera position
+(`std::round(camX)`) and each sprite position (`std::round(drawX)`) independently to the
+pixel grid. Without lock-on, `camX == drawX` (player-centered camera), so rounding errors
+cancel perfectly. With lock-on, the camera offset displaces them, and independent rounding can
+push them in opposite directions -- one rounds up while the other rounds down, creating 1-2px
+oscillation frame-to-frame.
+
+**Fix:** Round the interpolated camera offset to integers before adding it to the camera base
+position (`Engine::render()`). This forces the offset onto the pixel grid so sprite and camera
+rounding errors stay in sync.
+
+**Known residual:** Fixed-timestep interpolation creates a subtle tile-scrolling sawtooth when
+the tick rate (60 Hz) and display refresh aren't perfectly phase-locked. The accumulator alpha
+cycles in a repeating pattern (e.g. 0.40/0.42/0.44) creating SHORT-MEDIUM-LONG step sizes.
+This is inherent to fixed-timestep interpolation and most visible on large static backgrounds.
+Options if revisited: higher tick rate (120 Hz), or sub-pixel tile rendering (trade sharpness
+for smoothness).
+
+---
+
+### UIRenderer — GL Pipeline Stall Elimination + Shared Font Atlas
+
+**Problem (Tracy trace jitter4):** UIRenderer averaged **15.45 ms/frame** — consuming 93% of
+the 16.67ms frame budget. Not the cause of lock-on jitter, but a separate performance issue
+that caused frame time spikes and reduced overall headroom.
+
+**Root causes and fixes:**
+
+| Problem | Fix | Impact |
+|---|---|---|
+| `glGetUniformLocation` called per-frame + per-batch | Cache locations at `init()` in static `GLint`s | Eliminates synchronous driver string lookups |
+| `glBufferSubData` without orphaning stalls CPU | `glBufferData(nullptr)` before sub-data upload | GPU reads old buffer while CPU writes new one |
+| Ortho projection rebuilt every frame | Rebuild only on `resize()`, cache in static array | Eliminates redundant matrix math |
+| 3 separate font atlas textures (same .ttf, 3 sizes) | `loadFontGroup()` packs all sizes into one 1024x1024 atlas via `stbtt_PackFontRanges` | All sizes share one GL texture; no batch breaks |
+| `vector::insert` per quad | `resize()` + direct pointer writes | Eliminates per-quad function call overhead |
+
+**FontManager API addition:** `FontManager::loadFontGroup(path, {size1, size2, ...})` returns
+a vector of FontHandles sharing a single atlas texture. `shutdown()` tracks deleted textures
+to avoid double-freeing shared atlases.
 
 ---
 

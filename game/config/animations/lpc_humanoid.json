@@ -1,0 +1,15 @@
+{
+    "_comment": "Shared LPC humanoid animation layout. All humanoid entities (player, cop, future NPCs) reference this file. The texture field is unused at runtime - LPC entities have their texture set by AppearanceOps::resolveAppearance from layered PNGs in assets/sprites/lpc/assembled/. Frame layout: 64x64 frames, 4 directions (S/W/E/N), 6 state rows (idle/walk/attack/hit/death/run), 8 frames per direction block.",
+    "texture": "assets/sprites/lpc/assembled/body/tone_1.png",
+    "frame_width": 64,
+    "frame_height": 64,
+    "direction_count": 4,
+    "states": {
+        "idle":   { "row": 0, "frames": 1, "duration": 0.0 },
+        "walk":   { "row": 1, "frames": 8, "duration": 0.08 },
+        "attack": { "row": 2, "frames": 6, "duration": 0.07 },
+        "hit":    { "row": 3, "frames": 6, "duration": 0.08 },
+        "death":  { "row": 4, "frames": 6, "duration": 0.12 },
+        "run":    { "row": 5, "frames": 8, "duration": 0.08 }
+    }
+}

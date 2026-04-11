@@ -1,0 +1,53 @@
+{
+    "tag": "cop",
+    "components": {
+        "transform":     { "x": 880.0, "y": 220.0, "rotation": 0.0, "scale": 1.0 },
+        "velocity":      { "dx": 0.0, "dy": 0.0 },
+        "collider":      { "width": 32.0, "height": 48.0, "is_solid": true },
+        "appearance":    { "sheet": "config/animations/lpc_humanoid.json", "layers": ["assets/sprites/lpc/assembled/body/tone_2.png", "assets/sprites/lpc/assembled/head/tone_2_base.png", "assets/sprites/lpc/assembled/eyes/brown.png", "assets/sprites/lpc/assembled/legs/pants_blue.png", "assets/sprites/lpc/assembled/feet/boots_black.png", "assets/sprites/lpc/assembled/torso/longsleeve_blue.png", "assets/sprites/lpc/assembled/facial/walrus_brown.png", "assets/sprites/lpc/assembled/headwear/bowler_blue.png"] },
+        "stats":         { "str": 2, "dex": 2, "end": 2, "lck": 1 },
+        "body":          { "base_hp": 8, "base_defense": 2, "unarmed_damage": 6.0, "unarmed_weight": 0.15, "unarmed_str_scaling": 0.3, "unarmed_dex_scaling": 0.1 },
+        "equipment":     {},
+        "facing":        {},
+        "ai_controller": { "behavior": "chase", "turn_speed": 6.0, "aggro_radius": 150.0, "deaggro_radius": 900.0, "separation_strength": 0.4, "arrival_radius": 128.0, "attack_radius": 48.0, "speed_multiplier": 0.85, "orbit_speed": 0.6, "sprint_multiplier": 1.4, "sprint_threshold": 32.0, "attack_cooldown": 1.5 },
+        "loot":          { "xp_drop": 40, "drops": [{ "item": "config/items/money/5_bill.json", "min": 1, "max": 2, "chance": 0.5 }] },
+        "poise":         {},
+        "stamina":       {},
+        "hit_sound": {
+            "path": "assets/sfx/enemies/cop_hit.ogg",
+            "volume": 0.2,
+            "min_pitch": 0.9,
+            "max_pitch": 1.2
+        },
+        "death_sound": {
+            "path": "assets/sfx/enemies/cop_death.ogg",
+            "volume": 0.3,
+            "min_pitch": 0.85,
+            "max_pitch": 1.15
+        },
+        "aggro_sound": {
+            "paths": [
+                "assets/sfx/enemies/cop_bark_1.ogg",
+                "assets/sfx/enemies/cop_bark_2.ogg",
+                "assets/sfx/enemies/cop_bark_3.ogg",
+                "assets/sfx/enemies/cop_bark_4.ogg",
+                "assets/sfx/enemies/cop_bark_5.ogg",
+                "assets/sfx/enemies/cop_bark_6.ogg",
+                "assets/sfx/enemies/cop_bark_7.ogg",
+                "assets/sfx/enemies/cop_bark_8.ogg",
+                "assets/sfx/enemies/cop_bark_9.ogg",
+                "assets/sfx/enemies/cop_bark_10.ogg",
+                "assets/sfx/enemies/cop_bark_11.ogg",
+                "assets/sfx/enemies/cop_bark_12.ogg",
+                "assets/sfx/enemies/cop_bark_13.ogg",
+                "assets/sfx/enemies/cop_bark_14.ogg"
+            ],
+            "volume": 0.45,
+            "min_interval": 4.0,
+            "max_interval": 10.0,
+            "max_distance": 400.0,
+            "min_pitch": 0.85,
+            "max_pitch": 1.15
+        }
+    }
+}

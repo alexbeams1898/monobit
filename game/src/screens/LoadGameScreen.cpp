@@ -84,6 +84,7 @@ static bool handleDeleteConfirmation(EntityManager& em, SaveData& saveData, cons
 struct RowLayout
 {
     float lx, list_w, row_h, row_pad;
+    float edit_w, edit_h;
     float del_w, del_h;
     TextSize xsz;
     float mx, my;
@@ -95,7 +96,9 @@ static void drawCharacterRow(EntityManager& em, const SaveData& saveData, const 
 {
     const bool selected = (i == sSel);
 
-    const float row_content_w = lay.list_w - lay.del_w - 12.0f;
+    // Clickable row area excludes the Edit and Delete buttons.
+    const float buttons_w = lay.edit_w + 8.0f + lay.del_w + 12.0f;
+    const float row_content_w = lay.list_w - buttons_w;
     const bool rowHovered = lay.mx >= lay.lx && lay.mx < lay.lx + row_content_w && lay.my >= ly &&
                             lay.my < ly + lay.row_h;
     if (rowHovered)
@@ -115,11 +118,36 @@ static void drawCharacterRow(EntityManager& em, const SaveData& saveData, const 
     {
         const std::string moneyStr = "Money: " + std::to_string(prof.money);
         const TextSize mtsz = UIRenderer::measureText(sBodyFont, moneyStr);
-        const float money_x = lay.lx + lay.list_w - lay.del_w - 20.0f - mtsz.width;
+        const float money_x = lay.lx + row_content_w - 8.0f - mtsz.width;
         const float money_y = ly + (lay.row_h - mtsz.height) * 0.5f;
         UIRenderer::drawText(sBodyFont, moneyStr, money_x, money_y, MONEY_GREEN);
     }
 
+    // "Edit" button (edit appearance).
+    const float edit_x = lay.lx + lay.list_w - lay.del_w - 8.0f - lay.edit_w - 4.0f;
+    const float edit_y = ly + (lay.row_h - lay.edit_h) * 0.5f;
+    const bool editHovered = lay.mx >= edit_x && lay.mx < edit_x + lay.edit_w && lay.my >= edit_y &&
+                             lay.my < edit_y + lay.edit_h;
+    if (editHovered)
+        anyHovered = true;
+
+    static constexpr Color EDIT_BG{0.15f, 0.15f, 0.3f, 0.6f};
+    static constexpr Color EDIT_BG_HL{0.25f, 0.25f, 0.45f, 0.8f};
+    UIRenderer::drawRect(edit_x, edit_y, lay.edit_w, lay.edit_h,
+                         editHovered ? EDIT_BG_HL : EDIT_BG);
+    const TextSize esz = UIRenderer::measureText(sBodyFont, "Edit");
+    UIRenderer::drawText(sBodyFont, "Edit", edit_x + (lay.edit_w - esz.width) * 0.5f,
+                         edit_y + (lay.edit_h - esz.height) * 0.5f,
+                         editHovered ? TEXT_WHITE : BTN_NORMAL);
+
+    if (editHovered && mouseClicked(em, SDL_BUTTON_LEFT))
+    {
+        sSelectedName = prof.name;
+        result = LoadGameScreen::Action::EditLook;
+        playSfx(snd);
+    }
+
+    // "X" delete button.
     const float del_x = lay.lx + lay.list_w - lay.del_w - 4.0f;
     const float del_y = ly + (lay.row_h - lay.del_h) * 0.5f;
     const bool delHovered = lay.mx >= del_x && lay.mx < del_x + lay.del_w && lay.my >= del_y &&
@@ -143,7 +171,7 @@ static void drawCharacterRow(EntityManager& em, const SaveData& saveData, const 
     if (rowHovered && mouseClicked(em, SDL_BUTTON_LEFT))
     {
         sSel = i;
-        sSelectedName = saveData.characters[static_cast<size_t>(i)].name;
+        sSelectedName = prof.name;
         result = LoadGameScreen::Action::Select;
         playSfx(snd);
     }
@@ -266,7 +294,10 @@ LoadGameScreen::Action LoadGameScreen::render(EntityManager& em, int window_w, i
     const TextSize xsz = UIRenderer::measureText(sBodyFont, "X");
     const float del_w = xsz.width + 16.0f;
     const float del_h = xsz.height + 10.0f;
-    const RowLayout rowLay{lx, list_w, row_h, row_pad, del_w, del_h, xsz, mx, my};
+    const TextSize editSz = UIRenderer::measureText(sBodyFont, "Edit");
+    const float edit_w = editSz.width + 16.0f;
+    const float edit_h = editSz.height + 10.0f;
+    const RowLayout rowLay{lx, list_w, row_h, row_pad, edit_w, edit_h, del_w, del_h, xsz, mx, my};
 
     float ly = panel_y;
     bool anyHovered = false;

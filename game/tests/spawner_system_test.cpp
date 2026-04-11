@@ -25,14 +25,18 @@ TEST_CASE("SpawnerSystem spawns entities with correct tag", "[spawner]")
     EntityManager em;
     SpawnerSystem::load(em, "config/spawns/initial_spawn.json");
 
-    int count = 0;
+    int cops = 0;
+    int skeletons = 0;
     em.registry().view<Tag>().each(
         [&](const Tag& tag)
         {
-            if (tag.name == "skeleton")
-                ++count;
+            if (tag.name == "cop")
+                ++cops;
+            else if (tag.name == "skeleton")
+                ++skeletons;
         });
-    REQUIRE(count == 4);
+    REQUIRE(cops == 2);
+    REQUIRE(skeletons == 2);
 }
 
 TEST_CASE("SpawnerSystem applies position overrides — no two enemies share a position", "[spawner]")
@@ -45,7 +49,7 @@ TEST_CASE("SpawnerSystem applies position overrides — no two enemies share a p
     for (auto entity : view)
     {
         const auto& tag = view.get<Tag>(entity);
-        if (tag.name == "skeleton")
+        if (tag.name == "skeleton" || tag.name == "cop")
         {
             const auto& t = view.get<Transform>(entity);
             positions.emplace_back(t.x, t.y);

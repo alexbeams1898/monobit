@@ -6,6 +6,7 @@
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
+#include "ops/AppearanceOps.h"
 #include "ops/SpawnUtils.h"
 #include "systems/AudioSystem.h"
 #include "systems/LevelingSystem.h"
@@ -80,6 +81,10 @@ static bool spawnOneEnemy(EntityManager& em, const ActiveWave& wave, WaveState& 
     auto entity = ConfigLoader::loadEntity(em, group.config_path);
     if (!em.registry().valid(entity))
         return false;
+
+    // Resolve layered appearance if this enemy has an AppearanceDef.
+    if (em.registry().all_of<AppearanceDef>(entity))
+        AppearanceOps::resolveAppearance(em, entity);
 
     auto& t = em.registry().get<Transform>(entity);
     t.x = sx;
@@ -405,15 +410,7 @@ static void handleDeathRestart(EntityManager& em, WaveState& ws)
     for (auto e : reg.view<WaveEnemy>())
         toDestroy.push_back(e);
     for (auto e : toDestroy)
-    {
-        std::vector<entt::entity> children;
-        for (auto [child, bp] : reg.view<BodyPart>().each())
-            if (bp.parent == e)
-                children.push_back(child);
-        for (auto child : children)
-            reg.destroy(child);
         reg.destroy(e);
-    }
 
     entt::entity oldPlayer = entt::null;
     float spawnX = 0.0f;
@@ -435,11 +432,27 @@ static void handleDeathRestart(EntityManager& em, WaveState& ws)
     auto newPlayer = ConfigLoader::loadEntity(em, "config/entities/player.json");
     if (reg.valid(newPlayer))
     {
+        // Resolve appearance from saved character profile.
+        const auto& saveData = reg.ctx().get<SaveData>();
+        const auto& charName = reg.ctx().get<GameState>().active_character;
+        std::unordered_map<std::string, std::string> savedAppearance;
+        for (const auto& prof : saveData.characters)
+        {
+            if (prof.name == charName)
+            {
+                savedAppearance = prof.appearance;
+                break;
+            }
+        }
+        AppearanceOps::resolveAppearance(em, newPlayer, savedAppearance);
+        AppearanceOps::applyAppearanceScale(em, newPlayer, savedAppearance);
+
         auto& t = reg.get<Transform>(newPlayer);
         t.x = spawnX;
         t.y = spawnY;
         reg.emplace<PlayerActions>(newPlayer);
-        reg.emplace<Camera>(newPlayer, Camera{spawnX, spawnY, true});
+        reg.emplace<Camera>(newPlayer,
+                            Camera{.x = spawnX, .y = spawnY, .prev_x = spawnX, .prev_y = spawnY});
         LevelingSystem::applyInitialDerivations(em);
     }
 

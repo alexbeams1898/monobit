@@ -50,4 +50,10 @@ class AudioSystem
     static void toggleMusicMute(); // toggle mute; persists across track changes
     static bool isMusicMuted();
     static void setMasterVolume(float volume); // 0.0–1.0
+
+    // Low-pass filter applied to the music stream only. Use this to "muffle" the
+    // soundtrack while a UI overlay is open. cutoff_hz <= 0 disables the filter
+    // (music plays clean). Calling repeatedly with the same value is cheap.
+    // Typical values: 600-1000 Hz for a heavy muffle, 1500-2500 Hz for a light one.
+    static void setMusicLowPass(float cutoff_hz);
 };
