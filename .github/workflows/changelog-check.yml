@@ -1,0 +1,27 @@
+name: changelog-check
+
+# Validates the `## Changelog` section in every PR body. Required status check
+# in branch protection -- merge is blocked if the section is missing or malformed.
+#
+# Re-runs whenever the PR is opened, the branch is updated, or the body is edited.
+
+on:
+  pull_request:
+    types: [opened, synchronize, edited, reopened]
+
+jobs:
+  validate:
+    name: Validate PR body Changelog section
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write PR body to file
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          printf '%s' "$PR_BODY" > /tmp/pr_body.md
+
+      - name: Validate
+        run: |
+          python3 game/scripts/changelog.py validate-pr-body /tmp/pr_body.md
