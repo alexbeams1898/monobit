@@ -13,7 +13,8 @@
 static constexpr int WEAPON_ICON_SIZE = 32;
 static constexpr float kPi = 3.14159265358979323846f;
 
-static void spawnWeaponEntity(entt::registry& reg, entt::entity wielder, Weapon& weapon)
+static void spawnWeaponEntity(entt::registry& reg, entt::entity wielder, Weapon& weapon,
+                              bool left_hand = false)
 {
     const auto wpnEntity = reg.create();
     const auto& wt = reg.get<Transform>(wielder);
@@ -28,7 +29,7 @@ static void spawnWeaponEntity(entt::registry& reg, entt::entity wielder, Weapon&
     reg.emplace<Transform>(wpnEntity, Transform{wt.x, wt.y});
     reg.emplace<PreviousTransform>(wpnEntity, PreviousTransform{wt.x, wt.y});
     reg.emplace<Sprite>(wpnEntity, sprite);
-    reg.emplace<WeaponSprite>(wpnEntity, WeaponSprite{wielder});
+    reg.emplace<WeaponSprite>(wpnEntity, WeaponSprite{wielder, left_hand});
 
     weapon.weapon_entity = wpnEntity;
 }
@@ -45,7 +46,7 @@ void WeaponSpriteSystem::updateEquipment(EntityManager& em)
     ZoneScopedN("WeaponSpriteSystem::updateEquipment");
     auto& reg = em.registry();
 
-    // Spawn/destroy weapon entities when the wielder's visual_weapon changes.
+    // Spawn/destroy right-hand weapon entities when visual_weapon changes.
     for (auto [entity, weapon, appearance] :
          reg.view<Weapon, AppearanceState>().each())
     {
@@ -55,13 +56,32 @@ void WeaponSpriteSystem::updateEquipment(EntityManager& em)
             destroyWeaponEntity(reg, weapon);
 
             if (!weapon.weapon_icon.empty())
-                spawnWeaponEntity(reg, entity, weapon);
+                spawnWeaponEntity(reg, entity, weapon, false);
         }
     }
 
-    // Clean up stale weapon_entity refs on Weapon components whose entity
-    // was destroyed externally.
+    // Spawn/destroy left-hand weapon entities.
+    for (auto [entity, weapon, appearance] :
+         reg.view<LeftWeapon, AppearanceState>().each())
+    {
+        if (weapon.visual_weapon != appearance.synced_visual_weapon_left)
+        {
+            appearance.synced_visual_weapon_left = weapon.visual_weapon;
+            destroyWeaponEntity(reg, weapon);
+
+            if (!weapon.weapon_icon.empty())
+                spawnWeaponEntity(reg, entity, weapon, true);
+        }
+    }
+
+    // Clean up stale weapon_entity refs on Weapon/LeftWeapon components whose
+    // entity was destroyed externally.
     for (auto [entity, weapon] : reg.view<Weapon>().each())
+    {
+        if (weapon.weapon_entity != entt::null && !reg.valid(weapon.weapon_entity))
+            weapon.weapon_entity = entt::null;
+    }
+    for (auto [entity, weapon] : reg.view<LeftWeapon>().each())
     {
         if (weapon.weapon_entity != entt::null && !reg.valid(weapon.weapon_entity))
             weapon.weapon_entity = entt::null;
@@ -102,20 +122,16 @@ void WeaponSpriteSystem::syncVisuals(EntityManager& em)
         const int visibleFrame = absCol % framesPerDir;
         const int currentRow = wielderSprite.src_y / (anim.frame_height > 0 ? anim.frame_height : 1);
 
-        // Look up LEFT-hand anchor for the current row/dir/frame. Left is
-        // the primary grip for one-handed weapons and the trigger hand for
-        // two-handed weapons.
+        // Look up the primary hand anchor for this weapon. Right-hand weapons
+        // use row.right, left-hand weapons use row.left. The secondary hand
+        // (used for two-handed rendering) is the opposite.
+        const bool isLeftHand = wpnTag.left_hand;
         float anchorX = 0.0f;
         float anchorY = 0.0f;
         bool hasAnchor = false;
-
-        // Also look up the right-hand anchor (optional, used for two-hand
-        // rendering). If the row has no right-hand data or it's empty for
-        // this direction/frame, we silently fall back to one-hand rendering
-        // even if the weapon is two_handed_active.
-        float rightAnchorX = 0.0f;
-        float rightAnchorY = 0.0f;
-        bool hasRightAnchor = false;
+        float secondaryAnchorX = 0.0f;
+        float secondaryAnchorY = 0.0f;
+        bool hasSecondaryAnchor = false;
 
         if (anchorData != nullptr)
         {
@@ -123,9 +139,12 @@ void WeaponSpriteSystem::syncVisuals(EntityManager& em)
             if (rowIt != anchorData->rows.end())
             {
                 const auto& row = rowIt->second;
-                if (dirCol >= 0 && dirCol < static_cast<int>(row.left.size()))
+                const auto& primaryAnchors = isLeftHand ? row.left : row.right;
+                const auto& secondaryAnchors = isLeftHand ? row.right : row.left;
+
+                if (dirCol >= 0 && dirCol < static_cast<int>(primaryAnchors.size()))
                 {
-                    const auto& frames = row.left[dirCol];
+                    const auto& frames = primaryAnchors[dirCol];
                     if (visibleFrame >= 0 && visibleFrame < static_cast<int>(frames.size()))
                     {
                         anchorX = frames[visibleFrame].x;
@@ -133,14 +152,14 @@ void WeaponSpriteSystem::syncVisuals(EntityManager& em)
                         hasAnchor = true;
                     }
                 }
-                if (dirCol >= 0 && dirCol < static_cast<int>(row.right.size()))
+                if (dirCol >= 0 && dirCol < static_cast<int>(secondaryAnchors.size()))
                 {
-                    const auto& frames = row.right[dirCol];
+                    const auto& frames = secondaryAnchors[dirCol];
                     if (visibleFrame >= 0 && visibleFrame < static_cast<int>(frames.size()))
                     {
-                        rightAnchorX = frames[visibleFrame].x;
-                        rightAnchorY = frames[visibleFrame].y;
-                        hasRightAnchor = true;
+                        secondaryAnchorX = frames[visibleFrame].x;
+                        secondaryAnchorY = frames[visibleFrame].y;
+                        hasSecondaryAnchor = true;
                     }
                 }
             }
@@ -183,7 +202,7 @@ void WeaponSpriteSystem::syncVisuals(EntityManager& em)
         const bool foreGripDistinct = wielderWeapon != nullptr &&
                                        (wielderWeapon->fore_grip_x != wielderWeapon->grip_x ||
                                         wielderWeapon->fore_grip_y != wielderWeapon->grip_y);
-        const bool renderTwoHanded = wantTwoHanded && hasRightAnchor && foreGripDistinct;
+        const bool renderTwoHanded = wantTwoHanded && hasSecondaryAnchor && foreGripDistinct;
 
         // Hand anchors are measured in source-pixel units against the 64x64
         // frame center. When the wielder is drawn at a non-1.0 scale, the
@@ -211,10 +230,10 @@ void WeaponSpriteSystem::syncVisuals(EntityManager& em)
             // TWO-HANDED: compute rotation that aligns the grip-to-foregrip
             // vector in icon space with the left-hand-to-right-hand vector
             // in world space. No flip_x; rotation drives all orientation.
-            const float handLX = wielderPos.x + anchorX * wielderScale;
-            const float handLY = wielderPos.y - wielderYOffset + anchorY * wielderScale;
-            const float handRX = wielderPos.x + rightAnchorX * wielderScale;
-            const float handRY = wielderPos.y - wielderYOffset + rightAnchorY * wielderScale;
+            const float primaryX = wielderPos.x + anchorX * wielderScale;
+            const float primaryY = wielderPos.y - wielderYOffset + anchorY * wielderScale;
+            const float secondaryX = wielderPos.x + secondaryAnchorX * wielderScale;
+            const float secondaryY = wielderPos.y - wielderYOffset + secondaryAnchorY * wielderScale;
             // For S/W/E: left-handed hold with geo_mirror_x. The mirror
             // negates the grip vector's x so the rotation aligns correctly.
             // For N: the character faces away, so left/right are visually
@@ -224,8 +243,8 @@ void WeaponSpriteSystem::syncVisuals(EntityManager& em)
             const float rawGripDX = foreGripX - gripX;
             const float gripDX = northFacing ? rawGripDX : -rawGripDX;
             const float gripDY = foreGripY - gripY;
-            const float handDX = handRX - handLX;
-            const float handDY = handRY - handLY;
+            const float handDX = secondaryX - primaryX;
+            const float handDY = secondaryY - primaryY;
             const float gripAngle = std::atan2(gripDY, gripDX);
 
             // When the hands are very close together (mid-swing walk frames),
@@ -246,14 +265,16 @@ void WeaponSpriteSystem::syncVisuals(EntityManager& em)
         }
         else
         {
-            // ONE-HANDED: per-direction table. Base icon points NE.
-            //   base   -> NE    flip_x -> NW
+            // ONE-HANDED: per-direction table. base_rotation shifts the icon's
+            // resting angle (e.g. -45 degrees makes an NE-pointing icon horizontal).
+            // When flipped, negate the base_rotation so it mirrors correctly.
+            const float baseRot = wielderWeapon ? wielderWeapon->base_rotation : 0.0f;
             switch (dirCol)
             {
-                case 0: flip = false; rot = 0.0f; break;   // S -> NE
-                case 1: flip = true;  rot = 0.0f; break;   // W -> NW
-                case 2: flip = false; rot = 0.0f; break;   // E -> NE
-                case 3: flip = true;  rot = 0.0f; break;   // N -> NW
+                case 0: flip = false; rot = baseRot;  break;  // S
+                case 1: flip = true;  rot = -baseRot; break;  // W
+                case 2: flip = false; rot = baseRot;  break;  // E
+                case 3: flip = true;  rot = -baseRot; break;  // N
                 default: break;
             }
         }

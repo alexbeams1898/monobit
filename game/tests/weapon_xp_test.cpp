@@ -58,8 +58,8 @@ TEST_CASE("WeaponXPSystem: level-up increases weapon stats", "[weapon_xp]")
     em.registry().emplace<Weapon>(player, w);
 
     Equipment equip;
-    equip.main_hand.config_path = "config/items/weapons/test.json";
-    equip.main_hand.quality = QualityTier::Common;
+    equip.right_hand.config_path = "config/items/weapons/test.json";
+    equip.right_hand.quality = QualityTier::Common;
     em.registry().emplace<Equipment>(player, equip);
 
     // Need ItemRegistry and WeaponTierRegistry in ctx (already emplaced by emplaceGameConfigs).
@@ -90,8 +90,8 @@ TEST_CASE("WeaponXPSystem: quality affects growth factor", "[weapon_xp]")
     wA.dex_scaling = 0.5f;
     em.registry().emplace<Weapon>(playerA, wA);
     Equipment eqA;
-    eqA.main_hand.config_path = "test_a";
-    eqA.main_hand.quality = QualityTier::Crude;
+    eqA.right_hand.config_path = "test_a";
+    eqA.right_hand.quality = QualityTier::Crude;
     em.registry().emplace<Equipment>(playerA, eqA);
 
     WeaponXPSystem::update(em);
@@ -102,7 +102,7 @@ TEST_CASE("WeaponXPSystem: quality affects growth factor", "[weapon_xp]")
     em.registry().get<WeaponXP>(playerA).xp_to_next = 50.0f;
     em.registry().get<WeaponXP>(playerA).level = 1;
     em.registry().get<Weapon>(playerA).base_damage = 10.0f;
-    em.registry().get<Equipment>(playerA).main_hand.quality = QualityTier::Masterwork;
+    em.registry().get<Equipment>(playerA).right_hand.quality = QualityTier::Masterwork;
 
     WeaponXPSystem::update(em);
     const float dmgMasterwork = em.registry().get<Weapon>(playerA).base_damage;

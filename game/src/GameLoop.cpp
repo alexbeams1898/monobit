@@ -273,7 +273,8 @@ static void updateUIState(EntityManager& em)
         {
             actions.move_x = 0.0f;
             actions.move_y = 0.0f;
-            actions.attack = false;
+            actions.right_attack = false;
+            actions.left_attack = false;
             actions.dodge = false;
             actions.skill = false;
             actions.sprint = false;
@@ -458,7 +459,8 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
             auto& actions = em.registry().get<PlayerActions>(pe);
             actions.move_x = 0.0f;
             actions.move_y = 0.0f;
-            actions.attack = false;
+            actions.right_attack = false;
+            actions.left_attack = false;
             actions.dodge = false;
             actions.skill = false;
             actions.sprint = false;
@@ -760,7 +762,7 @@ static void resolvePlayerVisualFacingTick(EntityManager& em)
         const auto* lockOnComp = em.registry().try_get<LockOnTarget>(entity);
         const bool isAttacking = em.registry().all_of<AttackLocked>(entity) ||
                                  em.registry().all_of<CriticalAttacking>(entity);
-        const bool isHeldRangedFire = actions.attack && em.registry().all_of<Weapon>(entity) &&
+        const bool isHeldRangedFire = actions.right_attack && em.registry().all_of<Weapon>(entity) &&
                                       em.registry().get<Weapon>(entity).ranged;
 
         const bool wasMovementFacing = resolveVisualFacing(

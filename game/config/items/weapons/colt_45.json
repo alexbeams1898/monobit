@@ -28,6 +28,7 @@
     "fire_sound": "gunshot",
     "stamina_cost": 0.0,
     "visual_weapon": "colt_45",
+    "base_rotation": 45.0,
     "grip_x": 15.0,
     "grip_y": 21.0,
     "attack_anim": "shoot",

@@ -37,13 +37,13 @@ static void doEvolve(EntityManager& em, entt::entity player)
     const auto& items = reg.ctx().get<ItemRegistry>();
     const auto& formulas = reg.ctx().get<FormulaConfig>();
 
-    if (equip.main_hand.empty())
+    if (equip.right_hand.empty())
     {
         NotificationSystem::push("No weapon equipped", {0.8f, 0.4f, 0.4f, 1.0f});
         return;
     }
 
-    auto it = evoReg.weapon_to_node.find(equip.main_hand.config_path);
+    auto it = evoReg.weapon_to_node.find(equip.right_hand.config_path);
     if (it == evoReg.weapon_to_node.end())
     {
         NotificationSystem::push("No evolutions available", {0.6f, 0.6f, 0.6f, 1.0f});
@@ -92,10 +92,10 @@ static bool checkCanEvolve(EntityManager& em, entt::entity player)
     if (!em.registry().all_of<Equipment, Inventory, WeaponXP>(player))
         return false;
     const auto& equip = em.registry().get<Equipment>(player);
-    if (equip.main_hand.empty())
+    if (equip.right_hand.empty())
         return false;
     const auto& evoReg = em.registry().ctx().get<EvolutionRegistry>();
-    const auto it = evoReg.weapon_to_node.find(equip.main_hand.config_path);
+    const auto it = evoReg.weapon_to_node.find(equip.right_hand.config_path);
     if (it == evoReg.weapon_to_node.end())
         return false;
     const auto& family = evoReg.families[it->second.first];

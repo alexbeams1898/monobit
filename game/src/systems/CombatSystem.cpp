@@ -437,11 +437,11 @@ void CombatSystem::update(EntityManager& em, double dt)
         }
         if (!fireAttack && !clickConsumed)
             fireAttack =
-                (actions.attack && weapon.swing_cooldown_remaining <= 0.0f && !isAttackLocked &&
+                (actions.right_attack && weapon.swing_cooldown_remaining <= 0.0f && !isAttackLocked &&
                  !isStaggered && !isCritLocked && staCurrent >= swingCost);
 
         // Audio + visual feedback when attack pressed but stamina too low.
-        if (!fireAttack && actions.attack && !clickConsumed &&
+        if (!fireAttack && actions.right_attack && !clickConsumed &&
             weapon.swing_cooldown_remaining <= 0.0f && !isAttackLocked && !isStaggered &&
             staCurrent < swingCost)
         {

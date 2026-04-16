@@ -102,7 +102,7 @@ void WeaponXPSystem::update(EntityManager& em)
         // Process level-ups while XP exceeds threshold.
         // Fists use default quality; real weapons use their item quality.
         const QualityTier qt =
-            equip.main_hand.empty() ? QualityTier::Common : equip.main_hand.quality;
+            equip.right_hand.empty() ? QualityTier::Common : equip.right_hand.quality;
         const float qf = qualityFactor(qt);
 
         while (wxp.current_xp >= wxp.xp_to_next)
@@ -110,7 +110,7 @@ void WeaponXPSystem::update(EntityManager& em)
             wxp.current_xp -= wxp.xp_to_next;
             wxp.level++;
 
-            const ItemDef* def = items.find(equip.main_hand.config_path);
+            const ItemDef* def = items.find(equip.right_hand.config_path);
 
             // Apply stat growth to the live Weapon component.
             if (reg.all_of<Weapon>(entity))

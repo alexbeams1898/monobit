@@ -177,8 +177,8 @@ void InventoryScreen::render(EntityManager& em, int window_w, int window_h)
             ey += FontManager::lineHeight(sBodyFont) + 2.0f;
         };
 
-        drawSlotLabel("Weapon", eq.main_hand);
-        drawSlotLabel("Off-hand", eq.off_hand);
+        drawSlotLabel("Right Hand", eq.right_hand);
+        drawSlotLabel("Left Hand", eq.left_hand);
         drawSlotLabel("Head", eq.head);
         drawSlotLabel("Chest", eq.chest);
         drawSlotLabel("Legs", eq.legs);

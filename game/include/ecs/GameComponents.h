@@ -57,15 +57,18 @@ struct PlayerActions
     float move_x = 0.0f;
     float move_y = 0.0f;
 
-    bool attack = false;
+    bool right_attack = false;  // right-hand attack (E / RMB)
+    bool left_attack = false;   // left-hand attack (Q / LMB)
     bool dodge = false;
-    bool skill = false;
+    bool skill = false;        // skill attack (Ctrl)
     bool sprint = false;
     bool block_held = false;
     bool block_just_pressed = false;
     bool auto_toggle_just_pressed = false;
-    bool cycle_weapon = false;
-    bool cycle_weapon_prev = false;
+    bool cycle_weapon = false;        // right-hand cycle forward (C)
+    bool cycle_weapon_prev = false;   // right-hand cycle backward (V)
+    bool cycle_left_weapon = false;   // left-hand cycle forward (Z)
+    bool cycle_left_weapon_prev = false; // left-hand cycle backward (X)
     bool interact = false;
     bool mouse_click = false;
     float mouse_world_x = 0.0f;
@@ -232,7 +235,8 @@ struct Weapon
     float grip_y = 0.0f;
     float fore_grip_x = 0.0f;  // secondary grip pixel in icon; support hand (two-handed only)
     float fore_grip_y = 0.0f;
-    float weapon_scale = 1.0f; // visual scale (1.0 = native icon size)
+    float weapon_scale = 1.0f;  // visual scale (1.0 = native icon size)
+    float base_rotation = 0.0f; // resting angle in radians (converted from degrees at load)
     std::string attack_anim;   // animation row name ("slash", "thrust", "shoot"); empty = "slash"
     std::vector<int> shoot_frames; // per-frame column remap for the attack row; empty = play 0..N-1
     entt::entity weapon_entity = entt::null; // spawned weapon sprite entity (managed by WeaponSpriteSystem)
@@ -246,10 +250,19 @@ struct Weapon
     bool two_handed_active = false;
 };
 
+// LeftWeapon -- weapon equipped in the left hand. Inherits all Weapon fields;
+// separate type so entt can store both Weapon (right hand) and LeftWeapon
+// (left hand) on the same entity.
+struct LeftWeapon : Weapon
+{
+};
+
 // WeaponSprite -- tag on the weapon sprite entity linking it back to its wielder.
+// `left_hand` indicates whether this sprite represents the left-hand weapon.
 struct WeaponSprite
 {
     entt::entity wielder = entt::null;
+    bool left_hand = false;
 };
 
 // WeaponXP -- tracks weapon leveling through combat use.
@@ -261,7 +274,7 @@ struct WeaponXP
     float xp_to_next = 50.0f;
 };
 
-// Shield -- one-handed shield equipped in the off-hand slot.
+// Shield -- equipped in either hand. Blocking is determined by which hand holds it.
 struct Shield
 {
     float guard_health = 100.0f;
@@ -276,6 +289,7 @@ struct AppearanceState
 {
     std::unordered_map<std::string, std::string> current_selections;
     std::string synced_visual_weapon;
+    std::string synced_visual_weapon_left;
 };
 
 // ArmorStats -- aggregated defensive stats from all equipped armor pieces.
@@ -441,8 +455,8 @@ enum class ArmorSlot : uint8_t
 
 enum class EquipSlot : uint8_t
 {
-    MainHand,
-    OffHand,
+    RightHand,
+    LeftHand,
     Head,
     Chest,
     Legs,
@@ -489,8 +503,8 @@ struct Inventory
 // Weapon/Shield components each frame.
 struct Equipment
 {
-    ItemInstance main_hand;
-    ItemInstance off_hand;
+    ItemInstance right_hand;
+    ItemInstance left_hand;
     ItemInstance head;
     ItemInstance chest;
     ItemInstance legs;
@@ -501,12 +515,13 @@ struct Equipment
     // Index into Inventory::items for the currently equipped weapon.
     // -1 = fists (no inventory slot). Used by X-key cycling to return the
     // weapon to its original inventory position so order stays stable.
-    int main_hand_slot = -1;
+    int right_hand_slot = -1;
+    int left_hand_slot = -1;
 
     // EquipmentSystem compares these to detect slot changes.
     // Sentinel ensures the first update always triggers sync (even for fists).
-    std::string synced_main_hand = "__unsynced__";
-    std::string synced_off_hand = "__unsynced__";
+    std::string synced_right_hand = "__unsynced__";
+    std::string synced_left_hand = "__unsynced__";
 };
 
 // Wallet -- persistent money balance for the player.

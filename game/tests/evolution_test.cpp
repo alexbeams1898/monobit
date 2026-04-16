@@ -41,7 +41,7 @@ TEST_CASE("InventoryOps::canEvolve checks level and materials", "[evolution]")
     WeaponXP wxp;
     wxp.level = 3;
 
-    equip.main_hand.config_path = "config/items/weapons/shiv.json";
+    equip.right_hand.config_path = "config/items/weapons/shiv.json";
 
     EvolutionPath path;
     path.target_node = "dagger";
@@ -67,7 +67,7 @@ TEST_CASE("InventoryOps::canEvolve flat upgrade needs no materials", "[evolution
     Equipment equip;
     WeaponXP wxp;
     wxp.level = 5;
-    equip.main_hand.config_path = "config/items/weapons/shiv.json";
+    equip.right_hand.config_path = "config/items/weapons/shiv.json";
 
     EvolutionPath path;
     path.target_node = "dagger";
@@ -83,8 +83,8 @@ TEST_CASE("InventoryOps::evolveWeapon replaces weapon and resets XP", "[evolutio
     inv.items.push_back({"config/items/materials/bone_shard.json", QualityTier::Common, 100.0f, 2});
 
     Equipment equip;
-    equip.main_hand.config_path = "config/items/weapons/shiv.json";
-    equip.synced_main_hand = "config/items/weapons/shiv.json";
+    equip.right_hand.config_path = "config/items/weapons/shiv.json";
+    equip.synced_right_hand = "config/items/weapons/shiv.json";
 
     WeaponXP wxp;
     wxp.level = 7;
@@ -104,16 +104,16 @@ TEST_CASE("InventoryOps::evolveWeapon replaces weapon and resets XP", "[evolutio
                                        registry, carry_factor));
 
     // Weapon replaced.
-    REQUIRE(equip.main_hand.config_path == "config/items/weapons/dagger.json");
+    REQUIRE(equip.right_hand.config_path == "config/items/weapons/dagger.json");
 
-    // synced_main_hand cleared to force EquipmentSystem re-sync.
-    REQUIRE(equip.synced_main_hand.empty());
+    // synced_right_hand cleared to force EquipmentSystem re-sync.
+    REQUIRE(equip.synced_right_hand.empty());
 
     // Carry-forward bonus computed: old_bonus(0) + old_level(7) * carry_factor(0.15).
-    REQUIRE_THAT(equip.main_hand.evolution_bonus, WithinAbs(1.05f, 0.01f));
+    REQUIRE_THAT(equip.right_hand.evolution_bonus, WithinAbs(1.05f, 0.01f));
 
     // Newly discovered flag set.
-    REQUIRE(equip.main_hand.newly_discovered);
+    REQUIRE(equip.right_hand.newly_discovered);
 
     // WeaponXP reset.
     REQUIRE(wxp.level == 1);
@@ -127,8 +127,8 @@ TEST_CASE("InventoryOps::evolveWeapon accumulates carry-forward bonus", "[evolut
 {
     Inventory inv;
     Equipment equip;
-    equip.main_hand.config_path = "config/items/weapons/shiv.json";
-    equip.main_hand.evolution_bonus = 2.0f; // from a prior evolution
+    equip.right_hand.config_path = "config/items/weapons/shiv.json";
+    equip.right_hand.evolution_bonus = 2.0f; // from a prior evolution
 
     WeaponXP wxp;
     wxp.level = 10;
@@ -145,5 +145,5 @@ TEST_CASE("InventoryOps::evolveWeapon accumulates carry-forward bonus", "[evolut
                                        registry, carry_factor));
 
     // bonus = old_bonus(2.0) + old_level(10) * carry_factor(0.15) = 2.0 + 1.5 = 3.5
-    REQUIRE_THAT(equip.main_hand.evolution_bonus, WithinAbs(3.5f, 0.01f));
+    REQUIRE_THAT(equip.right_hand.evolution_bonus, WithinAbs(3.5f, 0.01f));
 }

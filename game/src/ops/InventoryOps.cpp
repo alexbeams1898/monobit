@@ -7,10 +7,10 @@ ItemInstance& slotRef(Equipment& equip, EquipSlot slot)
 {
     switch (slot)
     {
-    case EquipSlot::MainHand:
-        return equip.main_hand;
-    case EquipSlot::OffHand:
-        return equip.off_hand;
+    case EquipSlot::RightHand:
+        return equip.right_hand;
+    case EquipSlot::LeftHand:
+        return equip.left_hand;
     case EquipSlot::Head:
         return equip.head;
     case EquipSlot::Chest:
@@ -31,10 +31,10 @@ const ItemInstance& slotRef(const Equipment& equip, EquipSlot slot)
 {
     switch (slot)
     {
-    case EquipSlot::MainHand:
-        return equip.main_hand;
-    case EquipSlot::OffHand:
-        return equip.off_hand;
+    case EquipSlot::RightHand:
+        return equip.right_hand;
+    case EquipSlot::LeftHand:
+        return equip.left_hand;
     case EquipSlot::Head:
         return equip.head;
     case EquipSlot::Chest:
@@ -52,15 +52,18 @@ const ItemInstance& slotRef(const Equipment& equip, EquipSlot slot)
 }
 
 // Determine which EquipSlot an item belongs in based on its definition.
+// Weapons and shields default to RightHand but can be placed in either hand
+// via equipItemToSlot(). Only armor and accessories have fixed slots.
 static EquipSlot targetSlot(const ItemDef& def)
 {
     if (def.category == ItemCategory::Weapon)
-        return EquipSlot::MainHand;
+        return EquipSlot::RightHand;
 
     if (def.category == ItemCategory::Armor)
     {
+        // Shields are hand items — default to right hand like weapons.
         if (def.max_guard > 0.0f)
-            return EquipSlot::OffHand;
+            return EquipSlot::RightHand;
 
         switch (def.armor_slot)
         {
@@ -78,8 +81,7 @@ static EquipSlot targetSlot(const ItemDef& def)
     if (def.category == ItemCategory::Accessory)
         return EquipSlot::Accessory1;
 
-    // Consumables, key items, materials are not equippable.
-    return EquipSlot::MainHand;
+    return EquipSlot::RightHand;
 }
 
 bool addItem(Inventory& inv, const ItemInstance& item, const ItemRegistry& registry)
@@ -157,10 +159,44 @@ bool equipItem(Inventory& inv, Equipment& equip, int inv_index, const ItemRegist
 
     target = std::move(incoming);
 
-    if (slot == EquipSlot::MainHand)
+    if (slot == EquipSlot::RightHand)
     {
-        equip.main_hand_slot = inv_index;
+        equip.right_hand_slot = inv_index;
     }
+
+    return true;
+}
+
+bool equipItemToSlot(Inventory& inv, Equipment& equip, int inv_index, EquipSlot slot,
+                     const ItemRegistry& registry)
+{
+    if (inv_index < 0 || inv_index >= static_cast<int>(inv.items.size()))
+        return false;
+
+    const ItemDef* def = registry.find(inv.items[inv_index].config_path);
+    if (def == nullptr)
+        return false;
+
+    if (def->category != ItemCategory::Weapon && def->category != ItemCategory::Armor &&
+        def->category != ItemCategory::Accessory)
+        return false;
+
+    ItemInstance& target = slotRef(equip, slot);
+
+    ItemInstance incoming = std::move(inv.items[inv_index]);
+    if (!target.empty())
+    {
+        inv.items[inv_index] = std::move(target);
+    }
+    else
+    {
+        inv.items.erase(inv.items.begin() + inv_index);
+    }
+
+    target = std::move(incoming);
+
+    if (slot == EquipSlot::RightHand)
+        equip.right_hand_slot = inv_index;
 
     return true;
 }
@@ -216,7 +252,7 @@ bool consumeItems(Inventory& inv, const std::string& config_path, int qty)
 bool canEvolve(const Inventory& inv, const Equipment& equip, const WeaponXP& wxp,
                const EvolutionPath& path)
 {
-    if (equip.main_hand.empty())
+    if (equip.right_hand.empty())
         return false;
     if (wxp.level < path.min_level)
         return false;
@@ -244,15 +280,15 @@ bool evolveWeapon(Inventory& inv, Equipment& equip, WeaponXP& wxp, const Evoluti
 
     // Compute carry-forward bonus from current weapon level.
     const float bonus =
-        equip.main_hand.evolution_bonus + static_cast<float>(wxp.level) * carry_factor;
+        equip.right_hand.evolution_bonus + static_cast<float>(wxp.level) * carry_factor;
 
     // Replace equipped weapon.
-    equip.main_hand.config_path = new_weapon_config;
-    equip.main_hand.evolution_bonus = bonus;
-    equip.main_hand.newly_discovered = true;
+    equip.right_hand.config_path = new_weapon_config;
+    equip.right_hand.evolution_bonus = bonus;
+    equip.right_hand.newly_discovered = true;
 
     // Force EquipmentSystem to re-sync by clearing the synced tracker.
-    equip.synced_main_hand.clear();
+    equip.synced_right_hand.clear();
 
     // Reset weapon XP.
     wxp.level = 1;

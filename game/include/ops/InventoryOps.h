@@ -18,6 +18,12 @@ bool removeItem(Inventory& inv, int index);
 // Returns false if index is invalid or category doesn't fit a slot.
 bool equipItem(Inventory& inv, Equipment& equip, int inv_index, const ItemRegistry& registry);
 
+// Equip the item at inv_index into a specific target slot. Used when the UI
+// lets the player choose which hand to equip into (weapons and shields can
+// go in either hand).
+bool equipItemToSlot(Inventory& inv, Equipment& equip, int inv_index, EquipSlot slot,
+                     const ItemRegistry& registry);
+
 // Unequip the given slot back into inventory.
 // Returns false if slot is empty or inventory is full.
 bool unequipSlot(Inventory& inv, Equipment& equip, EquipSlot slot);

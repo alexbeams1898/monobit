@@ -108,6 +108,7 @@ struct ItemDef
     float fore_grip_x = 0.0f;   // secondary grip pixel in icon; support hand (two-handed only)
     float fore_grip_y = 0.0f;
     float weapon_scale = 1.0f;  // visual scale of the held weapon sprite (1.0 = native icon size)
+    float base_rotation = 0.0f; // resting angle in degrees (0 = icon drawn as-is; negative = CCW)
     bool two_handed = false; // can this weapon be held two-handed (toggle via Left Alt)
     std::string attack_anim;   // animation row name ("slash", "thrust", "shoot"); empty = "slash"
     std::vector<int> shoot_frames; // per-frame column remap for the attack row; empty = 0..N-1
@@ -117,7 +118,7 @@ struct ItemDef
     float defense_bonus = 0.0f;
     float poise_bonus = 0.0f;
 
-    // Shield (armor in off-hand; max_guard > 0 means this is a shield).
+    // Shield (max_guard > 0 means this item acts as a shield in whichever hand holds it).
     float max_guard = 0.0f;
     float parry_window = 0.15f; // seconds; parsed but used by future parry system
 

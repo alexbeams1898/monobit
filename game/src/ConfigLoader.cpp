@@ -1185,6 +1185,7 @@ bool ConfigLoader::loadItemDefs(EntityManager& em, const std::string& dirPath)
         def.fore_grip_x = j.value("fore_grip_x", def.grip_x);
         def.fore_grip_y = j.value("fore_grip_y", def.grip_y);
         def.weapon_scale = j.value("weapon_scale", 1.0f);
+        def.base_rotation = j.value("base_rotation", 0.0f) * 3.14159265f / 180.0f;
         def.attack_anim = j.value("attack_anim", std::string{});
         if (j.contains("shoot_frames"))
         {

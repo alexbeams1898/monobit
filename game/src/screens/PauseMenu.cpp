@@ -357,8 +357,8 @@ static void renderInventoryTab(EntityManager& em, float cx, float cy, float cw, 
 }
 
 // Equipment slot labels and corresponding EquipSlot enums (6 visible slots).
-static const char* EQUIP_SLOT_NAMES[] = {"Weapon", "Off-hand", "Head", "Chest", "Legs", "Feet"};
-static const EquipSlot EQUIP_SLOT_ENUMS[] = {EquipSlot::MainHand, EquipSlot::OffHand,
+static const char* EQUIP_SLOT_NAMES[] = {"Right Hand", "Left Hand", "Head", "Chest", "Legs", "Feet"};
+static const EquipSlot EQUIP_SLOT_ENUMS[] = {EquipSlot::RightHand, EquipSlot::LeftHand,
                                              EquipSlot::Head,     EquipSlot::Chest,
                                              EquipSlot::Legs,     EquipSlot::Feet};
 static constexpr int EQUIP_SLOT_COUNT = 6;
@@ -378,7 +378,7 @@ static std::vector<PickerEntry> buildPickerList(const Inventory& inv, const Item
     // First entry: unequip option if slot is occupied.
     if (slot_occupied)
     {
-        const char* empty_label = (slot == EquipSlot::MainHand) ? "(Unarmed)" : "(Unequip)";
+        const char* empty_label = (slot == EquipSlot::RightHand) ? "(Unarmed)" : "(Unequip)";
         list.push_back({-1, empty_label, {}});
     }
 
@@ -395,11 +395,10 @@ static std::vector<PickerEntry> buildPickerList(const Inventory& inv, const Item
         bool compatible = false;
         switch (slot)
         {
-        case EquipSlot::MainHand:
-            compatible = (def->category == ItemCategory::Weapon);
-            break;
-        case EquipSlot::OffHand:
-            compatible = (def->category == ItemCategory::Armor && def->max_guard > 0.0f);
+        case EquipSlot::RightHand:
+        case EquipSlot::LeftHand:
+            compatible = (def->category == ItemCategory::Weapon) ||
+                         (def->category == ItemCategory::Armor && def->max_guard > 0.0f);
             break;
         case EquipSlot::Head:
             compatible = (def->category == ItemCategory::Armor && def->max_guard <= 0.0f &&
@@ -608,7 +607,7 @@ static void renderEquipSlotList(EntityManager& em, const Equipment& eq, const It
         const bool highlighted = selected || hovered;
         if (slot.empty())
         {
-            text += (EQUIP_SLOT_ENUMS[i] == EquipSlot::MainHand) ? "(Unarmed)" : "(empty)";
+            text += (EQUIP_SLOT_ENUMS[i] == EquipSlot::RightHand) ? "(Unarmed)" : "(empty)";
             UIRenderer::drawText(sBodyFont, text, text_x, y, highlighted ? TEXT_WHITE : TEXT_DIM);
         }
         else
@@ -646,7 +645,7 @@ static void renderEquipStatPanel(EntityManager& em, entt::entity player, const E
     const auto& f = em.registry().ctx().get<FormulaConfig>();
     const bool god_mode = em.registry().ctx().get<DebugFlags>().god_mode;
 
-    if (sel_slot == EquipSlot::MainHand)
+    if (sel_slot == EquipSlot::RightHand)
     {
         float stat_bottom = y;
         if (def != nullptr && def->category == ItemCategory::Weapon)
@@ -689,7 +688,7 @@ static void renderEquipStatPanel(EntityManager& em, entt::entity player, const E
             UIRenderer::drawText(sBodyFont, xp_text, cx + cw - xpsz.width, bar_y, TEXT_DIM);
         }
     }
-    else if (sel_slot == EquipSlot::OffHand && def != nullptr && def->max_guard > 0.0f)
+    else if (sel_slot == EquipSlot::LeftHand && def != nullptr && def->max_guard > 0.0f)
     {
         renderShieldStats(*def, em, player, cx, y, cw, val_x);
     }
@@ -699,7 +698,7 @@ static void renderEquipStatPanel(EntityManager& em, entt::entity player, const E
     }
     else if (sel_item.empty())
     {
-        const std::string empty_label = (sel_slot == EquipSlot::MainHand) ? "(Unarmed)" : "(empty)";
+        const std::string empty_label = (sel_slot == EquipSlot::RightHand) ? "(Unarmed)" : "(empty)";
         UIRenderer::drawText(sBodyFont, empty_label, cx, y, TEXT_DIM);
     }
 }

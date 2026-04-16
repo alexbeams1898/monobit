@@ -166,7 +166,7 @@ static void renderWeaponSection(EntityManager& em, entt::entity entity, float& y
     const auto& w = em.registry().get<Weapon>(entity);
     const auto& equip = em.registry().get<Equipment>(entity);
     const ItemDef* wpnDef =
-        em.registry().ctx().get<ItemRegistry>().find(equip.main_hand.config_path);
+        em.registry().ctx().get<ItemRegistry>().find(equip.right_hand.config_path);
     const float icon_sz = title_h;
     ItemStatRenderer::drawItemIcon(wpnDef, BAR_X, y, icon_sz);
     const float name_x = (wpnDef && !wpnDef->icon_path.empty()) ? BAR_X + icon_sz + 4.0f : BAR_X;
