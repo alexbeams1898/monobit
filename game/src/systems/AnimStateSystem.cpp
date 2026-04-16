@@ -1,5 +1,6 @@
 #include "systems/AnimStateSystem.h"
 
+#include "ecs/BalanceConfig.h"
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 
@@ -11,7 +12,7 @@
 // On death we play the hurt animation so the death moment has a visible reaction.
 // Staggered locks to Idle so the run/walk animation doesn't keep playing while the
 // entity is knocked still and movement input is being ignored.
-static AnimState resolveStandaloneState(entt::registry& reg, entt::entity entity)
+static AnimState resolveState(entt::registry& reg, entt::entity entity)
 {
     if (reg.all_of<Dead>(entity))
         return AnimState::Hit;
@@ -22,10 +23,6 @@ static AnimState resolveStandaloneState(entt::registry& reg, entt::entity entity
     if (reg.all_of<AttackLocked>(entity))
         return AnimState::Attack;
 
-    // Player: use raw input (MovementIntent) so wall collisions don't cause
-    // animation flicker. Velocity oscillates when the exponential blend pumps
-    // it back up each tick only for collision to zero it again.
-    // Enemies: use post-collision velocity (no MovementIntent).
     const auto* intent = reg.try_get<MovementIntent>(entity);
     bool moving = false;
     if (intent)
@@ -53,12 +50,65 @@ void AnimStateSystem::update(EntityManager& em)
     ZoneScopedN("AnimStateSystem");
     auto& reg = em.registry();
 
-    for (auto [entity, anim] : reg.view<Animation>().each())
+    const auto* rowIndex = reg.ctx().find<AnimRowIndex>();
+
+    for (auto [entity, anim, rowCfg] : reg.view<Animation, AnimRowConfig>().each())
     {
-        AnimState resolved = resolveStandaloneState(reg, entity);
+        AnimState resolved = resolveState(reg, entity);
+
         // Fall back to Walk if the resolved state has no frames configured.
-        if (anim.states[static_cast<int>(resolved)].frames <= 0)
+        const auto& rd = rowCfg.rows[static_cast<int>(resolved)];
+        if (rd.frames <= 0)
             resolved = AnimState::Walk;
-        anim.state = resolved;
+
+        const auto& row = rowCfg.rows[static_cast<int>(resolved)];
+
+        // Write playback fields for engine AnimationSystem.
+        anim.current_row = row.row;
+        anim.current_frames = row.frames;
+        anim.current_duration = row.duration;
+        anim.freeze_on_last = row.freeze_on_last;
+
+        // Backpedaling and speed modifiers.
+        anim.reverse = false;
+        anim.speed_multiplier = 1.0f;
+        anim.frame_mask.clear();
+
+        if (resolved == AnimState::Walk)
+        {
+            const auto* facing = reg.try_get<FacingDirection>(entity);
+            if (facing)
+            {
+                anim.speed_multiplier = facing->walk_anim_speed;
+                anim.reverse = facing->backpedaling;
+            }
+        }
+        else if (resolved == AnimState::Attack)
+        {
+            const auto* facing = reg.try_get<FacingDirection>(entity);
+            if (facing && facing->attack_anim_speed > 0.0f)
+                anim.speed_multiplier = facing->attack_anim_speed;
+
+            // Weapon-specific attack row override. When the equipped weapon
+            // specifies an attack_anim other than "slash", look up the named
+            // row and override the default attack playback.
+            const auto* w = reg.try_get<Weapon>(entity);
+            if (w != nullptr && !w->attack_anim.empty() && w->attack_anim != "slash" &&
+                rowIndex != nullptr)
+            {
+                const auto it = rowIndex->rows.find(w->attack_anim);
+                if (it != rowIndex->rows.end())
+                {
+                    anim.current_row = it->second.row;
+                    anim.current_frames = it->second.frames;
+                    anim.current_duration = it->second.duration;
+                }
+            }
+
+            // Per-weapon frame mask: cherry-pick specific columns from the
+            // attack row instead of playing 0..N-1.
+            if (w != nullptr && !w->shoot_frames.empty())
+                anim.frame_mask = w->shoot_frames;
+        }
     }
 }

@@ -1,7 +1,7 @@
 {
-    "name": "Pistol",
-    "description": "A crude prison-made handgun. Unreliable but deadly.",
-    "icon": "assets/sprites/icons/pistol.png",
+    "name": "Colt .45",
+    "description": "A classic M1911 .45 automatic. Reliable stopping power.",
+    "icon": "assets/sprites/icons/colt_45.png",
     "category": "weapon",
     "rarity": "uncommon",
     "base_damage": 16.0,
@@ -26,5 +26,19 @@
     "pierce": 0,
     "ammo_type": "config/items/ammo/bullet.json",
     "fire_sound": "gunshot",
-    "stamina_cost": 0.0
+    "stamina_cost": 0.0,
+    "visual_weapon": "colt_45",
+    "grip_x": 15.0,
+    "grip_y": 21.0,
+    "attack_anim": "shoot",
+    "shoot_frames": [
+        0,
+        1,
+        2,
+        3,
+        10,
+        3,
+        2,
+        1
+    ]
 }

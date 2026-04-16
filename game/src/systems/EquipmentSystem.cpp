@@ -37,6 +37,20 @@ static void weaponFromDef(Weapon& w, const ItemDef& def)
     w.fire_sound = def.fire_sound;
     w.fire_rate = def.fire_rate;
     w.stamina_cost = def.stamina_cost;
+
+    w.visual_weapon = def.visual_weapon;
+    w.weapon_icon = def.weapon_icon.empty() ? def.icon_path : def.weapon_icon;
+    w.grip_x = def.grip_x;
+    w.grip_y = def.grip_y;
+    w.fore_grip_x = def.fore_grip_x;
+    w.fore_grip_y = def.fore_grip_y;
+    w.weapon_scale = def.weapon_scale;
+    w.two_handed = def.two_handed;
+    // Reset two-handed state on equip -- each equip starts in one-handed mode.
+    // Player toggles via Left Alt.
+    w.two_handed_active = false;
+    w.attack_anim = def.attack_anim;
+    w.shoot_frames = def.shoot_frames;
 }
 
 // Populate a Weapon component with unarmed defaults.
@@ -63,6 +77,16 @@ static void weaponFromFist(Weapon& w, const Body* body, const FormulaConfig& f)
     w.swing_cooldown_remaining = 0.0f;
     w.skill_cooldown_remaining = 0.0f;
     w.ranged = false;
+
+    w.visual_weapon.clear();
+    w.weapon_icon.clear();
+    w.attack_anim.clear();
+    w.shoot_frames.clear();
+    w.fore_grip_x = 0.0f;
+    w.fore_grip_y = 0.0f;
+    w.weapon_scale = 1.0f;
+    w.two_handed = false;
+    w.two_handed_active = false;
 }
 
 // Cycle: fists -> weapon 0 -> weapon 1 -> ... -> fists (dir=+1).

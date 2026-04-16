@@ -63,10 +63,13 @@ LPC_BASE = (
 # Animations we bake into the engine sheet.
 # (upstream_filename_stem, our_state_key)
 ANIMATIONS = [
-    ("walk",  "walk"),
-    ("run",   "run"),
-    ("slash", "slash"),
-    ("hurt",  "hurt"),
+    ("walk",          "walk"),
+    ("run",           "run"),
+    ("slash",         "slash"),
+    ("hurt",          "hurt"),
+    ("thrust",        "thrust"),
+    ("shoot",         "shoot"),
+    ("reverse_slash", "reverse_slash"),
 ]
 
 # --------------------------------------------------------------------------- #

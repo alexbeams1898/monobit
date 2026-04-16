@@ -138,15 +138,14 @@ static void renderPortraitAndName(EntityManager& em, entt::entity entity, float&
     float name_x = BAR_X;
 
     // Draw full south-facing idle frame (row 0, col 0) from the player's
-    // composited sprite texture. Sheet layout is cols = direction_count *
-    // max_frames_per_state, rows = Animation::STATE_COUNT.
+    // composited sprite texture.
     const auto* spr = reg.try_get<Sprite>(entity);
     const auto* anim = reg.try_get<Animation>(entity);
     if (spr != nullptr && anim != nullptr && spr->texture_id != 0)
     {
         const int cols =
             std::max(anim->direction_count, 1) * std::max(anim->max_frames_per_state, 1);
-        const int rows = Animation::STATE_COUNT;
+        const int rows = anim->row_count;
         if (cols > 0 && rows > 0)
         {
             const float u1 = 1.0f / static_cast<float>(cols);

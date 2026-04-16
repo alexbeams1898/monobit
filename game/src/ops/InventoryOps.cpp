@@ -144,15 +144,6 @@ bool equipItem(Inventory& inv, Equipment& equip, int inv_index, const ItemRegist
     const EquipSlot slot = targetSlot(*def);
     ItemInstance& target = slotRef(equip, slot);
 
-    // 2-handed weapon clears off-hand.
-    if (slot == EquipSlot::MainHand && def->two_handed && !equip.off_hand.empty())
-    {
-        if (static_cast<int>(inv.items.size()) >= inv.max_slots)
-            return false;
-        inv.items.push_back(std::move(equip.off_hand));
-        equip.off_hand = {};
-    }
-
     // Swap: move old equipped item back to inventory at the same index.
     ItemInstance incoming = std::move(inv.items[inv_index]);
     if (!target.empty())
@@ -168,7 +159,6 @@ bool equipItem(Inventory& inv, Equipment& equip, int inv_index, const ItemRegist
 
     if (slot == EquipSlot::MainHand)
     {
-        equip.two_handing = def->two_handed;
         equip.main_hand_slot = inv_index;
     }
 
@@ -186,9 +176,6 @@ bool unequipSlot(Inventory& inv, Equipment& equip, EquipSlot slot)
 
     inv.items.push_back(std::move(target));
     target = {};
-
-    if (slot == EquipSlot::MainHand)
-        equip.two_handing = false;
 
     return true;
 }

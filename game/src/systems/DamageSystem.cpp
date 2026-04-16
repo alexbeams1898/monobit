@@ -294,11 +294,11 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
         // Dead -> Hit (hurt pose as the death reaction), so the timer must
         // match whichever row actually plays on screen, not the unused Death row.
         float deathTimer = 0.0f;
-        if (reg.all_of<Animation>(target))
+        if (reg.all_of<AnimRowConfig>(target))
         {
-            const auto& anim = reg.get<Animation>(target);
-            const auto& hitState = anim.states[static_cast<int>(AnimState::Hit)];
-            deathTimer = static_cast<float>(hitState.frames) * hitState.duration;
+            const auto& rowCfg = reg.get<AnimRowConfig>(target);
+            const auto& hitRow = rowCfg.rows[static_cast<int>(AnimState::Hit)];
+            deathTimer = static_cast<float>(hitRow.frames) * hitRow.duration;
         }
         reg.emplace<Dead>(target, Dead{deathTimer});
         if (reg.all_of<Velocity>(target))

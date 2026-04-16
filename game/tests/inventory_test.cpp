@@ -268,31 +268,25 @@ TEST_CASE("equipItem armor goes to correct slot", "[inventory]")
     REQUIRE(equip.chest.config_path == "config/items/armor/leather_chest.json");
 }
 
-TEST_CASE("equipItem two-handed weapon clears off_hand", "[inventory]")
+TEST_CASE("equipItem two-handed weapon does not clear off_hand", "[inventory]")
 {
+    // With the new runtime two-hand toggle, equipping a two-handed-capable
+    // weapon leaves the off-hand occupied. Suppression happens at render /
+    // behavior time when the player toggles two_handed_active on.
     auto reg = makeRegistry();
     Inventory inv;
     inv.max_slots = 5;
     Equipment equip;
 
-    // Equip shield first.
     InventoryOps::addItem(inv, makeItem("config/items/armor/wooden_shield.json"), reg);
     InventoryOps::equipItem(inv, equip, 0, reg);
     REQUIRE_FALSE(equip.off_hand.empty());
 
-    // Equip two-handed sword.
     InventoryOps::addItem(inv, makeItem("config/items/weapons/iron_sword.json"), reg);
     REQUIRE(InventoryOps::equipItem(inv, equip, 0, reg));
 
     REQUIRE(equip.main_hand.config_path == "config/items/weapons/iron_sword.json");
-    REQUIRE(equip.off_hand.empty());
-    REQUIRE(equip.two_handing);
-    // Shield should be back in inventory.
-    bool foundShield = false;
-    for (const auto& it : inv.items)
-        if (it.config_path == "config/items/armor/wooden_shield.json")
-            foundShield = true;
-    REQUIRE(foundShield);
+    REQUIRE_FALSE(equip.off_hand.empty());
 }
 
 TEST_CASE("equipItem rejects non-equippable items", "[inventory]")

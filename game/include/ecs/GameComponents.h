@@ -2,6 +2,7 @@
 
 #include <entt/entt.hpp>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 // ---------------------------------------------------------------------------
@@ -12,6 +13,41 @@
 // include both this file and Components.h. Engine systems include only
 // Components.h and must never reference anything defined here.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Animation state enum and row lookup (game-side).
+// The engine Animation component has no concept of named states. This enum
+// maps game states to spritesheet row/frames/duration via AnimRowData[].
+// AnimStateSystem resolves the current game state, looks up the row config,
+// and writes the result into Animation's playback fields each tick.
+// ---------------------------------------------------------------------------
+
+enum class AnimState : uint8_t
+{
+    Idle = 0,
+    Walk,
+    Attack,
+    Hit,
+    Death,
+    Run,
+    COUNT
+};
+
+struct AnimRowData
+{
+    int row = 0;
+    int frames = 1;
+    float duration = 0.0f;
+    bool freeze_on_last = false;
+};
+
+// Per-entity lookup table mapping AnimState -> spritesheet row config.
+// Emplaced by ConfigLoader alongside the engine Animation component.
+struct AnimRowConfig
+{
+    static constexpr int STATE_COUNT = static_cast<int>(AnimState::COUNT);
+    AnimRowData rows[STATE_COUNT]{};
+};
 
 // PlayerActions -- all player input state: movement, combat actions, ability triggers.
 // InputMappingSystem reads raw SDL keyboard state and writes these fields each frame.
@@ -42,6 +78,7 @@ struct PlayerActions
     bool reload = false;
     bool toggle_inventory = false;
     bool toggle_pause = false;
+    bool toggle_two_hand = false; // one-shot: flips Weapon.two_handed_active if two_handed
     float dodge_cooldown_remaining = 0.0f;
     float step_timer = 0.0f;
     float wall_bump_cooldown = 0.0f;
@@ -187,6 +224,32 @@ struct Weapon
     std::string fire_sound;        // sound event key (e.g. "gunshot", "bow_release")
     float fire_rate = 0.0f;        // shots/sec; >0 overrides swing cooldown formula
     float stamina_cost = -1.0f;    // per-attack cost; <0 = use weight-based formula
+
+    // Visual weapon fields (set by EquipmentSystem from ItemDef).
+    std::string visual_weapon; // weapon id used for equip-change detection
+    std::string weapon_icon;   // sprite path for held weapon visual; empty = no visible weapon
+    float grip_x = 0.0f;       // primary grip pixel in icon (0..32); trigger hand
+    float grip_y = 0.0f;
+    float fore_grip_x = 0.0f;  // secondary grip pixel in icon; support hand (two-handed only)
+    float fore_grip_y = 0.0f;
+    float weapon_scale = 1.0f; // visual scale (1.0 = native icon size)
+    std::string attack_anim;   // animation row name ("slash", "thrust", "shoot"); empty = "slash"
+    std::vector<int> shoot_frames; // per-frame column remap for the attack row; empty = play 0..N-1
+    entt::entity weapon_entity = entt::null; // spawned weapon sprite entity (managed by WeaponSpriteSystem)
+
+    // Two-handed state.
+    // two_handed: does the weapon physically support a two-handed grip?
+    //                     (also gates the Left-Alt toggle input)
+    // two_handed_active:  is the weapon currently being rendered/handled in 2H mode?
+    //                     Runtime-only; starts at false on equip and flips on toggle.
+    bool two_handed = false;
+    bool two_handed_active = false;
+};
+
+// WeaponSprite -- tag on the weapon sprite entity linking it back to its wielder.
+struct WeaponSprite
+{
+    entt::entity wielder = entt::null;
 };
 
 // WeaponXP -- tracks weapon leveling through combat use.
@@ -204,6 +267,15 @@ struct Shield
     float guard_health = 100.0f;
     float max_guard = 100.0f;
     bool blocking = false;
+};
+
+// AppearanceState -- cached selections used for the last SpriteCompositor composite.
+// AppearanceSyncSystem compares Weapon.visual_weapon against synced_visual_weapon to
+// detect equip changes, then re-composites the sprite with updated weapon layers.
+struct AppearanceState
+{
+    std::unordered_map<std::string, std::string> current_selections;
+    std::string synced_visual_weapon;
 };
 
 // ArmorStats -- aggregated defensive stats from all equipped armor pieces.
@@ -425,7 +497,6 @@ struct Equipment
     ItemInstance feet;
     ItemInstance accessory_1;
     ItemInstance accessory_2;
-    bool two_handing = false;
 
     // Index into Inventory::items for the currently equipped weapon.
     // -1 = fists (no inventory slot). Used by X-key cycling to return the

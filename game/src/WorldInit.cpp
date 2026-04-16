@@ -98,8 +98,8 @@ void createWorld(Engine& engine, EntityManager& em)
             "config/items/weapons/warhammer.json",
             "config/items/weapons/great_maul.json",
             "config/items/weapons/bow.json",
-            "config/items/weapons/pistol.json",
-            "config/items/weapons/semi_auto.json",
+            "config/items/weapons/colt_45.json",
+            "config/items/weapons/ak_47.json",
             // Shield.
             "config/items/shields/bone_shield.json",
             // Armor.

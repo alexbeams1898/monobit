@@ -1,15 +1,45 @@
 {
-    "_comment": "Shared LPC humanoid animation layout. All humanoid entities (player, cop, future NPCs) reference this file. The texture field is unused at runtime - LPC entities have their texture set by AppearanceOps::resolveAppearance from layered PNGs in assets/sprites/lpc/assembled/. Frame layout: 64x64 frames, 4 directions (S/W/E/N), 6 state rows (idle/walk/attack/hit/death/run), 8 frames per direction block.",
+    "_comment": "Shared LPC humanoid animation layout. All humanoid entities (player, cop, future NPCs) reference this file. The texture field is unused at runtime - LPC entities have their texture set by AppearanceOps::resolveAppearance from layered PNGs in assets/sprites/lpc/assembled/. Frame layout: 64x64 frames, 4 directions (S/W/E/N), 9 state rows, 13 frames per direction block.",
     "texture": "assets/sprites/lpc/assembled/body/tone_1.png",
     "frame_width": 64,
     "frame_height": 64,
-    "direction_count": 4,
     "states": {
-        "idle":   { "row": 0, "frames": 1, "duration": 0.0 },
-        "walk":   { "row": 1, "frames": 8, "duration": 0.08 },
-        "attack": { "row": 2, "frames": 6, "duration": 0.07 },
-        "hit":    { "row": 3, "frames": 6, "duration": 0.08 },
-        "death":  { "row": 4, "frames": 6, "duration": 0.12 },
-        "run":    { "row": 5, "frames": 8, "duration": 0.08 }
+        "idle":          { "row": 0, "frames": 1,  "duration": 0.0 },
+        "walk":          { "row": 1, "frames": 8,  "duration": 0.08 },
+        "attack":        { "row": 2, "frames": 6,  "duration": 0.07 },
+        "hit":           { "row": 3, "frames": 6,  "duration": 0.08 },
+        "death":         { "row": 4, "frames": 6,  "duration": 0.12 },
+        "run":           { "row": 5, "frames": 8,  "duration": 0.08 },
+        "thrust":        { "row": 6, "frames": 8,  "duration": 0.06 },
+        "shoot":         { "row": 7, "frames": 13, "duration": 0.06 },
+        "reverse_slash": { "row": 8, "frames": 13, "duration": 0.07 }
+    },
+
+    "_anchor_comment": "Per-frame left-hand grip offsets from frame center (32,32). Positive x = screen right, positive y = screen down. All 4 directions measured independently. Measured with measure_hand_anchors.py against tone_1 body sheet.",
+    "hand_anchors": {
+        "depth_per_dir": [1, 1, -1, -1],
+        "rows": {
+            "0": {
+                "_comment": "idle (1 frame)",
+                "S": { "left": [[10.8,15.6]], "right": [[-10.8,15.2]] },
+                "W": { "left": [[4.6,15.4]], "right": [[-7.9,13.6]] },
+                "E": { "left": [[7.1,13.5]], "right": [[-4.6,15.1]] },
+                "N": { "left": [[-10.5,14.4]], "right": [[9.6,13.5]] }
+            },
+            "1": {
+                "_comment": "walk (8 frames)",
+                "S": { "left": [[10.9,15.0],[11.1,12.9],[10.9,13.9],[10.9,13.0],[11.0,15.1],[10.9,16.1],[9.8,18.1],[10.9,16.0]], "right": [[-10.8,15.2],[-10.8,16.1],[-9.9,18.4],[-10.8,16.4],[-10.5,15.1],[-10.6,13.5],[-10.6,14.1],[-10.9,13.1]] },
+                "W": { "left": [[0.6,15.8],[2.2,16.1],[8.8,16.5],[9.8,16.6],[11.4,16.9],[9.4,16.9],[6.0,17.1],[4.0,16.0]], "right": [[-2.0,14.9],[-3.1,14.8],[-4.5,15.4],[-7.9,14.5],[-9.5,14.4],[-6.8,14.9],[-5.2,15.6],[-2.0,15.4]] },
+                "E": { "left": [[1.4,15.2],[3.8,15.4],[3.9,16.4],[8.1,13.8],[9.8,13.9],[7.0,13.8],[4.9,16.1],[2.0,14.9]], "right": [[-1.1,15.1],[-2.8,16.2],[-8.6,17.0],[-9.6,16.8],[-11.9,16.8],[-10.0,16.5],[-7.0,16.6],[-4.6,15.9]] },
+                "N": { "left": [[-11.4,14.4],[-11.2,15.1],[-11.4,16.1],[-11.6,15.1],[-11.5,14.2],[-11.5,12.4],[-10.6,10.5],[-11.6,12.0]], "right": [[11.2,14.2],[11.4,12.6],[10.5,11.4],[11.5,12.4],[11.5,14.8],[11.4,15.6],[11.2,16.6],[11.4,16.1]] }
+            },
+            "5": {
+                "_comment": "run (8 frames)",
+                "S": [[1.9,11.2],[4.8,14.6],[6.1,13.6],[8.1,9.6],[9.1,11.6],[8.6,14.8],[9.4,12.8],[3.4,10.2]],
+                "W": [[-9.2,6.1],[-5.8,9.6],[-1.5,11.8],[3.9,7.6],[1.6,8.9],[-1.0,12.1],[-2.9,11.5],[-9.0,7.4]],
+                "E": [[1.0,7.0],[2.4,7.8],[2.5,7.0],[9.1,4.8],[11.5,6.1],[8.5,10.4],[2.5,9.2],[-3.5,4.4]],
+                "N": [[-8.2,9.8],[-7.6,10.6],[-8.0,6.6],[-7.5,5.2],[-4.0,3.8],[-5.9,6.5],[-5.8,7.6],[-8.0,5.6]]
+            }
+        }
     }
 }

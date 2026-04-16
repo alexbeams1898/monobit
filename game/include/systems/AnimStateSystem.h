@@ -2,10 +2,8 @@
 
 #include "ecs/EntityManager.h"
 
-// AnimStateSystem -- resolves animation state from game component state.
-// Reads Dead, DamageFeedback, AttackLocked, Velocity and writes anim.state.
-// Runs each game tick after combat systems so anim.state is current for the render pass.
-// AnimationSystem (engine) reads anim.state and advances frames; it does not set state.
+// AnimStateSystem -- resolves animation state from game components and writes
+// the resulting row/frames/duration into the engine Animation component.
 class AnimStateSystem
 {
   public:

@@ -2,7 +2,6 @@
     "texture": "assets/sprites/skeleton_sheet.png",
     "frame_width": 64,
     "frame_height": 64,
-    "direction_count": 4,
     "states": {
         "idle":   { "row": 0, "frames": 1, "duration": 0.0 },
         "walk":   { "row": 1, "frames": 8, "duration": 0.1 },

@@ -3,6 +3,7 @@
 #include "SpriteCompositor.h"
 #include "ecs/AppearanceConfig.h"
 #include "ecs/Components.h"
+#include "ecs/GameComponents.h"
 
 #include <iostream>
 
@@ -25,6 +26,17 @@ static std::string resolveOptionId(const AppearanceCategory& cat,
 static std::string resolveFileName(const AppearanceCategory& cat, const std::string& optionId,
                                    const std::unordered_map<std::string, std::string>& selections)
 {
+    // Weapon categories bypass options[] lookup -- the caller injects raw
+    // filenames (e.g. "slingshot_behind.png") so equipped weapons don't need
+    // to be enumerated in layers.json.
+    if (cat.hidden)
+    {
+        auto it = selections.find(cat.id);
+        if (it == selections.end() || it->second.empty() || it->second == "none")
+            return {};
+        return it->second;
+    }
+
     // Compound file name: combine another category's selection with this one.
     // e.g. hair_color "black" + combine_with "hair_style" whose selection is "long"
     //      -> file = "long_black.png"
@@ -171,6 +183,18 @@ void resolveAppearance(EntityManager& em, entt::entity entity, SpriteCompositor&
     {
         spr.src_w = anim->frame_width;
         spr.src_h = anim->frame_height;
+    }
+
+    // Cache the resolved selections so AppearanceSyncSystem can rebuild
+    // layer paths later when the equipped weapon changes.
+    if (!def->layer_manifest.empty())
+    {
+        auto& state = reg.get_or_emplace<AppearanceState>(entity);
+        auto merged = def->default_layers;
+        for (const auto& [k, v] : overrides)
+            merged[k] = v;
+        state.current_selections = std::move(merged);
+        state.synced_visual_weapon.clear();
     }
 
     reg.remove<AppearanceDef>(entity);

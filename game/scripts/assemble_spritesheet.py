@@ -13,10 +13,11 @@ Per-animation PNG layout (native LPC):
   slash.png is 384x256 (6 frames)
   hurt.png  is 384x64  (6 frames, south only -- broadcast to all dirs)
 
-Output sheet layout (engine format, 2048x384):
-  Rows    = states in order idle(0), walk(1), slash(2), hit(3), death(4), run(5)
-  Columns = direction blocks, each 8 frames wide (max frame count = run = 8)
-  Column  = dir_index * 8 + frame_index
+Output sheet layout (engine format, 3328x576):
+  Rows    = states: idle(0), walk(1), slash(2), hit(3), death(4), run(5),
+            thrust(6), shoot(7), reverse_slash(8)
+  Columns = direction blocks, each 13 frames wide (max frame count = shoot = 13)
+  Column  = dir_index * 13 + frame_index
   Direction order: South(0), West(1), East(2), North(3)
 
 Output path convention (read by layers.json + AppearanceOps):
@@ -49,11 +50,11 @@ except ImportError:
 
 FRAME_SIZE = 64
 NUM_DIRS = 4
-NUM_STATES = 6
-MAX_FRAMES_PER_STATE = 8  # run has 8; walk uses first 8 of 9
+NUM_STATES = 9
+MAX_FRAMES_PER_STATE = 13  # shoot/reverse_slash have 13 frames
 
-SHEET_WIDTH  = NUM_DIRS * MAX_FRAMES_PER_STATE * FRAME_SIZE  # 2048
-SHEET_HEIGHT = NUM_STATES * FRAME_SIZE                        # 384
+SHEET_WIDTH  = NUM_DIRS * MAX_FRAMES_PER_STATE * FRAME_SIZE  # 3328
+SHEET_HEIGHT = NUM_STATES * FRAME_SIZE                        # 576
 
 # LPC row (direction) -> our direction index in the output sheet.
 # LPC order: Up=0, Left=1, Down=2, Right=3
@@ -66,16 +67,22 @@ LPC_ROW_TO_OUR_DIR = {
 }
 
 # Engine state row definitions.
-# (our_row, anim_file_key, max_frames_to_copy, broadcast_to_all_dirs)
+# (our_row, anim_file_key, max_frames_to_copy, broadcast_to_all_dirs, start_frame)
 # - broadcast: hurt.png is 1 direction (south); copy it to all 4 dirs.
-# - idle uses the first frame of walk.
+# - idle uses the first frame of walk (which in LPC is the rest/stand pose).
+# - walk skips LPC frame 0 (the rest pose) and uses frames 1..8 as the actual
+#   walking cycle; otherwise playback loops through rest every ~640ms which
+#   looks like the character briefly returning to a standing pose each cycle.
 STATE_ROWS = [
-    (0, "walk",  1, False),  # idle: first walk frame
-    (1, "walk",  8, False),  # walk (first 8 of 9)
-    (2, "slash", 6, False),  # attack
-    (3, "hurt",  6, True),   # hit
-    (4, "hurt",  6, True),   # death (reuse hurt)
-    (5, "run",   8, False),  # run (sprint)
+    (0, "walk",          1,  False, 0),  # idle: LPC walk frame 0 (the rest pose)
+    (1, "walk",          8,  False, 1),  # walk: LPC frames 1..8 (actual cycle)
+    (2, "slash",         6,  False, 0),  # attack (melee)
+    (3, "hurt",          6,  True,  0),  # hit
+    (4, "hurt",          6,  True,  0),  # death (reuse hurt)
+    (5, "run",           8,  False, 0),  # run (sprint)
+    (6, "thrust",        8,  False, 0),  # thrust (two-handed aim pose)
+    (7, "shoot",         13, False, 0),  # shoot (one-handed ranged)
+    (8, "reverse_slash", 13, False, 0),  # reverse slash
 ]
 
 
@@ -147,6 +154,12 @@ def build_manifest() -> list:
             os.path.join(ASSEMBLED_ROOT, "body", f"{tone}.png"),
         ))
 
+    # Skeleton body -> assembled/body/skeleton.png
+    jobs.append((
+        os.path.join(RAW_ROOT, "body", "skeleton", "skeleton"),
+        os.path.join(ASSEMBLED_ROOT, "body", "skeleton.png"),
+    ))
+
     # Heads -> assembled/head/<tone>_<variant>.png
     # Order matches AppearanceOps combine_with: "{other_selection}_{this_selection}.png"
     # where other = body_color (tone) and this = head_variant.
@@ -156,6 +169,12 @@ def build_manifest() -> list:
                 os.path.join(RAW_ROOT, "head", variant, tone),
                 os.path.join(ASSEMBLED_ROOT, "head", f"{tone}_{variant}.png"),
             ))
+
+    # Skeleton head -> assembled/head/skeleton_skeleton.png
+    jobs.append((
+        os.path.join(RAW_ROOT, "head", "skeleton", "skeleton"),
+        os.path.join(ASSEMBLED_ROOT, "head", "skeleton_skeleton.png"),
+    ))
 
     # Eyes -> assembled/eyes/<color>.png
     for color in EYE_COLORS:
@@ -239,19 +258,19 @@ def assemble_sheet(src_dir: str) -> Image.Image:
     """Assemble one 2048x384 sheet from per-animation PNGs in src_dir."""
     sheet = Image.new("RGBA", (SHEET_WIDTH, SHEET_HEIGHT), (0, 0, 0, 0))
 
-    for our_row, anim_key, max_frames, broadcast in STATE_ROWS:
+    for our_row, anim_key, max_frames, broadcast, start_frame in STATE_ROWS:
         anim = load_animation(src_dir, anim_key)
         if anim is None:
             continue
 
         aw, _ah = anim.size
         src_cols = aw // FRAME_SIZE
-        frame_count = min(max_frames, src_cols)
+        frame_count = min(max_frames, src_cols - start_frame)
 
         for lpc_row, our_dir in LPC_ROW_TO_OUR_DIR.items():
             sy = 0 if broadcast else lpc_row * FRAME_SIZE
             for frame in range(frame_count):
-                sx = frame * FRAME_SIZE
+                sx = (start_frame + frame) * FRAME_SIZE
                 dx = (our_dir * MAX_FRAMES_PER_STATE + frame) * FRAME_SIZE
                 dy = our_row * FRAME_SIZE
                 copy_frame(anim, sx, sy, sheet, dx, dy)

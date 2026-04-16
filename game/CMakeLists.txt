@@ -26,6 +26,7 @@ add_library(game-systems STATIC
     src/ops/AppearanceOps.cpp
     src/ops/UpdateChecker.cpp
     src/systems/EquipmentSystem.cpp
+    src/systems/WeaponSpriteSystem.cpp
     src/systems/WeaponXPSystem.cpp
     src/systems/NotificationSystem.cpp
     src/renderers/HudRenderer.cpp
@@ -60,6 +61,11 @@ add_library(game-systems STATIC
 target_include_directories(game-systems PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_include_directories(game-systems SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/vendor/miniz)
 target_link_libraries(game-systems PUBLIC engine)
+
+# MinGW ld chokes on large translation units (ConfigLoader) without big-obj.
+if(MINGW)
+    target_compile_options(game-systems PRIVATE -Wa,-mbig-obj)
+endif()
 
 # WinHTTP for the in-game update checker (Windows only, part of the OS).
 if(WIN32)
@@ -131,6 +137,7 @@ add_executable(game-tests
     tests/ladder_test.cpp
     tests/projectile_test.cpp
     tests/update_checker_test.cpp
+    tests/weapon_sprite_test.cpp
 )
 target_link_libraries(game-tests PRIVATE game-systems Catch2::Catch2WithMain)
 

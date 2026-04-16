@@ -40,6 +40,7 @@ struct AppearanceCategory
     std::string id;
     std::string label;
     bool required = false;
+    bool hidden = false; // not shown in character creator; programmatically driven
     std::string path_prefix;
     std::vector<AppearanceOption> options;
 

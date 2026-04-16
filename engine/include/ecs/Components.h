@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <entt/entt.hpp>
 #include <string>
+#include <vector>
 
 // ---------------------------------------------------------------------------
 // ECS components -- pure data only, no methods, no logic.
@@ -55,7 +56,16 @@ struct Sprite
     int src_w = 0;
     int src_h = 0;
     int layer = 0;
+    int sub_layer = 0;
     bool flip_x = false;
+    bool use_sort_anchor = false;
+    float sort_anchor = 0.0f;
+    // Rotation in radians around the sprite center. Positive = clockwise
+    // (screen-space y-down). Defaults to 0 so existing sprites are unaffected.
+    float rotation = 0.0f;
+    // Geometry-level horizontal mirror. Unlike flip_x (UV-only), this composes
+    // correctly with rotation — the mirror happens before the rotation.
+    bool geo_mirror_x = false;
 };
 
 struct Collider
@@ -181,54 +191,52 @@ struct TintOverride
 // Animation system components
 // ---------------------------------------------------------------------------
 
-enum class AnimState : uint8_t
-{
-    Idle = 0,
-    Walk,
-    Attack,
-    Hit,
-    Death,
-    Run
-};
-
 enum class CardinalDir : uint8_t
 {
     South = 0,
-    SouthWest,
     West,
-    NorthWest,
-    North,
-    NorthEast,
     East,
-    SouthEast
-};
-
-struct AnimStateData
-{
-    int row = 0;
-    int frames = 1;
-    float duration = 0.0f;
+    North,
 };
 
 // Animation -- runtime animation state for an animated entity.
-// anim.state is written each tick by AnimStateSystem (game); AnimationSystem (engine)
-// reads it for frame advancement and detects changes via prev_state.
+//
+// Three categories of data:
+//   Sheet layout  -- set once by ConfigLoader from animation JSON; never changes.
+//   Playback      -- written each tick by game AnimStateSystem; read by engine.
+//   Internal      -- managed solely by engine AnimationSystem.
+//
+// The engine has no concept of "Idle", "Walk", "Attack" etc. It only knows
+// "play row N with M frames at D seconds per frame". Game code owns the
+// mapping from game states to row/frames/duration.
 struct Animation
 {
-    AnimState state = AnimState::Idle;
-    AnimState prev_state = AnimState::Idle; // used to detect state changes
-    CardinalDir dir = CardinalDir::South;
-    int frame_index = 0;
-    float frame_timer = 0.0f;
-
-    static constexpr int STATE_COUNT = 6;
-    AnimStateData states[STATE_COUNT]{};
-
+    // --- Sheet layout (set once from config) ---
     int frame_width = 32;
     int frame_height = 32;
     int max_frames_per_state = 1;
-    int direction_count = 4;       // 1 (omnidirectional), 4 (cardinal), or 8 (octant)
-    bool unique_diagonals = false; // true = 8 unique dir columns; false = NE/SE mirrored from NW/SW
+    int row_count = 6;       // total rows in the spritesheet
+    int direction_count = 4; // 1 (omnidirectional, static sprite) or 4 (cardinal)
+
+    // --- Playback (written by game AnimStateSystem each tick) ---
+    int current_row = 0;         // spritesheet row to play
+    int current_frames = 1;      // number of frames in this row
+    float current_duration = 0.0f; // seconds per frame (0 = static)
+    bool freeze_on_last = false; // true = one-shot (hold last frame), false = loop
+    bool reverse = false;        // play frames in reverse order
+    float speed_multiplier = 1.0f; // <1 = faster, >1 = slower
+
+    // Per-frame column remap. When non-empty, the visible column is
+    // frame_mask[frame_index] instead of frame_index directly. The mask
+    // length overrides current_frames for playback purposes.
+    // Empty = play columns 0..current_frames-1 normally.
+    std::vector<int> frame_mask;
+
+    // --- Internal (managed by engine AnimationSystem) ---
+    CardinalDir dir = CardinalDir::South;
+    int frame_index = 0;
+    float frame_timer = 0.0f;
+    int prev_row = -1; // detect row changes; -1 sentinel forces reset on first frame
 };
 
 // Marks an entity as a navigation agent for FlowFieldSystem/SteeringSystem.

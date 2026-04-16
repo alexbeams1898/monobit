@@ -80,7 +80,6 @@ struct ItemDef
     float dex_scaling = 0.0f;
     int str_requirement = 0;
     int dex_requirement = 0;
-    bool two_handed = false;
     std::string weapon_tier;         // references WeaponTierRegistry for growth defaults
     float damage_per_level = -1.0f;  // -1 = use tier default
     float scaling_per_level = -1.0f; // -1 = use tier default
@@ -100,6 +99,18 @@ struct ItemDef
     std::string fire_sound;        // sound event key (e.g. "gunshot", "bow_release")
     float fire_rate = 0.0f;        // shots/sec; >0 overrides swing cooldown formula
     float stamina_cost = -1.0f;    // per-attack stamina; <0 = use weight-based formula
+
+    // Visual weapon fields (only meaningful when category == Weapon).
+    std::string visual_weapon;  // weapon id used for equip-change detection
+    std::string weapon_icon;    // sprite path for held weapon visual; empty = icon_path fallback
+    float grip_x = 0.0f;        // primary grip pixel in icon (0..32); trigger hand
+    float grip_y = 0.0f;
+    float fore_grip_x = 0.0f;   // secondary grip pixel in icon; support hand (two-handed only)
+    float fore_grip_y = 0.0f;
+    float weapon_scale = 1.0f;  // visual scale of the held weapon sprite (1.0 = native icon size)
+    bool two_handed = false; // can this weapon be held two-handed (toggle via Left Alt)
+    std::string attack_anim;   // animation row name ("slash", "thrust", "shoot"); empty = "slash"
+    std::vector<int> shoot_frames; // per-frame column remap for the attack row; empty = 0..N-1
 
     // Armor-specific (only meaningful when category == Armor).
     ArmorSlot armor_slot = ArmorSlot::Chest;

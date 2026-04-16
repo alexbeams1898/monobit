@@ -4,7 +4,7 @@
         "transform":     { "x": 880.0, "y": 220.0, "rotation": 0.0, "scale": 1.0 },
         "velocity":      { "dx": 0.0, "dy": 0.0 },
         "collider":      { "width": 32.0, "height": 48.0, "is_solid": true },
-        "appearance":    { "sheet": "config/animations/skeleton.json", "layers": ["assets/sprites/skeleton_sheet.png"] },
+        "appearance":    { "sheet": "config/animations/lpc_humanoid.json", "layers": ["assets/sprites/lpc/assembled/body/skeleton.png", "assets/sprites/lpc/assembled/head/skeleton_skeleton.png"] },
         "stats":         { "str": 1, "dex": 1, "end": 1, "lck": 1 },
         "body":          { "base_hp": 5, "base_defense": 1, "unarmed_damage": 5.0, "unarmed_weight": 0.1, "unarmed_str_scaling": 0.25, "unarmed_dex_scaling": 0.0 },
         "equipment":     {},

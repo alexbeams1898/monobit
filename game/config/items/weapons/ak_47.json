@@ -1,7 +1,7 @@
 {
-    "name": "Semi-Auto",
-    "description": "A semi-automatic handgun. Faster fire rate, lower damage per shot.",
-    "icon": "assets/sprites/icons/semi_auto.png",
+    "name": "AK-47",
+    "description": "A Soviet-era assault rifle. High rate of fire, punishing recoil.",
+    "icon": "assets/sprites/icons/ak_47.png",
     "category": "weapon",
     "rarity": "rare",
     "base_damage": 12.0,
@@ -10,7 +10,7 @@
     "dex_scaling": 1.1,
     "str_requirement": 3,
     "dex_requirement": 5,
-    "two_handed": false,
+    "two_handed": true,
     "weapon_tier": "pistol",
     "max_durability": 75.0,
     "stackable": false,
@@ -26,5 +26,21 @@
     "pierce": 0,
     "ammo_type": "config/items/ammo/bullet.json",
     "fire_sound": "gunshot",
-    "stamina_cost": 0.0
+    "stamina_cost": 0.0,
+    "visual_weapon": "ak_47",
+    "weapon_scale": 1.0,
+    "grip_x": 12.0,
+    "grip_y": 23.0,
+    "attack_anim": "thrust",
+    "shoot_frames": [
+        0,
+        1,
+        4,
+        4,
+        4,
+        4,
+        5
+    ],
+    "fore_grip_x": 20.0,
+    "fore_grip_y": 10.0
 }

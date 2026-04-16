@@ -231,34 +231,145 @@ static bool emplaceAnimationFromSheet(EntityManager& em, entt::entity entity,
         spr.src_h = anim.frame_height;
     }
 
-    auto loadState = [&](const char* name, AnimState state)
+    // Game-side row lookup: maps AnimState -> spritesheet row/frames/duration.
+    AnimRowConfig rowCfg;
+
+    auto loadState = [&](const char* name, AnimState state, bool freeze)
     {
         if (sheetData.contains("states") && sheetData["states"].contains(name))
         {
             const auto& s = sheetData["states"][name];
-            auto& sd = anim.states[static_cast<int>(state)];
-            sd.row = s.value("row", 0);
-            sd.frames = s.value("frames", 1);
-            sd.duration = s.value("duration", 0.0f);
+            auto& rd = rowCfg.rows[static_cast<int>(state)];
+            rd.row = s.value("row", 0);
+            rd.frames = s.value("frames", 1);
+            rd.duration = s.value("duration", 0.0f);
+            rd.freeze_on_last = freeze;
         }
     };
 
-    loadState("idle", AnimState::Idle);
-    loadState("walk", AnimState::Walk);
-    loadState("attack", AnimState::Attack);
-    loadState("hit", AnimState::Hit);
-    loadState("death", AnimState::Death);
-    loadState("run", AnimState::Run);
+    loadState("idle", AnimState::Idle, false);
+    loadState("walk", AnimState::Walk, false);
+    loadState("attack", AnimState::Attack, true);
+    loadState("hit", AnimState::Hit, true);
+    loadState("death", AnimState::Death, true);
+    loadState("run", AnimState::Run, false);
 
+    // Compute layout from ALL states in the JSON (not just the 6 loaded into
+    // AnimRowConfig) so the column stride matches the actual sheet layout.
     int maxF = 1;
-    for (const auto& state : anim.states)
-        maxF = std::max(maxF, state.frames);
+    int maxRow = 0;
+    if (sheetData.contains("states"))
+    {
+        for (const auto& [key, val] : sheetData["states"].items())
+        {
+            const int f = val.value("frames", 1);
+            const int r = val.value("row", 0);
+            maxF = std::max(maxF, f);
+            if (f > 0)
+                maxRow = std::max(maxRow, r);
+        }
+    }
     anim.max_frames_per_state = maxF;
+    anim.row_count = maxRow + 1;
 
     anim.direction_count = sheetData.value("direction_count", 4);
-    anim.unique_diagonals = sheetData.value("unique_diagonals", false);
+
+    // Populate the AnimRowIndex ctx singleton with all named states from the
+    // JSON. This lets AnimStateSystem look up weapon-specific attack rows
+    // (e.g. "thrust", "shoot") by name at runtime.
+    if (sheetData.contains("states"))
+    {
+        auto* existing = em.registry().ctx().find<AnimRowIndex>();
+        if (existing == nullptr)
+            existing = &em.registry().ctx().emplace<AnimRowIndex>();
+        auto& rowIndex = *existing;
+        for (const auto& [key, val] : sheetData["states"].items())
+        {
+            if (rowIndex.rows.count(key) == 0)
+            {
+                AnimRowEntry entry;
+                entry.row = val.value("row", 0);
+                entry.frames = val.value("frames", 1);
+                entry.duration = val.value("duration", 0.0f);
+                rowIndex.rows[key] = entry;
+            }
+        }
+    }
+
+    // Parse hand_anchors for weapon sprite positioning.
+    if (sheetData.contains("hand_anchors"))
+    {
+        auto* existing = em.registry().ctx().find<HandAnchorData>();
+        if (existing == nullptr)
+            existing = &em.registry().ctx().emplace<HandAnchorData>();
+        auto& anchors = *existing;
+
+        const auto& ha = sheetData["hand_anchors"];
+        if (ha.contains("depth_per_dir"))
+        {
+            anchors.depth_per_dir.clear();
+            for (const auto& d : ha["depth_per_dir"])
+                anchors.depth_per_dir.push_back(d.get<int>());
+        }
+
+        if (ha.contains("rows"))
+        {
+            const char* dirKeys[] = {"S", "W", "E", "N"};
+            const auto parseFrames = [](const json& arr, std::vector<HandAnchor>& out)
+            {
+                out.clear();
+                for (const auto& fr : arr)
+                {
+                    HandAnchor a;
+                    a.x = fr[0].get<float>();
+                    a.y = fr[1].get<float>();
+                    out.push_back(a);
+                }
+            };
+            for (const auto& [rowKey, rowVal] : ha["rows"].items())
+            {
+                if (rowKey[0] == '_')
+                    continue; // skip comments
+                const int rowIdx = std::stoi(rowKey);
+                auto& row = anchors.rows[rowIdx];
+                row.left.resize(4);  // S, W, E, N
+                row.right.resize(4);
+
+                for (int d = 0; d < 4; ++d)
+                {
+                    if (!rowVal.contains(dirKeys[d]))
+                        continue;
+                    const auto& cell = rowVal[dirKeys[d]];
+                    // Two supported formats:
+                    // 1) flat array      -> [[x,y],...]         (left-hand only)
+                    // 2) nested object   -> { "left": [...],
+                    //                         "right": [...] }  (both hands)
+                    // The nested form is what the 2H measurement tool writes.
+                    if (cell.is_array())
+                    {
+                        parseFrames(cell, row.left[d]);
+                    }
+                    else if (cell.is_object())
+                    {
+                        if (cell.contains("left"))
+                            parseFrames(cell["left"], row.left[d]);
+                        if (cell.contains("right"))
+                            parseFrames(cell["right"], row.right[d]);
+                    }
+                }
+            }
+        }
+    }
+
+    // Set initial playback from Idle row so the first frame renders correctly
+    // even before AnimStateSystem runs.
+    const auto& idle = rowCfg.rows[static_cast<int>(AnimState::Idle)];
+    anim.current_row = idle.row;
+    anim.current_frames = idle.frames;
+    anim.current_duration = idle.duration;
 
     em.registry().emplace<Animation>(entity, anim);
+    em.registry().emplace<AnimRowConfig>(entity, rowCfg);
     return true;
 }
 
@@ -1067,6 +1178,20 @@ bool ConfigLoader::loadItemDefs(EntityManager& em, const std::string& dirPath)
         def.fire_rate = j.value("fire_rate", 0.0f);
         def.stamina_cost = j.value("stamina_cost", -1.0f);
 
+        def.visual_weapon = j.value("visual_weapon", std::string{});
+        def.weapon_icon = j.value("weapon_icon", std::string{});
+        def.grip_x = j.value("grip_x", 0.0f);
+        def.grip_y = j.value("grip_y", 0.0f);
+        def.fore_grip_x = j.value("fore_grip_x", def.grip_x);
+        def.fore_grip_y = j.value("fore_grip_y", def.grip_y);
+        def.weapon_scale = j.value("weapon_scale", 1.0f);
+        def.attack_anim = j.value("attack_anim", std::string{});
+        if (j.contains("shoot_frames"))
+        {
+            for (const auto& fr : j["shoot_frames"])
+                def.shoot_frames.push_back(fr.get<int>());
+        }
+
         def.armor_slot = parseArmorSlot(j.value("armor_slot", std::string{"chest"}));
         def.defense_bonus = j.value("defense_bonus", 0.0f);
         def.poise_bonus = j.value("poise_bonus", 0.0f);
@@ -1336,6 +1461,7 @@ static AppearanceCategory parseAppearanceCategory(const json& cat)
     c.id = cat.value("id", std::string{});
     c.label = cat.value("label", c.id);
     c.required = cat.value("required", false);
+    c.hidden = cat.value("hidden", false);
     c.path_prefix = cat.value("path_prefix", std::string{});
     c.linked_to = cat.value("linked_to", std::string{});
     c.combine_with = cat.value("combine_with", std::string{});

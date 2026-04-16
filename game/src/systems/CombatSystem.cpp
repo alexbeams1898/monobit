@@ -546,6 +546,65 @@ void CombatSystem::update(EntityManager& em, double dt)
                                          weapon.weight * f.swing.weight_scale);
                     weapon.swing_cooldown_remaining = cooldown;
 
+                    // Lock the entity into the attack animation for the
+                    // duration of the fire cooldown so AnimStateSystem
+                    // resolves Attack state and the row override + frame_mask
+                    // (e.g. watering animation for semi-auto) actually play.
+                    {
+                        const float lockDuration = cooldown;
+                        em.registry().emplace_or_replace<AttackLocked>(
+                            entity, AttackLocked{lockDuration});
+
+                        // Scale attack anim speed to match lock window.
+                        // Use the overridden row if the weapon specifies one,
+                        // and account for shoot_frames shortening frame count.
+                        if (em.registry().all_of<AnimRowConfig, FacingDirection>(entity))
+                        {
+                            int frameCount = 0;
+                            float frameDur = 0.0f;
+
+                            // Try weapon's attack_anim override row first.
+                            const auto* rowIdx =
+                                em.registry().ctx().find<AnimRowIndex>();
+                            if (!weapon.attack_anim.empty() &&
+                                weapon.attack_anim != "slash" && rowIdx != nullptr)
+                            {
+                                const auto it =
+                                    rowIdx->rows.find(weapon.attack_anim);
+                                if (it != rowIdx->rows.end())
+                                {
+                                    frameCount = it->second.frames;
+                                    frameDur = it->second.duration;
+                                }
+                            }
+
+                            // Fall back to default attack row.
+                            if (frameCount <= 0)
+                            {
+                                const auto& rowCfg =
+                                    em.registry().get<AnimRowConfig>(entity);
+                                const auto& atkRow =
+                                    rowCfg.rows[static_cast<int>(AnimState::Attack)];
+                                frameCount = atkRow.frames;
+                                frameDur = atkRow.duration;
+                            }
+
+                            // Frame mask overrides playback length.
+                            if (!weapon.shoot_frames.empty())
+                                frameCount =
+                                    static_cast<int>(weapon.shoot_frames.size());
+
+                            const float nativeLen =
+                                static_cast<float>(frameCount) * frameDur;
+                            if (nativeLen > 0.0f && lockDuration > 0.0f)
+                            {
+                                auto& fd =
+                                    em.registry().get<FacingDirection>(entity);
+                                fd.attack_anim_speed = lockDuration / nativeLen;
+                            }
+                        }
+                    }
+
                     if (hasSta)
                         deductStamina(em.registry(), entity, swingCost, f);
 
@@ -611,11 +670,11 @@ void CombatSystem::update(EntityManager& em, double dt)
                 // windup; fast weapons keep their snappy native pace. Without
                 // this, heavy weapons used to play their swing twice because
                 // the lock window outlasted the native animation length.
-                if (em.registry().all_of<Animation, FacingDirection>(entity))
+                if (em.registry().all_of<AnimRowConfig, FacingDirection>(entity))
                 {
-                    const auto& a = em.registry().get<Animation>(entity);
-                    const auto& sd = a.states[static_cast<int>(AnimState::Attack)];
-                    const float nativeLen = static_cast<float>(sd.frames) * sd.duration;
+                    const auto& rowCfg = em.registry().get<AnimRowConfig>(entity);
+                    const auto& atkRow = rowCfg.rows[static_cast<int>(AnimState::Attack)];
+                    const float nativeLen = static_cast<float>(atkRow.frames) * atkRow.duration;
                     if (nativeLen > 0.0f && lockDuration > 0.0f)
                     {
                         auto& fd = em.registry().get<FacingDirection>(entity);
@@ -792,6 +851,10 @@ void CombatSystem::update(EntityManager& em, double dt)
                 }
             }
         }
+
+        // ---- Two-handed toggle (Left Alt) ------------------------------------
+        if (actions.toggle_two_hand && weapon.two_handed)
+            weapon.two_handed_active = !weapon.two_handed_active;
     }
 
     // --- 6. Enemy attacks — hitbox-based, range-gated by attack_radius ------

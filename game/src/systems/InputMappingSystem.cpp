@@ -83,6 +83,8 @@ void InputMappingSystem::update(EntityManager& em)
     const bool inventoryJust = firstTickOfFrame && hasKey(kd, SDL_SCANCODE_I);
     const bool pauseJust =
         firstTickOfFrame && (hasKey(kd, SDL_SCANCODE_ESCAPE) || hasKey(kd, SDL_SCANCODE_TAB));
+    const bool twoHandJust =
+        firstTickOfFrame && (hasKey(kd, SDL_SCANCODE_LALT) || hasKey(kd, SDL_SCANCODE_RALT));
 
     for (auto [entity, actions] : em.registry().view<PlayerActions>().each())
     {
@@ -103,6 +105,7 @@ void InputMappingSystem::update(EntityManager& em)
         actions.reload = reloadJust;
         actions.toggle_inventory = inventoryJust;
         actions.toggle_pause = pauseJust;
+        actions.toggle_two_hand = twoHandJust;
 
         // MovementIntent bridge: lets engine AnimationSystem read movement direction
         // for walk-direction snapping without knowing about game components.
