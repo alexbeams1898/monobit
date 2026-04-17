@@ -43,7 +43,7 @@ HitPair resolveHitPair(entt::registry& reg, entt::entity a, entt::entity b)
 
 // Grant weapon XP trickle to the player on a successful hit.
 // Gathers enemy stats/health/weapon/loot to compute enemy power, then grants scaled XP.
-void grantHitXP(EntityManager& em, entt::entity target)
+void grantHitXP(EntityManager& em, entt::entity target, bool leftHand)
 {
     auto& reg = em.registry();
     const FormulaConfig& fc = reg.ctx().get<FormulaConfig>();
@@ -67,7 +67,8 @@ void grantHitXP(EntityManager& em, entt::entity target)
 
     const float power =
         WeaponXPSystem::computeEnemyPower(enemyLevel, enemyHp, enemyDmg, enemyStats, fc);
-    WeaponXPSystem::grantXP(em, power, fc.weapon_xp.hit_multiplier);
+    const EquipSlot hitHand = leftHand ? EquipSlot::LeftHand : EquipSlot::RightHand;
+    WeaponXPSystem::grantXP(em, power, fc.weapon_xp.hit_multiplier, hitHand);
 }
 
 } // anonymous namespace
@@ -258,7 +259,9 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
         health.current = std::max(0, health.current - dmg);
 
     // Trigger red damage flash on the target.
-    reg.emplace_or_replace<DamageFeedback>(target, DamageFeedback{0.2f});
+    const bool attackerLeftHand =
+        reg.valid(hitboxEnt) && reg.all_of<Hitbox>(hitboxEnt) && reg.get<Hitbox>(hitboxEnt).left_hand;
+    reg.emplace_or_replace<DamageFeedback>(target, DamageFeedback{0.2f, attackerLeftHand});
 
     const auto& hitSnd = snd.get("hit");
     if (!hitSnd.variations.empty())
@@ -389,7 +392,7 @@ void DamageSystem::update(EntityManager& em)
 
             // Grant weapon XP trickle on hit (player-only).
             if (hb.owner != entt::null && reg.all_of<PlayerActions>(hb.owner))
-                grantHitXP(em, targetEnt);
+                grantHitXP(em, targetEnt, hb.left_hand);
         }
     }
     // Path 2 (enemy direct overlap → player) removed. Enemies now spawn hitboxes

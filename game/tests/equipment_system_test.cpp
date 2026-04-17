@@ -2,6 +2,7 @@
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
+#include "ops/InventoryOps.h"
 #include "systems/EquipmentSystem.h"
 #include "test_helpers.h"
 
@@ -74,6 +75,29 @@ static void registerShield(EntityManager& em)
     reg.defs[shield.config_path] = shield;
 }
 
+// Helper: add a weapon item to entity inventory, equip it to right hand, and
+// set synced_right_hand so EquipmentSystem detects the change.
+static void equipWeaponToRightHand(EntityManager& em, entt::entity entity,
+                                   const std::string& config_path)
+{
+    auto& inv = em.registry().get<Inventory>(entity);
+    inv.items.push_back({config_path});
+    const int idx = static_cast<int>(inv.items.size()) - 1;
+    auto& equip = em.registry().get<Equipment>(entity);
+    equip.right_hand = idx;
+}
+
+// Helper: add an item to entity inventory and equip it to left hand.
+static void equipItemToLeftHand(EntityManager& em, entt::entity entity,
+                                const std::string& config_path)
+{
+    auto& inv = em.registry().get<Inventory>(entity);
+    inv.items.push_back({config_path});
+    const int idx = static_cast<int>(inv.items.size()) - 1;
+    auto& equip = em.registry().get<Equipment>(entity);
+    equip.left_hand = idx;
+}
+
 // ---------------------------------------------------------------------------
 // EquipmentSystem tests
 // ---------------------------------------------------------------------------
@@ -85,13 +109,11 @@ TEST_CASE("EquipmentSystem: empty equipment gives fist defaults", "[equipment]")
 
     auto entity = em.create();
     em.registry().emplace<Equipment>(entity);
+    em.registry().emplace<Inventory>(entity);
     em.registry().emplace<Weapon>(entity);
 
-    // First update should detect synced_right_hand != right_hand.config_path
-    // (both empty, but synced starts empty too -- so no change on first call).
-    // Force a change by setting synced to a sentinel.
-    auto& equip = em.registry().get<Equipment>(entity);
-    equip.synced_right_hand = "__init__";
+    // synced_right_hand starts as "__unsynced__" which differs from the
+    // equippedPath ("" since right_hand is -1), so the first update triggers sync.
 
     EquipmentSystem::update(em);
 
@@ -111,10 +133,11 @@ TEST_CASE("EquipmentSystem: equip weapon updates Weapon component", "[equipment]
     registerShiv(em);
 
     auto entity = em.create();
-    auto& equip = em.registry().emplace<Equipment>(entity);
+    em.registry().emplace<Equipment>(entity);
+    em.registry().emplace<Inventory>(entity);
     em.registry().emplace<Weapon>(entity);
 
-    equip.right_hand.config_path = "config/items/weapons/shiv.json";
+    equipWeaponToRightHand(em, entity, "config/items/weapons/shiv.json");
 
     EquipmentSystem::update(em);
 
@@ -135,16 +158,18 @@ TEST_CASE("EquipmentSystem: unequip weapon reverts to fist", "[equipment]")
     registerShiv(em);
 
     auto entity = em.create();
-    auto& equip = em.registry().emplace<Equipment>(entity);
+    em.registry().emplace<Equipment>(entity);
+    em.registry().emplace<Inventory>(entity);
     em.registry().emplace<Weapon>(entity);
 
     // Equip shiv.
-    equip.right_hand.config_path = "config/items/weapons/shiv.json";
+    equipWeaponToRightHand(em, entity, "config/items/weapons/shiv.json");
     EquipmentSystem::update(em);
     REQUIRE(em.registry().get<Weapon>(entity).name == "Shiv");
 
     // Unequip.
-    equip.right_hand = {};
+    auto& equip = em.registry().get<Equipment>(entity);
+    equip.right_hand = -1;
     EquipmentSystem::update(em);
 
     const auto& w = em.registry().get<Weapon>(entity);
@@ -160,10 +185,11 @@ TEST_CASE("EquipmentSystem: no change when equipment unchanged", "[equipment]")
     registerShiv(em);
 
     auto entity = em.create();
-    auto& equip = em.registry().emplace<Equipment>(entity);
+    em.registry().emplace<Equipment>(entity);
+    em.registry().emplace<Inventory>(entity);
     em.registry().emplace<Weapon>(entity);
 
-    equip.right_hand.config_path = "config/items/weapons/shiv.json";
+    equipWeaponToRightHand(em, entity, "config/items/weapons/shiv.json");
     EquipmentSystem::update(em);
 
     // Modify weapon manually to detect if EquipmentSystem overwrites it.
@@ -182,10 +208,11 @@ TEST_CASE("EquipmentSystem: equip shield emplaces Shield component", "[equipment
     registerShield(em);
 
     auto entity = em.create();
-    auto& equip = em.registry().emplace<Equipment>(entity);
+    em.registry().emplace<Equipment>(entity);
+    em.registry().emplace<Inventory>(entity);
     em.registry().emplace<Weapon>(entity);
 
-    equip.left_hand.config_path = "config/items/armor/wooden_shield.json";
+    equipItemToLeftHand(em, entity, "config/items/armor/wooden_shield.json");
     EquipmentSystem::update(em);
 
     REQUIRE(em.registry().all_of<Shield>(entity));
@@ -199,14 +226,16 @@ TEST_CASE("EquipmentSystem: unequip shield removes Shield component", "[equipmen
     registerShield(em);
 
     auto entity = em.create();
-    auto& equip = em.registry().emplace<Equipment>(entity);
+    em.registry().emplace<Equipment>(entity);
+    em.registry().emplace<Inventory>(entity);
     em.registry().emplace<Weapon>(entity);
 
-    equip.left_hand.config_path = "config/items/armor/wooden_shield.json";
+    equipItemToLeftHand(em, entity, "config/items/armor/wooden_shield.json");
     EquipmentSystem::update(em);
     REQUIRE(em.registry().all_of<Shield>(entity));
 
-    equip.left_hand = {};
+    auto& equip = em.registry().get<Equipment>(entity);
+    equip.left_hand = -1;
     EquipmentSystem::update(em);
     REQUIRE_FALSE(em.registry().all_of<Shield>(entity));
 }
@@ -243,10 +272,10 @@ TEST_CASE("EquipmentSystem: Body natural weapon used when unarmed", "[equipment]
     body.unarmed_dex_scaling = 0.0f;
     em.registry().emplace<Body>(entity, body);
     em.registry().emplace<Equipment>(entity);
+    em.registry().emplace<Inventory>(entity);
     em.registry().emplace<Weapon>(entity);
 
-    auto& equip = em.registry().get<Equipment>(entity);
-    equip.synced_right_hand = "__init__";
+    // synced_right_hand defaults to "__unsynced__" which triggers sync on first update.
 
     EquipmentSystem::update(em);
 
@@ -264,10 +293,10 @@ TEST_CASE("EquipmentSystem: no Body falls back to FormulaConfig fist", "[equipme
 
     auto entity = em.create();
     em.registry().emplace<Equipment>(entity);
+    em.registry().emplace<Inventory>(entity);
     em.registry().emplace<Weapon>(entity);
 
-    auto& equip = em.registry().get<Equipment>(entity);
-    equip.synced_right_hand = "__init__";
+    // synced_right_hand defaults to "__unsynced__" which triggers sync on first update.
 
     EquipmentSystem::update(em);
 
@@ -290,10 +319,11 @@ TEST_CASE("EquipmentSystem: equip copies visual weapon fields from ItemDef", "[e
     registerPistol(em);
 
     auto entity = em.create();
-    auto& equip = em.registry().emplace<Equipment>(entity);
+    em.registry().emplace<Equipment>(entity);
+    em.registry().emplace<Inventory>(entity);
     em.registry().emplace<Weapon>(entity);
 
-    equip.right_hand.config_path = "config/items/weapons/colt_45.json";
+    equipWeaponToRightHand(em, entity, "config/items/weapons/colt_45.json");
     EquipmentSystem::update(em);
 
     const auto& w = em.registry().get<Weapon>(entity);
@@ -310,16 +340,18 @@ TEST_CASE("EquipmentSystem: fist clears visual weapon fields", "[equipment]")
     registerPistol(em);
 
     auto entity = em.create();
-    auto& equip = em.registry().emplace<Equipment>(entity);
+    em.registry().emplace<Equipment>(entity);
+    em.registry().emplace<Inventory>(entity);
     em.registry().emplace<Weapon>(entity);
 
     // Equip pistol first.
-    equip.right_hand.config_path = "config/items/weapons/colt_45.json";
+    equipWeaponToRightHand(em, entity, "config/items/weapons/colt_45.json");
     EquipmentSystem::update(em);
     REQUIRE(em.registry().get<Weapon>(entity).visual_weapon == "colt_45");
 
     // Unequip -> fist.
-    equip.right_hand = {};
+    auto& equip = em.registry().get<Equipment>(entity);
+    equip.right_hand = -1;
     EquipmentSystem::update(em);
 
     const auto& w = em.registry().get<Weapon>(entity);
@@ -335,10 +367,11 @@ TEST_CASE("EquipmentSystem: shiv has no visual weapon fields", "[equipment]")
     registerShiv(em);
 
     auto entity = em.create();
-    auto& equip = em.registry().emplace<Equipment>(entity);
+    em.registry().emplace<Equipment>(entity);
+    em.registry().emplace<Inventory>(entity);
     em.registry().emplace<Weapon>(entity);
 
-    equip.right_hand.config_path = "config/items/weapons/shiv.json";
+    equipWeaponToRightHand(em, entity, "config/items/weapons/shiv.json");
     EquipmentSystem::update(em);
 
     const auto& w = em.registry().get<Weapon>(entity);
@@ -355,10 +388,11 @@ TEST_CASE("EquipmentSystem: two-handed weapon flows flag and starts inactive",
     registerAk(em);
 
     auto entity = em.create();
-    auto& equip = em.registry().emplace<Equipment>(entity);
+    em.registry().emplace<Equipment>(entity);
+    em.registry().emplace<Inventory>(entity);
     em.registry().emplace<Weapon>(entity);
 
-    equip.right_hand.config_path = "config/items/weapons/ak_47.json";
+    equipWeaponToRightHand(em, entity, "config/items/weapons/ak_47.json");
     EquipmentSystem::update(em);
 
     const auto& w = em.registry().get<Weapon>(entity);
@@ -377,10 +411,11 @@ TEST_CASE("EquipmentSystem: pistol is not two-handed-capable",
     registerPistol(em);
 
     auto entity = em.create();
-    auto& equip = em.registry().emplace<Equipment>(entity);
+    em.registry().emplace<Equipment>(entity);
+    em.registry().emplace<Inventory>(entity);
     em.registry().emplace<Weapon>(entity);
 
-    equip.right_hand.config_path = "config/items/weapons/colt_45.json";
+    equipWeaponToRightHand(em, entity, "config/items/weapons/colt_45.json");
     EquipmentSystem::update(em);
 
     const auto& w = em.registry().get<Weapon>(entity);
@@ -396,16 +431,18 @@ TEST_CASE("EquipmentSystem: swapping to fists clears two-handed state",
     registerAk(em);
 
     auto entity = em.create();
-    auto& equip = em.registry().emplace<Equipment>(entity);
+    em.registry().emplace<Equipment>(entity);
+    em.registry().emplace<Inventory>(entity);
     em.registry().emplace<Weapon>(entity);
 
     // Equip AK and manually set active, simulating a player toggle.
-    equip.right_hand.config_path = "config/items/weapons/ak_47.json";
+    equipWeaponToRightHand(em, entity, "config/items/weapons/ak_47.json");
     EquipmentSystem::update(em);
     em.registry().get<Weapon>(entity).two_handed_active = true;
 
     // Unequip back to fists.
-    equip.right_hand = {};
+    auto& equip = em.registry().get<Equipment>(entity);
+    equip.right_hand = -1;
     EquipmentSystem::update(em);
 
     const auto& w = em.registry().get<Weapon>(entity);

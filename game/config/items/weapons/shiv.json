@@ -13,5 +13,8 @@
     "two_handed": false,
     "weapon_tier": "dagger",
     "max_durability": 50.0,
-    "stackable": false
+    "stackable": false,
+    "grip_x": 22.0,
+    "grip_y": 22.0,
+    "base_rotation": 90.0
 }

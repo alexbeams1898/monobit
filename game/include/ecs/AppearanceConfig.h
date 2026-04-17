@@ -1,5 +1,7 @@
 #pragma once
 
+#include "SpriteCompositor.h"
+
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -60,18 +62,48 @@ struct AppearanceCategory
     float max_value = 1.0f;
     float step_value = 0.01f;
     float default_value = 1.0f;
+
+    // Palette swap: when set, this layer uses a master sprite and the
+    // color selection maps to a palette swap applied at composite time.
+    // palette_id references a PaletteRegistry entry (e.g. "cloth", "hair").
+    // base_color is the palette key the master uses (e.g. "white", "orange").
+    std::string palette_id;
+    std::string base_color;
+    std::string master_file; // master PNG filename for direct palette-swap categories
+    bool palette_from_combine = false; // palette target comes from combine_with, master from option
 };
 
 // ---------------------------------------------------------------------------
 // AppearanceConfig -- the full layer manifest loaded from
 // config/appearance/layers.json. Stored in registry ctx.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// PaletteRegistry -- palette swap data loaded from palette JSON files.
+// Maps palette_id (e.g. "cloth") -> color_name (e.g. "black") -> list of RGB.
+// ---------------------------------------------------------------------------
+struct PaletteColor
+{
+    uint8_t r, g, b;
+};
+
+struct PaletteRegistry
+{
+    // palettes["cloth"]["black"] = [{r,g,b}, {r,g,b}, ...]
+    std::unordered_map<std::string,
+                       std::unordered_map<std::string, std::vector<PaletteColor>>>
+        palettes;
+
+    // Build a PaletteSwap mapping base_color entries to target_color entries.
+    PaletteSwap buildSwap(const std::string& palette_id, const std::string& base_color,
+                          const std::string& target_color) const;
+};
+
 struct AppearanceConfig
 {
     int frame_size = 64;
     std::vector<AppearanceCategory> categories;
     bool loaded = false;
-    SpriteCompositor* compositor = nullptr; // set at startup, used by resolveAppearance
+    SpriteCompositor* compositor = nullptr;
 };
 
 // ---------------------------------------------------------------------------

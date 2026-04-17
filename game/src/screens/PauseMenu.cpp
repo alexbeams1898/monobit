@@ -370,20 +370,35 @@ struct PickerEntry
     std::string config_path;
 };
 
-static std::vector<PickerEntry> buildPickerList(const Inventory& inv, const ItemRegistry& items,
-                                                EquipSlot slot, bool slot_occupied)
+static const char* slotBadge(EquipSlot s)
+{
+    switch (s)
+    {
+    case EquipSlot::RightHand: return " [R]";
+    case EquipSlot::LeftHand:  return " [L]";
+    case EquipSlot::Head:      return " [H]";
+    case EquipSlot::Chest:     return " [C]";
+    case EquipSlot::Legs:      return " [Lg]";
+    case EquipSlot::Feet:      return " [F]";
+    default:                   return " [E]";
+    }
+}
+
+static std::vector<PickerEntry> buildPickerList(const Inventory& inv, const Equipment& equip,
+                                                const ItemRegistry& items, EquipSlot slot,
+                                                bool slot_occupied)
 {
     std::vector<PickerEntry> list;
 
-    // First entry: unequip option if slot is occupied.
     if (slot_occupied)
-    {
-        const char* empty_label = (slot == EquipSlot::RightHand) ? "(Unarmed)" : "(Unequip)";
-        list.push_back({-1, empty_label, {}});
-    }
+        list.push_back({-1, "(Unarmed)", {}});
 
     for (int i = 0; i < static_cast<int>(inv.items.size()); ++i)
     {
+        // Skip the item currently equipped in this slot (it's what we'd replace).
+        if (InventoryOps::slotIndexConst(equip, slot) == i)
+            continue;
+
         const auto& item = inv.items[static_cast<size_t>(i)];
         if (item.empty())
             continue;
@@ -425,6 +440,8 @@ static std::vector<PickerEntry> buildPickerList(const Inventory& inv, const Item
             std::string label = def->name;
             if (item.quantity > 1)
                 label += " x" + std::to_string(item.quantity);
+            if (InventoryOps::isEquipped(equip, i))
+                label += slotBadge(InventoryOps::equippedInSlot(equip, i));
             list.push_back({i, label, item.config_path});
         }
     }
@@ -467,14 +484,13 @@ static float renderShieldStats(const ItemDef& def, EntityManager& em, entt::enti
 
 // Perform equip or unequip based on a picker entry.
 static void performEquipAction(EntityManager& em, entt::entity player, const PickerEntry& entry,
-                               EquipSlot slot_enum, const ItemRegistry& items)
+                               EquipSlot slot_enum)
 {
-    auto& mut_inv = em.registry().get<Inventory>(player);
     auto& mut_eq = em.registry().get<Equipment>(player);
     if (entry.inv_index < 0)
-        InventoryOps::unequipSlot(mut_inv, mut_eq, slot_enum);
+        InventoryOps::unequipSlot(mut_eq, slot_enum);
     else
-        InventoryOps::equipItem(mut_inv, mut_eq, entry.inv_index, items);
+        InventoryOps::equipItemToSlot(mut_eq, entry.inv_index, slot_enum);
 }
 
 // Draw picker rows and handle mouse clicks on them.
@@ -508,7 +524,7 @@ static void drawPickerRows(EntityManager& em, entt::entity player,
         if (isMouseInRow(mx, my, cx, cw, y, line_h) && mouseClicked(em, SDL_BUTTON_LEFT))
         {
             sEquipPickSel = i;
-            performEquipAction(em, player, picker[static_cast<size_t>(i)], slot_enum, items);
+            performEquipAction(em, player, picker[static_cast<size_t>(i)], slot_enum);
             sEquipPicking = false;
         }
         y += line_h;
@@ -517,9 +533,9 @@ static void drawPickerRows(EntityManager& em, entt::entity player,
 
 // Render the equipment picker (item selection for a slot). Returns true if right-click was
 // consumed.
-static bool renderEquipPicker(EntityManager& em, entt::entity player, const Equipment& eq,
-                              const ItemRegistry& items, float cx, float ey, float cw, float mx,
-                              float my)
+static bool renderEquipPicker(EntityManager& em, entt::entity player, const Inventory& inv,
+                              const Equipment& eq, const ItemRegistry& items, float cx, float ey,
+                              float cw, float mx, float my)
 {
     if (sContentSel < 0 || sContentSel >= EQUIP_SLOT_COUNT)
     {
@@ -528,18 +544,9 @@ static bool renderEquipPicker(EntityManager& em, entt::entity player, const Equi
     }
     const float line_h = FontManager::lineHeight(sBodyFont) + 6.0f;
     const EquipSlot slot_enum = EQUIP_SLOT_ENUMS[sContentSel];
-    const ItemInstance& current_slot = InventoryOps::slotRef(eq, slot_enum);
-    const bool slot_occupied = !current_slot.empty();
+    const bool slot_occupied = !InventoryOps::slotEmpty(eq, slot_enum);
 
-    const Inventory* inv =
-        em.registry().all_of<Inventory>(player) ? &em.registry().get<Inventory>(player) : nullptr;
-    if (inv == nullptr)
-    {
-        sEquipPicking = false;
-        return false;
-    }
-
-    auto picker = buildPickerList(*inv, items, slot_enum, slot_occupied);
+    auto picker = buildPickerList(inv, eq, items, slot_enum, slot_occupied);
 
     UIRenderer::drawText(sBodyFont,
                          std::string("Select for ") + EQUIP_SLOT_NAMES[sContentSel] + ":", cx, ey,
@@ -566,8 +573,7 @@ static bool renderEquipPicker(EntityManager& em, entt::entity player, const Equi
 
         if (confirmKeyPressed(em))
         {
-            performEquipAction(em, player, picker[static_cast<size_t>(sEquipPickSel)], slot_enum,
-                               items);
+            performEquipAction(em, player, picker[static_cast<size_t>(sEquipPickSel)], slot_enum);
             sEquipPicking = false;
         }
     }
@@ -585,7 +591,8 @@ static bool renderEquipPicker(EntityManager& em, entt::entity player, const Equi
 }
 
 // Draw the equipment slot list and handle mouse clicks.
-static void renderEquipSlotList(EntityManager& em, const Equipment& eq, const ItemRegistry& items,
+static void renderEquipSlotList(EntityManager& em, const Inventory& inv, const Equipment& eq,
+                                const ItemRegistry& items,
                                 float cx, float ey, float cw, float line_h, float mx, float my,
                                 int hoverIdx)
 {
@@ -594,7 +601,7 @@ static void renderEquipSlotList(EntityManager& em, const Equipment& eq, const It
     {
         const bool selected = (sContentSel == i && sBottomSel < 0);
         const bool hovered = (i == hoverIdx && !selected);
-        const ItemInstance& slot = InventoryOps::slotRef(eq, EQUIP_SLOT_ENUMS[i]);
+        const auto* slotItem = InventoryOps::equippedItem(inv, eq, EQUIP_SLOT_ENUMS[i]);
 
         if (selected)
             UIRenderer::drawRect(cx - 4.0f, y - 2.0f, cw + 8.0f, line_h, SELECTED_BG);
@@ -605,16 +612,16 @@ static void renderEquipSlotList(EntityManager& em, const Equipment& eq, const It
         const float text_x = cx + icon_sz + 4.0f;
         std::string text = std::string(EQUIP_SLOT_NAMES[i]) + ": ";
         const bool highlighted = selected || hovered;
-        if (slot.empty())
+        if (slotItem == nullptr)
         {
-            text += (EQUIP_SLOT_ENUMS[i] == EquipSlot::RightHand) ? "(Unarmed)" : "(empty)";
+            text += "(Unarmed)";
             UIRenderer::drawText(sBodyFont, text, text_x, y, highlighted ? TEXT_WHITE : TEXT_DIM);
         }
         else
         {
-            const ItemDef* def = items.find(slot.config_path);
+            const ItemDef* def = items.find(slotItem->config_path);
             const std::string name = (def != nullptr) ? def->name : "???";
-            text += std::string(qualityName(slot.quality)) + " " + name;
+            text += std::string(qualityName(slotItem->quality)) + " " + name;
             ItemStatRenderer::drawItemIcon(def, cx, y, icon_sz);
             UIRenderer::drawText(sBodyFont, text, text_x, y, TEXT_WHITE);
         }
@@ -631,13 +638,14 @@ static void renderEquipSlotList(EntityManager& em, const Equipment& eq, const It
 }
 
 // Render the stat panel for the currently selected equipment slot.
-static void renderEquipStatPanel(EntityManager& em, entt::entity player, const Equipment& eq,
+static void renderEquipStatPanel(EntityManager& em, entt::entity player, const Inventory& inv,
+                                 const Equipment& eq,
                                  const ItemRegistry& items, float cx, float y, float cw)
 {
     y += 12.0f;
     const EquipSlot sel_slot = EQUIP_SLOT_ENUMS[sContentSel];
-    const ItemInstance& sel_item = InventoryOps::slotRef(eq, sel_slot);
-    const ItemDef* def = sel_item.empty() ? nullptr : items.find(sel_item.config_path);
+    const auto* sel_item = InventoryOps::equippedItem(inv, eq, sel_slot);
+    const ItemDef* def = (sel_item != nullptr) ? items.find(sel_item->config_path) : nullptr;
     const float val_x = cx + 120.0f;
 
     const bool has_stats = em.registry().all_of<Stats>(player);
@@ -645,60 +653,72 @@ static void renderEquipStatPanel(EntityManager& em, entt::entity player, const E
     const auto& f = em.registry().ctx().get<FormulaConfig>();
     const bool god_mode = em.registry().ctx().get<DebugFlags>().god_mode;
 
-    if (sel_slot == EquipSlot::RightHand)
+    if (sel_slot == EquipSlot::RightHand || sel_slot == EquipSlot::LeftHand)
     {
-        float stat_bottom = y;
-        if (def != nullptr && def->category == ItemCategory::Weapon)
+        // Shield stats take priority if this hand holds a shield.
+        if (def != nullptr && def->max_guard > 0.0f)
         {
-            stat_bottom = ItemStatRenderer::renderWeaponStatsFromDef(
-                sBodyFont, *def, stats, f, has_stats, cx, y, cw, val_x, true, god_mode);
+            renderShieldStats(*def, em, player, cx, y, cw, val_x);
         }
         else
         {
-            // Unarmed fallback.
-            const Weapon w{"Unarmed", f.fist.weight,     f.fist.str_scaling, f.fist.dex_scaling, 0,
-                           0,         f.fist.base_damage};
-            stat_bottom = ItemStatRenderer::renderWeaponStats(
-                sBodyFont, w, stats, f, nullptr, has_stats, cx, y, cw, val_x, true, god_mode);
+            float stat_bottom = y;
+            if (def != nullptr && def->category == ItemCategory::Weapon)
+            {
+                stat_bottom = ItemStatRenderer::renderWeaponStatsFromDef(
+                    sBodyFont, *def, stats, f, has_stats, cx, y, cw, val_x, true, god_mode);
+            }
+            else
+            {
+                const Weapon w{"Unarmed", f.fist.weight,     f.fist.str_scaling, f.fist.dex_scaling,
+                               0,         0,         f.fist.base_damage};
+                stat_bottom = ItemStatRenderer::renderWeaponStats(
+                    sBodyFont, w, stats, f, nullptr, has_stats, cx, y, cw, val_x, true, god_mode);
+            }
+
+            // Weapon XP progress — read from the selected hand's Weapon struct.
+            {
+                const Weapon* wxpWeapon = nullptr;
+                if (sel_slot == EquipSlot::RightHand && em.registry().all_of<Weapon>(player))
+                    wxpWeapon = &em.registry().get<Weapon>(player);
+                else if (sel_slot == EquipSlot::LeftHand)
+                    wxpWeapon = em.registry().try_get<LeftWeapon>(player);
+
+                if (wxpWeapon != nullptr)
+                {
+                    const float bar_y = stat_bottom + 4.0f;
+                    const float bar_h = 10.0f;
+                    const float fill = wxpWeapon->wxp_to_next > 0.0f
+                                           ? wxpWeapon->wxp_current / wxpWeapon->wxp_to_next
+                                           : 0.0f;
+
+                    static constexpr Color WPN_BAR{0.45f, 0.55f, 0.85f, 0.9f};
+                    static constexpr Color WPN_BG{0.12f, 0.15f, 0.30f, 0.6f};
+
+                    const std::string lvl_text = "Weapon Lv" + std::to_string(wxpWeapon->wxp_level);
+                    UIRenderer::drawText(sBodyFont, lvl_text, cx, bar_y, LABEL_COLOR);
+                    const float lbl_h = FontManager::lineHeight(sBodyFont);
+                    UIRenderer::drawRect(cx, bar_y + lbl_h + 2.0f, cw, bar_h, WPN_BG);
+                    UIRenderer::drawRect(cx, bar_y + lbl_h + 2.0f,
+                                         cw * std::clamp(fill, 0.0f, 1.0f), bar_h, WPN_BAR);
+
+                    const int xp_cur = static_cast<int>(wxpWeapon->wxp_current);
+                    const int xp_max = static_cast<int>(wxpWeapon->wxp_to_next);
+                    const std::string xp_text =
+                        std::to_string(xp_cur) + " / " + std::to_string(xp_max) + " XP";
+                    const TextSize xpsz = UIRenderer::measureText(sBodyFont, xp_text);
+                    UIRenderer::drawText(sBodyFont, xp_text, cx + cw - xpsz.width, bar_y, TEXT_DIM);
+                }
+            }
         }
-
-        // Weapon XP progress.
-        if (em.registry().all_of<WeaponXP>(player))
-        {
-            const auto& wxp = em.registry().get<WeaponXP>(player);
-            const float bar_y = stat_bottom + 4.0f;
-            const float bar_h = 10.0f;
-            const float fill = wxp.xp_to_next > 0.0f ? wxp.current_xp / wxp.xp_to_next : 0.0f;
-
-            static constexpr Color WPN_BAR{0.45f, 0.55f, 0.85f, 0.9f};
-            static constexpr Color WPN_BG{0.12f, 0.15f, 0.30f, 0.6f};
-
-            const std::string lvl_text = "Weapon Lv" + std::to_string(wxp.level);
-            UIRenderer::drawText(sBodyFont, lvl_text, cx, bar_y, LABEL_COLOR);
-            const float lbl_h = FontManager::lineHeight(sBodyFont);
-            UIRenderer::drawRect(cx, bar_y + lbl_h + 2.0f, cw, bar_h, WPN_BG);
-            UIRenderer::drawRect(cx, bar_y + lbl_h + 2.0f, cw * std::clamp(fill, 0.0f, 1.0f), bar_h,
-                                 WPN_BAR);
-
-            const int xp_cur = static_cast<int>(wxp.current_xp);
-            const int xp_max = static_cast<int>(wxp.xp_to_next);
-            const std::string xp_text =
-                std::to_string(xp_cur) + " / " + std::to_string(xp_max) + " XP";
-            const TextSize xpsz = UIRenderer::measureText(sBodyFont, xp_text);
-            UIRenderer::drawText(sBodyFont, xp_text, cx + cw - xpsz.width, bar_y, TEXT_DIM);
-        }
-    }
-    else if (sel_slot == EquipSlot::LeftHand && def != nullptr && def->max_guard > 0.0f)
-    {
-        renderShieldStats(*def, em, player, cx, y, cw, val_x);
     }
     else if (def != nullptr && def->category == ItemCategory::Armor)
     {
         ItemStatRenderer::renderArmorStats(sBodyFont, *def, cx, y, cw, val_x);
     }
-    else if (sel_item.empty())
+    else if (sel_item == nullptr)
     {
-        const std::string empty_label = (sel_slot == EquipSlot::RightHand) ? "(Unarmed)" : "(empty)";
+        const std::string empty_label = "(Unarmed)";
         UIRenderer::drawText(sBodyFont, empty_label, cx, y, TEXT_DIM);
     }
 }
@@ -711,12 +731,13 @@ static bool renderEquipmentTab(EntityManager& em, float cx, float cy, float cw, 
         return false;
 
     const auto& eq = em.registry().get<Equipment>(player);
+    const auto& inv = em.registry().get<Inventory>(player);
     const auto& items = em.registry().ctx().get<ItemRegistry>();
     const float line_h = FontManager::lineHeight(sBodyFont) + 6.0f;
     const float ey = drawTabHeading("Equipment", cx, cy, cw);
 
     if (sEquipPicking)
-        return renderEquipPicker(em, player, eq, items, cx, ey, cw, mx, my);
+        return renderEquipPicker(em, player, inv, eq, items, cx, ey, cw, mx, my);
 
     const int hover = hoveredRow(mx, my, cx, ey, cw, line_h, EQUIP_SLOT_COUNT);
     if (hover >= 0 && mouseClicked(em, SDL_BUTTON_LEFT))
@@ -725,13 +746,13 @@ static bool renderEquipmentTab(EntityManager& em, float cx, float cy, float cw, 
         sBottomSel = -1;
     }
 
-    renderEquipSlotList(em, eq, items, cx, ey, cw, line_h, mx, my, hover);
+    renderEquipSlotList(em, inv, eq, items, cx, ey, cw, line_h, mx, my, hover);
     const int displaySlot = (hover >= 0) ? hover : sContentSel;
     if (displaySlot >= 0)
     {
         const int savedSel = sContentSel;
         sContentSel = displaySlot;
-        renderEquipStatPanel(em, player, eq, items, cx,
+        renderEquipStatPanel(em, player, inv, eq, items, cx,
                              ey + line_h * static_cast<float>(EQUIP_SLOT_COUNT), cw);
         sContentSel = savedSel;
     }

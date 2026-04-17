@@ -48,15 +48,14 @@ static void weaponFromDef(Weapon& w, const ItemDef& def)
     w.weapon_scale = def.weapon_scale;
     w.base_rotation = def.base_rotation;
     w.two_handed = def.two_handed;
-    // Reset two-handed state on equip -- each equip starts in one-handed mode.
-    // Player toggles via Left Alt.
-    w.two_handed_active = false;
+    // Preserve two_handed_active across re-syncs. Only the toggle (Alt)
+    // and explicit weapon changes (cycling) should flip this.
+    if (!def.two_handed)
+        w.two_handed_active = false;
     w.attack_anim = def.attack_anim;
     w.shoot_frames = def.shoot_frames;
 }
 
-// Populate a Weapon component with unarmed defaults.
-// Body's natural weapon takes priority; FormulaConfig::fist is the fallback.
 static void weaponFromFist(Weapon& w, const Body* body, const FormulaConfig& f)
 {
     w.name = "Unarmed";
@@ -92,43 +91,54 @@ static void weaponFromFist(Weapon& w, const Body* body, const FormulaConfig& f)
     w.two_handed_active = false;
 }
 
-// Cycle weapons in a specific hand: fists -> weapon 0 -> weapon 1 -> ... -> fists.
-// dir=+1 forward, dir=-1 backward. Returns the current weapon to inventory first,
-// then equips the next weapon from the weapon list.
-static void cycleWeapon(const ItemRegistry& items, Inventory& inv, Equipment& equip,
+// Cycle weapons for a hand. Items stay in inventory — cycling just moves the
+// equipment index to the next weapon. Cycle order is alphabetical by
+// config_path so it's always deterministic.
+static void cycleWeapon(const ItemRegistry& items, const Inventory& inv, Equipment& equip,
                         EquipSlot hand, int dir = 1)
 {
-    ItemInstance& handSlot = InventoryOps::slotRef(equip, hand);
-    int& handSlotIdx = (hand == EquipSlot::RightHand) ? equip.right_hand_slot : equip.left_hand_slot;
+    // Build sorted list of inventory indices that hold weapons and are not
+    // equipped in the OTHER hand.
+    const EquipSlot otherHand =
+        (hand == EquipSlot::RightHand) ? EquipSlot::LeftHand : EquipSlot::RightHand;
+    const int otherIdx = InventoryOps::slotIndexConst(equip, otherHand);
 
-    const int returnSlot =
-        handSlot.empty()
-            ? -1
-            : std::max(0, std::min(handSlotIdx, static_cast<int>(inv.items.size())));
-    if (returnSlot >= 0)
+    struct WeaponEntry
     {
-        inv.items.insert(inv.items.begin() + returnSlot, std::move(handSlot));
-        handSlot = {};
-        handSlotIdx = -1;
-    }
-
-    std::vector<int> weaponSlots;
+        std::string path;
+        int inv_index;
+    };
+    std::vector<WeaponEntry> weapons;
     for (int i = 0; i < static_cast<int>(inv.items.size()); ++i)
     {
+        if (i == otherIdx)
+            continue;
         const ItemDef* def = items.find(inv.items[i].config_path);
         if (def != nullptr && def->category == ItemCategory::Weapon)
-            weaponSlots.push_back(i);
+            weapons.push_back({inv.items[i].config_path, i});
     }
 
-    if (weaponSlots.empty())
-        return;
+    std::sort(weapons.begin(), weapons.end(),
+              [](const WeaponEntry& a, const WeaponEntry& b) { return a.path < b.path; });
 
-    int curWeaponPos = -1;
-    if (returnSlot >= 0)
+    const int currentIdx = InventoryOps::slotIndexConst(equip, hand);
+
+    if (weapons.empty())
     {
-        for (int i = 0; i < static_cast<int>(weaponSlots.size()); ++i)
+        InventoryOps::unequipSlot(equip, hand);
+        const char* label = (hand == EquipSlot::LeftHand) ? "Left: Unarmed" : "Right: Unarmed";
+        NotificationSystem::push(label, {0.8f, 0.8f, 0.8f, 1.0f});
+        TracyMessageL("WeaponSwitch");
+        return;
+    }
+
+    // Find where the currently equipped weapon is in the sorted list.
+    int curWeaponPos = -1;
+    if (currentIdx >= 0)
+    {
+        for (int i = 0; i < static_cast<int>(weapons.size()); ++i)
         {
-            if (weaponSlots[i] == returnSlot)
+            if (weapons[i].inv_index == currentIdx)
             {
                 curWeaponPos = i;
                 break;
@@ -136,25 +146,24 @@ static void cycleWeapon(const ItemRegistry& items, Inventory& inv, Equipment& eq
         }
     }
 
+    // Cycle: fists(0) -> weapon[0](1) -> ... -> weapon[N-1](N) -> fists(0).
     const int curPos = (curWeaponPos >= 0) ? (curWeaponPos + 1) : 0;
-    const int total = 1 + static_cast<int>(weaponSlots.size());
+    const int total = 1 + static_cast<int>(weapons.size());
     const int nextPos = (curPos + dir + total) % total;
 
     if (nextPos == 0)
     {
+        InventoryOps::unequipSlot(equip, hand);
         const char* label = (hand == EquipSlot::LeftHand) ? "Left: Unarmed" : "Right: Unarmed";
         NotificationSystem::push(label, {0.8f, 0.8f, 0.8f, 1.0f});
         TracyMessageL("WeaponSwitch");
         return;
     }
 
-    const int invIdx = weaponSlots[nextPos - 1];
-    handSlot = std::move(inv.items[invIdx]);
-    handSlot.quantity = 1;
-    handSlotIdx = invIdx;
-    inv.items.erase(inv.items.begin() + invIdx);
+    const auto& pick = weapons[nextPos - 1];
+    InventoryOps::equipItemToSlot(equip, pick.inv_index, hand);
 
-    const ItemDef* def = items.find(handSlot.config_path);
+    const ItemDef* def = items.find(pick.path);
     const std::string name = (def != nullptr) ? def->name : "Unknown";
     const char* prefix = (hand == EquipSlot::LeftHand) ? "Left: " : "Right: ";
     NotificationSystem::push(prefix + name, {0.8f, 0.8f, 0.8f, 1.0f});
@@ -162,46 +171,43 @@ static void cycleWeapon(const ItemRegistry& items, Inventory& inv, Equipment& eq
 }
 
 // Accumulate weight from a single equipped slot.
-static float slotWeight(const ItemInstance& slot, const ItemRegistry& items)
+static float slotWeight(const Inventory& inv, const Equipment& equip, EquipSlot slot,
+                        const ItemRegistry& items)
 {
-    if (slot.empty())
+    const auto* item = InventoryOps::equippedItem(inv, equip, slot);
+    if (item == nullptr)
         return 0.0f;
-    const ItemDef* def = items.find(slot.config_path);
+    const ItemDef* def = items.find(item->config_path);
     return (def != nullptr) ? def->weight : 0.0f;
 }
 
-// Recompute ArmorStats from all equipped armor, shield, weapon, and accessories.
-static void recomputeArmorStats(entt::registry& reg, entt::entity entity, const Equipment& equip,
-                                const ItemRegistry& items, const FormulaConfig& f)
+static void recomputeArmorStats(entt::registry& reg, entt::entity entity, const Inventory& inv,
+                                const Equipment& equip, const ItemRegistry& items,
+                                const FormulaConfig& f)
 {
     auto& armor = reg.get_or_emplace<ArmorStats>(entity);
     armor.total_defense = 0.0f;
     armor.total_poise_bonus = 0.0f;
     armor.total_weight = 0.0f;
 
-    // Sum armor defense + poise from armor slots.
-    for (const auto* slot : {&equip.head, &equip.chest, &equip.legs, &equip.feet})
+    for (const auto armorSlot : {EquipSlot::Head, EquipSlot::Chest, EquipSlot::Legs, EquipSlot::Feet})
     {
-        if (slot->empty())
+        const auto* item = InventoryOps::equippedItem(inv, equip, armorSlot);
+        if (item == nullptr)
             continue;
-        const ItemDef* def = items.find(slot->config_path);
+        const ItemDef* def = items.find(item->config_path);
         if (def == nullptr)
             continue;
         armor.total_defense += def->defense_bonus;
         armor.total_poise_bonus += def->poise_bonus;
     }
 
-    // Sum weight from ALL equipped slots (weapons, armor, shield, accessories).
-    armor.total_weight += slotWeight(equip.right_hand, items);
-    armor.total_weight += slotWeight(equip.left_hand, items);
-    armor.total_weight += slotWeight(equip.head, items);
-    armor.total_weight += slotWeight(equip.chest, items);
-    armor.total_weight += slotWeight(equip.legs, items);
-    armor.total_weight += slotWeight(equip.feet, items);
-    armor.total_weight += slotWeight(equip.accessory_1, items);
-    armor.total_weight += slotWeight(equip.accessory_2, items);
+    static constexpr EquipSlot ALL[] = {EquipSlot::RightHand, EquipSlot::LeftHand, EquipSlot::Head,
+                                        EquipSlot::Chest,     EquipSlot::Legs,     EquipSlot::Feet,
+                                        EquipSlot::Accessory1, EquipSlot::Accessory2};
+    for (const auto s : ALL)
+        armor.total_weight += slotWeight(inv, equip, s, items);
 
-    // Compute equip load ratio and tier.
     float capacity = f.equip_load.base_capacity;
     if (reg.all_of<Stats>(entity))
     {
@@ -212,15 +218,14 @@ static void recomputeArmorStats(entt::registry& reg, entt::entity entity, const 
     armor.equip_load_ratio = (capacity > 0.0f) ? (armor.total_weight / capacity) : 1.0f;
 
     if (armor.equip_load_ratio > f.equip_load.heavy_threshold)
-        armor.load_tier = 3; // overloaded
+        armor.load_tier = 3;
     else if (armor.equip_load_ratio > f.equip_load.medium_threshold)
-        armor.load_tier = 2; // heavy
+        armor.load_tier = 2;
     else if (armor.equip_load_ratio > f.equip_load.light_threshold)
-        armor.load_tier = 1; // medium
+        armor.load_tier = 1;
     else
-        armor.load_tier = 0; // light
+        armor.load_tier = 0;
 
-    // Base poise from stats + flat bonus from equipped armor.
     if (reg.all_of<Poise>(entity))
     {
         float base = 0.0f;
@@ -234,27 +239,33 @@ static void recomputeArmorStats(entt::registry& reg, entt::entity entity, const 
     }
 }
 
-// Save current weapon XP back to inventory slot (real weapon) or Body (unarmed).
-static void saveWeaponXP(entt::registry& reg, entt::entity entity, const std::string& oldConfigPath)
+// Save weapon XP from the live Weapon struct back to inventory item or Body.
+static void saveWeaponXP(entt::registry& reg, entt::entity entity, const Weapon& w,
+                         const std::string& oldConfigPath, EquipSlot slot)
 {
-    if (!reg.all_of<PlayerActions>(entity) || !reg.all_of<WeaponXP>(entity) ||
-        oldConfigPath == "__unsynced__")
+    if (!reg.all_of<PlayerActions>(entity) || oldConfigPath == "__unsynced__")
         return;
 
-    const auto& wxp = reg.get<WeaponXP>(entity);
     if (oldConfigPath.empty())
     {
-        // Was unarmed -- save to Body.
         auto* body = reg.try_get<Body>(entity);
         if (body != nullptr)
         {
-            body->unarmed_xp_level = wxp.level;
-            body->unarmed_xp_current = wxp.current_xp;
+            const bool isLeft = (slot == EquipSlot::LeftHand);
+            if (isLeft)
+            {
+                body->unarmed_xp_level_left = w.wxp_level;
+                body->unarmed_xp_current_left = w.wxp_current;
+            }
+            else
+            {
+                body->unarmed_xp_level_right = w.wxp_level;
+                body->unarmed_xp_current_right = w.wxp_current;
+            }
         }
     }
     else
     {
-        // Was a real weapon -- find it in inventory by config_path and save.
         auto* inv = reg.try_get<Inventory>(entity);
         if (inv != nullptr)
         {
@@ -262,8 +273,8 @@ static void saveWeaponXP(entt::registry& reg, entt::entity entity, const std::st
             {
                 if (item.config_path == oldConfigPath)
                 {
-                    item.weapon_xp_level = wxp.level;
-                    item.weapon_xp_current = wxp.current_xp;
+                    item.weapon_xp_level = w.wxp_level;
+                    item.weapon_xp_current = w.wxp_current;
                     break;
                 }
             }
@@ -271,58 +282,61 @@ static void saveWeaponXP(entt::registry& reg, entt::entity entity, const std::st
     }
 }
 
-// Load weapon XP from the new inventory slot (real weapon) or Body (unarmed).
-static void loadWeaponXP(entt::registry& reg, entt::entity entity, const Equipment& equip,
+// Load weapon XP from inventory item or Body into the live Weapon struct.
+static void loadWeaponXP(entt::registry& reg, entt::entity entity, Weapon& w,
+                         const Inventory& inv, const Equipment& equip, EquipSlot slot,
                          const FormulaConfig& f)
 {
-    auto& wxp = reg.get_or_emplace<WeaponXP>(entity);
     if (!reg.all_of<PlayerActions>(entity))
         return;
 
-    if (equip.right_hand.empty())
+    const auto* item = InventoryOps::equippedItem(inv, equip, slot);
+    if (item == nullptr)
     {
         const auto* body = reg.try_get<Body>(entity);
-        wxp.level = body ? body->unarmed_xp_level : 1;
-        wxp.current_xp = body ? body->unarmed_xp_current : 0.0f;
+        const bool isLeft = (slot == EquipSlot::LeftHand);
+        if (isLeft)
+        {
+            w.wxp_level = body ? body->unarmed_xp_level_left : 1;
+            w.wxp_current = body ? body->unarmed_xp_current_left : 0.0f;
+        }
+        else
+        {
+            w.wxp_level = body ? body->unarmed_xp_level_right : 1;
+            w.wxp_current = body ? body->unarmed_xp_current_right : 0.0f;
+        }
     }
     else
     {
-        wxp.level = equip.right_hand.weapon_xp_level;
-        wxp.current_xp = equip.right_hand.weapon_xp_current;
+        w.wxp_level = item->weapon_xp_level;
+        w.wxp_current = item->weapon_xp_current;
     }
-    wxp.xp_to_next =
-        f.weapon_xp.base_xp * std::pow(static_cast<float>(wxp.level), f.weapon_xp.exponent);
+    w.wxp_to_next =
+        f.weapon_xp.base_xp * std::pow(static_cast<float>(w.wxp_level), f.weapon_xp.exponent);
 }
 
-// Sync Equipment slot → Weapon/Shield components when the equipped item changes.
-static void syncEquipmentSlots(entt::registry& reg, entt::entity entity, Equipment& equip,
-                               const ItemRegistry& items, const FormulaConfig& f)
+static void syncEquipmentSlots(entt::registry& reg, entt::entity entity, const Inventory& inv,
+                               Equipment& equip, const ItemRegistry& items, const FormulaConfig& f)
 {
-    if (equip.right_hand.config_path != equip.synced_right_hand)
+    const std::string rhPath = InventoryOps::equippedPath(inv, equip, EquipSlot::RightHand);
+
+    if (rhPath != equip.synced_right_hand)
     {
-        saveWeaponXP(reg, entity, equip.synced_right_hand);
-
-        equip.synced_right_hand = equip.right_hand.config_path;
         auto& w = reg.get_or_emplace<Weapon>(entity);
+        saveWeaponXP(reg, entity, w, equip.synced_right_hand, EquipSlot::RightHand);
 
-        if (equip.right_hand.empty())
+        equip.synced_right_hand = rhPath;
+
+        const ItemDef* def = rhPath.empty() ? nullptr : items.find(rhPath);
+        if (def != nullptr)
+            weaponFromDef(w, *def);
+        else
         {
             const Body* body = reg.try_get<Body>(entity);
             weaponFromFist(w, body, f);
         }
-        else
-        {
-            const ItemDef* def = items.find(equip.right_hand.config_path);
-            if (def != nullptr)
-                weaponFromDef(w, *def);
-            else
-            {
-                const Body* body = reg.try_get<Body>(entity);
-                weaponFromFist(w, body, f);
-            }
-        }
 
-        loadWeaponXP(reg, entity, equip, f);
+        loadWeaponXP(reg, entity, w, inv, equip, EquipSlot::RightHand, f);
 
         if (w.ranged)
         {
@@ -331,11 +345,10 @@ static void syncEquipmentSlots(entt::registry& reg, entt::entity entity, Equipme
             rs.reload_time = 1.0f;
             rs.reloading = false;
             rs.reload_timer = 0.0f;
-            const ItemDef* rdef = items.find(equip.right_hand.config_path);
-            if (rdef != nullptr)
+            if (def != nullptr)
             {
-                rs.magazine_size = rdef->magazine_size;
-                rs.reload_time = rdef->reload_time;
+                rs.magazine_size = def->magazine_size;
+                rs.reload_time = def->reload_time;
             }
             rs.ammo_in_magazine = rs.magazine_size;
         }
@@ -345,40 +358,39 @@ static void syncEquipmentSlots(entt::registry& reg, entt::entity entity, Equipme
         }
     }
 
-    if (equip.left_hand.config_path != equip.synced_left_hand)
-    {
-        equip.synced_left_hand = equip.left_hand.config_path;
+    const std::string lhPath = InventoryOps::equippedPath(inv, equip, EquipSlot::LeftHand);
 
-        if (equip.left_hand.empty())
+    if (lhPath != equip.synced_left_hand)
+    {
+        auto& lw = reg.get_or_emplace<LeftWeapon>(entity);
+        saveWeaponXP(reg, entity, lw, equip.synced_left_hand, EquipSlot::LeftHand);
+
+        equip.synced_left_hand = lhPath;
+
+        const ItemDef* def = lhPath.empty() ? nullptr : items.find(lhPath);
+
+        if (def != nullptr && def->max_guard > 0.0f)
         {
-            reg.remove<Shield>(entity);
-            // Left hand empty -> clear the LeftWeapon to unarmed.
-            auto& lw = reg.get_or_emplace<LeftWeapon>(entity);
+            auto& s = reg.get_or_emplace<Shield>(entity);
+            s.max_guard = def->max_guard;
+            s.guard_health = def->max_guard;
+            s.blocking = false;
             const Body* body = reg.try_get<Body>(entity);
             weaponFromFist(lw, body, f);
         }
+        else if (def != nullptr && def->category == ItemCategory::Weapon)
+        {
+            weaponFromDef(lw, *def);
+            reg.remove<Shield>(entity);
+        }
         else
         {
-            const ItemDef* def = items.find(equip.left_hand.config_path);
-            if (def != nullptr && def->max_guard > 0.0f)
-            {
-                auto& s = reg.get_or_emplace<Shield>(entity);
-                s.max_guard = def->max_guard;
-                s.guard_health = def->max_guard;
-                s.blocking = false;
-                // Shield in left hand -> clear the LeftWeapon.
-                auto& lw = reg.get_or_emplace<LeftWeapon>(entity);
-                const Body* body = reg.try_get<Body>(entity);
-                weaponFromFist(lw, body, f);
-            }
-            else if (def != nullptr && def->category == ItemCategory::Weapon)
-            {
-                // Weapon in left hand.
-                auto& lw = reg.get_or_emplace<LeftWeapon>(entity);
-                weaponFromDef(lw, *def);
-                reg.remove<Shield>(entity);
-            }
+            reg.remove<Shield>(entity);
+            const Body* body = reg.try_get<Body>(entity);
+            weaponFromFist(lw, body, f);
         }
+
+        loadWeaponXP(reg, entity, lw, inv, equip, EquipSlot::LeftHand, f);
     }
 }
 
@@ -393,14 +405,12 @@ void EquipmentSystem::update(EntityManager& em)
     for (auto [entity, actions, inv, equip] :
          reg.view<PlayerActions, Inventory, Equipment>().each())
     {
-        // Right-hand cycling (C/V).
         const bool rightSwitched = actions.cycle_weapon || actions.cycle_weapon_prev;
         if (actions.cycle_weapon)
             cycleWeapon(items, inv, equip, EquipSlot::RightHand, 1);
         else if (actions.cycle_weapon_prev)
             cycleWeapon(items, inv, equip, EquipSlot::RightHand, -1);
 
-        // Left-hand cycling (Z/X).
         const bool leftSwitched = actions.cycle_left_weapon || actions.cycle_left_weapon_prev;
         if (actions.cycle_left_weapon)
             cycleWeapon(items, inv, equip, EquipSlot::LeftHand, 1);
@@ -415,9 +425,9 @@ void EquipmentSystem::update(EntityManager& em)
         }
     }
 
-    for (auto [entity, equip] : reg.view<Equipment>().each())
+    for (auto [entity, inv, equip] : reg.view<Inventory, Equipment>().each())
     {
-        syncEquipmentSlots(reg, entity, equip, items, f);
-        recomputeArmorStats(reg, entity, equip, items, f);
+        syncEquipmentSlots(reg, entity, inv, equip, items, f);
+        recomputeArmorStats(reg, entity, inv, equip, items, f);
     }
 }

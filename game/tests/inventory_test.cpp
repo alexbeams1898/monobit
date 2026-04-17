@@ -156,7 +156,7 @@ TEST_CASE("addItem stackable remainder gets correct quantity", "[inventory]")
     REQUIRE(inv.items.size() == 1);
     REQUIRE(inv.items[0].quantity == 95);
 
-    // Add 10 more — 4 merge into existing, 6 overflow to new slot.
+    // Add 10 more -- 4 merge into existing, 6 overflow to new slot.
     REQUIRE(
         InventoryOps::addItem(inv, makeItem("config/items/materials/scrap_metal.json", 10), reg));
     REQUIRE(inv.items.size() == 2);
@@ -173,7 +173,7 @@ TEST_CASE("addItem stackable overflow with full inventory", "[inventory]")
     // Fill one stack to max.
     InventoryOps::addItem(inv, makeItem("config/items/materials/scrap_metal.json", 99), reg);
 
-    // Try to add more — no room for overflow slot.
+    // Try to add more -- no room for overflow slot.
     REQUIRE_FALSE(
         InventoryOps::addItem(inv, makeItem("config/items/materials/scrap_metal.json", 5), reg));
     // Original stack unchanged.
@@ -189,11 +189,12 @@ TEST_CASE("removeItem valid index", "[inventory]")
     auto reg = makeRegistry();
     Inventory inv;
     inv.max_slots = 5;
+    Equipment equip;
 
     InventoryOps::addItem(inv, makeItem("config/items/weapons/shiv.json"), reg);
     InventoryOps::addItem(inv, makeItem("config/items/weapons/iron_sword.json"), reg);
 
-    REQUIRE(InventoryOps::removeItem(inv, 0));
+    REQUIRE(InventoryOps::removeItem(inv, equip, 0));
     REQUIRE(inv.items.size() == 1);
     REQUIRE(inv.items[0].config_path == "config/items/weapons/iron_sword.json");
 }
@@ -201,15 +202,16 @@ TEST_CASE("removeItem valid index", "[inventory]")
 TEST_CASE("removeItem invalid index returns false", "[inventory]")
 {
     Inventory inv;
-    REQUIRE_FALSE(InventoryOps::removeItem(inv, 0));
-    REQUIRE_FALSE(InventoryOps::removeItem(inv, -1));
+    Equipment equip;
+    REQUIRE_FALSE(InventoryOps::removeItem(inv, equip, 0));
+    REQUIRE_FALSE(InventoryOps::removeItem(inv, equip, -1));
 }
 
 // ---------------------------------------------------------------------------
-// equipItem tests
+// equipItemToSlot tests
 // ---------------------------------------------------------------------------
 
-TEST_CASE("equipItem weapon goes to right_hand", "[inventory]")
+TEST_CASE("equipItemToSlot weapon goes to right_hand", "[inventory]")
 {
     auto reg = makeRegistry();
     Inventory inv;
@@ -217,32 +219,37 @@ TEST_CASE("equipItem weapon goes to right_hand", "[inventory]")
     Equipment equip;
 
     InventoryOps::addItem(inv, makeItem("config/items/weapons/shiv.json"), reg);
-    REQUIRE(InventoryOps::equipItem(inv, equip, 0, reg));
+    REQUIRE(InventoryOps::equipItemToSlot(equip, 0, EquipSlot::RightHand));
 
-    REQUIRE(inv.items.empty());
-    REQUIRE(equip.right_hand.config_path == "config/items/weapons/shiv.json");
-}
-
-TEST_CASE("equipItem swap returns old item to inventory", "[inventory]")
-{
-    auto reg = makeRegistry();
-    Inventory inv;
-    inv.max_slots = 5;
-    Equipment equip;
-
-    InventoryOps::addItem(inv, makeItem("config/items/weapons/shiv.json"), reg);
-    InventoryOps::equipItem(inv, equip, 0, reg);
-
-    InventoryOps::addItem(inv, makeItem("config/items/weapons/iron_sword.json"), reg);
-    REQUIRE(InventoryOps::equipItem(inv, equip, 0, reg));
-
-    REQUIRE(equip.right_hand.config_path == "config/items/weapons/iron_sword.json");
-    // Old shiv should be back in inventory.
+    // Item stays in inventory; equip slot points at it.
     REQUIRE(inv.items.size() == 1);
+    REQUIRE(equip.right_hand == 0);
+    REQUIRE(InventoryOps::equippedPath(inv, equip, EquipSlot::RightHand) ==
+            "config/items/weapons/shiv.json");
+}
+
+TEST_CASE("equipItemToSlot swap unequips old item", "[inventory]")
+{
+    auto reg = makeRegistry();
+    Inventory inv;
+    inv.max_slots = 5;
+    Equipment equip;
+
+    InventoryOps::addItem(inv, makeItem("config/items/weapons/shiv.json"), reg);
+    InventoryOps::addItem(inv, makeItem("config/items/weapons/iron_sword.json"), reg);
+    InventoryOps::equipItemToSlot(equip, 0, EquipSlot::RightHand);
+
+    // Equip a different item in the same slot.
+    REQUIRE(InventoryOps::equipItemToSlot(equip, 1, EquipSlot::RightHand));
+
+    REQUIRE(equip.right_hand == 1);
+    REQUIRE(InventoryOps::equippedPath(inv, equip, EquipSlot::RightHand) ==
+            "config/items/weapons/iron_sword.json");
+    // Old shiv is still in inventory at index 0, just no longer equipped.
     REQUIRE(inv.items[0].config_path == "config/items/weapons/shiv.json");
 }
 
-TEST_CASE("equipItem shield defaults to right_hand (same as weapons)", "[inventory]")
+TEST_CASE("equipItemToSlot shield to left hand", "[inventory]")
 {
     auto reg = makeRegistry();
     Inventory inv;
@@ -250,28 +257,14 @@ TEST_CASE("equipItem shield defaults to right_hand (same as weapons)", "[invento
     Equipment equip;
 
     InventoryOps::addItem(inv, makeItem("config/items/armor/wooden_shield.json"), reg);
-    REQUIRE(InventoryOps::equipItem(inv, equip, 0, reg));
+    REQUIRE(InventoryOps::equipItemToSlot(equip, 0, EquipSlot::LeftHand));
 
-    // Shields no longer auto-route to the left hand. Like weapons, they
-    // default to right hand. Use equipItemToSlot() to target a specific hand.
-    REQUIRE(equip.right_hand.config_path == "config/items/armor/wooden_shield.json");
+    REQUIRE(InventoryOps::equippedPath(inv, equip, EquipSlot::LeftHand) ==
+            "config/items/armor/wooden_shield.json");
+    REQUIRE(InventoryOps::slotEmpty(equip, EquipSlot::RightHand));
 }
 
-TEST_CASE("equipItemToSlot places item in specified hand", "[inventory]")
-{
-    auto reg = makeRegistry();
-    Inventory inv;
-    inv.max_slots = 5;
-    Equipment equip;
-
-    InventoryOps::addItem(inv, makeItem("config/items/armor/wooden_shield.json"), reg);
-    REQUIRE(InventoryOps::equipItemToSlot(inv, equip, 0, EquipSlot::LeftHand, reg));
-
-    REQUIRE(equip.left_hand.config_path == "config/items/armor/wooden_shield.json");
-    REQUIRE(equip.right_hand.empty());
-}
-
-TEST_CASE("equipItem armor goes to correct slot", "[inventory]")
+TEST_CASE("equipItemToSlot armor goes to chest slot", "[inventory]")
 {
     auto reg = makeRegistry();
     Inventory inv;
@@ -279,12 +272,13 @@ TEST_CASE("equipItem armor goes to correct slot", "[inventory]")
     Equipment equip;
 
     InventoryOps::addItem(inv, makeItem("config/items/armor/leather_chest.json"), reg);
-    REQUIRE(InventoryOps::equipItem(inv, equip, 0, reg));
+    REQUIRE(InventoryOps::equipItemToSlot(equip, 0, EquipSlot::Chest));
 
-    REQUIRE(equip.chest.config_path == "config/items/armor/leather_chest.json");
+    REQUIRE(InventoryOps::equippedPath(inv, equip, EquipSlot::Chest) ==
+            "config/items/armor/leather_chest.json");
 }
 
-TEST_CASE("equipItem two-handed weapon does not clear left_hand", "[inventory]")
+TEST_CASE("equipItemToSlot two-handed weapon does not clear left_hand", "[inventory]")
 {
     // With the new runtime two-hand toggle, equipping a two-handed-capable
     // weapon leaves the left hand occupied. Suppression happens at render /
@@ -295,33 +289,22 @@ TEST_CASE("equipItem two-handed weapon does not clear left_hand", "[inventory]")
     Equipment equip;
 
     InventoryOps::addItem(inv, makeItem("config/items/armor/wooden_shield.json"), reg);
-    InventoryOps::equipItem(inv, equip, 0, reg);
-    REQUIRE_FALSE(equip.left_hand.empty());
-
     InventoryOps::addItem(inv, makeItem("config/items/weapons/iron_sword.json"), reg);
-    REQUIRE(InventoryOps::equipItem(inv, equip, 0, reg));
+    InventoryOps::equipItemToSlot(equip, 0, EquipSlot::LeftHand);
+    REQUIRE_FALSE(InventoryOps::slotEmpty(equip, EquipSlot::LeftHand));
 
-    REQUIRE(equip.right_hand.config_path == "config/items/weapons/iron_sword.json");
-    REQUIRE_FALSE(equip.left_hand.empty());
-}
+    REQUIRE(InventoryOps::equipItemToSlot(equip, 1, EquipSlot::RightHand));
 
-TEST_CASE("equipItem rejects non-equippable items", "[inventory]")
-{
-    auto reg = makeRegistry();
-    Inventory inv;
-    inv.max_slots = 5;
-    Equipment equip;
-
-    InventoryOps::addItem(inv, makeItem("config/items/materials/scrap_metal.json"), reg);
-    REQUIRE_FALSE(InventoryOps::equipItem(inv, equip, 0, reg));
-    REQUIRE(inv.items.size() == 1);
+    REQUIRE(InventoryOps::equippedPath(inv, equip, EquipSlot::RightHand) ==
+            "config/items/weapons/iron_sword.json");
+    REQUIRE_FALSE(InventoryOps::slotEmpty(equip, EquipSlot::LeftHand));
 }
 
 // ---------------------------------------------------------------------------
 // unequipSlot tests
 // ---------------------------------------------------------------------------
 
-TEST_CASE("unequipSlot moves item to inventory", "[inventory]")
+TEST_CASE("unequipSlot clears the slot index", "[inventory]")
 {
     auto reg = makeRegistry();
     Inventory inv;
@@ -329,40 +312,21 @@ TEST_CASE("unequipSlot moves item to inventory", "[inventory]")
     Equipment equip;
 
     InventoryOps::addItem(inv, makeItem("config/items/weapons/shiv.json"), reg);
-    InventoryOps::equipItem(inv, equip, 0, reg);
-    REQUIRE(inv.items.empty());
+    InventoryOps::equipItemToSlot(equip, 0, EquipSlot::RightHand);
+    REQUIRE_FALSE(InventoryOps::slotEmpty(equip, EquipSlot::RightHand));
 
-    REQUIRE(InventoryOps::unequipSlot(inv, equip, EquipSlot::RightHand));
-    REQUIRE(equip.right_hand.empty());
+    InventoryOps::unequipSlot(equip, EquipSlot::RightHand);
+    REQUIRE(InventoryOps::slotEmpty(equip, EquipSlot::RightHand));
+    // Item stays in inventory.
     REQUIRE(inv.items.size() == 1);
     REQUIRE(inv.items[0].config_path == "config/items/weapons/shiv.json");
 }
 
-TEST_CASE("unequipSlot fails when inventory full", "[inventory]")
+TEST_CASE("unequipSlot on empty slot is a no-op", "[inventory]")
 {
-    auto reg = makeRegistry();
-    Inventory inv;
-    inv.max_slots = 1;
     Equipment equip;
-
-    InventoryOps::addItem(inv, makeItem("config/items/weapons/shiv.json"), reg);
-    InventoryOps::equipItem(inv, equip, 0, reg);
-
-    // Fill inventory.
-    InventoryOps::addItem(inv, makeItem("config/items/weapons/iron_sword.json"), reg);
-    REQUIRE(static_cast<int>(inv.items.size()) >= inv.max_slots);
-
-    REQUIRE_FALSE(InventoryOps::unequipSlot(inv, equip, EquipSlot::RightHand));
-    REQUIRE_FALSE(equip.right_hand.empty());
-}
-
-TEST_CASE("unequipSlot on empty slot returns false", "[inventory]")
-{
-    Inventory inv;
-    inv.max_slots = 5;
-    Equipment equip;
-
-    REQUIRE_FALSE(InventoryOps::unequipSlot(inv, equip, EquipSlot::RightHand));
+    InventoryOps::unequipSlot(equip, EquipSlot::RightHand);
+    REQUIRE(InventoryOps::slotEmpty(equip, EquipSlot::RightHand));
 }
 
 // ---------------------------------------------------------------------------

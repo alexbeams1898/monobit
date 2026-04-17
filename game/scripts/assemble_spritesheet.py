@@ -34,6 +34,7 @@ Usage:
 """
 
 import argparse
+import json
 import os
 import sys
 
@@ -183,52 +184,86 @@ def build_manifest() -> list:
             os.path.join(ASSEMBLED_ROOT, "eyes", f"{color}.png"),
         ))
 
+    PALETTE_ROOT = os.path.join(RAW_ROOT, "_palettes")
+    CLOTH_PALETTE = os.path.join(PALETTE_ROOT, "cloth_ulpc.json")
+    HAIR_PALETTE = os.path.join(PALETTE_ROOT, "hair_ulpc.json")
+    HAIR_BASE_COLOR = "orange"  # hair masters use the orange palette as their base
+
+    # Mapping: our color name -> palette JSON key for cloth layers.
+    CLOTH_PAL_MAP = {
+        "white": "white", "black": "black", "gray": "gray", "brown": "brown",
+        "tan": "tan", "red": "red", "orange": "orange", "yellow": "yellow",
+        "green": "green", "blue": "blue", "purple": "purple", "pink": "pink",
+    }
+    # Mapping: our color name -> palette JSON key for hair layers.
+    HAIR_PAL_MAP = {
+        "black": "black", "charcoal": "dark_gray", "gray": "gray",
+        "brown": "dark_brown", "ash_brown": "ash", "chestnut": "chestnut",
+        "blonde": "blonde", "red": "red", "orange": "orange",
+        "pink": "pink", "blue": "blue", "green": "green",
+    }
+
+    # All palette-swappable layers: assemble from master + palette swap.
+    # No per-color raw directories needed — master has all animations.
+
     # Hair -> assembled/hair/<style>_<color>.png
     for style in HAIR_STYLES:
+        master = os.path.join(RAW_ROOT, "hair", style, "master")
         for color in HAIR_COLORS:
+            pal_color = HAIR_PAL_MAP.get(color, color)
             jobs.append((
-                os.path.join(RAW_ROOT, "hair", style, color),
-                os.path.join(ASSEMBLED_ROOT, "hair", f"{style}_{color}.png"),
+                master, os.path.join(ASSEMBLED_ROOT, "hair", f"{style}_{color}.png"),
+                None, HAIR_PALETTE, pal_color, HAIR_BASE_COLOR,
             ))
 
     # Facial hair -> assembled/facial/<style>_<color>.png
     for style in FACIAL_STYLES:
+        master = os.path.join(RAW_ROOT, "facial", style, "master")
         for color in HAIR_COLORS:
+            pal_color = HAIR_PAL_MAP.get(color, color)
             jobs.append((
-                os.path.join(RAW_ROOT, "facial", style, color),
-                os.path.join(ASSEMBLED_ROOT, "facial", f"{style}_{color}.png"),
+                master, os.path.join(ASSEMBLED_ROOT, "facial", f"{style}_{color}.png"),
+                None, HAIR_PALETTE, pal_color, HAIR_BASE_COLOR,
             ))
 
     # Torso -> assembled/torso/<style>_<color>.png
     for style in ("shortsleeve", "longsleeve"):
+        master = os.path.join(RAW_ROOT, "torso", style, "master")
         for color in CLOTH_COLORS:
+            pal_color = CLOTH_PAL_MAP.get(color, color)
             jobs.append((
-                os.path.join(RAW_ROOT, "torso", style, color),
-                os.path.join(ASSEMBLED_ROOT, "torso", f"{style}_{color}.png"),
+                master, os.path.join(ASSEMBLED_ROOT, "torso", f"{style}_{color}.png"),
+                None, CLOTH_PALETTE, pal_color,
             ))
 
     # Legs -> assembled/legs/<style>_<color>.png
     for style in ("pants", "shorts"):
+        master = os.path.join(RAW_ROOT, "legs", style, "master")
         for color in CLOTH_COLORS:
+            pal_color = CLOTH_PAL_MAP.get(color, color)
             jobs.append((
-                os.path.join(RAW_ROOT, "legs", style, color),
-                os.path.join(ASSEMBLED_ROOT, "legs", f"{style}_{color}.png"),
+                master, os.path.join(ASSEMBLED_ROOT, "legs", f"{style}_{color}.png"),
+                None, CLOTH_PALETTE, pal_color,
             ))
 
     # Feet -> assembled/feet/<style>_<color>.png
     for style in ("shoes", "boots"):
+        master = os.path.join(RAW_ROOT, "feet", style, "master")
         for color in FEET_COLORS:
+            pal_color = CLOTH_PAL_MAP.get(color, color)
             jobs.append((
-                os.path.join(RAW_ROOT, "feet", style, color),
-                os.path.join(ASSEMBLED_ROOT, "feet", f"{style}_{color}.png"),
+                master, os.path.join(ASSEMBLED_ROOT, "feet", f"{style}_{color}.png"),
+                None, CLOTH_PALETTE, pal_color,
             ))
 
     # Headwear -> assembled/headwear/<style>_<color>.png
     for style in HEADWEAR_STYLES:
+        master = os.path.join(RAW_ROOT, "headwear", style, "master")
         for color in HEADWEAR_COLORS:
+            pal_color = CLOTH_PAL_MAP.get(color, color)
             jobs.append((
-                os.path.join(RAW_ROOT, "headwear", style, color),
-                os.path.join(ASSEMBLED_ROOT, "headwear", f"{style}_{color}.png"),
+                master, os.path.join(ASSEMBLED_ROOT, "headwear", f"{style}_{color}.png"),
+                None, CLOTH_PALETTE, pal_color,
             ))
 
     return jobs
@@ -239,12 +274,41 @@ def build_manifest() -> list:
 # --------------------------------------------------------------------------- #
 
 
-def load_animation(src_dir: str, anim_key: str) -> Image.Image | None:
-    """Load an animation PNG, converting palette-indexed to RGBA."""
+def hex_to_rgb(h: str) -> tuple:
+    h = h.lstrip("#")
+    return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+
+
+def apply_palette_swap(img: Image.Image, palette_map: dict) -> Image.Image:
+    """Replace base palette colors with target palette colors in an RGBA image."""
+    data = img.load()
+    for y in range(img.size[1]):
+        for x in range(img.size[0]):
+            r, g, b, a = data[x, y]
+            if a == 0:
+                continue
+            key = (r, g, b)
+            if key in palette_map:
+                tr, tg, tb = palette_map[key]
+                data[x, y] = (tr, tg, tb, a)
+    return img
+
+
+def load_animation(src_dir: str, anim_key: str,
+                   master_dir: str | None = None,
+                   palette_map: dict | None = None) -> Image.Image | None:
+    """Load an animation PNG, converting palette-indexed to RGBA.
+    If the file doesn't exist in src_dir but a master exists, load the
+    master and apply palette_map to recolor it."""
     path = os.path.join(src_dir, f"{anim_key}.png")
-    if not os.path.exists(path):
-        return None
-    return Image.open(path).convert("RGBA")
+    if os.path.exists(path):
+        return Image.open(path).convert("RGBA")
+    if master_dir is not None and palette_map is not None:
+        master_path = os.path.join(master_dir, f"{anim_key}.png")
+        if os.path.exists(master_path):
+            img = Image.open(master_path).convert("RGBA")
+            return apply_palette_swap(img, palette_map)
+    return None
 
 
 def copy_frame(src: Image.Image, sx: int, sy: int,
@@ -254,12 +318,21 @@ def copy_frame(src: Image.Image, sx: int, sy: int,
     dst.alpha_composite(frame, dest=(dx, dy))
 
 
-def assemble_sheet(src_dir: str) -> Image.Image:
-    """Assemble one 2048x384 sheet from per-animation PNGs in src_dir."""
+def assemble_sheet(src_dir: str, master_dir: str | None = None,
+                   palette_map: dict | None = None) -> Image.Image:
+    """Assemble one sheet from per-animation PNGs in src_dir.
+    Falls back to master_dir + palette_map for missing animations.
+    If palette_map is set and master_dir is None, palette swap is applied
+    to all animations loaded from src_dir (master-only mode)."""
     sheet = Image.new("RGBA", (SHEET_WIDTH, SHEET_HEIGHT), (0, 0, 0, 0))
 
+    # In master-only mode (no separate master_dir), apply palette to src_dir directly.
+    direct_palette = palette_map if master_dir is None else None
+
     for our_row, anim_key, max_frames, broadcast, start_frame in STATE_ROWS:
-        anim = load_animation(src_dir, anim_key)
+        anim = load_animation(src_dir, anim_key, master_dir, palette_map)
+        if anim is not None and direct_palette is not None:
+            anim = apply_palette_swap(anim, direct_palette)
         if anim is None:
             continue
 
@@ -278,14 +351,43 @@ def assemble_sheet(src_dir: str) -> Image.Image:
     return sheet
 
 
-def run_job(src_dir: str, out_path: str, force: bool) -> tuple[bool, str]:
+def load_palette_map(palette_file: str, base_name: str, target_name: str) -> dict | None:
+    """Build a {(r,g,b): (r,g,b)} map from base palette to target palette."""
+    if not os.path.exists(palette_file):
+        return None
+    with open(palette_file) as f:
+        palettes = json.load(f)
+    base = palettes.get(base_name)
+    target = palettes.get(target_name)
+    if base is None or target is None:
+        return None
+    if len(base) != len(target):
+        return None
+    return {hex_to_rgb(b): hex_to_rgb(t) for b, t in zip(base, target)}
+
+
+def run_job(job: tuple, force: bool) -> tuple[bool, str]:
     """Assemble one sheet. Returns (success, status_msg)."""
-    if not os.path.isdir(src_dir):
+    src_dir = job[0]
+    out_path = job[1]
+    master_dir = job[2] if len(job) > 2 else None
+    palette_file = job[3] if len(job) > 3 else None
+    palette_color = job[4] if len(job) > 4 else None
+    palette_base = job[5] if len(job) > 5 else "white"
+
+    if not os.path.isdir(src_dir) and master_dir is None:
         return False, f"MISS src dir: {src_dir}"
     if os.path.exists(out_path) and not force:
         return True, f"SKIP {out_path}"
 
-    sheet = assemble_sheet(src_dir)
+    palette_map = None
+    if palette_file and palette_color:
+        palette_map = load_palette_map(palette_file, palette_base, palette_color)
+
+    if not os.path.isdir(src_dir):
+        src_dir = master_dir if master_dir else src_dir
+
+    sheet = assemble_sheet(src_dir, master_dir, palette_map)
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     sheet.save(out_path)
     return True, f"OK   {out_path}"
@@ -311,8 +413,8 @@ def main() -> None:
     built = 0
     skipped = 0
     missed = 0
-    for src, dst in jobs:
-        ok, msg = run_job(src, dst, args.force)
+    for job in jobs:
+        ok, msg = run_job(job, args.force)
         if not ok:
             print(f"  {msg}")
             missed += 1

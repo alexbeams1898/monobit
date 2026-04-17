@@ -3,7 +3,7 @@
 namespace InventoryOps
 {
 
-ItemInstance& slotRef(Equipment& equip, EquipSlot slot)
+int& slotIndex(Equipment& equip, EquipSlot slot)
 {
     switch (slot)
     {
@@ -27,7 +27,7 @@ ItemInstance& slotRef(Equipment& equip, EquipSlot slot)
     }
 }
 
-const ItemInstance& slotRef(const Equipment& equip, EquipSlot slot)
+int slotIndexConst(const Equipment& equip, EquipSlot slot)
 {
     switch (slot)
     {
@@ -51,37 +51,71 @@ const ItemInstance& slotRef(const Equipment& equip, EquipSlot slot)
     }
 }
 
-// Determine which EquipSlot an item belongs in based on its definition.
-// Weapons and shields default to RightHand but can be placed in either hand
-// via equipItemToSlot(). Only armor and accessories have fixed slots.
-static EquipSlot targetSlot(const ItemDef& def)
+const ItemInstance* equippedItem(const Inventory& inv, const Equipment& equip, EquipSlot slot)
 {
-    if (def.category == ItemCategory::Weapon)
-        return EquipSlot::RightHand;
+    const int idx = slotIndexConst(equip, slot);
+    if (idx < 0 || idx >= static_cast<int>(inv.items.size()))
+        return nullptr;
+    return &inv.items[idx];
+}
 
-    if (def.category == ItemCategory::Armor)
+ItemInstance* equippedItemMut(Inventory& inv, const Equipment& equip, EquipSlot slot)
+{
+    const int idx = slotIndexConst(equip, slot);
+    if (idx < 0 || idx >= static_cast<int>(inv.items.size()))
+        return nullptr;
+    return &inv.items[idx];
+}
+
+std::string equippedPath(const Inventory& inv, const Equipment& equip, EquipSlot slot)
+{
+    const auto* item = equippedItem(inv, equip, slot);
+    return item != nullptr ? item->config_path : std::string{};
+}
+
+bool slotEmpty(const Equipment& equip, EquipSlot slot)
+{
+    return slotIndexConst(equip, slot) < 0;
+}
+
+static constexpr EquipSlot ALL_SLOTS[] = {
+    EquipSlot::RightHand, EquipSlot::LeftHand, EquipSlot::Head,
+    EquipSlot::Chest,     EquipSlot::Legs,     EquipSlot::Feet,
+    EquipSlot::Accessory1, EquipSlot::Accessory2};
+
+bool isEquipped(const Equipment& equip, int inv_index)
+{
+    if (inv_index < 0)
+        return false;
+    for (const auto s : ALL_SLOTS)
     {
-        // Shields are hand items — default to right hand like weapons.
-        if (def.max_guard > 0.0f)
-            return EquipSlot::RightHand;
-
-        switch (def.armor_slot)
-        {
-        case ArmorSlot::Head:
-            return EquipSlot::Head;
-        case ArmorSlot::Chest:
-            return EquipSlot::Chest;
-        case ArmorSlot::Legs:
-            return EquipSlot::Legs;
-        case ArmorSlot::Feet:
-            return EquipSlot::Feet;
-        }
+        if (slotIndexConst(equip, s) == inv_index)
+            return true;
     }
+    return false;
+}
 
-    if (def.category == ItemCategory::Accessory)
-        return EquipSlot::Accessory1;
-
+EquipSlot equippedInSlot(const Equipment& equip, int inv_index)
+{
+    for (const auto s : ALL_SLOTS)
+    {
+        if (slotIndexConst(equip, s) == inv_index)
+            return s;
+    }
     return EquipSlot::RightHand;
+}
+
+// Adjust all equipment indices after an inventory removal at `removed`.
+static void adjustIndicesAfterRemoval(Equipment& equip, int removed)
+{
+    for (const auto s : ALL_SLOTS)
+    {
+        int& idx = slotIndex(equip, s);
+        if (idx == removed)
+            idx = -1;
+        else if (idx > removed)
+            --idx;
+    }
 }
 
 bool addItem(Inventory& inv, const ItemInstance& item, const ItemRegistry& registry)
@@ -94,7 +128,6 @@ bool addItem(Inventory& inv, const ItemInstance& item, const ItemRegistry& regis
 
     if (stackable)
     {
-        // Merge into existing stacks as much as possible.
         for (auto& existing : inv.items)
         {
             if (remaining <= 0)
@@ -120,100 +153,35 @@ bool addItem(Inventory& inv, const ItemInstance& item, const ItemRegistry& regis
     return true;
 }
 
-bool removeItem(Inventory& inv, int index)
+bool removeItem(Inventory& inv, Equipment& equip, int index)
 {
     if (index < 0 || index >= static_cast<int>(inv.items.size()))
         return false;
 
     inv.items.erase(inv.items.begin() + index);
+    adjustIndicesAfterRemoval(equip, index);
     return true;
 }
 
-bool equipItem(Inventory& inv, Equipment& equip, int inv_index, const ItemRegistry& registry)
+bool equipItemToSlot(Equipment& equip, int inv_index, EquipSlot slot)
 {
-    if (inv_index < 0 || inv_index >= static_cast<int>(inv.items.size()))
+    if (inv_index < 0)
         return false;
 
-    const ItemDef* def = registry.find(inv.items[inv_index].config_path);
-    if (def == nullptr)
-        return false;
-
-    // Only weapons, armor, and accessories are equippable.
-    if (def->category != ItemCategory::Weapon && def->category != ItemCategory::Armor &&
-        def->category != ItemCategory::Accessory)
-        return false;
-
-    const EquipSlot slot = targetSlot(*def);
-    ItemInstance& target = slotRef(equip, slot);
-
-    // Swap: move old equipped item back to inventory at the same index.
-    ItemInstance incoming = std::move(inv.items[inv_index]);
-    if (!target.empty())
+    // If this item is already equipped in another slot, unequip it there first.
+    for (const auto s : ALL_SLOTS)
     {
-        inv.items[inv_index] = std::move(target);
-    }
-    else
-    {
-        inv.items.erase(inv.items.begin() + inv_index);
+        if (s != slot && slotIndexConst(equip, s) == inv_index)
+            slotIndex(equip, s) = -1;
     }
 
-    target = std::move(incoming);
-
-    if (slot == EquipSlot::RightHand)
-    {
-        equip.right_hand_slot = inv_index;
-    }
-
+    slotIndex(equip, slot) = inv_index;
     return true;
 }
 
-bool equipItemToSlot(Inventory& inv, Equipment& equip, int inv_index, EquipSlot slot,
-                     const ItemRegistry& registry)
+void unequipSlot(Equipment& equip, EquipSlot slot)
 {
-    if (inv_index < 0 || inv_index >= static_cast<int>(inv.items.size()))
-        return false;
-
-    const ItemDef* def = registry.find(inv.items[inv_index].config_path);
-    if (def == nullptr)
-        return false;
-
-    if (def->category != ItemCategory::Weapon && def->category != ItemCategory::Armor &&
-        def->category != ItemCategory::Accessory)
-        return false;
-
-    ItemInstance& target = slotRef(equip, slot);
-
-    ItemInstance incoming = std::move(inv.items[inv_index]);
-    if (!target.empty())
-    {
-        inv.items[inv_index] = std::move(target);
-    }
-    else
-    {
-        inv.items.erase(inv.items.begin() + inv_index);
-    }
-
-    target = std::move(incoming);
-
-    if (slot == EquipSlot::RightHand)
-        equip.right_hand_slot = inv_index;
-
-    return true;
-}
-
-bool unequipSlot(Inventory& inv, Equipment& equip, EquipSlot slot)
-{
-    ItemInstance& target = slotRef(equip, slot);
-    if (target.empty())
-        return false;
-
-    if (static_cast<int>(inv.items.size()) >= inv.max_slots)
-        return false;
-
-    inv.items.push_back(std::move(target));
-    target = {};
-
-    return true;
+    slotIndex(equip, slot) = -1;
 }
 
 int countItem(const Inventory& inv, const std::string& config_path)
@@ -227,7 +195,7 @@ int countItem(const Inventory& inv, const std::string& config_path)
     return total;
 }
 
-bool consumeItems(Inventory& inv, const std::string& config_path, int qty)
+bool consumeItems(Inventory& inv, Equipment& equip, const std::string& config_path, int qty)
 {
     int remaining = qty;
     for (int i = static_cast<int>(inv.items.size()) - 1; i >= 0 && remaining > 0; --i)
@@ -239,6 +207,7 @@ bool consumeItems(Inventory& inv, const std::string& config_path, int qty)
         {
             remaining -= inv.items[i].quantity;
             inv.items.erase(inv.items.begin() + i);
+            adjustIndicesAfterRemoval(equip, i);
         }
         else
         {
@@ -249,12 +218,12 @@ bool consumeItems(Inventory& inv, const std::string& config_path, int qty)
     return remaining <= 0;
 }
 
-bool canEvolve(const Inventory& inv, const Equipment& equip, const WeaponXP& wxp,
+bool canEvolve(const Inventory& inv, const Equipment& equip, const Weapon& weapon,
                const EvolutionPath& path)
 {
-    if (equip.right_hand.empty())
+    if (slotEmpty(equip, EquipSlot::RightHand))
         return false;
-    if (wxp.level < path.min_level)
+    if (weapon.wxp_level < path.min_level)
         return false;
     if (!path.material_config_path.empty())
     {
@@ -264,36 +233,34 @@ bool canEvolve(const Inventory& inv, const Equipment& equip, const WeaponXP& wxp
     return true;
 }
 
-bool evolveWeapon(Inventory& inv, Equipment& equip, WeaponXP& wxp, const EvolutionPath& path,
+bool evolveWeapon(Inventory& inv, Equipment& equip, Weapon& weapon, const EvolutionPath& path,
                   const std::string& new_weapon_config, const ItemRegistry& /*registry*/,
                   float carry_factor, bool free_materials)
 {
-    if (!canEvolve(inv, equip, wxp, path))
+    if (!canEvolve(inv, equip, weapon, path))
         return false;
 
-    // Consume materials (skipped in god mode).
     if (!free_materials && !path.material_config_path.empty())
     {
-        if (!consumeItems(inv, path.material_config_path, path.material_qty))
+        if (!consumeItems(inv, equip, path.material_config_path, path.material_qty))
             return false;
     }
 
-    // Compute carry-forward bonus from current weapon level.
-    const float bonus =
-        equip.right_hand.evolution_bonus + static_cast<float>(wxp.level) * carry_factor;
+    auto* wpn = equippedItemMut(inv, equip, EquipSlot::RightHand);
+    if (wpn == nullptr)
+        return false;
 
-    // Replace equipped weapon.
-    equip.right_hand.config_path = new_weapon_config;
-    equip.right_hand.evolution_bonus = bonus;
-    equip.right_hand.newly_discovered = true;
+    const float bonus = wpn->evolution_bonus + static_cast<float>(weapon.wxp_level) * carry_factor;
 
-    // Force EquipmentSystem to re-sync by clearing the synced tracker.
+    wpn->config_path = new_weapon_config;
+    wpn->evolution_bonus = bonus;
+    wpn->newly_discovered = true;
+
     equip.synced_right_hand.clear();
 
-    // Reset weapon XP.
-    wxp.level = 1;
-    wxp.current_xp = 0.0f;
-    wxp.xp_to_next = 100.0f;
+    weapon.wxp_level = 1;
+    weapon.wxp_current = 0.0f;
+    weapon.wxp_to_next = 100.0f;
 
     return true;
 }

@@ -159,21 +159,23 @@ static void renderPortraitAndName(EntityManager& em, entt::entity entity, float&
     y += char_h;
 }
 
-static void renderWeaponSection(EntityManager& em, entt::entity entity, float& y, float title_h)
+// Draw one hand's weapon name, icon, and ammo (if ranged).
+static void renderHandWeapon(EntityManager& em, entt::entity entity, const Weapon& w,
+                             const std::string& slotPath, const char* handLabel, float& y,
+                             float title_h)
 {
-    UIRenderer::drawRect(BAR_X, y, BAR_W, 1.0f, SECTION_SEP);
-    y += 1.0f + BAR_GAP;
-    const auto& w = em.registry().get<Weapon>(entity);
-    const auto& equip = em.registry().get<Equipment>(entity);
-    const ItemDef* wpnDef =
-        em.registry().ctx().get<ItemRegistry>().find(equip.right_hand.config_path);
+    const auto& items = em.registry().ctx().get<ItemRegistry>();
+    const ItemDef* wpnDef = items.find(slotPath);
     const float icon_sz = title_h;
+
+    UIRenderer::drawText(sBodyFont, handLabel, BAR_X, y, SECTION_LABEL);
+    y += FontManager::lineHeight(sBodyFont) + 2.0f;
+
     ItemStatRenderer::drawItemIcon(wpnDef, BAR_X, y, icon_sz);
     const float name_x = (wpnDef && !wpnDef->icon_path.empty()) ? BAR_X + icon_sz + 4.0f : BAR_X;
     UIRenderer::drawText(sTitleFont, w.name, name_x, y, TEXT_GOLD);
     y += title_h + BAR_GAP;
 
-    // Ammo counter for ranged weapons (inventory pool + optional magazine).
     if (w.ranged && !w.ammo_type.empty())
     {
         static constexpr Color AMMO_ORANGE{1.0f, 0.6f, 0.15f, 1.0f};
@@ -203,8 +205,6 @@ static void renderWeaponSection(EntityManager& em, entt::entity entity, float& y
         }
         else
         {
-            // Bow-type: just show inventory count.
-            const auto& items = em.registry().ctx().get<ItemRegistry>();
             const ItemDef* ammoDef = items.find(w.ammo_type);
             const std::string ammoName = ammoDef != nullptr ? ammoDef->name : "Ammo";
             ammoStr = ammoName + ": " + std::to_string(reserve);
@@ -214,14 +214,50 @@ static void renderWeaponSection(EntityManager& em, entt::entity entity, float& y
         UIRenderer::drawText(sBodyFont, ammoStr, BAR_X, y, ammoColor);
         y += BAR_H + BAR_GAP;
     }
+}
 
-    const auto& wxp = em.registry().get<WeaponXP>(entity);
-    const float fill = wxp.xp_to_next > 0.0f ? wxp.current_xp / wxp.xp_to_next : 0.0f;
-    const int xp_cur = static_cast<int>(wxp.current_xp);
-    const int xp_max = static_cast<int>(wxp.xp_to_next);
-    const std::string label = "LVL " + std::to_string(wxp.level) + "  XP " +
-                              std::to_string(xp_cur) + "/" + std::to_string(xp_max);
-    drawBarWithLabel(BAR_X, y, BAR_W, BAR_H, fill, WPN_BAR, WPN_BG, sBodyFont, label);
+static void renderWeaponSection(EntityManager& em, entt::entity entity, float& y, float title_h)
+{
+    UIRenderer::drawRect(BAR_X, y, BAR_W, 1.0f, SECTION_SEP);
+    y += 1.0f + BAR_GAP;
+
+    const auto& equip = em.registry().get<Equipment>(entity);
+    const auto& w = em.registry().get<Weapon>(entity);
+    const auto& inv = em.registry().get<Inventory>(entity);
+    const std::string rhPath = InventoryOps::equippedPath(inv, equip, EquipSlot::RightHand);
+    renderHandWeapon(em, entity, w, rhPath, "Right Hand", y, title_h);
+
+    // Right hand XP bar.
+    {
+        const float fill = w.wxp_to_next > 0.0f ? w.wxp_current / w.wxp_to_next : 0.0f;
+        const int xp_cur = static_cast<int>(w.wxp_current);
+        const int xp_max = static_cast<int>(w.wxp_to_next);
+        const std::string label = "LVL " + std::to_string(w.wxp_level) + "  XP " +
+                                  std::to_string(xp_cur) + "/" + std::to_string(xp_max);
+        drawBarWithLabel(BAR_X, y, BAR_W, BAR_H, fill, WPN_BAR, WPN_BG, sBodyFont, label);
+        y += FontManager::lineHeight(sBodyFont) + 2.0f + BAR_H + BAR_GAP;
+    }
+
+    // Separator between hands.
+    const auto* lw = em.registry().try_get<LeftWeapon>(entity);
+    if (lw != nullptr)
+    {
+        UIRenderer::drawRect(BAR_X, y, BAR_W, 1.0f, SECTION_SEP);
+        y += 1.0f + BAR_GAP;
+        const std::string lhPath = InventoryOps::equippedPath(inv, equip, EquipSlot::LeftHand);
+        renderHandWeapon(em, entity, *lw, lhPath, "Left Hand", y, title_h);
+
+        // Left hand XP bar.
+        {
+            const float fill = lw->wxp_to_next > 0.0f ? lw->wxp_current / lw->wxp_to_next : 0.0f;
+            const int xp_cur = static_cast<int>(lw->wxp_current);
+            const int xp_max = static_cast<int>(lw->wxp_to_next);
+            const std::string label = "LVL " + std::to_string(lw->wxp_level) + "  XP " +
+                                      std::to_string(xp_cur) + "/" + std::to_string(xp_max);
+            drawBarWithLabel(BAR_X, y, BAR_W, BAR_H, fill, WPN_BAR, WPN_BG, sBodyFont, label);
+            y += FontManager::lineHeight(sBodyFont) + 2.0f + BAR_H + BAR_GAP;
+        }
+    }
 }
 
 static void renderScorePanel(EntityManager& em, float wh)
@@ -323,14 +359,22 @@ static void renderPlayerHud(EntityManager& em, entt::entity entity, float ww, fl
         panel_h += label_h + BAR_GAP;
     if (exp.stat_points > 0)
         panel_h += label_h + BAR_GAP;
-    if (reg.all_of<WeaponXP, Weapon>(entity))
+    if (reg.all_of<Weapon>(entity))
     {
-        panel_h += 1.0f + BAR_GAP;    // separator
-        panel_h += title_h + BAR_GAP; // weapon name
-        if (reg.all_of<Weapon>(entity) && reg.get<Weapon>(entity).ranged &&
-            !reg.get<Weapon>(entity).ammo_type.empty())
-            panel_h += BAR_H + BAR_GAP; // ammo line
-        panel_h += section_h + BAR_GAP; // weapon XP bar
+        panel_h += 1.0f + BAR_GAP;                       // separator
+        panel_h += label_h + 2.0f + title_h + BAR_GAP;   // "Right Hand" label + weapon name
+        if (reg.get<Weapon>(entity).ranged && !reg.get<Weapon>(entity).ammo_type.empty())
+            panel_h += BAR_H + BAR_GAP;                  // ammo line
+        panel_h += section_h + BAR_GAP;                   // right hand XP bar
+        if (reg.all_of<LeftWeapon>(entity))
+        {
+            panel_h += 1.0f + BAR_GAP;                   // separator between hands
+            panel_h += label_h + 2.0f + title_h + BAR_GAP; // "Left Hand" label + weapon name
+            const auto& lw = reg.get<LeftWeapon>(entity);
+            if (lw.ranged && !lw.ammo_type.empty())
+                panel_h += BAR_H + BAR_GAP;              // ammo line
+            panel_h += section_h + BAR_GAP;               // left hand XP bar
+        }
     }
     UIRenderer::drawRect(BAR_X - PADDING, BAR_Y_START - PADDING, BAR_W + PADDING * 2.0f, panel_h,
                          PANEL_BG);
@@ -392,7 +436,7 @@ static void renderPlayerHud(EntityManager& em, entt::entity entity, float ww, fl
         y += label_h + BAR_GAP;
     }
 
-    if (reg.all_of<WeaponXP, Weapon>(entity))
+    if (reg.all_of<Weapon>(entity))
         renderWeaponSection(em, entity, y, title_h);
 
     renderScorePanel(em, wh);

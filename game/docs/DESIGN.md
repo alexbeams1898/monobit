@@ -644,8 +644,8 @@ Weight is summed from ALL 8 equipment slots (weapon, shield, 4 armor pieces, 2 a
 
 | Slot | Category | Effect |
 |------|----------|--------|
-| Main Hand | Weapon | Synced to Weapon component by EquipmentSystem |
-| Off Hand | Shield (armor with max_guard > 0) | Synced to Shield component |
+| Right Hand | Weapon or shield | Synced to Weapon component by EquipmentSystem |
+| Left Hand | Weapon or shield | Synced to LeftWeapon or Shield component |
 | Head | Armor (ArmorSlot::Head) | Contributes defense + poise |
 | Chest | Armor (ArmorSlot::Chest) | Contributes defense + poise |
 | Legs | Armor (ArmorSlot::Legs) | Contributes defense + poise |

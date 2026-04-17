@@ -314,7 +314,10 @@ static void processEnemyDeath(EntityManager& em, entt::entity entity, const Loot
         }
         const float power =
             WeaponXPSystem::computeEnemyPower(loot.level, enemyHp, enemyDmg, enemyStats, f);
-        WeaponXPSystem::grantXP(em, power, f.weapon_xp.kill_multiplier);
+        const auto* df = reg.try_get<DamageFeedback>(entity);
+        const bool killLeftHand = df != nullptr && df->attacker_left_hand;
+        const EquipSlot killHand = killLeftHand ? EquipSlot::LeftHand : EquipSlot::RightHand;
+        WeaponXPSystem::grantXP(em, power, f.weapon_xp.kill_multiplier, killHand);
     }
 
     // Accumulate run stats.

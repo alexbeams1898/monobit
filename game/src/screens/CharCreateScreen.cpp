@@ -226,8 +226,9 @@ static void recomposite(EntityManager& em)
         return;
 
     auto sel = buildSelections(*cfg);
-    auto paths = AppearanceOps::buildLayerPaths(em, sel);
-    sPreviewTex = cfg->compositor->composite(paths);
+    std::vector<PaletteSwap> palettes;
+    auto paths = AppearanceOps::buildLayerPaths(em, sel, &palettes);
+    sPreviewTex = cfg->compositor->composite(paths, palettes);
     sPreviewTexW = 0;
     sPreviewTexH = 0;
     if (sPreviewTex != 0)

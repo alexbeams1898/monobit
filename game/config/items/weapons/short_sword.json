@@ -13,5 +13,8 @@
     "two_handed": false,
     "weapon_tier": "short_sword",
     "max_durability": 100.0,
-    "stackable": false
+    "stackable": false,
+    "grip_x": 29.0,
+    "grip_y": 29.0,
+    "base_rotation": 90.0
 }

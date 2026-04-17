@@ -23,25 +23,27 @@ TEST_CASE("InventoryOps::countItem counts total quantity", "[evolution]")
 TEST_CASE("InventoryOps::consumeItems removes correct quantities", "[evolution]")
 {
     Inventory inv;
+    Equipment equip;
     inv.items.push_back({"mat_a", QualityTier::Common, 100.0f, 3});
     inv.items.push_back({"mat_b", QualityTier::Common, 100.0f, 5});
     inv.items.push_back({"mat_a", QualityTier::Common, 100.0f, 2});
 
-    REQUIRE(InventoryOps::consumeItems(inv, "mat_a", 4));
+    REQUIRE(InventoryOps::consumeItems(inv, equip, "mat_a", 4));
     REQUIRE(InventoryOps::countItem(inv, "mat_a") == 1);
 
     // Consuming more than available fails.
-    REQUIRE_FALSE(InventoryOps::consumeItems(inv, "mat_a", 10));
+    REQUIRE_FALSE(InventoryOps::consumeItems(inv, equip, "mat_a", 10));
 }
 
 TEST_CASE("InventoryOps::canEvolve checks level and materials", "[evolution]")
 {
     Inventory inv;
     Equipment equip;
-    WeaponXP wxp;
-    wxp.level = 3;
+    Weapon weapon;
+    weapon.wxp_level = 3;
 
-    equip.right_hand.config_path = "config/items/weapons/shiv.json";
+    inv.items.push_back({"config/items/weapons/shiv.json"});
+    equip.right_hand = 0;
 
     EvolutionPath path;
     path.target_node = "dagger";
@@ -49,47 +51,46 @@ TEST_CASE("InventoryOps::canEvolve checks level and materials", "[evolution]")
     path.material_config_path = "config/items/materials/bone_shard.json";
     path.material_qty = 1;
 
-    // Level too low.
-    REQUIRE_FALSE(InventoryOps::canEvolve(inv, equip, wxp, path));
+    REQUIRE_FALSE(InventoryOps::canEvolve(inv, equip, weapon, path));
 
-    // Level high enough but no materials.
-    wxp.level = 5;
-    REQUIRE_FALSE(InventoryOps::canEvolve(inv, equip, wxp, path));
+    weapon.wxp_level = 5;
+    REQUIRE_FALSE(InventoryOps::canEvolve(inv, equip, weapon, path));
 
-    // Add materials.
     inv.items.push_back({"config/items/materials/bone_shard.json", QualityTier::Common, 100.0f, 1});
-    REQUIRE(InventoryOps::canEvolve(inv, equip, wxp, path));
+    REQUIRE(InventoryOps::canEvolve(inv, equip, weapon, path));
 }
 
 TEST_CASE("InventoryOps::canEvolve flat upgrade needs no materials", "[evolution]")
 {
-    const Inventory inv;
+    Inventory inv;
     Equipment equip;
-    WeaponXP wxp;
-    wxp.level = 5;
-    equip.right_hand.config_path = "config/items/weapons/shiv.json";
+    Weapon weapon;
+    weapon.wxp_level = 5;
+
+    inv.items.push_back({"config/items/weapons/shiv.json"});
+    equip.right_hand = 0;
 
     EvolutionPath path;
     path.target_node = "dagger";
     path.min_level = 5;
-    // No material required (flat upgrade).
 
-    REQUIRE(InventoryOps::canEvolve(inv, equip, wxp, path));
+    REQUIRE(InventoryOps::canEvolve(inv, equip, weapon, path));
 }
 
 TEST_CASE("InventoryOps::evolveWeapon replaces weapon and resets XP", "[evolution]")
 {
     Inventory inv;
-    inv.items.push_back({"config/items/materials/bone_shard.json", QualityTier::Common, 100.0f, 2});
-
     Equipment equip;
-    equip.right_hand.config_path = "config/items/weapons/shiv.json";
+
+    inv.items.push_back({"config/items/materials/bone_shard.json", QualityTier::Common, 100.0f, 2});
+    inv.items.push_back({"config/items/weapons/shiv.json"});
+    equip.right_hand = 1;
     equip.synced_right_hand = "config/items/weapons/shiv.json";
 
-    WeaponXP wxp;
-    wxp.level = 7;
-    wxp.current_xp = 150.0f;
-    wxp.xp_to_next = 200.0f;
+    Weapon weapon;
+    weapon.wxp_level = 7;
+    weapon.wxp_current = 150.0f;
+    weapon.wxp_to_next = 200.0f;
 
     EvolutionPath path;
     path.target_node = "dagger";
@@ -100,26 +101,21 @@ TEST_CASE("InventoryOps::evolveWeapon replaces weapon and resets XP", "[evolutio
     const ItemRegistry registry;
     const float carry_factor = 0.15f;
 
-    REQUIRE(InventoryOps::evolveWeapon(inv, equip, wxp, path, "config/items/weapons/dagger.json",
-                                       registry, carry_factor));
+    REQUIRE(InventoryOps::evolveWeapon(inv, equip, weapon, path,
+                                       "config/items/weapons/dagger.json", registry, carry_factor));
 
-    // Weapon replaced.
-    REQUIRE(equip.right_hand.config_path == "config/items/weapons/dagger.json");
-
-    // synced_right_hand cleared to force EquipmentSystem re-sync.
+    REQUIRE(InventoryOps::equippedPath(inv, equip, EquipSlot::RightHand) ==
+            "config/items/weapons/dagger.json");
     REQUIRE(equip.synced_right_hand.empty());
 
-    // Carry-forward bonus computed: old_bonus(0) + old_level(7) * carry_factor(0.15).
-    REQUIRE_THAT(equip.right_hand.evolution_bonus, WithinAbs(1.05f, 0.01f));
+    const auto* item = InventoryOps::equippedItem(inv, equip, EquipSlot::RightHand);
+    REQUIRE(item != nullptr);
+    REQUIRE_THAT(item->evolution_bonus, WithinAbs(1.05f, 0.01f));
+    REQUIRE(item->newly_discovered);
 
-    // Newly discovered flag set.
-    REQUIRE(equip.right_hand.newly_discovered);
+    REQUIRE(weapon.wxp_level == 1);
+    REQUIRE_THAT(weapon.wxp_current, WithinAbs(0.0f, 0.01f));
 
-    // WeaponXP reset.
-    REQUIRE(wxp.level == 1);
-    REQUIRE_THAT(wxp.current_xp, WithinAbs(0.0f, 0.01f));
-
-    // Material consumed (had 2, used 1).
     REQUIRE(InventoryOps::countItem(inv, "config/items/materials/bone_shard.json") == 1);
 }
 
@@ -127,23 +123,27 @@ TEST_CASE("InventoryOps::evolveWeapon accumulates carry-forward bonus", "[evolut
 {
     Inventory inv;
     Equipment equip;
-    equip.right_hand.config_path = "config/items/weapons/shiv.json";
-    equip.right_hand.evolution_bonus = 2.0f; // from a prior evolution
 
-    WeaponXP wxp;
-    wxp.level = 10;
+    ItemInstance shiv;
+    shiv.config_path = "config/items/weapons/shiv.json";
+    shiv.evolution_bonus = 2.0f;
+    inv.items.push_back(shiv);
+    equip.right_hand = 0;
+
+    Weapon weapon;
+    weapon.wxp_level = 10;
 
     EvolutionPath path;
     path.target_node = "dagger";
     path.min_level = 5;
-    // Flat upgrade, no materials.
 
     const ItemRegistry registry;
     const float carry_factor = 0.15f;
 
-    REQUIRE(InventoryOps::evolveWeapon(inv, equip, wxp, path, "config/items/weapons/dagger.json",
-                                       registry, carry_factor));
+    REQUIRE(InventoryOps::evolveWeapon(inv, equip, weapon, path,
+                                       "config/items/weapons/dagger.json", registry, carry_factor));
 
-    // bonus = old_bonus(2.0) + old_level(10) * carry_factor(0.15) = 2.0 + 1.5 = 3.5
-    REQUIRE_THAT(equip.right_hand.evolution_bonus, WithinAbs(3.5f, 0.01f));
+    const auto* item = InventoryOps::equippedItem(inv, equip, EquipSlot::RightHand);
+    REQUIRE(item != nullptr);
+    REQUIRE_THAT(item->evolution_bonus, WithinAbs(3.5f, 0.01f));
 }

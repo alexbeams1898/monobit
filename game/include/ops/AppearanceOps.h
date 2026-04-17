@@ -1,12 +1,11 @@
 #pragma once
 
+#include "SpriteCompositor.h"
 #include "ecs/EntityManager.h"
 
 #include <string>
 #include <unordered_map>
 #include <vector>
-
-class SpriteCompositor;
 
 namespace AppearanceOps
 {
@@ -27,7 +26,8 @@ void resolveAppearance(EntityManager& em, entt::entity entity,
 // Build the ordered layer path list from an appearance selection map.
 // Uses AppearanceConfig from registry ctx to resolve category_id/option_id to file paths.
 std::vector<std::string>
-buildLayerPaths(EntityManager& em, const std::unordered_map<std::string, std::string>& selections);
+buildLayerPaths(EntityManager& em, const std::unordered_map<std::string, std::string>& selections,
+                std::vector<PaletteSwap>* out_palettes = nullptr);
 
 // Parse a slider category's value from the selection map, clamping to the
 // category's configured min/max. Returns 1.0f if the category is missing,

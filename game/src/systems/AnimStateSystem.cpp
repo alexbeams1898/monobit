@@ -89,10 +89,14 @@ void AnimStateSystem::update(EntityManager& em)
             if (facing && facing->attack_anim_speed > 0.0f)
                 anim.speed_multiplier = facing->attack_anim_speed;
 
-            // Weapon-specific attack row override. When the equipped weapon
-            // specifies an attack_anim other than "slash", look up the named
-            // row and override the default attack playback.
-            const auto* w = reg.try_get<Weapon>(entity);
+            // Read the weapon that initiated this attack (left or right hand).
+            const auto* al = reg.try_get<AttackLocked>(entity);
+            const Weapon* w = nullptr;
+            if (al != nullptr && al->left_hand)
+                w = reg.try_get<LeftWeapon>(entity);
+            if (w == nullptr)
+                w = reg.try_get<Weapon>(entity);
+
             if (w != nullptr && !w->attack_anim.empty() && w->attack_anim != "slash" &&
                 rowIndex != nullptr)
             {
@@ -105,8 +109,6 @@ void AnimStateSystem::update(EntityManager& em)
                 }
             }
 
-            // Per-weapon frame mask: cherry-pick specific columns from the
-            // attack row instead of playing 0..N-1.
             if (w != nullptr && !w->shoot_frames.empty())
                 anim.frame_mask = w->shoot_frames;
         }

@@ -10,7 +10,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 // ---------------------------------------------------------------------------
-// Projectile system tests — no window, no GPU, no SDL required.
+// Projectile system tests -- no window, no GPU, no SDL required.
 //
 // Projectiles have no Velocity component; ProjectileSystem moves them using
 // dir_x/dir_y/speed stored on the Projectile component. Wall checks use the
@@ -65,7 +65,7 @@ TEST_CASE("Projectile survives within max range", "[projectile]")
     emplaceGameConfigs(em);
 
     const auto e = spawnProjectile(em, 0.0f, 0.0f, 1.0f, 0.0f, 100.0f, 100.0f);
-    // After one tick: 0 + 1*100*(1/60) ≈ 1.67, well within range of 100.
+    // After one tick: 0 + 1*100*(1/60) ~ 1.67, well within range of 100.
     ProjectileSystem::update(em, TEST_DT);
     REQUIRE(em.registry().valid(e));
 }
@@ -146,6 +146,7 @@ TEST_CASE("Reload fills magazine from inventory ammo", "[projectile]")
     const auto e = em.create();
 
     auto& inv = em.registry().emplace<Inventory>(e);
+    Equipment equip;
     addAmmo(inv, bulletType, 20);
 
     auto& rs = em.registry().emplace<RangedState>(e);
@@ -155,7 +156,7 @@ TEST_CASE("Reload fills magazine from inventory ammo", "[projectile]")
     const int reserve = InventoryOps::countItem(inv, bulletType);
     const int needed = rs.magazine_size - rs.ammo_in_magazine;
     const int fill = std::min(needed, reserve);
-    InventoryOps::consumeItems(inv, bulletType, fill);
+    InventoryOps::consumeItems(inv, equip, bulletType, fill);
     rs.ammo_in_magazine += fill;
 
     REQUIRE(rs.ammo_in_magazine == 8);
@@ -171,6 +172,7 @@ TEST_CASE("Reload with insufficient ammo fills partial magazine", "[projectile]"
     const auto e = em.create();
 
     auto& inv = em.registry().emplace<Inventory>(e);
+    Equipment equip;
     addAmmo(inv, bulletType, 3);
 
     auto& rs = em.registry().emplace<RangedState>(e);
@@ -180,7 +182,7 @@ TEST_CASE("Reload with insufficient ammo fills partial magazine", "[projectile]"
     const int reserve = InventoryOps::countItem(inv, bulletType);
     const int needed = rs.magazine_size - rs.ammo_in_magazine;
     const int fill = std::min(needed, reserve);
-    InventoryOps::consumeItems(inv, bulletType, fill);
+    InventoryOps::consumeItems(inv, equip, bulletType, fill);
     rs.ammo_in_magazine += fill;
 
     REQUIRE(rs.ammo_in_magazine == 3);
@@ -200,10 +202,11 @@ TEST_CASE("Bow fire consumes arrow from inventory", "[projectile]")
     const auto e = em.create();
 
     auto& inv = em.registry().emplace<Inventory>(e);
+    Equipment equip;
     addAmmo(inv, arrowType, 10);
 
     REQUIRE(InventoryOps::countItem(inv, arrowType) == 10);
-    InventoryOps::consumeItems(inv, arrowType, 1);
+    InventoryOps::consumeItems(inv, equip, arrowType, 1);
     REQUIRE(InventoryOps::countItem(inv, arrowType) == 9);
 }
 

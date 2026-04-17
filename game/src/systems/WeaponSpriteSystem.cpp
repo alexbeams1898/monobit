@@ -46,13 +46,13 @@ void WeaponSpriteSystem::updateEquipment(EntityManager& em)
     ZoneScopedN("WeaponSpriteSystem::updateEquipment");
     auto& reg = em.registry();
 
-    // Spawn/destroy right-hand weapon entities when visual_weapon changes.
+    // Spawn/destroy right-hand weapon entities when weapon_icon changes.
     for (auto [entity, weapon, appearance] :
          reg.view<Weapon, AppearanceState>().each())
     {
-        if (weapon.visual_weapon != appearance.synced_visual_weapon)
+        if (weapon.weapon_icon != appearance.synced_visual_weapon)
         {
-            appearance.synced_visual_weapon = weapon.visual_weapon;
+            appearance.synced_visual_weapon = weapon.weapon_icon;
             destroyWeaponEntity(reg, weapon);
 
             if (!weapon.weapon_icon.empty())
@@ -64,9 +64,9 @@ void WeaponSpriteSystem::updateEquipment(EntityManager& em)
     for (auto [entity, weapon, appearance] :
          reg.view<LeftWeapon, AppearanceState>().each())
     {
-        if (weapon.visual_weapon != appearance.synced_visual_weapon_left)
+        if (weapon.weapon_icon != appearance.synced_visual_weapon_left)
         {
-            appearance.synced_visual_weapon_left = weapon.visual_weapon;
+            appearance.synced_visual_weapon_left = weapon.weapon_icon;
             destroyWeaponEntity(reg, weapon);
 
             if (!weapon.weapon_icon.empty())
@@ -126,6 +126,17 @@ void WeaponSpriteSystem::syncVisuals(EntityManager& em)
         // use row.right, left-hand weapons use row.left. The secondary hand
         // (used for two-handed rendering) is the opposite.
         const bool isLeftHand = wpnTag.left_hand;
+
+        // During attack, hide the non-attacking hand's weapon.
+        const auto* attackLock = reg.try_get<AttackLocked>(wielder);
+        if (attackLock != nullptr && attackLock->left_hand != isLeftHand)
+        {
+            wpnSprite.src_w = 0;
+            wpnSprite.src_h = 0;
+            wpnTag.prev_row = -1;
+            continue;
+        }
+
         float anchorX = 0.0f;
         float anchorY = 0.0f;
         bool hasAnchor = false;
@@ -165,45 +176,63 @@ void WeaponSpriteSystem::syncVisuals(EntityManager& em)
             }
         }
 
-        // No left (primary) anchor for this row (e.g. death, hit) -- hide weapon.
+        // No primary anchor for this row (e.g. death, hit) -- hide weapon.
         if (!hasAnchor)
         {
+            wpnTag.prev_row = -1;
             wpnSprite.src_w = 0;
             wpnSprite.src_h = 0;
             continue;
         }
 
+        // Smooth the anchor within the same animation row/direction to
+        // prevent frame-to-frame jitter. Snap immediately on row or
+        // direction changes (attack → run, turn, etc.) since the anchor
+        // positions are from completely different body poses.
+        static constexpr float ANCHOR_BLEND = 0.25f;
+        const bool dirChanged = (dirCol != wpnTag.prev_dir);
+        wpnTag.prev_row = currentRow;
+        wpnTag.prev_dir = dirCol;
+
+        if (dirChanged)
+        {
+            wpnTag.smooth_anchor_x = anchorX;
+            wpnTag.smooth_anchor_y = anchorY;
+        }
+        else
+        {
+            wpnTag.smooth_anchor_x += (anchorX - wpnTag.smooth_anchor_x) * ANCHOR_BLEND;
+            wpnTag.smooth_anchor_y += (anchorY - wpnTag.smooth_anchor_y) * ANCHOR_BLEND;
+        }
+        anchorX = wpnTag.smooth_anchor_x;
+        anchorY = wpnTag.smooth_anchor_y;
+
         wpnSprite.src_w = WEAPON_ICON_SIZE;
         wpnSprite.src_h = WEAPON_ICON_SIZE;
 
-        // Weapon sprite stays at its native 1.0 scale regardless of the
-        // wielder's scale -- an AK looks the same size whether a small or
-        // large character holds it.
         wpnTransform.scale = 1.0f;
 
-        // Snapshot previous position for render interpolation.
         reg.get_or_emplace<PreviousTransform>(wpnEntity) = {wpnTransform.x, wpnTransform.y};
 
-        // Read grip + two-hand state from wielder's Weapon component.
-        const auto* wielderWeapon = reg.try_get<Weapon>(wielder);
+        // Read grip + two-hand state from the correct hand's weapon component.
+        const Weapon* wielderWeapon = isLeftHand
+            ? static_cast<const Weapon*>(reg.try_get<LeftWeapon>(wielder))
+            : reg.try_get<Weapon>(wielder);
+
+        // Hide this hand's weapon when the OTHER hand is in two-handed mode.
+        const Weapon* otherWeapon = isLeftHand
+            ? reg.try_get<Weapon>(wielder)
+            : static_cast<const Weapon*>(reg.try_get<LeftWeapon>(wielder));
+        if (otherWeapon != nullptr && otherWeapon->two_handed_active)
+        {
+            wpnSprite.src_w = 0;
+            wpnSprite.src_h = 0;
+            continue;
+        }
         const float wpnScale = wielderWeapon ? wielderWeapon->weapon_scale : 1.0f;
         wpnTransform.scale = wpnScale;
         const float gripX = wielderWeapon ? wielderWeapon->grip_x : 0.0f;
         const float gripY = wielderWeapon ? wielderWeapon->grip_y : 0.0f;
-        const float foreGripX = wielderWeapon ? wielderWeapon->fore_grip_x : 0.0f;
-        const float foreGripY = wielderWeapon ? wielderWeapon->fore_grip_y : 0.0f;
-        const bool wantTwoHanded =
-            wielderWeapon != nullptr && wielderWeapon->two_handed &&
-            wielderWeapon->two_handed_active;
-
-        // Two-hand rendering requires BOTH a right-hand anchor for this frame
-        // AND a fore-grip pixel on the weapon. If either is missing, fall back
-        // to one-hand rendering for this frame (silent degradation).
-        const bool foreGripDistinct = wielderWeapon != nullptr &&
-                                       (wielderWeapon->fore_grip_x != wielderWeapon->grip_x ||
-                                        wielderWeapon->fore_grip_y != wielderWeapon->grip_y);
-        const bool renderTwoHanded = wantTwoHanded && hasSecondaryAnchor && foreGripDistinct;
-
         // Hand anchors are measured in source-pixel units against the 64x64
         // frame center. When the wielder is drawn at a non-1.0 scale, the
         // rendered body is `src_h * scale` pixels tall, so the anchor offset
@@ -225,64 +254,76 @@ void WeaponSpriteSystem::syncVisuals(EntityManager& em)
         bool flip = false;
         float rot = 0.0f;
 
-        if (renderTwoHanded)
-        {
-            // TWO-HANDED: compute rotation that aligns the grip-to-foregrip
-            // vector in icon space with the left-hand-to-right-hand vector
-            // in world space. No flip_x; rotation drives all orientation.
-            const float primaryX = wielderPos.x + anchorX * wielderScale;
-            const float primaryY = wielderPos.y - wielderYOffset + anchorY * wielderScale;
-            const float secondaryX = wielderPos.x + secondaryAnchorX * wielderScale;
-            const float secondaryY = wielderPos.y - wielderYOffset + secondaryAnchorY * wielderScale;
-            // For S/W/E: left-handed hold with geo_mirror_x. The mirror
-            // negates the grip vector's x so the rotation aligns correctly.
-            // For N: the character faces away, so left/right are visually
-            // swapped. No mirror needed — the un-mirrored rotation already
-            // puts the gun in the correct orientation from behind.
-            const bool northFacing = (dirCol == 3);
-            const float rawGripDX = foreGripX - gripX;
-            const float gripDX = northFacing ? rawGripDX : -rawGripDX;
-            const float gripDY = foreGripY - gripY;
-            const float handDX = secondaryX - primaryX;
-            const float handDY = secondaryY - primaryY;
-            const float gripAngle = std::atan2(gripDY, gripDX);
+        const bool isTwoHanded = wielderWeapon != nullptr &&
+                                  wielderWeapon->two_handed_active && hasSecondaryAnchor;
 
-            // When the hands are very close together (mid-swing walk frames),
-            // the hand vector is near-zero and atan2 produces erratic angles.
-            // Hold the previous rotation until the hands separate again.
-            static constexpr float MIN_HAND_DIST_SQ = 8.0f * 8.0f;
-            static float s_lastGoodRot = 0.0f;
-            const float handDistSq = handDX * handDX + handDY * handDY;
-            if (handDistSq >= MIN_HAND_DIST_SQ)
+        if (isTwoHanded)
+        {
+            // 2H: compute rotation that aligns the grip→foregrip vector
+            // with the primary→secondary hand vector. Use idle-frame
+            // anchors (row 0) for stability — the rotation stays constant
+            // across all animation states.
+            const float iconDX = wielderWeapon->fore_grip_x - wielderWeapon->grip_x;
+            const float iconDY = wielderWeapon->fore_grip_y - wielderWeapon->grip_y;
+
+            // Read idle anchors for this direction.
+            float idleHandDX = secondaryAnchorX - anchorX;
+            float idleHandDY = secondaryAnchorY - anchorY;
+            if (anchorData != nullptr)
             {
-                const float handAngle = std::atan2(handDY, handDX);
-                s_lastGoodRot = handAngle - gripAngle;
+                const auto idleIt = anchorData->rows.find(0);
+                if (idleIt != anchorData->rows.end())
+                {
+                    const auto& idleRow = idleIt->second;
+                    const auto& pri = isLeftHand ? idleRow.left : idleRow.right;
+                    const auto& sec = isLeftHand ? idleRow.right : idleRow.left;
+                    if (dirCol < static_cast<int>(pri.size()) && !pri[dirCol].empty() &&
+                        dirCol < static_cast<int>(sec.size()) && !sec[dirCol].empty())
+                    {
+                        idleHandDX = sec[dirCol][0].x - pri[dirCol][0].x;
+                        idleHandDY = sec[dirCol][0].y - pri[dirCol][0].y;
+                    }
+                }
             }
 
-            flip = false;
-            rot = s_lastGoodRot;
-            wpnSprite.geo_mirror_x = !northFacing;
+            // Flip when secondary hand is to the left of primary.
+            flip = (idleHandDX < 0.0f);
+            const float thetaHand = std::atan2(idleHandDY, idleHandDX);
+            const float thetaIcon = std::atan2(iconDY, flip ? -iconDX : iconDX);
+            rot = thetaHand - thetaIcon;
         }
         else
         {
-            // ONE-HANDED: per-direction table. base_rotation shifts the icon's
-            // resting angle (e.g. -45 degrees makes an NE-pointing icon horizontal).
-            // When flipped, negate the base_rotation so it mirrors correctly.
+            // 1H: per-direction table. base_rotation shifts the icon's
+            // resting angle. When flipped, negate it so it mirrors correctly.
             const float baseRot = wielderWeapon ? wielderWeapon->base_rotation : 0.0f;
-            switch (dirCol)
+            if (isLeftHand)
             {
-                case 0: flip = false; rot = baseRot;  break;  // S
-                case 1: flip = true;  rot = -baseRot; break;  // W
-                case 2: flip = false; rot = baseRot;  break;  // E
-                case 3: flip = true;  rot = -baseRot; break;  // N
-                default: break;
+                switch (dirCol)
+                {
+                    case 0: flip = false; rot = baseRot;  break;  // S
+                    case 1: flip = true;  rot = -baseRot; break;  // W
+                    case 2: flip = false; rot = baseRot;  break;  // E
+                    case 3: flip = true;  rot = -baseRot; break;  // N
+                    default: break;
+                }
+            }
+            else
+            {
+                switch (dirCol)
+                {
+                    case 0: flip = true;  rot = -baseRot; break;  // S
+                    case 1: flip = true;  rot = -baseRot; break;  // W
+                    case 2: flip = false; rot = baseRot;  break;  // E
+                    case 3: flip = false; rot = baseRot;  break;  // N
+                    default: break;
+                }
             }
         }
 
         wpnSprite.flip_x = flip;
         wpnSprite.rotation = rot;
-        if (!renderTwoHanded)
-            wpnSprite.geo_mirror_x = false;
+        wpnSprite.geo_mirror_x = false;
 
         // Place the icon so the primary grip pixel lands on the left hand.
         // The grip offset is transformed by the same flip/mirror/rotation
@@ -297,31 +338,46 @@ void WeaponSpriteSystem::syncVisuals(EntityManager& em)
         const float transformedOffX = c * gripOffX - s * gripOffY;
         const float transformedOffY = s * gripOffX + c * gripOffY;
 
-        const float scaledAnchorX = anchorX * wielderScale;
-        const float scaledAnchorY = anchorY * wielderScale;
-        wpnTransform.x = wielderPos.x + scaledAnchorX - transformedOffX;
-        wpnTransform.y = wielderPos.y - wielderYOffset + scaledAnchorY - transformedOffY;
-
-        // Sort anchor MUST exactly equal the wielder's rendered sort_y so the
-        // weapon always lands in the same depth bucket as its wielder. Match
-        // RenderSystem: interpolate, then round (see RenderSystem.cpp around
-        // drawY = round(prev + (curr - prev) * alpha)).
+        // Use the interpolated wielder position so the weapon tracks the
+        // character's rendered position, not the tick position. Without this,
+        // fast movement (running) causes the weapon to jiggle.
+        float wielderDrawX = wielderPos.x;
         float wielderDrawY = wielderPos.y;
         if (const auto* prevT = reg.try_get<PreviousTransform>(wielder))
+        {
+            wielderDrawX = prevT->x + (wielderPos.x - prevT->x) * alpha;
             wielderDrawY = prevT->y + (wielderPos.y - prevT->y) * alpha;
+        }
+        wielderDrawX = std::round(wielderDrawX);
         wielderDrawY = std::round(wielderDrawY);
+
+        const float scaledAnchorX = anchorX * wielderScale;
+        const float scaledAnchorY = anchorY * wielderScale;
+        wpnTransform.x = wielderDrawX + scaledAnchorX - transformedOffX;
+        wpnTransform.y = wielderDrawY - wielderYOffset + scaledAnchorY - transformedOffY;
         wpnSprite.sort_anchor =
             wielderCol ? wielderDrawY + wielderCol->height * 0.5f : wielderDrawY;
 
-        // Sub-layer from depth_per_dir: weapon in front or behind body.
-        // In 2H mode the gun crosses the torso — in front for most
-        // directions, but behind when facing North (away from viewer).
-        if (renderTwoHanded)
+        // Sub-layer: weapon in front or behind body.
+        // In 2H mode, weapon crosses the torso — in front for S/W/E,
+        // behind for N (facing away from viewer).
+        // In 1H mode, use depth_per_dir (authored for left hand, right
+        // hand swaps E/W).
+        if (isTwoHanded)
+        {
             wpnSprite.sub_layer = (dirCol == 3) ? -1 : 1;
+        }
         else if (anchorData != nullptr && dirCol < static_cast<int>(anchorData->depth_per_dir.size()))
-            wpnSprite.sub_layer = anchorData->depth_per_dir[dirCol];
+        {
+            int depth = anchorData->depth_per_dir[dirCol];
+            if (!isLeftHand && (dirCol == 1 || dirCol == 2))
+                depth = -depth;
+            wpnSprite.sub_layer = depth;
+        }
         else
+        {
             wpnSprite.sub_layer = 1;
+        }
 
     }
 

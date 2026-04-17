@@ -762,8 +762,12 @@ static void resolvePlayerVisualFacingTick(EntityManager& em)
         const auto* lockOnComp = em.registry().try_get<LockOnTarget>(entity);
         const bool isAttacking = em.registry().all_of<AttackLocked>(entity) ||
                                  em.registry().all_of<CriticalAttacking>(entity);
-        const bool isHeldRangedFire = actions.right_attack && em.registry().all_of<Weapon>(entity) &&
-                                      em.registry().get<Weapon>(entity).ranged;
+        const bool rightRangedHeld = actions.right_attack &&
+                                     em.registry().all_of<Weapon>(entity) &&
+                                     em.registry().get<Weapon>(entity).ranged;
+        const auto* lw = em.registry().try_get<LeftWeapon>(entity);
+        const bool leftRangedHeld = actions.left_attack && lw != nullptr && lw->ranged;
+        const bool isHeldRangedFire = rightRangedHeld || leftRangedHeld;
 
         const bool wasMovementFacing = resolveVisualFacing(
             facing, lockOnComp, isAttacking, isHeldRangedFire, actions.move_x, actions.move_y);

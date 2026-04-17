@@ -7,6 +7,32 @@
 
 #include <iostream>
 
+PaletteSwap PaletteRegistry::buildSwap(const std::string& palette_id,
+                                       const std::string& base_color,
+                                       const std::string& target_color) const
+{
+    PaletteSwap swap;
+    if (base_color == target_color)
+        return swap;
+    const auto palIt = palettes.find(palette_id);
+    if (palIt == palettes.end())
+        return swap;
+    const auto& pal = palIt->second;
+    const auto baseIt = pal.find(base_color);
+    const auto targetIt = pal.find(target_color);
+    if (baseIt == pal.end() || targetIt == pal.end())
+        return swap;
+    const auto& base = baseIt->second;
+    const auto& target = targetIt->second;
+    const size_t count = std::min(base.size(), target.size());
+    for (size_t i = 0; i < count; ++i)
+    {
+        swap.entries.push_back({base[i].r, base[i].g, base[i].b,
+                                target[i].r, target[i].g, target[i].b});
+    }
+    return swap;
+}
+
 namespace AppearanceOps
 {
 
@@ -62,16 +88,18 @@ static std::string resolveFileName(const AppearanceCategory& cat, const std::str
 }
 
 std::vector<std::string>
-buildLayerPaths(EntityManager& em, const std::unordered_map<std::string, std::string>& selections)
+buildLayerPaths(EntityManager& em, const std::unordered_map<std::string, std::string>& selections,
+                std::vector<PaletteSwap>* out_palettes)
 {
     const auto* cfg = em.registry().ctx().find<AppearanceConfig>();
     if (cfg == nullptr || !cfg->loaded)
         return {};
 
+    const auto* palReg = em.registry().ctx().find<PaletteRegistry>();
+
     std::vector<std::string> paths;
     for (const auto& cat : cfg->categories)
     {
-        // Slider categories don't contribute a layer.
         if (cat.type == AppearanceCategoryType::Slider)
             continue;
 
@@ -79,14 +107,70 @@ buildLayerPaths(EntityManager& em, const std::unordered_map<std::string, std::st
         if (optionId.empty() || optionId == "none")
         {
             paths.emplace_back();
+            if (out_palettes != nullptr)
+                out_palettes->emplace_back();
             continue;
         }
 
-        const std::string file = resolveFileName(cat, optionId, selections);
-        if (file.empty())
-            paths.emplace_back();
+        // If this category has a palette, use master path + palette swap.
+        if (!cat.palette_id.empty() && !cat.base_color.empty() && palReg != nullptr)
+        {
+            std::string masterFile;
+            std::string paletteTarget = optionId;
+
+            if (cat.palette_from_combine && !cat.combine_with.empty())
+            {
+                // Master from option ID, palette target from combine_with.
+                // Example: head_variant option="base", body_color="tone_2"
+                //   -> master="base_master.png", palette target="tone_2"
+                masterFile = optionId + "_master.png";
+                auto other = selections.find(cat.combine_with);
+                if (other != selections.end() && !other->second.empty())
+                    paletteTarget = other->second;
+                else
+                    paletteTarget = cat.base_color;
+            }
+            else if (!cat.combine_with.empty())
+            {
+                // Master from combine_with selection, palette target from option.
+                // Example: hair_color option="black", hair_style="long"
+                //   -> master="long_master.png", palette target="black"
+                auto other = selections.find(cat.combine_with);
+                if (other != selections.end() && !other->second.empty() &&
+                    other->second != "none")
+                    masterFile = other->second + "_master.png";
+            }
+            else if (!cat.master_file.empty())
+            {
+                masterFile = cat.master_file;
+            }
+
+            if (masterFile.empty())
+            {
+                paths.emplace_back();
+                if (out_palettes != nullptr)
+                    out_palettes->emplace_back();
+                continue;
+            }
+
+            paths.push_back(cat.path_prefix + masterFile);
+
+            if (out_palettes != nullptr)
+            {
+                out_palettes->push_back(
+                    palReg->buildSwap(cat.palette_id, cat.base_color, paletteTarget));
+            }
+        }
         else
-            paths.push_back(cat.path_prefix + file);
+        {
+            const std::string file = resolveFileName(cat, optionId, selections);
+            if (file.empty())
+                paths.emplace_back();
+            else
+                paths.push_back(cat.path_prefix + file);
+            if (out_palettes != nullptr)
+                out_palettes->emplace_back();
+        }
     }
     return paths;
 }
@@ -151,12 +235,13 @@ void resolveAppearance(EntityManager& em, entt::entity entity, SpriteCompositor&
     std::vector<std::string> layers = def->layers;
 
     // If layers are empty, resolve from manifest + selections.
+    std::vector<PaletteSwap> palettes;
     if (layers.empty() && !def->layer_manifest.empty())
     {
         auto selections = def->default_layers;
         for (const auto& [k, v] : overrides)
             selections[k] = v;
-        layers = buildLayerPaths(em, selections);
+        layers = buildLayerPaths(em, selections, &palettes);
     }
 
     if (layers.empty())
@@ -166,10 +251,14 @@ void resolveAppearance(EntityManager& em, entt::entity entity, SpriteCompositor&
         return;
     }
 
-    const uint32_t texId = compositor.composite(layers);
+    const uint32_t texId = compositor.composite(layers, palettes);
     if (texId == 0)
     {
-        std::cerr << "[AppearanceOps] Composite failed for entity\n";
+        std::cerr << "[AppearanceOps] Composite failed for entity (missing layers)\n";
+        // Hide the entity so it doesn't render as garbage.
+        auto& spr = reg.get_or_emplace<Sprite>(entity);
+        spr.src_w = 0;
+        spr.src_h = 0;
         reg.remove<AppearanceDef>(entity);
         return;
     }

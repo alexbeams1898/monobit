@@ -348,6 +348,13 @@ static bool emplaceAnimationFromSheet(EntityManager& em, entt::entity entity,
                     if (cell.is_array())
                     {
                         parseFrames(cell, row.left[d]);
+                        // Mirror left anchors to right (negate x) as fallback.
+                        row.right[d].resize(row.left[d].size());
+                        for (size_t i = 0; i < row.left[d].size(); ++i)
+                        {
+                            row.right[d][i].x = -row.left[d][i].x;
+                            row.right[d][i].y = row.left[d][i].y;
+                        }
                     }
                     else if (cell.is_object())
                     {
@@ -1466,6 +1473,10 @@ static AppearanceCategory parseAppearanceCategory(const json& cat)
     c.path_prefix = cat.value("path_prefix", std::string{});
     c.linked_to = cat.value("linked_to", std::string{});
     c.combine_with = cat.value("combine_with", std::string{});
+    c.palette_id = cat.value("palette_id", std::string{});
+    c.base_color = cat.value("base_color", std::string{});
+    c.master_file = cat.value("master_file", std::string{});
+    c.palette_from_combine = cat.value("palette_from_combine", false);
 
     const std::string type_str = cat.value("type", std::string{"select"});
     if (type_str == "slider")
@@ -1513,8 +1524,38 @@ bool ConfigLoader::loadAppearanceConfig(EntityManager& em, const std::string& fi
             cfg.categories.push_back(parseAppearanceCategory(cat));
     }
 
+    // Load palette swap files referenced by categories.
+    auto& palReg = em.registry().ctx().emplace<PaletteRegistry>();
+    if (j.contains("palettes") && j["palettes"].is_object())
+    {
+        for (const auto& [palId, palPath] : j["palettes"].items())
+        {
+            std::ifstream pf(palPath.get<std::string>());
+            if (!pf.is_open())
+                continue;
+            json pj;
+            try { pf >> pj; } catch (...) { continue; }
+            auto& pal = palReg.palettes[palId];
+            for (const auto& [colorName, hexArr] : pj.items())
+            {
+                auto& colors = pal[colorName];
+                for (const auto& hex : hexArr)
+                {
+                    const std::string h = hex.get<std::string>();
+                    if (h.size() < 7)
+                        continue;
+                    const auto r = static_cast<uint8_t>(std::stoi(h.substr(1, 2), nullptr, 16));
+                    const auto g = static_cast<uint8_t>(std::stoi(h.substr(3, 2), nullptr, 16));
+                    const auto b = static_cast<uint8_t>(std::stoi(h.substr(5, 2), nullptr, 16));
+                    colors.push_back({r, g, b});
+                }
+            }
+        }
+    }
+
     cfg.loaded = true;
     std::cout << "[ConfigLoader] Loaded appearance config from " << filePath << " ("
-              << cfg.categories.size() << " categories)\n";
+              << cfg.categories.size() << " categories, " << palReg.palettes.size()
+              << " palettes)\n";
     return true;
 }
