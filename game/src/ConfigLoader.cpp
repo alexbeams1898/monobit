@@ -207,6 +207,105 @@ static void loadLoot(EntityManager& em, entt::entity entity, const json& j)
     em.registry().emplace<Loot>(entity, std::move(l));
 }
 
+static void populateAnimRowIndex(EntityManager& em, const json& sheetData)
+{
+    if (!sheetData.contains("states"))
+        return;
+    auto* existing = em.registry().ctx().find<AnimRowIndex>();
+    if (existing == nullptr)
+        existing = &em.registry().ctx().emplace<AnimRowIndex>();
+    auto& rowIndex = *existing;
+    for (const auto& [key, val] : sheetData["states"].items())
+    {
+        if (rowIndex.rows.count(key) > 0)
+            continue;
+        AnimRowEntry entry;
+        entry.row = val.value("row", 0);
+        entry.frames = val.value("frames", 1);
+        entry.duration = val.value("duration", 0.0f);
+        rowIndex.rows[key] = entry;
+    }
+}
+
+static void parseAnchorFrames(const json& arr, std::vector<HandAnchor>& out)
+{
+    static constexpr float DEG2RAD = 3.14159265f / 180.0f;
+    out.clear();
+    for (const auto& fr : arr)
+    {
+        HandAnchor a;
+        a.x = fr[0].get<float>();
+        a.y = fr[1].get<float>();
+        if (fr.size() > 2)
+            a.rotation = fr[2].get<float>() * DEG2RAD;
+        if (fr.size() > 3)
+            a.flip = fr[3].get<int>();
+        if (fr.size() > 4)
+            a.depth = fr[4].get<int>();
+        out.push_back(a);
+    }
+}
+
+static void parseAnchorCell(const json& cell, std::vector<HandAnchor>& left,
+                            std::vector<HandAnchor>& right)
+{
+    if (cell.is_array())
+    {
+        parseAnchorFrames(cell, left);
+        right.resize(left.size());
+        for (size_t i = 0; i < left.size(); ++i)
+        {
+            right[i].x = -left[i].x;
+            right[i].y = left[i].y;
+        }
+        return;
+    }
+    if (cell.is_object())
+    {
+        if (cell.contains("left"))
+            parseAnchorFrames(cell["left"], left);
+        if (cell.contains("right"))
+            parseAnchorFrames(cell["right"], right);
+    }
+}
+
+static void populateHandAnchors(EntityManager& em, const json& sheetData)
+{
+    if (!sheetData.contains("hand_anchors"))
+        return;
+    auto* existing = em.registry().ctx().find<HandAnchorData>();
+    if (existing == nullptr)
+        existing = &em.registry().ctx().emplace<HandAnchorData>();
+    auto& anchors = *existing;
+
+    const auto& ha = sheetData["hand_anchors"];
+    if (ha.contains("depth_per_dir"))
+    {
+        anchors.depth_per_dir.clear();
+        for (const auto& d : ha["depth_per_dir"])
+            anchors.depth_per_dir.push_back(d.get<int>());
+    }
+
+    if (!ha.contains("rows"))
+        return;
+    const char* dirKeys[] = {"S", "W", "E", "N"};
+    for (const auto& [rowKey, rowVal] : ha["rows"].items())
+    {
+        if (rowKey[0] == '_')
+            continue;
+        const int rowIdx = std::stoi(rowKey);
+        auto& row = anchors.rows[rowIdx];
+        row.left.resize(4);
+        row.right.resize(4);
+        for (int d = 0; d < 4; ++d)
+        {
+            if (!rowVal.contains(dirKeys[d]))
+                continue;
+            parseAnchorCell(rowVal[dirKeys[d]], row.left[d], row.right[d]);
+        }
+    }
+}
+
 static bool emplaceAnimationFromSheet(EntityManager& em, entt::entity entity,
                                       const std::string& sheetPath)
 {
@@ -274,107 +373,8 @@ static bool emplaceAnimationFromSheet(EntityManager& em, entt::entity entity,
 
     anim.direction_count = sheetData.value("direction_count", 4);
 
-    // Populate the AnimRowIndex ctx singleton with all named states from the
-    // JSON. This lets AnimStateSystem look up weapon-specific attack rows
-    // (e.g. "thrust", "shoot") by name at runtime.
-    if (sheetData.contains("states"))
-    {
-        auto* existing = em.registry().ctx().find<AnimRowIndex>();
-        if (existing == nullptr)
-            existing = &em.registry().ctx().emplace<AnimRowIndex>();
-        auto& rowIndex = *existing;
-        for (const auto& [key, val] : sheetData["states"].items())
-        {
-            if (rowIndex.rows.count(key) == 0)
-            {
-                AnimRowEntry entry;
-                entry.row = val.value("row", 0);
-                entry.frames = val.value("frames", 1);
-                entry.duration = val.value("duration", 0.0f);
-                rowIndex.rows[key] = entry;
-            }
-        }
-    }
-
-    // Parse hand_anchors for weapon sprite positioning.
-    if (sheetData.contains("hand_anchors"))
-    {
-        auto* existing = em.registry().ctx().find<HandAnchorData>();
-        if (existing == nullptr)
-            existing = &em.registry().ctx().emplace<HandAnchorData>();
-        auto& anchors = *existing;
-
-        const auto& ha = sheetData["hand_anchors"];
-        if (ha.contains("depth_per_dir"))
-        {
-            anchors.depth_per_dir.clear();
-            for (const auto& d : ha["depth_per_dir"])
-                anchors.depth_per_dir.push_back(d.get<int>());
-        }
-
-        if (ha.contains("rows"))
-        {
-            const char* dirKeys[] = {"S", "W", "E", "N"};
-            static constexpr float DEG2RAD = 3.14159265f / 180.0f;
-            const auto parseFrames = [](const json& arr, std::vector<HandAnchor>& out)
-            {
-                out.clear();
-                for (const auto& fr : arr)
-                {
-                    HandAnchor a;
-                    a.x = fr[0].get<float>();
-                    a.y = fr[1].get<float>();
-                    // Extended format: [x, y, rotation_deg, flip, depth]
-                    if (fr.size() > 2)
-                        a.rotation = fr[2].get<float>() * DEG2RAD;
-                    if (fr.size() > 3)
-                        a.flip = fr[3].get<int>();
-                    if (fr.size() > 4)
-                        a.depth = fr[4].get<int>();
-                    out.push_back(a);
-                }
-            };
-            for (const auto& [rowKey, rowVal] : ha["rows"].items())
-            {
-                if (rowKey[0] == '_')
-                    continue; // skip comments
-                const int rowIdx = std::stoi(rowKey);
-                auto& row = anchors.rows[rowIdx];
-                row.left.resize(4); // S, W, E, N
-                row.right.resize(4);
-
-                for (int d = 0; d < 4; ++d)
-                {
-                    if (!rowVal.contains(dirKeys[d]))
-                        continue;
-                    const auto& cell = rowVal[dirKeys[d]];
-                    // Two supported formats:
-                    // 1) flat array      -> [[x,y],...]         (left-hand only)
-                    // 2) nested object   -> { "left": [...],
-                    //                         "right": [...] }  (both hands)
-                    // The nested form is what the 2H measurement tool writes.
-                    if (cell.is_array())
-                    {
-                        parseFrames(cell, row.left[d]);
-                        // Mirror left anchors to right (negate x) as fallback.
-                        row.right[d].resize(row.left[d].size());
-                        for (size_t i = 0; i < row.left[d].size(); ++i)
-                        {
-                            row.right[d][i].x = -row.left[d][i].x;
-                            row.right[d][i].y = row.left[d][i].y;
-                        }
-                    }
-                    else if (cell.is_object())
-                    {
-                        if (cell.contains("left"))
-                            parseFrames(cell["left"], row.left[d]);
-                        if (cell.contains("right"))
-                            parseFrames(cell["right"], row.right[d]);
-                    }
-                }
-            }
-        }
-    }
+    populateAnimRowIndex(em, sheetData);
+    populateHandAnchors(em, sheetData);
 
     // Set initial playback from Idle row so the first frame renders correctly
     // even before AnimStateSystem runs.

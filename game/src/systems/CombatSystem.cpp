@@ -155,6 +155,98 @@ static void fireRangedWeapon(EntityManager& em, entt::entity entity, const Weapo
     spawnMuzzleFlash(em, fx, fy);
 }
 
+// Forward declarations for helpers defined below but used by earlier helpers.
+static void syncAttackAnimSpeed(entt::registry& reg, entt::entity entity, const Weapon& weapon,
+                                float lockDuration);
+static void playAttackSound(const Weapon& weapon, const SoundConfig& snd);
+
+struct RangedFireContext
+{
+    EntityManager& em;
+    const FormulaConfig& f;
+    const SoundConfig& snd;
+    entt::entity entity;
+    Weapon& weapon;
+    const Transform& transform;
+    float facing_x;
+    float facing_y;
+    float swing_cost;
+    bool has_sta;
+    bool is_left_hand;
+};
+
+// Consume one round of ammo (magazine or inventory). No-op in god mode.
+static void consumeAmmo(entt::registry& reg, entt::entity entity, const Weapon& weapon,
+                        RangedState* rs, Inventory* inv)
+{
+    if (reg.ctx().get<DebugFlags>().god_mode)
+        return;
+    if (rs != nullptr && rs->magazine_size > 0)
+    {
+        rs->ammo_in_magazine--;
+        return;
+    }
+    if (inv != nullptr && !weapon.ammo_type.empty())
+    {
+        if (auto* equip = reg.try_get<Equipment>(entity))
+            InventoryOps::consumeItems(*inv, *equip, weapon.ammo_type, 1);
+    }
+}
+
+static float rangedCooldown(entt::registry& reg, entt::entity entity, const Weapon& weapon,
+                            const FormulaConfig& f)
+{
+    if (weapon.fire_rate > 0.0f)
+        return 1.0f / weapon.fire_rate;
+    if (reg.all_of<Stats>(entity))
+        return computeSwingCooldown(weapon, reg.get<Stats>(entity), f);
+    return f.swing.base_swing_time + weapon.weight * f.swing.weight_scale;
+}
+
+// Execute one ranged fire attempt: auto-reload if empty, fire if able, set
+// cooldowns/locks/sound/stamina. Skips everything if the weapon can't fire.
+static void executeRangedAttack(RangedFireContext& ctx)
+{
+    auto& reg = ctx.em.registry();
+    auto* rs = reg.try_get<RangedState>(ctx.entity);
+    auto* inv = reg.try_get<Inventory>(ctx.entity);
+    const int reserve = (inv != nullptr && !ctx.weapon.ammo_type.empty())
+                            ? InventoryOps::countItem(*inv, ctx.weapon.ammo_type)
+                            : 999;
+    const bool magazineEmpty = rs != nullptr && rs->magazine_size > 0 && rs->ammo_in_magazine <= 0;
+    const bool bowEmpty = rs != nullptr && rs->magazine_size == 0 && reserve <= 0;
+    const bool canFire = !(rs != nullptr && rs->reloading) && !magazineEmpty && !bowEmpty;
+
+    if (magazineEmpty && reserve > 0)
+    {
+        rs->reloading = true;
+        rs->reload_timer = rs->reload_time;
+        const auto& rl = ctx.snd.get("reload");
+        AudioSystem::playSfx(rl.path, rl.volume);
+    }
+
+    if (!canFire)
+        return;
+
+    const float dmg = reg.all_of<Stats>(ctx.entity)
+                          ? computeDamage(ctx.weapon, reg.get<Stats>(ctx.entity), ctx.f)
+                          : ctx.weapon.base_damage;
+    fireRangedWeapon(ctx.em, ctx.entity, ctx.weapon, ctx.transform, ctx.facing_x, ctx.facing_y, dmg,
+                     ctx.is_left_hand);
+    consumeAmmo(reg, ctx.entity, ctx.weapon, rs, inv);
+
+    const float cooldown = rangedCooldown(reg, ctx.entity, ctx.weapon, ctx.f);
+    ctx.weapon.swing_cooldown_remaining = cooldown;
+    reg.emplace_or_replace<AttackLocked>(ctx.entity, AttackLocked{cooldown, ctx.is_left_hand});
+    syncAttackAnimSpeed(reg, ctx.entity, ctx.weapon, cooldown);
+
+    if (ctx.has_sta)
+        deductStamina(reg, ctx.entity, ctx.swing_cost, ctx.f);
+
+    playAttackSound(ctx.weapon, ctx.snd);
+    TracyMessageL("PlayerAttack");
+}
+
 // Set the animation speed multiplier so the attack anim fits within the lock duration.
 static void syncAttackAnimSpeed(entt::registry& reg, entt::entity entity, const Weapon& weapon,
                                 float lockDuration)
@@ -475,6 +567,9 @@ void CombatSystem::update(EntityManager& em, double dt)
     // Per-hand attack helper — contains the full ranged + melee fire paths,
     // cooldown set, attack lock, animation speed calc, stamina deduction, sound.
     // Called once for right hand (Weapon) and once for left hand (LeftWeapon).
+    // Sequential attack pipeline that captures many locals from the enclosing
+    // scope; already extracted executeRangedAttack and helpers.
+    // NOLINTNEXTLINE(readability-function-cognitive-complexity)
     auto attemptAttack = [&](entt::entity entity, Weapon& weapon, bool attackPressed,
                              const Transform& transform, FacingDirection& facing, bool isLeftHand)
     {
@@ -549,63 +644,9 @@ void CombatSystem::update(EntityManager& em, double dt)
 
         if (weapon.ranged)
         {
-            auto* rs = em.registry().try_get<RangedState>(entity);
-            auto* inv = em.registry().try_get<Inventory>(entity);
-            const int reserve = (inv != nullptr && !weapon.ammo_type.empty())
-                                    ? InventoryOps::countItem(*inv, weapon.ammo_type)
-                                    : 999;
-
-            const bool magazineEmpty =
-                rs != nullptr && rs->magazine_size > 0 && rs->ammo_in_magazine <= 0;
-            const bool bowEmpty = rs != nullptr && rs->magazine_size == 0 && reserve <= 0;
-            const bool canFire = !(rs != nullptr && rs->reloading) && !magazineEmpty && !bowEmpty;
-
-            if (magazineEmpty && reserve > 0)
-            {
-                rs->reloading = true;
-                rs->reload_timer = rs->reload_time;
-                const auto& rl = snd.get("reload");
-                AudioSystem::playSfx(rl.path, rl.volume);
-            }
-
-            if (canFire)
-            {
-                const float dmg = em.registry().all_of<Stats>(entity)
-                                      ? computeDamage(weapon, em.registry().get<Stats>(entity), f)
-                                      : weapon.base_damage;
-                fireRangedWeapon(em, entity, weapon, transform, facingX, facingY, dmg, isLeftHand);
-
-                const bool godAmmo = em.registry().ctx().get<DebugFlags>().god_mode;
-                if (!godAmmo)
-                {
-                    if (rs != nullptr && rs->magazine_size > 0)
-                        rs->ammo_in_magazine--;
-                    else if (inv != nullptr && !weapon.ammo_type.empty())
-                    {
-                        auto* equip = em.registry().try_get<Equipment>(entity);
-                        if (equip != nullptr)
-                            InventoryOps::consumeItems(*inv, *equip, weapon.ammo_type, 1);
-                    }
-                }
-
-                const float cooldown =
-                    weapon.fire_rate > 0.0f
-                        ? (1.0f / weapon.fire_rate)
-                        : (em.registry().all_of<Stats>(entity)
-                               ? computeSwingCooldown(weapon, em.registry().get<Stats>(entity), f)
-                               : f.swing.base_swing_time + weapon.weight * f.swing.weight_scale);
-                weapon.swing_cooldown_remaining = cooldown;
-
-                em.registry().emplace_or_replace<AttackLocked>(entity,
-                                                               AttackLocked{cooldown, isLeftHand});
-                syncAttackAnimSpeed(em.registry(), entity, weapon, cooldown);
-
-                if (hasSta)
-                    deductStamina(em.registry(), entity, swingCost, f);
-
-                playAttackSound(weapon, snd);
-                TracyMessageL("PlayerAttack");
-            }
+            RangedFireContext ctx{em,      f,       snd,       entity, weapon,    transform,
+                                  facingX, facingY, swingCost, hasSta, isLeftHand};
+            executeRangedAttack(ctx);
         }
         else
         {
