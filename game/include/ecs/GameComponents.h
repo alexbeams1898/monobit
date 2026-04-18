@@ -2,6 +2,7 @@
 
 #include <entt/entt.hpp>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 // ---------------------------------------------------------------------------
@@ -13,6 +14,41 @@
 // Components.h and must never reference anything defined here.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Animation state enum and row lookup (game-side).
+// The engine Animation component has no concept of named states. This enum
+// maps game states to spritesheet row/frames/duration via AnimRowData[].
+// AnimStateSystem resolves the current game state, looks up the row config,
+// and writes the result into Animation's playback fields each tick.
+// ---------------------------------------------------------------------------
+
+enum class AnimState : uint8_t
+{
+    Idle = 0,
+    Walk,
+    Attack,
+    Hit,
+    Death,
+    Run,
+    COUNT
+};
+
+struct AnimRowData
+{
+    int row = 0;
+    int frames = 1;
+    float duration = 0.0f;
+    bool freeze_on_last = false;
+};
+
+// Per-entity lookup table mapping AnimState -> spritesheet row config.
+// Emplaced by ConfigLoader alongside the engine Animation component.
+struct AnimRowConfig
+{
+    static constexpr int STATE_COUNT = static_cast<int>(AnimState::COUNT);
+    AnimRowData rows[STATE_COUNT]{};
+};
+
 // PlayerActions -- all player input state: movement, combat actions, ability triggers.
 // InputMappingSystem reads raw SDL keyboard state and writes these fields each frame.
 struct PlayerActions
@@ -21,15 +57,18 @@ struct PlayerActions
     float move_x = 0.0f;
     float move_y = 0.0f;
 
-    bool attack = false;
+    bool right_attack = false; // right-hand attack (E / RMB)
+    bool left_attack = false;  // left-hand attack (Q / LMB)
     bool dodge = false;
-    bool skill = false;
+    bool skill = false; // skill attack (Ctrl)
     bool sprint = false;
     bool block_held = false;
     bool block_just_pressed = false;
     bool auto_toggle_just_pressed = false;
-    bool cycle_weapon = false;
-    bool cycle_weapon_prev = false;
+    bool cycle_weapon = false;           // right-hand cycle forward (C)
+    bool cycle_weapon_prev = false;      // right-hand cycle backward (V)
+    bool cycle_left_weapon = false;      // left-hand cycle forward (Z)
+    bool cycle_left_weapon_prev = false; // left-hand cycle backward (X)
     bool interact = false;
     bool mouse_click = false;
     float mouse_world_x = 0.0f;
@@ -42,6 +81,7 @@ struct PlayerActions
     bool reload = false;
     bool toggle_inventory = false;
     bool toggle_pause = false;
+    bool toggle_two_hand = false; // one-shot: flips Weapon.two_handed_active if two_handed
     float dodge_cooldown_remaining = 0.0f;
     float step_timer = 0.0f;
     float wall_bump_cooldown = 0.0f;
@@ -57,6 +97,7 @@ struct Hitbox
     float damage = 0.0f;
     entt::entity owner = entt::null;
     bool hit_something = false;
+    bool left_hand = false;
 };
 
 // Dodging -- active while the player is in a dodge roll. Grants i-frames.
@@ -69,6 +110,7 @@ struct Dodging
 struct AttackLocked
 {
     float remaining = 0.0f;
+    bool left_hand = false;
 };
 
 // Staggered -- guard-break or parry result; entity cannot act until expired.
@@ -82,6 +124,7 @@ struct Staggered
 struct DamageFeedback
 {
     float remaining = 0.0f;
+    bool attacker_left_hand = false;
 };
 
 // AttackFeedback -- emplaced by CombatSystem when an entity swings.
@@ -146,9 +189,11 @@ struct Body
     float unarmed_str_scaling = 1.0f;
     float unarmed_dex_scaling = 0.75f;
 
-    // Unarmed fighting XP (persists across weapon switches).
-    int unarmed_xp_level = 1;
-    float unarmed_xp_current = 0.0f;
+    // Per-hand unarmed fighting XP (persists across weapon switches).
+    int unarmed_xp_level_right = 1;
+    float unarmed_xp_current_right = 0.0f;
+    int unarmed_xp_level_left = 1;
+    float unarmed_xp_current_left = 0.0f;
 };
 
 // Experience -- tracks level progression and unspent stat allocation points.
@@ -187,6 +232,63 @@ struct Weapon
     std::string fire_sound;        // sound event key (e.g. "gunshot", "bow_release")
     float fire_rate = 0.0f;        // shots/sec; >0 overrides swing cooldown formula
     float stamina_cost = -1.0f;    // per-attack cost; <0 = use weight-based formula
+
+    // Visual weapon fields (set by EquipmentSystem from ItemDef).
+    std::string visual_weapon; // weapon id used for equip-change detection
+    std::string weapon_icon;   // sprite path for held weapon visual; empty = no visible weapon
+    float grip_x = 0.0f;       // primary grip pixel in icon (0..32); trigger hand
+    float grip_y = 0.0f;
+
+    // Per-direction attack icons: alternate sprites used during attack animations.
+    // If empty, the default weapon_icon is used. Allows top-down perspective for N/S.
+    std::string attack_icon_ns;    // icon for N/S attack directions
+    float attack_grip_ns_x = 0.0f; // grip (trigger hand) on the NS icon
+    float attack_grip_ns_y = 0.0f;
+    float attack_fore_grip_ns_x = 0.0f; // fore grip (support hand) on the NS icon
+    float attack_fore_grip_ns_y = 0.0f;
+    float fore_grip_x = 0.0f; // secondary grip pixel in icon; support hand (two-handed only)
+    float fore_grip_y = 0.0f;
+    float weapon_scale = 1.0f;  // visual scale (1.0 = native icon size)
+    float base_rotation = 0.0f; // resting angle in radians (converted from degrees at load)
+    std::string attack_anim;    // animation row name ("slash", "thrust", "shoot"); empty = "slash"
+    std::vector<int> shoot_frames; // per-frame column remap for the attack row; empty = play 0..N-1
+    entt::entity weapon_entity =
+        entt::null; // spawned weapon sprite entity (managed by WeaponSpriteSystem)
+
+    // Two-handed state.
+    // two_handed: does the weapon physically support a two-handed grip?
+    //                     (also gates the Left-Alt toggle input)
+    // two_handed_active:  is the weapon currently being rendered/handled in 2H mode?
+    //                     Runtime-only; starts at false on equip and flips on toggle.
+    bool two_handed = false;
+    bool two_handed_active = false;
+
+    // Per-weapon XP — each hand levels independently.
+    int wxp_level = 1;
+    float wxp_current = 0.0f;
+    float wxp_to_next = 50.0f;
+};
+
+// LeftWeapon -- weapon equipped in the left hand. Inherits all Weapon fields;
+// separate type so entt can store both Weapon (right hand) and LeftWeapon
+// (left hand) on the same entity.
+struct LeftWeapon : Weapon
+{
+};
+
+// WeaponSprite -- tag on the weapon sprite entity linking it back to its wielder.
+// `left_hand` indicates whether this sprite represents the left-hand weapon.
+struct WeaponSprite
+{
+    entt::entity wielder = entt::null;
+    bool left_hand = false;
+
+    // Smoothed anchor position. Lerped toward the current frame's anchor
+    // each render frame to prevent snapping when the animation frame changes.
+    float smooth_anchor_x = 0.0f;
+    float smooth_anchor_y = 0.0f;
+    int prev_row = -1;
+    int prev_dir = -1;
 };
 
 // WeaponXP -- tracks weapon leveling through combat use.
@@ -198,12 +300,22 @@ struct WeaponXP
     float xp_to_next = 50.0f;
 };
 
-// Shield -- one-handed shield equipped in the off-hand slot.
+// Shield -- equipped in either hand. Blocking is determined by which hand holds it.
 struct Shield
 {
     float guard_health = 100.0f;
     float max_guard = 100.0f;
     bool blocking = false;
+};
+
+// AppearanceState -- cached selections used for the last SpriteCompositor composite.
+// AppearanceSyncSystem compares Weapon.visual_weapon against synced_visual_weapon to
+// detect equip changes, then re-composites the sprite with updated weapon layers.
+struct AppearanceState
+{
+    std::unordered_map<std::string, std::string> current_selections;
+    std::string synced_visual_weapon;
+    std::string synced_visual_weapon_left;
 };
 
 // ArmorStats -- aggregated defensive stats from all equipped armor pieces.
@@ -369,8 +481,8 @@ enum class ArmorSlot : uint8_t
 
 enum class EquipSlot : uint8_t
 {
-    MainHand,
-    OffHand,
+    RightHand,
+    LeftHand,
     Head,
     Chest,
     Legs,
@@ -412,30 +524,25 @@ struct Inventory
     int max_slots = 20;
 };
 
-// Currently equipped items. Each slot holds a copy of the ItemInstance.
-// Empty slot = config_path.empty(). EquipmentSystem syncs these to
-// Weapon/Shield components each frame.
+// Currently equipped items. Each slot is an index into Inventory::items.
+// -1 = nothing equipped (fists for hands, bare for armor). Items stay in
+// inventory at all times — equipping just marks which index each slot uses.
+// EquipmentSystem syncs these to Weapon/Shield components each frame.
 struct Equipment
 {
-    ItemInstance main_hand;
-    ItemInstance off_hand;
-    ItemInstance head;
-    ItemInstance chest;
-    ItemInstance legs;
-    ItemInstance feet;
-    ItemInstance accessory_1;
-    ItemInstance accessory_2;
-    bool two_handing = false;
-
-    // Index into Inventory::items for the currently equipped weapon.
-    // -1 = fists (no inventory slot). Used by X-key cycling to return the
-    // weapon to its original inventory position so order stays stable.
-    int main_hand_slot = -1;
+    int right_hand = -1;
+    int left_hand = -1;
+    int head = -1;
+    int chest = -1;
+    int legs = -1;
+    int feet = -1;
+    int accessory_1 = -1;
+    int accessory_2 = -1;
 
     // EquipmentSystem compares these to detect slot changes.
     // Sentinel ensures the first update always triggers sync (even for fists).
-    std::string synced_main_hand = "__unsynced__";
-    std::string synced_off_hand = "__unsynced__";
+    std::string synced_right_hand = "__unsynced__";
+    std::string synced_left_hand = "__unsynced__";
 };
 
 // Wallet -- persistent money balance for the player.
@@ -527,10 +634,11 @@ struct Projectile
     float max_range = 500.0f;
     float spawn_x = 0.0f;
     float spawn_y = 0.0f;
-    int pierce_remaining = 0; // 0 = destroy on first hit; >0 = pass through N enemies
-    float dir_x = 0.0f;       // normalized flight direction
+    int pierce_remaining = 0;
+    float dir_x = 0.0f;
     float dir_y = 0.0f;
-    float speed = 0.0f; // pixels per second
+    float speed = 0.0f;
+    bool left_hand = false;
 };
 
 // RangedState -- runtime magazine/reload state for a ranged weapon wielder.

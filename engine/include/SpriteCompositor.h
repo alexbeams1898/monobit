@@ -25,6 +25,23 @@ struct CompositeTextureInfo
     int height = 0;
 };
 
+// Optional per-layer palette swap: replace base RGB colors with target colors.
+// Each entry maps one base color to one target color. Applied pixel-by-pixel
+// before alpha-compositing.
+struct PaletteSwap
+{
+    struct Entry
+    {
+        uint8_t base_r, base_g, base_b;
+        uint8_t target_r, target_g, target_b;
+    };
+    std::vector<Entry> entries;
+    bool empty() const
+    {
+        return entries.empty();
+    }
+};
+
 class SpriteCompositor
 {
   public:
@@ -32,6 +49,12 @@ class SpriteCompositor
     // Empty strings in layer_paths are skipped (represent "none" slots).
     // Returns the GL texture ID, or 0 on failure (no valid layers).
     uint32_t composite(const std::vector<std::string>& layer_paths);
+
+    // Composite with optional per-layer palette swaps. The palettes vector
+    // must be the same size as layer_paths (or empty to skip all swaps).
+    // Each PaletteSwap is applied to its corresponding layer after loading.
+    uint32_t composite(const std::vector<std::string>& layer_paths,
+                       const std::vector<PaletteSwap>& palettes);
 
     // Retrieve dimensions of a previously composited texture.
     // Returns false if tex_id is not in the cache.

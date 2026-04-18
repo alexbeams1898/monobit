@@ -13,5 +13,8 @@
     "two_handed": false,
     "weapon_tier": "greatsword",
     "max_durability": 120.0,
-    "stackable": false
+    "stackable": false,
+    "grip_x": 28.0,
+    "grip_y": 28.0,
+    "base_rotation": 90.0
 }

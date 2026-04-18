@@ -369,3 +369,59 @@ struct WaveState
 
     ActiveWave active_def;
 };
+
+// ---------------------------------------------------------------------------
+// AnimRowIndex -- maps animation state names (e.g. "thrust", "shoot") to their
+// row data from the animation config JSON. Populated once by ConfigLoader.
+// Used by AnimStateSystem to resolve weapon-specific attack rows at runtime.
+// ---------------------------------------------------------------------------
+struct AnimRowEntry
+{
+    int row = 0;
+    int frames = 1;
+    float duration = 0.0f;
+};
+
+struct AnimRowIndex
+{
+    std::unordered_map<std::string, AnimRowEntry> rows;
+};
+
+// ---------------------------------------------------------------------------
+// HandAnchorData -- per-frame hand positions for weapon sprite placement.
+// Pixel offsets from the 64x64 frame center (32, 32). Positive x = right on
+// screen, positive y = down.
+//
+// Each row stores BOTH the player's left hand and (optionally) right hand per
+// direction per frame. Two-handed weapons use both; one-handed weapons only
+// read the primary (left) hand. The right hand is optional: if an animation
+// row has no right-hand data, the game silently falls back to 1H rendering
+// even for 2H-capable weapons.
+// ---------------------------------------------------------------------------
+struct HandAnchor
+{
+    float x = 0.0f;
+    float y = 0.0f;
+    float rotation = -999.0f; // weapon rotation in radians; -999 = use default table
+    int flip = -1;            // 0=no flip, 1=flip; -1 = use default table
+    int depth = 0;            // sub_layer override; 0 = use depth_per_dir
+};
+
+struct HandAnchorRow
+{
+    // left[dir][frame] -- dir: 0=South, 1=West, 2=East, 3=North
+    // Player's left hand (trigger hand for 1H weapons).
+    std::vector<std::vector<HandAnchor>> left;
+    // right[dir][frame] -- same layout as left; may be empty if not measured.
+    // Used only for two-handed weapon rendering.
+    std::vector<std::vector<HandAnchor>> right;
+};
+
+struct HandAnchorData
+{
+    // row index (animation row) -> anchor data for that row
+    std::unordered_map<int, HandAnchorRow> rows;
+    // Per-direction weapon depth: +1 = in front of body, -1 = behind body
+    // Index: 0=South, 1=West, 2=East, 3=North
+    std::vector<int> depth_per_dir = {1, 1, 1, -1};
+};

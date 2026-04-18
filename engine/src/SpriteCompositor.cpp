@@ -9,8 +9,8 @@ namespace
 
 // Default LPC humanoid sheet dimensions, used when a missing layer is the very first
 // (no other layer has set dimensions yet). Matches assemble_spritesheet.py output.
-constexpr int FALLBACK_W = 2048;
-constexpr int FALLBACK_H = 384;
+constexpr int FALLBACK_W = 3328;
+constexpr int FALLBACK_H = 640;
 constexpr int CHECKER_TILE = 16;
 
 // Build a magenta-and-black checkerboard so missing layers are screamingly visible.
@@ -47,9 +47,54 @@ std::string SpriteCompositor::buildCacheKey(const std::vector<std::string>& laye
     return key;
 }
 
+// Apply a palette swap to a loaded pixel buffer in-place.
+static void applyPaletteSwap(stbi_uc* pixels, int w, int h, const PaletteSwap& palette)
+{
+    const size_t pixel_count = static_cast<size_t>(w) * static_cast<size_t>(h);
+    for (size_t i = 0; i < pixel_count; ++i)
+    {
+        const size_t off = i * 4;
+        if (pixels[off + 3] == 0)
+            continue;
+        const uint8_t r = pixels[off + 0];
+        const uint8_t g = pixels[off + 1];
+        const uint8_t b = pixels[off + 2];
+        for (const auto& e : palette.entries)
+        {
+            if (r == e.base_r && g == e.base_g && b == e.base_b)
+            {
+                pixels[off + 0] = e.target_r;
+                pixels[off + 1] = e.target_g;
+                pixels[off + 2] = e.target_b;
+                break;
+            }
+        }
+    }
+}
+
 uint32_t SpriteCompositor::composite(const std::vector<std::string>& layer_paths)
 {
-    const std::string key = buildCacheKey(layer_paths);
+    return composite(layer_paths, {});
+}
+
+uint32_t SpriteCompositor::composite(const std::vector<std::string>& layer_paths,
+                                     const std::vector<PaletteSwap>& palettes)
+{
+    // Build cache key including palette info so different colors with
+    // the same master path produce different cache entries.
+    std::string key = buildCacheKey(layer_paths);
+    for (size_t i = 0; i < palettes.size(); ++i)
+    {
+        if (!palettes[i].empty())
+        {
+            key += "|pal" + std::to_string(i) + ":";
+            for (const auto& e : palettes[i].entries)
+            {
+                key += std::to_string(e.target_r) + "," + std::to_string(e.target_g) + "," +
+                       std::to_string(e.target_b) + ";";
+            }
+        }
+    }
     auto it = cache.find(key);
     if (it != cache.end())
         return it->second.tex_id;
@@ -58,8 +103,9 @@ uint32_t SpriteCompositor::composite(const std::vector<std::string>& layer_paths
     int final_h = 0;
     std::vector<uint8_t> buffer;
 
-    for (const auto& path : layer_paths)
+    for (size_t layerIdx = 0; layerIdx < layer_paths.size(); ++layerIdx)
     {
+        const auto& path = layer_paths[layerIdx];
         if (path.empty())
             continue;
 
@@ -69,36 +115,16 @@ uint32_t SpriteCompositor::composite(const std::vector<std::string>& layer_paths
         stbi_uc* pixels = stbi_load(path.c_str(), &w, &h, &channels, STBI_rgb_alpha);
         if (!pixels)
         {
-            // Loud failure: missing layers blast a magenta checkerboard so the bug
-            // is immediately visible in-game instead of silently rendering wrong.
-            std::cerr << "[SpriteCompositor] MISSING LAYER (rendering as magenta checker): " << path
-                      << "\n";
-            if (final_w == 0)
-            {
-                final_w = FALLBACK_W;
-                final_h = FALLBACK_H;
-                buffer = makeCheckerboard(final_w, final_h);
-            }
-            else
-            {
-                const std::vector<uint8_t> checker = makeCheckerboard(final_w, final_h);
-                const size_t pixel_count =
-                    static_cast<size_t>(final_w) * static_cast<size_t>(final_h);
-                for (size_t i = 0; i < pixel_count; ++i)
-                {
-                    const size_t off = i * 4;
-                    buffer[off + 0] = checker[off + 0];
-                    buffer[off + 1] = checker[off + 1];
-                    buffer[off + 2] = checker[off + 2];
-                    buffer[off + 3] = 255;
-                }
-            }
+            std::cerr << "[SpriteCompositor] MISSING LAYER (skipped): " << path << "\n";
             continue;
         }
 
+        // Apply palette swap if provided for this layer.
+        if (layerIdx < palettes.size() && !palettes[layerIdx].empty())
+            applyPaletteSwap(pixels, w, h, palettes[layerIdx]);
+
         if (final_w == 0)
         {
-            // First valid layer sets dimensions and becomes the base.
             final_w = w;
             final_h = h;
             const size_t byte_count = static_cast<size_t>(w) * static_cast<size_t>(h) * 4;
@@ -115,7 +141,6 @@ uint32_t SpriteCompositor::composite(const std::vector<std::string>& layer_paths
             continue;
         }
 
-        // Alpha-composite this layer on top of the buffer ("over" operator).
         const size_t pixel_count = static_cast<size_t>(w) * static_cast<size_t>(h);
         for (size_t i = 0; i < pixel_count; ++i)
         {
@@ -135,7 +160,6 @@ uint32_t SpriteCompositor::composite(const std::vector<std::string>& layer_paths
                 continue;
             }
 
-            // General case: dst = src + dst * (1 - src_alpha/255).
             const uint32_t inv_sa = 255 - sa;
             dst[0] = static_cast<uint8_t>((src[0] * sa + dst[0] * inv_sa) / 255);
             dst[1] = static_cast<uint8_t>((src[1] * sa + dst[1] * inv_sa) / 255);
@@ -148,7 +172,6 @@ uint32_t SpriteCompositor::composite(const std::vector<std::string>& layer_paths
     if (buffer.empty())
         return 0;
 
-    // Upload composited pixel buffer to GL.
     GLuint texId = 0;
     glGenTextures(1, &texId);
     glBindTexture(GL_TEXTURE_2D, texId);

@@ -3,6 +3,7 @@
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
+#include "ops/InventoryOps.h"
 #include "systems/NotificationSystem.h"
 
 #include <cmath>
@@ -77,15 +78,58 @@ float WeaponXPSystem::computeEnemyPower(int level, int max_hp, float base_damage
            w.power_stat_weight * static_cast<float>(total_stats);
 }
 
-void WeaponXPSystem::grantXP(EntityManager& em, float enemy_power, float source_multiplier)
+void WeaponXPSystem::grantXP(EntityManager& em, float enemy_power, float source_multiplier,
+                             EquipSlot hand)
 {
     auto& reg = em.registry();
-    for (auto [entity, wxp, actions] : reg.view<WeaponXP, PlayerActions>().each())
+    const float amount = enemy_power * source_multiplier;
+    if (amount <= 0.0f)
+        return;
+
+    for (auto [entity, weapon, actions] : reg.view<Weapon, PlayerActions>().each())
     {
-        const float amount = enemy_power * source_multiplier;
-        if (amount <= 0.0f)
-            return;
-        wxp.current_xp += amount;
+        if (hand == EquipSlot::LeftHand)
+        {
+            if (auto* lw = reg.try_get<LeftWeapon>(entity))
+                lw->wxp_current += amount;
+        }
+        else
+        {
+            weapon.wxp_current += amount;
+        }
+    }
+}
+
+// Process level-ups for a single weapon's embedded XP fields.
+static void processWeaponLevelUps(Weapon& w, const ItemInstance* invItem, const ItemRegistry& items,
+                                  const WeaponTierRegistry& tiers, const FormulaConfig& f)
+{
+    const QualityTier qt = invItem ? invItem->quality : QualityTier::Common;
+    const float qf = qualityFactor(qt);
+    const std::string path = invItem ? invItem->config_path : std::string{};
+    const ItemDef* def = items.find(path);
+
+    while (w.wxp_current >= w.wxp_to_next)
+    {
+        w.wxp_current -= w.wxp_to_next;
+        w.wxp_level++;
+
+        const float dmgGrowth = resolveGrowth(
+            def, tiers, def ? def->damage_per_level : -1.0f,
+            [](const WeaponTierDef& td) { return td.damage_per_level; }, 1.0f);
+        const float scaleGrowth = resolveGrowth(
+            def, tiers, def ? def->scaling_per_level : -1.0f,
+            [](const WeaponTierDef& td) { return td.scaling_per_level; }, 0.02f);
+
+        const float gf = growthFactor(w.wxp_level, f.weapon_xp.decay_rate, qf);
+        w.base_damage += dmgGrowth * gf;
+        w.str_scaling += scaleGrowth * gf;
+        w.dex_scaling += scaleGrowth * gf;
+
+        NotificationSystem::push(w.name + " Lv" + std::to_string(w.wxp_level),
+                                 {0.9f, 0.78f, 0.45f, 1.0f});
+
+        w.wxp_to_next = computeXpThreshold(w.wxp_level, qf, def, tiers, f);
     }
 }
 
@@ -97,43 +141,18 @@ void WeaponXPSystem::update(EntityManager& em)
     const auto& items = reg.ctx().get<ItemRegistry>();
     const auto& tiers = reg.ctx().get<WeaponTierRegistry>();
 
-    for (auto [entity, wxp, equip] : reg.view<WeaponXP, Equipment>().each())
+    for (auto [entity, weapon, equip] : reg.view<Weapon, Equipment>().each())
     {
-        // Process level-ups while XP exceeds threshold.
-        // Fists use default quality; real weapons use their item quality.
-        const QualityTier qt =
-            equip.main_hand.empty() ? QualityTier::Common : equip.main_hand.quality;
-        const float qf = qualityFactor(qt);
+        const auto* inv = reg.try_get<Inventory>(entity);
+        const auto* rhItem =
+            inv ? InventoryOps::equippedItem(*inv, equip, EquipSlot::RightHand) : nullptr;
+        processWeaponLevelUps(weapon, rhItem, items, tiers, f);
 
-        while (wxp.current_xp >= wxp.xp_to_next)
+        if (auto* lw = reg.try_get<LeftWeapon>(entity))
         {
-            wxp.current_xp -= wxp.xp_to_next;
-            wxp.level++;
-
-            const ItemDef* def = items.find(equip.main_hand.config_path);
-
-            // Apply stat growth to the live Weapon component.
-            if (reg.all_of<Weapon>(entity))
-            {
-                auto& w = reg.get<Weapon>(entity);
-
-                const float dmgGrowth = resolveGrowth(
-                    def, tiers, def ? def->damage_per_level : -1.0f,
-                    [](const WeaponTierDef& td) { return td.damage_per_level; }, 1.0f);
-                const float scaleGrowth = resolveGrowth(
-                    def, tiers, def ? def->scaling_per_level : -1.0f,
-                    [](const WeaponTierDef& td) { return td.scaling_per_level; }, 0.02f);
-
-                const float gf = growthFactor(wxp.level, f.weapon_xp.decay_rate, qf);
-                w.base_damage += dmgGrowth * gf;
-                w.str_scaling += scaleGrowth * gf;
-                w.dex_scaling += scaleGrowth * gf;
-
-                NotificationSystem::push(w.name + " Lv" + std::to_string(wxp.level),
-                                         {0.9f, 0.78f, 0.45f, 1.0f});
-            }
-
-            wxp.xp_to_next = computeXpThreshold(wxp.level, qf, def, tiers, f);
+            const auto* lhItem =
+                inv ? InventoryOps::equippedItem(*inv, equip, EquipSlot::LeftHand) : nullptr;
+            processWeaponLevelUps(*lw, lhItem, items, tiers, f);
         }
     }
 }

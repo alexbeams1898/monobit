@@ -190,6 +190,20 @@ void applyPlayerInput(entt::registry& reg, float fdt, const FormulaConfig& f,
             continue;
         }
 
+        // During attacks, stop movement but don't skip the rest of the
+        // update (footsteps, wall bump cooldown still need to tick).
+        if (reg.all_of<AttackLocked>(entity))
+        {
+            vel.dx = 0.0f;
+            vel.dy = 0.0f;
+            actions.sprint = false;
+            if (auto* facing = reg.try_get<FacingDirection>(entity))
+                facing->sprinting = false;
+            tickFootsteps(actions, snd, fdt);
+            actions.wall_bump_cooldown = std::max(0.0f, actions.wall_bump_cooldown - fdt);
+            continue;
+        }
+
         float speed = computePlayerSpeed(reg, entity, f);
         tickSprintStamina(reg, entity, actions, f, fdt);
         const bool backpedal = updateFacingAndBackpedal(reg, entity, actions, f);

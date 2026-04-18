@@ -43,7 +43,7 @@ LPC_ROOT = os.path.join(
 
 PALETTE_DIR = os.path.join(LPC_ROOT, "_palettes")
 
-ANIMATIONS = ["walk", "run", "slash", "hurt"]
+ANIMATIONS = ["walk", "run", "slash", "hurt", "thrust", "shoot", "reverse_slash"]
 
 
 def load_palette(name: str) -> dict:

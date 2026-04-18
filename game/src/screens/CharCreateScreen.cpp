@@ -66,6 +66,7 @@ static constexpr float WALK_FRAME_DURATION = 0.1f;
 static constexpr int PREVIEW_SCALE = 3;
 static constexpr int NUM_DIRS = 4;
 static constexpr int FRAME_PX = 64;
+static constexpr int WALK_FRAMES = 8; // walk row frame count (matches lpc_humanoid.json)
 static constexpr float SWATCH_SIZE = 22.0f;
 static constexpr float SWATCH_GAP = 6.0f;
 static constexpr float SWATCH_BORDER = 2.0f;
@@ -168,6 +169,8 @@ static std::unordered_map<std::string, std::string> buildSelections(const Appear
     for (size_t i = 0; i < cfg.categories.size() && i < sCatSelection.size(); ++i)
     {
         const auto& cat = cfg.categories[i];
+        if (cat.hidden)
+            continue;
         if (cat.type == AppearanceCategoryType::Slider)
         {
             const float v = (i < sCatSliderValue.size()) ? sCatSliderValue[i] : cat.default_value;
@@ -189,8 +192,8 @@ static void rebuildVisibleCats(const AppearanceConfig& cfg)
     {
         const auto& cat = cfg.categories[i];
 
-        // Linked categories auto-resolve from another -- hide from UI.
-        if (!cat.linked_to.empty())
+        // Hidden and linked categories are not shown in the character creator.
+        if (cat.hidden || !cat.linked_to.empty())
             continue;
 
         // Color categories are hidden when their parent style is "none".
@@ -223,8 +226,9 @@ static void recomposite(EntityManager& em)
         return;
 
     auto sel = buildSelections(*cfg);
-    auto paths = AppearanceOps::buildLayerPaths(em, sel);
-    sPreviewTex = cfg->compositor->composite(paths);
+    std::vector<PaletteSwap> palettes;
+    auto paths = AppearanceOps::buildLayerPaths(em, sel, &palettes);
+    sPreviewTex = cfg->compositor->composite(paths, palettes);
     sPreviewTexW = 0;
     sPreviewTexH = 0;
     if (sPreviewTex != 0)
@@ -781,7 +785,7 @@ static void lazyInitSelections(EntityManager& em, const AppearanceConfig& cfg)
 
 static void advanceWalkAnim()
 {
-    const int maxFrames = (sPreviewTexW > 0) ? (sPreviewTexW / (NUM_DIRS * FRAME_PX)) : 8;
+    const int maxFrames = WALK_FRAMES;
     const uint32_t now = SDL_GetTicks();
     const float animDt = static_cast<float>(now - sLastTicks) * 0.001f;
     sLastTicks = now;

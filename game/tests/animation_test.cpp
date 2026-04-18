@@ -9,190 +9,131 @@
 #include <cmath>
 
 using engine::direction::dirToColumnIndex;
-using engine::direction::snapToOctant;
-using engine::direction::snapWithHysteresis8;
+using engine::direction::snapFacing;
+using engine::direction::snapMovement;
 
 // ---------------------------------------------------------------------------
-// 8-directional sprite support tests.
+// 4-directional sprite support tests.
 // No window, no GPU, no SDL required.
 // ---------------------------------------------------------------------------
 
-// --- snapToOctant ---
+// --- snapMovement (4-dir snap from velocity vector) ---
 
-TEST_CASE("snapToOctant pure cardinal directions", "[animation][octant]")
+TEST_CASE("snapMovement pure cardinals", "[animation][snap]")
 {
-    REQUIRE(snapToOctant(0.0f, 1.0f) == CardinalDir::South);
-    REQUIRE(snapToOctant(0.0f, -1.0f) == CardinalDir::North);
-    REQUIRE(snapToOctant(1.0f, 0.0f) == CardinalDir::East);
-    REQUIRE(snapToOctant(-1.0f, 0.0f) == CardinalDir::West);
+    REQUIRE(snapMovement(0.0f, 1.0f, 4) == CardinalDir::South);
+    REQUIRE(snapMovement(0.0f, -1.0f, 4) == CardinalDir::North);
+    REQUIRE(snapMovement(1.0f, 0.0f, 4) == CardinalDir::East);
+    REQUIRE(snapMovement(-1.0f, 0.0f, 4) == CardinalDir::West);
 }
 
-TEST_CASE("snapToOctant pure diagonal directions", "[animation][octant]")
+TEST_CASE("snapMovement diagonals pick dominant axis, ties prefer vertical", "[animation][snap]")
 {
-    REQUIRE(snapToOctant(1.0f, 1.0f) == CardinalDir::SouthEast);
-    REQUIRE(snapToOctant(-1.0f, 1.0f) == CardinalDir::SouthWest);
-    REQUIRE(snapToOctant(1.0f, -1.0f) == CardinalDir::NorthEast);
-    REQUIRE(snapToOctant(-1.0f, -1.0f) == CardinalDir::NorthWest);
+    // Exact diagonal: dominant axis tie -> vertical wins.
+    REQUIRE(snapMovement(0.707f, 0.707f, 4) == CardinalDir::South);
+    REQUIRE(snapMovement(-0.707f, -0.707f, 4) == CardinalDir::North);
+
+    // Slightly more horizontal -> east/west wins.
+    REQUIRE(snapMovement(0.8f, 0.6f, 4) == CardinalDir::East);
+    REQUIRE(snapMovement(-0.8f, -0.6f, 4) == CardinalDir::West);
+
+    // Slightly more vertical -> north/south wins.
+    REQUIRE(snapMovement(0.6f, 0.8f, 4) == CardinalDir::South);
+    REQUIRE(snapMovement(0.6f, -0.8f, 4) == CardinalDir::North);
 }
 
-TEST_CASE("snapToOctant near-cardinal snaps to cardinal", "[animation][octant]")
+TEST_CASE("snapMovement direction_count=1 returns South", "[animation][snap]")
 {
-    // 10 degrees from south (well within cardinal sector)
-    REQUIRE(snapToOctant(0.17f, 0.98f) == CardinalDir::South);
-    // 10 degrees from east
-    REQUIRE(snapToOctant(0.98f, 0.17f) == CardinalDir::East);
+    // Static props stay at their default direction regardless of velocity.
+    REQUIRE(snapMovement(1.0f, 0.0f, 1) == CardinalDir::South);
+    REQUIRE(snapMovement(0.0f, -1.0f, 1) == CardinalDir::South);
 }
 
-TEST_CASE("snapToOctant near-diagonal snaps to diagonal", "[animation][octant]")
+// --- snapFacing (hysteresis) ---
+
+TEST_CASE("snapFacing stays on current axis when close to diagonal", "[animation][hysteresis]")
 {
-    // 40 degrees from east (5 degrees into diagonal sector)
-    const float dx = std::cos(40.0f * 3.14159f / 180.0f);
-    const float dy = std::sin(40.0f * 3.14159f / 180.0f);
-    REQUIRE(snapToOctant(dx, dy) == CardinalDir::SouthEast);
+    // Vector is exactly diagonal. Starting from South (vertical), hysteresis
+    // should keep it on the vertical axis.
+    REQUIRE(snapFacing(0.707f, 0.707f, CardinalDir::South, 4) == CardinalDir::South);
+    REQUIRE(snapFacing(-0.707f, -0.707f, CardinalDir::North, 4) == CardinalDir::North);
+
+    // Starting from East (horizontal), same diagonal should stay horizontal.
+    REQUIRE(snapFacing(0.707f, 0.707f, CardinalDir::East, 4) == CardinalDir::East);
+    REQUIRE(snapFacing(-0.707f, -0.707f, CardinalDir::West, 4) == CardinalDir::West);
 }
 
-TEST_CASE("snapToOctant zero vector defaults to South", "[animation][octant]")
+TEST_CASE("snapFacing switches when other axis clearly dominates", "[animation][hysteresis]")
 {
-    REQUIRE(snapToOctant(0.0f, 0.0f) == CardinalDir::South);
+    // Starting from South, strong eastward vector -> switch to East.
+    REQUIRE(snapFacing(0.99f, 0.1f, CardinalDir::South, 4) == CardinalDir::East);
+    // Starting from East, strong southward vector -> switch to South.
+    REQUIRE(snapFacing(0.1f, 0.99f, CardinalDir::East, 4) == CardinalDir::South);
 }
 
-// --- snapWithHysteresis8 ---
-
-TEST_CASE("snapWithHysteresis8 stays in current sector within cone", "[animation][hysteresis]")
+TEST_CASE("snapFacing resists jitter near the diagonal threshold", "[animation][hysteresis]")
 {
-    // Pointing mostly south, current is south -> should stay south
-    REQUIRE(snapWithHysteresis8(0.1f, 0.99f, CardinalDir::South) == CardinalDir::South);
+    // Slight 5% horizontal dominance. Starting from South (vertical),
+    // hysteresis requires the other axis to exceed +15% to flip.
+    REQUIRE(snapFacing(0.51f, 0.49f, CardinalDir::South, 4) == CardinalDir::South);
+    // Same vector starting from East stays East.
+    REQUIRE(snapFacing(0.51f, 0.49f, CardinalDir::East, 4) == CardinalDir::East);
 }
 
-TEST_CASE("snapWithHysteresis8 switches when clearly outside sector", "[animation][hysteresis]")
+TEST_CASE("snapFacing direction_count=1 keeps current", "[animation][hysteresis]")
 {
-    // Pointing east but current is south -> should switch to east
-    REQUIRE(snapWithHysteresis8(1.0f, 0.0f, CardinalDir::South) == CardinalDir::East);
-}
-
-TEST_CASE("snapWithHysteresis8 resists jitter near boundary", "[animation][hysteresis]")
-{
-    // 80 degrees from east = 10 degrees from south. Dot with south (0,1) = ~0.98 > 0.887
-    // threshold, so hysteresis keeps current direction.
-    const float dx = std::cos(80.0f * 3.14159f / 180.0f); // ~0.17
-    const float dy = std::sin(80.0f * 3.14159f / 180.0f); // ~0.98
-    REQUIRE(snapWithHysteresis8(dx, dy, CardinalDir::South) == CardinalDir::South);
-}
-
-TEST_CASE("snapWithHysteresis8 zero vector keeps current", "[animation][hysteresis]")
-{
-    REQUIRE(snapWithHysteresis8(0.0f, 0.0f, CardinalDir::NorthWest) == CardinalDir::NorthWest);
+    REQUIRE(snapFacing(1.0f, 0.0f, CardinalDir::South, 1) == CardinalDir::South);
+    REQUIRE(snapFacing(0.0f, -1.0f, CardinalDir::South, 1) == CardinalDir::South);
 }
 
 // --- dirToColumnIndex ---
 
-TEST_CASE("dirToColumnIndex direction_count=1 always returns 0", "[animation][column]")
+TEST_CASE("dirToColumnIndex direction_count=1 always returns column 0", "[animation][column]")
 {
-    for (int i = 0; i < 8; ++i)
+    for (int i = 0; i < 4; ++i)
     {
-        auto dir = static_cast<CardinalDir>(i);
-        auto m = dirToColumnIndex(dir, 1, false);
+        const auto dir = static_cast<CardinalDir>(i);
+        const auto m = dirToColumnIndex(dir, 1);
         REQUIRE(m.column == 0);
         REQUIRE_FALSE(m.flip);
     }
 }
 
-// NOLINTNEXTLINE(readability-function-cognitive-complexity)
-TEST_CASE("dirToColumnIndex direction_count=4 maps to 4 columns", "[animation][column]")
-{
-    // Cardinals map to their own columns
-    REQUIRE(dirToColumnIndex(CardinalDir::South, 4, false).column == 0);
-    REQUIRE(dirToColumnIndex(CardinalDir::West, 4, false).column == 1);
-    REQUIRE(dirToColumnIndex(CardinalDir::East, 4, false).column == 2);
-    REQUIRE(dirToColumnIndex(CardinalDir::North, 4, false).column == 3);
-
-    // Diagonals collapse to nearest cardinal
-    REQUIRE(dirToColumnIndex(CardinalDir::SouthWest, 4, false).column == 0);
-    REQUIRE(dirToColumnIndex(CardinalDir::NorthWest, 4, false).column == 1);
-    REQUIRE(dirToColumnIndex(CardinalDir::NorthEast, 4, false).column == 3);
-    REQUIRE(dirToColumnIndex(CardinalDir::SouthEast, 4, false).column == 2);
-
-    // No flipping for 4-dir
-    for (int i = 0; i < 8; ++i)
-    {
-        auto dir = static_cast<CardinalDir>(i);
-        REQUIRE_FALSE(dirToColumnIndex(dir, 4, false).flip);
-    }
-}
-
-TEST_CASE("dirToColumnIndex direction_count=8 unique_diagonals=true", "[animation][column]")
-{
-    for (int i = 0; i < 8; ++i)
-    {
-        auto dir = static_cast<CardinalDir>(i);
-        auto m = dirToColumnIndex(dir, 8, true);
-        REQUIRE(m.column == i);
-        REQUIRE_FALSE(m.flip);
-    }
-}
-
-TEST_CASE("dirToColumnIndex direction_count=8 mirrored (unique_diagonals=false)",
+TEST_CASE("dirToColumnIndex direction_count=4 maps each cardinal to its own column",
           "[animation][column]")
 {
-    // Non-mirrored directions
-    REQUIRE(dirToColumnIndex(CardinalDir::South, 8, false).column == 0);
-    REQUIRE(dirToColumnIndex(CardinalDir::SouthWest, 8, false).column == 1);
-    REQUIRE(dirToColumnIndex(CardinalDir::West, 8, false).column == 2);
-    REQUIRE(dirToColumnIndex(CardinalDir::NorthWest, 8, false).column == 3);
-    REQUIRE(dirToColumnIndex(CardinalDir::North, 8, false).column == 4);
-    REQUIRE(dirToColumnIndex(CardinalDir::East, 8, false).column == 5);
+    REQUIRE(dirToColumnIndex(CardinalDir::South, 4).column == 0);
+    REQUIRE(dirToColumnIndex(CardinalDir::West, 4).column == 1);
+    REQUIRE(dirToColumnIndex(CardinalDir::East, 4).column == 2);
+    REQUIRE(dirToColumnIndex(CardinalDir::North, 4).column == 3);
 
-    REQUIRE_FALSE(dirToColumnIndex(CardinalDir::South, 8, false).flip);
-    REQUIRE_FALSE(dirToColumnIndex(CardinalDir::SouthWest, 8, false).flip);
-    REQUIRE_FALSE(dirToColumnIndex(CardinalDir::West, 8, false).flip);
-    REQUIRE_FALSE(dirToColumnIndex(CardinalDir::NorthWest, 8, false).flip);
-    REQUIRE_FALSE(dirToColumnIndex(CardinalDir::North, 8, false).flip);
-    REQUIRE_FALSE(dirToColumnIndex(CardinalDir::East, 8, false).flip);
-
-    // Mirrored directions: NE mirrors NW, SE mirrors SW
-    auto ne = dirToColumnIndex(CardinalDir::NorthEast, 8, false);
-    REQUIRE(ne.column == 3); // same as NorthWest
-    REQUIRE(ne.flip);
-
-    auto se = dirToColumnIndex(CardinalDir::SouthEast, 8, false);
-    REQUIRE(se.column == 1); // same as SouthWest
-    REQUIRE(se.flip);
-}
-
-// --- Backward compatibility: 8-dir snapping with 4-dir sheet ---
-
-TEST_CASE("8-dir entity snapping produces valid 4-column indices", "[animation][compat]")
-{
-    // Entity has direction_count=4 but game uses 8-dir snapping.
-    // All 8 octant directions should map to valid 4-dir columns (0-3).
-    for (int i = 0; i < 8; ++i)
+    // 4-dir mapping never flips horizontally.
+    for (int i = 0; i < 4; ++i)
     {
-        auto dir = static_cast<CardinalDir>(i);
-        auto m = dirToColumnIndex(dir, 4, false);
-        REQUIRE(m.column >= 0);
-        REQUIRE(m.column <= 3);
-        REQUIRE_FALSE(m.flip);
+        const auto dir = static_cast<CardinalDir>(i);
+        REQUIRE_FALSE(dirToColumnIndex(dir, 4).flip);
     }
 }
 
-// --- AnimationSystem integration: sprite flip_x ---
+// --- AnimationSystem integration: sprite src_x tracks direction ---
 
-TEST_CASE("AnimationSystem sets sprite.flip_x for mirrored diagonals", "[animation][flip]")
+TEST_CASE("AnimationSystem writes src_x for 4-dir character based on velocity direction",
+          "[animation][src_x]")
 {
     EntityManager em;
     emplaceGameConfigs(em);
 
     auto e = em.create();
     em.registry().emplace<Transform>(e);
-    em.registry().emplace<Velocity>(e, Velocity{-0.7f, -0.7f}); // NorthWest
-    em.registry().emplace<MovementIntent>(e, MovementIntent{-0.7f, -0.7f});
+    // Moving West (no FacingDirection component, so snapMovement uses velocity).
+    em.registry().emplace<Velocity>(e, Velocity{-1.0f, 0.0f});
+    em.registry().emplace<MovementIntent>(e, MovementIntent{-1.0f, 0.0f});
 
     Animation anim;
-    anim.direction_count = 8;
-    anim.unique_diagonals = false;
-    anim.states[static_cast<int>(AnimState::Walk)].frames = 2;
-    anim.states[static_cast<int>(AnimState::Walk)].duration = 0.1f;
-    anim.state = AnimState::Walk;
+    anim.direction_count = 4;
+    anim.current_frames = 2;
+    anim.current_duration = 0.1f;
+    anim.current_row = 1;
     anim.max_frames_per_state = 2;
     em.registry().emplace<Animation>(e, anim);
     em.registry().emplace<Sprite>(e);
@@ -200,33 +141,9 @@ TEST_CASE("AnimationSystem sets sprite.flip_x for mirrored diagonals", "[animati
     AnimationSystem::update(em, 0.016f);
 
     const auto& spr = em.registry().get<Sprite>(e);
-    // NorthWest is NOT mirrored, so flip_x should be false
+    // West = column 1, frame 0 -> src_x = (1 * 2 + 0) * frame_width.
+    // Default frame_width is 32 from Animation's default.
+    REQUIRE(spr.src_x == (1 * 2 + 0) * 32);
+    // 4-dir never flips.
     REQUIRE_FALSE(spr.flip_x);
-}
-
-TEST_CASE("AnimationSystem sets flip_x=true for NorthEast mirrored", "[animation][flip]")
-{
-    EntityManager em;
-    emplaceGameConfigs(em);
-
-    auto e = em.create();
-    em.registry().emplace<Transform>(e);
-    em.registry().emplace<Velocity>(e, Velocity{0.7f, -0.7f}); // NorthEast
-    em.registry().emplace<MovementIntent>(e, MovementIntent{0.7f, -0.7f});
-
-    Animation anim;
-    anim.direction_count = 8;
-    anim.unique_diagonals = false;
-    anim.states[static_cast<int>(AnimState::Walk)].frames = 2;
-    anim.states[static_cast<int>(AnimState::Walk)].duration = 0.1f;
-    anim.state = AnimState::Walk;
-    anim.max_frames_per_state = 2;
-    em.registry().emplace<Animation>(e, anim);
-    em.registry().emplace<Sprite>(e);
-
-    AnimationSystem::update(em, 0.016f);
-
-    const auto& spr = em.registry().get<Sprite>(e);
-    // NorthEast IS mirrored from NorthWest -> flip_x = true
-    REQUIRE(spr.flip_x);
 }

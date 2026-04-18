@@ -24,7 +24,7 @@ static int sSel = 0;
 static void doEvolve(EntityManager& em, entt::entity player)
 {
     auto& reg = em.registry();
-    if (!reg.all_of<Equipment, Inventory, WeaponXP>(player))
+    if (!reg.all_of<Equipment, Inventory, Weapon>(player))
     {
         NotificationSystem::push("No weapon equipped", {0.8f, 0.4f, 0.4f, 1.0f});
         return;
@@ -32,18 +32,19 @@ static void doEvolve(EntityManager& em, entt::entity player)
 
     auto& equip = reg.get<Equipment>(player);
     auto& inv = reg.get<Inventory>(player);
-    auto& wxp = reg.get<WeaponXP>(player);
+    auto& weapon = reg.get<Weapon>(player);
     const auto& evoReg = reg.ctx().get<EvolutionRegistry>();
     const auto& items = reg.ctx().get<ItemRegistry>();
     const auto& formulas = reg.ctx().get<FormulaConfig>();
 
-    if (equip.main_hand.empty())
+    const std::string rhPath = InventoryOps::equippedPath(inv, equip, EquipSlot::RightHand);
+    if (rhPath.empty())
     {
         NotificationSystem::push("No weapon equipped", {0.8f, 0.4f, 0.4f, 1.0f});
         return;
     }
 
-    auto it = evoReg.weapon_to_node.find(equip.main_hand.config_path);
+    auto it = evoReg.weapon_to_node.find(rhPath);
     if (it == evoReg.weapon_to_node.end())
     {
         NotificationSystem::push("No evolutions available", {0.6f, 0.6f, 0.6f, 1.0f});
@@ -62,7 +63,7 @@ static void doEvolve(EntityManager& em, entt::entity player)
 
     for (const auto& path : nodeIt->second.evolutions)
     {
-        if (!InventoryOps::canEvolve(inv, equip, wxp, path))
+        if (!InventoryOps::canEvolve(inv, equip, weapon, path))
             continue;
 
         auto targetIt = family.nodes.find(path.target_node);
@@ -71,7 +72,7 @@ static void doEvolve(EntityManager& em, entt::entity player)
 
         const std::string& newConfig = targetIt->second.weapon_config_path;
         const bool godEvolve = reg.ctx().get<DebugFlags>().god_mode;
-        if (InventoryOps::evolveWeapon(inv, equip, wxp, path, newConfig, items,
+        if (InventoryOps::evolveWeapon(inv, equip, weapon, path, newConfig, items,
                                        formulas.weapon_xp.carry_factor, godEvolve))
         {
             auto& compendium = reg.ctx().get<Compendium>();
@@ -89,23 +90,24 @@ static void doEvolve(EntityManager& em, entt::entity player)
 
 static bool checkCanEvolve(EntityManager& em, entt::entity player)
 {
-    if (!em.registry().all_of<Equipment, Inventory, WeaponXP>(player))
+    if (!em.registry().all_of<Equipment, Inventory, Weapon>(player))
         return false;
     const auto& equip = em.registry().get<Equipment>(player);
-    if (equip.main_hand.empty())
+    const auto& inv = em.registry().get<Inventory>(player);
+    const auto& weapon = em.registry().get<Weapon>(player);
+    const std::string rhPath = InventoryOps::equippedPath(inv, equip, EquipSlot::RightHand);
+    if (rhPath.empty())
         return false;
     const auto& evoReg = em.registry().ctx().get<EvolutionRegistry>();
-    const auto it = evoReg.weapon_to_node.find(equip.main_hand.config_path);
+    const auto it = evoReg.weapon_to_node.find(rhPath);
     if (it == evoReg.weapon_to_node.end())
         return false;
     const auto& family = evoReg.families[it->second.first];
     const auto nodeIt = family.nodes.find(it->second.second);
     if (nodeIt == family.nodes.end())
         return false;
-    const auto& inv = em.registry().get<Inventory>(player);
-    const auto& wxp = em.registry().get<WeaponXP>(player);
     for (const auto& path : nodeIt->second.evolutions)
-        if (InventoryOps::canEvolve(inv, equip, wxp, path))
+        if (InventoryOps::canEvolve(inv, equip, weapon, path))
             return true;
     return false;
 }

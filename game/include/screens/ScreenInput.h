@@ -4,6 +4,7 @@
 #include "ecs/GameConfig.h"
 #include "systems/AudioSystem.h"
 
+#include <SDL.h>
 #include <algorithm>
 #include <cstdint>
 
@@ -16,12 +17,19 @@ inline bool keyPressed(const EntityManager& em, int scancode)
     return std::find(kd.begin(), kd.end(), scancode) != kd.end();
 }
 
-inline bool mouseClicked(const EntityManager& em, uint8_t button)
+inline bool mouseClicked(EntityManager& em, uint8_t button)
 {
-    for (const uint8_t btn : em.mouse_down_events)
-        if (btn == button)
-            return true;
-    return false;
+    const auto& events = em.mouse_down_events;
+    if (std::find(events.begin(), events.end(), button) == events.end())
+        return false;
+    // Mark consumed so game systems (combat, etc.) don't act on the same
+    // click. Don't erase from the buffer — other UI elements in the same
+    // render frame may need to see it. Buffer clears at end of frame.
+    if (button == SDL_BUTTON_LEFT)
+        em.lmb_consumed = true;
+    else if (button == SDL_BUTTON_RIGHT)
+        em.rmb_consumed = true;
+    return true;
 }
 
 inline int hoveredRow(float mx, float my, float cx, float cy, float cw, float row_h, int count)

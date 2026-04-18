@@ -1,6 +1,7 @@
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
+#include "ops/InventoryOps.h"
 #include "systems/WeaponXPSystem.h"
 #include "test_helpers.h"
 
@@ -31,12 +32,12 @@ TEST_CASE("WeaponXPSystem: grantXP adds XP to player weapon", "[weapon_xp]")
 
     auto player = em.create();
     em.registry().emplace<PlayerActions>(player);
-    em.registry().emplace<WeaponXP>(player);
+    em.registry().emplace<Weapon>(player);
 
-    WeaponXPSystem::grantXP(em, 50.0f, 1.0f);
+    WeaponXPSystem::grantXP(em, 50.0f, 1.0f, EquipSlot::RightHand);
 
-    const auto& wxp = em.registry().get<WeaponXP>(player);
-    REQUIRE_THAT(wxp.current_xp, WithinAbs(50.0f, 0.01f));
+    const auto& w = em.registry().get<Weapon>(player);
+    REQUIRE_THAT(w.wxp_current, WithinAbs(50.0f, 0.01f));
 }
 
 TEST_CASE("WeaponXPSystem: level-up increases weapon stats", "[weapon_xp]")
@@ -46,29 +47,28 @@ TEST_CASE("WeaponXPSystem: level-up increases weapon stats", "[weapon_xp]")
 
     auto player = em.create();
     em.registry().emplace<PlayerActions>(player);
-    auto& wxp = em.registry().emplace<WeaponXP>(player);
-    wxp.current_xp = 200.0f; // enough to level up
-    wxp.xp_to_next = 50.0f;
 
     Weapon w;
     w.name = "Test Blade";
     w.base_damage = 10.0f;
     w.str_scaling = 0.5f;
     w.dex_scaling = 0.5f;
+    w.wxp_current = 200.0f; // enough to level up
+    w.wxp_to_next = 50.0f;
     em.registry().emplace<Weapon>(player, w);
 
+    // Put weapon in inventory and equip to right hand.
+    auto& inv = em.registry().emplace<Inventory>(player);
+    inv.items.push_back({"config/items/weapons/test.json", QualityTier::Common});
     Equipment equip;
-    equip.main_hand.config_path = "config/items/weapons/test.json";
-    equip.main_hand.quality = QualityTier::Common;
+    equip.right_hand = 0;
     em.registry().emplace<Equipment>(player, equip);
 
     // Need ItemRegistry and WeaponTierRegistry in ctx (already emplaced by emplaceGameConfigs).
     WeaponXPSystem::update(em);
 
-    const auto& postWxp = em.registry().get<WeaponXP>(player);
-    REQUIRE(postWxp.level > 1);
-
     const auto& postW = em.registry().get<Weapon>(player);
+    REQUIRE(postW.wxp_level > 1);
     REQUIRE(postW.base_damage > 10.0f);
 }
 
@@ -77,36 +77,37 @@ TEST_CASE("WeaponXPSystem: quality affects growth factor", "[weapon_xp]")
     EntityManager em;
     emplaceGameConfigs(em);
 
-    // Set up two players with different quality weapons.
+    // Set up player with a Crude quality weapon.
     auto playerA = em.create();
     em.registry().emplace<PlayerActions>(playerA);
-    auto& wxpA = em.registry().emplace<WeaponXP>(playerA);
-    wxpA.current_xp = 200.0f;
-    wxpA.xp_to_next = 50.0f;
     Weapon wA;
     wA.name = "Crude";
     wA.base_damage = 10.0f;
     wA.str_scaling = 0.5f;
     wA.dex_scaling = 0.5f;
+    wA.wxp_current = 200.0f;
+    wA.wxp_to_next = 50.0f;
     em.registry().emplace<Weapon>(playerA, wA);
+    auto& invA = em.registry().emplace<Inventory>(playerA);
+    invA.items.push_back({"test_a", QualityTier::Crude});
     Equipment eqA;
-    eqA.main_hand.config_path = "test_a";
-    eqA.main_hand.quality = QualityTier::Crude;
+    eqA.right_hand = 0;
     em.registry().emplace<Equipment>(playerA, eqA);
 
     WeaponXPSystem::update(em);
     const float dmgCrude = em.registry().get<Weapon>(playerA).base_damage;
 
     // Reset for Masterwork quality.
-    em.registry().get<WeaponXP>(playerA).current_xp = 200.0f;
-    em.registry().get<WeaponXP>(playerA).xp_to_next = 50.0f;
-    em.registry().get<WeaponXP>(playerA).level = 1;
-    em.registry().get<Weapon>(playerA).base_damage = 10.0f;
-    em.registry().get<Equipment>(playerA).main_hand.quality = QualityTier::Masterwork;
+    auto& postA = em.registry().get<Weapon>(playerA);
+    postA.wxp_current = 200.0f;
+    postA.wxp_to_next = 50.0f;
+    postA.wxp_level = 1;
+    postA.base_damage = 10.0f;
+    em.registry().get<Inventory>(playerA).items[0].quality = QualityTier::Masterwork;
 
     WeaponXPSystem::update(em);
     const float dmgMasterwork = em.registry().get<Weapon>(playerA).base_damage;
 
-    // Masterwork has higher quality factor → higher growth per level.
+    // Masterwork has higher quality factor -> higher growth per level.
     REQUIRE(dmgMasterwork > dmgCrude);
 }

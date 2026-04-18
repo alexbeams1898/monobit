@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ecs/EntityManager.h"
+#include "ecs/GameComponents.h"
 
 struct FormulaConfig;
 
@@ -25,7 +26,8 @@ class WeaponXPSystem
     static float computeEnemyPower(int level, int max_hp, float base_damage, int total_stats,
                                    const FormulaConfig& f);
 
-    // Grant weapon XP to the player's equipped weapon.
+    // Grant weapon XP to the hand that dealt the damage.
     // source_multiplier: kill_multiplier, hit_multiplier, or crit_multiplier.
-    static void grantXP(EntityManager& em, float enemy_power, float source_multiplier);
+    static void grantXP(EntityManager& em, float enemy_power, float source_multiplier,
+                        EquipSlot hand);
 };

@@ -146,15 +146,23 @@ void RenderSystem::resize(int windowW, int windowH)
     glViewport(0, 0, windowW, windowH);
 }
 
+// Half-texel inset so GL_NEAREST always samples texel centers, not edges.
+// Non-power-of-2 textures (e.g. 3328px) produce repeating-decimal UVs in
+// float32 that can round to the adjacent texel at certain draw scales.
 static void buildSrcRect(int src_x, int src_y, int src_w, int src_h, int tex_w, int tex_h,
                          bool flip_x, bool flip_y, float& uvX, float& uvY, float& uvW, float& uvH)
 {
     const float tw = static_cast<float>(tex_w > 0 ? tex_w : 1);
     const float th = static_cast<float>(tex_h > 0 ? tex_h : 1);
-    uvX = flip_x ? static_cast<float>(src_x + src_w) / tw : static_cast<float>(src_x) / tw;
-    uvW = flip_x ? -static_cast<float>(src_w) / tw : static_cast<float>(src_w) / tw;
-    uvY = flip_y ? static_cast<float>(src_y + src_h) / th : static_cast<float>(src_y) / th;
-    uvH = flip_y ? -static_cast<float>(src_h) / th : static_cast<float>(src_h) / th;
+    constexpr float HALF = 0.5f;
+    const float x0 = (static_cast<float>(src_x) + HALF) / tw;
+    const float x1 = (static_cast<float>(src_x + src_w) - HALF) / tw;
+    const float y0 = (static_cast<float>(src_y) + HALF) / th;
+    const float y1 = (static_cast<float>(src_y + src_h) - HALF) / th;
+    uvX = flip_x ? x1 : x0;
+    uvW = flip_x ? -(x1 - x0) : (x1 - x0);
+    uvY = flip_y ? y1 : y0;
+    uvH = flip_y ? -(y1 - y0) : (y1 - y0);
 }
 
 struct DrawEntry
@@ -174,6 +182,8 @@ struct DrawEntry
     float ta;
     float glow_scale;
     float glow_alpha;
+    float rotation;
+    bool geo_mirror_x;
 };
 
 static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::entity entity,
@@ -195,7 +205,7 @@ static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::en
     {
         // Pre-baked composite: derive sheet dims from animation layout.
         tex_w = anim->frame_width * anim->max_frames_per_state * anim->direction_count;
-        tex_h = anim->frame_height * Animation::STATE_COUNT;
+        tex_h = anim->frame_height * anim->row_count;
     }
 
     auto& reg = em.registry();
@@ -210,12 +220,9 @@ static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::en
         ta = (1.0f - t) * (1.0f - t);
     }
 
-    bool flip_x = false, flip_y = false;
-    if (reg.all_of<Animation>(entity))
-    {
-        flip_x = sprite.flip_x;
-    }
-    else if (reg.all_of<FacingDirection>(entity))
+    bool flip_x = sprite.flip_x;
+    bool flip_y = false;
+    if (!reg.all_of<Animation>(entity) && reg.all_of<FacingDirection>(entity))
     {
         const auto& facing = reg.get<FacingDirection>(entity);
         flip_x = facing.render_dx < -0.1f;
@@ -249,8 +256,9 @@ static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::en
     if (col)
         yOffset = (static_cast<float>(sprite.src_h) * scale - col->height) * 0.5f;
 
-    const float sortY = col ? drawY + col->height * 0.5f : drawY;
-    const int subLayer = 0;
+    const float sortY =
+        sprite.use_sort_anchor ? sprite.sort_anchor : (col ? drawY + col->height * 0.5f : drawY);
+    const int subLayer = sprite.sub_layer;
 
     float glowScale = 0.0f;
     float glowAlpha = 0.0f;
@@ -281,7 +289,9 @@ static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::en
            scale,
            ta,
            glowScale,
-           glowAlpha};
+           glowAlpha,
+           sprite.rotation,
+           sprite.geo_mirror_x};
     return true;
 }
 
@@ -308,8 +318,9 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
               {
                   if (a.layer != b.layer)
                       return a.layer < b.layer;
-                  if (a.sort_y != b.sort_y)
-                      return a.sort_y < b.sort_y;
+                  const float dy = a.sort_y - b.sort_y;
+                  if (dy < -0.5f || dy > 0.5f)
+                      return dy < 0.0f;
                   return a.sub_layer < b.sub_layer;
               });
 
@@ -350,8 +361,13 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
             }
 
             float model[16];
-            engine::gl::buildModel(model, e.x, e.y, static_cast<float>(e.src_w) * e.draw_scale,
-                                   static_cast<float>(e.src_h) * e.draw_scale);
+            const float spriteW = static_cast<float>(e.src_w) * e.draw_scale;
+            const float spriteH = static_cast<float>(e.src_h) * e.draw_scale;
+            if (e.rotation != 0.0f || e.geo_mirror_x)
+                engine::gl::buildModelRotated(model, e.x, e.y, spriteW, spriteH, e.rotation,
+                                              e.geo_mirror_x);
+            else
+                engine::gl::buildModel(model, e.x, e.y, spriteW, spriteH);
             glUniformMatrix4fv(sLocModel, 1, GL_FALSE, model);
 
             if (e.solid_color)

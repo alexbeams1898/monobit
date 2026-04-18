@@ -3,8 +3,34 @@
 #include "SpriteCompositor.h"
 #include "ecs/AppearanceConfig.h"
 #include "ecs/Components.h"
+#include "ecs/GameComponents.h"
 
 #include <iostream>
+
+PaletteSwap PaletteRegistry::buildSwap(const std::string& palette_id, const std::string& base_color,
+                                       const std::string& target_color) const
+{
+    PaletteSwap swap;
+    if (base_color == target_color)
+        return swap;
+    const auto palIt = palettes.find(palette_id);
+    if (palIt == palettes.end())
+        return swap;
+    const auto& pal = palIt->second;
+    const auto baseIt = pal.find(base_color);
+    const auto targetIt = pal.find(target_color);
+    if (baseIt == pal.end() || targetIt == pal.end())
+        return swap;
+    const auto& base = baseIt->second;
+    const auto& target = targetIt->second;
+    const size_t count = std::min(base.size(), target.size());
+    for (size_t i = 0; i < count; ++i)
+    {
+        swap.entries.push_back(
+            {base[i].r, base[i].g, base[i].b, target[i].r, target[i].g, target[i].b});
+    }
+    return swap;
+}
 
 namespace AppearanceOps
 {
@@ -25,6 +51,17 @@ static std::string resolveOptionId(const AppearanceCategory& cat,
 static std::string resolveFileName(const AppearanceCategory& cat, const std::string& optionId,
                                    const std::unordered_map<std::string, std::string>& selections)
 {
+    // Weapon categories bypass options[] lookup -- the caller injects raw
+    // filenames (e.g. "slingshot_behind.png") so equipped weapons don't need
+    // to be enumerated in layers.json.
+    if (cat.hidden)
+    {
+        auto it = selections.find(cat.id);
+        if (it == selections.end() || it->second.empty() || it->second == "none")
+            return {};
+        return it->second;
+    }
+
     // Compound file name: combine another category's selection with this one.
     // e.g. hair_color "black" + combine_with "hair_style" whose selection is "long"
     //      -> file = "long_black.png"
@@ -49,17 +86,46 @@ static std::string resolveFileName(const AppearanceCategory& cat, const std::str
     return {};
 }
 
+// Resolve the master filename + palette target for a palette-swapped category.
+// Sets masterFile="" if nothing should be drawn.
+static void resolvePaletteMaster(const AppearanceCategory& cat,
+                                 const std::unordered_map<std::string, std::string>& selections,
+                                 const std::string& optionId, std::string& masterFile,
+                                 std::string& paletteTarget)
+{
+    paletteTarget = optionId;
+    if (cat.palette_from_combine && !cat.combine_with.empty())
+    {
+        masterFile = optionId + "_master.png";
+        const auto other = selections.find(cat.combine_with);
+        paletteTarget =
+            (other != selections.end() && !other->second.empty()) ? other->second : cat.base_color;
+        return;
+    }
+    if (!cat.combine_with.empty())
+    {
+        const auto other = selections.find(cat.combine_with);
+        if (other != selections.end() && !other->second.empty() && other->second != "none")
+            masterFile = other->second + "_master.png";
+        return;
+    }
+    if (!cat.master_file.empty())
+        masterFile = cat.master_file;
+}
+
 std::vector<std::string>
-buildLayerPaths(EntityManager& em, const std::unordered_map<std::string, std::string>& selections)
+buildLayerPaths(EntityManager& em, const std::unordered_map<std::string, std::string>& selections,
+                std::vector<PaletteSwap>* out_palettes)
 {
     const auto* cfg = em.registry().ctx().find<AppearanceConfig>();
     if (cfg == nullptr || !cfg->loaded)
         return {};
 
+    const auto* palReg = em.registry().ctx().find<PaletteRegistry>();
+
     std::vector<std::string> paths;
     for (const auto& cat : cfg->categories)
     {
-        // Slider categories don't contribute a layer.
         if (cat.type == AppearanceCategoryType::Slider)
             continue;
 
@@ -67,6 +133,30 @@ buildLayerPaths(EntityManager& em, const std::unordered_map<std::string, std::st
         if (optionId.empty() || optionId == "none")
         {
             paths.emplace_back();
+            if (out_palettes != nullptr)
+                out_palettes->emplace_back();
+            continue;
+        }
+
+        const bool usePalette =
+            !cat.palette_id.empty() && !cat.base_color.empty() && palReg != nullptr;
+        if (usePalette)
+        {
+            std::string masterFile;
+            std::string paletteTarget;
+            resolvePaletteMaster(cat, selections, optionId, masterFile, paletteTarget);
+
+            if (masterFile.empty())
+            {
+                paths.emplace_back();
+                if (out_palettes != nullptr)
+                    out_palettes->emplace_back();
+                continue;
+            }
+            paths.push_back(cat.path_prefix + masterFile);
+            if (out_palettes != nullptr)
+                out_palettes->push_back(
+                    palReg->buildSwap(cat.palette_id, cat.base_color, paletteTarget));
             continue;
         }
 
@@ -75,6 +165,8 @@ buildLayerPaths(EntityManager& em, const std::unordered_map<std::string, std::st
             paths.emplace_back();
         else
             paths.push_back(cat.path_prefix + file);
+        if (out_palettes != nullptr)
+            out_palettes->emplace_back();
     }
     return paths;
 }
@@ -139,12 +231,13 @@ void resolveAppearance(EntityManager& em, entt::entity entity, SpriteCompositor&
     std::vector<std::string> layers = def->layers;
 
     // If layers are empty, resolve from manifest + selections.
+    std::vector<PaletteSwap> palettes;
     if (layers.empty() && !def->layer_manifest.empty())
     {
         auto selections = def->default_layers;
         for (const auto& [k, v] : overrides)
             selections[k] = v;
-        layers = buildLayerPaths(em, selections);
+        layers = buildLayerPaths(em, selections, &palettes);
     }
 
     if (layers.empty())
@@ -154,10 +247,14 @@ void resolveAppearance(EntityManager& em, entt::entity entity, SpriteCompositor&
         return;
     }
 
-    const uint32_t texId = compositor.composite(layers);
+    const uint32_t texId = compositor.composite(layers, palettes);
     if (texId == 0)
     {
-        std::cerr << "[AppearanceOps] Composite failed for entity\n";
+        std::cerr << "[AppearanceOps] Composite failed for entity (missing layers)\n";
+        // Hide the entity so it doesn't render as garbage.
+        auto& spr = reg.get_or_emplace<Sprite>(entity);
+        spr.src_w = 0;
+        spr.src_h = 0;
         reg.remove<AppearanceDef>(entity);
         return;
     }
@@ -171,6 +268,18 @@ void resolveAppearance(EntityManager& em, entt::entity entity, SpriteCompositor&
     {
         spr.src_w = anim->frame_width;
         spr.src_h = anim->frame_height;
+    }
+
+    // Cache the resolved selections so AppearanceSyncSystem can rebuild
+    // layer paths later when the equipped weapon changes.
+    if (!def->layer_manifest.empty())
+    {
+        auto& state = reg.get_or_emplace<AppearanceState>(entity);
+        auto merged = def->default_layers;
+        for (const auto& [k, v] : overrides)
+            merged[k] = v;
+        state.current_selections = std::move(merged);
+        state.synced_visual_weapon.clear();
     }
 
     reg.remove<AppearanceDef>(entity);

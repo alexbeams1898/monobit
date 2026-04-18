@@ -40,6 +40,7 @@
 #include "systems/SpawnerSystem.h"
 #include "systems/TintSystem.h"
 #include "systems/WaveSystem.h"
+#include "systems/WeaponSpriteSystem.h"
 #include "systems/WeaponXPSystem.h"
 
 // UI screens / renderers.
@@ -49,6 +50,7 @@
 #include "renderers/HudRenderer.h"
 #include "renderers/InteractionPromptRenderer.h"
 #include "screens/CharCreateScreen.h"
+#include "screens/ControlsScreen.h"
 #include "screens/CraftingScreen.h"
 #include "screens/GameOverScreen.h"
 #include "screens/HighScoresScreen.h"
@@ -272,7 +274,8 @@ static void updateUIState(EntityManager& em)
         {
             actions.move_x = 0.0f;
             actions.move_y = 0.0f;
-            actions.attack = false;
+            actions.right_attack = false;
+            actions.left_attack = false;
             actions.dodge = false;
             actions.skill = false;
             actions.sprint = false;
@@ -399,6 +402,8 @@ static void transitionToSummary(EntityManager& em, bool escaped)
     }
 }
 
+static void resolvePlayerVisualFacingTick(EntityManager& em);
+
 void gameUpdate(Engine& engine, EntityManager& em, double dt)
 {
     ZoneScopedN("gameUpdate");
@@ -425,6 +430,7 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
         // HUD render. Without this, the weapon section "pops" into the player
         // panel one frame after world load when EquipmentSystem first runs.
         EquipmentSystem::update(em);
+        WeaponSpriteSystem::updateEquipment(em);
         gs.phase = GameState::Phase::Playing;
         engine.requestTimingReset();
         return;
@@ -454,7 +460,8 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
             auto& actions = em.registry().get<PlayerActions>(pe);
             actions.move_x = 0.0f;
             actions.move_y = 0.0f;
-            actions.attack = false;
+            actions.right_attack = false;
+            actions.left_attack = false;
             actions.dodge = false;
             actions.skill = false;
             actions.sprint = false;
@@ -523,8 +530,11 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     }
     SteeringSystem::update(em, dt);
     MovementSystem::update(em, dt);
+    // Resolve player visual facing AFTER MovementSystem so backpedaling is fresh.
+    resolvePlayerVisualFacingTick(em);
     CollisionSystem::update(em);
     AnimStateSystem::update(em);
+    WeaponSpriteSystem::updateEquipment(em);
     DamageSystem::update(em);
     AmbientSoundSystem::update(em, dt);
     ProjectileSystem::update(em, static_cast<float>(dt));
@@ -668,6 +678,12 @@ void gamePreRender(Engine& /*engine*/, EntityManager& em)
         facing.aim_override_x = tx;
         facing.aim_override_y = ty;
     }
+
+    // Runs AFTER engine AnimationSystem::update, so the wielder's sprite.src_x
+    // reflects this frame's animation state. syncVisuals reads that directly
+    // to place the weapon at the correct hand-anchor position without any
+    // cross-rate skew between game-tick and render-rate updates.
+    WeaponSpriteSystem::syncVisuals(em);
 }
 
 // Update aim_dx/aim_dy from mouse or lock-on target.
@@ -701,19 +717,24 @@ void updateAimDirection(FacingDirection& facing, const Transform& transform,
 // Resolve visual facing while moving:
 // WASD locks the sprite to either the movement direction or its exact opposite.
 // Only two visual states: forward walk or backpedal. No sideways facing.
-// Aim determines which: if aim is roughly opposite movement, face the reverse
-// of the WASD direction (backpedal). Otherwise face the WASD direction.
-static constexpr float BACKPEDAL_DOT = -0.15f;
+// The backpedal decision is owned by MovementSystem and stored on
+// FacingDirection.backpedaling (with enter/exit hysteresis). Reading that flag
+// here -- rather than re-running the dot test with a single threshold -- is
+// the only way to keep the sprite direction stable when the mouse wobbles
+// across the backpedal threshold during sustained WASD input.
+//
+// Runs in the game tick AFTER MovementSystem so facing.backpedaling is fresh.
+// Uses actions.move_x/move_y (written by InputMappingSystem at the start of
+// the tick) as the WASD source, so we don't race against SDL keyboard polling.
 
 // Returns true if facing was set from WASD (snap render), false if from aim (blend render).
-bool resolveVisualFacing(FacingDirection& facing, const LockOnTarget* lockOn, bool isAttacking,
-                         bool isHeldRangedFire, float wasdX, float wasdY)
+static bool resolveVisualFacing(FacingDirection& facing, const LockOnTarget* lockOn,
+                                bool isAttacking, bool isHeldRangedFire, float wasdX, float wasdY)
 {
     const bool moving = (wasdX != 0.0f || wasdY != 0.0f);
     if (moving && !isAttacking && !isHeldRangedFire && lockOn == nullptr)
     {
-        const float dot = wasdX * facing.aim_dx + wasdY * facing.aim_dy;
-        if (dot < BACKPEDAL_DOT)
+        if (facing.backpedaling)
         {
             facing.dx = -wasdX;
             facing.dy = -wasdY;
@@ -730,72 +751,26 @@ bool resolveVisualFacing(FacingDirection& facing, const LockOnTarget* lockOn, bo
     return false;
 }
 
-void gamePerFrame(Engine& engine, EntityManager& em, double /*dt*/)
+// Player-only visual facing system. Runs in the game tick after MovementSystem.
+// Reads fresh facing.backpedaling and writes facing.dx/dy + render_dx/dy.
+static void resolvePlayerVisualFacingTick(EntityManager& em)
 {
-    ZoneScopedN("gamePerFrame");
-
-    const auto& gs = em.registry().ctx().get<GameState>();
-    if (gs.phase != GameState::Phase::Playing)
-        return;
-
-    const auto& f = em.registry().ctx().get<FormulaConfig>();
-
-    int mouseX = 0;
-    int mouseY = 0;
-    SDL_GetMouseState(&mouseX, &mouseY);
-
-    const float halfW = static_cast<float>(engine.windowWidth()) * 0.5f;
-    const float halfH = static_cast<float>(engine.windowHeight()) * 0.5f;
-    const float mouseScreenDx = static_cast<float>(mouseX) - halfW;
-    const float mouseScreenDy = static_cast<float>(mouseY) - halfH;
-
-    // Poll keyboard directly so visual facing reacts instantly (before tick loop).
-    const Uint8* keys = SDL_GetKeyboardState(nullptr);
-    float wasdX = 0.0f;
-    float wasdY = 0.0f;
-    if (keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_LEFT])
-        wasdX -= 1.0f;
-    if (keys[SDL_SCANCODE_D] || keys[SDL_SCANCODE_RIGHT])
-        wasdX += 1.0f;
-    if (keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_UP])
-        wasdY -= 1.0f;
-    if (keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_DOWN])
-        wasdY += 1.0f;
-    const float wasdLen = std::sqrt(wasdX * wasdX + wasdY * wasdY);
-    if (wasdLen > 0.0f)
-    {
-        wasdX /= wasdLen;
-        wasdY /= wasdLen;
-    }
-
+    ZoneScopedN("PlayerVisualFacing");
     static constexpr float RENDER_FACING_BLEND = 0.25f;
-    for (auto [entity, actions, facing, transform] :
-         em.registry().view<PlayerActions, FacingDirection, Transform>().each())
+    for (auto [entity, actions, facing] :
+         em.registry().view<PlayerActions, FacingDirection>().each())
     {
-        const LockOnTarget* lockOn =
-            updateLockOn(em.registry(), entity, actions, transform, f.combat.lock_on_range);
-
-        // Crosshair blend ramp: toward 1 when locked, toward 0 when not.
-        static constexpr float AIM_BLEND_SPEED = 0.15f;
-        if (lockOn != nullptr)
-        {
-            facing.aim_override_blend += (1.0f - facing.aim_override_blend) * AIM_BLEND_SPEED;
-        }
-        else
-        {
-            facing.aim_override_blend += (0.0f - facing.aim_override_blend) * AIM_BLEND_SPEED;
-            if (facing.aim_override_blend < 0.01f)
-                facing.aim_override_blend = 0.0f;
-        }
-
-        updateAimDirection(facing, transform, lockOn, em.registry(), mouseScreenDx, mouseScreenDy);
-
+        const auto* lockOnComp = em.registry().try_get<LockOnTarget>(entity);
         const bool isAttacking = em.registry().all_of<AttackLocked>(entity) ||
                                  em.registry().all_of<CriticalAttacking>(entity);
-        const bool isHeldRangedFire = actions.attack && em.registry().all_of<Weapon>(entity) &&
-                                      em.registry().get<Weapon>(entity).ranged;
-        const bool wasMovementFacing =
-            resolveVisualFacing(facing, lockOn, isAttacking, isHeldRangedFire, wasdX, wasdY);
+        const bool rightRangedHeld = actions.right_attack && em.registry().all_of<Weapon>(entity) &&
+                                     em.registry().get<Weapon>(entity).ranged;
+        const auto* lw = em.registry().try_get<LeftWeapon>(entity);
+        const bool leftRangedHeld = actions.left_attack && lw != nullptr && lw->ranged;
+        const bool isHeldRangedFire = rightRangedHeld || leftRangedHeld;
+
+        const bool wasMovementFacing = resolveVisualFacing(
+            facing, lockOnComp, isAttacking, isHeldRangedFire, actions.move_x, actions.move_y);
 
         if (wasMovementFacing)
         {
@@ -816,6 +791,51 @@ void gamePerFrame(Engine& engine, EntityManager& em, double /*dt*/)
                 facing.render_dy /= rl;
             }
         }
+    }
+}
+
+void gamePerFrame(Engine& engine, EntityManager& em, double /*dt*/)
+{
+    ZoneScopedN("gamePerFrame");
+
+    const auto& gs = em.registry().ctx().get<GameState>();
+    if (gs.phase != GameState::Phase::Playing)
+        return;
+
+    const auto& f = em.registry().ctx().get<FormulaConfig>();
+
+    // Render-rate work only: update mouse-derived aim direction and world-space
+    // mouse coordinates. Visual facing (render_dx/dy) is resolved in the tick
+    // loop after MovementSystem so it always reads fresh facing.backpedaling.
+    int mouseX = 0;
+    int mouseY = 0;
+    SDL_GetMouseState(&mouseX, &mouseY);
+
+    const float halfW = static_cast<float>(engine.windowWidth()) * 0.5f;
+    const float halfH = static_cast<float>(engine.windowHeight()) * 0.5f;
+    const float mouseScreenDx = static_cast<float>(mouseX) - halfW;
+    const float mouseScreenDy = static_cast<float>(mouseY) - halfH;
+
+    for (auto [entity, actions, facing, transform] :
+         em.registry().view<PlayerActions, FacingDirection, Transform>().each())
+    {
+        const LockOnTarget* lockOn =
+            updateLockOn(em.registry(), entity, actions, transform, f.combat.lock_on_range);
+
+        // Crosshair blend ramp: toward 1 when locked, toward 0 when not.
+        static constexpr float AIM_BLEND_SPEED = 0.15f;
+        if (lockOn != nullptr)
+        {
+            facing.aim_override_blend += (1.0f - facing.aim_override_blend) * AIM_BLEND_SPEED;
+        }
+        else
+        {
+            facing.aim_override_blend += (0.0f - facing.aim_override_blend) * AIM_BLEND_SPEED;
+            if (facing.aim_override_blend < 0.01f)
+                facing.aim_override_blend = 0.0f;
+        }
+
+        updateAimDirection(facing, transform, lockOn, em.registry(), mouseScreenDx, mouseScreenDy);
 
         if (em.registry().all_of<Camera>(entity))
         {
@@ -921,6 +941,10 @@ static void renderMainMenuPhase(Engine& engine, EntityManager& em, GameState& gs
     case MainMenuScreen::Action::HighScores:
         HighScoresScreen::reset();
         gs.phase = GameState::Phase::HighScores;
+        break;
+    case MainMenuScreen::Action::Controls:
+        ControlsScreen::reset();
+        gs.phase = GameState::Phase::Controls;
         break;
     case MainMenuScreen::Action::Settings:
         SettingsScreen::reset();
@@ -1119,6 +1143,9 @@ void gameRenderUI(Engine& engine, EntityManager& em)
     case GameState::Phase::RunSummary:
     case GameState::Phase::HighScores:
         renderEndScreenPhase(engine, em, gs, ww, wh, frameDt);
+        break;
+    case GameState::Phase::Controls:
+        ControlsScreen::render(em, ww, wh);
         break;
     case GameState::Phase::Settings:
         SettingsScreen::render(em, ww, wh);

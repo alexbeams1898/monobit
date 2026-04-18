@@ -4,17 +4,17 @@
         "bow": {
             "weapon": "config/items/weapons/bow.json",
             "evolutions": [
-                { "target": "pistol", "min_level": 5 }
+                { "target": "colt_45", "min_level": 5 }
             ]
         },
-        "pistol": {
-            "weapon": "config/items/weapons/pistol.json",
+        "colt_45": {
+            "weapon": "config/items/weapons/colt_45.json",
             "evolutions": [
-                { "target": "semi_auto", "min_level": 10, "material": "config/items/materials/bone_shard.json", "material_qty": 5 }
+                { "target": "ak_47", "min_level": 10, "material": "config/items/materials/bone_shard.json", "material_qty": 5 }
             ]
         },
-        "semi_auto": {
-            "weapon": "config/items/weapons/semi_auto.json",
+        "ak_47": {
+            "weapon": "config/items/weapons/ak_47.json",
             "evolutions": []
         }
     }

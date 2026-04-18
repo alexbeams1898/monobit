@@ -56,9 +56,11 @@ void InputMappingSystem::update(EntityManager& em)
     }
 
     // Continuous (held) inputs -- polled from current keyboard/mouse state.
-    const bool attackHeld = lmbHeld || keys[SDL_SCANCODE_E] != 0;
-    const bool skillHeld = keys[SDL_SCANCODE_Q] != 0;
-    const bool blockHeld = rmbHeld;
+    // Right hand: E key or RMB. Left hand: Q key or LMB. Skill: Ctrl.
+    const bool rightAttackHeld = rmbHeld || keys[SDL_SCANCODE_E] != 0;
+    const bool leftAttackHeld = lmbHeld || keys[SDL_SCANCODE_Q] != 0;
+    const bool skillHeld = keys[SDL_SCANCODE_LCTRL] != 0 || keys[SDL_SCANCODE_RCTRL] != 0;
+    const bool blockHeld = false; // block is now per-hand via shield detection
     const bool sprintHeld = keys[SDL_SCANCODE_LSHIFT] != 0 || keys[SDL_SCANCODE_RSHIFT] != 0;
 
     // One-shot inputs -- from event buffer so brief taps between ticks aren't lost.
@@ -73,9 +75,12 @@ void InputMappingSystem::update(EntityManager& em)
 
     const bool dodgeJust = firstTickOfFrame && hasKey(kd, SDL_SCANCODE_SPACE);
     const bool autoJust = firstTickOfFrame && hasKey(kd, SDL_SCANCODE_P);
-    const bool blockJust = firstTickOfFrame && hasMouse(md, SDL_BUTTON_RIGHT);
-    const bool cycleWeaponJust = firstTickOfFrame && hasKey(kd, SDL_SCANCODE_X);
-    const bool cycleWeaponPrevJust = firstTickOfFrame && hasKey(kd, SDL_SCANCODE_Z);
+    const bool blockJust = false; // block handled per-hand
+    // Right-hand weapon cycle: V=forward, C=backward. Left-hand: X=forward, Z=backward.
+    const bool cycleWeaponJust = firstTickOfFrame && hasKey(kd, SDL_SCANCODE_V);
+    const bool cycleWeaponPrevJust = firstTickOfFrame && hasKey(kd, SDL_SCANCODE_C);
+    const bool cycleLeftWeaponJust = firstTickOfFrame && hasKey(kd, SDL_SCANCODE_X);
+    const bool cycleLeftWeaponPrevJust = firstTickOfFrame && hasKey(kd, SDL_SCANCODE_Z);
     const bool interactJust = firstTickOfFrame && hasKey(kd, SDL_SCANCODE_F);
     const bool lmbJust = firstTickOfFrame && hasMouse(md, SDL_BUTTON_LEFT);
     const bool lockOnJust = firstTickOfFrame && hasMouse(md, SDL_BUTTON_MIDDLE);
@@ -83,12 +88,15 @@ void InputMappingSystem::update(EntityManager& em)
     const bool inventoryJust = firstTickOfFrame && hasKey(kd, SDL_SCANCODE_I);
     const bool pauseJust =
         firstTickOfFrame && (hasKey(kd, SDL_SCANCODE_ESCAPE) || hasKey(kd, SDL_SCANCODE_TAB));
+    const bool twoHandJust =
+        firstTickOfFrame && (hasKey(kd, SDL_SCANCODE_LALT) || hasKey(kd, SDL_SCANCODE_RALT));
 
     for (auto [entity, actions] : em.registry().view<PlayerActions>().each())
     {
         actions.move_x = mx;
         actions.move_y = my;
-        actions.attack = attackHeld;
+        actions.right_attack = rightAttackHeld;
+        actions.left_attack = leftAttackHeld;
         actions.dodge = dodgeJust;
         actions.skill = skillHeld;
         actions.sprint = sprintHeld;
@@ -97,12 +105,15 @@ void InputMappingSystem::update(EntityManager& em)
         actions.auto_toggle_just_pressed = autoJust;
         actions.cycle_weapon = cycleWeaponJust;
         actions.cycle_weapon_prev = cycleWeaponPrevJust;
+        actions.cycle_left_weapon = cycleLeftWeaponJust;
+        actions.cycle_left_weapon_prev = cycleLeftWeaponPrevJust;
         actions.interact = interactJust;
         actions.mouse_click = lmbJust;
         actions.lock_on_toggle = lockOnJust;
         actions.reload = reloadJust;
         actions.toggle_inventory = inventoryJust;
         actions.toggle_pause = pauseJust;
+        actions.toggle_two_hand = twoHandJust;
 
         // MovementIntent bridge: lets engine AnimationSystem read movement direction
         // for walk-direction snapping without knowing about game components.

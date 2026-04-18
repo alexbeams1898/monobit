@@ -4,6 +4,7 @@
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
+#include "ops/InventoryOps.h"
 #include "renderers/ItemStatRenderer.h"
 #include "screens/ScreenColors.h"
 
@@ -33,8 +34,11 @@ static constexpr float SLOT_SIZE = 72.0f;
 static constexpr float SLOT_GAP = 10.0f;
 static constexpr int GRID_COLS = 10;
 
-static void renderInventoryGrid(const Inventory& inv, const ItemRegistry& items, float panel_x,
-                                float ey, int total_slots)
+static constexpr Color EQUIP_R_BORDER{0.3f, 0.6f, 1.0f, 0.8f};
+static constexpr Color EQUIP_L_BORDER{0.3f, 1.0f, 0.5f, 0.8f};
+
+static void renderInventoryGrid(const Inventory& inv, const Equipment& equip,
+                                const ItemRegistry& items, float panel_x, float ey, int total_slots)
 {
     for (int i = 0; i < total_slots; ++i)
     {
@@ -62,6 +66,21 @@ static void renderInventoryGrid(const Inventory& inv, const ItemRegistry& items,
                 const TextSize qsz = UIRenderer::measureText(sBodyFont, qty);
                 UIRenderer::drawText(sBodyFont, qty, sx + SLOT_SIZE - qsz.width - 4.0f,
                                      sy + SLOT_SIZE - qsz.height - 4.0f, TEXT_WHITE);
+            }
+
+            // Equipped hand badge: colored border + label in top-left.
+            const bool isRH = (equip.right_hand == i);
+            const bool isLH = (equip.left_hand == i);
+            if (isRH || isLH)
+            {
+                const Color& bc = isRH ? EQUIP_R_BORDER : EQUIP_L_BORDER;
+                const float b = 2.0f;
+                UIRenderer::drawRect(sx, sy, SLOT_SIZE, b, bc);
+                UIRenderer::drawRect(sx, sy + SLOT_SIZE - b, SLOT_SIZE, b, bc);
+                UIRenderer::drawRect(sx, sy, b, SLOT_SIZE, bc);
+                UIRenderer::drawRect(sx + SLOT_SIZE - b, sy, b, SLOT_SIZE, bc);
+                const char* badge = isRH ? "R" : "L";
+                UIRenderer::drawText(sBodyFont, badge, sx + 3.0f, sy + 1.0f, bc);
             }
         }
         else
@@ -154,35 +173,37 @@ void InventoryScreen::render(EntityManager& em, int window_w, int window_h)
     UIRenderer::drawText(sBodyFont, "Equipment:", panel_x + 16.0f, ey, EQUIP_LABEL);
     ey += FontManager::lineHeight(sBodyFont) + 4.0f;
 
-    if (em.registry().all_of<Equipment>(player))
+    if (em.registry().all_of<Equipment, Inventory>(player))
     {
         const auto& eq = em.registry().get<Equipment>(player);
+        const auto& inv = em.registry().get<Inventory>(player);
         const auto& items = em.registry().ctx().get<ItemRegistry>();
 
-        auto drawSlotLabel = [&](const char* label, const ItemInstance& slot)
+        auto drawSlotLabel = [&](const char* label, EquipSlot slot)
         {
+            const auto* item = InventoryOps::equippedItem(inv, eq, slot);
             std::string text = std::string(label) + ": ";
-            if (slot.empty())
+            if (item == nullptr)
             {
-                text += "(empty)";
+                text += "(Unarmed)";
                 UIRenderer::drawText(sBodyFont, text, panel_x + 24.0f, ey, TEXT_DIM);
             }
             else
             {
-                const ItemDef* def = items.find(slot.config_path);
+                const ItemDef* def = items.find(item->config_path);
                 const std::string name = (def != nullptr) ? def->name : "???";
-                text += qualityName(slot.quality) + std::string(" ") + name;
+                text += qualityName(item->quality) + std::string(" ") + name;
                 UIRenderer::drawText(sBodyFont, text, panel_x + 24.0f, ey, TEXT_WHITE);
             }
             ey += FontManager::lineHeight(sBodyFont) + 2.0f;
         };
 
-        drawSlotLabel("Weapon", eq.main_hand);
-        drawSlotLabel("Off-hand", eq.off_hand);
-        drawSlotLabel("Head", eq.head);
-        drawSlotLabel("Chest", eq.chest);
-        drawSlotLabel("Legs", eq.legs);
-        drawSlotLabel("Feet", eq.feet);
+        drawSlotLabel("Right Hand", EquipSlot::RightHand);
+        drawSlotLabel("Left Hand", EquipSlot::LeftHand);
+        drawSlotLabel("Head", EquipSlot::Head);
+        drawSlotLabel("Chest", EquipSlot::Chest);
+        drawSlotLabel("Legs", EquipSlot::Legs);
+        drawSlotLabel("Feet", EquipSlot::Feet);
     }
 
     // Inventory grid.
@@ -198,7 +219,10 @@ void InventoryScreen::render(EntityManager& em, int window_w, int window_h)
         const int total_slots = inv.max_slots;
         sSelectedSlot = ((sSelectedSlot % total_slots) + total_slots) % total_slots; // wrap around
 
-        renderInventoryGrid(inv, items, panel_x, ey, total_slots);
+        const auto& gridEquip = em.registry().all_of<Equipment>(player)
+                                    ? em.registry().get<Equipment>(player)
+                                    : Equipment{};
+        renderInventoryGrid(inv, gridEquip, items, panel_x, ey, total_slots);
 
         // Selected item detail.
         const float detail_y = panel_y + panel_h - 60.0f;

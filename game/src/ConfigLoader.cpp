@@ -207,6 +207,105 @@ static void loadLoot(EntityManager& em, entt::entity entity, const json& j)
     em.registry().emplace<Loot>(entity, std::move(l));
 }
 
+static void populateAnimRowIndex(EntityManager& em, const json& sheetData)
+{
+    if (!sheetData.contains("states"))
+        return;
+    auto* existing = em.registry().ctx().find<AnimRowIndex>();
+    if (existing == nullptr)
+        existing = &em.registry().ctx().emplace<AnimRowIndex>();
+    auto& rowIndex = *existing;
+    for (const auto& [key, val] : sheetData["states"].items())
+    {
+        if (rowIndex.rows.count(key) > 0)
+            continue;
+        AnimRowEntry entry;
+        entry.row = val.value("row", 0);
+        entry.frames = val.value("frames", 1);
+        entry.duration = val.value("duration", 0.0f);
+        rowIndex.rows[key] = entry;
+    }
+}
+
+static void parseAnchorFrames(const json& arr, std::vector<HandAnchor>& out)
+{
+    static constexpr float DEG2RAD = 3.14159265f / 180.0f;
+    out.clear();
+    for (const auto& fr : arr)
+    {
+        HandAnchor a;
+        a.x = fr[0].get<float>();
+        a.y = fr[1].get<float>();
+        if (fr.size() > 2)
+            a.rotation = fr[2].get<float>() * DEG2RAD;
+        if (fr.size() > 3)
+            a.flip = fr[3].get<int>();
+        if (fr.size() > 4)
+            a.depth = fr[4].get<int>();
+        out.push_back(a);
+    }
+}
+
+static void parseAnchorCell(const json& cell, std::vector<HandAnchor>& left,
+                            std::vector<HandAnchor>& right)
+{
+    if (cell.is_array())
+    {
+        parseAnchorFrames(cell, left);
+        right.resize(left.size());
+        for (size_t i = 0; i < left.size(); ++i)
+        {
+            right[i].x = -left[i].x;
+            right[i].y = left[i].y;
+        }
+        return;
+    }
+    if (cell.is_object())
+    {
+        if (cell.contains("left"))
+            parseAnchorFrames(cell["left"], left);
+        if (cell.contains("right"))
+            parseAnchorFrames(cell["right"], right);
+    }
+}
+
+static void populateHandAnchors(EntityManager& em, const json& sheetData)
+{
+    if (!sheetData.contains("hand_anchors"))
+        return;
+    auto* existing = em.registry().ctx().find<HandAnchorData>();
+    if (existing == nullptr)
+        existing = &em.registry().ctx().emplace<HandAnchorData>();
+    auto& anchors = *existing;
+
+    const auto& ha = sheetData["hand_anchors"];
+    if (ha.contains("depth_per_dir"))
+    {
+        anchors.depth_per_dir.clear();
+        for (const auto& d : ha["depth_per_dir"])
+            anchors.depth_per_dir.push_back(d.get<int>());
+    }
+
+    if (!ha.contains("rows"))
+        return;
+    const char* dirKeys[] = {"S", "W", "E", "N"};
+    for (const auto& [rowKey, rowVal] : ha["rows"].items())
+    {
+        if (rowKey[0] == '_')
+            continue;
+        const int rowIdx = std::stoi(rowKey);
+        auto& row = anchors.rows[rowIdx];
+        row.left.resize(4);
+        row.right.resize(4);
+        for (int d = 0; d < 4; ++d)
+        {
+            if (!rowVal.contains(dirKeys[d]))
+                continue;
+            parseAnchorCell(rowVal[dirKeys[d]], row.left[d], row.right[d]);
+        }
+    }
+}
+
 static bool emplaceAnimationFromSheet(EntityManager& em, entt::entity entity,
                                       const std::string& sheetPath)
 {
@@ -231,34 +330,61 @@ static bool emplaceAnimationFromSheet(EntityManager& em, entt::entity entity,
         spr.src_h = anim.frame_height;
     }
 
-    auto loadState = [&](const char* name, AnimState state)
+    // Game-side row lookup: maps AnimState -> spritesheet row/frames/duration.
+    AnimRowConfig rowCfg;
+
+    auto loadState = [&](const char* name, AnimState state, bool freeze)
     {
         if (sheetData.contains("states") && sheetData["states"].contains(name))
         {
             const auto& s = sheetData["states"][name];
-            auto& sd = anim.states[static_cast<int>(state)];
-            sd.row = s.value("row", 0);
-            sd.frames = s.value("frames", 1);
-            sd.duration = s.value("duration", 0.0f);
+            auto& rd = rowCfg.rows[static_cast<int>(state)];
+            rd.row = s.value("row", 0);
+            rd.frames = s.value("frames", 1);
+            rd.duration = s.value("duration", 0.0f);
+            rd.freeze_on_last = freeze;
         }
     };
 
-    loadState("idle", AnimState::Idle);
-    loadState("walk", AnimState::Walk);
-    loadState("attack", AnimState::Attack);
-    loadState("hit", AnimState::Hit);
-    loadState("death", AnimState::Death);
-    loadState("run", AnimState::Run);
+    loadState("idle", AnimState::Idle, false);
+    loadState("walk", AnimState::Walk, false);
+    loadState("attack", AnimState::Attack, true);
+    loadState("hit", AnimState::Hit, true);
+    loadState("death", AnimState::Death, true);
+    loadState("run", AnimState::Run, false);
 
+    // Compute layout from ALL states in the JSON (not just the 6 loaded into
+    // AnimRowConfig) so the column stride matches the actual sheet layout.
     int maxF = 1;
-    for (const auto& state : anim.states)
-        maxF = std::max(maxF, state.frames);
+    int maxRow = 0;
+    if (sheetData.contains("states"))
+    {
+        for (const auto& [key, val] : sheetData["states"].items())
+        {
+            const int f = val.value("frames", 1);
+            const int r = val.value("row", 0);
+            maxF = std::max(maxF, f);
+            if (f > 0)
+                maxRow = std::max(maxRow, r);
+        }
+    }
     anim.max_frames_per_state = maxF;
+    anim.row_count = maxRow + 1;
 
     anim.direction_count = sheetData.value("direction_count", 4);
-    anim.unique_diagonals = sheetData.value("unique_diagonals", false);
+
+    populateAnimRowIndex(em, sheetData);
+    populateHandAnchors(em, sheetData);
+
+    // Set initial playback from Idle row so the first frame renders correctly
+    // even before AnimStateSystem runs.
+    const auto& idle = rowCfg.rows[static_cast<int>(AnimState::Idle)];
+    anim.current_row = idle.row;
+    anim.current_frames = idle.frames;
+    anim.current_duration = idle.duration;
 
     em.registry().emplace<Animation>(entity, anim);
+    em.registry().emplace<AnimRowConfig>(entity, rowCfg);
     return true;
 }
 
@@ -1067,6 +1193,26 @@ bool ConfigLoader::loadItemDefs(EntityManager& em, const std::string& dirPath)
         def.fire_rate = j.value("fire_rate", 0.0f);
         def.stamina_cost = j.value("stamina_cost", -1.0f);
 
+        def.visual_weapon = j.value("visual_weapon", std::string{});
+        def.weapon_icon = j.value("weapon_icon", std::string{});
+        def.grip_x = j.value("grip_x", 0.0f);
+        def.grip_y = j.value("grip_y", 0.0f);
+        def.attack_icon_ns = j.value("attack_icon_ns", std::string{});
+        def.attack_grip_ns_x = j.value("attack_grip_ns_x", 0.0f);
+        def.attack_grip_ns_y = j.value("attack_grip_ns_y", 0.0f);
+        def.attack_fore_grip_ns_x = j.value("attack_fore_grip_ns_x", 0.0f);
+        def.attack_fore_grip_ns_y = j.value("attack_fore_grip_ns_y", 0.0f);
+        def.fore_grip_x = j.value("fore_grip_x", def.grip_x);
+        def.fore_grip_y = j.value("fore_grip_y", def.grip_y);
+        def.weapon_scale = j.value("weapon_scale", 1.0f);
+        def.base_rotation = j.value("base_rotation", 0.0f) * 3.14159265f / 180.0f;
+        def.attack_anim = j.value("attack_anim", std::string{});
+        if (j.contains("shoot_frames"))
+        {
+            for (const auto& fr : j["shoot_frames"])
+                def.shoot_frames.push_back(fr.get<int>());
+        }
+
         def.armor_slot = parseArmorSlot(j.value("armor_slot", std::string{"chest"}));
         def.defense_bonus = j.value("defense_bonus", 0.0f);
         def.poise_bonus = j.value("poise_bonus", 0.0f);
@@ -1336,9 +1482,14 @@ static AppearanceCategory parseAppearanceCategory(const json& cat)
     c.id = cat.value("id", std::string{});
     c.label = cat.value("label", c.id);
     c.required = cat.value("required", false);
+    c.hidden = cat.value("hidden", false);
     c.path_prefix = cat.value("path_prefix", std::string{});
     c.linked_to = cat.value("linked_to", std::string{});
     c.combine_with = cat.value("combine_with", std::string{});
+    c.palette_id = cat.value("palette_id", std::string{});
+    c.base_color = cat.value("base_color", std::string{});
+    c.master_file = cat.value("master_file", std::string{});
+    c.palette_from_combine = cat.value("palette_from_combine", false);
 
     const std::string type_str = cat.value("type", std::string{"select"});
     if (type_str == "slider")
@@ -1386,8 +1537,45 @@ bool ConfigLoader::loadAppearanceConfig(EntityManager& em, const std::string& fi
             cfg.categories.push_back(parseAppearanceCategory(cat));
     }
 
+    // Load palette swap files referenced by categories.
+    auto& palReg = em.registry().ctx().emplace<PaletteRegistry>();
+    if (j.contains("palettes") && j["palettes"].is_object())
+    {
+        for (const auto& [palId, palPath] : j["palettes"].items())
+        {
+            std::ifstream pf(palPath.get<std::string>());
+            if (!pf.is_open())
+                continue;
+            json pj;
+            try
+            {
+                pf >> pj;
+            }
+            catch (...)
+            {
+                continue;
+            }
+            auto& pal = palReg.palettes[palId];
+            for (const auto& [colorName, hexArr] : pj.items())
+            {
+                auto& colors = pal[colorName];
+                for (const auto& hex : hexArr)
+                {
+                    const std::string h = hex.get<std::string>();
+                    if (h.size() < 7)
+                        continue;
+                    const auto r = static_cast<uint8_t>(std::stoi(h.substr(1, 2), nullptr, 16));
+                    const auto g = static_cast<uint8_t>(std::stoi(h.substr(3, 2), nullptr, 16));
+                    const auto b = static_cast<uint8_t>(std::stoi(h.substr(5, 2), nullptr, 16));
+                    colors.push_back({r, g, b});
+                }
+            }
+        }
+    }
+
     cfg.loaded = true;
     std::cout << "[ConfigLoader] Loaded appearance config from " << filePath << " ("
-              << cfg.categories.size() << " categories)\n";
+              << cfg.categories.size() << " categories, " << palReg.palettes.size()
+              << " palettes)\n";
     return true;
 }

@@ -24,5 +24,9 @@
     "pierce": 0,
     "ammo_type": "config/items/ammo/arrow.json",
     "fire_sound": "bow_release",
-    "stamina_cost": 1.5
+    "stamina_cost": 1.5,
+    "grip_x": 19.0,
+    "grip_y": 16.0,
+    "fore_grip_x": 19.0,
+    "fore_grip_y": 13.0
 }

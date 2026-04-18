@@ -141,6 +141,11 @@ void Engine::run()
         }
 
         entity_manager.render_alpha = static_cast<float>(accumulator / FIXED_TIMESTEP);
+        // Animation advances at wall-clock rate (not fixed-step) so sprites
+        // interpolate smoothly on high-refresh displays. Run it before the
+        // pre_render hook so game-side visual-sync systems can read fresh
+        // sprite.src_x/flip_x values computed from the character's animation.
+        AnimationSystem::update(entity_manager, static_cast<float>(frame_dt));
         if (pre_render)
             pre_render(*this, entity_manager);
         render();
@@ -308,7 +313,6 @@ void Engine::render()
     }
 #endif
 
-    AnimationSystem::update(entity_manager, static_cast<float>(frame_dt));
     TileMapRenderer::render(camX, camY, window_w, window_h, camera_zoom);
     RenderSystem::render(entity_manager, texture_manager, camX, camY, camera_zoom);
 

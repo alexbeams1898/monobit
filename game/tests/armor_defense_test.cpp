@@ -1,6 +1,7 @@
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
+#include "ops/InventoryOps.h"
 #include "systems/EquipmentSystem.h"
 #include "test_helpers.h"
 
@@ -37,12 +38,16 @@ TEST_CASE("EquipmentSystem: ArmorStats aggregates defense from armor slots", "[a
 
     auto player = em.create();
     em.registry().emplace<PlayerActions>(player);
-    em.registry().emplace<Inventory>(player);
     em.registry().emplace<Stats>(player, Stats{5, 5, 5, 5});
 
+    // Add armor items to inventory and equip by index.
+    auto& inv = em.registry().emplace<Inventory>(player);
+    inv.items.push_back({"helm"});
+    inv.items.push_back({"chest"});
+
     Equipment equip;
-    equip.head.config_path = "helm";
-    equip.chest.config_path = "chest";
+    equip.head = 0;
+    equip.chest = 1;
     em.registry().emplace<Equipment>(player, equip);
 
     EquipmentSystem::update(em);
@@ -76,12 +81,14 @@ TEST_CASE("EquipmentSystem: equip load tier computed from weight and stats", "[a
 
     auto player = em.create();
     em.registry().emplace<PlayerActions>(player);
-    em.registry().emplace<Inventory>(player);
     // STR 1, END 1 -> capacity = 40 + 3*1 + 1.5*1 = 44.5
     em.registry().emplace<Stats>(player, Stats{1, 1, 1, 1});
 
+    auto& inv = em.registry().emplace<Inventory>(player);
+    inv.items.push_back({"heavy"});
+
     Equipment equip;
-    equip.chest.config_path = "heavy";
+    equip.chest = 0;
     em.registry().emplace<Equipment>(player, equip);
 
     EquipmentSystem::update(em);
@@ -112,12 +119,14 @@ TEST_CASE("EquipmentSystem: light load with strong stats", "[armor]")
 
     auto player = em.create();
     em.registry().emplace<PlayerActions>(player);
-    em.registry().emplace<Inventory>(player);
     // STR 10, END 10 -> capacity = 40 + 30 + 15 = 85
     em.registry().emplace<Stats>(player, Stats{10, 10, 10, 10});
 
+    auto& inv = em.registry().emplace<Inventory>(player);
+    inv.items.push_back({"light"});
+
     Equipment equip;
-    equip.chest.config_path = "light";
+    equip.chest = 0;
     em.registry().emplace<Equipment>(player, equip);
 
     EquipmentSystem::update(em);
@@ -144,12 +153,14 @@ TEST_CASE("EquipmentSystem: poise max set from armor bonus", "[armor]")
 
     auto player = em.create();
     em.registry().emplace<PlayerActions>(player);
-    em.registry().emplace<Inventory>(player);
     em.registry().emplace<Stats>(player, Stats{0, 0, 0, 0});
     em.registry().emplace<Poise>(player, Poise{0.0f, 0.0f, 0.0f});
 
+    auto& inv = em.registry().emplace<Inventory>(player);
+    inv.items.push_back({"helm"});
+
     Equipment equip;
-    equip.head.config_path = "helm";
+    equip.head = 0;
     em.registry().emplace<Equipment>(player, equip);
 
     EquipmentSystem::update(em);

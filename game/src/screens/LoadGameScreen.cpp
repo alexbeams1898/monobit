@@ -199,7 +199,7 @@ const char* LoadGameScreen::getSelectedName()
 }
 
 // Handle keyboard input and return any action triggered.
-static LoadGameScreen::Action handleLoadInput(const EntityManager& em, const SoundConfig& snd,
+static LoadGameScreen::Action handleLoadInput(EntityManager& em, const SoundConfig& snd,
                                               const SaveData& saveData)
 {
     const int charCount = static_cast<int>(saveData.characters.size());

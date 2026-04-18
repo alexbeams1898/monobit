@@ -13,5 +13,10 @@
     "two_handed": true,
     "weapon_tier": "club",
     "max_durability": 120.0,
-    "stackable": false
+    "stackable": false,
+    "grip_x": 9.0,
+    "grip_y": 23.0,
+    "fore_grip_x": 17.0,
+    "fore_grip_y": 15.0,
+    "base_rotation": 90.0
 }
