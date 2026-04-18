@@ -18,6 +18,7 @@ target_sources(engine PRIVATE
     src/systems/CameraPanSystem.cpp
     src/utils/DirectionUtils.cpp
     src/gl/ShaderUtils.cpp
+    src/geom/Intersect.cpp
 )
 
 target_include_directories(engine
@@ -57,6 +58,7 @@ add_executable(engine-tests
     tests/collision_test.cpp
     tests/tilemap_test.cpp
     tests/animation_test.cpp
+    tests/intersect_test.cpp
 )
 target_link_libraries(engine-tests PRIVATE engine Catch2::Catch2WithMain)
 

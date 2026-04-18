@@ -1,5 +1,7 @@
 #pragma once
 
+#include "geom/Shapes.h"
+
 #include <cstdint>
 #include <entt/entt.hpp>
 #include <string>
@@ -77,6 +79,25 @@ struct Collider
     // resolution, allowing them to pass through each other. Group 0 (default)
     // resolves with everything.
     uint8_t collision_group = 0;
+};
+
+// HurtShape -- one damage-receiving region on a Hurtbox.
+// Local-space geometry: offset (x, y) is added to the owning entity's Transform.
+// label is a human-readable name like "torso" or "head"; dmg_mult scales any
+// incoming damage that lands on this specific shape.
+struct HurtShape
+{
+    CollisionShape shape;
+    std::string label;
+    float dmg_mult = 1.0f;
+};
+
+// Hurtbox -- set of damage-receiving shapes attached to an entity. Read by
+// damage systems; never written by engine systems. Emplaced from config, or
+// auto-generated from the entity's Collider if no config is present.
+struct Hurtbox
+{
+    std::vector<HurtShape> shapes;
 };
 
 // Tag -- human-readable label for debug output and editor tooling.

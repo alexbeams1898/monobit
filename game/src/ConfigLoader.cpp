@@ -92,6 +92,49 @@ static void loadCollider(EntityManager& em, entt::entity entity, const json& j)
     em.registry().emplace<Collider>(entity, c);
 }
 
+// Parse a single shape from JSON. Shape kind is determined by the "shape" field
+// ("aabb", "circle", "capsule"). Missing shape field defaults to aabb.
+static CollisionShape parseCollisionShape(const json& j)
+{
+    CollisionShape s;
+    const std::string kind = j.value("shape", std::string{"aabb"});
+    if (kind == "circle")
+        s.kind = ShapeKind::Circle;
+    else if (kind == "capsule")
+        s.kind = ShapeKind::Capsule;
+    else
+        s.kind = ShapeKind::AABB;
+
+    s.x = j.value("x", 0.0f);
+    s.y = j.value("y", 0.0f);
+    s.w = j.value("w", 0.0f);
+    s.h = j.value("h", 0.0f);
+    s.r = j.value("r", 0.0f);
+    s.x2 = j.value("x2", 0.0f);
+    s.y2 = j.value("y2", 0.0f);
+    return s;
+}
+
+// Hurtbox config is a JSON array of shapes. Each shape may carry an optional
+// "label" and "dmg_mult" (default 1.0). If no "hurtboxes" field exists on an
+// entity, the post-load hook auto-generates a single AABB matching the Collider.
+static void loadHurtbox(EntityManager& em, entt::entity entity, const json& j)
+{
+    Hurtbox hb;
+    if (j.is_array())
+    {
+        for (const auto& sj : j)
+        {
+            HurtShape hs;
+            hs.shape = parseCollisionShape(sj);
+            hs.label = sj.value("label", std::string{});
+            hs.dmg_mult = sj.value("dmg_mult", 1.0f);
+            hb.shapes.push_back(hs);
+        }
+    }
+    em.registry().emplace<Hurtbox>(entity, std::move(hb));
+}
+
 static void loadStats(EntityManager& em, entt::entity entity, const json& j)
 {
     Stats s;
@@ -585,6 +628,7 @@ static const std::unordered_map<std::string, LoaderFn> kComponentLoaders = {
     {"health",           loadHealth},
     {"sprite",           loadSprite},
     {"collider",         loadCollider},
+    {"hurtbox",          loadHurtbox},
     {"stats",            loadStats},
     {"experience",       loadExperience},
     {"weapon",           loadWeapon},
@@ -635,6 +679,25 @@ entt::entity ConfigLoader::loadEntity(EntityManager& em, const std::string& file
         else
             std::cerr << "[ConfigLoader] Unknown component key: \"" << key << "\" in " << filePath
                       << "\n";
+    }
+
+    // Auto-generate a default Hurtbox from the entity's Collider if one wasn't
+    // explicitly configured. This keeps backwards compatibility: entities with
+    // no "hurtbox" in config behave identically to pre-refactor code that used
+    // Collider geometry for damage.
+    auto& reg = em.registry();
+    if (reg.all_of<Collider>(entity) && !reg.all_of<Hurtbox>(entity))
+    {
+        const auto& col = reg.get<Collider>(entity);
+        Hurtbox hb;
+        HurtShape hs;
+        hs.shape.kind = ShapeKind::AABB;
+        hs.shape.w = col.width;
+        hs.shape.h = col.height;
+        hs.label = "default";
+        hs.dmg_mult = 1.0f;
+        hb.shapes.push_back(hs);
+        reg.emplace<Hurtbox>(entity, std::move(hb));
     }
 
     return entity;
