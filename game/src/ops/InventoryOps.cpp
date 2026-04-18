@@ -79,9 +79,8 @@ bool slotEmpty(const Equipment& equip, EquipSlot slot)
 }
 
 static constexpr EquipSlot ALL_SLOTS[] = {
-    EquipSlot::RightHand, EquipSlot::LeftHand, EquipSlot::Head,
-    EquipSlot::Chest,     EquipSlot::Legs,     EquipSlot::Feet,
-    EquipSlot::Accessory1, EquipSlot::Accessory2};
+    EquipSlot::RightHand, EquipSlot::LeftHand, EquipSlot::Head,       EquipSlot::Chest,
+    EquipSlot::Legs,      EquipSlot::Feet,     EquipSlot::Accessory1, EquipSlot::Accessory2};
 
 bool isEquipped(const Equipment& equip, int inv_index)
 {

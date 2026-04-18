@@ -403,8 +403,7 @@ TEST_CASE("EquipmentSystem: two-handed weapon flows flag and starts inactive",
     REQUIRE(w.fore_grip_y == Catch::Approx(10.0f));
 }
 
-TEST_CASE("EquipmentSystem: pistol is not two-handed-capable",
-          "[equipment][two_handed]")
+TEST_CASE("EquipmentSystem: pistol is not two-handed-capable", "[equipment][two_handed]")
 {
     EntityManager em;
     emplaceGameConfigs(em);
@@ -423,8 +422,7 @@ TEST_CASE("EquipmentSystem: pistol is not two-handed-capable",
     REQUIRE_FALSE(w.two_handed_active);
 }
 
-TEST_CASE("EquipmentSystem: swapping to fists clears two-handed state",
-          "[equipment][two_handed]")
+TEST_CASE("EquipmentSystem: swapping to fists clears two-handed state", "[equipment][two_handed]")
 {
     EntityManager em;
     emplaceGameConfigs(em);

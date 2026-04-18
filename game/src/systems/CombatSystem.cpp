@@ -407,8 +407,8 @@ void CombatSystem::update(EntityManager& em, double dt)
 
     // --- 5. Player attack logic -------------------------------------------
     // Shared hitbox spawner lambda — used for normal attack and skill.
-    auto spawnHitbox = [&](entt::entity owner, float ox, float oy, float size, float damage,
-                           bool leftHand = false)
+    auto spawnHitbox =
+        [&](entt::entity owner, float ox, float oy, float size, float damage, bool leftHand = false)
     {
         const auto hitboxEnt = em.create();
         em.registry().emplace<Transform>(hitboxEnt, Transform{ox, oy, 0.0f, 1.0f});
@@ -420,8 +420,7 @@ void CombatSystem::update(EntityManager& em, double dt)
     // cooldown set, attack lock, animation speed calc, stamina deduction, sound.
     // Called once for right hand (Weapon) and once for left hand (LeftWeapon).
     auto attemptAttack = [&](entt::entity entity, Weapon& weapon, bool attackPressed,
-                             const Transform& transform, FacingDirection& facing,
-                             bool isLeftHand)
+                             const Transform& transform, FacingDirection& facing, bool isLeftHand)
     {
         const bool isAttackLocked = em.registry().all_of<AttackLocked>(entity);
         const bool isStaggered = em.registry().all_of<Staggered>(entity);
@@ -443,13 +442,11 @@ void CombatSystem::update(EntityManager& em, double dt)
                               !isStaggered && !isCritLocked && staCurrent >= swingCost);
         }
         if (!fireAttack && attackPressed)
-            fireAttack =
-                (weapon.swing_cooldown_remaining <= 0.0f && !isAttackLocked &&
-                 !isStaggered && !isCritLocked && staCurrent >= swingCost);
+            fireAttack = (weapon.swing_cooldown_remaining <= 0.0f && !isAttackLocked &&
+                          !isStaggered && !isCritLocked && staCurrent >= swingCost);
 
-        if (!fireAttack && attackPressed &&
-            weapon.swing_cooldown_remaining <= 0.0f && !isAttackLocked && !isStaggered &&
-            staCurrent < swingCost)
+        if (!fireAttack && attackPressed && weapon.swing_cooldown_remaining <= 0.0f &&
+            !isAttackLocked && !isStaggered && staCurrent < swingCost)
         {
             {
                 const auto& hb = snd.get("low_stamina_heartbeat");
@@ -473,8 +470,7 @@ void CombatSystem::update(EntityManager& em, double dt)
             em.registry().get<AutoAttackMode>(entity).enabled)
         {
             float bestDist = std::numeric_limits<float>::max();
-            for (auto [eEnemy, ai, tEnemy] :
-                 em.registry().view<AIController, Transform>().each())
+            for (auto [eEnemy, ai, tEnemy] : em.registry().view<AIController, Transform>().each())
             {
                 if (ai.state == AIController::State::Chase ||
                     ai.state == AIController::State::Attack)
@@ -506,8 +502,7 @@ void CombatSystem::update(EntityManager& em, double dt)
             const bool magazineEmpty =
                 rs != nullptr && rs->magazine_size > 0 && rs->ammo_in_magazine <= 0;
             const bool bowEmpty = rs != nullptr && rs->magazine_size == 0 && reserve <= 0;
-            const bool canFire =
-                !(rs != nullptr && rs->reloading) && !magazineEmpty && !bowEmpty;
+            const bool canFire = !(rs != nullptr && rs->reloading) && !magazineEmpty && !bowEmpty;
 
             if (magazineEmpty && reserve > 0)
             {
@@ -519,10 +514,9 @@ void CombatSystem::update(EntityManager& em, double dt)
 
             if (canFire)
             {
-                const float dmg =
-                    em.registry().all_of<Stats>(entity)
-                        ? computeDamage(weapon, em.registry().get<Stats>(entity), f)
-                        : weapon.base_damage;
+                const float dmg = em.registry().all_of<Stats>(entity)
+                                      ? computeDamage(weapon, em.registry().get<Stats>(entity), f)
+                                      : weapon.base_damage;
                 fireRangedWeapon(em, entity, weapon, transform, facingX, facingY, dmg, isLeftHand);
 
                 const bool godAmmo = em.registry().ctx().get<DebugFlags>().god_mode;
@@ -557,8 +551,8 @@ void CombatSystem::update(EntityManager& em, double dt)
                         float frameDur = 0.0f;
 
                         const auto* rowIdx = em.registry().ctx().find<AnimRowIndex>();
-                        if (!weapon.attack_anim.empty() &&
-                            weapon.attack_anim != "slash" && rowIdx != nullptr)
+                        if (!weapon.attack_anim.empty() && weapon.attack_anim != "slash" &&
+                            rowIdx != nullptr)
                         {
                             const auto it = rowIdx->rows.find(weapon.attack_anim);
                             if (it != rowIdx->rows.end())
@@ -571,8 +565,7 @@ void CombatSystem::update(EntityManager& em, double dt)
                         if (frameCount <= 0)
                         {
                             const auto& rowCfg = em.registry().get<AnimRowConfig>(entity);
-                            const auto& atkRow =
-                                rowCfg.rows[static_cast<int>(AnimState::Attack)];
+                            const auto& atkRow = rowCfg.rows[static_cast<int>(AnimState::Attack)];
                             frameCount = atkRow.frames;
                             frameDur = atkRow.duration;
                         }
@@ -598,8 +591,8 @@ void CombatSystem::update(EntityManager& em, double dt)
                     std::string clipPath;
                     if (!fireSnd.variations.empty())
                     {
-                        auto dist = std::uniform_int_distribution<size_t>(
-                            0, fireSnd.variations.size() - 1);
+                        auto dist =
+                            std::uniform_int_distribution<size_t>(0, fireSnd.variations.size() - 1);
                         clipPath = fireSnd.variations[dist(combatRng())];
                     }
                     else
@@ -643,8 +636,8 @@ void CombatSystem::update(EntityManager& em, double dt)
             weapon.swing_cooldown_remaining = cooldown;
 
             const float lockDuration = cooldown * f.combat.attack_lock_fraction;
-            em.registry().emplace_or_replace<AttackLocked>(
-                entity, AttackLocked{lockDuration, isLeftHand});
+            em.registry().emplace_or_replace<AttackLocked>(entity,
+                                                           AttackLocked{lockDuration, isLeftHand});
             em.registry().emplace_or_replace<AttackFeedback>(entity, AttackFeedback{0.5f});
 
             if (em.registry().all_of<AnimRowConfig, FacingDirection>(entity))

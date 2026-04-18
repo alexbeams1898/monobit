@@ -361,19 +361,19 @@ static void renderPlayerHud(EntityManager& em, entt::entity entity, float ww, fl
         panel_h += label_h + BAR_GAP;
     if (reg.all_of<Weapon>(entity))
     {
-        panel_h += 1.0f + BAR_GAP;                       // separator
-        panel_h += label_h + 2.0f + title_h + BAR_GAP;   // "Right Hand" label + weapon name
+        panel_h += 1.0f + BAR_GAP;                     // separator
+        panel_h += label_h + 2.0f + title_h + BAR_GAP; // "Right Hand" label + weapon name
         if (reg.get<Weapon>(entity).ranged && !reg.get<Weapon>(entity).ammo_type.empty())
-            panel_h += BAR_H + BAR_GAP;                  // ammo line
-        panel_h += section_h + BAR_GAP;                   // right hand XP bar
+            panel_h += BAR_H + BAR_GAP; // ammo line
+        panel_h += section_h + BAR_GAP; // right hand XP bar
         if (reg.all_of<LeftWeapon>(entity))
         {
-            panel_h += 1.0f + BAR_GAP;                   // separator between hands
+            panel_h += 1.0f + BAR_GAP;                     // separator between hands
             panel_h += label_h + 2.0f + title_h + BAR_GAP; // "Left Hand" label + weapon name
             const auto& lw = reg.get<LeftWeapon>(entity);
             if (lw.ranged && !lw.ammo_type.empty())
-                panel_h += BAR_H + BAR_GAP;              // ammo line
-            panel_h += section_h + BAR_GAP;               // left hand XP bar
+                panel_h += BAR_H + BAR_GAP; // ammo line
+            panel_h += section_h + BAR_GAP; // left hand XP bar
         }
     }
     UIRenderer::drawRect(BAR_X - PADDING, BAR_Y_START - PADDING, BAR_W + PADDING * 2.0f, panel_h,

@@ -220,8 +220,8 @@ void InventoryScreen::render(EntityManager& em, int window_w, int window_h)
         sSelectedSlot = ((sSelectedSlot % total_slots) + total_slots) % total_slots; // wrap around
 
         const auto& gridEquip = em.registry().all_of<Equipment>(player)
-                                   ? em.registry().get<Equipment>(player)
-                                   : Equipment{};
+                                    ? em.registry().get<Equipment>(player)
+                                    : Equipment{};
         renderInventoryGrid(inv, gridEquip, items, panel_x, ey, total_slots);
 
         // Selected item detail.

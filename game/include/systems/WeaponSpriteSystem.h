@@ -12,4 +12,4 @@ void updateEquipment(EntityManager& em);
 // Must run AFTER engine AnimationSystem::update so the character's sprite
 // rect (src_x/src_y/flip_x) reflects this frame's animation state.
 void syncVisuals(EntityManager& em);
-}
+} // namespace WeaponSpriteSystem

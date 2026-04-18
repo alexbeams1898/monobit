@@ -59,8 +59,7 @@ void InputMappingSystem::update(EntityManager& em)
     // Right hand: E key or RMB. Left hand: Q key or LMB. Skill: Ctrl.
     const bool rightAttackHeld = rmbHeld || keys[SDL_SCANCODE_E] != 0;
     const bool leftAttackHeld = lmbHeld || keys[SDL_SCANCODE_Q] != 0;
-    const bool skillHeld =
-        keys[SDL_SCANCODE_LCTRL] != 0 || keys[SDL_SCANCODE_RCTRL] != 0;
+    const bool skillHeld = keys[SDL_SCANCODE_LCTRL] != 0 || keys[SDL_SCANCODE_RCTRL] != 0;
     const bool blockHeld = false; // block is now per-hand via shield detection
     const bool sprintHeld = keys[SDL_SCANCODE_LSHIFT] != 0 || keys[SDL_SCANCODE_RSHIFT] != 0;
 

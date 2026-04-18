@@ -7,8 +7,7 @@
 
 #include <iostream>
 
-PaletteSwap PaletteRegistry::buildSwap(const std::string& palette_id,
-                                       const std::string& base_color,
+PaletteSwap PaletteRegistry::buildSwap(const std::string& palette_id, const std::string& base_color,
                                        const std::string& target_color) const
 {
     PaletteSwap swap;
@@ -27,8 +26,8 @@ PaletteSwap PaletteRegistry::buildSwap(const std::string& palette_id,
     const size_t count = std::min(base.size(), target.size());
     for (size_t i = 0; i < count; ++i)
     {
-        swap.entries.push_back({base[i].r, base[i].g, base[i].b,
-                                target[i].r, target[i].g, target[i].b});
+        swap.entries.push_back(
+            {base[i].r, base[i].g, base[i].b, target[i].r, target[i].g, target[i].b});
     }
     return swap;
 }
@@ -136,8 +135,7 @@ buildLayerPaths(EntityManager& em, const std::unordered_map<std::string, std::st
                 // Example: hair_color option="black", hair_style="long"
                 //   -> master="long_master.png", palette target="black"
                 auto other = selections.find(cat.combine_with);
-                if (other != selections.end() && !other->second.empty() &&
-                    other->second != "none")
+                if (other != selections.end() && !other->second.empty() && other->second != "none")
                     masterFile = other->second + "_master.png";
             }
             else if (!cat.master_file.empty())

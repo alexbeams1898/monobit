@@ -55,7 +55,7 @@ void buildModelRotated(float mat[16], float x, float y, float w, float h, float 
     const float mw = mirror ? -w : w;
     const float c = std::cos(rot);
     const float s = std::sin(rot);
-    const float hw = w * 0.5f;   // always positive — used for center computation
+    const float hw = w * 0.5f; // always positive — used for center computation
     const float hh = h * 0.5f;
     const float mhw = mw * 0.5f; // may be negative — used for scale in the matrix
     // clang-format off

@@ -69,7 +69,7 @@ struct AppearanceCategory
     // base_color is the palette key the master uses (e.g. "white", "orange").
     std::string palette_id;
     std::string base_color;
-    std::string master_file; // master PNG filename for direct palette-swap categories
+    std::string master_file;           // master PNG filename for direct palette-swap categories
     bool palette_from_combine = false; // palette target comes from combine_with, master from option
 };
 
@@ -89,8 +89,7 @@ struct PaletteColor
 struct PaletteRegistry
 {
     // palettes["cloth"]["black"] = [{r,g,b}, {r,g,b}, ...]
-    std::unordered_map<std::string,
-                       std::unordered_map<std::string, std::vector<PaletteColor>>>
+    std::unordered_map<std::string, std::unordered_map<std::string, std::vector<PaletteColor>>>
         palettes;
 
     // Build a PaletteSwap mapping base_color entries to target_color entries.

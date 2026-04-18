@@ -357,10 +357,11 @@ static void renderInventoryTab(EntityManager& em, float cx, float cy, float cw, 
 }
 
 // Equipment slot labels and corresponding EquipSlot enums (6 visible slots).
-static const char* EQUIP_SLOT_NAMES[] = {"Right Hand", "Left Hand", "Head", "Chest", "Legs", "Feet"};
+static const char* EQUIP_SLOT_NAMES[] = {"Right Hand", "Left Hand", "Head",
+                                         "Chest",      "Legs",      "Feet"};
 static const EquipSlot EQUIP_SLOT_ENUMS[] = {EquipSlot::RightHand, EquipSlot::LeftHand,
-                                             EquipSlot::Head,     EquipSlot::Chest,
-                                             EquipSlot::Legs,     EquipSlot::Feet};
+                                             EquipSlot::Head,      EquipSlot::Chest,
+                                             EquipSlot::Legs,      EquipSlot::Feet};
 static constexpr int EQUIP_SLOT_COUNT = 6;
 
 struct PickerEntry
@@ -374,13 +375,20 @@ static const char* slotBadge(EquipSlot s)
 {
     switch (s)
     {
-    case EquipSlot::RightHand: return " [R]";
-    case EquipSlot::LeftHand:  return " [L]";
-    case EquipSlot::Head:      return " [H]";
-    case EquipSlot::Chest:     return " [C]";
-    case EquipSlot::Legs:      return " [Lg]";
-    case EquipSlot::Feet:      return " [F]";
-    default:                   return " [E]";
+    case EquipSlot::RightHand:
+        return " [R]";
+    case EquipSlot::LeftHand:
+        return " [L]";
+    case EquipSlot::Head:
+        return " [H]";
+    case EquipSlot::Chest:
+        return " [C]";
+    case EquipSlot::Legs:
+        return " [Lg]";
+    case EquipSlot::Feet:
+        return " [F]";
+    default:
+        return " [E]";
     }
 }
 
@@ -592,9 +600,8 @@ static bool renderEquipPicker(EntityManager& em, entt::entity player, const Inve
 
 // Draw the equipment slot list and handle mouse clicks.
 static void renderEquipSlotList(EntityManager& em, const Inventory& inv, const Equipment& eq,
-                                const ItemRegistry& items,
-                                float cx, float ey, float cw, float line_h, float mx, float my,
-                                int hoverIdx)
+                                const ItemRegistry& items, float cx, float ey, float cw,
+                                float line_h, float mx, float my, int hoverIdx)
 {
     float y = ey;
     for (int i = 0; i < EQUIP_SLOT_COUNT; ++i)
@@ -639,8 +646,8 @@ static void renderEquipSlotList(EntityManager& em, const Inventory& inv, const E
 
 // Render the stat panel for the currently selected equipment slot.
 static void renderEquipStatPanel(EntityManager& em, entt::entity player, const Inventory& inv,
-                                 const Equipment& eq,
-                                 const ItemRegistry& items, float cx, float y, float cw)
+                                 const Equipment& eq, const ItemRegistry& items, float cx, float y,
+                                 float cw)
 {
     y += 12.0f;
     const EquipSlot sel_slot = EQUIP_SLOT_ENUMS[sContentSel];
@@ -670,8 +677,9 @@ static void renderEquipStatPanel(EntityManager& em, entt::entity player, const I
             }
             else
             {
-                const Weapon w{"Unarmed", f.fist.weight,     f.fist.str_scaling, f.fist.dex_scaling,
-                               0,         0,         f.fist.base_damage};
+                const Weapon w{
+                    "Unarmed", f.fist.weight,     f.fist.str_scaling, f.fist.dex_scaling, 0,
+                    0,         f.fist.base_damage};
                 stat_bottom = ItemStatRenderer::renderWeaponStats(
                     sBodyFont, w, stats, f, nullptr, has_stats, cx, y, cw, val_x, true, god_mode);
             }

@@ -256,9 +256,8 @@ static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::en
     if (col)
         yOffset = (static_cast<float>(sprite.src_h) * scale - col->height) * 0.5f;
 
-    const float sortY = sprite.use_sort_anchor
-                             ? sprite.sort_anchor
-                             : (col ? drawY + col->height * 0.5f : drawY);
+    const float sortY =
+        sprite.use_sort_anchor ? sprite.sort_anchor : (col ? drawY + col->height * 0.5f : drawY);
     const int subLayer = sprite.sub_layer;
 
     float glowScale = 0.0f;

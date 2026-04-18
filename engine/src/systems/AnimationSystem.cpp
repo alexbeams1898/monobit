@@ -44,9 +44,8 @@ static void updateDirection(entt::registry& reg, entt::entity entity, Animation&
 
 static void advanceAnimation(Animation& anim, float dt)
 {
-    const int playbackLen = anim.frame_mask.empty()
-                                ? anim.current_frames
-                                : static_cast<int>(anim.frame_mask.size());
+    const int playbackLen =
+        anim.frame_mask.empty() ? anim.current_frames : static_cast<int>(anim.frame_mask.size());
 
     const float frameDuration = anim.current_duration * anim.speed_multiplier;
     if (frameDuration <= 0.0f || playbackLen <= 1)
@@ -103,9 +102,8 @@ void AnimationSystem::update(EntityManager& em, float dt)
         // --- 4. Compute sprite src rect ---
         const auto mapping = dirToColumnIndex(anim.dir, anim.direction_count);
         const int dirOffset = mapping.column * anim.max_frames_per_state;
-        const int visibleFrame = anim.frame_mask.empty()
-                                     ? anim.frame_index
-                                     : anim.frame_mask[anim.frame_index];
+        const int visibleFrame =
+            anim.frame_mask.empty() ? anim.frame_index : anim.frame_mask[anim.frame_index];
         const int col = dirOffset + visibleFrame;
 
         const int newSrcX = col * anim.frame_width;

@@ -84,9 +84,7 @@ static void installAnchors(EntityManager& em)
     {
         for (int f = 0; f < 8; ++f)
         {
-            const float xBase = (d == 0) ? 8.0f : (d == 1) ? -10.0f
-                                               : (d == 2)  ? 10.0f
-                                                            : -8.0f;
+            const float xBase = (d == 0) ? 8.0f : (d == 1) ? -10.0f : (d == 2) ? 10.0f : -8.0f;
             walkRow.left[d].push_back({xBase + static_cast<float>(f) * 0.1f, 7.0f});
         }
     }

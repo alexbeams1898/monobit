@@ -71,8 +71,7 @@ TEST_CASE("snapFacing switches when other axis clearly dominates", "[animation][
     REQUIRE(snapFacing(0.1f, 0.99f, CardinalDir::East, 4) == CardinalDir::South);
 }
 
-TEST_CASE("snapFacing resists jitter near the diagonal threshold",
-          "[animation][hysteresis]")
+TEST_CASE("snapFacing resists jitter near the diagonal threshold", "[animation][hysteresis]")
 {
     // Slight 5% horizontal dominance. Starting from South (vertical),
     // hysteresis requires the other axis to exceed +15% to flip.

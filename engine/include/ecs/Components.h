@@ -219,11 +219,11 @@ struct Animation
     int direction_count = 4; // 1 (omnidirectional, static sprite) or 4 (cardinal)
 
     // --- Playback (written by game AnimStateSystem each tick) ---
-    int current_row = 0;         // spritesheet row to play
-    int current_frames = 1;      // number of frames in this row
+    int current_row = 0;           // spritesheet row to play
+    int current_frames = 1;        // number of frames in this row
     float current_duration = 0.0f; // seconds per frame (0 = static)
-    bool freeze_on_last = false; // true = one-shot (hold last frame), false = loop
-    bool reverse = false;        // play frames in reverse order
+    bool freeze_on_last = false;   // true = one-shot (hold last frame), false = loop
+    bool reverse = false;          // play frames in reverse order
     float speed_multiplier = 1.0f; // <1 = faster, >1 = slower
 
     // Per-frame column remap. When non-empty, the visible column is

@@ -36,7 +36,10 @@ struct PaletteSwap
         uint8_t target_r, target_g, target_b;
     };
     std::vector<Entry> entries;
-    bool empty() const { return entries.empty(); }
+    bool empty() const
+    {
+        return entries.empty();
+    }
 };
 
 class SpriteCompositor

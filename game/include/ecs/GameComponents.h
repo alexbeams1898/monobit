@@ -57,17 +57,17 @@ struct PlayerActions
     float move_x = 0.0f;
     float move_y = 0.0f;
 
-    bool right_attack = false;  // right-hand attack (E / RMB)
-    bool left_attack = false;   // left-hand attack (Q / LMB)
+    bool right_attack = false; // right-hand attack (E / RMB)
+    bool left_attack = false;  // left-hand attack (Q / LMB)
     bool dodge = false;
-    bool skill = false;        // skill attack (Ctrl)
+    bool skill = false; // skill attack (Ctrl)
     bool sprint = false;
     bool block_held = false;
     bool block_just_pressed = false;
     bool auto_toggle_just_pressed = false;
-    bool cycle_weapon = false;        // right-hand cycle forward (C)
-    bool cycle_weapon_prev = false;   // right-hand cycle backward (V)
-    bool cycle_left_weapon = false;   // left-hand cycle forward (Z)
+    bool cycle_weapon = false;           // right-hand cycle forward (C)
+    bool cycle_weapon_prev = false;      // right-hand cycle backward (V)
+    bool cycle_left_weapon = false;      // left-hand cycle forward (Z)
     bool cycle_left_weapon_prev = false; // left-hand cycle backward (X)
     bool interact = false;
     bool mouse_click = false;
@@ -235,24 +235,25 @@ struct Weapon
 
     // Visual weapon fields (set by EquipmentSystem from ItemDef).
     std::string visual_weapon; // weapon id used for equip-change detection
-    std::string weapon_icon;       // sprite path for held weapon visual; empty = no visible weapon
-    float grip_x = 0.0f;          // primary grip pixel in icon (0..32); trigger hand
+    std::string weapon_icon;   // sprite path for held weapon visual; empty = no visible weapon
+    float grip_x = 0.0f;       // primary grip pixel in icon (0..32); trigger hand
     float grip_y = 0.0f;
 
     // Per-direction attack icons: alternate sprites used during attack animations.
     // If empty, the default weapon_icon is used. Allows top-down perspective for N/S.
-    std::string attack_icon_ns;        // icon for N/S attack directions
-    float attack_grip_ns_x = 0.0f;    // grip (trigger hand) on the NS icon
+    std::string attack_icon_ns;    // icon for N/S attack directions
+    float attack_grip_ns_x = 0.0f; // grip (trigger hand) on the NS icon
     float attack_grip_ns_y = 0.0f;
     float attack_fore_grip_ns_x = 0.0f; // fore grip (support hand) on the NS icon
     float attack_fore_grip_ns_y = 0.0f;
-    float fore_grip_x = 0.0f;  // secondary grip pixel in icon; support hand (two-handed only)
+    float fore_grip_x = 0.0f; // secondary grip pixel in icon; support hand (two-handed only)
     float fore_grip_y = 0.0f;
     float weapon_scale = 1.0f;  // visual scale (1.0 = native icon size)
     float base_rotation = 0.0f; // resting angle in radians (converted from degrees at load)
-    std::string attack_anim;   // animation row name ("slash", "thrust", "shoot"); empty = "slash"
+    std::string attack_anim;    // animation row name ("slash", "thrust", "shoot"); empty = "slash"
     std::vector<int> shoot_frames; // per-frame column remap for the attack row; empty = play 0..N-1
-    entt::entity weapon_entity = entt::null; // spawned weapon sprite entity (managed by WeaponSpriteSystem)
+    entt::entity weapon_entity =
+        entt::null; // spawned weapon sprite entity (managed by WeaponSpriteSystem)
 
     // Two-handed state.
     // two_handed: does the weapon physically support a two-handed grip?

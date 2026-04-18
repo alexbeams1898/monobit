@@ -101,9 +101,8 @@ void WeaponXPSystem::grantXP(EntityManager& em, float enemy_power, float source_
 }
 
 // Process level-ups for a single weapon's embedded XP fields.
-static void processWeaponLevelUps(Weapon& w, const ItemInstance* invItem,
-                                  const ItemRegistry& items, const WeaponTierRegistry& tiers,
-                                  const FormulaConfig& f)
+static void processWeaponLevelUps(Weapon& w, const ItemInstance* invItem, const ItemRegistry& items,
+                                  const WeaponTierRegistry& tiers, const FormulaConfig& f)
 {
     const QualityTier qt = invItem ? invItem->quality : QualityTier::Common;
     const float qf = qualityFactor(qt);
@@ -145,14 +144,14 @@ void WeaponXPSystem::update(EntityManager& em)
     for (auto [entity, weapon, equip] : reg.view<Weapon, Equipment>().each())
     {
         const auto* inv = reg.try_get<Inventory>(entity);
-        const auto* rhItem = inv ? InventoryOps::equippedItem(*inv, equip, EquipSlot::RightHand)
-                                 : nullptr;
+        const auto* rhItem =
+            inv ? InventoryOps::equippedItem(*inv, equip, EquipSlot::RightHand) : nullptr;
         processWeaponLevelUps(weapon, rhItem, items, tiers, f);
 
         if (auto* lw = reg.try_get<LeftWeapon>(entity))
         {
-            const auto* lhItem = inv ? InventoryOps::equippedItem(*inv, equip, EquipSlot::LeftHand)
-                                     : nullptr;
+            const auto* lhItem =
+                inv ? InventoryOps::equippedItem(*inv, equip, EquipSlot::LeftHand) : nullptr;
             processWeaponLevelUps(*lw, lhItem, items, tiers, f);
         }
     }

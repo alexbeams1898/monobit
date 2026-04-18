@@ -259,8 +259,8 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
         health.current = std::max(0, health.current - dmg);
 
     // Trigger red damage flash on the target.
-    const bool attackerLeftHand =
-        reg.valid(hitboxEnt) && reg.all_of<Hitbox>(hitboxEnt) && reg.get<Hitbox>(hitboxEnt).left_hand;
+    const bool attackerLeftHand = reg.valid(hitboxEnt) && reg.all_of<Hitbox>(hitboxEnt) &&
+                                  reg.get<Hitbox>(hitboxEnt).left_hand;
     reg.emplace_or_replace<DamageFeedback>(target, DamageFeedback{0.2f, attackerLeftHand});
 
     const auto& hitSnd = snd.get("hit");
