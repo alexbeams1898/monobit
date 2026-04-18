@@ -155,6 +155,62 @@ static void fireRangedWeapon(EntityManager& em, entt::entity entity, const Weapo
     spawnMuzzleFlash(em, fx, fy);
 }
 
+// Set the animation speed multiplier so the attack anim fits within the lock duration.
+static void syncAttackAnimSpeed(entt::registry& reg, entt::entity entity, const Weapon& weapon,
+                                float lockDuration)
+{
+    if (!reg.all_of<AnimRowConfig, FacingDirection>(entity))
+        return;
+
+    int frameCount = 0;
+    float frameDur = 0.0f;
+
+    const auto* rowIdx = reg.ctx().find<AnimRowIndex>();
+    if (!weapon.attack_anim.empty() && weapon.attack_anim != "slash" && rowIdx != nullptr)
+    {
+        const auto it = rowIdx->rows.find(weapon.attack_anim);
+        if (it != rowIdx->rows.end())
+        {
+            frameCount = it->second.frames;
+            frameDur = it->second.duration;
+        }
+    }
+
+    if (frameCount <= 0)
+    {
+        const auto& rowCfg = reg.get<AnimRowConfig>(entity);
+        const auto& atkRow = rowCfg.rows[static_cast<int>(AnimState::Attack)];
+        frameCount = atkRow.frames;
+        frameDur = atkRow.duration;
+    }
+
+    if (!weapon.shoot_frames.empty())
+        frameCount = static_cast<int>(weapon.shoot_frames.size());
+
+    const float nativeLen = static_cast<float>(frameCount) * frameDur;
+    if (nativeLen > 0.0f && lockDuration > 0.0f)
+        reg.get<FacingDirection>(entity).attack_anim_speed = lockDuration / nativeLen;
+}
+
+static void playAttackSound(const Weapon& weapon, const SoundConfig& snd)
+{
+    if (weapon.fire_sound.empty())
+        return;
+    const auto& fireSnd = snd.get(weapon.fire_sound);
+    std::string clipPath;
+    if (!fireSnd.variations.empty())
+    {
+        auto dist = std::uniform_int_distribution<size_t>(0, fireSnd.variations.size() - 1);
+        clipPath = fireSnd.variations[dist(combatRng())];
+    }
+    else
+    {
+        clipPath = fireSnd.path;
+    }
+    if (!clipPath.empty())
+        AudioSystem::playSfx(clipPath, fireSnd.volume);
+}
+
 // NOLINTNEXTLINE(readability-function-cognitive-complexity,readability-function-size)
 void CombatSystem::update(EntityManager& em, double dt)
 {
@@ -540,69 +596,14 @@ void CombatSystem::update(EntityManager& em, double dt)
                                : f.swing.base_swing_time + weapon.weight * f.swing.weight_scale);
                 weapon.swing_cooldown_remaining = cooldown;
 
-                {
-                    const float lockDuration = cooldown;
-                    em.registry().emplace_or_replace<AttackLocked>(
-                        entity, AttackLocked{lockDuration, isLeftHand});
-
-                    if (em.registry().all_of<AnimRowConfig, FacingDirection>(entity))
-                    {
-                        int frameCount = 0;
-                        float frameDur = 0.0f;
-
-                        const auto* rowIdx = em.registry().ctx().find<AnimRowIndex>();
-                        if (!weapon.attack_anim.empty() && weapon.attack_anim != "slash" &&
-                            rowIdx != nullptr)
-                        {
-                            const auto it = rowIdx->rows.find(weapon.attack_anim);
-                            if (it != rowIdx->rows.end())
-                            {
-                                frameCount = it->second.frames;
-                                frameDur = it->second.duration;
-                            }
-                        }
-
-                        if (frameCount <= 0)
-                        {
-                            const auto& rowCfg = em.registry().get<AnimRowConfig>(entity);
-                            const auto& atkRow = rowCfg.rows[static_cast<int>(AnimState::Attack)];
-                            frameCount = atkRow.frames;
-                            frameDur = atkRow.duration;
-                        }
-
-                        if (!weapon.shoot_frames.empty())
-                            frameCount = static_cast<int>(weapon.shoot_frames.size());
-
-                        const float nativeLen = static_cast<float>(frameCount) * frameDur;
-                        if (nativeLen > 0.0f && lockDuration > 0.0f)
-                        {
-                            auto& fd = em.registry().get<FacingDirection>(entity);
-                            fd.attack_anim_speed = lockDuration / nativeLen;
-                        }
-                    }
-                }
+                em.registry().emplace_or_replace<AttackLocked>(entity,
+                                                               AttackLocked{cooldown, isLeftHand});
+                syncAttackAnimSpeed(em.registry(), entity, weapon, cooldown);
 
                 if (hasSta)
                     deductStamina(em.registry(), entity, swingCost, f);
 
-                if (!weapon.fire_sound.empty())
-                {
-                    const auto& fireSnd = snd.get(weapon.fire_sound);
-                    std::string clipPath;
-                    if (!fireSnd.variations.empty())
-                    {
-                        auto dist =
-                            std::uniform_int_distribution<size_t>(0, fireSnd.variations.size() - 1);
-                        clipPath = fireSnd.variations[dist(combatRng())];
-                    }
-                    else
-                    {
-                        clipPath = fireSnd.path;
-                    }
-                    if (!clipPath.empty())
-                        AudioSystem::playSfx(clipPath, fireSnd.volume);
-                }
-
+                playAttackSound(weapon, snd);
                 TracyMessageL("PlayerAttack");
             }
         }
@@ -639,18 +640,7 @@ void CombatSystem::update(EntityManager& em, double dt)
             em.registry().emplace_or_replace<AttackLocked>(entity,
                                                            AttackLocked{lockDuration, isLeftHand});
             em.registry().emplace_or_replace<AttackFeedback>(entity, AttackFeedback{0.5f});
-
-            if (em.registry().all_of<AnimRowConfig, FacingDirection>(entity))
-            {
-                const auto& rowCfg = em.registry().get<AnimRowConfig>(entity);
-                const auto& atkRow = rowCfg.rows[static_cast<int>(AnimState::Attack)];
-                const float nativeLen = static_cast<float>(atkRow.frames) * atkRow.duration;
-                if (nativeLen > 0.0f && lockDuration > 0.0f)
-                {
-                    auto& fd = em.registry().get<FacingDirection>(entity);
-                    fd.attack_anim_speed = lockDuration / nativeLen;
-                }
-            }
+            syncAttackAnimSpeed(em.registry(), entity, weapon, lockDuration);
 
             if (hasSta)
                 deductStamina(em.registry(), entity, swingCost, f);

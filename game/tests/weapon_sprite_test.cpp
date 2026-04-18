@@ -59,7 +59,7 @@ static entt::entity createWielder(EntityManager& em, float x, float y)
     w.grip_y = 16.0f;
     reg.emplace<Weapon>(e, w);
 
-    AppearanceState app;
+    const AppearanceState app;
     // Leave synced_visual_weapon empty so the system detects a change.
     reg.emplace<AppearanceState>(e, app);
 
