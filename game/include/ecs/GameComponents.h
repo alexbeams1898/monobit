@@ -113,10 +113,13 @@ struct Dodging
 };
 
 // AttackLocked -- animation commitment window after a swing.
+// attack_id is a unique monotonic counter assigned when the swing starts;
+// used by HitboxResolverSystem to dedup hits on the same target across frames.
 struct AttackLocked
 {
     float remaining = 0.0f;
     bool left_hand = false;
+    uint64_t attack_id = 0;
 };
 
 // Staggered -- guard-break or parry result; entity cannot act until expired.
@@ -435,6 +438,22 @@ struct AIController
     bool sprint = false;
     float token_cooldown = 0.0f; // time until entity can claim an attack token
     int stuck_ticks = 0;         // consecutive ticks with near-zero velocity (debug)
+};
+
+// Monotonically increasing counter for unique attack IDs. Stored in
+// entt::registry::ctx(). Incremented each time a swing starts.
+struct AttackIdCounter
+{
+    uint64_t next = 1;
+};
+
+// Brief global game-logic pause triggered on successful damage. Gives hits a
+// tactile "thunk" feel -- the standard hitstop technique from fighting games
+// and soulslikes. DamageSystem sets `remaining` when a hit lands; GameLoop
+// skips the fixed-step tick while `remaining > 0` and decrements it.
+struct Hitstop
+{
+    float remaining = 0.0f;
 };
 
 // Limits concurrent enemy attackers. Stored in entt::registry::ctx().

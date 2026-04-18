@@ -92,12 +92,25 @@ struct HurtShape
     float dmg_mult = 1.0f;
 };
 
+// HitRecord -- one "this attack_id hit me at this time" entry. Used by the
+// hitbox resolver to prevent a single attack from damaging the same target
+// multiple times during its active frames, and to gate multi-hit re-arm.
+struct HitRecord
+{
+    uint64_t attack_id = 0;
+    float last_hit_time = 0.0f;
+};
+
 // Hurtbox -- set of damage-receiving shapes attached to an entity. Read by
 // damage systems; never written by engine systems. Emplaced from config, or
 // auto-generated from the entity's Collider if no config is present.
+//
+// `hit_history` is a small ring of recent attacks to dedup repeat hits from
+// the same swing. Cleared lazily when entries age past the attack window.
 struct Hurtbox
 {
     std::vector<HurtShape> shapes;
+    std::vector<HitRecord> hit_history;
 };
 
 // Tag -- human-readable label for debug output and editor tooling.

@@ -270,6 +270,40 @@ static void populateAnimRowIndex(EntityManager& em, const json& sheetData)
     }
 }
 
+// Parse per-attack-row hitbox keyframes from the animation sheet. Stored in
+// a context singleton keyed by attack_anim name so HitboxResolverSystem can
+// look up timing + placement by the wielder's current attack animation.
+static void populateAttackHitboxes(EntityManager& em, const json& sheetData)
+{
+    if (!sheetData.contains("states"))
+        return;
+    static constexpr float DEG2RAD = 3.14159265f / 180.0f;
+
+    auto* existing = em.registry().ctx().find<AttackAnimHitboxData>();
+    if (existing == nullptr)
+        existing = &em.registry().ctx().emplace<AttackAnimHitboxData>();
+    auto& data = *existing;
+
+    for (const auto& [key, val] : sheetData["states"].items())
+    {
+        if (!val.contains("hitbox_keyframes"))
+            continue;
+
+        AttackAnimHitbox entry;
+        entry.hit_interval = val.value("hit_interval", -1.0f);
+        for (const auto& kf : val["hitbox_keyframes"])
+        {
+            HitboxKeyframe k;
+            k.frame = kf.value("frame", 0);
+            k.x = kf.value("x", 0.0f);
+            k.y = kf.value("y", 0.0f);
+            k.rotation = kf.value("rot", 0.0f) * DEG2RAD;
+            entry.keyframes.push_back(k);
+        }
+        data.attacks[key] = std::move(entry);
+    }
+}
+
 static void parseAnchorFrames(const json& arr, std::vector<HandAnchor>& out)
 {
     static constexpr float DEG2RAD = 3.14159265f / 180.0f;
@@ -418,6 +452,7 @@ static bool emplaceAnimationFromSheet(EntityManager& em, entt::entity entity,
 
     populateAnimRowIndex(em, sheetData);
     populateHandAnchors(em, sheetData);
+    populateAttackHitboxes(em, sheetData);
 
     // Set initial playback from Idle row so the first frame renders correctly
     // even before AnimStateSystem runs.

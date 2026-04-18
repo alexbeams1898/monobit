@@ -76,6 +76,13 @@ static std::mt19937& combatRng()
     return gen;
 }
 
+// Allocate a unique attack ID so hit-dedup can tell consecutive swings apart.
+static uint64_t nextAttackId(entt::registry& reg)
+{
+    auto& counter = reg.ctx().get<AttackIdCounter>();
+    return counter.next++;
+}
+
 // Spawn a projectile entity: Transform + Collider + Hitbox + Projectile + Sprite.
 // No Velocity — ProjectileSystem moves projectiles and checks wall overlap directly,
 // so MovementSystem doesn't deflect them along walls.
@@ -239,7 +246,8 @@ static void executeRangedAttack(RangedFireContext& ctx)
 
     const float cooldown = rangedCooldown(reg, ctx.entity, ctx.weapon, ctx.f);
     ctx.weapon.swing_cooldown_remaining = cooldown;
-    reg.emplace_or_replace<AttackLocked>(ctx.entity, AttackLocked{cooldown, ctx.is_left_hand});
+    reg.emplace_or_replace<AttackLocked>(
+        ctx.entity, AttackLocked{cooldown, ctx.is_left_hand, nextAttackId(reg)});
     syncAttackAnimSpeed(reg, ctx.entity, ctx.weapon, cooldown);
 
     if (ctx.has_sta)
@@ -652,24 +660,31 @@ void CombatSystem::update(EntityManager& em, double dt)
         }
         else
         {
-            const float reach = f.combat.normal_reach;
-            const float hx = transform.x + facingX * reach;
-            const float hy = transform.y + facingY * reach;
-
-            const bool hitboxLos = !em.tile_map.valid() ||
-                                   em.tile_map.hasLineOfSight(transform.x, transform.y, hx, hy);
-            if (hitboxLos)
+            // If the weapon has configured per-frame hitboxes, HitboxResolverSystem
+            // handles hit detection. Skip the legacy reach-offset hitbox to
+            // prevent double-damage.
+            const bool useLegacyHitbox = weapon.hitboxes.empty();
+            if (useLegacyHitbox)
             {
-                if (em.registry().all_of<Stats>(entity))
+                const float reach = f.combat.normal_reach;
+                const float hx = transform.x + facingX * reach;
+                const float hy = transform.y + facingY * reach;
+
+                const bool hitboxLos = !em.tile_map.valid() ||
+                                       em.tile_map.hasLineOfSight(transform.x, transform.y, hx, hy);
+                if (hitboxLos)
                 {
-                    const auto& stats = em.registry().get<Stats>(entity);
-                    const float dmg = computeDamage(weapon, stats, f);
-                    spawnHitbox(entity, hx, hy, f.combat.normal_hitbox_size, dmg, isLeftHand);
-                }
-                else
-                {
-                    spawnHitbox(entity, hx, hy, f.combat.normal_hitbox_size, weapon.base_damage,
-                                isLeftHand);
+                    if (em.registry().all_of<Stats>(entity))
+                    {
+                        const auto& stats = em.registry().get<Stats>(entity);
+                        const float dmg = computeDamage(weapon, stats, f);
+                        spawnHitbox(entity, hx, hy, f.combat.normal_hitbox_size, dmg, isLeftHand);
+                    }
+                    else
+                    {
+                        spawnHitbox(entity, hx, hy, f.combat.normal_hitbox_size,
+                                    weapon.base_damage, isLeftHand);
+                    }
                 }
             }
 
@@ -680,8 +695,8 @@ void CombatSystem::update(EntityManager& em, double dt)
             weapon.swing_cooldown_remaining = cooldown;
 
             const float lockDuration = cooldown * f.combat.attack_lock_fraction;
-            em.registry().emplace_or_replace<AttackLocked>(entity,
-                                                           AttackLocked{lockDuration, isLeftHand});
+            em.registry().emplace_or_replace<AttackLocked>(
+                entity, AttackLocked{lockDuration, isLeftHand, nextAttackId(em.registry())});
             em.registry().emplace_or_replace<AttackFeedback>(entity, AttackFeedback{0.5f});
             syncAttackAnimSpeed(em.registry(), entity, weapon, lockDuration);
 
@@ -743,7 +758,8 @@ void CombatSystem::update(EntityManager& em, double dt)
                         spawnHitbox(entity, hx, hy, f.combat.skill_hitbox_size, dmg);
                     skillWeapon->skill_cooldown_remaining = f.combat.skill_cooldown;
                     em.registry().emplace_or_replace<AttackLocked>(
-                        entity, AttackLocked{f.combat.skill_lock_duration});
+                        entity, AttackLocked{f.combat.skill_lock_duration, false,
+                                             nextAttackId(em.registry())});
 
                     if (hasSta)
                         deductStamina(em.registry(), entity, skillCost, f);

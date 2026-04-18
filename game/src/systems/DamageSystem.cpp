@@ -263,6 +263,21 @@ static bool applyDamage(EntityManager& em, entt::entity target, float rawDamage,
                                   reg.get<Hitbox>(hitboxEnt).left_hand;
     reg.emplace_or_replace<DamageFeedback>(target, DamageFeedback{0.2f, attackerLeftHand});
 
+    // Hitstop: brief game-logic pause so melee impacts register visually.
+    // Skip for ranged hits -- rapid-fire weapons would stack pauses and make
+    // fire rate feel laggy (stuttering). Ranged already has muzzle flash +
+    // impact particles as feedback.
+    const bool rangedHit = reg.valid(hitboxEnt) && reg.all_of<Projectile>(hitboxEnt);
+    if (!rangedHit)
+    {
+        if (auto* hs = reg.ctx().find<Hitstop>())
+        {
+            const float want = f.combat.hitstop_seconds;
+            if (hs->remaining < want)
+                hs->remaining = want;
+        }
+    }
+
     const auto& hitSnd = snd.get("hit");
     if (!hitSnd.variations.empty())
     {
