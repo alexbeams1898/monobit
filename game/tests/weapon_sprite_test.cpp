@@ -77,6 +77,8 @@ static void installAnchors(EntityManager& em)
     anchors.depth_per_dir = {1, 1, 1, -1};
 
     // Walk row (1), 8 frames per direction.
+    // Install identical anchors for left and right so tests work regardless of
+    // which hand the weapon is in (the default is right-hand Weapon).
     HandAnchorRow walkRow;
     walkRow.left.resize(4);
     walkRow.right.resize(4);
@@ -85,7 +87,9 @@ static void installAnchors(EntityManager& em)
         for (int f = 0; f < 8; ++f)
         {
             const float xBase = (d == 0) ? 8.0f : (d == 1) ? -10.0f : (d == 2) ? 10.0f : -8.0f;
-            walkRow.left[d].push_back({xBase + static_cast<float>(f) * 0.1f, 7.0f});
+            const HandAnchor a{xBase + static_cast<float>(f) * 0.1f, 7.0f};
+            walkRow.left[d].push_back(a);
+            walkRow.right[d].push_back(a);
         }
     }
     anchors.rows[1] = walkRow;
@@ -94,10 +98,12 @@ static void installAnchors(EntityManager& em)
     HandAnchorRow idleRow;
     idleRow.left.resize(4);
     idleRow.right.resize(4);
-    idleRow.left[0].push_back({8.0f, 8.0f});
-    idleRow.left[1].push_back({-10.0f, 8.0f});
-    idleRow.left[2].push_back({10.0f, 8.0f});
-    idleRow.left[3].push_back({-8.0f, 6.0f});
+    const HandAnchor idleAnchors[4] = {{8.0f, 8.0f}, {-10.0f, 8.0f}, {10.0f, 8.0f}, {-8.0f, 6.0f}};
+    for (int d = 0; d < 4; ++d)
+    {
+        idleRow.left[d].push_back(idleAnchors[d]);
+        idleRow.right[d].push_back(idleAnchors[d]);
+    }
     anchors.rows[0] = idleRow;
 }
 

@@ -309,9 +309,9 @@ TEST_CASE("Frame mask remaps visible column", "[animation][frame_mask]")
     anim.frame_mask = {0, 1, 2, 3, 10, 3, 2, 1};
 
     // Default facing is East (render_dx=1). East = dir 2, max_frames=13.
-    // After 4 frame advances (0.06*4 = 0.24s), frame_index = 4.
+    // Advance 0.25s (> 4 * 0.06s) to deterministically land on frame_index == 4.
     // frame_mask[4] = 10. col = 2*13 + 10 = 36. src_x = 36*32 = 1152.
-    AnimationSystem::update(em, 0.24f);
+    AnimationSystem::update(em, 0.25f);
     REQUIRE(anim.frame_index == 4);
 
     const auto& spr = em.registry().get<Sprite>(e);
