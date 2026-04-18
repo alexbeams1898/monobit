@@ -1276,6 +1276,21 @@ bool ConfigLoader::loadItemDefs(EntityManager& em, const std::string& dirPath)
                 def.shoot_frames.push_back(fr.get<int>());
         }
 
+        // Parse weapon hitbox shapes. Each entry is a shape object plus
+        // optional label / dmg_mult / priority fields.
+        if (j.contains("hitboxes") && j["hitboxes"].is_array())
+        {
+            for (const auto& hbj : j["hitboxes"])
+            {
+                WeaponHitboxShape hs;
+                hs.shape = parseCollisionShape(hbj);
+                hs.label = hbj.value("label", std::string{});
+                hs.dmg_mult = hbj.value("dmg_mult", 1.0f);
+                hs.priority = hbj.value("priority", 0);
+                def.hitboxes.push_back(hs);
+            }
+        }
+
         def.armor_slot = parseArmorSlot(j.value("armor_slot", std::string{"chest"}));
         def.defense_bonus = j.value("defense_bonus", 0.0f);
         def.poise_bonus = j.value("poise_bonus", 0.0f);

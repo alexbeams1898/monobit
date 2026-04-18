@@ -1,5 +1,7 @@
 #pragma once
 
+#include "geom/Shapes.h"
+
 #include <entt/entt.hpp>
 #include <string>
 #include <unordered_map>
@@ -209,6 +211,24 @@ struct Experience
     int stat_points = 0;
 };
 
+// WeaponHitboxShape -- one hit-producing shape in a weapon's local space.
+// A weapon can have multiple shapes: e.g. a longsword might have a "tip"
+// capsule (low priority, reduced damage) and a "body" capsule (high priority,
+// full damage). When a hurtbox overlaps multiple shapes simultaneously,
+// highest priority wins -- models "clipped with tip vs hit head-on" damage
+// variance.
+//
+// Shape coordinates are in weapon-icon-local space (pixels). At runtime,
+// HitboxResolverSystem transforms each shape by:
+//   attacker position + facing rotation + per-animation-frame keyframe offset
+struct WeaponHitboxShape
+{
+    CollisionShape shape;
+    std::string label;
+    float dmg_mult = 1.0f;
+    int priority = 0;
+};
+
 // Weapon -- equipped weapon state and runtime cooldown timers.
 struct Weapon
 {
@@ -256,6 +276,7 @@ struct Weapon
     float base_rotation = 0.0f; // resting angle in radians (converted from degrees at load)
     std::string attack_anim;    // animation row name ("slash", "thrust", "shoot"); empty = "slash"
     std::vector<int> shoot_frames; // per-frame column remap for the attack row; empty = play 0..N-1
+    std::vector<WeaponHitboxShape> hitboxes; // melee hitbox shapes in weapon-local space
     entt::entity weapon_entity =
         entt::null; // spawned weapon sprite entity (managed by WeaponSpriteSystem)
 

@@ -59,6 +59,7 @@ static void weaponFromDef(Weapon& w, const ItemDef& def)
         w.two_handed_active = false;
     w.attack_anim = def.attack_anim;
     w.shoot_frames = def.shoot_frames;
+    w.hitboxes = def.hitboxes;
 }
 
 static void weaponFromFist(Weapon& w, const Body* body, const FormulaConfig& f)
@@ -88,6 +89,7 @@ static void weaponFromFist(Weapon& w, const Body* body, const FormulaConfig& f)
     w.weapon_icon.clear();
     w.attack_anim.clear();
     w.shoot_frames.clear();
+    w.hitboxes.clear();
     w.fore_grip_x = 0.0f;
     w.fore_grip_y = 0.0f;
     w.weapon_scale = 1.0f;

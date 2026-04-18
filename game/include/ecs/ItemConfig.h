@@ -118,6 +118,12 @@ struct ItemDef
     std::string attack_anim;    // animation row name ("slash", "thrust", "shoot"); empty = "slash"
     std::vector<int> shoot_frames; // per-frame column remap for the attack row; empty = 0..N-1
 
+    // Hitbox shapes in weapon-local space. Each shape carries a priority: when
+    // a hurtbox overlaps multiple shapes in the same frame, highest priority
+    // wins. Damage multiplier applies on top of the weapon's base damage.
+    // Empty = no melee hitbox (ranged-only weapons; projectile handles damage).
+    std::vector<WeaponHitboxShape> hitboxes;
+
     // Armor-specific (only meaningful when category == Armor).
     ArmorSlot armor_slot = ArmorSlot::Chest;
     float defense_bonus = 0.0f;
