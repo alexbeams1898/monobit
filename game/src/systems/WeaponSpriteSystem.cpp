@@ -300,6 +300,25 @@ static bool syncOneWeapon(entt::registry& reg, const HandAnchorData* anchorData,
         wCol ? (static_cast<float>(wSprite.src_h) * wScale - wCol->height) * 0.5f : 0.0f;
     const float half = WEAPON_ICON_SIZE * 0.5f;
 
+    // In 2H mode, use the idle-frame primary anchor for positioning so the
+    // weapon doesn't jitter with per-frame arm swing. Rotation already uses
+    // idle anchors via getIdleHandVector; this makes position match.
+    float posAnchorX = a.x;
+    float posAnchorY = a.y;
+    if (twoH && !isAttacking && anchorData != nullptr)
+    {
+        const auto idleIt = anchorData->rows.find(0);
+        if (idleIt != anchorData->rows.end())
+        {
+            const auto& pri = leftHand ? idleIt->second.left : idleIt->second.right;
+            if (dir < static_cast<int>(pri.size()) && !pri[dir].empty())
+            {
+                posAnchorX = pri[dir][0].x;
+                posAnchorY = pri[dir][0].y;
+            }
+        }
+    }
+
     bool flip = false;
     float rot = 0.0f;
     computeFlipRotation(a, wep, anchorData, dir, leftHand, useNS, twoH, gx, gy, flip, rot);
@@ -323,8 +342,8 @@ static bool syncOneWeapon(entt::registry& reg, const HandAnchorData* anchorData,
     dx = std::round(dx);
     dy = std::round(dy);
 
-    wpnT.x = dx + a.x * wScale - (c * goX - s * goY);
-    wpnT.y = dy - yOff + a.y * wScale - (s * goX + c * goY);
+    wpnT.x = dx + posAnchorX * wScale - (c * goX - s * goY);
+    wpnT.y = dy - yOff + posAnchorY * wScale - (s * goX + c * goY);
     wpnS.sort_anchor = wCol ? dy + wCol->height * 0.5f : dy;
     wpnS.sub_layer = computeSubLayer(a, anchorData, dir, leftHand, twoH);
     return true;
