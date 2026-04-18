@@ -84,12 +84,14 @@ static void spawnProjectile(EntityManager& em, entt::entity owner, float ox, flo
 {
     const auto proj = em.create();
     em.registry().emplace<Transform>(proj, Transform{ox, oy, 0.0f, 1.0f});
-    em.registry().emplace<Collider>(proj,
-                                    Collider{weapon.projectile_size, weapon.projectile_size, true});
-    em.registry().emplace<Hitbox>(proj, Hitbox{damage, owner, false, leftHand});
-    em.registry().emplace<Projectile>(proj, Projectile{owner, weapon.effective_range, ox, oy,
-                                                       weapon.pierce, dirX, dirY,
-                                                       weapon.projectile_speed, leftHand});
+    // No Collider on projectiles -- ProjectileSystem drives its own swept
+    // collision directly against Hurtboxes and walls, bypassing the engine
+    // broad-phase so we don't double-count hits.
+    Hitbox hb{damage, owner, false, leftHand};
+    em.registry().emplace<Hitbox>(proj, hb);
+    em.registry().emplace<Projectile>(
+        proj, Projectile{owner, weapon.effective_range, ox, oy, weapon.pierce, dirX, dirY,
+                         weapon.projectile_speed, weapon.projectile_size * 0.5f, leftHand});
     em.registry().emplace<Tag>(proj, Tag{"projectile"});
 
     const float sz = weapon.projectile_size;

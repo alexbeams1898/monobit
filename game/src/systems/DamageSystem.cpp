@@ -386,7 +386,17 @@ void DamageSystem::update(EntityManager& em)
         if (reg.all_of<Dead>(targetEnt))
             continue;
 
-        if (applyDamage(em, targetEnt, hb.damage, hb.owner, hitboxEnt))
+        // Apply hurtbox shape damage multiplier (e.g. head 2x) if the hit
+        // recorded which specific shape was struck.
+        float scaledDamage = hb.damage;
+        if (hb.hit_shape_index >= 0 && reg.all_of<Hurtbox>(targetEnt))
+        {
+            const auto& hbx = reg.get<Hurtbox>(targetEnt);
+            if (hb.hit_shape_index < static_cast<int>(hbx.shapes.size()))
+                scaledDamage *= hbx.shapes[hb.hit_shape_index].dmg_mult;
+        }
+
+        if (applyDamage(em, targetEnt, scaledDamage, hb.owner, hitboxEnt))
         {
             hb.hit_something = true;
 

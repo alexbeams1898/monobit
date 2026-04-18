@@ -92,12 +92,16 @@ struct PlayerActions
 // ---------------------------------------------------------------------------
 
 // Hitbox -- a one-frame entity spawned by CombatSystem on each attack swing.
+// hit_shape_index tracks which shape of the target's Hurtbox was struck (set
+// by ProjectileSystem after swept collision). -1 means "no specific shape" and
+// callers should default dmg_mult to 1.0.
 struct Hitbox
 {
     float damage = 0.0f;
     entt::entity owner = entt::null;
     bool hit_something = false;
     bool left_hand = false;
+    int hit_shape_index = -1;
 };
 
 // Dodging -- active while the player is in a dodge roll. Grants i-frames.
@@ -638,6 +642,7 @@ struct Projectile
     float dir_x = 0.0f;
     float dir_y = 0.0f;
     float speed = 0.0f;
+    float radius = 1.0f; // half-size of the swept circle for collision
     bool left_hand = false;
 };
 
