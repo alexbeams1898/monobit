@@ -34,7 +34,11 @@ bool canCraft(const Inventory& inv, const RecipeDef& recipe, const ItemRegistry&
 // Remove a specific quantity of an item from inventory, consuming across stacks.
 // Uses lowest quality stacks first so the player's best materials are preserved.
 // Returns the sum of quality tier indices consumed (for averaging output quality).
-static int consumeItem(Inventory& inv, const std::string& config_path, int quantity)
+// Goes through InventoryOps::removeItem so equipment slot indices shift with
+// the inventory -- without this, crafting materials shifts the AK (etc.)'s
+// index so the equipped slot points at the wrong item after the craft.
+static int consumeItem(Inventory& inv, Equipment& equip, const std::string& config_path,
+                       int quantity)
 {
     // Gather matching stack indices sorted by quality (worst first).
     std::vector<int> matches;
@@ -57,16 +61,16 @@ static int consumeItem(Inventory& inv, const std::string& config_path, int quant
         remaining -= take;
     }
 
-    // Remove empty stacks (reverse order preserves indices).
+    // Remove empty stacks (reverse order preserves indices within this scan).
     for (int i = static_cast<int>(inv.items.size()) - 1; i >= 0; --i)
         if (inv.items[i].quantity <= 0 && inv.items[i].config_path == config_path)
-            inv.items.erase(inv.items.begin() + i);
+            InventoryOps::removeItem(inv, equip, i);
 
     return qualitySum;
 }
 
-bool craft(Inventory& inv, const RecipeDef& recipe, const ItemRegistry& registry,
-           bool free_materials)
+bool craft(Inventory& inv, Equipment& equip, const RecipeDef& recipe,
+           const ItemRegistry& registry, bool free_materials)
 {
     if (!canCraft(inv, recipe, registry))
         return false;
@@ -98,7 +102,7 @@ bool craft(Inventory& inv, const RecipeDef& recipe, const ItemRegistry& registry
     {
         for (const auto& ing : recipe.inputs)
         {
-            totalQuality += consumeItem(inv, ing.config_path, ing.quantity);
+            totalQuality += consumeItem(inv, equip, ing.config_path, ing.quantity);
             totalItems += ing.quantity;
         }
     }

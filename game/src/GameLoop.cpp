@@ -533,11 +533,15 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     // Resolve player visual facing AFTER MovementSystem so backpedaling is fresh.
     resolvePlayerVisualFacingTick(em);
     CollisionSystem::update(em);
+    // ProjectileSystem runs after CollisionSystem (which populates events from
+    // pushbox overlaps) and before DamageSystem (which consumes events).
+    // Projectiles skip pushbox collision entirely and emit their own events via
+    // swept hurtbox tests, so DamageSystem sees them in the same tick.
+    ProjectileSystem::update(em, static_cast<float>(dt));
     AnimStateSystem::update(em);
     WeaponSpriteSystem::updateEquipment(em);
     DamageSystem::update(em);
     AmbientSoundSystem::update(em, dt);
-    ProjectileSystem::update(em, static_cast<float>(dt));
     DeathSystem::update(em, dt);
     LevelingSystem::update(em);
     WeaponXPSystem::update(em);

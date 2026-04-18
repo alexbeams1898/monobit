@@ -630,6 +630,13 @@ struct AggroSound
     int voice = -1; // tracked voice index for stopping on hit
 };
 
+// PendingDestroy -- tag placed on a projectile that should be destroyed on the
+// next ProjectileSystem tick. Used to defer destruction by one frame so the
+// collision event emitted this tick remains valid for DamageSystem.
+struct PendingDestroy
+{
+};
+
 // Projectile -- a moving damage entity (bullet, arrow) spawned by CombatSystem.
 // ProjectileSystem manages lifetime, wall destruction, and pierce logic.
 struct Projectile

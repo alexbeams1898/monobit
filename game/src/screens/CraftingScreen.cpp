@@ -323,9 +323,10 @@ static void renderCraftFooter(EntityManager& em, entt::entity player, bool canCr
         player != entt::null)
     {
         auto& playerInv = em.registry().get<Inventory>(player);
+        auto& playerEq = em.registry().get<Equipment>(player);
         const auto& recipe = recipes.recipes[static_cast<size_t>(sSelectedRecipe)];
         const bool godMode = em.registry().ctx().get<DebugFlags>().god_mode;
-        if (CraftingOps::craft(playerInv, recipe, items, godMode))
+        if (CraftingOps::craft(playerInv, playerEq, recipe, items, godMode))
         {
             const ItemDef* odef = items.find(recipe.output_item);
             const std::string name = (odef != nullptr) ? odef->name : recipe.output_item;
@@ -449,9 +450,10 @@ static bool handleCraftAction(EntityManager& em, const RecipeRegistry& recipes,
         return canCraft;
 
     auto& playerInv = em.registry().get<Inventory>(player);
+    auto& playerEq = em.registry().get<Equipment>(player);
     const auto& recipe = recipes.recipes[static_cast<size_t>(sSelectedRecipe)];
     const bool godCraft = em.registry().ctx().get<DebugFlags>().god_mode;
-    if (CraftingOps::craft(playerInv, recipe, items, godCraft))
+    if (CraftingOps::craft(playerInv, playerEq, recipe, items, godCraft))
     {
         const ItemDef* output_def = items.find(recipe.output_item);
         const std::string name = (output_def != nullptr) ? output_def->name : recipe.output_item;

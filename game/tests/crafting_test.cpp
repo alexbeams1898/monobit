@@ -102,10 +102,11 @@ TEST_CASE("craft consumes ingredients and produces output", "[crafting]")
 {
     auto reg = makeItemRegistry();
     Inventory inv;
+    Equipment equip;
     inv.max_slots = 20;
     inv.items.push_back(makeItem("config/items/materials/bone_shard.json", 5));
 
-    REQUIRE(CraftingOps::craft(inv, boneClubRecipe(), reg));
+    REQUIRE(CraftingOps::craft(inv, equip, boneClubRecipe(), reg));
 
     // 5 - 3 = 2 bone shards remaining + 1 bone club.
     REQUIRE(inv.items.size() == 2);
@@ -123,11 +124,12 @@ TEST_CASE("craft consumes across split stacks", "[crafting]")
 {
     auto reg = makeItemRegistry();
     Inventory inv;
+    Equipment equip;
     inv.max_slots = 20;
     inv.items.push_back(makeItem("config/items/materials/bone_shard.json", 2));
     inv.items.push_back(makeItem("config/items/materials/bone_shard.json", 2));
 
-    REQUIRE(CraftingOps::craft(inv, boneClubRecipe(), reg));
+    REQUIRE(CraftingOps::craft(inv, equip, boneClubRecipe(), reg));
 
     // 2 + 2 = 4, consumed 3, leaves 1 shard + 1 club.
     int shardQty = 0;
@@ -147,13 +149,14 @@ TEST_CASE("craft fails when inventory full for output", "[crafting]")
 {
     auto reg = makeItemRegistry();
     Inventory inv;
+    Equipment equip;
     inv.max_slots = 1;
     inv.items.push_back(makeItem("config/items/materials/bone_shard.json", 5));
 
     // Ingredients consumed first, then addItem fails because slot is still occupied
     // by the shard remainder. craft should return false.
     // After consuming 3, shard has qty=2 (still 1 slot). Adding club needs a 2nd slot.
-    REQUIRE_FALSE(CraftingOps::craft(inv, boneClubRecipe(), reg));
+    REQUIRE_FALSE(CraftingOps::craft(inv, equip, boneClubRecipe(), reg));
 }
 
 // ---------------------------------------------------------------------------
@@ -195,6 +198,7 @@ TEST_CASE("Crafted output quality averages input qualities", "[crafting]")
 {
     auto reg = makeItemRegistry();
     Inventory inv;
+    Equipment equip;
     inv.max_slots = 20;
 
     // 3 Fine bone shards -> avg quality = Fine (2).
@@ -204,7 +208,7 @@ TEST_CASE("Crafted output quality averages input qualities", "[crafting]")
     shard.quality = QualityTier::Fine;
     inv.items.push_back(shard);
 
-    REQUIRE(CraftingOps::craft(inv, boneClubRecipe(), reg));
+    REQUIRE(CraftingOps::craft(inv, equip, boneClubRecipe(), reg));
 
     // Find the crafted weapon.
     bool found = false;
@@ -223,6 +227,7 @@ TEST_CASE("Crafted output quality rounds mixed inputs", "[crafting]")
 {
     auto reg = makeItemRegistry();
     Inventory inv;
+    Equipment equip;
     inv.max_slots = 20;
 
     // Crude(0) + Common(1) + Fine(2) = sum 3, avg 1 = Common.
@@ -244,7 +249,7 @@ TEST_CASE("Crafted output quality rounds mixed inputs", "[crafting]")
     s3.quality = QualityTier::Fine;
     inv.items.push_back(s3);
 
-    REQUIRE(CraftingOps::craft(inv, boneClubRecipe(), reg));
+    REQUIRE(CraftingOps::craft(inv, equip, boneClubRecipe(), reg));
 
     bool found = false;
     for (const auto& item : inv.items)

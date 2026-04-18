@@ -74,6 +74,8 @@ TEST_CASE("Projectile destroyed when beyond max range", "[projectile]")
     auto& t = em.registry().get<Transform>(e);
     t.x = 60.0f; // beyond max_range of 50
 
+    // Tick 1: marks PendingDestroy. Tick 2: destruction.
+    ProjectileSystem::update(em, TEST_DT);
     ProjectileSystem::update(em, TEST_DT);
     REQUIRE_FALSE(em.registry().valid(e));
 }
@@ -102,6 +104,8 @@ TEST_CASE("Projectile destroyed on hit with pierce=0", "[projectile]")
     spawnEnemy(em, 5.0f, 0.0f);
     const auto e = spawnProjectile(em, 0.0f, 0.0f, 1.0f, 0.0f, 1000.0f, 500.0f);
 
+    // Tick 1: hit registers + PendingDestroy marked. Tick 2: destroyed.
+    ProjectileSystem::update(em, TEST_DT);
     ProjectileSystem::update(em, TEST_DT);
     REQUIRE_FALSE(em.registry().valid(e));
 }
@@ -135,7 +139,9 @@ TEST_CASE("Projectile with pierce=2 survives 2 hits, dies on 3rd", "[projectile]
     REQUIRE(em.registry().valid(e));
     REQUIRE(em.registry().get<Projectile>(e).pierce_remaining == 0);
 
-    // Third hit: destroyed (pierce exhausted).
+    // Third hit: pierce exhausted -> PendingDestroy marked. Next tick destroys.
+    ProjectileSystem::update(em, TEST_DT);
+    REQUIRE(em.registry().valid(e));
     ProjectileSystem::update(em, TEST_DT);
     REQUIRE_FALSE(em.registry().valid(e));
 }
@@ -173,10 +179,12 @@ TEST_CASE("Fast projectile hits small target without tunneling", "[projectile][s
     spawnEnemy(em, 25.0f, 0.0f, /*radius=*/7.0f);
     const auto e = spawnProjectile(em, 0.0f, 0.0f, 1.0f, 0.0f, 3200.0f, 500.0f);
 
+    // Tick 1: hit registers, event emitted, PendingDestroy marked.
     ProjectileSystem::update(em, TEST_DT);
-    REQUIRE_FALSE(em.registry().valid(e));
 
-    // collision_events should carry the hit so DamageSystem picks it up.
+    // collision_events should carry the hit so DamageSystem picks it up --
+    // crucially, the entity is still valid at this point.
+    REQUIRE(em.registry().valid(e));
     bool foundEvent = false;
     for (const auto& ev : em.collision_events)
     {
@@ -184,6 +192,10 @@ TEST_CASE("Fast projectile hits small target without tunneling", "[projectile][s
             foundEvent = true;
     }
     REQUIRE(foundEvent);
+
+    // Tick 2: deferred destruction.
+    ProjectileSystem::update(em, TEST_DT);
+    REQUIRE_FALSE(em.registry().valid(e));
 }
 
 // ---------------------------------------------------------------------------
