@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(PrisonBreakGame VERSION 0.3.0 LANGUAGES C CXX)
+project(PrisonBreakGame VERSION 0.4.0 LANGUAGES C CXX)
 
 # GLAD v0.1.36 declares cmake_minimum_required(VERSION 2.8), which CMake 4.x
 # no longer accepts. This sets the effective minimum to 3.5 for all
