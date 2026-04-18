@@ -402,6 +402,9 @@ struct HandAnchor
 {
     float x = 0.0f;
     float y = 0.0f;
+    float rotation = -999.0f; // weapon rotation in radians; -999 = use default table
+    int flip = -1;            // 0=no flip, 1=flip; -1 = use default table
+    int depth = 0;            // sub_layer override; 0 = use depth_per_dir
 };
 
 struct HandAnchorRow

@@ -31,7 +31,7 @@
     "weapon_scale": 1.0,
     "grip_x": 12.0,
     "grip_y": 23.0,
-    "attack_anim": "thrust",
+    "attack_anim": "rifle_shoot",
     "shoot_frames": [
         0,
         1,
@@ -42,5 +42,10 @@
         5
     ],
     "fore_grip_x": 20.0,
-    "fore_grip_y": 10.0
+    "fore_grip_y": 10.0,
+    "attack_icon_ns": "assets/sprites/icons/ak_47_ns.png",
+    "attack_grip_ns_x": 15.0,
+    "attack_grip_ns_y": 9.0,
+    "attack_fore_grip_ns_x": 15.0,
+    "attack_fore_grip_ns_y": 21.0
 }

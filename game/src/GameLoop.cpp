@@ -50,6 +50,7 @@
 #include "renderers/HudRenderer.h"
 #include "renderers/InteractionPromptRenderer.h"
 #include "screens/CharCreateScreen.h"
+#include "screens/ControlsScreen.h"
 #include "screens/CraftingScreen.h"
 #include "screens/GameOverScreen.h"
 #include "screens/HighScoresScreen.h"
@@ -762,8 +763,7 @@ static void resolvePlayerVisualFacingTick(EntityManager& em)
         const auto* lockOnComp = em.registry().try_get<LockOnTarget>(entity);
         const bool isAttacking = em.registry().all_of<AttackLocked>(entity) ||
                                  em.registry().all_of<CriticalAttacking>(entity);
-        const bool rightRangedHeld = actions.right_attack &&
-                                     em.registry().all_of<Weapon>(entity) &&
+        const bool rightRangedHeld = actions.right_attack && em.registry().all_of<Weapon>(entity) &&
                                      em.registry().get<Weapon>(entity).ranged;
         const auto* lw = em.registry().try_get<LeftWeapon>(entity);
         const bool leftRangedHeld = actions.left_attack && lw != nullptr && lw->ranged;
@@ -941,6 +941,10 @@ static void renderMainMenuPhase(Engine& engine, EntityManager& em, GameState& gs
     case MainMenuScreen::Action::HighScores:
         HighScoresScreen::reset();
         gs.phase = GameState::Phase::HighScores;
+        break;
+    case MainMenuScreen::Action::Controls:
+        ControlsScreen::reset();
+        gs.phase = GameState::Phase::Controls;
         break;
     case MainMenuScreen::Action::Settings:
         SettingsScreen::reset();
@@ -1139,6 +1143,9 @@ void gameRenderUI(Engine& engine, EntityManager& em)
     case GameState::Phase::RunSummary:
     case GameState::Phase::HighScores:
         renderEndScreenPhase(engine, em, gs, ww, wh, frameDt);
+        break;
+    case GameState::Phase::Controls:
+        ControlsScreen::render(em, ww, wh);
         break;
     case GameState::Phase::Settings:
         SettingsScreen::render(em, ww, wh);

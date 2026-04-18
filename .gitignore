@@ -73,3 +73,4 @@ debug/
 # Claude
 .claude/
 PLAN.md
+*.vox

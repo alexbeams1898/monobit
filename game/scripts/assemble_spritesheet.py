@@ -51,7 +51,7 @@ except ImportError:
 
 FRAME_SIZE = 64
 NUM_DIRS = 4
-NUM_STATES = 9
+NUM_STATES = 10
 MAX_FRAMES_PER_STATE = 13  # shoot/reverse_slash have 13 frames
 
 SHEET_WIDTH  = NUM_DIRS * MAX_FRAMES_PER_STATE * FRAME_SIZE  # 3328
@@ -82,6 +82,7 @@ STATE_ROWS = [
     (4, "hurt",          6,  True,  0),  # death (reuse hurt)
     (5, "run",           8,  False, 0),  # run (sprint)
     (6, "thrust",        8,  False, 0),  # thrust (two-handed aim pose)
+    (9, "thrust",        8,  False, 0),  # rifle_shoot (cloned from thrust)
     (7, "shoot",         13, False, 0),  # shoot (one-handed ranged)
     (8, "reverse_slash", 13, False, 0),  # reverse slash
 ]
@@ -148,123 +149,75 @@ def build_manifest() -> list:
     """Return list of (source_dir, output_path) pairs to assemble."""
     jobs = []
 
-    # Body -> assembled/body/<tone>.png
-    for tone in SKIN_TONES:
-        jobs.append((
-            os.path.join(RAW_ROOT, "body", "male", tone),
-            os.path.join(ASSEMBLED_ROOT, "body", f"{tone}.png"),
-        ))
+    # Body master (palette-swapped at runtime for skin tones).
+    jobs.append((
+        os.path.join(RAW_ROOT, "body", "male", "tone_1"),
+        os.path.join(ASSEMBLED_ROOT, "body", "body_master.png"),
+    ))
 
-    # Skeleton body -> assembled/body/skeleton.png
+    # Skeleton body (unique art, not palette-swapped).
     jobs.append((
         os.path.join(RAW_ROOT, "body", "skeleton", "skeleton"),
         os.path.join(ASSEMBLED_ROOT, "body", "skeleton.png"),
     ))
 
-    # Heads -> assembled/head/<tone>_<variant>.png
-    # Order matches AppearanceOps combine_with: "{other_selection}_{this_selection}.png"
-    # where other = body_color (tone) and this = head_variant.
+    # Head masters (one per variant, palette-swapped at runtime for tones).
     for variant in HEAD_VARIANTS:
-        for tone in SKIN_TONES:
-            jobs.append((
-                os.path.join(RAW_ROOT, "head", variant, tone),
-                os.path.join(ASSEMBLED_ROOT, "head", f"{tone}_{variant}.png"),
-            ))
+        jobs.append((
+            os.path.join(RAW_ROOT, "head", variant, "tone_1"),
+            os.path.join(ASSEMBLED_ROOT, "head", f"{variant}_master.png"),
+        ))
 
-    # Skeleton head -> assembled/head/skeleton_skeleton.png
+    # Skeleton head (unique art).
     jobs.append((
         os.path.join(RAW_ROOT, "head", "skeleton", "skeleton"),
         os.path.join(ASSEMBLED_ROOT, "head", "skeleton_skeleton.png"),
     ))
 
-    # Eyes -> assembled/eyes/<color>.png
-    for color in EYE_COLORS:
+    # Eyes master (palette-swapped at runtime for eye colors).
+    jobs.append((
+        os.path.join(RAW_ROOT, "eyes", "eyes", "brown"),
+        os.path.join(ASSEMBLED_ROOT, "eyes", "eyes_master.png"),
+    ))
+
+    # Palette-swappable layers: assemble master only (one per style).
+    # Runtime palette swap handles coloring — no per-color files needed.
+
+    for style in HAIR_STYLES:
         jobs.append((
-            os.path.join(RAW_ROOT, "eyes", "eyes", color),
-            os.path.join(ASSEMBLED_ROOT, "eyes", f"{color}.png"),
+            os.path.join(RAW_ROOT, "hair", style, "master"),
+            os.path.join(ASSEMBLED_ROOT, "hair", f"{style}_master.png"),
         ))
 
-    PALETTE_ROOT = os.path.join(RAW_ROOT, "_palettes")
-    CLOTH_PALETTE = os.path.join(PALETTE_ROOT, "cloth_ulpc.json")
-    HAIR_PALETTE = os.path.join(PALETTE_ROOT, "hair_ulpc.json")
-    HAIR_BASE_COLOR = "orange"  # hair masters use the orange palette as their base
-
-    # Mapping: our color name -> palette JSON key for cloth layers.
-    CLOTH_PAL_MAP = {
-        "white": "white", "black": "black", "gray": "gray", "brown": "brown",
-        "tan": "tan", "red": "red", "orange": "orange", "yellow": "yellow",
-        "green": "green", "blue": "blue", "purple": "purple", "pink": "pink",
-    }
-    # Mapping: our color name -> palette JSON key for hair layers.
-    HAIR_PAL_MAP = {
-        "black": "black", "charcoal": "dark_gray", "gray": "gray",
-        "brown": "dark_brown", "ash_brown": "ash", "chestnut": "chestnut",
-        "blonde": "blonde", "red": "red", "orange": "orange",
-        "pink": "pink", "blue": "blue", "green": "green",
-    }
-
-    # All palette-swappable layers: assemble from master + palette swap.
-    # No per-color raw directories needed — master has all animations.
-
-    # Hair -> assembled/hair/<style>_<color>.png
-    for style in HAIR_STYLES:
-        master = os.path.join(RAW_ROOT, "hair", style, "master")
-        for color in HAIR_COLORS:
-            pal_color = HAIR_PAL_MAP.get(color, color)
-            jobs.append((
-                master, os.path.join(ASSEMBLED_ROOT, "hair", f"{style}_{color}.png"),
-                None, HAIR_PALETTE, pal_color, HAIR_BASE_COLOR,
-            ))
-
-    # Facial hair -> assembled/facial/<style>_<color>.png
     for style in FACIAL_STYLES:
-        master = os.path.join(RAW_ROOT, "facial", style, "master")
-        for color in HAIR_COLORS:
-            pal_color = HAIR_PAL_MAP.get(color, color)
-            jobs.append((
-                master, os.path.join(ASSEMBLED_ROOT, "facial", f"{style}_{color}.png"),
-                None, HAIR_PALETTE, pal_color, HAIR_BASE_COLOR,
-            ))
+        jobs.append((
+            os.path.join(RAW_ROOT, "facial", style, "master"),
+            os.path.join(ASSEMBLED_ROOT, "facial", f"{style}_master.png"),
+        ))
 
-    # Torso -> assembled/torso/<style>_<color>.png
     for style in ("shortsleeve", "longsleeve"):
-        master = os.path.join(RAW_ROOT, "torso", style, "master")
-        for color in CLOTH_COLORS:
-            pal_color = CLOTH_PAL_MAP.get(color, color)
-            jobs.append((
-                master, os.path.join(ASSEMBLED_ROOT, "torso", f"{style}_{color}.png"),
-                None, CLOTH_PALETTE, pal_color,
-            ))
+        jobs.append((
+            os.path.join(RAW_ROOT, "torso", style, "master"),
+            os.path.join(ASSEMBLED_ROOT, "torso", f"{style}_master.png"),
+        ))
 
-    # Legs -> assembled/legs/<style>_<color>.png
     for style in ("pants", "shorts"):
-        master = os.path.join(RAW_ROOT, "legs", style, "master")
-        for color in CLOTH_COLORS:
-            pal_color = CLOTH_PAL_MAP.get(color, color)
-            jobs.append((
-                master, os.path.join(ASSEMBLED_ROOT, "legs", f"{style}_{color}.png"),
-                None, CLOTH_PALETTE, pal_color,
-            ))
+        jobs.append((
+            os.path.join(RAW_ROOT, "legs", style, "master"),
+            os.path.join(ASSEMBLED_ROOT, "legs", f"{style}_master.png"),
+        ))
 
-    # Feet -> assembled/feet/<style>_<color>.png
     for style in ("shoes", "boots"):
-        master = os.path.join(RAW_ROOT, "feet", style, "master")
-        for color in FEET_COLORS:
-            pal_color = CLOTH_PAL_MAP.get(color, color)
-            jobs.append((
-                master, os.path.join(ASSEMBLED_ROOT, "feet", f"{style}_{color}.png"),
-                None, CLOTH_PALETTE, pal_color,
-            ))
+        jobs.append((
+            os.path.join(RAW_ROOT, "feet", style, "master"),
+            os.path.join(ASSEMBLED_ROOT, "feet", f"{style}_master.png"),
+        ))
 
-    # Headwear -> assembled/headwear/<style>_<color>.png
     for style in HEADWEAR_STYLES:
-        master = os.path.join(RAW_ROOT, "headwear", style, "master")
-        for color in HEADWEAR_COLORS:
-            pal_color = CLOTH_PAL_MAP.get(color, color)
-            jobs.append((
-                master, os.path.join(ASSEMBLED_ROOT, "headwear", f"{style}_{color}.png"),
-                None, CLOTH_PALETTE, pal_color,
-            ))
+        jobs.append((
+            os.path.join(RAW_ROOT, "headwear", style, "master"),
+            os.path.join(ASSEMBLED_ROOT, "headwear", f"{style}_master.png"),
+        ))
 
     return jobs
 

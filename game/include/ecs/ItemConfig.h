@@ -102,9 +102,14 @@ struct ItemDef
 
     // Visual weapon fields (only meaningful when category == Weapon).
     std::string visual_weapon;  // weapon id used for equip-change detection
-    std::string weapon_icon;    // sprite path for held weapon visual; empty = icon_path fallback
-    float grip_x = 0.0f;        // primary grip pixel in icon (0..32); trigger hand
+    std::string weapon_icon;       // sprite path for held weapon visual; empty = icon_path fallback
+    float grip_x = 0.0f;          // primary grip pixel in icon (0..32); trigger hand
     float grip_y = 0.0f;
+    std::string attack_icon_ns;        // alternate icon for N/S attack directions
+    float attack_grip_ns_x = 0.0f;
+    float attack_grip_ns_y = 0.0f;
+    float attack_fore_grip_ns_x = 0.0f;
+    float attack_fore_grip_ns_y = 0.0f;
     float fore_grip_x = 0.0f;   // secondary grip pixel in icon; support hand (two-handed only)
     float fore_grip_y = 0.0f;
     float weapon_scale = 1.0f;  // visual scale of the held weapon sprite (1.0 = native icon size)

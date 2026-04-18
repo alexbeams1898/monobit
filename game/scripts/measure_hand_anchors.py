@@ -87,17 +87,21 @@ ROW_NAMES = {
     8: "reverse_slash",
 }
 
-ROW_FRAME_COUNTS = {
-    0: 1,
-    1: 8,
-    2: 6,
-    3: 6,
-    4: 6,
-    5: 8,
-    6: 8,
-    7: 13,
-    8: 13,
-}
+def load_row_frame_counts(anim_config_path):
+    """Read frame counts per row from lpc_humanoid.json states."""
+    counts = {}
+    try:
+        with open(anim_config_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        for state in data.get("states", {}).values():
+            counts[state["row"]] = state["frames"]
+    except (FileNotFoundError, json.JSONDecodeError, KeyError):
+        pass
+    return counts
+
+
+# Loaded later from the animation config; fallback for legacy use.
+ROW_FRAME_COUNTS = {}
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 GAME_DIR = os.path.dirname(SCRIPT_DIR)
@@ -635,6 +639,10 @@ def main():
         hands = ["left", "right"]
     else:
         hands = [args.hand]
+
+    # Load frame counts from the animation config (not hardcoded).
+    global ROW_FRAME_COUNTS
+    ROW_FRAME_COUNTS = load_row_frame_counts(args.in_place_target)
 
     # Pre-load existing anchors so the picker can show the other hand as a
     # reference marker AND so the merge can preserve unmeasured data.

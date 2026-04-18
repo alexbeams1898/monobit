@@ -315,6 +315,7 @@ static bool emplaceAnimationFromSheet(EntityManager& em, entt::entity entity,
         if (ha.contains("rows"))
         {
             const char* dirKeys[] = {"S", "W", "E", "N"};
+            static constexpr float DEG2RAD = 3.14159265f / 180.0f;
             const auto parseFrames = [](const json& arr, std::vector<HandAnchor>& out)
             {
                 out.clear();
@@ -323,6 +324,13 @@ static bool emplaceAnimationFromSheet(EntityManager& em, entt::entity entity,
                     HandAnchor a;
                     a.x = fr[0].get<float>();
                     a.y = fr[1].get<float>();
+                    // Extended format: [x, y, rotation_deg, flip, depth]
+                    if (fr.size() > 2)
+                        a.rotation = fr[2].get<float>() * DEG2RAD;
+                    if (fr.size() > 3)
+                        a.flip = fr[3].get<int>();
+                    if (fr.size() > 4)
+                        a.depth = fr[4].get<int>();
                     out.push_back(a);
                 }
             };
@@ -332,7 +340,7 @@ static bool emplaceAnimationFromSheet(EntityManager& em, entt::entity entity,
                     continue; // skip comments
                 const int rowIdx = std::stoi(rowKey);
                 auto& row = anchors.rows[rowIdx];
-                row.left.resize(4);  // S, W, E, N
+                row.left.resize(4); // S, W, E, N
                 row.right.resize(4);
 
                 for (int d = 0; d < 4; ++d)
@@ -1189,6 +1197,11 @@ bool ConfigLoader::loadItemDefs(EntityManager& em, const std::string& dirPath)
         def.weapon_icon = j.value("weapon_icon", std::string{});
         def.grip_x = j.value("grip_x", 0.0f);
         def.grip_y = j.value("grip_y", 0.0f);
+        def.attack_icon_ns = j.value("attack_icon_ns", std::string{});
+        def.attack_grip_ns_x = j.value("attack_grip_ns_x", 0.0f);
+        def.attack_grip_ns_y = j.value("attack_grip_ns_y", 0.0f);
+        def.attack_fore_grip_ns_x = j.value("attack_fore_grip_ns_x", 0.0f);
+        def.attack_fore_grip_ns_y = j.value("attack_fore_grip_ns_y", 0.0f);
         def.fore_grip_x = j.value("fore_grip_x", def.grip_x);
         def.fore_grip_y = j.value("fore_grip_y", def.grip_y);
         def.weapon_scale = j.value("weapon_scale", 1.0f);
@@ -1534,7 +1547,14 @@ bool ConfigLoader::loadAppearanceConfig(EntityManager& em, const std::string& fi
             if (!pf.is_open())
                 continue;
             json pj;
-            try { pf >> pj; } catch (...) { continue; }
+            try
+            {
+                pf >> pj;
+            }
+            catch (...)
+            {
+                continue;
+            }
             auto& pal = palReg.palettes[palId];
             for (const auto& [colorName, hexArr] : pj.items())
             {

@@ -235,9 +235,17 @@ struct Weapon
 
     // Visual weapon fields (set by EquipmentSystem from ItemDef).
     std::string visual_weapon; // weapon id used for equip-change detection
-    std::string weapon_icon;   // sprite path for held weapon visual; empty = no visible weapon
-    float grip_x = 0.0f;       // primary grip pixel in icon (0..32); trigger hand
+    std::string weapon_icon;       // sprite path for held weapon visual; empty = no visible weapon
+    float grip_x = 0.0f;          // primary grip pixel in icon (0..32); trigger hand
     float grip_y = 0.0f;
+
+    // Per-direction attack icons: alternate sprites used during attack animations.
+    // If empty, the default weapon_icon is used. Allows top-down perspective for N/S.
+    std::string attack_icon_ns;        // icon for N/S attack directions
+    float attack_grip_ns_x = 0.0f;    // grip (trigger hand) on the NS icon
+    float attack_grip_ns_y = 0.0f;
+    float attack_fore_grip_ns_x = 0.0f; // fore grip (support hand) on the NS icon
+    float attack_fore_grip_ns_y = 0.0f;
     float fore_grip_x = 0.0f;  // secondary grip pixel in icon; support hand (two-handed only)
     float fore_grip_y = 0.0f;
     float weapon_scale = 1.0f;  // visual scale (1.0 = native icon size)

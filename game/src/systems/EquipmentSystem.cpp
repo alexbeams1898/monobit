@@ -43,6 +43,11 @@ static void weaponFromDef(Weapon& w, const ItemDef& def)
     w.weapon_icon = def.weapon_icon.empty() ? def.icon_path : def.weapon_icon;
     w.grip_x = def.grip_x;
     w.grip_y = def.grip_y;
+    w.attack_icon_ns = def.attack_icon_ns;
+    w.attack_grip_ns_x = def.attack_grip_ns_x;
+    w.attack_grip_ns_y = def.attack_grip_ns_y;
+    w.attack_fore_grip_ns_x = def.attack_fore_grip_ns_x;
+    w.attack_fore_grip_ns_y = def.attack_fore_grip_ns_y;
     w.fore_grip_x = def.fore_grip_x;
     w.fore_grip_y = def.fore_grip_y;
     w.weapon_scale = def.weapon_scale;
@@ -190,7 +195,8 @@ static void recomputeArmorStats(entt::registry& reg, entt::entity entity, const 
     armor.total_poise_bonus = 0.0f;
     armor.total_weight = 0.0f;
 
-    for (const auto armorSlot : {EquipSlot::Head, EquipSlot::Chest, EquipSlot::Legs, EquipSlot::Feet})
+    for (const auto armorSlot :
+         {EquipSlot::Head, EquipSlot::Chest, EquipSlot::Legs, EquipSlot::Feet})
     {
         const auto* item = InventoryOps::equippedItem(inv, equip, armorSlot);
         if (item == nullptr)
@@ -202,9 +208,9 @@ static void recomputeArmorStats(entt::registry& reg, entt::entity entity, const 
         armor.total_poise_bonus += def->poise_bonus;
     }
 
-    static constexpr EquipSlot ALL[] = {EquipSlot::RightHand, EquipSlot::LeftHand, EquipSlot::Head,
-                                        EquipSlot::Chest,     EquipSlot::Legs,     EquipSlot::Feet,
-                                        EquipSlot::Accessory1, EquipSlot::Accessory2};
+    static constexpr EquipSlot ALL[] = {
+        EquipSlot::RightHand, EquipSlot::LeftHand, EquipSlot::Head,       EquipSlot::Chest,
+        EquipSlot::Legs,      EquipSlot::Feet,     EquipSlot::Accessory1, EquipSlot::Accessory2};
     for (const auto s : ALL)
         armor.total_weight += slotWeight(inv, equip, s, items);
 
@@ -283,9 +289,8 @@ static void saveWeaponXP(entt::registry& reg, entt::entity entity, const Weapon&
 }
 
 // Load weapon XP from inventory item or Body into the live Weapon struct.
-static void loadWeaponXP(entt::registry& reg, entt::entity entity, Weapon& w,
-                         const Inventory& inv, const Equipment& equip, EquipSlot slot,
-                         const FormulaConfig& f)
+static void loadWeaponXP(entt::registry& reg, entt::entity entity, Weapon& w, const Inventory& inv,
+                         const Equipment& equip, EquipSlot slot, const FormulaConfig& f)
 {
     if (!reg.all_of<PlayerActions>(entity))
         return;

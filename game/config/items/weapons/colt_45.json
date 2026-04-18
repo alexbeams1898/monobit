@@ -31,15 +31,8 @@
     "base_rotation": 45.0,
     "grip_x": 15.0,
     "grip_y": 21.0,
-    "attack_anim": "shoot",
-    "shoot_frames": [
-        0,
-        1,
-        2,
-        3,
-        10,
-        3,
-        2,
-        1
-    ]
+    "attack_anim": "none",
+    "attack_icon_ns": "assets/sprites/icons/colt_45_ns.png",
+    "attack_grip_ns_x": 16.0,
+    "attack_grip_ns_y": 16.0
 }

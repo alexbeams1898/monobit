@@ -46,6 +46,18 @@ def main():
         "weapon_json",
         help="Path to weapon JSON (e.g. config/items/weapons/colt_45.json)",
     )
+    parser.add_argument(
+        "--icon", type=str, default=None,
+        help="Override icon path (e.g. for measuring attack_icon_ns grip)",
+    )
+    parser.add_argument(
+        "--grip-fields", type=str, default=None,
+        help="Comma-separated JSON field names for grip_x,grip_y (e.g. attack_grip_ns_x,attack_grip_ns_y)",
+    )
+    parser.add_argument(
+        "--fore-grip-fields", type=str, default=None,
+        help="Comma-separated JSON field names for fore_grip_x,fore_grip_y (enables two-click mode)",
+    )
     args = parser.parse_args()
 
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -59,10 +71,14 @@ def main():
         print(f"ERROR: weapon JSON not found: {json_path}")
         sys.exit(1)
 
+    if args.icon and not args.grip_fields:
+        print("ERROR: --icon requires --grip-fields to avoid overwriting default grip_x/grip_y")
+        sys.exit(1)
+
     with open(json_path, "r", encoding="utf-8") as f:
         weapon = json.load(f)
 
-    icon_rel = weapon.get("icon", "")
+    icon_rel = args.icon if args.icon else weapon.get("icon", "")
     if not icon_rel:
         print(f"ERROR: weapon JSON has no 'icon' field: {json_path}")
         sys.exit(1)
@@ -74,16 +90,34 @@ def main():
         print(f"ERROR: icon not found: {icon_path}")
         sys.exit(1)
 
+    # Custom grip field names for alternate icons.
+    grip_x_field = "grip_x"
+    grip_y_field = "grip_y"
+    fore_x_field = "fore_grip_x"
+    fore_y_field = "fore_grip_y"
+    if args.grip_fields:
+        parts = args.grip_fields.split(",")
+        if len(parts) == 2:
+            grip_x_field, grip_y_field = parts
+
     two_handed = bool(weapon.get("two_handed", False))
+    if args.grip_fields:
+        # Custom fields: only enable two-click if --fore-grip-fields is also set.
+        two_handed = args.fore_grip_fields is not None
+    if args.fore_grip_fields:
+        parts = args.fore_grip_fields.split(",")
+        if len(parts) == 2:
+            fore_x_field, fore_y_field = parts
+        two_handed = True
 
     icon = Image.open(icon_path).convert("RGBA")
     w, h = icon.size
     print(f"Loaded {icon_rel} ({w}x{h})  two_handed={two_handed}")
-    print(f"Current primary grip: ({weapon.get('grip_x', '?')}, {weapon.get('grip_y', '?')})")
+    print(f"Current primary grip: ({weapon.get(grip_x_field, '?')}, {weapon.get(grip_y_field, '?')})")
     if two_handed:
         print(
             "Current fore grip:    "
-            f"({weapon.get('fore_grip_x', '?')}, {weapon.get('fore_grip_y', '?')})"
+            f"({weapon.get(fore_x_field, '?')}, {weapon.get(fore_y_field, '?')})"
         )
 
     display = icon.resize((w * ZOOM, h * ZOOM), Image.NEAREST)
@@ -94,10 +128,10 @@ def main():
     # Stage 0 = primary grip, stage 1 = fore grip (two-handed only).
     state = {
         "stage": 0,
-        "primary_x": weapon.get("grip_x"),
-        "primary_y": weapon.get("grip_y"),
-        "fore_x": weapon.get("fore_grip_x") if two_handed else None,
-        "fore_y": weapon.get("fore_grip_y") if two_handed else None,
+        "primary_x": weapon.get(grip_x_field),
+        "primary_y": weapon.get(grip_y_field),
+        "fore_x": weapon.get(fore_x_field) if two_handed else None,
+        "fore_y": weapon.get(fore_y_field) if two_handed else None,
         "tk_img": None,
     }
 
@@ -167,11 +201,11 @@ def main():
         if state["primary_x"] is None:
             print("No primary grip selected. Nothing saved.")
             return
-        weapon["grip_x"] = float(state["primary_x"])
-        weapon["grip_y"] = float(state["primary_y"])
+        weapon[grip_x_field] = float(state["primary_x"])
+        weapon[grip_y_field] = float(state["primary_y"])
         if two_handed and state["fore_x"] is not None:
-            weapon["fore_grip_x"] = float(state["fore_x"])
-            weapon["fore_grip_y"] = float(state["fore_y"])
+            weapon[fore_x_field] = float(state["fore_x"])
+            weapon[fore_y_field] = float(state["fore_y"])
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(weapon, f, indent=4)
             f.write("\n")

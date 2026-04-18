@@ -50,6 +50,7 @@ add_library(game-systems STATIC
     src/screens/VictoryScreen.cpp
     src/screens/RunSummaryScreen.cpp
     src/screens/HighScoresScreen.cpp
+    src/screens/ControlsScreen.cpp
     src/screens/SanctuaryScreen.cpp
     src/screens/SettingsScreen.cpp
     ${CMAKE_SOURCE_DIR}/vendor/miniz/miniz.c

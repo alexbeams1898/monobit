@@ -258,17 +258,19 @@ MainMenuScreen::Action MainMenuScreen::render(EntityManager& em, int window_w, i
 
     const bool hasChars = !saveData.characters.empty();
 
-    static constexpr Action kActionsWithLoad[] = {
-        Action::NewGame, Action::LoadGame, Action::HighScores, Action::Settings, Action::Quit};
+    static constexpr Action kActionsWithLoad[] = {Action::NewGame,    Action::LoadGame,
+                                                  Action::HighScores, Action::Controls,
+                                                  Action::Settings,   Action::Quit};
     static constexpr Action kActionsNoLoad[] = {Action::NewGame, Action::HighScores,
-                                                Action::Settings, Action::Quit};
+                                                Action::Controls, Action::Settings, Action::Quit};
     static constexpr const char* kLabelsWithLoad[] = {"New Game", "Load Game", "High Scores",
-                                                      "Settings", "Quit"};
-    static constexpr const char* kLabelsNoLoad[] = {"New Game", "High Scores", "Settings", "Quit"};
+                                                      "Controls", "Settings",  "Quit"};
+    static constexpr const char* kLabelsNoLoad[] = {"New Game", "High Scores", "Controls",
+                                                    "Settings", "Quit"};
 
     const Action* actions = hasChars ? kActionsWithLoad : kActionsNoLoad;
     const char* const* labels = hasChars ? kLabelsWithLoad : kLabelsNoLoad;
-    const int btnCount = hasChars ? 5 : 4;
+    const int btnCount = hasChars ? 6 : 5;
 
     // Block menu input while any update UI is active.
     static bool sUpdateDialogShown = false;

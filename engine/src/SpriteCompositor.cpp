@@ -10,7 +10,7 @@ namespace
 // Default LPC humanoid sheet dimensions, used when a missing layer is the very first
 // (no other layer has set dimensions yet). Matches assemble_spritesheet.py output.
 constexpr int FALLBACK_W = 3328;
-constexpr int FALLBACK_H = 576;
+constexpr int FALLBACK_H = 640;
 constexpr int CHECKER_TILE = 16;
 
 // Build a magenta-and-black checkerboard so missing layers are screamingly visible.
@@ -90,8 +90,7 @@ uint32_t SpriteCompositor::composite(const std::vector<std::string>& layer_paths
             key += "|pal" + std::to_string(i) + ":";
             for (const auto& e : palettes[i].entries)
             {
-                key += std::to_string(e.target_r) + "," +
-                       std::to_string(e.target_g) + "," +
+                key += std::to_string(e.target_r) + "," + std::to_string(e.target_g) + "," +
                        std::to_string(e.target_b) + ";";
             }
         }

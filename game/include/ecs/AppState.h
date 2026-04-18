@@ -59,6 +59,7 @@ struct GameState
         GameOver,
         RunSummary,
         HighScores,
+        Controls,
         Settings
     };
 

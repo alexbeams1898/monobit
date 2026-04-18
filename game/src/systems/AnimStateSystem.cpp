@@ -45,6 +45,47 @@ static AnimState resolveState(entt::registry& reg, entt::entity entity)
     return AnimState::Idle;
 }
 
+// Resolve the attack animation row. Weapons with attack_anim="none" (e.g.
+// pistol) skip the body animation and fall back to idle.
+static void applyAttackAnim(entt::registry& reg, entt::entity entity, Animation& anim,
+                            const AnimRowConfig& rowCfg, const AnimRowIndex* rowIndex)
+{
+    const auto* al = reg.try_get<AttackLocked>(entity);
+    const Weapon* w = nullptr;
+    if (al != nullptr && al->left_hand)
+        w = reg.try_get<LeftWeapon>(entity);
+    if (w == nullptr)
+        w = reg.try_get<Weapon>(entity);
+
+    if (w != nullptr && w->attack_anim == "none")
+    {
+        const auto& idleRow = rowCfg.rows[static_cast<int>(AnimState::Idle)];
+        anim.current_row = idleRow.row;
+        anim.current_frames = idleRow.frames;
+        anim.current_duration = idleRow.duration;
+        anim.freeze_on_last = idleRow.freeze_on_last;
+        return;
+    }
+
+    const auto* facing = reg.try_get<FacingDirection>(entity);
+    if (facing && facing->attack_anim_speed > 0.0f)
+        anim.speed_multiplier = facing->attack_anim_speed;
+
+    if (w != nullptr && !w->attack_anim.empty() && w->attack_anim != "slash" && rowIndex != nullptr)
+    {
+        const auto it = rowIndex->rows.find(w->attack_anim);
+        if (it != rowIndex->rows.end())
+        {
+            anim.current_row = it->second.row;
+            anim.current_frames = it->second.frames;
+            anim.current_duration = it->second.duration;
+        }
+    }
+
+    if (w != nullptr && !w->shoot_frames.empty())
+        anim.frame_mask = w->shoot_frames;
+}
+
 void AnimStateSystem::update(EntityManager& em)
 {
     ZoneScopedN("AnimStateSystem");
@@ -85,32 +126,7 @@ void AnimStateSystem::update(EntityManager& em)
         }
         else if (resolved == AnimState::Attack)
         {
-            const auto* facing = reg.try_get<FacingDirection>(entity);
-            if (facing && facing->attack_anim_speed > 0.0f)
-                anim.speed_multiplier = facing->attack_anim_speed;
-
-            // Read the weapon that initiated this attack (left or right hand).
-            const auto* al = reg.try_get<AttackLocked>(entity);
-            const Weapon* w = nullptr;
-            if (al != nullptr && al->left_hand)
-                w = reg.try_get<LeftWeapon>(entity);
-            if (w == nullptr)
-                w = reg.try_get<Weapon>(entity);
-
-            if (w != nullptr && !w->attack_anim.empty() && w->attack_anim != "slash" &&
-                rowIndex != nullptr)
-            {
-                const auto it = rowIndex->rows.find(w->attack_anim);
-                if (it != rowIndex->rows.end())
-                {
-                    anim.current_row = it->second.row;
-                    anim.current_frames = it->second.frames;
-                    anim.current_duration = it->second.duration;
-                }
-            }
-
-            if (w != nullptr && !w->shoot_frames.empty())
-                anim.frame_mask = w->shoot_frames;
+            applyAttackAnim(reg, entity, anim, rowCfg, rowIndex);
         }
     }
 }

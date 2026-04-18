@@ -13,6 +13,7 @@
 #include "renderers/InteractionPromptRenderer.h"
 #include "renderers/ItemStatRenderer.h"
 #include "screens/CharCreateScreen.h"
+#include "screens/ControlsScreen.h"
 #include "screens/CraftingScreen.h"
 #include "screens/GameOverScreen.h"
 #include "screens/HighScoresScreen.h"
@@ -177,6 +178,7 @@ int main(int argc, char* argv[])
     HighScoresScreen::init(bodyFont, titleFont);
     SanctuaryScreen::init(bodyFont, titleFont);
     SettingsScreen::init(bodyFont, titleFont);
+    ControlsScreen::init(bodyFont, titleFont, &engine.textureManager());
     CraftingScreen::init(bodyFont, titleFont);
 
     engine.setCameraZoom(2.0f);
