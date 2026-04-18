@@ -272,7 +272,15 @@ static bool syncOneWeapon(entt::registry& reg, const HandAnchorData* anchorData,
         return false;
     }
 
-    const bool useNS = wep != nullptr && !wep->attack_icon_ns.empty() && (dir == 0 || dir == 3);
+    const bool twoH = wep != nullptr && wep->two_handed_active && a.has_secondary;
+    const bool isAttacking = reg.all_of<AttackLocked>(wielder);
+
+    // Use the NS top-down icon when facing N/S, but NOT when 2H is active
+    // outside of an attack — 2H idle/walk should keep the side-view icon
+    // with the normal 2H rotation math.
+    const bool hasNS = wep != nullptr && !wep->attack_icon_ns.empty() && (dir == 0 || dir == 3);
+    const bool useNS = hasNS && (!twoH || isAttacking);
+
     wpnS.texture_path = (useNS)            ? wep->attack_icon_ns
                         : (wep != nullptr) ? wep->weapon_icon
                                            : wpnS.texture_path;
@@ -291,7 +299,6 @@ static bool syncOneWeapon(entt::registry& reg, const HandAnchorData* anchorData,
     const float yOff =
         wCol ? (static_cast<float>(wSprite.src_h) * wScale - wCol->height) * 0.5f : 0.0f;
     const float half = WEAPON_ICON_SIZE * 0.5f;
-    const bool twoH = wep != nullptr && wep->two_handed_active && a.has_secondary;
 
     bool flip = false;
     float rot = 0.0f;
