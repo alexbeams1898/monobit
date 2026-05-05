@@ -230,7 +230,7 @@ void Engine::render()
 
     const float a = entity_manager.render_alpha;
 
-    glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+    glClearColor(clear_r, clear_g, clear_b, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
     // Find the active camera position, interpolated between previous and current
