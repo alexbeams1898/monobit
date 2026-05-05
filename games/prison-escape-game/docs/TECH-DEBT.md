@@ -16,5 +16,11 @@ something is identified as architecturally wrong.
   units regardless of visual scale -- a 1.2x character still has a 32x32 collider. If a
   future feature scales colliders alongside the character's visual scale (giants,
   shrink debuff, etc.), this line will produce a wrong yOffset and the weapon will drift
-  from the hand at non-1.0 scales. Revisit `game/src/systems/WeaponSpriteSystem.cpp`
+  from the hand at non-1.0 scales. Revisit `src/systems/WeaponSpriteSystem.cpp`
   `wielderYOffset` calculation if collider scaling is ever introduced.
+
+- **Engine tests depend on prison-escape-game's tile config.** `engines/engine/tests/tilemap_test.cpp`
+  loads `config/tilemap.json` and `config/rooms` from the game's directory (its WORKING_DIRECTORY
+  in CMake points at `games/prison-escape-game/`). Engine tests should be self-contained; either
+  inline a fixture tilemap into the test, or extract a minimal test fixture into
+  `engines/engine/tests/fixtures/`. Cross-referenced by the engine/game boundary doctrine.

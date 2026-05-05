@@ -287,14 +287,14 @@ color.rgba). 33% more VBO memory but still a single static upload — no per-fra
 get twin-stick facing. This scaled badly for customization (N layers = N child entities = N
 animation ticks + N draws per frame) and interacted awkwardly with equipment visibility.
 
-**Fix:** `SpriteCompositor` (`engine/include/SpriteCompositor.h`) builds the final character
+**Fix:** `SpriteCompositor` (`engines/engine/include/SpriteCompositor.h`) builds the final character
 texture once, CPU-side, by alpha-blending a stack of LPC layer PNGs into a single GL
 texture. The character is then one entity with one Sprite and one Animation. WASD-locked
 facing (docs/CLAUDE.md) handles the twin-stick feel that the split was supposed to provide.
 
 **Pipeline:**
 1. `fetch_lpc.py` pulls per-layer, per-animation PNGs from the upstream LiberatedPixelCup
-   repo into `game/assets/sprites/lpc/raw/`.
+   repo into `games/prison-escape-game/assets/sprites/lpc/raw/`.
 2. `bake_palettes.py` reads upstream palette definition JSONs and bakes per-palette color
    variants of the grayscale master PNGs (skin tones + clothing colors).
 3. `assemble_spritesheet.py` stitches per-animation PNGs into the 2048x384 character-sheet

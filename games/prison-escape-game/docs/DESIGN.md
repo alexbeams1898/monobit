@@ -427,13 +427,13 @@ Uses `FacingDirection.render_dx/dy` (smoothed) for visual direction selection.
 
 ### Paper-Doll Sprite Compositing (Player + Cop)
 Characters are single entities with a single Sprite and Animation. The final character
-texture is built at load time by **SpriteCompositor** (`engine/include/SpriteCompositor.h`),
+texture is built at load time by **SpriteCompositor** (`engines/engine/include/SpriteCompositor.h`),
 which CPU-side alpha-blends a stack of LPC layer PNGs (body, head, eyes, hair, beard, torso,
 legs, feet, headwear) into one GL texture. The composited texture is cached keyed by the
 joined layer path list, so every character that picks the same combination shares one
 texture.
 
-The layer manifest lives in `game/config/appearance/layers.json` and is loaded into the
+The layer manifest lives in `games/prison-escape-game/config/appearance/layers.json` and is loaded into the
 `AppearanceConfig` registry singleton. Each category is either:
 - a **Select** category that contributes one sprite layer (body, hair, torso, etc.)
 - a **Slider** category that writes a numeric value (currently only `size` -> `Transform.scale`)
@@ -1303,8 +1303,8 @@ Engine::run()
 If engine code accidentally includes a game header, the build breaks.
 
 **Runtime paths** (`"assets/..."`, `"config/..."`) are relative to the executable, not
-the source tree. CMake syncs `game/assets/` and `game/config/` to `build/bin/` on every
-build.
+the source tree. CMake syncs `games/prison-escape-game/assets/` and
+`games/prison-escape-game/config/` to `build/bin/` on every build.
 
 ---
 

@@ -220,10 +220,10 @@ final `render_alpha`. Engine callback order:
 Is this helper used by exactly 1 system?
   YES -> anonymous namespace in that system's .cpp
   NO  -> Is it pure math/geometry (no registry access)?
-    YES -> engine/include/utils/<Domain>Utils.h  (namespace engine::<domain>)
+    YES -> engines/engine/include/utils/<Domain>Utils.h  (namespace engine::<domain>)
     NO  -> Is it engine-level (no game types)?
-      YES -> engine/include/utils/ or engine/src/utils/
-      NO  -> game/include/ (like SpawnUtils.h, InventoryOps.h)
+      YES -> engines/engine/include/utils/ or engines/engine/src/utils/
+      NO  -> games/prison-escape-game/include/ (like SpawnUtils.h, InventoryOps.h)
 ```
 
 ### Conventions
@@ -231,8 +231,8 @@ Is this helper used by exactly 1 system?
   `ShaderUtils`, not `Helpers` or `Misc`.
 - **Header-only** for small pure functions (<10 lines, constexpr/inline).
   **.h/.cpp pairs** for anything with non-trivial implementation or heavy includes.
-- **Namespaces mirror directories**: `engine::direction` for `engine/include/utils/DirectionUtils.h`,
-  `engine::gl` for `engine/include/gl/ShaderUtils.h`.
+- **Namespaces mirror directories**: `engine::direction` for `engines/engine/include/utils/DirectionUtils.h`,
+  `engine::gl` for `engines/engine/include/gl/ShaderUtils.h`.
 - **Systems stay thin**: ECS queries + dispatch to helpers. When a system file exceeds ~250 lines,
   look for pure-computation helpers to extract.
 - **Components = pure data**: No logic, no methods beyond trivial read-only accessors.
@@ -240,18 +240,18 @@ Is this helper used by exactly 1 system?
   the moment a second file needs the same function.
 
 ### Existing utils
-- `engine::direction` (`engine/include/utils/DirectionUtils.h`) -- direction snapping, hysteresis,
+- `engine::direction` (`engines/engine/include/utils/DirectionUtils.h`) -- direction snapping, hysteresis,
   sprite column mapping. Used by AnimationSystem.
-- `engine::gl` (`engine/include/gl/ShaderUtils.h`) -- compileShader, buildOrtho, buildModel.
+- `engine::gl` (`engines/engine/include/gl/ShaderUtils.h`) -- compileShader, buildOrtho, buildModel.
   Used by RenderSystem, TileMapRenderer, UIRenderer.
 
-### Game-side helpers (in `game/include/ops/` + `game/src/ops/`)
+### Game-side helpers (in `games/prison-escape-game/include/ops/` + `games/prison-escape-game/src/ops/`)
 - `InventoryOps` (`ops/InventoryOps.h`) -- inventory add/remove, equip/unequip,
   item counting, material consumption, evolution execution (canEvolve, evolveWeapon).
 - `SpawnUtils` (`ops/SpawnUtils.h`) -- enemy spawn logic.
 - `CraftingOps` (`ops/CraftingOps.h`) -- crafting recipe execution.
 
-### Reusable dialog utilities (in `game/include/screens/`)
+### Reusable dialog utilities (in `games/prison-escape-game/include/screens/`)
 Two auto-sizing dialog templates -- measure content first, compute panel dimensions from
 measurements. Never hardcode panel sizes.
 
@@ -280,7 +280,7 @@ pattern. Never hardcode pixel dimensions for dialog panels.
 - Text drawn at `(btn_x + 30, btn_y + 10)`
 - Never position footer buttons top-down from hardcoded offsets (e.g. `panel_h - 60`).
 
-### GameConfig.h split (in `game/include/ecs/`)
+### GameConfig.h split (in `games/prison-escape-game/include/ecs/`)
 `GameConfig.h` is an umbrella header. New code should include only what it needs:
 - `BalanceConfig.h` -- FormulaConfig, SoundConfig, MusicConfig, WaveConfig, WaveState
 - `ItemConfig.h` -- ItemDef, ItemRegistry, RecipeRegistry, WeaponTierRegistry,

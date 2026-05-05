@@ -1,3 +1,8 @@
+# Per-game project declaration -- gives this game its own VERSION that the
+# release pipeline reads when a PR with prefix <bump>/prison-escape/... merges.
+# Other games in this repo declare their own project() with their own version.
+project(PrisonEscapeGame VERSION 0.4.0 LANGUAGES C CXX)
+
 # Game-specific logic -- static library linked by both the game exe and tests.
 add_library(game-systems STATIC
     src/GameLoop.cpp
@@ -101,10 +106,10 @@ endif()
 # so config/asset edits are always reflected without touching any .cpp file.
 add_custom_target(sync-assets-and-config ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/game/assets
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets
         $<TARGET_FILE_DIR:prison-break-game>/assets
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/game/config
+        ${CMAKE_CURRENT_SOURCE_DIR}/config
         $<TARGET_FILE_DIR:prison-break-game>/config
     COMMENT "Syncing assets and config to build output..."
     VERBATIM
@@ -143,4 +148,4 @@ add_executable(game-tests
 target_link_libraries(game-tests PRIVATE game-systems Catch2::Catch2WithMain)
 
 add_test(NAME game-tests COMMAND game-tests)
-set_tests_properties(game-tests PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/game)
+set_tests_properties(game-tests PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})

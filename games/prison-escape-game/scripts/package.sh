@@ -1,24 +1,34 @@
 #!/usr/bin/env bash
-# package.sh -- create a shareable zip of the game.
+# package.sh -- create a shareable zip of prison-escape-game.
 #
 # Usage:
-#   ./game/scripts/package.sh [output-name]
+#   ./games/prison-escape-game/scripts/package.sh [output-name]
 #
 # Bundles the game exe + assets + config into a zip ready to share.
-# Output name defaults to "prison-escape-game-v<VERSION>" where VERSION is read from
-# the project() declaration in root CMakeLists.txt. Creates <name>.zip in repo root.
+# Output name defaults to "prison-escape-game-v<VERSION>" where VERSION is read
+# from this game's CMakeLists.txt project() declaration. Creates <name>.zip in
+# repo root.
 
 set -e
 
-BUILD_BIN="build/bin"
+# Resolve script dir / game dir / repo root from this script's location, so
+# package.sh can be invoked from anywhere.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GAME_DIR="$(dirname "$SCRIPT_DIR")"
+REPO_ROOT="$(cd "$GAME_DIR/../.." && pwd)"
 
-# Extract version from root CMakeLists.txt: project(... VERSION X.Y.Z ...)
-VERSION=$(grep -oP 'project\([^)]*VERSION\s+\K[0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt || echo "unknown")
+cd "$REPO_ROOT"
+
+BUILD_BIN="build/bin"
+EXE_NAME="prison-break-game.exe"  # CMake target name (internal id, predates the public 'prison-escape' name)
+
+# Extract version from this game's CMakeLists.txt: project(... VERSION X.Y.Z ...)
+VERSION=$(grep -oP 'project\([^)]*VERSION\s+\K[0-9]+\.[0-9]+\.[0-9]+' "$GAME_DIR/CMakeLists.txt" || echo "unknown")
 NAME="${1:-prison-escape-game-v$VERSION}"
 STAGE_DIR="$NAME"
 
-if [ ! -f "$BUILD_BIN/prison-break-game.exe" ]; then
-    echo "ERROR: $BUILD_BIN/prison-break-game.exe not found. Build the game first (F7)." >&2
+if [ ! -f "$BUILD_BIN/$EXE_NAME" ]; then
+    echo "ERROR: $BUILD_BIN/$EXE_NAME not found. Build the game first (F7)." >&2
     exit 1
 fi
 
@@ -27,7 +37,7 @@ rm -rf "$STAGE_DIR"
 mkdir -p "$STAGE_DIR"
 
 # Copy game exe.
-cp "$BUILD_BIN/prison-break-game.exe" "$STAGE_DIR/$NAME.exe"
+cp "$BUILD_BIN/$EXE_NAME" "$STAGE_DIR/$NAME.exe"
 
 # Copy runtime data.
 cp -r "$BUILD_BIN/assets" "$STAGE_DIR/assets"

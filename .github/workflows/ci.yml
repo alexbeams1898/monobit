@@ -23,7 +23,7 @@ jobs:
 
       - name: Check formatting
         run: |
-          find engine game -name '*.cpp' -o -name '*.h' | \
+          find engines games -name '*.cpp' -o -name '*.h' | \
           xargs clang-format --dry-run --Werror
 
   # -----------------------------------------------------------------------
@@ -54,7 +54,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build
-          key: ${{ runner.os }}-build-${{ hashFiles('cmake/**', 'CMakeLists.txt', 'engine/**', 'game/**', 'tests/**') }}
+          key: ${{ runner.os }}-build-${{ hashFiles('cmake/**', 'CMakeLists.txt', 'engines/**', 'games/**', 'tests/**') }}
           restore-keys: |
             ${{ runner.os }}-build-
 
@@ -73,7 +73,7 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             CHANGED=$(git diff --name-only --diff-filter=d \
-              origin/${{ github.base_ref }}...HEAD -- 'engine/' 'game/')
+              origin/${{ github.base_ref }}...HEAD -- 'engines/' 'games/')
 
             # Directly changed .cpp files
             CHANGED_CPPS=$(echo "$CHANGED" | grep -E '\.cpp$' || true)
@@ -114,7 +114,7 @@ jobs:
               grep -E '\.cpp$' | sort -u)
           else
             # Push to master: lint everything.
-            FILES=$(find engine game -name '*.cpp')
+            FILES=$(find engines games -name '*.cpp')
           fi
           if [ -z "$FILES" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
@@ -132,7 +132,7 @@ jobs:
         run: |
           xargs -P $(nproc) \
             clang-tidy -p build \
-              --header-filter='(engine|game)/.*\.(h|hpp)$' \
+              --header-filter='(engines/engine|games/[^/]+)/.*\.(h|hpp)$' \
               --warnings-as-errors='*' \
             < /tmp/lint-files.txt
 

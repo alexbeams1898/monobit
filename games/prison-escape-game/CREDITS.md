@@ -12,20 +12,20 @@ All player, skeleton, and cop sprites are composited at build time from the
 - **Project:** Universal-LPC-Spritesheet-Character-Generator
 - **Upstream:** https://github.com/LiberatedPixelCup/Universal-LPC-Spritesheet-Character-Generator
 - **Licenses:** GPL 3.0 / CC-BY-SA 3.0 / OGA-BY 3.0 (per-asset; see CSV)
-- **Fetch script:** `game/scripts/fetch_lpc.py`
+- **Fetch script:** `games/prison-escape-game/scripts/fetch_lpc.py`
 - **Build pipeline:** `fetch_lpc.py` -> `bake_palettes.py` -> `assemble_spritesheet.py`
-- **Vendored license + credits files:** `game/assets/sprites/lpc/LICENSE/`
+- **Vendored license + credits files:** `games/prison-escape-game/assets/sprites/lpc/LICENSE/`
   - `LICENSE-upstream.txt` -- upstream repo's LICENSE file (GPL 3.0 copy)
   - `CREDITS.csv` -- authoritative per-file attribution from upstream, verbatim
 
-The CSV at `game/assets/sprites/lpc/LICENSE/CREDITS.csv` is the canonical,
+The CSV at `games/prison-escape-game/assets/sprites/lpc/LICENSE/CREDITS.csv` is the canonical,
 per-file attribution record. It is the upstream project's own authoritative
 credits file and is kept in sync with every new fetch.
 
 ### Layers actually used
 
 We only fetch a narrow subset of upstream's art. The folders below are copied
-under `game/assets/sprites/lpc/raw/` and re-baked into the final per-character
+under `games/prison-escape-game/assets/sprites/lpc/raw/` and re-baked into the final per-character
 sheets. Every entry is attributed in `CREDITS.csv`.
 
 | Layer     | Upstream path                              | Notes                         |
@@ -73,13 +73,13 @@ Aggregated from `CREDITS.csv` across every upstream folder this project uses:
 
 This list is non-exhaustive by design -- individual per-file attribution lives
 in `CREDITS.csv`. Whenever `fetch_lpc.py` pulls new art, re-running
-`curl -sSL -o game/assets/sprites/lpc/LICENSE/CREDITS.csv <upstream-url>` keeps
+`curl -sSL -o games/prison-escape-game/assets/sprites/lpc/LICENSE/CREDITS.csv <upstream-url>` keeps
 the record current.
 
 ### Palette definitions
 
 `fetch_lpc.py` also downloads palette definition JSON files under
-`game/assets/sprites/lpc/raw/_palettes/`. These come from the same upstream
+`games/prison-escape-game/assets/sprites/lpc/raw/_palettes/`. These come from the same upstream
 repo (`palette_definitions/*/`) and are authored by the same LPC contributor
 list. They drive `bake_palettes.py` at build time to generate color variants of
 the grayscale master PNGs (skin tone, clothing color).

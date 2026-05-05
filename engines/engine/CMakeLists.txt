@@ -1,3 +1,8 @@
+# Per-engine project declaration. Engine bumps don't ship a release artifact
+# (the engine has no exe), but the version still moves so we can identify
+# engine-only changes in commit history and tag them if needed.
+project(Engine VERSION 0.1.0 LANGUAGES C CXX)
+
 add_library(engine STATIC)
 
 target_sources(engine PRIVATE
@@ -61,4 +66,4 @@ add_executable(engine-tests
 target_link_libraries(engine-tests PRIVATE engine Catch2::Catch2WithMain)
 
 add_test(NAME engine-tests COMMAND engine-tests)
-set_tests_properties(engine-tests PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/game)
+set_tests_properties(engine-tests PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/games/prison-escape-game)

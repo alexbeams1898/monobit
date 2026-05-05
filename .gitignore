@@ -62,7 +62,7 @@ UserSettings/
 *.ai
 
 # LPC raw sources (fetched by scripts/fetch_lpc.py, reassembled on demand)
-game/assets/sprites/lpc/raw/
+games/prison-escape-game/assets/sprites/lpc/raw/
 
 # Tracy traces
 traces/

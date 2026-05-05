@@ -29,9 +29,9 @@ We use the upstream `long` hair style directly (ponytail has no run.png).
 
 Output tree
 -----------
-game/assets/sprites/lpc/raw/<layer>/<style>/<color>/<anim>.png      (pre-baked colors)
-game/assets/sprites/lpc/raw/<layer>/<style>/master/<anim>.png        (palette-swap masters)
-game/assets/sprites/lpc/raw/_palettes/<palette>.json                 (baker input)
+games/prison-escape-game/assets/sprites/lpc/raw/<layer>/<style>/<color>/<anim>.png      (pre-baked colors)
+games/prison-escape-game/assets/sprites/lpc/raw/<layer>/<style>/master/<anim>.png        (palette-swap masters)
+games/prison-escape-game/assets/sprites/lpc/raw/_palettes/<palette>.json                 (baker input)
 
 This script is idempotent; existing files are skipped unless --force.
 

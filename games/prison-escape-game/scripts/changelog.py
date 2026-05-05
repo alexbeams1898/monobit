@@ -17,7 +17,7 @@ Subcommands:
 
   prepend <pr-body-file>
       Validate the PR body, extract bullets, prepend them to the [Unreleased]
-      section of CHANGELOG.md (in repo root). Idempotent on identical input.
+      section of this game's CHANGELOG.md. Idempotent on identical input.
 
   release <version>
       Rename the [Unreleased] section to [<version>] - YYYY-MM-DD, insert a
@@ -90,8 +90,12 @@ CATEGORY_ORDER = {name: i for i, name in enumerate(ALLOWED_CATEGORIES)}
 
 PUBLIC_RELEASES_REPO = "alexbeams1898/prison-escape-game-releases"
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-CHANGELOG_PATH = REPO_ROOT / "CHANGELOG.md"
+# Path layout: this script lives at games/<game>/scripts/changelog.py
+# So GAME_DIR is the parent's parent, REPO_ROOT is GAME_DIR's parent's parent.
+SCRIPT_DIR = Path(__file__).resolve().parent
+GAME_DIR = SCRIPT_DIR.parent
+REPO_ROOT = GAME_DIR.parent.parent
+CHANGELOG_PATH = GAME_DIR / "CHANGELOG.md"
 
 
 # ---------------------------------------------------------------------------

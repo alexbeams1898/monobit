@@ -2,13 +2,13 @@
 # test.sh - build and run engine-tests + game-tests.
 #
 # Usage:
-#   ./game/scripts/test.sh          # build + run all tests
-#   ./game/scripts/test.sh -v       # verbose: show individual test case output
+#   ./games/prison-escape-game/scripts/test.sh          # build + run all tests
+#   ./games/prison-escape-game/scripts/test.sh -v       # verbose: show individual test case output
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 BUILD_DIR="$REPO_ROOT/build"
 VERBOSE=""
 

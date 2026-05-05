@@ -2,7 +2,7 @@
 Assemble LPC per-animation PNGs into the engine sprite sheet layout.
 
 Input tree (populated by fetch_lpc.py + bake_palettes.py):
-  game/assets/sprites/lpc/raw/<layer>/<style>/<color>/<anim>.png
+  games/prison-escape-game/assets/sprites/lpc/raw/<layer>/<style>/<color>/<anim>.png
 
 Per-animation PNG layout (native LPC):
   Rows    = directions in order Up(0), Left(1), Down(2), Right(3)

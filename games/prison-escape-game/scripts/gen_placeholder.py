@@ -7,7 +7,7 @@ Layout (64x64 RGBA):
   Rows 32-63, cols  0-31: green (0, 200, 100)   — player  (32x32, src_x=0,  src_y=32)
   Rows  0-31, cols 32-63: orange (220, 120, 30) — wall    (32x32, src_x=32, src_y=0)
 
-Run from repo root:  python game/scripts/gen_placeholder.py
+Run from repo root:  python games/prison-escape-game/scripts/gen_placeholder.py
 Requires Pillow:     pip install Pillow
 """
 

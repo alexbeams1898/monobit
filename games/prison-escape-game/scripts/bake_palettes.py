@@ -3,12 +3,12 @@ Palette baker for LPC masters.
 
 Inputs
 ------
-  game/assets/sprites/lpc/raw/<layer>/<style>/master/<anim>.png     (master sprites)
-  game/assets/sprites/lpc/raw/_palettes/<palette>_ulpc.json         (color ramps)
+  games/prison-escape-game/assets/sprites/lpc/raw/<layer>/<style>/master/<anim>.png     (master sprites)
+  games/prison-escape-game/assets/sprites/lpc/raw/_palettes/<palette>_ulpc.json         (color ramps)
 
 Outputs
 -------
-  game/assets/sprites/lpc/raw/<layer>/<style>/<our_color>/<anim>.png
+  games/prison-escape-game/assets/sprites/lpc/raw/<layer>/<style>/<our_color>/<anim>.png
 
 How it works
 ------------

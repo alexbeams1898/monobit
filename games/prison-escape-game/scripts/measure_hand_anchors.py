@@ -12,7 +12,7 @@ is shown as a faded marker so you can visually verify it and aim relative
 to it.
 
 Outputs JSON in the format expected by
-game/config/animations/lpc_humanoid.json `hand_anchors.rows`.
+games/prison-escape-game/config/animations/lpc_humanoid.json `hand_anchors.rows`.
 Each direction cell is stored as:
     "S": { "left": [[x,y],...], "right": [[x,y],...] }
 The --in-place merge preserves whichever hand you did NOT measure.

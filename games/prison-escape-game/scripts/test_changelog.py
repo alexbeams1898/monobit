@@ -2,7 +2,7 @@
 """
 Tests for changelog.py. Pure stdlib unittest, no deps.
 
-Run: python game/scripts/test_changelog.py
+Run: python games/prison-escape-game/scripts/test_changelog.py
 """
 
 from __future__ import annotations
