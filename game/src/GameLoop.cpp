@@ -28,6 +28,7 @@
 #include "systems/DamageSystem.h"
 #include "systems/DeathSystem.h"
 #include "systems/EquipmentSystem.h"
+#include "systems/HitboxResolverSystem.h"
 #include "systems/InputMappingSystem.h"
 #include "systems/LadderSystem.h"
 #include "systems/LevelingSystem.h"
@@ -45,6 +46,7 @@
 
 // UI screens / renderers.
 #include "renderers/AIDebugOverlay.h"
+#include "renderers/CombatDebugOverlay.h"
 #include "renderers/AIRecorder.h"
 #include "renderers/DebugOverlay.h"
 #include "renderers/HudRenderer.h"
@@ -311,6 +313,10 @@ static void handleGlobalKeys(EntityManager& em)
     if (std::find(kd.begin(), kd.end(), SDL_SCANCODE_F5) != kd.end())
         AIRecorder::dump();
 
+    // F6 key: cycle combat debug overlay (hurtboxes / pushboxes / hitboxes).
+    if (std::find(kd.begin(), kd.end(), SDL_SCANCODE_F6) != kd.end())
+        CombatDebugOverlay::cycleMode();
+
     // M key: mute/unmute music (persists across track changes).
     if (std::find(kd.begin(), kd.end(), SDL_SCANCODE_M) != kd.end())
         AudioSystem::toggleMusicMute();
@@ -502,6 +508,21 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
         return;
     }
 
+    // Hitstop: brief global pause after damage for tactile impact feedback.
+    // We decrement here and skip the rest of the tick, so one frame of hitstop
+    // = one skipped fixed-step update. Animation + rendering still advance at
+    // wall-clock rate so the screen doesn't fully freeze.
+    if (auto* hs = em.registry().ctx().find<Hitstop>())
+    {
+        if (hs->remaining > 0.0f)
+        {
+            hs->remaining -= static_cast<float>(dt);
+            if (hs->remaining < 0.0f)
+                hs->remaining = 0.0f;
+            return;
+        }
+    }
+
     // Normal gameplay systems.
     PickupSystem::update(em);
     EquipmentSystem::update(em);
@@ -533,11 +554,19 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     // Resolve player visual facing AFTER MovementSystem so backpedaling is fresh.
     resolvePlayerVisualFacingTick(em);
     CollisionSystem::update(em);
+    // ProjectileSystem runs after CollisionSystem (which populates events from
+    // pushbox overlaps) and before DamageSystem (which consumes events).
+    // Projectiles skip pushbox collision entirely and emit their own events via
+    // swept hurtbox tests, so DamageSystem sees them in the same tick.
+    ProjectileSystem::update(em, static_cast<float>(dt));
     AnimStateSystem::update(em);
     WeaponSpriteSystem::updateEquipment(em);
+    // HitboxResolverSystem runs after anim state resolution, before DamageSystem
+    // consumes events. It reads wielder frame_index and emits CollisionEvent
+    // entries when weapon hitbox shapes overlap hurtboxes during active frames.
+    HitboxResolverSystem::update(em, static_cast<float>(dt));
     DamageSystem::update(em);
     AmbientSoundSystem::update(em, dt);
-    ProjectileSystem::update(em, static_cast<float>(dt));
     DeathSystem::update(em, dt);
     LevelingSystem::update(em);
     WeaponXPSystem::update(em);
@@ -852,7 +881,10 @@ void gameRenderDebug(Engine& engine, EntityManager& em)
     (void)engine;
     const auto& gs = em.registry().ctx().get<GameState>();
     if (gs.phase == GameState::Phase::Playing)
+    {
         AIDebugOverlay::render(em);
+        CombatDebugOverlay::render(em);
+    }
 }
 
 static void renderPlayingUI(Engine& engine, EntityManager& em, int ww, int wh, float frameDt)

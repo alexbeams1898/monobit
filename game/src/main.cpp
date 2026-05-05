@@ -121,6 +121,8 @@ int main(int argc, char* argv[])
     em.registry().ctx().emplace<ScoringConfig>();
     em.registry().ctx().emplace<SaveData>();
     em.registry().ctx().emplace<AttackTokenPool>();
+    em.registry().ctx().emplace<AttackIdCounter>();
+    em.registry().ctx().emplace<Hitstop>();
     em.registry().ctx().emplace<DebugFlags>();
     em.registry().ctx().emplace<AppearanceConfig>();
 

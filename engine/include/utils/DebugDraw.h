@@ -93,6 +93,42 @@ inline void circle(float world_cx, float world_cy, float radius, const Color& co
     }
 }
 
+// Outlined rectangle centered at (cx, cy) with half-extents (hx, hy). Uses
+// four dotted line segments so it composes with the rest of the DebugDraw
+// style.
+inline void rectOutline(float world_cx, float world_cy, float hx, float hy, const Color& color,
+                        float spacing = 4.0f, float dot_size = 1.5f)
+{
+    const float l = world_cx - hx;
+    const float r = world_cx + hx;
+    const float t = world_cy - hy;
+    const float b = world_cy + hy;
+    line(l, t, r, t, color, spacing, dot_size);
+    line(r, t, r, b, color, spacing, dot_size);
+    line(r, b, l, b, color, spacing, dot_size);
+    line(l, b, l, t, color, spacing, dot_size);
+}
+
+// Capsule = two end circles + the two parallel sides of the connecting strip.
+// Endpoints are world-space; radius is the capsule half-thickness.
+inline void capsule(float x0, float y0, float x1, float y1, float radius, const Color& color,
+                    int circle_segments = 16, float dot_size = 2.0f)
+{
+    circle(x0, y0, radius, color, circle_segments, dot_size);
+    circle(x1, y1, radius, color, circle_segments, dot_size);
+
+    // Perpendicular offset of the capsule sides.
+    const float dx = x1 - x0;
+    const float dy = y1 - y0;
+    const float len = std::sqrt(dx * dx + dy * dy);
+    if (len < 1e-3f)
+        return;
+    const float nx = -dy / len * radius;
+    const float ny = dx / len * radius;
+    line(x0 + nx, y0 + ny, x1 + nx, y1 + ny, color, 4.0f, dot_size);
+    line(x0 - nx, y0 - ny, x1 - nx, y1 - ny, color, 4.0f, dot_size);
+}
+
 // Accessors for current camera state (useful for view culling).
 inline float camX()
 {

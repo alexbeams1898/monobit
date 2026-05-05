@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ecs/Components.h"
+
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -210,6 +212,8 @@ struct FormulaConfig
         float riposte_window = 0.8f;
         float critical_lock_duration = 0.6f;
         float lock_on_range = 300.0f;
+        // Hitstop: brief game-logic pause on damage land. ~3 frames at 60fps.
+        float hitstop_seconds = 0.05f;
     } combat;
 
     bool loaded = false;
@@ -424,4 +428,50 @@ struct HandAnchorData
     // Per-direction weapon depth: +1 = in front of body, -1 = behind body
     // Index: 0=South, 1=West, 2=East, 3=North
     std::vector<int> depth_per_dir = {1, 1, 1, -1};
+};
+
+// ---------------------------------------------------------------------------
+// AttackAnimHitbox -- per-attack-row hitbox timing + positioning.
+//
+// An attack row (slash, thrust, etc.) declares which frames are active
+// (produce hits) and for each active frame, an (x, y, rotation) offset
+// applied to the wielder's facing direction. The weapon's hitbox shapes are
+// transformed by this per-frame offset, so the shape sweeps through space
+// as the animation plays -- this is what gives different attacks different
+// arcs (slash = wide sweep, thrust = forward push, overhead = vertical arc).
+//
+// Coordinates are in attacker-local space: +x along facing, +y perpendicular
+// (right of facing). HitboxResolverSystem rotates by the wielder's facing
+// direction when testing against hurtboxes.
+// ---------------------------------------------------------------------------
+struct HitboxKeyframe
+{
+    int frame = 0;         // frame index within the attack row
+    float x = 0.0f;        // attacker-local offset along facing
+    float y = 0.0f;        // attacker-local offset perpendicular to facing
+    float rotation = 0.0f; // radians; applied to each weapon shape about its origin
+};
+
+struct AttackAnimHitbox
+{
+    std::vector<HitboxKeyframe> keyframes;
+    // Multi-hit support: if > 0, the same hurtbox may be re-hit after this
+    // many seconds from its last hit by this attack_id. -1 = single hit only.
+    float hit_interval = -1.0f;
+};
+
+struct AttackAnimHitboxData
+{
+    // attack_anim name (e.g. "slash", "thrust") -> keyframe set
+    std::unordered_map<std::string, AttackAnimHitbox> attacks;
+};
+
+// AnimSheetHurtboxes -- hurtbox shapes declared in an animation config JSON,
+// keyed by the sheet path (e.g. "config/animations/lpc_humanoid.json"). All
+// entities using that animation sheet inherit the shape set automatically,
+// so we only author humanoid hurtboxes once. Per-entity overrides in the
+// entity JSON's "hurtbox" component field still take precedence.
+struct AnimSheetHurtboxes
+{
+    std::unordered_map<std::string, std::vector<HurtShape>> by_sheet;
 };

@@ -8,6 +8,7 @@ add_library(game-systems STATIC
     src/systems/CombatSystem.cpp
     src/systems/DamageSystem.cpp
     src/systems/DeathSystem.cpp
+    src/systems/HitboxResolverSystem.cpp
     src/systems/ProjectileSystem.cpp
     src/systems/LevelingSystem.cpp
     src/systems/PickupSystem.cpp
@@ -42,6 +43,7 @@ add_library(game-systems STATIC
     src/WorldInit.cpp
     src/renderers/AIDebugOverlay.cpp
     src/renderers/AIRecorder.cpp
+    src/renderers/CombatDebugOverlay.cpp
     src/renderers/DebugOverlay.cpp
     src/screens/MainMenuScreen.cpp
     src/screens/CharCreateScreen.cpp

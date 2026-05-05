@@ -92,6 +92,49 @@ static void loadCollider(EntityManager& em, entt::entity entity, const json& j)
     em.registry().emplace<Collider>(entity, c);
 }
 
+// Parse a single shape from JSON. Shape kind is determined by the "shape" field
+// ("aabb", "circle", "capsule"). Missing shape field defaults to aabb.
+static CollisionShape parseCollisionShape(const json& j)
+{
+    CollisionShape s;
+    const std::string kind = j.value("shape", std::string{"aabb"});
+    if (kind == "circle")
+        s.kind = ShapeKind::Circle;
+    else if (kind == "capsule")
+        s.kind = ShapeKind::Capsule;
+    else
+        s.kind = ShapeKind::AABB;
+
+    s.x = j.value("x", 0.0f);
+    s.y = j.value("y", 0.0f);
+    s.w = j.value("w", 0.0f);
+    s.h = j.value("h", 0.0f);
+    s.r = j.value("r", 0.0f);
+    s.x2 = j.value("x2", 0.0f);
+    s.y2 = j.value("y2", 0.0f);
+    return s;
+}
+
+// Hurtbox config is a JSON array of shapes. Each shape may carry an optional
+// "label" and "dmg_mult" (default 1.0). If no "hurtboxes" field exists on an
+// entity, the post-load hook auto-generates a single AABB matching the Collider.
+static void loadHurtbox(EntityManager& em, entt::entity entity, const json& j)
+{
+    Hurtbox hb;
+    if (j.is_array())
+    {
+        for (const auto& sj : j)
+        {
+            HurtShape hs;
+            hs.shape = parseCollisionShape(sj);
+            hs.label = sj.value("label", std::string{});
+            hs.dmg_mult = sj.value("dmg_mult", 1.0f);
+            hb.shapes.push_back(hs);
+        }
+    }
+    em.registry().emplace<Hurtbox>(entity, std::move(hb));
+}
+
 static void loadStats(EntityManager& em, entt::entity entity, const json& j)
 {
     Stats s;
@@ -224,6 +267,67 @@ static void populateAnimRowIndex(EntityManager& em, const json& sheetData)
         entry.frames = val.value("frames", 1);
         entry.duration = val.value("duration", 0.0f);
         rowIndex.rows[key] = entry;
+    }
+}
+
+// Parse the top-level "hurtbox" array from an animation sheet into the
+// AnimSheetHurtboxes singleton keyed by sheet path. Any entity whose
+// appearance uses this sheet inherits these shapes when its hurtbox is
+// auto-generated (unless the entity JSON explicitly declares a hurtbox
+// component, which takes precedence).
+static void populateSheetHurtbox(EntityManager& em, const std::string& sheetPath,
+                                 const json& sheetData)
+{
+    if (!sheetData.contains("hurtbox") || !sheetData["hurtbox"].is_array())
+        return;
+
+    auto* existing = em.registry().ctx().find<AnimSheetHurtboxes>();
+    if (existing == nullptr)
+        existing = &em.registry().ctx().emplace<AnimSheetHurtboxes>();
+
+    std::vector<HurtShape> shapes;
+    for (const auto& sj : sheetData["hurtbox"])
+    {
+        HurtShape hs;
+        hs.shape = parseCollisionShape(sj);
+        hs.label = sj.value("label", std::string{});
+        hs.dmg_mult = sj.value("dmg_mult", 1.0f);
+        shapes.push_back(hs);
+    }
+    existing->by_sheet[sheetPath] = std::move(shapes);
+}
+
+// Parse per-attack-row hitbox keyframes from the animation sheet. Stored in
+// a context singleton keyed by attack_anim name so HitboxResolverSystem can
+// look up timing + placement by the wielder's current attack animation.
+static void populateAttackHitboxes(EntityManager& em, const json& sheetData)
+{
+    if (!sheetData.contains("states"))
+        return;
+    static constexpr float DEG2RAD = 3.14159265f / 180.0f;
+
+    auto* existing = em.registry().ctx().find<AttackAnimHitboxData>();
+    if (existing == nullptr)
+        existing = &em.registry().ctx().emplace<AttackAnimHitboxData>();
+    auto& data = *existing;
+
+    for (const auto& [key, val] : sheetData["states"].items())
+    {
+        if (!val.contains("hitbox_keyframes"))
+            continue;
+
+        AttackAnimHitbox entry;
+        entry.hit_interval = val.value("hit_interval", -1.0f);
+        for (const auto& kf : val["hitbox_keyframes"])
+        {
+            HitboxKeyframe k;
+            k.frame = kf.value("frame", 0);
+            k.x = kf.value("x", 0.0f);
+            k.y = kf.value("y", 0.0f);
+            k.rotation = kf.value("rot", 0.0f) * DEG2RAD;
+            entry.keyframes.push_back(k);
+        }
+        data.attacks[key] = std::move(entry);
     }
 }
 
@@ -375,6 +479,8 @@ static bool emplaceAnimationFromSheet(EntityManager& em, entt::entity entity,
 
     populateAnimRowIndex(em, sheetData);
     populateHandAnchors(em, sheetData);
+    populateAttackHitboxes(em, sheetData);
+    populateSheetHurtbox(em, sheetPath, sheetData);
 
     // Set initial playback from Idle row so the first frame renders correctly
     // even before AnimStateSystem runs.
@@ -585,6 +691,7 @@ static const std::unordered_map<std::string, LoaderFn> kComponentLoaders = {
     {"health",           loadHealth},
     {"sprite",           loadSprite},
     {"collider",         loadCollider},
+    {"hurtbox",          loadHurtbox},
     {"stats",            loadStats},
     {"experience",       loadExperience},
     {"weapon",           loadWeapon},
@@ -635,6 +742,46 @@ entt::entity ConfigLoader::loadEntity(EntityManager& em, const std::string& file
         else
             std::cerr << "[ConfigLoader] Unknown component key: \"" << key << "\" in " << filePath
                       << "\n";
+    }
+
+    // Auto-generate a default Hurtbox if one wasn't explicitly configured.
+    // Prefer the shared sheet hurtbox (e.g. humanoid head/torso/legs) when the
+    // entity's appearance references an animation sheet that declared one.
+    // Fall back to a single AABB matching the Collider for entities without
+    // a shared hurtbox definition.
+    auto& reg = em.registry();
+    if (!reg.all_of<Hurtbox>(entity))
+    {
+        bool emplaced = false;
+        if (reg.all_of<AppearanceDef>(entity))
+        {
+            const auto& appearance = reg.get<AppearanceDef>(entity);
+            const auto* sheetHurtboxes = reg.ctx().find<AnimSheetHurtboxes>();
+            if (sheetHurtboxes != nullptr && !appearance.sheet_path.empty())
+            {
+                const auto it = sheetHurtboxes->by_sheet.find(appearance.sheet_path);
+                if (it != sheetHurtboxes->by_sheet.end() && !it->second.empty())
+                {
+                    Hurtbox hb;
+                    hb.shapes = it->second;
+                    reg.emplace<Hurtbox>(entity, std::move(hb));
+                    emplaced = true;
+                }
+            }
+        }
+        if (!emplaced && reg.all_of<Collider>(entity))
+        {
+            const auto& col = reg.get<Collider>(entity);
+            Hurtbox hb;
+            HurtShape hs;
+            hs.shape.kind = ShapeKind::AABB;
+            hs.shape.w = col.width;
+            hs.shape.h = col.height;
+            hs.label = "default";
+            hs.dmg_mult = 1.0f;
+            hb.shapes.push_back(hs);
+            reg.emplace<Hurtbox>(entity, std::move(hb));
+        }
     }
 
     return entity;
@@ -1211,6 +1358,21 @@ bool ConfigLoader::loadItemDefs(EntityManager& em, const std::string& dirPath)
         {
             for (const auto& fr : j["shoot_frames"])
                 def.shoot_frames.push_back(fr.get<int>());
+        }
+
+        // Parse weapon hitbox shapes. Each entry is a shape object plus
+        // optional label / dmg_mult / priority fields.
+        if (j.contains("hitboxes") && j["hitboxes"].is_array())
+        {
+            for (const auto& hbj : j["hitboxes"])
+            {
+                WeaponHitboxShape hs;
+                hs.shape = parseCollisionShape(hbj);
+                hs.label = hbj.value("label", std::string{});
+                hs.dmg_mult = hbj.value("dmg_mult", 1.0f);
+                hs.priority = hbj.value("priority", 0);
+                def.hitboxes.push_back(hs);
+            }
         }
 
         def.armor_slot = parseArmorSlot(j.value("armor_slot", std::string{"chest"}));

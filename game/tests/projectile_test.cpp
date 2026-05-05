@@ -26,7 +26,26 @@ static entt::entity spawnProjectile(EntityManager& em, float x, float y, float d
     const auto e = em.create();
     reg.emplace<Transform>(e, Transform{x, y, 0.0f, 1.0f});
     reg.emplace<Hitbox>(e, Hitbox{10.0f, entt::null});
-    reg.emplace<Projectile>(e, Projectile{entt::null, maxRange, x, y, pierce, dirX, dirY, speed});
+    Projectile p{entt::null, maxRange, x, y, pierce, dirX, dirY, speed};
+    p.radius = 1.0f;
+    reg.emplace<Projectile>(e, p);
+    return e;
+}
+
+// Spawn an enemy with Health and a Hurtbox the projectile can hit.
+static entt::entity spawnEnemy(EntityManager& em, float x, float y, float radius = 12.0f)
+{
+    auto& reg = em.registry();
+    const auto e = em.create();
+    reg.emplace<Transform>(e, Transform{x, y, 0.0f, 1.0f});
+    reg.emplace<Health>(e, Health{100, 100});
+    Hurtbox hb;
+    HurtShape hs;
+    hs.shape.kind = ShapeKind::Circle;
+    hs.shape.r = radius;
+    hs.label = "torso";
+    hb.shapes.push_back(hs);
+    reg.emplace<Hurtbox>(e, std::move(hb));
     return e;
 }
 
@@ -55,6 +74,8 @@ TEST_CASE("Projectile destroyed when beyond max range", "[projectile]")
     auto& t = em.registry().get<Transform>(e);
     t.x = 60.0f; // beyond max_range of 50
 
+    // Tick 1: marks PendingDestroy. Tick 2: destruction.
+    ProjectileSystem::update(em, TEST_DT);
     ProjectileSystem::update(em, TEST_DT);
     REQUIRE_FALSE(em.registry().valid(e));
 }
@@ -79,9 +100,12 @@ TEST_CASE("Projectile destroyed on hit with pierce=0", "[projectile]")
     EntityManager em;
     emplaceGameConfigs(em);
 
-    const auto e = spawnProjectile(em, 0.0f, 0.0f, 1.0f, 0.0f, 100.0f, 500.0f);
-    em.registry().get<Hitbox>(e).hit_something = true;
+    // Enemy directly in the projectile's path.
+    spawnEnemy(em, 5.0f, 0.0f);
+    const auto e = spawnProjectile(em, 0.0f, 0.0f, 1.0f, 0.0f, 1000.0f, 500.0f);
 
+    // Tick 1: hit registers + PendingDestroy marked. Tick 2: destroyed.
+    ProjectileSystem::update(em, TEST_DT);
     ProjectileSystem::update(em, TEST_DT);
     REQUIRE_FALSE(em.registry().valid(e));
 }
@@ -95,23 +119,29 @@ TEST_CASE("Projectile with pierce=2 survives 2 hits, dies on 3rd", "[projectile]
     EntityManager em;
     emplaceGameConfigs(em);
 
-    const auto e = spawnProjectile(em, 0.0f, 0.0f, 1.0f, 0.0f, 100.0f, 500.0f, 2);
+    // Three enemies along the projectile's path, spaced so each tick sweep
+    // intersects exactly one enemy.
+    spawnEnemy(em, 5.0f, 0.0f);
+    spawnEnemy(em, 25.0f, 0.0f);
+    spawnEnemy(em, 45.0f, 0.0f);
+
+    // Projectile slow enough to cross only ~17 px/frame at 60fps so each tick
+    // sweeps through one enemy. speed = 1000 px/s -> ~16.7 px/frame.
+    const auto e = spawnProjectile(em, 0.0f, 0.0f, 1.0f, 0.0f, 1000.0f, 500.0f, 2);
 
     // First hit: survives, pierce decremented to 1.
-    em.registry().get<Hitbox>(e).hit_something = true;
     ProjectileSystem::update(em, TEST_DT);
     REQUIRE(em.registry().valid(e));
     REQUIRE(em.registry().get<Projectile>(e).pierce_remaining == 1);
-    REQUIRE_FALSE(em.registry().get<Hitbox>(e).hit_something);
 
     // Second hit: survives, pierce decremented to 0.
-    em.registry().get<Hitbox>(e).hit_something = true;
     ProjectileSystem::update(em, TEST_DT);
     REQUIRE(em.registry().valid(e));
     REQUIRE(em.registry().get<Projectile>(e).pierce_remaining == 0);
 
-    // Third hit: destroyed (pierce exhausted).
-    em.registry().get<Hitbox>(e).hit_something = true;
+    // Third hit: pierce exhausted -> PendingDestroy marked. Next tick destroys.
+    ProjectileSystem::update(em, TEST_DT);
+    REQUIRE(em.registry().valid(e));
     ProjectileSystem::update(em, TEST_DT);
     REQUIRE_FALSE(em.registry().valid(e));
 }
@@ -131,6 +161,41 @@ TEST_CASE("ProjectileSystem moves projectile by dir * speed * dt", "[projectile]
     const auto& t = em.registry().get<Transform>(e);
     REQUIRE(t.x == Catch::Approx(160.0f));
     REQUIRE(t.y == Catch::Approx(200.0f));
+}
+
+// ---------------------------------------------------------------------------
+// Swept collision: fast projectile must hit small targets even if their
+// discrete positions would have missed (classic tunneling scenario).
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Fast projectile hits small target without tunneling", "[projectile][swept]")
+{
+    EntityManager em;
+    emplaceGameConfigs(em);
+
+    // AK-47 scenario: 3200 px/s projectile (~53 px/frame at 60fps), 14 px
+    // hurtbox. Discrete overlap at start (0,0) and end (~53,0) both miss; swept
+    // must catch the intersection between.
+    spawnEnemy(em, 25.0f, 0.0f, /*radius=*/7.0f);
+    const auto e = spawnProjectile(em, 0.0f, 0.0f, 1.0f, 0.0f, 3200.0f, 500.0f);
+
+    // Tick 1: hit registers, event emitted, PendingDestroy marked.
+    ProjectileSystem::update(em, TEST_DT);
+
+    // collision_events should carry the hit so DamageSystem picks it up --
+    // crucially, the entity is still valid at this point.
+    REQUIRE(em.registry().valid(e));
+    bool foundEvent = false;
+    for (const auto& ev : em.collision_events)
+    {
+        if (ev.a == e || ev.b == e)
+            foundEvent = true;
+    }
+    REQUIRE(foundEvent);
+
+    // Tick 2: deferred destruction.
+    ProjectileSystem::update(em, TEST_DT);
+    REQUIRE_FALSE(em.registry().valid(e));
 }
 
 // ---------------------------------------------------------------------------

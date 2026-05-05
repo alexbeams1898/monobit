@@ -184,4 +184,55 @@ struct TileMap
             }
         }
     }
+
+    // Like hasLineOfSight but returns the parameter t in [0, 1] where the
+    // segment first enters a non-walkable tile, or 1.0 if it never does.
+    // Used by swept projectile collision to order enemy hits vs wall hits along
+    // the same segment.
+    float firstWallHitT(float x1, float y1, float x2, float y2) const
+    {
+        const float dx = x2 - x1;
+        const float dy = y2 - y1;
+        if (dx == 0.0f && dy == 0.0f)
+            return 1.0f;
+
+        int col = static_cast<int>(std::floor(x1 / TILE_SIZE));
+        int row = static_cast<int>(std::floor(y1 / TILE_SIZE));
+        const int endCol = static_cast<int>(std::floor(x2 / TILE_SIZE));
+        const int endRow = static_cast<int>(std::floor(y2 / TILE_SIZE));
+
+        const int stepCol = (dx >= 0.0f) ? 1 : -1;
+        const int stepRow = (dy >= 0.0f) ? 1 : -1;
+
+        const float tDeltaCol = (dx != 0.0f) ? std::abs(static_cast<float>(TILE_SIZE) / dx) : 1e30f;
+        const float tDeltaRow = (dy != 0.0f) ? std::abs(static_cast<float>(TILE_SIZE) / dy) : 1e30f;
+
+        const float colBoundary = static_cast<float>((dx >= 0.0f ? col + 1 : col) * TILE_SIZE);
+        const float rowBoundary = static_cast<float>((dy >= 0.0f ? row + 1 : row) * TILE_SIZE);
+
+        float tMaxCol = (dx != 0.0f) ? std::abs((colBoundary - x1) / dx) : 1e30f;
+        float tMaxRow = (dy != 0.0f) ? std::abs((rowBoundary - y1) / dy) : 1e30f;
+
+        float lastT = 0.0f;
+        while (true)
+        {
+            if (!in_bounds(col, row) || !at(col, row).walkable)
+                return lastT;
+            if (col == endCol && row == endRow)
+                return 1.0f;
+
+            if (tMaxCol < tMaxRow)
+            {
+                lastT = tMaxCol;
+                col += stepCol;
+                tMaxCol += tDeltaCol;
+            }
+            else
+            {
+                lastT = tMaxRow;
+                row += stepRow;
+                tMaxRow += tDeltaRow;
+            }
+        }
+    }
 };

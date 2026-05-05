@@ -11,9 +11,10 @@ bool canCraft(const Inventory& inv, const RecipeDef& recipe, const ItemRegistry&
 
 // Consume ingredients and add the output item. Returns false if canCraft fails
 // or inventory is full for the output. If free_materials is true, ingredients
-// are not consumed (god mode).
-bool craft(Inventory& inv, const RecipeDef& recipe, const ItemRegistry& registry,
-           bool free_materials = false);
+// are not consumed (god mode). Equipment is passed so slot indices can be
+// adjusted when inventory entries are removed.
+bool craft(Inventory& inv, Equipment& equip, const RecipeDef& recipe,
+           const ItemRegistry& registry, bool free_materials = false);
 
 // Return a pointer to the first craftable recipe, or nullptr.
 const RecipeDef* findCraftable(const Inventory& inv, const RecipeRegistry& recipes,

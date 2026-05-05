@@ -1,5 +1,7 @@
 #pragma once
 
+#include "geom/Shapes.h"
+
 #include <entt/entt.hpp>
 #include <string>
 #include <unordered_map>
@@ -92,12 +94,16 @@ struct PlayerActions
 // ---------------------------------------------------------------------------
 
 // Hitbox -- a one-frame entity spawned by CombatSystem on each attack swing.
+// hit_shape_index tracks which shape of the target's Hurtbox was struck (set
+// by ProjectileSystem after swept collision). -1 means "no specific shape" and
+// callers should default dmg_mult to 1.0.
 struct Hitbox
 {
     float damage = 0.0f;
     entt::entity owner = entt::null;
     bool hit_something = false;
     bool left_hand = false;
+    int hit_shape_index = -1;
 };
 
 // Dodging -- active while the player is in a dodge roll. Grants i-frames.
@@ -107,10 +113,13 @@ struct Dodging
 };
 
 // AttackLocked -- animation commitment window after a swing.
+// attack_id is a unique monotonic counter assigned when the swing starts;
+// used by HitboxResolverSystem to dedup hits on the same target across frames.
 struct AttackLocked
 {
     float remaining = 0.0f;
     bool left_hand = false;
+    uint64_t attack_id = 0;
 };
 
 // Staggered -- guard-break or parry result; entity cannot act until expired.
@@ -205,6 +214,24 @@ struct Experience
     int stat_points = 0;
 };
 
+// WeaponHitboxShape -- one hit-producing shape in a weapon's local space.
+// A weapon can have multiple shapes: e.g. a longsword might have a "tip"
+// capsule (low priority, reduced damage) and a "body" capsule (high priority,
+// full damage). When a hurtbox overlaps multiple shapes simultaneously,
+// highest priority wins -- models "clipped with tip vs hit head-on" damage
+// variance.
+//
+// Shape coordinates are in weapon-icon-local space (pixels). At runtime,
+// HitboxResolverSystem transforms each shape by:
+//   attacker position + facing rotation + per-animation-frame keyframe offset
+struct WeaponHitboxShape
+{
+    CollisionShape shape;
+    std::string label;
+    float dmg_mult = 1.0f;
+    int priority = 0;
+};
+
 // Weapon -- equipped weapon state and runtime cooldown timers.
 struct Weapon
 {
@@ -252,6 +279,7 @@ struct Weapon
     float base_rotation = 0.0f; // resting angle in radians (converted from degrees at load)
     std::string attack_anim;    // animation row name ("slash", "thrust", "shoot"); empty = "slash"
     std::vector<int> shoot_frames; // per-frame column remap for the attack row; empty = play 0..N-1
+    std::vector<WeaponHitboxShape> hitboxes; // melee hitbox shapes in weapon-local space
     entt::entity weapon_entity =
         entt::null; // spawned weapon sprite entity (managed by WeaponSpriteSystem)
 
@@ -410,6 +438,22 @@ struct AIController
     bool sprint = false;
     float token_cooldown = 0.0f; // time until entity can claim an attack token
     int stuck_ticks = 0;         // consecutive ticks with near-zero velocity (debug)
+};
+
+// Monotonically increasing counter for unique attack IDs. Stored in
+// entt::registry::ctx(). Incremented each time a swing starts.
+struct AttackIdCounter
+{
+    uint64_t next = 1;
+};
+
+// Brief global game-logic pause triggered on successful damage. Gives hits a
+// tactile "thunk" feel -- the standard hitstop technique from fighting games
+// and soulslikes. DamageSystem sets `remaining` when a hit lands; GameLoop
+// skips the fixed-step tick while `remaining > 0` and decrements it.
+struct Hitstop
+{
+    float remaining = 0.0f;
 };
 
 // Limits concurrent enemy attackers. Stored in entt::registry::ctx().
@@ -626,6 +670,13 @@ struct AggroSound
     int voice = -1; // tracked voice index for stopping on hit
 };
 
+// PendingDestroy -- tag placed on a projectile that should be destroyed on the
+// next ProjectileSystem tick. Used to defer destruction by one frame so the
+// collision event emitted this tick remains valid for DamageSystem.
+struct PendingDestroy
+{
+};
+
 // Projectile -- a moving damage entity (bullet, arrow) spawned by CombatSystem.
 // ProjectileSystem manages lifetime, wall destruction, and pierce logic.
 struct Projectile
@@ -638,6 +689,7 @@ struct Projectile
     float dir_x = 0.0f;
     float dir_y = 0.0f;
     float speed = 0.0f;
+    float radius = 1.0f; // half-size of the swept circle for collision
     bool left_hand = false;
 };
 
