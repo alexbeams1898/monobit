@@ -24,4 +24,4 @@ jobs:
 
       - name: Validate
         run: |
-          python3 game/scripts/changelog.py validate-pr-body /tmp/pr_body.md
+          python3 games/prison-escape-game/scripts/changelog.py validate-pr-body /tmp/pr_body.md

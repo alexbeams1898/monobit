@@ -23,7 +23,11 @@ jobs:
 
       - name: Check formatting
         run: |
-          find engine game -name '*.cpp' -o -name '*.h' | \
+          # Skip archived subtrees -- they're imported from mono and held to that
+          # repo's formatting rules. Treat as read-only reference; not extended.
+          find engines games \
+              \( -path engines/arduboy-legacy -o -path games/rpg-arduboy \) -prune \
+            -o \( -name '*.cpp' -o -name '*.h' \) -print | \
           xargs clang-format --dry-run --Werror
 
   # -----------------------------------------------------------------------
@@ -54,7 +58,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build
-          key: ${{ runner.os }}-build-${{ hashFiles('cmake/**', 'CMakeLists.txt', 'engine/**', 'game/**', 'tests/**') }}
+          key: ${{ runner.os }}-build-${{ hashFiles('cmake/**', 'CMakeLists.txt', 'engines/**', 'games/**', 'tests/**') }}
           restore-keys: |
             ${{ runner.os }}-build-
 
@@ -72,8 +76,13 @@ jobs:
         id: lint-files
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # Diff against base, excluding archived subtrees (kept as read-only
+            # reference; mono's formatting rules differ from monobit's).
             CHANGED=$(git diff --name-only --diff-filter=d \
-              origin/${{ github.base_ref }}...HEAD -- 'engine/' 'game/')
+              origin/${{ github.base_ref }}...HEAD -- \
+              'engines/' 'games/' \
+              ':(exclude)engines/arduboy-legacy/**' \
+              ':(exclude)games/rpg-arduboy/**')
 
             # Directly changed .cpp files
             CHANGED_CPPS=$(echo "$CHANGED" | grep -E '\.cpp$' || true)
@@ -113,8 +122,10 @@ jobs:
             FILES=$(printf "%s\n%s" "$CHANGED_CPPS" "$HEADER_AFFECTED" | \
               grep -E '\.cpp$' | sort -u)
           else
-            # Push to master: lint everything.
-            FILES=$(find engine game -name '*.cpp')
+            # Push to master: lint everything except archived subtrees.
+            FILES=$(find engines games \
+                \( -path engines/arduboy-legacy -o -path games/rpg-arduboy \) -prune \
+              -o -name '*.cpp' -print)
           fi
           if [ -z "$FILES" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
@@ -132,7 +143,7 @@ jobs:
         run: |
           xargs -P $(nproc) \
             clang-tidy -p build \
-              --header-filter='(engine|game)/.*\.(h|hpp)$' \
+              --header-filter='(engines/engine|games/[^/]+)/.*\.(h|hpp)$' \
               --warnings-as-errors='*' \
             < /tmp/lint-files.txt
 

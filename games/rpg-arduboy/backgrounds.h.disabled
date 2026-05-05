@@ -1,0 +1,32 @@
+// Per-circle playfield backgrounds. Nine tiles, 128x64 each, stored
+// compressed in flash (atkinson dither -> 2x2 checker mask -> nibble
+// pack -> zero/literal RLE). Compressed total ~4.2 KB vs 9 KB raw.
+//
+// Runtime: zero-cache streaming decoder. render() reads the RLE stream
+// straight out of PROGMEM, decodes and bit-spreads each nibble, and
+// writes directly into the caller's 1024-byte framebuffer — no
+// persistent RAM cache between frames. CPU cost is ~4 KB of reads per
+// frame, still well under the 60 Hz budget.
+//
+// Source atlas: art/circlebackgroundsinorder.png (3x3 grid, row-major).
+// Regenerate via:
+//   python scripts/convert_circle_backgrounds.py \
+//     --in art/circlebackgroundsinorder.png --out games/rpg/backgrounds.cpp
+
+#pragma once
+
+#include "types.h"
+
+namespace backgrounds {
+
+// Three card images mapped onto the 9 game circles via the
+// CIRCLE_TO_CARD[] table in game.cpp. Mirrors Dante's upper / middle /
+// lower Hell tripartite division.
+constexpr u8 CARD_COUNT = 3;
+
+// Render `card` (0..CARD_COUNT-1) into `out` (>= 1024 bytes, page-major
+// framebuffer layout). Caller maps from circle to card; this is called
+// only from the CIRCLE_CARD transition state, not per gameplay frame.
+void render(u8 card, u8* out);
+
+}  // namespace backgrounds

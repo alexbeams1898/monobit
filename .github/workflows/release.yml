@@ -1,21 +1,28 @@
 name: release
 
 # Triggered by every push to master. For each merged PR:
-#   1. Pull the PR body, prepend its `## Changelog` bullets to CHANGELOG.md
-#      under [Unreleased].
-#   2. If the branch prefix is patch/minor/major, bump the version in
-#      CMakeLists.txt, promote [Unreleased] to [X.Y.Z] - DATE, commit + tag,
-#      then build the game and publish releases to both repos using the
-#      [X.Y.Z] section as the release notes.
-#   3. If the branch prefix is chore/docs, only the changelog prepend commit
-#      is made -- no version bump, no build, no release.
+#   1. Pull the PR body, prepend its `## Changelog` bullets to the appropriate
+#      game's CHANGELOG.md under [Unreleased].
+#   2. If the branch prefix is <patch|minor|major>/<scope>/<issue>-<desc>,
+#      bump that scope's version in its CMakeLists.txt, promote [Unreleased]
+#      to [X.Y.Z] - DATE in its CHANGELOG.md, commit + tag, then build the
+#      relevant game and publish releases (game scopes only -- engine bumps
+#      don't ship a release artifact).
+#   3. If the branch prefix is chore/<scope> or docs/<scope>, only the
+#      changelog prepend commit is made -- no version bump, no build, no
+#      release.
+#
+# Branch prefix shape: <bump>/<scope>/<issue>-<desc>
+#   <bump>:  patch | minor | major | chore | docs
+#   <scope>: prison-escape | selva-oscura | engine
+#
+# Per-game release config: games/<scope>/.release-config.yml -- declares
+# the cmake target to package, the artifact name prefix, and the public-repo
+# mirror destination (empty = skip mirror).
 
 on:
   push:
     branches: [master]
-    paths-ignore:
-      - 'CMakeLists.txt'  # bot's own version bump commit -- don't self-retrigger
-      - 'CHANGELOG.md'    # bot's own changelog commit -- don't self-retrigger
   workflow_dispatch:
 
 permissions:
@@ -24,26 +31,41 @@ permissions:
 
 jobs:
   # -----------------------------------------------------------------------
-  # 1. PREPEND CHANGELOG + (CONDITIONALLY) BUMP VERSION
-  #    Reads the merged PR's body, prepends its Changelog bullets to
-  #    CHANGELOG.md [Unreleased]. If the branch prefix triggers a release,
-  #    also bumps CMakeLists.txt and promotes [Unreleased] to [X.Y.Z]. All
-  #    edits are committed in a single bot commit and tagged.
+  # 1. PARSE BRANCH + PREPEND CHANGELOG + (CONDITIONALLY) BUMP VERSION
   # -----------------------------------------------------------------------
   bump:
     name: Changelog + version bump
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.bump.outputs.version }}
-      should_release: ${{ steps.bump.outputs.should_release }}
+      version: ${{ steps.parse.outputs.version }}
+      should_release: ${{ steps.parse.outputs.should_release }}
+      scope: ${{ steps.parse.outputs.scope }}
+      scope_dir: ${{ steps.parse.outputs.scope_dir }}
+      cmake_target: ${{ steps.parse.outputs.cmake_target }}
+      artifact_prefix: ${{ steps.parse.outputs.artifact_prefix }}
+      public_repo: ${{ steps.parse.outputs.public_repo }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Determine bump from merged PR branch prefix
-        id: bump
+      - name: Skip if commit is the bot's own bump
+        id: skip_check
+        run: |
+          set -e
+          msg=$(git log -1 --pretty=%s)
+          # Bot commits look like "Release v0.4.1" or "Update CHANGELOG.md".
+          if [[ "$msg" =~ ^Release\ v[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ "$msg" == "Update CHANGELOG.md" ]]; then
+            echo "Bot's own commit ($msg) -- skipping to avoid loop."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Parse branch prefix and resolve scope config
+        id: parse
+        if: steps.skip_check.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -57,25 +79,57 @@ jobs:
             exit 0
           fi
           echo "pr_num=$pr_num" >> "$GITHUB_OUTPUT"
+
           branch=$(gh pr view "$pr_num" --json headRefName -q .headRefName)
-          prefix="${branch%%/*}"
-          case "$prefix" in
-            patch) bump=patch ;;
-            minor) bump=minor ;;
-            major) bump=major ;;
+          # Expect <bump>/<scope>/<issue>-<desc>. Three segments minimum.
+          IFS='/' read -r bump scope rest <<< "$branch"
+          if [ -z "$bump" ] || [ -z "$scope" ] || [ -z "$rest" ]; then
+            echo "::error::Branch '$branch' must be <bump>/<scope>/<issue>-<desc>. Got: bump='$bump' scope='$scope' rest='$rest'"
+            exit 1
+          fi
+          echo "scope=$scope" >> "$GITHUB_OUTPUT"
+
+          # Validate bump prefix.
+          case "$bump" in
+            patch|minor|major) ;;
             chore|docs)
-              echo "Prefix '$prefix' -- changelog only, no version bump."
+              echo "Prefix '$bump' -- changelog only, no version bump."
               echo "should_release=false" >> "$GITHUB_OUTPUT"
+              # Resolve scope_dir for the changelog prepend below.
+              if [ "$scope" = "engine" ]; then
+                scope_dir="engines/engine"
+              else
+                scope_dir="games/$scope"
+              fi
+              if [ ! -d "$scope_dir" ]; then
+                echo "::error::Scope '$scope' has no directory at '$scope_dir'."
+                exit 1
+              fi
+              echo "scope_dir=$scope_dir" >> "$GITHUB_OUTPUT"
               exit 0
               ;;
             *)
-              echo "::error::Branch '$branch' has unrecognized prefix '$prefix'. Expected patch/, minor/, major/, chore/, or docs/."
+              echo "::error::Branch '$branch' has unrecognized bump prefix '$bump'. Expected patch/minor/major/chore/docs."
               exit 1
               ;;
           esac
-          cur=$(grep -oP 'project\([^)]*VERSION\s+\K[0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt)
+
+          # Resolve scope_dir (where the bumpable CMakeLists / CHANGELOG live).
+          if [ "$scope" = "engine" ]; then
+            scope_dir="engines/engine"
+          else
+            scope_dir="games/$scope"
+          fi
+          if [ ! -d "$scope_dir" ]; then
+            echo "::error::Scope '$scope' has no directory at '$scope_dir'."
+            exit 1
+          fi
+          echo "scope_dir=$scope_dir" >> "$GITHUB_OUTPUT"
+
+          # Read current version from the scope's CMakeLists.txt.
+          cur=$(grep -oP 'project\([^)]*VERSION\s+\K[0-9]+\.[0-9]+\.[0-9]+' "$scope_dir/CMakeLists.txt" || echo "")
           if [ -z "$cur" ]; then
-            echo "::error::Could not extract version from CMakeLists.txt"
+            echo "::error::Could not extract version from $scope_dir/CMakeLists.txt"
             exit 1
           fi
           IFS='.' read -r maj min pat <<< "$cur"
@@ -85,71 +139,111 @@ jobs:
             major) maj=$((maj+1)); min=0; pat=0 ;;
           esac
           new="$maj.$min.$pat"
-          echo "Bumping $cur -> $new ($bump)"
-          sed -i "s/VERSION $cur /VERSION $new /" CMakeLists.txt
-          if ! grep -q "VERSION $new " CMakeLists.txt; then
-            echo "::error::sed failed to update CMakeLists.txt from $cur to $new"
+          echo "Bumping $scope: $cur -> $new ($bump)"
+          sed -i "s/VERSION $cur /VERSION $new /" "$scope_dir/CMakeLists.txt"
+          if ! grep -q "VERSION $new " "$scope_dir/CMakeLists.txt"; then
+            echo "::error::sed failed to update $scope_dir/CMakeLists.txt from $cur to $new"
             exit 1
           fi
           echo "version=$new" >> "$GITHUB_OUTPUT"
-          echo "should_release=true" >> "$GITHUB_OUTPUT"
+
+          # Engine bumps version but does not ship a release artifact.
+          # Game scopes do.
+          if [ "$scope" = "engine" ]; then
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            # Read release config (yaml -- pure grep parsing, no yq dep).
+            cfg="$scope_dir/.release-config.yml"
+            if [ ! -f "$cfg" ]; then
+              echo "::error::Game scope '$scope' is missing $cfg"
+              exit 1
+            fi
+            cmake_target=$(grep -E '^cmake_target:' "$cfg" | sed 's/^cmake_target:[[:space:]]*//' | tr -d '"')
+            artifact_prefix=$(grep -E '^artifact_prefix:' "$cfg" | sed 's/^artifact_prefix:[[:space:]]*//' | tr -d '"')
+            public_repo=$(grep -E '^public_repo:' "$cfg" | sed 's/^public_repo:[[:space:]]*//' | tr -d '"')
+            echo "cmake_target=$cmake_target" >> "$GITHUB_OUTPUT"
+            echo "artifact_prefix=$artifact_prefix" >> "$GITHUB_OUTPUT"
+            echo "public_repo=$public_repo" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Prepend PR changelog into [Unreleased]
-        if: steps.bump.outputs.pr_num != ''
+        if: steps.skip_check.outputs.skip != 'true' && steps.parse.outputs.pr_num != '' && steps.parse.outputs.scope_dir != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUM: ${{ steps.bump.outputs.pr_num }}
+          PR_NUM: ${{ steps.parse.outputs.pr_num }}
+          SCOPE_DIR: ${{ steps.parse.outputs.scope_dir }}
+          SCOPE: ${{ steps.parse.outputs.scope }}
         run: |
           set -e
           gh pr view "$PR_NUM" --json body -q .body > /tmp/pr_body.md
-          python3 game/scripts/changelog.py prepend /tmp/pr_body.md
+          # Engine scope has no CHANGELOG (no shipped artifact); skip the
+          # prepend rather than fail. Games run through changelog.py against
+          # their own CHANGELOG.md.
+          if [ "$SCOPE" = "engine" ]; then
+            echo "Engine scope -- no CHANGELOG to update. Skipping prepend."
+          else
+            python3 "$SCOPE_DIR/scripts/changelog.py" prepend /tmp/pr_body.md
+          fi
 
       - name: Promote [Unreleased] to released version
-        if: steps.bump.outputs.should_release == 'true'
+        if: steps.parse.outputs.should_release == 'true'
         env:
-          VERSION: ${{ steps.bump.outputs.version }}
+          VERSION: ${{ steps.parse.outputs.version }}
+          SCOPE_DIR: ${{ steps.parse.outputs.scope_dir }}
         run: |
           set -e
-          python3 game/scripts/changelog.py release "$VERSION"
+          python3 "$SCOPE_DIR/scripts/changelog.py" release "$VERSION"
 
       - name: Commit, tag, push
-        if: steps.bump.outputs.pr_num != ''
+        if: steps.skip_check.outputs.skip != 'true' && steps.parse.outputs.pr_num != ''
         env:
-          SHOULD_RELEASE: ${{ steps.bump.outputs.should_release }}
-          VERSION: ${{ steps.bump.outputs.version }}
+          SHOULD_RELEASE: ${{ steps.parse.outputs.should_release }}
+          VERSION: ${{ steps.parse.outputs.version }}
+          SCOPE: ${{ steps.parse.outputs.scope }}
+          SCOPE_DIR: ${{ steps.parse.outputs.scope_dir }}
         run: |
           set -e
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # Stage whatever changed (CHANGELOG.md always, CMakeLists.txt only on release).
-          git add CHANGELOG.md
-          if [ "$SHOULD_RELEASE" = "true" ]; then
-            git add CMakeLists.txt
+          # Stage whatever changed for this scope.
+          if [ "$SCOPE" != "engine" ] && [ -f "$SCOPE_DIR/CHANGELOG.md" ]; then
+            git add "$SCOPE_DIR/CHANGELOG.md"
+          fi
+          if [ -n "$VERSION" ]; then
+            git add "$SCOPE_DIR/CMakeLists.txt"
           fi
 
-          # If nothing actually changed (e.g. PR body was `skip` and not a release),
-          # exit cleanly without an empty commit.
+          # If nothing actually changed (e.g. PR body was `skip` and no version
+          # bump), exit cleanly without an empty commit.
           if git diff --cached --quiet; then
             echo "No changelog or version changes to commit."
             exit 0
           fi
 
           if [ "$SHOULD_RELEASE" = "true" ]; then
-            git commit -m "Release v$VERSION"
-            git tag "v$VERSION"
+            # Tag namespacing: <scope>-v<version> so multiple scopes can share
+            # version numbers without colliding (e.g. engine-v0.1.0 and
+            # prison-escape-v0.1.0).
+            git commit -m "Release $SCOPE v$VERSION"
+            git tag "$SCOPE-v$VERSION"
+            git push
+            git push --tags
+          elif [ -n "$VERSION" ]; then
+            # Engine bump: commit + tag, but no artifact build.
+            git commit -m "Bump $SCOPE to v$VERSION"
+            git tag "$SCOPE-v$VERSION"
             git push
             git push --tags
           else
-            git commit -m "Update CHANGELOG.md"
+            # Chore/docs PR: changelog-only commit.
+            git commit -m "Update changelog ($SCOPE)"
             git push
           fi
 
   # -----------------------------------------------------------------------
-  # 2. BUILD AND RELEASE
-  #    Windows runner with MSYS2 MinGW64 -- matches local dev environment
-  #    exactly so package.sh (ldd + /c/windows/ filter) works unmodified.
-  #    Release notes come from CHANGELOG.md via changelog.py notes <version>.
+  # 2. BUILD AND RELEASE  (game scopes only)
   # -----------------------------------------------------------------------
   release:
     name: Build and release
@@ -180,37 +274,47 @@ jobs:
             git
 
       - name: Configure and build
+        env:
+          CMAKE_TARGET: ${{ needs.bump.outputs.cmake_target }}
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-          cmake --build build
+          cmake --build build --target "$CMAKE_TARGET"
 
       - name: Package
-        run: ./game/scripts/package.sh
+        env:
+          SCOPE_DIR: ${{ needs.bump.outputs.scope_dir }}
+        run: ./$SCOPE_DIR/scripts/package.sh
 
       - name: Extract release notes from CHANGELOG.md
         env:
           VERSION: ${{ needs.bump.outputs.version }}
+          SCOPE_DIR: ${{ needs.bump.outputs.scope_dir }}
         run: |
-          python3 game/scripts/changelog.py notes "$VERSION" > /tmp/release_notes.md
+          python3 "$SCOPE_DIR/scripts/changelog.py" notes "$VERSION" > /tmp/release_notes.md
           cat /tmp/release_notes.md
 
       - name: Create GitHub Release on source repo
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.bump.outputs.version }}
+          ARTIFACT_PREFIX: ${{ needs.bump.outputs.artifact_prefix }}
+          SCOPE: ${{ needs.bump.outputs.scope }}
         run: |
-          gh release create "v$VERSION" \
-            "prison-escape-game-v$VERSION.zip" \
-            --title "v$VERSION" \
+          gh release create "$SCOPE-v$VERSION" \
+            "$ARTIFACT_PREFIX-v$VERSION.zip" \
+            --title "$SCOPE v$VERSION" \
             --notes-file /tmp/release_notes.md
 
       - name: Mirror release to public repo
+        if: needs.bump.outputs.public_repo != ''
         env:
           GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
           VERSION: ${{ needs.bump.outputs.version }}
+          ARTIFACT_PREFIX: ${{ needs.bump.outputs.artifact_prefix }}
+          PUBLIC_REPO: ${{ needs.bump.outputs.public_repo }}
         run: |
           gh release create "v$VERSION" \
-            "prison-escape-game-v$VERSION.zip" \
-            --repo alexbeams1898/prison-escape-game-releases \
+            "$ARTIFACT_PREFIX-v$VERSION.zip" \
+            --repo "$PUBLIC_REPO" \
             --title "v$VERSION" \
             --notes-file /tmp/release_notes.md

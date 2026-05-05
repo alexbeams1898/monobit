@@ -1,0 +1,24 @@
+# dbg::trace annotations for the vestigia slot-save bisect.
+# Use: python tools/dbg_trace/parse.py trace.bin --annotate tools/dbg_trace/annotations_vestigia.txt
+#
+# Tag space: 0x10..0x21 reserved for this investigation.
+# See games/rpg/vestigia.cpp top comment for the source-side mapping.
+
+0x10 write_slot entry              [value = slot index]
+0x11 init entry
+0x12 read_header(A) returned       [value = 1 ok / 0 failed]
+0x13 read_header(B) returned       [value = 1 ok / 0 failed]
+0x14 bootstrap_fresh entry
+0x15 bootstrap erase OK
+0x16 bootstrap header write        [value = 1 ok / 0 failed]
+0x17 bootstrap slot 0 write        [value = 1 ok / 0 failed]
+0x18 bootstrap done
+0x19 commit_slot_change entry      [value = changed slot index]
+0x1A commit dest_off                [value = sector offset 0x0000 or 0x1000]
+0x1B commit erase OK
+0x1C commit header write           [value = 1 ok / 0 failed]
+0x1D commit slot loop iter         [value = i (0..7)]
+0x1E commit slot read magic        [value = byte 0 of read slot record]
+0x1F commit slot write OK          [value = 1 ok / 0 failed]
+0x20 commit done
+0x21 write_slot exit               [value = Status code; 0 = OK]

@@ -1,0 +1,3114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>mono · audio sandbox</title>
+  <style>
+    :root {
+      --bg: #0c0c0e;
+      --panel: #16161a;
+      --line: #2a2a32;
+      --text: #e6e6ea;
+      --dim: #8a8a96;
+      --accent: #c89146;
+      --accent2: #4ec0a8;
+      --accent3: #b48ad6;
+      --accent4: #d8765a;
+      --warn: #b04848;
+    }
+    * { box-sizing: border-box; }
+    html, body { background: var(--bg); color: var(--text); font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; margin: 0; }
+    body { padding: 24px; max-width: 1100px; margin: 0 auto; }
+    h1 { font-weight: 600; font-size: 18px; margin: 0 0 4px; letter-spacing: 0.02em; }
+    .sub { color: var(--dim); margin-bottom: 16px; line-height: 1.5; }
+    .panel { background: var(--panel); border: 1px solid var(--line); padding: 16px 20px; margin-bottom: 16px; }
+    .panel h2 { font-size: 13px; font-weight: 600; margin: 0 0 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--dim); }
+    .row { display: grid; grid-template-columns: 110px 1fr 100px; align-items: center; gap: 12px; margin: 6px 0; }
+    .row label { color: var(--dim); }
+    .row input[type=range] { width: 100%; accent-color: var(--accent); }
+    .row .val { text-align: right; font-variant-numeric: tabular-nums; color: var(--text); }
+    button { background: var(--panel); color: var(--text); border: 1px solid var(--line); padding: 8px 14px; font: inherit; cursor: pointer; margin-right: 6px; }
+    button:hover { border-color: var(--accent); }
+    button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+    button.primary:hover { filter: brightness(1.1); }
+    button.muted { opacity: 0.45; }
+    .preset-row { display: flex; flex-wrap: wrap; gap: 6px; }
+    .preset-row button { font-size: 12px; padding: 6px 10px; margin: 0; }
+    .formula { color: var(--dim); font-size: 12px; margin-top: 8px; }
+    .formula code { background: var(--bg); padding: 2px 6px; border: 1px solid var(--line); }
+    .scope { width: 100%; height: 90px; background: #06060a; border: 1px solid var(--line); display: block; margin-top: 8px; }
+    .footer { color: var(--dim); font-size: 12px; margin-top: 24px; line-height: 1.6; }
+    .footer code { background: var(--panel); padding: 2px 6px; }
+    .warn { color: var(--warn); font-size: 12px; margin-top: 8px; display: none; }
+    .warn.visible { display: block; }
+    .mode-row { display: inline-flex; gap: 0; border: 1px solid var(--line); margin-bottom: 12px; }
+    .mode-row button { margin: 0; border: none; border-right: 1px solid var(--line); background: transparent; padding: 8px 16px; }
+    .mode-row button:last-child { border-right: none; }
+    .mode-row button.active { background: var(--accent); color: var(--bg); }
+    .voice-panel { border-left: 3px solid var(--accent); padding-left: 14px; margin: 12px 0; }
+    .voice-panel.v1 { border-left-color: var(--accent2); }
+    .voice-panel.v2 { border-left-color: var(--accent3); }
+    .voice-panel.v3 { border-left-color: var(--accent4); }
+    .voice-panel h3 { font-size: 12px; font-weight: 600; margin: 0 0 8px; letter-spacing: 0.05em; color: var(--accent); text-transform: uppercase; }
+    .voice-panel.v1 h3 { color: var(--accent2); }
+    .voice-panel.v2 h3 { color: var(--accent3); }
+    .voice-panel.v3 h3 { color: var(--accent4); }
+    /* Muted panels collapse to a thin header so single-voice patches
+       (drums, SFX) don't show two empty slots that imply the sound is
+       3-voice. Click the stub to unmute and expand. */
+    .voice-panel.muted { padding: 6px 14px; cursor: pointer; }
+    .voice-panel.muted h3 { margin: 0; opacity: 0.55; }
+    .voice-panel.muted .row,
+    .voice-panel.muted .helper-row { display: none; }
+    .voice-panel.muted .vmute { background: transparent; }
+    .vmute { font-size: 11px; padding: 4px 8px; }
+    .helper-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 6px; }
+    .helper-row .formula { margin: 0; }
+    .key-button { font-size: 11px; padding: 4px 8px; margin-right: 4px; margin-bottom: 4px; background: var(--bg); }
+    .mode-pill { display: inline-flex; gap: 0; margin-left: 12px; border: 1px solid var(--line); }
+    .mode-pill .mode-btn { font-size: 10px; padding: 3px 8px; margin: 0; border: none; border-right: 1px solid var(--line); background: transparent; }
+    .mode-pill .mode-btn:last-child { border-right: none; }
+    .mode-pill .mode-btn.active { background: var(--accent); color: var(--bg); }
+    .voice-panel.v1 .mode-pill .mode-btn.active { background: var(--accent2); }
+    .voice-panel.v2 .mode-pill .mode-btn.active { background: var(--accent3); }
+    .voice-panel.v3 .mode-pill .mode-btn.active { background: var(--accent4); }
+
+    /* SONG mode pattern grid */
+    .grid-row { display: flex; align-items: stretch; }
+    .grid-row + .grid-row { margin-top: 2px; }
+    .grid-label { width: 36px; flex: 0 0 36px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; letter-spacing: 0.05em; color: var(--dim); background: var(--bg); border: 1px solid var(--line); cursor: pointer; user-select: none; transition: background 60ms; }
+    .grid-label:hover { background: #1a1a22; }
+    .grid-label[title]:hover::after { /* tooltip handled by browser */ }
+    .grid-row.v0 .grid-label { color: var(--accent); }
+    .grid-row.v1 .grid-label { color: var(--accent2); }
+    .grid-row.v2 .grid-label { color: var(--accent3); }
+    .grid-row.v3 .grid-label { color: var(--accent4); }
+    .grid-cells { display: flex; flex: 1 1 auto; gap: 1px; background: var(--line); border: 1px solid var(--line); }
+    .grid-cell { width: 22px; height: 28px; flex: 0 0 22px; background: #06060a; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 9px; line-height: 1; color: var(--dim); user-select: none; transition: background 60ms; }
+    .grid-cell:hover { background: #1a1a22; }
+    .grid-cell.beat-1 { background: #0a0a10; }   /* slight tint on each downbeat */
+    .grid-cell.bar-start { border-left: 2px solid var(--line); }
+    .grid-cell.filled { color: var(--text); font-weight: 600; }
+    .grid-row.v0 .grid-cell.filled { background: rgba(200, 145, 70, 0.35); color: var(--accent); }
+    .grid-row.v1 .grid-cell.filled { background: rgba(78, 192, 168, 0.35); color: var(--accent2); }
+    .grid-row.v2 .grid-cell.filled { background: rgba(180, 138, 214, 0.35); color: var(--accent3); }
+    .grid-row.v3 .grid-cell.filled { background: rgba(216, 118, 90, 0.35); color: var(--accent4); }
+    .grid-cell.playhead { box-shadow: inset 0 0 0 2px var(--text); }
+    .grid-header { display: flex; padding-left: 36px; gap: 1px; margin-bottom: 4px; }
+    .grid-header .step-label { width: 22px; flex: 0 0 22px; font-size: 9px; color: var(--dim); text-align: center; }
+    .grid-header .step-label.beat { color: var(--text); font-weight: 600; }
+    .grid-header .step-label.bar { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <h1>monobit &middot; beep sandbox</h1>
+  <p class="sub">
+    Iterate on 1-bit sounds in real time. Same synthesis as the SDL/Arduboy
+    runtime: 3-voice phase-accumulator XOR mixer (one pin, three voices'
+    high-bits XOR'd), per-voice frequency stepped per "frame" (1/60 s).
+    Two modes: <strong>SFX</strong> (single-voice classic beep tuner) and
+    <strong>SOUND</strong> (1&ndash;3 voice patch &mdash; power chord, drum
+    hit, melodic note &mdash; building blocks for songs).
+  </p>
+
+  <div class="mode-row">
+    <button id="mode_sfx" class="active">SFX (1 voice)</button>
+    <button id="mode_chord">SOUND (1&ndash;3 voice patch)</button>
+    <button id="mode_song">SONG (pattern grid)</button>
+  </div>
+
+  <!-- SFX MODE: original single-voice tuner -->
+  <div class="panel" id="sfx_panel">
+    <h2>Beep shape (engine-faithful, single voice)</h2>
+    <div class="row">
+      <label for="freq_start">freq_start</label>
+      <input type="range" id="freq_start" min="50" max="3000" value="700" step="1">
+      <span class="val" id="freq_start_val">700 Hz</span>
+    </div>
+    <div class="row">
+      <label for="freq_slope">freq_slope</label>
+      <input type="range" id="freq_slope" min="-500" max="500" value="-120" step="1">
+      <span class="val" id="freq_slope_val">-120 Hz/frame</span>
+    </div>
+    <div class="row">
+      <label for="duration">duration</label>
+      <input type="range" id="duration" min="1" max="60" value="3" step="1">
+      <span class="val" id="duration_val">3 frames</span>
+    </div>
+    <div class="formula">
+      <code>{ freq_start, freq_slope, duration }</code> &mdash;
+      total length: <span id="length_val">50.0 ms</span>,
+      end freq: <span id="endfreq_val">580 Hz</span>
+    </div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px;">
+      <div>
+        <div class="formula" style="margin-bottom: 4px;">
+          Programmed pitch over time &mdash; staircase, one step per
+          frame (16.67 ms). Y is frequency, X is time.
+        </div>
+        <canvas class="scope" id="freq_chart" width="450" height="140"></canvas>
+      </div>
+      <div>
+        <div class="formula" style="margin-bottom: 4px;">
+          Live waveform (oscilloscope) &mdash; what the speaker is
+          actually emitting right now.
+        </div>
+        <canvas class="scope" id="scope" width="450" height="140"></canvas>
+      </div>
+    </div>
+    <div style="margin-top: 10px;">
+      <button class="primary" id="preview_dirty">▶ Preview live slider values</button>
+      <span class="formula">
+        Plays exactly what the sliders show right now. Never modifies any
+        saved beep.
+      </span>
+    </div>
+  </div>
+
+  <!-- SOUND MODE: 1-3 voice patch, XOR mixed -->
+  <div class="panel" id="chord_panel" style="display: none;">
+    <h2>Sound patch (1&ndash;3 voice, XOR mixer, engine-faithful)</h2>
+    <p class="formula" style="margin-top: 0;">
+      A "patch" is a building block for songs &mdash; a single audio event
+      using up to 3 voices XOR'd together. Mute the voices you don't need:
+      a kick is V2-noise alone; a power chord is V0+V1+V2 tones; a chord-
+      with-drum is all three with V2 in noise mode. Each voice is an
+      independent <code>Sfx</code> (start freq, slope, duration). The
+      mixer XORs the three voices' phase-accumulator high bits &mdash; the
+      same algorithm the AVR ISR and SDL callback run.
+    </p>
+    <div class="formula" style="margin-bottom: 6px;">
+      <label style="cursor: pointer; user-select: none;">
+        <input type="checkbox" id="auto_duck" checked>
+        Auto-duck V0/V1 when V2 is noise
+        <span style="color: var(--dim); margin-left: 8px;">
+          &mdash; Follin-style "side-chain": melody voices drop while a
+          kick / snare / hat is firing on V2. Default on, matches the
+          chiptune convention.
+        </span>
+      </label>
+    </div>
+
+    <!-- Voice 0 -->
+    <div class="voice-panel v0" id="vp0">
+      <h3>
+        Voice 0 (typically root / bass)
+        <button class="vmute" id="v0_mute">[×]</button>
+        <span class="mode-pill" id="v0_mode_pill">
+          <button class="mode-btn active" data-voice="0" data-mode="tone">tone</button>
+          <button class="mode-btn" data-voice="0" data-mode="rasp">rasp</button>
+          <button class="mode-btn" data-voice="0" data-mode="noise">noise</button>
+        </span>
+      </h3>
+      <div class="row">
+        <label for="v0_freq">freq_start</label>
+        <input type="range" id="v0_freq" min="50" max="3000" value="73" step="1">
+        <span class="val" id="v0_freq_val">73 Hz · D2</span>
+      </div>
+      <div class="row">
+        <label for="v0_slope">freq_slope</label>
+        <input type="range" id="v0_slope" min="-500" max="500" value="0" step="1">
+        <span class="val" id="v0_slope_val">+0 Hz/frame</span>
+      </div>
+      <div class="row">
+        <label for="v0_dur">duration</label>
+        <input type="range" id="v0_dur" min="1" max="120" value="20" step="1">
+        <span class="val" id="v0_dur_val">20 frames</span>
+      </div>
+    </div>
+
+    <!-- Voice 1 -->
+    <div class="voice-panel v1" id="vp1">
+      <h3>
+        Voice 1 (typically fifth / harmony)
+        <button class="vmute" id="v1_mute">[×]</button>
+        <span class="mode-pill" id="v1_mode_pill">
+          <button class="mode-btn active" data-voice="1" data-mode="tone">tone</button>
+          <button class="mode-btn" data-voice="1" data-mode="rasp">rasp</button>
+          <button class="mode-btn" data-voice="1" data-mode="noise">noise</button>
+        </span>
+      </h3>
+      <div class="row">
+        <label for="v1_freq">freq_start</label>
+        <input type="range" id="v1_freq" min="50" max="3000" value="110" step="1">
+        <span class="val" id="v1_freq_val">110 Hz · A2</span>
+      </div>
+      <div class="row">
+        <label for="v1_slope">freq_slope</label>
+        <input type="range" id="v1_slope" min="-500" max="500" value="0" step="1">
+        <span class="val" id="v1_slope_val">+0 Hz/frame</span>
+      </div>
+      <div class="row">
+        <label for="v1_dur">duration</label>
+        <input type="range" id="v1_dur" min="1" max="120" value="20" step="1">
+        <span class="val" id="v1_dur_val">20 frames</span>
+      </div>
+    </div>
+
+    <!-- Voice 2 -->
+    <div class="voice-panel v2" id="vp2">
+      <h3>
+        Voice 2 (lead / second melody — yields to SFX)
+        <button class="vmute" id="v2_mute">[×]</button>
+        <span class="mode-pill" id="v2_mode_pill">
+          <button class="mode-btn active" data-voice="2" data-mode="tone">tone</button>
+          <button class="mode-btn" data-voice="2" data-mode="rasp">rasp</button>
+          <button class="mode-btn" data-voice="2" data-mode="noise">noise</button>
+        </span>
+      </h3>
+      <div class="row">
+        <label for="v2_freq">freq_start</label>
+        <input type="range" id="v2_freq" min="50" max="3000" value="147" step="1">
+        <span class="val" id="v2_freq_val">147 Hz · D3</span>
+      </div>
+      <div class="row">
+        <label for="v2_slope">freq_slope</label>
+        <input type="range" id="v2_slope" min="-500" max="500" value="0" step="1">
+        <span class="val" id="v2_slope_val">+0 Hz/frame</span>
+      </div>
+      <div class="row">
+        <label for="v2_dur">duration</label>
+        <input type="range" id="v2_dur" min="1" max="120" value="20" step="1">
+        <span class="val" id="v2_dur_val">20 frames</span>
+      </div>
+    </div>
+
+    <!-- Voice 3 (drum slot) -->
+    <div class="voice-panel v3" id="vp3">
+      <h3>
+        Voice 3 (drums — auto-ducks V0/V1/V2 when in noise mode)
+        <button class="vmute" id="v3_mute">[×]</button>
+        <span class="mode-pill" id="v3_mode_pill">
+          <button class="mode-btn" data-voice="3" data-mode="tone">tone</button>
+          <button class="mode-btn" data-voice="3" data-mode="rasp">rasp</button>
+          <button class="mode-btn active" data-voice="3" data-mode="noise">noise</button>
+        </span>
+      </h3>
+      <div class="row">
+        <label for="v3_freq">freq_start</label>
+        <input type="range" id="v3_freq" min="50" max="8000" value="200" step="1">
+        <span class="val" id="v3_freq_val">200 Hz · noise</span>
+      </div>
+      <div class="row">
+        <label for="v3_slope">freq_slope</label>
+        <input type="range" id="v3_slope" min="-500" max="500" value="-40" step="1">
+        <span class="val" id="v3_slope_val">-40 Hz/frame</span>
+      </div>
+      <div class="row">
+        <label for="v3_dur">duration</label>
+        <input type="range" id="v3_dur" min="1" max="120" value="4" step="1">
+        <span class="val" id="v3_dur_val">4 frames</span>
+      </div>
+    </div>
+
+    <canvas class="scope" id="chord_scope" width="900" height="140" style="margin-top: 12px;"></canvas>
+    <div class="formula">Live oscilloscope of the XOR-mixed signal — what the speaker emits.</div>
+
+    <div style="margin-top: 10px;">
+      <button class="primary" id="chord_play">▶ Play patch (XOR mix)</button>
+      <button id="chord_play_v0">V0 solo</button>
+      <button id="chord_play_v1">V1 solo</button>
+      <button id="chord_play_v2">V2 solo</button>
+      <button id="chord_play_v3">V3 solo</button>
+      <button id="chord_stop">STOP</button>
+    </div>
+    <div style="margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line);">
+      <button class="primary" id="play_test_song">▶ Play TEST SONG (8 bars, 130 BPM)</button>
+      <span class="formula" style="margin-left: 8px;">
+        D power chord on bars 1&ndash;7, Eb on bar 8. Kick on beats 1+3,
+        snare on beats 2+4. Auto-duck on V2 noise gives the bass/harmony
+        the side-chain pulse. ~15 seconds total.
+      </span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Playback</h2>
+    <button class="primary" id="play">PLAY</button>
+    <button id="play3">PLAY × 3</button>
+    <button id="stop">STOP</button>
+    <button id="undo">↶ Undo</button>
+    <button id="redo">↷ Redo</button>
+    <span class="formula" id="undo_status" style="margin-left: 8px;"></span>
+    <span class="warn" id="warn">Click PLAY first to unlock browser audio.</span>
+  </div>
+
+  <div class="panel" id="beeps_panel">
+    <h2>Beeps (SFX mode)</h2>
+    <div class="preset-row" id="beeps_row" style="margin-bottom: 10px;"></div>
+    <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+      <input type="text" id="new_name" placeholder="MY_BEEP_NAME" style="background: var(--bg); color: var(--text); border: 1px solid var(--line); padding: 6px 10px; font: inherit; flex: 1; min-width: 200px;">
+      <button id="save_new">Save current as new</button>
+      <button id="clone_selected">Clone selected</button>
+      <button id="update_selected">Update selected</button>
+      <button id="delete_selected">Delete selected</button>
+    </div>
+    <p class="formula" id="beep_status">Nothing selected.</p>
+    <p class="formula" id="cee_line" style="user-select: all; cursor: text;">const audio::Sfx SFX_NEW PROGMEM = {700, -120, 3};</p>
+  </div>
+
+  <div class="panel" id="chords_panel" style="display: none;">
+    <h2>Patch library</h2>
+    <p class="formula" style="margin-top: 0;">
+      Saved sound patches &mdash; the building blocks you'll splice into
+      songs. Each entry remembers all three voices (incl. mute and
+      tone/noise mode). Click a patch's <span style="color: var(--accent)">▶</span>
+      to audition without disturbing the sliders; click its
+      <strong>name</strong> to load it onto the sliders for editing.
+    </p>
+    <div class="preset-row" id="chords_row" style="margin-bottom: 10px;"></div>
+    <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+      <input type="text" id="chord_new_name" placeholder="MY_PATCH_NAME" style="background: var(--bg); color: var(--text); border: 1px solid var(--line); padding: 6px 10px; font: inherit; flex: 1; min-width: 200px;">
+      <button id="chord_save_new">Save current as new</button>
+      <button id="chord_update">Update selected</button>
+      <button id="chord_delete">Delete selected</button>
+    </div>
+    <p class="formula" id="chord_status">Nothing selected.</p>
+    <p class="formula" id="chord_cee_line" style="user-select: all; cursor: text; white-space: pre;"></p>
+  </div>
+
+  <!-- SONG MODE: pattern grid (3 voices x 16 steps/bar x N bars) -->
+  <div class="panel" id="song_panel" style="display: none;">
+    <h2>Song (pattern grid)</h2>
+    <p class="formula" style="margin-top: 0;">
+      A pattern is a 3-row grid: V0/V1/V2 across time. Each cell is one
+      <strong>step</strong> (1/16 note at the song's BPM). Click a cell to
+      drop a note (V0/V1) or drum (V2); right-click to clear. Press Play
+      &mdash; the playhead walks left to right, looping if Loop is on.
+      Edit while it's playing; changes apply on the next loop.
+    </p>
+    <div style="display: flex; gap: 18px; align-items: center; flex-wrap: wrap; margin-bottom: 10px;">
+      <label>BPM <input type="number" id="song_bpm"   min="40" max="240" value="130" step="1" style="width: 60px; background: var(--bg); color: var(--text); border: 1px solid var(--line); padding: 4px 6px; font: inherit;"></label>
+      <label>Bars <input type="number" id="song_bars" min="1"  max="16"  value="8"   step="1" style="width: 50px; background: var(--bg); color: var(--text); border: 1px solid var(--line); padding: 4px 6px; font: inherit;"></label>
+      <label>Steps/bar <input type="number" id="song_steps" min="4" max="32" value="16" step="4" style="width: 50px; background: var(--bg); color: var(--text); border: 1px solid var(--line); padding: 4px 6px; font: inherit;"></label>
+      <span class="formula" id="song_timing" style="margin: 0;"></span>
+    </div>
+
+    <div id="song_grid_wrap" style="overflow-x: auto; padding-bottom: 6px;">
+      <div id="song_grid"></div>
+    </div>
+
+    <div style="margin-top: 12px;">
+      <button class="primary" id="song_play">▶ Play</button>
+      <button id="song_stop">⏸ Stop</button>
+      <label style="margin-left: 8px; user-select: none;">
+        <input type="checkbox" id="song_loop" checked> Loop
+      </label>
+    </div>
+
+    <div style="margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line);">
+      <input type="text" id="song_name" placeholder="MY_SONG_NAME" style="background: var(--bg); color: var(--text); border: 1px solid var(--line); padding: 6px 10px; font: inherit; min-width: 200px;">
+      <button id="song_save_new">Save as new</button>
+      <button id="song_update">Update current</button>
+      <button id="song_clear">Clear grid</button>
+      <button id="song_seed_test">Seed TEST_GROOVE</button>
+    </div>
+    <div class="preset-row" id="songs_row" style="margin-top: 10px;"></div>
+    <p class="formula" id="song_status">No song loaded. Click "Seed TEST_GROOVE" to populate the grid with the 8-bar D&rarr;Eb groove.</p>
+    <details style="margin-top: 8px;">
+      <summary class="formula" style="cursor: pointer;">Export to C++ (paste into <code>games/rpg/game.cpp</code>)</summary>
+      <pre id="song_cee" style="background: var(--bg); color: var(--text); border: 1px solid var(--line); padding: 10px; font: 12px ui-monospace, monospace; user-select: all; white-space: pre; overflow: auto; margin-top: 8px;"></pre>
+    </details>
+  </div>
+
+  <p class="footer">
+    The synthesis here mirrors <code>engine/audio.cpp</code>'s tick stepper
+    and the platform mixers. SFX mode = single voice (classic beep tuner).
+    CHORD mode = 3-voice phase-accumulator XOR (the same algorithm the
+    AVR ISR and SDL callback run). Frequencies clamp to [50, 8000] Hz.
+    Engine-side, only <code>freq_start</code>, <code>freq_slope</code>,
+    <code>duration</code> are honored today &mdash; duty cycle, vibrato,
+    and other expression knobs are future work.
+  </p>
+
+<script>
+//
+// Synthesis exactly mirroring engine/audio.cpp:
+//
+//   play(): active_freq = freq_start; frames_left = duration; start_pending = true
+//   tick (every 1/60 s):
+//     if start_pending: clear flag, return  // first tick is no-op
+//     --frames_left
+//     if frames_left == 0: silence
+//     else: active_freq += freq_slope (clamped 50..8000); set_tone(active_freq)
+//
+// CHORD mode runs three of these in parallel and XOR-mixes their square
+// outputs at the audio sample level — same algorithm as the AVR ISR.
+// Implemented via AudioWorkletNode for sample-accurate mixing; falls back
+// to ScriptProcessorNode if AudioWorklet isn't available (very old browsers).
+//
+
+const FRAME_MS = 1000 / 60;
+const FREQ_MIN = 50;
+const FREQ_MAX = 8000;
+const SAMPLE_RATE = 44100;  // worklet runs at the context rate; we fix at 44.1 kHz
+
+// ---- AudioContext + worklet --------------------------------------------------
+
+let audioCtx = null;
+let sfxOsc = null;   // single-voice path: a real OscillatorNode (kept for backward-compat)
+let sfxGain = null;
+let sfxAnalyser = null;
+// chordEngine implementations:
+//   .ready (bool)               — engine usable
+//   .setInc(voiceIdx, inc)      — a-rate increment, applied at currentTime
+//   .scheduleInc(idx,inc,time)  — scheduled change at audioCtx time
+//   .silenceAll(time)           — zero all 3 voices at time
+//   .analyser                   — AnalyserNode for the chord scope
+//   .label                      — 'worklet' | 'scriptprocessor'
+let chordEngine = null;
+let chordAnalyser = null;
+
+// Per-voice mode is encoded into the increment value's sign:
+//   inc > 0  → tone mode (phase accumulator, square wave from MSB)
+//   inc < 0  → noise mode (LFSR shifted at |inc| rate; output = LFSR LSB)
+//   inc == 0 → silent
+// This keeps the worklet/ScriptProcessor parameter surface unchanged
+// (still a single integer per voice) so we don't need 6 parameters.
+//
+// Auto-duck: when `autoDuck` is on AND voice 2 is in noise mode AND
+// V2 is currently producing output, voices 0 and 1 contribute 0 to
+// the XOR mix for that sample. This produces the Follin-style
+// side-chain feel — bass / harmony briefly drop on every kick. When
+// V2 returns to silence or tone mode, V0+V1 come back.
+//
+// LFSR: 16-bit, polynomial 0xB400 (taps 0,2,3,5). Max-length sequence
+// = 65535 states; sounds "random enough" for percussion.
+//
+// Math, both modes:
+//   tone:  phase = (phase + inc) & 0xFFFF;  bit = phase >> 15
+//   noise: lfsr_acc = (lfsr_acc + |inc|) & 0xFFFF;
+//          if lfsr_acc wrapped (carry): shift LFSR;  bit = LFSR & 1
+// "Wrapped" = adding inc would have set the MSB to 0 from 1 — same
+// detection as sign-bit transition. Use carry from the add: if
+// (newAcc < oldAcc) we wrapped this sample.
+//
+// MIX MODEL: PFM additive sum (Tim Follin / Phaser1-family).
+// Each voice contributes a 0 or 1 (its current square-wave state, or
+// for noise voices, the LFSR LSB). We SUM the 4 voice states (range
+// 0..4) and map to a 5-level output. This is the on-device PWM-encoded
+// signal Phaser1-style 1-bit engines emit; the speaker physically
+// integrates it to apparent levels. Real polyphony — chords sound like
+// chords, not the intermodulation chaos XOR produces.
+//
+// Output mapping:
+//   sum 0 → -amp        (all voices low)
+//   sum 1 → -amp/2
+//   sum 2 → 0           (half high)
+//   sum 3 → +amp/2
+//   sum 4 → +amp        (all voices high)
+const CHORD_WORKLET = `
+class ChordProcessor extends AudioWorkletProcessor {
+  static get parameterDescriptors() {
+    return [
+      // Range expanded to allow negative values for noise-mode encoding.
+      { name: 'inc0', defaultValue: 0, minValue: -65535, maxValue: 65535, automationRate: 'a-rate' },
+      { name: 'inc1', defaultValue: 0, minValue: -65535, maxValue: 65535, automationRate: 'a-rate' },
+      { name: 'inc2', defaultValue: 0, minValue: -65535, maxValue: 65535, automationRate: 'a-rate' },
+      { name: 'inc3', defaultValue: 0, minValue: -65535, maxValue: 65535, automationRate: 'a-rate' },
+      // Per-voice mode: 0 = tone (square), 1 = noise (LFSR), 2 = rasp
+      // (square XOR LFSR — utz82 'phat'-family bitwise mix). Mode is
+      // separate from inc so we can have a pitched voice with rasp on
+      // it (mode=2 + inc>0 = pitched buzzy guitar). Inc<0 still means
+      // noise mode regardless of this param (back-compat).
+      { name: 'mode0', defaultValue: 0, minValue: 0, maxValue: 2, automationRate: 'k-rate' },
+      { name: 'mode1', defaultValue: 0, minValue: 0, maxValue: 2, automationRate: 'k-rate' },
+      { name: 'mode2', defaultValue: 0, minValue: 0, maxValue: 2, automationRate: 'k-rate' },
+      { name: 'mode3', defaultValue: 0, minValue: 0, maxValue: 2, automationRate: 'k-rate' },
+      // Per-voice gain multipliers (1.0 = unity). Lets the mix favor
+      // drums (V3 typically 1.5) over tones (V0..V2 typically 0.85)
+      // so the kick/snare punches through the chord.
+      { name: 'gain0', defaultValue: 1.0, minValue: 0, maxValue: 4, automationRate: 'k-rate' },
+      { name: 'gain1', defaultValue: 1.0, minValue: 0, maxValue: 4, automationRate: 'k-rate' },
+      { name: 'gain2', defaultValue: 1.0, minValue: 0, maxValue: 4, automationRate: 'k-rate' },
+      { name: 'gain3', defaultValue: 1.0, minValue: 0, maxValue: 4, automationRate: 'k-rate' },
+      { name: 'amp',  defaultValue: 0.45, minValue: 0, maxValue: 1, automationRate: 'k-rate' },
+      // 1 = duck V0/V1/V2 while V3 is producing noise; 0 = always-mix.
+      { name: 'autoDuck', defaultValue: 1, minValue: 0, maxValue: 1, automationRate: 'k-rate' },
+      // Tremolo: per-voice amplitude modulation. trem_rate in Hz (LFO
+      // frequency); trem_depth 0..1 (depth of modulation; 0 = off).
+      // Applied to V0/V1/V2 tone voices only. V3 noise unaffected.
+      { name: 'trem_rate',  defaultValue: 7, minValue: 0, maxValue: 30, automationRate: 'k-rate' },
+      { name: 'trem_depth', defaultValue: 0, minValue: 0, maxValue: 1, automationRate: 'k-rate' },
+    ];
+  }
+  constructor() {
+    super();
+    this.phase = [0, 0, 0, 0];
+    this.lfsr = [0xACE1, 0xACE1, 0xACE1, 0xACE1];
+    this.lfsrAcc = [0, 0, 0, 0];
+    this.duty = [0.5, 0.5, 0.5, 0.5];
+    // Tremolo LFO phase per voice. Initialized to staggered values so
+    // the three tone voices don't pulse in lockstep — produces a more
+    // chorus-y / cassette-saturation feel than coordinated modulation.
+    this.tremPhase = [0, 0.33, 0.67, 0];
+    // Rasp LFSR shift counter per voice. Shifts only every 4 samples
+    // in rasp mode (slower noise = less melody-masking).
+    this.raspCounter = [0, 0, 0, 0];
+  }
+  // Returns { bit, any }. Per-voice mode (0=tone, 1=noise, 2=rasp):
+  //   tone: phase accumulator, MSB → bit (square wave at duty cycle).
+  //   noise: LFSR shifted at |inc| rate, LFSR LSB → bit.
+  //   rasp: tone AND noise both step every sample; bit = tone XOR lfsr.
+  //         This is utz82's bm-1 "phat" patch trick — the bitwise mix
+  //         injects raspiness into a pitched voice, producing the
+  //         "buzzy distorted guitar" timbre you can't get from pure
+  //         squares. See research notes.
+  // Back-compat: inc<0 forces noise mode regardless of mode param so
+  // legacy data (drum cells encoded as negative inc) still works.
+  stepVoice(v, inc, mode) {
+    if (inc === 0) return { bit: 0, any: false };
+    // Negative inc = legacy noise-mode encoding.
+    const effectiveMode = (inc < 0) ? 1 : mode;
+    const incMag = (inc < 0) ? -inc : inc;
+    // Tone phase update (used by tone and rasp).
+    let toneBit = 0;
+    if (effectiveMode !== 1) {
+      this.phase[v] = (this.phase[v] + incMag) & 0xFFFF;
+      const threshold = (this.duty[v] * 65536) | 0;
+      toneBit = (this.phase[v] < threshold) ? 1 : 0;
+    }
+    // LFSR update (used by noise and rasp). For rasp, run LFSR at the
+    // sample rate (shift every sample) — fast wrap, dense noise.
+    let lfsrBit = 0;
+    if (effectiveMode === 1 || effectiveMode === 2) {
+      if (effectiveMode === 1) {
+        // Noise mode: accumulate at incMag rate, shift on wrap.
+        const old = this.lfsrAcc[v];
+        const next = (old + incMag) & 0xFFFF;
+        this.lfsrAcc[v] = next;
+        if (next < old) {
+          let l = this.lfsr[v];
+          const lsb = l & 1;
+          l >>= 1;
+          if (lsb) l ^= 0xB400;
+          this.lfsr[v] = l & 0xFFFF;
+        }
+      } else {
+        // Rasp mode: slow LFSR shift (every 4 samples) so the noise
+        // sits in audible-but-not-overwhelming territory. Sample-rate
+        // shift was so dense it masked the underlying pitch entirely.
+        // The raspCounter cycles through 0..3; only shift when it
+        // wraps back to 0.
+        if ((this.raspCounter[v] & 7) === 0) {
+          let l = this.lfsr[v];
+          const lsb = l & 1;
+          l >>= 1;
+          if (lsb) l ^= 0xB400;
+          this.lfsr[v] = l & 0xFFFF;
+        }
+        this.raspCounter[v] = (this.raspCounter[v] + 1) & 0xFF;
+      }
+      lfsrBit = this.lfsr[v] & 1;
+    }
+    if (effectiveMode === 0) return { bit: toneBit, any: true };
+    if (effectiveMode === 1) return { bit: lfsrBit, any: true };
+    // Rasp: OR tone with LFSR. Less destructive than XOR — square's
+    // high portions are preserved (no flips), only the low portions
+    // get bursts of high state. Fundamental pitch shape survives;
+    // noise adds harmonic grit without burying the note.
+    return { bit: toneBit | lfsrBit, any: true };
+  }
+  process(inputs, outputs, parameters) {
+    const out = outputs[0][0];
+    const n = out.length;
+    const amp = parameters.amp[0];
+    const duck = parameters.autoDuck[0] >= 0.5;
+    const g = [
+      parameters.gain0[0], parameters.gain1[0],
+      parameters.gain2[0], parameters.gain3[0],
+    ];
+    const tremRate  = parameters.trem_rate[0];
+    const tremDepth = parameters.trem_depth[0];
+    // Tremolo phase increment per sample (cycles per sample × 2π).
+    const tremIncCycles = tremRate / sampleRate;
+    const incA = parameters.inc0;
+    const incB = parameters.inc1;
+    const incC = parameters.inc2;
+    const incD = parameters.inc3;
+    const m0 = parameters.mode0[0] | 0;
+    const m1 = parameters.mode1[0] | 0;
+    const m2 = parameters.mode2[0] | 0;
+    const m3 = parameters.mode3[0] | 0;
+    for (let i = 0; i < n; i++) {
+      const i0 = (incA.length > 1 ? incA[i] : incA[0]) | 0;
+      const i1 = (incB.length > 1 ? incB[i] : incB[0]) | 0;
+      const i2 = (incC.length > 1 ? incC[i] : incC[0]) | 0;
+      const i3 = (incD.length > 1 ? incD[i] : incD[0]) | 0;
+      // ALWAYS step every voice's phase counter so phases stay coherent
+      // when ducking releases. Suppression masks the *contribution* only.
+      const r0 = this.stepVoice(0, i0, m0);
+      const r1 = this.stepVoice(1, i1, m1);
+      const r2 = this.stepVoice(2, i2, m2);
+      const r3 = this.stepVoice(3, i3, m3);
+      // Auto-duck: V3 in noise + producing = subtract V0/V1/V2 from sum.
+      const v3NoiseActive = (i3 < 0);
+      const suppress012 = duck && v3NoiseActive;
+      const a0 = r0.any && !suppress012;
+      const a1 = r1.any && !suppress012;
+      const a2 = r2.any && !suppress012;
+      const a3 = r3.any;
+      // Tremolo: per-voice cosine LFO. Skip on V3 (drums, no tremolo).
+      // gainMul = 1 - depth + depth*((cos(phase)+1)/2) so the LFO
+      // sweeps gain from (1-depth) up to 1.0 (so peak == nominal,
+      // dip == nominal*(1-depth)). Tones get the wobble; drums don't.
+      let tm0 = 1, tm1 = 1, tm2 = 1;
+      if (tremDepth > 0) {
+        // Advance phases.
+        this.tremPhase[0] = (this.tremPhase[0] + tremIncCycles) % 1;
+        this.tremPhase[1] = (this.tremPhase[1] + tremIncCycles) % 1;
+        this.tremPhase[2] = (this.tremPhase[2] + tremIncCycles) % 1;
+        const c0 = (Math.cos(this.tremPhase[0] * 2 * Math.PI) + 1) * 0.5;
+        const c1 = (Math.cos(this.tremPhase[1] * 2 * Math.PI) + 1) * 0.5;
+        const c2 = (Math.cos(this.tremPhase[2] * 2 * Math.PI) + 1) * 0.5;
+        tm0 = (1 - tremDepth) + tremDepth * c0;
+        tm1 = (1 - tremDepth) + tremDepth * c1;
+        tm2 = (1 - tremDepth) + tremDepth * c2;
+      }
+      // Effective per-voice gain (static gain × tremolo modulation).
+      const ge0 = g[0] * tm0;
+      const ge1 = g[1] * tm1;
+      const ge2 = g[2] * tm2;
+      const ge3 = g[3];
+      // FIXED-DIVISOR PFM mix. Earlier we normalized by sum-of-active-
+      // gains so a solo voice played at full amplitude regardless of
+      // its gain. That erased per-voice gain modulation: when
+      // tremolo dropped V0's gain, the divisor dropped too and the
+      // ratio stayed constant (audibly identical). Now we divide by
+      // FIXED_DIVISOR (4, the max voice count) so per-voice gain
+      // changes show up in the output absolute amplitude. Cost:
+      // solo voices are quieter than 4-voice mixes — but that
+      // matches real-world experience (solo guitar is quieter than
+      // band).
+      const FIXED_DIVISOR = 4;
+      const sum = (a0 ? r0.bit * ge0 : 0)
+                + (a1 ? r1.bit * ge1 : 0)
+                + (a2 ? r2.bit * ge2 : 0)
+                + (a3 ? r3.bit * ge3 : 0);
+      // Center around 0: subtract half of the active voices' gains.
+      // Without this offset, sum is always >= 0 and the output rides
+      // a positive DC bias, which is silent (DC) but uses dynamic
+      // range. Subtract the midpoint so the signal is symmetric.
+      const halfTotal = ((a0 ? ge0 : 0) + (a1 ? ge1 : 0)
+                       + (a2 ? ge2 : 0) + (a3 ? ge3 : 0)) * 0.5;
+      const centered = sum - halfTotal;
+      out[i] = (centered / FIXED_DIVISOR) * amp * 2;
+    }
+    return true;
+  }
+}
+registerProcessor('chord-processor', ChordProcessor);
+`;
+
+// ScriptProcessorNode fallback. Used when AudioWorklet isn't available
+// (e.g. file:// origin which most browsers block addModule on for
+// security). Same XOR math as the worklet — just runs on the main audio
+// thread which is fine for a 3-voice toy synth. ~256 samples / callback
+// = ~6 ms latency at 44.1 kHz, plenty for our purposes.
+function createScriptProcessorEngine() {
+  const node = audioCtx.createScriptProcessor(512, 0, 1);
+  // Mirror the worklet's per-voice state.
+  const incs = [0, 0, 0, 0];
+  const phase = [0, 0, 0, 0];
+  const lfsr = [0xACE1, 0xACE1, 0xACE1, 0xACE1];
+  const lfsrAcc = [0, 0, 0, 0];
+  // Per-voice mode: 0=tone, 1=noise, 2=rasp (square OR LFSR slow).
+  const modes = [0, 0, 0, 0];
+  const duty = [0.5, 0.5, 0.5, 0.5];
+  const raspCounter = [0, 0, 0, 0];
+  // Scheduled inc changes: { time: audioCtx-seconds, voice, inc }.
+  let queue = [];
+  let gainQueue = [];
+  let autoDuck = true;
+  const amp = 0.45;
+  const voiceGain = [1.0, 1.0, 1.0, 1.0];
+  let tremRate = 7;
+  let tremDepth = 0;
+  const tremPhase = [0, 0.33, 0.67, 0];
+  function stepVoice(v) {
+    const inc = incs[v];
+    if (inc === 0) return { bit: 0, any: false };
+    const effectiveMode = (inc < 0) ? 1 : modes[v];
+    const incMag = (inc < 0) ? -inc : inc;
+    let toneBit = 0;
+    if (effectiveMode !== 1) {
+      phase[v] = (phase[v] + incMag) & 0xFFFF;
+      const threshold = (duty[v] * 65536) | 0;
+      toneBit = (phase[v] < threshold) ? 1 : 0;
+    }
+    let lfsrBit = 0;
+    if (effectiveMode === 1 || effectiveMode === 2) {
+      if (effectiveMode === 1) {
+        const old = lfsrAcc[v];
+        const next = (old + incMag) & 0xFFFF;
+        lfsrAcc[v] = next;
+        if (next < old) {
+          let l = lfsr[v];
+          const lsb = l & 1;
+          l >>= 1;
+          if (lsb) l ^= 0xB400;
+          lfsr[v] = l & 0xFFFF;
+        }
+      } else {
+        if ((raspCounter[v] & 7) === 0) {
+          let l = lfsr[v];
+          const lsb = l & 1;
+          l >>= 1;
+          if (lsb) l ^= 0xB400;
+          lfsr[v] = l & 0xFFFF;
+        }
+        raspCounter[v] = (raspCounter[v] + 1) & 0xFF;
+      }
+      lfsrBit = lfsr[v] & 1;
+    }
+    if (effectiveMode === 0) return { bit: toneBit, any: true };
+    if (effectiveMode === 1) return { bit: lfsrBit, any: true };
+    return { bit: toneBit | lfsrBit, any: true };
+  }
+  node.onaudioprocess = (e) => {
+    const out = e.outputBuffer.getChannelData(0);
+    const n = out.length;
+    const tStart = e.playbackTime || audioCtx.currentTime;
+    const tStep = 1 / SAMPLE_RATE;
+    for (let i = 0; i < n; i++) {
+      const tSample = tStart + i * tStep;
+      while (queue.length > 0 && queue[0].time <= tSample) {
+        const ev = queue.shift();
+        incs[ev.voice] = ev.inc;
+      }
+      while (gainQueue.length > 0 && gainQueue[0].time <= tSample) {
+        const ev = gainQueue.shift();
+        voiceGain[ev.voice] = ev.gain;
+      }
+      const r0 = stepVoice(0);
+      const r1 = stepVoice(1);
+      const r2 = stepVoice(2);
+      const r3 = stepVoice(3);
+      const suppress012 = autoDuck && (incs[3] < 0);
+      const a0 = r0.any && !suppress012;
+      const a1 = r1.any && !suppress012;
+      const a2 = r2.any && !suppress012;
+      const a3 = r3.any;
+      // Tremolo (matches worklet path).
+      let tm0 = 1, tm1 = 1, tm2 = 1;
+      if (tremDepth > 0) {
+        const tremIncCycles = tremRate / SAMPLE_RATE;
+        tremPhase[0] = (tremPhase[0] + tremIncCycles) % 1;
+        tremPhase[1] = (tremPhase[1] + tremIncCycles) % 1;
+        tremPhase[2] = (tremPhase[2] + tremIncCycles) % 1;
+        const c0 = (Math.cos(tremPhase[0] * 2 * Math.PI) + 1) * 0.5;
+        const c1 = (Math.cos(tremPhase[1] * 2 * Math.PI) + 1) * 0.5;
+        const c2 = (Math.cos(tremPhase[2] * 2 * Math.PI) + 1) * 0.5;
+        tm0 = (1 - tremDepth) + tremDepth * c0;
+        tm1 = (1 - tremDepth) + tremDepth * c1;
+        tm2 = (1 - tremDepth) + tremDepth * c2;
+      }
+      const ge0 = voiceGain[0] * tm0;
+      const ge1 = voiceGain[1] * tm1;
+      const ge2 = voiceGain[2] * tm2;
+      const ge3 = voiceGain[3];
+      // Fixed-divisor mix (see worklet path for rationale).
+      const FIXED_DIVISOR = 4;
+      const sum = (a0 ? r0.bit * ge0 : 0)
+                + (a1 ? r1.bit * ge1 : 0)
+                + (a2 ? r2.bit * ge2 : 0)
+                + (a3 ? r3.bit * ge3 : 0);
+      const halfTotal = ((a0 ? ge0 : 0) + (a1 ? ge1 : 0)
+                       + (a2 ? ge2 : 0) + (a3 ? ge3 : 0)) * 0.5;
+      out[i] = ((sum - halfTotal) / FIXED_DIVISOR) * amp * 2;
+    }
+  };
+  return {
+    ready: true,
+    label: 'scriptprocessor',
+    node,
+    setInc(voice, inc) { incs[voice] = inc | 0; },
+    scheduleInc(voice, inc, time) { queue.push({ voice, inc: inc | 0, time }); queue.sort((a, b) => a.time - b.time); },
+    silenceAll(time) {
+      // Drop all pending future events past `time`; same reason as the
+      // worklet path. Without this, song-playback's queued events
+      // continue to fire after STOP.
+      queue = queue.filter(ev => ev.time < time);
+      gainQueue = gainQueue.filter(ev => ev.time < time);
+      for (let v = 0; v < 4; v++) queue.push({ voice: v, inc: 0, time });
+      queue.sort((a, b) => a.time - b.time);
+    },
+    setAutoDuck(on) { autoDuck = !!on; },
+    setVoiceGain(voice, gain) { voiceGain[voice] = +gain; },
+    // SP fallback: no smooth ramps — just jump to the value at scheduled time.
+    // Adds a queue entry similar to scheduleInc but for gain.
+    scheduleGain(voice, gain, time, _mode) {
+      gainQueue.push({ voice, gain: +gain, time });
+      gainQueue.sort((a, b) => a.time - b.time);
+    },
+    setTremolo(rate, depth) {
+      tremRate = +rate;
+      tremDepth = +depth;
+    },
+    setVoiceMode(voice, mode) { modes[voice] = mode | 0; },
+    scheduleVoiceMode(voice, mode, _time) {
+      // SP fallback ignores time (no automation queue for modes).
+      modes[voice] = mode | 0;
+    },
+  };
+}
+
+function createWorkletEngine(node) {
+  const params = ['inc0', 'inc1', 'inc2', 'inc3'].map(name => node.parameters.get(name));
+  const gainParams = ['gain0', 'gain1', 'gain2', 'gain3'].map(name => node.parameters.get(name));
+  const modeParams = ['mode0', 'mode1', 'mode2', 'mode3'].map(name => node.parameters.get(name));
+  const duckParam = node.parameters.get('autoDuck');
+  const tremRate = node.parameters.get('trem_rate');
+  const tremDepth = node.parameters.get('trem_depth');
+  return {
+    ready: true,
+    label: 'worklet',
+    node,
+    setInc(voice, inc) { params[voice].setValueAtTime(inc, audioCtx.currentTime); },
+    scheduleInc(voice, inc, time) { params[voice].setValueAtTime(inc, time); },
+    silenceAll(time) {
+      // Cancel any pending future automation first, then drop to 0.
+      // Without cancel*, queued setValueAtTime events scheduled by song
+      // playback would still fire after STOP — playback would seem to
+      // "resume" because the worklet queue has hundreds of events ahead.
+      for (let v = 0; v < 4; v++) {
+        params[v].cancelScheduledValues(time);
+        params[v].setValueAtTime(0, time);
+        gainParams[v].cancelScheduledValues(time);
+      }
+    },
+    setAutoDuck(on) { duckParam.setValueAtTime(on ? 1 : 0, audioCtx.currentTime); },
+    setVoiceGain(voice, gain) {
+      gainParams[voice].setValueAtTime(+gain, audioCtx.currentTime);
+    },
+    // Schedule a gain transition. mode='step' = setValueAtTime (jump);
+    // mode='ramp' = linearRampToValueAtTime (smooth attack/decay).
+    scheduleGain(voice, gain, time, mode = 'step') {
+      if (mode === 'ramp') {
+        gainParams[voice].linearRampToValueAtTime(+gain, time);
+      } else {
+        gainParams[voice].setValueAtTime(+gain, time);
+      }
+    },
+    setTremolo(rate, depth) {
+      tremRate.setValueAtTime(+rate, audioCtx.currentTime);
+      tremDepth.setValueAtTime(+depth, audioCtx.currentTime);
+    },
+    // Set voice mode: 0=tone, 1=noise, 2=rasp.
+    setVoiceMode(voice, mode) {
+      modeParams[voice].setValueAtTime(mode | 0, audioCtx.currentTime);
+    },
+    scheduleVoiceMode(voice, mode, time) {
+      modeParams[voice].setValueAtTime(mode | 0, time);
+    },
+  };
+}
+
+async function ensureAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SAMPLE_RATE });
+  // SFX path: classic OscillatorNode (preserves exact prior behavior).
+  sfxOsc = audioCtx.createOscillator();
+  sfxOsc.type = 'square';
+  sfxGain = audioCtx.createGain();
+  sfxGain.gain.value = 0;
+  sfxAnalyser = audioCtx.createAnalyser();
+  sfxAnalyser.fftSize = 1024;
+  sfxOsc.connect(sfxGain).connect(sfxAnalyser).connect(audioCtx.destination);
+  sfxOsc.start();
+
+  // CHORD path: prefer AudioWorklet; fall back to ScriptProcessorNode if
+  // addModule fails (most commonly because the page is loaded via file://
+  // which blocks worklet module fetches in most browsers).
+  chordAnalyser = audioCtx.createAnalyser();
+  chordAnalyser.fftSize = 1024;
+  let workletReady = false;
+  if (audioCtx.audioWorklet && typeof audioCtx.audioWorklet.addModule === 'function') {
+    try {
+      const blob = new Blob([CHORD_WORKLET], { type: 'application/javascript' });
+      const url = URL.createObjectURL(blob);
+      await audioCtx.audioWorklet.addModule(url);
+      const node = new AudioWorkletNode(audioCtx, 'chord-processor', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1] });
+      node.connect(chordAnalyser).connect(audioCtx.destination);
+      chordEngine = createWorkletEngine(node);
+      workletReady = true;
+    } catch (err) {
+      console.warn('AudioWorklet unavailable, falling back to ScriptProcessorNode:', err);
+    }
+  }
+  if (!workletReady) {
+    chordEngine = createScriptProcessorEngine();
+    chordEngine.node.connect(chordAnalyser).connect(audioCtx.destination);
+  }
+  console.log(`chord engine: ${chordEngine.label}`);
+
+  document.getElementById('warn').classList.remove('visible');
+}
+
+function hzToInc(hz) {
+  if (!hz || hz <= 0) return 0;
+  // Match the platform mixer: increment = (hz * 65536) / sampleRate.
+  let inc = Math.round((hz * 65536) / SAMPLE_RATE);
+  if (inc < 1) inc = 1;
+  if (inc > 65535) inc = 65535;
+  return inc;
+}
+
+// Encode tone vs noise into a single signed integer:
+//   tone  → +inc
+//   noise → -inc
+// The mixer treats sign as mode flag, magnitude as rate.
+function hzToVoiceInc(hz, mode) {
+  const inc = hzToInc(hz);
+  if (inc === 0) return 0;
+  return (mode === 'noise') ? -inc : +inc;
+}
+
+function setTone(hz, atTime) {
+  if (hz === 0) {
+    sfxGain.gain.setValueAtTime(0, atTime);
+  } else {
+    sfxOsc.frequency.setValueAtTime(hz, atTime);
+    sfxGain.gain.setValueAtTime(0.18, atTime);
+  }
+}
+
+// Schedule one Sfx (single voice) on the SFX path. Returns end time.
+function scheduleSfx(sfx, startTime) {
+  const { freq_start, freq_slope, duration } = sfx;
+  let t = startTime;
+  let freq = freq_start;
+  setTone(freq, t);
+  t += FRAME_MS / 1000;  // start_pending hold
+  for (let i = 0; i < duration - 1; i++) {
+    let next = freq + freq_slope;
+    if (next < FREQ_MIN) next = FREQ_MIN;
+    if (next > FREQ_MAX) next = FREQ_MAX;
+    freq = next;
+    setTone(freq, t);
+    t += FRAME_MS / 1000;
+  }
+  setTone(0, t);
+  return t;
+}
+
+// Schedule a 3-voice chord. voices[i] = { sfx, mode } or null.
+// Each voice steps independently; total length = max(duration_i) frames.
+function scheduleChord(voices, startTime) {
+  if (!chordEngine || !chordEngine.ready) return startTime;
+  const maxDur = Math.max(...voices.map(v => v ? v.sfx.duration : 0));
+  const totalFrames = maxDur + 1;
+  for (let v = 0; v < 4; v++) {
+    const entry = voices[v];
+    if (!entry) {
+      chordEngine.scheduleInc(v, 0, startTime);
+      continue;
+    }
+    const { sfx, mode } = entry;
+    let freq = sfx.freq_start;
+    let t = startTime;
+    chordEngine.scheduleInc(v, hzToVoiceInc(freq, mode), t);
+    t += FRAME_MS / 1000;
+    chordEngine.scheduleInc(v, hzToVoiceInc(freq, mode), t);
+    for (let i = 0; i < sfx.duration - 1; i++) {
+      let next = freq + sfx.freq_slope;
+      if (next < FREQ_MIN) next = FREQ_MIN;
+      if (next > FREQ_MAX) next = FREQ_MAX;
+      freq = next;
+      t += FRAME_MS / 1000;
+      chordEngine.scheduleInc(v, hzToVoiceInc(freq, mode), t);
+    }
+    t += FRAME_MS / 1000;
+    chordEngine.scheduleInc(v, 0, t);
+  }
+  return startTime + totalFrames * FRAME_MS / 1000;
+}
+
+// ---- SFX mode (preserved single-voice tuner) -------------------------------
+
+function readSfx() {
+  return {
+    freq_start: +document.getElementById('freq_start').value,
+    freq_slope: +document.getElementById('freq_slope').value,
+    duration:   +document.getElementById('duration').value,
+  };
+}
+
+function totalLengthMs(sfx) { return sfx.duration * FRAME_MS; }
+
+function endFreq(sfx) {
+  let f = sfx.freq_start;
+  for (let i = 0; i < sfx.duration - 1; i++) {
+    f += sfx.freq_slope;
+    if (f < FREQ_MIN) f = FREQ_MIN;
+    if (f > FREQ_MAX) f = FREQ_MAX;
+  }
+  return f;
+}
+
+function refreshDisplay() {
+  const s = readSfx();
+  document.getElementById('freq_start_val').textContent = `${s.freq_start} Hz`;
+  document.getElementById('freq_slope_val').textContent = `${s.freq_slope >= 0 ? '+' : ''}${s.freq_slope} Hz/frame`;
+  document.getElementById('duration_val').textContent  = `${s.duration} frames`;
+  document.getElementById('length_val').textContent    = `${totalLengthMs(s).toFixed(1)} ms`;
+  document.getElementById('endfreq_val').textContent   = `${endFreq(s)} Hz`;
+  document.getElementById('cee_line').textContent =
+    `const audio::Sfx SFX_NEW PROGMEM = {${s.freq_start}, ${s.freq_slope}, ${s.duration}};`;
+  drawFreqChart(s);
+}
+
+function drawFreqChart(s) {
+  const c   = document.getElementById('freq_chart');
+  const ctx = c.getContext('2d');
+  const W   = c.width;
+  const H   = c.height;
+  const padL = 30, padR = 6, padT = 8, padB = 18;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+
+  ctx.fillStyle = '#06060a';
+  ctx.fillRect(0, 0, W, H);
+
+  const steps = [];
+  let freq = s.freq_start;
+  steps.push({ tStart: 0, tEnd: FRAME_MS, hz: freq });
+  steps.push({ tStart: FRAME_MS, tEnd: 2 * FRAME_MS, hz: freq });
+  for (let i = 0; i < s.duration - 1; i++) {
+    let next = freq + s.freq_slope;
+    if (next < FREQ_MIN) next = FREQ_MIN;
+    if (next > FREQ_MAX) next = FREQ_MAX;
+    freq = next;
+    const t0 = (2 + i) * FRAME_MS;
+    steps.push({ tStart: t0, tEnd: t0 + FRAME_MS, hz: freq });
+  }
+  const totalMs = (1 + s.duration) * FRAME_MS;
+
+  const allHz = steps.map(st => st.hz);
+  let yMin = Math.min(...allHz);
+  let yMax = Math.max(...allHz);
+  if (yMin === yMax) { yMin -= 50; yMax += 50; }
+  const span = yMax - yMin;
+  yMin -= span * 0.1;
+  yMax += span * 0.1;
+  if (yMin < 0) yMin = 0;
+
+  const xOf = (t)  => padL + (t / totalMs) * plotW;
+  const yOf = (hz) => padT + plotH - ((hz - yMin) / (yMax - yMin)) * plotH;
+
+  ctx.strokeStyle = '#2a2a32';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(padL, padT);
+  ctx.lineTo(padL, padT + plotH);
+  ctx.lineTo(padL + plotW, padT + plotH);
+  ctx.stroke();
+
+  ctx.fillStyle = '#8a8a96';
+  ctx.font = '10px ui-monospace, Menlo, monospace';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(`${Math.round(yMax)}`, padL - 4, padT + 6);
+  ctx.fillText(`${Math.round(yMin)}`, padL - 4, padT + plotH - 6);
+  ctx.fillText('Hz', padL - 4, padT + plotH / 2);
+
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('0 ms', padL, padT + plotH + 4);
+  ctx.textAlign = 'right';
+  ctx.fillText(`${totalMs.toFixed(0)} ms`, padL + plotW, padT + plotH + 4);
+
+  ctx.strokeStyle = '#1a1a22';
+  for (let i = 1; i <= s.duration + 1; i++) {
+    const x = xOf(i * FRAME_MS);
+    ctx.beginPath();
+    ctx.moveTo(x, padT);
+    ctx.lineTo(x, padT + plotH);
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = '#c89146';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  steps.forEach((st, i) => {
+    const x0 = xOf(st.tStart);
+    const x1 = xOf(st.tEnd);
+    const y  = yOf(st.hz);
+    if (i === 0) ctx.moveTo(x0, y);
+    else         ctx.lineTo(x0, y);
+    ctx.lineTo(x1, y);
+  });
+  ctx.stroke();
+
+  ctx.fillStyle = '#c89146';
+  steps.forEach(st => {
+    const x = xOf(st.tStart);
+    const y = yOf(st.hz);
+    ctx.beginPath();
+    ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  ctx.fillStyle = '#5a5a66';
+  ctx.font = '10px ui-monospace, Menlo, monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  if (xOf(2 * FRAME_MS) - xOf(0) > 30) {
+    ctx.fillText('start hold', xOf(0) + 2, padT + 2);
+  }
+}
+
+// ---- Undo / redo (SFX mode; chord mode has its own simpler stack) ----------
+
+const UNDO_LIMIT = 50;
+const undoStack = [];
+let   undoIndex = -1;
+let   suspendUndoPush = false;
+let   pushTimer = null;
+
+function snapshotSliders() {
+  return {
+    freq_start: +document.getElementById('freq_start').value,
+    freq_slope: +document.getElementById('freq_slope').value,
+    duration:   +document.getElementById('duration').value,
+  };
+}
+
+function snapshotsEqual(a, b) {
+  return a && b
+    && a.freq_start === b.freq_start
+    && a.freq_slope === b.freq_slope
+    && a.duration   === b.duration;
+}
+
+function pushUndo() {
+  if (suspendUndoPush) return;
+  const snap = snapshotSliders();
+  if (snapshotsEqual(snap, undoStack[undoIndex])) return;
+  undoStack.length = undoIndex + 1;
+  undoStack.push(snap);
+  if (undoStack.length > UNDO_LIMIT) {
+    undoStack.shift();
+  } else {
+    undoIndex++;
+  }
+  refreshUndoStatus();
+}
+
+function pushUndoDebounced() {
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(pushUndo, 250);
+}
+
+function applySnapshot(snap) {
+  if (!snap) return;
+  suspendUndoPush = true;
+  document.getElementById('freq_start').value = snap.freq_start;
+  document.getElementById('freq_slope').value = snap.freq_slope;
+  document.getElementById('duration').value   = snap.duration;
+  refreshDisplay();
+  suspendUndoPush = false;
+  refreshUndoStatus();
+}
+
+function refreshUndoStatus() {
+  const s = document.getElementById('undo_status');
+  if (s) s.textContent = `(${undoIndex + 1}/${undoStack.length} states)`;
+  document.getElementById('undo').disabled = undoIndex <= 0;
+  document.getElementById('redo').disabled = undoIndex >= undoStack.length - 1;
+}
+
+document.getElementById('undo').addEventListener('click', () => {
+  if (undoIndex <= 0) return;
+  undoIndex--;
+  applySnapshot(undoStack[undoIndex]);
+});
+document.getElementById('redo').addEventListener('click', () => {
+  if (undoIndex >= undoStack.length - 1) return;
+  undoIndex++;
+  applySnapshot(undoStack[undoIndex]);
+});
+
+['freq_start','freq_slope','duration'].forEach(id => {
+  const el = document.getElementById(id);
+  el.addEventListener('input', () => {
+    refreshDisplay();
+    pushUndoDebounced();
+  });
+});
+refreshDisplay();
+pushUndo();
+
+// ---- CHORD MODE ------------------------------------------------------------
+
+const NOTE_NAMES = ['C','C#','D','Eb','E','F','F#','G','Ab','A','Bb','B'];
+function hzToNoteName(hz) {
+  // A4 = 440 Hz reference. midi = 69 + 12 * log2(hz / 440).
+  if (hz <= 0) return '—';
+  const midi = Math.round(69 + 12 * Math.log2(hz / 440));
+  if (midi < 0 || midi > 127) return '—';
+  const oct = Math.floor(midi / 12) - 1;
+  return NOTE_NAMES[midi % 12] + oct;
+}
+
+const voiceMute = [false, false, false, true];   // V3 muted by default
+const voiceMode = ['tone', 'tone', 'tone', 'noise'];  // V3 starts in noise mode (drum slot)
+
+function readVoiceSfx(i) {
+  return {
+    freq_start: +document.getElementById(`v${i}_freq`).value,
+    freq_slope: +document.getElementById(`v${i}_slope`).value,
+    duration:   +document.getElementById(`v${i}_dur`).value,
+  };
+}
+
+function readVoice(i) {
+  if (voiceMute[i]) return null;
+  return { sfx: readVoiceSfx(i), mode: voiceMode[i] };
+}
+
+function readAllVoices() {
+  return [readVoice(0), readVoice(1), readVoice(2), readVoice(3)];
+}
+
+function refreshChordDisplay() {
+  for (let v = 0; v < 4; v++) {
+    const f = +document.getElementById(`v${v}_freq`).value;
+    const s = +document.getElementById(`v${v}_slope`).value;
+    const d = +document.getElementById(`v${v}_dur`).value;
+    const isNoise = (voiceMode[v] === 'noise');
+    // In noise mode the freq_start label means "shift rate" — display as
+    // "noise@N Hz" so we don't accidentally read it as a pitched note.
+    document.getElementById(`v${v}_freq_val`).textContent =
+      isNoise ? `noise @ ${f} Hz` : `${f} Hz · ${hzToNoteName(f)}`;
+    document.getElementById(`v${v}_slope_val`).textContent = `${s >= 0 ? '+' : ''}${s} Hz/frame`;
+    document.getElementById(`v${v}_dur_val`).textContent  = `${d} frames`;
+    const panel = document.getElementById(`vp${v}`);
+    panel.classList.toggle('muted', voiceMute[v]);
+    // Mute button: + (click to enable) when muted, [×] (click to mute) when active.
+    document.getElementById(`v${v}_mute`).textContent = voiceMute[v] ? '+ enable' : '[×]';
+    // Mode pill highlight.
+    const pill = document.getElementById(`v${v}_mode_pill`);
+    pill.querySelectorAll('.mode-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.mode === voiceMode[v]);
+    });
+  }
+  refreshChordCeeLine();
+}
+
+function refreshChordCeeLine() {
+  // Four Sfx structs ready to paste, plus a Song struct example.
+  // Note: noise mode is a future engine flag (not yet in the on-device
+  // Sfx struct); for now the export comments which voices are noise so
+  // you remember to set the flag once it lands.
+  const lines = [];
+  for (let v = 0; v < 4; v++) {
+    if (voiceMute[v]) {
+      lines.push(`// V${v} muted`);
+      continue;
+    }
+    const sfx = readVoiceSfx(v);
+    const tag = (voiceMode[v] === 'noise') ? '  // NOISE' : '';
+    lines.push(`const audio::Sfx CHORD_V${v}[] PROGMEM = { {${sfx.freq_start}, ${sfx.freq_slope}, ${sfx.duration}} };${tag}`);
+  }
+  lines.push('const audio::Song MY_CHORD PROGMEM = {');
+  lines.push(`  CHORD_V0, CHORD_V1, CHORD_V2, CHORD_V3,`);
+  lines.push(`  ${voiceMute[0] ? 0 : 1}, ${voiceMute[1] ? 0 : 1}, ${voiceMute[2] ? 0 : 1}, ${voiceMute[3] ? 0 : 1}`);
+  lines.push('};');
+  document.getElementById('chord_cee_line').textContent = lines.join('\n');
+}
+
+['v0_freq','v0_slope','v0_dur','v1_freq','v1_slope','v1_dur','v2_freq','v2_slope','v2_dur','v3_freq','v3_slope','v3_dur'].forEach(id => {
+  document.getElementById(id).addEventListener('input', refreshChordDisplay);
+});
+[0,1,2,3].forEach(v => {
+  const muteBtn = document.getElementById(`v${v}_mute`);
+  const panel = document.getElementById(`vp${v}`);
+  muteBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    voiceMute[v] = !voiceMute[v];
+    refreshChordDisplay();
+  });
+  // Whole-panel click also toggles mute when collapsed (so the user has
+  // a generous click target for the "this voice is silent, expand it" stub).
+  panel.addEventListener('click', () => {
+    if (voiceMute[v]) {
+      voiceMute[v] = false;
+      refreshChordDisplay();
+    }
+  });
+});
+
+// Mode pill: tone / noise per voice.
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const v = +btn.dataset.voice;
+    voiceMode[v] = btn.dataset.mode;
+    refreshChordDisplay();
+  });
+});
+
+// Per-voice gain preferences. V3 (drums) gets a louder share so the
+// kick/snare punches through a chord-and-lead mix; tones are slightly
+// reduced. Tweak these if the mix feels off — they're universal.
+//   - gain 1.0 = unity
+//   - gain 0.85 = about -1.4 dB
+//   - gain 1.6 = about +4 dB
+const VOICE_GAIN_DEFAULTS = [0.85, 0.85, 0.85, 1.6];
+
+// Tremolo defaults: rate (Hz) and depth (0..1). Applied to V0/V1/V2
+// tone voices only. Default off — tremolo doesn't materially shape
+// the "guitar" timbre on top of square waves; we'll resort to it only
+// for specific patches that want a wobble effect.
+const TREM_RATE_DEFAULT = 7;
+const TREM_DEPTH_DEFAULT = 0;
+
+// Per-drum gain override. When a drum cell fires on V3, the schedule
+// cycle ramps V3's gain to one of these values for that hit. Lets the
+// kick punch through while the snare/hat sit quieter in the mix.
+// Falls back to VOICE_GAIN_DEFAULTS[3] if a drum isn't listed.
+const DRUM_GAIN = {
+  KICK:  1.6,   // big body, full punch
+  SNARE: 1.4,   // bumped up from 1.0 — was sitting too quiet under the chord
+  HAT:   0.8,   // brightest, most "in your face" by frequency, so quieter
+  BLAST: 1.3,   // medium — long noise wash, doesn't need to dominate
+};
+
+// Apply the auto-duck checkbox state, per-voice gain, AND tremolo to
+// the engine. Called whenever the checkbox toggles or once per
+// ensureAudio(). Misnomer at this point — it's the universal "apply
+// mix preferences" function.
+function applyAutoDuck() {
+  if (!chordEngine || !chordEngine.setAutoDuck) return;
+  // Per-song override: if the active song explicitly opts out of
+  // auto-duck (`autoDuck: false`), respect that. Otherwise fall back
+  // to the user's checkbox state. The seed songs default to false
+  // because constant ducking on every drum hit was masking the chord
+  // arrangement (chord audible <30% of the bar in heavy-blast sections).
+  const songOverride = (songModel && songModel.autoDuck === false) ? false : null;
+  const checkboxState = document.getElementById('auto_duck').checked;
+  const effective = (songOverride !== null) ? songOverride : checkboxState;
+  chordEngine.setAutoDuck(effective);
+  if (chordEngine.setVoiceGain) {
+    for (let v = 0; v < 4; v++) chordEngine.setVoiceGain(v, VOICE_GAIN_DEFAULTS[v]);
+  }
+  if (chordEngine.setTremolo) {
+    chordEngine.setTremolo(TREM_RATE_DEFAULT, TREM_DEPTH_DEFAULT);
+  }
+}
+document.getElementById('auto_duck').addEventListener('change', applyAutoDuck);
+
+document.getElementById('chord_play').addEventListener('click', async () => {
+  await ensureAudio();
+  applyAutoDuck();
+  if (!chordEngine || !chordEngine.ready) {
+    alert('Chord engine could not start. Check browser console.');
+    return;
+  }
+  scheduleChord(readAllVoices(), audioCtx.currentTime + 0.05);
+});
+function playSoloVoice(idx) {
+  // Solo audition: ignore mute on the targeted voice so you can hear it
+  // even if it's currently muted in the chord. Other voices stay null.
+  applyAutoDuck();
+  const entry = { sfx: readVoiceSfx(idx), mode: voiceMode[idx] };
+  const voices = [null, null, null];
+  voices[idx] = entry;
+  scheduleChord(voices, audioCtx.currentTime + 0.05);
+}
+document.getElementById('chord_play_v0').addEventListener('click', async () => {
+  await ensureAudio();
+  playSoloVoice(0);
+});
+document.getElementById('chord_play_v1').addEventListener('click', async () => {
+  await ensureAudio();
+  playSoloVoice(1);
+});
+document.getElementById('chord_play_v2').addEventListener('click', async () => {
+  await ensureAudio();
+  playSoloVoice(2);
+});
+document.getElementById('chord_play_v3').addEventListener('click', async () => {
+  await ensureAudio();
+  playSoloVoice(3);
+});
+// ---- Test song scheduler ---------------------------------------------------
+//
+// 8-bar groove at 130 BPM. Sustained power chord on V0+V1, drum hits on V2.
+// Bars 1-7 = D power chord (D2 + A2). Bar 8 = Eb power chord (Eb2 + Bb2).
+// Kick on beats 1+3, snare on beats 2+4. Auto-duck makes the chord
+// breathe with each drum hit.
+//
+// Frame math: 60 fps engine, 130 BPM, ~28 frames/beat (close to 129 BPM).
+// 4 beats/bar = 112 frames/bar. 8 bars = 896 frames ≈ 14.93 seconds.
+// Frame durations are in seconds via FRAME_MS / 1000.
+//
+// Drum patches (matching the seed library):
+//   KICK  = noise, freq_start=200, freq_slope=-40, duration=4 frames
+//   SNARE = noise, freq_start=1500, freq_slope=0, duration=5 frames
+function scheduleTestSong() {
+  if (!chordEngine || !chordEngine.ready) return;
+  const t0 = audioCtx.currentTime + 0.05;
+  const FRAMES_PER_BEAT = 28;
+  const BEATS_PER_BAR = 4;
+  const FRAMES_PER_BAR = FRAMES_PER_BEAT * BEATS_PER_BAR;  // 112
+  const BARS = 8;
+  const f2t = (frame) => t0 + frame * (FRAME_MS / 1000);
+
+  // V0 + V1 sustained chord per bar. Schedule the inc once at bar start;
+  // it stays at that value until the next bar's inc transition.
+  // D power chord (bars 0-6): V0 = D2 (73 Hz), V1 = A2 (110 Hz)
+  // Eb power chord (bar 7):   V0 = Eb2 (78 Hz), V1 = Bb2 (117 Hz)
+  for (let bar = 0; bar < BARS; bar++) {
+    const isLastBar = (bar === BARS - 1);
+    const v0Hz = isLastBar ? 78 : 73;
+    const v1Hz = isLastBar ? 117 : 110;
+    const barStart = bar * FRAMES_PER_BAR;
+    chordEngine.scheduleInc(0, hzToInc(v0Hz), f2t(barStart));
+    chordEngine.scheduleInc(1, hzToInc(v1Hz), f2t(barStart));
+  }
+
+  // V2 drum pattern: kick beat 1+3, snare beat 2+4. Each hit is followed
+  // by a rest until the next hit. Schedule `inc` at hit-start (negative
+  // for noise mode) and `inc=0` at hit-end so V2 is silent between hits.
+  // Hit frequencies sweep: kick is freq_start=200 with slope=-40 over 4
+  // frames, so we'd ideally schedule 4 inc transitions per kick. For the
+  // first cut we just schedule the start freq and let it hold for the
+  // hit duration — close enough.
+  const KICK_HZ = 200;
+  const KICK_FRAMES = 4;
+  const SNARE_HZ = 1500;
+  const SNARE_FRAMES = 5;
+  for (let bar = 0; bar < BARS; bar++) {
+    const barStart = bar * FRAMES_PER_BAR;
+    // Beat 1: kick
+    let f = barStart + 0 * FRAMES_PER_BEAT;
+    chordEngine.scheduleInc(2, -hzToInc(KICK_HZ), f2t(f));
+    chordEngine.scheduleInc(2, 0, f2t(f + KICK_FRAMES));
+    // Beat 2: snare
+    f = barStart + 1 * FRAMES_PER_BEAT;
+    chordEngine.scheduleInc(2, -hzToInc(SNARE_HZ), f2t(f));
+    chordEngine.scheduleInc(2, 0, f2t(f + SNARE_FRAMES));
+    // Beat 3: kick
+    f = barStart + 2 * FRAMES_PER_BEAT;
+    chordEngine.scheduleInc(2, -hzToInc(KICK_HZ), f2t(f));
+    chordEngine.scheduleInc(2, 0, f2t(f + KICK_FRAMES));
+    // Beat 4: snare
+    f = barStart + 3 * FRAMES_PER_BEAT;
+    chordEngine.scheduleInc(2, -hzToInc(SNARE_HZ), f2t(f));
+    chordEngine.scheduleInc(2, 0, f2t(f + SNARE_FRAMES));
+  }
+
+  // End: silence all voices.
+  const endFrame = BARS * FRAMES_PER_BAR;
+  chordEngine.scheduleInc(0, 0, f2t(endFrame));
+  chordEngine.scheduleInc(1, 0, f2t(endFrame));
+  chordEngine.scheduleInc(2, 0, f2t(endFrame));
+}
+
+document.getElementById('play_test_song').addEventListener('click', async () => {
+  await ensureAudio();
+  applyAutoDuck();
+  if (!chordEngine || !chordEngine.ready) return;
+  scheduleTestSong();
+});
+
+document.getElementById('chord_stop').addEventListener('click', () => {
+  if (!chordEngine) return;
+  chordEngine.silenceAll(audioCtx.currentTime);
+});
+
+// Chord scope
+const chordScopeCanvas = document.getElementById('chord_scope');
+const chordScopeCtx    = chordScopeCanvas.getContext('2d');
+function drawChordScope() {
+  requestAnimationFrame(drawChordScope);
+  const W = chordScopeCanvas.width;
+  const H = chordScopeCanvas.height;
+  chordScopeCtx.fillStyle = '#06060a';
+  chordScopeCtx.fillRect(0, 0, W, H);
+  if (!chordAnalyser) return;
+  const buf = new Uint8Array(chordAnalyser.fftSize);
+  chordAnalyser.getByteTimeDomainData(buf);
+  chordScopeCtx.strokeStyle = '#c89146';
+  chordScopeCtx.lineWidth = 1.5;
+  chordScopeCtx.beginPath();
+  for (let i = 0; i < buf.length; i++) {
+    const x = (i / buf.length) * W;
+    const y = (buf[i] / 255) * H;
+    if (i === 0) chordScopeCtx.moveTo(x, y);
+    else chordScopeCtx.lineTo(x, y);
+  }
+  chordScopeCtx.stroke();
+}
+drawChordScope();
+
+refreshChordDisplay();
+
+// ---- Mode toggle -----------------------------------------------------------
+
+const sfxPanel    = document.getElementById('sfx_panel');
+const chordPanel  = document.getElementById('chord_panel');
+const beepsPanel  = document.getElementById('beeps_panel');
+const chordsPanel = document.getElementById('chords_panel');
+const songPanel   = document.getElementById('song_panel');
+
+function setMode(mode) {
+  const isSfx   = (mode === 'sfx');
+  const isChord = (mode === 'chord');
+  const isSong  = (mode === 'song');
+  sfxPanel.style.display    = isSfx   ? '' : 'none';
+  chordPanel.style.display  = isChord ? '' : 'none';
+  beepsPanel.style.display  = isSfx   ? '' : 'none';
+  chordsPanel.style.display = isChord ? '' : 'none';
+  songPanel.style.display   = isSong  ? '' : 'none';
+  document.getElementById('mode_sfx').classList.toggle('active', isSfx);
+  document.getElementById('mode_chord').classList.toggle('active', isChord);
+  document.getElementById('mode_song').classList.toggle('active', isSong);
+  localStorage.setItem('mono_audio_mode', mode);
+}
+document.getElementById('mode_sfx').addEventListener('click', () => setMode('sfx'));
+document.getElementById('mode_chord').addEventListener('click', () => setMode('chord'));
+document.getElementById('mode_song').addEventListener('click', () => setMode('song'));
+setMode(localStorage.getItem('mono_audio_mode') || 'sfx');
+
+// ---- SFX-mode play buttons (preserve original behavior) --------------------
+
+document.getElementById('play').addEventListener('click', async () => {
+  await ensureAudio();
+  // Mode-aware: in chord mode, PLAY drives the chord; otherwise the SFX.
+  const mode = localStorage.getItem('mono_audio_mode') || 'sfx';
+  const t0 = audioCtx.currentTime + 0.02;
+  if (mode === 'chord') {
+    applyAutoDuck();
+    if (chordEngine && chordEngine.ready) scheduleChord(readAllVoices(), t0);
+  } else {
+    scheduleSfx(readSfx(), t0);
+  }
+});
+document.getElementById('preview_dirty').addEventListener('click', async () => {
+  await ensureAudio();
+  scheduleSfx(readSfx(), audioCtx.currentTime + 0.02);
+});
+document.getElementById('play3').addEventListener('click', async () => {
+  await ensureAudio();
+  const sfx = readSfx();
+  let t = audioCtx.currentTime + 0.02;
+  for (let i = 0; i < 3; i++) {
+    scheduleSfx(sfx, t);
+    t += 0.12;
+  }
+});
+document.getElementById('stop').addEventListener('click', () => {
+  if (!audioCtx) return;
+  setTone(0, audioCtx.currentTime);
+  if (chordEngine) chordEngine.silenceAll(audioCtx.currentTime);
+});
+
+// SFX scope
+const scopeCanvas = document.getElementById('scope');
+const scopeCtx    = scopeCanvas.getContext('2d');
+function drawScope() {
+  requestAnimationFrame(drawScope);
+  if (!sfxAnalyser) {
+    scopeCtx.fillStyle = '#06060a';
+    scopeCtx.fillRect(0, 0, scopeCanvas.width, scopeCanvas.height);
+    return;
+  }
+  const buf = new Uint8Array(sfxAnalyser.fftSize);
+  sfxAnalyser.getByteTimeDomainData(buf);
+  scopeCtx.fillStyle = '#06060a';
+  scopeCtx.fillRect(0, 0, scopeCanvas.width, scopeCanvas.height);
+  scopeCtx.strokeStyle = '#c89146';
+  scopeCtx.lineWidth = 1.5;
+  scopeCtx.beginPath();
+  for (let i = 0; i < buf.length; i++) {
+    const x = (i / buf.length) * scopeCanvas.width;
+    const y = (buf[i] / 255) * scopeCanvas.height;
+    if (i === 0) scopeCtx.moveTo(x, y);
+    else scopeCtx.lineTo(x, y);
+  }
+  scopeCtx.stroke();
+}
+drawScope();
+
+// ---- Beep list (SFX mode) -------------------------------------------------
+
+const SEED_BEEPS = [
+  { name: 'SFX_SHOOT',      params: { freq_start: 1200, freq_slope:  -40, duration:  4 } },
+  { name: 'SFX_HIT_ENEMY',  params: { freq_start:  800, freq_slope:  -30, duration:  5 } },
+  { name: 'SFX_KILL_ENEMY', params: { freq_start:  600, freq_slope:  -25, duration:  8 } },
+  { name: 'SFX_PLAYER_HIT', params: { freq_start:  200, freq_slope:   20, duration: 10 } },
+  { name: 'SFX_DEATH',      params: { freq_start:  400, freq_slope:  -15, duration: 30 } },
+  { name: 'SFX_MENU',       params: { freq_start:  700, freq_slope: -120, duration:  3 } },
+  { name: 'SFX_PICKUP',     params: { freq_start: 1500, freq_slope:   60, duration:  6 } },
+];
+
+const STORAGE_KEY = 'mono_audio_beeps_v2';
+let beeps = [];
+let selectedIndex = -1;
+
+function loadUserBeeps() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) { beeps = JSON.parse(raw); return; }
+  } catch (_) { /* fall through */ }
+  beeps = SEED_BEEPS.map(b => ({ ...b, params: { ...b.params } }));
+  saveUserBeeps();
+}
+function saveUserBeeps() { localStorage.setItem(STORAGE_KEY, JSON.stringify(beeps)); }
+
+function setSliders(p) {
+  document.getElementById('freq_start').value = p.freq_start;
+  document.getElementById('freq_slope').value = p.freq_slope;
+  document.getElementById('duration').value   = p.duration;
+  refreshDisplay();
+  clearTimeout(pushTimer);
+  pushUndo();
+}
+
+function renderBeepsRow() {
+  const row = document.getElementById('beeps_row');
+  row.innerHTML = '';
+  beeps.forEach((entry, i) => {
+    const group = document.createElement('span');
+    group.style.display = 'inline-flex';
+    group.style.gap = '0';
+    group.style.marginRight = '6px';
+    const audition = document.createElement('button');
+    audition.textContent = '▶';
+    audition.title = `Play ${entry.name}`;
+    audition.style.padding = '6px 8px';
+    audition.style.borderRight = 'none';
+    audition.addEventListener('click', async () => {
+      await ensureAudio();
+      scheduleSfx(entry.params, audioCtx.currentTime + 0.02);
+    });
+    const sel = document.createElement('button');
+    sel.textContent = entry.name;
+    sel.title = `Select ${entry.name}`;
+    if (i === selectedIndex) {
+      sel.style.borderColor = 'var(--accent)';
+      sel.style.color = 'var(--accent)';
+    }
+    sel.addEventListener('click', () => {
+      // Single-click selects AND loads onto the sliders (file-picker
+      // semantics). Audition (▶) is the "preview without disturbing
+      // current sliders" alternative.
+      selectedIndex = i;
+      setSliders(entry.params);
+      renderBeepsRow();
+      updateStatus();
+    });
+    group.appendChild(audition);
+    group.appendChild(sel);
+    row.appendChild(group);
+  });
+  updateStatus();
+}
+
+function selectedEntry() { return selectedIndex >= 0 ? beeps[selectedIndex] : null; }
+
+function updateStatus() {
+  const status = document.getElementById('beep_status');
+  const e = selectedEntry();
+  if (!e) status.textContent = 'Nothing selected. Click any beep name to load onto the sliders.';
+  else status.textContent = `Loaded: ${e.name}. Edit sliders, then Update to save.`;
+  const hasSel = !!e;
+  ['clone_selected','update_selected','delete_selected'].forEach(id => {
+    document.getElementById(id).disabled = !hasSel;
+  });
+}
+
+function uniqueName(base, existing) {
+  base = base || 'MY_SOUND';
+  base = base.replace(/[^A-Za-z0-9_]/g, '_').toUpperCase();
+  if (!base.match(/^[A-Z_]/)) base = '_' + base;
+  if (!existing.some(e => e.name === base)) return base;
+  let i = 2;
+  while (existing.some(e => e.name === `${base}_${i}`)) i++;
+  return `${base}_${i}`;
+}
+
+document.getElementById('save_new').addEventListener('click', () => {
+  const nameField = document.getElementById('new_name');
+  const name = uniqueName(nameField.value.trim(), beeps);
+  beeps.push({ name, params: readSfx() });
+  selectedIndex = beeps.length - 1;
+  saveUserBeeps();
+  renderBeepsRow();
+  nameField.value = '';
+});
+document.getElementById('clone_selected').addEventListener('click', () => {
+  const e = selectedEntry();
+  let src, baseName;
+  if (e) { src = { ...e.params }; baseName = e.name + '_COPY'; }
+  else   { src = readSfx(); baseName = 'MY_BEEP'; }
+  const name = uniqueName(baseName, beeps);
+  beeps.push({ name, params: src });
+  selectedIndex = beeps.length - 1;
+  setSliders(src);
+  saveUserBeeps();
+  renderBeepsRow();
+});
+document.getElementById('update_selected').addEventListener('click', () => {
+  const e = selectedEntry();
+  if (!e) return;
+  e.params = readSfx();
+  saveUserBeeps();
+  renderBeepsRow();
+});
+document.getElementById('delete_selected').addEventListener('click', () => {
+  if (selectedIndex < 0) return;
+  beeps.splice(selectedIndex, 1);
+  selectedIndex = -1;
+  saveUserBeeps();
+  renderBeepsRow();
+});
+loadUserBeeps();
+renderBeepsRow();
+
+// ---- Patch library seed (3-voice voicings + drums) -------------------------
+//
+// Voicing math: each chord has root + perfect fifth + a top-note "color" tone.
+// V2 is the expressive slot — what makes 1-bit XOR mixer interesting is
+// non-octave intervals on top (octave-doubling reads bare; minor-third or
+// flat-seventh on top is harmonically rich).
+//
+// Voicings provided per root:
+//   OPEN     — root + 5 + octave           (bare power chord, dry — keep for completeness)
+//   RICH     — root + 5 + minor-third-on-top  (Aeolian dark)
+//   DOM7     — root + 5 + flat-seventh-on-top (the move that XORs into a complex tone)
+//   DETUNED  — root + 5 + octave + 2 Hz   (chorus / fattening trick)
+//
+// Roots covered: D Eb F G A Bb C — D natural minor + Eb (Phrygian b2 of D).
+// Drop any root if the patch list gets too long; add roots for new keys
+// (chromatic transposition is just adding/subtracting semitones).
+
+// Hz table (rounded to integer). Generated from equal temperament with
+// A4 = 440. Covers C1..C6 with both sharp and flat enharmonic spellings
+// (e.g. C#3 == Db3) so the sandbox accepts whatever name the user types.
+// Engine clamps to [50, 8000] so anything below ~G0 floors to 50 — not
+// a concern for any notes in this range.
+const NOTE_HZ = (function buildNoteTable() {
+  const sharp = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  const flat  = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+  const out = {};
+  for (let oct = 1; oct <= 6; oct++) {
+    for (let semi = 0; semi < 12; semi++) {
+      // MIDI: C-1 = 0, A4 = 69. So C{oct} = 12 * (oct + 1) + 0.
+      const midi = 12 * (oct + 1) + semi;
+      const hz = Math.round(440 * Math.pow(2, (midi - 69) / 12));
+      out[`${sharp[semi]}${oct}`] = hz;
+      if (sharp[semi] !== flat[semi]) out[`${flat[semi]}${oct}`] = hz;
+    }
+  }
+  return out;
+})();
+
+// For each root, the three voices and the four voicing tops. fifth is one
+// octave-third above (perfect fifth = 7 semitones); m3-above-octave is
+// (octave + minor third); b7-above-octave is (octave + flat seventh,
+// = root + 10 semitones above the root, one octave up).
+const ROOT_VOICINGS = [
+  // root  fifth   octave  m3@oct b7@oct
+  ['D',   'D2',   'A2',   'D3',   'F3',  'C4'],
+  ['EB',  'Eb2',  'Bb2',  'Eb3',  'F#3', 'Db4'],   // Db4 = C#4
+  ['F',   'F2',   'C3',   'F3',   'Ab3', 'Eb4'],   // Ab3 = G#3
+  ['G',   'G2',   'D3',   'G3',   'Bb3', 'F4'],
+  ['A',   'A2',   'E3',   'A3',   'C4',  'G4'],
+  ['BB',  'Bb2',  'F3',   'Bb3',  'Db4', 'Ab4'],   // Db4 = C#4, Ab4 = G#4
+  ['C',   'C2',   'G2',   'C3',   'Eb3', 'Bb3'],   // C2 ≈ 65 Hz, OK
+];
+// (Note table is generated above and includes both # and b enharmonics
+// for every chromatic position from C1 to C6.)
+
+function voiceSfx(noteName, dur = 20) {
+  return { freq_start: NOTE_HZ[noteName], freq_slope: 0, duration: dur };
+}
+function voiceSfxDetuned(noteName, dur = 20) {
+  // Octave + ~2 Hz: the bottom voice is an exact octave but V2 here is
+  // detuned, producing a ~2 Hz beat against V0×2.
+  return { freq_start: NOTE_HZ[noteName] + 2, freq_slope: 0, duration: dur };
+}
+// Sentinel V3 for chord patches that don't use the drum slot. Muted by
+// default; provides a placeholder so all patches have a 4-voice shape.
+function defaultV3Sentinel() {
+  return { freq_start: 200, freq_slope: -40, duration: 4 };
+}
+function makePatch(name, v0Note, v1Note, v2Note, dur = 20, opts = {}) {
+  return {
+    name,
+    v0: voiceSfx(v0Note, dur),
+    v1: voiceSfx(v1Note, dur),
+    v2: opts.detuned ? voiceSfxDetuned(v2Note, dur) : voiceSfx(v2Note, dur),
+    v3: defaultV3Sentinel(),
+    mute: [false, false, false, true],
+    mode: ['tone', 'tone', 'tone', 'noise'],
+  };
+}
+
+const SEED_CHORDS = [];
+for (const [rootName, v0, v1, oct, m3, b7] of ROOT_VOICINGS) {
+  SEED_CHORDS.push(makePatch(`${rootName}_OPEN`,    v0, v1, oct));
+  SEED_CHORDS.push(makePatch(`${rootName}_RICH`,    v0, v1, m3));
+  SEED_CHORDS.push(makePatch(`${rootName}_DOM7`,    v0, v1, b7));
+  SEED_CHORDS.push(makePatch(`${rootName}_DETUNED`, v0, v1, oct, 30, { detuned: true }));
+}
+// Drum kit (V0/V1/V2 muted, V3 = LFSR noise — drums moved to V3 in the
+// 4-voice rework so V2 is free to be a tonal lead voice).
+function drumPatch(name, freq_start, freq_slope, duration) {
+  return {
+    name,
+    v0: { freq_start: 73, freq_slope: 0, duration: 20 },
+    v1: { freq_start: 110, freq_slope: 0, duration: 20 },
+    v2: { freq_start: 147, freq_slope: 0, duration: 20 },
+    v3: { freq_start, freq_slope, duration },
+    mute: [true, true, true, false],
+    mode: ['tone', 'tone', 'tone', 'noise'],
+  };
+}
+SEED_CHORDS.push(drumPatch('KICK',  200,  -40, 4));
+// Snare: variant D (2000/-300/2) won the A/B test for shape — short snap
+// with hard sweep — but needed more thud and less volume. Lower start
+// (1400) lands more thuddy; -250 slope keeps the sweep; 3 frames gives a
+// touch of body. Per-drum gain (DRUM_GAIN.SNARE = 1.0) handles volume.
+SEED_CHORDS.push(drumPatch('SNARE', 1400, -250, 3));
+SEED_CHORDS.push(drumPatch('HAT',   5000,   0, 2));
+SEED_CHORDS.push(drumPatch('BLAST', 3000, -20, 30));
+
+const CHORD_KEY = 'mono_audio_chords_v8';  // bumped: SNARE thuddy snap (1400/-250/3) + per-drum gain
+let chords = [];
+let chordSelectedIndex = -1;
+
+// Migrate a single patch to 4-voice shape. Idempotent.
+//   - 3-voice patches (no v3) get a sentinel v3 with mute[3]=true.
+//   - 3-voice drum-shape patches (V0+V1 muted, V2 noise) move V2's data
+//     to V3 and mute V2. mode becomes [tone,tone,tone,noise].
+function migratePatch(p) {
+  if (!p) return p;
+  if (p.v3 && p.mute && p.mute.length === 4) return p;  // already 4-voice
+  // Detect old-shape drum: 3-voice, V0+V1 muted, V2 noise.
+  const oldDrum = p.mute && p.mute.length === 3 && p.mute[0] && p.mute[1] && !p.mute[2]
+                  && p.mode && p.mode[2] === 'noise';
+  if (oldDrum) {
+    p.v3 = { ...p.v2 };
+    p.v2 = { freq_start: 147, freq_slope: 0, duration: 20 };
+    p.mute = [true, true, true, false];
+    p.mode = ['tone', 'tone', 'tone', 'noise'];
+  } else {
+    p.v3 = defaultV3Sentinel();
+    p.mute = [...(p.mute || [false,false,false]), true];
+    p.mode = [...(p.mode || ['tone','tone','tone']), 'noise'];
+  }
+  return p;
+}
+
+function loadChords() {
+  try {
+    const raw = localStorage.getItem(CHORD_KEY);
+    if (raw) {
+      chords = JSON.parse(raw);
+      chords = chords.map(migratePatch);
+      return;
+    }
+  } catch (_) {}
+  chords = SEED_CHORDS.map(c => ({ ...c, v0: {...c.v0}, v1: {...c.v1}, v2: {...c.v2}, mute: [...c.mute] }));
+  saveChords();
+}
+function saveChords() { localStorage.setItem(CHORD_KEY, JSON.stringify(chords)); }
+
+function readChord() {
+  return {
+    v0: readVoiceSfx(0),
+    v1: readVoiceSfx(1),
+    v2: readVoiceSfx(2),
+    v3: readVoiceSfx(3),
+    mute: [...voiceMute],
+    mode: [...voiceMode],
+  };
+}
+
+function loadChordToSliders(c) {
+  // Apply migration on load so 3-voice patches grow a V3 sentinel.
+  c = migratePatch(c);
+  for (let v = 0; v < 4; v++) {
+    const src = (v === 0 ? c.v0 : v === 1 ? c.v1 : v === 2 ? c.v2 : c.v3);
+    document.getElementById(`v${v}_freq`).value  = src.freq_start;
+    document.getElementById(`v${v}_slope`).value = src.freq_slope;
+    document.getElementById(`v${v}_dur`).value   = src.duration;
+    voiceMute[v] = c.mute ? !!c.mute[v] : (v === 3);
+    voiceMode[v] = (c.mode && c.mode[v]) || (v === 3 ? 'noise' : 'tone');
+  }
+  refreshChordDisplay();
+}
+
+function renderChordsRow() {
+  const row = document.getElementById('chords_row');
+  row.innerHTML = '';
+  chords.forEach((entry, i) => {
+    const group = document.createElement('span');
+    group.style.display = 'inline-flex';
+    group.style.marginRight = '6px';
+    const audition = document.createElement('button');
+    audition.textContent = '▶';
+    audition.style.padding = '6px 8px';
+    audition.style.borderRight = 'none';
+    audition.addEventListener('click', async () => {
+      await ensureAudio();
+      applyAutoDuck();
+      if (!chordEngine || !chordEngine.ready) return;
+      const wrap = (vIdx, sfx) => {
+        if (entry.mute && entry.mute[vIdx]) return null;
+        return { sfx, mode: (entry.mode && entry.mode[vIdx]) || 'tone' };
+      };
+      scheduleChord(
+        [wrap(0, entry.v0), wrap(1, entry.v1), wrap(2, entry.v2)],
+        audioCtx.currentTime + 0.05,
+      );
+    });
+    const sel = document.createElement('button');
+    sel.textContent = entry.name;
+    if (i === chordSelectedIndex) {
+      sel.style.borderColor = 'var(--accent)';
+      sel.style.color = 'var(--accent)';
+    }
+    sel.addEventListener('click', () => {
+      // Single-click selects AND loads onto the sliders. Same pattern as
+      // a file picker: clicking a name == "show me this." Audition (▶)
+      // doesn't load; that's the "preview without disturbing my work" path.
+      chordSelectedIndex = i;
+      loadChordToSliders(entry);
+      renderChordsRow();
+      updateChordStatus();
+    });
+    group.appendChild(audition);
+    group.appendChild(sel);
+    row.appendChild(group);
+  });
+  updateChordStatus();
+}
+function updateChordStatus() {
+  const status = document.getElementById('chord_status');
+  const e = chordSelectedIndex >= 0 ? chords[chordSelectedIndex] : null;
+  if (!e) status.textContent = 'Nothing selected. Click any patch name to load onto the sliders.';
+  else    status.textContent = `Loaded: ${e.name}. Edit sliders, then Update to save.`;
+  const hasSel = !!e;
+  ['chord_update','chord_delete'].forEach(id => {
+    document.getElementById(id).disabled = !hasSel;
+  });
+}
+
+document.getElementById('chord_save_new').addEventListener('click', () => {
+  const nameField = document.getElementById('chord_new_name');
+  const name = uniqueName(nameField.value.trim() || 'MY_CHORD', chords);
+  chords.push({ name, ...readChord() });
+  chordSelectedIndex = chords.length - 1;
+  saveChords();
+  renderChordsRow();
+  nameField.value = '';
+});
+document.getElementById('chord_update').addEventListener('click', () => {
+  const e = chordSelectedIndex >= 0 ? chords[chordSelectedIndex] : null;
+  if (!e) return;
+  Object.assign(e, readChord());
+  saveChords();
+  renderChordsRow();
+});
+document.getElementById('chord_delete').addEventListener('click', () => {
+  if (chordSelectedIndex < 0) return;
+  chords.splice(chordSelectedIndex, 1);
+  chordSelectedIndex = -1;
+  saveChords();
+  renderChordsRow();
+});
+loadChords();
+renderChordsRow();
+
+// ---- SONG MODE: pattern grid ----------------------------------------------
+//
+// Model: a song is { name, bpm, bars, stepsPerBar, cells }.
+// cells[voiceIdx][stepIdx] is one of:
+//   null              — rest (no event)
+//   { kind: 'note',  hz }                 — V0 / V1 tone at this step
+//   { kind: 'drum',  drum: 'KICK'|... }   — V2 noise of that flavor
+//
+// On Play, we walk the timeline once (or loop) and schedule per-voice
+// chordEngine.scheduleInc() events at each step boundary. Filled cells
+// schedule a non-zero inc; rest cells schedule 0 (silence).
+//
+// V0/V1 cells are tones (positive inc). V2 cells are drums (negative
+// inc encoding noise; the drum's freq_start dictates the LFSR shift
+// rate; freq_slope is sampled at step start only — no per-frame slope
+// in v1, deferred).
+
+const SONG_KEY = 'mono_audio_songs_v15';  // bumped: NIDHOGG pivot back to Eb (revert C#)
+const SONG_ACTIVE_KEY = 'mono_audio_song_active_v1';
+
+// Drum library lookup: read live values from the SOUND-mode patch
+// library every time playback or export needs them. The patch library
+// is now the single source of truth for drum tuning — edit a patch in
+// SOUND mode, every song that uses it reflects the change on next play.
+//
+// "Drum-shape" = a patch with V0/V1 muted and V2 in noise mode.
+// V2's `Sfx` (freq_start, freq_slope, duration) IS the drum's sound.
+//
+// Fallback values are used only if the library is missing the patch
+// (e.g. user deleted a seed). They match the original seed defaults
+// so the song still plays something reasonable.
+const DRUM_FALLBACK = {
+  KICK:  { freq_start: 200,  freq_slope: -40,  duration: 4 },
+  SNARE: { freq_start: 1400, freq_slope: -250, duration: 3 },  // thuddy snap
+  HAT:   { freq_start: 5000, freq_slope: 0,    duration: 2 },
+  BLAST: { freq_start: 3000, freq_slope: -20,  duration: 30 },
+};
+function isDrumShape(patch) {
+  if (!patch) return false;
+  const muteOK = patch.mute && patch.mute[0] && patch.mute[1] && !patch.mute[2];
+  const modeOK = patch.mode && patch.mode[2] === 'noise';
+  return muteOK && modeOK;
+}
+// Returns { freq_start, freq_slope, duration } for a drum patch by name.
+// Reads live from `chords` (the SOUND-mode patch library); falls back to
+// hardcoded defaults if not in library.
+function getDrumPatch(name) {
+  const inLib = chords.find(p => p.name === name);
+  if (inLib && isDrumShape(inLib) && inLib.v2) {
+    return {
+      freq_start: inLib.v2.freq_start,
+      freq_slope: inLib.v2.freq_slope,
+      duration:   inLib.v2.duration,
+    };
+  }
+  return DRUM_FALLBACK[name] || { freq_start: 1000, freq_slope: 0, duration: 4 };
+}
+// Names of all drum-shape patches in the current library — drives the
+// V2 cell picker so user-saved drums show up there automatically.
+function listDrumPatches() {
+  // Always include the four canonical drums (in order), then append
+  // any extra drum-shape patches the user has saved.
+  const canonical = ['KICK', 'SNARE', 'HAT', 'BLAST'];
+  const extras = chords
+    .filter(p => isDrumShape(p) && !canonical.includes(p.name))
+    .map(p => p.name);
+  return [...canonical, ...extras];
+}
+
+// Tone-shape patches: any chord patch with the row's voice unmuted in
+// tone mode. The voice's Sfx fragment (freq_slope, duration) is the
+// timbre; the cell's hz overrides the patch's freq_start at play time.
+//
+// This lets songs reuse the chord library as instruments — e.g. cell
+// V0 = "D_OPEN at D2" plays D_OPEN's V0 timbre at D2. Editing D_OPEN's
+// V0 slope in SOUND mode then changes every note that uses it as a
+// timbre source.
+//
+// Fallback "TONE" timbre: flat square (slope 0), 20-frame duration.
+// Used as the implicit instrument when a cell doesn't reference a
+// patch (legacy `{kind:'note',hz}` cells migrate to this).
+const TONE_FALLBACK = { freq_slope: 0, duration: 20 };
+function getToneTimbre(patchName, voiceIdx) {
+  if (!patchName || patchName === 'TONE') return TONE_FALLBACK;
+  const inLib = chords.find(p => p.name === patchName);
+  if (!inLib) return TONE_FALLBACK;
+  const muted = inLib.mute && inLib.mute[voiceIdx];
+  const mode  = inLib.mode && inLib.mode[voiceIdx];
+  if (muted || mode !== 'tone') return TONE_FALLBACK;
+  const v = voiceIdx === 0 ? inLib.v0 : (voiceIdx === 1 ? inLib.v1 : inLib.v2);
+  if (!v) return TONE_FALLBACK;
+  return { freq_slope: v.freq_slope, duration: v.duration };
+}
+// Names of tone-shape patches usable as a timbre on a given voice row.
+// Always includes the implicit 'TONE' fallback at the front.
+function listTonePatches(voiceIdx) {
+  const out = ['TONE'];
+  for (const p of chords) {
+    const muted = p.mute && p.mute[voiceIdx];
+    const mode  = p.mode && p.mode[voiceIdx];
+    if (!muted && mode === 'tone') out.push(p.name);
+  }
+  return out;
+}
+
+// Note picker: the chromatic notes from C2..C5 the editor exposes for
+// V0/V1. Reuses NOTE_HZ from the chord seed library above — single
+// source of truth keeps the editor and the chord patches in sync.
+// Picker shows full chromatic across C2..C5. Use flats (Db/Eb/Gb/Ab/Bb)
+// since most of the seeded chord patches and song templates lean minor
+// / Phrygian. Sharps still resolve via NOTE_HZ aliases.
+const NOTE_PICKER_ORDER = [
+  'C2','Db2','D2','Eb2','E2','F2','Gb2','G2','Ab2','A2','Bb2','B2',
+  'C3','Db3','D3','Eb3','E3','F3','Gb3','G3','Ab3','A3','Bb3','B3',
+  'C4','Db4','D4','Eb4','E4','F4','Gb4','G4','Ab4','A4','Bb4','B4',
+  'C5',
+];
+
+// Active song model. Initialized below from localStorage or seed.
+//
+// Cell shape (new):
+//   null                                  rest
+//   { patchName: 'TONE'|<chord>, hz: N }  V0 or V1: pitched note. patchName
+//                                         dictates timbre (slope, duration);
+//                                         hz overrides the patch's freq_start.
+//                                         'TONE' = flat square fallback.
+//   { patchName: 'KICK'|<drum> }          V2: drum hit. patchName resolves
+//                                         to a drum-shape patch in the
+//                                         chord library at play time.
+//
+// Old shape `{kind:'note', hz}` and `{kind:'drum', drum}` is migrated on
+// load — see migrateLegacyCell() below.
+let songModel = null;
+
+function makeEmptySong(bpm = 130, bars = 8, stepsPerBar = 16) {
+  const totalSteps = bars * stepsPerBar;
+  return {
+    name: '',
+    bpm, bars, stepsPerBar,
+    cells: [
+      new Array(totalSteps).fill(null),  // V0
+      new Array(totalSteps).fill(null),  // V1
+      new Array(totalSteps).fill(null),  // V2
+      new Array(totalSteps).fill(null),  // V3 (drums)
+    ],
+  };
+}
+
+// TEST_GROOVE: 8 bars, D power chord on V0+V1 sustained for bars 1-7,
+// Eb on bar 8. Kick on beats 1+3, snare on beats 2+4. Each beat = 4
+// steps at stepsPerBar=16. So:
+//   step 0  = beat 1 = kick
+//   step 4  = beat 2 = snare
+//   step 8  = beat 3 = kick
+//   step 12 = beat 4 = snare
+// V0/V1: hz set on every downbeat (every 4 steps) for sustain feel —
+// re-articulating the chord on each beat reads better than holding one
+// long note (which would just sound like a continuous tone).
+function makeTestGroove() {
+  const song = makeEmptySong(130, 8, 16);
+  for (let bar = 0; bar < 8; bar++) {
+    const isLast = (bar === 7);
+    const v0Hz = isLast ? NOTE_HZ['Eb2'] : NOTE_HZ['D2'];
+    const v1Hz = isLast ? NOTE_HZ['Bb2'] : NOTE_HZ['A2'];
+    const barStart = bar * 16;
+    // Re-articulate chord on every beat (steps 0, 4, 8, 12 of the bar).
+    for (const beatStep of [0, 4, 8, 12]) {
+      song.cells[0][barStart + beatStep] = { patchName: 'TONE', hz: v0Hz };
+      song.cells[1][barStart + beatStep] = { patchName: 'TONE', hz: v1Hz };
+    }
+    // Drums: kick on 0+8, snare on 4+12. V3 is the drum slot in 4-voice.
+    song.cells[3][barStart + 0]  = { patchName: 'KICK' };
+    song.cells[3][barStart + 4]  = { patchName: 'SNARE' };
+    song.cells[3][barStart + 8]  = { patchName: 'KICK' };
+    song.cells[3][barStart + 12] = { patchName: 'SNARE' };
+  }
+  song.name = 'TEST_GROOVE';
+  return song;
+}
+
+// Migrate a cell from any older schema to the current shape. Idempotent.
+function migrateLegacyCell(cell, voiceIdx) {
+  if (!cell) return null;
+  if (cell.patchName !== undefined) return cell;  // already new shape
+  if (cell.kind === 'note') return { patchName: 'TONE', hz: cell.hz };
+  if (cell.kind === 'drum') return { patchName: cell.drum };
+  return null;  // unknown shape, drop
+}
+function migrateSong(s) {
+  if (!s || !s.cells) return s;
+  // Grow to 4 voice rows if 3-voice. Drum cells previously on V2 get
+  // moved to V3 (since V3 is the new drum slot in 4-voice).
+  const totalSteps = (s.cells[0] || []).length;
+  while (s.cells.length < 4) s.cells.push(new Array(totalSteps).fill(null));
+  for (let v = 0; v < 4; v++) {
+    if (!s.cells[v]) s.cells[v] = new Array(totalSteps).fill(null);
+    s.cells[v] = s.cells[v].map(c => migrateLegacyCell(c, v));
+  }
+  // If V3 is empty and V2 has drums, move them to V3 (3-voice -> 4-voice
+  // upgrade convention: drums migrate to the dedicated noise slot).
+  const drumNames = new Set(['KICK','SNARE','HAT','BLAST']);
+  const v3Empty = s.cells[3].every(c => !c);
+  const v2HasDrums = s.cells[2].some(c => c && drumNames.has(c.patchName));
+  if (v3Empty && v2HasDrums) {
+    for (let st = 0; st < totalSteps; st++) {
+      const c = s.cells[2][st];
+      if (c && drumNames.has(c.patchName)) {
+        s.cells[3][st] = c;
+        s.cells[2][st] = null;
+      }
+    }
+  }
+  return s;
+}
+
+function loadSongModel() {
+  // Prefer the user's last-edited song. If none, default to TEST_GROOVE
+  // so the grid is never empty on first visit (matches "test song as the
+  // default you can tweak").
+  try {
+    const raw = localStorage.getItem(SONG_ACTIVE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Sanity: minimum shape (3 or 4 voice rows). If corrupt, fall through.
+      if (parsed && parsed.cells && parsed.cells.length >= 3) {
+        return migrateSong(parsed);
+      }
+    }
+  } catch (_) {}
+  return makeTestGroove();
+}
+function saveSongModel() {
+  if (!songModel) return;
+  localStorage.setItem(SONG_ACTIVE_KEY, JSON.stringify(songModel));
+}
+
+// Label rendering for cells. Cells now reference a patchName from the
+// SOUND-mode library; for V0/V1, also carry an `hz` pitch override.
+function cellLabel(voiceIdx, cell) {
+  if (!cell) return '';
+  if (voiceIdx === 2) {
+    // Drum: 2-letter shorthand of patch name (KI, SN, HA, BL).
+    return cell.patchName ? cell.patchName.slice(0, 2) : '?';
+  }
+  // V0/V1: note name (no octave digit so it fits the 22px cell).
+  return hzToNoteName(cell.hz || 0).replace(/[0-9]/g, '');
+}
+function cellTitle(voiceIdx, cell) {
+  if (!cell) return '(rest)';
+  if (voiceIdx === 2) {
+    return `${cell.patchName} (drum)`;
+  }
+  const noteName = hzToNoteName(cell.hz || 0);
+  const patch = cell.patchName || 'TONE';
+  return `${noteName} (${cell.hz} Hz) · timbre: ${patch}`;
+}
+
+// ---- Cell picker (small popup) --------------------------------------------
+//
+// Click a cell -> show a fixed-position panel near the click with note
+// or drum buttons. Click one to set the cell. Click outside to close.
+
+let pickerEl = null;
+function closePicker() {
+  if (pickerEl) { pickerEl.remove(); pickerEl = null; }
+}
+function openPicker(voiceIdx, stepIdx, anchorEl) {
+  closePicker();
+  pickerEl = document.createElement('div');
+  pickerEl.style.position = 'absolute';
+  pickerEl.style.background = 'var(--panel)';
+  pickerEl.style.border = '1px solid var(--accent)';
+  pickerEl.style.padding = '10px';
+  pickerEl.style.zIndex = '100';
+  pickerEl.style.maxWidth = '480px';
+  pickerEl.style.maxHeight = '420px';
+  pickerEl.style.overflow = 'auto';
+  pickerEl.style.boxShadow = '0 4px 16px rgba(0,0,0,0.6)';
+  const rect = anchorEl.getBoundingClientRect();
+  pickerEl.style.left = `${rect.left + window.scrollX}px`;
+  pickerEl.style.top  = `${rect.bottom + window.scrollY + 4}px`;
+
+  const existing = songModel.cells[voiceIdx][stepIdx];
+  const title = document.createElement('div');
+  title.textContent = `V${voiceIdx} · step ${stepIdx + 1}`;
+  title.style.color = 'var(--dim)';
+  title.style.fontSize = '11px';
+  title.style.marginBottom = '8px';
+  pickerEl.appendChild(title);
+
+  const setCell = (cell) => {
+    songModel.cells[voiceIdx][stepIdx] = cell;
+    saveSongModel();
+    renderGrid();
+    closePicker();
+  };
+  const mkBtn = (label, onClick, isActive) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.style.fontSize = '11px';
+    b.style.padding = '4px 8px';
+    b.style.margin = '2px';
+    if (isActive) {
+      b.style.borderColor = 'var(--accent)';
+      b.style.color = 'var(--accent)';
+    }
+    b.addEventListener('click', onClick);
+    return b;
+  };
+  const sectionTitle = (text) => {
+    const h = document.createElement('div');
+    h.textContent = text;
+    h.style.color = 'var(--dim)';
+    h.style.fontSize = '10px';
+    h.style.letterSpacing = '0.05em';
+    h.style.textTransform = 'uppercase';
+    h.style.marginTop = '8px';
+    h.style.marginBottom = '4px';
+    return h;
+  };
+
+  // REST always available.
+  pickerEl.appendChild(mkBtn('rest', () => setCell(null), !existing));
+
+  if (voiceIdx === 2) {
+    // V2 picker: drum-shape patches from the library. Selecting one
+    // sets the cell directly (drums have no pitch override).
+    pickerEl.appendChild(sectionTitle('Drums (V2 noise patches)'));
+    const drums = listDrumPatches();
+    for (const name of drums) {
+      const isActive = existing && existing.patchName === name;
+      pickerEl.appendChild(mkBtn(name, () => setCell({ patchName: name }), isActive));
+    }
+    return;
+  }
+
+  // V0/V1 picker: two sections.
+  // Section 1: timbre — pick a tone-shape patch (or 'TONE' for vanilla).
+  // Section 2: pitch — pick a note name.
+  // Clicking a timbre keeps the current pitch (or defaults to D2 if none).
+  // Clicking a pitch keeps the current timbre (or defaults to 'TONE' if none).
+  const currentPatch = (existing && existing.patchName) || 'TONE';
+  const currentHz    = (existing && existing.hz) || NOTE_HZ['D2'];
+
+  pickerEl.appendChild(sectionTitle(`Timbre (V${voiceIdx} tone patches)`));
+  const tones = listTonePatches(voiceIdx);
+  for (const name of tones) {
+    const isActive = currentPatch === name;
+    pickerEl.appendChild(mkBtn(name, () => {
+      setCell({ patchName: name, hz: currentHz });
+    }, isActive));
+  }
+
+  pickerEl.appendChild(sectionTitle('Pitch'));
+  for (const note of NOTE_PICKER_ORDER) {
+    const hz = NOTE_HZ[note];
+    const isActive = currentHz === hz;
+    pickerEl.appendChild(mkBtn(note, () => {
+      setCell({ patchName: currentPatch, hz });
+    }, isActive));
+  }
+
+  document.body.appendChild(pickerEl);
+}
+// Close picker on any outside click.
+document.addEventListener('click', (e) => {
+  if (pickerEl && !pickerEl.contains(e.target) && !e.target.classList.contains('grid-cell')) {
+    closePicker();
+  }
+});
+
+// ---- Grid render ----------------------------------------------------------
+
+function renderGrid() {
+  const grid = document.getElementById('song_grid');
+  grid.innerHTML = '';
+  if (!songModel) return;
+  const totalSteps = songModel.bars * songModel.stepsPerBar;
+
+  // Header: step numbers (mark every beat).
+  const header = document.createElement('div');
+  header.className = 'grid-header';
+  for (let s = 0; s < totalSteps; s++) {
+    const lbl = document.createElement('div');
+    lbl.className = 'step-label';
+    const beatInBar = Math.floor((s % songModel.stepsPerBar) / 4);
+    if (s % songModel.stepsPerBar === 0) {
+      lbl.classList.add('bar');
+      lbl.textContent = `${Math.floor(s / songModel.stepsPerBar) + 1}`;
+    } else if (s % 4 === 0) {
+      lbl.classList.add('beat');
+      lbl.textContent = `${beatInBar + 1}`;
+    } else {
+      lbl.textContent = '';
+    }
+    header.appendChild(lbl);
+  }
+  grid.appendChild(header);
+
+  // Four voice rows.
+  for (let v = 0; v < 4; v++) {
+    const row = document.createElement('div');
+    row.className = `grid-row v${v}`;
+    const label = document.createElement('div');
+    label.className = 'grid-label';
+    label.textContent = `V${v}`;
+    label.title = `Click to solo V${v} (other voices silent)`;
+    label.addEventListener('click', () => songPlaySolo(v));
+    row.appendChild(label);
+    const cellsEl = document.createElement('div');
+    cellsEl.className = 'grid-cells';
+    for (let s = 0; s < totalSteps; s++) {
+      const cell = document.createElement('div');
+      cell.className = 'grid-cell';
+      if (s % 4 === 0) cell.classList.add('beat-1');
+      if (s % songModel.stepsPerBar === 0) cell.classList.add('bar-start');
+      const data = songModel.cells[v][s];
+      if (data) {
+        cell.classList.add('filled');
+        cell.textContent = cellLabel(v, data);
+        cell.title = cellTitle(v, data);
+      } else {
+        cell.title = '(rest)';
+      }
+      cell.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openPicker(v, s, cell);
+      });
+      cell.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        songModel.cells[v][s] = null;
+        saveSongModel();
+        renderGrid();
+      });
+      cellsEl.appendChild(cell);
+    }
+    row.appendChild(cellsEl);
+    grid.appendChild(row);
+  }
+
+  refreshSongTiming();
+  refreshSongCee();
+}
+
+function refreshSongTiming() {
+  if (!songModel) return;
+  const stepSec = (60 / songModel.bpm) / (songModel.stepsPerBar / 4);
+  const totalSec = stepSec * songModel.bars * songModel.stepsPerBar;
+  document.getElementById('song_timing').textContent =
+    `${stepSec.toFixed(3)} s/step · ${totalSec.toFixed(1)} s total`;
+}
+
+// ---- Playback -------------------------------------------------------------
+
+let songPlayheadInterval = null;
+let songPlayingStartTime = 0;
+
+function songStop() {
+  if (chordEngine) chordEngine.silenceAll(audioCtx ? audioCtx.currentTime : 0);
+  if (songPlayheadInterval) {
+    clearInterval(songPlayheadInterval);
+    songPlayheadInterval = null;
+  }
+  // Clear playhead highlight.
+  document.querySelectorAll('.grid-cell.playhead').forEach(el => el.classList.remove('playhead'));
+}
+
+async function songPlaySolo(voiceIdx) {
+  return songPlay(voiceIdx);
+}
+
+async function songPlay(soloVoice = null) {
+  await ensureAudio();
+  applyAutoDuck();
+  if (!chordEngine || !chordEngine.ready) return;
+  songStop();  // cancel any in-flight events
+  if (!songModel) return;
+
+  const stepSec = (60 / songModel.bpm) / (songModel.stepsPerBar / 4);
+  const totalSteps = songModel.bars * songModel.stepsPerBar;
+  const totalSec = stepSec * totalSteps;
+  const loop = document.getElementById('song_loop').checked;
+  const t0 = audioCtx.currentTime + 0.05;
+  songPlayingStartTime = t0;
+
+  // Apply per-song voice modes if specified. Default: V0..V2 tone (0),
+  // V3 unused here — drum cells set inc<0 which forces noise mode in
+  // the engine regardless. Songs can opt voices into 'rasp' for the
+  // bm-1 'phat' patch trick (square XOR LFSR — buzzy guitar timbre).
+  const songModes = songModel.voiceModes || [0, 0, 0, 0];
+  if (chordEngine.setVoiceMode) {
+    for (let v = 0; v < 4; v++) {
+      // 0=tone, 1=noise, 2=rasp.
+      const m = (songModes[v] === 'rasp') ? 2 : (songModes[v] === 'noise') ? 1 : (songModes[v] | 0);
+      chordEngine.setVoiceMode(v, m);
+    }
+  }
+
+  // Schedule one or two cycles ahead. For looping, we schedule TWO copies
+  // back-to-back; the playhead-tracker re-schedules the next copy as
+  // playback advances. Keeps the worklet's event queue bounded.
+  // Resolve a cell into the timeline of inc transitions it should emit.
+  // Each cell may produce 1+ events: a start event at cell time, optional
+  // intermediate events for slope (per-frame freq changes), and a silence
+  // event at cell end (or held duration end, whichever is sooner).
+  //
+  // V0/V1 cells: tone. inc = +hzToInc(hz). If patch has slope != 0,
+  //   schedule per-frame transitions for `patchDuration` frames; after
+  //   that the voice goes silent (or rather, holds at the last freq —
+  //   we choose silence to give the engine clean breaks between notes).
+  // V2 cells: drum. patch = drum-shape from library. inc = -hzToInc(start_hz)
+  //   at cell start; if slope != 0, sweep over `duration` frames; then
+  //   silence.
+  const FRAMES_PER_SEC = 60;
+  const stepFrames = Math.max(1, Math.round(stepSec * FRAMES_PER_SEC));
+  const scheduleCycle = (cycleStart) => {
+    // Solo: silence the non-soloed voices for the entire cycle in one shot
+    // (no per-step writes needed), then only schedule the soloed voice's
+    // events below.
+    if (soloVoice !== null) {
+      for (let v = 0; v < 4; v++) {
+        if (v !== soloVoice) chordEngine.scheduleInc(v, 0, cycleStart);
+      }
+    }
+    for (let s = 0; s < totalSteps; s++) {
+      const tStep = cycleStart + s * stepSec;
+      for (let v = 0; v < 4; v++) {
+        if (soloVoice !== null && v !== soloVoice) continue;
+        const cell = songModel.cells[v][s];
+        if (!cell) {
+          // No event — let the previous cell's natural duration / silence
+          // event control this voice. Scheduling inc=0 here would clobber
+          // a held note's slope or stomp a still-ringing tone.
+          continue;
+        }
+        // Look ahead: when does the next non-rest cell on this voice
+        // appear? That's the boundary where any held tail gets cut off.
+        // If the next cell is another note, our note rings up to its
+        // start time and the next cell's event overrides cleanly; if
+        // the next cell is a rest, we explicitly emit silence at our
+        // patch's natural duration end (or the rest's start, whichever
+        // is sooner). This lets a patch's natural duration (e.g. 20
+        // frames) actually ring out, instead of being clipped at the
+        // step boundary every time.
+        let nextEventStep = totalSteps;  // end of cycle if nothing found
+        for (let ns = s + 1; ns < totalSteps; ns++) {
+          if (songModel.cells[v][ns] !== undefined && songModel.cells[v][ns] !== null) {
+            nextEventStep = ns;
+            break;
+          }
+        }
+        const stepsUntilNext = nextEventStep - s;
+        const framesUntilNext = stepsUntilNext * stepFrames;
+
+        // V3 is the drum slot, but a drum-named cell on any voice plays
+        // as noise. Pitched cells (with hz) play as tones regardless of
+        // voice index. Branch on cell shape, not on `v`, so the editor
+        // tolerates either putting drums on V3 (canonical) or putting
+        // them on V2 (legacy or musical choice).
+        const isDrumCell = (cell.hz === undefined || cell.hz === null) && (cell.patchName !== 'TONE');
+        if (isDrumCell) {
+          const dp = getDrumPatch(cell.patchName);
+          const holdFrames = Math.min(dp.duration, framesUntilNext);
+          let freq = dp.freq_start;
+          for (let f = 0; f < holdFrames; f++) {
+            chordEngine.scheduleInc(v, -hzToInc(freq), tStep + f * (FRAME_MS / 1000));
+            freq = Math.max(50, Math.min(8000, freq + dp.freq_slope));
+          }
+          if (holdFrames < framesUntilNext) {
+            chordEngine.scheduleInc(v, 0, tStep + holdFrames * (FRAME_MS / 1000));
+          }
+          // Per-drum gain: snare/hat sit quieter than kick/blast so the
+          // every-8th-note blast isn't crushing.
+          if (chordEngine.scheduleGain) {
+            const drumGain = DRUM_GAIN[cell.patchName] ?? VOICE_GAIN_DEFAULTS[v];
+            chordEngine.scheduleGain(v, drumGain, tStep, 'step');
+          }
+        } else {
+          // V0/V1/V2 tone. patchName dictates timbre; cell.hz is the pitch.
+          // Ring out the patch's natural duration, but no longer than the
+          // gap to the next event on this voice.
+          const timbre = getToneTimbre(cell.patchName, v);
+          const holdFrames = Math.min(timbre.duration, framesUntilNext);
+          let freq = cell.hz;
+          for (let f = 0; f < holdFrames; f++) {
+            chordEngine.scheduleInc(v, hzToInc(freq), tStep + f * (FRAME_MS / 1000));
+            freq = Math.max(50, Math.min(8000, freq + timbre.freq_slope));
+          }
+          // Per-note attack envelope: ramp gain from 0.3*peak up to peak
+          // over ATTACK_FRAMES frames. Softens the transient, kills the
+          // "hard square click" feel without cutting sustain amplitude.
+          if (chordEngine.scheduleGain) {
+            const peakGain    = VOICE_GAIN_DEFAULTS[v];
+            const ATTACK_FRAMES = 4;
+            const attackSec     = ATTACK_FRAMES * (FRAME_MS / 1000);
+            chordEngine.scheduleGain(v, 0.3 * peakGain, tStep, 'step');
+            chordEngine.scheduleGain(v, peakGain, tStep + attackSec, 'ramp');
+          }
+          // Only emit a silence if the patch finished before the next
+          // event arrived. If the next cell is right at holdFrames end,
+          // its own start event takes over — no silence needed.
+          if (holdFrames < framesUntilNext) {
+            chordEngine.scheduleInc(v, 0, tStep + holdFrames * (FRAME_MS / 1000));
+          }
+        }
+      }
+    }
+    // Silence at end of cycle.
+    chordEngine.scheduleInc(0, 0, cycleStart + totalSec);
+    chordEngine.scheduleInc(1, 0, cycleStart + totalSec);
+    chordEngine.scheduleInc(2, 0, cycleStart + totalSec);
+    chordEngine.scheduleInc(3, 0, cycleStart + totalSec);
+  };
+
+  scheduleCycle(t0);
+  if (loop) scheduleCycle(t0 + totalSec);  // one bar ahead for seamless loop
+
+  // Playhead tracker: every ~30ms, find the current step and highlight it.
+  // Also re-schedules ahead on loop.
+  let nextScheduleAt = t0 + totalSec * 2;  // when to schedule the cycle AFTER the second one
+  songPlayheadInterval = setInterval(() => {
+    if (!audioCtx) return;
+    const elapsed = audioCtx.currentTime - songPlayingStartTime;
+    if (!loop && elapsed >= totalSec) {
+      songStop();
+      return;
+    }
+    const step = Math.floor((elapsed / stepSec) % totalSteps);
+    document.querySelectorAll('.grid-cell.playhead').forEach(el => el.classList.remove('playhead'));
+    document.querySelectorAll('.grid-row .grid-cells').forEach(rowEl => {
+      const cells = rowEl.children;
+      if (cells[step]) cells[step].classList.add('playhead');
+    });
+    // Schedule the next loop iteration ~half a cycle before it would
+    // run out, so the worklet always has events to fire.
+    if (loop && audioCtx.currentTime + totalSec > nextScheduleAt - 0.5) {
+      scheduleCycle(nextScheduleAt);
+      nextScheduleAt += totalSec;
+    }
+  }, 33);
+}
+
+// Wrap so the click event isn't passed as `soloVoice` — songPlay() with
+// no args means "play all voices."
+document.getElementById('song_play').addEventListener('click', () => songPlay());
+document.getElementById('song_stop').addEventListener('click', songStop);
+
+// ---- BPM/bars/steps controls ----------------------------------------------
+
+function reshapeSong() {
+  const newBpm   = clamp(+document.getElementById('song_bpm').value || 130, 40, 240);
+  const newBars  = clamp(+document.getElementById('song_bars').value || 8, 1, 16);
+  const newSteps = clamp(+document.getElementById('song_steps').value || 16, 4, 32);
+  if (!songModel) { songModel = makeEmptySong(newBpm, newBars, newSteps); }
+  songModel.bpm = newBpm;
+  // Resize cells if bars or stepsPerBar changed (preserve as much as possible).
+  if (newBars !== songModel.bars || newSteps !== songModel.stepsPerBar) {
+    const newTotal = newBars * newSteps;
+    for (let v = 0; v < 4; v++) {
+      const oldArr = songModel.cells[v];
+      const newArr = new Array(newTotal).fill(null);
+      const copyLen = Math.min(newTotal, oldArr.length);
+      for (let i = 0; i < copyLen; i++) newArr[i] = oldArr[i];
+      songModel.cells[v] = newArr;
+    }
+    songModel.bars = newBars;
+    songModel.stepsPerBar = newSteps;
+  }
+  saveSongModel();
+  renderGrid();
+}
+function clamp(x, lo, hi) { return x < lo ? lo : (x > hi ? hi : x); }
+['song_bpm','song_bars','song_steps'].forEach(id => {
+  document.getElementById(id).addEventListener('change', reshapeSong);
+});
+
+// ---- Save/load list of songs ---------------------------------------------
+
+let songLibrary = [];
+function loadSongLibrary() {
+  try {
+    const raw = localStorage.getItem(SONG_KEY);
+    if (raw) { songLibrary = JSON.parse(raw); return; }
+  } catch (_) {}
+  songLibrary = makeSeedSongs();
+  saveSongLibrary();
+}
+function saveSongLibrary() { localStorage.setItem(SONG_KEY, JSON.stringify(songLibrary)); }
+
+// ---- Seed song library ----------------------------------------------------
+//
+// Four melodic / metal-flavored starting points. Click any to load onto
+// the grid, then tweak. Re-seeded when SONG_KEY bumps.
+
+function tone(hz) { return { patchName: 'TONE', hz }; }
+function drum(name) { return { patchName: name }; }
+
+// Helper: place `cell` at every beat-step of `bar` in `voiceIdx`.
+// stepsPerBar=16 -> beats at 0, 4, 8, 12.
+function fillBeats(song, voiceIdx, bar, cell, beats = [0, 4, 8, 12]) {
+  const start = bar * song.stepsPerBar;
+  for (const b of beats) {
+    song.cells[voiceIdx][start + b] = cell;
+  }
+}
+function placeStep(song, voiceIdx, bar, stepInBar, cell) {
+  song.cells[voiceIdx][bar * song.stepsPerBar + stepInBar] = cell;
+}
+
+function makeSeedSongs() {
+  const songs = [];
+
+  // 1) DOOM_GROOVE — 130 BPM, 8 bars. Heavy, slow.
+  // V0: D minor third (root D2, third F2 on V1). Re-articulate every
+  //     beat so the chord rings continuously. Last bar pivots to Eb.
+  // V2: KICK on beat 1, BLAST on beat 4 (long noise wash for atmosphere).
+  {
+    const s = makeEmptySong(130, 8, 16);
+    s.name = 'DOOM_GROOVE';
+    s.autoDuck = false;
+    for (let bar = 0; bar < 8; bar++) {
+      const last = (bar === 7);
+      const rootHz  = last ? NOTE_HZ['Eb2'] : NOTE_HZ['D2'];
+      const thirdHz = last ? NOTE_HZ['F#2'] : NOTE_HZ['F2'];   // Eb min third = F# (=Gb)
+      fillBeats(s, 0, bar, tone(rootHz));
+      fillBeats(s, 1, bar, tone(thirdHz));
+      placeStep(s, 3, bar, 0,  drum('KICK'));
+      placeStep(s, 3, bar, 12, drum('BLAST'));
+    }
+    songs.push(s);
+  }
+
+  // 2) MELANCHOLIC_DESCENT — 90 BPM, 4 bars. Dark ambient.
+  // V0: F2 drone, sustained (re-articulated each beat for 1-bit clarity).
+  // V1: descending line F3 -> Eb3 -> C3 -> A2 (one note per bar, held).
+  // V2: HAT on beats 1+3 of every bar, gentle pulse.
+  {
+    const s = makeEmptySong(90, 4, 16);
+    s.name = 'MELANCHOLIC_DESCENT';
+    s.autoDuck = false;
+    const droneHz = NOTE_HZ['F2'];
+    const descent = [NOTE_HZ['F3'], NOTE_HZ['Eb3'], NOTE_HZ['C3'], NOTE_HZ['A2']];
+    for (let bar = 0; bar < 4; bar++) {
+      fillBeats(s, 0, bar, tone(droneHz));
+      fillBeats(s, 1, bar, tone(descent[bar]));
+      placeStep(s, 3, bar, 0, drum('HAT'));
+      placeStep(s, 3, bar, 8, drum('HAT'));
+    }
+    songs.push(s);
+  }
+
+  // 3) PHRYGIAN_RIFF — 140 BPM, 4 bars. Black metal.
+  // V0: D D D Eb | D D D C   (Phrygian b2 pivot then descend)
+  // V1: A A A Bb | A A A G   (parallel root + fifth)
+  // V2: KICK on 1+3, SNARE on 2+4 every bar.
+  {
+    const s = makeEmptySong(140, 4, 16);
+    s.name = 'PHRYGIAN_RIFF';
+    s.autoDuck = false;
+    const v0Bars = [
+      [NOTE_HZ['D2'], NOTE_HZ['D2'], NOTE_HZ['D2'], NOTE_HZ['Eb2']],
+      [NOTE_HZ['D2'], NOTE_HZ['D2'], NOTE_HZ['D2'], NOTE_HZ['C2']],
+      [NOTE_HZ['D2'], NOTE_HZ['D2'], NOTE_HZ['D2'], NOTE_HZ['Eb2']],
+      [NOTE_HZ['D2'], NOTE_HZ['D2'], NOTE_HZ['D2'], NOTE_HZ['C2']],
+    ];
+    const v1Bars = [
+      [NOTE_HZ['A2'], NOTE_HZ['A2'], NOTE_HZ['A2'], NOTE_HZ['Bb2']],
+      [NOTE_HZ['A2'], NOTE_HZ['A2'], NOTE_HZ['A2'], NOTE_HZ['G2']],
+      [NOTE_HZ['A2'], NOTE_HZ['A2'], NOTE_HZ['A2'], NOTE_HZ['Bb2']],
+      [NOTE_HZ['A2'], NOTE_HZ['A2'], NOTE_HZ['A2'], NOTE_HZ['G2']],
+    ];
+    for (let bar = 0; bar < 4; bar++) {
+      const beats = [0, 4, 8, 12];
+      for (let b = 0; b < 4; b++) {
+        placeStep(s, 0, bar, beats[b], tone(v0Bars[bar][b]));
+        placeStep(s, 1, bar, beats[b], tone(v1Bars[bar][b]));
+      }
+      placeStep(s, 3, bar, 0,  drum('KICK'));
+      placeStep(s, 3, bar, 4,  drum('SNARE'));
+      placeStep(s, 3, bar, 8,  drum('KICK'));
+      placeStep(s, 3, bar, 12, drum('SNARE'));
+    }
+    songs.push(s);
+  }
+
+  // 4) DETUNED_DRONE — 60 BPM, 4 bars. Pure drone, the chorus trick.
+  // V0: D2 (73 Hz) sustained. V1: D2 + 2 Hz (75 Hz) — produces a slow
+  // beat pattern that fattens the tone. V2: HAT on beat 1 of bars 1+3.
+  {
+    const s = makeEmptySong(60, 4, 16);
+    s.name = 'DETUNED_DRONE';
+    s.autoDuck = false;
+    for (let bar = 0; bar < 4; bar++) {
+      fillBeats(s, 0, bar, tone(73));
+      fillBeats(s, 1, bar, tone(75));   // +2 Hz detune for chorus
+      if (bar === 0 || bar === 2) {
+        placeStep(s, 3, bar, 0, drum('HAT'));
+      }
+    }
+    songs.push(s);
+  }
+
+  // 5) ILDJARN_DRONE — 190 BPM, 8 bars. Lo-fi minimal black metal.
+  // V0: F2 root drone (re-articulated each beat).
+  // V1: Ab2 (minor third) parallel drone — F minor sound.
+  // V2: slow descending melody, one note per bar.
+  // V3: rock backbeat — kick on beats 1+3 (steps 0, 8), snare on
+  //     beats 2+4 (steps 4, 12). Sparser than the previous blast,
+  //     more groove-driven.
+  {
+    const s = makeEmptySong(190, 8, 16);
+    s.name = 'ILDJARN_DRONE';
+    s.autoDuck = false;
+    const melody = [
+      NOTE_HZ['F4'], NOTE_HZ['Eb4'], NOTE_HZ['Db4'],
+      NOTE_HZ['C4'], NOTE_HZ['Bb3'], NOTE_HZ['Ab3'],
+      NOTE_HZ['G3'], NOTE_HZ['F3'],
+    ];
+    for (let bar = 0; bar < 8; bar++) {
+      fillBeats(s, 0, bar, tone(NOTE_HZ['F2']));
+      fillBeats(s, 1, bar, tone(NOTE_HZ['Ab2']));
+      fillBeats(s, 2, bar, tone(melody[bar]));
+      placeStep(s, 3, bar, 0,  drum('KICK'));   // beat 1
+      placeStep(s, 3, bar, 4,  drum('SNARE'));  // beat 2
+      placeStep(s, 3, bar, 8,  drum('KICK'));   // beat 3
+      placeStep(s, 3, bar, 12, drum('SNARE'));  // beat 4
+    }
+    songs.push(s);
+  }
+
+  // 6) NIDHOGG_BLAST — 200 BPM, 32 bars. A→A→B→B black metal arrangement.
+  //
+  // Section A (bars 1-8, repeated as bars 9-16): D-key with Phrygian
+  //   b2 pivot to Eb on the 4th and 8th bar of each A. Lead in D
+  //   natural minor anchored to A4. Drum: kick on downbeats + snare
+  //   on off-beats (4 kicks + 4 snares per bar).
+  //
+  // Section B (bars 17-24, repeated as bars 25-32): EVERYTHING UP A
+  //   PERFECT 5TH. Bass D→A, fifth A→E. Lead transposed up a 5th
+  //   (still in the same minor mode — A natural minor). Pivot Eb→Bb.
+  //   Drum: SNARE-ONLY blast on every 8th note (steps 0,2,4,...14 =
+  //   8 hits/bar) for the higher-intensity climax.
+  //
+  // Section B-A intervals (perfect 5th up = +7 semitones):
+  //   D2 (73) → A2 (110)        Eb2 → Bb2
+  //   A2 (110) → E3 (165)       Bb2 → F3
+  //   A4 (440) → E5 (659)       Bb4 → F5
+  //   F4 (349) → C5 (523)       Ab4 → Eb5
+  //   D4 (294) → A4 (440)       E4 → B4
+  //   G4 (392) → D5 (587)       Eb4 → Bb4
+  {
+    const s = makeEmptySong(200, 32, 16);
+    s.name = 'NIDHOGG_BLAST';
+    s.autoDuck = false;
+    // V2 (lead) plays in rasp mode for buzzy guitar character. V0 (bass)
+    // and V1 (harmony) stay clean tone — rasp on low-octave voices
+    // buries the fundamental in noise and the notes become
+    // indistinguishable. This mirrors real metal mixing: distortion
+    // on rhythm/lead, bass through a cleaner channel.
+    s.voiceModes = ['tone', 'tone', 'rasp', 'noise'];
+    // Section A lead bars (D-key + Eb pivot on bars 3, 7 in 0-indexed).
+    const leadA = [
+      [NOTE_HZ['A4'],  NOTE_HZ['A4'],  NOTE_HZ['G4'], NOTE_HZ['F4']],
+      [NOTE_HZ['E4'],  NOTE_HZ['D4'],  NOTE_HZ['E4'], NOTE_HZ['F4']],
+      [NOTE_HZ['A4'],  NOTE_HZ['A4'],  NOTE_HZ['G4'], NOTE_HZ['F4']],
+      [NOTE_HZ['Bb4'], NOTE_HZ['Ab4'], NOTE_HZ['G4'], NOTE_HZ['F4']],
+      [NOTE_HZ['A4'],  NOTE_HZ['A4'],  NOTE_HZ['G4'], NOTE_HZ['F4']],
+      [NOTE_HZ['E4'],  NOTE_HZ['D4'],  NOTE_HZ['E4'], NOTE_HZ['F4']],
+      [NOTE_HZ['A4'],  NOTE_HZ['A4'],  NOTE_HZ['G4'], NOTE_HZ['F4']],
+      [NOTE_HZ['Bb4'], NOTE_HZ['Ab4'], NOTE_HZ['G4'], NOTE_HZ['Eb4']],
+    ];
+    // Section B lead bars (transposed +7 semitones from A).
+    const leadB = [
+      [NOTE_HZ['E5'],  NOTE_HZ['E5'],  NOTE_HZ['D5'], NOTE_HZ['C5']],
+      [NOTE_HZ['B4'],  NOTE_HZ['A4'],  NOTE_HZ['B4'], NOTE_HZ['C5']],
+      [NOTE_HZ['E5'],  NOTE_HZ['E5'],  NOTE_HZ['D5'], NOTE_HZ['C5']],
+      [NOTE_HZ['F5'],  NOTE_HZ['Eb5'], NOTE_HZ['D5'], NOTE_HZ['C5']],
+      [NOTE_HZ['E5'],  NOTE_HZ['E5'],  NOTE_HZ['D5'], NOTE_HZ['C5']],
+      [NOTE_HZ['B4'],  NOTE_HZ['A4'],  NOTE_HZ['B4'], NOTE_HZ['C5']],
+      [NOTE_HZ['E5'],  NOTE_HZ['E5'],  NOTE_HZ['D5'], NOTE_HZ['C5']],
+      [NOTE_HZ['F5'],  NOTE_HZ['Eb5'], NOTE_HZ['D5'], NOTE_HZ['Bb4']],
+    ];
+    const beats = [0, 4, 8, 12];
+    const isPivotA = (i) => (i === 3 || i === 7);
+
+    for (let bar = 0; bar < 32; bar++) {
+      // A→A→B→B: bars 0-15 = Section A (twice), bars 16-31 = Section B (twice).
+      const inSectionA = bar < 16;
+      const sectionBar = bar % 8;
+      const isPivot = isPivotA(sectionBar);
+
+      let rootHz, fifthHz, leadRow;
+      if (inSectionA) {
+        rootHz  = isPivot ? NOTE_HZ['Eb2'] : NOTE_HZ['D2'];
+        fifthHz = isPivot ? NOTE_HZ['Bb2'] : NOTE_HZ['A2'];
+        leadRow = leadA[sectionBar];
+      } else {
+        // Section B: +5 transposed roots and fifth.
+        rootHz  = isPivot ? NOTE_HZ['Bb2'] : NOTE_HZ['A2'];
+        fifthHz = isPivot ? NOTE_HZ['F3']  : NOTE_HZ['E3'];
+        leadRow = leadB[sectionBar];
+      }
+      fillBeats(s, 0, bar, tone(rootHz));
+      fillBeats(s, 1, bar, tone(fifthHz));
+      for (let bi = 0; bi < 4; bi++) {
+        placeStep(s, 2, bar, beats[bi], tone(leadRow[bi]));
+      }
+      // Drums: Section A = kick+snare alternating; Section B = snare
+      // blast on every 8th note (steps 0,2,4,...,14). Cells overwrite
+      // so push later writes win — we want snare in B so push it last.
+      if (inSectionA) {
+        for (const beat of [2, 6, 10, 14]) placeStep(s, 3, bar, beat, drum('SNARE'));
+        for (const beat of [0, 4, 8, 12]) placeStep(s, 3, bar, beat, drum('KICK'));
+      } else {
+        for (let st = 0; st < 16; st += 2) {
+          placeStep(s, 3, bar, st, drum('SNARE'));
+        }
+      }
+    }
+    songs.push(s);
+  }
+
+  return songs;
+}
+
+function renderSongsRow() {
+  const row = document.getElementById('songs_row');
+  row.innerHTML = '';
+  songLibrary.forEach((entry, i) => {
+    const btn = document.createElement('button');
+    btn.textContent = entry.name || '(unnamed)';
+    btn.style.fontSize = '11px';
+    btn.style.padding = '6px 10px';
+    btn.addEventListener('click', () => {
+      songModel = JSON.parse(JSON.stringify(entry));
+      document.getElementById('song_bpm').value = songModel.bpm;
+      document.getElementById('song_bars').value = songModel.bars;
+      document.getElementById('song_steps').value = songModel.stepsPerBar;
+      document.getElementById('song_name').value = songModel.name || '';
+      saveSongModel();
+      renderGrid();
+      document.getElementById('song_status').textContent = `Loaded: ${entry.name}.`;
+    });
+    row.appendChild(btn);
+  });
+}
+
+document.getElementById('song_save_new').addEventListener('click', () => {
+  const nameField = document.getElementById('song_name');
+  const name = uniqueName(nameField.value.trim() || 'MY_SONG', songLibrary);
+  const copy = JSON.parse(JSON.stringify(songModel));
+  copy.name = name;
+  songLibrary.push(copy);
+  saveSongLibrary();
+  renderSongsRow();
+  document.getElementById('song_status').textContent = `Saved: ${name}.`;
+});
+document.getElementById('song_update').addEventListener('click', () => {
+  // Update the matching entry by name; if none, save as new.
+  if (!songModel.name) {
+    document.getElementById('song_status').textContent = 'No name set; use "Save as new" to create one.';
+    return;
+  }
+  const idx = songLibrary.findIndex(s => s.name === songModel.name);
+  if (idx >= 0) {
+    songLibrary[idx] = JSON.parse(JSON.stringify(songModel));
+    saveSongLibrary();
+    renderSongsRow();
+    document.getElementById('song_status').textContent = `Updated: ${songModel.name}.`;
+  } else {
+    document.getElementById('song_status').textContent = `${songModel.name} not in library — use "Save as new".`;
+  }
+});
+document.getElementById('song_clear').addEventListener('click', () => {
+  if (!songModel) return;
+  for (let v = 0; v < 4; v++) {
+    songModel.cells[v] = new Array(songModel.bars * songModel.stepsPerBar).fill(null);
+  }
+  saveSongModel();
+  renderGrid();
+});
+document.getElementById('song_seed_test').addEventListener('click', () => {
+  songModel = makeTestGroove();
+  document.getElementById('song_bpm').value = songModel.bpm;
+  document.getElementById('song_bars').value = songModel.bars;
+  document.getElementById('song_steps').value = songModel.stepsPerBar;
+  document.getElementById('song_name').value = songModel.name;
+  saveSongModel();
+  renderGrid();
+  document.getElementById('song_status').textContent = 'Loaded TEST_GROOVE — edit cells to taste.';
+});
+
+// ---- Export to C++ --------------------------------------------------------
+
+function refreshSongCee() {
+  // Produce a paste-ready Song struct + per-voice Sfx[] arrays.
+  // Each filled cell becomes one Sfx (start freq, slope, duration in
+  // engine-frames). Rest cells become a "freq=0, dur=stepFrames" rest.
+  // Engine reads freq=0 as silence.
+  const lines = [];
+  if (!songModel) {
+    document.getElementById('song_cee').textContent = '';
+    return;
+  }
+  // Frames per step: at 130 BPM, 16 steps/bar = 16th notes; one step =
+  // (60 / bpm) / 4 seconds = (60/130/4) = 0.115 s ≈ 7 frames at 60fps.
+  const stepFrames = Math.max(1, Math.round((60 / songModel.bpm) / (songModel.stepsPerBar / 4) * 60));
+  const totalSteps = songModel.bars * songModel.stepsPerBar;
+  for (let v = 0; v < 4; v++) {
+    const arr = [];
+    for (let s = 0; s < totalSteps; s++) {
+      const cell = songModel.cells[v][s];
+      if (!cell) {
+        arr.push(`{0, 0, ${stepFrames}}`);  // rest
+        continue;
+      }
+      // Drum cell: no `hz`, patchName is a drum name. Tone cell has hz.
+      const isDrumCell = (cell.hz === undefined || cell.hz === null) && (cell.patchName !== 'TONE');
+      if (isDrumCell) {
+        const dp = getDrumPatch(cell.patchName);
+        arr.push(`{${dp.freq_start}, ${dp.freq_slope}, ${dp.duration}} /*${cell.patchName} NOISE*/`);
+      } else {
+        const timbre = getToneTimbre(cell.patchName, v);
+        const tag = (cell.patchName && cell.patchName !== 'TONE') ? ` /*timbre:${cell.patchName}*/` : '';
+        arr.push(`{${cell.hz}, ${timbre.freq_slope}, ${timbre.duration}}${tag}`);
+      }
+    }
+    lines.push(`const audio::Sfx SONG_V${v}[${totalSteps}] PROGMEM = {`);
+    // Wrap 4 entries per line for readability.
+    for (let i = 0; i < arr.length; i += 4) {
+      lines.push('  ' + arr.slice(i, i + 4).join(', ') + ',');
+    }
+    lines.push('};');
+  }
+  lines.push(`const audio::Song ${songModel.name || 'MY_SONG'} PROGMEM = {`);
+  lines.push(`  SONG_V0, SONG_V1, SONG_V2, SONG_V3,`);
+  lines.push(`  ${totalSteps}, ${totalSteps}, ${totalSteps}, ${totalSteps},`);
+  lines.push(`};`);
+  document.getElementById('song_cee').textContent = lines.join('\n');
+}
+
+// ---- Init -----------------------------------------------------------------
+
+loadSongLibrary();
+songModel = loadSongModel();
+document.getElementById('song_bpm').value = songModel.bpm;
+document.getElementById('song_bars').value = songModel.bars;
+document.getElementById('song_steps').value = songModel.stepsPerBar;
+document.getElementById('song_name').value = songModel.name || '';
+renderGrid();
+renderSongsRow();
+
+// ---- Keyboard shortcuts ---------------------------------------------------
+
+document.addEventListener('keydown', (e) => {
+  const inField = e.target && (e.target.tagName === 'INPUT' && (e.target.type === 'text' || e.target.type === 'number'));
+  if (inField) return;
+  const mod = e.ctrlKey || e.metaKey;
+  if (mod && (e.code === 'KeyZ') && !e.shiftKey) {
+    e.preventDefault();
+    document.getElementById('undo').click();
+    return;
+  }
+  if (mod && ((e.code === 'KeyZ' && e.shiftKey) || e.code === 'KeyY')) {
+    e.preventDefault();
+    document.getElementById('redo').click();
+    return;
+  }
+  if (e.code === 'Space') {
+    e.preventDefault();
+    // SPACE in song mode = play/stop song; otherwise SFX-mode behavior.
+    const mode = localStorage.getItem('mono_audio_mode') || 'sfx';
+    if (mode === 'song') {
+      if (songPlayheadInterval) songStop(); else songPlay();
+    } else if (e.shiftKey) {
+      document.getElementById('play3').click();
+    } else {
+      document.getElementById('play').click();
+    }
+  } else if (e.code === 'Escape') {
+    songStop();
+    document.getElementById('stop').click();
+  }
+});
+</script>
+</body>
+</html>

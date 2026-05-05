@@ -1,0 +1,1073 @@
+# spritebake manifest for games/rpg
+#
+# Run:    python -m tools.spritebake -m games/rpg/sprites.toml bake
+# Preview: python -m tools.spritebake -m games/rpg/sprites.toml preview --open
+#
+# The baker rewrites the matching `const u8 NAME_data[N] PROGMEM = { ... };`
+# blocks in [output].cpp. Every sprite listed below must already have a
+# corresponding declaration in that file — the baker never creates new
+# declarations, only replaces existing ones. This keeps surrounding
+# comments, include order, and manually-tuned sprites intact.
+
+[output]
+cpp = "games/rpg/sprites.cpp"
+layout = "col-major-topbit0"
+progmem = true
+
+
+# ------------------------------------------------------------------ pipelines
+#
+# default_boss    — 16x16 boss render; Gaussian blur + Otsu + close holes +
+#                   vert-boost. Tuned on bosses.png 2026-04-21.
+#
+# default_lucifer — 20x24 render for Lucifer with slightly more aggressive
+#                   feature preservation. Source is a standalone PNG.
+#
+# Pipelines use "$width" / "$height" placeholders where appropriate so the
+# same pipeline can drive sprites of different sizes.
+
+[pipelines.default_boss]
+stages = [
+  "autocrop",
+  { gaussian_blur = { radius_ratio = 0.5 } },
+  { aspect_fit = { width = "$width", height = "$height" } },
+  { downscale = { width = "$width", height = "$height", method = "lanczos" } },
+  "threshold_otsu",
+  "morph_close_holes",
+  "vert_feature_boost",
+]
+
+[pipelines.default_lucifer]
+stages = [
+  "autocrop",
+  { gaussian_blur = { radius_ratio = 0.5 } },
+  { aspect_fit = { width = "$width", height = "$height" } },
+  { downscale = { width = "$width", height = "$height", method = "lanczos" } },
+  "threshold_otsu",
+  "morph_close_holes",
+  { vert_feature_boost = { band_ratio = 0.4, min_run = 2 } },
+]
+
+# --- experimental pipelines for iteration ---
+
+# Dither-based: preserves mid-gray horn/spike pixels that global threshold loses.
+[pipelines.dither_fs]
+stages = [
+  "autocrop",
+  { aspect_fit = { width = "$width", height = "$height" } },
+  { downscale = { width = "$width", height = "$height", method = "lanczos" } },
+  { floyd_steinberg = { threshold = 128 } },
+]
+
+# Dither with pre-blur to smooth source texture.
+[pipelines.dither_fs_blurred]
+stages = [
+  "autocrop",
+  { gaussian_blur = { radius_ratio = 0.3 } },
+  { aspect_fit = { width = "$width", height = "$height" } },
+  { downscale = { width = "$width", height = "$height", method = "lanczos" } },
+  { floyd_steinberg = { threshold = 128 } },
+  "morph_close_holes",
+]
+
+# Edge-preserving dither: solid edges, dithered interior. Best-of-both.
+[pipelines.dither_edge_preserve]
+stages = [
+  "autocrop",
+  { gaussian_blur = { radius_ratio = 0.3 } },
+  { aspect_fit = { width = "$width", height = "$height" } },
+  { downscale = { width = "$width", height = "$height", method = "lanczos" } },
+  "sobel_edges",
+  { edge_preserving_dither = { edge_threshold = 60, interior_threshold = 140 } },
+  "morph_close_holes",
+]
+
+# Feature-aware: detect thin vertical features in the source, preserve them
+# after downscaling. Purpose-built for horns, spikes, tails.
+[pipelines.feature_aware]
+stages = [
+  "autocrop",
+  { detect_thin_features = { max_width = 40, min_length = 30, band_ratio = 0.25 } },
+  { gaussian_blur = { radius_ratio = 0.5 } },
+  { aspect_fit = { width = "$width", height = "$height" } },
+  { downscale = { width = "$width", height = "$height", method = "lanczos" } },
+  "threshold_otsu",
+  "morph_close_holes",
+  "reinforce_thin_features",
+]
+
+# Silhouette outline + fill — flattens interior to solid shape.
+[pipelines.silhouette]
+stages = [
+  "autocrop",
+  { gaussian_blur = { radius_ratio = 0.4 } },
+  { aspect_fit = { width = "$width", height = "$height" } },
+  { downscale = { width = "$width", height = "$height", method = "lanczos" } },
+  { outline_and_fill = { silhouette_threshold = 80, fill = true } },
+  "morph_close_holes",
+]
+
+# Root-cause horn preservation: detects spike peaks in the SOURCE's
+# top-edge profile (peak detection on the silhouette's upper boundary),
+# remembers them in normalized coords, and re-lights them in the target
+# after downscaling. Works for any sprite with distinct upper spikes —
+# horns, spears, crowns, raised tails. Parameters are ratios, not
+# hardcoded pixel counts.
+[pipelines.peak_features]
+stages = [
+  "autocrop",
+  { detect_thin_features = { max_width_ratio = 0.15, min_length_ratio = 0.02, band_ratio = 0.02, min_prominence = 0.03, peak_separation_ratio = 0.05 } },
+  { gaussian_blur = { radius_ratio = 0.4 } },
+  { aspect_fit = { width = "$width", height = "$height" } },
+  { downscale = { width = "$width", height = "$height", method = "lanczos" } },
+  "threshold_otsu",
+  "morph_close_holes",
+  { reinforce_thin_features = { min_target_length = 2, min_target_width = 1 } },
+]
+
+# Full feature-aware pipeline for devil-type sprites:
+#   - detect horns (peaks in top profile)
+#   - detect claws (peaks in bottom profile)
+#   - detect eyes (dark spots in upper body area)
+#   - downscale body
+#   - threshold + clean
+#   - reinforce all three feature sets
+# This is what "structure-preserving downscale" actually looks like.
+[pipelines.devil]
+stages = [
+  "autocrop",
+  { detect_thin_features = { max_width_ratio = 0.15, min_length_ratio = 0.02, band_ratio = 0.02, min_prominence = 0.03, peak_separation_ratio = 0.05, attach_as = "horns" } },
+  { detect_bottom_features = { max_width_ratio = 0.15, min_length_ratio = 0.02, band_ratio = 0.12, min_prominence = 0.02, peak_separation_ratio = 0.03, attach_as = "claws" } },
+  { detect_dark_spots = { min_size_ratio = 0.0005, max_size_ratio = 0.008, max_brightness = 50, y_min_ratio = 0.08, y_max_ratio = 0.25, attach_as = "eyes" } },
+  { gaussian_blur = { radius_ratio = 0.3 } },
+  { aspect_fit = { width = "$width", height = "$height" } },
+  { downscale = { width = "$width", height = "$height", method = "lanczos" } },
+  "sobel_edges",
+  { edge_preserving_dither = { edge_threshold = 55, interior_threshold = 135 } },
+  "morph_close_holes",
+  { reinforce_thin_features = { feature_key = "horns", min_target_length = 2, min_target_width = 1 } },
+  { reinforce_thin_features = { feature_key = "claws", min_target_length = 1, min_target_width = 1 } },
+  { reinforce_dark_spots = { feature_key = "eyes", min_target_radius = 0 } },
+]
+
+# Peak-detected horns + edge-preserving dither body — combines the two best
+# techniques from our iteration. Horns come from source peak detection,
+# body comes from edge-preserving dither.
+[pipelines.peaks_plus_body]
+stages = [
+  "autocrop",
+  { detect_thin_features = { max_width_ratio = 0.15, min_length_ratio = 0.02, band_ratio = 0.02, min_prominence = 0.03, peak_separation_ratio = 0.05 } },
+  { gaussian_blur = { radius_ratio = 0.3 } },
+  { aspect_fit = { width = "$width", height = "$height" } },
+  { downscale = { width = "$width", height = "$height", method = "lanczos" } },
+  "sobel_edges",
+  { edge_preserving_dither = { edge_threshold = 55, interior_threshold = 135 } },
+  "morph_close_holes",
+  { reinforce_thin_features = { min_target_length = 2, min_target_width = 1 } },
+]
+
+# Purpose-built for sprites with horns or spikes. Stacks every
+# horn-preserving technique we have. Aggressive edge threshold keeps
+# horns solid; majority_smooth denoises the dither without eating edges.
+[pipelines.horns_preserved]
+stages = [
+  "autocrop",
+  { gaussian_blur = { radius_ratio = 0.3 } },
+  { aspect_fit = { width = "$width", height = "$height" } },
+  { downscale = { width = "$width", height = "$height", method = "lanczos" } },
+  "sobel_edges",
+  { edge_preserving_dither = { edge_threshold = 40, interior_threshold = 130 } },
+  "morph_close_holes",
+  { majority_smooth = { threshold = 4, iterations = 1 } },
+  { vert_feature_boost = { band_ratio = 0.35, min_run = 2 } },
+]
+
+# Horn-preserved + outline-sharp: add outline extraction on top
+[pipelines.horns_outline]
+stages = [
+  "autocrop",
+  { gaussian_blur = { radius_ratio = 0.3 } },
+  { aspect_fit = { width = "$width", height = "$height" } },
+  { downscale = { width = "$width", height = "$height", method = "lanczos" } },
+  "sobel_edges",
+  { edge_preserving_dither = { edge_threshold = 40, interior_threshold = 130 } },
+  { silhouette_preserve = { source_edge_threshold = 60, protect_radius = 1 } },
+  "morph_close_holes",
+  { vert_feature_boost = { band_ratio = 0.35, min_run = 2 } },
+]
+
+# Distance-weighted threshold: edge pixels lit more aggressively than interior.
+[pipelines.distance_weighted]
+stages = [
+  "autocrop",
+  { gaussian_blur = { radius_ratio = 0.4 } },
+  { aspect_fit = { width = "$width", height = "$height" } },
+  { downscale = { width = "$width", height = "$height", method = "lanczos" } },
+  "sobel_edges",
+  { threshold_distance_weighted = { base = 110, interior_weight = 0.3 } },
+  "morph_close_holes",
+]
+
+# Portrait-bust pipeline — Bayer-masked tonal dither.
+#
+# The loader has already sliced the cell and applied portrait_ratio. Here:
+#   blur → aspect_fit → downscale → stash silhouette mask → Bayer dither
+#   → AND with silhouette (kills the background dot-grid) → reinforce horns
+#   + eyes if they were detected earlier.
+#
+# Bottom fade is NOT in the pipeline — it's a per-sprite post-stage, driven
+# by `fade_bottom` on each sprite row. Defaults on; turn off for figures
+# that end in a real hard edge (Charon's scythe shaft, Phlegyas's flames).
+[pipelines.boss_portrait]
+stages = [
+  "autocrop",
+  { detect_thin_features = { max_width_ratio = 0.15, min_length_ratio = 0.02, band_ratio = 0.04, min_prominence = 0.03, peak_separation_ratio = 0.05, attach_as = "horns", require_symmetric_pair = true, symmetry_tolerance = 0.20 } },
+  { detect_dark_spots = { min_size_ratio = 0.0015, max_size_ratio = 0.010, max_brightness = 60, y_min_ratio = 0.10, y_max_ratio = 0.35, attach_as = "eyes" } },
+  { gaussian_blur = { radius_ratio = 0.3 } },
+  { aspect_fit = { width = "$width", height = "$height" } },
+  { downscale = { width = "$width", height = "$height", method = "lanczos" } },
+  { stash_silhouette_from_gray = { threshold = 96, close_iterations = 1 } },
+  { bayer_ordered_dither = { matrix = 4, threshold = 128 } },
+  "apply_stashed_silhouette",
+  { reinforce_thin_features = { feature_key = "horns", min_target_length = 2, max_target_length = 3, min_target_width = 2 } },
+  { reinforce_dark_spots = { feature_key = "eyes", min_target_radius = 0 } },
+]
+
+# Same recipe, no horn detection — for bosses whose top silhouette is a
+# crown, crest, or tangle of serpents rather than a pair of horns.
+[pipelines.boss_portrait_nohorns]
+stages = [
+  "autocrop",
+  { detect_dark_spots = { min_size_ratio = 0.0015, max_size_ratio = 0.010, max_brightness = 60, y_min_ratio = 0.10, y_max_ratio = 0.35, attach_as = "eyes" } },
+  { gaussian_blur = { radius_ratio = 0.3 } },
+  { aspect_fit = { width = "$width", height = "$height" } },
+  { downscale = { width = "$width", height = "$height", method = "lanczos" } },
+  { stash_silhouette_from_gray = { threshold = 96, close_iterations = 1 } },
+  { bayer_ordered_dither = { matrix = 4, threshold = 128 } },
+  "apply_stashed_silhouette",
+  { reinforce_dark_spots = { feature_key = "eyes", min_target_radius = 0 } },
+]
+
+# Threshold-only boss portrait — same approach that won for the player
+# classes: line-art preservation via a hard gray threshold, no dither,
+# no silhouette-fill, no feature reinforcement. The source art is
+# already drawn as 1-bit pixel art with the right hollows / horn
+# shapes / eye sockets — running detect_thin_features and
+# detect_dark_spots over-amplified those features into chunky artifacts
+# (Lucifer's antennae horns turning into floating blobs, Cerberus's
+# eye getting re-erased). The threshold preserves the source detail
+# directly.
+[pipelines.boss_portrait_clean]
+stages = [
+  "autocrop",
+  { pad = { top = 8, bottom = 4, left = 4, right = 4 } },
+  { gaussian_blur = { radius_ratio = 0.3 } },
+  { aspect_fit = { width = "$width", height = "$height" } },
+  { downscale = { width = "$width", height = "$height", method = "lanczos" } },
+  { threshold_fixed = { value = 96 } },
+  { morph_open_speckle = { min_neighbors = 1 } },
+]
+
+
+# -------------------------------------------------------------------- sprites
+#
+# Each sprite corresponds to a declaration in sprites.cpp. `ident` is the
+# C variable name; `source` is the art file (relative to repo root);
+# `width` / `height` are the target 1-bit dimensions.
+#
+# For sprites sliced out of a spritesheet, include a [sprites.slice] table:
+#   cols / rows define the grid; `index` picks the cell row-major
+#   (0 = top-left); trim_*_ratio chops the given fraction off each side
+#   of the cell (useful for cells with label text above the figure).
+
+[[sprites]]
+ident = "boss_charon_data"
+source = "art/bosses.png"
+width = 36
+height = 48
+pipeline = "boss_portrait_clean"
+slice = { cols = 4, rows = 2, index = 0, autocrop_to_figure = true }
+fade_bottom = false  # ends at the scythe shaft — no dissolve.
+
+[[sprites]]
+ident = "boss_minos_data"
+source = "art/bosses.png"
+width = 60
+height = 48
+pipeline = "boss_portrait_clean"
+slice = { cols = 4, rows = 2, index = 1, autocrop_to_figure = true, portrait_ratio = 0.62 }
+fade_bottom = false
+
+[[sprites]]
+ident = "boss_cerberus_data"
+source = "art/bosses.png"
+width = 58
+height = 48
+pipeline = "boss_portrait_clean"
+slice = { cols = 4, rows = 2, index = 2, autocrop_to_figure = true }
+fade_bottom = false
+
+[[sprites]]
+ident = "boss_plutus_data"
+source = "art/bosses.png"
+width = 62
+height = 48
+pipeline = "boss_portrait_clean"
+slice = { cols = 4, rows = 2, index = 3, autocrop_to_figure = true, portrait_ratio = 0.60 }
+fade_bottom = false
+
+[[sprites]]
+ident = "boss_phlegyas_data"
+source = "art/bosses.png"
+width = 40
+height = 54
+pipeline = "boss_portrait_clean"
+slice = { cols = 4, rows = 2, index = 4, autocrop_to_figure = true }
+fade_bottom = false  # ends at the base of the flames — no dissolve.
+
+[[sprites]]
+ident = "boss_medusa_data"
+source = "art/bosses.png"
+width = 52
+height = 46
+pipeline = "boss_portrait_clean"
+slice = { cols = 4, rows = 2, index = 5, autocrop_to_figure = true, portrait_ratio = 0.70 }
+fade_bottom = false
+
+[[sprites]]
+ident = "boss_minotaur_data"
+source = "art/bosses.png"
+width = 62
+height = 50
+pipeline = "boss_portrait_clean"
+slice = { cols = 4, rows = 2, index = 6, autocrop_to_figure = true, portrait_ratio = 0.62 }
+fade_bottom = false
+
+[[sprites]]
+ident = "boss_geryon_data"
+source = "art/bosses.png"
+width = 64
+height = 40
+pipeline = "boss_portrait_clean"
+slice = { cols = 4, rows = 2, index = 7, autocrop_to_figure = true, portrait_ratio = 0.62 }
+fade_bottom = false
+
+[[sprites]]
+ident = "boss_lucifer_data"
+source = "art/lucifer.png"
+width = 60
+height = 58
+pipeline = "boss_portrait_clean"
+portrait_ratio = 0.80
+fade_bottom = false
+
+# Beatrice portrait — NPC, ~third of screen. Source of truth is the
+# 16-frame idle animation strip (`art/animations/beatrice_data/idle.png`).
+# f0 is the static portrait (used on the title screen); f1..f15 are
+# the crying/transition animation played when leaving title. Earlier
+# the canonical bytes lived at `art/touchups/beatrice_data.png` — that
+# file is preserved as a reference snapshot but no longer referenced
+# from this manifest. To re-edit f0, run `spritebake animate
+# beatrice_data --trace art/beatrice_portrait.png`.
+[[sprites]]
+ident = "beatrice_data"
+source = "art/animations/beatrice_data/idle.png"
+width = 58
+height = 58
+pipeline = "passthrough_1bit"
+slice = { cols = 21, rows = 1, index = 0 }
+fade_bottom = false
+
+[[sprites]]
+ident = "bea_idle_f1_data"
+source = "art/animations/beatrice_data/idle.png"
+width = 58
+height = 58
+pipeline = "passthrough_1bit"
+slice = { cols = 21, rows = 1, index = 1 }
+fade_bottom = false
+
+[[sprites]]
+ident = "bea_idle_f2_data"
+source = "art/animations/beatrice_data/idle.png"
+width = 58
+height = 58
+pipeline = "passthrough_1bit"
+slice = { cols = 21, rows = 1, index = 2 }
+fade_bottom = false
+
+[[sprites]]
+ident = "bea_idle_f3_data"
+source = "art/animations/beatrice_data/idle.png"
+width = 58
+height = 58
+pipeline = "passthrough_1bit"
+slice = { cols = 21, rows = 1, index = 3 }
+fade_bottom = false
+
+[[sprites]]
+ident = "bea_idle_f4_data"
+source = "art/animations/beatrice_data/idle.png"
+width = 58
+height = 58
+pipeline = "passthrough_1bit"
+slice = { cols = 21, rows = 1, index = 4 }
+fade_bottom = false
+
+[[sprites]]
+ident = "bea_idle_f5_data"
+source = "art/animations/beatrice_data/idle.png"
+width = 58
+height = 58
+pipeline = "passthrough_1bit"
+slice = { cols = 21, rows = 1, index = 5 }
+fade_bottom = false
+
+[[sprites]]
+ident = "bea_idle_f6_data"
+source = "art/animations/beatrice_data/idle.png"
+width = 58
+height = 58
+pipeline = "passthrough_1bit"
+slice = { cols = 21, rows = 1, index = 6 }
+fade_bottom = false
+
+[[sprites]]
+ident = "bea_idle_f7_data"
+source = "art/animations/beatrice_data/idle.png"
+width = 58
+height = 58
+pipeline = "passthrough_1bit"
+slice = { cols = 21, rows = 1, index = 7 }
+fade_bottom = false
+
+[[sprites]]
+ident = "bea_idle_f8_data"
+source = "art/animations/beatrice_data/idle.png"
+width = 58
+height = 58
+pipeline = "passthrough_1bit"
+slice = { cols = 21, rows = 1, index = 8 }
+fade_bottom = false
+
+[[sprites]]
+ident = "bea_idle_f9_data"
+source = "art/animations/beatrice_data/idle.png"
+width = 58
+height = 58
+pipeline = "passthrough_1bit"
+slice = { cols = 21, rows = 1, index = 9 }
+fade_bottom = false
+
+[[sprites]]
+ident = "bea_idle_f10_data"
+source = "art/animations/beatrice_data/idle.png"
+width = 58
+height = 58
+pipeline = "passthrough_1bit"
+slice = { cols = 21, rows = 1, index = 10 }
+fade_bottom = false
+
+[[sprites]]
+ident = "bea_idle_f11_data"
+source = "art/animations/beatrice_data/idle.png"
+width = 58
+height = 58
+pipeline = "passthrough_1bit"
+slice = { cols = 21, rows = 1, index = 11 }
+fade_bottom = false
+
+[[sprites]]
+ident = "bea_idle_f12_data"
+source = "art/animations/beatrice_data/idle.png"
+width = 58
+height = 58
+pipeline = "passthrough_1bit"
+slice = { cols = 21, rows = 1, index = 12 }
+fade_bottom = false
+
+[[sprites]]
+ident = "bea_idle_f13_data"
+source = "art/animations/beatrice_data/idle.png"
+width = 58
+height = 58
+pipeline = "passthrough_1bit"
+slice = { cols = 21, rows = 1, index = 13 }
+fade_bottom = false
+
+[[sprites]]
+ident = "bea_idle_f14_data"
+source = "art/animations/beatrice_data/idle.png"
+width = 58
+height = 58
+pipeline = "passthrough_1bit"
+slice = { cols = 21, rows = 1, index = 14 }
+fade_bottom = false
+
+[[sprites]]
+ident = "bea_idle_f15_data"
+source = "art/animations/beatrice_data/idle.png"
+width = 58
+height = 58
+pipeline = "passthrough_1bit"
+slice = { cols = 21, rows = 1, index = 15 }
+fade_bottom = false
+
+[[sprites]]
+ident = "bea_idle_f16_data"
+source = "art/animations/beatrice_data/idle.png"
+width = 58
+height = 58
+pipeline = "passthrough_1bit"
+slice = { cols = 21, rows = 1, index = 16 }
+fade_bottom = false
+
+[[sprites]]
+ident = "bea_idle_f17_data"
+source = "art/animations/beatrice_data/idle.png"
+width = 58
+height = 58
+pipeline = "passthrough_1bit"
+slice = { cols = 21, rows = 1, index = 17 }
+fade_bottom = false
+
+[[sprites]]
+ident = "bea_idle_f18_data"
+source = "art/animations/beatrice_data/idle.png"
+width = 58
+height = 58
+pipeline = "passthrough_1bit"
+slice = { cols = 21, rows = 1, index = 18 }
+fade_bottom = false
+
+[[sprites]]
+ident = "bea_idle_f19_data"
+source = "art/animations/beatrice_data/idle.png"
+width = 58
+height = 58
+pipeline = "passthrough_1bit"
+slice = { cols = 21, rows = 1, index = 19 }
+fade_bottom = false
+
+[[sprites]]
+ident = "bea_idle_f20_data"
+source = "art/animations/beatrice_data/idle.png"
+width = 58
+height = 58
+pipeline = "passthrough_1bit"
+slice = { cols = 21, rows = 1, index = 20 }
+fade_bottom = false
+
+[[sprites]]
+ident = "player_unburdened_data"
+source = "art/refs/unnamed.png"
+width = 40
+height = 52
+pipeline = "player_unburdened"
+slice = { cols = 4, rows = 2, index = 4 }
+fade_bottom = false
+
+# UNBURDENED in-world variant. Same wraith, smaller — used as the
+# Reckoning page-0 icon and (eventually) as the in-world player token
+# during the Charon cutscene + class-select. Source is the IDLE pose
+# from the bottom-row state poses in art/refs/newunnamed.png; the
+# slice index points at a 4x2 grid alias (the actual sheet is 4 cols
+# x 2 rows of POSE cells but we pre-extract the trace by hand to
+# art/refs/unburdened_world_trace.png — bake is starting only,
+# canonical pixels hand-traced into art/touchups/).
+[[sprites]]
+ident = "player_unburdened_world_data"
+source = "art/refs/unnamed.png"
+width = 16
+height = 20
+pipeline = "player_unburdened"
+slice = { cols = 4, rows = 2, index = 4 }
+fade_bottom = false
+
+# Unburdened world animation frames. Same scheme as the Penitent L1
+# anim block below — strip PNGs saved by `spritebake animate`, sliced
+# 1×N with `index = i`. passthrough_1bit since the strips are already
+# pixel-perfect at the 16×20 cell size.
+[[sprites]]
+ident = "ub_idle_f0_data"
+source = "art/animations/player_unburdened_world_data/idle.png"
+width = 16
+height = 20
+pipeline = "passthrough_1bit"
+slice = { cols = 2, rows = 1, index = 0 }
+fade_bottom = false
+
+[[sprites]]
+ident = "ub_idle_f1_data"
+source = "art/animations/player_unburdened_world_data/idle.png"
+width = 16
+height = 20
+pipeline = "passthrough_1bit"
+slice = { cols = 2, rows = 1, index = 1 }
+fade_bottom = false
+
+[[sprites]]
+ident = "ub_walk_f0_data"
+source = "art/animations/player_unburdened_world_data/walk.png"
+width = 16
+height = 20
+pipeline = "passthrough_1bit"
+slice = { cols = 4, rows = 1, index = 0 }
+fade_bottom = false
+
+[[sprites]]
+ident = "ub_walk_f1_data"
+source = "art/animations/player_unburdened_world_data/walk.png"
+width = 16
+height = 20
+pipeline = "passthrough_1bit"
+slice = { cols = 4, rows = 1, index = 1 }
+fade_bottom = false
+
+[[sprites]]
+ident = "ub_walk_f2_data"
+source = "art/animations/player_unburdened_world_data/walk.png"
+width = 16
+height = 20
+pipeline = "passthrough_1bit"
+slice = { cols = 4, rows = 1, index = 2 }
+fade_bottom = false
+
+[[sprites]]
+ident = "ub_walk_f3_data"
+source = "art/animations/player_unburdened_world_data/walk.png"
+width = 16
+height = 20
+pipeline = "passthrough_1bit"
+slice = { cols = 4, rows = 1, index = 3 }
+fade_bottom = false
+
+[[sprites]]
+ident = "ub_attack_f0_data"
+source = "art/animations/player_unburdened_world_data/attack.png"
+width = 16
+height = 20
+pipeline = "passthrough_1bit"
+slice = { cols = 2, rows = 1, index = 0 }
+fade_bottom = false
+
+[[sprites]]
+ident = "ub_attack_f1_data"
+source = "art/animations/player_unburdened_world_data/attack.png"
+width = 16
+height = 20
+pipeline = "passthrough_1bit"
+slice = { cols = 2, rows = 1, index = 1 }
+fade_bottom = false
+
+# PENITENT — VITA-focused. Hood + staff. Halo at LVL 3.
+[[sprites]]
+ident = "player_penitent_lvl1_data"
+source = "art/maincharevo.png"
+width = 26
+height = 30
+pipeline = "player_class_heretic"
+bbox = { x0 = 145, y0 = 140, x1 = 280, y1 = 296 }
+fade_bottom = false
+
+# Penitent L1 in-world gameplay sprite is now an alias for
+# pen_l1_idle_f0_data — the touched-up idle frame is the canonical L1
+# still pose, and rendering a separate world-data sprite from
+# art/maincharevo.png would diverge from it. The PLAYER entity reads
+# pen_l1_idle_f0_data when no animation is active. (Removed the old
+# player_penitent_lvl1_world_data block 2026-04-26.)
+
+# Penitent L1 world animation frames. Sourced from horizontal strip PNGs
+# saved by the `spritebake animate` tool. Each strip = N frames laid out
+# left-to-right at the same 12x16 cell size; we slice each frame with
+# `index = i` and a 1xN grid. The passthrough_1bit pipeline doesn't
+# resize/recrop — strips are already pixel-perfect.
+[[sprites]]
+ident = "pen_l1_idle_f0_data"
+source = "art/animations/player_penitent_lvl1_world_data/idle.png"
+width = 12
+height = 16
+pipeline = "passthrough_1bit"
+slice = { cols = 2, rows = 1, index = 0 }
+fade_bottom = false
+
+[[sprites]]
+ident = "pen_l1_idle_f1_data"
+source = "art/animations/player_penitent_lvl1_world_data/idle.png"
+width = 12
+height = 16
+pipeline = "passthrough_1bit"
+slice = { cols = 2, rows = 1, index = 1 }
+fade_bottom = false
+
+[[sprites]]
+ident = "pen_l1_walk_f0_data"
+source = "art/animations/player_penitent_lvl1_world_data/walk.png"
+width = 12
+height = 16
+pipeline = "passthrough_1bit"
+slice = { cols = 4, rows = 1, index = 0 }
+fade_bottom = false
+
+[[sprites]]
+ident = "pen_l1_walk_f1_data"
+source = "art/animations/player_penitent_lvl1_world_data/walk.png"
+width = 12
+height = 16
+pipeline = "passthrough_1bit"
+slice = { cols = 4, rows = 1, index = 1 }
+fade_bottom = false
+
+[[sprites]]
+ident = "pen_l1_walk_f2_data"
+source = "art/animations/player_penitent_lvl1_world_data/walk.png"
+width = 12
+height = 16
+pipeline = "passthrough_1bit"
+slice = { cols = 4, rows = 1, index = 2 }
+fade_bottom = false
+
+[[sprites]]
+ident = "pen_l1_walk_f3_data"
+source = "art/animations/player_penitent_lvl1_world_data/walk.png"
+width = 12
+height = 16
+pipeline = "passthrough_1bit"
+slice = { cols = 4, rows = 1, index = 3 }
+fade_bottom = false
+
+[[sprites]]
+ident = "pen_l1_attack_f0_data"
+source = "art/animations/player_penitent_lvl1_world_data/attack.png"
+width = 12
+height = 16
+pipeline = "passthrough_1bit"
+slice = { cols = 2, rows = 1, index = 0 }
+fade_bottom = false
+
+[[sprites]]
+ident = "pen_l1_attack_f1_data"
+source = "art/animations/player_penitent_lvl1_world_data/attack.png"
+width = 12
+height = 16
+pipeline = "passthrough_1bit"
+slice = { cols = 2, rows = 1, index = 1 }
+fade_bottom = false
+
+[[sprites]]
+ident = "player_penitent_lvl2_data"
+source = "art/maincharevo.png"
+width = 45
+height = 46
+pipeline = "player_class_heretic"
+bbox = { x0 = 732, y0 = 89, x1 = 934, y1 = 295 }
+fade_bottom = false
+
+[[sprites]]
+ident = "player_penitent_lvl2_world_data"
+source = "art/maincharevo.png"
+width = 16
+height = 20
+pipeline = "player_class_world"
+bbox = { x0 = 729, y0 = 74, x1 = 936, y1 = 298 }
+fade_bottom = false
+
+[[sprites]]
+ident = "player_penitent_lvl3_data"
+source = "art/maincharevo.png"
+width = 53
+height = 64
+pipeline = "player_class_heretic"
+bbox = { x0 = 1101, y0 = 19, x1 = 1330, y1 = 296 }
+fade_bottom = false
+
+[[sprites]]
+ident = "player_penitent_lvl3_world_data"
+source = "art/maincharevo.png"
+width = 20
+height = 24
+pipeline = "player_class_world"
+bbox = { x0 = 1097, y0 = 20, x1 = 1333, y1 = 295 }
+fade_bottom = false
+
+# WRETCHED — FURIA-focused. Feral, low-to-ground, spiked hair. No halo.
+[[sprites]]
+ident = "player_wretched_lvl1_data"
+source = "art/maincharevo.png"
+width = 30
+height = 28
+pipeline = "player_class_wretched"
+bbox = { x0 = 137, y0 = 451, x1 = 295, y1 = 598 }
+fade_bottom = false
+
+[[sprites]]
+ident = "player_wretched_lvl1_world_data"
+source = "art/maincharevo.png"
+width = 12
+height = 16
+pipeline = "player_class_world_wretched"
+bbox = { x0 = 130, y0 = 438, x1 = 360, y1 = 597 }
+fade_bottom = false
+
+[[sprites]]
+ident = "player_wretched_lvl2_data"
+source = "art/maincharevo.png"
+width = 45
+height = 42
+pipeline = "player_class_wretched"
+bbox = { x0 = 712, y0 = 408, x1 = 917, y1 = 599 }
+fade_bottom = false
+
+[[sprites]]
+ident = "player_wretched_lvl2_world_data"
+source = "art/maincharevo.png"
+width = 16
+height = 20
+pipeline = "player_class_world_wretched"
+bbox = { x0 = 708, y0 = 398, x1 = 970, y1 = 597 }
+fade_bottom = false
+
+[[sprites]]
+ident = "player_wretched_lvl3_data"
+source = "art/maincharevo.png"
+width = 62
+height = 56
+pipeline = "player_class_wretched"
+bbox = { x0 = 1086, y0 = 381, x1 = 1327, y1 = 599 }
+fade_bottom = false
+
+[[sprites]]
+ident = "player_wretched_lvl3_world_data"
+source = "art/maincharevo.png"
+width = 20
+height = 24
+pipeline = "player_class_world_wretched"
+bbox = { x0 = 1082, y0 = 370, x1 = 1450, y1 = 597 }
+fade_bottom = false
+
+# HERETIC — IRA-focused. Robed mage with sun-rayed halo. Halo at LVL 3.
+[[sprites]]
+ident = "player_heretic_lvl1_data"
+source = "art/maincharevo.png"
+width = 28
+height = 40
+pipeline = "player_class_heretic"
+bbox = { x0 = 416, y0 = 718, x1 = 586, y1 = 961 }
+fade_bottom = false
+
+[[sprites]]
+ident = "player_heretic_lvl1_world_data"
+source = "art/maincharevo.png"
+width = 12
+height = 16
+pipeline = "player_class_world_heretic"
+bbox = { x0 = 418, y0 = 721, x1 = 584, y1 = 958 }
+fade_bottom = false
+
+[[sprites]]
+ident = "player_heretic_lvl2_data"
+source = "art/maincharevo.png"
+width = 38
+height = 52
+pipeline = "player_class_heretic"
+bbox = { x0 = 717, y0 = 686, x1 = 917, y1 = 960 }
+fade_bottom = false
+
+[[sprites]]
+ident = "player_heretic_lvl2_world_data"
+source = "art/maincharevo.png"
+width = 16
+height = 20
+pipeline = "player_class_world_heretic"
+bbox = { x0 = 719, y0 = 688, x1 = 915, y1 = 958 }
+fade_bottom = false
+
+[[sprites]]
+ident = "player_heretic_lvl3_data"
+source = "art/maincharevo.png"
+width = 54
+height = 60
+pipeline = "player_class_heretic"
+bbox = { x0 = 1059, y0 = 668, x1 = 1322, y1 = 960 }
+fade_bottom = false
+
+[[sprites]]
+ident = "player_heretic_lvl3_world_data"
+source = "art/maincharevo.png"
+width = 20
+height = 24
+pipeline = "player_class_world_heretic"
+bbox = { x0 = 1062, y0 = 670, x1 = 1319, y1 = 958 }
+fade_bottom = false
+
+# ---------------------------------------------------------------------------
+# Fallen halo — the sigil shown during scene-paging cover transitions.
+# Drawn into the framebuffer after the dither lands on a fully-obscured
+# frame; held through the SPM swap; replaced by the destination's first
+# real draw. Lore: a halo broken inside-out, the Pilgrim being processed
+# by Hell. See docs/lore.md "Fallen Halo".
+#
+# Seed entry: source PNG is the design-board reference (art/fallenhalo.png)
+# but bytes don't matter — every frame is hand-traced via
+# `spritebake animate fallen_halo_data --trace art/fallenhalo.png`.
+# The bbox just needs to be a valid rect over the source so the seed
+# pipeline succeeds; fixed at the top-left animation cell as a stable
+# reference.
+[[sprites]]
+ident = "fallen_halo_data"
+source = "art/fallenhalo.png"
+width = 128
+height = 64
+pipeline = "fallen_halo_seed"
+bbox = { x0 = 80, y0 = 540, x1 = 240, y1 = 700 }
+fade_bottom = false
+
+# Animation frames — 16 cells of 128×64 in a horizontal strip, saved by
+# the `animate` command to art/animations/fallen_halo_data/idle.png.
+# Strip dimensions: 2048×64. f0 = the sigil at full strength (the dither's
+# target during phase 2 of the cover); f1..f15 = the post-SPM "exit"
+# animation where the sigil collapses into nothing as the destination
+# scene takes over. Played at 12 fps after the post-SPM hold.
+[[sprites]]
+ident = "fh_idle_f0_data"
+source = "art/animations/fallen_halo_data/idle.png"
+width = 128
+height = 64
+pipeline = "passthrough_1bit"
+slice = { cols = 16, rows = 1, index = 0 }
+fade_bottom = false
+
+[[sprites]]
+ident = "fh_idle_f1_data"
+source = "art/animations/fallen_halo_data/idle.png"
+width = 128
+height = 64
+pipeline = "passthrough_1bit"
+slice = { cols = 16, rows = 1, index = 1 }
+fade_bottom = false
+
+[[sprites]]
+ident = "fh_idle_f2_data"
+source = "art/animations/fallen_halo_data/idle.png"
+width = 128
+height = 64
+pipeline = "passthrough_1bit"
+slice = { cols = 16, rows = 1, index = 2 }
+fade_bottom = false
+
+[[sprites]]
+ident = "fh_idle_f3_data"
+source = "art/animations/fallen_halo_data/idle.png"
+width = 128
+height = 64
+pipeline = "passthrough_1bit"
+slice = { cols = 16, rows = 1, index = 3 }
+fade_bottom = false
+
+[[sprites]]
+ident = "fh_idle_f4_data"
+source = "art/animations/fallen_halo_data/idle.png"
+width = 128
+height = 64
+pipeline = "passthrough_1bit"
+slice = { cols = 16, rows = 1, index = 4 }
+fade_bottom = false
+
+[[sprites]]
+ident = "fh_idle_f5_data"
+source = "art/animations/fallen_halo_data/idle.png"
+width = 128
+height = 64
+pipeline = "passthrough_1bit"
+slice = { cols = 16, rows = 1, index = 5 }
+fade_bottom = false
+
+[[sprites]]
+ident = "fh_idle_f6_data"
+source = "art/animations/fallen_halo_data/idle.png"
+width = 128
+height = 64
+pipeline = "passthrough_1bit"
+slice = { cols = 16, rows = 1, index = 6 }
+fade_bottom = false
+
+[[sprites]]
+ident = "fh_idle_f7_data"
+source = "art/animations/fallen_halo_data/idle.png"
+width = 128
+height = 64
+pipeline = "passthrough_1bit"
+slice = { cols = 16, rows = 1, index = 7 }
+fade_bottom = false
+
+[[sprites]]
+ident = "fh_idle_f8_data"
+source = "art/animations/fallen_halo_data/idle.png"
+width = 128
+height = 64
+pipeline = "passthrough_1bit"
+slice = { cols = 16, rows = 1, index = 8 }
+fade_bottom = false
+
+[[sprites]]
+ident = "fh_idle_f9_data"
+source = "art/animations/fallen_halo_data/idle.png"
+width = 128
+height = 64
+pipeline = "passthrough_1bit"
+slice = { cols = 16, rows = 1, index = 9 }
+fade_bottom = false
+
+[[sprites]]
+ident = "fh_idle_f10_data"
+source = "art/animations/fallen_halo_data/idle.png"
+width = 128
+height = 64
+pipeline = "passthrough_1bit"
+slice = { cols = 16, rows = 1, index = 10 }
+fade_bottom = false
+
+[[sprites]]
+ident = "fh_idle_f11_data"
+source = "art/animations/fallen_halo_data/idle.png"
+width = 128
+height = 64
+pipeline = "passthrough_1bit"
+slice = { cols = 16, rows = 1, index = 11 }
+fade_bottom = false
+
+[[sprites]]
+ident = "fh_idle_f12_data"
+source = "art/animations/fallen_halo_data/idle.png"
+width = 128
+height = 64
+pipeline = "passthrough_1bit"
+slice = { cols = 16, rows = 1, index = 12 }
+fade_bottom = false
+
+[[sprites]]
+ident = "fh_idle_f13_data"
+source = "art/animations/fallen_halo_data/idle.png"
+width = 128
+height = 64
+pipeline = "passthrough_1bit"
+slice = { cols = 16, rows = 1, index = 13 }
+fade_bottom = false
+
+[[sprites]]
+ident = "fh_idle_f14_data"
+source = "art/animations/fallen_halo_data/idle.png"
+width = 128
+height = 64
+pipeline = "passthrough_1bit"
+slice = { cols = 16, rows = 1, index = 14 }
+fade_bottom = false
+
+[[sprites]]
+ident = "fh_idle_f15_data"
+source = "art/animations/fallen_halo_data/idle.png"
+width = 128
+height = 64
+pipeline = "passthrough_1bit"
+slice = { cols = 16, rows = 1, index = 15 }
+fade_bottom = false

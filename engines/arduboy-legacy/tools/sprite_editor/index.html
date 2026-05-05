@@ -1,0 +1,1687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Mono 1-bit sprite editor</title>
+<style>
+  :root {
+    --bg: #1e1e1e;
+    --panel: #2a2a2a;
+    --border: #444;
+    --fg: #eee;
+    --accent: #e03030;
+    --pixel-on: #eee;
+    --pixel-off: #000;
+    --pixel-grid: #222;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, Segoe UI, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    margin: 0;
+    padding: 16px;
+    font-size: 13px;
+  }
+  h1 { font-size: 16px; margin: 0 0 12px 0; color: var(--accent); }
+  h2 { font-size: 13px; margin: 16px 0 6px 0; color: #bbb; text-transform: uppercase; letter-spacing: 1px; }
+  .layout { display: grid; grid-template-columns: 1fr 360px; gap: 16px; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 12px;
+  }
+  label { display: block; margin: 6px 0 2px 0; font-size: 12px; color: #aaa; }
+  input[type="number"], input[type="text"], textarea, select {
+    width: 100%;
+    background: #1a1a1a;
+    border: 1px solid var(--border);
+    color: var(--fg);
+    padding: 4px 6px;
+    font-family: "SF Mono", Consolas, monospace;
+    font-size: 12px;
+    border-radius: 3px;
+  }
+  textarea { resize: vertical; min-height: 80px; }
+  button {
+    background: #333;
+    border: 1px solid var(--border);
+    color: var(--fg);
+    padding: 5px 10px;
+    cursor: pointer;
+    border-radius: 3px;
+    font-size: 12px;
+    margin: 2px 2px 2px 0;
+  }
+  button:hover { background: #444; border-color: #666; }
+  button.primary { background: var(--accent); border-color: #a02020; }
+  button.primary:hover { background: #f03838; }
+  .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .row > * { margin-right: 4px; }
+  .grid-stack { display: flex; flex-direction: column; gap: 16px; align-items: flex-start; }
+  .canvas-wrap {
+    display: inline-block;
+    border: 2px solid var(--accent);
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    background: var(--pixel-off);
+  }
+  canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
+  .preview-row { display: flex; gap: 12px; align-items: flex-end; }
+  .preview-col { text-align: center; }
+  .preview-col small { color: #888; display: block; margin-top: 4px; }
+  .shortcut { color: #888; font-size: 11px; }
+  .status { color: #888; font-size: 11px; margin-top: 4px; }
+  kbd {
+    background: #333;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 1px 4px;
+    font-family: "SF Mono", Consolas, monospace;
+    font-size: 11px;
+  }
+  hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+  .coords { font-family: "SF Mono", Consolas, monospace; color: #888; font-size: 11px; }
+</style>
+</head>
+<body>
+
+<h1>Mono 1-bit sprite editor</h1>
+
+<div class="layout">
+  <!-- Left: canvas + previews -->
+  <div class="panel">
+    <div class="row" style="margin-bottom:10px;">
+      <label style="margin:0;">W:</label>
+      <input type="number" id="width" min="1" max="128" value="20" style="width:60px;">
+      <label style="margin:0;">H:</label>
+      <input type="number" id="height" min="1" max="128" value="24" style="width:60px;">
+      <button id="resize">Resize</button>
+      <button id="clear">Clear</button>
+      <button id="invert">Invert</button>
+      <label style="margin:0 0 0 12px;">Pixel:</label>
+      <input type="range" id="px-size" min="4" max="48" value="0" style="width:120px;">
+      <span id="px-size-val" style="min-width:28px; text-align:right; color:#aaa;">auto</span>
+      <span class="coords" id="coords" style="margin-left:auto;">—</span>
+    </div>
+    <!-- Trace controls — only visible when launched with --trace. Loads
+         a reference image as a translucent underlay so 1-bit pixels can
+         be hand-traced over a hard-to-bake source. Hold Shift + drag on
+         the canvas to pan; Shift + mouse-wheel to zoom. -->
+    <div id="trace-row" class="row" style="display:none; gap:6px; margin:4px 0; flex-wrap:wrap;">
+      <label style="margin:0; display:flex; align-items:center; gap:4px;">
+        <input type="checkbox" id="trace-on" checked> Trace
+      </label>
+      <label style="margin:0; display:flex; align-items:center; gap:4px;">
+        Opacity
+        <input type="range" id="trace-alpha" min="0" max="100" value="40" style="width:100px;">
+      </label>
+      <label style="margin:0; display:flex; align-items:center; gap:4px;">
+        Zoom
+        <input type="range" id="trace-zoom" min="20" max="300" value="100" style="width:100px;">
+        <span id="trace-zoom-val" style="min-width:32px; text-align:right;">100%</span>
+      </label>
+      <button id="trace-reset" type="button" style="padding:2px 8px;">Reset</button>
+      <label style="margin:0 0 0 8px; display:flex; align-items:center; gap:4px;">
+        Cells
+        <input type="number" id="trace-cells-x" min="1" max="32" value="1" style="width:48px;">
+        <span style="color:#666;">×</span>
+        <input type="number" id="trace-cells-y" min="1" max="32" value="1" style="width:48px;">
+      </label>
+      <label style="margin:0; display:flex; align-items:center; gap:4px;">
+        <input type="checkbox" id="trace-snap"> Snap
+      </label>
+      <span id="trace-cell-status" style="color:#888; font-size:11px;"></span>
+      <span id="trace-status" style="color:#888;">no image</span>
+      <span style="color:#666; font-size:11px; margin-left:auto;">Shift+drag = pan · Shift+wheel = zoom</span>
+    </div>
+    <div class="grid-stack">
+      <div class="canvas-wrap">
+        <canvas id="edit" width="640" height="768"></canvas>
+      </div>
+      <div>
+        <h2>Preview (1x / 2x / 4x)</h2>
+        <div class="preview-row">
+          <div class="preview-col"><canvas id="p1"></canvas><small>1x (actual)</small></div>
+          <div class="preview-col"><canvas id="p2"></canvas><small>2x</small></div>
+          <div class="preview-col"><canvas id="p4"></canvas><small>4x</small></div>
+        </div>
+      </div>
+    </div>
+    <div class="status" id="status"></div>
+  </div>
+
+  <!-- Right: tools & I/O -->
+  <div>
+    <div class="panel">
+      <h2>Tools</h2>
+      <div class="row">
+        <button id="tool-pen" class="primary">Pen (B)</button>
+        <button id="tool-erase">Erase (E)</button>
+        <button id="tool-fill">Fill (F)</button>
+        <button id="tool-line">Line (L)</button>
+        <button id="tool-rect">Rect (R)</button>
+      </div>
+      <hr>
+      <h2>Transforms</h2>
+      <div class="row">
+        <button id="flip-h">Flip H</button>
+        <button id="flip-v">Flip V</button>
+        <button id="rotate">Rotate 90</button>
+      </div>
+      <div class="row">
+        <button id="shift-up">↑</button>
+        <button id="shift-down">↓</button>
+        <button id="shift-left">←</button>
+        <button id="shift-right">→</button>
+        <label style="margin:0 4px;"><input type="checkbox" id="shift-wrap"> wrap</label>
+      </div>
+      <hr>
+      <h2>Undo/redo</h2>
+      <div class="row">
+        <button id="undo">Undo (Ctrl+Z)</button>
+        <button id="redo">Redo (Ctrl+Y)</button>
+      </div>
+    </div>
+
+    <!-- Touchup-mode panel: only visible when launched via `spritebake touchup`.
+         Save POSTs the canvas to the local helper which writes
+         art/touchups/<ident>.png; Preview re-renders the full sheet.
+         Lives at the top of the right column so the Save button is the
+         most prominent action when running in touchup mode. -->
+    <div class="panel" id="touchup-panel" style="margin-top:12px; display:none;">
+      <h2>Touchup</h2>
+      <div class="row" style="gap:8px;">
+        <button id="touchup-save" class="primary">Save</button>
+        <button id="touchup-preview">Preview all sprites</button>
+      </div>
+      <div class="status" id="touchup-status" style="margin-top:6px;"></div>
+    </div>
+
+    <!-- Animate-mode panel: only visible when launched via `spritebake animate`.
+         Builds a per-state animation as a horizontal-strip PNG saved to
+         art/animations/<ident>/<state>.png. Spritebake's `slice` syntax
+         can ingest these directly into the manifest. Lives at the top of
+         the right column so the timeline + Save are immediately visible. -->
+    <div class="panel" id="animate-panel" style="margin-top:12px; display:none;">
+      <h2>Animate</h2>
+      <div class="row" style="gap:6px; margin-bottom:6px;">
+        <label style="margin:0;">State:</label>
+        <select id="anim-state" style="background:#222; color:#eee; border:1px solid #555;">
+          <option value="idle">idle</option>
+          <option value="walk">walk</option>
+          <option value="attack">attack</option>
+        </select>
+        <label style="margin:0; display:flex; align-items:center; gap:4px;">
+          <input type="checkbox" id="anim-onion" checked> Onion-skin
+        </label>
+      </div>
+      <div class="row" style="gap:6px; margin-bottom:6px;">
+        <button id="anim-add">+ Frame</button>
+        <button id="anim-dup">Duplicate</button>
+        <button id="anim-del">Delete</button>
+        <button id="anim-play" class="primary">Play</button>
+      </div>
+      <div class="row" style="gap:6px; margin-bottom:6px; align-items:center;">
+        <label style="margin:0;">FPS:</label>
+        <input type="range" id="anim-fps" min="1" max="30" value="8" style="flex:1;">
+        <span id="anim-fps-val" style="min-width:24px; text-align:right;">8</span>
+      </div>
+      <div id="anim-frames" style="display:flex; gap:4px; flex-wrap:wrap; padding:4px; background:#1a1a1a; border:1px solid #444; min-height:40px;"></div>
+      <div class="row" style="gap:8px; margin-top:8px;">
+        <canvas id="anim-preview" width="80" height="80" style="background:#000; border:1px solid #555;"></canvas>
+        <div style="flex:1; font-size:11px; color:#aaa;">
+          Live preview. Click a frame thumbnail to edit. Onion-skin shows
+          previous frame as faded pixels under the current one.
+        </div>
+      </div>
+      <div class="row" style="gap:8px; margin-top:8px;">
+        <button id="anim-save" class="primary">Save Animation</button>
+        <button id="anim-load">Load existing</button>
+        <button id="anim-dup-state">Duplicate animation</button>
+      </div>
+      <div class="status" id="anim-status" style="margin-top:6px;"></div>
+    </div>
+
+    <div class="panel" style="margin-top:12px;">
+      <h2>Import PNG</h2>
+      <input type="file" id="png-input" accept="image/*">
+      <div class="row" style="margin-top:6px;">
+        <label style="margin:0;">Threshold:</label>
+        <input type="number" id="png-thresh" value="128" min="0" max="255" style="width:70px;">
+        <label style="margin:0;">Scale:</label>
+        <select id="png-scale" style="width:auto;">
+          <option value="lanczos">Lanczos (sharp)</option>
+          <option value="bilinear">Bilinear (soft)</option>
+          <option value="nearest">Nearest (block)</option>
+        </select>
+      </div>
+      <div class="row" style="margin-top:6px;">
+        <label style="margin:0;"><input type="checkbox" id="png-dither"> Floyd-Steinberg dither</label>
+        <label style="margin:0;"><input type="checkbox" id="png-invert"> Invert</label>
+      </div>
+      <div class="row">
+        <button id="png-apply" class="primary">Apply to canvas</button>
+      </div>
+      <div class="status" id="png-status"></div>
+    </div>
+
+    <div class="panel" style="margin-top:12px;">
+      <h2>Import C array</h2>
+      <small style="color:#888;">Paste a byte array (hex, decimal, 0b binary, { }, commas, whitespace all OK).</small>
+      <textarea id="import-text" placeholder="0x00, 0x00, 0x18, 0x3C, ..."></textarea>
+      <div class="row">
+        <label style="margin:0;">Layout:</label>
+        <select id="import-layout" style="width:auto;">
+          <option value="col-major-topbit0">column-major, bit 0 = top row (project default)</option>
+          <option value="col-major-topbit7">column-major, bit 7 = top row</option>
+          <option value="row-major-lsb">row-major, LSB = left pixel</option>
+          <option value="row-major-msb">row-major, MSB = left pixel</option>
+        </select>
+      </div>
+      <div class="row"><button id="import-apply">Load into canvas</button></div>
+      <div class="status" id="import-status"></div>
+    </div>
+
+    <div class="panel" style="margin-top:12px;">
+      <h2>Export C array</h2>
+      <div class="row">
+        <label style="margin:0;">Name:</label>
+        <input type="text" id="export-name" value="sprite_data" style="width:160px;">
+      </div>
+      <div class="row" style="margin-top:6px;">
+        <label style="margin:0;"><input type="checkbox" id="export-progmem" checked> PROGMEM</label>
+        <label style="margin:0;"><input type="checkbox" id="export-hex" checked> Hex</label>
+      </div>
+      <div class="row"><button id="export-generate" class="primary">Generate</button><button id="export-copy">Copy</button></div>
+      <textarea id="export-text" readonly style="min-height:140px; font-size:11px;"></textarea>
+    </div>
+
+    <div class="panel" style="margin-top:12px;">
+      <h2>Shortcuts</h2>
+      <div class="shortcut">
+        <kbd>B</kbd> pen &nbsp; <kbd>E</kbd> erase &nbsp; <kbd>F</kbd> fill &nbsp; <kbd>L</kbd> line &nbsp; <kbd>R</kbd> rect<br>
+        <kbd>Ctrl+Z</kbd> undo &nbsp; <kbd>Ctrl+Y</kbd> redo<br>
+        <kbd>Shift</kbd>+drag = straight line &nbsp; <kbd>Alt</kbd>+click = flood fill<br>
+        Arrow keys shift the canvas 1px
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- State ----------
+const S = {
+  w: 20, h: 24,
+  pixels: null,        // Uint8Array length w*h, 0|1
+  tool: 'pen',         // pen | erase | fill | line | rect
+  penValue: 1,         // painting with 1 or 0
+  pressing: false,
+  dragStart: null,
+  hoverX: -1, hoverY: -1,
+  undoStack: [],
+  redoStack: [],
+};
+
+const EDIT = document.getElementById('edit');
+const CTX = EDIT.getContext('2d');
+const P1 = document.getElementById('p1');
+const P2 = document.getElementById('p2');
+const P4 = document.getElementById('p4');
+
+// ---------- Core ----------
+function pxAt(x, y) { return S.pixels[y * S.w + x]; }
+function setPx(x, y, v) {
+  if (x < 0 || y < 0 || x >= S.w || y >= S.h) return;
+  S.pixels[y * S.w + x] = v ? 1 : 0;
+}
+function clonePixels() { return new Uint8Array(S.pixels); }
+
+function pushUndo() {
+  S.undoStack.push(clonePixels());
+  if (S.undoStack.length > 200) S.undoStack.shift();
+  S.redoStack = [];
+}
+function undo() {
+  if (!S.undoStack.length) return;
+  S.redoStack.push(clonePixels());
+  S.pixels = S.undoStack.pop();
+  redraw();
+}
+function redo() {
+  if (!S.redoStack.length) return;
+  S.undoStack.push(clonePixels());
+  S.pixels = S.redoStack.pop();
+  redraw();
+}
+
+function resizeCanvas(newW, newH, preserve = true) {
+  newW = Math.max(1, Math.min(128, newW | 0));
+  newH = Math.max(1, Math.min(128, newH | 0));
+  const old = S.pixels;
+  const oldW = S.w, oldH = S.h;
+  S.pixels = new Uint8Array(newW * newH);
+  if (preserve && old) {
+    const w = Math.min(oldW, newW);
+    const h = Math.min(oldH, newH);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        S.pixels[y * newW + x] = old[y * oldW + x];
+      }
+    }
+  }
+  S.w = newW; S.h = newH;
+  document.getElementById('width').value = newW;
+  document.getElementById('height').value = newH;
+  resizeEditCanvas();
+  redraw();
+}
+
+function resizeEditCanvas() {
+  // User-overridden pixel size (slider value 0 = auto, 1..48 = explicit).
+  // Override is persisted in localStorage so it survives reloads. The
+  // slider's UI default value of 0 maps to "compute scale from canvas
+  // box dimensions" — the original behavior.
+  const slider = document.getElementById('px-size');
+  const override = slider ? +slider.value : 0;
+  let scale;
+  if (override > 0) {
+    scale = override;
+  } else {
+    const maxW = 640, maxH = 768;
+    scale = Math.max(1, Math.floor(Math.min(maxW / S.w, maxH / S.h)));
+  }
+  EDIT.width = S.w * scale;
+  EDIT.height = S.h * scale;
+  EDIT.dataset.scale = scale;
+}
+
+// ---------- Draw ----------
+function redraw() {
+  // Animate-mode hook: mirror current canvas state into the active frame.
+  // Some tool paths (line/rect drag preview, undo/redo, resize) reassign
+  // S.pixels to a new array, which would break "S.pixels IS the frame
+  // array" reference tricks. Copying on every redraw is bulletproof.
+  if (window.ANIM && window.ANIM.frames && window.ANIM.frames.length > 0) {
+    const f = window.ANIM.frames[window.ANIM.current];
+    if (f && f.length === S.pixels.length) {
+      for (let i = 0; i < S.pixels.length; i++) f[i] = S.pixels[i];
+    }
+    if (window.ANIM_renderThumbs) window.ANIM_renderThumbs();
+  }
+  drawEdit();
+  drawPreviews();
+  generateExport();
+}
+
+function drawEdit() {
+  const scale = +EDIT.dataset.scale || 16;
+  CTX.fillStyle = getCSS('--pixel-off');
+  CTX.fillRect(0, 0, EDIT.width, EDIT.height);
+
+  // Trace underlay: render the reference image at (offsetX, offsetY)
+  // scaled by TRACE.zoom against the canvas size. User-drawn lit pixels
+  // paint OVER this layer, so the trace stays visible everywhere except
+  // where the user has already filled in. Pan/zoom are controlled by
+  // Shift+drag and Shift+wheel respectively (see initTrace).
+  if (window.TRACE && TRACE.img && TRACE.enabled) {
+    const prevAlpha = CTX.globalAlpha;
+    CTX.globalAlpha = TRACE.alpha;
+    CTX.imageSmoothingEnabled = true;
+    const w = EDIT.width * TRACE.zoom;
+    const h = EDIT.height * TRACE.zoom;
+    CTX.drawImage(TRACE.img, TRACE.offsetX, TRACE.offsetY, w, h);
+    CTX.globalAlpha = prevAlpha;
+    // Cell-grid alignment overlay: draw faint vertical/horizontal lines
+    // at every cell boundary, plus a brighter outline on the cell
+    // currently overlapping the canvas viewport. The viewport is the
+    // canvas itself (rect [0,0]-[EDIT.width,EDIT.height] in canvas
+    // coords); the trace's local origin in canvas coords is
+    // (offsetX, offsetY). A point (cx, cy) in canvas coords maps to
+    // trace-relative coords ((cx - offsetX) / cellW, ...).
+    const cx = TRACE.cellsX | 0;
+    const cy = TRACE.cellsY | 0;
+    if (cx > 0 && cy > 0 && (cx > 1 || cy > 1)) {
+      const cellW = w / cx;
+      const cellH = h / cy;
+      const prevStroke = CTX.strokeStyle;
+      const prevLineW  = CTX.lineWidth;
+      // Faint grid for all cell boundaries.
+      CTX.strokeStyle = 'rgba(180,180,180,0.35)';
+      CTX.lineWidth = 1;
+      CTX.beginPath();
+      for (let i = 0; i <= cx; ++i) {
+        const xp = TRACE.offsetX + i * cellW + 0.5;
+        CTX.moveTo(xp, TRACE.offsetY); CTX.lineTo(xp, TRACE.offsetY + h);
+      }
+      for (let j = 0; j <= cy; ++j) {
+        const yp = TRACE.offsetY + j * cellH + 0.5;
+        CTX.moveTo(TRACE.offsetX, yp); CTX.lineTo(TRACE.offsetX + w, yp);
+      }
+      CTX.stroke();
+      // Active cell — whichever one contains the canvas's center point.
+      const ccx = EDIT.width  / 2;
+      const ccy = EDIT.height / 2;
+      const ix = Math.floor((ccx - TRACE.offsetX) / cellW);
+      const iy = Math.floor((ccy - TRACE.offsetY) / cellH);
+      if (ix >= 0 && ix < cx && iy >= 0 && iy < cy) {
+        CTX.strokeStyle = 'rgba(224,48,48,0.85)';
+        CTX.lineWidth = 2;
+        CTX.strokeRect(
+          TRACE.offsetX + ix * cellW + 1,
+          TRACE.offsetY + iy * cellH + 1,
+          cellW - 2,
+          cellH - 2,
+        );
+        // Status text: which cell index we're on (1-based for humans).
+        const status = document.getElementById('trace-cell-status');
+        if (status) {
+          const idx = iy * cx + ix + 1;
+          const total = cx * cy;
+          status.textContent = (cx === 1 || cy === 1)
+            ? `cell ${idx}/${total}`
+            : `cell (${ix + 1}, ${iy + 1}) of ${cx}×${cy}`;
+        }
+      }
+      CTX.strokeStyle = prevStroke;
+      CTX.lineWidth = prevLineW;
+    } else {
+      const status = document.getElementById('trace-cell-status');
+      if (status) status.textContent = '';
+    }
+  }
+
+  // Onion-skin: render previous frame's lit pixels as faded gray under the
+  // current frame's lit pixels. Only fires in animate mode with the toggle
+  // on AND when there is at least one frame before the current one.
+  if (window.ANIM && ANIM.onionSkin && ANIM.frames.length > 0 && ANIM.current > 0) {
+    const prev = ANIM.frames[ANIM.current - 1];
+    if (prev && prev.length === S.pixels.length) {
+      CTX.fillStyle = '#5a5a5a';
+      for (let y = 0; y < S.h; y++) {
+        for (let x = 0; x < S.w; x++) {
+          if (prev[y * S.w + x]) CTX.fillRect(x * scale, y * scale, scale, scale);
+        }
+      }
+    }
+  }
+
+  CTX.fillStyle = getCSS('--pixel-on');
+  for (let y = 0; y < S.h; y++) {
+    for (let x = 0; x < S.w; x++) {
+      if (pxAt(x, y)) CTX.fillRect(x * scale, y * scale, scale, scale);
+    }
+  }
+  if (scale >= 4) {
+    CTX.strokeStyle = getCSS('--pixel-grid');
+    CTX.lineWidth = 1;
+    CTX.beginPath();
+    for (let x = 0; x <= S.w; x++) {
+      const xp = x * scale + 0.5;
+      CTX.moveTo(xp, 0); CTX.lineTo(xp, EDIT.height);
+    }
+    for (let y = 0; y <= S.h; y++) {
+      const yp = y * scale + 0.5;
+      CTX.moveTo(0, yp); CTX.lineTo(EDIT.width, yp);
+    }
+    CTX.stroke();
+  }
+  // Hover crosshair
+  if (S.hoverX >= 0 && S.hoverY >= 0) {
+    CTX.strokeStyle = 'rgba(224,48,48,0.6)';
+    CTX.lineWidth = 2;
+    CTX.strokeRect(S.hoverX * scale + 1, S.hoverY * scale + 1, scale - 2, scale - 2);
+  }
+}
+
+function drawPreviews() {
+  for (const [c, sc] of [[P1, 1], [P2, 2], [P4, 4]]) {
+    c.width = S.w * sc;
+    c.height = S.h * sc;
+    const ctx = c.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.fillStyle = '#fff';
+    for (let y = 0; y < S.h; y++) {
+      for (let x = 0; x < S.w; x++) {
+        if (pxAt(x, y)) ctx.fillRect(x * sc, y * sc, sc, sc);
+      }
+    }
+  }
+}
+
+function getCSS(varName) {
+  return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+}
+
+// ---------- Pixel coord from mouse ----------
+function coordFromEvent(ev) {
+  const rect = EDIT.getBoundingClientRect();
+  const scale = +EDIT.dataset.scale || 16;
+  const x = Math.floor((ev.clientX - rect.left) / scale);
+  const y = Math.floor((ev.clientY - rect.top) / scale);
+  return { x, y };
+}
+
+// ---------- Tools ----------
+function applyTool(x, y, first, ev) {
+  const inside = x >= 0 && y >= 0 && x < S.w && y < S.h;
+  if (!inside) return;
+  switch (S.tool) {
+    case 'pen':
+    case 'erase': {
+      const v = S.tool === 'erase' ? 0 : S.penValue;
+      setPx(x, y, v);
+      if (!first && S.lastPos) {
+        // Line interpolate
+        drawLineInto(S.lastPos.x, S.lastPos.y, x, y, v);
+      }
+      S.lastPos = { x, y };
+      break;
+    }
+    case 'fill': {
+      if (first) floodFill(x, y, S.penValue);
+      break;
+    }
+    case 'line': {
+      if (first) { S.dragStart = { x, y }; return; }
+      // Rendered preview-only on move; committed on release.
+      break;
+    }
+    case 'rect': {
+      if (first) { S.dragStart = { x, y }; return; }
+      break;
+    }
+  }
+}
+
+function drawLineInto(x0, y0, x1, y1, v) {
+  // Bresenham
+  let dx = Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+  let dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+  let err = dx + dy, e2;
+  while (true) {
+    setPx(x0, y0, v);
+    if (x0 === x1 && y0 === y1) break;
+    e2 = 2 * err;
+    if (e2 >= dy) { err += dy; x0 += sx; }
+    if (e2 <= dx) { err += dx; y0 += sy; }
+  }
+}
+
+function drawRectInto(x0, y0, x1, y1, v, fill = false) {
+  const xs = Math.min(x0, x1), xe = Math.max(x0, x1);
+  const ys = Math.min(y0, y1), ye = Math.max(y0, y1);
+  for (let y = ys; y <= ye; y++) {
+    for (let x = xs; x <= xe; x++) {
+      if (fill || x === xs || x === xe || y === ys || y === ye) setPx(x, y, v);
+    }
+  }
+}
+
+function floodFill(x, y, v) {
+  const target = pxAt(x, y);
+  if (target === v) return;
+  const stack = [[x, y]];
+  while (stack.length) {
+    const [cx, cy] = stack.pop();
+    if (cx < 0 || cy < 0 || cx >= S.w || cy >= S.h) continue;
+    if (pxAt(cx, cy) !== target) continue;
+    setPx(cx, cy, v);
+    stack.push([cx+1, cy], [cx-1, cy], [cx, cy+1], [cx, cy-1]);
+  }
+}
+
+// ---------- Mouse events ----------
+EDIT.addEventListener('mousedown', ev => {
+  // Shift = trace pan (handled by initTrace's capture-phase listener);
+  // skip the pen tool entirely so we don't draw a stray pixel before
+  // the pan kicks in.
+  if (ev.shiftKey && window.TRACE && TRACE.img) return;
+  ev.preventDefault();
+  const { x, y } = coordFromEvent(ev);
+  pushUndo();
+  // Alt = fill regardless of tool
+  if (ev.altKey) { floodFill(x, y, ev.button === 2 ? 0 : 1); redraw(); return; }
+  S.pressing = true;
+  S.penValue = (ev.button === 2) ? 0 : 1;
+  S.lastPos = null;
+  applyTool(x, y, true, ev);
+  redraw();
+});
+EDIT.addEventListener('mousemove', ev => {
+  const { x, y } = coordFromEvent(ev);
+  S.hoverX = x; S.hoverY = y;
+  document.getElementById('coords').textContent = `(${x},${y})`;
+  if (S.pressing) {
+    if (S.tool === 'line' || S.tool === 'rect') {
+      // preview: redraw then overlay
+      drawEdit();
+      if (S.dragStart) {
+        const scale = +EDIT.dataset.scale || 16;
+        CTX.fillStyle = S.penValue ? getCSS('--pixel-on') : 'rgba(224,48,48,0.5)';
+        if (S.tool === 'line') {
+          const snapshot = clonePixels();
+          drawLineInto(S.dragStart.x, S.dragStart.y, x, y, S.penValue);
+          drawEdit();
+          S.pixels = snapshot;
+        } else {
+          const snapshot = clonePixels();
+          drawRectInto(S.dragStart.x, S.dragStart.y, x, y, S.penValue, ev.shiftKey);
+          drawEdit();
+          S.pixels = snapshot;
+        }
+      }
+      drawPreviews();
+    } else {
+      applyTool(x, y, false, ev);
+      redraw();
+    }
+  } else {
+    drawEdit();
+  }
+});
+window.addEventListener('mouseup', ev => {
+  if (!S.pressing) return;
+  S.pressing = false;
+  if ((S.tool === 'line' || S.tool === 'rect') && S.dragStart) {
+    const { x, y } = coordFromEvent(ev);
+    if (S.tool === 'line') drawLineInto(S.dragStart.x, S.dragStart.y, x, y, S.penValue);
+    else drawRectInto(S.dragStart.x, S.dragStart.y, x, y, S.penValue, ev.shiftKey);
+    S.dragStart = null;
+  }
+  redraw();
+});
+EDIT.addEventListener('contextmenu', ev => ev.preventDefault());
+EDIT.addEventListener('mouseleave', () => {
+  S.hoverX = S.hoverY = -1;
+  document.getElementById('coords').textContent = '—';
+  drawEdit();
+});
+
+// ---------- Keyboard ----------
+window.addEventListener('keydown', ev => {
+  if (ev.target.tagName === 'INPUT' || ev.target.tagName === 'TEXTAREA') return;
+  if (ev.ctrlKey && ev.key === 'z') { undo(); ev.preventDefault(); return; }
+  if (ev.ctrlKey && (ev.key === 'y' || (ev.shiftKey && ev.key === 'Z'))) { redo(); ev.preventDefault(); return; }
+  switch (ev.key.toLowerCase()) {
+    case 'b': selectTool('pen'); break;
+    case 'e': selectTool('erase'); break;
+    case 'f': selectTool('fill'); break;
+    case 'l': selectTool('line'); break;
+    case 'r': selectTool('rect'); break;
+    case 'arrowup': shift(0, -1, false); ev.preventDefault(); break;
+    case 'arrowdown': shift(0, 1, false); ev.preventDefault(); break;
+    case 'arrowleft': shift(-1, 0, false); ev.preventDefault(); break;
+    case 'arrowright': shift(1, 0, false); ev.preventDefault(); break;
+  }
+});
+
+// ---------- Transforms ----------
+function flipH() {
+  pushUndo();
+  for (let y = 0; y < S.h; y++) {
+    for (let x = 0; x < Math.floor(S.w / 2); x++) {
+      const a = pxAt(x, y), b = pxAt(S.w - 1 - x, y);
+      setPx(x, y, b); setPx(S.w - 1 - x, y, a);
+    }
+  }
+  redraw();
+}
+function flipV() {
+  pushUndo();
+  for (let x = 0; x < S.w; x++) {
+    for (let y = 0; y < Math.floor(S.h / 2); y++) {
+      const a = pxAt(x, y), b = pxAt(x, S.h - 1 - y);
+      setPx(x, y, b); setPx(x, S.h - 1 - y, a);
+    }
+  }
+  redraw();
+}
+function rotate90() {
+  pushUndo();
+  const newPixels = new Uint8Array(S.w * S.h);
+  const newW = S.h, newH = S.w;
+  for (let y = 0; y < S.h; y++) {
+    for (let x = 0; x < S.w; x++) {
+      newPixels[x * newW + (newW - 1 - y)] = pxAt(x, y);
+    }
+  }
+  S.pixels = newPixels; S.w = newW; S.h = newH;
+  document.getElementById('width').value = newW;
+  document.getElementById('height').value = newH;
+  resizeEditCanvas();
+  redraw();
+}
+function shift(dx, dy, wrap) {
+  pushUndo();
+  const old = clonePixels();
+  S.pixels.fill(0);
+  for (let y = 0; y < S.h; y++) {
+    for (let x = 0; x < S.w; x++) {
+      let sx = x - dx, sy = y - dy;
+      if (wrap) { sx = (sx % S.w + S.w) % S.w; sy = (sy % S.h + S.h) % S.h; }
+      if (sx < 0 || sy < 0 || sx >= S.w || sy >= S.h) continue;
+      S.pixels[y * S.w + x] = old[sy * S.w + sx];
+    }
+  }
+  redraw();
+}
+
+// ---------- Import PNG ----------
+document.getElementById('png-apply').addEventListener('click', async () => {
+  const fi = document.getElementById('png-input');
+  if (!fi.files.length) { setStatus('png-status', 'Pick a file first.'); return; }
+  const file = fi.files[0];
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    URL.revokeObjectURL(url);
+    const scale = document.getElementById('png-scale').value;
+    const thresh = +document.getElementById('png-thresh').value;
+    const dither = document.getElementById('png-dither').checked;
+    const invert = document.getElementById('png-invert').checked;
+
+    // Step 1: downscale img -> S.w x S.h via canvas imageSmoothing
+    const c = document.createElement('canvas');
+    c.width = S.w; c.height = S.h;
+    const cx = c.getContext('2d');
+    cx.imageSmoothingEnabled = (scale !== 'nearest');
+    cx.imageSmoothingQuality = (scale === 'lanczos') ? 'high' : (scale === 'bilinear' ? 'medium' : 'low');
+    // Autocrop: detect bounding box of non-black source
+    const srcC = document.createElement('canvas');
+    srcC.width = img.width; srcC.height = img.height;
+    const srcCtx = srcC.getContext('2d');
+    srcCtx.drawImage(img, 0, 0);
+    const bbox = autoCropBBox(srcCtx, img.width, img.height, 16);
+    const [sx, sy, sw, sh] = bbox;
+    // Aspect-fit into target
+    const targetAR = S.w / S.h;
+    const srcAR = sw / sh;
+    let fw, fh, fx, fy;
+    if (srcAR > targetAR) { fw = sw; fh = sw / targetAR; fx = sx; fy = sy - (fh - sh) / 2; }
+    else { fh = sh; fw = sh * targetAR; fx = sx - (fw - sw) / 2; fy = sy; }
+
+    cx.fillStyle = '#000';
+    cx.fillRect(0, 0, S.w, S.h);
+    cx.drawImage(img, fx, fy, fw, fh, 0, 0, S.w, S.h);
+
+    const d = cx.getImageData(0, 0, S.w, S.h);
+    pushUndo();
+
+    if (dither) {
+      // Floyd-Steinberg in grayscale
+      const buf = new Float32Array(S.w * S.h);
+      for (let i = 0; i < buf.length; i++) {
+        const r = d.data[i*4], g = d.data[i*4+1], b = d.data[i*4+2];
+        buf[i] = 0.299 * r + 0.587 * g + 0.114 * b;
+      }
+      for (let y = 0; y < S.h; y++) {
+        for (let x = 0; x < S.w; x++) {
+          const i = y * S.w + x;
+          const old = buf[i];
+          const neu = old < 128 ? 0 : 255;
+          const err = old - neu;
+          S.pixels[i] = invert ? (neu === 0 ? 1 : 0) : (neu === 255 ? 1 : 0);
+          if (x + 1 < S.w) buf[i+1] += err * 7 / 16;
+          if (y + 1 < S.h) {
+            if (x > 0) buf[i + S.w - 1] += err * 3 / 16;
+            buf[i + S.w] += err * 5 / 16;
+            if (x + 1 < S.w) buf[i + S.w + 1] += err * 1 / 16;
+          }
+        }
+      }
+    } else {
+      for (let i = 0; i < S.w * S.h; i++) {
+        const r = d.data[i*4], g = d.data[i*4+1], b = d.data[i*4+2];
+        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+        let on = lum >= thresh ? 1 : 0;
+        if (invert) on = 1 - on;
+        S.pixels[i] = on;
+      }
+    }
+    redraw();
+    setStatus('png-status', `Loaded ${img.width}x${img.height} → ${S.w}x${S.h}`);
+  };
+  img.src = url;
+});
+
+function autoCropBBox(ctx, w, h, threshold) {
+  const d = ctx.getImageData(0, 0, w, h).data;
+  let minX = w, minY = h, maxX = -1, maxY = -1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y*w + x) * 4;
+      const lum = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+      if (lum >= threshold) {
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (maxX < 0) return [0, 0, w, h];
+  return [minX, minY, maxX - minX + 1, maxY - minY + 1];
+}
+
+// ---------- Import/Export C array ----------
+document.getElementById('import-apply').addEventListener('click', () => {
+  const text = document.getElementById('import-text').value;
+  const layout = document.getElementById('import-layout').value;
+  const bytes = parseByteArray(text);
+  if (!bytes.length) { setStatus('import-status', 'No bytes parsed.'); return; }
+  pushUndo();
+  decodeBytes(bytes, layout);
+  redraw();
+  setStatus('import-status', `Loaded ${bytes.length} bytes`);
+});
+
+function parseByteArray(text) {
+  const cleaned = text.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  const tokens = cleaned.match(/0x[0-9a-f]+|0b[01]+|\d+/gi) || [];
+  return tokens.map(t => {
+    if (t.toLowerCase().startsWith('0x')) return parseInt(t, 16);
+    if (t.toLowerCase().startsWith('0b')) return parseInt(t.slice(2), 2);
+    return parseInt(t, 10);
+  }).filter(n => !isNaN(n) && n >= 0 && n <= 255);
+}
+
+function decodeBytes(bytes, layout) {
+  S.pixels.fill(0);
+  if (layout.startsWith('col-major')) {
+    const pages = Math.ceil(S.h / 8);
+    if (bytes.length < S.w * pages) {
+      // Best-effort; fill what we can
+    }
+    const topBit0 = layout === 'col-major-topbit0';
+    for (let p = 0; p < pages; p++) {
+      for (let x = 0; x < S.w; x++) {
+        const b = bytes[p * S.w + x] || 0;
+        for (let bit = 0; bit < 8; bit++) {
+          const y = p * 8 + bit;
+          if (y >= S.h) break;
+          const on = topBit0 ? (b >> bit) & 1 : (b >> (7 - bit)) & 1;
+          setPx(x, y, on);
+        }
+      }
+    }
+  } else {
+    const stride = Math.ceil(S.w / 8);
+    const msb = layout === 'row-major-msb';
+    for (let y = 0; y < S.h; y++) {
+      for (let xByte = 0; xByte < stride; xByte++) {
+        const b = bytes[y * stride + xByte] || 0;
+        for (let bit = 0; bit < 8; bit++) {
+          const x = xByte * 8 + bit;
+          if (x >= S.w) break;
+          const on = msb ? (b >> (7 - bit)) & 1 : (b >> bit) & 1;
+          setPx(x, y, on);
+        }
+      }
+    }
+  }
+}
+
+document.getElementById('export-generate').addEventListener('click', generateExport);
+document.getElementById('export-copy').addEventListener('click', () => {
+  const ta = document.getElementById('export-text');
+  ta.select();
+  document.execCommand('copy');
+});
+
+function generateExport() {
+  const name = document.getElementById('export-name').value || 'sprite_data';
+  const progmem = document.getElementById('export-progmem').checked;
+  const hex = document.getElementById('export-hex').checked;
+  const pages = Math.ceil(S.h / 8);
+  const bytes = [];
+  for (let p = 0; p < pages; p++) {
+    for (let x = 0; x < S.w; x++) {
+      let b = 0;
+      for (let bit = 0; bit < 8; bit++) {
+        const y = p * 8 + bit;
+        if (y >= S.h) break;
+        if (pxAt(x, y)) b |= (1 << bit);
+      }
+      bytes.push(b);
+    }
+  }
+  const fmt = hex ? (b => '0x' + b.toString(16).padStart(2,'0').toUpperCase()) : (b => String(b));
+  const per = 12;
+  const lines = [];
+  for (let i = 0; i < bytes.length; i += per) {
+    lines.push('    ' + bytes.slice(i, i+per).map(fmt).join(', ') + ',');
+  }
+  const header = `// ${S.w}x${S.h}, column-major, bit 0 = top row. ${bytes.length} bytes.\n`;
+  const decl = `const u8 ${name}[${bytes.length}]${progmem ? ' PROGMEM' : ''} = {\n${lines.join('\n')}\n};`;
+  document.getElementById('export-text').value = header + decl;
+}
+
+// ---------- Tool selection ----------
+function selectTool(t) {
+  S.tool = t;
+  for (const id of ['pen','erase','fill','line','rect']) {
+    const btn = document.getElementById('tool-'+id);
+    btn.className = (id === t) ? 'primary' : '';
+  }
+}
+
+// ---------- Wire up ----------
+document.getElementById('resize').addEventListener('click', () => {
+  const w = +document.getElementById('width').value;
+  const h = +document.getElementById('height').value;
+  resizeCanvas(w, h, true);
+});
+// Pixel-size slider: 0 = auto-fit, 1..48 = explicit pixel render size.
+// Persists to localStorage so the user's preference survives reload.
+// IMPORTANT: this runs BEFORE applyHashBoot(), so we only set the
+// slider's value + label here. We do NOT call resizeEditCanvas/redraw
+// — S.pixels is still null and pxAt would crash, halting the rest of
+// init (including animate-panel mount). The first real redraw fires
+// from applyHashBoot's resizeCanvas() call, which reads the stored
+// override via resizeEditCanvas.
+(function () {
+  const slider = document.getElementById('px-size');
+  const valEl  = document.getElementById('px-size-val');
+  const saved  = localStorage.getItem('sprite_editor_px_size');
+  if (saved !== null) slider.value = saved;
+  function syncLabel() {
+    const v = +slider.value;
+    valEl.textContent = (v === 0) ? 'auto' : (v + 'px');
+  }
+  function update() {
+    syncLabel();
+    localStorage.setItem('sprite_editor_px_size', String(+slider.value));
+    resizeEditCanvas();
+    redraw();
+  }
+  slider.addEventListener('input', update);
+  syncLabel();  // label only — no canvas mutation pre-boot
+})();
+document.getElementById('clear').addEventListener('click', () => {
+  pushUndo(); S.pixels.fill(0); redraw();
+});
+document.getElementById('invert').addEventListener('click', () => {
+  pushUndo();
+  for (let i = 0; i < S.pixels.length; i++) S.pixels[i] = S.pixels[i] ? 0 : 1;
+  redraw();
+});
+document.getElementById('flip-h').addEventListener('click', flipH);
+document.getElementById('flip-v').addEventListener('click', flipV);
+document.getElementById('rotate').addEventListener('click', rotate90);
+document.getElementById('shift-up').addEventListener('click', () => shift(0,-1, document.getElementById('shift-wrap').checked));
+document.getElementById('shift-down').addEventListener('click', () => shift(0, 1, document.getElementById('shift-wrap').checked));
+document.getElementById('shift-left').addEventListener('click', () => shift(-1,0, document.getElementById('shift-wrap').checked));
+document.getElementById('shift-right').addEventListener('click', () => shift(1, 0, document.getElementById('shift-wrap').checked));
+document.getElementById('undo').addEventListener('click', undo);
+document.getElementById('redo').addEventListener('click', redo);
+for (const id of ['pen','erase','fill','line','rect']) {
+  document.getElementById('tool-'+id).addEventListener('click', () => selectTool(id));
+}
+
+function setStatus(id, msg) { document.getElementById(id).textContent = msg; }
+
+// ---------- Boot ----------
+// URL hash params let callers pre-seed the editor without manual steps:
+//   sprite_editor.html#w=20&h=24&import=0x00,0x01,...&layout=col-major-topbit0&name=boss_lucifer_data
+// All fields optional. `import` may be comma-separated byte literals
+// (0x.., 0b.., decimal) or base64 prefixed with "b64:".
+function parseHash() {
+  const h = (location.hash || '').replace(/^#/, '');
+  if (!h) return {};
+  const out = {};
+  for (const kv of h.split('&')) {
+    const [k, v] = kv.split('=');
+    if (!k) continue;
+    out[decodeURIComponent(k)] = v ? decodeURIComponent(v) : '';
+  }
+  return out;
+}
+
+function applyHashBoot() {
+  const p = parseHash();
+  let w = 20, h = 24;
+  if (p.w) w = Math.max(1, Math.min(128, parseInt(p.w, 10) || 20));
+  if (p.h) h = Math.max(1, Math.min(128, parseInt(p.h, 10) || 24));
+  resizeCanvas(w, h, false);
+  if (p.name) document.getElementById('export-name').value = p.name;
+  if (p.import) {
+    let bytes;
+    if (p.import.startsWith('b64:')) {
+      try {
+        const bin = atob(p.import.slice(4));
+        bytes = Array.from(bin).map(c => c.charCodeAt(0));
+      } catch (e) { bytes = []; }
+    } else {
+      bytes = parseByteArray(p.import);
+    }
+    if (bytes.length) {
+      const layout = p.layout || 'col-major-topbit0';
+      decodeBytes(bytes, layout);
+      setStatus('import-status', `Seeded ${bytes.length} bytes via URL hash`);
+    }
+  }
+  redraw();
+}
+
+applyHashBoot();
+if (!location.hash) { resizeCanvas(20, 24, false); }
+selectTool('pen');
+
+// ---------- Trace mode ----------
+// Activated via URL hash key `trace=<path>`. The CLI's --trace flag
+// hosts the reference image at the same origin (typically /trace.png)
+// so the editor can fetch it as a same-origin <img>. drawEdit() renders
+// the image as a translucent underlay between the clear and the
+// lit-pixel pass, so user-drawn pixels paint over the reference.
+//
+// Designed to scale: any sprite the bake pipeline can't auto-render
+// well becomes a 5-minute hand-trace instead of an hour of pipeline
+// param-sweeping.
+(function initTrace() {
+  const p = parseHash();
+  if (!p.trace) return;
+  const traceRow = document.getElementById('trace-row');
+  const traceStatus = document.getElementById('trace-status');
+  traceRow.style.display = '';
+  // Per-sprite localStorage key so trace placement persists across
+  // page refreshes. Different sprites get different placements (the
+  // hand-traced bestiary art is sized differently per figure).
+  const STORAGE_KEY = 'spritebake.trace.' + (p.name || 'default');
+  function loadTracePrefs() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      const o = JSON.parse(raw);
+      // Sanity-check: numbers only, sane ranges. Reject corrupt blobs.
+      if (typeof o.zoom !== 'number' || o.zoom <= 0 || o.zoom > 5) return null;
+      if (typeof o.offsetX !== 'number' || typeof o.offsetY !== 'number') return null;
+      if (typeof o.alpha !== 'number' || o.alpha < 0 || o.alpha > 1) return null;
+      return o;
+    } catch (e) { return null; }
+  }
+  function saveTracePrefs() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        zoom: TRACE.zoom, offsetX: TRACE.offsetX, offsetY: TRACE.offsetY,
+        alpha: TRACE.alpha, enabled: TRACE.enabled,
+        cellsX: TRACE.cellsX, cellsY: TRACE.cellsY, snapEnabled: TRACE.snapEnabled,
+      }));
+    } catch (e) { /* localStorage may be disabled; non-fatal */ }
+  }
+  const saved = loadTracePrefs();
+  // Expose state to drawEdit for the per-frame underlay render. The
+  // image is rendered at (offsetX, offsetY) in canvas pixels with size
+  // (canvas_w * zoom, canvas_h * zoom) preserving the trace's own
+  // aspect. zoom=1 means the trace fills the canvas at the natural
+  // aspect; pan offsets nudge it from there.
+  window.TRACE = {
+    img: null,       // HTMLImageElement once loaded
+    enabled: saved ? !!saved.enabled : true,
+    alpha: saved ? saved.alpha : 0.4,
+    zoom: saved ? saved.zoom : 1.0,
+    offsetX: saved ? saved.offsetX : 0,
+    offsetY: saved ? saved.offsetY : 0,
+    panning: false,
+    panStartX: 0,
+    panStartY: 0,
+    panOrigOffsetX: 0,
+    panOrigOffsetY: 0,
+    // Cell-grid alignment for animation tracing. cellsX × cellsY divides
+    // the trace image into a grid; the editor highlights whichever cell
+    // currently overlaps the canvas viewport. Snap rounds pan offsets to
+    // multiples of cell width/height so consecutive frames slide one cell
+    // at a time. Defaults: 1×1 grid, snap off (no behavior change until
+    // the user opts in).
+    cellsX: (saved && saved.cellsX) ? saved.cellsX : 1,
+    cellsY: (saved && saved.cellsY) ? saved.cellsY : 1,
+    snapEnabled: saved ? !!saved.snapEnabled : false,
+  };
+  // Reflect restored values in the UI controls so the sliders show
+  // the actual current state instead of their HTML defaults.
+  document.getElementById('trace-on').checked = TRACE.enabled;
+  document.getElementById('trace-alpha').value = Math.round(TRACE.alpha * 100);
+  document.getElementById('trace-zoom').value = Math.round(TRACE.zoom * 100);
+  document.getElementById('trace-zoom-val').textContent = `${Math.round(TRACE.zoom * 100)}%`;
+  document.getElementById('trace-cells-x').value = TRACE.cellsX;
+  document.getElementById('trace-cells-y').value = TRACE.cellsY;
+  document.getElementById('trace-snap').checked = TRACE.snapEnabled;
+  function resetTrace() {
+    TRACE.zoom = 1.0;
+    TRACE.offsetX = 0;
+    TRACE.offsetY = 0;
+    document.getElementById('trace-zoom').value = 100;
+    document.getElementById('trace-zoom-val').textContent = '100%';
+    saveTracePrefs();
+    redraw();
+  }
+  document.getElementById('trace-reset').addEventListener('click', resetTrace);
+  document.getElementById('trace-zoom').addEventListener('input', e => {
+    const z = (+e.target.value) / 100;
+    document.getElementById('trace-zoom-val').textContent = `${e.target.value}%`;
+    // Zoom around canvas center so the figure stays roughly framed.
+    const cx = EDIT.width / 2;
+    const cy = EDIT.height / 2;
+    const dx = (cx - TRACE.offsetX) * (z / TRACE.zoom - 1);
+    const dy = (cy - TRACE.offsetY) * (z / TRACE.zoom - 1);
+    TRACE.offsetX -= dx;
+    TRACE.offsetY -= dy;
+    TRACE.zoom = z;
+    saveTracePrefs();
+    redraw();
+  });
+  // Shift+drag pans the trace. Plain drag stays for the pen tool.
+  EDIT.addEventListener('mousedown', e => {
+    if (!TRACE.img || !TRACE.enabled || !e.shiftKey) return;
+    e.preventDefault();
+    e.stopPropagation();
+    TRACE.panning = true;
+    TRACE.panStartX = e.clientX;
+    TRACE.panStartY = e.clientY;
+    TRACE.panOrigOffsetX = TRACE.offsetX;
+    TRACE.panOrigOffsetY = TRACE.offsetY;
+  }, true);  // capture phase so we beat the pen-tool handler
+  window.addEventListener('mousemove', e => {
+    if (!TRACE.panning) return;
+    TRACE.offsetX = TRACE.panOrigOffsetX + (e.clientX - TRACE.panStartX);
+    TRACE.offsetY = TRACE.panOrigOffsetY + (e.clientY - TRACE.panStartY);
+    redraw();
+  });
+  window.addEventListener('mouseup', () => {
+    if (TRACE.panning) {
+      TRACE.panning = false;
+      // Snap-to-cell: round the pan offsets so the canvas viewport
+      // aligns with the nearest cell of the cellsX × cellsY grid. The
+      // grid divides the trace's RENDERED size (canvas_w * zoom by
+      // canvas_h * zoom), so each cell is canvas_w*zoom/cellsX wide
+      // (canvas-pixel units, same units as offsetX). Snap to a multiple
+      // of one cell-stride so consecutive frames advance exactly one
+      // cell per pan.
+      if (TRACE.snapEnabled && TRACE.img && TRACE.cellsX > 0 && TRACE.cellsY > 0) {
+        const cellW = (EDIT.width  * TRACE.zoom) / TRACE.cellsX;
+        const cellH = (EDIT.height * TRACE.zoom) / TRACE.cellsY;
+        if (cellW > 0) TRACE.offsetX = Math.round(TRACE.offsetX / cellW) * cellW;
+        if (cellH > 0) TRACE.offsetY = Math.round(TRACE.offsetY / cellH) * cellH;
+      }
+      saveTracePrefs();
+      redraw();
+    }
+  });
+  // Shift+wheel zooms the trace around the cursor position.
+  EDIT.addEventListener('wheel', e => {
+    if (!TRACE.img || !TRACE.enabled || !e.shiftKey) return;
+    e.preventDefault();
+    const rect = EDIT.getBoundingClientRect();
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
+    const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+    const newZoom = Math.max(0.2, Math.min(3.0, TRACE.zoom * factor));
+    const dx = (cx - TRACE.offsetX) * (newZoom / TRACE.zoom - 1);
+    const dy = (cy - TRACE.offsetY) * (newZoom / TRACE.zoom - 1);
+    TRACE.offsetX -= dx;
+    TRACE.offsetY -= dy;
+    TRACE.zoom = newZoom;
+    document.getElementById('trace-zoom').value = Math.round(newZoom * 100);
+    document.getElementById('trace-zoom-val').textContent = `${Math.round(newZoom * 100)}%`;
+    saveTracePrefs();
+    redraw();
+  }, { passive: false });
+  const img = new Image();
+  img.onload = () => {
+    window.TRACE.img = img;
+    traceStatus.textContent = `${img.naturalWidth}×${img.naturalHeight}`;
+    redraw();
+  };
+  img.onerror = () => {
+    traceStatus.textContent = 'load failed';
+  };
+  // Cache-bust so a re-extracted trace shows up on a normal page load.
+  img.src = p.trace + (p.trace.includes('?') ? '&' : '?') + 't=' + Date.now();
+  document.getElementById('trace-on').addEventListener('change', e => {
+    window.TRACE.enabled = e.target.checked;
+    saveTracePrefs();
+    redraw();
+  });
+  document.getElementById('trace-alpha').addEventListener('input', e => {
+    window.TRACE.alpha = (+e.target.value) / 100;
+    saveTracePrefs();
+    redraw();
+  });
+  document.getElementById('trace-cells-x').addEventListener('change', e => {
+    window.TRACE.cellsX = Math.max(1, Math.min(32, (+e.target.value) | 0));
+    e.target.value = window.TRACE.cellsX;
+    saveTracePrefs();
+    redraw();
+  });
+  document.getElementById('trace-cells-y').addEventListener('change', e => {
+    window.TRACE.cellsY = Math.max(1, Math.min(32, (+e.target.value) | 0));
+    e.target.value = window.TRACE.cellsY;
+    saveTracePrefs();
+    redraw();
+  });
+  document.getElementById('trace-snap').addEventListener('change', e => {
+    window.TRACE.snapEnabled = e.target.checked;
+    saveTracePrefs();
+    redraw();
+  });
+})();
+
+// ---------- Touchup mode ----------
+// When launched via `python -m tools.spritebake touchup <ident>`, the URL hash
+// includes `touchup=<ident>`. The CLI also runs a small HTTP helper at the same
+// origin that accepts:
+//   POST /save?ident=<ident>   body: PNG bytes  -> writes art/touchups/<ident>.png
+//   GET  /preview              -> renders full sprite sheet, returns PNG
+(function initTouchup() {
+  const p = parseHash();
+  if (!p.touchup) return;
+  const ident = p.touchup;
+  const panel = document.getElementById('touchup-panel');
+  panel.style.display = '';
+  const status = document.getElementById('touchup-status');
+  const setMsg = m => { status.textContent = m; };
+
+  // Re-seed the canvas from the server's /seed.bin (which always reads
+  // the latest art/touchups/<ident>.png from disk) so a save → reload
+  // cycle picks up the user's last save instead of the URL-hash bytes
+  // that were captured at server-start time. Falls back silently if
+  // /seed.bin isn't available (older spritebake CLI).
+  fetch('/seed.bin', { cache: 'no-store' })
+    .then(r => r.ok ? r.arrayBuffer() : null)
+    .then(buf => {
+      if (!buf) return;
+      const bytes = Array.from(new Uint8Array(buf));
+      if (!bytes.length) return;
+      const layout = p.layout || 'col-major-topbit0';
+      decodeBytes(bytes, layout);
+      redraw();
+      setStatus('import-status', `Loaded ${bytes.length} B from last save`);
+    })
+    .catch(() => { /* fallback: keep URL-hash seed */ });
+
+  function canvasToPngBlob() {
+    // Render the current pixel grid to a 1:1 PNG (no scaling, no grid lines)
+    const c = document.createElement('canvas');
+    c.width = S.w; c.height = S.h;
+    const cx = c.getContext('2d');
+    const img = cx.createImageData(S.w, S.h);
+    for (let y = 0; y < S.h; y++) {
+      for (let x = 0; x < S.w; x++) {
+        const on = pxAt(x, y);
+        const i = (y * S.w + x) * 4;
+        img.data[i] = img.data[i+1] = img.data[i+2] = on ? 255 : 0;
+        img.data[i+3] = 255;
+      }
+    }
+    cx.putImageData(img, 0, 0);
+    return new Promise(res => c.toBlob(res, 'image/png'));
+  }
+
+  document.getElementById('touchup-save').addEventListener('click', async () => {
+    setMsg('saving…');
+    try {
+      const blob = await canvasToPngBlob();
+      const r = await fetch('/save?ident=' + encodeURIComponent(ident),
+                            { method: 'POST', body: blob });
+      if (!r.ok) throw new Error(await r.text());
+      const j = await r.json();
+      setMsg(`saved → ${j.path}`);
+    } catch (e) {
+      setMsg('save failed: ' + e.message);
+    }
+  });
+
+  document.getElementById('touchup-preview').addEventListener('click', () => {
+    window.open('/preview?t=' + Date.now(), '_blank');
+  });
+})();
+
+// ---------- Animate mode ----------
+// Activated via URL hash key `animate=<ident>`. The CLI runs an HTTP helper
+// that accepts:
+//   POST /anim/save?ident=<ident>&state=<state>&w=<w>&h=<h>&n=<n>
+//        body: horizontal-strip PNG of N frames (each w*h)
+//        -> writes art/animations/<ident>/<state>.png
+//   GET  /anim/load?ident=<ident>&state=<state>
+//        -> returns existing strip PNG (or 404 if none)
+(function initAnimate() {
+  const p = parseHash();
+  if (!p.animate) return;
+  const ident = p.animate;
+  const panel = document.getElementById('animate-panel');
+  panel.style.display = '';
+  const status = document.getElementById('anim-status');
+  const setMsg = m => { status.textContent = m; };
+
+  // Animation state, exposed to drawEdit via window.ANIM for onion-skin.
+  window.ANIM = {
+    frames: [],          // array of Uint8Array, each w*h pixels
+    current: 0,
+    onionSkin: true,
+    fps: 8,
+    playing: false,
+    seedPixels: null,    // touchup-aware base sprite (S.pixels at boot)
+  };
+
+  // Seed frame 0 from the URL-hash imported pixels (the touchup helper
+  // does the same — by the time we get here, S.pixels holds the seeded
+  // sprite or a blank canvas). Stash it for use as frame 0 of any state.
+  // CRITICAL: S.pixels must BE ANIM.frames[0] (same reference), not a
+  // copy. Otherwise paint operations mutate S.pixels but the frame
+  // array stays at the old bytes, and Save writes the wrong pixels.
+  ANIM.seedPixels = new Uint8Array(S.pixels);
+  ANIM.frames.push(S.pixels);
+
+  function syncFromS() {
+    // S.pixels IS ANIM.frames[ANIM.current] (same reference) so any
+    // paint on the canvas already lives in the frame array. Defensive
+    // re-bind: if S.pixels was reassigned elsewhere (resize, import),
+    // copy it back into the frame.
+    if (ANIM.frames[ANIM.current] !== S.pixels) {
+      ANIM.frames[ANIM.current] = new Uint8Array(S.pixels);
+    }
+  }
+
+  function syncToS() {
+    // Bind S.pixels TO the frame array directly so paint operations
+    // mutate the frame in place. No copy: keeps everything in sync
+    // without a redraw-wrapper hook.
+    S.pixels = ANIM.frames[ANIM.current];
+    redraw();
+    renderThumbs();
+  }
+
+  window.ANIM_renderThumbs = renderThumbs;
+  function renderThumbs() {
+    const wrap = document.getElementById('anim-frames');
+    wrap.innerHTML = '';
+    for (let i = 0; i < ANIM.frames.length; i++) {
+      const c = document.createElement('canvas');
+      const TH = 4;
+      c.width = S.w * TH;
+      c.height = S.h * TH;
+      c.style.cursor = 'pointer';
+      c.style.border = (i === ANIM.current) ? '2px solid #e03030' : '1px solid #555';
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, c.width, c.height);
+      ctx.fillStyle = '#fff';
+      const f = ANIM.frames[i];
+      for (let y = 0; y < S.h; y++) {
+        for (let x = 0; x < S.w; x++) {
+          if (f[y * S.w + x]) ctx.fillRect(x * TH, y * TH, TH, TH);
+        }
+      }
+      // Frame index label
+      const label = document.createElement('div');
+      label.style.cssText = 'display:flex; flex-direction:column; align-items:center; font-size:10px; color:#aaa;';
+      label.appendChild(c);
+      const span = document.createElement('span');
+      span.textContent = '#' + i;
+      label.appendChild(span);
+      label.addEventListener('click', () => {
+        syncFromS();
+        ANIM.current = i;
+        syncToS();
+      });
+      wrap.appendChild(label);
+    }
+  }
+
+  // Live preview animation loop
+  let previewLast = 0;
+  function previewTick(t) {
+    const PV = document.getElementById('anim-preview');
+    const ctx = PV.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    const SC = Math.max(1, Math.floor(Math.min(PV.width / S.w, PV.height / S.h)));
+    const pxw = S.w * SC, pxh = S.h * SC;
+    const ox = Math.floor((PV.width - pxw) / 2);
+    const oy = Math.floor((PV.height - pxh) / 2);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, PV.width, PV.height);
+    if (ANIM.frames.length === 0) { requestAnimationFrame(previewTick); return; }
+    const dur = 1000 / ANIM.fps;
+    if (ANIM.playing && t - previewLast >= dur) {
+      ANIM._playFrame = ((ANIM._playFrame ?? 0) + 1) % ANIM.frames.length;
+      previewLast = t;
+    }
+    const idx = ANIM.playing ? (ANIM._playFrame ?? 0) : ANIM.current;
+    const f = ANIM.frames[idx];
+    if (f) {
+      ctx.fillStyle = '#fff';
+      for (let y = 0; y < S.h; y++) {
+        for (let x = 0; x < S.w; x++) {
+          if (f[y * S.w + x]) ctx.fillRect(ox + x * SC, oy + y * SC, SC, SC);
+        }
+      }
+    }
+    requestAnimationFrame(previewTick);
+  }
+  requestAnimationFrame(previewTick);
+
+  // Wire controls
+  document.getElementById('anim-add').addEventListener('click', () => {
+    syncFromS();
+    ANIM.frames.push(new Uint8Array(S.w * S.h));
+    ANIM.current = ANIM.frames.length - 1;
+    syncToS();
+  });
+
+  document.getElementById('anim-dup').addEventListener('click', () => {
+    syncFromS();
+    ANIM.frames.splice(ANIM.current + 1, 0, new Uint8Array(ANIM.frames[ANIM.current]));
+    ANIM.current++;
+    syncToS();
+  });
+
+  document.getElementById('anim-del').addEventListener('click', () => {
+    if (ANIM.frames.length <= 1) {
+      setMsg('cannot delete the only frame');
+      return;
+    }
+    ANIM.frames.splice(ANIM.current, 1);
+    if (ANIM.current >= ANIM.frames.length) ANIM.current = ANIM.frames.length - 1;
+    syncToS();
+  });
+
+  document.getElementById('anim-play').addEventListener('click', () => {
+    ANIM.playing = !ANIM.playing;
+    document.getElementById('anim-play').textContent = ANIM.playing ? 'Stop' : 'Play';
+    if (ANIM.playing) ANIM._playFrame = 0;
+  });
+
+  document.getElementById('anim-fps').addEventListener('input', e => {
+    ANIM.fps = +e.target.value;
+    document.getElementById('anim-fps-val').textContent = String(ANIM.fps);
+  });
+
+  document.getElementById('anim-onion').addEventListener('change', e => {
+    ANIM.onionSkin = e.target.checked;
+    redraw();
+  });
+
+  // Build a horizontal-strip PNG blob from ANIM.frames. Shared by Save
+  // and Duplicate-animation.
+  async function buildStripBlob() {
+    const n = ANIM.frames.length;
+    const c = document.createElement('canvas');
+    c.width = S.w * n;
+    c.height = S.h;
+    const cx = c.getContext('2d');
+    const id = cx.createImageData(c.width, c.height);
+    for (let i = 0; i < n; i++) {
+      const f = ANIM.frames[i];
+      for (let y = 0; y < S.h; y++) {
+        for (let x = 0; x < S.w; x++) {
+          const on = f[y * S.w + x];
+          const px = i * S.w + x;
+          const k = (y * c.width + px) * 4;
+          id.data[k] = id.data[k+1] = id.data[k+2] = on ? 255 : 0;
+          id.data[k+3] = 255;
+        }
+      }
+    }
+    cx.putImageData(id, 0, 0);
+    return new Promise(r => c.toBlob(r, 'image/png'));
+  }
+
+  async function saveStrip(state) {
+    const n = ANIM.frames.length;
+    const blob = await buildStripBlob();
+    const url = `/anim/save?ident=${encodeURIComponent(ident)}&state=${encodeURIComponent(state)}&w=${S.w}&h=${S.h}&n=${n}`;
+    const r = await fetch(url, { method: 'POST', body: blob });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  }
+
+  // Add a state to the dropdown if not already present. Returns the
+  // <option> element (existing or new).
+  function ensureStateOption(state) {
+    const sel = document.getElementById('anim-state');
+    for (const opt of sel.options) {
+      if (opt.value === state) return opt;
+    }
+    const opt = document.createElement('option');
+    opt.value = state;
+    opt.textContent = state;
+    sel.appendChild(opt);
+    return opt;
+  }
+
+  document.getElementById('anim-save').addEventListener('click', async () => {
+    syncFromS();
+    setMsg('saving...');
+    try {
+      const state = document.getElementById('anim-state').value;
+      const j = await saveStrip(state);
+      setMsg(`saved → ${j.path}`);
+    } catch (e) {
+      setMsg('save failed: ' + e.message);
+    }
+  });
+
+  // Duplicate the current in-memory animation to a new state file. Names
+  // it "<current> duplicate", or "<current> duplicate 2/3/..." if that
+  // already exists. Saves it server-side, adds it to the dropdown, and
+  // switches the dropdown selection to the new state. Frames stay in
+  // memory unchanged — the user is now editing the duplicate.
+  document.getElementById('anim-dup-state').addEventListener('click', async () => {
+    syncFromS();
+    setMsg('duplicating...');
+    try {
+      const sel = document.getElementById('anim-state');
+      const base = sel.value;
+      const taken = new Set(Array.from(sel.options).map(o => o.value));
+      let candidate = `${base} duplicate`;
+      let i = 2;
+      while (taken.has(candidate)) {
+        candidate = `${base} duplicate ${i++}`;
+      }
+      const j = await saveStrip(candidate);
+      ensureStateOption(candidate);
+      sel.value = candidate;
+      setMsg(`duplicated → ${j.path}`);
+    } catch (e) {
+      setMsg('duplicate failed: ' + e.message);
+    }
+  });
+
+  // Fetch any saved strip for `state` and load it into ANIM.frames. If
+  // no strip exists, seed a single frame from the touchup-aware base.
+  // Frame 0 is preserved from the saved strip — your edits stick.
+  // To pull in a fresh base touchup on top of an existing strip,
+  // use the "Reset F0 to base" button.
+  async function loadState(state, opts = {}) {
+    const { silentMissing = false } = opts;
+    setMsg('loading...');
+    try {
+      const r = await fetch(`/anim/load?ident=${encodeURIComponent(ident)}&state=${encodeURIComponent(state)}`);
+      if (r.status === 404) {
+        // No saved strip — single frame seeded from the base sprite.
+        ANIM.frames = [new Uint8Array(ANIM.seedPixels)];
+        ANIM.current = 0;
+        syncToS();
+        if (!silentMissing) setMsg('no saved animation for ' + state + ' — fresh canvas');
+        else setMsg('');
+        return;
+      }
+      if (!r.ok) throw new Error(await r.text());
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      await new Promise(res => {
+        const im = new Image();
+        im.onload = () => {
+          URL.revokeObjectURL(url);
+          const c = document.createElement('canvas');
+          c.width = im.width; c.height = im.height;
+          const cx = c.getContext('2d');
+          cx.drawImage(im, 0, 0);
+          const data = cx.getImageData(0, 0, im.width, im.height).data;
+          const n = im.width / S.w;
+          if (n !== Math.floor(n) || im.height !== S.h) {
+            setMsg(`size mismatch: PNG is ${im.width}x${im.height}, expected multiple of ${S.w}x${S.h}`);
+            res();
+            return;
+          }
+          ANIM.frames = [];
+          for (let i = 0; i < n; i++) {
+            const f = new Uint8Array(S.w * S.h);
+            for (let y = 0; y < S.h; y++) {
+              for (let x = 0; x < S.w; x++) {
+                const px = i * S.w + x;
+                f[y * S.w + x] = data[(y * im.width + px) * 4] >= 128 ? 1 : 0;
+              }
+            }
+            ANIM.frames.push(f);
+          }
+          ANIM.current = 0;
+          syncToS();
+          setMsg(`loaded ${n} frame${n !== 1 ? 's' : ''}`);
+          res();
+        };
+        im.src = url;
+      });
+    } catch (e) {
+      setMsg('load failed: ' + e.message);
+    }
+  }
+
+  document.getElementById('anim-load').addEventListener('click', () => {
+    loadState(document.getElementById('anim-state').value);
+  });
+
+  // When the user picks a different state from the dropdown, auto-load
+  // its saved strip (if any) so they can pick up where they left off.
+  document.getElementById('anim-state').addEventListener('change', e => {
+    loadState(e.target.value);
+  });
+
+  // On boot, ask the server which state PNGs already exist for this
+  // ident, and merge them into the dropdown. Without this, duplicates
+  // created in a previous session would only be reachable by retyping
+  // their name. After merging, auto-load the currently-selected state.
+  (async () => {
+    try {
+      const r = await fetch(`/anim/list?ident=${encodeURIComponent(ident)}`);
+      if (r.ok) {
+        const j = await r.json();
+        for (const st of (j.states || [])) ensureStateOption(st);
+      }
+    } catch {}
+    loadState(document.getElementById('anim-state').value, { silentMissing: true });
+  })();
+
+  // The redraw() function (defined globally) mirrors S.pixels into
+  // ANIM.frames[ANIM.current] on every redraw, and calls
+  // window.ANIM_renderThumbs to refresh thumbnails. So no event hooks
+  // needed here.
+  renderThumbs();
+})();
+</script>
+
+</body>
+</html>

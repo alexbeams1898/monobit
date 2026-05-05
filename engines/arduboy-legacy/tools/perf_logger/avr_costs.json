@@ -1,0 +1,18 @@
+{
+    "_comment": "Simulated AVR cycle costs for hot-path engine operations. Source of truth for the cost table mirrored in platform/sdl/perf.cpp. Calibrate via tools/perf_logger/calibrate.py against an Ardens Profiler capture, or hand-measure against avr-objdump + the datasheet.",
+    "_last_calibrated": "initial-estimates-not-yet-measured",
+    "ops": {
+        "SIM_LZ77_DECODE":    { "cycles_per_unit": 100,   "unit": "output_byte",  "note": "lookup + copy + tag-bit read" },
+        "SIM_DISPLAY_FLUSH":  { "cycles_per_unit": 32000, "unit": "invocation",   "note": "1024-byte SPI transfer at ~2 cycles/bit + setup" },
+        "SIM_FB_CLEAR":       { "cycles_per_unit": 4200,  "unit": "invocation",   "note": "1024 u8 stores" },
+        "SIM_FB_INVERT_ALL":  { "cycles_per_unit": 5200,  "unit": "invocation",   "note": "1024 load + XOR + store" },
+        "SIM_FB_DITHER":      { "cycles_per_unit": 8500,  "unit": "invocation",   "note": "1024 bytes + Bayer threshold math" },
+        "SIM_FONT_DRAW_CHAR": { "cycles_per_unit": 350,   "unit": "char",         "note": "glyph load + column blit for ~4-5 pixel chars" },
+        "SIM_SPRITE_BLIT":    { "cycles_per_unit": 8,     "unit": "source_byte",  "note": "progmem read + shift + OR into fb" },
+        "SIM_PGM_READ":       { "cycles_per_unit": 3,     "unit": "byte",         "note": "lpm + increment" }
+    },
+    "budget": {
+        "frame_cycles": 266667,
+        "_note": "16 MHz / 60 Hz = 266,667 cycles per frame. Anything beyond drops a frame on real hardware."
+    }
+}

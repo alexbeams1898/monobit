@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.25)
-project(PrisonBreakGame VERSION 0.4.0 LANGUAGES C CXX)
+project(Monobit LANGUAGES C CXX)
+
+# Monobit is the workspace -- a multi-game / multi-engine repo. It has no
+# version of its own. Each engine and each game in `engines/` and `games/`
+# declares its own `project(... VERSION X.Y.Z)` so they release independently.
 
 # GLAD v0.1.36 declares cmake_minimum_required(VERSION 2.8), which CMake 4.x
 # no longer accepts. This sets the effective minimum to 3.5 for all
@@ -35,5 +39,5 @@ endif()
 
 enable_testing()
 
-add_subdirectory(engine)
-add_subdirectory(game)
+add_subdirectory(engines/engine)
+add_subdirectory(games/prison-escape-game)

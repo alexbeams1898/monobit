@@ -1,0 +1,17 @@
+# Release configuration for prison-escape-game.
+# Read by .github/workflows/release.yml when a PR with branch prefix
+# <bump>/prison-escape/<issue>-<desc> merges to master.
+
+# CMake target name for the executable. Used to find the built artifact in
+# build/bin/. (Note: this is the historical internal name -- predates the
+# repo rename and the public "prison-escape" branding. Renaming the target
+# would touch the save-data path and is intentionally out of scope here.)
+cmake_target: prison-break-game
+
+# Public-facing artifact name. Used as both the zip filename prefix and
+# the GitHub release title.
+artifact_prefix: prison-escape-game
+
+# Public-facing distribution repo. The release is mirrored here as a courtesy
+# for download. Empty string skips the mirror step.
+public_repo: alexbeams1898/prison-escape-game-releases
