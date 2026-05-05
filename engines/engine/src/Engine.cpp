@@ -47,8 +47,12 @@ bool Engine::init(const char* title, int width, int height)
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, msaa_samples);
     }
 
+    Uint32 window_flags = SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE;
+    if (fullscreen)
+        window_flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+
     window = SDL_CreateWindow(title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height,
-                              SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
+                              window_flags);
     if (!window)
         return false;
 
@@ -81,8 +85,10 @@ bool Engine::init(const char* title, int width, int height)
     if (msaa_samples > 0)
         glEnable(GL_MULTISAMPLE);
 
-    window_w = width;
-    window_h = height;
+    // Read the actual window size — fullscreen-desktop ignores the
+    // requested width/height and uses the display's resolution, so the
+    // request args are unreliable. Truth is whatever SDL gave us.
+    SDL_GetWindowSize(window, &window_w, &window_h);
 
     FontManager::init();
     UIRenderer::init(window_w, window_h);

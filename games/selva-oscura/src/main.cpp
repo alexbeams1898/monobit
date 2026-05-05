@@ -362,8 +362,16 @@ int main(int /*argc*/, char* /*argv*/[])
     Engine engine;
 
     // 4x MSAA — smooths cube/floor edge silhouettes so they don't crawl
-    // when the camera rotates. Standard quality/cost trade for 3D games.
+    // when the camera rotates. Tried 8x; visually indistinguishable from
+    // 4x at this geometry count, so the extra samples weren't earning
+    // their cost. Residual sub-pixel shimmer that MSAA can't fix will be
+    // absorbed by the dither/threshold post-process pass when the 1-bit
+    // visual identity lands.
     engine.setMSAA(4);
+
+    // Borderless fullscreen at the desktop's native resolution. The
+    // 1280x720 args below are ignored when fullscreen is on.
+    engine.setFullscreen(true);
 
     if (!engine.init("Selva Oscura", 1280, 720))
     {

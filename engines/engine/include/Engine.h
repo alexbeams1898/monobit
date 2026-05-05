@@ -30,6 +30,15 @@ class Engine
         msaa_samples = samples;
     }
 
+    // Open the window in borderless-fullscreen mode at the desktop's native
+    // resolution. Must be set BEFORE init(). The width/height passed to
+    // init() are ignored when fullscreen — actual size is read from the
+    // display. Defaults to false (windowed).
+    void setFullscreen(bool on)
+    {
+        fullscreen = on;
+    }
+
     // Game-side logic callback. Called once per fixed-step tick.
     // Engine passes itself so the game can call setWindowTitle() / lastFrameTime().
     using GameUpdateFn = void (*)(Engine&, EntityManager&, double);
@@ -186,4 +195,5 @@ class Engine
     float clear_g = 0.1f;
     float clear_b = 0.1f;
     int msaa_samples = 0;
+    bool fullscreen = false;
 };
