@@ -58,6 +58,20 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(entt)
 
 # ---------------------------------------------------------------------------
+# glm  (header-only 3D math: vec/mat/quat, matrix builders for view/proj/etc)
+# Used by 3D rendering paths (selva-oscura). Provides the same vector/matrix
+# semantics GLSL uses, so CPU-side math composes cleanly with shader code.
+# ---------------------------------------------------------------------------
+FetchContent_Declare(
+    glm
+    GIT_REPOSITORY https://github.com/g-truc/glm.git
+    GIT_TAG        1.0.1
+    GIT_SHALLOW    TRUE
+    SYSTEM
+)
+FetchContent_MakeAvailable(glm)
+
+# ---------------------------------------------------------------------------
 # nlohmann/json  (header-only)
 # ---------------------------------------------------------------------------
 FetchContent_Declare(

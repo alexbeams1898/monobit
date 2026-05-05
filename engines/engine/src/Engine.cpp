@@ -3,14 +3,10 @@
 #include "FontManager.h"
 #include "UIRenderer.h"
 #include "ecs/Components.h"
-#include "systems/AnimationSystem.h"
 #include "systems/AudioSystem.h"
-#include "systems/RenderSystem.h"
-#include "systems/TileMapRenderer.h"
 #include "utils/DebugDraw.h"
 
 #include <cmath>
-#include <cstdio>
 #include <string>
 
 // glad must be included before any SDL OpenGL header.
@@ -67,11 +63,14 @@ bool Engine::init(const char* title, int width, int height)
     // Vsync on by default — will become a user setting in the options menu.
     SDL_GL_SetSwapInterval(1);
 
+    // Depth testing: enabled once at startup, used by any 3D draw path. 2D
+    // sprite paths (game-side) write Z=0 for everything so depth test
+    // against nothing is a no-op for them.
+    glEnable(GL_DEPTH_TEST);
+
     window_w = width;
     window_h = height;
 
-    RenderSystem::init(window_w, window_h);
-    TileMapRenderer::init();
     FontManager::init();
     UIRenderer::init(window_w, window_h);
     AudioSystem::init(); // non-fatal — game runs without audio if device unavailable
@@ -141,11 +140,10 @@ void Engine::run()
         }
 
         entity_manager.render_alpha = static_cast<float>(accumulator / FIXED_TIMESTEP);
-        // Animation advances at wall-clock rate (not fixed-step) so sprites
-        // interpolate smoothly on high-refresh displays. Run it before the
-        // pre_render hook so game-side visual-sync systems can read fresh
-        // sprite.src_x/flip_x values computed from the character's animation.
-        AnimationSystem::update(entity_manager, static_cast<float>(frame_dt));
+        // pre_render runs at wall-clock rate (not fixed-step) and after
+        // render_alpha is computed. Game code uses this slot for any
+        // per-frame work that needs the final alpha (sprite animation
+        // advance, aim interpolation, visual-sync systems, etc.).
         if (pre_render)
             pre_render(*this, entity_manager);
         render();
@@ -167,8 +165,9 @@ void Engine::processEvents()
         {
             window_w = event.window.data1;
             window_h = event.window.data2;
-            RenderSystem::resize(window_w, window_h);
             UIRenderer::resize(window_w, window_h);
+            if (on_resize)
+                on_resize(*this, window_w, window_h);
         }
 
         // Buffer one-shot input events so they survive across fixed-step ticks.
@@ -208,6 +207,11 @@ void Engine::setPreRender(PreRenderFn fn)
     pre_render = fn;
 }
 
+void Engine::setRenderWorld(RenderWorldFn fn)
+{
+    render_world = fn;
+}
+
 void Engine::setRenderDebug(RenderDebugFn fn)
 {
     render_debug = fn;
@@ -216,6 +220,11 @@ void Engine::setRenderDebug(RenderDebugFn fn)
 void Engine::setRenderUI(RenderUIFn fn)
 {
     render_ui = fn;
+}
+
+void Engine::setOnResize(ResizeFn fn)
+{
+    on_resize = fn;
 }
 
 void Engine::setWindowTitle(const std::string& title)
@@ -231,7 +240,7 @@ void Engine::render()
     const float a = entity_manager.render_alpha;
 
     glClearColor(clear_r, clear_g, clear_b, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     // Find the active camera position, interpolated between previous and current
     // tick using the accumulator remainder (alpha). This eliminates the visual
@@ -268,53 +277,8 @@ void Engine::render()
         }
     }
 
-    // Per-frame camera/player position CSV for jitter diagnosis.
-    // Only active in Tracy-enabled builds.
-#ifdef TRACY_ENABLE
-    {
-        static FILE* jitterLog = nullptr;
-        static int jitterFrame = 0;
-        if (!jitterLog)
-        {
-            jitterLog = std::fopen("jitter.csv", "w");
-            if (jitterLog)
-                std::fprintf(jitterLog, "frame,alpha,camX,camY,"
-                                        "offsetX,offsetY,prevOffsetX,prevOffsetY,"
-                                        "drawX,drawY,"
-                                        "screenX,screenY,frameDtMs\n");
-        }
-        if (jitterLog)
-        {
-            for (auto [pe, cam] : entity_manager.registry().view<Camera>().each())
-            {
-                if (!cam.active)
-                    continue;
-                const auto& tf = entity_manager.registry().get<Transform>(pe);
-                float drawX = tf.x;
-                float drawY = tf.y;
-                if (const auto* prev = entity_manager.registry().try_get<PreviousTransform>(pe))
-                {
-                    drawX = prev->x + (tf.x - prev->x) * a;
-                    drawY = prev->y + (tf.y - prev->y) * a;
-                }
-                std::fprintf(jitterLog,
-                             "%d,%.4f,%.4f,%.4f,"
-                             "%.4f,%.4f,%.4f,%.4f,"
-                             "%.4f,%.4f,"
-                             "%.4f,%.4f,%.3f\n",
-                             jitterFrame, a, camX, camY, cam.offset_x, cam.offset_y,
-                             cam.prev_offset_x, cam.prev_offset_y, drawX, drawY, drawX - camX,
-                             drawY - camY, frame_dt * 1000.0);
-                break;
-            }
-            jitterFrame++;
-            std::fflush(jitterLog);
-        }
-    }
-#endif
-
-    TileMapRenderer::render(camX, camY, window_w, window_h, camera_zoom);
-    RenderSystem::render(entity_manager, texture_manager, camX, camY, camera_zoom);
+    if (render_world)
+        render_world(*this, entity_manager, camX, camY, a);
 
     // UI layer: screen-space overlay drawn after world content.
     UIRenderer::beginFrame();
@@ -339,8 +303,6 @@ void Engine::shutdown()
     AudioSystem::shutdown();
     UIRenderer::shutdown();
     FontManager::shutdown();
-    TileMapRenderer::shutdown();
-    RenderSystem::shutdown();
     sprite_compositor.clear();
     texture_manager.clear();
 

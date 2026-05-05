@@ -27,6 +27,8 @@
 #include "screens/VictoryScreen.h"
 #include "systems/AudioSystem.h"
 #include "systems/NotificationSystem.h"
+#include "systems/RenderSystem.h"
+#include "systems/TileMapRenderer.h"
 
 #include <csignal>
 #include <cstdio>
@@ -101,6 +103,12 @@ int main(int argc, char* argv[])
 
     if (!engine.init("Prison Escape Game v" GAME_VERSION, 1920, 1080))
         return 1;
+
+    // World-rendering subsystems are game-owned: the engine has no opinion
+    // about whether a game uses tilemaps or sprite sheets. Init/shutdown
+    // here mirror the renderWorld callback registered below.
+    RenderSystem::init(engine.windowWidth(), engine.windowHeight());
+    TileMapRenderer::init();
 
     auto& em = engine.entityManager();
 
@@ -185,8 +193,15 @@ int main(int argc, char* argv[])
     engine.setGameUpdate(&gameUpdate);
     engine.setPerFrameUpdate(&gamePerFrame);
     engine.setPreRender(&gamePreRender);
+    engine.setRenderWorld(&gameRenderWorld);
+    engine.setOnResize(&gameOnResize);
     engine.setRenderDebug(&gameRenderDebug);
     engine.setRenderUI(&gameRenderUI);
     engine.run();
+
+    // Tear down game-owned render subsystems while the GL context is still
+    // alive (engine.shutdown() destroys the context).
+    TileMapRenderer::shutdown();
+    RenderSystem::shutdown();
     return 0;
 }

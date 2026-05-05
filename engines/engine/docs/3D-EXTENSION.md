@@ -1,13 +1,69 @@
 # Engine 3D Extension Plan
 
-How this engine grows to support a 3D soulslike (working title: **Selva Oscura**)
-without compromising the existing 2D top-down game (prison-break-game). Living
+How this engine grows to support a 3D soulslike (**Selva Oscura**) alongside
+the existing 2D top-down action roguelike (**prison-escape-game**). Living
 document — design, not implementation. Update as decisions firm up or get
 overturned by reality.
 
-> Sibling docs: [game/docs/ENGINE.md](../../game/docs/ENGINE.md) — current 2D engine
-> architecture. [game/docs/PERFORMANCE.md](../../game/docs/PERFORMANCE.md) — perf
-> philosophy and decision log. This file extends both forward into 3D.
+> Sibling docs:
+> - [engines/engine/docs/ENGINE.md](./ENGINE.md) — engine doctrine,
+>   engine/game boundary, render-callback model.
+> - [engines/engine/docs/TECH-DEBT.md](./TECH-DEBT.md) — open structural
+>   issues at the engine level.
+> - [games/prison-escape-game/docs/ENGINE.md](../../../games/prison-escape-game/docs/ENGINE.md)
+>   — that game's per-game engine notes (helper trees, dialog templates,
+>   evolution tree conventions).
+
+## Visual direction (locked 2026-05-05)
+
+Selva Oscura is **pure 3D** — Souls/Elden Ring camera, locomotion, combat —
+with a **1-bit visual treatment delivered by shaders**, not by sprite art:
+
+- Real 3D meshes with skeletal animation. **No billboarded sprites, no
+  HD-2D, no 2.5D.**
+- Dither-pattern shading (Bayer / blue-noise) quantizes lighting to discrete
+  levels, à la *Return of the Obra Dinn*.
+- Optional threshold post-process for true 1-bit B&W or 2-bit 4-level.
+- Optional depth+normal edge-detection pass for woodcut-style outlines —
+  the Doré / Botticelli illustration tradition the *Commedia* belongs to.
+- Render at native resolution (the 1-bit feel comes from shader math, not
+  from rendering small and upscaling).
+
+Reference points: *Return of the Obra Dinn* (closest match), *Lorn's Lure*,
+*World of Horror* (visual register only — austere monochrome composition).
+
+This direction collapses what would otherwise have been a permanent
+skeletal-vs-spritesheet schism in the engine: both games converge on real
+3D / skeletal animation as the long-term path; only the **shader** differs.
+
+## Status (as of 2026-05-05)
+
+What's already in place beyond milestone 2 below:
+
+- **Repo restructured to multi-game / multi-engine layout** (PR #119). The
+  doc's milestone-0 "promote `game/` to multi-game repo" predicted this.
+- **`Engine::setRenderWorld(fn)` callback** (PR #121). Replaces the doc's
+  milestone-0 "split engine into render2d/render3d/etc. CMake modules"
+  plan. A single callback owned by the game gives full control of world
+  rendering — 2D games call `TileMapRenderer` + `RenderSystem` here; 3D
+  games run their own pipeline (geometry → dither/threshold/outline
+  post-process → blit). The engine no longer has any opinion about render
+  paradigm. CMake-level module split deferred indefinitely; the callback
+  shape gets us the same boundary clarity with one tenth the plumbing.
+- **Engine clears color + depth buffers**, depth test enabled at startup.
+  2D paths write `Z=0` so depth test is a no-op for them; 3D paths get
+  depth-buffering for free.
+- **Selva Oscura exe boots and renders a tumbling 3D cube** via custom
+  shader, VBO, EBO, VAO with glm-driven MVP — the milestone-2 cube target.
+  No glTF loader yet; geometry hard-coded.
+- **glm fetched** as a header-only system dep. cgltf, Jolt, ozz-animation,
+  Recast/Detour — all still pending per the relevant milestones.
+
+Sections 2 (the A/B/C architecture choice) and 6 (milestone 0–6) below are
+the historical plan and remain mostly accurate, but milestone 0's specific
+"split into engine/core, engine/render2d, engine/render3d CMake modules"
+shape is **superseded by the renderWorld callback**. Re-evaluate before
+acting on milestone 0 specifics.
 
 ---
 
@@ -37,9 +93,10 @@ So the question is **how the engine accommodates a second render path**,
 character controller, and animation pipeline, while keeping every shared
 combat/RPG/AI system intact and unaware of which path is active.
 
-The hard rule is unchanged: `engine/` never `#include`s `game/`. That rule will
-generalize to: each game (`game-prison-break/`, `game-selva-oscura/`) only
-includes `engine/`, never each other.
+The hard rule is unchanged: `engines/engine/` never `#include`s any
+`games/*/` header. That rule extends to: each game
+(`games/prison-escape-game/`, `games/selva-oscura/`) only includes the
+engine, never each other.
 
 ---
 

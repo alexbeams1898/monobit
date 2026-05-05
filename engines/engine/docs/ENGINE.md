@@ -27,13 +27,16 @@ Goals: data-driven, config-driven, moddable from day one.
 **`engines/engine/`** is a reusable library with zero knowledge of any specific
 game. It provides:
 
-- Core loop, windowing, input, rendering pipeline (SDL2 + OpenGL)
+- Core loop, windowing, input, GL context (SDL2 + OpenGL 3.3 core)
 - ECS registry, generic components (Transform, Velocity, Sprite, Animation,
   Collider, etc.)
-- Generic systems (RenderSystem, AnimationSystem, MovementSystem, CollisionSystem,
-  FlowFieldSystem, CameraSystem, SteeringSystem)
-- Infrastructure (TextureManager, AudioSystem, UIRenderer, TileMap data struct,
-  TileMapRenderer)
+- Generic systems available to games: RenderSystem (sprite quads, Y-sort),
+  AnimationSystem (sprite-sheet rows), MovementSystem, CollisionSystem,
+  FlowFieldSystem, CameraSystem, SteeringSystem, TileMapRenderer.
+  These ship from the engine but are **driven by the game**, not the
+  engine — see "Render callback model" below.
+- Infrastructure: TextureManager, AudioSystem, UIRenderer (engine-driven),
+  TileMap / TileConfig data structs, FontManager, SpriteCompositor.
 
 **`games/<game>/`** is everything specific to that game:
 
@@ -60,6 +63,50 @@ into the engine surface immediately as visible artifacts in the second
 consumer. Fix at root — move to the game directory or expose as a setter on
 `Engine` — rather than papering over with flags. See `feedback_engine_leaks`
 in memory for the locked pattern.
+
+---
+
+## Render callback model
+
+The engine owns the **frame**: window, GL context, input pump, fixed-step
+update loop, render-tick interpolation, framebuffer clear (color + depth),
+camera-entity interpolation, UIRenderer setup/teardown, SwapWindow. It does
+**not** own world rendering. The game registers callbacks the engine
+invokes at the right moments:
+
+- `setRenderWorld(fn)` — called between framebuffer clear and the UI pass.
+  This is the only world-render callsite. 2D games call `TileMapRenderer`
+  + `RenderSystem` here; 3D games run their own pipeline (geometry pass,
+  optional dither / threshold / outline post-process, blit).
+  Receives `Engine&`, `EntityManager&`, plus the engine-interpolated
+  `camX`/`camY`/`alpha` (useful only for games that use the 2D `Camera`
+  component; 3D games ignore them and use their own camera state).
+- `setRenderUI(fn)` — screen-space overlay drawn after world content,
+  inside `UIRenderer::beginFrame()` / `endFrame()`. HUD, menus,
+  notifications.
+- `setRenderDebug(fn)` — debug overlays, drawn between UI begin and the UI
+  callback. `DebugDraw::setCamera()` is configured automatically beforehand.
+- `setPreRender(fn)` — wall-clock-rate hook after `render_alpha` is computed
+  but before rendering. Sprite-sheet animation advance lives here (game
+  calls `AnimationSystem::update(em, engine.frameDt())`), as do any
+  per-frame interpolations that must match render alpha (lock-on aim, etc.).
+- `setOnResize(fn)` — invoked on `SDL_WINDOWEVENT_RESIZED` after the engine
+  updates window dimensions and resizes UIRenderer. Game resizes any
+  game-owned render targets here (e.g. `RenderSystem::resize` for the
+  offscreen FBO).
+
+**Lifecycle of game-owned render subsystems.** Whatever the game registers
+in `setRenderWorld` it must also `init()` after `Engine::init()` returns
+and `shutdown()` after `Engine::run()` returns but before the destructor
+fires. `RenderSystem` and `TileMapRenderer` are typical examples:
+prison-escape-game inits/shuts them down explicitly in its `main.cpp`.
+
+**Why callbacks rather than CMake module split.** The previous draft of
+3D-EXTENSION.md proposed splitting `engine/` into `engine/render2d/`,
+`engine/render3d/`, etc. CMake-level modules. The callback model gets the
+same boundary (engine has no opinion about render paradigm) with one tenth
+the plumbing. The CMake split is deferred indefinitely; revisit only if a
+game starts paying for unused engine code in a measurable way.
 
 ---
 

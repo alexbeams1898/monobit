@@ -172,7 +172,7 @@ void TileMapRenderer::upload(const TileMap& map, const TileConfig& config, Textu
                 {
                     const float tw = static_cast<float>(atlasW);
                     const float th = static_cast<float>(atlasH);
-                    const float tileF = 32.0f;
+                    const float tileF = static_cast<float>(config.atlas_tile_size);
                     const float c = static_cast<float>(vis.uv_col);
                     const float r = static_cast<float>(vis.uv_row);
                     u0 = c * tileF / tw;

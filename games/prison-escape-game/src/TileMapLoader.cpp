@@ -150,6 +150,7 @@ TileConfig TileMapLoader::loadConfig(const std::string& path)
         }
 
         cfg.tileset_path = j.value("tileset", std::string{});
+        cfg.atlas_tile_size = j.value("tile_size", cfg.atlas_tile_size);
     }
     catch (const std::exception& ex)
     {

@@ -24,6 +24,11 @@ struct TileConfig
     // When non-empty, TileMapRenderer uses textured quads instead of flat colors.
     std::string tileset_path;
 
+    // Pixel size of one tile in the atlas. Independent of TileMap::TILE_SIZE
+    // (world-space tile size); the atlas can use any sub-tile resolution.
+    // Default matches prison-escape-game's 32x32 atlas.
+    int atlas_tile_size = 32;
+
     // Per-tile-id visual: atlas position + fallback RGB color.
     struct TileVisual
     {
@@ -32,27 +37,6 @@ struct TileConfig
         float r = 0.2f, g = 0.2f, b = 0.2f; // flat color when no tileset
     };
     std::unordered_map<int, TileVisual> tile_visuals;
-};
-
-// ---------------------------------------------------------------------------
-// Room -- a parsed ASCII room template from config/rooms/*.room.
-// Used by TileMapLoader during procedural generation; not stored at runtime.
-// ---------------------------------------------------------------------------
-struct Room
-{
-    int width = 0;
-    int height = 0;
-    std::vector<int> tiles; // row-major tile_ids: tiles[y * width + x]
-
-    struct SpawnPoint
-    {
-        int col;
-        int row;
-        char type; // single-char marker from .room template
-    };
-    std::vector<SpawnPoint> spawn_points;
-
-    std::string name; // filename, for debug logging
 };
 
 // ---------------------------------------------------------------------------

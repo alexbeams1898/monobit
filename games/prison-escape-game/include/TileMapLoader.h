@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Room.h"
 #include "TileMap.h"
 #include "ecs/EntityManager.h"
 

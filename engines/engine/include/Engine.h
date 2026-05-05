@@ -38,6 +38,15 @@ class Engine
     using PreRenderFn = void (*)(Engine&, EntityManager&);
     void setPreRender(PreRenderFn fn);
 
+    // World render callback. Called once per frame after the framebuffer is
+    // cleared and the active 2D Camera is interpolated, but before the UI
+    // pass. The game owns world rendering: 2D games call TileMapRenderer +
+    // RenderSystem here; 3D games run their own pipeline (geometry, lighting,
+    // post-process). camX/camY/alpha are provided for games that use the 2D
+    // Camera component and can be ignored otherwise.
+    using RenderWorldFn = void (*)(Engine&, EntityManager&, float camX, float camY, float alpha);
+    void setRenderWorld(RenderWorldFn fn);
+
     // Debug render callback. Called once per frame after world rendering,
     // between UIRenderer::beginFrame() and the UI render callback.
     // DebugDraw::setCamera() is called automatically before this callback.
@@ -50,6 +59,13 @@ class Engine
     // UIRenderer draw calls here to render HUD, menus, notifications, etc.
     using RenderUIFn = void (*)(Engine&, EntityManager&);
     void setRenderUI(RenderUIFn fn);
+
+    // Resize callback. Called from the SDL window-resize event handler after
+    // the engine updates window_w/window_h and resizes UIRenderer (the engine
+    // owns UI). Game code resizes any game-owned render targets here (e.g.
+    // RenderSystem's offscreen FBO).
+    using ResizeFn = void (*)(Engine&, int new_w, int new_h);
+    void setOnResize(ResizeFn fn);
 
     // Set the window title string (for game-side HUD display).
     void setWindowTitle(const std::string& title);
@@ -92,6 +108,14 @@ class Engine
     double lastFrameTime() const
     {
         return last_frame_time;
+    }
+
+    // Raw wall-clock frame time (no smoothing). Use this for animation /
+    // visual-rate updates that must reflect actual elapsed time, not the
+    // smoothed FPS estimate.
+    double frameDt() const
+    {
+        return frame_dt;
     }
 
     // Exposed so game code (main.cpp, future scene managers) can create
@@ -142,8 +166,10 @@ class Engine
     GameUpdateFn game_update = nullptr;
     PerFrameFn per_frame_update = nullptr;
     PreRenderFn pre_render = nullptr;
+    RenderWorldFn render_world = nullptr;
     RenderDebugFn render_debug = nullptr;
     RenderUIFn render_ui = nullptr;
+    ResizeFn on_resize = nullptr;
     float camera_zoom = 1.0f;
     bool timing_reset_pending = false;
     float clear_r = 0.1f;

@@ -1,102 +1,186 @@
 #include "Engine.h"
 #include "gl/ShaderUtils.h"
 
+#include <chrono>
 #include <cstdio>
 #include <glad/glad.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
-// Vertex shader: takes one 2D position per vertex, writes it straight to
-// gl_Position. Coordinates are in clip space ([-1, +1] on each axis) so the
-// CPU side has to provide vertices already in that range; no model/view/
-// projection transform yet.
-static const char* kQuadVertexShader = R"glsl(
+// Vertex shader: takes a 3D position + per-vertex color. MVP transforms the
+// position; color is passed through to the fragment shader (the GPU
+// interpolates it across the triangle for free).
+static const char* kCubeVertexShader = R"glsl(
 #version 330 core
-layout(location = 0) in vec2 aPos;
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aColor;
+
+uniform mat4 uMVP;
+
+out vec3 vColor;
 
 void main()
 {
-    gl_Position = vec4(aPos, 0.0, 1.0);
+    gl_Position = uMVP * vec4(aPos, 1.0);
+    vColor = aColor;
 }
 )glsl";
 
-// Fragment shader: outputs a solid color, taken from the uColor uniform set
-// by the CPU. Same color for every pixel in the draw call.
-static const char* kQuadFragmentShader = R"glsl(
+// Fragment shader: outputs the interpolated color from the vertex shader.
+static const char* kCubeFragmentShader = R"glsl(
 #version 330 core
+in vec3 vColor;
 out vec4 fragColor;
-
-uniform vec4 uColor;
 
 void main()
 {
-    fragColor = uColor;
+    fragColor = vec4(vColor, 1.0);
 }
 )glsl";
 
 // GPU shader program (vertex + fragment linked). 0 = not built / failed.
-static GLuint sQuadProgram = 0;
+static GLuint sCubeProgram = 0;
 
-// Vertex Array Object + Vertex Buffer Object holding the quad's geometry.
-static GLuint sQuadVao = 0;
-static GLuint sQuadVbo = 0;
+// Vertex Array Object + Vertex Buffer Object + Element Buffer Object holding
+// the cube's geometry. EBO = index buffer.
+static GLuint sCubeVao = 0;
+static GLuint sCubeVbo = 0;
+static GLuint sCubeEbo = 0;
 
-// Cached uniform location for setting the quad's color each frame.
-static GLint sQuadColorLoc = -1;
+// Cached uniform locations. Resolved once at init.
+static GLint sCubeMvpLoc = -1;
 
-// Build the GL state needed to draw the quad: upload vertex data, declare its
-// layout, resolve the uColor uniform location. Runs once after the GL context
-// exists. The quad is centered at clip-space origin and spans from -0.25 to
-// +0.25 on each axis (a 25% x 25% square in the middle of the window).
-static void initQuad()
+// Window size (read once at init for the projection's aspect ratio).
+static int sWindowW = 0;
+static int sWindowH = 0;
+
+// Build the GL state needed to draw the cube.
+//
+// 8 unique vertices (one per cube corner), each with position + color. The
+// index buffer says "draw 36 indices = 12 triangles = 6 faces" using those 8
+// vertices. Per-corner color means each face is a smooth gradient between
+// its 4 corners, which makes the cube's 3D shape obvious as it rotates.
+static void initCube()
 {
-    // Two triangles forming a square, six vertices, two floats each (x, y).
-    // Triangle strip would also work; using GL_TRIANGLES keeps the data shape
-    // explicit since we're learning.
+    // 8 corners of a cube centered at origin, half-extent 0.5. Each vertex:
+    //   x, y, z,    r, g, b
+    // Colors picked so opposite corners are roughly complementary -- gives
+    // each face a distinct gradient.
+    // clang-format off
     static constexpr float kVertices[] = {
-        // first triangle (bottom-left, bottom-right, top-right)
-        -0.25f, -0.25f,
-         0.25f, -0.25f,
-         0.25f,  0.25f,
-        // second triangle (bottom-left, top-right, top-left)
-        -0.25f, -0.25f,
-         0.25f,  0.25f,
-        -0.25f,  0.25f,
+        // back face corners (z = -0.5)
+        -0.5f, -0.5f, -0.5f,   1.0f, 0.0f, 0.0f, // 0: red
+         0.5f, -0.5f, -0.5f,   1.0f, 1.0f, 0.0f, // 1: yellow
+         0.5f,  0.5f, -0.5f,   0.0f, 1.0f, 0.0f, // 2: green
+        -0.5f,  0.5f, -0.5f,   0.0f, 1.0f, 1.0f, // 3: cyan
+        // front face corners (z = +0.5)
+        -0.5f, -0.5f,  0.5f,   1.0f, 0.0f, 1.0f, // 4: magenta
+         0.5f, -0.5f,  0.5f,   1.0f, 1.0f, 1.0f, // 5: white
+         0.5f,  0.5f,  0.5f,   0.0f, 0.0f, 1.0f, // 6: blue
+        -0.5f,  0.5f,  0.5f,   0.5f, 0.5f, 0.5f, // 7: grey
     };
 
-    glGenVertexArrays(1, &sQuadVao);
-    glGenBuffers(1, &sQuadVbo);
+    // 36 indices = 12 triangles = 6 faces. Each face is two triangles sharing
+    // a diagonal. Winding order (counter-clockwise as seen from outside the
+    // cube) is consistent so back-face culling could be enabled later.
+    static constexpr unsigned int kIndices[] = {
+        // back face (looking down -Z)
+        0, 2, 1,   0, 3, 2,
+        // front face (looking down +Z)
+        4, 5, 6,   4, 6, 7,
+        // left face
+        0, 4, 7,   0, 7, 3,
+        // right face
+        1, 2, 6,   1, 6, 5,
+        // bottom face
+        0, 1, 5,   0, 5, 4,
+        // top face
+        3, 7, 6,   3, 6, 2,
+    };
+    // clang-format on
 
-    glBindVertexArray(sQuadVao);
-    glBindBuffer(GL_ARRAY_BUFFER, sQuadVbo);
+    glGenVertexArrays(1, &sCubeVao);
+    glGenBuffers(1, &sCubeVbo);
+    glGenBuffers(1, &sCubeEbo);
+
+    glBindVertexArray(sCubeVao);
+
+    glBindBuffer(GL_ARRAY_BUFFER, sCubeVbo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(kVertices), kVertices, GL_STATIC_DRAW);
 
-    // Vertex layout: location 0 (matches `layout(location = 0)` in the
-    // vertex shader) is two floats, tightly packed (stride = 2 floats).
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), nullptr);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sCubeEbo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(kIndices), kIndices, GL_STATIC_DRAW);
+
+    // Vertex layout: 6 floats per vertex (3 position + 3 color), interleaved.
+    // location 0 = position (3 floats, offset 0).
+    // location 1 = color    (3 floats, offset 3*sizeof(float)).
+    constexpr int stride = 6 * sizeof(float);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, nullptr);
     glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride,
+                          reinterpret_cast<void*>(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
 
     glBindVertexArray(0);
 
-    sQuadColorLoc = glGetUniformLocation(sQuadProgram, "uColor");
+    sCubeMvpLoc = glGetUniformLocation(sCubeProgram, "uMVP");
 }
 
-// Issue the draw call. Bind the program, set the color uniform, bind the
-// VAO, draw 6 vertices = 2 triangles = one square.
-static void drawQuad()
+// Issue the draw call. Bind the program, set the MVP uniform, bind the VAO,
+// drawElements pulls vertex indices from the EBO.
+static void drawCube()
 {
-    glUseProgram(sQuadProgram);
-    glUniform4f(sQuadColorLoc, 1.0f, 0.2f, 0.2f, 1.0f); // solid red
-    glBindVertexArray(sQuadVao);
-    glDrawArrays(GL_TRIANGLES, 0, 6);
+    // Model: rotate around an axis based on wall-clock time. Spinning around
+    // a non-cardinal axis gives the cube a tumbling motion that shows off
+    // multiple faces simultaneously.
+    static const auto sStartTime = std::chrono::steady_clock::now();
+    const auto now = std::chrono::steady_clock::now();
+    const float seconds = std::chrono::duration<float>(now - sStartTime).count();
+    const float angle = seconds * (glm::two_pi<float>() / 4.0f);
+    const glm::mat4 model =
+        glm::rotate(glm::mat4(1.0f), angle, glm::normalize(glm::vec3(0.6f, 1.0f, 0.3f)));
+
+    // View: camera at (0, 0, 3) looking at the origin.
+    const glm::mat4 view = glm::lookAt(glm::vec3(0.0f, 0.0f, 3.0f), glm::vec3(0.0f, 0.0f, 0.0f),
+                                       glm::vec3(0.0f, 1.0f, 0.0f));
+
+    const float aspect =
+        sWindowH > 0 ? static_cast<float>(sWindowW) / static_cast<float>(sWindowH) : 1.0f;
+    const glm::mat4 proj = glm::perspective(glm::radians(60.0f), aspect, 0.1f, 100.0f);
+
+    const glm::mat4 mvp = proj * view * model;
+
+    glUseProgram(sCubeProgram);
+    glUniformMatrix4fv(sCubeMvpLoc, 1, GL_FALSE, glm::value_ptr(mvp));
+    glBindVertexArray(sCubeVao);
+    glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, nullptr);
     glBindVertexArray(0);
     glUseProgram(0);
 }
 
-// Engine renderUI callback: fires every frame after the engine clears + does
-// its world-render pass, before SwapWindow. Selva Oscura uses this slot for
-// its own GL drawing for now.
-static void selvaRenderUI(Engine& /*engine*/, EntityManager& /*em*/)
+// Free the cube's GL resources. Must run while the GL context is still alive
+// (i.e. before Engine::shutdown destroys it). Symmetric to initCube.
+static void shutdownCube()
 {
-    drawQuad();
+    glDeleteBuffers(1, &sCubeEbo);
+    glDeleteBuffers(1, &sCubeVbo);
+    glDeleteVertexArrays(1, &sCubeVao);
+    glDeleteProgram(sCubeProgram);
+    sCubeEbo = 0;
+    sCubeVbo = 0;
+    sCubeVao = 0;
+    sCubeProgram = 0;
+}
+
+// Engine renderWorld callback: fires every frame between framebuffer clear
+// and the UI pass. This is where Selva Oscura's 3D rendering lives. Will
+// eventually be three passes (geometry to FBO, dither/threshold/outline
+// post-process, blit) but for now it's just the test cube.
+static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*camX*/,
+                             float /*camY*/, float /*alpha*/)
+{
+    drawCube();
 }
 
 int main(int /*argc*/, char* /*argv*/[])
@@ -111,17 +195,20 @@ int main(int /*argc*/, char* /*argv*/[])
 
     engine.setClearColor(0.0f, 0.0f, 0.0f);
 
-    sQuadProgram = engine::gl::compileProgram(kQuadVertexShader, kQuadFragmentShader);
-    if (sQuadProgram == 0)
+    sCubeProgram = engine::gl::compileProgram(kCubeVertexShader, kCubeFragmentShader);
+    if (sCubeProgram == 0)
     {
-        std::fprintf(stderr, "Quad shader compile/link failed\n");
+        std::fprintf(stderr, "Cube shader compile/link failed\n");
         return 1;
     }
-    initQuad();
+    sWindowW = engine.windowWidth();
+    sWindowH = engine.windowHeight();
+    initCube();
 
-    engine.setRenderUI(&selvaRenderUI);
+    engine.setRenderWorld(&selvaRenderWorld);
 
     engine.run();
+    shutdownCube();
     engine.shutdown();
     return 0;
 }

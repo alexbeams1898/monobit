@@ -12,10 +12,12 @@
 #include "ecs/GameConfig.h"
 
 // Engine systems.
+#include "systems/AnimationSystem.h"
 #include "systems/CameraPanSystem.h"
 #include "systems/CameraSystem.h"
 #include "systems/CollisionSystem.h"
 #include "systems/FlowFieldSystem.h"
+#include "systems/RenderSystem.h"
 #include "systems/SteeringSystem.h"
 #include "systems/TileMapRenderer.h"
 
@@ -662,8 +664,14 @@ static LockOnTarget* updateLockOn(entt::registry& reg, entt::entity entity,
 
 // Called after the tick loop, with final render_alpha. Updates positions that
 // must match render interpolation (crosshair on lock-on target).
-void gamePreRender(Engine& /*engine*/, EntityManager& em)
+void gamePreRender(Engine& engine, EntityManager& em)
 {
+    // Advance sprite animations at wall-clock rate (not fixed-step) so they
+    // interpolate smoothly on high-refresh displays. Must run before any
+    // game-side system that reads sprite.src_x / flip_x from this frame's
+    // animation state (e.g. WeaponSpriteSystem::syncVisuals below).
+    AnimationSystem::update(em, static_cast<float>(engine.frameDt()));
+
     const float a = em.render_alpha;
     for (auto [entity, facing, lockOn] : em.registry().view<FacingDirection, LockOnTarget>().each())
     {
@@ -681,11 +689,24 @@ void gamePreRender(Engine& /*engine*/, EntityManager& em)
         facing.aim_override_y = ty;
     }
 
-    // Runs AFTER engine AnimationSystem::update, so the wielder's sprite.src_x
-    // reflects this frame's animation state. syncVisuals reads that directly
-    // to place the weapon at the correct hand-anchor position without any
-    // cross-rate skew between game-tick and render-rate updates.
+    // Reads each wielder's sprite.src_x (just advanced by AnimationSystem
+    // above) to place the weapon at the correct hand-anchor position
+    // without cross-rate skew between game-tick and render-rate updates.
     WeaponSpriteSystem::syncVisuals(em);
+}
+
+void gameRenderWorld(Engine& engine, EntityManager& em, float camX, float camY, float /*alpha*/)
+{
+    const int ww = engine.windowWidth();
+    const int wh = engine.windowHeight();
+    const float zoom = engine.cameraZoom();
+    TileMapRenderer::render(camX, camY, ww, wh, zoom);
+    RenderSystem::render(em, engine.textureManager(), camX, camY, zoom);
+}
+
+void gameOnResize(Engine& /*engine*/, int new_w, int new_h)
+{
+    RenderSystem::resize(new_w, new_h);
 }
 
 // Update aim_dx/aim_dy from mouse or lock-on target.

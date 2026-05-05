@@ -46,6 +46,7 @@ add_library(game-systems STATIC
     src/screens/MenuDialog.cpp
     src/screens/LevelUpScreen.cpp
     src/SaveManager.cpp
+    src/TileMapLoader.cpp
     src/WorldInit.cpp
     src/renderers/AIDebugOverlay.cpp
     src/renderers/AIRecorder.cpp
@@ -144,6 +145,7 @@ add_executable(game-tests
     tests/discovery_test.cpp
     tests/ladder_test.cpp
     tests/projectile_test.cpp
+    tests/tilemap_test.cpp
     tests/update_checker_test.cpp
     tests/weapon_sprite_test.cpp
 )
