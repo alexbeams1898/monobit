@@ -30,13 +30,25 @@ class Engine
         msaa_samples = samples;
     }
 
-    // Open the window in borderless-fullscreen mode at the desktop's native
-    // resolution. Must be set BEFORE init(). The width/height passed to
-    // init() are ignored when fullscreen — actual size is read from the
-    // display. Defaults to false (windowed).
-    void setFullscreen(bool on)
+    // Window startup mode. Must be set BEFORE init() (the value is consumed
+    // when the window is created). Defaults to Windowed at the requested
+    // width/height.
+    enum class WindowMode
     {
-        fullscreen = on;
+        // Standard window at the size passed to init(). User can resize.
+        Windowed,
+        // Maximized window — full monitor area but keeps title bar / borders
+        // / resize handles. The width/height passed to init() are used as
+        // the restore size when the user un-maximizes.
+        Maximized,
+        // Borderless fullscreen at the desktop's native resolution. No
+        // title bar. Width/height passed to init() are ignored — actual
+        // size is read from the display.
+        BorderlessFullscreen,
+    };
+    void setWindowMode(WindowMode mode)
+    {
+        window_mode = mode;
     }
 
     // Game-side logic callback. Called once per fixed-step tick.
@@ -195,5 +207,5 @@ class Engine
     float clear_g = 0.1f;
     float clear_b = 0.1f;
     int msaa_samples = 0;
-    bool fullscreen = false;
+    WindowMode window_mode = WindowMode::Windowed;
 };

@@ -201,36 +201,82 @@ static void shutdownGeometry()
 // Player + camera state
 // ---------------------------------------------------------------------------
 
-// Player position in world space. Selva Oscura is 3D so y is up. The player
-// stands on the floor at y=0 with their cube centered slightly above it.
-static glm::vec3 sPlayerPos = glm::vec3(0.0f, 0.5f, 0.0f);
+// Tunables — group together so feel-tuning is one place. Values are
+// constexpr so the compiler folds them; not currently exposed to JSON
+// because the game doesn't need that yet.
+namespace tuning
+{
+// Locomotion.
+constexpr float kPlayerMoveSpeed = 4.0f; // units / second
+constexpr float kPlayerSprintMultiplier = 1.8f;
 
-// Player facing yaw, in radians, around world-up. The character settles
-// toward the movement direction at a constant angular rate — too fast and
-// short cardinal→diagonal turns snap with no perceived rotation; too slow
-// and 180° turns feel like a tank. 9 rad/s splits the difference: 180°
-// takes ~0.35s (deliberate, weighted), 45° takes ~0.09s (still snappy
-// but reads as a rotation). Tune by feel as combat lands.
-static float sPlayerYaw = 0.0f;
-static constexpr float kPlayerTurnRate = 9.0f; // radians per second
+// Mouse-look.
+constexpr float kMouseSensitivity = 0.0025f; // radians per pixel
+constexpr float kPitchMin = -1.45f;          // ~-83 degrees
+constexpr float kPitchMax = 1.45f;           // ~+83 degrees
+
+// Player rotation toward move direction. 9 rad/s: 180° ≈ 0.35s
+// (deliberate), 45° ≈ 0.09s (snappy but reads as rotation).
+constexpr float kPlayerTurnRate = 9.0f; // radians per second
+
+// Third-person follow camera offsets.
+constexpr float kFollowDistance = 6.0f;
+constexpr float kFollowHeight = 2.5f;
+
+// Dodge — directional roll when moving, backstep when standing.
+// Roll moves further and lasts longer; backstep is short and quick.
+// Recovery locks out further dodges but allows movement again.
+constexpr float kRollDuration = 0.55f;     // seconds, roll phase
+constexpr float kRollDistance = 3.5f;      // world units traveled
+constexpr float kBackstepDuration = 0.35f; // seconds, backstep phase
+constexpr float kBackstepDistance = 2.0f;  // world units traveled
+constexpr float kDodgeRecovery = 0.20f;    // seconds, lockout after dodge
+
+// Visual tumble — full pitch rotation across the roll's duration so the
+// cube reads as "rolling forward." Backstep doesn't tumble (a hop, not
+// a roll); it only translates.
+constexpr float kRollTumbleRevolutions = 1.0f; // 1 = 360° over kRollDuration
+} // namespace tuning
+
+// Dodge state machine. Idle → Rolling/Backstepping → Recovering → Idle.
+// One enum covers both flavors; the only behavioral difference is whether
+// the cube tumbles visually. Direction and speed live on PlayerState.
+enum class DodgePhase
+{
+    Idle,
+    Rolling,    // committed: WASD locked, velocity forced to dodge_dir × speed
+    Backstep,   // committed: same, but no visual tumble; usually shorter
+    Recovering, // can move again, but Space is locked
+};
+
+struct PlayerState
+{
+    glm::vec3 pos = glm::vec3(0.0f, 0.5f, 0.0f);
+    float yaw = 0.0f; // facing yaw in radians; 0 = facing -Z
+
+    // Dodge state.
+    DodgePhase dodge_phase = DodgePhase::Idle;
+    glm::vec3 dodge_dir = glm::vec3(0.0f, 0.0f, -1.0f); // unit vector, ground plane
+    float dodge_speed = 0.0f;                           // units/second during commit
+    float dodge_timer = 0.0f;                           // seconds elapsed in current phase
+    float dodge_duration = 0.0f;                        // seconds total for current phase
+    float dodge_tumble_revs = 0.0f; // visual revolutions to apply over duration (0 = none)
+};
+
+// One global player. When this scales (multiple controllable entities, NPCs
+// using the same locomotion code), promote to ECS.
+static PlayerState sPlayer;
 
 // Camera orientation. Yaw rotates around world-up (Y), pitch tilts up/down.
-// Yaw=0 looks down -Z; positive yaw rotates clockwise looking down at the
-// scene. Pitch is clamped to avoid gimbal flip at the poles.
+// Yaw=0 looks down -Z; positive yaw rotates CCW looking down (right-handed).
+// Pitch is clamped to avoid gimbal flip at the poles.
 static float sCamYaw = 0.0f;
 static float sCamPitch = -0.25f; // start slightly looking down
 
-// Third-person follow: camera sits this far behind+above the player along
-// the camera's forward axis. Tweak by feel.
-static constexpr float kFollowDistance = 6.0f;
-static constexpr float kFollowHeight = 2.5f;
-
-// Movement / look feel constants.
-static constexpr float kPlayerMoveSpeed = 4.0f; // units / second
-static constexpr float kPlayerSprintMultiplier = 1.8f;
-static constexpr float kMouseSensitivity = 0.0025f; // radians per pixel
-static constexpr float kPitchMin = -1.45f;          // ~-83 degrees
-static constexpr float kPitchMax = 1.45f;           // ~+83 degrees
+// One-shot input edge detection. SDL's keyboard state is "is this key down
+// right now"; for actions like "dodge fires on press, not on hold" we need
+// the rising edge — was up last frame, down this frame.
+static bool sPrevSpace = false;
 
 // Window size (read at init for the projection's aspect ratio; updated on
 // resize via the engine onResize callback).
@@ -244,83 +290,176 @@ static void onWindowResize(Engine& /*engine*/, int new_w, int new_h)
 }
 
 // ---------------------------------------------------------------------------
-// Per-frame update — runs at wall-clock rate. Reads SDL keyboard + relative
-// mouse state directly; the engine doesn't need to abstract these for a
-// single-game render-callback pattern.
+// Yaw helpers
+// ---------------------------------------------------------------------------
+
+// Wrap a yaw delta into [-pi, +pi] so rotation always takes the short path.
+// Used by smooth turn-to-direction logic; if we're at 170° and target is
+// -170°, the unwrapped delta is -340° (going the long way), but the wrapped
+// delta is +20° (going the short way through 180°).
+static float wrapAngleSigned(float delta)
+{
+    while (delta > glm::pi<float>())
+        delta -= glm::two_pi<float>();
+    while (delta < -glm::pi<float>())
+        delta += glm::two_pi<float>();
+    return delta;
+}
+
+// Map a unit ground-plane vector (X, _, Z) to a yaw matching our convention:
+// yaw=0 faces -Z, positive yaw rotates CCW looking down. atan2(-x, -z) is
+// the inverse of (sin(yaw), -, -cos(yaw))-style forward-vector formulas.
+static float yawFromGroundDir(const glm::vec3& dir)
+{
+    return std::atan2(-dir.x, -dir.z);
+}
+
+// ---------------------------------------------------------------------------
+// Dodge — start, advance, finish.
+// ---------------------------------------------------------------------------
+
+// Begin a dodge. moveIntent is the player's current ground-plane movement
+// vector this frame (zero if standing still); used to decide roll vs
+// backstep and which direction. Caller is responsible for guarding against
+// already-committed dodges (dodge_phase != Idle).
+static void startDodge(PlayerState& p, const glm::vec3& moveIntent)
+{
+    const bool moving = glm::length(moveIntent) > 0.0001f;
+
+    if (moving)
+    {
+        // Roll: commit to the input direction. Player snaps to face that
+        // direction immediately (skips the smooth turn) so the roll motion
+        // and visual tumble agree.
+        p.dodge_dir = glm::normalize(moveIntent);
+        p.yaw = yawFromGroundDir(p.dodge_dir);
+        p.dodge_phase = DodgePhase::Rolling;
+        p.dodge_duration = tuning::kRollDuration;
+        p.dodge_speed = tuning::kRollDistance / tuning::kRollDuration;
+        p.dodge_tumble_revs = tuning::kRollTumbleRevolutions;
+    }
+    else
+    {
+        // Backstep: commit backward relative to current facing (Elden Ring
+        // neutral-stance behavior). Shorter, faster, no tumble.
+        const glm::vec3 facingFwd(-std::sin(p.yaw), 0.0f, -std::cos(p.yaw));
+        p.dodge_dir = -facingFwd;
+        p.dodge_phase = DodgePhase::Backstep;
+        p.dodge_duration = tuning::kBackstepDuration;
+        p.dodge_speed = tuning::kBackstepDistance / tuning::kBackstepDuration;
+        p.dodge_tumble_revs = 0.0f;
+    }
+    p.dodge_timer = 0.0f;
+}
+
+// Advance the dodge state machine by dt. Updates position when in Rolling
+// or Backstep, transitions to Recovering at the end of the active phase,
+// and back to Idle after the recovery window. Returns true if the player
+// is still committed (i.e. WASD should be ignored this frame).
+static bool advanceDodge(PlayerState& p, float dt)
+{
+    if (p.dodge_phase == DodgePhase::Idle)
+        return false;
+
+    p.dodge_timer += dt;
+
+    if (p.dodge_phase == DodgePhase::Rolling || p.dodge_phase == DodgePhase::Backstep)
+    {
+        p.pos += p.dodge_dir * p.dodge_speed * dt;
+        if (p.dodge_timer >= p.dodge_duration)
+        {
+            p.dodge_phase = DodgePhase::Recovering;
+            p.dodge_duration = tuning::kDodgeRecovery;
+            p.dodge_timer = 0.0f;
+            return false; // movement allowed in recovery
+        }
+        return true;
+    }
+
+    // Recovering — movement allowed; we just count down the lockout window.
+    if (p.dodge_timer >= p.dodge_duration)
+    {
+        p.dodge_phase = DodgePhase::Idle;
+        p.dodge_timer = 0.0f;
+        p.dodge_duration = 0.0f;
+        p.dodge_tumble_revs = 0.0f;
+    }
+    return false;
+}
+
+// ---------------------------------------------------------------------------
+// Per-frame update — runs at wall-clock rate.
 // ---------------------------------------------------------------------------
 
 static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
 {
     const float dt = static_cast<float>(dt_d);
 
-    // Title bar — game name + FPS. Read the engine's EMA-smoothed frame
-    // time so the number doesn't flicker.
+    // Title bar — game name + FPS. EMA-smoothed so the number doesn't flicker.
     const int fps = static_cast<int>(std::lround(1.0 / engine.lastFrameTime()));
     engine.setWindowTitle("Selva Oscura  |  FPS " + std::to_string(fps));
 
-    // Mouse look. SDL_GetRelativeMouseState returns deltas accumulated since
-    // the last call; we drain it once per frame here.
+    // Mouse look. SDL_GetRelativeMouseState drains accumulated deltas.
+    // Mouse-left rotates the camera left (Souls/Elden Ring/FPS convention).
     int mdx = 0;
     int mdy = 0;
     SDL_GetRelativeMouseState(&mdx, &mdy);
-    // Mouse-left should rotate the camera left (world appears to rotate
-    // right) — the Souls/Elden Ring/FPS convention. Our yaw is "rotate
-    // counterclockwise looking down" so a left mouse delta (negative mdx)
-    // needs to *decrease* yaw, hence the subtraction.
-    sCamYaw -= static_cast<float>(mdx) * kMouseSensitivity;
-    sCamPitch -= static_cast<float>(mdy) * kMouseSensitivity;
-    if (sCamPitch < kPitchMin)
-        sCamPitch = kPitchMin;
-    if (sCamPitch > kPitchMax)
-        sCamPitch = kPitchMax;
+    sCamYaw -= static_cast<float>(mdx) * tuning::kMouseSensitivity;
+    sCamPitch -= static_cast<float>(mdy) * tuning::kMouseSensitivity;
+    if (sCamPitch < tuning::kPitchMin)
+        sCamPitch = tuning::kPitchMin;
+    if (sCamPitch > tuning::kPitchMax)
+        sCamPitch = tuning::kPitchMax;
 
-    // WASD locomotion in the camera's horizontal plane (yaw only — pitch
-    // doesn't affect ground-plane movement, which is what a Souls-style
-    // controller wants). Forward axis is -Z rotated by yaw; right axis is
-    // perpendicular in the XZ plane.
     const Uint8* keys = SDL_GetKeyboardState(nullptr);
 
     // Quit on Escape — handy until there's a pause menu.
     if (keys[SDL_SCANCODE_ESCAPE])
         engine.requestQuit();
 
+    // Compute camera-relative movement intent every frame; both walking and
+    // dodge-init read it. Forward axis is -Z rotated by camera yaw; right
+    // axis is perpendicular in the XZ plane.
     glm::vec3 moveIntent(0.0f);
-    const glm::vec3 fwd(-std::sin(sCamYaw), 0.0f, -std::cos(sCamYaw));
-    const glm::vec3 right(std::cos(sCamYaw), 0.0f, -std::sin(sCamYaw));
+    const glm::vec3 camFwd(-std::sin(sCamYaw), 0.0f, -std::cos(sCamYaw));
+    const glm::vec3 camRight(std::cos(sCamYaw), 0.0f, -std::sin(sCamYaw));
     if (keys[SDL_SCANCODE_W])
-        moveIntent += fwd;
+        moveIntent += camFwd;
     if (keys[SDL_SCANCODE_S])
-        moveIntent -= fwd;
+        moveIntent -= camFwd;
     if (keys[SDL_SCANCODE_D])
-        moveIntent += right;
+        moveIntent += camRight;
     if (keys[SDL_SCANCODE_A])
-        moveIntent -= right;
+        moveIntent -= camRight;
 
-    if (glm::length(moveIntent) > 0.0001f)
+    // One-shot Space: rising edge → start dodge, but only from Idle (cannot
+    // dodge during Rolling, Backstep, or Recovering — Souls-feel rule).
+    const bool spaceNow = keys[SDL_SCANCODE_SPACE] != 0;
+    const bool spacePressed = spaceNow && !sPrevSpace;
+    sPrevSpace = spaceNow;
+    if (spacePressed && sPlayer.dodge_phase == DodgePhase::Idle)
+        startDodge(sPlayer, moveIntent);
+
+    // Advance dodge state machine. While committed (Rolling/Backstep) WASD
+    // is locked out; in Recovering and Idle it's honored.
+    const bool dodgeCommitted = advanceDodge(sPlayer, dt);
+
+    if (!dodgeCommitted && glm::length(moveIntent) > 0.0001f)
     {
         moveIntent = glm::normalize(moveIntent);
-        const float speed =
-            kPlayerMoveSpeed * (keys[SDL_SCANCODE_LSHIFT] ? kPlayerSprintMultiplier : 1.0f);
-        sPlayerPos += moveIntent * speed * dt;
+        const float speed = tuning::kPlayerMoveSpeed *
+                            (keys[SDL_SCANCODE_LSHIFT] ? tuning::kPlayerSprintMultiplier : 1.0f);
+        sPlayer.pos += moveIntent * speed * dt;
 
-        // Rotate the player toward the movement direction. Match yaw=0 to
-        // "facing -Z" (the camera's default forward), with positive yaw
-        // rotating CCW around world-up Y (OpenGL right-handed convention,
-        // matching glm::rotate(angle, vec3(0,1,0))). atan2(-x, -z) maps
-        // moveIntent=(0,0,-1) to 0, and (1,0,0) (right) to -pi/2.
-        const float targetYaw = std::atan2(-moveIntent.x, -moveIntent.z);
-        float delta = targetYaw - sPlayerYaw;
-        while (delta > glm::pi<float>())
-            delta -= glm::two_pi<float>();
-        while (delta < -glm::pi<float>())
-            delta += glm::two_pi<float>();
-
-        const float maxStep = kPlayerTurnRate * dt;
+        // Smoothly rotate the player toward the movement direction.
+        const float targetYaw = yawFromGroundDir(moveIntent);
+        float delta = wrapAngleSigned(targetYaw - sPlayer.yaw);
+        const float maxStep = tuning::kPlayerTurnRate * dt;
         if (delta > maxStep)
             delta = maxStep;
         else if (delta < -maxStep)
             delta = -maxStep;
-        sPlayerYaw += delta;
+        sPlayer.yaw += delta;
     }
 }
 
@@ -344,9 +483,9 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
     // by kFollowHeight, looking at the player's chest.
     const glm::vec3 lookFwd(std::cos(sCamPitch) * -std::sin(sCamYaw), std::sin(sCamPitch),
                             std::cos(sCamPitch) * -std::cos(sCamYaw));
-    const glm::vec3 camPos =
-        sPlayerPos - lookFwd * kFollowDistance + glm::vec3(0.0f, kFollowHeight, 0.0f);
-    const glm::vec3 lookAt = sPlayerPos + glm::vec3(0.0f, 0.5f, 0.0f);
+    const glm::vec3 camPos = sPlayer.pos - lookFwd * tuning::kFollowDistance +
+                             glm::vec3(0.0f, tuning::kFollowHeight, 0.0f);
+    const glm::vec3 lookAt = sPlayer.pos + glm::vec3(0.0f, 0.5f, 0.0f);
     const glm::mat4 view = glm::lookAt(camPos, lookAt, glm::vec3(0.0f, 1.0f, 0.0f));
 
     const float aspect =
@@ -372,23 +511,31 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
     }
 
     // 3. Player — smaller, slightly brighter cube at the player's position,
-    //    rotated to face the last movement direction. Tint kept just above
-    //    1.0 so the per-corner gradient survives; cranking it higher
-    //    saturates against the clamp and the cube reads as a flat white
-    //    card. Real lighting will replace this hack.
-    const glm::mat4 playerBaseModel = glm::rotate(glm::translate(glm::mat4(1.0f), sPlayerPos),
-                                                  sPlayerYaw, glm::vec3(0.0f, 1.0f, 0.0f));
+    //    rotated to face the last movement direction. During a roll, an
+    //    additional pitch rotation tumbles the cube forward across the
+    //    roll's duration so the action reads visually. Backstep doesn't
+    //    tumble (a hop, not a roll) — its tumble_revs is 0.
+    //    Tint kept just above 1.0 so the per-corner gradient survives.
+    glm::mat4 playerBaseModel = glm::rotate(glm::translate(glm::mat4(1.0f), sPlayer.pos),
+                                            sPlayer.yaw, glm::vec3(0.0f, 1.0f, 0.0f));
+    if (sPlayer.dodge_phase == DodgePhase::Rolling && sPlayer.dodge_tumble_revs > 0.0f)
+    {
+        const float t =
+            sPlayer.dodge_duration > 0.0f ? sPlayer.dodge_timer / sPlayer.dodge_duration : 0.0f;
+        const float tumbleAngle = sPlayer.dodge_tumble_revs * glm::two_pi<float>() * t;
+        // Rotate around player-local +X (right axis, after yaw) so the
+        // tumble axis matches the roll direction (forward = -Z in local).
+        playerBaseModel = glm::rotate(playerBaseModel, tumbleAngle, glm::vec3(1.0f, 0.0f, 0.0f));
+    }
+
     {
         const glm::mat4 model = glm::scale(playerBaseModel, glm::vec3(0.6f, 1.0f, 0.6f));
         drawObject(sCubeVao, 36, model, 1.1f);
     }
 
     // 3b. Player face mark — a tiny dark cube poking out of the player's
-    //     forward face (the -Z side in player-local space, in front of
-    //     player-yaw rotation). Without this it's impossible to tell
-    //     which way the player is "facing" when they stop moving.
-    //     Positioned at local z = -0.32, just outside the player's scaled
-    //     forward surface (at -0.30), so it doesn't z-fight.
+    //     forward face. Lives in playerBaseModel space, so it tumbles
+    //     with the body during a roll.
     {
         glm::mat4 model = glm::translate(playerBaseModel, glm::vec3(0.0f, 0.10f, -0.32f));
         model = glm::scale(model, glm::vec3(0.10f, 0.10f, 0.04f));
@@ -411,9 +558,10 @@ int main(int /*argc*/, char* /*argv*/[])
     // visual identity lands.
     engine.setMSAA(4);
 
-    // Borderless fullscreen at the desktop's native resolution. The
-    // 1280x720 args below are ignored when fullscreen is on.
-    engine.setFullscreen(true);
+    // Maximized window — full monitor area but keeps title bar / resize
+    // handles so the dev can grab and adjust during iteration. The
+    // 1280x720 args become the restore size when un-maximized.
+    engine.setWindowMode(Engine::WindowMode::Maximized);
 
     if (!engine.init("Selva Oscura", 1280, 720))
     {

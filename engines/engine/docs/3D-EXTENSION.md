@@ -352,6 +352,110 @@ Strong defaults below. Re-evaluate each at decision time.
 
 ---
 
+## 5b. Animation strategy — hybrid: procedural now, skeletal later
+
+Locked-in 2026-05-05. Selva Oscura ships with **procedural animation as the
+implementation today** and **skeletal animation as a future driver behind
+the same interface**. Both paths plug into one `AnimationDriver`
+abstraction; combat / movement / interaction code targets the abstraction
+and never reaches into either implementation directly. When skeletal
+lands, the dodge / attack / parry / hit-react state machines stay
+unchanged — only the per-state driver implementation swaps.
+
+### Why hybrid (not pure skeletal now)
+
+Three reasons, in order of how much they matter:
+
+1. **We don't yet know what the animation system needs to support.**
+   Combat will surface real requirements as it lands: layered animation
+   (upper-body swing while lower-body walks), animation-driven hitbox
+   placement, cancel windows, blend-out interruptions when a swing eats a
+   parry. Building skeletal infrastructure before those requirements are
+   visible bakes assumptions that combat will then have to fight. The
+   abstraction shape is informed by 5–10 concrete users, not by upfront
+   prediction.
+
+2. **Procedural is not strictly worse for Selva Oscura's visual register.**
+   Souls is skeletal because Souls is hyperreal. Selva Oscura's
+   1-bit/woodcut aesthetic doesn't demand realistic motion-captured human
+   movement; a more deliberate, slightly-stylized procedural feel may be
+   *more* in keeping with the visual register (Doré woodcuts don't
+   animate; their stillness is part of their power). Reference points:
+   *Disco Elysium* (zero character animation), *Untitled Goose Game*
+   (procedural body + IK), *Genesis Noir* (entirely procedural).
+
+3. **Skeletal animation has a real asset pipeline cost that gates content
+   velocity.** Mesh modeling, rigging, weight painting, glTF export,
+   ozz conversion, retargeting from Mixamo or hand-keyframed animation —
+   every new enemy, weapon, or move expands this pipeline. For a solo
+   dev, this is the thing that kills indie projects after combat starts
+   working: mechanics are great but content can't keep up. Procedural
+   has zero asset pipeline; new enemy = new state machine function.
+
+### When skeletal lands
+
+The migration is not a question of *if*, only *when* — gated on:
+
+- The `AnimationDriver` abstraction having ~5–10 concrete procedural
+  users (dodge, light attack, heavy attack, parry, riposte, hit reaction,
+  death, ambient idle drift, basic locomotion). At that point the API is
+  battle-tested.
+- A specific creative need that procedural genuinely cannot deliver
+  (e.g. an intricate finishing-move animation that requires per-bone
+  keyframing, or a boss whose visual character is inseparable from
+  motion-captured movement).
+- Bandwidth to pay the asset-pipeline cost without stalling the rest of
+  the project.
+
+It's possible Selva Oscura ships entirely procedural. That's a fine
+outcome if the creative result is right. The hybrid plan does not
+*commit* to skeletal — it keeps the door open and the architecture
+clean for it.
+
+### What the abstraction looks like
+
+`AnimationDriver` is a small interface a combat / movement state machine
+can target without caring about implementation:
+
+- **Inputs**: a state identifier (e.g. `AnimState::DodgeRoll`,
+  `AnimState::LightAttack1`), a normalized phase progress in [0, 1],
+  and any per-state parameters (roll direction, attack tier, etc.).
+- **Outputs per frame**: a transform offset to apply to the entity
+  (translation, rotation, scale offsets relative to the entity's current
+  position/yaw), and optional bone overrides (no-op for procedural
+  drivers; populated by the skeletal driver).
+
+The procedural driver implementation is a switch over `AnimState` that
+computes hop curves, ease-out velocity, tumble rotations, etc. directly
+in code. The skeletal driver implementation samples ozz clips, blends
+them per the same `AnimState` mapping, and writes a bone palette.
+
+### Doctrine — what to do when adding a new combat mechanic
+
+1. Define the `AnimState` for it (e.g. `LightAttack2`).
+2. Wire the gameplay logic (state machine: when does it start, how long
+   does it last, when can it be cancelled, what hitbox does it produce
+   and when).
+3. Implement the procedural driver function for that `AnimState`.
+4. Move on. Do not gate combat work on having a skeletal animation for
+   the new mechanic.
+
+When skeletal eventually lands, every existing `AnimState` gets a
+parallel skeletal implementation; gameplay logic stays put.
+
+### Re-evaluation triggers (animation-specific)
+
+- A specific mechanic genuinely cannot be expressed procedurally without
+  a degenerate amount of code → that's the signal skeletal is ready to
+  start, not before.
+- Procedural drivers grow past ~500 lines of state-by-state curves and
+  start feeling like spaghetti → time to consider tooling (clip
+  authoring in code, a simple keyframe editor, or skeletal proper).
+- Selva Oscura's visual identity converges on something where character
+  motion personality is the headline feature → skeletal earns its cost.
+
+---
+
 ## 6. Order of operations
 
 Each milestone leaves the engine **fully working for prison-break-game**. No

@@ -5,11 +5,6 @@ something is identified as architecturally wrong.
 
 ---
 
-- **TileMapLoader belongs in game/, not engine/.** `engine/src/TileMapLoader.cpp` contains
-  room placement, corridor carving, and the full procgen pipeline -- all game-specific logic.
-  Engine should only keep `TileMap` (data struct) and `TileMapRenderer` (rendering). Move
-  `TileMapLoader` to `game/` and expose only the data structures from engine.
-
 - **WeaponSpriteSystem yOffset assumes colliders do NOT scale with character.** The
   `wielderYOffset` math multiplies `sprite.src_h * wielderScale` but subtracts the raw
   `collider.height` (no scale). This is correct today because colliders are fixed in world
@@ -19,8 +14,33 @@ something is identified as architecturally wrong.
   from the hand at non-1.0 scales. Revisit `src/systems/WeaponSpriteSystem.cpp`
   `wielderYOffset` calculation if collider scaling is ever introduced.
 
-- **Engine tests depend on prison-escape-game's tile config.** `engines/engine/tests/tilemap_test.cpp`
-  loads `config/tilemap.json` and `config/rooms` from the game's directory (its WORKING_DIRECTORY
-  in CMake points at `games/prison-escape-game/`). Engine tests should be self-contained; either
-  inline a fixture tilemap into the test, or extract a minimal test fixture into
-  `engines/engine/tests/fixtures/`. Cross-referenced by the engine/game boundary doctrine.
+- **Pre-existing cppcheck failures on master** (introduced before CI's cppcheck step
+  was added; the step is currently `continue-on-error: true`). Examples:
+  - `main.cpp:77` — cppcheck flags `throw;` in the `terminateHandler` as
+    `rethrowNoCurrentException`. The pattern is correct in context (it runs from
+    `std::set_terminate` where `std::current_exception()` *is* set), but cppcheck's
+    heuristic doesn't know that. Suppress with a `// cppcheck-suppress
+    rethrowNoCurrentException` comment, or refactor to use `std::current_exception()`
+    explicitly.
+  - `ladder_test.cpp:122` — `style: knownConditionTrueFalse` on
+    `REQUIRE(ws.current_wave == 1)` after the test sets `ws.current_wave = 1`. Tests
+    are meant to assert a known value. Either `// cppcheck-suppress
+    knownConditionTrueFalse` or restructure the test setup.
+  - `projectile_test.cpp:221` — `style: constVariableReference` on `auto& inv`. The
+    inventory is read-only after construction; declare `const auto& inv`.
+  - Engine pre-existing style hits in `Engine.cpp`, `FontManager.cpp`,
+    `CollisionSystem.cpp`, `TileMapLoader.cpp` (now in this game), `FlowFieldSystem.cpp`.
+    Detail: see `cppcheck --project=build/compile_commands.json --enable=all` output.
+
+  Fix at the root and flip the CI job to required (remove `continue-on-error: true`
+  in `.github/workflows/ci.yml`).
+
+- **Pre-existing lizard complexity warnings on master.** The CI lizard step runs with
+  CCN 15 / 250 lines / 8 parameters thresholds. Many existing functions exceed these:
+  `CombatSystem::update` (CCN 193, 596 NLOC) is the worst offender. Each warning is its
+  own refactor target. The CI job is `continue-on-error: true` until the pile is
+  cleaned. Flip to required when the count is zero.
+
+  Decomposition order should be driven by *which functions get touched most* (by
+  diff frequency in `git log --follow`), not by which are biggest — refactoring a
+  600-line function nobody touches gains nothing.

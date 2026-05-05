@@ -149,3 +149,135 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
+
+  # -----------------------------------------------------------------------
+  # 3. STATIC ANALYSIS  (cppcheck)
+  #    Runs against the project compile_commands.json. Restricted to our
+  #    source trees; suppresses noise in third-party deps and a small set
+  #    of pedantic checks we don't want enforced.
+  #
+  #    NOTE: continue-on-error while the pre-existing pile is cleaned up.
+  #    Flip to required (remove continue-on-error) once master is clean.
+  #    Tracking issue: see engines/engine/docs/TECH-DEBT.md.
+  # -----------------------------------------------------------------------
+  cppcheck:
+    name: Static analysis (cppcheck)
+    runs-on: ubuntu-latest
+    needs: build  # reuses the build cache so compile_commands.json exists
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build \
+            cppcheck \
+            libsdl2-dev libgl1-mesa-dev
+
+      - name: Restore build cache
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: ${{ runner.os }}-build-${{ hashFiles('cmake/**', 'CMakeLists.txt', 'engines/**', 'games/**', 'tests/**') }}
+          restore-keys: |
+            ${{ runner.os }}-build-
+
+      - name: Configure (if cache miss)
+        run: |
+          if [ ! -f build/compile_commands.json ]; then
+            cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+          fi
+
+      - name: cppcheck
+        run: |
+          cppcheck --project=build/compile_commands.json \
+            --enable=all \
+            --suppress=missingIncludeSystem \
+            --suppress=unusedFunction \
+            --suppress=useStlAlgorithm \
+            --file-filter='engines/engine/*' \
+            --file-filter='games/prison-escape-game/*' \
+            --file-filter='games/selva-oscura/*' \
+            --error-exitcode=1 \
+            --quiet
+
+  # -----------------------------------------------------------------------
+  # 4. COMPLEXITY  (lizard)
+  #    Fails on functions over CCN 15, length 250, or 8 parameters.
+  #    Same thresholds as the local pre-push pipeline.
+  #
+  #    NOTE: continue-on-error while the pre-existing pile is cleaned up
+  #    (CombatSystem::update at CCN 193 is a multi-day refactor on its
+  #    own). Flip to required once master is clean.
+  # -----------------------------------------------------------------------
+  lizard:
+    name: Complexity check (lizard)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install lizard
+        run: pip install lizard
+
+      - name: Run lizard
+        run: |
+          lizard \
+            engines/engine/ \
+            games/prison-escape-game/src/ \
+            games/prison-escape-game/include/ \
+            games/selva-oscura/src/ \
+            -C 15 -L 250 -a 8 -w
+
+  # -----------------------------------------------------------------------
+  # 5. SANITIZED TEST RUN  (ASan + UBSan)
+  #    Builds a Debug build with -fsanitize=address,undefined and runs the
+  #    test suite. Catches use-after-free, double-free, buffer overflow,
+  #    signed overflow, null deref, misaligned access, etc. — at the line
+  #    of the bug, with a stack trace.
+  #
+  #    Uses a separate build directory (no cache key collision with the
+  #    non-sanitized build job).
+  # -----------------------------------------------------------------------
+  sanitized-tests:
+    name: Tests under sanitizers (ASan + UBSan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build \
+            clang \
+            libsdl2-dev libgl1-mesa-dev
+
+      - name: Cache sanitized build directory
+        uses: actions/cache@v4
+        with:
+          path: build-san
+          key: ${{ runner.os }}-build-san-${{ hashFiles('cmake/**', 'CMakeLists.txt', 'engines/**', 'games/**', 'tests/**') }}
+          restore-keys: |
+            ${{ runner.os }}-build-san-
+
+      - name: Configure (sanitized)
+        run: |
+          cmake -S . -B build-san -G Ninja \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DENABLE_SANITIZERS=ON
+
+      - name: Build (sanitized)
+        run: cmake --build build-san
+
+      - name: Test (sanitized)
+        env:
+          # Halt at the first error and print a full stack trace; ASan
+          # default would abort silently in some configs.
+          ASAN_OPTIONS: halt_on_error=1:abort_on_error=1:print_stacktrace=1
+          UBSAN_OPTIONS: halt_on_error=1:abort_on_error=1:print_stacktrace=1
+        run: ctest --test-dir build-san --output-on-failure

@@ -48,8 +48,17 @@ bool Engine::init(const char* title, int width, int height)
     }
 
     Uint32 window_flags = SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE;
-    if (fullscreen)
+    switch (window_mode)
+    {
+    case WindowMode::Windowed:
+        break;
+    case WindowMode::Maximized:
+        window_flags |= SDL_WINDOW_MAXIMIZED;
+        break;
+    case WindowMode::BorderlessFullscreen:
         window_flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+        break;
+    }
 
     window = SDL_CreateWindow(title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height,
                               window_flags);
