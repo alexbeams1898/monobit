@@ -205,6 +205,15 @@ static void shutdownGeometry()
 // stands on the floor at y=0 with their cube centered slightly above it.
 static glm::vec3 sPlayerPos = glm::vec3(0.0f, 0.5f, 0.0f);
 
+// Player facing yaw, in radians, around world-up. The character settles
+// toward the movement direction at a constant angular rate — too fast and
+// short cardinal→diagonal turns snap with no perceived rotation; too slow
+// and 180° turns feel like a tank. 9 rad/s splits the difference: 180°
+// takes ~0.35s (deliberate, weighted), 45° takes ~0.09s (still snappy
+// but reads as a rotation). Tune by feel as combat lands.
+static float sPlayerYaw = 0.0f;
+static constexpr float kPlayerTurnRate = 9.0f; // radians per second
+
 // Camera orientation. Yaw rotates around world-up (Y), pitch tilts up/down.
 // Yaw=0 looks down -Z; positive yaw rotates clockwise looking down at the
 // scene. Pitch is clamped to avoid gimbal flip at the poles.
@@ -293,6 +302,25 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         const float speed =
             kPlayerMoveSpeed * (keys[SDL_SCANCODE_LSHIFT] ? kPlayerSprintMultiplier : 1.0f);
         sPlayerPos += moveIntent * speed * dt;
+
+        // Rotate the player toward the movement direction. Match yaw=0 to
+        // "facing -Z" (the camera's default forward), with positive yaw
+        // rotating CCW around world-up Y (OpenGL right-handed convention,
+        // matching glm::rotate(angle, vec3(0,1,0))). atan2(-x, -z) maps
+        // moveIntent=(0,0,-1) to 0, and (1,0,0) (right) to -pi/2.
+        const float targetYaw = std::atan2(-moveIntent.x, -moveIntent.z);
+        float delta = targetYaw - sPlayerYaw;
+        while (delta > glm::pi<float>())
+            delta -= glm::two_pi<float>();
+        while (delta < -glm::pi<float>())
+            delta += glm::two_pi<float>();
+
+        const float maxStep = kPlayerTurnRate * dt;
+        if (delta > maxStep)
+            delta = maxStep;
+        else if (delta < -maxStep)
+            delta = -maxStep;
+        sPlayerYaw += delta;
     }
 }
 
@@ -343,14 +371,28 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
         drawObject(sCubeVao, 36, model, 0.7f);
     }
 
-    // 3. Player — smaller, slightly brighter cube at the player's position.
-    //    Tint is kept just above 1.0 so the per-corner gradient survives;
-    //    cranking it higher saturates against the clamp and the cube reads
-    //    as a flat white card. Real lighting will replace this hack.
+    // 3. Player — smaller, slightly brighter cube at the player's position,
+    //    rotated to face the last movement direction. Tint kept just above
+    //    1.0 so the per-corner gradient survives; cranking it higher
+    //    saturates against the clamp and the cube reads as a flat white
+    //    card. Real lighting will replace this hack.
+    const glm::mat4 playerBaseModel = glm::rotate(glm::translate(glm::mat4(1.0f), sPlayerPos),
+                                                  sPlayerYaw, glm::vec3(0.0f, 1.0f, 0.0f));
     {
-        glm::mat4 model = glm::translate(glm::mat4(1.0f), sPlayerPos);
-        model = glm::scale(model, glm::vec3(0.6f, 1.0f, 0.6f));
+        const glm::mat4 model = glm::scale(playerBaseModel, glm::vec3(0.6f, 1.0f, 0.6f));
         drawObject(sCubeVao, 36, model, 1.1f);
+    }
+
+    // 3b. Player face mark — a tiny dark cube poking out of the player's
+    //     forward face (the -Z side in player-local space, in front of
+    //     player-yaw rotation). Without this it's impossible to tell
+    //     which way the player is "facing" when they stop moving.
+    //     Positioned at local z = -0.32, just outside the player's scaled
+    //     forward surface (at -0.30), so it doesn't z-fight.
+    {
+        glm::mat4 model = glm::translate(playerBaseModel, glm::vec3(0.0f, 0.10f, -0.32f));
+        model = glm::scale(model, glm::vec3(0.10f, 0.10f, 0.04f));
+        drawObject(sCubeVao, 36, model, 0.25f);
     }
 
     glBindVertexArray(0);
