@@ -3,7 +3,6 @@
 #include "ecs/Components.h"
 #include "gl/ShaderUtils.h"
 
-#include <SDL.h>
 #include <algorithm>
 #include <cmath>
 #include <glad/glad.h>
@@ -388,81 +387,6 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
             glUniform4f(sLocTint, e.tr, e.tg, e.tb, e.ta);
             glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
         }
-    }
-
-    // Crosshair -- lerps between mouse position and aim override.
-    {
-        int mx = 0, my = 0;
-        SDL_GetMouseState(&mx, &my);
-        const float screenHalfW = static_cast<float>(sWindowW) * 0.5f;
-        const float screenHalfH = static_cast<float>(sWindowH) * 0.5f;
-        float crossX = snapCamX + (static_cast<float>(mx) - screenHalfW) / zoom;
-        float crossY = snapCamY + (static_cast<float>(my) - screenHalfH) / zoom;
-
-        for (auto [e, f] : em.registry().view<FacingDirection>().each())
-        {
-            if (f.aim_override_blend > 0.0f)
-            {
-                const float b = f.aim_override_blend;
-                crossX = crossX + (f.aim_override_x - crossX) * b;
-                crossY = crossY + (f.aim_override_y - crossY) * b;
-                break;
-            }
-        }
-
-        static constexpr float kArmLen = 6.0f;
-        static constexpr float kThick = 2.0f;
-        static constexpr float kGap = 2.0f;
-
-        glBindTexture(GL_TEXTURE_2D, sWhiteTex);
-        glUniform4f(sLocSrcRect, 0.0f, 0.0f, 1.0f, 1.0f);
-        glUniform4f(sLocTint, 1.0f, 1.0f, 1.0f, 0.8f);
-
-        float cModel[16];
-        engine::gl::buildModel(cModel, crossX - kGap - kArmLen, crossY - kThick * 0.5f, kArmLen,
-                               kThick);
-        glUniformMatrix4fv(sLocModel, 1, GL_FALSE, cModel);
-        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-        engine::gl::buildModel(cModel, crossX + kGap, crossY - kThick * 0.5f, kArmLen, kThick);
-        glUniformMatrix4fv(sLocModel, 1, GL_FALSE, cModel);
-        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-        engine::gl::buildModel(cModel, crossX - kThick * 0.5f, crossY - kGap - kArmLen, kThick,
-                               kArmLen);
-        glUniformMatrix4fv(sLocModel, 1, GL_FALSE, cModel);
-        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-        engine::gl::buildModel(cModel, crossX - kThick * 0.5f, crossY + kGap, kThick, kArmLen);
-        glUniformMatrix4fv(sLocModel, 1, GL_FALSE, cModel);
-        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-    }
-
-    // Facing dot
-    static constexpr float kDotSize = 6.0f;
-    static constexpr float kDotOffset = 10.0f;
-
-    glBindTexture(GL_TEXTURE_2D, sWhiteTex);
-    glUniform4f(sLocSrcRect, 0.0f, 0.0f, 1.0f, 1.0f);
-    glUniform4f(sLocTint, 0.0f, 0.0f, 0.0f, 1.0f);
-
-    for (auto [entity, transform, facing] : em.registry().view<Transform, FacingDirection>().each())
-    {
-        if (em.registry().all_of<Animation>(entity) || !em.registry().all_of<Sprite>(entity))
-            continue;
-        if (facing.aim_override_blend > 0.5f)
-            continue;
-        float anchorX = std::round(transform.x);
-        float anchorY = std::round(transform.y);
-        if (const auto* prev = em.registry().try_get<PreviousTransform>(entity))
-        {
-            anchorX = std::round(prev->x + (transform.x - prev->x) * alpha);
-            anchorY = std::round(prev->y + (transform.y - prev->y) * alpha);
-        }
-
-        const float dotX = std::round(anchorX + facing.render_dx * kDotOffset) - kDotSize * 0.5f;
-        const float dotY = std::round(anchorY + facing.render_dy * kDotOffset) - kDotSize * 0.5f;
-        float model[16];
-        engine::gl::buildModel(model, dotX, dotY, kDotSize, kDotSize);
-        glUniformMatrix4fv(sLocModel, 1, GL_FALSE, model);
-        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
     }
 
     glBindVertexArray(0);

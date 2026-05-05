@@ -37,3 +37,4 @@ enable_testing()
 
 add_subdirectory(engine)
 add_subdirectory(game)
+add_subdirectory(game-selva-oscura)

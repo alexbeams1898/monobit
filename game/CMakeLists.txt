@@ -29,6 +29,8 @@ add_library(game-systems STATIC
     src/systems/WeaponSpriteSystem.cpp
     src/systems/WeaponXPSystem.cpp
     src/systems/NotificationSystem.cpp
+    src/renderers/CrosshairRenderer.cpp
+    src/renderers/FacingDotRenderer.cpp
     src/renderers/HudRenderer.cpp
     src/renderers/InteractionPromptRenderer.cpp
     src/renderers/ItemStatRenderer.cpp

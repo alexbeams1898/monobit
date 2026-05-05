@@ -46,7 +46,9 @@
 // UI screens / renderers.
 #include "renderers/AIDebugOverlay.h"
 #include "renderers/AIRecorder.h"
+#include "renderers/CrosshairRenderer.h"
 #include "renderers/DebugOverlay.h"
+#include "renderers/FacingDotRenderer.h"
 #include "renderers/HudRenderer.h"
 #include "renderers/InteractionPromptRenderer.h"
 #include "screens/CharCreateScreen.h"
@@ -1123,6 +1125,23 @@ void gameRenderUI(Engine& engine, EntityManager& em)
     const bool showCursor = (gs.phase != GameState::Phase::Playing) ||
                             em.registry().ctx().get<UIState>().isScreenOpen();
     SDL_ShowCursor(showCursor ? SDL_ENABLE : SDL_DISABLE);
+
+    // Crosshair + facing-dot: always-on overlays. Used to live in engine
+    // RenderSystem; moved here so the engine has no game-specific draw paths.
+    float camX = 0.0f;
+    float camY = 0.0f;
+    for (auto [entity, camera] : em.registry().view<Camera>().each())
+    {
+        if (camera.active)
+        {
+            camX = camera.x + camera.offset_x;
+            camY = camera.y + camera.offset_y;
+            break;
+        }
+    }
+    const float zoom = engine.cameraZoom();
+    CrosshairRenderer::render(em, ww, wh, camX, camY, zoom);
+    FacingDotRenderer::render(em, ww, wh, camX, camY, zoom);
 
     switch (gs.phase)
     {
