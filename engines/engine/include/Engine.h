@@ -78,6 +78,16 @@ class Engine
         return camera_zoom;
     }
 
+    // Background color used to clear the framebuffer each frame. Components are
+    // 0..1. Defaults to dark grey; games override at startup if they want a
+    // different palette base.
+    void setClearColor(float r, float g, float b)
+    {
+        clear_r = r;
+        clear_g = g;
+        clear_b = b;
+    }
+
     // EMA-smoothed frame time for FPS calculation.
     double lastFrameTime() const
     {
@@ -136,4 +146,7 @@ class Engine
     RenderUIFn render_ui = nullptr;
     float camera_zoom = 1.0f;
     bool timing_reset_pending = false;
+    float clear_r = 0.1f;
+    float clear_g = 0.1f;
+    float clear_b = 0.1f;
 };

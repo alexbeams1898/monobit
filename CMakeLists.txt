@@ -41,3 +41,4 @@ enable_testing()
 
 add_subdirectory(engines/engine)
 add_subdirectory(games/prison-escape-game)
+add_subdirectory(games/selva-oscura)

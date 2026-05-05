@@ -1,0 +1,14 @@
+# Release configuration for selva-oscura.
+# Read by .github/workflows/release.yml when a PR with branch prefix
+# <bump>/selva-oscura/<issue>-<desc> merges to master.
+
+# CMake target name for the executable.
+cmake_target: selva-oscura
+
+# Public-facing artifact name.
+artifact_prefix: selva-oscura
+
+# Public-facing distribution repo. Empty string skips the mirror step.
+# Selva Oscura has no public release repo yet; populate this when one exists
+# (e.g. alexbeams1898/selva-oscura-releases).
+public_repo: ""
