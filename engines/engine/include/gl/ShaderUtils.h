@@ -8,6 +8,10 @@ namespace engine::gl
 // Compile a single shader (vertex or fragment). Logs errors to stderr.
 GLuint compileShader(GLenum type, const char* src);
 
+// Compile vertex + fragment shaders and link them into a program. Returns the
+// program ID, or 0 if any stage failed (compile or link). Logs errors to stderr.
+GLuint compileProgram(const char* vert_src, const char* frag_src);
+
 // Build a 4x4 orthographic projection matrix (column-major, OpenGL convention).
 void buildOrtho(float mat[16], float left, float right, float bottom, float top);
 
