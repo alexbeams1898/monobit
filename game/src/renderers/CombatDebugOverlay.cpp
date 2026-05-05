@@ -19,21 +19,25 @@ constexpr Color kHurtbox{0.2f, 0.9f, 0.3f, 1.0f}; // green
 constexpr Color kPushbox{0.95f, 0.85f, 0.2f, 1.0f}; // yellow
 constexpr Color kHitbox{1.0f, 0.2f, 0.2f, 1.0f};  // red
 
-// Draw a single collision shape (world-space positioned already). `tx, ty`
-// is the world anchor for local-space shapes (hurtboxes relative to entity
-// transform); pass (0, 0) when the shape is already in world space.
-void drawShape(const CollisionShape& s, float tx, float ty, const Color& color)
+// Draw a single collision shape. `tx, ty` is the entity's world Transform
+// position; `scale` is the Transform.scale. For local-space shapes (hurtboxes
+// relative to transform), pass the entity's scale so offsets and sizes grow
+// with the character. For world-space shapes (already-transformed hitboxes),
+// pass tx=ty=0 and scale=1.
+void drawShape(const CollisionShape& s, float tx, float ty, float scale, const Color& color)
 {
     switch (s.kind)
     {
     case ShapeKind::AABB:
-        DebugDraw::rectOutline(tx + s.x, ty + s.y, s.w * 0.5f, s.h * 0.5f, color);
+        DebugDraw::rectOutline(tx + s.x * scale, ty + s.y * scale, s.w * 0.5f * scale,
+                               s.h * 0.5f * scale, color);
         break;
     case ShapeKind::Circle:
-        DebugDraw::circle(tx + s.x, ty + s.y, s.r, color);
+        DebugDraw::circle(tx + s.x * scale, ty + s.y * scale, s.r * scale, color);
         break;
     case ShapeKind::Capsule:
-        DebugDraw::capsule(tx + s.x, ty + s.y, tx + s.x2, ty + s.y2, s.r, color);
+        DebugDraw::capsule(tx + s.x * scale, ty + s.y * scale, tx + s.x2 * scale,
+                           ty + s.y2 * scale, s.r * scale, color);
         break;
     }
 }
@@ -69,7 +73,7 @@ void drawHurtboxes(EntityManager& em)
     {
         (void)e;
         for (const auto& hs : hb.shapes)
-            drawShape(hs.shape, t.x, t.y, kHurtbox);
+            drawShape(hs.shape, t.x, t.y, t.scale, kHurtbox);
     }
 }
 
@@ -131,7 +135,7 @@ void drawActiveHitboxes(EntityManager& em)
         {
             const CollisionShape world =
                 transformShape(whs.shape, tf->x, tf->y, fc, fs, kf->x, kf->y, kc, ks);
-            drawShape(world, 0.0f, 0.0f, kHitbox);
+            drawShape(world, 0.0f, 0.0f, 1.0f, kHitbox);
         }
     }
 }

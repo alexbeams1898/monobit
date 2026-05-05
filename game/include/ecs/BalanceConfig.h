@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ecs/Components.h"
+
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -462,4 +464,14 @@ struct AttackAnimHitboxData
 {
     // attack_anim name (e.g. "slash", "thrust") -> keyframe set
     std::unordered_map<std::string, AttackAnimHitbox> attacks;
+};
+
+// AnimSheetHurtboxes -- hurtbox shapes declared in an animation config JSON,
+// keyed by the sheet path (e.g. "config/animations/lpc_humanoid.json"). All
+// entities using that animation sheet inherit the shape set automatically,
+// so we only author humanoid hurtboxes once. Per-entity overrides in the
+// entity JSON's "hurtbox" component field still take precedence.
+struct AnimSheetHurtboxes
+{
+    std::unordered_map<std::string, std::vector<HurtShape>> by_sheet;
 };

@@ -203,21 +203,31 @@ static void resolveForAttacker(EntityManager& em, entt::entity attacker, const A
         int best_priority = std::numeric_limits<int>::min();
         float best_dmg_mult = 1.0f;
 
+        const float targetScale = targetTf.scale;
         for (int hi = 0; hi < static_cast<int>(targetHb.shapes.size()); ++hi)
         {
-            const auto& hurt = targetHb.shapes[hi];
+            // Scale the hurtbox shape by the target's transform.scale so
+            // bigger characters have proportionally bigger hit regions.
+            CollisionShape scaledHurt = targetHb.shapes[hi].shape;
+            scaledHurt.x *= targetScale;
+            scaledHurt.y *= targetScale;
+            scaledHurt.w *= targetScale;
+            scaledHurt.h *= targetScale;
+            scaledHurt.r *= targetScale;
+            scaledHurt.x2 *= targetScale;
+            scaledHurt.y2 *= targetScale;
             for (const auto& ws : world_shapes)
             {
                 // ws.shape is in world coords, pass (0, 0) as world origin.
-                // hurt.shape is in target-local coords, pass target's world pos.
-                if (!geom::overlaps(ws.shape, 0.0f, 0.0f, hurt.shape, targetTf.x, targetTf.y))
+                // scaledHurt is in target-local coords, pass target's world pos.
+                if (!geom::overlaps(ws.shape, 0.0f, 0.0f, scaledHurt, targetTf.x, targetTf.y))
                     continue;
                 if (ws.priority > best_priority)
                 {
                     best_priority = ws.priority;
                     best_weapon_shape = ws.weapon_shape_index;
                     best_hurt_shape = hi;
-                    best_dmg_mult = ws.dmg_mult * hurt.dmg_mult;
+                    best_dmg_mult = ws.dmg_mult * targetHb.shapes[hi].dmg_mult;
                 }
             }
         }

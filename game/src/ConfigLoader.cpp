@@ -270,6 +270,33 @@ static void populateAnimRowIndex(EntityManager& em, const json& sheetData)
     }
 }
 
+// Parse the top-level "hurtbox" array from an animation sheet into the
+// AnimSheetHurtboxes singleton keyed by sheet path. Any entity whose
+// appearance uses this sheet inherits these shapes when its hurtbox is
+// auto-generated (unless the entity JSON explicitly declares a hurtbox
+// component, which takes precedence).
+static void populateSheetHurtbox(EntityManager& em, const std::string& sheetPath,
+                                 const json& sheetData)
+{
+    if (!sheetData.contains("hurtbox") || !sheetData["hurtbox"].is_array())
+        return;
+
+    auto* existing = em.registry().ctx().find<AnimSheetHurtboxes>();
+    if (existing == nullptr)
+        existing = &em.registry().ctx().emplace<AnimSheetHurtboxes>();
+
+    std::vector<HurtShape> shapes;
+    for (const auto& sj : sheetData["hurtbox"])
+    {
+        HurtShape hs;
+        hs.shape = parseCollisionShape(sj);
+        hs.label = sj.value("label", std::string{});
+        hs.dmg_mult = sj.value("dmg_mult", 1.0f);
+        shapes.push_back(hs);
+    }
+    existing->by_sheet[sheetPath] = std::move(shapes);
+}
+
 // Parse per-attack-row hitbox keyframes from the animation sheet. Stored in
 // a context singleton keyed by attack_anim name so HitboxResolverSystem can
 // look up timing + placement by the wielder's current attack animation.
@@ -453,6 +480,7 @@ static bool emplaceAnimationFromSheet(EntityManager& em, entt::entity entity,
     populateAnimRowIndex(em, sheetData);
     populateHandAnchors(em, sheetData);
     populateAttackHitboxes(em, sheetData);
+    populateSheetHurtbox(em, sheetPath, sheetData);
 
     // Set initial playback from Idle row so the first frame renders correctly
     // even before AnimStateSystem runs.
@@ -716,23 +744,44 @@ entt::entity ConfigLoader::loadEntity(EntityManager& em, const std::string& file
                       << "\n";
     }
 
-    // Auto-generate a default Hurtbox from the entity's Collider if one wasn't
-    // explicitly configured. This keeps backwards compatibility: entities with
-    // no "hurtbox" in config behave identically to pre-refactor code that used
-    // Collider geometry for damage.
+    // Auto-generate a default Hurtbox if one wasn't explicitly configured.
+    // Prefer the shared sheet hurtbox (e.g. humanoid head/torso/legs) when the
+    // entity's appearance references an animation sheet that declared one.
+    // Fall back to a single AABB matching the Collider for entities without
+    // a shared hurtbox definition.
     auto& reg = em.registry();
-    if (reg.all_of<Collider>(entity) && !reg.all_of<Hurtbox>(entity))
+    if (!reg.all_of<Hurtbox>(entity))
     {
-        const auto& col = reg.get<Collider>(entity);
-        Hurtbox hb;
-        HurtShape hs;
-        hs.shape.kind = ShapeKind::AABB;
-        hs.shape.w = col.width;
-        hs.shape.h = col.height;
-        hs.label = "default";
-        hs.dmg_mult = 1.0f;
-        hb.shapes.push_back(hs);
-        reg.emplace<Hurtbox>(entity, std::move(hb));
+        bool emplaced = false;
+        if (reg.all_of<AppearanceDef>(entity))
+        {
+            const auto& appearance = reg.get<AppearanceDef>(entity);
+            const auto* sheetHurtboxes = reg.ctx().find<AnimSheetHurtboxes>();
+            if (sheetHurtboxes != nullptr && !appearance.sheet_path.empty())
+            {
+                const auto it = sheetHurtboxes->by_sheet.find(appearance.sheet_path);
+                if (it != sheetHurtboxes->by_sheet.end() && !it->second.empty())
+                {
+                    Hurtbox hb;
+                    hb.shapes = it->second;
+                    reg.emplace<Hurtbox>(entity, std::move(hb));
+                    emplaced = true;
+                }
+            }
+        }
+        if (!emplaced && reg.all_of<Collider>(entity))
+        {
+            const auto& col = reg.get<Collider>(entity);
+            Hurtbox hb;
+            HurtShape hs;
+            hs.shape.kind = ShapeKind::AABB;
+            hs.shape.w = col.width;
+            hs.shape.h = col.height;
+            hs.label = "default";
+            hs.dmg_mult = 1.0f;
+            hb.shapes.push_back(hs);
+            reg.emplace<Hurtbox>(entity, std::move(hb));
+        }
     }
 
     return entity;

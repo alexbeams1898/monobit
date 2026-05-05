@@ -35,10 +35,20 @@ static EnemyHit earliestEnemyHit(EntityManager& em, entt::entity shooter, float 
         if (reg.all_of<Dead>(target))
             continue;
 
+        // Apply the target's visual scale so bigger characters have bigger
+        // hurtboxes (character customization scales transform.scale).
+        const float scale = tTransform.scale;
         for (int i = 0; i < static_cast<int>(tHurtbox.shapes.size()); ++i)
         {
-            const auto& hs = tHurtbox.shapes[i];
-            const auto hit = geom::sweptSegment(x0, y0, x1, y1, proj_radius, hs.shape,
+            CollisionShape scaled = tHurtbox.shapes[i].shape;
+            scaled.x *= scale;
+            scaled.y *= scale;
+            scaled.w *= scale;
+            scaled.h *= scale;
+            scaled.r *= scale;
+            scaled.x2 *= scale;
+            scaled.y2 *= scale;
+            const auto hit = geom::sweptSegment(x0, y0, x1, y1, proj_radius, scaled,
                                                 tTransform.x, tTransform.y);
             if (hit.hit && hit.t < best.t)
             {

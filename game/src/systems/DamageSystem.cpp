@@ -8,6 +8,7 @@
 #include "systems/WeaponXPSystem.h"
 
 #include <cmath>
+#include <cstdio>
 #include <random>
 #include <tracy/Tracy.hpp>
 
@@ -404,16 +405,29 @@ void DamageSystem::update(EntityManager& em)
         // Apply hurtbox shape damage multiplier (e.g. head 2x) if the hit
         // recorded which specific shape was struck.
         float scaledDamage = hb.damage;
+        const char* partLabel = "unknown";
         if (hb.hit_shape_index >= 0 && reg.all_of<Hurtbox>(targetEnt))
         {
             const auto& hbx = reg.get<Hurtbox>(targetEnt);
             if (hb.hit_shape_index < static_cast<int>(hbx.shapes.size()))
+            {
                 scaledDamage *= hbx.shapes[hb.hit_shape_index].dmg_mult;
+                if (!hbx.shapes[hb.hit_shape_index].label.empty())
+                    partLabel = hbx.shapes[hb.hit_shape_index].label.c_str();
+            }
         }
 
         if (applyDamage(em, targetEnt, scaledDamage, hb.owner, hitboxEnt))
         {
             hb.hit_something = true;
+
+            // Log which body part was struck. Helpful for tuning hurtboxes
+            // during Phase 4 authoring; pre-existing Tag tells us who the
+            // target is (e.g. "cop", "skeleton", "player").
+            const char* targetTag = "?";
+            if (reg.all_of<Tag>(targetEnt))
+                targetTag = reg.get<Tag>(targetEnt).name.c_str();
+            std::printf("[HIT] %s %s for %.1f dmg\n", targetTag, partLabel, scaledDamage);
 
             // Grant weapon XP trickle on hit (player-only).
             if (hb.owner != entt::null && reg.all_of<PlayerActions>(hb.owner))
