@@ -20,6 +20,16 @@ class Engine
     void run();
     void shutdown();
 
+    // Multi-sample anti-aliasing on the default framebuffer. Must be set
+    // BEFORE init() — the value is consumed when the window is created.
+    // Pass 0 to disable (default), or a power-of-two sample count (2, 4, 8).
+    // Higher = smoother edges + lower performance. 4 is the standard
+    // quality/cost trade for 3D games. 2D games typically pass 0.
+    void setMSAA(int samples)
+    {
+        msaa_samples = samples;
+    }
+
     // Game-side logic callback. Called once per fixed-step tick.
     // Engine passes itself so the game can call setWindowTitle() / lastFrameTime().
     using GameUpdateFn = void (*)(Engine&, EntityManager&, double);
@@ -175,4 +185,5 @@ class Engine
     float clear_r = 0.1f;
     float clear_g = 0.1f;
     float clear_b = 0.1f;
+    int msaa_samples = 0;
 };

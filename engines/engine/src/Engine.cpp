@@ -39,6 +39,14 @@ bool Engine::init(const char* title, int width, int height)
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
+    // MSAA — set before window creation so the default framebuffer gets
+    // multi-sample storage. msaa_samples == 0 leaves it disabled.
+    if (msaa_samples > 0)
+    {
+        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
+        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, msaa_samples);
+    }
+
     window = SDL_CreateWindow(title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height,
                               SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
     if (!window)
@@ -67,6 +75,11 @@ bool Engine::init(const char* title, int width, int height)
     // sprite paths (game-side) write Z=0 for everything so depth test
     // against nothing is a no-op for them.
     glEnable(GL_DEPTH_TEST);
+
+    // Enable MSAA blending if the game requested it. The SDL attribute
+    // above gave us a multi-sample framebuffer; this turns the GL state on.
+    if (msaa_samples > 0)
+        glEnable(GL_MULTISAMPLE);
 
     window_w = width;
     window_h = height;

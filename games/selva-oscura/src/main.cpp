@@ -1,89 +1,96 @@
 #include "Engine.h"
 #include "gl/ShaderUtils.h"
 
-#include <chrono>
+// Tell SDL not to redefine `main` to its WinMain shim — the engine owns SDL
+// init, this file just uses input/state APIs. Must be before <SDL.h>.
+#define SDL_MAIN_HANDLED
+#include <SDL.h>
+#include <cmath>
 #include <cstdio>
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <string>
 
-// Vertex shader: takes a 3D position + per-vertex color. MVP transforms the
-// position; color is passed through to the fragment shader (the GPU
-// interpolates it across the triangle for free).
-static const char* kCubeVertexShader = R"glsl(
+// ---------------------------------------------------------------------------
+// Shaders
+// ---------------------------------------------------------------------------
+
+// Vertex shader: 3D position + per-vertex grayscale shade. uModel transforms
+// the vertex to world space; uViewProj projects world to clip space. Splitting
+// model from view-projection lets one shader draw many objects per frame —
+// each draw call updates uModel, uViewProj is set once per frame.
+static const char* kSceneVertexShader = R"glsl(
 #version 330 core
 layout(location = 0) in vec3 aPos;
-layout(location = 1) in vec3 aColor;
+layout(location = 1) in float aShade;
 
-uniform mat4 uMVP;
+uniform mat4 uModel;
+uniform mat4 uViewProj;
 
-out vec3 vColor;
+out float vShade;
 
 void main()
 {
-    gl_Position = uMVP * vec4(aPos, 1.0);
-    vColor = aColor;
+    gl_Position = uViewProj * uModel * vec4(aPos, 1.0);
+    vShade = aShade;
 }
 )glsl";
 
-// Fragment shader: outputs the interpolated color from the vertex shader.
-static const char* kCubeFragmentShader = R"glsl(
+// Fragment shader: outputs the interpolated grayscale shade with full alpha.
+// Multiplied by uTint so the same geometry can render in different shades
+// (scene cube vs player cube) without duplicating vertex buffers.
+static const char* kSceneFragmentShader = R"glsl(
 #version 330 core
-in vec3 vColor;
+in float vShade;
 out vec4 fragColor;
+
+uniform float uTint;
 
 void main()
 {
-    fragColor = vec4(vColor, 1.0);
+    float g = clamp(vShade * uTint, 0.0, 1.0);
+    fragColor = vec4(g, g, g, 1.0);
 }
 )glsl";
 
 // GPU shader program (vertex + fragment linked). 0 = not built / failed.
-static GLuint sCubeProgram = 0;
+static GLuint sSceneProgram = 0;
 
-// Vertex Array Object + Vertex Buffer Object + Element Buffer Object holding
-// the cube's geometry. EBO = index buffer.
+// Cached uniform locations. Resolved once at init.
+static GLint sUniModelLoc = -1;
+static GLint sUniViewProjLoc = -1;
+static GLint sUniTintLoc = -1;
+
+// ---------------------------------------------------------------------------
+// Cube geometry (shared between the tumbling scene cube and the player cube)
+// ---------------------------------------------------------------------------
+
 static GLuint sCubeVao = 0;
 static GLuint sCubeVbo = 0;
 static GLuint sCubeEbo = 0;
 
-// Cached uniform locations. Resolved once at init.
-static GLint sCubeMvpLoc = -1;
-
-// Window size (read once at init for the projection's aspect ratio).
-static int sWindowW = 0;
-static int sWindowH = 0;
-
-// Build the GL state needed to draw the cube.
-//
-// 8 unique vertices (one per cube corner), each with position + color. The
-// index buffer says "draw 36 indices = 12 triangles = 6 faces" using those 8
-// vertices. Per-corner color means each face is a smooth gradient between
-// its 4 corners, which makes the cube's 3D shape obvious as it rotates.
 static void initCube()
 {
-    // 8 corners of a cube centered at origin, half-extent 0.5. Each vertex:
-    //   x, y, z,    r, g, b
-    // Colors picked so opposite corners are roughly complementary -- gives
-    // each face a distinct gradient.
+    // 8 corners of a unit cube centered at origin, half-extent 0.5. Each
+    // vertex is position + grayscale shade. Per-corner shading makes faces
+    // gradient between corners so the 3D shape reads when it tumbles —
+    // poor-man's lighting until real lighting lands.
     // clang-format off
     static constexpr float kVertices[] = {
         // back face corners (z = -0.5)
-        -0.5f, -0.5f, -0.5f,   1.0f, 0.0f, 0.0f, // 0: red
-         0.5f, -0.5f, -0.5f,   1.0f, 1.0f, 0.0f, // 1: yellow
-         0.5f,  0.5f, -0.5f,   0.0f, 1.0f, 0.0f, // 2: green
-        -0.5f,  0.5f, -0.5f,   0.0f, 1.0f, 1.0f, // 3: cyan
+        -0.5f, -0.5f, -0.5f,   0.30f, // 0
+         0.5f, -0.5f, -0.5f,   0.55f, // 1
+         0.5f,  0.5f, -0.5f,   0.80f, // 2
+        -0.5f,  0.5f, -0.5f,   0.55f, // 3
         // front face corners (z = +0.5)
-        -0.5f, -0.5f,  0.5f,   1.0f, 0.0f, 1.0f, // 4: magenta
-         0.5f, -0.5f,  0.5f,   1.0f, 1.0f, 1.0f, // 5: white
-         0.5f,  0.5f,  0.5f,   0.0f, 0.0f, 1.0f, // 6: blue
-        -0.5f,  0.5f,  0.5f,   0.5f, 0.5f, 0.5f, // 7: grey
+        -0.5f, -0.5f,  0.5f,   0.55f, // 4
+         0.5f, -0.5f,  0.5f,   0.80f, // 5
+         0.5f,  0.5f,  0.5f,   1.00f, // 6
+        -0.5f,  0.5f,  0.5f,   0.80f, // 7
     };
 
-    // 36 indices = 12 triangles = 6 faces. Each face is two triangles sharing
-    // a diagonal. Winding order (counter-clockwise as seen from outside the
-    // cube) is consistent so back-face culling could be enabled later.
     static constexpr unsigned int kIndices[] = {
         // back face (looking down -Z)
         0, 2, 1,   0, 3, 2,
@@ -112,80 +119,251 @@ static void initCube()
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sCubeEbo);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(kIndices), kIndices, GL_STATIC_DRAW);
 
-    // Vertex layout: 6 floats per vertex (3 position + 3 color), interleaved.
-    // location 0 = position (3 floats, offset 0).
-    // location 1 = color    (3 floats, offset 3*sizeof(float)).
-    constexpr int stride = 6 * sizeof(float);
+    constexpr int stride = 4 * sizeof(float);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, nullptr);
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride,
+    glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, stride,
                           reinterpret_cast<void*>(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
     glBindVertexArray(0);
-
-    sCubeMvpLoc = glGetUniformLocation(sCubeProgram, "uMVP");
 }
 
-// Issue the draw call. Bind the program, set the MVP uniform, bind the VAO,
-// drawElements pulls vertex indices from the EBO.
-static void drawCube()
+// ---------------------------------------------------------------------------
+// Floor geometry — large flat quad in the y=0 plane, centered at origin.
+// Per-vertex shade gives a faint vignette (darker near edges) so motion
+// across the floor is readable.
+// ---------------------------------------------------------------------------
+
+static GLuint sFloorVao = 0;
+static GLuint sFloorVbo = 0;
+static GLuint sFloorEbo = 0;
+
+static constexpr float kFloorHalfSize = 50.0f;
+
+static void initFloor()
 {
-    // Model: rotate around an axis based on wall-clock time. Spinning around
-    // a non-cardinal axis gives the cube a tumbling motion that shows off
-    // multiple faces simultaneously.
-    static const auto sStartTime = std::chrono::steady_clock::now();
-    const auto now = std::chrono::steady_clock::now();
-    const float seconds = std::chrono::duration<float>(now - sStartTime).count();
-    const float angle = seconds * (glm::two_pi<float>() / 4.0f);
-    const glm::mat4 model =
-        glm::rotate(glm::mat4(1.0f), angle, glm::normalize(glm::vec3(0.6f, 1.0f, 0.3f)));
+    // clang-format off
+    const float kVertices[] = {
+        // four corners of a square in the XZ plane (y=0)
+        -kFloorHalfSize, 0.0f, -kFloorHalfSize,   0.10f, // 0: back-left, dark
+         kFloorHalfSize, 0.0f, -kFloorHalfSize,   0.10f, // 1: back-right, dark
+         kFloorHalfSize, 0.0f,  kFloorHalfSize,   0.25f, // 2: front-right, lighter
+        -kFloorHalfSize, 0.0f,  kFloorHalfSize,   0.25f, // 3: front-left, lighter
+    };
 
-    // View: camera at (0, 0, 3) looking at the origin.
-    const glm::mat4 view = glm::lookAt(glm::vec3(0.0f, 0.0f, 3.0f), glm::vec3(0.0f, 0.0f, 0.0f),
-                                       glm::vec3(0.0f, 1.0f, 0.0f));
+    static constexpr unsigned int kIndices[] = {
+        0, 2, 1,   0, 3, 2,
+    };
+    // clang-format on
 
-    const float aspect =
-        sWindowH > 0 ? static_cast<float>(sWindowW) / static_cast<float>(sWindowH) : 1.0f;
-    const glm::mat4 proj = glm::perspective(glm::radians(60.0f), aspect, 0.1f, 100.0f);
+    glGenVertexArrays(1, &sFloorVao);
+    glGenBuffers(1, &sFloorVbo);
+    glGenBuffers(1, &sFloorEbo);
 
-    const glm::mat4 mvp = proj * view * model;
+    glBindVertexArray(sFloorVao);
 
-    glUseProgram(sCubeProgram);
-    glUniformMatrix4fv(sCubeMvpLoc, 1, GL_FALSE, glm::value_ptr(mvp));
-    glBindVertexArray(sCubeVao);
-    glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, nullptr);
+    glBindBuffer(GL_ARRAY_BUFFER, sFloorVbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(kVertices), kVertices, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sFloorEbo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(kIndices), kIndices, GL_STATIC_DRAW);
+
+    constexpr int stride = 4 * sizeof(float);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, nullptr);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, stride,
+                          reinterpret_cast<void*>(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
     glBindVertexArray(0);
-    glUseProgram(0);
 }
 
-// Free the cube's GL resources. Must run while the GL context is still alive
-// (i.e. before Engine::shutdown destroys it). Symmetric to initCube.
-static void shutdownCube()
+// ---------------------------------------------------------------------------
+// Resource cleanup
+// ---------------------------------------------------------------------------
+
+static void shutdownGeometry()
 {
+    glDeleteBuffers(1, &sFloorEbo);
+    glDeleteBuffers(1, &sFloorVbo);
+    glDeleteVertexArrays(1, &sFloorVao);
     glDeleteBuffers(1, &sCubeEbo);
     glDeleteBuffers(1, &sCubeVbo);
     glDeleteVertexArrays(1, &sCubeVao);
-    glDeleteProgram(sCubeProgram);
-    sCubeEbo = 0;
-    sCubeVbo = 0;
-    sCubeVao = 0;
-    sCubeProgram = 0;
+    glDeleteProgram(sSceneProgram);
+    sFloorEbo = sFloorVbo = sFloorVao = 0;
+    sCubeEbo = sCubeVbo = sCubeVao = 0;
+    sSceneProgram = 0;
 }
 
-// Engine renderWorld callback: fires every frame between framebuffer clear
-// and the UI pass. This is where Selva Oscura's 3D rendering lives. Will
-// eventually be three passes (geometry to FBO, dither/threshold/outline
-// post-process, blit) but for now it's just the test cube.
+// ---------------------------------------------------------------------------
+// Player + camera state
+// ---------------------------------------------------------------------------
+
+// Player position in world space. Selva Oscura is 3D so y is up. The player
+// stands on the floor at y=0 with their cube centered slightly above it.
+static glm::vec3 sPlayerPos = glm::vec3(0.0f, 0.5f, 0.0f);
+
+// Camera orientation. Yaw rotates around world-up (Y), pitch tilts up/down.
+// Yaw=0 looks down -Z; positive yaw rotates clockwise looking down at the
+// scene. Pitch is clamped to avoid gimbal flip at the poles.
+static float sCamYaw = 0.0f;
+static float sCamPitch = -0.25f; // start slightly looking down
+
+// Third-person follow: camera sits this far behind+above the player along
+// the camera's forward axis. Tweak by feel.
+static constexpr float kFollowDistance = 6.0f;
+static constexpr float kFollowHeight = 2.5f;
+
+// Movement / look feel constants.
+static constexpr float kPlayerMoveSpeed = 4.0f; // units / second
+static constexpr float kPlayerSprintMultiplier = 1.8f;
+static constexpr float kMouseSensitivity = 0.0025f; // radians per pixel
+static constexpr float kPitchMin = -1.45f;          // ~-83 degrees
+static constexpr float kPitchMax = 1.45f;           // ~+83 degrees
+
+// Window size (read at init for the projection's aspect ratio; updated on
+// resize via the engine onResize callback).
+static int sWindowW = 0;
+static int sWindowH = 0;
+
+static void onWindowResize(Engine& /*engine*/, int new_w, int new_h)
+{
+    sWindowW = new_w;
+    sWindowH = new_h;
+}
+
+// ---------------------------------------------------------------------------
+// Per-frame update — runs at wall-clock rate. Reads SDL keyboard + relative
+// mouse state directly; the engine doesn't need to abstract these for a
+// single-game render-callback pattern.
+// ---------------------------------------------------------------------------
+
+static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
+{
+    const float dt = static_cast<float>(dt_d);
+
+    // Title bar — game name + FPS. Read the engine's EMA-smoothed frame
+    // time so the number doesn't flicker.
+    const int fps = static_cast<int>(std::lround(1.0 / engine.lastFrameTime()));
+    engine.setWindowTitle("Selva Oscura  |  FPS " + std::to_string(fps));
+
+    // Mouse look. SDL_GetRelativeMouseState returns deltas accumulated since
+    // the last call; we drain it once per frame here.
+    int mdx = 0;
+    int mdy = 0;
+    SDL_GetRelativeMouseState(&mdx, &mdy);
+    // Mouse-left should rotate the camera left (world appears to rotate
+    // right) — the Souls/Elden Ring/FPS convention. Our yaw is "rotate
+    // counterclockwise looking down" so a left mouse delta (negative mdx)
+    // needs to *decrease* yaw, hence the subtraction.
+    sCamYaw -= static_cast<float>(mdx) * kMouseSensitivity;
+    sCamPitch -= static_cast<float>(mdy) * kMouseSensitivity;
+    if (sCamPitch < kPitchMin)
+        sCamPitch = kPitchMin;
+    if (sCamPitch > kPitchMax)
+        sCamPitch = kPitchMax;
+
+    // WASD locomotion in the camera's horizontal plane (yaw only — pitch
+    // doesn't affect ground-plane movement, which is what a Souls-style
+    // controller wants). Forward axis is -Z rotated by yaw; right axis is
+    // perpendicular in the XZ plane.
+    const Uint8* keys = SDL_GetKeyboardState(nullptr);
+
+    // Quit on Escape — handy until there's a pause menu.
+    if (keys[SDL_SCANCODE_ESCAPE])
+        engine.requestQuit();
+
+    glm::vec3 moveIntent(0.0f);
+    const glm::vec3 fwd(-std::sin(sCamYaw), 0.0f, -std::cos(sCamYaw));
+    const glm::vec3 right(std::cos(sCamYaw), 0.0f, -std::sin(sCamYaw));
+    if (keys[SDL_SCANCODE_W])
+        moveIntent += fwd;
+    if (keys[SDL_SCANCODE_S])
+        moveIntent -= fwd;
+    if (keys[SDL_SCANCODE_D])
+        moveIntent += right;
+    if (keys[SDL_SCANCODE_A])
+        moveIntent -= right;
+
+    if (glm::length(moveIntent) > 0.0001f)
+    {
+        moveIntent = glm::normalize(moveIntent);
+        const float speed =
+            kPlayerMoveSpeed * (keys[SDL_SCANCODE_LSHIFT] ? kPlayerSprintMultiplier : 1.0f);
+        sPlayerPos += moveIntent * speed * dt;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Render — issue one draw call per object. View-projection is set once per
+// frame; uModel and uTint vary per draw.
+// ---------------------------------------------------------------------------
+
+static void drawObject(GLuint vao, GLsizei index_count, const glm::mat4& model, float tint)
+{
+    glUniformMatrix4fv(sUniModelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    glUniform1f(sUniTintLoc, tint);
+    glBindVertexArray(vao);
+    glDrawElements(GL_TRIANGLES, index_count, GL_UNSIGNED_INT, nullptr);
+}
+
 static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*camX*/,
                              float /*camY*/, float /*alpha*/)
 {
-    drawCube();
+    // Camera is positioned behind the player along its forward axis, lifted
+    // by kFollowHeight, looking at the player's chest.
+    const glm::vec3 lookFwd(std::cos(sCamPitch) * -std::sin(sCamYaw), std::sin(sCamPitch),
+                            std::cos(sCamPitch) * -std::cos(sCamYaw));
+    const glm::vec3 camPos =
+        sPlayerPos - lookFwd * kFollowDistance + glm::vec3(0.0f, kFollowHeight, 0.0f);
+    const glm::vec3 lookAt = sPlayerPos + glm::vec3(0.0f, 0.5f, 0.0f);
+    const glm::mat4 view = glm::lookAt(camPos, lookAt, glm::vec3(0.0f, 1.0f, 0.0f));
+
+    const float aspect =
+        sWindowH > 0 ? static_cast<float>(sWindowW) / static_cast<float>(sWindowH) : 1.0f;
+    const glm::mat4 proj = glm::perspective(glm::radians(60.0f), aspect, 0.1f, 200.0f);
+    const glm::mat4 viewProj = proj * view;
+
+    glUseProgram(sSceneProgram);
+    glUniformMatrix4fv(sUniViewProjLoc, 1, GL_FALSE, glm::value_ptr(viewProj));
+
+    // 1. Floor — unrotated, identity model. Rendered first; depth test
+    //    handles ordering against everything else.
+    drawObject(sFloorVao, 6, glm::mat4(1.0f), 1.0f);
+
+    // 2. Scene cube — tumbles at the origin, half-buried in the floor would
+    //    look bad, so lift it. Acts as a fixed landmark.
+    {
+        const float seconds = static_cast<float>(SDL_GetTicks64()) * 0.001f; // wall-clock seconds
+        const float angle = seconds * (glm::two_pi<float>() / 4.0f);
+        glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.5f, -8.0f));
+        model = glm::rotate(model, angle, glm::normalize(glm::vec3(0.6f, 1.0f, 0.3f)));
+        drawObject(sCubeVao, 36, model, 0.7f);
+    }
+
+    // 3. Player — smaller, slightly brighter cube at the player's position.
+    //    Tint is kept just above 1.0 so the per-corner gradient survives;
+    //    cranking it higher saturates against the clamp and the cube reads
+    //    as a flat white card. Real lighting will replace this hack.
+    {
+        glm::mat4 model = glm::translate(glm::mat4(1.0f), sPlayerPos);
+        model = glm::scale(model, glm::vec3(0.6f, 1.0f, 0.6f));
+        drawObject(sCubeVao, 36, model, 1.1f);
+    }
+
+    glBindVertexArray(0);
+    glUseProgram(0);
 }
 
 int main(int /*argc*/, char* /*argv*/[])
 {
     Engine engine;
+
+    // 4x MSAA — smooths cube/floor edge silhouettes so they don't crawl
+    // when the camera rotates. Standard quality/cost trade for 3D games.
+    engine.setMSAA(4);
 
     if (!engine.init("Selva Oscura", 1280, 720))
     {
@@ -195,20 +373,34 @@ int main(int /*argc*/, char* /*argv*/[])
 
     engine.setClearColor(0.0f, 0.0f, 0.0f);
 
-    sCubeProgram = engine::gl::compileProgram(kCubeVertexShader, kCubeFragmentShader);
-    if (sCubeProgram == 0)
+    // Capture the cursor for mouse-look. SDL_SetRelativeMouseMode hides the
+    // cursor and feeds back relative deltas via SDL_GetRelativeMouseState.
+    SDL_SetRelativeMouseMode(SDL_TRUE);
+    // Drain any startup delta so the first frame's look isn't huge.
+    SDL_GetRelativeMouseState(nullptr, nullptr);
+
+    sSceneProgram = engine::gl::compileProgram(kSceneVertexShader, kSceneFragmentShader);
+    if (sSceneProgram == 0)
     {
-        std::fprintf(stderr, "Cube shader compile/link failed\n");
+        std::fprintf(stderr, "Scene shader compile/link failed\n");
         return 1;
     }
+    sUniModelLoc = glGetUniformLocation(sSceneProgram, "uModel");
+    sUniViewProjLoc = glGetUniformLocation(sSceneProgram, "uViewProj");
+    sUniTintLoc = glGetUniformLocation(sSceneProgram, "uTint");
+
     sWindowW = engine.windowWidth();
     sWindowH = engine.windowHeight();
     initCube();
+    initFloor();
 
+    engine.setPerFrameUpdate(&selvaPerFrame);
     engine.setRenderWorld(&selvaRenderWorld);
+    engine.setOnResize(&onWindowResize);
 
     engine.run();
-    shutdownCube();
+
+    shutdownGeometry();
     engine.shutdown();
     return 0;
 }

@@ -19,11 +19,21 @@
 // this?" -- it belongs in GameComponents.h.
 // ---------------------------------------------------------------------------
 
+// Transform -- position + orientation in world space. Universally shared
+// across 2D and 3D games: 2D code reads x/y/rotation and ignores z/pitch/roll;
+// 3D code uses all six. Defaults keep 2D semantics intact (z=0, pitch=0,
+// roll=0, scale=1). `rotation` is the 2D yaw shorthand (degrees) and is the
+// same axis as `pitch`/`roll`'s missing 3D yaw — when the engine grows real
+// 3D systems we'll either rename or split, but for now keeping `rotation`
+// as the 2D-friendly name avoids a mass-rename across all 2D systems.
 struct Transform
 {
     float x = 0.0f;
     float y = 0.0f;
-    float rotation = 0.0f; // degrees
+    float z = 0.0f;        // 3D depth/height; 2D games leave at 0
+    float rotation = 0.0f; // 2D yaw, in degrees
+    float pitch = 0.0f;    // 3D pitch, in degrees
+    float roll = 0.0f;     // 3D roll, in degrees
     float scale = 1.0f;
 };
 
@@ -32,12 +42,14 @@ struct PreviousTransform
 {
     float x = 0.0f;
     float y = 0.0f;
+    float z = 0.0f;
 };
 
 struct Velocity
 {
     float dx = 0.0f;
     float dy = 0.0f;
+    float dz = 0.0f;
 };
 
 struct Health
