@@ -91,6 +91,15 @@ class Engine
     using RenderUIFn = void (*)(Engine&, EntityManager&);
     void setRenderUI(RenderUIFn fn);
 
+    // ImGui render callback. Called after the UI pass; the engine has
+    // already done ImGui::NewFrame for this frame, so the game just calls
+    // ImGui::Begin/Sliders/End. Engine handles input forwarding and final
+    // ImGui::Render automatically. Used for in-game tuning overlays and
+    // dev panels — toggle visibility from inside the callback (e.g.
+    // gate Begin() on a global "show panel" bool the game owns).
+    using RenderImGuiFn = void (*)(Engine&, EntityManager&);
+    void setRenderImGui(RenderImGuiFn fn);
+
     // Resize callback. Called from the SDL window-resize event handler after
     // the engine updates window_w/window_h and resizes UIRenderer (the engine
     // owns UI). Game code resizes any game-owned render targets here (e.g.
@@ -200,6 +209,7 @@ class Engine
     RenderWorldFn render_world = nullptr;
     RenderDebugFn render_debug = nullptr;
     RenderUIFn render_ui = nullptr;
+    RenderImGuiFn render_imgui = nullptr;
     ResizeFn on_resize = nullptr;
     float camera_zoom = 1.0f;
     bool timing_reset_pending = false;

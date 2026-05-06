@@ -1,11 +1,15 @@
 #include "Engine.h"
+#include "Tunables.h"
 #include "anim/AnimationDriver.h"
 #include "gl/ShaderUtils.h"
+
+#include <imgui.h>
 
 // Tell SDL not to redefine `main` to its WinMain shim — the engine owns SDL
 // init, this file just uses input/state APIs. Must be before <SDL.h>.
 #define SDL_MAIN_HANDLED
 #include <SDL.h>
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <glad/glad.h>
@@ -202,37 +206,10 @@ static void shutdownGeometry()
 // Player + camera state
 // ---------------------------------------------------------------------------
 
-// Tunables — group together so feel-tuning is one place. Values are
-// constexpr so the compiler folds them; not currently exposed to JSON
-// because the game doesn't need that yet.
-namespace tuning
-{
-// Locomotion.
-constexpr float kPlayerMoveSpeed = 4.0f; // units / second
-constexpr float kPlayerSprintMultiplier = 1.8f;
-
-// Mouse-look.
-constexpr float kMouseSensitivity = 0.0025f; // radians per pixel
-constexpr float kPitchMin = -1.45f;          // ~-83 degrees
-constexpr float kPitchMax = 1.45f;           // ~+83 degrees
-
-// Player rotation toward move direction. 9 rad/s: 180° ≈ 0.35s
-// (deliberate), 45° ≈ 0.09s (snappy but reads as rotation).
-constexpr float kPlayerTurnRate = 9.0f; // radians per second
-
-// Third-person follow camera offsets.
-constexpr float kFollowDistance = 6.0f;
-constexpr float kFollowHeight = 2.5f;
-
-// Dodge — directional roll when moving, backstep when standing.
-// Durations and recovery live here; *spatial shape* (distance, hop arc,
-// tumble) lives in the animation driver (procedural curves today,
-// skeletal clips later — same interface). Driver doc:
-// engines/engine/docs/3D-EXTENSION.md §5b.
-constexpr float kRollDuration = 0.55f;     // seconds, roll phase
-constexpr float kBackstepDuration = 0.35f; // seconds, backstep phase
-constexpr float kDodgeRecovery = 0.20f;    // seconds, lockout after dodge
-} // namespace tuning
+// Numeric "feel" parameters live in selva::tuning::Tunables (Tunables.h),
+// loaded from config/tunables.json at startup, edited at runtime via the
+// F1 ImGui panel. Gameplay code and ProceduralDriver both read from the
+// same global — see selva::tuning::current().
 
 // Dodge state machine. Idle → Rolling/Backstep (committed) → Recovering → Idle.
 // State machine is owned here; the *visual + positional shape* of each
@@ -275,6 +252,20 @@ static float sCamPitch = -0.25f; // start slightly looking down
 // right now"; for actions like "dodge fires on press, not on hold" we need
 // the rising edge — was up last frame, down this frame.
 static bool sPrevSpace = false;
+static bool sPrevF1 = false;
+
+// Dodge input buffer. When Space is pressed while the player can't act,
+// the press is held for tunables.dodge_buffer_window seconds and fires
+// the moment they reach Idle. Souls input philosophy: presses are never
+// dropped silently; they're queued briefly so timing is forgiving. Direction
+// is sampled at fire time (current WASD), not at press time.
+static float sDodgeBuffer = 0.0f;
+
+// In-game tuning panel toggle. Off by default; F1 flips it.
+static bool sShowTuningPanel = false;
+
+// Path to the live tunables config, relative to the working directory.
+static const std::string kTunablesPath = "config/tunables.json";
 
 // Window size (read at init for the projection's aspect ratio; updated on
 // resize via the engine onResize callback).
@@ -324,6 +315,7 @@ static void startDodge(PlayerState& p, const glm::vec3& moveIntent)
 {
     const bool moving = glm::length(moveIntent) > 0.0001f;
 
+    const auto& tun = selva::tuning::current();
     if (moving)
     {
         // Roll: commit to the input direction. Player snaps to face that
@@ -332,7 +324,7 @@ static void startDodge(PlayerState& p, const glm::vec3& moveIntent)
         p.dodge_dir = glm::normalize(moveIntent);
         p.yaw = yawFromGroundDir(p.dodge_dir);
         p.dodge_phase = DodgePhase::Rolling;
-        p.dodge_duration = tuning::kRollDuration;
+        p.dodge_duration = tun.roll_duration;
     }
     else
     {
@@ -341,7 +333,7 @@ static void startDodge(PlayerState& p, const glm::vec3& moveIntent)
         const glm::vec3 facingFwd(-std::sin(p.yaw), 0.0f, -std::cos(p.yaw));
         p.dodge_dir = -facingFwd;
         p.dodge_phase = DodgePhase::Backstep;
-        p.dodge_duration = tuning::kBackstepDuration;
+        p.dodge_duration = tun.backstep_duration;
     }
     p.dodge_start_pos = p.pos;
     p.dodge_timer = 0.0f;
@@ -396,7 +388,7 @@ static bool advanceDodge(PlayerState& p, float dt)
         if (p.dodge_timer >= p.dodge_duration)
         {
             p.dodge_phase = DodgePhase::Recovering;
-            p.dodge_duration = tuning::kDodgeRecovery;
+            p.dodge_duration = selva::tuning::current().dodge_recovery;
             p.dodge_timer = 0.0f;
             return false; // movement allowed in recovery
         }
@@ -430,18 +422,39 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     int mdx = 0;
     int mdy = 0;
     SDL_GetRelativeMouseState(&mdx, &mdy);
-    sCamYaw -= static_cast<float>(mdx) * tuning::kMouseSensitivity;
-    sCamPitch -= static_cast<float>(mdy) * tuning::kMouseSensitivity;
-    if (sCamPitch < tuning::kPitchMin)
-        sCamPitch = tuning::kPitchMin;
-    if (sCamPitch > tuning::kPitchMax)
-        sCamPitch = tuning::kPitchMax;
+    const auto& tun = selva::tuning::current();
+    // Mouse-look only when the tuning panel is closed — otherwise the
+    // mouse is being used to drag sliders, not to aim the camera.
+    if (!sShowTuningPanel)
+    {
+        sCamYaw -= static_cast<float>(mdx) * tun.mouse_sensitivity;
+        sCamPitch -= static_cast<float>(mdy) * tun.mouse_sensitivity;
+        if (sCamPitch < tun.pitch_min)
+            sCamPitch = tun.pitch_min;
+        if (sCamPitch > tun.pitch_max)
+            sCamPitch = tun.pitch_max;
+    }
 
     const Uint8* keys = SDL_GetKeyboardState(nullptr);
 
     // Quit on Escape — handy until there's a pause menu.
     if (keys[SDL_SCANCODE_ESCAPE])
         engine.requestQuit();
+
+    // F1: toggle the tuning panel (rising-edge detect). Releases the
+    // cursor while the panel is open so ImGui can receive clicks; the
+    // game's mouse-look pauses for that duration. Restores capture when
+    // the panel closes.
+    const bool f1Now = keys[SDL_SCANCODE_F1] != 0;
+    if (f1Now && !sPrevF1)
+    {
+        sShowTuningPanel = !sShowTuningPanel;
+        SDL_SetRelativeMouseMode(sShowTuningPanel ? SDL_FALSE : SDL_TRUE);
+        // Drain accumulated relative motion so the camera doesn't snap
+        // when capture is re-acquired.
+        SDL_GetRelativeMouseState(nullptr, nullptr);
+    }
+    sPrevF1 = f1Now;
 
     // Compute camera-relative movement intent every frame; both walking and
     // dodge-init read it. Forward axis is -Z rotated by camera yaw; right
@@ -458,13 +471,25 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     if (keys[SDL_SCANCODE_A])
         moveIntent -= camRight;
 
-    // One-shot Space: rising edge → start dodge, but only from Idle (cannot
-    // dodge during Rolling, Backstep, or Recovering — Souls-feel rule).
+    // Space input — Souls-style buffering. Rising edge sets the buffer to
+    // tun.dodge_buffer_window seconds. The buffer decays each frame; if it
+    // reaches zero before the player is Idle, the input is dropped. When
+    // the player IS idle and the buffer is non-zero, the dodge fires using
+    // the *current* moveIntent (direction at fire time, not press time —
+    // the "rotate-the-stick mid-buffer" forgiveness).
     const bool spaceNow = keys[SDL_SCANCODE_SPACE] != 0;
     const bool spacePressed = spaceNow && !sPrevSpace;
     sPrevSpace = spaceNow;
-    if (spacePressed && sPlayer.dodge_phase == DodgePhase::Idle)
+    if (spacePressed)
+        sDodgeBuffer = tun.dodge_buffer_window;
+    else if (sDodgeBuffer > 0.0f)
+        sDodgeBuffer = std::max(0.0f, sDodgeBuffer - dt);
+
+    if (sDodgeBuffer > 0.0f && sPlayer.dodge_phase == DodgePhase::Idle)
+    {
         startDodge(sPlayer, moveIntent);
+        sDodgeBuffer = 0.0f; // consumed
+    }
 
     // Advance dodge state machine. While committed (Rolling/Backstep) WASD
     // is locked out; in Recovering and Idle it's honored.
@@ -473,14 +498,14 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     if (!dodgeCommitted && glm::length(moveIntent) > 0.0001f)
     {
         moveIntent = glm::normalize(moveIntent);
-        const float speed = tuning::kPlayerMoveSpeed *
-                            (keys[SDL_SCANCODE_LSHIFT] ? tuning::kPlayerSprintMultiplier : 1.0f);
+        const float speed =
+            tun.move_speed * (keys[SDL_SCANCODE_LSHIFT] ? tun.sprint_multiplier : 1.0f);
         sPlayer.pos += moveIntent * speed * dt;
 
         // Smoothly rotate the player toward the movement direction.
         const float targetYaw = yawFromGroundDir(moveIntent);
         float delta = wrapAngleSigned(targetYaw - sPlayer.yaw);
-        const float maxStep = tuning::kPlayerTurnRate * dt;
+        const float maxStep = tun.turn_rate * dt;
         if (delta > maxStep)
             delta = maxStep;
         else if (delta < -maxStep)
@@ -509,14 +534,15 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
     // by kFollowHeight, looking at the player's chest.
     const glm::vec3 lookFwd(std::cos(sCamPitch) * -std::sin(sCamYaw), std::sin(sCamPitch),
                             std::cos(sCamPitch) * -std::cos(sCamYaw));
-    const glm::vec3 camPos = sPlayer.pos - lookFwd * tuning::kFollowDistance +
-                             glm::vec3(0.0f, tuning::kFollowHeight, 0.0f);
+    const auto& tun = selva::tuning::current();
+    const glm::vec3 camPos =
+        sPlayer.pos - lookFwd * tun.follow_distance + glm::vec3(0.0f, tun.follow_height, 0.0f);
     const glm::vec3 lookAt = sPlayer.pos + glm::vec3(0.0f, 0.5f, 0.0f);
     const glm::mat4 view = glm::lookAt(camPos, lookAt, glm::vec3(0.0f, 1.0f, 0.0f));
 
     const float aspect =
         sWindowH > 0 ? static_cast<float>(sWindowW) / static_cast<float>(sWindowH) : 1.0f;
-    const glm::mat4 proj = glm::perspective(glm::radians(60.0f), aspect, 0.1f, 200.0f);
+    const glm::mat4 proj = glm::perspective(glm::radians(tun.fov_degrees), aspect, 0.1f, 200.0f);
     const glm::mat4 viewProj = proj * view;
 
     glUseProgram(sSceneProgram);
@@ -584,6 +610,115 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
     glUseProgram(0);
 }
 
+// ---------------------------------------------------------------------------
+// Snapped slider — ImGui::SliderFloat with post-hoc rounding to a step. The
+// step makes drag-tuning land on round values (0.5, 1.0, 5.0) instead of
+// 0.4783 — easier to settle on a value, easier to reason about. Ctrl+click
+// still allows fine-grained typed entry; this only affects drag.
+//
+// fmt should match step's precision (e.g. "%.2f" for step=0.05).
+static void tunedSlider(const char* label, float* val, float min, float max, float step,
+                        const char* fmt = "%.2f")
+{
+    if (ImGui::SliderFloat(label, val, min, max, fmt))
+    {
+        if (step > 0.0f)
+            *val = std::round(*val / step) * step;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// In-game tuning panel — draws an ImGui window with sliders for every
+// tunable. Live values; edits take effect on the next frame. Adding a new
+// tunable: a one-line tunedSlider here and a field on Tunables.
+// ---------------------------------------------------------------------------
+
+static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
+{
+    if (!sShowTuningPanel)
+        return;
+
+    auto& tun = selva::tuning::current();
+    ImGui::Begin("Selva Oscura Tuning (F1)", &sShowTuningPanel);
+
+    if (ImGui::CollapsingHeader("Locomotion", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        tunedSlider("Move speed", &tun.move_speed, 1.0f, 10.0f, 0.1f, "%.2f");
+        tunedSlider("Sprint multiplier", &tun.sprint_multiplier, 1.0f, 3.0f, 0.1f, "%.2f");
+        tunedSlider("Turn rate (rad/s)", &tun.turn_rate, 1.0f, 30.0f, 0.5f, "%.1f");
+    }
+
+    if (ImGui::CollapsingHeader("Mouse-look", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        tunedSlider("Sensitivity", &tun.mouse_sensitivity, 0.0005f, 0.01f, 0.0005f, "%.4f");
+        tunedSlider("Pitch min", &tun.pitch_min, -1.55f, 0.0f, 0.05f, "%.2f");
+        tunedSlider("Pitch max", &tun.pitch_max, 0.0f, 1.55f, 0.05f, "%.2f");
+    }
+
+    if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        tunedSlider("Follow distance", &tun.follow_distance, 1.0f, 15.0f, 0.5f, "%.1f");
+        tunedSlider("Follow height", &tun.follow_height, 0.0f, 8.0f, 0.5f, "%.1f");
+        tunedSlider("FOV (deg)", &tun.fov_degrees, 30.0f, 110.0f, 5.0f, "%.0f");
+    }
+
+    if (ImGui::CollapsingHeader("Dodge — timing", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        tunedSlider("Roll duration (s)", &tun.roll_duration, 0.10f, 1.50f, 0.05f, "%.2f");
+        tunedSlider("Backstep duration (s)", &tun.backstep_duration, 0.10f, 1.00f, 0.05f, "%.2f");
+        tunedSlider("Recovery (s)", &tun.dodge_recovery, 0.0f, 1.00f, 0.05f, "%.2f");
+        tunedSlider("Input buffer window (s)", &tun.dodge_buffer_window, 0.0f, 0.50f, 0.025f,
+                    "%.3f");
+    }
+
+    if (ImGui::CollapsingHeader("Dodge — shape", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        tunedSlider("Roll distance", &tun.roll_distance, 0.5f, 8.0f, 0.5f, "%.1f");
+        tunedSlider("Roll hop height", &tun.roll_hop_height, 0.0f, 2.0f, 0.05f, "%.2f");
+        tunedSlider("Roll tumble revolutions", &tun.roll_tumble_revs, 0.0f, 3.0f, 0.25f, "%.2f");
+        tunedSlider("Roll tumble ease", &tun.roll_tumble_ease, 1.0f, 3.0f, 0.1f, "%.1f");
+        tunedSlider("Backstep distance", &tun.backstep_distance, 0.5f, 5.0f, 0.5f, "%.1f");
+    }
+
+    if (ImGui::CollapsingHeader("Dodge — sub-curve windows", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        ImGui::TextWrapped("Each sub-curve runs in its own [start, end] window inside the overall "
+                           "roll phase. Hop: vertical arc. Tumble: rotation. Translation: forward "
+                           "motion. Adjust to layer them like a Souls roll.");
+        tunedSlider("Hop start", &tun.roll_hop_start, 0.0f, 1.0f, 0.05f, "%.2f");
+        tunedSlider("Hop end", &tun.roll_hop_end, 0.0f, 1.0f, 0.05f, "%.2f");
+        ImGui::TextDisabled("(hop peak is fixed at window midpoint — gravity arc)");
+        tunedSlider("Tumble start", &tun.roll_tumble_start, 0.0f, 1.0f, 0.05f, "%.2f");
+        tunedSlider("Tumble end", &tun.roll_tumble_end, 0.0f, 1.0f, 0.05f, "%.2f");
+        tunedSlider("Translation start", &tun.roll_translation_start, 0.0f, 1.0f, 0.05f, "%.2f");
+        tunedSlider("Translation end", &tun.roll_translation_end, 0.0f, 1.0f, 0.05f, "%.2f");
+    }
+
+    if (ImGui::CollapsingHeader("Dodge — pre-tumble lean", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        ImGui::TextWrapped("Forward-pitch posture that runs alongside the hop and composes with "
+                           "the tumble. Lets the character tip into the roll before the full "
+                           "rotation kicks in (animator's anticipation). 0° angle disables it.");
+        tunedSlider("Lean angle (rad)", &tun.roll_lean_angle, 0.0f, 1.5f, 0.05f, "%.2f");
+        tunedSlider("Lean start", &tun.roll_lean_start, 0.0f, 1.0f, 0.05f, "%.2f");
+        tunedSlider("Lean end", &tun.roll_lean_end, 0.0f, 1.0f, 0.05f, "%.2f");
+        tunedSlider("Lean peak (within window)", &tun.roll_lean_peak_phase, 0.05f, 0.95f, 0.05f,
+                    "%.2f");
+    }
+
+    ImGui::Separator();
+    if (ImGui::Button("Save to config/tunables.json"))
+    {
+        if (!selva::tuning::saveToFile(kTunablesPath))
+            std::fprintf(stderr, "[Tuning] Failed to save %s\n", kTunablesPath.c_str());
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Reload from disk"))
+        selva::tuning::loadFromFile(kTunablesPath);
+
+    ImGui::End();
+}
+
 int main(int /*argc*/, char* /*argv*/[])
 {
     Engine engine;
@@ -630,8 +765,14 @@ int main(int /*argc*/, char* /*argv*/[])
     initCube();
     initFloor();
 
+    // Load runtime-tunable values from JSON. Falls back silently to
+    // struct defaults if the file is missing or malformed; the in-game
+    // ImGui panel can save updated values back to the same path.
+    selva::tuning::loadFromFile(kTunablesPath);
+
     engine.setPerFrameUpdate(&selvaPerFrame);
     engine.setRenderWorld(&selvaRenderWorld);
+    engine.setRenderImGui(&selvaRenderImGui);
     engine.setOnResize(&onWindowResize);
 
     engine.run();

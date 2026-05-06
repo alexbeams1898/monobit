@@ -12,6 +12,9 @@
 // glad must be included before any SDL OpenGL header.
 #include <SDL.h>
 #include <glad/glad.h>
+#include <imgui.h>
+#include <imgui_impl_opengl3.h>
+#include <imgui_impl_sdl2.h>
 #include <tracy/Tracy.hpp>
 
 // Fixed-timestep constants.
@@ -103,6 +106,17 @@ bool Engine::init(const char* title, int width, int height)
     UIRenderer::init(window_w, window_h);
     AudioSystem::init(); // non-fatal — game runs without audio if device unavailable
 
+    // Dear ImGui — initialised here so games can register an ImGui callback
+    // and start drawing tuning panels. The engine owns NewFrame / Render /
+    // event forwarding; the game just calls ImGui::Begin/widgets/End from
+    // its setRenderImGui callback. No-op cost when no callback is set.
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGui::GetIO().IniFilename = nullptr; // don't write imgui.ini next to the exe
+    ImGui::StyleColorsDark();
+    ImGui_ImplSDL2_InitForOpenGL(window, gl_context);
+    ImGui_ImplOpenGL3_Init("#version 330 core");
+
     return true;
 }
 
@@ -187,6 +201,15 @@ void Engine::processEvents()
     SDL_Event event;
     while (SDL_PollEvent(&event))
     {
+        // ImGui sees every event so it can light up its widgets when the
+        // user clicks/types into a panel. ImGui sets WantCaptureMouse /
+        // WantCaptureKeyboard when a panel is active; game code that wants
+        // to respect that should query ImGui::GetIO() before consuming
+        // input. For selva-oscura the game uses SDL_GetKeyboardState +
+        // SDL_GetRelativeMouseState (separate pipeline), so panel input
+        // and game input coexist without contention today.
+        ImGui_ImplSDL2_ProcessEvent(&event);
+
         if (event.type == SDL_QUIT)
             running = false;
         if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_RESIZED)
@@ -248,6 +271,11 @@ void Engine::setRenderDebug(RenderDebugFn fn)
 void Engine::setRenderUI(RenderUIFn fn)
 {
     render_ui = fn;
+}
+
+void Engine::setRenderImGui(RenderImGuiFn fn)
+{
+    render_imgui = fn;
 }
 
 void Engine::setOnResize(ResizeFn fn)
@@ -317,6 +345,19 @@ void Engine::render()
         render_ui(*this, entity_manager);
     UIRenderer::endFrame();
 
+    // ImGui pass — drawn after the game's UI so panels float on top.
+    // NewFrame must precede any ImGui::Begin in the callback; Render
+    // emits the actual draw lists. The frame is started even if no
+    // callback is set, so future frame-state queries (DeltaTime,
+    // viewport size) stay valid.
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplSDL2_NewFrame();
+    ImGui::NewFrame();
+    if (render_imgui)
+        render_imgui(*this, entity_manager);
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
     SDL_GL_SwapWindow(window);
 }
 
@@ -328,6 +369,16 @@ void Engine::swapBuffers()
 
 void Engine::shutdown()
 {
+    // ImGui first — its OpenGL3 backend frees GPU resources, so it must
+    // run while the GL context is still alive. Subsequent shutdowns can
+    // safely no-op when called twice (e.g. dtor after explicit shutdown).
+    if (ImGui::GetCurrentContext() != nullptr)
+    {
+        ImGui_ImplOpenGL3_Shutdown();
+        ImGui_ImplSDL2_Shutdown();
+        ImGui::DestroyContext();
+    }
+
     AudioSystem::shutdown();
     UIRenderer::shutdown();
     FontManager::shutdown();

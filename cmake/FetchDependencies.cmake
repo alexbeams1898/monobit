@@ -139,3 +139,36 @@ target_include_directories(miniaudio_iface SYSTEM INTERFACE
 # ---------------------------------------------------------------------------
 add_library(fmod_stub INTERFACE)
 add_library(FMOD::Core ALIAS fmod_stub)
+
+# ---------------------------------------------------------------------------
+# Dear ImGui  (immediate-mode UI for in-game tuning panels and dev overlays)
+# Source-only release; we build a small static lib here against the SDL2 +
+# OpenGL3 backends. Used by selva-oscura's tuning UI; available to any game.
+# ---------------------------------------------------------------------------
+FetchContent_Declare(
+    imgui
+    GIT_REPOSITORY https://github.com/ocornut/imgui.git
+    GIT_TAG        v1.91.5
+    GIT_SHALLOW    TRUE
+    SYSTEM
+)
+FetchContent_MakeAvailable(imgui)
+
+# ImGui doesn't ship its own CMake target — assemble one ourselves from the
+# core sources + the two backend files we need (SDL2 platform + OpenGL3
+# renderer). Marked SYSTEM so clang-tidy doesn't fire on ImGui's internals.
+add_library(imgui STATIC
+    ${imgui_SOURCE_DIR}/imgui.cpp
+    ${imgui_SOURCE_DIR}/imgui_demo.cpp
+    ${imgui_SOURCE_DIR}/imgui_draw.cpp
+    ${imgui_SOURCE_DIR}/imgui_tables.cpp
+    ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl2.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+)
+target_include_directories(imgui SYSTEM PUBLIC
+    ${imgui_SOURCE_DIR}
+    ${imgui_SOURCE_DIR}/backends
+)
+target_link_libraries(imgui PUBLIC SDL2::SDL2-static OpenGL::GL)
+add_library(imgui::imgui ALIAS imgui)

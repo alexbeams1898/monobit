@@ -38,6 +38,7 @@ target_link_libraries(engine
         nlohmann_json::nlohmann_json
         FMOD::Core
         glad
+        imgui::imgui
         TracyClient
         miniaudio::miniaudio
 )

@@ -12,6 +12,7 @@ project(SelvaOscura VERSION 0.0.0 LANGUAGES C CXX)
 # selva-oscura is one exe today.
 add_library(selva-oscura-lib STATIC
     src/anim/ProceduralDriver.cpp
+    src/Tunables.cpp
 )
 
 target_include_directories(selva-oscura-lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -26,6 +27,17 @@ target_link_libraries(selva-oscura PRIVATE selva-oscura-lib)
 if(MINGW)
     target_link_options(selva-oscura PRIVATE -static-libgcc -static-libstdc++)
 endif()
+
+# Sync the config dir to the build output on every build so the exe finds
+# config/tunables.json. ALL custom target (not POST_BUILD) so JSON edits are
+# picked up even when no .cpp changed; same pattern as prison-escape-game.
+add_custom_target(selva-oscura-sync-config ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_CURRENT_SOURCE_DIR}/config
+        $<TARGET_FILE_DIR:selva-oscura>/config
+    COMMENT "Syncing selva-oscura config to build output..."
+    VERBATIM
+)
 
 # ---------------------------------------------------------------------------
 # Game tests — pure-compute logic that doesn't need a GL context (animation

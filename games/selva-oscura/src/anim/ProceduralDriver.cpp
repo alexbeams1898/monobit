@@ -1,5 +1,7 @@
+#include "Tunables.h"
 #include "anim/AnimationDriver.h"
 
+#include <cmath>
 #include <glm/gtc/constants.hpp>
 
 // ---------------------------------------------------------------------------
@@ -10,7 +12,8 @@
 // ozz-animation under the hood.
 //
 // Curve shapes (per state) are documented inline so feel-tuning has one
-// place to look.
+// place to look. Numeric values come from selva::tuning::current() — edited
+// live via the in-game ImGui panel, persisted to config/tunables.json.
 // ---------------------------------------------------------------------------
 
 namespace selva::anim
@@ -19,42 +22,80 @@ namespace selva::anim
 namespace
 {
 
-// ---- Tunables shared across procedural states. Constexpr so the compiler
-// folds them at the call sites. Move to JSON config when there's reason to
-// hot-reload, not before.
-
-// Dodge — roll. Distance and tumble revolutions are *integrated* over the
-// roll's lifetime; gameplay code owns the duration and feeds phase=0..1.
-constexpr float kRollDistance = 3.5f;   // total world units traveled
-constexpr float kRollHopHeight = 0.45f; // peak Y offset at phase=0.5
-constexpr float kRollTumbleRevs = 1.0f; // full pitch revolutions over the roll
-
-// Dodge — backstep. Shorter, no hop, no tumble.
-constexpr float kBackstepDistance = 2.0f;
-
 // ---- Curve helpers. Pure functions, all in [0, 1] -> [0, 1] domain unless
 // noted. Trivially testable; if any of these end up reused across states
 // they'll move to a shared anim_curves.h.
 
-// Parabolic arc that's 0 at phase=0 and 1, peaks at 1.0 at phase=0.5.
-// 4 * t * (1 - t) is the canonical bell shape; multiply by peak height
-// at the call site.
-float hopArc(float t)
+// Gravity arc — projectile motion under constant gravity, normalized so
+// y=0 at t=0 and t=1, peak y=1.0 at t=0.5. This is mathematically the
+// position function of an object launched with the right initial velocity
+// to land exactly at t=1: y(t) = v₀·t - ½g·t² which solves to 4t(1-t)
+// when peak=1.0 at t=0.5. Symmetric in time, but the motion *reads* as
+// gravity because the velocity profile matches free-fall — slow at apex,
+// fast at touchdown. Used for the hop, where "looks physical" matters.
+//
+// Single parameter (t) on purpose: any "peak phase" knob would produce
+// unphysical motion that fights what the eye expects. Use the surrounding
+// [start, end] window to control airborne duration; the arc shape is
+// fixed by physics.
+float gravityArc(float t)
 {
     return 4.0f * t * (1.0f - t);
 }
 
-// Ease-out cumulative distance: 0 at t=0, 1 at t=1, fast acceleration at
-// the start, decelerating to a stop. Shape is 1 - (1-t)^2. Multiply by
-// total distance to get current cumulative travel.
-//
-// Why ease-out for a roll: matches Souls feel — push off hard at the
-// start, decelerate into the recovery. Linear translation reads as
-// sliding, not rolling.
-float easeOutDistance(float t)
+// Asymmetric parabolic arc with a movable peak — value is 0 at t=0 and t=1,
+// reaches 1.0 at t=peak. Two parabolas glued at the peak. Used for posture
+// curves like the lean, where the peak doesn't have to coincide with the
+// temporal midpoint (a character can lean fast and unfold slow, or vice
+// versa). Out-of-range peaks (<= 0 or >= 1) degrade to 0.
+float parabolicArc(float t, float peak)
 {
-    const float u = 1.0f - t;
+    if (peak <= 0.0f || peak >= 1.0f)
+        return 0.0f;
+    if (t <= peak)
+    {
+        const float u = t / peak;
+        return 1.0f - (u - 1.0f) * (u - 1.0f);
+    }
+    const float u = (t - peak) / (1.0f - peak);
     return 1.0f - u * u;
+}
+
+// Smooth ease-in-out — 0 at t=0, 1 at t=1, slow start, accelerated middle,
+// slow end. Shaped by `power`: 1.0 = linear, 2.0 = standard cubic-style
+// S-curve, 3.0 = more aggressive. Used for tumble and translation curves
+// during the roll: most of the action happens during the airborne window,
+// matching the Souls feel where the character lifts, tumbles briskly,
+// then settles into recovery.
+float easeInOutPow(float t, float power)
+{
+    if (power <= 1.0f)
+        return t;
+    if (t < 0.5f)
+        return 0.5f * std::pow(2.0f * t, power);
+    return 1.0f - 0.5f * std::pow(2.0f * (1.0f - t), power);
+}
+
+// Map an overall phase t into a sub-curve's local [0, 1] window. Returns:
+//   0 if t < start (the sub-curve hasn't started yet)
+//   1 if t > end  (the sub-curve has completed; caller decides what that
+//                 means — for monotonic curves it's "fully applied," for
+//                 return-to-zero arcs the caller separately checks for
+//                 out-of-window and zeros the contribution)
+//   (t - start) / (end - start) otherwise
+//
+// This is how we layer hop / tumble / translation in independent time
+// windows within the overall roll phase. Each sub-curve doesn't know
+// (or care) about the others — it just runs over its own window.
+float subPhase(float t, float start, float end)
+{
+    if (end <= start)
+        return t >= end ? 1.0f : 0.0f;
+    if (t <= start)
+        return 0.0f;
+    if (t >= end)
+        return 1.0f;
+    return (t - start) / (end - start);
 }
 
 } // namespace
@@ -79,31 +120,74 @@ AnimDriverOutput evaluate(const AnimDriverInput& input)
 
     case AnimState::DodgeRoll:
     {
-        // Translation: ease-out cumulative distance along dodge_dir,
-        // plus parabolic hop on Y. The X/Z component is *cumulative*
-        // (driver outputs absolute offset from dodge-start, not per-frame
-        // velocity), so the caller computes
-        //   pos = dodge_start_pos + driver.translation
-        // each frame rather than integrating.
-        const float forward_offset = easeOutDistance(t) * kRollDistance;
-        const float y_offset = hopArc(t) * kRollHopHeight;
+        // Three sub-curves, each on its own [start, end] window inside
+        // the overall roll phase. Defaults give the Souls read:
+        //   * Hop window [0.0, 0.55]: character lifts, peaks early-mid,
+        //     lands by phase 0.55. After landing, no more vertical motion.
+        //   * Tumble window [0.15, 0.85]: rotation kicks in slightly into
+        //     the hop, runs eased through the airborne moment, settles
+        //     before recovery. Outside the window it contributes 0.
+        //   * Translation window [0.0, 0.85]: forward motion overlaps
+        //     both, eased so most of the distance lands during the
+        //     airborne portion.
+        // The X/Z translation is *cumulative* — driver outputs absolute
+        // offset from dodge-start, caller does pos = dodge_start_pos +
+        // driver.translation each frame instead of integrating.
+        const auto& tun = selva::tuning::current();
+
+        // Hop: zero outside its window, gravity arc within it. Peak is
+        // fixed at the midpoint of the window because that's where real
+        // gravity puts the apex; the surrounding [start, end] window
+        // controls airborne duration.
+        float y_offset = 0.0f;
+        if (t > tun.roll_hop_start && t < tun.roll_hop_end)
+        {
+            const float local = subPhase(t, tun.roll_hop_start, tun.roll_hop_end);
+            y_offset = gravityArc(local) * tun.roll_hop_height;
+        }
+
+        // Tumble: zero before window, hold at full revolutions after
+        // (character stays oriented at landing rotation). Eased within.
+        const float tumble_local = subPhase(t, tun.roll_tumble_start, tun.roll_tumble_end);
+        const float tumble_eased = easeInOutPow(tumble_local, tun.roll_tumble_ease);
+        const float tumble_pitch = -tun.roll_tumble_revs * glm::two_pi<float>() * tumble_eased;
+
+        // Pre-tumble lean: a parabolic forward-pitch posture that rises and
+        // unfolds within its own window. Composes additively with the
+        // tumble so the character starts tipping forward before the full
+        // rotation kicks in (and unfolds back to upright before landing if
+        // the tumble is short / windowed earlier than the lean ends).
+        // Negative pitch_offset = top tilts forward (same convention as
+        // tumble). Within-window is the parabolic arc; outside-window is 0.
+        float lean_pitch = 0.0f;
+        if (t > tun.roll_lean_start && t < tun.roll_lean_end)
+        {
+            const float lean_local = subPhase(t, tun.roll_lean_start, tun.roll_lean_end);
+            const float lean_arc = parabolicArc(lean_local, tun.roll_lean_peak_phase);
+            lean_pitch = -tun.roll_lean_angle * lean_arc;
+        }
+
+        out.pitch_offset = tumble_pitch + lean_pitch;
+
+        // Translation: zero before window, hold at full distance after
+        // (character has reached the landing point). Eased within.
+        const float trans_local = subPhase(t, tun.roll_translation_start, tun.roll_translation_end);
+        const float trans_eased = easeInOutPow(trans_local, tun.roll_tumble_ease);
+        const float forward_offset = trans_eased * tun.roll_distance;
         out.translation = input.params.dodge_dir * forward_offset;
         out.translation.y = y_offset;
-
-        // Visual tumble: rotate around local +X (right axis, after the
-        // entity's yaw is applied). Negative angle so the cube tips
-        // *forward* — top tilting toward the direction of motion.
-        // Linear in phase; ease curves on rotation read as wobble, not
-        // tumble.
-        out.pitch_offset = -kRollTumbleRevs * glm::two_pi<float>() * t;
         break;
     }
 
     case AnimState::DodgeBackstep:
     {
         // Translation: ease-out along dodge_dir (typically -facing). No
-        // hop, no tumble — a quick hop, not a roll.
-        const float forward_offset = easeOutDistance(t) * kBackstepDistance;
+        // hop, no tumble — a quick hop, not a roll. Backstep keeps the
+        // pure ease-out (push-off, decel) since it's a single beat with
+        // no airborne phase to time around.
+        const auto& tun = selva::tuning::current();
+        const float u = 1.0f - t;
+        const float forward_offset = (1.0f - u * u) * tun.backstep_distance;
         out.translation = input.params.dodge_dir * forward_offset;
         break;
     }
