@@ -1,4 +1,5 @@
 #include "Engine.h"
+#include "anim/AnimationDriver.h"
 #include "gl/ShaderUtils.h"
 
 // Tell SDL not to redefine `main` to its WinMain shim — the engine owns SDL
@@ -224,28 +225,25 @@ constexpr float kFollowDistance = 6.0f;
 constexpr float kFollowHeight = 2.5f;
 
 // Dodge — directional roll when moving, backstep when standing.
-// Roll moves further and lasts longer; backstep is short and quick.
-// Recovery locks out further dodges but allows movement again.
+// Durations and recovery live here; *spatial shape* (distance, hop arc,
+// tumble) lives in the animation driver (procedural curves today,
+// skeletal clips later — same interface). Driver doc:
+// engines/engine/docs/3D-EXTENSION.md §5b.
 constexpr float kRollDuration = 0.55f;     // seconds, roll phase
-constexpr float kRollDistance = 3.5f;      // world units traveled
 constexpr float kBackstepDuration = 0.35f; // seconds, backstep phase
-constexpr float kBackstepDistance = 2.0f;  // world units traveled
 constexpr float kDodgeRecovery = 0.20f;    // seconds, lockout after dodge
-
-// Visual tumble — full pitch rotation across the roll's duration so the
-// cube reads as "rolling forward." Backstep doesn't tumble (a hop, not
-// a roll); it only translates.
-constexpr float kRollTumbleRevolutions = 1.0f; // 1 = 360° over kRollDuration
 } // namespace tuning
 
-// Dodge state machine. Idle → Rolling/Backstepping → Recovering → Idle.
-// One enum covers both flavors; the only behavioral difference is whether
-// the cube tumbles visually. Direction and speed live on PlayerState.
+// Dodge state machine. Idle → Rolling/Backstep (committed) → Recovering → Idle.
+// State machine is owned here; the *visual + positional shape* of each
+// committed state is delegated to the AnimationDriver. Direction and start
+// position live on PlayerState so the driver's translation offset can be
+// added to the start position each frame.
 enum class DodgePhase
 {
     Idle,
-    Rolling,    // committed: WASD locked, velocity forced to dodge_dir × speed
-    Backstep,   // committed: same, but no visual tumble; usually shorter
+    Rolling,    // committed: WASD locked, position = start + driver(DodgeRoll)
+    Backstep,   // committed: same, but driver(DodgeBackstep) — no hop, no tumble
     Recovering, // can move again, but Space is locked
 };
 
@@ -257,10 +255,10 @@ struct PlayerState
     // Dodge state.
     DodgePhase dodge_phase = DodgePhase::Idle;
     glm::vec3 dodge_dir = glm::vec3(0.0f, 0.0f, -1.0f); // unit vector, ground plane
-    float dodge_speed = 0.0f;                           // units/second during commit
-    float dodge_timer = 0.0f;                           // seconds elapsed in current phase
-    float dodge_duration = 0.0f;                        // seconds total for current phase
-    float dodge_tumble_revs = 0.0f; // visual revolutions to apply over duration (0 = none)
+    glm::vec3 dodge_start_pos =
+        glm::vec3(0.0f);         // pos at dodge start; driver offset added each frame
+    float dodge_timer = 0.0f;    // seconds elapsed in current phase
+    float dodge_duration = 0.0f; // seconds total for current phase
 };
 
 // One global player. When this scales (multiple controllable entities, NPCs
@@ -335,8 +333,6 @@ static void startDodge(PlayerState& p, const glm::vec3& moveIntent)
         p.yaw = yawFromGroundDir(p.dodge_dir);
         p.dodge_phase = DodgePhase::Rolling;
         p.dodge_duration = tuning::kRollDuration;
-        p.dodge_speed = tuning::kRollDistance / tuning::kRollDuration;
-        p.dodge_tumble_revs = tuning::kRollTumbleRevolutions;
     }
     else
     {
@@ -346,14 +342,32 @@ static void startDodge(PlayerState& p, const glm::vec3& moveIntent)
         p.dodge_dir = -facingFwd;
         p.dodge_phase = DodgePhase::Backstep;
         p.dodge_duration = tuning::kBackstepDuration;
-        p.dodge_speed = tuning::kBackstepDistance / tuning::kBackstepDuration;
-        p.dodge_tumble_revs = 0.0f;
     }
+    p.dodge_start_pos = p.pos;
     p.dodge_timer = 0.0f;
 }
 
+// Map a committed dodge phase to its AnimState. Helper so render and
+// advance both agree on which driver state to evaluate.
+static selva::anim::AnimState dodgeAnimState(DodgePhase phase)
+{
+    switch (phase)
+    {
+    case DodgePhase::Rolling:
+        return selva::anim::AnimState::DodgeRoll;
+    case DodgePhase::Backstep:
+        return selva::anim::AnimState::DodgeBackstep;
+    case DodgePhase::Recovering:
+        return selva::anim::AnimState::DodgeRecover;
+    case DodgePhase::Idle:
+        break;
+    }
+    return selva::anim::AnimState::None;
+}
+
 // Advance the dodge state machine by dt. Updates position when in Rolling
-// or Backstep, transitions to Recovering at the end of the active phase,
+// or Backstep by querying the animation driver for an absolute offset from
+// dodge_start_pos. Transitions to Recovering at the end of the active phase,
 // and back to Idle after the recovery window. Returns true if the player
 // is still committed (i.e. WASD should be ignored this frame).
 static bool advanceDodge(PlayerState& p, float dt)
@@ -365,7 +379,20 @@ static bool advanceDodge(PlayerState& p, float dt)
 
     if (p.dodge_phase == DodgePhase::Rolling || p.dodge_phase == DodgePhase::Backstep)
     {
-        p.pos += p.dodge_dir * p.dodge_speed * dt;
+        // Phase progress in [0, 1]; ask the driver for the cumulative
+        // offset from dodge_start_pos and compose. Driver owns the
+        // translation curve shape (ease-out, hop arc); gameplay code
+        // owns timing and state transitions.
+        const float phase = p.dodge_duration > 0.0f
+                                ? glm::clamp(p.dodge_timer / p.dodge_duration, 0.0f, 1.0f)
+                                : 1.0f;
+        selva::anim::AnimDriverInput in;
+        in.state = dodgeAnimState(p.dodge_phase);
+        in.phase = phase;
+        in.params.dodge_dir = p.dodge_dir;
+        const selva::anim::AnimDriverOutput out = selva::anim::evaluate(in);
+        p.pos = p.dodge_start_pos + out.translation;
+
         if (p.dodge_timer >= p.dodge_duration)
         {
             p.dodge_phase = DodgePhase::Recovering;
@@ -382,7 +409,6 @@ static bool advanceDodge(PlayerState& p, float dt)
         p.dodge_phase = DodgePhase::Idle;
         p.dodge_timer = 0.0f;
         p.dodge_duration = 0.0f;
-        p.dodge_tumble_revs = 0.0f;
     }
     return false;
 }
@@ -511,21 +537,33 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
     }
 
     // 3. Player — smaller, slightly brighter cube at the player's position,
-    //    rotated to face the last movement direction. During a roll, an
-    //    additional pitch rotation tumbles the cube forward across the
-    //    roll's duration so the action reads visually. Backstep doesn't
-    //    tumble (a hop, not a roll) — its tumble_revs is 0.
-    //    Tint kept just above 1.0 so the per-corner gradient survives.
+    //    rotated to face the last movement direction. During a committed
+    //    dodge the animation driver supplies pitch/yaw/roll offsets
+    //    (currently the roll's tumble; backstep returns zero). Position
+    //    is already updated by advanceDodge — we only consume rotations
+    //    here. Tint kept just above 1.0 so the per-corner gradient survives.
     glm::mat4 playerBaseModel = glm::rotate(glm::translate(glm::mat4(1.0f), sPlayer.pos),
                                             sPlayer.yaw, glm::vec3(0.0f, 1.0f, 0.0f));
-    if (sPlayer.dodge_phase == DodgePhase::Rolling && sPlayer.dodge_tumble_revs > 0.0f)
+    if (sPlayer.dodge_phase == DodgePhase::Rolling || sPlayer.dodge_phase == DodgePhase::Backstep)
     {
-        const float t =
-            sPlayer.dodge_duration > 0.0f ? sPlayer.dodge_timer / sPlayer.dodge_duration : 0.0f;
-        const float tumbleAngle = sPlayer.dodge_tumble_revs * glm::two_pi<float>() * t;
-        // Rotate around player-local +X (right axis, after yaw) so the
-        // tumble axis matches the roll direction (forward = -Z in local).
-        playerBaseModel = glm::rotate(playerBaseModel, tumbleAngle, glm::vec3(1.0f, 0.0f, 0.0f));
+        const float phase =
+            sPlayer.dodge_duration > 0.0f
+                ? glm::clamp(sPlayer.dodge_timer / sPlayer.dodge_duration, 0.0f, 1.0f)
+                : 0.0f;
+        selva::anim::AnimDriverInput in;
+        in.state = dodgeAnimState(sPlayer.dodge_phase);
+        in.phase = phase;
+        in.params.dodge_dir = sPlayer.dodge_dir;
+        const selva::anim::AnimDriverOutput out = selva::anim::evaluate(in);
+        if (out.pitch_offset != 0.0f)
+            playerBaseModel =
+                glm::rotate(playerBaseModel, out.pitch_offset, glm::vec3(1.0f, 0.0f, 0.0f));
+        if (out.yaw_offset != 0.0f)
+            playerBaseModel =
+                glm::rotate(playerBaseModel, out.yaw_offset, glm::vec3(0.0f, 1.0f, 0.0f));
+        if (out.roll_offset != 0.0f)
+            playerBaseModel =
+                glm::rotate(playerBaseModel, out.roll_offset, glm::vec3(0.0f, 0.0f, 1.0f));
     }
 
     {
