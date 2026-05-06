@@ -225,6 +225,14 @@ static bool initSkeletalAssets()
     sSampler = selva::anim::createPoseSampler(sSkeleton, sSoldierMesh);
     if (!selva::anim::initSkeletalRenderer())
         return false;
+
+    // Pre-warm: sample the first clip at t=0 so the bone palette is
+    // populated before the first frame renders. Without this, the very
+    // first render uses an uninitialized palette (zeros), producing a
+    // flash of broken geometry. Partial fix only; see
+    // docs/BACKLOG.md "First-frame pop / init flash" for the full
+    // story (camera + player prev-state lerps still pop on frame 0).
+    sSampler.sample(sIdleClip, 0.0f);
     return true;
 }
 
@@ -602,7 +610,11 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
     const auto& tun = selva::tuning::current();
     const glm::vec3 camPos =
         sPlayer.pos - lookFwd * tun.follow_distance + glm::vec3(0.0f, tun.follow_height, 0.0f);
-    const glm::vec3 lookAt = sPlayer.pos + glm::vec3(0.0f, 0.5f, 0.0f);
+    // LookAt height tracks the soldier's chest (~1.3m) since the
+    // rigged character is ~1.7m tall. Souls/Elden Ring aim the camera
+    // at chest height for the same reason — the player's silhouette
+    // sits centered in the frame instead of head-up or feet-down.
+    const glm::vec3 lookAt = glm::vec3(sPlayer.pos.x, 1.3f, sPlayer.pos.z);
     const glm::mat4 view = glm::lookAt(camPos, lookAt, glm::vec3(0.0f, 1.0f, 0.0f));
 
     const float aspect =
@@ -627,71 +639,51 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
         drawObject(sCubeVao, 36, model, 0.7f);
     }
 
-    // 3. Player — smaller, slightly brighter cube at the player's position,
-    //    rotated to face the last movement direction. During a committed
-    //    dodge the animation driver supplies pitch/yaw/roll offsets
-    //    (currently the roll's tumble; backstep returns zero). Position
-    //    is already updated by advanceDodge — we only consume rotations
-    //    here. Tint kept just above 1.0 so the per-corner gradient survives.
-    glm::mat4 playerBaseModel = glm::rotate(glm::translate(glm::mat4(1.0f), sPlayer.pos),
-                                            sPlayer.yaw, glm::vec3(0.0f, 1.0f, 0.0f));
-    if (sPlayer.dodge_phase == DodgePhase::Rolling || sPlayer.dodge_phase == DodgePhase::Backstep)
-    {
-        const float phase =
-            sPlayer.dodge_duration > 0.0f
-                ? glm::clamp(sPlayer.dodge_timer / sPlayer.dodge_duration, 0.0f, 1.0f)
-                : 0.0f;
-        selva::anim::AnimDriverInput in;
-        in.state = dodgeAnimState(sPlayer.dodge_phase);
-        in.phase = phase;
-        in.params.dodge_dir = sPlayer.dodge_dir;
-        const selva::anim::AnimDriverOutput out = selva::anim::evaluate(in);
-        if (out.pitch_offset != 0.0f)
-            playerBaseModel =
-                glm::rotate(playerBaseModel, out.pitch_offset, glm::vec3(1.0f, 0.0f, 0.0f));
-        if (out.yaw_offset != 0.0f)
-            playerBaseModel =
-                glm::rotate(playerBaseModel, out.yaw_offset, glm::vec3(0.0f, 1.0f, 0.0f));
-        if (out.roll_offset != 0.0f)
-            playerBaseModel =
-                glm::rotate(playerBaseModel, out.roll_offset, glm::vec3(0.0f, 0.0f, 1.0f));
-    }
-
-    {
-        const glm::mat4 model = glm::scale(playerBaseModel, glm::vec3(0.6f, 1.0f, 0.6f));
-        drawObject(sCubeVao, 36, model, 1.1f);
-    }
-
-    // 3b. Player face mark — a tiny dark cube poking out of the player's
-    //     forward face. Lives in playerBaseModel space, so it tumbles
-    //     with the body during a roll.
-    {
-        glm::mat4 model = glm::translate(playerBaseModel, glm::vec3(0.0f, 0.10f, -0.32f));
-        model = glm::scale(model, glm::vec3(0.10f, 0.10f, 0.04f));
-        drawObject(sCubeVao, 36, model, 0.25f);
-    }
-
     glBindVertexArray(0);
     glUseProgram(0);
 
-    // 4. Soldier (skinned) — drawn 3 units to the right of the player so
-    //    we can compare the cube vs the rigged character side-by-side
-    //    while the skeletal pipeline beds in. Once verified, the cube
-    //    goes away and the soldier draws at sPlayer.pos directly.
+    // 3. Player — drawn as the rigged Soldier mesh, animated by the
+    //    PoseSampler. Position comes from sPlayer.pos (X/Z); Y is
+    //    -foot_offset_y so feet land on the floor regardless of where
+    //    the rig's origin sits in bind pose. Yaw rotates the model
+    //    around world-up to face the player's heading.
+    //
+    //    Procedural dodge tumble: while Rolling/Backstep, the
+    //    AnimationDriver returns pitch/yaw/roll offsets that we apply
+    //    on top of sPlayer.yaw. Once a proper Roll animation clip
+    //    drives the body, those offsets become identity and the clip
+    //    handles the visual tumble — but the procedural fallback keeps
+    //    working until then. Body penetrates the floor during the pitch
+    //    swing; see docs/BACKLOG.md "Roll through floor" for context.
     if (sSoldierMesh.isLoaded() && !sSampler.bone_palette.empty())
     {
-        // uModel is pure placement. Asset-level scale and orientation
-        // fixes are baked into the mesh's vertex positions (load time)
-        // and the bone palette (via PoseSampler.root_transform).
-        //
-        // The Y offset is `-foot_offset_y` — measured at load time as
-        // the lowest vertex Y in the baked rest pose. Subtracting it
-        // plants the character's feet on the floor regardless of where
-        // in the bind pose the rig's origin sits (Mixamo near toe-level,
-        // other rigs at hips/waist/etc.).
-        const glm::vec3 soldier_pos(sPlayer.pos.x + 3.0f, -sSoldierMesh.foot_offset_y,
-                                    sPlayer.pos.z);
-        const glm::mat4 soldier_model = glm::translate(glm::mat4(1.0f), soldier_pos);
+        const glm::vec3 soldier_pos(sPlayer.pos.x, -sSoldierMesh.foot_offset_y, sPlayer.pos.z);
+        glm::mat4 soldier_model = glm::translate(glm::mat4(1.0f), soldier_pos);
+        soldier_model = glm::rotate(soldier_model, sPlayer.yaw, glm::vec3(0.0f, 1.0f, 0.0f));
+
+        if (sPlayer.dodge_phase == DodgePhase::Rolling ||
+            sPlayer.dodge_phase == DodgePhase::Backstep)
+        {
+            const float phase =
+                sPlayer.dodge_duration > 0.0f
+                    ? glm::clamp(sPlayer.dodge_timer / sPlayer.dodge_duration, 0.0f, 1.0f)
+                    : 0.0f;
+            selva::anim::AnimDriverInput in;
+            in.state = dodgeAnimState(sPlayer.dodge_phase);
+            in.phase = phase;
+            in.params.dodge_dir = sPlayer.dodge_dir;
+            const selva::anim::AnimDriverOutput out = selva::anim::evaluate(in);
+            if (out.pitch_offset != 0.0f)
+                soldier_model =
+                    glm::rotate(soldier_model, out.pitch_offset, glm::vec3(1.0f, 0.0f, 0.0f));
+            if (out.yaw_offset != 0.0f)
+                soldier_model =
+                    glm::rotate(soldier_model, out.yaw_offset, glm::vec3(0.0f, 1.0f, 0.0f));
+            if (out.roll_offset != 0.0f)
+                soldier_model =
+                    glm::rotate(soldier_model, out.roll_offset, glm::vec3(0.0f, 0.0f, 1.0f));
+        }
+
         selva::anim::drawSkeletalMesh(sSoldierMesh, soldier_model, viewProj, sSampler.bone_palette,
                                       1.0f);
     }
