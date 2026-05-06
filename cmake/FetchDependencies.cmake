@@ -172,3 +172,50 @@ target_include_directories(imgui SYSTEM PUBLIC
 )
 target_link_libraries(imgui PUBLIC SDL2::SDL2-static OpenGL::GL)
 add_library(imgui::imgui ALIAS imgui)
+
+# ---------------------------------------------------------------------------
+# cgltf  (single-header C library for parsing glTF 2.0 files, .gltf and .glb)
+# Used by selva-oscura to load skinned characters + animation clips. We
+# include the header directly; CGLTF_IMPLEMENTATION must be defined in
+# exactly one .cpp file (we'll do that in selva-oscura's asset loader).
+# ---------------------------------------------------------------------------
+FetchContent_Declare(
+    cgltf
+    GIT_REPOSITORY https://github.com/jkuhlmann/cgltf.git
+    GIT_TAG        v1.14
+    GIT_SHALLOW    TRUE
+    SYSTEM
+)
+FetchContent_MakeAvailable(cgltf)
+
+add_library(cgltf_iface INTERFACE)
+target_include_directories(cgltf_iface SYSTEM INTERFACE ${cgltf_SOURCE_DIR})
+add_library(cgltf::cgltf ALIAS cgltf_iface)
+
+# ---------------------------------------------------------------------------
+# ozz-animation  (C++ skeletal-animation runtime — clip sampling, blending,
+# bone palette computation). Two pieces:
+#   * runtime  : samples clips, computes bone palettes (links into the game)
+#   * offline  : converts glTF/Collada → ozz's binary format (build-time tool)
+# Used by selva-oscura's skeletal driver.
+# ---------------------------------------------------------------------------
+set(ozz_build_samples       OFF CACHE BOOL "" FORCE)
+set(ozz_build_howtos         OFF CACHE BOOL "" FORCE)
+set(ozz_build_tests          OFF CACHE BOOL "" FORCE)
+set(ozz_build_fbx            OFF CACHE BOOL "" FORCE)
+set(ozz_build_gltf            ON CACHE BOOL "" FORCE)
+set(ozz_build_tools           ON CACHE BOOL "" FORCE)
+set(ozz_build_data           OFF CACHE BOOL "" FORCE)
+set(ozz_build_postfix        OFF CACHE BOOL "" FORCE)
+set(ozz_build_msvc_rt_dll    OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    ozz
+    GIT_REPOSITORY https://github.com/guillaumeblanc/ozz-animation.git
+    GIT_TAG        0.16.0
+    GIT_SHALLOW    TRUE
+    SYSTEM
+)
+# ozz uses an older cmake_minimum — same workaround pattern as GLAD/SDL2.
+set(CMAKE_WARN_DEPRECATED FALSE CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(ozz)
+set(CMAKE_WARN_DEPRECATED TRUE CACHE BOOL "" FORCE)

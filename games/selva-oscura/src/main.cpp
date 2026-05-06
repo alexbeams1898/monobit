@@ -1,6 +1,11 @@
 #include "Engine.h"
 #include "Tunables.h"
+#include "anim/AnimationClip.h"
 #include "anim/AnimationDriver.h"
+#include "anim/PoseSampler.h"
+#include "anim/SkeletalMesh.h"
+#include "anim/SkeletalRenderer.h"
+#include "anim/Skeleton.h"
 #include "gl/ShaderUtils.h"
 
 #include <imgui.h>
@@ -182,6 +187,52 @@ static void initFloor()
     glEnableVertexAttribArray(1);
 
     glBindVertexArray(0);
+}
+
+// ---------------------------------------------------------------------------
+// Skeletal character assets — Soldier.glb + skeleton.ozz + Idle.ozz. Loaded
+// once at startup via initSkeletalAssets(); torn down via shutdownSkeletalAssets()
+// before the GL context dies. The pose sampler caches per-clip interpolation
+// state across frames; reusing it (vs constructing a new one each frame) is
+// what makes sampling allocation-free in steady state.
+// ---------------------------------------------------------------------------
+
+static selva::anim::Skeleton sSkeleton;
+static selva::anim::SkeletalMesh sSoldierMesh;
+static selva::anim::AnimationClip sIdleClip;
+static selva::anim::PoseSampler sSampler;
+
+// Wall-clock animation time (seconds). Wraps inside the clip's duration.
+// Will eventually be driven by the AnimationDriver state machine, but for
+// the first "is this even working" pass we just play Idle on a loop.
+static float sAnimTime = 0.0f;
+
+static bool initSkeletalAssets()
+{
+    sSkeleton = selva::anim::loadSkeleton("assets/characters/soldier/skeleton.ozz");
+    if (!sSkeleton.isLoaded())
+        return false;
+    sIdleClip = selva::anim::loadAnimationClip("assets/characters/soldier/Idle.ozz");
+    if (!sIdleClip.isLoaded())
+        return false;
+    sSoldierMesh =
+        selva::anim::loadSkeletalMesh("assets/characters/soldier/Soldier.glb", sSkeleton);
+    if (!sSoldierMesh.isLoaded())
+        return false;
+    // The sampler is bound to the (skeleton, mesh) pair at construction so
+    // its bone-palette space is guaranteed to match the mesh's baked
+    // vertex space. No "remember to wire the root transform" step.
+    sSampler = selva::anim::createPoseSampler(sSkeleton, sSoldierMesh);
+    if (!selva::anim::initSkeletalRenderer())
+        return false;
+    return true;
+}
+
+static void shutdownSkeletalAssets()
+{
+    selva::anim::shutdownSkeletalRenderer();
+    // sSoldierMesh's destructor frees its GPU buffers. The other ozz-owned
+    // structs free heap memory in their destructors — no GL involvement.
 }
 
 // ---------------------------------------------------------------------------
@@ -417,6 +468,20 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     const int fps = static_cast<int>(std::lround(1.0 / engine.lastFrameTime()));
     engine.setWindowTitle("Selva Oscura  |  FPS " + std::to_string(fps));
 
+    // Advance the animation clock and sample the Idle clip into the bone
+    // palette. Wall-clock-rate (not fixed-step) for smooth playback on
+    // high-refresh displays. When the AnimationDriver gets a Skeletal
+    // implementation, this whole block becomes "ask the driver for the
+    // current clip + phase, then sample"; for now we just play Idle.
+    if (sIdleClip.isLoaded())
+    {
+        sAnimTime += dt;
+        const float dur = sIdleClip.duration();
+        if (dur > 0.0f && sAnimTime >= dur)
+            sAnimTime = std::fmod(sAnimTime, dur);
+        sSampler.sample(sIdleClip, sAnimTime);
+    }
+
     // Mouse look. SDL_GetRelativeMouseState drains accumulated deltas.
     // Mouse-left rotates the camera left (Souls/Elden Ring/FPS convention).
     int mdx = 0;
@@ -608,6 +673,28 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
 
     glBindVertexArray(0);
     glUseProgram(0);
+
+    // 4. Soldier (skinned) — drawn 3 units to the right of the player so
+    //    we can compare the cube vs the rigged character side-by-side
+    //    while the skeletal pipeline beds in. Once verified, the cube
+    //    goes away and the soldier draws at sPlayer.pos directly.
+    if (sSoldierMesh.isLoaded() && !sSampler.bone_palette.empty())
+    {
+        // uModel is pure placement. Asset-level scale and orientation
+        // fixes are baked into the mesh's vertex positions (load time)
+        // and the bone palette (via PoseSampler.root_transform).
+        //
+        // The Y offset is `-foot_offset_y` — measured at load time as
+        // the lowest vertex Y in the baked rest pose. Subtracting it
+        // plants the character's feet on the floor regardless of where
+        // in the bind pose the rig's origin sits (Mixamo near toe-level,
+        // other rigs at hips/waist/etc.).
+        const glm::vec3 soldier_pos(sPlayer.pos.x + 3.0f, -sSoldierMesh.foot_offset_y,
+                                    sPlayer.pos.z);
+        const glm::mat4 soldier_model = glm::translate(glm::mat4(1.0f), soldier_pos);
+        selva::anim::drawSkeletalMesh(sSoldierMesh, soldier_model, viewProj, sSampler.bone_palette,
+                                      1.0f);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -764,6 +851,14 @@ int main(int /*argc*/, char* /*argv*/[])
     sWindowH = engine.windowHeight();
     initCube();
     initFloor();
+    if (!initSkeletalAssets())
+    {
+        // Non-fatal: the game stays runnable on a fresh checkout where
+        // assets haven't been processed. Cube + floor still render; the
+        // soldier just won't appear. Log so we notice if the assets path
+        // breaks silently in CI.
+        std::fprintf(stderr, "[main] skeletal assets failed to load — soldier disabled\n");
+    }
 
     // Load runtime-tunable values from JSON. Falls back silently to
     // struct defaults if the file is missing or malformed; the in-game
@@ -777,6 +872,7 @@ int main(int /*argc*/, char* /*argv*/[])
 
     engine.run();
 
+    shutdownSkeletalAssets();
     shutdownGeometry();
     engine.shutdown();
     return 0;
