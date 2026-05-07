@@ -4,8 +4,10 @@
 #include "anim/SkeletalMesh.h"
 #include "anim/Skeleton.h"
 
+#include <cmath>
 #include <cstring>
 #include <ozz/animation/runtime/animation.h>
+#include <ozz/animation/runtime/blending_job.h>
 #include <ozz/animation/runtime/local_to_model_job.h>
 #include <ozz/animation/runtime/sampling_job.h>
 #include <ozz/animation/runtime/skeleton.h>
@@ -17,31 +19,80 @@ namespace selva::anim
 {
 
 // ---------------------------------------------------------------------------
-// Impl — ozz scratch state. Hidden from the header so users don't pull in
-// ozz's headers transitively.
+// Two-track sampler with cross-fade. Each track owns:
+//   * a pointer to the currently-assigned ozz Animation,
+//   * an ozz SamplingJob::Context (caches keyframe interpolation state),
+//   * a local-space SoaTransform output buffer,
+//   * its own time clock (advanced by dt every frame, wraps at duration).
 //
-// SamplingJob writes "SoA local-space transforms" — Structure-of-Arrays
-// packed for SIMD. One SoaTransform holds 4 bones' worth of data; the
-// number we need is ceil(num_bones / 4). Then LocalToModelJob converts
-// that to model-space Float4x4 (one per bone, AoS).
+// The "active" track is the clip the gameplay code last asked for. The
+// "previous" track is the one we're fading away from. When a fade is in
+// progress, both tracks advance and a BlendingJob mixes their local
+// transforms by weight before LocalToModelJob produces the bone palette.
 //
-// Both buffers are sized once based on the skeleton; reused every frame.
+// When the active track is nullptr (game hasn't asked for a clip yet),
+// or when blending is finished and previous is dropped, only one track
+// participates. Code paths are simpler when symmetric so we always run
+// the BlendingJob — its weights handle the degenerate cases.
 // ---------------------------------------------------------------------------
+
+namespace
+{
+struct Track
+{
+    const ozz::animation::Animation* animation = nullptr;
+    ozz::animation::SamplingJob::Context context;
+    std::vector<ozz::math::SoaTransform> local_transforms;
+    float time_seconds = 0.0f;
+
+    void resize(int num_joints, int num_soa_joints)
+    {
+        context.Resize(num_joints);
+        local_transforms.resize(num_soa_joints);
+    }
+
+    // Sample at the current time. Returns false if the clip has none.
+    bool sample()
+    {
+        if (!animation)
+            return false;
+        const float dur = animation->duration();
+        const float ratio = dur > 0.0f ? (time_seconds / dur) : 0.0f;
+        ozz::animation::SamplingJob job;
+        job.animation = animation;
+        job.context = &context;
+        job.ratio = ratio;
+        job.output = ozz::make_span(local_transforms);
+        return job.Run();
+    }
+};
+} // namespace
+
 struct PoseSampler::Impl
 {
     const ozz::animation::Skeleton* skeleton = nullptr;
-    ozz::animation::SamplingJob::Context sampling_context;
-    std::vector<ozz::math::SoaTransform> local_transforms; // size = num_soa_joints
-    std::vector<ozz::math::Float4x4> model_matrices;       // size = num_joints
-    // Asset-root transform sent to LocalToModelJob.root each frame.
-    // Compensates for glTF scene-graph transforms above the skeleton's
-    // root joint that gltf2ozz doesn't bake in. Stored as a glm::mat4
-    // for storage compatibility with ozz::math::Float4x4 (same layout).
+
+    // Two tracks — current (the one gameplay asked for) and previous
+    // (the one fading out). Either or both may have a null animation.
+    Track current;
+    Track previous;
+
+    // Blend state. weight = how much of `current` is blended in.
+    // 0 = all previous, 1 = all current. duration = how long the in-
+    // progress fade should take; elapsed = how far through it we are.
+    // When elapsed >= duration, blending is complete: we copy current
+    // → previous semantics by clearing previous (no fading-from), and
+    // weight is effectively 1 forever after.
+    float blend_weight = 1.0f;
+    float blend_elapsed = 0.0f;
+    float blend_duration = 0.0f;
+
     glm::mat4 root_transform = glm::mat4(1.0f);
-    // Inverse bind matrices, in ozz joint order. Multiplied per-bone
-    // into the model-space matrices to produce the bind-relative
-    // skin matrices the GPU shader actually wants.
     std::vector<glm::mat4> inverse_bind_matrices;
+
+    // Scratch buffers for the blend output and the model-space matrices.
+    std::vector<ozz::math::SoaTransform> blended_locals;
+    std::vector<ozz::math::Float4x4> model_matrices;
 };
 
 PoseSampler::PoseSampler() : impl(std::make_unique<Impl>())
@@ -58,86 +109,132 @@ PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh
         return sampler;
 
     const ozz::animation::Skeleton& ozz_skel = *skeleton.ozz_skeleton;
+    const int n_joints = ozz_skel.num_joints();
+    const int n_soa = ozz_skel.num_soa_joints();
+
     sampler.impl->skeleton = &ozz_skel;
-    // Resize the sampling context to handle the largest animation we'd
-    // play on this skeleton — usually just the bone count itself.
-    sampler.impl->sampling_context.Resize(ozz_skel.num_joints());
-    sampler.impl->local_transforms.resize(ozz_skel.num_soa_joints());
-    sampler.impl->model_matrices.resize(ozz_skel.num_joints());
-    sampler.bone_palette.resize(ozz_skel.num_joints());
-    // Bind the sampler's bone-palette space to the mesh's vertex space
-    // by copying the asset root transform. From here, sampler and mesh
-    // are guaranteed consistent — no manual wiring step.
+    sampler.impl->current.resize(n_joints, n_soa);
+    sampler.impl->previous.resize(n_joints, n_soa);
+    sampler.impl->blended_locals.resize(n_soa);
+    sampler.impl->model_matrices.resize(n_joints);
+    sampler.bone_palette.resize(n_joints);
+
     sampler.impl->root_transform = mesh.asset_root_transform;
     sampler.impl->inverse_bind_matrices = mesh.inverse_bind_matrices;
     return sampler;
 }
 
-bool PoseSampler::sample(const AnimationClip& clip, float time_seconds)
+bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_seconds)
 {
     if (!impl || !impl->skeleton || !clip.isLoaded())
         return false;
 
-    const ozz::animation::Animation& anim = *clip.ozz_animation;
+    Impl& s = *impl;
+    const ozz::animation::Animation* desired = clip.ozz_animation.get();
 
-    // Step 1: SamplingJob — interpolate keyframes at this time. ozz wants
-    // a *ratio* in [0, 1]; convert from seconds.
-    const float duration = anim.duration();
-    const float ratio = duration > 0.0f ? (time_seconds / duration) : 0.0f;
+    // Active-clip change: shift current → previous and start a new blend.
+    // Snap immediately if no blend was requested.
+    if (desired != s.current.animation)
+    {
+        if (blend_seconds > 0.0f && s.current.animation != nullptr)
+        {
+            // Swap tracks rather than move: ozz SamplingJob::Context is
+            // non-movable (heap cache, internal pointers) so we keep both
+            // contexts in place and just swap which one each track uses
+            // by swapping the lighter members (animation, time, transforms).
+            // Both contexts were already sized at createPoseSampler().
+            std::swap(s.current.animation, s.previous.animation);
+            std::swap(s.current.time_seconds, s.previous.time_seconds);
+            s.current.local_transforms.swap(s.previous.local_transforms);
+            s.blend_weight = 0.0f;
+            s.blend_elapsed = 0.0f;
+            s.blend_duration = blend_seconds;
+        }
+        else
+        {
+            // Snap: drop any previous, fully active.
+            s.previous.animation = nullptr;
+            s.blend_weight = 1.0f;
+            s.blend_elapsed = 0.0f;
+            s.blend_duration = 0.0f;
+        }
+        s.current.animation = desired;
+        s.current.time_seconds = 0.0f;
+    }
 
-    ozz::animation::SamplingJob sjob;
-    sjob.animation = &anim;
-    sjob.context = &impl->sampling_context;
-    sjob.ratio = ratio;
-    sjob.output = ozz::make_span(impl->local_transforms);
-    if (!sjob.Run())
+    // Advance times for both tracks. Wrap inside each clip's duration.
+    auto advance_time = [&](Track& t)
+    {
+        if (!t.animation)
+            return;
+        t.time_seconds += dt;
+        const float dur = t.animation->duration();
+        if (dur > 0.0f && t.time_seconds >= dur)
+            t.time_seconds = std::fmod(t.time_seconds, dur);
+    };
+    advance_time(s.current);
+    advance_time(s.previous);
+
+    // Advance blend.
+    if (s.blend_duration > 0.0f)
+    {
+        s.blend_elapsed += dt;
+        if (s.blend_elapsed >= s.blend_duration)
+        {
+            s.blend_weight = 1.0f;
+            s.blend_elapsed = 0.0f;
+            s.blend_duration = 0.0f;
+            s.previous.animation = nullptr;
+        }
+        else
+        {
+            s.blend_weight = s.blend_elapsed / s.blend_duration;
+        }
+    }
+
+    // Sample both tracks (cheap if their animation is null — the lambda
+    // skips and the BlendingJob layer just gets weight 0).
+    s.current.sample();
+    s.previous.sample();
+
+    // Blend. ozz's BlendingJob requires `rest_pose` so it has something
+    // to fall back to when the layer weights don't sum to enough; we use
+    // the skeleton's joint rest poses (provided by ozz directly).
+    ozz::animation::BlendingJob::Layer layers[2];
+    layers[0].weight = s.blend_weight;
+    layers[0].transform = ozz::make_span(s.current.local_transforms);
+    layers[1].weight = (1.0f - s.blend_weight) * (s.previous.animation ? 1.0f : 0.0f);
+    layers[1].transform = ozz::make_span(s.previous.local_transforms);
+
+    ozz::animation::BlendingJob bjob;
+    bjob.layers = ozz::span<const ozz::animation::BlendingJob::Layer>(layers, 2);
+    bjob.rest_pose = s.skeleton->joint_rest_poses();
+    bjob.output = ozz::make_span(s.blended_locals);
+    if (!bjob.Run())
         return false;
 
-    // Step 2: LocalToModelJob — walk the skeleton, accumulating each bone's
-    // model-space transform from its local + parent's model. Output is an
-    // array of Float4x4 (column-major), one per bone, in ozz order.
-    //
-    // We pre-multiply by `root_transform` here. This is gltf2ozz's missing
-    // step: gltf2ozz extracts the skeleton starting from the topmost
-    // skinned joint (e.g. mixamorig:Hips), discarding any ancestor scene-
-    // graph transforms. ozz's LocalToModelJob has a `root` parameter
-    // exactly for this — it multiplies every output bone by the supplied
-    // matrix, putting the whole palette into world meters (or whatever
-    // the asset's intended space was) without any per-asset constant.
+    // Local-to-model.
     ozz::math::Float4x4 root_storage;
     static_assert(sizeof(ozz::math::Float4x4) == sizeof(glm::mat4),
                   "ozz::math::Float4x4 and glm::mat4 storage size differ");
-    std::memcpy(&root_storage, &impl->root_transform, sizeof(glm::mat4));
+    std::memcpy(&root_storage, &s.root_transform, sizeof(glm::mat4));
 
     ozz::animation::LocalToModelJob ljob;
-    ljob.skeleton = impl->skeleton;
+    ljob.skeleton = s.skeleton;
     ljob.root = &root_storage;
-    ljob.input = ozz::make_span(impl->local_transforms);
-    ljob.output = ozz::make_span(impl->model_matrices);
+    ljob.input = ozz::make_span(s.blended_locals);
+    ljob.output = ozz::make_span(s.model_matrices);
     if (!ljob.Run())
         return false;
 
-    // Step 3: build the GPU bone palette. Each entry is the bone's
-    // current model-space transform multiplied by its inverse bind
-    // matrix:
-    //
-    //     skin_matrix[i] = current_model[i] * inverse_bind[i]
-    //
-    // This produces a "delta from rest pose" — applying it to a vertex
-    // in its bind-pose position yields the vertex's current animated
-    // position. ozz::math::Float4x4 has the same memory layout as
-    // glm::mat4, so we can memcpy current_model into a glm::mat4 and
-    // then multiply.
-    static_assert(sizeof(ozz::math::Float4x4) == sizeof(glm::mat4),
-                  "ozz::math::Float4x4 and glm::mat4 storage size differ");
-    const std::size_t bone_count = impl->model_matrices.size();
+    // Build GPU palette: skin_matrix[i] = current_model[i] * inverse_bind[i].
+    const std::size_t bone_count = s.model_matrices.size();
     for (std::size_t i = 0; i < bone_count; ++i)
     {
         glm::mat4 current_model;
-        std::memcpy(&current_model, &impl->model_matrices[i], sizeof(glm::mat4));
-        const glm::mat4 inv_bind = (i < impl->inverse_bind_matrices.size())
-                                       ? impl->inverse_bind_matrices[i]
-                                       : glm::mat4(1.0f);
+        std::memcpy(&current_model, &s.model_matrices[i], sizeof(glm::mat4));
+        const glm::mat4 inv_bind =
+            (i < s.inverse_bind_matrices.size()) ? s.inverse_bind_matrices[i] : glm::mat4(1.0f);
         bone_palette[i] = current_model * inv_bind;
     }
     return true;

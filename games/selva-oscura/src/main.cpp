@@ -1,7 +1,6 @@
 #include "Engine.h"
 #include "Tunables.h"
 #include "anim/AnimationClip.h"
-#include "anim/AnimationDriver.h"
 #include "anim/PoseSampler.h"
 #include "anim/SkeletalMesh.h"
 #include "anim/SkeletalRenderer.h"
@@ -200,12 +199,13 @@ static void initFloor()
 static selva::anim::Skeleton sSkeleton;
 static selva::anim::SkeletalMesh sSoldierMesh;
 static selva::anim::AnimationClip sIdleClip;
+static selva::anim::AnimationClip sWalkClip;
+static selva::anim::AnimationClip sRunClip; // stand-in for Roll until we have a proper roll clip
 static selva::anim::PoseSampler sSampler;
 
-// Wall-clock animation time (seconds). Wraps inside the clip's duration.
-// Will eventually be driven by the AnimationDriver state machine, but for
-// the first "is this even working" pass we just play Idle on a loop.
-static float sAnimTime = 0.0f;
+// Animation time bookkeeping now lives inside the PoseSampler, which
+// manages its own per-clip clocks and a cross-fade between two
+// concurrent tracks. main.cpp just calls sSampler.update(clip, dt, fade).
 
 static bool initSkeletalAssets()
 {
@@ -215,6 +215,10 @@ static bool initSkeletalAssets()
     sIdleClip = selva::anim::loadAnimationClip("assets/characters/soldier/Idle.ozz");
     if (!sIdleClip.isLoaded())
         return false;
+    sWalkClip = selva::anim::loadAnimationClip("assets/characters/soldier/Walk.ozz");
+    sRunClip = selva::anim::loadAnimationClip("assets/characters/soldier/Run.ozz");
+    // Walk and Run are non-fatal if missing (game still runs; the soldier
+    // just plays Idle in all states). Idle is required.
     sSoldierMesh =
         selva::anim::loadSkeletalMesh("assets/characters/soldier/Soldier.glb", sSkeleton);
     if (!sSoldierMesh.isLoaded())
@@ -232,7 +236,10 @@ static bool initSkeletalAssets()
     // flash of broken geometry. Partial fix only; see
     // docs/BACKLOG.md "First-frame pop / init flash" for the full
     // story (camera + player prev-state lerps still pop on frame 0).
-    sSampler.sample(sIdleClip, 0.0f);
+    // dt=0 advances no time; blend=0 snaps without fading. Pre-warm fills
+    // the bone palette with the Idle pose at frame 0 so the first render
+    // doesn't see zero matrices.
+    sSampler.update(sIdleClip, 0.0f, 0.0f);
     return true;
 }
 
@@ -270,36 +277,39 @@ static void shutdownGeometry()
 // F1 ImGui panel. Gameplay code and ProceduralDriver both read from the
 // same global — see selva::tuning::current().
 
-// Dodge state machine. Idle → Rolling/Backstep (committed) → Recovering → Idle.
-// State machine is owned here; the *visual + positional shape* of each
-// committed state is delegated to the AnimationDriver. Direction and start
-// position live on PlayerState so the driver's translation offset can be
-// added to the start position each frame.
-enum class DodgePhase
-{
-    Idle,
-    Rolling,    // committed: WASD locked, position = start + driver(DodgeRoll)
-    Backstep,   // committed: same, but driver(DodgeBackstep) — no hop, no tumble
-    Recovering, // can move again, but Space is locked
-};
-
 struct PlayerState
 {
     glm::vec3 pos = glm::vec3(0.0f, 0.5f, 0.0f);
-    float yaw = 0.0f; // facing yaw in radians; 0 = facing -Z
-
-    // Dodge state.
-    DodgePhase dodge_phase = DodgePhase::Idle;
-    glm::vec3 dodge_dir = glm::vec3(0.0f, 0.0f, -1.0f); // unit vector, ground plane
-    glm::vec3 dodge_start_pos =
-        glm::vec3(0.0f);         // pos at dodge start; driver offset added each frame
-    float dodge_timer = 0.0f;    // seconds elapsed in current phase
-    float dodge_duration = 0.0f; // seconds total for current phase
+    float yaw = 0.0f;       // facing yaw in radians; 0 = facing -Z
+    bool sprinting = false; // held-Space sprint flag (Elden Ring style)
 };
 
 // One global player. When this scales (multiple controllable entities, NPCs
 // using the same locomotion code), promote to ECS.
 static PlayerState sPlayer;
+
+// Pick the animation clip that should drive the soldier this frame, based
+// on the player's gameplay state. Falls back to Idle if a more specific
+// clip isn't loaded (graceful degradation on a fresh checkout where only
+// some animations have been processed). Returns null only if even Idle
+// isn't loaded — the caller should skip sampling in that case.
+//
+// This is the seam between gameplay and animation. Combat will extend it
+// with attack / parry / hit-react states; each new state maps to a clip
+// pointer here, and the AnimationDriver's procedural offsets compose on
+// top. Keeping the selection in one named function makes the mapping
+// inspectable and cheap to grep when debugging "why is this state
+// playing the wrong clip."
+static const selva::anim::AnimationClip* selectClipForPlayer(const PlayerState& p,
+                                                             const glm::vec3& move_intent)
+{
+    const bool is_moving = glm::length(move_intent) > 0.0001f;
+    if (is_moving && p.sprinting && sRunClip.isLoaded())
+        return &sRunClip;
+    if (is_moving && sWalkClip.isLoaded())
+        return &sWalkClip;
+    return &sIdleClip;
+}
 
 // Camera orientation. Yaw rotates around world-up (Y), pitch tilts up/down.
 // Yaw=0 looks down -Z; positive yaw rotates CCW looking down (right-handed).
@@ -308,17 +318,9 @@ static float sCamYaw = 0.0f;
 static float sCamPitch = -0.25f; // start slightly looking down
 
 // One-shot input edge detection. SDL's keyboard state is "is this key down
-// right now"; for actions like "dodge fires on press, not on hold" we need
-// the rising edge — was up last frame, down this frame.
-static bool sPrevSpace = false;
+// right now"; for actions like the F1 panel toggle we need the rising
+// edge — was up last frame, down this frame.
 static bool sPrevF1 = false;
-
-// Dodge input buffer. When Space is pressed while the player can't act,
-// the press is held for tunables.dodge_buffer_window seconds and fires
-// the moment they reach Idle. Souls input philosophy: presses are never
-// dropped silently; they're queued briefly so timing is forgiving. Direction
-// is sampled at fire time (current WASD), not at press time.
-static float sDodgeBuffer = 0.0f;
 
 // In-game tuning panel toggle. Off by default; F1 flips it.
 static bool sShowTuningPanel = false;
@@ -363,108 +365,6 @@ static float yawFromGroundDir(const glm::vec3& dir)
 }
 
 // ---------------------------------------------------------------------------
-// Dodge — start, advance, finish.
-// ---------------------------------------------------------------------------
-
-// Begin a dodge. moveIntent is the player's current ground-plane movement
-// vector this frame (zero if standing still); used to decide roll vs
-// backstep and which direction. Caller is responsible for guarding against
-// already-committed dodges (dodge_phase != Idle).
-static void startDodge(PlayerState& p, const glm::vec3& moveIntent)
-{
-    const bool moving = glm::length(moveIntent) > 0.0001f;
-
-    const auto& tun = selva::tuning::current();
-    if (moving)
-    {
-        // Roll: commit to the input direction. Player snaps to face that
-        // direction immediately (skips the smooth turn) so the roll motion
-        // and visual tumble agree.
-        p.dodge_dir = glm::normalize(moveIntent);
-        p.yaw = yawFromGroundDir(p.dodge_dir);
-        p.dodge_phase = DodgePhase::Rolling;
-        p.dodge_duration = tun.roll_duration;
-    }
-    else
-    {
-        // Backstep: commit backward relative to current facing (Elden Ring
-        // neutral-stance behavior). Shorter, faster, no tumble.
-        const glm::vec3 facingFwd(-std::sin(p.yaw), 0.0f, -std::cos(p.yaw));
-        p.dodge_dir = -facingFwd;
-        p.dodge_phase = DodgePhase::Backstep;
-        p.dodge_duration = tun.backstep_duration;
-    }
-    p.dodge_start_pos = p.pos;
-    p.dodge_timer = 0.0f;
-}
-
-// Map a committed dodge phase to its AnimState. Helper so render and
-// advance both agree on which driver state to evaluate.
-static selva::anim::AnimState dodgeAnimState(DodgePhase phase)
-{
-    switch (phase)
-    {
-    case DodgePhase::Rolling:
-        return selva::anim::AnimState::DodgeRoll;
-    case DodgePhase::Backstep:
-        return selva::anim::AnimState::DodgeBackstep;
-    case DodgePhase::Recovering:
-        return selva::anim::AnimState::DodgeRecover;
-    case DodgePhase::Idle:
-        break;
-    }
-    return selva::anim::AnimState::None;
-}
-
-// Advance the dodge state machine by dt. Updates position when in Rolling
-// or Backstep by querying the animation driver for an absolute offset from
-// dodge_start_pos. Transitions to Recovering at the end of the active phase,
-// and back to Idle after the recovery window. Returns true if the player
-// is still committed (i.e. WASD should be ignored this frame).
-static bool advanceDodge(PlayerState& p, float dt)
-{
-    if (p.dodge_phase == DodgePhase::Idle)
-        return false;
-
-    p.dodge_timer += dt;
-
-    if (p.dodge_phase == DodgePhase::Rolling || p.dodge_phase == DodgePhase::Backstep)
-    {
-        // Phase progress in [0, 1]; ask the driver for the cumulative
-        // offset from dodge_start_pos and compose. Driver owns the
-        // translation curve shape (ease-out, hop arc); gameplay code
-        // owns timing and state transitions.
-        const float phase = p.dodge_duration > 0.0f
-                                ? glm::clamp(p.dodge_timer / p.dodge_duration, 0.0f, 1.0f)
-                                : 1.0f;
-        selva::anim::AnimDriverInput in;
-        in.state = dodgeAnimState(p.dodge_phase);
-        in.phase = phase;
-        in.params.dodge_dir = p.dodge_dir;
-        const selva::anim::AnimDriverOutput out = selva::anim::evaluate(in);
-        p.pos = p.dodge_start_pos + out.translation;
-
-        if (p.dodge_timer >= p.dodge_duration)
-        {
-            p.dodge_phase = DodgePhase::Recovering;
-            p.dodge_duration = selva::tuning::current().dodge_recovery;
-            p.dodge_timer = 0.0f;
-            return false; // movement allowed in recovery
-        }
-        return true;
-    }
-
-    // Recovering — movement allowed; we just count down the lockout window.
-    if (p.dodge_timer >= p.dodge_duration)
-    {
-        p.dodge_phase = DodgePhase::Idle;
-        p.dodge_timer = 0.0f;
-        p.dodge_duration = 0.0f;
-    }
-    return false;
-}
-
-// ---------------------------------------------------------------------------
 // Per-frame update — runs at wall-clock rate.
 // ---------------------------------------------------------------------------
 
@@ -475,20 +375,6 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     // Title bar — game name + FPS. EMA-smoothed so the number doesn't flicker.
     const int fps = static_cast<int>(std::lround(1.0 / engine.lastFrameTime()));
     engine.setWindowTitle("Selva Oscura  |  FPS " + std::to_string(fps));
-
-    // Advance the animation clock and sample the Idle clip into the bone
-    // palette. Wall-clock-rate (not fixed-step) for smooth playback on
-    // high-refresh displays. When the AnimationDriver gets a Skeletal
-    // implementation, this whole block becomes "ask the driver for the
-    // current clip + phase, then sample"; for now we just play Idle.
-    if (sIdleClip.isLoaded())
-    {
-        sAnimTime += dt;
-        const float dur = sIdleClip.duration();
-        if (dur > 0.0f && sAnimTime >= dur)
-            sAnimTime = std::fmod(sAnimTime, dur);
-        sSampler.sample(sIdleClip, sAnimTime);
-    }
 
     // Mouse look. SDL_GetRelativeMouseState drains accumulated deltas.
     // Mouse-left rotates the camera left (Souls/Elden Ring/FPS convention).
@@ -545,34 +431,16 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         moveIntent -= camRight;
 
     // Space input — Souls-style buffering. Rising edge sets the buffer to
-    // tun.dodge_buffer_window seconds. The buffer decays each frame; if it
-    // reaches zero before the player is Idle, the input is dropped. When
-    // the player IS idle and the buffer is non-zero, the dodge fires using
-    // the *current* moveIntent (direction at fire time, not press time —
-    // the "rotate-the-stick mid-buffer" forgiveness).
-    const bool spaceNow = keys[SDL_SCANCODE_SPACE] != 0;
-    const bool spacePressed = spaceNow && !sPrevSpace;
-    sPrevSpace = spaceNow;
-    if (spacePressed)
-        sDodgeBuffer = tun.dodge_buffer_window;
-    else if (sDodgeBuffer > 0.0f)
-        sDodgeBuffer = std::max(0.0f, sDodgeBuffer - dt);
+    // Held-Space sprint (Elden Ring convention). While Space is held, the
+    // soldier moves at sprint speed and plays the Run clip. Release →
+    // back to Walk speed and the Walk clip. No state machine, no input
+    // buffering — sprint is a continuous modifier, not a discrete action.
+    sPlayer.sprinting = keys[SDL_SCANCODE_SPACE] != 0;
 
-    if (sDodgeBuffer > 0.0f && sPlayer.dodge_phase == DodgePhase::Idle)
-    {
-        startDodge(sPlayer, moveIntent);
-        sDodgeBuffer = 0.0f; // consumed
-    }
-
-    // Advance dodge state machine. While committed (Rolling/Backstep) WASD
-    // is locked out; in Recovering and Idle it's honored.
-    const bool dodgeCommitted = advanceDodge(sPlayer, dt);
-
-    if (!dodgeCommitted && glm::length(moveIntent) > 0.0001f)
+    if (glm::length(moveIntent) > 0.0001f)
     {
         moveIntent = glm::normalize(moveIntent);
-        const float speed =
-            tun.move_speed * (keys[SDL_SCANCODE_LSHIFT] ? tun.sprint_multiplier : 1.0f);
+        const float speed = tun.move_speed * (sPlayer.sprinting ? tun.sprint_multiplier : 1.0f);
         sPlayer.pos += moveIntent * speed * dt;
 
         // Smoothly rotate the player toward the movement direction.
@@ -585,6 +453,14 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
             delta = -maxStep;
         sPlayer.yaw += delta;
     }
+
+    // Pick + advance the sampler. selectClipForPlayer chooses the clip
+    // for this frame based on locomotion + sprint state; the sampler
+    // cross-fades on its own when the choice changes. Done last so it
+    // sees post-input, post-movement state.
+    const selva::anim::AnimationClip* clip = selectClipForPlayer(sPlayer, moveIntent);
+    if (clip != nullptr && clip->isLoaded())
+        sSampler.update(*clip, dt, tun.anim_blend_seconds);
 }
 
 // ---------------------------------------------------------------------------
@@ -647,43 +523,11 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
     //    -foot_offset_y so feet land on the floor regardless of where
     //    the rig's origin sits in bind pose. Yaw rotates the model
     //    around world-up to face the player's heading.
-    //
-    //    Procedural dodge tumble: while Rolling/Backstep, the
-    //    AnimationDriver returns pitch/yaw/roll offsets that we apply
-    //    on top of sPlayer.yaw. Once a proper Roll animation clip
-    //    drives the body, those offsets become identity and the clip
-    //    handles the visual tumble — but the procedural fallback keeps
-    //    working until then. Body penetrates the floor during the pitch
-    //    swing; see docs/BACKLOG.md "Roll through floor" for context.
     if (sSoldierMesh.isLoaded() && !sSampler.bone_palette.empty())
     {
         const glm::vec3 soldier_pos(sPlayer.pos.x, -sSoldierMesh.foot_offset_y, sPlayer.pos.z);
         glm::mat4 soldier_model = glm::translate(glm::mat4(1.0f), soldier_pos);
         soldier_model = glm::rotate(soldier_model, sPlayer.yaw, glm::vec3(0.0f, 1.0f, 0.0f));
-
-        if (sPlayer.dodge_phase == DodgePhase::Rolling ||
-            sPlayer.dodge_phase == DodgePhase::Backstep)
-        {
-            const float phase =
-                sPlayer.dodge_duration > 0.0f
-                    ? glm::clamp(sPlayer.dodge_timer / sPlayer.dodge_duration, 0.0f, 1.0f)
-                    : 0.0f;
-            selva::anim::AnimDriverInput in;
-            in.state = dodgeAnimState(sPlayer.dodge_phase);
-            in.phase = phase;
-            in.params.dodge_dir = sPlayer.dodge_dir;
-            const selva::anim::AnimDriverOutput out = selva::anim::evaluate(in);
-            if (out.pitch_offset != 0.0f)
-                soldier_model =
-                    glm::rotate(soldier_model, out.pitch_offset, glm::vec3(1.0f, 0.0f, 0.0f));
-            if (out.yaw_offset != 0.0f)
-                soldier_model =
-                    glm::rotate(soldier_model, out.yaw_offset, glm::vec3(0.0f, 1.0f, 0.0f));
-            if (out.roll_offset != 0.0f)
-                soldier_model =
-                    glm::rotate(soldier_model, out.roll_offset, glm::vec3(0.0f, 0.0f, 1.0f));
-        }
-
         selva::anim::drawSkeletalMesh(sSoldierMesh, soldier_model, viewProj, sSampler.bone_palette,
                                       1.0f);
     }
@@ -741,48 +585,9 @@ static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
         tunedSlider("FOV (deg)", &tun.fov_degrees, 30.0f, 110.0f, 5.0f, "%.0f");
     }
 
-    if (ImGui::CollapsingHeader("Dodge — timing", ImGuiTreeNodeFlags_DefaultOpen))
+    if (ImGui::CollapsingHeader("Animation", ImGuiTreeNodeFlags_DefaultOpen))
     {
-        tunedSlider("Roll duration (s)", &tun.roll_duration, 0.10f, 1.50f, 0.05f, "%.2f");
-        tunedSlider("Backstep duration (s)", &tun.backstep_duration, 0.10f, 1.00f, 0.05f, "%.2f");
-        tunedSlider("Recovery (s)", &tun.dodge_recovery, 0.0f, 1.00f, 0.05f, "%.2f");
-        tunedSlider("Input buffer window (s)", &tun.dodge_buffer_window, 0.0f, 0.50f, 0.025f,
-                    "%.3f");
-    }
-
-    if (ImGui::CollapsingHeader("Dodge — shape", ImGuiTreeNodeFlags_DefaultOpen))
-    {
-        tunedSlider("Roll distance", &tun.roll_distance, 0.5f, 8.0f, 0.5f, "%.1f");
-        tunedSlider("Roll hop height", &tun.roll_hop_height, 0.0f, 2.0f, 0.05f, "%.2f");
-        tunedSlider("Roll tumble revolutions", &tun.roll_tumble_revs, 0.0f, 3.0f, 0.25f, "%.2f");
-        tunedSlider("Roll tumble ease", &tun.roll_tumble_ease, 1.0f, 3.0f, 0.1f, "%.1f");
-        tunedSlider("Backstep distance", &tun.backstep_distance, 0.5f, 5.0f, 0.5f, "%.1f");
-    }
-
-    if (ImGui::CollapsingHeader("Dodge — sub-curve windows", ImGuiTreeNodeFlags_DefaultOpen))
-    {
-        ImGui::TextWrapped("Each sub-curve runs in its own [start, end] window inside the overall "
-                           "roll phase. Hop: vertical arc. Tumble: rotation. Translation: forward "
-                           "motion. Adjust to layer them like a Souls roll.");
-        tunedSlider("Hop start", &tun.roll_hop_start, 0.0f, 1.0f, 0.05f, "%.2f");
-        tunedSlider("Hop end", &tun.roll_hop_end, 0.0f, 1.0f, 0.05f, "%.2f");
-        ImGui::TextDisabled("(hop peak is fixed at window midpoint — gravity arc)");
-        tunedSlider("Tumble start", &tun.roll_tumble_start, 0.0f, 1.0f, 0.05f, "%.2f");
-        tunedSlider("Tumble end", &tun.roll_tumble_end, 0.0f, 1.0f, 0.05f, "%.2f");
-        tunedSlider("Translation start", &tun.roll_translation_start, 0.0f, 1.0f, 0.05f, "%.2f");
-        tunedSlider("Translation end", &tun.roll_translation_end, 0.0f, 1.0f, 0.05f, "%.2f");
-    }
-
-    if (ImGui::CollapsingHeader("Dodge — pre-tumble lean", ImGuiTreeNodeFlags_DefaultOpen))
-    {
-        ImGui::TextWrapped("Forward-pitch posture that runs alongside the hop and composes with "
-                           "the tumble. Lets the character tip into the roll before the full "
-                           "rotation kicks in (animator's anticipation). 0° angle disables it.");
-        tunedSlider("Lean angle (rad)", &tun.roll_lean_angle, 0.0f, 1.5f, 0.05f, "%.2f");
-        tunedSlider("Lean start", &tun.roll_lean_start, 0.0f, 1.0f, 0.05f, "%.2f");
-        tunedSlider("Lean end", &tun.roll_lean_end, 0.0f, 1.0f, 0.05f, "%.2f");
-        tunedSlider("Lean peak (within window)", &tun.roll_lean_peak_phase, 0.05f, 0.95f, 0.05f,
-                    "%.2f");
+        tunedSlider("Cross-fade (s)", &tun.anim_blend_seconds, 0.0f, 0.50f, 0.025f, "%.3f");
     }
 
     ImGui::Separator();

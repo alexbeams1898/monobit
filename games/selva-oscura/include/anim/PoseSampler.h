@@ -11,26 +11,28 @@ struct AnimationClip;
 struct Skeleton;
 struct SkeletalMesh;
 
-// PoseSampler — given a skeleton and a clip, produces the bone palette
-// (model-space bone matrices) for any time t. Owns per-instance scratch
-// buffers so sampling is allocation-free per frame.
+// PoseSampler — produces the GPU bone palette for an animated character,
+// given a sequence of "play this clip" requests over time. Owns scratch
+// buffers and per-clip ozz contexts so per-frame sampling is allocation-
+// free in steady state.
 //
-// One PoseSampler per animated character. If multiple characters play
-// different clips, each has its own sampler — the sampler caches the
-// last-sampled clip's interpolation state.
+// One PoseSampler per animated character. The sampler manages two
+// concurrent clips internally — the *current* one (playing fully at the
+// end of any blend) and the *previous* one (fading out). When the caller
+// switches the active clip, a cross-fade ramps from previous→current over
+// `blend_seconds`. Both clips advance during the blend so motion stays
+// continuous. Setting `blend_seconds = 0` snaps with no fade.
 //
-// Lifecycle: construct via createPoseSampler(skeleton). The skeleton must
-// outlive the sampler. Then call sample(clip, time_seconds) any number
-// of times to update the bone_palette.
+// Lifecycle: construct via createPoseSampler(skeleton, mesh). Then call
+// update(clip, dt, blend_seconds) every frame to advance the sampler;
+// read bone_palette from the renderer.
 struct PoseSampler
 {
     struct Impl; // ozz state lives here so the header doesn't pull ozz
     std::unique_ptr<Impl> impl;
 
     // The bone palette in **ozz joint order**, model-space. Updated by
-    // sample(); read by the renderer. Length = skeleton bone count.
-    // Matrices are stored as glm::mat4 (column-major, identical layout
-    // to ozz::math::Float4x4 underneath).
+    // update(); read by the renderer. Length = skeleton bone count.
     std::vector<glm::mat4> bone_palette;
 
     PoseSampler();
@@ -40,19 +42,22 @@ struct PoseSampler
     PoseSampler& operator=(PoseSampler&&) noexcept;
     ~PoseSampler();
 
-    // Sample `clip` at `time_seconds` (clamped to [0, clip.duration()])
-    // and update bone_palette. Returns false if the inputs are invalid
-    // (mismatched skeleton, unloaded clip, etc.).
-    bool sample(const AnimationClip& clip, float time_seconds);
+    // Advance the sampler by `dt` seconds and update bone_palette.
+    //   * `clip` is the desired active clip this frame. If it differs
+    //     from the currently-active clip, a cross-fade kicks off:
+    //     previous keeps playing, new starts at t=0, weight ramps over
+    //     `blend_seconds` until the new fully owns the output.
+    //   * `dt` advances all active clips' internal times (looping at
+    //     each clip's duration).
+    //   * `blend_seconds` is the duration of any *new* blend that starts
+    //     this frame. An in-progress blend keeps its original duration.
+    //     Pass 0 to snap (no fade) — useful at startup or for hard cuts.
+    // Returns false if the inputs are invalid (no skeleton, no clip).
+    bool update(const AnimationClip& clip, float dt, float blend_seconds);
 };
 
 // Build a PoseSampler bound to the given skeleton + mesh. The skeleton
-// and mesh must outlive the returned sampler. Pairing them at construction
-// is deliberate — the sampler's bone palette must be computed in the same
-// space as the mesh's baked vertex positions; taking both here makes that
-// wiring impossible to forget. Pass an unloaded mesh (or a different
-// overload — TBD) only for skeletons rendered without a glTF mesh, which
-// we don't have today.
+// and mesh must outlive the returned sampler.
 PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh);
 
 } // namespace selva::anim

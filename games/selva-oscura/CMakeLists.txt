@@ -13,7 +13,6 @@ project(SelvaOscura VERSION 0.0.0 LANGUAGES C CXX)
 add_library(selva-oscura-lib STATIC
     src/anim/AnimationClip.cpp
     src/anim/PoseSampler.cpp
-    src/anim/ProceduralDriver.cpp
     src/anim/Skeleton.cpp
     src/anim/SkeletalMesh.cpp
     src/anim/SkeletalRenderer.cpp
@@ -92,7 +91,6 @@ add_custom_target(selva-oscura-convert-soldier ALL DEPENDS ${soldier_ozz_files})
 # by running the game itself.
 # ---------------------------------------------------------------------------
 add_executable(selva-oscura-tests
-    tests/animation_driver_test.cpp
     tests/skeletal_loader_test.cpp
 )
 target_link_libraries(selva-oscura-tests PRIVATE selva-oscura-lib Catch2::Catch2WithMain)
