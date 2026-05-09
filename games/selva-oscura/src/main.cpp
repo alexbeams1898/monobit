@@ -909,8 +909,6 @@ struct AttackChainState
     float cancel_window_open_at = 0.0f;
     float cancel_window_close_at = 0.0f;
     float chain_reset_at = 0.0f;
-    // True after a missed press; locks out further presses until chain_reset_at.
-    bool missed = false;
     // Last press accuracy: 1.0 = window center, 0.0 = window edges.
     float last_press_accuracy = 0.0f;
     bool last_press_was_perfect = false;
@@ -1991,7 +1989,6 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         chain.cancel_window_close_at = 0.0f;
         chain.chain_reset_at = 0.0f;
         chain.is_finisher = false;
-        chain.missed = false;
         chain.last_press_accuracy = 0.0f;
         chain.last_press_was_perfect = false;
     };
@@ -2429,6 +2426,17 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                 sWallClockSeconds + (remaining_clip / rate) + tun.combo_reset_grace_seconds;
         }
         chain.chain_kind = kind;
+        // Finishers (the chain's last step) drop the locomotion
+        // lockout so it ends when the one-shot fades out, instead of
+        // extending to cancel_window_close_at + extension. The
+        // extension exists to hold combat-stance during the input-
+        // buffer window for chain advance — a finisher has nothing
+        // to advance into, so the player can resume running the
+        // moment the swing recovers. Sprint-finisher keeps its
+        // wall-clock lockout (it's a self-contained running attack
+        // with its own commit period).
+        if (was_last && profile.lockout == TransitionProfile::Lockout::CancelWindowClose)
+            profile.lockout = TransitionProfile::Lockout::None;
         applyProfileLockout(profile, chain.cancel_window_close_at);
         chain.chain_index = was_last ? 0 : next_idx;
         chain.is_finisher = was_last;
@@ -2452,7 +2460,16 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
             !first_strike && sWallClockSeconds < chain.cancel_window_open_at;
         const bool past_close =
             !first_strike && sWallClockSeconds > chain.cancel_window_close_at;
-        // Finisher disables cancellation: must wait for chain_reset_at.
+        // Finisher: cancel-fire is blocked during the swing's pre-contact
+        // phase (before_open) so the player can't interrupt their own
+        // finisher. From cancel_window_open_at onward the press starts
+        // a NEW combo as a fresh first-strike — same rhythm as any
+        // chain link, just one that resets to chain_index=0 instead of
+        // advancing. Without this, presses past the finisher's contact
+        // were silently dropped until chain_reset_at, producing a
+        // ~0.6s blackout where "throw another combo" felt eaten.
+        const bool finisher_restart =
+            chain.is_finisher && !before_open && press_edge_this_frame;
         const bool in_window =
             !chain.is_finisher && (first_strike || (!before_open && !past_close));
         // Sprinting no longer routes to the Running technique slot at
@@ -2528,18 +2545,6 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
             if (sPendingFirstAction.active)
                 return; // a first-action is already committed; ignore
 
-            // If the player previously missed the rhythm window for
-            // this swing, every subsequent press is locked out until
-            // chain_reset_at elapses (auto-reset). Without this, a
-            // missed press would re-fire as first-strike on top of
-            // the still-playing previous swing → visible restart.
-            if (chain.missed)
-            {
-                combatLog("[combat:rhythm] press LOCKED (missed flag set; "
-                          "wait for chain_reset)\n");
-                return;
-            }
-
             // Sprint bypass: while sprinting, ANY light press fires the
             // running attack regardless of where in the chain we are or
             // what button the locked technique expects next. Skips the
@@ -2560,7 +2565,32 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                 chain.chain_index = 0;
                 chain.technique_index = -1;
                 chain.is_finisher = false;
-                chain.missed = false;
+                if (fireAttack(hand, kind))
+                    combat_input_this_frame = true;
+                buf.pending = false;
+                return;
+            }
+
+            // Press past a finisher's cancel_window_open_at: start a
+            // fresh combo, don't drop the input. Same dispatch as
+            // first_strike below, but with explicit chain reset since
+            // we're coming out of finisher state.
+            if (finisher_restart)
+            {
+                const TechniqueDispatch td = dispatchTechniqueForPress(
+                    sEquipment, hand, kind, /*chain_index=*/0,
+                    /*current_locked=*/-1, button);
+                if (!td.valid)
+                {
+                    combatLog("[combat:rhythm] finisher-restart REJECTED (no technique accepts %s @ slot 0)\n",
+                              button);
+                    buf.pending = false;
+                    return;
+                }
+                chain.chain_index = 0;
+                chain.technique_index = td.locked;
+                chain.is_finisher = false;
+                combatLog("[combat:rhythm] finisher-restart -> fresh first-strike %s\n", button);
                 if (fireAttack(hand, kind))
                     combat_input_this_frame = true;
                 buf.pending = false;
@@ -2600,10 +2630,28 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                     chain.technique_index, button);
                 if (!td.valid)
                 {
-                    combatLog("[combat:rhythm] press REJECTED (button %s does not match locked "
-                              "technique %d @ slot %d) — chain miss\n",
-                              button, chain.technique_index, chain.chain_index);
-                    chain.missed = true;
+                    // Wrong button mid-chain. Don't eat the input —
+                    // try to dispatch as a fresh first-strike (slot 0
+                    // of any technique). If the button matches a slot-0
+                    // entry, we restart the chain. Otherwise drop.
+                    const TechniqueDispatch fresh = dispatchTechniqueForPress(
+                        sEquipment, hand, kind, /*chain_index=*/0,
+                        /*current_locked=*/-1, button);
+                    if (!fresh.valid)
+                    {
+                        combatLog("[combat:rhythm] press REJECTED (button %s matches neither "
+                                  "locked technique %d @ slot %d nor any slot-0)\n",
+                                  button, chain.technique_index, chain.chain_index);
+                        buf.pending = false;
+                        return;
+                    }
+                    chain.chain_index = 0;
+                    chain.technique_index = fresh.locked;
+                    chain.is_finisher = false;
+                    combatLog("[combat:rhythm] mid-chain wrong-button -> restart as fresh first-strike %s\n",
+                              button);
+                    if (fireAttack(hand, kind))
+                        combat_input_this_frame = true;
                     buf.pending = false;
                     return;
                 }
@@ -2644,20 +2692,43 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
             }
             if (past_close)
             {
-                combatLog("[combat:rhythm] MISS (late)\n");
-                chain.missed = true;
+                // Late press: rhythm window closed. Don't eat the
+                // input — treat as fresh first-strike if the button
+                // is valid at slot 0. The "missed" state used to
+                // lock subsequent presses too; instead, just
+                // restart the chain.
+                const TechniqueDispatch fresh = dispatchTechniqueForPress(
+                    sEquipment, hand, kind, /*chain_index=*/0,
+                    /*current_locked=*/-1, button);
+                if (!fresh.valid)
+                {
+                    combatLog("[combat:rhythm] late press REJECTED (no technique accepts %s @ slot 0)\n",
+                              button);
+                    buf.pending = false;
+                    return;
+                }
+                chain.chain_index = 0;
+                chain.technique_index = fresh.locked;
+                chain.is_finisher = false;
+                combatLog("[combat:rhythm] late press -> restart as fresh first-strike %s\n", button);
+                if (fireAttack(hand, kind))
+                    combat_input_this_frame = true;
                 buf.pending = false;
                 return;
             }
-            // Finisher: drop silently, auto-reset handles it.
+            // Reachable only for chain.is_finisher && before_open —
+            // press during the finisher's pre-contact swing. Drop;
+            // can't cancel the finisher mid-windup. Press past
+            // cancel_window_open_at goes through finisher_restart.
             buf.pending = false;
             return;
         }
 
         // No fresh press; if a buffered press exists and the window is
         // open, replay it through dispatch so the technique-locking
-        // logic sees it. Buffer is dead in current code (no path sets
-        // pending = true), but kept consistent for when it's wired.
+        // logic sees it. Wrong-button buffered press restarts as
+        // fresh first-strike (consistent with the live wrong-button
+        // path above).
         if (buf.pending && in_window)
         {
             const TechniqueDispatch td = dispatchTechniqueForPress(
@@ -2671,7 +2742,17 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
             }
             else
             {
-                chain.missed = true;
+                const TechniqueDispatch fresh = dispatchTechniqueForPress(
+                    sEquipment, hand, buf.kind, /*chain_index=*/0,
+                    /*current_locked=*/-1, buf.button);
+                if (fresh.valid)
+                {
+                    chain.chain_index = 0;
+                    chain.technique_index = fresh.locked;
+                    chain.is_finisher = false;
+                    if (fireAttack(hand, buf.kind))
+                        combat_input_this_frame = true;
+                }
             }
             buf.pending = false;
         }
@@ -3126,7 +3207,6 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         chain.chain_index = 0;
         chain.technique_index = -1;
         chain.is_finisher = false;
-        chain.missed = false;
         const TechniqueDispatch td = dispatchTechniqueForPress(
             sEquipment, sPostDodgeAttack.hand, AttackKind::Light, /*chain_index=*/0,
             /*current_locked=*/-1, sPostDodgeAttack.button);
@@ -3416,12 +3496,18 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         if (sBlockingActive && offHandCanBlock(sEquipment))
             clip_name = "sword_and_shield_block_idle";
         clip = sClips.get(clip_name);
+        const bool loco_clip_changed = (clip_name != sLastLocoClipName);
         // Trace SM clip-choice changes. Pairs with the input trace so
         // we can see exactly which press caused which transition.
-        if (sCombatDebugEnabled && clip_name != sLastLocoClipName)
+        // Includes loco_current_time so we know what frame of the
+        // outgoing clip is the splice source — combined with the
+        // dest clip's t=0, that's enough to compute pose mismatch.
+        if (sCombatDebugEnabled && loco_clip_changed)
         {
-            combatLog("[sm %.4fs] loco-pick %s -> %s (blend=%.3fs)\n", sWallClockSeconds,
-                      sLastLocoClipName.c_str(), clip_name.c_str(), sm_out.blend_seconds);
+            const auto fd = sSampler.frameDiagnostics();
+            combatLog("[sm %.4fs] loco-pick %s@%.3fs -> %s (blend=%.3fs)\n", sWallClockSeconds,
+                      sLastLocoClipName.c_str(), fd.loco_current_time, clip_name.c_str(),
+                      sm_out.blend_seconds);
         }
         // Stash for next-frame combat-fire diagnostics (input runs
         // before this block, so we expose the previous frame's pick).
@@ -3873,8 +3959,7 @@ static void renderComboHud()
                      ImGuiWindowFlags_NoMove);
 
     // Step counter + last press result.
-    const char* state = chain.missed                    ? "MISSED"
-                        : chain.last_press_was_perfect  ? "PERFECT"
+    const char* state = chain.last_press_was_perfect       ? "PERFECT"
                         : (chain.last_press_accuracy > 0.0f) ? "HIT"
                                                              : "READY";
     ImGui::Text("Combo: %d  -  %s  acc=%.2f", chain.chain_index, state,
