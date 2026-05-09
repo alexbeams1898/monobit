@@ -1893,8 +1893,17 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         const bool attack_in_flight = sSampler.isOneShotActive() || sPendingFirstAction.active;
         const bool in_attack_recovery = selva::wallClock() < selva::combat::locoLockoutUntil();
         const bool loco_lockout = attack_in_flight || in_attack_recovery;
-        const bool is_moving = wasd_intent && !loco_lockout;
-        const bool is_sprinting = sPlayer.sprinting && !loco_lockout;
+        // Sprint+WASD override: when the player is committed to sprinting
+        // and pushing a direction, don't drop the loco track to combat-
+        // idle during an attack. The Full-body attack one-shot drives
+        // the legs through the swing; keeping `running` on the loco
+        // track underneath means the attack ends with running still
+        // playing, no combat-idle → running crossfade. Without this the
+        // lockout produces a visible combat-idle hold + spasm-prone
+        // gait↔non-gait transition every running attack.
+        const bool sprint_committed = wasd_intent && sPlayer.sprinting;
+        const bool is_moving = wasd_intent && (sprint_committed || !loco_lockout);
+        const bool is_sprinting = sPlayer.sprinting && (sprint_committed || !loco_lockout);
         // Trace every change in (wasd_intent, attack_in_flight,
         // in_attack_recovery, is_moving). Lets us correlate input
         // edges to SM decisions to spasm timing.
