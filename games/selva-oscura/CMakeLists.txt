@@ -20,6 +20,7 @@ add_library(selva-oscura-lib STATIC
     src/anim/SkeletalMesh.cpp
     src/anim/SkeletalRenderer.cpp
     src/combat/AttackChain.cpp
+    src/combat/AttackResolution.cpp
     src/combat/AttackResolver.cpp
     src/combat/CombatData.cpp
     src/combat/CombatLog.cpp
