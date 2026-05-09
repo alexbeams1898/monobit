@@ -25,8 +25,10 @@ add_library(selva-oscura-lib STATIC
     src/combat/AttackChain.cpp
     src/combat/AttackResolution.cpp
     src/combat/AttackResolver.cpp
+    src/combat/ChainObserver.cpp
     src/combat/CombatData.cpp
     src/combat/CombatLog.cpp
+    src/combat/PressMapping.cpp
     src/combat/SpliceDiag.cpp
     src/combat/TransitionProfile.cpp
     src/combat/WeaponData.cpp

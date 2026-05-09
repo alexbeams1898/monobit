@@ -9,6 +9,7 @@
 #include "Tunables.h"
 #include "WallClock.h"
 #include "combat/AttackChain.h"
+#include "combat/ChainObserver.h"
 #include "combat/CombatData.h"
 #include "combat/Weapon.h"
 #include "combat/WeaponClass.h"
@@ -96,11 +97,13 @@ void renderComboHud()
                      ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoInputs |
                      ImGuiWindowFlags_NoMove);
 
-    const char* state = chain.last_press_was_perfect       ? "PERFECT"
-                        : (chain.last_press_accuracy > 0.0f) ? "HIT"
-                                                             : "READY";
-    ImGui::Text("Combo: %d  -  %s  acc=%.2f", chain.chain_index, state,
-                chain.last_press_accuracy);
+    const auto& obs = selva::combat::chainState();
+    const char* state = obs.last_press_perfect             ? "PERFECT"
+                        : (obs.last_press_accuracy > 0.0f) ? "HIT"
+                                                           : "READY";
+    const char* tech_id = (obs.technique_id != nullptr) ? obs.technique_id : "-";
+    ImGui::Text("Combo: %s @ %d  -  %s  acc=%.2f", tech_id, obs.step, state,
+                obs.last_press_accuracy);
 
     const char* next_btn = nextExpectedButtonLabel(chain, selva::combat::AttackKind::Light);
     const float btn_box_w = 28.0f;
