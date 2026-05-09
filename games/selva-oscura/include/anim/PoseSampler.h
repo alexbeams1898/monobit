@@ -109,12 +109,6 @@ struct PoseSampler
     void requestInertializationFromPose(float duration_seconds,
                                         const std::vector<ozz::math::SoaTransform>& source_pose);
 
-    // Cancel any pending inertialization capture. Used after playOneShot
-    // when the caller wants pure crossfade with no offset-decay overlay
-    // (e.g. one-shots authored with their own bookend so the splice is
-    // already at-zero by construction).
-    void cancelInertialization();
-
     // Configure per-joint decay scaling. Each joint's decay window =
     // base + scale * |offset_radians|, clamped to max. Joints with
     // small pose offsets keep the snappy `base` window; joints with

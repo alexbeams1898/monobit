@@ -435,8 +435,6 @@ static void auditClipHipMotion()
         "stand_to_roll",
         "standing_dodge_backward",
         "falling_to_roll",
-        "falling_to_roll_reposed",
-        "falling_to_roll_from_walk_reposed",
         // Sword & shield attacks (referenced by config/weapon_classes/sword.json).
         // We profile these to see whether the clip authors net forward
         // hip travel (clean root-motion source) or ping-pongs back to
@@ -1343,8 +1341,7 @@ static float poseMatchStartFromLoco(const selva::anim::AnimationClip& new_clip,
 // definition.
 static bool isMovingLocoClip(const std::string& name)
 {
-    return name == "walking" || name == "running" || name == "start_walking" ||
-           name == "run_to_stop";
+    return name == "walking" || name == "running" || name == "run_to_stop";
 }
 
 // Five-joint splice diagnostic. Captured pre-playOneShot, logged post.
@@ -1402,6 +1399,167 @@ static float effectiveAttackPlaybackRate(selva::combat::HandSide hand)
     if (w != nullptr && w->cls != nullptr && w->cls->attack_playback_rate > 0.0f)
         return w->cls->attack_playback_rate;
     return global;
+}
+
+// ---------------------------------------------------------------------------
+// TransitionProfile: one bag of decisions per "fire a one-shot" call site.
+//
+// The animation system has 6 axes of choice at every transition (dodge,
+// attack, block, future jump). Hard-coding those axes inline at each
+// call site makes adding/changing a transition risk regressing the
+// others, and makes consistency between transitions invisible. A
+// profile makes every choice explicit, so call sites read like:
+//   fireOneShot(clip, kProfileSprintFinisher, ...);
+//
+// One profile per transition class. Add new transitions by adding a
+// new constant; never copy-paste the call-site scaffolding.
+// ---------------------------------------------------------------------------
+
+struct TransitionProfile
+{
+    enum class SourcePrep
+    {
+        None,             // capture whatever's on screen
+        SnapLocoToZero,   // setLocomotionClipTime(0) before fire (block-from-CombatReady)
+    };
+
+    enum class Lockout
+    {
+        None,                // no walking-suppression (block, dodge — dodge has its own gate)
+        CancelWindowClose,   // sLocoLockoutUntil = chain.cancel_window_close_at + extension
+        WallClockSeconds,    // sLocoLockoutUntil = now + lockout_seconds (sprint-finisher)
+    };
+
+    float blend_in_seconds = 0.20f;
+    float blend_out_seconds = 0.20f;
+    SourcePrep source_prep = SourcePrep::None;
+    bool enroll_inertialization = true;
+    Lockout lockout = Lockout::None;
+    float lockout_seconds = 0.0f; // meaning depends on Lockout
+    selva::anim::PoseSampler::BodyMask mask =
+        selva::anim::PoseSampler::BodyMask::Full;
+    bool freeze_last = false;
+};
+
+// Pre-built profiles for every transition class in the game today.
+// Add a new transition? Add a constant. Never inline these settings.
+namespace profiles
+{
+// Cold attack from combat-idle. Pose-match against the loco track
+// (caller supplies start_seconds from that scan). Inertialization
+// smooths the residual offset.
+inline TransitionProfile firstStrike()
+{
+    const auto& tun = selva::tuning::current();
+    TransitionProfile p;
+    p.blend_in_seconds = tun.first_strike_blend_seconds;
+    p.enroll_inertialization = true;
+    p.lockout = TransitionProfile::Lockout::CancelWindowClose;
+    return p;
+}
+// Mid-chain attack splice. Caller supplies start_seconds from
+// pose-match against the OUTGOING one-shot, or the clip's authored
+// chain_link_start_seconds.
+inline TransitionProfile chainLink()
+{
+    const auto& tun = selva::tuning::current();
+    TransitionProfile p;
+    p.blend_in_seconds = tun.combo_chain_blend_seconds;
+    p.enroll_inertialization = true;
+    p.lockout = TransitionProfile::Lockout::CancelWindowClose;
+    return p;
+}
+// Sprint-LMB → running attack (flying knee, etc). Live running pose
+// ≈ clip t=0; offset is small. No inertialization (would capture
+// mid-running pose and apply it on top of the running clip — visible
+// spasm on rapid-fire). Lockout in wall-clock seconds.
+inline TransitionProfile sprintFinisher()
+{
+    const auto& tun = selva::tuning::current();
+    TransitionProfile p;
+    p.blend_in_seconds = tun.sprint_finisher_blend_in_seconds;
+    p.enroll_inertialization = false;
+    p.lockout = TransitionProfile::Lockout::WallClockSeconds;
+    p.lockout_seconds = tun.sprint_finisher_lockout_seconds;
+    return p;
+}
+// Block fired through the first-action latch (locomotion already
+// settled into combat-idle).
+inline TransitionProfile blockFromLatch()
+{
+    TransitionProfile p;
+    p.blend_in_seconds = 0.10f;
+    p.source_prep = TransitionProfile::SourcePrep::None;
+    p.enroll_inertialization = true;
+    p.lockout = TransitionProfile::Lockout::None;
+    return p;
+}
+// Block fired live from CombatReady. Snap loco to t=0 first so the
+// splice has a known handoff frame.
+inline TransitionProfile blockLive()
+{
+    TransitionProfile p;
+    p.blend_in_seconds = 0.10f;
+    p.source_prep = TransitionProfile::SourcePrep::SnapLocoToZero;
+    p.enroll_inertialization = true;
+    p.lockout = TransitionProfile::Lockout::None;
+    return p;
+}
+// Dodge (roll / backstep). No inertialization — dodge commits and
+// has its own movement gate (sDodgeActive); a captured-offset
+// overlay would just add visible motion on top of the running clip.
+inline TransitionProfile dodge()
+{
+    TransitionProfile p;
+    p.blend_in_seconds = 0.10f;
+    p.source_prep = TransitionProfile::SourcePrep::None;
+    p.enroll_inertialization = false;
+    p.lockout = TransitionProfile::Lockout::None;
+    return p;
+}
+} // namespace profiles
+
+// Single entry point for "fire a one-shot with this profile." Reads
+// profile, applies source-prep, optionally enrolls inertialization,
+// kicks playOneShot. Lockout assignment happens at the caller because
+// the lockout target's anchor (cancel_window_close_at, dodge end,
+// etc.) belongs to caller-specific state.
+//
+// `start_seconds` is computed by the caller via whatever strategy
+// fits — pose-match, authored offset, leading-idle trim, or just 0.
+// The profile is dumb about start_seconds; the caller is responsible.
+static void fireOneShotWithProfile(const selva::anim::AnimationClip& clip,
+                                   const TransitionProfile& profile, float start_seconds,
+                                   float playback_rate)
+{
+    if (profile.source_prep == TransitionProfile::SourcePrep::SnapLocoToZero)
+        sSampler.setLocomotionClipTime(0.0f);
+    if (profile.enroll_inertialization)
+        sSampler.requestInertialization(profile.blend_in_seconds);
+    sSampler.playOneShot(clip, profile.blend_in_seconds, profile.blend_out_seconds, profile.mask,
+                         start_seconds, playback_rate, profile.freeze_last);
+}
+
+// Apply a profile's lockout strategy. Called by chain code after
+// chain.cancel_window_close_at is computed for the just-fired attack.
+static void applyProfileLockout(const TransitionProfile& profile,
+                                float cancel_window_close_at)
+{
+    const auto& tun = selva::tuning::current();
+    float target = sLocoLockoutUntil;
+    switch (profile.lockout)
+    {
+    case TransitionProfile::Lockout::None:
+        return;
+    case TransitionProfile::Lockout::CancelWindowClose:
+        target = cancel_window_close_at + tun.attack_lockout_extension_seconds;
+        break;
+    case TransitionProfile::Lockout::WallClockSeconds:
+        target = sWallClockSeconds + profile.lockout_seconds;
+        break;
+    }
+    if (target > sLocoLockoutUntil)
+        sLocoLockoutUntil = target;
 }
 
 // Window size (read at init for the projection's aspect ratio; updated on
@@ -1967,16 +2125,17 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
             (per_attack_blend >= 0.0f) ? per_attack_blend : tun.combo_chain_blend_seconds;
         const float blend_in = first_strike ? tun.first_strike_blend_seconds : chain_blend;
 
-        // First-strike scans against the loco track; chain-link scans
-        // against the outgoing one-shot (previous attack mid-recovery).
-        // Wider chain-link window because the best frame can be deeper
-        // into the new clip's windup.
+        // Sprint-finisher uses a fixed start-trim from tunables; no
+        // pose-match. First-strike scans against the loco track;
+        // chain-link scans against the outgoing one-shot (previous
+        // attack mid-recovery). Wider chain-link window because the
+        // best frame can be deeper into the new clip's windup.
         float pose_matched_start = -1.0f;
-        if (first_strike)
+        if (!is_sprint_swap && first_strike)
         {
             pose_matched_start = poseMatchStartFromLoco(*ra.clip, 0.30f);
         }
-        else
+        else if (!is_sprint_swap)
         {
             const auto fd_pre = sSampler.frameDiagnostics();
             if (fd_pre.one_shot_name != nullptr)
@@ -1997,8 +2156,9 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                 }
             }
         }
-        const float fallback_start =
-            first_strike ? 0.0f : ra.attack->resolved_chain_link_start_seconds;
+        const float fallback_start = is_sprint_swap ? tun.sprint_finisher_start_seconds
+                                     : first_strike ? 0.0f
+                                                    : ra.attack->resolved_chain_link_start_seconds;
         const float start_seconds =
             (pose_matched_start >= 0.0f) ? pose_matched_start : fallback_start;
         SpliceDiag diag;
@@ -2008,24 +2168,18 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
             diag = captureSpliceDiag();
             fd_pre_action = sSampler.frameDiagnostics();
         }
-        // Sprint-finisher swaps don't enroll inertialization: the
-        // running clip's t=0 IS a running pose, the live screen IS a
-        // running pose, the offset is small. Rapid-firing sprint LMB
-        // would otherwise capture mid-flying-knee pose and decay it
-        // on top of the next swing — visible spasm. Other attack fires
-        // (chain links, first-strikes from combat-idle) DO enroll: the
-        // captured-offset overlay smooths real cross-pose splices.
+        // Pick the profile for this fire. First-strike, chain-link,
+        // and sprint-finisher have different blend/inertialization/
+        // lockout choices baked into named profiles. Chain-link's
+        // blend honours the per-attack override resolved into blend_in.
+        TransitionProfile profile = is_sprint_swap ? profiles::sprintFinisher()
+                                    : first_strike ? profiles::firstStrike()
+                                                   : profiles::chainLink();
         if (!is_sprint_swap)
-            sSampler.requestInertialization(blend_in);
+            profile.blend_in_seconds = blend_in;
+        profile.mask = mask;
         const float rate = effectiveAttackPlaybackRate(hand);
-        // Sprint-finisher overrides: tunable blend-in (live running
-        // pose ≈ clip t=0, so short blend is fine) AND tunable
-        // start-trim that crops the windup off the front.
-        const float effective_blend_in =
-            is_sprint_swap ? tun.sprint_finisher_blend_in_seconds : blend_in;
-        const float effective_start =
-            is_sprint_swap ? tun.sprint_finisher_start_seconds : start_seconds;
-        sSampler.playOneShot(*ra.clip, effective_blend_in, 0.20f, mask, effective_start, rate);
+        fireOneShotWithProfile(*ra.clip, profile, start_seconds, rate);
 
         if (sCombatDebugEnabled)
         {
@@ -2275,13 +2429,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                 sWallClockSeconds + (remaining_clip / rate) + tun.combo_reset_grace_seconds;
         }
         chain.chain_kind = kind;
-        // Locomotion lockout: walking resumes at cancel_window_close
-        // + extension. Sprint-finisher uses its own anchor.
-        const float lockout_target =
-            is_sprint_swap ? sWallClockSeconds + tun.sprint_finisher_lockout_seconds
-                           : chain.cancel_window_close_at + tun.attack_lockout_extension_seconds;
-        if (lockout_target > sLocoLockoutUntil)
-            sLocoLockoutUntil = lockout_target;
+        applyProfileLockout(profile, chain.cancel_window_close_at);
         chain.chain_index = was_last ? 0 : next_idx;
         chain.is_finisher = was_last;
         return true;
@@ -2631,12 +2779,10 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                     block_start = sEquipment.right->cls->block_clip_start_seconds;
                 else
                     block_start = poseMatchStartFromLoco(*clip, 0.30f);
-                if (!loco_settled)
-                    sSampler.setLocomotionClipTime(0.0f);
-                sSampler.requestInertialization(0.10f);
-                sSampler.playOneShot(*clip, 0.10f, 0.20f,
-                                     selva::anim::PoseSampler::BodyMask::Full,
-                                     block_start, 1.0f, freeze_last);
+                TransitionProfile profile =
+                    loco_settled ? profiles::blockFromLatch() : profiles::blockLive();
+                profile.freeze_last = freeze_last;
+                fireOneShotWithProfile(*clip, profile, block_start, /*playback_rate=*/1.0f);
                 sBlockingActive = true;
 
                 const glm::vec3 block_t0 =
@@ -2852,25 +2998,10 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                 {
                     const float playback_rate =
                         sDodgeIsBackstep ? tun.backstep_playback_rate : tun.roll_playback_rate;
-                    // TEST 2: loco snap disabled to bisect spasm cause.
-                    // Was: if (from_walking) sSampler.setLocomotionClipTime(0.25f);
-                    // The reposed clip's bookend (frames 1-5) IS the
-                    // splice. Skip pose-match (it returns 0 anyway since
-                    // bookend frame 0 IS the source pose) and skip
-                    // inertialization (offset is near-zero by construction).
-                    // A near-instant blend (0.02s) lets the bookend play
-                    // cleanly without crossfade competing with it.
                     SpliceDiag diag;
                     if (sCombatDebugEnabled)
                         diag = captureSpliceDiag();
-                    // Dodge does NOT enroll inertialization. Bookend
-                    // matches live pose (combat-idle source) or accepts
-                    // the residual mismatch (walking source) — either
-                    // way an offset-decay overlay produces wrong-leg
-                    // motion when applied on top of the running clip.
-                    sSampler.playOneShot(*dodgeClip, 0.10f, 0.20f,
-                                         selva::anim::PoseSampler::BodyMask::Full, 0.0f,
-                                         playback_rate);
+                    fireOneShotWithProfile(*dodgeClip, profiles::dodge(), 0.0f, playback_rate);
                     if (sCombatDebugEnabled)
                     {
                         char prefix[256];

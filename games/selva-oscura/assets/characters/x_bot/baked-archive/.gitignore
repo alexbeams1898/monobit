@@ -1,0 +1,6 @@
+# The repo-root .gitignore ignores all *.ozz (build artifacts). The
+# .ozz files in this directory are intentional exceptions — they are
+# baked sword & shield clips whose source FBXs are no longer in the
+# tree, kept here so we don't lose them on a clean rebuild. Negate
+# the parent ignore for everything in this directory.
+!*.ozz

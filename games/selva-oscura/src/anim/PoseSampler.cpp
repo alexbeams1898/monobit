@@ -536,16 +536,6 @@ bool PoseSampler::locomotionClipFinished() const
     return impl->loco_current.finished;
 }
 
-void PoseSampler::cancelInertialization()
-{
-    if (!impl)
-        return;
-    impl->pending_capture = false;
-    impl->pending_capture_from_supplied_source = false;
-    impl->decay_active = false;
-    impl->decay_duration = 0.0f;
-}
-
 void PoseSampler::requestInertialization(float duration_seconds)
 {
     if (!impl)

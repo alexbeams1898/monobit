@@ -92,7 +92,7 @@ set(xbot_out_dir ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/assets/characters/x_bot)
 #
 # X_Bot.glb is treated as a build artifact (gitignored, regenerated from
 # the FBX on every fresh checkout). The FBX is the authoring source.
-set(xbot_fbx ${xbot_dir}/source/Pro\ Sword\ and\ Shield\ Pack/X\ Bot.fbx)
+set(xbot_fbx ${xbot_dir}/source/rig/X_Bot.fbx)
 set(xbot_glb ${xbot_dir}/X_Bot.glb)
 add_custom_command(
     OUTPUT ${xbot_glb}
@@ -112,7 +112,7 @@ add_custom_command(
         -i ${xbot_fbx}
         -o ${xbot_dir}/X_Bot
     DEPENDS ${xbot_fbx} ${fbx2gltf_exe}
-    COMMENT "Converting X Bot.fbx → X_Bot.glb..."
+    COMMENT "Converting X_Bot.fbx → X_Bot.glb..."
     VERBATIM
 )
 
@@ -173,21 +173,13 @@ add_custom_target(selva-oscura-convert-xbot ALL DEPENDS ${xbot_ozz_files})
 # Filename sanitization: lowercase, spaces and parens to underscores,
 # repeats collapsed. "sword and shield slash (2).fbx" →
 # "sword_and_shield_slash_2.ozz".
+#
+# Source layout under x_bot/source/ is purpose-based — every .fbx
+# anywhere under that tree is converted to a clip, except the rig
+# (rig/X_Bot.fbx) which goes through a separate pipeline above. Drop
+# new clips into the matching subdir (loco/, combat/sword/attacks/,
+# dodge/, etc.) and they're picked up automatically.
 # ---------------------------------------------------------------------------
-# All Mixamo pack subdirs to scan for .fbx clips. Add a new pack by
-# dropping its folder under source/ and listing it here.
-set(mixamo_pack_dirs
-    "${xbot_dir}/source/Pro Sword and Shield Pack"
-    "${xbot_dir}/source/Action Adventure Pack"
-    # Re-bookended FBXs produced by scripts/blender/rebookend_clip.py.
-    # Each filename ends in " reposed.fbx" so the sanitized .ozz name
-    # gets a `_reposed` suffix and both the original and re-bookended
-    # versions can coexist in the runtime registry. Chain JSON config
-    # (e.g. config/weapon_classes/sword.json) picks which version
-    # each chain entry uses.
-    "${xbot_dir}/source/Pro Sword and Shield Pack Reposed"
-    "${xbot_dir}/source/Action Adventure Pack Reposed"
-)
 
 # Generate the gltf2ozz retarget config once at configure time. Refers to
 # X Bot's skeleton.ozz by absolute path so each clip's per-temp-dir
@@ -235,26 +227,15 @@ function(_selva_sanitize_clip_name fbx_filename out_var)
 endfunction()
 
 set(attack_ozz_files "")
-# Aggregate every FBX we want to convert into per-clip .ozz files:
-#   * Loose .fbx at the top of source/ (Standard Idle, Standard Walk,
-#     Stand To Roll, etc. — generic locomotion clips).
-#   * Every .fbx in each Mixamo pack subdir listed in mixamo_pack_dirs.
-# All run through the same FBX2glTF + gltf2ozz retarget pipeline below.
-# X Bot.fbx is excluded — it's the bound character mesh, converted
-# separately above into X_Bot.glb.
-file(GLOB attack_fbx_files
+# Every .fbx anywhere under x_bot/source/ becomes a per-clip .ozz.
+# Layout is purpose-based (loco/, combat/, dodge/, ...); recursive
+# glob lets new subdirs work without listing them here. X_Bot.fbx
+# (the rig under rig/) is converted separately above into X_Bot.glb
+# and excluded by the filter below.
+file(GLOB_RECURSE attack_fbx_files
     CONFIGURE_DEPENDS
     "${xbot_dir}/source/*.fbx"
 )
-foreach(pack_dir ${mixamo_pack_dirs})
-    if(EXISTS "${pack_dir}")
-        file(GLOB pack_fbx_files
-            CONFIGURE_DEPENDS
-            "${pack_dir}/*.fbx"
-        )
-        list(APPEND attack_fbx_files ${pack_fbx_files})
-    endif()
-endforeach()
 list(FILTER attack_fbx_files EXCLUDE REGEX ".*[Xx][ _][Bb]ot\\.fbx$")
 if(attack_fbx_files)
     foreach(fbx ${attack_fbx_files})
@@ -305,6 +286,33 @@ endif()
 # unresolved.
 if(attack_ozz_files)
     add_custom_target(selva-oscura-convert-attacks ALL DEPENDS ${attack_ozz_files})
+endif()
+
+# Pre-baked .ozz files whose source FBXs are no longer in the tree
+# (e.g. unused sword & shield clips kept available for future use).
+# Copy each into build/bin alongside the freshly-baked clips so
+# loadDirectory() picks them up at runtime. The runtime directory
+# scan doesn't distinguish baked-from-FBX from archived.
+set(archive_dir ${xbot_dir}/baked-archive)
+if(EXISTS ${archive_dir})
+    file(GLOB archive_ozz_files CONFIGURE_DEPENDS "${archive_dir}/*.ozz")
+    set(archive_copied_files "")
+    foreach(src ${archive_ozz_files})
+        get_filename_component(name "${src}" NAME)
+        set(dst ${xbot_out_dir}/${name})
+        add_custom_command(
+            OUTPUT ${dst}
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${xbot_out_dir}
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different ${src} ${dst}
+            DEPENDS ${src}
+            COMMENT "Staging archived clip ${name}"
+            VERBATIM
+        )
+        list(APPEND archive_copied_files ${dst})
+    endforeach()
+    if(archive_copied_files)
+        add_custom_target(selva-oscura-stage-archive ALL DEPENDS ${archive_copied_files})
+    endif()
 endif()
 
 # ---------------------------------------------------------------------------
