@@ -40,8 +40,8 @@ on which track and when.
 
 ```
 games/selva-oscura/
-├── src/main.cpp                  orchestration: per-frame tick, render callbacks, main()
-├── src/WallClock.cpp             selva::wallClock() / advanceWallClock() - global frame clock
+├── src/main.cpp                  ~140 lines — entry, init, callback registration, shutdown
+├── src/WallClock.cpp             selva::wallClock() / advanceWallClock() — global frame clock
 ├── src/anim/
 │   ├── PoseSampler.cpp           dual-track blend, inertialization, phase-match, hip motion
 │   ├── ClipRegistry.cpp          name→AnimationClip directory loader
@@ -61,6 +61,8 @@ games/selva-oscura/
 │   ├── TransitionProfile.cpp     profile struct + 6 named profiles + fireOneShotWithProfile
 │   └── WeaponData.cpp            JSON loaders for weapon class / weapon / equipment
 ├── src/gameplay/
+│   ├── LocomotionStateMachine.cpp  LocomotionState/CombatStance/StateMachine/tick + helpers
+│   ├── PerFrameTick.cpp          selvaPerFrame + selvaRenderWorld + per-tick state + lambdas
 │   └── PlayerState.cpp           sPlayer + wrapAngleSigned + yawFromGroundDir
 ├── src/render/
 │   ├── Camera.cpp                cameraYaw/Pitch + window size + onWindowResize
@@ -68,8 +70,9 @@ games/selva-oscura/
 │   ├── SceneShaders.cpp          scene shader program + uniform setters
 │   └── WorldRenderer.cpp         buildViewProj + renderEnvironment
 ├── src/ui/
-│   └── ComboHud.cpp              renderComboHud + nextExpectedButtonLabel
-├── include/                      matching .h files for everything above
+│   ├── ComboHud.cpp              renderComboHud + nextExpectedButtonLabel
+│   └── TuningPanel.cpp           selvaRenderImGui + tunedSlider (F1 ImGui panel)
+├── include/                      matching .h files (incl. gameplay/TickState.h for cross-module accessors)
 ├── config/
 │   ├── tunables.json             runtime feel parameters
 │   ├── locomotion.json           per-clip blend overrides
