@@ -40,9 +40,36 @@ on which track and when.
 
 ```
 games/selva-oscura/
-├── src/main.cpp                  ~4400 lines — the whole game
-├── src/anim/                     PoseSampler, ClipRegistry, Skeleton, etc.
-├── include/                      headers for the above + Tunables, combat data
+├── src/main.cpp                  orchestration: per-frame tick, render callbacks, main()
+├── src/WallClock.cpp             selva::wallClock() / advanceWallClock() - global frame clock
+├── src/anim/
+│   ├── PoseSampler.cpp           dual-track blend, inertialization, phase-match, hip motion
+│   ├── ClipRegistry.cpp          name→AnimationClip directory loader
+│   ├── Skeleton.cpp              ozz::animation::Skeleton wrapper
+│   ├── SkeletalMesh.cpp          GPU buffers + bone palette
+│   ├── SkeletalRenderer.cpp      drawSkeletalMesh
+│   ├── SkeletalAssets.cpp        skeleton/mesh/clips/sampler/locomotionConfig singletons
+│   ├── LocomotionConfig.cpp      per-clip blend-in overrides from JSON
+│   └── AnimationClip.cpp         ozz::animation::Animation wrapper
+├── src/combat/
+│   ├── AttackChain.cpp           AttackChainState/BufferedPress/PendingFirstAction + tickChainExpiry
+│   ├── AttackResolution.cpp      one-time startup pass (cancel-open, chain-link-start)
+│   ├── AttackResolver.cpp        ResolvedAttack/TechniqueDispatch dispatchers
+│   ├── CombatData.cpp            registries (weapon classes/weapons/equipment) + load + helpers
+│   ├── CombatLog.cpp             combatLog() + log file open/close
+│   ├── SpliceDiag.cpp            5-joint diag capture/log + poseMatchStartFromLoco
+│   ├── TransitionProfile.cpp     profile struct + 6 named profiles + fireOneShotWithProfile
+│   └── WeaponData.cpp            JSON loaders for weapon class / weapon / equipment
+├── src/gameplay/
+│   └── PlayerState.cpp           sPlayer + wrapAngleSigned + yawFromGroundDir
+├── src/render/
+│   ├── Camera.cpp                cameraYaw/Pitch + window size + onWindowResize
+│   ├── SceneGeometry.cpp         cube/floor/grid/axes VAOs + draw helpers
+│   ├── SceneShaders.cpp          scene shader program + uniform setters
+│   └── WorldRenderer.cpp         buildViewProj + renderEnvironment
+├── src/ui/
+│   └── ComboHud.cpp              renderComboHud + nextExpectedButtonLabel
+├── include/                      matching .h files for everything above
 ├── config/
 │   ├── tunables.json             runtime feel parameters
 │   ├── locomotion.json           per-clip blend overrides
