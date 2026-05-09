@@ -31,6 +31,7 @@ add_library(selva-oscura-lib STATIC
     src/render/SceneGeometry.cpp
     src/render/SceneShaders.cpp
     src/render/WorldRenderer.cpp
+    src/ui/ComboHud.cpp
     src/Tunables.cpp
     src/WallClock.cpp
 )
