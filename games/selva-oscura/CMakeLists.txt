@@ -18,8 +18,11 @@ add_library(selva-oscura-lib STATIC
     src/anim/Skeleton.cpp
     src/anim/SkeletalMesh.cpp
     src/anim/SkeletalRenderer.cpp
+    src/combat/CombatLog.cpp
     src/combat/WeaponData.cpp
+    src/render/SceneShaders.cpp
     src/Tunables.cpp
+    src/WallClock.cpp
 )
 
 target_include_directories(selva-oscura-lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)

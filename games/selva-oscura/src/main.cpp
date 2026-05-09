@@ -4,6 +4,8 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "Engine.h"
 #include "Tunables.h"
+#include "WallClock.h"
+#include "combat/CombatLog.h"
 #include "anim/AnimationClip.h"
 #include "anim/ClipRegistry.h"
 #include "anim/LocomotionConfig.h"
@@ -14,7 +16,7 @@
 #include "combat/PlayerEquipment.h"
 #include "combat/Weapon.h"
 #include "combat/WeaponClass.h"
-#include "gl/ShaderUtils.h"
+#include "render/SceneShaders.h"
 
 #include <imgui.h>
 // stb_image (reader) is for the contact-sheet composite; its
@@ -44,55 +46,7 @@
 #include <string>
 #include <vector>
 
-// ---------------------------------------------------------------------------
-// Shaders
-// ---------------------------------------------------------------------------
-
-// Vertex shader: 3D position + per-vertex grayscale shade. uModel transforms
-// the vertex to world space; uViewProj projects world to clip space. Splitting
-// model from view-projection lets one shader draw many objects per frame —
-// each draw call updates uModel, uViewProj is set once per frame.
-static const char* kSceneVertexShader = R"glsl(
-#version 330 core
-layout(location = 0) in vec3 aPos;
-layout(location = 1) in float aShade;
-
-uniform mat4 uModel;
-uniform mat4 uViewProj;
-
-out float vShade;
-
-void main()
-{
-    gl_Position = uViewProj * uModel * vec4(aPos, 1.0);
-    vShade = aShade;
-}
-)glsl";
-
-// Fragment shader: outputs the interpolated grayscale shade with full alpha.
-// Multiplied by uTint so the same geometry can render in different shades
-// (scene cube vs player cube) without duplicating vertex buffers.
-static const char* kSceneFragmentShader = R"glsl(
-#version 330 core
-in float vShade;
-out vec4 fragColor;
-
-uniform float uTint;
-
-void main()
-{
-    float g = clamp(vShade * uTint, 0.0, 1.0);
-    fragColor = vec4(g, g, g, 1.0);
-}
-)glsl";
-
-// GPU shader program (vertex + fragment linked). 0 = not built / failed.
-static GLuint sSceneProgram = 0;
-
-// Cached uniform locations. Resolved once at init.
-static GLint sUniModelLoc = -1;
-static GLint sUniViewProjLoc = -1;
-static GLint sUniTintLoc = -1;
+// Scene shader program + uniform setters owned by render/SceneShaders.{h,cpp}.
 
 // ---------------------------------------------------------------------------
 // Cube geometry (shared between the tumbling scene cube and the player cube)
@@ -500,12 +454,11 @@ static void shutdownGeometry()
     glDeleteBuffers(1, &sCubeEbo);
     glDeleteBuffers(1, &sCubeVbo);
     glDeleteVertexArrays(1, &sCubeVao);
-    glDeleteProgram(sSceneProgram);
+    selva::render::shutdownSceneProgram();
     sFloorEbo = sFloorVbo = sFloorVao = 0;
     sGridVbo = sGridVao = 0;
     sAxesVbo = sAxesVao = 0;
     sCubeEbo = sCubeVbo = sCubeVao = 0;
-    sSceneProgram = 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -962,10 +915,9 @@ struct PendingFirstAction
 };
 static PendingFirstAction sPendingFirstAction;
 
-// Wall-clock seconds since the game started. Set at top of selvaPerFrame
-// from the engine, used by the chain windows and the input buffer so
-// they don't have to chase dt-relative bookkeeping per frame.
-static float sWallClockSeconds = 0.0f;
+// Wall-clock seconds since the game started — owned by
+// selva::wallClock() (WallClock.h). Advanced once per frame at the
+// top of selvaPerFrame via selva::advanceWallClock(dt).
 
 // Wall-clock time at which post-attack locomotion lockout ends. Set on
 // each attack fire to "now + effective clip duration + grace". While
@@ -1165,48 +1117,10 @@ static TechniqueDispatch dispatchTechniqueForPress(const selva::combat::PlayerEq
 
 // In-game tuning panel toggle. Off by default; F1 flips it.
 static bool sShowTuningPanel = false;
-// Master switch for the combat debug overlay + per-fire diagnostics.
-// Off by default — the HUD render, pose-match scan, splice-distance
-// joint samples, and per-press combatLog spam ALL gate on this. Toggle
-// from the F1 panel when iterating on combat feel.
-//
-// Why this matters: with this enabled, fireAttack runs ~40 ozz
-// SamplingJobs (pose-match scan + 5-joint splice samples + chain-link
-// velocity diag) AND multiple fflush'd disk writes on a single press
-// frame. Tracy showed selvaPerFrame max=77ms (vs ~1ms baseline) when
-// these fire. Default off keeps the per-attack frame cost flat.
-//
-// Resolver dump at startup, sprint-finisher swaps, and the combat-debug
-// log file open all also gate on this — the file isn't even created
-// when the flag is off.
-static bool sCombatDebugEnabled = false;
-
-// Combat-debug log file. Mirrors per-press diagnostics to disk. Only
-// opened when sCombatDebugEnabled is true at startup OR turned on from
-// the F1 panel; closed on toggle off.
-static FILE* sCombatLog = nullptr;
-
-// Debug-gated log: no-op when sCombatDebugEnabled is false.
-// Routes to stderr + the combat log file when enabled. Use for high-
-// frequency per-fire / per-frame diagnostics. fflush per line keeps
-// the log readable even after a crash.
-static void combatLog(const char* fmt, ...)
-{
-    if (!sCombatDebugEnabled)
-        return;
-    va_list args1;
-    va_start(args1, fmt);
-    va_list args2;
-    va_copy(args2, args1);
-    std::vfprintf(stderr, fmt, args1);
-    va_end(args1);
-    if (sCombatLog != nullptr)
-    {
-        std::vfprintf(sCombatLog, fmt, args2);
-        std::fflush(sCombatLog);
-    }
-    va_end(args2);
-}
+// Combat debug toggle + log file owned by combat/CombatLog.{h,cpp}.
+// Aliases here keep the heavy call-site count (100+ combatLog uses)
+// readable without `selva::combat::` everywhere.
+using selva::combat::combatLog;
 
 // Cached previous-frame right-hand position. Updated at the bottom of
 // selvaPerFrame after the sampler has produced this frame's pose.
@@ -1553,7 +1467,7 @@ static void applyProfileLockout(const TransitionProfile& profile,
         target = cancel_window_close_at + tun.attack_lockout_extension_seconds;
         break;
     case TransitionProfile::Lockout::WallClockSeconds:
-        target = sWallClockSeconds + profile.lockout_seconds;
+        target = selva::wallClock() + profile.lockout_seconds;
         break;
     }
     if (target > sLocoLockoutUntil)
@@ -1895,7 +1809,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
 {
     ZoneScopedN("selvaPerFrame");
     // Apply the global time-scale multiplier ONCE here. All downstream
-    // dt-driven systems (sampler.update, dodge timer, sWallClockSeconds,
+    // dt-driven systems (sampler.update, dodge timer, selva::wallClock(),
     // lockouts, debounce, etc.) read this scaled dt. Set time_scale
     // < 1.0 in the F1 panel to slow-mo every animation transition for
     // debugging split-second issues.
@@ -1903,7 +1817,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
 
     bool combat_input_this_frame = false;
 
-    sWallClockSeconds += dt;
+    selva::advanceWallClock(dt);
 
     // Title bar — game name + FPS. EMA-smoothed so the number doesn't flicker.
     const int fps = static_cast<int>(std::lround(1.0 / engine.lastFrameTime()));
@@ -1992,9 +1906,9 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         chain.last_press_accuracy = 0.0f;
         chain.last_press_was_perfect = false;
     };
-    if (sChainRight.chain_index > 0 && sWallClockSeconds >= sChainRight.chain_reset_at)
+    if (sChainRight.chain_index > 0 && selva::wallClock() >= sChainRight.chain_reset_at)
         resetChain(sChainRight);
-    if (sChainLeft.chain_index > 0 && sWallClockSeconds >= sChainLeft.chain_reset_at)
+    if (sChainLeft.chain_index > 0 && selva::wallClock() >= sChainLeft.chain_reset_at)
         resetChain(sChainLeft);
     // Even after the chain wraps to 0 (mid-flight, after firing the
     // final entry), the window timestamps are still set forward by the
@@ -2002,18 +1916,18 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     // so the next press is a fresh first-strike, not "past the close
     // of slash_4's window."
     if (sChainRight.chain_index == 0 && sChainRight.cancel_window_open_at > 0.0f &&
-        sWallClockSeconds >= sChainRight.chain_reset_at)
+        selva::wallClock() >= sChainRight.chain_reset_at)
         resetChain(sChainRight);
     if (sChainLeft.chain_index == 0 && sChainLeft.cancel_window_open_at > 0.0f &&
-        sWallClockSeconds >= sChainLeft.chain_reset_at)
+        selva::wallClock() >= sChainLeft.chain_reset_at)
         resetChain(sChainLeft);
 
     // Expire stale buffered presses.
     if (sBufferedRight.pending &&
-        sWallClockSeconds - sBufferedRight.buffered_at >= tun.combo_input_buffer_seconds)
+        selva::wallClock() - sBufferedRight.buffered_at >= tun.combo_input_buffer_seconds)
         sBufferedRight.pending = false;
     if (sBufferedLeft.pending &&
-        sWallClockSeconds - sBufferedLeft.buffered_at >= tun.combo_input_buffer_seconds)
+        selva::wallClock() - sBufferedLeft.buffered_at >= tun.combo_input_buffer_seconds)
         sBufferedLeft.pending = false;
 
     // Fire an attack on the given hand at the chain's current step.
@@ -2160,7 +2074,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
             (pose_matched_start >= 0.0f) ? pose_matched_start : fallback_start;
         SpliceDiag diag;
         selva::anim::PoseSampler::FrameDiagnostics fd_pre_action{};
-        if (sCombatDebugEnabled)
+        if (selva::combat::isCombatDebugEnabled())
         {
             diag = captureSpliceDiag();
             fd_pre_action = sSampler.frameDiagnostics();
@@ -2178,7 +2092,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         const float rate = effectiveAttackPlaybackRate(hand);
         fireOneShotWithProfile(*ra.clip, profile, start_seconds, rate);
 
-        if (sCombatDebugEnabled)
+        if (selva::combat::isCombatDebugEnabled())
         {
             char prefix[256];
             std::snprintf(prefix, sizeof(prefix),
@@ -2238,7 +2152,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                          "[frame-capture] capturing chain for %.2fs to %s/ (rate=%.2f)\n",
                          sFrameCaptureDuration, sFrameCaptureDir.c_str(), capture_rate);
         }
-        if (sCombatDebugEnabled)
+        if (selva::combat::isCombatDebugEnabled())
         {
             combatLog("[combat:fire] hand=%s idx=%d clip=%s dur=%.3fs "
                       "start=%.3fs (%.0f%%)  blend_in=%.3fs  rate=%.2f  role=%s\n",
@@ -2386,7 +2300,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         const float effective_duration =
             std::max(0.0f, ra.clip->duration() - start_seconds) / rate;
         const float new_until =
-            sWallClockSeconds + effective_duration + tun.combat_idle_grace_seconds;
+            selva::wallClock() + effective_duration + tun.combat_idle_grace_seconds;
         if (new_until > sLocomotionSM.stance_active_until)
             sLocomotionSM.stance_active_until = new_until;
         // Cancel-window gate. Open time is auto-detected per attack at
@@ -2405,7 +2319,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         const float remaining_clip = std::max(0.0f, clip_dur - start_seconds);
         const float remaining_to_open = std::max(0.0f, open_clip_local - start_seconds);
         const float open_wall = remaining_to_open / rate;
-        chain.cancel_window_open_at = sWallClockSeconds + open_wall;
+        chain.cancel_window_open_at = selva::wallClock() + open_wall;
         chain.cancel_window_close_at =
             chain.cancel_window_open_at + tun.combo_input_buffer_seconds;
         // chain_reset_at gates both chain auto-reset (so a slow
@@ -2423,7 +2337,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         else
         {
             chain.chain_reset_at =
-                sWallClockSeconds + (remaining_clip / rate) + tun.combo_reset_grace_seconds;
+                selva::wallClock() + (remaining_clip / rate) + tun.combo_reset_grace_seconds;
         }
         chain.chain_kind = kind;
         // Finishers (the chain's last step) drop the locomotion
@@ -2457,9 +2371,9 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         // Rhythm window: hit = inside [open, close]; before/after = miss.
         const bool first_strike = (chain.cancel_window_open_at <= 0.0f);
         const bool before_open =
-            !first_strike && sWallClockSeconds < chain.cancel_window_open_at;
+            !first_strike && selva::wallClock() < chain.cancel_window_open_at;
         const bool past_close =
-            !first_strike && sWallClockSeconds > chain.cancel_window_close_at;
+            !first_strike && selva::wallClock() > chain.cancel_window_close_at;
         // Finisher: cancel-fire is blocked during the swing's pre-contact
         // phase (before_open) so the player can't interrupt their own
         // finisher. From cancel_window_open_at onward the press starts
@@ -2494,10 +2408,10 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                 sPostDodgeAttack.pending = true;
                 sPostDodgeAttack.hand = hand;
                 sPostDodgeAttack.button = button;
-                sPostDodgeAttack.buffered_at = sWallClockSeconds;
+                sPostDodgeAttack.buffered_at = selva::wallClock();
                 combatLog("[combat:rhythm %.4fs] press BUFFERED (dodge active, "
                           "elapsed=%.3fs/%.3fs)\n",
-                          sWallClockSeconds, sDodgeElapsed, sDodgeDuration);
+                          selva::wallClock(), sDodgeElapsed, sDodgeDuration);
                 return;
             }
             // First-press latch: delays fire so the locomotion track
@@ -2538,7 +2452,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                 sPendingFirstAction.attack_kind = kind;
                 sPendingFirstAction.button = button;
                 sPendingFirstAction.fire_at =
-                    sWallClockSeconds + tun.combat_entry_delay_seconds;
+                    selva::wallClock() + tun.combat_entry_delay_seconds;
                 combat_input_this_frame = true;
                 return;
             }
@@ -2660,7 +2574,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                                              chain.cancel_window_close_at);
                 const float half_width = 0.5f * (chain.cancel_window_close_at -
                                                  chain.cancel_window_open_at);
-                const float d = std::fabs(sWallClockSeconds - center);
+                const float d = std::fabs(selva::wallClock() - center);
                 chain.last_press_accuracy =
                     (half_width > 0.0f) ? std::max(0.0f, 1.0f - (d / half_width)) : 0.0f;
                 chain.last_press_was_perfect =
@@ -2685,7 +2599,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                 buf.pending = true;
                 buf.kind = kind;
                 buf.button = button;
-                buf.buffered_at = sWallClockSeconds;
+                buf.buffered_at = selva::wallClock();
                 combatLog("[combat:rhythm] BUFFERED (early; %s @ slot %d)\n", button,
                           chain.chain_index);
                 return;
@@ -2770,28 +2684,28 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         // High-resolution input edge trace. Logs every WASD/LMB/RMB
         // transition with the wall-clock timestamp so the user's repro
         // session can be reconstructed exactly. Gated on debug switch.
-        if (sCombatDebugEnabled)
+        if (selva::combat::isCombatDebugEnabled())
         {
             const bool wNow = keys[SDL_SCANCODE_W] != 0;
             const bool aNow = keys[SDL_SCANCODE_A] != 0;
             const bool sNow = keys[SDL_SCANCODE_S] != 0;
             const bool dNow = keys[SDL_SCANCODE_D] != 0;
             if (wNow != sPrevW)
-                combatLog("[input %.4fs] W %s\n", sWallClockSeconds, wNow ? "DOWN" : "UP");
+                combatLog("[input %.4fs] W %s\n", selva::wallClock(), wNow ? "DOWN" : "UP");
             if (aNow != sPrevA)
-                combatLog("[input %.4fs] A %s\n", sWallClockSeconds, aNow ? "DOWN" : "UP");
+                combatLog("[input %.4fs] A %s\n", selva::wallClock(), aNow ? "DOWN" : "UP");
             if (sNow != sPrevS)
-                combatLog("[input %.4fs] S %s\n", sWallClockSeconds, sNow ? "DOWN" : "UP");
+                combatLog("[input %.4fs] S %s\n", selva::wallClock(), sNow ? "DOWN" : "UP");
             if (dNow != sPrevD)
-                combatLog("[input %.4fs] D %s\n", sWallClockSeconds, dNow ? "DOWN" : "UP");
+                combatLog("[input %.4fs] D %s\n", selva::wallClock(), dNow ? "DOWN" : "UP");
             if (press_lmb)
-                combatLog("[input %.4fs] LMB DOWN\n", sWallClockSeconds);
+                combatLog("[input %.4fs] LMB DOWN\n", selva::wallClock());
             if (release_lmb)
-                combatLog("[input %.4fs] LMB UP\n", sWallClockSeconds);
+                combatLog("[input %.4fs] LMB UP\n", selva::wallClock());
             if (press_rmb)
-                combatLog("[input %.4fs] RMB DOWN\n", sWallClockSeconds);
+                combatLog("[input %.4fs] RMB DOWN\n", selva::wallClock());
             if (release_rmb)
-                combatLog("[input %.4fs] RMB UP\n", sWallClockSeconds);
+                combatLog("[input %.4fs] RMB UP\n", selva::wallClock());
             sPrevW = wNow;
             sPrevA = aNow;
             sPrevS = sNow;
@@ -2905,7 +2819,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                     sPendingFirstAction.block_clip = block_clip_name;
                     sPendingFirstAction.block_freeze_last = block_freeze_last;
                     sPendingFirstAction.fire_at =
-                        sWallClockSeconds + tun.combat_entry_delay_seconds;
+                        selva::wallClock() + tun.combat_entry_delay_seconds;
                     combat_input_this_frame = true;
                 }
                 else if (!sPendingFirstAction.active)
@@ -2932,7 +2846,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
 
         // First-action latch: fires whichever action was committed
         // from Peaceful (attack or block) once the entry delay elapses.
-        if (sPendingFirstAction.active && sWallClockSeconds >= sPendingFirstAction.fire_at)
+        if (sPendingFirstAction.active && selva::wallClock() >= sPendingFirstAction.fire_at)
         {
             if (sPendingFirstAction.kind == PendingFirstActionKind::Attack)
             {
@@ -3080,16 +2994,16 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                     const float playback_rate =
                         sDodgeIsBackstep ? tun.backstep_playback_rate : tun.roll_playback_rate;
                     SpliceDiag diag;
-                    if (sCombatDebugEnabled)
+                    if (selva::combat::isCombatDebugEnabled())
                         diag = captureSpliceDiag();
                     fireOneShotWithProfile(*dodgeClip, profiles::dodge(), 0.0f, playback_rate);
-                    if (sCombatDebugEnabled)
+                    if (selva::combat::isCombatDebugEnabled())
                     {
                         char prefix[256];
                         std::snprintf(prefix, sizeof(prefix),
                                       "[combat:dodge-fire %.4fs] clip=%s loco=%s "
                                       "dur=%.3fs (rate=%.2f) ",
-                                      sWallClockSeconds, clip_name, sLastLocoClipName.c_str(),
+                                      selva::wallClock(), clip_name, sLastLocoClipName.c_str(),
                                       dodgeClip->duration() / playback_rate, playback_rate);
                         logSpliceDiag(diag, *dodgeClip, 0.0f, prefix);
                     }
@@ -3163,20 +3077,20 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         if (sDodgeElapsed >= sDodgeDuration)
         {
             sDodgeActive = false;
-            if (sCombatDebugEnabled)
+            if (selva::combat::isCombatDebugEnabled())
                 combatLog("[combat:dodge %.4fs] sDodgeActive=false (elapsed=%.3fs/%.3fs)\n",
-                          sWallClockSeconds, sDodgeElapsed, sDodgeDuration);
+                          selva::wallClock(), sDodgeElapsed, sDodgeDuration);
         }
     }
     // One-shot state change tracking for post-dodge handoff visibility.
     {
         static bool sPrevOneShotActive = false;
         const bool one_shot_active_now = sSampler.isOneShotActive();
-        if (sPrevOneShotActive != one_shot_active_now && sCombatDebugEnabled)
+        if (sPrevOneShotActive != one_shot_active_now && selva::combat::isCombatDebugEnabled())
         {
             const auto fd = sSampler.frameDiagnostics();
             combatLog("[combat:one-shot %.4fs] active=%d weight=%.3f phase=%d\n",
-                      sWallClockSeconds, one_shot_active_now ? 1 : 0, fd.one_shot_weight,
+                      selva::wallClock(), one_shot_active_now ? 1 : 0, fd.one_shot_weight,
                       fd.one_shot_phase);
         }
         sPrevOneShotActive = one_shot_active_now;
@@ -3200,7 +3114,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     // back to combat-idle pose first.
     if (sPostDodgeAttack.pending && !sDodgeActive && !sSampler.isOneShotActive())
     {
-        const float wait_seconds = sWallClockSeconds - sPostDodgeAttack.buffered_at;
+        const float wait_seconds = selva::wallClock() - sPostDodgeAttack.buffered_at;
         AttackChainState& chain = (sPostDodgeAttack.hand == selva::combat::HandSide::Right)
                                       ? sChainRight
                                       : sChainLeft;
@@ -3216,7 +3130,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
             if (fireAttack(sPostDodgeAttack.hand, AttackKind::Light))
                 combat_input_this_frame = true;
             combatLog("[combat:rhythm %.4fs] post-dodge attack FIRED (waited %.3fs since press)\n",
-                      sWallClockSeconds, wait_seconds);
+                      selva::wallClock(), wait_seconds);
         }
         sPostDodgeAttack.pending = false;
     }
@@ -3429,23 +3343,23 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         }
         else if (sWasdDisagreeStartedAt < 0.0f)
         {
-            sWasdDisagreeStartedAt = sWallClockSeconds; // first frame of disagreement
+            sWasdDisagreeStartedAt = selva::wallClock(); // first frame of disagreement
         }
-        else if (sWallClockSeconds - sWasdDisagreeStartedAt >= tun.wasd_debounce_seconds)
+        else if (selva::wallClock() - sWasdDisagreeStartedAt >= tun.wasd_debounce_seconds)
         {
             sStableWasdIntent = wasd_intent_raw;
             sWasdDisagreeStartedAt = -1.0f;
         }
         const bool wasd_intent = sStableWasdIntent;
         const bool attack_in_flight = sSampler.isOneShotActive() || sPendingFirstAction.active;
-        const bool in_attack_recovery = sWallClockSeconds < sLocoLockoutUntil;
+        const bool in_attack_recovery = selva::wallClock() < sLocoLockoutUntil;
         const bool loco_lockout = attack_in_flight || in_attack_recovery;
         const bool is_moving = wasd_intent && !loco_lockout;
         const bool is_sprinting = sPlayer.sprinting && !loco_lockout;
         // Trace every change in (wasd_intent, attack_in_flight,
         // in_attack_recovery, is_moving). Lets us correlate input
         // edges to SM decisions to spasm timing.
-        if (sCombatDebugEnabled)
+        if (selva::combat::isCombatDebugEnabled())
         {
             static bool prev_wasd_intent = false;
             static bool prev_attack_in_flight = false;
@@ -3457,7 +3371,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                 const auto fd = sSampler.frameDiagnostics();
                 combatLog("[sm %.4fs] wasd=%d att=%d rec=%d -> is_moving=%d  "
                           "(lockout_until=%.3fs, one_shot_w=%.2f, loco_w=%.2f)\n",
-                          sWallClockSeconds, wasd_intent ? 1 : 0, attack_in_flight ? 1 : 0,
+                          selva::wallClock(), wasd_intent ? 1 : 0, attack_in_flight ? 1 : 0,
                           in_attack_recovery ? 1 : 0, is_moving ? 1 : 0, sLocoLockoutUntil,
                           fd.one_shot_weight, fd.loco_blend_weight);
                 prev_wasd_intent = wasd_intent;
@@ -3477,7 +3391,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         const auto sm_out = tickLocomotionStateMachine(
             sLocomotionSM, is_moving, is_sprinting, clip_done_this_frame,
             combat_input_this_frame, dt, tun.combat_idle_grace_seconds, is_armed,
-            sWallClockSeconds);
+            selva::wallClock());
         clip_name = sm_out.clip_name;
         clip_loops = sm_out.loops;
         clip_blend_seconds = sm_out.blend_seconds;
@@ -3502,10 +3416,10 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         // Includes loco_current_time so we know what frame of the
         // outgoing clip is the splice source — combined with the
         // dest clip's t=0, that's enough to compute pose mismatch.
-        if (sCombatDebugEnabled && loco_clip_changed)
+        if (selva::combat::isCombatDebugEnabled() && loco_clip_changed)
         {
             const auto fd = sSampler.frameDiagnostics();
-            combatLog("[sm %.4fs] loco-pick %s@%.3fs -> %s (blend=%.3fs)\n", sWallClockSeconds,
+            combatLog("[sm %.4fs] loco-pick %s@%.3fs -> %s (blend=%.3fs)\n", selva::wallClock(),
                       sLastLocoClipName.c_str(), fd.loco_current_time, clip_name.c_str(),
                       sm_out.blend_seconds);
         }
@@ -3529,7 +3443,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     // is mid-ramp (not 0 nor 1) OR a one_shot is blending, dump the
     // sampler's state every frame. Lets us watch the rapid-WASD spasm
     // unfold tick-by-tick.
-    if (sCombatDebugEnabled)
+    if (selva::combat::isCombatDebugEnabled())
     {
         const auto fd = sSampler.frameDiagnostics();
         const bool loco_mid = fd.loco_blend_weight > 0.001f && fd.loco_blend_weight < 0.999f;
@@ -3537,7 +3451,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         if (loco_mid || one_shot_mid)
         {
             combatLog("[fr %.4fs] loco_w=%.3f one_shot_w=%.3f phase=%d clip=%s\n",
-                      sWallClockSeconds, fd.loco_blend_weight, fd.one_shot_weight,
+                      selva::wallClock(), fd.loco_blend_weight, fd.one_shot_weight,
                       fd.one_shot_phase, sLastLocoClipName.c_str());
         }
     }
@@ -3671,16 +3585,16 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
 
 static void drawObject(GLuint vao, GLsizei index_count, const glm::mat4& model, float tint)
 {
-    glUniformMatrix4fv(sUniModelLoc, 1, GL_FALSE, glm::value_ptr(model));
-    glUniform1f(sUniTintLoc, tint);
+    selva::render::setSceneModel(model);
+    selva::render::setSceneTint(tint);
     glBindVertexArray(vao);
     glDrawElements(GL_TRIANGLES, index_count, GL_UNSIGNED_INT, nullptr);
 }
 
 static void drawLines(GLuint vao, GLsizei vertex_count, const glm::mat4& model, float tint)
 {
-    glUniformMatrix4fv(sUniModelLoc, 1, GL_FALSE, glm::value_ptr(model));
-    glUniform1f(sUniTintLoc, tint);
+    selva::render::setSceneModel(model);
+    selva::render::setSceneTint(tint);
     glBindVertexArray(vao);
     glDrawArrays(GL_LINES, 0, vertex_count);
 }
@@ -3758,8 +3672,8 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
     const glm::mat4 proj = glm::perspective(glm::radians(tun.fov_degrees), aspect, 0.1f, 200.0f);
     const glm::mat4 viewProj = proj * view;
 
-    glUseProgram(sSceneProgram);
-    glUniformMatrix4fv(sUniViewProjLoc, 1, GL_FALSE, glm::value_ptr(viewProj));
+    selva::render::useSceneProgram();
+    selva::render::setSceneViewProj(viewProj);
 
     // 1. Floor — unrotated, identity model. Rendered first; depth test
     //    handles ordering against everything else.
@@ -3986,7 +3900,7 @@ static void renderComboHud()
     // current wall-clock time.
     const float open = chain.cancel_window_open_at;
     const float close = chain.cancel_window_close_at;
-    const float now = sWallClockSeconds;
+    const float now = selva::wallClock();
     const float view_secs = 1.0f; // window of time around `now`
     const float bar_x = pos.x + btn_box_w + 6.0f;
     const float bar_w = w - 16.0f - (btn_box_w + 6.0f);
@@ -4033,7 +3947,7 @@ static void renderComboHud()
 
 static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
 {
-    if (sCombatDebugEnabled)
+    if (selva::combat::isCombatDebugEnabled())
         renderComboHud();
 
     if (!sShowTuningPanel)
@@ -4090,10 +4004,10 @@ static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
         // tracked separately so dual-wield diagnostics work later.
         ImGui::Text("Chain  R: idx=%d%s%s   L: idx=%d%s%s", sChainRight.chain_index,
                     sChainRight.is_finisher ? " FIN" : "",
-                    sChainRight.cancel_window_open_at > sWallClockSeconds ? " (pre-window)"
+                    sChainRight.cancel_window_open_at > selva::wallClock() ? " (pre-window)"
                                                                           : "",
                     sChainLeft.chain_index, sChainLeft.is_finisher ? " FIN" : "",
-                    sChainLeft.cancel_window_open_at > sWallClockSeconds ? " (pre-window)" : "");
+                    sChainLeft.cancel_window_open_at > selva::wallClock() ? " (pre-window)" : "");
         tunedSlider("Combo reset grace (s)", &tun.combo_reset_grace_seconds, 0.05f, 2.0f, 0.05f,
                     "%.2f");
         tunedSlider("Input buffer (s)", &tun.combo_input_buffer_seconds, 0.05f, 0.50f, 0.025f,
@@ -4115,24 +4029,9 @@ static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
         // because the per-attack diagnostic work is heavy enough to
         // visibly drop frames (Tracy showed selvaPerFrame max=77ms
         // with it on vs ~1ms baseline). Flip on when iterating.
-        if (ImGui::Checkbox("Combat debug overlay + diagnostics",
-                            &sCombatDebugEnabled))
-        {
-            // Open / close the combat-debug log file when the toggle
-            // changes so we don't pay the fopen cost when the user
-            // isn't looking at the file.
-            if (sCombatDebugEnabled && sCombatLog == nullptr)
-            {
-                sCombatLog = std::fopen("combat-debug.log", "w");
-                selva::anim::setSamplerDiagLog(sCombatLog);
-            }
-            else if (!sCombatDebugEnabled && sCombatLog != nullptr)
-            {
-                selva::anim::setSamplerDiagLog(nullptr);
-                std::fclose(sCombatLog);
-                sCombatLog = nullptr;
-            }
-        }
+        bool combat_debug_enabled = selva::combat::isCombatDebugEnabled();
+        if (ImGui::Checkbox("Combat debug overlay + diagnostics", &combat_debug_enabled))
+            selva::combat::setCombatDebugEnabled(combat_debug_enabled);
 
         // Live tuning slider for the equipped weapon's 1H light chain
         // entry [1] (the "second swing" — slash_3 in the default
@@ -4346,19 +4245,19 @@ static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
 
 int main(int /*argc*/, char* /*argv*/[])
 {
-    // Combat-debug log file: opened at startup when sCombatDebugEnabled
+    // Combat-debug log file: opened at startup when selva::combat::isCombatDebugEnabled()
     // defaults true (iteration mode), or lazily by the F1 toggle when
     // it defaults false (normal play). Truncate on open so each run
     // starts with a fresh log.
-    if (sCombatDebugEnabled)
+    if (selva::combat::isCombatDebugEnabled())
     {
-        sCombatLog = std::fopen("combat-debug.log", "w");
-        if (sCombatLog != nullptr)
+        FILE* log = selva::combat::openCombatLog();
+        if (log != nullptr)
             std::fprintf(stderr, "[combat:log] writing diagnostics to combat-debug.log\n");
         // Route sampler-side loco diagnostics (reverse-blend, cache
         // resume, cold-enter) into the same file. PoseSampler doesn't
         // know about combat-debug.log on its own — game wires it.
-        selva::anim::setSamplerDiagLog(sCombatLog);
+        selva::anim::setSamplerDiagLog(log);
     }
 
     Engine engine;
@@ -4390,15 +4289,11 @@ int main(int /*argc*/, char* /*argv*/[])
     // Drain any startup delta so the first frame's look isn't huge.
     SDL_GetRelativeMouseState(nullptr, nullptr);
 
-    sSceneProgram = engine::gl::compileProgram(kSceneVertexShader, kSceneFragmentShader);
-    if (sSceneProgram == 0)
+    if (!selva::render::initSceneProgram())
     {
         std::fprintf(stderr, "Scene shader compile/link failed\n");
         return 1;
     }
-    sUniModelLoc = glGetUniformLocation(sSceneProgram, "uModel");
-    sUniViewProjLoc = glGetUniformLocation(sSceneProgram, "uViewProj");
-    sUniTintLoc = glGetUniformLocation(sSceneProgram, "uTint");
 
     sWindowW = engine.windowWidth();
     sWindowH = engine.windowHeight();
@@ -4479,10 +4374,6 @@ int main(int /*argc*/, char* /*argv*/[])
     shutdownSkeletalAssets();
     shutdownGeometry();
     engine.shutdown();
-    if (sCombatLog != nullptr)
-    {
-        std::fclose(sCombatLog);
-        sCombatLog = nullptr;
-    }
+    selva::combat::closeCombatLog();
     return 0;
 }
