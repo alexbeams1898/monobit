@@ -17,6 +17,8 @@
 #include "combat/Weapon.h"
 #include "combat/WeaponClass.h"
 #include "anim/SkeletalAssets.h"
+#include "combat/AttackChain.h"
+#include "combat/CombatData.h"
 #include "render/Camera.h"
 #include "render/SceneGeometry.h"
 #include "render/SceneShaders.h"
@@ -441,106 +443,21 @@ static bool sDodgeIsBackstep = false;
 // clip-time elapsed into wall-clock elapsed for the same gate.
 static float sDodgePlaybackRate = 1.0f;
 
-// Which attack slot the input combination maps onto.
-//   Light   — bare LMB/RMB while standing or walking.
-//   Heavy   — Shift+LMB/RMB.
-//   Running — sprint attack: LMB/RMB while sprinting. Falls
-//             back to Light if the weapon class doesn't define a running
-//             clip — bucklers, for instance, leave the slot empty.
-enum class AttackKind
-{
-    Light,
-    Heavy,
-    Running,
-};
-
-// Combo / chain state, per hand. Each hand has its own chain because
-// LMB and RMB resolve to different weapons and chains run independently
-// — you can be mid-chain on the right hand while pressing the left
-// hand's first attack.
-//
-// `chain_index` is the next entry to play on the next press. After the
-// chain's last attack, it stays past-end; `combo_reset_grace_seconds`
-// of inactivity resets it to 0. Switching attack kind (light → heavy,
-// or running → light, etc.) also resets the chain — each
-// kind is its own chain.
-//
-// `chain_kind` records the AttackKind the chain belongs to so we can
-// detect kind-switches and reset.
-//
-// `cancel_window_open_at` is the wall-clock time when the current
-// attack's cancel window starts. Before that time, presses are
-// buffered (see sBufferedPress*) but don't fire. At/after that time,
-// a press immediately steps the chain.
-//
-// `chain_reset_at` is the wall-clock time at which the chain auto-
-// resets to 0 if no further press lands. Set to "wall_clock_now +
-// current_attack_duration + combo_reset_grace_seconds" each time a
-// chain step fires.
-struct AttackChainState
-{
-    int chain_index = 0;
-    // Index into the technique list for this kind/grip. Locked at
-    // first press if multiple techniques share slot-0 button; locked
-    // at second press otherwise. -1 = not yet locked.
-    int technique_index = -1;
-    AttackKind chain_kind = AttackKind::Light;
-    // Bounded rhythm window. Press inside = hit, before/after = miss.
-    float cancel_window_open_at = 0.0f;
-    float cancel_window_close_at = 0.0f;
-    float chain_reset_at = 0.0f;
-    // Last press accuracy: 1.0 = window center, 0.0 = window edges.
-    float last_press_accuracy = 0.0f;
-    bool last_press_was_perfect = false;
-    // True when the most-recently-fired attack was the final entry
-    // of its chain. While true, cancellation is disabled — the
-    // attack must play out fully and chain_reset_at must elapse
-    // before the next press is valid (and starts a fresh chain at
-    // index 0). Last-hit-commits rule.
-    bool is_finisher = false;
-};
-static AttackChainState sChainRight;
-static AttackChainState sChainLeft;
-
-// Per-hand input buffer: a too-early press during another attack's
-// non-cancellable window stays valid for combo_input_buffer_seconds
-// and auto-fires when the cancel window opens. Mashed presses that
-// arrive too early are dropped without being eaten visually.
-struct BufferedPress
-{
-    bool pending = false;
-    AttackKind kind = AttackKind::Light;
-    // "LMB" / "RMB" — replayed when the buffered press fires so the
-    // technique-locking logic sees the same input as a live press.
-    const char* button = "LMB";
-    float buffered_at = 0.0f; // wall-clock; expires after combo_input_buffer_seconds
-};
-static BufferedPress sBufferedRight;
-static BufferedPress sBufferedLeft;
-
-// First-press latch out of Peaceful stance. Fires after entry delay
-// so locomotion can crossfade from standard_idle into combat-idle
-// before the action plays.
-enum class PendingFirstActionKind
-{
-    Attack,
-    Block,
-};
-struct PendingFirstAction
-{
-    bool active = false;
-    PendingFirstActionKind kind = PendingFirstActionKind::Attack;
-    selva::combat::HandSide hand = selva::combat::HandSide::Right;
-    AttackKind attack_kind = AttackKind::Light; // attack only
-    // Button that triggered the latch. Replayed through dispatch when
-    // the establishing beat elapses so technique-locking sees the same
-    // input a live press would have.
-    const char* button = "LMB";
-    const char* block_clip = nullptr;           // block only
-    bool block_freeze_last = false;             // block only
-    float fire_at = 0.0f;
-};
-static PendingFirstAction sPendingFirstAction;
+// AttackKind / AttackChainState / BufferedPress / PendingFirstAction +
+// per-hand singletons + resetChain + tickChainExpiry live in
+// combat/AttackChain.{h,cpp}. Aliases here cover the dense per-fire
+// call-site count.
+using selva::combat::AttackChainState;
+using selva::combat::AttackKind;
+using selva::combat::BufferedPress;
+using selva::combat::PendingFirstAction;
+using selva::combat::PendingFirstActionKind;
+using selva::combat::resetChain;
+static AttackChainState& sChainRight = selva::combat::chain(selva::combat::HandSide::Right);
+static AttackChainState& sChainLeft = selva::combat::chain(selva::combat::HandSide::Left);
+static BufferedPress& sBufferedRight = selva::combat::buffer(selva::combat::HandSide::Right);
+static BufferedPress& sBufferedLeft = selva::combat::buffer(selva::combat::HandSide::Left);
+static PendingFirstAction& sPendingFirstAction = selva::combat::pendingFirstAction();
 
 // Wall-clock seconds since the game started — owned by
 // selva::wallClock() (WallClock.h). Advanced once per frame at the
@@ -599,26 +516,9 @@ struct ResolvedAttack
     int chain_size = 0;
 };
 
-// Does the off-hand weapon support held-block? Today the rule is
-// "yes if the weapon's class id is 'buckler'." Future: promote to a
-// per-WeaponClass capability flag (e.g. `can_block: true` in the
-// JSON) so swords with buckler-style parries, large shields, etc.
-// can opt in without hardcoded class names.
-static bool offHandCanBlock(const selva::combat::PlayerEquipment& eq)
-{
-    const selva::combat::Weapon* w = eq.left;
-    if (w == nullptr || w->cls == nullptr)
-        return false;
-    return w->cls->id == "buckler";
-}
-
-// True when neither hand holds a real weapon (both empty or both fists).
-static bool isUnarmed(const selva::combat::PlayerEquipment& eq)
-{
-    auto is_fists = [](const selva::combat::Weapon* w)
-    { return w == nullptr || (w->cls != nullptr && w->cls->id == "unarmed"); };
-    return is_fists(eq.right) && is_fists(eq.left);
-}
+// offHandCanBlock / isUnarmed live in combat/CombatData.{h,cpp}.
+using selva::combat::isUnarmed;
+using selva::combat::offHandCanBlock;
 
 // Pick the technique-list for (grip, kind), select the `technique_index`
 // technique, return its `chain_index`-th attack resolved against the
@@ -819,20 +719,13 @@ static float sFrameCaptureElapsed = 0.0f;
 static float sFrameCaptureDuration = 0.0f;
 static std::string sFrameCaptureDir;
 
-// Path to the live tunables config, relative to the working directory.
+// Tunables.json path stays here (used only by tuning save). Weapon
+// classes / weapons / equipment registries + their config paths live
+// in combat/CombatData.{h,cpp}.
 static const std::string kTunablesPath = "config/tunables.json";
-static const std::string kWeaponClassesDir = "config/weapon_classes";
-static const std::string kWeaponsDir = "config/weapons";
-static const std::string kLoadoutPath = "config/loadout.json";
-
-// Combat data registries — loaded once at startup from JSON, queried for
-// the rest of the run. WeaponClass holds animation/attach data shared
-// across all weapons of a kind (sword, dagger, ...); Weapon holds per-
-// weapon stats and a pointer into the class registry. PlayerEquipment
-// references the registry — registry must outlive equipment.
-static selva::combat::WeaponClassRegistry sWeaponClasses;
-static selva::combat::WeaponRegistry sWeapons;
-static selva::combat::PlayerEquipment sEquipment;
+static selva::combat::WeaponClassRegistry& sWeaponClasses = selva::combat::weaponClasses();
+static selva::combat::WeaponRegistry& sWeapons = selva::combat::weapons();
+static selva::combat::PlayerEquipment& sEquipment = selva::combat::equipment();
 
 // Pose-match start time for a one-shot fired from the live locomotion
 // track. Scans the new clip's first `window_seconds` for the frame
@@ -928,17 +821,8 @@ static void logSpliceDiag(const SpliceDiag& d, const selva::anim::AnimationClip&
               glm::length(entry(d.rf) - d.live_rf));
 }
 
-// Resolve the playback rate for the given hand's weapon class. Class
-// override (>0) wins over the global tunable.
-static float effectiveAttackPlaybackRate(selva::combat::HandSide hand)
-{
-    const float global = selva::tuning::current().attack_playback_rate;
-    const selva::combat::Weapon* w =
-        (hand == selva::combat::HandSide::Right) ? sEquipment.right : sEquipment.left;
-    if (w != nullptr && w->cls != nullptr && w->cls->attack_playback_rate > 0.0f)
-        return w->cls->attack_playback_rate;
-    return global;
-}
+// effectiveAttackPlaybackRate lives in combat/CombatData.{h,cpp}.
+using selva::combat::effectiveAttackPlaybackRate;
 
 // ---------------------------------------------------------------------------
 // TransitionProfile: one bag of decisions per "fire a one-shot" call site.
@@ -1512,45 +1396,9 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     // duration; the SM resumes walking automatically when the one-shot
     // ends if WASD is still held.
 
-    // Auto-reset chains that have aged past their grace window. This
-    // converts "I attacked once and walked away" into "next press is
-    // a fresh slash 1," not "next press is slash 2 of a stale chain."
-    // Also reset the rhythm-window timestamps so the next press is
-    // treated as a fresh first-strike (in_window true).
-    auto resetChain = [](AttackChainState& chain)
-    {
-        chain.chain_index = 0;
-        chain.technique_index = -1;
-        chain.cancel_window_open_at = 0.0f;
-        chain.cancel_window_close_at = 0.0f;
-        chain.chain_reset_at = 0.0f;
-        chain.is_finisher = false;
-        chain.last_press_accuracy = 0.0f;
-        chain.last_press_was_perfect = false;
-    };
-    if (sChainRight.chain_index > 0 && selva::wallClock() >= sChainRight.chain_reset_at)
-        resetChain(sChainRight);
-    if (sChainLeft.chain_index > 0 && selva::wallClock() >= sChainLeft.chain_reset_at)
-        resetChain(sChainLeft);
-    // Even after the chain wraps to 0 (mid-flight, after firing the
-    // final entry), the window timestamps are still set forward by the
-    // last fire. Once the reset grace passes, those need clearing too
-    // so the next press is a fresh first-strike, not "past the close
-    // of slash_4's window."
-    if (sChainRight.chain_index == 0 && sChainRight.cancel_window_open_at > 0.0f &&
-        selva::wallClock() >= sChainRight.chain_reset_at)
-        resetChain(sChainRight);
-    if (sChainLeft.chain_index == 0 && sChainLeft.cancel_window_open_at > 0.0f &&
-        selva::wallClock() >= sChainLeft.chain_reset_at)
-        resetChain(sChainLeft);
-
-    // Expire stale buffered presses.
-    if (sBufferedRight.pending &&
-        selva::wallClock() - sBufferedRight.buffered_at >= tun.combo_input_buffer_seconds)
-        sBufferedRight.pending = false;
-    if (sBufferedLeft.pending &&
-        selva::wallClock() - sBufferedLeft.buffered_at >= tun.combo_input_buffer_seconds)
-        sBufferedLeft.pending = false;
+    // Auto-reset aged chains + expire stale buffered presses. Lives in
+    // combat/AttackChain.cpp.
+    selva::combat::tickChainExpiry(selva::wallClock(), tun.combo_input_buffer_seconds);
 
     // Fire an attack on the given hand at the chain's current step.
     // Updates the chain index, cancel-window, and reset-grace timers
@@ -3926,34 +3774,14 @@ int main(int /*argc*/, char* /*argv*/[])
     // every clip query.
     sLocomotionConfig.loadFromFile("config/locomotion.json");
 
-    // Combat data: weapon classes first (animation/attach data), then
-    // weapons (resolve their class pointers against the class registry),
-    // then the player's loadout (resolves weapon ids against the weapon
-    // registry). Each layer is permissive — missing/unknown ids log a
-    // warning but don't crash so the game stays runnable on a fresh
-    // checkout. A null hand means "empty/unarmed."
+    // Combat data: weapon classes, weapons, equipment loaded via
+    // combat/CombatData. Synthesizes a "fists" pseudo-weapon for empty
+    // hand slots. Resolves cancel-open / chain-link-start times after
+    // load so per-frame fire is allocation-free.
     {
-        const int n_classes = sWeaponClasses.loadDirectory(kWeaponClassesDir);
-        const int n_weapons = sWeapons.loadDirectory(kWeaponsDir, sWeaponClasses);
-        sEquipment = selva::combat::loadEquipment(kLoadoutPath, sWeapons);
-        // Synthesize a "fists" Weapon record pointing at the unarmed
-        // class; substitute it into any empty hand slot. Equipment is
-        // never null after this — empty hand = fists. Stats are
-        // intentionally minimal; future work plumbs body-derived
-        // unarmed_damage / scaling like prison-escape-game does.
-        static selva::combat::Weapon sFistsWeapon;
-        const auto unarmed_it = sWeaponClasses.by_id.find("unarmed");
-        if (unarmed_it != sWeaponClasses.by_id.end())
-        {
-            sFistsWeapon.id = "fists";
-            sFistsWeapon.name = "Fists";
-            sFistsWeapon.class_id = "unarmed";
-            sFistsWeapon.cls = &unarmed_it->second;
-            if (sEquipment.right == nullptr)
-                sEquipment.right = &sFistsWeapon;
-            if (sEquipment.left == nullptr)
-                sEquipment.left = &sFistsWeapon;
-        }
+        int n_classes = 0;
+        int n_weapons = 0;
+        selva::combat::loadAllCombatData(&n_classes, &n_weapons);
         resolveAttackCancelOpenTimes();
         std::fprintf(
             stderr, "[combat] loaded %d class(es), %d weapon(s); right=%s left=%s grip=%s\n",
