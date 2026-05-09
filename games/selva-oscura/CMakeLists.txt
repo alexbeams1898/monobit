@@ -19,6 +19,8 @@ add_library(selva-oscura-lib STATIC
     src/anim/Skeleton.cpp
     src/anim/SkeletalMesh.cpp
     src/anim/SkeletalRenderer.cpp
+    src/gameplay/LocomotionStateMachine.cpp
+    src/gameplay/PerFrameTick.cpp
     src/gameplay/PlayerState.cpp
     src/combat/AttackChain.cpp
     src/combat/AttackResolution.cpp
@@ -33,6 +35,7 @@ add_library(selva-oscura-lib STATIC
     src/render/SceneShaders.cpp
     src/render/WorldRenderer.cpp
     src/ui/ComboHud.cpp
+    src/ui/TuningPanel.cpp
     src/Tunables.cpp
     src/WallClock.cpp
 )
