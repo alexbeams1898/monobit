@@ -28,8 +28,25 @@ namespace selva::tuning
 
 struct Tunables
 {
+    // ---- Debug ----
+    // Global time-scale multiplier for the per-frame dt fed into
+    // selvaPerFrame. 1.0 = normal speed. <1.0 = slow-mo (every
+    // animation, lockout, timer, sampler advance scales down). >1.0 =
+    // fast-forward. Lets split-second animation transitions unfold
+    // over more wall-clock time so smoothness issues become visible.
+    // Doesn't affect input edge timing or render rate; only the
+    // simulation dt that drives time-advancing systems.
+    float time_scale = 1.0f;
+
     // ---- Locomotion ----
     float turn_rate = 9.0f; // player rotation toward move dir, rad/s
+    // SM only commits to a wasd_intent change after the raw value has
+    // disagreed continuously for this long. Held WASD reaches walking
+    // after this delay; brief taps never commit; rapid mashing never
+    // accumulates. Structurally rate-limits clip transitions to
+    // sustained intent. ~100ms is a good balance: most rapid mashing
+    // suppressed, real intent still feels responsive.
+    float wasd_debounce_seconds = 0.10f;
 
     // ---- Mouse-look ----
     float mouse_sensitivity = 0.0025f; // radians per pixel
@@ -84,6 +101,22 @@ struct Tunables
     // to the next instead of visibly snapping. 0.20-0.25s is a
     // reasonable starting range; iteration may move it.
     float combo_chain_blend_seconds = 0.22f;
+    // Blend-in for the FIRST attack out of combat-idle. Larger = more
+    // forgiving when idle pose is far from the action's t=0.
+    float first_strike_blend_seconds = 0.10f;
+    // Per-joint inertialization decay scaling. Each joint's individual
+    // decay window = base + scale * |offset|. Joints with small offsets
+    // (a finger 5° off) keep snappy decays; joints with large offsets
+    // (a leg 90° off in a stance ↔ dodge splice) get proportionally
+    // longer windows so their visible motion reads as smooth, not as
+    // a snap. Without this, a single global decay duration is forced
+    // to compromise: too short = leg snap, too long = whole body
+    // sluggish.
+    float inertialize_decay_base_seconds = 0.10f;
+    float inertialize_decay_scale_per_radian = 0.30f;
+    // Hard cap so an extreme offset (180° flip) doesn't produce a 10s
+    // decay window. Anything past this clamps.
+    float inertialize_decay_max_seconds = 0.45f;
     // Playback-rate multiplier applied to attack one-shots. >1 plays
     // faster, scaling clip duration by 1/rate. Mixamo sword-and-shield
     // attacks were authored at a deliberate combat pace — fine for
@@ -138,6 +171,44 @@ struct Tunables
     // bend ~170° at most — sharp enough to feel responsive, capped
     // enough that you can't pirouette out of a swing.
     float dodge_steer_rate = 5.0f;
+    // Fraction through the dodge clip at which a buffered LMB/RMB
+    // press will fire as a post-dodge attack. 0.65 = the attack
+    // begins blending in at 65% through the roll's wall-clock
+    // duration; the dodge's authored tail keeps playing under the
+    // attack's rising weight, producing a smooth cancel-into-attack
+    // chain instead of "wait for the entire roll to finish, then
+    // 200ms of pause for blend-out, then jab." Tighter values feel
+    // snappier; ~0.50 is aggressive, ~0.80 makes you commit longer.
+    float dodge_attack_cancel_fraction = 0.65f;
+
+    // Wall-clock seconds past cancel_window_close at which walking
+    // becomes responsive again post-attack. Anchoring the lockout to
+    // cancel_window_close (instead of the full clip-end + grace)
+    // lets the player resume walking while the swing's recovery tail
+    // animates underneath via the one-shot blend-out. The clip's
+    // visible motion finishes naturally; the player isn't locked
+    // through it. ~0.10s is a small breathing room past the rhythm
+    // window so chain advances aren't fighting walking input.
+    float attack_lockout_extension_seconds = 0.10f;
+
+    // ---- Sprint-finisher (running attack) ----
+    // Clip-time at which the running attack starts playing. 0 = full
+    // windup visible. >0 = trim the windup off the front. Useful when
+    // the clip's first frames feel like a delay before the swing
+    // commits.
+    float sprint_finisher_start_seconds = 0.0f;
+    // Cross-fade duration when blending from live running pose into
+    // the running attack's t=0. The running clip starts in a running
+    // pose so the offset is tiny — short blends feel snappy.
+    float sprint_finisher_blend_in_seconds = 0.10f;
+    // Wall-clock seconds past the fire instant at which the player
+    // regains walking control (the loco-lockout expires for sprint
+    // finishers). The running attack's authored recovery tail is
+    // ~1.5s of stand-up motion; letting walking resume earlier means
+    // the recovery overlays on top of walking via the one-shot
+    // blend-out, so the player feels responsive instead of locked
+    // through the full settle.
+    float sprint_finisher_lockout_seconds = 1.0f;
 };
 
 // JSON serialization — generates to_json / from_json for nlohmann::json
@@ -145,18 +216,28 @@ struct Tunables
 // "_WITH_DEFAULT" means missing keys in the input fall back to the struct's
 // default-initialized value, so older tunables.json files don't break when
 // new fields are added.
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Tunables, turn_rate, mouse_sensitivity, pitch_min,
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Tunables, time_scale, turn_rate,
+                                                wasd_debounce_seconds,
+                                                mouse_sensitivity, pitch_min,
                                                 pitch_max, follow_distance, follow_height,
                                                 fov_degrees, anim_blend_seconds,
                                                 combat_idle_grace_seconds,
                                                 combat_entry_delay_seconds,
                                                 combo_reset_grace_seconds,
                                                 combo_input_buffer_seconds,
-                                                combo_chain_blend_seconds, attack_playback_rate,
+                                                combo_chain_blend_seconds, first_strike_blend_seconds,
+                                                inertialize_decay_base_seconds,
+                                                inertialize_decay_scale_per_radian,
+                                                inertialize_decay_max_seconds,
+                                                attack_playback_rate,
                                                 cancel_open_velocity_fraction,
                                                 perfect_accuracy_threshold, roll_playback_rate,
                                                 backstep_playback_rate, dodge_tap_window,
-                                                dodge_steer_rate);
+                                                dodge_steer_rate, dodge_attack_cancel_fraction,
+                                                attack_lockout_extension_seconds,
+                                                sprint_finisher_start_seconds,
+                                                sprint_finisher_blend_in_seconds,
+                                                sprint_finisher_lockout_seconds);
 
 // Single global instance. Both gameplay code and the procedural driver
 // read from this; the ImGui panel edits it in place. Keep it global rather

@@ -300,16 +300,6 @@ static selva::anim::ClipRegistry sClips;
 static selva::anim::PoseSampler sSampler;
 static selva::anim::LocomotionConfig sLocomotionConfig;
 
-// Canonical baseline pose for combat-stance attacks. Sampled once at
-// startup from sword_and_shield_idle_4 at t=0 (the tight guard pose).
-// Used as the source pose for inertialization on attack one-shots —
-// the right reference because all sword/shield attack clips were
-// authored from this baseline. Without this, inertialization captures
-// whatever the screen happened to be showing (peaceful idle, mid-walk,
-// recovery-from-previous-attack), and tries to bridge to the attack
-// clip's t=0 through unauthored pose space — joints visibly spaz.
-static std::vector<ozz::math::SoaTransform> sCombatStanceSourcePose;
-
 // Convenience accessors for the locomotion clips. Clip names are
 // sanitized at conversion time (lowercase, spaces → underscores). These
 // are the *generic* (no-weapon) base locomotion clips. Per-weapon stance
@@ -374,19 +364,6 @@ static bool initSkeletalAssets()
     if (!selva::anim::initSkeletalRenderer())
         return false;
 
-    // Cache the combat-stance baseline pose for attack inertialization.
-    // Sampled once at startup, never changes. The pose is "where any
-    // sword/shield attack starts from" — using it as the inertialization
-    // source means attack transitions bridge from a known-good baseline
-    // to the attack clip's t=0, both of which are author-related (the
-    // attacks were animated FROM this stance), so the decay path stays
-    // in animator-intended pose space.
-    if (const auto* combat_idle = sClips.get("sword_and_shield_idle_4");
-        combat_idle != nullptr && combat_idle->isLoaded())
-    {
-        sSampler.sampleClipPose(*combat_idle, 0.0f, sCombatStanceSourcePose);
-    }
-
     // Pre-warm: sample the first clip at t=0 so the bone palette is
     // populated before the first frame renders. Without this, the very
     // first render uses an uninitialized palette (zeros), producing a
@@ -397,6 +374,16 @@ static bool initSkeletalAssets()
     // the bone palette with the Idle pose at frame 0 so the first render
     // doesn't see zero matrices.
     sSampler.update(*idleClip(), 0.0f, 0.0f);
+    // Configure per-joint inertialization decay scaling. Each joint's
+    // decay window scales with its pose-offset magnitude; small-offset
+    // joints stay snappy, large-offset joints get longer windows so
+    // their motion reads as smooth rather than as a fast snap.
+    {
+        const auto& tun = selva::tuning::current();
+        sSampler.setInertializationScaling(tun.inertialize_decay_base_seconds,
+                                           tun.inertialize_decay_scale_per_radian,
+                                           tun.inertialize_decay_max_seconds);
+    }
     return true;
 }
 
@@ -448,6 +435,8 @@ static void auditClipHipMotion()
         "stand_to_roll",
         "standing_dodge_backward",
         "falling_to_roll",
+        "falling_to_roll_reposed",
+        "falling_to_roll_from_walk_reposed",
         // Sword & shield attacks (referenced by config/weapon_classes/sword.json).
         // We profile these to see whether the clip authors net forward
         // hip travel (clean root-motion source) or ping-pongs back to
@@ -814,6 +803,15 @@ static bool sPrevRMB = false;
 static bool sPrevF = false;
 static bool sPrevGripToggle = false;
 
+// Per-frame WASD prev-state for edge logging. The actual movement
+// computation reads SDL_GetKeyboardState live; these only exist so
+// the diagnostic trace can mark down → up → down events with
+// timestamps.
+static bool sPrevW = false;
+static bool sPrevA = false;
+static bool sPrevS = false;
+static bool sPrevD = false;
+
 // Space tap-vs-hold disambiguation:
 //   * Tap (release within tun.dodge_tap_window) → dodge roll.
 //   * Hold (past the window) → sprint state engages.
@@ -836,6 +834,21 @@ static bool sDodgeFiredThisPress = false;
 // roll clip's hip translation, plus the model matrix's yaw, takes the
 // character where it needs to go.
 static bool sDodgeActive = false;
+
+// Post-dodge attack buffer. When LMB/RMB lands during a dodge, the
+// press is recorded here instead of being dropped or firing on top
+// of the rolling pose. As soon as the dodge clip ends naturally,
+// the buffered press fires as a standard first-strike from the
+// (now-settled) combat-idle pose. Lets the player chain rolls into
+// attacks without timing the press exactly to the dodge's end frame.
+struct PostDodgeAttackBuffer
+{
+    bool pending = false;
+    selva::combat::HandSide hand = selva::combat::HandSide::Right;
+    const char* button = "LMB";
+    float buffered_at = 0.0f; // wall-clock when the press was queued
+};
+static PostDodgeAttackBuffer sPostDodgeAttack;
 static float sDodgeElapsed = 0.0f;
 static float sDodgeDuration = 0.0f;
 // Direction flag set at dodge fire time. Forward roll: yaw is set to
@@ -863,13 +876,6 @@ enum class AttackKind
     Running,
 };
 
-// Tracks the kind of attack currently playing (only meaningful when
-// sSampler.isOneShotActive()). Light attacks are upper-body-only and
-// don't lock movement; Heavy and Running commit the whole body, so we
-// freeze WASD for their duration. Updated when an attack fires; read
-// later in the same frame's movement code.
-static AttackKind sActiveAttackKind = AttackKind::Light;
-
 // Combo / chain state, per hand. Each hand has its own chain because
 // LMB and RMB resolve to different weapons and chains run independently
 // — you can be mid-chain on the right hand while pressing the left
@@ -896,6 +902,10 @@ static AttackKind sActiveAttackKind = AttackKind::Light;
 struct AttackChainState
 {
     int chain_index = 0;
+    // Index into the technique list for this kind/grip. Locked at
+    // first press if multiple techniques share slot-0 button; locked
+    // at second press otherwise. -1 = not yet locked.
+    int technique_index = -1;
     AttackKind chain_kind = AttackKind::Light;
     // Bounded rhythm window. Press inside = hit, before/after = miss.
     float cancel_window_open_at = 0.0f;
@@ -924,6 +934,9 @@ struct BufferedPress
 {
     bool pending = false;
     AttackKind kind = AttackKind::Light;
+    // "LMB" / "RMB" — replayed when the buffered press fires so the
+    // technique-locking logic sees the same input as a live press.
+    const char* button = "LMB";
     float buffered_at = 0.0f; // wall-clock; expires after combo_input_buffer_seconds
 };
 static BufferedPress sBufferedRight;
@@ -943,6 +956,12 @@ struct PendingFirstAction
     PendingFirstActionKind kind = PendingFirstActionKind::Attack;
     selva::combat::HandSide hand = selva::combat::HandSide::Right;
     AttackKind attack_kind = AttackKind::Light; // attack only
+    // Button that triggered the latch. Replayed through dispatch when
+    // the establishing beat elapses so technique-locking sees the same
+    // input a live press would have.
+    const char* button = "LMB";
+    const char* block_clip = nullptr;           // block only
+    bool block_freeze_last = false;             // block only
     float fire_at = 0.0f;
 };
 static PendingFirstAction sPendingFirstAction;
@@ -951,6 +970,27 @@ static PendingFirstAction sPendingFirstAction;
 // from the engine, used by the chain windows and the input buffer so
 // they don't have to chase dt-relative bookkeeping per frame.
 static float sWallClockSeconds = 0.0f;
+
+// Wall-clock time at which post-attack locomotion lockout ends. Set on
+// each attack fire to "now + effective clip duration + grace". While
+// in the future, the SM forces is_moving = false so WASD smashing
+// during attack recovery can't ping-pong loco clips and produce leg
+// spasm. Independent of CombatReady stance — pure F-toggle stance
+// without an attack does NOT lock movement.
+static float sLocoLockoutUntil = 0.0f;
+
+// WASD debounce. SM commits to a wasd_intent state change only after
+// the raw value has disagreed continuously for wasd_debounce_seconds.
+// Stops sub-blend-window rapid taps from spawning back-to-back loco
+// crossfades. The high-res trace showed alternating loco-pick events
+// ~30-40ms apart during rapid mashing — well under any reasonable
+// blend duration. Even with reverse-blend protection, that many
+// transitions per second produces visible jitter.
+static bool sStableWasdIntent = false;
+// -1 sentinel = no pending disagreement. Set to wall-clock time on
+// the first frame of disagreement, cleared back to -1 when raw and
+// stable agree OR when the debounce elapses and we commit.
+static float sWasdDisagreeStartedAt = -1.0f;
 
 // Held-block state. When the off-hand item supports blocking
 // (currently: any weapon whose class id is "buckler") and RMB is
@@ -997,14 +1037,21 @@ static bool offHandCanBlock(const selva::combat::PlayerEquipment& eq)
     return w->cls->id == "buckler";
 }
 
-// Pick the chain that matches (grip, kind), then return its
-// `chain_index`-th entry resolved against the clip registry. Falls
-// back: an empty Running chain plays Light instead (consistent with
-// no running clip → run-attack fires light); chain_index past the end
-// wraps to 0; missing clip in registry returns nullptr clip.
+// True when neither hand holds a real weapon (both empty or both fists).
+static bool isUnarmed(const selva::combat::PlayerEquipment& eq)
+{
+    auto is_fists = [](const selva::combat::Weapon* w)
+    { return w == nullptr || (w->cls != nullptr && w->cls->id == "unarmed"); };
+    return is_fists(eq.right) && is_fists(eq.left);
+}
+
+// Pick the technique-list for (grip, kind), select the `technique_index`
+// technique, return its `chain_index`-th attack resolved against the
+// clip registry. Falls back: empty Running list → use Light instead;
+// out-of-range technique_index → use 0; missing clip → nullptr clip.
 static ResolvedAttack resolveAttackChainEntry(const selva::combat::PlayerEquipment& eq,
                                               selva::combat::HandSide hand, AttackKind kind,
-                                              int chain_index)
+                                              int chain_index, int technique_index)
 {
     using selva::combat::Grip;
     using selva::combat::HandSide;
@@ -1014,43 +1061,143 @@ static ResolvedAttack resolveAttackChainEntry(const selva::combat::PlayerEquipme
         return out;
     const auto& aset = (eq.grip == Grip::TwoHanded) ? w->cls->two_handed : w->cls->one_handed;
 
-    const auto* chain = &aset.light;
+    const auto* techniques = &aset.light;
     if (kind == AttackKind::Heavy)
-        chain = &aset.heavy;
+        techniques = &aset.heavy;
     else if (kind == AttackKind::Running && !aset.running.empty())
-        chain = &aset.running;
+        techniques = &aset.running;
 
-    if (chain->empty())
+    if (techniques->empty())
+        return out;
+    const int t_idx =
+        (technique_index >= 0 && technique_index < static_cast<int>(techniques->size()))
+            ? technique_index
+            : 0;
+    const auto& chain = (*techniques)[t_idx].attacks;
+    if (chain.empty())
         return out;
 
-    out.chain_size = static_cast<int>(chain->size());
+    out.chain_size = static_cast<int>(chain.size());
     const int idx = (chain_index >= 0 && chain_index < out.chain_size) ? chain_index : 0;
-    out.attack = &(*chain)[idx];
+    out.attack = &chain[idx];
     if (out.attack->clip.empty())
         return out;
     out.clip = sClips.get(out.attack->clip);
     return out;
 }
 
+// Result of dispatching a button press to the technique list. `locked`
+// is the technique_index to commit (>=0) or -1 to keep the chain
+// unlocked (multiple techniques still match). `valid` is false when no
+// technique accepts the press at the given step — caller treats that
+// as a chain miss.
+struct TechniqueDispatch
+{
+    int locked = -1;
+    bool valid = false;
+};
+
+// A WeaponAttack's expected_button matches a press button if the field
+// is empty, "any", or equal to the press button (case-insensitive on the
+// limited set of values we accept).
+static bool buttonMatches(const std::string& expected, const char* press)
+{
+    if (expected.empty() || expected == "any")
+        return true;
+    return expected == press;
+}
+
+// Pick which technique to commit to (if any) given the press button at
+// step `chain_index`. When already locked, just validate that the
+// locked technique accepts this button.
+static TechniqueDispatch dispatchTechniqueForPress(const selva::combat::PlayerEquipment& eq,
+                                                   selva::combat::HandSide hand, AttackKind kind,
+                                                   int chain_index, int current_locked,
+                                                   const char* button)
+{
+    using selva::combat::Grip;
+    using selva::combat::HandSide;
+    TechniqueDispatch out;
+    const selva::combat::Weapon* w = (hand == HandSide::Right) ? eq.right : eq.left;
+    if (w == nullptr || w->cls == nullptr)
+        return out;
+    const auto& aset = (eq.grip == Grip::TwoHanded) ? w->cls->two_handed : w->cls->one_handed;
+    const auto* techniques = &aset.light;
+    if (kind == AttackKind::Heavy)
+        techniques = &aset.heavy;
+    else if (kind == AttackKind::Running && !aset.running.empty())
+        techniques = &aset.running;
+    if (techniques->empty())
+        return out;
+
+    // Already locked: just check the locked technique accepts this press.
+    if (current_locked >= 0 && current_locked < static_cast<int>(techniques->size()))
+    {
+        const auto& chain = (*techniques)[current_locked].attacks;
+        if (chain_index < 0 || chain_index >= static_cast<int>(chain.size()))
+            return out; // past the end of the locked chain
+        if (!buttonMatches(chain[chain_index].expected_button, button))
+            return out;
+        out.locked = current_locked;
+        out.valid = true;
+        return out;
+    }
+
+    // Unlocked: gather candidates whose chain[chain_index] accepts the
+    // press button. If exactly one matches, lock it. If many match,
+    // leave unlocked (caller fires whichever — typically index 0 — and
+    // the locking happens on the next press).
+    int last_match = -1;
+    int match_count = 0;
+    for (std::size_t i = 0; i < techniques->size(); ++i)
+    {
+        const auto& chain = (*techniques)[i].attacks;
+        if (chain_index < 0 || chain_index >= static_cast<int>(chain.size()))
+            continue;
+        if (buttonMatches(chain[chain_index].expected_button, button))
+        {
+            last_match = static_cast<int>(i);
+            ++match_count;
+        }
+    }
+    if (match_count == 0)
+        return out;
+    out.valid = true;
+    out.locked = (match_count == 1) ? last_match : -1;
+    return out;
+}
+
 // In-game tuning panel toggle. Off by default; F1 flips it.
 static bool sShowTuningPanel = false;
-// When true, fireAttack prints a per-press diagnostic line (clip,
-// duration, start_seconds, blend_in, rate, role). Useful when iter-
-// ating on chain-link splice math — gives a 100% verification path
-// that the runtime parameters match expectations from the resolver
-// log printed at startup.
-static bool sLogChainFires = true;
+// Master switch for the combat debug overlay + per-fire diagnostics.
+// Off by default — the HUD render, pose-match scan, splice-distance
+// joint samples, and per-press combatLog spam ALL gate on this. Toggle
+// from the F1 panel when iterating on combat feel.
+//
+// Why this matters: with this enabled, fireAttack runs ~40 ozz
+// SamplingJobs (pose-match scan + 5-joint splice samples + chain-link
+// velocity diag) AND multiple fflush'd disk writes on a single press
+// frame. Tracy showed selvaPerFrame max=77ms (vs ~1ms baseline) when
+// these fire. Default off keeps the per-attack frame cost flat.
+//
+// Resolver dump at startup, sprint-finisher swaps, and the combat-debug
+// log file open all also gate on this — the file isn't even created
+// when the flag is off.
+static bool sCombatDebugEnabled = false;
 
-// Combat-debug log file. Mirrors every [combat:*] / [splice] / [clip-*]
-// line that goes to stderr. Truncated on startup so each run is fresh.
-// Path: build/bin/combat-debug.log (next to the exe). Set to nullptr if
-// fopen failed; combatLog() falls back to stderr-only in that case.
+// Combat-debug log file. Mirrors per-press diagnostics to disk. Only
+// opened when sCombatDebugEnabled is true at startup OR turned on from
+// the F1 panel; closed on toggle off.
 static FILE* sCombatLog = nullptr;
 
-// Print to BOTH stderr and the combat log file (if open). Variadic
-// passthrough — same format string as fprintf.
+// Debug-gated log: no-op when sCombatDebugEnabled is false.
+// Routes to stderr + the combat log file when enabled. Use for high-
+// frequency per-fire / per-frame diagnostics. fflush per line keeps
+// the log readable even after a crash.
 static void combatLog(const char* fmt, ...)
 {
+    if (!sCombatDebugEnabled)
+        return;
     va_list args1;
     va_start(args1, fmt);
     va_list args2;
@@ -1090,6 +1237,13 @@ static bool sLastRHValid = false;
 // script compares the two.
 // ---------------------------------------------------------------------------
 static std::string sDebugClipName;
+// The locomotion clip name (registry key) selected on the previous
+// frame — read this frame by combat-fire code that runs BEFORE the
+// per-frame SM pick. The ozz Animation::name() returns "mixamo.com"
+// for every Mixamo-exported clip, so it can't be used to identify
+// which loco clip is playing. This static IS the registry key
+// ("unarmed_combat_idle", "walking", "running", etc.).
+static std::string sLastLocoClipName = "standard_idle";
 static bool sDebugLoop = true;
 
 struct DebugBoneSample
@@ -1142,6 +1296,113 @@ static const std::string kLoadoutPath = "config/loadout.json";
 static selva::combat::WeaponClassRegistry sWeaponClasses;
 static selva::combat::WeaponRegistry sWeapons;
 static selva::combat::PlayerEquipment sEquipment;
+
+// Pose-match start time for a one-shot fired from the live locomotion
+// track. Scans the new clip's first `window_seconds` for the frame
+// whose hand pose is closest to the current loco-clip pose, returns
+// that clip-time. Lets ANY one-shot (attack, dodge, block, future
+// jump) bridge cleanly out of combat-idle / standard-idle / walking
+// without snapping the legs to the new clip's authored t=0 pose.
+//
+// The attack path used to inline this scan; extracted so dodge and
+// block can use the same logic without duplicating the joint setup.
+// Returns 0.0f when no scan source resolves (loco clip missing,
+// joint indices unavailable) — caller treats that as "play from t=0
+// like before."
+static float poseMatchStartFromLoco(const selva::anim::AnimationClip& new_clip,
+                                    float window_seconds)
+{
+    const auto* loco_clip = sClips.get(sLastLocoClipName);
+    if (loco_clip == nullptr || !loco_clip->isLoaded())
+        return 0.0f;
+    // Match on hands AND feet. Hands-only would match roll/backstep
+    // clips at t=0 because their t=0 hand pose is similar to combat-
+    // idle's hand pose, while the LEG pose at t=0 is wildly different
+    // (weight pre-shifted for the dodge motion). Including feet in
+    // the score weights the scan toward frames where the legs also
+    // match.
+    std::vector<int> joints;
+    for (const char* name :
+         {"mixamorig:RightHand", "mixamorig:LeftHand", "mixamorig:RightFoot", "mixamorig:LeftFoot"})
+    {
+        const int idx = sSampler.findJoint(name);
+        if (idx >= 0)
+            joints.push_back(idx);
+    }
+    if (joints.empty())
+        return 0.0f;
+    const auto fd = sSampler.frameDiagnostics();
+    return sSampler.clipPoseMatchTime(*loco_clip, fd.loco_current_time, new_clip, joints, 0.0f,
+                                      window_seconds);
+}
+
+// True when the locomotion track is currently a moving (gait) clip
+// rather than a stance idle. Drives establish-beat decisions, walk-
+// source bookend dispatch for dodge, and other "where is the body
+// right now" checks. Centralized so the moving-clip set has one
+// definition.
+static bool isMovingLocoClip(const std::string& name)
+{
+    return name == "walking" || name == "running" || name == "start_walking" ||
+           name == "run_to_stop";
+}
+
+// Five-joint splice diagnostic. Captured pre-playOneShot, logged post.
+// The same pattern was duplicated in fireAttack, fireBlock, and the
+// dodge-fire path — extracted so all three log identical columns.
+struct SpliceDiag
+{
+    int rh = -1, lh = -1, hp = -1, lf = -1, rf = -1;
+    glm::vec3 live_rh{}, live_lh{}, live_hp{}, live_lf{}, live_rf{};
+};
+
+static SpliceDiag captureSpliceDiag()
+{
+    SpliceDiag d;
+    d.rh = sSampler.findJoint("mixamorig:RightHand");
+    d.lh = sSampler.findJoint("mixamorig:LeftHand");
+    d.hp = sSampler.findJoint("mixamorig:Hips");
+    d.lf = sSampler.findJoint("mixamorig:LeftFoot");
+    d.rf = sSampler.findJoint("mixamorig:RightFoot");
+    if (d.rh >= 0)
+        d.live_rh = sSampler.jointWorldPos(d.rh);
+    if (d.lh >= 0)
+        d.live_lh = sSampler.jointWorldPos(d.lh);
+    if (d.hp >= 0)
+        d.live_hp = sSampler.jointWorldPos(d.hp);
+    if (d.lf >= 0)
+        d.live_lf = sSampler.jointWorldPos(d.lf);
+    if (d.rf >= 0)
+        d.live_rf = sSampler.jointWorldPos(d.rf);
+    return d;
+}
+
+// Sample each captured joint at `start_seconds` of `new_clip` and
+// log the joint-by-joint distance from live to entry. Caller decides
+// what header tag to use (e.g. "[combat:dodge-fire ...]").
+static void logSpliceDiag(const SpliceDiag& d, const selva::anim::AnimationClip& new_clip,
+                          float start_seconds, const char* prefix)
+{
+    auto entry = [&](int j) {
+        return (j >= 0) ? sSampler.sampleJointWorldPos(new_clip, start_seconds, j) : glm::vec3(0);
+    };
+    combatLog("%s  RH=%.3fm LH=%.3fm Hip=%.3fm LFoot=%.3fm RFoot=%.3fm\n", prefix,
+              glm::length(entry(d.rh) - d.live_rh), glm::length(entry(d.lh) - d.live_lh),
+              glm::length(entry(d.hp) - d.live_hp), glm::length(entry(d.lf) - d.live_lf),
+              glm::length(entry(d.rf) - d.live_rf));
+}
+
+// Resolve the playback rate for the given hand's weapon class. Class
+// override (>0) wins over the global tunable.
+static float effectiveAttackPlaybackRate(selva::combat::HandSide hand)
+{
+    const float global = selva::tuning::current().attack_playback_rate;
+    const selva::combat::Weapon* w =
+        (hand == selva::combat::HandSide::Right) ? sEquipment.right : sEquipment.left;
+    if (w != nullptr && w->cls != nullptr && w->cls->attack_playback_rate > 0.0f)
+        return w->cls->attack_playback_rate;
+    return global;
+}
 
 // Window size (read at init for the projection's aspect ratio; updated on
 // resize via the engine onResize callback).
@@ -1403,24 +1664,70 @@ static void resolveAttackCancelOpenTimes()
         }
     };
 
+    auto resolve_techniques = [&](std::vector<selva::combat::WeaponTechnique>& techs,
+                                  bool two_handed)
+    {
+        for (auto& t : techs)
+            resolve_chain(t.attacks, two_handed);
+    };
+
     for (auto& kv : sWeaponClasses.by_id)
     {
         auto& cls = kv.second;
-        resolve_chain(cls.one_handed.light, false);
-        resolve_chain(cls.one_handed.heavy, false);
-        resolve_chain(cls.one_handed.running, false);
-        resolve_chain(cls.two_handed.light, true);
-        resolve_chain(cls.two_handed.heavy, true);
-        resolve_chain(cls.two_handed.running, true);
-        log_chain(cls.id.c_str(), "1H light", cls.one_handed.light, false);
-        log_chain(cls.id.c_str(), "1H heavy", cls.one_handed.heavy, false);
-        log_chain(cls.id.c_str(), "1H running", cls.one_handed.running, false);
-        log_chain(cls.id.c_str(), "2H light", cls.two_handed.light, true);
-        log_chain(cls.id.c_str(), "2H heavy", cls.two_handed.heavy, true);
-        log_chain(cls.id.c_str(), "2H running", cls.two_handed.running, true);
-        log_bookend_alignment(cls.id.c_str(), "1H light", cls.one_handed.light);
-        log_bookend_alignment(cls.id.c_str(), "1H heavy", cls.one_handed.heavy);
-        log_bookend_alignment(cls.id.c_str(), "2H light", cls.two_handed.light);
+        resolve_techniques(cls.one_handed.light, false);
+        resolve_techniques(cls.one_handed.heavy, false);
+        resolve_techniques(cls.one_handed.running, false);
+        resolve_techniques(cls.two_handed.light, true);
+        resolve_techniques(cls.two_handed.heavy, true);
+        resolve_techniques(cls.two_handed.running, true);
+
+        // Auto-detect block clip's leading-idle trim if not overridden.
+        // Only unarmed has its own block clip currently; sword uses
+        // sword_and_shield_block which is short and authored without
+        // a leading idle, so trim defaults to 0 there.
+        if (cls.block_clip_start_seconds < 0.0f)
+        {
+            const char* block_clip_name = (cls.id == "unarmed") ? "unarmed_block" : nullptr;
+            if (block_clip_name != nullptr)
+            {
+                const auto* bclip = sClips.get(block_clip_name);
+                if (bclip != nullptr && bclip->isLoaded())
+                {
+                    const int rh = sSampler.findJoint("mixamorig:RightHand");
+                    const int lh = sSampler.findJoint("mixamorig:LeftHand");
+                    std::vector<int> joints;
+                    if (rh >= 0)
+                        joints.push_back(rh);
+                    if (lh >= 0)
+                        joints.push_back(lh);
+                    const float motion_start = sSampler.clipJointMotionStart(*bclip, joints);
+                    cls.block_clip_start_seconds =
+                        std::clamp(motion_start - 0.05f, 0.0f, bclip->duration());
+                    combatLog("[combat:resolve] %s block trim: motion_start=%.3fs -> "
+                              "block_clip_start=%.3fs\n",
+                              cls.id.c_str(), motion_start, cls.block_clip_start_seconds);
+                }
+            }
+        }
+        auto log_techniques = [&](const char* slot,
+                                  const std::vector<selva::combat::WeaponTechnique>& techs,
+                                  bool two_handed)
+        {
+            for (std::size_t ti = 0; ti < techs.size(); ++ti)
+            {
+                char label[64];
+                std::snprintf(label, sizeof(label), "%s [%zu:%s]", slot, ti,
+                              techs[ti].id.c_str());
+                log_chain(cls.id.c_str(), label, techs[ti].attacks, two_handed);
+                log_bookend_alignment(cls.id.c_str(), label, techs[ti].attacks);
+            }
+        };
+        log_techniques("1H light", cls.one_handed.light, false);
+        log_techniques("1H heavy", cls.one_handed.heavy, false);
+        log_techniques("1H running", cls.one_handed.running, false);
+        log_techniques("2H light", cls.two_handed.light, true);
+        log_techniques("2H heavy", cls.two_handed.heavy, true);
+        log_techniques("2H running", cls.two_handed.running, true);
     }
 }
 
@@ -1431,18 +1738,15 @@ static void resolveAttackCancelOpenTimes()
 static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
 {
     ZoneScopedN("selvaPerFrame");
-    const float dt = static_cast<float>(dt_d);
+    // Apply the global time-scale multiplier ONCE here. All downstream
+    // dt-driven systems (sampler.update, dodge timer, sWallClockSeconds,
+    // lockouts, debounce, etc.) read this scaled dt. Set time_scale
+    // < 1.0 in the F1 panel to slow-mo every animation transition for
+    // debugging split-second issues.
+    const float dt = static_cast<float>(dt_d) * selva::tuning::current().time_scale;
 
-    // Combat-input pulse for this frame. Any attack-fire / dodge-fire
-    // path sets this true; the locomotion state machine reads it to
-    // refresh the CombatReady stance. Stays scoped to this frame —
-    // each frame starts peaceful and is set true if any combat input
-    // landed.
     bool combat_input_this_frame = false;
 
-    // Advance the global wall-clock used by combat-window timers
-    // (combo cancel windows, input buffers, chain reset grace). dt is
-    // wall-clock seconds at this layer, so accumulating it is correct.
     sWallClockSeconds += dt;
 
     // Title bar — game name + FPS. EMA-smoothed so the number doesn't flicker.
@@ -1512,22 +1816,9 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     //   * Otherwise           → light
     // Sprint takes priority over Shift since "sprint-attack" is its own
     // distinct action; Shift+Sprint+LMB still triggers the running
-    // attack. Holding sprint after firing doesn't change anything —
-    // the kind is locked in at click time via playOneShot.
-    // Body-mask selection for a Light attack depends on whether the
-    // player is actively moving:
-    //   * Standing still → full-body. The attack clip's authored weight
-    //     transfer (foot plant, hip rotation, follow-through) is what
-    //     gives the swing its "weight." A standing attack with masked-
-    //     out legs looks weak because the legs just... stand there
-    //     while the arms swing in isolation.
-    //   * Moving (WASD) → upper-body. The locomotion gait must continue
-    //     so the legs don't snap to a rest pose mid-stride.
-    // Heavy and Running attacks always commit the whole body — heavy
-    // because it's an authored anchored swing, running because the
-    // forward-lunge IS the attack and we want the full clip's leg work.
-    const bool wasd_held = (keys[SDL_SCANCODE_W] != 0) || (keys[SDL_SCANCODE_A] != 0) ||
-                           (keys[SDL_SCANCODE_S] != 0) || (keys[SDL_SCANCODE_D] != 0);
+    // attack. Every attack fires full-body and locks movement for its
+    // duration; the SM resumes walking automatically when the one-shot
+    // ends if WASD is still held.
 
     // Auto-reset chains that have aged past their grace window. This
     // converts "I attacked once and walked away" into "next press is
@@ -1537,6 +1828,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     auto resetChain = [](AttackChainState& chain)
     {
         chain.chain_index = 0;
+        chain.technique_index = -1;
         chain.cancel_window_open_at = 0.0f;
         chain.cancel_window_close_at = 0.0f;
         chain.chain_reset_at = 0.0f;
@@ -1583,16 +1875,65 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         if (chain.chain_index > 0 && chain.chain_kind != kind)
         {
             chain.chain_index = 0;
+            chain.technique_index = -1;
             chain.is_finisher = false;
         }
-        const ResolvedAttack ra =
-            resolveAttackChainEntry(sEquipment, hand, kind, chain.chain_index);
+        // Resolver picks the technique slot. -1 = caller hasn't
+        // locked one yet → use index 0 (the first technique).
+        const int t_idx = (chain.technique_index >= 0) ? chain.technique_index : 0;
+        ResolvedAttack ra = resolveAttackChainEntry(sEquipment, hand, kind, chain.chain_index,
+                                                    t_idx);
         if (ra.clip == nullptr || !ra.clip->isLoaded() || ra.attack == nullptr)
             return false;
+        // Sprint swap: while sprinting, ANY light attack press fires
+        // the running technique's clip (e.g. flying_knee_punch_combo)
+        // instead of the locked Light technique's current step. The
+        // running entry is a single-step chain that commits as a
+        // finisher — it's a self-contained sprint attack that doesn't
+        // chain into anything. This handles both "cold sprint + LMB"
+        // and "mid-chain + start sprinting + LMB" the same way: drop
+        // the regular chain, fire the running clip, treat it as the
+        // chain's end. Sword-class running slot gets the same
+        // treatment uniformly.
+        bool is_sprint_swap = false;
+        if (sPlayer.sprinting && kind == AttackKind::Light)
+        {
+            const selva::combat::Weapon* w = (hand == selva::combat::HandSide::Right)
+                                                 ? sEquipment.right
+                                                 : sEquipment.left;
+            if (w != nullptr && w->cls != nullptr)
+            {
+                const auto& aset = (sEquipment.grip == selva::combat::Grip::TwoHanded)
+                                       ? w->cls->two_handed
+                                       : w->cls->one_handed;
+                if (!aset.running.empty() && !aset.running[0].attacks.empty())
+                {
+                    const auto& running_atk = aset.running[0].attacks[0];
+                    const auto* running_clip = sClips.get(running_atk.clip);
+                    if (running_clip != nullptr && running_clip->isLoaded())
+                    {
+                        ra.attack = &running_atk;
+                        ra.clip = running_clip;
+                        ra.chain_size = 1; // forces was_last=true, finisher commits
+                        // chain.chain_index already at the final slot —
+                        // leave it; the bump-and-wrap below will mark
+                        // is_finisher and reset to 0 cleanly.
+                        chain.chain_index = 0; // single-step running chain
+                        is_sprint_swap = true;
+                        combatLog("[combat:fire] sprint finisher swap → %s\n",
+                                  running_atk.clip.c_str());
+                    }
+                }
+            }
+        }
+        // Every attack fires full-body. The previous walking → upper-
+        // body-mask path produced a leg cycle running underneath the
+        // attack's authored leg motion (hip pivot, weight transfer),
+        // which read as a leg spasm — the punch's hip drive and the
+        // walk loop's hip cycle fight each other. Player plants, swings,
+        // resumes walking when the one-shot blends out.
         const selva::anim::PoseSampler::BodyMask mask =
-            (kind == AttackKind::Light && wasd_held)
-                ? selva::anim::PoseSampler::BodyMask::UpperBody
-                : selva::anim::PoseSampler::BodyMask::Full;
+            selva::anim::PoseSampler::BodyMask::Full;
         // Chain transitions use a different blend-source than first-
         // strike. Two distinct cases:
         //
@@ -1624,23 +1965,79 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         const float per_attack_blend = ra.attack->chain_link_blend_seconds;
         const float chain_blend =
             (per_attack_blend >= 0.0f) ? per_attack_blend : tun.combo_chain_blend_seconds;
-        const float blend_in = first_strike ? 0.10f : chain_blend;
-        const float start_seconds =
-            first_strike ? 0.0f : ra.attack->resolved_chain_link_start_seconds;
+        const float blend_in = first_strike ? tun.first_strike_blend_seconds : chain_blend;
+
+        // First-strike scans against the loco track; chain-link scans
+        // against the outgoing one-shot (previous attack mid-recovery).
+        // Wider chain-link window because the best frame can be deeper
+        // into the new clip's windup.
+        float pose_matched_start = -1.0f;
         if (first_strike)
         {
-            if (!sCombatStanceSourcePose.empty())
-                sSampler.requestInertializationFromPose(blend_in, sCombatStanceSourcePose);
+            pose_matched_start = poseMatchStartFromLoco(*ra.clip, 0.30f);
         }
         else
         {
-            // Default mode (no source pose) captures the previous
-            // frame's rendered pose at update() time — exactly the
-            // continuity bridge we want.
-            sSampler.requestInertialization(blend_in);
+            const auto fd_pre = sSampler.frameDiagnostics();
+            if (fd_pre.one_shot_name != nullptr)
+            {
+                const auto* prev_clip = sClips.get(fd_pre.one_shot_name);
+                if (prev_clip != nullptr && prev_clip->isLoaded())
+                {
+                    const int rh = sSampler.findJoint("mixamorig:RightHand");
+                    const int lh = sSampler.findJoint("mixamorig:LeftHand");
+                    std::vector<int> joints;
+                    if (rh >= 0)
+                        joints.push_back(rh);
+                    if (lh >= 0)
+                        joints.push_back(lh);
+                    if (!joints.empty())
+                        pose_matched_start = sSampler.clipPoseMatchTime(
+                            *prev_clip, fd_pre.one_shot_time, *ra.clip, joints, 0.0f, 0.50f);
+                }
+            }
         }
-        sSampler.playOneShot(*ra.clip, blend_in, 0.20f, mask, start_seconds,
-                             tun.attack_playback_rate);
+        const float fallback_start =
+            first_strike ? 0.0f : ra.attack->resolved_chain_link_start_seconds;
+        const float start_seconds =
+            (pose_matched_start >= 0.0f) ? pose_matched_start : fallback_start;
+        SpliceDiag diag;
+        selva::anim::PoseSampler::FrameDiagnostics fd_pre_action{};
+        if (sCombatDebugEnabled)
+        {
+            diag = captureSpliceDiag();
+            fd_pre_action = sSampler.frameDiagnostics();
+        }
+        // Sprint-finisher swaps don't enroll inertialization: the
+        // running clip's t=0 IS a running pose, the live screen IS a
+        // running pose, the offset is small. Rapid-firing sprint LMB
+        // would otherwise capture mid-flying-knee pose and decay it
+        // on top of the next swing — visible spasm. Other attack fires
+        // (chain links, first-strikes from combat-idle) DO enroll: the
+        // captured-offset overlay smooths real cross-pose splices.
+        if (!is_sprint_swap)
+            sSampler.requestInertialization(blend_in);
+        const float rate = effectiveAttackPlaybackRate(hand);
+        // Sprint-finisher overrides: tunable blend-in (live running
+        // pose ≈ clip t=0, so short blend is fine) AND tunable
+        // start-trim that crops the windup off the front.
+        const float effective_blend_in =
+            is_sprint_swap ? tun.sprint_finisher_blend_in_seconds : blend_in;
+        const float effective_start =
+            is_sprint_swap ? tun.sprint_finisher_start_seconds : start_seconds;
+        sSampler.playOneShot(*ra.clip, effective_blend_in, 0.20f, mask, effective_start, rate);
+
+        if (sCombatDebugEnabled)
+        {
+            char prefix[256];
+            std::snprintf(prefix, sizeof(prefix),
+                          "[combat:action-splice] role=%s clip=%s blend=%.3fs start=%.3fs  "
+                          "loco=%s clip_t=%.3fs ",
+                          first_strike ? "first" : "chain", ra.attack->clip.c_str(), blend_in,
+                          start_seconds, sLastLocoClipName.c_str(),
+                          fd_pre_action.loco_current_time);
+            logSpliceDiag(diag, *ra.clip, start_seconds, prefix);
+        }
 
         // Arm-for-chain frame capture: kicks off on the FIRST swing of
         // a chain, runs for an estimated full-chain duration scaled by
@@ -1661,7 +2058,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
             // window) divided by playback rate, plus a small tail for
             // recovery + locomotion blend.
             float chain_seconds = 0.0f;
-            // Grip-aware chain lookup mirrors resolveAttackChainEntry.
+            // Estimate uses the first technique of the matching slot.
             const auto* w = (hand == selva::combat::HandSide::Right) ? sEquipment.right
                                                                      : sEquipment.left;
             if (w != nullptr && w->cls != nullptr)
@@ -1669,32 +2066,35 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                 const auto& set = (sEquipment.grip == selva::combat::Grip::TwoHanded)
                                       ? w->cls->two_handed
                                       : w->cls->one_handed;
-                const auto& chain_vec = (kind == AttackKind::Heavy)
-                                            ? set.heavy
-                                            : (kind == AttackKind::Running) ? set.running
-                                                                            : set.light;
-                for (const auto& a : chain_vec)
+                const auto& techniques = (kind == AttackKind::Heavy)
+                                             ? set.heavy
+                                             : (kind == AttackKind::Running) ? set.running
+                                                                             : set.light;
+                if (!techniques.empty())
                 {
-                    const auto* c = sClips.get(a.clip);
-                    if (c != nullptr && c->isLoaded())
-                        chain_seconds += c->duration();
+                    for (const auto& a : techniques[0].attacks)
+                    {
+                        const auto* c = sClips.get(a.clip);
+                        if (c != nullptr && c->isLoaded())
+                            chain_seconds += c->duration();
+                    }
                 }
             }
-            const float rate = std::max(0.1f, tun.attack_playback_rate);
-            sFrameCaptureDuration = (chain_seconds / rate) + 1.0f;
+            const float capture_rate = std::max(0.1f, rate);
+            sFrameCaptureDuration = (chain_seconds / capture_rate) + 1.0f;
             sFrameCaptureArmedNextChain = false;
             std::fprintf(stderr,
                          "[frame-capture] capturing chain for %.2fs to %s/ (rate=%.2f)\n",
-                         sFrameCaptureDuration, sFrameCaptureDir.c_str(), rate);
+                         sFrameCaptureDuration, sFrameCaptureDir.c_str(), capture_rate);
         }
-        if (sLogChainFires)
+        if (sCombatDebugEnabled)
         {
             combatLog("[combat:fire] hand=%s idx=%d clip=%s dur=%.3fs "
                       "start=%.3fs (%.0f%%)  blend_in=%.3fs  rate=%.2f  role=%s\n",
                       hand == selva::combat::HandSide::Right ? "R" : "L", chain.chain_index,
                       ra.attack->clip.c_str(), ra.clip->duration(), start_seconds,
                       (start_seconds / std::max(0.001f, ra.clip->duration())) * 100.0f, blend_in,
-                      tun.attack_playback_rate, first_strike ? "first" : "chain-link");
+                      rate, first_strike ? "first" : "chain-link");
             // Splice diagnostic: for chain-links, log the live right-
             // hand position (where the previous clip left it on screen
             // last frame) and the right-hand position at the new clip
@@ -1821,7 +2221,6 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                 }
             }
         }
-        sActiveAttackKind = kind;
         // Anchor combat-stance to end-of-clip + grace so the stance
         // visibly persists through the attack's recovery instead of
         // dropping to peaceful while the player is still standing in
@@ -1834,7 +2233,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         // stance anchor must follow it so grace doesn't stretch past
         // the visibly faster (and possibly trimmed) swing.
         const float effective_duration =
-            std::max(0.0f, ra.clip->duration() - start_seconds) / tun.attack_playback_rate;
+            std::max(0.0f, ra.clip->duration() - start_seconds) / rate;
         const float new_until =
             sWallClockSeconds + effective_duration + tun.combat_idle_grace_seconds;
         if (new_until > sLocomotionSM.stance_active_until)
@@ -1854,22 +2253,35 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
             std::clamp(ra.attack->resolved_cancel_open_seconds, 0.0f, clip_dur);
         const float remaining_clip = std::max(0.0f, clip_dur - start_seconds);
         const float remaining_to_open = std::max(0.0f, open_clip_local - start_seconds);
-        const float open_wall = remaining_to_open / tun.attack_playback_rate;
+        const float open_wall = remaining_to_open / rate;
         chain.cancel_window_open_at = sWallClockSeconds + open_wall;
-        // Window close = open + buffer_seconds. Past close = late miss.
         chain.cancel_window_close_at =
             chain.cancel_window_open_at + tun.combo_input_buffer_seconds;
-        chain.chain_reset_at = sWallClockSeconds +
-                               (remaining_clip / tun.attack_playback_rate) +
-                               tun.combo_reset_grace_seconds;
-        chain.chain_kind = kind;
-        // Step to the next chain entry; clamp at end-of-chain. If we
-        // just fired the LAST entry, mark the chain as a finisher so
-        // cancellation is disabled — the attack must play out and
-        // chain_reset_at must elapse before any press is valid again.
-        // The finisher commits.
+        // chain_reset_at gates both chain auto-reset (so a slow
+        // mid-chain press still advances) AND finisher-commit duration
+        // (no new attacks until reset). Non-finisher steps need the
+        // long window for chain-advance; finisher steps want the
+        // short one (snappy combo-end recovery, matches lockout).
         const int next_idx = chain.chain_index + 1;
         const bool was_last = (next_idx >= ra.chain_size);
+        if (was_last)
+        {
+            chain.chain_reset_at =
+                chain.cancel_window_close_at + tun.attack_lockout_extension_seconds;
+        }
+        else
+        {
+            chain.chain_reset_at =
+                sWallClockSeconds + (remaining_clip / rate) + tun.combo_reset_grace_seconds;
+        }
+        chain.chain_kind = kind;
+        // Locomotion lockout: walking resumes at cancel_window_close
+        // + extension. Sprint-finisher uses its own anchor.
+        const float lockout_target =
+            is_sprint_swap ? sWallClockSeconds + tun.sprint_finisher_lockout_seconds
+                           : chain.cancel_window_close_at + tun.attack_lockout_extension_seconds;
+        if (lockout_target > sLocoLockoutUntil)
+            sLocoLockoutUntil = lockout_target;
         chain.chain_index = was_last ? 0 : next_idx;
         chain.is_finisher = was_last;
         return true;
@@ -1879,7 +2291,8 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     // frame, or a buffered press whose cancel window just opened. If
     // neither is ready, return without firing. Returns the press to
     // apply this frame OR records a buffered press.
-    auto tryAttackInput = [&](selva::combat::HandSide hand, bool press_edge_this_frame)
+    auto tryAttackInput = [&](selva::combat::HandSide hand, bool press_edge_this_frame,
+                               const char* button)
     {
         AttackChainState& chain =
             (hand == selva::combat::HandSide::Right) ? sChainRight : sChainLeft;
@@ -1894,23 +2307,71 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         // Finisher disables cancellation: must wait for chain_reset_at.
         const bool in_window =
             !chain.is_finisher && (first_strike || (!before_open && !past_close));
-        const AttackKind kind =
-            sPlayer.sprinting
-                ? AttackKind::Running
-                : (shift_held ? AttackKind::Heavy : AttackKind::Light);
+        // Sprinting no longer routes to the Running technique slot at
+        // press time — the Running clip (e.g. flying_knee_punch_combo)
+        // is a CHAIN FINISHER, not a standalone first-strike. The
+        // finisher swap happens inside fireAttack when chain_index
+        // wraps to the final step.
+        const AttackKind kind = shift_held ? AttackKind::Heavy : AttackKind::Light;
 
         // Fresh press this frame.
         if (press_edge_this_frame)
         {
-            // Peaceful → first-press latch (delays fire so locomotion
-            // can crossfade into combat-idle).
-            if (sLocomotionSM.combat_stance == CombatStance::Peaceful &&
-                !sPendingFirstAction.active)
+            // Press during dodge: buffer for post-dodge fire instead
+            // of either dropping or firing on top of the rolling
+            // pose. The dodge commits; once it ends, the buffered
+            // press fires as a normal first-strike from the settled
+            // combat-idle pose. Lets the player chain rolls into
+            // attacks without timing the press to the dodge's end
+            // frame.
+            if (sDodgeActive)
             {
+                sPostDodgeAttack.pending = true;
+                sPostDodgeAttack.hand = hand;
+                sPostDodgeAttack.button = button;
+                sPostDodgeAttack.buffered_at = sWallClockSeconds;
+                combatLog("[combat:rhythm %.4fs] press BUFFERED (dodge active, "
+                          "elapsed=%.3fs/%.3fs)\n",
+                          sWallClockSeconds, sDodgeElapsed, sDodgeDuration);
+                return;
+            }
+            // First-press latch: delays fire so the locomotion track
+            // can crossfade into the combat-stance idle BEFORE the
+            // action plays. Two cases trigger it:
+            //   (a) Stance is Peaceful — locomotion is on a peaceful
+            //       idle/walk/run clip; we need the combat-idle beat
+            //       so the action's t=0 leg pose matches what's on
+            //       screen.
+            //   (b) Stance is CombatReady but locomotion is on a
+            //       MOVING clip (walking / running / a walk-transition).
+            //       Without the establishing beat, the action splices
+            //       directly from mid-walk-stride pose to the action's
+            //       feet-together t=0 → leg spasm. The beat (combined
+            //       with the SM is_moving override below) crossfades
+            //       the loco track to unarmed_combat_idle / sword_idle
+            //       so the action fires from a still combat pose.
+            const bool need_establish_beat = sLocomotionSM.combat_stance == CombatStance::Peaceful ||
+                                              isMovingLocoClip(sLastLocoClipName);
+            if (need_establish_beat && !sPendingFirstAction.active)
+            {
+                // Validate the button against slot 0 of any technique.
+                // Wrong-button first-strikes (e.g. RMB while unarmed
+                // techniques all start with LMB) silently drop instead
+                // of latching a swing the player can't trigger.
+                const TechniqueDispatch td = dispatchTechniqueForPress(
+                    sEquipment, hand, kind, /*chain_index=*/0,
+                    /*current_locked=*/-1, button);
+                if (!td.valid)
+                {
+                    combatLog("[combat:rhythm] first-strike REJECTED (no technique accepts %s @ slot 0)\n",
+                              button);
+                    return;
+                }
                 sPendingFirstAction.active = true;
                 sPendingFirstAction.kind = PendingFirstActionKind::Attack;
                 sPendingFirstAction.hand = hand;
                 sPendingFirstAction.attack_kind = kind;
+                sPendingFirstAction.button = button;
                 sPendingFirstAction.fire_at =
                     sWallClockSeconds + tun.combat_entry_delay_seconds;
                 combat_input_this_frame = true;
@@ -1931,9 +2392,49 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                 return;
             }
 
+            // Sprint bypass: while sprinting, ANY light press fires the
+            // running attack regardless of where in the chain we are or
+            // what button the locked technique expects next. Skips the
+            // technique-dispatch validation entirely — fireAttack's
+            // sprint-swap path replaces the resolved attack with the
+            // running technique's clip and treats it as a finisher.
+            // Reset chain state so the swap fires from a clean slate.
+            // Drop the press if a sprint-finisher is already playing —
+            // restarting would cancel the in-flight running attack mid
+            // motion. The finisher commits.
+            if (sPlayer.sprinting && kind == AttackKind::Light)
+            {
+                if (chain.is_finisher && sSampler.isOneShotActive())
+                {
+                    combatLog("[combat:rhythm] sprint press dropped (finisher in flight)\n");
+                    return;
+                }
+                chain.chain_index = 0;
+                chain.technique_index = -1;
+                chain.is_finisher = false;
+                chain.missed = false;
+                if (fireAttack(hand, kind))
+                    combat_input_this_frame = true;
+                buf.pending = false;
+                return;
+            }
+
             if (first_strike)
             {
-                // No swing in flight yet — chain starts fresh.
+                // First press: dispatch against slot 0 to filter
+                // techniques. If no technique accepts this button at
+                // slot 0, fall through silently — no swing fires.
+                const TechniqueDispatch td = dispatchTechniqueForPress(
+                    sEquipment, hand, kind, /*chain_index=*/0,
+                    /*current_locked=*/-1, button);
+                if (!td.valid)
+                {
+                    combatLog("[combat:rhythm] press REJECTED (no technique accepts %s @ slot 0)\n",
+                              button);
+                    buf.pending = false;
+                    return;
+                }
+                chain.technique_index = td.locked;
                 if (fireAttack(hand, kind))
                     combat_input_this_frame = true;
                 buf.pending = false;
@@ -1941,6 +2442,24 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
             }
             if (in_window)
             {
+                // Locked or unlocked: validate the press button against
+                // the (already-fired chain.chain_index) — that's the
+                // step we're about to advance INTO. fireAttack reads
+                // chain.chain_index; here we're past the previous fire,
+                // so chain.chain_index already points at the next slot.
+                const TechniqueDispatch td = dispatchTechniqueForPress(
+                    sEquipment, hand, kind, chain.chain_index,
+                    chain.technique_index, button);
+                if (!td.valid)
+                {
+                    combatLog("[combat:rhythm] press REJECTED (button %s does not match locked "
+                              "technique %d @ slot %d) — chain miss\n",
+                              button, chain.technique_index, chain.chain_index);
+                    chain.missed = true;
+                    buf.pending = false;
+                    return;
+                }
+                chain.technique_index = td.locked;
                 const float center = 0.5f * (chain.cancel_window_open_at +
                                              chain.cancel_window_close_at);
                 const float half_width = 0.5f * (chain.cancel_window_close_at -
@@ -1960,9 +2479,19 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
             }
             if (before_open)
             {
-                combatLog("[combat:rhythm] MISS (early)\n");
-                chain.missed = true;
-                buf.pending = false;
+                // Early press during the previous swing's pre-window
+                // phase. Don't drop — buffer it. When the cancel window
+                // opens this frame or a later frame, the buffered press
+                // replays through dispatch and advances the chain. This
+                // is the rhythm-window early-press grace: a player who
+                // presses too eagerly gets their input honored on the
+                // beat instead of feeling like the game ate the click.
+                buf.pending = true;
+                buf.kind = kind;
+                buf.button = button;
+                buf.buffered_at = sWallClockSeconds;
+                combatLog("[combat:rhythm] BUFFERED (early; %s @ slot %d)\n", button,
+                          chain.chain_index);
                 return;
             }
             if (past_close)
@@ -1978,11 +2507,24 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         }
 
         // No fresh press; if a buffered press exists and the window is
-        // open, auto-fire it. Use the buffered kind.
+        // open, replay it through dispatch so the technique-locking
+        // logic sees it. Buffer is dead in current code (no path sets
+        // pending = true), but kept consistent for when it's wired.
         if (buf.pending && in_window)
         {
-            if (fireAttack(hand, buf.kind))
-                combat_input_this_frame = true;
+            const TechniqueDispatch td = dispatchTechniqueForPress(
+                sEquipment, hand, buf.kind, chain.chain_index,
+                chain.technique_index, buf.button);
+            if (td.valid)
+            {
+                chain.technique_index = td.locked;
+                if (fireAttack(hand, buf.kind))
+                    combat_input_this_frame = true;
+            }
+            else
+            {
+                chain.missed = true;
+            }
             buf.pending = false;
         }
     };
@@ -1992,8 +2534,40 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         const bool press_lmb = lmbNow && !sPrevLMB;
         const bool press_rmb = rmbNow && !sPrevRMB;
         const bool release_rmb = !rmbNow && sPrevRMB;
+        const bool release_lmb = !lmbNow && sPrevLMB;
         const bool fNow = keys[SDL_SCANCODE_F] != 0;
         const bool press_f = fNow && !sPrevF;
+
+        // High-resolution input edge trace. Logs every WASD/LMB/RMB
+        // transition with the wall-clock timestamp so the user's repro
+        // session can be reconstructed exactly. Gated on debug switch.
+        if (sCombatDebugEnabled)
+        {
+            const bool wNow = keys[SDL_SCANCODE_W] != 0;
+            const bool aNow = keys[SDL_SCANCODE_A] != 0;
+            const bool sNow = keys[SDL_SCANCODE_S] != 0;
+            const bool dNow = keys[SDL_SCANCODE_D] != 0;
+            if (wNow != sPrevW)
+                combatLog("[input %.4fs] W %s\n", sWallClockSeconds, wNow ? "DOWN" : "UP");
+            if (aNow != sPrevA)
+                combatLog("[input %.4fs] A %s\n", sWallClockSeconds, aNow ? "DOWN" : "UP");
+            if (sNow != sPrevS)
+                combatLog("[input %.4fs] S %s\n", sWallClockSeconds, sNow ? "DOWN" : "UP");
+            if (dNow != sPrevD)
+                combatLog("[input %.4fs] D %s\n", sWallClockSeconds, dNow ? "DOWN" : "UP");
+            if (press_lmb)
+                combatLog("[input %.4fs] LMB DOWN\n", sWallClockSeconds);
+            if (release_lmb)
+                combatLog("[input %.4fs] LMB UP\n", sWallClockSeconds);
+            if (press_rmb)
+                combatLog("[input %.4fs] RMB DOWN\n", sWallClockSeconds);
+            if (release_rmb)
+                combatLog("[input %.4fs] RMB UP\n", sWallClockSeconds);
+            sPrevW = wNow;
+            sPrevA = aNow;
+            sPrevS = sNow;
+            sPrevD = dNow;
+        }
 
         // F: explicit combat-stance toggle.
         //   * F (Peaceful)        → enter CombatReady. Latches the
@@ -2031,86 +2605,102 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
 
         // LMB → right hand action (semantic mapping is on the future
         // todo when stance flip lands; for now LMB=right, RMB=left).
-        tryAttackInput(selva::combat::HandSide::Right, press_lmb);
+        tryAttackInput(selva::combat::HandSide::Right, press_lmb, "LMB");
 
         // RMB routing: if the off-hand is a blocker (buckler-class),
         // hold-RMB enters the held-block state. Otherwise, RMB tap
         // fires an off-hand attack chain like LMB.
         //
-        // Block: fire block_1, set sBlockingActive. `from_baseline` =
-        // true when fired via the first-action latch (locomotion just
-        // entered combat-idle, baseline pose matches what's on screen).
-        // false when fired live from CombatReady (snap locomotion to
-        // t=0 so the splice has a known handoff frame; capture the
-        // post-snap screen pose).
-        auto fireBlock = [&](bool from_baseline)
+        // loco_settled = true when fired via the first-action latch
+        // (locomotion already crossfaded to combat-idle); false when
+        // fired live, in which case we snap the loco track to t=0
+        // before splicing.
+        auto fireBlock = [&](bool loco_settled, const char* clip_name, bool freeze_last)
         {
-            const auto* clip = sClips.get("sword_and_shield_block");
+            const auto* clip = sClips.get(clip_name);
             if (clip != nullptr && clip->isLoaded())
             {
                 const int rh = sSampler.findJoint("mixamorig:RightHand");
                 const auto fd_pre = sSampler.frameDiagnostics();
                 const glm::vec3 live_pre = (rh >= 0) ? sSampler.jointWorldPos(rh) : glm::vec3(0);
-                if (from_baseline && !sCombatStanceSourcePose.empty())
-                {
-                    sSampler.requestInertializationFromPose(0.10f, sCombatStanceSourcePose);
-                }
+                // Trust the weapon class's leading-idle trim if set;
+                // otherwise pose-match against the live loco track.
+                float block_start = 0.0f;
+                if (sEquipment.right != nullptr && sEquipment.right->cls != nullptr &&
+                    sEquipment.right->cls->block_clip_start_seconds > 0.0f)
+                    block_start = sEquipment.right->cls->block_clip_start_seconds;
                 else
-                {
+                    block_start = poseMatchStartFromLoco(*clip, 0.30f);
+                if (!loco_settled)
                     sSampler.setLocomotionClipTime(0.0f);
-                    sSampler.requestInertialization(0.10f);
-                }
+                sSampler.requestInertialization(0.10f);
                 sSampler.playOneShot(*clip, 0.10f, 0.20f,
-                                     selva::anim::PoseSampler::BodyMask::Full);
+                                     selva::anim::PoseSampler::BodyMask::Full,
+                                     block_start, 1.0f, freeze_last);
                 sBlockingActive = true;
 
-                // Splice diagnostic: log what inertialization will bridge.
                 const glm::vec3 block_t0 =
                     (rh >= 0) ? sSampler.sampleJointWorldPos(*clip, 0.0f, rh) : glm::vec3(0);
                 const glm::vec3 d = block_t0 - live_pre;
-                combatLog("[combat:block-fire] mode=%s  loco=%s clip_t=%.3fs (pre-snap)  "
+                combatLog("[combat:block-fire] mode=%s  loco=%s clip_t=%.3fs  "
                           "RH live=(%.3f,%.3f,%.3f)  block_t0=(%.3f,%.3f,%.3f)  delta=|%.3fm|\n",
-                          from_baseline ? "BASELINE" : "SCREEN+SNAP",
+                          loco_settled ? "SETTLED" : "SNAP",
                           fd_pre.loco_current_name ? fd_pre.loco_current_name : "(none)",
                           fd_pre.loco_current_time, live_pre.x, live_pre.y, live_pre.z,
                           block_t0.x, block_t0.y, block_t0.z, glm::length(d));
             }
         };
 
+        // Resolve the block intent for this RMB event:
+        //   - Buckler equipped: RMB always blocks (sword_and_shield_block).
+        //   - Unarmed + Shift held: blocks (unarmed_block, freeze_last).
+        //   - Otherwise: not a block; falls through to attack chain.
+        const char* block_clip_name = nullptr;
+        bool block_freeze_last = false;
         if (offHandCanBlock(sEquipment))
+            block_clip_name = "sword_and_shield_block";
+        else if (isUnarmed(sEquipment) && shift_held)
+        {
+            block_clip_name = "unarmed_block";
+            block_freeze_last = true;
+        }
+
+        if (block_clip_name != nullptr)
         {
             if (press_rmb)
             {
-                // Peaceful: always latch — fires after entry delay so
-                // locomotion has time to crossfade into combat-idle.
-                // CombatReady: fire immediately. Re-press while
-                // blocking restarts the raise.
                 const bool from_peaceful =
                     (sLocomotionSM.combat_stance == CombatStance::Peaceful);
                 if (from_peaceful && !sPendingFirstAction.active)
                 {
                     sPendingFirstAction.active = true;
                     sPendingFirstAction.kind = PendingFirstActionKind::Block;
+                    sPendingFirstAction.block_clip = block_clip_name;
+                    sPendingFirstAction.block_freeze_last = block_freeze_last;
                     sPendingFirstAction.fire_at =
                         sWallClockSeconds + tun.combat_entry_delay_seconds;
                     combat_input_this_frame = true;
                 }
                 else if (!sPendingFirstAction.active)
                 {
-                    fireBlock(false);
+                    fireBlock(false, block_clip_name, block_freeze_last);
                     combat_input_this_frame = true;
                 }
             }
             else if (release_rmb && sBlockingActive)
             {
                 sBlockingActive = false;
+                sSampler.releaseOneShot();
                 combat_input_this_frame = true;
             }
         }
         else
         {
-            // Non-blocker off-hand: standard tap-fire attack chain.
-            tryAttackInput(selva::combat::HandSide::Left, press_rmb);
+            // Off-hand can't block, no shift+unarmed gesture. Route RMB
+            // into the same chain as LMB (sChainRight) so both buttons
+            // advance one shared combo. The technique selected (jab→hook→
+            // combo Chain A vs Chain B) depends on the button sequence.
+            tryAttackInput(selva::combat::HandSide::Right, press_rmb, "RMB");
         }
 
         // First-action latch: fires whichever action was committed
@@ -2119,12 +2709,25 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         {
             if (sPendingFirstAction.kind == PendingFirstActionKind::Attack)
             {
-                if (fireAttack(sPendingFirstAction.hand, sPendingFirstAction.attack_kind))
-                    combat_input_this_frame = true;
+                AttackChainState& chain =
+                    (sPendingFirstAction.hand == selva::combat::HandSide::Right) ? sChainRight
+                                                                                  : sChainLeft;
+                // Lock the technique using the latched button so dispatch
+                // sees the same input a live press would have.
+                const TechniqueDispatch td = dispatchTechniqueForPress(
+                    sEquipment, sPendingFirstAction.hand, sPendingFirstAction.attack_kind,
+                    /*chain_index=*/0, /*current_locked=*/-1, sPendingFirstAction.button);
+                if (td.valid)
+                {
+                    chain.technique_index = td.locked;
+                    if (fireAttack(sPendingFirstAction.hand, sPendingFirstAction.attack_kind))
+                        combat_input_this_frame = true;
+                }
             }
             else
             {
-                fireBlock(true); // first-action latch: baseline pose
+                fireBlock(true, sPendingFirstAction.block_clip,
+                          sPendingFirstAction.block_freeze_last);
                 combat_input_this_frame = true;
             }
             sPendingFirstAction.active = false;
@@ -2211,7 +2814,12 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         if (release_edge)
         {
             const bool was_tap = sSpaceHeldSeconds < tun.dodge_tap_window;
-            if (was_tap && !sDodgeFiredThisPress && !sDodgeActive)
+            // Symmetric to fireAttack's dodge guard: an attack one-
+            // shot also commits — dodge can't cancel an in-flight
+            // attack. Same splice math: rolling out of mid-jab pose
+            // produces a huge offset and visible spasm.
+            const bool attack_active = sSampler.isOneShotActive() && !sDodgeActive;
+            if (was_tap && !sDodgeFiredThisPress && !sDodgeActive && !attack_active)
             {
                 // Fire the dodge. WASD held → directional roll
                 // (falling_to_roll); no WASD → backstep
@@ -2229,6 +2837,9 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                 // (3.01m net over 1.47s) and works as a true root-
                 // motion source.
                 const bool has_intent = glm::length(moveIntent) > 0.0001f;
+                // TEMP: bookends dropped for A/B test. User wants to
+                // feel raw splice quality before deciding the commit
+                // baseline for the architectural rework.
                 const char* clip_name = has_intent ? "falling_to_roll" : "standing_dodge_backward";
                 sDodgeIsBackstep = !has_intent;
                 if (has_intent)
@@ -2241,9 +2852,35 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                 {
                     const float playback_rate =
                         sDodgeIsBackstep ? tun.backstep_playback_rate : tun.roll_playback_rate;
+                    // TEST 2: loco snap disabled to bisect spasm cause.
+                    // Was: if (from_walking) sSampler.setLocomotionClipTime(0.25f);
+                    // The reposed clip's bookend (frames 1-5) IS the
+                    // splice. Skip pose-match (it returns 0 anyway since
+                    // bookend frame 0 IS the source pose) and skip
+                    // inertialization (offset is near-zero by construction).
+                    // A near-instant blend (0.02s) lets the bookend play
+                    // cleanly without crossfade competing with it.
+                    SpliceDiag diag;
+                    if (sCombatDebugEnabled)
+                        diag = captureSpliceDiag();
+                    // Dodge does NOT enroll inertialization. Bookend
+                    // matches live pose (combat-idle source) or accepts
+                    // the residual mismatch (walking source) — either
+                    // way an offset-decay overlay produces wrong-leg
+                    // motion when applied on top of the running clip.
                     sSampler.playOneShot(*dodgeClip, 0.10f, 0.20f,
                                          selva::anim::PoseSampler::BodyMask::Full, 0.0f,
                                          playback_rate);
+                    if (sCombatDebugEnabled)
+                    {
+                        char prefix[256];
+                        std::snprintf(prefix, sizeof(prefix),
+                                      "[combat:dodge-fire %.4fs] clip=%s loco=%s "
+                                      "dur=%.3fs (rate=%.2f) ",
+                                      sWallClockSeconds, clip_name, sLastLocoClipName.c_str(),
+                                      dodgeClip->duration() / playback_rate, playback_rate);
+                        logSpliceDiag(diag, *dodgeClip, 0.0f, prefix);
+                    }
                     sDodgeActive = true;
                     sDodgeElapsed = 0.0f;
                     // sDodgeDuration is the WALL-CLOCK time the
@@ -2312,7 +2949,65 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     {
         sDodgeElapsed += dt;
         if (sDodgeElapsed >= sDodgeDuration)
+        {
             sDodgeActive = false;
+            if (sCombatDebugEnabled)
+                combatLog("[combat:dodge %.4fs] sDodgeActive=false (elapsed=%.3fs/%.3fs)\n",
+                          sWallClockSeconds, sDodgeElapsed, sDodgeDuration);
+        }
+    }
+    // One-shot state change tracking for post-dodge handoff visibility.
+    {
+        static bool sPrevOneShotActive = false;
+        const bool one_shot_active_now = sSampler.isOneShotActive();
+        if (sPrevOneShotActive != one_shot_active_now && sCombatDebugEnabled)
+        {
+            const auto fd = sSampler.frameDiagnostics();
+            combatLog("[combat:one-shot %.4fs] active=%d weight=%.3f phase=%d\n",
+                      sWallClockSeconds, one_shot_active_now ? 1 : 0, fd.one_shot_weight,
+                      fd.one_shot_phase);
+        }
+        sPrevOneShotActive = one_shot_active_now;
+    }
+
+    // Post-dodge attack handoff. Once the dodge's gate has closed AND
+    // the one-shot is fully done blending out, fire the buffered
+    // attack as a normal first-strike. Combat-idle is now showing on
+    // screen (one-shot ended), so the splice is small (per-joint
+    // decay handles whatever's left). This is the "chain LMB into
+    // the roll" UX — the press lands during the dodge, fires on a
+    // clean handoff frame, no spasm.
+    // Post-dodge attack handoff. Wait for the dodge clip to fully end
+    // AND for the one-shot to fully blend out before firing. The
+    // earlier "cancel mid-roll at 65%" experiment fired the attack
+    // when the player was tucked mid-dive, producing 89cm hand and
+    // 47cm foot offsets at the splice (visible full-body spasm).
+    // The diagnostic in combat-debug.log made this concrete: the
+    // mid-roll pose IS catastrophically far from the jab's authored
+    // t=0 pose. Clean splice requires waiting for the roll to settle
+    // back to combat-idle pose first.
+    if (sPostDodgeAttack.pending && !sDodgeActive && !sSampler.isOneShotActive())
+    {
+        const float wait_seconds = sWallClockSeconds - sPostDodgeAttack.buffered_at;
+        AttackChainState& chain = (sPostDodgeAttack.hand == selva::combat::HandSide::Right)
+                                      ? sChainRight
+                                      : sChainLeft;
+        chain.chain_index = 0;
+        chain.technique_index = -1;
+        chain.is_finisher = false;
+        chain.missed = false;
+        const TechniqueDispatch td = dispatchTechniqueForPress(
+            sEquipment, sPostDodgeAttack.hand, AttackKind::Light, /*chain_index=*/0,
+            /*current_locked=*/-1, sPostDodgeAttack.button);
+        if (td.valid)
+        {
+            chain.technique_index = td.locked;
+            if (fireAttack(sPostDodgeAttack.hand, AttackKind::Light))
+                combat_input_this_frame = true;
+            combatLog("[combat:rhythm %.4fs] post-dodge attack FIRED (waited %.3fs since press)\n",
+                      sWallClockSeconds, wait_seconds);
+        }
+        sPostDodgeAttack.pending = false;
     }
 
     // Frame-capture timer. Independent of sDodgeActive so we can also
@@ -2435,18 +3130,14 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         }
     }
 
-    // Movement-lock policy mirrors the body-mask:
-    //   * Light + already-walking attacks (upper-body mask) → no lock,
-    //     the gait keeps going under the swing.
-    //   * Standing-still light, Heavy, Running → lock. The whole body
-    //     committed to the clip; WASD inputs are ignored until the
-    //     one-shot blends out.
-    // We approximate "walking-attack" by checking if WASD is currently
-    // held. If the player let go between the swing start and now, the
-    // attack still completes uninterrupted via the !attack_locking
-    // path — only Heavy/Running ever truly freeze the player in place.
+    // Every active attack one-shot locks movement until it blends out.
+    // The whole body is committed to the clip, so letting WASD push the
+    // player would compound translation against the attack's authored
+    // hip drive. WASD held during the lock is honored as soon as the
+    // one-shot ends — the SM picks `walking` (combat-idle if not moving)
+    // automatically because `is_moving` is read live each frame.
     const bool one_shot_active = sSampler.isOneShotActive();
-    const bool attack_locks = sActiveAttackKind != AttackKind::Light || !wasd_held;
+    const bool attack_locks = true;
     // Dodge always locks movement — the dodge code drives sPlayer.pos
     // along sDodgeDir for the clip's duration. Letting WASD also push
     // the player would compound translation again (same pattern as the
@@ -2505,13 +3196,73 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         // pick up the right clips (start_walking, run_to_stop, etc.)
         // and so phase-matched crossfades only fire between gait-cycle
         // peers (walk ↔ run).
-        const bool is_moving = glm::length(moveIntent) > 0.0001f;
-        const bool is_sprinting = sPlayer.sprinting;
+        //
+        // Suppress is_moving while an attack is in flight OR within
+        // the post-attack recovery window. Without the recovery
+        // suppression, WASD smashing the moment the one-shot ends
+        // can ping-pong walking ↔ idle multiple times per second and
+        // produce visible leg spasms — even with reverse-blend
+        // protection on the sampler side. Yaw still responds (the
+        // turn-toward-intent below isn't gated), so the player can
+        // re-aim mid-recovery; just no walking commit.
+        const bool wasd_intent_raw = glm::length(moveIntent) > 0.0001f;
+        // Debounce: SM commits to a wasd_intent change only after the
+        // raw value has disagreed continuously with the stable value
+        // for wasd_debounce_seconds. Held WASD reaches walking after
+        // the debounce delay; a brief tap (less than debounce) never
+        // commits; rapid mashing never accumulates because each
+        // tap-release resets the disagreement timer.
+        if (wasd_intent_raw == sStableWasdIntent)
+        {
+            sWasdDisagreeStartedAt = -1.0f; // raw matches stable; no pending change
+        }
+        else if (sWasdDisagreeStartedAt < 0.0f)
+        {
+            sWasdDisagreeStartedAt = sWallClockSeconds; // first frame of disagreement
+        }
+        else if (sWallClockSeconds - sWasdDisagreeStartedAt >= tun.wasd_debounce_seconds)
+        {
+            sStableWasdIntent = wasd_intent_raw;
+            sWasdDisagreeStartedAt = -1.0f;
+        }
+        const bool wasd_intent = sStableWasdIntent;
+        const bool attack_in_flight = sSampler.isOneShotActive() || sPendingFirstAction.active;
+        const bool in_attack_recovery = sWallClockSeconds < sLocoLockoutUntil;
+        const bool loco_lockout = attack_in_flight || in_attack_recovery;
+        const bool is_moving = wasd_intent && !loco_lockout;
+        const bool is_sprinting = sPlayer.sprinting && !loco_lockout;
+        // Trace every change in (wasd_intent, attack_in_flight,
+        // in_attack_recovery, is_moving). Lets us correlate input
+        // edges to SM decisions to spasm timing.
+        if (sCombatDebugEnabled)
+        {
+            static bool prev_wasd_intent = false;
+            static bool prev_attack_in_flight = false;
+            static bool prev_in_recovery = false;
+            static bool prev_is_moving = false;
+            if (wasd_intent != prev_wasd_intent || attack_in_flight != prev_attack_in_flight ||
+                in_attack_recovery != prev_in_recovery || is_moving != prev_is_moving)
+            {
+                const auto fd = sSampler.frameDiagnostics();
+                combatLog("[sm %.4fs] wasd=%d att=%d rec=%d -> is_moving=%d  "
+                          "(lockout_until=%.3fs, one_shot_w=%.2f, loco_w=%.2f)\n",
+                          sWallClockSeconds, wasd_intent ? 1 : 0, attack_in_flight ? 1 : 0,
+                          in_attack_recovery ? 1 : 0, is_moving ? 1 : 0, sLocoLockoutUntil,
+                          fd.one_shot_weight, fd.loco_blend_weight);
+                prev_wasd_intent = wasd_intent;
+                prev_attack_in_flight = attack_in_flight;
+                prev_in_recovery = in_attack_recovery;
+                prev_is_moving = is_moving;
+            }
+        }
         const bool clip_done_this_frame = sSampler.locomotionClipFinished();
         // "Armed" = at least one hand has a weapon equipped. The
         // combat-ready idle clip differs by armed state — sword-and-
         // shield guard pose vs unarmed brawler bounce.
-        const bool is_armed = sEquipment.right != nullptr || sEquipment.left != nullptr;
+        // "Armed" means holding a real weapon — fists (the synthesized
+        // unarmed default) don't count, so the combat-idle picker
+        // chooses unarmed_combat_idle, not sword_and_shield_idle_4.
+        const bool is_armed = !isUnarmed(sEquipment);
         const auto sm_out = tickLocomotionStateMachine(
             sLocomotionSM, is_moving, is_sprinting, clip_done_this_frame,
             combat_input_this_frame, dt, tun.combat_idle_grace_seconds, is_armed,
@@ -2528,9 +3279,22 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         // becomes visible and persists the held-shield pose. On
         // release, sBlockingActive flips false, the override drops,
         // and the SM picks combat-idle / walking / running normally.
-        if (sBlockingActive)
+        // Held-block locomotion override only applies when there's a
+        // dedicated block-idle clip (buckler does, unarmed doesn't —
+        // unarmed holds the last frame of the one-shot itself).
+        if (sBlockingActive && offHandCanBlock(sEquipment))
             clip_name = "sword_and_shield_block_idle";
         clip = sClips.get(clip_name);
+        // Trace SM clip-choice changes. Pairs with the input trace so
+        // we can see exactly which press caused which transition.
+        if (sCombatDebugEnabled && clip_name != sLastLocoClipName)
+        {
+            combatLog("[sm %.4fs] loco-pick %s -> %s (blend=%.3fs)\n", sWallClockSeconds,
+                      sLastLocoClipName.c_str(), clip_name.c_str(), sm_out.blend_seconds);
+        }
+        // Stash for next-frame combat-fire diagnostics (input runs
+        // before this block, so we expose the previous frame's pick).
+        sLastLocoClipName = clip_name;
         // Per-clip override from locomotion.json (looped clips like
         // walking/running may want longer/shorter blends than the SM
         // default). Transition clips fall back to the SM-supplied
@@ -2542,6 +3306,23 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     {
         ZoneScopedN("sampler.update");
         sSampler.update(*clip, dt, clip_blend_seconds, clip_loops);
+    }
+
+    // Sticky per-frame loco-state trace. Whenever the loco_blend_weight
+    // is mid-ramp (not 0 nor 1) OR a one_shot is blending, dump the
+    // sampler's state every frame. Lets us watch the rapid-WASD spasm
+    // unfold tick-by-tick.
+    if (sCombatDebugEnabled)
+    {
+        const auto fd = sSampler.frameDiagnostics();
+        const bool loco_mid = fd.loco_blend_weight > 0.001f && fd.loco_blend_weight < 0.999f;
+        const bool one_shot_mid = fd.one_shot_weight > 0.001f && fd.one_shot_weight < 0.999f;
+        if (loco_mid || one_shot_mid)
+        {
+            combatLog("[fr %.4fs] loco_w=%.3f one_shot_w=%.3f phase=%d clip=%s\n",
+                      sWallClockSeconds, fd.loco_blend_weight, fd.one_shot_weight,
+                      fd.one_shot_phase, sLastLocoClipName.c_str());
+        }
     }
 
     // Root-motion translation (locomotion). When enabled and not mid-
@@ -2879,13 +3660,182 @@ static void tunedSlider(const char* label, float* val, float min, float max, flo
 // tunable: a one-line tunedSlider here and a field on Tunables.
 // ---------------------------------------------------------------------------
 
+// What button the next chain press needs. Reads the locked technique
+// when one is set; otherwise scans every technique's slot for distinct
+// buttons. Returns "L", "R", or "L/R" for the unlocked-ambiguous case.
+// "—" when no technique exposes this slot.
+static const char* nextExpectedButtonLabel(const AttackChainState& chain, AttackKind kind)
+{
+    using selva::combat::Grip;
+    using selva::combat::HandSide;
+    const selva::combat::Weapon* w = sEquipment.right;
+    if (w == nullptr || w->cls == nullptr)
+        return "-";
+    const auto& aset = (sEquipment.grip == Grip::TwoHanded) ? w->cls->two_handed : w->cls->one_handed;
+    const auto* techniques = &aset.light;
+    if (kind == AttackKind::Heavy)
+        techniques = &aset.heavy;
+    else if (kind == AttackKind::Running && !aset.running.empty())
+        techniques = &aset.running;
+    if (techniques->empty())
+        return "-";
+
+    auto label_for = [](const std::string& s) -> const char*
+    {
+        if (s == "LMB")
+            return "L";
+        if (s == "RMB")
+            return "R";
+        return "*"; // any/empty — accepts either
+    };
+
+    if (chain.technique_index >= 0 &&
+        chain.technique_index < static_cast<int>(techniques->size()))
+    {
+        const auto& atks = (*techniques)[chain.technique_index].attacks;
+        if (chain.chain_index < 0 || chain.chain_index >= static_cast<int>(atks.size()))
+            return "-";
+        return label_for(atks[chain.chain_index].expected_button);
+    }
+    // Unlocked: union of every technique's slot at chain_index.
+    bool has_lmb = false;
+    bool has_rmb = false;
+    bool has_any = false;
+    for (const auto& tech : *techniques)
+    {
+        if (chain.chain_index < 0 || chain.chain_index >= static_cast<int>(tech.attacks.size()))
+            continue;
+        const auto& exp = tech.attacks[chain.chain_index].expected_button;
+        if (exp == "LMB")
+            has_lmb = true;
+        else if (exp == "RMB")
+            has_rmb = true;
+        else
+            has_any = true;
+    }
+    if (has_any || (has_lmb && has_rmb))
+        return "L/R";
+    if (has_lmb)
+        return "L";
+    if (has_rmb)
+        return "R";
+    return "-";
+}
+
+// Combo HUD: always-on overlay showing current chain step, the next-
+// expected button, the rhythm window (with the perfect sub-zone shown
+// in a brighter color), and last-press accuracy.
+static void renderComboHud()
+{
+    const auto& chain = sChainRight; // unarmed shares the right chain
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    const float w = 360.0f;
+    const float h = 80.0f;
+    ImGui::SetNextWindowPos(ImVec2(vp->WorkPos.x + (vp->WorkSize.x - w) * 0.5f,
+                                   vp->WorkPos.y + vp->WorkSize.y - h - 30.0f),
+                            ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_Always);
+    ImGui::SetNextWindowBgAlpha(0.55f);
+    ImGui::Begin("##ComboHUD", nullptr,
+                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav |
+                     ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoInputs |
+                     ImGuiWindowFlags_NoMove);
+
+    // Step counter + last press result.
+    const char* state = chain.missed                    ? "MISSED"
+                        : chain.last_press_was_perfect  ? "PERFECT"
+                        : (chain.last_press_accuracy > 0.0f) ? "HIT"
+                                                             : "READY";
+    ImGui::Text("Combo: %d  -  %s  acc=%.2f", chain.chain_index, state,
+                chain.last_press_accuracy);
+
+    // Next-button label drawn left of the rhythm bar. "L" = LMB, "R" =
+    // RMB, "L/R" = either accepts (only in the unlocked-ambiguous
+    // window between press 1 and the press that locks the technique).
+    const char* next_btn = nextExpectedButtonLabel(chain, AttackKind::Light);
+    const float btn_box_w = 28.0f;
+    const float bar_h = 16.0f;
+    const ImVec2 pos = ImGui::GetCursorScreenPos();
+    auto* draw = ImGui::GetWindowDrawList();
+    const ImU32 btn_bg = IM_COL32(60, 60, 100, 220);
+    const ImU32 btn_fg = IM_COL32(230, 230, 255, 255);
+    draw->AddRectFilled(pos, ImVec2(pos.x + btn_box_w, pos.y + bar_h), btn_bg);
+    const ImVec2 ts = ImGui::CalcTextSize(next_btn);
+    draw->AddText(ImVec2(pos.x + (btn_box_w - ts.x) * 0.5f,
+                         pos.y + (bar_h - ts.y) * 0.5f),
+                  btn_fg, next_btn);
+
+    // Window bar: horizontal, filled green inside [open, close], with a
+    // brighter inner band for the "perfect" sub-zone, and a marker for
+    // current wall-clock time.
+    const float open = chain.cancel_window_open_at;
+    const float close = chain.cancel_window_close_at;
+    const float now = sWallClockSeconds;
+    const float view_secs = 1.0f; // window of time around `now`
+    const float bar_x = pos.x + btn_box_w + 6.0f;
+    const float bar_w = w - 16.0f - (btn_box_w + 6.0f);
+    const ImU32 bg = IM_COL32(40, 40, 40, 200);
+    const ImU32 win = IM_COL32(60, 200, 80, 220);
+    const ImU32 perfect = IM_COL32(255, 220, 80, 240);
+    const ImU32 marker = IM_COL32(255, 240, 80, 255);
+    draw->AddRectFilled(ImVec2(bar_x, pos.y), ImVec2(bar_x + bar_w, pos.y + bar_h), bg);
+    if (close > open && open > 0.0f)
+    {
+        const float view_start = now - view_secs * 0.5f;
+        const float view_end = now + view_secs * 0.5f;
+        auto t_to_x = [&](float t) -> float
+        {
+            const float u = (t - view_start) / (view_end - view_start);
+            return bar_x + std::clamp(u, 0.0f, 1.0f) * bar_w;
+        };
+        const float x_open = t_to_x(open);
+        const float x_close = t_to_x(close);
+        if (x_close > x_open)
+            draw->AddRectFilled(ImVec2(x_open, pos.y), ImVec2(x_close, pos.y + bar_h), win);
+
+        // Perfect band: the central fraction of the window where
+        // last_press_accuracy >= perfect_accuracy_threshold. accuracy
+        // = 1 - |dt| / half_width; perfect needs accuracy >= T, i.e.
+        // |dt| <= half_width * (1 - T). Width on screen = full window
+        // width * (1 - T).
+        const float threshold = selva::tuning::current().perfect_accuracy_threshold;
+        const float perfect_frac = std::clamp(1.0f - threshold, 0.0f, 1.0f);
+        const float center = 0.5f * (open + close);
+        const float half = 0.5f * (close - open) * perfect_frac;
+        const float x_perfect_open = t_to_x(center - half);
+        const float x_perfect_close = t_to_x(center + half);
+        if (x_perfect_close > x_perfect_open)
+            draw->AddRectFilled(ImVec2(x_perfect_open, pos.y),
+                                ImVec2(x_perfect_close, pos.y + bar_h), perfect);
+    }
+    const float x_now = bar_x + bar_w * 0.5f;
+    draw->AddLine(ImVec2(x_now, pos.y - 2), ImVec2(x_now, pos.y + bar_h + 2), marker, 2.0f);
+    ImGui::Dummy(ImVec2(w - 16.0f, bar_h));
+
+    ImGui::End();
+}
+
 static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
 {
+    if (sCombatDebugEnabled)
+        renderComboHud();
+
     if (!sShowTuningPanel)
         return;
 
     auto& tun = selva::tuning::current();
     ImGui::Begin("Selva Oscura Tuning (F1)", &sShowTuningPanel);
+
+    if (ImGui::CollapsingHeader("Debug", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        ImGui::SliderFloat("Time scale", &tun.time_scale, 0.05f, 2.0f, "%.2fx");
+        ImGui::SameLine();
+        if (ImGui::SmallButton("1x"))
+            tun.time_scale = 1.0f;
+        ImGui::SameLine();
+        if (ImGui::SmallButton("0.25x"))
+            tun.time_scale = 0.25f;
+    }
 
     if (ImGui::CollapsingHeader("Locomotion", ImGuiTreeNodeFlags_DefaultOpen))
     {
@@ -2932,6 +3882,8 @@ static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
                     "%.2f");
         tunedSlider("Input buffer (s)", &tun.combo_input_buffer_seconds, 0.05f, 0.50f, 0.025f,
                     "%.3f");
+        tunedSlider("First-strike blend (s)", &tun.first_strike_blend_seconds, 0.05f, 0.50f,
+                    0.025f, "%.3f");
         tunedSlider("Chain blend (s)", &tun.combo_chain_blend_seconds, 0.05f, 0.50f, 0.025f,
                     "%.3f");
         tunedSlider("Attack playback rate", &tun.attack_playback_rate, 0.5f, 2.5f, 0.05f, "%.2f");
@@ -2941,7 +3893,30 @@ static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
             resolveAttackCancelOpenTimes();
         if (ImGui::Button("Re-resolve attack windows"))
             resolveAttackCancelOpenTimes();
-        ImGui::Checkbox("Log chain fires", &sLogChainFires);
+        // Master debug switch — gates the combo HUD, the per-fire
+        // combatLog spam, the splice-distance joint samples, and the
+        // chain-link velocity diag. Off by default in normal play
+        // because the per-attack diagnostic work is heavy enough to
+        // visibly drop frames (Tracy showed selvaPerFrame max=77ms
+        // with it on vs ~1ms baseline). Flip on when iterating.
+        if (ImGui::Checkbox("Combat debug overlay + diagnostics",
+                            &sCombatDebugEnabled))
+        {
+            // Open / close the combat-debug log file when the toggle
+            // changes so we don't pay the fopen cost when the user
+            // isn't looking at the file.
+            if (sCombatDebugEnabled && sCombatLog == nullptr)
+            {
+                sCombatLog = std::fopen("combat-debug.log", "w");
+                selva::anim::setSamplerDiagLog(sCombatLog);
+            }
+            else if (!sCombatDebugEnabled && sCombatLog != nullptr)
+            {
+                selva::anim::setSamplerDiagLog(nullptr);
+                std::fclose(sCombatLog);
+                sCombatLog = nullptr;
+            }
+        }
 
         // Live tuning slider for the equipped weapon's 1H light chain
         // entry [1] (the "second swing" — slash_3 in the default
@@ -2959,9 +3934,9 @@ static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
             // holds const pointers — its weapon -> cls path is const).
             // Look up the class entry by id and edit there.
             auto it = sWeaponClasses.by_id.find(sEquipment.right->cls->id);
-            if (it != sWeaponClasses.by_id.end())
+            if (it != sWeaponClasses.by_id.end() && !it->second.one_handed.light.empty())
             {
-                auto& chain_vec = it->second.one_handed.light;
+                auto& chain_vec = it->second.one_handed.light[0].attacks;
                 if (chain_vec.size() >= 2)
                 {
                     auto& slot1 = chain_vec[1];
@@ -2996,6 +3971,22 @@ static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
                     "%.2f");
         tunedSlider("Tap window (s)", &tun.dodge_tap_window, 0.05f, 0.40f, 0.025f, "%.3f");
         tunedSlider("Steer rate (rad/s)", &tun.dodge_steer_rate, 0.0f, 15.0f, 0.5f, "%.1f");
+    }
+
+    if (ImGui::CollapsingHeader("Sprint Finisher", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        tunedSlider("Start trim (s)", &tun.sprint_finisher_start_seconds, 0.0f, 0.50f, 0.025f,
+                    "%.3f");
+        tunedSlider("Blend-in (s)", &tun.sprint_finisher_blend_in_seconds, 0.0f, 0.40f, 0.025f,
+                    "%.3f");
+        tunedSlider("Lockout duration (s)", &tun.sprint_finisher_lockout_seconds, 0.10f, 3.0f,
+                    0.05f, "%.2f");
+    }
+
+    if (ImGui::CollapsingHeader("Post-Attack Lockout", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        tunedSlider("Extension past cancel window (s)", &tun.attack_lockout_extension_seconds,
+                    0.0f, 1.50f, 0.025f, "%.3f");
     }
 
     if (ImGui::CollapsingHeader("Animation Debug", ImGuiTreeNodeFlags_DefaultOpen))
@@ -3139,12 +4130,20 @@ static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
 
 int main(int /*argc*/, char* /*argv*/[])
 {
-    // Open the combat-debug log next to the exe. Truncate so each
-    // run is self-contained. Best-effort — if fopen fails we fall
-    // back to stderr-only via combatLog().
-    sCombatLog = std::fopen("combat-debug.log", "w");
-    if (sCombatLog != nullptr)
-        std::fprintf(stderr, "[combat:log] writing diagnostics to combat-debug.log\n");
+    // Combat-debug log file: opened at startup when sCombatDebugEnabled
+    // defaults true (iteration mode), or lazily by the F1 toggle when
+    // it defaults false (normal play). Truncate on open so each run
+    // starts with a fresh log.
+    if (sCombatDebugEnabled)
+    {
+        sCombatLog = std::fopen("combat-debug.log", "w");
+        if (sCombatLog != nullptr)
+            std::fprintf(stderr, "[combat:log] writing diagnostics to combat-debug.log\n");
+        // Route sampler-side loco diagnostics (reverse-blend, cache
+        // resume, cold-enter) into the same file. PoseSampler doesn't
+        // know about combat-debug.log on its own — game wires it.
+        selva::anim::setSamplerDiagLog(sCombatLog);
+    }
 
     Engine engine;
 
@@ -3228,6 +4227,24 @@ int main(int /*argc*/, char* /*argv*/[])
         const int n_classes = sWeaponClasses.loadDirectory(kWeaponClassesDir);
         const int n_weapons = sWeapons.loadDirectory(kWeaponsDir, sWeaponClasses);
         sEquipment = selva::combat::loadEquipment(kLoadoutPath, sWeapons);
+        // Synthesize a "fists" Weapon record pointing at the unarmed
+        // class; substitute it into any empty hand slot. Equipment is
+        // never null after this — empty hand = fists. Stats are
+        // intentionally minimal; future work plumbs body-derived
+        // unarmed_damage / scaling like prison-escape-game does.
+        static selva::combat::Weapon sFistsWeapon;
+        const auto unarmed_it = sWeaponClasses.by_id.find("unarmed");
+        if (unarmed_it != sWeaponClasses.by_id.end())
+        {
+            sFistsWeapon.id = "fists";
+            sFistsWeapon.name = "Fists";
+            sFistsWeapon.class_id = "unarmed";
+            sFistsWeapon.cls = &unarmed_it->second;
+            if (sEquipment.right == nullptr)
+                sEquipment.right = &sFistsWeapon;
+            if (sEquipment.left == nullptr)
+                sEquipment.left = &sFistsWeapon;
+        }
         resolveAttackCancelOpenTimes();
         std::fprintf(
             stderr, "[combat] loaded %d class(es), %d weapon(s); right=%s left=%s grip=%s\n",

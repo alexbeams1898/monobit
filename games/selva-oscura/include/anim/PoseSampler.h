@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdio>
 #include <glm/glm.hpp>
 #include <memory>
 #include <vector>
@@ -108,6 +109,21 @@ struct PoseSampler
     void requestInertializationFromPose(float duration_seconds,
                                         const std::vector<ozz::math::SoaTransform>& source_pose);
 
+    // Cancel any pending inertialization capture. Used after playOneShot
+    // when the caller wants pure crossfade with no offset-decay overlay
+    // (e.g. one-shots authored with their own bookend so the splice is
+    // already at-zero by construction).
+    void cancelInertialization();
+
+    // Configure per-joint decay scaling. Each joint's decay window =
+    // base + scale * |offset_radians|, clamped to max. Joints with
+    // small pose offsets keep the snappy `base` window; joints with
+    // large offsets get longer windows so their motion reads as
+    // smooth rather than as a fast snap. Set once at startup; the
+    // values are read at every capture.
+    void setInertializationScaling(float base_seconds, float scale_seconds_per_radian,
+                                   float max_seconds);
+
     // Snap the active locomotion track to clip-time `t_seconds`. Used
     // before firing an action whose blend-in source-pose works best
     // when the looping locomotion is at a known frame (e.g. combat-
@@ -168,7 +184,11 @@ struct PoseSampler
     // one-shot does NOT loop; it ends when its clip duration elapses.
     void playOneShot(const AnimationClip& clip, float blend_in_seconds, float blend_out_seconds,
                      BodyMask mask = BodyMask::Full, float start_time_seconds = 0.0f,
-                     float playback_rate = 1.0f);
+                     float playback_rate = 1.0f, bool freeze_last = false);
+
+    // Request the active one-shot to start blending out NOW. Used to
+    // release a held (freeze_last) one-shot like the unarmed block.
+    void releaseOneShot();
 
     // True while a one-shot is the dominant clip (>50% weight). Combat
     // gameplay reads this to gate movement, queue follow-ups, etc.
@@ -406,5 +426,11 @@ struct PoseSampler
 // Build a PoseSampler bound to the given skeleton + mesh. The skeleton
 // and mesh must outlive the returned sampler.
 PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh);
+
+// Diagnostic log target for sampler-side events (loco crossfade swaps,
+// reverse-blends, cache resumes). nullptr = stderr only. The game wires
+// this to its combat-debug.log so the user sees sampler events alongside
+// combat events without needing to launch from a shell.
+void setSamplerDiagLog(std::FILE* file);
 
 } // namespace selva::anim

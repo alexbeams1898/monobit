@@ -186,6 +186,7 @@ set(mixamo_pack_dirs
     # (e.g. config/weapon_classes/sword.json) picks which version
     # each chain entry uses.
     "${xbot_dir}/source/Pro Sword and Shield Pack Reposed"
+    "${xbot_dir}/source/Action Adventure Pack Reposed"
 )
 
 # Generate the gltf2ozz retarget config once at configure time. Refers to

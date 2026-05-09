@@ -59,6 +59,10 @@ struct WeaponAttack
     // Negative sentinel = auto-detect via clip scan (default).
     float cancel_open_seconds = -1.0f;
     std::vector<std::string> motion_joints = {};
+    // Which input button the player must press to land this step.
+    // "" / "any" = either button. "LMB" = left mouse only. "RMB" = right
+    // mouse only. Pressing the wrong button is a chain miss.
+    std::string expected_button = {};
     // Override: if >= 0, force resolved_chain_link_start_seconds to
     // this value instead of motion_start - 0.05. Set to 0.0 for clips
     // that have a Blender-authored bookend in their first ~5-10
@@ -97,7 +101,8 @@ struct WeaponAttack
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(WeaponAttack, clip, recovery_seconds,
                                                 cancel_open_seconds, motion_joints,
-                                                chain_link_start_seconds, chain_link_blend_seconds);
+                                                chain_link_start_seconds, chain_link_blend_seconds,
+                                                expected_button);
 
 // All attack clips available within one grip mode. Slots:
 //   light   — standing or walking primary attack chain
@@ -106,18 +111,25 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(WeaponAttack, clip, recovery_sec
 //             distinct from light/heavy. Optional; if empty, gameplay
 //             falls back to light when sprinting + attacking.
 //
-// Each slot is a CHAIN — a sequence of attacks the player can string
-// together by pressing the attack button during each one's cancel
-// window. A single-entry chain (length 1) means "press to do this one
-// attack, no follow-up." A 3-entry chain is a 3-hit combo.
-//
-// Mixamo packs typically ship related slash 1/2/3 clips that read as
-// a chain when played back-to-back; the data here makes that explicit.
+// A named technique = an ordered chain of attacks. Player presses
+// follow `attacks[i].expected_button` per step; chain breaks on
+// mismatch.
+struct WeaponTechnique
+{
+    std::string id = {};
+    std::vector<WeaponAttack> attacks = {};
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(WeaponTechnique, id, attacks);
+
+// All techniques available within one grip mode. The runtime picks
+// which technique to follow based on the second press's button (the
+// first press is always slot 0 of every technique). When techniques
+// share slot-0 button + slot-1 button, the first-listed wins.
 struct WeaponGripAnimSet
 {
-    std::vector<WeaponAttack> light = {};
-    std::vector<WeaponAttack> heavy = {};
-    std::vector<WeaponAttack> running = {};
+    std::vector<WeaponTechnique> light = {};
+    std::vector<WeaponTechnique> heavy = {};
+    std::vector<WeaponTechnique> running = {};
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(WeaponGripAnimSet, light, heavy, running);
 
@@ -144,8 +156,17 @@ struct WeaponClass
     WeaponGripAnimSet one_handed = {};
     WeaponGripAnimSet two_handed = {};
     WeaponAttach attach = {};
+    // Trim leading idle frames off the block clip. >= 0 = use as-is;
+    // < 0 (default) = auto-detect via hand-velocity scan, same as
+    // chain-link motion-start.
+    float block_clip_start_seconds = -1.0f;
+    // Per-class attack playback rate. <= 0 = fall back to the global
+    // tunables.attack_playback_rate. Lets unarmed punches (snappier)
+    // and sword swings (heavier) keep their authored pace independently.
+    float attack_playback_rate = 0.0f;
 };
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(WeaponClass, id, one_handed, two_handed, attach);
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(WeaponClass, id, one_handed, two_handed, attach,
+                                                block_clip_start_seconds, attack_playback_rate);
 
 // Registry of all WeaponClasses, keyed by `id`. Populated at startup by
 // scanning config/weapon_classes/*.json. Pointers handed out from get()

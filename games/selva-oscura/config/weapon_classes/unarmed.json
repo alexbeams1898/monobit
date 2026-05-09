@@ -1,0 +1,70 @@
+{
+  "id": "unarmed",
+  "attack_playback_rate": 1.3,
+  "_comment_chain": "Two 3-link punch techniques. Chain A (LMB-RMB-LMB) plays jab -> hook -> combo. Chain B (LMB-LMB-RMB) plays jab -> jab -> hook. Both share a slot-0 jab; the runtime locks the technique on press 2 (which button matches slot 1 of which technique). Cancel-open auto-detects from each clip's hand-velocity scan.",
+  "one_handed": {
+    "light": [
+      {
+        "id": "jab_hook_combo",
+        "attacks": [
+          { "clip": "jab",   "expected_button": "LMB" },
+          { "clip": "hook",  "expected_button": "RMB" },
+          { "clip": "combo", "expected_button": "LMB" }
+        ]
+      },
+      {
+        "id": "jab_jab_hook",
+        "attacks": [
+          { "clip": "jab",  "expected_button": "LMB" },
+          { "clip": "jab",  "expected_button": "LMB" },
+          { "clip": "hook", "expected_button": "RMB" }
+        ]
+      }
+    ],
+    "_comment_running": "When the player is sprinting at chain-finisher time, the final attack swaps to the running slot's first attack instead of the locked technique's last clip. Single-clip chain (no further branches).",
+    "running": [
+      {
+        "id": "flying_knee",
+        "attacks": [
+          { "clip": "flying_knee_punch_combo" }
+        ]
+      }
+    ]
+  },
+  "two_handed": {
+    "_comment": "Unarmed has no two-handed grip; light slot mirrors one-handed for fallback.",
+    "light": [
+      {
+        "id": "jab_hook_combo",
+        "attacks": [
+          { "clip": "jab",   "expected_button": "LMB" },
+          { "clip": "hook",  "expected_button": "RMB" },
+          { "clip": "combo", "expected_button": "LMB" }
+        ]
+      },
+      {
+        "id": "jab_jab_hook",
+        "attacks": [
+          { "clip": "jab",  "expected_button": "LMB" },
+          { "clip": "jab",  "expected_button": "LMB" },
+          { "clip": "hook", "expected_button": "RMB" }
+        ]
+      }
+    ],
+    "_comment_running": "When the player is sprinting at chain-finisher time, the final attack swaps to the running slot's first attack instead of the locked technique's last clip. Single-clip chain (no further branches).",
+    "running": [
+      {
+        "id": "flying_knee",
+        "attacks": [
+          { "clip": "flying_knee_punch_combo" }
+        ]
+      }
+    ]
+  },
+  "attach": {
+    "bone_right": "mixamorig:RightHand",
+    "bone_left":  "mixamorig:LeftHand",
+    "offset_translation":        [0.0, 0.0, 0.0],
+    "offset_rotation_euler_deg": [0.0, 0.0, 0.0]
+  }
+}

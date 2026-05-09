@@ -8,6 +8,9 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <cstdarg>
+#include <cstdio>
+#include <unordered_map>
 #include <ozz/animation/runtime/animation.h>
 #include <ozz/animation/runtime/blending_job.h>
 #include <ozz/animation/runtime/local_to_model_job.h>
@@ -20,6 +23,35 @@
 
 namespace selva::anim
 {
+
+// Sampler diagnostic log target (set by game code at startup; nullptr
+// = stderr only). Used by samplerDiagLog below; called from the loco
+// crossfade path to record reverse-blend / cache-resume / cold-enter
+// events. Lets a normal launch (no shell stderr capture) still produce
+// a usable log via combat-debug.log.
+namespace
+{
+std::FILE* g_diag_log = nullptr;
+}
+
+void setSamplerDiagLog(std::FILE* file)
+{
+    g_diag_log = file;
+}
+
+namespace
+{
+void samplerDiagLog(const char* fmt, ...)
+{
+    if (g_diag_log == nullptr)
+        return;
+    va_list args;
+    va_start(args, fmt);
+    std::vfprintf(g_diag_log, fmt, args);
+    std::fflush(g_diag_log);
+    va_end(args);
+}
+}
 
 // ---------------------------------------------------------------------------
 // Three-track sampler:
@@ -137,6 +169,15 @@ struct PoseSampler::Impl
     Track loco_previous;
     Track one_shot;
 
+    // Last-seen clip-time per animation. Lets a non-gait clip
+    // (combat-stance idle, peaceful idle) resume from where it left
+    // off when re-entered, instead of snapping to t=0. unarmed_combat_
+    // idle is a 3-second bouncing animation; restarting its time
+    // every time the player ping-pongs WASD produces a visible leg
+    // spasm. Updated whenever we leave a clip (clip-change swap path
+    // OR blend completion), read on re-entry.
+    std::unordered_map<const ozz::animation::Animation*, float> last_clip_time;
+
     // Locomotion crossfade state. weight = how much of `loco_current` is
     // mixed into the locomotion pose (0 = all previous, 1 = all current).
     // duration = total length of the in-progress fade; elapsed = how far
@@ -156,6 +197,10 @@ struct PoseSampler::Impl
     float one_shot_blend_out_seconds = 0.0f;
     float one_shot_playback_rate = 1.0f;
     PoseSampler::BodyMask one_shot_mask = PoseSampler::BodyMask::Full;
+    // When true, time stops advancing once it reaches clip end; the
+    // body holds the last frame indefinitely until releaseOneShot()
+    // requests blend-out. Used for held actions like unarmed block.
+    bool one_shot_freeze_last = false;
 
     glm::mat4 root_transform = glm::mat4(1.0f);
     std::vector<glm::mat4> inverse_bind_matrices;
@@ -247,8 +292,36 @@ struct PoseSampler::Impl
     // pose-difference; full velocity-aware inertialization is a
     // future upgrade).
     bool decay_active = false;
+    // Master elapsed timer — ticks 0 → decay_max_seconds wall-clock,
+    // then deactivates. Per-joint windows can complete earlier (their
+    // weight clamps to zero); the master timer just bounds the
+    // active period.
     float decay_elapsed = 0.0f;
+    // Per-joint decay timing. duration is set at capture time per-
+    // joint — joints with large pose offsets get proportionally
+    // longer windows so their visible motion reads as smooth instead
+    // of a fast snap. A single global duration meant a 90° leg
+    // rotation traversed in the same time as a 5° finger rotation:
+    // the leg looked like a spasm.
+    //
+    // Storage: one SimdFloat4 per SoA-joint (4 scalar joints packed),
+    // matching the SoA layout used everywhere else in this file.
+    // Computed in seconds. The decay-application step reads each
+    // lane independently when computing the cubic ease-out weight.
+    std::vector<ozz::math::SimdFloat4> decay_duration_per_joint;
+    std::vector<ozz::math::SimdFloat4> decay_elapsed_per_joint;
+    // Fallback / "request" duration: the value supplied to
+    // requestInertialization() / set during a clip-change. At capture
+    // time, each joint's per-lane duration is scaled relative to this
+    // base by its offset magnitude.
     float decay_duration = 0.22f;
+    // Per-joint scaling configuration (set via setInertializationScaling).
+    // duration_per_joint = base + scale_per_radian * |offset|, clamped
+    // to max. base defaults match the legacy single-duration behavior;
+    // scale=0 is a kill-switch that returns to the old global model.
+    float decay_base_seconds = 0.10f;
+    float decay_scale_per_radian = 0.30f;
+    float decay_max_seconds = 0.45f;
     bool pending_capture = false; // set by trigger; consumed at end of next update
     // When true, pre_change_locals already holds the canonical source
     // pose (supplied via requestInertializationFromPose). The capture
@@ -359,6 +432,8 @@ PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh
     sampler.impl->final_locals.resize(n_soa);
     sampler.impl->pre_change_locals.resize(n_soa);
     sampler.impl->post_locals_last.resize(n_soa);
+    sampler.impl->decay_duration_per_joint.assign(n_soa, ozz::math::simd_float4::zero());
+    sampler.impl->decay_elapsed_per_joint.assign(n_soa, ozz::math::simd_float4::zero());
     sampler.impl->model_matrices.resize(n_joints);
     sampler.bone_palette.resize(n_joints);
     sampler.impl->upper_body_weights = buildUpperBodyWeights(ozz_skel);
@@ -396,9 +471,20 @@ PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh
     return sampler;
 }
 
+void PoseSampler::releaseOneShot()
+{
+    if (!impl)
+        return;
+    Impl& s = *impl;
+    if (s.one_shot_phase == OneShotPhase::Inactive)
+        return;
+    s.one_shot_freeze_last = false;
+    s.one_shot_phase = OneShotPhase::BlendOut;
+}
+
 void PoseSampler::playOneShot(const AnimationClip& clip, float blend_in_seconds,
                               float blend_out_seconds, BodyMask mask, float start_time_seconds,
-                              float playback_rate)
+                              float playback_rate, bool freeze_last)
 {
     if (!impl || !impl->skeleton || !clip.isLoaded())
         return;
@@ -413,24 +499,34 @@ void PoseSampler::playOneShot(const AnimationClip& clip, float blend_in_seconds,
     s.one_shot_blend_out_seconds = std::max(0.0f, blend_out_seconds);
     s.one_shot_playback_rate = std::clamp(playback_rate, 0.1f, 10.0f);
     s.one_shot_mask = mask;
+    s.one_shot_freeze_last = freeze_last;
     // Discontinuity: pose will pop from locomotion to one-shot. Force
     // next-frame delta to zero so we don't emit a giant pose-snap
     // delta on the one-shot track. (Locomotion tracks keep their own
     // tracking; only the one-shot just got rebound here.)
     s.one_shot.resetHipTracking();
-    // Inertialization: capture the previous-frame pose and decay any
-    // residual offset over the blend-in window. The crossfade smooths
-    // bulk pose interpolation; inertialization eats the leftover
-    // joint-velocity discontinuity that crossfade can't address.
-    s.pending_capture = true;
-    s.decay_duration = std::max(0.0f, blend_in_seconds);
+    // playOneShot does NOT enroll inertialization on its own. Callers
+    // that want offset-decay-on-top-of-the-clip opt in via an explicit
+    // requestInertialization() call BEFORE playOneShot. Earlier this
+    // function set pending_capture+decay_duration unconditionally —
+    // that silent side effect produced the leg-spasm bug class:
+    // every fire enrolled a decay overlay, including paths where the
+    // caller had no reason to want one (rapid sprint-finisher fires
+    // captured live mid-flying-knee pose and decayed the offset over
+    // the next swing's playback, producing visible wrong-leg motion).
 }
 
 bool PoseSampler::isOneShotActive() const
 {
     if (!impl)
         return false;
-    return impl->one_shot_weight > 0.5f;
+    // True from the moment playOneShot() is called through blend-out.
+    // The earlier `weight > 0.5` test reported false during the FIRST
+    // HALF of the blend-in, which let the gameplay SM keep picking
+    // `walking` while a punch was actually being mixed onto the legs —
+    // produced a visible leg spasm because mid-stride walking pose
+    // and feet-together attack pose blended into each other for ~0.10s.
+    return impl->one_shot_phase != OneShotPhase::Inactive;
 }
 
 bool PoseSampler::locomotionClipFinished() const
@@ -438,6 +534,16 @@ bool PoseSampler::locomotionClipFinished() const
     if (!impl)
         return false;
     return impl->loco_current.finished;
+}
+
+void PoseSampler::cancelInertialization()
+{
+    if (!impl)
+        return;
+    impl->pending_capture = false;
+    impl->pending_capture_from_supplied_source = false;
+    impl->decay_active = false;
+    impl->decay_duration = 0.0f;
 }
 
 void PoseSampler::requestInertialization(float duration_seconds)
@@ -452,6 +558,16 @@ void PoseSampler::requestInertialization(float duration_seconds)
     // moment.
     s.pending_capture = true;
     s.decay_duration = std::max(0.0f, duration_seconds);
+}
+
+void PoseSampler::setInertializationScaling(float base_seconds, float scale_seconds_per_radian,
+                                            float max_seconds)
+{
+    if (!impl)
+        return;
+    impl->decay_base_seconds = std::max(0.0f, base_seconds);
+    impl->decay_scale_per_radian = std::max(0.0f, scale_seconds_per_radian);
+    impl->decay_max_seconds = std::max(0.0f, max_seconds);
 }
 
 void PoseSampler::requestInertializationFromPose(
@@ -1307,6 +1423,10 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
     // ---- Locomotion clip change → start a crossfade ----
     if (desired != s.loco_current.animation)
     {
+        // Stash the outgoing clip's time so a future re-entry can
+        // resume from here rather than snapping to t=0.
+        if (s.loco_current.animation != nullptr)
+            s.last_clip_time[s.loco_current.animation] = s.loco_current.time_seconds;
         // Phase-match the new clip's start time to the previous clip's
         // normalized cycle position. Without this, walk→run starts the
         // run clip at t=0 regardless of where walk was in its cycle —
@@ -1414,25 +1534,116 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
             const float phase = std::fmod(s.loco_current.time_seconds, prev_dur) / prev_dur;
             new_start_time = phase * new_dur;
         }
+        else
+        {
+            // Non-gait re-entry: resume the clip from where it last
+            // left off. Otherwise rapid intent toggles (e.g. tapping
+            // WASD in combat stance) snap unarmed_combat_idle's time
+            // back to 0 every time, restarting its 3-second bounce
+            // cycle from a different leg pose than what was on screen
+            // a frame ago — visible leg spasm.
+            const auto it = s.last_clip_time.find(desired);
+            if (it != s.last_clip_time.end())
+            {
+                new_start_time = std::fmod(it->second, std::max(new_dur, 1e-4f));
+                samplerDiagLog("[loco] resume %s @ cached t=%.3fs (prev=%s, new_dur=%.2fs)\n",
+                               desired->name(), new_start_time,
+                               s.loco_current.animation ? s.loco_current.animation->name()
+                                                        : "(none)",
+                               new_dur);
+            }
+            else
+            {
+                samplerDiagLog("[loco] cold-enter %s @ t=0 (no cache; prev=%s)\n",
+                               desired->name(),
+                               s.loco_current.animation ? s.loco_current.animation->name()
+                                                        : "(none)");
+            }
+        }
 
         if (blend_seconds > 0.0f && s.loco_current.animation != nullptr)
         {
-            // Swap rather than move (Context is non-movable). Both
-            // contexts were sized at createPoseSampler, so the swap
-            // doesn't invalidate keyframe caches relative to either
-            // track's animation pointer (each context belongs to its
-            // physical Track and we swap which animation each is set
-            // to). Swap the per-track hip_path cache along with
-            // the animation so loco_previous keeps its old clip's
-            // cached path length (needed when ANOTHER clip change
-            // happens before the crossfade completes).
-            std::swap(s.loco_current.animation, s.loco_previous.animation);
-            std::swap(s.loco_current.time_seconds, s.loco_previous.time_seconds);
-            std::swap(s.loco_current.hip_path_cached, s.loco_previous.hip_path_cached);
-            s.loco_current.local_transforms.swap(s.loco_previous.local_transforms);
-            s.loco_blend_weight = 0.0f;
-            s.loco_blend_elapsed = 0.0f;
-            s.loco_blend_duration = blend_seconds;
+            // Reverse-blend special case: if `desired` is the clip we
+            // were JUST blending FROM (loco_previous), don't restart
+            // the crossfade — reverse it. Rapid WASD tapping in combat
+            // stance produces this exact ping-pong: idle → walking →
+            // idle → walking. Without this branch, each clip change
+            // swaps tracks, snaps the new current's time to 0 (or
+            // phase-matched, but idle isn't gait so it's 0), and
+            // resets weight to 0. unarmed_combat_idle is a 3-second
+            // bouncing loop — re-snapping its time to 0 every other
+            // frame creates a visible leg spasm because the bounce
+            // pose snaps to a different leg position each tap.
+            //
+            // Reverse-blend: we ARE the previous; previous becomes us.
+            // Swap, keep both tracks' time_seconds intact, and flip
+            // the weight so the in-flight blend now drives back toward
+            // the formerly-previous-now-current clip.
+            const bool reverse_blend = (s.loco_previous.animation == desired);
+            if (reverse_blend)
+            {
+                samplerDiagLog("[loco] reverse-blend %s <-> %s (weight %.2f -> %.2f, t=%.3fs)\n",
+                               s.loco_current.animation->name(), desired->name(),
+                               s.loco_blend_weight, 1.0f - s.loco_blend_weight,
+                               s.loco_previous.time_seconds);
+                std::swap(s.loco_current.animation, s.loco_previous.animation);
+                std::swap(s.loco_current.time_seconds, s.loco_previous.time_seconds);
+                std::swap(s.loco_current.hip_path_cached, s.loco_previous.hip_path_cached);
+                s.loco_current.local_transforms.swap(s.loco_previous.local_transforms);
+                // Flip the weight: if we were 30% into idle→walking,
+                // we're now 70% into walking→idle (the reverse path).
+                const float old_weight = s.loco_blend_weight;
+                s.loco_blend_weight = 1.0f - old_weight;
+                s.loco_blend_elapsed = std::max(0.0f, s.loco_blend_duration - s.loco_blend_elapsed);
+                // Don't override new_start_time below — keep the
+                // resumed clip's existing time so the bounce/gait
+                // doesn't visibly restart.
+                s.loco_current.finished = false;
+            }
+            else
+            {
+                // Swap rather than move (Context is non-movable). Both
+                // contexts were sized at createPoseSampler, so the swap
+                // doesn't invalidate keyframe caches relative to either
+                // track's animation pointer (each context belongs to its
+                // physical Track and we swap which animation each is set
+                // to). Swap the per-track hip_path cache along with
+                // the animation so loco_previous keeps its old clip's
+                // cached path length (needed when ANOTHER clip change
+                // happens before the crossfade completes).
+                std::swap(s.loco_current.animation, s.loco_previous.animation);
+                std::swap(s.loco_current.time_seconds, s.loco_previous.time_seconds);
+                std::swap(s.loco_current.hip_path_cached, s.loco_previous.hip_path_cached);
+                s.loco_current.local_transforms.swap(s.loco_previous.local_transforms);
+                s.loco_blend_weight = 0.0f;
+                s.loco_blend_elapsed = 0.0f;
+                s.loco_blend_duration = blend_seconds;
+            }
+            // Final rebind for the FORWARD-BLEND path only. Reverse-
+            // blend already swapped in the right animation and wants
+            // to preserve the resumed clip's existing time + hip
+            // tracking — overwriting them would defeat the whole
+            // point of reverse-blend.
+            if (!reverse_blend)
+            {
+                s.loco_current.animation = desired;
+                s.loco_current.time_seconds = new_start_time;
+                s.loco_current.hip_path_cached = new_clip_path;
+                s.loco_current.finished = false;
+                // Discontinuity: the loco_current track just rebound to a new
+                // clip. Force its next-frame delta to zero so we don't emit a
+                // pose-snap delta from the previous clip's hip XZ to the new
+                // clip's hip XZ. The loco_previous track keeps its tracking
+                // (it's still playing the OLD clip during the crossfade).
+                s.loco_current.resetHipTracking();
+            }
+            // Inertialization: capture previous-frame pose and decay any
+            // residual offset over the blend-in window. Composes with the
+            // crossfade — crossfade handles bulk pose interpolation,
+            // inertialization smooths the leftover joint-velocity
+            // discontinuity that crossfade alone can't address.
+            s.pending_capture = true;
+            s.decay_duration = std::max(0.0f, blend_seconds);
         }
         else
         {
@@ -1441,24 +1652,14 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
             s.loco_blend_weight = 1.0f;
             s.loco_blend_elapsed = 0.0f;
             s.loco_blend_duration = 0.0f;
+            s.loco_current.animation = desired;
+            s.loco_current.time_seconds = new_start_time;
+            s.loco_current.hip_path_cached = new_clip_path;
+            s.loco_current.finished = false;
+            s.loco_current.resetHipTracking();
+            s.pending_capture = true;
+            s.decay_duration = 0.0f;
         }
-        s.loco_current.animation = desired;
-        s.loco_current.time_seconds = new_start_time;
-        s.loco_current.hip_path_cached = new_clip_path;
-        s.loco_current.finished = false;
-        // Discontinuity: the loco_current track just rebound to a new
-        // clip. Force its next-frame delta to zero so we don't emit a
-        // pose-snap delta from the previous clip's hip XZ to the new
-        // clip's hip XZ. The loco_previous track keeps its tracking
-        // (it's still playing the OLD clip during the crossfade).
-        s.loco_current.resetHipTracking();
-        // Inertialization: capture previous-frame pose and decay any
-        // residual offset over the blend-in window. Composes with the
-        // crossfade — crossfade handles bulk pose interpolation,
-        // inertialization smooths the leftover joint-velocity
-        // discontinuity that crossfade alone can't address.
-        s.pending_capture = true;
-        s.decay_duration = std::max(0.0f, blend_seconds);
     }
     // Caller-supplied loops flag applies to the loco_current track —
     // whether or not we just rebound it. Stable through the lifetime
@@ -1516,6 +1717,10 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
             s.loco_blend_weight = 1.0f;
             s.loco_blend_elapsed = 0.0f;
             s.loco_blend_duration = 0.0f;
+            // Stash the dropped clip's time so a later re-entry can
+            // resume mid-bounce instead of snapping to 0.
+            if (s.loco_previous.animation != nullptr)
+                s.last_clip_time[s.loco_previous.animation] = s.loco_previous.time_seconds;
             s.loco_previous.animation = nullptr;
         }
         else
@@ -1553,19 +1758,21 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
             if (s.one_shot_weight >= 1.0f)
                 s.one_shot_phase = OneShotPhase::Hold;
         }
-        // Even while still blending in, if we've reached the part of
-        // the clip where the blend-out window starts, switch directly
-        // to BlendOut — short clips need this.
+        // Auto-advance to BlendOut when reaching clip-end window — but
+        // never if freeze_last is set; held actions wait for an
+        // explicit releaseOneShot() call.
         const float dur = s.one_shot.animation ? s.one_shot.animation->duration() : 0.0f;
-        if (dur > 0.0f && s.one_shot.time_seconds >= dur - blend_out_clip_time)
+        if (!s.one_shot_freeze_last && dur > 0.0f &&
+            s.one_shot.time_seconds >= dur - blend_out_clip_time)
             s.one_shot_phase = OneShotPhase::BlendOut;
         break;
     }
     case OneShotPhase::Hold:
     {
         const float dur = s.one_shot.animation ? s.one_shot.animation->duration() : 0.0f;
-        if (one_shot_finished ||
-            (dur > 0.0f && s.one_shot.time_seconds >= dur - blend_out_clip_time))
+        if (!s.one_shot_freeze_last &&
+            (one_shot_finished ||
+             (dur > 0.0f && s.one_shot.time_seconds >= dur - blend_out_clip_time)))
             s.one_shot_phase = OneShotPhase::BlendOut;
         break;
     }
@@ -1802,11 +2009,18 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
     //                  leave it untouched.
     if (capture_this_frame)
     {
-        // Compute static offset from captured previous pose minus
-        // current post-blend target pose. Translation: subtract.
-        // Rotation: source * inverse(target) → the rotation that takes
-        // target to source.
         const std::size_t n_soa = s.final_locals.size();
+        // Per-joint duration scaling: each joint's window = base +
+        // scale * |offset_radians|, clamped to max. Offset magnitude
+        // approximated as 2*|q.xyz| (≈ θ for small angles, conservative
+        // for large). Translation offset isn't included in the metric;
+        // joint translations are usually tiny in animation, and the
+        // visible "leg snap" we're targeting is rotation-driven.
+        const ozz::math::SimdFloat4 base_simd = ozz::math::simd_float4::Load1(s.decay_base_seconds);
+        const ozz::math::SimdFloat4 scale_simd =
+            ozz::math::simd_float4::Load1(s.decay_scale_per_radian);
+        const ozz::math::SimdFloat4 max_simd = ozz::math::simd_float4::Load1(s.decay_max_seconds);
+        const ozz::math::SimdFloat4 two_simd = ozz::math::simd_float4::Load1(2.0f);
         for (std::size_t i = 0; i < n_soa; ++i)
         {
             const ozz::math::SoaTransform& src = s.pre_change_locals[i];
@@ -1815,83 +2029,95 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
             off.translation.x = src.translation.x - tgt.translation.x;
             off.translation.y = src.translation.y - tgt.translation.y;
             off.translation.z = src.translation.z - tgt.translation.z;
-            // Quaternion offset: q_off = q_src * inverse(q_tgt).
-            // SoaQuaternion inverse is conjugate (q.x,y,z negated, w
-            // unchanged) for unit quaternions, which animation quats
-            // are by construction.
             ozz::math::SoaQuaternion inv_tgt;
             inv_tgt.x = -tgt.rotation.x;
             inv_tgt.y = -tgt.rotation.y;
             inv_tgt.z = -tgt.rotation.z;
             inv_tgt.w = tgt.rotation.w;
-            // SoaQuaternion multiplication, expanded:
-            //   r.x = a.w*b.x + a.x*b.w + a.y*b.z - a.z*b.y
-            //   r.y = a.w*b.y - a.x*b.z + a.y*b.w + a.z*b.x
-            //   r.z = a.w*b.z + a.x*b.y - a.y*b.x + a.z*b.w
-            //   r.w = a.w*b.w - a.x*b.x - a.y*b.y - a.z*b.z
             const auto& a = src.rotation;
             const auto& b = inv_tgt;
             off.rotation.x = a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y;
             off.rotation.y = a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x;
             off.rotation.z = a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w;
             off.rotation.w = a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z;
-            // Scale: leave as identity ratio (1,1,1) — we don't
-            // inertialize scale.
             off.scale = src.scale;
             s.pre_change_locals[i] = off;
+
+            // Per-lane offset magnitude (radians ≈ 2*|q.xyz|).
+            const ozz::math::SimdFloat4 xyz_sq = off.rotation.x * off.rotation.x +
+                                                 off.rotation.y * off.rotation.y +
+                                                 off.rotation.z * off.rotation.z;
+            // sqrt via reciprocal-sqrt-est: |xyz| = xyz_sq * rsqrt(xyz_sq).
+            // Guard against zero with a small epsilon to avoid Inf.
+            const ozz::math::SimdFloat4 eps =
+                ozz::math::simd_float4::Load1(1e-8f);
+            const ozz::math::SimdFloat4 safe = xyz_sq + eps;
+            const ozz::math::SimdFloat4 inv_len_xyz = ozz::math::RSqrtEst(safe);
+            const ozz::math::SimdFloat4 xyz_len = safe * inv_len_xyz; // |xyz|
+            const ozz::math::SimdFloat4 angle = two_simd * xyz_len;
+            ozz::math::SimdFloat4 dur = base_simd + scale_simd * angle;
+            // Clamp to max.
+            dur = ozz::math::Min(dur, max_simd);
+            s.decay_duration_per_joint[i] = dur;
+            s.decay_elapsed_per_joint[i] = ozz::math::simd_float4::zero();
         }
         s.decay_active = true;
         s.decay_elapsed = 0.0f;
     }
-    if (s.decay_active && s.decay_duration > 0.0f)
+    if (s.decay_active && s.decay_max_seconds > 0.0f)
     {
         s.decay_elapsed += dt;
-        if (s.decay_elapsed >= s.decay_duration)
+        // Decay deactivates once the longest possible window has
+        // passed. Per-joint short windows clamp their weight to 0
+        // earlier, so they stop contributing on schedule.
+        if (s.decay_elapsed >= s.decay_max_seconds)
         {
             s.decay_active = false;
         }
         else
         {
-            // Cubic ease-out: w = (1 - t/duration)^3 → 1 at start, 0
-            // at end. The cubic curve gives a soft tail-off that looks
-            // more natural than linear; the inertialization paper
-            // recommends quintic for higher-end games but cubic is
-            // visually indistinguishable for our purposes.
-            const float u = 1.0f - s.decay_elapsed / s.decay_duration;
-            const float w_scalar = u * u * u;
-            const ozz::math::SimdFloat4 w_simd = ozz::math::simd_float4::Load1(w_scalar);
-            // Identity quaternion in SoA form (each lane: 0,0,0,1).
+            const ozz::math::SimdFloat4 dt_simd = ozz::math::simd_float4::Load1(dt);
             const ozz::math::SimdFloat4 zero_simd = ozz::math::simd_float4::zero();
             const ozz::math::SimdFloat4 one_simd = ozz::math::simd_float4::Load1(1.0f);
-
             const std::size_t n_soa = s.final_locals.size();
             for (std::size_t i = 0; i < n_soa; ++i)
             {
+                s.decay_elapsed_per_joint[i] = s.decay_elapsed_per_joint[i] + dt_simd;
+                const ozz::math::SimdFloat4 dur = s.decay_duration_per_joint[i];
+                const ozz::math::SimdFloat4 elapsed = s.decay_elapsed_per_joint[i];
+                // Avoid div-by-zero on lanes where duration is 0.
+                const ozz::math::SimdFloat4 dur_safe =
+                    ozz::math::Max(dur, ozz::math::simd_float4::Load1(1e-6f));
+                // u = clamp(1 - elapsed/duration, 0, 1)
+                ozz::math::SimdFloat4 u = one_simd - elapsed * ozz::math::RcpEst(dur_safe);
+                u = ozz::math::Max(u, zero_simd);
+                u = ozz::math::Min(u, one_simd);
+                // Lanes where duration was 0 get u=0 too — no decay
+                // applied (they were already at-target at capture).
+                ozz::math::SimdFloat4 w_simd = u * u * u;
+                // Mask off lanes whose original duration was zero.
+                const ozz::math::SimdInt4 dur_nonzero =
+                    ozz::math::CmpGt(dur, ozz::math::simd_float4::Load1(1e-7f));
+                w_simd = ozz::math::Select(dur_nonzero, w_simd, zero_simd);
+
                 const ozz::math::SoaTransform& off = s.pre_change_locals[i];
                 ozz::math::SoaTransform& cur = s.final_locals[i];
-                // Translation: clip_t + offset_t * w
                 cur.translation.x = cur.translation.x + off.translation.x * w_simd;
                 cur.translation.y = cur.translation.y + off.translation.y * w_simd;
                 cur.translation.z = cur.translation.z + off.translation.z * w_simd;
-                // Rotation: NLerp(identity, offset_q, w) * cur_q.
-                // NLerp = (1-w)*identity + w*offset_q, then normalize.
                 ozz::math::SoaQuaternion decayed_off;
                 decayed_off.x = off.rotation.x * w_simd;
                 decayed_off.y = off.rotation.y * w_simd;
                 decayed_off.z = off.rotation.z * w_simd;
                 decayed_off.w = (one_simd - w_simd) + off.rotation.w * w_simd;
-                // Normalize. dot = x*x + y*y + z*z + w*w; rsqrt;
-                // multiply each component by 1/sqrt(dot).
                 const ozz::math::SimdFloat4 dot =
                     decayed_off.x * decayed_off.x + decayed_off.y * decayed_off.y +
                     decayed_off.z * decayed_off.z + decayed_off.w * decayed_off.w;
-                // Guard against zero — fallback to identity if dot is tiny.
                 const ozz::math::SimdFloat4 inv_len = ozz::math::RSqrtEst(dot);
                 decayed_off.x = decayed_off.x * inv_len;
                 decayed_off.y = decayed_off.y * inv_len;
                 decayed_off.z = decayed_off.z * inv_len;
                 decayed_off.w = decayed_off.w * inv_len;
-                // Compose: cur.rotation = decayed_off * cur.rotation.
                 const auto& a = decayed_off;
                 const auto& b = cur.rotation;
                 ozz::math::SoaQuaternion out;
@@ -1900,8 +2126,6 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
                 out.z = a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w;
                 out.w = a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z;
                 cur.rotation = out;
-                // Scale: leave alone.
-                (void)zero_simd;
             }
         }
     }

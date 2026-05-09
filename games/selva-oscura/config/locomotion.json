@@ -1,8 +1,9 @@
 {
   "_comment": "Per-clip blend-in duration for locomotion transitions. The duration controls how long it takes to crossfade INTO this clip from whatever was playing before. Asymmetric values match perceptual expectations: settling into idle feels natural slow, snapping into run feels good fast. Names match selectClipNameForPlayer in main.cpp; walking/running come from the Action Adventure pack (have authored hip motion, used as root motion source).",
   "clips": [
-    { "name": "standard_idle", "blend_in_seconds": 0.30 },
-    { "name": "walking",       "blend_in_seconds": 0.18 },
-    { "name": "running",       "blend_in_seconds": 0.10 }
+    { "name": "standard_idle",       "blend_in_seconds": 0.30 },
+    { "name": "unarmed_combat_idle", "blend_in_seconds": 0.40 },
+    { "name": "walking",             "blend_in_seconds": 0.18 },
+    { "name": "running",             "blend_in_seconds": 0.10 }
   ]
 }
