@@ -13,7 +13,8 @@ struct Skeleton; // forward — full def in anim/Skeleton.h
 
 // A skinned 3D mesh — geometry that deforms when its skeleton's bones move.
 // Owns GPU buffers (VAO/VBO/EBO). One SkeletalMesh per character mesh part
-// (the Soldier.glb has two: body and visor; we'll use the body for now).
+// (single-primitive characters like X Bot ship one mesh; multi-mesh rigs
+// would need one SkeletalMesh per primitive).
 //
 // Vertex layout in the VBO is interleaved:
 //
@@ -25,8 +26,8 @@ struct Skeleton; // forward — full def in anim/Skeleton.h
 //       vec4   bone_weights;// location 4  (how much, must sum to ~1.0)
 //   };
 //
-// Index buffer is unsigned int (matches Soldier.glb; cgltf gives us the
-// component type and we promote-on-load if it's smaller).
+// Index buffer is unsigned int; cgltf gives us the source component type
+// and we promote-on-load if it's smaller.
 //
 // Bones-per-vertex is hardcoded at 4. This is convention — works on every
 // GPU since OpenGL 3.3 and is enough for almost all rigs (extra weights
@@ -88,8 +89,8 @@ struct SkeletalMesh
 
 // Load a skinned mesh from a glTF file (.glb or .gltf). Path is relative
 // to the working directory. Reads the FIRST mesh's FIRST primitive — for
-// Soldier.glb that's `vanguard_Mesh`. We can extend to multi-primitive /
-// multi-mesh loading when we need armor swaps.
+// X_Bot.glb that's the single skinned body mesh. We can extend to
+// multi-primitive / multi-mesh loading when we need armor swaps.
 //
 // The skeleton must already be loaded — we use its bone names to remap
 // glTF's per-vertex joint indices into ozz's internal bone ordering.

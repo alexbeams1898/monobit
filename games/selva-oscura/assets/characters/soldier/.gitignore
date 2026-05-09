@@ -1,4 +1,0 @@
-# .ozz files are derived from Soldier.glb at build time by the gltf2ozz
-# tool (vendored via ozz-animation). Don't commit — they regenerate on
-# every fresh checkout.
-*.ozz

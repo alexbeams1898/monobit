@@ -12,14 +12,20 @@ project(SelvaOscura VERSION 0.0.0 LANGUAGES C CXX)
 # selva-oscura is one exe today.
 add_library(selva-oscura-lib STATIC
     src/anim/AnimationClip.cpp
+    src/anim/ClipRegistry.cpp
+    src/anim/LocomotionConfig.cpp
     src/anim/PoseSampler.cpp
     src/anim/Skeleton.cpp
     src/anim/SkeletalMesh.cpp
     src/anim/SkeletalRenderer.cpp
+    src/combat/WeaponData.cpp
     src/Tunables.cpp
 )
 
 target_include_directories(selva-oscura-lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+# Vendored single-header stb_image_write for the F1-debug frame capture.
+# Marked SYSTEM so clang-tidy stays out of stb's internals.
+target_include_directories(selva-oscura-lib SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/vendor/stb)
 target_link_libraries(selva-oscura-lib
     PUBLIC
         engine
@@ -32,6 +38,7 @@ target_link_libraries(selva-oscura-lib
 # Game executable.
 add_executable(selva-oscura src/main.cpp)
 target_link_libraries(selva-oscura PRIVATE selva-oscura-lib)
+target_include_directories(selva-oscura SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/vendor/stb)
 
 # Static-link the MinGW runtime so the exe runs without libgcc/libstdc++ DLLs.
 # Mirrors the same option on prison-break-game; needed for distributable builds.
@@ -40,7 +47,7 @@ if(MINGW)
 endif()
 
 # Sync config + assets to the build output on every build so the exe finds
-# config/tunables.json and assets/characters/.../Soldier.glb at runtime.
+# config/tunables.json and assets/characters/x_bot/X_Bot.glb at runtime.
 # ALL custom target (not POST_BUILD) so file edits are picked up even when
 # no .cpp changed; same pattern as prison-escape-game.
 add_custom_target(selva-oscura-sync-config ALL
@@ -55,53 +62,271 @@ add_custom_target(selva-oscura-sync-config ALL
 )
 
 # ---------------------------------------------------------------------------
-# Convert Soldier.glb → skeleton.ozz + Idle.ozz + Walk.ozz + Run.ozz + TPose.ozz
-# at build time, using the gltf2ozz tool from the vendored ozz-animation.
-# Runs in the output directory so the tool's relative-path file writes land
-# next to the .glb. The .ozz files are NOT committed (see assets/.gitignore);
-# they're derived data regenerated whenever Soldier.glb or gltf2ozz changes.
+# X Bot is the canonical character — Mixamo's standard humanoid rig. All
+# clips in selva-oscura are authored against this skeleton (the Pro Sword
+# and Shield Pack ships with X Bot's exact rig). Choosing X Bot as the
+# source-of-truth means there is exactly one skeleton in the runtime and
+# zero retargeting work — every Mixamo asset just plays.
+#
+# The previous incarnation used a custom Three.js Soldier mesh which
+# *looked* like a Mixamo character but had a different bind pose and
+# different units (centimeters vs glTF's meters). That mismatch made
+# every imported clip distort the geometry. The fix isn't to translate
+# between mismatched skeletons — it's to make sure there's only one.
+# See memory/feedback_no_bandaids_root_cause.md.
 # ---------------------------------------------------------------------------
-set(soldier_dir ${CMAKE_CURRENT_SOURCE_DIR}/assets/characters/soldier)
+set(xbot_dir ${CMAKE_CURRENT_SOURCE_DIR}/assets/characters/x_bot)
+set(fbx2gltf_exe ${CMAKE_SOURCE_DIR}/tools/fbx2gltf/FBX2glTF.exe)
+
 # Use CMAKE_RUNTIME_OUTPUT_DIRECTORY (set in root CMakeLists to build/bin) —
 # add_custom_command's OUTPUT can't contain generator expressions, so the
 # $<TARGET_FILE_DIR:...> form would fail at generate time.
-set(soldier_out_dir ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/assets/characters/soldier)
-set(soldier_ozz_files
-    ${soldier_out_dir}/skeleton.ozz
-    ${soldier_out_dir}/Idle.ozz
-    ${soldier_out_dir}/Walk.ozz
-    ${soldier_out_dir}/Run.ozz
-    ${soldier_out_dir}/TPose.ozz
-)
+set(xbot_out_dir ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/assets/characters/x_bot)
+
+# 1. X Bot.fbx → X_Bot.glb. Mixamo's FBX export omits explicit per-vertex
+# normals (Mixamo's pipeline assumes the consumer derives them), so we
+# pass --compute-normals missing to FBX2glTF — without that flag, the
+# resulting glb has no NORMAL attribute and our loader rejects the mesh
+# as invalid. Doing the computation here means the runtime always sees a
+# fully-attributed mesh — no special-case at load time.
+#
+# X_Bot.glb is treated as a build artifact (gitignored, regenerated from
+# the FBX on every fresh checkout). The FBX is the authoring source.
+set(xbot_fbx ${xbot_dir}/source/Pro\ Sword\ and\ Shield\ Pack/X\ Bot.fbx)
+set(xbot_glb ${xbot_dir}/X_Bot.glb)
 add_custom_command(
-    OUTPUT ${soldier_ozz_files}
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${soldier_out_dir}
-    COMMAND ${CMAKE_COMMAND} -E chdir ${soldier_out_dir}
-        $<TARGET_FILE:gltf2ozz>
-        --file=${soldier_dir}/Soldier.glb
-    DEPENDS ${soldier_dir}/Soldier.glb gltf2ozz
-    COMMENT "Converting Soldier.glb to ozz runtime format..."
+    OUTPUT ${xbot_glb}
+    # FBX2glTF's --keep-attribute auto drops NORMAL and TEXCOORD if they
+    # aren't strictly required by the schema. Mixamo's X Bot ships with
+    # both, but auto-mode strips them — the resulting glb has only
+    # POSITION/JOINTS/WEIGHTS, which our loader rejects (no NORMAL).
+    # Listing the attributes explicitly forces FBX2glTF to keep them.
+    # --compute-normals always re-derives normals from geometry to be
+    # safe (any FBX-export artifact gets cleaned up).
+    COMMAND ${fbx2gltf_exe}
+        --binary
+        --keep-attribute position
+        --keep-attribute normal
+        --keep-attribute uv0
+        --compute-normals always
+        -i ${xbot_fbx}
+        -o ${xbot_dir}/X_Bot
+    DEPENDS ${xbot_fbx} ${fbx2gltf_exe}
+    COMMENT "Converting X Bot.fbx → X_Bot.glb..."
     VERBATIM
 )
-add_custom_target(selva-oscura-convert-soldier ALL DEPENDS ${soldier_ozz_files})
+
+# 2. Skeleton-only conversion config: X_Bot.glb ships with no real
+# animations (just a degenerate "Take 001" T-pose), so explicitly tell
+# gltf2ozz to skip animation extraction. Without "animations": [],
+# gltf2ozz fails its animation-validation step and exits non-zero — even
+# though the skeleton was already written successfully — making ninja
+# think the build step failed.
+set(xbot_skeleton_config ${CMAKE_BINARY_DIR}/selva-oscura-xbot/skeleton_only.json)
+file(WRITE ${xbot_skeleton_config}
+"{\n"
+"  \"skeleton\": { \"filename\": \"skeleton.ozz\", \"import\": { \"enable\": true } },\n"
+"  \"animations\": []\n"
+"}\n"
+)
+
+# 3. Extract the skeleton from X_Bot.glb. The .ozz file is NOT committed
+# (see assets/.gitignore); it's derived data regenerated whenever
+# X_Bot.glb or gltf2ozz changes.
+set(xbot_ozz_files
+    ${xbot_out_dir}/skeleton.ozz
+)
+add_custom_command(
+    OUTPUT ${xbot_ozz_files}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${xbot_out_dir}
+    COMMAND ${CMAKE_COMMAND} -E chdir ${xbot_out_dir}
+        $<TARGET_FILE:gltf2ozz>
+        --file=${xbot_glb}
+        --config_file=${xbot_skeleton_config}
+    DEPENDS ${xbot_glb} gltf2ozz ${xbot_skeleton_config}
+    COMMENT "Extracting X Bot skeleton to ozz runtime format..."
+    VERBATIM
+)
+add_custom_target(selva-oscura-convert-xbot ALL DEPENDS ${xbot_ozz_files})
+
+# ---------------------------------------------------------------------------
+# Convert Mixamo Pro Sword and Shield Pack FBXs → per-clip .ozz at build.
+#
+# Pipeline per FBX:
+#   1. FBX2glTF converts the .fbx to a per-clip .glb in a build temp dir.
+#   2. gltf2ozz runs with a config pointing at X Bot's skeleton.ozz as
+#      the reference, with skeleton import disabled. The pack-extracted
+#      glb has its own skeleton + an extra "RootNode" wrapper joint that
+#      isn't in X Bot's skeleton; using X Bot as the reference means
+#      gltf2ozz strips that wrapper and indexes the animation tracks
+#      against X Bot's joint order. Result: clips play correctly on the
+#      X Bot skeleton at runtime with no further retargeting.
+#   3. The single animation track in each Mixamo FBX is named "mixamo.com"
+#      internally — gltf2ozz emits it as "mixamo.com.ozz" regardless of
+#      filename. We rename it to <sanitized-filename>.ozz alongside
+#      X Bot's skeleton.ozz.
+#
+# The pack ships locomotion clips alongside attack clips, so no separate
+# Idle/Walk/Run extraction is needed — sword_and_shield_idle/walk/run.ozz
+# come from this same pipeline.
+#
+# Filename sanitization: lowercase, spaces and parens to underscores,
+# repeats collapsed. "sword and shield slash (2).fbx" →
+# "sword_and_shield_slash_2.ozz".
+# ---------------------------------------------------------------------------
+# All Mixamo pack subdirs to scan for .fbx clips. Add a new pack by
+# dropping its folder under source/ and listing it here.
+set(mixamo_pack_dirs
+    "${xbot_dir}/source/Pro Sword and Shield Pack"
+    "${xbot_dir}/source/Action Adventure Pack"
+    # Re-bookended FBXs produced by scripts/blender/rebookend_clip.py.
+    # Each filename ends in " reposed.fbx" so the sanitized .ozz name
+    # gets a `_reposed` suffix and both the original and re-bookended
+    # versions can coexist in the runtime registry. Chain JSON config
+    # (e.g. config/weapon_classes/sword.json) picks which version
+    # each chain entry uses.
+    "${xbot_dir}/source/Pro Sword and Shield Pack Reposed"
+)
+
+# Generate the gltf2ozz retarget config once at configure time. Refers to
+# X Bot's skeleton.ozz by absolute path so each clip's per-temp-dir
+# gltf2ozz invocation can find it regardless of cwd.
+#
+# The "motion" block extracts root motion (hip translation/rotation) out
+# of the animation tracks and bakes it back in as zero — i.e. the
+# imported clip animates "in place" with the character staying at origin
+# and only rotation/swing motion preserved on the joints. Mixamo's
+# walk/run clips ship with hip translation that drives the character
+# forward across the clip; without this extraction, the animation
+# moves the character forward each loop and snaps back at wrap, while
+# our gameplay code is also driving sPlayer.pos via WASD — total
+# duplication, looks like skipping.
+#
+# bake=true means "consume the motion delta and re-zero the animation
+# track." We drop the extracted-motion track files (filename references
+# a tmp scratch path) since gameplay drives translation, not animation.
+set(retarget_config ${CMAKE_BINARY_DIR}/selva-oscura-attacks/retarget_config.json)
+file(WRITE ${retarget_config}
+"{\n"
+"  \"skeleton\": {\n"
+"    \"filename\": \"${xbot_out_dir}/skeleton.ozz\",\n"
+"    \"import\": { \"enable\": false }\n"
+"  },\n"
+"  \"animations\": [\n"
+"    {\n"
+"      \"clip\": \"*\",\n"
+"      \"filename\": \"*.ozz\",\n"
+"      \"additive\": false,\n"
+"      \"optimize\": true\n"
+"    }\n"
+"  ]\n"
+"}\n"
+)
+
+# Helper: turn a Mixamo filename into our sanitized clip name.
+function(_selva_sanitize_clip_name fbx_filename out_var)
+    get_filename_component(stem "${fbx_filename}" NAME_WE)
+    string(TOLOWER "${stem}" sanitized)
+    string(REGEX REPLACE "[^a-z0-9]+" "_" sanitized "${sanitized}")
+    string(REGEX REPLACE "_+" "_" sanitized "${sanitized}")
+    string(REGEX REPLACE "^_|_$" "" sanitized "${sanitized}")
+    set(${out_var} "${sanitized}" PARENT_SCOPE)
+endfunction()
+
+set(attack_ozz_files "")
+# Aggregate every FBX we want to convert into per-clip .ozz files:
+#   * Loose .fbx at the top of source/ (Standard Idle, Standard Walk,
+#     Stand To Roll, etc. — generic locomotion clips).
+#   * Every .fbx in each Mixamo pack subdir listed in mixamo_pack_dirs.
+# All run through the same FBX2glTF + gltf2ozz retarget pipeline below.
+# X Bot.fbx is excluded — it's the bound character mesh, converted
+# separately above into X_Bot.glb.
+file(GLOB attack_fbx_files
+    CONFIGURE_DEPENDS
+    "${xbot_dir}/source/*.fbx"
+)
+foreach(pack_dir ${mixamo_pack_dirs})
+    if(EXISTS "${pack_dir}")
+        file(GLOB pack_fbx_files
+            CONFIGURE_DEPENDS
+            "${pack_dir}/*.fbx"
+        )
+        list(APPEND attack_fbx_files ${pack_fbx_files})
+    endif()
+endforeach()
+list(FILTER attack_fbx_files EXCLUDE REGEX ".*[Xx][ _][Bb]ot\\.fbx$")
+if(attack_fbx_files)
+    foreach(fbx ${attack_fbx_files})
+        _selva_sanitize_clip_name("${fbx}" clip_name)
+        set(clip_temp_dir ${CMAKE_BINARY_DIR}/selva-oscura-attacks/${clip_name})
+        set(clip_glb ${clip_temp_dir}/${clip_name}.glb)
+        set(clip_final_ozz ${xbot_out_dir}/${clip_name}.ozz)
+        add_custom_command(
+            OUTPUT ${clip_final_ozz}
+            # 1. Convert FBX → glb (FBX2glTF -o is a stem; it appends .glb).
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${clip_temp_dir}
+            COMMAND ${fbx2gltf_exe}
+                --binary
+                --keep-attribute auto
+                -i ${fbx}
+                -o ${clip_temp_dir}/${clip_name}
+            # 2. gltf2ozz with the retarget config — skeleton import
+            #    disabled, animation indexed against X Bot's skeleton.
+            COMMAND ${CMAKE_COMMAND} -E chdir ${clip_temp_dir}
+                $<TARGET_FILE:gltf2ozz>
+                --file=${clip_glb}
+                --config_file=${retarget_config}
+            # 3. Move the resulting mixamo.com.ozz to its final name next
+            #    to X_Bot's skeleton.ozz. copy + leave-temp-in-place
+            #    rather than rename so re-running the command after a
+            #    manual delete works without stale-state errors.
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${xbot_out_dir}
+            COMMAND ${CMAKE_COMMAND} -E copy
+                ${clip_temp_dir}/mixamo.com.ozz
+                ${clip_final_ozz}
+            DEPENDS
+                ${fbx}
+                gltf2ozz
+                ${retarget_config}
+                # The retarget config refers to X Bot's skeleton.ozz —
+                # it must exist before gltf2ozz reads it.
+                ${xbot_out_dir}/skeleton.ozz
+            COMMENT "Converting ${clip_name}.fbx → ${clip_name}.ozz (retargeted to X Bot)"
+            VERBATIM
+        )
+        list(APPEND attack_ozz_files ${clip_final_ozz})
+    endforeach()
+endif()
+
+# Only define the target if there's at least one .fbx; otherwise CMake
+# warns about empty custom targets. Missing pack is a soft failure — the
+# game runs without attack clips, just with whatever JSON references stay
+# unresolved.
+if(attack_ozz_files)
+    add_custom_target(selva-oscura-convert-attacks ALL DEPENDS ${attack_ozz_files})
+endif()
 
 # ---------------------------------------------------------------------------
 # Game tests — pure-compute logic that doesn't need a GL context (animation
-# drivers, dodge state machine math). Systems that need SDL/GL are tested
-# by running the game itself.
+# loading, weapon data, dodge state machine math). Systems that need
+# SDL/GL are tested by running the game itself.
 # ---------------------------------------------------------------------------
 add_executable(selva-oscura-tests
     tests/skeletal_loader_test.cpp
+    tests/weapon_data_test.cpp
 )
 target_link_libraries(selva-oscura-tests PRIVATE selva-oscura-lib Catch2::Catch2WithMain)
 
 # Run the test exe from build/bin so the relative paths in
 # skeletal_loader_test.cpp ("assets/characters/...") resolve to the .ozz
 # files produced by the gltf2ozz custom command. Also make the test depend
-# on the conversion target so the .ozz files exist by the time it runs.
+# on the conversion targets so the .ozz files exist by the time it runs.
 add_test(
     NAME selva-oscura-tests
     COMMAND selva-oscura-tests
     WORKING_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
 )
-add_dependencies(selva-oscura-tests selva-oscura-convert-soldier)
+add_dependencies(selva-oscura-tests selva-oscura-convert-xbot)
+if(TARGET selva-oscura-convert-attacks)
+    add_dependencies(selva-oscura-tests selva-oscura-convert-attacks)
+endif()

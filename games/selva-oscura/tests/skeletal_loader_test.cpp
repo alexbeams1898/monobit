@@ -10,7 +10,7 @@ using selva::anim::Skeleton;
 
 // These tests run from the test exe's working directory, which CMake sets
 // to ${CMAKE_RUNTIME_OUTPUT_DIRECTORY} (build/bin) by default for executable
-// targets. The .ozz files live at build/bin/assets/characters/soldier/...
+// targets. The .ozz files live at build/bin/assets/characters/x_bot/...
 // because the gltf2ozz custom command writes them there at build time.
 //
 // If a test fails with "cannot open" or "not a skeleton archive", the most
@@ -20,24 +20,23 @@ using selva::anim::Skeleton;
 
 namespace
 {
-const char* kSkeletonPath = "assets/characters/soldier/skeleton.ozz";
-const char* kIdlePath = "assets/characters/soldier/Idle.ozz";
-const char* kWalkPath = "assets/characters/soldier/Walk.ozz";
+const char* kSkeletonPath = "assets/characters/x_bot/skeleton.ozz";
+const char* kIdlePath = "assets/characters/x_bot/sword_and_shield_idle.ozz";
+const char* kWalkPath = "assets/characters/x_bot/sword_and_shield_walk.ozz";
 } // namespace
 
-TEST_CASE("Skeleton loads from skeleton.ozz", "[anim][skeleton][load]")
+TEST_CASE("Skeleton loads from X Bot skeleton.ozz", "[anim][skeleton][load]")
 {
     const Skeleton skel = loadSkeleton(kSkeletonPath);
     REQUIRE(skel.isLoaded());
-    // Soldier.glb has a 49-joint humanoid skeleton (verified in the glTF
-    // dump). gltf2ozz's exporter may include extra root nodes, so we test
-    // the lower bound rather than equality.
+    // X Bot ships with a 65-joint Mixamo humanoid rig. Test the lower
+    // bound (in case of small rig variants) rather than strict equality.
     REQUIRE(skel.boneCount() >= 49);
     // Sanity ceiling — we'd notice if something exploded the count.
     REQUIRE(skel.boneCount() < 200);
 }
 
-TEST_CASE("AnimationClip loads from Idle.ozz", "[anim][clip][load]")
+TEST_CASE("AnimationClip loads from sword_and_shield_idle.ozz", "[anim][clip][load]")
 {
     const AnimationClip clip = loadAnimationClip(kIdlePath);
     REQUIRE(clip.isLoaded());
@@ -48,7 +47,7 @@ TEST_CASE("AnimationClip loads from Idle.ozz", "[anim][clip][load]")
     REQUIRE(clip.duration() < 60.0f); // sanity ceiling
 }
 
-TEST_CASE("AnimationClip loads from Walk.ozz", "[anim][clip][load]")
+TEST_CASE("AnimationClip loads from sword_and_shield_walk.ozz", "[anim][clip][load]")
 {
     const AnimationClip clip = loadAnimationClip(kWalkPath);
     REQUIRE(clip.isLoaded());
@@ -58,9 +57,9 @@ TEST_CASE("AnimationClip loads from Walk.ozz", "[anim][clip][load]")
 
 TEST_CASE("Idle and Walk clips share the same skeleton track count", "[anim][clip][load]")
 {
-    // Both clips were exported against the same Soldier skeleton, so they
-    // should have the same number of animated tracks. This is a foundational
-    // assumption for blending later.
+    // Both clips were exported against the same X Bot skeleton (via the
+    // retarget step), so they should have the same number of animated
+    // tracks. This is a foundational assumption for blending.
     const AnimationClip idle = loadAnimationClip(kIdlePath);
     const AnimationClip walk = loadAnimationClip(kWalkPath);
     REQUIRE(idle.isLoaded());

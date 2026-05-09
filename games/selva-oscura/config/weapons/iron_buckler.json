@@ -1,0 +1,24 @@
+{
+  "id": "iron_buckler",
+  "name": "Iron Buckler",
+  "class": "buckler",
+  "mesh": "assets/weapons/iron_buckler.glb",
+  "stats": {
+    "one_handed": {
+      "base_damage":    6.0,
+      "light_mul":      1.0,
+      "heavy_mul":      1.4,
+      "stamina_light":  8.0,
+      "stamina_heavy": 16.0,
+      "poise_damage":   4.0
+    },
+    "two_handed": {
+      "base_damage":    8.0,
+      "light_mul":      1.0,
+      "heavy_mul":      1.4,
+      "stamina_light": 10.0,
+      "stamina_heavy": 18.0,
+      "poise_damage":   6.0
+    }
+  }
+}

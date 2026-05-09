@@ -316,7 +316,7 @@ SkeletalMesh loadSkeletalMesh(const std::string& path, const Skeleton& skeleton)
         cgltf_free(data);
         return out;
     }
-    // UVs are optional but Soldier.glb has them; if absent we'd fill zeros.
+    // UVs are optional but Mixamo characters have them; if absent we'd fill zeros.
     readVec2(findAttribute(&prim, cgltf_attribute_type_texcoord, 0), uvs);
     if (!readJoints(findAttribute(&prim, cgltf_attribute_type_joints, 0), joints))
     {
@@ -393,26 +393,35 @@ SkeletalMesh loadSkeletalMesh(const std::string& path, const Skeleton& skeleton)
     // it in native space; then native_inv_bind takes it to bind-local;
     // which is exactly what we want a "post-root inverse bind" to do.)
     out.inverse_bind_matrices.assign(skeleton.boneCount(), glm::mat4(1.0f));
-    if (skin->inverse_bind_matrices != nullptr)
+    if (skin->inverse_bind_matrices == nullptr)
     {
-        std::vector<glm::mat4> native_inv_binds;
-        if (readMat4Array(skin->inverse_bind_matrices, native_inv_binds))
+        // Skin must ship inverseBindMatrices. Our toolchain (FBX2glTF +
+        // gltf2ozz) emits them; a missing accessor here means the .glb
+        // is malformed. Bail loudly rather than silently render with
+        // identity inverses, which produces invisible / collapsed
+        // geometry.
+        std::fprintf(stderr,
+                     "[SkeletalMesh] %s: skin has no inverseBindMatrices accessor — "
+                     "regenerate the .glb (FBX2glTF always emits them)\n",
+                     path.c_str());
+        cgltf_free(data);
+        return out;
+    }
+    std::vector<glm::mat4> native_inv_binds;
+    if (!readMat4Array(skin->inverse_bind_matrices, native_inv_binds))
+    {
+        std::fprintf(stderr, "[SkeletalMesh] %s: inverse_bind_matrices accessor invalid\n",
+                     path.c_str());
+        cgltf_free(data);
+        return out;
+    }
+    const glm::mat4 inv_asset_root = glm::inverse(asset_root);
+    for (cgltf_size i = 0; i < skin->joints_count && i < native_inv_binds.size(); ++i)
+    {
+        const int32_t ozz_idx = i < joint_remap.size() ? joint_remap[i] : -1;
+        if (ozz_idx >= 0 && ozz_idx < static_cast<int32_t>(out.inverse_bind_matrices.size()))
         {
-            const glm::mat4 inv_asset_root = glm::inverse(asset_root);
-            for (cgltf_size i = 0; i < skin->joints_count && i < native_inv_binds.size(); ++i)
-            {
-                const int32_t ozz_idx = i < joint_remap.size() ? joint_remap[i] : -1;
-                if (ozz_idx >= 0 &&
-                    ozz_idx < static_cast<int32_t>(out.inverse_bind_matrices.size()))
-                {
-                    out.inverse_bind_matrices[ozz_idx] = native_inv_binds[i] * inv_asset_root;
-                }
-            }
-        }
-        else
-        {
-            std::fprintf(stderr, "[SkeletalMesh] %s: inverse_bind_matrices accessor invalid\n",
-                         path.c_str());
+            out.inverse_bind_matrices[ozz_idx] = native_inv_binds[i] * inv_asset_root;
         }
     }
 

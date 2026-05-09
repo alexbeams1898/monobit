@@ -98,11 +98,13 @@ set(CATCH_INSTALL_DOCS OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(Catch2)
 
 # ---------------------------------------------------------------------------
-# Tracy  (real-time profiler — disabled by default, enable with -DTRACY_ENABLE=ON)
-# When disabled all Tracy macros (FrameMark, ZoneScoped) compile to nothing.
-# To profile: build with -DTRACY_ENABLE=ON and connect the Tracy server app.
+# Tracy  (real-time profiler — ON by default for local dev builds; the Tracy
+# server app auto-connects to any Tracy-enabled exe on launch, no per-session
+# steps needed). When OFF all macros (FrameMark, ZoneScoped) compile to
+# nothing — flip to OFF for shipping/release builds where the ~1-2%
+# instrumentation overhead matters.
 # ---------------------------------------------------------------------------
-option(TRACY_ENABLE "Enable Tracy profiler client" OFF)
+option(TRACY_ENABLE "Enable Tracy profiler client" ON)
 FetchContent_Declare(
     tracy
     GIT_REPOSITORY https://github.com/wolfpld/tracy.git

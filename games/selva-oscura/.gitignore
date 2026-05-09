@@ -1,0 +1,2 @@
+# Tracy profiler trace captures — local only, can be huge.
+.traces/

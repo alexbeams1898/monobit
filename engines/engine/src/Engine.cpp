@@ -334,31 +334,55 @@ void Engine::render()
     }
 
     if (render_world)
+    {
+        ZoneScopedN("render-world");
         render_world(*this, entity_manager, camX, camY, a);
+    }
 
     // UI layer: screen-space overlay drawn after world content.
-    UIRenderer::beginFrame();
-    DebugDraw::setCamera(camX, camY, window_w, window_h, camera_zoom);
-    if (render_debug)
-        render_debug(*this, entity_manager);
-    if (render_ui)
-        render_ui(*this, entity_manager);
-    UIRenderer::endFrame();
+    {
+        ZoneScopedN("render-ui");
+        UIRenderer::beginFrame();
+        DebugDraw::setCamera(camX, camY, window_w, window_h, camera_zoom);
+        if (render_debug)
+            render_debug(*this, entity_manager);
+        if (render_ui)
+            render_ui(*this, entity_manager);
+        UIRenderer::endFrame();
+    }
 
     // ImGui pass — drawn after the game's UI so panels float on top.
     // NewFrame must precede any ImGui::Begin in the callback; Render
     // emits the actual draw lists. The frame is started even if no
     // callback is set, so future frame-state queries (DeltaTime,
     // viewport size) stay valid.
-    ImGui_ImplOpenGL3_NewFrame();
-    ImGui_ImplSDL2_NewFrame();
-    ImGui::NewFrame();
-    if (render_imgui)
-        render_imgui(*this, entity_manager);
-    ImGui::Render();
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    {
+        ZoneScopedN("render-imgui");
+        {
+            ZoneScopedN("imgui-newframe");
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplSDL2_NewFrame();
+            ImGui::NewFrame();
+        }
+        {
+            ZoneScopedN("imgui-callback");
+            if (render_imgui)
+                render_imgui(*this, entity_manager);
+        }
+        {
+            ZoneScopedN("imgui-render");
+            ImGui::Render();
+        }
+        {
+            ZoneScopedN("imgui-gl-draw");
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        }
+    }
 
-    SDL_GL_SwapWindow(window);
+    {
+        ZoneScopedN("swap-buffers");
+        SDL_GL_SwapWindow(window);
+    }
 }
 
 void Engine::swapBuffers()

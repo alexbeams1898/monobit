@@ -30,6 +30,7 @@ references between sections are by link.
 | [Options](options.md) | TBD | Settings menu contents |
 | [PC vs NPC](pc-vs-npc.md) | structural | Entity symmetry rule in design terms |
 | [Fallback](fallback.md) | structural | Death, retry, save semantics, vestigia |
+| [Combat](combat.md) | drafting | Melee/physical combat — bindings, stance, on-hand/off-hand grammar |
 
 **Status legend:**
 - *drafting* — sections being actively written; load-bearing for
