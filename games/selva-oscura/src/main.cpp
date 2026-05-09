@@ -16,6 +16,7 @@
 #include "combat/PlayerEquipment.h"
 #include "combat/Weapon.h"
 #include "combat/WeaponClass.h"
+#include "render/SceneGeometry.h"
 #include "render/SceneShaders.h"
 
 #include <imgui.h>
@@ -46,196 +47,9 @@
 #include <string>
 #include <vector>
 
-// Scene shader program + uniform setters owned by render/SceneShaders.{h,cpp}.
+// Scene shaders + scene geometry (cube/floor/grid/axes) live in
+// render/SceneShaders.{h,cpp} and render/SceneGeometry.{h,cpp}.
 
-// ---------------------------------------------------------------------------
-// Cube geometry (shared between the tumbling scene cube and the player cube)
-// ---------------------------------------------------------------------------
-
-static GLuint sCubeVao = 0;
-static GLuint sCubeVbo = 0;
-static GLuint sCubeEbo = 0;
-
-static void initCube()
-{
-    // 8 corners of a unit cube centered at origin, half-extent 0.5. Each
-    // vertex is position + grayscale shade. Per-corner shading makes faces
-    // gradient between corners so the 3D shape reads when it tumbles —
-    // poor-man's lighting until real lighting lands.
-    // clang-format off
-    static constexpr float kVertices[] = {
-        // back face corners (z = -0.5)
-        -0.5f, -0.5f, -0.5f,   0.30f, // 0
-         0.5f, -0.5f, -0.5f,   0.55f, // 1
-         0.5f,  0.5f, -0.5f,   0.80f, // 2
-        -0.5f,  0.5f, -0.5f,   0.55f, // 3
-        // front face corners (z = +0.5)
-        -0.5f, -0.5f,  0.5f,   0.55f, // 4
-         0.5f, -0.5f,  0.5f,   0.80f, // 5
-         0.5f,  0.5f,  0.5f,   1.00f, // 6
-        -0.5f,  0.5f,  0.5f,   0.80f, // 7
-    };
-
-    static constexpr unsigned int kIndices[] = {
-        // back face (looking down -Z)
-        0, 2, 1,   0, 3, 2,
-        // front face (looking down +Z)
-        4, 5, 6,   4, 6, 7,
-        // left face
-        0, 4, 7,   0, 7, 3,
-        // right face
-        1, 2, 6,   1, 6, 5,
-        // bottom face
-        0, 1, 5,   0, 5, 4,
-        // top face
-        3, 7, 6,   3, 6, 2,
-    };
-    // clang-format on
-
-    glGenVertexArrays(1, &sCubeVao);
-    glGenBuffers(1, &sCubeVbo);
-    glGenBuffers(1, &sCubeEbo);
-
-    glBindVertexArray(sCubeVao);
-
-    glBindBuffer(GL_ARRAY_BUFFER, sCubeVbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(kVertices), kVertices, GL_STATIC_DRAW);
-
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sCubeEbo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(kIndices), kIndices, GL_STATIC_DRAW);
-
-    constexpr int stride = 4 * sizeof(float);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, nullptr);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, stride,
-                          reinterpret_cast<void*>(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-
-    glBindVertexArray(0);
-}
-
-// ---------------------------------------------------------------------------
-// Floor geometry — large flat quad in the y=0 plane, centered at origin.
-// Per-vertex shade gives a faint vignette (darker near edges) so motion
-// across the floor is readable.
-// ---------------------------------------------------------------------------
-
-static GLuint sFloorVao = 0;
-static GLuint sFloorVbo = 0;
-static GLuint sFloorEbo = 0;
-
-// Ground grid lines at 1m spacing, used as a visual ruler for debugging
-// movement (dodge distances, walk speed, foot-plant accuracy). Drawn as
-// GL_LINES, dark gray on the dim floor. Cardinal axes (x=0, z=0) are
-// drawn separately and brighter so directional confusion is immediate.
-static GLuint sGridVao = 0;
-static GLuint sGridVbo = 0;
-static int sGridLineCount = 0;
-static GLuint sAxesVao = 0;
-static GLuint sAxesVbo = 0;
-static int sAxesLineCount = 0;
-
-static constexpr float kFloorHalfSize = 50.0f;
-
-static void initFloor()
-{
-    // clang-format off
-    const float kVertices[] = {
-        // four corners of a square in the XZ plane (y=0)
-        -kFloorHalfSize, 0.0f, -kFloorHalfSize,   0.10f, // 0: back-left, dark
-         kFloorHalfSize, 0.0f, -kFloorHalfSize,   0.10f, // 1: back-right, dark
-         kFloorHalfSize, 0.0f,  kFloorHalfSize,   0.25f, // 2: front-right, lighter
-        -kFloorHalfSize, 0.0f,  kFloorHalfSize,   0.25f, // 3: front-left, lighter
-    };
-
-    static constexpr unsigned int kIndices[] = {
-        0, 2, 1,   0, 3, 2,
-    };
-    // clang-format on
-
-    glGenVertexArrays(1, &sFloorVao);
-    glGenBuffers(1, &sFloorVbo);
-    glGenBuffers(1, &sFloorEbo);
-
-    glBindVertexArray(sFloorVao);
-
-    glBindBuffer(GL_ARRAY_BUFFER, sFloorVbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(kVertices), kVertices, GL_STATIC_DRAW);
-
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sFloorEbo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(kIndices), kIndices, GL_STATIC_DRAW);
-
-    constexpr int stride = 4 * sizeof(float);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, nullptr);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, stride,
-                          reinterpret_cast<void*>(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-
-    glBindVertexArray(0);
-}
-
-// Build a 1m-spaced grid of horizontal/vertical lines in the y=0 plane,
-// covering ±kGridHalfSize. Cardinal axes (x=0, z=0) are skipped here
-// and built separately with a brighter shade.
-static void initGrid()
-{
-    constexpr int kGridHalfSize = 20;
-    const float k = static_cast<float>(kGridHalfSize);
-    std::vector<float> verts;
-    // Each line = 2 vertices, 4 floats each (x, y, z, shade).
-    verts.reserve(static_cast<std::size_t>((kGridHalfSize * 2 + 1) * 4 * 4));
-    for (int i = -kGridHalfSize; i <= kGridHalfSize; ++i)
-    {
-        if (i == 0)
-            continue; // axes drawn separately
-        const float p = static_cast<float>(i);
-        // Line parallel to X axis at z = p.
-        verts.push_back(-k); verts.push_back(0.005f); verts.push_back(p); verts.push_back(0.20f);
-        verts.push_back(k); verts.push_back(0.005f); verts.push_back(p); verts.push_back(0.20f);
-        // Line parallel to Z axis at x = p.
-        verts.push_back(p); verts.push_back(0.005f); verts.push_back(-k); verts.push_back(0.20f);
-        verts.push_back(p); verts.push_back(0.005f); verts.push_back(k); verts.push_back(0.20f);
-    }
-    sGridLineCount = static_cast<int>(verts.size() / 4);
-
-    glGenVertexArrays(1, &sGridVao);
-    glGenBuffers(1, &sGridVbo);
-    glBindVertexArray(sGridVao);
-    glBindBuffer(GL_ARRAY_BUFFER, sGridVbo);
-    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(verts.size() * sizeof(float)),
-                 verts.data(), GL_STATIC_DRAW);
-    constexpr int stride = 4 * sizeof(float);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, nullptr);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, stride,
-                          reinterpret_cast<void*>(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-    glBindVertexArray(0);
-
-    // Cardinal axes — brighter so direction is immediately readable.
-    // X axis red-ish (shade 0.55), Z axis blue-ish (shade 0.75) — but
-    // we only have a single shade channel, so distinguish by length:
-    // X axis runs full ±k, Z axis runs full ±k, both at shade 0.55.
-    const float kAxes[] = {
-        -k, 0.006f, 0.0f, 0.55f,
-         k, 0.006f, 0.0f, 0.55f,
-        0.0f, 0.006f, -k, 0.75f,
-        0.0f, 0.006f,  k, 0.75f,
-    };
-    sAxesLineCount = 4;
-    glGenVertexArrays(1, &sAxesVao);
-    glGenBuffers(1, &sAxesVbo);
-    glBindVertexArray(sAxesVao);
-    glBindBuffer(GL_ARRAY_BUFFER, sAxesVbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(kAxes), kAxes, GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, nullptr);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, stride,
-                          reinterpret_cast<void*>(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-    glBindVertexArray(0);
-}
 
 // ---------------------------------------------------------------------------
 // Skeletal character assets — X_Bot.glb (mesh + skeleton) + the entire
@@ -444,21 +258,8 @@ static void shutdownSkeletalAssets()
 
 static void shutdownGeometry()
 {
-    glDeleteBuffers(1, &sFloorEbo);
-    glDeleteBuffers(1, &sFloorVbo);
-    glDeleteVertexArrays(1, &sFloorVao);
-    glDeleteBuffers(1, &sGridVbo);
-    glDeleteVertexArrays(1, &sGridVao);
-    glDeleteBuffers(1, &sAxesVbo);
-    glDeleteVertexArrays(1, &sAxesVao);
-    glDeleteBuffers(1, &sCubeEbo);
-    glDeleteBuffers(1, &sCubeVbo);
-    glDeleteVertexArrays(1, &sCubeVao);
+    selva::render::shutdownSceneGeometry();
     selva::render::shutdownSceneProgram();
-    sFloorEbo = sFloorVbo = sFloorVao = 0;
-    sGridVbo = sGridVao = 0;
-    sAxesVbo = sAxesVao = 0;
-    sCubeEbo = sCubeVbo = sCubeVao = 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -3583,22 +3384,6 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
 // frame; uModel and uTint vary per draw.
 // ---------------------------------------------------------------------------
 
-static void drawObject(GLuint vao, GLsizei index_count, const glm::mat4& model, float tint)
-{
-    selva::render::setSceneModel(model);
-    selva::render::setSceneTint(tint);
-    glBindVertexArray(vao);
-    glDrawElements(GL_TRIANGLES, index_count, GL_UNSIGNED_INT, nullptr);
-}
-
-static void drawLines(GLuint vao, GLsizei vertex_count, const glm::mat4& model, float tint)
-{
-    selva::render::setSceneModel(model);
-    selva::render::setSceneTint(tint);
-    glBindVertexArray(vao);
-    glDrawArrays(GL_LINES, 0, vertex_count);
-}
-
 static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*camX*/,
                              float /*camY*/, float /*alpha*/)
 {
@@ -3677,24 +3462,19 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
 
     // 1. Floor — unrotated, identity model. Rendered first; depth test
     //    handles ordering against everything else.
-    drawObject(sFloorVao, 6, glm::mat4(1.0f), 1.0f);
+    selva::render::drawFloor(glm::mat4(1.0f), 1.0f);
 
-    // 1b. 1m grid — readable ruler for movement debugging (dodge
-    // distances, walk speed, foot-plant accuracy). Cardinal axes drawn
-    // brighter so directional confusion is immediate.
-    if (sGridVao != 0 && sGridLineCount > 0)
-        drawLines(sGridVao, sGridLineCount, glm::mat4(1.0f), 1.0f);
-    if (sAxesVao != 0 && sAxesLineCount > 0)
-        drawLines(sAxesVao, sAxesLineCount, glm::mat4(1.0f), 1.0f);
+    // 1b. 1m grid + cardinal axes — readable ruler for movement debugging.
+    selva::render::drawGrid(glm::mat4(1.0f), 1.0f);
+    selva::render::drawAxes(glm::mat4(1.0f), 1.0f);
 
-    // 2. Scene cube — tumbles at the origin, half-buried in the floor would
-    //    look bad, so lift it. Acts as a fixed landmark.
+    // 2. Scene cube — tumbles at the origin, lifted so it doesn't half-bury.
     {
-        const float seconds = static_cast<float>(SDL_GetTicks64()) * 0.001f; // wall-clock seconds
+        const float seconds = static_cast<float>(SDL_GetTicks64()) * 0.001f;
         const float angle = seconds * (glm::two_pi<float>() / 4.0f);
         glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.5f, -8.0f));
         model = glm::rotate(model, angle, glm::normalize(glm::vec3(0.6f, 1.0f, 0.3f)));
-        drawObject(sCubeVao, 36, model, 0.7f);
+        selva::render::drawCube(model, 0.7f);
     }
 
     glBindVertexArray(0);
@@ -4297,9 +4077,7 @@ int main(int /*argc*/, char* /*argv*/[])
 
     sWindowW = engine.windowWidth();
     sWindowH = engine.windowHeight();
-    initCube();
-    initFloor();
-    initGrid();
+    selva::render::initSceneGeometry();
     if (!initSkeletalAssets())
     {
         // Non-fatal: the game stays runnable on a fresh checkout where

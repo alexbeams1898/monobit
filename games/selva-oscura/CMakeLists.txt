@@ -20,6 +20,7 @@ add_library(selva-oscura-lib STATIC
     src/anim/SkeletalRenderer.cpp
     src/combat/CombatLog.cpp
     src/combat/WeaponData.cpp
+    src/render/SceneGeometry.cpp
     src/render/SceneShaders.cpp
     src/Tunables.cpp
     src/WallClock.cpp
