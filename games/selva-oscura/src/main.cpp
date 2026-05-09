@@ -16,6 +16,7 @@
 #include "combat/PlayerEquipment.h"
 #include "combat/Weapon.h"
 #include "combat/WeaponClass.h"
+#include "anim/SkeletalAssets.h"
 #include "render/Camera.h"
 #include "render/SceneGeometry.h"
 #include "render/SceneShaders.h"
@@ -63,195 +64,22 @@
 // free in steady state.
 // ---------------------------------------------------------------------------
 
-static selva::anim::Skeleton sSkeleton;
-static selva::anim::SkeletalMesh sPlayerMesh;
-static selva::anim::ClipRegistry sClips;
-static selva::anim::PoseSampler sSampler;
-static selva::anim::LocomotionConfig sLocomotionConfig;
+// Skeletal-asset singletons (skeleton, mesh, clips, sampler, locomotion
+// config) and their init/audit/shutdown helpers live in
+// anim/SkeletalAssets.{h,cpp}. Aliases below keep the dense per-frame
+// call-site count manageable.
+static selva::anim::Skeleton& sSkeleton = selva::anim::skeleton();
+static selva::anim::SkeletalMesh& sPlayerMesh = selva::anim::playerMesh();
+static selva::anim::ClipRegistry& sClips = selva::anim::clips();
+static selva::anim::PoseSampler& sSampler = selva::anim::sampler();
+static selva::anim::LocomotionConfig& sLocomotionConfig = selva::anim::locomotionConfig();
 
-// Convenience accessors for the locomotion clips. Clip names are
-// sanitized at conversion time (lowercase, spaces → underscores). These
-// are the *generic* (no-weapon) base locomotion clips. Per-weapon stance
-// overlays (sword grip pose, shield grip pose) layer on top via the
-// upper-body mask system — that's a follow-up; for now the bare
-// locomotion plays regardless of equipped weapon.
-//
-// Clip choices come from the Phase-0 audit (clipHipPathLength) — we
-// need clips with authored hip motion so the world push can be derived
-// from clip data instead of a script speed:
-//   * standard_idle  — 3.00s, 0.008m hip path. True stationary; no
-//                      idle drift. Generic-pack idles ship with In Place
-//                      ON which is exactly what we want for idle.
-//   * walking        — 1.03s, 1.85m hip path → ~1.79 m/s authored speed.
-//                      From Action Adventure pack; In Place was off.
-//   * running        — 0.70s, 3.32m hip path → ~4.75 m/s authored speed.
-//                      From Action Adventure pack; In Place was off.
-// The standard_walk / standard_run pair is unusable as root motion
-// (0.22m hip path each — pure in-place sway). Kept loaded for backward
-// compatibility / debug-clip preview but not selected by gameplay.
-static const selva::anim::AnimationClip* idleClip()
-{
-    return sClips.get("standard_idle");
-}
-static const selva::anim::AnimationClip* walkClip()
-{
-    return sClips.get("walking");
-}
-static const selva::anim::AnimationClip* runClip()
-{
-    return sClips.get("running");
-}
-
-// Animation time bookkeeping now lives inside the PoseSampler, which
-// manages its own per-clip clocks and a cross-fade between two
-// concurrent tracks. main.cpp just calls sSampler.update(clip, dt, fade).
-
-static bool initSkeletalAssets()
-{
-    sSkeleton = selva::anim::loadSkeleton("assets/characters/x_bot/skeleton.ozz");
-    if (!sSkeleton.isLoaded())
-        return false;
-    // Bulk-load every .ozz in the x_bot asset dir at once. This pulls in
-    // every clip the build produced from the Mixamo pack — locomotion
-    // (sword_and_shield_idle/walk/run) plus all the attack clips. Anything
-    // missing just won't be in the registry; gameplay code falls back
-    // gracefully when the lookup returns null.
-    const int n_clips = sClips.loadDirectory("assets/characters/x_bot");
-    std::fprintf(stderr, "[anim] loaded %d clip(s) from assets/characters/x_bot\n", n_clips);
-    if (idleClip() == nullptr || !idleClip()->isLoaded())
-    {
-        std::fprintf(stderr, "[anim] required idle clip missing — character disabled\n");
-        return false;
-    }
-    sPlayerMesh = selva::anim::loadSkeletalMesh("assets/characters/x_bot/X_Bot.glb", sSkeleton);
-    if (!sPlayerMesh.isLoaded())
-        return false;
-    // The sampler is bound to the (skeleton, mesh) pair at construction so
-    // its bone-palette space is guaranteed to match the mesh's baked
-    // vertex space. No "remember to wire the root transform" step.
-    sSampler = selva::anim::createPoseSampler(sSkeleton, sPlayerMesh);
-    if (!selva::anim::initSkeletalRenderer())
-        return false;
-
-    // Pre-warm: sample the first clip at t=0 so the bone palette is
-    // populated before the first frame renders. Without this, the very
-    // first render uses an uninitialized palette (zeros), producing a
-    // flash of broken geometry. Partial fix only; see
-    // docs/BACKLOG.md "First-frame pop / init flash" for the full
-    // story (camera + player prev-state lerps still pop on frame 0).
-    // dt=0 advances no time; blend=0 snaps without fading. Pre-warm fills
-    // the bone palette with the Idle pose at frame 0 so the first render
-    // doesn't see zero matrices.
-    sSampler.update(*idleClip(), 0.0f, 0.0f);
-    // Configure per-joint inertialization decay scaling. Each joint's
-    // decay window scales with its pose-offset magnitude; small-offset
-    // joints stay snappy, large-offset joints get longer windows so
-    // their motion reads as smooth rather than as a fast snap.
-    {
-        const auto& tun = selva::tuning::current();
-        sSampler.setInertializationScaling(tun.inertialize_decay_base_seconds,
-                                           tun.inertialize_decay_scale_per_radian,
-                                           tun.inertialize_decay_max_seconds);
-    }
-    return true;
-}
-
-// Audit: scan every loaded clip's hip-XZ path length so we can see at
-// a glance which clips ship with authored hip motion (suitable for
-// driving world translation as root motion) and which are "in place"
-// (need to be ignored or re-downloaded).
-//
-//   * 0.00m  — In Place toggle was on; clip won't drive world travel.
-//   * <0.05m — micro hip sway only (idles); world-drift if not flagged.
-//   * >0.5m  — clip authors meaningful translation; usable as root motion.
-//
-// Read once; the values inform the locomotion.json is_stationary flag
-// and tell us whether walk/run/dodge clips need re-downloading from
-// Mixamo before the root-motion refactor proceeds.
-static void auditClipHipMotion()
-{
-    if (sClips.by_name.empty() || sSampler.bone_palette.empty())
-        return;
-    // Gather then sort by name for stable output ordering.
-    std::vector<std::string> names;
-    names.reserve(sClips.by_name.size());
-    for (const auto& kv : sClips.by_name)
-        names.push_back(kv.first);
-    std::sort(names.begin(), names.end());
-
-    std::fprintf(stderr,
-                 "[clip-audit] hip XZ path length per clip (full clip, not motion-end-clipped):\n");
-    std::fprintf(stderr, "  %-40s %8s %8s\n", "clip", "duration", "hip_path");
-    for (const auto& name : names)
-    {
-        const auto* clip = sClips.get(name);
-        if (clip == nullptr || !clip->isLoaded())
-            continue;
-        const auto scan = sSampler.clipHipPathLength(*clip, 60.0f, 0.0f);
-        std::fprintf(stderr, "  %-40s %7.2fs %7.3fm\n", name.c_str(), clip->duration(),
-                     scan.path_length);
-    }
-
-    // For dodge clips specifically, dump the hip-XZ trajectory at 11
-    // evenly-spaced timesteps. This shows where the clip authors most
-    // of its travel — front-loaded vs back-loaded vs evenly distributed.
-    // If skip-in (roll_skip_in_seconds) eats the windup window where
-    // most travel happens, root motion delivers almost no world push
-    // even though the clip visually rolls. The data tells us whether
-    // skip-in is the culprit.
-    static const char* kProfileClips[] = {
-        // Dodge / roll candidates
-        "stand_to_roll",
-        "standing_dodge_backward",
-        "falling_to_roll",
-        // Sword & shield attacks (referenced by config/weapon_classes/sword.json).
-        // We profile these to see whether the clip authors net forward
-        // hip travel (clean root-motion source) or ping-pongs back to
-        // origin (visually rolls/swings but the character ends where
-        // they started). The data informs whether attacks need a script-
-        // push fallback like the legacy roll did, or can ride pure root
-        // motion like falling_to_roll does.
-        "sword_and_shield_slash",
-        "sword_and_shield_slash_2",
-        "sword_and_shield_slash_3",
-        "sword_and_shield_slash_4",
-        "sword_and_shield_slash_5",
-        "sword_and_shield_attack",
-        "sword_and_shield_attack_2",
-        "sword_and_shield_attack_3",
-        "sword_and_shield_attack_4",
-    };
-    for (const char* nm : kProfileClips)
-    {
-        const auto* clip = sClips.get(nm);
-        if (clip == nullptr || !clip->isLoaded())
-            continue;
-        const float dur = clip->duration();
-        std::fprintf(stderr, "[clip-profile] %s  dur=%.2fs  hip XZ trajectory:\n", nm, dur);
-        std::fprintf(stderr,
-                     "  %4s %5s %8s %8s %10s %12s\n",
-                     "t%", "t(s)", "hip_x", "hip_z", "step", "cumul_dist");
-        glm::vec2 prev(0.0f);
-        float cumul = 0.0f;
-        for (int i = 0; i <= 10; ++i)
-        {
-            const float t = (i / 10.0f) * dur;
-            const glm::vec2 hip = sSampler.sampleHipXZAt(*clip, t);
-            const float step = (i == 0) ? 0.0f : glm::length(hip - prev);
-            cumul += step;
-            std::fprintf(stderr, "  %3d%% %5.2f %8.3f %8.3f %10.3f %12.3f\n",
-                         i * 10, t, hip.x, hip.y, step, cumul);
-            prev = hip;
-        }
-    }
-}
-
-static void shutdownSkeletalAssets()
-{
-    selva::anim::shutdownSkeletalRenderer();
-    // sPlayerMesh's destructor frees its GPU buffers. The other ozz-owned
-    // structs free heap memory in their destructors — no GL involvement.
-}
+using selva::anim::auditClipHipMotion;
+using selva::anim::idleClip;
+using selva::anim::initSkeletalAssets;
+using selva::anim::runClip;
+using selva::anim::shutdownSkeletalAssets;
+using selva::anim::walkClip;
 
 // ---------------------------------------------------------------------------
 // Resource cleanup

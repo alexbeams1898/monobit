@@ -15,6 +15,7 @@ add_library(selva-oscura-lib STATIC
     src/anim/ClipRegistry.cpp
     src/anim/LocomotionConfig.cpp
     src/anim/PoseSampler.cpp
+    src/anim/SkeletalAssets.cpp
     src/anim/Skeleton.cpp
     src/anim/SkeletalMesh.cpp
     src/anim/SkeletalRenderer.cpp
