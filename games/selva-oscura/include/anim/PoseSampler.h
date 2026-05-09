@@ -346,6 +346,18 @@ struct PoseSampler
                             float search_window_end = -1.0f,
                             float sample_hz = 60.0f) const;
 
+    // Overload taking the reference joint world positions directly,
+    // ordered to match `joint_indices`. Use when the source pose is
+    // the live skinned pose (mid-crossfade, post-one-shot, etc.) —
+    // the live pose isn't a single clip's pose so the (prev_clip,
+    // prev_t) overload would sample the wrong reference.
+    float clipPoseMatchTime(const std::vector<glm::vec3>& ref_world_pos,
+                            const AnimationClip& next_clip,
+                            const std::vector<int>& joint_indices,
+                            float search_window_start = 0.0f,
+                            float search_window_end = -1.0f,
+                            float sample_hz = 60.0f) const;
+
     // Sample `clip` and return the watched joints' summed forward
     // velocity vector at clip-time `t_seconds`. Computed as the
     // position delta over a one-frame interval (1/60s) starting at

@@ -1208,6 +1208,92 @@ float PoseSampler::clipPoseMatchTime(const AnimationClip& prev_clip, float prev_
     return best_t;
 }
 
+float PoseSampler::clipPoseMatchTime(const std::vector<glm::vec3>& ref_world_pos,
+                                     const AnimationClip& next_clip,
+                                     const std::vector<int>& joint_indices,
+                                     float search_window_start, float search_window_end,
+                                     float sample_hz) const
+{
+    if (!impl || !impl->skeleton || !next_clip.isLoaded() || joint_indices.empty() ||
+        ref_world_pos.size() != joint_indices.size())
+        return 0.0f;
+    const ozz::animation::Animation* next_anim = next_clip.ozz_animation.get();
+    if (next_anim == nullptr)
+        return 0.0f;
+    const float next_dur = next_anim->duration();
+    if (next_dur <= 0.0f || sample_hz <= 0.0f)
+        return 0.0f;
+
+    const ozz::animation::Skeleton& skel = *impl->skeleton;
+    const int n_joints = skel.num_joints();
+    const int n_soa = skel.num_soa_joints();
+    for (int j : joint_indices)
+        if (j < 0 || j >= n_joints)
+            return 0.0f;
+
+    ozz::animation::SamplingJob::Context ctx;
+    ctx.Resize(n_joints);
+    std::vector<ozz::math::SoaTransform> locals(n_soa);
+    std::vector<ozz::math::Float4x4> models(n_joints);
+    ozz::math::Float4x4 root_storage;
+    std::memcpy(&root_storage, &impl->root_transform, sizeof(glm::mat4));
+
+    auto sample_clip_at = [&](float t, std::vector<glm::vec3>& out) -> bool
+    {
+        const float ratio = std::clamp(t / next_dur, 0.0f, 1.0f);
+        ozz::animation::SamplingJob sjob;
+        sjob.animation = next_anim;
+        sjob.context = &ctx;
+        sjob.ratio = ratio;
+        sjob.output = ozz::make_span(locals);
+        if (!sjob.Run())
+            return false;
+        ozz::animation::LocalToModelJob ljob;
+        ljob.skeleton = &skel;
+        ljob.root = &root_storage;
+        ljob.input = ozz::make_span(locals);
+        ljob.output = ozz::make_span(models);
+        if (!ljob.Run())
+            return false;
+        out.resize(joint_indices.size());
+        for (std::size_t k = 0; k < joint_indices.size(); ++k)
+        {
+            const ozz::math::Float4x4& m = models[joint_indices[k]];
+            alignas(16) float col3[4];
+            ozz::math::StorePtr(m.cols[3], col3);
+            out[k] = glm::vec3(col3[0], col3[1], col3[2]);
+        }
+        return true;
+    };
+
+    const float t_start = std::max(0.0f, search_window_start);
+    const float t_end =
+        (search_window_end > 0.0f) ? std::min(search_window_end, next_dur) : next_dur;
+    if (t_end <= t_start)
+        return t_start;
+    const float step = 1.0f / sample_hz;
+    const int n_steps = static_cast<int>(std::ceil((t_end - t_start) / step)) + 1;
+
+    std::vector<glm::vec3> candidate;
+    float best_t = t_start;
+    float best_dist_sq = std::numeric_limits<float>::infinity();
+    for (int i = 0; i < n_steps; ++i)
+    {
+        const float t = std::min(t_start + static_cast<float>(i) * step, t_end);
+        if (!sample_clip_at(t, candidate))
+            continue;
+        float d2 = 0.0f;
+        for (std::size_t k = 0; k < ref_world_pos.size(); ++k)
+            d2 += glm::dot(candidate[k] - ref_world_pos[k], candidate[k] - ref_world_pos[k]);
+        if (d2 < best_dist_sq)
+        {
+            best_dist_sq = d2;
+            best_t = t;
+        }
+    }
+    return best_t;
+}
+
 glm::vec3 PoseSampler::clipJointVelocityAt(const AnimationClip& clip, float t_seconds,
                                            const std::vector<int>& joint_indices) const
 {

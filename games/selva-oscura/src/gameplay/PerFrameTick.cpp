@@ -903,6 +903,37 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         return true;
     };
 
+    // Off-hand cold-strike: fire a free clip when the player presses
+    // a button no chain accepts at slot 0. For unarmed RMB, that's the
+    // hook — RMB cold throws a hook without locking a technique, so
+    // the next press still has full freedom (LMB starts a real chain,
+    // RMB throws another hook). No chain advancement, no window setup,
+    // no commit. Returns true if a clip played.
+    auto fireFreeOffHand = [&](selva::combat::HandSide hand, const char* button) -> bool
+    {
+        const selva::combat::Weapon* w = (hand == selva::combat::HandSide::Right)
+                                             ? sEquipment.right
+                                             : sEquipment.left;
+        if (w == nullptr || w->cls == nullptr)
+            return false;
+        const char* clip_name = nullptr;
+        // Unarmed RMB cold = hook. Other classes / buttons drop.
+        if (w->cls->id == "unarmed" && std::strcmp(button, "RMB") == 0)
+            clip_name = "hook";
+        if (clip_name == nullptr)
+            return false;
+        const auto* clip = sClips.get(clip_name);
+        if (clip == nullptr || !clip->isLoaded())
+            return false;
+        TransitionProfile profile = profiles::firstStrike();
+        const float start_seconds = poseMatchStartFromLoco(*clip, 0.30f);
+        const float rate = effectiveAttackPlaybackRate(hand);
+        fireOneShotWithProfile(*clip, profile, start_seconds, rate);
+        combatLog("[combat:rhythm] free off-hand %s -> %s (no technique lock)\n", button,
+                  clip_name);
+        return true;
+    };
+
     // Try to fire the per-hand input — either a fresh press this
     // frame, or a buffered press whose cancel window just opened. If
     // neither is ready, return without firing. Returns the press to
@@ -980,16 +1011,20 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
             if (need_establish_beat && !sPendingFirstAction.active)
             {
                 // Validate the button against slot 0 of any technique.
-                // Wrong-button first-strikes (e.g. RMB while unarmed
-                // techniques all start with LMB) silently drop instead
-                // of latching a swing the player can't trigger.
+                // Wrong-button first-strikes that aren't covered by a
+                // free off-hand clip drop silently. For unarmed RMB,
+                // the off-hand cold-strike fires hook directly (no
+                // technique lock).
                 const TechniqueDispatch td = dispatchTechniqueForPress(
                     sEquipment, hand, kind, /*chain_index=*/0,
                     /*current_locked=*/-1, button);
                 if (!td.valid)
                 {
-                    combatLog("[combat:rhythm] first-strike REJECTED (no technique accepts %s @ slot 0)\n",
-                              button);
+                    if (fireFreeOffHand(hand, button))
+                        combat_input_this_frame = true;
+                    else
+                        combatLog("[combat:rhythm] first-strike REJECTED (no technique accepts %s @ slot 0)\n",
+                                  button);
                     return;
                 }
                 sPendingFirstAction.active = true;
@@ -1061,14 +1096,18 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
             {
                 // First press: dispatch against slot 0 to filter
                 // techniques. If no technique accepts this button at
-                // slot 0, fall through silently — no swing fires.
+                // slot 0, try the free off-hand cold-strike (unarmed
+                // RMB → hook with no technique lock). Otherwise drop.
                 const TechniqueDispatch td = dispatchTechniqueForPress(
                     sEquipment, hand, kind, /*chain_index=*/0,
                     /*current_locked=*/-1, button);
                 if (!td.valid)
                 {
-                    combatLog("[combat:rhythm] press REJECTED (no technique accepts %s @ slot 0)\n",
-                              button);
+                    if (fireFreeOffHand(hand, button))
+                        combat_input_this_frame = true;
+                    else
+                        combatLog("[combat:rhythm] press REJECTED (no technique accepts %s @ slot 0)\n",
+                                  button);
                     buf.pending = false;
                     return;
                 }

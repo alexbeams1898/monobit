@@ -50,25 +50,32 @@ void logSpliceDiag(const SpliceDiag& d, const selva::anim::AnimationClip& new_cl
 
 float poseMatchStartFromLoco(const selva::anim::AnimationClip& new_clip, float window_seconds,
                              const selva::anim::PoseSampler& sampler,
-                             const selva::anim::ClipRegistry& clips,
-                             const std::string& last_loco_clip_name)
+                             const selva::anim::ClipRegistry& /*clips*/,
+                             const std::string& /*last_loco_clip_name*/)
 {
-    const auto* loco_clip = clips.get(last_loco_clip_name);
-    if (loco_clip == nullptr || !loco_clip->isLoaded())
-        return 0.0f;
+    // Reference pose is the LIVE skinned pose, sampled per-joint in
+    // world space. Was previously sampling a single clip at its
+    // current time; that's wrong mid-crossfade because the live pose
+    // is a blend of (loco_previous + loco_current) and matching
+    // against either single clip's frame returns a garbage best_t.
+    // Live pose is what's actually on screen; matching against that
+    // produces the correct splice point regardless of which clips
+    // are blending.
     std::vector<int> joints;
+    std::vector<glm::vec3> ref;
     for (const char* name :
          {"mixamorig:RightHand", "mixamorig:LeftHand", "mixamorig:RightFoot", "mixamorig:LeftFoot"})
     {
         const int idx = sampler.findJoint(name);
         if (idx >= 0)
+        {
             joints.push_back(idx);
+            ref.push_back(sampler.jointWorldPos(idx));
+        }
     }
     if (joints.empty())
         return 0.0f;
-    const auto fd = sampler.frameDiagnostics();
-    return sampler.clipPoseMatchTime(*loco_clip, fd.loco_current_time, new_clip, joints, 0.0f,
-                                     window_seconds);
+    return sampler.clipPoseMatchTime(ref, new_clip, joints, 0.0f, window_seconds);
 }
 
 bool isMovingLocoClip(const std::string& name)
