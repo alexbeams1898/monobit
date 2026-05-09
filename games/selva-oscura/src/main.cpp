@@ -26,6 +26,7 @@
 #include "render/Camera.h"
 #include "render/SceneGeometry.h"
 #include "render/SceneShaders.h"
+#include "render/WorldRenderer.h"
 
 #include <imgui.h>
 // stb_image (reader) is for the contact-sheet composite; its
@@ -2429,36 +2430,9 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
                              float /*camY*/, float /*alpha*/)
 {
     ZoneScopedN("selvaRenderWorld");
-    // Camera is positioned behind the player along its forward axis, lifted
-    // by kFollowHeight, looking at the player's chest.
-    const glm::vec3 lookFwd(std::cos(selva::render::cameraPitch()) * -std::sin(selva::render::cameraYaw()), std::sin(selva::render::cameraPitch()),
-                            std::cos(selva::render::cameraPitch()) * -std::cos(selva::render::cameraYaw()));
-    const auto& tun = selva::tuning::current();
-    const glm::vec3 camPos =
-        sPlayer.pos - lookFwd * tun.follow_distance + glm::vec3(0.0f, tun.follow_height, 0.0f);
-    // LookAt height tracks the character's chest (~1.3m) since the
-    // rigged character is ~1.7m tall. Aiming at chest height keeps
-    // the player's silhouette centered in the frame instead of
-    // head-up or feet-down.
-    // Camera lookAt height tracks the character's hip Y so that dynamic
-    // poses (rolls, knockdowns, jumps) keep the body in frame. The
-    // legacy "1.3m chest height" was a hardcoded constant tuned for a
-    // standing character; during a tucked tumble the actual chest
-    // drops to ~0.85m and the character literally fell out of the
-    // camera's aim, looking like it disappeared. Hip-tracking fixes
-    // that without changing standing-pose framing.
-    //
-    // BUT: tracking hip Y instantaneously means the camera dives with
-    // the roll's ~0.8m vertical excursion in ~0.4s, which reads as
-    // jarring camera shake. We decouple camera vertical settle from
-    // character vertical motion: the camera lags behind fast Y
-    // changes, so a roll looks like the character ducks beneath a
-    // steady frame instead of the world tilting around them.
-    //
-    // Implementation: exponential decay toward the target hip-Y with
-    // a time constant of ~0.4s. Per-frame this is `lerp(current,
-    // target, 1 - exp(-dt/tau))`. We use frame_dt (wall clock) since
-    // this runs in the render path.
+    // LookAt height tracks the character's hip Y so dynamic poses
+    // (rolls, knockdowns) keep the body in frame. Smoothed in
+    // buildViewProj to avoid camera-shake during fast Y excursions.
     float targetLookAtY = 1.3f;
     if (sSampler.jointCount() > 0)
     {
@@ -2466,58 +2440,16 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
         {
             if (std::strcmp(sSampler.jointName(i), "mixamorig:Hips") == 0)
             {
-                targetLookAtY = sSampler.jointWorldPos(i).y + 0.3f; // a bit above hip
+                targetLookAtY = sSampler.jointWorldPos(i).y + 0.3f;
                 break;
             }
         }
     }
-    static float sSmoothedLookAtY = targetLookAtY;
-    static bool sLookAtYInit = false;
-    if (!sLookAtYInit)
-    {
-        sSmoothedLookAtY = targetLookAtY; // first-frame snap, no easing
-        sLookAtYInit = true;
-    }
-    else
-    {
-        constexpr float kLookAtTau = 0.4f; // seconds; higher = lazier camera
-        // Render runs at wall-clock rate (not fixed-step), so derive dt
-        // from SDL ticks rather than threading the engine dt down here.
-        static Uint64 sPrevTicks = SDL_GetTicks64();
-        const Uint64 nowTicks = SDL_GetTicks64();
-        const float frame_dt = static_cast<float>(nowTicks - sPrevTicks) * 0.001f;
-        sPrevTicks = nowTicks;
-        const float alpha = 1.0f - std::exp(-frame_dt / kLookAtTau);
-        sSmoothedLookAtY += (targetLookAtY - sSmoothedLookAtY) * alpha;
-    }
-    const glm::vec3 lookAt = glm::vec3(sPlayer.pos.x, sSmoothedLookAtY, sPlayer.pos.z);
-    const glm::mat4 view = glm::lookAt(camPos, lookAt, glm::vec3(0.0f, 1.0f, 0.0f));
-
-    const float aspect =
-        selva::render::windowHeight() > 0 ? static_cast<float>(selva::render::windowWidth()) / static_cast<float>(selva::render::windowHeight()) : 1.0f;
-    const glm::mat4 proj = glm::perspective(glm::radians(tun.fov_degrees), aspect, 0.1f, 200.0f);
-    const glm::mat4 viewProj = proj * view;
+    const glm::mat4 viewProj = selva::render::buildViewProj(sPlayer.pos, targetLookAtY);
 
     selva::render::useSceneProgram();
     selva::render::setSceneViewProj(viewProj);
-
-    // 1. Floor — unrotated, identity model. Rendered first; depth test
-    //    handles ordering against everything else.
-    selva::render::drawFloor(glm::mat4(1.0f), 1.0f);
-
-    // 1b. 1m grid + cardinal axes — readable ruler for movement debugging.
-    selva::render::drawGrid(glm::mat4(1.0f), 1.0f);
-    selva::render::drawAxes(glm::mat4(1.0f), 1.0f);
-
-    // 2. Scene cube — tumbles at the origin, lifted so it doesn't half-bury.
-    {
-        const float seconds = static_cast<float>(SDL_GetTicks64()) * 0.001f;
-        const float angle = seconds * (glm::two_pi<float>() / 4.0f);
-        glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.5f, -8.0f));
-        model = glm::rotate(model, angle, glm::normalize(glm::vec3(0.6f, 1.0f, 0.3f)));
-        selva::render::drawCube(model, 0.7f);
-    }
-
+    selva::render::renderEnvironment();
     glBindVertexArray(0);
     glUseProgram(0);
 
