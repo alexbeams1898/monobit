@@ -16,6 +16,7 @@
 #include "combat/PlayerEquipment.h"
 #include "combat/Weapon.h"
 #include "combat/WeaponClass.h"
+#include "render/Camera.h"
 #include "render/SceneGeometry.h"
 #include "render/SceneShaders.h"
 
@@ -540,11 +541,8 @@ static LocomotionFrameOutput tickLocomotionStateMachine(LocomotionStateMachine& 
 
 static LocomotionStateMachine sLocomotionSM;
 
-// Camera orientation. Yaw rotates around world-up (Y), pitch tilts up/down.
-// Yaw=0 looks down -Z; positive yaw rotates CCW looking down (right-handed).
-// Pitch is clamped to avoid gimbal flip at the poles.
-static float sCamYaw = 0.0f;
-static float sCamPitch = -0.25f; // start slightly looking down
+// Camera state owned by render/Camera.{h,cpp}. Aliases below keep
+// existing call-site count manageable.
 
 // One-shot input edge detection. SDL's keyboard state is "is this key down
 // right now"; for actions like the F1 panel toggle we need the rising
@@ -1275,16 +1273,7 @@ static void applyProfileLockout(const TransitionProfile& profile,
         sLocoLockoutUntil = target;
 }
 
-// Window size (read at init for the projection's aspect ratio; updated on
-// resize via the engine onResize callback).
-static int sWindowW = 0;
-static int sWindowH = 0;
-
-static void onWindowResize(Engine& /*engine*/, int new_w, int new_h)
-{
-    sWindowW = new_w;
-    sWindowH = new_h;
-}
+// Window size + onWindowResize callback owned by render/Camera.{h,cpp}.
 
 // ---------------------------------------------------------------------------
 // Yaw helpers
@@ -1634,12 +1623,16 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     // mouse is being used to drag sliders, not to aim the camera.
     if (!sShowTuningPanel)
     {
-        sCamYaw -= static_cast<float>(mdx) * tun.mouse_sensitivity;
-        sCamPitch -= static_cast<float>(mdy) * tun.mouse_sensitivity;
-        if (sCamPitch < tun.pitch_min)
-            sCamPitch = tun.pitch_min;
-        if (sCamPitch > tun.pitch_max)
-            sCamPitch = tun.pitch_max;
+        float yaw = selva::render::cameraYaw();
+        float pitch = selva::render::cameraPitch();
+        yaw -= static_cast<float>(mdx) * tun.mouse_sensitivity;
+        pitch -= static_cast<float>(mdy) * tun.mouse_sensitivity;
+        if (pitch < tun.pitch_min)
+            pitch = tun.pitch_min;
+        if (pitch > tun.pitch_max)
+            pitch = tun.pitch_max;
+        selva::render::setCameraYaw(yaw);
+        selva::render::setCameraPitch(pitch);
     }
 
     const Uint8* keys = SDL_GetKeyboardState(nullptr);
@@ -2708,8 +2701,8 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     // dodge-init read it. Forward axis is -Z rotated by camera yaw; right
     // axis is perpendicular in the XZ plane.
     glm::vec3 moveIntent(0.0f);
-    const glm::vec3 camFwd(-std::sin(sCamYaw), 0.0f, -std::cos(sCamYaw));
-    const glm::vec3 camRight(std::cos(sCamYaw), 0.0f, -std::sin(sCamYaw));
+    const glm::vec3 camFwd(-std::sin(selva::render::cameraYaw()), 0.0f, -std::cos(selva::render::cameraYaw()));
+    const glm::vec3 camRight(std::cos(selva::render::cameraYaw()), 0.0f, -std::sin(selva::render::cameraYaw()));
     if (keys[SDL_SCANCODE_W])
         moveIntent += camFwd;
     if (keys[SDL_SCANCODE_S])
@@ -3390,8 +3383,8 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
     ZoneScopedN("selvaRenderWorld");
     // Camera is positioned behind the player along its forward axis, lifted
     // by kFollowHeight, looking at the player's chest.
-    const glm::vec3 lookFwd(std::cos(sCamPitch) * -std::sin(sCamYaw), std::sin(sCamPitch),
-                            std::cos(sCamPitch) * -std::cos(sCamYaw));
+    const glm::vec3 lookFwd(std::cos(selva::render::cameraPitch()) * -std::sin(selva::render::cameraYaw()), std::sin(selva::render::cameraPitch()),
+                            std::cos(selva::render::cameraPitch()) * -std::cos(selva::render::cameraYaw()));
     const auto& tun = selva::tuning::current();
     const glm::vec3 camPos =
         sPlayer.pos - lookFwd * tun.follow_distance + glm::vec3(0.0f, tun.follow_height, 0.0f);
@@ -3453,7 +3446,7 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
     const glm::mat4 view = glm::lookAt(camPos, lookAt, glm::vec3(0.0f, 1.0f, 0.0f));
 
     const float aspect =
-        sWindowH > 0 ? static_cast<float>(sWindowW) / static_cast<float>(sWindowH) : 1.0f;
+        selva::render::windowHeight() > 0 ? static_cast<float>(selva::render::windowWidth()) / static_cast<float>(selva::render::windowHeight()) : 1.0f;
     const glm::mat4 proj = glm::perspective(glm::radians(tun.fov_degrees), aspect, 0.1f, 200.0f);
     const glm::mat4 viewProj = proj * view;
 
@@ -3513,8 +3506,8 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
     {
         ZoneScopedN("frame-capture-write");
         constexpr int kCaptureScale = 4;
-        const int src_w = sWindowW;
-        const int src_h = sWindowH;
+        const int src_w = selva::render::windowWidth();
+        const int src_h = selva::render::windowHeight();
         const int dst_w = src_w / kCaptureScale;
         const int dst_h = src_h / kCaptureScale;
         if (src_w > 0 && src_h > 0 && dst_w > 0 && dst_h > 0)
@@ -4075,8 +4068,7 @@ int main(int /*argc*/, char* /*argv*/[])
         return 1;
     }
 
-    sWindowW = engine.windowWidth();
-    sWindowH = engine.windowHeight();
+    selva::render::setInitialWindowSize(engine.windowWidth(), engine.windowHeight());
     selva::render::initSceneGeometry();
     if (!initSkeletalAssets())
     {
@@ -4145,7 +4137,7 @@ int main(int /*argc*/, char* /*argv*/[])
     engine.setPerFrameUpdate(&selvaPerFrame);
     engine.setRenderWorld(&selvaRenderWorld);
     engine.setRenderImGui(&selvaRenderImGui);
-    engine.setOnResize(&onWindowResize);
+    engine.setOnResize(&selva::render::onWindowResize);
 
     engine.run();
 
