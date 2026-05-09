@@ -26,6 +26,7 @@
 #include "render/Camera.h"
 #include "render/SceneGeometry.h"
 #include "render/SceneShaders.h"
+#include "gameplay/PlayerState.h"
 #include "render/WorldRenderer.h"
 #include "ui/ComboHud.h"
 
@@ -108,19 +109,10 @@ static void shutdownGeometry()
 // F1 ImGui panel. Gameplay code and ProceduralDriver both read from the
 // same global — see selva::tuning::current().
 
-struct PlayerState
-{
-    // Y is unused for movement — gameplay is XZ-only on the floor plane,
-    // and the renderer plants the character's feet via -foot_offset_y.
-    // Keep at zero for clarity (a non-zero Y would be silently ignored).
-    glm::vec3 pos = glm::vec3(0.0f, 0.0f, 0.0f);
-    float yaw = 0.0f;       // facing yaw in radians; 0 = facing -Z
-    bool sprinting = false; // true while Space has been held past the sprint commit threshold
-};
-
-// One global player. When this scales (multiple controllable entities, NPCs
-// using the same locomotion code), promote to ECS.
-static PlayerState sPlayer;
+// PlayerState struct + sPlayer singleton + yaw helpers live in
+// gameplay/PlayerState.{h,cpp}.
+using selva::gameplay::PlayerState;
+static PlayerState& sPlayer = selva::gameplay::player();
 
 // Pick the animation clip that should drive the character this frame, based
 // on the player's gameplay state. Falls back to Idle if a more specific
@@ -659,22 +651,9 @@ static void fireOneShotWithProfile(const selva::anim::AnimationClip& clip,
 // Used by smooth turn-to-direction logic; if we're at 170° and target is
 // -170°, the unwrapped delta is -340° (going the long way), but the wrapped
 // delta is +20° (going the short way through 180°).
-static float wrapAngleSigned(float delta)
-{
-    while (delta > glm::pi<float>())
-        delta -= glm::two_pi<float>();
-    while (delta < -glm::pi<float>())
-        delta += glm::two_pi<float>();
-    return delta;
-}
-
-// Map a unit ground-plane vector (X, _, Z) to a yaw matching our convention:
-// yaw=0 faces -Z, positive yaw rotates CCW looking down. atan2(-x, -z) is
-// the inverse of (sin(yaw), -, -cos(yaw))-style forward-vector formulas.
-static float yawFromGroundDir(const glm::vec3& dir)
-{
-    return std::atan2(-dir.x, -dir.z);
-}
+// wrapAngleSigned + yawFromGroundDir live in gameplay/PlayerState.{h,cpp}.
+using selva::gameplay::wrapAngleSigned;
+using selva::gameplay::yawFromGroundDir;
 
 // resolveAttackCancelOpenTimes lives in combat/AttackResolution.{h,cpp}.
 // Wrap so the existing call sites (init, F1 panel re-resolve buttons)
