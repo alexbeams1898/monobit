@@ -18,6 +18,15 @@ struct ChainState
     bool last_press_perfect = false;
 };
 
+// Per-hand cancel window state. Set when a fire opens the next press's
+// rhythm window; read by clipForButton (gates chain advancement) and
+// the HUD (renders the green band).
+struct CancelWindow
+{
+    float open_at = 0.0f;
+    float close_at = 0.0f;
+};
+
 // Record a fired press. Updates internal history + technique match.
 // Pass the press button ("LMB"/"RMB"), wall-clock time, the cancel
 // window center this fire opened (for next-press accuracy scoring),
@@ -27,6 +36,12 @@ void recordPress(const PlayerEquipment& eq, const char* button, float wall_clock
 
 // Read current state.
 const ChainState& chainState();
+
+// Per-hand cancel-window accessors. Setter is called from the fire
+// path with the just-opened window times; getter is read by
+// clipForButton + the HUD.
+void setCancelWindow(HandSide hand, float open_at, float close_at);
+const CancelWindow& cancelWindow(HandSide hand);
 
 // Reset history (called on fresh first-strike after a long gap).
 void resetChain();

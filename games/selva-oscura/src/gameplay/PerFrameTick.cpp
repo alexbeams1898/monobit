@@ -73,13 +73,9 @@ using selva::gameplay::loopClipForState;
 using selva::gameplay::selectTransitionClip;
 using selva::gameplay::tickLocomotionStateMachine;
 static LocomotionStateMachine& sLocomotionSM = selva::gameplay::locomotionSM();
-using selva::combat::AttackChainState;
 using selva::combat::AttackKind;
 using selva::combat::BufferedPress;
 using selva::combat::PendingFirstAction;
-using selva::combat::resetChain;
-static AttackChainState& sChainRight = selva::combat::chain(selva::combat::HandSide::Right);
-static AttackChainState& sChainLeft = selva::combat::chain(selva::combat::HandSide::Left);
 static BufferedPress& sBufferedRight = selva::combat::buffer(selva::combat::HandSide::Right);
 static BufferedPress& sBufferedLeft = selva::combat::buffer(selva::combat::HandSide::Left);
 static PendingFirstAction& sPendingFirstAction = selva::combat::pendingFirstAction();
@@ -514,18 +510,44 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         // No locomotion lockout — every clip plays fully via buffer
         // logic; no need to gate movement separately.
         profile.lockout = TransitionProfile::Lockout::None;
+        // Per-attack blend_out override. Finds the WeaponAttack with
+        // this clip in the equipped weapon's techniques. If found and
+        // the attack specifies blend_out_seconds >= 0, use it. This
+        // lets the unarmed combo finisher (waddle-tail) trim its
+        // visible recovery without affecting jab/hook.
+        if (sEquipment.right != nullptr && sEquipment.right->cls != nullptr)
+        {
+            const auto& aset = (sEquipment.grip == selva::combat::Grip::TwoHanded)
+                                   ? sEquipment.right->cls->two_handed
+                                   : sEquipment.right->cls->one_handed;
+            const std::vector<const std::vector<selva::combat::WeaponTechnique>*> tech_lists{
+                &aset.light, &aset.heavy, &aset.running};
+            for (const auto* techs : tech_lists)
+            {
+                for (const auto& tech : *techs)
+                {
+                    for (const auto& atk : tech.attacks)
+                    {
+                        if (atk.clip == clip_name && atk.blend_out_seconds >= 0.0f)
+                        {
+                            profile.blend_out_seconds = atk.blend_out_seconds;
+                            goto blend_out_resolved;
+                        }
+                    }
+                }
+            }
+        blend_out_resolved:;
+        }
         const float rate = effectiveAttackPlaybackRate(hand);
         fireOneShotWithProfile(*clip, profile, start_seconds, rate);
 
-        // Update the cancel-window state on the per-hand chain so the
-        // observer can score next-press accuracy. The chain doesn't
-        // gate fires anymore; this is purely informational.
-        AttackChainState& chain =
-            (hand == selva::combat::HandSide::Right) ? sChainRight : sChainLeft;
+        // Set the per-hand cancel window in the observer. clipForButton
+        // gates chain advancement on this; the HUD renders the green
+        // band from it.
         const float cancel_open = (clip->duration() > 0.0f) ? clip->duration() * 0.40f : 0.30f;
         const float cancel_close = cancel_open + tun.combo_input_buffer_seconds;
-        chain.cancel_window_open_at = selva::wallClock() + cancel_open / rate;
-        chain.cancel_window_close_at = selva::wallClock() + cancel_close / rate;
+        selva::combat::setCancelWindow(hand, selva::wallClock() + cancel_open / rate,
+                                       selva::wallClock() + cancel_close / rate);
 
         combatLog("[combat:fire] hand=%s clip=%s dur=%.3fs start=%.3fs rate=%.2f one_shot_active=%d\n",
                   (hand == selva::combat::HandSide::Right) ? "R" : "L", clip_name, clip->duration(),
@@ -541,13 +563,10 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     {
         BufferedPress& buf =
             (hand == selva::combat::HandSide::Right) ? sBufferedRight : sBufferedLeft;
-        AttackChainState& chain =
-            (hand == selva::combat::HandSide::Right) ? sChainRight : sChainLeft;
 
         const selva::combat::PressModifiers mods{shift_held, sPlayer.sprinting};
 
-        // Fresh press during dodge: buffer for post-dodge handoff
-        // (existing dodge-attack feature, preserved).
+        // Fresh press during dodge: buffer for post-dodge handoff.
         if (press_edge_this_frame && sDodgeActive)
         {
             sPostDodgeAttack.pending = true;
@@ -558,49 +577,40 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
             return;
         }
 
+        auto fire_and_record = [&](const char* button_to_fire, float now)
+        {
+            const auto& w = selva::combat::cancelWindow(hand);
+            const float center = 0.5f * (w.open_at + w.close_at);
+            const float half = 0.5f * (w.close_at - w.open_at);
+            selva::combat::recordPress(sEquipment, button_to_fire, now, center, half);
+        };
+
         if (press_edge_this_frame)
         {
+            const float now = selva::wallClock();
             if (sSampler.isOneShotActive())
             {
                 // Press while a one-shot is in flight. ONLY fire
-                // immediately if it advances a chain (e.g. inside
-                // jab's cancel window with RMB to fire the hook step
-                // of jab_hook_combo). Anything else — wrong button
-                // for the current chain step, no chain in progress,
-                // press outside the cancel window — gets buffered
-                // for replay after the current clip finishes. This
-                // preserves the design that attacks play to full
-                // duration unless the player commits a real chain
-                // step within the rhythm window.
-                const float now = selva::wallClock();
+                // immediately if it advances a chain (LMB→RMB→LMB
+                // inside windows = jab→hook→combo finisher). Wrong
+                // button / no chain / outside window → buffer for
+                // replay after the clip finishes.
+                const auto& w = selva::combat::cancelWindow(hand);
                 const bool inside_window =
-                    chain.cancel_window_close_at > chain.cancel_window_open_at &&
-                    now >= chain.cancel_window_open_at &&
-                    now <= chain.cancel_window_close_at;
+                    w.close_at > w.open_at && now >= w.open_at && now <= w.close_at;
                 if (inside_window)
                 {
                     bool is_chain_advance = false;
                     const char* clip_name = selva::combat::clipForButton(
-                        sEquipment, hand, button, mods, now,
-                        chain.cancel_window_open_at, chain.cancel_window_close_at,
+                        sEquipment, hand, button, mods, now, w.open_at, w.close_at,
                         &is_chain_advance);
                     if (is_chain_advance && clip_name != nullptr && fireClip(hand, clip_name))
                     {
                         combat_input_this_frame = true;
-                        const float center = 0.5f * (chain.cancel_window_open_at +
-                                                     chain.cancel_window_close_at);
-                        const float half = 0.5f * (chain.cancel_window_close_at -
-                                                   chain.cancel_window_open_at);
-                        selva::combat::recordPress(sEquipment, button, now, center, half);
-                        const auto& cs = selva::combat::chainState();
-                        chain.last_press_accuracy = cs.last_press_accuracy;
-                        chain.last_press_was_perfect = cs.last_press_perfect;
+                        fire_and_record(button, now);
                         return;
                     }
                 }
-                // Not a chain advance (or outside window): buffer
-                // for replay. The active one-shot will play to its
-                // full duration first.
                 buf.pending = true;
                 buf.button = button;
                 buf.buffered_at = now;
@@ -608,13 +618,10 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                           button);
                 return;
             }
-            // No one-shot active: fire mapped clip directly. The
-            // mapper reads the per-hand cancel window so that a press
-            // landing inside the window picks the technique's next
-            // slot (chain finisher) instead of cold-strike.
+            // No one-shot active: fire mapped clip directly.
+            const auto& w = selva::combat::cancelWindow(hand);
             const char* clip_name = selva::combat::clipForButton(
-                sEquipment, hand, button, mods, selva::wallClock(),
-                chain.cancel_window_open_at, chain.cancel_window_close_at);
+                sEquipment, hand, button, mods, now, w.open_at, w.close_at);
             if (clip_name == nullptr)
             {
                 combatLog("[combat:rhythm] press DROPPED (no clip mapping for %s)\n", button);
@@ -623,14 +630,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
             if (fireClip(hand, clip_name))
             {
                 combat_input_this_frame = true;
-                const float center =
-                    0.5f * (chain.cancel_window_open_at + chain.cancel_window_close_at);
-                const float half =
-                    0.5f * (chain.cancel_window_close_at - chain.cancel_window_open_at);
-                selva::combat::recordPress(sEquipment, button, selva::wallClock(), center, half);
-                const auto& cs = selva::combat::chainState();
-                chain.last_press_accuracy = cs.last_press_accuracy;
-                chain.last_press_was_perfect = cs.last_press_perfect;
+                fire_and_record(button, now);
             }
             return;
         }
@@ -638,25 +638,19 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         // No fresh press: replay buffered if one-shot just ended.
         if (buf.pending && !sSampler.isOneShotActive())
         {
-            if (selva::wallClock() - buf.buffered_at > tun.combo_input_buffer_seconds)
+            const float now = selva::wallClock();
+            if (now - buf.buffered_at > tun.combo_input_buffer_seconds)
             {
                 buf.pending = false;
                 return;
             }
+            const auto& w = selva::combat::cancelWindow(hand);
             const char* clip_name = selva::combat::clipForButton(
-                sEquipment, hand, buf.button, mods, selva::wallClock(),
-                chain.cancel_window_open_at, chain.cancel_window_close_at);
+                sEquipment, hand, buf.button, mods, now, w.open_at, w.close_at);
             if (clip_name != nullptr && fireClip(hand, clip_name))
             {
                 combat_input_this_frame = true;
-                const float center =
-                    0.5f * (chain.cancel_window_open_at + chain.cancel_window_close_at);
-                const float half =
-                    0.5f * (chain.cancel_window_close_at - chain.cancel_window_open_at);
-                selva::combat::recordPress(sEquipment, buf.button, selva::wallClock(), center, half);
-                const auto& cs = selva::combat::chainState();
-                chain.last_press_accuracy = cs.last_press_accuracy;
-                chain.last_press_was_perfect = cs.last_press_perfect;
+                fire_and_record(buf.button, now);
             }
             buf.pending = false;
         }
@@ -1083,12 +1077,10 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     {
         const float wait_seconds = selva::wallClock() - sPostDodgeAttack.buffered_at;
         const selva::combat::PressModifiers mods{shift_held, sPlayer.sprinting};
-        AttackChainState& dchain = (sPostDodgeAttack.hand == selva::combat::HandSide::Right)
-                                        ? sChainRight
-                                        : sChainLeft;
+        const auto& dw = selva::combat::cancelWindow(sPostDodgeAttack.hand);
         const char* clip_name = selva::combat::clipForButton(
             sEquipment, sPostDodgeAttack.hand, sPostDodgeAttack.button, mods,
-            selva::wallClock(), dchain.cancel_window_open_at, dchain.cancel_window_close_at);
+            selva::wallClock(), dw.open_at, dw.close_at);
         if (clip_name != nullptr && fireClip(sPostDodgeAttack.hand, clip_name))
         {
             combat_input_this_frame = true;

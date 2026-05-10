@@ -33,6 +33,8 @@ struct ObserverState
     float last_press_t = -1.0f;
     float last_window_center = 0.0f;
     float last_window_half = 0.0f;
+    CancelWindow cancel_right;
+    CancelWindow cancel_left;
 };
 
 ObserverState sObs;
@@ -97,6 +99,16 @@ void rescanChain(const PlayerEquipment& eq)
     {
         sObs.current.technique_id = best_tech->id.c_str();
         sObs.current.step = best_step;
+        // Technique completed (matched all its steps) — keep the HUD
+        // displaying the finisher state but clear history so the next
+        // press starts a fresh chain. Without history clear, the final
+        // press would seed the same technique again at step 1.
+        if (best_step >= static_cast<int>(best_tech->attacks.size()))
+        {
+            combatLog("[combat:obs] rescan COMPLETE %s @ step %d -> reset history\n",
+                      best_tech->id.c_str(), best_step);
+            sObs.count = 0;
+        }
     }
     combatLog("[combat:obs] rescan tech_count=%zu hist_count=%zu prev=%s@%d -> %s@%d\n",
               aset.light.size(), sObs.count, prev_id ? prev_id : "-", prev_step,
@@ -145,6 +157,18 @@ void recordPress(const PlayerEquipment& eq, const char* button, float wall_clock
 const ChainState& chainState()
 {
     return sObs.current;
+}
+
+void setCancelWindow(HandSide hand, float open_at, float close_at)
+{
+    CancelWindow& w = (hand == HandSide::Right) ? sObs.cancel_right : sObs.cancel_left;
+    w.open_at = open_at;
+    w.close_at = close_at;
+}
+
+const CancelWindow& cancelWindow(HandSide hand)
+{
+    return (hand == HandSide::Right) ? sObs.cancel_right : sObs.cancel_left;
 }
 
 void resetChain()

@@ -81,6 +81,14 @@ struct WeaponAttack
     // different timings; one global value can't serve both.
     float chain_link_blend_seconds = -1.0f;
 
+    // Override: how long the one-shot's BlendOut window is. Larger =
+    // more of the clip's tail is hidden under the loco-track reveal,
+    // effectively trimming the visible recovery (useful for clips
+    // with long authored waddles like the unarmed combo finisher).
+    // >= 0 = use this; < 0 = fall back to the playOneShot default
+    // (0.20s). Clamped to clip duration internally.
+    float blend_out_seconds = -1.0f;
+
     // Populated at load-time by resolveCancelOpenTime(). Holds the
     // effective clip-local cancel-open seconds (either the override
     // or the result of the joint-velocity scan). Not serialized to
@@ -102,7 +110,7 @@ struct WeaponAttack
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(WeaponAttack, clip, recovery_seconds,
                                                 cancel_open_seconds, motion_joints,
                                                 chain_link_start_seconds, chain_link_blend_seconds,
-                                                expected_button);
+                                                blend_out_seconds, expected_button);
 
 // All attack clips available within one grip mode. Slots:
 //   light   — standing or walking primary attack chain

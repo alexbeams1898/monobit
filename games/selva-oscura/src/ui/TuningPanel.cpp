@@ -43,10 +43,6 @@ static selva::anim::PoseSampler& sSampler = selva::anim::sampler();
 static selva::anim::LocomotionConfig& sLocomotionConfig = selva::anim::locomotionConfig();
 static selva::combat::PlayerEquipment& sEquipment = selva::combat::equipment();
 static selva::combat::WeaponClassRegistry& sWeaponClasses = selva::combat::weaponClasses();
-static selva::combat::AttackChainState& sChainRight =
-    selva::combat::chain(selva::combat::HandSide::Right);
-static selva::combat::AttackChainState& sChainLeft =
-    selva::combat::chain(selva::combat::HandSide::Left);
 
 // Resolve attack cancel-open times via the registry-aware impl. Re-bind
 // to a 0-arg version to mirror main.cpp's earlier wrapper usage.

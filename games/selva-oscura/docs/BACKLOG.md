@@ -68,3 +68,35 @@ player prev-state cases still produce a one-frame lerp pop.
 lands as part of the eventual title-screen / loading-flow milestone.
 
 ---
+
+## Combo finisher recovery feels "stalled"
+
+**Symptom:** After firing the unarmed combo finisher (LMB→RMB→LMB =
+jab→hook→combo), there is ~0.5–1.0s of recovery time during which the
+character looks idle and the player can't fire another attack until
+the clip's BlendOut completes.
+
+**Why:** The `combo.ozz` clip authored by Mixamo includes a long post-
+swing recovery tail (a "waddle" stand-up after the punch lands). The
+combat system enforces "attacks play to full duration" — presses
+during the recovery buffer until the clip ends, instead of cancelling
+into a fresh chain. After a finisher there is no chain step to
+advance into, so `is_chain_advance=false`, so the press buffers.
+
+We tried two fixes and reverted both:
+1. **Per-attack `blend_out_seconds` override (0.5–0.8s)** — trims the
+   visible recovery by fading out earlier into the loco track. Worked
+   but felt like cutting off the swing.
+2. **Cancel-into-cold-strike when chain is empty** — allowed any
+   press during a finisher's cancel window to fire fresh
+   immediately. Worked but added a special-case branch to the press
+   handler that complicates the "play to full duration" rule.
+
+**Fix path:** Re-bake `combo.ozz` in Blender to trim the waddle tail
+so the authored clip ends close to the upright stance the BlendOut is
+fading toward. Same pattern as other Mixamo clips that ping-pong or
+have authored drift — out of code, into asset prep.
+
+**Resolves when:** Asset-prep pass on combat clips (TBD milestone).
+
+---

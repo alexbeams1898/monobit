@@ -85,7 +85,6 @@ const char* nextExpectedButtonLabel()
 
 void renderComboHud()
 {
-    const auto& chain = selva::combat::chain(selva::combat::HandSide::Right);
     const ImGuiViewport* vp = ImGui::GetMainViewport();
     const float w = 360.0f;
     const float h = 80.0f;
@@ -119,8 +118,9 @@ void renderComboHud()
     draw->AddText(ImVec2(pos.x + (btn_box_w - ts.x) * 0.5f, pos.y + (bar_h - ts.y) * 0.5f),
                   btn_fg, next_btn);
 
-    const float open = chain.cancel_window_open_at;
-    const float close = chain.cancel_window_close_at;
+    const auto& cw = selva::combat::cancelWindow(selva::combat::HandSide::Right);
+    const float open = cw.open_at;
+    const float close = cw.close_at;
     const float now = selva::wallClock();
     const float view_secs = 1.0f;
     const float bar_x = pos.x + btn_box_w + 6.0f;
