@@ -82,14 +82,15 @@ TransitionProfile dodge()
 
 void fireOneShotWithProfile(const selva::anim::AnimationClip& clip,
                             const TransitionProfile& profile, float start_seconds,
-                            float playback_rate, selva::anim::PoseSampler& sampler)
+                            float playback_rate, selva::anim::PoseSampler& sampler,
+                            const char* clip_key)
 {
     if (profile.source_prep == TransitionProfile::SourcePrep::SnapLocoToZero)
         sampler.setLocomotionClipTime(0.0f);
     if (profile.enroll_inertialization)
         sampler.requestInertialization(profile.blend_in_seconds);
     sampler.playOneShot(clip, profile.blend_in_seconds, profile.blend_out_seconds, profile.mask,
-                        start_seconds, playback_rate, profile.freeze_last);
+                        start_seconds, playback_rate, profile.freeze_last, clip_key);
 }
 
 void applyProfileLockout(const TransitionProfile& profile, float cancel_window_close_at)

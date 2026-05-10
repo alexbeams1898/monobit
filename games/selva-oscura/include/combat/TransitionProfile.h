@@ -58,7 +58,8 @@ void setLocoLockoutUntil(float t);
 // anchor — chain.cancel_window_close_at vs dodge end vs wall clock).
 void fireOneShotWithProfile(const selva::anim::AnimationClip& clip,
                             const TransitionProfile& profile, float start_seconds,
-                            float playback_rate, selva::anim::PoseSampler& sampler);
+                            float playback_rate, selva::anim::PoseSampler& sampler,
+                            const char* clip_key = "");
 
 // Apply a profile's lockout strategy. Called after chain code has
 // computed cancel_window_close_at for the just-fired attack.

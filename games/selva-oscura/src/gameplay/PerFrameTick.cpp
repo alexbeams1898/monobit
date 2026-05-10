@@ -352,9 +352,10 @@ using selva::combat::TransitionProfile;
 namespace profiles = selva::combat::profiles;
 static void fireOneShotWithProfile(const selva::anim::AnimationClip& clip,
                                    const TransitionProfile& profile, float start_seconds,
-                                   float playback_rate)
+                                   float playback_rate, const char* clip_key = "")
 {
-    selva::combat::fireOneShotWithProfile(clip, profile, start_seconds, playback_rate, sSampler);
+    selva::combat::fireOneShotWithProfile(clip, profile, start_seconds, playback_rate, sSampler,
+                                          clip_key);
 }
 
 // Window size + onWindowResize callback owned by render/Camera.{h,cpp}.
@@ -442,13 +443,13 @@ static float chainLinkPoseMatchStart(const selva::anim::AnimationClip& clip,
     return sSampler.clipPoseMatchTime(*prev_clip, prev_clip_time, clip, joints, 0.0f, 0.50f);
 }
 
-// Look up the per-attack `blend_out_seconds` override for `clip_name`
-// in the equipped weapon's technique tree. Returns negative if the
-// clip isn't found or the attack didn't override.
-static float perAttackBlendOutOverride(const char* clip_name)
+// Look up the WeaponAttack entry whose `clip` matches `clip_name`
+// in the equipped weapon's technique tree. Returns nullptr if the
+// clip isn't a configured attack (e.g. a generic dodge/block clip).
+static const selva::combat::WeaponAttack* findAttackForClip(const char* clip_name)
 {
     if (sEquipment.right == nullptr || sEquipment.right->cls == nullptr)
-        return -1.0f;
+        return nullptr;
     const auto& aset = (sEquipment.grip == selva::combat::Grip::TwoHanded)
                            ? sEquipment.right->cls->two_handed
                            : sEquipment.right->cls->one_handed;
@@ -457,19 +458,44 @@ static float perAttackBlendOutOverride(const char* clip_name)
     for (const auto* techs : tech_lists)
         for (const auto& tech : *techs)
             for (const auto& atk : tech.attacks)
-                if (atk.clip == clip_name && atk.blend_out_seconds >= 0.0f)
-                    return atk.blend_out_seconds;
-    return -1.0f;
+                if (atk.clip == clip_name)
+                    return &atk;
+    return nullptr;
+}
+
+// Look up the per-attack `blend_out_seconds` override for `clip_name`.
+// Returns negative if the clip isn't an attack or didn't override.
+static float perAttackBlendOutOverride(const char* clip_name)
+{
+    const auto* atk = findAttackForClip(clip_name);
+    return (atk != nullptr) ? atk->blend_out_seconds : -1.0f;
 }
 
 // Set the per-hand cancel window (open / close) on the chain
 // observer, scaled by the active playback rate so the band lines up
 // with the sped-up clip.
-static void setHandCancelWindow(selva::combat::HandSide hand,
+//
+// Cancel-open seconds source priority:
+//   1. Per-attack `resolved_cancel_open_seconds` from the technique
+//      tree (auto-detected at load time via the joint-motion-end
+//      scan, or JSON-overridden). This honors the actual commit
+//      window of THIS attack — running attacks lunge committedly
+//      for the first ~70% so motion-end is late, while jabs settle
+//      around 40%.
+//   2. 40% of clip duration as a fallback for clips that aren't a
+//      configured attack (generic dodge, block, etc.).
+//
+// The earlier flat-40% rule cancelled running attacks well before
+// their lunge committed, letting RMB/dodge interrupt the
+// forward-momentum phase visibly.
+static void setHandCancelWindow(selva::combat::HandSide hand, const char* clip_name,
                                 const selva::anim::AnimationClip& clip, float rate,
                                 float combo_input_buffer_seconds)
 {
-    const float cancel_open = (clip.duration() > 0.0f) ? clip.duration() * 0.40f : 0.30f;
+    float cancel_open = (clip.duration() > 0.0f) ? clip.duration() * 0.40f : 0.30f;
+    const auto* atk = findAttackForClip(clip_name);
+    if (atk != nullptr && atk->resolved_cancel_open_seconds >= 0.0f)
+        cancel_open = atk->resolved_cancel_open_seconds;
     const float cancel_close = cancel_open + combo_input_buffer_seconds;
     selva::combat::setCancelWindow(hand, selva::wallClock() + cancel_open / rate,
                                    selva::wallClock() + cancel_close / rate);
@@ -503,8 +529,8 @@ static bool fireClipForHand(selva::combat::HandSide hand, const char* clip_name,
         profile.blend_out_seconds = blend_override;
 
     const float rate = effectiveAttackPlaybackRate(hand);
-    fireOneShotWithProfile(*clip, profile, start_seconds, rate);
-    setHandCancelWindow(hand, *clip, rate, combo_input_buffer_seconds);
+    fireOneShotWithProfile(*clip, profile, start_seconds, rate, clip_name);
+    setHandCancelWindow(hand, clip_name, *clip, rate, combo_input_buffer_seconds);
     combatLog("[combat:fire] hand=%s clip=%s dur=%.3fs start=%.3fs rate=%.2f one_shot_active=%d\n",
               (hand == selva::combat::HandSide::Right) ? "R" : "L", clip_name, clip->duration(),
               start_seconds, rate, one_shot_active ? 1 : 0);
@@ -849,7 +875,7 @@ static void fireBlockOneShot(bool loco_settled, const char* clip_name, bool free
         block_start = poseMatchStartFromLoco(*clip, 0.30f);
     TransitionProfile profile = loco_settled ? profiles::blockFromLatch() : profiles::blockLive();
     profile.freeze_last = freeze_last;
-    fireOneShotWithProfile(*clip, profile, block_start, /*playback_rate=*/1.0f);
+    fireOneShotWithProfile(*clip, profile, block_start, /*playback_rate=*/1.0f, clip_name);
     sBlockingActive = true;
 
     const glm::vec3 block_t0 =
@@ -984,7 +1010,7 @@ static bool fireDodgeFromTap(const glm::vec3& moveIntent, float backstep_playbac
     SpliceDiag diag;
     if (selva::combat::isCombatDebugEnabled())
         diag = captureSpliceDiag();
-    fireOneShotWithProfile(*dodgeClip, profiles::dodge(), 0.0f, playback_rate);
+    fireOneShotWithProfile(*dodgeClip, profiles::dodge(), 0.0f, playback_rate, clip_name);
     if (selva::combat::isCombatDebugEnabled())
     {
         char prefix[256];
@@ -1250,14 +1276,24 @@ static LocomotionPick selectLocomotionClip(const glm::vec3& moveIntent, float dt
     if (sBlockingActive && offHandCanBlock(sEquipment))
         pick.clip_name = "sword_and_shield_block_idle";
 
-    // Loco-freeze during one-shot BlendIn: don't swap loco clips while
-    // both tracks are visible — that's a multi-source collision (one-
-    // shot ramp + loco crossfade + new loco splice) and reads as a
-    // leg spasm. Hold/BlendOut phases are safe (loco invisible / loco
-    // already settled).
+    // Loco-freeze: hold the previous loco clip when a one-shot is
+    // staged-for-handoff and a swap now would corrupt the BlendOut
+    // pose-match. Two conditions:
+    //   * Phase=BlendIn: loco + one-shot both partially visible →
+    //     multi-source collision (loco ramp + new loco splice + one-
+    //     shot ramp) reads as a leg spasm.
+    //   * Phase=Hold + full-mask: loco fully occluded, but a swap
+    //     here stages a geometrically incompatible clip for the
+    //     upcoming BlendOut pose-match (e.g. dodge exit pose vs
+    //     running's t=0 produces 0.8m+ residuals). PoseSampler also
+    //     enforces this gate internally; we mirror it here so
+    //     sLastLocoClipName / pre-update joint capture / residual
+    //     log don't desync against the suppressed swap.
     const auto fd_loco = sSampler.frameDiagnostics();
     const bool one_shot_blending_in = fd_loco.one_shot_phase == 1;
-    if (one_shot_blending_in && !sLastLocoClipName.empty() && pick.clip_name != sLastLocoClipName)
+    const bool loco_frozen = sSampler.isLocoFrozenByOneShot();
+    if ((one_shot_blending_in || loco_frozen) && !sLastLocoClipName.empty() &&
+        pick.clip_name != sLastLocoClipName)
         pick.clip_name = sLastLocoClipName;
 
     pick.clip = sClips.get(pick.clip_name);
@@ -1272,6 +1308,22 @@ static LocomotionPick selectLocomotionClip(const glm::vec3& moveIntent, float dt
 // Post-update splice-residual diagnostic. Sample the new clip at the
 // splice time the sampler picked and log the per-joint residual vs
 // pre-update live pose.
+// Per-joint residual thresholds for anomaly tagging. A residual
+// over the threshold prefixes the line with `[!]` so the eye
+// catches it when scanning the log. Values picked from observed
+// "smooth" transitions (e.g. standard_idle->walking lands ~0.05m
+// hand) so anything ~3-5x above is suspicious.
+static float anomalyThresholdForJoint(const char* joint_name)
+{
+    if (std::strstr(joint_name, "Hand") != nullptr)
+        return 0.30f;
+    if (std::strstr(joint_name, "Foot") != nullptr)
+        return 0.20f;
+    if (std::strstr(joint_name, "Hips") != nullptr)
+        return 0.15f;
+    return 0.30f;
+}
+
 static void logSpliceResiduals(const std::vector<PreUpdateJoint>& pre_update_joints,
                                const selva::anim::AnimationClip* clip)
 {
@@ -1279,41 +1331,51 @@ static void logSpliceResiduals(const std::vector<PreUpdateJoint>& pre_update_joi
         return;
     const auto fd = sSampler.frameDiagnostics();
     const float splice_t = fd.loco_current_time;
+    bool any_anomaly = false;
     for (const auto& j : pre_update_joints)
     {
         const glm::vec3 cand = sSampler.sampleJointWorldPos(*clip, splice_t, j.idx);
-        combatLog("  %s residual=|%.3fm|  live=(%.2f,%.2f,%.2f) splice_t=%.3fs "
+        const float residual = glm::length(cand - j.live);
+        const float threshold = anomalyThresholdForJoint(j.name);
+        const bool anomaly = residual > threshold;
+        if (anomaly)
+            any_anomaly = true;
+        combatLog("  %s%s residual=|%.3fm|%s live=(%.2f,%.2f,%.2f) splice_t=%.3fs "
                   "cand=(%.2f,%.2f,%.2f)\n",
-                  j.name, glm::length(cand - j.live), j.live.x, j.live.y, j.live.z, splice_t,
-                  cand.x, cand.y, cand.z);
+                  anomaly ? "[!] " : "    ", j.name, residual, anomaly ? " (>threshold)" : "",
+                  j.live.x, j.live.y, j.live.z, splice_t, cand.x, cand.y, cand.z);
+    }
+    if (any_anomaly)
+    {
+        // Echo the active state on an anomaly so the cause is right
+        // there without having to scroll up: which one-shot, which
+        // loco, which phase.
+        combatLog("  [!] context: 1shot=%s(phase=%d) loco=%s->%s blend_w=%.2f\n",
+                  fd.one_shot_name ? fd.one_shot_name : "(none)", fd.one_shot_phase,
+                  fd.loco_previous_name ? fd.loco_previous_name : "(none)",
+                  fd.loco_current_name ? fd.loco_current_name : "(none)", fd.loco_blend_weight);
     }
 }
 
-// Sticky per-frame loco-state trace. While the loco crossfade or a
-// one-shot is mid-ramp, dump sampler state every frame so we can
-// watch a spasm unfold tick-by-tick.
-static void logStickyLocoState()
+// During one-shot BlendOut (phase=3), emit per-frame hip + foot
+// world positions so we can spot leg/hip jumps as the loco track
+// becomes visible. Anomaly diagnostic, not a generic state dump
+// (logStateNarrative covers the discrete state).
+static void logBlendOutFadeJoints()
 {
     if (!selva::combat::isCombatDebugEnabled())
         return;
     const auto fd = sSampler.frameDiagnostics();
-    const bool loco_mid = fd.loco_blend_weight > 0.001f && fd.loco_blend_weight < 0.999f;
-    const bool one_shot_mid = fd.one_shot_weight > 0.001f && fd.one_shot_weight < 0.999f;
-    if (!loco_mid && !one_shot_mid)
+    if (fd.one_shot_phase != 3)
         return;
-    combatLog("[fr %.4fs] loco_w=%.3f one_shot_w=%.3f phase=%d clip=%s\n", selva::wallClock(),
-              fd.loco_blend_weight, fd.one_shot_weight, fd.one_shot_phase,
-              sLastLocoClipName.c_str());
-    if (fd.one_shot_phase == 3)
+    for (const char* n : {"mixamorig:Hips", "mixamorig:LeftFoot", "mixamorig:RightFoot"})
     {
-        for (const char* n : {"mixamorig:Hips", "mixamorig:LeftFoot", "mixamorig:RightFoot"})
-        {
-            const int idx = sSampler.findJoint(n);
-            if (idx < 0)
-                continue;
-            const glm::vec3 p = sSampler.jointWorldPos(idx);
-            combatLog("    [fade] %s = (%.2f,%.2f,%.2f)\n", n, p.x, p.y, p.z);
-        }
+        const int idx = sSampler.findJoint(n);
+        if (idx < 0)
+            continue;
+        const glm::vec3 p = sSampler.jointWorldPos(idx);
+        combatLog("    [fade %.4fs] %s=(%.2f,%.2f,%.2f) one_shot_w=%.2f\n", selva::wallClock(), n,
+                  p.x, p.y, p.z, fd.one_shot_weight);
     }
 }
 
@@ -1516,6 +1578,115 @@ static void tickGripToggle(const Uint8* keys)
     sPrevGripToggle = gripNow;
 }
 
+// Build a state-signature string that captures the discrete state.
+// Used to dedup per-frame emissions: only emit when this changes.
+// Times are deliberately excluded — they change every tick.
+static std::string buildStateSignature(const selva::anim::PoseSampler::FrameDiagnostics& fd)
+{
+    char sig[256];
+    std::snprintf(sig, sizeof(sig), "p=%d|os=%s|loco=%s|prev=%s|d=%d|b=%d|bda=%d|fr=%d",
+                  fd.one_shot_phase, fd.one_shot_name ? fd.one_shot_name : "",
+                  fd.loco_current_name ? fd.loco_current_name : "",
+                  fd.loco_previous_name ? fd.loco_previous_name : "", sDodgeActive ? 1 : 0,
+                  sBufferedDodge.pending ? 1 : 0, sPostDodgeAttack.pending ? 1 : 0,
+                  sSampler.isLocoFrozenByOneShot() ? 1 : 0);
+    return sig;
+}
+
+// Append the dodge / one-shot / loco / freeze / buffer sections to
+// the state-narrative line. Sections that have nothing interesting
+// say nothing.
+static void appendDodgeSection(std::string& line)
+{
+    if (!sDodgeActive)
+        return;
+    char buf[64];
+    std::snprintf(buf, sizeof(buf), "dodge=active(%.2f/%.2fs) ", sDodgeElapsed, sDodgeDuration);
+    line += buf;
+}
+
+static void appendOneShotSection(std::string& line,
+                                 const selva::anim::PoseSampler::FrameDiagnostics& fd)
+{
+    if (fd.one_shot_phase == 0 || fd.one_shot_name == nullptr)
+        return;
+    const char* phase_name = (fd.one_shot_phase == 1)   ? "BlendIn"
+                             : (fd.one_shot_phase == 2) ? "Hold"
+                             : (fd.one_shot_phase == 3) ? "BlendOut"
+                                                        : "?";
+    char buf[128];
+    std::snprintf(buf, sizeof(buf), "1shot=%s(%s,t=%.2f) ", fd.one_shot_name, phase_name,
+                  fd.one_shot_time);
+    line += buf;
+}
+
+static void appendLocoSection(std::string& line,
+                              const selva::anim::PoseSampler::FrameDiagnostics& fd)
+{
+    if (fd.loco_current_name == nullptr)
+        return;
+    char buf[128];
+    if (fd.loco_previous_name != nullptr && fd.loco_blend_duration > 0.0f)
+    {
+        std::snprintf(buf, sizeof(buf), "loco=%s@%.2fs<-%s w=%.2f ", fd.loco_current_name,
+                      fd.loco_current_time, fd.loco_previous_name, fd.loco_blend_weight);
+    }
+    else
+    {
+        std::snprintf(buf, sizeof(buf), "loco=%s@%.2fs ", fd.loco_current_name,
+                      fd.loco_current_time);
+    }
+    line += buf;
+}
+
+static void appendBufferSection(std::string& line, float now)
+{
+    char buf[64];
+    if (sBufferedDodge.pending)
+    {
+        std::snprintf(buf, sizeof(buf), "buf=dodge(%.2fs) ", now - sBufferedDodge.buffered_at);
+        line += buf;
+    }
+    if (sPostDodgeAttack.pending)
+    {
+        std::snprintf(buf, sizeof(buf), "buf=postdodge-%s(%.2fs) ", sPostDodgeAttack.button,
+                      now - sPostDodgeAttack.buffered_at);
+        line += buf;
+    }
+}
+
+// Single-line state-narrative summary. Throttled: emits only when
+// the discrete state diff has changed since the last call. Reads as
+// a sequence of state transitions, not a tick stream.
+//
+// Format example:
+//   [state 12.345s] dodge=active(0.43/0.87s) 1shot=falling_to_roll(Hold,t=0.55)
+//                   loco=walking@0.34s<-running w=0.62 FROZEN buf=dodge(0.12s)
+static void logStateNarrative()
+{
+    if (!selva::combat::isCombatDebugEnabled())
+        return;
+    const auto fd = sSampler.frameDiagnostics();
+    const std::string sig = buildStateSignature(fd);
+    static std::string sLastSig;
+    if (sLastSig == sig)
+        return;
+    sLastSig = sig;
+
+    const float now = selva::wallClock();
+    char header[64];
+    std::snprintf(header, sizeof(header), "[state %.4fs] ", now);
+    std::string line = header;
+    appendDodgeSection(line);
+    appendOneShotSection(line, fd);
+    appendLocoSection(line, fd);
+    if (sSampler.isLocoFrozenByOneShot())
+        line += "FROZEN ";
+    appendBufferSection(line, now);
+    line += "\n";
+    combatLog("%s", line.c_str());
+}
+
 static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
 {
     ZoneScopedN("selvaPerFrame");
@@ -1619,11 +1790,11 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     if (pick.clip != nullptr && pick.clip->isLoaded())
     {
         ZoneScopedN("sampler.update");
-        sSampler.update(*pick.clip, dt, pick.blend_seconds, pick.loops);
+        sSampler.update(*pick.clip, dt, pick.blend_seconds, pick.loops, pick.clip_name.c_str());
     }
 
     logSpliceResiduals(pick.pre_update_joints, pick.clip);
-    logStickyLocoState();
+    logBlendOutFadeJoints();
 
     // Root-motion translation. Locomotion path runs unless we're
     // dodging or in F1 clip-preview mode (the dodge block below owns
@@ -1641,6 +1812,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     }
 
     tickCsvRecording(dt);
+    logStateNarrative();
 }
 
 static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*camX*/,

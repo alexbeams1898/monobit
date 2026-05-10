@@ -69,7 +69,13 @@ struct PoseSampler
     //     (start_walking, run_to_stop) that play once and hand off to a
     //     destination state.
     // Returns false if the inputs are invalid (no skeleton, no clip).
-    bool update(const AnimationClip& clip, float dt, float blend_seconds, bool loops = true);
+    //
+    // `clip_key` is the human-meaningful registry key (e.g.
+    // "walking", "running") used only for diagnostic logging. Empty
+    // string is allowed; the log will fall back to ozz Animation
+    // name (which for Mixamo clips is always "mixamo.com").
+    bool update(const AnimationClip& clip, float dt, float blend_seconds, bool loops = true,
+                const char* clip_key = "");
 
     // True if the locomotion track's clip is non-looping AND has reached
     // its end. Used by the gameplay state machine to know when a
@@ -179,7 +185,8 @@ struct PoseSampler
     // one-shot does NOT loop; it ends when its clip duration elapses.
     void playOneShot(const AnimationClip& clip, float blend_in_seconds, float blend_out_seconds,
                      BodyMask mask = BodyMask::Full, float start_time_seconds = 0.0f,
-                     float playback_rate = 1.0f, bool freeze_last = false);
+                     float playback_rate = 1.0f, bool freeze_last = false,
+                     const char* clip_key = "");
 
     // Request the active one-shot to start blending out NOW. Used to
     // release a held (freeze_last) one-shot like the unarmed block.
@@ -394,6 +401,16 @@ struct PoseSampler
     // dump a clip's hip trajectory for analysis (e.g. is the travel
     // front-loaded or evenly distributed?). Returns (0,0) if invalid.
     glm::vec2 sampleHipXZAt(const AnimationClip& clip, float t_seconds) const;
+
+    // True when the active one-shot is full-mask AND in Hold. The
+    // loco track is fully occluded in this state; gameplay code that
+    // would mutate loco state (e.g. SM clip-pick) should defer until
+    // this returns false. PoseSampler enforces the gate internally
+    // for clip-change; this is exposed so PerFrameTick can suppress
+    // upstream side-effects (sLastLocoClipName updates, residual
+    // logging) that would otherwise desync against the suppressed
+    // swap.
+    bool isLocoFrozenByOneShot() const;
 
     // Diagnostic accessors: read the sampler's internal state so the
     // gameplay side can log it for debugging. These are NOT for

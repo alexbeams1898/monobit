@@ -91,6 +91,12 @@ namespace
 struct Track
 {
     const ozz::animation::Animation* animation = nullptr;
+    // Registry key (e.g. "walking", "running", "unarmed_combat_idle")
+    // for this track's bound animation. Used only by diagnostic logs;
+    // the Mixamo ozz Animation::name() is always "mixamo.com" so the
+    // registry key is the only human-meaningful identifier we have.
+    // Empty when no animation bound.
+    std::string registry_key;
     ozz::animation::SamplingJob::Context context;
     std::vector<ozz::math::SoaTransform> local_transforms;
     float time_seconds = 0.0f;
@@ -178,6 +184,12 @@ struct PoseSampler::Impl
     // spasm. Updated whenever we leave a clip (clip-change swap path
     // OR blend completion), read on re-entry.
     std::unordered_map<const ozz::animation::Animation*, float> last_clip_time;
+
+    // Diagnostic: dedup FROZEN-swap log lines. Stores the
+    // "from>to" attempt id of the last suppressed swap so we only
+    // emit the line on edge transitions, not every frame the SM
+    // retries during full-mask Hold.
+    std::string last_frozen_swap_attempt;
 
     // Locomotion crossfade state. weight = how much of `loco_current` is
     // mixed into the locomotion pose (0 = all previous, 1 = all current).
@@ -511,7 +523,7 @@ void PoseSampler::releaseOneShot()
 
 void PoseSampler::playOneShot(const AnimationClip& clip, float blend_in_seconds,
                               float blend_out_seconds, BodyMask mask, float start_time_seconds,
-                              float playback_rate, bool freeze_last)
+                              float playback_rate, bool freeze_last, const char* clip_key)
 {
     if (!impl || !impl->skeleton || !clip.isLoaded())
         return;
@@ -529,6 +541,7 @@ void PoseSampler::playOneShot(const AnimationClip& clip, float blend_in_seconds,
         // Move current one-shot pose into previous track. Sample state
         // (animation, time, locals already populated) carries through.
         s.one_shot_previous.animation = s.one_shot.animation;
+        s.one_shot_previous.registry_key = s.one_shot.registry_key;
         s.one_shot_previous.time_seconds = s.one_shot.time_seconds;
         s.one_shot_previous.local_transforms = s.one_shot.local_transforms;
         s.one_shot_previous.last_hip_xz = s.one_shot.last_hip_xz;
@@ -540,6 +553,7 @@ void PoseSampler::playOneShot(const AnimationClip& clip, float blend_in_seconds,
         s.one_shot_previous_mask = s.one_shot_mask;
     }
     s.one_shot.animation = clip.ozz_animation.get();
+    s.one_shot.registry_key = (clip_key != nullptr) ? clip_key : "";
     const float dur = s.one_shot.animation ? s.one_shot.animation->duration() : 0.0f;
     s.one_shot.time_seconds = std::clamp(start_time_seconds, 0.0f, std::max(0.0f, dur - 1e-4f));
     s.one_shot_phase = OneShotPhase::BlendIn;
@@ -576,6 +590,16 @@ bool PoseSampler::isOneShotActive() const
     // produced a visible leg spasm because mid-stride walking pose
     // and feet-together attack pose blended into each other for ~0.10s.
     return impl->one_shot_phase != OneShotPhase::Inactive;
+}
+
+bool PoseSampler::isLocoFrozenByOneShot() const
+{
+    if (!impl)
+        return false;
+    // Mirrors the internal isLocoFrozenByFullMaskHold predicate. See
+    // its definition for why full-mask Hold gates loco state changes.
+    return impl->one_shot_phase == OneShotPhase::Hold &&
+           impl->one_shot_mask == PoseSampler::BodyMask::Full;
 }
 
 bool PoseSampler::locomotionClipFinished() const
@@ -1411,9 +1435,21 @@ PoseSampler::FrameDiagnostics PoseSampler::frameDiagnostics() const
     if (!impl)
         return d;
     const Impl& s = *impl;
-    d.loco_current_name = s.loco_current.animation ? s.loco_current.animation->name() : nullptr;
-    d.loco_previous_name = s.loco_previous.animation ? s.loco_previous.animation->name() : nullptr;
-    d.one_shot_name = s.one_shot.animation ? s.one_shot.animation->name() : nullptr;
+    // Prefer the registry key (e.g. "walking") over ozz Animation
+    // name (always "mixamo.com" for Mixamo clips). Empty key falls
+    // back to ozz name so partially-instrumented call sites still
+    // produce something.
+    d.loco_current_name =
+        !s.loco_current.registry_key.empty()
+            ? s.loco_current.registry_key.c_str()
+            : (s.loco_current.animation ? s.loco_current.animation->name() : nullptr);
+    d.loco_previous_name =
+        !s.loco_previous.registry_key.empty()
+            ? s.loco_previous.registry_key.c_str()
+            : (s.loco_previous.animation ? s.loco_previous.animation->name() : nullptr);
+    d.one_shot_name = !s.one_shot.registry_key.empty()
+                          ? s.one_shot.registry_key.c_str()
+                          : (s.one_shot.animation ? s.one_shot.animation->name() : nullptr);
     d.loco_current_time = s.loco_current.time_seconds;
     d.loco_blend_weight = s.loco_blend_weight;
     d.loco_blend_elapsed = s.loco_blend_elapsed;
@@ -1513,10 +1549,15 @@ bool sampleLocoTrackJoints(const PoseSampler::Impl& s, std::vector<int>& joints,
 // spasm because the bounce pose differs at each tap.
 void applyLocoReverseBlend(PoseSampler::Impl& s)
 {
-    samplerDiagLog("[loco] reverse-blend %s <-> %s (weight %.2f -> %.2f, t=%.3fs)\n",
-                   s.loco_current.animation->name(), s.loco_previous.animation->name(),
-                   s.loco_blend_weight, 1.0f - s.loco_blend_weight, s.loco_previous.time_seconds);
+    const char* cur_key =
+        s.loco_current.registry_key.empty() ? "(unknown)" : s.loco_current.registry_key.c_str();
+    const char* prev_key =
+        s.loco_previous.registry_key.empty() ? "(unknown)" : s.loco_previous.registry_key.c_str();
+    samplerDiagLog("[loco] reverse-blend %s <-> %s (weight %.2f -> %.2f, t=%.3fs)\n", cur_key,
+                   prev_key, s.loco_blend_weight, 1.0f - s.loco_blend_weight,
+                   s.loco_previous.time_seconds);
     std::swap(s.loco_current.animation, s.loco_previous.animation);
+    std::swap(s.loco_current.registry_key, s.loco_previous.registry_key);
     std::swap(s.loco_current.time_seconds, s.loco_previous.time_seconds);
     std::swap(s.loco_current.hip_path_cached, s.loco_previous.hip_path_cached);
     s.loco_current.local_transforms.swap(s.loco_previous.local_transforms);
@@ -1529,9 +1570,11 @@ void applyLocoReverseBlend(PoseSampler::Impl& s)
 // while preserving the OLD loco_current as loco_previous (which
 // fades out over `blend_seconds`).
 void applyLocoForwardBlend(PoseSampler::Impl& s, const ozz::animation::Animation* desired,
-                           float new_start_time, float new_clip_path, float blend_seconds)
+                           const std::string& desired_key, float new_start_time,
+                           float new_clip_path, float blend_seconds)
 {
     std::swap(s.loco_current.animation, s.loco_previous.animation);
+    std::swap(s.loco_current.registry_key, s.loco_previous.registry_key);
     std::swap(s.loco_current.time_seconds, s.loco_previous.time_seconds);
     std::swap(s.loco_current.hip_path_cached, s.loco_previous.hip_path_cached);
     s.loco_current.local_transforms.swap(s.loco_previous.local_transforms);
@@ -1539,6 +1582,7 @@ void applyLocoForwardBlend(PoseSampler::Impl& s, const ozz::animation::Animation
     s.loco_blend_elapsed = 0.0f;
     s.loco_blend_duration = blend_seconds;
     s.loco_current.animation = desired;
+    s.loco_current.registry_key = desired_key;
     s.loco_current.time_seconds = new_start_time;
     s.loco_current.hip_path_cached = new_clip_path;
     s.loco_current.finished = false;
@@ -1549,16 +1593,16 @@ void applyLocoForwardBlend(PoseSampler::Impl& s, const ozz::animation::Animation
 // `desired` before, else start at 0. Pose-match has no live reference
 // on the very first clip.
 float locoColdEnterStartTime(const PoseSampler::Impl& s, const ozz::animation::Animation* desired,
-                             float new_dur)
+                             const char* desired_key, float new_dur)
 {
     const auto it = s.last_clip_time.find(desired);
     if (it != s.last_clip_time.end())
     {
         const float t = std::fmod(it->second, std::max(new_dur, 1e-4f));
-        samplerDiagLog("[loco] resume %s @ cached t=%.3fs (cold)\n", desired->name(), t);
+        samplerDiagLog("[loco] resume %s @ cached t=%.3fs (cold)\n", desired_key, t);
         return t;
     }
-    samplerDiagLog("[loco] cold-enter %s @ t=0\n", desired->name());
+    samplerDiagLog("[loco] cold-enter %s @ t=0\n", desired_key);
     return 0.0f;
 }
 
@@ -1566,14 +1610,16 @@ float locoColdEnterStartTime(const PoseSampler::Impl& s, const ozz::animation::A
 // snap loco_current to `desired` at `new_start_time`. Used when blend
 // is disabled or there's no outgoing clip to fade from.
 void applyLocoSnap(PoseSampler::Impl& s, const ozz::animation::Animation* desired,
-                   float new_start_time, float new_clip_path)
+                   const std::string& desired_key, float new_start_time, float new_clip_path)
 {
     s.loco_previous.animation = nullptr;
+    s.loco_previous.registry_key.clear();
     s.loco_previous.hip_path_cached = -1.0f;
     s.loco_blend_weight = 1.0f;
     s.loco_blend_elapsed = 0.0f;
     s.loco_blend_duration = 0.0f;
     s.loco_current.animation = desired;
+    s.loco_current.registry_key = desired_key;
     s.loco_current.time_seconds = new_start_time;
     s.loco_current.hip_path_cached = new_clip_path;
     s.loco_current.finished = false;
@@ -1587,7 +1633,7 @@ void applyLocoSnap(PoseSampler::Impl& s, const ozz::animation::Animation* desire
 // appropriate blend (reverse / forward / cold snap).
 void handleLocoClipChange(const PoseSampler& sampler, PoseSampler::Impl& s,
                           const AnimationClip& clip, const ozz::animation::Animation* desired,
-                          float blend_seconds)
+                          const std::string& desired_key, float blend_seconds)
 {
     if (s.loco_current.animation != nullptr)
         s.last_clip_time[s.loco_current.animation] = s.loco_current.time_seconds;
@@ -1598,6 +1644,9 @@ void handleLocoClipChange(const PoseSampler& sampler, PoseSampler::Impl& s,
 
     float new_start_time = 0.0f;
     const float new_dur = desired->duration();
+    const char* to_key = desired_key.empty() ? "(unknown)" : desired_key.c_str();
+    const char* from_key =
+        s.loco_current.registry_key.empty() ? "(none)" : s.loco_current.registry_key.c_str();
 
     // Pose-match the new clip's start to the outgoing loco track's
     // current legs+feet pose. The loco track in isolation is the
@@ -1610,9 +1659,8 @@ void handleLocoClipChange(const PoseSampler& sampler, PoseSampler::Impl& s,
     if (!joints.empty())
     {
         new_start_time = sampler.clipPoseMatchTime(ref, clip, joints, 0.0f, new_dur);
-        samplerDiagLog("[loco] pose-match %s @ t=%.3fs (prev=%s, prev_t=%.3fs)\n", desired->name(),
-                       new_start_time, s.loco_current.animation->name(),
-                       s.loco_current.time_seconds);
+        samplerDiagLog("[loco] pose-match %s @ t=%.3fs (prev=%s, prev_t=%.3fs)\n", to_key,
+                       new_start_time, from_key, s.loco_current.time_seconds);
         for (std::size_t k = 0; k < joints.size(); ++k)
         {
             samplerDiagLog("  [loco-iso] joint=%s ref=(%.2f,%.2f,%.2f)\n",
@@ -1621,7 +1669,7 @@ void handleLocoClipChange(const PoseSampler& sampler, PoseSampler::Impl& s,
     }
     else if (s.loco_current.animation == nullptr)
     {
-        new_start_time = locoColdEnterStartTime(s, desired, new_dur);
+        new_start_time = locoColdEnterStartTime(s, desired, to_key, new_dur);
     }
 
     if (blend_seconds > 0.0f && s.loco_current.animation != nullptr)
@@ -1630,14 +1678,72 @@ void handleLocoClipChange(const PoseSampler& sampler, PoseSampler::Impl& s,
         if (reverse_blend)
             applyLocoReverseBlend(s);
         else
-            applyLocoForwardBlend(s, desired, new_start_time, new_clip_path, blend_seconds);
+            applyLocoForwardBlend(s, desired, desired_key, new_start_time, new_clip_path,
+                                  blend_seconds);
         s.pending_capture = true;
         s.decay_duration = std::max(0.0f, blend_seconds);
     }
     else
     {
-        applyLocoSnap(s, desired, new_start_time, new_clip_path);
+        applyLocoSnap(s, desired, desired_key, new_start_time, new_clip_path);
     }
+}
+
+// Forward decl — defined further down with the rest of the
+// one-shot-phase helpers so it can sit next to its conceptual
+// neighbors. routeLocoClipChange below needs to call it.
+bool isLocoFrozenByFullMaskHold(const PoseSampler::Impl& s);
+
+// Inertialization step 1 — consume the pending_capture flag if set.
+// Two modes:
+//   * Default: snapshot the previous frame's rendered pose
+//     (post_locals_last) into pre_change_locals. After the blend,
+//     compute offset = source - new_pose. Right for locomotion.
+//   * From-supplied: pre_change_locals is already the canonical
+//     source pose (set by requestInertializationFromPose). Skip the
+//     snapshot — go straight to offset compute.
+// Returns whether a capture should fire this frame.
+bool consumeInertializationCaptureFlag(PoseSampler::Impl& s)
+{
+    if (!s.pending_capture)
+        return false;
+    if (!s.pending_capture_from_supplied_source)
+        s.pre_change_locals = s.post_locals_last;
+    s.pending_capture = false;
+    s.pending_capture_from_supplied_source = false;
+    return true;
+}
+
+// Suppressed loco-clip-change during full-mask Hold. Logs the gate
+// firing edge-only (first frame of a given (from,to) attempt) so we
+// don't spam every frame the SM retries the swap.
+void logFrozenSwap(PoseSampler::Impl& s, const char* from_key, const char* to_key)
+{
+    const std::string attempt_id = std::string(from_key) + ">" + to_key;
+    if (s.last_frozen_swap_attempt == attempt_id)
+        return;
+    samplerDiagLog("[loco] FROZEN swap %s -> %s (full-mask Hold; will resume at BlendOut)\n",
+                   from_key, to_key);
+    s.last_frozen_swap_attempt = attempt_id;
+}
+
+// Decide whether a loco-clip-change request is suppressed (full-mask
+// Hold) or allowed through. Either logs the FROZEN edge or kicks the
+// real handleLocoClipChange.
+void routeLocoClipChange(const PoseSampler& sampler, PoseSampler::Impl& s,
+                         const AnimationClip& clip, const ozz::animation::Animation* desired,
+                         const std::string& desired_key, float blend_seconds)
+{
+    const char* from_key =
+        s.loco_current.registry_key.empty() ? "(none)" : s.loco_current.registry_key.c_str();
+    const char* to_key = desired_key.empty() ? "(none)" : desired_key.c_str();
+    if (isLocoFrozenByFullMaskHold(s))
+    {
+        logFrozenSwap(s, from_key, to_key);
+        return;
+    }
+    s.last_frozen_swap_attempt.clear();
+    handleLocoClipChange(sampler, s, clip, desired, desired_key, blend_seconds);
 }
 
 // Inertialization step 2 capture: pre_change_locals currently holds the
@@ -1942,6 +2048,22 @@ bool advanceOneShotTrack(Track& t, float dt, float rate)
     return false;
 }
 
+// True when the active one-shot is full-mask AND in Hold phase. In
+// this state the loco track is fully occluded by the one-shot
+// (loco_weight = max(0, 1 - one_shot_weight) = 0), so any state
+// change to loco_current.animation while frozen would be invisible
+// in the moment but stages bad data for the upcoming BlendOut
+// handoff: applyBlendOutLocoPoseMatch scans loco_current.animation
+// for the closest pose-match to the one-shot's exit pose, and a clip
+// silently swapped during Hold is rarely geometrically compatible
+// (e.g. dodge exit pose vs running's t=0 region produces 0.8m+ foot
+// residuals → visible spasm at BlendOut). Gate is checked at every
+// loco-state mutation site; see leg-spasm memory.
+bool isLocoFrozenByFullMaskHold(const PoseSampler::Impl& s)
+{
+    return s.one_shot_phase == OneShotPhase::Hold && s.one_shot_mask == PoseSampler::BodyMask::Full;
+}
+
 // Drive every active track's clock forward and ramp the previous
 // one-shot's fade-out weight. Returns whether the active one-shot
 // just hit its last frame (signal for the phase machine).
@@ -1959,7 +2081,10 @@ bool advanceAllTracks(PoseSampler::Impl& s, float dt)
                 std::max(0.0f, s.one_shot_previous_weight - dt / s.one_shot_previous_fade_seconds);
         }
         if (s.one_shot_previous_weight <= 0.0f)
+        {
             s.one_shot_previous.animation = nullptr;
+            s.one_shot_previous.registry_key.clear();
+        }
     }
     return one_shot_finished;
 }
@@ -1980,6 +2105,7 @@ void tickLocoCrossfade(PoseSampler::Impl& s, float dt)
         if (s.loco_previous.animation != nullptr)
             s.last_clip_time[s.loco_previous.animation] = s.loco_previous.time_seconds;
         s.loco_previous.animation = nullptr;
+        s.loco_previous.registry_key.clear();
     }
     else
     {
@@ -2024,6 +2150,7 @@ void tickPhaseBlendOut(PoseSampler::Impl& s, float dt)
         s.one_shot_weight = 0.0f;
         s.one_shot_phase = OneShotPhase::Inactive;
         s.one_shot.animation = nullptr;
+        s.one_shot.registry_key.clear();
         return;
     }
     s.one_shot_weight = std::max(0.0f, s.one_shot_weight - dt / s.one_shot_blend_out_seconds);
@@ -2031,6 +2158,7 @@ void tickPhaseBlendOut(PoseSampler::Impl& s, float dt)
     {
         s.one_shot_phase = OneShotPhase::Inactive;
         s.one_shot.animation = nullptr;
+        s.one_shot.registry_key.clear();
     }
 }
 
@@ -2273,7 +2401,8 @@ void computeGpuPalette(const PoseSampler::Impl& s, std::vector<glm::mat4>& bone_
 
 } // namespace
 
-bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_seconds, bool loops)
+bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_seconds, bool loops,
+                         const char* clip_key)
 {
     ZoneScopedN("PoseSampler::update");
     if (!impl || !impl->skeleton || !clip.isLoaded())
@@ -2281,27 +2410,15 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
 
     Impl& s = *impl;
     const ozz::animation::Animation* desired = clip.ozz_animation.get();
+    const std::string desired_key = (clip_key != nullptr) ? clip_key : "";
 
-    // Inertialization step 1 — capture. Two modes:
-    //   * Default: snapshot the previous frame's rendered pose
-    //     (post_locals_last) into pre_change_locals. After the blend,
-    //     compute offset = source - new_pose. Right for locomotion.
-    //   * From-supplied: pre_change_locals is already the canonical
-    //     source pose (set by requestInertializationFromPose). Skip
-    //     the snapshot — go straight to offset compute.
-    bool capture_this_frame = false;
-    if (s.pending_capture)
-    {
-        if (!s.pending_capture_from_supplied_source)
-            s.pre_change_locals = s.post_locals_last;
-        capture_this_frame = true;
-        s.pending_capture = false;
-        s.pending_capture_from_supplied_source = false;
-    }
+    const bool capture_this_frame = consumeInertializationCaptureFlag(s);
 
     // ---- Locomotion clip change → start a crossfade ----
     if (desired != s.loco_current.animation)
-        handleLocoClipChange(*this, s, clip, desired, blend_seconds);
+        routeLocoClipChange(*this, s, clip, desired, desired_key, blend_seconds);
+    else
+        s.last_frozen_swap_attempt.clear();
     // Caller-supplied loops flag applies to the loco_current track —
     // whether or not we just rebound it. Stable through the lifetime
     // of the clip-change in flight.
