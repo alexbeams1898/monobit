@@ -1,9 +1,10 @@
 #include "anim/AnimationClip.h"
 
-#include <cstdio>
 #include <ozz/animation/runtime/animation.h>
 #include <ozz/base/io/archive.h>
 #include <ozz/base/io/stream.h>
+
+#include <cstdio>
 
 namespace selva::anim
 {

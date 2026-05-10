@@ -1,10 +1,10 @@
 #include "combat/PressMapping.h"
 
-#include <cstring>
-
 #include "combat/ChainObserver.h"
 #include "combat/Weapon.h"
 #include "combat/WeaponClass.h"
+
+#include <cstring>
 
 namespace selva::combat
 {
@@ -52,8 +52,8 @@ const char* clipForButton(const PlayerEquipment& eq, HandSide hand, const char* 
 
     // Sprint: running attack only on LMB. Other buttons during sprint
     // fall through to their normal mappings.
-    if (mods.sprinting && std::strcmp(button, "LMB") == 0 &&
-        !aset.running.empty() && !aset.running[0].attacks.empty())
+    if (mods.sprinting && std::strcmp(button, "LMB") == 0 && !aset.running.empty() &&
+        !aset.running[0].attacks.empty())
         return aset.running[0].attacks[0].clip.c_str();
 
     // Chain advancement: if the observer has a technique matched at

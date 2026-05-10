@@ -32,8 +32,8 @@
 
 // Aliases so the transplanted ImGui code reads the same as it did in
 // main.cpp.
-using selva::ui::renderComboHud;
 using selva::combat::combatLog;
+using selva::ui::renderComboHud;
 namespace tickstate = selva::gameplay::tickstate;
 
 // References to combat singletons + sampler etc � the panel reads them
@@ -129,15 +129,14 @@ static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
         // Matched-technique indicator. ChainObserver tracks press history
         // and reports which named technique the recent presses match.
         const auto& obs = selva::combat::chainState();
-        ImGui::Text("Chain: %s @ %d   acc=%.2f%s",
-                    obs.technique_id ? obs.technique_id : "-", obs.step,
-                    obs.last_press_accuracy, obs.last_press_perfect ? " PERFECT" : "");
+        ImGui::Text("Chain: %s @ %d   acc=%.2f%s", obs.technique_id ? obs.technique_id : "-",
+                    obs.step, obs.last_press_accuracy, obs.last_press_perfect ? " PERFECT" : "");
         tunedSlider("Combo reset grace (s)", &tun.combo_reset_grace_seconds, 0.05f, 2.0f, 0.05f,
                     "%.2f");
         tunedSlider("Input buffer (s)", &tun.combo_input_buffer_seconds, 0.05f, 0.50f, 0.025f,
                     "%.3f");
-        tunedSlider("First-strike blend (s)", &tun.first_strike_blend_seconds, 0.05f, 0.50f,
-                    0.025f, "%.3f");
+        tunedSlider("First-strike blend (s)", &tun.first_strike_blend_seconds, 0.05f, 0.50f, 0.025f,
+                    "%.3f");
         tunedSlider("Chain blend (s)", &tun.combo_chain_blend_seconds, 0.05f, 0.50f, 0.025f,
                     "%.3f");
         tunedSlider("Attack playback rate", &tun.attack_playback_rate, 0.5f, 2.5f, 0.05f, "%.2f");
@@ -214,8 +213,8 @@ static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
 
     if (ImGui::CollapsingHeader("Post-Attack Lockout", ImGuiTreeNodeFlags_DefaultOpen))
     {
-        tunedSlider("Extension past cancel window (s)", &tun.attack_lockout_extension_seconds,
-                    0.0f, 1.50f, 0.025f, "%.3f");
+        tunedSlider("Extension past cancel window (s)", &tun.attack_lockout_extension_seconds, 0.0f,
+                    1.50f, 0.025f, "%.3f");
     }
 
     if (ImGui::CollapsingHeader("Animation Debug", ImGuiTreeNodeFlags_DefaultOpen))
@@ -365,4 +364,3 @@ void selvaRenderImGui(::Engine& engine, ::EntityManager& em)
     ::selvaRenderImGui(engine, em);
 }
 } // namespace selva::ui
-

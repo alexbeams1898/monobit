@@ -1,5 +1,4 @@
 #include "gameplay/PerFrameTick.h"
-#include "gameplay/TickState.h"
 
 #include "Engine.h"
 #include "Tunables.h"
@@ -25,6 +24,7 @@
 #include "combat/WeaponClass.h"
 #include "gameplay/LocomotionStateMachine.h"
 #include "gameplay/PlayerState.h"
+#include "gameplay/TickState.h"
 #include "render/Camera.h"
 #include "render/SceneGeometry.h"
 #include "render/SceneShaders.h"
@@ -37,6 +37,12 @@
 #include <tracy/Tracy.hpp>
 
 #define SDL_MAIN_HANDLED
+#include <glm/glm.hpp>
+#include <glm/gtc/constants.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include <ozz/base/maths/soa_transform.h>
+
 #include <SDL.h>
 
 #include <algorithm>
@@ -45,15 +51,11 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
-#include <glad/glad.h>
-#include <glm/glm.hpp>
-#include <glm/gtc/constants.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
 #include <limits>
-#include <ozz/base/maths/soa_transform.h>
 #include <string>
 #include <vector>
+
+#include <glad/glad.h>
 
 // File-scope aliases mirroring main.cpp conventions so transplanted
 // gameplay code compiles unchanged.
@@ -79,13 +81,13 @@ using selva::combat::PendingFirstAction;
 static BufferedPress& sBufferedRight = selva::combat::buffer(selva::combat::HandSide::Right);
 static BufferedPress& sBufferedLeft = selva::combat::buffer(selva::combat::HandSide::Left);
 static PendingFirstAction& sPendingFirstAction = selva::combat::pendingFirstAction();
+using selva::combat::applyProfileLockout;
 using selva::combat::combatLog;
+using selva::combat::effectiveAttackPlaybackRate;
 using selva::combat::isMovingLocoClip;
-using selva::combat::SpliceDiag;
 using selva::combat::isUnarmed;
 using selva::combat::offHandCanBlock;
-using selva::combat::effectiveAttackPlaybackRate;
-using selva::combat::applyProfileLockout;
+using selva::combat::SpliceDiag;
 using selva::combat::TransitionProfile;
 namespace profiles = selva::combat::profiles;
 using selva::gameplay::wrapAngleSigned;
@@ -307,7 +309,10 @@ static const std::string kTunablesPath = "config/tunables.json";
 // here avoid threading sampler/clips/last-loco-name through every site.
 using selva::combat::isMovingLocoClip;
 using selva::combat::SpliceDiag;
-static SpliceDiag captureSpliceDiag() { return selva::combat::captureSpliceDiag(sSampler); }
+static SpliceDiag captureSpliceDiag()
+{
+    return selva::combat::captureSpliceDiag(sSampler);
+}
 static void logSpliceDiag(const SpliceDiag& d, const selva::anim::AnimationClip& new_clip,
                           float start_seconds, const char* prefix)
 {
@@ -317,7 +322,7 @@ static float poseMatchStartFromLoco(const selva::anim::AnimationClip& new_clip,
                                     float window_seconds)
 {
     return selva::combat::poseMatchStartFromLoco(new_clip, window_seconds, sSampler, sClips,
-                                                  sLastLocoClipName);
+                                                 sLastLocoClipName);
 }
 
 // effectiveAttackPlaybackRate lives in combat/CombatData.{h,cpp}.
@@ -360,7 +365,6 @@ static void resolveAttackCancelOpenTimes()
 // ---------------------------------------------------------------------------
 // Per-frame update — runs at wall-clock rate.
 // ---------------------------------------------------------------------------
-
 
 static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
 {
@@ -507,7 +511,8 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         }
         const float start_seconds = (pose_matched_start >= 0.0f) ? pose_matched_start : 0.0f;
 
-        TransitionProfile profile = one_shot_active ? profiles::chainLink() : profiles::firstStrike();
+        TransitionProfile profile =
+            one_shot_active ? profiles::chainLink() : profiles::firstStrike();
         // No locomotion lockout — every clip plays fully via buffer
         // logic; no need to gate movement separately.
         profile.lockout = TransitionProfile::Lockout::None;
@@ -550,17 +555,18 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         selva::combat::setCancelWindow(hand, selva::wallClock() + cancel_open / rate,
                                        selva::wallClock() + cancel_close / rate);
 
-        combatLog("[combat:fire] hand=%s clip=%s dur=%.3fs start=%.3fs rate=%.2f one_shot_active=%d\n",
-                  (hand == selva::combat::HandSide::Right) ? "R" : "L", clip_name, clip->duration(),
-                  start_seconds, rate, one_shot_active ? 1 : 0);
+        combatLog(
+            "[combat:fire] hand=%s clip=%s dur=%.3fs start=%.3fs rate=%.2f one_shot_active=%d\n",
+            (hand == selva::combat::HandSide::Right) ? "R" : "L", clip_name, clip->duration(),
+            start_seconds, rate, one_shot_active ? 1 : 0);
         return true;
     };
 
     // Try a press: if no one-shot is active, fire immediately.
     // Otherwise buffer for replay after the in-flight clip ends.
     // This is the entirety of the press-handler logic.
-    auto tryAttackInput = [&](selva::combat::HandSide hand, bool press_edge_this_frame,
-                               const char* button)
+    auto tryAttackInput =
+        [&](selva::combat::HandSide hand, bool press_edge_this_frame, const char* button)
     {
         BufferedPress& buf =
             (hand == selva::combat::HandSide::Right) ? sBufferedRight : sBufferedLeft;
@@ -602,9 +608,9 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                 if (inside_window)
                 {
                     bool is_chain_advance = false;
-                    const char* clip_name = selva::combat::clipForButton(
-                        sEquipment, hand, button, mods, now, w.open_at, w.close_at,
-                        &is_chain_advance);
+                    const char* clip_name =
+                        selva::combat::clipForButton(sEquipment, hand, button, mods, now, w.open_at,
+                                                     w.close_at, &is_chain_advance);
                     if (is_chain_advance && clip_name != nullptr && fireClip(hand, clip_name))
                     {
                         combat_input_this_frame = true;
@@ -621,8 +627,8 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
             }
             // No one-shot active: fire mapped clip directly.
             const auto& w = selva::combat::cancelWindow(hand);
-            const char* clip_name = selva::combat::clipForButton(
-                sEquipment, hand, button, mods, now, w.open_at, w.close_at);
+            const char* clip_name = selva::combat::clipForButton(sEquipment, hand, button, mods,
+                                                                 now, w.open_at, w.close_at);
             if (clip_name == nullptr)
             {
                 combatLog("[combat:rhythm] press DROPPED (no clip mapping for %s)\n", button);
@@ -646,8 +652,8 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                 return;
             }
             const auto& w = selva::combat::cancelWindow(hand);
-            const char* clip_name = selva::combat::clipForButton(
-                sEquipment, hand, buf.button, mods, now, w.open_at, w.close_at);
+            const char* clip_name = selva::combat::clipForButton(sEquipment, hand, buf.button, mods,
+                                                                 now, w.open_at, w.close_at);
             if (clip_name != nullptr && fireClip(hand, clip_name))
             {
                 combat_input_this_frame = true;
@@ -776,8 +782,8 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                           "RH live=(%.3f,%.3f,%.3f)  block_t0=(%.3f,%.3f,%.3f)  delta=|%.3fm|\n",
                           loco_settled ? "SETTLED" : "SNAP",
                           fd_pre.loco_current_name ? fd_pre.loco_current_name : "(none)",
-                          fd_pre.loco_current_time, live_pre.x, live_pre.y, live_pre.z,
-                          block_t0.x, block_t0.y, block_t0.z, glm::length(d));
+                          fd_pre.loco_current_time, live_pre.x, live_pre.y, live_pre.z, block_t0.x,
+                          block_t0.y, block_t0.z, glm::length(d));
             }
         };
 
@@ -799,8 +805,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         {
             if (press_rmb)
             {
-                const bool from_peaceful =
-                    (sLocomotionSM.combat_stance == CombatStance::Peaceful);
+                const bool from_peaceful = (sLocomotionSM.combat_stance == CombatStance::Peaceful);
                 if (from_peaceful && !sPendingFirstAction.active)
                 {
                     sPendingFirstAction.active = true;
@@ -837,8 +842,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         // combat rebuild — attacks fire immediately via tryAttackInput.
         if (sPendingFirstAction.active && selva::wallClock() >= sPendingFirstAction.fire_at)
         {
-            fireBlock(true, sPendingFirstAction.block_clip,
-                      sPendingFirstAction.block_freeze_last);
+            fireBlock(true, sPendingFirstAction.block_clip, sPendingFirstAction.block_freeze_last);
             combat_input_this_frame = true;
             sPendingFirstAction.active = false;
         }
@@ -869,8 +873,10 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     // dodge-init read it. Forward axis is -Z rotated by camera yaw; right
     // axis is perpendicular in the XZ plane.
     glm::vec3 moveIntent(0.0f);
-    const glm::vec3 camFwd(-std::sin(selva::render::cameraYaw()), 0.0f, -std::cos(selva::render::cameraYaw()));
-    const glm::vec3 camRight(std::cos(selva::render::cameraYaw()), 0.0f, -std::sin(selva::render::cameraYaw()));
+    const glm::vec3 camFwd(-std::sin(selva::render::cameraYaw()), 0.0f,
+                           -std::cos(selva::render::cameraYaw()));
+    const glm::vec3 camRight(std::cos(selva::render::cameraYaw()), 0.0f,
+                             -std::sin(selva::render::cameraYaw()));
     if (keys[SDL_SCANCODE_W])
         moveIntent += camFwd;
     if (keys[SDL_SCANCODE_S])
@@ -1079,9 +1085,9 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         const float wait_seconds = selva::wallClock() - sPostDodgeAttack.buffered_at;
         const selva::combat::PressModifiers mods{shift_held, sPlayer.sprinting};
         const auto& dw = selva::combat::cancelWindow(sPostDodgeAttack.hand);
-        const char* clip_name = selva::combat::clipForButton(
-            sEquipment, sPostDodgeAttack.hand, sPostDodgeAttack.button, mods,
-            selva::wallClock(), dw.open_at, dw.close_at);
+        const char* clip_name =
+            selva::combat::clipForButton(sEquipment, sPostDodgeAttack.hand, sPostDodgeAttack.button,
+                                         mods, selva::wallClock(), dw.open_at, dw.close_at);
         if (clip_name != nullptr && fireClip(sPostDodgeAttack.hand, clip_name))
         {
             combat_input_this_frame = true;
@@ -1130,9 +1136,9 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                 const int stride = std::max(1, (n_frames + kMaxCells - 1) / kMaxCells);
                 const int n_cells = (n_frames + stride - 1) / stride;
                 constexpr int kMaxCols = 3;
-                int cols = std::min(
-                    kMaxCols, std::max(1, static_cast<int>(std::ceil(std::sqrt(
-                                              static_cast<float>(n_cells) * 1.78f)))));
+                int cols =
+                    std::min(kMaxCols, std::max(1, static_cast<int>(std::ceil(std::sqrt(
+                                                       static_cast<float>(n_cells) * 1.78f)))));
                 int rows = (n_cells + cols - 1) / cols;
                 // Read frame 0 to get the per-cell dimensions.
                 char path0[512];
@@ -1150,8 +1156,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                     // Sanity-cap at ~64MB. If we'd exceed this, skip the
                     // contact sheet entirely (individual PNGs already on
                     // disk) and log a clear notice rather than crashing.
-                    const std::size_t bytes =
-                        static_cast<std::size_t>(sheet_w) * sheet_h * 3;
+                    const std::size_t bytes = static_cast<std::size_t>(sheet_w) * sheet_h * 3;
                     if (bytes > 64ull * 1024 * 1024)
                     {
                         std::fprintf(stderr,
@@ -1196,13 +1201,12 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                         char sheet_path[512];
                         std::snprintf(sheet_path, sizeof(sheet_path), "%s/_contact_sheet.png",
                                       sFrameCaptureDir.c_str());
-                        stbi_write_png(sheet_path, sheet_w, sheet_h, 3, sheet.data(),
-                                       sheet_w * 3);
-                        std::fprintf(
-                            stderr,
-                            "[frame-capture] contact sheet: %s (%dx%d, %d cells from %d "
-                            "frames stride=%d, %dx%d grid)\n",
-                            sheet_path, sheet_w, sheet_h, n_cells, n_frames, stride, cols, rows);
+                        stbi_write_png(sheet_path, sheet_w, sheet_h, 3, sheet.data(), sheet_w * 3);
+                        std::fprintf(stderr,
+                                     "[frame-capture] contact sheet: %s (%dx%d, %d cells from %d "
+                                     "frames stride=%d, %dx%d grid)\n",
+                                     sheet_path, sheet_w, sheet_h, n_cells, n_frames, stride, cols,
+                                     rows);
                     }
                 }
             }
@@ -1262,7 +1266,12 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     const selva::anim::AnimationClip* clip = nullptr;
     bool clip_loops = true;
     float clip_blend_seconds = tun.anim_blend_seconds;
-    struct PreUpdateJoint { const char* name; int idx; glm::vec3 live; };
+    struct PreUpdateJoint
+    {
+        const char* name;
+        int idx;
+        glm::vec3 live;
+    };
     std::vector<PreUpdateJoint> pre_update_joints;
     if (!sDebugClipName.empty())
     {
@@ -1270,8 +1279,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         clip_name = sDebugClipName;
         clip = sClips.get(clip_name);
         clip_loops = true; // debug previews loop
-        clip_blend_seconds =
-            sLocomotionConfig.blendInSeconds(clip_name, tun.anim_blend_seconds);
+        clip_blend_seconds = sLocomotionConfig.blendInSeconds(clip_name, tun.anim_blend_seconds);
     }
     if (clip == nullptr)
     {
@@ -1339,8 +1347,9 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                 combatLog("[sm %.4fs] wasd=%d att=%d rec=%d -> is_moving=%d  "
                           "(lockout_until=%.3fs, one_shot_w=%.2f, loco_w=%.2f)\n",
                           selva::wallClock(), wasd_intent ? 1 : 0, attack_in_flight ? 1 : 0,
-                          in_attack_recovery ? 1 : 0, is_moving ? 1 : 0, selva::combat::locoLockoutUntil(),
-                          fd.one_shot_weight, fd.loco_blend_weight);
+                          in_attack_recovery ? 1 : 0, is_moving ? 1 : 0,
+                          selva::combat::locoLockoutUntil(), fd.one_shot_weight,
+                          fd.loco_blend_weight);
                 prev_wasd_intent = wasd_intent;
                 prev_attack_in_flight = attack_in_flight;
                 prev_in_recovery = in_attack_recovery;
@@ -1356,9 +1365,8 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         // chooses unarmed_combat_idle, not sword_and_shield_idle_4.
         const bool is_armed = !isUnarmed(sEquipment);
         const auto sm_out = tickLocomotionStateMachine(
-            sLocomotionSM, is_moving, is_sprinting, clip_done_this_frame,
-            combat_input_this_frame, dt, tun.combat_idle_grace_seconds, is_armed,
-            selva::wallClock());
+            sLocomotionSM, is_moving, is_sprinting, clip_done_this_frame, combat_input_this_frame,
+            dt, tun.combat_idle_grace_seconds, is_armed, selva::wallClock());
         clip_name = sm_out.clip_name;
         clip_loops = sm_out.loops;
         clip_blend_seconds = sm_out.blend_seconds;
@@ -1389,8 +1397,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         // clip in isolation, so the reveal is clean.
         const auto fd_loco = sSampler.frameDiagnostics();
         const bool one_shot_blending_in = fd_loco.one_shot_phase == 1;
-        if (one_shot_blending_in && !sLastLocoClipName.empty() &&
-            clip_name != sLastLocoClipName)
+        if (one_shot_blending_in && !sLastLocoClipName.empty() && clip_name != sLastLocoClipName)
         {
             clip_name = sLastLocoClipName;
         }
@@ -1411,8 +1418,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                       sLastLocoClipName.c_str(), fd.loco_current_time, clip_name.c_str(),
                       sm_out.blend_seconds);
             const char* names[] = {"mixamorig:RightHand", "mixamorig:LeftHand",
-                                   "mixamorig:RightFoot", "mixamorig:LeftFoot",
-                                   "mixamorig:Hips"};
+                                   "mixamorig:RightFoot", "mixamorig:LeftFoot", "mixamorig:Hips"};
             for (const char* n : names)
             {
                 const int idx = sSampler.findJoint(n);
@@ -1428,8 +1434,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         // walking/running may want longer/shorter blends than the SM
         // default). Transition clips fall back to the SM-supplied
         // 0.10s when no override exists.
-        clip_blend_seconds =
-            sLocomotionConfig.blendInSeconds(clip_name, clip_blend_seconds);
+        clip_blend_seconds = sLocomotionConfig.blendInSeconds(clip_name, clip_blend_seconds);
     }
     if (clip != nullptr && clip->isLoaded())
     {
@@ -1449,7 +1454,8 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         for (const auto& j : pre_update_joints)
         {
             const glm::vec3 cand = sSampler.sampleJointWorldPos(*clip, splice_t, j.idx);
-            combatLog("  %s residual=|%.3fm|  live=(%.2f,%.2f,%.2f) splice_t=%.3fs cand=(%.2f,%.2f,%.2f)\n",
+            combatLog("  %s residual=|%.3fm|  live=(%.2f,%.2f,%.2f) splice_t=%.3fs "
+                      "cand=(%.2f,%.2f,%.2f)\n",
                       j.name, glm::length(cand - j.live), j.live.x, j.live.y, j.live.z, splice_t,
                       cand.x, cand.y, cand.z);
         }
@@ -1475,8 +1481,8 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
             // y plummets here, the discontinuity is on this handoff.
             if (fd.one_shot_phase == 3)
             {
-                for (const char* n : {"mixamorig:Hips", "mixamorig:LeftFoot",
-                                      "mixamorig:RightFoot"})
+                for (const char* n :
+                     {"mixamorig:Hips", "mixamorig:LeftFoot", "mixamorig:RightFoot"})
                 {
                     const int idx = sSampler.findJoint(n);
                     if (idx < 0)
@@ -1516,9 +1522,8 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         {
             const float sy = std::sin(sPlayer.yaw);
             const float cy = std::cos(sPlayer.yaw);
-            const glm::vec3 hip_world(
-                -cy * hip_local.x - sy * hip_local.z, 0.0f,
-                 sy * hip_local.x - cy * hip_local.z);
+            const glm::vec3 hip_world(-cy * hip_local.x - sy * hip_local.z, 0.0f,
+                                      sy * hip_local.x - cy * hip_local.z);
             sPlayer.pos += hip_world;
         }
     }
@@ -1555,9 +1560,8 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         {
             const float sy = std::sin(sPlayer.yaw);
             const float cy = std::cos(sPlayer.yaw);
-            const glm::vec3 hip_world(
-                -cy * hip_local.x - sy * hip_local.z, 0.0f,
-                 sy * hip_local.x - cy * hip_local.z);
+            const glm::vec3 hip_world(-cy * hip_local.x - sy * hip_local.z, 0.0f,
+                                      sy * hip_local.x - cy * hip_local.z);
             sPlayer.pos += hip_world;
         }
     }
@@ -1705,27 +1709,71 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
     }
 }
 
-
 // tickstate:: accessors � TuningPanel uses these to read/write the
 // F1-armed flags and debug-clip-preview state without poking the
 // file-scope statics directly.
 namespace selva::gameplay::tickstate
 {
-bool& showTuningPanel() { return ::sShowTuningPanel; }
-std::string& debugClipName() { return ::sDebugClipName; }
-bool& debugLoop() { return ::sDebugLoop; }
-bool& debugRecording() { return ::sDebugRecording; }
-float& debugRecordElapsed() { return ::sDebugRecordElapsed; }
-float& debugRecordDuration() { return ::sDebugRecordDuration; }
-std::string& debugRecordClipName() { return ::sDebugRecordClipName; }
-bool& debugRecordArmedNextDodge() { return ::sDebugRecordArmedNextDodge; }
-bool& frameCaptureArmedNextDodge() { return ::sFrameCaptureArmedNextDodge; }
-bool& frameCaptureArmedNextChain() { return ::sFrameCaptureArmedNextChain; }
-bool frameCaptureActive() { return ::sFrameCaptureActive; }
-float frameCaptureElapsed() { return ::sFrameCaptureElapsed; }
-float frameCaptureDuration() { return ::sFrameCaptureDuration; }
-int frameCaptureCounter() { return ::sFrameCaptureCounter; }
-std::size_t debugRecordSampleCount() { return ::sDebugRecordSamples.size(); }
+bool& showTuningPanel()
+{
+    return ::sShowTuningPanel;
+}
+std::string& debugClipName()
+{
+    return ::sDebugClipName;
+}
+bool& debugLoop()
+{
+    return ::sDebugLoop;
+}
+bool& debugRecording()
+{
+    return ::sDebugRecording;
+}
+float& debugRecordElapsed()
+{
+    return ::sDebugRecordElapsed;
+}
+float& debugRecordDuration()
+{
+    return ::sDebugRecordDuration;
+}
+std::string& debugRecordClipName()
+{
+    return ::sDebugRecordClipName;
+}
+bool& debugRecordArmedNextDodge()
+{
+    return ::sDebugRecordArmedNextDodge;
+}
+bool& frameCaptureArmedNextDodge()
+{
+    return ::sFrameCaptureArmedNextDodge;
+}
+bool& frameCaptureArmedNextChain()
+{
+    return ::sFrameCaptureArmedNextChain;
+}
+bool frameCaptureActive()
+{
+    return ::sFrameCaptureActive;
+}
+float frameCaptureElapsed()
+{
+    return ::sFrameCaptureElapsed;
+}
+float frameCaptureDuration()
+{
+    return ::sFrameCaptureDuration;
+}
+int frameCaptureCounter()
+{
+    return ::sFrameCaptureCounter;
+}
+std::size_t debugRecordSampleCount()
+{
+    return ::sDebugRecordSamples.size();
+}
 void resetDebugRecordSamples(std::size_t expected)
 {
     ::sDebugRecordSamples.clear();

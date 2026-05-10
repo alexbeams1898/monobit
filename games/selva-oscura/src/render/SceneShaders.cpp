@@ -1,9 +1,10 @@
 #include "render/SceneShaders.h"
 
-#include <glad/glad.h>
+#include "gl/ShaderUtils.h"
+
 #include <glm/gtc/type_ptr.hpp>
 
-#include "gl/ShaderUtils.h"
+#include <glad/glad.h>
 
 namespace selva::render
 {

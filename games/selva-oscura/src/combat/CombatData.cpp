@@ -1,8 +1,8 @@
 #include "combat/CombatData.h"
 
-#include <cstdio>
-
 #include "Tunables.h"
+
+#include <cstdio>
 
 namespace selva::combat
 {
@@ -21,13 +21,31 @@ Weapon sFistsWeapon;
 
 } // namespace
 
-const std::string& weaponClassesDir() { return kWeaponClassesDir; }
-const std::string& weaponsDir() { return kWeaponsDir; }
-const std::string& loadoutPath() { return kLoadoutPath; }
+const std::string& weaponClassesDir()
+{
+    return kWeaponClassesDir;
+}
+const std::string& weaponsDir()
+{
+    return kWeaponsDir;
+}
+const std::string& loadoutPath()
+{
+    return kLoadoutPath;
+}
 
-WeaponClassRegistry& weaponClasses() { return sWeaponClasses; }
-WeaponRegistry& weapons() { return sWeapons; }
-PlayerEquipment& equipment() { return sEquipment; }
+WeaponClassRegistry& weaponClasses()
+{
+    return sWeaponClasses;
+}
+WeaponRegistry& weapons()
+{
+    return sWeapons;
+}
+PlayerEquipment& equipment()
+{
+    return sEquipment;
+}
 
 void loadAllCombatData(int* out_n_classes, int* out_n_weapons)
 {

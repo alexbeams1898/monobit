@@ -1,9 +1,10 @@
 #include "render/SceneGeometry.h"
 
-#include <glad/glad.h>
+#include "render/SceneShaders.h"
+
 #include <vector>
 
-#include "render/SceneShaders.h"
+#include <glad/glad.h>
 
 namespace selva::render
 {
@@ -120,10 +121,22 @@ void initGrid()
         if (i == 0)
             continue;
         const float p = static_cast<float>(i);
-        verts.push_back(-k); verts.push_back(0.005f); verts.push_back(p); verts.push_back(0.20f);
-        verts.push_back(k);  verts.push_back(0.005f); verts.push_back(p); verts.push_back(0.20f);
-        verts.push_back(p);  verts.push_back(0.005f); verts.push_back(-k); verts.push_back(0.20f);
-        verts.push_back(p);  verts.push_back(0.005f); verts.push_back(k);  verts.push_back(0.20f);
+        verts.push_back(-k);
+        verts.push_back(0.005f);
+        verts.push_back(p);
+        verts.push_back(0.20f);
+        verts.push_back(k);
+        verts.push_back(0.005f);
+        verts.push_back(p);
+        verts.push_back(0.20f);
+        verts.push_back(p);
+        verts.push_back(0.005f);
+        verts.push_back(-k);
+        verts.push_back(0.20f);
+        verts.push_back(p);
+        verts.push_back(0.005f);
+        verts.push_back(k);
+        verts.push_back(0.20f);
     }
     sGridLineCount = static_cast<int>(verts.size() / 4);
 
@@ -142,10 +155,8 @@ void initGrid()
     glBindVertexArray(0);
 
     const float kAxes[] = {
-        -k,   0.006f, 0.0f, 0.55f,
-         k,   0.006f, 0.0f, 0.55f,
-         0.0f, 0.006f, -k,  0.75f,
-         0.0f, 0.006f,  k,  0.75f,
+        -k,   0.006f, 0.0f, 0.55f, k,    0.006f, 0.0f, 0.55f,
+        0.0f, 0.006f, -k,   0.75f, 0.0f, 0.006f, k,    0.75f,
     };
     sAxesLineCount = 4;
     glGenVertexArrays(1, &sAxesVao);

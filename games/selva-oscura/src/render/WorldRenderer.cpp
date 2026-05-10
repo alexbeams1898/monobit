@@ -1,13 +1,14 @@
 #include "render/WorldRenderer.h"
 
-#include <SDL.h>
-#include <cmath>
-
-#include <glm/gtc/matrix_transform.hpp>
-
 #include "Tunables.h"
 #include "render/Camera.h"
 #include "render/SceneGeometry.h"
+
+#include <glm/gtc/matrix_transform.hpp>
+
+#include <SDL.h>
+
+#include <cmath>
 
 namespace selva::render
 {
@@ -45,9 +46,9 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y)
     const glm::vec3 lookAt(player_pos.x, sSmoothedLookAtY, player_pos.z);
     const glm::mat4 view = glm::lookAt(camPos, lookAt, glm::vec3(0.0f, 1.0f, 0.0f));
 
-    const float aspect = windowHeight() > 0
-                             ? static_cast<float>(windowWidth()) / static_cast<float>(windowHeight())
-                             : 1.0f;
+    const float aspect =
+        windowHeight() > 0 ? static_cast<float>(windowWidth()) / static_cast<float>(windowHeight())
+                           : 1.0f;
     const glm::mat4 proj = glm::perspective(glm::radians(tun.fov_degrees), aspect, 0.1f, 200.0f);
     return proj * view;
 }

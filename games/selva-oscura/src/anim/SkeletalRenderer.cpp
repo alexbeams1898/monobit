@@ -3,8 +3,9 @@
 #include "anim/SkeletalMesh.h"
 #include "gl/ShaderUtils.h"
 
-#include <cstdio>
 #include <glm/gtc/type_ptr.hpp>
+
+#include <cstdio>
 
 namespace selva::anim
 {

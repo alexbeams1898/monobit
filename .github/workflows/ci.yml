@@ -58,9 +58,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build
-          key: ${{ runner.os }}-build-${{ hashFiles('cmake/**', 'CMakeLists.txt', 'engines/**', 'games/**', 'tests/**') }}
+          key: ${{ runner.os }}-monobit-build-${{ hashFiles('cmake/**', 'CMakeLists.txt', 'engines/**', 'games/**', 'tests/**') }}
           restore-keys: |
-            ${{ runner.os }}-build-
+            ${{ runner.os }}-monobit-build-
 
       - name: Configure
         run: |
@@ -180,9 +180,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build
-          key: ${{ runner.os }}-build-${{ hashFiles('cmake/**', 'CMakeLists.txt', 'engines/**', 'games/**', 'tests/**') }}
+          key: ${{ runner.os }}-monobit-build-${{ hashFiles('cmake/**', 'CMakeLists.txt', 'engines/**', 'games/**', 'tests/**') }}
           restore-keys: |
-            ${{ runner.os }}-build-
+            ${{ runner.os }}-monobit-build-
 
       - name: Configure (if cache miss)
         run: |
@@ -259,9 +259,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build-san
-          key: ${{ runner.os }}-build-san-${{ hashFiles('cmake/**', 'CMakeLists.txt', 'engines/**', 'games/**', 'tests/**') }}
+          key: ${{ runner.os }}-monobit-build-san-${{ hashFiles('cmake/**', 'CMakeLists.txt', 'engines/**', 'games/**', 'tests/**') }}
           restore-keys: |
-            ${{ runner.os }}-build-san-
+            ${{ runner.os }}-monobit-build-san-
 
       - name: Configure (sanitized)
         run: |

@@ -1,10 +1,10 @@
 #pragma once
 
-#include <string>
-
 #include "combat/PlayerEquipment.h"
 #include "combat/Weapon.h"
 #include "combat/WeaponClass.h"
+
+#include <string>
 
 namespace selva::combat
 {

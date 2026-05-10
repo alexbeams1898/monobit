@@ -1,15 +1,15 @@
 #include "combat/AttackResolution.h"
 
-#include <algorithm>
-#include <cstdio>
-#include <vector>
-
 #include "Tunables.h"
 #include "anim/AnimationClip.h"
 #include "anim/ClipRegistry.h"
 #include "anim/PoseSampler.h"
 #include "combat/CombatLog.h"
 #include "combat/WeaponClass.h"
+
+#include <algorithm>
+#include <cstdio>
+#include <vector>
 
 namespace selva::combat
 {
@@ -116,8 +116,8 @@ void resolveAttackCancelOpenTimes(WeaponClassRegistry& weapon_classes,
         }
     };
 
-    auto log_bookend_alignment = [&](const char* class_id, const char* slot,
-                                     const std::vector<WeaponAttack>& chain)
+    auto log_bookend_alignment =
+        [&](const char* class_id, const char* slot, const std::vector<WeaponAttack>& chain)
     {
         const int rh = sampler.findJoint("mixamorig:RightHand");
         if (rh < 0)
@@ -185,8 +185,8 @@ void resolveAttackCancelOpenTimes(WeaponClassRegistry& weapon_classes,
                 }
             }
         }
-        auto log_techniques = [&](const char* slot, const std::vector<WeaponTechnique>& techs,
-                                  bool two_handed)
+        auto log_techniques =
+            [&](const char* slot, const std::vector<WeaponTechnique>& techs, bool two_handed)
         {
             for (std::size_t ti = 0; ti < techs.size(); ++ti)
             {

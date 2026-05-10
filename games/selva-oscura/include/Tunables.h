@@ -1,6 +1,7 @@
 #pragma once
 
 #include <nlohmann/json.hpp>
+
 #include <string>
 
 // ---------------------------------------------------------------------------
@@ -199,25 +200,15 @@ struct Tunables
 // "_WITH_DEFAULT" means missing keys in the input fall back to the struct's
 // default-initialized value, so older tunables.json files don't break when
 // new fields are added.
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Tunables, time_scale, turn_rate,
-                                                wasd_debounce_seconds,
-                                                mouse_sensitivity, pitch_min,
-                                                pitch_max, follow_distance, follow_height,
-                                                fov_degrees, anim_blend_seconds,
-                                                combat_idle_grace_seconds,
-                                                combat_entry_delay_seconds,
-                                                combo_reset_grace_seconds,
-                                                combo_input_buffer_seconds,
-                                                combo_chain_blend_seconds, first_strike_blend_seconds,
-                                                inertialize_decay_base_seconds,
-                                                inertialize_decay_scale_per_radian,
-                                                inertialize_decay_max_seconds,
-                                                attack_playback_rate,
-                                                cancel_open_velocity_fraction,
-                                                perfect_accuracy_threshold, roll_playback_rate,
-                                                backstep_playback_rate, dodge_tap_window,
-                                                dodge_steer_rate, dodge_attack_cancel_fraction,
-                                                attack_lockout_extension_seconds);
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
+    Tunables, time_scale, turn_rate, wasd_debounce_seconds, mouse_sensitivity, pitch_min, pitch_max,
+    follow_distance, follow_height, fov_degrees, anim_blend_seconds, combat_idle_grace_seconds,
+    combat_entry_delay_seconds, combo_reset_grace_seconds, combo_input_buffer_seconds,
+    combo_chain_blend_seconds, first_strike_blend_seconds, inertialize_decay_base_seconds,
+    inertialize_decay_scale_per_radian, inertialize_decay_max_seconds, attack_playback_rate,
+    cancel_open_velocity_fraction, perfect_accuracy_threshold, roll_playback_rate,
+    backstep_playback_rate, dodge_tap_window, dodge_steer_rate, dodge_attack_cancel_fraction,
+    attack_lockout_extension_seconds);
 
 // Single global instance. Both gameplay code and the procedural driver
 // read from this; the ImGui panel edits it in place. Keep it global rather

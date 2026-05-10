@@ -1,15 +1,15 @@
 #include "combat/ChainObserver.h"
 
+#include "Tunables.h"
+#include "combat/CombatLog.h"
+#include "combat/Weapon.h"
+#include "combat/WeaponClass.h"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstring>
 #include <string>
-
-#include "Tunables.h"
-#include "combat/CombatLog.h"
-#include "combat/Weapon.h"
-#include "combat/WeaponClass.h"
 
 namespace selva::combat
 {
@@ -73,8 +73,8 @@ void rescanChain(const PlayerEquipment& eq)
     if (sObs.count == 0 || eq.right == nullptr || eq.right->cls == nullptr)
     {
         combatLog("[combat:obs] rescan EMPTY (count=%zu eq.right=%p) prev=%s@%d -> -@0\n",
-                  sObs.count, static_cast<const void*>(eq.right),
-                  prev_id ? prev_id : "-", prev_step);
+                  sObs.count, static_cast<const void*>(eq.right), prev_id ? prev_id : "-",
+                  prev_step);
         return;
     }
     const auto& aset = gripSet(*eq.right, eq.grip);
@@ -83,8 +83,8 @@ void rescanChain(const PlayerEquipment& eq)
     const WeaponTechnique* best_tech = nullptr;
     for (const auto& tech : aset.light)
     {
-        const int max_check = std::min(static_cast<int>(tech.attacks.size()),
-                                       static_cast<int>(sObs.count));
+        const int max_check =
+            std::min(static_cast<int>(tech.attacks.size()), static_cast<int>(sObs.count));
         for (int n = max_check; n > best_step; --n)
         {
             if (techniqueMatchesTail(tech, sObs.history.data(), sObs.count, n))
@@ -112,8 +112,7 @@ void rescanChain(const PlayerEquipment& eq)
     }
     combatLog("[combat:obs] rescan tech_count=%zu hist_count=%zu prev=%s@%d -> %s@%d\n",
               aset.light.size(), sObs.count, prev_id ? prev_id : "-", prev_step,
-              sObs.current.technique_id ? sObs.current.technique_id : "-",
-              sObs.current.step);
+              sObs.current.technique_id ? sObs.current.technique_id : "-", sObs.current.step);
 }
 
 } // namespace
@@ -174,8 +173,8 @@ const CancelWindow& cancelWindow(HandSide hand)
 void resetChain()
 {
     combatLog("[combat:obs] resetChain (was tech=%s@%d hist_count=%zu)\n",
-              sObs.current.technique_id ? sObs.current.technique_id : "-",
-              sObs.current.step, sObs.count);
+              sObs.current.technique_id ? sObs.current.technique_id : "-", sObs.current.step,
+              sObs.count);
     sObs.count = 0;
     sObs.current = {};
     sObs.last_press_t = -1.0f;

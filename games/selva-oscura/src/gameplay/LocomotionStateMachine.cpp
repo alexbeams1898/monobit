@@ -49,8 +49,7 @@ const char* loopClipForState(LocomotionState s, CombatStance stance, bool is_arm
 }
 
 LocomotionFrameOutput tickLocomotionStateMachine(LocomotionStateMachine& sm, bool is_moving,
-                                                 bool is_sprinting,
-                                                 bool clip_finished_this_frame,
+                                                 bool is_sprinting, bool clip_finished_this_frame,
                                                  bool combat_input_this_frame, float /*dt*/,
                                                  float combat_grace_seconds, bool is_armed,
                                                  float wall_clock_seconds)

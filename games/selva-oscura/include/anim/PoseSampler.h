@@ -1,7 +1,8 @@
 #pragma once
 
-#include <cstdio>
 #include <glm/glm.hpp>
+
+#include <cstdio>
 #include <memory>
 #include <vector>
 
@@ -265,10 +266,8 @@ struct PoseSampler
     //
     // Returns clip duration if the joint list is empty or the clip is
     // unloaded (no settle detected → assume cancel opens at end).
-    float clipJointMotionEnd(const AnimationClip& clip,
-                             const std::vector<int>& joint_indices,
-                             float sample_hz = 60.0f,
-                             float quiet_velocity_fraction = 0.10f) const;
+    float clipJointMotionEnd(const AnimationClip& clip, const std::vector<int>& joint_indices,
+                             float sample_hz = 60.0f, float quiet_velocity_fraction = 0.10f) const;
 
     // Scan `clip` and return the clip-local time at which the watched
     // joints' motion FIRST becomes significant — i.e. the start of the
@@ -286,8 +285,7 @@ struct PoseSampler
     //
     // Returns 0 if the joint list is empty or the clip is unloaded
     // (no skip → play from t=0).
-    float clipJointMotionStart(const AnimationClip& clip,
-                               const std::vector<int>& joint_indices,
+    float clipJointMotionStart(const AnimationClip& clip, const std::vector<int>& joint_indices,
                                float sample_hz = 60.0f,
                                float start_velocity_fraction = 0.30f) const;
 
@@ -304,8 +302,7 @@ struct PoseSampler
     // joint so we use the latest peak as the cut-off.
     //
     // Returns 0.5 * clip_duration if joints invalid (rough fallback).
-    float clipJointMotionPeak(const AnimationClip& clip,
-                              const std::vector<int>& joint_indices,
+    float clipJointMotionPeak(const AnimationClip& clip, const std::vector<int>& joint_indices,
                               float sample_hz = 60.0f) const;
 
     // Sample `clip` at clip-time `t_seconds` and return joint
@@ -340,10 +337,8 @@ struct PoseSampler
     //
     // Returns 0 if either clip is unloaded or joints invalid.
     float clipPoseMatchTime(const AnimationClip& prev_clip, float prev_t_seconds,
-                            const AnimationClip& next_clip,
-                            const std::vector<int>& joint_indices,
-                            float search_window_start = 0.0f,
-                            float search_window_end = -1.0f,
+                            const AnimationClip& next_clip, const std::vector<int>& joint_indices,
+                            float search_window_start = 0.0f, float search_window_end = -1.0f,
                             float sample_hz = 60.0f) const;
 
     // Overload taking the reference joint world positions directly,
@@ -352,10 +347,8 @@ struct PoseSampler
     // the live pose isn't a single clip's pose so the (prev_clip,
     // prev_t) overload would sample the wrong reference.
     float clipPoseMatchTime(const std::vector<glm::vec3>& ref_world_pos,
-                            const AnimationClip& next_clip,
-                            const std::vector<int>& joint_indices,
-                            float search_window_start = 0.0f,
-                            float search_window_end = -1.0f,
+                            const AnimationClip& next_clip, const std::vector<int>& joint_indices,
+                            float search_window_start = 0.0f, float search_window_end = -1.0f,
                             float sample_hz = 60.0f) const;
 
     // Sample `clip` and return the watched joints' summed forward
@@ -391,11 +384,9 @@ struct PoseSampler
     //
     // Returns (window_start) if velocities are too small to compare
     // reliably, or if inputs are invalid.
-    float clipVelocityMatchTime(const glm::vec3& reference_velocity,
-                                const AnimationClip& next_clip,
+    float clipVelocityMatchTime(const glm::vec3& reference_velocity, const AnimationClip& next_clip,
                                 const std::vector<int>& joint_indices,
-                                float search_window_start = 0.0f,
-                                float search_window_end = -1.0f,
+                                float search_window_start = 0.0f, float search_window_end = -1.0f,
                                 float sample_hz = 60.0f) const;
 
     // Sample `clip` at clip-time `t_seconds` and return the hip joint's
@@ -412,7 +403,7 @@ struct PoseSampler
         const char* loco_current_name; // ozz Animation::name(), nullptr if no clip
         const char* loco_previous_name;
         const char* one_shot_name;
-        float loco_current_time;  // clip-time of the active locomotion track
+        float loco_current_time; // clip-time of the active locomotion track
         float loco_blend_weight;
         float loco_blend_elapsed;
         float loco_blend_duration;

@@ -1,9 +1,9 @@
 #include "combat/SpliceDiag.h"
 
-#include <vector>
-
 #include "anim/ClipRegistry.h"
 #include "combat/CombatLog.h"
+
+#include <vector>
 
 namespace selva::combat
 {
@@ -36,12 +36,10 @@ SpliceDiag captureSpliceDiag(const selva::anim::PoseSampler& sampler)
 }
 
 void logSpliceDiag(const SpliceDiag& d, const selva::anim::AnimationClip& new_clip,
-                   float start_seconds, const char* prefix,
-                   const selva::anim::PoseSampler& sampler)
+                   float start_seconds, const char* prefix, const selva::anim::PoseSampler& sampler)
 {
-    auto entry = [&](int j) {
-        return (j >= 0) ? sampler.sampleJointWorldPos(new_clip, start_seconds, j) : glm::vec3(0);
-    };
+    auto entry = [&](int j)
+    { return (j >= 0) ? sampler.sampleJointWorldPos(new_clip, start_seconds, j) : glm::vec3(0); };
     combatLog("%s  RH=%.3fm LH=%.3fm Hip=%.3fm LFoot=%.3fm RFoot=%.3fm\n", prefix,
               glm::length(entry(d.rh) - d.live_rh), glm::length(entry(d.lh) - d.live_lh),
               glm::length(entry(d.hp) - d.live_hp), glm::length(entry(d.lf) - d.live_lf),

@@ -1,8 +1,8 @@
 #include "gameplay/PlayerState.h"
 
-#include <cmath>
-
 #include <glm/gtc/constants.hpp>
+
+#include <cmath>
 
 namespace selva::gameplay
 {

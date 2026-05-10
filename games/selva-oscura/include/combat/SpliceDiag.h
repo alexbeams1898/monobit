@@ -1,11 +1,12 @@
 #pragma once
 
-#include <glm/vec3.hpp>
-#include <string>
-
 #include "anim/AnimationClip.h"
 #include "anim/ClipRegistry.h"
 #include "anim/PoseSampler.h"
+
+#include <glm/vec3.hpp>
+
+#include <string>
 
 namespace selva::combat
 {

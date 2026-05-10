@@ -4,15 +4,16 @@
 
 // cgltf is single-header — define IMPLEMENTATION in exactly one .cpp.
 #define CGLTF_IMPLEMENTATION
-#include <algorithm>
-#include <array>
 #include <cgltf.h>
-#include <cstdio>
-#include <cstring>
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
-#include <limits>
 #include <ozz/animation/runtime/skeleton.h>
+
+#include <algorithm>
+#include <array>
+#include <cstdio>
+#include <cstring>
+#include <limits>
 #include <unordered_map>
 #include <vector>
 

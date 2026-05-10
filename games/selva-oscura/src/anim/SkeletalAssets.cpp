@@ -1,9 +1,5 @@
 #include "anim/SkeletalAssets.h"
 
-#include <algorithm>
-#include <cstdio>
-#include <vector>
-
 #include "Tunables.h"
 #include "anim/AnimationClip.h"
 #include "anim/ClipRegistry.h"
@@ -12,6 +8,10 @@
 #include "anim/SkeletalMesh.h"
 #include "anim/SkeletalRenderer.h"
 #include "anim/Skeleton.h"
+
+#include <algorithm>
+#include <cstdio>
+#include <vector>
 
 namespace selva::anim
 {
@@ -145,8 +145,8 @@ void auditClipHipMotion()
             continue;
         const float dur = clip->duration();
         std::fprintf(stderr, "[clip-profile] %s  dur=%.2fs  hip XZ trajectory:\n", nm, dur);
-        std::fprintf(stderr, "  %4s %5s %8s %8s %10s %12s\n",
-                     "t%", "t(s)", "hip_x", "hip_z", "step", "cumul_dist");
+        std::fprintf(stderr, "  %4s %5s %8s %8s %10s %12s\n", "t%", "t(s)", "hip_x", "hip_z",
+                     "step", "cumul_dist");
         glm::vec2 prev(0.0f);
         float cumul = 0.0f;
         for (int i = 0; i <= 10; ++i)
@@ -155,8 +155,8 @@ void auditClipHipMotion()
             const glm::vec2 hip = sSampler.sampleHipXZAt(*clip, t);
             const float step = (i == 0) ? 0.0f : glm::length(hip - prev);
             cumul += step;
-            std::fprintf(stderr, "  %3d%% %5.2f %8.3f %8.3f %10.3f %12.3f\n",
-                         i * 10, t, hip.x, hip.y, step, cumul);
+            std::fprintf(stderr, "  %3d%% %5.2f %8.3f %8.3f %10.3f %12.3f\n", i * 10, t, hip.x,
+                         hip.y, step, cumul);
             prev = hip;
         }
     }

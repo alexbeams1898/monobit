@@ -1,11 +1,5 @@
 #include "ui/ComboHud.h"
 
-#include <algorithm>
-#include <cmath>
-#include <string>
-
-#include <imgui.h>
-
 #include "Tunables.h"
 #include "WallClock.h"
 #include "combat/AttackChain.h"
@@ -13,6 +7,12 @@
 #include "combat/CombatData.h"
 #include "combat/Weapon.h"
 #include "combat/WeaponClass.h"
+
+#include <imgui.h>
+
+#include <algorithm>
+#include <cmath>
+#include <string>
 
 namespace selva::ui
 {
@@ -115,8 +115,8 @@ void renderComboHud()
     const ImU32 btn_fg = IM_COL32(230, 230, 255, 255);
     draw->AddRectFilled(pos, ImVec2(pos.x + btn_box_w, pos.y + bar_h), btn_bg);
     const ImVec2 ts = ImGui::CalcTextSize(next_btn);
-    draw->AddText(ImVec2(pos.x + (btn_box_w - ts.x) * 0.5f, pos.y + (bar_h - ts.y) * 0.5f),
-                  btn_fg, next_btn);
+    draw->AddText(ImVec2(pos.x + (btn_box_w - ts.x) * 0.5f, pos.y + (bar_h - ts.y) * 0.5f), btn_fg,
+                  next_btn);
 
     const auto& cw = selva::combat::cancelWindow(selva::combat::HandSide::Right);
     const float open = cw.open_at;

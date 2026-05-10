@@ -1,10 +1,12 @@
 #pragma once
 
-#include <cstdint>
-#include <glad/glad.h>
 #include <glm/glm.hpp>
+
+#include <cstdint>
 #include <string>
 #include <vector>
+
+#include <glad/glad.h>
 
 namespace selva::anim
 {

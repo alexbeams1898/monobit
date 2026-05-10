@@ -1,8 +1,8 @@
 #pragma once
 
-#include <string>
-
 #include "combat/PlayerEquipment.h"
+
+#include <string>
 
 namespace selva::combat
 {

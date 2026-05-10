@@ -4,13 +4,6 @@
 #include "anim/SkeletalMesh.h"
 #include "anim/Skeleton.h"
 
-#include <algorithm>
-#include <cmath>
-#include <cstring>
-#include <limits>
-#include <cstdarg>
-#include <cstdio>
-#include <unordered_map>
 #include <ozz/animation/runtime/animation.h>
 #include <ozz/animation/runtime/blending_job.h>
 #include <ozz/animation/runtime/local_to_model_job.h>
@@ -20,6 +13,14 @@
 #include <ozz/base/maths/soa_transform.h>
 #include <ozz/base/span.h>
 #include <tracy/Tracy.hpp>
+
+#include <algorithm>
+#include <cmath>
+#include <cstdarg>
+#include <cstdio>
+#include <cstring>
+#include <limits>
+#include <unordered_map>
 
 namespace selva::anim
 {
@@ -51,7 +52,7 @@ void samplerDiagLog(const char* fmt, ...)
     std::fflush(g_diag_log);
     va_end(args);
 }
-}
+} // namespace
 
 // ---------------------------------------------------------------------------
 // Three-track sampler:
@@ -1060,8 +1061,7 @@ float PoseSampler::clipJointMotionStart(const AnimationClip& clip,
 }
 
 float PoseSampler::clipJointMotionPeak(const AnimationClip& clip,
-                                       const std::vector<int>& joint_indices,
-                                       float sample_hz) const
+                                       const std::vector<int>& joint_indices, float sample_hz) const
 {
     if (!impl || !impl->skeleton || !clip.isLoaded() || joint_indices.empty())
         return 0.0f;
@@ -1182,9 +1182,8 @@ float PoseSampler::clipPoseMatchTime(const AnimationClip& prev_clip, float prev_
                   "ozz::math::Float4x4 and glm::mat4 storage size differ");
     std::memcpy(&root_storage, &impl->root_transform, sizeof(glm::mat4));
 
-    auto sample_joint_positions =
-        [&](const ozz::animation::Animation* anim, float t, float dur,
-            std::vector<glm::vec3>& out) -> bool
+    auto sample_joint_positions = [&](const ozz::animation::Animation* anim, float t, float dur,
+                                      std::vector<glm::vec3>& out) -> bool
     {
         const float ratio = std::clamp(t / dur, 0.0f, 1.0f);
         ozz::animation::SamplingJob sjob;
@@ -1369,8 +1368,7 @@ float PoseSampler::clipVelocityMatchTime(const glm::vec3& reference_velocity,
         return search_window_start;
 
     const float t_start = std::max(0.0f, search_window_start);
-    const float t_end =
-        (search_window_end > 0.0f) ? std::min(search_window_end, dur) : dur;
+    const float t_end = (search_window_end > 0.0f) ? std::min(search_window_end, dur) : dur;
     if (t_end <= t_start)
         return t_start;
     const float step = 1.0f / sample_hz;
@@ -1679,8 +1677,8 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
         // while walking's "phase 0" is right-foot-strike.
         std::vector<int> joints;
         std::vector<glm::vec3> ref;
-        const char* names[] = {"mixamorig:LeftUpLeg", "mixamorig:RightUpLeg",
-                               "mixamorig:LeftFoot",  "mixamorig:RightFoot"};
+        const char* names[] = {"mixamorig:LeftUpLeg", "mixamorig:RightUpLeg", "mixamorig:LeftFoot",
+                               "mixamorig:RightFoot"};
         if (s.loco_current.animation != nullptr && new_dur > 0.0f)
         {
             // Sample the outgoing loco clip in isolation (no one-shot,
@@ -1695,12 +1693,11 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
             std::vector<ozz::math::Float4x4> models(n_joints);
             ozz::math::Float4x4 root_storage;
             std::memcpy(&root_storage, &s.root_transform, sizeof(glm::mat4));
-            const float prev_dur_local =
-                s.loco_current.animation->duration();
-            const float ratio = (prev_dur_local > 0.0f)
-                                    ? std::clamp(s.loco_current.time_seconds / prev_dur_local,
-                                                 0.0f, 1.0f)
-                                    : 0.0f;
+            const float prev_dur_local = s.loco_current.animation->duration();
+            const float ratio =
+                (prev_dur_local > 0.0f)
+                    ? std::clamp(s.loco_current.time_seconds / prev_dur_local, 0.0f, 1.0f)
+                    : 0.0f;
             ozz::animation::SamplingJob sjob;
             sjob.animation = s.loco_current.animation;
             sjob.context = &ctx;
@@ -1927,8 +1924,8 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
         advance_one_shot(s.one_shot_previous, s.one_shot_previous_playback_rate);
         if (s.one_shot_previous_fade_seconds > 0.0f)
         {
-            s.one_shot_previous_weight = std::max(
-                0.0f, s.one_shot_previous_weight - dt / s.one_shot_previous_fade_seconds);
+            s.one_shot_previous_weight =
+                std::max(0.0f, s.one_shot_previous_weight - dt / s.one_shot_previous_fade_seconds);
         }
         if (s.one_shot_previous_weight <= 0.0f)
         {
@@ -2049,8 +2046,8 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
     // one-shot's exit pose without any visible cost.
     if (blend_out_loco_pose_match && s.loco_current.animation != nullptr)
     {
-        const char* names[] = {"mixamorig:LeftUpLeg", "mixamorig:RightUpLeg",
-                               "mixamorig:LeftFoot",  "mixamorig:RightFoot"};
+        const char* names[] = {"mixamorig:LeftUpLeg", "mixamorig:RightUpLeg", "mixamorig:LeftFoot",
+                               "mixamorig:RightFoot"};
         std::vector<int> joints;
         std::vector<glm::vec3> ref;
         for (const char* n : names)
@@ -2308,8 +2305,7 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
         if (s.one_shot_previous.animation != nullptr && s.one_shot_previous_weight > 0.0f)
         {
             final_layers[n_layers].weight = 1.0f;
-            final_layers[n_layers].transform =
-                ozz::make_span(s.one_shot_previous.local_transforms);
+            final_layers[n_layers].transform = ozz::make_span(s.one_shot_previous.local_transforms);
             final_layers[n_layers].joint_weights =
                 ozz::make_span(s.one_shot_previous_joint_weights);
             ++n_layers;
@@ -2394,8 +2390,7 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
                                                  off.rotation.z * off.rotation.z;
             // sqrt via reciprocal-sqrt-est: |xyz| = xyz_sq * rsqrt(xyz_sq).
             // Guard against zero with a small epsilon to avoid Inf.
-            const ozz::math::SimdFloat4 eps =
-                ozz::math::simd_float4::Load1(1e-8f);
+            const ozz::math::SimdFloat4 eps = ozz::math::simd_float4::Load1(1e-8f);
             const ozz::math::SimdFloat4 safe = xyz_sq + eps;
             const ozz::math::SimdFloat4 inv_len_xyz = ozz::math::RSqrtEst(safe);
             const ozz::math::SimdFloat4 xyz_len = safe * inv_len_xyz; // |xyz|
@@ -2522,9 +2517,8 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
         {
             glm::mat4 current_model;
             std::memcpy(&current_model, &s.model_matrices[i], sizeof(glm::mat4));
-            const glm::mat4 inv_bind = (i < s.inverse_bind_matrices.size())
-                                           ? s.inverse_bind_matrices[i]
-                                           : glm::mat4(1.0f);
+            const glm::mat4 inv_bind =
+                (i < s.inverse_bind_matrices.size()) ? s.inverse_bind_matrices[i] : glm::mat4(1.0f);
             bone_palette[i] = current_model * inv_bind;
         }
     }

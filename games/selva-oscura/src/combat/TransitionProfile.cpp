@@ -11,8 +11,14 @@ namespace
 float sLocoLockoutUntil = 0.0f;
 } // namespace
 
-float locoLockoutUntil() { return sLocoLockoutUntil; }
-void setLocoLockoutUntil(float t) { sLocoLockoutUntil = t; }
+float locoLockoutUntil()
+{
+    return sLocoLockoutUntil;
+}
+void setLocoLockoutUntil(float t)
+{
+    sLocoLockoutUntil = t;
+}
 
 namespace profiles
 {

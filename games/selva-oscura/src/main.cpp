@@ -6,25 +6,26 @@
 // because main.cpp is the entry point's TU and the build expects to
 // find stbi_write_png symbols here.
 #define STB_IMAGE_WRITE_IMPLEMENTATION
-#include <stb_image_write.h>
-
 #include "Engine.h"
 #include "Tunables.h"
 #include "anim/LocomotionConfig.h"
+#include "anim/PoseSampler.h"
 #include "anim/SkeletalAssets.h"
 #include "combat/AttackResolution.h"
 #include "combat/CombatData.h"
 #include "combat/CombatLog.h"
 #include "combat/PlayerEquipment.h"
-#include "anim/PoseSampler.h"
 #include "gameplay/PerFrameTick.h"
 #include "render/Camera.h"
 #include "render/SceneGeometry.h"
 #include "render/SceneShaders.h"
 #include "ui/TuningPanel.h"
 
+#include <stb_image_write.h>
+
 #define SDL_MAIN_HANDLED
 #include <SDL.h>
+
 #include <cstdio>
 #include <string>
 
@@ -117,8 +118,7 @@ int main(int /*argc*/, char* /*argv*/[])
         selva::combat::loadAllCombatData(&n_classes, &n_weapons);
         const auto& eq = selva::combat::equipment();
         selva::combat::resolveAttackCancelOpenTimes(selva::combat::weaponClasses(),
-                                                     selva::anim::clips(),
-                                                     selva::anim::sampler());
+                                                    selva::anim::clips(), selva::anim::sampler());
         std::fprintf(stderr,
                      "[combat] loaded %d class(es), %d weapon(s); right=%s left=%s grip=%s\n",
                      n_classes, n_weapons, eq.right ? eq.right->id.c_str() : "(empty)",

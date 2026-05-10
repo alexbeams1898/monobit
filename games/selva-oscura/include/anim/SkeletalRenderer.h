@@ -1,8 +1,10 @@
 #pragma once
 
-#include <glad/glad.h>
 #include <glm/glm.hpp>
+
 #include <vector>
+
+#include <glad/glad.h>
 
 namespace selva::anim
 {
