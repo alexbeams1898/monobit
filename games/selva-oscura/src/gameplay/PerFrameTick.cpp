@@ -366,6 +366,59 @@ static void resolveAttackCancelOpenTimes()
 // Per-frame update — runs at wall-clock rate.
 // ---------------------------------------------------------------------------
 
+// Drain raw mouse motion this frame and apply it to camera yaw + pitch
+// (clamped). Suppressed while the tuning panel is open so mouse drags
+// on sliders don't aim the camera.
+static void tickMouseLook(const selva::tuning::Tunables& tun)
+{
+    int mdx = 0;
+    int mdy = 0;
+    SDL_GetRelativeMouseState(&mdx, &mdy);
+    if (sShowTuningPanel)
+        return;
+    float yaw = selva::render::cameraYaw();
+    float pitch = selva::render::cameraPitch();
+    yaw -= static_cast<float>(mdx) * tun.mouse_sensitivity;
+    pitch -= static_cast<float>(mdy) * tun.mouse_sensitivity;
+    if (pitch < tun.pitch_min)
+        pitch = tun.pitch_min;
+    if (pitch > tun.pitch_max)
+        pitch = tun.pitch_max;
+    selva::render::setCameraYaw(yaw);
+    selva::render::setCameraPitch(pitch);
+}
+
+// Rising-edge F1 toggles the tuning panel and flips relative-mouse
+// capture. Drains accumulated mouse motion on re-capture so the
+// camera doesn't snap.
+static void tickF1TuningPanelToggle(const Uint8* keys)
+{
+    const bool f1Now = keys[SDL_SCANCODE_F1] != 0;
+    if (f1Now && !sPrevF1)
+    {
+        sShowTuningPanel = !sShowTuningPanel;
+        SDL_SetRelativeMouseMode(sShowTuningPanel ? SDL_FALSE : SDL_TRUE);
+        SDL_GetRelativeMouseState(nullptr, nullptr);
+    }
+    sPrevF1 = f1Now;
+}
+
+// Rising-edge Y/G toggles grip mode (one-handed ↔ two-handed).
+static void tickGripToggle(const Uint8* keys)
+{
+    const bool gripNow = (keys[SDL_SCANCODE_Y] != 0) || (keys[SDL_SCANCODE_G] != 0);
+    if (gripNow && !sPrevGripToggle)
+    {
+        sEquipment.grip = (sEquipment.grip == selva::combat::Grip::TwoHanded)
+                              ? selva::combat::Grip::OneHanded
+                              : selva::combat::Grip::TwoHanded;
+        std::fprintf(stderr, "[combat] grip → %s\n",
+                     sEquipment.grip == selva::combat::Grip::TwoHanded ? "two_handed"
+                                                                       : "one_handed");
+    }
+    sPrevGripToggle = gripNow;
+}
+
 static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
 {
     ZoneScopedN("selvaPerFrame");
@@ -384,27 +437,8 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     const int fps = static_cast<int>(std::lround(1.0 / engine.lastFrameTime()));
     engine.setWindowTitle("Selva Oscura  |  FPS " + std::to_string(fps));
 
-    // Mouse look. SDL_GetRelativeMouseState drains accumulated deltas.
-    // Mouse-left rotates the camera left.
-    int mdx = 0;
-    int mdy = 0;
-    SDL_GetRelativeMouseState(&mdx, &mdy);
     const auto& tun = selva::tuning::current();
-    // Mouse-look only when the tuning panel is closed — otherwise the
-    // mouse is being used to drag sliders, not to aim the camera.
-    if (!sShowTuningPanel)
-    {
-        float yaw = selva::render::cameraYaw();
-        float pitch = selva::render::cameraPitch();
-        yaw -= static_cast<float>(mdx) * tun.mouse_sensitivity;
-        pitch -= static_cast<float>(mdy) * tun.mouse_sensitivity;
-        if (pitch < tun.pitch_min)
-            pitch = tun.pitch_min;
-        if (pitch > tun.pitch_max)
-            pitch = tun.pitch_max;
-        selva::render::setCameraYaw(yaw);
-        selva::render::setCameraPitch(pitch);
-    }
+    tickMouseLook(tun);
 
     const Uint8* keys = SDL_GetKeyboardState(nullptr);
 
@@ -412,20 +446,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     if (keys[SDL_SCANCODE_ESCAPE])
         engine.requestQuit();
 
-    // F1: toggle the tuning panel (rising-edge detect). Releases the
-    // cursor while the panel is open so ImGui can receive clicks; the
-    // game's mouse-look pauses for that duration. Restores capture when
-    // the panel closes.
-    const bool f1Now = keys[SDL_SCANCODE_F1] != 0;
-    if (f1Now && !sPrevF1)
-    {
-        sShowTuningPanel = !sShowTuningPanel;
-        SDL_SetRelativeMouseMode(sShowTuningPanel ? SDL_FALSE : SDL_TRUE);
-        // Drain accumulated relative motion so the camera doesn't snap
-        // when capture is re-acquired.
-        SDL_GetRelativeMouseState(nullptr, nullptr);
-    }
-    sPrevF1 = f1Now;
+    tickF1TuningPanelToggle(keys);
 
     // -------- Combat input --------
     //   LMB             — right-hand light attack
@@ -855,19 +876,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     // diagnostic — used to compute pre-splice velocity.
     selva::combat::cacheRightHandPos(sSampler);
 
-    // Grip toggle (Y or G — both on, since Y is right-hand-near and G is
-    // a comfortable WASD reach). Toggle on rising edge.
-    const bool gripNow = (keys[SDL_SCANCODE_Y] != 0) || (keys[SDL_SCANCODE_G] != 0);
-    if (gripNow && !sPrevGripToggle)
-    {
-        sEquipment.grip = (sEquipment.grip == selva::combat::Grip::TwoHanded)
-                              ? selva::combat::Grip::OneHanded
-                              : selva::combat::Grip::TwoHanded;
-        std::fprintf(stderr, "[combat] grip → %s\n",
-                     sEquipment.grip == selva::combat::Grip::TwoHanded ? "two_handed"
-                                                                       : "one_handed");
-    }
-    sPrevGripToggle = gripNow;
+    tickGripToggle(keys);
 
     // Compute camera-relative movement intent every frame; both walking and
     // dodge-init read it. Forward axis is -Z rotated by camera yaw; right
