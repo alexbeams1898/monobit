@@ -220,14 +220,18 @@ jobs:
   #    Fails on functions over CCN 15, length 250, or 8 parameters.
   #    Same thresholds as the local pre-push pipeline.
   #
-  #    NOTE: continue-on-error while the pre-existing pile is cleaned up
-  #    (CombatSystem::update at CCN 193 is a multi-day refactor on its
-  #    own). Flip to required once master is clean.
+  #    Scope: games/selva-oscura/src/ only (active work). engines/engine/
+  #    has 6 pre-existing offenders (FlowFieldSystem::update CCN 81,
+  #    TileMap::hasLineOfSight CCN 17, SpriteCompositor::composite CCN 17,
+  #    SteeringSystem helpers, UIRenderer::drawTexturedRect 10 params),
+  #    and games/prison-escape-game/ has ~50 (CombatSystem::update CCN 193,
+  #    etc.). Both are tracked for their own focused cleanup branches and
+  #    shouldn't gate active selva-oscura PRs. Re-add their paths here as
+  #    they're cleaned up.
   # -----------------------------------------------------------------------
   lizard:
     name: Complexity check (lizard)
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -237,9 +241,6 @@ jobs:
       - name: Run lizard
         run: |
           lizard \
-            engines/engine/ \
-            games/prison-escape-game/src/ \
-            games/prison-escape-game/include/ \
             games/selva-oscura/src/ \
             -C 15 -L 250 -a 8 -w
 
