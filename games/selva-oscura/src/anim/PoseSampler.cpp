@@ -865,6 +865,91 @@ PoseSampler::ClipHipScan PoseSampler::clipHipPathLength(const AnimationClip& cli
     return result;
 }
 
+// Sample the watched joints' world positions at fixed time steps
+// across the clip. Returns one std::vector<glm::vec3> per joint
+// (outer index matches `joint_indices`), each holding `n_steps`
+// samples at `t = i * step` for i in [0, n_steps). Empty outer vector
+// on failure (sampling job didn't run).
+std::vector<std::vector<glm::vec3>> collectJointXYZSamples(const ozz::animation::Animation& anim,
+                                                           const ozz::animation::Skeleton& skel,
+                                                           const ozz::math::Float4x4& root_storage,
+                                                           const std::vector<int>& joint_indices,
+                                                           float dur, float step, int n_steps)
+{
+    const int n_joints = skel.num_joints();
+    const int n_soa = skel.num_soa_joints();
+    ozz::animation::SamplingJob::Context ctx;
+    ctx.Resize(n_joints);
+    std::vector<ozz::math::SoaTransform> locals(n_soa);
+    std::vector<ozz::math::Float4x4> models(n_joints);
+
+    std::vector<std::vector<glm::vec3>> joint_samples(joint_indices.size());
+    for (auto& v : joint_samples)
+        v.reserve(static_cast<std::size_t>(n_steps));
+
+    for (int i = 0; i < n_steps; ++i)
+    {
+        const float t = std::min(static_cast<float>(i) * step, dur);
+        const float ratio = t / dur;
+        ozz::animation::SamplingJob sjob;
+        sjob.animation = &anim;
+        sjob.context = &ctx;
+        sjob.ratio = ratio;
+        sjob.output = ozz::make_span(locals);
+        if (!sjob.Run())
+            return {};
+        ozz::animation::LocalToModelJob ljob;
+        ljob.skeleton = &skel;
+        ljob.root = &root_storage;
+        ljob.input = ozz::make_span(locals);
+        ljob.output = ozz::make_span(models);
+        if (!ljob.Run())
+            return {};
+        for (std::size_t k = 0; k < joint_indices.size(); ++k)
+        {
+            const ozz::math::Float4x4& m = models[joint_indices[k]];
+            alignas(16) float col3[4];
+            ozz::math::StorePtr(m.cols[3], col3);
+            joint_samples[k].emplace_back(col3[0], col3[1], col3[2]);
+        }
+    }
+    return joint_samples;
+}
+
+// True if any joint index is out of [0, n_joints).
+bool anyJointOutOfRange(const std::vector<int>& joint_indices, int n_joints)
+{
+    for (const int j : joint_indices)
+        if (j < 0 || j >= n_joints)
+            return true;
+    return false;
+}
+
+// Per-joint settle time: the first instant after peak velocity when
+// step velocity drops below `quiet_threshold`. Returns `dur` if the
+// joint never settles. See clipJointMotionEnd's body comment for the
+// "mid-follow-through" rationale on why fraction ~0.5 is preferred.
+static float jointSettleTime(const std::vector<glm::vec3>& samples, float dur, float step,
+                             float quiet_velocity_fraction)
+{
+    if (samples.size() < 2)
+        return 0.0f;
+    float peak_step = 0.0f;
+    for (std::size_t i = 1; i < samples.size(); ++i)
+        peak_step = std::max(peak_step, glm::length(samples[i] - samples[i - 1]));
+    const float quiet_threshold = peak_step * std::max(0.0f, quiet_velocity_fraction);
+    bool seen_peak = false;
+    for (std::size_t i = 1; i < samples.size(); ++i)
+    {
+        const float d = glm::length(samples[i] - samples[i - 1]);
+        if (d >= peak_step * 0.9f)
+            seen_peak = true;
+        if (seen_peak && d < quiet_threshold)
+            return static_cast<float>(i) * step;
+    }
+    return dur;
+}
+
 float PoseSampler::clipJointMotionEnd(const AnimationClip& clip,
                                       const std::vector<int>& joint_indices, float sample_hz,
                                       float quiet_velocity_fraction) const
@@ -877,101 +962,47 @@ float PoseSampler::clipJointMotionEnd(const AnimationClip& clip,
     const float dur = anim->duration();
     if (dur <= 0.0f || sample_hz <= 0.0f)
         return 0.0f;
-
     const ozz::animation::Skeleton& skel = *impl->skeleton;
-    const int n_joints = skel.num_joints();
-    const int n_soa = skel.num_soa_joints();
-    for (int j : joint_indices)
-        if (j < 0 || j >= n_joints)
-            return dur; // invalid index -> safe fallback
-
-    ozz::animation::SamplingJob::Context ctx;
-    ctx.Resize(n_joints);
-    std::vector<ozz::math::SoaTransform> locals(n_soa);
-    std::vector<ozz::math::Float4x4> models(n_joints);
+    if (anyJointOutOfRange(joint_indices, skel.num_joints()))
+        return dur;
 
     ozz::math::Float4x4 root_storage;
     static_assert(sizeof(ozz::math::Float4x4) == sizeof(glm::mat4),
                   "ozz::math::Float4x4 and glm::mat4 storage size differ");
     std::memcpy(&root_storage, &impl->root_transform, sizeof(glm::mat4));
-
     const float step = 1.0f / sample_hz;
     const int n_steps = static_cast<int>(std::ceil(dur / step)) + 1;
+    const auto joint_samples =
+        collectJointXYZSamples(*anim, skel, root_storage, joint_indices, dur, step, n_steps);
+    if (joint_samples.empty())
+        return dur;
 
-    // Per-joint XYZ samples across the clip.
-    std::vector<std::vector<glm::vec3>> joint_samples(joint_indices.size());
-    for (auto& v : joint_samples)
-        v.reserve(static_cast<std::size_t>(n_steps));
-
-    for (int i = 0; i < n_steps; ++i)
-    {
-        const float t = std::min(static_cast<float>(i) * step, dur);
-        const float ratio = t / dur;
-        ozz::animation::SamplingJob sjob;
-        sjob.animation = anim;
-        sjob.context = &ctx;
-        sjob.ratio = ratio;
-        sjob.output = ozz::make_span(locals);
-        if (!sjob.Run())
-            return dur;
-        ozz::animation::LocalToModelJob ljob;
-        ljob.skeleton = &skel;
-        ljob.root = &root_storage;
-        ljob.input = ozz::make_span(locals);
-        ljob.output = ozz::make_span(models);
-        if (!ljob.Run())
-            return dur;
-        for (std::size_t k = 0; k < joint_indices.size(); ++k)
-        {
-            const ozz::math::Float4x4& m = models[joint_indices[k]];
-            alignas(16) float col3[4];
-            ozz::math::StorePtr(m.cols[3], col3);
-            joint_samples[k].emplace_back(col3[0], col3[1], col3[2]);
-        }
-    }
-
-    // Per-joint motion-end time. The watched-joint set's settle time
-    // is the MAX across joints — every watched joint must have stilled.
+    // Watched-joint settle time is the MAX across joints — every
+    // watched joint must have stilled.
     float settle_time = 0.0f;
     for (const auto& samples : joint_samples)
-    {
-        if (samples.size() < 2)
-            continue;
-        float peak_step = 0.0f;
-        for (std::size_t i = 1; i < samples.size(); ++i)
-        {
-            const float d = glm::length(samples[i] - samples[i - 1]);
-            if (d > peak_step)
-                peak_step = d;
-        }
-        const float quiet_threshold = peak_step * std::max(0.0f, quiet_velocity_fraction);
-        bool seen_peak = false;
-        float motion_end_t = dur;
-        for (std::size_t i = 1; i < samples.size(); ++i)
-        {
-            const float d = glm::length(samples[i] - samples[i - 1]);
-            if (d >= peak_step * 0.9f)
-                seen_peak = true;
-            // Threshold meaning: motion-end fires when velocity has
-            // dropped to `quiet_velocity_fraction` of peak AFTER the
-            // peak has occurred. With fraction ~0.5, that's mid-
-            // follow-through (hand still moving, past contact, hasn't
-            // settled to stance). With fraction ~0.1, that's full
-            // settle (hand at rest at stance). Mid-follow-through is
-            // the better cancel point for chain transitions because
-            // the source pose for the next swing's blend is still in
-            // motion in approximately the right direction — small
-            // pose gap, aligned velocity.
-            if (seen_peak && d < quiet_threshold)
-            {
-                motion_end_t = static_cast<float>(i) * step;
-                break;
-            }
-        }
-        if (motion_end_t > settle_time)
-            settle_time = motion_end_t;
-    }
+        settle_time =
+            std::max(settle_time, jointSettleTime(samples, dur, step, quiet_velocity_fraction));
     return std::min(settle_time, dur);
+}
+
+// Per-joint motion-start: first instant when step velocity crosses
+// `start_threshold` (fraction of joint's peak velocity).
+static float jointMotionStartTime(const std::vector<glm::vec3>& samples, float step,
+                                  float start_velocity_fraction)
+{
+    if (samples.size() < 2)
+        return 0.0f;
+    float peak_step = 0.0f;
+    for (std::size_t i = 1; i < samples.size(); ++i)
+        peak_step = std::max(peak_step, glm::length(samples[i] - samples[i - 1]));
+    const float start_threshold = peak_step * std::max(0.0f, start_velocity_fraction);
+    for (std::size_t i = 1; i < samples.size(); ++i)
+    {
+        if (glm::length(samples[i] - samples[i - 1]) >= start_threshold)
+            return static_cast<float>(i) * step;
+    }
+    return 0.0f;
 }
 
 float PoseSampler::clipJointMotionStart(const AnimationClip& clip,
@@ -986,88 +1017,46 @@ float PoseSampler::clipJointMotionStart(const AnimationClip& clip,
     const float dur = anim->duration();
     if (dur <= 0.0f || sample_hz <= 0.0f)
         return 0.0f;
-
     const ozz::animation::Skeleton& skel = *impl->skeleton;
-    const int n_joints = skel.num_joints();
-    const int n_soa = skel.num_soa_joints();
-    for (int j : joint_indices)
-        if (j < 0 || j >= n_joints)
-            return 0.0f;
-
-    ozz::animation::SamplingJob::Context ctx;
-    ctx.Resize(n_joints);
-    std::vector<ozz::math::SoaTransform> locals(n_soa);
-    std::vector<ozz::math::Float4x4> models(n_joints);
+    if (anyJointOutOfRange(joint_indices, skel.num_joints()))
+        return 0.0f;
 
     ozz::math::Float4x4 root_storage;
-    static_assert(sizeof(ozz::math::Float4x4) == sizeof(glm::mat4),
-                  "ozz::math::Float4x4 and glm::mat4 storage size differ");
     std::memcpy(&root_storage, &impl->root_transform, sizeof(glm::mat4));
-
     const float step = 1.0f / sample_hz;
     const int n_steps = static_cast<int>(std::ceil(dur / step)) + 1;
+    const auto joint_samples =
+        collectJointXYZSamples(*anim, skel, root_storage, joint_indices, dur, step, n_steps);
+    if (joint_samples.empty())
+        return 0.0f;
 
-    std::vector<std::vector<glm::vec3>> joint_samples(joint_indices.size());
-    for (auto& v : joint_samples)
-        v.reserve(static_cast<std::size_t>(n_steps));
-
-    for (int i = 0; i < n_steps; ++i)
-    {
-        const float t = std::min(static_cast<float>(i) * step, dur);
-        const float ratio = t / dur;
-        ozz::animation::SamplingJob sjob;
-        sjob.animation = anim;
-        sjob.context = &ctx;
-        sjob.ratio = ratio;
-        sjob.output = ozz::make_span(locals);
-        if (!sjob.Run())
-            return 0.0f;
-        ozz::animation::LocalToModelJob ljob;
-        ljob.skeleton = &skel;
-        ljob.root = &root_storage;
-        ljob.input = ozz::make_span(locals);
-        ljob.output = ozz::make_span(models);
-        if (!ljob.Run())
-            return 0.0f;
-        for (std::size_t k = 0; k < joint_indices.size(); ++k)
-        {
-            const ozz::math::Float4x4& m = models[joint_indices[k]];
-            alignas(16) float col3[4];
-            ozz::math::StorePtr(m.cols[3], col3);
-            joint_samples[k].emplace_back(col3[0], col3[1], col3[2]);
-        }
-    }
-
-    // Earliest moment ANY watched joint enters its active phase.
+    // Earliest moment ANY watched joint enters its active phase
     // (MIN, not MAX — chain link should fire as soon as the first
-    // joint starts contributing to the swing.)
+    // joint starts contributing to the swing).
     float earliest_start = dur;
     for (const auto& samples : joint_samples)
-    {
-        if (samples.size() < 2)
-            continue;
-        float peak_step = 0.0f;
-        for (std::size_t i = 1; i < samples.size(); ++i)
-        {
-            const float d = glm::length(samples[i] - samples[i - 1]);
-            if (d > peak_step)
-                peak_step = d;
-        }
-        const float start_threshold = peak_step * std::max(0.0f, start_velocity_fraction);
-        float motion_start_t = 0.0f;
-        for (std::size_t i = 1; i < samples.size(); ++i)
-        {
-            const float d = glm::length(samples[i] - samples[i - 1]);
-            if (d >= start_threshold)
-            {
-                motion_start_t = static_cast<float>(i) * step;
-                break;
-            }
-        }
-        if (motion_start_t < earliest_start)
-            earliest_start = motion_start_t;
-    }
+        earliest_start =
+            std::min(earliest_start, jointMotionStartTime(samples, step, start_velocity_fraction));
     return std::min(earliest_start, dur);
+}
+
+// Per-joint argmax velocity time (when step velocity is highest).
+static float jointPeakTime(const std::vector<glm::vec3>& samples, float step)
+{
+    if (samples.size() < 2)
+        return 0.0f;
+    float peak_step = 0.0f;
+    float peak_t = 0.0f;
+    for (std::size_t i = 1; i < samples.size(); ++i)
+    {
+        const float d = glm::length(samples[i] - samples[i - 1]);
+        if (d > peak_step)
+        {
+            peak_step = d;
+            peak_t = static_cast<float>(i) * step;
+        }
+    }
+    return peak_t;
 }
 
 float PoseSampler::clipJointMotionPeak(const AnimationClip& clip,
@@ -1081,80 +1070,24 @@ float PoseSampler::clipJointMotionPeak(const AnimationClip& clip,
     const float dur = anim->duration();
     if (dur <= 0.0f || sample_hz <= 0.0f)
         return 0.0f;
-
     const ozz::animation::Skeleton& skel = *impl->skeleton;
-    const int n_joints = skel.num_joints();
-    const int n_soa = skel.num_soa_joints();
-    for (int j : joint_indices)
-        if (j < 0 || j >= n_joints)
-            return 0.5f * dur;
-
-    ozz::animation::SamplingJob::Context ctx;
-    ctx.Resize(n_joints);
-    std::vector<ozz::math::SoaTransform> locals(n_soa);
-    std::vector<ozz::math::Float4x4> models(n_joints);
+    if (anyJointOutOfRange(joint_indices, skel.num_joints()))
+        return 0.5f * dur;
 
     ozz::math::Float4x4 root_storage;
-    static_assert(sizeof(ozz::math::Float4x4) == sizeof(glm::mat4),
-                  "ozz::math::Float4x4 and glm::mat4 storage size differ");
     std::memcpy(&root_storage, &impl->root_transform, sizeof(glm::mat4));
-
     const float step = 1.0f / sample_hz;
     const int n_steps = static_cast<int>(std::ceil(dur / step)) + 1;
+    const auto joint_samples =
+        collectJointXYZSamples(*anim, skel, root_storage, joint_indices, dur, step, n_steps);
+    if (joint_samples.empty())
+        return 0.5f * dur;
 
-    std::vector<std::vector<glm::vec3>> joint_samples(joint_indices.size());
-    for (auto& v : joint_samples)
-        v.reserve(static_cast<std::size_t>(n_steps));
-
-    for (int i = 0; i < n_steps; ++i)
-    {
-        const float t = std::min(static_cast<float>(i) * step, dur);
-        const float ratio = t / dur;
-        ozz::animation::SamplingJob sjob;
-        sjob.animation = anim;
-        sjob.context = &ctx;
-        sjob.ratio = ratio;
-        sjob.output = ozz::make_span(locals);
-        if (!sjob.Run())
-            return 0.5f * dur;
-        ozz::animation::LocalToModelJob ljob;
-        ljob.skeleton = &skel;
-        ljob.root = &root_storage;
-        ljob.input = ozz::make_span(locals);
-        ljob.output = ozz::make_span(models);
-        if (!ljob.Run())
-            return 0.5f * dur;
-        for (std::size_t k = 0; k < joint_indices.size(); ++k)
-        {
-            const ozz::math::Float4x4& m = models[joint_indices[k]];
-            alignas(16) float col3[4];
-            ozz::math::StorePtr(m.cols[3], col3);
-            joint_samples[k].emplace_back(col3[0], col3[1], col3[2]);
-        }
-    }
-
-    // Per-joint argmax velocity (step distance). Latest peak across
-    // joints is the splice cutoff — past this, all watched joints
+    // Latest peak across joints — past this, all watched joints
     // are decelerating into recovery.
     float latest_peak = 0.0f;
     for (const auto& samples : joint_samples)
-    {
-        if (samples.size() < 2)
-            continue;
-        float peak_step = 0.0f;
-        float peak_t = 0.0f;
-        for (std::size_t i = 1; i < samples.size(); ++i)
-        {
-            const float d = glm::length(samples[i] - samples[i - 1]);
-            if (d > peak_step)
-            {
-                peak_step = d;
-                peak_t = static_cast<float>(i) * step;
-            }
-        }
-        if (peak_t > latest_peak)
-            latest_peak = peak_t;
-    }
+        latest_peak = std::max(latest_peak, jointPeakTime(samples, step));
     return std::min(latest_peak, dur);
 }
 
@@ -1178,7 +1111,7 @@ float PoseSampler::clipPoseMatchTime(const AnimationClip& prev_clip, float prev_
     const ozz::animation::Skeleton& skel = *impl->skeleton;
     const int n_joints = skel.num_joints();
     const int n_soa = skel.num_soa_joints();
-    for (int j : joint_indices)
+    for (const int j : joint_indices)
         if (j < 0 || j >= n_joints)
             return 0.0f;
 
@@ -1274,7 +1207,7 @@ float PoseSampler::clipPoseMatchTime(const std::vector<glm::vec3>& ref_world_pos
     const ozz::animation::Skeleton& skel = *impl->skeleton;
     const int n_joints = skel.num_joints();
     const int n_soa = skel.num_soa_joints();
-    for (int j : joint_indices)
+    for (const int j : joint_indices)
         if (j < 0 || j >= n_joints)
             return 0.0f;
 
@@ -1353,7 +1286,7 @@ glm::vec3 PoseSampler::clipJointVelocityAt(const AnimationClip& clip, float t_se
     const float t0 = std::clamp(t_seconds, 0.0f, std::max(0.0f, dur - dt_frame));
     const float t1 = std::min(t0 + dt_frame, dur);
     glm::vec3 sum(0.0f);
-    for (int j : joint_indices)
+    for (const int j : joint_indices)
     {
         const glm::vec3 a = sampleJointWorldPos(clip, t0, j);
         const glm::vec3 b = sampleJointWorldPos(clip, t1, j);
@@ -1648,14 +1581,9 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
         if (s.loco_current.hip_path_cached < 0.0f && s.loco_current.animation != nullptr)
             s.loco_current.hip_path_cached = computeHipPath(s.loco_current.animation);
         const float new_clip_path = computeHipPath(desired);
-
-        const bool prev_is_gait = s.loco_current.animation != nullptr &&
-                                  s.loco_current.hip_path_cached >= kGaitCycleThreshold;
-        const bool new_is_gait = new_clip_path >= kGaitCycleThreshold;
+        (void)new_clip_path; // computed for cache side-effect; legacy phase-match metric
 
         float new_start_time = 0.0f;
-        const float prev_dur =
-            s.loco_current.animation ? s.loco_current.animation->duration() : 0.0f;
         const float new_dur = desired->duration();
 
         // Pose-match: scan the new clip for the time at which the
@@ -1740,7 +1668,7 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
                             const ozz::math::Float4x4& m = models[idx];
                             alignas(16) float col3[4];
                             ozz::math::StorePtr(m.cols[3], col3);
-                            ref.push_back(glm::vec3(col3[0], col3[1], col3[2]));
+                            ref.emplace_back(col3[0], col3[1], col3[2]);
                         }
                     }
                 }
@@ -2076,7 +2004,7 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
                 joints.push_back(idx);
                 glm::mat4 m;
                 std::memcpy(&m, &s.model_matrices[idx], sizeof(glm::mat4));
-                ref.push_back(glm::vec3(m[3]));
+                ref.emplace_back(m[3]);
             }
         }
         if (!joints.empty())

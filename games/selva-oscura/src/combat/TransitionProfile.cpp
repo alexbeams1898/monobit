@@ -95,7 +95,7 @@ void fireOneShotWithProfile(const selva::anim::AnimationClip& clip,
 void applyProfileLockout(const TransitionProfile& profile, float cancel_window_close_at)
 {
     const auto& tun = selva::tuning::current();
-    float target = sLocoLockoutUntil;
+    float target = 0.0f;
     switch (profile.lockout)
     {
     case TransitionProfile::Lockout::None:

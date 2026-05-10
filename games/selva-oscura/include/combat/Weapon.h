@@ -36,8 +36,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(WeaponGripStats, base_damage, li
 // numbers, instead of branching on null in code.
 struct WeaponStats
 {
-    WeaponGripStats one_handed = {};
-    WeaponGripStats two_handed = {};
+    WeaponGripStats one_handed;
+    WeaponGripStats two_handed;
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(WeaponStats, one_handed, two_handed);
 
@@ -48,11 +48,11 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(WeaponStats, one_handed, two_han
 // the field).
 struct Weapon
 {
-    std::string id = {};
-    std::string name = {};
-    std::string class_id = {};
-    std::string mesh = {};
-    WeaponStats stats = {};
+    std::string id;
+    std::string name;
+    std::string class_id;
+    std::string mesh;
+    WeaponStats stats;
 
     // Resolved at load time, not serialized. Pointer into the
     // WeaponClassRegistry passed to WeaponRegistry::loadDirectory(); valid

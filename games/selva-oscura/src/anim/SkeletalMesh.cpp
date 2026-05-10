@@ -249,118 +249,63 @@ std::vector<int32_t> buildJointRemap(const cgltf_skin* skin,
 
 } // namespace
 
-SkeletalMesh loadSkeletalMesh(const std::string& path, const Skeleton& skeleton)
+struct MeshAttributes
 {
-    SkeletalMesh out;
-
-    if (!skeleton.isLoaded())
-    {
-        std::fprintf(stderr, "[SkeletalMesh] cannot load %s: skeleton is not loaded\n",
-                     path.c_str());
-        return out;
-    }
-
-    cgltf_options options{};
-    cgltf_data* data = nullptr;
-    cgltf_result res = cgltf_parse_file(&options, path.c_str(), &data);
-    if (res != cgltf_result_success)
-    {
-        std::fprintf(stderr, "[SkeletalMesh] cgltf_parse_file failed on %s (code %d)\n",
-                     path.c_str(), static_cast<int>(res));
-        return out;
-    }
-    res = cgltf_load_buffers(&options, data, path.c_str());
-    if (res != cgltf_result_success)
-    {
-        std::fprintf(stderr, "[SkeletalMesh] cgltf_load_buffers failed on %s (code %d)\n",
-                     path.c_str(), static_cast<int>(res));
-        cgltf_free(data);
-        return out;
-    }
-
-    if (data->meshes_count == 0 || data->meshes[0].primitives_count == 0)
-    {
-        std::fprintf(stderr, "[SkeletalMesh] %s has no meshes/primitives\n", path.c_str());
-        cgltf_free(data);
-        return out;
-    }
-    const cgltf_primitive& prim = data->meshes[0].primitives[0];
-
-    // The skin block — must exist for a skinned mesh. We pick the first
-    // skin in the file, matching gltf2ozz's "all skins merged into one
-    // skeleton" behaviour.
-    if (data->skins_count == 0)
-    {
-        std::fprintf(stderr, "[SkeletalMesh] %s has no skin (not a skinned mesh)\n", path.c_str());
-        cgltf_free(data);
-        return out;
-    }
-    const cgltf_skin* skin = &data->skins[0];
-
-    // Read each vertex attribute into a temporary parallel array.
     std::vector<std::array<float, 3>> positions;
     std::vector<std::array<float, 3>> normals;
     std::vector<std::array<float, 2>> uvs;
     std::vector<std::array<uint32_t, 4>> joints;
     std::vector<std::array<float, 4>> weights;
     std::vector<uint32_t> indices;
+};
 
-    if (!readVec3(findAttribute(&prim, cgltf_attribute_type_position), positions))
+// Read POSITION, NORMAL, UV, JOINTS_0, WEIGHTS_0, indices. Returns
+// true on success. UVs are optional. Logs and returns false otherwise.
+static bool readMeshAttributes(const cgltf_primitive& prim, const std::string& path,
+                               MeshAttributes& attrs)
+{
+    if (!readVec3(findAttribute(&prim, cgltf_attribute_type_position), attrs.positions))
     {
         std::fprintf(stderr, "[SkeletalMesh] %s: missing/invalid POSITION\n", path.c_str());
-        cgltf_free(data);
-        return out;
+        return false;
     }
-    if (!readVec3(findAttribute(&prim, cgltf_attribute_type_normal), normals))
+    if (!readVec3(findAttribute(&prim, cgltf_attribute_type_normal), attrs.normals))
     {
         std::fprintf(stderr, "[SkeletalMesh] %s: missing/invalid NORMAL\n", path.c_str());
-        cgltf_free(data);
-        return out;
+        return false;
     }
-    // UVs are optional but Mixamo characters have them; if absent we'd fill zeros.
-    readVec2(findAttribute(&prim, cgltf_attribute_type_texcoord, 0), uvs);
-    if (!readJoints(findAttribute(&prim, cgltf_attribute_type_joints, 0), joints))
+    readVec2(findAttribute(&prim, cgltf_attribute_type_texcoord, 0), attrs.uvs);
+    if (!readJoints(findAttribute(&prim, cgltf_attribute_type_joints, 0), attrs.joints))
     {
         std::fprintf(stderr, "[SkeletalMesh] %s: missing/invalid JOINTS_0\n", path.c_str());
-        cgltf_free(data);
-        return out;
+        return false;
     }
-    if (!readWeights(findAttribute(&prim, cgltf_attribute_type_weights, 0), weights))
+    if (!readWeights(findAttribute(&prim, cgltf_attribute_type_weights, 0), attrs.weights))
     {
         std::fprintf(stderr, "[SkeletalMesh] %s: missing/invalid WEIGHTS_0\n", path.c_str());
-        cgltf_free(data);
-        return out;
+        return false;
     }
-    if (!readIndices(prim.indices, indices))
+    if (!readIndices(prim.indices, attrs.indices))
     {
         std::fprintf(stderr, "[SkeletalMesh] %s: missing/invalid index buffer\n", path.c_str());
-        cgltf_free(data);
-        return out;
+        return false;
     }
-
-    // Sanity: all attribute arrays must be parallel.
-    const std::size_t n = positions.size();
-    if (normals.size() != n || joints.size() != n || weights.size() != n ||
-        (uvs.size() != n && !uvs.empty()))
+    const std::size_t n = attrs.positions.size();
+    if (attrs.normals.size() != n || attrs.joints.size() != n || attrs.weights.size() != n ||
+        (attrs.uvs.size() != n && !attrs.uvs.empty()))
     {
         std::fprintf(stderr, "[SkeletalMesh] %s: attribute arrays differ in length\n",
                      path.c_str());
-        cgltf_free(data);
-        return out;
+        return false;
     }
+    return true;
+}
 
-    // glTF→ozz joint remap. Without this, vertex bone indices would point
-    // at the wrong rows of the bone palette uniformat draw time.
-    const std::vector<int32_t> joint_remap = buildJointRemap(skin, *skeleton.ozz_skeleton);
-
-    // Compute the asset root transform — the cumulative world-space transform
-    // of the mesh node's ancestors (NOT the mesh node itself, since that is
-    // just identity for static meshes; what we need is the chain that ends
-    // *above* the mesh, e.g. Mixamo's "Character" node with its 0.01 cm→m
-    // scale). We bake this into vertex positions/normals at load time AND
-    // store it on the SkeletalMesh so the caller can pass the same transform
-    // into LocalToModelJob's `root` parameter — keeping bone palette and
-    // mesh in the same coordinate space.
+// Compute the asset root transform from the mesh node's parent chain.
+// Mixamo's "Character" node has a 0.01 cm→m scale baked in; we apply
+// it at load time. Identity if there's no parent.
+static glm::mat4 computeAssetRoot(const cgltf_data* data)
+{
     glm::mat4 asset_root(1.0f);
     if (const cgltf_node* mesh_node = findNodeForMesh(data, &data->meshes[0]))
     {
@@ -371,122 +316,91 @@ SkeletalMesh loadSkeletalMesh(const std::string& path, const Skeleton& skeleton)
             asset_root = glm::make_mat4(m);
         }
     }
-    out.asset_root_transform = asset_root;
-    const glm::mat3 normal_xform = glm::transpose(glm::inverse(glm::mat3(asset_root)));
+    return asset_root;
+}
 
-    // Inverse bind matrices, remapped into ozz order and rebased into our
-    // post-asset-root space.
-    //
-    // glTF stores one inv_bind per joint (in skin->joints order, asset's
-    // native space). Each is the inverse of that joint's bind-pose world
-    // transform. The skinning equation we use:
-    //
-    //     skin_matrix[i] = current_model[i] * inverse_bind[i]
-    //
-    // is correct when current_model and inverse_bind sit in the same space.
-    // We baked vertex positions into post-root space; the sampler's
-    // bone palette also lives in post-root space (LocalToModelJob.root =
-    // asset_root). So inverse_bind needs the same lift:
-    //
-    //     post_root_inv_bind = native_inv_bind * inverse(asset_root)
-    //
-    // (post-multiply: applying inverse(asset_root) to a vertex first lands
-    // it in native space; then native_inv_bind takes it to bind-local;
-    // which is exactly what we want a "post-root inverse bind" to do.)
-    out.inverse_bind_matrices.assign(skeleton.boneCount(), glm::mat4(1.0f));
+// Build inverse bind matrices indexed by ozz joint, with the asset
+// root post-multiplied so they sit in the same post-root space as
+// the bone palette + baked vertex positions.
+static bool buildInverseBindMatrices(const cgltf_skin* skin, const Skeleton& skeleton,
+                                     const std::vector<int32_t>& joint_remap,
+                                     const glm::mat4& asset_root, const std::string& path,
+                                     std::vector<glm::mat4>& out)
+{
+    out.assign(skeleton.boneCount(), glm::mat4(1.0f));
     if (skin->inverse_bind_matrices == nullptr)
     {
-        // Skin must ship inverseBindMatrices. Our toolchain (FBX2glTF +
-        // gltf2ozz) emits them; a missing accessor here means the .glb
-        // is malformed. Bail loudly rather than silently render with
-        // identity inverses, which produces invisible / collapsed
-        // geometry.
         std::fprintf(stderr,
                      "[SkeletalMesh] %s: skin has no inverseBindMatrices accessor — "
                      "regenerate the .glb (FBX2glTF always emits them)\n",
                      path.c_str());
-        cgltf_free(data);
-        return out;
+        return false;
     }
     std::vector<glm::mat4> native_inv_binds;
     if (!readMat4Array(skin->inverse_bind_matrices, native_inv_binds))
     {
         std::fprintf(stderr, "[SkeletalMesh] %s: inverse_bind_matrices accessor invalid\n",
                      path.c_str());
-        cgltf_free(data);
-        return out;
+        return false;
     }
     const glm::mat4 inv_asset_root = glm::inverse(asset_root);
     for (cgltf_size i = 0; i < skin->joints_count && i < native_inv_binds.size(); ++i)
     {
         const int32_t ozz_idx = i < joint_remap.size() ? joint_remap[i] : -1;
-        if (ozz_idx >= 0 && ozz_idx < static_cast<int32_t>(out.inverse_bind_matrices.size()))
-        {
-            out.inverse_bind_matrices[ozz_idx] = native_inv_binds[i] * inv_asset_root;
-        }
+        if (ozz_idx >= 0 && ozz_idx < static_cast<int32_t>(out.size()))
+            out[ozz_idx] = native_inv_binds[i] * inv_asset_root;
     }
+    return true;
+}
 
-    // Build the interleaved vertex buffer. Apply the joint remap to every
-    // vertex's bone indices. Re-normalize weights (sometimes glTF authors
-    // ship slightly off-1.0 sums). Bake the asset root transform into
-    // positions and normals so they live in the same space as the bone
-    // palette (which the PoseSampler will produce in that same space when
-    // given the matching root).
-    std::vector<Vertex> verts(n);
-    // Track the lowest Y across all baked vertices. Used downstream to
-    // plant the character's feet on the floor regardless of where in the
-    // bind pose the rig's origin sits.
-    float min_y = std::numeric_limits<float>::max();
-    for (std::size_t i = 0; i < n; ++i)
+// Bake one vertex: apply asset_root to position + normal_xform to
+// normal, copy UVs (or zero), remap joint indices, normalize weights.
+static void bakeVertex(Vertex& v, std::size_t i, const MeshAttributes& attrs,
+                       const glm::mat4& asset_root, const glm::mat3& normal_xform,
+                       const std::vector<int32_t>& joint_remap)
+{
+    const glm::vec4 transformed_pos =
+        asset_root *
+        glm::vec4(attrs.positions[i][0], attrs.positions[i][1], attrs.positions[i][2], 1.0f);
+    v.position[0] = transformed_pos.x;
+    v.position[1] = transformed_pos.y;
+    v.position[2] = transformed_pos.z;
+    const glm::vec3 transformed_n = glm::normalize(
+        normal_xform * glm::vec3(attrs.normals[i][0], attrs.normals[i][1], attrs.normals[i][2]));
+    v.normal[0] = transformed_n.x;
+    v.normal[1] = transformed_n.y;
+    v.normal[2] = transformed_n.z;
+    if (!attrs.uvs.empty())
     {
-        Vertex& v = verts[i];
-        const glm::vec4 transformed_pos =
-            asset_root * glm::vec4(positions[i][0], positions[i][1], positions[i][2], 1.0f);
-        v.position[0] = transformed_pos.x;
-        v.position[1] = transformed_pos.y;
-        v.position[2] = transformed_pos.z;
-        if (transformed_pos.y < min_y)
-            min_y = transformed_pos.y;
-        const glm::vec3 transformed_n =
-            glm::normalize(normal_xform * glm::vec3(normals[i][0], normals[i][1], normals[i][2]));
-        v.normal[0] = transformed_n.x;
-        v.normal[1] = transformed_n.y;
-        v.normal[2] = transformed_n.z;
-        if (!uvs.empty())
-        {
-            v.uv[0] = uvs[i][0];
-            v.uv[1] = uvs[i][1];
-        }
-        else
-        {
-            v.uv[0] = v.uv[1] = 0.0f;
-        }
-
-        // Remap bone indices and copy weights.
-        float weight_sum = 0.0f;
-        for (int j = 0; j < 4; ++j)
-        {
-            const uint32_t gltf_joint = joints[i][j];
-            const int32_t ozz_joint =
-                gltf_joint < joint_remap.size() ? joint_remap[gltf_joint] : -1;
-            // Fall back to bone 0 (root) if the remap fails so a misnamed
-            // bone doesn't crash the GPU. The vertex will look wrong but
-            // won't take down the game.
-            v.bone_indices[j] = ozz_joint >= 0 ? ozz_joint : 0;
-            v.bone_weights[j] = weights[i][j];
-            weight_sum += weights[i][j];
-        }
-        if (weight_sum > 0.0f && std::abs(weight_sum - 1.0f) > 1e-4f)
-        {
-            const float inv = 1.0f / weight_sum;
-            for (int j = 0; j < 4; ++j)
-                v.bone_weights[j] *= inv;
-        }
+        v.uv[0] = attrs.uvs[i][0];
+        v.uv[1] = attrs.uvs[i][1];
     }
+    else
+    {
+        v.uv[0] = v.uv[1] = 0.0f;
+    }
+    float weight_sum = 0.0f;
+    for (int j = 0; j < 4; ++j)
+    {
+        const uint32_t gltf_joint = attrs.joints[i][j];
+        const int32_t ozz_joint = gltf_joint < joint_remap.size() ? joint_remap[gltf_joint] : -1;
+        v.bone_indices[j] = ozz_joint >= 0 ? ozz_joint : 0;
+        v.bone_weights[j] = attrs.weights[i][j];
+        weight_sum += attrs.weights[i][j];
+    }
+    if (weight_sum > 0.0f && std::abs(weight_sum - 1.0f) > 1e-4f)
+    {
+        const float inv = 1.0f / weight_sum;
+        for (auto& w : v.bone_weights)
+            w *= inv;
+    }
+}
 
-    cgltf_free(data); // we have everything we need; release glTF buffers
-
-    // Upload to GPU.
+// Upload an interleaved Vertex buffer + index buffer to GL, set up
+// vertex attribute pointers. Stores VAO/VBO/EBO + index_count on `out`.
+static void uploadMeshToGpu(SkeletalMesh& out, const std::vector<Vertex>& verts,
+                            const std::vector<uint32_t>& indices)
+{
     glGenVertexArrays(1, &out.vao);
     glGenBuffers(1, &out.vbo);
     glGenBuffers(1, &out.ebo);
@@ -511,9 +425,6 @@ SkeletalMesh loadSkeletalMesh(const std::string& path, const Skeleton& skeleton)
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride,
                           reinterpret_cast<void*>(offsetof(Vertex, uv)));
     glEnableVertexAttribArray(2);
-    // Bone indices are integer attributes — use glVertexAttribIPointer
-    // (with capital I), not glVertexAttribPointer with GL_INT. The latter
-    // would normalize/cast to float, losing the index.
     glVertexAttribIPointer(3, 4, GL_INT, stride,
                            reinterpret_cast<void*>(offsetof(Vertex, bone_indices)));
     glEnableVertexAttribArray(3);
@@ -522,8 +433,85 @@ SkeletalMesh loadSkeletalMesh(const std::string& path, const Skeleton& skeleton)
     glEnableVertexAttribArray(4);
 
     glBindVertexArray(0);
-
     out.index_count = static_cast<GLsizei>(indices.size());
+}
+
+SkeletalMesh loadSkeletalMesh(const std::string& path, const Skeleton& skeleton)
+{
+    SkeletalMesh out;
+
+    if (!skeleton.isLoaded())
+    {
+        std::fprintf(stderr, "[SkeletalMesh] cannot load %s: skeleton is not loaded\n",
+                     path.c_str());
+        return out;
+    }
+
+    const cgltf_options options{};
+    cgltf_data* data = nullptr;
+    cgltf_result res = cgltf_parse_file(&options, path.c_str(), &data);
+    if (res != cgltf_result_success)
+    {
+        std::fprintf(stderr, "[SkeletalMesh] cgltf_parse_file failed on %s (code %d)\n",
+                     path.c_str(), static_cast<int>(res));
+        return out;
+    }
+    res = cgltf_load_buffers(&options, data, path.c_str());
+    if (res != cgltf_result_success)
+    {
+        std::fprintf(stderr, "[SkeletalMesh] cgltf_load_buffers failed on %s (code %d)\n",
+                     path.c_str(), static_cast<int>(res));
+        cgltf_free(data);
+        return out;
+    }
+
+    if (data->meshes_count == 0 || data->meshes[0].primitives_count == 0)
+    {
+        std::fprintf(stderr, "[SkeletalMesh] %s has no meshes/primitives\n", path.c_str());
+        cgltf_free(data);
+        return out;
+    }
+    if (data->skins_count == 0)
+    {
+        std::fprintf(stderr, "[SkeletalMesh] %s has no skin (not a skinned mesh)\n", path.c_str());
+        cgltf_free(data);
+        return out;
+    }
+    const cgltf_primitive& prim = data->meshes[0].primitives[0];
+    const cgltf_skin* skin = &data->skins[0];
+
+    MeshAttributes attrs;
+    if (!readMeshAttributes(prim, path, attrs))
+    {
+        cgltf_free(data);
+        return out;
+    }
+    const std::size_t n = attrs.positions.size();
+    const std::vector<int32_t> joint_remap = buildJointRemap(skin, *skeleton.ozz_skeleton);
+
+    const glm::mat4 asset_root = computeAssetRoot(data);
+    out.asset_root_transform = asset_root;
+    const glm::mat3 normal_xform = glm::transpose(glm::inverse(glm::mat3(asset_root)));
+
+    if (!buildInverseBindMatrices(skin, skeleton, joint_remap, asset_root, path,
+                                  out.inverse_bind_matrices))
+    {
+        cgltf_free(data);
+        return out;
+    }
+
+    // Bake vertex buffer. Track lowest Y for foot-plant offset.
+    std::vector<Vertex> verts(n);
+    float min_y = std::numeric_limits<float>::max();
+    for (std::size_t i = 0; i < n; ++i)
+    {
+        bakeVertex(verts[i], i, attrs, asset_root, normal_xform, joint_remap);
+        min_y = std::min(min_y, verts[i].position[1]);
+    }
+
+    cgltf_free(data); // we have everything we need; release glTF buffers
+
+    uploadMeshToGpu(out, verts, attrs.indices);
     out.foot_offset_y = (min_y < std::numeric_limits<float>::max()) ? min_y : 0.0f;
     return out;
 }

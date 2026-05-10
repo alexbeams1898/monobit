@@ -151,7 +151,7 @@ void auditClipHipMotion()
         float cumul = 0.0f;
         for (int i = 0; i <= 10; ++i)
         {
-            const float t = (i / 10.0f) * dur;
+            const float t = (static_cast<float>(i) / 10.0f) * dur;
             const glm::vec2 hip = sSampler.sampleHipXZAt(*clip, t);
             const float step = (i == 0) ? 0.0f : glm::length(hip - prev);
             cumul += step;

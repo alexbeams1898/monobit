@@ -1136,10 +1136,10 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                 const int stride = std::max(1, (n_frames + kMaxCells - 1) / kMaxCells);
                 const int n_cells = (n_frames + stride - 1) / stride;
                 constexpr int kMaxCols = 3;
-                int cols =
+                const int cols =
                     std::min(kMaxCols, std::max(1, static_cast<int>(std::ceil(std::sqrt(
                                                        static_cast<float>(n_cells) * 1.78f)))));
-                int rows = (n_cells + cols - 1) / cols;
+                const int rows = (n_cells + cols - 1) / cols;
                 // Read frame 0 to get the per-cell dimensions.
                 char path0[512];
                 std::snprintf(path0, sizeof(path0), "%s/frame_0000.png", sFrameCaptureDir.c_str());
@@ -1191,9 +1191,12 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                             const int y0 = kBorder + gy * (cell_h + kBorder);
                             for (int y = 0; y < cell_h; ++y)
                             {
-                                const int dst_off = ((y0 + y) * sheet_w + x0) * 3;
-                                const int src_off = y * cell_w * 3;
-                                std::memcpy(&sheet[dst_off], &img[src_off], cell_w * 3);
+                                const std::size_t dst_off =
+                                    static_cast<std::size_t>((y0 + y) * sheet_w + x0) * 3;
+                                const std::size_t src_off =
+                                    static_cast<std::size_t>(y * cell_w) * 3;
+                                std::memcpy(&sheet[dst_off], &img[src_off],
+                                            static_cast<std::size_t>(cell_w) * 3);
                             }
                             stbi_image_free(img);
                             ++cell_idx;
@@ -1319,7 +1322,6 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         const bool wasd_intent = sStableWasdIntent;
         const bool attack_in_flight = sSampler.isOneShotActive() || sPendingFirstAction.active;
         const bool in_attack_recovery = selva::wallClock() < selva::combat::locoLockoutUntil();
-        const bool loco_lockout = attack_in_flight || in_attack_recovery;
         // WASD override: if the player is pushing a direction, keep the
         // loco track on a gait clip regardless of lockout. The Full-
         // body attack one-shot drives the legs during the swing; the

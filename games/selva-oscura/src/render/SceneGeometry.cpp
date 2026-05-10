@@ -115,7 +115,7 @@ void initGrid()
     constexpr int kGridHalfSize = 20;
     const float k = static_cast<float>(kGridHalfSize);
     std::vector<float> verts;
-    verts.reserve(static_cast<std::size_t>((kGridHalfSize * 2 + 1) * 4 * 4));
+    verts.reserve(static_cast<std::size_t>(kGridHalfSize * 2 + 1) * 4 * 4);
     for (int i = -kGridHalfSize; i <= kGridHalfSize; ++i)
     {
         if (i == 0)

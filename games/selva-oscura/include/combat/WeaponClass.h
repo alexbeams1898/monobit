@@ -55,15 +55,15 @@ namespace selva::combat
 // long after the swing starts the chain auto-resets to step 0.
 struct WeaponAttack
 {
-    std::string clip = {};
+    std::string clip;
     float recovery_seconds = 0.4f;
     // Negative sentinel = auto-detect via clip scan (default).
     float cancel_open_seconds = -1.0f;
-    std::vector<std::string> motion_joints = {};
+    std::vector<std::string> motion_joints;
     // Which input button the player must press to land this step.
     // "" / "any" = either button. "LMB" = left mouse only. "RMB" = right
     // mouse only. Pressing the wrong button is a chain miss.
-    std::string expected_button = {};
+    std::string expected_button;
     // Override: if >= 0, force resolved_chain_link_start_seconds to
     // this value instead of motion_start - 0.05. Set to 0.0 for clips
     // that have a Blender-authored bookend in their first ~5-10
@@ -125,8 +125,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(WeaponAttack, clip, recovery_sec
 // mismatch.
 struct WeaponTechnique
 {
-    std::string id = {};
-    std::vector<WeaponAttack> attacks = {};
+    std::string id;
+    std::vector<WeaponAttack> attacks;
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(WeaponTechnique, id, attacks);
 
@@ -136,9 +136,9 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(WeaponTechnique, id, attacks);
 // share slot-0 button + slot-1 button, the first-listed wins.
 struct WeaponGripAnimSet
 {
-    std::vector<WeaponTechnique> light = {};
-    std::vector<WeaponTechnique> heavy = {};
-    std::vector<WeaponTechnique> running = {};
+    std::vector<WeaponTechnique> light;
+    std::vector<WeaponTechnique> heavy;
+    std::vector<WeaponTechnique> running;
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(WeaponGripAnimSet, light, heavy, running);
 
@@ -161,10 +161,10 @@ void from_json(const nlohmann::json& j, WeaponAttach& a);
 // The full class record. Loaded once per class file at startup.
 struct WeaponClass
 {
-    std::string id = {};
-    WeaponGripAnimSet one_handed = {};
-    WeaponGripAnimSet two_handed = {};
-    WeaponAttach attach = {};
+    std::string id;
+    WeaponGripAnimSet one_handed;
+    WeaponGripAnimSet two_handed;
+    WeaponAttach attach;
     // Trim leading idle frames off the block clip. >= 0 = use as-is;
     // < 0 (default) = auto-detect via hand-velocity scan, same as
     // chain-link motion-start.
