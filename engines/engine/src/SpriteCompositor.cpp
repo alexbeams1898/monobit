@@ -79,24 +79,115 @@ uint32_t SpriteCompositor::composite(const std::vector<std::string>& layer_paths
     return composite(layer_paths, {});
 }
 
+// Append palette identifiers onto an existing layer-paths cache key
+// so different recolorings of the same master sprite produce
+// distinct cache entries.
+static void appendPaletteToCacheKey(std::string& key, const std::vector<PaletteSwap>& palettes)
+{
+    for (size_t i = 0; i < palettes.size(); ++i)
+    {
+        if (palettes[i].empty())
+            continue;
+        key += "|pal" + std::to_string(i) + ":";
+        for (const auto& e : palettes[i].entries)
+        {
+            key += std::to_string(e.target_r) + "," + std::to_string(e.target_g) + "," +
+                   std::to_string(e.target_b) + ";";
+        }
+    }
+}
+
+// Per-pixel "source over" alpha-blend src into dst (both 4-byte
+// RGBA). Skips fully-transparent source pixels and fast-paths fully
+// opaque ones.
+static void alphaBlendOver(const uint8_t* src, uint8_t* dst, size_t pixel_count)
+{
+    for (size_t i = 0; i < pixel_count; ++i)
+    {
+        const size_t offset = i * 4;
+        const uint8_t* s = src + offset;
+        uint8_t* d = dst + offset;
+        const uint32_t sa = s[3];
+        if (sa == 0)
+            continue;
+        if (sa == 255)
+        {
+            d[0] = s[0];
+            d[1] = s[1];
+            d[2] = s[2];
+            d[3] = 255;
+            continue;
+        }
+        const uint32_t inv_sa = 255 - sa;
+        d[0] = static_cast<uint8_t>((s[0] * sa + d[0] * inv_sa) / 255);
+        d[1] = static_cast<uint8_t>((s[1] * sa + d[1] * inv_sa) / 255);
+        d[2] = static_cast<uint8_t>((s[2] * sa + d[2] * inv_sa) / 255);
+        d[3] = static_cast<uint8_t>(sa + (d[3] * inv_sa) / 255);
+    }
+}
+
+// Composite the named layer onto `buffer`. The first non-empty layer
+// seeds the buffer dimensions; subsequent layers must match. Empty
+// paths and missing files are skipped with a stderr warning. Layer-
+// specific palette swap is applied before blending.
+static void compositeOneLayer(const std::string& path, const PaletteSwap* palette, int& final_w,
+                              int& final_h, std::vector<uint8_t>& buffer)
+{
+    if (path.empty())
+        return;
+    int w = 0;
+    int h = 0;
+    int channels = 0;
+    stbi_uc* pixels = stbi_load(path.c_str(), &w, &h, &channels, STBI_rgb_alpha);
+    if (!pixels)
+    {
+        std::cerr << "[SpriteCompositor] MISSING LAYER (skipped): " << path << "\n";
+        return;
+    }
+    if (palette != nullptr && !palette->empty())
+        applyPaletteSwap(pixels, w, h, *palette);
+
+    if (final_w == 0)
+    {
+        final_w = w;
+        final_h = h;
+        const size_t byte_count = static_cast<size_t>(w) * static_cast<size_t>(h) * 4;
+        buffer.assign(pixels, pixels + byte_count);
+    }
+    else if (w != final_w || h != final_h)
+    {
+        std::cerr << "[SpriteCompositor] Layer size mismatch (" << w << "x" << h << " vs "
+                  << final_w << "x" << final_h << "): " << path << "\n";
+    }
+    else
+    {
+        const size_t pixel_count = static_cast<size_t>(w) * static_cast<size_t>(h);
+        alphaBlendOver(pixels, buffer.data(), pixel_count);
+    }
+    stbi_image_free(pixels);
+}
+
+// Upload a freshly-composited RGBA buffer as a new GL texture with
+// nearest-neighbor + clamp-to-edge filtering (pixel-art appropriate).
+static GLuint uploadCompositeTexture(const std::vector<uint8_t>& buffer, int w, int h)
+{
+    GLuint texId = 0;
+    glGenTextures(1, &texId);
+    glBindTexture(GL_TEXTURE_2D, texId);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, buffer.data());
+    glBindTexture(GL_TEXTURE_2D, 0);
+    return texId;
+}
+
 uint32_t SpriteCompositor::composite(const std::vector<std::string>& layer_paths,
                                      const std::vector<PaletteSwap>& palettes)
 {
-    // Build cache key including palette info so different colors with
-    // the same master path produce different cache entries.
     std::string key = buildCacheKey(layer_paths);
-    for (size_t i = 0; i < palettes.size(); ++i)
-    {
-        if (!palettes[i].empty())
-        {
-            key += "|pal" + std::to_string(i) + ":";
-            for (const auto& e : palettes[i].entries)
-            {
-                key += std::to_string(e.target_r) + "," + std::to_string(e.target_g) + "," +
-                       std::to_string(e.target_b) + ";";
-            }
-        }
-    }
+    appendPaletteToCacheKey(key, palettes);
     auto it = cache.find(key);
     if (it != cache.end())
         return it->second.tex_id;
@@ -104,96 +195,20 @@ uint32_t SpriteCompositor::composite(const std::vector<std::string>& layer_paths
     int final_w = 0;
     int final_h = 0;
     std::vector<uint8_t> buffer;
-
     for (size_t layerIdx = 0; layerIdx < layer_paths.size(); ++layerIdx)
     {
-        const auto& path = layer_paths[layerIdx];
-        if (path.empty())
-            continue;
-
-        int w = 0;
-        int h = 0;
-        int channels = 0;
-        stbi_uc* pixels = stbi_load(path.c_str(), &w, &h, &channels, STBI_rgb_alpha);
-        if (!pixels)
-        {
-            std::cerr << "[SpriteCompositor] MISSING LAYER (skipped): " << path << "\n";
-            continue;
-        }
-
-        // Apply palette swap if provided for this layer.
-        if (layerIdx < palettes.size() && !palettes[layerIdx].empty())
-            applyPaletteSwap(pixels, w, h, palettes[layerIdx]);
-
-        if (final_w == 0)
-        {
-            final_w = w;
-            final_h = h;
-            const size_t byte_count = static_cast<size_t>(w) * static_cast<size_t>(h) * 4;
-            buffer.assign(pixels, pixels + byte_count);
-            stbi_image_free(pixels);
-            continue;
-        }
-
-        if (w != final_w || h != final_h)
-        {
-            std::cerr << "[SpriteCompositor] Layer size mismatch (" << w << "x" << h << " vs "
-                      << final_w << "x" << final_h << "): " << path << "\n";
-            stbi_image_free(pixels);
-            continue;
-        }
-
-        const size_t pixel_count = static_cast<size_t>(w) * static_cast<size_t>(h);
-        for (size_t i = 0; i < pixel_count; ++i)
-        {
-            const size_t offset = i * 4;
-            const uint8_t* src = pixels + offset;
-            uint8_t* dst = buffer.data() + offset;
-
-            const uint32_t sa = src[3];
-            if (sa == 0)
-                continue;
-            if (sa == 255)
-            {
-                dst[0] = src[0];
-                dst[1] = src[1];
-                dst[2] = src[2];
-                dst[3] = 255;
-                continue;
-            }
-
-            const uint32_t inv_sa = 255 - sa;
-            dst[0] = static_cast<uint8_t>((src[0] * sa + dst[0] * inv_sa) / 255);
-            dst[1] = static_cast<uint8_t>((src[1] * sa + dst[1] * inv_sa) / 255);
-            dst[2] = static_cast<uint8_t>((src[2] * sa + dst[2] * inv_sa) / 255);
-            dst[3] = static_cast<uint8_t>(sa + (dst[3] * inv_sa) / 255);
-        }
-        stbi_image_free(pixels);
+        const PaletteSwap* palette = (layerIdx < palettes.size()) ? &palettes[layerIdx] : nullptr;
+        compositeOneLayer(layer_paths[layerIdx], palette, final_w, final_h, buffer);
     }
-
     if (buffer.empty())
         return 0;
 
-    GLuint texId = 0;
-    glGenTextures(1, &texId);
-    glBindTexture(GL_TEXTURE_2D, texId);
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, final_w, final_h, 0, GL_RGBA, GL_UNSIGNED_BYTE,
-                 buffer.data());
-    glBindTexture(GL_TEXTURE_2D, 0);
-
-    const auto tid = static_cast<uint32_t>(texId);
+    const auto tid = static_cast<uint32_t>(uploadCompositeTexture(buffer, final_w, final_h));
     auto& info = cache[key];
     info.tex_id = tid;
     info.width = final_w;
     info.height = final_h;
     id_lookup[tid] = &info;
-
     return tid;
 }
 

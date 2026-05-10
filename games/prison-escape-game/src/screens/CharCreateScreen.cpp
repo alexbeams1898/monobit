@@ -830,12 +830,11 @@ static void drawPreview(float ww, float titleY, float titleH, const AppearanceCo
         const int col = sAnimFrame;
         const int sheetCols = sPreviewTexW / FRAME_PX;
         const int sheetRows = sPreviewTexH / FRAME_PX;
-        const float u0 = static_cast<float>(col) / static_cast<float>(sheetCols);
-        const float u1 = static_cast<float>(col + 1) / static_cast<float>(sheetCols);
-        const float v0 = 1.0f / static_cast<float>(sheetRows);
-        const float v1 = 2.0f / static_cast<float>(sheetRows);
-        UIRenderer::drawTexturedRect(previewX, previewY, scaledPreviewSize, scaledPreviewSize,
-                                     sPreviewTex, u0, v0, u1, v1);
+        const float cell_w = 1.0f / static_cast<float>(sheetCols);
+        const float cell_h = 1.0f / static_cast<float>(sheetRows);
+        UIRenderer::drawTexturedRect(
+            Rect{previewX, previewY, scaledPreviewSize, scaledPreviewSize}, sPreviewTex,
+            Rect{static_cast<float>(col) * cell_w, cell_h, cell_w, cell_h});
     }
     else
     {

@@ -120,6 +120,33 @@ struct TileMap
         return col >= 0 && col < width && row >= 0 && row < height;
     }
 
+    // DDA traversal state along one axis: which cell we're in, the
+    // direction step (+1/-1), the t-parameter advance per cell-cross,
+    // and the t-parameter at the next boundary crossing. Initialized
+    // by ddaInit and advanced by ddaStep.
+    struct DdaAxis
+    {
+        int cell = 0;
+        int step = 1;
+        float t_delta = 1e30f;
+        float t_max = 1e30f;
+    };
+
+    static DdaAxis ddaInit(float origin, float delta)
+    {
+        DdaAxis a;
+        a.cell = static_cast<int>(std::floor(origin / TILE_SIZE));
+        a.step = (delta >= 0.0f) ? 1 : -1;
+        if (delta != 0.0f)
+        {
+            a.t_delta = std::abs(static_cast<float>(TILE_SIZE) / delta);
+            const float boundary =
+                static_cast<float>((delta >= 0.0f ? a.cell + 1 : a.cell) * TILE_SIZE);
+            a.t_max = std::abs((boundary - origin) / delta);
+        }
+        return a;
+    }
+
     // Returns true if the straight line from (x1,y1) to (x2,y2) passes through
     // only walkable tiles. Uses DDA grid traversal -- visits every cell the segment
     // enters, never misses a cell, never revisits one.
@@ -131,41 +158,20 @@ struct TileMap
         if (dx == 0.0f && dy == 0.0f)
             return true;
 
-        int col = static_cast<int>(std::floor(x1 / TILE_SIZE));
-        int row = static_cast<int>(std::floor(y1 / TILE_SIZE));
+        DdaAxis colAxis = ddaInit(x1, dx);
+        DdaAxis rowAxis = ddaInit(y1, dy);
         const int endCol = static_cast<int>(std::floor(x2 / TILE_SIZE));
         const int endRow = static_cast<int>(std::floor(y2 / TILE_SIZE));
 
-        const int stepCol = (dx >= 0.0f) ? 1 : -1;
-        const int stepRow = (dy >= 0.0f) ? 1 : -1;
-
-        const float tDeltaCol = (dx != 0.0f) ? std::abs(static_cast<float>(TILE_SIZE) / dx) : 1e30f;
-        const float tDeltaRow = (dy != 0.0f) ? std::abs(static_cast<float>(TILE_SIZE) / dy) : 1e30f;
-
-        // t at the first vertical and horizontal boundary crossing.
-        const float colBoundary = static_cast<float>((dx >= 0.0f ? col + 1 : col) * TILE_SIZE);
-        const float rowBoundary = static_cast<float>((dy >= 0.0f ? row + 1 : row) * TILE_SIZE);
-
-        float tMaxCol = (dx != 0.0f) ? std::abs((colBoundary - x1) / dx) : 1e30f;
-        float tMaxRow = (dy != 0.0f) ? std::abs((rowBoundary - y1) / dy) : 1e30f;
-
         while (true)
         {
-            if (!in_bounds(col, row) || !at(col, row).walkable)
+            if (!in_bounds(colAxis.cell, rowAxis.cell) || !at(colAxis.cell, rowAxis.cell).walkable)
                 return false;
-            if (col == endCol && row == endRow)
+            if (colAxis.cell == endCol && rowAxis.cell == endRow)
                 return true;
-
-            if (tMaxCol < tMaxRow)
-            {
-                col += stepCol;
-                tMaxCol += tDeltaCol;
-            }
-            else
-            {
-                row += stepRow;
-                tMaxRow += tDeltaRow;
-            }
+            DdaAxis& nextAxis = (colAxis.t_max < rowAxis.t_max) ? colAxis : rowAxis;
+            nextAxis.cell += nextAxis.step;
+            nextAxis.t_max += nextAxis.t_delta;
         }
     }
 };
