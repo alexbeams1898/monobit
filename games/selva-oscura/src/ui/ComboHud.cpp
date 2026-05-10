@@ -20,22 +20,18 @@ namespace selva::ui
 namespace
 {
 
-const char* nextExpectedButtonLabel(const selva::combat::AttackChainState& chain,
-                                    selva::combat::AttackKind kind)
+// Next button to advance the chain. If a technique is matched, return
+// the slot-N expected button (where N = observer.step, the next press).
+// Otherwise return the union of all techniques' slot-0 buttons.
+const char* nextExpectedButtonLabel()
 {
-    using selva::combat::AttackKind;
     using selva::combat::Grip;
     const selva::combat::Weapon* w = selva::combat::equipment().right;
     if (w == nullptr || w->cls == nullptr)
         return "-";
     const auto& aset = (selva::combat::equipment().grip == Grip::TwoHanded) ? w->cls->two_handed
                                                                             : w->cls->one_handed;
-    const auto* techniques = &aset.light;
-    if (kind == AttackKind::Heavy)
-        techniques = &aset.heavy;
-    else if (kind == AttackKind::Running && !aset.running.empty())
-        techniques = &aset.running;
-    if (techniques->empty())
+    if (aset.light.empty())
         return "-";
 
     auto label_for = [](const std::string& s) -> const char*
@@ -47,22 +43,28 @@ const char* nextExpectedButtonLabel(const selva::combat::AttackChainState& chain
         return "*";
     };
 
-    if (chain.technique_index >= 0 &&
-        chain.technique_index < static_cast<int>(techniques->size()))
+    const auto& obs = selva::combat::chainState();
+    if (obs.technique_id != nullptr && obs.step > 0)
     {
-        const auto& atks = (*techniques)[chain.technique_index].attacks;
-        if (chain.chain_index < 0 || chain.chain_index >= static_cast<int>(atks.size()))
+        for (const auto& tech : aset.light)
+        {
+            if (tech.id != obs.technique_id)
+                continue;
+            if (obs.step < static_cast<int>(tech.attacks.size()))
+                return label_for(tech.attacks[obs.step].expected_button);
             return "-";
-        return label_for(atks[chain.chain_index].expected_button);
+        }
     }
+
+    // No technique matched yet: show union of slot-0 expected buttons.
     bool has_lmb = false;
     bool has_rmb = false;
     bool has_any = false;
-    for (const auto& tech : *techniques)
+    for (const auto& tech : aset.light)
     {
-        if (chain.chain_index < 0 || chain.chain_index >= static_cast<int>(tech.attacks.size()))
+        if (tech.attacks.empty())
             continue;
-        const auto& exp = tech.attacks[chain.chain_index].expected_button;
+        const auto& exp = tech.attacks[0].expected_button;
         if (exp == "LMB")
             has_lmb = true;
         else if (exp == "RMB")
@@ -105,7 +107,7 @@ void renderComboHud()
     ImGui::Text("Combo: %s @ %d  -  %s  acc=%.2f", tech_id, obs.step, state,
                 obs.last_press_accuracy);
 
-    const char* next_btn = nextExpectedButtonLabel(chain, selva::combat::AttackKind::Light);
+    const char* next_btn = nextExpectedButtonLabel();
     const float btn_box_w = 28.0f;
     const float bar_h = 16.0f;
     const ImVec2 pos = ImGui::GetCursorScreenPos();

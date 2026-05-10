@@ -24,7 +24,6 @@ add_library(selva-oscura-lib STATIC
     src/gameplay/PlayerState.cpp
     src/combat/AttackChain.cpp
     src/combat/AttackResolution.cpp
-    src/combat/AttackResolver.cpp
     src/combat/ChainObserver.cpp
     src/combat/CombatData.cpp
     src/combat/CombatLog.cpp

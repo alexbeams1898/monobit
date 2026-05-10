@@ -42,17 +42,6 @@ TransitionProfile chainLink()
     return p;
 }
 
-TransitionProfile sprintFinisher()
-{
-    const auto& tun = selva::tuning::current();
-    TransitionProfile p;
-    p.blend_in_seconds = tun.sprint_finisher_blend_in_seconds;
-    p.enroll_inertialization = false;
-    p.lockout = TransitionProfile::Lockout::WallClockSeconds;
-    p.lockout_seconds = tun.sprint_finisher_lockout_seconds;
-    return p;
-}
-
 TransitionProfile blockFromLatch()
 {
     TransitionProfile p;

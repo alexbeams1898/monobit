@@ -14,7 +14,6 @@
 #include "anim/Skeleton.h"
 #include "combat/AttackChain.h"
 #include "combat/AttackResolution.h"
-#include "combat/AttackResolver.h"
 #include "combat/ChainObserver.h"
 #include "combat/CombatData.h"
 #include "combat/CombatLog.h"
@@ -78,7 +77,6 @@ using selva::combat::AttackChainState;
 using selva::combat::AttackKind;
 using selva::combat::BufferedPress;
 using selva::combat::PendingFirstAction;
-using selva::combat::PendingFirstActionKind;
 using selva::combat::resetChain;
 static AttackChainState& sChainRight = selva::combat::chain(selva::combat::HandSide::Right);
 static AttackChainState& sChainLeft = selva::combat::chain(selva::combat::HandSide::Left);
@@ -88,9 +86,6 @@ static PendingFirstAction& sPendingFirstAction = selva::combat::pendingFirstActi
 using selva::combat::combatLog;
 using selva::combat::isMovingLocoClip;
 using selva::combat::SpliceDiag;
-using selva::combat::dispatchTechniqueForPress;
-using selva::combat::ResolvedAttack;
-using selva::combat::TechniqueDispatch;
 using selva::combat::isUnarmed;
 using selva::combat::offHandCanBlock;
 using selva::combat::effectiveAttackPlaybackRate;
@@ -216,21 +211,6 @@ static float sWasdDisagreeStartedAt = -1.0f;
 static bool sBlockingActive = false;
 
 // Input → attack mapping helper. Combines the equipped weapon, its class,
-// ResolvedAttack / TechniqueDispatch + resolveAttackChainEntry +
-// dispatchTechniqueForPress live in combat/AttackResolver.{h,cpp}.
-using selva::combat::dispatchTechniqueForPress;
-using selva::combat::ResolvedAttack;
-using selva::combat::TechniqueDispatch;
-// Wrap resolveAttackChainEntry so the existing call sites don't need
-// to pass clips() explicitly.
-static ResolvedAttack resolveAttackChainEntry(const selva::combat::PlayerEquipment& eq,
-                                              selva::combat::HandSide hand, AttackKind kind,
-                                              int chain_index, int technique_index)
-{
-    return selva::combat::resolveAttackChainEntry(eq, hand, kind, chain_index,
-                                                   technique_index, sClips);
-}
-
 // In-game tuning panel toggle. Off by default; F1 flips it.
 static bool sShowTuningPanel = false;
 // Combat debug toggle + log file owned by combat/CombatLog.{h,cpp}.
@@ -829,7 +809,6 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                 if (from_peaceful && !sPendingFirstAction.active)
                 {
                     sPendingFirstAction.active = true;
-                    sPendingFirstAction.kind = PendingFirstActionKind::Block;
                     sPendingFirstAction.block_clip = block_clip_name;
                     sPendingFirstAction.block_freeze_last = block_freeze_last;
                     sPendingFirstAction.fire_at =
@@ -863,12 +842,9 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         // combat rebuild — attacks fire immediately via tryAttackInput.
         if (sPendingFirstAction.active && selva::wallClock() >= sPendingFirstAction.fire_at)
         {
-            if (sPendingFirstAction.kind == PendingFirstActionKind::Block)
-            {
-                fireBlock(true, sPendingFirstAction.block_clip,
-                          sPendingFirstAction.block_freeze_last);
-                combat_input_this_frame = true;
-            }
+            fireBlock(true, sPendingFirstAction.block_clip,
+                      sPendingFirstAction.block_freeze_last);
+            combat_input_this_frame = true;
             sPendingFirstAction.active = false;
         }
     }
@@ -1343,17 +1319,17 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         const bool attack_in_flight = sSampler.isOneShotActive() || sPendingFirstAction.active;
         const bool in_attack_recovery = selva::wallClock() < selva::combat::locoLockoutUntil();
         const bool loco_lockout = attack_in_flight || in_attack_recovery;
-        // Sprint+WASD override: when the player is committed to sprinting
-        // and pushing a direction, don't drop the loco track to combat-
-        // idle during an attack. The Full-body attack one-shot drives
-        // the legs through the swing; keeping `running` on the loco
-        // track underneath means the attack ends with running still
-        // playing, no combat-idle → running crossfade. Without this the
-        // lockout produces a visible combat-idle hold + spasm-prone
-        // gait↔non-gait transition every running attack.
-        const bool sprint_committed = wasd_intent && sPlayer.sprinting;
-        const bool is_moving = wasd_intent && (sprint_committed || !loco_lockout);
-        const bool is_sprinting = sPlayer.sprinting && (sprint_committed || !loco_lockout);
+        // WASD override: if the player is pushing a direction, keep the
+        // loco track on a gait clip regardless of lockout. The Full-
+        // body attack one-shot drives the legs during the swing; the
+        // gait clip plays underneath so the attack ends with running
+        // or walking already on the loco track — no combat-idle pop
+        // when the BlendOut reveals it. Without this, releasing sprint
+        // mid-attack drops loco to combat-idle (the SM's Idle target),
+        // and the BlendOut reveals combat-idle for ~0.2s before the
+        // lockout expires and SM swaps to walking.
+        const bool is_moving = wasd_intent;
+        const bool is_sprinting = sPlayer.sprinting && wasd_intent;
         // Trace every change in (wasd_intent, attack_in_flight,
         // in_attack_recovery, is_moving). Lets us correlate input
         // edges to SM decisions to spasm timing.

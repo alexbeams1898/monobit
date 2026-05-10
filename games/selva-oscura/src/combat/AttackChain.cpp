@@ -29,12 +29,8 @@ PendingFirstAction& pendingFirstAction()
 
 void resetChain(AttackChainState& c)
 {
-    c.chain_index = 0;
-    c.technique_index = -1;
     c.cancel_window_open_at = 0.0f;
     c.cancel_window_close_at = 0.0f;
-    c.chain_reset_at = 0.0f;
-    c.is_finisher = false;
     c.last_press_accuracy = 0.0f;
     c.last_press_was_perfect = false;
 }

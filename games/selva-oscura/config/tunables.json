@@ -26,8 +26,5 @@
   "dodge_tap_window": 0.20,
   "dodge_steer_rate": 5.0,
   "dodge_attack_cancel_fraction": 0.65,
-  "attack_lockout_extension_seconds": 0.10,
-  "sprint_finisher_start_seconds": 0.0,
-  "sprint_finisher_blend_in_seconds": 0.10,
-  "sprint_finisher_lockout_seconds": 1.0
+  "attack_lockout_extension_seconds": 0.10
 }

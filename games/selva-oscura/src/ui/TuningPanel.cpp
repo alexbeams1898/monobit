@@ -11,6 +11,7 @@
 #include "anim/SkeletalMesh.h"
 #include "combat/AttackChain.h"
 #include "combat/AttackResolution.h"
+#include "combat/ChainObserver.h"
 #include "combat/CombatData.h"
 #include "combat/CombatLog.h"
 #include "combat/PlayerEquipment.h"
@@ -129,17 +130,12 @@ static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
 
     if (ImGui::CollapsingHeader("Combat", ImGuiTreeNodeFlags_DefaultOpen))
     {
-        // Live chain step indicator for diagnostics. chain_index is 0
-        // when no chain has started or when a chain has ended (auto-
-        // reset). chain_index increments on each successful fire and
-        // wraps based on chain length. Right-hand and left-hand chains
-        // tracked separately so dual-wield diagnostics work later.
-        ImGui::Text("Chain  R: idx=%d%s%s   L: idx=%d%s%s", sChainRight.chain_index,
-                    sChainRight.is_finisher ? " FIN" : "",
-                    sChainRight.cancel_window_open_at > selva::wallClock() ? " (pre-window)"
-                                                                          : "",
-                    sChainLeft.chain_index, sChainLeft.is_finisher ? " FIN" : "",
-                    sChainLeft.cancel_window_open_at > selva::wallClock() ? " (pre-window)" : "");
+        // Matched-technique indicator. ChainObserver tracks press history
+        // and reports which named technique the recent presses match.
+        const auto& obs = selva::combat::chainState();
+        ImGui::Text("Chain: %s @ %d   acc=%.2f%s",
+                    obs.technique_id ? obs.technique_id : "-", obs.step,
+                    obs.last_press_accuracy, obs.last_press_perfect ? " PERFECT" : "");
         tunedSlider("Combo reset grace (s)", &tun.combo_reset_grace_seconds, 0.05f, 2.0f, 0.05f,
                     "%.2f");
         tunedSlider("Input buffer (s)", &tun.combo_input_buffer_seconds, 0.05f, 0.50f, 0.025f,
@@ -218,16 +214,6 @@ static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
                     "%.2f");
         tunedSlider("Tap window (s)", &tun.dodge_tap_window, 0.05f, 0.40f, 0.025f, "%.3f");
         tunedSlider("Steer rate (rad/s)", &tun.dodge_steer_rate, 0.0f, 15.0f, 0.5f, "%.1f");
-    }
-
-    if (ImGui::CollapsingHeader("Sprint Finisher", ImGuiTreeNodeFlags_DefaultOpen))
-    {
-        tunedSlider("Start trim (s)", &tun.sprint_finisher_start_seconds, 0.0f, 0.50f, 0.025f,
-                    "%.3f");
-        tunedSlider("Blend-in (s)", &tun.sprint_finisher_blend_in_seconds, 0.0f, 0.40f, 0.025f,
-                    "%.3f");
-        tunedSlider("Lockout duration (s)", &tun.sprint_finisher_lockout_seconds, 0.10f, 3.0f,
-                    0.05f, "%.2f");
     }
 
     if (ImGui::CollapsingHeader("Post-Attack Lockout", ImGuiTreeNodeFlags_DefaultOpen))

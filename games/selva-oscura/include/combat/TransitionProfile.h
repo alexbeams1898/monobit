@@ -43,7 +43,6 @@ namespace profiles
 {
 TransitionProfile firstStrike();
 TransitionProfile chainLink();
-TransitionProfile sprintFinisher();
 TransitionProfile blockFromLatch();
 TransitionProfile blockLive();
 TransitionProfile dodge();

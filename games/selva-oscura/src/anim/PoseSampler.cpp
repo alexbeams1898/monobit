@@ -1516,6 +1516,12 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
 
     Impl& s = *impl;
     const ozz::animation::Animation* desired = clip.ozz_animation.get();
+    // Set when the one-shot phase machine transitions into BlendOut
+    // this frame. Triggers a pose-match scan that snaps the loco track
+    // to the time best matching the one-shot's about-to-fade pose, so
+    // the BlendOut crossfade reveals a near-identical loco pose
+    // instead of a discontinuity.
+    bool blend_out_loco_pose_match = false;
 
     // Inertialization step 1 — capture. Two modes:
     //   * Default: snapshot the previous frame's rendered pose
@@ -1988,6 +1994,7 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
             s.one_shot.time_seconds >= dur - blend_out_clip_time)
         {
             s.one_shot_phase = OneShotPhase::BlendOut;
+            blend_out_loco_pose_match = true;
         }
         break;
     }
@@ -1999,6 +2006,7 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
              (dur > 0.0f && s.one_shot.time_seconds >= dur - blend_out_clip_time)))
         {
             s.one_shot_phase = OneShotPhase::BlendOut;
+            blend_out_loco_pose_match = true;
         }
         break;
     }
@@ -2025,6 +2033,105 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
         }
         break;
     }
+    }
+
+    // ---- BlendOut-entry pose-match ----
+    //
+    // The one-shot just transitioned to BlendOut. Its current pose
+    // (post_locals_last from previous frame, expressed via
+    // model_matrices joint world positions) is what's about to start
+    // fading toward the loco track. If the loco track is at a frame
+    // whose pose differs significantly from the one-shot's, the
+    // crossfade reveals a discontinuity (e.g. flying-knee crouched
+    // landing pose blending into mid-stride running over 0.20s = 30cm
+    // hip pop). The loco track has been invisible during Hold (one_shot
+    // weight=1) so we can snap its time to a phase that matches the
+    // one-shot's exit pose without any visible cost.
+    if (blend_out_loco_pose_match && s.loco_current.animation != nullptr)
+    {
+        const char* names[] = {"mixamorig:LeftUpLeg", "mixamorig:RightUpLeg",
+                               "mixamorig:LeftFoot",  "mixamorig:RightFoot"};
+        std::vector<int> joints;
+        std::vector<glm::vec3> ref;
+        for (const char* n : names)
+        {
+            int idx = -1;
+            for (int j = 0; j < s.skeleton->num_joints(); ++j)
+            {
+                if (std::strcmp(s.skeleton->joint_names()[j], n) == 0)
+                {
+                    idx = j;
+                    break;
+                }
+            }
+            if (idx >= 0 && idx < static_cast<int>(s.model_matrices.size()))
+            {
+                joints.push_back(idx);
+                glm::mat4 m;
+                std::memcpy(&m, &s.model_matrices[idx], sizeof(glm::mat4));
+                ref.push_back(glm::vec3(m[3]));
+            }
+        }
+        if (!joints.empty())
+        {
+            // Scan loco clip for the time best matching the one-shot's
+            // exit pose. Inlined (no reuse of clipPoseMatchTime since
+            // it takes AnimationClip& and we only have raw ozz pointer).
+            const ozz::animation::Animation* loco_anim = s.loco_current.animation;
+            const float loco_dur = loco_anim->duration();
+            if (loco_dur > 0.0f)
+            {
+                const ozz::animation::Skeleton& skel = *s.skeleton;
+                const int n_joints_skel = skel.num_joints();
+                const int n_soa = skel.num_soa_joints();
+                ozz::animation::SamplingJob::Context ctx;
+                ctx.Resize(n_joints_skel);
+                std::vector<ozz::math::SoaTransform> locals(n_soa);
+                std::vector<ozz::math::Float4x4> models(n_joints_skel);
+                ozz::math::Float4x4 root_storage;
+                std::memcpy(&root_storage, &s.root_transform, sizeof(glm::mat4));
+                const float step = 1.0f / 60.0f;
+                const int n_steps = static_cast<int>(std::ceil(loco_dur / step)) + 1;
+                float best_t = 0.0f;
+                float best_d2 = std::numeric_limits<float>::infinity();
+                for (int i = 0; i < n_steps; ++i)
+                {
+                    const float t = std::min(static_cast<float>(i) * step, loco_dur);
+                    ozz::animation::SamplingJob sjob;
+                    sjob.animation = loco_anim;
+                    sjob.context = &ctx;
+                    sjob.ratio = std::clamp(t / loco_dur, 0.0f, 1.0f);
+                    sjob.output = ozz::make_span(locals);
+                    if (!sjob.Run())
+                        continue;
+                    ozz::animation::LocalToModelJob ljob;
+                    ljob.skeleton = &skel;
+                    ljob.root = &root_storage;
+                    ljob.input = ozz::make_span(locals);
+                    ljob.output = ozz::make_span(models);
+                    if (!ljob.Run())
+                        continue;
+                    float d2 = 0.0f;
+                    for (std::size_t k = 0; k < joints.size(); ++k)
+                    {
+                        const ozz::math::Float4x4& m = models[joints[k]];
+                        alignas(16) float col3[4];
+                        ozz::math::StorePtr(m.cols[3], col3);
+                        const glm::vec3 cand(col3[0], col3[1], col3[2]);
+                        const glm::vec3 d = cand - ref[k];
+                        d2 += glm::dot(d, d);
+                    }
+                    if (d2 < best_d2)
+                    {
+                        best_d2 = d2;
+                        best_t = t;
+                    }
+                }
+                s.loco_current.time_seconds = best_t;
+                s.loco_current.last_hip_xz_valid = false;
+                s.loco_current.last_hip_delta = glm::vec3(0.0f);
+            }
+        }
     }
 
     // ---- Sample all four tracks ----

@@ -192,23 +192,6 @@ struct Tunables
     float attack_lockout_extension_seconds = 0.10f;
 
     // ---- Sprint-finisher (running attack) ----
-    // Clip-time at which the running attack starts playing. 0 = full
-    // windup visible. >0 = trim the windup off the front. Useful when
-    // the clip's first frames feel like a delay before the swing
-    // commits.
-    float sprint_finisher_start_seconds = 0.0f;
-    // Cross-fade duration when blending from live running pose into
-    // the running attack's t=0. The running clip starts in a running
-    // pose so the offset is tiny — short blends feel snappy.
-    float sprint_finisher_blend_in_seconds = 0.10f;
-    // Wall-clock seconds past the fire instant at which the player
-    // regains walking control (the loco-lockout expires for sprint
-    // finishers). The running attack's authored recovery tail is
-    // ~1.5s of stand-up motion; letting walking resume earlier means
-    // the recovery overlays on top of walking via the one-shot
-    // blend-out, so the player feels responsive instead of locked
-    // through the full settle.
-    float sprint_finisher_lockout_seconds = 1.0f;
 };
 
 // JSON serialization — generates to_json / from_json for nlohmann::json
@@ -234,10 +217,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Tunables, time_scale, turn_rate,
                                                 perfect_accuracy_threshold, roll_playback_rate,
                                                 backstep_playback_rate, dodge_tap_window,
                                                 dodge_steer_rate, dodge_attack_cancel_fraction,
-                                                attack_lockout_extension_seconds,
-                                                sprint_finisher_start_seconds,
-                                                sprint_finisher_blend_in_seconds,
-                                                sprint_finisher_lockout_seconds);
+                                                attack_lockout_extension_seconds);
 
 // Single global instance. Both gameplay code and the procedural driver
 // read from this; the ImGui panel edits it in place. Keep it global rather

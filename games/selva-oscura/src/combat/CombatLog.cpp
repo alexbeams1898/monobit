@@ -10,7 +10,7 @@ namespace
 // Default ON during active combat-feel iteration. The logging+disk-flush
 // cost is real (Tracy showed selvaPerFrame max 77ms vs ~1ms baseline
 // with debug active) — flip to false when not iterating on combat.
-bool sEnabled = true;
+bool sEnabled = false;
 FILE* sLogFile = nullptr;
 } // namespace
 

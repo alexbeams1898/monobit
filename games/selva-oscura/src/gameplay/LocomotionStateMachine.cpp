@@ -23,9 +23,8 @@ const char* selectTransitionClip(LocomotionState from, LocomotionState to, bool*
     // Run -> Idle: play the authored run_to_stop deceleration clip so
     // the foot-down handoff is smooth. Without this, running's mid-
     // stride leg-raised pose splices directly into idle's planted-foot
-    // pose; pose-match narrows but can't eliminate the residual
-    // (idle has no leg-raised t), and the visible right leg snaps
-    // ~30cm down. run_to_stop is authored exactly to bridge this.
+    // pose; pose-match narrows but can't eliminate the residual.
+    // run_to_stop is authored exactly to bridge this.
     if (from == LocomotionState::Run && to == LocomotionState::Idle)
         return "run_to_stop";
     return nullptr;
