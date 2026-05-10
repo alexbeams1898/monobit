@@ -48,42 +48,29 @@ const char* loopClipForState(LocomotionState s, CombatStance stance, bool is_arm
     return "standard_idle";
 }
 
-LocomotionFrameOutput tickLocomotionStateMachine(LocomotionStateMachine& sm, bool is_moving,
-                                                 bool is_sprinting, bool clip_finished_this_frame,
-                                                 bool combat_input_this_frame, float /*dt*/,
-                                                 float combat_grace_seconds, bool is_armed,
-                                                 float wall_clock_seconds)
+LocomotionFrameOutput tickLocomotionStateMachine(LocomotionStateMachine& sm,
+                                                 const LocomotionTickInput& in)
 {
-    if (combat_input_this_frame)
+    if (in.combat_input_this_frame)
     {
         sm.combat_stance = CombatStance::CombatReady;
-        const float new_until = wall_clock_seconds + combat_grace_seconds;
+        const float new_until = in.wall_clock_seconds + in.combat_grace_seconds;
         if (new_until > sm.stance_active_until)
             sm.stance_active_until = new_until;
     }
     if (sm.combat_stance == CombatStance::CombatReady &&
-        wall_clock_seconds >= sm.stance_active_until)
+        in.wall_clock_seconds >= sm.stance_active_until)
     {
         sm.combat_stance = CombatStance::Peaceful;
     }
 
     LocomotionFrameOutput out;
     const LocomotionState desired =
-        LocomotionStateMachine::desiredFromIntent(is_moving, is_sprinting);
+        LocomotionStateMachine::desiredFromIntent(in.is_moving, in.is_sprinting);
 
     if (sm.current == LocomotionState::Transitioning)
     {
-        // Interrupt: if intent diverges from the transition's target
-        // mid-clip (e.g. player presses W again during run_to_stop),
-        // abort the transition and go straight to the new desired
-        // state. Pose-match in the sampler will splice cleanly from
-        // the run_to_stop pose into the new clip.
-        if (desired != sm.target)
-        {
-            sm.current = sm.target;
-            sm.active_transition_clip = nullptr;
-        }
-        else if (clip_finished_this_frame)
+        if (desired != sm.target || in.clip_finished_this_frame)
         {
             sm.current = sm.target;
             sm.active_transition_clip = nullptr;
@@ -92,7 +79,7 @@ LocomotionFrameOutput tickLocomotionStateMachine(LocomotionStateMachine& sm, boo
         {
             out.clip_name = sm.active_transition_clip
                                 ? sm.active_transition_clip
-                                : loopClipForState(sm.target, sm.combat_stance, is_armed);
+                                : loopClipForState(sm.target, sm.combat_stance, in.is_armed);
             out.loops = sm.active_transition_loops;
             out.blend_seconds = 0.10f;
             return out;
@@ -101,7 +88,7 @@ LocomotionFrameOutput tickLocomotionStateMachine(LocomotionStateMachine& sm, boo
 
     if (desired == sm.current)
     {
-        out.clip_name = loopClipForState(sm.current, sm.combat_stance, is_armed);
+        out.clip_name = loopClipForState(sm.current, sm.combat_stance, in.is_armed);
         out.loops = true;
         return out;
     }
@@ -120,7 +107,7 @@ LocomotionFrameOutput tickLocomotionStateMachine(LocomotionStateMachine& sm, boo
         return out;
     }
     sm.current = desired;
-    out.clip_name = loopClipForState(desired, sm.combat_stance, is_armed);
+    out.clip_name = loopClipForState(desired, sm.combat_stance, in.is_armed);
     out.loops = true;
     out.blend_seconds = 0.20f;
     return out;

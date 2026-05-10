@@ -369,34 +369,31 @@ PoseSampler::~PoseSampler() = default;
 // Falls back to all-1.0 (full body) if neither leg root is found —
 // better to lose the leg-isolation feature than to silently mute the
 // whole upper body on an unfamiliar rig.
-static std::vector<ozz::math::SimdFloat4>
-buildUpperBodyWeights(const ozz::animation::Skeleton& skel)
+static int findJointByName(const ozz::animation::Skeleton& skel, const char* name)
 {
     const int n = skel.num_joints();
-    const int n_soa = skel.num_soa_joints();
     const auto names = skel.joint_names();
+    for (int i = 0; i < n; ++i)
+        if (names[i] != nullptr && std::strcmp(names[i], name) == 0)
+            return i;
+    return -1;
+}
+
+// Per-joint upper-body weights: 1.0 for every joint NOT in the leg
+// subtree (left_leg or right_leg as the subtree root), 0.0 inside.
+static std::vector<float> computeUpperBodyPerJointWeights(const ozz::animation::Skeleton& skel,
+                                                          int left_leg, int right_leg)
+{
+    const int n = skel.num_joints();
     const auto parents = skel.joint_parents();
-
-    auto findJoint = [&](const char* name) -> int
-    {
-        for (int i = 0; i < n; ++i)
-            if (names[i] != nullptr && std::strcmp(names[i], name) == 0)
-                return i;
-        return -1;
-    };
-
-    const int left_leg = findJoint("mixamorig:LeftUpLeg");
-    const int right_leg = findJoint("mixamorig:RightUpLeg");
-
     std::vector<float> per_joint(n, 1.0f);
     std::vector<bool> in_leg(n, false);
     if (left_leg >= 0)
         in_leg[left_leg] = true;
     if (right_leg >= 0)
         in_leg[right_leg] = true;
-
-    // ozz guarantees parents come before children in the joint array —
-    // single forward pass propagates the leg-subtree flag down.
+    // ozz guarantees parents come before children — single forward pass
+    // propagates the leg-subtree flag down.
     for (int i = 0; i < n; ++i)
     {
         if (parents[i] >= 0 && in_leg[parents[i]])
@@ -404,18 +401,14 @@ buildUpperBodyWeights(const ozz::animation::Skeleton& skel)
         if (in_leg[i])
             per_joint[i] = 0.0f;
     }
+    return per_joint;
+}
 
-    // Diagnostic summary — runs once per character at construction.
-    int n_upper = 0;
-    int n_lower = 0;
-    for (int i = 0; i < n; ++i)
-        (per_joint[i] > 0.5f ? n_upper : n_lower) += 1;
-    std::fprintf(stderr,
-                 "[PoseSampler] upper-body mask: %d upper / %d lower (LeftUpLeg=%d, "
-                 "RightUpLeg=%d)\n",
-                 n_upper, n_lower, left_leg, right_leg);
-
-    // Pack per-joint floats into SoA-aligned SimdFloat4 lanes.
+// Pack per-joint floats into SoA-aligned SimdFloat4 lanes.
+static std::vector<ozz::math::SimdFloat4> packToSoaWeights(const std::vector<float>& per_joint,
+                                                           int n_soa)
+{
+    const int n = static_cast<int>(per_joint.size());
     std::vector<ozz::math::SimdFloat4> weights(n_soa);
     for (int s = 0; s < n_soa; ++s)
     {
@@ -427,6 +420,23 @@ buildUpperBodyWeights(const ozz::animation::Skeleton& skel)
         weights[s] = ozz::math::simd_float4::Load(w0, w1, w2, w3);
     }
     return weights;
+}
+
+std::vector<ozz::math::SimdFloat4> buildUpperBodyWeights(const ozz::animation::Skeleton& skel)
+{
+    const int left_leg = findJointByName(skel, "mixamorig:LeftUpLeg");
+    const int right_leg = findJointByName(skel, "mixamorig:RightUpLeg");
+    const auto per_joint = computeUpperBodyPerJointWeights(skel, left_leg, right_leg);
+    const int n = skel.num_joints();
+    int n_upper = 0;
+    int n_lower = 0;
+    for (int i = 0; i < n; ++i)
+        (per_joint[i] > 0.5f ? n_upper : n_lower) += 1;
+    std::fprintf(stderr,
+                 "[PoseSampler] upper-body mask: %d upper / %d lower (LeftUpLeg=%d, "
+                 "RightUpLeg=%d)\n",
+                 n_upper, n_lower, left_leg, right_leg);
+    return packToSoaWeights(per_joint, skel.num_soa_joints());
 }
 
 PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh)

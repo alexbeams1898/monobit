@@ -1364,9 +1364,16 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         // unarmed default) don't count, so the combat-idle picker
         // chooses unarmed_combat_idle, not sword_and_shield_idle_4.
         const bool is_armed = !isUnarmed(sEquipment);
-        const auto sm_out = tickLocomotionStateMachine(
-            sLocomotionSM, is_moving, is_sprinting, clip_done_this_frame, combat_input_this_frame,
-            dt, tun.combat_idle_grace_seconds, is_armed, selva::wallClock());
+        selva::gameplay::LocomotionTickInput sm_in;
+        sm_in.is_moving = is_moving;
+        sm_in.is_sprinting = is_sprinting;
+        sm_in.clip_finished_this_frame = clip_done_this_frame;
+        sm_in.combat_input_this_frame = combat_input_this_frame;
+        sm_in.is_armed = is_armed;
+        sm_in.dt = dt;
+        sm_in.combat_grace_seconds = tun.combat_idle_grace_seconds;
+        sm_in.wall_clock_seconds = selva::wallClock();
+        const auto sm_out = tickLocomotionStateMachine(sLocomotionSM, sm_in);
         clip_name = sm_out.clip_name;
         clip_loops = sm_out.loops;
         clip_blend_seconds = sm_out.blend_seconds;

@@ -20,47 +20,41 @@ namespace selva::ui
 namespace
 {
 
-// Next button to advance the chain. If a technique is matched, return
-// the slot-N expected button (where N = observer.step, the next press).
-// Otherwise return the union of all techniques' slot-0 buttons.
-const char* nextExpectedButtonLabel()
+const char* labelFor(const std::string& s)
 {
-    using selva::combat::Grip;
-    const selva::combat::Weapon* w = selva::combat::equipment().right;
-    if (w == nullptr || w->cls == nullptr)
-        return "-";
-    const auto& aset = (selva::combat::equipment().grip == Grip::TwoHanded) ? w->cls->two_handed
-                                                                            : w->cls->one_handed;
-    if (aset.light.empty())
-        return "-";
+    if (s == "LMB")
+        return "L";
+    if (s == "RMB")
+        return "R";
+    return "*";
+}
 
-    auto label_for = [](const std::string& s) -> const char*
-    {
-        if (s == "LMB")
-            return "L";
-        if (s == "RMB")
-            return "R";
-        return "*";
-    };
-
+// Slot-N button for the matched technique, where N = observer.step.
+// Returns nullptr if no technique matched or step is past the end.
+const char* matchedTechniqueNextButton(const std::vector<selva::combat::WeaponTechnique>& techs)
+{
     const auto& obs = selva::combat::chainState();
-    if (obs.technique_id != nullptr && obs.step > 0)
+    if (obs.technique_id == nullptr || obs.step <= 0)
+        return nullptr;
+    for (const auto& tech : techs)
     {
-        for (const auto& tech : aset.light)
-        {
-            if (tech.id != obs.technique_id)
-                continue;
-            if (obs.step < static_cast<int>(tech.attacks.size()))
-                return label_for(tech.attacks[obs.step].expected_button);
-            return "-";
-        }
+        if (tech.id != obs.technique_id)
+            continue;
+        if (obs.step < static_cast<int>(tech.attacks.size()))
+            return labelFor(tech.attacks[obs.step].expected_button);
+        return "-";
     }
+    return nullptr;
+}
 
-    // No technique matched yet: show union of slot-0 expected buttons.
+// Union of all techniques' slot-0 expected buttons. Used when no
+// chain is in progress.
+const char* unionOfSlotZeroButtons(const std::vector<selva::combat::WeaponTechnique>& techs)
+{
     bool has_lmb = false;
     bool has_rmb = false;
     bool has_any = false;
-    for (const auto& tech : aset.light)
+    for (const auto& tech : techs)
     {
         if (tech.attacks.empty())
             continue;
@@ -79,6 +73,24 @@ const char* nextExpectedButtonLabel()
     if (has_rmb)
         return "R";
     return "-";
+}
+
+// Next button to advance the chain. If a technique is matched, return
+// the slot-N expected button (where N = observer.step, the next press).
+// Otherwise return the union of all techniques' slot-0 buttons.
+const char* nextExpectedButtonLabel()
+{
+    using selva::combat::Grip;
+    const selva::combat::Weapon* w = selva::combat::equipment().right;
+    if (w == nullptr || w->cls == nullptr)
+        return "-";
+    const auto& aset = (selva::combat::equipment().grip == Grip::TwoHanded) ? w->cls->two_handed
+                                                                            : w->cls->one_handed;
+    if (aset.light.empty())
+        return "-";
+    if (const char* matched = matchedTechniqueNextButton(aset.light))
+        return matched;
+    return unionOfSlotZeroButtons(aset.light);
 }
 
 } // namespace
