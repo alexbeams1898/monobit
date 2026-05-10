@@ -4,10 +4,11 @@
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <cmath>
 #include <cstdio>
 #include <cstring>
-#include <tracy/Tracy.hpp>
 
 static void tracyEntityMsg(const char* event, entt::entity entity, float dist = -1.0f)
 {

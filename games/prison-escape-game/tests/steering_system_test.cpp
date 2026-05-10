@@ -3,9 +3,10 @@
 #include "ecs/GameComponents.h"
 #include "systems/SteeringSystem.h"
 
+#include <cmath>
+
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
-#include <cmath>
 
 // Large dt so the exponential steering blend converges fully in one call.
 // blend = 1 - exp(-6 * 10) ≈ 1.0 -- tests behave as if forces apply instantly.

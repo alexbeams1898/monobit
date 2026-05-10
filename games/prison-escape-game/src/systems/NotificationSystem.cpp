@@ -1,7 +1,8 @@
 #include "systems/NotificationSystem.h"
 
-#include <algorithm>
 #include <tracy/Tracy.hpp>
+
+#include <algorithm>
 #include <vector>
 
 static constexpr float DURATION = 2.0f;

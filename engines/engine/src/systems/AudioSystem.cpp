@@ -11,8 +11,9 @@
 #undef STB_VORBIS_HEADER_ONLY
 #include "systems/AudioSystem.h"
 
-#include <iostream>
 #include <stb_vorbis.c> // NOLINT(bugprone-suspicious-include)
+
+#include <iostream>
 #include <vector>
 
 // ---------------------------------------------------------------------------

@@ -1,9 +1,10 @@
 #pragma once
 
 #include <cstdint>
-#include <entt/entt.hpp>
 #include <string>
 #include <vector>
+
+#include <entt/entt.hpp>
 
 // ---------------------------------------------------------------------------
 // ECS components -- pure data only, no methods, no logic.

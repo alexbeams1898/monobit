@@ -9,10 +9,12 @@
 #include "systems/LevelingSystem.h"
 #include "systems/NotificationSystem.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <SDL.h>
+
 #include <algorithm>
 #include <string>
-#include <tracy/Tracy.hpp>
 
 using screen_input::hoveredRow;
 using namespace screen_colors;

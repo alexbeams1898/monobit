@@ -7,9 +7,10 @@
 #include "systems/AudioSystem.h"
 #include "systems/CombatSystem.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <cmath>
 #include <random>
-#include <tracy/Tracy.hpp>
 #include <vector>
 
 // How much to shrink the entity's bounding box for movement projection checks.

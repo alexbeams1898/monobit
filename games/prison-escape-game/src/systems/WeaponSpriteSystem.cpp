@@ -5,8 +5,9 @@
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
 
-#include <cmath>
 #include <tracy/Tracy.hpp>
+
+#include <cmath>
 #include <vector>
 
 // Weapon icon size in pixels (small inventory-style icon).

@@ -6,9 +6,10 @@
 #include "systems/AudioSystem.h"
 #include "systems/WaveSystem.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <algorithm>
 #include <cmath>
-#include <tracy/Tracy.hpp>
 
 void LadderSystem::update(EntityManager& em, double dt)
 {

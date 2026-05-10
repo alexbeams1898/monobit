@@ -2,9 +2,10 @@
 #include "ecs/EntityManager.h"
 #include "systems/AnimationSystem.h"
 
+#include <cmath>
+
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
-#include <cmath>
 
 // Helper: build a minimal animated entity with given row config.
 static entt::entity makeAnimatedEntity(EntityManager& em, int row = 0, int frames = 1,

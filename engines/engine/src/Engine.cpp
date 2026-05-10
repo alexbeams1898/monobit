@@ -10,12 +10,14 @@
 #include <string>
 
 // glad must be included before any SDL OpenGL header.
-#include <SDL.h>
-#include <glad/glad.h>
 #include <imgui.h>
 #include <imgui_impl_opengl3.h>
 #include <imgui_impl_sdl2.h>
 #include <tracy/Tracy.hpp>
+
+#include <SDL.h>
+
+#include <glad/glad.h>
 
 // Fixed-timestep constants.
 // Update runs at a locked 60 Hz regardless of render frame rate.

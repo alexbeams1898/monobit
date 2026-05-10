@@ -2,12 +2,14 @@
 
 #include "gl/ShaderUtils.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <algorithm>
 #include <cmath>
-#include <glad/glad.h>
 #include <iostream>
-#include <tracy/Tracy.hpp>
 #include <vector>
+
+#include <glad/glad.h>
 
 // ---------------------------------------------------------------------------
 // Shaders -- textured tile rendering with color fallback.

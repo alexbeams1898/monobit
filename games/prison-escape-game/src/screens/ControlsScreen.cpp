@@ -9,9 +9,11 @@
 #include "screens/ScreenColors.h"
 #include "screens/ScreenInput.h"
 
-#include <SDL.h>
-#include <string>
 #include <tracy/Tracy.hpp>
+
+#include <SDL.h>
+
+#include <string>
 
 using screen_input::keyPressed;
 using screen_input::mouseClicked;

@@ -3,9 +3,10 @@
 #include "TileMap.h"
 #include "ecs/Components.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <cmath>
 #include <queue>
-#include <tracy/Tracy.hpp>
 
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
 void FlowFieldSystem::update(EntityManager& em, float targetX, float targetY)

@@ -7,9 +7,10 @@
 #include "systems/AudioSystem.h"
 #include "systems/NotificationSystem.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <cmath>
 #include <iostream>
-#include <tracy/Tracy.hpp>
 #include <vector>
 
 // Max world-space distance from mouse cursor to highlight a pickup.

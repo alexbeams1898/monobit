@@ -68,14 +68,17 @@
 #include "screens/VictoryScreen.h"
 #include "systems/AudioSystem.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <SDL.h>
+
 #include <algorithm>
 #include <cmath>
 #include <ctime>
-#include <glad/glad.h>
 #include <random>
 #include <string>
-#include <tracy/Tracy.hpp>
+
+#include <glad/glad.h>
 
 static FontHandle sTitleFont = INVALID_FONT;
 

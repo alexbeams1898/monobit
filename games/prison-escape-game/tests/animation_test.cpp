@@ -4,9 +4,10 @@
 #include "test_helpers.h"
 #include "utils/DirectionUtils.h"
 
+#include <cmath>
+
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
-#include <cmath>
 
 using engine::direction::dirToColumnIndex;
 using engine::direction::snapFacing;

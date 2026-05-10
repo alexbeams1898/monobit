@@ -7,10 +7,11 @@
 #include "ops/SpawnUtils.h"
 #include "systems/LevelingSystem.h"
 
-#include <fstream>
-#include <iostream>
 #include <nlohmann/json.hpp>
 #include <tracy/Tracy.hpp>
+
+#include <fstream>
+#include <iostream>
 
 using json = nlohmann::json;
 

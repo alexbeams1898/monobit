@@ -2,9 +2,10 @@
 
 #include <cstdio>
 #include <cstring>
-#include <glad/glad.h>
 #include <iostream>
 #include <vector>
+
+#include <glad/glad.h>
 
 // stb_truetype and stb_rect_pack -- single-header font rasterizer.
 // IMPLEMENTATION defined here only (same pattern as stb_image in TextureManager.cpp).

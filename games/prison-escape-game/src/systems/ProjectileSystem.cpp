@@ -4,8 +4,9 @@
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 
-#include <cmath>
 #include <tracy/Tracy.hpp>
+
+#include <cmath>
 #include <vector>
 
 // Check if a rectangle centered at (cx, cy) with half-extents (hw, hh) overlaps any wall tile.

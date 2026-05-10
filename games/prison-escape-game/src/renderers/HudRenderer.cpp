@@ -9,12 +9,14 @@
 #include "renderers/ItemStatRenderer.h"
 #include "utils/DebugDraw.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <SDL.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <string>
-#include <tracy/Tracy.hpp>
 
 static FontHandle sBodyFont = INVALID_FONT;
 static FontHandle sTitleFont = INVALID_FONT;

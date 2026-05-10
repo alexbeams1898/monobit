@@ -11,9 +11,10 @@
 #include "systems/AudioSystem.h"
 #include "systems/LevelingSystem.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <cmath>
 #include <random>
-#include <tracy/Tracy.hpp>
 #include <vector>
 
 // Find player position. Returns false if no player exists.

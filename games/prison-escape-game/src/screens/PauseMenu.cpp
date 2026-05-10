@@ -12,12 +12,14 @@
 #include "systems/CombatSystem.h"
 #include "systems/NotificationSystem.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <SDL.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <string>
-#include <tracy/Tracy.hpp>
 #include <vector>
 
 using screen_input::hoveredRow;

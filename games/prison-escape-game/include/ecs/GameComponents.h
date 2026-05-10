@@ -1,9 +1,10 @@
 #pragma once
 
-#include <entt/entt.hpp>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include <entt/entt.hpp>
 
 // ---------------------------------------------------------------------------
 // Game components -- specific to this game's rules and mechanics.

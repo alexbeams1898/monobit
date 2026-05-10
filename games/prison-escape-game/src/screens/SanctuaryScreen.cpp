@@ -12,9 +12,11 @@
 #include "systems/AudioSystem.h"
 #include "systems/NotificationSystem.h"
 
-#include <SDL.h>
-#include <string>
 #include <tracy/Tracy.hpp>
+
+#include <SDL.h>
+
+#include <string>
 #include <vector>
 
 static FontHandle sBodyFont = INVALID_FONT;

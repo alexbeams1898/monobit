@@ -3,12 +3,14 @@
 #include "ecs/Components.h"
 #include "gl/ShaderUtils.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <algorithm>
 #include <cmath>
-#include <glad/glad.h>
 #include <iostream>
-#include <tracy/Tracy.hpp>
 #include <vector>
+
+#include <glad/glad.h>
 
 static const char* kVertexShaderSrc = R"glsl(
 #version 330 core

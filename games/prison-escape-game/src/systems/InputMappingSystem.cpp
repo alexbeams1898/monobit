@@ -3,10 +3,12 @@
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <SDL.h>
+
 #include <algorithm>
 #include <cmath>
-#include <tracy/Tracy.hpp>
 
 // InputMappingSystem -- maps raw SDL input to game action booleans.
 // All key-to-action bindings live here. To rebind a key, change it here only.

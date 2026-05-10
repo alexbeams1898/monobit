@@ -3,8 +3,9 @@
 #include "ecs/Components.h"
 #include "utils/DirectionUtils.h"
 
-#include <cmath>
 #include <tracy/Tracy.hpp>
+
+#include <cmath>
 
 // AnimationSystem -- frame advancement and sprite src rect computation.
 // Detects row changes via prev_row, resets the frame counter, then advances

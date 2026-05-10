@@ -3,9 +3,10 @@
 #include "TileMap.h"
 #include "ecs/Components.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <algorithm>
 #include <cmath>
-#include <tracy/Tracy.hpp>
 #include <vector>
 
 // ---------------------------------------------------------------------------

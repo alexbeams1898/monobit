@@ -2,14 +2,16 @@
 
 #include "Version.h"
 
+#include <nlohmann/json.hpp>
+
+#include <miniz.h>
+
 #include <atomic>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <miniz.h>
 #include <mutex>
-#include <nlohmann/json.hpp>
 #include <sstream>
 #include <thread>
 #include <vector>

@@ -10,11 +10,13 @@
 #include "screens/ScreenInput.h"
 #include "systems/AudioSystem.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <SDL.h>
+
 #include <cmath>
 #include <cstdio>
 #include <string>
-#include <tracy/Tracy.hpp>
 
 using screen_input::keyPressed;
 using screen_input::mouseClicked;

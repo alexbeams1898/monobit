@@ -5,8 +5,9 @@
 #include "ecs/GameConfig.h"
 #include "systems/AudioSystem.h"
 
-#include <algorithm>
 #include <tracy/Tracy.hpp>
+
+#include <algorithm>
 
 // Health redness kicks in below this HP fraction.
 static constexpr float HP_RED_THRESHOLD = 0.6f;

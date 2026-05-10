@@ -2,11 +2,13 @@
 
 #include "gl/ShaderUtils.h"
 
-#include <cstring>
-#include <glad/glad.h>
-#include <iostream>
 #include <tracy/Tracy.hpp>
+
+#include <cstring>
+#include <iostream>
 #include <vector>
+
+#include <glad/glad.h>
 
 // Vertex layout: pos(x,y) + uv(u,v) + color(r,g,b,a) = 8 floats.
 static constexpr int FLOATS_PER_VERT = 8;

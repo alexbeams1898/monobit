@@ -7,9 +7,10 @@
 #include "systems/CombatSystem.h" // computeDamage
 #include "systems/WeaponXPSystem.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <cmath>
 #include <random>
-#include <tracy/Tracy.hpp>
 
 static std::mt19937& damageRng()
 {
