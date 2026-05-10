@@ -631,13 +631,14 @@ static void writeFrameCaptureContactSheet(int n_frames, const std::string& dir)
     constexpr int kBorder = 2;
     const int sheet_w = cols * (cell_w + kBorder) + kBorder;
     const int sheet_h = rows * (cell_h + kBorder) + kBorder;
-    const std::size_t bytes = static_cast<std::size_t>(sheet_w) * sheet_h * 3;
+    const std::size_t bytes =
+        static_cast<std::size_t>(sheet_w) * static_cast<std::size_t>(sheet_h) * 3;
     if (bytes > 64ull * 1024 * 1024)
     {
         std::fprintf(stderr,
                      "[frame-capture] sheet would be %zu MB (%dx%d %dx%d cells); "
                      "skipping. Individual PNGs at %s/\n",
-                     bytes / (1024 * 1024), sheet_w, sheet_h, cols, rows, dir.c_str());
+                     bytes / (1024ULL * 1024ULL), sheet_w, sheet_h, cols, rows, dir.c_str());
         return;
     }
     std::vector<unsigned char> sheet(bytes, 32);
@@ -1530,7 +1531,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     // Pick + advance the sampler. The locomotion SM picks the loco
     // clip; F1 debug-clip preview overrides it. sampler.update runs
     // last so it sees post-input, post-movement state.
-    LocomotionPick pick = selectLocomotionClip(moveIntent, dt, combat_input_this_frame, tun);
+    const LocomotionPick pick = selectLocomotionClip(moveIntent, dt, combat_input_this_frame, tun);
     if (pick.clip != nullptr && pick.clip->isLoaded())
     {
         ZoneScopedN("sampler.update");
