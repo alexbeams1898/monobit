@@ -109,64 +109,71 @@ set(xbot_out_dir ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/assets/characters/x_bot)
 # as invalid. Doing the computation here means the runtime always sees a
 # fully-attributed mesh — no special-case at load time.
 #
-# X_Bot.glb is treated as a build artifact (gitignored, regenerated from
-# the FBX on every fresh checkout). The FBX is the authoring source.
+# X_Bot.glb is treated as a build artifact: regenerated from the FBX on
+# fresh local checkouts (FBX is the authoring source), but the baked
+# .glb + skeleton.ozz + per-clip .ozz files are also committed in the
+# asset tree so CI / contributors without the gitignored Mixamo FBX
+# pack can build and run. The FBX-bake pipeline below is wrapped in
+# `if(EXISTS xbot_fbx)` — when the FBX is present locally, the bake
+# regenerates artifacts; when absent (CI), the committed bakes are used.
 set(xbot_fbx ${xbot_dir}/source/rig/X_Bot.fbx)
 set(xbot_glb ${xbot_dir}/X_Bot.glb)
-add_custom_command(
-    OUTPUT ${xbot_glb}
-    # FBX2glTF's --keep-attribute auto drops NORMAL and TEXCOORD if they
-    # aren't strictly required by the schema. Mixamo's X Bot ships with
-    # both, but auto-mode strips them — the resulting glb has only
-    # POSITION/JOINTS/WEIGHTS, which our loader rejects (no NORMAL).
-    # Listing the attributes explicitly forces FBX2glTF to keep them.
-    # --compute-normals always re-derives normals from geometry to be
-    # safe (any FBX-export artifact gets cleaned up).
-    COMMAND ${fbx2gltf_exe}
-        --binary
-        --keep-attribute position
-        --keep-attribute normal
-        --keep-attribute uv0
-        --compute-normals always
-        -i ${xbot_fbx}
-        -o ${xbot_dir}/X_Bot
-    DEPENDS ${xbot_fbx} ${fbx2gltf_exe}
-    COMMENT "Converting X_Bot.fbx → X_Bot.glb..."
-    VERBATIM
-)
+if(EXISTS ${xbot_fbx})
+    add_custom_command(
+        OUTPUT ${xbot_glb}
+        # FBX2glTF's --keep-attribute auto drops NORMAL and TEXCOORD if they
+        # aren't strictly required by the schema. Mixamo's X Bot ships with
+        # both, but auto-mode strips them — the resulting glb has only
+        # POSITION/JOINTS/WEIGHTS, which our loader rejects (no NORMAL).
+        # Listing the attributes explicitly forces FBX2glTF to keep them.
+        # --compute-normals always re-derives normals from geometry to be
+        # safe (any FBX-export artifact gets cleaned up).
+        COMMAND ${fbx2gltf_exe}
+            --binary
+            --keep-attribute position
+            --keep-attribute normal
+            --keep-attribute uv0
+            --compute-normals always
+            -i ${xbot_fbx}
+            -o ${xbot_dir}/X_Bot
+        DEPENDS ${xbot_fbx} ${fbx2gltf_exe}
+        COMMENT "Converting X_Bot.fbx → X_Bot.glb..."
+        VERBATIM
+    )
 
-# 2. Skeleton-only conversion config: X_Bot.glb ships with no real
-# animations (just a degenerate "Take 001" T-pose), so explicitly tell
-# gltf2ozz to skip animation extraction. Without "animations": [],
-# gltf2ozz fails its animation-validation step and exits non-zero — even
-# though the skeleton was already written successfully — making ninja
-# think the build step failed.
-set(xbot_skeleton_config ${CMAKE_BINARY_DIR}/selva-oscura-xbot/skeleton_only.json)
-file(WRITE ${xbot_skeleton_config}
-"{\n"
-"  \"skeleton\": { \"filename\": \"skeleton.ozz\", \"import\": { \"enable\": true } },\n"
-"  \"animations\": []\n"
-"}\n"
-)
+    # 2. Skeleton-only conversion config: X_Bot.glb ships with no real
+    # animations (just a degenerate "Take 001" T-pose), so explicitly tell
+    # gltf2ozz to skip animation extraction. Without "animations": [],
+    # gltf2ozz fails its animation-validation step and exits non-zero — even
+    # though the skeleton was already written successfully — making ninja
+    # think the build step failed.
+    set(xbot_skeleton_config ${CMAKE_BINARY_DIR}/selva-oscura-xbot/skeleton_only.json)
+    file(WRITE ${xbot_skeleton_config}
+    "{\n"
+    "  \"skeleton\": { \"filename\": \"skeleton.ozz\", \"import\": { \"enable\": true } },\n"
+    "  \"animations\": []\n"
+    "}\n"
+    )
 
-# 3. Extract the skeleton from X_Bot.glb. The .ozz file is NOT committed
-# (see assets/.gitignore); it's derived data regenerated whenever
-# X_Bot.glb or gltf2ozz changes.
-set(xbot_ozz_files
-    ${xbot_out_dir}/skeleton.ozz
-)
-add_custom_command(
-    OUTPUT ${xbot_ozz_files}
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${xbot_out_dir}
-    COMMAND ${CMAKE_COMMAND} -E chdir ${xbot_out_dir}
-        $<TARGET_FILE:gltf2ozz>
-        --file=${xbot_glb}
-        --config_file=${xbot_skeleton_config}
-    DEPENDS ${xbot_glb} gltf2ozz ${xbot_skeleton_config}
-    COMMENT "Extracting X Bot skeleton to ozz runtime format..."
-    VERBATIM
-)
-add_custom_target(selva-oscura-convert-xbot ALL DEPENDS ${xbot_ozz_files})
+    # 3. Extract the skeleton from X_Bot.glb.
+    set(xbot_ozz_files
+        ${xbot_out_dir}/skeleton.ozz
+    )
+    add_custom_command(
+        OUTPUT ${xbot_ozz_files}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${xbot_out_dir}
+        COMMAND ${CMAKE_COMMAND} -E chdir ${xbot_out_dir}
+            $<TARGET_FILE:gltf2ozz>
+            --file=${xbot_glb}
+            --config_file=${xbot_skeleton_config}
+        DEPENDS ${xbot_glb} gltf2ozz ${xbot_skeleton_config}
+        COMMENT "Extracting X Bot skeleton to ozz runtime format..."
+        VERBATIM
+    )
+    add_custom_target(selva-oscura-convert-xbot ALL DEPENDS ${xbot_ozz_files})
+else()
+    message(STATUS "selva-oscura: X_Bot.fbx not found; skipping FBX bake (using committed .glb + .ozz)")
+endif()
 
 # ---------------------------------------------------------------------------
 # Convert Mixamo Pro Sword and Shield Pack FBXs → per-clip .ozz at build.
@@ -354,7 +361,9 @@ add_test(
     COMMAND selva-oscura-tests
     WORKING_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
 )
-add_dependencies(selva-oscura-tests selva-oscura-convert-xbot)
+if(TARGET selva-oscura-convert-xbot)
+    add_dependencies(selva-oscura-tests selva-oscura-convert-xbot)
+endif()
 if(TARGET selva-oscura-convert-attacks)
     add_dependencies(selva-oscura-tests selva-oscura-convert-attacks)
 endif()

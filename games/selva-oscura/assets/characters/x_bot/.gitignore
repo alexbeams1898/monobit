@@ -1,15 +1,11 @@
-# X_Bot.glb is a build artifact — derived from source/Pro Sword and
-# Shield Pack/X Bot.fbx by FBX2glTF (with --compute-normals missing).
-# Don't commit it; the build regenerates it from the FBX on every
-# fresh checkout. The FBX is the authoring source.
-X_Bot.glb
-
-# .ozz files are derived from X_Bot.glb at build time by the gltf2ozz
-# tool (vendored via ozz-animation). Don't commit — they regenerate on
-# every fresh checkout.
-*.ozz
-
 # `source/` holds raw FBX authoring assets — Mixamo packs and the X Bot
 # character itself. The build reads from here; we don't commit the
 # heavyweight .fbx files (anyone can re-download from Mixamo).
 source/
+
+# X_Bot.glb and .ozz files ARE committed (~2.7 MB total) so CI and
+# contributors without the gitignored Mixamo FBX pack can build and run.
+# Locally, the CMake bake regenerates them from FBX when present.
+# Negate the repo-root *.ozz rule for everything in this directory.
+!*.ozz
+!X_Bot.glb
