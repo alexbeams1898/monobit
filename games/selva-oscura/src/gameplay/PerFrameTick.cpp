@@ -403,6 +403,375 @@ static void tickF1TuningPanelToggle(const Uint8* keys)
     sPrevF1 = f1Now;
 }
 
+// Pose-match start time for a chain-link splice: source is the
+// outgoing one-shot's current frame, joint set is hands. Returns -1
+// when source clip / joints unresolvable (caller falls back to
+// loco-derived start).
+static float chainLinkPoseMatchStart(const selva::anim::AnimationClip& clip,
+                                     const char* prev_clip_name, float prev_clip_time)
+{
+    const auto* prev_clip = sClips.get(prev_clip_name);
+    if (prev_clip == nullptr || !prev_clip->isLoaded())
+        return -1.0f;
+    const int rh = sSampler.findJoint("mixamorig:RightHand");
+    const int lh = sSampler.findJoint("mixamorig:LeftHand");
+    std::vector<int> joints;
+    if (rh >= 0)
+        joints.push_back(rh);
+    if (lh >= 0)
+        joints.push_back(lh);
+    if (joints.empty())
+        return -1.0f;
+    return sSampler.clipPoseMatchTime(*prev_clip, prev_clip_time, clip, joints, 0.0f, 0.50f);
+}
+
+// Look up the per-attack `blend_out_seconds` override for `clip_name`
+// in the equipped weapon's technique tree. Returns negative if the
+// clip isn't found or the attack didn't override.
+static float perAttackBlendOutOverride(const char* clip_name)
+{
+    if (sEquipment.right == nullptr || sEquipment.right->cls == nullptr)
+        return -1.0f;
+    const auto& aset = (sEquipment.grip == selva::combat::Grip::TwoHanded)
+                           ? sEquipment.right->cls->two_handed
+                           : sEquipment.right->cls->one_handed;
+    const std::vector<const std::vector<selva::combat::WeaponTechnique>*> tech_lists{
+        &aset.light, &aset.heavy, &aset.running};
+    for (const auto* techs : tech_lists)
+        for (const auto& tech : *techs)
+            for (const auto& atk : tech.attacks)
+                if (atk.clip == clip_name && atk.blend_out_seconds >= 0.0f)
+                    return atk.blend_out_seconds;
+    return -1.0f;
+}
+
+// Set the per-hand cancel window (open / close) on the chain
+// observer, scaled by the active playback rate so the band lines up
+// with the sped-up clip.
+static void setHandCancelWindow(selva::combat::HandSide hand,
+                                const selva::anim::AnimationClip& clip, float rate,
+                                float combo_input_buffer_seconds)
+{
+    const float cancel_open = (clip.duration() > 0.0f) ? clip.duration() * 0.40f : 0.30f;
+    const float cancel_close = cancel_open + combo_input_buffer_seconds;
+    selva::combat::setCancelWindow(hand, selva::wallClock() + cancel_open / rate,
+                                   selva::wallClock() + cancel_close / rate);
+}
+
+// Fire a clip directly: pose-match against the current state, pick a
+// profile (chainLink vs firstStrike), apply any per-attack blend_out
+// override, kick off the one-shot, and set the hand's cancel window.
+// No chain bookkeeping. Returns true on successful fire.
+static bool fireClipForHand(selva::combat::HandSide hand, const char* clip_name,
+                            float combo_input_buffer_seconds)
+{
+    const auto* clip = sClips.get(clip_name);
+    if (clip == nullptr || !clip->isLoaded())
+        return false;
+    const bool one_shot_active = sSampler.isOneShotActive();
+    const auto fd_pre = sSampler.frameDiagnostics();
+
+    float pose_matched_start = -1.0f;
+    if (one_shot_active && fd_pre.one_shot_name != nullptr)
+        pose_matched_start =
+            chainLinkPoseMatchStart(*clip, fd_pre.one_shot_name, fd_pre.one_shot_time);
+    else
+        pose_matched_start = poseMatchStartFromLoco(*clip, 0.30f);
+    const float start_seconds = (pose_matched_start >= 0.0f) ? pose_matched_start : 0.0f;
+
+    TransitionProfile profile = one_shot_active ? profiles::chainLink() : profiles::firstStrike();
+    profile.lockout = TransitionProfile::Lockout::None;
+    const float blend_override = perAttackBlendOutOverride(clip_name);
+    if (blend_override >= 0.0f)
+        profile.blend_out_seconds = blend_override;
+
+    const float rate = effectiveAttackPlaybackRate(hand);
+    fireOneShotWithProfile(*clip, profile, start_seconds, rate);
+    setHandCancelWindow(hand, *clip, rate, combo_input_buffer_seconds);
+    combatLog("[combat:fire] hand=%s clip=%s dur=%.3fs start=%.3fs rate=%.2f one_shot_active=%d\n",
+              (hand == selva::combat::HandSide::Right) ? "R" : "L", clip_name, clip->duration(),
+              start_seconds, rate, one_shot_active ? 1 : 0);
+    return true;
+}
+
+// Record the press's wall-clock against the cancel window's center +
+// half-width — feeds the rhythm-combo bonus calc.
+static void recordPressForCancelWindow(selva::combat::HandSide hand, const char* button_to_fire,
+                                       float now)
+{
+    const auto& w = selva::combat::cancelWindow(hand);
+    const float center = 0.5f * (w.open_at + w.close_at);
+    const float half = 0.5f * (w.close_at - w.open_at);
+    selva::combat::recordPress(sEquipment, button_to_fire, now, center, half);
+}
+
+// Press during dodge → buffer the press for post-dodge handoff.
+static void bufferPostDodgeAttack(selva::combat::HandSide hand, const char* button)
+{
+    sPostDodgeAttack.pending = true;
+    sPostDodgeAttack.hand = hand;
+    sPostDodgeAttack.button = button;
+    sPostDodgeAttack.buffered_at = selva::wallClock();
+    combatLog("[combat:rhythm %.4fs] press BUFFERED (dodge active)\n", selva::wallClock());
+}
+
+// Press while a one-shot is in flight: only fire if it advances a
+// chain inside the cancel window. Otherwise buffer for post-clip
+// replay. Returns true if a chain advance fired.
+static bool tryChainAdvanceFire(selva::combat::HandSide hand, const char* button,
+                                const selva::combat::PressModifiers& mods, float now,
+                                float combo_input_buffer_seconds)
+{
+    const auto& w = selva::combat::cancelWindow(hand);
+    const bool inside_window = w.close_at > w.open_at && now >= w.open_at && now <= w.close_at;
+    if (!inside_window)
+        return false;
+    bool is_chain_advance = false;
+    const char* clip_name = selva::combat::clipForButton(sEquipment, hand, button, mods, now,
+                                                         w.open_at, w.close_at, &is_chain_advance);
+    if (!is_chain_advance || clip_name == nullptr)
+        return false;
+    if (!fireClipForHand(hand, clip_name, combo_input_buffer_seconds))
+        return false;
+    recordPressForCancelWindow(hand, button, now);
+    return true;
+}
+
+// Press handler: route the press through dodge-buffer, chain-advance,
+// fresh-fire, or buffer-for-replay. Returns true if a clip fired this
+// call (so the caller can mark combat_input_this_frame).
+static bool tryAttackInputDispatch(selva::combat::HandSide hand, bool press_edge_this_frame,
+                                   const char* button, const selva::combat::PressModifiers& mods,
+                                   float combo_input_buffer_seconds)
+{
+    BufferedPress& buf = (hand == selva::combat::HandSide::Right) ? sBufferedRight : sBufferedLeft;
+    if (press_edge_this_frame && sDodgeActive)
+    {
+        bufferPostDodgeAttack(hand, button);
+        return false;
+    }
+    if (press_edge_this_frame)
+    {
+        const float now = selva::wallClock();
+        if (sSampler.isOneShotActive())
+        {
+            if (tryChainAdvanceFire(hand, button, mods, now, combo_input_buffer_seconds))
+                return true;
+            buf.pending = true;
+            buf.button = button;
+            buf.buffered_at = now;
+            combatLog("[combat:rhythm] BUFFERED (one-shot in flight, no chain advance; %s)\n",
+                      button);
+            return false;
+        }
+        // No one-shot active: fire mapped clip directly.
+        const auto& w = selva::combat::cancelWindow(hand);
+        const char* clip_name = selva::combat::clipForButton(sEquipment, hand, button, mods, now,
+                                                             w.open_at, w.close_at);
+        if (clip_name == nullptr)
+        {
+            combatLog("[combat:rhythm] press DROPPED (no clip mapping for %s)\n", button);
+            return false;
+        }
+        if (fireClipForHand(hand, clip_name, combo_input_buffer_seconds))
+        {
+            recordPressForCancelWindow(hand, button, now);
+            return true;
+        }
+        return false;
+    }
+
+    // No fresh press: replay buffered if one-shot just ended.
+    if (buf.pending && !sSampler.isOneShotActive())
+    {
+        const float now = selva::wallClock();
+        if (now - buf.buffered_at > combo_input_buffer_seconds)
+        {
+            buf.pending = false;
+            return false;
+        }
+        const auto& w = selva::combat::cancelWindow(hand);
+        const char* clip_name = selva::combat::clipForButton(sEquipment, hand, buf.button, mods,
+                                                             now, w.open_at, w.close_at);
+        const bool fired =
+            clip_name != nullptr && fireClipForHand(hand, clip_name, combo_input_buffer_seconds);
+        if (fired)
+            recordPressForCancelWindow(hand, buf.button, now);
+        buf.pending = false;
+        return fired;
+    }
+    return false;
+}
+
+// Build a contact-sheet PNG from the captured per-frame screenshots.
+// Strides frames so the sheet has at most kMaxCells (≈30); skips the
+// composite entirely if total bytes would exceed 64MB. Individual
+// PNGs stay on disk regardless.
+static void writeFrameCaptureContactSheet(int n_frames, const std::string& dir)
+{
+    if (n_frames <= 0)
+        return;
+    constexpr int kMaxCells = 30;
+    const int stride = std::max(1, (n_frames + kMaxCells - 1) / kMaxCells);
+    const int n_cells = (n_frames + stride - 1) / stride;
+    constexpr int kMaxCols = 3;
+    const int cols = std::min(
+        kMaxCols,
+        std::max(1, static_cast<int>(std::ceil(std::sqrt(static_cast<float>(n_cells) * 1.78f)))));
+    const int rows = (n_cells + cols - 1) / cols;
+    char path0[512];
+    std::snprintf(path0, sizeof(path0), "%s/frame_0000.png", dir.c_str());
+    int cell_w = 0;
+    int cell_h = 0;
+    int cell_ch = 0;
+    stbi_uc* probe = stbi_load(path0, &cell_w, &cell_h, &cell_ch, 3);
+    if (probe == nullptr || cell_w <= 0 || cell_h <= 0)
+        return;
+    stbi_image_free(probe);
+    constexpr int kBorder = 2;
+    const int sheet_w = cols * (cell_w + kBorder) + kBorder;
+    const int sheet_h = rows * (cell_h + kBorder) + kBorder;
+    const std::size_t bytes = static_cast<std::size_t>(sheet_w) * sheet_h * 3;
+    if (bytes > 64ull * 1024 * 1024)
+    {
+        std::fprintf(stderr,
+                     "[frame-capture] sheet would be %zu MB (%dx%d %dx%d cells); "
+                     "skipping. Individual PNGs at %s/\n",
+                     bytes / (1024 * 1024), sheet_w, sheet_h, cols, rows, dir.c_str());
+        return;
+    }
+    std::vector<unsigned char> sheet(bytes, 32);
+    int cell_idx = 0;
+    for (int i = 0; i < n_frames; i += stride)
+    {
+        char fp[512];
+        std::snprintf(fp, sizeof(fp), "%s/frame_%04d.png", dir.c_str(), i);
+        int fw = 0;
+        int fh = 0;
+        int fc = 0;
+        stbi_uc* img = stbi_load(fp, &fw, &fh, &fc, 3);
+        if (img == nullptr || fw != cell_w || fh != cell_h)
+        {
+            if (img != nullptr)
+                stbi_image_free(img);
+            ++cell_idx;
+            continue;
+        }
+        const int gx = cell_idx % cols;
+        const int gy = cell_idx / cols;
+        const int x0 = kBorder + gx * (cell_w + kBorder);
+        const int y0 = kBorder + gy * (cell_h + kBorder);
+        for (int y = 0; y < cell_h; ++y)
+        {
+            const std::size_t dst_off = static_cast<std::size_t>((y0 + y) * sheet_w + x0) * 3;
+            const std::size_t src_off = static_cast<std::size_t>(y * cell_w) * 3;
+            std::memcpy(&sheet[dst_off], &img[src_off], static_cast<std::size_t>(cell_w) * 3);
+        }
+        stbi_image_free(img);
+        ++cell_idx;
+    }
+    char sheet_path[512];
+    std::snprintf(sheet_path, sizeof(sheet_path), "%s/_contact_sheet.png", dir.c_str());
+    stbi_write_png(sheet_path, sheet_w, sheet_h, 3, sheet.data(), sheet_w * 3);
+    std::fprintf(stderr,
+                 "[frame-capture] contact sheet: %s (%dx%d, %d cells from %d "
+                 "frames stride=%d, %dx%d grid)\n",
+                 sheet_path, sheet_w, sheet_h, n_cells, n_frames, stride, cols, rows);
+}
+
+// Tick the frame-capture timer; once duration elapses, emit summary
+// + contact sheet and clear the active flag.
+static void tickFrameCapture(float dt)
+{
+    if (!sFrameCaptureActive)
+        return;
+    sFrameCaptureElapsed += dt;
+    if (sFrameCaptureElapsed < sFrameCaptureDuration)
+        return;
+    std::fprintf(stderr, "[frame-capture] wrote %d frames to %s/\n", sFrameCaptureCounter,
+                 sFrameCaptureDir.c_str());
+    writeFrameCaptureContactSheet(sFrameCaptureCounter, sFrameCaptureDir);
+    sFrameCaptureActive = false;
+}
+
+// Log one-shot state transitions for post-dodge handoff visibility.
+// The active state is cached in a local static so the diff fires on
+// edge changes only.
+static void logOneShotStateTransitions()
+{
+    static bool sPrevOneShotActive = false;
+    const bool now = sSampler.isOneShotActive();
+    if (sPrevOneShotActive != now && selva::combat::isCombatDebugEnabled())
+    {
+        const auto fd = sSampler.frameDiagnostics();
+        combatLog("[combat:one-shot %.4fs] active=%d weight=%.3f phase=%d\n", selva::wallClock(),
+                  now ? 1 : 0, fd.one_shot_weight, fd.one_shot_phase);
+    }
+    sPrevOneShotActive = now;
+}
+
+// Post-dodge attack handoff. Once the dodge has fully ended AND the
+// one-shot has fully blended out, fire the buffered attack as a
+// first-strike from the (now-settled) combat-idle pose. Returns true
+// if a clip fired (caller marks combat_input_this_frame).
+static bool tryFirePostDodgeAttack(bool shift_held, float combo_input_buffer_seconds)
+{
+    if (!sPostDodgeAttack.pending || sDodgeActive || sSampler.isOneShotActive())
+        return false;
+    const float wait_seconds = selva::wallClock() - sPostDodgeAttack.buffered_at;
+    const selva::combat::PressModifiers mods{shift_held, sPlayer.sprinting};
+    const auto& dw = selva::combat::cancelWindow(sPostDodgeAttack.hand);
+    const char* clip_name =
+        selva::combat::clipForButton(sEquipment, sPostDodgeAttack.hand, sPostDodgeAttack.button,
+                                     mods, selva::wallClock(), dw.open_at, dw.close_at);
+    bool fired = false;
+    if (clip_name != nullptr &&
+        fireClipForHand(sPostDodgeAttack.hand, clip_name, combo_input_buffer_seconds))
+    {
+        fired = true;
+        combatLog("[combat:rhythm %.4fs] post-dodge attack FIRED (waited %.3fs since press)\n",
+                  selva::wallClock(), wait_seconds);
+    }
+    sPostDodgeAttack.pending = false;
+    return fired;
+}
+
+// Smooth-turn the player's yaw toward the move-intent direction at
+// `turn_rate` per frame. No-op when movement is locked or intent is
+// zero. Yaw stays gameplay-driven; translation is read from the
+// sampler's hip delta after this.
+static void tickPlayerYaw(const glm::vec3& moveIntent, bool movement_locked, float turn_rate,
+                          float dt)
+{
+    if (movement_locked || glm::length(moveIntent) <= 0.0001f)
+        return;
+    const glm::vec3 dir = glm::normalize(moveIntent);
+    const float targetYaw = yawFromGroundDir(dir);
+    float delta = wrapAngleSigned(targetYaw - sPlayer.yaw);
+    const float maxStep = turn_rate * dt;
+    if (delta > maxStep)
+        delta = maxStep;
+    else if (delta < -maxStep)
+        delta = -maxStep;
+    sPlayer.yaw += delta;
+}
+
+// Tick the dodge-roll timer; once elapsed reaches duration, clear the
+// active flag (the one-shot blend-out continues briefly after).
+static void tickDodgeTimer(float dt)
+{
+    if (!sDodgeActive)
+        return;
+    sDodgeElapsed += dt;
+    if (sDodgeElapsed >= sDodgeDuration)
+    {
+        sDodgeActive = false;
+        if (selva::combat::isCombatDebugEnabled())
+            combatLog("[combat:dodge %.4fs] sDodgeActive=false (elapsed=%.3fs/%.3fs)\n",
+                      selva::wallClock(), sDodgeElapsed, sDodgeDuration);
+    }
+}
+
 // Rising-edge Y/G toggles grip mode (one-handed ↔ two-handed).
 static void tickGripToggle(const Uint8* keys)
 {
@@ -493,195 +862,22 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     // via combat/PressMapping. Reads weapon class config; doesn't
     // know about "techniques" or "chains" or "finisher commits."
 
-    // Fire a clip directly: pose-match against the current state,
-    // pick a profile based on whether a one-shot is in flight, log
-    // diag, and call playOneShot. No chain bookkeeping. Returns
-    // true on successful fire.
-    auto fireClip = [&](selva::combat::HandSide hand, const char* clip_name) -> bool
-    {
-        const auto* clip = sClips.get(clip_name);
-        if (clip == nullptr || !clip->isLoaded())
-            return false;
-        const bool one_shot_active = sSampler.isOneShotActive();
-        const auto fd_pre = sSampler.frameDiagnostics();
-
-        // Pose-match: if a one-shot is interrupting another (chain
-        // link), source = outgoing one-shot's current frame.
-        // Otherwise source = live skinned pose (cold start).
-        float pose_matched_start = -1.0f;
-        if (one_shot_active && fd_pre.one_shot_name != nullptr)
-        {
-            const auto* prev_clip = sClips.get(fd_pre.one_shot_name);
-            if (prev_clip != nullptr && prev_clip->isLoaded())
-            {
-                const int rh = sSampler.findJoint("mixamorig:RightHand");
-                const int lh = sSampler.findJoint("mixamorig:LeftHand");
-                std::vector<int> joints;
-                if (rh >= 0)
-                    joints.push_back(rh);
-                if (lh >= 0)
-                    joints.push_back(lh);
-                if (!joints.empty())
-                    pose_matched_start = sSampler.clipPoseMatchTime(
-                        *prev_clip, fd_pre.one_shot_time, *clip, joints, 0.0f, 0.50f);
-            }
-        }
-        else
-        {
-            pose_matched_start = poseMatchStartFromLoco(*clip, 0.30f);
-        }
-        const float start_seconds = (pose_matched_start >= 0.0f) ? pose_matched_start : 0.0f;
-
-        TransitionProfile profile =
-            one_shot_active ? profiles::chainLink() : profiles::firstStrike();
-        // No locomotion lockout — every clip plays fully via buffer
-        // logic; no need to gate movement separately.
-        profile.lockout = TransitionProfile::Lockout::None;
-        // Per-attack blend_out override. Finds the WeaponAttack with
-        // this clip in the equipped weapon's techniques. If found and
-        // the attack specifies blend_out_seconds >= 0, use it. This
-        // lets the unarmed combo finisher (waddle-tail) trim its
-        // visible recovery without affecting jab/hook.
-        if (sEquipment.right != nullptr && sEquipment.right->cls != nullptr)
-        {
-            const auto& aset = (sEquipment.grip == selva::combat::Grip::TwoHanded)
-                                   ? sEquipment.right->cls->two_handed
-                                   : sEquipment.right->cls->one_handed;
-            const std::vector<const std::vector<selva::combat::WeaponTechnique>*> tech_lists{
-                &aset.light, &aset.heavy, &aset.running};
-            for (const auto* techs : tech_lists)
-            {
-                for (const auto& tech : *techs)
-                {
-                    for (const auto& atk : tech.attacks)
-                    {
-                        if (atk.clip == clip_name && atk.blend_out_seconds >= 0.0f)
-                        {
-                            profile.blend_out_seconds = atk.blend_out_seconds;
-                            goto blend_out_resolved;
-                        }
-                    }
-                }
-            }
-        blend_out_resolved:;
-        }
-        const float rate = effectiveAttackPlaybackRate(hand);
-        fireOneShotWithProfile(*clip, profile, start_seconds, rate);
-
-        // Set the per-hand cancel window in the observer. clipForButton
-        // gates chain advancement on this; the HUD renders the green
-        // band from it.
-        const float cancel_open = (clip->duration() > 0.0f) ? clip->duration() * 0.40f : 0.30f;
-        const float cancel_close = cancel_open + tun.combo_input_buffer_seconds;
-        selva::combat::setCancelWindow(hand, selva::wallClock() + cancel_open / rate,
-                                       selva::wallClock() + cancel_close / rate);
-
-        combatLog(
-            "[combat:fire] hand=%s clip=%s dur=%.3fs start=%.3fs rate=%.2f one_shot_active=%d\n",
-            (hand == selva::combat::HandSide::Right) ? "R" : "L", clip_name, clip->duration(),
-            start_seconds, rate, one_shot_active ? 1 : 0);
-        return true;
-    };
+    // fireClip + chain-link pose-match + per-attack blend_out override
+    // are extracted to file-static helpers above. Local alias keeps
+    // call sites short.
+    const auto fireClip = [&](selva::combat::HandSide hand, const char* clip_name) -> bool
+    { return fireClipForHand(hand, clip_name, tun.combo_input_buffer_seconds); };
 
     // Try a press: if no one-shot is active, fire immediately.
     // Otherwise buffer for replay after the in-flight clip ends.
     // This is the entirety of the press-handler logic.
-    auto tryAttackInput =
+    const selva::combat::PressModifiers mods{shift_held, sPlayer.sprinting};
+    const auto tryAttackInput =
         [&](selva::combat::HandSide hand, bool press_edge_this_frame, const char* button)
     {
-        BufferedPress& buf =
-            (hand == selva::combat::HandSide::Right) ? sBufferedRight : sBufferedLeft;
-
-        const selva::combat::PressModifiers mods{shift_held, sPlayer.sprinting};
-
-        // Fresh press during dodge: buffer for post-dodge handoff.
-        if (press_edge_this_frame && sDodgeActive)
-        {
-            sPostDodgeAttack.pending = true;
-            sPostDodgeAttack.hand = hand;
-            sPostDodgeAttack.button = button;
-            sPostDodgeAttack.buffered_at = selva::wallClock();
-            combatLog("[combat:rhythm %.4fs] press BUFFERED (dodge active)\n", selva::wallClock());
-            return;
-        }
-
-        auto fire_and_record = [&](const char* button_to_fire, float now)
-        {
-            const auto& w = selva::combat::cancelWindow(hand);
-            const float center = 0.5f * (w.open_at + w.close_at);
-            const float half = 0.5f * (w.close_at - w.open_at);
-            selva::combat::recordPress(sEquipment, button_to_fire, now, center, half);
-        };
-
-        if (press_edge_this_frame)
-        {
-            const float now = selva::wallClock();
-            if (sSampler.isOneShotActive())
-            {
-                // Press while a one-shot is in flight. ONLY fire
-                // immediately if it advances a chain (LMB→RMB→LMB
-                // inside windows = jab→hook→combo finisher). Wrong
-                // button / no chain / outside window → buffer for
-                // replay after the clip finishes.
-                const auto& w = selva::combat::cancelWindow(hand);
-                const bool inside_window =
-                    w.close_at > w.open_at && now >= w.open_at && now <= w.close_at;
-                if (inside_window)
-                {
-                    bool is_chain_advance = false;
-                    const char* clip_name =
-                        selva::combat::clipForButton(sEquipment, hand, button, mods, now, w.open_at,
-                                                     w.close_at, &is_chain_advance);
-                    if (is_chain_advance && clip_name != nullptr && fireClip(hand, clip_name))
-                    {
-                        combat_input_this_frame = true;
-                        fire_and_record(button, now);
-                        return;
-                    }
-                }
-                buf.pending = true;
-                buf.button = button;
-                buf.buffered_at = now;
-                combatLog("[combat:rhythm] BUFFERED (one-shot in flight, no chain advance; %s)\n",
-                          button);
-                return;
-            }
-            // No one-shot active: fire mapped clip directly.
-            const auto& w = selva::combat::cancelWindow(hand);
-            const char* clip_name = selva::combat::clipForButton(sEquipment, hand, button, mods,
-                                                                 now, w.open_at, w.close_at);
-            if (clip_name == nullptr)
-            {
-                combatLog("[combat:rhythm] press DROPPED (no clip mapping for %s)\n", button);
-                return;
-            }
-            if (fireClip(hand, clip_name))
-            {
-                combat_input_this_frame = true;
-                fire_and_record(button, now);
-            }
-            return;
-        }
-
-        // No fresh press: replay buffered if one-shot just ended.
-        if (buf.pending && !sSampler.isOneShotActive())
-        {
-            const float now = selva::wallClock();
-            if (now - buf.buffered_at > tun.combo_input_buffer_seconds)
-            {
-                buf.pending = false;
-                return;
-            }
-            const auto& w = selva::combat::cancelWindow(hand);
-            const char* clip_name = selva::combat::clipForButton(sEquipment, hand, buf.button, mods,
-                                                                 now, w.open_at, w.close_at);
-            if (clip_name != nullptr && fireClip(hand, clip_name))
-            {
-                combat_input_this_frame = true;
-                fire_and_record(buf.button, now);
-            }
-            buf.pending = false;
-        }
+        if (tryAttackInputDispatch(hand, press_edge_this_frame, button, mods,
+                                   tun.combo_input_buffer_seconds))
+            combat_input_this_frame = true;
     };
 
     // Tick the technique observer: clears history if the player has
@@ -1048,184 +1244,14 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     // naturally tapers — there's no "post-landing slide" that the
     // legacy script-push had, which is why we no longer need a
     // separate motion_end cutoff.
-    if (sDodgeActive)
-    {
-        sDodgeElapsed += dt;
-        if (sDodgeElapsed >= sDodgeDuration)
-        {
-            sDodgeActive = false;
-            if (selva::combat::isCombatDebugEnabled())
-                combatLog("[combat:dodge %.4fs] sDodgeActive=false (elapsed=%.3fs/%.3fs)\n",
-                          selva::wallClock(), sDodgeElapsed, sDodgeDuration);
-        }
-    }
-    // One-shot state change tracking for post-dodge handoff visibility.
-    {
-        static bool sPrevOneShotActive = false;
-        const bool one_shot_active_now = sSampler.isOneShotActive();
-        if (sPrevOneShotActive != one_shot_active_now && selva::combat::isCombatDebugEnabled())
-        {
-            const auto fd = sSampler.frameDiagnostics();
-            combatLog("[combat:one-shot %.4fs] active=%d weight=%.3f phase=%d\n",
-                      selva::wallClock(), one_shot_active_now ? 1 : 0, fd.one_shot_weight,
-                      fd.one_shot_phase);
-        }
-        sPrevOneShotActive = one_shot_active_now;
-    }
+    tickDodgeTimer(dt);
+    logOneShotStateTransitions();
+    if (tryFirePostDodgeAttack(shift_held, tun.combo_input_buffer_seconds))
+        combat_input_this_frame = true;
 
-    // Post-dodge attack handoff. Once the dodge's gate has closed AND
-    // the one-shot is fully done blending out, fire the buffered
-    // attack as a normal first-strike. Combat-idle is now showing on
-    // screen (one-shot ended), so the splice is small (per-joint
-    // decay handles whatever's left). This is the "chain LMB into
-    // the roll" UX — the press lands during the dodge, fires on a
-    // clean handoff frame, no spasm.
-    // Post-dodge attack handoff. Wait for the dodge clip to fully end
-    // AND for the one-shot to fully blend out before firing. The
-    // earlier "cancel mid-roll at 65%" experiment fired the attack
-    // when the player was tucked mid-dive, producing 89cm hand and
-    // 47cm foot offsets at the splice (visible full-body spasm).
-    // The diagnostic in combat-debug.log made this concrete: the
-    // mid-roll pose IS catastrophically far from the jab's authored
-    // t=0 pose. Clean splice requires waiting for the roll to settle
-    // back to combat-idle pose first.
-    if (sPostDodgeAttack.pending && !sDodgeActive && !sSampler.isOneShotActive())
-    {
-        const float wait_seconds = selva::wallClock() - sPostDodgeAttack.buffered_at;
-        const selva::combat::PressModifiers mods{shift_held, sPlayer.sprinting};
-        const auto& dw = selva::combat::cancelWindow(sPostDodgeAttack.hand);
-        const char* clip_name =
-            selva::combat::clipForButton(sEquipment, sPostDodgeAttack.hand, sPostDodgeAttack.button,
-                                         mods, selva::wallClock(), dw.open_at, dw.close_at);
-        if (clip_name != nullptr && fireClip(sPostDodgeAttack.hand, clip_name))
-        {
-            combat_input_this_frame = true;
-            combatLog("[combat:rhythm %.4fs] post-dodge attack FIRED (waited %.3fs since press)\n",
-                      selva::wallClock(), wait_seconds);
-        }
-        sPostDodgeAttack.pending = false;
-    }
-
-    // Frame-capture timer. Independent of sDodgeActive so we can also
-    // capture the post-dodge recovery into idle (sFrameCaptureDuration
-    // is set to dodge_duration + 0.3s at arm time).
-    if (sFrameCaptureActive)
-    {
-        sFrameCaptureElapsed += dt;
-        if (sFrameCaptureElapsed >= sFrameCaptureDuration)
-        {
-            std::fprintf(stderr, "[frame-capture] wrote %d frames to %s/\n", sFrameCaptureCounter,
-                         sFrameCaptureDir.c_str());
-
-            // Build a contact-sheet composite: all captured frames in
-            // a grid, one wide PNG. Reading the strip in a single Read
-            // call gives a holistic view of the dodge progression
-            // instead of the agent eyeballing 140 individual PNGs in
-            // sequence and losing context between them.
-            //
-            // Layout: square-ish grid. We pick `cols` so the grid is
-            // close to 16:9 aspect for readability at default zoom.
-            const int n_frames = sFrameCaptureCounter;
-            if (n_frames > 0)
-            {
-                // Stride captured frames so the contact sheet has at
-                // most kMaxCells. A 150-frame chain capture at full
-                // 640x360 cells with 6 cols and 26 rows would allocate
-                // ~100MB on the main thread and write a ~10000-tall
-                // PNG, which crashes mid-game when triggered live. We
-                // sample every Nth frame to cap the sheet's memory and
-                // keep the per-cell resolution readable. Individual
-                // PNG frames remain unstrided on disk — only the
-                // contact sheet uses the strided subset.
-                // Tighter caps so the contact sheet is actually readable
-                // when Read'd by the agent (Read shrinks to ~600px wide,
-                // so 6 cols × 100px/cell = unreadable). 3 cols × 200px
-                // each is the sweet spot for visible per-frame motion.
-                constexpr int kMaxCells = 30;
-                const int stride = std::max(1, (n_frames + kMaxCells - 1) / kMaxCells);
-                const int n_cells = (n_frames + stride - 1) / stride;
-                constexpr int kMaxCols = 3;
-                const int cols =
-                    std::min(kMaxCols, std::max(1, static_cast<int>(std::ceil(std::sqrt(
-                                                       static_cast<float>(n_cells) * 1.78f)))));
-                const int rows = (n_cells + cols - 1) / cols;
-                // Read frame 0 to get the per-cell dimensions.
-                char path0[512];
-                std::snprintf(path0, sizeof(path0), "%s/frame_0000.png", sFrameCaptureDir.c_str());
-                int cell_w = 0;
-                int cell_h = 0;
-                int cell_ch = 0;
-                stbi_uc* probe = stbi_load(path0, &cell_w, &cell_h, &cell_ch, 3);
-                if (probe != nullptr && cell_w > 0 && cell_h > 0)
-                {
-                    stbi_image_free(probe);
-                    constexpr int kBorder = 2;
-                    const int sheet_w = cols * (cell_w + kBorder) + kBorder;
-                    const int sheet_h = rows * (cell_h + kBorder) + kBorder;
-                    // Sanity-cap at ~64MB. If we'd exceed this, skip the
-                    // contact sheet entirely (individual PNGs already on
-                    // disk) and log a clear notice rather than crashing.
-                    const std::size_t bytes = static_cast<std::size_t>(sheet_w) * sheet_h * 3;
-                    if (bytes > 64ull * 1024 * 1024)
-                    {
-                        std::fprintf(stderr,
-                                     "[frame-capture] sheet would be %zu MB (%dx%d %dx%d cells); "
-                                     "skipping. Individual PNGs at %s/\n",
-                                     bytes / (1024 * 1024), sheet_w, sheet_h, cols, rows,
-                                     sFrameCaptureDir.c_str());
-                    }
-                    else
-                    {
-                        std::vector<unsigned char> sheet(bytes, 32);
-                        int cell_idx = 0;
-                        for (int i = 0; i < n_frames; i += stride)
-                        {
-                            char fp[512];
-                            std::snprintf(fp, sizeof(fp), "%s/frame_%04d.png",
-                                          sFrameCaptureDir.c_str(), i);
-                            int fw = 0;
-                            int fh = 0;
-                            int fc = 0;
-                            stbi_uc* img = stbi_load(fp, &fw, &fh, &fc, 3);
-                            if (img == nullptr || fw != cell_w || fh != cell_h)
-                            {
-                                if (img != nullptr)
-                                    stbi_image_free(img);
-                                ++cell_idx;
-                                continue;
-                            }
-                            const int gx = cell_idx % cols;
-                            const int gy = cell_idx / cols;
-                            const int x0 = kBorder + gx * (cell_w + kBorder);
-                            const int y0 = kBorder + gy * (cell_h + kBorder);
-                            for (int y = 0; y < cell_h; ++y)
-                            {
-                                const std::size_t dst_off =
-                                    static_cast<std::size_t>((y0 + y) * sheet_w + x0) * 3;
-                                const std::size_t src_off =
-                                    static_cast<std::size_t>(y * cell_w) * 3;
-                                std::memcpy(&sheet[dst_off], &img[src_off],
-                                            static_cast<std::size_t>(cell_w) * 3);
-                            }
-                            stbi_image_free(img);
-                            ++cell_idx;
-                        }
-                        char sheet_path[512];
-                        std::snprintf(sheet_path, sizeof(sheet_path), "%s/_contact_sheet.png",
-                                      sFrameCaptureDir.c_str());
-                        stbi_write_png(sheet_path, sheet_w, sheet_h, 3, sheet.data(), sheet_w * 3);
-                        std::fprintf(stderr,
-                                     "[frame-capture] contact sheet: %s (%dx%d, %d cells from %d "
-                                     "frames stride=%d, %dx%d grid)\n",
-                                     sheet_path, sheet_w, sheet_h, n_cells, n_frames, stride, cols,
-                                     rows);
-                    }
-                }
-            }
-
-            sFrameCaptureActive = false;
-        }
-    }
+    // Frame-capture timer (independent of dodge so post-dodge recovery
+    // can also be captured). On expiry: emit contact-sheet composite.
+    tickFrameCapture(dt);
 
     // Every active attack one-shot locks movement until it blends out.
     // The whole body is committed to the clip, so letting WASD push the
@@ -1246,18 +1272,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     // tun.turn_rate. Translation itself happens after sSampler.update
     // below, where we read consumedHipDelta from the freshly-sampled
     // pose.
-    if (!movement_locked && glm::length(moveIntent) > 0.0001f)
-    {
-        const glm::vec3 dir = glm::normalize(moveIntent);
-        const float targetYaw = yawFromGroundDir(dir);
-        float delta = wrapAngleSigned(targetYaw - sPlayer.yaw);
-        const float maxStep = tun.turn_rate * dt;
-        if (delta > maxStep)
-            delta = maxStep;
-        else if (delta < -maxStep)
-            delta = -maxStep;
-        sPlayer.yaw += delta;
-    }
+    tickPlayerYaw(moveIntent, movement_locked, tun.turn_rate, dt);
 
     // Pick + advance the sampler. selectClipForPlayer chooses the clip
     // for this frame based on locomotion + sprint state; the sampler
