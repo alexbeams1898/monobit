@@ -39,15 +39,44 @@ struct Tunables
     // simulation dt that drives time-advancing systems.
     float time_scale = 1.0f;
 
-    // ---- Locomotion ----
+    // ---- Locomotion (velocity-driven) ----
     float turn_rate = 9.0f; // player rotation toward move dir, rad/s
-    // SM only commits to a wasd_intent change after the raw value has
-    // disagreed continuously for this long. Held WASD reaches walking
-    // after this delay; brief taps never commit; rapid mashing never
-    // accumulates. Structurally rate-limits clip transitions to
-    // sustained intent. ~100ms is a good balance: most rapid mashing
-    // suppressed, real intent still feels responsive.
+
+    // Legacy SM debounce — UNUSED in the velocity-driven model
+    // (velocity itself is naturally smoothed by accel/decel). Kept
+    // for the JSON schema during the refactor; will be removed
+    // once the SM is fully deleted.
     float wasd_debounce_seconds = 0.10f;
+
+    // Target walking speed (m/s) when WASD is held without sprint.
+    // Calibrated to match the walking clip's authored hip travel so
+    // the foot doesn't visibly skate (clip moves character N meters
+    // per cycle; walk_speed should match that cycle rate).
+    float walk_speed = 1.6f;
+
+    // Target running speed (m/s) when sprinting + WASD held.
+    // Calibrated to match the running clip's authored hip travel.
+    float run_speed = 4.5f;
+
+    // Acceleration toward target speed (m/s²). Higher = snappier
+    // response to WASD press. Too high reads as "teleport into
+    // motion"; too low feels sluggish.
+    float locomotion_accel = 18.0f;
+
+    // Deceleration toward zero when WASD released (m/s²). Separate
+    // from accel because the feel is different — Souls-style
+    // games often have faster decel than accel for responsive
+    // stops. Too high: instant snap to idle (the "shoots back to
+    // idle" complaint); too low: slidey overshoot.
+    float locomotion_decel = 14.0f;
+
+    // Clip-speed blend thresholds. velocity_magnitude < idle_to_walk
+    // = pure idle; > walk_to_run = pure running; in between =
+    // weighted blend. Avoids hard mode boundaries — a single
+    // walking step doesn't snap to walking, but holding WASD long
+    // enough does as velocity ramps up.
+    float idle_to_walk_speed = 0.30f;
+    float walk_to_run_speed = 3.0f;
 
     // ---- Mouse-look ----
     float mouse_sensitivity = 0.0025f; // radians per pixel
@@ -220,8 +249,10 @@ struct Tunables
 // default-initialized value, so older tunables.json files don't break when
 // new fields are added.
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
-    Tunables, time_scale, turn_rate, wasd_debounce_seconds, mouse_sensitivity, pitch_min, pitch_max,
-    follow_distance, follow_height, fov_degrees, anim_blend_seconds, cross_family_min_blend_seconds,
+    Tunables, time_scale, turn_rate, wasd_debounce_seconds, walk_speed, run_speed,
+    locomotion_accel, locomotion_decel, idle_to_walk_speed, walk_to_run_speed, mouse_sensitivity,
+    pitch_min, pitch_max, follow_distance, follow_height, fov_degrees, anim_blend_seconds,
+    cross_family_min_blend_seconds,
     combat_idle_grace_seconds, combat_entry_delay_seconds, combo_reset_grace_seconds,
     combo_input_buffer_seconds, combo_chain_blend_seconds, first_strike_blend_seconds,
     inertialize_decay_base_seconds, inertialize_decay_scale_per_radian,

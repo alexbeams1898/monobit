@@ -753,8 +753,14 @@ static void tickFrameCapture(float dt)
 }
 
 // Log one-shot state transitions for post-dodge handoff visibility.
-// The active state is cached in a local static so the diff fires on
-// edge changes only.
+// On exit-edge, also logs the hip-delta totals: how much XZ travel
+// the clip authored (sum of consumedHipDelta over the shot), and the
+// player's net world displacement during the shot. Lets us see at
+// a glance whether an in-place attack is the *clip* (no authored
+// travel) or the *system* (clip authored travel but it was dropped).
+static glm::vec3 sOneShotPosStart(0.0f);
+static glm::vec2 sOneShotHipAccumXZ(0.0f);
+
 static void logOneShotStateTransitions()
 {
     static bool sPrevOneShotActive = false;
@@ -762,10 +768,37 @@ static void logOneShotStateTransitions()
     if (sPrevOneShotActive != now && selva::combat::isCombatDebugEnabled())
     {
         const auto fd = sSampler.frameDiagnostics();
-        combatLog("[combat:one-shot %.4fs] active=%d weight=%.3f phase=%d\n", selva::wallClock(),
-                  now ? 1 : 0, fd.one_shot_weight, fd.one_shot_phase);
+        if (now)
+        {
+            sOneShotPosStart = sPlayer.pos;
+            sOneShotHipAccumXZ = glm::vec2(0.0f);
+            combatLog("[combat:one-shot %.4fs] active=1 weight=%.3f phase=%d clip=%s\n",
+                      selva::wallClock(), fd.one_shot_weight, fd.one_shot_phase,
+                      fd.one_shot_name ? fd.one_shot_name : "(none)");
+        }
+        else
+        {
+            const glm::vec3 d = sPlayer.pos - sOneShotPosStart;
+            const float net_xz = glm::length(glm::vec2(d.x, d.z));
+            const float hip_xz = glm::length(sOneShotHipAccumXZ);
+            combatLog("[combat:one-shot %.4fs] active=0 weight=%.3f  hip_authored=|%.3fm| "
+                      "player_displacement=|%.3fm|  source=%s\n",
+                      selva::wallClock(), fd.one_shot_weight, hip_xz, net_xz,
+                      net_xz < 0.01f ? "INPLACE" : (hip_xz > 0.05f ? "clip" : "velocity"));
+        }
     }
     sPrevOneShotActive = now;
+}
+
+// Sample the sampler's per-frame consumed hip delta and (when a one-
+// shot is active) accumulate it into sOneShotHipAccumXZ for the exit
+// log. Read-only on the sampler — consumedHipDelta is const.
+static void accumulateOneShotHipDelta()
+{
+    if (!sSampler.isOneShotActive())
+        return;
+    const glm::vec3 d = sSampler.consumedHipDelta();
+    sOneShotHipAccumXZ += glm::vec2(d.x, d.z);
 }
 
 // Post-dodge attack handoff. Once the dodge has fully ended AND the
@@ -792,6 +825,72 @@ static bool tryFirePostDodgeAttack(bool shift_held, float combo_input_buffer_sec
     }
     sPostDodgeAttack.pending = false;
     return fired;
+}
+
+// Velocity-driven locomotion physics. Accelerates the player's
+// ground-plane velocity toward a target speed (idle when no input,
+// walk_speed when WASD held, run_speed when WASD+sprinting). On
+// release, decelerates toward zero. Acceleration vs deceleration are
+// separately tunable.
+//
+// Why velocity: the previous discrete (Idle/Walk/Run) state machine
+// produced visible artifacts on simultaneous WASD+Sprint edges
+// because the two inputs had different debounce latencies — the SM
+// would briefly see a mismatched (is_moving, is_sprinting) edge and
+// pick Walk between Run and Idle. Velocity has no discrete states;
+// the animation system reads the magnitude continuously and weights
+// idle/walk/run clips smoothly. No transition clips, no debounce,
+// no mismatched edges.
+//
+// `movement_locked` (dodge active OR full-mask one-shot) freezes
+// velocity in place — gameplay code (dodge clip's hip motion) drives
+// world translation directly during those windows.
+// Most-recent target speed (m/s) computed by tickPlayerVelocity. Read
+// by the [sm loco-pick] logger so the trace shows intent (where
+// velocity is heading) alongside current speed (where it is now). Lets
+// us see whether the visible idle->walking->running cascade comes
+// from the velocity ramp or from an actual intent change.
+static float sLastTargetSpeed = 0.0f;
+
+static void tickPlayerVelocity(const glm::vec3& moveIntent, bool movement_locked,
+                               const selva::tuning::Tunables& tun, float dt)
+{
+    if (movement_locked)
+    {
+        sPlayer.velocity_xz = glm::vec2(0.0f);
+        sLastTargetSpeed = 0.0f;
+        return;
+    }
+    const float intent_mag = glm::length(moveIntent);
+    glm::vec2 target_velocity(0.0f);
+    if (intent_mag > 0.0001f)
+    {
+        const glm::vec3 dir = moveIntent / intent_mag;
+        const float target_speed = sPlayer.sprinting ? tun.run_speed : tun.walk_speed;
+        target_velocity = glm::vec2(dir.x, dir.z) * target_speed;
+    }
+    sLastTargetSpeed = glm::length(target_velocity);
+    const glm::vec2 delta = target_velocity - sPlayer.velocity_xz;
+    const float delta_mag = glm::length(delta);
+    if (delta_mag <= 0.0001f)
+    {
+        sPlayer.velocity_xz = target_velocity;
+        return;
+    }
+    // Choose accel vs decel based on direction of velocity change.
+    // Speeding up = accel (any case where the new speed is higher OR
+    // direction-changing toward a new target). Slowing down = decel
+    // (target speed is lower OR target is zero). Magnitude check is
+    // adequate for our needs; future polish could split tangential
+    // vs radial components.
+    const float current_speed = glm::length(sPlayer.velocity_xz);
+    const float target_speed = glm::length(target_velocity);
+    const float rate = (target_speed >= current_speed) ? tun.locomotion_accel : tun.locomotion_decel;
+    const float max_step = rate * dt;
+    if (delta_mag <= max_step)
+        sPlayer.velocity_xz = target_velocity;
+    else
+        sPlayer.velocity_xz += (delta / delta_mag) * max_step;
 }
 
 // Smooth-turn the player's yaw toward the move-intent direction at
@@ -1227,8 +1326,10 @@ capturePreUpdateJoints(bool loco_clip_changed, const std::string& clip_name, flo
     if (!selva::combat::isCombatDebugEnabled() || !loco_clip_changed)
         return out;
     const auto fd = sSampler.frameDiagnostics();
-    combatLog("[sm %.4fs] loco-pick %s@%.3fs -> %s (blend=%.3fs)\n", selva::wallClock(),
-              sLastLocoClipName.c_str(), fd.loco_current_time, clip_name.c_str(), blend_seconds);
+    const float speed_now = glm::length(sPlayer.velocity_xz);
+    combatLog("[sm %.4fs] loco-pick %s@%.3fs -> %s (blend=%.3fs speed_now=%.2f target=%.2f)\n",
+              selva::wallClock(), sLastLocoClipName.c_str(), fd.loco_current_time, clip_name.c_str(),
+              blend_seconds, speed_now, sLastTargetSpeed);
     const char* names[] = {"mixamorig:RightHand", "mixamorig:LeftHand", "mixamorig:RightFoot",
                            "mixamorig:LeftFoot", "mixamorig:Hips"};
     for (const char* n : names)
@@ -1276,84 +1377,98 @@ static float extendBlendForCrossFamily(const std::string& from, const std::strin
     return std::max(current_blend, cross_family_min);
 }
 
+// Pick the locomotion clip for this frame from the player's
+// continuous velocity magnitude. Speed thresholds:
+//   * speed <= idle_to_walk_speed  → idle
+//   * speed <= walk_to_run_speed   → walking
+//   * speed >  walk_to_run_speed   → running
+// The idle clip is stance-dependent (combat-ready vs peaceful).
+//
+// Why velocity instead of (Idle/Walk/Run) state with debounced
+// inputs: the SM produced visible artifacts at simultaneous
+// WASD+Sprint edges because input signals had different latencies
+// (WASD debounced 100ms, sprint instant) and the SM would briefly
+// pick a wrong intermediate state. Velocity is a single continuous
+// scalar; clip selection reads it without state-machine bookkeeping
+// or debouncing. Acceleration / deceleration physics smooth the
+// edges naturally — there's no "edge" to mis-time.
+//
+// The picker reads TARGET speed (where velocity is heading), not
+// current speed. Reading current speed produced a visible
+// idle->walking->running cascade on a fresh sprint-from-idle: as
+// velocity ramped through the 0.30 (idle_to_walk) and 3.0
+// (walk_to_run) thresholds, the picker fired three back-to-back
+// cross-family transitions in ~150ms, stacking three pose-match
+// residuals + inertialization decays on top of each other and
+// producing a visible foot/leg spasm. Target speed is the player's
+// intent (walk_speed when WASD held; run_speed when WASD+sprint;
+// 0 otherwise) and changes only on input edges, so the picker fires
+// at most once per intent change. The crossfade hides the velocity
+// ramp; intent stays in lockstep with what the player asked for.
+static const char* selectLocomotionClipFromSpeed(float target_speed, bool is_armed,
+                                                 const selva::tuning::Tunables& tun)
+{
+    if (target_speed <= tun.idle_to_walk_speed)
+    {
+        // Combat stance idle when stance is active; peaceful idle
+        // otherwise. Stance management still honors stance_active_until.
+        const bool combat_ready = sLocomotionSM.combat_stance ==
+                                  selva::gameplay::CombatStance::CombatReady;
+        if (combat_ready)
+            return is_armed ? "sword_and_shield_idle_4" : "unarmed_combat_idle";
+        return "standard_idle";
+    }
+    if (target_speed <= tun.walk_to_run_speed)
+        return "walking";
+    return "running";
+}
+
+// Combat stance lifecycle (preserved from the old SM): CombatReady
+// engages on combat_input_this_frame; auto-decays to Peaceful after
+// stance_active_until. Velocity model doesn't care about stance
+// directly, but the idle clip-pick does (combat-stance idle vs
+// peaceful idle).
+static void tickCombatStance(bool combat_input_this_frame,
+                             const selva::tuning::Tunables& tun)
+{
+    if (combat_input_this_frame)
+    {
+        sLocomotionSM.combat_stance = selva::gameplay::CombatStance::CombatReady;
+        const float new_until = selva::wallClock() + tun.combat_idle_grace_seconds;
+        if (new_until > sLocomotionSM.stance_active_until)
+            sLocomotionSM.stance_active_until = new_until;
+    }
+    if (sLocomotionSM.combat_stance == selva::gameplay::CombatStance::CombatReady &&
+        selva::wallClock() >= sLocomotionSM.stance_active_until)
+    {
+        sLocomotionSM.combat_stance = selva::gameplay::CombatStance::Peaceful;
+    }
+}
+
 // Pick the locomotion clip for this frame. Honors the F1 debug
-// clip-preview override; otherwise drives the locomotion SM with
-// debounced WASD and applies the held-block + loco-freeze-during-
-// BlendIn overrides. Updates sLastLocoClipName for next-frame combat
-// diagnostics.
-static LocomotionPick selectLocomotionClip(const glm::vec3& moveIntent, float dt,
+// clip-preview override; otherwise reads the player's velocity
+// magnitude and picks idle/walking/running by speed-thresholds.
+// Applies held-block override and the loco-freeze guards.
+static LocomotionPick selectLocomotionClip(const glm::vec3& /*moveIntent*/, float /*dt*/,
                                            bool combat_input_this_frame,
                                            const selva::tuning::Tunables& tun)
 {
     LocomotionPick pick;
     pick.blend_seconds = tun.anim_blend_seconds;
+    pick.loops = true;
     if (!sDebugClipName.empty())
     {
         pick.clip_name = sDebugClipName;
         pick.clip = sClips.get(pick.clip_name);
-        pick.loops = true;
         pick.blend_seconds =
             sLocomotionConfig.blendInSeconds(pick.clip_name, tun.anim_blend_seconds);
         if (pick.clip != nullptr)
             return pick;
     }
 
-    const bool wasd_intent_raw = glm::length(moveIntent) > 0.0001f;
-    tickWasdDebounce(wasd_intent_raw, tun.wasd_debounce_seconds);
-    const bool wasd_intent = sStableWasdIntent;
-    const bool attack_in_flight = sSampler.isOneShotActive() || sPendingFirstAction.active;
-    const bool in_attack_recovery = selva::wallClock() < selva::combat::locoLockoutUntil();
-    const bool is_moving = wasd_intent;
-    // Debounce sprint with the SAME debounce as WASD so the SM
-    // never sees mismatched (is_moving, is_sprinting) edges.
-    //
-    // Root cause being addressed: WASD and Sprint are independent
-    // input signals with different latencies. WASD goes through a
-    // wasd_debounce_seconds debounce; sprint changes are
-    // instantaneous. When the player releases WASD+Space
-    // simultaneously, sprint drops in 1 frame and is_moving drops
-    // 100ms later. During those 100ms, the SM sees
-    // (is_moving=true, is_sprinting=false) and picks Walk —
-    // producing a Run → Walk → Idle double-transition with
-    // overlapping crossfades. Same artifact symmetric on press
-    // (already addressed by early-commit on Space+WASD-held).
-    //
-    // Synchronizing the debounces makes sprint and WASD edges
-    // appear simultaneously to the SM, so Run → Idle goes through
-    // a single crossfade with no Walk intermediate.
-    static bool sStableSprintIntent = false;
-    static float sSprintDisagreeStartedAt = -1.0f;
-    if (sPlayer.sprinting == sStableSprintIntent)
-    {
-        sSprintDisagreeStartedAt = -1.0f;
-    }
-    else if (sSprintDisagreeStartedAt < 0.0f)
-    {
-        sSprintDisagreeStartedAt = selva::wallClock();
-    }
-    else if (selva::wallClock() - sSprintDisagreeStartedAt >= tun.wasd_debounce_seconds)
-    {
-        sStableSprintIntent = sPlayer.sprinting;
-        sSprintDisagreeStartedAt = -1.0f;
-    }
-    const bool is_sprinting = sStableSprintIntent;
-    logSmInputChanges(wasd_intent, attack_in_flight, in_attack_recovery, is_moving);
-
-    const bool clip_done_this_frame = sSampler.locomotionClipFinished();
+    tickCombatStance(combat_input_this_frame, tun);
     const bool is_armed = !isUnarmed(sEquipment);
-    selva::gameplay::LocomotionTickInput sm_in;
-    sm_in.is_moving = is_moving;
-    sm_in.is_sprinting = is_sprinting;
-    sm_in.clip_finished_this_frame = clip_done_this_frame;
-    sm_in.combat_input_this_frame = combat_input_this_frame;
-    sm_in.is_armed = is_armed;
-    sm_in.dt = dt;
-    sm_in.combat_grace_seconds = tun.combat_idle_grace_seconds;
-    sm_in.wall_clock_seconds = selva::wallClock();
-    const auto sm_out = tickLocomotionStateMachine(sLocomotionSM, sm_in);
-    pick.clip_name = sm_out.clip_name;
-    pick.loops = sm_out.loops;
-    pick.blend_seconds = sm_out.blend_seconds;
+    pick.clip_name = selectLocomotionClipFromSpeed(sLastTargetSpeed, is_armed, tun);
 
     // Held-block override: force loco track to the block-idle loop
     // when blocking with a buckler (which has a dedicated idle clip).
@@ -1477,6 +1592,11 @@ static void logBlendOutFadeJoints()
 // Rotate clip-local hip XZ delta into world frame using the player's
 // yaw and add it to sPlayer.pos. Y is preserved (clip authors no
 // vertical motion in the locomotion path; freeze handles the rest).
+// Used for dodge translation (the dodge clip's authored hip motion
+// drives world push). Locomotion uses applyVelocityToPlayerPos
+// instead so the world-translation rate matches the input-driven
+// velocity, not the clip's authored cadence (which would foot-skate
+// at any tunable speed != the clip's authored speed).
 static void applyHipDeltaToPlayerPos()
 {
     const glm::vec3 hip_local = sSampler.consumedHipDelta();
@@ -1487,6 +1607,17 @@ static void applyHipDeltaToPlayerPos()
     const glm::vec3 hip_world(-cy * hip_local.x - sy * hip_local.z, 0.0f,
                               sy * hip_local.x - cy * hip_local.z);
     sPlayer.pos += hip_world;
+}
+
+// Translate the player by their current XZ velocity. Velocity is
+// input-driven (acceleration / deceleration toward target speed in
+// tickPlayerVelocity) so the world-push rate is independent of the
+// loco clip's authored hip cadence. The clip's hip motion is ignored
+// for locomotion — only velocity * dt lands on sPlayer.pos.
+static void applyVelocityToPlayerPos(float dt)
+{
+    sPlayer.pos +=
+        glm::vec3(sPlayer.velocity_xz.x, 0.0f, sPlayer.velocity_xz.y) * dt;
 }
 
 // Mid-roll yaw steer: bend the trajectory toward the live move-intent
@@ -1876,12 +2007,18 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     // the player would compound translation again (same pattern as the
     // root-motion problem we already fixed for locomotion).
     const bool movement_locked = sDodgeActive || (one_shot_active && attack_locks);
-    // Yaw is gameplay-driven (the clip authors hip motion in clip-local
-    // space; we rotate that delta by sPlayer.yaw to land it in world
-    // frame). Smooth-turn toward the camera-relative move intent at
-    // tun.turn_rate. Translation itself happens after sSampler.update
-    // below, where we read consumedHipDelta from the freshly-sampled
-    // pose.
+    // Velocity-driven locomotion. tickPlayerVelocity ramps
+    // sPlayer.velocity_xz toward target_speed (walk_speed when
+    // sprinting==false, run_speed when sprinting==true) using
+    // locomotion_accel / locomotion_decel; selectLocomotionClip
+    // reads |velocity_xz| to pick idle/walking/running. World
+    // translation comes from velocity * dt below — independent of
+    // the clip's authored hip cadence so any tunable speed lands
+    // without foot-skate against the clip.
+    //
+    // Yaw is gameplay-driven; smooth-turn toward the camera-relative
+    // move intent at tun.turn_rate.
+    tickPlayerVelocity(moveIntent, movement_locked, tun, dt);
     tickPlayerYaw(moveIntent, movement_locked, tun.turn_rate, dt);
 
     // Pick + advance the sampler. The locomotion SM picks the loco
@@ -1896,20 +2033,51 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
 
     logSpliceResiduals(pick.pre_update_joints, pick.clip);
     logBlendOutFadeJoints();
+    accumulateOneShotHipDelta();
 
-    // Root-motion translation. Locomotion path runs unless we're
-    // dodging or in F1 clip-preview mode (the dodge block below owns
-    // world push during a dodge so we don't double-translate).
-    if (!sDodgeActive && sDebugClipName.empty())
-        applyHipDeltaToPlayerPos();
-
-    // Dodge translation: clip's authored hip motion drives world
-    // translation directly (rolls = clip-local +Z forward, backsteps =
-    // clip-local -Z backward). Mid-roll steering bends the trajectory.
-    if (sDodgeActive && sDebugClipName.empty())
+    // Translation source = pose source. When a one-shot (attack or
+    // dodge) is active, the clip's authored hip motion drives world
+    // push; the player travels along the clip's authored arc. When
+    // no one-shot is active, locomotion translation is input-driven
+    // velocity (independent of the loco clip's authored hip cadence
+    // so any tunable speed lands without foot-skate).
+    //
+    // F1 clip-preview pins the player in place (no translation at
+    // all — the operator is staring at a single clip's pose).
+    //
+    // Same invariant the dodge path has always followed; this just
+    // applies it to attack one-shots too. Without it, an attack like
+    // flying_knee_punch_combo (which authors 0.57m of forward XZ
+    // travel) plays in place because movement_locked zeros velocity
+    // and there's no other translation source.
+    const char* trans_source = nullptr;
+    if (!sDebugClipName.empty())
     {
-        applyDodgeSteer(moveIntent, tun.dodge_steer_rate, dt);
+        trans_source = "debug-pinned";
+    }
+    else if (sSampler.isOneShotActive())
+    {
+        if (sDodgeActive)
+            applyDodgeSteer(moveIntent, tun.dodge_steer_rate, dt);
         applyHipDeltaToPlayerPos();
+        trans_source = "clip-hip";
+    }
+    else
+    {
+        applyVelocityToPlayerPos(dt);
+        trans_source = "velocity";
+    }
+    static const char* sLastTransSource = "";
+    if (selva::combat::isCombatDebugEnabled() && trans_source != sLastTransSource)
+    {
+        const float speed_now = glm::length(sPlayer.velocity_xz);
+        const glm::vec3 hip = sSampler.consumedHipDelta();
+        const float hip_xz = glm::length(glm::vec2(hip.x, hip.z));
+        combatLog("[trans %.4fs] source=%s speed_now=%.2f hip_delta=|%.4fm/frame| "
+                  "movement_locked=%d dodge=%d 1shot=%d\n",
+                  selva::wallClock(), trans_source, speed_now, hip_xz, movement_locked ? 1 : 0,
+                  sDodgeActive ? 1 : 0, sSampler.isOneShotActive() ? 1 : 0);
+        sLastTransSource = trans_source;
     }
 
     tickCsvRecording(dt);
