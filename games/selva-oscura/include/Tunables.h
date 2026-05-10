@@ -80,16 +80,20 @@ struct Tunables
     // enough that a quick re-engage doesn't snap back to peaceful;
     // short enough that walking away clearly drops the stance.
     float combat_idle_grace_seconds = 2.0f;
-    // Delay (wall-clock seconds) between a Peaceful → Attack click and
-    // the swing one-shot actually firing. During this window the
-    // locomotion track crossfades from standard_idle to the combat-
-    // stance idle clip, so the player visibly settles into a guard
-    // pose BEFORE the first slash starts. Without this delay the
-    // first attack from peaceful idle reads as a teleport-into-stance
-    // (the attack clip's t=0 pose IS combat-stance, so the first
-    // visible frame of the swing is already braced — no establishing
-    // beat). Sized to roughly match the cross-fade duration into the
-    // combat-stance loop. 0 disables the beat (instant-fire).
+    // Delay (wall-clock seconds) between a Peaceful → Block press
+    // (RMB) and the block one-shot actually firing. During this
+    // window the locomotion track crossfades from standard_idle to
+    // the combat-stance idle clip, so the player visibly settles
+    // into a guard pose BEFORE the shield raise. Sized to roughly
+    // match the cross-fade duration into the combat-stance loop.
+    // 0 disables the beat (instant-fire).
+    //
+    // Attacks fire instantly regardless of this delay; the cross-
+    // family blend extender (cross_family_min_blend_seconds) is
+    // what handles the standard_idle → combat-idle handoff for
+    // attacks. Only blocks honor this delay because their hold-RMB
+    // semantics demand the establishing beat — you wouldn't want
+    // RMB to read as "I tapped block while still standing relaxed."
     float combat_entry_delay_seconds = 0.18f;
 
     // ---- Attack combos ----

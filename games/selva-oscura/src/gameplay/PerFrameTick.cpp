@@ -1224,41 +1224,27 @@ struct LocomotionPick
     std::vector<PreUpdateJoint> pre_update_joints;
 };
 
-// True when `clip_name` is any stationary idle loop (Peaceful or
-// CombatReady, armed or unarmed). All have the character standing
-// still; their hand/arm poses are pose-far from gait clips' mid-
-// stride neutral.
-static bool isIdleClip(const std::string& clip_name)
-{
-    return clip_name == "standard_idle" || clip_name == "unarmed_combat_idle" ||
-           clip_name == "sword_and_shield_idle_4";
-}
-
-// True when `clip_name` is a gait clip (has authored mid-stride
-// poses). Used by the cross-family blend extender below.
-static bool isGaitClip(const std::string& clip_name)
-{
-    return clip_name == "walking" || clip_name == "running";
-}
-
-// Bump blend_seconds for idle <-> gait transitions. The pose gap
-// between an idle's stationary stance and a gait clip's mid-stride
-// is too wide for a 0.10-0.20s crossfade to hide, producing 0.3-
-// 0.8m foot/hand residuals at the splice (visible as a leg jerk
-// or arm snap). The wider blend gives the residual more time to
-// ease out — the inertialization decay matches blend_seconds, so
-// the offset gets a longer window to absorb on top of the wider
-// crossfade. Within-family transitions (gait <-> gait, idle <->
-// idle) stay at their normal duration.
+// Bump blend_seconds when the source and destination clips belong
+// to different families (per locomotion.json `family` tag). The
+// pose gap across families is geometrically wider than within;
+// the default 0.10-0.20s blend produces 0.3-0.8m foot/hand
+// residuals at the splice (visible as leg jerk / arm snap).
+// Wider blend gives the residual more time to ease out — the
+// inertialization decay matches blend_seconds, so the offset gets
+// a longer window to absorb on top of the wider crossfade.
 //
-// Tunable via F1 panel "Cross-family min (s)" — start at 0.40s and
-// adjust based on perceived snap vs. lag.
+// Either side untagged (empty family) → no bump (treat as
+// "matches everything"). This makes adding a new clip safe-by-
+// default: forget the family tag and you get default blends, no
+// regression.
+//
+// Tunable via F1 panel "Cross-family min (s)".
 static float extendBlendForCrossFamily(const std::string& from, const std::string& to,
                                        float current_blend, float cross_family_min)
 {
-    const bool cross_family =
-        (isIdleClip(from) && isGaitClip(to)) || (isGaitClip(from) && isIdleClip(to));
-    if (!cross_family)
+    const std::string& from_family = sLocomotionConfig.family(from);
+    const std::string& to_family = sLocomotionConfig.family(to);
+    if (from_family.empty() || to_family.empty() || from_family == to_family)
         return current_blend;
     return std::max(current_blend, cross_family_min);
 }
@@ -1756,6 +1742,12 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     engine.setWindowTitle("Selva Oscura  |  FPS " + std::to_string(fps));
 
     const auto& tun = selva::tuning::current();
+    // Re-apply inertialization decay shape every frame so F1 panel
+    // edits to base / scale / max take effect live without a
+    // restart. Cheap (3 float assignments inside the sampler).
+    sSampler.setInertializationScaling(tun.inertialize_decay_base_seconds,
+                                       tun.inertialize_decay_scale_per_radian,
+                                       tun.inertialize_decay_max_seconds);
     tickMouseLook(tun);
 
     const Uint8* keys = SDL_GetKeyboardState(nullptr);

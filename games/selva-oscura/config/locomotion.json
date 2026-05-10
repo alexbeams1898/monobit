@@ -1,9 +1,10 @@
 {
-  "_comment": "Per-clip blend-in duration for locomotion transitions. The duration controls how long it takes to crossfade INTO this clip from whatever was playing before. Asymmetric values match perceptual expectations: settling into idle feels natural slow, snapping into run feels good fast. Names match selectClipNameForPlayer in main.cpp; walking/running come from the Action Adventure pack (have authored hip motion, used as root motion source).",
+  "_comment": "Per-clip locomotion metadata. blend_in_seconds = how long to crossfade INTO this clip. family = pose-family tag for the cross-family blend extender (cross_family_min_blend_seconds). Within-family transitions (e.g. walking <-> running) use the per-clip blend_in_seconds; across-family (e.g. unarmed_combat_idle <-> running) get bumped to the cross-family minimum so the wider pose gap doesn't snap visibly. Family is open-ended; common values are 'gait' (mid-stride neutral arms) and 'idle' (stationary stance). To add a new clip, add a row here with its family — no C++ changes needed.",
   "clips": [
-    { "name": "standard_idle",       "blend_in_seconds": 0.30 },
-    { "name": "unarmed_combat_idle", "blend_in_seconds": 0.40 },
-    { "name": "walking",             "blend_in_seconds": 0.18 },
-    { "name": "running",             "blend_in_seconds": 0.10 }
+    { "name": "standard_idle",         "blend_in_seconds": 0.30, "family": "idle" },
+    { "name": "unarmed_combat_idle",   "blend_in_seconds": 0.40, "family": "idle" },
+    { "name": "sword_and_shield_idle_4","blend_in_seconds": 0.40, "family": "idle" },
+    { "name": "walking",               "blend_in_seconds": 0.18, "family": "gait" },
+    { "name": "running",               "blend_in_seconds": 0.10, "family": "gait" }
   ]
 }
