@@ -1224,6 +1224,45 @@ struct LocomotionPick
     std::vector<PreUpdateJoint> pre_update_joints;
 };
 
+// True when `clip_name` is any stationary idle loop (Peaceful or
+// CombatReady, armed or unarmed). All have the character standing
+// still; their hand/arm poses are pose-far from gait clips' mid-
+// stride neutral.
+static bool isIdleClip(const std::string& clip_name)
+{
+    return clip_name == "standard_idle" || clip_name == "unarmed_combat_idle" ||
+           clip_name == "sword_and_shield_idle_4";
+}
+
+// True when `clip_name` is a gait clip (has authored mid-stride
+// poses). Used by the cross-family blend extender below.
+static bool isGaitClip(const std::string& clip_name)
+{
+    return clip_name == "walking" || clip_name == "running";
+}
+
+// Bump blend_seconds for idle <-> gait transitions. The pose gap
+// between an idle's stationary stance and a gait clip's mid-stride
+// is too wide for a 0.10-0.20s crossfade to hide, producing 0.3-
+// 0.8m foot/hand residuals at the splice (visible as a leg jerk
+// or arm snap). The wider blend gives the residual more time to
+// ease out — the inertialization decay matches blend_seconds, so
+// the offset gets a longer window to absorb on top of the wider
+// crossfade. Within-family transitions (gait <-> gait, idle <->
+// idle) stay at their normal duration.
+//
+// Tunable via F1 panel "Cross-family min (s)" — start at 0.40s and
+// adjust based on perceived snap vs. lag.
+static float extendBlendForCrossFamily(const std::string& from, const std::string& to,
+                                       float current_blend, float cross_family_min)
+{
+    const bool cross_family =
+        (isIdleClip(from) && isGaitClip(to)) || (isGaitClip(from) && isIdleClip(to));
+    if (!cross_family)
+        return current_blend;
+    return std::max(current_blend, cross_family_min);
+}
+
 // Pick the locomotion clip for this frame. Honors the F1 debug
 // clip-preview override; otherwise drives the locomotion SM with
 // debounced WASD and applies the held-block + loco-freeze-during-
@@ -1298,10 +1337,17 @@ static LocomotionPick selectLocomotionClip(const glm::vec3& moveIntent, float dt
 
     pick.clip = sClips.get(pick.clip_name);
     const bool loco_clip_changed = (pick.clip_name != sLastLocoClipName);
-    pick.pre_update_joints =
-        capturePreUpdateJoints(loco_clip_changed, pick.clip_name, sm_out.blend_seconds);
-    sLastLocoClipName = pick.clip_name;
+    const std::string from_clip = sLastLocoClipName;
     pick.blend_seconds = sLocomotionConfig.blendInSeconds(pick.clip_name, pick.blend_seconds);
+    pick.blend_seconds = extendBlendForCrossFamily(from_clip, pick.clip_name, pick.blend_seconds,
+                                                   tun.cross_family_min_blend_seconds);
+    // Capture pre-update joints AND emit the [sm loco-pick] log after
+    // the final blend has been computed, so the log shows the
+    // duration the sampler will actually use (not the SM's pre-
+    // override value).
+    pick.pre_update_joints =
+        capturePreUpdateJoints(loco_clip_changed, pick.clip_name, pick.blend_seconds);
+    sLastLocoClipName = pick.clip_name;
     return pick;
 }
 
@@ -1310,15 +1356,19 @@ static LocomotionPick selectLocomotionClip(const glm::vec3& moveIntent, float dt
 // pre-update live pose.
 // Per-joint residual thresholds for anomaly tagging. A residual
 // over the threshold prefixes the line with `[!]` so the eye
-// catches it when scanning the log. Values picked from observed
-// "smooth" transitions (e.g. standard_idle->walking lands ~0.05m
-// hand) so anything ~3-5x above is suspicious.
+// catches it when scanning the log. Calibration target: empirically
+// "smooth" walking<->running splices land feet at 0.16-0.22m mid-
+// stride and hands within 0.20m; visible spasms hit feet 0.4m+ and
+// hands 0.4m+. Thresholds chosen to be just above the smooth
+// upper-bound so within-family gait transitions don't generate
+// noise but cross-family (combat-idle <-> gait) and BlendOut-
+// handoff anomalies still flag.
 static float anomalyThresholdForJoint(const char* joint_name)
 {
     if (std::strstr(joint_name, "Hand") != nullptr)
         return 0.30f;
     if (std::strstr(joint_name, "Foot") != nullptr)
-        return 0.20f;
+        return 0.30f;
     if (std::strstr(joint_name, "Hips") != nullptr)
         return 0.15f;
     return 0.30f;

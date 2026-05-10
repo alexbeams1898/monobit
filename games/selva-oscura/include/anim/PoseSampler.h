@@ -183,10 +183,30 @@ struct PoseSampler
     // Calling again while a one-shot is already playing cancels the
     // current one and starts the new one with a fresh blend-in. The
     // one-shot does NOT loop; it ends when its clip duration elapses.
+    // Optional trailing parameters for playOneShot. Default-
+    // constructed values match the historical "no special handling"
+    // behavior; profile-driven callers (TransitionProfile) populate
+    // explicit values.
+    struct OneShotOptions
+    {
+        // Hold the clip's last frame instead of auto-fading. Used
+        // for held actions like the unarmed block.
+        bool freeze_last = false;
+        // Registry key for diagnostic logs (e.g. "jab"). Empty
+        // string = falls back to ozz Animation::name() which is
+        // always "mixamo.com" for Mixamo clips.
+        const char* clip_key = "";
+        // Suppress SM-driven loco clip swaps during this one-shot's
+        // Hold + BlendOut phases. True for dodges/blocks (no
+        // intended stance change). False for attacks (the attack
+        // triggers CombatReady; combat-idle should be live by
+        // BlendOut). Only honored when mask == Full.
+        bool freeze_loco_during_one_shot = false;
+    };
+
     void playOneShot(const AnimationClip& clip, float blend_in_seconds, float blend_out_seconds,
-                     BodyMask mask = BodyMask::Full, float start_time_seconds = 0.0f,
-                     float playback_rate = 1.0f, bool freeze_last = false,
-                     const char* clip_key = "");
+                     BodyMask mask, float start_time_seconds, float playback_rate,
+                     const OneShotOptions& options);
 
     // Request the active one-shot to start blending out NOW. Used to
     // release a held (freeze_last) one-shot like the unarmed block.

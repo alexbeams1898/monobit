@@ -75,6 +75,10 @@ TransitionProfile dodge()
     p.source_prep = TransitionProfile::SourcePrep::None;
     p.enroll_inertialization = false;
     p.lockout = TransitionProfile::Lockout::None;
+    // Dodge isn't intent-driving a stance change; freeze loco so
+    // the dodge fades back into the player's prior loco clip rather
+    // than into whatever the SM picks during the dodge's flight.
+    p.freeze_loco_during_one_shot = true;
     return p;
 }
 
@@ -89,8 +93,12 @@ void fireOneShotWithProfile(const selva::anim::AnimationClip& clip,
         sampler.setLocomotionClipTime(0.0f);
     if (profile.enroll_inertialization)
         sampler.requestInertialization(profile.blend_in_seconds);
+    selva::anim::PoseSampler::OneShotOptions opts;
+    opts.freeze_last = profile.freeze_last;
+    opts.clip_key = clip_key;
+    opts.freeze_loco_during_one_shot = profile.freeze_loco_during_one_shot;
     sampler.playOneShot(clip, profile.blend_in_seconds, profile.blend_out_seconds, profile.mask,
-                        start_seconds, playback_rate, profile.freeze_last, clip_key);
+                        start_seconds, playback_rate, opts);
 }
 
 void applyProfileLockout(const TransitionProfile& profile, float cancel_window_close_at)

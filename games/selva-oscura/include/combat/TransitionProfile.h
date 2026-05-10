@@ -37,6 +37,16 @@ struct TransitionProfile
     float lockout_seconds = 0.0f;
     selva::anim::PoseSampler::BodyMask mask = selva::anim::PoseSampler::BodyMask::Full;
     bool freeze_last = false;
+
+    // Hold the loco track stable through the one-shot's Hold +
+    // BlendOut phases instead of letting the SM swap it underneath.
+    // Dodges/blocks set this true: the player wasn't intending a
+    // stance change, the dodge fades back into the same loco the
+    // player was on. Attacks keep this false: the attack triggers
+    // CombatReady, and combat-idle should be live by the time the
+    // attack fades out so the reveal isn't standard_idle for a
+    // frame. Default false (attack-friendly).
+    bool freeze_loco_during_one_shot = false;
 };
 
 namespace profiles

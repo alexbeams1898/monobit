@@ -215,6 +215,14 @@ struct PoseSampler::Impl
     // requests blend-out. Used for held actions like unarmed block.
     bool one_shot_freeze_last = false;
 
+    // When true, the freeze gate suppresses loco clip swaps during
+    // this one-shot's Hold + BlendOut phases. Set true for dodges/
+    // blocks (player wasn't intending a loco-stance change; the
+    // one-shot fades back into the prior loco). Set false for
+    // attacks (the attack triggers CombatReady and combat-idle
+    // should be live by BlendOut so the reveal is in-stance).
+    bool one_shot_freeze_loco = false;
+
     // Previous one-shot track for cancel-into-next-clip crossfading.
     // When playOneShot fires while another one-shot has visible weight,
     // we move the outgoing one-shot here and ramp it down concurrently
@@ -523,8 +531,11 @@ void PoseSampler::releaseOneShot()
 
 void PoseSampler::playOneShot(const AnimationClip& clip, float blend_in_seconds,
                               float blend_out_seconds, BodyMask mask, float start_time_seconds,
-                              float playback_rate, bool freeze_last, const char* clip_key)
+                              float playback_rate, const OneShotOptions& options)
 {
+    const bool freeze_last = options.freeze_last;
+    const char* clip_key = options.clip_key;
+    const bool freeze_loco_during_one_shot = options.freeze_loco_during_one_shot;
     if (!impl || !impl->skeleton || !clip.isLoaded())
         return;
 
@@ -563,6 +574,7 @@ void PoseSampler::playOneShot(const AnimationClip& clip, float blend_in_seconds,
     s.one_shot_playback_rate = std::clamp(playback_rate, 0.1f, 10.0f);
     s.one_shot_mask = mask;
     s.one_shot_freeze_last = freeze_last;
+    s.one_shot_freeze_loco = freeze_loco_during_one_shot;
     // Discontinuity: pose will pop from locomotion to one-shot. Force
     // next-frame delta to zero so we don't emit a giant pose-snap
     // delta on the one-shot track. (Locomotion tracks keep their own
@@ -596,10 +608,14 @@ bool PoseSampler::isLocoFrozenByOneShot() const
 {
     if (!impl)
         return false;
-    // Mirrors the internal isLocoFrozenByFullMaskHold predicate. See
-    // its definition for why full-mask Hold gates loco state changes.
-    return impl->one_shot_phase == OneShotPhase::Hold &&
-           impl->one_shot_mask == PoseSampler::BodyMask::Full;
+    // Mirrors the internal isLocoFrozenByFullMaskHold predicate.
+    // Active during Hold + BlendOut of full-mask one-shots that
+    // OPTED IN to loco freezing (dodges/blocks). See that
+    // function's comment for the per-profile rationale.
+    const bool fading_or_held = impl->one_shot_phase == OneShotPhase::Hold ||
+                                impl->one_shot_phase == OneShotPhase::BlendOut;
+    return fading_or_held && impl->one_shot_mask == PoseSampler::BodyMask::Full &&
+           impl->one_shot_freeze_loco;
 }
 
 bool PoseSampler::locomotionClipFinished() const
@@ -2061,7 +2077,26 @@ bool advanceOneShotTrack(Track& t, float dt, float rate)
 // loco-state mutation site; see leg-spasm memory.
 bool isLocoFrozenByFullMaskHold(const PoseSampler::Impl& s)
 {
-    return s.one_shot_phase == OneShotPhase::Hold && s.one_shot_mask == PoseSampler::BodyMask::Full;
+    // Despite the legacy name, this predicate now covers BlendOut
+    // too. Rationale: during a full-mask one-shot's BlendOut, the
+    // loco track is BECOMING visible from being occluded; an SM
+    // clip swap mid-BlendOut snaps the loco to a new clip's t=0
+    // region, and the dodge fading out reveals that snapped pose
+    // (visible leg spasm). Holding the loco clip stable through
+    // both Hold and BlendOut means the dodge fades into the SAME
+    // clip the player was on before the dodge — no surprise reveal.
+    //
+    // Per-profile opt-in via one_shot_freeze_loco: dodges/blocks
+    // set true (no stance change intended); attacks set false (the
+    // attack TRIGGERS a stance change, so combat-idle should be
+    // live by BlendOut for a clean reveal — freezing here would
+    // show standard_idle for a frame after the attack ends, then
+    // crossfade to combat-idle, which reads as "regular idle then
+    // combat idle" instead of "straight to combat idle").
+    const bool fading_or_held =
+        s.one_shot_phase == OneShotPhase::Hold || s.one_shot_phase == OneShotPhase::BlendOut;
+    return fading_or_held && s.one_shot_mask == PoseSampler::BodyMask::Full &&
+           s.one_shot_freeze_loco;
 }
 
 // Drive every active track's clock forward and ramp the previous

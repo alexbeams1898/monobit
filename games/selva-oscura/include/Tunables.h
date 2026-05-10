@@ -65,6 +65,16 @@ struct Tunables
     // snaps instantly. ~0.15-0.25s reads as "smooth" without making
     // the transition feel laggy.
     float anim_blend_seconds = 0.20f;
+    // Minimum blend duration (seconds) for cross-family loco
+    // transitions: idle (stationary stance) ↔ gait (mid-stride).
+    // The pose gap is geometrically wider than within-family
+    // transitions; default 0.20s blends produce visible snap.
+    //
+    // Tradeoff: lower = snappier stance entry after attacks (good)
+    // but more visible arm-snap on stance exit (bad). Higher =
+    // smoother stance exit but laggy stance entry (the "long fade
+    // into combat idle after attacking" feel). 0.25s is a balance.
+    float cross_family_min_blend_seconds = 0.25f;
     // How long to remain in CombatReady stance after the last combat
     // input. The "stays braced for a moment" feel — long
     // enough that a quick re-engage doesn't snap back to peaceful;
@@ -207,13 +217,14 @@ struct Tunables
 // new fields are added.
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     Tunables, time_scale, turn_rate, wasd_debounce_seconds, mouse_sensitivity, pitch_min, pitch_max,
-    follow_distance, follow_height, fov_degrees, anim_blend_seconds, combat_idle_grace_seconds,
-    combat_entry_delay_seconds, combo_reset_grace_seconds, combo_input_buffer_seconds,
-    combo_chain_blend_seconds, first_strike_blend_seconds, inertialize_decay_base_seconds,
-    inertialize_decay_scale_per_radian, inertialize_decay_max_seconds, attack_playback_rate,
-    cancel_open_velocity_fraction, perfect_accuracy_threshold, roll_playback_rate,
-    backstep_playback_rate, dodge_tap_window, dodge_steer_rate, dodge_attack_cancel_fraction,
-    dodge_cancel_fraction, attack_lockout_extension_seconds);
+    follow_distance, follow_height, fov_degrees, anim_blend_seconds, cross_family_min_blend_seconds,
+    combat_idle_grace_seconds, combat_entry_delay_seconds, combo_reset_grace_seconds,
+    combo_input_buffer_seconds, combo_chain_blend_seconds, first_strike_blend_seconds,
+    inertialize_decay_base_seconds, inertialize_decay_scale_per_radian,
+    inertialize_decay_max_seconds, attack_playback_rate, cancel_open_velocity_fraction,
+    perfect_accuracy_threshold, roll_playback_rate, backstep_playback_rate, dodge_tap_window,
+    dodge_steer_rate, dodge_attack_cancel_fraction, dodge_cancel_fraction,
+    attack_lockout_extension_seconds);
 
 // Single global instance. Both gameplay code and the procedural driver
 // read from this; the ImGui panel edits it in place. Keep it global rather
