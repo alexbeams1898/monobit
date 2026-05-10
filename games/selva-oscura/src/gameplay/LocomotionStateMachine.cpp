@@ -17,16 +17,16 @@ LocomotionState LocomotionStateMachine::desiredFromIntent(bool is_moving, bool i
     return LocomotionState::Walk;
 }
 
-const char* selectTransitionClip(LocomotionState from, LocomotionState to, bool* out_loops)
+const char* selectTransitionClip(LocomotionState /*from*/, LocomotionState /*to*/, bool* out_loops)
 {
     *out_loops = false;
-    // Run -> Idle: play the authored run_to_stop deceleration clip so
-    // the foot-down handoff is smooth. Without this, running's mid-
-    // stride leg-raised pose splices directly into idle's planted-foot
-    // pose; pose-match narrows but can't eliminate the residual.
-    // run_to_stop is authored exactly to bridge this.
-    if (from == LocomotionState::Run && to == LocomotionState::Idle)
-        return "run_to_stop";
+    // No authored bridge clips currently. The previous Run → Idle
+    // entry played `run_to_stop` (deceleration) but felt like an
+    // extra animation cutting in between running and standard_idle.
+    // The math layers (pose-match + crossfade + per-joint
+    // inertialization + cross-family blend extension) handle the
+    // splice without an authored bridge. If specific transitions
+    // need authored clips later, add entries here.
     return nullptr;
 }
 

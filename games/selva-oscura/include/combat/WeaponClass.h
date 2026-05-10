@@ -90,6 +90,17 @@ struct WeaponAttack
     // (0.20s). Clamped to clip duration internally.
     float blend_out_seconds = -1.0f;
 
+    // Override: clip-time at which a FIRST-STRIKE fire of this
+    // attack begins (i.e. when no other one-shot is active).
+    // Default behavior: pose-match scans the first 0.30s of the
+    // clip and picks the best splice time. Some attacks (e.g. the
+    // running flying-knee) have a t=0 windup pose that's
+    // geometrically far from the live gait pose; the 0.30s scan
+    // window can't find a close match, so the splice snaps. Set
+    // this to skip past the windup into a frame closer to the
+    // gait pose. Negative = use the auto pose-match.
+    float first_strike_start_seconds = -1.0f;
+
     // Populated at load-time by resolveCancelOpenTime(). Holds the
     // effective clip-local cancel-open seconds (either the override
     // or the result of the joint-velocity scan). Not serialized to
@@ -111,7 +122,8 @@ struct WeaponAttack
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(WeaponAttack, clip, recovery_seconds,
                                                 cancel_open_seconds, motion_joints,
                                                 chain_link_start_seconds, chain_link_blend_seconds,
-                                                blend_out_seconds, expected_button);
+                                                blend_out_seconds, first_strike_start_seconds,
+                                                expected_button);
 
 // All attack clips available within one grip mode. Slots:
 //   light   — standing or walking primary attack chain

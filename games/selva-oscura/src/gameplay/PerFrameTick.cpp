@@ -516,10 +516,24 @@ static bool fireClipForHand(selva::combat::HandSide hand, const char* clip_name,
 
     float pose_matched_start = -1.0f;
     if (one_shot_active && fd_pre.one_shot_name != nullptr)
+    {
         pose_matched_start =
             chainLinkPoseMatchStart(*clip, fd_pre.one_shot_name, fd_pre.one_shot_time);
+    }
     else
-        pose_matched_start = poseMatchStartFromLoco(*clip, 0.30f);
+    {
+        // First-strike: per-attack first_strike_start_seconds takes
+        // priority over the auto pose-match. Used by clips whose t=0
+        // pose is far from any plausible live gait pose (e.g. the
+        // running flying-knee windup) so the JSON can pin the splice
+        // past the windup directly. Negative = fall through to
+        // pose-match.
+        const auto* atk = findAttackForClip(clip_name);
+        if (atk != nullptr && atk->first_strike_start_seconds >= 0.0f)
+            pose_matched_start = atk->first_strike_start_seconds;
+        else
+            pose_matched_start = poseMatchStartFromLoco(*clip, 0.30f);
+    }
     const float start_seconds = (pose_matched_start >= 0.0f) ? pose_matched_start : 0.0f;
 
     TransitionProfile profile = one_shot_active ? profiles::chainLink() : profiles::firstStrike();
@@ -1101,7 +1115,20 @@ static bool tickSpaceInput(const Uint8* keys, const glm::vec3& moveIntent, float
     if (space_now)
     {
         sSpaceHeldSeconds += dt;
-        if (sSpaceHeldSeconds >= dodge_tap_window)
+        // Commit to sprint when EITHER:
+        //   * Space has been held past the tap-window (the
+        //     traditional "you held it long enough, this isn't a
+        //     dodge tap").
+        //   * WASD is currently pressed (the player is clearly
+        //     moving while holding Space — no ambiguity about
+        //     dodge vs sprint, no reason to wait the tap-window).
+        // The SM-side debounce on is_sprinting (in
+        // selectLocomotionClip) synchronizes the commit with the
+        // WASD debounce so SM never sees a mismatched edge — see
+        // that comment for the synchronized-edge rationale.
+        const bool wasd_held = keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_A] ||
+                               keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_D];
+        if (sSpaceHeldSeconds >= dodge_tap_window || wasd_held)
             sPlayer.sprinting = true;
     }
     if (release_edge)
@@ -1277,7 +1304,39 @@ static LocomotionPick selectLocomotionClip(const glm::vec3& moveIntent, float dt
     const bool attack_in_flight = sSampler.isOneShotActive() || sPendingFirstAction.active;
     const bool in_attack_recovery = selva::wallClock() < selva::combat::locoLockoutUntil();
     const bool is_moving = wasd_intent;
-    const bool is_sprinting = sPlayer.sprinting && wasd_intent;
+    // Debounce sprint with the SAME debounce as WASD so the SM
+    // never sees mismatched (is_moving, is_sprinting) edges.
+    //
+    // Root cause being addressed: WASD and Sprint are independent
+    // input signals with different latencies. WASD goes through a
+    // wasd_debounce_seconds debounce; sprint changes are
+    // instantaneous. When the player releases WASD+Space
+    // simultaneously, sprint drops in 1 frame and is_moving drops
+    // 100ms later. During those 100ms, the SM sees
+    // (is_moving=true, is_sprinting=false) and picks Walk —
+    // producing a Run → Walk → Idle double-transition with
+    // overlapping crossfades. Same artifact symmetric on press
+    // (already addressed by early-commit on Space+WASD-held).
+    //
+    // Synchronizing the debounces makes sprint and WASD edges
+    // appear simultaneously to the SM, so Run → Idle goes through
+    // a single crossfade with no Walk intermediate.
+    static bool sStableSprintIntent = false;
+    static float sSprintDisagreeStartedAt = -1.0f;
+    if (sPlayer.sprinting == sStableSprintIntent)
+    {
+        sSprintDisagreeStartedAt = -1.0f;
+    }
+    else if (sSprintDisagreeStartedAt < 0.0f)
+    {
+        sSprintDisagreeStartedAt = selva::wallClock();
+    }
+    else if (selva::wallClock() - sSprintDisagreeStartedAt >= tun.wasd_debounce_seconds)
+    {
+        sStableSprintIntent = sPlayer.sprinting;
+        sSprintDisagreeStartedAt = -1.0f;
+    }
+    const bool is_sprinting = sStableSprintIntent;
     logSmInputChanges(wasd_intent, attack_in_flight, in_attack_recovery, is_moving);
 
     const bool clip_done_this_frame = sSampler.locomotionClipFinished();
