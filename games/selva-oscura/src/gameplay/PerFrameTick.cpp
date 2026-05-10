@@ -151,6 +151,23 @@ struct PostDodgeAttackBuffer
     float buffered_at = 0.0f; // wall-clock when the press was queued
 };
 static PostDodgeAttackBuffer sPostDodgeAttack;
+
+// Buffered dodge press. When Space is tap-released DURING an active
+// one-shot (any attack, mid-recovery one-shot, etc.), the dodge would
+// otherwise drop. Instead we record the snapshot here; the per-frame
+// tick fires it as soon as the active hand's cancel window opens (or
+// the one-shot fully ends). Survives chain advances: pressing Space
+// mid-jab and chaining into hook keeps the buffer until hook's cancel
+// window opens, then dodges. Drops on combo_input_buffer_seconds
+// elapsed without firing.
+struct BufferedDodgePress
+{
+    bool pending = false;
+    glm::vec3 move_intent_at_press{0.0f};
+    float buffered_at = 0.0f;
+};
+static BufferedDodgePress sBufferedDodge;
+
 static float sDodgeElapsed = 0.0f;
 static float sDodgeDuration = 0.0f;
 // Direction flag set at dodge fire time. Forward roll: yaw is set to
@@ -992,6 +1009,56 @@ static bool fireDodgeFromTap(const glm::vec3& moveIntent, float backstep_playbac
 // within dodge_tap_window) fires a dodge; hold past the window
 // engages sprint; release always drops sprint. Returns true if a
 // dodge fired (caller marks combat_input_this_frame).
+// True when EITHER hand's cancel window currently includes wall-clock
+// `now`. Used as the gate for cancel-into-dodge from a buffered press.
+static bool eitherHandCancelWindowOpen()
+{
+    const float now = selva::wallClock();
+    for (auto hand : {selva::combat::HandSide::Right, selva::combat::HandSide::Left})
+    {
+        const auto& w = selva::combat::cancelWindow(hand);
+        if (w.close_at > w.open_at && now >= w.open_at && now <= w.close_at)
+            return true;
+    }
+    return false;
+}
+
+// Fire a buffered dodge if its gate is open this frame. Gate (any
+// of):
+//   * No one-shot is active (clean handoff after attack/dodge ends).
+//   * An attack's cancel window is open (cancel-into-dodge).
+//   * Current dodge has passed dodge_cancel_fraction of its duration
+//     (chain-roll: roll-into-roll near the standup tail).
+// Buffer drops on fire OR on combo_input_buffer_seconds expiry.
+static bool tryFireBufferedDodge(float backstep_playback_rate, float roll_playback_rate,
+                                 float combo_input_buffer_seconds, float dodge_cancel_fraction)
+{
+    if (!sBufferedDodge.pending)
+        return false;
+    const float age = selva::wallClock() - sBufferedDodge.buffered_at;
+    if (age > combo_input_buffer_seconds)
+    {
+        sBufferedDodge.pending = false;
+        return false;
+    }
+    const bool dodge_cancel_open = sDodgeActive && sDodgeDuration > 0.0f &&
+                                   (sDodgeElapsed / sDodgeDuration) >= dodge_cancel_fraction;
+    const bool gate_open =
+        !sSampler.isOneShotActive() || eitherHandCancelWindowOpen() || dodge_cancel_open;
+    if (!gate_open)
+        return false;
+    const bool fired = fireDodgeFromTap(sBufferedDodge.move_intent_at_press, backstep_playback_rate,
+                                        roll_playback_rate);
+    sBufferedDodge.pending = false;
+    if (fired)
+        combatLog("[combat:rhythm %.4fs] buffered dodge FIRED (waited %.3fs since press, "
+                  "via=%s)\n",
+                  selva::wallClock(), age,
+                  dodge_cancel_open ? "dodge-cancel"
+                                    : (sSampler.isOneShotActive() ? "attack-cancel" : "clean"));
+    return fired;
+}
+
 static bool tickSpaceInput(const Uint8* keys, const glm::vec3& moveIntent, float dt,
                            float dodge_tap_window, float backstep_playback_rate,
                            float roll_playback_rate)
@@ -1014,12 +1081,26 @@ static bool tickSpaceInput(const Uint8* keys, const glm::vec3& moveIntent, float
     if (release_edge)
     {
         const bool was_tap = sSpaceHeldSeconds < dodge_tap_window;
-        // Symmetric to the attack-fire dodge guard: an in-flight
-        // attack also commits — dodge can't cancel it. Same splice
-        // math: rolling out of mid-jab is a huge offset.
-        const bool attack_active = sSampler.isOneShotActive() && !sDodgeActive;
-        if (was_tap && !sDodgeFiredThisPress && !sDodgeActive && !attack_active)
-            fired = fireDodgeFromTap(moveIntent, backstep_playback_rate, roll_playback_rate);
+        if (was_tap && !sDodgeFiredThisPress)
+        {
+            const bool blocked = sSampler.isOneShotActive() || sDodgeActive;
+            if (!blocked)
+            {
+                fired = fireDodgeFromTap(moveIntent, backstep_playback_rate, roll_playback_rate);
+            }
+            else
+            {
+                // Buffer the dodge; per-frame fire path picks it up
+                // when the active hand's cancel window opens, when
+                // the current dodge passes its cancel fraction, or
+                // when the active one-shot fully ends.
+                sBufferedDodge.pending = true;
+                sBufferedDodge.move_intent_at_press = moveIntent;
+                sBufferedDodge.buffered_at = selva::wallClock();
+                combatLog("[combat:rhythm %.4fs] dodge BUFFERED (%s in flight)\n",
+                          selva::wallClock(), sDodgeActive ? "dodge" : "one-shot");
+            }
+        }
         sPlayer.sprinting = false;
     }
     sPrevSpace = space_now;
@@ -1501,6 +1582,9 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     tickDodgeTimer(dt);
     logOneShotStateTransitions();
     if (tryFirePostDodgeAttack(edges.shift_held, tun.combo_input_buffer_seconds))
+        combat_input_this_frame = true;
+    if (tryFireBufferedDodge(tun.backstep_playback_rate, tun.roll_playback_rate,
+                             tun.combo_input_buffer_seconds, tun.dodge_cancel_fraction))
         combat_input_this_frame = true;
 
     // Frame-capture timer (independent of dodge so post-dodge recovery

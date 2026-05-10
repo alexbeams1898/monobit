@@ -181,6 +181,11 @@ struct Tunables
     // 200ms of pause for blend-out, then jab." Tighter values feel
     // snappier; ~0.50 is aggressive, ~0.80 makes you commit longer.
     float dodge_attack_cancel_fraction = 0.65f;
+    // Fraction through the dodge clip at which a buffered Space press
+    // fires the next dodge (chained roll). Same shape as
+    // dodge_attack_cancel_fraction but kept separate so chained-roll
+    // feel can be tuned independently of dodge→attack cancel.
+    float dodge_cancel_fraction = 0.65f;
 
     // Wall-clock seconds past cancel_window_close at which walking
     // becomes responsive again post-attack. Anchoring the lockout to
@@ -208,7 +213,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     inertialize_decay_scale_per_radian, inertialize_decay_max_seconds, attack_playback_rate,
     cancel_open_velocity_fraction, perfect_accuracy_threshold, roll_playback_rate,
     backstep_playback_rate, dodge_tap_window, dodge_steer_rate, dodge_attack_cancel_fraction,
-    attack_lockout_extension_seconds);
+    dodge_cancel_fraction, attack_lockout_extension_seconds);
 
 // Single global instance. Both gameplay code and the procedural driver
 // read from this; the ImGui panel edits it in place. Keep it global rather
