@@ -756,6 +756,652 @@ static void tickPlayerYaw(const glm::vec3& moveIntent, bool movement_locked, flo
     sPlayer.yaw += delta;
 }
 
+// Edge-log WASD/LMB/RMB transitions for repro reconstruction. Gated
+// on the combat-debug switch.
+static void logInputEdges(const Uint8* keys, bool press_lmb, bool release_lmb, bool press_rmb,
+                          bool release_rmb)
+{
+    if (!selva::combat::isCombatDebugEnabled())
+        return;
+    const bool wNow = keys[SDL_SCANCODE_W] != 0;
+    const bool aNow = keys[SDL_SCANCODE_A] != 0;
+    const bool sNow = keys[SDL_SCANCODE_S] != 0;
+    const bool dNow = keys[SDL_SCANCODE_D] != 0;
+    if (wNow != sPrevW)
+        combatLog("[input %.4fs] W %s\n", selva::wallClock(), wNow ? "DOWN" : "UP");
+    if (aNow != sPrevA)
+        combatLog("[input %.4fs] A %s\n", selva::wallClock(), aNow ? "DOWN" : "UP");
+    if (sNow != sPrevS)
+        combatLog("[input %.4fs] S %s\n", selva::wallClock(), sNow ? "DOWN" : "UP");
+    if (dNow != sPrevD)
+        combatLog("[input %.4fs] D %s\n", selva::wallClock(), dNow ? "DOWN" : "UP");
+    if (press_lmb)
+        combatLog("[input %.4fs] LMB DOWN\n", selva::wallClock());
+    if (release_lmb)
+        combatLog("[input %.4fs] LMB UP\n", selva::wallClock());
+    if (press_rmb)
+        combatLog("[input %.4fs] RMB DOWN\n", selva::wallClock());
+    if (release_rmb)
+        combatLog("[input %.4fs] RMB UP\n", selva::wallClock());
+    sPrevW = wNow;
+    sPrevA = aNow;
+    sPrevS = sNow;
+    sPrevD = dNow;
+}
+
+// F press handler: toggle combat stance, or flip stance foot when
+// shift-held and already in CombatReady. Returns true if the press
+// should mark combat_input_this_frame (entry into CombatReady).
+static bool tryHandleStanceTogglePress(bool press_f, bool shift_held)
+{
+    if (!press_f)
+        return false;
+    if (sLocomotionSM.combat_stance == CombatStance::Peaceful)
+        return true; // SM enters CombatReady
+    if (shift_held)
+    {
+        sLocomotionSM.stance_foot = (sLocomotionSM.stance_foot == CombatStanceFoot::Default)
+                                        ? CombatStanceFoot::Mirror
+                                        : CombatStanceFoot::Default;
+    }
+    else
+    {
+        sLocomotionSM.stance_active_until = 0.0f;
+        sLocomotionSM.combat_stance = CombatStance::Peaceful;
+    }
+    return false;
+}
+
+// Fire a block one-shot. Trusts the weapon class's leading-idle trim
+// when set; otherwise pose-matches against the live loco track.
+// `loco_settled` selects the blockFromLatch vs blockLive profile.
+static void fireBlockOneShot(bool loco_settled, const char* clip_name, bool freeze_last)
+{
+    const auto* clip = sClips.get(clip_name);
+    if (clip == nullptr || !clip->isLoaded())
+        return;
+    const int rh = sSampler.findJoint("mixamorig:RightHand");
+    const auto fd_pre = sSampler.frameDiagnostics();
+    const glm::vec3 live_pre = (rh >= 0) ? sSampler.jointWorldPos(rh) : glm::vec3(0);
+    float block_start = 0.0f;
+    if (sEquipment.right != nullptr && sEquipment.right->cls != nullptr &&
+        sEquipment.right->cls->block_clip_start_seconds > 0.0f)
+        block_start = sEquipment.right->cls->block_clip_start_seconds;
+    else
+        block_start = poseMatchStartFromLoco(*clip, 0.30f);
+    TransitionProfile profile = loco_settled ? profiles::blockFromLatch() : profiles::blockLive();
+    profile.freeze_last = freeze_last;
+    fireOneShotWithProfile(*clip, profile, block_start, /*playback_rate=*/1.0f);
+    sBlockingActive = true;
+
+    const glm::vec3 block_t0 =
+        (rh >= 0) ? sSampler.sampleJointWorldPos(*clip, 0.0f, rh) : glm::vec3(0);
+    const glm::vec3 d = block_t0 - live_pre;
+    combatLog("[combat:block-fire] mode=%s  loco=%s clip_t=%.3fs  "
+              "RH live=(%.3f,%.3f,%.3f)  block_t0=(%.3f,%.3f,%.3f)  delta=|%.3fm|\n",
+              loco_settled ? "SETTLED" : "SNAP",
+              fd_pre.loco_current_name ? fd_pre.loco_current_name : "(none)",
+              fd_pre.loco_current_time, live_pre.x, live_pre.y, live_pre.z, block_t0.x, block_t0.y,
+              block_t0.z, glm::length(d));
+}
+
+// Resolve which block clip (if any) RMB should fire given the
+// current equipment + modifiers. Buckler always blocks; unarmed +
+// shift gestures block with freeze-last. Returns nullptr otherwise
+// (caller treats RMB as a normal attack input).
+static const char* resolveBlockClip(bool shift_held, bool& freeze_last)
+{
+    freeze_last = false;
+    if (offHandCanBlock(sEquipment))
+        return "sword_and_shield_block";
+    if (isUnarmed(sEquipment) && shift_held)
+    {
+        freeze_last = true;
+        return "unarmed_block";
+    }
+    return nullptr;
+}
+
+// RMB → block routing. Press from Peaceful arms a delayed first-
+// action (so loco settles into combat-idle); subsequent press fires
+// directly. Release ends a held block. Returns true if any combat
+// input fired this call.
+static bool tickBlockingFromRMB(const char* block_clip_name, bool block_freeze_last, bool press_rmb,
+                                bool release_rmb, float combat_entry_delay_seconds)
+{
+    bool fired = false;
+    if (press_rmb)
+    {
+        const bool from_peaceful = (sLocomotionSM.combat_stance == CombatStance::Peaceful);
+        if (from_peaceful && !sPendingFirstAction.active)
+        {
+            sPendingFirstAction.active = true;
+            sPendingFirstAction.block_clip = block_clip_name;
+            sPendingFirstAction.block_freeze_last = block_freeze_last;
+            sPendingFirstAction.fire_at = selva::wallClock() + combat_entry_delay_seconds;
+            fired = true;
+        }
+        else if (!sPendingFirstAction.active)
+        {
+            fireBlockOneShot(false, block_clip_name, block_freeze_last);
+            fired = true;
+        }
+    }
+    else if (release_rmb && sBlockingActive)
+    {
+        sBlockingActive = false;
+        sSampler.releaseOneShot();
+        fired = true;
+    }
+    return fired;
+}
+
+// Fire a Peaceful→CombatReady block-latch when its delay has elapsed.
+// Returns true if fired (caller marks combat_input_this_frame).
+static bool tickPendingBlockLatch()
+{
+    if (!sPendingFirstAction.active || selva::wallClock() < sPendingFirstAction.fire_at)
+        return false;
+    fireBlockOneShot(true, sPendingFirstAction.block_clip, sPendingFirstAction.block_freeze_last);
+    sPendingFirstAction.active = false;
+    return true;
+}
+
+// Arm a CSV bone-trajectory recording for the just-fired dodge.
+// Output is prefixed `dodge_` to disambiguate from F1-clip-debug
+// recordings of the same clip.
+static void armDodgeCsvRecordingIfRequested(float dodge_duration)
+{
+    if (!sDebugRecordArmedNextDodge || sDebugRecording)
+        return;
+    sDebugRecording = true;
+    sDebugRecordElapsed = 0.0f;
+    sDebugRecordDuration = dodge_duration;
+    sDebugRecordClipName = "dodge_stand_to_roll";
+    sDebugRecordSamples.clear();
+    sDebugRecordSamples.reserve(static_cast<std::size_t>(dodge_duration * 65.0f));
+    sDebugRecordArmedNextDodge = false;
+    std::fprintf(stderr, "[anim-debug] recording dodge for %.2fs\n", dodge_duration);
+}
+
+// Arm a per-frame PNG capture for the just-fired dodge. Output to
+// frame_capture/ (created if missing). Captures 0.3s past dodge end
+// to see the recovery-to-idle blend.
+static void armDodgeFrameCaptureIfRequested(float dodge_duration)
+{
+    if (!sFrameCaptureArmedNextDodge || sFrameCaptureActive)
+        return;
+    sFrameCaptureDir = "frame_capture";
+    std::error_code ec;
+    std::filesystem::create_directories(sFrameCaptureDir, ec);
+    sFrameCaptureActive = true;
+    sFrameCaptureCounter = 0;
+    sFrameCaptureElapsed = 0.0f;
+    sFrameCaptureDuration = dodge_duration + 0.3f;
+    sFrameCaptureArmedNextDodge = false;
+    std::fprintf(stderr, "[frame-capture] capturing dodge for %.2fs to %s/\n",
+                 sFrameCaptureDuration, sFrameCaptureDir.c_str());
+}
+
+// Fire the dodge clip. WASD held → directional roll (falling_to_roll);
+// no WASD → backstep (standing_dodge_backward). Both clips have
+// monotonic hip XZ travel; rotated by sPlayer.yaw, the clip-local hip
+// motion lands as world-frame travel. Sets all dodge state and arms
+// any pending CSV/frame-capture recordings. Returns true on success.
+static bool fireDodgeFromTap(const glm::vec3& moveIntent, float backstep_playback_rate,
+                             float roll_playback_rate)
+{
+    const bool has_intent = glm::length(moveIntent) > 0.0001f;
+    const char* clip_name = has_intent ? "falling_to_roll" : "standing_dodge_backward";
+    sDodgeIsBackstep = !has_intent;
+    if (has_intent)
+    {
+        const glm::vec3 dir = glm::normalize(moveIntent);
+        sPlayer.yaw = yawFromGroundDir(dir);
+    }
+    const auto* dodgeClip = sClips.get(clip_name);
+    if (dodgeClip == nullptr || !dodgeClip->isLoaded())
+        return false;
+    const float playback_rate = sDodgeIsBackstep ? backstep_playback_rate : roll_playback_rate;
+    SpliceDiag diag;
+    if (selva::combat::isCombatDebugEnabled())
+        diag = captureSpliceDiag();
+    fireOneShotWithProfile(*dodgeClip, profiles::dodge(), 0.0f, playback_rate);
+    if (selva::combat::isCombatDebugEnabled())
+    {
+        char prefix[256];
+        std::snprintf(prefix, sizeof(prefix),
+                      "[combat:dodge-fire %.4fs] clip=%s loco=%s "
+                      "dur=%.3fs (rate=%.2f) ",
+                      selva::wallClock(), clip_name, sLastLocoClipName.c_str(),
+                      dodgeClip->duration() / playback_rate, playback_rate);
+        logSpliceDiag(diag, *dodgeClip, 0.0f, prefix);
+    }
+    sDodgeActive = true;
+    sDodgeElapsed = 0.0f;
+    sDodgePlaybackRate = std::max(0.1f, playback_rate);
+    sDodgeDuration = dodgeClip->duration() / sDodgePlaybackRate;
+    sDodgeFiredThisPress = true;
+    armDodgeCsvRecordingIfRequested(sDodgeDuration);
+    armDodgeFrameCaptureIfRequested(sDodgeDuration);
+    return true;
+}
+
+// Tick the Space input: tap-vs-hold disambiguation. Tap (release
+// within dodge_tap_window) fires a dodge; hold past the window
+// engages sprint; release always drops sprint. Returns true if a
+// dodge fired (caller marks combat_input_this_frame).
+static bool tickSpaceInput(const Uint8* keys, const glm::vec3& moveIntent, float dt,
+                           float dodge_tap_window, float backstep_playback_rate,
+                           float roll_playback_rate)
+{
+    bool fired = false;
+    const bool space_now = keys[SDL_SCANCODE_SPACE] != 0;
+    const bool press_edge = space_now && !sPrevSpace;
+    const bool release_edge = !space_now && sPrevSpace;
+    if (press_edge)
+    {
+        sSpaceHeldSeconds = 0.0f;
+        sDodgeFiredThisPress = false;
+    }
+    if (space_now)
+    {
+        sSpaceHeldSeconds += dt;
+        if (sSpaceHeldSeconds >= dodge_tap_window)
+            sPlayer.sprinting = true;
+    }
+    if (release_edge)
+    {
+        const bool was_tap = sSpaceHeldSeconds < dodge_tap_window;
+        // Symmetric to the attack-fire dodge guard: an in-flight
+        // attack also commits — dodge can't cancel it. Same splice
+        // math: rolling out of mid-jab is a huge offset.
+        const bool attack_active = sSampler.isOneShotActive() && !sDodgeActive;
+        if (was_tap && !sDodgeFiredThisPress && !sDodgeActive && !attack_active)
+            fired = fireDodgeFromTap(moveIntent, backstep_playback_rate, roll_playback_rate);
+        sPlayer.sprinting = false;
+    }
+    sPrevSpace = space_now;
+    return fired;
+}
+
+// Pre-update joint snapshot used by the splice-residual diagnostic.
+struct PreUpdateJoint
+{
+    const char* name;
+    int idx;
+    glm::vec3 live;
+};
+
+// Debounce sStableWasdIntent against the raw WASD bit. Held WASD
+// commits to walking only after disagreement persists for the
+// debounce window; brief taps + rapid mashing never accumulate.
+static void tickWasdDebounce(bool wasd_intent_raw, float wasd_debounce_seconds)
+{
+    if (wasd_intent_raw == sStableWasdIntent)
+    {
+        sWasdDisagreeStartedAt = -1.0f;
+        return;
+    }
+    if (sWasdDisagreeStartedAt < 0.0f)
+    {
+        sWasdDisagreeStartedAt = selva::wallClock();
+        return;
+    }
+    if (selva::wallClock() - sWasdDisagreeStartedAt >= wasd_debounce_seconds)
+    {
+        sStableWasdIntent = wasd_intent_raw;
+        sWasdDisagreeStartedAt = -1.0f;
+    }
+}
+
+// Edge-trace SM-input changes: WASD intent, attack-in-flight, recovery
+// gate, is-moving. Lets us correlate input edges to SM decisions.
+static void logSmInputChanges(bool wasd_intent, bool attack_in_flight, bool in_attack_recovery,
+                              bool is_moving)
+{
+    if (!selva::combat::isCombatDebugEnabled())
+        return;
+    static bool prev_wasd_intent = false;
+    static bool prev_attack_in_flight = false;
+    static bool prev_in_recovery = false;
+    static bool prev_is_moving = false;
+    if (wasd_intent != prev_wasd_intent || attack_in_flight != prev_attack_in_flight ||
+        in_attack_recovery != prev_in_recovery || is_moving != prev_is_moving)
+    {
+        const auto fd = sSampler.frameDiagnostics();
+        combatLog("[sm %.4fs] wasd=%d att=%d rec=%d -> is_moving=%d  "
+                  "(lockout_until=%.3fs, one_shot_w=%.2f, loco_w=%.2f)\n",
+                  selva::wallClock(), wasd_intent ? 1 : 0, attack_in_flight ? 1 : 0,
+                  in_attack_recovery ? 1 : 0, is_moving ? 1 : 0, selva::combat::locoLockoutUntil(),
+                  fd.one_shot_weight, fd.loco_blend_weight);
+        prev_wasd_intent = wasd_intent;
+        prev_attack_in_flight = attack_in_flight;
+        prev_in_recovery = in_attack_recovery;
+        prev_is_moving = is_moving;
+    }
+}
+
+// Capture pre-update live joint world positions for the residual log.
+// The actual splice point the sampler picked is only known AFTER
+// update runs.
+static std::vector<PreUpdateJoint>
+capturePreUpdateJoints(bool loco_clip_changed, const std::string& clip_name, float blend_seconds)
+{
+    std::vector<PreUpdateJoint> out;
+    if (!selva::combat::isCombatDebugEnabled() || !loco_clip_changed)
+        return out;
+    const auto fd = sSampler.frameDiagnostics();
+    combatLog("[sm %.4fs] loco-pick %s@%.3fs -> %s (blend=%.3fs)\n", selva::wallClock(),
+              sLastLocoClipName.c_str(), fd.loco_current_time, clip_name.c_str(), blend_seconds);
+    const char* names[] = {"mixamorig:RightHand", "mixamorig:LeftHand", "mixamorig:RightFoot",
+                           "mixamorig:LeftFoot", "mixamorig:Hips"};
+    for (const char* n : names)
+    {
+        const int idx = sSampler.findJoint(n);
+        if (idx < 0)
+            continue;
+        out.push_back({n, idx, sSampler.jointWorldPos(idx)});
+    }
+    return out;
+}
+
+// Result of locomotion clip selection for this frame.
+struct LocomotionPick
+{
+    std::string clip_name;
+    const selva::anim::AnimationClip* clip = nullptr;
+    bool loops = true;
+    float blend_seconds = 0.0f;
+    std::vector<PreUpdateJoint> pre_update_joints;
+};
+
+// Pick the locomotion clip for this frame. Honors the F1 debug
+// clip-preview override; otherwise drives the locomotion SM with
+// debounced WASD and applies the held-block + loco-freeze-during-
+// BlendIn overrides. Updates sLastLocoClipName for next-frame combat
+// diagnostics.
+static LocomotionPick selectLocomotionClip(const glm::vec3& moveIntent, float dt,
+                                           bool combat_input_this_frame,
+                                           const selva::tuning::Tunables& tun)
+{
+    LocomotionPick pick;
+    pick.blend_seconds = tun.anim_blend_seconds;
+    if (!sDebugClipName.empty())
+    {
+        pick.clip_name = sDebugClipName;
+        pick.clip = sClips.get(pick.clip_name);
+        pick.loops = true;
+        pick.blend_seconds =
+            sLocomotionConfig.blendInSeconds(pick.clip_name, tun.anim_blend_seconds);
+        if (pick.clip != nullptr)
+            return pick;
+    }
+
+    const bool wasd_intent_raw = glm::length(moveIntent) > 0.0001f;
+    tickWasdDebounce(wasd_intent_raw, tun.wasd_debounce_seconds);
+    const bool wasd_intent = sStableWasdIntent;
+    const bool attack_in_flight = sSampler.isOneShotActive() || sPendingFirstAction.active;
+    const bool in_attack_recovery = selva::wallClock() < selva::combat::locoLockoutUntil();
+    const bool is_moving = wasd_intent;
+    const bool is_sprinting = sPlayer.sprinting && wasd_intent;
+    logSmInputChanges(wasd_intent, attack_in_flight, in_attack_recovery, is_moving);
+
+    const bool clip_done_this_frame = sSampler.locomotionClipFinished();
+    const bool is_armed = !isUnarmed(sEquipment);
+    selva::gameplay::LocomotionTickInput sm_in;
+    sm_in.is_moving = is_moving;
+    sm_in.is_sprinting = is_sprinting;
+    sm_in.clip_finished_this_frame = clip_done_this_frame;
+    sm_in.combat_input_this_frame = combat_input_this_frame;
+    sm_in.is_armed = is_armed;
+    sm_in.dt = dt;
+    sm_in.combat_grace_seconds = tun.combat_idle_grace_seconds;
+    sm_in.wall_clock_seconds = selva::wallClock();
+    const auto sm_out = tickLocomotionStateMachine(sLocomotionSM, sm_in);
+    pick.clip_name = sm_out.clip_name;
+    pick.loops = sm_out.loops;
+    pick.blend_seconds = sm_out.blend_seconds;
+
+    // Held-block override: force loco track to the block-idle loop
+    // when blocking with a buckler (which has a dedicated idle clip).
+    if (sBlockingActive && offHandCanBlock(sEquipment))
+        pick.clip_name = "sword_and_shield_block_idle";
+
+    // Loco-freeze during one-shot BlendIn: don't swap loco clips while
+    // both tracks are visible — that's a multi-source collision (one-
+    // shot ramp + loco crossfade + new loco splice) and reads as a
+    // leg spasm. Hold/BlendOut phases are safe (loco invisible / loco
+    // already settled).
+    const auto fd_loco = sSampler.frameDiagnostics();
+    const bool one_shot_blending_in = fd_loco.one_shot_phase == 1;
+    if (one_shot_blending_in && !sLastLocoClipName.empty() && pick.clip_name != sLastLocoClipName)
+        pick.clip_name = sLastLocoClipName;
+
+    pick.clip = sClips.get(pick.clip_name);
+    const bool loco_clip_changed = (pick.clip_name != sLastLocoClipName);
+    pick.pre_update_joints =
+        capturePreUpdateJoints(loco_clip_changed, pick.clip_name, sm_out.blend_seconds);
+    sLastLocoClipName = pick.clip_name;
+    pick.blend_seconds = sLocomotionConfig.blendInSeconds(pick.clip_name, pick.blend_seconds);
+    return pick;
+}
+
+// Post-update splice-residual diagnostic. Sample the new clip at the
+// splice time the sampler picked and log the per-joint residual vs
+// pre-update live pose.
+static void logSpliceResiduals(const std::vector<PreUpdateJoint>& pre_update_joints,
+                               const selva::anim::AnimationClip* clip)
+{
+    if (pre_update_joints.empty() || clip == nullptr)
+        return;
+    const auto fd = sSampler.frameDiagnostics();
+    const float splice_t = fd.loco_current_time;
+    for (const auto& j : pre_update_joints)
+    {
+        const glm::vec3 cand = sSampler.sampleJointWorldPos(*clip, splice_t, j.idx);
+        combatLog("  %s residual=|%.3fm|  live=(%.2f,%.2f,%.2f) splice_t=%.3fs "
+                  "cand=(%.2f,%.2f,%.2f)\n",
+                  j.name, glm::length(cand - j.live), j.live.x, j.live.y, j.live.z, splice_t,
+                  cand.x, cand.y, cand.z);
+    }
+}
+
+// Sticky per-frame loco-state trace. While the loco crossfade or a
+// one-shot is mid-ramp, dump sampler state every frame so we can
+// watch a spasm unfold tick-by-tick.
+static void logStickyLocoState()
+{
+    if (!selva::combat::isCombatDebugEnabled())
+        return;
+    const auto fd = sSampler.frameDiagnostics();
+    const bool loco_mid = fd.loco_blend_weight > 0.001f && fd.loco_blend_weight < 0.999f;
+    const bool one_shot_mid = fd.one_shot_weight > 0.001f && fd.one_shot_weight < 0.999f;
+    if (!loco_mid && !one_shot_mid)
+        return;
+    combatLog("[fr %.4fs] loco_w=%.3f one_shot_w=%.3f phase=%d clip=%s\n", selva::wallClock(),
+              fd.loco_blend_weight, fd.one_shot_weight, fd.one_shot_phase,
+              sLastLocoClipName.c_str());
+    if (fd.one_shot_phase == 3)
+    {
+        for (const char* n : {"mixamorig:Hips", "mixamorig:LeftFoot", "mixamorig:RightFoot"})
+        {
+            const int idx = sSampler.findJoint(n);
+            if (idx < 0)
+                continue;
+            const glm::vec3 p = sSampler.jointWorldPos(idx);
+            combatLog("    [fade] %s = (%.2f,%.2f,%.2f)\n", n, p.x, p.y, p.z);
+        }
+    }
+}
+
+// Rotate clip-local hip XZ delta into world frame using the player's
+// yaw and add it to sPlayer.pos. Y is preserved (clip authors no
+// vertical motion in the locomotion path; freeze handles the rest).
+static void applyHipDeltaToPlayerPos()
+{
+    const glm::vec3 hip_local = sSampler.consumedHipDelta();
+    if (glm::length(glm::vec2(hip_local.x, hip_local.z)) <= 1e-6f)
+        return;
+    const float sy = std::sin(sPlayer.yaw);
+    const float cy = std::cos(sPlayer.yaw);
+    const glm::vec3 hip_world(-cy * hip_local.x - sy * hip_local.z, 0.0f,
+                              sy * hip_local.x - cy * hip_local.z);
+    sPlayer.pos += hip_world;
+}
+
+// Mid-roll yaw steer: bend the trajectory toward the live move-intent
+// at dodge_steer_rate per second. Backsteps don't steer (the
+// defensive beat commits to its initial axis).
+static void applyDodgeSteer(const glm::vec3& moveIntent, float dodge_steer_rate, float dt)
+{
+    if (sDodgeIsBackstep || glm::length(moveIntent) <= 0.0001f)
+        return;
+    const glm::vec3 dir = glm::normalize(moveIntent);
+    const float targetYaw = yawFromGroundDir(dir);
+    float delta = wrapAngleSigned(targetYaw - sPlayer.yaw);
+    const float maxStep = dodge_steer_rate * dt;
+    if (delta > maxStep)
+        delta = maxStep;
+    else if (delta < -maxStep)
+        delta = -maxStep;
+    sPlayer.yaw += delta;
+}
+
+// Flush an in-progress CSV bone-trajectory recording to disk and clear
+// the recording state.
+static void flushCsvRecording()
+{
+    const std::string out_path = "debug_bones_game_" + sDebugRecordClipName + ".csv";
+    std::FILE* fp = std::fopen(out_path.c_str(), "w");
+    if (fp == nullptr)
+    {
+        std::fprintf(stderr, "[anim-debug] failed to open %s for write\n", out_path.c_str());
+        sDebugRecording = false;
+        sDebugRecordSamples.clear();
+        return;
+    }
+    std::fprintf(fp, "time_s,joint_name,x,y,z\n");
+    const int nj = sSampler.jointCount();
+    for (const auto& s : sDebugRecordSamples)
+    {
+        for (int i = 0; i < nj && i < static_cast<int>(s.joints.size()); ++i)
+        {
+            std::fprintf(fp, "%.4f,%s,%.6f,%.6f,%.6f\n", s.time_s, sSampler.jointName(i),
+                         s.joints[i].x, s.joints[i].y, s.joints[i].z);
+        }
+    }
+    std::fclose(fp);
+    std::fprintf(stderr, "[anim-debug] wrote %s (%zu frames)\n", out_path.c_str(),
+                 sDebugRecordSamples.size());
+    sDebugRecording = false;
+    sDebugRecordSamples.clear();
+}
+
+// Tick the CSV bone-trajectory recorder: append this frame's joint
+// world positions; when duration elapses, flush to disk.
+static void tickCsvRecording(float dt)
+{
+    if (!sDebugRecording)
+        return;
+    DebugBoneSample sample;
+    sample.time_s = sDebugRecordElapsed;
+    const int n = sSampler.jointCount();
+    sample.joints.reserve(n);
+    for (int i = 0; i < n; ++i)
+        sample.joints.push_back(sSampler.jointWorldPos(i));
+    sDebugRecordSamples.push_back(std::move(sample));
+    sDebugRecordElapsed += dt;
+    if (sDebugRecordElapsed >= sDebugRecordDuration)
+        flushCsvRecording();
+}
+
+// Compute the camera-relative WASD movement intent vector. Forward
+// is -Z rotated by camera yaw; right is perpendicular in XZ.
+static glm::vec3 computeMoveIntent(const Uint8* keys)
+{
+    const glm::vec3 camFwd(-std::sin(selva::render::cameraYaw()), 0.0f,
+                           -std::cos(selva::render::cameraYaw()));
+    const glm::vec3 camRight(std::cos(selva::render::cameraYaw()), 0.0f,
+                             -std::sin(selva::render::cameraYaw()));
+    glm::vec3 moveIntent(0.0f);
+    if (keys[SDL_SCANCODE_W])
+        moveIntent += camFwd;
+    if (keys[SDL_SCANCODE_S])
+        moveIntent -= camFwd;
+    if (keys[SDL_SCANCODE_D])
+        moveIntent += camRight;
+    if (keys[SDL_SCANCODE_A])
+        moveIntent -= camRight;
+    return moveIntent;
+}
+
+// Bundle of LMB/RMB/F edge bits for the per-frame combat-input pass.
+struct CombatInputEdges
+{
+    bool lmb_now;
+    bool rmb_now;
+    bool press_lmb;
+    bool press_rmb;
+    bool release_lmb;
+    bool release_rmb;
+    bool press_f;
+    bool shift_held;
+};
+
+// Read raw mouse + Shift + F state and compute the per-frame edges.
+// `tryAttackInput` and friends consume the result.
+static CombatInputEdges readCombatInputEdges(const Uint8* keys)
+{
+    const Uint32 mouse_buttons = SDL_GetMouseState(nullptr, nullptr);
+    CombatInputEdges e;
+    e.lmb_now = (mouse_buttons & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
+    e.rmb_now = (mouse_buttons & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
+    e.press_lmb = e.lmb_now && !sPrevLMB;
+    e.press_rmb = e.rmb_now && !sPrevRMB;
+    e.release_lmb = !e.lmb_now && sPrevLMB;
+    e.release_rmb = !e.rmb_now && sPrevRMB;
+    const bool fNow = keys[SDL_SCANCODE_F] != 0;
+    e.press_f = fNow && !sPrevF;
+    e.shift_held = (keys[SDL_SCANCODE_LSHIFT] != 0) || (keys[SDL_SCANCODE_RSHIFT] != 0);
+    return e;
+}
+
+// Run the per-frame combat-input pass: edge log, stance toggle, LMB
+// → attack, RMB → block-or-attack, pending block-latch commit.
+// Returns true if anything fired this frame.
+static bool tickCombatInputPass(const Uint8* keys, const CombatInputEdges& e,
+                                const selva::tuning::Tunables& tun)
+{
+    bool fired = false;
+    logInputEdges(keys, e.press_lmb, e.release_lmb, e.press_rmb, e.release_rmb);
+    if (tryHandleStanceTogglePress(e.press_f, e.shift_held))
+        fired = true;
+
+    const selva::combat::PressModifiers mods{e.shift_held, sPlayer.sprinting};
+    if (tryAttackInputDispatch(selva::combat::HandSide::Right, e.press_lmb, "LMB", mods,
+                               tun.combo_input_buffer_seconds))
+        fired = true;
+
+    bool block_freeze_last = false;
+    const char* block_clip_name = resolveBlockClip(e.shift_held, block_freeze_last);
+    if (block_clip_name != nullptr)
+    {
+        if (tickBlockingFromRMB(block_clip_name, block_freeze_last, e.press_rmb, e.release_rmb,
+                                tun.combat_entry_delay_seconds))
+            fired = true;
+    }
+    else
+    {
+        if (tryAttackInputDispatch(selva::combat::HandSide::Right, e.press_rmb, "RMB", mods,
+                                   tun.combo_input_buffer_seconds))
+            fired = true;
+    }
+    if (tickPendingBlockLatch())
+        fired = true;
+    return fired;
+}
+
 // Tick the dodge-roll timer; once elapsed reaches duration, clear the
 // active flag (the one-shot blend-out continues briefly after).
 static void tickDodgeTimer(float dt)
@@ -818,425 +1464,32 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     tickF1TuningPanelToggle(keys);
 
     // -------- Combat input --------
-    //   LMB             — right-hand light attack
-    //   RMB             — left-hand light attack  (player's left, viewer's right)
-    //   Shift+LMB       — right-hand heavy
-    //   Shift+RMB       — left-hand heavy
-    //   Y (or G)        — toggle grip mode (one-handed ↔ two-handed)
-    // Trigger on rising edge so each click is one swing; holding doesn't
-    // spam. We don't gate on "is one-shot active" yet — pressing again
-    // mid-swing cancels the previous one and starts a fresh blend-in
-    // for the first attack of a chain.
-    // Combos / queued follow-ups are a follow-up todo.
-    const Uint32 mouse_buttons = SDL_GetMouseState(nullptr, nullptr);
-    const bool lmbNow = (mouse_buttons & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
-    const bool rmbNow = (mouse_buttons & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
-    const bool shift_held = (keys[SDL_SCANCODE_LSHIFT] != 0) || (keys[SDL_SCANCODE_RSHIFT] != 0);
-    // Only fire when the tuning panel is closed — otherwise clicks meant
-    // for ImGui sliders would also trigger swings.
+    //   LMB / RMB        — right-hand attacks (chain shared)
+    //   Shift+LMB/RMB    — heavy
+    //   Sprint+LMB/RMB   — running attack
+    //   F                — combat-stance toggle (Shift+F flips foot)
+    //   Y / G            — grip toggle
+    //   Space tap        — dodge; hold past tap window → sprint
     //
-    // Attack-kind selection at swing time:
-    //   * Sprinting + LMB/RMB → running attack (forward-lunge clip)
-    //   * Shift + LMB/RMB     → heavy
-    //   * Otherwise           → light
-    // Sprint takes priority over Shift since "sprint-attack" is its own
-    // distinct action; Shift+Sprint+LMB still triggers the running
-    // attack. Every attack fires full-body and locks movement for its
-    // duration; the SM resumes walking automatically when the one-shot
-    // ends if WASD is still held.
-
-    // Auto-reset aged chains + expire stale buffered presses. Lives in
-    // combat/AttackChain.cpp.
+    // Tuning-panel-open suppresses combat-relevant clicks (mouse drag
+    // on sliders shouldn't trigger swings).
+    const CombatInputEdges edges = readCombatInputEdges(keys);
     selva::combat::tickChainExpiry(selva::wallClock(), tun.combo_input_buffer_seconds);
-
-    // ----- Combat fire path (rebuilt) -----
-    //
-    // Strike layer (this section): every press fires its mapped clip
-    // fully — clip duration owns the timing. While a one-shot is in
-    // flight, presses are buffered and replay when it ends. No chain
-    // machinery here; the technique observer (combat/ChainObserver)
-    // watches press history and reports matched techniques as state
-    // for HUD / damage bonuses.
-    //
-    // Maps press button + modifiers (sprint, shift) to a clip name
-    // via combat/PressMapping. Reads weapon class config; doesn't
-    // know about "techniques" or "chains" or "finisher commits."
-
-    // fireClip + chain-link pose-match + per-attack blend_out override
-    // are extracted to file-static helpers above. Local alias keeps
-    // call sites short.
-    const auto fireClip = [&](selva::combat::HandSide hand, const char* clip_name) -> bool
-    { return fireClipForHand(hand, clip_name, tun.combo_input_buffer_seconds); };
-
-    // Try a press: if no one-shot is active, fire immediately.
-    // Otherwise buffer for replay after the in-flight clip ends.
-    // This is the entirety of the press-handler logic.
-    const selva::combat::PressModifiers mods{shift_held, sPlayer.sprinting};
-    const auto tryAttackInput =
-        [&](selva::combat::HandSide hand, bool press_edge_this_frame, const char* button)
-    {
-        if (tryAttackInputDispatch(hand, press_edge_this_frame, button, mods,
-                                   tun.combo_input_buffer_seconds))
-            combat_input_this_frame = true;
-    };
-
-    // Tick the technique observer: clears history if the player has
-    // gone quiet for combo_reset_grace_seconds. Independent of fires.
     selva::combat::tickChainObserver(selva::wallClock(), sSampler.isOneShotActive());
-
-    if (!sShowTuningPanel)
-    {
-        const bool press_lmb = lmbNow && !sPrevLMB;
-        const bool press_rmb = rmbNow && !sPrevRMB;
-        const bool release_rmb = !rmbNow && sPrevRMB;
-        const bool release_lmb = !lmbNow && sPrevLMB;
-        const bool fNow = keys[SDL_SCANCODE_F] != 0;
-        const bool press_f = fNow && !sPrevF;
-
-        // High-resolution input edge trace. Logs every WASD/LMB/RMB
-        // transition with the wall-clock timestamp so the user's repro
-        // session can be reconstructed exactly. Gated on debug switch.
-        if (selva::combat::isCombatDebugEnabled())
-        {
-            const bool wNow = keys[SDL_SCANCODE_W] != 0;
-            const bool aNow = keys[SDL_SCANCODE_A] != 0;
-            const bool sNow = keys[SDL_SCANCODE_S] != 0;
-            const bool dNow = keys[SDL_SCANCODE_D] != 0;
-            if (wNow != sPrevW)
-                combatLog("[input %.4fs] W %s\n", selva::wallClock(), wNow ? "DOWN" : "UP");
-            if (aNow != sPrevA)
-                combatLog("[input %.4fs] A %s\n", selva::wallClock(), aNow ? "DOWN" : "UP");
-            if (sNow != sPrevS)
-                combatLog("[input %.4fs] S %s\n", selva::wallClock(), sNow ? "DOWN" : "UP");
-            if (dNow != sPrevD)
-                combatLog("[input %.4fs] D %s\n", selva::wallClock(), dNow ? "DOWN" : "UP");
-            if (press_lmb)
-                combatLog("[input %.4fs] LMB DOWN\n", selva::wallClock());
-            if (release_lmb)
-                combatLog("[input %.4fs] LMB UP\n", selva::wallClock());
-            if (press_rmb)
-                combatLog("[input %.4fs] RMB DOWN\n", selva::wallClock());
-            if (release_rmb)
-                combatLog("[input %.4fs] RMB UP\n", selva::wallClock());
-            sPrevW = wNow;
-            sPrevA = aNow;
-            sPrevS = sNow;
-            sPrevD = dNow;
-        }
-
-        // F: explicit combat-stance toggle.
-        //   * F (Peaceful)        → enter CombatReady. Latches the
-        //     stance the same way an attack does — combat_input_this_
-        //     frame=true makes the SM crossfade locomotion to combat
-        //     idle and push stance_active_until.
-        //   * F (CombatReady)     → drop to Peaceful immediately.
-        //     Zeroes stance_active_until so the SM tick exits stance.
-        //   * Shift+F (CombatReady) → flip stance foot. No-op visually
-        //     today (clip selection doesn't branch on foot yet); the
-        //     slot is wired so a mirror-moveset addition slots in
-        //     without changing this control surface.
-        if (press_f)
-        {
-            if (sLocomotionSM.combat_stance == CombatStance::Peaceful)
-            {
-                combat_input_this_frame = true; // SM enters CombatReady
-            }
-            else
-            {
-                if (shift_held)
-                {
-                    sLocomotionSM.stance_foot =
-                        (sLocomotionSM.stance_foot == CombatStanceFoot::Default)
-                            ? CombatStanceFoot::Mirror
-                            : CombatStanceFoot::Default;
-                }
-                else
-                {
-                    sLocomotionSM.stance_active_until = 0.0f;
-                    sLocomotionSM.combat_stance = CombatStance::Peaceful;
-                }
-            }
-        }
-
-        // LMB → right hand action (semantic mapping is on the future
-        // todo when stance flip lands; for now LMB=right, RMB=left).
-        tryAttackInput(selva::combat::HandSide::Right, press_lmb, "LMB");
-
-        // RMB routing: if the off-hand is a blocker (buckler-class),
-        // hold-RMB enters the held-block state. Otherwise, RMB tap
-        // fires an off-hand attack chain like LMB.
-        //
-        // loco_settled = true when fired via the first-action latch
-        // (locomotion already crossfaded to combat-idle); false when
-        // fired live, in which case we snap the loco track to t=0
-        // before splicing.
-        auto fireBlock = [&](bool loco_settled, const char* clip_name, bool freeze_last)
-        {
-            const auto* clip = sClips.get(clip_name);
-            if (clip != nullptr && clip->isLoaded())
-            {
-                const int rh = sSampler.findJoint("mixamorig:RightHand");
-                const auto fd_pre = sSampler.frameDiagnostics();
-                const glm::vec3 live_pre = (rh >= 0) ? sSampler.jointWorldPos(rh) : glm::vec3(0);
-                // Trust the weapon class's leading-idle trim if set;
-                // otherwise pose-match against the live loco track.
-                float block_start = 0.0f;
-                if (sEquipment.right != nullptr && sEquipment.right->cls != nullptr &&
-                    sEquipment.right->cls->block_clip_start_seconds > 0.0f)
-                    block_start = sEquipment.right->cls->block_clip_start_seconds;
-                else
-                    block_start = poseMatchStartFromLoco(*clip, 0.30f);
-                TransitionProfile profile =
-                    loco_settled ? profiles::blockFromLatch() : profiles::blockLive();
-                profile.freeze_last = freeze_last;
-                fireOneShotWithProfile(*clip, profile, block_start, /*playback_rate=*/1.0f);
-                sBlockingActive = true;
-
-                const glm::vec3 block_t0 =
-                    (rh >= 0) ? sSampler.sampleJointWorldPos(*clip, 0.0f, rh) : glm::vec3(0);
-                const glm::vec3 d = block_t0 - live_pre;
-                combatLog("[combat:block-fire] mode=%s  loco=%s clip_t=%.3fs  "
-                          "RH live=(%.3f,%.3f,%.3f)  block_t0=(%.3f,%.3f,%.3f)  delta=|%.3fm|\n",
-                          loco_settled ? "SETTLED" : "SNAP",
-                          fd_pre.loco_current_name ? fd_pre.loco_current_name : "(none)",
-                          fd_pre.loco_current_time, live_pre.x, live_pre.y, live_pre.z, block_t0.x,
-                          block_t0.y, block_t0.z, glm::length(d));
-            }
-        };
-
-        // Resolve the block intent for this RMB event:
-        //   - Buckler equipped: RMB always blocks (sword_and_shield_block).
-        //   - Unarmed + Shift held: blocks (unarmed_block, freeze_last).
-        //   - Otherwise: not a block; falls through to attack chain.
-        const char* block_clip_name = nullptr;
-        bool block_freeze_last = false;
-        if (offHandCanBlock(sEquipment))
-            block_clip_name = "sword_and_shield_block";
-        else if (isUnarmed(sEquipment) && shift_held)
-        {
-            block_clip_name = "unarmed_block";
-            block_freeze_last = true;
-        }
-
-        if (block_clip_name != nullptr)
-        {
-            if (press_rmb)
-            {
-                const bool from_peaceful = (sLocomotionSM.combat_stance == CombatStance::Peaceful);
-                if (from_peaceful && !sPendingFirstAction.active)
-                {
-                    sPendingFirstAction.active = true;
-                    sPendingFirstAction.block_clip = block_clip_name;
-                    sPendingFirstAction.block_freeze_last = block_freeze_last;
-                    sPendingFirstAction.fire_at =
-                        selva::wallClock() + tun.combat_entry_delay_seconds;
-                    combat_input_this_frame = true;
-                }
-                else if (!sPendingFirstAction.active)
-                {
-                    fireBlock(false, block_clip_name, block_freeze_last);
-                    combat_input_this_frame = true;
-                }
-            }
-            else if (release_rmb && sBlockingActive)
-            {
-                sBlockingActive = false;
-                sSampler.releaseOneShot();
-                combat_input_this_frame = true;
-            }
-        }
-        else
-        {
-            // Off-hand can't block, no shift+unarmed gesture. Route RMB
-            // into the same chain as LMB (sChainRight) so both buttons
-            // advance one shared combo. The technique selected (jab→hook→
-            // combo Chain A vs Chain B) depends on the button sequence.
-            tryAttackInput(selva::combat::HandSide::Right, press_rmb, "RMB");
-        }
-
-        // Block-latch: block fired from Peaceful waits combat_entry_delay
-        // for the loco track to settle. Attack latch was removed in the
-        // combat rebuild — attacks fire immediately via tryAttackInput.
-        if (sPendingFirstAction.active && selva::wallClock() >= sPendingFirstAction.fire_at)
-        {
-            fireBlock(true, sPendingFirstAction.block_clip, sPendingFirstAction.block_freeze_last);
-            combat_input_this_frame = true;
-            sPendingFirstAction.active = false;
-        }
-    }
-    sPrevLMB = lmbNow;
-    sPrevRMB = rmbNow;
+    if (!sShowTuningPanel && tickCombatInputPass(keys, edges, tun))
+        combat_input_this_frame = true;
+    sPrevLMB = edges.lmb_now;
+    sPrevRMB = edges.rmb_now;
     sPrevF = (keys[SDL_SCANCODE_F] != 0);
 
-    // Cache this frame's right-hand position for next frame's splice
-    // diagnostic — used to compute pre-splice velocity.
     selva::combat::cacheRightHandPos(sSampler);
-
     tickGripToggle(keys);
 
-    // Compute camera-relative movement intent every frame; both walking and
-    // dodge-init read it. Forward axis is -Z rotated by camera yaw; right
-    // axis is perpendicular in the XZ plane.
-    glm::vec3 moveIntent(0.0f);
-    const glm::vec3 camFwd(-std::sin(selva::render::cameraYaw()), 0.0f,
-                           -std::cos(selva::render::cameraYaw()));
-    const glm::vec3 camRight(std::cos(selva::render::cameraYaw()), 0.0f,
-                             -std::sin(selva::render::cameraYaw()));
-    if (keys[SDL_SCANCODE_W])
-        moveIntent += camFwd;
-    if (keys[SDL_SCANCODE_S])
-        moveIntent -= camFwd;
-    if (keys[SDL_SCANCODE_D])
-        moveIntent += camRight;
-    if (keys[SDL_SCANCODE_A])
-        moveIntent -= camRight;
+    const glm::vec3 moveIntent = computeMoveIntent(keys);
 
-    // Space input — tap-vs-hold disambiguation.
-    //   * Tap (released within tun.dodge_tap_window) → dodge roll.
-    //   * Hold past the window                       → sprint engages.
-    //   * Release while sprinting                    → sprint stops, no dodge.
-    //   * Release after dodge already fired          → no second action.
-    //
-    // Implementation:
-    //   - On press (rising edge): start the timer, clear the
-    //     "dodge fired" flag. Don't engage sprint yet — we don't know
-    //     if this is a tap or a hold.
-    //   - While held: increment timer. Once it crosses the window,
-    //     engage sprint (commits to hold semantics).
-    //   - On release (falling edge): if the timer is still under the
-    //     window AND the dodge hasn't already fired AND we aren't
-    //     already mid-dodge, fire the dodge. Otherwise just clear
-    //     sprint (we're past the window or already dodging).
-    {
-        const bool space_now = keys[SDL_SCANCODE_SPACE] != 0;
-        const bool press_edge = space_now && !sPrevSpace;
-        const bool release_edge = !space_now && sPrevSpace;
-
-        if (press_edge)
-        {
-            sSpaceHeldSeconds = 0.0f;
-            sDodgeFiredThisPress = false;
-            // Don't change sPlayer.sprinting on press — wait until the
-            // hold-window elapses.
-        }
-        if (space_now)
-        {
-            sSpaceHeldSeconds += dt;
-            if (sSpaceHeldSeconds >= tun.dodge_tap_window)
-                sPlayer.sprinting = true;
-        }
-        if (release_edge)
-        {
-            const bool was_tap = sSpaceHeldSeconds < tun.dodge_tap_window;
-            // Symmetric to fireAttack's dodge guard: an attack one-
-            // shot also commits — dodge can't cancel an in-flight
-            // attack. Same splice math: rolling out of mid-jab pose
-            // produces a huge offset and visible spasm.
-            const bool attack_active = sSampler.isOneShotActive() && !sDodgeActive;
-            if (was_tap && !sDodgeFiredThisPress && !sDodgeActive && !attack_active)
-            {
-                // Fire the dodge. WASD held → directional roll
-                // (falling_to_roll); no WASD → backstep
-                // (standing_dodge_backward). Both clips have monotonic
-                // hip XZ travel (verified via auditClipHipMotion's
-                // trajectory dump): rotated by sPlayer.yaw, the
-                // clip-local hip motion lands as world-frame travel
-                // in the direction the player faces.
-                //
-                // We use falling_to_roll instead of stand_to_roll
-                // because stand_to_roll's hip ping-pongs back to origin
-                // (3.37m path, ~0m net) — visually rolls but authors
-                // no net travel, so root motion gives "rolling in
-                // place." falling_to_roll is monotonic +Z travel
-                // (3.01m net over 1.47s) and works as a true root-
-                // motion source.
-                const bool has_intent = glm::length(moveIntent) > 0.0001f;
-                // TEMP: bookends dropped for A/B test. User wants to
-                // feel raw splice quality before deciding the commit
-                // baseline for the architectural rework.
-                const char* clip_name = has_intent ? "falling_to_roll" : "standing_dodge_backward";
-                sDodgeIsBackstep = !has_intent;
-                if (has_intent)
-                {
-                    const glm::vec3 dir = glm::normalize(moveIntent);
-                    sPlayer.yaw = yawFromGroundDir(dir);
-                }
-                const auto* dodgeClip = sClips.get(clip_name);
-                if (dodgeClip != nullptr && dodgeClip->isLoaded())
-                {
-                    const float playback_rate =
-                        sDodgeIsBackstep ? tun.backstep_playback_rate : tun.roll_playback_rate;
-                    SpliceDiag diag;
-                    if (selva::combat::isCombatDebugEnabled())
-                        diag = captureSpliceDiag();
-                    fireOneShotWithProfile(*dodgeClip, profiles::dodge(), 0.0f, playback_rate);
-                    if (selva::combat::isCombatDebugEnabled())
-                    {
-                        char prefix[256];
-                        std::snprintf(prefix, sizeof(prefix),
-                                      "[combat:dodge-fire %.4fs] clip=%s loco=%s "
-                                      "dur=%.3fs (rate=%.2f) ",
-                                      selva::wallClock(), clip_name, sLastLocoClipName.c_str(),
-                                      dodgeClip->duration() / playback_rate, playback_rate);
-                        logSpliceDiag(diag, *dodgeClip, 0.0f, prefix);
-                    }
-                    sDodgeActive = true;
-                    sDodgeElapsed = 0.0f;
-                    // sDodgeDuration is the WALL-CLOCK time the
-                    // dodge-active gate stays open. With root motion,
-                    // the clip's authored hip motion drives world
-                    // translation directly — when the clip ends, the
-                    // travel ends. We just need a wall-clock value to
-                    // gate the input lock and the post-dodge tail
-                    // logic, so dur / rate gives us that.
-                    sDodgePlaybackRate = std::max(0.1f, playback_rate);
-                    sDodgeDuration = dodgeClip->duration() / sDodgePlaybackRate;
-                    sDodgeFiredThisPress = true;
-                    combat_input_this_frame = true;
-
-                    // CSV recording: if armed via the F1 panel, capture
-                    // this dodge's bone trajectories for diffing against
-                    // the F1-clip-debug recording. Output filename is
-                    // prefixed `dodge_` so the two recordings of the
-                    // same clip don't clobber each other.
-                    if (sDebugRecordArmedNextDodge && !sDebugRecording)
-                    {
-                        sDebugRecording = true;
-                        sDebugRecordElapsed = 0.0f;
-                        sDebugRecordDuration = sDodgeDuration;
-                        sDebugRecordClipName = "dodge_stand_to_roll";
-                        sDebugRecordSamples.clear();
-                        sDebugRecordSamples.reserve(
-                            static_cast<std::size_t>(sDodgeDuration * 65.0f));
-                        sDebugRecordArmedNextDodge = false;
-                        std::fprintf(stderr, "[anim-debug] recording dodge for %.2fs\n",
-                                     sDodgeDuration);
-                    }
-                    // Frame-capture arm: record PNG per frame for dodge
-                    // duration. Output dir is build/bin/frame_capture/.
-                    // We don't clean it between runs; user/agent does.
-                    if (sFrameCaptureArmedNextDodge && !sFrameCaptureActive)
-                    {
-                        sFrameCaptureDir = "frame_capture";
-                        std::error_code ec;
-                        std::filesystem::create_directories(sFrameCaptureDir, ec);
-                        sFrameCaptureActive = true;
-                        sFrameCaptureCounter = 0;
-                        sFrameCaptureElapsed = 0.0f;
-                        // Capture 0.3s past the dodge end so we see the
-                        // recovery-back-to-idle blend.
-                        sFrameCaptureDuration = sDodgeDuration + 0.3f;
-                        sFrameCaptureArmedNextDodge = false;
-                        std::fprintf(stderr, "[frame-capture] capturing dodge for %.2fs to %s/\n",
-                                     sFrameCaptureDuration, sFrameCaptureDir.c_str());
-                    }
-                }
-            }
-            // Either way, dropping Space drops sprint.
-            sPlayer.sprinting = false;
-        }
-        sPrevSpace = space_now;
-    }
+    if (tickSpaceInput(keys, moveIntent, dt, tun.dodge_tap_window, tun.backstep_playback_rate,
+                       tun.roll_playback_rate))
+        combat_input_this_frame = true;
 
     // Tick the dodge timer. The active gate ends at the clip's full
     // duration. With root motion, the clip's authored hip motion goes
@@ -1246,7 +1499,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     // separate motion_end cutoff.
     tickDodgeTimer(dt);
     logOneShotStateTransitions();
-    if (tryFirePostDodgeAttack(shift_held, tun.combo_input_buffer_seconds))
+    if (tryFirePostDodgeAttack(edges.shift_held, tun.combo_input_buffer_seconds))
         combat_input_this_frame = true;
 
     // Frame-capture timer (independent of dodge so post-dodge recovery
@@ -1274,377 +1527,35 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     // pose.
     tickPlayerYaw(moveIntent, movement_locked, tun.turn_rate, dt);
 
-    // Pick + advance the sampler. selectClipForPlayer chooses the clip
-    // for this frame based on locomotion + sprint state; the sampler
-    // cross-fades on its own when the choice changes. Done last so it
-    // sees post-input, post-movement state.
-    //
-    // Debug override: if the F1 panel has selected a clip to preview in
-    // isolation, route THAT clip into the sampler instead. Skips the
-    // gameplay state machine entirely, with no crossfade and no one-shot
-    // blending — pure single-clip playback. Used to side-by-side compare
-    // a clip's appearance in-game against the browser previewer.
-    //
-    // For gameplay clips, the per-clip blend duration comes from
-    // locomotion.json (e.g. Run → Idle settles slowly, Idle → Run snaps
-    // fast). Falls back to tun.anim_blend_seconds for any clip without
-    // an entry, including the debug-override path.
-    std::string clip_name;
-    const selva::anim::AnimationClip* clip = nullptr;
-    bool clip_loops = true;
-    float clip_blend_seconds = tun.anim_blend_seconds;
-    struct PreUpdateJoint
-    {
-        const char* name;
-        int idx;
-        glm::vec3 live;
-    };
-    std::vector<PreUpdateJoint> pre_update_joints;
-    if (!sDebugClipName.empty())
-    {
-        // F1 debug-clip preview: bypass the state machine entirely.
-        clip_name = sDebugClipName;
-        clip = sClips.get(clip_name);
-        clip_loops = true; // debug previews loop
-        clip_blend_seconds = sLocomotionConfig.blendInSeconds(clip_name, tun.anim_blend_seconds);
-    }
-    if (clip == nullptr)
-    {
-        // Drive locomotion through the state machine so transitions
-        // pick up the right clips (start_walking, run_to_stop, etc.)
-        // and so phase-matched crossfades only fire between gait-cycle
-        // peers (walk ↔ run).
-        //
-        // Suppress is_moving while an attack is in flight OR within
-        // the post-attack recovery window. Without the recovery
-        // suppression, WASD smashing the moment the one-shot ends
-        // can ping-pong walking ↔ idle multiple times per second and
-        // produce visible leg spasms — even with reverse-blend
-        // protection on the sampler side. Yaw still responds (the
-        // turn-toward-intent below isn't gated), so the player can
-        // re-aim mid-recovery; just no walking commit.
-        const bool wasd_intent_raw = glm::length(moveIntent) > 0.0001f;
-        // Debounce: SM commits to a wasd_intent change only after the
-        // raw value has disagreed continuously with the stable value
-        // for wasd_debounce_seconds. Held WASD reaches walking after
-        // the debounce delay; a brief tap (less than debounce) never
-        // commits; rapid mashing never accumulates because each
-        // tap-release resets the disagreement timer.
-        if (wasd_intent_raw == sStableWasdIntent)
-        {
-            sWasdDisagreeStartedAt = -1.0f; // raw matches stable; no pending change
-        }
-        else if (sWasdDisagreeStartedAt < 0.0f)
-        {
-            sWasdDisagreeStartedAt = selva::wallClock(); // first frame of disagreement
-        }
-        else if (selva::wallClock() - sWasdDisagreeStartedAt >= tun.wasd_debounce_seconds)
-        {
-            sStableWasdIntent = wasd_intent_raw;
-            sWasdDisagreeStartedAt = -1.0f;
-        }
-        const bool wasd_intent = sStableWasdIntent;
-        const bool attack_in_flight = sSampler.isOneShotActive() || sPendingFirstAction.active;
-        const bool in_attack_recovery = selva::wallClock() < selva::combat::locoLockoutUntil();
-        // WASD override: if the player is pushing a direction, keep the
-        // loco track on a gait clip regardless of lockout. The Full-
-        // body attack one-shot drives the legs during the swing; the
-        // gait clip plays underneath so the attack ends with running
-        // or walking already on the loco track — no combat-idle pop
-        // when the BlendOut reveals it. Without this, releasing sprint
-        // mid-attack drops loco to combat-idle (the SM's Idle target),
-        // and the BlendOut reveals combat-idle for ~0.2s before the
-        // lockout expires and SM swaps to walking.
-        const bool is_moving = wasd_intent;
-        const bool is_sprinting = sPlayer.sprinting && wasd_intent;
-        // Trace every change in (wasd_intent, attack_in_flight,
-        // in_attack_recovery, is_moving). Lets us correlate input
-        // edges to SM decisions to spasm timing.
-        if (selva::combat::isCombatDebugEnabled())
-        {
-            static bool prev_wasd_intent = false;
-            static bool prev_attack_in_flight = false;
-            static bool prev_in_recovery = false;
-            static bool prev_is_moving = false;
-            if (wasd_intent != prev_wasd_intent || attack_in_flight != prev_attack_in_flight ||
-                in_attack_recovery != prev_in_recovery || is_moving != prev_is_moving)
-            {
-                const auto fd = sSampler.frameDiagnostics();
-                combatLog("[sm %.4fs] wasd=%d att=%d rec=%d -> is_moving=%d  "
-                          "(lockout_until=%.3fs, one_shot_w=%.2f, loco_w=%.2f)\n",
-                          selva::wallClock(), wasd_intent ? 1 : 0, attack_in_flight ? 1 : 0,
-                          in_attack_recovery ? 1 : 0, is_moving ? 1 : 0,
-                          selva::combat::locoLockoutUntil(), fd.one_shot_weight,
-                          fd.loco_blend_weight);
-                prev_wasd_intent = wasd_intent;
-                prev_attack_in_flight = attack_in_flight;
-                prev_in_recovery = in_attack_recovery;
-                prev_is_moving = is_moving;
-            }
-        }
-        const bool clip_done_this_frame = sSampler.locomotionClipFinished();
-        // "Armed" = at least one hand has a weapon equipped. The
-        // combat-ready idle clip differs by armed state — sword-and-
-        // shield guard pose vs unarmed brawler bounce.
-        // "Armed" means holding a real weapon — fists (the synthesized
-        // unarmed default) don't count, so the combat-idle picker
-        // chooses unarmed_combat_idle, not sword_and_shield_idle_4.
-        const bool is_armed = !isUnarmed(sEquipment);
-        selva::gameplay::LocomotionTickInput sm_in;
-        sm_in.is_moving = is_moving;
-        sm_in.is_sprinting = is_sprinting;
-        sm_in.clip_finished_this_frame = clip_done_this_frame;
-        sm_in.combat_input_this_frame = combat_input_this_frame;
-        sm_in.is_armed = is_armed;
-        sm_in.dt = dt;
-        sm_in.combat_grace_seconds = tun.combat_idle_grace_seconds;
-        sm_in.wall_clock_seconds = selva::wallClock();
-        const auto sm_out = tickLocomotionStateMachine(sLocomotionSM, sm_in);
-        clip_name = sm_out.clip_name;
-        clip_loops = sm_out.loops;
-        clip_blend_seconds = sm_out.blend_seconds;
-        // Held-block override: when blocking, force the locomotion
-        // track to play the block_idle loop. The block_1 raise
-        // animation is firing as a one-shot on the upper-body track
-        // (full mask actually), so overriding the loco track here
-        // doesn't conflict during the raise — the one-shot dominates.
-        // After the raise finishes, the loco track's block_idle
-        // becomes visible and persists the held-shield pose. On
-        // release, sBlockingActive flips false, the override drops,
-        // and the SM picks combat-idle / walking / running normally.
-        // Held-block locomotion override only applies when there's a
-        // dedicated block-idle clip (buckler does, unarmed doesn't —
-        // unarmed holds the last frame of the one-shot itself).
-        if (sBlockingActive && offHandCanBlock(sEquipment))
-            clip_name = "sword_and_shield_block_idle";
-
-        // Loco freeze during one-shot BlendIn. While the one-shot is
-        // ramping in (phase 1), the loco track and one-shot are both
-        // partially visible; letting the loco track ALSO swap clips
-        // at that moment creates a multi-source collision (one-shot
-        // ramp + loco crossfade + new loco clip splice) that reads
-        // as a leg spasm. During Hold (phase 2), the one-shot is
-        // fully on (weight=1) so the loco track is invisible — it
-        // can swap freely underneath. By the time BlendOut (phase 3)
-        // begins, the loco track has had time to settle on its new
-        // clip in isolation, so the reveal is clean.
-        const auto fd_loco = sSampler.frameDiagnostics();
-        const bool one_shot_blending_in = fd_loco.one_shot_phase == 1;
-        if (one_shot_blending_in && !sLastLocoClipName.empty() && clip_name != sLastLocoClipName)
-        {
-            clip_name = sLastLocoClipName;
-        }
-        clip = sClips.get(clip_name);
-        const bool loco_clip_changed = (clip_name != sLastLocoClipName);
-        // Trace SM clip-choice changes. Pairs with the input trace so
-        // we can see exactly which press caused which transition.
-        // Includes loco_current_time so we know what frame of the
-        // outgoing clip is the splice source — combined with the
-        // dest clip's t=0, that's enough to compute pose mismatch.
-        // Capture pre-update live joint positions for the post-update
-        // residual log (the actual splice point the sampler picked is
-        // only known AFTER update runs).
-        if (selva::combat::isCombatDebugEnabled() && loco_clip_changed)
-        {
-            const auto fd = sSampler.frameDiagnostics();
-            combatLog("[sm %.4fs] loco-pick %s@%.3fs -> %s (blend=%.3fs)\n", selva::wallClock(),
-                      sLastLocoClipName.c_str(), fd.loco_current_time, clip_name.c_str(),
-                      sm_out.blend_seconds);
-            const char* names[] = {"mixamorig:RightHand", "mixamorig:LeftHand",
-                                   "mixamorig:RightFoot", "mixamorig:LeftFoot", "mixamorig:Hips"};
-            for (const char* n : names)
-            {
-                const int idx = sSampler.findJoint(n);
-                if (idx < 0)
-                    continue;
-                pre_update_joints.push_back({n, idx, sSampler.jointWorldPos(idx)});
-            }
-        }
-        // Stash for next-frame combat-fire diagnostics (input runs
-        // before this block, so we expose the previous frame's pick).
-        sLastLocoClipName = clip_name;
-        // Per-clip override from locomotion.json (looped clips like
-        // walking/running may want longer/shorter blends than the SM
-        // default). Transition clips fall back to the SM-supplied
-        // 0.10s when no override exists.
-        clip_blend_seconds = sLocomotionConfig.blendInSeconds(clip_name, clip_blend_seconds);
-    }
-    if (clip != nullptr && clip->isLoaded())
+    // Pick + advance the sampler. The locomotion SM picks the loco
+    // clip; F1 debug-clip preview overrides it. sampler.update runs
+    // last so it sees post-input, post-movement state.
+    LocomotionPick pick = selectLocomotionClip(moveIntent, dt, combat_input_this_frame, tun);
+    if (pick.clip != nullptr && pick.clip->isLoaded())
     {
         ZoneScopedN("sampler.update");
-        sSampler.update(*clip, dt, clip_blend_seconds, clip_loops);
+        sSampler.update(*pick.clip, dt, pick.blend_seconds, pick.loops);
     }
 
-    // Post-update residual diagnostic: now that the sampler has chosen
-    // the splice time (t=0, phase-matched, cached, or pose-matched),
-    // sample the new clip at THAT time and log the per-joint residual
-    // vs the pre-update live pose. This is the actual offset the
-    // inertialization decay has to absorb.
-    if (!pre_update_joints.empty() && clip != nullptr)
-    {
-        const auto fd = sSampler.frameDiagnostics();
-        const float splice_t = fd.loco_current_time;
-        for (const auto& j : pre_update_joints)
-        {
-            const glm::vec3 cand = sSampler.sampleJointWorldPos(*clip, splice_t, j.idx);
-            combatLog("  %s residual=|%.3fm|  live=(%.2f,%.2f,%.2f) splice_t=%.3fs "
-                      "cand=(%.2f,%.2f,%.2f)\n",
-                      j.name, glm::length(cand - j.live), j.live.x, j.live.y, j.live.z, splice_t,
-                      cand.x, cand.y, cand.z);
-        }
-    }
+    logSpliceResiduals(pick.pre_update_joints, pick.clip);
+    logStickyLocoState();
 
-    // Sticky per-frame loco-state trace. Whenever the loco_blend_weight
-    // is mid-ramp (not 0 nor 1) OR a one_shot is blending, dump the
-    // sampler's state every frame. Lets us watch the rapid-WASD spasm
-    // unfold tick-by-tick.
-    if (selva::combat::isCombatDebugEnabled())
-    {
-        const auto fd = sSampler.frameDiagnostics();
-        const bool loco_mid = fd.loco_blend_weight > 0.001f && fd.loco_blend_weight < 0.999f;
-        const bool one_shot_mid = fd.one_shot_weight > 0.001f && fd.one_shot_weight < 0.999f;
-        if (loco_mid || one_shot_mid)
-        {
-            combatLog("[fr %.4fs] loco_w=%.3f one_shot_w=%.3f phase=%d clip=%s\n",
-                      selva::wallClock(), fd.loco_blend_weight, fd.one_shot_weight,
-                      fd.one_shot_phase, sLastLocoClipName.c_str());
-            // Joint positions during the one-shot fade-out (phase=3)
-            // capture the visible spasm region — this is when the
-            // one-shot's pose hands off to the loco track. If hip
-            // y plummets here, the discontinuity is on this handoff.
-            if (fd.one_shot_phase == 3)
-            {
-                for (const char* n :
-                     {"mixamorig:Hips", "mixamorig:LeftFoot", "mixamorig:RightFoot"})
-                {
-                    const int idx = sSampler.findJoint(n);
-                    if (idx < 0)
-                        continue;
-                    const glm::vec3 p = sSampler.jointWorldPos(idx);
-                    combatLog("    [fade] %s = (%.2f,%.2f,%.2f)\n", n, p.x, p.y, p.z);
-                }
-            }
-        }
-    }
-
-    // Root-motion translation (locomotion). When enabled and not mid-
-    // dodge, world translation comes from the active clip's authored
-    // hip XZ motion. consumedHipDelta gives the per-frame motion in
-    // clip-local model space (XZ; Y is zeroed by the freeze). We rotate
-    // it through the renderer's model rotation (yaw + π around Y) to
-    // land it in world frame.
-    //
-    // Rotation derivation: glm::rotate(M, θ, Y) applied to (dx, 0, dz)
-    // gives (cos(θ)·dx + sin(θ)·dz, 0, -sin(θ)·dx + cos(θ)·dz). With
-    // θ = yaw + π (cos = -cos(yaw), sin = -sin(yaw)) this becomes:
-    //   world.x = -cos(yaw) · dx - sin(yaw) · dz
-    //   world.z =  sin(yaw) · dx - cos(yaw) · dz
-    //
-    // Sanity check: clip-local +Z (Mixamo bind forward) at yaw=0 →
-    // world (0, 0, -1) = north. Player facing east (yaw=-π/2) → world
-    // (1, 0, 0) = east. Both match the player's visual forward
-    // (facing_world = (-sin(yaw), 0, -cos(yaw))).
-    //
-    // Skipping during sDodgeActive — the dodge translation block below
-    // owns world push during a dodge so we don't double-translate
-    // (locomotion track is still advancing underneath the one-shot).
+    // Root-motion translation. Locomotion path runs unless we're
+    // dodging or in F1 clip-preview mode (the dodge block below owns
+    // world push during a dodge so we don't double-translate).
     if (!sDodgeActive && sDebugClipName.empty())
-    {
-        const glm::vec3 hip_local = sSampler.consumedHipDelta();
-        if (glm::length(glm::vec2(hip_local.x, hip_local.z)) > 1e-6f)
-        {
-            const float sy = std::sin(sPlayer.yaw);
-            const float cy = std::cos(sPlayer.yaw);
-            const glm::vec3 hip_world(-cy * hip_local.x - sy * hip_local.z, 0.0f,
-                                      sy * hip_local.x - cy * hip_local.z);
-            sPlayer.pos += hip_world;
-        }
-    }
+        applyHipDeltaToPlayerPos();
 
-    // Dodge translation. The clip's authored hip motion drives world
-    // translation directly: roll clip moves the hip in clip-local +Z
-    // (forward); rotated by sPlayer.yaw it lands as world-frame
-    // forward. Backstep clip moves the hip in clip-local -Z; same
-    // rotation yields backward. No script-distance / direction-sign
-    // logic needed — the clip data carries both magnitude and direction.
-    //
-    // Mid-roll steering: rolls let you bend the trajectory by moving
-    // WASD/the camera during the clip; the per-frame yaw change re-
-    // rotates the next frame's hip delta into the new direction.
-    // Backsteps don't steer — the defensive beat commits to its
-    // initial axis.
+    // Dodge translation: clip's authored hip motion drives world
+    // translation directly (rolls = clip-local +Z forward, backsteps =
+    // clip-local -Z backward). Mid-roll steering bends the trajectory.
     if (sDodgeActive && sDebugClipName.empty())
     {
-        if (!sDodgeIsBackstep && glm::length(moveIntent) > 0.0001f)
-        {
-            const glm::vec3 dir = glm::normalize(moveIntent);
-            const float targetYaw = yawFromGroundDir(dir);
-            float delta = wrapAngleSigned(targetYaw - sPlayer.yaw);
-            const float maxStep = tun.dodge_steer_rate * dt;
-            if (delta > maxStep)
-                delta = maxStep;
-            else if (delta < -maxStep)
-                delta = -maxStep;
-            sPlayer.yaw += delta;
-        }
-
-        const glm::vec3 hip_local = sSampler.consumedHipDelta();
-        if (glm::length(glm::vec2(hip_local.x, hip_local.z)) > 1e-6f)
-        {
-            const float sy = std::sin(sPlayer.yaw);
-            const float cy = std::cos(sPlayer.yaw);
-            const glm::vec3 hip_world(-cy * hip_local.x - sy * hip_local.z, 0.0f,
-                                      sy * hip_local.x - cy * hip_local.z);
-            sPlayer.pos += hip_world;
-        }
+        applyDodgeSteer(moveIntent, tun.dodge_steer_rate, dt);
+        applyHipDeltaToPlayerPos();
     }
 
-    // CSV recording — capture every frame's joint world-space positions
-    // while a recording is in progress. Stops automatically when the
-    // requested duration elapses, then writes out a CSV file.
-    if (sDebugRecording)
-    {
-        DebugBoneSample sample;
-        sample.time_s = sDebugRecordElapsed;
-        const int n = sSampler.jointCount();
-        sample.joints.reserve(n);
-        for (int i = 0; i < n; ++i)
-            sample.joints.push_back(sSampler.jointWorldPos(i));
-        sDebugRecordSamples.push_back(std::move(sample));
-        sDebugRecordElapsed += dt;
-        if (sDebugRecordElapsed >= sDebugRecordDuration)
-        {
-            // Flush to CSV. Path is relative to working directory
-            // (typically build/bin); the file ends up alongside the
-            // game exe so it's easy to find.
-            const std::string out_path = "debug_bones_game_" + sDebugRecordClipName + ".csv";
-            std::FILE* fp = std::fopen(out_path.c_str(), "w");
-            if (fp != nullptr)
-            {
-                std::fprintf(fp, "time_s,joint_name,x,y,z\n");
-                const int nj = sSampler.jointCount();
-                for (const auto& s : sDebugRecordSamples)
-                {
-                    for (int i = 0; i < nj && i < static_cast<int>(s.joints.size()); ++i)
-                    {
-                        std::fprintf(fp, "%.4f,%s,%.6f,%.6f,%.6f\n", s.time_s,
-                                     sSampler.jointName(i), s.joints[i].x, s.joints[i].y,
-                                     s.joints[i].z);
-                    }
-                }
-                std::fclose(fp);
-                std::fprintf(stderr, "[anim-debug] wrote %s (%zu frames)\n", out_path.c_str(),
-                             sDebugRecordSamples.size());
-            }
-            else
-            {
-                std::fprintf(stderr, "[anim-debug] failed to open %s for write\n",
-                             out_path.c_str());
-            }
-            sDebugRecording = false;
-            sDebugRecordSamples.clear();
-        }
-    }
+    tickCsvRecording(dt);
 }
 
 static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*camX*/,
