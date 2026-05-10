@@ -52,13 +52,14 @@ games/selva-oscura/
 │   ├── LocomotionConfig.cpp      per-clip blend-in overrides from JSON
 │   └── AnimationClip.cpp         ozz::animation::Animation wrapper
 ├── src/combat/
-│   ├── AttackChain.cpp           AttackChainState/BufferedPress/PendingFirstAction + tickChainExpiry
+│   ├── AttackChain.cpp           BufferedPress/PendingFirstAction + tickChainExpiry (buffer expiry only)
 │   ├── AttackResolution.cpp      one-time startup pass (cancel-open, chain-link-start)
-│   ├── AttackResolver.cpp        ResolvedAttack/TechniqueDispatch dispatchers
+│   ├── ChainObserver.cpp         press history ring, technique tail-match, per-hand cancel windows
 │   ├── CombatData.cpp            registries (weapon classes/weapons/equipment) + load + helpers
 │   ├── CombatLog.cpp             combatLog() + log file open/close
+│   ├── PressMapping.cpp          (button + sprint/shift + chain state) -> clip name resolver
 │   ├── SpliceDiag.cpp            5-joint diag capture/log + poseMatchStartFromLoco
-│   ├── TransitionProfile.cpp     profile struct + 6 named profiles + fireOneShotWithProfile
+│   ├── TransitionProfile.cpp     profile struct + 5 named profiles + fireOneShotWithProfile
 │   └── WeaponData.cpp            JSON loaders for weapon class / weapon / equipment
 ├── src/gameplay/
 │   ├── LocomotionStateMachine.cpp  LocomotionState/CombatStance/StateMachine/tick + helpers
@@ -97,10 +98,17 @@ games/selva-oscura/
 └── CMakeLists.txt                build pipeline + asset bake
 ```
 
-`main.cpp` is monolithic by design — most state lives at file scope as
-`static` (e.g. `sPlayer`, `sLocomotionSM`, `sChainRight`,
-`sLocoLockoutUntil`). When a system grows enough to be tested in
-isolation, it gets pulled into `src/anim/` or `include/combat/`.
+Per-frame combat + render orchestration lives in
+`src/gameplay/PerFrameTick.cpp`. State globals at file scope (e.g.
+`sPlayer`, `sLocomotionSM`, `sLocoLockoutUntil`, the buffered-press
+singletons). When a system grows enough to be tested in isolation, it
+gets pulled into `src/anim/`, `src/combat/`, or `src/render/`.
+
+Chain state ownership: **`ChainObserver`** owns the press history,
+the matched technique, AND the per-hand cancel-window timestamps.
+`AttackChainState` (a former parallel struct) was deleted — readers
+go directly to `ChainObserver::cancelWindow(hand)` and
+`ChainObserver::chainState()`.
 
 ---
 
@@ -202,7 +210,7 @@ Entry point per frame:
 sSampler.update(*clip, dt, blend_seconds, loops);
 ```
 
-The sampler maintains three tracks:
+The sampler maintains four tracks:
 
 - **`loco_current`** — the locomotion clip the SM most recently asked
   for. Loops.
@@ -211,20 +219,42 @@ The sampler maintains three tracks:
 - **`one_shot`** — the active discrete action (attack, dodge, block
   raise). Does not loop. When weight > 0, dominates locomotion; when
   weight = 0 and finished, locomotion alone is visible.
+- **`one_shot_previous`** — the *outgoing* one-shot during a
+  cancel-into-next crossfade (e.g. jab → hook chain advance, or RMB
+  cancelling a running attack mid-recovery). When `playOneShot` is
+  called while another one-shot has visible weight, that one's
+  clip+time+pose+weight are moved to this track and faded over the
+  new clip's blend-in window. Without this, the old one-shot's pose
+  vanishes in a single frame on cancel and the visible legs snap.
 
 The blend math each frame (rough):
 
 ```
 loco_blended = lerp(loco_previous, loco_current, loco_blend_weight)
-final_pose   = lerp(loco_blended, one_shot, mask × one_shot_weight)
+final_pose   = blend(loco_blended,
+                     one_shot_previous (mask_prev × prev_w),
+                     one_shot          (mask × one_shot_w))
 ```
 
 The mask is a per-joint SimdFloat4 vector of 0/1 weights. `BodyMask::Full`
 is all 1s; `BodyMask::UpperBody` is 0s for hips and legs, 1s for spine
-and arms (so the legs keep walking under an attack swing). All
-attacks fire `Full` today — `UpperBody` was tried but produced
-visible leg-spasm where the walking hip cycle and the punch's hip
-drive fought each other.
+and arms. All attacks fire `Full` today — `UpperBody` was tried but
+produced visible leg-spasm where the walking hip cycle and the punch's
+hip drive fought each other.
+
+#### Loco freeze during one-shot BlendIn
+
+While a one-shot is in BlendIn (phase=1) — partially visible, ramping
+0→1 — the loco track is *pinned* to its current clip in
+`PerFrameTick.cpp` (it ignores SM clip-choice changes for that
+window). During Hold (weight=1, loco invisible) the loco track is
+free to swap clips underneath. When BlendOut starts, an inline pose-
+match scan inside `PoseSampler::update` snaps the loco track's time
+to the frame whose leg/feet pose best matches the about-to-fade
+one-shot pose — so the BlendOut reveal is into a near-identical loco
+frame instead of a discontinuity. This combination of "phase-1
+freeze + phase-3 pose-match" is the spasm fix; either alone does not
+suffice. See `memory/feedback_animation_track_collision.md`.
 
 #### Phase matching (gait→gait crossfade)
 
@@ -412,103 +442,123 @@ default blend (0.10 for transitions, 0.20 for state changes) and
 
 ---
 
-## 6. Combat: chains, profiles, and the fire path
+## 6. Combat: press-driven model
 
-### 6.1 The chain state
+The combat system is **press-driven**, not chain-state-driven. Every
+press maps to a clip via `clipForButton` and fires that clip in full;
+the clip's authored duration owns timing. `ChainObserver` watches the
+press history and recognizes named techniques (e.g. `jab_hook_combo`),
+but the chain is *informational* — it influences which clip the next
+press fires (slot-0 cold-strike vs slot-N technique step) and the HUD
+display, not when the player can act.
 
-Two `AttackChainState` instances — `sChainRight` and `sChainLeft` —
-hold the per-hand state of an in-progress chain:
+### 6.1 ChainObserver
 
-- `chain_index` — current step (0 = first attack).
-- `technique_index` — which technique (within the active grip's light
-  or heavy slot) is locked. -1 before the first press.
-- `chain_kind` — `Light` or `Heavy`. Switching mid-chain resets to
-  step 0.
-- `cancel_window_open_at` — wall-clock when the next press becomes
-  valid. The press CAN'T advance the chain before this. Computed at
-  fire time from the just-fired clip's motion-end.
-- `cancel_window_close_at` — wall-clock past which the press is
-  considered late. Late presses still work (we don't drop input on
-  the floor) but score lower on the rhythm meter.
-- `chain_reset_at` — wall-clock at which the chain auto-resets to
-  step 0 if no further presses happen. Long for non-finishers (allows
-  a slow mid-chain press), short for finishers (snappy combo-end
-  recovery).
-- `is_finisher` — true once the *last* step has fired. No new attacks
-  during a finisher's recovery; chain must reset first.
-- `last_press_accuracy` — 1.0 at window center, 0.0 at edge. Used by
-  the future scoring/feedback system.
-
-### 6.2 Resolution + dispatch
-
-`resolveAttackChainEntry(equipment, hand, kind, chain_index, technique_index)`
-picks the WeaponClass, drills into the right grip's anim set
-(`one_handed.light[technique_index]` or similar), and returns a
-`ResolvedAttack { attack, clip, chain_size }`. `chain_size` tells the
-caller "is this the last step?"
-
-`dispatchTechniqueForPress(eq, hand, kind, chain_index, current_locked, button)`
-handles button-routing within a chain. Some techniques are
-`LMB → RMB → LMB`; others are `LMB → LMB → RMB`. On the first press,
-it picks the technique whose slot-0 button matches; on subsequent
-presses, it advances within the locked technique only if
-`expected_button` matches. Mismatch is a "rhythm miss" — the press
-was timed correctly but on the wrong button. (Currently the chain
-just doesn't advance; future polish: visual feedback.)
-
-### 6.3 The buffered-press mechanic
-
-If the player presses LMB before `cancel_window_open_at`, the press
-is **buffered**, not dropped:
+`combat::ChainObserver` is a single global with shared press history
++ per-hand cancel windows.
 
 ```cpp
-struct BufferedPress { bool pending; AttackKind kind; const char* button; float buffered_at; };
+struct ChainState {
+    const char* technique_id;  // matched technique, or nullptr
+    int step;                  // 0 = no chain in progress
+    float last_press_accuracy; // 1.0 = window center, 0.0 = edge
+    bool last_press_perfect;
+};
+
+struct CancelWindow {
+    float open_at, close_at;   // wall-clock seconds
+};
 ```
 
-When the cancel window opens, the buffered press fires automatically.
-Buffer expires after `tunables.combo_input_buffer_seconds` (~0.5s).
-`sBufferedRight` / `sBufferedLeft` are independent.
+Public API:
+
+- `recordPress(eq, button, t, window_center, window_half)` — append
+  press to the history ring (max 8), score this press against the
+  PREVIOUS fire's window, and rescan techniques for the longest
+  tail-match.
+- `chainState()` — read current matched technique + step.
+- `setCancelWindow(hand, open, close)` / `cancelWindow(hand)` —
+  per-hand cancel windows; set at fire time, read by `clipForButton`
+  + ComboHud.
+- `tickChainObserver(t, one_shot_active)` — clears history if quiet
+  for `combo_reset_grace_seconds`, suspended while a one-shot is in
+  flight.
+
+When `recordPress`'s rescan finds a tail-match equal to the
+technique's full attack count (technique COMPLETED), history is
+cleared so the next press starts a fresh chain. Without this the
+finisher's button would seed the same technique again at step 1.
+
+### 6.2 PressMapping
+
+`clipForButton(eq, hand, button, mods, now, win_open, win_close,
+out_chain_advance)` resolves a press to a clip name:
+
+1. **Sprint+LMB** — running attack from `WeaponGripAnimSet::running`.
+2. **Inside cancel window AND chain in progress AND button matches
+   technique's next slot** — return that slot's clip and set
+   `out_chain_advance=true`. This is what makes LMB→RMB→LMB inside
+   windows fire jab→hook→combo.
+3. **Shift+button** — heavy slot's slot-0 (placeholder).
+4. **Cold-strike fallback** — first technique whose slot-0 matches
+   the button. Special-case: unarmed RMB looks for "hook" in any
+   technique's later slots.
+
+The `out_chain_advance` flag tells the caller whether to interrupt
+an in-flight one-shot or buffer the press until it ends.
+
+### 6.3 Buffered presses
+
+`combat::BufferedPress` (per-hand) holds a press received during an
+in-flight one-shot when it isn't a chain advance. When the one-shot
+finishes, the buffered press replays through `clipForButton`. The
+buffer expires after `combo_input_buffer_seconds`.
+
+```cpp
+struct BufferedPress { bool pending; const char* button; float buffered_at; };
+```
+
+`tickChainExpiry(t, buffer_seconds)` runs each frame and drops stale
+buffered presses.
 
 ### 6.4 The fire path
 
-Roughly, on a press edge (LMB or RMB rising edge):
+`tryAttackInput(hand, press_edge, button)` (lambda in PerFrameTick):
 
-1. `tryAttackInput(hand, edge_this_frame, button)` — checks rhythm
-   window, buffers if early, returns whether to fire.
-2. If firing: `fireAttack(hand, kind)`:
-   - If the kind changed (Light → Heavy or vice versa), reset the
-     chain.
-   - Sprint-swap check: if `sPlayer.sprinting && kind == Light`,
-     substitute the running-attack clip from
-     `WeaponGripAnimSet::running` (e.g. `flying_knee_punch_combo`).
-     Treats the chain as a single-step finisher.
-   - Otherwise resolve the clip via `resolveAttackChainEntry`.
-   - Compute the blend duration: per-attack override
-     (`chain_link_blend_seconds`) wins over global tunable.
-   - Compute the start time: pose-match scan against the loco track
-     for first-strike, against the outgoing one-shot for chain-link.
-     Sprint-swap uses the tunable start-trim.
-   - Pick the `TransitionProfile`: `firstStrike`, `chainLink`, or
-     `sprintFinisher`.
-   - `fireOneShotWithProfile(clip, profile, start_seconds, rate)`.
-   - Compute the cancel/reset windows from the clip's motion-end and
-     the next step's motion-start (cached at startup). Update
-     `chain.cancel_window_*_at`, `chain.chain_reset_at`.
-   - `applyProfileLockout(profile, cancel_window_close_at)` — see
-     section 6.5.
-   - Advance `chain_index` (or set `is_finisher = true` if this was
-     the last step).
+1. **Press during a dodge** → buffer for post-dodge handoff
+   (`sPostDodgeAttack`).
+2. **Fresh press, one-shot active** → call `clipForButton`. If
+   `is_chain_advance && inside_window`, fire immediately (interrupts
+   current one-shot via `playOneShot`; the 2-track one_shot_previous
+   crossfade smooths the splice). Otherwise buffer.
+3. **Fresh press, no one-shot** → call `clipForButton` and fire
+   immediately.
+4. **No fresh press, buffered press pending, one-shot ended** →
+   replay the buffered press through `clipForButton`.
+
+Each successful fire calls `recordPress` to update history + scoring.
+
+`fireClip(hand, clip_name)` is the inner helper:
+
+- Pose-match the splice point: against the outgoing one-shot if
+  active (chain link), or against the live skinned pose
+  (`poseMatchStartFromLoco`) for cold start.
+- Pick the `TransitionProfile`: `chainLink` if interrupting,
+  `firstStrike` otherwise.
+- Resolve per-attack `blend_out_seconds` override from the
+  WeaponAttack record (currently unused; lets clips with long
+  authored recovery tails trim their visible end).
+- `fireOneShotWithProfile(clip, profile, start_seconds, rate)`.
+- `setCancelWindow(hand, open, close)` opens the next press's
+  rhythm window.
 
 ### 6.5 TransitionProfile
 
-The whole "fire a one-shot from the live state" pattern recurs in six
-places (three attack variants, two block variants, one dodge). Each
+The "fire a one-shot from the live state" pattern recurs in five
+places (two attack variants, two block variants, one dodge). Each
 has its own combination of: blend duration, source-pose strategy,
-inertialization, lockout, mask, freeze-last. Hard-coding those at
-each call site meant a change to one risked regressing the others
-(and made cross-site consistency invisible).
-
-`TransitionProfile` puts every axis on one struct:
+inertialization, lockout, mask, freeze-last. `TransitionProfile`
+puts every axis on one struct:
 
 ```cpp
 struct TransitionProfile {
@@ -525,54 +575,55 @@ struct TransitionProfile {
 };
 ```
 
-The six profiles in `namespace profiles` (`main.cpp` ~1446-1520):
+The five profiles in `namespace profiles`
+(`src/combat/TransitionProfile.cpp`):
 
 | Profile           | Use case                              | Blend | Inert | Lockout                  |
 |-------------------|---------------------------------------|-------|-------|--------------------------|
 | `firstStrike`     | cold attack from combat-idle          | 0.10s | yes   | CancelWindowClose        |
-| `chainLink`       | mid-chain attack splice               | 0.22s | yes   | CancelWindowClose        |
-| `sprintFinisher`  | sprint+LMB → running attack           | 0.10s | NO    | WallClockSeconds (1.0s)  |
+| `chainLink`       | mid-chain attack splice               | 0.22s | NO    | CancelWindowClose        |
 | `blockFromLatch`  | block fired through combat-entry latch | 0.10s | yes   | None                     |
 | `blockLive`       | block fired live from CombatReady     | 0.10s | yes   | None (snap loco to t=0)  |
 | `dodge`           | roll / backstep                        | 0.10s | NO    | None (own gate via sDodgeActive) |
 
-`fireOneShotWithProfile(clip, profile, start_seconds, rate)` is the
-one entry point: applies source-prep, enrolls inertialization if
-requested, calls `playOneShot`. `applyProfileLockout(profile,
-cancel_window_close_at)` is the post-fire lockout assignment, called
-separately because the cancel-window anchor only exists after the
-chain code computes it.
+`chainLink` deliberately does NOT enroll inertialization — the
+2-track one-shot crossfade (`one_shot_previous` track in
+PoseSampler) handles the cancel-into-next pose continuity directly.
+Layering inertialization on top double-shapes the same transition
+and produces per-frame chatter.
 
-The decision tree `is_sprint_swap ? sprintFinisher() : first_strike ?
-firstStrike() : chainLink()` lives in `fireAttack`. To add a new
-transition variant: write a profile, route to it from the right
-caller. Don't inline the settings.
+`fireOneShotWithProfile(clip, profile, start_seconds, rate)` applies
+source-prep, enrolls inertialization if requested, calls
+`playOneShot`. `applyProfileLockout(profile, cancel_window_close_at)`
+is the post-fire lockout assignment.
 
-### 6.6 The loco lockout chain
+### 6.6 The loco lockout
 
-Three flags decide whether locomotion responds to WASD this frame:
+`sLocoLockoutUntil` (a single wall-clock float) gates whether the loco
+SM can RESPOND to WASD intent during attack recovery. Set by
+`applyProfileLockout`:
 
-- `attack_in_flight = sSampler.isOneShotActive() || sPendingFirstAction.active`
-  — true while a one-shot is blending in / playing / blending out, or
-  while the first-action latch is waiting to fire.
-- `in_attack_recovery = sWallClockSeconds < sLocoLockoutUntil`
-  — true while the post-fire lockout window hasn't elapsed.
-- `loco_lockout = attack_in_flight || in_attack_recovery`
-- `is_moving = wasd_intent && !loco_lockout`
+- `CancelWindowClose`: `cancel_window_close_at + attack_lockout_extension_seconds`.
+- `WallClockSeconds`: `now + profile.lockout_seconds`.
+- `None`: no change.
 
-`sLocoLockoutUntil` is set by `applyProfileLockout`:
+In PerFrameTick:
 
-- `CancelWindowClose`: `cancel_window_close_at + attack_lockout_extension_seconds`
-  (the attack's recovery window plus a small grace).
-- `WallClockSeconds`: `now + profile.lockout_seconds` (sprint-finisher
-  uses 1.0s — the running attack commits, can't be canceled).
-- `None`: no change. Dodge and block don't lock locomotion this way;
-  dodge has its own `sDodgeActive` gate, block is upper-body.
+```cpp
+const bool attack_in_flight = sSampler.isOneShotActive() || sPendingFirstAction.active;
+const bool in_attack_recovery = wallClock() < locoLockoutUntil();
+const bool loco_lockout = attack_in_flight || in_attack_recovery;
+// WASD-overrides-lockout: holding direction keeps the gait clip on
+// the loco track during the attack instead of dropping to combat-
+// idle. Without this the BlendOut reveals combat-idle for a frame
+// before SM swaps to walking — visible as a stance pop.
+const bool is_moving = wasd_intent;
+const bool is_sprinting = sPlayer.sprinting && wasd_intent;
+```
 
-This gating is what makes attacks "commit" — the player can't break
-out of an attack by holding W. They can buffer the next attack press
-(see 6.3) and they can fire a dodge after `dodge_attack_cancel_fraction`
-of dodge duration, but locomotion is locked until the lockout drops.
+Effectively: when the player holds WASD, the gait clip continues on
+the loco track through the entire attack duration. When they don't,
+the SM picks combat-idle and the BlendOut reveals it.
 
 ---
 
