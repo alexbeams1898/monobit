@@ -15,7 +15,6 @@
   "follow_height": 2.5,
   "fov_degrees": 60.0,
   "anim_blend_seconds": 0.20,
-  "cross_family_min_blend_seconds": 0.25,
   "combat_idle_grace_seconds": 2.0,
   "combat_entry_delay_seconds": 0.30,
   "combo_reset_grace_seconds": 0.5,

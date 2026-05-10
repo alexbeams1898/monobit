@@ -94,16 +94,6 @@ struct Tunables
     // snaps instantly. ~0.15-0.25s reads as "smooth" without making
     // the transition feel laggy.
     float anim_blend_seconds = 0.20f;
-    // Minimum blend duration (seconds) for cross-family loco
-    // transitions: idle (stationary stance) ↔ gait (mid-stride).
-    // The pose gap is geometrically wider than within-family
-    // transitions; default 0.20s blends produce visible snap.
-    //
-    // Tradeoff: lower = snappier stance entry after attacks (good)
-    // but more visible arm-snap on stance exit (bad). Higher =
-    // smoother stance exit but laggy stance entry (the "long fade
-    // into combat idle after attacking" feel). 0.25s is a balance.
-    float cross_family_min_blend_seconds = 0.25f;
     // How long to remain in CombatReady stance after the last combat
     // input. The "stays braced for a moment" feel — long
     // enough that a quick re-engage doesn't snap back to peaceful;
@@ -117,12 +107,12 @@ struct Tunables
     // match the cross-fade duration into the combat-stance loop.
     // 0 disables the beat (instant-fire).
     //
-    // Attacks fire instantly regardless of this delay; the cross-
-    // family blend extender (cross_family_min_blend_seconds) is
-    // what handles the standard_idle → combat-idle handoff for
-    // attacks. Only blocks honor this delay because their hold-RMB
-    // semantics demand the establishing beat — you wouldn't want
-    // RMB to read as "I tapped block while still standing relaxed."
+    // Attacks fire instantly regardless of this delay; the per-joint
+    // inertialization decay handles the standard_idle → combat-idle
+    // handoff for attacks. Only blocks honor this delay because their
+    // hold-RMB semantics demand the establishing beat — you wouldn't
+    // want RMB to read as "I tapped block while still standing
+    // relaxed."
     float combat_entry_delay_seconds = 0.18f;
 
     // ---- Attack combos ----
@@ -252,7 +242,6 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     Tunables, time_scale, turn_rate, wasd_debounce_seconds, walk_speed, run_speed,
     locomotion_accel, locomotion_decel, idle_to_walk_speed, walk_to_run_speed, mouse_sensitivity,
     pitch_min, pitch_max, follow_distance, follow_height, fov_degrees, anim_blend_seconds,
-    cross_family_min_blend_seconds,
     combat_idle_grace_seconds, combat_entry_delay_seconds, combo_reset_grace_seconds,
     combo_input_buffer_seconds, combo_chain_blend_seconds, first_strike_blend_seconds,
     inertialize_decay_base_seconds, inertialize_decay_scale_per_radian,

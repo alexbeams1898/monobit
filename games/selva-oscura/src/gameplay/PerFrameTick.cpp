@@ -68,12 +68,7 @@ using selva::gameplay::PlayerState;
 static PlayerState& sPlayer = selva::gameplay::player();
 using selva::gameplay::CombatStance;
 using selva::gameplay::CombatStanceFoot;
-using selva::gameplay::LocomotionFrameOutput;
-using selva::gameplay::LocomotionState;
 using selva::gameplay::LocomotionStateMachine;
-using selva::gameplay::loopClipForState;
-using selva::gameplay::selectTransitionClip;
-using selva::gameplay::tickLocomotionStateMachine;
 static LocomotionStateMachine& sLocomotionSM = selva::gameplay::locomotionSM();
 using selva::combat::AttackKind;
 using selva::combat::BufferedPress;
@@ -193,19 +188,6 @@ static float sDodgePlaybackRate = 1.0f;
 
 // Loco-lockout state owned by combat/TransitionProfile.{h,cpp}. The
 // per-frame movement gate reads selva::combat::locoLockoutUntil().
-
-// WASD debounce. SM commits to a wasd_intent state change only after
-// the raw value has disagreed continuously for wasd_debounce_seconds.
-// Stops sub-blend-window rapid taps from spawning back-to-back loco
-// crossfades. The high-res trace showed alternating loco-pick events
-// ~30-40ms apart during rapid mashing — well under any reasonable
-// blend duration. Even with reverse-blend protection, that many
-// transitions per second produces visible jitter.
-static bool sStableWasdIntent = false;
-// -1 sentinel = no pending disagreement. Set to wall-clock time on
-// the first frame of disagreement, cleared back to -1 when raw and
-// stable agree OR when the debounce elapses and we commit.
-static float sWasdDisagreeStartedAt = -1.0f;
 
 // Held-block state. When the off-hand item supports blocking
 // (currently: any weapon whose class id is "buckler") and RMB is
@@ -1267,55 +1249,6 @@ struct PreUpdateJoint
     glm::vec3 live;
 };
 
-// Debounce sStableWasdIntent against the raw WASD bit. Held WASD
-// commits to walking only after disagreement persists for the
-// debounce window; brief taps + rapid mashing never accumulate.
-static void tickWasdDebounce(bool wasd_intent_raw, float wasd_debounce_seconds)
-{
-    if (wasd_intent_raw == sStableWasdIntent)
-    {
-        sWasdDisagreeStartedAt = -1.0f;
-        return;
-    }
-    if (sWasdDisagreeStartedAt < 0.0f)
-    {
-        sWasdDisagreeStartedAt = selva::wallClock();
-        return;
-    }
-    if (selva::wallClock() - sWasdDisagreeStartedAt >= wasd_debounce_seconds)
-    {
-        sStableWasdIntent = wasd_intent_raw;
-        sWasdDisagreeStartedAt = -1.0f;
-    }
-}
-
-// Edge-trace SM-input changes: WASD intent, attack-in-flight, recovery
-// gate, is-moving. Lets us correlate input edges to SM decisions.
-static void logSmInputChanges(bool wasd_intent, bool attack_in_flight, bool in_attack_recovery,
-                              bool is_moving)
-{
-    if (!selva::combat::isCombatDebugEnabled())
-        return;
-    static bool prev_wasd_intent = false;
-    static bool prev_attack_in_flight = false;
-    static bool prev_in_recovery = false;
-    static bool prev_is_moving = false;
-    if (wasd_intent != prev_wasd_intent || attack_in_flight != prev_attack_in_flight ||
-        in_attack_recovery != prev_in_recovery || is_moving != prev_is_moving)
-    {
-        const auto fd = sSampler.frameDiagnostics();
-        combatLog("[sm %.4fs] wasd=%d att=%d rec=%d -> is_moving=%d  "
-                  "(lockout_until=%.3fs, one_shot_w=%.2f, loco_w=%.2f)\n",
-                  selva::wallClock(), wasd_intent ? 1 : 0, attack_in_flight ? 1 : 0,
-                  in_attack_recovery ? 1 : 0, is_moving ? 1 : 0, selva::combat::locoLockoutUntil(),
-                  fd.one_shot_weight, fd.loco_blend_weight);
-        prev_wasd_intent = wasd_intent;
-        prev_attack_in_flight = attack_in_flight;
-        prev_in_recovery = in_attack_recovery;
-        prev_is_moving = is_moving;
-    }
-}
-
 // Capture pre-update live joint world positions for the residual log.
 // The actual splice point the sampler picked is only known AFTER
 // update runs.
@@ -1351,31 +1284,6 @@ struct LocomotionPick
     float blend_seconds = 0.0f;
     std::vector<PreUpdateJoint> pre_update_joints;
 };
-
-// Bump blend_seconds when the source and destination clips belong
-// to different families (per locomotion.json `family` tag). The
-// pose gap across families is geometrically wider than within;
-// the default 0.10-0.20s blend produces 0.3-0.8m foot/hand
-// residuals at the splice (visible as leg jerk / arm snap).
-// Wider blend gives the residual more time to ease out — the
-// inertialization decay matches blend_seconds, so the offset gets
-// a longer window to absorb on top of the wider crossfade.
-//
-// Either side untagged (empty family) → no bump (treat as
-// "matches everything"). This makes adding a new clip safe-by-
-// default: forget the family tag and you get default blends, no
-// regression.
-//
-// Tunable via F1 panel "Cross-family min (s)".
-static float extendBlendForCrossFamily(const std::string& from, const std::string& to,
-                                       float current_blend, float cross_family_min)
-{
-    const std::string& from_family = sLocomotionConfig.family(from);
-    const std::string& to_family = sLocomotionConfig.family(to);
-    if (from_family.empty() || to_family.empty() || from_family == to_family)
-        return current_blend;
-    return std::max(current_blend, cross_family_min);
-}
 
 // Pick the locomotion clip for this frame from the player's
 // continuous velocity magnitude. Speed thresholds:
@@ -1497,10 +1405,7 @@ static LocomotionPick selectLocomotionClip(const glm::vec3& /*moveIntent*/, floa
 
     pick.clip = sClips.get(pick.clip_name);
     const bool loco_clip_changed = (pick.clip_name != sLastLocoClipName);
-    const std::string from_clip = sLastLocoClipName;
     pick.blend_seconds = sLocomotionConfig.blendInSeconds(pick.clip_name, pick.blend_seconds);
-    pick.blend_seconds = extendBlendForCrossFamily(from_clip, pick.clip_name, pick.blend_seconds,
-                                                   tun.cross_family_min_blend_seconds);
     // Capture pre-update joints AND emit the [sm loco-pick] log after
     // the final blend has been computed, so the log shows the
     // duration the sampler will actually use (not the SM's pre-
@@ -1560,10 +1465,9 @@ static void logSpliceResiduals(const std::vector<PreUpdateJoint>& pre_update_joi
         // Echo the active state on an anomaly so the cause is right
         // there without having to scroll up: which one-shot, which
         // loco, which phase.
-        combatLog("  [!] context: 1shot=%s(phase=%d) loco=%s->%s blend_w=%.2f\n",
+        combatLog("  [!] context: 1shot=%s(phase=%d) loco=%s\n",
                   fd.one_shot_name ? fd.one_shot_name : "(none)", fd.one_shot_phase,
-                  fd.loco_previous_name ? fd.loco_previous_name : "(none)",
-                  fd.loco_current_name ? fd.loco_current_name : "(none)", fd.loco_blend_weight);
+                  fd.loco_current_name ? fd.loco_current_name : "(none)");
     }
 }
 
@@ -1810,10 +1714,9 @@ static void tickGripToggle(const Uint8* keys)
 static std::string buildStateSignature(const selva::anim::PoseSampler::FrameDiagnostics& fd)
 {
     char sig[256];
-    std::snprintf(sig, sizeof(sig), "p=%d|os=%s|loco=%s|prev=%s|d=%d|b=%d|bda=%d|fr=%d",
-                  fd.one_shot_phase, fd.one_shot_name ? fd.one_shot_name : "",
-                  fd.loco_current_name ? fd.loco_current_name : "",
-                  fd.loco_previous_name ? fd.loco_previous_name : "", sDodgeActive ? 1 : 0,
+    std::snprintf(sig, sizeof(sig), "p=%d|os=%s|loco=%s|d=%d|b=%d|bda=%d|fr=%d", fd.one_shot_phase,
+                  fd.one_shot_name ? fd.one_shot_name : "",
+                  fd.loco_current_name ? fd.loco_current_name : "", sDodgeActive ? 1 : 0,
                   sBufferedDodge.pending ? 1 : 0, sPostDodgeAttack.pending ? 1 : 0,
                   sSampler.isLocoFrozenByOneShot() ? 1 : 0);
     return sig;
@@ -1852,16 +1755,7 @@ static void appendLocoSection(std::string& line,
     if (fd.loco_current_name == nullptr)
         return;
     char buf[128];
-    if (fd.loco_previous_name != nullptr && fd.loco_blend_duration > 0.0f)
-    {
-        std::snprintf(buf, sizeof(buf), "loco=%s@%.2fs<-%s w=%.2f ", fd.loco_current_name,
-                      fd.loco_current_time, fd.loco_previous_name, fd.loco_blend_weight);
-    }
-    else
-    {
-        std::snprintf(buf, sizeof(buf), "loco=%s@%.2fs ", fd.loco_current_name,
-                      fd.loco_current_time);
-    }
+    std::snprintf(buf, sizeof(buf), "loco=%s@%.2fs ", fd.loco_current_name, fd.loco_current_time);
     line += buf;
 }
 

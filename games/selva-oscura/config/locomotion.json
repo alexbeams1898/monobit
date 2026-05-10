@@ -1,10 +1,10 @@
 {
-  "_comment": "Per-clip locomotion metadata. blend_in_seconds = how long to crossfade INTO this clip. family = pose-family tag for the cross-family blend extender (cross_family_min_blend_seconds). Within-family transitions (e.g. walking <-> running) use the per-clip blend_in_seconds; across-family (e.g. unarmed_combat_idle <-> running) get bumped to the cross-family minimum so the wider pose gap doesn't snap visibly. Family is open-ended; common values are 'gait' (mid-stride neutral arms) and 'idle' (stationary stance). To add a new clip, add a row here with its family — no C++ changes needed.",
+  "_comment": "Per-clip locomotion metadata. blend_in_seconds = inertialization decay duration when this clip becomes the active loco_current. Per-joint decay scales further by offset magnitude on top of this base, so idle->running gets a wider window than walking->running automatically.",
   "clips": [
-    { "name": "standard_idle",         "blend_in_seconds": 0.30, "family": "idle" },
-    { "name": "unarmed_combat_idle",   "blend_in_seconds": 0.40, "family": "idle" },
-    { "name": "sword_and_shield_idle_4","blend_in_seconds": 0.40, "family": "idle" },
-    { "name": "walking",               "blend_in_seconds": 0.18, "family": "gait" },
-    { "name": "running",               "blend_in_seconds": 0.10, "family": "gait" }
+    { "name": "standard_idle",          "blend_in_seconds": 0.30 },
+    { "name": "unarmed_combat_idle",    "blend_in_seconds": 0.40 },
+    { "name": "sword_and_shield_idle_4","blend_in_seconds": 0.40 },
+    { "name": "walking",                "blend_in_seconds": 0.18 },
+    { "name": "running",                "blend_in_seconds": 0.10 }
   ]
 }

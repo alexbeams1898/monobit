@@ -118,8 +118,6 @@ static void renderAnimationSection(selva::tuning::Tunables& tun)
     if (!ImGui::CollapsingHeader("Animation", ImGuiTreeNodeFlags_DefaultOpen))
         return;
     tunedSlider("Cross-fade (s)", &tun.anim_blend_seconds, 0.0f, 0.50f, 0.025f, "%.3f");
-    tunedSlider("Cross-family min (s)", &tun.cross_family_min_blend_seconds, 0.0f, 1.0f, 0.025f,
-                "%.3f");
     tunedSlider("Combat-idle grace (s)", &tun.combat_idle_grace_seconds, 0.0f, 5.0f, 0.25f, "%.2f");
     tunedSlider("Combat entry delay (s)", &tun.combat_entry_delay_seconds, 0.0f, 0.50f, 0.025f,
                 "%.3f");
