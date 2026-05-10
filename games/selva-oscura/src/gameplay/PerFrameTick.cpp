@@ -163,9 +163,10 @@ static bool sDodgeIsBackstep = false;
 // clip-time elapsed into wall-clock elapsed for the same gate.
 static float sDodgePlaybackRate = 1.0f;
 
-// AttackKind / AttackChainState / BufferedPress / PendingFirstAction +
-// per-hand singletons + resetChain + tickChainExpiry live in
-// combat/AttackChain.{h,cpp}. (Aliases declared in prelude above.)
+// AttackKind / BufferedPress / PendingFirstAction + per-hand
+// BufferedPress singletons + tickChainExpiry live in
+// combat/AttackChain.{h,cpp}. Chain state + per-hand cancel windows
+// live in combat/ChainObserver.{h,cpp}.
 
 // Wall-clock seconds since the game started — owned by
 // selva::wallClock() (WallClock.h). Advanced once per frame at the
