@@ -32,7 +32,9 @@ const ChainState& chainState();
 void resetChain();
 
 // Tick: clears history if too much time has passed since last press
-// (combo_reset_grace_seconds).
-void tickChainObserver(float wall_clock_seconds);
+// (combo_reset_grace_seconds). Pass `one_shot_active=true` to suspend
+// the grace timer while a clip is in flight — the player can't input
+// the next press during the clip, so the grace shouldn't burn down.
+void tickChainObserver(float wall_clock_seconds, bool one_shot_active);
 
 } // namespace selva::combat

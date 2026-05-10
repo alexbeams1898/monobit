@@ -202,6 +202,18 @@ struct PoseSampler::Impl
     // requests blend-out. Used for held actions like unarmed block.
     bool one_shot_freeze_last = false;
 
+    // Previous one-shot track for cancel-into-next-clip crossfading.
+    // When playOneShot fires while another one-shot has visible weight,
+    // we move the outgoing one-shot here and ramp it down concurrently
+    // with the new one-shot's blend-in. Without this, the old one-shot's
+    // pose disappears in a single frame (weight slammed to 0), creating
+    // a visible pose-snap that inertialization can't bridge cleanly.
+    Track one_shot_previous;
+    float one_shot_previous_weight = 0.0f;
+    float one_shot_previous_fade_seconds = 0.0f;
+    float one_shot_previous_playback_rate = 1.0f;
+    PoseSampler::BodyMask one_shot_previous_mask = PoseSampler::BodyMask::Full;
+
     glm::mat4 root_transform = glm::mat4(1.0f);
     std::vector<glm::mat4> inverse_bind_matrices;
 
@@ -255,6 +267,8 @@ struct PoseSampler::Impl
     // (mask * one_shot_weight). Filled per-frame. Held as a member so we
     // don't allocate every update().
     std::vector<ozz::math::SimdFloat4> one_shot_joint_weights;
+    // Same for the outgoing previous one-shot during a cancel crossfade.
+    std::vector<ozz::math::SimdFloat4> one_shot_previous_joint_weights;
 
     // Scratch buffers. `loco_blended` is the output of the loco-internal
     // blend (loco_current + loco_previous). `final_locals` is the output
@@ -428,6 +442,7 @@ PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh
     sampler.impl->loco_current.resize(n_joints, n_soa);
     sampler.impl->loco_previous.resize(n_joints, n_soa);
     sampler.impl->one_shot.resize(n_joints, n_soa);
+    sampler.impl->one_shot_previous.resize(n_joints, n_soa);
     sampler.impl->loco_blended.resize(n_soa);
     sampler.impl->final_locals.resize(n_soa);
     sampler.impl->pre_change_locals.resize(n_soa);
@@ -438,6 +453,7 @@ PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh
     sampler.bone_palette.resize(n_joints);
     sampler.impl->upper_body_weights = buildUpperBodyWeights(ozz_skel);
     sampler.impl->one_shot_joint_weights.resize(n_soa);
+    sampler.impl->one_shot_previous_joint_weights.resize(n_soa);
 
     // Find Hips joint and stash its rest-pose translation (X and Z only;
     // Y is left free so vertical walk-bob still plays). Used per-frame to
@@ -490,6 +506,28 @@ void PoseSampler::playOneShot(const AnimationClip& clip, float blend_in_seconds,
         return;
 
     Impl& s = *impl;
+    // If another one-shot is in flight with visible weight, demote it
+    // to one_shot_previous and ramp it down concurrently with the new
+    // one-shot's blend-in. This is what makes cancel-into-next-clip
+    // smooth (jab→hook chain). Without it, slamming one_shot_weight=0
+    // on the new fire makes the old one-shot's pose vanish in 1 frame
+    // — visible as a leg snap.
+    if (s.one_shot_phase != OneShotPhase::Inactive && s.one_shot.animation != nullptr &&
+        s.one_shot_weight > 0.001f)
+    {
+        // Move current one-shot pose into previous track. Sample state
+        // (animation, time, locals already populated) carries through.
+        s.one_shot_previous.animation = s.one_shot.animation;
+        s.one_shot_previous.time_seconds = s.one_shot.time_seconds;
+        s.one_shot_previous.local_transforms = s.one_shot.local_transforms;
+        s.one_shot_previous.last_hip_xz = s.one_shot.last_hip_xz;
+        s.one_shot_previous.last_hip_xz_valid = false; // discontinuity
+        s.one_shot_previous.last_hip_delta = glm::vec3(0.0f);
+        s.one_shot_previous_weight = s.one_shot_weight;
+        s.one_shot_previous_fade_seconds = std::max(0.05f, blend_in_seconds);
+        s.one_shot_previous_playback_rate = s.one_shot_playback_rate;
+        s.one_shot_previous_mask = s.one_shot_mask;
+    }
     s.one_shot.animation = clip.ozz_animation.get();
     const float dur = s.one_shot.animation ? s.one_shot.animation->duration() : 0.0f;
     s.one_shot.time_seconds = std::clamp(start_time_seconds, 0.0f, std::max(0.0f, dur - 1e-4f));
@@ -1605,35 +1643,126 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
         const float prev_dur =
             s.loco_current.animation ? s.loco_current.animation->duration() : 0.0f;
         const float new_dur = desired->duration();
-        if (prev_is_gait && new_is_gait && prev_dur > 0.0f && new_dur > 0.0f)
+
+        // Pose-match: scan the new clip for the time at which the
+        // legs+feet best match the OUTGOING loco track's current
+        // pose. This is the splice point with the smallest residual
+        // offset — the crossfade then bridges two near-identical
+        // poses and the inertialization decay has near-zero pose gap
+        // to absorb.
+        //
+        // Reference is sampled from the loco track in isolation, NOT
+        // from `model_matrices` (which is the post-blend live pose).
+        // During one-shot fade-out, the live pose is a transient
+        // blend of (loco + one_shot) that has nothing to do with the
+        // loco crossfade we're about to start. Matching against it
+        // picks a splice time that fits the one-shot's pose, then
+        // the loco track lands on a frame that mismatches what's
+        // left after the one-shot fades out — visible leg spasm.
+        // The loco track is what we're ABOUT to crossfade, so its
+        // own current pose is the correct reference.
+        //
+        // Joint set is legs+feet only — NOT hands. Hands during
+        // locomotion travel a few cm; legs swing 50cm+. Including
+        // hands lets a near-perfect hand match outweigh a 0.5m foot
+        // mismatch in the squared-distance sum.
+        //
+        // Phase-match (time-fraction) doesn't work because Mixamo
+        // clips are individually authored with no shared cycle
+        // convention — running's "phase 0" might be left-foot-strike
+        // while walking's "phase 0" is right-foot-strike.
+        std::vector<int> joints;
+        std::vector<glm::vec3> ref;
+        const char* names[] = {"mixamorig:LeftUpLeg", "mixamorig:RightUpLeg",
+                               "mixamorig:LeftFoot",  "mixamorig:RightFoot"};
+        if (s.loco_current.animation != nullptr && new_dur > 0.0f)
         {
-            const float phase = std::fmod(s.loco_current.time_seconds, prev_dur) / prev_dur;
-            new_start_time = phase * new_dur;
+            // Sample the outgoing loco clip in isolation (no one-shot,
+            // no crossfade) at its current time, then run LocalToModel
+            // to get world positions for the joints we care about.
+            const ozz::animation::Skeleton& skel = *s.skeleton;
+            const int n_joints = skel.num_joints();
+            const int n_soa = skel.num_soa_joints();
+            ozz::animation::SamplingJob::Context ctx;
+            ctx.Resize(n_joints);
+            std::vector<ozz::math::SoaTransform> locals(n_soa);
+            std::vector<ozz::math::Float4x4> models(n_joints);
+            ozz::math::Float4x4 root_storage;
+            std::memcpy(&root_storage, &s.root_transform, sizeof(glm::mat4));
+            const float prev_dur_local =
+                s.loco_current.animation->duration();
+            const float ratio = (prev_dur_local > 0.0f)
+                                    ? std::clamp(s.loco_current.time_seconds / prev_dur_local,
+                                                 0.0f, 1.0f)
+                                    : 0.0f;
+            ozz::animation::SamplingJob sjob;
+            sjob.animation = s.loco_current.animation;
+            sjob.context = &ctx;
+            sjob.ratio = ratio;
+            sjob.output = ozz::make_span(locals);
+            const bool sj_ok = sjob.Run();
+            if (sj_ok)
+            {
+                ozz::animation::LocalToModelJob ljob;
+                ljob.skeleton = &skel;
+                ljob.root = &root_storage;
+                ljob.input = ozz::make_span(locals);
+                ljob.output = ozz::make_span(models);
+                if (ljob.Run())
+                {
+                    for (const char* n : names)
+                    {
+                        int idx = -1;
+                        for (int j = 0; j < n_joints; ++j)
+                        {
+                            if (std::strcmp(skel.joint_names()[j], n) == 0)
+                            {
+                                idx = j;
+                                break;
+                            }
+                        }
+                        if (idx >= 0)
+                        {
+                            joints.push_back(idx);
+                            const ozz::math::Float4x4& m = models[idx];
+                            alignas(16) float col3[4];
+                            ozz::math::StorePtr(m.cols[3], col3);
+                            ref.push_back(glm::vec3(col3[0], col3[1], col3[2]));
+                        }
+                    }
+                }
+            }
         }
-        else
+        if (!joints.empty())
         {
-            // Non-gait re-entry: resume the clip from where it last
-            // left off. Otherwise rapid intent toggles (e.g. tapping
-            // WASD in combat stance) snap unarmed_combat_idle's time
-            // back to 0 every time, restarting its 3-second bounce
-            // cycle from a different leg pose than what was on screen
-            // a frame ago — visible leg spasm.
+            new_start_time = clipPoseMatchTime(ref, clip, joints, 0.0f, new_dur);
+            samplerDiagLog("[loco] pose-match %s @ t=%.3fs (prev=%s, prev_t=%.3fs)\n",
+                           desired->name(), new_start_time, s.loco_current.animation->name(),
+                           s.loco_current.time_seconds);
+            // Log the ISOLATED loco-track pose used as the splice
+            // reference (prefix [loco-iso]). Distinct from the diag
+            // in PerFrameTick which logs live (post-blend) joints.
+            for (std::size_t k = 0; k < joints.size(); ++k)
+            {
+                samplerDiagLog("  [loco-iso] joint=%s ref=(%.2f,%.2f,%.2f)\n",
+                               s.skeleton->joint_names()[joints[k]], ref[k].x, ref[k].y, ref[k].z);
+            }
+        }
+        else if (s.loco_current.animation == nullptr)
+        {
+            // Cold-enter (no previous clip): resume from cache if we
+            // played this clip before, else t=0. Pose-match has no
+            // reference live pose on the very first clip.
             const auto it = s.last_clip_time.find(desired);
             if (it != s.last_clip_time.end())
             {
                 new_start_time = std::fmod(it->second, std::max(new_dur, 1e-4f));
-                samplerDiagLog("[loco] resume %s @ cached t=%.3fs (prev=%s, new_dur=%.2fs)\n",
-                               desired->name(), new_start_time,
-                               s.loco_current.animation ? s.loco_current.animation->name()
-                                                        : "(none)",
-                               new_dur);
+                samplerDiagLog("[loco] resume %s @ cached t=%.3fs (cold)\n", desired->name(),
+                               new_start_time);
             }
             else
             {
-                samplerDiagLog("[loco] cold-enter %s @ t=0 (no cache; prev=%s)\n",
-                               desired->name(),
-                               s.loco_current.animation ? s.loco_current.animation->name()
-                                                        : "(none)");
+                samplerDiagLog("[loco] cold-enter %s @ t=0\n", desired->name());
             }
         }
 
@@ -1783,6 +1912,23 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
     advance_loco(s.loco_current);
     advance_loco(s.loco_previous);
     const bool one_shot_finished = advance_one_shot(s.one_shot, s.one_shot_playback_rate);
+    // Advance previous one-shot's clip time (so its visible pose
+    // continues evolving while it fades out, instead of freezing on
+    // the cancel frame). Ramp its weight down linearly over
+    // one_shot_previous_fade_seconds.
+    if (s.one_shot_previous.animation != nullptr)
+    {
+        advance_one_shot(s.one_shot_previous, s.one_shot_previous_playback_rate);
+        if (s.one_shot_previous_fade_seconds > 0.0f)
+        {
+            s.one_shot_previous_weight = std::max(
+                0.0f, s.one_shot_previous_weight - dt / s.one_shot_previous_fade_seconds);
+        }
+        if (s.one_shot_previous_weight <= 0.0f)
+        {
+            s.one_shot_previous.animation = nullptr;
+        }
+    }
 
     // ---- Advance locomotion crossfade ----
     if (s.loco_blend_duration > 0.0f)
@@ -1840,7 +1986,9 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
         const float dur = s.one_shot.animation ? s.one_shot.animation->duration() : 0.0f;
         if (!s.one_shot_freeze_last && dur > 0.0f &&
             s.one_shot.time_seconds >= dur - blend_out_clip_time)
+        {
             s.one_shot_phase = OneShotPhase::BlendOut;
+        }
         break;
     }
     case OneShotPhase::Hold:
@@ -1849,7 +1997,9 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
         if (!s.one_shot_freeze_last &&
             (one_shot_finished ||
              (dur > 0.0f && s.one_shot.time_seconds >= dur - blend_out_clip_time)))
+        {
             s.one_shot_phase = OneShotPhase::BlendOut;
+        }
         break;
     }
     case OneShotPhase::BlendOut:
@@ -1877,12 +2027,14 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
     }
     }
 
-    // ---- Sample all three tracks ----
+    // ---- Sample all four tracks ----
     {
         ZoneScopedN("sample-tracks");
         s.loco_current.sample();
         s.loco_previous.sample();
         s.one_shot.sample();
+        if (s.one_shot_previous.animation != nullptr)
+            s.one_shot_previous.sample();
     }
 
     // ---- Per-track hip XZ delta (root-motion source) ----
@@ -1989,7 +2141,7 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
     // joints that should be untouched (legs especially, when no attack
     // is in flight). Profile-wise it's also the common case — we spend
     // most frames in pure-locomotion state.
-    if (s.one_shot.animation == nullptr)
+    if (s.one_shot.animation == nullptr && s.one_shot_previous.animation == nullptr)
     {
         ZoneScopedN("blend-final-fast");
         s.final_locals = s.loco_blended;
@@ -1997,24 +2149,12 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
     else
     {
         ZoneScopedN("blend-final");
-        // Layer setup:
-        //   * Locomotion: layer.weight = 1.0 always, no joint_weights (= 1
-        //     per joint). Locomotion contributes a constant 1.0 everywhere,
-        //     so the per-joint accumulated weight always exceeds ozz's
-        //     rest-pose threshold — the legs never "fall back to T-pose"
-        //     when the one-shot peaks.
-        //   * One-shot: layer.weight = 1.0 always, joint_weights filled
-        //     per-frame as (mask × one_shot_weight). The blend is driven
-        //     entirely through the one-shot's *per-joint* weights.
-        //
-        // Net per-joint result:
-        //   * Lower body (mask=0): loco contributes 1, one-shot 0. Pure loco.
-        //   * Upper body (mask=1): loco contributes 1, one-shot contributes
-        //     one_shot_weight. ozz normalizes → upper body crossfades from
-        //     loco to one-shot as one_shot_weight ramps 0 → 1.
-        //
-        // Full-body one-shots (Heavy/Running, mask all 1.0) reduce to the
-        // standard crossfade since every lane has mask=1.
+        // Three-layer blend: loco (layer 0) + previous one-shot
+        // (layer 1, fading) + current one-shot (layer 2, ramping).
+        // Most frames have only the current one-shot active; the
+        // previous track is non-null only during a cancel-into-next
+        // crossfade window. ozz's BlendingJob handles zero-weight
+        // layers cleanly, so we always emit all three.
         const std::size_t n_soa = s.one_shot_joint_weights.size();
         const ozz::math::SimdFloat4 w_simd = ozz::math::simd_float4::Load1(s.one_shot_weight);
         if (s.one_shot_mask == PoseSampler::BodyMask::UpperBody && !s.upper_body_weights.empty())
@@ -2024,38 +2164,60 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
         }
         else
         {
-            // Full-body: every lane = one_shot_weight.
             for (std::size_t i = 0; i < n_soa; ++i)
                 s.one_shot_joint_weights[i] = w_simd;
         }
 
-        // Layer-0 (locomotion) weight depends on the body mask:
-        //
-        //   * UpperBody mask: keep locomotion at 1.0. The one-shot's
-        //     per-joint mask zeroes its leg contribution, so the legs
-        //     stay pure loco (loco=1, one-shot=0 → normalized to loco).
-        //     Upper-body joints have one-shot mask=1 and loco=1, so they
-        //     crossfade as one_shot_weight ramps 0→1, peaking at 50/50
-        //     at full ramp — that's the intended attack-over-walk look:
-        //     arms swing, gait keeps cycling.
-        //
-        //   * Full mask (dodge, heavy attacks, running attacks): the
-        //     one-shot SHOULD fully take over. Locomotion ramps 1 → 0 as
-        //     one-shot ramps 0 → 1, mirroring the one-shot weight. Net
-        //     per-joint result: at peak the output is pure one-shot, no
-        //     residual loco bleed pulling the prone-hip back to standing.
-        const float loco_weight = (s.one_shot_mask == PoseSampler::BodyMask::Full)
-                                      ? (1.0f - s.one_shot_weight)
-                                      : 1.0f;
-        ozz::animation::BlendingJob::Layer final_layers[2];
+        // Previous one-shot joint weights (fading out).
+        const ozz::math::SimdFloat4 prev_w_simd =
+            ozz::math::simd_float4::Load1(s.one_shot_previous_weight);
+        if (s.one_shot_previous_mask == PoseSampler::BodyMask::UpperBody &&
+            !s.upper_body_weights.empty())
+        {
+            for (std::size_t i = 0; i < n_soa; ++i)
+                s.one_shot_previous_joint_weights[i] = s.upper_body_weights[i] * prev_w_simd;
+        }
+        else
+        {
+            for (std::size_t i = 0; i < n_soa; ++i)
+                s.one_shot_previous_joint_weights[i] = prev_w_simd;
+        }
+
+        // Locomotion layer weight: ramps down by the SUM of full-mask
+        // one-shot weights, so the loco bleed is correct whether
+        // the active or previous (or both) are full-mask. Upper-body
+        // masks don't reduce loco (legs need pure loco contribution).
+        const float full_active_w =
+            (s.one_shot_mask == PoseSampler::BodyMask::Full) ? s.one_shot_weight : 0.0f;
+        const float full_prev_w = (s.one_shot_previous_mask == PoseSampler::BodyMask::Full)
+                                      ? s.one_shot_previous_weight
+                                      : 0.0f;
+        const float loco_weight = std::max(0.0f, 1.0f - full_active_w - full_prev_w);
+
+        ozz::animation::BlendingJob::Layer final_layers[3];
+        int n_layers = 1;
         final_layers[0].weight = loco_weight;
         final_layers[0].transform = ozz::make_span(s.loco_blended);
-        final_layers[1].weight = 1.0f;
-        final_layers[1].transform = ozz::make_span(s.one_shot.local_transforms);
-        final_layers[1].joint_weights = ozz::make_span(s.one_shot_joint_weights);
+        if (s.one_shot_previous.animation != nullptr && s.one_shot_previous_weight > 0.0f)
+        {
+            final_layers[n_layers].weight = 1.0f;
+            final_layers[n_layers].transform =
+                ozz::make_span(s.one_shot_previous.local_transforms);
+            final_layers[n_layers].joint_weights =
+                ozz::make_span(s.one_shot_previous_joint_weights);
+            ++n_layers;
+        }
+        if (s.one_shot.animation != nullptr)
+        {
+            final_layers[n_layers].weight = 1.0f;
+            final_layers[n_layers].transform = ozz::make_span(s.one_shot.local_transforms);
+            final_layers[n_layers].joint_weights = ozz::make_span(s.one_shot_joint_weights);
+            ++n_layers;
+        }
 
         ozz::animation::BlendingJob final_blend;
-        final_blend.layers = ozz::span<const ozz::animation::BlendingJob::Layer>(final_layers, 2);
+        final_blend.layers =
+            ozz::span<const ozz::animation::BlendingJob::Layer>(final_layers, n_layers);
         final_blend.rest_pose = s.skeleton->joint_rest_poses();
         final_blend.output = ozz::make_span(s.final_locals);
         if (!final_blend.Run())

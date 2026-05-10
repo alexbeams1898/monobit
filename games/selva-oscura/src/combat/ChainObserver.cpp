@@ -7,6 +7,7 @@
 #include <string>
 
 #include "Tunables.h"
+#include "combat/CombatLog.h"
 #include "combat/Weapon.h"
 #include "combat/WeaponClass.h"
 
@@ -63,10 +64,17 @@ const WeaponGripAnimSet& gripSet(const Weapon& w, Grip grip)
 
 void rescanChain(const PlayerEquipment& eq)
 {
+    const char* prev_id = sObs.current.technique_id;
+    const int prev_step = sObs.current.step;
     sObs.current.technique_id = nullptr;
     sObs.current.step = 0;
     if (sObs.count == 0 || eq.right == nullptr || eq.right->cls == nullptr)
+    {
+        combatLog("[combat:obs] rescan EMPTY (count=%zu eq.right=%p) prev=%s@%d -> -@0\n",
+                  sObs.count, static_cast<const void*>(eq.right),
+                  prev_id ? prev_id : "-", prev_step);
         return;
+    }
     const auto& aset = gripSet(*eq.right, eq.grip);
     // Find longest tail-match across all techniques.
     int best_step = 0;
@@ -90,6 +98,10 @@ void rescanChain(const PlayerEquipment& eq)
         sObs.current.technique_id = best_tech->id.c_str();
         sObs.current.step = best_step;
     }
+    combatLog("[combat:obs] rescan tech_count=%zu hist_count=%zu prev=%s@%d -> %s@%d\n",
+              aset.light.size(), sObs.count, prev_id ? prev_id : "-", prev_step,
+              sObs.current.technique_id ? sObs.current.technique_id : "-",
+              sObs.current.step);
 }
 
 } // namespace
@@ -123,6 +135,10 @@ void recordPress(const PlayerEquipment& eq, const char* button, float wall_clock
     sObs.last_window_center = cancel_window_center;
     sObs.last_window_half = cancel_window_half_width;
 
+    combatLog("[combat:obs] recordPress button=%s t=%.4f hist_count=%zu acc=%.2f perfect=%d\n",
+              button, wall_clock_seconds, sObs.count, sObs.current.last_press_accuracy,
+              sObs.current.last_press_perfect ? 1 : 0);
+
     rescanChain(eq);
 }
 
@@ -133,6 +149,9 @@ const ChainState& chainState()
 
 void resetChain()
 {
+    combatLog("[combat:obs] resetChain (was tech=%s@%d hist_count=%zu)\n",
+              sObs.current.technique_id ? sObs.current.technique_id : "-",
+              sObs.current.step, sObs.count);
     sObs.count = 0;
     sObs.current = {};
     sObs.last_press_t = -1.0f;
@@ -140,11 +159,23 @@ void resetChain()
     sObs.last_window_half = 0.0f;
 }
 
-void tickChainObserver(float wall_clock_seconds)
+void tickChainObserver(float wall_clock_seconds, bool one_shot_active)
 {
+    // While a clip is playing the player can't press the next button
+    // (presses are buffered, not recorded). Holding the grace clock
+    // forward during the clip would drain the chain mid-flight.
+    if (one_shot_active)
+    {
+        sObs.last_press_t = wall_clock_seconds;
+        return;
+    }
     const float grace = selva::tuning::current().combo_reset_grace_seconds;
     if (sObs.last_press_t > 0.0f && wall_clock_seconds - sObs.last_press_t > grace)
+    {
+        combatLog("[combat:obs] tick GRACE EXPIRED last_press_t=%.4f now=%.4f grace=%.2f\n",
+                  sObs.last_press_t, wall_clock_seconds, grace);
         resetChain();
+    }
 }
 
 } // namespace selva::combat

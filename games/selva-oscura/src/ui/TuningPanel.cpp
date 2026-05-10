@@ -80,8 +80,7 @@ static void tunedSlider(const char* label, float* val, float min, float max, flo
 
 static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
 {
-    if (selva::combat::isCombatDebugEnabled())
-        renderComboHud();
+    renderComboHud();
 
     if (!sShowTuningPanel)
         return;

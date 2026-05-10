@@ -32,7 +32,12 @@ TransitionProfile chainLink()
     const auto& tun = selva::tuning::current();
     TransitionProfile p;
     p.blend_in_seconds = tun.combo_chain_blend_seconds;
-    p.enroll_inertialization = true;
+    // Two-track one-shot crossfade in PoseSampler::playOneShot now
+    // handles the cancel-into-next pose continuity directly. Adding
+    // inertialization on top double-shapes the same transition and
+    // produces per-frame chatter as the offset decay overlays the
+    // crossfade.
+    p.enroll_inertialization = false;
     p.lockout = TransitionProfile::Lockout::CancelWindowClose;
     return p;
 }

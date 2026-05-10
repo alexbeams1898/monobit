@@ -2,6 +2,7 @@
 
 #include <cstring>
 
+#include "combat/ChainObserver.h"
 #include "combat/Weapon.h"
 #include "combat/WeaponClass.h"
 
@@ -38,16 +39,53 @@ const WeaponGripAnimSet& gripSet(const Weapon& w, Grip grip)
 } // namespace
 
 const char* clipForButton(const PlayerEquipment& eq, HandSide hand, const char* button,
-                          const PressModifiers& mods)
+                          const PressModifiers& mods, float wall_clock_seconds,
+                          float cancel_window_open_at, float cancel_window_close_at,
+                          bool* out_is_chain_advance)
 {
+    if (out_is_chain_advance != nullptr)
+        *out_is_chain_advance = false;
     const Weapon* w = (hand == HandSide::Right) ? eq.right : eq.left;
     if (w == nullptr || w->cls == nullptr)
         return nullptr;
     const auto& aset = gripSet(*w, eq.grip);
 
-    // Sprint: running attack overrides everything.
-    if (mods.sprinting && !aset.running.empty() && !aset.running[0].attacks.empty())
+    // Sprint: running attack only on LMB. Other buttons during sprint
+    // fall through to their normal mappings.
+    if (mods.sprinting && std::strcmp(button, "LMB") == 0 &&
+        !aset.running.empty() && !aset.running[0].attacks.empty())
         return aset.running[0].attacks[0].clip.c_str();
+
+    // Chain advancement: if the observer has a technique matched at
+    // step N, AND this press lands inside the cancel window, AND the
+    // technique's slot N (the next step after the matched tail) wants
+    // this button, fire that slot's clip. This is what makes
+    // LMB-RMB-LMB play jab-hook-combo (finisher) instead of
+    // jab-hook-jab (cold).
+    const ChainState& cs = chainState();
+    const bool inside_window = cancel_window_close_at > cancel_window_open_at &&
+                               wall_clock_seconds >= cancel_window_open_at &&
+                               wall_clock_seconds <= cancel_window_close_at;
+    if (inside_window && cs.technique_id != nullptr && cs.step > 0)
+    {
+        for (const auto& tech : aset.light)
+        {
+            if (std::strcmp(tech.id.c_str(), cs.technique_id) != 0)
+                continue;
+            const int next_slot = cs.step;
+            if (next_slot >= 0 && next_slot < static_cast<int>(tech.attacks.size()))
+            {
+                const auto& exp = tech.attacks[next_slot].expected_button;
+                if (exp.empty() || exp == "any" || exp == button)
+                {
+                    if (out_is_chain_advance != nullptr)
+                        *out_is_chain_advance = true;
+                    return tech.attacks[next_slot].clip.c_str();
+                }
+            }
+            break;
+        }
+    }
 
     // Heavy: not yet wired (heavy slot is empty for unarmed, sword runs
     // its own light list as heavy fallback). For now, shift falls

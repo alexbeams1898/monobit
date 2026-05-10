@@ -41,23 +41,11 @@ void resetChain(AttackChainState& c)
 
 void tickChainExpiry(float wall_clock_seconds, float buffer_seconds)
 {
-    if (sChainRight.chain_index > 0 && wall_clock_seconds >= sChainRight.chain_reset_at)
-        resetChain(sChainRight);
-    if (sChainLeft.chain_index > 0 && wall_clock_seconds >= sChainLeft.chain_reset_at)
-        resetChain(sChainLeft);
-    // Even after the chain wraps to 0 (mid-flight, after firing the
-    // final entry), the window timestamps are still set forward by the
-    // last fire. Once the reset grace passes, those need clearing too
-    // so the next press is a fresh first-strike, not "past the close
-    // of slash_4's window."
-    if (sChainRight.chain_index == 0 && sChainRight.cancel_window_open_at > 0.0f &&
-        wall_clock_seconds >= sChainRight.chain_reset_at)
-        resetChain(sChainRight);
-    if (sChainLeft.chain_index == 0 && sChainLeft.cancel_window_open_at > 0.0f &&
-        wall_clock_seconds >= sChainLeft.chain_reset_at)
-        resetChain(sChainLeft);
-
-    // Expire stale buffered presses.
+    // Cancel-window expiry is implicit: clipForButton's inside-window
+    // check fails once wall_clock_seconds > cancel_window_close_at, so
+    // the rebuilt press path doesn't need explicit window clearing.
+    // The HUD renders cancel_window_*_at directly — clearing them
+    // here erased the visual band each frame.
     if (sBufferedRight.pending &&
         wall_clock_seconds - sBufferedRight.buffered_at > buffer_seconds)
         sBufferedRight.pending = false;

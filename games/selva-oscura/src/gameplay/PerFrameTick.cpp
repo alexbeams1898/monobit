@@ -582,15 +582,59 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         {
             if (sSampler.isOneShotActive())
             {
-                // Buffer for replay after current clip ends.
+                // Press while a one-shot is in flight. ONLY fire
+                // immediately if it advances a chain (e.g. inside
+                // jab's cancel window with RMB to fire the hook step
+                // of jab_hook_combo). Anything else — wrong button
+                // for the current chain step, no chain in progress,
+                // press outside the cancel window — gets buffered
+                // for replay after the current clip finishes. This
+                // preserves the design that attacks play to full
+                // duration unless the player commits a real chain
+                // step within the rhythm window.
+                const float now = selva::wallClock();
+                const bool inside_window =
+                    chain.cancel_window_close_at > chain.cancel_window_open_at &&
+                    now >= chain.cancel_window_open_at &&
+                    now <= chain.cancel_window_close_at;
+                if (inside_window)
+                {
+                    bool is_chain_advance = false;
+                    const char* clip_name = selva::combat::clipForButton(
+                        sEquipment, hand, button, mods, now,
+                        chain.cancel_window_open_at, chain.cancel_window_close_at,
+                        &is_chain_advance);
+                    if (is_chain_advance && clip_name != nullptr && fireClip(hand, clip_name))
+                    {
+                        combat_input_this_frame = true;
+                        const float center = 0.5f * (chain.cancel_window_open_at +
+                                                     chain.cancel_window_close_at);
+                        const float half = 0.5f * (chain.cancel_window_close_at -
+                                                   chain.cancel_window_open_at);
+                        selva::combat::recordPress(sEquipment, button, now, center, half);
+                        const auto& cs = selva::combat::chainState();
+                        chain.last_press_accuracy = cs.last_press_accuracy;
+                        chain.last_press_was_perfect = cs.last_press_perfect;
+                        return;
+                    }
+                }
+                // Not a chain advance (or outside window): buffer
+                // for replay. The active one-shot will play to its
+                // full duration first.
                 buf.pending = true;
                 buf.button = button;
-                buf.buffered_at = selva::wallClock();
-                combatLog("[combat:rhythm] BUFFERED (one-shot in flight; %s)\n", button);
+                buf.buffered_at = now;
+                combatLog("[combat:rhythm] BUFFERED (one-shot in flight, no chain advance; %s)\n",
+                          button);
                 return;
             }
-            // No one-shot active: fire mapped clip directly.
-            const char* clip_name = selva::combat::clipForButton(sEquipment, hand, button, mods);
+            // No one-shot active: fire mapped clip directly. The
+            // mapper reads the per-hand cancel window so that a press
+            // landing inside the window picks the technique's next
+            // slot (chain finisher) instead of cold-strike.
+            const char* clip_name = selva::combat::clipForButton(
+                sEquipment, hand, button, mods, selva::wallClock(),
+                chain.cancel_window_open_at, chain.cancel_window_close_at);
             if (clip_name == nullptr)
             {
                 combatLog("[combat:rhythm] press DROPPED (no clip mapping for %s)\n", button);
@@ -619,7 +663,9 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                 buf.pending = false;
                 return;
             }
-            const char* clip_name = selva::combat::clipForButton(sEquipment, hand, buf.button, mods);
+            const char* clip_name = selva::combat::clipForButton(
+                sEquipment, hand, buf.button, mods, selva::wallClock(),
+                chain.cancel_window_open_at, chain.cancel_window_close_at);
             if (clip_name != nullptr && fireClip(hand, clip_name))
             {
                 combat_input_this_frame = true;
@@ -638,7 +684,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
 
     // Tick the technique observer: clears history if the player has
     // gone quiet for combo_reset_grace_seconds. Independent of fires.
-    selva::combat::tickChainObserver(selva::wallClock());
+    selva::combat::tickChainObserver(selva::wallClock(), sSampler.isOneShotActive());
 
     if (!sShowTuningPanel)
     {
@@ -1061,8 +1107,12 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     {
         const float wait_seconds = selva::wallClock() - sPostDodgeAttack.buffered_at;
         const selva::combat::PressModifiers mods{shift_held, sPlayer.sprinting};
+        AttackChainState& dchain = (sPostDodgeAttack.hand == selva::combat::HandSide::Right)
+                                        ? sChainRight
+                                        : sChainLeft;
         const char* clip_name = selva::combat::clipForButton(
-            sEquipment, sPostDodgeAttack.hand, sPostDodgeAttack.button, mods);
+            sEquipment, sPostDodgeAttack.hand, sPostDodgeAttack.button, mods,
+            selva::wallClock(), dchain.cancel_window_open_at, dchain.cancel_window_close_at);
         if (clip_name != nullptr && fireClip(sPostDodgeAttack.hand, clip_name))
         {
             combat_input_this_frame = true;
@@ -1243,6 +1293,8 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     const selva::anim::AnimationClip* clip = nullptr;
     bool clip_loops = true;
     float clip_blend_seconds = tun.anim_blend_seconds;
+    struct PreUpdateJoint { const char* name; int idx; glm::vec3 live; };
+    std::vector<PreUpdateJoint> pre_update_joints;
     if (!sDebugClipName.empty())
     {
         // F1 debug-clip preview: bypass the state machine entirely.
@@ -1355,6 +1407,24 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         // unarmed holds the last frame of the one-shot itself).
         if (sBlockingActive && offHandCanBlock(sEquipment))
             clip_name = "sword_and_shield_block_idle";
+
+        // Loco freeze during one-shot BlendIn. While the one-shot is
+        // ramping in (phase 1), the loco track and one-shot are both
+        // partially visible; letting the loco track ALSO swap clips
+        // at that moment creates a multi-source collision (one-shot
+        // ramp + loco crossfade + new loco clip splice) that reads
+        // as a leg spasm. During Hold (phase 2), the one-shot is
+        // fully on (weight=1) so the loco track is invisible — it
+        // can swap freely underneath. By the time BlendOut (phase 3)
+        // begins, the loco track has had time to settle on its new
+        // clip in isolation, so the reveal is clean.
+        const auto fd_loco = sSampler.frameDiagnostics();
+        const bool one_shot_blending_in = fd_loco.one_shot_phase == 1;
+        if (one_shot_blending_in && !sLastLocoClipName.empty() &&
+            clip_name != sLastLocoClipName)
+        {
+            clip_name = sLastLocoClipName;
+        }
         clip = sClips.get(clip_name);
         const bool loco_clip_changed = (clip_name != sLastLocoClipName);
         // Trace SM clip-choice changes. Pairs with the input trace so
@@ -1362,12 +1432,25 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         // Includes loco_current_time so we know what frame of the
         // outgoing clip is the splice source — combined with the
         // dest clip's t=0, that's enough to compute pose mismatch.
+        // Capture pre-update live joint positions for the post-update
+        // residual log (the actual splice point the sampler picked is
+        // only known AFTER update runs).
         if (selva::combat::isCombatDebugEnabled() && loco_clip_changed)
         {
             const auto fd = sSampler.frameDiagnostics();
             combatLog("[sm %.4fs] loco-pick %s@%.3fs -> %s (blend=%.3fs)\n", selva::wallClock(),
                       sLastLocoClipName.c_str(), fd.loco_current_time, clip_name.c_str(),
                       sm_out.blend_seconds);
+            const char* names[] = {"mixamorig:RightHand", "mixamorig:LeftHand",
+                                   "mixamorig:RightFoot", "mixamorig:LeftFoot",
+                                   "mixamorig:Hips"};
+            for (const char* n : names)
+            {
+                const int idx = sSampler.findJoint(n);
+                if (idx < 0)
+                    continue;
+                pre_update_joints.push_back({n, idx, sSampler.jointWorldPos(idx)});
+            }
         }
         // Stash for next-frame combat-fire diagnostics (input runs
         // before this block, so we expose the previous frame's pick).
@@ -1385,6 +1468,24 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         sSampler.update(*clip, dt, clip_blend_seconds, clip_loops);
     }
 
+    // Post-update residual diagnostic: now that the sampler has chosen
+    // the splice time (t=0, phase-matched, cached, or pose-matched),
+    // sample the new clip at THAT time and log the per-joint residual
+    // vs the pre-update live pose. This is the actual offset the
+    // inertialization decay has to absorb.
+    if (!pre_update_joints.empty() && clip != nullptr)
+    {
+        const auto fd = sSampler.frameDiagnostics();
+        const float splice_t = fd.loco_current_time;
+        for (const auto& j : pre_update_joints)
+        {
+            const glm::vec3 cand = sSampler.sampleJointWorldPos(*clip, splice_t, j.idx);
+            combatLog("  %s residual=|%.3fm|  live=(%.2f,%.2f,%.2f) splice_t=%.3fs cand=(%.2f,%.2f,%.2f)\n",
+                      j.name, glm::length(cand - j.live), j.live.x, j.live.y, j.live.z, splice_t,
+                      cand.x, cand.y, cand.z);
+        }
+    }
+
     // Sticky per-frame loco-state trace. Whenever the loco_blend_weight
     // is mid-ramp (not 0 nor 1) OR a one_shot is blending, dump the
     // sampler's state every frame. Lets us watch the rapid-WASD spasm
@@ -1399,6 +1500,22 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
             combatLog("[fr %.4fs] loco_w=%.3f one_shot_w=%.3f phase=%d clip=%s\n",
                       selva::wallClock(), fd.loco_blend_weight, fd.one_shot_weight,
                       fd.one_shot_phase, sLastLocoClipName.c_str());
+            // Joint positions during the one-shot fade-out (phase=3)
+            // capture the visible spasm region — this is when the
+            // one-shot's pose hands off to the loco track. If hip
+            // y plummets here, the discontinuity is on this handoff.
+            if (fd.one_shot_phase == 3)
+            {
+                for (const char* n : {"mixamorig:Hips", "mixamorig:LeftFoot",
+                                      "mixamorig:RightFoot"})
+                {
+                    const int idx = sSampler.findJoint(n);
+                    if (idx < 0)
+                        continue;
+                    const glm::vec3 p = sSampler.jointWorldPos(idx);
+                    combatLog("    [fade] %s = (%.2f,%.2f,%.2f)\n", n, p.x, p.y, p.z);
+                }
+            }
         }
     }
 
