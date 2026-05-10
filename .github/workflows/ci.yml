@@ -19,7 +19,19 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install clang-format
-        run: sudo apt-get install -y clang-format
+        run: |
+          # Pin to clang-format 18.1.x from the LLVM apt repo. Ubuntu's
+          # default `clang-format` package is 1:18.0-59~exp2 which is a
+          # pre-release with subtly different formatting heuristics from
+          # the released 18.1.x that MSYS2 mingw64 ships locally — files
+          # that pass `clang-format -i` on Windows fail `--dry-run` on CI.
+          # Pinning aligns the two.
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+          echo "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-18 main" | sudo tee /etc/apt/sources.list.d/llvm.list
+          sudo apt-get update
+          sudo apt-get install -y clang-format-18
+          sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-18 100
+          clang-format --version
 
       - name: Check formatting
         run: |
