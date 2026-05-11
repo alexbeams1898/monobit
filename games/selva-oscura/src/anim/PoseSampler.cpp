@@ -216,6 +216,13 @@ enum class OneShotPhase
 };
 } // namespace
 
+// Field order here is grouped semantically (tracks → loco state →
+// one-shot state → root motion → scratch buffers → inertialization)
+// so the comments documenting each cluster read coherently. Padding-
+// optimal ordering would scatter fields across the struct, breaking
+// the comment groupings. Only one Impl instance exists per game; the
+// few wasted bytes don't matter.
+// NOLINTBEGIN(clang-analyzer-optin.performance.Padding)
 struct PoseSampler::Impl
 {
     const ozz::animation::Skeleton* skeleton = nullptr;
@@ -283,6 +290,15 @@ struct PoseSampler::Impl
     // attacks (the attack triggers CombatReady and combat-idle
     // should be live by BlendOut so the reveal is in-stance).
     bool one_shot_freeze_loco = false;
+
+    // Fraction of clip duration past which the one-shot is
+    // "past-commitment": gameplay can unlock movement and fire the
+    // next chained one-shot. 1.0 = no early cancel (default, attack
+    // behavior). 0.65 = unlock at 65% of the clip's wallclock
+    // duration. Set from OneShotOptions::cancel_fraction at fire
+    // time. Used by simple commit-then-recover actions (dodges,
+    // jumps); attacks use a separate per-clip rhythm window.
+    float one_shot_cancel_fraction = 1.0f;
 
     // Previous one-shot track for cancel-into-next-clip crossfading.
     // When playOneShot fires while another one-shot has visible weight,
@@ -428,6 +444,7 @@ struct PoseSampler::Impl
     std::vector<ozz::math::SoaTransform> pre_change_locals;
     std::vector<ozz::math::SoaTransform> post_locals_last;
 };
+// NOLINTEND(clang-analyzer-optin.performance.Padding)
 
 PoseSampler::PoseSampler() : impl(std::make_unique<Impl>())
 {
@@ -650,6 +667,7 @@ void PoseSampler::playOneShot(const AnimationClip& clip, float blend_in_seconds,
     s.one_shot_mask = mask;
     s.one_shot_freeze_last = freeze_last;
     s.one_shot_freeze_loco = freeze_loco_during_one_shot;
+    s.one_shot_cancel_fraction = std::clamp(options.cancel_fraction, 0.0f, 1.0f);
     // Discontinuity: pose will pop from locomotion to one-shot. Force
     // next-frame delta to zero so we don't emit a giant pose-snap
     // delta on the one-shot track. (Locomotion tracks keep their own
@@ -677,6 +695,21 @@ bool PoseSampler::isOneShotActive() const
     // produced a visible leg spasm because mid-stride walking pose
     // and feet-together attack pose blended into each other for ~0.10s.
     return impl->one_shot_phase != OneShotPhase::Inactive;
+}
+
+bool PoseSampler::isOneShotPastCancelFraction() const
+{
+    if (!impl)
+        return false;
+    const Impl& s = *impl;
+    if (s.one_shot_phase == OneShotPhase::Inactive || s.one_shot.animation == nullptr)
+        return false;
+    if (s.one_shot_cancel_fraction >= 1.0f - 1e-6f)
+        return false; // No early cancel configured for this one-shot.
+    const float dur = s.one_shot.animation->duration();
+    if (dur <= 0.0f)
+        return false;
+    return (s.one_shot.time_seconds / dur) >= s.one_shot_cancel_fraction;
 }
 
 bool PoseSampler::isLocoFrozenByOneShot() const
@@ -1744,60 +1777,6 @@ void captureInertializationOffset(PoseSampler::Impl& s)
                        s.loco_current.registry_key.empty() ? "(unknown)"
                                                            : s.loco_current.registry_key.c_str());
     }
-    // Diagnostic A: log the WORLD-space positions of the canonical
-    // diagnostic joints in pre_change_locals (the pre-snap pose) and
-    // in final_locals (the post-snap pose) BEFORE we overwrite
-    // pre_change_locals with the offset. This reveals whether the
-    // captured "pre" pose is geometrically reasonable: if pre-snap
-    // foot world Y is ~0.10 (planted) and post-snap foot world Y is
-    // ~0.40 (mid-stride), the decay should glide between them. If
-    // pre-snap foot world Y is at, say, 1.16 already, capture itself
-    // is wrong.
-    if (g_diag_log != nullptr)
-    {
-        const ozz::animation::Skeleton& skel = *s.skeleton;
-        const int n_joints = skel.num_joints();
-        std::vector<ozz::math::Float4x4> pre_models(n_joints);
-        std::vector<ozz::math::Float4x4> post_models(n_joints);
-        ozz::math::Float4x4 root_storage;
-        std::memcpy(&root_storage, &s.root_transform, sizeof(glm::mat4));
-        ozz::animation::LocalToModelJob pre_job;
-        pre_job.skeleton = &skel;
-        pre_job.root = &root_storage;
-        pre_job.input = ozz::make_span(s.pre_change_locals);
-        pre_job.output = ozz::make_span(pre_models);
-        ozz::animation::LocalToModelJob post_job;
-        post_job.skeleton = &skel;
-        post_job.root = &root_storage;
-        post_job.input = ozz::make_span(s.final_locals);
-        post_job.output = ozz::make_span(post_models);
-        if (pre_job.Run() && post_job.Run())
-        {
-            const char* names[] = {
-                "mixamorig:Hips",       "mixamorig:Spine",      "mixamorig:LeftUpLeg",
-                "mixamorig:LeftLeg",    "mixamorig:LeftFoot",   "mixamorig:RightUpLeg",
-                "mixamorig:RightLeg",   "mixamorig:RightFoot",  "mixamorig:LeftHand",
-                "mixamorig:RightHand"};
-            for (const char* n : names)
-            {
-                const int idx = findSkeletonJoint(skel, n);
-                if (idx < 0)
-                    continue;
-                alignas(16) float pre_p[4];
-                alignas(16) float post_p[4];
-                ozz::math::StorePtr(pre_models[idx].cols[3], pre_p);
-                ozz::math::StorePtr(post_models[idx].cols[3], post_p);
-                const float dx = pre_p[0] - post_p[0];
-                const float dy = pre_p[1] - post_p[1];
-                const float dz = pre_p[2] - post_p[2];
-                const float gap = std::sqrt(dx * dx + dy * dy + dz * dz);
-                samplerDiagLog("  [inert pre-vs-post] %s  pre_world=(%.3f,%.3f,%.3f)  "
-                               "post_world=(%.3f,%.3f,%.3f)  world_gap=|%.3fm|\n",
-                               n, pre_p[0], pre_p[1], pre_p[2], post_p[0], post_p[1], post_p[2],
-                               gap);
-            }
-        }
-    }
     const std::size_t n_soa = s.final_locals.size();
     const ozz::math::SimdFloat4 base_simd = ozz::math::simd_float4::Load1(s.decay_base_seconds);
     const ozz::math::SimdFloat4 scale_simd =
@@ -1841,51 +1820,6 @@ void captureInertializationOffset(PoseSampler::Impl& s)
     }
     s.decay_active = true;
     s.decay_elapsed = 0.0f;
-
-    // Post-capture diagnostic: for the canonical diagnostic joints
-    // (Hips + Left/Right Foot + Left/Right Hand), extract the captured
-    // offset translation magnitude and rotation angle. If these are ~0,
-    // it means pre_change_locals was identical to final_locals at
-    // capture time — i.e. the capture happened AFTER the snap was
-    // already in post_locals_last, so there was nothing to bridge.
-    // That's the bug 1 signature.
-    if (g_diag_log == nullptr)
-        return;
-    const char* names[] = {"mixamorig:Hips", "mixamorig:LeftFoot", "mixamorig:RightFoot",
-                           "mixamorig:LeftHand", "mixamorig:RightHand"};
-    for (const char* n : names)
-    {
-        const int idx = findSkeletonJoint(*s.skeleton, n);
-        if (idx < 0 || idx >= s.skeleton->num_joints())
-            continue;
-        const int soa = idx / 4;
-        const int lane = idx % 4;
-        if (soa < 0 || static_cast<std::size_t>(soa) >= s.pre_change_locals.size())
-            continue;
-        const ozz::math::SoaTransform& off = s.pre_change_locals[soa];
-        alignas(16) float tx[4];
-        alignas(16) float ty[4];
-        alignas(16) float tz[4];
-        alignas(16) float rx[4];
-        alignas(16) float ry[4];
-        alignas(16) float rz[4];
-        alignas(16) float dur_f[4];
-        ozz::math::StorePtr(off.translation.x, tx);
-        ozz::math::StorePtr(off.translation.y, ty);
-        ozz::math::StorePtr(off.translation.z, tz);
-        ozz::math::StorePtr(off.rotation.x, rx);
-        ozz::math::StorePtr(off.rotation.y, ry);
-        ozz::math::StorePtr(off.rotation.z, rz);
-        ozz::math::StorePtr(s.decay_duration_per_joint[soa], dur_f);
-        const float t_mag = std::sqrt(tx[lane] * tx[lane] + ty[lane] * ty[lane] +
-                                      tz[lane] * tz[lane]);
-        const float xyz_len = std::sqrt(rx[lane] * rx[lane] + ry[lane] * ry[lane] +
-                                        rz[lane] * rz[lane]);
-        const float angle_rad = 2.0f * xyz_len;
-        samplerDiagLog("  [inert capture] %s offset_t=|%.4fm| offset_angle=%.3frad "
-                       "decay_dur=%.3fs\n",
-                       n, t_mag, angle_rad, dur_f[lane]);
-    }
 }
 
 // Inertialization step 2 apply: cubic-ease-out offset onto final_locals
@@ -1898,77 +1832,6 @@ void applyInertializationDecay(PoseSampler::Impl& s, float dt)
     {
         s.decay_active = false;
         return;
-    }
-    // Per-frame decay diagnostic. For each frame while decay is active,
-    // log the canonical joints' (LeftFoot, RightFoot, Hips) CLIP pose
-    // (before decay adds anything) and the captured OFFSET (in
-    // local-space rotation angle + translation magnitude) and the
-    // current decay weight w. After this function returns, the
-    // displayed local pose = clip + (w * offset_translation) and
-    // rotation = decayed_quat * clip_quat. This shows frame-by-frame
-    // what inertialization is contributing on top of the clip's
-    // authored motion.
-    const bool diag = (g_diag_log != nullptr) && s.decay_active;
-    const char* diag_names[] = {"mixamorig:Hips", "mixamorig:Spine", "mixamorig:LeftUpLeg",
-                                "mixamorig:LeftLeg", "mixamorig:LeftFoot", "mixamorig:RightUpLeg",
-                                "mixamorig:RightLeg", "mixamorig:RightFoot"};
-    if (diag)
-    {
-        for (const char* n : diag_names)
-        {
-            const int idx = findSkeletonJoint(*s.skeleton, n);
-            if (idx < 0)
-                continue;
-            const int soa = idx / 4;
-            const int lane = idx % 4;
-            if (soa < 0 || static_cast<std::size_t>(soa) >= s.final_locals.size())
-                continue;
-            alignas(16) float ctx[4];
-            alignas(16) float cty[4];
-            alignas(16) float ctz[4];
-            alignas(16) float crx[4];
-            alignas(16) float cry[4];
-            alignas(16) float crz[4];
-            alignas(16) float crw[4];
-            alignas(16) float otx[4];
-            alignas(16) float oty[4];
-            alignas(16) float otz[4];
-            alignas(16) float orx[4];
-            alignas(16) float ory[4];
-            alignas(16) float orz[4];
-            alignas(16) float dur_f[4];
-            alignas(16) float el_f[4];
-            const ozz::math::SoaTransform& cur = s.final_locals[soa];
-            const ozz::math::SoaTransform& off = s.pre_change_locals[soa];
-            ozz::math::StorePtr(cur.translation.x, ctx);
-            ozz::math::StorePtr(cur.translation.y, cty);
-            ozz::math::StorePtr(cur.translation.z, ctz);
-            ozz::math::StorePtr(cur.rotation.x, crx);
-            ozz::math::StorePtr(cur.rotation.y, cry);
-            ozz::math::StorePtr(cur.rotation.z, crz);
-            ozz::math::StorePtr(cur.rotation.w, crw);
-            ozz::math::StorePtr(off.translation.x, otx);
-            ozz::math::StorePtr(off.translation.y, oty);
-            ozz::math::StorePtr(off.translation.z, otz);
-            ozz::math::StorePtr(off.rotation.x, orx);
-            ozz::math::StorePtr(off.rotation.y, ory);
-            ozz::math::StorePtr(off.rotation.z, orz);
-            ozz::math::StorePtr(s.decay_duration_per_joint[soa], dur_f);
-            ozz::math::StorePtr(s.decay_elapsed_per_joint[soa], el_f);
-            const float dur = dur_f[lane];
-            const float elapsed = el_f[lane];
-            const float u = (dur > 1e-6f) ? std::max(0.0f, 1.0f - elapsed / dur) : 0.0f;
-            const float w = u * u * u;
-            const float otmag = std::sqrt(otx[lane] * otx[lane] + oty[lane] * oty[lane] +
-                                          otz[lane] * otz[lane]);
-            const float oxyz =
-                std::sqrt(orx[lane] * orx[lane] + ory[lane] * ory[lane] + orz[lane] * orz[lane]);
-            const float oangle = 2.0f * oxyz;
-            samplerDiagLog("    [decay-frame] %s  clip_t=(%.3f,%.3f,%.3f)  off_t=|%.3fm| "
-                           "off_ang=%.3frad  elapsed=%.3fs/%.3fs  w=%.3f  -> applied_dt=|%.3fm|\n",
-                           n, ctx[lane], cty[lane], ctz[lane], otmag, oangle, elapsed, dur, w,
-                           otmag * w);
-        }
     }
     const ozz::math::SimdFloat4 dt_simd = ozz::math::simd_float4::Load1(dt);
     const ozz::math::SimdFloat4 zero_simd = ozz::math::simd_float4::zero();
@@ -2285,9 +2148,8 @@ void tickLocoCrossfade(PoseSampler::Impl& s, float dt)
         const char* prev_key = s.loco_previous.registry_key.empty()
                                    ? "(unknown)"
                                    : s.loco_previous.registry_key.c_str();
-        const char* cur_key = s.loco_current.registry_key.empty()
-                                  ? "(unknown)"
-                                  : s.loco_current.registry_key.c_str();
+        const char* cur_key =
+            s.loco_current.registry_key.empty() ? "(unknown)" : s.loco_current.registry_key.c_str();
         samplerDiagLog("[loco] crossfade complete: %s -> %s (loco_previous dropped)\n", prev_key,
                        cur_key);
         s.loco_blend_weight = 1.0f;
@@ -2589,59 +2451,6 @@ bool runFinalBlend(PoseSampler::Impl& s)
     return final_blend.Run();
 }
 
-// Pin the visible hip XZ to the rest-pose translation so the
-// character body doesn't drift relative to its world transform. Y
-// (vertical bob) is preserved.
-// Diagnostic helper. Pull the hip joint's translation out of an SoA
-// pose buffer at the right lane and emit a one-line log tagged with
-// `stage`. Used at every pipeline stage so the trace shows hip-XZ
-// flowing through sample -> blend -> capture -> decay -> freeze.
-void logHipLocalAt(const PoseSampler::Impl& s,
-                   const std::vector<ozz::math::SoaTransform>& buf, const char* stage)
-{
-    if (g_diag_log == nullptr || s.hips_joint_idx < 0)
-        return;
-    const int hip_soa = s.hips_joint_idx / 4;
-    const int hip_lane = s.hips_joint_idx % 4;
-    if (static_cast<std::size_t>(hip_soa) >= buf.size())
-        return;
-    alignas(16) float tx[4];
-    alignas(16) float ty[4];
-    alignas(16) float tz[4];
-    ozz::math::StorePtr(buf[hip_soa].translation.x, tx);
-    ozz::math::StorePtr(buf[hip_soa].translation.y, ty);
-    ozz::math::StorePtr(buf[hip_soa].translation.z, tz);
-    samplerDiagLog("    [hip @ %s] local_t=(%.4f,%.4f,%.4f)\n", stage, tx[hip_lane], ty[hip_lane],
-                   tz[hip_lane]);
-}
-
-// Diagnostic helper: run LocalToModelJob on a single SoaTransform
-// buffer (a track's sampled local pose) and return the world-space
-// Y of the hip joint. Used to log "what would hip Y be if ONLY this
-// track played" during a chain-roll one-shot crossfade.
-float hipWorldYFromLocals(const PoseSampler::Impl& s,
-                          const std::vector<ozz::math::SoaTransform>& locals)
-{
-    if (s.skeleton == nullptr || s.hips_joint_idx < 0)
-        return 0.0f;
-    const int n_joints = s.skeleton->num_joints();
-    if (s.hips_joint_idx >= n_joints)
-        return 0.0f;
-    std::vector<ozz::math::Float4x4> models(n_joints);
-    ozz::math::Float4x4 root_storage;
-    std::memcpy(&root_storage, &s.root_transform, sizeof(glm::mat4));
-    ozz::animation::LocalToModelJob job;
-    job.skeleton = s.skeleton;
-    job.root = &root_storage;
-    job.input = ozz::make_span(locals);
-    job.output = ozz::make_span(models);
-    if (!job.Run())
-        return 0.0f;
-    alignas(16) float col3[4];
-    ozz::math::StorePtr(models[s.hips_joint_idx].cols[3], col3);
-    return col3[1]; // Y
-}
-
 // Run the local-to-model job, producing world-space bone matrices.
 // Returns false on ozz job failure.
 bool runLocalToModel(PoseSampler::Impl& s)
@@ -2700,16 +2509,11 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
     // capture would wait until next frame, by which point
     // post_locals_last is already the post-snap pose, the captured
     // offset is ~zero, and inertialization bridges nothing.
-    const bool loco_changed = (desired != s.loco_current.animation);
-    if (loco_changed)
+    if (desired != s.loco_current.animation)
         routeLocoClipChange(s, desired, desired_key, blend_seconds);
     else
         s.last_frozen_swap_attempt.clear();
     const bool capture_this_frame = consumeInertializationCaptureFlag(s);
-    if (loco_changed)
-        samplerDiagLog("[inert order] loco-snap fired this update. "
-                       "capture_this_frame=%d\n",
-                       capture_this_frame ? 1 : 0);
     // Caller-supplied loops flag applies to the loco_current track —
     // whether or not we just rebound it. Stable through the lifetime
     // of the clip-change in flight.
@@ -2746,31 +2550,6 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
     if (!runLocoBlend(s))
         return false;
 
-    // ---- Chain-roll trace: when one_shot_previous is active (a
-    //      cancel-into-next one-shot crossfade is in flight), log
-    //      each track's intended hip world-Y AND the weights, so we
-    //      can see the geometric gap the crossfade is bridging and
-    //      compare to the rendered Y after blend completes. Reveals
-    //      whether the visible "hop" comes from (a) clip-gap too
-    //      wide for the 100ms crossfade window, (b) bad sample data
-    //      on one of the tracks, or (c) something post-blend. ----
-    if (g_diag_log != nullptr && s.one_shot_previous.animation != nullptr &&
-        s.one_shot_previous_weight > 0.001f)
-    {
-        const float prev_y = hipWorldYFromLocals(s, s.one_shot_previous.local_transforms);
-        const float curr_y = hipWorldYFromLocals(s, s.one_shot.local_transforms);
-        const float loco_y = hipWorldYFromLocals(s, s.loco_blended);
-        samplerDiagLog("    [chain-roll trace] prev=%s@%.3fs w=%.3f -> hipY=%.3f  |  "
-                       "curr=%s@%.3fs w=%.3f -> hipY=%.3f  |  loco hipY=%.3f\n",
-                       s.one_shot_previous.registry_key.empty()
-                           ? "(unknown)"
-                           : s.one_shot_previous.registry_key.c_str(),
-                       s.one_shot_previous.time_seconds, s.one_shot_previous_weight, prev_y,
-                       s.one_shot.registry_key.empty() ? "(unknown)"
-                                                       : s.one_shot.registry_key.c_str(),
-                       s.one_shot.time_seconds, s.one_shot_weight, curr_y, loco_y);
-    }
-
     // ---- Final blend: loco_blended vs one-shots → final_locals ----
     if (!runFinalBlend(s))
         return false;
@@ -2791,36 +2570,6 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
     // track, so there's nothing to clamp. See extractTrackHipDelta.
     if (!runLocalToModel(s))
         return false;
-    // Diagnostic B+C: always-on per-update world-position log for the
-    // canonical diagnostic joints (legs + hands). Tagged with a
-    // monotonically-increasing tick counter so we can:
-    //   * Disambiguate two log blocks at the same wall-clock time
-    //     (which would prove two update() calls per frame).
-    //   * See the full foot trajectory across a transition without
-    //     gaps when decay turns off mid-window.
-    // Gated on combat-debug like everything else.
-    if (g_diag_log != nullptr)
-    {
-        static unsigned sUpdateTick = 0;
-        ++sUpdateTick;
-        const char* names[] = {"mixamorig:Hips",       "mixamorig:Spine",
-                               "mixamorig:LeftUpLeg",  "mixamorig:LeftLeg",
-                               "mixamorig:LeftFoot",   "mixamorig:RightUpLeg",
-                               "mixamorig:RightLeg",   "mixamorig:RightFoot",
-                               "mixamorig:LeftHand",   "mixamorig:RightHand"};
-        for (const char* n : names)
-        {
-            const int idx = findSkeletonJoint(*s.skeleton, n);
-            if (idx < 0 || static_cast<std::size_t>(idx) >= s.model_matrices.size())
-                continue;
-            alignas(16) float col3[4];
-            ozz::math::StorePtr(s.model_matrices[idx].cols[3], col3);
-            samplerDiagLog("    [world tick=%u dt=%.4f decay_act=%d elapsed=%.3fs] %s  "
-                           "pos=(%.3f,%.3f,%.3f)\n",
-                           sUpdateTick, dt, s.decay_active ? 1 : 0, s.decay_elapsed, n, col3[0],
-                           col3[1], col3[2]);
-        }
-    }
     computeGpuPalette(s, bone_palette);
 
     // Save post-blend pose for next frame's potential inertialization

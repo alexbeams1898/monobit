@@ -97,8 +97,17 @@ static selva::combat::PlayerEquipment& sEquipment = selva::combat::equipment();
 static bool sPrevF1 = false;
 static bool sPrevLMB = false;
 static bool sPrevRMB = false;
-static bool sPrevF = false;
+static bool sPrevR = false;
 static bool sPrevGripToggle = false;
+static bool sPrevJump = false;
+
+// Scales the clip-authored hip delta applied to sPlayer.pos. 1.0 =
+// authored distance (default for rolls, sprint-jumps, all one-shots).
+// <1.0 = same animation playback speed but shorter ground travel.
+// Used by the walking jump so a walk-speed jump uses the running_jump
+// clip but covers less distance (no clip retiming). Set on one-shot
+// fire; auto-resets to 1.0 when no one-shot is active.
+static float sOneShotHipDeltaScale = 1.0f;
 
 // Per-frame WASD prev-state for edge logging. The actual movement
 // computation reads SDL_GetKeyboardState live; these only exist so
@@ -734,15 +743,9 @@ static void tickFrameCapture(float dt)
     sFrameCaptureActive = false;
 }
 
-// Log one-shot state transitions for post-dodge handoff visibility.
-// On exit-edge, also logs the hip-delta totals: how much XZ travel
-// the clip authored (sum of consumedHipDelta over the shot), and the
-// player's net world displacement during the shot. Lets us see at
-// a glance whether an in-place attack is the *clip* (no authored
-// travel) or the *system* (clip authored travel but it was dropped).
-static glm::vec3 sOneShotPosStart(0.0f);
-static glm::vec2 sOneShotHipAccumXZ(0.0f);
-
+// Log one-shot active state edges (active=1 on fire, active=0 on
+// BlendOut complete). Used by combat-debug.log to mark when a
+// one-shot's pose-dominance starts/ends.
 static void logOneShotStateTransitions()
 {
     static bool sPrevOneShotActive = false;
@@ -750,37 +753,11 @@ static void logOneShotStateTransitions()
     if (sPrevOneShotActive != now && selva::combat::isCombatDebugEnabled())
     {
         const auto fd = sSampler.frameDiagnostics();
-        if (now)
-        {
-            sOneShotPosStart = sPlayer.pos;
-            sOneShotHipAccumXZ = glm::vec2(0.0f);
-            combatLog("[combat:one-shot %.4fs] active=1 weight=%.3f phase=%d clip=%s\n",
-                      selva::wallClock(), fd.one_shot_weight, fd.one_shot_phase,
-                      fd.one_shot_name ? fd.one_shot_name : "(none)");
-        }
-        else
-        {
-            const glm::vec3 d = sPlayer.pos - sOneShotPosStart;
-            const float net_xz = glm::length(glm::vec2(d.x, d.z));
-            const float hip_xz = glm::length(sOneShotHipAccumXZ);
-            combatLog("[combat:one-shot %.4fs] active=0 weight=%.3f  hip_authored=|%.3fm| "
-                      "player_displacement=|%.3fm|  source=%s\n",
-                      selva::wallClock(), fd.one_shot_weight, hip_xz, net_xz,
-                      net_xz < 0.01f ? "INPLACE" : (hip_xz > 0.05f ? "clip" : "velocity"));
-        }
+        combatLog("[combat:one-shot %.4fs] active=%d weight=%.3f phase=%d clip=%s\n",
+                  selva::wallClock(), now ? 1 : 0, fd.one_shot_weight, fd.one_shot_phase,
+                  fd.one_shot_name ? fd.one_shot_name : "(none)");
     }
     sPrevOneShotActive = now;
-}
-
-// Sample the sampler's per-frame consumed hip delta and (when a one-
-// shot is active) accumulate it into sOneShotHipAccumXZ for the exit
-// log. Read-only on the sampler — consumedHipDelta is const.
-static void accumulateOneShotHipDelta()
-{
-    if (!sSampler.isOneShotActive())
-        return;
-    const glm::vec3 d = sSampler.consumedHipDelta();
-    sOneShotHipAccumXZ += glm::vec2(d.x, d.z);
 }
 
 // Post-dodge attack handoff. Once the dodge has fully ended AND the
@@ -867,7 +844,8 @@ static void tickPlayerVelocity(const glm::vec3& moveIntent, bool movement_locked
     // vs radial components.
     const float current_speed = glm::length(sPlayer.velocity_xz);
     const float target_speed = glm::length(target_velocity);
-    const float rate = (target_speed >= current_speed) ? tun.locomotion_accel : tun.locomotion_decel;
+    const float rate =
+        (target_speed >= current_speed) ? tun.locomotion_accel : tun.locomotion_decel;
     const float max_step = rate * dt;
     if (delta_mag <= max_step)
         sPlayer.velocity_xz = target_velocity;
@@ -928,12 +906,12 @@ static void logInputEdges(const Uint8* keys, bool press_lmb, bool release_lmb, b
     sPrevD = dNow;
 }
 
-// F press handler: toggle combat stance, or flip stance foot when
+// R press handler: toggle combat stance, or flip stance foot when
 // shift-held and already in CombatReady. Returns true if the press
 // should mark combat_input_this_frame (entry into CombatReady).
-static bool tryHandleStanceTogglePress(bool press_f, bool shift_held)
+static bool tryHandleStanceTogglePress(bool press_r, bool shift_held)
 {
-    if (!press_f)
+    if (!press_r)
         return false;
     if (sLocomotionSM.combat_stance == CombatStance::Peaceful)
         return true; // SM enters CombatReady
@@ -1148,11 +1126,11 @@ static bool eitherHandCancelWindowOpen()
 // of):
 //   * No one-shot is active (clean handoff after attack/dodge ends).
 //   * An attack's cancel window is open (cancel-into-dodge).
-//   * Current dodge has passed dodge_cancel_fraction of its duration
-//     (chain-roll: roll-into-roll near the standup tail).
+//   * Active one-shot is past its cancel_fraction (chain-roll or
+//     chain-jump: roll/jump-into-dodge near the recovery tail).
 // Buffer drops on fire OR on combo_input_buffer_seconds expiry.
 static bool tryFireBufferedDodge(float backstep_playback_rate, float roll_playback_rate,
-                                 float combo_input_buffer_seconds, float dodge_cancel_fraction)
+                                 float combo_input_buffer_seconds)
 {
     if (!sBufferedDodge.pending)
         return false;
@@ -1162,10 +1140,9 @@ static bool tryFireBufferedDodge(float backstep_playback_rate, float roll_playba
         sBufferedDodge.pending = false;
         return false;
     }
-    const bool dodge_cancel_open = sDodgeActive && sDodgeDuration > 0.0f &&
-                                   (sDodgeElapsed / sDodgeDuration) >= dodge_cancel_fraction;
+    const bool one_shot_cancel_open = sSampler.isOneShotPastCancelFraction();
     const bool gate_open =
-        !sSampler.isOneShotActive() || eitherHandCancelWindowOpen() || dodge_cancel_open;
+        !sSampler.isOneShotActive() || eitherHandCancelWindowOpen() || one_shot_cancel_open;
     if (!gate_open)
         return false;
     const bool fired = fireDodgeFromTap(sBufferedDodge.move_intent_at_press, backstep_playback_rate,
@@ -1175,9 +1152,65 @@ static bool tryFireBufferedDodge(float backstep_playback_rate, float roll_playba
         combatLog("[combat:rhythm %.4fs] buffered dodge FIRED (waited %.3fs since press, "
                   "via=%s)\n",
                   selva::wallClock(), age,
-                  dodge_cancel_open ? "dodge-cancel"
-                                    : (sSampler.isOneShotActive() ? "attack-cancel" : "clean"));
+                  one_shot_cancel_open ? "one-shot-cancel"
+                                       : (sSampler.isOneShotActive() ? "attack-cancel" : "clean"));
     return fired;
+}
+
+// Rising-edge F fires a jump one-shot. Variant picked by WASD intent
+// (not current velocity, which is zeroed during movement_locked).
+//   * No WASD → `jumping` (vertical, in place, 1.10x rate)
+//   * WASD → `running_jump` (forward leap; sprinting=full distance,
+//     walking=0.55x hip-delta scale for shorter travel)
+// Uses profiles::jump() so chain-jumps work via the unified
+// cancel_fraction model.
+static void tickJumpInput(const Uint8* keys)
+{
+    const bool jumpNow = (keys[SDL_SCANCODE_F] != 0);
+    if (!(jumpNow && !sPrevJump))
+    {
+        sPrevJump = jumpNow;
+        return;
+    }
+    const bool wasd_held = keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_S] ||
+                           keys[SDL_SCANCODE_D];
+    const char* clip_name = wasd_held ? "running_jump" : "jumping";
+    const auto* clip = sClips.get(clip_name);
+    const bool gate_open = !sSampler.isOneShotActive() || sSampler.isOneShotPastCancelFraction();
+    if (clip != nullptr && clip->isLoaded() && gate_open)
+    {
+        TransitionProfile profile = profiles::jump();
+        float rate = 1.10f;
+        sOneShotHipDeltaScale = 1.0f;
+        if (wasd_held)
+        {
+            profile.blend_out_seconds = 0.30f;
+            rate = 1.0f;
+            if (!sPlayer.sprinting)
+                sOneShotHipDeltaScale = 0.55f;
+        }
+        fireOneShotWithProfile(*clip, profile, 0.0f, rate, clip_name);
+    }
+    sPrevJump = jumpNow;
+}
+
+// Try to fire a dodge from a Space release-edge tap. If a one-shot or
+// dodge is already in flight, buffer the press so the per-frame fire
+// path can fire it when its cancel gate opens. Returns true on
+// immediate fire.
+static bool fireOrBufferDodgeOnSpaceRelease(const glm::vec3& moveIntent,
+                                            float backstep_playback_rate,
+                                            float roll_playback_rate)
+{
+    const bool blocked = sSampler.isOneShotActive() || sDodgeActive;
+    if (!blocked)
+        return fireDodgeFromTap(moveIntent, backstep_playback_rate, roll_playback_rate);
+    sBufferedDodge.pending = true;
+    sBufferedDodge.move_intent_at_press = moveIntent;
+    sBufferedDodge.buffered_at = selva::wallClock();
+    combatLog("[combat:rhythm %.4fs] dodge BUFFERED (%s in flight)\n", selva::wallClock(),
+              sDodgeActive ? "dodge" : "one-shot");
+    return false;
 }
 
 static bool tickSpaceInput(const Uint8* keys, const glm::vec3& moveIntent, float dt,
@@ -1196,17 +1229,9 @@ static bool tickSpaceInput(const Uint8* keys, const glm::vec3& moveIntent, float
     if (space_now)
     {
         sSpaceHeldSeconds += dt;
-        // Commit to sprint when EITHER:
-        //   * Space has been held past the tap-window (the
-        //     traditional "you held it long enough, this isn't a
-        //     dodge tap").
-        //   * WASD is currently pressed (the player is clearly
-        //     moving while holding Space — no ambiguity about
-        //     dodge vs sprint, no reason to wait the tap-window).
-        // The SM-side debounce on is_sprinting (in
-        // selectLocomotionClip) synchronizes the commit with the
-        // WASD debounce so SM never sees a mismatched edge — see
-        // that comment for the synchronized-edge rationale.
+        // Commit to sprint when EITHER Space is held past the
+        // tap-window OR WASD is held (movement intent is
+        // unambiguous, no reason to wait).
         const bool wasd_held = keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_A] ||
                                keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_D];
         if (sSpaceHeldSeconds >= dodge_tap_window || wasd_held)
@@ -1216,25 +1241,8 @@ static bool tickSpaceInput(const Uint8* keys, const glm::vec3& moveIntent, float
     {
         const bool was_tap = sSpaceHeldSeconds < dodge_tap_window;
         if (was_tap && !sDodgeFiredThisPress)
-        {
-            const bool blocked = sSampler.isOneShotActive() || sDodgeActive;
-            if (!blocked)
-            {
-                fired = fireDodgeFromTap(moveIntent, backstep_playback_rate, roll_playback_rate);
-            }
-            else
-            {
-                // Buffer the dodge; per-frame fire path picks it up
-                // when the active hand's cancel window opens, when
-                // the current dodge passes its cancel fraction, or
-                // when the active one-shot fully ends.
-                sBufferedDodge.pending = true;
-                sBufferedDodge.move_intent_at_press = moveIntent;
-                sBufferedDodge.buffered_at = selva::wallClock();
-                combatLog("[combat:rhythm %.4fs] dodge BUFFERED (%s in flight)\n",
-                          selva::wallClock(), sDodgeActive ? "dodge" : "one-shot");
-            }
-        }
+            fired = fireOrBufferDodgeOnSpaceRelease(moveIntent, backstep_playback_rate,
+                                                   roll_playback_rate);
         sPlayer.sprinting = false;
     }
     sPrevSpace = space_now;
@@ -1261,8 +1269,8 @@ capturePreUpdateJoints(bool loco_clip_changed, const std::string& clip_name, flo
     const auto fd = sSampler.frameDiagnostics();
     const float speed_now = glm::length(sPlayer.velocity_xz);
     combatLog("[sm %.4fs] loco-pick %s@%.3fs -> %s (blend=%.3fs speed_now=%.2f target=%.2f)\n",
-              selva::wallClock(), sLastLocoClipName.c_str(), fd.loco_current_time, clip_name.c_str(),
-              blend_seconds, speed_now, sLastTargetSpeed);
+              selva::wallClock(), sLastLocoClipName.c_str(), fd.loco_current_time,
+              clip_name.c_str(), blend_seconds, speed_now, sLastTargetSpeed);
     const char* names[] = {"mixamorig:RightHand", "mixamorig:LeftHand", "mixamorig:RightFoot",
                            "mixamorig:LeftFoot", "mixamorig:Hips"};
     for (const char* n : names)
@@ -1320,8 +1328,8 @@ static const char* selectLocomotionClipFromSpeed(float target_speed, bool is_arm
     {
         // Combat stance idle when stance is active; peaceful idle
         // otherwise. Stance management still honors stance_active_until.
-        const bool combat_ready = sLocomotionSM.combat_stance ==
-                                  selva::gameplay::CombatStance::CombatReady;
+        const bool combat_ready =
+            sLocomotionSM.combat_stance == selva::gameplay::CombatStance::CombatReady;
         if (combat_ready)
             return is_armed ? "sword_and_shield_idle_4" : "unarmed_combat_idle";
         return "standard_idle";
@@ -1336,8 +1344,7 @@ static const char* selectLocomotionClipFromSpeed(float target_speed, bool is_arm
 // stance_active_until. Velocity model doesn't care about stance
 // directly, but the idle clip-pick does (combat-stance idle vs
 // peaceful idle).
-static void tickCombatStance(bool combat_input_this_frame,
-                             const selva::tuning::Tunables& tun)
+static void tickCombatStance(bool combat_input_this_frame, const selva::tuning::Tunables& tun)
 {
     if (combat_input_this_frame)
     {
@@ -1503,6 +1510,8 @@ static void logBlendOutFadeJoints()
 // at any tunable speed != the clip's authored speed).
 static void applyHipDeltaToPlayerPos()
 {
+    if (!sSampler.isOneShotActive())
+        sOneShotHipDeltaScale = 1.0f;
     const glm::vec3 hip_local = sSampler.consumedHipDelta();
     if (glm::length(glm::vec2(hip_local.x, hip_local.z)) <= 1e-6f)
         return;
@@ -1510,7 +1519,7 @@ static void applyHipDeltaToPlayerPos()
     const float cy = std::cos(sPlayer.yaw);
     const glm::vec3 hip_world(-cy * hip_local.x - sy * hip_local.z, 0.0f,
                               sy * hip_local.x - cy * hip_local.z);
-    sPlayer.pos += hip_world;
+    sPlayer.pos += hip_world * sOneShotHipDeltaScale;
 }
 
 // Translate the player by their current XZ velocity. Velocity is
@@ -1520,8 +1529,7 @@ static void applyHipDeltaToPlayerPos()
 // for locomotion — only velocity * dt lands on sPlayer.pos.
 static void applyVelocityToPlayerPos(float dt)
 {
-    sPlayer.pos +=
-        glm::vec3(sPlayer.velocity_xz.x, 0.0f, sPlayer.velocity_xz.y) * dt;
+    sPlayer.pos += glm::vec3(sPlayer.velocity_xz.x, 0.0f, sPlayer.velocity_xz.y) * dt;
 }
 
 // Mid-roll yaw steer: bend the trajectory toward the live move-intent
@@ -1540,6 +1548,24 @@ static void applyDodgeSteer(const glm::vec3& moveIntent, float dodge_steer_rate,
     else if (delta < -maxStep)
         delta = -maxStep;
     sPlayer.yaw += delta;
+}
+
+// Per-frame translation routing: F1 clip-preview pins the player in
+// place; one-shot active = clip-hip translation (with mid-roll yaw
+// steer); otherwise input-driven velocity. Same invariant the dodge
+// path has always followed, generalized to all one-shots.
+static void applyPerFrameTranslation(const glm::vec3& moveIntent, float dodge_steer_rate, float dt)
+{
+    if (!sDebugClipName.empty())
+        return;
+    if (!sSampler.isOneShotActive())
+    {
+        applyVelocityToPlayerPos(dt);
+        return;
+    }
+    if (sDodgeActive)
+        applyDodgeSteer(moveIntent, dodge_steer_rate, dt);
+    applyHipDeltaToPlayerPos();
 }
 
 // Flush an in-progress CSV bone-trajectory recording to disk and clear
@@ -1619,11 +1645,11 @@ struct CombatInputEdges
     bool press_rmb;
     bool release_lmb;
     bool release_rmb;
-    bool press_f;
+    bool press_r;
     bool shift_held;
 };
 
-// Read raw mouse + Shift + F state and compute the per-frame edges.
+// Read raw mouse + Shift + R state and compute the per-frame edges.
 // `tryAttackInput` and friends consume the result.
 static CombatInputEdges readCombatInputEdges(const Uint8* keys)
 {
@@ -1635,8 +1661,8 @@ static CombatInputEdges readCombatInputEdges(const Uint8* keys)
     e.press_rmb = e.rmb_now && !sPrevRMB;
     e.release_lmb = !e.lmb_now && sPrevLMB;
     e.release_rmb = !e.rmb_now && sPrevRMB;
-    const bool fNow = keys[SDL_SCANCODE_F] != 0;
-    e.press_f = fNow && !sPrevF;
+    const bool rNow = keys[SDL_SCANCODE_R] != 0;
+    e.press_r = rNow && !sPrevR;
     e.shift_held = (keys[SDL_SCANCODE_LSHIFT] != 0) || (keys[SDL_SCANCODE_RSHIFT] != 0);
     return e;
 }
@@ -1649,7 +1675,7 @@ static bool tickCombatInputPass(const Uint8* keys, const CombatInputEdges& e,
 {
     bool fired = false;
     logInputEdges(keys, e.press_lmb, e.release_lmb, e.press_rmb, e.release_rmb);
-    if (tryHandleStanceTogglePress(e.press_f, e.shift_held))
+    if (tryHandleStanceTogglePress(e.press_r, e.shift_held))
         fired = true;
 
     const selva::combat::PressModifiers mods{e.shift_held, sPlayer.sprinting};
@@ -1859,10 +1885,11 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         combat_input_this_frame = true;
     sPrevLMB = edges.lmb_now;
     sPrevRMB = edges.rmb_now;
-    sPrevF = (keys[SDL_SCANCODE_F] != 0);
+    sPrevR = (keys[SDL_SCANCODE_R] != 0);
 
     selva::combat::cacheRightHandPos(sSampler);
     tickGripToggle(keys);
+    tickJumpInput(keys);
 
     const glm::vec3 moveIntent = computeMoveIntent(keys);
 
@@ -1881,38 +1908,43 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     if (tryFirePostDodgeAttack(edges.shift_held, tun.combo_input_buffer_seconds))
         combat_input_this_frame = true;
     if (tryFireBufferedDodge(tun.backstep_playback_rate, tun.roll_playback_rate,
-                             tun.combo_input_buffer_seconds, tun.dodge_cancel_fraction))
+                             tun.combo_input_buffer_seconds))
         combat_input_this_frame = true;
 
     // Frame-capture timer (independent of dodge so post-dodge recovery
     // can also be captured). On expiry: emit contact-sheet composite.
     tickFrameCapture(dt);
 
-    // Every active attack one-shot locks movement until it blends out.
-    // The whole body is committed to the clip, so letting WASD push the
-    // player would compound translation against the attack's authored
-    // hip drive. WASD held during the lock is honored as soon as the
-    // one-shot ends — the SM picks `walking` (combat-idle if not moving)
-    // automatically because `is_moving` is read live each frame.
-    const bool one_shot_active = sSampler.isOneShotActive();
-    const bool attack_locks = true;
-    // Dodge always locks movement — the dodge code drives sPlayer.pos
-    // along sDodgeDir for the clip's duration. Letting WASD also push
-    // the player would compound translation again (same pattern as the
-    // root-motion problem we already fixed for locomotion).
-    const bool movement_locked = sDodgeActive || (one_shot_active && attack_locks);
-    // Velocity-driven locomotion. tickPlayerVelocity ramps
-    // sPlayer.velocity_xz toward target_speed (walk_speed when
-    // sprinting==false, run_speed when sprinting==true) using
-    // locomotion_accel / locomotion_decel; selectLocomotionClip
-    // reads |velocity_xz| to pick idle/walking/running. World
-    // translation comes from velocity * dt below — independent of
-    // the clip's authored hip cadence so any tunable speed lands
-    // without foot-skate against the clip.
+    // Every active one-shot locks movement until BlendOut. The
+    // whole body is committed to the clip — letting WASD push the
+    // player would compound translation against the clip's
+    // authored hip drive. WASD held during the lock is honored as
+    // soon as the one-shot ends.
     //
-    // Yaw is gameplay-driven; smooth-turn toward the camera-relative
-    // move intent at tun.turn_rate.
-    tickPlayerVelocity(moveIntent, movement_locked, tun, dt);
+    // Two separate locks:
+    //   * movement_locked controls TRANSLATION source. While true,
+    //     clip-hip drives sPlayer.pos (one-shot's authored arc).
+    //     False → velocity * dt drives it. Stays locked for the
+    //     full one-shot duration so we never double-translate.
+    //   * velocity_locked controls the VELOCITY RAMP. While true,
+    //     velocity_xz holds at zero. False → velocity ramps toward
+    //     target speed even mid-one-shot. Unlocks past cancel_fraction
+    //     so the player's velocity is already at target when the
+    //     one-shot ends — no zero-velocity pop into idle, no
+    //     foot-slide as residual clip-hip motion outpaces the
+    //     ramp-from-zero locomotion.
+    //
+    // Result: jumps and dodges past their cancel_fraction have
+    // velocity climbing during recovery. When the one-shot ends,
+    // translation switches from clip-hip to velocity-driven without
+    // a speed discontinuity. Attacks (cancel_fraction=1.0) never
+    // unlock — full commitment preserved.
+    const bool one_shot_active = sSampler.isOneShotActive();
+    const bool past_cancel = sSampler.isOneShotPastCancelFraction();
+    const bool movement_locked = sDodgeActive || one_shot_active;
+    const bool velocity_locked =
+        (sDodgeActive && !past_cancel) || (one_shot_active && !past_cancel);
+    tickPlayerVelocity(moveIntent, velocity_locked, tun, dt);
     tickPlayerYaw(moveIntent, movement_locked, tun.turn_rate, dt);
 
     // Pick + advance the sampler. The locomotion SM picks the loco
@@ -1927,52 +1959,8 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
 
     logSpliceResiduals(pick.pre_update_joints, pick.clip);
     logBlendOutFadeJoints();
-    accumulateOneShotHipDelta();
 
-    // Translation source = pose source. When a one-shot (attack or
-    // dodge) is active, the clip's authored hip motion drives world
-    // push; the player travels along the clip's authored arc. When
-    // no one-shot is active, locomotion translation is input-driven
-    // velocity (independent of the loco clip's authored hip cadence
-    // so any tunable speed lands without foot-skate).
-    //
-    // F1 clip-preview pins the player in place (no translation at
-    // all — the operator is staring at a single clip's pose).
-    //
-    // Same invariant the dodge path has always followed; this just
-    // applies it to attack one-shots too. Without it, an attack like
-    // flying_knee_punch_combo (which authors 0.57m of forward XZ
-    // travel) plays in place because movement_locked zeros velocity
-    // and there's no other translation source.
-    const char* trans_source = nullptr;
-    if (!sDebugClipName.empty())
-    {
-        trans_source = "debug-pinned";
-    }
-    else if (sSampler.isOneShotActive())
-    {
-        if (sDodgeActive)
-            applyDodgeSteer(moveIntent, tun.dodge_steer_rate, dt);
-        applyHipDeltaToPlayerPos();
-        trans_source = "clip-hip";
-    }
-    else
-    {
-        applyVelocityToPlayerPos(dt);
-        trans_source = "velocity";
-    }
-    static const char* sLastTransSource = "";
-    if (selva::combat::isCombatDebugEnabled() && trans_source != sLastTransSource)
-    {
-        const float speed_now = glm::length(sPlayer.velocity_xz);
-        const glm::vec3 hip = sSampler.consumedHipDelta();
-        const float hip_xz = glm::length(glm::vec2(hip.x, hip.z));
-        combatLog("[trans %.4fs] source=%s speed_now=%.2f hip_delta=|%.4fm/frame| "
-                  "movement_locked=%d dodge=%d 1shot=%d\n",
-                  selva::wallClock(), trans_source, speed_now, hip_xz, movement_locked ? 1 : 0,
-                  sDodgeActive ? 1 : 0, sSampler.isOneShotActive() ? 1 : 0);
-        sLastTransSource = trans_source;
-    }
+    applyPerFrameTranslation(moveIntent, tun.dodge_steer_rate, dt);
 
     tickCsvRecording(dt);
     logStateNarrative();

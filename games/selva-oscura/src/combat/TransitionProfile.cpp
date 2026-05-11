@@ -79,6 +79,26 @@ TransitionProfile dodge()
     // the dodge fades back into the player's prior loco clip rather
     // than into whatever the SM picks during the dodge's flight.
     p.freeze_loco_during_one_shot = true;
+    // Tracks the historical tun.dodge_cancel_fraction. Player can
+    // chain another one-shot (roll, jump) past 65% of clip duration.
+    p.cancel_fraction = 0.65f;
+    return p;
+}
+
+TransitionProfile jump()
+{
+    TransitionProfile p;
+    p.blend_in_seconds = 0.10f;
+    p.blend_out_seconds = 0.20f;
+    p.source_prep = TransitionProfile::SourcePrep::None;
+    p.enroll_inertialization = false;
+    p.lockout = TransitionProfile::Lockout::None;
+    // Like dodge: not a stance change, fade back into the player's
+    // prior loco.
+    p.freeze_loco_during_one_shot = true;
+    // Allow movement + chain past 65% — the back half is recovery/
+    // landing, the player shouldn't be locked through it.
+    p.cancel_fraction = 0.65f;
     return p;
 }
 
@@ -97,6 +117,7 @@ void fireOneShotWithProfile(const selva::anim::AnimationClip& clip,
     opts.freeze_last = profile.freeze_last;
     opts.clip_key = clip_key;
     opts.freeze_loco_during_one_shot = profile.freeze_loco_during_one_shot;
+    opts.cancel_fraction = profile.cancel_fraction;
     sampler.playOneShot(clip, profile.blend_in_seconds, profile.blend_out_seconds, profile.mask,
                         start_seconds, playback_rate, opts);
 }

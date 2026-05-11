@@ -47,6 +47,14 @@ struct TransitionProfile
     // attack fades out so the reveal isn't standard_idle for a
     // frame. Default false (attack-friendly).
     bool freeze_loco_during_one_shot = false;
+
+    // Fraction of clip duration past which gameplay considers the
+    // one-shot "past commitment": movement unlocks, the next chained
+    // one-shot can fire. 1.0 = no early cancel (lock for full
+    // duration). Used by simple commit-then-recover actions
+    // (dodges, jumps); combat attacks use a separate per-clip rhythm
+    // window and keep this at 1.0. See PoseSampler::isOneShotPastCancelFraction.
+    float cancel_fraction = 1.0f;
 };
 
 namespace profiles
@@ -56,6 +64,7 @@ TransitionProfile chainLink();
 TransitionProfile blockFromLatch();
 TransitionProfile blockLive();
 TransitionProfile dodge();
+TransitionProfile jump();
 } // namespace profiles
 
 // Loco-lockout state, owned here. Read by the per-frame movement gate.

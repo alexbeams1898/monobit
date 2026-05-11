@@ -202,6 +202,15 @@ struct PoseSampler
         // triggers CombatReady; combat-idle should be live by
         // BlendOut). Only honored when mask == Full.
         bool freeze_loco_during_one_shot = false;
+        // Fraction of clip duration past which gameplay considers the
+        // one-shot "past commitment" — movement unlocks, the next
+        // one-shot can chain in via one_shot_previous crossfade. 1.0
+        // = full-duration lock (default, no early cancel). 0.65 =
+        // unlock at 65% of the clip's wallclock duration. Used by
+        // dodges (chain rolls), jumps (chain jumps), and any future
+        // commit-then-recover one-shot. Combat attacks use their own
+        // per-clip wallclock cancel window (rhythm timing), not this.
+        float cancel_fraction = 1.0f;
     };
 
     void playOneShot(const AnimationClip& clip, float blend_in_seconds, float blend_out_seconds,
@@ -215,6 +224,15 @@ struct PoseSampler
     // True while a one-shot is the dominant clip (>50% weight). Combat
     // gameplay reads this to gate movement, queue follow-ups, etc.
     bool isOneShotActive() const;
+
+    // True when the active one-shot's elapsed time is past its
+    // OneShotOptions::cancel_fraction × duration. Gameplay reads this
+    // to unlock movement / fire buffered next-actions before the
+    // one-shot's full BlendOut completes — the remaining tail still
+    // plays visually but the player is no longer committed. Returns
+    // false when no one-shot is active or cancel_fraction is 1.0
+    // (default: no early cancel).
+    bool isOneShotPastCancelFraction() const;
 
     // Read the world-space translation of joint `i` (in the current
     // sampled pose, post-LocalToModelJob). Returns zero if `i` is out

@@ -205,20 +205,12 @@ struct Tunables
     // bend ~170° at most — sharp enough to feel responsive, capped
     // enough that you can't pirouette out of a swing.
     float dodge_steer_rate = 5.0f;
-    // Fraction through the dodge clip at which a buffered LMB/RMB
-    // press will fire as a post-dodge attack. 0.65 = the attack
-    // begins blending in at 65% through the roll's wall-clock
-    // duration; the dodge's authored tail keeps playing under the
-    // attack's rising weight, producing a smooth cancel-into-attack
-    // chain instead of "wait for the entire roll to finish, then
-    // 200ms of pause for blend-out, then jab." Tighter values feel
-    // snappier; ~0.50 is aggressive, ~0.80 makes you commit longer.
-    float dodge_attack_cancel_fraction = 0.65f;
-    // Fraction through the dodge clip at which a buffered Space press
-    // fires the next dodge (chained roll). Same shape as
-    // dodge_attack_cancel_fraction but kept separate so chained-roll
-    // feel can be tuned independently of dodge→attack cancel.
-    float dodge_cancel_fraction = 0.65f;
+    // Cancel fractions are now declared per-profile in TransitionProfile
+    // (profiles::dodge(), profiles::jump(), etc.) so every commit-then-
+    // recover one-shot uses the same mechanism (see PoseSampler::
+    // isOneShotPastCancelFraction). dodge_cancel_fraction and
+    // dodge_attack_cancel_fraction were both 0.65 and have been folded
+    // into profiles::dodge().cancel_fraction.
 
     // Wall-clock seconds past cancel_window_close at which walking
     // becomes responsive again post-attack. Anchoring the lockout to
@@ -239,16 +231,15 @@ struct Tunables
 // default-initialized value, so older tunables.json files don't break when
 // new fields are added.
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
-    Tunables, time_scale, turn_rate, wasd_debounce_seconds, walk_speed, run_speed,
-    locomotion_accel, locomotion_decel, idle_to_walk_speed, walk_to_run_speed, mouse_sensitivity,
-    pitch_min, pitch_max, follow_distance, follow_height, fov_degrees, anim_blend_seconds,
+    Tunables, time_scale, turn_rate, wasd_debounce_seconds, walk_speed, run_speed, locomotion_accel,
+    locomotion_decel, idle_to_walk_speed, walk_to_run_speed, mouse_sensitivity, pitch_min,
+    pitch_max, follow_distance, follow_height, fov_degrees, anim_blend_seconds,
     combat_idle_grace_seconds, combat_entry_delay_seconds, combo_reset_grace_seconds,
     combo_input_buffer_seconds, combo_chain_blend_seconds, first_strike_blend_seconds,
     inertialize_decay_base_seconds, inertialize_decay_scale_per_radian,
     inertialize_decay_max_seconds, attack_playback_rate, cancel_open_velocity_fraction,
     perfect_accuracy_threshold, roll_playback_rate, backstep_playback_rate, dodge_tap_window,
-    dodge_steer_rate, dodge_attack_cancel_fraction, dodge_cancel_fraction,
-    attack_lockout_extension_seconds);
+    dodge_steer_rate, attack_lockout_extension_seconds);
 
 // Single global instance. Both gameplay code and the procedural driver
 // read from this; the ImGui panel edits it in place. Keep it global rather
