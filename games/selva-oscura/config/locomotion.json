@@ -1,10 +1,10 @@
 {
   "_comment": "Per-clip locomotion metadata. blend_in_seconds = inertialization decay duration when this clip becomes the active loco_current. Per-joint decay scales further by offset magnitude on top of this base, so idle->running gets a wider window than walking->running automatically.",
   "clips": [
-    { "name": "standard_idle",          "blend_in_seconds": 0.30 },
+    { "name": "standard_idle",          "blend_in_seconds": 0.40 },
     { "name": "unarmed_combat_idle",    "blend_in_seconds": 0.40 },
     { "name": "sword_and_shield_idle_4","blend_in_seconds": 0.40 },
-    { "name": "walking",                "blend_in_seconds": 0.18 },
-    { "name": "running",                "blend_in_seconds": 0.10 }
+    { "name": "walking",                "blend_in_seconds": 0.28 },
+    { "name": "running",                "blend_in_seconds": 0.22 }
   ]
 }

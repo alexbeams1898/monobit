@@ -32,7 +32,6 @@ struct TransitionProfile
     float blend_in_seconds = 0.20f;
     float blend_out_seconds = 0.20f;
     SourcePrep source_prep = SourcePrep::None;
-    bool enroll_inertialization = true;
     Lockout lockout = Lockout::None;
     float lockout_seconds = 0.0f;
     selva::anim::PoseSampler::BodyMask mask = selva::anim::PoseSampler::BodyMask::Full;
@@ -72,9 +71,12 @@ float locoLockoutUntil();
 void setLocoLockoutUntil(float t);
 
 // Single entry point for "fire a one-shot with this profile." Reads
-// profile, applies source-prep, optionally enrolls inertialization,
-// kicks playOneShot. Lockout assignment is separate (caller knows the
-// anchor — chain.cancel_window_close_at vs dodge end vs wall clock).
+// profile, applies source-prep, kicks playOneShot. Inertialization
+// is intentionally not enrolled by any game-side profile (see
+// feedback_animation_harmony_rule.md); the engine retains the
+// capability for future reuse but Selva Oscura never opts in.
+// Lockout assignment is separate (caller knows the anchor —
+// chain.cancel_window_close_at vs dodge end vs wall clock).
 void fireOneShotWithProfile(const selva::anim::AnimationClip& clip,
                             const TransitionProfile& profile, float start_seconds,
                             float playback_rate, selva::anim::PoseSampler& sampler,

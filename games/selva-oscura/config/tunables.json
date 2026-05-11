@@ -21,9 +21,6 @@
   "combo_input_buffer_seconds": 0.50,
   "combo_chain_blend_seconds": 0.22,
   "first_strike_blend_seconds": 0.20,
-  "inertialize_decay_base_seconds": 0.10,
-  "inertialize_decay_scale_per_radian": 0.30,
-  "inertialize_decay_max_seconds": 0.45,
   "attack_playback_rate": 1.0,
   "cancel_open_velocity_fraction": 0.50,
   "perfect_accuracy_threshold": 0.85,
@@ -31,5 +28,12 @@
   "backstep_playback_rate": 1.3,
   "dodge_tap_window": 0.20,
   "dodge_steer_rate": 5.0,
-  "attack_lockout_extension_seconds": 0.10
+  "attack_lockout_extension_seconds": 0.10,
+  "hp_per_vig": 5.0,
+  "stamina_per_end": 3.0,
+  "damage_floor": 1.0,
+  "hit_react_medium_threshold": 25.0,
+  "hit_react_heavy_threshold": 45.0,
+  "hit_react_cooldown_seconds": 0.30,
+  "enemy_respawn_after_death_seconds": 3.0
 }

@@ -7,14 +7,16 @@
 namespace selva::gameplay
 {
 
-namespace
-{
-PlayerState sPlayer;
-} // namespace
+// `player()` and the actor pool live in Actor.cpp. PlayerState
+// is now an Actor alias — see PlayerState.h. This file keeps the
+// player-specific helpers (yaw math) and the initPlayer entry.
 
-PlayerState& player()
+void initPlayer()
 {
-    return sPlayer;
+    // initActorPool resets the pool and creates the Actor at index 0
+    // as the player (controller=Input, faction=Player). The player
+    // accessor `player()` (defined in Actor.cpp) returns this entry.
+    initActorPool();
 }
 
 float wrapAngleSigned(float delta)

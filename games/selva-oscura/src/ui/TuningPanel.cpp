@@ -20,6 +20,7 @@
 #include "gameplay/LocomotionStateMachine.h"
 #include "gameplay/PlayerState.h"
 #include "gameplay/TickState.h"
+#include "ui/ActorHud.h"
 #include "ui/ComboHud.h"
 
 #include <imgui.h>
@@ -33,13 +34,13 @@
 // Aliases so the transplanted ImGui code reads the same as it did in
 // main.cpp.
 using selva::combat::combatLog;
+using selva::ui::renderActorHud;
 using selva::ui::renderComboHud;
 namespace tickstate = selva::gameplay::tickstate;
 
 // References to combat singletons + sampler etc � the panel reads them
 // to populate sliders and writes back to debug arms.
 static selva::anim::ClipRegistry& sClips = selva::anim::clips();
-static selva::anim::PoseSampler& sSampler = selva::anim::sampler();
 static selva::anim::LocomotionConfig& sLocomotionConfig = selva::anim::locomotionConfig();
 static selva::combat::PlayerEquipment& sEquipment = selva::combat::equipment();
 static selva::combat::WeaponClassRegistry& sWeaponClasses = selva::combat::weaponClasses();
@@ -48,7 +49,8 @@ static selva::combat::WeaponClassRegistry& sWeaponClasses = selva::combat::weapo
 // to a 0-arg version to mirror main.cpp's earlier wrapper usage.
 static void resolveAttackCancelOpenTimes()
 {
-    selva::combat::resolveAttackCancelOpenTimes(sWeaponClasses, sClips, sSampler);
+    selva::combat::resolveAttackCancelOpenTimes(sWeaponClasses, sClips,
+                                                selva::gameplay::player().sampler);
 }
 
 // Tunables save path mirrors main.cpp.
@@ -175,6 +177,9 @@ static void renderCombatSection(selva::tuning::Tunables& tun)
     bool combat_debug_enabled = selva::combat::isCombatDebugEnabled();
     if (ImGui::Checkbox("Combat debug overlay + diagnostics", &combat_debug_enabled))
         selva::combat::setCombatDebugEnabled(combat_debug_enabled);
+    bool show_volumes = selva::ui::showHitVolumes();
+    if (ImGui::Checkbox("Show hitbox/hurtbox outlines", &show_volumes))
+        selva::ui::setShowHitVolumes(show_volumes);
     renderSlot1ChainLinkStartSlider(tun);
 }
 
@@ -337,6 +342,7 @@ static void renderSaveLoadButtons()
 
 static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
 {
+    renderActorHud();
     renderComboHud();
     if (!sShowTuningPanel)
         return;

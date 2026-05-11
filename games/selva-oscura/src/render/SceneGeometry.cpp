@@ -2,6 +2,7 @@
 
 #include "render/SceneShaders.h"
 
+#include <cmath>
 #include <vector>
 
 #include <glad/glad.h>
@@ -19,6 +20,11 @@ GLuint sCubeEbo = 0;
 GLuint sFloorVao = 0;
 GLuint sFloorVbo = 0;
 GLuint sFloorEbo = 0;
+
+GLuint sDiscVao = 0;
+GLuint sDiscVbo = 0;
+GLuint sDiscEbo = 0;
+int sDiscIndexCount = 0;
 
 GLuint sGridVao = 0;
 GLuint sGridVbo = 0;
@@ -100,6 +106,61 @@ void initFloor()
     glBufferData(GL_ARRAY_BUFFER, sizeof(kVertices), kVertices, GL_STATIC_DRAW);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sFloorEbo);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(kIndices), kIndices, GL_STATIC_DRAW);
+
+    constexpr int stride = 4 * sizeof(float);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, nullptr);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, stride,
+                          reinterpret_cast<void*>(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+    glBindVertexArray(0);
+}
+
+void initDisc()
+{
+    // Flat unit-radius disc on the XZ plane at y=0. Triangle fan from
+    // center vertex (index 0) out to a 24-segment rim. Used as a fake
+    // contact shadow under trees so the eye anchors them to the floor.
+    constexpr int kSegments = 24;
+    std::vector<float> verts;
+    verts.reserve(static_cast<std::size_t>((kSegments + 1) * 4));
+    // Center vertex — darkest so the shadow falls off toward the rim.
+    verts.push_back(0.0f);
+    verts.push_back(0.0f);
+    verts.push_back(0.0f);
+    verts.push_back(0.0f);
+    for (int i = 0; i < kSegments; ++i)
+    {
+        const float t = static_cast<float>(i) / static_cast<float>(kSegments);
+        const float a = t * 2.0f * 3.14159265f;
+        verts.push_back(std::cos(a));
+        verts.push_back(0.0f);
+        verts.push_back(std::sin(a));
+        verts.push_back(1.0f);
+    }
+
+    std::vector<unsigned int> indices;
+    indices.reserve(static_cast<std::size_t>(kSegments * 3));
+    for (int i = 0; i < kSegments; ++i)
+    {
+        indices.push_back(0);
+        indices.push_back(static_cast<unsigned int>(1 + i));
+        indices.push_back(static_cast<unsigned int>(1 + ((i + 1) % kSegments)));
+    }
+    sDiscIndexCount = static_cast<int>(indices.size());
+
+    glGenVertexArrays(1, &sDiscVao);
+    glGenBuffers(1, &sDiscVbo);
+    glGenBuffers(1, &sDiscEbo);
+
+    glBindVertexArray(sDiscVao);
+    glBindBuffer(GL_ARRAY_BUFFER, sDiscVbo);
+    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(verts.size() * sizeof(float)),
+                 verts.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sDiscEbo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+                 static_cast<GLsizeiptr>(indices.size() * sizeof(unsigned int)), indices.data(),
+                 GL_STATIC_DRAW);
 
     constexpr int stride = 4 * sizeof(float);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, nullptr);
@@ -194,6 +255,7 @@ void initSceneGeometry()
 {
     initCube();
     initFloor();
+    initDisc();
     initGrid();
 }
 
@@ -202,6 +264,9 @@ void shutdownSceneGeometry()
     glDeleteBuffers(1, &sFloorEbo);
     glDeleteBuffers(1, &sFloorVbo);
     glDeleteVertexArrays(1, &sFloorVao);
+    glDeleteBuffers(1, &sDiscEbo);
+    glDeleteBuffers(1, &sDiscVbo);
+    glDeleteVertexArrays(1, &sDiscVao);
     glDeleteBuffers(1, &sGridVbo);
     glDeleteVertexArrays(1, &sGridVao);
     glDeleteBuffers(1, &sAxesVbo);
@@ -210,6 +275,8 @@ void shutdownSceneGeometry()
     glDeleteBuffers(1, &sCubeVbo);
     glDeleteVertexArrays(1, &sCubeVao);
     sFloorEbo = sFloorVbo = sFloorVao = 0;
+    sDiscEbo = sDiscVbo = sDiscVao = 0;
+    sDiscIndexCount = 0;
     sGridVbo = sGridVao = 0;
     sAxesVbo = sAxesVao = 0;
     sCubeEbo = sCubeVbo = sCubeVao = 0;
@@ -225,6 +292,11 @@ void drawFloor(const glm::mat4& model, float tint)
 void drawCube(const glm::mat4& model, float tint)
 {
     drawIndexed(sCubeVao, 36, model, tint);
+}
+
+void drawDisc(const glm::mat4& model, float tint)
+{
+    drawIndexed(sDiscVao, sDiscIndexCount, model, tint);
 }
 
 void drawGrid(const glm::mat4& model, float tint)

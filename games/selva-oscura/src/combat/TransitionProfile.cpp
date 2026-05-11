@@ -20,6 +20,16 @@ void setLocoLockoutUntil(float t)
     sLocoLockoutUntil = t;
 }
 
+// Inertialization is intentionally NOT enrolled by any profile here.
+// The PoseSampler engine retains the capability (requestInertialization
+// + applyInertializationDecay) for future games or specific opt-in
+// callers, but Selva Oscura never requests it. Reason: every Mixamo
+// clip in our pipeline animates rapidly in its first 100-450ms
+// (windup, recoil, raise), which is exactly the failure mode for
+// inertialization's frozen-offset decay math — the offset overlays
+// the clip's authored motion and produces visible foot drift.
+// See feedback_animation_harmony_rule.md.
+
 namespace profiles
 {
 
@@ -28,7 +38,6 @@ TransitionProfile firstStrike()
     const auto& tun = selva::tuning::current();
     TransitionProfile p;
     p.blend_in_seconds = tun.first_strike_blend_seconds;
-    p.enroll_inertialization = true;
     p.lockout = TransitionProfile::Lockout::CancelWindowClose;
     return p;
 }
@@ -38,12 +47,6 @@ TransitionProfile chainLink()
     const auto& tun = selva::tuning::current();
     TransitionProfile p;
     p.blend_in_seconds = tun.combo_chain_blend_seconds;
-    // Two-track one-shot crossfade in PoseSampler::playOneShot now
-    // handles the cancel-into-next pose continuity directly. Adding
-    // inertialization on top double-shapes the same transition and
-    // produces per-frame chatter as the offset decay overlays the
-    // crossfade.
-    p.enroll_inertialization = false;
     p.lockout = TransitionProfile::Lockout::CancelWindowClose;
     return p;
 }
@@ -53,7 +56,6 @@ TransitionProfile blockFromLatch()
     TransitionProfile p;
     p.blend_in_seconds = 0.10f;
     p.source_prep = TransitionProfile::SourcePrep::None;
-    p.enroll_inertialization = true;
     p.lockout = TransitionProfile::Lockout::None;
     return p;
 }
@@ -63,7 +65,6 @@ TransitionProfile blockLive()
     TransitionProfile p;
     p.blend_in_seconds = 0.10f;
     p.source_prep = TransitionProfile::SourcePrep::SnapLocoToZero;
-    p.enroll_inertialization = true;
     p.lockout = TransitionProfile::Lockout::None;
     return p;
 }
@@ -73,7 +74,6 @@ TransitionProfile dodge()
     TransitionProfile p;
     p.blend_in_seconds = 0.10f;
     p.source_prep = TransitionProfile::SourcePrep::None;
-    p.enroll_inertialization = false;
     p.lockout = TransitionProfile::Lockout::None;
     // Dodge isn't intent-driving a stance change; freeze loco so
     // the dodge fades back into the player's prior loco clip rather
@@ -91,7 +91,6 @@ TransitionProfile jump()
     p.blend_in_seconds = 0.10f;
     p.blend_out_seconds = 0.20f;
     p.source_prep = TransitionProfile::SourcePrep::None;
-    p.enroll_inertialization = false;
     p.lockout = TransitionProfile::Lockout::None;
     // Like dodge: not a stance change, fade back into the player's
     // prior loco.
@@ -111,8 +110,6 @@ void fireOneShotWithProfile(const selva::anim::AnimationClip& clip,
 {
     if (profile.source_prep == TransitionProfile::SourcePrep::SnapLocoToZero)
         sampler.setLocomotionClipTime(0.0f);
-    if (profile.enroll_inertialization)
-        sampler.requestInertialization(profile.blend_in_seconds);
     selva::anim::PoseSampler::OneShotOptions opts;
     opts.freeze_last = profile.freeze_last;
     opts.clip_key = clip_key;

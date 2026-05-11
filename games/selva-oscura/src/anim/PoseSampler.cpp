@@ -650,6 +650,7 @@ void PoseSampler::playOneShot(const AnimationClip& clip, float blend_in_seconds,
         s.one_shot_previous.last_hip_xz = s.one_shot.last_hip_xz;
         s.one_shot_previous.last_hip_xz_valid = false; // discontinuity
         s.one_shot_previous.last_hip_delta = glm::vec3(0.0f);
+        s.one_shot_previous.hip_path_cached = s.one_shot.hip_path_cached;
         s.one_shot_previous_weight = s.one_shot_weight;
         s.one_shot_previous_fade_seconds = std::max(0.05f, blend_in_seconds);
         s.one_shot_previous_playback_rate = s.one_shot_playback_rate;
@@ -657,6 +658,18 @@ void PoseSampler::playOneShot(const AnimationClip& clip, float blend_in_seconds,
     }
     s.one_shot.animation = clip.ozz_animation.get();
     s.one_shot.registry_key = (clip_key != nullptr) ? clip_key : "";
+    // Cache the clip's total hip-XZ path length so
+    // extractTrackHipDelta knows whether it's a traveling clip
+    // (gait, dodge, attack-with-step → world translates) or in-
+    // place (flinch, hit-react, death pose → no world translation).
+    // Classify the one-shot clip: traveling (gait, dodge, attack-
+    // with-step) vs in-place (flinch, hit-react, death). Drives
+    // extractTrackHipDelta's two-branch behavior — traveling
+    // clips translate world pos; in-place clips don't.
+    s.one_shot.hip_path_cached = clipHipPathLength(clip).path_length;
+    samplerDiagLog("[hip-classify-oneshot] clip=%s path=%.3fm class=%s\n",
+                   s.one_shot.registry_key.c_str(), s.one_shot.hip_path_cached,
+                   s.one_shot.hip_path_cached >= 0.5f ? "TRAVELING" : "IN_PLACE");
     const float dur = s.one_shot.animation ? s.one_shot.animation->duration() : 0.0f;
     s.one_shot.time_seconds = std::clamp(start_time_seconds, 0.0f, std::max(0.0f, dur - 1e-4f));
     s.one_shot_phase = OneShotPhase::BlendIn;
@@ -1685,6 +1698,13 @@ void applyLocoCrossfade(PoseSampler::Impl& s, const ozz::animation::Animation* d
     s.loco_current.registry_key = desired_key;
     s.loco_current.time_seconds = resume_t;
     s.loco_current.hip_path_cached = computeHipXZPathLength(s, desired);
+    // Lock-in diagnostic: log every loco clip's classification at
+    // crossfade time. Traveling clips translate world pos; in-place
+    // clips don't. If a clip behaves wrong (e.g. an idle slides),
+    // this log line reveals which branch the extractor picked.
+    samplerDiagLog("[hip-classify-loco] clip=%s path=%.3fm class=%s\n", desired_key.c_str(),
+                   s.loco_current.hip_path_cached,
+                   s.loco_current.hip_path_cached >= 0.5f ? "TRAVELING" : "IN_PLACE");
     s.loco_current.finished = false;
     s.loco_current.resetHipTracking();
     // Inertialization is NOT enrolled here. The bridging job is the
@@ -2250,52 +2270,86 @@ bool tickOneShotPhase(PoseSampler::Impl& s, float dt, bool one_shot_finished)
     return blend_out_entered;
 }
 
-// Per-track hip-XZ delta extract: read the track's hip translation
-// in local space and compute a per-frame delta. Stationary clips
-// always emit zero. Discontinuities (>0.5m/frame) are squelched and
-// re-baselined.
-void extractTrackHipDelta(Track& t, int hip_soa, int hip_lane, float gait_threshold)
+// Per-track hip-XZ delta extract. Two paths based on whether the
+// clip is a TRAVELING clip (gait, dodge, attack-with-step — clip
+// total hip path > kGaitThreshold) or an IN-PLACE clip (idle,
+// flinch, hit-react — clip total hip path < kGaitThreshold).
+//
+// Traveling clip: extract per-frame delta, zero the local hip-XZ.
+// Gameplay applies delta to actor world pos. The local pose has
+// no hip translation; world pos carries it. This is what keeps
+// locomotion velocity-driven (player) and lets dodge/attack clips
+// move the body the authored distance.
+//
+// In-place clip: delta = 0 (no world translation). Local hip-XZ
+// is LEFT UNTOUCHED so the clip's authored weight-shift motion
+// flows through into the model pose without leaking into world
+// position. The body's anchor stays at pos.xz, and the hip
+// micro-shifts as part of the visual — exactly what the previewer
+// shows.
+//
+// The two-path split is the right contract for the figura-umana
+// rig: combat-stance idles author hip-only weight shifts that look
+// alive only when the hip actually moves; gait clips author hip+
+// feet stepping forward that need world-translation to read.
+//
+// Discontinuities (>0.5m/frame) are squelched and re-baselined —
+// catches clip-swap pose snaps regardless of clip class.
+void extractTrackHipDelta(Track& t, int hip_soa, int hip_lane)
 {
     if (!t.animation)
     {
         t.resetHipTracking();
         return;
     }
+    // Total clip hip path: traveling clips (gait, dodge, big attack
+    // lunges, death falls) author significant hip travel; in-place
+    // clips (idle, flinch, hit-react, short punch follow-throughs)
+    // stay below. Threshold tuned empirically from log data:
+    //   walking         1.85m  TRAVELING
+    //   death           1.30m  TRAVELING
+    //   combo           0.56m  IN_PLACE   (was sliding the player)
+    //   unarmed_combat_idle 0.37m  IN_PLACE
+    //   jab             0.14m  IN_PLACE
+    //   flinch_*        0.07-0.11m  IN_PLACE
+    // Cached per-track, set by applyLocoCrossfade / playOneShot at
+    // clip change. Per-clip override via JSON when 0.8 cutoff bites
+    // a future clip wrong.
+    constexpr float kTravelingClipThreshold = 0.8f;
+    const bool is_traveling = t.hip_path_cached >= kTravelingClipThreshold;
+
     ozz::math::SoaTransform& T = t.local_transforms[hip_soa];
     alignas(16) float tx[4];
     alignas(16) float tz[4];
     ozz::math::StorePtr(T.translation.x, tx);
     ozz::math::StorePtr(T.translation.z, tz);
     const glm::vec2 cur(tx[hip_lane], tz[hip_lane]);
-    const bool stationary = t.hip_path_cached >= 0.0f && t.hip_path_cached < gait_threshold;
-    if (stationary)
+
+    if (!is_traveling)
     {
+        // In-place: no delta, no zeroing. The clip's authored hip
+        // micro-motion flows through to the pose so feet stay
+        // planted against a moving hip (visually correct for
+        // weight-shifts, flinches, death pose).
         t.last_hip_delta = glm::vec3(0.0f);
         t.last_hip_xz = cur;
         t.last_hip_xz_valid = true;
+        return;
+    }
+
+    // Traveling clip: extract per-frame delta, zero the local pose.
+    if (t.last_hip_xz_valid)
+    {
+        const glm::vec2 d = cur - t.last_hip_xz;
+        const bool discontinuity = std::abs(d.x) > 0.5f || std::abs(d.y) > 0.5f;
+        t.last_hip_delta = discontinuity ? glm::vec3(0.0f) : glm::vec3(d.x, 0.0f, d.y);
     }
     else
     {
-        if (t.last_hip_xz_valid)
-        {
-            const glm::vec2 d = cur - t.last_hip_xz;
-            const bool discontinuity = std::abs(d.x) > 0.5f || std::abs(d.y) > 0.5f;
-            t.last_hip_delta = discontinuity ? glm::vec3(0.0f) : glm::vec3(d.x, 0.0f, d.y);
-        }
-        else
-        {
-            t.last_hip_delta = glm::vec3(0.0f);
-        }
-        t.last_hip_xz = cur;
-        t.last_hip_xz_valid = true;
+        t.last_hip_delta = glm::vec3(0.0f);
     }
-    // Root motion separation: the clip's authored hip-XZ-translation
-    // is now extracted into t.last_hip_delta (gameplay applies it to
-    // sPlayer.pos). Zero hip-XZ in the local transform so downstream
-    // pose math (blend, capture, decay, LocalToModel) operates on
-    // clean data with no embedded clip translation. This eliminates
-    // the previous bandaid (freezeVisualHipXZ clamping XZ at render
-    // time) — there's no XZ left to clamp.
+    t.last_hip_xz = cur;
+    t.last_hip_xz_valid = true;
     tx[hip_lane] = 0.0f;
     tz[hip_lane] = 0.0f;
     T.translation.x = ozz::math::simd_float4::Load(tx[0], tx[1], tx[2], tx[3]);
@@ -2313,12 +2367,11 @@ void extractAllHipDeltas(PoseSampler::Impl& s)
     if (s.hips_joint_idx < 0)
         return;
     ZoneScopedN("hip-delta-extract");
-    constexpr float kGaitCycleThreshold = 0.5f;
     const int hip_soa = s.hips_joint_idx / 4;
     const int hip_lane = s.hips_joint_idx % 4;
-    extractTrackHipDelta(s.loco_current, hip_soa, hip_lane, kGaitCycleThreshold);
-    extractTrackHipDelta(s.loco_previous, hip_soa, hip_lane, kGaitCycleThreshold);
-    extractTrackHipDelta(s.one_shot, hip_soa, hip_lane, kGaitCycleThreshold);
+    extractTrackHipDelta(s.loco_current, hip_soa, hip_lane);
+    extractTrackHipDelta(s.loco_previous, hip_soa, hip_lane);
+    extractTrackHipDelta(s.one_shot, hip_soa, hip_lane);
     // one_shot_previous (a roll/attack/block fading out during a
     // cancel-into-next chain) must ALSO have its hip XZ extracted and
     // zeroed so the final blend doesn't mix its clip-authored hip
@@ -2327,7 +2380,7 @@ void extractAllHipDeltas(PoseSampler::Impl& s)
     // when this was missing: chain-roll fires render the hip at world
     // Z=2-3m (clip-translated), producing visible hop/slide artifacts.
     if (s.one_shot_previous.animation != nullptr)
-        extractTrackHipDelta(s.one_shot_previous, hip_soa, hip_lane, kGaitCycleThreshold);
+        extractTrackHipDelta(s.one_shot_previous, hip_soa, hip_lane);
 }
 
 // Pack a per-joint SoA weight buffer for one one-shot track. If the

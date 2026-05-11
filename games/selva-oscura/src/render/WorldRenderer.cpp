@@ -3,6 +3,7 @@
 #include "Tunables.h"
 #include "render/Camera.h"
 #include "render/SceneGeometry.h"
+#include "world/Collision.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -59,11 +60,25 @@ void renderEnvironment()
     drawGrid(glm::mat4(1.0f), 1.0f);
     drawAxes(glm::mat4(1.0f), 1.0f);
 
-    const float seconds = static_cast<float>(SDL_GetTicks64()) * 0.001f;
-    const float angle = seconds * (glm::two_pi<float>() / 4.0f);
-    glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.5f, -8.0f));
-    model = glm::rotate(model, angle, glm::normalize(glm::vec3(0.6f, 1.0f, 0.3f)));
-    drawCube(model, 0.7f);
+    // Placeholder trees: one scaled cube per collision cylinder so the
+    // colliders are visible while collision is being tuned. A flat dark
+    // disc sits at the base as a fake contact shadow so the eye anchors
+    // the trunk to the floor. Will swap for proper tree models + real
+    // shadows once the hub asset pass starts.
+    for (const auto& c : selva::world::currentScene().cylinders)
+    {
+        glm::mat4 disc = glm::translate(glm::mat4(1.0f), glm::vec3(c.center.x, 0.01f, c.center.z));
+        disc = glm::scale(disc, glm::vec3(c.radius * 1.6f, 1.0f, c.radius * 1.6f));
+        drawDisc(disc, 0.05f);
+
+        // Unit cube has half-extent 0.5, so scale-Y by 2*half_height to
+        // make the trunk span [0, 2*half_height]. Center is half_height
+        // above the floor.
+        const glm::vec3 trunk_center(c.center.x, c.half_height, c.center.z);
+        glm::mat4 model = glm::translate(glm::mat4(1.0f), trunk_center);
+        model = glm::scale(model, glm::vec3(c.radius * 2.0f, c.half_height * 2.0f, c.radius * 2.0f));
+        drawCube(model, 0.55f);
+    }
 }
 
 } // namespace selva::render

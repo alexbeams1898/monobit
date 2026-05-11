@@ -15,6 +15,7 @@ void shutdownSceneGeometry();
 // scene program and set uViewProj for the frame.
 void drawFloor(const glm::mat4& model, float tint);
 void drawCube(const glm::mat4& model, float tint);
+void drawDisc(const glm::mat4& model, float tint);
 void drawGrid(const glm::mat4& model, float tint);
 void drawAxes(const glm::mat4& model, float tint);
 

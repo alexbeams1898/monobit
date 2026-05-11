@@ -19,14 +19,20 @@ add_library(selva-oscura-lib STATIC
     src/anim/Skeleton.cpp
     src/anim/SkeletalMesh.cpp
     src/anim/SkeletalRenderer.cpp
+    src/gameplay/Actor.cpp
+    src/gameplay/Enemies.cpp
     src/gameplay/LocomotionStateMachine.cpp
     src/gameplay/PerFrameTick.cpp
     src/gameplay/PlayerState.cpp
+    src/combat/ActorVolumes.cpp
     src/combat/AttackChain.cpp
     src/combat/AttackResolution.cpp
     src/combat/ChainObserver.cpp
     src/combat/CombatData.cpp
     src/combat/CombatLog.cpp
+    src/combat/HitDetection.cpp
+    src/combat/HitFeedback.cpp
+    src/combat/HitVolumes.cpp
     src/combat/PressMapping.cpp
     src/combat/SpliceDiag.cpp
     src/combat/TransitionProfile.cpp
@@ -35,8 +41,10 @@ add_library(selva-oscura-lib STATIC
     src/render/SceneGeometry.cpp
     src/render/SceneShaders.cpp
     src/render/WorldRenderer.cpp
+    src/ui/ActorHud.cpp
     src/ui/ComboHud.cpp
     src/ui/TuningPanel.cpp
+    src/world/Collision.cpp
     src/Tunables.cpp
     src/WallClock.cpp
 )

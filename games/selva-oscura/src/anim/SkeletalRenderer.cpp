@@ -81,7 +81,7 @@ const char* kFragmentShader = R"glsl(
 in vec3 vNormalWorld;
 in vec2 vUV;
 
-uniform float uTint;
+uniform vec3 uTint;
 
 out vec4 fragColor;
 
@@ -96,8 +96,8 @@ void main()
     // ambient + 0.75 diffuse keeps the silhouette readable from any angle.
     float lambert = 0.25 + 0.75 * ndotl;
 
-    float g = clamp(lambert * uTint, 0.0, 1.0);
-    fragColor = vec4(g, g, g, 1.0);
+    vec3 c = clamp(lambert * uTint, 0.0, 1.0);
+    fragColor = vec4(c, 1.0);
 }
 )glsl";
 
@@ -141,7 +141,7 @@ void shutdownSkeletalRenderer()
 }
 
 void drawSkeletalMesh(const SkeletalMesh& mesh, const glm::mat4& model, const glm::mat4& view_proj,
-                      const std::vector<glm::mat4>& bone_palette, float tint)
+                      const std::vector<glm::mat4>& bone_palette, const glm::vec3& tint)
 {
     if (sProgram == 0 || !mesh.isLoaded())
         return;
@@ -149,7 +149,7 @@ void drawSkeletalMesh(const SkeletalMesh& mesh, const glm::mat4& model, const gl
     glUseProgram(sProgram);
     glUniformMatrix4fv(sUniModel, 1, GL_FALSE, glm::value_ptr(model));
     glUniformMatrix4fv(sUniViewProj, 1, GL_FALSE, glm::value_ptr(view_proj));
-    glUniform1f(sUniTint, tint);
+    glUniform3fv(sUniTint, 1, glm::value_ptr(tint));
 
     // Upload the bone palette. Cap at kMaxBones — any rig past that gets
     // truncated. With 49 bones for the soldier we have lots of headroom.

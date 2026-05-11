@@ -28,12 +28,13 @@ void shutdownSkeletalRenderer();
 //                Length must match the skeleton's bone count. Each entry
 //                is the cumulative transform for that bone (root->bone)
 //                in the current pose.
-// tint         : grayscale brightness multiplier (matches the existing
-//                scene shader's uTint convention, for visual consistency).
+// tint         : RGB color multiplier applied after lambert lighting.
+//                (1,1,1) = neutral white, (0.3,0.3,0.3) = dim gray,
+//                (0.35,0.10,0.13) = dark bordeaux, etc.
 //
 // Caller is responsible for binding the GL state appropriately for the
 // frame (depth test enabled, etc. — the engine already does this).
 void drawSkeletalMesh(const SkeletalMesh& mesh, const glm::mat4& model, const glm::mat4& view_proj,
-                      const std::vector<glm::mat4>& bone_palette, float tint);
+                      const std::vector<glm::mat4>& bone_palette, const glm::vec3& tint);
 
 } // namespace selva::anim

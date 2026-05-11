@@ -64,6 +64,25 @@ struct WeaponAttack
     // "" / "any" = either button. "LMB" = left mouse only. "RMB" = right
     // mouse only. Pressing the wrong button is a chain miss.
     std::string expected_button;
+
+    // Joint the hitbox is parented to while this attack swings. Mixamo
+    // bone name (e.g. "mixamorig:LeftHand"). Empty = fall back to the
+    // weapon's grip bone_right (the standard weapon hand). Set per-clip
+    // when the animation drives a non-default limb — e.g. unarmed jab
+    // animates the LEFT hand even though the dispatch hand is Right;
+    // a kick animates RightFoot; etc.
+    std::string hitbox_joint;
+
+    // Hitbox shape. The capsule spans `hitbox_joint` (p0) to a point
+    // offset along the joint's forward axis by hitbox_tip_offset_z
+    // (p1). For a fist: tip_offset_z = 0 (sphere at the hand). For a
+    // sword: tip_offset_z = ~0.8 (blade extends forward from the
+    // hand). hitbox_radius is the capsule radius — small for blades
+    // (~0.06), wider for fists (~0.18), wider still for heavy
+    // bludgeons. 0 = fall back to a sensible default at the spawn
+    // site.
+    float hitbox_radius = 0.0f;
+    float hitbox_tip_offset_z = 0.0f;
     // Override: if >= 0, force resolved_chain_link_start_seconds to
     // this value instead of motion_start - 0.05. Set to 0.0 for clips
     // that have a Blender-authored bookend in their first ~5-10
@@ -123,7 +142,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(WeaponAttack, clip, recovery_sec
                                                 cancel_open_seconds, motion_joints,
                                                 chain_link_start_seconds, chain_link_blend_seconds,
                                                 blend_out_seconds, first_strike_start_seconds,
-                                                expected_button);
+                                                expected_button, hitbox_joint, hitbox_radius,
+                                                hitbox_tip_offset_z);
 
 // All attack clips available within one grip mode. Slots:
 //   light   — standing or walking primary attack chain

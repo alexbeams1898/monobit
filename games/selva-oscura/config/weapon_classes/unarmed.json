@@ -7,26 +7,35 @@
       {
         "id": "jab_hook_combo",
         "attacks": [
-          { "clip": "jab",   "expected_button": "LMB" },
-          { "clip": "hook",  "expected_button": "RMB" },
-          { "clip": "combo", "expected_button": "LMB" }
+          { "clip": "jab",   "expected_button": "LMB", "hitbox_joint": "mixamorig:LeftHand",  "hitbox_radius": 0.18 },
+          { "clip": "hook",  "expected_button": "RMB", "hitbox_joint": "mixamorig:RightHand", "hitbox_radius": 0.18 },
+          { "clip": "combo", "expected_button": "LMB", "hitbox_joint": "mixamorig:RightHand", "hitbox_radius": 0.18 }
         ]
       },
       {
         "id": "jab_jab_hook",
         "attacks": [
-          { "clip": "jab",  "expected_button": "LMB" },
-          { "clip": "jab",  "expected_button": "LMB" },
-          { "clip": "hook", "expected_button": "RMB" }
+          { "clip": "jab",  "expected_button": "LMB", "hitbox_joint": "mixamorig:LeftHand",  "hitbox_radius": 0.18 },
+          { "clip": "jab",  "expected_button": "LMB", "hitbox_joint": "mixamorig:LeftHand",  "hitbox_radius": 0.18 },
+          { "clip": "hook", "expected_button": "RMB", "hitbox_joint": "mixamorig:RightHand", "hitbox_radius": 0.18 }
         ]
       }
     ],
-    "_comment_running": "When the player is sprinting at chain-finisher time, the final attack swaps to the running slot's first attack instead of the locked technique's last clip. Single-clip chain (no further branches).",
+    "_comment_heavy": "Shift+LMB while standing/walking. Single committed heavy swing — no chain. Damage scaling will boost over light when stats system lands.",
+    "heavy": [
+      {
+        "id": "heavy_punch",
+        "attacks": [
+          { "clip": "heavy_punch", "expected_button": "LMB", "hitbox_joint": "mixamorig:RightHand", "hitbox_radius": 0.22 }
+        ]
+      }
+    ],
+    "_comment_running": "Shift+LMB while sprinting fires the 'special' running attack (unarmed: flying-knee). Plain LMB/RMB while sprinting now falls through to the standard light slot-0 — the player smoothly stops, swings the normal jab/hook, then crossfades back into running.",
     "running": [
       {
         "id": "flying_knee",
         "attacks": [
-          { "clip": "flying_knee_punch_combo", "first_strike_start_seconds": 0.20 }
+          { "clip": "flying_knee_punch_combo", "first_strike_start_seconds": 0.20, "hitbox_joint": "mixamorig:RightFoot", "hitbox_radius": 0.20 }
         ]
       }
     ]
@@ -37,26 +46,33 @@
       {
         "id": "jab_hook_combo",
         "attacks": [
-          { "clip": "jab",   "expected_button": "LMB" },
-          { "clip": "hook",  "expected_button": "RMB" },
-          { "clip": "combo", "expected_button": "LMB" }
+          { "clip": "jab",   "expected_button": "LMB", "hitbox_joint": "mixamorig:LeftHand",  "hitbox_radius": 0.18 },
+          { "clip": "hook",  "expected_button": "RMB", "hitbox_joint": "mixamorig:RightHand", "hitbox_radius": 0.18 },
+          { "clip": "combo", "expected_button": "LMB", "hitbox_joint": "mixamorig:RightHand", "hitbox_radius": 0.18 }
         ]
       },
       {
         "id": "jab_jab_hook",
         "attacks": [
-          { "clip": "jab",  "expected_button": "LMB" },
-          { "clip": "jab",  "expected_button": "LMB" },
-          { "clip": "hook", "expected_button": "RMB" }
+          { "clip": "jab",  "expected_button": "LMB", "hitbox_joint": "mixamorig:LeftHand",  "hitbox_radius": 0.18 },
+          { "clip": "jab",  "expected_button": "LMB", "hitbox_joint": "mixamorig:LeftHand",  "hitbox_radius": 0.18 },
+          { "clip": "hook", "expected_button": "RMB", "hitbox_joint": "mixamorig:RightHand", "hitbox_radius": 0.18 }
         ]
       }
     ],
-    "_comment_running": "When the player is sprinting at chain-finisher time, the final attack swaps to the running slot's first attack instead of the locked technique's last clip. Single-clip chain (no further branches).",
+    "heavy": [
+      {
+        "id": "heavy_punch",
+        "attacks": [
+          { "clip": "heavy_punch", "expected_button": "LMB", "hitbox_joint": "mixamorig:RightHand", "hitbox_radius": 0.22 }
+        ]
+      }
+    ],
     "running": [
       {
         "id": "flying_knee",
         "attacks": [
-          { "clip": "flying_knee_punch_combo", "first_strike_start_seconds": 0.20 }
+          { "clip": "flying_knee_punch_combo", "first_strike_start_seconds": 0.20, "hitbox_joint": "mixamorig:RightFoot", "hitbox_radius": 0.20 }
         ]
       }
     ]

@@ -138,19 +138,10 @@ struct Tunables
     // Blend-in for the FIRST attack out of combat-idle. Larger = more
     // forgiving when idle pose is far from the action's t=0.
     float first_strike_blend_seconds = 0.10f;
-    // Per-joint inertialization decay scaling. Each joint's individual
-    // decay window = base + scale * |offset|. Joints with small offsets
-    // (a finger 5° off) keep snappy decays; joints with large offsets
-    // (a leg 90° off in a stance ↔ dodge splice) get proportionally
-    // longer windows so their visible motion reads as smooth, not as
-    // a snap. Without this, a single global decay duration is forced
-    // to compromise: too short = leg snap, too long = whole body
-    // sluggish.
-    float inertialize_decay_base_seconds = 0.10f;
-    float inertialize_decay_scale_per_radian = 0.30f;
-    // Hard cap so an extreme offset (180° flip) doesn't produce a 10s
-    // decay window. Anything past this clamps.
-    float inertialize_decay_max_seconds = 0.45f;
+    // Inertialization scaling fields removed — no game-side profile
+    // enrolls inertialization. The engine retains the capability
+    // (PoseSampler::setInertializationScaling) for future opt-in
+    // callers; this game does not configure it.
     // Playback-rate multiplier applied to attack one-shots. >1 plays
     // faster, scaling clip duration by 1/rate. Mixamo sword-and-shield
     // attacks were authored at a deliberate combat pace — fine for
@@ -223,6 +214,39 @@ struct Tunables
     float attack_lockout_extension_seconds = 0.10f;
 
     // ---- Sprint-finisher (running attack) ----
+
+    // ---- Actor formulas (player + enemies, see gameplay/Actor.h) ----
+    // Per-stat scaling for derived pools. Linear for v1; Souls-style
+    // diminishing curves replace these when balance work begins —
+    // call sites won't change, only the function bodies.
+    //
+    // max_hp      = body.base_hp      + vig * hp_per_vig
+    // max_stamina = body.base_stamina + end * stamina_per_end
+    float hp_per_vig = 5.0f;
+    float stamina_per_end = 3.0f;
+
+    // Floor on damage after defense reduction. Even heavily-armored
+    // targets take this much per hit so combat never stalls on
+    // unbreakable defense numbers. 1 is a soulslike default.
+    float damage_floor = 1.0f;
+
+    // ---- Enemy combat feel (gameplay/Enemies.cpp) ----
+    // Damage thresholds for hit reaction tiers. Hits below
+    // medium play upper-body flinches; >= medium play
+    // hit_react_medium; >= heavy play hit_react_heavy. Will become
+    // per-attack-declared (and poise-driven) later.
+    float hit_react_medium_threshold = 25.0f;
+    float hit_react_heavy_threshold = 45.0f;
+
+    // Minimum wallclock seconds between consecutive hit-react fires
+    // on the same enemy. Without this, fast multi-hits re-trigger
+    // the one-shot from t=0 every frame and the enemy looks frozen.
+    float hit_react_cooldown_seconds = 0.30f;
+
+    // Dev-only respawn timer. After death, restore the enemy to
+    // full HP at its spawn pose after this delay. Becomes proper
+    // despawn + persistence when the run / save system arrives.
+    float enemy_respawn_after_death_seconds = 3.0f;
 };
 
 // JSON serialization — generates to_json / from_json for nlohmann::json
@@ -236,10 +260,11 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     pitch_max, follow_distance, follow_height, fov_degrees, anim_blend_seconds,
     combat_idle_grace_seconds, combat_entry_delay_seconds, combo_reset_grace_seconds,
     combo_input_buffer_seconds, combo_chain_blend_seconds, first_strike_blend_seconds,
-    inertialize_decay_base_seconds, inertialize_decay_scale_per_radian,
-    inertialize_decay_max_seconds, attack_playback_rate, cancel_open_velocity_fraction,
+    attack_playback_rate, cancel_open_velocity_fraction,
     perfect_accuracy_threshold, roll_playback_rate, backstep_playback_rate, dodge_tap_window,
-    dodge_steer_rate, attack_lockout_extension_seconds);
+    dodge_steer_rate, attack_lockout_extension_seconds, hp_per_vig, stamina_per_end, damage_floor,
+    hit_react_medium_threshold, hit_react_heavy_threshold, hit_react_cooldown_seconds,
+    enemy_respawn_after_death_seconds);
 
 // Single global instance. Both gameplay code and the procedural driver
 // read from this; the ImGui panel edits it in place. Keep it global rather

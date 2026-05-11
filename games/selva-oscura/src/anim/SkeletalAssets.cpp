@@ -1,6 +1,5 @@
 #include "anim/SkeletalAssets.h"
 
-#include "Tunables.h"
 #include "anim/AnimationClip.h"
 #include "anim/ClipRegistry.h"
 #include "anim/LocomotionConfig.h"
@@ -87,12 +86,10 @@ bool initSkeletalAssets()
         return false;
 
     sSampler.update(*idleClip(), 0.0f, 0.0f);
-    {
-        const auto& tun = selva::tuning::current();
-        sSampler.setInertializationScaling(tun.inertialize_decay_base_seconds,
-                                           tun.inertialize_decay_scale_per_radian,
-                                           tun.inertialize_decay_max_seconds);
-    }
+    // Inertialization scaling intentionally not configured — the
+    // game never enrolls inertialization. The engine's defaults
+    // remain (used only if a future caller explicitly opts in).
+    // See feedback_animation_harmony_rule.md.
     return true;
 }
 

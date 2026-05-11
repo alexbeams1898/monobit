@@ -22,6 +22,11 @@
 #include "combat/TransitionProfile.h"
 #include "combat/Weapon.h"
 #include "combat/WeaponClass.h"
+#include "combat/ActorVolumes.h"
+#include "combat/HitDetection.h"
+#include "combat/HitFeedback.h"
+#include "combat/HitVolumes.h"
+#include "gameplay/Enemies.h"
 #include "gameplay/LocomotionStateMachine.h"
 #include "gameplay/PlayerState.h"
 #include "gameplay/TickState.h"
@@ -30,6 +35,7 @@
 #include "render/SceneShaders.h"
 #include "render/WorldRenderer.h"
 #include "ui/ComboHud.h"
+#include "world/Collision.h"
 
 #include <imgui.h>
 #include <stb_image.h>
@@ -48,6 +54,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdarg>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -59,13 +66,18 @@
 
 // File-scope aliases mirroring main.cpp conventions so transplanted
 // gameplay code compiles unchanged.
+//
+// `sPlayer` / `sSampler` route into the unified actor pool: the
+// player is actors()[0]. Defined as macros so they resolve fresh
+// each call (after initPlayer() the pool is non-empty; before, any
+// access crashes — same precondition as the old globals had).
 static selva::anim::Skeleton& sSkeleton = selva::anim::skeleton();
 static selva::anim::SkeletalMesh& sPlayerMesh = selva::anim::playerMesh();
 static selva::anim::ClipRegistry& sClips = selva::anim::clips();
-static selva::anim::PoseSampler& sSampler = selva::anim::sampler();
 static selva::anim::LocomotionConfig& sLocomotionConfig = selva::anim::locomotionConfig();
 using selva::gameplay::PlayerState;
-static PlayerState& sPlayer = selva::gameplay::player();
+#define sPlayer (selva::gameplay::player())
+#define sSampler (selva::gameplay::player().sampler)
 using selva::gameplay::CombatStance;
 using selva::gameplay::CombatStanceFoot;
 using selva::gameplay::LocomotionStateMachine;
@@ -108,6 +120,17 @@ static bool sPrevJump = false;
 // clip but covers less distance (no clip retiming). Set on one-shot
 // fire; auto-resets to 1.0 when no one-shot is active.
 static float sOneShotHipDeltaScale = 1.0f;
+
+// Active attack hitbox state. The hitbox capsule is parented to a
+// joint declared in the firing attack's JSON (WeaponAttack::
+// hitbox_joint) — e.g. mixamorig:LeftHand for a jab,
+// mixamorig:RightHand for a hook, mixamorig:RightFoot for a kick,
+// the weapon hand for a sword (with hitbox_tip_offset_z extending
+// the capsule along the blade). The C++ side never picks a joint
+// itself; the attack data is the single source of truth.
+static std::uint32_t sActiveAttackHitboxId = 0;
+static int sActiveAttackJointIdx = -1;
+static float sActiveAttackTipOffsetZ = 0.0f;
 
 // Per-frame WASD prev-state for edge logging. The actual movement
 // computation reads SDL_GetKeyboardState live; these only exist so
@@ -413,22 +436,26 @@ static void tickF1TuningPanelToggle(const Uint8* keys)
 }
 
 // Pose-match start time for a chain-link splice: source is the
-// outgoing one-shot's current frame, joint set is hands. Returns -1
-// when source clip / joints unresolvable (caller falls back to
-// loco-derived start).
+// outgoing one-shot's current frame. Matches BOTH hands AND feet so
+// the splice picks a frame where ALL contact-relevant joints line
+// up with the live pose — feet-only-hands match was producing
+// visible foot snaps when chaining jab -> hook -> combo because
+// hands lined up but feet didn't. Returns -1 when source clip /
+// joints unresolvable (caller falls back to loco-derived start).
 static float chainLinkPoseMatchStart(const selva::anim::AnimationClip& clip,
                                      const char* prev_clip_name, float prev_clip_time)
 {
     const auto* prev_clip = sClips.get(prev_clip_name);
     if (prev_clip == nullptr || !prev_clip->isLoaded())
         return -1.0f;
-    const int rh = sSampler.findJoint("mixamorig:RightHand");
-    const int lh = sSampler.findJoint("mixamorig:LeftHand");
     std::vector<int> joints;
-    if (rh >= 0)
-        joints.push_back(rh);
-    if (lh >= 0)
-        joints.push_back(lh);
+    for (const char* name :
+         {"mixamorig:RightHand", "mixamorig:LeftHand", "mixamorig:RightFoot", "mixamorig:LeftFoot"})
+    {
+        const int idx = sSampler.findJoint(name);
+        if (idx >= 0)
+            joints.push_back(idx);
+    }
     if (joints.empty())
         return -1.0f;
     return sSampler.clipPoseMatchTime(*prev_clip, prev_clip_time, clip, joints, 0.0f, 0.50f);
@@ -496,13 +523,22 @@ static void setHandCancelWindow(selva::combat::HandSide hand, const char* clip_n
 // profile (chainLink vs firstStrike), apply any per-attack blend_out
 // override, kick off the one-shot, and set the hand's cancel window.
 // No chain bookkeeping. Returns true on successful fire.
+// `one_shot_active` selects the splice strategy: chainLink (pose-match
+// against the live one-shot) vs firstStrike (start clean from t=0).
+// The default — "use chainLink when any one-shot is live" — is right
+// for the common case (attack -> next attack in a chain). The
+// post-dodge handoff overrides via `force_first_strike` because a
+// dodge's mid-roll pose has no useful pose-match in an attack clip;
+// pose-matching would land on a late frame and visibly truncate the
+// punch. The caller knows the splice is cross-family; this function
+// doesn't and shouldn't.
 static bool fireClipForHand(selva::combat::HandSide hand, const char* clip_name,
-                            float combo_input_buffer_seconds)
+                            float combo_input_buffer_seconds, bool force_first_strike = false)
 {
     const auto* clip = sClips.get(clip_name);
     if (clip == nullptr || !clip->isLoaded())
         return false;
-    const bool one_shot_active = sSampler.isOneShotActive();
+    const bool one_shot_active = sSampler.isOneShotActive() && !force_first_strike;
     const auto fd_pre = sSampler.frameDiagnostics();
 
     float pose_matched_start = -1.0f;
@@ -536,9 +572,74 @@ static bool fireClipForHand(selva::combat::HandSide hand, const char* clip_name,
     const float rate = effectiveAttackPlaybackRate(hand);
     fireOneShotWithProfile(*clip, profile, start_seconds, rate, clip_name);
     setHandCancelWindow(hand, clip_name, *clip, rate, combo_input_buffer_seconds);
-    combatLog("[combat:fire] hand=%s clip=%s dur=%.3fs start=%.3fs rate=%.2f one_shot_active=%d\n",
+    combatLog("[combat:fire] hand=%s clip=%s dur=%.3fs start=%.3fs rate=%.2f one_shot_active=%d "
+              "player_pos=(%.3f, %.3f)\n",
               (hand == selva::combat::HandSide::Right) ? "R" : "L", clip_name, clip->duration(),
-              start_seconds, rate, one_shot_active ? 1 : 0);
+              start_seconds, rate, one_shot_active ? 1 : 0, sPlayer.pos.x, sPlayer.pos.z);
+
+    // Spawn the attack hitbox parented to the swinging hand. The
+    // hitbox tracks the joint each frame (see updateActiveAttackHitbox)
+    // until its lifetime expires. Once-per-swing memo prevents
+    // double-hits across frames. Lifetime ~= active swing phase
+    // (roughly half the clip duration after the start offset);
+    // per-attack JSON authoring will replace this default later.
+    {
+        // Resolve the hitbox joint + shape from the attack's JSON
+        // data. Fall back to the weapon's grip bone_right (the
+        // standard weapon hand) if hitbox_joint is unset — most
+        // weapons swing from the same right hand the bone_right
+        // attaches to, so the override is only needed for off-hand
+        // animations (jab) or non-hand strikes (kicks).
+        const auto* atk = findAttackForClip(clip_name);
+        const char* joint_name = nullptr;
+        float hitbox_radius = 0.18f;
+        float hitbox_tip_offset_z = 0.0f;
+        if (atk != nullptr && !atk->hitbox_joint.empty())
+            joint_name = atk->hitbox_joint.c_str();
+        if (atk != nullptr && atk->hitbox_radius > 0.0f)
+            hitbox_radius = atk->hitbox_radius;
+        if (atk != nullptr)
+            hitbox_tip_offset_z = atk->hitbox_tip_offset_z;
+        if (joint_name == nullptr)
+        {
+            const auto* w = sEquipment.right;
+            if (w != nullptr && w->cls != nullptr && !w->cls->attach.bone_right.empty())
+                joint_name = w->cls->attach.bone_right.c_str();
+        }
+        const int joint_idx = (joint_name != nullptr) ? sSampler.findJoint(joint_name) : -1;
+        if (joint_idx >= 0)
+        {
+            const float effective_dur = (clip->duration() - start_seconds) / rate;
+            const float hitbox_lifetime = std::max(0.10f, effective_dur * 0.55f);
+            const glm::mat4 player_model = selva::combat::buildActorModelMatrix(
+                sPlayer.pos, sPlayer.yaw, sPlayerMesh.foot_offset_y);
+            const glm::vec3 anchor_world = glm::vec3(
+                player_model * glm::vec4(sSampler.jointWorldPos(joint_idx), 1.0f));
+            // Weapon hitboxes extend along the joint's forward axis.
+            // For a fist (tip_offset_z = 0) this collapses to a
+            // sphere at the joint. For a sword we'd add ~0.8m along
+            // the hand's forward to span hilt -> tip.
+            const glm::vec3 tip_world =
+                (hitbox_tip_offset_z != 0.0f)
+                    ? anchor_world + glm::vec3(player_model * glm::vec4(0.0f, 0.0f,
+                                                                        hitbox_tip_offset_z, 0.0f))
+                    : anchor_world;
+            selva::combat::Hitbox proto;
+            proto.shape.p0 = anchor_world;
+            proto.shape.p1 = tip_world;
+            proto.shape.radius = hitbox_radius;
+            proto.attacker = selva::combat::OwnerRef{selva::combat::OwnerKind::Player, 0};
+            proto.attacker_faction = sPlayer.faction;
+            proto.raw_damage = selva::gameplay::computeAttackDamage(
+                sPlayer.stats, sPlayer.body.unarmed_damage, 0.5f, 0.5f);
+            proto.remaining_seconds = hitbox_lifetime;
+            selva::combat::resetHitMemo();
+            const std::uint32_t id = selva::combat::spawnHitbox(proto);
+            sActiveAttackHitboxId = id;
+            sActiveAttackJointIdx = joint_idx;
+            sActiveAttackTipOffsetZ = hitbox_tip_offset_z;
+        }
+    }
     return true;
 }
 
@@ -760,14 +861,24 @@ static void logOneShotStateTransitions()
     sPrevOneShotActive = now;
 }
 
-// Post-dodge attack handoff. Once the dodge has fully ended AND the
-// one-shot has fully blended out, fire the buffered attack as a
-// first-strike from the (now-settled) combat-idle pose. Returns true
-// if a clip fired (caller marks combat_input_this_frame).
+// Post-dodge attack handoff. Fires the buffered press as soon as the
+// dodge one-shot is past its cancel_fraction (the same gate that
+// allows roll → roll chaining) — not after the full blend-out. Waiting
+// for blend-out let the locomotion track resume (running) before the
+// punch fired, which read as "running, then punch" instead of
+// "rolling, then punch." Returns true if a clip fired.
 static bool tryFirePostDodgeAttack(bool shift_held, float combo_input_buffer_seconds)
 {
-    if (!sPostDodgeAttack.pending || sDodgeActive || sSampler.isOneShotActive())
+    if (!sPostDodgeAttack.pending)
         return false;
+    // Allow the splice once the dodge has committed past its cancel
+    // fraction. If no one-shot is active at all (dodge already fully
+    // ended), the original gate is also satisfied.
+    if (sSampler.isOneShotActive() && !sSampler.isOneShotPastCancelFraction())
+        return false;
+    // The dodge timer can still be ticking down a hair past the
+    // cancel point — don't gate on it.
+    (void)sDodgeActive;
     const float wait_seconds = selva::wallClock() - sPostDodgeAttack.buffered_at;
     const selva::combat::PressModifiers mods{shift_held, sPlayer.sprinting};
     const auto& dw = selva::combat::cancelWindow(sPostDodgeAttack.hand);
@@ -776,7 +887,8 @@ static bool tryFirePostDodgeAttack(bool shift_held, float combo_input_buffer_sec
                                      mods, selva::wallClock(), dw.open_at, dw.close_at);
     bool fired = false;
     if (clip_name != nullptr &&
-        fireClipForHand(sPostDodgeAttack.hand, clip_name, combo_input_buffer_seconds))
+        fireClipForHand(sPostDodgeAttack.hand, clip_name, combo_input_buffer_seconds,
+                        /*force_first_strike=*/true))
     {
         fired = true;
         combatLog("[combat:rhythm %.4fs] post-dodge attack FIRED (waited %.3fs since press)\n",
@@ -1503,23 +1615,18 @@ static void logBlendOutFadeJoints()
 // Rotate clip-local hip XZ delta into world frame using the player's
 // yaw and add it to sPlayer.pos. Y is preserved (clip authors no
 // vertical motion in the locomotion path; freeze handles the rest).
-// Used for dodge translation (the dodge clip's authored hip motion
-// drives world push). Locomotion uses applyVelocityToPlayerPos
-// instead so the world-translation rate matches the input-driven
-// velocity, not the clip's authored cadence (which would foot-skate
-// at any tunable speed != the clip's authored speed).
+// Used for one-shot translation (the clip's authored hip motion
+// drives world push during attacks, dodges, jumps). Locomotion
+// uses applyVelocityToPlayerPos instead so the world-translation
+// rate matches the input-driven velocity, not the clip's authored
+// cadence (which would foot-skate at any tunable speed != the
+// clip's authored speed). Delegates to the shared
+// applyActorClipHipDelta — same math used by every other actor.
 static void applyHipDeltaToPlayerPos()
 {
     if (!sSampler.isOneShotActive())
         sOneShotHipDeltaScale = 1.0f;
-    const glm::vec3 hip_local = sSampler.consumedHipDelta();
-    if (glm::length(glm::vec2(hip_local.x, hip_local.z)) <= 1e-6f)
-        return;
-    const float sy = std::sin(sPlayer.yaw);
-    const float cy = std::cos(sPlayer.yaw);
-    const glm::vec3 hip_world(-cy * hip_local.x - sy * hip_local.z, 0.0f,
-                              sy * hip_local.x - cy * hip_local.z);
-    sPlayer.pos += hip_world * sOneShotHipDeltaScale;
+    selva::gameplay::applyActorClipHipDelta(sPlayer, sOneShotHipDeltaScale);
 }
 
 // Translate the player by their current XZ velocity. Velocity is
@@ -1852,12 +1959,6 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     engine.setWindowTitle("Selva Oscura  |  FPS " + std::to_string(fps));
 
     const auto& tun = selva::tuning::current();
-    // Re-apply inertialization decay shape every frame so F1 panel
-    // edits to base / scale / max take effect live without a
-    // restart. Cheap (3 float assignments inside the sampler).
-    sSampler.setInertializationScaling(tun.inertialize_decay_base_seconds,
-                                       tun.inertialize_decay_scale_per_radian,
-                                       tun.inertialize_decay_max_seconds);
     tickMouseLook(tun);
 
     const Uint8* keys = SDL_GetKeyboardState(nullptr);
@@ -1962,6 +2063,134 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
 
     applyPerFrameTranslation(moveIntent, tun.dodge_steer_rate, dt);
 
+    // World collision: push player out of any static cylinder it
+    // overlaps after translation. Runs LAST so it sees the final
+    // post-translation position whatever drove it (velocity, clip-hip,
+    // dodge steer). Player capsule radius ~0.35m matches humanoid
+    // shoulder width. Enemy capsules push out the same way.
+    {
+        constexpr float kPlayerRadius = 0.35f;
+        glm::vec2 player_xz(sPlayer.pos.x, sPlayer.pos.z);
+        selva::world::resolveBodyCollision(player_xz, kPlayerRadius);
+        for (const auto* enemy : selva::gameplay::enemies())
+        {
+            const glm::vec2 e_xz(enemy->pos.x, enemy->pos.z);
+            const glm::vec2 delta = player_xz - e_xz;
+            const float dist_sq = glm::dot(delta, delta);
+            const float min_dist = kPlayerRadius + enemy->body.collider_radius;
+            if (dist_sq >= min_dist * min_dist || dist_sq <= 1e-8f)
+                continue;
+            const float dist = std::sqrt(dist_sq);
+            player_xz += (delta / dist) * (min_dist - dist);
+        }
+        sPlayer.pos.x = player_xz.x;
+        sPlayer.pos.z = player_xz.y;
+    }
+
+    selva::gameplay::tickEnemies(dt);
+
+    // ---- Combat volume pipeline ----
+    // Rebuild hurtboxes from current poses (cleared every frame —
+    // bone positions move). Tick hitboxes (advance lifetime + roll
+    // prev_shape for swept detection). Detect overlaps and apply
+    // damage. Reactions/VFX read the same event stream.
+    selva::combat::clearHurtboxes();
+    {
+        const glm::mat4 player_model = selva::combat::buildActorModelMatrix(
+            sPlayer.pos, sPlayer.yaw, sPlayerMesh.foot_offset_y);
+        selva::combat::appendActorHurtboxes(sSampler, player_model, sPlayer.body,
+                                            selva::combat::OwnerRef{selva::combat::OwnerKind::Player,
+                                                                    0},
+                                            sPlayer.faction);
+    }
+    {
+        const auto list = selva::gameplay::enemies();
+        for (int i = 0; i < static_cast<int>(list.size()); ++i)
+        {
+            const auto& e = *list[i];
+            const glm::mat4 m = selva::combat::buildActorModelMatrix(e.pos, e.yaw,
+                                                                    sPlayerMesh.foot_offset_y);
+            selva::combat::appendActorHurtboxes(
+                e.sampler, m, e.body,
+                selva::combat::OwnerRef{selva::combat::OwnerKind::Enemy, i}, e.faction);
+        }
+    }
+
+    // Update the active attack hitbox to track the swinging hand.
+    // findHitbox returns nullptr once the hitbox has expired (its
+    // remaining_seconds <= 0 and tickHitboxes erased it); we just
+    // clear our handle in that case.
+    if (sActiveAttackHitboxId != 0 && sActiveAttackJointIdx >= 0)
+    {
+        selva::combat::Hitbox* hb = selva::combat::findHitbox(sActiveAttackHitboxId);
+        if (hb == nullptr)
+        {
+            sActiveAttackHitboxId = 0;
+            sActiveAttackJointIdx = -1;
+            sActiveAttackTipOffsetZ = 0.0f;
+        }
+        else
+        {
+            const glm::mat4 player_model = selva::combat::buildActorModelMatrix(
+                sPlayer.pos, sPlayer.yaw, sPlayerMesh.foot_offset_y);
+            const glm::vec3 anchor_world = glm::vec3(
+                player_model * glm::vec4(sSampler.jointWorldPos(sActiveAttackJointIdx), 1.0f));
+            const glm::vec3 tip_world =
+                (sActiveAttackTipOffsetZ != 0.0f)
+                    ? anchor_world + glm::vec3(player_model * glm::vec4(0.0f, 0.0f,
+                                                                        sActiveAttackTipOffsetZ,
+                                                                        0.0f))
+                    : anchor_world;
+            hb->shape.p0 = anchor_world;
+            hb->shape.p1 = tip_world;
+        }
+    }
+
+    selva::combat::tickHitboxes(dt);
+    const auto& hit_events = selva::combat::detectHits();
+    const float now = selva::wallClock();
+    for (const auto& ev : hit_events)
+    {
+        if (ev.target.kind == selva::combat::OwnerKind::Enemy)
+        {
+            auto enemy_view = selva::gameplay::enemies();
+            if (ev.target.index >= 0 && ev.target.index < static_cast<int>(enemy_view.size()))
+            {
+                auto& e = *enemy_view[ev.target.index];
+                const int hp_before = e.hp.current;
+                selva::gameplay::applyDamage(e.hp, e.body, ev.raw_damage);
+                const int dmg_applied = hp_before - e.hp.current;
+                e.last_damage_time = now;
+                const bool crit = (ev.region == selva::combat::HurtRegion::Head);
+                // Spawn the damage number just above where the HP bar
+                // will render, so it bounces up from the bar rather
+                // than from wherever the capsules overlapped (which
+                // is usually the torso). Keep using ev.world_pos's
+                // XZ — the hit's horizontal location — so numbers
+                // from quick successive hits jitter naturally.
+                const glm::vec3 number_origin(ev.world_pos.x, e.pos.y + 2.0f, ev.world_pos.z);
+                selva::combat::spawnDamageNumber(number_origin, dmg_applied, crit);
+                selva::gameplay::playEnemyHitReact(ev.target.index, dmg_applied, ev.world_normal);
+                selva::combat::combatLog("[hit] enemy[%d] region=%d dmg=%d hp=%d/%d\n",
+                                         ev.target.index, static_cast<int>(ev.region),
+                                         dmg_applied, e.hp.current, e.hp.max);
+            }
+        }
+        else if (ev.target.kind == selva::combat::OwnerKind::Player)
+        {
+            const int hp_before = sPlayer.hp.current;
+            selva::gameplay::applyDamage(sPlayer.hp, sPlayer.body, ev.raw_damage);
+            const int dmg_applied = hp_before - sPlayer.hp.current;
+            const bool crit = (ev.region == selva::combat::HurtRegion::Head);
+            const glm::vec3 number_origin(ev.world_pos.x, sPlayer.pos.y + 2.0f, ev.world_pos.z);
+            selva::combat::spawnDamageNumber(number_origin, dmg_applied, crit);
+            selva::combat::combatLog("[hit] player region=%d dmg=%d hp=%d/%d\n",
+                                     static_cast<int>(ev.region), dmg_applied, sPlayer.hp.current,
+                                     sPlayer.hp.max);
+        }
+    }
+    selva::combat::tickDamageNumbers(dt);
+
     tickCsvRecording(dt);
     logStateNarrative();
 }
@@ -1986,6 +2215,7 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
         }
     }
     const glm::mat4 viewProj = selva::render::buildViewProj(sPlayer.pos, targetLookAtY);
+    selva::render::setLastViewProj(viewProj);
 
     selva::render::useSceneProgram();
     selva::render::setSceneViewProj(viewProj);
@@ -2010,7 +2240,30 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
         player_model =
             glm::rotate(player_model, sPlayer.yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
         selva::anim::drawSkeletalMesh(sPlayerMesh, player_model, viewProj, sSampler.bone_palette,
-                                      1.0f);
+                                      glm::vec3(1.0f, 1.0f, 1.0f));
+    }
+
+    // 4. Enemies — each is a separate PoseSampler instance on the same
+    //    shared X_Bot rig (figura umana rule, see docs/design/bestiary.md).
+    //    Slight tint shift so the player can tell them apart from
+    //    placeholder cubes/trees while there's no material variation yet.
+    if (sPlayerMesh.isLoaded())
+    {
+        for (const auto* enemy : selva::gameplay::enemies())
+        {
+            if (enemy->sampler.bone_palette.empty())
+                continue;
+            const glm::vec3 enemy_pos(enemy->pos.x, -sPlayerMesh.foot_offset_y, enemy->pos.z);
+            glm::mat4 enemy_model = glm::translate(glm::mat4(1.0f), enemy_pos);
+            enemy_model = glm::rotate(enemy_model, enemy->yaw + glm::pi<float>(),
+                                      glm::vec3(0.0f, 1.0f, 0.0f));
+            // Dark bordeaux red for the placeholder shade — distinct
+            // silhouette from the player, hints at the figura-umana
+            // damned-soul register (bloody / wretched).
+            selva::anim::drawSkeletalMesh(sPlayerMesh, enemy_model, viewProj,
+                                          enemy->sampler.bone_palette,
+                                          glm::vec3(0.45f, 0.10f, 0.13f));
+        }
     }
 
     // Frame capture: read the back buffer at quarter-resolution and

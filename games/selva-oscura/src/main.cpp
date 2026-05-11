@@ -15,11 +15,15 @@
 #include "combat/CombatData.h"
 #include "combat/CombatLog.h"
 #include "combat/PlayerEquipment.h"
+#include "gameplay/Enemies.h"
 #include "gameplay/PerFrameTick.h"
+#include "gameplay/Actor.h"
+#include "gameplay/PlayerState.h"
 #include "render/Camera.h"
 #include "render/SceneGeometry.h"
 #include "render/SceneShaders.h"
 #include "ui/TuningPanel.h"
+#include "world/Collision.h"
 
 #include <stb_image_write.h>
 
@@ -89,6 +93,13 @@ int main(int /*argc*/, char* /*argv*/[])
 
     selva::render::setInitialWindowSize(engine.windowWidth(), engine.windowHeight());
     selva::render::initSceneGeometry();
+    selva::world::initHubScene();
+
+    // Load runtime-tunable values BEFORE initializing actor pools so
+    // their derived HP / stamina maxima read the JSON-tuned
+    // coefficients (hp_per_vig, stamina_per_end). Falls back silently
+    // to struct defaults if the file is missing or malformed.
+    selva::tuning::loadFromFile(kTunablesPath);
 
     if (!selva::anim::initSkeletalAssets())
     {
@@ -96,15 +107,17 @@ int main(int /*argc*/, char* /*argv*/[])
     }
     else
     {
+        // Player + enemy actor pool needs the skeleton + mesh
+        // loaded so each actor's sampler can bind. initPlayer must
+        // run after initSkeletalAssets.
+        selva::gameplay::initPlayer();
+
         // Phase-0 audit for root-motion refactor: dump per-clip hip
         // path length so we know which clips ship with authored
         // translation.
         selva::anim::auditClipHipMotion();
+        selva::gameplay::initHubEnemies();
     }
-
-    // Load runtime-tunable values. Falls back silently to struct
-    // defaults if the file is missing or malformed.
-    selva::tuning::loadFromFile(kTunablesPath);
 
     // Per-clip locomotion blend-in durations.
     selva::anim::locomotionConfig().loadFromFile("config/locomotion.json");
@@ -118,7 +131,8 @@ int main(int /*argc*/, char* /*argv*/[])
         selva::combat::loadAllCombatData(&n_classes, &n_weapons);
         const auto& eq = selva::combat::equipment();
         selva::combat::resolveAttackCancelOpenTimes(selva::combat::weaponClasses(),
-                                                    selva::anim::clips(), selva::anim::sampler());
+                                                    selva::anim::clips(),
+                                                    selva::gameplay::player().sampler);
         std::fprintf(stderr,
                      "[combat] loaded %d class(es), %d weapon(s); right=%s left=%s grip=%s\n",
                      n_classes, n_weapons, eq.right ? eq.right->id.c_str() : "(empty)",
@@ -133,6 +147,7 @@ int main(int /*argc*/, char* /*argv*/[])
 
     engine.run();
 
+    selva::gameplay::shutdownHubEnemies();
     selva::anim::shutdownSkeletalAssets();
     shutdownGeometry();
     engine.shutdown();
