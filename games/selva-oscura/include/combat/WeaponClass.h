@@ -83,6 +83,14 @@ struct WeaponAttack
     // site.
     float hitbox_radius = 0.0f;
     float hitbox_tip_offset_z = 0.0f;
+
+    // Poise damage dealt per hit. Drains the target's Poise pool;
+    // when poise hits 0 the hit triggers a knockdown chain instead
+    // of a normal hit-react. 0 = fall back to attacker's body
+    // unarmed_poise_damage at the spawn site. Heavy / committed
+    // attacks should set this explicitly (e.g. heavy_punch ~30,
+    // jab/hook ~8, kicks higher). Souls-style poise-break model.
+    float poise_damage = 0.0f;
     // Override: if >= 0, force resolved_chain_link_start_seconds to
     // this value instead of motion_start - 0.05. Set to 0.0 for clips
     // that have a Blender-authored bookend in their first ~5-10
@@ -143,7 +151,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(WeaponAttack, clip, recovery_sec
                                                 chain_link_start_seconds, chain_link_blend_seconds,
                                                 blend_out_seconds, first_strike_start_seconds,
                                                 expected_button, hitbox_joint, hitbox_radius,
-                                                hitbox_tip_offset_z);
+                                                hitbox_tip_offset_z, poise_damage);
 
 // All attack clips available within one grip mode. Slots:
 //   light   — standing or walking primary attack chain

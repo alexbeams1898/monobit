@@ -15,7 +15,7 @@ std::mt19937 sRng{0xD17AU}; // stable jitter seed
 // Per-number constants. Soulslike-ish: drift up ~1.5m over a 1s
 // lifetime so the number reads above the head before fading.
 constexpr float kLifetime = 1.0f;
-constexpr float kDriftHeight = 1.5f; // total upward drift in meters
+constexpr float kDriftHeight = 1.5f;   // total upward drift in meters
 constexpr float kJitterRadius = 0.10f; // horizontal jitter so stacked hits don't overlap
 
 } // namespace

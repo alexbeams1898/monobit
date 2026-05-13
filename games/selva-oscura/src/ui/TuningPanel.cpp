@@ -201,6 +201,38 @@ static void renderPostAttackLockoutSection(selva::tuning::Tunables& tun)
                 1.50f, 0.025f, "%.3f");
 }
 
+static void renderAiPerceptionSection(selva::tuning::Tunables& tun)
+{
+    if (!ImGui::CollapsingHeader("AI Perception", ImGuiTreeNodeFlags_DefaultOpen))
+        return;
+    ImGui::Checkbox("Show vision cones + awareness label", &tun.debug_ai_perception);
+    tunedSlider("Vision FOV (deg)", &tun.ai_vision_fov_degrees, 30.0f, 180.0f, 5.0f, "%.0f");
+    tunedSlider("Vision range (m)", &tun.ai_vision_range_meters, 1.0f, 30.0f, 0.5f, "%.1f");
+    tunedSlider("Suspicion decay (s)", &tun.ai_suspicion_decay_seconds, 0.25f, 10.0f, 0.25f,
+                "%.2f");
+    ImGui::SliderInt("Sightings to alert", &tun.ai_confirmed_sightings_to_alert, 1, 10);
+    tunedSlider("Alerted decay (s)", &tun.ai_alerted_decay_seconds, 0.5f, 20.0f, 0.5f, "%.1f");
+    tunedSlider("Combat engage range (m)", &tun.ai_combat_engage_range_meters, 0.5f, 15.0f, 0.25f,
+                "%.2f");
+    tunedSlider("Combat disengage (s)", &tun.ai_combat_disengage_seconds, 1.0f, 30.0f, 0.5f,
+                "%.1f");
+}
+
+static void renderPoiseSection(selva::tuning::Tunables& tun)
+{
+    if (!ImGui::CollapsingHeader("Poise / Knockdown", ImGuiTreeNodeFlags_DefaultOpen))
+        return;
+    tunedSlider("Poise per END", &tun.poise_per_end, 0.0f, 10.0f, 0.5f, "%.1f");
+    tunedSlider("Poise per STR", &tun.poise_per_str, 0.0f, 10.0f, 0.5f, "%.1f");
+    tunedSlider("Decay window (s)", &tun.poise_decay_window_seconds, 0.5f, 15.0f, 0.5f, "%.2f");
+    tunedSlider("Recovery (s)", &tun.enemy_recovery_after_knockdown_seconds, 0.5f, 10.0f, 0.25f,
+                "%.2f");
+    tunedSlider("Knockdown clip start (s)", &tun.knockdown_clip_start_seconds, 0.0f, 5.0f, 0.05f,
+                "%.2f");
+    tunedSlider("Knockdown clip end (s)", &tun.knockdown_clip_end_seconds, 0.1f, 10.0f, 0.05f,
+                "%.2f");
+}
+
 // Build / cache a sorted clip-name list. Static cache so we don't
 // allocate per frame; rebuilt when the registry size changes.
 static const std::vector<std::string>& sortedClipNames()
@@ -356,6 +388,8 @@ static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
     renderCombatSection(tun);
     renderDodgeSection(tun);
     renderPostAttackLockoutSection(tun);
+    renderPoiseSection(tun);
+    renderAiPerceptionSection(tun);
     renderAnimationDebugSection();
     renderSaveLoadButtons();
     ImGui::End();

@@ -13,7 +13,8 @@ namespace selva::gameplay
 int computeMaxHp(const Body& body, const Stats& stats)
 {
     const auto& tun = selva::tuning::current();
-    return body.base_hp + static_cast<int>(std::floor(static_cast<float>(stats.vig) * tun.hp_per_vig));
+    return body.base_hp +
+           static_cast<int>(std::floor(static_cast<float>(stats.vig) * tun.hp_per_vig));
 }
 
 int computeMaxStamina(const Body& body, const Stats& stats)
@@ -23,12 +24,24 @@ int computeMaxStamina(const Body& body, const Stats& stats)
            static_cast<int>(std::floor(static_cast<float>(stats.end) * tun.stamina_per_end));
 }
 
-void initActorPools(Health& hp, Stamina& stamina, const Body& body, const Stats& stats)
+int computeMaxPoise(const Body& body, const Stats& stats)
+{
+    const auto& tun = selva::tuning::current();
+    const float end_bonus = static_cast<float>(stats.end) * tun.poise_per_end;
+    const float str_bonus = static_cast<float>(stats.str) * tun.poise_per_str;
+    return body.base_poise + static_cast<int>(std::floor(end_bonus + str_bonus));
+}
+
+void initActorPools(Health& hp, Stamina& stamina, Poise& poise, const Body& body,
+                    const Stats& stats)
 {
     hp.max = computeMaxHp(body, stats);
     hp.current = hp.max;
     stamina.max = computeMaxStamina(body, stats);
     stamina.current = stamina.max;
+    poise.max = computeMaxPoise(body, stats);
+    poise.current = poise.max;
+    poise.last_damage_time = -1.0f;
 }
 
 void applyDamage(Health& hp, const Body& body, int raw_damage)
@@ -98,12 +111,11 @@ void initActorPool()
     Actor pc;
     pc.controller = Controller::Input;
     pc.faction = Faction::Player;
-    initActorPools(pc.hp, pc.stamina, pc.body, pc.stats);
+    initActorPools(pc.hp, pc.stamina, pc.poise, pc.body, pc.stats);
     // Player's sampler is bound to the shared skeleton + mesh at
     // first sampler.update() — same as any other actor. Pre-warm
     // it so the bone palette is valid before render.
-    pc.sampler =
-        selva::anim::createPoseSampler(selva::anim::skeleton(), selva::anim::playerMesh());
+    pc.sampler = selva::anim::createPoseSampler(selva::anim::skeleton(), selva::anim::playerMesh());
     if (const auto* idle = selva::anim::idleClip(); idle != nullptr && idle->isLoaded())
         pc.sampler.update(*idle, 0.0f, 0.0f);
     sActors.push_back(std::move(pc));

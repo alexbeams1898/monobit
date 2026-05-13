@@ -119,8 +119,7 @@ bool capsulesOverlap(const Capsule& a, const Capsule& b, glm::vec3& contact_pos,
         return false;
     contact_pos = (c1 + c2) * 0.5f;
     glm::vec3 dir = c2 - c1; // attacker -> target
-    if (dir.y != 0.0f)
-        dir.y = 0.0f; // xz-only normal for hit-reaction direction
+    dir.y = 0.0f;            // xz-only normal for hit-reaction direction
     const float len = glm::length(dir);
     contact_normal = (len > 1e-6f) ? (dir / len) : glm::vec3(0.0f, 0.0f, 1.0f);
     return true;
@@ -161,8 +160,7 @@ const std::vector<HitEvent>& detectHits()
             {
                 swept.p0 = glm::min(hb.shape.p0, hb.prev_shape.p0);
                 swept.p1 = glm::max(hb.shape.p1, hb.prev_shape.p1);
-                swept.radius =
-                    std::max(hb.shape.radius, hb.prev_shape.radius);
+                swept.radius = std::max(hb.shape.radius, hb.prev_shape.radius);
             }
             if (!capsulesOverlap(swept, hu.shape, contact_pos, contact_normal))
                 continue;
@@ -173,6 +171,7 @@ const std::vector<HitEvent>& detectHits()
             ev.target = hu.owner;
             ev.region = hu.region;
             ev.raw_damage = hb.raw_damage;
+            ev.poise_damage = hb.poise_damage;
             ev.world_pos = contact_pos;
             ev.world_normal = contact_normal;
             sEvents.push_back(ev);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "anim/PoseSampler.h"
+#include "gameplay/Perception.h"
 
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
@@ -32,10 +33,10 @@ namespace selva::gameplay
 // enum; widen to a hostility matrix only when the game demands it.
 enum class Faction
 {
-    Player,   // the PC; hostile to Hostile-faction actors
-    Hostile,  // damned souls, demons; hostile to Player
-    Neutral,  // can be attacked but doesn't attack first (NPCs in lucid window)
-    Allied,   // friendly to Player (the Guide; future companions)
+    Player,  // the PC; hostile to Hostile-faction actors
+    Hostile, // damned souls, demons; hostile to Player
+    Neutral, // can be attacked but doesn't attack first (NPCs in lucid window)
+    Allied,  // friendly to Player (the Guide; future companions)
 };
 
 // Returns true if `attacker` should damage `target` on hit.
@@ -66,6 +67,25 @@ struct Stamina
     int max = 100;
 };
 
+// Stagger reservoir. Souls-convention: starts at max, drains by
+// per-attack poise_damage on each hit. When current hits 0, the
+// hit triggers a knockdown chain (knockdown clip → getting_up clip)
+// and poise resets to max. While not taking hits, poise refills
+// (full refill after poise_decay_window_seconds of no damage).
+//
+// Poise breakability is what defines combat weight: hits that don't
+// break poise are "absorbed" (light flinch / hit-react); hits that
+// break it commit the target to a knockdown — the whole-body
+// commitment that separates "tagged" from "staggered."
+struct Poise
+{
+    int current = 100;
+    int max = 100;
+    // Wallclock time of the last poise-damage event. Drives the
+    // decay-window refill timer. -1 = never hit.
+    float last_damage_time = -1.0f;
+};
+
 // Souls-convention quad. Other stats (faith / intellect for
 // magic-equivalent systems) slot in when those systems arrive; the
 // schema is intentionally open.
@@ -86,23 +106,28 @@ struct Body
 {
     int base_hp = 50;
     int base_stamina = 80;
-    int base_defense = 0;     // flat damage reduction; clamped to >= 1 incoming
+    int base_poise = 30;
+    int base_defense = 0; // flat damage reduction; clamped to >= 1 incoming
     float unarmed_damage = 6.0f;
-    float collider_radius = 0.35f; // XZ capsule radius for collision
+    float unarmed_poise_damage = 8.0f; // baseline poise damage per fist hit
+    float collider_radius = 0.35f;     // XZ capsule radius for collision
 };
 
-// Derived max HP / stamina from Body + Stats. Soft linear scaling
-// for v1 — coefficients live in Tunables (hp_per_vig, stamina_per_end)
-// so they hot-reload via the F1 panel. Souls-style diminishing curves
-// replace these when balance work begins; call sites don't change.
+// Derived max HP / stamina / poise from Body + Stats. Soft linear
+// scaling for v1 — coefficients live in Tunables (hp_per_vig,
+// stamina_per_end, poise_per_end, poise_per_str) so they hot-reload
+// via the F1 panel. Souls-style diminishing curves replace these
+// when balance work begins; call sites don't change.
 int computeMaxHp(const Body& body, const Stats& stats);
 int computeMaxStamina(const Body& body, const Stats& stats);
+int computeMaxPoise(const Body& body, const Stats& stats);
 
-// Initialize the actor's mortal + action pools to full from the
-// archetype Body + Stats. Call once at spawn; thereafter `current`
-// changes through gameplay (damage, regen) while `max` stays put
-// until stats change (level-up later).
-void initActorPools(Health& hp, Stamina& stamina, const Body& body, const Stats& stats);
+// Initialize the actor's mortal + action + stagger pools to full
+// from the archetype Body + Stats. Call once at spawn; thereafter
+// `current` changes through gameplay (damage, regen) while `max`
+// stays put until stats change (level-up later).
+void initActorPools(Health& hp, Stamina& stamina, Poise& poise, const Body& body,
+                    const Stats& stats);
 
 // Apply raw incoming damage to `hp`, mediated by `body.base_defense`.
 // Damage is clamped to at least 1 so even heavily-armored targets
@@ -140,6 +165,7 @@ struct Actor
     // --- Schema (same shape on player + enemy) ---
     Health hp;
     Stamina stamina;
+    Poise poise;
     Stats stats;
     Body body;
     Faction faction = Faction::Hostile;
@@ -178,9 +204,24 @@ struct Actor
     bool is_dead = false;
     float death_time = -1.0f;
 
+    // --- Knockdown state ---
+    // Set true when a hit breaks poise and the knockdown clip fires.
+    // The actor is hit-immune while down; the knockdown clip freezes
+    // on its last frame; tickActors clears is_knocked_down after
+    // `enemy_recovery_after_knockdown_seconds` and the sampler blends
+    // back to combat idle in place.
+    bool is_knocked_down = false;
+    float knockdown_start_time = -1.0f;
+
     // --- Spawn pose (for respawn) ---
     glm::vec3 spawn_pos = glm::vec3(0.0f);
     float spawn_yaw = 0.0f;
+
+    // --- AI perception state ---
+    // Updated by tickPerception each frame. Behavior tree (future)
+    // and locomotion-intent (future) read awareness + last-known-
+    // player-pos from here.
+    PerceptionState perception;
 };
 
 // Apply the actor's sampler-consumed hip-XZ delta to its world

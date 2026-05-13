@@ -22,6 +22,7 @@ struct HitEvent
     OwnerRef target;
     HurtRegion region = HurtRegion::Torso;
     int raw_damage = 0;
+    int poise_damage = 0;
     glm::vec3 world_pos{0.0f};    // approximate point of contact
     glm::vec3 world_normal{0.0f}; // from attacker toward target, xz only
 };

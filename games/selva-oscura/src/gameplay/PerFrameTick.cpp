@@ -11,21 +11,21 @@
 #include "anim/SkeletalMesh.h"
 #include "anim/SkeletalRenderer.h"
 #include "anim/Skeleton.h"
+#include "combat/ActorVolumes.h"
 #include "combat/AttackChain.h"
 #include "combat/AttackResolution.h"
 #include "combat/ChainObserver.h"
 #include "combat/CombatData.h"
 #include "combat/CombatLog.h"
+#include "combat/HitDetection.h"
+#include "combat/HitFeedback.h"
+#include "combat/HitVolumes.h"
 #include "combat/PlayerEquipment.h"
 #include "combat/PressMapping.h"
 #include "combat/SpliceDiag.h"
 #include "combat/TransitionProfile.h"
 #include "combat/Weapon.h"
 #include "combat/WeaponClass.h"
-#include "combat/ActorVolumes.h"
-#include "combat/HitDetection.h"
-#include "combat/HitFeedback.h"
-#include "combat/HitVolumes.h"
 #include "gameplay/Enemies.h"
 #include "gameplay/LocomotionStateMachine.h"
 #include "gameplay/PlayerState.h"
@@ -522,6 +522,16 @@ static void setHandCancelWindow(selva::combat::HandSide hand, const char* clip_n
 // Fire a clip directly: pose-match against the current state, pick a
 // profile (chainLink vs firstStrike), apply any per-attack blend_out
 // override, kick off the one-shot, and set the hand's cancel window.
+// Per-attack poise damage from JSON; fall back to the attacker's
+// unarmed baseline if the JSON didn't set it. Heavy committed attacks
+// declare large values; jabs declare small. See WeaponAttack::poise_damage.
+static int resolveAttackPoiseDamage(const selva::combat::WeaponAttack* atk)
+{
+    if (atk != nullptr && atk->poise_damage > 0.0f)
+        return static_cast<int>(std::floor(atk->poise_damage));
+    return static_cast<int>(std::floor(sPlayer.body.unarmed_poise_damage));
+}
+
 // No chain bookkeeping. Returns true on successful fire.
 // `one_shot_active` selects the splice strategy: chainLink (pose-match
 // against the live one-shot) vs firstStrike (start clean from t=0).
@@ -613,16 +623,16 @@ static bool fireClipForHand(selva::combat::HandSide hand, const char* clip_name,
             const float hitbox_lifetime = std::max(0.10f, effective_dur * 0.55f);
             const glm::mat4 player_model = selva::combat::buildActorModelMatrix(
                 sPlayer.pos, sPlayer.yaw, sPlayerMesh.foot_offset_y);
-            const glm::vec3 anchor_world = glm::vec3(
-                player_model * glm::vec4(sSampler.jointWorldPos(joint_idx), 1.0f));
+            const glm::vec3 anchor_world =
+                glm::vec3(player_model * glm::vec4(sSampler.jointWorldPos(joint_idx), 1.0f));
             // Weapon hitboxes extend along the joint's forward axis.
             // For a fist (tip_offset_z = 0) this collapses to a
             // sphere at the joint. For a sword we'd add ~0.8m along
             // the hand's forward to span hilt -> tip.
             const glm::vec3 tip_world =
                 (hitbox_tip_offset_z != 0.0f)
-                    ? anchor_world + glm::vec3(player_model * glm::vec4(0.0f, 0.0f,
-                                                                        hitbox_tip_offset_z, 0.0f))
+                    ? anchor_world +
+                          glm::vec3(player_model * glm::vec4(0.0f, 0.0f, hitbox_tip_offset_z, 0.0f))
                     : anchor_world;
             selva::combat::Hitbox proto;
             proto.shape.p0 = anchor_world;
@@ -632,6 +642,7 @@ static bool fireClipForHand(selva::combat::HandSide hand, const char* clip_name,
             proto.attacker_faction = sPlayer.faction;
             proto.raw_damage = selva::gameplay::computeAttackDamage(
                 sPlayer.stats, sPlayer.body.unarmed_damage, 0.5f, 0.5f);
+            proto.poise_damage = resolveAttackPoiseDamage(atk);
             proto.remaining_seconds = hitbox_lifetime;
             selva::combat::resetHitMemo();
             const std::uint32_t id = selva::combat::spawnHitbox(proto);
@@ -926,12 +937,12 @@ static float sLastTargetSpeed = 0.0f;
 static void tickPlayerVelocity(const glm::vec3& moveIntent, bool movement_locked,
                                const selva::tuning::Tunables& tun, float dt)
 {
-    if (movement_locked)
-    {
-        sPlayer.velocity_xz = glm::vec2(0.0f);
-        sLastTargetSpeed = 0.0f;
-        return;
-    }
+    // Intent speed is computed unconditionally — even when the
+    // velocity gate is locked (dodge / full-mask one-shot), the SM
+    // needs to know what the player WANTS so the loco track stays
+    // on walking/running and doesn't drift to combat_idle during an
+    // attack-while-running. The lock only freezes actual velocity,
+    // not intent.
     const float intent_mag = glm::length(moveIntent);
     glm::vec2 target_velocity(0.0f);
     if (intent_mag > 0.0001f)
@@ -941,6 +952,11 @@ static void tickPlayerVelocity(const glm::vec3& moveIntent, bool movement_locked
         target_velocity = glm::vec2(dir.x, dir.z) * target_speed;
     }
     sLastTargetSpeed = glm::length(target_velocity);
+    if (movement_locked)
+    {
+        sPlayer.velocity_xz = glm::vec2(0.0f);
+        return;
+    }
     const glm::vec2 delta = target_velocity - sPlayer.velocity_xz;
     const float delta_mag = glm::length(delta);
     if (delta_mag <= 0.0001f)
@@ -1311,8 +1327,7 @@ static void tickJumpInput(const Uint8* keys)
 // path can fire it when its cancel gate opens. Returns true on
 // immediate fire.
 static bool fireOrBufferDodgeOnSpaceRelease(const glm::vec3& moveIntent,
-                                            float backstep_playback_rate,
-                                            float roll_playback_rate)
+                                            float backstep_playback_rate, float roll_playback_rate)
 {
     const bool blocked = sSampler.isOneShotActive() || sDodgeActive;
     if (!blocked)
@@ -1354,7 +1369,7 @@ static bool tickSpaceInput(const Uint8* keys, const glm::vec3& moveIntent, float
         const bool was_tap = sSpaceHeldSeconds < dodge_tap_window;
         if (was_tap && !sDodgeFiredThisPress)
             fired = fireOrBufferDodgeOnSpaceRelease(moveIntent, backstep_playback_rate,
-                                                   roll_playback_rate);
+                                                    roll_playback_rate);
         sPlayer.sprinting = false;
     }
     sPrevSpace = space_now;
@@ -1453,9 +1468,16 @@ static const char* selectLocomotionClipFromSpeed(float target_speed, bool is_arm
 
 // Combat stance lifecycle (preserved from the old SM): CombatReady
 // engages on combat_input_this_frame; auto-decays to Peaceful after
-// stance_active_until. Velocity model doesn't care about stance
-// directly, but the idle clip-pick does (combat-stance idle vs
-// peaceful idle).
+// stance_active_until OR sooner if the player commits to sprinting
+// (sprinting reads as "not actively threatened" — the body lowers
+// its guard to commit to speed, soulslike convention). Without the
+// sprint-clear, the grace timer keeps stance latched through a
+// run; on stop, loco picks combat-idle, then 2s later the timer
+// expires and combat-idle visibly fades to standard-idle. Sprint
+// clear collapses that to a single transition.
+//
+// Velocity model doesn't care about stance directly, but the
+// idle clip-pick does (combat-stance idle vs peaceful idle).
 static void tickCombatStance(bool combat_input_this_frame, const selva::tuning::Tunables& tun)
 {
     if (combat_input_this_frame)
@@ -1469,6 +1491,19 @@ static void tickCombatStance(bool combat_input_this_frame, const selva::tuning::
         selva::wallClock() >= sLocomotionSM.stance_active_until)
     {
         sLocomotionSM.combat_stance = selva::gameplay::CombatStance::Peaceful;
+    }
+    // Any locomotion intent (walk OR sprint) clears stance
+    // immediately. Without this, stance stays latched through a
+    // walk-cycle: stop → loco picks combat-idle (stance still
+    // active), then 2s later grace expires → combat-idle visibly
+    // fades to standard-idle, which reads as a delayed cleanup
+    // after the player has clearly moved on. Walking past an
+    // enemy with weapons down is the natural exit from combat.
+    const bool moving = glm::length(sPlayer.velocity_xz) > 0.05f;
+    if (moving && sLocomotionSM.combat_stance == selva::gameplay::CombatStance::CombatReady)
+    {
+        sLocomotionSM.combat_stance = selva::gameplay::CombatStance::Peaceful;
+        sLocomotionSM.stance_active_until = 0.0f;
     }
 }
 
@@ -2042,9 +2077,17 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     // unlock — full commitment preserved.
     const bool one_shot_active = sSampler.isOneShotActive();
     const bool past_cancel = sSampler.isOneShotPastCancelFraction();
+    // Velocity also unlocks once the one-shot enters its BlendOut
+    // phase (one_shot_phase == 3). This covers attacks (cancel_fraction
+    // = 1.0 by design — never trips past_cancel) so velocity can ramp
+    // up during the visible fade back to locomotion, instead of holding
+    // at zero until the one-shot fully ends and then ramping from zero
+    // while running animation plays.
+    const int one_shot_phase = sSampler.frameDiagnostics().one_shot_phase;
+    const bool in_blend_out = (one_shot_phase == 3);
     const bool movement_locked = sDodgeActive || one_shot_active;
     const bool velocity_locked =
-        (sDodgeActive && !past_cancel) || (one_shot_active && !past_cancel);
+        (sDodgeActive && !past_cancel) || (one_shot_active && !past_cancel && !in_blend_out);
     tickPlayerVelocity(moveIntent, velocity_locked, tun, dt);
     tickPlayerYaw(moveIntent, movement_locked, tun.turn_rate, dt);
 
@@ -2098,21 +2141,20 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     {
         const glm::mat4 player_model = selva::combat::buildActorModelMatrix(
             sPlayer.pos, sPlayer.yaw, sPlayerMesh.foot_offset_y);
-        selva::combat::appendActorHurtboxes(sSampler, player_model, sPlayer.body,
-                                            selva::combat::OwnerRef{selva::combat::OwnerKind::Player,
-                                                                    0},
-                                            sPlayer.faction);
+        selva::combat::appendActorHurtboxes(
+            sSampler, player_model, sPlayer.body,
+            selva::combat::OwnerRef{selva::combat::OwnerKind::Player, 0}, sPlayer.faction);
     }
     {
         const auto list = selva::gameplay::enemies();
         for (int i = 0; i < static_cast<int>(list.size()); ++i)
         {
             const auto& e = *list[i];
-            const glm::mat4 m = selva::combat::buildActorModelMatrix(e.pos, e.yaw,
-                                                                    sPlayerMesh.foot_offset_y);
+            const glm::mat4 m =
+                selva::combat::buildActorModelMatrix(e.pos, e.yaw, sPlayerMesh.foot_offset_y);
             selva::combat::appendActorHurtboxes(
-                e.sampler, m, e.body,
-                selva::combat::OwnerRef{selva::combat::OwnerKind::Enemy, i}, e.faction);
+                e.sampler, m, e.body, selva::combat::OwnerRef{selva::combat::OwnerKind::Enemy, i},
+                e.faction);
         }
     }
 
@@ -2137,9 +2179,8 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                 player_model * glm::vec4(sSampler.jointWorldPos(sActiveAttackJointIdx), 1.0f));
             const glm::vec3 tip_world =
                 (sActiveAttackTipOffsetZ != 0.0f)
-                    ? anchor_world + glm::vec3(player_model * glm::vec4(0.0f, 0.0f,
-                                                                        sActiveAttackTipOffsetZ,
-                                                                        0.0f))
+                    ? anchor_world + glm::vec3(player_model *
+                                               glm::vec4(0.0f, 0.0f, sActiveAttackTipOffsetZ, 0.0f))
                     : anchor_world;
             hb->shape.p0 = anchor_world;
             hb->shape.p1 = tip_world;
@@ -2170,10 +2211,11 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
                 // from quick successive hits jitter naturally.
                 const glm::vec3 number_origin(ev.world_pos.x, e.pos.y + 2.0f, ev.world_pos.z);
                 selva::combat::spawnDamageNumber(number_origin, dmg_applied, crit);
-                selva::gameplay::playEnemyHitReact(ev.target.index, dmg_applied, ev.world_normal);
+                selva::gameplay::playEnemyHitReact(ev.target.index, dmg_applied, ev.poise_damage,
+                                                   ev.world_normal);
                 selva::combat::combatLog("[hit] enemy[%d] region=%d dmg=%d hp=%d/%d\n",
-                                         ev.target.index, static_cast<int>(ev.region),
-                                         dmg_applied, e.hp.current, e.hp.max);
+                                         ev.target.index, static_cast<int>(ev.region), dmg_applied,
+                                         e.hp.current, e.hp.max);
             }
         }
         else if (ev.target.kind == selva::combat::OwnerKind::Player)

@@ -653,7 +653,17 @@ void PoseSampler::playOneShot(const AnimationClip& clip, float blend_in_seconds,
         s.one_shot_previous.hip_path_cached = s.one_shot.hip_path_cached;
         s.one_shot_previous_weight = s.one_shot_weight;
         s.one_shot_previous_fade_seconds = std::max(0.05f, blend_in_seconds);
-        s.one_shot_previous_playback_rate = s.one_shot_playback_rate;
+        // If the demoted one-shot was holding its last frame
+        // (freeze_last), zero its playback rate during the demote
+        // fade. Reason: a freeze_last clip's "current frame" is its
+        // visible pose — if we let it keep advancing during the
+        // blend, the previous-track's clip-time drifts past where
+        // the visible body just was, producing a pose mismatch
+        // against any author-side bookend that targeted the
+        // handoff frame. Holding the clip-time pins the pose to
+        // exactly what was rendered at handoff for the entire fade.
+        s.one_shot_previous_playback_rate =
+            s.one_shot_freeze_last ? 0.0f : s.one_shot_playback_rate;
         s.one_shot_previous_mask = s.one_shot_mask;
     }
     s.one_shot.animation = clip.ozz_animation.get();
@@ -2303,19 +2313,21 @@ void extractTrackHipDelta(Track& t, int hip_soa, int hip_lane)
         return;
     }
     // Total clip hip path: traveling clips (gait, dodge, big attack
-    // lunges, death falls) author significant hip travel; in-place
-    // clips (idle, flinch, hit-react, short punch follow-throughs)
-    // stay below. Threshold tuned empirically from log data:
-    //   walking         1.85m  TRAVELING
-    //   death           1.30m  TRAVELING
-    //   combo           0.56m  IN_PLACE   (was sliding the player)
-    //   unarmed_combat_idle 0.37m  IN_PLACE
-    //   jab             0.14m  IN_PLACE
-    //   flinch_*        0.07-0.11m  IN_PLACE
+    // lunges) author significant hip travel; in-place clips
+    // (idle, flinch, hit-react, short punch follow-throughs, bouncy
+    // combat idles) stay below. Threshold tuned empirically from
+    // log data:
+    //   walking              1.85m  TRAVELING
+    //   death                1.30m  IN_PLACE   (falls in place visually)
+    //   unarmed_combat_idle  1.09m  IN_PLACE   (Fighting Idle is bouncy)
+    //   combo                0.56m  IN_PLACE
+    //   unarmed_combat_idle  0.37m  IN_PLACE   (old clip, less bouncy)
+    //   jab                  0.14m  IN_PLACE
+    //   flinch_*             0.07-0.11m  IN_PLACE
     // Cached per-track, set by applyLocoCrossfade / playOneShot at
-    // clip change. Per-clip override via JSON when 0.8 cutoff bites
-    // a future clip wrong.
-    constexpr float kTravelingClipThreshold = 0.8f;
+    // clip change. Per-clip override via JSON is the next step if
+    // this threshold bites a future clip wrong.
+    constexpr float kTravelingClipThreshold = 1.5f;
     const bool is_traveling = t.hip_path_cached >= kTravelingClipThreshold;
 
     ozz::math::SoaTransform& T = t.local_transforms[hip_soa];

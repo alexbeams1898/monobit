@@ -35,5 +35,21 @@
   "hit_react_medium_threshold": 25.0,
   "hit_react_heavy_threshold": 45.0,
   "hit_react_cooldown_seconds": 0.30,
-  "enemy_respawn_after_death_seconds": 3.0
+  "enemy_respawn_after_death_seconds": 3.0,
+  "poise_per_end": 2.0,
+  "poise_per_str": 1.0,
+  "poise_decay_window_seconds": 5.0,
+  "enemy_recovery_after_knockdown_seconds": 2.5,
+  "knockdown_clip_start_seconds": 0.0,
+  "knockdown_clip_end_seconds": 999.0,
+  "getting_up_clip_start_seconds": 0.0,
+  "getting_up_clip_end_seconds": 999.0,
+  "ai_vision_fov_degrees": 90.0,
+  "ai_vision_range_meters": 12.0,
+  "ai_suspicion_decay_seconds": 1.5,
+  "ai_confirmed_sightings_to_alert": 2,
+  "ai_alerted_decay_seconds": 4.0,
+  "ai_combat_engage_range_meters": 5.0,
+  "ai_combat_disengage_seconds": 6.0,
+  "debug_ai_perception": false
 }

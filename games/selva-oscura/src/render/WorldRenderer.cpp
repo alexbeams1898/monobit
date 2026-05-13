@@ -76,7 +76,8 @@ void renderEnvironment()
         // above the floor.
         const glm::vec3 trunk_center(c.center.x, c.half_height, c.center.z);
         glm::mat4 model = glm::translate(glm::mat4(1.0f), trunk_center);
-        model = glm::scale(model, glm::vec3(c.radius * 2.0f, c.half_height * 2.0f, c.radius * 2.0f));
+        model =
+            glm::scale(model, glm::vec3(c.radius * 2.0f, c.half_height * 2.0f, c.radius * 2.0f));
         drawCube(model, 0.55f);
     }
 }

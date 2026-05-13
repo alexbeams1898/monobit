@@ -1,19 +1,22 @@
 #include "ui/ActorHud.h"
 
+#include "Tunables.h"
 #include "WallClock.h"
 #include "combat/HitFeedback.h"
 #include "combat/HitVolumes.h"
 #include "gameplay/Enemies.h"
+#include "gameplay/Perception.h"
 #include "gameplay/PlayerState.h"
 #include "render/Camera.h"
 
 #include <glm/geometric.hpp>
 #include <glm/vec2.hpp>
-
 #include <imgui.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
+#include <vector>
 
 namespace selva::ui
 {
@@ -86,7 +89,7 @@ void drawCapsuleOutline(ImDrawList* draw, const glm::mat4& view_proj, const glm:
     {
         // Perpendicular offset along the 2D segment normal so the
         // connecting lines sit at the capsule's edge.
-        glm::vec2 seg = s1 - s0;
+        const glm::vec2 seg = s1 - s0;
         const float seg_len = glm::length(seg);
         if (seg_len > 1e-3f)
         {
@@ -104,7 +107,7 @@ void drawCapsuleOutline(ImDrawList* draw, const glm::mat4& view_proj, const glm:
         }
     }
 }
-}
+} // namespace
 
 bool showHitVolumes()
 {
@@ -119,6 +122,90 @@ void setShowHitVolumes(bool enabled)
 namespace
 {
 
+struct AwarenessVisuals
+{
+    ImU32 color;
+    const char* label;
+};
+
+AwarenessVisuals awarenessVisuals(selva::gameplay::Awareness a)
+{
+    switch (a)
+    {
+    case selva::gameplay::Awareness::Suspicious:
+        return {IM_COL32(230, 220, 60, 220), "Suspicious"};
+    case selva::gameplay::Awareness::Alerted:
+        return {IM_COL32(245, 150, 40, 230), "Alerted"};
+    case selva::gameplay::Awareness::Combat:
+        return {IM_COL32(230, 50, 50, 240), "Combat"};
+    case selva::gameplay::Awareness::Unaware:
+        break;
+    }
+    return {IM_COL32(180, 180, 180, 180), "Unaware"};
+}
+
+// Draw one AI actor's vision cone + awareness label. Called per
+// actor when the F1 debug overlay toggle is on. Cone is rendered
+// on the ground plane (y=0.05) as three lines: left edge, right
+// edge, closing arc. A faint white center line shows facing.
+void drawActorPerceptionOverlay(ImDrawList* overlay, const glm::mat4& view_proj,
+                                const selva::gameplay::Actor& e, float half_fov_rad, float range)
+{
+    const float yaw = e.yaw;
+    const float fx = -std::sin(yaw);
+    const float fz = -std::cos(yaw);
+    const float lx = -std::sin(yaw + half_fov_rad);
+    const float lz = -std::cos(yaw + half_fov_rad);
+    const float rx = -std::sin(yaw - half_fov_rad);
+    const float rz = -std::cos(yaw - half_fov_rad);
+    const glm::vec3 origin_w(e.pos.x, 0.05f, e.pos.z);
+    const glm::vec3 l_end(e.pos.x + lx * range, 0.05f, e.pos.z + lz * range);
+    const glm::vec3 r_end(e.pos.x + rx * range, 0.05f, e.pos.z + rz * range);
+    const glm::vec3 f_end(e.pos.x + fx * range, 0.05f, e.pos.z + fz * range);
+
+    const AwarenessVisuals vis = awarenessVisuals(e.perception.awareness);
+
+    glm::vec2 s_origin;
+    glm::vec2 s_l_end;
+    glm::vec2 s_r_end;
+    glm::vec2 s_f_end;
+    const bool ok_o = selva::render::worldToScreen(view_proj, origin_w, s_origin);
+    const bool ok_l = selva::render::worldToScreen(view_proj, l_end, s_l_end);
+    const bool ok_r = selva::render::worldToScreen(view_proj, r_end, s_r_end);
+    const bool ok_f = selva::render::worldToScreen(view_proj, f_end, s_f_end);
+    if (ok_o && ok_l)
+        overlay->AddLine(ImVec2(s_origin.x, s_origin.y), ImVec2(s_l_end.x, s_l_end.y), vis.color,
+                         1.5f);
+    if (ok_o && ok_r)
+        overlay->AddLine(ImVec2(s_origin.x, s_origin.y), ImVec2(s_r_end.x, s_r_end.y), vis.color,
+                         1.5f);
+    if (ok_l && ok_r)
+        overlay->AddLine(ImVec2(s_l_end.x, s_l_end.y), ImVec2(s_r_end.x, s_r_end.y), vis.color,
+                         1.0f);
+    if (ok_o && ok_f)
+        overlay->AddLine(ImVec2(s_origin.x, s_origin.y), ImVec2(s_f_end.x, s_f_end.y),
+                         IM_COL32(255, 255, 255, 90), 1.0f);
+
+    const glm::vec3 label_pos(e.pos.x, e.pos.y + 2.1f, e.pos.z);
+    glm::vec2 s_label;
+    if (selva::render::worldToScreen(view_proj, label_pos, s_label))
+    {
+        const ImVec2 ts = ImGui::CalcTextSize(vis.label);
+        const ImVec2 tp(s_label.x - ts.x * 0.5f, s_label.y - ts.y);
+        overlay->AddText(ImVec2(tp.x + 1.0f, tp.y + 1.0f), IM_COL32(0, 0, 0, 220), vis.label);
+        overlay->AddText(tp, vis.color, vis.label);
+    }
+}
+
+// Draw the in-world HP bar above each damaged enemy. Bar appears on
+// hit, holds, then fades; any subsequent hit resets the timer.
+void drawEnemyHpBars(ImDrawList* overlay, const glm::mat4& view_proj,
+                     const std::vector<selva::gameplay::Actor*>& list, float now);
+
+// Draw floating damage numbers spawned at hit-event time. Each drifts
+// up and fades out over its lifetime.
+void drawFloatingDamageNumbers(ImDrawList* overlay, const glm::mat4& view_proj);
+
 void drawBar(ImDrawList* draw, float x, float y, float w, float h, float fill_fraction,
              ImU32 bg_color, ImU32 fg_color, ImU32 border_color, const char* label_text)
 {
@@ -132,6 +219,67 @@ void drawBar(ImDrawList* draw, float x, float y, float w, float h, float fill_fr
         const ImU32 text_color = IM_COL32(230, 230, 230, 255);
         const ImVec2 ts = ImGui::CalcTextSize(label_text);
         draw->AddText(ImVec2(x + 6.0f, y + (h - ts.y) * 0.5f), text_color, label_text);
+    }
+}
+
+void drawEnemyHpBars(ImDrawList* overlay, const glm::mat4& view_proj,
+                     const std::vector<selva::gameplay::Actor*>& list, float now)
+{
+    for (const auto* ep : list)
+    {
+        const auto& e = *ep;
+        if (e.last_damage_time < 0.0f)
+            continue;
+        const float age = now - e.last_damage_time;
+        if (age > kEnemyHpBarHoldSeconds + kEnemyHpBarFadeSeconds)
+            continue;
+        const glm::vec3 anchor(e.pos.x, e.pos.y + 1.8f + kEnemyHpBarHeadOffset, e.pos.z);
+        glm::vec2 sp;
+        if (!selva::render::worldToScreen(view_proj, anchor, sp))
+            continue;
+        float alpha = 1.0f;
+        if (age > kEnemyHpBarHoldSeconds)
+            alpha = std::clamp(1.0f - (age - kEnemyHpBarHoldSeconds) / kEnemyHpBarFadeSeconds, 0.0f,
+                               1.0f);
+        const ImU32 bg = IM_COL32(20, 20, 20, static_cast<int>(220 * alpha));
+        const ImU32 fg = IM_COL32(170, 30, 30, static_cast<int>(240 * alpha));
+        const ImU32 bd = IM_COL32(0, 0, 0, static_cast<int>(220 * alpha));
+        const float fraction =
+            (e.hp.max > 0) ? static_cast<float>(e.hp.current) / static_cast<float>(e.hp.max) : 0.0f;
+        const float bx = sp.x - kEnemyHpBarWidthPx * 0.5f;
+        const float by = sp.y - kEnemyHpBarHeightPx * 0.5f;
+        drawBar(overlay, bx, by, kEnemyHpBarWidthPx, kEnemyHpBarHeightPx, fraction, bg, fg, bd,
+                nullptr);
+    }
+}
+
+void drawFloatingDamageNumbers(ImDrawList* overlay, const glm::mat4& view_proj)
+{
+    const auto& numbers = selva::combat::damageNumbers();
+    for (const auto& d : numbers)
+    {
+        glm::vec2 sp;
+        if (!selva::render::worldToScreen(view_proj, d.world_pos, sp))
+            continue;
+        const float t = std::clamp(d.elapsed / d.lifetime, 0.0f, 1.0f);
+        const float alpha = 1.0f - t * t; // ease-out fade
+        const int a = std::clamp(static_cast<int>(255.0f * alpha), 0, 255);
+        const ImU32 text_color = d.crit ? IM_COL32(255, 220, 80, a) : IM_COL32(245, 245, 245, a);
+        const ImU32 shadow_color = IM_COL32(0, 0, 0, a);
+        char buf[16];
+        std::snprintf(buf, sizeof(buf), "%d", d.amount);
+        const ImVec2 ts = ImGui::CalcTextSize(buf);
+        const float tx = sp.x - ts.x * 0.5f * kDamageNumberScale;
+        const float ty = sp.y - ts.y * 0.5f * kDamageNumberScale;
+        const float fs = ImGui::GetFontSize() * kDamageNumberScale;
+        for (int dx = -1; dx <= 1; ++dx)
+            for (int dy = -1; dy <= 1; ++dy)
+                if ((dx | dy) != 0)
+                    overlay->AddText(
+                        ImGui::GetFont(), fs,
+                        ImVec2(tx + static_cast<float>(dx), ty + static_cast<float>(dy)),
+                        shadow_color, buf);
+        overlay->AddText(ImGui::GetFont(), fs, ImVec2(tx, ty), text_color, buf);
     }
 }
 
@@ -168,13 +316,11 @@ void renderActorHud()
     const ImU32 hp_fg = IM_COL32(170, 30, 30, 240);
     const ImU32 stamina_fg = IM_COL32(70, 150, 70, 240);
 
-    const float hp_fraction = (p.hp.max > 0) ? static_cast<float>(p.hp.current) /
-                                                   static_cast<float>(p.hp.max)
-                                             : 0.0f;
-    const float stamina_fraction = (p.stamina.max > 0)
-                                       ? static_cast<float>(p.stamina.current) /
-                                             static_cast<float>(p.stamina.max)
-                                       : 0.0f;
+    const float hp_fraction =
+        (p.hp.max > 0) ? static_cast<float>(p.hp.current) / static_cast<float>(p.hp.max) : 0.0f;
+    const float stamina_fraction = (p.stamina.max > 0) ? static_cast<float>(p.stamina.current) /
+                                                             static_cast<float>(p.stamina.max)
+                                                       : 0.0f;
 
     char hp_label[32];
     std::snprintf(hp_label, sizeof(hp_label), "HP  %d / %d", p.hp.current, p.hp.max);
@@ -203,73 +349,19 @@ void renderActorHud()
                      ImGuiWindowFlags_NoBringToFrontOnFocus);
     auto* overlay = ImGui::GetWindowDrawList();
 
-    // Enemy HP bars — appear above the head on hit, hold fully
-    // visible for kEnemyHpBarHoldSeconds, then fade over
-    // kEnemyHpBarFadeSeconds. Any subsequent hit resets the timer
-    // and snaps back to full opacity.
     const auto list = selva::gameplay::enemies();
-    for (const auto* ep : list)
-    {
-        const auto& e = *ep;
-        if (e.last_damage_time < 0.0f)
-            continue;
-        const float age = now - e.last_damage_time;
-        if (age > kEnemyHpBarHoldSeconds + kEnemyHpBarFadeSeconds)
-            continue;
-        // Head Y in world: enemy.pos.y is 0, the body is ~1.8m tall.
-        // Use a fixed head-height offset rather than reading the
-        // skeleton's head joint — bone-Y is in model space and varies
-        // per pose; a fixed anchor keeps the bar stable.
-        const glm::vec3 anchor(e.pos.x, e.pos.y + 1.8f + kEnemyHpBarHeadOffset, e.pos.z);
-        glm::vec2 sp;
-        if (!selva::render::worldToScreen(view_proj, anchor, sp))
-            continue;
+    drawEnemyHpBars(overlay, view_proj, list, now);
+    drawFloatingDamageNumbers(overlay, view_proj);
 
-        float alpha = 1.0f;
-        if (age > kEnemyHpBarHoldSeconds)
-            alpha = std::clamp(1.0f - (age - kEnemyHpBarHoldSeconds) / kEnemyHpBarFadeSeconds,
-                               0.0f, 1.0f);
-        const ImU32 bg = IM_COL32(20, 20, 20, static_cast<int>(220 * alpha));
-        const ImU32 fg = IM_COL32(170, 30, 30, static_cast<int>(240 * alpha));
-        const ImU32 bd = IM_COL32(0, 0, 0, static_cast<int>(220 * alpha));
-        const float fraction = (e.hp.max > 0) ? static_cast<float>(e.hp.current) /
-                                                    static_cast<float>(e.hp.max)
-                                              : 0.0f;
-        const float bx = sp.x - kEnemyHpBarWidthPx * 0.5f;
-        const float by = sp.y - kEnemyHpBarHeightPx * 0.5f;
-        drawBar(overlay, bx, by, kEnemyHpBarWidthPx, kEnemyHpBarHeightPx, fraction, bg, fg, bd,
-                nullptr);
-    }
-
-    // Floating damage numbers — drift up, fade out. Spawned at
-    // hit-event time by gameplay.
-    const auto& numbers = selva::combat::damageNumbers();
-    for (const auto& d : numbers)
+    // Debug overlay: AI vision cones + awareness label per AI actor.
+    // Toggled by F1 panel checkbox debug_ai_perception.
+    if (selva::tuning::current().debug_ai_perception)
     {
-        glm::vec2 sp;
-        if (!selva::render::worldToScreen(view_proj, d.world_pos, sp))
-            continue;
-        const float t = std::clamp(d.elapsed / d.lifetime, 0.0f, 1.0f);
-        const float alpha = 1.0f - t * t; // ease-out fade
-        const int a = std::clamp(static_cast<int>(255.0f * alpha), 0, 255);
-        const ImU32 text_color = d.crit ? IM_COL32(255, 220, 80, a) : IM_COL32(245, 245, 245, a);
-        const ImU32 shadow_color = IM_COL32(0, 0, 0, a);
-        char buf[16];
-        std::snprintf(buf, sizeof(buf), "%d", d.amount);
-        const ImVec2 ts = ImGui::CalcTextSize(buf);
-        const float tx = sp.x - ts.x * 0.5f * kDamageNumberScale;
-        const float ty = sp.y - ts.y * 0.5f * kDamageNumberScale;
-        // Cheap text outline: draw the text four times at 1px offsets
-        // in shadow color, then once on top in fg color.
-        const float fs = ImGui::GetFontSize() * kDamageNumberScale;
-        for (int dx = -1; dx <= 1; ++dx)
-            for (int dy = -1; dy <= 1; ++dy)
-                if ((dx | dy) != 0)
-                    overlay->AddText(ImGui::GetFont(), fs,
-                                     ImVec2(tx + static_cast<float>(dx),
-                                            ty + static_cast<float>(dy)),
-                                     shadow_color, buf);
-        overlay->AddText(ImGui::GetFont(), fs, ImVec2(tx, ty), text_color, buf);
+        const auto& tun_dbg = selva::tuning::current();
+        const float half_fov_rad = 0.5f * tun_dbg.ai_vision_fov_degrees * 0.017453293f;
+        const float range = tun_dbg.ai_vision_range_meters;
+        for (const auto* ep : list)
+            drawActorPerceptionOverlay(overlay, view_proj, *ep, half_fov_rad, range);
     }
 
     // Debug overlay: outline every hitbox + hurtbox in the pool.

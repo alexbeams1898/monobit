@@ -38,7 +38,10 @@ struct OwnerRef
     OwnerKind kind = OwnerKind::Player;
     int index = 0; // for OwnerKind::Enemy, index into Enemies pool
 
-    bool operator==(const OwnerRef& o) const { return kind == o.kind && index == o.index; }
+    bool operator==(const OwnerRef& o) const
+    {
+        return kind == o.kind && index == o.index;
+    }
 };
 
 // Capsule: line segment from p0 to p1 thickened by radius. World
@@ -76,6 +79,7 @@ struct Hitbox
     OwnerRef attacker;
     selva::gameplay::Faction attacker_faction = selva::gameplay::Faction::Player;
     int raw_damage = 0;
+    int poise_damage = 0;
     // Lifetime: hitbox expires when remaining_seconds <= 0.
     float remaining_seconds = 0.0f;
     // Unique-ish ID per hitbox instance so a single swing doesn't

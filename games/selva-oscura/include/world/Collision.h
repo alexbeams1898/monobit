@@ -22,8 +22,8 @@ namespace selva::world
 // load-bearing when Y motion / jumping over short props arrives.
 struct CylinderCollider
 {
-    glm::vec3 center;      // base position (Y at ground level)
-    float radius = 0.30f;  // XZ radius in meters
+    glm::vec3 center;         // base position (Y at ground level)
+    float radius = 0.30f;     // XZ radius in meters
     float half_height = 2.0f; // half the cylinder's vertical extent
 };
 

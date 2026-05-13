@@ -247,6 +247,69 @@ struct Tunables
     // full HP at its spawn pose after this delay. Becomes proper
     // despawn + persistence when the run / save system arrives.
     float enemy_respawn_after_death_seconds = 3.0f;
+
+    // How long an enemy stays in the knockdown freeze pose before
+    // recovering in place. The sampler blends back to combat idle
+    // via the one-shot's blend_out window; no get-up clip plays.
+    float enemy_recovery_after_knockdown_seconds = 2.5f;
+
+    // ---- AI perception (Sprint 1) ----
+    // Forward-facing vision cone. FOV is the full angular spread (so
+    // 90 degrees = 45 degrees off each side of forward). Range is the
+    // max distance at which a target inside the cone is "seen."
+    float ai_vision_fov_degrees = 90.0f;
+    float ai_vision_range_meters = 12.0f;
+
+    // How long the actor stays in Suspicious before decaying back to
+    // Unaware if no further sightings happen.
+    float ai_suspicion_decay_seconds = 1.5f;
+
+    // How many vision-confirmed sightings inside the suspicion window
+    // are required to escalate Suspicious -> Alerted. 1 = snap-aggro;
+    // 3+ = the "double-take" Souls feel.
+    int ai_confirmed_sightings_to_alert = 2;
+
+    // How long Alerted decays back to Suspicious if no further contact.
+    float ai_alerted_decay_seconds = 4.0f;
+
+    // Distance at which an Alerted actor commits to Combat.
+    float ai_combat_engage_range_meters = 5.0f;
+
+    // How long Combat decays back to Alerted if no further contact.
+    float ai_combat_disengage_seconds = 6.0f;
+
+    // F1-toggleable debug overlay: draw vision cone + awareness label
+    // above each AI actor.
+    bool debug_ai_perception = false;
+
+    // ---- Poise / knockdown formulas ----
+    // Per-stat scaling for derived max poise. Linear for v1, mirrors
+    // hp_per_vig / stamina_per_end. Souls model: END contributes
+    // more than STR (endurance is the canonical "stagger resistance"
+    // stat), but both factor in. Knockdown threshold = poise reaches 0.
+    //   max_poise = body.base_poise + end * poise_per_end
+    //                                + str * poise_per_str
+    float poise_per_end = 2.0f;
+    float poise_per_str = 1.0f;
+
+    // Seconds of no poise-damage events before poise fully refills
+    // to max. Souls-style: a player who absorbs one hit then dodges
+    // the next gets their poise back; a player taking continuous
+    // hits drains it and eventually breaks. Linear refill: 0->max
+    // over decay_window_seconds.
+    float poise_decay_window_seconds = 5.0f;
+
+    // Knockdown chain clip trimming. Both knockdown and getting_up
+    // clips often have authored windup or trailing idle that we
+    // want to skip. The phase plays from `*_start_seconds` to
+    // `*_end_seconds` (or clip duration, whichever is shorter).
+    // Phase advances when wallclock elapsed reaches
+    // (end_seconds - start_seconds). Set start > 0 to skip windup,
+    // set end < clip_duration to cut trailing idle.
+    float knockdown_clip_start_seconds = 0.0f;
+    float knockdown_clip_end_seconds = 999.0f;
+    float getting_up_clip_start_seconds = 0.0f;
+    float getting_up_clip_end_seconds = 999.0f;
 };
 
 // JSON serialization — generates to_json / from_json for nlohmann::json
@@ -260,11 +323,16 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     pitch_max, follow_distance, follow_height, fov_degrees, anim_blend_seconds,
     combat_idle_grace_seconds, combat_entry_delay_seconds, combo_reset_grace_seconds,
     combo_input_buffer_seconds, combo_chain_blend_seconds, first_strike_blend_seconds,
-    attack_playback_rate, cancel_open_velocity_fraction,
-    perfect_accuracy_threshold, roll_playback_rate, backstep_playback_rate, dodge_tap_window,
-    dodge_steer_rate, attack_lockout_extension_seconds, hp_per_vig, stamina_per_end, damage_floor,
+    attack_playback_rate, cancel_open_velocity_fraction, perfect_accuracy_threshold,
+    roll_playback_rate, backstep_playback_rate, dodge_tap_window, dodge_steer_rate,
+    attack_lockout_extension_seconds, hp_per_vig, stamina_per_end, damage_floor,
     hit_react_medium_threshold, hit_react_heavy_threshold, hit_react_cooldown_seconds,
-    enemy_respawn_after_death_seconds);
+    enemy_respawn_after_death_seconds, enemy_recovery_after_knockdown_seconds, poise_per_end,
+    poise_per_str, poise_decay_window_seconds, knockdown_clip_start_seconds,
+    knockdown_clip_end_seconds, getting_up_clip_start_seconds, getting_up_clip_end_seconds,
+    ai_vision_fov_degrees, ai_vision_range_meters, ai_suspicion_decay_seconds,
+    ai_confirmed_sightings_to_alert, ai_alerted_decay_seconds, ai_combat_engage_range_meters,
+    ai_combat_disengage_seconds, debug_ai_perception);
 
 // Single global instance. Both gameplay code and the procedural driver
 // read from this; the ImGui panel edits it in place. Keep it global rather

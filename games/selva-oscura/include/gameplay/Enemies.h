@@ -35,12 +35,14 @@ void tickEnemies(float dt);
 // shared pool via actors() in Actor.h.
 std::vector<Actor*> enemies();
 
-// Fire a hit-react one-shot on the given enemy (indexed into the
-// filtered enemy view, see enemies()). Severity + direction select
-// which clip plays — see implementation for the tier table.
+// Fire a hit-react on the given enemy (indexed into the filtered
+// enemy view, see enemies()). Applies poise damage first; if poise
+// breaks (current <= 0) fires the knockdown chain (knockdown clip
+// followed by getting_up). Otherwise picks an HP-damage-tiered
+// reaction (flinch / hit_react_medium / hit_react_heavy / death).
 // `world_normal` is the attacker -> target xz direction at hit time.
-// No-op on out-of-range or unloaded clips. Cooldown-gated so rapid
-// multi-hits don't re-trigger every frame.
-void playEnemyHitReact(int index, int damage, const glm::vec3& world_normal);
+// No-op on out-of-range or unloaded clips, or while the actor is
+// already knocked down / dead (hit-immunity).
+void playEnemyHitReact(int index, int damage, int poise_damage, const glm::vec3& world_normal);
 
 } // namespace selva::gameplay

@@ -7,17 +7,17 @@
       {
         "id": "jab_hook_combo",
         "attacks": [
-          { "clip": "jab",   "expected_button": "LMB", "hitbox_joint": "mixamorig:LeftHand",  "hitbox_radius": 0.18 },
-          { "clip": "hook",  "expected_button": "RMB", "hitbox_joint": "mixamorig:RightHand", "hitbox_radius": 0.18 },
-          { "clip": "combo", "expected_button": "LMB", "hitbox_joint": "mixamorig:RightHand", "hitbox_radius": 0.18 }
+          { "clip": "jab",   "expected_button": "LMB", "hitbox_joint": "mixamorig:LeftHand",  "hitbox_radius": 0.18, "poise_damage": 12 },
+          { "clip": "hook",  "expected_button": "RMB", "hitbox_joint": "mixamorig:RightHand", "hitbox_radius": 0.18, "poise_damage": 18 },
+          { "clip": "combo", "expected_button": "LMB", "hitbox_joint": "mixamorig:RightHand", "hitbox_radius": 0.18, "poise_damage": 25 }
         ]
       },
       {
         "id": "jab_jab_hook",
         "attacks": [
-          { "clip": "jab",  "expected_button": "LMB", "hitbox_joint": "mixamorig:LeftHand",  "hitbox_radius": 0.18 },
-          { "clip": "jab",  "expected_button": "LMB", "hitbox_joint": "mixamorig:LeftHand",  "hitbox_radius": 0.18 },
-          { "clip": "hook", "expected_button": "RMB", "hitbox_joint": "mixamorig:RightHand", "hitbox_radius": 0.18 }
+          { "clip": "jab",  "expected_button": "LMB", "hitbox_joint": "mixamorig:LeftHand",  "hitbox_radius": 0.18, "poise_damage": 12 },
+          { "clip": "jab",  "expected_button": "LMB", "hitbox_joint": "mixamorig:LeftHand",  "hitbox_radius": 0.18, "poise_damage": 12 },
+          { "clip": "hook", "expected_button": "RMB", "hitbox_joint": "mixamorig:RightHand", "hitbox_radius": 0.18, "poise_damage": 25 }
         ]
       }
     ],
@@ -26,7 +26,7 @@
       {
         "id": "heavy_punch",
         "attacks": [
-          { "clip": "heavy_punch", "expected_button": "LMB", "hitbox_joint": "mixamorig:RightHand", "hitbox_radius": 0.22 }
+          { "clip": "heavy_punch", "expected_button": "LMB", "hitbox_joint": "mixamorig:RightHand", "hitbox_radius": 0.22, "poise_damage": 65, "first_strike_start_seconds": 0.90 }
         ]
       }
     ],
@@ -35,7 +35,7 @@
       {
         "id": "flying_knee",
         "attacks": [
-          { "clip": "flying_knee_punch_combo", "first_strike_start_seconds": 0.20, "hitbox_joint": "mixamorig:RightFoot", "hitbox_radius": 0.20 }
+          { "clip": "flying_knee_punch_combo", "first_strike_start_seconds": 0.20, "hitbox_joint": "mixamorig:RightFoot", "hitbox_radius": 0.20, "poise_damage": 50 }
         ]
       }
     ]
@@ -46,17 +46,17 @@
       {
         "id": "jab_hook_combo",
         "attacks": [
-          { "clip": "jab",   "expected_button": "LMB", "hitbox_joint": "mixamorig:LeftHand",  "hitbox_radius": 0.18 },
-          { "clip": "hook",  "expected_button": "RMB", "hitbox_joint": "mixamorig:RightHand", "hitbox_radius": 0.18 },
-          { "clip": "combo", "expected_button": "LMB", "hitbox_joint": "mixamorig:RightHand", "hitbox_radius": 0.18 }
+          { "clip": "jab",   "expected_button": "LMB", "hitbox_joint": "mixamorig:LeftHand",  "hitbox_radius": 0.18, "poise_damage": 12 },
+          { "clip": "hook",  "expected_button": "RMB", "hitbox_joint": "mixamorig:RightHand", "hitbox_radius": 0.18, "poise_damage": 18 },
+          { "clip": "combo", "expected_button": "LMB", "hitbox_joint": "mixamorig:RightHand", "hitbox_radius": 0.18, "poise_damage": 25 }
         ]
       },
       {
         "id": "jab_jab_hook",
         "attacks": [
-          { "clip": "jab",  "expected_button": "LMB", "hitbox_joint": "mixamorig:LeftHand",  "hitbox_radius": 0.18 },
-          { "clip": "jab",  "expected_button": "LMB", "hitbox_joint": "mixamorig:LeftHand",  "hitbox_radius": 0.18 },
-          { "clip": "hook", "expected_button": "RMB", "hitbox_joint": "mixamorig:RightHand", "hitbox_radius": 0.18 }
+          { "clip": "jab",  "expected_button": "LMB", "hitbox_joint": "mixamorig:LeftHand",  "hitbox_radius": 0.18, "poise_damage": 12 },
+          { "clip": "jab",  "expected_button": "LMB", "hitbox_joint": "mixamorig:LeftHand",  "hitbox_radius": 0.18, "poise_damage": 12 },
+          { "clip": "hook", "expected_button": "RMB", "hitbox_joint": "mixamorig:RightHand", "hitbox_radius": 0.18, "poise_damage": 25 }
         ]
       }
     ],
@@ -64,7 +64,7 @@
       {
         "id": "heavy_punch",
         "attacks": [
-          { "clip": "heavy_punch", "expected_button": "LMB", "hitbox_joint": "mixamorig:RightHand", "hitbox_radius": 0.22 }
+          { "clip": "heavy_punch", "expected_button": "LMB", "hitbox_joint": "mixamorig:RightHand", "hitbox_radius": 0.22, "poise_damage": 65, "first_strike_start_seconds": 0.90 }
         ]
       }
     ],
@@ -72,7 +72,7 @@
       {
         "id": "flying_knee",
         "attacks": [
-          { "clip": "flying_knee_punch_combo", "first_strike_start_seconds": 0.20, "hitbox_joint": "mixamorig:RightFoot", "hitbox_radius": 0.20 }
+          { "clip": "flying_knee_punch_combo", "first_strike_start_seconds": 0.20, "hitbox_joint": "mixamorig:RightFoot", "hitbox_radius": 0.20, "poise_damage": 50 }
         ]
       }
     ]

@@ -23,8 +23,7 @@ constexpr int kHubTreeTargetCount = 35;
 constexpr int kHubMaxAttempts = 4000;
 constexpr unsigned int kHubSeed = 0xDA17EU; // "DANTE" — stable layout
 
-bool tooCloseToExisting(const std::vector<CylinderCollider>& placed, float x, float z,
-                        float radius)
+bool tooCloseToExisting(const std::vector<CylinderCollider>& placed, float x, float z, float radius)
 {
     for (const auto& c : placed)
     {

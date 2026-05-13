@@ -71,9 +71,8 @@ void appendActorHurtboxes(const selva::anim::PoseSampler& sampler, const glm::ma
     pool.push_back(capsuleBetween(sampler, actor_model, "mixamorig:RightArm",
                                   "mixamorig:RightForeArm", HurtRegion::UpperLimb, base_r * 0.35f,
                                   owner, faction));
-    pool.push_back(capsuleBetween(sampler, actor_model, "mixamorig:LeftUpLeg",
-                                  "mixamorig:LeftLeg", HurtRegion::UpperLimb, base_r * 0.5f, owner,
-                                  faction));
+    pool.push_back(capsuleBetween(sampler, actor_model, "mixamorig:LeftUpLeg", "mixamorig:LeftLeg",
+                                  HurtRegion::UpperLimb, base_r * 0.5f, owner, faction));
     pool.push_back(capsuleBetween(sampler, actor_model, "mixamorig:RightUpLeg",
                                   "mixamorig:RightLeg", HurtRegion::UpperLimb, base_r * 0.5f, owner,
                                   faction));
@@ -85,12 +84,10 @@ void appendActorHurtboxes(const selva::anim::PoseSampler& sampler, const glm::ma
     pool.push_back(capsuleBetween(sampler, actor_model, "mixamorig:RightForeArm",
                                   "mixamorig:RightHand", HurtRegion::LowerLimb, base_r * 0.3f,
                                   owner, faction));
-    pool.push_back(capsuleBetween(sampler, actor_model, "mixamorig:LeftLeg",
-                                  "mixamorig:LeftFoot", HurtRegion::LowerLimb, base_r * 0.4f, owner,
-                                  faction));
-    pool.push_back(capsuleBetween(sampler, actor_model, "mixamorig:RightLeg",
-                                  "mixamorig:RightFoot", HurtRegion::LowerLimb, base_r * 0.4f,
-                                  owner, faction));
+    pool.push_back(capsuleBetween(sampler, actor_model, "mixamorig:LeftLeg", "mixamorig:LeftFoot",
+                                  HurtRegion::LowerLimb, base_r * 0.4f, owner, faction));
+    pool.push_back(capsuleBetween(sampler, actor_model, "mixamorig:RightLeg", "mixamorig:RightFoot",
+                                  HurtRegion::LowerLimb, base_r * 0.4f, owner, faction));
 }
 
 } // namespace selva::combat
