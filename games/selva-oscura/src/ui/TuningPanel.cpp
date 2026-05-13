@@ -242,6 +242,7 @@ static void renderEnemyArchetypesSection()
     {
         if (!ImGui::TreeNode(id.c_str()))
             continue;
+        ImGui::Text("tree: %s", arch.tree_id.c_str());
         if (arch.vision_fov_degrees.has_value())
             ImGui::Text("vision_fov_degrees: %.1f (override)", *arch.vision_fov_degrees);
         if (arch.vision_range_meters.has_value())

@@ -53,6 +53,12 @@ struct EnemyArchetype
     std::vector<EnemyAction> actions;
     std::optional<float> vision_fov_degrees;
     std::optional<float> vision_range_meters;
+    // Which behavior tree drives this archetype's decisions. Tree
+    // construction is in code (see BehaviorTree.cpp's tree-builder
+    // registry); JSON just names which one to bind. Defaults to
+    // "humanoid_basic" — covers every humanoid in the bestiary
+    // until a tree-specific behavior demands its own builder.
+    std::string tree_id = "humanoid_basic";
 };
 
 // nlohmann JSON I/O for these structs. Defined in EnemyArchetype.cpp

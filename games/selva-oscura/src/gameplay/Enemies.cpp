@@ -7,6 +7,7 @@
 #include "anim/SkeletalAssets.h"
 #include "combat/CombatLog.h"
 #include "gameplay/AiTick.h"
+#include "gameplay/BehaviorTree.h"
 #include "gameplay/EnemyArchetype.h"
 #include "gameplay/Perception.h"
 #include "world/Collision.h"
@@ -68,6 +69,13 @@ void spawnEnemyActor(float x, float z, float yaw, const char* archetype_id)
     e.spawn_yaw = yaw;
     e.sampler = selva::anim::createPoseSampler(selva::anim::skeleton(), selva::anim::playerMesh());
     initActorPools(e.hp, e.stamina, e.poise, e.body, e.stats);
+    // Seed per-actor RNG. Two actors of the same archetype get
+    // independent rolls so they don't synchronize their weighted
+    // action picks. random_device + a salt from spawn pos makes
+    // co-spawned actors diverge on the first call.
+    std::random_device rd;
+    e.rng.seed(rd() ^ static_cast<std::uint32_t>(static_cast<std::int64_t>(x * 1000.0f)) ^
+               static_cast<std::uint32_t>(static_cast<std::int64_t>(z * 1000.0f)));
     // Prime the sampler with peaceful idle — spawn awareness is
     // always Unaware. The pose-snapshot path in the sampler will
     // handle the eventual combat-idle swap when awareness escalates.
@@ -164,82 +172,36 @@ void tickPoiseRefill(Actor& a, float dt)
     a.poise.current = std::min(a.poise.max, a.poise.current + static_cast<int>(std::ceil(gained)));
 }
 
-// Compute the world-space yaw for which `actor` faces `target_pos`.
-// Convention: yaw=0 faces -Z. atan2(-dx, -dz) gives the yaw that
-// rotates the forward vector (-Z) onto (target - actor) in XZ.
-float yawFacing(const glm::vec3& actor_pos, const glm::vec3& target_pos)
-{
-    const float dx = target_pos.x - actor_pos.x;
-    const float dz = target_pos.z - actor_pos.z;
-    if ((dx * dx + dz * dz) < 1e-6f)
-        return 0.0f;
-    return std::atan2(-dx, -dz);
-}
-
-// Decision tick: read perception, write intent_xz + turn_intent_yaw.
-// Called at the scheduled rate (ai_decision_tick_hz), so a 100ms-stale
-// decision is the worst-case latency between a perception change and
-// an intent change. Sprint 4a's behavior set is hardcoded; Sprint 4b
-// replaces this body with the behavior-tree evaluator.
+// Decision tick: traverse the actor's bound behavior tree. The tree
+// reads perception + writes intent_xz / turn_intent_yaw (and, Sprint
+// 4b commit 2 onward, fires action one-shots + sets cooldowns).
+// Called at the scheduled rate (ai_decision_tick_hz), so a 100ms-
+// stale decision is the worst-case latency between a perception
+// change and an intent change.
 //
-//   Unaware    → no intent, hold spawn yaw
-//   Suspicious → face last-known player position, no movement
-//   Alerted    → face + approach last_known_player_pos until inside
-//                combat_engage_range
-//   Combat     → face + approach last_known_player_pos until inside
-//                combat_engage_range (same as Alerted; the difference
-//                is which non-locomotion actions are legal — Sprint 4b)
-//
-// Combat shares Alerted's locomotion intentionally: if the player
-// steps out of melee, the enemy follows rather than standing still
-// waiting for the disengage timer. Souls enemies do the same.
-//
-// All facing is driven by last_known_player_pos, not the live player
-// position — when the player breaks line of sight the enemy keeps
-// facing where it last saw them, which sells the perception layer.
+// Tree binding: actor.archetype->tree_id selects which tree runs.
+// "humanoid_basic" is the default and covers every humanoid in the
+// bestiary until a specific archetype demands its own builder. If
+// the actor has no archetype bound (test-dummy fallback path) or
+// the tree id is unknown, this is a no-op.
 void tickEnemyDecision(Actor& a, const selva::tuning::Tunables& tun)
 {
-    using selva::gameplay::Awareness;
-    const Awareness aw = a.perception.awareness;
-    if (aw == Awareness::Unaware)
-    {
-        a.intent_xz = glm::vec2(0.0f);
-        a.turn_intent_yaw = a.spawn_yaw;
-    }
+    const BehaviorTree* tree = nullptr;
+    if (a.archetype != nullptr)
+        tree = behaviorTrees().get(a.archetype->tree_id);
     else
-    {
-        a.turn_intent_yaw = yawFacing(a.pos, a.perception.last_known_player_pos);
-        // Suspicious stands and looks; Alerted + Combat approach to
-        // engagement range.
-        const bool should_approach = (aw == Awareness::Alerted) || (aw == Awareness::Combat);
-        if (should_approach)
-        {
-            const float dx = a.perception.last_known_player_pos.x - a.pos.x;
-            const float dz = a.perception.last_known_player_pos.z - a.pos.z;
-            const float dist_sq = dx * dx + dz * dz;
-            const float stop_sq =
-                tun.ai_combat_engage_range_meters * tun.ai_combat_engage_range_meters;
-            if (dist_sq > stop_sq && dist_sq > 1e-6f)
-            {
-                const float dist = std::sqrt(dist_sq);
-                a.intent_xz = glm::vec2(dx / dist, dz / dist) * tun.walk_speed;
-            }
-            else
-            {
-                a.intent_xz = glm::vec2(0.0f);
-            }
-        }
-        else
-        {
-            a.intent_xz = glm::vec2(0.0f);
-        }
-    }
+        tree = behaviorTrees().get("humanoid_basic");
+    if (tree != nullptr)
+        tree->tick(a, tun);
+
     if (tun.debug_ai_decision_log)
     {
         const auto& p = a.perception.last_known_player_pos;
         selva::combat::combatLog(
-            "[ai-decision] awareness=%d target=(%.2f,%.2f) intent=(%.2f,%.2f) yaw=%.2f\n",
-            static_cast<int>(aw), p.x, p.z, a.intent_xz.x, a.intent_xz.y, a.turn_intent_yaw);
+            "[ai-decision] awareness=%d target=(%.2f,%.2f) intent=(%.2f,%.2f) yaw=%.2f tree=%s\n",
+            static_cast<int>(a.perception.awareness), p.x, p.z, a.intent_xz.x, a.intent_xz.y,
+            a.turn_intent_yaw,
+            (a.archetype != nullptr) ? a.archetype->tree_id.c_str() : "humanoid_basic");
     }
 }
 

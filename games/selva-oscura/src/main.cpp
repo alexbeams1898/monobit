@@ -16,6 +16,7 @@
 #include "combat/CombatLog.h"
 #include "combat/PlayerEquipment.h"
 #include "gameplay/Actor.h"
+#include "gameplay/BehaviorTree.h"
 #include "gameplay/Enemies.h"
 #include "gameplay/EnemyArchetype.h"
 #include "gameplay/PerFrameTick.h"
@@ -122,6 +123,11 @@ int main(int /*argc*/, char* /*argv*/[])
         // Must run before initHubEnemies — spawn looks up archetype
         // by id from this registry.
         selva::gameplay::archetypes().loadDirectory("config/enemies");
+
+        // Construct + register the behavior trees that archetypes
+        // bind to via tree_id. Must run before initHubEnemies since
+        // decision ticks lookup the tree at first fire.
+        selva::gameplay::initBehaviorTrees();
 
         selva::gameplay::initHubEnemies();
     }

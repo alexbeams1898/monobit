@@ -73,7 +73,7 @@ void from_json(const nlohmann::json& j, EnemyAction& a)
 
 void to_json(nlohmann::json& j, const EnemyArchetype& a)
 {
-    j = nlohmann::json{{"id", a.id}, {"actions", a.actions}};
+    j = nlohmann::json{{"id", a.id}, {"actions", a.actions}, {"tree", a.tree_id}};
     if (a.vision_fov_degrees.has_value())
         j["vision_fov_degrees"] = *a.vision_fov_degrees;
     if (a.vision_range_meters.has_value())
@@ -84,6 +84,7 @@ void from_json(const nlohmann::json& j, EnemyArchetype& a)
 {
     j.at("id").get_to(a.id);
     a.actions = j.value("actions", std::vector<EnemyAction>{});
+    a.tree_id = j.value("tree", std::string("humanoid_basic"));
     if (j.contains("vision_fov_degrees"))
         a.vision_fov_degrees = j.at("vision_fov_degrees").get<float>();
     if (j.contains("vision_range_meters"))

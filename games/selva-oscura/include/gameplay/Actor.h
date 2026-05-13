@@ -7,6 +7,9 @@
 #include <glm/vec3.hpp>
 
 #include <cstdint>
+#include <random>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace selva::gameplay
@@ -243,6 +246,22 @@ struct Actor
     // controller-agnostic.
     glm::vec2 intent_xz = glm::vec2(0.0f); // XZ target direction × speed
     float turn_intent_yaw = 0.0f;          // yaw the actor wants to face
+
+    // Per-action runtime state — cooldown timestamps for each
+    // archetype-declared action. Lazy: actions are inserted on first
+    // lookup (LeafPickAction). Keyed by EnemyAction::id from the
+    // archetype JSON. Souls-style cooldowns keep weighted-random
+    // selection from spamming the strongest action.
+    struct ActionRuntime
+    {
+        float cooldown_until_time = 0.0f; // wallclock; can fire when now >= this
+    };
+    std::unordered_map<std::string, ActionRuntime> action_state;
+
+    // Per-actor RNG for weighted-random action picks. Seeded at
+    // spawn from std::random_device — different actors of the same
+    // archetype roll independently so they don't synchronize.
+    std::mt19937 rng;
 };
 
 // Apply the actor's sampler-consumed hip-XZ delta to its world
