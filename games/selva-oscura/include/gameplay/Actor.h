@@ -222,6 +222,13 @@ struct Actor
     // and locomotion-intent (future) read awareness + last-known-
     // player-pos from here.
     PerceptionState perception;
+
+    // --- AI scheduler ---
+    // Wallclock time of the next scheduled decision tick. Behavior
+    // tree (future) only re-evaluates when wallClock() >= this.
+    // Spawned with a phase offset so a wave of actors doesn't all
+    // tick on the same frame. See gameplay/AiTick.h.
+    float next_ai_tick_time = 0.0f;
 };
 
 // Apply the actor's sampler-consumed hip-XZ delta to its world

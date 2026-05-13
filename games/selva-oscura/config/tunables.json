@@ -51,5 +51,8 @@
   "ai_alerted_decay_seconds": 4.0,
   "ai_combat_engage_range_meters": 5.0,
   "ai_combat_disengage_seconds": 6.0,
-  "debug_ai_perception": false
+  "debug_ai_perception": false,
+  "ai_decision_tick_hz": 10.0,
+  "ai_decision_tick_combat_hz_multiplier": 1.5,
+  "debug_ai_tick_log": false
 }

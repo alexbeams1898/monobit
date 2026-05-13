@@ -20,6 +20,7 @@ add_library(selva-oscura-lib STATIC
     src/anim/SkeletalMesh.cpp
     src/anim/SkeletalRenderer.cpp
     src/gameplay/Actor.cpp
+    src/gameplay/AiTick.cpp
     src/gameplay/Enemies.cpp
     src/gameplay/LocomotionStateMachine.cpp
     src/gameplay/PerFrameTick.cpp

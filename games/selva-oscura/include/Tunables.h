@@ -282,6 +282,24 @@ struct Tunables
     // above each AI actor.
     bool debug_ai_perception = false;
 
+    // ---- AI decision-tick scheduler (Sprint 2) ----
+    // Baseline rate at which an actor's decision-making code (behavior
+    // tree, action selection) re-evaluates. Perception still runs at
+    // full render rate; only the *decision* layer is throttled. Souls
+    // convention: ~10Hz baseline.
+    float ai_decision_tick_hz = 10.0f;
+
+    // Multiplier applied to ai_decision_tick_hz when the actor's
+    // awareness is Combat. Alerted enemies "think faster" than
+    // dormant ones. 1.0 = no change; 1.5 = combat at 15Hz when
+    // baseline is 10Hz.
+    float ai_decision_tick_combat_hz_multiplier = 1.5f;
+
+    // F1-toggleable: log each [ai-tick] firing so you can verify the
+    // scheduling math from combat-debug.log. Off in normal play; on
+    // when working on AI infrastructure.
+    bool debug_ai_tick_log = false;
+
     // ---- Poise / knockdown formulas ----
     // Per-stat scaling for derived max poise. Linear for v1, mirrors
     // hp_per_vig / stamina_per_end. Souls model: END contributes
@@ -332,7 +350,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     knockdown_clip_end_seconds, getting_up_clip_start_seconds, getting_up_clip_end_seconds,
     ai_vision_fov_degrees, ai_vision_range_meters, ai_suspicion_decay_seconds,
     ai_confirmed_sightings_to_alert, ai_alerted_decay_seconds, ai_combat_engage_range_meters,
-    ai_combat_disengage_seconds, debug_ai_perception);
+    ai_combat_disengage_seconds, debug_ai_perception, ai_decision_tick_hz,
+    ai_decision_tick_combat_hz_multiplier, debug_ai_tick_log);
 
 // Single global instance. Both gameplay code and the procedural driver
 // read from this; the ImGui panel edits it in place. Keep it global rather

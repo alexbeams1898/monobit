@@ -216,6 +216,12 @@ static void renderAiPerceptionSection(selva::tuning::Tunables& tun)
                 "%.2f");
     tunedSlider("Combat disengage (s)", &tun.ai_combat_disengage_seconds, 1.0f, 30.0f, 0.5f,
                 "%.1f");
+    ImGui::Separator();
+    ImGui::TextUnformatted("Decision tick (Sprint 2)");
+    tunedSlider("Decision tick rate (Hz)", &tun.ai_decision_tick_hz, 1.0f, 60.0f, 1.0f, "%.0f");
+    tunedSlider("Combat tick multiplier", &tun.ai_decision_tick_combat_hz_multiplier, 0.5f, 6.0f,
+                0.1f, "%.2fx");
+    ImGui::Checkbox("Log AI tick firings to combat-debug.log", &tun.debug_ai_tick_log);
 }
 
 static void renderPoiseSection(selva::tuning::Tunables& tun)

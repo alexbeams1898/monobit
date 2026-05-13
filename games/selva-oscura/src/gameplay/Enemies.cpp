@@ -6,6 +6,7 @@
 #include "anim/ClipRegistry.h"
 #include "anim/SkeletalAssets.h"
 #include "combat/CombatLog.h"
+#include "gameplay/AiTick.h"
 #include "gameplay/Perception.h"
 #include "world/Collision.h"
 
@@ -57,6 +58,11 @@ void spawnEnemyActor(float x, float z, float yaw)
     if (const auto* idle = selva::anim::clips().get(kEnemyIdleClipName);
         idle != nullptr && idle->isLoaded())
         e.sampler.update(*idle, 0.0f, 0.0f);
+    // Phase-stagger the first AI tick so a wave of actors spawned on
+    // the same frame doesn't all evaluate together. The pool index is
+    // the soon-to-be position of this actor (after push_back).
+    const int pool_index = static_cast<int>(actors().size());
+    seedAiTickPhase(e, pool_index, selva::tuning::current());
     actors().push_back(std::move(e));
 }
 
@@ -278,6 +284,16 @@ void tickEnemies(float dt)
         {
             applyActorClipHipDelta(a);
             continue;
+        }
+        // Decision tick gate. Throttled to ai_decision_tick_hz
+        // (default 10Hz). Sprint 4 will replace the diagnostic log
+        // with the behavior tree evaluation.
+        if (shouldTickAi(a, tun))
+        {
+            if (tun.debug_ai_tick_log)
+                selva::combat::combatLog(
+                    "[ai-tick] actor pool_idx=%td awareness=%d t=%.3f\n", &a - &actors().front(),
+                    static_cast<int>(a.perception.awareness), selva::wallClock());
         }
         tickPoiseRefill(a, dt);
         if (idle != nullptr && idle->isLoaded())
