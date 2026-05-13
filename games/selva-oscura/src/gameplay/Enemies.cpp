@@ -34,6 +34,17 @@ namespace
 // seams at the hip when blending. Hostile enemies are always in
 // combat stance.
 constexpr const char* kEnemyIdleClipName = "unarmed_combat_idle";
+// Walking clip used when the enemy's velocity crosses the walk-enter
+// threshold; idle clip kicks back in only after dropping below the
+// walk-exit threshold. The gap is hysteresis — without it, an actor
+// decelerating to stop oscillates around the floor and rapidly
+// retriggers walk↔idle crossfades (visible as a [!!! BLEND RACE]
+// tripwire). Same Mixamo walk the player uses; per-archetype
+// overrides when the bestiary expands.
+constexpr const char* kEnemyWalkClipName = "walking";
+constexpr float kEnemyWalkEnterSpeed = 0.30f;   // m/s; cross this rising → walk
+constexpr float kEnemyWalkExitSpeed = 0.10f;    // m/s; cross this falling → idle
+constexpr float kEnemyLocoSwapCooldown = 0.25f; // s; min gap between walk↔idle swaps
 constexpr const char* kFlinchFrontClipName = "flinch_front";
 constexpr const char* kFlinchBackClipName = "flinch_back";
 constexpr const char* kFlinchLeftClipName = "flinch_left";
@@ -139,6 +150,128 @@ void tickPoiseRefill(Actor& a, float dt)
     const float refill_rate = static_cast<float>(a.poise.max) / tun.poise_decay_window_seconds;
     const float gained = refill_rate * dt;
     a.poise.current = std::min(a.poise.max, a.poise.current + static_cast<int>(std::ceil(gained)));
+}
+
+// Compute the world-space yaw for which `actor` faces `target_pos`.
+// Convention: yaw=0 faces -Z. atan2(-dx, -dz) gives the yaw that
+// rotates the forward vector (-Z) onto (target - actor) in XZ.
+float yawFacing(const glm::vec3& actor_pos, const glm::vec3& target_pos)
+{
+    const float dx = target_pos.x - actor_pos.x;
+    const float dz = target_pos.z - actor_pos.z;
+    if ((dx * dx + dz * dz) < 1e-6f)
+        return 0.0f;
+    return std::atan2(-dx, -dz);
+}
+
+// Decision tick: read perception, write intent_xz + turn_intent_yaw.
+// Called at the scheduled rate (ai_decision_tick_hz), so a 100ms-stale
+// decision is the worst-case latency between a perception change and
+// an intent change. Sprint 4a's behavior set is hardcoded; Sprint 4b
+// replaces this body with the behavior-tree evaluator.
+//
+//   Unaware    → no intent, hold spawn yaw
+//   Suspicious → face last-known player position, no movement
+//   Alerted    → face + approach last_known_player_pos until inside
+//                combat_engage_range
+//   Combat     → face + approach last_known_player_pos until inside
+//                combat_engage_range (same as Alerted; the difference
+//                is which non-locomotion actions are legal — Sprint 4b)
+//
+// Combat shares Alerted's locomotion intentionally: if the player
+// steps out of melee, the enemy follows rather than standing still
+// waiting for the disengage timer. Souls enemies do the same.
+//
+// All facing is driven by last_known_player_pos, not the live player
+// position — when the player breaks line of sight the enemy keeps
+// facing where it last saw them, which sells the perception layer.
+void tickEnemyDecision(Actor& a, const selva::tuning::Tunables& tun)
+{
+    using selva::gameplay::Awareness;
+    const Awareness aw = a.perception.awareness;
+    if (aw == Awareness::Unaware)
+    {
+        a.intent_xz = glm::vec2(0.0f);
+        a.turn_intent_yaw = a.spawn_yaw;
+    }
+    else
+    {
+        a.turn_intent_yaw = yawFacing(a.pos, a.perception.last_known_player_pos);
+        // Suspicious stands and looks; Alerted + Combat approach to
+        // engagement range.
+        const bool should_approach = (aw == Awareness::Alerted) || (aw == Awareness::Combat);
+        if (should_approach)
+        {
+            const float dx = a.perception.last_known_player_pos.x - a.pos.x;
+            const float dz = a.perception.last_known_player_pos.z - a.pos.z;
+            const float dist_sq = dx * dx + dz * dz;
+            const float stop_sq =
+                tun.ai_combat_engage_range_meters * tun.ai_combat_engage_range_meters;
+            if (dist_sq > stop_sq && dist_sq > 1e-6f)
+            {
+                const float dist = std::sqrt(dist_sq);
+                a.intent_xz = glm::vec2(dx / dist, dz / dist) * tun.walk_speed;
+            }
+            else
+            {
+                a.intent_xz = glm::vec2(0.0f);
+            }
+        }
+        else
+        {
+            a.intent_xz = glm::vec2(0.0f);
+        }
+    }
+    if (tun.debug_ai_decision_log)
+    {
+        const auto& p = a.perception.last_known_player_pos;
+        selva::combat::combatLog(
+            "[ai-decision] awareness=%d target=(%.2f,%.2f) intent=(%.2f,%.2f) yaw=%.2f\n",
+            static_cast<int>(aw), p.x, p.z, a.intent_xz.x, a.intent_xz.y, a.turn_intent_yaw);
+    }
+}
+
+// Per-frame locomotion: advance velocity toward intent_xz, advance
+// yaw toward turn_intent_yaw, integrate position. Called every render
+// frame on every AI actor (not gated by the AI scheduler — animation
+// and motion must run at full rate). Mirrors the player's velocity
+// ramp + turn-rate convention so PC/NPC locomotion behaves the same.
+void tickEnemyLocomotion(Actor& a, float dt, const selva::tuning::Tunables& tun)
+{
+    // Velocity ramp toward intent.
+    const glm::vec2 delta = a.intent_xz - a.velocity_xz;
+    const float delta_mag = glm::length(delta);
+    if (delta_mag > 0.0001f)
+    {
+        const float current_speed = glm::length(a.velocity_xz);
+        const float target_speed = glm::length(a.intent_xz);
+        const float rate =
+            (target_speed >= current_speed) ? tun.locomotion_accel : tun.locomotion_decel;
+        const float max_step = rate * dt;
+        if (delta_mag <= max_step)
+            a.velocity_xz = a.intent_xz;
+        else
+            a.velocity_xz += (delta / delta_mag) * max_step;
+    }
+
+    // Integrate XZ position from velocity.
+    a.pos.x += a.velocity_xz.x * dt;
+    a.pos.z += a.velocity_xz.y * dt;
+
+    // Turn yaw toward turn_intent_yaw, shortest-path. Wrap delta into
+    // [-pi, pi] so a 350° desired yaw doesn't take the long way around.
+    constexpr float kTwoPi = 6.2831853f;
+    constexpr float kPi = 3.1415927f;
+    float yaw_delta = a.turn_intent_yaw - a.yaw;
+    while (yaw_delta > kPi)
+        yaw_delta -= kTwoPi;
+    while (yaw_delta < -kPi)
+        yaw_delta += kTwoPi;
+    const float max_yaw_step = tun.ai_turn_rate_radians_per_sec * dt;
+    if (std::abs(yaw_delta) <= max_yaw_step)
+        a.yaw = a.turn_intent_yaw;
+    else
+        a.yaw += (yaw_delta > 0.0f ? max_yaw_step : -max_yaw_step);
 }
 
 // Per-actor death + respawn handling. Returns true if the actor
@@ -274,6 +407,7 @@ void shutdownHubEnemies()
 void tickEnemies(float dt)
 {
     const auto* idle = selva::anim::clips().get(kEnemyIdleClipName);
+    const auto* walk = selva::anim::clips().get(kEnemyWalkClipName);
     const auto* death = selva::anim::clips().get(kDeathClipName);
     const auto* knockdown = selva::anim::clips().get(kKnockdownClipName);
     const auto& tun = selva::tuning::current();
@@ -298,18 +432,51 @@ void tickEnemies(float dt)
             continue;
         }
         // Decision tick gate. Throttled to ai_decision_tick_hz
-        // (default 10Hz). Sprint 4 will replace the diagnostic log
-        // with the behavior tree evaluation.
+        // (default 10Hz). Sprint 4a: hardcoded perception → intent
+        // mapping. Sprint 4b: behavior tree evaluation replaces the
+        // body of tickEnemyDecision.
         if (shouldTickAi(a, tun))
         {
             if (tun.debug_ai_tick_log)
                 selva::combat::combatLog(
                     "[ai-tick] actor pool_idx=%td awareness=%d t=%.3f\n", &a - &actors().front(),
                     static_cast<int>(a.perception.awareness), selva::wallClock());
+            tickEnemyDecision(a, tun);
         }
+        // Locomotion runs at full render rate (not gated) so motion
+        // stays smooth; the decision tick only updates the *intent*
+        // every ~100ms, locomotion integrates it every frame.
+        tickEnemyLocomotion(a, dt, tun);
         tickPoiseRefill(a, dt);
-        if (idle != nullptr && idle->isLoaded())
-            a.sampler.update(*idle, dt, 0.0f);
+        // Pick walking vs idle by current speed with hysteresis +
+        // swap cooldown. Hysteresis absorbs the velocity-ramp
+        // oscillation around the floor; the cooldown gates back-to-
+        // back swaps that arise when the player crosses the
+        // engagement-range boundary faster than the blend completes.
+        // Both BLEND RACE and STALE PREV tripwires fire if a new
+        // swap is staged while the previous blend is still active.
+        // Walking clip has authored hip motion which
+        // applyActorClipHipDelta consumes — feet stay planted while
+        // gameplay-driven velocity moves the actor.
+        const float speed = glm::length(a.velocity_xz);
+        const float now_swap = selva::wallClock();
+        const bool swap_cool = (a.last_loco_swap_time < 0.0f) ||
+                               ((now_swap - a.last_loco_swap_time) >= kEnemyLocoSwapCooldown);
+        bool desired_walk = a.walk_loco_active;
+        if (a.walk_loco_active && speed < kEnemyWalkExitSpeed)
+            desired_walk = false;
+        else if (!a.walk_loco_active && speed > kEnemyWalkEnterSpeed)
+            desired_walk = true;
+        if (desired_walk != a.walk_loco_active && swap_cool)
+        {
+            a.walk_loco_active = desired_walk;
+            a.last_loco_swap_time = now_swap;
+        }
+        const bool is_walking = a.walk_loco_active && walk != nullptr && walk->isLoaded();
+        const selva::anim::AnimationClip* loco_clip = is_walking ? walk : idle;
+        const char* loco_key = is_walking ? kEnemyWalkClipName : kEnemyIdleClipName;
+        if (loco_clip != nullptr && loco_clip->isLoaded())
+            a.sampler.update(*loco_clip, dt, /*blend_seconds=*/0.20f, /*loops=*/true, loco_key);
         applyActorClipHipDelta(a);
     }
 }

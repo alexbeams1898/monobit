@@ -1975,6 +1975,53 @@ static void logStateNarrative()
     combatLog("%s", line.c_str());
 }
 
+// Apply one HitEvent: route to enemy or player, run applyDamage,
+// spawn the damage number, fire the hit-react clip, log [hit].
+// Extracted from selvaPerFrame to keep its CCN under the lint
+// threshold; the corpse-skip continue + per-target branch had
+// pushed it over.
+static void applyHitEvent(const selva::combat::HitEvent& ev, float now)
+{
+    if (ev.target.kind == selva::combat::OwnerKind::Enemy)
+    {
+        auto enemy_view = selva::gameplay::enemies();
+        if (ev.target.index < 0 || ev.target.index >= static_cast<int>(enemy_view.size()))
+            return;
+        auto& e = *enemy_view[ev.target.index];
+        // Skip hits on dead/down enemies. Without this, HP gets
+        // re-applied (clamped at 0), damage numbers spawn on
+        // corpses, and [hit] logs fire after [enemy-death].
+        // playEnemyHitReact has its own immunity gate but it runs
+        // after this block.
+        if (e.is_dead || e.is_knocked_down)
+            return;
+        const int hp_before = e.hp.current;
+        selva::gameplay::applyDamage(e.hp, e.body, ev.raw_damage);
+        const int dmg_applied = hp_before - e.hp.current;
+        e.last_damage_time = now;
+        const bool crit = (ev.region == selva::combat::HurtRegion::Head);
+        const glm::vec3 number_origin(ev.world_pos.x, e.pos.y + 2.0f, ev.world_pos.z);
+        selva::combat::spawnDamageNumber(number_origin, dmg_applied, crit);
+        selva::gameplay::playEnemyHitReact(ev.target.index, dmg_applied, ev.poise_damage,
+                                           ev.world_normal);
+        selva::combat::combatLog("[hit] enemy[%d] region=%d dmg=%d hp=%d/%d\n", ev.target.index,
+                                 static_cast<int>(ev.region), dmg_applied, e.hp.current, e.hp.max);
+        return;
+    }
+    if (ev.target.kind == selva::combat::OwnerKind::Player)
+    {
+        const int hp_before = sPlayer.hp.current;
+        selva::gameplay::applyDamage(sPlayer.hp, sPlayer.body, ev.raw_damage);
+        const int dmg_applied = hp_before - sPlayer.hp.current;
+        const bool crit = (ev.region == selva::combat::HurtRegion::Head);
+        const glm::vec3 number_origin(ev.world_pos.x, sPlayer.pos.y + 2.0f, ev.world_pos.z);
+        selva::combat::spawnDamageNumber(number_origin, dmg_applied, crit);
+        selva::combat::combatLog("[hit] player region=%d dmg=%d hp=%d/%d\n",
+                                 static_cast<int>(ev.region), dmg_applied, sPlayer.hp.current,
+                                 sPlayer.hp.max);
+    }
+}
+
 static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
 {
     ZoneScopedN("selvaPerFrame");
@@ -2191,46 +2238,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     const auto& hit_events = selva::combat::detectHits();
     const float now = selva::wallClock();
     for (const auto& ev : hit_events)
-    {
-        if (ev.target.kind == selva::combat::OwnerKind::Enemy)
-        {
-            auto enemy_view = selva::gameplay::enemies();
-            if (ev.target.index >= 0 && ev.target.index < static_cast<int>(enemy_view.size()))
-            {
-                auto& e = *enemy_view[ev.target.index];
-                const int hp_before = e.hp.current;
-                selva::gameplay::applyDamage(e.hp, e.body, ev.raw_damage);
-                const int dmg_applied = hp_before - e.hp.current;
-                e.last_damage_time = now;
-                const bool crit = (ev.region == selva::combat::HurtRegion::Head);
-                // Spawn the damage number just above where the HP bar
-                // will render, so it bounces up from the bar rather
-                // than from wherever the capsules overlapped (which
-                // is usually the torso). Keep using ev.world_pos's
-                // XZ — the hit's horizontal location — so numbers
-                // from quick successive hits jitter naturally.
-                const glm::vec3 number_origin(ev.world_pos.x, e.pos.y + 2.0f, ev.world_pos.z);
-                selva::combat::spawnDamageNumber(number_origin, dmg_applied, crit);
-                selva::gameplay::playEnemyHitReact(ev.target.index, dmg_applied, ev.poise_damage,
-                                                   ev.world_normal);
-                selva::combat::combatLog("[hit] enemy[%d] region=%d dmg=%d hp=%d/%d\n",
-                                         ev.target.index, static_cast<int>(ev.region), dmg_applied,
-                                         e.hp.current, e.hp.max);
-            }
-        }
-        else if (ev.target.kind == selva::combat::OwnerKind::Player)
-        {
-            const int hp_before = sPlayer.hp.current;
-            selva::gameplay::applyDamage(sPlayer.hp, sPlayer.body, ev.raw_damage);
-            const int dmg_applied = hp_before - sPlayer.hp.current;
-            const bool crit = (ev.region == selva::combat::HurtRegion::Head);
-            const glm::vec3 number_origin(ev.world_pos.x, sPlayer.pos.y + 2.0f, ev.world_pos.z);
-            selva::combat::spawnDamageNumber(number_origin, dmg_applied, crit);
-            selva::combat::combatLog("[hit] player region=%d dmg=%d hp=%d/%d\n",
-                                     static_cast<int>(ev.region), dmg_applied, sPlayer.hp.current,
-                                     sPlayer.hp.max);
-        }
-    }
+        applyHitEvent(ev, now);
     selva::combat::tickDamageNumbers(dt);
 
     tickCsvRecording(dt);

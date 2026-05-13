@@ -54,5 +54,7 @@
   "debug_ai_perception": false,
   "ai_decision_tick_hz": 10.0,
   "ai_decision_tick_combat_hz_multiplier": 1.5,
-  "debug_ai_tick_log": false
+  "debug_ai_tick_log": false,
+  "ai_turn_rate_radians_per_sec": 6.0,
+  "debug_ai_decision_log": false
 }

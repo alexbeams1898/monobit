@@ -300,6 +300,18 @@ struct Tunables
     // when working on AI infrastructure.
     bool debug_ai_tick_log = false;
 
+    // ---- AI locomotion (Sprint 4a) ----
+    // Rate at which an AI actor rotates toward its turn_intent_yaw.
+    // Souls convention: enemies turn faster than they move, so they
+    // can re-orient before walking into a new direction. Per-
+    // archetype overrides land in Sprint 4b.
+    float ai_turn_rate_radians_per_sec = 6.0f;
+
+    // F1-toggleable: log [ai-decision] lines (one per decision tick)
+    // with awareness, target pos, intent. Useful while iterating on
+    // 4a behavior; off in normal play.
+    bool debug_ai_decision_log = false;
+
     // ---- Poise / knockdown formulas ----
     // Per-stat scaling for derived max poise. Linear for v1, mirrors
     // hp_per_vig / stamina_per_end. Souls model: END contributes
@@ -351,7 +363,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     ai_vision_fov_degrees, ai_vision_range_meters, ai_suspicion_decay_seconds,
     ai_confirmed_sightings_to_alert, ai_alerted_decay_seconds, ai_combat_engage_range_meters,
     ai_combat_disengage_seconds, debug_ai_perception, ai_decision_tick_hz,
-    ai_decision_tick_combat_hz_multiplier, debug_ai_tick_log);
+    ai_decision_tick_combat_hz_multiplier, debug_ai_tick_log, ai_turn_rate_radians_per_sec,
+    debug_ai_decision_log);
 
 // Single global instance. Both gameplay code and the procedural driver
 // read from this; the ImGui panel edits it in place. Keep it global rather

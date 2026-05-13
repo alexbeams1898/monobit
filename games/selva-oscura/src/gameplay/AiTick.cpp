@@ -53,7 +53,16 @@ bool shouldTickAi(Actor& actor, const selva::tuning::Tunables& tun)
         static_cast<std::uint32_t>(static_cast<std::int64_t>(actor.spawn_pos.x * 1000.0f)) ^
         static_cast<std::uint32_t>(static_cast<std::int64_t>(actor.spawn_pos.z * 1000.0f));
     const float jitter = xorshiftJitter(seed) * 0.10f * period;
-    actor.next_ai_tick_time = now + period + jitter;
+    // Schedule the next tick relative to its *target* time, not
+    // `now`. The render frame typically fires the gate ~10ms after
+    // the target due to render cadence; advancing from `now` would
+    // accumulate that lateness each tick (10Hz drifts to ~8.5Hz).
+    // Advancing from the previous target keeps the long-run rate
+    // honest. If we fell so far behind that we're past two periods,
+    // clamp to `now` to avoid burst-catch-up.
+    actor.next_ai_tick_time += period + jitter;
+    if (actor.next_ai_tick_time < now)
+        actor.next_ai_tick_time = now + period + jitter;
     return true;
 }
 

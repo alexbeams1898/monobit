@@ -235,6 +235,25 @@ struct Actor
     // overrides). nullptr = use defaults (test-dummy fallback).
     // Sprint 4 will read actions[] here to drive the behavior tree.
     const struct EnemyArchetype* archetype = nullptr;
+
+    // --- AI locomotion intent (Sprint 4a) ---
+    // Written by the decision tick (tickEnemyDecision) and consumed
+    // every frame by tickEnemyLocomotion. Mirrors the player's
+    // input-driven moveIntent so the locomotion path stays
+    // controller-agnostic.
+    glm::vec2 intent_xz = glm::vec2(0.0f); // XZ target direction × speed
+    float turn_intent_yaw = 0.0f;          // yaw the actor wants to face
+
+    // Current locomotion-clip side of the walk↔idle hysteresis.
+    // Picker uses kEnemyWalkEnterSpeed to flip false→true,
+    // kEnemyWalkExitSpeed to flip true→false; gap absorbs the
+    // velocity-ramp oscillation around the floor.
+    bool walk_loco_active = false;
+    // Wallclock of the last walk↔idle swap. Picker enforces a
+    // cooldown (>= kEnemyLocoSwapCooldown seconds) before allowing
+    // another swap — otherwise rapid Combat-range crossings stack
+    // transitions and fire [!!! BLEND RACE] in the sampler.
+    float last_loco_swap_time = -1.0f;
 };
 
 // Apply the actor's sampler-consumed hip-XZ delta to its world

@@ -223,6 +223,10 @@ static void renderAiPerceptionSection(selva::tuning::Tunables& tun)
     tunedSlider("Combat tick multiplier", &tun.ai_decision_tick_combat_hz_multiplier, 0.5f, 6.0f,
                 0.1f, "%.2fx");
     ImGui::Checkbox("Log AI tick firings to combat-debug.log", &tun.debug_ai_tick_log);
+    ImGui::Separator();
+    ImGui::TextUnformatted("Locomotion (Sprint 4a)");
+    tunedSlider("Turn rate (rad/s)", &tun.ai_turn_rate_radians_per_sec, 0.5f, 20.0f, 0.25f, "%.2f");
+    ImGui::Checkbox("Log AI decisions to combat-debug.log", &tun.debug_ai_decision_log);
 }
 
 // Diagnostic dump of the loaded enemy-archetype registry. Read-only;
