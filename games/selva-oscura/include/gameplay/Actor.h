@@ -229,6 +229,12 @@ struct Actor
     // Spawned with a phase offset so a wave of actors doesn't all
     // tick on the same frame. See gameplay/AiTick.h.
     float next_ai_tick_time = 0.0f;
+
+    // --- AI archetype binding ---
+    // Pointer to the loaded archetype data (action list, perception
+    // overrides). nullptr = use defaults (test-dummy fallback).
+    // Sprint 4 will read actions[] here to drive the behavior tree.
+    const struct EnemyArchetype* archetype = nullptr;
 };
 
 // Apply the actor's sampler-consumed hip-XZ delta to its world

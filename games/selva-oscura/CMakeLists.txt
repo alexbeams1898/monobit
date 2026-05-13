@@ -22,6 +22,7 @@ add_library(selva-oscura-lib STATIC
     src/gameplay/Actor.cpp
     src/gameplay/AiTick.cpp
     src/gameplay/Enemies.cpp
+    src/gameplay/EnemyArchetype.cpp
     src/gameplay/LocomotionStateMachine.cpp
     src/gameplay/PerFrameTick.cpp
     src/gameplay/Perception.cpp

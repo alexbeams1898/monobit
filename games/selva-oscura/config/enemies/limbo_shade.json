@@ -1,0 +1,26 @@
+{
+  "id": "limbo_shade",
+  "vision_fov_degrees": 90.0,
+  "vision_range_meters": 12.0,
+  "actions": [
+    {
+      "id": "shade_idle",
+      "clip": "unarmed_combat_idle",
+      "range_min": 0.0,
+      "range_max": 100.0,
+      "cooldown_seconds": 0.0,
+      "weight": 1.0,
+      "min_awareness": "Unaware"
+    },
+    {
+      "id": "shade_swing",
+      "clip": "jab",
+      "range_min": 0.0,
+      "range_max": 2.0,
+      "cooldown_seconds": 1.5,
+      "weight": 1.0,
+      "poise_damage": 8,
+      "min_awareness": "Combat"
+    }
+  ]
+}

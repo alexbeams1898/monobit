@@ -17,6 +17,7 @@
 #include "combat/PlayerEquipment.h"
 #include "combat/Weapon.h"
 #include "combat/WeaponClass.h"
+#include "gameplay/EnemyArchetype.h"
 #include "gameplay/LocomotionStateMachine.h"
 #include "gameplay/PlayerState.h"
 #include "gameplay/TickState.h"
@@ -224,6 +225,34 @@ static void renderAiPerceptionSection(selva::tuning::Tunables& tun)
     ImGui::Checkbox("Log AI tick firings to combat-debug.log", &tun.debug_ai_tick_log);
 }
 
+// Diagnostic dump of the loaded enemy-archetype registry. Read-only;
+// shows what was parsed from config/enemies/*.json so we can confirm
+// the data pipeline works before Sprint 4 wires actions to behavior.
+static void renderEnemyArchetypesSection()
+{
+    if (!ImGui::CollapsingHeader("Enemy Archetypes", ImGuiTreeNodeFlags_DefaultOpen))
+        return;
+    const auto& all = selva::gameplay::archetypes().all();
+    ImGui::Text("Loaded: %zu archetype(s)", all.size());
+    for (const auto& [id, arch] : all)
+    {
+        if (!ImGui::TreeNode(id.c_str()))
+            continue;
+        if (arch.vision_fov_degrees.has_value())
+            ImGui::Text("vision_fov_degrees: %.1f (override)", *arch.vision_fov_degrees);
+        if (arch.vision_range_meters.has_value())
+            ImGui::Text("vision_range_meters: %.1f (override)", *arch.vision_range_meters);
+        ImGui::Text("Actions: %zu", arch.actions.size());
+        for (const auto& a : arch.actions)
+        {
+            ImGui::BulletText("%s -> clip=%s range=[%.1f, %.1f] cd=%.2fs w=%.1f pdmg=%d",
+                              a.id.c_str(), a.clip.c_str(), a.range_min, a.range_max,
+                              a.cooldown_seconds, a.weight, a.poise_damage);
+        }
+        ImGui::TreePop();
+    }
+}
+
 static void renderPoiseSection(selva::tuning::Tunables& tun)
 {
     if (!ImGui::CollapsingHeader("Poise / Knockdown", ImGuiTreeNodeFlags_DefaultOpen))
@@ -396,6 +425,7 @@ static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
     renderPostAttackLockoutSection(tun);
     renderPoiseSection(tun);
     renderAiPerceptionSection(tun);
+    renderEnemyArchetypesSection();
     renderAnimationDebugSection();
     renderSaveLoadButtons();
     ImGui::End();

@@ -7,6 +7,7 @@
 #include "anim/SkeletalAssets.h"
 #include "combat/CombatLog.h"
 #include "gameplay/AiTick.h"
+#include "gameplay/EnemyArchetype.h"
 #include "gameplay/Perception.h"
 #include "world/Collision.h"
 
@@ -43,8 +44,10 @@ constexpr const char* kDeathClipName = "death";
 constexpr const char* kKnockdownClipName = "stunned";
 
 // Spawn an enemy actor into the shared pool. Caller must have
-// already initialized the pool (player at index 0).
-void spawnEnemyActor(float x, float z, float yaw)
+// already initialized the pool (player at index 0). `archetype_id`
+// is looked up in the archetype registry; nullptr/missing = no
+// archetype bound (test-dummy fallback behavior).
+void spawnEnemyActor(float x, float z, float yaw, const char* archetype_id)
 {
     Actor e;
     e.controller = Controller::AI_Stationary;
@@ -58,6 +61,13 @@ void spawnEnemyActor(float x, float z, float yaw)
     if (const auto* idle = selva::anim::clips().get(kEnemyIdleClipName);
         idle != nullptr && idle->isLoaded())
         e.sampler.update(*idle, 0.0f, 0.0f);
+    if (archetype_id != nullptr && archetype_id[0] != '\0')
+    {
+        e.archetype = archetypes().get(archetype_id);
+        if (e.archetype == nullptr)
+            selva::combat::combatLog("[spawn] archetype '%s' not found in registry\n",
+                                     archetype_id);
+    }
     // Phase-stagger the first AI tick so a wave of actors spawned on
     // the same frame doesn't all evaluate together. The pool index is
     // the soon-to-be position of this actor (after push_back).
@@ -247,7 +257,9 @@ void initHubEnemies()
 {
     // Pool must already have the player at index 0; we append.
     // First enemy: stationary humanoid 6m north of the clearing.
-    spawnEnemyActor(0.0f, -6.0f, 0.0f);
+    // The dummy is bound to the limbo_shade archetype so Sprint 4's
+    // behavior tree will pick from its declared actions.
+    spawnEnemyActor(0.0f, -6.0f, 0.0f, "limbo_shade");
 }
 
 void shutdownHubEnemies()

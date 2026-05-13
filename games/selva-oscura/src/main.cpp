@@ -17,6 +17,7 @@
 #include "combat/PlayerEquipment.h"
 #include "gameplay/Actor.h"
 #include "gameplay/Enemies.h"
+#include "gameplay/EnemyArchetype.h"
 #include "gameplay/PerFrameTick.h"
 #include "gameplay/PlayerState.h"
 #include "render/Camera.h"
@@ -116,6 +117,12 @@ int main(int /*argc*/, char* /*argv*/[])
         // path length so we know which clips ship with authored
         // translation.
         selva::anim::auditClipHipMotion();
+
+        // Load enemy archetypes (action lists, perception overrides).
+        // Must run before initHubEnemies — spawn looks up archetype
+        // by id from this registry.
+        selva::gameplay::archetypes().loadDirectory("config/enemies");
+
         selva::gameplay::initHubEnemies();
     }
 
