@@ -268,6 +268,18 @@ struct PoseSampler::Impl
     // returns to nullptr (so re-occurrence on a new event still logs).
     bool loco_previous_stale_logged = false;
 
+    // True when loco_previous holds a FROZEN POSE SNAPSHOT (not an
+    // animated clip). Set by applyLocoCrossfade when a new clip
+    // arrives mid-blend: the visible pose at the moment of swap
+    // (loco_blended) is baked into loco_previous.local_transforms and
+    // the snapshot fades out as the new clip fades in. With this
+    // flag, runLocoBlend's layer-1 weight no longer keys off the
+    // animation pointer — a snapshot has no animation but still
+    // contributes pose data. This is the root-cause fix for the
+    // [!!! BLEND RACE] tripwire: instead of dropping the previous
+    // blend's outgoing data, we freeze it and keep blending.
+    bool loco_previous_is_snapshot = false;
+
     // One-shot state. one_shot_weight is how much of the one-shot pose
     // dominates the locomotion pose at the final blend (0 = all loco,
     // 1 = all one-shot). The phase machine drives weight automatically
@@ -1659,26 +1671,22 @@ void applyLocoCrossfade(PoseSampler::Impl& s, const ozz::animation::Animation* d
     const char* to_key = desired_key.empty() ? "(unknown)" : desired_key.c_str();
     const char* from_key =
         s.loco_current.registry_key.empty() ? "(none)" : s.loco_current.registry_key.c_str();
-    // TRIPWIRE: in-flight blend interrupted by a new clip change. The
-    // outgoing track (loco_previous) is about to be overwritten by
-    // the swap — its contribution to the visible pose is lost on
-    // this frame. Three logical clips collapse into 2 slots, same
-    // structural pre-condition as the historical leg-spasm bug.
-    // Geometrically the loss is usually benign (both poses are
-    // valid live samples, not corrupted state) but if it ever
-    // produces a visible pop we want to know HOW OFTEN this happens.
-    if (g_diag_log != nullptr && s.loco_previous.animation != nullptr &&
-        s.loco_blend_weight > 1e-3f && s.loco_blend_weight < 1.0f - 1e-3f)
-    {
-        samplerDiagLog("[!!! BLEND RACE] new crossfade %s -> %s fired while previous %s -> %s "
-                       "blend is at weight %.3f. Outgoing pose data dropped.\n",
-                       from_key, to_key,
-                       s.loco_previous.registry_key.empty() ? "(unknown)"
-                                                            : s.loco_previous.registry_key.c_str(),
-                       from_key, s.loco_blend_weight);
-    }
-    samplerDiagLog("[loco] crossfade %s -> %s (resume t=%.3fs, blend=%.3fs, cold=%d)\n", from_key,
-                   to_key, resume_t, blend_seconds, cold_enter ? 1 : 0);
+    // Mid-blend race: a previous A→B blend is still in flight, and now
+    // we want C. Without the snapshot path, we'd swap loco_current into
+    // loco_previous and lose A's (1-w_old) contribution — visible pose
+    // pops from "w_old·B + (1-w_old)·A" to "1.0·B" instantly, which
+    // historically fired the [!!! BLEND RACE] tripwire. Fix: bake the
+    // currently-visible pose (s.loco_blended) into loco_previous as a
+    // frozen snapshot. The blend then ramps "snapshot → C" smoothly,
+    // preserving the full mid-blend pose at swap time. The snapshot
+    // doesn't advance — it's frozen — but its weight ramps down
+    // naturally as loco_current's weight ramps up.
+    const bool mid_blend_race =
+        (s.loco_previous.animation != nullptr || s.loco_previous_is_snapshot) &&
+        s.loco_blend_weight > 1e-3f && s.loco_blend_weight < 1.0f - 1e-3f;
+    samplerDiagLog("[loco] crossfade %s -> %s (resume t=%.3fs, blend=%.3fs, cold=%d, race=%d)\n",
+                   from_key, to_key, resume_t, blend_seconds, cold_enter ? 1 : 0,
+                   mid_blend_race ? 1 : 0);
     if (cold_enter || blend_seconds <= 0.0f)
     {
         // No previous to fade from — just bind the new clip at full
@@ -1686,20 +1694,41 @@ void applyLocoCrossfade(PoseSampler::Impl& s, const ozz::animation::Animation* d
         // initialization would otherwise produce on frame 1.
         s.loco_previous.animation = nullptr;
         s.loco_previous.registry_key.clear();
+        s.loco_previous_is_snapshot = false;
         s.loco_blend_weight = 1.0f;
         s.loco_blend_elapsed = 0.0f;
         s.loco_blend_duration = 0.0f;
     }
+    else if (mid_blend_race)
+    {
+        // Race path: snapshot the visible pose. loco_blended holds the
+        // most recently rendered weighted lerp; copy it into
+        // loco_previous's transforms and clear the animation pointer
+        // so the previous track no longer re-samples. Last-clip-time
+        // for the outgoing clip is preserved for future resumes.
+        if (s.loco_current.animation != nullptr)
+            s.last_clip_time[s.loco_current.animation] = s.loco_current.time_seconds;
+        s.loco_previous.local_transforms = s.loco_blended;
+        s.loco_previous.animation = nullptr;
+        // Keep a meaningful key for diagnostics: prefix with "snap:"
+        // so logs make it clear this is a frozen pose, not a clip.
+        s.loco_previous.registry_key = std::string("snap:") + from_key;
+        s.loco_previous_is_snapshot = true;
+        s.loco_blend_weight = 0.0f;
+        s.loco_blend_elapsed = 0.0f;
+        s.loco_blend_duration = blend_seconds;
+    }
     else
     {
-        // Move loco_current into loco_previous (preserving its time so
-        // the outgoing clip continues to animate underneath the
-        // fade). loco_current is then rebound to the new clip.
+        // No race. Move loco_current into loco_previous (preserving its
+        // time so the outgoing clip continues to animate underneath
+        // the fade). loco_current is then rebound to the new clip.
         std::swap(s.loco_current.animation, s.loco_previous.animation);
         std::swap(s.loco_current.registry_key, s.loco_previous.registry_key);
         std::swap(s.loco_current.time_seconds, s.loco_previous.time_seconds);
         std::swap(s.loco_current.hip_path_cached, s.loco_previous.hip_path_cached);
         s.loco_current.local_transforms.swap(s.loco_previous.local_transforms);
+        s.loco_previous_is_snapshot = false;
         s.loco_blend_weight = 0.0f;
         s.loco_blend_elapsed = 0.0f;
         s.loco_blend_duration = blend_seconds;
@@ -2189,6 +2218,7 @@ void tickLocoCrossfade(PoseSampler::Impl& s, float dt)
             s.last_clip_time[s.loco_previous.animation] = s.loco_previous.time_seconds;
         s.loco_previous.animation = nullptr;
         s.loco_previous.registry_key.clear();
+        s.loco_previous_is_snapshot = false;
     }
     else
     {
@@ -2429,16 +2459,20 @@ void packOneShotJointWeights(std::vector<ozz::math::SimdFloat4>& out,
 bool runLocoBlend(PoseSampler::Impl& s)
 {
     ZoneScopedN("blend-loco");
-    // TRIPWIRE: stale loco_previous after blend completes. If weight
-    // is at the rail (≥ 0.999) and loco_previous still holds an
-    // animation, tickLocoCrossfade's cleanup edge missed — the
-    // outgoing track is sitting at zero weight but still being
-    // sampled each frame. Algebraically the layer contributes 0,
-    // but the state is a misleading "silently playing behind"
-    // pattern we want to surface immediately. Logs once per stale
-    // transition so we don't spam.
-    if (g_diag_log != nullptr && s.loco_blend_weight >= 1.0f - 1e-3f &&
-        s.loco_previous.animation != nullptr && !s.loco_previous_stale_logged)
+    // TRIPWIRE: stale loco_previous after blend completes. Fires
+    // only when blend_duration has been reset to 0 (cleanup-time
+    // marker) but loco_previous still holds pose data — meaning
+    // the cleanup edge in tickLocoCrossfade missed clearing one of
+    // the slot fields. The previous threshold-based check (weight ≥
+    // 0.999) fired on the second-to-last blend tick too, since the
+    // weight is essentially 1.0 a frame before duration expires.
+    // That's a false positive — cleanup IS about to fire next frame.
+    // Gating on blend_duration == 0 catches the real "we cleaned up
+    // weight but forgot the previous slot" case without the noise.
+    const bool prev_has_data =
+        (s.loco_previous.animation != nullptr) || s.loco_previous_is_snapshot;
+    if (g_diag_log != nullptr && s.loco_blend_duration == 0.0f && prev_has_data &&
+        !s.loco_previous_stale_logged)
     {
         samplerDiagLog("[!!! STALE PREV] loco_previous=%s still bound at full weight 1.0 "
                        "(blend cleanup missed). loco_current=%s\n",
@@ -2448,13 +2482,16 @@ bool runLocoBlend(PoseSampler::Impl& s)
                                                            : s.loco_current.registry_key.c_str());
         s.loco_previous_stale_logged = true;
     }
-    if (s.loco_previous.animation == nullptr)
+    if (!prev_has_data)
         s.loco_previous_stale_logged = false;
     ozz::animation::BlendingJob::Layer loco_layers[2];
     loco_layers[0].weight = s.loco_blend_weight;
     loco_layers[0].transform = ozz::make_span(s.loco_current.local_transforms);
-    loco_layers[1].weight =
-        (1.0f - s.loco_blend_weight) * (s.loco_previous.animation ? 1.0f : 0.0f);
+    // Layer-1 weight uses prev_has_data so a frozen snapshot
+    // contributes alongside an animated previous. Without this, the
+    // snapshot's transforms would be present but the weight would be
+    // zero, defeating the race-fix in applyLocoCrossfade.
+    loco_layers[1].weight = (1.0f - s.loco_blend_weight) * (prev_has_data ? 1.0f : 0.0f);
     loco_layers[1].transform = ozz::make_span(s.loco_previous.local_transforms);
 
     ozz::animation::BlendingJob loco_blend;

@@ -29,22 +29,21 @@ namespace
 // All authored on the shared X_Bot rig; the figura umana rule means
 // every enemy in the bestiary uses these same clips.
 //
-// Enemies idle in combat stance — flinch / hit-react clips were
-// authored against this pose. Using standard_idle produces visual
-// seams at the hip when blending. Hostile enemies are always in
-// combat stance.
-constexpr const char* kEnemyIdleClipName = "unarmed_combat_idle";
-// Walking clip used when the enemy's velocity crosses the walk-enter
-// threshold; idle clip kicks back in only after dropping below the
-// walk-exit threshold. The gap is hysteresis — without it, an actor
-// decelerating to stop oscillates around the floor and rapidly
-// retriggers walk↔idle crossfades (visible as a [!!! BLEND RACE]
-// tripwire). Same Mixamo walk the player uses; per-archetype
+// Idle clip pair. Peaceful idle plays when the enemy is unaware or
+// merely suspicious of the player — visually communicates "this
+// thing isn't engaged with me." Combat idle (the bouncy ready-stance)
+// takes over once awareness escalates to Alerted/Combat. Flinch /
+// hit-react clips were authored against combat idle, so an actor in
+// peaceful idle will briefly seam at the hip when struck; that's
+// acceptable because being struck implies an aggressor is present
+// and the enemy was about to escalate anyway.
+constexpr const char* kEnemyPeacefulIdleClipName = "standard_idle";
+constexpr const char* kEnemyCombatIdleClipName = "unarmed_combat_idle";
+// Walking clip + speed threshold below which the actor plays an idle
+// clip instead. Same Mixamo walk the player uses; per-archetype
 // overrides when the bestiary expands.
 constexpr const char* kEnemyWalkClipName = "walking";
-constexpr float kEnemyWalkEnterSpeed = 0.30f;   // m/s; cross this rising → walk
-constexpr float kEnemyWalkExitSpeed = 0.10f;    // m/s; cross this falling → idle
-constexpr float kEnemyLocoSwapCooldown = 0.25f; // s; min gap between walk↔idle swaps
+constexpr float kEnemyWalkSpeedFloor = 0.15f; // m/s; above = walk, below = idle
 constexpr const char* kFlinchFrontClipName = "flinch_front";
 constexpr const char* kFlinchBackClipName = "flinch_back";
 constexpr const char* kFlinchLeftClipName = "flinch_left";
@@ -69,7 +68,10 @@ void spawnEnemyActor(float x, float z, float yaw, const char* archetype_id)
     e.spawn_yaw = yaw;
     e.sampler = selva::anim::createPoseSampler(selva::anim::skeleton(), selva::anim::playerMesh());
     initActorPools(e.hp, e.stamina, e.poise, e.body, e.stats);
-    if (const auto* idle = selva::anim::clips().get(kEnemyIdleClipName);
+    // Prime the sampler with peaceful idle — spawn awareness is
+    // always Unaware. The pose-snapshot path in the sampler will
+    // handle the eventual combat-idle swap when awareness escalates.
+    if (const auto* idle = selva::anim::clips().get(kEnemyPeacefulIdleClipName);
         idle != nullptr && idle->isLoaded())
         e.sampler.update(*idle, 0.0f, 0.0f);
     if (archetype_id != nullptr && archetype_id[0] != '\0')
@@ -109,10 +111,20 @@ const char* pickDirectionalFlinchClip(float target_yaw, const glm::vec3& world_n
 
 // Per-actor knockdown lifecycle. Plays the knockdown clip with
 // freeze_last, then after `enemy_recovery_after_knockdown_seconds`
-// releases the one-shot — sampler blends back to combat idle in
-// place. Mirrors tickDeathLifecycle. Returns true while the actor
-// is still mid-knockdown.
-bool tickKnockdownLifecycle(Actor& a, float dt, const selva::anim::AnimationClip* knockdown_clip)
+// releases the one-shot — sampler blends back to whatever loco clip
+// was bound underneath. Mirrors tickDeathLifecycle. Returns true
+// while the actor is still mid-knockdown.
+//
+// `idle_clip` is passed as the loco-track target so the loco slot
+// remains bound to a *real loco clip* throughout the knockdown.
+// Passing the knockdown clip itself here would swap the loco track
+// to a one-shot clip at blend=0 (visible as a hard pop), and on
+// release the loco track would have to blend back to idle producing
+// a second visible transition. Idle as the loco target = the one-
+// shot occludes the loco visually, the loco track stays semantically
+// correct, and recovery is seamless.
+bool tickKnockdownLifecycle(Actor& a, float dt, const selva::anim::AnimationClip* idle_clip,
+                            const char* idle_key)
 {
     if (!a.is_knocked_down)
         return false;
@@ -127,8 +139,8 @@ bool tickKnockdownLifecycle(Actor& a, float dt, const selva::anim::AnimationClip
         selva::combat::combatLog("[knockdown] actor recovered\n");
         return false;
     }
-    if (knockdown_clip != nullptr && knockdown_clip->isLoaded())
-        a.sampler.update(*knockdown_clip, dt, 0.0f, /*loops=*/false);
+    if (idle_clip != nullptr && idle_clip->isLoaded())
+        a.sampler.update(*idle_clip, dt, /*blend_seconds=*/0.20f, /*loops=*/true, idle_key);
     return true;
 }
 
@@ -277,7 +289,12 @@ void tickEnemyLocomotion(Actor& a, float dt, const selva::tuning::Tunables& tun)
 // Per-actor death + respawn handling. Returns true if the actor
 // should be skipped in this frame's idle update (dead and holding
 // the death pose). Called once per AI actor per tick.
-bool tickDeathLifecycle(Actor& a, float dt, const selva::anim::AnimationClip* death_clip)
+//
+// `idle_clip` is passed as the loco-track target so the loco slot
+// remains bound to a real loco clip throughout the death + respawn
+// cycle (same rationale as tickKnockdownLifecycle).
+bool tickDeathLifecycle(Actor& a, float dt, const selva::anim::AnimationClip* idle_clip,
+                        const char* idle_key)
 {
     if (!a.is_dead)
         return false;
@@ -296,8 +313,8 @@ bool tickDeathLifecycle(Actor& a, float dt, const selva::anim::AnimationClip* de
         a.sampler.releaseOneShot();
         return false;
     }
-    if (death_clip != nullptr && death_clip->isLoaded())
-        a.sampler.update(*death_clip, dt, 0.0f, /*loops=*/false);
+    if (idle_clip != nullptr && idle_clip->isLoaded())
+        a.sampler.update(*idle_clip, dt, /*blend_seconds=*/0.20f, /*loops=*/true, idle_key);
     return true;
 }
 
@@ -406,10 +423,9 @@ void shutdownHubEnemies()
 
 void tickEnemies(float dt)
 {
-    const auto* idle = selva::anim::clips().get(kEnemyIdleClipName);
+    const auto* peaceful_idle = selva::anim::clips().get(kEnemyPeacefulIdleClipName);
+    const auto* combat_idle = selva::anim::clips().get(kEnemyCombatIdleClipName);
     const auto* walk = selva::anim::clips().get(kEnemyWalkClipName);
-    const auto* death = selva::anim::clips().get(kDeathClipName);
-    const auto* knockdown = selva::anim::clips().get(kKnockdownClipName);
     const auto& tun = selva::tuning::current();
     const Actor& pc = player();
     for (auto& a : actors())
@@ -421,12 +437,21 @@ void tickEnemies(float dt)
         // (not a stale snapshot from when they fell). Cheap; no side
         // effects beyond writing to actor.perception.
         tickPerception(a, pc, dt, tun);
-        if (tickDeathLifecycle(a, dt, death))
+        // Death + knockdown lifecycles pass the actor's idle clip as
+        // the loco-track target so the loco slot stays bound to a
+        // real loco clip during the freeze_last one-shot. Awareness
+        // determines whether peaceful or combat idle is the right
+        // underlying loco — matches the live picker below.
+        const bool engaged_now = a.perception.awareness >= Awareness::Alerted;
+        const auto* lifecycle_idle = engaged_now ? combat_idle : peaceful_idle;
+        const char* lifecycle_idle_key =
+            engaged_now ? kEnemyCombatIdleClipName : kEnemyPeacefulIdleClipName;
+        if (tickDeathLifecycle(a, dt, lifecycle_idle, lifecycle_idle_key))
         {
             applyActorClipHipDelta(a);
             continue;
         }
-        if (tickKnockdownLifecycle(a, dt, knockdown))
+        if (tickKnockdownLifecycle(a, dt, lifecycle_idle, lifecycle_idle_key))
         {
             applyActorClipHipDelta(a);
             continue;
@@ -448,33 +473,26 @@ void tickEnemies(float dt)
         // every ~100ms, locomotion integrates it every frame.
         tickEnemyLocomotion(a, dt, tun);
         tickPoiseRefill(a, dt);
-        // Pick walking vs idle by current speed with hysteresis +
-        // swap cooldown. Hysteresis absorbs the velocity-ramp
-        // oscillation around the floor; the cooldown gates back-to-
-        // back swaps that arise when the player crosses the
-        // engagement-range boundary faster than the blend completes.
-        // Both BLEND RACE and STALE PREV tripwires fire if a new
-        // swap is staged while the previous blend is still active.
-        // Walking clip has authored hip motion which
-        // applyActorClipHipDelta consumes — feet stay planted while
-        // gameplay-driven velocity moves the actor.
+        // Pick the locomotion clip. Three states, in priority order:
+        //   walking   — speed above floor, any awareness
+        //   combat-idle — speed below floor, awareness >= Alerted
+        //   peaceful-idle — speed below floor, awareness < Alerted
+        // The combat-stance switch happens on the first sighting that
+        // escalates to Alerted (or higher). Visually communicates
+        // "the enemy registered you" without an explicit telegraph.
+        // Single threshold, no hysteresis/cooldown — the sampler
+        // handles rapid mid-blend swaps via the pose-snapshot path
+        // in applyLocoCrossfade. Walking clip has authored hip
+        // motion which applyActorClipHipDelta consumes — feet stay
+        // planted while gameplay-driven velocity moves the actor.
         const float speed = glm::length(a.velocity_xz);
-        const float now_swap = selva::wallClock();
-        const bool swap_cool = (a.last_loco_swap_time < 0.0f) ||
-                               ((now_swap - a.last_loco_swap_time) >= kEnemyLocoSwapCooldown);
-        bool desired_walk = a.walk_loco_active;
-        if (a.walk_loco_active && speed < kEnemyWalkExitSpeed)
-            desired_walk = false;
-        else if (!a.walk_loco_active && speed > kEnemyWalkEnterSpeed)
-            desired_walk = true;
-        if (desired_walk != a.walk_loco_active && swap_cool)
-        {
-            a.walk_loco_active = desired_walk;
-            a.last_loco_swap_time = now_swap;
-        }
-        const bool is_walking = a.walk_loco_active && walk != nullptr && walk->isLoaded();
-        const selva::anim::AnimationClip* loco_clip = is_walking ? walk : idle;
-        const char* loco_key = is_walking ? kEnemyWalkClipName : kEnemyIdleClipName;
+        const bool is_walking =
+            (speed > kEnemyWalkSpeedFloor) && walk != nullptr && walk->isLoaded();
+        const bool engaged = a.perception.awareness >= Awareness::Alerted;
+        const selva::anim::AnimationClip* idle_clip = engaged ? combat_idle : peaceful_idle;
+        const char* idle_key = engaged ? kEnemyCombatIdleClipName : kEnemyPeacefulIdleClipName;
+        const selva::anim::AnimationClip* loco_clip = is_walking ? walk : idle_clip;
+        const char* loco_key = is_walking ? kEnemyWalkClipName : idle_key;
         if (loco_clip != nullptr && loco_clip->isLoaded())
             a.sampler.update(*loco_clip, dt, /*blend_seconds=*/0.20f, /*loops=*/true, loco_key);
         applyActorClipHipDelta(a);
