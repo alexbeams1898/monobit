@@ -95,7 +95,8 @@ static void renderLocomotionSection(selva::tuning::Tunables& tun)
 {
     if (!ImGui::CollapsingHeader("Locomotion", ImGuiTreeNodeFlags_DefaultOpen))
         return;
-    tunedSlider("Turn rate (rad/s)", &tun.turn_rate, 1.0f, 30.0f, 0.5f, "%.1f");
+    tunedSlider("Turn rate min (rad/s)", &tun.turn_rate_min, 1.0f, 30.0f, 0.5f, "%.1f");
+    tunedSlider("Turn rate max (rad/s)", &tun.turn_rate_max, 1.0f, 40.0f, 0.5f, "%.1f");
 }
 
 static void renderMouseLookSection(selva::tuning::Tunables& tun)
@@ -215,8 +216,10 @@ static void renderAiPerceptionSection(selva::tuning::Tunables& tun)
     tunedSlider("Alerted decay (s)", &tun.ai_alerted_decay_seconds, 0.5f, 20.0f, 0.5f, "%.1f");
     tunedSlider("Combat engage range (m)", &tun.ai_combat_engage_range_meters, 0.5f, 15.0f, 0.25f,
                 "%.2f");
-    tunedSlider("Combat disengage (s)", &tun.ai_combat_disengage_seconds, 1.0f, 30.0f, 0.5f,
+    tunedSlider("Combat leash range (m)", &tun.ai_combat_leash_range_meters, 1.0f, 100.0f, 1.0f,
                 "%.1f");
+    tunedSlider("Combat disengage (s)", &tun.ai_combat_disengage_seconds, 0.1f, 30.0f, 0.1f,
+                "%.2f");
     ImGui::Separator();
     ImGui::TextUnformatted("Decision tick (Sprint 2)");
     tunedSlider("Decision tick rate (Hz)", &tun.ai_decision_tick_hz, 1.0f, 60.0f, 1.0f, "%.0f");
@@ -226,6 +229,8 @@ static void renderAiPerceptionSection(selva::tuning::Tunables& tun)
     ImGui::Separator();
     ImGui::TextUnformatted("Locomotion (Sprint 4a)");
     tunedSlider("Turn rate (rad/s)", &tun.ai_turn_rate_radians_per_sec, 0.5f, 20.0f, 0.25f, "%.2f");
+    tunedSlider("Action freshness (s)", &tun.ai_action_freshness_seconds, 0.05f, 3.0f, 0.05f,
+                "%.2f");
     ImGui::Checkbox("Log AI decisions to combat-debug.log", &tun.debug_ai_decision_log);
 }
 

@@ -49,11 +49,15 @@ void to_json(nlohmann::json& j, const EnemyAction& a)
          {"range_max", a.range_max},
          {"cooldown_seconds", a.cooldown_seconds},
          {"weight", a.weight},
+         {"raw_damage", a.raw_damage},
          {"poise_damage", a.poise_damage},
          {"blend_in_seconds", a.blend_in_seconds},
          {"blend_out_seconds", a.blend_out_seconds},
          {"freeze_last", a.freeze_last},
-         {"min_awareness", awarenessString(a.min_awareness)}};
+         {"min_awareness", awarenessString(a.min_awareness)},
+         {"hitbox_joint", a.hitbox_joint},
+         {"hitbox_radius", a.hitbox_radius},
+         {"hitbox_tip_offset_z", a.hitbox_tip_offset_z}};
 }
 
 void from_json(const nlohmann::json& j, EnemyAction& a)
@@ -64,11 +68,15 @@ void from_json(const nlohmann::json& j, EnemyAction& a)
     a.range_max = j.value("range_max", 0.0f);
     a.cooldown_seconds = j.value("cooldown_seconds", 0.0f);
     a.weight = j.value("weight", 1.0f);
+    a.raw_damage = j.value("raw_damage", 0);
     a.poise_damage = j.value("poise_damage", 0);
     a.blend_in_seconds = j.value("blend_in_seconds", 0.10f);
     a.blend_out_seconds = j.value("blend_out_seconds", 0.20f);
     a.freeze_last = j.value("freeze_last", false);
     a.min_awareness = parseAwareness(j.value("min_awareness", std::string("Combat")));
+    a.hitbox_joint = j.value("hitbox_joint", std::string{});
+    a.hitbox_radius = j.value("hitbox_radius", 0.18f);
+    a.hitbox_tip_offset_z = j.value("hitbox_tip_offset_z", 0.0f);
 }
 
 void to_json(nlohmann::json& j, const EnemyArchetype& a)

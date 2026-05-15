@@ -32,11 +32,20 @@ struct EnemyAction
     float range_max = 0.0f; // 0 = no upper limit
     float cooldown_seconds = 0.0f;
     float weight = 1.0f;
+    int raw_damage = 0;
     int poise_damage = 0;
     float blend_in_seconds = 0.10f;
     float blend_out_seconds = 0.20f;
     bool freeze_last = false;
     Awareness min_awareness = Awareness::Combat;
+    // Hitbox geometry — mirrors the player's WeaponAttack schema.
+    // Empty hitbox_joint = action plays its clip but spawns no
+    // hitbox (e.g. a roar, wind-up taunt). Common case: joint is
+    // set, swing fires a hitbox; LeafPickAction calls
+    // selva::combat::spawnAttackHitbox.
+    std::string hitbox_joint;
+    float hitbox_radius = 0.18f;
+    float hitbox_tip_offset_z = 0.0f;
 };
 
 // One enemy archetype = a list of actions + perception overrides.

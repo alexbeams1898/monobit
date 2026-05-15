@@ -126,6 +126,23 @@ class IfAwarenessAtLeast : public Node
     Awareness min_;
 };
 
+// Leaf — pick a legal action from the actor's archetype, fire its
+// clip via playOneShot, set the cooldown. "Legal" = in range
+// (range_min..range_max), off cooldown, awareness >= min_awareness,
+// AND no one-shot already playing (don't interrupt the swing
+// mid-animation). Weighted-random within the legal set using
+// actor.rng. Returns Success on fire, Failure if no legal action.
+//
+// This is the Souls-feel core: range bands + cooldowns + weighted
+// choice produce 90% of perceived intelligence without per-enemy
+// code. Adding a new action = one JSON entry; adding a new enemy =
+// one JSON file.
+class LeafPickAction : public Node
+{
+  public:
+    NodeResult tick(Actor& actor, const selva::tuning::Tunables& tun) override;
+};
+
 // Tree wrapper — owns the root and exposes a single tick() entry
 // point. Trees are stateless and shareable across actors (state lives
 // on Actor); a single instance of each tree is built once at startup.
@@ -166,17 +183,15 @@ BehaviorTreeRegistry& behaviorTrees();
 //
 //   Selector (root)
 //   ├── Sequence [IfAwarenessAtLeast(Combat),
-//   │            Selector [ /* commit 2: LeafPickAction here */
+//   │            Selector [ LeafPickAction,
 //   │                       LeafMoveToTarget ]]
 //   ├── Sequence [IfAwarenessAtLeast(Alerted), LeafMoveToTarget]
 //   └── LeafIdle
 //
-// Sprint 4b commit 1: no action firing yet. The Combat branch falls
-// through to LeafMoveToTarget — matches Alerted's locomotion so
-// Combat enemies follow the player out of melee instead of standing
-// still. Commit 2 inserts LeafPickAction (swing if in melee +
-// cooldown ready) ahead of LeafMoveToTarget in the Combat-branch's
-// inner Selector.
+// Combat branch's inner Selector means: try LeafPickAction first
+// (fire a legal action if one is ready); if no action is legal
+// (out of range, all on cooldown, or one-shot already in flight),
+// fall through to LeafMoveToTarget (close the gap / maintain range).
 void initBehaviorTrees();
 
 } // namespace selva::gameplay

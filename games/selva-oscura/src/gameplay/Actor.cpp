@@ -3,6 +3,9 @@
 #include "Tunables.h"
 #include "anim/AnimationClip.h"
 #include "anim/SkeletalAssets.h"
+#include "anim/SkeletalMesh.h"
+#include "combat/ActorVolumes.h"
+#include "combat/HitVolumes.h"
 
 #include <algorithm>
 #include <cmath>
@@ -81,6 +84,41 @@ void applyActorClipHipDelta(Actor& actor, float hip_delta_scale)
     const glm::vec3 hip_world(-cy * hip_local.x - sy * hip_local.z, 0.0f,
                               sy * hip_local.x - cy * hip_local.z);
     actor.pos += hip_world * hip_delta_scale;
+}
+
+void updateActiveAttackHitbox(Actor& actor)
+{
+    if (actor.active_attack_hitbox_id == 0 || actor.active_attack_joint_idx < 0)
+        return;
+    selva::combat::Hitbox* hb = selva::combat::findHitbox(actor.active_attack_hitbox_id);
+    if (hb == nullptr)
+    {
+        // Lifetime elapsed — tickHitboxes erased it. Clear our handle.
+        actor.active_attack_hitbox_id = 0;
+        actor.active_attack_joint_idx = -1;
+        actor.active_attack_tip_offset_z = 0.0f;
+        return;
+    }
+    // Re-anchor the capsule to the joint's current world pose so the
+    // swept hit-detection sweeps from prev_shape (last frame) to
+    // shape (this frame), covering the swing arc. Without this the
+    // capsule sits frozen at the spawn-frame pose (a windup with the
+    // hand at the hip), and the swing visually contacts the player
+    // while the volume sits behind the attacker — visible as "AI
+    // punches into the player but no damage."
+    const float foot_offset_y = selva::anim::playerMesh().foot_offset_y;
+    const glm::mat4 model_mat =
+        selva::combat::buildActorModelMatrix(actor.pos, actor.yaw, foot_offset_y);
+    const glm::vec3 anchor_world = glm::vec3(
+        model_mat * glm::vec4(actor.sampler.jointWorldPos(actor.active_attack_joint_idx), 1.0f));
+    const glm::vec3 tip_world =
+        (actor.active_attack_tip_offset_z != 0.0f)
+            ? anchor_world +
+                  glm::vec3(model_mat *
+                            glm::vec4(0.0f, 0.0f, actor.active_attack_tip_offset_z, 0.0f))
+            : anchor_world;
+    hb->shape.p0 = anchor_world;
+    hb->shape.p1 = tip_world;
 }
 
 // ---- Pool, accessors, and tick ----

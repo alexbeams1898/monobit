@@ -102,18 +102,40 @@ single most important architectural choice. It means:
 ### Awareness state machine
 
 ```
-Unaware    ─[saw player]──────────────►  Suspicious
-Suspicious ─[N confirmed sightings]───►  Alerted
-Suspicious ─[no sighting for Ts]──────►  Unaware
-Alerted    ─[in range + visible]──────►  Combat
-Alerted    ─[no contact for Ta]───────►  Suspicious
-Combat     ─[no contact for Tc]───────►  Alerted
+Unaware    ─[saw player]──────────────────►  Suspicious
+Suspicious ─[N confirmed sightings]───────►  Alerted
+Suspicious ─[no sighting for Ts]──────────►  Unaware
+Alerted    ─[in engage_range + visible]───►  Combat
+Alerted    ─[no contact for Ta]───────────►  Suspicious
+Combat     ─[outside leash_range for Tc]──►  Alerted
 ```
 
 Four levels. Each transition has a tunable threshold. The
 **Suspicious → Alerted gating** is what gives Souls enemies their
 "double-take" feel: they notice you, hesitate for a few frames,
 then commit. Without it, every enemy snap-aggros on first sight.
+
+**Combat retention is distance-based, not vision-based.** Once an
+enemy enters Combat (via vision OR getting hit OR any future
+trigger), they "remember" the player exists and track the player's
+world position every frame regardless of LOS. Combat decays back
+to Alerted only when the player has been continuously outside
+`combat_leash_range` for `combat_disengage_seconds`. This matches
+Souls / Elden Ring convention — the leash is what determines
+disengage, not vision. Vision-based retention has a critical
+failure mode (player runs around behind the enemy, breaks LOS, the
+enemy forgets they exist) that the leash model avoids by design.
+
+While in Combat, `last_known_player_pos` is overwritten every
+frame with the player's actual position. This is what makes
+"the enemy follows you around walls" work in Souls and is the
+reason an enemy that was knocked-down stays engaged with the
+player after recovery.
+
+The vision cone is **engagement-only** (Unaware → Suspicious →
+Alerted → Combat). After Combat, it serves as a freshness gate
+for the action picker (don't swing at stale data; see Sprint 4
+*Behavior tree*) but doesn't drive state retention.
 
 ### Vision model
 
@@ -142,17 +164,19 @@ behavior that Sekiro stealth relies on.
 struct PerceptionState
 {
     Awareness awareness;                  // 4-state enum
-    float     last_seen_time;             // wallclock
-    glm::vec3 last_known_player_pos;      // for investigate behavior
-    float     awareness_entered_time;     // drives decay timers
+    float     last_seen_time;             // wallclock — vision-only
+    glm::vec3 last_known_player_pos;      // overwritten in Combat
+    float     awareness_entered_time;     // drives Suspicious/Alerted decay
     int       suspicious_sighting_count;  // gates Suspicious→Alerted
+    float     outside_leash_since;        // Combat→Alerted hysteresis
 };
 ```
 
-Consumers (Sprint 4 onward):
+Consumers:
 - Behavior tree branches on `awareness`.
-- LeafSearch reads `last_known_player_pos` when contact is lost.
-- Locomotion intent reads `last_known_player_pos` to face / approach.
+- LeafMoveToTarget reads `last_known_player_pos` to face / approach.
+- LeafPickAction's freshness gate reads `last_seen_time` — actions
+  only fire when vision is fresh, regardless of awareness state.
 
 ## Scheduler (Sprint 2 — shipped)
 
@@ -289,6 +313,49 @@ that one frame.
   interior spaces.
 - **Per-enemy bespoke code.** The architecture is data-driven on
   purpose. Adding an enemy is a JSON file, not a C++ patch.
+
+## Deferred work — known-shape, waiting on content/systems
+
+Items the architecture supports cleanly but that are deferred until
+their consumers (a level, a second archetype, a boss, etc.) exist.
+None of these are bandaids on the current model; they're real
+extensions whose value is zero today and load-bearing later.
+
+- **LOS-aware tracking.** Combat-aware enemies pathfind around walls
+  to reach the player when LOS is broken. Requires occlusion ray-
+  casting against world colliders AND a real pathfinder (A* / nav
+  mesh). The selva is open clearings only; tree push-out gets us
+  90% of the way. Lands when interior areas (gate of Hell, Limbo
+  proper) ship.
+
+- **Hearing channel.** Sprint sounds, swing sounds, dodge-land
+  sounds wake nearby enemies. `PerceptionState.last_heard_time`
+  field is reserved. A few hours of work. Lands when stealth
+  gameplay matters (Sprint 7+) — building it today would be
+  schema-without-consumer.
+
+- **Per-archetype leash override.** Same pattern as the existing
+  `vision_fov_degrees` / `vision_range_meters` `std::optional<float>`
+  override on `EnemyArchetype`. Adds `combat_leash_range_meters`.
+  ~15 lines of code. Lands when a second archetype with different
+  leash semantics ships (Cerberus would want shorter, a boss would
+  want longer).
+
+- **Return-to-spawn.** When the player out-leashes, the enemy walks
+  back toward `spawn_pos` and resumes its patrol. New BT leaf
+  `LeafReturnToSpawn`. Pure additive — no perception or scheduler
+  change. Lands when first proper patrol-spawn-point gameplay
+  ships; in the dev hub there's no visible difference.
+
+- **Faction-attack aggro.** Currently `playEnemyHitReact` aggros on
+  any hit but only the player attacks today. Extends naturally to
+  ally NPCs / faction conflict. ~5 lines once the second faction
+  exists.
+
+- **Phase-driven HFSM.** Different BTs for boss phases (1, 2, rage,
+  etc.). The `BehaviorTreeRegistry` already supports multiple trees;
+  the HFSM is a thin wrapper around `actor.archetype->tree_id` that
+  swaps at runtime. Lands with the first boss — the three beasts.
 
 ## Per-circle considerations
 

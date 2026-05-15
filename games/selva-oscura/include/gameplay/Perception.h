@@ -24,7 +24,18 @@ struct Actor;
 //   Suspicious -> Unaware    : no sighting for `suspicion_decay_seconds`
 //   Alerted    -> Combat     : within `combat_engage_range` of player
 //   Alerted    -> Suspicious : no contact for `alerted_decay_seconds`
-//   Combat     -> Alerted    : no contact for `combat_disengage_seconds`
+//   Combat     -> Alerted    : continuously outside leash range for
+//                              `combat_disengage_seconds`
+//
+// Combat retention is DISTANCE-BASED, not vision-based. Souls
+// convention: once an enemy is engaged with you, they remember you
+// exist regardless of LOS — the cone determines initial engagement,
+// the leash determines retention. While in Combat,
+// last_known_player_pos is updated every frame from the actual
+// player position; the enemy "knows" where you are even when not
+// looking at you. They just can't *swing* at stale data — the
+// LeafPickAction freshness gate ensures attacks fire only when
+// vision is fresh.
 //
 // The Suspicious -> Alerted gating is what gives Souls enemies their
 // "double-take" feel: the enemy notices the player, hesitates, then
@@ -58,6 +69,14 @@ struct PerceptionState
     // `confirmed_sightings_to_alert` -> escalate to Alerted. Reset on
     // every Unaware<->Suspicious edge.
     int suspicious_sighting_count = 0;
+
+    // Wallclock time the player first stepped outside leash range
+    // while this actor was in Combat awareness. -1 = currently inside
+    // leash (or not in Combat). Drives the Combat -> Alerted decay:
+    // disengage fires only after the player has been continuously
+    // outside leash for `ai_combat_disengage_seconds`. Hysteresis on
+    // the leash boundary prevents flicker.
+    float outside_leash_since = -1.0f;
 };
 
 // Update `actor.perception` from the world's current state. Reads the

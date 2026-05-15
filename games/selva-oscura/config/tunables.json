@@ -1,6 +1,7 @@
 {
   "time_scale": 1.0,
-  "turn_rate": 9.0,
+  "turn_rate_min": 9.0,
+  "turn_rate_max": 25.0,
   "wasd_debounce_seconds": 0.10,
   "walk_speed": 1.6,
   "run_speed": 4.5,
@@ -50,11 +51,13 @@
   "ai_confirmed_sightings_to_alert": 2,
   "ai_alerted_decay_seconds": 4.0,
   "ai_combat_engage_range_meters": 5.0,
-  "ai_combat_disengage_seconds": 6.0,
+  "ai_combat_leash_range_meters": 25.0,
+  "ai_combat_disengage_seconds": 1.0,
   "debug_ai_perception": false,
   "ai_decision_tick_hz": 10.0,
   "ai_decision_tick_combat_hz_multiplier": 1.5,
   "debug_ai_tick_log": false,
   "ai_turn_rate_radians_per_sec": 6.0,
-  "debug_ai_decision_log": false
+  "debug_ai_decision_log": false,
+  "ai_action_freshness_seconds": 0.5
 }

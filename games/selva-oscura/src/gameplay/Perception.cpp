@@ -5,6 +5,7 @@
 #include "combat/CombatLog.h"
 #include "gameplay/Actor.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace selva::gameplay
@@ -43,6 +44,11 @@ void setAwareness(PerceptionState& p, Awareness next, float now)
     // any edge that leaves or enters Suspicious from another state.
     if (next == Awareness::Suspicious || prev == Awareness::Suspicious)
         p.suspicious_sighting_count = 0;
+    // outside_leash_since only meaningful inside Combat. Reset on
+    // any edge that leaves Combat so the next Combat entry starts
+    // fresh (no stale timestamp from a prior engagement).
+    if (prev == Awareness::Combat)
+        p.outside_leash_since = -1.0f;
     selva::combat::combatLog("[perception] %s -> %s at t=%.3f\n", awarenessName(prev),
                              awarenessName(next), now);
 }
@@ -71,10 +77,74 @@ bool targetInVisionCone(const glm::vec3& actor_pos, float actor_yaw, const glm::
     return dot >= half_cos;
 }
 
+// Advance the awareness state machine. Inputs: current perception
+// state, whether the player was seen this tick, squared distance to
+// player. Extracted from tickPerception so the per-state switch
+// fits within the lizard CCN budget. Pure state transitions — does
+// not modify last_seen_time or last_known_player_pos.
+void advanceAwareness(PerceptionState& p, bool saw_now, float dist_to_player_sq, float now,
+                      const selva::tuning::Tunables& tun)
+{
+    const float engage_sq = tun.ai_combat_engage_range_meters * tun.ai_combat_engage_range_meters;
+    // since_contact uses max(last_seen, awareness_entered) so each
+    // state's decay clock starts from when it was entered, not from
+    // an ancient absolute timestamp. Prevents chain-collapse after
+    // knockdown.
+    const float since_contact = now - std::max(p.last_seen_time, p.awareness_entered_time);
+    switch (p.awareness)
+    {
+    case Awareness::Unaware:
+        if (saw_now)
+        {
+            setAwareness(p, Awareness::Suspicious, now);
+            p.suspicious_sighting_count = 1;
+        }
+        break;
+    case Awareness::Suspicious:
+        if (saw_now)
+        {
+            ++p.suspicious_sighting_count;
+            if (p.suspicious_sighting_count >= tun.ai_confirmed_sightings_to_alert)
+                setAwareness(p, Awareness::Alerted, now);
+        }
+        else if (since_contact >= tun.ai_suspicion_decay_seconds || p.last_seen_time < 0.0f)
+        {
+            setAwareness(p, Awareness::Unaware, now);
+        }
+        break;
+    case Awareness::Alerted:
+        if (dist_to_player_sq <= engage_sq && saw_now)
+            setAwareness(p, Awareness::Combat, now);
+        else if (since_contact >= tun.ai_alerted_decay_seconds)
+            setAwareness(p, Awareness::Suspicious, now);
+        break;
+    case Awareness::Combat:
+    {
+        // Souls-style leash: Combat retention is distance-based, not
+        // vision-based. outside_leash_since timestamps the moment
+        // the player first crossed out of leash; the disengage
+        // timer counts continuous outside-leash duration only.
+        const float leash_sq = tun.ai_combat_leash_range_meters * tun.ai_combat_leash_range_meters;
+        const bool outside_leash = dist_to_player_sq > leash_sq;
+        if (outside_leash)
+        {
+            if (p.outside_leash_since < 0.0f)
+                p.outside_leash_since = now;
+            if ((now - p.outside_leash_since) >= tun.ai_combat_disengage_seconds)
+                setAwareness(p, Awareness::Alerted, now);
+        }
+        else
+        {
+            p.outside_leash_since = -1.0f;
+        }
+        break;
+    }
+    }
+}
+
 } // namespace
 
-void tickPerception(Actor& actor, const Actor& player, float /*dt*/,
-                    const selva::tuning::Tunables& tun)
+void tickPerception(Actor& actor, const Actor& player, float dt, const selva::tuning::Tunables& tun)
 {
     PerceptionState& p = actor.perception;
     const float now = selva::wallClock();
@@ -87,57 +157,39 @@ void tickPerception(Actor& actor, const Actor& player, float /*dt*/,
         p.last_seen_time = now;
         p.last_known_player_pos = player.pos;
     }
+    // Combat retention: once engaged, the actor "knows" where the
+    // player is and tracks position continuously regardless of LOS.
+    // Souls convention — getting around behind a Combat-aware enemy
+    // doesn't make them forget you exist, it just means they can't
+    // *swing* at you (the LeafPickAction freshness gate handles
+    // that) until they turn around and re-see. Without this update,
+    // last_known_player_pos stays stale and LeafMoveToTarget walks
+    // to where the player WAS, not where they are.
+    if (p.awareness == Awareness::Combat)
+        p.last_known_player_pos = player.pos;
 
-    // Step 2: distance check (needed for Alerted -> Combat).
-    const glm::vec3 to_player_xz(player.pos.x - actor.pos.x, 0.0f, player.pos.z - actor.pos.z);
-    const float dist_to_player_sq =
-        to_player_xz.x * to_player_xz.x + to_player_xz.z * to_player_xz.z;
-    const float engage_sq = tun.ai_combat_engage_range_meters * tun.ai_combat_engage_range_meters;
-
-    // Step 3: state transitions. Order matters: handle escalations
-    // first (so a single tick can climb multiple levels — e.g. snap
-    // into Combat from Unaware on a sighting in close range), then
-    // decays.
-    switch (p.awareness)
+    // While knocked down or dead, freeze the DECAY CLOCK (awareness
+    // state stays put) by advancing awareness_entered_time with dt.
+    // Without this, an actor face-down in the dirt would have their
+    // Combat decay timer expire mid-fall and chain-collapse the
+    // awareness ladder during recovery.
+    //
+    // Deliberately DON'T shift last_seen_time — that's a fact about
+    // perception, and vision genuinely failed during knockdown. The
+    // freshness gate in LeafPickAction reads last_seen_time directly
+    // and uses staleness to force "investigate" behavior after
+    // recovery. Shifting both clocks together would conflate them
+    // and reintroduce the "swing in pre-knockdown direction" bug.
+    if (actor.is_knocked_down || actor.is_dead)
     {
-    case Awareness::Unaware:
-        if (saw_now)
-        {
-            setAwareness(p, Awareness::Suspicious, now);
-            p.suspicious_sighting_count = 1;
-        }
-        break;
-
-    case Awareness::Suspicious:
-        if (saw_now)
-        {
-            ++p.suspicious_sighting_count;
-            if (p.suspicious_sighting_count >= tun.ai_confirmed_sightings_to_alert)
-                setAwareness(p, Awareness::Alerted, now);
-        }
-        else if ((now - p.last_seen_time) >= tun.ai_suspicion_decay_seconds ||
-                 p.last_seen_time < 0.0f)
-        {
-            setAwareness(p, Awareness::Unaware, now);
-        }
-        break;
-
-    case Awareness::Alerted:
-        if (dist_to_player_sq <= engage_sq && saw_now)
-        {
-            setAwareness(p, Awareness::Combat, now);
-        }
-        else if ((now - p.last_seen_time) >= tun.ai_alerted_decay_seconds)
-        {
-            setAwareness(p, Awareness::Suspicious, now);
-        }
-        break;
-
-    case Awareness::Combat:
-        if ((now - p.last_seen_time) >= tun.ai_combat_disengage_seconds)
-            setAwareness(p, Awareness::Alerted, now);
-        break;
+        p.awareness_entered_time += dt;
+        return;
     }
+
+    const float dx = player.pos.x - actor.pos.x;
+    const float dz = player.pos.z - actor.pos.z;
+    const float dist_to_player_sq = dx * dx + dz * dz;
+    advanceAwareness(p, saw_now, dist_to_player_sq, now, tun);
 }
 
 } // namespace selva::gameplay

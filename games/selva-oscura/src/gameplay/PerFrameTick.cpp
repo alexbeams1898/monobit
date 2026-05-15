@@ -128,10 +128,6 @@ static float sOneShotHipDeltaScale = 1.0f;
 // the weapon hand for a sword (with hitbox_tip_offset_z extending
 // the capsule along the blade). The C++ side never picks a joint
 // itself; the attack data is the single source of truth.
-static std::uint32_t sActiveAttackHitboxId = 0;
-static int sActiveAttackJointIdx = -1;
-static float sActiveAttackTipOffsetZ = 0.0f;
-
 // Per-frame WASD prev-state for edge logging. The actual movement
 // computation reads SDL_GetKeyboardState live; these only exist so
 // the diagnostic trace can mark down → up → down events with
@@ -619,36 +615,25 @@ static bool fireClipForHand(selva::combat::HandSide hand, const char* clip_name,
         const int joint_idx = (joint_name != nullptr) ? sSampler.findJoint(joint_name) : -1;
         if (joint_idx >= 0)
         {
-            const float effective_dur = (clip->duration() - start_seconds) / rate;
-            const float hitbox_lifetime = std::max(0.10f, effective_dur * 0.55f);
-            const glm::mat4 player_model = selva::combat::buildActorModelMatrix(
-                sPlayer.pos, sPlayer.yaw, sPlayerMesh.foot_offset_y);
-            const glm::vec3 anchor_world =
-                glm::vec3(player_model * glm::vec4(sSampler.jointWorldPos(joint_idx), 1.0f));
-            // Weapon hitboxes extend along the joint's forward axis.
-            // For a fist (tip_offset_z = 0) this collapses to a
-            // sphere at the joint. For a sword we'd add ~0.8m along
-            // the hand's forward to span hilt -> tip.
-            const glm::vec3 tip_world =
-                (hitbox_tip_offset_z != 0.0f)
-                    ? anchor_world +
-                          glm::vec3(player_model * glm::vec4(0.0f, 0.0f, hitbox_tip_offset_z, 0.0f))
-                    : anchor_world;
-            selva::combat::Hitbox proto;
-            proto.shape.p0 = anchor_world;
-            proto.shape.p1 = tip_world;
-            proto.shape.radius = hitbox_radius;
-            proto.attacker = selva::combat::OwnerRef{selva::combat::OwnerKind::Player, 0};
-            proto.attacker_faction = sPlayer.faction;
-            proto.raw_damage = selva::gameplay::computeAttackDamage(
+            selva::combat::AttackHitboxSpawnParams sp;
+            sp.actor = &sPlayer;
+            sp.attacker = selva::combat::OwnerRef{selva::combat::OwnerKind::Player, 0};
+            sp.attacker_faction = sPlayer.faction;
+            sp.raw_damage = selva::gameplay::computeAttackDamage(
                 sPlayer.stats, sPlayer.body.unarmed_damage, 0.5f, 0.5f);
-            proto.poise_damage = resolveAttackPoiseDamage(atk);
-            proto.remaining_seconds = hitbox_lifetime;
+            sp.poise_damage = resolveAttackPoiseDamage(atk);
+            sp.joint_name = joint_name;
+            sp.hitbox_radius = hitbox_radius;
+            sp.hitbox_tip_offset_z = hitbox_tip_offset_z;
+            sp.clip_duration_seconds = clip->duration();
+            sp.clip_start_seconds = start_seconds;
+            sp.playback_rate = rate;
+            sp.mesh_foot_offset_y = sPlayerMesh.foot_offset_y;
             selva::combat::resetHitMemo();
-            const std::uint32_t id = selva::combat::spawnHitbox(proto);
-            sActiveAttackHitboxId = id;
-            sActiveAttackJointIdx = joint_idx;
-            sActiveAttackTipOffsetZ = hitbox_tip_offset_z;
+            selva::combat::spawnAttackHitbox(sp);
+            // active_attack_* fields on sPlayer are written by
+            // spawnAttackHitbox so updateActiveAttackHitbox can
+            // re-anchor the volume each frame as the hand swings.
         }
     }
     return true;
@@ -981,19 +966,27 @@ static void tickPlayerVelocity(const glm::vec3& moveIntent, bool movement_locked
         sPlayer.velocity_xz += (delta / delta_mag) * max_step;
 }
 
-// Smooth-turn the player's yaw toward the move-intent direction at
-// `turn_rate` per frame. No-op when movement is locked or intent is
-// zero. Yaw stays gameplay-driven; translation is read from the
-// sampler's hip delta after this.
-static void tickPlayerYaw(const glm::vec3& moveIntent, bool movement_locked, float turn_rate,
-                          float dt)
+// Smooth-turn the player's yaw toward the move-intent direction.
+// The rate is a piecewise lerp between `turn_rate_min` (small
+// deltas) and `turn_rate_max` (180° flips) based on |delta|/π.
+// A 30° course correction stays smooth; a 180° turn snaps fast
+// enough that "press W then S" feels responsive in combat.
+// No-op when movement is locked or intent is zero. Yaw stays
+// gameplay-driven; translation reads the sampler's hip delta after.
+static void tickPlayerYaw(const glm::vec3& moveIntent, bool movement_locked, float turn_rate_min,
+                          float turn_rate_max, float dt)
 {
     if (movement_locked || glm::length(moveIntent) <= 0.0001f)
         return;
     const glm::vec3 dir = glm::normalize(moveIntent);
     const float targetYaw = yawFromGroundDir(dir);
     float delta = wrapAngleSigned(targetYaw - sPlayer.yaw);
-    const float maxStep = turn_rate * dt;
+    constexpr float kPi = 3.1415927f;
+    // |delta|/π is 0 for a tiny correction and 1 for a 180° flip.
+    // Lerp the rate so reversals snap and small turns stay smooth.
+    const float t = std::min(1.0f, std::abs(delta) / kPi);
+    const float rate = turn_rate_min + (turn_rate_max - turn_rate_min) * t;
+    const float maxStep = rate * dt;
     if (delta > maxStep)
         delta = maxStep;
     else if (delta < -maxStep)
@@ -2002,8 +1995,11 @@ static void applyHitEvent(const selva::combat::HitEvent& ev, float now)
         const bool crit = (ev.region == selva::combat::HurtRegion::Head);
         const glm::vec3 number_origin(ev.world_pos.x, e.pos.y + 2.0f, ev.world_pos.z);
         selva::combat::spawnDamageNumber(number_origin, dmg_applied, crit);
+        // Attacker pos is the player for player-faction hits. When
+        // enemy-on-enemy comes online (e.g. friendly fire on factions
+        // that hate their own kind), resolve from ev.attacker.kind.
         selva::gameplay::playEnemyHitReact(ev.target.index, dmg_applied, ev.poise_damage,
-                                           ev.world_normal);
+                                           ev.world_normal, sPlayer.pos);
         selva::combat::combatLog("[hit] enemy[%d] region=%d dmg=%d hp=%d/%d\n", ev.target.index,
                                  static_cast<int>(ev.region), dmg_applied, e.hp.current, e.hp.max);
         return;
@@ -2019,6 +2015,41 @@ static void applyHitEvent(const selva::combat::HitEvent& ev, float now)
         selva::combat::combatLog("[hit] player region=%d dmg=%d hp=%d/%d\n",
                                  static_cast<int>(ev.region), dmg_applied, sPlayer.hp.current,
                                  sPlayer.hp.max);
+        // Player hit-react. Don't interrupt the player's own swing —
+        // that would feel awful; you'd lose committed offense to a
+        // free enemy poke. Souls convention: hit-react fires only
+        // when not already animating something heavier. Pick clip
+        // by damage tier, same logic the enemy uses.
+        if (!sSampler.isOneShotActive())
+        {
+            const auto& tun = selva::tuning::current();
+            const char* clip_name = nullptr;
+            float blend_in = 0.06f;
+            float blend_out = 0.15f;
+            if (static_cast<float>(dmg_applied) >= tun.hit_react_heavy_threshold)
+            {
+                clip_name = "hit_react_heavy";
+                blend_in = 0.08f;
+                blend_out = 0.20f;
+            }
+            else if (static_cast<float>(dmg_applied) >= tun.hit_react_medium_threshold)
+            {
+                clip_name = "hit_react_medium";
+            }
+            else
+            {
+                clip_name = "flinch_front"; // a light hit; directional pick deferred for player
+            }
+            const auto* clip = sClips.get(clip_name);
+            if (clip != nullptr && clip->isLoaded())
+            {
+                selva::anim::PoseSampler::OneShotOptions opts;
+                opts.clip_key = clip_name;
+                sSampler.playOneShot(*clip, blend_in, blend_out,
+                                     selva::anim::PoseSampler::BodyMask::Full,
+                                     /*start_time_seconds=*/0.0f, /*playback_rate=*/1.0f, opts);
+            }
+        }
     }
 }
 
@@ -2136,7 +2167,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     const bool velocity_locked =
         (sDodgeActive && !past_cancel) || (one_shot_active && !past_cancel && !in_blend_out);
     tickPlayerVelocity(moveIntent, velocity_locked, tun, dt);
-    tickPlayerYaw(moveIntent, movement_locked, tun.turn_rate, dt);
+    tickPlayerYaw(moveIntent, movement_locked, tun.turn_rate_min, tun.turn_rate_max, dt);
 
     // Pick + advance the sampler. The locomotion SM picks the loco
     // clip; F1 debug-clip preview overrides it. sampler.update runs
@@ -2205,34 +2236,13 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         }
     }
 
-    // Update the active attack hitbox to track the swinging hand.
-    // findHitbox returns nullptr once the hitbox has expired (its
-    // remaining_seconds <= 0 and tickHitboxes erased it); we just
-    // clear our handle in that case.
-    if (sActiveAttackHitboxId != 0 && sActiveAttackJointIdx >= 0)
-    {
-        selva::combat::Hitbox* hb = selva::combat::findHitbox(sActiveAttackHitboxId);
-        if (hb == nullptr)
-        {
-            sActiveAttackHitboxId = 0;
-            sActiveAttackJointIdx = -1;
-            sActiveAttackTipOffsetZ = 0.0f;
-        }
-        else
-        {
-            const glm::mat4 player_model = selva::combat::buildActorModelMatrix(
-                sPlayer.pos, sPlayer.yaw, sPlayerMesh.foot_offset_y);
-            const glm::vec3 anchor_world = glm::vec3(
-                player_model * glm::vec4(sSampler.jointWorldPos(sActiveAttackJointIdx), 1.0f));
-            const glm::vec3 tip_world =
-                (sActiveAttackTipOffsetZ != 0.0f)
-                    ? anchor_world + glm::vec3(player_model *
-                                               glm::vec4(0.0f, 0.0f, sActiveAttackTipOffsetZ, 0.0f))
-                    : anchor_world;
-            hb->shape.p0 = anchor_world;
-            hb->shape.p1 = tip_world;
-        }
-    }
+    // Re-anchor every actor's active attack hitbox to the joint
+    // driving it. Shared PC+NPC path — both attackers' hitboxes
+    // track their swing arc this way. See Actor.cpp::
+    // updateActiveAttackHitbox for the geometry; spawnAttackHitbox
+    // records the joint_idx on the actor when the swing fires.
+    for (auto& a : selva::gameplay::actors())
+        selva::gameplay::updateActiveAttackHitbox(a);
 
     selva::combat::tickHitboxes(dt);
     const auto& hit_events = selva::combat::detectHits();

@@ -212,25 +212,43 @@ void tickEnemyDecision(Actor& a, const selva::tuning::Tunables& tun)
 // ramp + turn-rate convention so PC/NPC locomotion behaves the same.
 void tickEnemyLocomotion(Actor& a, float dt, const selva::tuning::Tunables& tun)
 {
-    // Velocity ramp toward intent.
-    const glm::vec2 delta = a.intent_xz - a.velocity_xz;
-    const float delta_mag = glm::length(delta);
-    if (delta_mag > 0.0001f)
+    // One-shot lock — mirrors the PC's movement_locked / velocity_locked
+    // gates in tickPlayerVelocity. While a one-shot is in flight, the
+    // clip-hip path (applyActorClipHipDelta at the end of tickEnemies)
+    // owns translation; this function must not also integrate velocity*dt
+    // into pos, or the two translation sources compound and the actor
+    // slides during the swing. Zeroing velocity here also ensures that
+    // when the one-shot ends the actor starts from a clean state — the
+    // next intent (from the next decision tick) ramps velocity up from
+    // zero rather than carrying stale pre-swing momentum into the
+    // recovery.
+    if (a.sampler.isOneShotActive())
     {
-        const float current_speed = glm::length(a.velocity_xz);
-        const float target_speed = glm::length(a.intent_xz);
-        const float rate =
-            (target_speed >= current_speed) ? tun.locomotion_accel : tun.locomotion_decel;
-        const float max_step = rate * dt;
-        if (delta_mag <= max_step)
-            a.velocity_xz = a.intent_xz;
-        else
-            a.velocity_xz += (delta / delta_mag) * max_step;
+        a.velocity_xz = glm::vec2(0.0f);
     }
+    else
+    {
+        // Velocity ramp toward intent.
+        const glm::vec2 delta = a.intent_xz - a.velocity_xz;
+        const float delta_mag = glm::length(delta);
+        if (delta_mag > 0.0001f)
+        {
+            const float current_speed = glm::length(a.velocity_xz);
+            const float target_speed = glm::length(a.intent_xz);
+            const float rate =
+                (target_speed >= current_speed) ? tun.locomotion_accel : tun.locomotion_decel;
+            const float max_step = rate * dt;
+            if (delta_mag <= max_step)
+                a.velocity_xz = a.intent_xz;
+            else
+                a.velocity_xz += (delta / delta_mag) * max_step;
+        }
 
-    // Integrate XZ position from velocity.
-    a.pos.x += a.velocity_xz.x * dt;
-    a.pos.z += a.velocity_xz.y * dt;
+        // Integrate XZ position from velocity. Only when not in a
+        // one-shot — clip-hip drives translation during the swing.
+        a.pos.x += a.velocity_xz.x * dt;
+        a.pos.z += a.velocity_xz.y * dt;
+    }
 
     // Turn yaw toward turn_intent_yaw, shortest-path. Wrap delta into
     // [-pi, pi] so a 350° desired yaw doesn't take the long way around.
@@ -472,7 +490,22 @@ std::vector<Actor*> enemies()
     return out;
 }
 
-void playEnemyHitReact(int index, int damage, int poise_damage, const glm::vec3& world_normal)
+int enemyIndex(const Actor& actor)
+{
+    int seen = 0;
+    for (const auto& a : actors())
+    {
+        if (a.controller == Controller::Input)
+            continue;
+        if (&a == &actor)
+            return seen;
+        ++seen;
+    }
+    return -1;
+}
+
+void playEnemyHitReact(int index, int damage, int poise_damage, const glm::vec3& world_normal,
+                       const glm::vec3& attacker_pos)
 {
     Actor* target = resolveEnemyByIndex(index);
     if (target == nullptr)
@@ -481,6 +514,18 @@ void playEnemyHitReact(int index, int damage, int poise_damage, const glm::vec3&
     // Hit immunity: dead / mid-knockdown actors don't react.
     if (e.is_dead || e.is_knocked_down)
         return;
+
+    // Force-aggro on hit. Vision-based perception alone misses the
+    // case where the player attacks from behind / out of cone. Souls
+    // rule: getting hit always engages. Set awareness to Combat and
+    // seed last_known_player_pos so the BT's LeafMoveToTarget and
+    // LeafIdleFace face the right direction immediately. Combat
+    // decay (ai_combat_disengage_seconds of no contact) handles
+    // gradual de-aggro normally.
+    e.perception.awareness = Awareness::Combat;
+    e.perception.last_seen_time = selva::wallClock();
+    e.perception.last_known_player_pos = attacker_pos;
+    e.perception.suspicious_sighting_count = 0;
 
     // Death takes priority over any other reaction.
     if (e.hp.current <= 0)

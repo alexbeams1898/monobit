@@ -262,6 +262,23 @@ struct Actor
     // spawn from std::random_device — different actors of the same
     // archetype roll independently so they don't synchronize.
     std::mt19937 rng;
+
+    // --- Active attack hitbox tracking ---
+    // When the actor fires a swing, this stores the spawned hitbox's
+    // id + the bone joint that drives its world position + the tip
+    // offset along the joint's forward axis. Per-frame, the
+    // tickActiveAttackHitboxes pass re-anchors the hitbox to the
+    // joint's current pose so the volume tracks the swinging hand.
+    // 0 = no active hitbox. The hitbox-update path is the SAME for
+    // PC and NPC — both attacking actors get the same treatment.
+    // Without this tracking, the hitbox is frozen at the spawn-
+    // frame joint position (usually a windup pose with the hand at
+    // the hip) — visually the swing extends through space but the
+    // hitbox sits behind the attacker. Bug surfaced when AI enemies
+    // started attacking and didn't land their hits.
+    std::uint32_t active_attack_hitbox_id = 0;
+    int active_attack_joint_idx = -1;
+    float active_attack_tip_offset_z = 0.0f;
 };
 
 // Apply the actor's sampler-consumed hip-XZ delta to its world
@@ -273,6 +290,17 @@ struct Actor
 // clip travel is scaled to 55% so the same clip covers shorter
 // distance at the same playback rate).
 void applyActorClipHipDelta(Actor& actor, float hip_delta_scale = 1.0f);
+
+// Reparent the actor's active attack hitbox (if any) to the bone
+// joint that drives it, using the current pose. Called per-frame
+// for every actor that might have an active swing. Without this
+// the hitbox stays frozen at its spawn-frame position (the windup
+// pose, hand at hip) and the swing visually arcs through space
+// without the volume tracking — visible as "AI punches don't
+// connect." Works identically for PC and NPC; takes the place of
+// the historical sActiveAttackHitboxId/...joint-idx file-statics
+// that the PC's PerFrameTick maintained.
+void updateActiveAttackHitbox(Actor& actor);
 
 // The actor pool. Player is conventionally at index 0; enemies
 // follow at 1..N. Future systems (companions, NPCs, projectiles)

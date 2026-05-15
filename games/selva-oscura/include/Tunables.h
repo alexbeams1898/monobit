@@ -40,7 +40,13 @@ struct Tunables
     float time_scale = 1.0f;
 
     // ---- Locomotion (velocity-driven) ----
-    float turn_rate = 9.0f; // player rotation toward move dir, rad/s
+    // Player yaw rotation rates (rad/s) toward move-intent direction.
+    // The actual rate per frame is lerped between min and max by
+    // |yaw_delta|/π so small course corrections stay smooth and
+    // big reversals (W → S, pressing the opposite direction) snap
+    // fast enough to feel responsive in combat.
+    float turn_rate_min = 9.0f;  // small course corrections
+    float turn_rate_max = 25.0f; // 180° reversal — snaps
 
     // Legacy SM debounce — UNUSED in the velocity-driven model
     // (velocity itself is naturally smoothed by accel/decel). Kept
@@ -275,8 +281,26 @@ struct Tunables
     // Distance at which an Alerted actor commits to Combat.
     float ai_combat_engage_range_meters = 5.0f;
 
-    // How long Combat decays back to Alerted if no further contact.
-    float ai_combat_disengage_seconds = 6.0f;
+    // Souls-style leash: once an actor enters Combat awareness, they
+    // stay in Combat as long as the player is within this distance.
+    // Combat is retained REGARDLESS of vision — the enemy "knows" the
+    // player is engaged with them and tracks position continuously.
+    // Decays back to Alerted only when the player exceeds this range.
+    // This is what makes a knocked-down enemy stay engaged after
+    // recovery: their cone may not see the player (e.g. player ran
+    // behind them), but the enemy still knows the player exists and
+    // walks toward them. Vision drives initial engagement (Unaware →
+    // Suspicious → Alerted); leash drives retention. Generous default
+    // matches Souls convention — the player has to genuinely flee
+    // to lose aggro.
+    float ai_combat_leash_range_meters = 25.0f;
+
+    // How long Combat decays back to Alerted if the player remains
+    // outside leash range. Acts as hysteresis on the leash boundary
+    // — without this, oscillating in and out of leash range would
+    // flicker the awareness state. Kept short so disengage feels
+    // responsive once the player has actually escaped.
+    float ai_combat_disengage_seconds = 1.0f;
 
     // F1-toggleable debug overlay: draw vision cone + awareness label
     // above each AI actor.
@@ -311,6 +335,20 @@ struct Tunables
     // with awareness, target pos, intent. Useful while iterating on
     // 4a behavior; off in normal play.
     bool debug_ai_decision_log = false;
+
+    // Action-fire freshness gate: how recently must the actor have
+    // SEEN the player to fire an attack (vs walk to investigate).
+    // Souls rule: don't punch into empty air when you've lost
+    // sight of the target. If perception's last_seen_time is older
+    // than this window, LeafPickAction returns Failure and the
+    // Selector falls through to LeafMoveToTarget — the actor walks
+    // toward last_known_player_pos, rotates as it walks, and its
+    // vision cone sweeps until it re-acquires. Surfaces most
+    // visibly after knockdown recovery: the actor stood face-down
+    // during the fall (cone in the dirt), woke up with stale
+    // last_known_player_pos, and would otherwise swing in the
+    // wrong direction.
+    float ai_action_freshness_seconds = 0.5f;
 
     // ---- Poise / knockdown formulas ----
     // Per-stat scaling for derived max poise. Linear for v1, mirrors
@@ -348,23 +386,23 @@ struct Tunables
 // default-initialized value, so older tunables.json files don't break when
 // new fields are added.
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
-    Tunables, time_scale, turn_rate, wasd_debounce_seconds, walk_speed, run_speed, locomotion_accel,
-    locomotion_decel, idle_to_walk_speed, walk_to_run_speed, mouse_sensitivity, pitch_min,
-    pitch_max, follow_distance, follow_height, fov_degrees, anim_blend_seconds,
-    combat_idle_grace_seconds, combat_entry_delay_seconds, combo_reset_grace_seconds,
-    combo_input_buffer_seconds, combo_chain_blend_seconds, first_strike_blend_seconds,
-    attack_playback_rate, cancel_open_velocity_fraction, perfect_accuracy_threshold,
-    roll_playback_rate, backstep_playback_rate, dodge_tap_window, dodge_steer_rate,
-    attack_lockout_extension_seconds, hp_per_vig, stamina_per_end, damage_floor,
+    Tunables, time_scale, turn_rate_min, turn_rate_max, wasd_debounce_seconds, walk_speed,
+    run_speed, locomotion_accel, locomotion_decel, idle_to_walk_speed, walk_to_run_speed,
+    mouse_sensitivity, pitch_min, pitch_max, follow_distance, follow_height, fov_degrees,
+    anim_blend_seconds, combat_idle_grace_seconds, combat_entry_delay_seconds,
+    combo_reset_grace_seconds, combo_input_buffer_seconds, combo_chain_blend_seconds,
+    first_strike_blend_seconds, attack_playback_rate, cancel_open_velocity_fraction,
+    perfect_accuracy_threshold, roll_playback_rate, backstep_playback_rate, dodge_tap_window,
+    dodge_steer_rate, attack_lockout_extension_seconds, hp_per_vig, stamina_per_end, damage_floor,
     hit_react_medium_threshold, hit_react_heavy_threshold, hit_react_cooldown_seconds,
     enemy_respawn_after_death_seconds, enemy_recovery_after_knockdown_seconds, poise_per_end,
     poise_per_str, poise_decay_window_seconds, knockdown_clip_start_seconds,
     knockdown_clip_end_seconds, getting_up_clip_start_seconds, getting_up_clip_end_seconds,
     ai_vision_fov_degrees, ai_vision_range_meters, ai_suspicion_decay_seconds,
     ai_confirmed_sightings_to_alert, ai_alerted_decay_seconds, ai_combat_engage_range_meters,
-    ai_combat_disengage_seconds, debug_ai_perception, ai_decision_tick_hz,
-    ai_decision_tick_combat_hz_multiplier, debug_ai_tick_log, ai_turn_rate_radians_per_sec,
-    debug_ai_decision_log);
+    ai_combat_leash_range_meters, ai_combat_disengage_seconds, debug_ai_perception,
+    ai_decision_tick_hz, ai_decision_tick_combat_hz_multiplier, debug_ai_tick_log,
+    ai_turn_rate_radians_per_sec, debug_ai_decision_log, ai_action_freshness_seconds);
 
 // Single global instance. Both gameplay code and the procedural driver
 // read from this; the ImGui panel edits it in place. Keep it global rather

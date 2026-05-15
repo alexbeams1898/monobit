@@ -115,4 +115,38 @@ std::uint32_t spawnHitbox(const Hitbox& proto);
 // shape each frame. Returns nullptr if expired/missing.
 Hitbox* findHitbox(std::uint32_t id);
 
+// Bundle of inputs to spawn an attack hitbox parented to a joint
+// on an actor. Used by both the PC's fireClipForHand and the NPC's
+// LeafPickAction — single source of truth for the geometry math
+// (joint world-space lookup, model matrix transform, swept tip
+// extension) and lifetime computation. Per the PC/NPC symmetry
+// rule (docs/design/pc-vs-npc.md) the spawn-side logic is one
+// function, not two parallel copies.
+struct AttackHitboxSpawnParams
+{
+    const selva::gameplay::Actor* actor = nullptr;
+    OwnerRef attacker;
+    selva::gameplay::Faction attacker_faction = selva::gameplay::Faction::Player;
+    int raw_damage = 0;
+    int poise_damage = 0;
+    // Hitbox geometry on the actor's skeleton.
+    const char* joint_name = nullptr;
+    float hitbox_radius = 0.18f;
+    float hitbox_tip_offset_z = 0.0f;
+    // Lifetime control: clip duration + per-actor playback rate
+    // determine the active window. Default 0.55x of the clip's
+    // wallclock duration past the start_seconds offset.
+    float clip_duration_seconds = 0.0f;
+    float clip_start_seconds = 0.0f;
+    float playback_rate = 1.0f;
+    float lifetime_fraction = 0.55f; // fraction of effective duration the hitbox is active
+    float mesh_foot_offset_y = 0.0f; // for buildActorModelMatrix
+};
+
+// Spawn an attack hitbox using the geometry math common to both
+// player and enemy attacks. Returns the spawned hitbox id (0 on
+// failure — joint not found, lifetime zero, etc.). Caller does not
+// need to update the hitbox per-frame; tickHitboxes ages it out.
+std::uint32_t spawnAttackHitbox(const AttackHitboxSpawnParams& p);
+
 } // namespace selva::combat
