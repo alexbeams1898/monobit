@@ -67,6 +67,38 @@ int computeAttackDamage(const Stats& attacker, float base, float str_scale, floa
     return static_cast<int>(total);
 }
 
+Actor* resolveLockTarget(const Actor& actor)
+{
+    const int idx = actor.lock_target_idx;
+    if (idx < 0)
+        return nullptr;
+    auto& pool = actors();
+    if (idx >= static_cast<int>(pool.size()))
+        return nullptr;
+    return &pool[idx];
+}
+
+const char* directionalLocoClip(const glm::vec3& fwd, const glm::vec3& right,
+                                const glm::vec3& intent, bool running)
+{
+    if (glm::length(intent) <= 0.0001f)
+        return nullptr;
+    const float fwd_dot = glm::dot(intent, fwd);
+    const float right_dot = glm::dot(intent, right);
+    // Any nonzero lateral input wins → strafe. Forward/back only on
+    // essentially pure W/S input.
+    const bool axis_is_forward = std::abs(right_dot) < 1e-3f;
+    if (axis_is_forward)
+    {
+        if (fwd_dot >= 0.0f)
+            return running ? "running" : "walking";
+        return running ? "running_backward" : "walking_backward";
+    }
+    if (right_dot >= 0.0f)
+        return running ? "strafe_running_right" : "strafe_walking_right";
+    return running ? "strafe_running_left" : "strafe_walking_left";
+}
+
 void applyActorClipHipDelta(Actor& actor, float hip_delta_scale)
 {
     // Contract from feedback_hip_delta_two_sides.md: PoseSampler

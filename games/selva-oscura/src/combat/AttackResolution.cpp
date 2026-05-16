@@ -175,14 +175,16 @@ void logTechniques(const char* class_id, const char* slot,
     }
 }
 
-// Auto-detect the block clip's start trim. Strips leading idle frames
-// off `unarmed_block` so the block-raise enters its active phase
-// quickly. Sword-and-shield blocks don't need this — their clips are
-// already trimmed.
+// Auto-detect the block clip's trim window. block_clip_start: drop
+// leading idle frames. block_clip_end: where the hands settle into
+// the peak-block pose (so a held block freezes there, not at the
+// clip's neutral end-pose).
 void resolveBlockClipStart(WeaponClass& cls, const selva::anim::ClipRegistry& clips,
                            const selva::anim::PoseSampler& sampler)
 {
-    if (cls.block_clip_start_seconds >= 0.0f)
+    const bool need_start = cls.block_clip_start_seconds < 0.0f;
+    const bool need_end = cls.block_clip_end_seconds < 0.0f;
+    if (!need_start && !need_end)
         return;
     const char* block_clip_name = (cls.id == "unarmed") ? "unarmed_block" : nullptr;
     if (block_clip_name == nullptr)
@@ -197,11 +199,22 @@ void resolveBlockClipStart(WeaponClass& cls, const selva::anim::ClipRegistry& cl
         joints.push_back(rh);
     if (lh >= 0)
         joints.push_back(lh);
-    const float motion_start = sampler.clipJointMotionStart(*bclip, joints);
-    cls.block_clip_start_seconds = std::clamp(motion_start - 0.05f, 0.0f, bclip->duration());
-    combatLog("[combat:resolve] %s block trim: motion_start=%.3fs -> "
-              "block_clip_start=%.3fs\n",
-              cls.id.c_str(), motion_start, cls.block_clip_start_seconds);
+    const float dur = bclip->duration();
+    if (need_start)
+    {
+        const float motion_start = sampler.clipJointMotionStart(*bclip, joints);
+        cls.block_clip_start_seconds = std::clamp(motion_start - 0.05f, 0.0f, dur);
+    }
+    if (need_end)
+    {
+        const float motion_end = sampler.clipJointMotionEnd(*bclip, joints);
+        cls.block_clip_end_seconds = std::clamp(motion_end, 0.0f, dur);
+    }
+    std::fprintf(stderr,
+                 "[combat:resolve] %s block trim: start=%.3fs end=%.3fs (clip duration=%.3fs)\n",
+                 cls.id.c_str(), cls.block_clip_start_seconds, cls.block_clip_end_seconds, dur);
+    combatLog("[combat:resolve] %s block trim: start=%.3fs end=%.3fs (clip duration=%.3fs)\n",
+              cls.id.c_str(), cls.block_clip_start_seconds, cls.block_clip_end_seconds, dur);
 }
 
 void resolveOneClass(WeaponClass& cls, const selva::anim::ClipRegistry& clips,

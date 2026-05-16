@@ -77,10 +77,13 @@ void setLocoLockoutUntil(float t);
 // capability for future reuse but Selva Oscura never opts in.
 // Lockout assignment is separate (caller knows the anchor —
 // chain.cancel_window_close_at vs dodge end vs wall clock).
+// `freeze_at_seconds` forwarded to OneShotOptions; consumed only
+// when profile.freeze_last is true (e.g. unarmed block freezing at
+// the peak-block pose). 0 for normal one-shots.
 void fireOneShotWithProfile(const selva::anim::AnimationClip& clip,
                             const TransitionProfile& profile, float start_seconds,
                             float playback_rate, selva::anim::PoseSampler& sampler,
-                            const char* clip_key = "");
+                            const char* clip_key = "", float freeze_at_seconds = 0.0f);
 
 // Apply a profile's lockout strategy. Called after chain code has
 // computed cancel_window_close_at for the just-fired attack.

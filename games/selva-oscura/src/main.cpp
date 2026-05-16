@@ -114,9 +114,14 @@ int main(int /*argc*/, char* /*argv*/[])
         // run after initSkeletalAssets.
         selva::gameplay::initPlayer();
 
-        // Phase-0 audit for root-motion refactor: dump per-clip hip
-        // path length so we know which clips ship with authored
-        // translation.
+        // Per-clip locomotion metadata: blend-in durations,
+        // translation_source declarations. Loaded before the audit
+        // so the audit can print each clip's declared source.
+        selva::anim::locomotionConfig().loadFromFile("config/locomotion.json");
+
+        // Dump per-clip hip path + authored speed + translation
+        // source. Catches "I added a clip but didn't declare a
+        // source" at startup.
         selva::anim::auditClipHipMotion();
 
         // Load enemy archetypes (action lists, perception overrides).
@@ -131,9 +136,6 @@ int main(int /*argc*/, char* /*argv*/[])
 
         selva::gameplay::initHubEnemies();
     }
-
-    // Per-clip locomotion blend-in durations.
-    selva::anim::locomotionConfig().loadFromFile("config/locomotion.json");
 
     // Combat data: weapon classes, weapons, equipment loaded via
     // combat/CombatData. Synthesizes "fists" for empty hand slots.

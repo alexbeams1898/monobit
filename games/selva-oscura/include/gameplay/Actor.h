@@ -191,6 +191,24 @@ struct Actor
     // controllers may add their own intent fields here.
     bool sprinting = false;
 
+    // Lock-on target index into actors() (Input controller only).
+    // -1 = unlocked; >=0 = combat mode: yaw snaps to target each frame,
+    // WASD becomes target-relative, camera derives from player↔target
+    // axis, idle picks unarmed_combat_idle, locomotion picks 1 of 4
+    // directional combat clips. Cleared by middle-mouse toggle, by
+    // sprint engaging, or when the target dies. Index-based (not
+    // pointer) so it survives push_back reallocations during enemy
+    // spawn — actors() is a std::vector and pointers into it are not
+    // stable across grow.
+    int lock_target_idx = -1;
+
+    // Circle-strafe direction for AI duel mode. 0 = no committed
+    // side (set on lock acquire to ±1 via actor.rng). +1 = strafe to
+    // the target's right (player's left); -1 = strafe to the target's
+    // left. Sticky for the duration of the engagement so the AI
+    // doesn't flip sides every frame. Player ignores this field.
+    int duel_strafe_dir = 0;
+
     // --- Combat reaction state ---
     // Wallclock time of last damage event. Drives in-world HP bar
     // visibility. -1 = never damaged.
@@ -290,6 +308,22 @@ struct Actor
 // clip travel is scaled to 55% so the same clip covers shorter
 // distance at the same playback rate).
 void applyActorClipHipDelta(Actor& actor, float hip_delta_scale = 1.0f);
+
+// Resolve `actor.lock_target_idx` to a pointer into actors(), or
+// nullptr if unlocked / index stale. Pool can reallocate on enemy
+// spawn so callers must re-resolve per-frame rather than caching.
+// Used by both PC (lock-on combat mode) and AI (engagement target).
+Actor* resolveLockTarget(const Actor& actor);
+
+// Choose a directional locomotion clip given a facing basis and
+// movement intent. Shared between PC (lock-on combat mode) and AI
+// (engagement strafe). Caller supplies the facing fwd / right
+// vectors (already-normalized XZ unit vectors) plus the world-frame
+// intent vector. `running` selects between walking and running
+// clip families. Returns nullptr if intent is effectively zero.
+// Strafe wins any nonzero lateral input — diagonals are strafes.
+const char* directionalLocoClip(const glm::vec3& fwd, const glm::vec3& right,
+                                const glm::vec3& intent, bool running);
 
 // Reparent the actor's active attack hitbox (if any) to the bone
 // joint that drives it, using the current pose. Called per-frame

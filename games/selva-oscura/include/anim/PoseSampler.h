@@ -192,6 +192,11 @@ struct PoseSampler
         // Hold the clip's last frame instead of auto-fading. Used
         // for held actions like the unarmed block.
         bool freeze_last = false;
+        // When freeze_last AND freeze_at_seconds > 0, clamp the
+        // clip's time at this value instead of duration. Pose
+        // freezes at a chosen mid-clip frame (the block-peak) rather
+        // than wherever the clip happens to end. Ignored otherwise.
+        float freeze_at_seconds = 0.0f;
         // Registry key for diagnostic logs (e.g. "jab"). Empty
         // string = falls back to ozz Animation::name() which is
         // always "mixamo.com" for Mixamo clips.

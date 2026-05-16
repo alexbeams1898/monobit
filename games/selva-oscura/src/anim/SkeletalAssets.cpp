@@ -108,17 +108,30 @@ void auditClipHipMotion()
         names.push_back(kv.first);
     std::sort(names.begin(), names.end());
 
-    std::fprintf(stderr,
-                 "[clip-audit] hip XZ path length per clip (full clip, not motion-end-clipped):\n");
-    std::fprintf(stderr, "  %-40s %8s %8s\n", "clip", "duration", "hip_path");
+    // Mirror the audit output to clip-audit.log so the data survives
+    // across runs without scraping stderr. stderr is still useful for
+    // build-time inspection in the IDE pane.
+    FILE* audit_log = std::fopen("clip-audit.log", "w");
+    auto write = [&](const char* fmt, auto... args)
+    {
+        std::fprintf(stderr, fmt, args...);
+        if (audit_log != nullptr)
+            std::fprintf(audit_log, fmt, args...);
+    };
+
+    write("[clip-audit] hip XZ path length per clip (full clip, not motion-end-clipped):\n");
+    write("  %-40s %8s %8s %15s %s\n", "clip", "duration", "hip_path", "authored_speed", "source");
+    const auto& cfg = locomotionConfig();
     for (const auto& name : names)
     {
         const auto* clip = sClips.get(name);
         if (clip == nullptr || !clip->isLoaded())
             continue;
         const auto scan = sSampler.clipHipPathLength(*clip, 60.0f, 0.0f);
-        std::fprintf(stderr, "  %-40s %7.2fs %7.3fm\n", name.c_str(), clip->duration(),
-                     scan.path_length);
+        const float dur = clip->duration();
+        const float measured_speed = (dur > 1e-3f) ? scan.path_length / dur : 0.0f;
+        write("  %-40s %7.2fs %7.3fm %12.3fm/s %s\n", name.c_str(), dur, scan.path_length,
+              measured_speed, translationSourceName(cfg.translationSource(name)));
     }
 
     static const char* kProfileClips[] = {
@@ -134,6 +147,12 @@ void auditClipHipMotion()
         "sword_and_shield_attack_2",
         "sword_and_shield_attack_3",
         "sword_and_shield_attack_4",
+        "combat_walk_forward",
+        "combat_walk_backward",
+        "combat_strafe_left",
+        "combat_strafe_right",
+        "walking",
+        "unarmed_block",
     };
     for (const char* nm : kProfileClips)
     {
@@ -141,9 +160,9 @@ void auditClipHipMotion()
         if (clip == nullptr || !clip->isLoaded())
             continue;
         const float dur = clip->duration();
-        std::fprintf(stderr, "[clip-profile] %s  dur=%.2fs  hip XZ trajectory:\n", nm, dur);
-        std::fprintf(stderr, "  %4s %5s %8s %8s %10s %12s\n", "t%", "t(s)", "hip_x", "hip_z",
-                     "step", "cumul_dist");
+        write("[clip-profile] %s  dur=%.2fs  hip XZ trajectory:\n", nm, dur);
+        write("  %4s %5s %8s %8s %10s %12s\n", "t%", "t(s)", "hip_x", "hip_z", "step",
+              "cumul_dist");
         glm::vec2 prev(0.0f);
         float cumul = 0.0f;
         for (int i = 0; i <= 10; ++i)
@@ -152,11 +171,13 @@ void auditClipHipMotion()
             const glm::vec2 hip = sSampler.sampleHipXZAt(*clip, t);
             const float step = (i == 0) ? 0.0f : glm::length(hip - prev);
             cumul += step;
-            std::fprintf(stderr, "  %3d%% %5.2f %8.3f %8.3f %10.3f %12.3f\n", i * 10, t, hip.x,
-                         hip.y, step, cumul);
+            write("  %3d%% %5.2f %8.3f %8.3f %10.3f %12.3f\n", i * 10, t, hip.x, hip.y, step,
+                  cumul);
             prev = hip;
         }
     }
+    if (audit_log != nullptr)
+        std::fclose(audit_log);
 }
 
 } // namespace selva::anim

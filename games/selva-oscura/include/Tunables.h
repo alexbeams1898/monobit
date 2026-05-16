@@ -54,6 +54,12 @@ struct Tunables
     // once the SM is fully deleted.
     float wasd_debounce_seconds = 0.10f;
 
+    // Global loco-track playback rate multiplier. Mirrors
+    // attack_playback_rate on the one-shot side. Per-clip JSON
+    // override available via LocomotionClipConfig::playback_rate
+    // (default 0 = use this global).
+    float loco_playback_rate = 1.0f;
+
     // Target walking speed (m/s) when WASD is held without sprint.
     // Calibrated to match the walking clip's authored hip travel so
     // the foot doesn't visibly skate (clip moves character N meters
@@ -386,10 +392,10 @@ struct Tunables
 // default-initialized value, so older tunables.json files don't break when
 // new fields are added.
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
-    Tunables, time_scale, turn_rate_min, turn_rate_max, wasd_debounce_seconds, walk_speed,
-    run_speed, locomotion_accel, locomotion_decel, idle_to_walk_speed, walk_to_run_speed,
-    mouse_sensitivity, pitch_min, pitch_max, follow_distance, follow_height, fov_degrees,
-    anim_blend_seconds, combat_idle_grace_seconds, combat_entry_delay_seconds,
+    Tunables, time_scale, turn_rate_min, turn_rate_max, wasd_debounce_seconds, loco_playback_rate,
+    walk_speed, run_speed, locomotion_accel, locomotion_decel, idle_to_walk_speed,
+    walk_to_run_speed, mouse_sensitivity, pitch_min, pitch_max, follow_distance, follow_height,
+    fov_degrees, anim_blend_seconds, combat_idle_grace_seconds, combat_entry_delay_seconds,
     combo_reset_grace_seconds, combo_input_buffer_seconds, combo_chain_blend_seconds,
     first_strike_blend_seconds, attack_playback_rate, cancel_open_velocity_fraction,
     perfect_accuracy_threshold, roll_playback_rate, backstep_playback_rate, dodge_tap_window,

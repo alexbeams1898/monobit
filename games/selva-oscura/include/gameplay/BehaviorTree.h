@@ -111,6 +111,18 @@ class LeafMoveToTarget : public Node
     NodeResult tick(Actor& actor, const selva::tuning::Tunables& tun) override;
 };
 
+// Leaf — circle-strafe the lock target. Succeeds when actor is
+// locked AND inside engage range (writes lateral intent_xz +
+// face-target yaw). Fails when not locked or outside engage range
+// — caller (Selector) falls through to LeafMoveToTarget to close
+// the gap. Strafe direction lives on actor.duel_strafe_dir, set
+// at lock-acquire time so each engagement commits to a side.
+class LeafCircleTarget : public Node
+{
+  public:
+    NodeResult tick(Actor& actor, const selva::tuning::Tunables& tun) override;
+};
+
 // Condition leaf — Succeeds if actor.perception.awareness >=
 // `min`. Fails otherwise. Composed with Sequence to gate sub-trees
 // on awareness level.
@@ -184,6 +196,7 @@ BehaviorTreeRegistry& behaviorTrees();
 //   Selector (root)
 //   ├── Sequence [IfAwarenessAtLeast(Combat),
 //   │            Selector [ LeafPickAction,
+//   │                       LeafCircleTarget,
 //   │                       LeafMoveToTarget ]]
 //   ├── Sequence [IfAwarenessAtLeast(Alerted), LeafMoveToTarget]
 //   └── LeafIdle

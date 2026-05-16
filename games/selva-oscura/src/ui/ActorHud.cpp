@@ -2,6 +2,10 @@
 
 #include "Tunables.h"
 #include "WallClock.h"
+#include "anim/PoseSampler.h"
+#include "anim/SkeletalAssets.h"
+#include "anim/SkeletalMesh.h"
+#include "combat/ActorVolumes.h"
 #include "combat/HitFeedback.h"
 #include "combat/HitVolumes.h"
 #include "gameplay/Enemies.h"
@@ -206,6 +210,11 @@ void drawEnemyHpBars(ImDrawList* overlay, const glm::mat4& view_proj,
 // up and fades out over its lifetime.
 void drawFloatingDamageNumbers(ImDrawList* overlay, const glm::mat4& view_proj);
 
+// Draw the lock-on reticle on the player's current target. Phase A
+// placeholder: 16×16 white square at chest-height. Phase B replaces
+// with an iconographic sprite.
+void drawLockOnReticle(ImDrawList* overlay, const glm::mat4& view_proj);
+
 void drawBar(ImDrawList* draw, float x, float y, float w, float h, float fill_fraction,
              ImU32 bg_color, ImU32 fg_color, ImU32 border_color, const char* label_text)
 {
@@ -251,6 +260,35 @@ void drawEnemyHpBars(ImDrawList* overlay, const glm::mat4& view_proj,
         drawBar(overlay, bx, by, kEnemyHpBarWidthPx, kEnemyHpBarHeightPx, fraction, bg, fg, bd,
                 nullptr);
     }
+}
+
+void drawLockOnReticle(ImDrawList* overlay, const glm::mat4& view_proj)
+{
+    const auto& p = selva::gameplay::player();
+    const int idx = p.lock_target_idx;
+    if (idx < 0)
+        return;
+    const auto& pool = selva::gameplay::actors();
+    if (idx >= static_cast<int>(pool.size()))
+        return;
+    const auto& target = pool[idx];
+    // Anchor to the chest BONE, not actor pos + Y. During dynamic
+    // poses (knockdown, getting up, hit reacts) the rig decouples
+    // from actor.pos — pos stays standing while the body drops to
+    // the floor. Same pattern as ActorVolumes (jointWorld helper).
+    const int chest_idx = target.sampler.findJoint("mixamorig:Spine2");
+    if (chest_idx < 0)
+        return;
+    const glm::mat4 model = selva::combat::buildActorModelMatrix(
+        target.pos, target.yaw, selva::anim::playerMesh().foot_offset_y);
+    const glm::vec4 world = model * glm::vec4(target.sampler.jointWorldPos(chest_idx), 1.0f);
+    glm::vec2 sp;
+    if (!selva::render::worldToScreen(view_proj, glm::vec3(world), sp))
+        return;
+    constexpr float kReticleHalfSize = 8.0f;
+    const ImU32 white = IM_COL32(255, 255, 255, 230);
+    overlay->AddRectFilled(ImVec2(sp.x - kReticleHalfSize, sp.y - kReticleHalfSize),
+                           ImVec2(sp.x + kReticleHalfSize, sp.y + kReticleHalfSize), white);
 }
 
 void drawFloatingDamageNumbers(ImDrawList* overlay, const glm::mat4& view_proj)
@@ -352,6 +390,7 @@ void renderActorHud()
     const auto list = selva::gameplay::enemies();
     drawEnemyHpBars(overlay, view_proj, list, now);
     drawFloatingDamageNumbers(overlay, view_proj);
+    drawLockOnReticle(overlay, view_proj);
 
     // Debug overlay: AI vision cones + awareness label per AI actor.
     // Toggled by F1 panel checkbox debug_ai_perception.

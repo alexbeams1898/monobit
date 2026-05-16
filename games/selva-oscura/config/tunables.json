@@ -3,6 +3,7 @@
   "turn_rate_min": 9.0,
   "turn_rate_max": 25.0,
   "wasd_debounce_seconds": 0.10,
+  "loco_playback_rate": 1.0,
   "walk_speed": 1.6,
   "run_speed": 4.5,
   "locomotion_accel": 18.0,

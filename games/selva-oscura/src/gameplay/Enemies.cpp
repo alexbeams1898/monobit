@@ -44,6 +44,9 @@ constexpr const char* kEnemyCombatIdleClipName = "unarmed_combat_idle";
 // clip instead. Same Mixamo walk the player uses; per-archetype
 // overrides when the bestiary expands.
 constexpr const char* kEnemyWalkClipName = "walking";
+constexpr const char* kEnemyWalkBackClipName = "walking_backward";
+constexpr const char* kEnemyStrafeLeftClipName = "strafe_walking_left";
+constexpr const char* kEnemyStrafeRightClipName = "strafe_walking_right";
 constexpr float kEnemyWalkSpeedFloor = 0.15f; // m/s; above = walk, below = idle
 constexpr const char* kFlinchFrontClipName = "flinch_front";
 constexpr const char* kFlinchBackClipName = "flinch_back";
@@ -417,6 +420,30 @@ void tickEnemies(float dt)
         // (not a stale snapshot from when they fell). Cheap; no side
         // effects beyond writing to actor.perception.
         tickPerception(a, pc, dt, tun);
+
+        // Lock-on follows perception. AI's lock_target_idx points at
+        // the player (idx 0) iff awareness is Combat AND target is
+        // alive. Idempotent — runs every tick, no edge detection.
+        // Symmetric with the player's lock_target_idx field; both
+        // resolve via selva::gameplay::resolveLockTarget(actor).
+        const bool should_lock =
+            a.perception.awareness == Awareness::Combat && !a.is_dead && !pc.is_dead;
+        if (should_lock && a.lock_target_idx != 0)
+        {
+            a.lock_target_idx = 0;
+            // Strafe side rolled once per engagement (sticky). When
+            // the AI does circle (player is strafing), it picks one
+            // side and stays committed instead of mirror-flipping.
+            a.duel_strafe_dir = (std::uniform_int_distribution<int>(0, 1)(a.rng) == 0) ? -1 : 1;
+            selva::combat::combatLog("[ai-lock] enemy acquired target (combat entry, strafe=%s)\n",
+                                     a.duel_strafe_dir > 0 ? "right" : "left");
+        }
+        else if (!should_lock && a.lock_target_idx >= 0)
+        {
+            a.lock_target_idx = -1;
+            a.duel_strafe_dir = 0;
+            selva::combat::combatLog("[ai-lock] enemy released target\n");
+        }
         // Death + knockdown lifecycles pass the actor's idle clip as
         // the loco-track target so the loco slot stays bound to a
         // real loco clip during the freeze_last one-shot. Awareness
@@ -473,6 +500,26 @@ void tickEnemies(float dt)
         const char* idle_key = engaged ? kEnemyCombatIdleClipName : kEnemyPeacefulIdleClipName;
         const selva::anim::AnimationClip* loco_clip = is_walking ? walk : idle_clip;
         const char* loco_key = is_walking ? kEnemyWalkClipName : idle_key;
+        // Directional pick when locked + moving. Facing basis from
+        // turn_intent_yaw (target facing) not actor.yaw — turn-rate
+        // lag would otherwise rotate the picker basis frame-to-frame
+        // and thrash. Shared with PC via directionalLocoClip().
+        if (is_walking && a.lock_target_idx >= 0)
+        {
+            const float yaw = a.turn_intent_yaw;
+            const glm::vec3 fwd(-std::sin(yaw), 0.0f, -std::cos(yaw));
+            const glm::vec3 right(-fwd.z, 0.0f, fwd.x);
+            const glm::vec3 intent3(a.intent_xz.x, 0.0f, a.intent_xz.y);
+            if (const char* k = directionalLocoClip(fwd, right, intent3, /*running=*/false);
+                k != nullptr)
+            {
+                if (const auto* c = selva::anim::clips().get(k); c != nullptr && c->isLoaded())
+                {
+                    loco_clip = c;
+                    loco_key = k;
+                }
+            }
+        }
         if (loco_clip != nullptr && loco_clip->isLoaded())
             a.sampler.update(*loco_clip, dt, /*blend_seconds=*/0.20f, /*loops=*/true, loco_key);
         applyActorClipHipDelta(a);

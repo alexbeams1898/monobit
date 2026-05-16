@@ -43,7 +43,19 @@ jobs:
           xargs clang-format --dry-run --Werror
 
   # -----------------------------------------------------------------------
-  # 2. BUILD + LINT  (clang-tidy runs during the build via CMake)
+  # 2. COMMENT DENSITY  — per-file ratio + project budget.
+  #    Initial threshold 30%; ratchet down as files get trimmed.
+  # -----------------------------------------------------------------------
+  comments:
+    name: Comment density
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run comment-density linter
+        run: python3 games/selva-oscura/scripts/check_comment_density.py
+
+  # -----------------------------------------------------------------------
+  # 3. BUILD + LINT  (clang-tidy runs during the build via CMake)
   #    Also compiles everything — catches compiler errors on every PR.
   # -----------------------------------------------------------------------
   build:

@@ -7,6 +7,12 @@
 # the first <bump>/selva-oscura/... merge advances it from there.
 project(SelvaOscura VERSION 0.0.0 LANGUAGES C CXX)
 
+# Python is used by the FBX → glb → ozz bake to glob the gltf2ozz
+# output regardless of its internal animation name. Required on MSYS2
+# already (GLAD uses it at configure time); this just exposes the
+# interpreter path for our custom commands.
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
 # Game-side library — animation drivers, future combat / movement systems.
 # Shared between the game executable and the test target. Keep it static;
 # selva-oscura is one exe today.
@@ -81,6 +87,13 @@ endif()
 # config/tunables.json and assets/characters/x_bot/X_Bot.glb at runtime.
 # ALL custom target (not POST_BUILD) so file edits are picked up even when
 # no .cpp changed; same pattern as prison-escape-game.
+#
+# Bake targets (selva-oscura-convert-attacks, selva-oscura-convert-xbot)
+# depend on this so they run AFTER sync. Without the order constraint,
+# Ninja races them: freshly-baked .ozz gets clobbered by the older
+# source-tree .ozz when sync runs second. Symptom: in-game animations
+# don't match the rebaked clips even though the bake intermediate is
+# correct.
 add_custom_target(selva-oscura-sync-config ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_CURRENT_SOURCE_DIR}/config
@@ -183,6 +196,8 @@ if(EXISTS ${xbot_fbx})
         VERBATIM
     )
     add_custom_target(selva-oscura-convert-xbot ALL DEPENDS ${xbot_ozz_files})
+    # Bake runs AFTER sync so freshly-baked skeleton.ozz isn't clobbered.
+    add_dependencies(selva-oscura-convert-xbot selva-oscura-sync-config)
 else()
     message(STATUS "selva-oscura: X_Bot.fbx not found; skipping FBX bake (using committed .glb + .ozz)")
 endif()
@@ -296,14 +311,15 @@ if(attack_fbx_files)
                 $<TARGET_FILE:gltf2ozz>
                 --file=${clip_glb}
                 --config_file=${retarget_config}
-            # 3. Move the resulting mixamo.com.ozz to its final name next
-            #    to X_Bot's skeleton.ozz. copy + leave-temp-in-place
-            #    rather than rename so re-running the command after a
-            #    manual delete works without stale-state errors.
-            COMMAND ${CMAKE_COMMAND} -E make_directory ${xbot_out_dir}
-            COMMAND ${CMAKE_COMMAND} -E copy
-                ${clip_temp_dir}/mixamo.com.ozz
-                ${clip_final_ozz}
+            # 3. Stage the gltf2ozz output into the final name.
+            #    gltf2ozz names output by the animation's internal name
+            #    (mixamo.com.ozz for Mixamo, Scene.ozz for Blender-
+            #    re-exports). stage_baked_ozz.py globs for whatever
+            #    .ozz exists and copies it — names aren't load-bearing.
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/scripts/stage_baked_ozz.py
+                --temp-dir ${clip_temp_dir}
+                --out ${clip_final_ozz}
             DEPENDS
                 ${fbx}
                 gltf2ozz
@@ -324,6 +340,9 @@ endif()
 # unresolved.
 if(attack_ozz_files)
     add_custom_target(selva-oscura-convert-attacks ALL DEPENDS ${attack_ozz_files})
+    # Bake runs AFTER sync so freshly-baked .ozz isn't clobbered by the
+    # source-tree's older .ozz (which copy_directory above re-deploys).
+    add_dependencies(selva-oscura-convert-attacks selva-oscura-sync-config)
 endif()
 
 # Pre-baked .ozz files whose source FBXs are no longer in the tree
@@ -350,6 +369,8 @@ if(EXISTS ${archive_dir})
     endforeach()
     if(archive_copied_files)
         add_custom_target(selva-oscura-stage-archive ALL DEPENDS ${archive_copied_files})
+        # Archived clips also stage AFTER sync, same anti-clobber reason.
+        add_dependencies(selva-oscura-stage-archive selva-oscura-sync-config)
     endif()
 endif()
 

@@ -206,16 +206,20 @@ struct WeaponClass
     WeaponGripAnimSet two_handed;
     WeaponAttach attach;
     // Trim leading idle frames off the block clip. >= 0 = use as-is;
-    // < 0 (default) = auto-detect via hand-velocity scan, same as
-    // chain-link motion-start.
+    // < 0 (default) = auto-detect via hand-velocity scan.
     float block_clip_start_seconds = -1.0f;
+    // Freeze the held-block one-shot at this clip-time instead of
+    // running to duration — captures the peak-block pose for a
+    // mid-clip hold. >= 0 = use as-is; < 0 (default) = auto-detect
+    // via hand-velocity-settle scan (clipJointMotionEnd).
+    float block_clip_end_seconds = -1.0f;
     // Per-class attack playback rate. <= 0 = fall back to the global
-    // tunables.attack_playback_rate. Lets unarmed punches (snappier)
-    // and sword swings (heavier) keep their authored pace independently.
+    // tunables.attack_playback_rate.
     float attack_playback_rate = 0.0f;
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(WeaponClass, id, one_handed, two_handed, attach,
-                                                block_clip_start_seconds, attack_playback_rate);
+                                                block_clip_start_seconds, block_clip_end_seconds,
+                                                attack_playback_rate);
 
 // Registry of all WeaponClasses, keyed by `id`. Populated at startup by
 // scanning config/weapon_classes/*.json. Pointers handed out from get()

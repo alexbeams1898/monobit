@@ -75,6 +75,7 @@ static selva::anim::Skeleton& sSkeleton = selva::anim::skeleton();
 static selva::anim::SkeletalMesh& sPlayerMesh = selva::anim::playerMesh();
 static selva::anim::ClipRegistry& sClips = selva::anim::clips();
 static selva::anim::LocomotionConfig& sLocomotionConfig = selva::anim::locomotionConfig();
+using selva::gameplay::Actor;
 using selva::gameplay::PlayerState;
 #define sPlayer (selva::gameplay::player())
 #define sSampler (selva::gameplay::player().sampler)
@@ -109,6 +110,7 @@ static selva::combat::PlayerEquipment& sEquipment = selva::combat::equipment();
 static bool sPrevF1 = false;
 static bool sPrevLMB = false;
 static bool sPrevRMB = false;
+static bool sPrevMMB = false;
 static bool sPrevR = false;
 static bool sPrevGripToggle = false;
 static bool sPrevJump = false;
@@ -235,6 +237,12 @@ static float sDodgePlaybackRate = 1.0f;
 // the off-hand item's "purpose" is defense, and that's what RMB does
 // for it.
 static bool sBlockingActive = false;
+// Clip names for the active block lifecycle (raise → idle loop →
+// lower). Set when a block fires; consumed by the loco-override (idle)
+// and the release path (lower). nullptr lower = no release one-shot
+// (buckler path doesn't have one yet).
+static const char* sActiveBlockIdleClip = nullptr;
+static const char* sActiveBlockLowerClip = nullptr;
 
 // Input → attack mapping helper. Combines the equipped weapon, its class,
 // In-game tuning panel toggle. Off by default; F1 flips it.
@@ -275,6 +283,21 @@ static std::string sDebugClipName;
 // which loco clip is playing. This static IS the registry key
 // ("unarmed_combat_idle", "walking", "running", etc.).
 static std::string sLastLocoClipName = "standard_idle";
+// Asymmetric commit time for loco-clip swaps. A cross-family swap
+// (forward/back ↔ strafe) takes kLocoCrossFamilyCommitSeconds of
+// sustained intent before firing — keyboard digital input naturally
+// produces 100-300ms "I touched A while holding W" gestures that
+// the player doesn't intend as strafe commits. Same-family swaps
+// (walking → running, strafe_left → strafe_right) and idle
+// transitions fire immediately because they're either deliberate
+// (sprint key pressed) or responsive (stop moving, start moving).
+//
+// sPendingLocoClip records the picker's choice when it differs
+// from the active clip AND requires commit. sPendingLocoStart is
+// the wallclock when that pending choice was first seen.
+static std::string sPendingLocoClip;
+static float sPendingLocoStart = 0.0f;
+constexpr float kLocoCrossFamilyCommitSeconds = 0.25f;
 static bool sDebugLoop = true;
 
 struct DebugBoneSample
@@ -362,10 +385,11 @@ using selva::combat::TransitionProfile;
 namespace profiles = selva::combat::profiles;
 static void fireOneShotWithProfile(const selva::anim::AnimationClip& clip,
                                    const TransitionProfile& profile, float start_seconds,
-                                   float playback_rate, const char* clip_key = "")
+                                   float playback_rate, const char* clip_key = "",
+                                   float freeze_at_seconds = 0.0f)
 {
     selva::combat::fireOneShotWithProfile(clip, profile, start_seconds, playback_rate, sSampler,
-                                          clip_key);
+                                          clip_key, freeze_at_seconds);
 }
 
 // Window size + onWindowResize callback owned by render/Camera.{h,cpp}.
@@ -396,13 +420,18 @@ static void resolveAttackCancelOpenTimes()
 
 // Drain raw mouse motion this frame and apply it to camera yaw + pitch
 // (clamped). Suppressed while the tuning panel is open so mouse drags
-// on sliders don't aim the camera.
+// on sliders don't aim the camera. While lock-on is engaged: mouse
+// input is ignored entirely; cameraYaw is driven from the player↔
+// target axis (handled separately in tickLockOnCamera), pitch holds
+// at its pre-lock value.
 static void tickMouseLook(const selva::tuning::Tunables& tun)
 {
     int mdx = 0;
     int mdy = 0;
     SDL_GetRelativeMouseState(&mdx, &mdy);
     if (sShowTuningPanel)
+        return;
+    if (sPlayer.lock_target_idx >= 0)
         return;
     float yaw = selva::render::cameraYaw();
     float pitch = selva::render::cameraPitch();
@@ -919,6 +948,119 @@ static bool tryFirePostDodgeAttack(bool shift_held, float combo_input_buffer_sec
 // from the velocity ramp or from an actual intent change.
 static float sLastTargetSpeed = 0.0f;
 
+// The locomotion decision for this frame, made ONCE at the top of
+// selvaPerFrame before tickPlayerVelocity / applyPerFrameTranslation.
+// Both consult it so the picker isn't called multiple times per
+// frame (which would be safe today since it's pure, but invites
+// drift if state ever creeps into the picker). The bilateral
+// translation-source contract (extract-side in sampler, apply-side
+// in gameplay) reads `source` from here so both halves agree on
+// the SAME picked clip's declaration. See
+// feedback_data_driven_over_convention.md.
+struct LocomotionFrameDecision
+{
+    std::string clip_name; // empty = no override; speed-based free-mode pick will fill this in
+    selva::anim::TranslationSource source = selva::anim::TranslationSource::Velocity;
+};
+static LocomotionFrameDecision sLocoDecision;
+
+// Forward decls: these live near the picker but are called from
+// tickPlayerVelocity / applyPerFrameTranslation via sLocoDecision.
+static const char* selectLockedLocomotionClip(const glm::vec3& moveIntent);
+static const char* selectLocomotionClipFromSpeed(float target_speed, bool is_armed,
+                                                 const selva::tuning::Tunables& tun);
+
+// Run the top-of-frame locomotion decision: layers 1-4 from the
+// picker chain (debug override, locked combat directional, speed-
+// based free-mode, held-block). Layer 5 (loco-freeze) is applied
+// later inside selectLocomotionClip because it depends on sampler
+// state that can change later in the frame. Translation source
+// comes from the active clip's locomotion.json declaration.
+//
+// Also pins combat_stance = CombatReady while locked so the
+// speed-based idle branch returns unarmed_combat_idle (not
+// standard_idle) when the player is locked-but-standing-still.
+// The pin is re-asserted every frame; tickCombatStance later
+// honors it via its lock-aware moving-clear gate.
+static void runLocomotionDecision(const glm::vec3& moveIntent, const selva::tuning::Tunables& tun)
+{
+    sLocoDecision = LocomotionFrameDecision{};
+
+    if (sPlayer.lock_target_idx >= 0)
+    {
+        sLocomotionSM.combat_stance = selva::gameplay::CombatStance::CombatReady;
+        sLocomotionSM.stance_active_until = selva::wallClock() + tun.combat_idle_grace_seconds;
+    }
+
+    if (!sDebugClipName.empty())
+    {
+        sLocoDecision.clip_name = sDebugClipName;
+    }
+    else if (const char* locked = selectLockedLocomotionClip(moveIntent); locked != nullptr)
+    {
+        sLocoDecision.clip_name = locked;
+    }
+    else
+    {
+        // Free-mode speed-based pick. Substitute intent-magnitude →
+        // intended target speed (walk or run) so the decision is
+        // pre-velocity (tickPlayerVelocity hasn't run yet this
+        // frame). sLastTargetSpeed from the previous frame is too
+        // stale for a fresh-press edge.
+        const float intent_mag = glm::length(moveIntent);
+        const float would_be_target = (intent_mag <= 0.0001f) ? 0.0f
+                                      : sPlayer.sprinting     ? tun.run_speed
+                                                              : tun.walk_speed;
+        const bool is_armed = !isUnarmed(sEquipment);
+        sLocoDecision.clip_name = selectLocomotionClipFromSpeed(would_be_target, is_armed, tun);
+    }
+
+    if (sBlockingActive && sActiveBlockIdleClip != nullptr)
+        sLocoDecision.clip_name = sActiveBlockIdleClip;
+
+    // Cross-family commit: a swap from forward/back ↔ strafe requires
+    // sustained intent (the player has to keep that input held for
+    // kLocoCrossFamilyCommitSeconds) before the clip swaps. Same-
+    // family changes (walking↔running, strafe-left↔strafe-right,
+    // walking↔walking_backward) and any transition involving an
+    // idle clip fire immediately.
+    auto family = [](const std::string& name) -> int
+    {
+        if (name == "walking" || name == "running" || name == "walking_backward" ||
+            name == "running_backward")
+            return 1; // fwd/back
+        if (name == "strafe_walking_left" || name == "strafe_walking_right" ||
+            name == "strafe_running_left" || name == "strafe_running_right")
+            return 2; // strafe
+        return 0;     // idle / other
+    };
+    const int desired_fam = family(sLocoDecision.clip_name);
+    const int current_fam = family(sLastLocoClipName);
+    const bool cross_family =
+        desired_fam == 1 && current_fam == 2 || desired_fam == 2 && current_fam == 1;
+    if (cross_family && sLocoDecision.clip_name != sLastLocoClipName)
+    {
+        if (sPendingLocoClip != sLocoDecision.clip_name)
+        {
+            sPendingLocoClip = sLocoDecision.clip_name;
+            sPendingLocoStart = selva::wallClock();
+        }
+        if ((selva::wallClock() - sPendingLocoStart) < kLocoCrossFamilyCommitSeconds)
+            sLocoDecision.clip_name = sLastLocoClipName;
+        else
+            sPendingLocoClip.clear();
+    }
+    else
+    {
+        // Either same-family swap, idle transition, or no swap. Clear
+        // any pending cross-family intent — the player either
+        // committed to it (we landed on it) or moved on.
+        sPendingLocoClip.clear();
+    }
+
+    sLocoDecision.source = sLocomotionConfig.translationSource(sLocoDecision.clip_name);
+}
+
 static void tickPlayerVelocity(const glm::vec3& moveIntent, bool movement_locked,
                                const selva::tuning::Tunables& tun, float dt)
 {
@@ -930,13 +1072,21 @@ static void tickPlayerVelocity(const glm::vec3& moveIntent, bool movement_locked
     // not intent.
     const float intent_mag = glm::length(moveIntent);
     glm::vec2 target_velocity(0.0f);
-    if (intent_mag > 0.0001f)
+    // RootMotion clips drive world translation themselves via
+    // consumedHipDelta(); velocity must stay zero or it stacks with
+    // the clip's hip motion (the treadmill bug from earlier in the
+    // session). Only Velocity-source clips get a velocity ramp.
+    const bool use_velocity = (sLocoDecision.source == selva::anim::TranslationSource::Velocity);
+    if (intent_mag > 0.0001f && use_velocity)
     {
         const glm::vec3 dir = moveIntent / intent_mag;
         const float target_speed = sPlayer.sprinting ? tun.run_speed : tun.walk_speed;
         target_velocity = glm::vec2(dir.x, dir.z) * target_speed;
     }
-    sLastTargetSpeed = glm::length(target_velocity);
+    // sLastTargetSpeed feeds the idle-vs-walk gate in the picker.
+    // For RootMotion clips, velocity is zero so substitute intent
+    // magnitude — same purpose, just sourced from input.
+    sLastTargetSpeed = use_velocity ? glm::length(target_velocity) : intent_mag;
     if (movement_locked)
     {
         sPlayer.velocity_xz = glm::vec2(0.0f);
@@ -966,6 +1116,115 @@ static void tickPlayerVelocity(const glm::vec3& moveIntent, bool movement_locked
         sPlayer.velocity_xz += (delta / delta_mag) * max_step;
 }
 
+// ---------------------------------------------------------------------------
+// Lock-on: combat-mode toggle that drives yaw, camera, movement basis,
+// and the directional locomotion picker. Symbol/reticle is a
+// placeholder white square; refined in Phase B.
+// ---------------------------------------------------------------------------
+
+// Tunables for Phase A. File-locals while values are dialed in code;
+// promote to Tunables.json once they feel right. Reticle chest offset
+// lives next to its draw call in ui/ActorHud.cpp.
+constexpr float kLockOnConeHalfAngleRadians = 0.5236f; // 30°
+constexpr float kLockOnAcquireRangeMeters = 15.0f;
+
+// Camera-forward direction on XZ from cameraYaw(). Mirrors the camFwd
+// construction in computeMoveIntent so the cone math reads identically.
+static glm::vec3 cameraForwardXZ()
+{
+    const float yaw = selva::render::cameraYaw();
+    return glm::vec3(-std::sin(yaw), 0.0f, -std::cos(yaw));
+}
+
+// Acquire the nearest hostile, live enemy within the camera-forward
+// cone. Returns its pool index or -1 if none. Faction filter:
+// Faction::Hostile only; companions and neutrals are excluded from
+// targeting in v1.
+static int acquireLockOnTarget()
+{
+    const glm::vec3 cam_fwd = cameraForwardXZ();
+    auto& pool = selva::gameplay::actors();
+    const glm::vec3 player_pos = pool[0].pos;
+    int best_idx = -1;
+    float best_dist_sq = kLockOnAcquireRangeMeters * kLockOnAcquireRangeMeters;
+    for (std::size_t i = 1; i < pool.size(); ++i)
+    {
+        const Actor& a = pool[i];
+        if (a.faction != selva::gameplay::Faction::Hostile)
+            continue;
+        if (a.is_dead)
+            continue;
+        const glm::vec3 to = a.pos - player_pos;
+        const glm::vec3 to_xz(to.x, 0.0f, to.z);
+        const float dist_sq = glm::dot(to_xz, to_xz);
+        if (dist_sq < 1e-6f || dist_sq > best_dist_sq)
+            continue;
+        const float dist = std::sqrt(dist_sq);
+        const glm::vec3 to_dir = to_xz / dist;
+        const float dot_fwd = glm::dot(to_dir, cam_fwd);
+        if (dot_fwd < std::cos(kLockOnConeHalfAngleRadians))
+            continue;
+        best_dist_sq = dist_sq;
+        best_idx = static_cast<int>(i);
+    }
+    return best_idx;
+}
+
+// Player's lock target (thin wrapper over the shared
+// selva::gameplay::resolveLockTarget for call-site readability).
+static Actor* resolveLockTarget()
+{
+    return selva::gameplay::resolveLockTarget(sPlayer);
+}
+
+// Per-frame lock-on input + auto-release pass. Middle-mouse rising
+// edge toggles the lock; sprint engaging and target death auto-
+// release. Must run BEFORE consumers of the lock state (camera, yaw,
+// movement intent, locomotion picker).
+static void tickLockOnInput()
+{
+    const Uint32 mouse_buttons = SDL_GetMouseState(nullptr, nullptr);
+    const bool mmb_now = (mouse_buttons & SDL_BUTTON(SDL_BUTTON_MIDDLE)) != 0;
+    const bool press_mmb = mmb_now && !sPrevMMB;
+    sPrevMMB = mmb_now;
+
+    // Auto-release on target death (or stale pool index). Sprint
+    // does NOT release lock — sprint is part of combat locomotion
+    // (running directional clips), not an exit gesture.
+    if (sPlayer.lock_target_idx >= 0)
+    {
+        const Actor* t = resolveLockTarget();
+        if (t == nullptr || t->is_dead)
+            sPlayer.lock_target_idx = -1;
+    }
+
+    if (!press_mmb || sShowTuningPanel)
+        return;
+
+    if (sPlayer.lock_target_idx >= 0)
+    {
+        sPlayer.lock_target_idx = -1;
+        return;
+    }
+
+    sPlayer.lock_target_idx = acquireLockOnTarget();
+}
+
+// While locked, drive cameraYaw from the player→target XZ axis so
+// the third-person camera lines up looking at the target over the
+// player's shoulder. Pitch is left wherever tickMouseLook last left
+// it before lock engaged (mouse-Y ignored during lock).
+static void tickLockOnCamera()
+{
+    const Actor* target = resolveLockTarget();
+    if (target == nullptr)
+        return;
+    const glm::vec3 to(target->pos.x - sPlayer.pos.x, 0.0f, target->pos.z - sPlayer.pos.z);
+    if (glm::dot(to, to) <= 1e-6f)
+        return;
+    selva::render::setCameraYaw(yawFromGroundDir(glm::normalize(to)));
+}
+
 // Smooth-turn the player's yaw toward the move-intent direction.
 // The rate is a piecewise lerp between `turn_rate_min` (small
 // deltas) and `turn_rate_max` (180° flips) based on |delta|/π.
@@ -976,7 +1235,20 @@ static void tickPlayerVelocity(const glm::vec3& moveIntent, bool movement_locked
 static void tickPlayerYaw(const glm::vec3& moveIntent, bool movement_locked, float turn_rate_min,
                           float turn_rate_max, float dt)
 {
-    if (movement_locked || glm::length(moveIntent) <= 0.0001f)
+    if (movement_locked)
+        return;
+    // Lock-on overrides input-driven yaw: snap to the target each frame
+    // so the player always faces it. Translation reads sPlayer.yaw too,
+    // so the 4 directional combat clips will play with respect to a
+    // facing that's correct for the locked-mode WASD basis.
+    if (const Actor* target = resolveLockTarget(); target != nullptr)
+    {
+        const glm::vec3 to(target->pos.x - sPlayer.pos.x, 0.0f, target->pos.z - sPlayer.pos.z);
+        if (glm::dot(to, to) > 1e-6f)
+            sPlayer.yaw = yawFromGroundDir(glm::normalize(to));
+        return;
+    }
+    if (glm::length(moveIntent) <= 0.0001f)
         return;
     const glm::vec3 dir = glm::normalize(moveIntent);
     const float targetYaw = yawFromGroundDir(dir);
@@ -1050,62 +1322,63 @@ static bool tryHandleStanceTogglePress(bool press_r, bool shift_held)
     return false;
 }
 
-// Fire a block one-shot. Trusts the weapon class's leading-idle trim
-// when set; otherwise pose-matches against the live loco track.
-// `loco_settled` selects the blockFromLatch vs blockLive profile.
-static void fireBlockOneShot(bool loco_settled, const char* clip_name, bool freeze_last)
+// The block-lifecycle clip set: raise (one-shot), idle (looping
+// loco-track override), lower (release one-shot, nullable).
+struct BlockClipSet
 {
-    const auto* clip = sClips.get(clip_name);
-    if (clip == nullptr || !clip->isLoaded())
+    const char* raise;
+    const char* idle;
+    const char* lower;
+};
+
+// Fire a block raise one-shot and stash the idle/lower clip names
+// for the lifecycle's later phases. `loco_settled` selects the
+// blockFromLatch vs blockLive profile.
+static void fireBlockOneShot(bool loco_settled, const BlockClipSet& set)
+{
+    const auto* raise_clip = sClips.get(set.raise);
+    if (raise_clip == nullptr || !raise_clip->isLoaded())
         return;
-    const int rh = sSampler.findJoint("mixamorig:RightHand");
     const auto fd_pre = sSampler.frameDiagnostics();
-    const glm::vec3 live_pre = (rh >= 0) ? sSampler.jointWorldPos(rh) : glm::vec3(0);
+    // Optional JSON-override for raise start; default 0 (play from frame 0).
     float block_start = 0.0f;
     if (sEquipment.right != nullptr && sEquipment.right->cls != nullptr &&
-        sEquipment.right->cls->block_clip_start_seconds > 0.0f)
+        sEquipment.right->cls->block_clip_start_seconds >= 0.0f)
         block_start = sEquipment.right->cls->block_clip_start_seconds;
-    else
-        block_start = poseMatchStartFromLoco(*clip, 0.30f);
     TransitionProfile profile = loco_settled ? profiles::blockFromLatch() : profiles::blockLive();
-    profile.freeze_last = freeze_last;
-    fireOneShotWithProfile(*clip, profile, block_start, /*playback_rate=*/1.0f, clip_name);
+    fireOneShotWithProfile(*raise_clip, profile, block_start, /*playback_rate=*/1.0f, set.raise);
     sBlockingActive = true;
-
-    const glm::vec3 block_t0 =
-        (rh >= 0) ? sSampler.sampleJointWorldPos(*clip, 0.0f, rh) : glm::vec3(0);
-    const glm::vec3 d = block_t0 - live_pre;
-    combatLog("[combat:block-fire] mode=%s  loco=%s clip_t=%.3fs  "
-              "RH live=(%.3f,%.3f,%.3f)  block_t0=(%.3f,%.3f,%.3f)  delta=|%.3fm|\n",
-              loco_settled ? "SETTLED" : "SNAP",
+    sActiveBlockIdleClip = set.idle;
+    sActiveBlockLowerClip = set.lower;
+    combatLog("[combat:block-fire] mode=%s raise=%s idle=%s lower=%s loco=%s@%.3fs "
+              "prev_1shot=%s(phase=%d,w=%.2f)\n",
+              loco_settled ? "SETTLED" : "SNAP", set.raise, set.idle ? set.idle : "(none)",
+              set.lower ? set.lower : "(none)",
               fd_pre.loco_current_name ? fd_pre.loco_current_name : "(none)",
-              fd_pre.loco_current_time, live_pre.x, live_pre.y, live_pre.z, block_t0.x, block_t0.y,
-              block_t0.z, glm::length(d));
+              fd_pre.loco_current_time, fd_pre.one_shot_name ? fd_pre.one_shot_name : "(none)",
+              fd_pre.one_shot_phase, fd_pre.one_shot_weight);
 }
 
-// Resolve which block clip (if any) RMB should fire given the
-// current equipment + modifiers. Buckler always blocks; unarmed +
-// shift gestures block with freeze-last. Returns nullptr otherwise
-// (caller treats RMB as a normal attack input).
-static const char* resolveBlockClip(bool shift_held, bool& freeze_last)
+// Resolve the block-lifecycle clip set for the current equipment +
+// modifiers. Buckler uses sword_and_shield_block + _idle (no lower
+// yet). Unarmed+shift uses the 3-clip set baked from Mixamo's
+// Center Block. Returns nullptr raise = caller treats RMB as a
+// normal attack input.
+static BlockClipSet resolveBlockClip(bool shift_held)
 {
-    freeze_last = false;
     if (offHandCanBlock(sEquipment))
-        return "sword_and_shield_block";
+        return {"sword_and_shield_block", "sword_and_shield_block_idle", nullptr};
     if (isUnarmed(sEquipment) && shift_held)
-    {
-        freeze_last = true;
-        return "unarmed_block";
-    }
-    return nullptr;
+        return {"unarmed_block_raise", "unarmed_block_idle", "unarmed_block_lower"};
+    return {nullptr, nullptr, nullptr};
 }
 
 // RMB → block routing. Press from Peaceful arms a delayed first-
 // action (so loco settles into combat-idle); subsequent press fires
-// directly. Release ends a held block. Returns true if any combat
-// input fired this call.
-static bool tickBlockingFromRMB(const char* block_clip_name, bool block_freeze_last, bool press_rmb,
-                                bool release_rmb, float combat_entry_delay_seconds)
+// directly. Release ends a held block — fires the lower one-shot
+// if the equipment has one. Returns true if any combat input fired.
+static bool tickBlockingFromRMB(const BlockClipSet& set, bool press_rmb, bool release_rmb,
+                                float combat_entry_delay_seconds)
 {
     bool fired = false;
     if (press_rmb)
@@ -1114,21 +1387,40 @@ static bool tickBlockingFromRMB(const char* block_clip_name, bool block_freeze_l
         if (from_peaceful && !sPendingFirstAction.active)
         {
             sPendingFirstAction.active = true;
-            sPendingFirstAction.block_clip = block_clip_name;
-            sPendingFirstAction.block_freeze_last = block_freeze_last;
+            sPendingFirstAction.block_clip = set.raise;
+            sPendingFirstAction.block_idle_clip = set.idle;
+            sPendingFirstAction.block_lower_clip = set.lower;
             sPendingFirstAction.fire_at = selva::wallClock() + combat_entry_delay_seconds;
             fired = true;
         }
         else if (!sPendingFirstAction.active)
         {
-            fireBlockOneShot(false, block_clip_name, block_freeze_last);
+            fireBlockOneShot(false, set);
             fired = true;
         }
     }
     else if (release_rmb && sBlockingActive)
     {
+        if (sActiveBlockLowerClip != nullptr)
+        {
+            // Fire the lower one-shot. The current loco-track idle
+            // override clears as sBlockingActive flips false; the
+            // one-shot plays over the resuming combat-idle.
+            const auto* lower = sClips.get(sActiveBlockLowerClip);
+            if (lower != nullptr && lower->isLoaded())
+            {
+                TransitionProfile profile = profiles::blockLive();
+                fireOneShotWithProfile(*lower, profile, 0.0f, /*playback_rate=*/1.0f,
+                                       sActiveBlockLowerClip);
+            }
+        }
+        else
+        {
+            sSampler.releaseOneShot();
+        }
         sBlockingActive = false;
-        sSampler.releaseOneShot();
+        sActiveBlockIdleClip = nullptr;
+        sActiveBlockLowerClip = nullptr;
         fired = true;
     }
     return fired;
@@ -1140,7 +1432,9 @@ static bool tickPendingBlockLatch()
 {
     if (!sPendingFirstAction.active || selva::wallClock() < sPendingFirstAction.fire_at)
         return false;
-    fireBlockOneShot(true, sPendingFirstAction.block_clip, sPendingFirstAction.block_freeze_last);
+    BlockClipSet set{sPendingFirstAction.block_clip, sPendingFirstAction.block_idle_clip,
+                     sPendingFirstAction.block_lower_clip};
+    fireBlockOneShot(true, set);
     sPendingFirstAction.active = false;
     return true;
 }
@@ -1388,9 +1682,18 @@ capturePreUpdateJoints(bool loco_clip_changed, const std::string& clip_name, flo
         return out;
     const auto fd = sSampler.frameDiagnostics();
     const float speed_now = glm::length(sPlayer.velocity_xz);
-    combatLog("[sm %.4fs] loco-pick %s@%.3fs -> %s (blend=%.3fs speed_now=%.2f target=%.2f)\n",
+    // Also log the locked-mode picker inputs (lock state, target-
+    // axis fwd/right dots, sprint) so transitions are diagnosable
+    // without re-running. Player-side only.
+    const Uint8* keys = SDL_GetKeyboardState(nullptr);
+    const Actor* lt = resolveLockTarget();
+    const bool locked = (lt != nullptr);
+    combatLog("[sm %.4fs] loco-pick %s@%.3fs -> %s (blend=%.3fs speed_now=%.2f target=%.2f "
+              "locked=%d sprint=%d WASD=%d%d%d%d)\n",
               selva::wallClock(), sLastLocoClipName.c_str(), fd.loco_current_time,
-              clip_name.c_str(), blend_seconds, speed_now, sLastTargetSpeed);
+              clip_name.c_str(), blend_seconds, speed_now, sLastTargetSpeed, locked ? 1 : 0,
+              sPlayer.sprinting ? 1 : 0, keys[SDL_SCANCODE_W] ? 1 : 0, keys[SDL_SCANCODE_A] ? 1 : 0,
+              keys[SDL_SCANCODE_S] ? 1 : 0, keys[SDL_SCANCODE_D] ? 1 : 0);
     const char* names[] = {"mixamorig:RightHand", "mixamorig:LeftHand", "mixamorig:RightFoot",
                            "mixamorig:LeftFoot", "mixamorig:Hips"};
     for (const char* n : names)
@@ -1492,18 +1795,48 @@ static void tickCombatStance(bool combat_input_this_frame, const selva::tuning::
     // fades to standard-idle, which reads as a delayed cleanup
     // after the player has clearly moved on. Walking past an
     // enemy with weapons down is the natural exit from combat.
+    //
+    // Suppressed while locked: lock-on IS combat mode, motion
+    // doesn't exit it. The pin in selectLocomotionClip re-asserts
+    // CombatReady, but doing the clear here would briefly flip the
+    // stance Peaceful between the pin and the idle-branch read on
+    // any frame where the player was walking and just stopped.
     const bool moving = glm::length(sPlayer.velocity_xz) > 0.05f;
-    if (moving && sLocomotionSM.combat_stance == selva::gameplay::CombatStance::CombatReady)
+    if (sPlayer.lock_target_idx < 0 && moving &&
+        sLocomotionSM.combat_stance == selva::gameplay::CombatStance::CombatReady)
     {
         sLocomotionSM.combat_stance = selva::gameplay::CombatStance::Peaceful;
         sLocomotionSM.stance_active_until = 0.0f;
     }
 }
 
-// Pick the locomotion clip for this frame. Honors the F1 debug
-// clip-preview override; otherwise reads the player's velocity
-// magnitude and picks idle/walking/running by speed-thresholds.
-// Applies held-block override and the loco-freeze guards.
+// Pick the directional locomotion clip while locked + moving:
+// forward/back/strafe-left/right × walking/running, by dominant-
+// axis dispatch of moveIntent against the player→target axis.
+// Returns nullptr when not locked or no usable direction; caller
+// falls back to the free-mode speed picker (which uses the same
+// `walking` / `running` forward clips, producing seamless
+// transitions in/out of lock-on).
+static const char* selectLockedLocomotionClip(const glm::vec3& moveIntent)
+{
+    const Actor* target = resolveLockTarget();
+    if (target == nullptr)
+        return nullptr;
+    const glm::vec3 to(target->pos.x - sPlayer.pos.x, 0.0f, target->pos.z - sPlayer.pos.z);
+    const float to_len_sq = glm::dot(to, to);
+    if (to_len_sq <= 1e-6f)
+        return nullptr;
+    const glm::vec3 fwd = to / std::sqrt(to_len_sq);
+    const glm::vec3 right(-fwd.z, 0.0f, fwd.x);
+    return selva::gameplay::directionalLocoClip(fwd, right, moveIntent, sPlayer.sprinting);
+}
+
+// Produce a LocomotionPick from the pre-decided clip name in
+// sLocoDecision. Layer 5 of the picker chain (loco-freeze) lives
+// here because it depends on sampler state (one-shot phase) that
+// can change later in the frame than runLocomotionDecision runs.
+// Also runs tickCombatStance, which the pin in runLocomotionDecision
+// re-asserts each frame.
 static LocomotionPick selectLocomotionClip(const glm::vec3& /*moveIntent*/, float /*dt*/,
                                            bool combat_input_this_frame,
                                            const selva::tuning::Tunables& tun)
@@ -1511,28 +1844,13 @@ static LocomotionPick selectLocomotionClip(const glm::vec3& /*moveIntent*/, floa
     LocomotionPick pick;
     pick.blend_seconds = tun.anim_blend_seconds;
     pick.loops = true;
-    if (!sDebugClipName.empty())
-    {
-        pick.clip_name = sDebugClipName;
-        pick.clip = sClips.get(pick.clip_name);
-        pick.blend_seconds =
-            sLocomotionConfig.blendInSeconds(pick.clip_name, tun.anim_blend_seconds);
-        if (pick.clip != nullptr)
-            return pick;
-    }
+    pick.clip_name = sLocoDecision.clip_name;
 
     tickCombatStance(combat_input_this_frame, tun);
-    const bool is_armed = !isUnarmed(sEquipment);
-    pick.clip_name = selectLocomotionClipFromSpeed(sLastTargetSpeed, is_armed, tun);
 
-    // Held-block override: force loco track to the block-idle loop
-    // when blocking with a buckler (which has a dedicated idle clip).
-    if (sBlockingActive && offHandCanBlock(sEquipment))
-        pick.clip_name = "sword_and_shield_block_idle";
-
-    // Loco-freeze: hold the previous loco clip when a one-shot is
-    // staged-for-handoff and a swap now would corrupt the BlendOut
-    // pose-match. Two conditions:
+    // Loco-freeze (layer 5): hold the previous loco clip when a
+    // one-shot is staged-for-handoff and a swap now would corrupt
+    // the BlendOut pose-match. Two conditions:
     //   * Phase=BlendIn: loco + one-shot both partially visible →
     //     multi-source collision (loco ramp + new loco splice + one-
     //     shot ramp) reads as a leg spasm.
@@ -1555,8 +1873,7 @@ static LocomotionPick selectLocomotionClip(const glm::vec3& /*moveIntent*/, floa
     pick.blend_seconds = sLocomotionConfig.blendInSeconds(pick.clip_name, pick.blend_seconds);
     // Capture pre-update joints AND emit the [sm loco-pick] log after
     // the final blend has been computed, so the log shows the
-    // duration the sampler will actually use (not the SM's pre-
-    // override value).
+    // duration the sampler will actually use.
     pick.pre_update_joints =
         capturePreUpdateJoints(loco_clip_changed, pick.clip_name, pick.blend_seconds);
     sLastLocoClipName = pick.clip_name;
@@ -1685,22 +2002,28 @@ static void applyDodgeSteer(const glm::vec3& moveIntent, float dodge_steer_rate,
     sPlayer.yaw += delta;
 }
 
-// Per-frame translation routing: F1 clip-preview pins the player in
-// place; one-shot active = clip-hip translation (with mid-roll yaw
-// steer); otherwise input-driven velocity. Same invariant the dodge
-// path has always followed, generalized to all one-shots.
+// Per-frame translation routing. The active loco clip's
+// Routes per active loco clip's translation_source (see
+// feedback_hip_delta_two_sides). One-shots always root-motion;
+// loco clips per JSON declaration (gait clips: root_motion;
+// idles: velocity).
 static void applyPerFrameTranslation(const glm::vec3& moveIntent, float dodge_steer_rate, float dt)
 {
     if (!sDebugClipName.empty())
         return;
-    if (!sSampler.isOneShotActive())
+    if (sSampler.isOneShotActive())
     {
-        applyVelocityToPlayerPos(dt);
+        if (sDodgeActive)
+            applyDodgeSteer(moveIntent, dodge_steer_rate, dt);
+        applyHipDeltaToPlayerPos();
         return;
     }
-    if (sDodgeActive)
-        applyDodgeSteer(moveIntent, dodge_steer_rate, dt);
-    applyHipDeltaToPlayerPos();
+    if (sLocoDecision.source == selva::anim::TranslationSource::RootMotion)
+    {
+        applyHipDeltaToPlayerPos();
+        return;
+    }
+    applyVelocityToPlayerPos(dt);
 }
 
 // Flush an in-progress CSV bone-trajectory recording to disk and clear
@@ -1751,23 +2074,44 @@ static void tickCsvRecording(float dt)
         flushCsvRecording();
 }
 
-// Compute the camera-relative WASD movement intent vector. Forward
-// is -Z rotated by camera yaw; right is perpendicular in XZ.
+// Compute the WASD movement intent vector. Unlocked: camera-relative
+// (forward = -Z rotated by cameraYaw). Locked: target-relative
+// (forward = player→target on XZ). Locked mode anchors the basis to
+// the target so W is always "toward target," not "into the camera."
 static glm::vec3 computeMoveIntent(const Uint8* keys)
 {
-    const glm::vec3 camFwd(-std::sin(selva::render::cameraYaw()), 0.0f,
-                           -std::cos(selva::render::cameraYaw()));
-    const glm::vec3 camRight(std::cos(selva::render::cameraYaw()), 0.0f,
-                             -std::sin(selva::render::cameraYaw()));
+    glm::vec3 fwd;
+    glm::vec3 right;
+    if (const Actor* target = resolveLockTarget(); target != nullptr)
+    {
+        const glm::vec3 to(target->pos.x - sPlayer.pos.x, 0.0f, target->pos.z - sPlayer.pos.z);
+        const float to_len_sq = glm::dot(to, to);
+        if (to_len_sq <= 1e-6f)
+            return glm::vec3(0.0f); // standing inside the target — no usable basis
+        fwd = to / std::sqrt(to_len_sq);
+        // Player-right axis: rotate fwd -90° around world-up so D
+        // strafes to the player's right when facing the target.
+        // Cross-checked vs camera-mode: yaw=0, camFwd=(0,0,-1),
+        // camRight=(1,0,0); the same fwd here must yield the same
+        // right.
+        right = glm::vec3(-fwd.z, 0.0f, fwd.x);
+    }
+    else
+    {
+        fwd = glm::vec3(-std::sin(selva::render::cameraYaw()), 0.0f,
+                        -std::cos(selva::render::cameraYaw()));
+        right = glm::vec3(std::cos(selva::render::cameraYaw()), 0.0f,
+                          -std::sin(selva::render::cameraYaw()));
+    }
     glm::vec3 moveIntent(0.0f);
     if (keys[SDL_SCANCODE_W])
-        moveIntent += camFwd;
+        moveIntent += fwd;
     if (keys[SDL_SCANCODE_S])
-        moveIntent -= camFwd;
+        moveIntent -= fwd;
     if (keys[SDL_SCANCODE_D])
-        moveIntent += camRight;
+        moveIntent += right;
     if (keys[SDL_SCANCODE_A])
-        moveIntent -= camRight;
+        moveIntent -= right;
     return moveIntent;
 }
 
@@ -1818,11 +2162,10 @@ static bool tickCombatInputPass(const Uint8* keys, const CombatInputEdges& e,
                                tun.combo_input_buffer_seconds))
         fired = true;
 
-    bool block_freeze_last = false;
-    const char* block_clip_name = resolveBlockClip(e.shift_held, block_freeze_last);
-    if (block_clip_name != nullptr)
+    const BlockClipSet block_set = resolveBlockClip(e.shift_held);
+    if (block_set.raise != nullptr)
     {
-        if (tickBlockingFromRMB(block_clip_name, block_freeze_last, e.press_rmb, e.release_rmb,
+        if (tickBlockingFromRMB(block_set, e.press_rmb, e.release_rmb,
                                 tun.combat_entry_delay_seconds))
             fired = true;
     }
@@ -2072,6 +2415,10 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     engine.setWindowTitle("Selva Oscura  |  FPS " + std::to_string(fps));
 
     const auto& tun = selva::tuning::current();
+    // Mirror tun.loco_playback_rate onto LocomotionConfig so the
+    // sampler's advanceLocoTrack can read it without a Tunables
+    // dependency. F1 panel writes tun; this line propagates.
+    sLocomotionConfig.global_playback_rate = tun.loco_playback_rate;
     tickMouseLook(tun);
 
     const Uint8* keys = SDL_GetKeyboardState(nullptr);
@@ -2081,6 +2428,8 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         engine.requestQuit();
 
     tickF1TuningPanelToggle(keys);
+    tickLockOnInput();
+    tickLockOnCamera();
 
     // -------- Combat input --------
     //   LMB / RMB        — right-hand attacks (chain shared)
@@ -2106,6 +2455,14 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     tickJumpInput(keys);
 
     const glm::vec3 moveIntent = computeMoveIntent(keys);
+
+    // ONE locomotion decision for this frame. Both tickPlayerVelocity
+    // and applyPerFrameTranslation consult sLocoDecision.source for
+    // the bilateral translation contract; selectLocomotionClip later
+    // turns sLocoDecision.clip_name into the actual LocomotionPick
+    // (only applying the loco-freeze guard on top). See
+    // feedback_data_driven_over_convention.md.
+    runLocomotionDecision(moveIntent, tun);
 
     if (tickSpaceInput(keys, moveIntent, dt, tun.dodge_tap_window, tun.backstep_playback_rate,
                        tun.roll_playback_rate))

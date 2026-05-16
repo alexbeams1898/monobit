@@ -14,6 +14,7 @@
 #include "gameplay/EnemyArchetype.h"
 
 #include <cmath>
+#include <cstring>
 #include <random>
 #include <vector>
 
@@ -153,6 +154,44 @@ NodeResult LeafIdleFace::tick(Actor& actor, const selva::tuning::Tunables& /*tun
 {
     actor.intent_xz = glm::vec2(0.0f);
     actor.turn_intent_yaw = yawFacing(actor.pos, actor.perception.last_known_player_pos);
+    return NodeResult::Success;
+}
+
+NodeResult LeafCircleTarget::tick(Actor& actor, const selva::tuning::Tunables& tun)
+{
+    // Circle ONLY when the target is themselves strafing. Souls/
+    // Elden feel: the duel-dance is reactive, not scripted. Default
+    // is to charge; circling emerges when the player commits to
+    // lateral movement (locking in for the dance). When the player
+    // just walks toward/away, the AI closes the gap instead — no
+    // robotic timer-driven circling.
+    if (actor.lock_target_idx < 0 || actor.duel_strafe_dir == 0)
+        return NodeResult::Failure;
+    const Actor* target = resolveLockTarget(actor);
+    if (target == nullptr)
+        return NodeResult::Failure;
+    const float dx = target->pos.x - actor.pos.x;
+    const float dz = target->pos.z - actor.pos.z;
+    const float dist_sq = dx * dx + dz * dz;
+    const float engage_range = computeStopRange(actor, tun) * 2.0f;
+    if (dist_sq > engage_range * engage_range || dist_sq <= 1e-6f)
+        return NodeResult::Failure;
+    // "Is target strafing?" — read the target's active loco clip
+    // directly. The locomotion picker is the source of truth for
+    // what the target IS doing; checking velocity vs intent is
+    // brittle (PC zeros velocity_xz when on root-motion clips).
+    // Clip name is what the renderer sees and the player perceives.
+    const auto fd = target->sampler.frameDiagnostics();
+    const char* name = fd.loco_current_name;
+    const bool target_strafing = name != nullptr && (std::strstr(name, "strafe_") == name);
+    if (!target_strafing)
+        return NodeResult::Failure;
+    const float dist = std::sqrt(dist_sq);
+    // Target is strafing. Mirror with our own strafe.
+    actor.turn_intent_yaw = yawFacing(actor.pos, target->pos);
+    const float sign = static_cast<float>(actor.duel_strafe_dir);
+    const glm::vec2 lateral(-dz / dist * sign, dx / dist * sign);
+    actor.intent_xz = lateral * tun.walk_speed;
     return NodeResult::Success;
 }
 
@@ -306,9 +345,13 @@ std::unique_ptr<BehaviorTree> buildHumanoidBasicTree()
     //     player out of melee instead of waiting for disengage.
     //   Alerted branch: walk toward target.
     //   Default: stand at spawn pose.
-    auto combat_branch = makeSequence(
-        std::make_unique<IfAwarenessAtLeast>(Awareness::Combat),
-        makeSelector(std::make_unique<LeafPickAction>(), std::make_unique<LeafMoveToTarget>()));
+    // Combat-branch try order: fire an action (close enough + ready);
+    // else circle-strafe (locked + inside duel range — Elden Ring
+    // dance pattern); else close the gap.
+    auto combat_branch = makeSequence(std::make_unique<IfAwarenessAtLeast>(Awareness::Combat),
+                                      makeSelector(std::make_unique<LeafPickAction>(),
+                                                   std::make_unique<LeafCircleTarget>(),
+                                                   std::make_unique<LeafMoveToTarget>()));
     auto alerted_branch = makeSequence(std::make_unique<IfAwarenessAtLeast>(Awareness::Alerted),
                                        std::make_unique<LeafMoveToTarget>());
     auto root = makeSelector(std::move(combat_branch), std::move(alerted_branch),

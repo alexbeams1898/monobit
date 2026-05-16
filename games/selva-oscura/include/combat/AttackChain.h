@@ -32,7 +32,9 @@ struct BufferedPress
 struct PendingFirstAction
 {
     bool active = false;
-    const char* block_clip = nullptr;
+    const char* block_clip = nullptr;       // raise one-shot
+    const char* block_idle_clip = nullptr;  // held-block loco-track override
+    const char* block_lower_clip = nullptr; // release one-shot (nullable)
     bool block_freeze_last = false;
     float fire_at = 0.0f;
 };

@@ -1,10 +1,62 @@
 {
-  "_comment": "Per-clip locomotion metadata. blend_in_seconds = inertialization decay duration when this clip becomes the active loco_current. Per-joint decay scales further by offset magnitude on top of this base, so idle->running gets a wider window than walking->running automatically.",
-  "clips": [
-    { "name": "standard_idle",          "blend_in_seconds": 0.40 },
-    { "name": "unarmed_combat_idle",    "blend_in_seconds": 0.40 },
-    { "name": "sword_and_shield_idle_4","blend_in_seconds": 0.40 },
-    { "name": "walking",                "blend_in_seconds": 0.28 },
-    { "name": "running",                "blend_in_seconds": 0.22 }
-  ]
+    "_comment":
+        "Per-clip locomotion metadata. blend_in_seconds = inertialization decay duration when this clip becomes loco_current. translation_source: 'velocity' (clip-cadence-must-match-walk_speed/run_speed) or 'root_motion' (clip drives world translation directly via consumedHipDelta). All directional gait clips use root_motion so world speed always matches authored foot cadence — no foot-skate, no per-clip walk_speed tuning. Idles stay on velocity (default) since they're stationary anyway.",
+    "clips": [
+        {
+            "name": "standard_idle",
+            "blend_in_seconds": 0.40
+        },
+        {
+            "name": "unarmed_combat_idle",
+            "blend_in_seconds": 0.40
+        },
+        {
+            "name": "unarmed_block_idle",
+            "blend_in_seconds": 0.15
+        },
+        {
+            "name": "sword_and_shield_idle_4",
+            "blend_in_seconds": 0.40
+        },
+        {
+            "name": "walking",
+            "blend_in_seconds": 0.28,
+            "translation_source": "root_motion"
+        },
+        {
+            "name": "running",
+            "blend_in_seconds": 0.22,
+            "translation_source": "root_motion"
+        },
+        {
+            "name": "walking_backward",
+            "blend_in_seconds": 0.28,
+            "translation_source": "root_motion"
+        },
+        {
+            "name": "running_backward",
+            "blend_in_seconds": 0.22,
+            "translation_source": "root_motion"
+        },
+        {
+            "name": "strafe_walking_left",
+            "blend_in_seconds": 0.28,
+            "translation_source": "root_motion"
+        },
+        {
+            "name": "strafe_walking_right",
+            "blend_in_seconds": 0.28,
+            "translation_source": "root_motion"
+        },
+        {
+            "name": "strafe_running_left",
+            "blend_in_seconds": 0.22,
+            "translation_source": "root_motion"
+        },
+        {
+            "name": "strafe_running_right",
+            "blend_in_seconds": 0.22,
+            "translation_source": "root_motion"
+        }
+    ]
 }

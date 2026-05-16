@@ -97,6 +97,7 @@ static void renderLocomotionSection(selva::tuning::Tunables& tun)
         return;
     tunedSlider("Turn rate min (rad/s)", &tun.turn_rate_min, 1.0f, 30.0f, 0.5f, "%.1f");
     tunedSlider("Turn rate max (rad/s)", &tun.turn_rate_max, 1.0f, 40.0f, 0.5f, "%.1f");
+    tunedSlider("Loco playback rate", &tun.loco_playback_rate, 0.5f, 2.5f, 0.05f, "%.2f");
 }
 
 static void renderMouseLookSection(selva::tuning::Tunables& tun)

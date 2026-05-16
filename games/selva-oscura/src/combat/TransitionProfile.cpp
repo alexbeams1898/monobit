@@ -106,12 +106,13 @@ TransitionProfile jump()
 void fireOneShotWithProfile(const selva::anim::AnimationClip& clip,
                             const TransitionProfile& profile, float start_seconds,
                             float playback_rate, selva::anim::PoseSampler& sampler,
-                            const char* clip_key)
+                            const char* clip_key, float freeze_at_seconds)
 {
     if (profile.source_prep == TransitionProfile::SourcePrep::SnapLocoToZero)
         sampler.setLocomotionClipTime(0.0f);
     selva::anim::PoseSampler::OneShotOptions opts;
     opts.freeze_last = profile.freeze_last;
+    opts.freeze_at_seconds = freeze_at_seconds;
     opts.clip_key = clip_key;
     opts.freeze_loco_during_one_shot = profile.freeze_loco_during_one_shot;
     opts.cancel_fraction = profile.cancel_fraction;

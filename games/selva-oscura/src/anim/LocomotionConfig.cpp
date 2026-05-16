@@ -6,6 +6,31 @@
 namespace selva::anim
 {
 
+TranslationSource parseTranslationSource(const std::string& s)
+{
+    if (s == "root_motion")
+        return TranslationSource::RootMotion;
+    if (s == "velocity" || s.empty())
+        return TranslationSource::Velocity;
+    std::fprintf(stderr,
+                 "[anim] LocomotionConfig: unknown translation_source '%s' — defaulting to "
+                 "'velocity'\n",
+                 s.c_str());
+    return TranslationSource::Velocity;
+}
+
+const char* translationSourceName(TranslationSource src)
+{
+    switch (src)
+    {
+    case TranslationSource::Velocity:
+        return "velocity";
+    case TranslationSource::RootMotion:
+        return "root_motion";
+    }
+    return "?";
+}
+
 bool LocomotionConfig::loadFromFile(const std::string& path)
 {
     std::ifstream f(path);
@@ -24,6 +49,7 @@ bool LocomotionConfig::loadFromFile(const std::string& path)
             if (c.name.empty())
                 continue;
             blend_in_by_clip[c.name] = c.blend_in_seconds;
+            source_by_clip[c.name] = parseTranslationSource(c.translation_source);
         }
         std::fprintf(stderr, "[anim] LocomotionConfig: loaded %zu clip entry(ies) from %s\n",
                      blend_in_by_clip.size(), path.c_str());
@@ -41,6 +67,12 @@ float LocomotionConfig::blendInSeconds(const std::string& clip_name, float defau
 {
     const auto it = blend_in_by_clip.find(clip_name);
     return it == blend_in_by_clip.end() ? default_seconds : it->second;
+}
+
+TranslationSource LocomotionConfig::translationSource(const std::string& clip_name) const
+{
+    const auto it = source_by_clip.find(clip_name);
+    return it == source_by_clip.end() ? TranslationSource::Velocity : it->second;
 }
 
 } // namespace selva::anim
