@@ -56,4 +56,11 @@ int enemyIndex(const Actor& actor);
 void playEnemyHitReact(int index, int damage, int poise_damage, const glm::vec3& world_normal,
                        const glm::vec3& attacker_pos);
 
+// Fire the death one-shot on `e` and mark it dead. Reads
+// `e.death_clip_name` (enemies: "death"; PC: "second_death") so each
+// actor controls its own death visual. Caller already confirmed
+// hp <= 0. `index` is the actor's slot in actors() — used for the
+// [death] log line; pass 0 for the player.
+void fireEnemyDeath(Actor& e, int index);
+
 } // namespace selva::gameplay

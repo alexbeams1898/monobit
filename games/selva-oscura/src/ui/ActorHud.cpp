@@ -8,6 +8,7 @@
 #include "combat/ActorVolumes.h"
 #include "combat/HitFeedback.h"
 #include "combat/HitVolumes.h"
+#include "gameplay/Actor.h"
 #include "gameplay/Enemies.h"
 #include "gameplay/Perception.h"
 #include "gameplay/PlayerState.h"
@@ -215,6 +216,13 @@ void drawFloatingDamageNumbers(ImDrawList* overlay, const glm::mat4& view_proj);
 // with an iconographic sprite.
 void drawLockOnReticle(ImDrawList* overlay, const glm::mat4& view_proj);
 
+// Draw the second-death card overlay (full-screen, foreground).
+// Appears when the player is dead and the post-clip hold has
+// elapsed; lingers until respawn. Two registers of text: "NOT YET"
+// (modern, large) and "THOU DOST NOT BELONG" (Early Modern, smaller).
+// Reads death_time from the player Actor and tunables for timing.
+void drawSecondDeathCard();
+
 void drawBar(ImDrawList* draw, float x, float y, float w, float h, float fill_fraction,
              ImU32 bg_color, ImU32 fg_color, ImU32 border_color, const char* label_text)
 {
@@ -289,6 +297,72 @@ void drawLockOnReticle(ImDrawList* overlay, const glm::mat4& view_proj)
     const ImU32 white = IM_COL32(255, 255, 255, 230);
     overlay->AddRectFilled(ImVec2(sp.x - kReticleHalfSize, sp.y - kReticleHalfSize),
                            ImVec2(sp.x + kReticleHalfSize, sp.y + kReticleHalfSize), white);
+}
+
+// Mirror of PerFrameTick.cpp's kPlayerSecondDeath* constants. Both
+// sites read the same timing — the lifecycle drives respawn off
+// these numbers, the card UI drives visibility off the same.
+constexpr float kPlayerSecondDeathClipHoldSeconds = 3.5f;
+constexpr float kPlayerSecondDeathCardSeconds = 4.0f;
+
+void drawSecondDeathCard()
+{
+    const auto& p = selva::gameplay::player();
+    if (!p.is_dead || p.death_time < 0.0f)
+        return;
+    const float elapsed = selva::wallClock() - p.death_time;
+    if (elapsed < kPlayerSecondDeathClipHoldSeconds)
+        return;
+
+    // Card alpha: fade-in over the first 0.4s after the hold elapses,
+    // fade-out over the last 0.4s before respawn. The card occupies
+    // the window [clip_hold, clip_hold + card_seconds].
+    const float t_in = elapsed - kPlayerSecondDeathClipHoldSeconds;
+    const float t_remaining = kPlayerSecondDeathCardSeconds - t_in;
+    constexpr float kFadeSeconds = 0.4f;
+    const float alpha_in = std::clamp(t_in / kFadeSeconds, 0.0f, 1.0f);
+    const float alpha_out = std::clamp(t_remaining / kFadeSeconds, 0.0f, 1.0f);
+    const float alpha = std::min(alpha_in, alpha_out);
+    if (alpha <= 0.0f)
+        return;
+
+    ImDrawList* fg = ImGui::GetForegroundDrawList();
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    const ImVec2 origin = vp->WorkPos;
+    const ImVec2 size = vp->WorkSize;
+
+    // Vignette: black wash over the screen at ~70% alpha. Sells the
+    // "everything fades except the verdict" register.
+    const int wash_a = static_cast<int>(180.0f * alpha);
+    fg->AddRectFilled(origin, ImVec2(origin.x + size.x, origin.y + size.y),
+                      IM_COL32(0, 0, 0, wash_a));
+
+    const char* msg = "SECOND DEATH";
+
+    // Default ImGui font size is 13px; scale up so the phrase
+    // carries the screen as a single centered verdict.
+    const float base_font = ImGui::GetFontSize();
+    const float msg_size = base_font * 9.0f;
+
+    ImFont* font = ImGui::GetFont();
+    const ImVec2 msg_ts = font->CalcTextSizeA(msg_size, FLT_MAX, 0.0f, msg);
+
+    const float center_x = origin.x + size.x * 0.5f;
+    const float center_y = origin.y + size.y * 0.5f;
+    const ImVec2 msg_pos(center_x - msg_ts.x * 0.5f, center_y - msg_ts.y * 0.5f);
+
+    const int text_a = static_cast<int>(255.0f * alpha);
+    const ImU32 white = IM_COL32(245, 240, 230, text_a);
+    const ImU32 shadow = IM_COL32(0, 0, 0, text_a);
+
+    for (int dx = -2; dx <= 2; ++dx)
+        for (int dy = -2; dy <= 2; ++dy)
+            if ((dx | dy) != 0)
+                fg->AddText(font, msg_size,
+                            ImVec2(msg_pos.x + static_cast<float>(dx),
+                                   msg_pos.y + static_cast<float>(dy)),
+                            shadow, msg);
+    fg->AddText(font, msg_size, msg_pos, white, msg);
 }
 
 void drawFloatingDamageNumbers(ImDrawList* overlay, const glm::mat4& view_proj)
@@ -391,6 +465,7 @@ void renderActorHud()
     drawEnemyHpBars(overlay, view_proj, list, now);
     drawFloatingDamageNumbers(overlay, view_proj);
     drawLockOnReticle(overlay, view_proj);
+    drawSecondDeathCard();
 
     // Debug overlay: AI vision cones + awareness label per AI actor.
     // Toggled by F1 panel checkbox debug_ai_perception.

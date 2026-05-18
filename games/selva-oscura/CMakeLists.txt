@@ -19,6 +19,7 @@ find_package(Python3 COMPONENTS Interpreter REQUIRED)
 add_library(selva-oscura-lib STATIC
     src/anim/AnimationClip.cpp
     src/anim/ClipRegistry.cpp
+    src/audio/Audio.cpp
     src/anim/LocomotionConfig.cpp
     src/anim/PoseSampler.cpp
     src/anim/SkeletalAssets.cpp

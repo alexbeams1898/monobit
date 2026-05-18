@@ -11,6 +11,7 @@
 #include "anim/SkeletalMesh.h"
 #include "anim/SkeletalRenderer.h"
 #include "anim/Skeleton.h"
+#include "audio/Audio.h"
 #include "combat/ActorVolumes.h"
 #include "combat/AttackChain.h"
 #include "combat/AttackResolution.h"
@@ -2349,6 +2350,11 @@ static void applyHitEvent(const selva::combat::HitEvent& ev, float now)
     }
     if (ev.target.kind == selva::combat::OwnerKind::Player)
     {
+        // Already-dead immunity: hits land on the corpse pose
+        // (freeze_last from the second_death one-shot) but don't
+        // re-damage or re-fire any reaction.
+        if (sPlayer.is_dead)
+            return;
         const int hp_before = sPlayer.hp.current;
         selva::gameplay::applyDamage(sPlayer.hp, sPlayer.body, ev.raw_damage);
         const int dmg_applied = hp_before - sPlayer.hp.current;
@@ -2358,6 +2364,19 @@ static void applyHitEvent(const selva::combat::HitEvent& ev, float now)
         selva::combat::combatLog("[hit] player region=%d dmg=%d hp=%d/%d\n",
                                  static_cast<int>(ev.region), dmg_applied, sPlayer.hp.current,
                                  sPlayer.hp.max);
+        // Death gate. The Vagrant is killed in Hell — sangue exits,
+        // Hell's killing-protocol fires (visible suffering = the
+        // second_death clip). Per setting.md *Second death*, the
+        // soul has no imprint for Hell to grip, so the body dies and
+        // the cosmology routes him back to the Wood (handled by
+        // tickPlayerSecondDeathLifecycle below in selvaPerFrame).
+        if (sPlayer.hp.current <= 0)
+        {
+            // Player is at index 0 in the pool. fireEnemyDeath is
+            // actor-agnostic; reads sPlayer.death_clip_name = "second_death".
+            selva::gameplay::fireEnemyDeath(sPlayer, /*index=*/0);
+            return;
+        }
         // Player hit-react. Don't interrupt the player's own swing —
         // that would feel awful; you'd lose committed offense to a
         // free enemy poke. Souls convention: hit-react fires only
@@ -2396,6 +2415,51 @@ static void applyHitEvent(const selva::combat::HitEvent& ev, float now)
     }
 }
 
+// Player second-death lifecycle. Detects elapsed time since
+// fireEnemyDeath(player) and respawns when the full clip-hold +
+// card window has passed. Called once per frame from selvaPerFrame
+// before any input/locomotion runs so the dead player's body is
+// frozen by the second_death one-shot (freeze_last) for the full
+// dead window, and on respawn the player is teleported to spawn_pos
+// with full HP before locomotion/clip-pick reads its state.
+//
+// The card UI in ActorHud reads the same death_time + tunables to
+// decide when to render — both halves of the lifecycle are driven
+// off a single timestamp, no shared mutable flag.
+// Pacing of the player second-death sequence. Clip-hold is the
+// wallclock window between fireEnemyDeath(player) and the card
+// appearing — long enough for the second_death clip to read. Card-
+// seconds is how long the card lingers before respawn. Not Tunables-
+// owned because the nlohmann macro is at its 62-field max; promote
+// to runtime-tunable if/when content needs to adjust.
+constexpr float kPlayerSecondDeathClipHoldSeconds = 3.5f;
+constexpr float kPlayerSecondDeathCardSeconds = 4.0f;
+
+static void tickPlayerSecondDeathLifecycle()
+{
+    if (!sPlayer.is_dead || sPlayer.death_time < 0.0f)
+        return;
+    const float elapsed = selva::wallClock() - sPlayer.death_time;
+    const float total = kPlayerSecondDeathClipHoldSeconds + kPlayerSecondDeathCardSeconds;
+    if (elapsed < total)
+        return;
+
+    selva::combat::combatLog("[player-respawn] respawning at t=%.3f\n", selva::wallClock());
+    sPlayer.is_dead = false;
+    sPlayer.death_time = -1.0f;
+    sPlayer.last_damage_time = -1.0f;
+    sPlayer.last_hit_react_time = -1.0f;
+    sPlayer.pos = sPlayer.spawn_pos;
+    sPlayer.yaw = sPlayer.spawn_yaw;
+    sPlayer.velocity_xz = glm::vec2(0.0f);
+    sPlayer.lock_target_idx = -1;
+    selva::gameplay::initActorPools(sPlayer.hp, sPlayer.stamina, sPlayer.poise, sPlayer.body,
+                                    sPlayer.stats);
+    sSampler.releaseOneShot();
+    // Unmuffle the OST — bookends the duck applied in fireEnemyDeath.
+    selva::audio::restoreMusic();
+}
+
 static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
 {
     ZoneScopedN("selvaPerFrame");
@@ -2409,6 +2473,16 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     bool combat_input_this_frame = false;
 
     selva::advanceWallClock(dt);
+
+    // Audio: drain the scheduled-SFX queue (peak-aligned plays, e.g.
+    // the second-death synth firing so its peak lands on the card).
+    selva::audio::tickScheduledSfx();
+
+    // Player second-death lifecycle. Drives the dead->respawn timer
+    // off the same death_time set by fireEnemyDeath(player). Runs
+    // before any input/locomotion so a respawn this frame teleports
+    // the player to spawn_pos before downstream systems read sPlayer.
+    tickPlayerSecondDeathLifecycle();
 
     // Title bar — game name + FPS. EMA-smoothed so the number doesn't flicker.
     const int fps = static_cast<int>(std::lround(1.0 / engine.lastFrameTime()));
@@ -2427,8 +2501,26 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     if (keys[SDL_SCANCODE_ESCAPE])
         engine.requestQuit();
 
+    // Dev: K kills the player instantly to test the second-death
+    // lifecycle without taking real damage. Edge-triggered so holding
+    // K doesn't re-fire each frame.
+    {
+        static bool sPrevK = false;
+        const bool k_now = (keys[SDL_SCANCODE_K] != 0);
+        if (k_now && !sPrevK && !sPlayer.is_dead)
+        {
+            sPlayer.hp.current = 0;
+            selva::gameplay::fireEnemyDeath(sPlayer, /*index=*/0);
+        }
+        sPrevK = k_now;
+    }
+
     tickF1TuningPanelToggle(keys);
-    tickLockOnInput();
+    // Lock-on input gated while dead — the corpse can't acquire/release
+    // a target. Camera still ticks so the lock-on framing remains
+    // coherent if the death happened mid-engagement.
+    if (!sPlayer.is_dead)
+        tickLockOnInput();
     tickLockOnCamera();
 
     // -------- Combat input --------
@@ -2444,15 +2536,25 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     const CombatInputEdges edges = readCombatInputEdges(keys);
     selva::combat::tickChainExpiry(selva::wallClock(), tun.combo_input_buffer_seconds);
     selva::combat::tickChainObserver(selva::wallClock(), sSampler.isOneShotActive());
-    if (!sShowTuningPanel && tickCombatInputPass(keys, edges, tun))
+    // Combat input gated on alive-state. While dead, the second_death
+    // one-shot owns the body; player input is ignored until respawn.
+    if (!sShowTuningPanel && !sPlayer.is_dead && tickCombatInputPass(keys, edges, tun))
         combat_input_this_frame = true;
     sPrevLMB = edges.lmb_now;
     sPrevRMB = edges.rmb_now;
     sPrevR = (keys[SDL_SCANCODE_R] != 0);
 
     selva::combat::cacheRightHandPos(sSampler);
-    tickGripToggle(keys);
-    tickJumpInput(keys);
+    // Grip toggle + jump input are player-driven state changes; dead
+    // gate so a corpse can't switch grip or initiate a jump. WASD-driven
+    // moveIntent is computed unconditionally; the dead-gate downstream
+    // (velocity_locked from the second_death one-shot) keeps it from
+    // translating the body.
+    if (!sPlayer.is_dead)
+    {
+        tickGripToggle(keys);
+        tickJumpInput(keys);
+    }
 
     const glm::vec3 moveIntent = computeMoveIntent(keys);
 
@@ -2464,7 +2566,10 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     // feedback_data_driven_over_convention.md.
     runLocomotionDecision(moveIntent, tun);
 
-    if (tickSpaceInput(keys, moveIntent, dt, tun.dodge_tap_window, tun.backstep_playback_rate,
+    // Space (dodge / sprint) gated on alive-state. Dead body doesn't
+    // dodge.
+    if (!sPlayer.is_dead &&
+        tickSpaceInput(keys, moveIntent, dt, tun.dodge_tap_window, tun.backstep_playback_rate,
                        tun.roll_playback_rate))
         combat_input_this_frame = true;
 

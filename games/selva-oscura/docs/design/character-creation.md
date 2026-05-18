@@ -12,7 +12,7 @@ sequence*](story.md), Beats 1-5:
 - **Beat 1 — Cold-open in the basic-form Wood.** The Vagrant wakes
   in the *selva oscura*. Walkable, not a cutscene.
 - **Beat 2 — The beasts.** Lonza / Leone / Lupa, fought as Unburdened
-  (no measurement yet, senza forma intact).
+  (no measurement yet, imprint-free).
 - **Beat 3 — The Guide arrives.** Naming: the Guide elicits six
   letters from the player. *The name is given, not recovered.* The
   Guide offers The Seal.
@@ -35,7 +35,7 @@ in [ux.md](ux.md).
 Mechanism: **The Seal** (*Il Sigillo*). Single-use item given by the
 Guide at Beat 3. Using it triggers class selection (Penitent /
 Heretic / Wretched) and consumes the Seal; carrying it without using
-preserves senza forma and continues the Vagrant as Unburdened.
+keeps the Vagrant imprint-free and continues him as Unburdened.
 
 The class-pick fork, the three classes' identities, and evolution
 paths all live in [classes.md](classes.md). The Seal's mechanics and

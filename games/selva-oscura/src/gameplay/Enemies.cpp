@@ -5,6 +5,7 @@
 #include "anim/AnimationClip.h"
 #include "anim/ClipRegistry.h"
 #include "anim/SkeletalAssets.h"
+#include "audio/Audio.h"
 #include "combat/CombatLog.h"
 #include "gameplay/AiTick.h"
 #include "gameplay/BehaviorTree.h"
@@ -318,25 +319,6 @@ Actor* resolveEnemyByIndex(int index)
     return nullptr;
 }
 
-// Fire the death one-shot on `e` and mark dead. Caller already
-// confirmed hp <= 0. Logs the event.
-void fireEnemyDeath(Actor& e, int index)
-{
-    const auto* death_clip = selva::anim::clips().get(kDeathClipName);
-    if (death_clip != nullptr && death_clip->isLoaded())
-    {
-        selva::anim::PoseSampler::OneShotOptions opts;
-        opts.clip_key = kDeathClipName;
-        opts.freeze_last = true;
-        e.sampler.playOneShot(*death_clip, /*blend_in_seconds=*/0.25f,
-                              /*blend_out_seconds=*/0.25f, selva::anim::PoseSampler::BodyMask::Full,
-                              /*start_time_seconds=*/0.0f, /*playback_rate=*/1.0f, opts);
-    }
-    e.is_dead = true;
-    e.death_time = selva::wallClock();
-    selva::combat::combatLog("[enemy-death] enemy[%d] died\n", index);
-}
-
 // Fire the knockdown one-shot on `e` and set state. Caller already
 // confirmed poise broke (current == 0).
 void fireEnemyKnockdown(Actor& e, int index, int damage, int poise_damage, float now)
@@ -385,6 +367,51 @@ HitReactPick pickHitReactClip(int damage, float target_yaw, const glm::vec3& wor
 }
 
 } // namespace
+
+// Public — exposed so the PC's death path in PerFrameTick can fire
+// the same one-shot routing as enemies do. Reads `e.death_clip_name`
+// so each actor controls its own visual; the PC's is "second_death".
+void fireEnemyDeath(Actor& e, int index)
+{
+    const char* clip_name = e.death_clip_name.c_str();
+    const auto* death_clip = selva::anim::clips().get(e.death_clip_name);
+    if (death_clip != nullptr && death_clip->isLoaded())
+    {
+        selva::anim::PoseSampler::OneShotOptions opts;
+        opts.clip_key = clip_name;
+        opts.freeze_last = true;
+        e.sampler.playOneShot(*death_clip, /*blend_in_seconds=*/0.25f,
+                              /*blend_out_seconds=*/0.25f, selva::anim::PoseSampler::BodyMask::Full,
+                              /*start_time_seconds=*/0.0f, /*playback_rate=*/1.0f, opts);
+    }
+    // Bed layer — plays at clip start (the dread under the fall).
+    if (!e.death_sfx_name.empty())
+    {
+        selva::combat::combatLog("[death-audio] bed sfx='%s'\n", e.death_sfx_name.c_str());
+        selva::audio::playSfx(e.death_sfx_name);
+    }
+    e.is_dead = true;
+    e.death_time = selva::wallClock();
+    // Peak-aligned layers — each scheduled so its declared peak
+    // lands at death_time + peak_align_seconds. PC uses this to
+    // stack synth_echo + soul_steal both peaking together at the
+    // moment the second-death card snaps in.
+    for (const auto& sfx_name : e.death_peak_sfx_names)
+    {
+        const float peak_offset = selva::audio::sfxPeakOffset(sfx_name);
+        const float play_at = e.death_time + e.death_peak_align_seconds - peak_offset;
+        selva::combat::combatLog(
+            "[death-audio] scheduled sfx='%s' peak_off=%.3fs align=%.3fs play_at=%.3f\n",
+            sfx_name.c_str(), peak_offset, e.death_peak_align_seconds, play_at);
+        selva::audio::scheduleSfx(sfx_name, play_at);
+    }
+    // Player-only: duck the OST so the death audio reads clean
+    // against a muffled background. Restored on respawn in
+    // tickPlayerSecondDeathLifecycle.
+    if (e.controller == Controller::Input)
+        selva::audio::duckMusic();
+    selva::combat::combatLog("[death] actor[%d] died (clip=%s)\n", index, clip_name);
+}
 
 void initHubEnemies()
 {

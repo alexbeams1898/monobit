@@ -224,6 +224,27 @@ struct Actor
     // by the dev respawn timer when it elapses.
     bool is_dead = false;
     float death_time = -1.0f;
+    // Per-actor death clip. Enemies use "death" (sword-and-shield
+    // fall). The PC overrides to "second_death" (the electrocution-
+    // style suffering clip — Hell's killing-protocol firing on him,
+    // per setting.md *Second death*). Each actor controls its own
+    // visual on death; the firing path reads this field.
+    std::string death_clip_name = "death";
+
+    // Per-actor death SFX (registered name in config/audio.json).
+    // Plays IMMEDIATELY when fireEnemyDeath fires — the "dread bed"
+    // that runs under the death animation. Empty = silent at clip
+    // start. Enemies typically empty until per-archetype audio.
+    std::string death_sfx_name;
+
+    // Optional peak-aligned death SFX layers. Each is scheduled (not
+    // played immediately) so its declared peak_offset_seconds lands
+    // at death_time + peak_align_target_seconds — used for the PC's
+    // second-death where multiple SFX (synth + soul-steal) must hit
+    // together at the moment the card snaps in. Empty = no scheduled
+    // layers.
+    std::vector<std::string> death_peak_sfx_names;
+    float death_peak_align_seconds = 0.0f;
 
     // --- Knockdown state ---
     // Set true when a hit breaks poise and the knockdown clip fires.

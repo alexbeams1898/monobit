@@ -276,7 +276,7 @@ ago**. The selva oscura received him — the natural cosmological
 destination of the unjudged (per setting.md *The selva oscura as
 cosmological destination*). He has been there since.
 
-**He is senza forma**, like the Vagrant. The same cosmological rule
+**He is unjudged**, like the Vagrant. The same cosmological rule
 applies — Hell cannot grip him because he carries no imprint. This is
 what made him, much later, useful to Beatrice. She found him already
 deflected, already settled in the Wood, already in the right state for
@@ -297,7 +297,7 @@ real, all genuine. He is a pawn who does not know he is a pawn.
 inclination toward help, his warmth, his patience — predates his
 arrival in the Wood. His pre-Hell soul (whatever life he led before
 Hell) had this shape. When he refused measurement at the gates, Hell
-installed nothing in him (per senza forma) — but the pre-existing
+installed nothing in him (no imprint to place) — but the pre-existing
 shape of his soul was not erased. He arrived in the selva oscura as
 an unjudged soul whose natural inclination was to be helpful.
 
@@ -560,8 +560,10 @@ unlocks the reveal) and a *surface* (where the player sees it).
 ### R1 — Forced repentance via second death is what kills do
 
 What every kill has been. The act the damned cry out for and Hell
-will not give. Granted by the Vagrant because he is unjudged
-(*senza forma*) — and unreceivable by him for the same reason.
+will not give. Granted by the Vagrant because he is unjudged — and
+when he receives it, the protocol fires but does not complete (no
+imprint to grip; the soul is ejected to the Wood instead of being
+finished).
 
 - **Phrase enters vocabulary from run 1.** The *NOT YET / THOU DOST
   NOT BELONG* death-card teaches the cosmological refusal in two
@@ -576,8 +578,8 @@ will not give. Granted by the Vagrant because he is unjudged
   his coherent window per the degradation table.
 - **Surface:** the Guide, in the Wood, between runs. Names the
   symmetry directly. Concise. Two beats: kills are sacramental; the
-  Vagrant cannot be finished. *Senza forma* is named here for the
-  first time.
+  Vagrant cannot be finished. The cosmological rule of *the unjudged*
+  is named here for the first time.
 - **What the player synthesizes retroactively:** every shade and
   keeper killed has been *resolved*, not destroyed. The kill-loop
   is a sacrament-loop. The Vagrant has been performing the
@@ -617,19 +619,19 @@ and the *class-evolution-as-Hell-loading* implication.
     voice through his breakdown.
   - **Posthumous Grimoire entries** unlock at the Guide's death.
     These are the *explicit* surface — the entries that name
-    Beatrice, name *senza forma* as a class property both the Vagrant
-    and the Guide share, name the placement, name the plan in broad
-    shape.
+    Beatrice, name the unjudged condition as a class property both
+    the Vagrant and the Guide share, name the placement, name the
+    plan in broad shape.
   - **The Hand.** The item the Vagrant carries forward — now reread
-    as the hand of a peer, another senza forma soul Beatrice used.
+    as the hand of a peer, another unjudged soul Beatrice used.
 - **What the player synthesizes (all at once):**
   - The woman on the title screen has been Beatrice the whole time.
   - She is the agent behind everything — the placement, the Guide's
     instrumentalization, the entire arc.
-  - The Vagrant is unjudged — *senza forma* — and unjudged souls are
-    a class. Most go to selvas oscuras of their own. The Vagrant is
-    in Hell because Beatrice put him there.
-  - The Guide is also senza forma. He never knew. He died not knowing.
+  - The Vagrant is unjudged — and unjudged souls are a cosmological
+    class. Most go to selvas oscuras of their own. The Vagrant is in
+    Hell because Beatrice put him there.
+  - The Guide is also unjudged. He never knew. He died not knowing.
     Both Vagrant and Guide have been pawns; the Guide was used through
     a channel Beatrice constructed, and the channel destroyed him.
   - **Class evolution has been Hell loading itself into the Vagrant**
@@ -812,8 +814,8 @@ discrete reveal at the final scene of each ending.**
    contain; what unlocks when; how the register-shift across the
    game (Hell waking up to itself) is paced into specific entries.
    R2's posthumous Grimoire entries especially — the explicit naming
-   of Beatrice and senza forma at the Guide's death — need their
-   shape locked.
+   of Beatrice and the unjudged condition at the Guide's death —
+   need their shape locked.
 
 3. **The four endings as narrative experiences (cutscene-level
    detail).** Shape locked at the *Reveals / R5* level (per-ending

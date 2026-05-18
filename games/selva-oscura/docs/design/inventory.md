@@ -19,8 +19,8 @@ Per setting.md *Item system*:
   3*). **Single-use.** Class-pick mechanism: using opens the imprint
   Hell can grip, locks the Vagrant out of the unburdened path
   permanently. *Carriable indefinitely if not used.* Carrying it
-  preserves senza forma; the unburdened can use it at any later
-  moment to permanently break PURITY for that save.
+  keeps the Vagrant imprint-free; the unburdened can use it at any
+  later moment to permanently break PURITY for that save.
 
 - **The Cord** — mortal artifact lifted from *Inferno* XVI:106-108.
   Teleport from any circle back to the *selva oscura*. Unlimited

@@ -1,0 +1,25 @@
+{
+  "music": {
+    "path": "assets/audio/Chapelflames.mp3",
+    "volume": 0.35,
+    "loop": true,
+    "fade_in_ms": 2000,
+    "lowpass_during_death_hz": 700
+  },
+  "sfx": {
+    "dark_sound": {
+      "path": "assets/audio/dark_sound.mp3",
+      "volume": 0.85
+    },
+    "synth_echo": {
+      "path": "assets/audio/synth_echo.mp3",
+      "volume": 0.85,
+      "peak_offset_seconds": 0.8
+    },
+    "soul_steal": {
+      "path": "assets/audio/soul_steal.mp3",
+      "volume": 0.85,
+      "peak_offset_seconds": 0.8
+    }
+  }
+}

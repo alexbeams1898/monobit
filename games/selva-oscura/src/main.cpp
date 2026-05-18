@@ -11,6 +11,7 @@
 #include "anim/LocomotionConfig.h"
 #include "anim/PoseSampler.h"
 #include "anim/SkeletalAssets.h"
+#include "audio/Audio.h"
 #include "combat/AttackResolution.h"
 #include "combat/CombatData.h"
 #include "combat/CombatLog.h"
@@ -103,6 +104,11 @@ int main(int /*argc*/, char* /*argv*/[])
     // to struct defaults if the file is missing or malformed.
     selva::tuning::loadFromFile(kTunablesPath);
 
+    // Audio: init miniaudio engine + load name→path registry. Safe to
+    // run before/after asset load; playSfx no-ops if init failed (no
+    // audio hardware) or the name isn't registered.
+    selva::audio::init("config/audio.json");
+
     if (!selva::anim::initSkeletalAssets())
     {
         std::fprintf(stderr, "[main] skeletal assets failed to load — character disabled\n");
@@ -165,6 +171,7 @@ int main(int /*argc*/, char* /*argv*/[])
     selva::gameplay::shutdownHubEnemies();
     selva::anim::shutdownSkeletalAssets();
     shutdownGeometry();
+    selva::audio::shutdown();
     engine.shutdown();
     selva::combat::closeCombatLog();
     return 0;

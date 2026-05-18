@@ -181,6 +181,18 @@ void initActorPool()
     Actor pc;
     pc.controller = Controller::Input;
     pc.faction = Faction::Player;
+    pc.death_clip_name = "second_death";
+    // The PC's death audio is a layered composition:
+    //   * death_sfx_name (dark bed) — plays at clip start, dread
+    //     under the fall.
+    //   * death_peak_sfx_names (verdict jump-scare) — multiple SFX
+    //     scheduled so each one's peak lands at the moment the
+    //     second-death card snaps in. The align target matches
+    //     kPlayerSecondDeathClipHoldSeconds in PerFrameTick /
+    //     ActorHud (both consume the same 3.5s).
+    pc.death_sfx_name = "dark_sound";
+    pc.death_peak_sfx_names = {"synth_echo", "soul_steal"};
+    pc.death_peak_align_seconds = 3.5f;
     initActorPools(pc.hp, pc.stamina, pc.poise, pc.body, pc.stats);
     // Player's sampler is bound to the shared skeleton + mesh at
     // first sampler.update() — same as any other actor. Pre-warm
