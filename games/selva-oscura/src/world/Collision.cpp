@@ -46,8 +46,8 @@ constexpr float kPlateauHalfX = 25.0f;
 constexpr float kBackWalkwayStartZ = -185.0f;
 constexpr float kBackWalkwayEndZ = -285.0f;
 
-constexpr int kAisleTreeCount = 40;            // dense framing per aisle
-constexpr int kBackgroundTreeCount = 80;       // scattered through the wider wood
+constexpr int kAisleTreeCount = 40;      // dense framing per aisle
+constexpr int kBackgroundTreeCount = 80; // scattered through the wider wood
 
 bool tooCloseToExisting(const std::vector<CylinderCollider>& placed, float x, float z, float radius)
 {
@@ -69,8 +69,7 @@ bool inApproachWalkway(float x, float z)
 
 bool inBackWalkway(float x, float z)
 {
-    return z <= kBackWalkwayStartZ && z >= kBackWalkwayEndZ &&
-           std::abs(x) <= kWalkwayHalfWidth;
+    return z <= kBackWalkwayStartZ && z >= kBackWalkwayEndZ && std::abs(x) <= kWalkwayHalfWidth;
 }
 
 bool inWalkwayCorridor(float x, float z)

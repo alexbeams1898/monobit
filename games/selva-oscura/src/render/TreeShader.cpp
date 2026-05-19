@@ -5,10 +5,10 @@
 
 #include <glm/gtc/type_ptr.hpp>
 
-#include <glad/glad.h>
-
 #include <cmath>
 #include <string>
+
+#include <glad/glad.h>
 
 namespace selva::render
 {
@@ -155,7 +155,9 @@ void useTreeShader()
     glUseProgram(sProgram);
 }
 
-void setTreeView(const glm::mat4& /*view*/) {} // unused (kept for API symmetry)
+void setTreeView(const glm::mat4& /*view*/)
+{
+} // unused (kept for API symmetry)
 
 void setTreeViewProj(const glm::mat4& view_proj)
 {

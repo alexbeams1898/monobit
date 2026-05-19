@@ -3,7 +3,6 @@
 #include "render/Texture.h"
 
 #include <cgltf.h>
-#include <glad/glad.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <nlohmann/json.hpp>
 
@@ -16,6 +15,8 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include <glad/glad.h>
 
 namespace selva::world
 {
@@ -91,8 +92,7 @@ struct CpuMesh
     std::string node_name;
 };
 
-bool loadPrimitiveToCpuMesh(const cgltf_primitive* prim, const float node_world[16],
-                            CpuMesh& out)
+bool loadPrimitiveToCpuMesh(const cgltf_primitive* prim, const float node_world[16], CpuMesh& out)
 {
     const cgltf_accessor* pos_acc = findAttribute(prim, cgltf_attribute_type_position);
     const cgltf_accessor* norm_acc = findAttribute(prim, cgltf_attribute_type_normal);
@@ -217,8 +217,7 @@ void uploadMesh(const CpuMesh& cpu, float cx_shift, float cz_shift, float base_y
         v.position[0] -= cx_shift;
         v.position[1] -= base_y;
         v.position[2] -= cz_shift;
-        const float r =
-            std::sqrt(v.position[0] * v.position[0] + v.position[2] * v.position[2]);
+        const float r = std::sqrt(v.position[0] * v.position[0] + v.position[2] * v.position[2]);
         if (r > max_xz)
             max_xz = r;
     }
@@ -335,10 +334,9 @@ bool initTreeAssets()
         cm.is_rock = rock;
         cm.family = atl ? "atlas" : rock ? "rock" : ((t01 || b01) ? "01" : "02");
         cm.node_name = node.name;
-        std::fprintf(stderr,
-                     "[trees] %s family=%s name=%s y=[%.2f..%.2f] centroid=(%.2f, %.2f)\n",
-                     rock      ? "rock"
-                     : atl     ? "atlas"
+        std::fprintf(stderr, "[trees] %s family=%s name=%s y=[%.2f..%.2f] centroid=(%.2f, %.2f)\n",
+                     rock             ? "rock"
+                     : atl            ? "atlas"
                      : cm.is_branches ? "branches"
                                       : "trunk",
                      cm.family.c_str(), node.name, cm.min_y, cm.max_y, cm.centroid_x,
@@ -409,8 +407,7 @@ bool initTreeAssets()
         variant.trunk.base_color_tex = selva::render::loadTexture2D(
             std::string(kAssetDir) + "textures/Tree_Trunk_" + trunk.family + "_baseColor.png");
         variant.branches.base_color_tex = selva::render::loadTexture2D(
-            std::string(kAssetDir) + "textures/Tree_Branches_" + trunk.family +
-            "_baseColor.png");
+            std::string(kAssetDir) + "textures/Tree_Branches_" + trunk.family + "_baseColor.png");
         std::fprintf(stderr,
                      "[trees] [variant %zu] paired trunk family=%s height=%.2f "
                      "with branches (centroid distance=%.2f)\n",
@@ -432,8 +429,8 @@ bool initTreeAssets()
         const float base = r.min_y;
         uploadMesh(r, cx, cz, base, variant.trunk);
         variant.trunk.alpha_cutoff = 0.0f;
-        variant.trunk.base_color_tex = selva::render::loadTexture2D(
-            std::string(kAssetDir) + "textures/Rocks_baseColor.png");
+        variant.trunk.base_color_tex =
+            selva::render::loadTexture2D(std::string(kAssetDir) + "textures/Rocks_baseColor.png");
         std::fprintf(stderr, "[trees] [variant %zu] rock_%02d height=%.2f node=%s\n",
                      sVariants.size(), ri, variant.trunk.height, r.node_name.c_str());
         sVariants.push_back(std::move(variant));

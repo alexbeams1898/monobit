@@ -1,6 +1,5 @@
 #include "world/Terrain.h"
 
-#include <glad/glad.h>
 #include <nlohmann/json.hpp>
 #include <stb_image.h>
 
@@ -10,6 +9,8 @@
 #include <cstring>
 #include <fstream>
 #include <vector>
+
+#include <glad/glad.h>
 
 namespace selva::world
 {
@@ -120,14 +121,14 @@ bool buildRegionMesh(TerrainRegion& r, int subdivide)
             const float u = static_cast<float>(ix) / static_cast<float>(subdivide);
             const float v = static_cast<float>(iz) / static_cast<float>(subdivide);
             const float du = 1.0f / static_cast<float>(subdivide);
-            const float hL = bilinearSample(r.heights, r.hm_width, r.hm_height,
-                                            std::max(0.0f, u - du), v);
-            const float hR = bilinearSample(r.heights, r.hm_width, r.hm_height,
-                                            std::min(1.0f, u + du), v);
-            const float hD = bilinearSample(r.heights, r.hm_width, r.hm_height, u,
-                                            std::max(0.0f, v - du));
-            const float hU = bilinearSample(r.heights, r.hm_width, r.hm_height, u,
-                                            std::min(1.0f, v + du));
+            const float hL =
+                bilinearSample(r.heights, r.hm_width, r.hm_height, std::max(0.0f, u - du), v);
+            const float hR =
+                bilinearSample(r.heights, r.hm_width, r.hm_height, std::min(1.0f, u + du), v);
+            const float hD =
+                bilinearSample(r.heights, r.hm_width, r.hm_height, u, std::max(0.0f, v - du));
+            const float hU =
+                bilinearSample(r.heights, r.hm_width, r.hm_height, u, std::min(1.0f, v + du));
             // Tangent vectors along X and Z; cross gives the normal.
             const float dx = 2.0f * step;
             const float dz = 2.0f * step;
@@ -251,8 +252,9 @@ bool initTerrain()
             continue;
         if (!buildRegionMesh(r, subdivide))
             continue;
-        std::fprintf(stderr, "[terrain] region '%s' loaded: %dx%d hm, %dm extent, "
-                             "Y=[%.2f..%.2f], subdivide=%d\n",
+        std::fprintf(stderr,
+                     "[terrain] region '%s' loaded: %dx%d hm, %dm extent, "
+                     "Y=[%.2f..%.2f], subdivide=%d\n",
                      r.name.c_str(), r.hm_width, r.hm_height, static_cast<int>(r.world_extent),
                      r.height_min, r.height_max, subdivide);
         sRegions.push_back(std::move(r));

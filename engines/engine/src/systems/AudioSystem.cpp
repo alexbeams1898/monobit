@@ -167,8 +167,8 @@ void AudioSystem::playSfx(const std::string& path, float volume, float pitch)
     // SFX decode in a few ms, and async raced cleanup against the
     // decoder thread (assertion in miniaudio.h ~line 58000 when
     // cursor overran sizeInFrames during ma_sound_uninit).
-    const ma_result result = ma_sound_init_from_file(
-        &sEngine, path.c_str(), MA_SOUND_FLAG_DECODE, nullptr, nullptr, &slot->sound);
+    const ma_result result = ma_sound_init_from_file(&sEngine, path.c_str(), MA_SOUND_FLAG_DECODE,
+                                                     nullptr, nullptr, &slot->sound);
     if (result != MA_SUCCESS)
     {
         std::cerr << "[AudioSystem] playSfx failed for: " << path << " (error " << result << ")\n";

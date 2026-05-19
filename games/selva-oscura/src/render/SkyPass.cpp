@@ -6,10 +6,10 @@
 
 #include <glm/gtc/type_ptr.hpp>
 
-#include <glad/glad.h>
-
 #include <cmath>
 #include <string>
+
+#include <glad/glad.h>
 
 namespace selva::render
 {

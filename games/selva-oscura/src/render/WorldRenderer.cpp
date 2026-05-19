@@ -11,15 +11,16 @@
 #include "world/Terrain.h"
 #include "world/TreeAssets.h"
 
-#include <glad/glad.h>
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <SDL.h>
 
 #include <algorithm>
-#include <cstdio>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
+
+#include <glad/glad.h>
 
 namespace selva::render
 {

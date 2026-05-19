@@ -1,10 +1,10 @@
 #pragma once
 
+#include <glm/vec2.hpp>
+
 #include <cstdint>
 #include <string>
 #include <vector>
-
-#include <glm/vec2.hpp>
 
 namespace selva::world
 {

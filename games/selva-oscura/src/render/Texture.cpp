@@ -1,9 +1,10 @@
 #include "render/Texture.h"
 
-#include <glad/glad.h>
 #include <stb_image.h>
 
 #include <cstdio>
+
+#include <glad/glad.h>
 
 namespace selva::render
 {

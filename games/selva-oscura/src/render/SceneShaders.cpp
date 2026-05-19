@@ -5,10 +5,10 @@
 
 #include <glm/gtc/type_ptr.hpp>
 
-#include <glad/glad.h>
-
 #include <cmath>
 #include <string>
+
+#include <glad/glad.h>
 
 namespace selva::render
 {
@@ -100,8 +100,8 @@ GLint sUniExposureLoc = -1;
 
 bool initSceneProgram()
 {
-    const std::string fs = std::string(kSceneFragmentShaderCore) + kAtmosphereGLSL +
-                           kSceneFragmentShaderMain;
+    const std::string fs =
+        std::string(kSceneFragmentShaderCore) + kAtmosphereGLSL + kSceneFragmentShaderMain;
     sProgram = engine::gl::compileProgram(kSceneVertexShader, fs.c_str());
     if (sProgram == 0)
         return false;

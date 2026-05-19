@@ -358,10 +358,10 @@ void drawSecondDeathCard()
     for (int dx = -2; dx <= 2; ++dx)
         for (int dy = -2; dy <= 2; ++dy)
             if ((dx | dy) != 0)
-                fg->AddText(font, msg_size,
-                            ImVec2(msg_pos.x + static_cast<float>(dx),
-                                   msg_pos.y + static_cast<float>(dy)),
-                            shadow, msg);
+                fg->AddText(
+                    font, msg_size,
+                    ImVec2(msg_pos.x + static_cast<float>(dx), msg_pos.y + static_cast<float>(dy)),
+                    shadow, msg);
     fg->AddText(font, msg_size, msg_pos, white, msg);
 }
 
