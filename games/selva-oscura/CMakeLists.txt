@@ -51,6 +51,7 @@ add_library(selva-oscura-lib STATIC
     src/render/Camera.cpp
     src/render/SceneGeometry.cpp
     src/render/SceneShaders.cpp
+    src/render/SkyPass.cpp
     src/render/WorldRenderer.cpp
     src/ui/ActorHud.cpp
     src/ui/ComboHud.cpp

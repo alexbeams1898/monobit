@@ -908,6 +908,15 @@ Tracked here for future iteration:
 - [Story](story.md) — narrative arc, ending cutscenes.
 - [Companions](companions.md) — the Guide.
 - [Inventory](inventory.md) — item system in detail.
+- [Crafting](crafting.md) — all weapons and tools are crafted, not
+  looted; substrate split between Wood-craft and Hell-craft;
+  crafting as the verb of *consuming Hell*.
+- [Wood](wood.md) — the selva oscura as a place: inner/outer
+  layout, Hell's leak as the threshold's defining condition, time-
+  stop, persistence of the player's marks.
+- [Creatures](creatures.md) — the Selva-organism ecology spawned
+  from leaked Hell-substance; biology rather than spirit-substance;
+  capture as personal choice, not mission target.
 - [Dialogue](dialogue.md) — NPC trees, register, state branching.
 - [UX](ux.md) — screen flow, HUD, menus, vestigia, save/load language.
 - [Fallback](fallback.md) — death, retry, cycle persistence mechanics.

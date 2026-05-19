@@ -34,6 +34,7 @@
 #include "render/Camera.h"
 #include "render/SceneGeometry.h"
 #include "render/SceneShaders.h"
+#include "render/SkyPass.h"
 #include "render/WorldRenderer.h"
 #include "ui/ComboHud.h"
 #include "world/Collision.h"
@@ -2739,8 +2740,32 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
     const glm::mat4 viewProj = selva::render::buildViewProj(sPlayer.pos, targetLookAtY);
     selva::render::setLastViewProj(viewProj);
 
+    // Threshold-light direction toward the colle (-Z), held at deep
+    // dusk elevation. Beatrice's light (per wood.md): no body, no
+    // movement. Intensity well below "Earth sun" so the world reads
+    // as held twilight rather than late afternoon. Slight warm tint
+    // pre-mul on the source itself (the light is already mystical
+    // before the atmosphere shapes it).
+    constexpr glm::vec3 kSunDir(0.0f, 0.061f, -0.998f);
+    constexpr glm::vec3 kSunIntensity(11.0f, 9.5f, 7.0f);
+    constexpr float kExposure = 1.0f;
+
+    // Camera position (matches buildViewProj math): player_pos - lookFwd
+    // * follow_distance + (0, follow_height, 0). Reconstruct here.
+    const auto& tun_atm = selva::tuning::current();
+    const float camYaw = selva::render::cameraYaw();
+    const float camPitch = selva::render::cameraPitch();
+    const glm::vec3 lookFwd(std::cos(camPitch) * -std::sin(camYaw), std::sin(camPitch),
+                            std::cos(camPitch) * -std::cos(camYaw));
+    const glm::vec3 camPos = sPlayer.pos - lookFwd * tun_atm.follow_distance +
+                             glm::vec3(0.0f, tun_atm.follow_height, 0.0f);
+
+    selva::render::drawSky(glm::inverse(viewProj), kSunDir, kSunIntensity, camPos, kExposure);
+
     selva::render::useSceneProgram();
+    selva::render::setSceneView(selva::render::lastView());
     selva::render::setSceneViewProj(viewProj);
+    selva::render::setSceneAtmosphere(kSunDir, kSunIntensity, camPos, kExposure);
     selva::render::renderEnvironment();
     glBindVertexArray(0);
     glUseProgram(0);

@@ -3,6 +3,7 @@
 #include "render/SceneShaders.h"
 
 #include <cmath>
+#include <cstdint>
 #include <vector>
 
 #include <glad/glad.h>
@@ -17,23 +18,18 @@ GLuint sCubeVao = 0;
 GLuint sCubeVbo = 0;
 GLuint sCubeEbo = 0;
 
-GLuint sFloorVao = 0;
-GLuint sFloorVbo = 0;
-GLuint sFloorEbo = 0;
+GLuint sGroundVao = 0;
+GLuint sGroundVbo = 0;
+GLuint sGroundEbo = 0;
+int sGroundIndexCount = 0;
 
 GLuint sDiscVao = 0;
 GLuint sDiscVbo = 0;
 GLuint sDiscEbo = 0;
 int sDiscIndexCount = 0;
 
-GLuint sGridVao = 0;
-GLuint sGridVbo = 0;
-int sGridLineCount = 0;
-GLuint sAxesVao = 0;
-GLuint sAxesVbo = 0;
-int sAxesLineCount = 0;
-
-constexpr float kFloorHalfSize = 50.0f;
+constexpr float kGroundHalfSize = 500.0f;
+constexpr int kGroundSubdiv = 40;
 
 void initCube()
 {
@@ -82,30 +78,80 @@ void initCube()
     glBindVertexArray(0);
 }
 
-void initFloor()
+// Deterministic value-noise sampled on the ground grid. Hash-based so
+// adjacent vertices vary independently — produces a stippled register
+// that reads as "preserved deadfall / damp earth" once the atmosphere
+// shades it, not a flat-color slab.
+float hashNoise(int ix, int iz)
 {
-    // clang-format off
-    const float kVertices[] = {
-        -kFloorHalfSize, 0.0f, -kFloorHalfSize,   0.10f,
-         kFloorHalfSize, 0.0f, -kFloorHalfSize,   0.10f,
-         kFloorHalfSize, 0.0f,  kFloorHalfSize,   0.25f,
-        -kFloorHalfSize, 0.0f,  kFloorHalfSize,   0.25f,
-    };
+    uint32_t h = static_cast<uint32_t>(ix * 374761393 + iz * 668265263);
+    h = (h ^ (h >> 13)) * 1274126177u;
+    h = h ^ (h >> 16);
+    return static_cast<float>(h & 0xFFFFFFu) / static_cast<float>(0xFFFFFF);
+}
 
-    static constexpr unsigned int kIndices[] = {
-        0, 2, 1,   0, 3, 2,
-    };
-    // clang-format on
+void initGround()
+{
+    constexpr int N = kGroundSubdiv;
+    constexpr float HS = kGroundHalfSize;
+    constexpr int kVertCount = (N + 1) * (N + 1);
 
-    glGenVertexArrays(1, &sFloorVao);
-    glGenBuffers(1, &sFloorVbo);
-    glGenBuffers(1, &sFloorEbo);
+    std::vector<float> verts;
+    verts.reserve(static_cast<std::size_t>(kVertCount * 4));
 
-    glBindVertexArray(sFloorVao);
-    glBindBuffer(GL_ARRAY_BUFFER, sFloorVbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(kVertices), kVertices, GL_STATIC_DRAW);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sFloorEbo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(kIndices), kIndices, GL_STATIC_DRAW);
+    // Damp-earth base shade. Per-vertex noise breaks up the flat plane
+    // without changing the average tone.
+    constexpr float kBaseShade = 0.55f;
+    constexpr float kNoiseAmp = 0.08f;
+
+    for (int iz = 0; iz <= N; ++iz)
+    {
+        for (int ix = 0; ix <= N; ++ix)
+        {
+            const float u = static_cast<float>(ix) / static_cast<float>(N);
+            const float v = static_cast<float>(iz) / static_cast<float>(N);
+            const float x = (u * 2.0f - 1.0f) * HS;
+            const float z = (v * 2.0f - 1.0f) * HS;
+            const float n = (hashNoise(ix, iz) * 2.0f - 1.0f) * kNoiseAmp;
+            verts.push_back(x);
+            verts.push_back(0.0f);
+            verts.push_back(z);
+            verts.push_back(kBaseShade + n);
+        }
+    }
+
+    std::vector<unsigned int> indices;
+    indices.reserve(static_cast<std::size_t>(N * N * 6));
+    for (int iz = 0; iz < N; ++iz)
+    {
+        for (int ix = 0; ix < N; ++ix)
+        {
+            const unsigned int i0 = static_cast<unsigned int>(iz * (N + 1) + ix);
+            const unsigned int i1 = i0 + 1;
+            const unsigned int i2 = i0 + static_cast<unsigned int>(N + 1);
+            const unsigned int i3 = i2 + 1;
+            indices.push_back(i0);
+            indices.push_back(i3);
+            indices.push_back(i1);
+            indices.push_back(i0);
+            indices.push_back(i2);
+            indices.push_back(i3);
+        }
+    }
+    sGroundIndexCount = static_cast<int>(indices.size());
+
+    glGenVertexArrays(1, &sGroundVao);
+    glGenBuffers(1, &sGroundVbo);
+    glGenBuffers(1, &sGroundEbo);
+
+    glBindVertexArray(sGroundVao);
+    glBindBuffer(GL_ARRAY_BUFFER, sGroundVbo);
+    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(verts.size() * sizeof(float)),
+                 verts.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sGroundEbo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+                 static_cast<GLsizeiptr>(indices.size() * sizeof(unsigned int)), indices.data(),
+                 GL_STATIC_DRAW);
 
     constexpr int stride = 4 * sizeof(float);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, nullptr);
@@ -171,68 +217,6 @@ void initDisc()
     glBindVertexArray(0);
 }
 
-void initGrid()
-{
-    constexpr int kGridHalfSize = 20;
-    const float k = static_cast<float>(kGridHalfSize);
-    std::vector<float> verts;
-    verts.reserve(static_cast<std::size_t>(kGridHalfSize * 2 + 1) * 4 * 4);
-    for (int i = -kGridHalfSize; i <= kGridHalfSize; ++i)
-    {
-        if (i == 0)
-            continue;
-        const float p = static_cast<float>(i);
-        verts.push_back(-k);
-        verts.push_back(0.005f);
-        verts.push_back(p);
-        verts.push_back(0.20f);
-        verts.push_back(k);
-        verts.push_back(0.005f);
-        verts.push_back(p);
-        verts.push_back(0.20f);
-        verts.push_back(p);
-        verts.push_back(0.005f);
-        verts.push_back(-k);
-        verts.push_back(0.20f);
-        verts.push_back(p);
-        verts.push_back(0.005f);
-        verts.push_back(k);
-        verts.push_back(0.20f);
-    }
-    sGridLineCount = static_cast<int>(verts.size() / 4);
-
-    glGenVertexArrays(1, &sGridVao);
-    glGenBuffers(1, &sGridVbo);
-    glBindVertexArray(sGridVao);
-    glBindBuffer(GL_ARRAY_BUFFER, sGridVbo);
-    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(verts.size() * sizeof(float)),
-                 verts.data(), GL_STATIC_DRAW);
-    constexpr int stride = 4 * sizeof(float);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, nullptr);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, stride,
-                          reinterpret_cast<void*>(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-    glBindVertexArray(0);
-
-    const float kAxes[] = {
-        -k,   0.006f, 0.0f, 0.55f, k,    0.006f, 0.0f, 0.55f,
-        0.0f, 0.006f, -k,   0.75f, 0.0f, 0.006f, k,    0.75f,
-    };
-    sAxesLineCount = 4;
-    glGenVertexArrays(1, &sAxesVao);
-    glGenBuffers(1, &sAxesVbo);
-    glBindVertexArray(sAxesVao);
-    glBindBuffer(GL_ARRAY_BUFFER, sAxesVbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(kAxes), kAxes, GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, nullptr);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, stride,
-                          reinterpret_cast<void*>(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-    glBindVertexArray(0);
-}
-
 void drawIndexed(GLuint vao, GLsizei index_count, const glm::mat4& model, float tint)
 {
     setSceneModel(model);
@@ -241,52 +225,36 @@ void drawIndexed(GLuint vao, GLsizei index_count, const glm::mat4& model, float 
     glDrawElements(GL_TRIANGLES, index_count, GL_UNSIGNED_INT, nullptr);
 }
 
-void drawLineArray(GLuint vao, GLsizei vertex_count, const glm::mat4& model, float tint)
-{
-    setSceneModel(model);
-    setSceneTint(tint);
-    glBindVertexArray(vao);
-    glDrawArrays(GL_LINES, 0, vertex_count);
-}
-
 } // namespace
 
 void initSceneGeometry()
 {
     initCube();
-    initFloor();
+    initGround();
     initDisc();
-    initGrid();
 }
 
 void shutdownSceneGeometry()
 {
-    glDeleteBuffers(1, &sFloorEbo);
-    glDeleteBuffers(1, &sFloorVbo);
-    glDeleteVertexArrays(1, &sFloorVao);
+    glDeleteBuffers(1, &sGroundEbo);
+    glDeleteBuffers(1, &sGroundVbo);
+    glDeleteVertexArrays(1, &sGroundVao);
     glDeleteBuffers(1, &sDiscEbo);
     glDeleteBuffers(1, &sDiscVbo);
     glDeleteVertexArrays(1, &sDiscVao);
-    glDeleteBuffers(1, &sGridVbo);
-    glDeleteVertexArrays(1, &sGridVao);
-    glDeleteBuffers(1, &sAxesVbo);
-    glDeleteVertexArrays(1, &sAxesVao);
     glDeleteBuffers(1, &sCubeEbo);
     glDeleteBuffers(1, &sCubeVbo);
     glDeleteVertexArrays(1, &sCubeVao);
-    sFloorEbo = sFloorVbo = sFloorVao = 0;
+    sGroundEbo = sGroundVbo = sGroundVao = 0;
+    sGroundIndexCount = 0;
     sDiscEbo = sDiscVbo = sDiscVao = 0;
     sDiscIndexCount = 0;
-    sGridVbo = sGridVao = 0;
-    sAxesVbo = sAxesVao = 0;
     sCubeEbo = sCubeVbo = sCubeVao = 0;
-    sGridLineCount = 0;
-    sAxesLineCount = 0;
 }
 
-void drawFloor(const glm::mat4& model, float tint)
+void drawGround(const glm::mat4& model, float tint)
 {
-    drawIndexed(sFloorVao, 6, model, tint);
+    drawIndexed(sGroundVao, sGroundIndexCount, model, tint);
 }
 
 void drawCube(const glm::mat4& model, float tint)
@@ -297,16 +265,6 @@ void drawCube(const glm::mat4& model, float tint)
 void drawDisc(const glm::mat4& model, float tint)
 {
     drawIndexed(sDiscVao, sDiscIndexCount, model, tint);
-}
-
-void drawGrid(const glm::mat4& model, float tint)
-{
-    drawLineArray(sGridVao, sGridLineCount, model, tint);
-}
-
-void drawAxes(const glm::mat4& model, float tint)
-{
-    drawLineArray(sAxesVao, sAxesLineCount, model, tint);
 }
 
 } // namespace selva::render

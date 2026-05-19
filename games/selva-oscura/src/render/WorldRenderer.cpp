@@ -3,6 +3,7 @@
 #include "Tunables.h"
 #include "render/Camera.h"
 #include "render/SceneGeometry.h"
+#include "render/SceneShaders.h"
 #include "world/Collision.h"
 
 #include <glm/gtc/matrix_transform.hpp>
@@ -13,6 +14,16 @@
 
 namespace selva::render
 {
+
+namespace
+{
+glm::mat4 sLastView(1.0f);
+} // namespace
+
+const glm::mat4& lastView()
+{
+    return sLastView;
+}
 
 glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y)
 {
@@ -45,35 +56,27 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y)
     }
 
     const glm::vec3 lookAt(player_pos.x, sSmoothedLookAtY, player_pos.z);
-    const glm::mat4 view = glm::lookAt(camPos, lookAt, glm::vec3(0.0f, 1.0f, 0.0f));
+    sLastView = glm::lookAt(camPos, lookAt, glm::vec3(0.0f, 1.0f, 0.0f));
 
     const float aspect =
         windowHeight() > 0 ? static_cast<float>(windowWidth()) / static_cast<float>(windowHeight())
                            : 1.0f;
     const glm::mat4 proj = glm::perspective(glm::radians(tun.fov_degrees), aspect, 0.1f, 200.0f);
-    return proj * view;
+    return proj * sLastView;
 }
 
 void renderEnvironment()
 {
-    drawFloor(glm::mat4(1.0f), 1.0f);
-    drawGrid(glm::mat4(1.0f), 1.0f);
-    drawAxes(glm::mat4(1.0f), 1.0f);
+    drawGround(glm::mat4(1.0f), 1.0f);
 
-    // Placeholder trees: one scaled cube per collision cylinder so the
-    // colliders are visible while collision is being tuned. A flat dark
-    // disc sits at the base as a fake contact shadow so the eye anchors
-    // the trunk to the floor. Will swap for proper tree models + real
-    // shadows once the hub asset pass starts.
+    // Placeholder trees: one scaled cube per collision cylinder, with
+    // a disc shadow at the base. Replaced by real tree meshes later.
     for (const auto& c : selva::world::currentScene().cylinders)
     {
         glm::mat4 disc = glm::translate(glm::mat4(1.0f), glm::vec3(c.center.x, 0.01f, c.center.z));
         disc = glm::scale(disc, glm::vec3(c.radius * 1.6f, 1.0f, c.radius * 1.6f));
         drawDisc(disc, 0.05f);
 
-        // Unit cube has half-extent 0.5, so scale-Y by 2*half_height to
-        // make the trunk span [0, 2*half_height]. Center is half_height
-        // above the floor.
         const glm::vec3 trunk_center(c.center.x, c.half_height, c.center.z);
         glm::mat4 model = glm::translate(glm::mat4(1.0f), trunk_center);
         model =

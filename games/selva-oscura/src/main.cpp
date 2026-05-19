@@ -25,6 +25,7 @@
 #include "render/Camera.h"
 #include "render/SceneGeometry.h"
 #include "render/SceneShaders.h"
+#include "render/SkyPass.h"
 #include "ui/TuningPanel.h"
 #include "world/Collision.h"
 
@@ -48,6 +49,7 @@ void shutdownGeometry()
 {
     selva::render::shutdownSceneGeometry();
     selva::render::shutdownSceneProgram();
+    selva::render::shutdownSkyPass();
 }
 
 } // namespace
@@ -82,7 +84,8 @@ int main(int /*argc*/, char* /*argv*/[])
         return 1;
     }
 
-    engine.setClearColor(0.0f, 0.0f, 0.0f);
+    // Keep in sync with kFogCool in PerFrameTick.cpp.
+    engine.setClearColor(0.16f, 0.18f, 0.22f);
 
     // Capture the cursor for mouse-look.
     SDL_SetRelativeMouseMode(SDL_TRUE);
@@ -91,6 +94,11 @@ int main(int /*argc*/, char* /*argv*/[])
     if (!selva::render::initSceneProgram())
     {
         std::fprintf(stderr, "Scene shader compile/link failed\n");
+        return 1;
+    }
+    if (!selva::render::initSkyPass())
+    {
+        std::fprintf(stderr, "Sky pass shader compile/link failed\n");
         return 1;
     }
 
