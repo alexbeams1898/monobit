@@ -568,6 +568,52 @@ static int resolveAttackPoiseDamage(const selva::combat::WeaponAttack* atk)
 // The default — "use chainLink when any one-shot is live" — is right
 // for the common case (attack -> next attack in a chain). The
 // post-dodge handoff overrides via `force_first_strike` because a
+// Spawn the player's attack-hitbox volume for the just-fired clip.
+// Resolves the hitbox joint + radius from the attack's JSON data,
+// falling back to the right-hand weapon's bone_right when no
+// hitbox_joint is set. No-op when the resolved joint can't be found
+// on the skeleton.
+static void spawnPlayerAttackHitboxForClip(const char* clip_name,
+                                           const selva::anim::AnimationClip& clip,
+                                           float start_seconds, float playback_rate)
+{
+    const auto* atk = findAttackForClip(clip_name);
+    const char* joint_name = nullptr;
+    float hitbox_radius = 0.18f;
+    float hitbox_tip_offset_z = 0.0f;
+    if (atk != nullptr && !atk->hitbox_joint.empty())
+        joint_name = atk->hitbox_joint.c_str();
+    if (atk != nullptr && atk->hitbox_radius > 0.0f)
+        hitbox_radius = atk->hitbox_radius;
+    if (atk != nullptr)
+        hitbox_tip_offset_z = atk->hitbox_tip_offset_z;
+    if (joint_name == nullptr)
+    {
+        const auto* w = sEquipment.right;
+        if (w != nullptr && w->cls != nullptr && !w->cls->attach.bone_right.empty())
+            joint_name = w->cls->attach.bone_right.c_str();
+    }
+    const int joint_idx = (joint_name != nullptr) ? sSampler.findJoint(joint_name) : -1;
+    if (joint_idx < 0)
+        return;
+    selva::combat::AttackHitboxSpawnParams sp;
+    sp.actor = &sPlayer;
+    sp.attacker = selva::combat::OwnerRef{selva::combat::OwnerKind::Player, 0};
+    sp.attacker_faction = sPlayer.faction;
+    sp.raw_damage = selva::gameplay::computeAttackDamage(
+        sPlayer.stats, sPlayer.body.unarmed_damage, 0.5f, 0.5f);
+    sp.poise_damage = resolveAttackPoiseDamage(atk);
+    sp.joint_name = joint_name;
+    sp.hitbox_radius = hitbox_radius;
+    sp.hitbox_tip_offset_z = hitbox_tip_offset_z;
+    sp.clip_duration_seconds = clip.duration();
+    sp.clip_start_seconds = start_seconds;
+    sp.playback_rate = playback_rate;
+    sp.mesh_foot_offset_y = sPlayerMesh.foot_offset_y;
+    selva::combat::resetHitMemo();
+    selva::combat::spawnAttackHitbox(sp);
+}
+
 // dodge's mid-roll pose has no useful pose-match in an attack clip;
 // pose-matching would land on a late frame and visibly truncate the
 // punch. The caller knows the splice is cross-family; this function
@@ -617,59 +663,7 @@ static bool fireClipForHand(selva::combat::HandSide hand, const char* clip_name,
               (hand == selva::combat::HandSide::Right) ? "R" : "L", clip_name, clip->duration(),
               start_seconds, rate, one_shot_active ? 1 : 0, sPlayer.pos.x, sPlayer.pos.z);
 
-    // Spawn the attack hitbox parented to the swinging hand. The
-    // hitbox tracks the joint each frame (see updateActiveAttackHitbox)
-    // until its lifetime expires. Once-per-swing memo prevents
-    // double-hits across frames. Lifetime ~= active swing phase
-    // (roughly half the clip duration after the start offset);
-    // per-attack JSON authoring will replace this default later.
-    {
-        // Resolve the hitbox joint + shape from the attack's JSON
-        // data. Fall back to the weapon's grip bone_right (the
-        // standard weapon hand) if hitbox_joint is unset — most
-        // weapons swing from the same right hand the bone_right
-        // attaches to, so the override is only needed for off-hand
-        // animations (jab) or non-hand strikes (kicks).
-        const auto* atk = findAttackForClip(clip_name);
-        const char* joint_name = nullptr;
-        float hitbox_radius = 0.18f;
-        float hitbox_tip_offset_z = 0.0f;
-        if (atk != nullptr && !atk->hitbox_joint.empty())
-            joint_name = atk->hitbox_joint.c_str();
-        if (atk != nullptr && atk->hitbox_radius > 0.0f)
-            hitbox_radius = atk->hitbox_radius;
-        if (atk != nullptr)
-            hitbox_tip_offset_z = atk->hitbox_tip_offset_z;
-        if (joint_name == nullptr)
-        {
-            const auto* w = sEquipment.right;
-            if (w != nullptr && w->cls != nullptr && !w->cls->attach.bone_right.empty())
-                joint_name = w->cls->attach.bone_right.c_str();
-        }
-        const int joint_idx = (joint_name != nullptr) ? sSampler.findJoint(joint_name) : -1;
-        if (joint_idx >= 0)
-        {
-            selva::combat::AttackHitboxSpawnParams sp;
-            sp.actor = &sPlayer;
-            sp.attacker = selva::combat::OwnerRef{selva::combat::OwnerKind::Player, 0};
-            sp.attacker_faction = sPlayer.faction;
-            sp.raw_damage = selva::gameplay::computeAttackDamage(
-                sPlayer.stats, sPlayer.body.unarmed_damage, 0.5f, 0.5f);
-            sp.poise_damage = resolveAttackPoiseDamage(atk);
-            sp.joint_name = joint_name;
-            sp.hitbox_radius = hitbox_radius;
-            sp.hitbox_tip_offset_z = hitbox_tip_offset_z;
-            sp.clip_duration_seconds = clip->duration();
-            sp.clip_start_seconds = start_seconds;
-            sp.playback_rate = rate;
-            sp.mesh_foot_offset_y = sPlayerMesh.foot_offset_y;
-            selva::combat::resetHitMemo();
-            selva::combat::spawnAttackHitbox(sp);
-            // active_attack_* fields on sPlayer are written by
-            // spawnAttackHitbox so updateActiveAttackHitbox can
-            // re-anchor the volume each frame as the hand swings.
-        }
-    }
+    spawnPlayerAttackHitboxForClip(clip_name, *clip, start_seconds, rate);
     return true;
 }
 
@@ -987,82 +981,82 @@ static const char* selectLocomotionClipFromSpeed(float target_speed, bool is_arm
 // standard_idle) when the player is locked-but-standing-still.
 // The pin is re-asserted every frame; tickCombatStance later
 // honors it via its lock-aware moving-clear gate.
-static void runLocomotionDecision(const glm::vec3& moveIntent, const selva::tuning::Tunables& tun)
+// Family ids for the locomotion cross-family commit gate. fwd/back vs
+// strafe vs idle/other; transitions between fwd/back and strafe require
+// sustained input, all other transitions fire immediately.
+static int locomotionFamilyOf(const std::string& name)
 {
-    sLocoDecision = LocomotionFrameDecision{};
+    if (name == "walking" || name == "running" || name == "walking_backward" ||
+        name == "running_backward")
+        return 1;
+    if (name == "strafe_walking_left" || name == "strafe_walking_right" ||
+        name == "strafe_running_left" || name == "strafe_running_right")
+        return 2;
+    return 0;
+}
 
-    if (sPlayer.lock_target_idx >= 0)
-    {
-        sLocomotionSM.combat_stance = selva::gameplay::CombatStance::CombatReady;
-        sLocomotionSM.stance_active_until = selva::wallClock() + tun.combat_idle_grace_seconds;
-    }
-
+// Pick the loco clip name for this frame, ignoring the cross-family
+// commit gate. Order: debug clip override -> lock-on locked picker ->
+// free-mode speed-based picker. Block-idle overrides if currently
+// blocking.
+static std::string pickLocomotionClipNameThisFrame(const glm::vec3& moveIntent,
+                                                   const selva::tuning::Tunables& tun)
+{
+    std::string clip_name;
     if (!sDebugClipName.empty())
-    {
-        sLocoDecision.clip_name = sDebugClipName;
-    }
+        clip_name = sDebugClipName;
     else if (const char* locked = selectLockedLocomotionClip(moveIntent); locked != nullptr)
-    {
-        sLocoDecision.clip_name = locked;
-    }
+        clip_name = locked;
     else
     {
-        // Free-mode speed-based pick. Substitute intent-magnitude →
-        // intended target speed (walk or run) so the decision is
-        // pre-velocity (tickPlayerVelocity hasn't run yet this
-        // frame). sLastTargetSpeed from the previous frame is too
-        // stale for a fresh-press edge.
         const float intent_mag = glm::length(moveIntent);
         const float would_be_target = (intent_mag <= 0.0001f) ? 0.0f
                                       : sPlayer.sprinting     ? tun.run_speed
                                                               : tun.walk_speed;
         const bool is_armed = !isUnarmed(sEquipment);
-        sLocoDecision.clip_name = selectLocomotionClipFromSpeed(would_be_target, is_armed, tun);
+        clip_name = selectLocomotionClipFromSpeed(would_be_target, is_armed, tun);
     }
-
     if (sBlockingActive && sActiveBlockIdleClip != nullptr)
-        sLocoDecision.clip_name = sActiveBlockIdleClip;
+        clip_name = sActiveBlockIdleClip;
+    return clip_name;
+}
 
-    // Cross-family commit: a swap from forward/back ↔ strafe requires
-    // sustained intent (the player has to keep that input held for
-    // kLocoCrossFamilyCommitSeconds) before the clip swaps. Same-
-    // family changes (walking↔running, strafe-left↔strafe-right,
-    // walking↔walking_backward) and any transition involving an
-    // idle clip fire immediately.
-    auto family = [](const std::string& name) -> int
-    {
-        if (name == "walking" || name == "running" || name == "walking_backward" ||
-            name == "running_backward")
-            return 1; // fwd/back
-        if (name == "strafe_walking_left" || name == "strafe_walking_right" ||
-            name == "strafe_running_left" || name == "strafe_running_right")
-            return 2; // strafe
-        return 0;     // idle / other
-    };
-    const int desired_fam = family(sLocoDecision.clip_name);
-    const int current_fam = family(sLastLocoClipName);
+// Apply the cross-family commit gate: swaps between fwd/back and
+// strafe families require kLocoCrossFamilyCommitSeconds of sustained
+// intent. Returns the gated clip name (may be the previous frame's
+// name if the gate hasn't committed yet).
+static std::string applyCrossFamilyCommitGate(const std::string& desired_clip)
+{
+    const int desired_fam = locomotionFamilyOf(desired_clip);
+    const int current_fam = locomotionFamilyOf(sLastLocoClipName);
     const bool cross_family =
-        desired_fam == 1 && current_fam == 2 || desired_fam == 2 && current_fam == 1;
-    if (cross_family && sLocoDecision.clip_name != sLastLocoClipName)
+        (desired_fam == 1 && current_fam == 2) || (desired_fam == 2 && current_fam == 1);
+    if (!cross_family || desired_clip == sLastLocoClipName)
     {
-        if (sPendingLocoClip != sLocoDecision.clip_name)
-        {
-            sPendingLocoClip = sLocoDecision.clip_name;
-            sPendingLocoStart = selva::wallClock();
-        }
-        if ((selva::wallClock() - sPendingLocoStart) < kLocoCrossFamilyCommitSeconds)
-            sLocoDecision.clip_name = sLastLocoClipName;
-        else
-            sPendingLocoClip.clear();
-    }
-    else
-    {
-        // Either same-family swap, idle transition, or no swap. Clear
-        // any pending cross-family intent — the player either
-        // committed to it (we landed on it) or moved on.
         sPendingLocoClip.clear();
+        return desired_clip;
     }
+    if (sPendingLocoClip != desired_clip)
+    {
+        sPendingLocoClip = desired_clip;
+        sPendingLocoStart = selva::wallClock();
+    }
+    if ((selva::wallClock() - sPendingLocoStart) < kLocoCrossFamilyCommitSeconds)
+        return sLastLocoClipName;
+    sPendingLocoClip.clear();
+    return desired_clip;
+}
 
+static void runLocomotionDecision(const glm::vec3& moveIntent, const selva::tuning::Tunables& tun)
+{
+    sLocoDecision = LocomotionFrameDecision{};
+    if (sPlayer.lock_target_idx >= 0)
+    {
+        sLocomotionSM.combat_stance = selva::gameplay::CombatStance::CombatReady;
+        sLocomotionSM.stance_active_until = selva::wallClock() + tun.combat_idle_grace_seconds;
+    }
+    const std::string desired = pickLocomotionClipNameThisFrame(moveIntent, tun);
+    sLocoDecision.clip_name = applyCrossFamilyCommitGate(desired);
     sLocoDecision.source = sLocomotionConfig.translationSource(sLocoDecision.clip_name);
 }
 
@@ -2735,6 +2729,86 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     logStateNarrative();
 }
 
+// Draw player + enemies. All actors share the X_Bot rig (figura umana
+// canon, see docs/design/bestiary.md); enemies tint differently so the
+// player can tell them apart while there's no material variation yet.
+// Yaw applies a +pi offset because the Mixamo bind pose faces +Z while
+// our gameplay convention has yaw=0 mean facing -Z.
+static void drawActorMeshes(const glm::mat4& viewProj)
+{
+    if (!sPlayerMesh.isLoaded())
+        return;
+    if (!sSampler.bone_palette.empty())
+    {
+        const glm::vec3 player_pos(sPlayer.pos.x, sPlayer.pos.y - sPlayerMesh.foot_offset_y,
+                                   sPlayer.pos.z);
+        glm::mat4 player_model = glm::translate(glm::mat4(1.0f), player_pos);
+        player_model =
+            glm::rotate(player_model, sPlayer.yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
+        selva::anim::drawSkeletalMesh(sPlayerMesh, player_model, viewProj, sSampler.bone_palette,
+                                      glm::vec3(1.0f, 1.0f, 1.0f));
+    }
+    for (const auto* enemy : selva::gameplay::enemies())
+    {
+        if (enemy->sampler.bone_palette.empty())
+            continue;
+        const glm::vec3 enemy_pos(enemy->pos.x, enemy->pos.y - sPlayerMesh.foot_offset_y,
+                                  enemy->pos.z);
+        glm::mat4 enemy_model = glm::translate(glm::mat4(1.0f), enemy_pos);
+        enemy_model =
+            glm::rotate(enemy_model, enemy->yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
+        // Dark bordeaux red for the placeholder shade — distinct
+        // silhouette from the player, hints at the figura-umana
+        // damned-soul register (bloody / wretched).
+        selva::anim::drawSkeletalMesh(sPlayerMesh, enemy_model, viewProj,
+                                      enemy->sampler.bone_palette,
+                                      glm::vec3(0.45f, 0.10f, 0.13f));
+    }
+}
+
+// Frame capture: read back the back buffer at quarter-resolution and
+// write a PNG. Quarter-res because full-buffer PNG encode blocks the
+// render thread ~100ms/frame and reduces the capture rate from 60Hz
+// to ~10Hz. At 1/4 size the encode is ~16x cheaper.
+static void tickFrameCaptureWrite()
+{
+    if (!sFrameCaptureActive)
+        return;
+    ZoneScopedN("frame-capture-write");
+    constexpr int kCaptureScale = 4;
+    const int src_w = selva::render::windowWidth();
+    const int src_h = selva::render::windowHeight();
+    const int dst_w = src_w / kCaptureScale;
+    const int dst_h = src_h / kCaptureScale;
+    if (src_w <= 0 || src_h <= 0 || dst_w <= 0 || dst_h <= 0)
+        return;
+    std::vector<unsigned char> pixels(static_cast<std::size_t>(src_w) * src_h * 3);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glReadBuffer(GL_BACK);
+    glReadPixels(0, 0, src_w, src_h, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
+    // Stride-sample down (cheap) and flip vertically (glReadPixels is
+    // bottom-up, PNG is top-down).
+    std::vector<unsigned char> small(static_cast<std::size_t>(dst_w) * dst_h * 3);
+    for (int y = 0; y < dst_h; ++y)
+    {
+        const int src_y = y * kCaptureScale;
+        const int dst_row_off = (dst_h - 1 - y) * dst_w * 3;
+        for (int x = 0; x < dst_w; ++x)
+        {
+            const int src_off = (src_y * src_w + x * kCaptureScale) * 3;
+            const int dst_off = dst_row_off + x * 3;
+            small[dst_off + 0] = pixels[src_off + 0];
+            small[dst_off + 1] = pixels[src_off + 1];
+            small[dst_off + 2] = pixels[src_off + 2];
+        }
+    }
+    char path[512];
+    std::snprintf(path, sizeof(path), "%s/frame_%04d.png", sFrameCaptureDir.c_str(),
+                  sFrameCaptureCounter);
+    stbi_write_png(path, dst_w, dst_h, 3, small.data(), dst_w * 3);
+    ++sFrameCaptureCounter;
+}
+
 static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*camX*/,
                              float /*camY*/, float /*alpha*/)
 {
@@ -2802,97 +2876,8 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
     glBindVertexArray(0);
     glUseProgram(0);
 
-    // 3. Player — drawn as the rigged X Bot mesh, animated by the
-    //    PoseSampler. Position comes from sPlayer.pos (X/Z); Y is
-    //    -foot_offset_y so feet land on the floor regardless of where
-    //    the rig's origin sits in bind pose. Yaw rotates the model
-    //    around world-up to face the player's heading.
-    if (sPlayerMesh.isLoaded() && !sSampler.bone_palette.empty())
-    {
-        const glm::vec3 player_pos(sPlayer.pos.x, sPlayer.pos.y - sPlayerMesh.foot_offset_y,
-                                   sPlayer.pos.z);
-        glm::mat4 player_model = glm::translate(glm::mat4(1.0f), player_pos);
-        // Mixamo characters bind facing +Z. Our gameplay convention is
-        // "yaw=0 means facing -Z" (matches camera-forward maths in
-        // movement code). Add a 180° offset around world-up so
-        // gameplay yaw 0 visually faces -Z while still lining up with
-        // the bind-pose rig.
-        player_model =
-            glm::rotate(player_model, sPlayer.yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
-        selva::anim::drawSkeletalMesh(sPlayerMesh, player_model, viewProj, sSampler.bone_palette,
-                                      glm::vec3(1.0f, 1.0f, 1.0f));
-    }
-
-    // 4. Enemies — each is a separate PoseSampler instance on the same
-    //    shared X_Bot rig (figura umana rule, see docs/design/bestiary.md).
-    //    Slight tint shift so the player can tell them apart from
-    //    placeholder cubes/trees while there's no material variation yet.
-    if (sPlayerMesh.isLoaded())
-    {
-        for (const auto* enemy : selva::gameplay::enemies())
-        {
-            if (enemy->sampler.bone_palette.empty())
-                continue;
-            const glm::vec3 enemy_pos(enemy->pos.x, enemy->pos.y - sPlayerMesh.foot_offset_y,
-                                      enemy->pos.z);
-            glm::mat4 enemy_model = glm::translate(glm::mat4(1.0f), enemy_pos);
-            enemy_model = glm::rotate(enemy_model, enemy->yaw + glm::pi<float>(),
-                                      glm::vec3(0.0f, 1.0f, 0.0f));
-            // Dark bordeaux red for the placeholder shade — distinct
-            // silhouette from the player, hints at the figura-umana
-            // damned-soul register (bloody / wretched).
-            selva::anim::drawSkeletalMesh(sPlayerMesh, enemy_model, viewProj,
-                                          enemy->sampler.bone_palette,
-                                          glm::vec3(0.45f, 0.10f, 0.13f));
-        }
-    }
-
-    // Frame capture: read the back buffer at quarter-resolution and
-    // write a PNG. Done at the end of selvaRenderWorld — before ImGui
-    // overlays — so captured images are pure gameplay view.
-    //
-    // Quarter-res because PNG-encoding the full back buffer (~2K) blocks
-    // the render thread for ~100ms per frame, dropping the capture rate
-    // from 60Hz to ~10Hz and yielding only ~7 frames over a 2.4s dodge.
-    // At 1/4 size the encode is ~16x cheaper and the game stays at full
-    // frame rate during capture.
-    if (sFrameCaptureActive)
-    {
-        ZoneScopedN("frame-capture-write");
-        constexpr int kCaptureScale = 4;
-        const int src_w = selva::render::windowWidth();
-        const int src_h = selva::render::windowHeight();
-        const int dst_w = src_w / kCaptureScale;
-        const int dst_h = src_h / kCaptureScale;
-        if (src_w > 0 && src_h > 0 && dst_w > 0 && dst_h > 0)
-        {
-            std::vector<unsigned char> pixels(static_cast<std::size_t>(src_w) * src_h * 3);
-            glPixelStorei(GL_PACK_ALIGNMENT, 1);
-            glReadBuffer(GL_BACK);
-            glReadPixels(0, 0, src_w, src_h, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
-            // Stride-sample down (cheap) and flip vertically (glReadPixels
-            // is bottom-up, PNG is top-down).
-            std::vector<unsigned char> small(static_cast<std::size_t>(dst_w) * dst_h * 3);
-            for (int y = 0; y < dst_h; ++y)
-            {
-                const int src_y = y * kCaptureScale;
-                const int dst_row_off = (dst_h - 1 - y) * dst_w * 3;
-                for (int x = 0; x < dst_w; ++x)
-                {
-                    const int src_off = (src_y * src_w + x * kCaptureScale) * 3;
-                    const int dst_off = dst_row_off + x * 3;
-                    small[dst_off + 0] = pixels[src_off + 0];
-                    small[dst_off + 1] = pixels[src_off + 1];
-                    small[dst_off + 2] = pixels[src_off + 2];
-                }
-            }
-            char path[512];
-            std::snprintf(path, sizeof(path), "%s/frame_%04d.png", sFrameCaptureDir.c_str(),
-                          sFrameCaptureCounter);
-            stbi_write_png(path, dst_w, dst_h, 3, small.data(), dst_w * 3);
-            ++sFrameCaptureCounter;
-        }
-    }
+    drawActorMeshes(viewProj);
+    tickFrameCaptureWrite();
 }
 
 // tickstate:: accessors � TuningPanel uses these to read/write the

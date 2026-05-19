@@ -82,10 +82,66 @@ bool targetInVisionCone(const glm::vec3& actor_pos, float actor_yaw, const glm::
 // player. Extracted from tickPerception so the per-state switch
 // fits within the lizard CCN budget. Pure state transitions — does
 // not modify last_seen_time or last_known_player_pos.
+// Unaware → Suspicious on first sighting.
+static void advanceAwarenessUnaware(PerceptionState& p, bool saw_now, float now)
+{
+    if (saw_now)
+    {
+        setAwareness(p, Awareness::Suspicious, now);
+        p.suspicious_sighting_count = 1;
+    }
+}
+
+// Suspicious → Alerted on N confirmed sightings, → Unaware on decay.
+static void advanceAwarenessSuspicious(PerceptionState& p, bool saw_now, float since_contact,
+                                       float now, const selva::tuning::Tunables& tun)
+{
+    if (saw_now)
+    {
+        ++p.suspicious_sighting_count;
+        if (p.suspicious_sighting_count >= tun.ai_confirmed_sightings_to_alert)
+            setAwareness(p, Awareness::Alerted, now);
+    }
+    else if (since_contact >= tun.ai_suspicion_decay_seconds || p.last_seen_time < 0.0f)
+    {
+        setAwareness(p, Awareness::Unaware, now);
+    }
+}
+
+// Alerted → Combat on in-range visible sighting, → Suspicious on decay.
+static void advanceAwarenessAlerted(PerceptionState& p, bool saw_now, float dist_to_player_sq,
+                                    float since_contact, float now,
+                                    const selva::tuning::Tunables& tun)
+{
+    const float engage_sq = tun.ai_combat_engage_range_meters * tun.ai_combat_engage_range_meters;
+    if (dist_to_player_sq <= engage_sq && saw_now)
+        setAwareness(p, Awareness::Combat, now);
+    else if (since_contact >= tun.ai_alerted_decay_seconds)
+        setAwareness(p, Awareness::Suspicious, now);
+}
+
+// Combat retention: distance-based leash with continuous-outside
+// hysteresis. outside_leash_since timestamps the first crossing;
+// disengage timer counts continuous-outside duration only.
+static void advanceAwarenessCombat(PerceptionState& p, float dist_to_player_sq, float now,
+                                   const selva::tuning::Tunables& tun)
+{
+    const float leash_sq = tun.ai_combat_leash_range_meters * tun.ai_combat_leash_range_meters;
+    const bool outside_leash = dist_to_player_sq > leash_sq;
+    if (!outside_leash)
+    {
+        p.outside_leash_since = -1.0f;
+        return;
+    }
+    if (p.outside_leash_since < 0.0f)
+        p.outside_leash_since = now;
+    if ((now - p.outside_leash_since) >= tun.ai_combat_disengage_seconds)
+        setAwareness(p, Awareness::Alerted, now);
+}
+
 void advanceAwareness(PerceptionState& p, bool saw_now, float dist_to_player_sq, float now,
                       const selva::tuning::Tunables& tun)
 {
-    const float engage_sq = tun.ai_combat_engage_range_meters * tun.ai_combat_engage_range_meters;
     // since_contact uses max(last_seen, awareness_entered) so each
     // state's decay clock starts from when it was entered, not from
     // an ancient absolute timestamp. Prevents chain-collapse after
@@ -94,51 +150,17 @@ void advanceAwareness(PerceptionState& p, bool saw_now, float dist_to_player_sq,
     switch (p.awareness)
     {
     case Awareness::Unaware:
-        if (saw_now)
-        {
-            setAwareness(p, Awareness::Suspicious, now);
-            p.suspicious_sighting_count = 1;
-        }
+        advanceAwarenessUnaware(p, saw_now, now);
         break;
     case Awareness::Suspicious:
-        if (saw_now)
-        {
-            ++p.suspicious_sighting_count;
-            if (p.suspicious_sighting_count >= tun.ai_confirmed_sightings_to_alert)
-                setAwareness(p, Awareness::Alerted, now);
-        }
-        else if (since_contact >= tun.ai_suspicion_decay_seconds || p.last_seen_time < 0.0f)
-        {
-            setAwareness(p, Awareness::Unaware, now);
-        }
+        advanceAwarenessSuspicious(p, saw_now, since_contact, now, tun);
         break;
     case Awareness::Alerted:
-        if (dist_to_player_sq <= engage_sq && saw_now)
-            setAwareness(p, Awareness::Combat, now);
-        else if (since_contact >= tun.ai_alerted_decay_seconds)
-            setAwareness(p, Awareness::Suspicious, now);
+        advanceAwarenessAlerted(p, saw_now, dist_to_player_sq, since_contact, now, tun);
         break;
     case Awareness::Combat:
-    {
-        // Souls-style leash: Combat retention is distance-based, not
-        // vision-based. outside_leash_since timestamps the moment
-        // the player first crossed out of leash; the disengage
-        // timer counts continuous outside-leash duration only.
-        const float leash_sq = tun.ai_combat_leash_range_meters * tun.ai_combat_leash_range_meters;
-        const bool outside_leash = dist_to_player_sq > leash_sq;
-        if (outside_leash)
-        {
-            if (p.outside_leash_since < 0.0f)
-                p.outside_leash_since = now;
-            if ((now - p.outside_leash_since) >= tun.ai_combat_disengage_seconds)
-                setAwareness(p, Awareness::Alerted, now);
-        }
-        else
-        {
-            p.outside_leash_since = -1.0f;
-        }
+        advanceAwarenessCombat(p, dist_to_player_sq, now, tun);
         break;
-    }
     }
 }
 

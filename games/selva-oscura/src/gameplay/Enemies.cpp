@@ -435,6 +435,112 @@ void shutdownHubEnemies()
                pool.end());
 }
 
+// Update the actor's lock_target_idx based on awareness. Idempotent
+// per tick; logs the edges (acquire/release). On acquisition the
+// strafe direction is rolled once and held for the engagement.
+static void updateEnemyLockOnPlayer(Actor& a, const Actor& pc)
+{
+    const bool should_lock =
+        a.perception.awareness == Awareness::Combat && !a.is_dead && !pc.is_dead;
+    if (should_lock && a.lock_target_idx != 0)
+    {
+        a.lock_target_idx = 0;
+        a.duel_strafe_dir = (std::uniform_int_distribution<int>(0, 1)(a.rng) == 0) ? -1 : 1;
+        selva::combat::combatLog("[ai-lock] enemy acquired target (combat entry, strafe=%s)\n",
+                                 a.duel_strafe_dir > 0 ? "right" : "left");
+    }
+    else if (!should_lock && a.lock_target_idx >= 0)
+    {
+        a.lock_target_idx = -1;
+        a.duel_strafe_dir = 0;
+        selva::combat::combatLog("[ai-lock] enemy released target\n");
+    }
+}
+
+// Pick this frame's locomotion clip for an enemy. Three states by
+// priority: walking > combat-idle > peaceful-idle. When locked + moving,
+// directional override picks a strafe/backward variant from the
+// shared PC/NPC picker.
+struct EnemyLocoPick
+{
+    const selva::anim::AnimationClip* clip;
+    const char* key;
+};
+static EnemyLocoPick pickEnemyLocomotionClip(const Actor& a,
+                                             const selva::anim::AnimationClip* walk,
+                                             const selva::anim::AnimationClip* combat_idle,
+                                             const selva::anim::AnimationClip* peaceful_idle)
+{
+    const float speed = glm::length(a.velocity_xz);
+    const bool is_walking = (speed > kEnemyWalkSpeedFloor) && walk != nullptr && walk->isLoaded();
+    const bool engaged = a.perception.awareness >= Awareness::Alerted;
+    EnemyLocoPick out;
+    out.clip = is_walking ? walk : (engaged ? combat_idle : peaceful_idle);
+    out.key = is_walking ? kEnemyWalkClipName
+                         : (engaged ? kEnemyCombatIdleClipName : kEnemyPeacefulIdleClipName);
+    if (!is_walking || a.lock_target_idx < 0)
+        return out;
+    // Directional override: shared with PC via directionalLocoClip.
+    // Basis from turn_intent_yaw (target facing) not actor.yaw — yaw
+    // lags by turn rate and would thrash the picker basis frame-to-
+    // frame.
+    const float yaw = a.turn_intent_yaw;
+    const glm::vec3 fwd(-std::sin(yaw), 0.0f, -std::cos(yaw));
+    const glm::vec3 right(-fwd.z, 0.0f, fwd.x);
+    const glm::vec3 intent3(a.intent_xz.x, 0.0f, a.intent_xz.y);
+    const char* k = directionalLocoClip(fwd, right, intent3, /*running=*/false);
+    if (k == nullptr)
+        return out;
+    const auto* c = selva::anim::clips().get(k);
+    if (c != nullptr && c->isLoaded())
+    {
+        out.clip = c;
+        out.key = k;
+    }
+    return out;
+}
+
+// Per-actor body of tickEnemies. Returns true if the lifecycle
+// short-circuited (death/knockdown handled the actor this frame and
+// the locomotion path should be skipped).
+static bool tickOneEnemy(Actor& a, const Actor& pc, float dt, const selva::tuning::Tunables& tun,
+                         const selva::anim::AnimationClip* walk,
+                         const selva::anim::AnimationClip* combat_idle,
+                         const selva::anim::AnimationClip* peaceful_idle)
+{
+    tickPerception(a, pc, dt, tun);
+    updateEnemyLockOnPlayer(a, pc);
+    const bool engaged_now = a.perception.awareness >= Awareness::Alerted;
+    const auto* lifecycle_idle = engaged_now ? combat_idle : peaceful_idle;
+    const char* lifecycle_idle_key =
+        engaged_now ? kEnemyCombatIdleClipName : kEnemyPeacefulIdleClipName;
+    if (tickDeathLifecycle(a, dt, lifecycle_idle, lifecycle_idle_key))
+    {
+        applyActorClipHipDelta(a);
+        return true;
+    }
+    if (tickKnockdownLifecycle(a, dt, lifecycle_idle, lifecycle_idle_key))
+    {
+        applyActorClipHipDelta(a);
+        return true;
+    }
+    if (shouldTickAi(a, tun))
+    {
+        if (tun.debug_ai_tick_log)
+            selva::combat::combatLog(
+                "[ai-tick] actor pool_idx=%td awareness=%d t=%.3f\n", &a - &actors().front(),
+                static_cast<int>(a.perception.awareness), selva::wallClock());
+        tickEnemyDecision(a, tun);
+    }
+    tickEnemyLocomotion(a, dt, tun);
+    tickPoiseRefill(a, dt);
+    const EnemyLocoPick pick = pickEnemyLocomotionClip(a, walk, combat_idle, peaceful_idle);
+    if (pick.clip != nullptr && pick.clip->isLoaded())
+        a.sampler.update(*pick.clip, dt, /*blend_seconds=*/0.20f, /*loops=*/true, pick.key);
+    applyActorClipHipDelta(a);
+    return false;
+}
+
 void tickEnemies(float dt)
 {
     const auto* peaceful_idle = selva::anim::clips().get(kEnemyPeacefulIdleClipName);
@@ -446,114 +552,7 @@ void tickEnemies(float dt)
     {
         if (a.controller == Controller::Input)
             continue;
-        // Perception runs even on dead/knocked-down actors so that
-        // when they recover, awareness reflects the moment of recovery
-        // (not a stale snapshot from when they fell). Cheap; no side
-        // effects beyond writing to actor.perception.
-        tickPerception(a, pc, dt, tun);
-
-        // Lock-on follows perception. AI's lock_target_idx points at
-        // the player (idx 0) iff awareness is Combat AND target is
-        // alive. Idempotent — runs every tick, no edge detection.
-        // Symmetric with the player's lock_target_idx field; both
-        // resolve via selva::gameplay::resolveLockTarget(actor).
-        const bool should_lock =
-            a.perception.awareness == Awareness::Combat && !a.is_dead && !pc.is_dead;
-        if (should_lock && a.lock_target_idx != 0)
-        {
-            a.lock_target_idx = 0;
-            // Strafe side rolled once per engagement (sticky). When
-            // the AI does circle (player is strafing), it picks one
-            // side and stays committed instead of mirror-flipping.
-            a.duel_strafe_dir = (std::uniform_int_distribution<int>(0, 1)(a.rng) == 0) ? -1 : 1;
-            selva::combat::combatLog("[ai-lock] enemy acquired target (combat entry, strafe=%s)\n",
-                                     a.duel_strafe_dir > 0 ? "right" : "left");
-        }
-        else if (!should_lock && a.lock_target_idx >= 0)
-        {
-            a.lock_target_idx = -1;
-            a.duel_strafe_dir = 0;
-            selva::combat::combatLog("[ai-lock] enemy released target\n");
-        }
-        // Death + knockdown lifecycles pass the actor's idle clip as
-        // the loco-track target so the loco slot stays bound to a
-        // real loco clip during the freeze_last one-shot. Awareness
-        // determines whether peaceful or combat idle is the right
-        // underlying loco — matches the live picker below.
-        const bool engaged_now = a.perception.awareness >= Awareness::Alerted;
-        const auto* lifecycle_idle = engaged_now ? combat_idle : peaceful_idle;
-        const char* lifecycle_idle_key =
-            engaged_now ? kEnemyCombatIdleClipName : kEnemyPeacefulIdleClipName;
-        if (tickDeathLifecycle(a, dt, lifecycle_idle, lifecycle_idle_key))
-        {
-            applyActorClipHipDelta(a);
-            continue;
-        }
-        if (tickKnockdownLifecycle(a, dt, lifecycle_idle, lifecycle_idle_key))
-        {
-            applyActorClipHipDelta(a);
-            continue;
-        }
-        // Decision tick gate. Throttled to ai_decision_tick_hz
-        // (default 10Hz). Sprint 4a: hardcoded perception → intent
-        // mapping. Sprint 4b: behavior tree evaluation replaces the
-        // body of tickEnemyDecision.
-        if (shouldTickAi(a, tun))
-        {
-            if (tun.debug_ai_tick_log)
-                selva::combat::combatLog(
-                    "[ai-tick] actor pool_idx=%td awareness=%d t=%.3f\n", &a - &actors().front(),
-                    static_cast<int>(a.perception.awareness), selva::wallClock());
-            tickEnemyDecision(a, tun);
-        }
-        // Locomotion runs at full render rate (not gated) so motion
-        // stays smooth; the decision tick only updates the *intent*
-        // every ~100ms, locomotion integrates it every frame.
-        tickEnemyLocomotion(a, dt, tun);
-        tickPoiseRefill(a, dt);
-        // Pick the locomotion clip. Three states, in priority order:
-        //   walking   — speed above floor, any awareness
-        //   combat-idle — speed below floor, awareness >= Alerted
-        //   peaceful-idle — speed below floor, awareness < Alerted
-        // The combat-stance switch happens on the first sighting that
-        // escalates to Alerted (or higher). Visually communicates
-        // "the enemy registered you" without an explicit telegraph.
-        // Single threshold, no hysteresis/cooldown — the sampler
-        // handles rapid mid-blend swaps via the pose-snapshot path
-        // in applyLocoCrossfade. Walking clip has authored hip
-        // motion which applyActorClipHipDelta consumes — feet stay
-        // planted while gameplay-driven velocity moves the actor.
-        const float speed = glm::length(a.velocity_xz);
-        const bool is_walking =
-            (speed > kEnemyWalkSpeedFloor) && walk != nullptr && walk->isLoaded();
-        const bool engaged = a.perception.awareness >= Awareness::Alerted;
-        const selva::anim::AnimationClip* idle_clip = engaged ? combat_idle : peaceful_idle;
-        const char* idle_key = engaged ? kEnemyCombatIdleClipName : kEnemyPeacefulIdleClipName;
-        const selva::anim::AnimationClip* loco_clip = is_walking ? walk : idle_clip;
-        const char* loco_key = is_walking ? kEnemyWalkClipName : idle_key;
-        // Directional pick when locked + moving. Facing basis from
-        // turn_intent_yaw (target facing) not actor.yaw — turn-rate
-        // lag would otherwise rotate the picker basis frame-to-frame
-        // and thrash. Shared with PC via directionalLocoClip().
-        if (is_walking && a.lock_target_idx >= 0)
-        {
-            const float yaw = a.turn_intent_yaw;
-            const glm::vec3 fwd(-std::sin(yaw), 0.0f, -std::cos(yaw));
-            const glm::vec3 right(-fwd.z, 0.0f, fwd.x);
-            const glm::vec3 intent3(a.intent_xz.x, 0.0f, a.intent_xz.y);
-            if (const char* k = directionalLocoClip(fwd, right, intent3, /*running=*/false);
-                k != nullptr)
-            {
-                if (const auto* c = selva::anim::clips().get(k); c != nullptr && c->isLoaded())
-                {
-                    loco_clip = c;
-                    loco_key = k;
-                }
-            }
-        }
-        if (loco_clip != nullptr && loco_clip->isLoaded())
-            a.sampler.update(*loco_clip, dt, /*blend_seconds=*/0.20f, /*loops=*/true, loco_key);
-        applyActorClipHipDelta(a);
+        tickOneEnemy(a, pc, dt, tun, walk, combat_idle, peaceful_idle);
     }
 }
 
