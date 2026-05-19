@@ -147,6 +147,35 @@ vec3 atmosphereWithT(vec3 rayOrigin, vec3 rayDir, vec3 sunDir,
 
     return col;
 }
+
+// Distance fog blended on top of the atmospheric result. Earth-tone
+// haze that fills the lower view past the visible terrain so dark
+// directions don't read as void / abyss. Fog color is slightly
+// warmed toward the sun direction so it harmonizes with the
+// scattering instead of feeling like a separate overlay.
+//
+// Inputs:
+//   color     -- the fully-shaded fragment color (post atmosphere)
+//   viewDir   -- normalized world-space view ray FROM camera
+//   sunDir    -- normalized world-space direction TO the sun
+//   dist      -- distance from camera to the surface (meters)
+// Output: fogged color.
+vec3 applyDistanceFog(vec3 color, vec3 viewDir, vec3 sunDir, float dist)
+{
+    const float kFogStart   = 35.0;
+    const float kFogEnd     = 220.0;
+    const vec3  kFogCool    = vec3(0.16, 0.13, 0.10);
+    const vec3  kFogWarm    = vec3(0.42, 0.30, 0.20);
+
+    float t = clamp((dist - kFogStart) / (kFogEnd - kFogStart), 0.0, 1.0);
+    t = smoothstep(0.0, 1.0, t);
+
+    float sunFacing = clamp(dot(viewDir, sunDir), 0.0, 1.0);
+    sunFacing = smoothstep(0.0, 1.0, sunFacing);
+    vec3 fogColor = mix(kFogCool, kFogWarm, sunFacing);
+
+    return mix(color, fogColor, t);
+}
 )glsl";
 
 } // namespace selva::render

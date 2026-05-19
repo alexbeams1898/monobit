@@ -100,30 +100,103 @@ The Wood divides into two zones:
 
 ### Inner Wood — canonical, hand-placed, fixed
 
-The inner Wood is modeled on **Dante's journey in Canto I**:
+The inner Wood is the **only spatial structure Dante explicitly
+describes** in the Commedia's opening. Canto I gives us:
 
-> **Lost center → spine direction → colle → descent into Hell.**
+- The Vagrant *wakes inside the wood* (no described entry — he was
+  *pien di sonno*, full of sleep, when he left the straight path)
+- He walks forward and reaches the **foot of a hill** (the *colle*)
+  where "the valley ended"
+- He looks up: the hill's shoulders are clothed in **rays of the
+  planet** (the sun) — light comes from *the top of the hill*
+- He starts to climb, *limping* — the firm foot always the lower one
+- On the slope: the **three beasts** (lonza / leone / lupa) drive
+  him back
+- He is forced back down into the wood; Virgil meets him there
 
-- **Center.** The Vagrant respawns at the center. Deepest forest,
-  no clear orientation. This is the *mezzo del cammin* moment —
+The text describes *nothing else* about the wood's interior — no
+paths, no clearings, no other landmarks. This vagueness is
+deliberate (the *selva oscura* is the place of being *lost*, not
+the place of being *somewhere specific*) and gives us creative
+freedom for everything beyond the structural bones.
+
+**Locked canonical structure:**
+
+> **Lost center → spine direction → foot-of-colle → (rise) → top-of-colle → descent into Hell.**
+
+- **Center / wake-zone.** The Vagrant respawns here every cycle.
+  Deepest forest. No clear orientation. *Mezzo del cammin* —
   "I found myself in a dark wood." Density obscures sightlines past
-  ~10–15 meters. No paths.
-- **Spine direction.** One specific direction (the world's -Z axis,
-  locked) leads toward the **colle**. Trees subtly thin out, light
-  subtly increases, terrain subtly rises in this direction. There
-  is no explicit signpost — but the *Wood lets you go this way*. The
-  player finds it by walking. This recovers the canonical "the
-  straight path was lost" — there *is* a way, but it is not given.
-- **Colle.** A subtle elevation at the spine's end. Per Dante: where
-  he climbed (*piè fermo sempre era il più basso* — the firm foot
-  always lower, sin-weighted climbing). In Selva, the colle is where
-  the **descent into Hell** lives (well, cleft, stair, exact form
-  TBD). Cosmologically *inverted* from Dante: the Vagrant cannot
-  climb upward (he is unjudged; the upward way is for the saved).
-  He must descend. The colle is therefore *the place the Wood
-  releases him toward Hell.*
-- **Inner Wood radius.** ~30m (matches current `Collision.cpp`).
-  Tight, intimate, the *lost center.* Not vast.
+  ~10-15m. No authored paths. The *only* spatial cue is the
+  threshold-light gradient (per setting.md — Beatrice's light
+  brightest toward the colle).
+- **Spine direction.** Locked to **world -Z axis.** The single
+  direction in which the Wood "thins" (less dense, more light,
+  terrain rising). The player finds it by walking; the Wood lets
+  them go this way. This is the *diritta via* of Dante's text — a
+  *way*, not a *path.*
+- **Foot of the colle.** Where the valley ends and the rise begins.
+  Per Dante: a specific spatial transition the Vagrant *reaches by
+  walking*. In our world: a clear visual cue (terrain begins to
+  rise, trees pull back, light intensifies). The "approach zone"
+  before the climb.
+- **The colle proper.** A rise above the Wood floor. Visible from
+  the foot, climbed deliberately. Top is where Beatrice's light is
+  strongest. Players-who-cannot-climb-the-colle-yet experience the
+  *Inferno* fate (driven back by the beasts, or by their own
+  unjudged state); players who CAN approach the colle find the
+  **descent point** there.
+- **Descent point.** At/near the top of the colle (per Dante: the
+  *colle* is what stands between the wood and "the rays of the
+  planet"). In Selva, cosmologically inverted: the upward way is
+  closed to the unjudged (the saved-world's light is unreachable);
+  the *descent into Hell* lives on the colle as the only way the
+  unjudged can move forward. Form TBD (well/cleft/stair/threshold).
+- **Inner Wood radius.** ~30m for the wake-zone proper. The colle
+  sits at or just beyond this radius (its base inside ~30m, its
+  rise extending another ~10-15m outward).
+
+### The three beasts (lonza, leone, lupa)
+
+Canonical, instantly recognizable, but currently **deferred** as a
+mechanic. Dante's beasts are *forces that turn one back*, not
+opponents in the gameplay sense. Their cosmological role in our
+setting (the unjudged Vagrant) is unclear — they exist to block the
+*ascent*, and our Vagrant cannot ascend anyway.
+
+Working options when they ship:
+- Skip them entirely (the unjudged is invisible to them; this
+  resolves the cosmological tension)
+- Present them as atmospheric glimpses only — silhouettes seen
+  through the trees on the colle's slope, never directly fought
+- Reintroduce them late-game when the Vagrant's cosmological status
+  has shifted (he has consumed enough of Hell to become *partly*
+  judged again; now the beasts can perceive him)
+
+TBD when the late-game cosmology hardens.
+
+### Authoring rules for the inner Wood
+
+These are not Dante; these are *how we honor Dante* in our medium:
+
+- **No paths.** The Wood's defining quality is lostness. Authoring
+  a paved/cleared corridor toward the colle defeats the canon.
+- **No signposts, no markers, no explicit wayfinding.** Players
+  find the colle by walking + reading the light gradient.
+- **Density and light are the navigation language.** Trees thin out
+  toward the colle; light brightens toward the colle. That's the
+  whole signaling system. No UI map, no compass, no quest marker.
+- **The lost-zone is genuinely lost.** Walking in non-spine
+  directions yields more density + dimmer light + no terrain rise.
+  The Wood does not punish wandering — it just *does not yield*
+  except in the spine direction.
+- **The colle is felt before it's seen.** Density tapering + light
+  brightening + terrain rising are all gradual. By the time the
+  player can clearly see the foot of the colle, they are already
+  most of the way there.
+- **The wake-spot is intimate, not vast.** Per Dante: he wakes
+  *inside* a wood, not in a clearing. Small visible area at
+  respawn; the world opens by walking.
 
 The three beasts of Dante's Canto I (*lonza*, *leone*, *lupa*) are
 **deferred**. They are canonical and instantly recognizable, but

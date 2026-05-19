@@ -1,0 +1,9 @@
+{
+  "_comment": "Per-variant root_depth (meters): how far the artist's authored root flare extends below the visible trunk's base. The loader buries this much of the mesh below Y=0 so the visible trunk reads as ground-planted. Tune per-tree by visual inspection. 0 = mesh's lowest vertex sits at Y=0 (root flare exposed).",
+  "variants": {
+    "pine_a":     { "root_depth": 1.1 },
+    "pine_b":     { "root_depth": 5.2 },
+    "pine_c":     { "root_depth": 2.7 },
+    "pine_short": { "root_depth": 1.7 }
+  }
+}

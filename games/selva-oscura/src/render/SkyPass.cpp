@@ -59,6 +59,18 @@ void main()
     // sky. Only the scattering remains.
     vec3 col = atmosphere(uCamPos, R, uSunDir, uSunIntensity, 1e9);
 
+    // Faked horizon: for rays at or below the horizon line, blend
+    // toward the same distance-fog color the terrain shader uses at
+    // its farthest extent. This makes the sky transition seamlessly
+    // into the wood-floor color past where the real terrain mesh
+    // ends — the wood reads as infinite. The blend ramp uses ray.y
+    // so the horizon line itself is mostly-fog (matching far terrain
+    // which is also fully fogged), and the sky cleanly takes over
+    // upward.
+    float horizonT = 1.0 - smoothstep(-0.05, 0.15, R.y);
+    vec3 fogged = applyDistanceFog(col, R, uSunDir, 1e6);
+    col = mix(col, fogged, horizonT);
+
     col = col * uExposure;
     col = col / (col + vec3(1.0));
     fragColor = vec4(col, 1.0);

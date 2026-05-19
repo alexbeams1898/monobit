@@ -52,7 +52,12 @@ add_library(selva-oscura-lib STATIC
     src/render/SceneGeometry.cpp
     src/render/SceneShaders.cpp
     src/render/SkyPass.cpp
+    src/render/TerrainShader.cpp
+    src/render/Texture.cpp
+    src/render/TreeShader.cpp
     src/render/WorldRenderer.cpp
+    src/world/Terrain.cpp
+    src/world/TreeAssets.cpp
     src/ui/ActorHud.cpp
     src/ui/ComboHud.cpp
     src/ui/TuningPanel.cpp

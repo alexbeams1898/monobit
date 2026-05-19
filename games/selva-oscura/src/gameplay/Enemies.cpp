@@ -12,6 +12,7 @@
 #include "gameplay/EnemyArchetype.h"
 #include "gameplay/Perception.h"
 #include "world/Collision.h"
+#include "world/Terrain.h"
 
 #include <algorithm>
 #include <cmath>
@@ -253,6 +254,9 @@ void tickEnemyLocomotion(Actor& a, float dt, const selva::tuning::Tunables& tun)
         a.pos.x += a.velocity_xz.x * dt;
         a.pos.z += a.velocity_xz.y * dt;
     }
+    // Snap Y to terrain so the actor's feet stay on the heightmap
+    // surface as it walks across slopes.
+    a.pos.y = selva::world::sampleHeight(a.pos.x, a.pos.z);
 
     // Turn yaw toward turn_intent_yaw, shortest-path. Wrap delta into
     // [-pi, pi] so a 350° desired yaw doesn't take the long way around.

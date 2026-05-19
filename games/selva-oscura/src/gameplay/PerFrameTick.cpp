@@ -35,9 +35,12 @@
 #include "render/SceneGeometry.h"
 #include "render/SceneShaders.h"
 #include "render/SkyPass.h"
+#include "render/TerrainShader.h"
+#include "render/TreeShader.h"
 #include "render/WorldRenderer.h"
 #include "ui/ComboHud.h"
 #include "world/Collision.h"
+#include "world/Terrain.h"
 
 #include <imgui.h>
 #include <stb_image.h>
@@ -1347,7 +1350,8 @@ static void fireBlockOneShot(bool loco_settled, const BlockClipSet& set)
     if (sEquipment.right != nullptr && sEquipment.right->cls != nullptr &&
         sEquipment.right->cls->block_clip_start_seconds >= 0.0f)
         block_start = sEquipment.right->cls->block_clip_start_seconds;
-    TransitionProfile profile = loco_settled ? profiles::blockFromLatch() : profiles::blockLive();
+    const TransitionProfile profile =
+        loco_settled ? profiles::blockFromLatch() : profiles::blockLive();
     fireOneShotWithProfile(*raise_clip, profile, block_start, /*playback_rate=*/1.0f, set.raise);
     sBlockingActive = true;
     sActiveBlockIdleClip = set.idle;
@@ -1411,7 +1415,7 @@ static bool tickBlockingFromRMB(const BlockClipSet& set, bool press_rmb, bool re
             const auto* lower = sClips.get(sActiveBlockLowerClip);
             if (lower != nullptr && lower->isLoaded())
             {
-                TransitionProfile profile = profiles::blockLive();
+                const TransitionProfile profile = profiles::blockLive();
                 fireOneShotWithProfile(*lower, profile, 0.0f, /*playback_rate=*/1.0f,
                                        sActiveBlockLowerClip);
             }
@@ -1434,8 +1438,8 @@ static bool tickPendingBlockLatch()
 {
     if (!sPendingFirstAction.active || selva::wallClock() < sPendingFirstAction.fire_at)
         return false;
-    BlockClipSet set{sPendingFirstAction.block_clip, sPendingFirstAction.block_idle_clip,
-                     sPendingFirstAction.block_lower_clip};
+    const BlockClipSet set{sPendingFirstAction.block_clip, sPendingFirstAction.block_idle_clip,
+                           sPendingFirstAction.block_lower_clip};
     fireBlockOneShot(true, set);
     sPendingFirstAction.active = false;
     return true;
@@ -2569,9 +2573,8 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
 
     // Space (dodge / sprint) gated on alive-state. Dead body doesn't
     // dodge.
-    if (!sPlayer.is_dead &&
-        tickSpaceInput(keys, moveIntent, dt, tun.dodge_tap_window, tun.backstep_playback_rate,
-                       tun.roll_playback_rate))
+    if (!sPlayer.is_dead && tickSpaceInput(keys, moveIntent, dt, tun.dodge_tap_window,
+                                           tun.backstep_playback_rate, tun.roll_playback_rate))
         combat_input_this_frame = true;
 
     // Tick the dodge timer. The active gate ends at the clip's full
@@ -2639,6 +2642,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     if (pick.clip != nullptr && pick.clip->isLoaded())
     {
         ZoneScopedN("sampler.update");
+        sSampler.setActorPlacement(sPlayer.pos, sPlayer.yaw);
         sSampler.update(*pick.clip, dt, pick.blend_seconds, pick.loops, pick.clip_name.c_str());
     }
 
@@ -2669,6 +2673,9 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         }
         sPlayer.pos.x = player_xz.x;
         sPlayer.pos.z = player_xz.y;
+        // Snap to terrain after XZ resolves. Player feet sit on the
+        // heightmap surface; the camera's lookAt-Y already smooths.
+        sPlayer.pos.y = selva::world::sampleHeight(sPlayer.pos.x, sPlayer.pos.z);
     }
 
     selva::gameplay::tickEnemies(dt);
@@ -2723,16 +2730,20 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
 {
     ZoneScopedN("selvaRenderWorld");
     // LookAt height tracks the character's hip Y so dynamic poses
-    // (rolls, knockdowns) keep the body in frame. Smoothed in
-    // buildViewProj to avoid camera-shake during fast Y excursions.
-    float targetLookAtY = 1.3f;
+    // (rolls, knockdowns) keep the body in frame. The sampler's
+    // jointWorldPos() returns the joint in MODEL-local space; add
+    // the model's world-Y translation (= pos.y - foot_offset_y, the
+    // same offset used when drawing the mesh) so the value is in
+    // world space. Smoothed (relative to ground) in buildViewProj.
+    float targetLookAtY = sPlayer.pos.y + 1.3f;
     if (sSampler.jointCount() > 0)
     {
         for (int i = 0; i < sSampler.jointCount(); ++i)
         {
             if (std::strcmp(sSampler.jointName(i), "mixamorig:Hips") == 0)
             {
-                targetLookAtY = sSampler.jointWorldPos(i).y + 0.3f;
+                const float model_world_y = sPlayer.pos.y - sPlayerMesh.foot_offset_y;
+                targetLookAtY = model_world_y + sSampler.jointWorldPos(i).y + 0.3f;
                 break;
             }
         }
@@ -2762,11 +2773,22 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
 
     selva::render::drawSky(glm::inverse(viewProj), kSunDir, kSunIntensity, camPos, kExposure);
 
+    selva::render::useTerrainShader();
+    selva::render::setTerrainViewProj(viewProj);
+    selva::render::setTerrainAtmosphere(kSunDir, kSunIntensity, camPos, kExposure);
+    selva::render::renderTerrain();
+
     selva::render::useSceneProgram();
     selva::render::setSceneView(selva::render::lastView());
     selva::render::setSceneViewProj(viewProj);
     selva::render::setSceneAtmosphere(kSunDir, kSunIntensity, camPos, kExposure);
-    selva::render::renderEnvironment();
+    selva::render::renderGroundDecals();
+
+    selva::render::useTreeShader();
+    selva::render::setTreeViewProj(viewProj);
+    selva::render::setTreeAtmosphere(kSunDir, kSunIntensity, camPos, kExposure);
+    selva::render::renderTrees();
+
     glBindVertexArray(0);
     glUseProgram(0);
 
@@ -2777,7 +2799,8 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
     //    around world-up to face the player's heading.
     if (sPlayerMesh.isLoaded() && !sSampler.bone_palette.empty())
     {
-        const glm::vec3 player_pos(sPlayer.pos.x, -sPlayerMesh.foot_offset_y, sPlayer.pos.z);
+        const glm::vec3 player_pos(sPlayer.pos.x, sPlayer.pos.y - sPlayerMesh.foot_offset_y,
+                                   sPlayer.pos.z);
         glm::mat4 player_model = glm::translate(glm::mat4(1.0f), player_pos);
         // Mixamo characters bind facing +Z. Our gameplay convention is
         // "yaw=0 means facing -Z" (matches camera-forward maths in
@@ -2800,7 +2823,8 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
         {
             if (enemy->sampler.bone_palette.empty())
                 continue;
-            const glm::vec3 enemy_pos(enemy->pos.x, -sPlayerMesh.foot_offset_y, enemy->pos.z);
+            const glm::vec3 enemy_pos(enemy->pos.x, enemy->pos.y - sPlayerMesh.foot_offset_y,
+                                      enemy->pos.z);
             glm::mat4 enemy_model = glm::translate(glm::mat4(1.0f), enemy_pos);
             enemy_model = glm::rotate(enemy_model, enemy->yaw + glm::pi<float>(),
                                       glm::vec3(0.0f, 1.0f, 0.0f));

@@ -194,6 +194,8 @@ void initActorPool()
     pc.death_peak_sfx_names = {"synth_echo", "soul_steal"};
     pc.death_peak_align_seconds = 3.5f;
     initActorPools(pc.hp, pc.stamina, pc.poise, pc.body, pc.stats);
+    pc.pos = glm::vec3(0.0f, 9.5f, -142.5f);
+    pc.spawn_pos = pc.pos;
     // Player's sampler is bound to the shared skeleton + mesh at
     // first sampler.update() — same as any other actor. Pre-warm
     // it so the bone palette is valid before render.

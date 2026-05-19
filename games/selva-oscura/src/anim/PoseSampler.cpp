@@ -6,12 +6,17 @@
 #include "anim/SkeletalMesh.h"
 #include "anim/Skeleton.h"
 
+#include <glm/glm.hpp>
+#include <glm/gtc/constants.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <ozz/animation/runtime/animation.h>
 #include <ozz/animation/runtime/blending_job.h>
+#include <ozz/animation/runtime/ik_two_bone_job.h>
 #include <ozz/animation/runtime/local_to_model_job.h>
 #include <ozz/animation/runtime/sampling_job.h>
 #include <ozz/animation/runtime/skeleton.h>
 #include <ozz/base/maths/simd_math.h>
+#include <ozz/base/maths/simd_quaternion.h>
 #include <ozz/base/maths/soa_transform.h>
 #include <ozz/base/span.h>
 #include <tracy/Tracy.hpp>
@@ -467,6 +472,19 @@ struct PoseSampler::Impl
     bool pending_capture_from_supplied_source = false;
     std::vector<ozz::math::SoaTransform> pre_change_locals;
     std::vector<ozz::math::SoaTransform> post_locals_last;
+
+    // ---- Foot IK ----
+    int ik_left_hip = -1;
+    int ik_left_knee = -1;
+    int ik_left_ankle = -1;
+    int ik_right_hip = -1;
+    int ik_right_knee = -1;
+    int ik_right_ankle = -1;
+    PoseSampler::GroundProbeFn ground_probe;
+    bool ik_position_enabled = false;
+    bool ik_orient_enabled = false;
+    glm::vec3 actor_world_pos = glm::vec3(0.0f);
+    float actor_yaw = 0.0f;
 };
 // NOLINTEND(clang-analyzer-optin.performance.Padding)
 
@@ -631,7 +649,32 @@ PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh
 
     sampler.impl->root_transform = mesh.asset_root_transform;
     sampler.impl->inverse_bind_matrices = mesh.inverse_bind_matrices;
+
+    sampler.impl->ik_left_hip = findJointByName(ozz_skel, "mixamorig:LeftUpLeg");
+    sampler.impl->ik_left_knee = findJointByName(ozz_skel, "mixamorig:LeftLeg");
+    sampler.impl->ik_left_ankle = findJointByName(ozz_skel, "mixamorig:LeftFoot");
+    sampler.impl->ik_right_hip = findJointByName(ozz_skel, "mixamorig:RightUpLeg");
+    sampler.impl->ik_right_knee = findJointByName(ozz_skel, "mixamorig:RightLeg");
+    sampler.impl->ik_right_ankle = findJointByName(ozz_skel, "mixamorig:RightFoot");
     return sampler;
+}
+
+void PoseSampler::setFootIK(GroundProbeFn probe, bool position_enabled, bool orient_enabled)
+{
+    if (!impl)
+        return;
+    impl->ground_probe = std::move(probe);
+    const bool have_probe = static_cast<bool>(impl->ground_probe);
+    impl->ik_position_enabled = position_enabled && have_probe;
+    impl->ik_orient_enabled = orient_enabled && have_probe;
+}
+
+void PoseSampler::setActorPlacement(const glm::vec3& world_pos, float yaw_radians)
+{
+    if (!impl)
+        return;
+    impl->actor_world_pos = world_pos;
+    impl->actor_yaw = yaw_radians;
 }
 
 void PoseSampler::releaseOneShot()
@@ -2554,6 +2597,279 @@ bool runFinalBlend(PoseSampler::Impl& s)
     return final_blend.Run();
 }
 
+// Multiply `correction_local` into the existing local-space quaternion
+// at joint `joint_idx` inside the SoA pose. ozz packs 4 joints per SoA
+// slot; we extract the affected lane, multiply, and store back.
+void applySoaQuaternionCorrection(std::vector<ozz::math::SoaTransform>& locals, int joint_idx,
+                                  const ozz::math::SimdQuaternion& correction_local)
+{
+    if (joint_idx < 0)
+        return;
+    const int soa_idx = joint_idx / 4;
+    const int lane = joint_idx % 4;
+    if (soa_idx >= static_cast<int>(locals.size()))
+        return;
+    ozz::math::SoaTransform& T = locals[soa_idx];
+    alignas(16) float xs[4];
+    alignas(16) float ys[4];
+    alignas(16) float zs[4];
+    alignas(16) float ws[4];
+    ozz::math::StorePtr(T.rotation.x, xs);
+    ozz::math::StorePtr(T.rotation.y, ys);
+    ozz::math::StorePtr(T.rotation.z, zs);
+    ozz::math::StorePtr(T.rotation.w, ws);
+
+    const ozz::math::SimdQuaternion lane_q = {
+        ozz::math::simd_float4::Load(xs[lane], ys[lane], zs[lane], ws[lane])};
+    const ozz::math::SimdQuaternion result = lane_q * correction_local;
+
+    alignas(16) float out[4];
+    ozz::math::StorePtr(result.xyzw, out);
+    xs[lane] = out[0];
+    ys[lane] = out[1];
+    zs[lane] = out[2];
+    ws[lane] = out[3];
+    T.rotation.x = ozz::math::simd_float4::LoadPtr(xs);
+    T.rotation.y = ozz::math::simd_float4::LoadPtr(ys);
+    T.rotation.z = ozz::math::simd_float4::LoadPtr(zs);
+    T.rotation.w = ozz::math::simd_float4::LoadPtr(ws);
+}
+
+// Solve two-bone IK for one leg: probe terrain Y under the ankle, build
+// a model-space target at that Y, run ozz IKTwoBoneJob, and write the
+// resulting rotation corrections into the SoA local pose.
+//
+// Coordinate convention: s.model_matrices are in MODEL space (no actor
+// world transform applied — see createPoseSampler which sets
+// root_transform to mesh.asset_root_transform for the cgltf Z-up→Y-up
+// fix, not for the actor's world position). To convert:
+//   world_xy = actor.pos.xz + R(yaw) * model.xz
+//   world_y  = actor.pos.y + model.y
+struct LegIKDiag
+{
+    bool ran = false;
+    float pre_ankle_model_x = 0.0f;
+    float pre_ankle_model_y = 0.0f;
+    float pre_ankle_model_z = 0.0f;
+    float world_x = 0.0f;
+    float world_z = 0.0f;
+    float terrain_y = 0.0f;
+    float target_model_y = 0.0f;
+    bool validated = false;
+    bool reached = false;
+    float post_ankle_model_y = 0.0f;
+};
+
+LegIKDiag solveLegIK(PoseSampler::Impl& s, int hip_idx, int knee_idx, int ankle_idx)
+{
+    LegIKDiag diag;
+    if (hip_idx < 0 || knee_idx < 0 || ankle_idx < 0)
+        return diag;
+    if (hip_idx >= static_cast<int>(s.model_matrices.size()) ||
+        knee_idx >= static_cast<int>(s.model_matrices.size()) ||
+        ankle_idx >= static_cast<int>(s.model_matrices.size()))
+        return diag;
+
+    alignas(16) float ankle_t[4];
+    ozz::math::StorePtr(s.model_matrices[ankle_idx].cols[3], ankle_t);
+    const float model_x = ankle_t[0];
+    const float model_y = ankle_t[1];
+    const float model_z = ankle_t[2];
+    diag.pre_ankle_model_x = model_x;
+    diag.pre_ankle_model_y = model_y;
+    diag.pre_ankle_model_z = model_z;
+
+    const float cy = std::cos(s.actor_yaw);
+    const float sy = std::sin(s.actor_yaw);
+    const float world_x = s.actor_world_pos.x + cy * model_x + sy * model_z;
+    const float world_z = s.actor_world_pos.z - sy * model_x + cy * model_z;
+    const float terrain_at_foot = s.ground_probe(world_x, world_z);
+    const float terrain_at_root = s.ground_probe(s.actor_world_pos.x, s.actor_world_pos.z);
+    diag.world_x = world_x;
+    diag.world_z = world_z;
+    diag.terrain_y = terrain_at_foot;
+
+    const float slope_correction = terrain_at_foot - terrain_at_root;
+    const float target_model_y = model_y + slope_correction;
+    diag.target_model_y = target_model_y;
+
+    ozz::animation::IKTwoBoneJob job;
+    job.target = ozz::math::simd_float4::Load(model_x, target_model_y, model_z, 0.0f);
+    job.pole_vector = ozz::math::simd_float4::Load(0.0f, 0.0f, 1.0f, 0.0f);
+    job.mid_axis = ozz::math::simd_float4::x_axis();
+    job.weight = 1.0f;
+    job.soften = 0.97f;
+    job.start_joint = &s.model_matrices[hip_idx];
+    job.mid_joint = &s.model_matrices[knee_idx];
+    job.end_joint = &s.model_matrices[ankle_idx];
+
+    ozz::math::SimdQuaternion hip_correction;
+    ozz::math::SimdQuaternion knee_correction;
+    bool reached = false;
+    job.start_joint_correction = &hip_correction;
+    job.mid_joint_correction = &knee_correction;
+    job.reached = &reached;
+
+    diag.validated = job.Validate();
+    if (!diag.validated)
+        return diag;
+    if (!job.Run())
+        return diag;
+    diag.ran = true;
+    diag.reached = reached;
+
+    applySoaQuaternionCorrection(s.final_locals, hip_idx, hip_correction);
+    applySoaQuaternionCorrection(s.final_locals, knee_idx, knee_correction);
+    return diag;
+}
+
+struct FootIKDiag
+{
+    bool ran = false;
+    LegIKDiag left;
+    LegIKDiag right;
+};
+
+// Sample the terrain slope normal at the foot's world XZ by probing
+// four points (±delta in X and Z) and computing the cross product of
+// the tangent vectors. Returns world-space up vector if probe missing.
+glm::vec3 sampleSlopeNormal(const PoseSampler::GroundProbeFn& probe, float wx, float wz,
+                            float delta = 0.15f)
+{
+    const float h_xp = probe(wx + delta, wz);
+    const float h_xm = probe(wx - delta, wz);
+    const float h_zp = probe(wx, wz + delta);
+    const float h_zm = probe(wx, wz - delta);
+    const glm::vec3 tangent_x(2.0f * delta, h_xp - h_xm, 0.0f);
+    const glm::vec3 tangent_z(0.0f, h_zp - h_zm, 2.0f * delta);
+    const glm::vec3 n = glm::normalize(glm::cross(tangent_z, tangent_x));
+    return (n.y > 0.0f) ? n : -n;
+}
+
+// Compute shortest-arc rotation quaternion from `from` to `to`. Both
+// must be unit vectors.
+glm::quat shortestArcQuat(const glm::vec3& from, const glm::vec3& to)
+{
+    const float d = glm::dot(from, to);
+    if (d > 0.9999f)
+        return glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+    if (d < -0.9999f)
+    {
+        glm::vec3 axis = glm::cross(glm::vec3(1.0f, 0.0f, 0.0f), from);
+        if (glm::dot(axis, axis) < 1e-6f)
+            axis = glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), from);
+        return glm::angleAxis(glm::pi<float>(), glm::normalize(axis));
+    }
+    const glm::vec3 axis = glm::normalize(glm::cross(from, to));
+    const float angle = std::acos(std::clamp(d, -1.0f, 1.0f));
+    return glm::angleAxis(angle, axis);
+}
+
+// Extract rotation quaternion from the rotation part of a Float4x4.
+glm::quat quatFromModelMatrix(const ozz::math::Float4x4& m)
+{
+    alignas(16) float c0[4];
+    alignas(16) float c1[4];
+    alignas(16) float c2[4];
+    ozz::math::StorePtr(m.cols[0], c0);
+    ozz::math::StorePtr(m.cols[1], c1);
+    ozz::math::StorePtr(m.cols[2], c2);
+    glm::mat3 r;
+    r[0] = glm::normalize(glm::vec3(c0[0], c0[1], c0[2]));
+    r[1] = glm::normalize(glm::vec3(c1[0], c1[1], c1[2]));
+    r[2] = glm::normalize(glm::vec3(c2[0], c2[1], c2[2]));
+    return glm::quat_cast(r);
+}
+
+// Foot-orient IK: rotate the foot joint so its model-up axis aligns
+// with the terrain slope normal under the foot. The correction is
+// computed in world space then conjugated into the foot's parent's
+// frame so it can be multiplied into the SoA local rotation.
+//
+// `world_yaw_axis_x_z` is the world XZ direction the foot's "forward"
+// should keep — we only rotate around the lateral axis, preserving
+// the foot's heading. For v1 we ignore heading and use the shortest
+// arc from world-up to the slope normal.
+// Patch the foot's model-space matrix directly: rotate its current
+// orientation by `world_correction` (which rotates world-up to the
+// slope normal). New matrix = world_correction_matrix * old_matrix.
+// Bypasses local-space conjugation entirely.
+//
+// Because we write to s.model_matrices AFTER LocalToModel ran, the
+// GPU palette computation that follows will pick up the patched
+// matrix. Child joints (toes) don't propagate the rotation since we
+// skip a second LocalToModel pass — acceptable for v1 since toes are
+// not meaningfully animated.
+bool applyFootOrient(PoseSampler::Impl& s, int ankle_idx, float* out_nx, float* out_ny,
+                     float* out_nz)
+{
+    if (ankle_idx < 0 || ankle_idx >= static_cast<int>(s.model_matrices.size()))
+        return false;
+
+    alignas(16) float ankle_t[4];
+    ozz::math::StorePtr(s.model_matrices[ankle_idx].cols[3], ankle_t);
+    const float model_x = ankle_t[0];
+    const float model_z = ankle_t[2];
+
+    const float cy = std::cos(s.actor_yaw);
+    const float sy = std::sin(s.actor_yaw);
+    const float world_x = s.actor_world_pos.x + cy * model_x + sy * model_z;
+    const float world_z = s.actor_world_pos.z - sy * model_x + cy * model_z;
+
+    const glm::vec3 normal_world = sampleSlopeNormal(s.ground_probe, world_x, world_z);
+    if (out_nx != nullptr)
+        *out_nx = normal_world.x;
+    if (out_ny != nullptr)
+        *out_ny = normal_world.y;
+    if (out_nz != nullptr)
+        *out_nz = normal_world.z;
+
+    if (normal_world.y > 0.9999f)
+        return true;
+
+    const glm::quat world_correction = shortestArcQuat(glm::vec3(0.0f, 1.0f, 0.0f), normal_world);
+    const glm::mat3 correction_mat3 = glm::mat3_cast(world_correction);
+
+    // Read current model matrix (column-major in ozz).
+    alignas(16) float c0[4];
+    alignas(16) float c1[4];
+    alignas(16) float c2[4];
+    alignas(16) float c3[4];
+    ozz::math::StorePtr(s.model_matrices[ankle_idx].cols[0], c0);
+    ozz::math::StorePtr(s.model_matrices[ankle_idx].cols[1], c1);
+    ozz::math::StorePtr(s.model_matrices[ankle_idx].cols[2], c2);
+    ozz::math::StorePtr(s.model_matrices[ankle_idx].cols[3], c3);
+
+    // Rotate each basis column by the world correction.
+    const glm::vec3 col0(c0[0], c0[1], c0[2]);
+    const glm::vec3 col1(c1[0], c1[1], c1[2]);
+    const glm::vec3 col2(c2[0], c2[1], c2[2]);
+    const glm::vec3 new_col0 = correction_mat3 * col0;
+    const glm::vec3 new_col1 = correction_mat3 * col1;
+    const glm::vec3 new_col2 = correction_mat3 * col2;
+
+    alignas(16) float nc0[4] = {new_col0.x, new_col0.y, new_col0.z, c0[3]};
+    alignas(16) float nc1[4] = {new_col1.x, new_col1.y, new_col1.z, c1[3]};
+    alignas(16) float nc2[4] = {new_col2.x, new_col2.y, new_col2.z, c2[3]};
+    s.model_matrices[ankle_idx].cols[0] = ozz::math::simd_float4::LoadPtr(nc0);
+    s.model_matrices[ankle_idx].cols[1] = ozz::math::simd_float4::LoadPtr(nc1);
+    s.model_matrices[ankle_idx].cols[2] = ozz::math::simd_float4::LoadPtr(nc2);
+    // cols[3] (translation) preserved — we're only rotating in place.
+    return true;
+}
+
+FootIKDiag applyFootIK(PoseSampler::Impl& s)
+{
+    FootIKDiag diag;
+    if (!s.ik_position_enabled || !s.ground_probe)
+        return diag;
+    ZoneScopedN("foot-ik");
+    diag.ran = true;
+    diag.left = solveLegIK(s, s.ik_left_hip, s.ik_left_knee, s.ik_left_ankle);
+    diag.right = solveLegIK(s, s.ik_right_hip, s.ik_right_knee, s.ik_right_ankle);
+    return diag;
+}
+
 // Run the local-to-model job, producing world-space bone matrices.
 // Returns false on ozz job failure.
 bool runLocalToModel(PoseSampler::Impl& s)
@@ -2673,6 +2989,17 @@ bool PoseSampler::update(const AnimationClip& clip, float dt, float blend_second
     // track, so there's nothing to clamp. See extractTrackHipDelta.
     if (!runLocalToModel(s))
         return false;
+    if (s.ik_position_enabled)
+    {
+        applyFootIK(s);
+        if (!runLocalToModel(s))
+            return false;
+    }
+    if (s.ik_orient_enabled)
+    {
+        applyFootOrient(s, s.ik_left_ankle, nullptr, nullptr, nullptr);
+        applyFootOrient(s, s.ik_right_ankle, nullptr, nullptr, nullptr);
+    }
     computeGpuPalette(s, bone_palette);
 
     // Save post-blend pose for next frame's potential inertialization

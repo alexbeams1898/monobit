@@ -26,8 +26,12 @@
 #include "render/SceneGeometry.h"
 #include "render/SceneShaders.h"
 #include "render/SkyPass.h"
+#include "render/TerrainShader.h"
+#include "render/TreeShader.h"
 #include "ui/TuningPanel.h"
 #include "world/Collision.h"
+#include "world/Terrain.h"
+#include "world/TreeAssets.h"
 
 #include <stb_image_write.h>
 
@@ -50,6 +54,10 @@ void shutdownGeometry()
     selva::render::shutdownSceneGeometry();
     selva::render::shutdownSceneProgram();
     selva::render::shutdownSkyPass();
+    selva::render::shutdownTreeShader();
+    selva::render::shutdownTerrainShader();
+    selva::world::shutdownTerrain();
+    selva::world::shutdownTreeAssets();
 }
 
 } // namespace
@@ -101,10 +109,22 @@ int main(int /*argc*/, char* /*argv*/[])
         std::fprintf(stderr, "Sky pass shader compile/link failed\n");
         return 1;
     }
+    if (!selva::render::initTreeShader())
+    {
+        std::fprintf(stderr, "Tree shader compile/link failed\n");
+        return 1;
+    }
+    if (!selva::render::initTerrainShader())
+    {
+        std::fprintf(stderr, "Terrain shader compile/link failed\n");
+        return 1;
+    }
 
     selva::render::setInitialWindowSize(engine.windowWidth(), engine.windowHeight());
     selva::render::initSceneGeometry();
     selva::world::initHubScene();
+    selva::world::initTreeAssets();
+    selva::world::initTerrain();
 
     // Load runtime-tunable values BEFORE initializing actor pools so
     // their derived HP / stamina maxima read the JSON-tuned
@@ -127,6 +147,10 @@ int main(int /*argc*/, char* /*argv*/[])
         // loaded so each actor's sampler can bind. initPlayer must
         // run after initSkeletalAssets.
         selva::gameplay::initPlayer();
+
+        selva::gameplay::player().sampler.setFootIK(
+            [](float x, float z) { return selva::world::sampleHeight(x, z); },
+            /*position_enabled=*/false, /*orient_enabled=*/false);
 
         // Per-clip locomotion metadata: blend-in durations,
         // translation_source declarations. Loaded before the audit

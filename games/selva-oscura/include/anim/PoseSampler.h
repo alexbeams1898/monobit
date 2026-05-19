@@ -3,6 +3,7 @@
 #include <glm/glm.hpp>
 
 #include <cstdio>
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -454,6 +455,26 @@ struct PoseSampler
     // logging) that would otherwise desync against the suppressed
     // swap.
     bool isLocoFrozenByOneShot() const;
+
+    // Ground-Y probe: world (x, z) → world ground Y. Used by foot IK
+    // to find the surface under each foot. Caller injects this so the
+    // sampler stays decoupled from any specific terrain implementation.
+    using GroundProbeFn = std::function<float(float, float)>;
+
+    // Configure foot IK. Two modes, independently togglable:
+    //   * position: two-bone IK repositions the ankle vertically to
+    //     match terrain offset between the foot and the root (slope
+    //     correction). Off by default — needed only for stair-step /
+    //     rocky terrain where per-foot Y placement matters.
+    //   * orient:   foot joint is rotated so its sole matches the
+    //     terrain slope normal under it. The visually important fix
+    //     for smooth-heightmap terrain.
+    // Probe is shared by both modes. Pass nullptr probe to disable IK.
+    void setFootIK(GroundProbeFn probe, bool position_enabled, bool orient_enabled);
+
+    // Per-frame actor placement so the IK can convert between world
+    // and model space. Call before update() each frame when IK is on.
+    void setActorPlacement(const glm::vec3& world_pos, float yaw_radians);
 
     // Diagnostic accessors: read the sampler's internal state so the
     // gameplay side can log it for debugging. These are NOT for
