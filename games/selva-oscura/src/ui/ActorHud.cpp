@@ -223,19 +223,34 @@ void drawLockOnReticle(ImDrawList* overlay, const glm::mat4& view_proj);
 // Reads death_time from the player Actor and tunables for timing.
 void drawSecondDeathCard();
 
-void drawBar(ImDrawList* draw, float x, float y, float w, float h, float fill_fraction,
-             ImU32 bg_color, ImU32 fg_color, ImU32 border_color, const char* label_text)
+struct BarRect
 {
-    const float fill_w = std::clamp(fill_fraction, 0.0f, 1.0f) * w;
-    draw->AddRectFilled(ImVec2(x, y), ImVec2(x + w, y + h), bg_color);
+    float x;
+    float y;
+    float w;
+    float h;
+};
+
+struct BarColors
+{
+    ImU32 bg;
+    ImU32 fg;
+    ImU32 border;
+};
+
+void drawBar(ImDrawList* draw, const BarRect& r, float fill_fraction, const BarColors& cols,
+             const char* label_text)
+{
+    const float fill_w = std::clamp(fill_fraction, 0.0f, 1.0f) * r.w;
+    draw->AddRectFilled(ImVec2(r.x, r.y), ImVec2(r.x + r.w, r.y + r.h), cols.bg);
     if (fill_w > 0.0f)
-        draw->AddRectFilled(ImVec2(x, y), ImVec2(x + fill_w, y + h), fg_color);
-    draw->AddRect(ImVec2(x, y), ImVec2(x + w, y + h), border_color);
+        draw->AddRectFilled(ImVec2(r.x, r.y), ImVec2(r.x + fill_w, r.y + r.h), cols.fg);
+    draw->AddRect(ImVec2(r.x, r.y), ImVec2(r.x + r.w, r.y + r.h), cols.border);
     if (label_text != nullptr && label_text[0] != '\0')
     {
         const ImU32 text_color = IM_COL32(230, 230, 230, 255);
         const ImVec2 ts = ImGui::CalcTextSize(label_text);
-        draw->AddText(ImVec2(x + 6.0f, y + (h - ts.y) * 0.5f), text_color, label_text);
+        draw->AddText(ImVec2(r.x + 6.0f, r.y + (r.h - ts.y) * 0.5f), text_color, label_text);
     }
 }
 
@@ -265,7 +280,10 @@ void drawEnemyHpBars(ImDrawList* overlay, const glm::mat4& view_proj,
             (e.hp.max > 0) ? static_cast<float>(e.hp.current) / static_cast<float>(e.hp.max) : 0.0f;
         const float bx = sp.x - kEnemyHpBarWidthPx * 0.5f;
         const float by = sp.y - kEnemyHpBarHeightPx * 0.5f;
-        drawBar(overlay, bx, by, kEnemyHpBarWidthPx, kEnemyHpBarHeightPx, fraction, bg, fg, bd,
+        drawBar(overlay,
+                BarRect{bx, by, kEnemyHpBarWidthPx, kEnemyHpBarHeightPx},
+                fraction,
+                BarColors{bg, fg, bd},
                 nullptr);
     }
 }
@@ -436,10 +454,10 @@ void renderActorHud()
 
     char hp_label[32];
     std::snprintf(hp_label, sizeof(hp_label), "HP  %d / %d", p.hp.current, p.hp.max);
-    drawBar(draw, origin.x, origin.y, kBarWidth, kHpHeight, hp_fraction, bar_bg, hp_fg, border,
-            hp_label);
-    drawBar(draw, origin.x, origin.y + kHpHeight + kBarGap, kBarWidth, kStaminaHeight,
-            stamina_fraction, bar_bg, stamina_fg, border, nullptr);
+    drawBar(draw, BarRect{origin.x, origin.y, kBarWidth, kHpHeight}, hp_fraction,
+            BarColors{bar_bg, hp_fg, border}, hp_label);
+    drawBar(draw, BarRect{origin.x, origin.y + kHpHeight + kBarGap, kBarWidth, kStaminaHeight},
+            stamina_fraction, BarColors{bar_bg, stamina_fg, border}, nullptr);
 
     ImGui::Dummy(ImVec2(kPanelW - 16.0f, kPanelH - 16.0f));
     ImGui::End();

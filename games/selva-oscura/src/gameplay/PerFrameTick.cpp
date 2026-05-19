@@ -2465,6 +2465,98 @@ static void tickPlayerSecondDeathLifecycle()
     selva::audio::restoreMusic();
 }
 
+// Compute the per-frame movement/velocity locks from one-shot state,
+// apply velocity + yaw, pick the locomotion clip, advance the sampler.
+// Encapsulates the "translation-source / velocity-ramp" gate doctrine
+// so selvaPerFrame doesn't carry it inline.
+static LocomotionPick tickPlayerLocomotionAndSampler(const glm::vec3& moveIntent,
+                                                     bool combat_input_this_frame,
+                                                     const selva::tuning::Tunables& tun, float dt)
+{
+    const bool one_shot_active = sSampler.isOneShotActive();
+    const bool past_cancel = sSampler.isOneShotPastCancelFraction();
+    const int one_shot_phase = sSampler.frameDiagnostics().one_shot_phase;
+    const bool in_blend_out = (one_shot_phase == 3);
+    const bool movement_locked = sDodgeActive || one_shot_active;
+    const bool velocity_locked =
+        (sDodgeActive && !past_cancel) || (one_shot_active && !past_cancel && !in_blend_out);
+    tickPlayerVelocity(moveIntent, velocity_locked, tun, dt);
+    tickPlayerYaw(moveIntent, movement_locked, tun.turn_rate_min, tun.turn_rate_max, dt);
+
+    const LocomotionPick pick = selectLocomotionClip(moveIntent, dt, combat_input_this_frame, tun);
+    if (pick.clip != nullptr && pick.clip->isLoaded())
+    {
+        ZoneScopedN("sampler.update");
+        sSampler.setActorPlacement(sPlayer.pos, sPlayer.yaw);
+        sSampler.update(*pick.clip, dt, pick.blend_seconds, pick.loops, pick.clip_name.c_str());
+    }
+    return pick;
+}
+
+// Resolve player vs static cylinders + enemy capsules, then snap to
+// terrain. Runs LAST in the per-frame tick so post-translation drift
+// from any source (velocity, clip-hip, dodge steer) is corrected
+// before render. Player capsule radius matches humanoid shoulder
+// width.
+static void resolvePlayerCollisionAndSnap()
+{
+    constexpr float kPlayerRadius = 0.35f;
+    glm::vec2 player_xz(sPlayer.pos.x, sPlayer.pos.z);
+    selva::world::resolveBodyCollision(player_xz, kPlayerRadius);
+    for (const auto* enemy : selva::gameplay::enemies())
+    {
+        const glm::vec2 e_xz(enemy->pos.x, enemy->pos.z);
+        const glm::vec2 delta = player_xz - e_xz;
+        const float dist_sq = glm::dot(delta, delta);
+        const float min_dist = kPlayerRadius + enemy->body.collider_radius;
+        if (dist_sq >= min_dist * min_dist || dist_sq <= 1e-8f)
+            continue;
+        const float dist = std::sqrt(dist_sq);
+        player_xz += (delta / dist) * (min_dist - dist);
+    }
+    sPlayer.pos.x = player_xz.x;
+    sPlayer.pos.z = player_xz.y;
+    sPlayer.pos.y = selva::world::sampleHeight(sPlayer.pos.x, sPlayer.pos.z);
+}
+
+// Dev cheat: K instantly kills the player to exercise the second-death
+// lifecycle. Edge-triggered so holding K doesn't re-fire each frame.
+static void tickDevKillKey(const Uint8* keys)
+{
+    static bool sPrevK = false;
+    const bool k_now = (keys[SDL_SCANCODE_K] != 0);
+    if (k_now && !sPrevK && !sPlayer.is_dead)
+    {
+        sPlayer.hp.current = 0;
+        selva::gameplay::fireEnemyDeath(sPlayer, /*index=*/0);
+    }
+    sPrevK = k_now;
+}
+
+// Repopulate the per-frame hurtbox list from all actors' current poses.
+// Player goes first; enemies follow with index-based OwnerRef so the
+// hit-event handler can recover the source actor.
+static void populateActorHurtboxes()
+{
+    selva::combat::clearHurtboxes();
+    const glm::mat4 player_model = selva::combat::buildActorModelMatrix(
+        sPlayer.pos, sPlayer.yaw, sPlayerMesh.foot_offset_y);
+    selva::combat::appendActorHurtboxes(
+        sSampler, player_model, sPlayer.body,
+        selva::combat::OwnerRef{selva::combat::OwnerKind::Player, 0}, sPlayer.faction);
+
+    const auto list = selva::gameplay::enemies();
+    for (int i = 0; i < static_cast<int>(list.size()); ++i)
+    {
+        const auto& e = *list[i];
+        const glm::mat4 m =
+            selva::combat::buildActorModelMatrix(e.pos, e.yaw, sPlayerMesh.foot_offset_y);
+        selva::combat::appendActorHurtboxes(
+            e.sampler, m, e.body, selva::combat::OwnerRef{selva::combat::OwnerKind::Enemy, i},
+            e.faction);
+    }
+}
+
 static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
 {
     ZoneScopedN("selvaPerFrame");
@@ -2506,20 +2598,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     if (keys[SDL_SCANCODE_ESCAPE])
         engine.requestQuit();
 
-    // Dev: K kills the player instantly to test the second-death
-    // lifecycle without taking real damage. Edge-triggered so holding
-    // K doesn't re-fire each frame.
-    {
-        static bool sPrevK = false;
-        const bool k_now = (keys[SDL_SCANCODE_K] != 0);
-        if (k_now && !sPrevK && !sPlayer.is_dead)
-        {
-            sPlayer.hp.current = 0;
-            selva::gameplay::fireEnemyDeath(sPlayer, /*index=*/0);
-        }
-        sPrevK = k_now;
-    }
-
+    tickDevKillKey(keys);
     tickF1TuningPanelToggle(keys);
     // Lock-on input gated while dead — the corpse can't acquire/release
     // a target. Camera still ticks so the lock-on framing remains
@@ -2619,64 +2698,14 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     // translation switches from clip-hip to velocity-driven without
     // a speed discontinuity. Attacks (cancel_fraction=1.0) never
     // unlock — full commitment preserved.
-    const bool one_shot_active = sSampler.isOneShotActive();
-    const bool past_cancel = sSampler.isOneShotPastCancelFraction();
-    // Velocity also unlocks once the one-shot enters its BlendOut
-    // phase (one_shot_phase == 3). This covers attacks (cancel_fraction
-    // = 1.0 by design — never trips past_cancel) so velocity can ramp
-    // up during the visible fade back to locomotion, instead of holding
-    // at zero until the one-shot fully ends and then ramping from zero
-    // while running animation plays.
-    const int one_shot_phase = sSampler.frameDiagnostics().one_shot_phase;
-    const bool in_blend_out = (one_shot_phase == 3);
-    const bool movement_locked = sDodgeActive || one_shot_active;
-    const bool velocity_locked =
-        (sDodgeActive && !past_cancel) || (one_shot_active && !past_cancel && !in_blend_out);
-    tickPlayerVelocity(moveIntent, velocity_locked, tun, dt);
-    tickPlayerYaw(moveIntent, movement_locked, tun.turn_rate_min, tun.turn_rate_max, dt);
-
-    // Pick + advance the sampler. The locomotion SM picks the loco
-    // clip; F1 debug-clip preview overrides it. sampler.update runs
-    // last so it sees post-input, post-movement state.
-    const LocomotionPick pick = selectLocomotionClip(moveIntent, dt, combat_input_this_frame, tun);
-    if (pick.clip != nullptr && pick.clip->isLoaded())
-    {
-        ZoneScopedN("sampler.update");
-        sSampler.setActorPlacement(sPlayer.pos, sPlayer.yaw);
-        sSampler.update(*pick.clip, dt, pick.blend_seconds, pick.loops, pick.clip_name.c_str());
-    }
-
+    const LocomotionPick pick =
+        tickPlayerLocomotionAndSampler(moveIntent, combat_input_this_frame, tun, dt);
     logSpliceResiduals(pick.pre_update_joints, pick.clip);
     logBlendOutFadeJoints();
 
     applyPerFrameTranslation(moveIntent, tun.dodge_steer_rate, dt);
 
-    // World collision: push player out of any static cylinder it
-    // overlaps after translation. Runs LAST so it sees the final
-    // post-translation position whatever drove it (velocity, clip-hip,
-    // dodge steer). Player capsule radius ~0.35m matches humanoid
-    // shoulder width. Enemy capsules push out the same way.
-    {
-        constexpr float kPlayerRadius = 0.35f;
-        glm::vec2 player_xz(sPlayer.pos.x, sPlayer.pos.z);
-        selva::world::resolveBodyCollision(player_xz, kPlayerRadius);
-        for (const auto* enemy : selva::gameplay::enemies())
-        {
-            const glm::vec2 e_xz(enemy->pos.x, enemy->pos.z);
-            const glm::vec2 delta = player_xz - e_xz;
-            const float dist_sq = glm::dot(delta, delta);
-            const float min_dist = kPlayerRadius + enemy->body.collider_radius;
-            if (dist_sq >= min_dist * min_dist || dist_sq <= 1e-8f)
-                continue;
-            const float dist = std::sqrt(dist_sq);
-            player_xz += (delta / dist) * (min_dist - dist);
-        }
-        sPlayer.pos.x = player_xz.x;
-        sPlayer.pos.z = player_xz.y;
-        // Snap to terrain after XZ resolves. Player feet sit on the
-        // heightmap surface; the camera's lookAt-Y already smooths.
-        sPlayer.pos.y = selva::world::sampleHeight(sPlayer.pos.x, sPlayer.pos.z);
-    }
+    resolvePlayerCollisionAndSnap();
 
     selva::gameplay::tickEnemies(dt);
 
@@ -2685,26 +2714,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     // bone positions move). Tick hitboxes (advance lifetime + roll
     // prev_shape for swept detection). Detect overlaps and apply
     // damage. Reactions/VFX read the same event stream.
-    selva::combat::clearHurtboxes();
-    {
-        const glm::mat4 player_model = selva::combat::buildActorModelMatrix(
-            sPlayer.pos, sPlayer.yaw, sPlayerMesh.foot_offset_y);
-        selva::combat::appendActorHurtboxes(
-            sSampler, player_model, sPlayer.body,
-            selva::combat::OwnerRef{selva::combat::OwnerKind::Player, 0}, sPlayer.faction);
-    }
-    {
-        const auto list = selva::gameplay::enemies();
-        for (int i = 0; i < static_cast<int>(list.size()); ++i)
-        {
-            const auto& e = *list[i];
-            const glm::mat4 m =
-                selva::combat::buildActorModelMatrix(e.pos, e.yaw, sPlayerMesh.foot_offset_y);
-            selva::combat::appendActorHurtboxes(
-                e.sampler, m, e.body, selva::combat::OwnerRef{selva::combat::OwnerKind::Enemy, i},
-                e.faction);
-        }
-    }
+    populateActorHurtboxes();
 
     // Re-anchor every actor's active attack hitbox to the joint
     // driving it. Shared PC+NPC path — both attackers' hitboxes
