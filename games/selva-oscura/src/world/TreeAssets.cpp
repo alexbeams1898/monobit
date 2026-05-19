@@ -281,38 +281,48 @@ void destroyMesh(TreeMesh& m)
 
 } // namespace
 
-bool initTreeAssets()
+// Walk the glTF nodes and bucket trunk/branches/atlas/rock CPU meshes
+// by node name. Each bucket holds one CpuMesh per matched node.
+struct LoadedTreeMeshes
 {
-    loadRootDepthConfig();
-
-    const std::string gltf_path = std::string(kAssetDir) + "scene.gltf";
-
-    cgltf_options options = {};
-    cgltf_data* data = nullptr;
-    cgltf_result res = cgltf_parse_file(&options, gltf_path.c_str(), &data);
-    if (res != cgltf_result_success)
-    {
-        std::fprintf(stderr, "[trees] parse failed: %s (err %d)\n", gltf_path.c_str(), res);
-        return false;
-    }
-    res = cgltf_load_buffers(&options, data, gltf_path.c_str());
-    if (res != cgltf_result_success)
-    {
-        std::fprintf(stderr, "[trees] load_buffers failed (err %d)\n", res);
-        cgltf_free(data);
-        return false;
-    }
-
-    // Phase 1: collect CPU meshes for hero trunks/branches, atlas
-    // trees (flat low-poly fillers), and rocks.
     std::vector<CpuMesh> trunks;
     std::vector<CpuMesh> branches;
     std::vector<CpuMesh> atlas;
     std::vector<CpuMesh> rocks;
+};
+
+static void classifyAndPushTreeMesh(const cgltf_node& node, CpuMesh&& cm, bool t01_or_b01,
+                                    bool atl, bool rock, LoadedTreeMeshes& out)
+{
+    cm.is_branches = nodeMatches(node.name, "Tree_Branches_01") ||
+                     nodeMatches(node.name, "Tree_Branches_02");
+    cm.is_atlas = atl;
+    cm.is_rock = rock;
+    cm.family = atl ? "atlas" : rock ? "rock" : (t01_or_b01 ? "01" : "02");
+    cm.node_name = node.name;
+    std::fprintf(stderr, "[trees] %s family=%s name=%s y=[%.2f..%.2f] centroid=(%.2f, %.2f)\n",
+                 rock             ? "rock"
+                 : atl            ? "atlas"
+                 : cm.is_branches ? "branches"
+                                  : "trunk",
+                 cm.family.c_str(), node.name, cm.min_y, cm.max_y, cm.centroid_x, cm.centroid_z);
+    if (rock)
+        out.rocks.push_back(std::move(cm));
+    else if (atl)
+        out.atlas.push_back(std::move(cm));
+    else if (cm.is_branches)
+        out.branches.push_back(std::move(cm));
+    else
+        out.trunks.push_back(std::move(cm));
+}
+
+static LoadedTreeMeshes collectTreeMeshesFromGltf(const cgltf_data* data)
+{
+    LoadedTreeMeshes out;
     for (cgltf_size i = 0; i < data->nodes_count; ++i)
     {
         const cgltf_node& node = data->nodes[i];
-        if (node.mesh == nullptr || node.name == nullptr)
+        if (node.mesh == nullptr || node.name == nullptr || node.mesh->primitives_count == 0)
             continue;
         const bool t01 = nodeMatches(node.name, "Tree_Trunk_01");
         const bool t02 = nodeMatches(node.name, "Tree_Trunk_02");
@@ -322,80 +332,66 @@ bool initTreeAssets()
         const bool rock = nodeMatches(node.name, "Rocks");
         if (!t01 && !t02 && !b01 && !b02 && !atl && !rock)
             continue;
-        if (node.mesh->primitives_count == 0)
-            continue;
         CpuMesh cm;
         float node_world[16];
         cgltf_node_transform_world(&node, node_world);
         if (!loadPrimitiveToCpuMesh(&node.mesh->primitives[0], node_world, cm))
             continue;
-        cm.is_branches = (b01 || b02);
-        cm.is_atlas = atl;
-        cm.is_rock = rock;
-        cm.family = atl ? "atlas" : rock ? "rock" : ((t01 || b01) ? "01" : "02");
-        cm.node_name = node.name;
-        std::fprintf(stderr, "[trees] %s family=%s name=%s y=[%.2f..%.2f] centroid=(%.2f, %.2f)\n",
-                     rock             ? "rock"
-                     : atl            ? "atlas"
-                     : cm.is_branches ? "branches"
-                                      : "trunk",
-                     cm.family.c_str(), node.name, cm.min_y, cm.max_y, cm.centroid_x,
-                     cm.centroid_z);
-        if (rock)
-            rocks.push_back(std::move(cm));
-        else if (atl)
-            atlas.push_back(std::move(cm));
-        else if (cm.is_branches)
-            branches.push_back(std::move(cm));
-        else
-            trunks.push_back(std::move(cm));
+        classifyAndPushTreeMesh(node, std::move(cm), t01 || b01, atl, rock, out);
     }
-    cgltf_free(data);
+    return out;
+}
 
-    // Phase 2: pair each trunk with its nearest branches mesh (same
-    // family, closest XZ). Re-center the pair together using the
-    // trunk's XZ centroid + the trunk's min-Y as the base.
-    sVariants.clear();
+// Find branches with the same family as `trunk` closest to its
+// XZ centroid. Returns the branches index or -1 if none.
+static int findClosestBranchesIndex(const CpuMesh& trunk, const std::vector<CpuMesh>& branches,
+                                    float& out_best_d2)
+{
+    int best = -1;
+    float best_d2 = 1e30f;
+    for (int j = 0; j < static_cast<int>(branches.size()); ++j)
+    {
+        if (branches[j].family != trunk.family)
+            continue;
+        const float dx = branches[j].centroid_x - trunk.centroid_x;
+        const float dz = branches[j].centroid_z - trunk.centroid_z;
+        const float d2 = dx * dx + dz * dz;
+        if (d2 < best_d2)
+        {
+            best_d2 = d2;
+            best = j;
+        }
+    }
+    out_best_d2 = best_d2;
+    return best;
+}
+
+// Family-01 trees get the canonical names pine_a/b/c in cgltf node-walk
+// order (stable across runs); family-02 is pine_short.
+static std::string canonicalHeroVariantName(const std::string& family)
+{
+    if (family != "01")
+        return "pine_short";
+    static int s_hero_01_count = 0;
+    static const char* kHeroNames[] = {"pine_a", "pine_b", "pine_c"};
+    const int idx = std::min(s_hero_01_count++, 2);
+    return kHeroNames[idx];
+}
+
+static void buildHeroVariantsFromMeshes(const std::vector<CpuMesh>& trunks,
+                                        const std::vector<CpuMesh>& branches)
+{
     for (const CpuMesh& trunk : trunks)
     {
-        int best = -1;
-        float best_d2 = 1e30f;
-        for (int j = 0; j < static_cast<int>(branches.size()); ++j)
-        {
-            if (branches[j].family != trunk.family)
-                continue;
-            const float dx = branches[j].centroid_x - trunk.centroid_x;
-            const float dz = branches[j].centroid_z - trunk.centroid_z;
-            const float d2 = dx * dx + dz * dz;
-            if (d2 < best_d2)
-            {
-                best_d2 = d2;
-                best = j;
-            }
-        }
+        float best_d2 = 0.0f;
+        const int best = findClosestBranchesIndex(trunk, branches, best_d2);
         if (best < 0)
             continue;
         const CpuMesh& canopy = branches[best];
-
         TreeVariant variant;
         const float cx = trunk.centroid_x;
         const float cz = trunk.centroid_z;
-        // Canonical variant name. Family-01 trees are pine_a/b/c in
-        // load order; family-02 is pine_short. Loader-order is stable
-        // (cgltf node-walk order), so the names map to config.json
-        // entries consistently across runs.
-        static int s_hero_01_count = 0;
-        std::string variant_name;
-        if (trunk.family == "01")
-        {
-            static const char* kHeroNames[] = {"pine_a", "pine_b", "pine_c"};
-            const int idx = std::min(s_hero_01_count++, 2);
-            variant_name = kHeroNames[idx];
-        }
-        else
-        {
-            variant_name = "pine_short";
-        }
+        const std::string variant_name = canonicalHeroVariantName(trunk.family);
         const float root_depth = lookupRootDepth(variant_name);
         const float base = trunk.min_y + root_depth;
         std::fprintf(stderr, "[trees] variant '%s' root_depth=%.2f\n", variant_name.c_str(),
@@ -415,17 +411,16 @@ bool initTreeAssets()
                      std::sqrt(best_d2));
         sVariants.push_back(std::move(variant));
     }
+}
 
-    // Rocks: solid 3D geometry (not alpha-blended), render via the
-    // same tree shader pass with no alpha cutoff. Used as scattered
-    // ground accents alongside the trees.
+static void buildRockVariantsFromMeshes(const std::vector<CpuMesh>& rocks)
+{
     for (int ri = 0; ri < static_cast<int>(rocks.size()); ++ri)
     {
         const CpuMesh& r = rocks[ri];
         TreeVariant variant;
         const float cx = r.centroid_x;
         const float cz = r.centroid_z;
-        // Rocks usually sit ON the ground, not below. Skip root_depth.
         const float base = r.min_y;
         uploadMesh(r, cx, cz, base, variant.trunk);
         variant.trunk.alpha_cutoff = 0.0f;
@@ -435,10 +430,34 @@ bool initTreeAssets()
                      sVariants.size(), ri, variant.trunk.height, r.node_name.c_str());
         sVariants.push_back(std::move(variant));
     }
+}
 
+bool initTreeAssets()
+{
+    loadRootDepthConfig();
+    const std::string gltf_path = std::string(kAssetDir) + "scene.gltf";
+    cgltf_options options = {};
+    cgltf_data* data = nullptr;
+    cgltf_result res = cgltf_parse_file(&options, gltf_path.c_str(), &data);
+    if (res != cgltf_result_success)
+    {
+        std::fprintf(stderr, "[trees] parse failed: %s (err %d)\n", gltf_path.c_str(), res);
+        return false;
+    }
+    res = cgltf_load_buffers(&options, data, gltf_path.c_str());
+    if (res != cgltf_result_success)
+    {
+        std::fprintf(stderr, "[trees] load_buffers failed (err %d)\n", res);
+        cgltf_free(data);
+        return false;
+    }
+    const LoadedTreeMeshes meshes = collectTreeMeshesFromGltf(data);
+    cgltf_free(data);
+
+    sVariants.clear();
+    buildHeroVariantsFromMeshes(meshes.trunks, meshes.branches);
+    buildRockVariantsFromMeshes(meshes.rocks);
     // Atlas trees deferred: see atlas-rendering note above.
-    (void)atlas;
-
     std::fprintf(stderr, "[trees] loaded %zu variants\n", sVariants.size());
     return !sVariants.empty();
 }
