@@ -469,6 +469,7 @@ SkeletalMesh loadSkeletalMesh(const std::string& path, const Skeleton& skeleton)
     {
         std::fprintf(stderr, "[SkeletalMesh] %s has no meshes/primitives\n", path.c_str());
         cgltf_free(data);
+        // NOLINTNEXTLINE(clang-analyzer-unix.Malloc): cgltf_free released data above; clang-tidy can't track cgltf's free pattern.
         return out;
     }
     if (data->skins_count == 0)

@@ -40,8 +40,7 @@ void destroyTexture(std::uint32_t tex)
 {
     if (tex != 0)
     {
-        GLuint t = tex;
-        glDeleteTextures(1, &t);
+        glDeleteTextures(1, &tex);
     }
 }
 

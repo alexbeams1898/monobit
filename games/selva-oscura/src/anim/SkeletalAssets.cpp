@@ -112,11 +112,14 @@ void auditClipHipMotion()
     // across runs without scraping stderr. stderr is still useful for
     // build-time inspection in the IDE pane.
     FILE* audit_log = std::fopen("clip-audit.log", "w");
+    // Generic format passthrough — callers supply literal format strings.
     auto write = [&](const char* fmt, auto... args)
     {
+        // NOLINTBEGIN(clang-diagnostic-format-security)
         std::fprintf(stderr, fmt, args...);
         if (audit_log != nullptr)
             std::fprintf(audit_log, fmt, args...);
+        // NOLINTEND(clang-diagnostic-format-security)
     };
 
     write("[clip-audit] hip XZ path length per clip (full clip, not motion-end-clipped):\n");

@@ -409,7 +409,7 @@ static void buildHeroVariantsFromMeshes(const std::vector<CpuMesh>& trunks,
                      "with branches (centroid distance=%.2f)\n",
                      sVariants.size(), trunk.family.c_str(), variant.trunk.height,
                      std::sqrt(best_d2));
-        sVariants.push_back(std::move(variant));
+        sVariants.push_back(variant);
     }
 }
 
@@ -428,7 +428,7 @@ static void buildRockVariantsFromMeshes(const std::vector<CpuMesh>& rocks)
             selva::render::loadTexture2D(std::string(kAssetDir) + "textures/Rocks_baseColor.png");
         std::fprintf(stderr, "[trees] [variant %zu] rock_%02d height=%.2f node=%s\n",
                      sVariants.size(), ri, variant.trunk.height, r.node_name.c_str());
-        sVariants.push_back(std::move(variant));
+        sVariants.push_back(variant);
     }
 }
 
@@ -436,7 +436,7 @@ bool initTreeAssets()
 {
     loadRootDepthConfig();
     const std::string gltf_path = std::string(kAssetDir) + "scene.gltf";
-    cgltf_options options = {};
+    const cgltf_options options = {};
     cgltf_data* data = nullptr;
     cgltf_result res = cgltf_parse_file(&options, gltf_path.c_str(), &data);
     if (res != cgltf_result_success)

@@ -277,9 +277,9 @@ static bool downloadFile(const std::string& url, const std::string& destPath)
         return false;
     }
 
-    bool ok = WinHttpSendRequest(req, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0,
-                                 0, 0) &&
-              WinHttpReceiveResponse(req, nullptr);
+    const bool ok = WinHttpSendRequest(req, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
+                                       WINHTTP_NO_REQUEST_DATA, 0, 0, 0) &&
+                    WinHttpReceiveResponse(req, nullptr);
     if (!ok)
     {
         WinHttpCloseHandle(req);

@@ -97,7 +97,7 @@ void initGround()
     constexpr int kVertCount = (N + 1) * (N + 1);
 
     std::vector<float> verts;
-    verts.reserve(static_cast<std::size_t>(kVertCount * 4));
+    verts.reserve(static_cast<std::size_t>(kVertCount) * 4u);
 
     // Damp-earth base shade. Per-vertex noise breaks up the flat plane
     // without changing the average tone.
@@ -121,7 +121,7 @@ void initGround()
     }
 
     std::vector<unsigned int> indices;
-    indices.reserve(static_cast<std::size_t>(N * N * 6));
+    indices.reserve(static_cast<std::size_t>(N) * static_cast<std::size_t>(N) * 6u);
     for (int iz = 0; iz < N; ++iz)
     {
         for (int ix = 0; ix < N; ++ix)
@@ -169,7 +169,7 @@ void initDisc()
     // contact shadow under trees so the eye anchors them to the floor.
     constexpr int kSegments = 24;
     std::vector<float> verts;
-    verts.reserve(static_cast<std::size_t>((kSegments + 1) * 4));
+    verts.reserve(static_cast<std::size_t>(kSegments + 1) * 4u);
     // Center vertex — darkest so the shadow falls off toward the rim.
     verts.push_back(0.0f);
     verts.push_back(0.0f);
@@ -186,7 +186,7 @@ void initDisc()
     }
 
     std::vector<unsigned int> indices;
-    indices.reserve(static_cast<std::size_t>(kSegments * 3));
+    indices.reserve(static_cast<std::size_t>(kSegments) * 3u);
     for (int i = 0; i < kSegments; ++i)
     {
         indices.push_back(0);

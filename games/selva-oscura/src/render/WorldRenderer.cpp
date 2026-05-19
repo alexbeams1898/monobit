@@ -173,7 +173,8 @@ void renderTrees()
         const float h_scale = hashXZ(c.center.x, c.center.z, 0x3u);
         const float h_phase = hashXZ(c.center.x, c.center.z, 0x4u);
 
-        const int variant_idx = static_cast<int>(h_variant * tree_variants) % tree_variants;
+        const int variant_idx =
+            static_cast<int>(h_variant * static_cast<float>(tree_variants)) % tree_variants;
         const float yaw = h_yaw * 6.2831853f;
         const float scale = 0.85f + h_scale * 0.45f; // 0.85..1.30
         const float wind_phase = h_phase * 6.2831853f;

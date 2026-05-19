@@ -41,7 +41,7 @@ Hurtbox capsuleBetween(const selva::anim::PoseSampler& sampler, const glm::mat4&
 
 glm::mat4 buildActorModelMatrix(const glm::vec3& pos, float yaw, float foot_offset_y)
 {
-    glm::mat4 m = glm::translate(glm::mat4(1.0f), glm::vec3(pos.x, -foot_offset_y, pos.z));
+    const glm::mat4 m = glm::translate(glm::mat4(1.0f), glm::vec3(pos.x, -foot_offset_y, pos.z));
     return glm::rotate(m, yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
 }
 

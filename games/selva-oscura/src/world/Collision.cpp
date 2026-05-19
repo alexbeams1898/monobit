@@ -96,7 +96,7 @@ void populateAisle(std::mt19937& rng, std::vector<CylinderCollider>& out, float 
     const float step_z = (z_start - z_end) / static_cast<float>(tree_count_per_side);
     for (int i = 0; i < tree_count_per_side; ++i)
     {
-        const float z_base = z_start - i * step_z;
+        const float z_base = z_start - static_cast<float>(i) * step_z;
         for (int side = 0; side < 2; ++side)
         {
             const float sign = (side == 0) ? -1.0f : 1.0f;

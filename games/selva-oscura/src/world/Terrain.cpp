@@ -35,12 +35,12 @@ float bilinearSample(const std::vector<float>& heights, int w, int h, float u, f
 {
     if (heights.empty() || w <= 0 || h <= 0)
         return 0.0f;
-    const float fx = u * (w - 1);
-    const float fy = v * (h - 1);
+    const float fx = u * static_cast<float>(w - 1);
+    const float fy = v * static_cast<float>(h - 1);
     const int ix = std::clamp(static_cast<int>(std::floor(fx)), 0, w - 2);
     const int iy = std::clamp(static_cast<int>(std::floor(fy)), 0, h - 2);
-    const float tx = fx - ix;
-    const float ty = fy - iy;
+    const float tx = fx - static_cast<float>(ix);
+    const float ty = fy - static_cast<float>(iy);
     const float h00 = heights[iy * w + ix];
     const float h10 = heights[iy * w + (ix + 1)];
     const float h01 = heights[(iy + 1) * w + ix];
@@ -66,7 +66,7 @@ bool loadHeightmapPng(const std::string& path, const TerrainRegion& meta,
     }
     out_w = w;
     out_h = h;
-    out_heights.resize(static_cast<std::size_t>(w * h));
+    out_heights.resize(static_cast<std::size_t>(w) * static_cast<std::size_t>(h));
     const float range = meta.height_max - meta.height_min;
     for (int i = 0; i < w * h; ++i)
     {
@@ -83,9 +83,12 @@ bool buildRegionMesh(TerrainRegion& r, int subdivide)
     const float half = r.world_extent * 0.5f;
     const float step = r.world_extent / static_cast<float>(subdivide);
     r.subdivide = subdivide;
-    r.mesh_y.assign(static_cast<std::size_t>(verts_per_side * verts_per_side), 0.0f);
+    r.mesh_y.assign(static_cast<std::size_t>(verts_per_side) *
+                        static_cast<std::size_t>(verts_per_side),
+                    0.0f);
 
-    std::vector<Vertex> verts(static_cast<std::size_t>(verts_per_side * verts_per_side));
+    std::vector<Vertex> verts(static_cast<std::size_t>(verts_per_side) *
+                              static_cast<std::size_t>(verts_per_side));
 
     // Sample heightmap per vertex (UV = [0..1] across the region).
     for (int iz = 0; iz < verts_per_side; ++iz)
@@ -149,7 +152,8 @@ bool buildRegionMesh(TerrainRegion& r, int subdivide)
 
     // Indices.
     std::vector<std::uint32_t> indices;
-    indices.reserve(static_cast<std::size_t>(subdivide * subdivide * 6));
+    indices.reserve(static_cast<std::size_t>(subdivide) * static_cast<std::size_t>(subdivide) *
+                    6u);
     for (int iz = 0; iz < subdivide; ++iz)
     {
         for (int ix = 0; ix < subdivide; ++ix)
@@ -302,12 +306,12 @@ float sampleHeight(float world_x, float world_z)
         return 0.0f;
 
     const int verts_per_side = r.subdivide + 1;
-    const float fx = u * r.subdivide;
-    const float fz = v * r.subdivide;
+    const float fx = u * static_cast<float>(r.subdivide);
+    const float fz = v * static_cast<float>(r.subdivide);
     const int ix = std::clamp(static_cast<int>(std::floor(fx)), 0, r.subdivide - 1);
     const int iz = std::clamp(static_cast<int>(std::floor(fz)), 0, r.subdivide - 1);
-    const float tx = fx - ix; // 0..1 within the quad
-    const float tz = fz - iz;
+    const float tx = fx - static_cast<float>(ix); // 0..1 within the quad
+    const float tz = fz - static_cast<float>(iz);
 
     // Quad corners — same indexing the mesh-build uses:
     //   i0 = (iz, ix)       i1 = (iz, ix+1)
