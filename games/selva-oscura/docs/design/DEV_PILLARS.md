@@ -138,3 +138,110 @@ Things that are NOT pillars, and that we explicitly reject:
 - **Tooling perfection.** The build system, lint pipeline, and test
   harness are good enough. Time spent there beyond "good enough" is
   time not spent on the game.
+
+---
+
+## Version-bump doctrine
+
+Selva Oscura uses semantic versioning, but interpreted for a game
+project rather than a library. Strict SemVer was designed for software
+where the public API is a real concept (function signatures, ABI
+compatibility); a game has a different surface, so the bump meanings
+need to be defined explicitly.
+
+The branch prefix (`<bump>/selva-oscura/<issue>-<desc>`) drives the
+release workflow's version bump. **One PR = one bump.** The size of
+the PR doesn't change which digit moves. The *kind* of change does.
+
+### MAJOR (`X.0.0`)
+
+Reserved. A major bump happens only when one of these is true:
+
+- **First public ship**: `0.x.x` → `1.0.0` is the *one* uncontroversial
+  major. It marks the transition from "in development" to "this is the
+  game players bought."
+- **Save-data break** that requires migration or fresh start. Players
+  who have a save file from `X.y.z` cannot use it in `(X+1).0.0`.
+- **Identity shift in a released product.** If a player who bought
+  Selva Oscura at v1.0.0 would feel "wait, this is a different game
+  now," that's a major. (This bar is high and we expect to never hit
+  it.)
+
+**MAJOR is NOT used for:**
+- Large PRs. A foundational branch bundling many systems is still a
+  minor if nothing in it breaks. (See "On large PRs" below.)
+- Breaking changes to internal C++ APIs. We have no external
+  consumers; internal refactors are not breaking changes.
+- Significant engineering complexity. Effort and major-version-worthy
+  aren't the same axis.
+
+### MINOR (`x.Y.0`)
+
+A **new system** ships into the engine or game. This is the
+"ordinary milestone" bump — what 90%+ of pre-1.0 PRs should be.
+
+Examples that warrant a minor:
+- A new combat subsystem (attack chains, parry, weapon class).
+- A new world subsystem (terrain heightmap, atmospheric scattering).
+- A new AI subsystem (behavior trees, perception).
+- A new gameplay loop (gathering, crafting, encounter design).
+
+Multiple new systems in one PR still bump exactly one minor. The PR
+description and the changelog body document the size; the version
+number documents the *direction* (forward, non-breaking).
+
+### PATCH (`x.y.Z`)
+
+A fix or polish pass on existing behavior. No new system, no new
+player-facing feature. Save-data unchanged.
+
+Examples:
+- Bug fix in an existing system.
+- Balance tweak (damage values, animation timing constants).
+- Performance improvement.
+- UI polish on existing screens.
+
+### CHORE (no bump)
+
+Internal-only changes: refactors, comment cleanup, lint fixes, CI
+tweaks, dependency upgrades that don't change observable behavior,
+docs-only changes.
+
+The changelog section for these is the single word `skip`.
+
+### DOCS (no bump)
+
+Documentation-only PRs that don't touch code or runtime behavior.
+Same as CHORE for changelog purposes (`skip`).
+
+### On large PRs
+
+Sometimes — especially in foundational development phases — a single
+PR carries multiple new systems. **Don't escalate to MAJOR to
+compensate for size.** The version-bump semantic is "what kind of
+change is this," not "how much work was this." A foundational PR
+with five new systems and zero breaking changes is a minor, and the
+changelog body explains the size.
+
+When this happens, the changelog body should explicitly note the
+unusual scope (e.g., "This release bundles foundational development
+across multiple subsystems") so a reader who only sees the version
+delta isn't misled.
+
+### Dev semver vs release semver — future consideration
+
+Currently, `CMakeLists.txt`'s `project(SelvaOscura VERSION ...)` is
+the single source of version truth: it drives both the binary's
+internal version constant and the release tag. There is no
+separate "release version" decoupled from the engineering version.
+
+If Selva Oscura ever reaches a state where:
+- Players are getting builds from the public releases repo, AND
+- The build cadence is faster than the player-facing version cadence
+  should be (e.g., we ship five engineering minors per month but
+  only want to show one player-facing release a month),
+
+then we'll introduce a `DISPLAY_VERSION` string decoupled from
+`CMakeLists.txt`'s VERSION. Until that need is concrete, the two
+stay unified. (Per pillar 1: don't design for hypothetical future
+requirements.)

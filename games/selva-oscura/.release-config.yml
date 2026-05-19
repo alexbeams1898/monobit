@@ -8,7 +8,6 @@ cmake_target: selva-oscura
 # Public-facing artifact name.
 artifact_prefix: selva-oscura
 
-# Public-facing distribution repo. Empty string skips the mirror step.
-# Selva Oscura has no public release repo yet; populate this when one exists
-# (e.g. alexbeams1898/selva-oscura-releases).
-public_repo: ""
+# Public-facing distribution repo. The release is mirrored here as a courtesy
+# for download. Empty string skips the mirror step.
+public_repo: alexbeams1898/selva-oscura-releases
