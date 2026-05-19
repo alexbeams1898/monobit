@@ -129,6 +129,9 @@ void renderTerrain()
         const auto& r = selva::world::terrainRegion(i);
         selva::render::setTerrainBaseColor(
             glm::vec3(r.base_color[0], r.base_color[1], r.base_color[2]));
+        // v0 unstained palette — see docs/design/wood.md "Floor color".
+        selva::render::setTerrainTones(glm::vec3(0.08f, 0.07f, 0.06f),
+                                       glm::vec3(0.20f, 0.13f, 0.09f));
         glBindVertexArray(r.vao);
         glDrawElements(GL_TRIANGLES, r.index_count, GL_UNSIGNED_INT, nullptr);
     }

@@ -46,6 +46,8 @@ in vec2 vUV;
 out vec4 fragColor;
 
 uniform vec3 uBaseColor;
+uniform vec3 uDarkLoam;
+uniform vec3 uDryDirt;
 uniform vec3 uSunDir;
 uniform vec3 uSunIntensity;
 uniform vec3 uCamPos;
@@ -53,15 +55,53 @@ uniform float uExposure;
 )glsl";
 
 const char* kTerrainFSMain = R"glsl(
+// Cheap hash-based 3D noise. No texture upload; uses fract(sin(dot(.)))
+// pattern, two octaves for coarse + fine detail.
+float hash13(vec3 p)
+{
+    p = fract(p * 0.3183099 + vec3(0.71, 0.113, 0.419));
+    p *= 17.0;
+    return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+
+float vnoise(vec3 p)
+{
+    vec3 i = floor(p);
+    vec3 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float n000 = hash13(i + vec3(0.0, 0.0, 0.0));
+    float n100 = hash13(i + vec3(1.0, 0.0, 0.0));
+    float n010 = hash13(i + vec3(0.0, 1.0, 0.0));
+    float n110 = hash13(i + vec3(1.0, 1.0, 0.0));
+    float n001 = hash13(i + vec3(0.0, 0.0, 1.0));
+    float n101 = hash13(i + vec3(1.0, 0.0, 1.0));
+    float n011 = hash13(i + vec3(0.0, 1.0, 1.0));
+    float n111 = hash13(i + vec3(1.0, 1.0, 1.0));
+    return mix(
+        mix(mix(n000, n100, f.x), mix(n010, n110, f.x), f.y),
+        mix(mix(n001, n101, f.x), mix(n011, n111, f.x), f.y),
+        f.z);
+}
+
 void main()
 {
-    // Surface lit by sun via half-Lambert against the heightfield's
-    // computed normals. Then atmospheric in-scatter blends with the
-    // shaded color according to view-distance, same as trees + sky.
+    // Two-octave noise sampled at world XZ (Y omitted so the texture
+    // doesn't smear vertically up cliffs). Coarse 5m features + fine
+    // 0.7m mottling, weighted 0.7 / 0.3.
+    float n_coarse = vnoise(vec3(vWorldPos.x * 0.2, 0.0, vWorldPos.z * 0.2));
+    float n_fine = vnoise(vec3(vWorldPos.x * 1.4, 0.0, vWorldPos.z * 1.4));
+    float n = mix(n_coarse, n_fine, 0.3);
+
+    // Slope (0 flat, 1 vertical) — slopes show drier exposed dirt.
+    float slope = clamp(1.0 - vNormal.y, 0.0, 1.0);
+    float dryness = clamp(slope * 0.7 + (n - 0.5) * 0.6 + 0.15, 0.0, 1.0);
+    vec3 dirt = mix(uDarkLoam, uDryDirt, dryness);
+
+    // Sun lighting (half-Lambert + ambient + sun tint).
     float halfL = dot(vNormal, uSunDir) * 0.5 + 0.5;
     vec3 ambient = vec3(0.15, 0.18, 0.24);
     vec3 sunTint = vec3(1.05, 0.78, 0.55);
-    vec3 surface = uBaseColor * (ambient + sunTint * halfL);
+    vec3 surface = dirt * (ambient + sunTint * halfL);
 
     vec3 viewVec = vWorldPos - uCamPos;
     float dist = length(viewVec);
@@ -81,6 +121,8 @@ void main()
 GLuint sProgram = 0;
 GLint sUniViewProjLoc = -1;
 GLint sUniBaseColorLoc = -1;
+GLint sUniDarkLoamLoc = -1;
+GLint sUniDryDirtLoc = -1;
 GLint sUniSunDirLoc = -1;
 GLint sUniSunIntensityLoc = -1;
 GLint sUniCamPosLoc = -1;
@@ -96,6 +138,8 @@ bool initTerrainShader()
         return false;
     sUniViewProjLoc = glGetUniformLocation(sProgram, "uViewProj");
     sUniBaseColorLoc = glGetUniformLocation(sProgram, "uBaseColor");
+    sUniDarkLoamLoc = glGetUniformLocation(sProgram, "uDarkLoam");
+    sUniDryDirtLoc = glGetUniformLocation(sProgram, "uDryDirt");
     sUniSunDirLoc = glGetUniformLocation(sProgram, "uSunDir");
     sUniSunIntensityLoc = glGetUniformLocation(sProgram, "uSunIntensity");
     sUniCamPosLoc = glGetUniformLocation(sProgram, "uCamPos");
@@ -110,8 +154,8 @@ void shutdownTerrainShader()
         glDeleteProgram(sProgram);
         sProgram = 0;
     }
-    sUniViewProjLoc = sUniBaseColorLoc = sUniSunDirLoc = sUniSunIntensityLoc = sUniCamPosLoc =
-        sUniExposureLoc = -1;
+    sUniViewProjLoc = sUniBaseColorLoc = sUniDarkLoamLoc = sUniDryDirtLoc = sUniSunDirLoc =
+        sUniSunIntensityLoc = sUniCamPosLoc = sUniExposureLoc = -1;
 }
 
 void useTerrainShader()
@@ -139,6 +183,12 @@ void setTerrainAtmosphere(const glm::vec3& sun_dir, const glm::vec3& sun_intensi
 void setTerrainBaseColor(const glm::vec3& color)
 {
     glUniform3f(sUniBaseColorLoc, color.x, color.y, color.z);
+}
+
+void setTerrainTones(const glm::vec3& dark_loam, const glm::vec3& dry_dirt)
+{
+    glUniform3f(sUniDarkLoamLoc, dark_loam.x, dark_loam.y, dark_loam.z);
+    glUniform3f(sUniDryDirtLoc, dry_dirt.x, dry_dirt.y, dry_dirt.z);
 }
 
 } // namespace selva::render

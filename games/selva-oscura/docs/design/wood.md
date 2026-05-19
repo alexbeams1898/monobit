@@ -602,6 +602,93 @@ substance pooling makes the dirt heavier and more saturated.
   belongs elsewhere (e.g., the polished stone of Hell's interior, or
   the colle's exposed rock).
 
+### Floor color — implementation palette (WIP)
+
+The "dark brown → ochre, moss-green accents, cool-grey stone" register
+above resolves to a small palette of base tones, mixed per-fragment by
+slope and procedural noise. Each tone is meant as a *single point* in
+the dominant register — the shader's noise + slope mixing produces the
+full range of variation across the actual ground.
+
+**v0 unstained palette** (no contrapasso consumed yet — see below):
+
+- **Humus** (flat canopy floor, the preserved-deadfall substrate):
+  `(0.08, 0.07, 0.06)`. Near-black, faint warm-brown bias, reads as
+  damp leaf-mold. Cool when unlit; warms only where Beatrice's
+  threshold-light catches it (per the shader's half-Lambert + sun
+  tint).
+- **Iron sub-soil** (slope exposure, where rain washes the leaf-litter
+  off and the central-Italian iron-stained sub-soil shows through):
+  `(0.20, 0.13, 0.09)`. Warmer, slight red-shift — the *terra rossa*
+  peeking through. This is sub-soil, not bare rock; bare rock is the
+  cool-grey stone described above and will appear as a separate
+  outcrop tone when rock variation lands.
+- **Limestone outcrop** (future, not yet shipped): the cool-grey
+  weathered stone at root-heaves and the colle's exposed slopes.
+  Reserved palette point: `(0.30, 0.27, 0.24)`.
+
+Engineered in [TerrainShader.cpp](../../src/render/TerrainShader.cpp)
+as `uDarkLoam` and `uDryDirt` uniforms. Noise + slope mixing is
+deliberate, not data-driven per-region — the *register* is canon,
+the per-pixel values are emergent.
+
+### Contrapasso stains the soil (WIP — design intent, not yet built)
+
+The v0 palette is the **unstained** state — what the inner Wood looks
+like before any contrapasso has been consumed. As the player
+progresses and contrapassi enter the world via consumption mechanics
+(see [contrapasso.md](contrapasso.md) when written), each consumed
+contrapasso writes its register into the ground.
+
+**Why this is the right design layer:** the Wood already "remembers"
+(per the *Wood remembers* lore above) and sangue-saturation already
+darkens the soil locally. Contrapasso-driven soil-staining extends
+that existing system — it is the same physical mechanism (substance
+leaked from Hell saturating the ground), just per-sin rather than
+homogeneous. By endgame, the inner Wood floor is a *stratigraphy of
+Hell*: the player can read which contrapassi have entered just by
+looking down.
+
+**Canonical guidance for stain values:**
+
+- Stains MUST respect the existing register — darker / heavier first,
+  chromatic shift second. A contrapasso never makes the soil
+  *brighter* or *lighter* than the unstained baseline.
+- Stains may color-shift only after sufficient saturation. A faintly
+  consumed contrapasso reads as "slightly darker / heavier humus"
+  with no chromatic difference; a heavily consumed one reads as a
+  distinct hue. This matches the canonical sangue-patch behavior.
+- Stains pool *where they make narrative sense*. Wrath stains pool in
+  low spots (the Styx mud register). Treachery stains accumulate
+  near cold exposures (the Cocytus ice register). Greed stains
+  appear at root-cairns and rocky outcrops (the metallic register).
+  This is world-position-driven, not uniform.
+
+**Provisional per-contrapasso direction** (subject to iteration with
+the contrapasso consumption system when it ships):
+
+- **Lust** (canto 5, the wind-driven shades): wind-streaked banded
+  patterns; subtle rose bias on the iron component at high saturation.
+- **Gluttony** (canto 6, Cerberus's cold rain): cools the humus toward
+  gray-green; reads waterlogged, mildewed.
+- **Greed** (canto 7): yellow-ochre veins, metallic, gold-stained.
+- **Wrath** (canto 7-8, Styx mud): slick black-mud patches in low
+  spots; pushes humus darker, almost wet-black.
+- **Heresy** (canto 9-11, burning tombs): char patches, blackened
+  streaks, faint ash whitening at edges.
+- **Violence** (canto 12-17, blood river / wood of suicides): the
+  iron sub-soil deepens toward dried-blood red.
+- **Fraud** (canto 18-30, Malebolge): oily multi-hued sheen; green-
+  yellow sickness; the soil reads *wrong* in the way oil-on-water
+  reads wrong.
+- **Treachery** (canto 31-34, Cocytus): pales the soil toward gray-
+  white; frost-bite; warm tones drain entirely.
+
+**Implementation deferred.** Don't build the stain-rendering system
+ahead of the contrapasso consumption mechanic. When the first
+contrapasso ships, ship its stain at the same time, end-to-end. Each
+subsequent contrapasso adds its own stain in its own PR.
+
 ## Visual register
 
 The Wood reads as: **aged gothic pine forest at eternal dusk**.
