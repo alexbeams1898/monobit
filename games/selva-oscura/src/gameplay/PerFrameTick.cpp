@@ -112,19 +112,26 @@ static selva::combat::PlayerEquipment& sEquipment = selva::combat::equipment();
 // One-shot input edge detection. SDL's keyboard state is "is this key down
 // right now"; for actions like the F1 panel toggle we need the rising
 // edge — was up last frame, down this frame.
-// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy 18 can't track inter-function dataflow.
+// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy
+// 18 can't track inter-function dataflow.
 static bool sPrevF1 = false;
-// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy 18 can't track inter-function dataflow.
+// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy
+// 18 can't track inter-function dataflow.
 static bool sPrevLMB = false;
-// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy 18 can't track inter-function dataflow.
+// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy
+// 18 can't track inter-function dataflow.
 static bool sPrevRMB = false;
-// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy 18 can't track inter-function dataflow.
+// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy
+// 18 can't track inter-function dataflow.
 static bool sPrevMMB = false;
-// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy 18 can't track inter-function dataflow.
+// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy
+// 18 can't track inter-function dataflow.
 static bool sPrevR = false;
-// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy 18 can't track inter-function dataflow.
+// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy
+// 18 can't track inter-function dataflow.
 static bool sPrevGripToggle = false;
-// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy 18 can't track inter-function dataflow.
+// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy
+// 18 can't track inter-function dataflow.
 static bool sPrevJump = false;
 
 // Scales the clip-authored hip delta applied to sPlayer.pos. 1.0 =
@@ -133,7 +140,8 @@ static bool sPrevJump = false;
 // Used by the walking jump so a walk-speed jump uses the running_jump
 // clip but covers less distance (no clip retiming). Set on one-shot
 // fire; auto-resets to 1.0 when no one-shot is active.
-// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy 18 can't track inter-function dataflow.
+// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy
+// 18 can't track inter-function dataflow.
 static float sOneShotHipDeltaScale = 1.0f;
 
 // Active attack hitbox state. The hitbox capsule is parented to a
@@ -147,13 +155,17 @@ static float sOneShotHipDeltaScale = 1.0f;
 // computation reads SDL_GetKeyboardState live; these only exist so
 // the diagnostic trace can mark down → up → down events with
 // timestamps.
-// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy 18 can't track inter-function dataflow.
+// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy
+// 18 can't track inter-function dataflow.
 static bool sPrevW = false;
-// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy 18 can't track inter-function dataflow.
+// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy
+// 18 can't track inter-function dataflow.
 static bool sPrevA = false;
-// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy 18 can't track inter-function dataflow.
+// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy
+// 18 can't track inter-function dataflow.
 static bool sPrevS = false;
-// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy 18 can't track inter-function dataflow.
+// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy
+// 18 can't track inter-function dataflow.
 static bool sPrevD = false;
 
 // Space tap-vs-hold disambiguation:
@@ -162,11 +174,14 @@ static bool sPrevD = false;
 // We track when Space was first pressed and whether a dodge has been
 // fired this press; that lets us avoid double-firing or double-engaging
 // while the key is held down.
-// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy 18 can't track inter-function dataflow.
+// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy
+// 18 can't track inter-function dataflow.
 static bool sPrevSpace = false;
-// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy 18 can't track inter-function dataflow.
+// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy
+// 18 can't track inter-function dataflow.
 static float sSpaceHeldSeconds = 0.0f;
-// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy 18 can't track inter-function dataflow.
+// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy
+// 18 can't track inter-function dataflow.
 static bool sDodgeFiredThisPress = false;
 
 // Dodge state. While a dodge is active, gameplay-driven movement is
@@ -180,7 +195,8 @@ static bool sDodgeFiredThisPress = false;
 // direction the player intended. No per-frame translation here — the
 // roll clip's hip translation, plus the model matrix's yaw, takes the
 // character where it needs to go.
-// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy 18 can't track inter-function dataflow.
+// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy
+// 18 can't track inter-function dataflow.
 static bool sDodgeActive = false;
 
 // Post-dodge attack buffer. When LMB/RMB lands during a dodge, the
@@ -196,7 +212,8 @@ struct PostDodgeAttackBuffer
     const char* button = "LMB";
     float buffered_at = 0.0f; // wall-clock when the press was queued
 };
-// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy 18 can't track inter-function dataflow.
+// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy
+// 18 can't track inter-function dataflow.
 static PostDodgeAttackBuffer sPostDodgeAttack;
 
 // Buffered dodge press. When Space is tap-released DURING an active
@@ -213,12 +230,15 @@ struct BufferedDodgePress
     glm::vec3 move_intent_at_press{0.0f};
     float buffered_at = 0.0f;
 };
-// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy 18 can't track inter-function dataflow.
+// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy
+// 18 can't track inter-function dataflow.
 static BufferedDodgePress sBufferedDodge;
 
-// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy 18 can't track inter-function dataflow.
+// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy
+// 18 can't track inter-function dataflow.
 static float sDodgeElapsed = 0.0f;
-// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy 18 can't track inter-function dataflow.
+// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy
+// 18 can't track inter-function dataflow.
 static float sDodgeDuration = 0.0f;
 // Direction flag set at dodge fire time. Forward roll: yaw is set to
 // move-intent direction; clip-local +Z hip motion lands as world-frame
@@ -226,12 +246,14 @@ static float sDodgeDuration = 0.0f;
 // (the standing_dodge_backward clip authors backward travel) lands as
 // world-frame backward. Backsteps also disable mid-roll yaw steering —
 // you commit to a backstep direction.
-// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy 18 can't track inter-function dataflow.
+// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy
+// 18 can't track inter-function dataflow.
 static bool sDodgeIsBackstep = false;
 // Active playback rate of the in-flight dodge clip. Scales the wall-
 // clock duration the dodge gates input lock and is used to convert
 // clip-time elapsed into wall-clock elapsed for the same gate.
-// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy 18 can't track inter-function dataflow.
+// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy
+// 18 can't track inter-function dataflow.
 static float sDodgePlaybackRate = 1.0f;
 
 // AttackKind / BufferedPress / PendingFirstAction + per-hand
@@ -263,7 +285,8 @@ static float sDodgePlaybackRate = 1.0f;
 // (light/heavy attack) is suppressed when the off-hand is a blocker —
 // the off-hand item's "purpose" is defense, and that's what RMB does
 // for it.
-// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy 18 can't track inter-function dataflow.
+// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy
+// 18 can't track inter-function dataflow.
 static bool sBlockingActive = false;
 // Clip names for the active block lifecycle (raise → idle loop →
 // lower). Set when a block fires; consumed by the loco-override (idle)
@@ -274,7 +297,8 @@ static const char* sActiveBlockLowerClip = nullptr;
 
 // Input → attack mapping helper. Combines the equipped weapon, its class,
 // In-game tuning panel toggle. Off by default; F1 flips it.
-// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy 18 can't track inter-function dataflow.
+// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy
+// 18 can't track inter-function dataflow.
 static bool sShowTuningPanel = false;
 // Combat debug toggle + log file owned by combat/CombatLog.{h,cpp}.
 // Aliases here keep the heavy call-site count (100+ combatLog uses)
@@ -304,7 +328,8 @@ using selva::combat::combatLog;
 // "Export bone CSV" button that produces the same shape; a python diff
 // script compares the two.
 // ---------------------------------------------------------------------------
-// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy 18 can't track inter-function dataflow.
+// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy
+// 18 can't track inter-function dataflow.
 static std::string sDebugClipName;
 // The locomotion clip name (registry key) selected on the previous
 // frame — read this frame by combat-fire code that runs BEFORE the
@@ -325,7 +350,8 @@ static std::string sLastLocoClipName = "standard_idle";
 // sPendingLocoClip records the picker's choice when it differs
 // from the active clip AND requires commit. sPendingLocoStart is
 // the wallclock when that pending choice was first seen.
-// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy 18 can't track inter-function dataflow.
+// NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy
+// 18 can't track inter-function dataflow.
 static std::string sPendingLocoClip;
 static float sPendingLocoStart = 0.0f;
 constexpr float kLocoCrossFamilyCommitSeconds = 0.25f;
@@ -626,8 +652,8 @@ static void spawnPlayerAttackHitboxForClip(const char* clip_name,
     sp.actor = &sPlayer;
     sp.attacker = selva::combat::OwnerRef{selva::combat::OwnerKind::Player, 0};
     sp.attacker_faction = sPlayer.faction;
-    sp.raw_damage = selva::gameplay::computeAttackDamage(
-        sPlayer.stats, sPlayer.body.unarmed_damage, 0.5f, 0.5f);
+    sp.raw_damage = selva::gameplay::computeAttackDamage(sPlayer.stats, sPlayer.body.unarmed_damage,
+                                                         0.5f, 0.5f);
     sp.poise_damage = resolveAttackPoiseDamage(atk);
     sp.joint_name = joint_name;
     sp.hitbox_radius = hitbox_radius;
@@ -2559,8 +2585,8 @@ static void tickDevKillKey(const Uint8* keys)
 static void populateActorHurtboxes()
 {
     selva::combat::clearHurtboxes();
-    const glm::mat4 player_model = selva::combat::buildActorModelMatrix(
-        sPlayer.pos, sPlayer.yaw, sPlayerMesh.foot_offset_y);
+    const glm::mat4 player_model =
+        selva::combat::buildActorModelMatrix(sPlayer.pos, sPlayer.yaw, sPlayerMesh.foot_offset_y);
     selva::combat::appendActorHurtboxes(
         sSampler, player_model, sPlayer.body,
         selva::combat::OwnerRef{selva::combat::OwnerKind::Player, 0}, sPlayer.faction);
@@ -2787,8 +2813,7 @@ static void drawActorMeshes(const glm::mat4& viewProj)
         // silhouette from the player, hints at the figura-umana
         // damned-soul register (bloody / wretched).
         selva::anim::drawSkeletalMesh(sPlayerMesh, enemy_model, viewProj,
-                                      enemy->sampler.bone_palette,
-                                      glm::vec3(0.45f, 0.10f, 0.13f));
+                                      enemy->sampler.bone_palette, glm::vec3(0.45f, 0.10f, 0.13f));
     }
 }
 

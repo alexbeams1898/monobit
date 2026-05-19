@@ -212,6 +212,12 @@ void uploadMesh(const CpuMesh& cpu, float cx_shift, float cz_shift, float base_y
 {
     std::vector<Vertex> verts = cpu.verts;
     float max_xz = 0.0f;
+    float min_x = 1e30f;
+    float max_x = -1e30f;
+    float min_z = 1e30f;
+    float max_z = -1e30f;
+    float min_y_post = 1e30f;
+    float max_y_post = -1e30f;
     for (auto& v : verts)
     {
         v.position[0] -= cx_shift;
@@ -220,7 +226,22 @@ void uploadMesh(const CpuMesh& cpu, float cx_shift, float cz_shift, float base_y
         const float r = std::sqrt(v.position[0] * v.position[0] + v.position[2] * v.position[2]);
         if (r > max_xz)
             max_xz = r;
+        min_x = std::min(min_x, v.position[0]);
+        max_x = std::max(max_x, v.position[0]);
+        min_z = std::min(min_z, v.position[2]);
+        max_z = std::max(max_z, v.position[2]);
+        min_y_post = std::min(min_y_post, v.position[1]);
+        max_y_post = std::max(max_y_post, v.position[1]);
     }
+    // Per-mesh diagnostic: post-shift model-space bounds. Trunk and
+    // canopy should overlap closely in X/Z; large XZ offset between
+    // them means the source centroids diverged and the branches mesh
+    // is drawing offset from the trunk in-world.
+    std::fprintf(stderr,
+                 "[trees:upload] node=%s post-shift x=[%.2f..%.2f] z=[%.2f..%.2f] y=[%.2f..%.2f] "
+                 "(source centroid=(%.2f,%.2f), shift=(%.2f,%.2f), base_y=%.2f)\n",
+                 cpu.node_name.c_str(), min_x, max_x, min_z, max_z, min_y_post, max_y_post,
+                 cpu.centroid_x, cpu.centroid_z, cx_shift, cz_shift, base_y);
     out.height = cpu.max_y - cpu.min_y;
     out.trunk_radius = max_xz;
     out.index_count = static_cast<int>(cpu.indices.size());
@@ -291,11 +312,11 @@ struct LoadedTreeMeshes
     std::vector<CpuMesh> rocks;
 };
 
-static void classifyAndPushTreeMesh(const cgltf_node& node, CpuMesh&& cm, bool t01_or_b01,
-                                    bool atl, bool rock, LoadedTreeMeshes& out)
+static void classifyAndPushTreeMesh(const cgltf_node& node, CpuMesh&& cm, bool t01_or_b01, bool atl,
+                                    bool rock, LoadedTreeMeshes& out)
 {
-    cm.is_branches = nodeMatches(node.name, "Tree_Branches_01") ||
-                     nodeMatches(node.name, "Tree_Branches_02");
+    cm.is_branches =
+        nodeMatches(node.name, "Tree_Branches_01") || nodeMatches(node.name, "Tree_Branches_02");
     cm.is_atlas = atl;
     cm.is_rock = rock;
     cm.family = atl ? "atlas" : rock ? "rock" : (t01_or_b01 ? "01" : "02");

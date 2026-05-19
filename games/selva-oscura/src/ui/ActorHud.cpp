@@ -280,11 +280,8 @@ void drawEnemyHpBars(ImDrawList* overlay, const glm::mat4& view_proj,
             (e.hp.max > 0) ? static_cast<float>(e.hp.current) / static_cast<float>(e.hp.max) : 0.0f;
         const float bx = sp.x - kEnemyHpBarWidthPx * 0.5f;
         const float by = sp.y - kEnemyHpBarHeightPx * 0.5f;
-        drawBar(overlay,
-                BarRect{bx, by, kEnemyHpBarWidthPx, kEnemyHpBarHeightPx},
-                fraction,
-                BarColors{bg, fg, bd},
-                nullptr);
+        drawBar(overlay, BarRect{bx, by, kEnemyHpBarWidthPx, kEnemyHpBarHeightPx}, fraction,
+                BarColors{bg, fg, bd}, nullptr);
     }
 }
 

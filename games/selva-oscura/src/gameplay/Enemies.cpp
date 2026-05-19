@@ -466,8 +466,7 @@ struct EnemyLocoPick
     const selva::anim::AnimationClip* clip;
     const char* key;
 };
-static EnemyLocoPick pickEnemyLocomotionClip(const Actor& a,
-                                             const selva::anim::AnimationClip* walk,
+static EnemyLocoPick pickEnemyLocomotionClip(const Actor& a, const selva::anim::AnimationClip* walk,
                                              const selva::anim::AnimationClip* combat_idle,
                                              const selva::anim::AnimationClip* peaceful_idle)
 {
@@ -527,9 +526,9 @@ static bool tickOneEnemy(Actor& a, const Actor& pc, float dt, const selva::tunin
     if (shouldTickAi(a, tun))
     {
         if (tun.debug_ai_tick_log)
-            selva::combat::combatLog(
-                "[ai-tick] actor pool_idx=%td awareness=%d t=%.3f\n", &a - &actors().front(),
-                static_cast<int>(a.perception.awareness), selva::wallClock());
+            selva::combat::combatLog("[ai-tick] actor pool_idx=%td awareness=%d t=%.3f\n",
+                                     &a - &actors().front(),
+                                     static_cast<int>(a.perception.awareness), selva::wallClock());
         tickEnemyDecision(a, tun);
     }
     tickEnemyLocomotion(a, dt, tun);

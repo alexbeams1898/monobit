@@ -83,9 +83,8 @@ bool buildRegionMesh(TerrainRegion& r, int subdivide)
     const float half = r.world_extent * 0.5f;
     const float step = r.world_extent / static_cast<float>(subdivide);
     r.subdivide = subdivide;
-    r.mesh_y.assign(static_cast<std::size_t>(verts_per_side) *
-                        static_cast<std::size_t>(verts_per_side),
-                    0.0f);
+    r.mesh_y.assign(
+        static_cast<std::size_t>(verts_per_side) * static_cast<std::size_t>(verts_per_side), 0.0f);
 
     std::vector<Vertex> verts(static_cast<std::size_t>(verts_per_side) *
                               static_cast<std::size_t>(verts_per_side));
@@ -152,8 +151,7 @@ bool buildRegionMesh(TerrainRegion& r, int subdivide)
 
     // Indices.
     std::vector<std::uint32_t> indices;
-    indices.reserve(static_cast<std::size_t>(subdivide) * static_cast<std::size_t>(subdivide) *
-                    6u);
+    indices.reserve(static_cast<std::size_t>(subdivide) * static_cast<std::size_t>(subdivide) * 6u);
     for (int iz = 0; iz < subdivide; ++iz)
     {
         for (int ix = 0; ix < subdivide; ++ix)
