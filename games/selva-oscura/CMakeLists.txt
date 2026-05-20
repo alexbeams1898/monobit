@@ -60,9 +60,12 @@ add_library(selva-oscura-lib STATIC
     src/world/TreeAssets.cpp
     src/ui/ActorHud.cpp
     src/ui/ComboHud.cpp
+    src/ui/Screens.cpp
     src/ui/TuningPanel.cpp
     src/world/Collision.cpp
+    src/AppStateGlobal.cpp
     src/SaveManager.cpp
+    src/ops/InventoryOps.cpp
     src/Tunables.cpp
     src/WallClock.cpp
 )
@@ -391,6 +394,7 @@ add_executable(selva-oscura-tests
     tests/skeletal_loader_test.cpp
     tests/weapon_data_test.cpp
     tests/save_manager_test.cpp
+    tests/inventory_ops_test.cpp
 )
 target_link_libraries(selva-oscura-tests PRIVATE selva-oscura-lib Catch2::Catch2WithMain)
 

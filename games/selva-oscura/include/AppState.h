@@ -112,6 +112,16 @@ struct PlayerProfile
 };
 
 // ---------------------------------------------------------------------------
+// Settings - persistent user preferences. Lives at the save level (not
+// per-character) because settings apply to the whole install.
+// ---------------------------------------------------------------------------
+struct Settings
+{
+    float bgm_volume = 0.8f;
+    float sfx_volume = 1.0f;
+};
+
+// ---------------------------------------------------------------------------
 // SaveData - top-level persistent data. Serialized to JSON at
 // %APPDATA%/SelvaOscura/save.json (Windows) or platform equivalent via
 // SDL_GetPrefPath. Schema versioning enables forward-compatible migrations.
@@ -122,6 +132,7 @@ struct SaveData
 
     int schema_version = CURRENT_VERSION;
     std::vector<PlayerProfile> characters;
+    Settings settings;
 };
 
 } // namespace selva

@@ -2675,10 +2675,6 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
 
     const Uint8* keys = SDL_GetKeyboardState(nullptr);
 
-    // Quit on Escape — handy until there's a pause menu.
-    if (keys[SDL_SCANCODE_ESCAPE])
-        engine.requestQuit();
-
     tickDevKillKey(keys);
     tickF1TuningPanelToggle(keys);
     tickTreePreviewToggle(keys);

@@ -81,6 +81,13 @@ SaveData load(const std::string& path)
         }
     }
 
+    if (j.contains("settings") && j["settings"].is_object())
+    {
+        const auto& s = j["settings"];
+        data.settings.bgm_volume = s.value("bgm_volume", data.settings.bgm_volume);
+        data.settings.sfx_volume = s.value("sfx_volume", data.settings.sfx_volume);
+    }
+
     std::fprintf(stderr, "[SaveManager] Loaded %zu characters from %s\n", data.characters.size(),
                  resolved.c_str());
     return data;
@@ -110,6 +117,11 @@ bool save(const SaveData& data, const std::string& path)
     {
         j["characters"].push_back({{"name", c.name}});
     }
+
+    j["settings"] = {
+        {"bgm_volume", data.settings.bgm_volume},
+        {"sfx_volume", data.settings.sfx_volume},
+    };
 
     std::ofstream file(resolved);
     if (!file.is_open())

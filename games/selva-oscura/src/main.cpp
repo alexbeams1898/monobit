@@ -6,7 +6,10 @@
 // because main.cpp is the entry point's TU and the build expects to
 // find stbi_write_png symbols here.
 #define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "AppState.h"
+#include "AppStateGlobal.h"
 #include "Engine.h"
+#include "SaveManager.h"
 #include "Tunables.h"
 #include "anim/LocomotionConfig.h"
 #include "anim/PoseSampler.h"
@@ -28,6 +31,7 @@
 #include "render/SkyPass.h"
 #include "render/TerrainShader.h"
 #include "render/TreeShader.h"
+#include "ui/Screens.h"
 #include "ui/TuningPanel.h"
 #include "world/Collision.h"
 #include "world/Terrain.h"
@@ -58,6 +62,42 @@ void shutdownGeometry()
     selva::render::shutdownTerrainShader();
     selva::world::shutdownTerrain();
     selva::world::shutdownTreeAssets();
+}
+
+// Phase-gated per-frame update: only ticks game state when Playing and the
+// pause menu is closed. Keeps the engine's loop running every frame so the
+// ImGui pass continues to handle menus.
+void gatedPerFrame(::Engine& engine, ::EntityManager& em, double dt)
+{
+    const auto& gs = selva::gameState();
+    if (gs.phase != selva::GameState::Phase::Playing)
+        return;
+    if (selva::uiState().isScreenOpen())
+        return;
+    selva::gameplay::selvaPerFrame(engine, em, dt);
+}
+
+// Phase-gated world render: skipped when not Playing so the menu draws
+// against the engine's clear color rather than a partially-rendered world.
+void gatedRenderWorld(::Engine& engine, ::EntityManager& em, float camX, float camY, float alpha)
+{
+    const auto& gs = selva::gameState();
+    if (gs.phase != selva::GameState::Phase::Playing)
+        return;
+    selva::gameplay::selvaRenderWorld(engine, em, camX, camY, alpha);
+}
+
+// ImGui render hook. Draws screens (main menu, char-create, load, settings,
+// pause overlay) first; then the F1 tuning panel during Playing. requestQuit
+// is invoked when the user picks Quit from main menu or pause menu.
+void gatedRenderImGui(::Engine& engine, ::EntityManager& em)
+{
+    if (selva::ui::renderScreens(engine))
+        engine.requestQuit();
+
+    // F1 tuning panel is only relevant during Playing.
+    if (selva::gameState().phase == selva::GameState::Phase::Playing)
+        selva::ui::selvaRenderImGui(engine, em);
 }
 
 } // namespace
@@ -95,9 +135,10 @@ int main(int /*argc*/, char* /*argv*/[])
     // Keep in sync with kFogCool in PerFrameTick.cpp.
     engine.setClearColor(0.16f, 0.18f, 0.22f);
 
-    // Capture the cursor for mouse-look.
-    SDL_SetRelativeMouseMode(SDL_TRUE);
-    SDL_GetRelativeMouseState(nullptr, nullptr);
+    // Cursor capture is managed by the screen state machine (see
+    // ui/Screens.cpp tickMouseCapture). At startup we are in MainMenu, so
+    // leave the cursor free until the player enters Playing.
+    SDL_SetRelativeMouseMode(SDL_FALSE);
 
     if (!selva::render::initSceneProgram())
     {
@@ -193,9 +234,13 @@ int main(int /*argc*/, char* /*argv*/[])
                      eq.grip == selva::combat::Grip::TwoHanded ? "two_handed" : "one_handed");
     }
 
-    engine.setPerFrameUpdate(&selva::gameplay::selvaPerFrame);
-    engine.setRenderWorld(&selva::gameplay::selvaRenderWorld);
-    engine.setRenderImGui(&selva::ui::selvaRenderImGui);
+    // Load persisted SaveData. Returns defaults (empty character list) if
+    // no save exists yet. Settings (audio volumes, etc.) apply immediately.
+    selva::saveData() = selva::SaveManager::load();
+
+    engine.setPerFrameUpdate(&gatedPerFrame);
+    engine.setRenderWorld(&gatedRenderWorld);
+    engine.setRenderImGui(&gatedRenderImGui);
     engine.setOnResize(&selva::render::onWindowResize);
 
     engine.run();
