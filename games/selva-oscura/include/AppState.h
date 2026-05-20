@@ -1,0 +1,127 @@
+#pragma once
+
+#include <string>
+#include <vector>
+
+// ---------------------------------------------------------------------------
+// Application state and persistence structures for Selva Oscura.
+//
+// Modeled on games/prison-escape-game/include/ecs/AppState.h. Many of the
+// patterns (Phase enum + per-phase handler, UIState overlay, schema-versioned
+// SaveData) are reused verbatim from prison-escape; Selva-specific values
+// (Phase variants, schema fields) are scoped to Selva's cosmology.
+//
+// v1 schema is intentionally minimal: a character is just a name. The Seal
+// moment (class pick vs unburdened, per setting.md) happens in the opening
+// sequence inside Hell, not at the main menu, so the main-menu-side
+// character-create only needs to elicit a name. Class, stats, sangue totals,
+// evolution stage, keepers felled, etc. are added in later schema bumps as
+// those systems ship.
+// ---------------------------------------------------------------------------
+
+namespace selva
+{
+
+// ---------------------------------------------------------------------------
+// UIState - in-game overlay tracking. The pause menu and its tabs (status,
+// inventory, equipment) live here. GameState owns the top-level application
+// mode; UIState owns the in-game overlay layered on top of Playing.
+// ---------------------------------------------------------------------------
+struct UIState
+{
+    enum class Screen
+    {
+        None,
+        Menu,
+    };
+
+    enum class Tab
+    {
+        Status = 0,
+        Inventory = 1,
+        Equipment = 2,
+    };
+    static constexpr int TAB_COUNT = 3;
+
+    Screen active_screen = Screen::None;
+    Tab menu_tab = Tab::Status;
+    bool show_hud = true;
+    // Set when a screen closes to block one frame of input from leaking
+    // into the resumed game state.
+    bool input_suppressed = false;
+
+    bool isScreenOpen() const
+    {
+        return active_screen != Screen::None;
+    }
+};
+
+// ---------------------------------------------------------------------------
+// GameState - top-level application-mode state machine. Each value names a
+// distinct rendering and update path. The main loop dispatches on
+// GameState::phase; screens (MainMenu, CharCreate, LoadGame, Settings) are
+// stateless renderers that return an Action which transitions the phase.
+//
+// Selva phases differ from prison-escape: no Victory/GameOver/HighScores/
+// RunSummary - Selva is roguelike, run-end loops back into Playing through
+// a Wood-respawn rather than terminating. Those phases will be added when
+// run-end + cycle structure ships.
+// ---------------------------------------------------------------------------
+struct GameState
+{
+    enum class Phase
+    {
+        MainMenu,
+        CharCreate,
+        LoadGame,
+        Settings,
+        Playing,
+    };
+
+    Phase phase = Phase::MainMenu;
+    bool world_initialized = false;
+    // Defers world creation by one tick after the player selects new/load
+    // game, so the loading overlay can render before the world spins up.
+    bool pending_world_create = false;
+    std::string active_character; // Name of the character for the current run.
+};
+
+// ---------------------------------------------------------------------------
+// PlayerProfile - persistent character identity. Schema starts minimal (just
+// a name) and grows via schema_version bumps as more systems ship.
+//
+// Anticipated future fields (not yet in schema; documented for reference):
+//   - class:                Penitent / Heretic / Wretched / Unburdened
+//     (per setting.md - set during opening sequence at the Seal moment)
+//   - path:                 class-picker | unburdened (derived from class)
+//   - evolution_stage:      L1/L2/L3 for class-pickers, Unburdened/Svuotato/
+//                           Diaphanous for unburdened
+//   - stats:                HP / fire_rate / damage (per CLAUDE.md three-stat
+//                           constraint)
+//   - lifetime_sangue:      cumulative sangue collected across all cycles
+//   - lifetime_riversato:   cumulative sangue poured out (unburdened only)
+//   - keepers_felled:       set of "Charon", "Minos", etc. - per setting.md
+//                           Per-circle reactivity (drives world-state)
+//   - wood_marks:           cairns, etched names, riversamento sites placed
+//                           in the Wood (per wood.md persistence)
+//   - grimoire_unlocks:     list of Grimoire entries the player has seen
+// ---------------------------------------------------------------------------
+struct PlayerProfile
+{
+    std::string name;
+};
+
+// ---------------------------------------------------------------------------
+// SaveData - top-level persistent data. Serialized to JSON at
+// %APPDATA%/SelvaOscura/save.json (Windows) or platform equivalent via
+// SDL_GetPrefPath. Schema versioning enables forward-compatible migrations.
+// ---------------------------------------------------------------------------
+struct SaveData
+{
+    static constexpr int CURRENT_VERSION = 1;
+
+    int schema_version = CURRENT_VERSION;
+    std::vector<PlayerProfile> characters;
+};
+
+} // namespace selva

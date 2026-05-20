@@ -62,6 +62,7 @@ add_library(selva-oscura-lib STATIC
     src/ui/ComboHud.cpp
     src/ui/TuningPanel.cpp
     src/world/Collision.cpp
+    src/SaveManager.cpp
     src/Tunables.cpp
     src/WallClock.cpp
 )
@@ -389,6 +390,7 @@ endif()
 add_executable(selva-oscura-tests
     tests/skeletal_loader_test.cpp
     tests/weapon_data_test.cpp
+    tests/save_manager_test.cpp
 )
 target_link_libraries(selva-oscura-tests PRIVATE selva-oscura-lib Catch2::Catch2WithMain)
 
