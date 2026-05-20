@@ -61,6 +61,7 @@ jobs:
   build:
     name: Build and lint
     runs-on: ubuntu-latest
+    needs: [format, comments, lizard]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -187,7 +188,9 @@ jobs:
   cppcheck:
     name: Static analysis (cppcheck)
     runs-on: ubuntu-latest
-    needs: build  # reuses the build cache so compile_commands.json exists
+    needs: [format, comments, lizard]
+    # Reuses the build cache for compile_commands.json when available;
+    # the Configure (if cache miss) step handles fresh runs.
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
@@ -272,6 +275,7 @@ jobs:
   sanitized-tests:
     name: Tests under sanitizers (ASan + UBSan)
     runs-on: ubuntu-latest
+    needs: [format, comments, lizard]
     steps:
       - uses: actions/checkout@v4
 
