@@ -77,7 +77,7 @@ bool loadHeightmapPng(const std::string& path, const TerrainRegion& meta,
     return true;
 }
 
-bool buildRegionMesh(TerrainRegion& r, int subdivide)
+void buildRegionMesh(TerrainRegion& r, int subdivide)
 {
     const int verts_per_side = subdivide + 1;
     const float half = r.world_extent * 0.5f;
@@ -200,7 +200,6 @@ bool buildRegionMesh(TerrainRegion& r, int subdivide)
     r.vao = vao;
     r.vbo = vbo;
     r.ebo = ebo;
-    return true;
 }
 
 } // namespace
@@ -252,8 +251,7 @@ bool initTerrain()
         }
         if (!loadHeightmapPng(hm_path, r, r.heights, r.hm_width, r.hm_height))
             continue;
-        if (!buildRegionMesh(r, subdivide))
-            continue;
+        buildRegionMesh(r, subdivide);
         std::fprintf(stderr,
                      "[terrain] region '%s' loaded: %dx%d hm, %dm extent, "
                      "Y=[%.2f..%.2f], subdivide=%d\n",

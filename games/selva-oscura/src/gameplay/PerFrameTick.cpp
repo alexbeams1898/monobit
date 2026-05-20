@@ -1229,7 +1229,7 @@ static glm::vec3 cameraForwardXZ()
 static int acquireLockOnTarget()
 {
     const glm::vec3 cam_fwd = cameraForwardXZ();
-    auto& pool = selva::gameplay::actors();
+    const auto& pool = selva::gameplay::actors();
     const glm::vec3 player_pos = pool[0].pos;
     int best_idx = -1;
     float best_dist_sq = kLockOnAcquireRangeMeters * kLockOnAcquireRangeMeters;

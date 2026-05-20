@@ -583,22 +583,22 @@ std::vector<ozz::math::SimdFloat4> buildUpperBodyWeights(const ozz::animation::S
 
 PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh)
 {
-    PoseSampler sampler;
+    PoseSampler ps;
     if (!skeleton.isLoaded())
-        return sampler;
+        return ps;
 
     const ozz::animation::Skeleton& ozz_skel = *skeleton.ozz_skeleton;
     const int n_joints = ozz_skel.num_joints();
     const int n_soa = ozz_skel.num_soa_joints();
 
-    sampler.impl->skeleton = &ozz_skel;
-    sampler.impl->loco_current.resize(n_joints, n_soa);
-    sampler.impl->loco_previous.resize(n_joints, n_soa);
-    sampler.impl->one_shot.resize(n_joints, n_soa);
-    sampler.impl->one_shot_previous.resize(n_joints, n_soa);
-    sampler.impl->loco_blended.resize(n_soa);
-    sampler.impl->final_locals.resize(n_soa);
-    sampler.impl->pre_change_locals.resize(n_soa);
+    ps.impl->skeleton = &ozz_skel;
+    ps.impl->loco_current.resize(n_joints, n_soa);
+    ps.impl->loco_previous.resize(n_joints, n_soa);
+    ps.impl->one_shot.resize(n_joints, n_soa);
+    ps.impl->one_shot_previous.resize(n_joints, n_soa);
+    ps.impl->loco_blended.resize(n_soa);
+    ps.impl->final_locals.resize(n_soa);
+    ps.impl->pre_change_locals.resize(n_soa);
     // post_locals_last is read by consumeInertializationCaptureFlag as
     // the "pre-snap pose" when a loco clip change fires. With the
     // snap-then-consume ordering, the FIRST clip change after game
@@ -606,19 +606,19 @@ PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh
     // default zero-init produces (0,0,0,0) quaternions which ozz
     // asserts on. Initialize from the skeleton rest pose so the first
     // snap captures rest -> first-clip-pose, which decays cleanly.
-    sampler.impl->post_locals_last.resize(n_soa);
+    ps.impl->post_locals_last.resize(n_soa);
     {
         const auto rest = ozz_skel.joint_rest_poses();
         for (int i = 0; i < n_soa; ++i)
-            sampler.impl->post_locals_last[i] = rest[i];
+            ps.impl->post_locals_last[i] = rest[i];
     }
-    sampler.impl->decay_duration_per_joint.assign(n_soa, ozz::math::simd_float4::zero());
-    sampler.impl->decay_elapsed_per_joint.assign(n_soa, ozz::math::simd_float4::zero());
-    sampler.impl->model_matrices.resize(n_joints);
-    sampler.bone_palette.resize(n_joints);
-    sampler.impl->upper_body_weights = buildUpperBodyWeights(ozz_skel);
-    sampler.impl->one_shot_joint_weights.resize(n_soa);
-    sampler.impl->one_shot_previous_joint_weights.resize(n_soa);
+    ps.impl->decay_duration_per_joint.assign(n_soa, ozz::math::simd_float4::zero());
+    ps.impl->decay_elapsed_per_joint.assign(n_soa, ozz::math::simd_float4::zero());
+    ps.impl->model_matrices.resize(n_joints);
+    ps.bone_palette.resize(n_joints);
+    ps.impl->upper_body_weights = buildUpperBodyWeights(ozz_skel);
+    ps.impl->one_shot_joint_weights.resize(n_soa);
+    ps.impl->one_shot_previous_joint_weights.resize(n_soa);
 
     // Find Hips joint and stash its rest-pose translation (X and Z only;
     // Y is left free so vertical walk-bob still plays). Used per-frame to
@@ -630,7 +630,7 @@ PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh
         {
             if (names[i] != nullptr && std::strcmp(names[i], "mixamorig:Hips") == 0)
             {
-                sampler.impl->hips_joint_idx = i;
+                ps.impl->hips_joint_idx = i;
                 // Rest pose is SoA-packed: lane = i % 4 of SoA index i / 4.
                 const ozz::math::SoaTransform& T = ozz_skel.joint_rest_poses()[i / 4];
                 alignas(16) float xs[4];
@@ -640,23 +640,23 @@ PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh
                 ozz::math::StorePtr(T.translation.y, ys);
                 ozz::math::StorePtr(T.translation.z, zs);
                 const int lane = i % 4;
-                sampler.impl->hips_rest_translation =
+                ps.impl->hips_rest_translation =
                     ozz::math::simd_float4::Load(xs[lane], ys[lane], zs[lane], 0.0f);
                 break;
             }
         }
     }
 
-    sampler.impl->root_transform = mesh.asset_root_transform;
-    sampler.impl->inverse_bind_matrices = mesh.inverse_bind_matrices;
+    ps.impl->root_transform = mesh.asset_root_transform;
+    ps.impl->inverse_bind_matrices = mesh.inverse_bind_matrices;
 
-    sampler.impl->ik_left_hip = findJointByName(ozz_skel, "mixamorig:LeftUpLeg");
-    sampler.impl->ik_left_knee = findJointByName(ozz_skel, "mixamorig:LeftLeg");
-    sampler.impl->ik_left_ankle = findJointByName(ozz_skel, "mixamorig:LeftFoot");
-    sampler.impl->ik_right_hip = findJointByName(ozz_skel, "mixamorig:RightUpLeg");
-    sampler.impl->ik_right_knee = findJointByName(ozz_skel, "mixamorig:RightLeg");
-    sampler.impl->ik_right_ankle = findJointByName(ozz_skel, "mixamorig:RightFoot");
-    return sampler;
+    ps.impl->ik_left_hip = findJointByName(ozz_skel, "mixamorig:LeftUpLeg");
+    ps.impl->ik_left_knee = findJointByName(ozz_skel, "mixamorig:LeftLeg");
+    ps.impl->ik_left_ankle = findJointByName(ozz_skel, "mixamorig:LeftFoot");
+    ps.impl->ik_right_hip = findJointByName(ozz_skel, "mixamorig:RightUpLeg");
+    ps.impl->ik_right_knee = findJointByName(ozz_skel, "mixamorig:RightLeg");
+    ps.impl->ik_right_ankle = findJointByName(ozz_skel, "mixamorig:RightFoot");
+    return ps;
 }
 
 void PoseSampler::setFootIK(GroundProbeFn probe, bool position_enabled, bool orient_enabled)

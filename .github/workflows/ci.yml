@@ -221,6 +221,7 @@ jobs:
             --suppress=missingIncludeSystem \
             --suppress=unusedFunction \
             --suppress=useStlAlgorithm \
+            --suppressions-list=cppcheck-suppressions.txt \
             --file-filter='engines/engine/*' \
             --file-filter='games/prison-escape-game/*' \
             --file-filter='games/selva-oscura/*' \

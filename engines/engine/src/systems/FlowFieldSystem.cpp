@@ -126,8 +126,8 @@ void rebuildDensity(FlowField& ff, EntityManager& em)
 // (for diagonals) both adjacent orthogonal cells are open (no
 // corner-cutting around walls).
 bool canBfsStepTo(WallGrid walls, WallGrid clearance,
-                  bool (&visited)[FlowField::ROWS][FlowField::COLS], int col, int row, int nc,
-                  int nr, const int (&dir)[2])
+                  const bool (&visited)[FlowField::ROWS][FlowField::COLS], int col, int row,
+                  int nc, int nr, const int (&dir)[2])
 {
     if (nc < 0 || nc >= FlowField::COLS || nr < 0 || nr >= FlowField::ROWS)
         return false;

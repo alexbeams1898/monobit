@@ -222,7 +222,7 @@ struct SpatialGrid
 
 // Broad-phase grid query: test only pairs sharing a grid cell.
 static void resolveDynVsDyn(EntityManager& em, const std::vector<entt::entity>& dynamics,
-                            SpatialGrid& grid)
+                            const SpatialGrid& grid)
 {
     auto view = em.registry().view<Transform, Collider>();
     const size_t nc = grid.numCells();
