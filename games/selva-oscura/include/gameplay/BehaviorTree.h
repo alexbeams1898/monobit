@@ -60,13 +60,13 @@ using NodePtr = std::unique_ptr<Node>;
 class Selector : public Node
 {
   public:
-    explicit Selector(std::vector<NodePtr> children) : children_(std::move(children))
+    explicit Selector(std::vector<NodePtr> initial_children) : children(std::move(initial_children))
     {
     }
     NodeResult tick(Actor& actor, const selva::tuning::Tunables& tun) override;
 
   private:
-    std::vector<NodePtr> children_;
+    std::vector<NodePtr> children;
 };
 
 // Sequence — "run all children in order, fail if any fail."
@@ -75,13 +75,13 @@ class Selector : public Node
 class Sequence : public Node
 {
   public:
-    explicit Sequence(std::vector<NodePtr> children) : children_(std::move(children))
+    explicit Sequence(std::vector<NodePtr> initial_children) : children(std::move(initial_children))
     {
     }
     NodeResult tick(Actor& actor, const selva::tuning::Tunables& tun) override;
 
   private:
-    std::vector<NodePtr> children_;
+    std::vector<NodePtr> children;
 };
 
 // Leaf — actor has no current awareness of the player. Write
@@ -129,13 +129,13 @@ class LeafCircleTarget : public Node
 class IfAwarenessAtLeast : public Node
 {
   public:
-    explicit IfAwarenessAtLeast(Awareness min) : min_(min)
+    explicit IfAwarenessAtLeast(Awareness min_awareness) : min_required(min_awareness)
     {
     }
     NodeResult tick(Actor& actor, const selva::tuning::Tunables& tun) override;
 
   private:
-    Awareness min_;
+    Awareness min_required;
 };
 
 // Leaf — pick a legal action from the actor's archetype, fire its
@@ -161,13 +161,13 @@ class LeafPickAction : public Node
 class BehaviorTree
 {
   public:
-    explicit BehaviorTree(NodePtr root) : root_(std::move(root))
+    explicit BehaviorTree(NodePtr root_node) : root(std::move(root_node))
     {
     }
     void tick(Actor& actor, const selva::tuning::Tunables& tun) const;
 
   private:
-    NodePtr root_;
+    NodePtr root;
 };
 
 // Process-wide registry of constructed trees keyed by tree_id. Built
@@ -181,11 +181,11 @@ class BehaviorTreeRegistry
     const BehaviorTree* get(const std::string& id) const;
     const std::unordered_map<std::string, std::unique_ptr<BehaviorTree>>& all() const
     {
-        return by_id_;
+        return by_id;
     }
 
   private:
-    std::unordered_map<std::string, std::unique_ptr<BehaviorTree>> by_id_;
+    std::unordered_map<std::string, std::unique_ptr<BehaviorTree>> by_id;
 };
 
 BehaviorTreeRegistry& behaviorTrees();

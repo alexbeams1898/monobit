@@ -55,6 +55,8 @@ void samplerDiagLog(const char* fmt, ...)
         return;
     va_list args;
     va_start(args, fmt);
+    // NOLINTNEXTLINE(clang-analyzer-valist.Uninitialized): args is initialized by va_start above;
+    // CSA can't model va_list init.
     std::vfprintf(g_diag_log, fmt, args);
     std::fflush(g_diag_log);
     va_end(args);

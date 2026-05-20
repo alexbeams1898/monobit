@@ -125,7 +125,7 @@ float computeStopRange(const Actor& actor, const selva::tuning::Tunables& tun)
 
 NodeResult Selector::tick(Actor& actor, const selva::tuning::Tunables& tun)
 {
-    for (auto& child : children_)
+    for (auto& child : children)
     {
         if (child->tick(actor, tun) == NodeResult::Success)
             return NodeResult::Success;
@@ -135,7 +135,7 @@ NodeResult Selector::tick(Actor& actor, const selva::tuning::Tunables& tun)
 
 NodeResult Sequence::tick(Actor& actor, const selva::tuning::Tunables& tun)
 {
-    for (auto& child : children_)
+    for (auto& child : children)
     {
         if (child->tick(actor, tun) == NodeResult::Failure)
             return NodeResult::Failure;
@@ -217,7 +217,7 @@ NodeResult LeafMoveToTarget::tick(Actor& actor, const selva::tuning::Tunables& t
 
 NodeResult IfAwarenessAtLeast::tick(Actor& actor, const selva::tuning::Tunables& /*tun*/)
 {
-    return (actor.perception.awareness >= min_) ? NodeResult::Success : NodeResult::Failure;
+    return (actor.perception.awareness >= min_required) ? NodeResult::Success : NodeResult::Failure;
 }
 
 NodeResult LeafPickAction::tick(Actor& actor, const selva::tuning::Tunables& tun)
@@ -289,19 +289,19 @@ NodeResult LeafPickAction::tick(Actor& actor, const selva::tuning::Tunables& tun
 
 void BehaviorTree::tick(Actor& actor, const selva::tuning::Tunables& tun) const
 {
-    if (root_)
-        root_->tick(actor, tun);
+    if (root)
+        root->tick(actor, tun);
 }
 
 void BehaviorTreeRegistry::registerTree(std::string id, std::unique_ptr<BehaviorTree> tree)
 {
-    by_id_[std::move(id)] = std::move(tree);
+    by_id[std::move(id)] = std::move(tree);
 }
 
 const BehaviorTree* BehaviorTreeRegistry::get(const std::string& id) const
 {
-    const auto it = by_id_.find(id);
-    return (it == by_id_.end()) ? nullptr : it->second.get();
+    const auto it = by_id.find(id);
+    return (it == by_id.end()) ? nullptr : it->second.get();
 }
 
 BehaviorTreeRegistry& behaviorTrees()

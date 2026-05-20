@@ -130,9 +130,9 @@ void EnemyArchetypeRegistry::loadDirectory(const std::filesystem::path& dir)
                 continue;
             }
             const std::string id = arch.id;
-            by_id_[id] = std::move(arch);
+            by_id[id] = std::move(arch);
             selva::combat::combatLog("[archetype] loaded '%s' (%zu actions) from %s\n", id.c_str(),
-                                     by_id_[id].actions.size(), entry.path().string().c_str());
+                                     by_id[id].actions.size(), entry.path().string().c_str());
         }
         catch (const std::exception& e)
         {
@@ -144,8 +144,8 @@ void EnemyArchetypeRegistry::loadDirectory(const std::filesystem::path& dir)
 
 const EnemyArchetype* EnemyArchetypeRegistry::get(const std::string& id) const
 {
-    const auto it = by_id_.find(id);
-    return (it == by_id_.end()) ? nullptr : &it->second;
+    const auto it = by_id.find(id);
+    return (it == by_id.end()) ? nullptr : &it->second;
 }
 
 EnemyArchetypeRegistry& archetypes()

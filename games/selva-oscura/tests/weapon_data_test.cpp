@@ -14,9 +14,10 @@ using selva::combat::loadEquipment;
 using selva::combat::WeaponClassRegistry;
 using selva::combat::WeaponRegistry;
 
-// NOLINTNEXTLINE(readability-function-cognitive-complexity): Catch2 TEST_CASE expansion exceeds the
-// cognitive-complexity threshold for the generated function. The actual test body is
-// straightforward.
+// Catch2 TEST_CASE macro expansion produces a generated function whose
+// cognitive complexity exceeds the project threshold; the actual test
+// body is straightforward.
+// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 TEST_CASE("WeaponClassRegistry loads classes from JSON dir", "[combat][weaponclass][load]")
 {
     WeaponClassRegistry classes;

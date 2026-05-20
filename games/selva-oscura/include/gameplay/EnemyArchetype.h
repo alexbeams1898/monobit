@@ -94,11 +94,11 @@ class EnemyArchetypeRegistry
     // Read-only view of the registry. Used by F1 diagnostic panel.
     const std::unordered_map<std::string, EnemyArchetype>& all() const
     {
-        return by_id_;
+        return by_id;
     }
 
   private:
-    std::unordered_map<std::string, EnemyArchetype> by_id_;
+    std::unordered_map<std::string, EnemyArchetype> by_id;
 };
 
 // Single global registry. Pattern matches selva::anim::clips().

@@ -897,7 +897,8 @@ static void writeFrameCaptureContactSheet(int n_frames, const std::string& dir)
         std::fprintf(stderr,
                      "[frame-capture] sheet would be %zu MB (%dx%d %dx%d cells); "
                      "skipping. Individual PNGs at %s/\n",
-                     bytes / (1024ULL * 1024ULL), sheet_w, sheet_h, cols, rows, dir.c_str());
+                     static_cast<std::size_t>(bytes / (1024ULL * 1024ULL)), sheet_w, sheet_h, cols,
+                     rows, dir.c_str());
         return;
     }
     std::vector<unsigned char> sheet(bytes, 32);
