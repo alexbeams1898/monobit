@@ -61,14 +61,11 @@ void combatLog(const char* fmt, ...)
     va_start(args1, fmt);
     va_list args2;
     va_copy(args2, args1);
-    // NOLINTNEXTLINE(clang-analyzer-valist.Uninitialized): args1 is initialized by va_start above;
-    // CSA can't model va_list init.
-    std::vfprintf(stderr, fmt, args1);
+    std::vfprintf(stderr, fmt, args1); // NOLINT(clang-analyzer-valist.Uninitialized)
     va_end(args1);
     if (sLogFile != nullptr)
     {
-        // NOLINTNEXTLINE(clang-analyzer-valist.Uninitialized): args2 was initialized by va_copy.
-        std::vfprintf(sLogFile, fmt, args2);
+        std::vfprintf(sLogFile, fmt, args2); // NOLINT(clang-analyzer-valist.Uninitialized)
         std::fflush(sLogFile);
     }
     va_end(args2);
