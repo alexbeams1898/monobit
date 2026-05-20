@@ -218,10 +218,13 @@ jobs:
         run: |
           cppcheck --project=build/compile_commands.json \
             --enable=all \
+            --suppress=missingInclude \
             --suppress=missingIncludeSystem \
             --suppress=unusedFunction \
             --suppress=useStlAlgorithm \
             --suppress=unmatchedSuppression \
+            --suppress=normalCheckLevelMaxBranches \
+            --suppress=checkersReport \
             --suppressions-list=cppcheck-suppressions.txt \
             --file-filter='engines/engine/*' \
             --file-filter='games/prison-escape-game/*' \
