@@ -395,6 +395,130 @@ hybrid). Multiple screens with enemies, NPCs, landmarks, and hazards.
   a fog gate. Player completes the circle's content, reaches the
   arena, fells the keeper, descends.
 
+### Named sub-zones within circles (Dante-canonical, design TBD)
+
+Each circle contains traversable sub-zones the Vagrant moves through
+on the way to the keeper-fight. **Difficulty escalates spatially
+toward the keeper** — weaker shades early in the circle, stronger
+shades closer to the arena. **No interstitial bosses** — the
+sub-zones are content variety + difficulty gradient, not encounter
+points. The named sub-zones are lifted from the *Commedia* and slot
+into the circle layouts as level-design seeds.
+
+**Pre-Hell zones (before Charon):**
+
+- **The Dark Wood / Selva Oscura** — the player's hub (locked; see
+  [`wood.md`](wood.md)).
+- **The Hill / il dilettoso monte** — the sunlit mountain, visible
+  from the Wood, unreachable. Backdrop, not playable.
+- **The Gate of Hell** — *"Abandon all hope, ye who enter here."*
+  Threshold-crossing moment / cutscene.
+- **The Vestibule / Ante-Hell** — for the *neutrals* (those who
+  chose neither good nor evil per canto III). TBD whether playable
+  zone or atmospheric pass-through.
+
+**Circle 1 — Limbo:**
+
+- **Acheron crossing** — separate zone before Limbo proper; empty
+  on first descent, hostile NPC-Charon on subsequent (locked; see
+  *Per-circle reactivity / Limbo*).
+- **Limbo Castle** — the noble fortress where the virtuous pagans
+  reside. Interior traversal sub-zone.
+
+**Circle 2 — Lust:**
+
+- **Minos's Judgment Seat** — entrance to lower-than-Limbo,
+  judgment / sorting zone (preserved post-restoration, see *NPC-
+  successor structure*).
+- The wind-zone proper — the open expanse where the lustful are
+  blown.
+
+**Circle 3 — Gluttony:** the cold rain / Cerberus's marsh. No
+sub-zone differentiation in canon; TBD how the circle is broken
+into screens.
+
+**Circle 4 — Greed:** the rolling-weights zone (Plutus). TBD.
+
+**Circle 5 — Wrath:**
+
+- **Stygian Marsh (Styx)** — the swamp where the wrathful fight
+  one another submerged. Boundary geography between upper and
+  lower Hell.
+
+**Boundary: The City of Dis** — fortified infernal city. **Locked
+as the mid-game climax** of the descent. Visible wall the Vagrant
+must breach to pass from upper Hell (circles 1-5) into lower Hell
+(circles 6-9). The breach is a major dramatic beat — TBD whether
+realized as a boss-fight, puzzle, or scripted event. Honors canto
+VIII-IX's role of Dis as the deepest threshold before the inner
+descent.
+
+**Circle 6 — Heresy:**
+
+- **The burning tombs** — open sarcophagi where heretics burn.
+  Interior of Dis.
+
+**Circle 7 — Violence (three rings):**
+
+- **Ring 1 — Violence Against Others:** Phlegethon (river of
+  boiling blood) + Centaur Guardlands (the patrol zone). Centaurs
+  may appear as ambient enemies, not bosses.
+- **Ring 2 — Violence Against Self:** Wood of the Suicides +
+  Harpies' Forest. Suicide-trees that bleed when broken (canto XIII).
+- **Ring 3 — Violence Against God/Nature/Art:** Burning Sand /
+  Desert of Fire / Rain of Fire.
+
+**Boundary: The Great Cliff / Geryon's Descent** — aerial passage
+into Fraud. Geryon (the monster who carries Dante down in canto
+XVII) is canonical but TBD whether playable / encountered.
+
+**Circle 8 — Fraud / Malebolge ("Evil Pouches"):**
+
+The Malebolge is **ten ditches** (*bolge*), each housing a
+different fraud, connected by stone causeway bridges. The richest
+sub-zone density of any circle:
+
+- Bolgia 1 — Panderers & Seducers
+- Bolgia 2 — Flatterers
+- Bolgia 3 — Simoniacs
+- Bolgia 4 — Diviners / False Prophets
+- Bolgia 5 — Barrators / Corrupt Politicians
+- Bolgia 6 — Hypocrites
+- Bolgia 7 — Thieves
+- Bolgia 8 — Fraudulent Counselors
+- Bolgia 9 — Sowers of Discord
+- Bolgia 10 — Falsifiers / Alchemists / Impersonators
+- **Malebolge bridges / stone causeways** — traversal
+  infrastructure between bolge.
+
+**Boundary: The Well of Giants** — pit between Fraud and Treachery.
+The Giants (Nimrod, Ephialtes, Antaeus) ring the pit per canto
+XXXI. TBD whether they appear as ambient figures or interstitial
+encounters.
+
+**Circle 9 — Treachery (Cocytus, four regions):**
+
+The frozen lake is divided into four concentric zones, each housing
+a different kind of traitor:
+
+- **Caina** — traitors to kin
+- **Antenora** — traitors to country
+- **Ptolomea** — traitors to guests
+- **Judecca** — traitors to benefactors/lords (the innermost ring,
+  where Lucifer is)
+
+**Center: Lucifer's Pit** — the absolute floor. The throne the
+Vagrant takes on TRANSFIGURATION. Already locked.
+
+---
+
+**Design principle:** the named sub-zones are *level-design seeds*,
+not boss-encounter slots. Each circle is one keeper-fight + a
+spatial gradient of sub-zones leading to it. The richness of the
+sub-zone list (especially Malebolge with 10 bolge + bridges) is
+content surface area for **encounter variety, environmental
+storytelling, and difficulty pacing**, not for additional bosses.
+
 ### Cocytus and the post-Lucifer arena
 
 After Lucifer's defeat, the cosmos responds to the structural emergency
