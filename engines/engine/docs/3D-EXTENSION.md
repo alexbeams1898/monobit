@@ -1,13 +1,69 @@
 # Engine 3D Extension Plan
 
-How this engine grows to support a 3D soulslike (working title: **Selva Oscura**)
-without compromising the existing 2D top-down game (prison-break-game). Living
+How this engine grows to support a 3D soulslike (**Selva Oscura**) alongside
+the existing 2D top-down action roguelike (**prison-escape-game**). Living
 document — design, not implementation. Update as decisions firm up or get
 overturned by reality.
 
-> Sibling docs: [game/docs/ENGINE.md](../../game/docs/ENGINE.md) — current 2D engine
-> architecture. [game/docs/PERFORMANCE.md](../../game/docs/PERFORMANCE.md) — perf
-> philosophy and decision log. This file extends both forward into 3D.
+> Sibling docs:
+> - [engines/engine/docs/ENGINE.md](./ENGINE.md) — engine doctrine,
+>   engine/game boundary, render-callback model.
+> - [engines/engine/docs/TECH-DEBT.md](./TECH-DEBT.md) — open structural
+>   issues at the engine level.
+> - [games/prison-escape-game/docs/ENGINE.md](../../../games/prison-escape-game/docs/ENGINE.md)
+>   — that game's per-game engine notes (helper trees, dialog templates,
+>   evolution tree conventions).
+
+## Visual direction (locked 2026-05-05)
+
+Selva Oscura is **pure 3D** — Souls/Elden Ring camera, locomotion, combat —
+with a **1-bit visual treatment delivered by shaders**, not by sprite art:
+
+- Real 3D meshes with skeletal animation. **No billboarded sprites, no
+  HD-2D, no 2.5D.**
+- Dither-pattern shading (Bayer / blue-noise) quantizes lighting to discrete
+  levels, à la *Return of the Obra Dinn*.
+- Optional threshold post-process for true 1-bit B&W or 2-bit 4-level.
+- Optional depth+normal edge-detection pass for woodcut-style outlines —
+  the Doré / Botticelli illustration tradition the *Commedia* belongs to.
+- Render at native resolution (the 1-bit feel comes from shader math, not
+  from rendering small and upscaling).
+
+Reference points: *Return of the Obra Dinn* (closest match), *Lorn's Lure*,
+*World of Horror* (visual register only — austere monochrome composition).
+
+This direction collapses what would otherwise have been a permanent
+skeletal-vs-spritesheet schism in the engine: both games converge on real
+3D / skeletal animation as the long-term path; only the **shader** differs.
+
+## Status (as of 2026-05-05)
+
+What's already in place beyond milestone 2 below:
+
+- **Repo restructured to multi-game / multi-engine layout** (PR #119). The
+  doc's milestone-0 "promote `game/` to multi-game repo" predicted this.
+- **`Engine::setRenderWorld(fn)` callback** (PR #121). Replaces the doc's
+  milestone-0 "split engine into render2d/render3d/etc. CMake modules"
+  plan. A single callback owned by the game gives full control of world
+  rendering — 2D games call `TileMapRenderer` + `RenderSystem` here; 3D
+  games run their own pipeline (geometry → dither/threshold/outline
+  post-process → blit). The engine no longer has any opinion about render
+  paradigm. CMake-level module split deferred indefinitely; the callback
+  shape gets us the same boundary clarity with one tenth the plumbing.
+- **Engine clears color + depth buffers**, depth test enabled at startup.
+  2D paths write `Z=0` so depth test is a no-op for them; 3D paths get
+  depth-buffering for free.
+- **Selva Oscura exe boots and renders a tumbling 3D cube** via custom
+  shader, VBO, EBO, VAO with glm-driven MVP — the milestone-2 cube target.
+  No glTF loader yet; geometry hard-coded.
+- **glm fetched** as a header-only system dep. cgltf, Jolt, ozz-animation,
+  Recast/Detour — all still pending per the relevant milestones.
+
+Sections 2 (the A/B/C architecture choice) and 6 (milestone 0–6) below are
+the historical plan and remain mostly accurate, but milestone 0's specific
+"split into engine/core, engine/render2d, engine/render3d CMake modules"
+shape is **superseded by the renderWorld callback**. Re-evaluate before
+acting on milestone 0 specifics.
 
 ---
 
@@ -37,9 +93,10 @@ So the question is **how the engine accommodates a second render path**,
 character controller, and animation pipeline, while keeping every shared
 combat/RPG/AI system intact and unaware of which path is active.
 
-The hard rule is unchanged: `engine/` never `#include`s `game/`. That rule will
-generalize to: each game (`game-prison-break/`, `game-selva-oscura/`) only
-includes `engine/`, never each other.
+The hard rule is unchanged: `engines/engine/` never `#include`s any
+`games/*/` header. That rule extends to: each game
+(`games/prison-escape-game/`, `games/selva-oscura/`) only includes the
+engine, never each other.
 
 ---
 
@@ -292,6 +349,110 @@ Strong defaults below. Re-evaluate each at decision time.
 - Jolt's API friction in the ECS → consider Bullet (more mature wrapper
   ecosystem) only if Jolt integration is genuinely painful, not just
   unfamiliar.
+
+---
+
+## 5b. Animation strategy — hybrid: procedural now, skeletal later
+
+Locked-in 2026-05-05. Selva Oscura ships with **procedural animation as the
+implementation today** and **skeletal animation as a future driver behind
+the same interface**. Both paths plug into one `AnimationDriver`
+abstraction; combat / movement / interaction code targets the abstraction
+and never reaches into either implementation directly. When skeletal
+lands, the dodge / attack / parry / hit-react state machines stay
+unchanged — only the per-state driver implementation swaps.
+
+### Why hybrid (not pure skeletal now)
+
+Three reasons, in order of how much they matter:
+
+1. **We don't yet know what the animation system needs to support.**
+   Combat will surface real requirements as it lands: layered animation
+   (upper-body swing while lower-body walks), animation-driven hitbox
+   placement, cancel windows, blend-out interruptions when a swing eats a
+   parry. Building skeletal infrastructure before those requirements are
+   visible bakes assumptions that combat will then have to fight. The
+   abstraction shape is informed by 5–10 concrete users, not by upfront
+   prediction.
+
+2. **Procedural is not strictly worse for Selva Oscura's visual register.**
+   Souls is skeletal because Souls is hyperreal. Selva Oscura's
+   1-bit/woodcut aesthetic doesn't demand realistic motion-captured human
+   movement; a more deliberate, slightly-stylized procedural feel may be
+   *more* in keeping with the visual register (Doré woodcuts don't
+   animate; their stillness is part of their power). Reference points:
+   *Disco Elysium* (zero character animation), *Untitled Goose Game*
+   (procedural body + IK), *Genesis Noir* (entirely procedural).
+
+3. **Skeletal animation has a real asset pipeline cost that gates content
+   velocity.** Mesh modeling, rigging, weight painting, glTF export,
+   ozz conversion, retargeting from Mixamo or hand-keyframed animation —
+   every new enemy, weapon, or move expands this pipeline. For a solo
+   dev, this is the thing that kills indie projects after combat starts
+   working: mechanics are great but content can't keep up. Procedural
+   has zero asset pipeline; new enemy = new state machine function.
+
+### When skeletal lands
+
+The migration is not a question of *if*, only *when* — gated on:
+
+- The `AnimationDriver` abstraction having ~5–10 concrete procedural
+  users (dodge, light attack, heavy attack, parry, riposte, hit reaction,
+  death, ambient idle drift, basic locomotion). At that point the API is
+  battle-tested.
+- A specific creative need that procedural genuinely cannot deliver
+  (e.g. an intricate finishing-move animation that requires per-bone
+  keyframing, or a boss whose visual character is inseparable from
+  motion-captured movement).
+- Bandwidth to pay the asset-pipeline cost without stalling the rest of
+  the project.
+
+It's possible Selva Oscura ships entirely procedural. That's a fine
+outcome if the creative result is right. The hybrid plan does not
+*commit* to skeletal — it keeps the door open and the architecture
+clean for it.
+
+### What the abstraction looks like
+
+`AnimationDriver` is a small interface a combat / movement state machine
+can target without caring about implementation:
+
+- **Inputs**: a state identifier (e.g. `AnimState::DodgeRoll`,
+  `AnimState::LightAttack1`), a normalized phase progress in [0, 1],
+  and any per-state parameters (roll direction, attack tier, etc.).
+- **Outputs per frame**: a transform offset to apply to the entity
+  (translation, rotation, scale offsets relative to the entity's current
+  position/yaw), and optional bone overrides (no-op for procedural
+  drivers; populated by the skeletal driver).
+
+The procedural driver implementation is a switch over `AnimState` that
+computes hop curves, ease-out velocity, tumble rotations, etc. directly
+in code. The skeletal driver implementation samples ozz clips, blends
+them per the same `AnimState` mapping, and writes a bone palette.
+
+### Doctrine — what to do when adding a new combat mechanic
+
+1. Define the `AnimState` for it (e.g. `LightAttack2`).
+2. Wire the gameplay logic (state machine: when does it start, how long
+   does it last, when can it be cancelled, what hitbox does it produce
+   and when).
+3. Implement the procedural driver function for that `AnimState`.
+4. Move on. Do not gate combat work on having a skeletal animation for
+   the new mechanic.
+
+When skeletal eventually lands, every existing `AnimState` gets a
+parallel skeletal implementation; gameplay logic stays put.
+
+### Re-evaluation triggers (animation-specific)
+
+- A specific mechanic genuinely cannot be expressed procedurally without
+  a degenerate amount of code → that's the signal skeletal is ready to
+  start, not before.
+- Procedural drivers grow past ~500 lines of state-by-state curves and
+  start feeling like spaghetti → time to consider tooling (clip
+  authoring in code, a simple keyframe editor, or skeletal proper).
+- Selva Oscura's visual identity converges on something where character
+  motion personality is the headline feature → skeletal earns its cost.
 
 ---
 

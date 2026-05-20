@@ -5,9 +5,10 @@
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <cmath>
 #include <string>
-#include <tracy/Tracy.hpp>
 
 static FontHandle sFont = INVALID_FONT;
 

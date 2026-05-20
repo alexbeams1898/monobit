@@ -5,9 +5,10 @@
 #include "systems/CombatSystem.h"
 #include "test_helpers.h"
 
+#include <cmath>
+
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
-#include <cmath>
 
 // ---------------------------------------------------------------------------
 // Combat formula tests — no window, no GPU, no SDL required.

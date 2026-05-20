@@ -1,10 +1,11 @@
 #include "TileMapLoader.h"
 
+#include <nlohmann/json.hpp>
+
 #include <algorithm>
 #include <chrono>
 #include <fstream>
 #include <iostream>
-#include <nlohmann/json.hpp>
 #include <random>
 #include <sstream>
 
@@ -12,6 +13,7 @@
 // when MSYS2 ucrt64 headers are mixed with the mingw64 linker runtime.
 // dirent.h is available on Linux, macOS, and MSYS2/MinGW.
 #include <dirent.h>
+
 #include <sys/stat.h>
 
 using json = nlohmann::json;
@@ -150,6 +152,7 @@ TileConfig TileMapLoader::loadConfig(const std::string& path)
         }
 
         cfg.tileset_path = j.value("tileset", std::string{});
+        cfg.atlas_tile_size = j.value("tile_size", cfg.atlas_tile_size);
     }
     catch (const std::exception& ex)
     {

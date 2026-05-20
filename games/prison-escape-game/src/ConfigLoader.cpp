@@ -4,11 +4,12 @@
 #include "ecs/GameComponents.h"
 #include "ecs/GameConfig.h"
 
+#include <nlohmann/json.hpp>
+
 #include <filesystem>
 #include <fstream>
 #include <functional>
 #include <iostream>
-#include <nlohmann/json.hpp>
 #include <random>
 #include <unordered_map>
 

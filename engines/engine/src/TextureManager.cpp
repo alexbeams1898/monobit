@@ -1,7 +1,8 @@
 #include "TextureManager.h"
 
-#include <glad/glad.h>
 #include <iostream>
+
+#include <glad/glad.h>
 
 // stb_image — single-header PNG/JPEG/etc. loader.
 // STB_IMAGE_IMPLEMENTATION must be defined in exactly one .cpp file.

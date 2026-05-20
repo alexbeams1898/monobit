@@ -4,10 +4,11 @@
 #include "ecs/GameComponents.h"
 #include "systems/AudioSystem.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <algorithm>
 #include <cmath>
 #include <random>
-#include <tracy/Tracy.hpp>
 
 static std::mt19937& rng()
 {

@@ -22,9 +22,30 @@ AllowShortBlocksOnASingleLine:       Never
 PointerAlignment:   Left
 ReferenceAlignment: Left
 
-# Include ordering — group system vs project headers
+# Include ordering — group system vs project headers. IncludeCategories
+# is explicit so different clang-format patch versions produce the same
+# grouping (the default categories regex shifts subtly across releases,
+# which causes a working format pass on one machine to fail CI on another).
 SortIncludes:       CaseSensitive
 IncludeBlocks:      Regroup
+IncludeCategories:
+  # 1. The matching paired header (filename "Foo.h" for "Foo.cpp").
+  #    clang-format auto-detects this and ranks it as priority 0
+  #    when MainIncludeChar is the default.
+  # 2. Local project headers in quotes: "anim/...", "combat/...", etc.
+  - Regex:           '^"([Ee]ngine|[Ww]all[Cc]lock|[Tt]unables|anim|combat|gameplay|render|ui)/'
+    Priority:        2
+  - Regex:           '^"'
+    Priority:        2
+  # 3. Third-party headers without .h suffix (imgui, glm, etc.).
+  - Regex:           '^<(imgui|glm|nlohmann|ozz|cgltf|tracy|stb_)'
+    Priority:        3
+  # 4. C system headers.
+  - Regex:           '^<[a-z_]+\.h>$'
+    Priority:        4
+  # 5. C++ standard library (no extension).
+  - Regex:           '^<[a-z_]+>$'
+    Priority:        5
 
 # Spacing
 SpaceBeforeParens:          ControlStatements

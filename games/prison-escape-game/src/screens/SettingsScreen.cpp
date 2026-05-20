@@ -9,8 +9,9 @@
 #include "screens/ScreenInput.h"
 #include "systems/AudioSystem.h"
 
-#include <string>
 #include <tracy/Tracy.hpp>
+
+#include <string>
 #include <vector>
 
 static FontHandle sBodyFont = INVALID_FONT;

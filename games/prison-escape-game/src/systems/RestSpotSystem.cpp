@@ -6,11 +6,13 @@
 #include "systems/AudioSystem.h"
 #include "systems/ParticleSystem.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <SDL.h>
+
 #include <algorithm>
 #include <cmath>
 #include <random>
-#include <tracy/Tracy.hpp>
 
 static constexpr float kHealCooldown = 5.0f; // seconds before the spot can heal again
 // Length of the rest_heal sound files (all variants are 2.5s). Used as a one-shot

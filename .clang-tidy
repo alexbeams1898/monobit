@@ -32,7 +32,8 @@ Checks: >
   cppcoreguidelines-slicing,
   -bugprone-easily-swappable-parameters,
   -bugprone-exception-escape,
-  -clang-analyzer-optin.core.EnumCastOutOfRange
+  -clang-analyzer-optin.core.EnumCastOutOfRange,
+  -clang-analyzer-unix.Malloc
 
 # Treat warnings as errors locally and in CI — keeps the bar high
 WarningsAsErrors: '*'

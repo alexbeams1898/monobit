@@ -26,7 +26,7 @@ Beatrice in Paradiso has noticed. **Has been noticing, for centuries,
 ground down by the staring.** She finally snapped: she placed an
 unjudged mortal at the gates without authority, knowing it was
 forbidden, because the unjudged status is the only kind of soul that
-can force real repentance on the damned (per *Senza Forma*, below).
+can force real repentance on the damned (see *The unjudged*, below).
 
 She is not corrupt. She is *somewhat coherent* — she can articulate
 Hell's failure, name what she did, name her tools — but visibly
@@ -72,14 +72,20 @@ The phrase from Inferno I:117 — *"ch'a la seconda morte ciascun grida"*
 ("each cries out for the second death") — names the gift the damned
 desire and Hell will not give. The Vagrant grants it.
 
-The Vagrant grants but **cannot receive** second death (per *Senza
-Forma*, below). When he is killed in Hell, Hell's protocol fires and
-fails to land. The cycle restarts because Hell cannot finish what it
-never began.
+The Vagrant grants second death and **receives it** — Hell's killing-
+protocol fires on him when he is killed in Hell, like any other soul.
+But Hell **cannot complete** the protocol on him: there is no imprint
+for the completion to land on (see *The unjudged*, below). He dies;
+the sangue in his body returns to Hell; the soul is ejected to the
+*selva oscura*. The Wood receives him because the Wood is where
+unjudged souls reside, and the Wood is outside Hell's accounting —
+what he has reified on the Wood-side ledger (stats, riversato, keepers
+felled, class) persists across the cycle. The cycle restarts because
+Hell cannot finish what it never began.
 
-### Senza Forma
+### The unjudged
 
-The cosmological rule that gates resolution.
+The cosmological category that gates resolution.
 
 Hell holds a soul by the *imprint* it has placed on the soul — the
 shape of the soul's sin, the measure of its punishment, the residue
@@ -88,18 +94,28 @@ soul. The damned cry out for it because it is the only release Hell
 has ever offered them.
 
 The unjudged carries no imprint. Hell never measured him; never
-sentenced him; never shaped him. **Senza forma** — without form.
-There is no imprint to complete.
+sentenced him; never shaped him. There is no imprint to complete.
 
-When Hell strikes the unjudged, the act passes through. The protocol
-fires. The substance flows. But the resolution does not land — there
-is no imprint for it to land on. The unjudged falls and rises again,
-every cycle, because Hell cannot finish what it never began.
+When Hell strikes the unjudged, the killing-protocol fires and the
+body dies. The sangue in the vessel returns to Hell's reservoir.
+But the protocol's *completion* — the part that ends the soul by
+finishing its imprint — does not land, because there is no imprint
+to finish. The unjudged soul, having no Hell-side accounting to hold
+it, is received by the *selva oscura* — the cosmological frame
+outside Hell's time, where unjudged souls reside. The cycle restarts
+because Hell cannot finish what it never began.
 
-This rule is the structural reason the Vagrant grants second death
-(senza forma = the only kind of soul whose act is unbound by the
-protocol-roles Hell installed in everyone else) and cannot receive
-it (senza forma = nothing to grip).
+The two frames matter for what persists. Hell's accounting resets each
+cycle (wallet sangue is reclaimed, HP and position refresh, transient
+combat state clears). The Wood's ledger is independent of Hell's time:
+stats invested at OFFERINGS, riversato lifetime total, class choice,
+keepers felled, NPC encounter history, Grimoire unlocks — these are
+Wood-frame, not Hell-frame, and survive any number of Hell-cycles.
+
+This is the structural reason the Vagrant grants second death (he is
+unbound by the protocol-roles Hell installed in everyone else) and
+why second death, when applied to him, does not finish him (nothing
+to grip; the protocol fires, the body dies, the soul is ejected).
 
 **The Seal opens the imprint.** Using the Seal — class-pick — is
 Hell's first formal measurement of the soul. From that moment, the
@@ -107,8 +123,8 @@ class-picker has an imprint Hell can grip. Contrapasso can land on
 him; second death could in principle land on him at the path's
 terminus (it doesn't, on TRANSFIGURATION/SURFEIT/REFUSAL, because
 those endings produce other states). The unburdened, who never uses
-the Seal, retains senza forma — substance flows through and contributes
-to subtractive evolution; nothing settles.
+the Seal, remains imprint-free — substance flows through and
+contributes to subtractive evolution; nothing settles.
 
 **Riversamento is the unburdened making his own form, in another's
 frame.** Pouring sangue out is the slow inscription of an imprint
@@ -553,13 +569,15 @@ Vagrant because the Seal opened an imprint Hell can grip. The
 class-picker's evolution arc is partly *Hell loading itself into him*
 through accreted contrapasso. Stat investment via OFFERINGS and
 contrapasso accretion together produce evolved class-forms. Mechanical
-specifics in [`classes.md`](classes.md). The unburdened Vagrant retains
-senza forma; contrapasso cannot land. The substance passes through and
-contributes to subtractive evolution (Svuotato → Diaphanous), which is
-the cumulative state of substance refusing to settle.
+specifics in [`classes.md`](classes.md). The unburdened Vagrant
+remains imprint-free; contrapasso cannot land. The substance passes
+through and contributes to subtractive evolution (Svuotato →
+Diaphanous), which is the cumulative state of substance refusing to
+settle.
 
-**Contrapasso and the Guide.** The Guide is senza forma; contrapasso
-should not land on him either. It does, because Beatrice has constructed
+**Contrapasso and the Guide.** The Guide is unjudged and imprint-free;
+contrapasso should not land on him either. It does, because Beatrice
+has constructed
 a channel that routes leaked contrapasso through him. She originally
 built the channel to host her Hell-side projections; it doubles as a
 contrapasso conduit. The Guide degrades because the channel is
@@ -575,7 +593,7 @@ about whether using him would destroy him. The result is the same.
 
 A persistent presence in the Wood. The Vagrant's most-frequent
 conversational partner. Acts the part of a friendly guide through
-early and middle cycles. **He is senza forma** (per story.md *The
+early and middle cycles. **He is unjudged** (per story.md *The
 Guide / Identity*), the same cosmological class as the Vagrant.
 
 **He does not know Beatrice's plan.** He is a pawn who does not know
@@ -677,8 +695,9 @@ loop. Death on the walk-back is second death.
 When the Vagrant is killed: all wallet sangue returns to Hell
 (unrecoverable); stats / lifetime sangue / riversato persist; a
 dedicated cutscene plays (Vagrant suffers visibly, sangue exits his
-body — Hell's protocol firing on him without resolving him, per
-*Senza Forma*).
+body — Hell's killing-protocol firing on him; the body dies but the
+soul, having no imprint to grip, is ejected to the Wood per *The
+unjudged*).
 
 **At the cutscene's peak**, two-line text overlays the violence,
 sized like a title card, *YOU DIED*-coded:
@@ -693,7 +712,8 @@ THOU DOST NOT BELONG
 - *THOU DOST NOT BELONG* (bottom, smaller, Early Modern register) —
   Hell's voice. Echoes Charon's *non sei di qua* (*Inf.* III.88) —
   the canonical *Commedia* moment of Hell refusing a soul that does
-  not fit its protocol. Senza forma in Hell's own register.
+  not fit its protocol. Hell's refusal of the unjudged in its own
+  register.
 
 **Both lines are the player's voice, in two registers.** Under the
 player-as-Hell framing (R5), Hell's voice = the player's voice. The
@@ -871,7 +891,7 @@ Tracked here for future iteration:
 - Wood expansion specifics — exactly what unlocks when.
 - Riversamento sites — where the act is triggerable.
 - In-world phrasing variants — *consumed*, *leaked*, *riversamento*,
-  *vaso d'elezione*, *Svuotato*, *Diaphanous*, *senza forma*. Locked
+  *vaso d'elezione*, *Svuotato*, *Diaphanous*, *unjudged*. Locked
   as concepts; per-speaker variants deferred to writing-time.
 - Title — *Selva Oscura* — locked as the working title, naming the
   cosmological location the unjudged occupy. Final lockdown deferred.
@@ -888,6 +908,15 @@ Tracked here for future iteration:
 - [Story](story.md) — narrative arc, ending cutscenes.
 - [Companions](companions.md) — the Guide.
 - [Inventory](inventory.md) — item system in detail.
+- [Crafting](crafting.md) — all weapons and tools are crafted, not
+  looted; substrate split between Wood-craft and Hell-craft;
+  crafting as the verb of *consuming Hell*.
+- [Wood](wood.md) — the selva oscura as a place: inner/outer
+  layout, Hell's leak as the threshold's defining condition, time-
+  stop, persistence of the player's marks.
+- [Creatures](creatures.md) — the Selva-organism ecology spawned
+  from leaked Hell-substance; biology rather than spirit-substance;
+  capture as personal choice, not mission target.
 - [Dialogue](dialogue.md) — NPC trees, register, state branching.
 - [UX](ux.md) — screen flow, HUD, menus, vestigia, save/load language.
 - [Fallback](fallback.md) — death, retry, cycle persistence mechanics.

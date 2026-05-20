@@ -5,6 +5,7 @@
 #include "ecs/EntityManager.h"
 
 #include <SDL.h>
+
 #include <cmath>
 
 namespace CrosshairRenderer

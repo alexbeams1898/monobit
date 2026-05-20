@@ -20,6 +20,37 @@ class Engine
     void run();
     void shutdown();
 
+    // Multi-sample anti-aliasing on the default framebuffer. Must be set
+    // BEFORE init() — the value is consumed when the window is created.
+    // Pass 0 to disable (default), or a power-of-two sample count (2, 4, 8).
+    // Higher = smoother edges + lower performance. 4 is the standard
+    // quality/cost trade for 3D games. 2D games typically pass 0.
+    void setMSAA(int samples)
+    {
+        msaa_samples = samples;
+    }
+
+    // Window startup mode. Must be set BEFORE init() (the value is consumed
+    // when the window is created). Defaults to Windowed at the requested
+    // width/height.
+    enum class WindowMode
+    {
+        // Standard window at the size passed to init(). User can resize.
+        Windowed,
+        // Maximized window — full monitor area but keeps title bar / borders
+        // / resize handles. The width/height passed to init() are used as
+        // the restore size when the user un-maximizes.
+        Maximized,
+        // Borderless fullscreen at the desktop's native resolution. No
+        // title bar. Width/height passed to init() are ignored — actual
+        // size is read from the display.
+        BorderlessFullscreen,
+    };
+    void setWindowMode(WindowMode mode)
+    {
+        window_mode = mode;
+    }
+
     // Game-side logic callback. Called once per fixed-step tick.
     // Engine passes itself so the game can call setWindowTitle() / lastFrameTime().
     using GameUpdateFn = void (*)(Engine&, EntityManager&, double);
@@ -38,6 +69,15 @@ class Engine
     using PreRenderFn = void (*)(Engine&, EntityManager&);
     void setPreRender(PreRenderFn fn);
 
+    // World render callback. Called once per frame after the framebuffer is
+    // cleared and the active 2D Camera is interpolated, but before the UI
+    // pass. The game owns world rendering: 2D games call TileMapRenderer +
+    // RenderSystem here; 3D games run their own pipeline (geometry, lighting,
+    // post-process). camX/camY/alpha are provided for games that use the 2D
+    // Camera component and can be ignored otherwise.
+    using RenderWorldFn = void (*)(Engine&, EntityManager&, float camX, float camY, float alpha);
+    void setRenderWorld(RenderWorldFn fn);
+
     // Debug render callback. Called once per frame after world rendering,
     // between UIRenderer::beginFrame() and the UI render callback.
     // DebugDraw::setCamera() is called automatically before this callback.
@@ -50,6 +90,22 @@ class Engine
     // UIRenderer draw calls here to render HUD, menus, notifications, etc.
     using RenderUIFn = void (*)(Engine&, EntityManager&);
     void setRenderUI(RenderUIFn fn);
+
+    // ImGui render callback. Called after the UI pass; the engine has
+    // already done ImGui::NewFrame for this frame, so the game just calls
+    // ImGui::Begin/Sliders/End. Engine handles input forwarding and final
+    // ImGui::Render automatically. Used for in-game tuning overlays and
+    // dev panels — toggle visibility from inside the callback (e.g.
+    // gate Begin() on a global "show panel" bool the game owns).
+    using RenderImGuiFn = void (*)(Engine&, EntityManager&);
+    void setRenderImGui(RenderImGuiFn fn);
+
+    // Resize callback. Called from the SDL window-resize event handler after
+    // the engine updates window_w/window_h and resizes UIRenderer (the engine
+    // owns UI). Game code resizes any game-owned render targets here (e.g.
+    // RenderSystem's offscreen FBO).
+    using ResizeFn = void (*)(Engine&, int new_w, int new_h);
+    void setOnResize(ResizeFn fn);
 
     // Set the window title string (for game-side HUD display).
     void setWindowTitle(const std::string& title);
@@ -92,6 +148,14 @@ class Engine
     double lastFrameTime() const
     {
         return last_frame_time;
+    }
+
+    // Raw wall-clock frame time (no smoothing). Use this for animation /
+    // visual-rate updates that must reflect actual elapsed time, not the
+    // smoothed FPS estimate.
+    double frameDt() const
+    {
+        return frame_dt;
     }
 
     // Exposed so game code (main.cpp, future scene managers) can create
@@ -142,11 +206,16 @@ class Engine
     GameUpdateFn game_update = nullptr;
     PerFrameFn per_frame_update = nullptr;
     PreRenderFn pre_render = nullptr;
+    RenderWorldFn render_world = nullptr;
     RenderDebugFn render_debug = nullptr;
     RenderUIFn render_ui = nullptr;
+    RenderImGuiFn render_imgui = nullptr;
+    ResizeFn on_resize = nullptr;
     float camera_zoom = 1.0f;
     bool timing_reset_pending = false;
     float clear_r = 0.1f;
     float clear_g = 0.1f;
     float clear_b = 0.1f;
+    int msaa_samples = 0;
+    WindowMode window_mode = WindowMode::Windowed;
 };

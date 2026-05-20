@@ -1,0 +1,24 @@
+{
+  "id": "longsword",
+  "name": "Longsword",
+  "class": "sword",
+  "mesh": "assets/weapons/longsword.glb",
+  "stats": {
+    "one_handed": {
+      "base_damage":   22.0,
+      "light_mul":      1.0,
+      "heavy_mul":      1.7,
+      "stamina_light": 18.0,
+      "stamina_heavy": 38.0,
+      "poise_damage":   8.0
+    },
+    "two_handed": {
+      "base_damage":   32.0,
+      "light_mul":      1.0,
+      "heavy_mul":      1.8,
+      "stamina_light": 22.0,
+      "stamina_heavy": 46.0,
+      "poise_damage":  12.0
+    }
+  }
+}

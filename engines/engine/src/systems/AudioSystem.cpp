@@ -11,8 +11,9 @@
 #undef STB_VORBIS_HEADER_ONLY
 #include "systems/AudioSystem.h"
 
-#include <iostream>
 #include <stb_vorbis.c> // NOLINT(bugprone-suspicious-include)
+
+#include <iostream>
 #include <vector>
 
 // ---------------------------------------------------------------------------
@@ -111,7 +112,12 @@ bool AudioSystem::init()
                   << "). Music will play without filter.\n";
     }
 
-    std::cout << "[AudioSystem] Audio engine initialized.\n";
+    // stderr so it survives stdout redirection and shows in the
+    // same channel as the [AudioSystem] failure log. Print device
+    // params so we can verify miniaudio actually opened something.
+    const float master_vol = ma_engine_get_volume(&sEngine);
+    std::cerr << "[AudioSystem] Audio engine initialized. channels=" << channels
+              << " sample_rate=" << sampleRate << " master_vol=" << master_vol << "\n";
     return true;
 }
 
@@ -157,9 +163,12 @@ void AudioSystem::playSfx(const std::string& path, float volume, float pitch)
     if (slot == nullptr)
         return; // pool full, drop the sound
 
-    const ma_result result =
-        ma_sound_init_from_file(&sEngine, path.c_str(), MA_SOUND_FLAG_DECODE | MA_SOUND_FLAG_ASYNC,
-                                nullptr, nullptr, &slot->sound);
+    // Synchronous decode (not MA_SOUND_FLAG_ASYNC) — short mp3/ogg
+    // SFX decode in a few ms, and async raced cleanup against the
+    // decoder thread (assertion in miniaudio.h ~line 58000 when
+    // cursor overran sizeInFrames during ma_sound_uninit).
+    const ma_result result = ma_sound_init_from_file(&sEngine, path.c_str(), MA_SOUND_FLAG_DECODE,
+                                                     nullptr, nullptr, &slot->sound);
     if (result != MA_SUCCESS)
     {
         std::cerr << "[AudioSystem] playSfx failed for: " << path << " (error " << result << ")\n";
@@ -169,7 +178,11 @@ void AudioSystem::playSfx(const std::string& path, float volume, float pitch)
     ma_sound_set_volume(&slot->sound, volume);
     if (pitch != 1.0f)
         ma_sound_set_pitch(&slot->sound, pitch);
-    ma_sound_start(&slot->sound);
+    const ma_result start_res = ma_sound_start(&slot->sound);
+    const ma_bool32 playing = ma_sound_is_playing(&slot->sound);
+    const float actual_vol = ma_sound_get_volume(&slot->sound);
+    std::cerr << "[AudioSystem] playSfx path=" << path << " start_res=" << start_res
+              << " is_playing=" << (playing ? "yes" : "no") << " vol=" << actual_vol << "\n";
     slot->active = true;
 }
 
@@ -186,9 +199,8 @@ int AudioSystem::playSfxTracked(const std::string& path, float volume, float pit
         if (sSfxVoices[i].active)
             continue;
 
-        const ma_result result = ma_sound_init_from_file(&sEngine, path.c_str(),
-                                                         MA_SOUND_FLAG_DECODE | MA_SOUND_FLAG_ASYNC,
-                                                         nullptr, nullptr, &sSfxVoices[i].sound);
+        const ma_result result = ma_sound_init_from_file(
+            &sEngine, path.c_str(), MA_SOUND_FLAG_DECODE, nullptr, nullptr, &sSfxVoices[i].sound);
         if (result != MA_SUCCESS)
         {
             std::cerr << "[AudioSystem] playSfxTracked failed for: " << path << " (error " << result

@@ -6,9 +6,10 @@
 #include "test_helpers.h"
 
 #include <algorithm>
+#include <cmath>
+
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
-#include <cmath>
 
 // ---------------------------------------------------------------------------
 // ChaseSystem / FlowFieldSystem tests — no window, no GPU, no SDL required.

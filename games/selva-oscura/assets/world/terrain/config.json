@@ -1,0 +1,14 @@
+{
+  "_comment": "Per-region terrain config. Heightmap is a grayscale PNG; pixel 0 maps to height_min meters, pixel 255 to height_max. world_extent is the side length in meters (square region centered at world_origin). Subdivide controls mesh density (verts per side); 64 = 4m per quad at 256m extent, fine for inner Wood. Keep in sync with scripts/gen_terrain_heightmap.py defaults.",
+  "regions": {
+    "selva_inner": {
+      "heightmap": "assets/world/terrain/selva_inner.png",
+      "world_origin": [0.0, -130.0],
+      "world_extent": 512.0,
+      "height_range_min": -5.0,
+      "height_range_max": 16.0,
+      "subdivide": 192,
+      "base_color": [0.16, 0.13, 0.10]
+    }
+  }
+}

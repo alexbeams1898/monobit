@@ -8,9 +8,11 @@
 #include "renderers/ItemStatRenderer.h"
 #include "screens/ScreenColors.h"
 
-#include <SDL.h>
-#include <string>
 #include <tracy/Tracy.hpp>
+
+#include <SDL.h>
+
+#include <string>
 
 using namespace screen_colors;
 

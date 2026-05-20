@@ -1,0 +1,11 @@
+# `source/` holds raw FBX authoring assets — Mixamo packs and the X Bot
+# character itself. The build reads from here; we don't commit the
+# heavyweight .fbx files (anyone can re-download from Mixamo).
+source/
+
+# X_Bot.glb and .ozz files ARE committed (~2.7 MB total) so CI and
+# contributors without the gitignored Mixamo FBX pack can build and run.
+# Locally, the CMake bake regenerates them from FBX when present.
+# Negate the repo-root *.ozz rule for everything in this directory.
+!*.ozz
+!X_Bot.glb

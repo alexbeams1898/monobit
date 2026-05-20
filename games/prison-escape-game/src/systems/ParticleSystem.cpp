@@ -3,8 +3,9 @@
 #include "ecs/Components.h"
 #include "ecs/GameComponents.h"
 
-#include <cstdlib>
 #include <tracy/Tracy.hpp>
+
+#include <cstdlib>
 
 void ParticleSystem::update(EntityManager& em, double dt)
 {

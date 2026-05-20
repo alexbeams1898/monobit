@@ -88,7 +88,7 @@ ALLOWED_CATEGORIES = (
 # Order categories appear in CHANGELOG.md sections.
 CATEGORY_ORDER = {name: i for i, name in enumerate(ALLOWED_CATEGORIES)}
 
-PUBLIC_RELEASES_REPO = "alexbeams1898/prison-escape-game-releases"
+PUBLIC_RELEASES_REPO = "alexbeams1898/selva-oscura-releases"
 
 # Path layout: this script lives at games/<game>/scripts/changelog.py
 # So GAME_DIR is the parent's parent, REPO_ROOT is GAME_DIR's parent's parent.

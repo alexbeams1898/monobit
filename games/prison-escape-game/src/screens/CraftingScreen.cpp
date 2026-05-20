@@ -12,12 +12,15 @@
 #include "systems/AudioSystem.h"
 #include "systems/NotificationSystem.h"
 
-#include <SDL.h>
-#include <algorithm>
-#include <glad/glad.h>
-#include <string>
 #include <tracy/Tracy.hpp>
+
+#include <SDL.h>
+
+#include <algorithm>
+#include <string>
 #include <vector>
+
+#include <glad/glad.h>
 
 using screen_input::keyPressed;
 using screen_input::mouseClicked;

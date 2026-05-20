@@ -30,6 +30,11 @@ references between sections are by link.
 | [Options](options.md) | TBD | Settings menu contents |
 | [PC vs NPC](pc-vs-npc.md) | structural | Entity symmetry rule in design terms |
 | [Fallback](fallback.md) | structural | Death, retry, save semantics, vestigia |
+| [Combat](combat.md) | drafting | Melee/physical combat — bindings, stance, on-hand/off-hand grammar |
+| [Bestiary](bestiary.md) | drafting | *Figura umana* rule — shared human skeleton for damned souls, canonical exceptions for Hell's classical guardians |
+| [Crafting](crafting.md) | drafting | All weapons/tools are crafted, not looted; Wood-substrate vs Hell-substrate split; crafting as the verb of *consuming Hell* |
+| [Wood](wood.md) | drafting | The Selva as a place: inner canonical core + outer procgen ring; Hell-leak as the threshold's defining condition; time-stop; persistence of player marks |
+| [Creatures](creatures.md) | drafting | Selva-organism ecology spawned from leaked Hell-substance; biology not spirit; four-layer evolution model; capture as personal choice not mission target |
 
 **Status legend:**
 - *drafting* — sections being actively written; load-bearing for

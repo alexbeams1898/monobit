@@ -14,8 +14,8 @@ Locked at setting.md *Second death*. Summary:
   Cycle structure (setting.md *Cycle structure*) governs what
   resets vs. what persists.
 - **Cutscene:** Vagrant suffers visibly, sangue exits the body. Hell's
-  protocol firing on him without resolving him (per *Senza Forma* —
-  Hell cannot grip the unjudged).
+  killing-protocol fires; the body dies but the soul, having no
+  imprint, is ejected to the Wood (per setting.md *The unjudged*).
 - **Death-card overlay** at the cutscene's peak, *YOU DIED*-coded:
   ```
           NOT YET
@@ -37,9 +37,9 @@ Locked at setting.md *Second death*. Summary:
 ## Retry
 
 - **Same Vagrant.** No alternate-character on death; the run is the
-  current Vagrant's continuing struggle. Per *Senza Forma*, Hell
-  cannot finish the unjudged — the cycle restarts because the
-  resolution does not land.
+  current Vagrant's continuing struggle. Per setting.md *The
+  unjudged*, Hell cannot finish a soul it never measured — the cycle
+  restarts because the protocol's completion does not land.
 - **Respawn location: the selva oscura (the Wood).** Setting.md
   *The selva oscura as cosmological destination* — the Wood
   naturally receives unjudged souls. Beatrice does not pull him
@@ -108,7 +108,7 @@ transient combat state.
 
 ## Cross-references
 
-- [Setting](setting.md) — *Senza Forma*, *Cycle structure*, *Second
+- [Setting](setting.md) — *The unjudged*, *Cycle structure*, *Second
   death*, *Save and inventory / Vestigia*.
 - [Story](story.md) — death and retry are narrative events; the
   run-end texture (NOT YET / THOU DOST NOT BELONG, run-stats

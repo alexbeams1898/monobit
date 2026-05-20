@@ -2,11 +2,13 @@
 
 #include "gl/ShaderUtils.h"
 
-#include <cstring>
-#include <glad/glad.h>
-#include <iostream>
 #include <tracy/Tracy.hpp>
+
+#include <cstring>
+#include <iostream>
 #include <vector>
+
+#include <glad/glad.h>
 
 // Vertex layout: pos(x,y) + uv(u,v) + color(r,g,b,a) = 8 floats.
 static constexpr int FLOATS_PER_VERT = 8;
@@ -296,11 +298,11 @@ void UIRenderer::drawRect(float x, float y, float w, float h, const Color& color
     sBatches.back().quad_count++;
 }
 
-void UIRenderer::drawTexturedRect(float x, float y, float w, float h, uint32_t tex_id, float u0,
-                                  float v0, float u1, float v1, const Color& tint)
+void UIRenderer::drawTexturedRect(const Rect& dst, uint32_t tex_id, const Rect& uv,
+                                  const Color& tint)
 {
     ensureBatch(tex_id, false);
-    pushQuad(x, y, w, h, u0, v0, u1, v1, tint);
+    pushQuad(dst.x, dst.y, dst.w, dst.h, uv.x, uv.y, uv.x + uv.w, uv.y + uv.h, tint);
     sBatches.back().quad_count++;
 }
 

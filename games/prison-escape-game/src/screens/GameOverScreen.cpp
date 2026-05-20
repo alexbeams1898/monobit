@@ -5,10 +5,12 @@
 #include "ecs/GameConfig.h"
 #include "systems/AudioSystem.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <SDL.h>
+
 #include <algorithm>
 #include <string>
-#include <tracy/Tracy.hpp>
 
 static FontHandle sBodyFont = INVALID_FONT;
 static FontHandle sTitleFont = INVALID_FONT;

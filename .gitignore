@@ -21,6 +21,11 @@ bin/
 *.dll
 *.so
 *.dylib
+*.ozz
+
+# Downloaded build tools (FBX2glTF, Tracy profiler, etc).
+# Fetched per-checkout; not committed.
+tools/
 
 # CMake generated
 CMakeCache.txt

@@ -9,12 +9,14 @@
 #include "renderers/ItemStatRenderer.h"
 #include "utils/DebugDraw.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <SDL.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <string>
-#include <tracy/Tracy.hpp>
 
 static FontHandle sBodyFont = INVALID_FONT;
 static FontHandle sTitleFont = INVALID_FONT;
@@ -148,10 +150,10 @@ static void renderPortraitAndName(EntityManager& em, entt::entity entity, float&
         const int rows = anim->row_count;
         if (cols > 0 && rows > 0)
         {
-            const float u1 = 1.0f / static_cast<float>(cols);
-            const float v1 = 1.0f / static_cast<float>(rows);
-            UIRenderer::drawTexturedRect(BAR_X, y, portrait_sz, portrait_sz, spr->texture_id, 0.0f,
-                                         0.0f, u1, v1, {1.0f, 1.0f, 1.0f, 1.0f});
+            const float uw = 1.0f / static_cast<float>(cols);
+            const float uh = 1.0f / static_cast<float>(rows);
+            UIRenderer::drawTexturedRect(Rect{BAR_X, y, portrait_sz, portrait_sz}, spr->texture_id,
+                                         Rect{0.0f, 0.0f, uw, uh});
             name_x = BAR_X + portrait_sz + 4.0f;
         }
     }

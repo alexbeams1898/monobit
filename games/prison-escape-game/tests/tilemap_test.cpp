@@ -4,9 +4,10 @@
 #include "ecs/EntityManager.h"
 
 #include <algorithm>
+#include <cmath>
+
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
-#include <cmath>
 
 // ---------------------------------------------------------------------------
 // TileMapLoader / TileMap tests — no window, no GPU required.

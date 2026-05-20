@@ -2,12 +2,14 @@
 
 #include "gl/ShaderUtils.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <algorithm>
 #include <cmath>
-#include <glad/glad.h>
 #include <iostream>
-#include <tracy/Tracy.hpp>
 #include <vector>
+
+#include <glad/glad.h>
 
 // ---------------------------------------------------------------------------
 // Shaders -- textured tile rendering with color fallback.
@@ -172,7 +174,7 @@ void TileMapRenderer::upload(const TileMap& map, const TileConfig& config, Textu
                 {
                     const float tw = static_cast<float>(atlasW);
                     const float th = static_cast<float>(atlasH);
-                    const float tileF = 32.0f;
+                    const float tileF = static_cast<float>(config.atlas_tile_size);
                     const float c = static_cast<float>(vis.uv_col);
                     const float r = static_cast<float>(vis.uv_row);
                     u0 = c * tileF / tw;

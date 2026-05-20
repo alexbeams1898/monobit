@@ -8,9 +8,10 @@
 #include "systems/AudioSystem.h"
 #include "systems/NotificationSystem.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <algorithm>
 #include <cmath>
-#include <tracy/Tracy.hpp>
 #include <vector>
 
 // Populate a Weapon component from an ItemDef.

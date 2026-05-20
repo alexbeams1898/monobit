@@ -23,8 +23,7 @@ void ItemStatRenderer::drawItemIcon(const ItemDef* def, float x, float y, float 
     if (def == nullptr || def->icon_path.empty() || sTexMgr == nullptr)
         return;
     const uint32_t tex = sTexMgr->load(def->icon_path);
-    UIRenderer::drawTexturedRect(x, y, size, size, tex, 0.0f, 0.0f, 1.0f, 1.0f,
-                                 {1.0f, 1.0f, 1.0f, 1.0f});
+    UIRenderer::drawTexturedRect(Rect{x, y, size, size}, tex);
 }
 
 static constexpr Color TEXT_WHITE{0.92f, 0.90f, 0.88f, 1.0f};

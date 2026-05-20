@@ -2,9 +2,10 @@
 
 #include <cstdio>
 #include <cstring>
-#include <glad/glad.h>
 #include <iostream>
 #include <vector>
+
+#include <glad/glad.h>
 
 // stb_truetype and stb_rect_pack -- single-header font rasterizer.
 // IMPLEMENTATION defined here only (same pattern as stb_image in TextureManager.cpp).
@@ -97,13 +98,13 @@ FontHandle FontManager::loadFont(const std::string& path, float size_px)
     // Extract font metrics for line height.
     stbtt_fontinfo info{};
     stbtt_InitFont(&info, ttf_buf.data(), 0);
-    int ascent = 0, descent = 0, line_gap = 0;
-    stbtt_GetFontVMetrics(&info, &ascent, &descent, &line_gap);
+    int ascent_px = 0, descent_px = 0, line_gap_px = 0;
+    stbtt_GetFontVMetrics(&info, &ascent_px, &descent_px, &line_gap_px);
     const float scale = stbtt_ScaleForPixelHeight(&info, size_px);
 
     FontData fd{};
-    fd.ascent = static_cast<float>(ascent) * scale;
-    fd.line_height = static_cast<float>(ascent - descent + line_gap) * scale;
+    fd.ascent = static_cast<float>(ascent_px) * scale;
+    fd.line_height = static_cast<float>(ascent_px - descent_px + line_gap_px) * scale;
 
     // Convert baked char data to GlyphInfo.
     for (int i = 0; i < CHAR_COUNT; ++i)

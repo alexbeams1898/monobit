@@ -24,8 +24,8 @@ TEST_CASE("Components can be attached and retrieved", "[ecs]")
     em.registry().emplace<Transform>(e, 10.0f, 20.0f);
     em.registry().emplace<Health>(e, 75, 100);
 
-    auto& t = em.registry().get<Transform>(e);
-    auto& h = em.registry().get<Health>(e);
+    const auto& t = em.registry().get<Transform>(e);
+    const auto& h = em.registry().get<Health>(e);
 
     REQUIRE(t.x == 10.0f);
     REQUIRE(t.y == 20.0f);

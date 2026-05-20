@@ -1,0 +1,46 @@
+{
+  "id": "buckler",
+  "_comment_block": "Tap = block_1 (raise + brief hold). block_2 is the un-block (lower-shield) animation. Held-block state machine in main.cpp owns the raise/idle/lower flow; these chain entries are a fallback for tap-fire when held-block is not active. Cancel-open auto-detects from the off-hand (left hand) velocity scan since the buckler is held in the off-hand.",
+  "one_handed": {
+    "light": [
+      {
+        "id": "default",
+        "attacks": [
+          { "clip": "sword_and_shield_block",   "recovery_seconds": 0.40, "motion_joints": ["mixamorig:LeftHand"] }
+        ]
+      }
+    ],
+    "heavy": [
+      {
+        "id": "default",
+        "attacks": [
+          { "clip": "sword_and_shield_block_2", "recovery_seconds": 0.55, "motion_joints": ["mixamorig:LeftHand"] }
+        ]
+      }
+    ]
+  },
+  "two_handed": {
+    "light": [
+      {
+        "id": "default",
+        "attacks": [
+          { "clip": "sword_and_shield_block",   "recovery_seconds": 0.40, "motion_joints": ["mixamorig:LeftHand"] }
+        ]
+      }
+    ],
+    "heavy": [
+      {
+        "id": "default",
+        "attacks": [
+          { "clip": "sword_and_shield_block_2", "recovery_seconds": 0.55, "motion_joints": ["mixamorig:LeftHand"] }
+        ]
+      }
+    ]
+  },
+  "attach": {
+    "bone_right": "mixamorig:RightHand",
+    "bone_left":  "mixamorig:LeftHand",
+    "offset_translation":        [0.0, 0.0, 0.0],
+    "offset_rotation_euler_deg": [0.0, 0.0, 0.0]
+  }
+}

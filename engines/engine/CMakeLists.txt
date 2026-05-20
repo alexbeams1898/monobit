@@ -16,7 +16,6 @@ target_sources(engine PRIVATE
     src/systems/CollisionSystem.cpp
     src/systems/AnimationSystem.cpp
     src/systems/AudioSystem.cpp
-    src/TileMapLoader.cpp
     src/systems/TileMapRenderer.cpp
     src/systems/FlowFieldSystem.cpp
     src/systems/SteeringSystem.cpp
@@ -35,9 +34,11 @@ target_link_libraries(engine
         SDL2::SDL2-static
         OpenGL::GL
         EnTT::EnTT
+        glm::glm
         nlohmann_json::nlohmann_json
         FMOD::Core
         glad
+        imgui::imgui
         TracyClient
         miniaudio::miniaudio
 )
@@ -55,15 +56,14 @@ target_compile_features(engine PUBLIC cxx_std_17)
 target_include_directories(engine SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/vendor/stb)
 
 # ---------------------------------------------------------------------------
-# Engine tests -- only test engine code, no game dependency.
+# Engine tests -- only test engine code, no game dependency. Tests are
+# self-contained: no external config files, no per-game asset paths.
 # ---------------------------------------------------------------------------
 add_executable(engine-tests
     tests/ecs_test.cpp
     tests/collision_test.cpp
-    tests/tilemap_test.cpp
     tests/animation_test.cpp
 )
 target_link_libraries(engine-tests PRIVATE engine Catch2::Catch2WithMain)
 
 add_test(NAME engine-tests COMMAND engine-tests)
-set_tests_properties(engine-tests PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/games/prison-escape-game)

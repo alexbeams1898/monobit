@@ -59,6 +59,7 @@ target F7 builds and F5 runs.
 
 ### Per-engine
 
-- engine: [3D extension plan](engines/engine/docs/3D-EXTENSION.md)
+- engine: [ENGINE](engines/engine/docs/ENGINE.md)
+  · [3D extension plan](engines/engine/docs/3D-EXTENSION.md)
 - arduboy-legacy: [ARCHIVED.md](engines/arduboy-legacy/ARCHIVED.md)
   (do not extend; merge target is the main engine)

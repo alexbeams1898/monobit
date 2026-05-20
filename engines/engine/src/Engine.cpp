@@ -3,20 +3,21 @@
 #include "FontManager.h"
 #include "UIRenderer.h"
 #include "ecs/Components.h"
-#include "systems/AnimationSystem.h"
 #include "systems/AudioSystem.h"
-#include "systems/RenderSystem.h"
-#include "systems/TileMapRenderer.h"
 #include "utils/DebugDraw.h"
 
 #include <cmath>
-#include <cstdio>
 #include <string>
 
 // glad must be included before any SDL OpenGL header.
-#include <SDL.h>
-#include <glad/glad.h>
+#include <imgui.h>
+#include <imgui_impl_opengl3.h>
+#include <imgui_impl_sdl2.h>
 #include <tracy/Tracy.hpp>
+
+#include <SDL.h>
+
+#include <glad/glad.h>
 
 // Fixed-timestep constants.
 // Update runs at a locked 60 Hz regardless of render frame rate.
@@ -43,8 +44,29 @@ bool Engine::init(const char* title, int width, int height)
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
+    // MSAA — set before window creation so the default framebuffer gets
+    // multi-sample storage. msaa_samples == 0 leaves it disabled.
+    if (msaa_samples > 0)
+    {
+        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
+        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, msaa_samples);
+    }
+
+    Uint32 window_flags = SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE;
+    switch (window_mode)
+    {
+    case WindowMode::Windowed:
+        break;
+    case WindowMode::Maximized:
+        window_flags |= SDL_WINDOW_MAXIMIZED;
+        break;
+    case WindowMode::BorderlessFullscreen:
+        window_flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+        break;
+    }
+
     window = SDL_CreateWindow(title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height,
-                              SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
+                              window_flags);
     if (!window)
         return false;
 
@@ -67,14 +89,35 @@ bool Engine::init(const char* title, int width, int height)
     // Vsync on by default — will become a user setting in the options menu.
     SDL_GL_SetSwapInterval(1);
 
-    window_w = width;
-    window_h = height;
+    // Depth testing: enabled once at startup, used by any 3D draw path. 2D
+    // sprite paths (game-side) write Z=0 for everything so depth test
+    // against nothing is a no-op for them.
+    glEnable(GL_DEPTH_TEST);
 
-    RenderSystem::init(window_w, window_h);
-    TileMapRenderer::init();
+    // Enable MSAA blending if the game requested it. The SDL attribute
+    // above gave us a multi-sample framebuffer; this turns the GL state on.
+    if (msaa_samples > 0)
+        glEnable(GL_MULTISAMPLE);
+
+    // Read the actual window size — fullscreen-desktop ignores the
+    // requested width/height and uses the display's resolution, so the
+    // request args are unreliable. Truth is whatever SDL gave us.
+    SDL_GetWindowSize(window, &window_w, &window_h);
+
     FontManager::init();
     UIRenderer::init(window_w, window_h);
     AudioSystem::init(); // non-fatal — game runs without audio if device unavailable
+
+    // Dear ImGui — initialised here so games can register an ImGui callback
+    // and start drawing tuning panels. The engine owns NewFrame / Render /
+    // event forwarding; the game just calls ImGui::Begin/widgets/End from
+    // its setRenderImGui callback. No-op cost when no callback is set.
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGui::GetIO().IniFilename = nullptr; // don't write imgui.ini next to the exe
+    ImGui::StyleColorsDark();
+    ImGui_ImplSDL2_InitForOpenGL(window, gl_context);
+    ImGui_ImplOpenGL3_Init("#version 330 core");
 
     return true;
 }
@@ -141,11 +184,10 @@ void Engine::run()
         }
 
         entity_manager.render_alpha = static_cast<float>(accumulator / FIXED_TIMESTEP);
-        // Animation advances at wall-clock rate (not fixed-step) so sprites
-        // interpolate smoothly on high-refresh displays. Run it before the
-        // pre_render hook so game-side visual-sync systems can read fresh
-        // sprite.src_x/flip_x values computed from the character's animation.
-        AnimationSystem::update(entity_manager, static_cast<float>(frame_dt));
+        // pre_render runs at wall-clock rate (not fixed-step) and after
+        // render_alpha is computed. Game code uses this slot for any
+        // per-frame work that needs the final alpha (sprite animation
+        // advance, aim interpolation, visual-sync systems, etc.).
         if (pre_render)
             pre_render(*this, entity_manager);
         render();
@@ -161,14 +203,24 @@ void Engine::processEvents()
     SDL_Event event;
     while (SDL_PollEvent(&event))
     {
+        // ImGui sees every event so it can light up its widgets when the
+        // user clicks/types into a panel. ImGui sets WantCaptureMouse /
+        // WantCaptureKeyboard when a panel is active; game code that wants
+        // to respect that should query ImGui::GetIO() before consuming
+        // input. For selva-oscura the game uses SDL_GetKeyboardState +
+        // SDL_GetRelativeMouseState (separate pipeline), so panel input
+        // and game input coexist without contention today.
+        ImGui_ImplSDL2_ProcessEvent(&event);
+
         if (event.type == SDL_QUIT)
             running = false;
         if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_RESIZED)
         {
             window_w = event.window.data1;
             window_h = event.window.data2;
-            RenderSystem::resize(window_w, window_h);
             UIRenderer::resize(window_w, window_h);
+            if (on_resize)
+                on_resize(*this, window_w, window_h);
         }
 
         // Buffer one-shot input events so they survive across fixed-step ticks.
@@ -208,6 +260,11 @@ void Engine::setPreRender(PreRenderFn fn)
     pre_render = fn;
 }
 
+void Engine::setRenderWorld(RenderWorldFn fn)
+{
+    render_world = fn;
+}
+
 void Engine::setRenderDebug(RenderDebugFn fn)
 {
     render_debug = fn;
@@ -216,6 +273,16 @@ void Engine::setRenderDebug(RenderDebugFn fn)
 void Engine::setRenderUI(RenderUIFn fn)
 {
     render_ui = fn;
+}
+
+void Engine::setRenderImGui(RenderImGuiFn fn)
+{
+    render_imgui = fn;
+}
+
+void Engine::setOnResize(ResizeFn fn)
+{
+    on_resize = fn;
 }
 
 void Engine::setWindowTitle(const std::string& title)
@@ -231,7 +298,7 @@ void Engine::render()
     const float a = entity_manager.render_alpha;
 
     glClearColor(clear_r, clear_g, clear_b, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     // Find the active camera position, interpolated between previous and current
     // tick using the accumulator remainder (alpha). This eliminates the visual
@@ -268,64 +335,56 @@ void Engine::render()
         }
     }
 
-    // Per-frame camera/player position CSV for jitter diagnosis.
-    // Only active in Tracy-enabled builds.
-#ifdef TRACY_ENABLE
+    if (render_world)
     {
-        static FILE* jitterLog = nullptr;
-        static int jitterFrame = 0;
-        if (!jitterLog)
-        {
-            jitterLog = std::fopen("jitter.csv", "w");
-            if (jitterLog)
-                std::fprintf(jitterLog, "frame,alpha,camX,camY,"
-                                        "offsetX,offsetY,prevOffsetX,prevOffsetY,"
-                                        "drawX,drawY,"
-                                        "screenX,screenY,frameDtMs\n");
-        }
-        if (jitterLog)
-        {
-            for (auto [pe, cam] : entity_manager.registry().view<Camera>().each())
-            {
-                if (!cam.active)
-                    continue;
-                const auto& tf = entity_manager.registry().get<Transform>(pe);
-                float drawX = tf.x;
-                float drawY = tf.y;
-                if (const auto* prev = entity_manager.registry().try_get<PreviousTransform>(pe))
-                {
-                    drawX = prev->x + (tf.x - prev->x) * a;
-                    drawY = prev->y + (tf.y - prev->y) * a;
-                }
-                std::fprintf(jitterLog,
-                             "%d,%.4f,%.4f,%.4f,"
-                             "%.4f,%.4f,%.4f,%.4f,"
-                             "%.4f,%.4f,"
-                             "%.4f,%.4f,%.3f\n",
-                             jitterFrame, a, camX, camY, cam.offset_x, cam.offset_y,
-                             cam.prev_offset_x, cam.prev_offset_y, drawX, drawY, drawX - camX,
-                             drawY - camY, frame_dt * 1000.0);
-                break;
-            }
-            jitterFrame++;
-            std::fflush(jitterLog);
-        }
+        ZoneScopedN("render-world");
+        render_world(*this, entity_manager, camX, camY, a);
     }
-#endif
-
-    TileMapRenderer::render(camX, camY, window_w, window_h, camera_zoom);
-    RenderSystem::render(entity_manager, texture_manager, camX, camY, camera_zoom);
 
     // UI layer: screen-space overlay drawn after world content.
-    UIRenderer::beginFrame();
-    DebugDraw::setCamera(camX, camY, window_w, window_h, camera_zoom);
-    if (render_debug)
-        render_debug(*this, entity_manager);
-    if (render_ui)
-        render_ui(*this, entity_manager);
-    UIRenderer::endFrame();
+    {
+        ZoneScopedN("render-ui");
+        UIRenderer::beginFrame();
+        DebugDraw::setCamera(camX, camY, window_w, window_h, camera_zoom);
+        if (render_debug)
+            render_debug(*this, entity_manager);
+        if (render_ui)
+            render_ui(*this, entity_manager);
+        UIRenderer::endFrame();
+    }
 
-    SDL_GL_SwapWindow(window);
+    // ImGui pass — drawn after the game's UI so panels float on top.
+    // NewFrame must precede any ImGui::Begin in the callback; Render
+    // emits the actual draw lists. The frame is started even if no
+    // callback is set, so future frame-state queries (DeltaTime,
+    // viewport size) stay valid.
+    {
+        ZoneScopedN("render-imgui");
+        {
+            ZoneScopedN("imgui-newframe");
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplSDL2_NewFrame();
+            ImGui::NewFrame();
+        }
+        {
+            ZoneScopedN("imgui-callback");
+            if (render_imgui)
+                render_imgui(*this, entity_manager);
+        }
+        {
+            ZoneScopedN("imgui-render");
+            ImGui::Render();
+        }
+        {
+            ZoneScopedN("imgui-gl-draw");
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        }
+    }
+
+    {
+        ZoneScopedN("swap-buffers");
+        SDL_GL_SwapWindow(window);
+    }
 }
 
 void Engine::swapBuffers()
@@ -336,11 +395,19 @@ void Engine::swapBuffers()
 
 void Engine::shutdown()
 {
+    // ImGui first — its OpenGL3 backend frees GPU resources, so it must
+    // run while the GL context is still alive. Subsequent shutdowns can
+    // safely no-op when called twice (e.g. dtor after explicit shutdown).
+    if (ImGui::GetCurrentContext() != nullptr)
+    {
+        ImGui_ImplOpenGL3_Shutdown();
+        ImGui_ImplSDL2_Shutdown();
+        ImGui::DestroyContext();
+    }
+
     AudioSystem::shutdown();
     UIRenderer::shutdown();
     FontManager::shutdown();
-    TileMapRenderer::shutdown();
-    RenderSystem::shutdown();
     sprite_compositor.clear();
     texture_manager.clear();
 

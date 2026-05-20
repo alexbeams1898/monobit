@@ -23,6 +23,41 @@ GLuint compileShader(GLenum type, const char* src)
     return shader;
 }
 
+GLuint compileProgram(const char* vert_src, const char* frag_src)
+{
+    const GLuint vert = compileShader(GL_VERTEX_SHADER, vert_src);
+    if (vert == 0)
+        return 0;
+    const GLuint frag = compileShader(GL_FRAGMENT_SHADER, frag_src);
+    if (frag == 0)
+    {
+        glDeleteShader(vert);
+        return 0;
+    }
+
+    const GLuint program = glCreateProgram();
+    glAttachShader(program, vert);
+    glAttachShader(program, frag);
+    glLinkProgram(program);
+
+    // Safe to delete the standalone shader objects once attached -- the
+    // program holds its own reference until glDeleteProgram.
+    glDeleteShader(vert);
+    glDeleteShader(frag);
+
+    GLint linked = GL_FALSE;
+    glGetProgramiv(program, GL_LINK_STATUS, &linked);
+    if (linked != GL_TRUE)
+    {
+        char log[1024]{};
+        glGetProgramInfoLog(program, sizeof(log), nullptr, log);
+        std::cerr << "[GL] Shader program link error:\n" << log << "\n";
+        glDeleteProgram(program);
+        return 0;
+    }
+    return program;
+}
+
 void buildOrtho(float mat[16], float left, float right, float bottom, float top)
 {
     const float rml = right - left;

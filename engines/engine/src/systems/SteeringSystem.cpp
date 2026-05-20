@@ -3,13 +3,23 @@
 #include "TileMap.h"
 #include "ecs/Components.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <algorithm>
 #include <cmath>
-#include <tracy/Tracy.hpp>
 #include <vector>
 
 // Steering constants are read from em.steering_config (set by game-side
 // config loading from formulas.json "steering" block).
+
+// Local 2D vector helper. The engine doesn't pull in glm here (this
+// file pre-dates the 3D extension) so a small POD type avoids
+// introducing a wider dep just for parameter bundling.
+struct Vec2
+{
+    float x = 0.0f;
+    float y = 0.0f;
+};
 
 // Accumulate same-cell crowd repulsion into (crX, crY).
 // When the push direction aligns with velocity (entities in a line),
@@ -58,23 +68,32 @@ static void applySameCellRepulsion(const FlowField& ff, int ec, int er, const Tr
     crY += pushY * sameWeight;
 }
 
-// Compute and apply crowd repulsion from the density grid to vel.
-// Samples a 5x5 cell window (cross-cell) + same-cell offset pass.
-// wallAwayX/Y is the accumulated wall-repulsion normal from the wall pass;
-// any crowd-repulsion component that pushes toward a nearby wall is stripped.
-static void applyCrowdRepulsion(const FlowField& ff, const Transform& transform, Velocity& vel,
-                                float origSpeed, float velNormX, float velNormY,
-                                float separation_strength, float wallAwayX, float wallAwayY)
+// Inputs to the per-entity steering pass. Bundles the entity's
+// motion state (velocity-normalized direction, original speed) and
+// the steering tunables that the wall + crowd helpers both read.
+struct SteeringContext
+{
+    Vec2 vel_norm; // unit vector along current velocity
+    float orig_speed = 0.0f;
+    float repulsion_radius = 0.0f;
+    float skip_dot_threshold = 0.0f;
+    float separation_strength = 0.0f;
+};
+
+// Closed-form AABB obstacle: center + half-extents.
+struct ObstacleAabb
+{
+    Vec2 center;
+    Vec2 half_extents;
+};
+
+// Cross-cell density-grid pass: sample a 5x5 window around the
+// entity, accumulate repulsion away from occupied cells weighted by
+// density count.
+static Vec2 sampleCrowdGridRepulsion(const FlowField& ff, int ec, int er)
 {
     static constexpr int CROWD_SAMPLE_RADIUS = 2;
-
-    const int ec = static_cast<int>(transform.x / FlowField::CELL_SIZE);
-    const int er = static_cast<int>(transform.y / FlowField::CELL_SIZE);
-
-    float crX = 0.0f;
-    float crY = 0.0f;
-
-    // Cross-cell pass: sample neighbouring cells, repel away from occupied ones.
+    Vec2 cr{0.0f, 0.0f};
     for (int dr = -CROWD_SAMPLE_RADIUS; dr <= CROWD_SAMPLE_RADIUS; ++dr)
     {
         for (int dc = -CROWD_SAMPLE_RADIUS; dc <= CROWD_SAMPLE_RADIUS; ++dc)
@@ -91,89 +110,102 @@ static void applyCrowdRepulsion(const FlowField& ff, const Transform& transform,
             const float rDx = static_cast<float>(-dc);
             const float rDy = static_cast<float>(-dr);
             const float rLen = std::sqrt(rDx * rDx + rDy * rDy);
-            crX += (rDx / rLen) * static_cast<float>(count);
-            crY += (rDy / rLen) * static_cast<float>(count);
+            cr.x += (rDx / rLen) * static_cast<float>(count);
+            cr.y += (rDy / rLen) * static_cast<float>(count);
         }
     }
+    return cr;
+}
 
-    // Same-cell pass: push outward from cell center when density > 1.
-    applySameCellRepulsion(ff, ec, er, transform, velNormX, velNormY, crX, crY);
+// Strip any crowd-repulsion component pointing INTO the wall normal
+// `wallAway`, so crowd separation never pushes an entity toward a
+// wall it's already being deflected from. Returns the projected
+// direction (unit) or {0,0} if the projection collapses to zero.
+static Vec2 stripWallFacingComponent(Vec2 dir, Vec2 wallAway)
+{
+    const float wallLen = std::sqrt(wallAway.x * wallAway.x + wallAway.y * wallAway.y);
+    if (wallLen <= 0.0f)
+        return dir;
+    const float wnx = wallAway.x / wallLen;
+    const float wny = wallAway.y / wallLen;
+    const float dot = dir.x * wnx + dir.y * wny;
+    if (dot >= 0.0f)
+        return dir;
+    dir.x -= dot * wnx;
+    dir.y -= dot * wny;
+    const float pLen = std::sqrt(dir.x * dir.x + dir.y * dir.y);
+    if (pLen < 0.01f)
+        return {0.0f, 0.0f};
+    return {dir.x / pLen, dir.y / pLen};
+}
 
-    const float crMag = std::sqrt(crX * crX + crY * crY);
+// Compute and apply crowd repulsion from the density grid to vel.
+// Samples a 5x5 cell window (cross-cell) + same-cell offset pass.
+// `wallAway` is the accumulated wall-repulsion normal from the wall
+// pass; any component pushing toward that wall is stripped.
+static void applyCrowdRepulsion(const FlowField& ff, const Transform& transform, Velocity& vel,
+                                const SteeringContext& ctx, Vec2 wallAway)
+{
+    const int ec = static_cast<int>(transform.x / FlowField::CELL_SIZE);
+    const int er = static_cast<int>(transform.y / FlowField::CELL_SIZE);
+
+    Vec2 cr = sampleCrowdGridRepulsion(ff, ec, er);
+    applySameCellRepulsion(ff, ec, er, transform, ctx.vel_norm.x, ctx.vel_norm.y, cr.x, cr.y);
+
+    const float crMag = std::sqrt(cr.x * cr.x + cr.y * cr.y);
     if (crMag <= 0.0f)
         return;
+    const Vec2 dir = stripWallFacingComponent({cr.x / crMag, cr.y / crMag}, wallAway);
+    if (dir.x == 0.0f && dir.y == 0.0f)
+        return;
 
-    float dirX = crX / crMag;
-    float dirY = crY / crMag;
-
-    // Strip the wall-facing component so crowd repulsion never pushes toward
-    // a wall the entity is already being deflected from.
-    const float wallLen = std::sqrt(wallAwayX * wallAwayX + wallAwayY * wallAwayY);
-    if (wallLen > 0.0f)
-    {
-        const float wnx = wallAwayX / wallLen;
-        const float wny = wallAwayY / wallLen;
-        const float dot = dirX * wnx + dirY * wny;
-        if (dot < 0.0f)
-        {
-            dirX -= dot * wnx;
-            dirY -= dot * wny;
-            // Re-normalize after projection.
-            const float pLen = std::sqrt(dirX * dirX + dirY * dirY);
-            if (pLen < 0.01f)
-                return;
-            dirX /= pLen;
-            dirY /= pLen;
-        }
-    }
-
-    vel.dx += dirX * origSpeed * separation_strength;
-    vel.dy += dirY * origSpeed * separation_strength;
+    vel.dx += dir.x * ctx.orig_speed * ctx.separation_strength;
+    vel.dy += dir.y * ctx.orig_speed * ctx.separation_strength;
     // Cap at origSpeed -- crowd separation must not accelerate the entity.
     const float crNewMag = std::sqrt(vel.dx * vel.dx + vel.dy * vel.dy);
-    if (crNewMag > origSpeed)
+    if (crNewMag > ctx.orig_speed)
     {
-        vel.dx = (vel.dx / crNewMag) * origSpeed;
-        vel.dy = (vel.dy / crNewMag) * origSpeed;
+        vel.dx = (vel.dx / crNewMag) * ctx.orig_speed;
+        vel.dy = (vel.dy / crNewMag) * ctx.orig_speed;
     }
 }
 
 // Accumulate wall repulsion from a single AABB obstacle.
-// Computes closest point on the AABB to (ex, ey), checks distance against
-// repulsionRadius, and deflects perpendicular (slide) or pushes away depending
-// on whether the entity is heading toward the wall (velDot < skipDotThreshold).
-static void accumulateWallRepulsion(float ex, float ey, float obstCx, float obstCy, float obstHw,
-                                    float obstHh, float velNx, float velNy, float repulsionRadius,
-                                    float skipDotThreshold, float& repX, float& repY)
+// Computes closest point on the AABB to the entity, checks distance
+// against ctx.repulsion_radius, and deflects perpendicular (slide) or
+// pushes away depending on whether the entity is heading toward the
+// wall (velDot < ctx.skip_dot_threshold).
+static void accumulateWallRepulsion(Vec2 entityPos, const ObstacleAabb& obstacle,
+                                    const SteeringContext& ctx, Vec2& rep)
 {
-    const float cpx = std::clamp(ex, obstCx - obstHw, obstCx + obstHw);
-    const float cpy = std::clamp(ey, obstCy - obstHh, obstCy + obstHh);
+    const float cpx = std::clamp(entityPos.x, obstacle.center.x - obstacle.half_extents.x,
+                                 obstacle.center.x + obstacle.half_extents.x);
+    const float cpy = std::clamp(entityPos.y, obstacle.center.y - obstacle.half_extents.y,
+                                 obstacle.center.y + obstacle.half_extents.y);
 
-    const float dx = ex - cpx;
-    const float dy = ey - cpy;
+    const float dx = entityPos.x - cpx;
+    const float dy = entityPos.y - cpy;
     const float dist = std::sqrt(dx * dx + dy * dy);
 
-    if (dist <= 0.0f || dist >= repulsionRadius)
+    if (dist <= 0.0f || dist >= ctx.repulsion_radius)
         return;
 
     const float repDirX = dx / dist;
     const float repDirY = dy / dist;
 
-    const float velDotRep = velNx * repDirX + velNy * repDirY;
-    const float weight = (repulsionRadius - dist) / repulsionRadius;
+    const float velDotRep = ctx.vel_norm.x * repDirX + ctx.vel_norm.y * repDirY;
+    const float weight = (ctx.repulsion_radius - dist) / ctx.repulsion_radius;
 
-    if (velDotRep < skipDotThreshold)
+    if (velDotRep < ctx.skip_dot_threshold)
     {
-        const float cross = velNx * repDirY - velNy * repDirX;
-        const float perpX = cross >= 0.0f ? -repDirY : repDirY;
-        const float perpY = cross >= 0.0f ? repDirX : -repDirX;
-        repX += perpX * weight;
-        repY += perpY * weight;
+        const float cross = ctx.vel_norm.x * repDirY - ctx.vel_norm.y * repDirX;
+        rep.x += (cross >= 0.0f ? -repDirY : repDirY) * weight;
+        rep.y += (cross >= 0.0f ? repDirX : -repDirX) * weight;
     }
     else
     {
-        repX += repDirX * weight;
-        repY += repDirY * weight;
+        rep.x += repDirX * weight;
+        rep.y += repDirY * weight;
     }
 }
 
@@ -208,20 +240,23 @@ void SteeringSystem::update(EntityManager& em, double dt)
             continue;
         }
 
-        const float velNormX = vel.dx / origSpeed;
-        const float velNormY = vel.dy / origSpeed;
+        SteeringContext ctx;
+        ctx.vel_norm = {vel.dx / origSpeed, vel.dy / origSpeed};
+        ctx.orig_speed = origSpeed;
+        ctx.repulsion_radius = cfg.repulsion_radius;
+        ctx.skip_dot_threshold = cfg.skip_dot_threshold;
+        ctx.separation_strength = nav.separation_strength * nav.arrival_scale;
+        const Vec2 entityPos{transform.x, transform.y};
 
         // --- Wall repulsion ------------------------------------------------
-        float repX = 0.0f;
-        float repY = 0.0f;
+        Vec2 rep{0.0f, 0.0f};
 
         for (auto se : statics)
         {
             const auto& st = allColliders.get<Transform>(se);
             const auto& sc = allColliders.get<Collider>(se);
-            accumulateWallRepulsion(transform.x, transform.y, st.x, st.y, sc.width * 0.5f,
-                                    sc.height * 0.5f, velNormX, velNormY, cfg.repulsion_radius,
-                                    cfg.skip_dot_threshold, repX, repY);
+            const ObstacleAabb obstacle{{st.x, st.y}, {sc.width * 0.5f, sc.height * 0.5f}};
+            accumulateWallRepulsion(entityPos, obstacle, ctx, rep);
         }
 
         // Tile-map wall repulsion: check nearby tiles for non-walkable cells.
@@ -244,30 +279,24 @@ void SteeringSystem::update(EntityManager& em, double dt)
                 {
                     if (!em.tile_map.in_bounds(tc, tr) || em.tile_map.at(tc, tr).walkable)
                         continue;
-
-                    const float tileCX = static_cast<float>(tc) * ts + tileHalf;
-                    const float tileCY = static_cast<float>(tr) * ts + tileHalf;
-                    accumulateWallRepulsion(transform.x, transform.y, tileCX, tileCY, tileHalf,
-                                            tileHalf, velNormX, velNormY, cfg.repulsion_radius,
-                                            cfg.skip_dot_threshold, repX, repY);
+                    const ObstacleAabb tileObstacle{{static_cast<float>(tc) * ts + tileHalf,
+                                                     static_cast<float>(tr) * ts + tileHalf},
+                                                    {tileHalf, tileHalf}};
+                    accumulateWallRepulsion(entityPos, tileObstacle, ctx, rep);
                 }
             }
         }
 
         // --- Compute raw steering force (wall + crowd) ---------------------
-        float rawSteerX = repX * cfg.repulsion_strength;
-        float rawSteerY = repY * cfg.repulsion_strength;
+        float rawSteerX = rep.x * cfg.repulsion_strength;
+        float rawSteerY = rep.y * cfg.repulsion_strength;
 
         // Crowd repulsion: compute into a temporary velocity, extract the
         // delta as the crowd steering contribution.
-        const float effectiveSeparation = nav.separation_strength * nav.arrival_scale;
-        if (effectiveSeparation > 0.0f)
+        if (ctx.separation_strength > 0.0f)
         {
-            const float crowdVx = vel.dx;
-            const float crowdVy = vel.dy;
-            Velocity crowdVel{crowdVx, crowdVy};
-            applyCrowdRepulsion(em.flow_field, transform, crowdVel, origSpeed, velNormX, velNormY,
-                                effectiveSeparation, repX, repY);
+            Velocity crowdVel{vel.dx, vel.dy};
+            applyCrowdRepulsion(em.flow_field, transform, crowdVel, ctx, rep);
             rawSteerX += (crowdVel.dx - vel.dx) / origSpeed;
             rawSteerY += (crowdVel.dy - vel.dy) / origSpeed;
         }

@@ -6,12 +6,13 @@
 #include "ecs/GameConfig.h"
 #include "systems/CombatSystem.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <limits>
-#include <tracy/Tracy.hpp>
 
 // Format a Tracy message with entity ID context.
 // Buffer is static per-call -- safe because Tracy copies immediately.

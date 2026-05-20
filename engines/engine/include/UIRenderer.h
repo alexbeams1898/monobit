@@ -30,6 +30,16 @@ struct TextSize
     float height = 0.0f;
 };
 
+// Screen-space axis-aligned rectangle. Used for both destination
+// rects (pixel coords) and UV rects (0..1 texture-atlas coords).
+struct Rect
+{
+    float x = 0.0f;
+    float y = 0.0f;
+    float w = 0.0f;
+    float h = 0.0f;
+};
+
 class UIRenderer
 {
   public:
@@ -49,9 +59,10 @@ class UIRenderer
     // Solid colored rectangle.
     static void drawRect(float x, float y, float w, float h, const Color& color);
 
-    // Textured rectangle with optional tint.
-    static void drawTexturedRect(float x, float y, float w, float h, uint32_t tex_id, float u0,
-                                 float v0, float u1, float v1, const Color& tint = {});
+    // Textured rectangle with optional tint. `uv` defaults to the
+    // full texture (0,0,1,1).
+    static void drawTexturedRect(const Rect& dst, uint32_t tex_id,
+                                 const Rect& uv = {0.0f, 0.0f, 1.0f, 1.0f}, const Color& tint = {});
 
     // Render a text string. Returns the advance width.
     static float drawText(FontHandle font, const std::string& text, float x, float y,

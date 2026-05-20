@@ -1,13 +1,15 @@
 #include "SaveManager.h"
 
+#include <nlohmann/json.hpp>
+
 #include <SDL.h>
+
 #include <algorithm>
 #include <cmath>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <nlohmann/json.hpp>
 
 using json = nlohmann::json;
 

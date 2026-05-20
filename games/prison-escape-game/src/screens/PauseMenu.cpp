@@ -12,12 +12,14 @@
 #include "systems/CombatSystem.h"
 #include "systems/NotificationSystem.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <SDL.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <string>
-#include <tracy/Tracy.hpp>
 #include <vector>
 
 using screen_input::hoveredRow;
@@ -251,13 +253,12 @@ static void renderStatusTab(EntityManager& em, float cx, float cy, float cw, flo
                 const float frame_h = static_cast<float>(sprite.src_h) * PORTRAIT_SCALE;
                 const float px = cx + (cw - frame_w) * 0.5f;
                 const float py = cy + ch - frame_h - 8.0f;
-                const float u0 = static_cast<float>(sprite.src_x) / static_cast<float>(tw);
-                const float v0 = static_cast<float>(sprite.src_y) / static_cast<float>(th);
-                const float u1 =
-                    static_cast<float>(sprite.src_x + sprite.src_w) / static_cast<float>(tw);
-                const float v1 =
-                    static_cast<float>(sprite.src_y + sprite.src_h) / static_cast<float>(th);
-                UIRenderer::drawTexturedRect(px, py, frame_w, frame_h, tex_id, u0, v0, u1, v1);
+                const float uv_x = static_cast<float>(sprite.src_x) / static_cast<float>(tw);
+                const float uv_y = static_cast<float>(sprite.src_y) / static_cast<float>(th);
+                const float uv_w = static_cast<float>(sprite.src_w) / static_cast<float>(tw);
+                const float uv_h = static_cast<float>(sprite.src_h) / static_cast<float>(th);
+                UIRenderer::drawTexturedRect(Rect{px, py, frame_w, frame_h}, tex_id,
+                                             Rect{uv_x, uv_y, uv_w, uv_h});
             }
         }
     }

@@ -6,8 +6,9 @@
 #include "systems/AudioSystem.h"
 #include "systems/ParticleSystem.h"
 
-#include <cmath>
 #include <tracy/Tracy.hpp>
+
+#include <cmath>
 
 // Resolve per-entity HP base from Body component, falling back to the global hp.base.
 static int resolveBaseHP(entt::registry& reg, entt::entity entity, const FormulaConfig& f)

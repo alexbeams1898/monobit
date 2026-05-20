@@ -9,9 +9,11 @@
 #include "screens/ScreenColors.h"
 #include "screens/ScreenInput.h"
 
-#include <SDL.h>
-#include <string>
 #include <tracy/Tracy.hpp>
+
+#include <SDL.h>
+
+#include <string>
 
 using screen_input::keyPressed;
 using screen_input::mouseClicked;
@@ -51,7 +53,7 @@ static float drawMouseIcon(const std::string& path, float x, float y, float icon
         return 0.0f;
     const float scale = iconH / static_cast<float>(th);
     const float iconW = static_cast<float>(tw) * scale;
-    UIRenderer::drawTexturedRect(x, y, iconW, iconH, tex, 0.0f, 0.0f, 1.0f, 1.0f);
+    UIRenderer::drawTexturedRect(Rect{x, y, iconW, iconH}, tex);
     return iconW;
 }
 

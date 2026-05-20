@@ -17,9 +17,18 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt);
 void gamePerFrame(Engine& engine, EntityManager& em, double dt);
 
 // Pre-render callback. Runs after the tick loop with final render_alpha.
-// Updates positions that must match render interpolation (e.g. crosshair on
-// lock-on target).
+// Advances sprite animations at wall-clock rate, updates positions that
+// must match render interpolation (e.g. crosshair on lock-on target).
 void gamePreRender(Engine& engine, EntityManager& em);
+
+// World render callback. Called once per frame between framebuffer clear
+// and the UI pass. Draws the tilemap and all sprite entities for this 2D
+// game. camX/camY are the engine-interpolated camera position.
+void gameRenderWorld(Engine& engine, EntityManager& em, float camX, float camY, float alpha);
+
+// Window resize callback. Resizes the game's render targets (offscreen FBOs,
+// etc.) when the engine reports a new window size.
+void gameOnResize(Engine& engine, int new_w, int new_h);
 
 // Debug render callback. Called once per frame between UIRenderer::beginFrame()
 // and the UI render callback. DebugDraw::setCamera() is already configured.

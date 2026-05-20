@@ -6,6 +6,7 @@
 #include "systems/AudioSystem.h"
 
 #include <SDL.h>
+
 #include <algorithm>
 
 using screen_input::keyPressed;

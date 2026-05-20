@@ -6,8 +6,9 @@
 #include "ops/InventoryOps.h"
 #include "systems/NotificationSystem.h"
 
-#include <cmath>
 #include <tracy/Tracy.hpp>
+
+#include <cmath>
 
 namespace
 {

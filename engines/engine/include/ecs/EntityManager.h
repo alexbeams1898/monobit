@@ -2,9 +2,10 @@
 
 #include "TileMap.h"
 
-#include <entt/entt.hpp>
 #include <string>
 #include <vector>
+
+#include <entt/entt.hpp>
 
 // ---------------------------------------------------------------------------
 // ENGINE DATA -- generic infrastructure used by the engine's own systems.
@@ -133,7 +134,8 @@ class EntityManager
     bool lmb_consumed = false;
     bool rmb_consumed = false;
 
-    // Tile map -- generated at startup by TileMapLoader::generate().
+    // Tile map -- populated by game-side world generation if the game uses a
+    // 2D tile world; left empty otherwise (3D games leave both fields default).
     TileMap tile_map;
     TileConfig tile_config;
 

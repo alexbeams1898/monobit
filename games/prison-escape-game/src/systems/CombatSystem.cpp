@@ -7,10 +7,11 @@
 #include "ops/InventoryOps.h"
 #include "systems/AudioSystem.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <cmath>
 #include <limits>
 #include <random>
-#include <tracy/Tracy.hpp>
 
 // ---------------------------------------------------------------------------
 // Combat formula helpers — pure functions; read FormulaConfig, no side effects.

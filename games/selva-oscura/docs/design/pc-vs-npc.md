@@ -71,18 +71,20 @@ type:
 - **Combat.** Damage, fire_rate, HP. No PC-only stat, no NPC-only
   stat. The triad (HP / fire_rate / damage) governs both.
 - **Sangue payout on death.** The Vagrant's wallet sangue returns to
-  Hell on his death (per *Senza Forma* — Hell reclaims its substance).
+  Hell on his death (Hell reclaims its substance from any dead body).
   Shades and keepers, when killed, deposit sangue into the Vagrant's
   wallet. Same mechanic, different direction.
 - **Sprite rendering.** Same draw loop. Same sprite system. Same
   bitmap-based animation.
 - **Position / movement.** Same world-coordinate system, same
   collision detection.
-- **Second death (cosmologically).** Per *Senza Forma*: the Vagrant
-  cannot *receive* second death (no imprint). Shades and keepers can
-  and do receive it (every kill the Vagrant grants is the soul's
-  resolution). The mechanic of *being killed* is the same; the
-  cosmological outcome differs because of imprint state.
+- **Second death (cosmologically).** Hell's killing-protocol fires
+  on whoever it strikes. For shades and keepers, it completes — the
+  imprint is finished and the soul resolved (every kill the Vagrant
+  grants). For the Vagrant, it cannot complete — no imprint to finish,
+  so he dies and his soul is ejected to the Wood. The mechanic of
+  *being killed* is the same; the cosmological outcome differs because
+  of imprint state. See setting.md *The unjudged*.
 
 ## The Guide as companion edge case
 
@@ -134,8 +136,8 @@ She is not state-aware in the NPC sense.
 - [Classes](classes.md) — class is a stat profile; same triad applies
   to enemies and bosses.
 - [Companions](companions.md) — the Guide as edge case.
-- [Setting](setting.md) — *Senza Forma* (asymmetric second-death
-  receivability), *NPCs* (lucid window mechanic), *Per-circle
+- [Setting](setting.md) — *The unjudged* (asymmetric second-death
+  completion), *NPCs* (lucid window mechanic), *Per-circle
   reactivity* (contrapasso leak distribution).
 - [Fallback](fallback.md) — death = run-end (player-controlled
   entity only).

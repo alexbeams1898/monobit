@@ -12,8 +12,8 @@ satisfy.
 
 - **The Seal opens the imprint.** Using the Seal is Hell's first
   formal measurement. From that moment, the class-picker has an
-  imprint Hell can grip. Contrapasso can land on him. Senza forma is
-  lost.
+  imprint Hell can grip. Contrapasso can land on him. The imprint-
+  free state is lost.
 - **Class evolution combines stat investment + contrapasso accretion.**
   Stat investment (sangue at OFFERINGS) is the *active* path the
   player chooses. Contrapasso accretion is the *passive* path the
@@ -27,7 +27,7 @@ satisfy.
   game — class evolution is grooming-for-Satan-2 expressed
   mechanically.
 - **The unburdened never receives contrapasso.** Substance flows
-  through (he retains senza forma). The unburdened evolution is
+  through (he remains imprint-free). The unburdened evolution is
   *subtractive* — Unburdened → Svuotato → Diaphanous, the cumulative
   state of substance refusing to settle. See setting.md *The Vagrant /
   The unburdened path (PURITY)* for the locked evolution stages.
@@ -107,7 +107,7 @@ determining where in the triad growth lands.
 
 ## Cross-references
 
-- [Setting](setting.md) — *Senza Forma*, *The Vagrant*, *Per-circle
+- [Setting](setting.md) — *The unjudged*, *The Vagrant*, *Per-circle
   reactivity* (contrapasso doctrine), *Endings* (TRANSFIGURATION /
   SURFEIT / REFUSAL trigger conditions).
 - [Story](story.md) — narrative arc, R2 (the reveal that class

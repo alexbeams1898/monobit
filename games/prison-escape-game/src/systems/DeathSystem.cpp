@@ -5,10 +5,11 @@
 #include "ecs/GameConfig.h"
 #include "systems/WeaponXPSystem.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <algorithm>
 #include <cmath>
 #include <random>
-#include <tracy/Tracy.hpp>
 #include <vector>
 
 // XP = base * level_scale * level_mult * essence_mult

@@ -5,6 +5,7 @@
 #include "screens/ScreenInput.h"
 
 #include <SDL.h>
+
 #include <algorithm>
 #include <cmath>
 
