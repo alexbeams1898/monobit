@@ -252,7 +252,11 @@ day-night, no weather, no aging.
 The Wood is the exception. The selva oscura is *always nearly-but-
 not-quite morning*. The lit hill (*il dilettoso monte* of *Inferno*
 I) is visible in the distance; dawn is on the verge of breaking; the
-Vagrant cannot reach the hill, and the dawn never finishes.
+dawn never finishes. The Vagrant *can* reach the hill (after the
+three beasts fall in the opening — per [`wood.md`](wood.md) *The
+three beasts*), but reaching it does not bring the dawn; it brings
+him to the crypt-mouth at the plateau's far end. The light remains
+suspended above and the descent waits below.
 
 ### Cycle structure
 
@@ -409,13 +413,29 @@ into the circle layouts as level-design seeds.
 
 - **The Dark Wood / Selva Oscura** — the player's hub (locked; see
   [`wood.md`](wood.md)).
-- **The Hill / il dilettoso monte** — the sunlit mountain, visible
-  from the Wood, unreachable. Backdrop, not playable.
-- **The Gate of Hell** — *"Abandon all hope, ye who enter here."*
-  Threshold-crossing moment / cutscene.
+- **The Hill / il dilettoso monte** — the sunlit mountain at the
+  edge of the Wood. **Playable**, reached after the Vagrant defeats
+  the three beasts in the opening sequence. The Vagrant ascends to
+  its summit each cycle on the way to the descent. The Vagrant is
+  the first unjudged in centuries to stand on its plateau (see
+  [`wood.md`](wood.md) *The three beasts*).
+- **The Plateau** — the hill's summit surface, walkable. Modest in
+  scale. Beatrice's threshold-light is strongest here. Far end
+  holds the crypt-mouth.
+- **The crypt at the dilettoso monte — the Gate of Hell.** Stone
+  crypt-mouth at the far end of the plateau, descending into the
+  hill. Inscribed lintel (*"Lasciate ogne speranza, voi
+  ch'intrate"*, Inferno III). The interior tunnels downward into
+  unlit rock; cold air drifts up from the dark. Two registers, one
+  place: formally called **the Gate of Hell**; experientially
+  encountered as a **crypt**. The cosmological reading: *the
+  upward way (toward the lit hill) and the downward way (into
+  Hell) point the same direction*. Full architectural register at
+  [`wood.md`](wood.md) *The crypt at the dilettoso monte*.
 - **The Vestibule / Ante-Hell** — for the *neutrals* (those who
   chose neither good nor evil per canto III). TBD whether playable
-  zone or atmospheric pass-through.
+  zone or atmospheric pass-through. Sits between the crypt's
+  descent and Charon's Acheron in canon.
 
 **Circle 1 — Limbo:**
 

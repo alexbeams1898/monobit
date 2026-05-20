@@ -142,38 +142,119 @@ freedom for everything beyond the structural bones.
   before the climb.
 - **The colle proper.** A rise above the Wood floor. Visible from
   the foot, climbed deliberately. Top is where Beatrice's light is
-  strongest. Players-who-cannot-climb-the-colle-yet experience the
-  *Inferno* fate (driven back by the beasts, or by their own
-  unjudged state); players who CAN approach the colle find the
-  **descent point** there.
-- **Descent point.** At/near the top of the colle (per Dante: the
-  *colle* is what stands between the wood and "the rays of the
-  planet"). In Selva, cosmologically inverted: the upward way is
-  closed to the unjudged (the saved-world's light is unreachable);
-  the *descent into Hell* lives on the colle as the only way the
-  unjudged can move forward. Form TBD (well/cleft/stair/threshold).
+  strongest. **The Vagrant *can* reach the colle's summit** — the
+  canonical Dante-Vagrant could not (driven back by the beasts at
+  the foot per canto I), but Selva's Vagrant defeats the beasts in
+  the opening sequence (per story.md *Beat 2 — The beasts*) and
+  the path up opens. He is the first unjudged in centuries to
+  stand on the *dilettoso monte*.
+- **The plateau.** The summit's top surface — walkable, modest in
+  scale (not a vast cinematic vista; a small flat space where the
+  hill stops rising). Beatrice's light is strongest here. Far end
+  of the plateau holds the descent.
+- **The descent point — the crypt at the dilettoso monte.** At the
+  far end of the plateau (away from the Wood, toward the lit edge)
+  sits a **stone crypt-mouth** descending into the hill. Register:
+  understated mausoleum architecture, not triumphal monument. A
+  stepped descent framed by stone walls, an inscribed lintel above
+  the threshold (canonical: *"Lasciate ogne speranza, voi
+  ch'intrate"* — Inferno III). The interior tunnels downward into
+  unlit rock. **Cold air comes out of it, always.**
+
+  The cosmological reading: **the upward way (toward the lit hill)
+  and the downward way (into Hell) point the same direction**. The
+  Vagrant walks *toward* Beatrice's light to reach the threshold
+  that descends into damnation. Grace's pull and the descent's
+  threshold are aligned. (See *The crypt at the dilettoso monte*
+  below for the full architectural register.)
 - **Inner Wood radius.** ~30m for the wake-zone proper. The colle
   sits at or just beyond this radius (its base inside ~30m, its
   rise extending another ~10-15m outward).
 
 ### The three beasts (lonza, leone, lupa)
 
-Canonical, instantly recognizable, but currently **deferred** as a
-mechanic. Dante's beasts are *forces that turn one back*, not
-opponents in the gameplay sense. Their cosmological role in our
-setting (the unjudged Vagrant) is unclear — they exist to block the
-*ascent*, and our Vagrant cannot ascend anyway.
+Canonical, in the opening sequence (per story.md *Beat 2 — The
+beasts*). Dante's beasts are *forces that turn one back* at the
+foot of the colle — they exist to block the *ascent*. In Selva's
+failing cosmos, **the Vagrant defeats them**. This is itself a
+cosmological event: he is the first unjudged in centuries to break
+through the canonical obstacle. Beatrice's placement of him is
+what makes this possible — his unjudged status is what the beasts'
+canonical function does not have a protocol for.
 
-Working options when they ship:
-- Skip them entirely (the unjudged is invisible to them; this
-  resolves the cosmological tension)
-- Present them as atmospheric glimpses only — silhouettes seen
-  through the trees on the colle's slope, never directly fought
-- Reintroduce them late-game when the Vagrant's cosmological status
-  has shifted (he has consumed enough of Hell to become *partly*
-  judged again; now the beasts can perceive him)
+After they fall, the path *up* opens. The colle is no longer
+unreachable; the Vagrant ascends to the plateau. This is the
+opening sequence's terminus — the moment Selva's geography stops
+mirroring Dante's canto I and starts being its own.
 
-TBD when the late-game cosmology hardens.
+Once felled in the opening, the beasts do not respawn for this
+save. Subsequent cycles ascend the colle freely. The beasts are
+*one-time canonical-obstacle clearance*, not a per-cycle gate.
+
+### The crypt at the dilettoso monte
+
+At the far end of the plateau, away from the Wood, toward the
+brightest edge of Beatrice's threshold-light — **a stone
+crypt-mouth descends into the hill**. This is the **Gate of Hell**
+in Selva's geography: not a triumphal arch, not a monumental
+portal, but a *crypt* in the European medieval register. A vault.
+A mausoleum stair. The kind of thing one would find at the back
+of a cathedral churchyard or under a noble's chapel.
+
+**Architecture.** Stone slab walls framing a descending stair.
+Stepped descent. An inscribed lintel above the threshold —
+canonical: *"Lasciate ogne speranza, voi ch'intrate"* (Inferno
+III). The interior tunnels downward into unlit rock; the steps
+drop into dark within a few meters of the entrance. The form is
+**ancient, modest, terrible** — it predates the hill it sits in
+(impossibly), and it predates Hell as the player has ever known it
+(cosmologically).
+
+**Cold air comes out of it, always.** Even at v1, a small visual
+cue — slight fog drifting up, a particle wisp rising from the dark
+— communicates the physical reality of the threshold. The
+temperature drop is the cosmology in the player's senses.
+
+**The light catches the upper edge.** Beatrice's threshold-light
+brightens toward the plateau and falls on the inscription, the
+lintel, the top of the crypt's masonry. The interior of the
+descent is *unlit*. The visual reads: **grace illuminates the
+threshold of damnation**. The light does not enter the descent; it
+only marks where the descent begins.
+
+**The cosmological reading: the upward way and the downward way
+point the same direction.** The Vagrant walks *toward the lit
+hill* to reach the threshold that descends into damnation. The
+canonical Dantean reading (light = salvation, descent = damnation)
+is preserved in spatial form, but **the Vagrant must walk toward
+the light to reach the descent**. Beatrice's pull and Hell's
+threshold are aligned. This is the central irony of the game made
+architectural.
+
+**Two registers, one place.** The Grimoire and the inscription
+call it the **Gate of Hell**. The Vagrant, traversing it, encounters
+it as a *crypt*. Both names are correct; the friction between them
+is the world's register-friction-engine (per setting.md *Naming
+convention*) made spatial.
+
+**The Guide at the crypt.** The Guide does not ascend with the
+Vagrant. He stays in the Wood (lower-altitude, Beatrice's
+construction of his isolation keeps him there). The Vagrant
+ascends to the plateau *alone* every cycle. The Guide watches from
+below; the ascent and the descent are the Vagrant's solitary
+acts. (This will hold until keeper 8 falls and Beatrice routes the
+Guide to Cocytus — per setting.md *Per-circle reactivity /
+Treachery (Circle 9)*. From that moment on, the Wood is empty and
+the crypt-descent leads to a Hell where the Guide already waits.)
+
+**Build order:**
+- *v1:* placeholder-quality stone crypt-mouth on the plateau, the
+  inscription rendered as plain text, the descending stairs
+  walkable into a placeholder transition (Hell-side content TBD).
+  Visible silhouette, walkable. Player can ascend to it, read the
+  inscription, descend (or turn around).
+- *v2+:* polish iteratively. Better material, better inscription
+  typography, lighting, weathering, cold-air particle effects.
 
 ### Authoring rules for the inner Wood
 
