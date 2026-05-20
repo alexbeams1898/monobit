@@ -233,18 +233,17 @@ void uploadMesh(const CpuMesh& cpu, float cx_shift, float cz_shift, float base_y
         min_y_post = std::min(min_y_post, v.position[1]);
         max_y_post = std::max(max_y_post, v.position[1]);
     }
-    // Per-mesh diagnostic: post-shift model-space bounds. Trunk and
-    // canopy should overlap closely in X/Z; large XZ offset between
-    // them means the source centroids diverged and the branches mesh
-    // is drawing offset from the trunk in-world.
-    std::fprintf(stderr,
-                 "[trees:upload] node=%s post-shift x=[%.2f..%.2f] z=[%.2f..%.2f] y=[%.2f..%.2f] "
-                 "(source centroid=(%.2f,%.2f), shift=(%.2f,%.2f), base_y=%.2f)\n",
-                 cpu.node_name.c_str(), min_x, max_x, min_z, max_z, min_y_post, max_y_post,
-                 cpu.centroid_x, cpu.centroid_z, cx_shift, cz_shift, base_y);
     out.height = cpu.max_y - cpu.min_y;
     out.trunk_radius = max_xz;
     out.index_count = static_cast<int>(cpu.indices.size());
+    out.vertex_count = static_cast<int>(verts.size());
+    out.aabb_min[0] = min_x;
+    out.aabb_min[1] = min_y_post;
+    out.aabb_min[2] = min_z;
+    out.aabb_max[0] = max_x;
+    out.aabb_max[1] = max_y_post;
+    out.aabb_max[2] = max_z;
+    out.source_node_name = cpu.node_name;
 
     GLuint vao = 0;
     GLuint vbo = 0;
@@ -413,23 +412,32 @@ static void buildHeroVariantsFromMeshes(const std::vector<CpuMesh>& trunks,
         const float cx = trunk.centroid_x;
         const float cz = trunk.centroid_z;
         const std::string variant_name = canonicalHeroVariantName(trunk.family);
+        variant.variant_name = variant_name;
         const float root_depth = lookupRootDepth(variant_name);
+        // Both meshes shift by the SAME base. The trunk mesh and the
+        // branches mesh have a fixed authored vertical relationship
+        // in source (branches envelope the trunk's lateral wood),
+        // and shifting them differently would tear that apart.
         const float base = trunk.min_y + root_depth;
         std::fprintf(stderr, "[trees] variant '%s' root_depth=%.2f\n", variant_name.c_str(),
                      root_depth);
         uploadMesh(trunk, cx, cz, base, variant.trunk);
         uploadMesh(canopy, cx, cz, base, variant.branches);
         variant.trunk.alpha_cutoff = 0.0f;
+        // Standard alpha cutoff matches the glTF material's authored
+        // intent for foliage cards. Now that textures load with the
+        // correct UV orientation (stbi flip off), 0.5 gives a clean
+        // leaf-card silhouette.
         variant.branches.alpha_cutoff = 0.5f;
         variant.trunk.base_color_tex = selva::render::loadTexture2D(
             std::string(kAssetDir) + "textures/Tree_Trunk_" + trunk.family + "_baseColor.png");
         variant.branches.base_color_tex = selva::render::loadTexture2D(
             std::string(kAssetDir) + "textures/Tree_Branches_" + trunk.family + "_baseColor.png");
         std::fprintf(stderr,
-                     "[trees] [variant %zu] paired trunk family=%s height=%.2f "
-                     "with branches (centroid distance=%.2f)\n",
-                     sVariants.size(), trunk.family.c_str(), variant.trunk.height,
-                     std::sqrt(best_d2));
+                     "[trees] [variant %zu] '%s' paired trunk_node=%s height=%.2f "
+                     "with branches_node=%s (centroid distance=%.2f)\n",
+                     sVariants.size(), variant_name.c_str(), trunk.node_name.c_str(),
+                     variant.trunk.height, canopy.node_name.c_str(), std::sqrt(best_d2));
         sVariants.push_back(variant);
     }
 }
@@ -443,12 +451,15 @@ static void buildRockVariantsFromMeshes(const std::vector<CpuMesh>& rocks)
         const float cx = r.centroid_x;
         const float cz = r.centroid_z;
         const float base = r.min_y;
+        char name_buf[16];
+        std::snprintf(name_buf, sizeof(name_buf), "rock_%02d", ri);
+        variant.variant_name = name_buf;
         uploadMesh(r, cx, cz, base, variant.trunk);
         variant.trunk.alpha_cutoff = 0.0f;
         variant.trunk.base_color_tex =
             selva::render::loadTexture2D(std::string(kAssetDir) + "textures/Rocks_baseColor.png");
-        std::fprintf(stderr, "[trees] [variant %zu] rock_%02d height=%.2f node=%s\n",
-                     sVariants.size(), ri, variant.trunk.height, r.node_name.c_str());
+        std::fprintf(stderr, "[trees] [variant %zu] '%s' height=%.2f node=%s\n", sVariants.size(),
+                     name_buf, variant.trunk.height, r.node_name.c_str());
         sVariants.push_back(variant);
     }
 }

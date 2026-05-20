@@ -156,8 +156,14 @@ void renderTrees()
 
     // Translucent canopies need alpha test (already in the shader)
     // and back-face NOT culled (foliage planes are double-sided in
-    // the source mesh).
+    // the source mesh). Alpha-to-coverage gives smooth foliage edges
+    // by converting alpha into per-sample MSAA coverage — kills the
+    // hard-alpha-test gaps between leaf cards that read as "stray
+    // bare sticks" between clusters of foliage. Honors the glTF
+    // material's BLEND alpha mode without needing back-to-front
+    // sort.
     glDisable(GL_CULL_FACE);
+    glEnable(GL_SAMPLE_ALPHA_TO_COVERAGE);
 
     // Variant layout: indices 0..kTreeVariantEnd are hero trees,
     // indices [kTreeVariantEnd..variant_count) are rocks. Keep in
@@ -199,6 +205,7 @@ void renderTrees()
     // so they're ready for a future authored-placement pass.
     (void)rock_variants;
 
+    glDisable(GL_SAMPLE_ALPHA_TO_COVERAGE);
     glEnable(GL_CULL_FACE);
 }
 

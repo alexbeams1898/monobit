@@ -14,7 +14,13 @@ std::uint32_t loadTexture2D(const std::string& path)
     int w = 0;
     int h = 0;
     int channels = 0;
-    stbi_set_flip_vertically_on_load(1);
+    // glTF stores textures with origin top-left and UVs that match;
+    // OpenGL's default origin is bottom-left. We previously flipped
+    // on load, but that meant leaf-card geometry sampled wood-region
+    // alpha (and vice versa), making "stray sticks" appear in the
+    // branches mesh where leaves should be. Don't flip — instead let
+    // the shader / UVs handle it.
+    stbi_set_flip_vertically_on_load(0);
     unsigned char* data = stbi_load(path.c_str(), &w, &h, &channels, 4);
     if (data == nullptr)
     {

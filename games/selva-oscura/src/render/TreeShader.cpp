@@ -33,14 +33,19 @@ out vec2 vUV;
 
 void main()
 {
-    // Subtle breath-of-the-wood wind: vanishes at base, grows
-    // quadratically toward canopy. Two frequencies layered (slow
-    // lean + faster leaflet flutter) so it reads as living matter,
-    // not a sine wave. Per-instance phase offset is provided by the
-    // C++ side so the forest doesn't sway in unison.
+    // Subtle breath-of-the-wood wind: vanishes at base, grows with
+    // height toward canopy. Two frequencies layered (slow lean +
+    // faster leaflet flutter) so it reads as living matter, not a
+    // sine wave. Per-instance phase offset is provided by the C++
+    // side so the forest doesn't sway in unison.
+    //
+    // Height weight saturates at ~0.2 around h=18 (canopy top of the
+    // tallest variant) so the tip of even a tall tree sways no more
+    // than ~10cm. Without the cap, h*h grows quadratically and tall
+    // tree canopies swing visibly far from rest.
     vec3 localPos = aPos;
     float h = max(localPos.y, 0.0);
-    float heightWeight = h * h * 0.012;
+    float heightWeight = min(h * h * 0.0006, 0.2);
     float slow = sin(uTime * 0.55 + uWindPhase) * heightWeight;
     float fast = sin(uTime * 2.7 + uWindPhase * 1.7 + localPos.x * 0.8) * heightWeight * 0.35;
     localPos.x += slow * 0.45 + fast;

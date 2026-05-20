@@ -41,6 +41,7 @@
 #include "ui/ComboHud.h"
 #include "world/Collision.h"
 #include "world/Terrain.h"
+#include "world/TreeAssets.h"
 
 #include <imgui.h>
 #include <stb_image.h>
@@ -300,6 +301,39 @@ static const char* sActiveBlockLowerClip = nullptr;
 // NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy
 // 18 can't track inter-function dataflow.
 static bool sShowTuningPanel = false;
+
+// Tree preview mode: F2 enters an isolated render that draws a single
+// tree variant at origin against an empty backdrop. ImGui sliders
+// control variant pick, scale, yaw, show-trunk, show-branches, alpha
+// cutoff override, wind disable, wireframe — so visual bugs can be
+// isolated to one cause interactively. Camera orbits via mouse.
+struct TreePreviewState
+{
+    bool active = false;
+    int variant_idx = 1; // pine_b by default — biggest, most visible
+    float scale = 1.0f;
+    float yaw = 0.0f;
+    bool show_trunk = true;
+    bool show_branches = true;
+    float alpha_cutoff_branches = 0.5f;
+    bool wind_enabled = false;
+    bool wireframe = false;
+    float orbit_yaw = 0.0f;
+    float orbit_pitch = 0.2f;
+    float orbit_distance = 12.0f;
+    float orbit_height = 5.0f;
+};
+// NOLINTNEXTLINE(misc-const-correctness): mutated in tickTreePreviewToggle / renderTreePreview /
+// ImGui callbacks.
+static TreePreviewState sTreePreview;
+// NOLINTNEXTLINE(misc-const-correctness): edge-tracker for F2.
+static bool sPrevF2 = false;
+// Forward declarations of preview-mode helpers — definitions live
+// below near the other render-side helpers (drawActorMeshes etc.)
+// but selvaPerFrame needs to call the toggle + skip-tick gate.
+static void tickTreePreviewToggle(const Uint8* keys);
+static void renderTreePreview();
+
 // Combat debug toggle + log file owned by combat/CombatLog.{h,cpp}.
 // Aliases here keep the heavy call-site count (100+ combatLog uses)
 // readable without `selva::combat::` everywhere.
@@ -2646,6 +2680,12 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
 
     tickDevKillKey(keys);
     tickF1TuningPanelToggle(keys);
+    tickTreePreviewToggle(keys);
+    // Preview mode: world simulation suspended, render handled by
+    // renderTreePreview(). No need to tick combat, AI, locomotion,
+    // collision, etc.
+    if (sTreePreview.active)
+        return;
     // Lock-on input gated while dead — the corpse can't acquire/release
     // a target. Camera still ticks so the lock-on framing remains
     // coherent if the death happened mid-engagement.
@@ -2781,6 +2821,178 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     logStateNarrative();
 }
 
+// F2 toggle for the tree preview mode. While active, gameplay tick
+// + world render are bypassed; the screen shows a single tree at
+// origin orbited by the camera.
+static void tickTreePreviewToggle(const Uint8* keys)
+{
+    const bool f2Now = keys[SDL_SCANCODE_F2] != 0;
+    if (f2Now && !sPrevF2)
+    {
+        sTreePreview.active = !sTreePreview.active;
+        SDL_SetRelativeMouseMode(sTreePreview.active ? SDL_FALSE : SDL_TRUE);
+        SDL_GetRelativeMouseState(nullptr, nullptr);
+    }
+    sPrevF2 = f2Now;
+}
+
+// Build the preview's view-proj matrix from orbit yaw/pitch/distance
+// around origin at orbit_height.
+static glm::mat4 buildTreePreviewViewProj()
+{
+    const float cy = std::cos(sTreePreview.orbit_yaw);
+    const float sy = std::sin(sTreePreview.orbit_yaw);
+    const float cp = std::cos(sTreePreview.orbit_pitch);
+    const float sp = std::sin(sTreePreview.orbit_pitch);
+    const glm::vec3 lookAt(0.0f, sTreePreview.orbit_height, 0.0f);
+    const glm::vec3 camPos =
+        lookAt + glm::vec3(sy * cp * sTreePreview.orbit_distance, sp * sTreePreview.orbit_distance,
+                           cy * cp * sTreePreview.orbit_distance);
+    const glm::mat4 view = glm::lookAt(camPos, lookAt, glm::vec3(0.0f, 1.0f, 0.0f));
+    const float aspect = selva::render::windowHeight() > 0
+                             ? static_cast<float>(selva::render::windowWidth()) /
+                                   static_cast<float>(selva::render::windowHeight())
+                             : 1.0f;
+    const glm::mat4 proj = glm::perspective(glm::radians(60.0f), aspect, 0.1f, 200.0f);
+    return proj * view;
+}
+
+// Mouse-drag orbit: left-click + drag rotates camera, scroll zooms.
+static void tickTreePreviewOrbit()
+{
+    int mouse_x = 0;
+    int mouse_y = 0;
+    const Uint32 buttons = SDL_GetMouseState(&mouse_x, &mouse_y);
+    static int sLastMouseX = mouse_x;
+    static int sLastMouseY = mouse_y;
+    const bool lmb = (buttons & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
+    if (lmb && !ImGui::GetIO().WantCaptureMouse)
+    {
+        const int dx = mouse_x - sLastMouseX;
+        const int dy = mouse_y - sLastMouseY;
+        sTreePreview.orbit_yaw -= static_cast<float>(dx) * 0.01f;
+        sTreePreview.orbit_pitch =
+            std::clamp(sTreePreview.orbit_pitch + static_cast<float>(dy) * 0.01f, -1.4f, 1.4f);
+    }
+    sLastMouseX = mouse_x;
+    sLastMouseY = mouse_y;
+}
+
+// Draw the single preview tree at origin + the ImGui panel with
+// controls. Called from selvaRenderWorld when sTreePreview.active.
+static void renderTreePreview()
+{
+    tickTreePreviewOrbit();
+    const glm::mat4 viewProj = buildTreePreviewViewProj();
+    selva::render::setLastViewProj(viewProj);
+
+    // Clear so we render against a flat dark background, not whatever
+    // was last drawn.
+    glClearColor(0.10f, 0.10f, 0.12f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    if (sTreePreview.wireframe)
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+
+    constexpr glm::vec3 kSunDir(0.0f, 0.7f, -0.7f);
+    constexpr glm::vec3 kSunIntensity(11.0f, 9.5f, 7.0f);
+    constexpr float kExposure = 1.0f;
+    const float cy = std::cos(sTreePreview.orbit_yaw);
+    const float sy = std::sin(sTreePreview.orbit_yaw);
+    const float cp = std::cos(sTreePreview.orbit_pitch);
+    const float sp = std::sin(sTreePreview.orbit_pitch);
+    const glm::vec3 camPos(sy * cp * sTreePreview.orbit_distance,
+                           sTreePreview.orbit_height + sp * sTreePreview.orbit_distance,
+                           cy * cp * sTreePreview.orbit_distance);
+
+    selva::render::useTreeShader();
+    selva::render::setTreeViewProj(viewProj);
+    selva::render::setTreeAtmosphere(kSunDir, kSunIntensity, camPos, kExposure);
+    // Wind disabled by feeding time=0 (sin terms collapse to constants
+    // with the per-instance phase offset, giving a stable pose).
+    selva::render::setTreeTime(sTreePreview.wind_enabled ? selva::wallClock() : 0.0f);
+    selva::render::setTreeWindPhase(0.0f);
+
+    glm::mat4 model = glm::mat4(1.0f);
+    model = glm::rotate(model, sTreePreview.yaw, glm::vec3(0.0f, 1.0f, 0.0f));
+    model =
+        glm::scale(model, glm::vec3(sTreePreview.scale, sTreePreview.scale, sTreePreview.scale));
+    selva::render::setTreeModel(model);
+
+    glDisable(GL_CULL_FACE);
+    const int variant_count = selva::world::treeVariantCount();
+    if (variant_count > 0)
+    {
+        const int idx = std::clamp(sTreePreview.variant_idx, 0, variant_count - 1);
+        const selva::world::TreeVariant& v = selva::world::treeVariant(idx);
+        if (sTreePreview.show_trunk && v.trunk.vao != 0)
+        {
+            selva::render::setTreeBaseColor(v.trunk.base_color_tex);
+            selva::render::setTreeAlphaCutoff(v.trunk.alpha_cutoff);
+            glBindVertexArray(v.trunk.vao);
+            glDrawElements(GL_TRIANGLES, v.trunk.index_count, GL_UNSIGNED_INT, nullptr);
+        }
+        if (sTreePreview.show_branches && v.branches.vao != 0)
+        {
+            selva::render::setTreeBaseColor(v.branches.base_color_tex);
+            selva::render::setTreeAlphaCutoff(sTreePreview.alpha_cutoff_branches);
+            glBindVertexArray(v.branches.vao);
+            glDrawElements(GL_TRIANGLES, v.branches.index_count, GL_UNSIGNED_INT, nullptr);
+        }
+    }
+    glEnable(GL_CULL_FACE);
+    if (sTreePreview.wireframe)
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    glBindVertexArray(0);
+    glUseProgram(0);
+}
+
+// ImGui panel for the preview controls. Called from the ImGui pass
+// (selvaRenderImGui) when preview is active. Non-static so the
+// TuningPanel translation unit can forward-declare and call it.
+void renderTreePreviewControls()
+{
+    if (!sTreePreview.active)
+        return;
+    const int variant_count = selva::world::treeVariantCount();
+    ImGui::Begin("Tree Preview (F2 to toggle)", &sTreePreview.active);
+    ImGui::SliderInt("Variant", &sTreePreview.variant_idx, 0, std::max(0, variant_count - 1));
+    if (variant_count > 0)
+    {
+        const int idx = std::clamp(sTreePreview.variant_idx, 0, variant_count - 1);
+        const auto& v = selva::world::treeVariant(idx);
+        ImGui::Text("Name: %s", v.variant_name.c_str());
+        ImGui::Text("Trunk: vao=%u idx=%d verts=%d src=%s", v.trunk.vao, v.trunk.index_count,
+                    v.trunk.vertex_count, v.trunk.source_node_name.c_str());
+        ImGui::Text("       aabb x[%.2f..%.2f] y[%.2f..%.2f] z[%.2f..%.2f]", v.trunk.aabb_min[0],
+                    v.trunk.aabb_max[0], v.trunk.aabb_min[1], v.trunk.aabb_max[1],
+                    v.trunk.aabb_min[2], v.trunk.aabb_max[2]);
+        ImGui::Text("Branches: vao=%u idx=%d verts=%d src=%s", v.branches.vao,
+                    v.branches.index_count, v.branches.vertex_count,
+                    v.branches.source_node_name.c_str());
+        ImGui::Text("          aabb x[%.2f..%.2f] y[%.2f..%.2f] z[%.2f..%.2f]",
+                    v.branches.aabb_min[0], v.branches.aabb_max[0], v.branches.aabb_min[1],
+                    v.branches.aabb_max[1], v.branches.aabb_min[2], v.branches.aabb_max[2]);
+    }
+    ImGui::Separator();
+    ImGui::SliderFloat("Scale", &sTreePreview.scale, 0.1f, 3.0f);
+    ImGui::SliderFloat("Yaw (model)", &sTreePreview.yaw, -3.14f, 3.14f);
+    ImGui::Checkbox("Show trunk", &sTreePreview.show_trunk);
+    ImGui::SameLine();
+    ImGui::Checkbox("Show branches", &sTreePreview.show_branches);
+    ImGui::SliderFloat("Branches alpha cutoff", &sTreePreview.alpha_cutoff_branches, 0.0f, 1.0f);
+    ImGui::Checkbox("Wind enabled", &sTreePreview.wind_enabled);
+    ImGui::SameLine();
+    ImGui::Checkbox("Wireframe", &sTreePreview.wireframe);
+    ImGui::Separator();
+    ImGui::Text("Orbit (LMB drag to rotate)");
+    ImGui::SliderFloat("Orbit yaw", &sTreePreview.orbit_yaw, -6.28f, 6.28f);
+    ImGui::SliderFloat("Orbit pitch", &sTreePreview.orbit_pitch, -1.4f, 1.4f);
+    ImGui::SliderFloat("Orbit distance", &sTreePreview.orbit_distance, 2.0f, 60.0f);
+    ImGui::SliderFloat("Orbit height", &sTreePreview.orbit_height, -5.0f, 25.0f);
+    ImGui::End();
+}
+
 // Draw player + enemies. All actors share the X_Bot rig (figura umana
 // canon, see docs/design/bestiary.md); enemies tint differently so the
 // player can tell them apart while there's no material variation yet.
@@ -2864,6 +3076,11 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
                              float /*camY*/, float /*alpha*/)
 {
     ZoneScopedN("selvaRenderWorld");
+    if (sTreePreview.active)
+    {
+        renderTreePreview();
+        return;
+    }
     // LookAt height tracks the character's hip Y so dynamic poses
     // (rolls, knockdowns) keep the body in frame. The sampler's
     // jointWorldPos() returns the joint in MODEL-local space; add

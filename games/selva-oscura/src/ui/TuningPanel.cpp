@@ -418,10 +418,17 @@ static void renderSaveLoadButtons()
         selva::tuning::loadFromFile(kTunablesPath);
 }
 
+// Defined in PerFrameTick.cpp. F2 toggles the tree preview mode; when
+// active, the world render is replaced with a single-tree-at-origin
+// preview and this panel exposes its controls. Declared here so the
+// ImGui pass can call it without an extra header.
+void renderTreePreviewControls();
+
 static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
 {
     renderActorHud();
     renderComboHud();
+    renderTreePreviewControls();
     if (!sShowTuningPanel)
         return;
     auto& tun = selva::tuning::current();

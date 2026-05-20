@@ -19,10 +19,19 @@ struct TreeMesh
     std::uint32_t vbo = 0;
     std::uint32_t ebo = 0;
     int index_count = 0;
+    int vertex_count = 0;
     std::uint32_t base_color_tex = 0;
     float alpha_cutoff = 0.0f;
     float height = 1.0f;
     float trunk_radius = 1.0f;
+    // Post-shift model-space AABB (in the variant's own model frame,
+    // after re-centering by the trunk's source centroid + base_y).
+    // Surfaced by the F2 tree-preview panel.
+    float aabb_min[3] = {0.0f, 0.0f, 0.0f};
+    float aabb_max[3] = {0.0f, 0.0f, 0.0f};
+    // Source GLTF node name this submesh was loaded from. Surfaced
+    // by the F2 tree-preview panel.
+    std::string source_node_name;
 };
 
 // A "variant": one trunk + one branches submesh, paired. Drawing one
@@ -31,6 +40,9 @@ struct TreeVariant
 {
     TreeMesh trunk;
     TreeMesh branches;
+    // Canonical variant identifier (e.g. "pine_a", "pine_short",
+    // "rock_00"). Surfaced by the F2 tree-preview panel.
+    std::string variant_name;
 };
 
 bool initTreeAssets();
