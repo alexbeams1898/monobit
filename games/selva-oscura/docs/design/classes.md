@@ -12,25 +12,26 @@ satisfy.
 
 - **The Seal opens the imprint.** Using the Seal is Hell's first
   formal measurement. From that moment, the class-picker has an
-  imprint Hell can grip. Contrapasso can land on him. The imprint-
-  free state is lost.
-- **Class evolution combines stat investment + contrapasso accretion.**
+  imprint Hell can grip. Sangue from broken circles can land on the
+  imprint and accumulate. The imprint-free state is lost.
+- **Class evolution combines stat investment + imprint-borne sangue.**
   Stat investment (sangue at OFFERINGS) is the *active* path the
-  player chooses. Contrapasso accretion is the *passive* path the
-  cosmology imposes — leaked contrapasso from felled keepers lands on
-  the class-picker (per setting.md *Per-circle reactivity*). Both
-  contribute to evolution.
+  player chooses. Sangue accumulating on the imprint is the *passive*
+  path the cosmology imposes — when the Vagrant breaks a circle's
+  contrapasso, the surfacing sangue of that circle lands on the
+  imprint the Seal opened (per setting.md *Per-circle reactivity*).
+  Both contribute to evolution.
 - **Class-evolution is Hell loading itself into the Vagrant.** Each
-  keeper kill releases contrapasso; some accretes in the class-picker
-  Vagrant; by the time he reaches Lucifer, he is contrapasso-saturated
-  and shaped to fit the throne. The TRANSFIGURATION arc is the entire
-  game — class evolution is grooming-for-Satan-2 expressed
-  mechanically.
-- **The unburdened never receives contrapasso.** Substance flows
-  through (he remains imprint-free). The unburdened evolution is
-  *subtractive* — Unburdened → Svuotato → Diaphanous, the cumulative
-  state of substance refusing to settle. See setting.md *The Vagrant /
-  The unburdened path (PURITY)* for the locked evolution stages.
+  broken circle's sangue accumulates on the class-picker's imprint;
+  by the time he reaches Lucifer, he is sangue-saturated and shaped
+  to fit the throne. The TRANSFIGURATION arc is the entire game —
+  class evolution is grooming-for-Satan-2 expressed mechanically.
+- **The unburdened receives no imprint-borne sangue.** Substance
+  flows through (he remains imprint-free). The unburdened evolution
+  is *subtractive* — Unburdened → Svuotato → Diaphanous, the
+  cumulative state of substance refusing to settle. See setting.md
+  *The Vagrant / The unburdened path (PURITY)* for the locked
+  evolution stages.
 - **Three stats only — HP, fire_rate, damage.** Engine-level
   constraint per `.claude/CLAUDE.md`. Per-class differentiation must
   be expressed within this triad.
@@ -48,7 +49,7 @@ fantasy, mechanical identity, and combat profile TBD. Constraints:
   fourth stat. No class-specific mechanic that isn't expressible in
   the triad.
 - Per-class differentiation can be expressed in *how* the class
-  processes contrapasso accretion — not *whether* it accretes. Same
+  processes imprint-borne sangue — not *whether* it accumulates. Same
   cosmological input, different processing, different evolution
   shapes.
 - The halo is the Hell-recognition stamp received by Penitent and
@@ -66,7 +67,7 @@ TBD).
 
 - L1 = base form, immediately post-Seal.
 - L2 = mid-game, partial imprint completion. Stat investment + some
-  contrapasso accretion.
+  imprint-borne sangue.
 - L3 = late-game, full imprint. The halo arrives at L3 for Penitent /
   Heretic. Wretched at L3 has no halo (his punishment is
   non-completion).
@@ -87,10 +88,10 @@ unburdened loses mass (subtractive). Per-stage sprite specifics TBD.
 constraint (HP, fire_rate, damage). Per-class starting stats and
 per-evolution growth rates emerge during gameplay tuning.*
 
-The cosmological constraint above (contrapasso accretion contributes
-to evolution) means stat growth is driven by *both* sangue
-investment (player choice at OFFERINGS) *and* keeper-kills (passive,
-imposed). The interaction of these two sources is open — possibly
+The cosmological constraint above (imprint-borne sangue contributes
+to evolution) means stat growth is driven by *both* sangue investment
+at OFFERINGS (player choice) *and* keeper-kills (passive, imposed).
+The interaction of these two sources is open — possibly
 keeper-kills unlock evolution *thresholds*, with sangue investment
 determining where in the triad growth lands.
 
@@ -99,7 +100,7 @@ determining where in the triad growth lands.
 - Per-class fantasy — what does each class *feel* like?
 - Per-class combat differentiation within HP / fire_rate / damage.
 - Stage-name for Wretched at L3.
-- How contrapasso accretion expresses mechanically — does it auto-
+- How imprint-borne sangue expresses mechanically — does it auto-
   invest into specific stats? Modify class-specific behaviors? Unlock
   evolution gates? *Decision deferred to gameplay tuning.*
 - Whether SURFEIT (all-stats-maxed) is reachable on all three
@@ -107,9 +108,9 @@ determining where in the triad growth lands.
 
 ## Cross-references
 
-- [Setting](setting.md) — *The unjudged*, *The Vagrant*, *Per-circle
-  reactivity* (contrapasso doctrine), *Endings* (TRANSFIGURATION /
-  SURFEIT / REFUSAL trigger conditions).
+- [Setting](setting.md) — *The unjudged*, *The Vagrant*, *Contrapasso
+  — the law of form*, *Per-circle reactivity*, *Endings*
+  (TRANSFIGURATION / SURFEIT / REFUSAL trigger conditions).
 - [Story](story.md) — narrative arc, R2 (the reveal that class
   evolution has been Hell loading itself in).
 - [PC vs NPC](pc-vs-npc.md) — symmetry rule, *class* is data not

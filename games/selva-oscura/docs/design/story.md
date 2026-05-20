@@ -148,7 +148,7 @@ relief; he just feels the pleasure of finally being able to guide
 someone. (See *The Guide / Identity*, below, for the full
 instrumentalization.)
 
-The Guide's *off-ness* develops only later, as the contrapasso-leak
+The Guide's *off-ness* develops only later, as the sangue-conduit
 arc proceeds. Per the degradation table (below), he is *coherent,
 warm, responsive* through keepers 1-3; cracking through keepers 4-6;
 incoherent through keepers 7-8; fully degraded at all keepers down.
@@ -323,10 +323,10 @@ express it, and released it on the Vagrant when her plan needed it.
 
 His unmeasured state is what lets him host Beatrice's projection
 without Hell installing him into something else. **The same projection
-channel doubles as a contrapasso conduit** — leaked contrapasso from
-fallen keepers, which would normally land on the circle's NPC and
-shades, also routes through Beatrice's channel into the Guide. Senza
-forma should make him impervious; the channel overrides this. The
+channel doubles as a sangue conduit** — sangue surfacing from broken
+circles, which would normally diffuse through the Wood, also routes
+through Beatrice's channel into the Guide. Senza forma should make
+him impervious; the channel overrides this. The
 result is degradation: substance flowing through him erodes the vessel.
 
 His destruction is *acceptable cost* in Beatrice's plan. She did not
@@ -375,10 +375,11 @@ through the warmest exchange in the game: every time the Guide says
 
 ### Degradation across cycles
 
-As keepers fall, **the contrapasso of each consumed circle leaks**.
-Some lands on the Guide. He becomes a cumulative receptacle of
-leaked contrapasso — by 9 keepers down, loaded with all 9 circles'
-worth.
+As keepers fall, **the contrapasso of each broken circle releases its
+sangue**. Some of that sangue routes through Beatrice's channel into
+the Guide. He becomes a cumulative receptacle of nine circles'
+surfacing sangue — by 9 keepers down, loaded with all 9 circles'
+signatures.
 
 The Hell-projection fails first. The Wood-body holds longer.
 
@@ -387,7 +388,8 @@ The Hell-projection fails first. The Wood-body holds longer.
 | 1-3 | Reliable. Appears at every per-keeper interlude. Coherent, helpful. | Coherent, warm, responsive. |
 | 4-6 | Cracks. Sometimes appears mid-sentence. Sometimes doesn't appear. Sometimes contradicts himself. | Visibly tired. Slower. Sadder. Less responsive. |
 | 7-8 | Rare. When it appears, it is a wisp. | Forgets which path the Vagrant is on. Repeats earlier statements. Sometimes doesn't recognize the Vagrant. |
-| All keepers down | Stopped entirely. No more in-Hell appearances. | Fully degraded. Loaded with all 9 circles' contrapasso. |
+| After keeper 8 (Fraud) | Stopped entirely. No more in-Hell appearances. | **Vanishes from the Wood.** Hub goes empty. Beatrice has routed him down to Cocytus for the climax. |
+| In Cocytus (keeper 9 / Lucifer descent) | n/a — encountered directly | Fully degraded. Loaded with all 9 circles' surfacing sangue. Encountered in Cocytus as the Treachery-tier successor presence. |
 
 **Mechanical consequence:** the player loses access to in-Hell
 heal/offerings progressively before the climax. By 9 keepers down,
@@ -403,25 +405,41 @@ watching him deteriorate for hours.
 
 ### The climax
 
-After all 9 keepers are felled, the Vagrant returns to the Wood. The
-Guide is fully degraded — full of every contrapasso, no longer
-himself, monstrous-but-confused.
+**The climax is in Cocytus, not the Wood.** After keeper 8 (Fraud) is
+felled, the Vagrant returns to the Wood and finds it *empty* — the
+Guide is gone. Beatrice has routed him to Cocytus as the Treachery-
+tier successor presence (per setting.md *Per-circle reactivity /
+Treachery (Circle 9) — the Guide's role*). The Wood-side hub is
+silent; no Guide, no warm exchanges. The player descends one more
+time, into Cocytus, without their companion.
+
+In Cocytus, the Guide is found at the floor of the lake — fully
+degraded, saturated with every circle's sangue, no longer himself,
+monstrous-but-confused. He is positioned to *assist* the Vagrant's
+approach to Lucifer's throne (this is Beatrice's design — the Guide
+is the 9th-tier preparation, the intermediate successor who helps
+the throne-occupant get to the seat). But his saturation has eroded
+him past coherence; what he does at the climax is determined by the
+Vagrant's path (combat vs handover).
 
 **This encounter is the surface for R2** (the Beatrice reveal — see
 *Reveals*, below). Posthumous Grimoire entries unlock at the Guide's
 death and name Beatrice for the first time anywhere in the game.
 Until this moment, the player has had no information about her at
 all — only the unidentified title-screen image they have walked past
-since boot.
+since boot. **R2 lands in Cocytus**, at the place of greatest
+cosmological weight, one step from the throne.
 
 **On class-picker paths: combat.**
 
-The Guide attacks. His combat profile cycles through the 9 circles'
-contrapasso behaviors as attack patterns — a wind-blast (Lust), a
-weight-drop (Greed), a poisoned rain (Gluttony), a burning-tomb
-gesture (Heresy), a hooked-grab (Fraud / Malebranche), an
-ice-encasing (Treachery), and so on. He is the contrapasso made
-flesh. (Specifics in [classes.md](classes.md) / per-encounter design.)
+The Guide attacks. His combat profile cycles through the signatures
+of the 9 circles' broken contrapassi as attack patterns — a wind-
+blast (Lust), a weight-drop (Greed), a poisoned rain (Gluttony), a
+burning-tomb gesture (Heresy), a hooked-grab (Fraud / Malebranche),
+an ice-encasing (Treachery), and so on. He is **nine broken laws
+made flesh** — each circle's sin expressed at once through the body
+the sangue conduit has eroded. (Specifics in
+[classes.md](classes.md) / per-encounter design.)
 
 The Vagrant kills him.
 
@@ -435,15 +453,15 @@ incoherent breakdown* and in posthumous Grimoire fragments.
 
 **On the unburdened path: handover.**
 
-The contrapasso is in him equally, but the framework Beatrice
-supplied does not have an attack-pattern for an unburdened Vagrant.
-The Guide-as-tool was configured for a class-picker; the unburdened
+The sangue saturates him equally, but the framework Beatrice supplied
+does not have an attack-pattern for an unburdened Vagrant. The
+Guide-as-tool was configured for a class-picker; the unburdened
 Vagrant slips past the configuration. With no instruction to follow,
 the Guide does what his original soul-shape (helper, guide) defaults
 to — he hands over The Hand. The severed-hand item passes willingly,
 or falls from his outstretched hand without resistance. He fades. No
-fight. The contrapasso saturating him is held back not by recognition
-but by the absence of a configured response.
+fight. The sangue saturating him is held back not by recognition but
+by the absence of a configured response.
 
 His final words on this path are minimal. Gestural, half-finished.
 The player infers from the totality of his arc what he was. The
@@ -522,9 +540,11 @@ A progressive-obviousness texture, not a moment.
      per NPC.
   2. **Per-circle mechanical pressure.** Each circle is harder than
      the last despite getting smaller — the difficulty curve *is*
-     the saturation. Each circle's signature contrapasso has become
-     a different thing than it was: the wind in Lust isn't *more
-     wind*; it's wind thickened past its original function.
+     the saturation. Each circle's signature sin-form has become a
+     different thing than it was: the wind in Lust isn't *more
+     wind*; it's wind thickened past its original function, the
+     law still operating but on substance that has accumulated past
+     what the law was designed for.
   3. **Per-circle landmark cue.** One or two memorable images per
      circle that show structural strain (a wall bowing, a queue that
      never shortens, an architectural element giving way). Specifics
@@ -635,10 +655,31 @@ and the *class-evolution-as-Hell-loading* implication.
     Both Vagrant and Guide have been pawns; the Guide was used through
     a channel Beatrice constructed, and the channel destroyed him.
   - **Class evolution has been Hell loading itself into the Vagrant**
-    (class-picker, via contrapasso accretion) **or being channeled
-    away by him** (unburdened, via riversamento). The Vagrant's
-    transformation across the game has not been his choice; it has
-    been the cosmology operating on him.
+    (class-picker, via sangue accumulating on the imprint the Seal
+    opened) **or being channeled into Beatrice's substrate via
+    riversamento** (unburdened). On the unburdened path, every
+    riversamento has been *saturating Beatrice herself* — the
+    reservoir she built is intimate to her substrate, and the
+    sangue routed into it has been *transforming her toward a
+    Satan-figure of Paradiso*. The title-screen disintegration the
+    player has been seeing every boot is **this transformation
+    visible in slow motion**. On replay after R2, every boot
+    becomes retroactive horror.
+  - **The central irony.** Beatrice — the figure of grace in Dante —
+    is pleased by TRANSFIGURATION (a new devil made of the Vagrant)
+    and rabid at PURITY (Hell ends entirely). Her destabilization
+    has inverted her moral compass: function over righteousness.
+    The class-picker becoming Satan-2 is *her preferred outcome*;
+    the unburdened ending Hell entirely is the path she snaps on.
+    PURITY is the player calling her bluff on the ending she
+    claimed to endorse — and it is also *killing the nascent
+    Paradiso-Satan she was being made into*, before her
+    transformation could complete.
+  - The Vagrant's transformation across the game has not been his
+    choice; it has been the cosmology operating on him. **And on
+    the unburdened path, the same cosmology has been operating on
+    Beatrice in parallel** — turning her into the thing PURITY
+    eventually destroys.
   - Beatrice's intentions: radical reform of a failing cosmology,
     executed by a god ground down past coherence and visibly
     destabilized. Not a dictator — a stir-crazy reformer who acted

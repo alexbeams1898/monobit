@@ -47,7 +47,7 @@ type:
 - **Death = run-end.** The player-controlled entity's death triggers
   the run-end cutscene + death-card + run-stats screen. Other
   entities' deaths trigger sangue payout and per-circle reactivity
-  (NPC turning hostile, contrapasso leak, etc.).
+  (NPC turning hostile, sangue surfacing in Selva, etc.).
 
 ## What only NPCs do
 
@@ -60,11 +60,17 @@ type:
   state (path, evolution, riversato, lifetime sangue, keepers
   felled) and branch on it. The Vagrant himself does not branch —
   he has no internal state reading the world.
-- **Carry contrapasso leak.** When a circle's keeper falls,
-  contrapasso routes into the surviving NPC and shades, plus the
-  class-picker Vagrant, plus the Guide. The *Vagrant* receives leak
-  too (under class-picker), but only as a passive accretion to his
-  imprint — he doesn't *carry* it the way an NPC does.
+- **Become successor-keepers.** When a circle's keeper falls and
+  its contrapasso restores, the NPC of that circle is *promoted*
+  into the keeper's role (per setting.md *NPC-successor structure*).
+  They vanish from their visible post and become the keeper for
+  subsequent descents — same boss combat, progressive disfigurement
+  as the NPC's features bleed through the fusion. The class-picker
+  Vagrant also receives sangue on his imprint, but as a passive
+  accumulation toward the throne — he doesn't *carry* a keeper-role
+  the way a circle-NPC does. The Guide is a parallel construction
+  for the 9th circle (see setting.md *Treachery (Circle 9) — the
+  Guide's role*).
 
 ## What both do identically
 
@@ -137,7 +143,8 @@ She is not state-aware in the NPC sense.
   to enemies and bosses.
 - [Companions](companions.md) — the Guide as edge case.
 - [Setting](setting.md) — *The unjudged* (asymmetric second-death
-  completion), *NPCs* (lucid window mechanic), *Per-circle
-  reactivity* (contrapasso leak distribution).
+  completion), *NPCs* (lucid window mechanic), *Contrapasso - the
+  law of form*, *Per-circle reactivity* (sangue surfacing
+  distribution).
 - [Fallback](fallback.md) — death = run-end (player-controlled
   entity only).

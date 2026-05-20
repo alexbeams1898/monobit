@@ -396,10 +396,10 @@ Both gated on the combat-debug master toggle. Off in normal play.
 - [`bestiary.md`](bestiary.md) — figura umana rule, enemy roster.
 - [`combat.md`](combat.md) — player-side combat grammar.
 - [`setting.md`](setting.md) *Per-circle reactivity* — how circles
-  behave pre-keeper vs. post-keeper. Once an enemy is *supercharged
-  by leaked contrapasso*, its action JSON's weights/cooldowns get
-  overridden by the circle's post-keeper modifier; the architecture
-  is the same.
+  behave pre-keeper vs. post-keeper. Once an enemy is *unbound by the
+  law's collapse* in a broken circle, its action JSON's weights/
+  cooldowns get overridden by the circle's post-keeper modifier; the
+  architecture is the same.
 - [`DEV_PILLARS.md`](DEV_PILLARS.md) — design discipline. "Subtract
   before adding" applies hard here: every layer of the architecture
   was justified before being built.

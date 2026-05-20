@@ -74,9 +74,9 @@ have seasons — it is, perpetually, the same state.
 This is consistent with Hell's eternal-present (per setting.md):
 Hell knows no real time, only the accounting of substance. The
 Wood, at Hell's exit-wound, inherits Hell's stillness. What changes
-in the Wood is *what enters it* (substance from Hell), and *what
-acts upon it* (the Vagrant, and what spawns from leaked substance —
-see [creatures.md](creatures.md)).
+in the Wood is *what enters it* (sangue suffusing through from
+Hell), and *what acts upon it* (the Vagrant, and what spawns from
+the suffusing sangue — see [creatures.md](creatures.md)).
 
 ### The Wood remembers
 
@@ -230,9 +230,10 @@ accumulates real history, not a randomizer.
   it, they are *truly* in the outer Wood — Dante's lostness, made
   mechanical.
 - **What lives there.** Per [creatures.md](creatures.md), the outer
-  Wood is where the **ecology** lives. Organisms spawned from leaked
-  Hell-substance — populations, lifecycles, evolution — exist in the
-  procedural ring. Player chance-encounters drive exploration.
+  Wood is where the **ecology** lives. Organisms spawned from sangue
+  suffusing into the Wood — populations, lifecycles, evolution —
+  exist in the procedural ring. Player chance-encounters drive
+  exploration.
 - **NPCs and quests, Souls-style.** Some NPCs and quests are hidden
   in the outer Wood, not signposted. Discovery-driven. Specifics TBD.
 
@@ -319,7 +320,7 @@ feature** of the Wood as a place. The player can:
 - **Influence** their evolution (player behavior is selection pressure
   on captured creatures)
 - **Read** the cosmology through them (each organism's traits reflect
-  which Hell-substances spawned it and how)
+  which broken-circle sangue signatures spawned it and how)
 
 The full mechanic lives in creatures.md. From the Wood's perspective,
 the relevant fact is: **the Wood is not empty.** Things live here.
@@ -552,12 +553,12 @@ is **not actually decomposing.** It is accumulated but intact. The
 forest floor is a deep mat of *preserved deadfall.* Brown, ochre,
 sometimes warm-grey where light catches it.
 
-**Sangue-saturation patches:** where leaked Hell-substance has
-pooled locally, the soil darkens with a faint red-tinged register.
-Subtle. Not "blood floor" — just *something is wrong here.* The
-sangue is in the dirt. These patches grow more common toward the
-spine direction (closer to where the descent will land), and are
-seed-sites for the more strongly-Hell-marked organisms (per
+**Sangue-saturation patches:** where surfacing sangue has pooled
+locally, the soil darkens with a faint red-tinged register. Subtle.
+Not "blood floor" — just *something is wrong here.* The sangue is in
+the dirt. These patches grow more common toward the spine direction
+(closer to where the descent will land), and are seed-sites for the
+more strongly-Hell-marked organisms (per
 [creatures.md](creatures.md)).
 
 **Mosses and lichens:** cover stones and the bases of trees. Cool
@@ -610,7 +611,7 @@ slope and procedural noise. Each tone is meant as a *single point* in
 the dominant register — the shader's noise + slope mixing produces the
 full range of variation across the actual ground.
 
-**v0 unstained palette** (no contrapasso consumed yet — see below):
+**v0 unstained palette** (no circles broken yet — see below):
 
 - **Humus** (flat canopy floor, the preserved-deadfall substrate):
   `(0.08, 0.07, 0.06)`. Near-black, faint warm-brown bias, reads as
@@ -632,40 +633,40 @@ as `uDarkLoam` and `uDryDirt` uniforms. Noise + slope mixing is
 deliberate, not data-driven per-region — the *register* is canon,
 the per-pixel values are emergent.
 
-### Contrapasso stains the soil (WIP — design intent, not yet built)
+### Sangue stains the soil (WIP — design intent, not yet built)
 
 The v0 palette is the **unstained** state — what the inner Wood looks
-like before any contrapasso has been consumed. As the player
-progresses and contrapassi enter the world via consumption mechanics
-(see [contrapasso.md](contrapasso.md) when written), each consumed
-contrapasso writes its register into the ground.
+like before any circles have been broken. As the Vagrant gives keepers
+second death and the contrapasso of each circle breaks, *sangue
+surfacing from that circle* (per setting.md *Per-circle reactivity*)
+writes the sin's register into the ground.
 
 **Why this is the right design layer:** the Wood already "remembers"
-(per the *Wood remembers* lore above) and sangue-saturation already
-darkens the soil locally. Contrapasso-driven soil-staining extends
-that existing system — it is the same physical mechanism (substance
-leaked from Hell saturating the ground), just per-sin rather than
-homogeneous. By endgame, the inner Wood floor is a *stratigraphy of
-Hell*: the player can read which contrapassi have entered just by
-looking down.
+(per the *Wood remembers* lore above) and centuries of baseline
+sangue-suffusion already darkens the soil locally. Per-circle soil-
+staining extends that existing system — same physical mechanism
+(sangue surfacing through the soil), just per-sin coloration on top of
+the homogeneous baseline. By endgame, the inner Wood floor is a
+*stratigraphy of Hell*: the player can read which circles have been
+broken just by looking down.
 
 **Canonical guidance for stain values:**
 
 - Stains MUST respect the existing register — darker / heavier first,
-  chromatic shift second. A contrapasso never makes the soil
+  chromatic shift second. Broken-circle sangue never makes the soil
   *brighter* or *lighter* than the unstained baseline.
-- Stains may color-shift only after sufficient saturation. A faintly
-  consumed contrapasso reads as "slightly darker / heavier humus"
-  with no chromatic difference; a heavily consumed one reads as a
-  distinct hue. This matches the canonical sangue-patch behavior.
+- Stains may color-shift only after sufficient saturation. A lightly
+  surfacing circle reads as "slightly darker / heavier humus" with no
+  chromatic difference; a heavily surfacing one reads as a distinct
+  hue. This matches the canonical sangue-patch behavior.
 - Stains pool *where they make narrative sense*. Wrath stains pool in
   low spots (the Styx mud register). Treachery stains accumulate
   near cold exposures (the Cocytus ice register). Greed stains
   appear at root-cairns and rocky outcrops (the metallic register).
   This is world-position-driven, not uniform.
 
-**Provisional per-contrapasso direction** (subject to iteration with
-the contrapasso consumption system when it ships):
+**Provisional per-circle direction** (subject to iteration with the
+broken-circle surfacing system when it ships):
 
 - **Lust** (canto 5, the wind-driven shades): wind-streaked banded
   patterns; subtle rose bias on the iron component at high saturation.
@@ -685,9 +686,9 @@ the contrapasso consumption system when it ships):
   white; frost-bite; warm tones drain entirely.
 
 **Implementation deferred.** Don't build the stain-rendering system
-ahead of the contrapasso consumption mechanic. When the first
-contrapasso ships, ship its stain at the same time, end-to-end. Each
-subsequent contrapasso adds its own stain in its own PR.
+ahead of the broken-circle surfacing mechanic. When the first circle's
+sangue surfaces in-game, ship its stain at the same time, end-to-end.
+Each subsequent circle adds its own stain in its own PR.
 
 ## Visual register
 

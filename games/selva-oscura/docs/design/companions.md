@@ -26,17 +26,30 @@ Locked at story.md *The Guide / Functions* and *Geography*:
   RELIC-equivalent) and OFFERINGS access. The Guide is not aware of
   the cosmological role these functions play; he believes he is
   providing standard guide-services.
-- **Degradation across cycles.** As keepers fall, leaked contrapasso
-  routes through the channel Beatrice constructed and erodes him. The
-  Hell-projection fails first (cracks at keepers 4-6, rare at 7-8,
-  stops entirely after all 9). The Wood-body holds longer (visibly
-  tired by 4-6, forgets the Vagrant's path by 7-8, fully degraded at
-  all 9 keepers down). Full degradation table in story.md.
-- **Climax encounter.** After all 9 keepers fall, the Vagrant
-  returns to the Wood. Class-picker path: combat (Guide attacks,
-  cycling through 9 circles' contrapasso patterns; Vagrant kills
-  him). Unburdened path: handover (Guide hands over the Hand without
-  resistance; fades; no fight).
+- **Degradation across cycles.** As keepers fall, the surfacing
+  sangue of each broken circle routes through the channel Beatrice
+  constructed and erodes him. The Hell-projection fails first (cracks
+  at keepers 4-6, rare at 7-8, stops entirely after all 9). The
+  Wood-body holds longer (visibly tired by 4-6, forgets the Vagrant's
+  path by 7-8). **After keeper 8 (Fraud), the Guide vanishes from
+  the Wood** — Beatrice routes him to Cocytus as the Treachery-tier
+  successor presence (per setting.md *Per-circle reactivity /
+  Treachery (Circle 9)*). The Wood hub goes empty. Full degradation
+  table in story.md.
+- **Climax encounter — in Cocytus.** The Vagrant encounters the
+  Guide at the floor of the frozen lake during the Lucifer descent.
+  Fully degraded, saturated past coherence. Class-picker path:
+  combat (Guide attacks, cycling through all 9 circles' sin-
+  signature attack patterns; Vagrant kills him). Unburdened path:
+  handover (Guide hands over the Hand without resistance; fades; no
+  fight).
+- **Parallel saturation with Beatrice (unburdened only).** On the
+  unburdened path, the Guide's destruction *parallels* what is
+  happening to Beatrice — both are being saturated by sangue routed
+  through Beatrice's infrastructure (channel for the Guide;
+  reservoir for Beatrice). Two of Beatrice's instruments
+  destroyed/transformed by the same mechanism; the unburdened path
+  kills both as cost. See setting.md *Beatrice / Sangue saturation*.
 
 ## Beatrice is not a companion
 
@@ -66,8 +79,9 @@ Constraints:
   player and enemies (entity symmetry rule). He is data, not type.
 - His Hell-projection appearances are not full combat encounters
   (until the climax); they are interaction points (heal, OFFERINGS).
-- His climax combat profile cycles through 9 circles' contrapasso
-  patterns — this is an authored boss, not procedural.
+- His climax combat profile cycles through 9 broken circles' sin-
+  signature patterns (wind / weight / poison / fire / hook / ice /
+  etc.) — this is an authored boss, not procedural.
 
 ## Loyalty / state
 
@@ -88,7 +102,7 @@ interacts with. State that matters:
 - Whether the Wood-body and Hell-projection can be visited at
   different states in the same cycle (e.g. Wood-body visibly tired
   while Hell-projection still appears coherently in the next interlude).
-- Climax combat profile specifics — the contrapasso-pattern cycling
+- Climax combat profile specifics — the sin-signature pattern cycling
   needs per-circle attack patterns designed.
 - Audio cues for the Guide's degradation state across the game.
 

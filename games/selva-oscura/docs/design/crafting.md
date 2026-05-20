@@ -55,7 +55,7 @@ The substrate of crafting differs by location:
 | Location | Substrate | Register |
 |---|---|---|
 | **Wood (selva oscura)** | Root, branch, stone, pilgrim-relic, fallen-traveler matter | Humble, found, wooden |
-| **Hell** | Shade bone, sinew, damned-soul matter, contrapasso residue, sangue-coagulate | Visceral, wrenched, consuming |
+| **Hell** | Shade bone, sinew, damned-soul matter, hypertrophic-form residue, sangue-coagulate | Visceral, wrenched, consuming |
 
 The crafting *mechanic* is the same on both sides. The recipe registry,
 the workbench interaction, the material slots are shared system. What
@@ -172,8 +172,8 @@ offers, he can take.**
 
 - **Kills.** Each archetype gets a `loot.drops` array in its
   archetype JSON (see `config/enemies/`). Shade kills yield shade-
-  substrate; keeper kills yield keeper-tier materials; contrapasso
-  husks yield their distinct residue. Drop-table specifics TBD.
+  substrate; keeper kills yield keeper-tier materials; husks of the
+  unbound yield their distinct residue. Drop-table specifics TBD.
 - **Environmental gathering.** Wood-side nodes (deadfall branches,
   stone, pilgrim-relic sites) and Hell-side canonically-loaded
   nodes (Wood of the Suicides bleeding-branches, Phlegethon sangue-
@@ -276,8 +276,8 @@ crafting moves from design to engineering.
 
 - **Recipe specifics.** Full recipe tree, material requirements,
   output stats, unlock conditions — all TBD at gameplay tuning.
-- **Material drop tables.** Per-shade, per-keeper, per-contrapasso
-  drop tables. TBD.
+- **Material drop tables.** Per-shade, per-keeper, per-husk drop
+  tables. TBD.
 - **Workbench form and placement.** Wood-side bench appearance;
   Hell-side bench appearance per circle; whether benches are
   portable. TBD.

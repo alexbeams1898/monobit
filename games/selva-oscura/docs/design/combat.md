@@ -145,9 +145,9 @@ These are deliberately deferred until iteration teaches us what's needed:
 - **Incants / spells / casting / natural abilities** — separate doc
   when designed.
 - **Ranged attacks** — same.
-- **Progression** (weapon evolution, stat growth, contrapasso input,
-  crafting) — touches combat but is its own design space; lives
-  elsewhere when written.
+- **Progression** (weapon evolution, stat growth, imprint-borne
+  sangue, crafting) — touches combat but is its own design space;
+  lives elsewhere when written.
 - **Class-specific differentiation in combat feel** — designed when
   classes have their own combat sections.
 
@@ -159,4 +159,4 @@ These are deliberately deferred until iteration teaches us what's needed:
   carrying rules.
 - (Future) `combat-incants.md` — non-physical combat path, when designed.
 - (Future) `progression.md` or `mastery.md` — how stats grow,
-  weapons level, contrapasso accretes.
+  weapons level, imprint-borne sangue accumulates.

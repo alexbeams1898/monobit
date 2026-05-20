@@ -1,32 +1,34 @@
 # Creatures (Selva-organisms)
 
 > **Owns:** the ecology of the Wood — the organisms spawned from
-> leaked Hell-substance, their evolution, the player's capture and
-> influence mechanics, the bestiary half they occupy.
+> sangue surfacing into the Wood from Hell, their evolution, the
+> player's capture and influence mechanics, the bestiary half they
+> occupy.
 > **Status:** lore and framework locked; specifics TBD.
 
 ## What these creatures are
 
 The Wood contains a living **ecology** of organisms. They are
 **not** Hell-creatures. They are **not** damned souls in animal form,
-**not** contrapasso-shades, **not** minor demons. They are *new life*
-— a biological response of the Selva to the novel environmental
-input of leaked Hell-substance.
+**not** hypertrophic damned, **not** minor demons. They are *new
+life* — a biological response of the Selva to the novel environmental
+input of sangue surfacing through the soil from Hell.
 
-This distinction is **load-bearing.** Hell-creatures (keepers, shades,
-contrapasso-husks per [bestiary.md](bestiary.md)) are *spirit-
-substance, post-mortem, judged.* They are punishment given form.
+This distinction is **load-bearing.** Hell-creatures (keepers,
+shades, the hypertrophic damned per [bestiary.md](bestiary.md)) are
+*spirit-substance, post-mortem, judged.* They are punishment given
+form.
 **Selva-organisms are alive.** They have biology, lineages,
 reproductive cycles, real evolution. They are what *life made* of
-the leaked substance.
+the sangue that surfaced.
 
 This means the bestiary has two distinct halves:
 
 - **Hell-bestiary** ([bestiary.md](bestiary.md)) — *figura umana* rule;
   damned souls and Hell's classical guardians; spirit-substance.
 - **Selva-bestiary** (this doc) — *biological* organisms; novel life
-  evolved from substance leaked into the Wood; not derived from any
-  damned soul.
+  evolved from sangue that surfaced into the Wood; not derived from
+  any damned soul.
 
 The two halves are scientifically and cosmologically separate. A
 shade in Hell is not a relative of any Selva-organism — they share
@@ -36,15 +38,17 @@ loaf of bread both contain carbon. Substance is shared; form is not.
 ## Cosmological framing
 
 Hell is failing (per [setting.md](setting.md), per
-[wood.md](wood.md)). Substance leaks out of Hell into the threshold-
-Wood. The substance is **inert by itself** — it is just *stuff*. But
-the Wood is a biome with conditions (water, soil, light, time-stop)
-that, until the leak began, supported only *vestigial* life — moss,
-fungi, the simplest organisms — because nothing else had reason to
-be here.
+[wood.md](wood.md)). Sangue surfaces out of Hell into the threshold-
+Wood — both the baseline cumulative suffusion across centuries and
+the per-circle surges that follow each keeper's death (see setting.md
+*Per-circle reactivity*). Sangue is **inert by itself** — it is just
+*stuff*. But the Wood is a biome with conditions (water, soil, light,
+time-stop) that, until the suffusion began, supported only *vestigial*
+life — moss, fungi, the simplest organisms — because nothing else
+had reason to be here.
 
-The leak introduces **novel conditions**: new soil chemistry, new
-energy sources, new niches. The Wood's vestigial life **responds**
+The suffusion introduces **novel conditions**: new soil chemistry,
+new energy sources, new niches. The Wood's vestigial life **responds**
 the way real life responds to new environmental inputs: through
 genetic variation, selection, speciation, and evolution. New
 organisms emerge that are *adapted to the new conditions.*
@@ -58,8 +62,9 @@ plus conditions plus time produces life. Modern audiences accept
 the same thing through Darwin. The mechanic spans both worldviews.
 
 The Vagrant is therefore the **unintentional founder of a new
-ecosystem.** By consuming Hell — extracting its substance, letting
-it leak through him — he is responsible for the existence of every
+ecosystem.** By giving keepers second death — breaking the
+contrapasso of their circles and letting the sangue of the unbound
+damned surface — he is responsible for the existence of every
 Selva-organism that ever spawns. They are, in a real sense, *a
 coincidence of his work.* The unburdened path, especially, develops
 a relationship with this — pouring sangue out is not just a
@@ -79,7 +84,7 @@ the cosmos repentance. The Vagrant grants it.
 **Selva-organisms are not targets of any of this.** They are not
 damned souls. They are not part of Hell's accounting. They owe the
 cosmos nothing. They are **innocent life** that arose as a side-
-effect of leaked substance — a coincidence of where the Vagrant
+effect of sangue surfacing — a coincidence of where the Vagrant
 resides between descents. The Vagrant has *no cosmological obligation*
 to them whatsoever — neither to harm nor to help.
 
@@ -115,33 +120,38 @@ are killing is *different*.
 The ecology emerges from **four interacting layers**, in this order
 of weight:
 
-### Layer 1: Substance composition (linear, set by circles consumed)
+### Layer 1: Sangue composition (linear, set by circles broken)
 
-The Wood's soil has a *substance composition* — a vector of how much
-of each Hell-circle's substance is present.
+The Wood's soil holds sangue from each circle restored across the
+descent, layered. The substance is always sangue; the *coloration*
+(and the kind of organism it supports) is the signature of the
+circle whose hemorrhaging damned surfaced that sangue in the
+failing-state, plus the keeper-kill restoration surge. The composition
+is a vector of how much circle-signature sangue is present.
 
-- Pre-Hell consumption: pure **vestigial Wood substrate** (the
-  threshold's native substance, whatever was there before Hell
-  began leaking).
-- After consuming Limbo (Circle I): vestigial + limbo-substance.
-- After consuming Lust (Circle II): vestigial + limbo + lust.
+- Pre-descent: pure **vestigial Wood substrate** plus the baseline
+  centuries-cumulative sangue (per [wood.md](wood.md) *Lore — the
+  Wood and Hell's failure*) that suffused before any keeper fell.
+- After breaking Limbo (Circle I): vestigial + Limbo-signature
+  sangue surfaces.
+- After breaking Lust (Circle II): vestigial + Limbo + Lust-signature.
 - ...and so on.
 
-Circle consumption is canonically linear (per Dante's architecture
-of Hell), so the **order of substance addition is fixed.** This is a
-constraint, not a freedom.
+Circle-breaking is canonically linear (per Dante's architecture of
+Hell), so the **order of sangue-signature addition is fixed.** This
+is a constraint, not a freedom.
 
 But the *composition itself* enables a possibility space of
 organisms. Different compositions are different *biomes* — they
-support different life. A limbo-only soil supports a certain kind
-of organism; a limbo+lust soil supports different organisms (often
-*hybrids*, exploiting niches that didn't exist with limbo alone);
-limbo+lust+gluttony supports yet a third set. As the composition
-grows more complex, the *possibility space* of organisms expands
-combinatorially.
+support different life. A Limbo-signature soil supports a certain
+kind of organism; a Limbo+Lust soil supports different organisms
+(often *hybrids*, exploiting niches that didn't exist with Limbo
+alone); Limbo+Lust+Gluttony supports yet a third set. As the
+composition grows more complex, the *possibility space* of organisms
+expands combinatorially.
 
 This produces the canonical Dantean *contrapasso* tone in biology:
-a *lust+gluttony* hybrid is an organism that *consumes itself* —
+a *Lust+Gluttony* hybrid is an organism that *consumes itself* —
 because lust feeding gluttony is endless desire. The biology *reads*
 as cosmologically legible. Not all hybrids will be this elegant; some
 will just be ecological niche-fillers. But the *load-bearing ones*
@@ -188,9 +198,9 @@ substance compositions:
   *Oldest* organisms — the ones that were here before Hell began
   leaking. The most stable populations.
 - **Spine direction (toward the colle):** sangue-saturated.
-  *Highest* contrapasso-residue. The newest, most-Hell-marked
-  organisms. Aggressive selection pressure favors organisms that
-  can withstand or exploit Hell-substance.
+  *Highest* per-circle sangue concentration. The newest, most-Hell-
+  marked organisms. Aggressive selection pressure favors organisms
+  that can withstand or exploit dense sangue.
 - **Specific outer-Wood spots:** unique micro-ecologies. A riversamento
   site (sangue poured pure) supports gentler organisms. A shade-grave
   (where the Vagrant once killed many shades) supports
@@ -220,11 +230,11 @@ gives Wood-visits between descents a strong motivation — *what has
 my ecology become while I was gone?*
 
 (Lore reconciliation: the Wood is time-stopped at the *substrate*
-level — deadfall doesn't rot, stones don't weather. But Hell's
-substance, the *leak*, is *dynamic* — and the life it supports is
-dynamic too. The Wood-substrate is static; the Hell-leak and its
-life are not. The static substrate is what makes the dynamic life
-*visible* — it has a stage to perform on.)
+level — deadfall doesn't rot, stones don't weather. But surfacing
+sangue is *dynamic* — and the life it supports is dynamic too. The
+Wood-substrate is static; the suffusing sangue and its life are not.
+The static substrate is what makes the dynamic life *visible* — it
+has a stage to perform on.)
 
 ## What the Wood remembers — persistence
 
@@ -238,9 +248,9 @@ across cycles (per [wood.md](wood.md), per [setting.md](setting.md)
 - **Captured organisms persist.** Each captured organism is an
   individual instance saved per the Vagrant — its traits, its age,
   its evolution history, its lineage.
-- **Substance composition persists.** Once a circle has been consumed
-  and its substance entered the Wood, it stays. Hell-substance does
-  not leave the Wood.
+- **Sangue composition persists.** Once a circle has been broken and
+  its signature sangue has surfaced into the Wood, it stays. Sangue
+  that has surfaced does not leave the Wood.
 
 This is the foundation that makes the entire mechanic work: **the
 Wood is a real place with a real biology that the player is
@@ -258,7 +268,7 @@ Working candidates:
 
 - **Sangue-bond.** The Vagrant offers a small portion of his own
   sangue to the organism. If accepted, the organism recognizes him
-  as kin — both made of leaked Hell-substance. Cosmologically clean.
+  as kin — both made of sangue. Cosmologically clean.
 - **Witnessing-bond.** The Vagrant spends time with the organism
   without disturbing it. After enough sustained attention, it
   follows him. Humble, patient, Beatrice-coded. Especially apt for

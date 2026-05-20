@@ -17,10 +17,19 @@ Hell, after Dante. Long after. The place appears unchanged, fixed,
 eternal. The Vagrant — an unjudged mortal — enters as something the
 system has no protocol for.
 
-Hell is failing. Souls go in, the count grows, but no one repents,
-no one reaches salvation. The throughput is broken. Hell has stagnated
-into a warehouse, no longer a process. Hell is *aware* of its failure
-— passively, not as agent of it.
+Hell is failing in a specific, visceral way: **the contrapasso of
+each circle has inverted**. The law that should constrain each sin
+into suffering has rotted into permission. The lustful are not blown
+by the wind — they *blow it*, predatorily pursuing. The gluttonous
+are not immobilized in foul rain — they *gorge on it*, freely. The
+traitors are not frozen mute — they *speak freely* in the ice. Souls
+arrive expecting punishment and find a *playground for the sin they
+came here for*. Centuries of broken throughput have made every shade
+**hypertrophic-free** — the sin grown into the body, unconstrained,
+indulgent. Hell is a *failing institution where the inmates run the
+asylum*. The keepers (Minos, Cerberus, Plutus, etc.) still preside
+but are *broken, complicit, or worn down past their function*. Hell
+is *aware* of its failure — passively, not as agent of it.
 
 Beatrice in Paradiso has noticed. **Has been noticing, for centuries,
 ground down by the staring.** She finally snapped: she placed an
@@ -119,8 +128,9 @@ to grip; the protocol fires, the body dies, the soul is ejected).
 
 **The Seal opens the imprint.** Using the Seal — class-pick — is
 Hell's first formal measurement of the soul. From that moment, the
-class-picker has an imprint Hell can grip. Contrapasso can land on
-him; second death could in principle land on him at the path's
+class-picker has an imprint Hell can grip. Sangue from broken circles
+can land on the imprint and accumulate (see *Per-circle reactivity*
+below); second death could in principle land on him at the path's
 terminus (it doesn't, on TRANSFIGURATION/SURFEIT/REFUSAL, because
 those endings produce other states). The unburdened, who never uses
 the Seal, remains imprint-free — substance flows through and
@@ -159,6 +169,61 @@ doing this for centuries to keep the Guide alone — his loneliness is
 her construction, cultivated as preparation for the role he would
 later play in greeting the Vagrant. Other selvas oscuras across the
 cosmic geography hold the unjudged who would have ended up here.
+
+### Contrapasso — the law of form
+
+**Contrapasso** is the law by which the damned soul's form is the act
+of its sin made permanent. Dante uses the word once, in Inferno
+XXVIII.142 — *"Così s'osserva in me lo contrapasso"* ("thus is the
+contrapasso observed in me"). The whole concept hangs on that line.
+
+Three things the definition must carry:
+
+1. **Contrapasso is law, not substance.** It is not a fluid, an
+   energy, a residue, or a thing that can leak, accrete, or saturate.
+   It is the rule of correspondence between sin and form. The
+   substance that fills the damned and gives them shape is *sangue*
+   (see below); contrapasso is the *rule* that organizes that
+   substance into the form the sin demands.
+2. **Contrapasso is law, not judgment.** No one chooses the
+   contrapasso for the damned — not God, not Minos (who only sorts;
+   he does not invent). The form is *intrinsic* to the sin. Damnation
+   is the sinner's own act, frozen.
+3. **Contrapasso operates per-circle, enforced by keepers.** Each
+   circle has its own local instance of the law. The keeper of the
+   circle (Minos, Cerberus, Plutus, Phlegyas, Geryon, etc.) is the
+   *agent* by which the law operates within that circle.
+
+**The current state of the law: inverted.** Centuries of stagnation
+have rotted the contrapassi of every circle from *constraint* into
+*permission*. The keepers are still nominally present but are
+broken, complicit, or failed. The damned of each circle indulge their
+sins in hypertrophic-free form — sin made flesh as *playground*, not
+as suffering. Each shade has grown into a body shaped to maximize
+the sin: the gluttonous bloated and many-mouthed, the lustful
+sharp-and-predatorily-pursuing, the wrathful brawler-bloated. The
+contrapasso has not *gone away* — it has *inverted*. The law that
+should hold sin as punishment now holds sin as license.
+
+**The Vagrant's role.** Killing each keeper *re-imposes* the
+contrapasso of that circle. The law that had been rotted into
+permission snaps back into constraint. The same hypertrophic bodies
+that were the indulgence become **hypertrophic-constrained** — the
+sin still expressed in the form, but now as *burden*, suffering,
+the body-as-prison. Each shade encountered in a restored circle is
+mid-process in the law functioning correctly; the Vagrant grants
+their warranted release with his blade. Indefinite grinding in a
+restored circle is sacrament — souls cycle in and out at the natural
+rate, the Vagrant supplying the resolution role the broken keeper
+abandoned.
+
+The Vagrant's progress through Hell is the **restoration** of these
+local instances of the law, circle by circle. See *Per-circle
+reactivity* below for the full failure-and-restoration mechanic.
+Sangue surges into Selva at each restoration moment as excess
+substance is expelled by the law's re-imposition; the surfacing
+mechanics are described in *Per-circle reactivity* and
+[`wood.md`](wood.md).
 
 ### Sangue and the law of substance
 
@@ -514,13 +579,101 @@ She cannot look away from the consequences of her act.
 
 **She descends rabid on the two paths that fail her plan.** REFUSAL
 (she gets nothing) and PURITY (her own ending is part of the cascade,
-specifically). On both paths she arrives in Cocytus already fully
+specifically — see *Sangue saturation of Beatrice* below for the
+mechanism). On both paths she arrives in Cocytus already fully
 unhinged, fights the Vagrant in violent collapse, completes the
 title-screen disintegration in real-time, and falls. **Defeating her
 is the cost of completing the failure-path.** Failing the fight is
 ordinary death (run-end, retry). She does *not* descend on TRANSFIGURATION
 (her plan succeeds; no need) or SURFEIT (cosmic catastrophe takes her
 along with everything else; her ending is impersonal, swallowed).
+
+### Sangue saturation of Beatrice (the unburdened path's hidden cost)
+
+The unburdened's riversamento ritual pours sangue into the reservoir
+Beatrice built. The reservoir is **her infrastructure** — intimate
+to her substrate, not separate from her. So as the unburdened pours
+across the descent, **the sangue leaks back into Beatrice herself**.
+Every riversamento is a drop of sangue closer to her own corruption.
+She is being **involuntarily saturated** with Hell-substance across
+the unburdened's entire arc.
+
+This produces a structural mirror to the class-picker mechanic:
+
+- **Class-picker:** sangue accumulates on the Vagrant's imprint via
+  OFFERINGS → he is shaped toward Satan-2 of Hell.
+- **Unburdened:** sangue accumulates in Beatrice's substrate via
+  riversamento → **she is being shaped toward a Satan-figure of
+  Paradiso**. Same mechanism, different recipient, different realm.
+
+By Diaphanous, Beatrice is *substantively* a different being than
+the Beatrice the game opened with. **She has Hell in her.** The
+rabid version of her is not just "destabilized from staring too
+long" — she is *sangue-saturated past her divine binding*. Her
+rabidness has the same character-shape as the hypertrophic-free
+damned of failing-Hell: her existing tendencies have grown
+unconstrained, no longer held by her own divine binding. **The
+figure of grace, unconstrained by grace, is no longer grace.**
+
+This is the *literal mechanism* of her descent on PURITY: she
+arrives in Cocytus halfway-transformed into a Paradiso-Satan, and
+the unburdened's final acts (kill Lucifer, defeat her, fire the
+reservoir) are **the unburdened killing the nascent Satan-of-Paradiso
+before her transformation completes**. PURITY ends Hell *and*
+aborts a second devil in one act.
+
+**The title-screen retroactively becomes legible.** The crowned
+Madonna-coded figure with the disintegrating halo, shown every
+boot, is **the unburdened's act made visible**. Every time the
+player has booted the game, they have been watching *Beatrice mid-
+transformation*. The halo cracking is Hell-substance inside her
+substrate working outward. Before R2 the player has no frame for
+what they're seeing; after R2, every prior boot is retroactively
+horror.
+
+**The Guide's parallel saturation.** The Guide is destroyed by
+sangue routed through his channel. Beatrice is destroyed (or
+nearly transformed) by sangue routed through her reservoir.
+**Same mechanism at two different levels.** The unburdened path
+kills *two* of Beatrice's instruments through the same physics:
+the Guide directly via the channel, and Beatrice herself via the
+reservoir. Both saturation-destructions parallel each other; both
+are the cost of PURITY.
+
+### The central irony
+
+**Beatrice — a god of Paradiso, the figure of grace in Dante — is
+*pleased* when the Vagrant becomes Satan-2 (TRANSFIGURATION) and
+*rabid* when the Vagrant ends Hell entirely (PURITY).** By any
+normal moral reckoning, the figure of grace should prefer the
+ending where Hell ceases and suffering ends. Instead she snaps at
+that path and endorses the one that produces a *new devil*.
+
+This inversion is the moral spine of the game's ending structure.
+Her destabilization has inverted her compass: she values **function
+over righteousness**. Centuries of staring at Hell's failure made
+her fixate on whether *the system is running*, not on whether
+*suffering is just*. TRANSFIGURATION restores function (a working
+Hell with a mortal-become-Satan presiding). PURITY *deletes the
+system* entirely — and her late-form cannot bear the deletion of
+the object her destabilization has been about.
+
+PURITY's rabidness is no longer abstract destabilization-as-mood —
+it is *literal sangue-saturation in her substrate* (see above), the
+*physical mechanism* by which her values have inverted. The
+Hell-substance she has been accumulating *speaks through her* by
+the climax. The rabid version of her is *partly Hell talking out
+of her mouth*.
+
+**The thematic statement:** Selva Oscura is, at its deepest, a game
+about *what gods become when they cannot accept emptiness as a
+resolution*. Beatrice would rather see Hell *function* than see
+Hell *end*. The unburdened path is the only one that proposes "what
+if the answer is no system at all?" — and that is the proposal her
+saturation cannot survive. PURITY is the player calling her bluff
+on the ending she claimed to endorse.
+
+---
 
 **No one in the game is aware of Beatrice until R2.** No NPC mentions
 her. No Grimoire entry references her until the posthumous unlocks at
@@ -535,57 +688,276 @@ Formal register: *la Sperimentatrice* / *the Meddler* / *her*. Not
 
 ## Per-circle reactivity
 
-### Pre-keeper (whole circle)
+The Vagrant's work in each circle moves through three states:
+**failing** (start), **restoration** (the keeper-kill moment), and
+**restored** (steady-state after). The Hell-side effect is **path-
+agnostic** — class-picker and unburdened both restore the circles
+the same way. The path-difference is expressed in what becomes of
+the Vagrant himself (see *Sangue routing and the two paths* below),
+not in what becomes of Hell.
 
-Full enforcement. The keeper holds the contrapasso together; shades
-suffer their punishment normally; the NPC is in their lucid window.
-Audio is the circle's standard tonal slot in the descent sequence.
+### Pre-keeper — the circle is failing
 
-### Post-keeper (consumed circle)
+The contrapasso of the circle has rotted from constraint into
+permission (see *Contrapasso — the law of form* above). The
+keeper is broken / complicit / failed — present but no longer
+enforcing. The damned of the circle indulge their sins in
+**hypertrophic-free** form: the sin grown into the body,
+unconstrained, the body shaped to maximize the sin.
 
-The keeper is given second death and does not return. The contrapasso,
-no longer enforced, **leaks into the remaining inhabitants** —
-the NPC, the surviving shades, **the class-picker Vagrant himself**
-(through the imprint the Seal opened in him), and **the Guide**
-(through the channel Beatrice has constructed to use him). They are
-**supercharged** by the released contrapasso.
+Per-circle examples (illustrative; full grammar TBD per-circle):
 
-- **The circle becomes harder.** Defined per-circle changes apply
-  the contrapasso to the *Vagrant* rather than to the souls.
-- **The NPC becomes hostile.** Lucid window closed. Killing them
-  gives a meaningful sangue payout. Player can second-death the
-  NPC before consumption (skipping their item) or after (taking the
-  item, then fighting them later).
-- **The contrapasso-husk emerges.** A residual entity — fragment of
-  the released contrapasso seeking a new vessel.
-- **Audio shifts "weirder."** Tones detune; ambients go off-rhythm;
-  the keeper's musical motif persists faintly as a haunting.
+- **Lust:** sharp, hot, predatorily pursuing — desire walking
+  freely, hunting the Vagrant.
+- **Gluttony:** bloated, mouths multiplied, gut distended past the
+  human silhouette — gorging without limit on the foul rain and
+  on each other.
+- **Wrath:** brawler-bloated, arms grown for striking — violence
+  unconstrained, swinging.
+- **Treachery:** silver-tongued, sleek, sharp — whispering freely
+  in the ice they should be frozen mute in.
 
-The keeper does not respawn. Subsequent visits encounter only the
-contrapasso-husk, the supercharged shades, and the (now hostile) NPC.
+The circle is *stuffed* — centuries of overpacked damned, the keeper
+straining, the contrapasso *complicit* in the indulgence. Sangue
+hemorrhages continuously from these unconstrained bodies, leaking
+into the Wood (see *Selva tie-in* below). Ambient register is dense,
+choked, the screaming of indulgence rather than suffering.
 
-**Contrapasso and the Vagrant.** Contrapasso lands on the class-picker
-Vagrant because the Seal opened an imprint Hell can grip. The
-class-picker's evolution arc is partly *Hell loading itself into him*
-through accreted contrapasso. Stat investment via OFFERINGS and
-contrapasso accretion together produce evolved class-forms. Mechanical
-specifics in [`classes.md`](classes.md). The unburdened Vagrant
-remains imprint-free; contrapasso cannot land. The substance passes
-through and contributes to subtractive evolution (Svuotato →
-Diaphanous), which is the cumulative state of substance refusing to
-settle.
+### Restoration — the keeper-kill moment
 
-**Contrapasso and the Guide.** The Guide is unjudged and imprint-free;
-contrapasso should not land on him either. It does, because Beatrice
-has constructed
-a channel that routes leaked contrapasso through him. She originally
-built the channel to host her Hell-side projections; it doubles as a
-contrapasso conduit. The Guide degrades because the channel is
-corrosive — substance flowing through him erodes the vessel. By
-9 keepers down, he is saturated past coherence. His destruction is
-known to her plan as an acceptable cost; she did not premeditate it
-exactly, she configured him as a tool and did not think hard enough
-about whether using him would destroy him. The result is the same.
+The Vagrant grants the keeper second death. **The contrapasso of
+that circle re-imposes.** The law that had been rotted into
+permission snaps back into constraint. In a single moment:
+
+- The same hypertrophic bodies that were the indulgence become
+  **hypertrophic-constrained** — same body, but the bulk that
+  *was* the sin's freedom now becomes its prison. The gluttonous
+  body is pinned by gravity to the mire, gnawing at itself. The
+  lustful body is frozen mid-pursuit, fevered, the motion unable
+  to complete. The wrathful arms are now too heavy to lift. **Same
+  visual form, inverted meaning.**
+- The hemorrhage stops. The sangue that had been leaking out
+  continuously is now *bound* by the operating law into the proper
+  contrapasso-shape.
+- A **one-time transition surge** of excess sangue is expelled by
+  the law's re-imposition. This surge surfaces into the Wood — the
+  visible cosmic event of restoration (see *Selva tie-in*).
+
+The keeper does not respawn. The role he abandoned must be filled
+by someone else (see *NPC-successor structure* below).
+
+### Restored — the circle as it should always have been
+
+After restoration, the circle operates as Dante's text describes —
+the contrapasso doing what it was always meant to do, at the natural
+rate. Light density. The sin's authentic punishment-form, not its
+indulgence-form. Souls arrive (via the preserved sorting function —
+see below), suffer the contrapasso for their warranted duration, cry
+the second-death cry, are released. The Vagrant's blade is the
+release mechanism — every shade he kills in a restored circle is
+*one soul finishing what it was meant to finish*. Indefinite
+grinding here is sacrament: the kill-loop *is* the throughput Hell
+was supposed to be running for centuries.
+
+The geography is unchanged. The river of blood still flows; the
+burning tombs still burn; Cocytus still ices. Only the law's
+relationship to the damned has corrected.
+
+### NPC-successor structure (circles 1–8)
+
+Beatrice has prepared **eight unjudged souls** — one per circle from
+Limbo through Fraud — as **successor-keepers**. They appear in each
+circle's geography as NPCs during the failing-state, with a *lucid
+window* of clear conversation, gift items, etc. This lucid window
+is her *cultivation period*: she imprints the keeper-function onto
+them subconsciously across centuries.
+
+When the Vagrant kills the original keeper:
+
+1. The NPC of that circle is **promoted** — their subconscious slips
+   fully into the keeper's role.
+2. They **vanish from their visible NPC post**. The chamber/spot
+   they occupied is empty on subsequent visits.
+3. They take the keeper's physical seat. Their body fuses with the
+   keeper's form — imperfectly, because Beatrice's substrate lacks
+   full cosmic authority.
+
+On subsequent descents, the Vagrant fights **the same keeper boss,
+but with the NPC's features progressively bleeding through the
+fusion**. Cerberus on descent 2 has the gluttonous-NPC's face;
+descent 5, more so; etc. **Same combat profile (keeper-mechanical),
+progressive disfigurement (NPC visually).** The roguelike loop
+delivers the worldbuilding through this incremental visible change.
+
+Killing the disfigured-keeper on subsequent descents is killing
+*both* the original failing-keeper *and* Beatrice's NPC-puppet at
+once. R2's body count grows by one per circle.
+
+**Limbo (Circle 1) — Charon and the Acheron zone.** Limbo's
+keeper is **Charon**, the ferryman of the Acheron (Inferno III).
+He is geographically *between the Wood and Limbo proper*: the
+Acheron is its own zone the Vagrant must cross before reaching
+Limbo, and Charon is the figure who governs that crossing.
+
+In the failing-state, **Acheron is empty**. There is no ferryman.
+The unmanned ferry sits abandoned on the shore. The Vagrant crosses
+freely (wades, or walks the dry shore — the failure has stopped
+the ferry from running). This is the first visible symptom of
+Hell's failure: a river-of-sorrow with no ferryman. Attentive
+players who know Dante feel something is off immediately.
+
+On the **first descent**, the Vagrant crosses an empty Acheron,
+explores Limbo (overcrowded with souls that should have been sorted
+deeper but stalled here when the system broke), meets the Limbo
+NPC during her lucid window, and fights **Charon as the keeper-tier
+boss at the exit of Limbo** before descending to Lust.
+
+After Charon falls, the Limbo NPC vanishes from her post (promoted
+into Charon's role).
+
+On **subsequent descents**, the geometric arrangement shifts:
+
+- **Acheron is now occupied by the NPC-Charon hybrid** (the
+  successor in the ferryman's form). She is hostile — gatekeeping
+  the crossing, attacking the Vagrant as an intruder in the
+  entry-zone. **This is the first boss-tier fight of each
+  re-descent**, before Limbo proper.
+- **Limbo's interior is restored and peaceful.** Light density.
+  No keeper-fight at the exit (Charon does not respawn at his
+  original spot; the only successor lives in Acheron). The Vagrant
+  traverses Limbo lightly.
+
+This unique-to-Limbo arrangement (boss-location moves between
+first and subsequent descents) honors Dante's text giving Acheron
+its own canto (III) distinct from Limbo (IV), and produces a
+distinctive surprise on the second descent.
+
+**The sorting function is preserved.** Minos historically sorted
+souls at the entrance to Lust (Inferno V). When the Lust-NPC fuses
+with Minos after the original is killed, the sorting role continues —
+the Minos-NPC hybrid keeps directing new arrivals to their
+appropriate circles. Throughput at the second-circle gate persists
+across restoration. (Charon's role at the Acheron is *ferrying*,
+not sorting; sorting begins one circle deeper.)
+
+### Treachery (Circle 9) — the Guide's role
+
+Treachery / Cocytus has no per-circle NPC by canon. **Lucifer is
+both its keeper and the occupant of the throne the Vagrant is
+destined for** (on TRANSFIGURATION). Beatrice's preparation for
+this circle is different:
+
+- The **Guide** is her prepared successor for the 9th circle, with
+  the longest cultivation of any of her pawns. He lives Wood-side
+  during the first 8 descents — doing double duty as the Vagrant's
+  companion (heal / OFFERINGS / projection-host) AND as the
+  Treachery-NPC-in-waiting.
+- After keeper 8 falls, the Guide **vanishes from the Wood**. The
+  hub goes empty — strong emotional beat the player feels without
+  explanation. Beatrice has routed him down to Cocytus.
+- He is encountered in Cocytus at the climax — saturated past
+  coherence, body cycling through all nine circles' sin-signatures
+  (because he has been the sangue conduit all game — see *The Guide*
+  below, and [`story.md`](story.md) *The climax*).
+- Class-picker path: combat (he attacks). Unburdened path: handover
+  (he gives The Hand without resistance, fades).
+- Defeating him does **not** put him in Lucifer's seat — the seat
+  is for the Vagrant on TRANSFIGURATION. The Guide is the
+  *intermediate* successor whose role is to *assist the throne-
+  approach*, not occupy the throne.
+
+The Guide is the 9th of Beatrice's prepared unjudged. The Vagrant
+is the 10th. Total: 8 circle-NPCs + Guide + Vagrant = ten unjudged
+pawns Beatrice has staged for the cosmological restoration.
+
+### Selva tie-in
+
+During the failing-state, each circle hemorrhages sangue continuously
+into the Wood through Hell's soil-column. The Wood is Hell's
+**exit-wound**, accumulating substance that should have been
+resolved inside Hell. Centuries of this hemorrhage have produced the
+existing wrong-life Selva ecology (see [`creatures.md`](creatures.md)
+and [`wood.md`](wood.md)).
+
+At each keeper-kill moment, a **one-time transition surge** of sangue
+surfaces into the Wood — the law re-imposing pushes excess substance
+out. After the surge, the circle *stops* hemorrhaging. The Wood
+receives **nine discrete surges** across the descent — one per
+keeper-kill (Charon at Limbo, Minos at Lust, Cerberus at Gluttony,
+Plutus at Greed, Phlegyas at Wrath, the keeper of Heresy, the
+Minotaur at Violence, Geryon at Fraud, Lucifer at Treachery) — and
+then no further continuous leak from those circles.
+
+By all keepers down, the Wood's continuous-leak baseline has subsided
+entirely. The Wood is *also* being fixed in parallel with Hell —
+slowly returning to a state where it receives only sangue that
+*should* be there, not substance that should have stayed inside the
+resolution system.
+
+### Sangue routing and the two paths
+
+The keeper-kill surge into the Wood is **path-agnostic** — both
+class-picker and unburdened produce the same surge. The
+path-difference is expressed in what the Vagrant does with sangue
+he **collects from individual shade-kills** as he plays:
+
+- **Class-picker:** brings sangue to OFFERINGS, installs it on the
+  imprint the Seal opened in him. **Sangue lands in him.** He
+  fattens. By 9 keepers down, he is sangue-saturated and shaped to
+  fit the throne. See [`classes.md`](classes.md).
+- **Unburdened:** pours sangue out via **riversamento** into the
+  reservoir Beatrice built outside the cosmos's reach. **Sangue
+  lands in Beatrice's substrate** — and through it, into Beatrice
+  herself (see *Sangue saturation of Beatrice* in the Beatrice
+  section below). He thins. By 9 keepers down, he is Diaphanous —
+  translucent, almost gone. The reservoir is full and primed.
+
+**Hell sees one Vagrant doing one job, regardless of path.** The
+two paths produce identical world-effects on Hell during play. The
+divergence is internal to the Vagrant (and, on the unburdened path,
+internal to Beatrice). World-fate is determined at the endgame
+choice (see *Endings*), not by path during play.
+
+### The NPCs are not contaminated — they are promoted
+
+(Reframe of earlier framing.) The NPCs of circles 1–8 do **not**
+"go hostile from sangue contamination." Their hostility post-keeper
+is the visible expression of their **subconscious promotion to the
+keeper's role**. They become combat encounters because they have
+become the new keepers. This is Beatrice's design, not a side-effect
+of leaked substance.
+
+### Beatrice's prepared pawns — total roster
+
+Beatrice has staged **ten unjudged souls** for the cosmological
+restoration:
+
+- **8 circle-NPCs** (Limbo through Fraud, circles 1–8): each
+  cultivated during their pre-keeper lucid window, each promoted
+  into the keeper's seat after the original falls.
+- **The Guide** (Wood-side, longest cultivation): doubles as the
+  Vagrant's companion during the descent and as the Treachery /
+  Cocytus successor for the climax. Vanishes from the Wood after
+  keeper 8 falls; encountered in Cocytus.
+- **The Vagrant himself**: prepared to take the throne on
+  TRANSFIGURATION, or to fire the reservoir on PURITY.
+
+All ten share the same cosmological class — *unjudged*, outside
+Hell's accounting. Beatrice's plan exists *because* she found,
+deflected, or cultivated this many imprint-free souls to fill the
+roles a restored Hell would need. No other figure in the cosmology
+could have done this — only Beatrice's centuries of staring and
+quiet preparation made the roster possible.
+
+The dark joke beneath the roster is that **most of the ten die
+along the way**. The 8 circle-NPCs become keepers and are killed
+in subsequent descents (their fused forms are the boss-fights of
+the loop). The Guide is killed in Cocytus (class-picker) or fades
+on handover (unburdened). Only the Vagrant has a path that leaves
+him alive (TRANSFIGURATION/SURFEIT/REFUSAL), and only on
+TRANSFIGURATION does that aliveness mean anything (the throne is
+occupied). On PURITY, the Vagrant dies last in the cascade — all
+ten gone.
 
 ---
 
@@ -606,11 +978,11 @@ He dies not knowing.
 
 His unmeasured state lets him host Beatrice's projection without
 Hell installing him into something else. The same channel doubles as
-a contrapasso conduit: leaked contrapasso from fallen keepers routes
-through him, eroding the vessel as substance flows through. His
-destruction is acceptable cost in Beatrice's plan; she did not
-premeditate it as the goal but did not think hard enough about
-whether using him would destroy him. The result is the same.
+a sangue conduit: surfacing sangue from broken circles routes through
+him, eroding the vessel as substance flows through. His destruction is
+acceptable cost in Beatrice's plan; she did not premeditate it as the
+goal but did not think hard enough about whether using him would
+destroy him. The result is the same.
 
 His dialogue progresses from helpful (early) → unstable / cracking
 (middle) → degraded / monstrous (climax). The late-game *reveal* is
@@ -912,11 +1284,11 @@ Tracked here for future iteration:
   looted; substrate split between Wood-craft and Hell-craft;
   crafting as the verb of *consuming Hell*.
 - [Wood](wood.md) — the selva oscura as a place: inner/outer
-  layout, Hell's leak as the threshold's defining condition, time-
-  stop, persistence of the player's marks.
+  layout, sangue suffusion as the threshold's defining condition,
+  time-stop, persistence of the player's marks.
 - [Creatures](creatures.md) — the Selva-organism ecology spawned
-  from leaked Hell-substance; biology rather than spirit-substance;
-  capture as personal choice, not mission target.
+  from sangue surfacing into the Wood; biology rather than spirit-
+  substance; capture as personal choice, not mission target.
 - [Dialogue](dialogue.md) — NPC trees, register, state branching.
 - [UX](ux.md) — screen flow, HUD, menus, vestigia, save/load language.
 - [Fallback](fallback.md) — death, retry, cycle persistence mechanics.

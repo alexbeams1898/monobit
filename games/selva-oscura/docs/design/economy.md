@@ -22,16 +22,20 @@ The Vagrant obtains sangue exclusively by **extracting it from new
 shades and keepers** (per setting.md). There is no scavenging, no
 quest-reward sangue, no NPC gifts of sangue.
 
-- **Shade kills.** Per-shade sangue payouts. Pre-keeper shades give
-  baseline; post-keeper shades (supercharged by leaked contrapasso)
-  give meaningful payouts.
+- **Shade kills.** Per-shade sangue payouts. Pre-keeper shades
+  (hypertrophic-free, indulging in the failing-state circle) give
+  baseline; post-keeper shades (hypertrophic-constrained, mid-
+  suffering in the restored circle) give meaningful payouts per
+  the restored throughput rate.
 - **Keeper kills.** Boss-tier sangue payouts at each circle's keeper
-  fight.
-- **Hostile NPC kills.** Post-keeper, the circle's NPC becomes hostile
-  and gives a meaningful sangue payout when killed (per setting.md
-  *Per-circle reactivity*).
-- **Contrapasso-husk kills.** Post-keeper residual entities; sangue
-  payout TBD at gameplay tuning.
+  fight. The first descent kills the *original* keeper; subsequent
+  descents kill the *NPC-fused keeper* (same boss, progressive
+  disfigurement — per setting.md *NPC-successor structure*). The
+  fused-keeper kills also yield boss-tier payouts.
+- **NPC promotion fight.** Post-keeper, the circle's NPC vanishes
+  from their visible post and fuses with the keeper's role. Their
+  presence on subsequent descents is *the boss fight* (above) — no
+  separate NPC-kill event distinct from the keeper fight.
 
 ## Sinks
 
