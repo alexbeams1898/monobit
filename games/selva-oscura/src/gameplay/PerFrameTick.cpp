@@ -3227,4 +3227,11 @@ void selvaRenderWorld(::Engine& engine, ::EntityManager& em, float a, float b, f
 {
     ::selvaRenderWorld(engine, em, a, b, c);
 }
+void syncInputEdgesFromCurrentState()
+{
+    const Uint32 mouse_buttons = SDL_GetMouseState(nullptr, nullptr);
+    sPrevLMB = (mouse_buttons & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
+    sPrevRMB = (mouse_buttons & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
+    sPrevMMB = (mouse_buttons & SDL_BUTTON(SDL_BUTTON_MIDDLE)) != 0;
+}
 } // namespace selva::gameplay

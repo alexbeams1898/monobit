@@ -67,13 +67,20 @@ void shutdownGeometry()
 // Phase-gated per-frame update: only ticks game state when Playing and the
 // pause menu is closed. Keeps the engine's loop running every frame so the
 // ImGui pass continues to handle menus.
+//
+// When skipping, we still sync the mouse-button prev-state so edges don't
+// fire on resume (otherwise RMB held to close the menu would trigger a
+// fresh block-press the next frame).
 void gatedPerFrame(::Engine& engine, ::EntityManager& em, double dt)
 {
     const auto& gs = selva::gameState();
-    if (gs.phase != selva::GameState::Phase::Playing)
+    const bool playing = (gs.phase == selva::GameState::Phase::Playing);
+    const bool menu_open = selva::uiState().isScreenOpen();
+    if (!playing || menu_open)
+    {
+        selva::gameplay::syncInputEdgesFromCurrentState();
         return;
-    if (selva::uiState().isScreenOpen())
-        return;
+    }
     selva::gameplay::selvaPerFrame(engine, em, dt);
 }
 

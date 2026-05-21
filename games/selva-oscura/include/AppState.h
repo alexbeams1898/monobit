@@ -23,9 +23,13 @@ namespace selva
 {
 
 // ---------------------------------------------------------------------------
-// UIState - in-game overlay tracking. The pause menu and its tabs (status,
-// inventory, equipment) live here. GameState owns the top-level application
-// mode; UIState owns the in-game overlay layered on top of Playing.
+// UIState - in-game overlay tracking. The pause menu and its tabs (Status,
+// Inventory, Equipment, System) live here. GameState owns the top-level
+// application mode; UIState owns the in-game overlay layered on top of
+// Playing. Layout follows Elden Ring's convention - gameplay-data tabs
+// (Status, Inventory, Equipment) and a System tab that holds Save / Settings
+// / Quit-to-menu / Quit-to-desktop. Resume is universally ESC + RMB - not
+// a button in any tab.
 // ---------------------------------------------------------------------------
 struct UIState
 {
@@ -40,8 +44,9 @@ struct UIState
         Status = 0,
         Inventory = 1,
         Equipment = 2,
+        System = 3,
     };
-    static constexpr int TAB_COUNT = 3;
+    static constexpr int TAB_COUNT = 4;
 
     Screen active_screen = Screen::None;
     Tab menu_tab = Tab::Status;

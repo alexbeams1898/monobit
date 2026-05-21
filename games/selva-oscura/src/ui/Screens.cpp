@@ -88,6 +88,55 @@ bool centeredButton(const char* label, float width = 200.0f)
     return ImGui::Button(label, ImVec2(width, 0));
 }
 
+// True on the frame the right mouse button is pressed (transitions from
+// up to down). ImGui forwards SDL mouse events so this works in menu
+// contexts; in Playing the cursor is captured for mouse-look so RMB
+// would not fire here.
+bool rmbClicked()
+{
+    return ImGui::IsMouseClicked(ImGuiMouseButton_Right);
+}
+
+// Back/cancel input - ESC or RMB. Matches prison-escape's pattern; see
+// games/prison-escape-game/src/screens/* for the canonical examples.
+// Caller is responsible for consuming this in a single place per frame.
+bool wantBack()
+{
+    return ImGui::IsKeyPressed(ImGuiKey_Escape) || rmbClicked();
+}
+
+// Helper-controls hint bar - a borderless, transparent window placed just
+// below the modal it accompanies. Anchored to (cx, modal_bottom + gap) where
+// cx is the modal's horizontal center. Used to teach players the ESC/RMB-
+// back binding without claiming a button slot inside the modal.
+//
+// Call AFTER the modal's ImGui::End() so the modal's window rect is set on
+// the previous frame for layout (we use a stable position derived from the
+// viewport, not the previous window's actual rect, since ImGui doesn't
+// expose that cleanly mid-frame).
+void drawHintBar(const char* text, ImVec2 modal_size)
+{
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    constexpr float kGap = 8.0f;
+    const float modal_top = vp->Pos.y + (vp->Size.y - modal_size.y) * 0.5f;
+    const float modal_bottom = modal_top + modal_size.y;
+
+    const float w = ImGui::CalcTextSize(text).x + 24.0f;
+    const float h = ImGui::GetFontSize() + 16.0f;
+    const ImVec2 pos(vp->Pos.x + (vp->Size.x - w) * 0.5f, modal_bottom + kGap);
+    const ImVec2 size(w, h);
+
+    ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
+    ImGui::SetNextWindowSize(size, ImGuiCond_Always);
+    ImGui::SetNextWindowBgAlpha(0.0f);
+    ImGui::Begin("##hint", nullptr,
+                 ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
+                     ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoInputs |
+                     ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar);
+    ImGui::TextDisabled("%s", text);
+    ImGui::End();
+}
+
 // ---------------------------------------------------------------------------
 // Main menu screen
 // ---------------------------------------------------------------------------
@@ -178,11 +227,11 @@ void renderCharCreate()
     if (!name_valid || name_taken)
         ImGui::EndDisabled();
 
-    ImGui::Spacing();
-    if (centeredButton("Cancel", 160.0f))
-        setPhase(GameState::Phase::MainMenu);
-
     ImGui::End();
+    drawHintBar("[Esc/RMB] Back", ImVec2(360, 260));
+
+    if (wantBack())
+        setPhase(GameState::Phase::MainMenu);
 }
 
 // ---------------------------------------------------------------------------
@@ -223,13 +272,11 @@ void renderLoadGame()
         SaveManager::save(saveData());
     }
 
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::Spacing();
-    if (centeredButton("Back", 160.0f))
-        setPhase(GameState::Phase::MainMenu);
-
     ImGui::End();
+    drawHintBar("[Esc/RMB] Back", ImVec2(420, 400));
+
+    if (wantBack())
+        setPhase(GameState::Phase::MainMenu);
 }
 
 // ---------------------------------------------------------------------------
@@ -255,12 +302,49 @@ void renderSettings()
     if (dirty)
         SaveManager::save(saveData());
 
-    ImGui::Spacing();
-    ImGui::Spacing();
-    if (centeredButton("Back", 160.0f))
-        setPhase(GameState::Phase::MainMenu);
-
     ImGui::End();
+    drawHintBar("[Esc/RMB] Back", ImVec2(420, 260));
+
+    if (wantBack())
+        setPhase(GameState::Phase::MainMenu);
+}
+
+// Renders the System tab's contents: save / settings sliders / quit-to-menu
+// / quit-to-desktop. Returns true if Quit-to-Desktop was selected.
+bool renderSystemTab()
+{
+    bool quit = false;
+    ImGui::Spacing();
+
+    if (centeredButton("Save", 220.0f))
+        SaveManager::save(saveData());
+    ImGui::Spacing();
+    ImGui::Spacing();
+
+    ImGui::TextDisabled("Settings");
+    ImGui::Separator();
+    ImGui::Spacing();
+    bool dirty = false;
+    auto& s = saveData().settings;
+    if (ImGui::SliderFloat("BGM volume", &s.bgm_volume, 0.0f, 1.0f, "%.2f"))
+        dirty = true;
+    if (ImGui::SliderFloat("SFX volume", &s.sfx_volume, 0.0f, 1.0f, "%.2f"))
+        dirty = true;
+    if (dirty)
+        SaveManager::save(saveData());
+
+    ImGui::Spacing();
+    ImGui::Spacing();
+    if (centeredButton("Quit to Main Menu", 220.0f))
+    {
+        uiState().active_screen = UIState::Screen::None;
+        setPhase(GameState::Phase::MainMenu);
+    }
+    ImGui::Spacing();
+    if (centeredButton("Quit to Desktop", 220.0f))
+        quit = true;
+
+    return quit;
 }
 
 // ---------------------------------------------------------------------------
@@ -269,7 +353,7 @@ void renderSettings()
 bool renderPauseMenu()
 {
     bool quit = false;
-    beginCenteredWindow("##pause", ImVec2(420, 380));
+    beginCenteredWindow("##pause", ImVec2(460, 460));
     ImGui::SetWindowFontScale(1.3f);
     ImGui::TextUnformatted("Paused");
     ImGui::SetWindowFontScale(1.0f);
@@ -343,35 +427,30 @@ bool renderPauseMenu()
             draw_slot("Accessory 2", EquipSlot::Accessory2);
             ImGui::EndTabItem();
         }
+        if (ImGui::BeginTabItem("System"))
+        {
+            ui.menu_tab = UIState::Tab::System;
+            quit = renderSystemTab() || quit;
+            ImGui::EndTabItem();
+        }
         ImGui::EndTabBar();
     }
 
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::Spacing();
-    if (centeredButton("Resume", 200.0f))
-        ui.active_screen = UIState::Screen::None;
-    ImGui::Spacing();
-    if (centeredButton("Save", 200.0f))
-        SaveManager::save(saveData());
-    ImGui::Spacing();
-    if (centeredButton("Quit to Main Menu", 200.0f))
-    {
-        ui.active_screen = UIState::Screen::None;
-        setPhase(GameState::Phase::MainMenu);
-    }
-    ImGui::Spacing();
-    if (centeredButton("Quit to Desktop", 200.0f))
-        quit = true;
-
     ImGui::End();
+    drawHintBar("[Esc/RMB] Resume", ImVec2(460, 460));
+
     return quit;
 }
 
 // ---------------------------------------------------------------------------
-// Pause-menu open/close trigger. ESC during Playing toggles the pause
-// overlay. Suppressed for one frame after the overlay closes to keep the
-// game from immediately re-pausing.
+// Pause-menu open/close trigger. ESC during Playing opens the pause
+// overlay. ESC or RMB closes it (RMB doubles as the back gesture inside
+// any menu - matches prison-escape's pattern). Suppressed for one frame
+// after the overlay closes to keep the game from immediately re-pausing.
+//
+// Note: RMB does NOT open the pause menu - during Playing the cursor is
+// captured for mouse-look and RMB is the combat block input. RMB only
+// closes the pause menu (where the cursor is visible).
 // ---------------------------------------------------------------------------
 void tickPauseToggle()
 {
@@ -381,17 +460,17 @@ void tickPauseToggle()
         ui.input_suppressed = false;
         return;
     }
-    // ImGui::IsKeyPressed checks SDL-mapped ImGui keys; the engine forwards
-    // SDL events into ImGui every frame.
-    if (ImGui::IsKeyPressed(ImGuiKey_Escape))
+    const bool esc = ImGui::IsKeyPressed(ImGuiKey_Escape);
+    const bool rmb = rmbClicked();
+    if (ui.active_screen == UIState::Screen::None)
     {
-        if (ui.active_screen == UIState::Screen::None)
+        if (esc)
             ui.active_screen = UIState::Screen::Menu;
-        else
-        {
-            ui.active_screen = UIState::Screen::None;
-            ui.input_suppressed = true;
-        }
+    }
+    else if (esc || rmb)
+    {
+        ui.active_screen = UIState::Screen::None;
+        ui.input_suppressed = true;
     }
 }
 
