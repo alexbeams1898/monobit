@@ -3190,81 +3190,117 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
                              glm::vec3(0.0f, tun_atm.follow_height, 0.0f);
 
     // ---- Shadow depth pass ----
-    selva::render::updateShadowCamera(sPlayer.pos);
-    selva::render::beginDepthPass();
-
-    selva::render::useTerrainDepthShader();
-    selva::render::renderTerrainDepth();
-
-    selva::render::useTreeDepthShader();
-    selva::render::renderTreesDepth();
-
-    // Scene cubes (ground decals). Currently no-op but the depth pass
-    // would draw them here once any get added to the scene.
-    // selva::render::useSceneDepthShader();
-    // selva::render::renderSceneDepth();
-
-    selva::render::useSkeletalDepthShader();
-    if (sPlayerMesh.isLoaded() && !sSampler.bone_palette.empty())
     {
-        const glm::vec3 player_pos(sPlayer.pos.x, sPlayer.pos.y - sPlayerMesh.foot_offset_y,
-                                   sPlayer.pos.z);
-        glm::mat4 m = glm::translate(glm::mat4(1.0f), player_pos);
-        m = glm::rotate(m, sPlayer.yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
-        selva::render::setSkeletalDepthModel(m);
-        selva::render::setSkeletalDepthBones(sSampler.bone_palette.data(),
-                                             static_cast<int>(sSampler.bone_palette.size()));
-        glBindVertexArray(sPlayerMesh.vao);
-        glDrawElements(GL_TRIANGLES, sPlayerMesh.index_count, GL_UNSIGNED_INT, nullptr);
-    }
-    for (const auto* enemy : selva::gameplay::enemies())
-    {
-        if (enemy->sampler.bone_palette.empty())
-            continue;
-        const glm::vec3 enemy_pos(enemy->pos.x, enemy->pos.y - sPlayerMesh.foot_offset_y,
-                                  enemy->pos.z);
-        glm::mat4 m = glm::translate(glm::mat4(1.0f), enemy_pos);
-        m = glm::rotate(m, enemy->yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
-        selva::render::setSkeletalDepthModel(m);
-        selva::render::setSkeletalDepthBones(enemy->sampler.bone_palette.data(),
-                                             static_cast<int>(enemy->sampler.bone_palette.size()));
-        glBindVertexArray(sPlayerMesh.vao);
-        glDrawElements(GL_TRIANGLES, sPlayerMesh.index_count, GL_UNSIGNED_INT, nullptr);
-    }
+        ZoneScopedN("shadow-depth-pass");
+        {
+            ZoneScopedN("shadow-update-cam");
+            selva::render::updateShadowCamera(sPlayer.pos);
+        }
+        {
+            ZoneScopedN("shadow-begin");
+            selva::render::beginDepthPass();
+        }
 
-    selva::render::endDepthPass(selva::render::windowWidth(), selva::render::windowHeight());
+        {
+            ZoneScopedN("shadow-terrain");
+            selva::render::useTerrainDepthShader();
+            selva::render::renderTerrainDepth();
+        }
+        {
+            ZoneScopedN("shadow-trees");
+            selva::render::useTreeDepthShader();
+            selva::render::renderTreesDepth();
+        }
+
+        // Scene cubes (ground decals). Currently no-op but the depth pass
+        // would draw them here once any get added to the scene.
+
+        {
+            ZoneScopedN("shadow-skeletal");
+            selva::render::useSkeletalDepthShader();
+            if (sPlayerMesh.isLoaded() && !sSampler.bone_palette.empty())
+            {
+                const glm::vec3 player_pos(sPlayer.pos.x, sPlayer.pos.y - sPlayerMesh.foot_offset_y,
+                                           sPlayer.pos.z);
+                glm::mat4 m = glm::translate(glm::mat4(1.0f), player_pos);
+                m = glm::rotate(m, sPlayer.yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
+                selva::render::setSkeletalDepthModel(m);
+                selva::render::setSkeletalDepthBones(
+                    sSampler.bone_palette.data(),
+                    static_cast<int>(sSampler.bone_palette.size()));
+                glBindVertexArray(sPlayerMesh.vao);
+                glDrawElements(GL_TRIANGLES, sPlayerMesh.index_count, GL_UNSIGNED_INT, nullptr);
+            }
+            for (const auto* enemy : selva::gameplay::enemies())
+            {
+                if (enemy->sampler.bone_palette.empty())
+                    continue;
+                const glm::vec3 enemy_pos(enemy->pos.x,
+                                          enemy->pos.y - sPlayerMesh.foot_offset_y, enemy->pos.z);
+                glm::mat4 m = glm::translate(glm::mat4(1.0f), enemy_pos);
+                m = glm::rotate(m, enemy->yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
+                selva::render::setSkeletalDepthModel(m);
+                selva::render::setSkeletalDepthBones(
+                    enemy->sampler.bone_palette.data(),
+                    static_cast<int>(enemy->sampler.bone_palette.size()));
+                glBindVertexArray(sPlayerMesh.vao);
+                glDrawElements(GL_TRIANGLES, sPlayerMesh.index_count, GL_UNSIGNED_INT, nullptr);
+            }
+        }
+
+        {
+            ZoneScopedN("shadow-end");
+            selva::render::endDepthPass(selva::render::windowWidth(),
+                                        selva::render::windowHeight());
+        }
+    }
 
     // ---- Main pass: bind the shadow texture so main shaders can sample ----
     selva::render::bindShadowTexture(1); // texture unit 1 reserved for shadows
 
-    selva::render::drawSky(glm::inverse(viewProj), kSunDir, kSunIntensity, camPos, kExposure);
+    {
+        ZoneScopedN("sky");
+        selva::render::drawSky(glm::inverse(viewProj), kSunDir, kSunIntensity, camPos, kExposure);
+    }
 
     const glm::mat4& lightVP = selva::render::lightViewProj();
 
-    selva::render::useTerrainShader();
-    selva::render::setTerrainViewProj(viewProj);
-    selva::render::setTerrainAtmosphere(kSunDir, kSunIntensity, camPos, kExposure);
-    selva::render::setTerrainShadow(lightVP, kSunDir, sPlayer.pos, 1);
-    selva::render::renderTerrain();
+    {
+        ZoneScopedN("terrain");
+        selva::render::useTerrainShader();
+        selva::render::setTerrainViewProj(viewProj);
+        selva::render::setTerrainAtmosphere(kSunDir, kSunIntensity, camPos, kExposure);
+        selva::render::setTerrainShadow(lightVP, kSunDir, sPlayer.pos, 1);
+        selva::render::renderTerrain();
+    }
 
-    selva::render::useSceneProgram();
-    selva::render::setSceneView(selva::render::lastView());
-    selva::render::setSceneViewProj(viewProj);
-    selva::render::setSceneAtmosphere(kSunDir, kSunIntensity, camPos, kExposure);
-    selva::render::setSceneShadow(lightVP, kSunDir, sPlayer.pos, 1);
-    selva::render::renderGroundDecals();
+    {
+        ZoneScopedN("scene-decals");
+        selva::render::useSceneProgram();
+        selva::render::setSceneView(selva::render::lastView());
+        selva::render::setSceneViewProj(viewProj);
+        selva::render::setSceneAtmosphere(kSunDir, kSunIntensity, camPos, kExposure);
+        selva::render::setSceneShadow(lightVP, kSunDir, sPlayer.pos, 1);
+        selva::render::renderGroundDecals();
+    }
 
-    selva::render::useTreeShader();
-    selva::render::setTreeViewProj(viewProj);
-    selva::render::setTreeAtmosphere(kSunDir, kSunIntensity, camPos, kExposure);
-    selva::render::setTreeShadow(lightVP, kSunDir, sPlayer.pos, 1);
-    selva::render::renderTrees();
+    {
+        ZoneScopedN("trees");
+        selva::render::useTreeShader();
+        selva::render::setTreeViewProj(viewProj);
+        selva::render::setTreeAtmosphere(kSunDir, kSunIntensity, camPos, kExposure);
+        selva::render::setTreeShadow(lightVP, kSunDir, sPlayer.pos, 1);
+        selva::render::renderTrees();
+    }
 
     glBindVertexArray(0);
     glUseProgram(0);
 
-    selva::anim::setSkeletalShadow(lightVP, kSunDir, sPlayer.pos, 1);
-    drawActorMeshes(viewProj);
+    {
+        ZoneScopedN("actor-meshes");
+        selva::anim::setSkeletalShadow(lightVP, kSunDir, sPlayer.pos, 1);
+        drawActorMeshes(viewProj);
+    }
     tickFrameCaptureWrite();
 }
 

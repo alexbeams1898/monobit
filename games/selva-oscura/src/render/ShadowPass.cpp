@@ -1,5 +1,6 @@
 #include "render/ShadowPass.h"
 
+#include "Tunables.h"
 #include "gl/ShaderUtils.h"
 #include "render/Atmosphere.h"
 
@@ -155,9 +156,6 @@ GLuint sDepthFBO = 0;
 GLuint sDepthTex = 0;
 glm::mat4 sLightViewProj = glm::mat4(1.0f);
 
-GLint sPrevViewport[4] = {0, 0, 0, 0};
-GLint sPrevFBO = 0;
-
 // Diagnostic log. Opened lazily on first update; throttled to
 // kLogIntervalFrames so the file doesn't balloon. Captures the most
 // useful per-frame state for understanding what the shadow camera
@@ -169,6 +167,8 @@ constexpr int kLogIntervalFrames = 30;
 
 FILE* shadowLog()
 {
+    if (!selva::tuning::current().debug_shadow_log)
+        return nullptr;
     if (sLog != nullptr)
         return sLog;
     if (sLogOpenAttempted)
@@ -341,9 +341,11 @@ void updateShadowCamera(const glm::vec3& player_world_pos)
 
 void beginDepthPass()
 {
-    glGetIntegerv(GL_VIEWPORT, sPrevViewport);
-    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &sPrevFBO);
-
+    // Don't query GL state per frame. glGetIntegerv(GL_VIEWPORT) and
+    // glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING) force a CPU->GPU
+    // sync on many drivers and were costing ~15ms/frame on this GPU.
+    // We always restore to the engine's default FBO (0) and the
+    // window viewport, both already cached.
     glBindFramebuffer(GL_FRAMEBUFFER, sDepthFBO);
     glViewport(0, 0, kShadowMapSize, kShadowMapSize);
     glClear(GL_DEPTH_BUFFER_BIT);
@@ -360,11 +362,11 @@ void beginDepthPass()
 void endDepthPass(int restore_w, int restore_h)
 {
     glCullFace(GL_BACK);
-    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(sPrevFBO));
-    if (restore_w > 0 && restore_h > 0)
-        glViewport(0, 0, restore_w, restore_h);
-    else
-        glViewport(sPrevViewport[0], sPrevViewport[1], sPrevViewport[2], sPrevViewport[3]);
+    // Restore to engine default FBO (always 0 for our setup - we don't
+    // use any other render targets). Avoids the per-frame glGetIntegerv
+    // round-trip from beginDepthPass.
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, restore_w, restore_h);
 }
 
 void bindShadowTexture(int unit)

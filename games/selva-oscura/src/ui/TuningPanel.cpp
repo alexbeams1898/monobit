@@ -233,6 +233,11 @@ static void renderAiPerceptionSection(selva::tuning::Tunables& tun)
     tunedSlider("Action freshness (s)", &tun.ai_action_freshness_seconds, 0.05f, 3.0f, 0.05f,
                 "%.2f");
     ImGui::Checkbox("Log AI decisions to combat-debug.log", &tun.debug_ai_decision_log);
+    ImGui::Separator();
+    ImGui::TextUnformatted("Render / Audio debug logs");
+    ImGui::Checkbox("Footstep trajectory + events -> footstep-debug.log",
+                    &tun.debug_footstep_log);
+    ImGui::Checkbox("Shadow camera state -> shadow-debug.log", &tun.debug_shadow_log);
 }
 
 // Diagnostic dump of the loaded enemy-archetype registry. Read-only;

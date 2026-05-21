@@ -393,6 +393,18 @@ struct Tunables
     // time crosses this threshold. Set to a negative value to
     // disable.
     float flying_knee_whoosh_time_seconds = 0.95f;
+
+    // ---- Debug logging ----
+    // When true, gameplay/Footsteps.cpp opens footstep-debug.log and
+    // writes per-frame trajectory rows + FIRE/SUPPRESS events. The
+    // per-frame fprintf + fflush is hot enough to cost a frame or two
+    // when running. Default OFF; F1 panel toggle when diagnosing.
+    bool debug_footstep_log = false;
+
+    // When true, render/ShadowPass.cpp opens shadow-debug.log and
+    // writes per-frame snap state (throttled to every 30 frames so
+    // cost is negligible, but keep gated for cleanliness). Default OFF.
+    bool debug_shadow_log = false;
 };
 
 // JSON serialization — generates to_json / from_json for nlohmann::json
@@ -419,6 +431,10 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     ai_decision_tick_hz, ai_decision_tick_combat_hz_multiplier, debug_ai_tick_log,
     ai_turn_rate_radians_per_sec, debug_ai_decision_log, ai_action_freshness_seconds,
     flying_knee_whoosh_time_seconds);
+// NOTE: debug_footstep_log and debug_shadow_log are NOT serialized -
+// they're session-only debug toggles. Keeping them out of the macro
+// also avoids hitting NLOHMANN_DEFINE_TYPE's variadic field-count
+// limit (~64).
 
 // Single global instance. Both gameplay code and the procedural driver
 // read from this; the ImGui panel edits it in place. Keep it global rather

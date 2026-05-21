@@ -1,5 +1,6 @@
 #include "gameplay/Footsteps.h"
 
+#include "Tunables.h"
 #include "WallClock.h"
 #include "audio/Audio.h"
 #include "gameplay/Actor.h"
@@ -90,6 +91,8 @@ bool sLogOpenAttempted = false;
 
 FILE* footstepLog()
 {
+    if (!selva::tuning::current().debug_footstep_log)
+        return nullptr;
     if (sLog != nullptr)
         return sLog;
     if (sLogOpenAttempted)

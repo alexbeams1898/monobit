@@ -151,10 +151,12 @@ void drawSky(const glm::mat4& inv_view_proj, const glm::vec3& sun_dir,
                 static_cast<float>(windowHeight()));
     glUniformMatrix4fv(sUniInvVPLoc, 1, GL_FALSE, glm::value_ptr(inv_view_proj));
 
-    GLboolean depth_test_was;
-    GLboolean depth_mask_was;
-    glGetBooleanv(GL_DEPTH_TEST, &depth_test_was);
-    glGetBooleanv(GL_DEPTH_WRITEMASK, &depth_mask_was);
+    // Sky writes no depth and tests no depth (full-screen fill).
+    // Do NOT glGetBooleanv to save/restore - that causes a CPU<->GPU
+    // sync stall (cost was ~15ms/frame in profiling). Caller knows
+    // it wants depth re-enabled for following geometry passes; we
+    // unconditionally set it back to the gameplay-pass defaults
+    // (depth test on, depth mask on).
     glDisable(GL_DEPTH_TEST);
     glDepthMask(GL_FALSE);
 
@@ -162,9 +164,8 @@ void drawSky(const glm::mat4& inv_view_proj, const glm::vec3& sun_dir,
     glDrawArrays(GL_TRIANGLES, 0, 3);
     glBindVertexArray(0);
 
-    if (depth_test_was)
-        glEnable(GL_DEPTH_TEST);
-    glDepthMask(depth_mask_was);
+    glEnable(GL_DEPTH_TEST);
+    glDepthMask(GL_TRUE);
 }
 
 } // namespace selva::render
