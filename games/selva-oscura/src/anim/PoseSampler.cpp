@@ -933,6 +933,16 @@ const char* PoseSampler::jointName(int i) const
     return impl->skeleton->joint_names()[i];
 }
 
+// NOTE: the renderer constructs the visible model matrix using
+//   glm::rotate(yaw + pi, Y)
+// (see PerFrameTick.cpp drawActorMeshes). The +pi flip is because
+// the source mesh authored-forward is the model's local +Z, but
+// glm::lookAt + our world convention treats actor-forward as world
+// -Z, so we rotate by +pi to flip the model's local axes through
+// the world Y. Both accessors below MUST replicate that +pi flip
+// so the joint world transform they return matches the visible
+// mesh transform - otherwise the camera reads joint orientations
+// that are 180deg off from what the player sees.
 glm::vec3 PoseSampler::jointWorldPosWithActor(int i) const
 {
     if (!impl || i < 0 || i >= static_cast<int>(impl->model_matrices.size()))
@@ -942,11 +952,35 @@ glm::vec3 PoseSampler::jointWorldPosWithActor(int i) const
     const float model_x = m[3][0];
     const float model_y = m[3][1];
     const float model_z = m[3][2];
-    const float cy = std::cos(impl->actor_yaw);
-    const float sy = std::sin(impl->actor_yaw);
+    constexpr float kPi = 3.14159265358979323846f;
+    const float yaw_with_flip = impl->actor_yaw + kPi;
+    const float cy = std::cos(yaw_with_flip);
+    const float sy = std::sin(yaw_with_flip);
     return glm::vec3(impl->actor_world_pos.x + cy * model_x + sy * model_z,
                      impl->actor_world_pos.y + model_y,
                      impl->actor_world_pos.z - sy * model_x + cy * model_z);
+}
+
+glm::mat4 PoseSampler::jointWorldMatrixWithActor(int i) const
+{
+    if (!impl || i < 0 || i >= static_cast<int>(impl->model_matrices.size()))
+        return glm::mat4(1.0f);
+    glm::mat4 model_mat;
+    std::memcpy(&model_mat, &impl->model_matrices[i], sizeof(glm::mat4));
+    // Mirror the renderer: rotate around Y by (actor_yaw + pi), then
+    // translate to actor world pos. Without the +pi flip the joint's
+    // rotation columns would be 180deg off from the visible mesh.
+    constexpr float kPi = 3.14159265358979323846f;
+    const float yaw_with_flip = impl->actor_yaw + kPi;
+    const float cy = std::cos(yaw_with_flip);
+    const float sy = std::sin(yaw_with_flip);
+    glm::mat4 actor_world(1.0f);
+    actor_world[0] = glm::vec4(cy, 0.0f, -sy, 0.0f);
+    actor_world[1] = glm::vec4(0.0f, 1.0f, 0.0f, 0.0f);
+    actor_world[2] = glm::vec4(sy, 0.0f, cy, 0.0f);
+    actor_world[3] = glm::vec4(impl->actor_world_pos.x, impl->actor_world_pos.y,
+                               impl->actor_world_pos.z, 1.0f);
+    return actor_world * model_mat;
 }
 
 glm::vec3 PoseSampler::consumedHipDelta() const

@@ -70,6 +70,7 @@
 #include <filesystem>
 #include <limits>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <glad/glad.h>
@@ -242,6 +243,18 @@ static BufferedDodgePress sBufferedDodge;
 // NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy
 // 18 can't track inter-function dataflow.
 static float sDodgeElapsed = 0.0f;
+// Smooth yaw blend during a directional dodge roll. Replaces the
+// pre-fix instant snap (which caused a jarring "diagonal back-roll"
+// feel in FPV because the camera yawed and pitched in the same frame).
+// sDodgeYawTarget is the direction the dodge wants to go; sDodgeYawStart
+// is the player's pre-dodge yaw; sDodgeYawBlendDuration is how long to
+// take to interpolate between them (clamped to dodge duration). Only
+// used when the dodge has movement intent (rolls); backsteps don't
+// re-orient so this path is skipped for them.
+static float sDodgeYawStart = 0.0f;
+static float sDodgeYawTarget = 0.0f;
+static float sDodgeYawBlendDuration = 0.0f;
+static bool sDodgeHasYawBlend = false;
 // NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy
 // 18 can't track inter-function dataflow.
 static float sDodgeDuration = 0.0f;
@@ -332,10 +345,12 @@ struct TreePreviewState
 static TreePreviewState sTreePreview;
 // NOLINTNEXTLINE(misc-const-correctness): edge-tracker for F2.
 static bool sPrevF2 = false;
+static bool sPrevV = false;
 // Forward declarations of preview-mode helpers — definitions live
 // below near the other render-side helpers (drawActorMeshes etc.)
 // but selvaPerFrame needs to call the toggle + skip-tick gate.
 static void tickTreePreviewToggle(const Uint8* keys);
+static void tickFpvToggle(const Uint8* keys);
 static void renderTreePreview();
 
 // Combat debug toggle + log file owned by combat/CombatLog.{h,cpp}.
@@ -532,8 +547,16 @@ static void tickMouseLook(const selva::tuning::Tunables& tun)
     float pitch = selva::render::cameraPitch();
     yaw -= static_cast<float>(mdx) * tun.mouse_sensitivity;
     pitch -= static_cast<float>(mdy) * tun.mouse_sensitivity;
-    if (pitch < tun.pitch_min)
-        pitch = tun.pitch_min;
+    // FPV uses a tighter downward clamp so the player can't look
+    // straight down at their own body. Upward clamp stays wide so
+    // they can look at the sky. Third-person uses the wider tunable
+    // limits since the camera is over-shoulder and the player can
+    // need to look at the ground for navigation.
+    const bool fpv = selva::render::cameraMode() == selva::render::CameraMode::FirstPerson;
+    constexpr float kFpvPitchMin = -0.6f; // ~-34 deg
+    const float effective_min = fpv ? kFpvPitchMin : tun.pitch_min;
+    if (pitch < effective_min)
+        pitch = effective_min;
     if (pitch > tun.pitch_max)
         pitch = tun.pitch_max;
     selva::render::setCameraYaw(yaw);
@@ -1393,6 +1416,16 @@ static void tickPlayerYaw(const glm::vec3& moveIntent, bool movement_locked, flo
             sPlayer.yaw = yawFromGroundDir(glm::normalize(to));
         return;
     }
+    // FPV: always face where the mouse is looking, including idle.
+    // The camera anchors to the head bone, which derives from
+    // sPlayer.yaw, so idle mouse-look needs to drive sPlayer.yaw
+    // even with no move-intent. Snap (no smoothing) so the camera
+    // is responsive 1:1 with the mouse.
+    if (selva::render::cameraMode() == selva::render::CameraMode::FirstPerson)
+    {
+        sPlayer.yaw = selva::render::cameraYaw();
+        return;
+    }
     if (glm::length(moveIntent) <= 0.0001f)
         return;
     const glm::vec3 dir = glm::normalize(moveIntent);
@@ -1632,10 +1665,20 @@ static bool fireDodgeFromTap(const glm::vec3& moveIntent, float backstep_playbac
     const bool has_intent = glm::length(moveIntent) > 0.0001f;
     const char* clip_name = has_intent ? "falling_to_roll" : "standing_dodge_backward";
     sDodgeIsBackstep = !has_intent;
+    // Yaw blend setup: capture pre-dodge yaw + target direction, let
+    // tickDodgeYawBlend interpolate over the dodge duration. The
+    // gameplay-side yaw used to snap instantly here; in FPV that
+    // produced a frame-1 yaw change combined with the clip's pitch
+    // change, reading as "diagonal back-roll." Smoothing the yaw
+    // over the clip duration makes the camera (and visible body)
+    // turn naturally INTO the roll instead of teleporting first.
+    sDodgeHasYawBlend = false;
     if (has_intent)
     {
         const glm::vec3 dir = glm::normalize(moveIntent);
-        sPlayer.yaw = yawFromGroundDir(dir);
+        sDodgeYawStart = sPlayer.yaw;
+        sDodgeYawTarget = yawFromGroundDir(dir);
+        sDodgeHasYawBlend = true;
     }
     const auto* dodgeClip = sClips.get(clip_name);
     if (dodgeClip == nullptr || !dodgeClip->isLoaded())
@@ -1660,6 +1703,10 @@ static bool fireDodgeFromTap(const glm::vec3& moveIntent, float backstep_playbac
     sDodgePlaybackRate = std::max(0.1f, playback_rate);
     sDodgeDuration = dodgeClip->duration() / sDodgePlaybackRate;
     sDodgeFiredThisPress = true;
+    // Yaw-blend over the first ~50% of the dodge so the body has
+    // turned by the time the tumble peaks. Tuning the fraction
+    // higher = smoother but the dodge ends up off-direction.
+    sDodgeYawBlendDuration = sDodgeDuration * 0.5f;
     armDodgeCsvRecordingIfRequested(sDodgeDuration);
     armDodgeFrameCaptureIfRequested(sDodgeDuration);
     return true;
@@ -2342,6 +2389,27 @@ static void tickDodgeTimer(float dt)
     }
 }
 
+// Interpolate sPlayer.yaw from pre-dodge yaw toward dodge target over
+// the blend duration. Runs each frame while the dodge is active.
+// After blend completes the player faces the dodge direction;
+// subsequent locomotion / mouse-look picks up from there. Replaces
+// the instant snap at dodge-fire time.
+static void tickDodgeYawBlend(float dt)
+{
+    (void)dt;
+    if (!sDodgeActive || !sDodgeHasYawBlend)
+        return;
+    const float t =
+        sDodgeYawBlendDuration > 0.0f ? std::min(1.0f, sDodgeElapsed / sDodgeYawBlendDuration) : 1.0f;
+    // Smoothstep so the early part of the roll has the most yaw
+    // travel (body turning into the dodge), tail is settled.
+    const float s = t * t * (3.0f - 2.0f * t);
+    const float delta = wrapAngleSigned(sDodgeYawTarget - sDodgeYawStart);
+    sPlayer.yaw = sDodgeYawStart + delta * s;
+    if (t >= 1.0f)
+        sDodgeHasYawBlend = false; // settled; stop updating
+}
+
 // Rising-edge Y/G toggles grip mode (one-handed ↔ two-handed).
 static void tickGripToggle(const Uint8* keys)
 {
@@ -2737,6 +2805,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     tickDevKillKey(keys);
     tickF1TuningPanelToggle(keys);
     tickTreePreviewToggle(keys);
+    tickFpvToggle(keys);
     // Preview mode: world simulation suspended, render handled by
     // renderTreePreview(). No need to tick combat, AI, locomotion,
     // collision, etc.
@@ -2805,6 +2874,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     // legacy script-push had, which is why we no longer need a
     // separate motion_end cutoff.
     tickDodgeTimer(dt);
+    tickDodgeYawBlend(dt);
     logOneShotStateTransitions();
     if (tryFirePostDodgeAttack(edges.shift_held, tun.combo_input_buffer_seconds))
         combat_input_this_frame = true;
@@ -2906,6 +2976,34 @@ static void tickTreePreviewToggle(const Uint8* keys)
         SDL_GetRelativeMouseState(nullptr, nullptr);
     }
     sPrevF2 = f2Now;
+}
+
+// Rising-edge V toggles between third-person and first-person camera.
+// First-call init: synchronize sPrevV with the current key state so
+// the rising-edge check doesn't fire on a stale prev value. Without
+// this, sPrevV defaults to `false` at static-init time and the first
+// real call sees vNow transition false->true incorrectly if SDL's
+// keyboard-state array was stale during static init (common
+// SDL_GetKeyboardState gotcha).
+static void tickFpvToggle(const Uint8* keys)
+{
+    const bool vNow = keys[SDL_SCANCODE_V] != 0;
+    static bool sInit = false;
+    if (!sInit)
+    {
+        sPrevV = vNow;
+        sInit = true;
+        return;
+    }
+    if (vNow && !sPrevV)
+    {
+        selva::render::toggleCameraMode();
+        const auto mode = selva::render::cameraMode();
+        std::fprintf(stderr, "[fpv] V pressed, mode=%s\n",
+                     mode == selva::render::CameraMode::FirstPerson ? "FirstPerson"
+                                                                    : "ThirdPerson");
+    }
+    sPrevV = vNow;
 }
 
 // Build the preview's view-proj matrix from orbit yaw/pitch/distance
@@ -3070,10 +3168,35 @@ void renderTreePreviewControls()
 // player can tell them apart while there's no material variation yet.
 // Yaw applies a +pi offset because the Mixamo bind pose faces +Z while
 // our gameplay convention has yaw=0 mean facing -Z.
+// Apply FPV head-hide to a bone palette: copy `in` to `out`, replacing
+// the head + neck bone slots with a degenerate matrix that translates
+// their verts past the far plane so the rasterizer clips them. Verts
+// skinned to Spine2 and below remain unchanged so the body, shoulders,
+// and arms render normally - exactly the "arms visible, head not
+// rendering into the camera near plane" model.
+static void applyFpvHeadHide(const selva::anim::PoseSampler& sampler,
+                             const std::vector<glm::mat4>& in,
+                             std::vector<glm::mat4>& out)
+{
+    out = in;
+    static const char* kHiddenBones[] = {"mixamorig:Head", "mixamorig:Neck"};
+    // Degenerate: scale 0 then translate to (0, 1e6, 0). Verts collapse
+    // to a point then get pushed far above the camera; frustum clips.
+    glm::mat4 hide(0.0f);
+    hide[3] = glm::vec4(0.0f, 1.0e6f, 0.0f, 1.0f);
+    for (const char* name : kHiddenBones)
+    {
+        const int idx = sampler.findJoint(name);
+        if (idx >= 0 && idx < static_cast<int>(out.size()))
+            out[idx] = hide;
+    }
+}
+
 static void drawActorMeshes(const glm::mat4& viewProj)
 {
     if (!sPlayerMesh.isLoaded())
         return;
+    const bool fpv = selva::render::cameraMode() == selva::render::CameraMode::FirstPerson;
     if (!sSampler.bone_palette.empty())
     {
         const glm::vec3 player_pos(sPlayer.pos.x, sPlayer.pos.y - sPlayerMesh.foot_offset_y,
@@ -3081,8 +3204,21 @@ static void drawActorMeshes(const glm::mat4& viewProj)
         glm::mat4 player_model = glm::translate(glm::mat4(1.0f), player_pos);
         player_model =
             glm::rotate(player_model, sPlayer.yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
-        selva::anim::drawSkeletalMesh(sPlayerMesh, player_model, viewProj, sSampler.bone_palette,
-                                      glm::vec3(1.0f, 1.0f, 1.0f));
+        // In FPV: clone the bone palette and zero out head + neck so
+        // those bones' geometry clips off-screen. Arms + body remain
+        // visible, head doesn't render into the camera near plane.
+        if (fpv)
+        {
+            static std::vector<glm::mat4> sFpvPalette;
+            applyFpvHeadHide(sSampler, sSampler.bone_palette, sFpvPalette);
+            selva::anim::drawSkeletalMesh(sPlayerMesh, player_model, viewProj, sFpvPalette,
+                                          glm::vec3(1.0f, 1.0f, 1.0f));
+        }
+        else
+        {
+            selva::anim::drawSkeletalMesh(sPlayerMesh, player_model, viewProj,
+                                          sSampler.bone_palette, glm::vec3(1.0f, 1.0f, 1.0f));
+        }
     }
     for (const auto* enemy : selva::gameplay::enemies())
     {
@@ -3166,7 +3302,42 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
     // the cost of camera not tracking knockdowns/rolls - which can
     // come back later via a dedicated dynamic-pose camera mode.
     float targetLookAtY = sPlayer.pos.y + 1.3f;
-    const glm::mat4 viewProj = selva::render::buildViewProj(sPlayer.pos, targetLookAtY);
+
+    // Head bone world position + matrix: required by FPV mode (the
+    // matrix is used for camera-roll during dodge/roll clips so the
+    // eyes tumble with the body). Fallback to a fixed eye-height
+    // identity matrix if the head joint isn't in the skeleton.
+    glm::vec3 head_world(sPlayer.pos.x, sPlayer.pos.y + 1.65f, sPlayer.pos.z);
+    glm::mat4 head_world_mat(1.0f);
+    if (const int head_idx = sSampler.findJoint("mixamorig:Head"); head_idx >= 0)
+    {
+        head_world = sSampler.jointWorldPosWithActor(head_idx);
+        head_world_mat = sSampler.jointWorldMatrixWithActor(head_idx);
+    }
+
+    // Camera-roll during dodge clips: use the head bone's full world
+    // rotation so the eyes tumble with the body (cinematic FPV roll).
+    // Other one-shots (jab/hook/heavy) keep mouse-driven camera
+    // because they don't tumble the head and locking mouse-look
+    // would feel like a stutter.
+    bool use_anim_orientation = false;
+    if (sSampler.isOneShotActive())
+    {
+        const auto fd = sSampler.frameDiagnostics();
+        if (fd.one_shot_name != nullptr)
+        {
+            const std::string_view name(fd.one_shot_name);
+            if (name.find("roll") != std::string_view::npos)
+                use_anim_orientation = true;
+        }
+    }
+
+    const char* fd_one_shot = nullptr;
+    if (sSampler.isOneShotActive())
+        fd_one_shot = sSampler.frameDiagnostics().one_shot_name;
+    const glm::mat4 viewProj = selva::render::buildViewProj(
+        sPlayer.pos, targetLookAtY, head_world, head_world_mat, use_anim_orientation,
+        sPlayer.yaw, fd_one_shot);
     selva::render::setLastViewProj(viewProj);
 
     // Threshold-light direction toward the colle (-Z), held at deep
@@ -3218,6 +3389,11 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
         {
             ZoneScopedN("shadow-skeletal");
             selva::render::useSkeletalDepthShader();
+            // Shadow uses the FULL bone palette in FPV - the head-hide
+            // is only for the visible main-pass draw (so the head
+            // doesn't render into the camera near plane). The cast
+            // shadow on the ground should still show the player's
+            // complete silhouette, head included.
             if (sPlayerMesh.isLoaded() && !sSampler.bone_palette.empty())
             {
                 const glm::vec3 player_pos(sPlayer.pos.x, sPlayer.pos.y - sPlayerMesh.foot_offset_y,

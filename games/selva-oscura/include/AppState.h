@@ -144,6 +144,12 @@ struct Settings
 {
     float bgm_volume = 0.8f;
     float sfx_volume = 1.0f;
+    // Camera FOV in degrees. Separate values for third-person (default
+    // 60, narrow soulslike framing) and first-person (default 75,
+    // wider for spatial awareness when the player can't see their own
+    // body). User-tunable via the Settings screen.
+    float fov_degrees_third_person = 60.0f;
+    float fov_degrees_first_person = 75.0f;
 };
 
 // ---------------------------------------------------------------------------

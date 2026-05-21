@@ -238,6 +238,8 @@ static void renderAiPerceptionSection(selva::tuning::Tunables& tun)
     ImGui::Checkbox("Footstep trajectory + events -> footstep-debug.log",
                     &tun.debug_footstep_log);
     ImGui::Checkbox("Shadow camera state -> shadow-debug.log", &tun.debug_shadow_log);
+    ImGui::Checkbox("FPV roll camera + head -> fpv-roll-debug.log",
+                    &tun.debug_fpv_roll_log);
 }
 
 // Diagnostic dump of the loaded enemy-archetype registry. Read-only;
@@ -285,6 +287,10 @@ static void renderPoiseSection(selva::tuning::Tunables& tun)
     ImGui::Separator();
     tunedSlider("Flying knee whoosh time (s)", &tun.flying_knee_whoosh_time_seconds, -0.1f, 4.0f,
                 0.01f, "%.2f");
+    ImGui::Separator();
+    ImGui::TextUnformatted("First-person camera offsets");
+    tunedSlider("FPV eye up offset (m)", &tun.fpv_eye_up_offset, -0.2f, 0.5f, 0.005f, "%.3f");
+    tunedSlider("FPV eye fwd offset (m)", &tun.fpv_eye_fwd_offset, 0.0f, 0.4f, 0.005f, "%.3f");
 }
 
 // Build / cache a sorted clip-name list. Static cache so we don't

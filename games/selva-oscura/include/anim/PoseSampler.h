@@ -257,6 +257,13 @@ struct PoseSampler
     // the accessor the foot-plant detector reads each frame.
     glm::vec3 jointWorldPosWithActor(int i) const;
 
+    // Full world-space transform of joint `i` (rotation + translation),
+    // with the actor placement applied. Used by FPV camera-roll math:
+    // during dodge/roll one-shots the camera takes the head bone's
+    // orientation from the clip so the eyes tumble with the body.
+    // Returns identity on invalid index or uninitialized sampler.
+    glm::mat4 jointWorldMatrixWithActor(int i) const;
+
     // Per-frame hip translation delta the clip authored — i.e., how far
     // the clip wanted to move the character on this frame, in model
     // (pre-yaw) space. Always XZ only; Y is zero.

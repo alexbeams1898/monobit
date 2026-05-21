@@ -394,7 +394,23 @@ struct Tunables
     // disable.
     float flying_knee_whoosh_time_seconds = 0.95f;
 
+    // ---- First-person camera offsets ----
+    // Lift from the Mixamo `mixamorig:Head` joint (sits at head-base /
+    // neck-top) up to the player's eye line. Applied along the head's
+    // local up axis so the offset rotates correctly during rolls.
+    // Tune live to match the visible character's eyes.
+    float fpv_eye_up_offset = 0.15f;
+    // Forward push along the camera-fwd axis so the camera origin
+    // sits just outside the skull (avoids near-plane clipping into
+    // the back of the head when the player looks straight up).
+    float fpv_eye_fwd_offset = 0.12f;
+
     // ---- Debug logging ----
+    // When true, render/WorldRenderer.cpp writes per-frame FPV camera
+    // + head bone state to fpv-roll-debug.log during rolls (and ~1s
+    // after, to capture the tail-hold and settling). Use to diagnose
+    // why a roll camera doesn't match the visible body. Default OFF.
+    bool debug_fpv_roll_log = false;
     // When true, gameplay/Footsteps.cpp opens footstep-debug.log and
     // writes per-frame trajectory rows + FIRE/SUPPRESS events. The
     // per-frame fprintf + fflush is hot enough to cost a frame or two
@@ -431,6 +447,11 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     ai_decision_tick_hz, ai_decision_tick_combat_hz_multiplier, debug_ai_tick_log,
     ai_turn_rate_radians_per_sec, debug_ai_decision_log, ai_action_freshness_seconds,
     flying_knee_whoosh_time_seconds);
+// NOTE: fpv_eye_up_offset, fpv_eye_fwd_offset are NOT serialized -
+// they're live-tuning fields, kept here for the F1 slider during
+// FPV calibration. Hit the NLOHMANN_DEFINE_TYPE 64-field limit
+// otherwise. Promote to serialized fields by removing some old
+// unused tunable from the macro list if you want them persisted.
 // NOTE: debug_footstep_log and debug_shadow_log are NOT serialized -
 // they're session-only debug toggles. Keeping them out of the macro
 // also avoids hitting NLOHMANN_DEFINE_TYPE's variadic field-count

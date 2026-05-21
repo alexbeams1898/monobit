@@ -321,6 +321,12 @@ void renderSettings()
         dirty = true;
     if (ImGui::SliderFloat("SFX volume", &s.sfx_volume, 0.0f, 1.0f, "%.2f"))
         dirty = true;
+    if (ImGui::SliderFloat("FOV (third person)", &s.fov_degrees_third_person, 40.0f, 110.0f,
+                           "%.0f"))
+        dirty = true;
+    if (ImGui::SliderFloat("FOV (first person)", &s.fov_degrees_first_person, 50.0f, 120.0f,
+                           "%.0f"))
+        dirty = true;
 
     if (dirty)
         SaveManager::save(saveData());
@@ -352,6 +358,12 @@ bool renderSystemTab()
     if (ImGui::SliderFloat("BGM volume", &s.bgm_volume, 0.0f, 1.0f, "%.2f"))
         dirty = true;
     if (ImGui::SliderFloat("SFX volume", &s.sfx_volume, 0.0f, 1.0f, "%.2f"))
+        dirty = true;
+    if (ImGui::SliderFloat("FOV (third person)", &s.fov_degrees_third_person, 40.0f, 110.0f,
+                           "%.0f"))
+        dirty = true;
+    if (ImGui::SliderFloat("FOV (first person)", &s.fov_degrees_first_person, 50.0f, 120.0f,
+                           "%.0f"))
         dirty = true;
     if (dirty)
         SaveManager::save(saveData());

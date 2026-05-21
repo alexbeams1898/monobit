@@ -10,6 +10,7 @@ float sCamPitch = -0.25f;
 int sWindowW = 0;
 int sWindowH = 0;
 glm::mat4 sLastViewProj{1.0f};
+CameraMode sCamMode = CameraMode::ThirdPerson;
 } // namespace
 
 float cameraYaw()
@@ -30,6 +31,22 @@ void setCameraYaw(float yaw)
 void setCameraPitch(float pitch)
 {
     sCamPitch = pitch;
+}
+
+CameraMode cameraMode()
+{
+    return sCamMode;
+}
+
+void setCameraMode(CameraMode mode)
+{
+    sCamMode = mode;
+}
+
+void toggleCameraMode()
+{
+    sCamMode = (sCamMode == CameraMode::ThirdPerson) ? CameraMode::FirstPerson
+                                                    : CameraMode::ThirdPerson;
 }
 
 int windowWidth()

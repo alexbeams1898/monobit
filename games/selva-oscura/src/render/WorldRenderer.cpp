@@ -1,5 +1,6 @@
 #include "render/WorldRenderer.h"
 
+#include "AppStateGlobal.h"
 #include "Tunables.h"
 #include "WallClock.h"
 #include "render/Camera.h"
@@ -36,13 +37,177 @@ const glm::mat4& lastView()
     return sLastView;
 }
 
-glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y)
+glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
+                        const glm::vec3& head_world_pos, const glm::mat4& head_world_mat,
+                        bool use_anim_orientation_in, float player_yaw,
+                        const char* one_shot_name)
 {
     const auto& tun = selva::tuning::current();
+    const auto& settings = selva::saveData().settings;
     const float yaw = cameraYaw();
     const float pitch = cameraPitch();
     const glm::vec3 lookFwd(std::cos(pitch) * -std::sin(yaw), std::sin(pitch),
                             std::cos(pitch) * -std::cos(yaw));
+
+    // First-person path: camera is *aligned* to the head bone's full
+    // world transform (orientation included), with mouse-look pitch
+    // applied as an offset on top. This means:
+    //  - Head breathing / lean / tilt from the animation rides the
+    //    camera so you don't see your own torso bobbing in front of
+    //    you in idle/combat.
+    //  - Mouse yaw still rotates the actor (which rotates the head
+    //    via the body), so look-around works.
+    //  - Mouse pitch is layered on top of the head's pitch.
+    //  - Roll/dodge clips override completely (full anim-driven).
+    if (cameraMode() == CameraMode::FirstPerson)
+    {
+        const float kEyeForwardOffset = tun.fpv_eye_fwd_offset;
+        const float kEyeUpOffset = tun.fpv_eye_up_offset;
+        const float aspect = windowHeight() > 0
+                                 ? static_cast<float>(windowWidth()) /
+                                       static_cast<float>(windowHeight())
+                                 : 1.0f;
+        const glm::mat4 proj = glm::perspective(
+            glm::radians(settings.fov_degrees_first_person), aspect, 0.1f, 200.0f);
+
+        // FPV head-position model: track the PLAYER position 1:1
+        // (the camera follows the player's bulk motion without lag),
+        // and lightly smooth the head's LOCAL offset (the bob).
+        // Short tau (~30ms = ~2 frames) so REAL head bob tracks the
+        // eye 1:1 - the player should feel up-down motion with the
+        // neck during run cycles. The smoothing only swallows sub-
+        // frame numeric jitter, not authored animation motion.
+        constexpr float kHeadBobTau = 0.03f;
+        const glm::vec3 head_local = head_world_pos - player_pos;
+        static glm::vec3 sSmoothedHeadLocal = head_local;
+        static bool sSmoothedInit = false;
+        static Uint64 sSmoothedPrevTicks = SDL_GetTicks64();
+        if (!sSmoothedInit)
+        {
+            sSmoothedHeadLocal = head_local;
+            sSmoothedInit = true;
+            sSmoothedPrevTicks = SDL_GetTicks64();
+        }
+        else
+        {
+            const Uint64 now = SDL_GetTicks64();
+            const float dt = static_cast<float>(now - sSmoothedPrevTicks) * 0.001f;
+            sSmoothedPrevTicks = now;
+            const float alpha = 1.0f - std::exp(-dt / kHeadBobTau);
+            sSmoothedHeadLocal += (head_local - sSmoothedHeadLocal) * alpha;
+        }
+        const glm::vec3 sSmoothedHeadPos = player_pos + sSmoothedHeadLocal;
+
+        // Smooth cross-fade between anim-orientation (during rolls)
+        // and mouse-orientation (everything else). When the roll
+        // one-shot ends we don't snap - we LERP the camera's fwd/up
+        // from the head bone's orientation to the mouse-driven
+        // orientation over kAnimOrientationFade seconds. This avoids
+        // the "legs visible for a moment" artifact that comes from
+        // the clip's tail frames having the head pointed down (the
+        // character looking at the ground they're rolling on) while
+        // the body has already come back to standing.
+        constexpr float kAnimOrientationFade = 0.35f;
+        static float sFadeStartTime = -1.0f;
+        const float now_seconds = static_cast<float>(SDL_GetTicks64()) * 0.001f;
+        if (use_anim_orientation_in)
+            sFadeStartTime = -1.0f; // still in roll; no fade yet
+        else if (sFadeStartTime < 0.0f)
+            sFadeStartTime = now_seconds; // first frame after roll ended
+        // Fade parameter: 0 just after roll ends, 1 when fade complete.
+        const float fade_t =
+            sFadeStartTime < 0.0f
+                ? 0.0f
+                : std::min(1.0f, (now_seconds - sFadeStartTime) / kAnimOrientationFade);
+        // anim_active is true throughout the fade window (so the log
+        // captures the transition), but the orientation itself is a
+        // blend, not a hard switch.
+        const bool use_anim_orientation = use_anim_orientation_in || fade_t < 1.0f;
+        const float anim_weight = use_anim_orientation_in
+                                      ? 1.0f
+                                      : (1.0f - fade_t); // 1=full anim, 0=full mouse
+
+        // Compute final camera position + forward + up. During the
+        // post-roll fade window both branches blend by anim_weight:
+        // 1.0 = pure anim orientation (during roll), 0.0 = pure
+        // mouse orientation (after fade complete), in-between values
+        // smoothly interpolate so there's no orientation snap.
+        // Head bone basis for the diagnostic log (always computed; cheap).
+        const glm::vec3 head_fwd_diag = glm::normalize(glm::vec3(head_world_mat[2]));
+        const glm::vec3 head_up_diag = glm::normalize(glm::vec3(head_world_mat[1]));
+
+        glm::vec3 cam_fwd;
+        glm::vec3 cam_up;
+        glm::vec3 camPos;
+        if (anim_weight >= 1.0f)
+        {
+            // Pure anim orientation - inside the roll itself.
+            cam_fwd = head_fwd_diag;
+            cam_up = head_up_diag;
+            camPos = head_world_pos + cam_fwd * kEyeForwardOffset + cam_up * kEyeUpOffset;
+        }
+        else if (anim_weight <= 0.0f)
+        {
+            // Pure mouse orientation - settled mouse-driven mode.
+            cam_fwd = lookFwd;
+            cam_up = glm::vec3(0.0f, 1.0f, 0.0f);
+            camPos = sSmoothedHeadPos + cam_fwd * kEyeForwardOffset +
+                     glm::vec3(0.0f, kEyeUpOffset, 0.0f);
+        }
+        else
+        {
+            // Post-roll fade window. Lerp fwd/up between anim and
+            // mouse orientations; position lerps between head bone
+            // (raw) and smoothed head position similarly.
+            const glm::vec3 mouse_up(0.0f, 1.0f, 0.0f);
+            cam_fwd = glm::normalize(head_fwd_diag * anim_weight + lookFwd * (1.0f - anim_weight));
+            cam_up = glm::normalize(head_up_diag * anim_weight + mouse_up * (1.0f - anim_weight));
+            const glm::vec3 pos_anim =
+                head_world_pos + head_fwd_diag * kEyeForwardOffset + head_up_diag * kEyeUpOffset;
+            const glm::vec3 pos_mouse = sSmoothedHeadPos + lookFwd * kEyeForwardOffset +
+                                        glm::vec3(0.0f, kEyeUpOffset, 0.0f);
+            camPos = pos_anim * anim_weight + pos_mouse * (1.0f - anim_weight);
+        }
+        sLastView = glm::lookAt(camPos, camPos + cam_fwd, cam_up);
+
+        // FPV roll diagnostic log (gated). Writes only while a roll
+        // one-shot is active or during the tail-hold window after.
+        // Logged columns are enough to reconstruct the camera vs body
+        // mismatch frame-by-frame.
+        const bool is_roll_window = use_anim_orientation_in || anim_weight > 0.0f;
+        if (selva::tuning::current().debug_fpv_roll_log && is_roll_window)
+        {
+            static FILE* sFpvRollLog = nullptr;
+            static int sFpvRollFrame = 0;
+            if (sFpvRollLog == nullptr)
+                sFpvRollLog = std::fopen("fpv-roll-debug.log", "w");
+            if (sFpvRollLog != nullptr)
+            {
+                std::fprintf(sFpvRollLog,
+                             "frame=%d t=%.4f clip=%s anim_in=%d anim_w=%.3f "
+                             "player=(%.3f,%.3f,%.3f) yaw=%.4f "
+                             "head_world=(%.3f,%.3f,%.3f) "
+                             "head_fwd=(%.3f,%.3f,%.3f) head_up=(%.3f,%.3f,%.3f) "
+                             "smoothed_head=(%.3f,%.3f,%.3f) "
+                             "camPos=(%.3f,%.3f,%.3f) cam_fwd=(%.3f,%.3f,%.3f) "
+                             "cam_up=(%.3f,%.3f,%.3f)\n",
+                             sFpvRollFrame, now_seconds,
+                             (one_shot_name != nullptr) ? one_shot_name : "(none)",
+                             use_anim_orientation_in ? 1 : 0, anim_weight,
+                             player_pos.x, player_pos.y, player_pos.z, player_yaw,
+                             head_world_pos.x, head_world_pos.y, head_world_pos.z,
+                             head_fwd_diag.x, head_fwd_diag.y, head_fwd_diag.z,
+                             head_up_diag.x, head_up_diag.y, head_up_diag.z,
+                             sSmoothedHeadPos.x, sSmoothedHeadPos.y, sSmoothedHeadPos.z,
+                             camPos.x, camPos.y, camPos.z, cam_fwd.x, cam_fwd.y, cam_fwd.z,
+                             cam_up.x, cam_up.y, cam_up.z);
+                std::fflush(sFpvRollLog);
+            }
+            ++sFpvRollFrame;
+        }
+
+        return proj * sLastView;
+    }
 
     // Ground reference Y = the player's feet (= sampled terrain Y).
     // Camera height + lookAt anchor both rest on this; climbing a
@@ -93,7 +258,8 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y)
     const float aspect =
         windowHeight() > 0 ? static_cast<float>(windowWidth()) / static_cast<float>(windowHeight())
                            : 1.0f;
-    const glm::mat4 proj = glm::perspective(glm::radians(tun.fov_degrees), aspect, 0.1f, 200.0f);
+    const glm::mat4 proj =
+        glm::perspective(glm::radians(settings.fov_degrees_third_person), aspect, 0.1f, 200.0f);
     return proj * sLastView;
 }
 

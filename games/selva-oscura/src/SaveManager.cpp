@@ -91,6 +91,10 @@ SaveData load(const std::string& path)
         const auto& s = j["settings"];
         data.settings.bgm_volume = s.value("bgm_volume", data.settings.bgm_volume);
         data.settings.sfx_volume = s.value("sfx_volume", data.settings.sfx_volume);
+        data.settings.fov_degrees_third_person =
+            s.value("fov_degrees_third_person", data.settings.fov_degrees_third_person);
+        data.settings.fov_degrees_first_person =
+            s.value("fov_degrees_first_person", data.settings.fov_degrees_first_person);
     }
 
     std::fprintf(stderr, "[SaveManager] Loaded %zu characters from %s\n", data.characters.size(),
@@ -133,6 +137,8 @@ bool save(const SaveData& data, const std::string& path)
     j["settings"] = {
         {"bgm_volume", data.settings.bgm_volume},
         {"sfx_volume", data.settings.sfx_volume},
+        {"fov_degrees_third_person", data.settings.fov_degrees_third_person},
+        {"fov_degrees_first_person", data.settings.fov_degrees_first_person},
     };
 
     std::ofstream file(resolved);
