@@ -76,6 +76,11 @@ SaveData load(const std::string& path)
         {
             PlayerProfile p;
             p.name = c.value("name", std::string{});
+            p.pos_x = c.value("pos_x", 0.0f);
+            p.pos_y = c.value("pos_y", 0.0f);
+            p.pos_z = c.value("pos_z", 0.0f);
+            p.yaw = c.value("yaw", 0.0f);
+            p.has_saved_pose = c.value("has_saved_pose", false);
             if (!p.name.empty())
                 data.characters.push_back(std::move(p));
         }
@@ -115,7 +120,14 @@ bool save(const SaveData& data, const std::string& path)
     j["characters"] = json::array();
     for (const auto& c : data.characters)
     {
-        j["characters"].push_back({{"name", c.name}});
+        j["characters"].push_back({
+            {"name", c.name},
+            {"pos_x", c.pos_x},
+            {"pos_y", c.pos_y},
+            {"pos_z", c.pos_z},
+            {"yaw", c.yaw},
+            {"has_saved_pose", c.has_saved_pose},
+        });
     }
 
     j["settings"] = {

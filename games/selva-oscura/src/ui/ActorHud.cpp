@@ -1,5 +1,7 @@
 #include "ui/ActorHud.h"
 
+#include "AppState.h"
+#include "AppStateGlobal.h"
 #include "Tunables.h"
 #include "WallClock.h"
 #include "anim/PoseSampler.h"
@@ -13,6 +15,8 @@
 #include "gameplay/Perception.h"
 #include "gameplay/PlayerState.h"
 #include "render/Camera.h"
+
+#include <SDL.h>
 
 #include <glm/geometric.hpp>
 #include <glm/vec2.hpp>
@@ -509,6 +513,55 @@ void renderActorHud()
     }
 
     ImGui::End();
+
+    // Save indicator: brief bottom-right "Saving..." chip after every
+    // autosave. Non-intrusive corner position, fades after a short
+    // window. Hidden while the pause menu is open (the chip belongs
+    // to gameplay overlay, not menu overlay).
+    //
+    // Uses SDL_GetTicks64() rather than selva::wallClock() because
+    // wallClock freezes when the gameplay tick is gated off during
+    // pause; the indicator must keep counting down in real time even
+    // if the player paused immediately after triggering the save.
+    constexpr std::uint64_t kSaveIndicatorMs = 2000;
+    constexpr std::uint64_t kSaveIndicatorFadeStartMs = 1200;
+    const auto& ui = selva::uiState();
+    const bool pause_open = ui.isScreenOpen();
+    if (!pause_open && ui.last_save_ticks_ms > 0)
+    {
+        const std::uint64_t now_ms = SDL_GetTicks64();
+        const std::uint64_t age_ms =
+            (now_ms >= ui.last_save_ticks_ms) ? (now_ms - ui.last_save_ticks_ms) : 0;
+        if (age_ms < kSaveIndicatorMs)
+        {
+            float alpha = 1.0f;
+            if (age_ms > kSaveIndicatorFadeStartMs)
+                alpha = 1.0f - static_cast<float>(age_ms - kSaveIndicatorFadeStartMs) /
+                                   static_cast<float>(kSaveIndicatorMs - kSaveIndicatorFadeStartMs);
+
+            constexpr float kIndicatorMargin = 24.0f;
+            constexpr float kIndicatorW = 140.0f;
+            constexpr float kIndicatorH = 32.0f;
+            const ImVec2 pos(vp->WorkPos.x + vp->WorkSize.x - kIndicatorW - kIndicatorMargin,
+                             vp->WorkPos.y + vp->WorkSize.y - kIndicatorH - kIndicatorMargin);
+            ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
+            ImGui::SetNextWindowSize(ImVec2(kIndicatorW, kIndicatorH), ImGuiCond_Always);
+            ImGui::SetNextWindowBgAlpha(0.0f);
+            ImGui::Begin("##SaveIndicator", nullptr,
+                         ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav |
+                             ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoInputs |
+                             ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground);
+            auto* d = ImGui::GetWindowDrawList();
+            const ImVec2 p0 = ImGui::GetWindowPos();
+            const float cx = p0.x + 14.0f;
+            const float cy = p0.y + kIndicatorH * 0.5f;
+            const auto fade_u32 = [alpha](int r, int g, int b, int a)
+            { return IM_COL32(r, g, b, static_cast<int>(static_cast<float>(a) * alpha)); };
+            d->AddCircleFilled(ImVec2(cx, cy), 5.0f, fade_u32(200, 200, 220, 255));
+            d->AddText(ImVec2(cx + 12.0f, p0.y + 8.0f), fade_u32(220, 220, 230, 255), "Saving...");
+            ImGui::End();
+        }
+    }
 }
 
 } // namespace selva::ui

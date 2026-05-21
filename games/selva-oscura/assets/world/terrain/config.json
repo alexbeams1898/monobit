@@ -1,12 +1,17 @@
 {
-  "_comment": "Per-region terrain config. Heightmap is a grayscale PNG; pixel 0 maps to height_min meters, pixel 255 to height_max. world_extent is the side length in meters (square region centered at world_origin). Subdivide controls mesh density (verts per side); 64 = 4m per quad at 256m extent, fine for inner Wood. Keep in sync with scripts/gen_terrain_heightmap.py defaults.",
+  "_comment": "Per-region terrain config. Heightmap is a grayscale PNG; pixel 0 maps to height_range_min meters, pixel 255 to height_range_max. world_extent is the side length in meters (square region centered at world_origin). Subdivide controls mesh density (verts per side). Keep in sync with scripts/gen_terrain_heightmap.py defaults. selva_inner: wake-zone basin (Y=-3) surrounded by gentle berm + the colle / dilettoso monte rising to Y=+35 in the -Z direction (~35m total relief above wake-zone floor, the canonical mecca of the Wood).",
+  "player_spawn": {
+    "_comment": "Player spawn position in world coordinates. X/Z only - Y is sampled from the heightmap at runtime so the player always stands on the ground regardless of heightmap regeneration. The wake-zone (X=0, Z=0) is the canonical Dante 'lost center' spawn: deep wood floor, no clear orientation, the colle visible to the south (-Z).",
+    "x": 0.0,
+    "z": 0.0
+  },
   "regions": {
     "selva_inner": {
       "heightmap": "assets/world/terrain/selva_inner.png",
-      "world_origin": [0.0, -130.0],
+      "world_origin": [0.0, -180.0],
       "world_extent": 512.0,
-      "height_range_min": -5.0,
-      "height_range_max": 16.0,
+      "height_range_min": -6.0,
+      "height_range_max": 38.0,
       "subdivide": 192,
       "base_color": [0.16, 0.13, 0.10]
     }

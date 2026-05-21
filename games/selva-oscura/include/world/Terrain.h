@@ -45,4 +45,12 @@ const TerrainRegion& terrainRegion(int idx);
 // region-by-coordinate lookup when more ship.
 float sampleHeight(float world_x, float world_z);
 
+// Player spawn position in world coordinates, loaded from the
+// terrain config (player_spawn { x, z }). Y is intentionally NOT
+// part of the config - callers should query sampleHeight(x, z) to
+// place the player on the ground, so the spawn always tracks the
+// current heightmap. Returns (0, 0) if the config is missing the
+// player_spawn block.
+glm::vec2 playerSpawnXZ();
+
 } // namespace selva::world

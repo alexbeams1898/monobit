@@ -1,5 +1,6 @@
 #include "gameplay/PerFrameTick.h"
 
+#include "AppState.h"
 #include "Engine.h"
 #include "Tunables.h"
 #include "WallClock.h"
@@ -28,6 +29,7 @@
 #include "combat/Weapon.h"
 #include "combat/WeaponClass.h"
 #include "gameplay/Enemies.h"
+#include "gameplay/Footsteps.h"
 #include "gameplay/LocomotionStateMachine.h"
 #include "gameplay/PlayerState.h"
 #include "gameplay/TickState.h"
@@ -2814,6 +2816,13 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         applyHitEvent(ev, now);
     selva::combat::tickDamageNumbers(dt);
 
+    // Foot-plant footstep detection — fires SFX when the foot bone's
+    // world Y crosses below ground+epsilon while descending. Works on
+    // any clip (loco, attack windup, get-up, idle micro-sway) because
+    // the signal comes from the visible foot, not a per-clip cadence.
+    // See games/selva-oscura/src/gameplay/Footsteps.cpp.
+    selva::gameplay::tickFootsteps(sPlayer, static_cast<float>(dt));
+
     tickCsvRecording(dt);
     logStateNarrative();
 }
@@ -3233,5 +3242,45 @@ void syncInputEdgesFromCurrentState()
     sPrevLMB = (mouse_buttons & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
     sPrevRMB = (mouse_buttons & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
     sPrevMMB = (mouse_buttons & SDL_BUTTON(SDL_BUTTON_MIDDLE)) != 0;
+}
+void loadActiveCharacterIntoPlayer(const selva::PlayerProfile& profile)
+{
+    // Position: prefer the saved pose if the character has one;
+    // otherwise spawn at the terrain's configured spawn point. New
+    // characters (has_saved_pose=false) always start at spawn; resumed
+    // characters wake up where they quit.
+    const glm::vec2 spawn_xz = selva::world::playerSpawnXZ();
+    const float spawn_ground_y = selva::world::sampleHeight(spawn_xz.x, spawn_xz.y);
+    if (profile.has_saved_pose)
+    {
+        sPlayer.pos = glm::vec3(profile.pos_x, profile.pos_y, profile.pos_z);
+        sPlayer.yaw = profile.yaw;
+    }
+    else
+    {
+        sPlayer.pos = glm::vec3(spawn_xz.x, spawn_ground_y, spawn_xz.y);
+        sPlayer.yaw = sPlayer.spawn_yaw;
+    }
+    sPlayer.spawn_pos = glm::vec3(spawn_xz.x, spawn_ground_y, spawn_xz.y);
+    sPlayer.velocity_xz = glm::vec2(0.0f);
+    sPlayer.is_dead = false;
+    sPlayer.death_time = -1.0f;
+    sPlayer.last_damage_time = -1.0f;
+    sPlayer.last_hit_react_time = -1.0f;
+    sPlayer.lock_target_idx = -1;
+    selva::gameplay::initActorPools(sPlayer.hp, sPlayer.stamina, sPlayer.poise, sPlayer.body,
+                                    sPlayer.stats);
+    sSampler.releaseOneShot();
+    sPlayer.foot_left = Actor::FootContact{};
+    sPlayer.foot_right = Actor::FootContact{};
+}
+
+void saveActiveCharacterFromPlayer(selva::PlayerProfile& profile)
+{
+    profile.pos_x = sPlayer.pos.x;
+    profile.pos_y = sPlayer.pos.y;
+    profile.pos_z = sPlayer.pos.z;
+    profile.yaw = sPlayer.yaw;
+    profile.has_saved_pose = true;
 }
 } // namespace selva::gameplay

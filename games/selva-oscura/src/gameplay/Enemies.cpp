@@ -435,6 +435,51 @@ void shutdownHubEnemies()
                pool.end());
 }
 
+void resetEnemiesToSpawn()
+{
+    auto& pool = actors();
+    for (auto& a : pool)
+    {
+        if (a.controller == Controller::Input)
+            continue;
+
+        a.pos = a.spawn_pos;
+        a.yaw = a.spawn_yaw;
+        a.velocity_xz = glm::vec2(0.0f);
+        a.intent_xz = glm::vec2(0.0f);
+        a.turn_intent_yaw = a.spawn_yaw;
+
+        // Mortal pools back to max from archetype Body + Stats.
+        initActorPools(a.hp, a.stamina, a.poise, a.body, a.stats);
+
+        a.is_dead = false;
+        a.death_time = -1.0f;
+        a.is_knocked_down = false;
+        a.knockdown_start_time = -1.0f;
+        a.last_damage_time = -1.0f;
+        a.last_hit_react_time = -1.0f;
+
+        // Perception cleared - first-sighting double-take must replay.
+        a.perception = PerceptionState{};
+
+        a.lock_target_idx = -1;
+        a.duel_strafe_dir = 0;
+
+        a.action_state.clear();
+        a.active_attack_hitbox_id = 0;
+        a.active_attack_joint_idx = -1;
+        a.active_attack_tip_offset_z = 0.0f;
+
+        a.foot_left = Actor::FootContact{};
+        a.foot_right = Actor::FootContact{};
+
+        a.sampler.releaseOneShot();
+        if (const auto* idle = selva::anim::clips().get(kEnemyPeacefulIdleClipName);
+            idle != nullptr && idle->isLoaded())
+            a.sampler.update(*idle, 0.0f, 0.0f);
+    }
+}
+
 // Update the actor's lock_target_idx based on awareness. Idempotent
 // per tick; logs the edges (acquire/release). On acquisition the
 // strafe direction is rolled once and held for the engagement.

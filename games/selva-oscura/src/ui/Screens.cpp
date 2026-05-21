@@ -6,6 +6,7 @@
 #include "SaveManager.h"
 #include "ecs/GameComponents.h"
 #include "ecs/ItemConfig.h"
+#include "gameplay/PerFrameTick.h"
 #include "ops/InventoryOps.h"
 
 #include <imgui.h>
@@ -135,6 +136,28 @@ void drawHintBar(const char* text, ImVec2 modal_size)
                      ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar);
     ImGui::TextDisabled("%s", text);
     ImGui::End();
+}
+
+// Flush the runtime player's persistent state into the active character's
+// PlayerProfile, then write the SaveData to disk. Called by every save
+// entry point - pause-menu Save button, Quit-to-Main-Menu - so what's on
+// disk reflects what's in the running game. If the active character isn't
+// found in the save (defensive; shouldn't happen via normal flow), just
+// writes the save with no flush.
+void flushAndSave()
+{
+    auto& sd = saveData();
+    const std::string& active = gameState().active_character;
+    for (auto& c : sd.characters)
+    {
+        if (c.name == active)
+        {
+            selva::gameplay::saveActiveCharacterFromPlayer(c);
+            break;
+        }
+    }
+    SaveManager::save(sd);
+    uiState().last_save_ticks_ms = SDL_GetTicks64();
 }
 
 // ---------------------------------------------------------------------------
@@ -317,7 +340,7 @@ bool renderSystemTab()
     ImGui::Spacing();
 
     if (centeredButton("Save", 220.0f))
-        SaveManager::save(saveData());
+        flushAndSave();
     ImGui::Spacing();
     ImGui::Spacing();
 
@@ -337,6 +360,7 @@ bool renderSystemTab()
     ImGui::Spacing();
     if (centeredButton("Quit to Main Menu", 220.0f))
     {
+        flushAndSave();
         uiState().active_screen = UIState::Screen::None;
         setPhase(GameState::Phase::MainMenu);
     }
@@ -465,7 +489,15 @@ void tickPauseToggle()
     if (ui.active_screen == UIState::Screen::None)
     {
         if (esc)
+        {
             ui.active_screen = UIState::Screen::Menu;
+            // Elden-Ring-style autosave: persist on pause-menu open so
+            // a crash or Quit-to-Desktop from the pause menu doesn't
+            // lose progress. Quit-to-Main-Menu also calls flushAndSave
+            // explicitly; the double-save is harmless and idempotent.
+            if (gameState().phase == GameState::Phase::Playing)
+                flushAndSave();
+        }
     }
     else if (esc || rmb)
     {

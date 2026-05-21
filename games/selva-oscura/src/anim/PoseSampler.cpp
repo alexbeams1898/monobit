@@ -933,6 +933,22 @@ const char* PoseSampler::jointName(int i) const
     return impl->skeleton->joint_names()[i];
 }
 
+glm::vec3 PoseSampler::jointWorldPosWithActor(int i) const
+{
+    if (!impl || i < 0 || i >= static_cast<int>(impl->model_matrices.size()))
+        return glm::vec3(0.0f);
+    glm::mat4 m;
+    std::memcpy(&m, &impl->model_matrices[i], sizeof(glm::mat4));
+    const float model_x = m[3][0];
+    const float model_y = m[3][1];
+    const float model_z = m[3][2];
+    const float cy = std::cos(impl->actor_yaw);
+    const float sy = std::sin(impl->actor_yaw);
+    return glm::vec3(impl->actor_world_pos.x + cy * model_x + sy * model_z,
+                     impl->actor_world_pos.y + model_y,
+                     impl->actor_world_pos.z - sy * model_x + cy * model_z);
+}
+
 glm::vec3 PoseSampler::consumedHipDelta() const
 {
     if (!impl)

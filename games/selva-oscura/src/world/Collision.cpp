@@ -13,19 +13,28 @@ namespace
 CollisionScene sScene;
 
 // Selva-oscura hub layout. Authored placement: trees flank the
-// gothic walkway on the approach side, mirror on the back side of
-// the colle, and scatter through the wider wood that surrounds the
-// whole hill. The walkway corridor and plateau stay clear.
+// gothic walkway on the approach side (spawn -> colle), the
+// walkway / plateau / back-of-plateau view-strip stay clear, and
+// the rest of the wood gets a sparse scatter biased around the
+// colle ridge.
 //
-// World layout (Z runs into the colle along -Z):
-//   Z = 0             : spawn (center of wake-zone)
-//   Z = 0 .. -100     : approach walkway (clear)
-//   Z = -100..-160    : plateau (hub area; clear)
-//   Z = -185..-285    : back-side walkway / wood
-//   |X| < 4m on either walkway -> clear corridor
-//   |X| ∈ [4, 14] on walkways -> dense aisle of flanking trees
-//   |X| < 25m on plateau -> clear hub
-//   outside corridor + plateau -> background scatter through the wood
+// World layout (Z runs into the colle along -Z; matches the
+// heightmap from gen_terrain_heightmap.py):
+//   Z = 0               : spawn (center of wake-zone)
+//   Z = 0 .. -110       : approach walkway (gentle ramp + steep climb)
+//   Z = -190..-230      : plateau (the dilettoso monte summit)
+//   Z = -230..-290      : back-of-plateau clear view-strip (no scatter)
+//   Z < -290            : back wood (sparse scatter resumes)
+//   |X| < 4m on walkway -> clear corridor
+//   |X| in [4, 14] on walkway -> dense aisle of flanking trees
+//   |X| < 35m on plateau -> clear hub
+//   outside corridor + plateau + view-strip -> background scatter
+//
+// Design intent: the player spawns in the wake-zone, walks south up
+// the framed corridor of trees, reaches the plateau, and looks
+// forward into a CLEAR view (no trees behind the plateau for ~60m).
+// That clear view is where Beatrice's threshold-light is strongest;
+// it is the canonical "look toward the dawn" beat.
 constexpr float kHubBoundaryRadius = 230.0f;
 constexpr float kHubMinTreeSpacing = 3.5f;
 constexpr unsigned int kHubSeed = 0xDA17EU;
@@ -35,18 +44,19 @@ constexpr float kAisleOuterX = 14.0f;
 
 // Approach side (spawn -> colle):
 constexpr float kWalkwayStartZ = -5.0f;
-constexpr float kWalkwayEndZ = -100.0f;
+constexpr float kWalkwayEndZ = -110.0f;
 
 // Plateau (hub):
-constexpr float kPlateauStartZ = -100.0f;
-constexpr float kPlateauEndZ = -160.0f;
-constexpr float kPlateauHalfX = 25.0f;
+constexpr float kPlateauStartZ = -190.0f;
+constexpr float kPlateauEndZ = -230.0f;
+constexpr float kPlateauHalfX = 35.0f;
 
-// Back side (colle -> back wood):
-constexpr float kBackWalkwayStartZ = -185.0f;
-constexpr float kBackWalkwayEndZ = -285.0f;
+// Clear-view strip behind the plateau. No trees scatter here so the
+// view from the plateau toward the light is uninterrupted.
+constexpr float kClearViewDepth = 60.0f;
+constexpr float kClearViewEndZ = kPlateauEndZ - kClearViewDepth; // -290
 
-constexpr int kAisleTreeCount = 40;      // dense framing per aisle
+constexpr int kAisleTreeCount = 30;      // approach aisle only (was 40 split between two)
 constexpr int kBackgroundTreeCount = 80; // scattered through the wider wood
 
 bool tooCloseToExisting(const std::vector<CylinderCollider>& placed, float x, float z, float radius)
@@ -67,19 +77,22 @@ bool inApproachWalkway(float x, float z)
     return z <= kWalkwayStartZ && z >= kWalkwayEndZ && std::abs(x) <= kWalkwayHalfWidth;
 }
 
-bool inBackWalkway(float x, float z)
-{
-    return z <= kBackWalkwayStartZ && z >= kBackWalkwayEndZ && std::abs(x) <= kWalkwayHalfWidth;
-}
-
 bool inWalkwayCorridor(float x, float z)
 {
-    return inApproachWalkway(x, z) || inBackWalkway(x, z);
+    return inApproachWalkway(x, z);
 }
 
 bool onPlateau(float x, float z)
 {
     return z <= kPlateauStartZ && z >= kPlateauEndZ && std::abs(x) <= kPlateauHalfX;
+}
+
+// The clear-view strip immediately behind the plateau. No trees here
+// (not even scatter) so the view from the plateau toward the light
+// is uninterrupted.
+bool inClearViewStrip(float z)
+{
+    return z < kPlateauEndZ && z >= kClearViewEndZ;
 }
 
 // Generic aisle population: lays out trees on either side of a
@@ -122,14 +135,14 @@ void populateHubTrees(std::vector<CylinderCollider>& out)
     std::mt19937 rng(kHubSeed);
     std::uniform_real_distribution<float> radius_dist(0.28f, 0.55f);
 
-    // Pass 1a: dense aisle on the approach (spawn -> colle).
-    populateAisle(rng, out, kWalkwayStartZ, kWalkwayEndZ, kAisleTreeCount / 2);
-
-    // Pass 1b: mirror aisle on the back side (colle -> back wood).
-    populateAisle(rng, out, kBackWalkwayStartZ, kBackWalkwayEndZ, kAisleTreeCount / 2);
+    // Pass 1: dense aisle on the approach (spawn -> colle). The
+    // back side of the colle gets NO mirror aisle - the plateau
+    // looks out onto a clear view through the kClearViewDepth strip.
+    populateAisle(rng, out, kWalkwayStartZ, kWalkwayEndZ, kAisleTreeCount);
 
     // Pass 2: background scatter through the rest of the wood. Skips
-    // anything inside the walkway corridor or on the plateau.
+    // anything inside the walkway corridor, on the plateau, or in
+    // the clear-view strip behind the plateau.
     {
         std::uniform_real_distribution<float> angle_dist(0.0f, 2.0f * 3.14159265f);
         std::uniform_real_distribution<float> radial_dist(0.0f, 1.0f);
@@ -142,13 +155,13 @@ void populateHubTrees(std::vector<CylinderCollider>& out)
             const float r = std::sqrt(u) * kHubBoundaryRadius;
             const float a = angle_dist(rng);
             // Offset the scatter so it spreads around the colle
-            // ridge, not just from world origin. Bias the center
-            // toward -Z so more trees populate the colle's flanks
-            // and back side.
-            const float scatter_origin_z = -130.0f;
+            // ridge, not just from world origin. Bias toward the
+            // new plateau midpoint (Z=-210) so flank density tracks
+            // the colle.
+            const float scatter_origin_z = -210.0f;
             const float x = std::cos(a) * r;
             const float z = std::sin(a) * r + scatter_origin_z;
-            if (inWalkwayCorridor(x, z) || onPlateau(x, z))
+            if (inWalkwayCorridor(x, z) || onPlateau(x, z) || inClearViewStrip(z))
                 continue;
             // Keep breathing room around spawn so the wake-zone reads
             // as "found yourself in a wood" without a tree on top of
@@ -173,10 +186,10 @@ void populateHubTrees(std::vector<CylinderCollider>& out)
 void initHubScene()
 {
     sScene.cylinders.clear();
-    // Boundary disc centered on the colle (between spawn at Z=0 and
-    // back-wood end ~Z=-285) so the playable area covers both sides
-    // of the hill and the forest around them.
-    sScene.boundary_center = glm::vec2(0.0f, -130.0f);
+    // Boundary disc centered on the colle plateau midpoint (Z=-210)
+    // so the playable area covers spawn, the colle, and the
+    // clear-view strip + back forest behind it.
+    sScene.boundary_center = glm::vec2(0.0f, -210.0f);
     sScene.boundary_radius = kHubBoundaryRadius;
     populateHubTrees(sScene.cylinders);
 }

@@ -30,6 +30,11 @@ static_assert(sizeof(Vertex) == 32, "Terrain vertex layout drifted");
 
 std::vector<TerrainRegion> sRegions;
 
+// Player spawn X/Z loaded from config.json's top-level player_spawn
+// block. Y is sampled from the heightmap at the time of use, not
+// stored here.
+glm::vec2 sPlayerSpawnXZ{0.0f, 0.0f};
+
 // Bilinear sample of `heights` (world Y meters) at (u, v) in [0..1].
 float bilinearSample(const std::vector<float>& heights, int w, int h, float u, float v)
 {
@@ -229,6 +234,20 @@ bool initTerrain()
         return false;
     }
 
+    if (doc.contains("player_spawn") && doc["player_spawn"].is_object())
+    {
+        const auto& s = doc["player_spawn"];
+        sPlayerSpawnXZ.x = s.value("x", 0.0f);
+        sPlayerSpawnXZ.y = s.value("z", 0.0f);
+        std::fprintf(stderr, "[terrain] player spawn XZ = (%.2f, %.2f)\n", sPlayerSpawnXZ.x,
+                     sPlayerSpawnXZ.y);
+    }
+    else
+    {
+        std::fprintf(stderr, "[terrain] config missing 'player_spawn'; defaulting to (0, 0)\n");
+        sPlayerSpawnXZ = glm::vec2{0.0f, 0.0f};
+    }
+
     for (auto it = doc["regions"].begin(); it != doc["regions"].end(); ++it)
     {
         const auto& cfg = it.value();
@@ -331,6 +350,11 @@ float sampleHeight(float world_x, float world_z)
     // Triangle B: vertices at (0,0)=y00, (0,1)=y01, (1,1)=y11
     // Barycentric: A=(1-tz), B=(tz-tx), C=tx. Sums to 1.
     return (1.0f - tz) * y00 + (tz - tx) * y01 + tx * y11;
+}
+
+glm::vec2 playerSpawnXZ()
+{
+    return sPlayerSpawnXZ;
 }
 
 } // namespace selva::world

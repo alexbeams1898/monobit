@@ -31,6 +31,7 @@ add_library(selva-oscura-lib STATIC
     src/gameplay/BehaviorTree.cpp
     src/gameplay/Enemies.cpp
     src/gameplay/EnemyArchetype.cpp
+    src/gameplay/Footsteps.cpp
     src/gameplay/LocomotionStateMachine.cpp
     src/gameplay/PerFrameTick.cpp
     src/gameplay/Perception.cpp

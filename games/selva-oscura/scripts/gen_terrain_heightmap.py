@@ -7,13 +7,29 @@ via the region's `height_range_min` and `height_range_max`.
 
 selva_inner region shape (Z axis runs SOUTH from spawn into the
 colle):
-  Z =  0          : spawn (deep wood floor, Y=0)
-  Z = 0 to -90    : flat wood floor, gentle undulation noise
-  Z = -90 to -100 : gentle approach ramp, terrain rises ~2m
-  Z = -100 to -115: steep colle side, terrain climbs to +13m
-  Z = -115 to -130: flat plateau (gothic hub area)
-  Z = -130 and beyond: terrain drops back into wood floor
-  Stairwell: -3m rectangular depression at (0, -110), 6m wide
+  Z =  0           : spawn (wake-zone floor, Y=-3 - depressed)
+  Z = 0 to -80     : wake-zone basin (Y~=-3) with gentle noise
+  Z = -80 to -110  : gentle approach ramp, terrain rises Y=-3 -> Y=+5
+  Z = -110 to -190 : steep colle side, terrain climbs Y=+5 -> Y=+35
+  Z = -190 to -230 : flat plateau (the dilettoso monte summit)
+  Z = -230 and beyond: terrain descends back into wood floor
+
+Lateral (X axis): the wake-zone basin is surrounded on E/W/N sides
+by a gentle 4m berm rising starting at +-80m from the wake-zone
+center, peaking around Y=+1 to +4. Combined with the depressed
+wake-zone floor, the player at spawn is at Y=-3 with surrounding
+terrain at Y=0 to +4 in every direction except the colle (much
+higher), producing the canonical "bottom of a valley" feeling that
+Dante's text implies (Inferno I: the Wood ends "la dove terminava
+quella valle" - where the valley ended - and the colle rises out
+of it).
+
+The colle is the mecca: its 38m total relief from wake-zone floor
+to plateau is ~4x what the v0 heightmap had. Subtends roughly 17deg
+of vertical visual angle from the wake-zone, making it dominant on
+the horizon while staying modest in absolute terms (the size of a
+10-12 story building - a real central-Italian colle, not an alpine
+peak).
 """
 
 import argparse
@@ -29,36 +45,54 @@ SELVA_INNER = {
     "resolution": 512,
     "world_extent": 512.0,        # 1m per pixel
     "world_origin_x": 0.0,        # heightmap centered at (origin_x, origin_z)
-    "world_origin_z": -130.0,     # centered on the colle ridge
-    "height_min": -5.0,
-    "height_max": 16.0,
+    "world_origin_z": -180.0,     # centered on the colle ridge (shifted south
+                                  # to fit the longer steep-climb segment)
+    "height_min": -6.0,
+    "height_max": 38.0,
 
-    # Wood floor undulation.
+    # Wake-zone floor depression: the player at spawn (Z=0) is at Y=-3,
+    # below the surrounding terrain. Wood floor undulation rides on
+    # top of this depressed baseline.
+    "wake_zone_y": -3.0,
     "noise_amp": 0.5,
     "noise_freq": 0.06,
 
+    # E/W/N surround berm: terrain rises gently away from the wake-zone
+    # center on the three sides not facing the colle. Combined with the
+    # depressed wake-zone, the player is in a basin.
+    # Rise starts at +-80m from origin in X (lateral) and at +30m in Z
+    # (behind the spawn, +Z side). Peaks Y=+4 at +-200m / +180m.
+    "surround_rise_start_lateral": 80.0,
+    "surround_rise_peak_lateral": 200.0,
+    "surround_rise_start_behind_z": 30.0,   # +Z side (behind spawn)
+    "surround_rise_peak_behind_z": 180.0,
+    "surround_peak_height": 4.0,
+
     # The colle is a SYMMETRIC ridge along the spine direction (-Z):
-    # gentle approach ramp -> steep climb -> plateau -> steep descent
-    # -> gentle ramp down -> wood floor again on the back side. Wood
-    # extends past the colle to the heightmap boundary so the player
-    # never sees a hard map edge through the distance fog.
+    # gentle approach ramp -> long steep climb -> plateau -> steep
+    # descent -> gentle ramp down -> wood floor again on the back
+    # side. The plateau is the mecca - dominant on the horizon at 35m
+    # of relief above wake-zone floor (38m total height_max).
     #
     # Approach side (from spawn):
-    "valley_to_ramp_z": -80.0,
-    "ramp_to_colle_z": -90.0,
-    "colle_top_start_z": -125.0,
-    # Plateau:
-    "colle_top_end_z": -160.0,
+    "valley_to_ramp_z": -80.0,    # gentle ramp starts here
+    "ramp_to_colle_z": -110.0,    # gentle ramp ends, steep climb begins
+                                  # (longer gentle ramp at 30m, was 10m)
+    "colle_top_start_z": -190.0,  # steep climb ends, plateau starts
+                                  # (steep climb is 80m long, was 35m,
+                                  # keeping slope ~22deg - a real hike)
+    # Plateau (40m wide along the spine):
+    "colle_top_end_z": -230.0,
     # Back-side descent (mirror of approach):
-    "ramp_from_colle_z": -195.0,  # Z where steep descent ends
-    "ramp_to_valley_z": -205.0,   # Z where gentle ramp ends, wood floor resumes
-    "approach_rise": 2.0,
-    "plateau_height": 9.0,
+    "ramp_from_colle_z": -310.0,  # steep descent ends
+    "ramp_to_valley_z": -340.0,   # gentle ramp ends, wood floor resumes
+    "approach_rise": 5.0,         # was 2.0; gentler-into-steeper-feel
+    "plateau_height": 35.0,       # was 9.0; THE big change (~4x relief)
 
     # Lateral falloff: the colle is a ridge along X=0; far X taper
     # back into wood-floor terrain.
-    "colle_lateral_half_width": 25.0,
-    "colle_lateral_falloff": 12.0,
+    "colle_lateral_half_width": 35.0,  # was 25.0; plateau is wider too
+    "colle_lateral_falloff": 18.0,     # was 12.0; gentler shoulders
 }
 
 
@@ -110,17 +144,65 @@ def lateral_factor(x, r):
     return 1.0 - t * t * (3.0 - 2.0 * t)  # smoothstep falloff
 
 
+def wake_zone_floor(x, z, r):
+    """Baseline wood-floor height for points OFF the colle. Combines the
+    wake-zone depression near spawn with the E/W/N surround berm that
+    rises far from spawn on the non-colle sides. Returns world Y meters.
+
+    The "wake-zone" is roughly the spawn-side basin (positive Z, near
+    the X=0 spine). It sits at wake_zone_y (-3m by default). Moving
+    laterally (|x| growing) or back behind spawn (+Z growing past the
+    surround_rise_start_behind_z), the floor rises smoothly to
+    surround_peak_height (+4m by default), producing a basin the player
+    feels enclosed by on three sides. The colle side (-Z) does NOT get
+    this surround rise - it transitions into the colle ramp directly.
+    """
+    # Lateral rise (|x| > start): both sides of the spine.
+    abs_x = abs(x)
+    lat_t = smoothstep(
+        r["surround_rise_start_lateral"], r["surround_rise_peak_lateral"], abs_x
+    )
+
+    # Behind-spawn rise (Z growing in +Z direction past the start).
+    # Only applies on the spawn side (Z > 0); the colle side gets the
+    # colle ramp directly.
+    if z > 0:
+        behind_t = smoothstep(
+            r["surround_rise_start_behind_z"], r["surround_rise_peak_behind_z"], z
+        )
+    else:
+        behind_t = 0.0
+
+    # Combine: use the stronger of the two contributions (max), so the
+    # corners (high x AND high z) don't double-rise into a peak.
+    surround_t = max(lat_t, behind_t)
+    rise = surround_t * (r["surround_peak_height"] - r["wake_zone_y"])
+    return r["wake_zone_y"] + rise
+
+
 def world_height(x, z, r):
     """Compute world-space Y for a given (x, z) under region rules."""
-    # Base colle profile.
+    # Wake-zone basin / surround berm: the floor away from the colle.
+    floor = wake_zone_floor(x, z, r)
+
+    # Colle profile (rises along the spine), measured relative to floor.
     centerline = colle_centerline_height(z, r)
     lateral = lateral_factor(x, r)
-    base = centerline * lateral
+    colle_above_floor = centerline * lateral
+
+    # Final base: floor + colle. The colle's height is measured from
+    # the wake-zone floor (Y=-3), so the plateau ends up at floor +
+    # plateau_height = -3 + 35 = +32m world-space - but the lateral
+    # surround on the spine line is 0 (we're at X=0), so the floor
+    # there is just wake_zone_y, giving plateau Y = -3 + 35 = +32.
+    # Effective relief from spawn to plateau: 35m.
+    base = floor + colle_above_floor
+
     # Wood floor undulation, attenuated on top of the plateau so the
     # hub reads as "worn smooth by foot traffic."
     nx = math.sin(x * r["noise_freq"])
     nz = math.cos(z * r["noise_freq"])
-    undulation_strength = 1.0 - 0.7 * smoothstep(0.0, r["plateau_height"], base)
+    undulation_strength = 1.0 - 0.7 * smoothstep(0.0, r["plateau_height"], colle_above_floor)
     undulation = nx * nz * r["noise_amp"] * undulation_strength
     return base + undulation
 

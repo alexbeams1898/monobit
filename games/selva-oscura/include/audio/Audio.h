@@ -19,6 +19,12 @@ void shutdown();
 // voice lifetime, so this is safe to call from any per-frame system.
 void playSfx(const std::string& name);
 
+// As playSfx, but scales the registered volume by `gain` (1.0 = full
+// registered volume, 0.0 = silent). Used for impact-velocity-driven
+// dynamics like footsteps where a single SFX bank serves a range of
+// foot-plant intensities.
+void playSfxScaled(const std::string& name, float gain);
+
 // Queue a sound to fire at a future wall-clock time. Used for
 // layered audio where one sound's peak must align with a visual
 // event (e.g. the second-death card lands on the synth-echo's

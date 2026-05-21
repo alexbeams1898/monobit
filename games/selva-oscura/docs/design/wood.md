@@ -411,6 +411,73 @@ The light comes from her in a specific register:
   This is the *Commedia*'s Beatrice register exactly: stern love
   that cannot intervene yet.
 
+### The light is recent — the Wood's natural state was dark
+
+**Selva oscura's natural state is dark.** Not dusk, not aubaude — a
+real moonless / starless wood-at-midnight dark, the dark of a
+European hardwood valley with the canopy closed and no celestial
+body shedding light. Dante's text describes the Wood as *oscura*
+(dark) without qualification; the perpetual-dawn quality that the
+game presents is **not the Wood's native register.**
+
+**Beatrice brought the light.** As part of her centuries-long
+preparation for the Vagrant's arrival, she has been routing her
+threshold-light into the Wood as a *signal* — making the colle's
+summit visible, drawing the eye toward the descent point,
+establishing the spine-direction-as-light-gradient that lets the
+unjudged find their way out. The light is a beacon she set;
+*per Beatrice descende*, the way down begins with her radiance
+making the way visible.
+
+This is *recent* in cosmic-time terms. The Wood was dark for
+centuries-or-millennia before her preparation began. The Guide
+remembers the darkness; if asked, he says something like *"the
+hill did not glow before; some time, it began."* He is certain it
+wasn't always so, uncertain when it changed. He never identifies
+the cause. (He never identifies Beatrice at all, per
+[`story.md`](story.md) *The Guide / Identity*.)
+
+**Implications:**
+
+- **The Wood's natural ecology is impoverished.** The
+  Selva-organisms that have spawned across cycles (per
+  [`creatures.md`](creatures.md)) require sangue-suffusion AND
+  *light* to flourish. The pre-Beatrice Wood had neither — only
+  vestigial moss, lichen, the simplest dark-adapted fungal life.
+  The current biological richness is downstream of *both* Hell's
+  failure (sangue surfacing) and Beatrice's intervention (light
+  arriving). She is the indirect founder of every visible thing
+  growing in the Wood.
+- **The Hill was a silhouette before — now it is a destination.**
+  The colle existed in the dark, geographically. But without the
+  light, its summit had no register, no signal-value. Beatrice's
+  light *makes the destination visible*. She turned a featureless
+  dark wood into a place with a direction.
+- **The light's degradation arc has narrative weight beyond the
+  player's playthrough.** As her composure fails across the
+  late-game progression (per *The light is her interior state*
+  below), the Wood is *returning* toward what it always was.
+  Late-game darkening is not just a mood shift — it is the Wood
+  *un-becoming* the place her intervention had made of it. By the
+  end (especially on PURITY where she dies in the cascade), the
+  Wood is becoming the dark valley Dante's pilgrim *should* have
+  woken in.
+- **The Guide's pre-Beatrice memory:** he lived in the dark Wood
+  before the light arrived. He doesn't remember this as suffering
+  — the dark was simply what was. He has no language for "the
+  light is wrong here" because for him, the light is *new* and
+  *welcome*, the first beauty the Wood ever had. His acceptance
+  of it is its own kind of evidence that he is unaware of
+  Beatrice's hand.
+
+**Engineering note:** the v1 render uses the composed-light state
+uniformly (per *Engineering commitment* below). The
+pre-Beatrice-dark register is **not a runtime mode** — it is
+*backstory*, occasionally hinted at by the Guide's dialogue. The
+*late-game* darkening, however, is part of the canonical
+progression and is load-bearing for the endgame; that shift toward
+the original-dark register is what the final act delivers.
+
 ### Beatrice watches
 
 The light is **not passive.** Beatrice is conscious, and her gaze

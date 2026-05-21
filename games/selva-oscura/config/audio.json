@@ -20,6 +20,50 @@
       "path": "assets/audio/soul_steal.mp3",
       "volume": 0.85,
       "peak_offset_seconds": 0.8
+    },
+    "footstep_walk": {
+      "path": "assets/audio/footstep_walk_1.ogg",
+      "volume": 0.65,
+      "variations": [
+        "assets/audio/footstep_walk_1.ogg",
+        "assets/audio/footstep_walk_2.ogg",
+        "assets/audio/footstep_walk_3.ogg",
+        "assets/audio/footstep_walk_4.ogg",
+        "assets/audio/footstep_walk_5.ogg",
+        "assets/audio/footstep_walk_6.ogg",
+        "assets/audio/footstep_walk_7.ogg",
+        "assets/audio/footstep_walk_8.ogg"
+      ]
+    },
+    "footstep_run": {
+      "path": "assets/audio/footstep_walk_1.ogg",
+      "volume": 0.7,
+      "variations": [
+        "assets/audio/footstep_walk_1.ogg",
+        "assets/audio/footstep_walk_2.ogg",
+        "assets/audio/footstep_walk_3.ogg",
+        "assets/audio/footstep_walk_4.ogg",
+        "assets/audio/footstep_walk_5.ogg",
+        "assets/audio/footstep_walk_6.ogg",
+        "assets/audio/footstep_walk_7.ogg",
+        "assets/audio/footstep_walk_8.ogg"
+      ]
+    },
+    "whoosh_jab": {
+      "path": "assets/audio/whoosh_jab.mp3",
+      "volume": 0.7
+    },
+    "whoosh_hook_left": {
+      "path": "assets/audio/whoosh_hook_left.mp3",
+      "volume": 0.75
+    },
+    "whoosh_hook_right": {
+      "path": "assets/audio/whoosh_hook_right.mp3",
+      "volume": 0.75
+    },
+    "whoosh_heavy": {
+      "path": "assets/audio/whoosh_heavy.mp3",
+      "volume": 0.85
     }
   }
 }

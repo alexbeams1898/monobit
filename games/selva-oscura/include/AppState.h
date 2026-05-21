@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -51,9 +52,15 @@ struct UIState
     Screen active_screen = Screen::None;
     Tab menu_tab = Tab::Status;
     bool show_hud = true;
-    // Set when a screen closes to block one frame of input from leaking
-    // into the resumed game state.
     bool input_suppressed = false;
+
+    // SDL_GetTicks64() value at the moment the last autosave completed.
+    // Used by the save indicator chip on the HUD. We use SDL ticks here
+    // (not selva::wallClock()) because the indicator must keep counting
+    // down even when gameplay is paused - selvaPerFrame is gated off
+    // during pause, so the gameplay wallclock freezes. 0 = no save this
+    // session.
+    std::uint64_t last_save_ticks_ms = 0;
 
     bool isScreenOpen() const
     {
@@ -114,6 +121,19 @@ struct GameState
 struct PlayerProfile
 {
     std::string name;
+
+    // Last position + facing yaw when the character was saved. Used to
+    // restore where the player was on Playing-enter (quit-to-menu and
+    // resume returns you to where you were, not to the world spawn).
+    // `has_saved_pose` distinguishes "new character, no save yet" from
+    // "character saved with literal (0,0,0)". Without the flag, a
+    // newly-created character would resume at world origin instead of
+    // the configured spawn point.
+    float pos_x = 0.0f;
+    float pos_y = 0.0f;
+    float pos_z = 0.0f;
+    float yaw = 0.0f;
+    bool has_saved_pose = false;
 };
 
 // ---------------------------------------------------------------------------

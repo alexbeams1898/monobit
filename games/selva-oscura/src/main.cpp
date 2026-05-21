@@ -71,15 +71,42 @@ void shutdownGeometry()
 // When skipping, we still sync the mouse-button prev-state so edges don't
 // fire on resume (otherwise RMB held to close the menu would trigger a
 // fresh block-press the next frame).
+//
+// On the first frame we enter Playing from a menu (CharCreate or LoadGame
+// set pending_world_create=true), reset the player to the spawn point.
+// Without this, picking "New Game" or "Load Game" after a previous run
+// would carry the previous run's pos / hp / velocity into the new one.
 void gatedPerFrame(::Engine& engine, ::EntityManager& em, double dt)
 {
-    const auto& gs = selva::gameState();
+    auto& gs = selva::gameState();
     const bool playing = (gs.phase == selva::GameState::Phase::Playing);
     const bool menu_open = selva::uiState().isScreenOpen();
     if (!playing || menu_open)
     {
         selva::gameplay::syncInputEdgesFromCurrentState();
         return;
+    }
+    if (gs.pending_world_create)
+    {
+        // Find the active character's profile in SaveData and load it.
+        // If the active name isn't in the save (shouldn't happen via
+        // normal flow; defensive), pass a default-constructed profile -
+        // the load still produces a clean spawn, just with no name-tied
+        // persistent state.
+        selva::PlayerProfile default_profile;
+        const selva::PlayerProfile* active = &default_profile;
+        for (const auto& c : selva::saveData().characters)
+        {
+            if (c.name == gs.active_character)
+            {
+                active = &c;
+                break;
+            }
+        }
+        selva::gameplay::loadActiveCharacterIntoPlayer(*active);
+        selva::gameplay::resetEnemiesToSpawn();
+        gs.pending_world_create = false;
+        gs.world_initialized = true;
     }
     selva::gameplay::selvaPerFrame(engine, em, dt);
 }

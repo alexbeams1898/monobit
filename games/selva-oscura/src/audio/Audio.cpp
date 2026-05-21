@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <fstream>
+#include <random>
 #include <unordered_map>
 #include <vector>
 
@@ -19,7 +20,13 @@ namespace
 
 struct SoundEntry
 {
+    // `path` is the primary file; if `variations` is non-empty, playSfx
+    // picks one at random each call (matches prison-escape-game's footstep
+    // variation pattern - see games/prison-escape-game/config/audio/sounds.json).
+    // For sounds with no variations, just leave the array empty and the
+    // single `path` plays.
     std::string path;
+    std::vector<std::string> variations;
     float volume = 1.0f;
     float peak_offset_seconds = 0.0f;
 };
@@ -91,7 +98,15 @@ bool init(const std::string& registry_path)
             se.path = entry.value("path", std::string());
             se.volume = entry.value("volume", 1.0f);
             se.peak_offset_seconds = entry.value("peak_offset_seconds", 0.0f);
-            if (se.path.empty())
+            if (entry.contains("variations") && entry["variations"].is_array())
+            {
+                for (const auto& v : entry["variations"])
+                {
+                    if (v.is_string())
+                        se.variations.push_back(v.get<std::string>());
+                }
+            }
+            if (se.path.empty() && se.variations.empty())
                 continue;
             sSounds.emplace(it.key(), std::move(se));
         }
@@ -147,7 +162,7 @@ void restoreMusic()
     AudioSystem::setMusicLowPass(0.0f);
 }
 
-void playSfx(const std::string& name)
+void playSfxInternal(const std::string& name, float gain)
 {
     if (!sAudioReady)
     {
@@ -160,9 +175,24 @@ void playSfx(const std::string& name)
         std::fprintf(stderr, "[audio] playSfx('%s') — not in registry\n", name.c_str());
         return;
     }
-    std::fprintf(stderr, "[audio] playSfx name='%s' path='%s' vol=%.2f\n", name.c_str(),
-                 it->second.path.c_str(), it->second.volume);
-    AudioSystem::playSfx(it->second.path, it->second.volume);
+    std::string path = it->second.path;
+    if (!it->second.variations.empty())
+    {
+        static std::mt19937 s_rng{std::random_device{}()};
+        std::uniform_int_distribution<std::size_t> dist(0, it->second.variations.size() - 1);
+        path = it->second.variations[dist(s_rng)];
+    }
+    AudioSystem::playSfx(path, it->second.volume * gain);
+}
+
+void playSfx(const std::string& name)
+{
+    playSfxInternal(name, 1.0f);
+}
+
+void playSfxScaled(const std::string& name, float gain)
+{
+    playSfxInternal(name, gain);
 }
 
 void scheduleSfx(const std::string& name, float play_at_wallclock)

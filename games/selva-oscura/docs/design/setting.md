@@ -492,11 +492,18 @@ oscura) and begun his instrumentalization: she named him, supplied
 his vocabulary, and **arranged his isolation** — routing other
 unjudged souls away from this selva oscura so he would remain alone,
 available, and warm-by-deprivation when her plan finally needed him.
-This is not strategic patience; it is *the slow expression of her
-unraveling.* The centuries of arranging the Guide's isolation are the
-same activity as staring at Hell's stagnation — both are the
-centuries-long pre-snap. She was preparing tools she could not yet
-bring herself to fire.
+She also **brought the light** to the Wood — its natural state had
+been dark, a real European hardwood valley at moonless midnight; she
+routed her threshold-light into the Wood as a beacon so the unjudged
+who would later arrive could find his way to the colle and the
+descent. The light arrived recently in cosmic-time terms; the Guide
+remembers the dark (he does not identify her as the cause). See
+[`wood.md`](wood.md) *The light is recent — the Wood's natural state
+was dark*. This is not strategic patience; it is *the slow expression
+of her unraveling.* The centuries of arranging the Guide's isolation
+and routing the light are the same activity as staring at Hell's
+stagnation — both are the centuries-long pre-snap. She was preparing
+tools she could not yet bring herself to fire.
 
 **Acceptable outcomes (her frame, post-hoc):** TRANSFIGURATION (Hell
 renewed), SURFEIT (cosmic catastrophe — Hell ends, swallowed in a
