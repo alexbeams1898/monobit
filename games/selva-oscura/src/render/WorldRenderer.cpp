@@ -5,6 +5,7 @@
 #include "render/Camera.h"
 #include "render/SceneGeometry.h"
 #include "render/SceneShaders.h"
+#include "render/ShadowPass.h"
 #include "render/TerrainShader.h"
 #include "render/TreeShader.h"
 #include "world/Collision.h"
@@ -207,6 +208,86 @@ void renderTrees()
 
     glDisable(GL_SAMPLE_ALPHA_TO_COVERAGE);
     glEnable(GL_CULL_FACE);
+}
+
+void renderTerrainDepth()
+{
+    for (int i = 0; i < selva::world::terrainRegionCount(); ++i)
+    {
+        const auto& r = selva::world::terrainRegion(i);
+        glBindVertexArray(r.vao);
+        glDrawElements(GL_TRIANGLES, r.index_count, GL_UNSIGNED_INT, nullptr);
+    }
+    glBindVertexArray(0);
+}
+
+void renderTreesDepth()
+{
+    const int variant_count = selva::world::treeVariantCount();
+    if (variant_count <= 0)
+        return;
+
+    setTreeDepthWind(selva::wallClock(), 0.0f); // wind_phase set per-instance below
+
+    // Leaf cards are double-sided alpha-cutout: the main pass
+    // disables cull entirely so both faces show. The depth pass
+    // MUST also disable cull - if we cull front (the default in
+    // beginDepthPass for opaque-acne reduction), only one face of a
+    // leaf card writes depth and the shadow flickers based on
+    // tree yaw vs sun direction. Disabling cull here OVERRIDES the
+    // beginDepthPass cull setting for this draw block; we restore
+    // GL_FRONT cull at the end so subsequent depth-pass casters
+    // (skeletal) get the opaque-acne reduction.
+    glDisable(GL_CULL_FACE);
+
+    constexpr int kTreeVariantEnd = 4;
+    const int tree_variants = std::min(kTreeVariantEnd, variant_count);
+
+    for (const auto& c : selva::world::currentScene().cylinders)
+    {
+        const float h_variant = hashXZ(c.center.x, c.center.z, 0x1u);
+        const float h_yaw = hashXZ(c.center.x, c.center.z, 0x2u);
+        const float h_scale = hashXZ(c.center.x, c.center.z, 0x3u);
+        const float h_phase = hashXZ(c.center.x, c.center.z, 0x4u);
+        const int variant_idx =
+            static_cast<int>(h_variant * static_cast<float>(tree_variants)) % tree_variants;
+        const float yaw = h_yaw * 6.2831853f;
+        const float scale = 0.85f + h_scale * 0.45f;
+        const float wind_phase = h_phase * 6.2831853f;
+        const selva::world::TreeVariant& v = selva::world::treeVariant(variant_idx);
+        const float ground_y = selva::world::sampleHeight(c.center.x, c.center.z);
+        glm::mat4 model =
+            glm::translate(glm::mat4(1.0f), glm::vec3(c.center.x, ground_y, c.center.z));
+        model = glm::rotate(model, yaw, glm::vec3(0.0f, 1.0f, 0.0f));
+        model = glm::scale(model, glm::vec3(scale, scale, scale));
+        setTreeDepthModel(model);
+        setTreeDepthWind(selva::wallClock(), wind_phase);
+
+        // Trunk
+        if (v.trunk.vao != 0)
+        {
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, v.trunk.base_color_tex);
+            setTreeDepthAlphaCutoff(v.trunk.alpha_cutoff);
+            glBindVertexArray(v.trunk.vao);
+            glDrawElements(GL_TRIANGLES, v.trunk.index_count, GL_UNSIGNED_INT, nullptr);
+        }
+        // Branches (alpha-cutout)
+        if (v.branches.vao != 0)
+        {
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, v.branches.base_color_tex);
+            setTreeDepthAlphaCutoff(v.branches.alpha_cutoff);
+            glBindVertexArray(v.branches.vao);
+            glDrawElements(GL_TRIANGLES, v.branches.index_count, GL_UNSIGNED_INT, nullptr);
+        }
+    }
+
+    // Restore front-face cull (beginDepthPass default) so subsequent
+    // opaque depth casters get the acne-reduction trick.
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_FRONT);
+    glBindVertexArray(0);
 }
 
 } // namespace selva::render

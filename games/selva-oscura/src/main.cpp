@@ -28,6 +28,7 @@
 #include "render/Camera.h"
 #include "render/SceneGeometry.h"
 #include "render/SceneShaders.h"
+#include "render/ShadowPass.h"
 #include "render/SkyPass.h"
 #include "render/TerrainShader.h"
 #include "render/TreeShader.h"
@@ -60,6 +61,7 @@ void shutdownGeometry()
     selva::render::shutdownSkyPass();
     selva::render::shutdownTreeShader();
     selva::render::shutdownTerrainShader();
+    selva::render::shutdownShadowPass();
     selva::world::shutdownTerrain();
     selva::world::shutdownTreeAssets();
 }
@@ -154,7 +156,7 @@ int main(int /*argc*/, char* /*argv*/[])
 
     // 4x MSAA — smooths cube/floor edge silhouettes so they don't crawl
     // when the camera rotates.
-    engine.setMSAA(4);
+    engine.setMSAA(8);
 
     // Maximized window with title bar/resize handles. 1280x720 is the
     // restore size when un-maximized.
@@ -192,6 +194,11 @@ int main(int /*argc*/, char* /*argv*/[])
     if (!selva::render::initTerrainShader())
     {
         std::fprintf(stderr, "Terrain shader compile/link failed\n");
+        return 1;
+    }
+    if (!selva::render::initShadowPass())
+    {
+        std::fprintf(stderr, "Shadow pass init failed\n");
         return 1;
     }
 

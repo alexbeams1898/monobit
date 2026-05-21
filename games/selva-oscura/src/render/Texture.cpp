@@ -2,6 +2,7 @@
 
 #include <stb_image.h>
 
+#include <algorithm>
 #include <cstdio>
 
 #include <glad/glad.h>
@@ -37,6 +38,16 @@ std::uint32_t loadTexture2D(const std::string& path)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    // Anisotropic filtering reduces aliasing on textures sampled at
+    // shallow angles. Use the EXT_texture_filter_anisotropic extension
+    // constants - the core promotion landed in OpenGL 4.6, but our
+    // glad is set up for 3.3. The constants are widely supported
+    // since 2003 hardware so this is safe to enable unconditionally.
+    constexpr GLenum kTextureMaxAnisotropyExt = 0x84FE;
+    constexpr GLenum kMaxTextureMaxAnisotropyExt = 0x84FF;
+    GLfloat max_aniso = 1.0f;
+    glGetFloatv(kMaxTextureMaxAnisotropyExt, &max_aniso);
+    glTexParameterf(GL_TEXTURE_2D, kTextureMaxAnisotropyExt, std::min(16.0f, max_aniso));
     glBindTexture(GL_TEXTURE_2D, 0);
     stbi_image_free(data);
     return tex;

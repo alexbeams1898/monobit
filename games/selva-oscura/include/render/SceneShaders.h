@@ -19,4 +19,7 @@ void setSceneTint(float tint);
 void setSceneAtmosphere(const glm::vec3& sun_dir, const glm::vec3& sun_intensity,
                         const glm::vec3& cam_pos, float exposure);
 
+void setSceneShadow(const glm::mat4& light_view_proj, const glm::vec3& sun_dir,
+                    const glm::vec3& shadow_cam_pos, int shadow_texture_unit);
+
 } // namespace selva::render

@@ -2,6 +2,7 @@
 
 #include "gl/ShaderUtils.h"
 #include "render/AtmosphereShader.h"
+#include "render/ShadowShader.h"
 
 #include <glm/gtc/type_ptr.hpp>
 
@@ -67,7 +68,8 @@ void main()
     // the sun-aligned scattering color as the lit-surface tint).
     vec3 ambient = vec3(0.15, 0.18, 0.24);
     vec3 sunTint = vec3(1.05, 0.78, 0.55);
-    vec3 surface = vec3(g) * (ambient + sunTint * halfL);
+    float shadow = sampleSunShadow(vWorldPos, N);
+    vec3 surface = vec3(g) * (ambient + sunTint * halfL * shadow);
 
     // Aerial perspective: in-scatter + transmittance along view ray
     // from camera to this fragment.
@@ -95,13 +97,17 @@ GLint sUniSunIntensityLoc = -1;
 GLint sUniCamPosLoc = -1;
 GLint sUniCamPosVSLoc = -1;
 GLint sUniExposureLoc = -1;
+GLint sUniShadowMapLoc = -1;
+GLint sUniLightViewProjLoc = -1;
+GLint sUniShadowSunDirLoc = -1;
+GLint sUniShadowCamPosLoc = -1;
 
 } // namespace
 
 bool initSceneProgram()
 {
-    const std::string fs =
-        std::string(kSceneFragmentShaderCore) + kAtmosphereGLSL + kSceneFragmentShaderMain;
+    const std::string fs = std::string(kSceneFragmentShaderCore) + kAtmosphereGLSL + kShadowGLSL +
+                           kSceneFragmentShaderMain;
     sProgram = engine::gl::compileProgram(kSceneVertexShader, fs.c_str());
     if (sProgram == 0)
         return false;
@@ -112,8 +118,12 @@ bool initSceneProgram()
     sUniSunDirLoc = glGetUniformLocation(sProgram, "uSunDir");
     sUniSunIntensityLoc = glGetUniformLocation(sProgram, "uSunIntensity");
     sUniCamPosLoc = glGetUniformLocation(sProgram, "uCamPos");
-    sUniCamPosVSLoc = sUniCamPosLoc; // same uniform, accessed in both stages
+    sUniCamPosVSLoc = sUniCamPosLoc;
     sUniExposureLoc = glGetUniformLocation(sProgram, "uExposure");
+    sUniShadowMapLoc = glGetUniformLocation(sProgram, "uShadowMap");
+    sUniLightViewProjLoc = glGetUniformLocation(sProgram, "uLightViewProj");
+    sUniShadowSunDirLoc = glGetUniformLocation(sProgram, "uShadowSunDir");
+    sUniShadowCamPosLoc = glGetUniformLocation(sProgram, "uShadowCameraPos");
     return true;
 }
 
@@ -163,6 +173,15 @@ void setSceneAtmosphere(const glm::vec3& sun_dir, const glm::vec3& sun_intensity
     glUniform3f(sUniSunIntensityLoc, sun_intensity.x, sun_intensity.y, sun_intensity.z);
     glUniform3f(sUniCamPosLoc, cam_pos.x, cam_pos.y, cam_pos.z);
     glUniform1f(sUniExposureLoc, exposure);
+}
+
+void setSceneShadow(const glm::mat4& light_view_proj, const glm::vec3& sun_dir,
+                    const glm::vec3& shadow_cam_pos, int shadow_texture_unit)
+{
+    glUniformMatrix4fv(sUniLightViewProjLoc, 1, GL_FALSE, glm::value_ptr(light_view_proj));
+    glUniform3f(sUniShadowSunDirLoc, sun_dir.x, sun_dir.y, sun_dir.z);
+    glUniform3f(sUniShadowCamPosLoc, shadow_cam_pos.x, shadow_cam_pos.y, shadow_cam_pos.z);
+    glUniform1i(sUniShadowMapLoc, shadow_texture_unit);
 }
 
 } // namespace selva::render

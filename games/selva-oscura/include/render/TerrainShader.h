@@ -15,5 +15,7 @@ void setTerrainAtmosphere(const glm::vec3& sun_dir, const glm::vec3& sun_intensi
                           const glm::vec3& cam_pos, float exposure);
 void setTerrainBaseColor(const glm::vec3& color);
 void setTerrainTones(const glm::vec3& dark_loam, const glm::vec3& dry_dirt);
+void setTerrainShadow(const glm::mat4& light_view_proj, const glm::vec3& sun_dir,
+                      const glm::vec3& shadow_cam_pos, int shadow_texture_unit);
 
 } // namespace selva::render

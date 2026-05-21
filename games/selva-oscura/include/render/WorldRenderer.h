@@ -18,4 +18,10 @@ void renderTerrain();
 void renderGroundDecals();
 void renderTrees();
 
+// Depth-pass variants for shadow map. The caller must have already
+// activated the corresponding ShadowPass depth program. Each iterates
+// the same geometry as its main counterpart but with depth-only output.
+void renderTerrainDepth();
+void renderTreesDepth();
+
 } // namespace selva::render

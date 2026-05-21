@@ -33,9 +33,11 @@
 #include "gameplay/LocomotionStateMachine.h"
 #include "gameplay/PlayerState.h"
 #include "gameplay/TickState.h"
+#include "render/Atmosphere.h"
 #include "render/Camera.h"
 #include "render/SceneGeometry.h"
 #include "render/SceneShaders.h"
+#include "render/ShadowPass.h"
 #include "render/SkyPass.h"
 #include "render/TerrainShader.h"
 #include "render/TreeShader.h"
@@ -2964,9 +2966,9 @@ static void renderTreePreview()
     if (sTreePreview.wireframe)
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
-    constexpr glm::vec3 kSunDir(0.0f, 0.7f, -0.7f);
-    constexpr glm::vec3 kSunIntensity(11.0f, 9.5f, 7.0f);
-    constexpr float kExposure = 1.0f;
+    const glm::vec3 kSunDir = selva::render::atmosphere::sunDirection();
+    const glm::vec3 kSunIntensity = selva::render::atmosphere::sunIntensity();
+    const float kExposure = selva::render::atmosphere::exposure();
     const float cy = std::cos(sTreePreview.orbit_yaw);
     const float sy = std::sin(sTreePreview.orbit_yaw);
     const float cp = std::cos(sTreePreview.orbit_pitch);
@@ -3151,25 +3153,19 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
         renderTreePreview();
         return;
     }
-    // LookAt height tracks the character's hip Y so dynamic poses
-    // (rolls, knockdowns) keep the body in frame. The sampler's
-    // jointWorldPos() returns the joint in MODEL-local space; add
-    // the model's world-Y translation (= pos.y - foot_offset_y, the
-    // same offset used when drawing the mesh) so the value is in
-    // world space. Smoothed (relative to ground) in buildViewProj.
+    // LookAt height = player feet Y + chest offset. Previously this
+    // sampled the hip joint's world Y per frame so dynamic poses
+    // (rolls, knockdowns) kept the body in frame - but the hip Y
+    // bobs every frame from idle clip animation, which propagated
+    // through buildViewProj's smoothing into a camera matrix that
+    // jittered per frame. That sub-pixel camera motion flipped the
+    // alpha-cutout discard decision on leaf cards per pixel per
+    // frame, producing visible foliage flicker that tapered off only
+    // when the sampler stopped (pause menu). Using a fixed offset
+    // above the player's feet kills the per-frame matrix jitter at
+    // the cost of camera not tracking knockdowns/rolls - which can
+    // come back later via a dedicated dynamic-pose camera mode.
     float targetLookAtY = sPlayer.pos.y + 1.3f;
-    if (sSampler.jointCount() > 0)
-    {
-        for (int i = 0; i < sSampler.jointCount(); ++i)
-        {
-            if (std::strcmp(sSampler.jointName(i), "mixamorig:Hips") == 0)
-            {
-                const float model_world_y = sPlayer.pos.y - sPlayerMesh.foot_offset_y;
-                targetLookAtY = model_world_y + sSampler.jointWorldPos(i).y + 0.3f;
-                break;
-            }
-        }
-    }
     const glm::mat4 viewProj = selva::render::buildViewProj(sPlayer.pos, targetLookAtY);
     selva::render::setLastViewProj(viewProj);
 
@@ -3179,9 +3175,9 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
     // as held twilight rather than late afternoon. Slight warm tint
     // pre-mul on the source itself (the light is already mystical
     // before the atmosphere shapes it).
-    constexpr glm::vec3 kSunDir(0.0f, 0.061f, -0.998f);
-    constexpr glm::vec3 kSunIntensity(11.0f, 9.5f, 7.0f);
-    constexpr float kExposure = 1.0f;
+    const glm::vec3 kSunDir = selva::render::atmosphere::sunDirection();
+    const glm::vec3 kSunIntensity = selva::render::atmosphere::sunIntensity();
+    const float kExposure = selva::render::atmosphere::exposure();
 
     // Camera position (matches buildViewProj math): player_pos - lookFwd
     // * follow_distance + (0, follow_height, 0). Reconstruct here.
@@ -3193,27 +3189,81 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
     const glm::vec3 camPos = sPlayer.pos - lookFwd * tun_atm.follow_distance +
                              glm::vec3(0.0f, tun_atm.follow_height, 0.0f);
 
+    // ---- Shadow depth pass ----
+    selva::render::updateShadowCamera(sPlayer.pos);
+    selva::render::beginDepthPass();
+
+    selva::render::useTerrainDepthShader();
+    selva::render::renderTerrainDepth();
+
+    selva::render::useTreeDepthShader();
+    selva::render::renderTreesDepth();
+
+    // Scene cubes (ground decals). Currently no-op but the depth pass
+    // would draw them here once any get added to the scene.
+    // selva::render::useSceneDepthShader();
+    // selva::render::renderSceneDepth();
+
+    selva::render::useSkeletalDepthShader();
+    if (sPlayerMesh.isLoaded() && !sSampler.bone_palette.empty())
+    {
+        const glm::vec3 player_pos(sPlayer.pos.x, sPlayer.pos.y - sPlayerMesh.foot_offset_y,
+                                   sPlayer.pos.z);
+        glm::mat4 m = glm::translate(glm::mat4(1.0f), player_pos);
+        m = glm::rotate(m, sPlayer.yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
+        selva::render::setSkeletalDepthModel(m);
+        selva::render::setSkeletalDepthBones(sSampler.bone_palette.data(),
+                                             static_cast<int>(sSampler.bone_palette.size()));
+        glBindVertexArray(sPlayerMesh.vao);
+        glDrawElements(GL_TRIANGLES, sPlayerMesh.index_count, GL_UNSIGNED_INT, nullptr);
+    }
+    for (const auto* enemy : selva::gameplay::enemies())
+    {
+        if (enemy->sampler.bone_palette.empty())
+            continue;
+        const glm::vec3 enemy_pos(enemy->pos.x, enemy->pos.y - sPlayerMesh.foot_offset_y,
+                                  enemy->pos.z);
+        glm::mat4 m = glm::translate(glm::mat4(1.0f), enemy_pos);
+        m = glm::rotate(m, enemy->yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
+        selva::render::setSkeletalDepthModel(m);
+        selva::render::setSkeletalDepthBones(enemy->sampler.bone_palette.data(),
+                                             static_cast<int>(enemy->sampler.bone_palette.size()));
+        glBindVertexArray(sPlayerMesh.vao);
+        glDrawElements(GL_TRIANGLES, sPlayerMesh.index_count, GL_UNSIGNED_INT, nullptr);
+    }
+
+    selva::render::endDepthPass(selva::render::windowWidth(), selva::render::windowHeight());
+
+    // ---- Main pass: bind the shadow texture so main shaders can sample ----
+    selva::render::bindShadowTexture(1); // texture unit 1 reserved for shadows
+
     selva::render::drawSky(glm::inverse(viewProj), kSunDir, kSunIntensity, camPos, kExposure);
+
+    const glm::mat4& lightVP = selva::render::lightViewProj();
 
     selva::render::useTerrainShader();
     selva::render::setTerrainViewProj(viewProj);
     selva::render::setTerrainAtmosphere(kSunDir, kSunIntensity, camPos, kExposure);
+    selva::render::setTerrainShadow(lightVP, kSunDir, sPlayer.pos, 1);
     selva::render::renderTerrain();
 
     selva::render::useSceneProgram();
     selva::render::setSceneView(selva::render::lastView());
     selva::render::setSceneViewProj(viewProj);
     selva::render::setSceneAtmosphere(kSunDir, kSunIntensity, camPos, kExposure);
+    selva::render::setSceneShadow(lightVP, kSunDir, sPlayer.pos, 1);
     selva::render::renderGroundDecals();
 
     selva::render::useTreeShader();
     selva::render::setTreeViewProj(viewProj);
     selva::render::setTreeAtmosphere(kSunDir, kSunIntensity, camPos, kExposure);
+    selva::render::setTreeShadow(lightVP, kSunDir, sPlayer.pos, 1);
     selva::render::renderTrees();
 
     glBindVertexArray(0);
     glUseProgram(0);
 
+    selva::anim::setSkeletalShadow(lightVP, kSunDir, sPlayer.pos, 1);
     drawActorMeshes(viewProj);
     tickFrameCaptureWrite();
 }

@@ -2,6 +2,7 @@
 
 #include "gl/ShaderUtils.h"
 #include "render/AtmosphereShader.h"
+#include "render/ShadowShader.h"
 
 #include <glm/gtc/type_ptr.hpp>
 
@@ -97,11 +98,13 @@ void main()
     float dryness = clamp(slope * 0.7 + (n - 0.5) * 0.6 + 0.15, 0.0, 1.0);
     vec3 dirt = mix(uDarkLoam, uDryDirt, dryness);
 
-    // Sun lighting (half-Lambert + ambient + sun tint).
+    // Sun lighting (half-Lambert + ambient + sun tint), attenuated
+    // by the directional-light shadow map sample.
     float halfL = dot(vNormal, uSunDir) * 0.5 + 0.5;
     vec3 ambient = vec3(0.15, 0.18, 0.24);
     vec3 sunTint = vec3(1.05, 0.78, 0.55);
-    vec3 surface = dirt * (ambient + sunTint * halfL);
+    float shadow = sampleSunShadow(vWorldPos, vNormal);
+    vec3 surface = dirt * (ambient + sunTint * halfL * shadow);
 
     vec3 viewVec = vWorldPos - uCamPos;
     float dist = length(viewVec);
@@ -127,12 +130,17 @@ GLint sUniSunDirLoc = -1;
 GLint sUniSunIntensityLoc = -1;
 GLint sUniCamPosLoc = -1;
 GLint sUniExposureLoc = -1;
+GLint sUniShadowMapLoc = -1;
+GLint sUniLightViewProjLoc = -1;
+GLint sUniShadowSunDirLoc = -1;
+GLint sUniShadowCamPosLoc = -1;
 
 } // namespace
 
 bool initTerrainShader()
 {
-    const std::string fs = std::string(kTerrainFSCore) + kAtmosphereGLSL + kTerrainFSMain;
+    const std::string fs = std::string(kTerrainFSCore) + kAtmosphereGLSL + kShadowGLSL +
+                           kTerrainFSMain;
     sProgram = engine::gl::compileProgram(kTerrainVS, fs.c_str());
     if (sProgram == 0)
         return false;
@@ -144,6 +152,10 @@ bool initTerrainShader()
     sUniSunIntensityLoc = glGetUniformLocation(sProgram, "uSunIntensity");
     sUniCamPosLoc = glGetUniformLocation(sProgram, "uCamPos");
     sUniExposureLoc = glGetUniformLocation(sProgram, "uExposure");
+    sUniShadowMapLoc = glGetUniformLocation(sProgram, "uShadowMap");
+    sUniLightViewProjLoc = glGetUniformLocation(sProgram, "uLightViewProj");
+    sUniShadowSunDirLoc = glGetUniformLocation(sProgram, "uShadowSunDir");
+    sUniShadowCamPosLoc = glGetUniformLocation(sProgram, "uShadowCameraPos");
     return true;
 }
 
@@ -189,6 +201,15 @@ void setTerrainTones(const glm::vec3& dark_loam, const glm::vec3& dry_dirt)
 {
     glUniform3f(sUniDarkLoamLoc, dark_loam.x, dark_loam.y, dark_loam.z);
     glUniform3f(sUniDryDirtLoc, dry_dirt.x, dry_dirt.y, dry_dirt.z);
+}
+
+void setTerrainShadow(const glm::mat4& light_view_proj, const glm::vec3& sun_dir,
+                      const glm::vec3& shadow_cam_pos, int shadow_texture_unit)
+{
+    glUniformMatrix4fv(sUniLightViewProjLoc, 1, GL_FALSE, glm::value_ptr(light_view_proj));
+    glUniform3f(sUniShadowSunDirLoc, sun_dir.x, sun_dir.y, sun_dir.z);
+    glUniform3f(sUniShadowCamPosLoc, shadow_cam_pos.x, shadow_cam_pos.y, shadow_cam_pos.z);
+    glUniform1i(sUniShadowMapLoc, shadow_texture_unit);
 }
 
 } // namespace selva::render

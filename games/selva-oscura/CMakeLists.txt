@@ -49,9 +49,11 @@ add_library(selva-oscura-lib STATIC
     src/combat/SpliceDiag.cpp
     src/combat/TransitionProfile.cpp
     src/combat/WeaponData.cpp
+    src/render/Atmosphere.cpp
     src/render/Camera.cpp
     src/render/SceneGeometry.cpp
     src/render/SceneShaders.cpp
+    src/render/ShadowPass.cpp
     src/render/SkyPass.cpp
     src/render/TerrainShader.cpp
     src/render/Texture.cpp

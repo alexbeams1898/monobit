@@ -2,6 +2,7 @@
 
 #include "gl/ShaderUtils.h"
 #include "render/AtmosphereShader.h"
+#include "render/ShadowShader.h"
 
 #include <glm/gtc/type_ptr.hpp>
 
@@ -84,10 +85,21 @@ void main()
     // this is a no-op.
     if (base.a < uAlphaCutoff) discard;
 
-    float halfL = dot(normalize(vNormal), uSunDir) * 0.5 + 0.5;
+    // Foliage uses a hemispherical up-vector for lighting, not the
+    // per-vertex card-aligned normal. Card normals at edge-on
+    // viewing angles produce per-frame brightness flicker because
+    // dot(N,L) sits near the steep part of cosine and rasterizer
+    // interpolation noise gets amplified. Real leaves scatter
+    // through the canopy anyway; an up-vector is more physically
+    // accurate than card-normals for soft foliage AND immune to
+    // per-frame interpolation noise. Standard production foliage
+    // shading technique.
+    const vec3 canopyN = vec3(0.0, 1.0, 0.0);
+    float halfL = dot(canopyN, uSunDir) * 0.5 + 0.5;
     vec3 ambient = vec3(0.15, 0.18, 0.24);
     vec3 sunTint = vec3(1.05, 0.78, 0.55);
-    vec3 surface = base.rgb * (ambient + sunTint * halfL);
+    float shadow = sampleSunShadow(vWorldPos, canopyN);
+    vec3 surface = base.rgb * (ambient + sunTint * halfL * shadow);
 
     // Aerial perspective (same atmosphere as scene + sky).
     vec3 viewVec = vWorldPos - uCamPos;
@@ -117,12 +129,17 @@ GLint sUniSunDirLoc = -1;
 GLint sUniSunIntensityLoc = -1;
 GLint sUniCamPosLoc = -1;
 GLint sUniExposureLoc = -1;
+GLint sUniShadowMapLoc = -1;
+GLint sUniLightViewProjLoc = -1;
+GLint sUniShadowSunDirLoc = -1;
+GLint sUniShadowCamPosLoc = -1;
 
 } // namespace
 
 bool initTreeShader()
 {
-    const std::string fs = std::string(kTreeFSCore) + kAtmosphereGLSL + kTreeFSMain;
+    const std::string fs =
+        std::string(kTreeFSCore) + kAtmosphereGLSL + kShadowGLSL + kTreeFSMain;
     sProgram = engine::gl::compileProgram(kTreeVS, fs.c_str());
     if (sProgram == 0)
         return false;
@@ -136,6 +153,10 @@ bool initTreeShader()
     sUniSunIntensityLoc = glGetUniformLocation(sProgram, "uSunIntensity");
     sUniCamPosLoc = glGetUniformLocation(sProgram, "uCamPos");
     sUniExposureLoc = glGetUniformLocation(sProgram, "uExposure");
+    sUniShadowMapLoc = glGetUniformLocation(sProgram, "uShadowMap");
+    sUniLightViewProjLoc = glGetUniformLocation(sProgram, "uLightViewProj");
+    sUniShadowSunDirLoc = glGetUniformLocation(sProgram, "uShadowSunDir");
+    sUniShadowCamPosLoc = glGetUniformLocation(sProgram, "uShadowCameraPos");
 
     glUseProgram(sProgram);
     glUniform1i(sUniBaseColorLoc, 0);
@@ -205,6 +226,15 @@ void setTreeAlphaCutoff(float cutoff)
 void setTreeTime(float t)
 {
     glUniform1f(sUniTimeLoc, t);
+}
+
+void setTreeShadow(const glm::mat4& light_view_proj, const glm::vec3& sun_dir,
+                   const glm::vec3& shadow_cam_pos, int shadow_texture_unit)
+{
+    glUniformMatrix4fv(sUniLightViewProjLoc, 1, GL_FALSE, glm::value_ptr(light_view_proj));
+    glUniform3f(sUniShadowSunDirLoc, sun_dir.x, sun_dir.y, sun_dir.z);
+    glUniform3f(sUniShadowCamPosLoc, shadow_cam_pos.x, shadow_cam_pos.y, shadow_cam_pos.z);
+    glUniform1i(sUniShadowMapLoc, shadow_texture_unit);
 }
 
 } // namespace selva::render
