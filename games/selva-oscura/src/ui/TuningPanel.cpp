@@ -277,6 +277,9 @@ static void renderPoiseSection(selva::tuning::Tunables& tun)
                 "%.2f");
     tunedSlider("Knockdown clip end (s)", &tun.knockdown_clip_end_seconds, 0.1f, 10.0f, 0.05f,
                 "%.2f");
+    ImGui::Separator();
+    tunedSlider("Flying knee whoosh time (s)", &tun.flying_knee_whoosh_time_seconds, -0.1f, 4.0f,
+                0.01f, "%.2f");
 }
 
 // Build / cache a sorted clip-name list. Static cache so we don't

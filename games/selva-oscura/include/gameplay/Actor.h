@@ -324,6 +324,7 @@ struct Actor
     // threshold tuned for inter-stride wobble rejection.
     float last_footstep_fire_time = -1000.0f;
 
+
     // --- Active attack hitbox tracking ---
     // When the actor fires a swing, this stores the spawned hitbox's
     // id + the bone joint that drives its world position + the tip

@@ -702,6 +702,59 @@ static void spawnPlayerAttackHitboxForClip(const char* clip_name,
     selva::combat::spawnAttackHitbox(sp);
 }
 
+// Map an attack clip name to its whoosh SFX. Returns nullptr if the
+// clip has no registered whoosh. Fires at clip start.
+//
+// flying_knee_punch_combo is NOT in this table - its whoosh fires
+// mid-clip via the per-clip event timing in tickFlyingKneeWhoosh
+// (tunable: flying_knee_whoosh_time_seconds) so the SFX lands at
+// the visible left-arm swing instead of at clip start.
+static const char* whooshForAttackClip(const char* clip_name)
+{
+    if (clip_name == nullptr || clip_name[0] == '\0')
+        return nullptr;
+    if (std::strcmp(clip_name, "jab") == 0)
+        return "whoosh_jab";
+    if (std::strcmp(clip_name, "hook") == 0)
+        return "whoosh_hook_right";
+    if (std::strcmp(clip_name, "combo") == 0)
+        return "whoosh_hook_left";
+    if (std::strcmp(clip_name, "heavy_punch") == 0)
+        return "whoosh_heavy";
+    return nullptr;
+}
+
+// State for flying_knee_punch_combo's mid-clip whoosh event. Tracks
+// the previous frame's one-shot time so we can detect the moment the
+// time crossed the tunable threshold and fire the whoosh exactly
+// once per swing. Reset when the one-shot leaves flying_knee.
+static float sFlyingKneePrevOneShotT = -1.0f;
+static bool sFlyingKneeWhooshFired = false;
+
+static void tickFlyingKneeWhoosh()
+{
+    const auto fd = sSampler.frameDiagnostics();
+    const bool is_flying_knee =
+        fd.one_shot_name != nullptr &&
+        std::strcmp(fd.one_shot_name, "flying_knee_punch_combo") == 0;
+    if (!is_flying_knee)
+    {
+        sFlyingKneePrevOneShotT = -1.0f;
+        sFlyingKneeWhooshFired = false;
+        return;
+    }
+    const float now_t = fd.one_shot_time;
+    const float prev_t = sFlyingKneePrevOneShotT;
+    const float fire_t = selva::tuning::current().flying_knee_whoosh_time_seconds;
+    if (!sFlyingKneeWhooshFired && fire_t >= 0.0f && prev_t >= 0.0f && now_t >= fire_t &&
+        prev_t < fire_t)
+    {
+        selva::audio::playSfx("whoosh_heavy");
+        sFlyingKneeWhooshFired = true;
+    }
+    sFlyingKneePrevOneShotT = now_t;
+}
+
 // dodge's mid-roll pose has no useful pose-match in an attack clip;
 // pose-matching would land on a late frame and visibly truncate the
 // punch. The caller knows the splice is cross-family; this function
@@ -745,6 +798,8 @@ static bool fireClipForHand(selva::combat::HandSide hand, const char* clip_name,
 
     const float rate = effectiveAttackPlaybackRate(hand);
     fireOneShotWithProfile(*clip, profile, start_seconds, rate, clip_name);
+    if (const char* whoosh = whooshForAttackClip(clip_name); whoosh != nullptr)
+        selva::audio::playSfx(whoosh);
     setHandCancelWindow(hand, clip_name, *clip, rate, combo_input_buffer_seconds);
     combatLog("[combat:fire] hand=%s clip=%s dur=%.3fs start=%.3fs rate=%.2f one_shot_active=%d "
               "player_pos=(%.3f, %.3f)\n",
@@ -2822,6 +2877,15 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     // the signal comes from the visible foot, not a per-clip cadence.
     // See games/selva-oscura/src/gameplay/Footsteps.cpp.
     selva::gameplay::tickFootsteps(sPlayer, static_cast<float>(dt));
+
+    tickFlyingKneeWhoosh();
+
+    // Whoosh detection — fires SFX on hand peak speed during attack
+    // one-shots. Active-hand hint comes from the running clip's
+    // declared hitbox_joint (1=Left, 2=Right, 0=both/unknown). When
+    // resolved, only the active hand is sampled - eliminates the
+    // entire class of "drift fires on the inactive hand mask the
+    // real strike" bugs. See gameplay/Whooshes.cpp.
 
     tickCsvRecording(dt);
     logStateNarrative();

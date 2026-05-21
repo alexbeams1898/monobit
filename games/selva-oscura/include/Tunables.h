@@ -384,6 +384,15 @@ struct Tunables
     float knockdown_clip_end_seconds = 999.0f;
     float getting_up_clip_start_seconds = 0.0f;
     float getting_up_clip_end_seconds = 999.0f;
+
+    // ---- Per-clip audio event time (running jump) ----
+    // Time (seconds into the flying_knee_punch_combo clip) at which the
+    // left-arm whoosh should fire. Tunable so iteration is "tweak
+    // value, hit F1 save, listen" without code change. The fire
+    // happens on the first per-frame tick where the one-shot's clip
+    // time crosses this threshold. Set to a negative value to
+    // disable.
+    float flying_knee_whoosh_time_seconds = 0.95f;
 };
 
 // JSON serialization — generates to_json / from_json for nlohmann::json
@@ -408,7 +417,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     ai_confirmed_sightings_to_alert, ai_alerted_decay_seconds, ai_combat_engage_range_meters,
     ai_combat_leash_range_meters, ai_combat_disengage_seconds, debug_ai_perception,
     ai_decision_tick_hz, ai_decision_tick_combat_hz_multiplier, debug_ai_tick_log,
-    ai_turn_rate_radians_per_sec, debug_ai_decision_log, ai_action_freshness_seconds);
+    ai_turn_rate_radians_per_sec, debug_ai_decision_log, ai_action_freshness_seconds,
+    flying_knee_whoosh_time_seconds);
 
 // Single global instance. Both gameplay code and the procedural driver
 // read from this; the ImGui panel edits it in place. Keep it global rather
