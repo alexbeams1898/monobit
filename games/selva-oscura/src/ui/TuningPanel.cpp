@@ -81,15 +81,29 @@ static void tunedSlider(const char* label, float* val, float min, float max, flo
 
 static void renderDebugSection(selva::tuning::Tunables& tun)
 {
-    if (!ImGui::CollapsingHeader("Debug", ImGuiTreeNodeFlags_DefaultOpen))
-        return;
-    ImGui::SliderFloat("Time scale", &tun.time_scale, 0.05f, 2.0f, "%.2fx");
+    ImGui::TextUnformatted("Time scale");
+    ImGui::SliderFloat("##time-scale", &tun.time_scale, 0.05f, 2.0f, "%.2fx");
     ImGui::SameLine();
     if (ImGui::SmallButton("1x"))
         tun.time_scale = 1.0f;
     ImGui::SameLine();
     if (ImGui::SmallButton("0.25x"))
         tun.time_scale = 0.25f;
+    ImGui::Separator();
+    ImGui::TextUnformatted("Overlays");
+    ImGui::Checkbox("AI vision cones + awareness label", &tun.debug_ai_perception);
+    ImGui::Checkbox("World colliders (cylinders + boxes)", &tun.debug_show_colliders);
+    ImGui::Separator();
+    ImGui::TextUnformatted("AI debug logs (-> combat-debug.log)");
+    ImGui::Checkbox("AI tick firings", &tun.debug_ai_tick_log);
+    ImGui::Checkbox("AI decisions", &tun.debug_ai_decision_log);
+    ImGui::Separator();
+    ImGui::TextUnformatted("Render / Audio debug logs");
+    ImGui::Checkbox("Footsteps -> footstep-debug.log", &tun.debug_footstep_log);
+    ImGui::Checkbox("Shadow camera -> shadow-debug.log", &tun.debug_shadow_log);
+    ImGui::Checkbox("FPV roll camera + head -> fpv-roll-debug.log", &tun.debug_fpv_roll_log);
+    ImGui::Checkbox("Collision pushes -> collision-debug.log", &tun.debug_collision_log);
+    ImGui::Checkbox("Camera pull-in -> camera-debug.log", &tun.debug_camera_pull_in_log);
 }
 
 static void renderLocomotionSection(selva::tuning::Tunables& tun)
@@ -114,9 +128,17 @@ static void renderCameraSection(selva::tuning::Tunables& tun)
 {
     if (!ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen))
         return;
-    tunedSlider("Follow distance", &tun.follow_distance, 1.0f, 15.0f, 0.5f, "%.1f");
+    tunedSlider("Follow distance (outdoor)", &tun.follow_distance, 1.0f, 15.0f, 0.5f, "%.1f");
+    tunedSlider("Follow distance (indoor)", &tun.follow_distance_indoor, 0.5f, 10.0f, 0.25f,
+                "%.2f");
+    tunedSlider("Indoor lerp tau (s)", &tun.follow_distance_indoor_tau, 0.0f, 1.5f, 0.05f, "%.2f");
     tunedSlider("Follow height", &tun.follow_height, 0.0f, 8.0f, 0.5f, "%.1f");
     tunedSlider("FOV (deg)", &tun.fov_degrees, 30.0f, 110.0f, 5.0f, "%.0f");
+    tunedSlider("Pull-in margin (m)", &tun.camera_pull_in_margin, 0.0f, 1.5f, 0.05f, "%.2f");
+    tunedSlider("Pull-in sphere radius (m)", &tun.camera_pull_in_radius, 0.0f, 1.0f, 0.05f, "%.2f");
+    tunedSlider("Pull-in min separation (m)", &tun.camera_pull_in_min_separation, 0.0f, 2.0f,
+                0.05f, "%.2f");
+    tunedSlider("Pull-in smoothing tau (s)", &tun.camera_pull_in_tau, 0.0f, 0.5f, 0.01f, "%.2f");
 }
 
 static void renderAnimationSection(selva::tuning::Tunables& tun)
@@ -209,7 +231,6 @@ static void renderAiPerceptionSection(selva::tuning::Tunables& tun)
 {
     if (!ImGui::CollapsingHeader("AI Perception", ImGuiTreeNodeFlags_DefaultOpen))
         return;
-    ImGui::Checkbox("Show vision cones + awareness label", &tun.debug_ai_perception);
     tunedSlider("Vision FOV (deg)", &tun.ai_vision_fov_degrees, 30.0f, 180.0f, 5.0f, "%.0f");
     tunedSlider("Vision range (m)", &tun.ai_vision_range_meters, 1.0f, 30.0f, 0.5f, "%.1f");
     tunedSlider("Suspicion decay (s)", &tun.ai_suspicion_decay_seconds, 0.25f, 10.0f, 0.25f,
@@ -227,24 +248,11 @@ static void renderAiPerceptionSection(selva::tuning::Tunables& tun)
     tunedSlider("Decision tick rate (Hz)", &tun.ai_decision_tick_hz, 1.0f, 60.0f, 1.0f, "%.0f");
     tunedSlider("Combat tick multiplier", &tun.ai_decision_tick_combat_hz_multiplier, 0.5f, 6.0f,
                 0.1f, "%.2fx");
-    ImGui::Checkbox("Log AI tick firings to combat-debug.log", &tun.debug_ai_tick_log);
     ImGui::Separator();
     ImGui::TextUnformatted("Locomotion (Sprint 4a)");
     tunedSlider("Turn rate (rad/s)", &tun.ai_turn_rate_radians_per_sec, 0.5f, 20.0f, 0.25f, "%.2f");
     tunedSlider("Action freshness (s)", &tun.ai_action_freshness_seconds, 0.05f, 3.0f, 0.05f,
                 "%.2f");
-    ImGui::Checkbox("Log AI decisions to combat-debug.log", &tun.debug_ai_decision_log);
-    ImGui::Separator();
-    ImGui::TextUnformatted("Render / Audio debug logs");
-    ImGui::Checkbox("Footstep trajectory + events -> footstep-debug.log",
-                    &tun.debug_footstep_log);
-    ImGui::Checkbox("Shadow camera state -> shadow-debug.log", &tun.debug_shadow_log);
-    ImGui::Checkbox("FPV roll camera + head -> fpv-roll-debug.log",
-                    &tun.debug_fpv_roll_log);
-    ImGui::Checkbox("Draw world colliders (cylinders + boxes)",
-                    &tun.debug_show_colliders);
-    ImGui::Checkbox("Collision pushes -> collision-debug.log",
-                    &tun.debug_collision_log);
 }
 
 // Diagnostic dump of the loaded enemy-archetype registry. Read-only;
@@ -453,19 +461,46 @@ static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
         return;
     auto& tun = selva::tuning::current();
     ImGui::Begin("Selva Oscura Tuning (F1)", &sShowTuningPanel);
-    renderDebugSection(tun);
-    renderLocomotionSection(tun);
-    renderMouseLookSection(tun);
-    renderCameraSection(tun);
-    renderAnimationSection(tun);
-    renderCombatSection(tun);
-    renderDodgeSection(tun);
-    renderPostAttackLockoutSection(tun);
-    renderPoiseSection(tun);
-    renderAiPerceptionSection(tun);
-    renderEnemyArchetypesSection();
-    renderAnimationDebugSection();
+    // Save/Load lives above the tabs — always one click away regardless
+    // of which category is active.
     renderSaveLoadButtons();
+    ImGui::Separator();
+    if (ImGui::BeginTabBar("##tuning-tabs"))
+    {
+        if (ImGui::BeginTabItem("Movement"))
+        {
+            renderLocomotionSection(tun);
+            renderMouseLookSection(tun);
+            renderCameraSection(tun);
+            renderDodgeSection(tun);
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Combat"))
+        {
+            renderCombatSection(tun);
+            renderPostAttackLockoutSection(tun);
+            renderPoiseSection(tun);
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("AI"))
+        {
+            renderAiPerceptionSection(tun);
+            renderEnemyArchetypesSection();
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Animation"))
+        {
+            renderAnimationSection(tun);
+            renderAnimationDebugSection();
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Debug"))
+        {
+            renderDebugSection(tun);
+            ImGui::EndTabItem();
+        }
+        ImGui::EndTabBar();
+    }
     ImGui::End();
 }
 

@@ -97,8 +97,44 @@ struct Tunables
 
     // ---- Camera follow ----
     float follow_distance = 6.0f;
+    // Indoor follow distance: a smaller follow distance kicks in
+    // when the player is inside an enclosed footprint (isIndoors).
+    // Outdoor framing (~6m) reads as cinematic but feels claustro-
+    // phobic in a 6x8m chapel; ~4m keeps the camera at a workable
+    // distance for interior navigation without losing context of
+    // the room around the player. The pull-in math operates on
+    // whichever distance is currently effective.
+    float follow_distance_indoor = 4.0f;
+    // Time-constant for the indoor<->outdoor follow-distance lerp
+    // when the player crosses an interior boundary. Longer than the
+    // pull-in tau because this is a soft "context" transition, not
+    // a wall-avoidance reflex. ~0.4s reads as a deliberate camera
+    // shift, not a snap.
+    float follow_distance_indoor_tau = 0.4f;
     float follow_height = 2.5f;
     float fov_degrees = 60.0f;
+    // Camera pull-in: raycast from the lookAt anchor toward the
+    // ideal camera position; if a wall or tree blocks the view, the
+    // camera slides forward to the hit point minus this margin so it
+    // sits just clear of the surface. ~0.3m keeps the lens off the
+    // wall texture without revealing the player's back.
+    float camera_pull_in_margin = 0.3f;
+    // Sphere-cast radius around the ray. Treats the camera as a small
+    // volume rather than a point so a wall edge near the camera
+    // produces tighter pull-in instead of the camera wrapping its
+    // view frustum around the edge. ~0.4m approximately matches the
+    // camera's near-plane width at 60deg FOV.
+    float camera_pull_in_radius = 0.4f;
+    // Minimum allowed camera-to-player distance. Below this the near
+    // plane reaches into the player mesh and renders the inside of
+    // the chest geometry (black screen / skin-color flat fill). Must
+    // be >= sphere_radius + half-near-plane-extent + body-mesh
+    // radius to keep the lens outside the player's torso.
+    float camera_pull_in_min_separation = 0.5f;
+    // Smoothing time-constant for the actual follow distance toward
+    // the raycast-derived target. Short (~80ms) so wall transitions
+    // glide instead of snapping when the player edges past a corner.
+    float camera_pull_in_tau = 0.08f;
 
     // ---- Animation transitions ----
     // Cross-fade duration (seconds) between two clips when the active
@@ -433,6 +469,12 @@ struct Tunables
     // (which collider was hit, the push vector). Use to diagnose
     // wedging or oscillation. Default OFF.
     bool debug_collision_log = false;
+
+    // When true, buildViewProj writes per-frame camera pull-in state
+    // (origin, direction, desired/target/smoothed separation, hit
+    // distance) to camera-debug.log. Used to diagnose pull-in
+    // failures (camera clips a wall when it shouldn't). Default OFF.
+    bool debug_camera_pull_in_log = false;
 };
 
 // JSON serialization — generates to_json / from_json for nlohmann::json
@@ -468,6 +510,9 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 // they're session-only debug toggles. Keeping them out of the macro
 // also avoids hitting NLOHMANN_DEFINE_TYPE's variadic field-count
 // limit (~64).
+// NOTE: camera_pull_in_margin and camera_pull_in_tau are NOT serialized
+// for the same field-count reason; live-tuned via F1 panel and the
+// dialed-in values bake into the struct defaults.
 
 // Single global instance. Both gameplay code and the procedural driver
 // read from this; the ImGui panel edits it in place. Keep it global rather

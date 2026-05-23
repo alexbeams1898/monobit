@@ -36,14 +36,26 @@ struct CylinderCollider
     bool collision_only = false;
 };
 
-// Axis-aligned box collider in XZ (no yaw). Walls of static
-// architecture (the crypt's four walls, doorway-gap surrounds, etc.).
-// Y is not collided against — actors are kept on the terrain by the
-// renderer's height sampling.
+// Axis-aligned box collider in XZ. Walls of static architecture
+// (the crypt's four walls, doorway-gap surrounds, etc.).
+//
+// Player collision uses XZ only (actors are kept on the terrain by
+// the renderer's height sampling). Camera collision is full 3D —
+// y_base is the slab's bottom in world Y, half_height_y is the half
+// vertical extent. Walls modeled as real 3D boxes so the camera can
+// look up over a wall without the ray treating it as infinite-tall.
 struct BoxCollider
 {
     glm::vec2 center;      // XZ center
     glm::vec2 half_extents;// XZ half-width / half-depth
+    float y_base = 0.0f;       // bottom of the box in world Y
+    float half_height_y = 5.0f;// half vertical extent (top = y_base + 2*half)
+    // Camera-only: skip in resolveBodyCollision. Used for overhead
+    // colliders (chapel roof slab) that the player walks UNDER but
+    // the camera must not fly OVER. Player collision is XZ-only by
+    // contract, so without this flag a roof's XZ footprint blocks
+    // the player's walk-through path.
+    bool camera_only = false;
 };
 
 // XZ rectangle marking where the player counts as "indoors" — used
@@ -94,5 +106,42 @@ const CollisionScene& currentScene();
 // between two adjacent cylinders) settle in one frame. 3 passes is
 // enough for any non-pathological cylinder layout.
 void resolveBodyCollision(glm::vec2& body_xz, float body_radius);
+
+// Result of a ray-vs-scene query. `hit` is false if the ray reached
+// `max_distance` clear; in that case `distance` is undefined.
+struct RaycastHit
+{
+    float distance = 0.0f;
+    bool hit = false;
+};
+
+// Cast a 3D ray against the static scene's cylinders + boxes and
+// return the nearest hit (or no-hit) within `max_distance`.
+//
+// `direction` does not need to be unit-length but must be non-zero;
+// it is normalized internally. `distance` on hit is in world units
+// along `direction` from `origin`.
+//
+// Used by the camera to pull in when its ideal position would clip
+// through a wall or tree. Pair with sphereOverlapsScene to enforce
+// a buffer around the camera position after pull-in.
+//
+// Takes the scene explicitly so the math is testable against
+// synthetic scenes without touching the singleton.
+RaycastHit raycastScene(const CollisionScene& scene, const glm::vec3& origin,
+                        const glm::vec3& direction, float max_distance);
+
+// True if a sphere of `radius` centered at `center` overlaps any
+// cylinder or box in the scene. Used to enforce the camera-clearance
+// invariant: after pull-in places the camera somewhere, this query
+// confirms the camera sphere isn't inside a wall. If it is, the
+// caller shrinks the camera-to-player distance and re-queries until
+// clear (the iterative push-out pass).
+//
+// Used in tandem with raycastScene: raycastScene catches occluders
+// in the camera's forward path; sphereOverlapsScene catches the
+// "candidate camera position lands inside a perpendicular wall"
+// corner-pocket case that a single forward ray can't see.
+bool sphereOverlapsScene(const CollisionScene& scene, const glm::vec3& center, float radius);
 
 } // namespace selva::world

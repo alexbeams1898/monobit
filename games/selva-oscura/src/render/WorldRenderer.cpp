@@ -251,20 +251,187 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
     }
     const float smoothed_lookat_y = ground_y + sSmoothedOffset;
 
-    glm::vec3 camPos =
-        player_pos - lookFwd * tun.follow_distance + glm::vec3(0.0f, tun.follow_height, 0.0f);
+    const glm::vec3 lookAt(player_pos.x, smoothed_lookat_y, player_pos.z);
 
-    // Ground-clearance clamp: lift the camera above terrain at its
-    // XZ position so it never descends below the surface. Without
-    // this, on a downward slope the camera's offset-from-player
-    // places it below the terrain surface and rays leave the world
-    // through the side of the hill — visible as see-through ground.
+    // Indoor follow-distance lerp.
+    const bool indoors = selva::world::isIndoors(glm::vec2(player_pos.x, player_pos.z));
+    const float target_follow_distance =
+        indoors ? tun.follow_distance_indoor : tun.follow_distance;
+    static float sSmoothedFollowDistance = tun.follow_distance;
+    static bool sFollowDistInit = false;
+    {
+        static Uint64 sPrevFollowTicks = SDL_GetTicks64();
+        const Uint64 nowFollowTicks = SDL_GetTicks64();
+        const float follow_dt = static_cast<float>(nowFollowTicks - sPrevFollowTicks) * 0.001f;
+        sPrevFollowTicks = nowFollowTicks;
+        if (!sFollowDistInit)
+        {
+            sSmoothedFollowDistance = target_follow_distance;
+            sFollowDistInit = true;
+        }
+        else
+        {
+            const float follow_tau = std::max(1e-3f, tun.follow_distance_indoor_tau);
+            const float alpha = 1.0f - std::exp(-follow_dt / follow_tau);
+            sSmoothedFollowDistance +=
+                (target_follow_distance - sSmoothedFollowDistance) * alpha;
+        }
+    }
+
+    // Pitch-coupled ideal camera offset. Y cap prevents pitch-down
+    // from flinging the camera arbitrarily high.
+    const glm::vec3 ideal_offset =
+        -lookFwd * sSmoothedFollowDistance + glm::vec3(0.0f, tun.follow_height, 0.0f);
+    const float desired_separation = glm::length(ideal_offset);
+    const glm::vec3 cam_dir = desired_separation > 1e-4f ? ideal_offset / desired_separation
+                                                         : glm::vec3(0.0f, 1.0f, 0.0f);
+    const float margin = tun.camera_pull_in_margin;
+    const float sphere_radius = tun.camera_pull_in_radius;
+    const selva::world::RaycastHit hit = selva::world::raycastScene(
+        selva::world::currentScene(), lookAt, cam_dir, desired_separation + margin);
+
+    const float min_separation = std::max(0.0f, tun.camera_pull_in_min_separation);
+    float target_separation =
+        hit.hit ? std::max(min_separation, hit.distance - margin) : desired_separation;
+
+    // Push-out: shrink target separation until sphere doesn't overlap.
+    if (sphere_radius > 0.0f && target_separation > min_separation)
+    {
+        constexpr int kMaxPushOutSteps = 24;
+        constexpr float kPushStep = 0.15f;
+        float try_sep = target_separation;
+        for (int i = 0; i < kMaxPushOutSteps; ++i)
+        {
+            const glm::vec3 try_pos = lookAt + cam_dir * try_sep;
+            if (!selva::world::sphereOverlapsScene(selva::world::currentScene(), try_pos,
+                                                   sphere_radius))
+                break;
+            if (try_sep <= min_separation)
+                break;
+            try_sep -= kPushStep;
+            if (try_sep < min_separation)
+                try_sep = min_separation;
+        }
+        target_separation = try_sep;
+    }
+
+    // Indoor enforcement folded into target_separation: if player is
+    // indoors but the candidate camera position is outdoors, shrink
+    // target until camera is also indoors. Done BEFORE smoothing so
+    // smoothing converges naturally instead of fighting a post-pass.
+    if (indoors)
+    {
+        const glm::vec3 candidate = lookAt + cam_dir * target_separation;
+        if (!selva::world::isIndoors(glm::vec2(candidate.x, candidate.z)))
+        {
+            // Check if ANY sep in [min_separation, target_separation]
+            // produces an indoor camera position. When cam_dir points
+            // out of the chapel (player just inside the threshold
+            // facing inward → camera ray fires outward), NO indoor
+            // sep exists along this ray, and enforcement would
+            // collapse the camera to player. Skip enforcement in
+            // that case — accept the outdoor camera until the player
+            // moves deeper inside and the ray geometry changes.
+            const glm::vec3 min_pos = lookAt + cam_dir * min_separation;
+            if (selva::world::isIndoors(glm::vec2(min_pos.x, min_pos.z)))
+            {
+                // Find LARGEST sep where camera is indoor.
+                float lo = min_separation;
+                float hi = target_separation;
+                for (int i = 0; i < 7; ++i)
+                {
+                    const float mid = (lo + hi) * 0.5f;
+                    const glm::vec3 p = lookAt + cam_dir * mid;
+                    if (selva::world::isIndoors(glm::vec2(p.x, p.z)))
+                        lo = mid;
+                    else
+                        hi = mid;
+                }
+                target_separation = lo;
+            }
+            // else: no valid indoor sep on this ray; leave
+            // target_separation alone (camera ends up outdoor, will
+            // self-correct as player walks deeper / turns).
+        }
+    }
+
+    // SYMMETRIC smoothing both directions. Per Alex's spec: "each side
+    // lerp the same to the chest." Wall safety is handled by the
+    // forward-raycast + push-out folding into target_separation BEFORE
+    // smoothing, so the smoothing target is always wall-clear; the
+    // camera lerping through it visually is a non-issue because the
+    // target moves continuously (raycast updates per-frame).
+    static float sSmoothedSeparation = desired_separation;
+    static bool sSeparationInit = false;
+    {
+        static Uint64 sPrevSepTicks = SDL_GetTicks64();
+        const Uint64 nowSepTicks = SDL_GetTicks64();
+        const float sep_dt = static_cast<float>(nowSepTicks - sPrevSepTicks) * 0.001f;
+        sPrevSepTicks = nowSepTicks;
+        if (!sSeparationInit)
+        {
+            sSmoothedSeparation = target_separation;
+            sSeparationInit = true;
+        }
+        else
+        {
+            const float tau = std::max(1e-3f, tun.camera_pull_in_tau);
+            const float alpha = 1.0f - std::exp(-sep_dt / tau);
+            sSmoothedSeparation += (target_separation - sSmoothedSeparation) * alpha;
+        }
+    }
+    glm::vec3 camPos = lookAt + cam_dir * sSmoothedSeparation;
+
+    // Ground-clearance clamp.
     constexpr float kCamMinClearance = 1.0f;
     const float terrain_at_cam = selva::world::sampleHeight(camPos.x, camPos.z);
     if (camPos.y < terrain_at_cam + kCamMinClearance)
         camPos.y = terrain_at_cam + kCamMinClearance;
 
-    const glm::vec3 lookAt(player_pos.x, smoothed_lookat_y, player_pos.z);
+    if (tun.debug_camera_pull_in_log)
+    {
+        static FILE* sPullInLog = nullptr;
+        static int sPullInFrame = 0;
+        static glm::vec3 sPrevPlayerPos = player_pos;
+        if (sPullInLog == nullptr)
+            sPullInLog = std::fopen("camera-debug.log", "w");
+        if (sPullInLog != nullptr)
+        {
+            const bool overlap = selva::world::sphereOverlapsScene(
+                selva::world::currentScene(), camPos, sphere_radius);
+            const float cam_y_above_chest = camPos.y - lookAt.y;
+            const float cam_z_from_player = camPos.z - player_pos.z;
+            const float cam_x_from_player = camPos.x - player_pos.x;
+            const float cam_dist_xz = std::sqrt(cam_x_from_player * cam_x_from_player +
+                                                cam_z_from_player * cam_z_from_player);
+            const glm::vec3 player_vel = player_pos - sPrevPlayerPos;
+            const float player_speed = glm::length(player_vel);
+            const bool cam_indoors =
+                selva::world::isIndoors(glm::vec2(camPos.x, camPos.z));
+            std::fprintf(
+                sPullInLog,
+                "[%d] pPos=(%.2f,%.2f,%.2f) pVel=(%.3f,%.3f,%.3f) pSpd=%.3f "
+                "yaw=%.3f pitch=%.3f lookFwd=(%.3f,%.3f,%.3f) "
+                "lookAt=(%.2f,%.2f,%.2f) cam_dir=(%.3f,%.3f,%.3f) "
+                "ideal_off=(%.2f,%.2f,%.2f) ideal_off_len=%.2f "
+                "follow_dist=%.2f indoors=%d cam_indoors=%d "
+                "hit=%d hit_dist=%.3f target_sep=%.3f smoothed_sep=%.3f "
+                "camPos=(%.2f,%.2f,%.2f) cam_y_above_chest=%.3f "
+                "cam_xz_from_player=%.3f overlap=%d\n",
+                sPullInFrame, player_pos.x, player_pos.y, player_pos.z, player_vel.x,
+                player_vel.y, player_vel.z, player_speed, yaw, pitch, lookFwd.x, lookFwd.y,
+                lookFwd.z, lookAt.x, lookAt.y, lookAt.z, cam_dir.x, cam_dir.y, cam_dir.z,
+                ideal_offset.x, ideal_offset.y, ideal_offset.z, desired_separation,
+                sSmoothedFollowDistance, indoors ? 1 : 0, cam_indoors ? 1 : 0,
+                hit.hit ? 1 : 0, hit.distance, target_separation, sSmoothedSeparation,
+                camPos.x, camPos.y, camPos.z, cam_y_above_chest, cam_dist_xz,
+                overlap ? 1 : 0);
+            std::fflush(sPullInLog);
+            ++sPullInFrame;
+            sPrevPlayerPos = player_pos;
+        }
+    }
+
     sLastView = glm::lookAt(camPos, lookAt, glm::vec3(0.0f, 1.0f, 0.0f));
 
     const float aspect =

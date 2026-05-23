@@ -7,6 +7,7 @@
 #include "ecs/GameComponents.h"
 #include "ecs/ItemConfig.h"
 #include "gameplay/PerFrameTick.h"
+#include "gameplay/TickState.h"
 #include "ops/InventoryOps.h"
 
 #include <imgui.h>
@@ -539,17 +540,21 @@ void tickMouseCapture()
         sJustLeftPlaying = false;
     }
 
-    // Also: if we're in pause overlay, release mouse; if we close pause,
-    // re-capture.
+    // Also: if we're in pause overlay or F1 tuning panel, release the
+    // mouse; if we close them, re-capture. Without including the F1
+    // panel here, the F1-toggle's SDL_SetRelativeMouseMode call gets
+    // overwritten on the next frame by this routine.
     auto& gs = gameState();
     auto& ui = uiState();
     if (gs.phase == GameState::Phase::Playing)
     {
-        const bool want_relative = !ui.isScreenOpen();
+        const bool tuning_open = selva::gameplay::tickstate::showTuningPanel();
+        const bool want_relative = !ui.isScreenOpen() && !tuning_open;
         const bool is_relative = (SDL_GetRelativeMouseMode() == SDL_TRUE);
         if (want_relative != is_relative)
         {
             SDL_SetRelativeMouseMode(want_relative ? SDL_TRUE : SDL_FALSE);
+            SDL_ShowCursor(want_relative ? SDL_DISABLE : SDL_ENABLE);
             if (want_relative)
                 SDL_GetRelativeMouseState(nullptr, nullptr);
         }

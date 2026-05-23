@@ -10,7 +10,9 @@
 #include <cmath>
 #include <cstdarg>
 #include <cstdio>
+#include <limits>
 #include <random>
+#include <utility>
 
 namespace selva::world
 {
@@ -210,10 +212,27 @@ void populateHubTrees(std::vector<CylinderCollider>& out)
 // door gap in the front wall. Authored as five box colliders: front
 // wall (split into left and right of the door gap), back wall (with
 // apse), and the two long side walls.
+//
+// y_base is sampled from the terrain at the chapel center so the
+// camera raycast sees walls at their actual world Y. The terrain pad
+// in gen_terrain_heightmap.py keeps the foundation flat under the
+// chapel footprint, so a single sample is accurate for all 5 walls.
 void populateCryptColliders(std::vector<BoxCollider>& out)
 {
     using namespace crypt_layout;
     constexpr float kHalfThickness = kWallThickness * 0.5f;
+    constexpr float kWallHalfHeightY = kWallHeight * 0.5f;
+    const float y_base = sampleHeight(kCryptX, kCryptZ);
+
+    auto pushWall = [&](glm::vec2 center, glm::vec2 half_extents)
+    {
+        BoxCollider b;
+        b.center = center;
+        b.half_extents = half_extents;
+        b.y_base = y_base;
+        b.half_height_y = kWallHalfHeightY;
+        out.push_back(b);
+    };
 
     // Front wall (faces +Z, toward spawn). Door in the middle.
     // Front face's outer edge is at Z = kCryptZ + kHalfLength = -206.
@@ -221,58 +240,88 @@ void populateCryptColliders(std::vector<BoxCollider>& out)
     const float kFrontSlabZ = kCryptZ + kHalfLength - kHalfThickness;
     // Left half-segment: X from -kHalfWidth to -kDoorHalfWidth.
     {
-        BoxCollider b;
         const float left_outer = -kHalfWidth;
         const float left_inner = -kDoorHalfWidth;
-        b.center = glm::vec2(kCryptX + (left_outer + left_inner) * 0.5f, kFrontSlabZ);
-        b.half_extents = glm::vec2((left_inner - left_outer) * 0.5f, kHalfThickness);
-        out.push_back(b);
+        pushWall(glm::vec2(kCryptX + (left_outer + left_inner) * 0.5f, kFrontSlabZ),
+                 glm::vec2((left_inner - left_outer) * 0.5f, kHalfThickness));
     }
     // Right half-segment: X from +kDoorHalfWidth to +kHalfWidth.
     {
-        BoxCollider b;
         const float right_inner = kDoorHalfWidth;
         const float right_outer = kHalfWidth;
-        b.center = glm::vec2(kCryptX + (right_inner + right_outer) * 0.5f, kFrontSlabZ);
-        b.half_extents = glm::vec2((right_outer - right_inner) * 0.5f, kHalfThickness);
-        out.push_back(b);
+        pushWall(glm::vec2(kCryptX + (right_inner + right_outer) * 0.5f, kFrontSlabZ),
+                 glm::vec2((right_outer - right_inner) * 0.5f, kHalfThickness));
     }
     // Back wall (faces -Z, apse side). Single contiguous slab.
-    {
-        BoxCollider b;
-        b.center = glm::vec2(kCryptX, kCryptZ - kHalfLength + kHalfThickness);
-        b.half_extents = glm::vec2(kHalfWidth, kHalfThickness);
-        out.push_back(b);
-    }
+    pushWall(glm::vec2(kCryptX, kCryptZ - kHalfLength + kHalfThickness),
+             glm::vec2(kHalfWidth, kHalfThickness));
     // Left long wall (faces -X).
-    {
-        BoxCollider b;
-        b.center = glm::vec2(kCryptX - kHalfWidth + kHalfThickness, kCryptZ);
-        b.half_extents = glm::vec2(kHalfThickness, kHalfLength);
-        out.push_back(b);
-    }
+    pushWall(glm::vec2(kCryptX - kHalfWidth + kHalfThickness, kCryptZ),
+             glm::vec2(kHalfThickness, kHalfLength));
     // Right long wall (faces +X).
+    pushWall(glm::vec2(kCryptX + kHalfWidth - kHalfThickness, kCryptZ),
+             glm::vec2(kHalfThickness, kHalfLength));
+
+    // Door header: camera-only box bridging the front wall's door gap
+    // from kDoorHeight up to kWallHeight. Stops the camera from
+    // tracking the player through the door by passing the line of
+    // sight through the wall ABOVE the door (the player walks under
+    // the header normally; player collision skips this box).
     {
-        BoxCollider b;
-        b.center = glm::vec2(kCryptX + kHalfWidth - kHalfThickness, kCryptZ);
-        b.half_extents = glm::vec2(kHalfThickness, kHalfLength);
-        out.push_back(b);
+        BoxCollider header;
+        header.center = glm::vec2(kCryptX, kFrontSlabZ);
+        header.half_extents = glm::vec2(kDoorHalfWidth, kHalfThickness);
+        header.y_base = y_base + kDoorHeight;
+        header.half_height_y = (kWallHeight - kDoorHeight) * 0.5f;
+        header.camera_only = true;
+        out.push_back(header);
+    }
+
+    // Roof slab: a flat box capping the chapel footprint at the
+    // walltop. Stops the camera from flying over the roof and
+    // revealing the interior from above when the player pitches the
+    // camera steeply upward. Apse hemicircle is approximated by
+    // extending the slab back to cover the apse footprint too
+    // (over-coverage by ~kApseRadius worth of corner is invisible —
+    // it sits outside the chapel mesh, the camera never reaches it
+    // through normal play).
+    {
+        BoxCollider roof;
+        roof.center = glm::vec2(kCryptX, kCryptZ - kApseRadius * 0.5f);
+        roof.half_extents = glm::vec2(kHalfWidth, kHalfLength + kApseRadius * 0.5f);
+        roof.y_base = y_base + kWallHeight;
+        roof.half_height_y = 0.5f;
+        roof.camera_only = true;
+        out.push_back(roof);
     }
 }
 
 // Apse rear-curve: a half-ring of small cylinders wrapping the
 // semicircular apse from outside. Spans 180° centered on the rear
 // face's apex (-Z direction). Player can't pass through the curve.
+//
+// Cylinder Y is sampled from the terrain at the chapel center so the
+// vertical extent lines up with the visible apse stone (and the camera
+// raycast sees them at the right altitude). Without this they sit at
+// world Y=0 while the chapel itself stands on the colle plateau, and
+// the camera ray passes harmlessly above them.
 void populateCryptApseCylinders(std::vector<CylinderCollider>& out)
 {
     using namespace crypt_layout;
     constexpr int kArcSegments = 16; // ~11° between cylinder centers
-    constexpr float kCylRadius = 0.15f;
+    // Radius chosen so adjacent cylinders overlap: arc spacing at
+    // kArcRadius is ~0.32m between centers, so 0.20m radius (0.40m
+    // diameter) gives ~0.08m of overlap. Without overlap a thin
+    // camera ray can slip between the cylinders and clip into the
+    // chapel interior; player push-out had no such issue because
+    // the body radius (~0.35m) bridges the gap on its own.
+    constexpr float kCylRadius = 0.20f;
     // Centers sit one cyl-radius INWARD of the apse surface so their
     // outer edge aligns with the visible stone curve.
     constexpr float kArcRadius = kApseRadius - kCylRadius;
     const float arc_cx = kCryptX;
     const float arc_cz = kCryptZ - kHalfLength;
+    const float arc_cy = sampleHeight(kCryptX, kCryptZ);
     for (int i = 0; i <= kArcSegments; ++i)
     {
         const float t = static_cast<float>(i) / static_cast<float>(kArcSegments);
@@ -282,9 +331,9 @@ void populateCryptApseCylinders(std::vector<CylinderCollider>& out)
         const float x = arc_cx + std::cos(ang) * kArcRadius;
         const float z = arc_cz + std::sin(ang) * kArcRadius;
         CylinderCollider c;
-        c.center = glm::vec3(x, 0.0f, z);
+        c.center = glm::vec3(x, arc_cy, z);
         c.radius = kCylRadius;
-        c.half_height = 4.0f;
+        c.half_height = kWallHeight * 0.5f;
         c.collision_only = true;
         out.push_back(c);
     }
@@ -430,6 +479,11 @@ void resolveBodyCollision(glm::vec2& body_xz, float body_radius)
         int box_idx = 0;
         for (const auto& b : sScene.boxes)
         {
+            if (b.camera_only)
+            {
+                ++box_idx;
+                continue;
+            }
             const glm::vec2 d = body_xz - b.center;
             const glm::vec2 clamped(
                 std::max(-b.half_extents.x, std::min(b.half_extents.x, d.x)),
@@ -501,6 +555,218 @@ void resolveBodyCollision(glm::vec2& body_xz, float body_radius)
             collisionLog("[frame %d] exit pos=(%.3f,%.3f) net_push=(%.3f,%.3f)\n",
                          sCollisionFrame, body_xz.x, body_xz.y, net.x, net.y);
     }
+}
+
+namespace
+{
+constexpr float kRayEpsilon = 1e-6f;
+
+// Ray vs axis-aligned Y cylinder. Sphere_radius is ignored at this
+// level — the caller (raycastScene) reports the t at which the RAY
+// CENTER enters the cylinder, and the camera-side iterative push-out
+// (sphereOverlapsScene) handles the buffer around the camera.
+//
+// Pre-existing overlap (origin already inside the cylinder) is NOT
+// reported as a hit: the camera-pull-in caller would interpret
+// "ray hit at t=0" as "occluder between player and camera" and
+// collapse the camera onto the player. The player standing next to
+// a tree must not trigger pull-in unless the trunk extends out into
+// the camera's path. Only entries with t_near >= 0 count.
+float intersectCylinder(const glm::vec3& origin, const glm::vec3& dir, const CylinderCollider& c,
+                        float max_t, float /*sphere_radius*/)
+{
+    const float r = c.radius;
+    const float base_y = c.center.y;
+    const float top_y = c.center.y + 2.0f * c.half_height;
+
+    // Side: project ray onto XZ, solve quadratic against the infinite
+    // cylinder. Use the NEAR root only (t0 = entry) and require t0 >= 0
+    // so origin-overlap doesn't produce a spurious zero-distance hit.
+    const glm::vec2 ox(origin.x - c.center.x, origin.z - c.center.z);
+    const glm::vec2 dx(dir.x, dir.z);
+    const float a = glm::dot(dx, dx);
+    float best = -1.0f;
+    if (a > kRayEpsilon)
+    {
+        const float b = 2.0f * glm::dot(ox, dx);
+        const float cc = glm::dot(ox, ox) - r * r;
+        const float disc = b * b - 4.0f * a * cc;
+        if (disc >= 0.0f)
+        {
+            const float sq = std::sqrt(disc);
+            const float t0 = (-b - sq) / (2.0f * a);
+            if (t0 >= 0.0f && t0 <= max_t)
+            {
+                const float y = origin.y + dir.y * t0;
+                if (y >= base_y && y <= top_y)
+                    best = t0;
+            }
+        }
+    }
+    // Caps: solve for plane intersection at y = base_y and y = top_y,
+    // then check XZ distance from cylinder axis is within radius. Same
+    // t >= 0 requirement.
+    if (std::abs(dir.y) > kRayEpsilon)
+    {
+        for (float cap_y : {base_y, top_y})
+        {
+            const float t = (cap_y - origin.y) / dir.y;
+            if (t < 0.0f || t > max_t)
+                continue;
+            const float px = origin.x + dir.x * t - c.center.x;
+            const float pz = origin.z + dir.z * t - c.center.z;
+            if (px * px + pz * pz > r * r)
+                continue;
+            if (best < 0.0f || t < best)
+                best = t;
+        }
+    }
+    return best;
+}
+
+// Ray vs axis-aligned 3D box (slab method). Sphere_radius is ignored
+// at this level — the caller (raycastScene) reports the t at which
+// the RAY CENTER enters the box, and the camera-side iterative
+// push-out (sphereOverlapsScene) handles the buffer around the
+// camera. This split avoids the "ghost zone" pathology a single
+// grown-box sphere-cast suffers: a player hugging a wall has its
+// lookAt sphere overlapping the wall, which a grown-box test
+// interprets as occlusion (collapsing the camera) when really it's
+// just "the player is near the wall, which is fine."
+//
+// Returns t >= 0 on hit, or -1 on miss. If the origin is inside the
+// box itself (camera literally inside a wall — pathological), returns
+// 0 so the caller falls back to the player position.
+float intersectAabb(const glm::vec3& origin, const glm::vec3& dir, const BoxCollider& b,
+                    float max_t, float /*sphere_radius*/)
+{
+    const glm::vec3 ungrown_min(b.center.x - b.half_extents.x, b.y_base,
+                                b.center.y - b.half_extents.y);
+    const glm::vec3 ungrown_max(b.center.x + b.half_extents.x,
+                                b.y_base + 2.0f * b.half_height_y,
+                                b.center.y + b.half_extents.y);
+
+    // Origin inside the box: pathological; collapse to player.
+    if (origin.x >= ungrown_min.x && origin.x <= ungrown_max.x &&
+        origin.y >= ungrown_min.y && origin.y <= ungrown_max.y &&
+        origin.z >= ungrown_min.z && origin.z <= ungrown_max.z)
+        return 0.0f;
+
+    float t_near = -std::numeric_limits<float>::infinity();
+    float t_far = std::numeric_limits<float>::infinity();
+    for (int axis = 0; axis < 3; ++axis)
+    {
+        const float o = origin[axis];
+        const float d = dir[axis];
+        const float mn = ungrown_min[axis];
+        const float mx = ungrown_max[axis];
+        if (std::abs(d) < kRayEpsilon)
+        {
+            if (o < mn || o > mx)
+                return -1.0f;
+            continue;
+        }
+        float t0 = (mn - o) / d;
+        float t1 = (mx - o) / d;
+        if (t0 > t1)
+            std::swap(t0, t1);
+        if (t0 > t_near)
+            t_near = t0;
+        if (t1 < t_far)
+            t_far = t1;
+        if (t_near > t_far)
+            return -1.0f;
+    }
+    if (t_near < 0.0f || t_near > max_t || t_far < 0.0f)
+        return -1.0f;
+    return t_near;
+}
+} // namespace
+
+namespace
+{
+// Sphere vs vertical cylinder. Closest point in XZ (clamp center to
+// cylinder radius), then clamp Y to the cylinder's vertical extent.
+// Overlap if distance from sphere center to that closest point is
+// less than sphere radius.
+bool sphereOverlapsCylinder(const glm::vec3& center, float radius, const CylinderCollider& c)
+{
+    const glm::vec2 cxz(c.center.x, c.center.z);
+    const glm::vec2 pxz(center.x, center.z);
+    const glm::vec2 delta = pxz - cxz;
+    const float dist_sq_xz = glm::dot(delta, delta);
+    const float r_combined = c.radius + radius;
+    if (dist_sq_xz > r_combined * r_combined)
+        return false;
+    const float y_min = c.center.y;
+    const float y_max = c.center.y + 2.0f * c.half_height;
+    if (center.y + radius < y_min || center.y - radius > y_max)
+        return false;
+    return true;
+}
+
+// Sphere vs AABB. Closest point on the box to the sphere center,
+// distance squared check.
+bool sphereOverlapsAabb(const glm::vec3& center, float radius, const BoxCollider& b)
+{
+    const glm::vec3 box_min(b.center.x - b.half_extents.x, b.y_base,
+                            b.center.y - b.half_extents.y);
+    const glm::vec3 box_max(b.center.x + b.half_extents.x,
+                            b.y_base + 2.0f * b.half_height_y,
+                            b.center.y + b.half_extents.y);
+    const glm::vec3 clamped(std::max(box_min.x, std::min(box_max.x, center.x)),
+                            std::max(box_min.y, std::min(box_max.y, center.y)),
+                            std::max(box_min.z, std::min(box_max.z, center.z)));
+    const glm::vec3 d = center - clamped;
+    return glm::dot(d, d) < radius * radius;
+}
+} // namespace
+
+bool sphereOverlapsScene(const CollisionScene& scene, const glm::vec3& center, float radius)
+{
+    if (radius <= 0.0f)
+        return false;
+    for (const auto& c : scene.cylinders)
+        if (sphereOverlapsCylinder(center, radius, c))
+            return true;
+    for (const auto& b : scene.boxes)
+        if (sphereOverlapsAabb(center, radius, b))
+            return true;
+    return false;
+}
+
+RaycastHit raycastScene(const CollisionScene& scene, const glm::vec3& origin,
+                        const glm::vec3& direction, float max_distance)
+{
+    RaycastHit result;
+    const float dir_len_sq = glm::dot(direction, direction);
+    if (dir_len_sq < kRayEpsilon || max_distance <= 0.0f)
+        return result;
+    const glm::vec3 dir = direction / std::sqrt(dir_len_sq);
+
+    float best = max_distance;
+    bool any = false;
+    for (const auto& c : scene.cylinders)
+    {
+        const float t = intersectCylinder(origin, dir, c, best, 0.0f);
+        if (t >= 0.0f && t < best)
+        {
+            best = t;
+            any = true;
+        }
+    }
+    for (const auto& b : scene.boxes)
+    {
+        const float t = intersectAabb(origin, dir, b, best, 0.0f);
+        if (t >= 0.0f && t < best)
+        {
+            best = t;
+            any = true;
+        }
+    }
+    result.hit = any;
+    result.distance = any ? best : max_distance;
+    return result;
 }
 
 } // namespace selva::world

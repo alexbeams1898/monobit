@@ -399,6 +399,7 @@ add_executable(selva-oscura-tests
     tests/weapon_data_test.cpp
     tests/save_manager_test.cpp
     tests/inventory_ops_test.cpp
+    tests/camera_raycast_test.cpp
 )
 target_link_libraries(selva-oscura-tests PRIVATE selva-oscura-lib Catch2::Catch2WithMain)
 

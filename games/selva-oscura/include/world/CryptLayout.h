@@ -24,5 +24,14 @@ constexpr float kWallThickness = 0.6f;
 constexpr float kPlinthHeight = 0.30f;
 constexpr float kDoorHalfWidth = 0.5f;
 constexpr float kApseRadius = 1.8f;
+// Wall vertical extent for camera raycast (not player collision; the
+// player is XZ-only on the terrain). Sized to enclose the visible
+// mesh's roofline so the camera can't rise up and over a wall through
+// a gap that doesn't exist in the geometry.
+constexpr float kWallHeight = 5.0f;
+// Doorway opening height (top of the gap in the front wall). Above
+// this, the front wall is solid in the visible mesh, so the camera
+// header collider bridges Y in [kDoorHeight, kWallHeight].
+constexpr float kDoorHeight = 2.2f;
 } // namespace crypt_layout
 } // namespace selva::world

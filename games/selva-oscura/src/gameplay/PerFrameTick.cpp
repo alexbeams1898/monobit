@@ -572,8 +572,8 @@ static void tickF1TuningPanelToggle(const Uint8* keys)
     if (f1Now && !sPrevF1)
     {
         sShowTuningPanel = !sShowTuningPanel;
-        SDL_SetRelativeMouseMode(sShowTuningPanel ? SDL_FALSE : SDL_TRUE);
-        SDL_GetRelativeMouseState(nullptr, nullptr);
+        // Mouse-mode + cursor visibility are handled centrally in
+        // ui::tickMouseCapture, which now respects sShowTuningPanel.
     }
     sPrevF1 = f1Now;
 }
