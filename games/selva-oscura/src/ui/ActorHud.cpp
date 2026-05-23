@@ -15,6 +15,8 @@
 #include "gameplay/Perception.h"
 #include "gameplay/PlayerState.h"
 #include "render/Camera.h"
+#include "world/Collision.h"
+#include "world/Terrain.h"
 
 #include <SDL.h>
 
@@ -560,6 +562,103 @@ void renderActorHud()
             d->AddCircleFilled(ImVec2(cx, cy), 5.0f, fade_u32(200, 200, 220, 255));
             d->AddText(ImVec2(cx + 12.0f, p0.y + 8.0f), fade_u32(220, 220, 230, 255), "Saving...");
             ImGui::End();
+        }
+    }
+}
+
+void renderColliderDebug()
+{
+    const auto& tun = selva::tuning::current();
+    if (!tun.debug_show_colliders)
+        return;
+
+    const auto& scene = selva::world::currentScene();
+    const glm::mat4& vp = selva::render::lastViewProj();
+    ImDrawList* overlay = ImGui::GetForegroundDrawList();
+
+    // Cylinders: a top + bottom ring at ground vs half_height*2, plus a
+    // vertical spoke at each of N segments to suggest the volume.
+    constexpr int kCylSegments = 16;
+    const ImU32 cyl_color = IM_COL32(255, 200, 80, 220);
+    for (const auto& c : scene.cylinders)
+    {
+        const float ground_y =
+            selva::world::sampleHeight(c.center.x, c.center.z);
+        const float top_y = ground_y + c.half_height * 2.0f;
+        glm::vec2 prev_lo;
+        glm::vec2 prev_hi;
+        bool have_prev = false;
+        for (int i = 0; i <= kCylSegments; ++i)
+        {
+            const float t = static_cast<float>(i) / static_cast<float>(kCylSegments);
+            const float ang = t * 6.2831853f;
+            const float x = c.center.x + std::cos(ang) * c.radius;
+            const float z = c.center.z + std::sin(ang) * c.radius;
+            glm::vec2 sp_lo;
+            glm::vec2 sp_hi;
+            const bool lo_ok = selva::render::worldToScreen(
+                vp, glm::vec3(x, ground_y, z), sp_lo);
+            const bool hi_ok = selva::render::worldToScreen(
+                vp, glm::vec3(x, top_y, z), sp_hi);
+            if (have_prev && lo_ok)
+                overlay->AddLine(ImVec2(prev_lo.x, prev_lo.y), ImVec2(sp_lo.x, sp_lo.y),
+                                 cyl_color, 1.0f);
+            if (have_prev && hi_ok)
+                overlay->AddLine(ImVec2(prev_hi.x, prev_hi.y), ImVec2(sp_hi.x, sp_hi.y),
+                                 cyl_color, 1.0f);
+            if (i % 4 == 0 && lo_ok && hi_ok)
+                overlay->AddLine(ImVec2(sp_lo.x, sp_lo.y), ImVec2(sp_hi.x, sp_hi.y),
+                                 cyl_color, 1.0f);
+            if (lo_ok)
+            {
+                prev_lo = sp_lo;
+            }
+            if (hi_ok)
+            {
+                prev_hi = sp_hi;
+            }
+            have_prev = lo_ok && hi_ok;
+        }
+    }
+
+    // Boxes: draw the 4 vertical edges + top/bottom rectangles.
+    // Top Y is sampled from the terrain at the center plus a fixed
+    // height (6m — taller than the crypt walls). Bottom at terrain.
+    constexpr float kBoxDrawHeight = 6.0f;
+    const ImU32 box_color = IM_COL32(80, 200, 255, 220);
+    for (const auto& b : scene.boxes)
+    {
+        const float ground_y = selva::world::sampleHeight(b.center.x, b.center.y);
+        const float top_y = ground_y + kBoxDrawHeight;
+        const glm::vec2 corners_xz[4] = {
+            {b.center.x - b.half_extents.x, b.center.y - b.half_extents.y},
+            {b.center.x + b.half_extents.x, b.center.y - b.half_extents.y},
+            {b.center.x + b.half_extents.x, b.center.y + b.half_extents.y},
+            {b.center.x - b.half_extents.x, b.center.y + b.half_extents.y},
+        };
+        glm::vec2 s_lo[4];
+        glm::vec2 s_hi[4];
+        bool ok_lo[4];
+        bool ok_hi[4];
+        for (int i = 0; i < 4; ++i)
+        {
+            ok_lo[i] = selva::render::worldToScreen(
+                vp, glm::vec3(corners_xz[i].x, ground_y, corners_xz[i].y), s_lo[i]);
+            ok_hi[i] = selva::render::worldToScreen(
+                vp, glm::vec3(corners_xz[i].x, top_y, corners_xz[i].y), s_hi[i]);
+        }
+        for (int i = 0; i < 4; ++i)
+        {
+            const int j = (i + 1) % 4;
+            if (ok_lo[i] && ok_lo[j])
+                overlay->AddLine(ImVec2(s_lo[i].x, s_lo[i].y), ImVec2(s_lo[j].x, s_lo[j].y),
+                                 box_color, 1.5f);
+            if (ok_hi[i] && ok_hi[j])
+                overlay->AddLine(ImVec2(s_hi[i].x, s_hi[i].y), ImVec2(s_hi[j].x, s_hi[j].y),
+                                 box_color, 1.5f);
+            if (ok_lo[i] && ok_hi[i])
+                overlay->AddLine(ImVec2(s_lo[i].x, s_lo[i].y), ImVec2(s_hi[i].x, s_hi[i].y),
+                                 box_color, 1.5f);
         }
     }
 }

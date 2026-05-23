@@ -10,6 +10,8 @@
 #include "render/TerrainShader.h"
 #include "render/TreeShader.h"
 #include "world/Collision.h"
+#include "world/CryptLayout.h"
+#include "world/StaticMeshAssets.h"
 #include "world/Terrain.h"
 #include "world/TreeAssets.h"
 
@@ -82,17 +84,24 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
         static glm::vec3 sSmoothedHeadLocal = head_local;
         static bool sSmoothedInit = false;
         static Uint64 sSmoothedPrevTicks = SDL_GetTicks64();
+        // FPV entry detection: if more than 100ms since the smoother
+        // was last updated, this is a fresh FPV session (toggle from
+        // TPV or first entry). Reset the smoother so the camera
+        // snaps to the correct head position instead of panning in
+        // from a stale offset.
+        const Uint64 now_ticks = SDL_GetTicks64();
+        if (now_ticks - sSmoothedPrevTicks > 100)
+            sSmoothedInit = false;
         if (!sSmoothedInit)
         {
             sSmoothedHeadLocal = head_local;
             sSmoothedInit = true;
-            sSmoothedPrevTicks = SDL_GetTicks64();
+            sSmoothedPrevTicks = now_ticks;
         }
         else
         {
-            const Uint64 now = SDL_GetTicks64();
-            const float dt = static_cast<float>(now - sSmoothedPrevTicks) * 0.001f;
-            sSmoothedPrevTicks = now;
+            const float dt = static_cast<float>(now_ticks - sSmoothedPrevTicks) * 0.001f;
+            sSmoothedPrevTicks = now_ticks;
             const float alpha = 1.0f - std::exp(-dt / kHeadBobTau);
             sSmoothedHeadLocal += (head_local - sSmoothedHeadLocal) * alpha;
         }
@@ -109,11 +118,13 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
         // the body has already come back to standing.
         constexpr float kAnimOrientationFade = 0.35f;
         static float sFadeStartTime = -1.0f;
+        static bool sPrevAnimIn = false;
         const float now_seconds = static_cast<float>(SDL_GetTicks64()) * 0.001f;
         if (use_anim_orientation_in)
             sFadeStartTime = -1.0f; // still in roll; no fade yet
-        else if (sFadeStartTime < 0.0f)
-            sFadeStartTime = now_seconds; // first frame after roll ended
+        else if (sPrevAnimIn)
+            sFadeStartTime = now_seconds; // falling edge: roll just ended
+        sPrevAnimIn = use_anim_orientation_in;
         // Fade parameter: 0 just after roll ends, 1 when fade complete.
         const float fade_t =
             sFadeStartTime < 0.0f
@@ -121,11 +132,12 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
                 : std::min(1.0f, (now_seconds - sFadeStartTime) / kAnimOrientationFade);
         // anim_active is true throughout the fade window (so the log
         // captures the transition), but the orientation itself is a
-        // blend, not a hard switch.
-        const bool use_anim_orientation = use_anim_orientation_in || fade_t < 1.0f;
-        const float anim_weight = use_anim_orientation_in
-                                      ? 1.0f
-                                      : (1.0f - fade_t); // 1=full anim, 0=full mouse
+        // blend, not a hard switch. Fade is "in progress" only when
+        // sFadeStartTime >= 0 AND fade_t hasn't reached 1.
+        const bool fade_in_progress = (sFadeStartTime >= 0.0f) && (fade_t < 1.0f);
+        const bool use_anim_orientation = use_anim_orientation_in || fade_in_progress;
+        const float anim_weight =
+            use_anim_orientation_in ? 1.0f : (fade_in_progress ? (1.0f - fade_t) : 0.0f);
 
         // Compute final camera position + forward + up. During the
         // post-roll fade window both branches blend by anim_weight:
@@ -313,6 +325,85 @@ void renderGroundDecals()
     // shadow maps will replace fake contact shadows later.
 }
 
+namespace
+{
+// Crypt sits at the center of the colle plateau (per wood.md). Position
+// is fixed and the heightmap is immutable at runtime, so cache the
+// model matrix on first call rather than re-sampling per frame per pass.
+const glm::mat4& cryptModelMatrix()
+{
+    static glm::mat4 sCached(0.0f);
+    static bool sInit = false;
+    if (!sInit)
+    {
+        using namespace selva::world::crypt_layout;
+        // Bury the plinth so the chapel's interior floor sits at
+        // terrain level. The kZFightOffset extra lift puts the
+        // interior stone slightly above the terrain plane so the
+        // two coplanar surfaces don't fight for depth (the stone
+        // wins; the player visually walks on the chapel floor even
+        // though their Y comes from the terrain sample, which is
+        // ~1cm below — imperceptible).
+        constexpr float kZFightOffset = 0.01f;
+        const float ground_y = selva::world::sampleHeight(kCryptX, kCryptZ);
+        sCached = glm::translate(
+            glm::mat4(1.0f),
+            glm::vec3(kCryptX, ground_y - kPlinthHeight + kZFightOffset, kCryptZ));
+        sInit = true;
+    }
+    return sCached;
+}
+
+void drawStaticPrimitive(const selva::world::StaticMeshPrimitive& p)
+{
+    if (p.vao == 0)
+        return;
+    selva::render::setSceneTint(1.0f);
+    selva::render::setSceneBaseColor(
+        glm::vec3(p.base_color[0], p.base_color[1], p.base_color[2]));
+    glBindVertexArray(p.vao);
+    glDrawElements(GL_TRIANGLES, p.index_count, GL_UNSIGNED_INT, nullptr);
+}
+} // namespace
+
+void renderStaticMeshes()
+{
+    const selva::world::StaticMesh* crypt = selva::world::cryptMesh();
+    if (crypt == nullptr)
+        return;
+    setSceneModel(cryptModelMatrix());
+    for (const auto& prim : crypt->primitives)
+        drawStaticPrimitive(prim);
+}
+
+void renderStaticMeshesDepth()
+{
+    const selva::world::StaticMesh* crypt = selva::world::cryptMesh();
+    if (crypt == nullptr)
+        return;
+    // beginDepthPass set cull-front for self-shadow-acne reduction on
+    // open geometry. Enclosed architecture has thick walls with faces
+    // on both sides; cull-front omits surfaces perpendicular to the
+    // sun from the shadow map, letting sunlight fall on interior
+    // walls that should be in shadow (the bright vertical streak
+    // bug). Disable culling so both faces of every wall get written;
+    // the receiver's normal-offset bias handles self-shadow.
+    glDisable(GL_CULL_FACE);
+    const glm::mat4 model = cryptModelMatrix();
+    selva::render::setSceneDepthModel(model);
+    for (const auto& prim : crypt->primitives)
+    {
+        if (prim.vao == 0)
+            continue;
+        glBindVertexArray(prim.vao);
+        glDrawElements(GL_TRIANGLES, prim.index_count, GL_UNSIGNED_INT, nullptr);
+    }
+    // Restore cull-front for subsequent depth-pass casters (skeletal
+    // actors, etc.) per the beginDepthPass contract.
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_FRONT);
+}
+
 void renderTrees()
 {
     const int variant_count = selva::world::treeVariantCount();
@@ -341,15 +432,21 @@ void renderTrees()
 
     for (const auto& c : selva::world::currentScene().cylinders)
     {
+        if (c.collision_only)
+            continue;
         const float h_variant = hashXZ(c.center.x, c.center.z, 0x1u);
         const float h_yaw = hashXZ(c.center.x, c.center.z, 0x2u);
         const float h_scale = hashXZ(c.center.x, c.center.z, 0x3u);
         const float h_phase = hashXZ(c.center.x, c.center.z, 0x4u);
 
-        const int variant_idx =
+        const int hash_variant_idx =
             static_cast<int>(h_variant * static_cast<float>(tree_variants)) % tree_variants;
+        const int variant_idx = (c.forced_variant_idx >= 0 && c.forced_variant_idx < tree_variants)
+                                    ? c.forced_variant_idx
+                                    : hash_variant_idx;
         const float yaw = h_yaw * 6.2831853f;
-        const float scale = 0.85f + h_scale * 0.45f; // 0.85..1.30
+        const float hash_scale = 0.85f + h_scale * 0.45f; // 0.85..1.30
+        const float scale = c.forced_scale > 0.0f ? c.forced_scale : hash_scale;
         const float wind_phase = h_phase * 6.2831853f;
 
         const selva::world::TreeVariant& v = selva::world::treeVariant(variant_idx);
@@ -411,14 +508,20 @@ void renderTreesDepth()
 
     for (const auto& c : selva::world::currentScene().cylinders)
     {
+        if (c.collision_only)
+            continue;
         const float h_variant = hashXZ(c.center.x, c.center.z, 0x1u);
         const float h_yaw = hashXZ(c.center.x, c.center.z, 0x2u);
         const float h_scale = hashXZ(c.center.x, c.center.z, 0x3u);
         const float h_phase = hashXZ(c.center.x, c.center.z, 0x4u);
-        const int variant_idx =
+        const int hash_variant_idx =
             static_cast<int>(h_variant * static_cast<float>(tree_variants)) % tree_variants;
+        const int variant_idx = (c.forced_variant_idx >= 0 && c.forced_variant_idx < tree_variants)
+                                    ? c.forced_variant_idx
+                                    : hash_variant_idx;
         const float yaw = h_yaw * 6.2831853f;
-        const float scale = 0.85f + h_scale * 0.45f;
+        const float hash_scale = 0.85f + h_scale * 0.45f;
+        const float scale = c.forced_scale > 0.0f ? c.forced_scale : hash_scale;
         const float wind_phase = h_phase * 6.2831853f;
         const selva::world::TreeVariant& v = selva::world::treeVariant(variant_idx);
         const float ground_y = selva::world::sampleHeight(c.center.x, c.center.z);

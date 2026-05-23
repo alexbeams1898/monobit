@@ -79,3 +79,16 @@ debug/
 .claude/
 PLAN.md
 *.vox
+
+# Blender autosave backups
+*.blend1
+*.blend2
+
+# One-shot asset generator scripts. These bootstrap a .blend file from
+# spec then are abandoned; the .blend itself is the source of truth and
+# gets refined by hand in Blender. Build-pipeline tools (rebookend_clip,
+# stage_baked_ozz, gen_terrain_heightmap, etc.) are still tracked — they
+# run on every build. Generators named `gen_*.py` / `gen_*.sh` under
+# `games/*/scripts/blender/` are excluded.
+games/*/scripts/blender/gen_*.py
+games/*/scripts/blender/gen_*.sh

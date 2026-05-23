@@ -49,10 +49,12 @@ in vec3 vViewVec;
 out vec4 fragColor;
 
 uniform float uTint;
+uniform vec3 uBaseColor;  // per-primitive RGB color factor (1,1,1 = no tint)
 uniform vec3 uSunDir;
 uniform vec3 uSunIntensity;
 uniform vec3 uCamPos;
 uniform float uExposure;
+uniform float uIndoorMode; // 1.0 inside enclosed architecture, 0.0 outside
 )glsl";
 
 // surface lit by sun via half-Lambert; in-scattered atmosphere
@@ -69,15 +71,19 @@ void main()
     vec3 ambient = vec3(0.15, 0.18, 0.24);
     vec3 sunTint = vec3(1.05, 0.78, 0.55);
     float shadow = sampleSunShadow(vWorldPos, N);
-    vec3 surface = vec3(g) * (ambient + sunTint * halfL * shadow);
+    vec3 surface = uBaseColor * g * (ambient + sunTint * halfL * shadow);
 
     // Aerial perspective: in-scatter + transmittance along view ray
-    // from camera to this fragment.
+    // from camera to this fragment. Zeroed when the camera is indoors
+    // — the atmospheric scatter math doesn't know about wall
+    // occlusion, so it would paint sky light onto enclosed surfaces.
     float dist = length(vViewVec);
     vec3 rayDir = vViewVec / dist;
     vec3 transmittance;
     vec3 inScatter = atmosphereWithT(uCamPos, rayDir, uSunDir, uSunIntensity,
                                      dist, transmittance);
+    inScatter *= (1.0 - uIndoorMode);
+    transmittance = mix(transmittance, vec3(1.0), uIndoorMode);
 
     vec3 col = surface * transmittance + inScatter;
 
@@ -101,6 +107,8 @@ GLint sUniShadowMapLoc = -1;
 GLint sUniLightViewProjLoc = -1;
 GLint sUniShadowSunDirLoc = -1;
 GLint sUniShadowCamPosLoc = -1;
+GLint sUniIndoorModeLoc = -1;
+GLint sUniBaseColorLoc = -1;
 
 } // namespace
 
@@ -124,6 +132,8 @@ bool initSceneProgram()
     sUniLightViewProjLoc = glGetUniformLocation(sProgram, "uLightViewProj");
     sUniShadowSunDirLoc = glGetUniformLocation(sProgram, "uShadowSunDir");
     sUniShadowCamPosLoc = glGetUniformLocation(sProgram, "uShadowCameraPos");
+    sUniIndoorModeLoc = glGetUniformLocation(sProgram, "uIndoorMode");
+    sUniBaseColorLoc = glGetUniformLocation(sProgram, "uBaseColor");
     return true;
 }
 
@@ -141,6 +151,8 @@ void shutdownSceneProgram()
 void useSceneProgram()
 {
     glUseProgram(sProgram);
+    if (sUniBaseColorLoc >= 0)
+        glUniform3f(sUniBaseColorLoc, 1.0f, 1.0f, 1.0f);
 }
 
 void setSceneView(const glm::mat4& view)
@@ -161,6 +173,18 @@ void setSceneModel(const glm::mat4& model)
 void setSceneTint(float tint)
 {
     glUniform1f(sUniTintLoc, tint);
+}
+
+void setSceneIndoorMode(bool indoors)
+{
+    if (sUniIndoorModeLoc >= 0)
+        glUniform1f(sUniIndoorModeLoc, indoors ? 1.0f : 0.0f);
+}
+
+void setSceneBaseColor(const glm::vec3& rgb)
+{
+    if (sUniBaseColorLoc >= 0)
+        glUniform3f(sUniBaseColorLoc, rgb.x, rgb.y, rgb.z);
 }
 
 void setSceneAtmosphere(const glm::vec3& sun_dir, const glm::vec3& sun_intensity,

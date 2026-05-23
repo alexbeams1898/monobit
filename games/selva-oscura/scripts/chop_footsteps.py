@@ -234,6 +234,18 @@ def chop(source_path, out_dir, prefix, max_variations, slice_seconds,
 
         print(f"[chop] wrote {emitted} variations to {out_dir}")
 
+    # Peak-normalize the emitted slices so every SFX bank ends up at
+    # the same headroom regardless of source clip loudness. Without
+    # this, banks chopped from quieter sources play visibly softer
+    # than louder banks even at the same audio.json `volume` setting.
+    if emitted > 0:
+        normalize_script = os.path.join(os.path.dirname(__file__), "normalize_audio.py")
+        slice_paths = [str(out_dir / f"{prefix}_{i + 1}.ogg") for i in range(emitted)]
+        subprocess.run(
+            [sys.executable, normalize_script, "--files", *slice_paths, "--target-dbfs", "-1.0"],
+            check=True,
+        )
+
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)

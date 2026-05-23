@@ -36,6 +36,7 @@
 // main.cpp.
 using selva::combat::combatLog;
 using selva::ui::renderActorHud;
+using selva::ui::renderColliderDebug;
 using selva::ui::renderComboHud;
 namespace tickstate = selva::gameplay::tickstate;
 
@@ -240,6 +241,10 @@ static void renderAiPerceptionSection(selva::tuning::Tunables& tun)
     ImGui::Checkbox("Shadow camera state -> shadow-debug.log", &tun.debug_shadow_log);
     ImGui::Checkbox("FPV roll camera + head -> fpv-roll-debug.log",
                     &tun.debug_fpv_roll_log);
+    ImGui::Checkbox("Draw world colliders (cylinders + boxes)",
+                    &tun.debug_show_colliders);
+    ImGui::Checkbox("Collision pushes -> collision-debug.log",
+                    &tun.debug_collision_log);
 }
 
 // Diagnostic dump of the loaded enemy-archetype registry. Read-only;
@@ -441,6 +446,7 @@ void renderTreePreviewControls();
 static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
 {
     renderActorHud();
+    renderColliderDebug();
     renderComboHud();
     renderTreePreviewControls();
     if (!sShowTuningPanel)

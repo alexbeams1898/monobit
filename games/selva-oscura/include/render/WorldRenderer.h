@@ -23,19 +23,22 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
                         float player_yaw, const char* one_shot_name);
 const glm::mat4& lastView();
 
-// Three-pass environment draw. Caller binds the appropriate shader
+// Multi-pass environment draw. Caller binds the appropriate shader
 // before each:
 //   useTerrainShader() + setTerrainAtmosphere(...) -> renderTerrain()
 //   useSceneProgram()  + setSceneAtmosphere(...)  -> renderGroundDecals()
+//                                                 + renderStaticMeshes()
 //   useTreeShader()    + setTreeAtmosphere(...)   -> renderTrees()
 void renderTerrain();
 void renderGroundDecals();
+void renderStaticMeshes();
 void renderTrees();
 
 // Depth-pass variants for shadow map. The caller must have already
 // activated the corresponding ShadowPass depth program. Each iterates
 // the same geometry as its main counterpart but with depth-only output.
 void renderTerrainDepth();
+void renderStaticMeshesDepth();
 void renderTreesDepth();
 
 } // namespace selva::render

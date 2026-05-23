@@ -59,6 +59,7 @@ add_library(selva-oscura-lib STATIC
     src/render/Texture.cpp
     src/render/TreeShader.cpp
     src/render/WorldRenderer.cpp
+    src/world/StaticMeshAssets.cpp
     src/world/Terrain.cpp
     src/world/TreeAssets.cpp
     src/ui/ActorHud.cpp

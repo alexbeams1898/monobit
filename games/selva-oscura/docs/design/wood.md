@@ -151,7 +151,21 @@ freedom for everything beyond the structural bones.
   planet"). In Selva, cosmologically inverted: the upward way is
   closed to the unjudged (the saved-world's light is unreachable);
   the *descent into Hell* lives on the colle as the only way the
-  unjudged can move forward. Form TBD (well/cleft/stair/threshold).
+  unjudged can move forward.
+  **Form: a freestanding stone tomb-house** at the center of the
+  colle's plateau — period-Italian *cappella sepolcrale* register
+  (cf. Cappella della Madonna di Vitaleta, Val d'Orcia): pale
+  stone, triangular pediment, single arched door, small bell-arch
+  above, cypresses framing. Solemn, isolated, mortuary-adjacent
+  without being grim. The Vagrant enters the door, descends a
+  genuine staircase to an interior chamber, and from that chamber
+  the world dims — the Acheron crossing happens here as fade-to-
+  black (lore-faithful to *Inferno* III/IV where the crossing
+  itself is elided). The crypt's interior is the diegetic mechanism
+  of the descent; no airborne fall is authored.
+
+  **World-space position: (X=0, Y=+35, Z=-210)** — dead-center on
+  the plateau (plateau spans Z=-190 to -230, X=-35 to +35).
 - **Inner Wood radius.** ~30m for the wake-zone proper. The colle
   sits at or just beyond this radius (its base inside ~30m, its
   rise extending another ~10-15m outward).

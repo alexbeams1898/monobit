@@ -421,6 +421,18 @@ struct Tunables
     // writes per-frame snap state (throttled to every 30 frames so
     // cost is negligible, but keep gated for cleanliness). Default OFF.
     bool debug_shadow_log = false;
+
+    // When true, the per-frame ImGui overlay draws every world
+    // collider (cylinders + boxes) as wireframe outlines. Lets you
+    // see where colliders sit relative to the rendered geometry.
+    // Default OFF.
+    bool debug_show_colliders = false;
+
+    // When true, world/Collision.cpp opens collision-debug.log and
+    // writes per-frame pre/post body XZ + per-pass push events
+    // (which collider was hit, the push vector). Use to diagnose
+    // wedging or oscillation. Default OFF.
+    bool debug_collision_log = false;
 };
 
 // JSON serialization — generates to_json / from_json for nlohmann::json

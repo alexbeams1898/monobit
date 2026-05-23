@@ -35,6 +35,7 @@
 #include "ui/Screens.h"
 #include "ui/TuningPanel.h"
 #include "world/Collision.h"
+#include "world/StaticMeshAssets.h"
 #include "world/Terrain.h"
 #include "world/TreeAssets.h"
 
@@ -204,9 +205,10 @@ int main(int /*argc*/, char* /*argv*/[])
 
     selva::render::setInitialWindowSize(engine.windowWidth(), engine.windowHeight());
     selva::render::initSceneGeometry();
+    selva::world::initTerrain();
     selva::world::initHubScene();
     selva::world::initTreeAssets();
-    selva::world::initTerrain();
+    selva::world::initStaticMeshAssets();
 
     // Load runtime-tunable values BEFORE initializing actor pools so
     // their derived HP / stamina maxima read the JSON-tuned

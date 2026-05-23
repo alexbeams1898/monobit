@@ -1135,6 +1135,7 @@ static LocomotionFrameDecision sLocoDecision;
 // Forward decls: these live near the picker but are called from
 // tickPlayerVelocity / applyPerFrameTranslation via sLocoDecision.
 static const char* selectLockedLocomotionClip(const glm::vec3& moveIntent);
+static const char* selectFpvLocomotionClip(const glm::vec3& moveIntent);
 static const char* selectLocomotionClipFromSpeed(float target_speed, bool is_armed,
                                                  const selva::tuning::Tunables& tun);
 
@@ -1176,6 +1177,8 @@ static std::string pickLocomotionClipNameThisFrame(const glm::vec3& moveIntent,
         clip_name = sDebugClipName;
     else if (const char* locked = selectLockedLocomotionClip(moveIntent); locked != nullptr)
         clip_name = locked;
+    else if (const char* fpv = selectFpvLocomotionClip(moveIntent); fpv != nullptr)
+        clip_name = fpv;
     else
     {
         const float intent_mag = glm::length(moveIntent);
@@ -1416,14 +1419,34 @@ static void tickPlayerYaw(const glm::vec3& moveIntent, bool movement_locked, flo
             sPlayer.yaw = yawFromGroundDir(glm::normalize(to));
         return;
     }
-    // FPV: always face where the mouse is looking, including idle.
-    // The camera anchors to the head bone, which derives from
-    // sPlayer.yaw, so idle mouse-look needs to drive sPlayer.yaw
-    // even with no move-intent. Snap (no smoothing) so the camera
-    // is responsive 1:1 with the mouse.
+    // FPV body yaw: tracks move direction (smoothed) while moving;
+    // holds steady while idle so the head-bone-anchored camera
+    // doesn't arc on every mouse pixel. Backpedal (S relative to
+    // camera) holds body at camera-fwd so the back-walk clip reads
+    // correctly.
     if (selva::render::cameraMode() == selva::render::CameraMode::FirstPerson)
     {
-        sPlayer.yaw = selva::render::cameraYaw();
+        if (glm::length(moveIntent) <= 0.0001f)
+            return;
+        const bool is_backpedal_clip = (sLocoDecision.clip_name == "walking_backward" ||
+                                        sLocoDecision.clip_name == "running_backward");
+        if (is_backpedal_clip)
+        {
+            sPlayer.yaw = selva::render::cameraYaw();
+            return;
+        }
+        const glm::vec3 dir_fpv = glm::normalize(moveIntent);
+        const float target_yaw_fpv = yawFromGroundDir(dir_fpv);
+        float delta_fpv = wrapAngleSigned(target_yaw_fpv - sPlayer.yaw);
+        constexpr float kPiFpv = 3.1415927f;
+        const float t_fpv = std::min(1.0f, std::abs(delta_fpv) / kPiFpv);
+        const float rate_fpv = turn_rate_min + (turn_rate_max - turn_rate_min) * t_fpv;
+        const float max_step_fpv = rate_fpv * dt;
+        if (delta_fpv > max_step_fpv)
+            delta_fpv = max_step_fpv;
+        else if (delta_fpv < -max_step_fpv)
+            delta_fpv = -max_step_fpv;
+        sPlayer.yaw += delta_fpv;
         return;
     }
     if (glm::length(moveIntent) <= 0.0001f)
@@ -2022,6 +2045,26 @@ static const char* selectLockedLocomotionClip(const glm::vec3& moveIntent)
     const glm::vec3 fwd = to / std::sqrt(to_len_sq);
     const glm::vec3 right(-fwd.z, 0.0f, fwd.x);
     return selva::gameplay::directionalLocoClip(fwd, right, moveIntent, sPlayer.sprinting);
+}
+
+// FPV directional clip picker. Backpedal exception only: pure-S
+// relative to camera (cam-fwd · intent below -kFpvBackpedalDotThreshold)
+// plays walking_backward without rotating the body. Returns nullptr
+// to fall through to the speed picker for the common case.
+static const char* selectFpvLocomotionClip(const glm::vec3& moveIntent)
+{
+    if (selva::render::cameraMode() != selva::render::CameraMode::FirstPerson)
+        return nullptr;
+    const float intent_mag = glm::length(moveIntent);
+    if (intent_mag <= 0.0001f)
+        return nullptr;
+    const glm::vec3 cam_fwd(-std::sin(selva::render::cameraYaw()), 0.0f,
+                            -std::cos(selva::render::cameraYaw()));
+    const glm::vec3 intent_dir = moveIntent / intent_mag;
+    constexpr float kFpvBackpedalDotThreshold = 0.5f; // ~120° between cam-fwd and intent
+    if (glm::dot(cam_fwd, intent_dir) < -kFpvBackpedalDotThreshold)
+        return sPlayer.sprinting ? "running_backward" : "walking_backward";
+    return nullptr;
 }
 
 // Produce a LocomotionPick from the pre-decided clip name in
@@ -3382,6 +3425,11 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
             selva::render::useTreeDepthShader();
             selva::render::renderTreesDepth();
         }
+        {
+            ZoneScopedN("shadow-static-meshes");
+            selva::render::useSceneDepthShader();
+            selva::render::renderStaticMeshesDepth();
+        }
 
         // Scene cubes (ground decals). Currently no-op but the depth pass
         // would draw them here once any get added to the scene.
@@ -3451,13 +3499,35 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
     }
 
     {
-        ZoneScopedN("scene-decals");
+        ZoneScopedN("scene-pass");
         selva::render::useSceneProgram();
         selva::render::setSceneView(selva::render::lastView());
         selva::render::setSceneViewProj(viewProj);
         selva::render::setSceneAtmosphere(kSunDir, kSunIntensity, camPos, kExposure);
         selva::render::setSceneShadow(lightVP, kSunDir, sPlayer.pos, 1);
-        selva::render::renderGroundDecals();
+        const bool indoors = selva::world::isIndoors(glm::vec2(camPos.x, camPos.z));
+        selva::render::setSceneIndoorMode(indoors);
+        if (selva::tuning::current().debug_collision_log)
+        {
+            static FILE* sIndoorLog = nullptr;
+            if (sIndoorLog == nullptr)
+                sIndoorLog = std::fopen("indoor-debug.log", "w");
+            if (sIndoorLog != nullptr)
+            {
+                std::fprintf(sIndoorLog, "cam=(%.3f,%.3f,%.3f) player=(%.3f,%.3f,%.3f) indoors=%d\n",
+                             camPos.x, camPos.y, camPos.z, sPlayer.pos.x, sPlayer.pos.y,
+                             sPlayer.pos.z, indoors ? 1 : 0);
+                std::fflush(sIndoorLog);
+            }
+        }
+        {
+            ZoneScopedN("ground-decals");
+            selva::render::renderGroundDecals();
+        }
+        {
+            ZoneScopedN("static-meshes");
+            selva::render::renderStaticMeshes();
+        }
     }
 
     {

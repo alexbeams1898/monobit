@@ -4,7 +4,10 @@
 #include "WallClock.h"
 #include "audio/Audio.h"
 #include "gameplay/Actor.h"
+#include "world/Collision.h"
 #include "world/Terrain.h"
+
+#include <glm/vec2.hpp>
 
 #include <cstdarg>
 #include <cstdio>
@@ -33,7 +36,10 @@ constexpr const char* kFootRightJointName = "mixamorig:RightFoot";
 //     producing double-fires.
 //
 // Bank pick uses peak_descent: hard plants (running, jumps) >
-// kRunPlantDescent → footstep_run; gentler plants → footstep_walk.
+// Plant gain ramps with descent velocity. SFX name is picked per-fire
+// by surface (grass outside, hallway inside the crypt) — see playSfx
+// call below for the swap. Future: per-zone surface authoring (e.g.
+// concrete on stone paths).
 //
 // This approach is rig-offset-agnostic (we don't compare to ground Y)
 // and clip-agnostic (any animation with a foot-plant motion fires
@@ -190,12 +196,26 @@ void tickOneFoot(Actor::FootContact& fc, Actor& actor, const char* joint_name, f
         const float gain = plantGain(fc.peak_descent_vy);
         if (gain > 0.0f && can_fire)
         {
-            selva::audio::playSfxScaled("footstep_walk", gain);
+            // Surface picker: the foot that just zero-crossed IS the
+            // foot that just planted. Sample isIndoors at that foot's
+            // world XZ. This is the simplest correct model.
+            const glm::vec3 foot_world =
+                actor.sampler.jointWorldPosWithActor(fc.joint_idx);
+            const bool indoors =
+                selva::world::isIndoors(glm::vec2(foot_world.x, foot_world.z));
+            const char* sfx_name = indoors ? "footstep_concrete" : "footstep_grass";
+            footstepLogf(
+                "[event] surface foot=%s foot_xz=(%.3f,%.3f) body_xz=(%.3f,%.3f) "
+                "indoors=%d sfx=%s\n",
+                footLabel(is_left), foot_world.x, foot_world.z, actor.pos.x, actor.pos.z,
+                indoors ? 1 : 0, sfx_name);
+            selva::audio::playSfxScaled(sfx_name, gain);
             fc.last_fire_time = now;
             actor.last_footstep_fire_time = now;
             footstepLogf("[event] FIRE foot=%s gain=%.3f peak_descent=%.3f foot_y=%.4f "
-                         "since_last=%.3fs\n",
-                         footLabel(is_left), gain, fc.peak_descent_vy, foot_y, since_fire);
+                         "since_last=%.3fs sfx=%s\n",
+                         footLabel(is_left), gain, fc.peak_descent_vy, foot_y, since_fire,
+                         sfx_name);
         }
         else
         {
