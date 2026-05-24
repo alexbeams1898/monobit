@@ -3,6 +3,7 @@
 #include <glm/vec2.hpp>
 
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -44,6 +45,24 @@ const TerrainRegion& terrainRegion(int idx);
 // region. v1 assumes one region; expand to nearest-region or
 // region-by-coordinate lookup when more ship.
 float sampleHeight(float world_x, float world_z);
+
+// Sample the actor's GROUND Y at (x, z): the highest of (a) the
+// terrain sample and (b) the top of any walkable BoxCollider whose
+// XZ footprint contains the query point. Used by gameplay to place
+// the player / enemies on stairs, raised platforms, etc. — anywhere
+// authored geometry sits above the terrain surface.
+//
+// Optional `current_y` lets callers prefer a ground at or below
+// their current Y (so walking off the edge of a step drops to the
+// next step, not up to an unrelated platform at the same XZ that
+// happens to be higher). Pass -inf to disable the preference.
+float groundHeight(float world_x, float world_z,
+                   float current_y = -std::numeric_limits<float>::infinity());
+
+// True if the actor's XZ is inside any walkable_top box (stair,
+// landing, corridor, platform). Used to pick stair-locomotion clips
+// when traversing authored vertical-movement geometry.
+bool isOnAuthoredSurface(float world_x, float world_z);
 
 // Player spawn position in world coordinates, loaded from the
 // terrain config (player_spawn { x, z }). Y is intentionally NOT

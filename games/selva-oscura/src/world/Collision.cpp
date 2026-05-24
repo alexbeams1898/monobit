@@ -222,51 +222,55 @@ void populateCryptColliders(std::vector<BoxCollider>& out)
     using namespace crypt_layout;
     constexpr float kHalfThickness = kWallThickness * 0.5f;
     constexpr float kWallHalfHeightY = kWallHeight * 0.5f;
-    const float y_base = sampleHeight(kCryptX, kCryptZ);
+    const float y_base = kChapelGroundY;
 
-    auto pushWall = [&](glm::vec2 center, glm::vec2 half_extents)
+    auto pushWall = [&](const char* tag, glm::vec2 center, glm::vec2 half_extents)
     {
         BoxCollider b;
         b.center = center;
         b.half_extents = half_extents;
         b.y_base = y_base;
         b.half_height_y = kWallHalfHeightY;
+        b.name = tag;
         out.push_back(b);
     };
 
-    // Front wall (faces +Z, toward spawn). Door in the middle.
-    // Front face's outer edge is at Z = kCryptZ + kHalfLength = -206.
-    // Slab center sits at outer_edge - half_thickness.
     const float kFrontSlabZ = kCryptZ + kHalfLength - kHalfThickness;
-    // Left half-segment: X from -kHalfWidth to -kDoorHalfWidth.
     {
         const float left_outer = -kHalfWidth;
         const float left_inner = -kDoorHalfWidth;
-        pushWall(glm::vec2(kCryptX + (left_outer + left_inner) * 0.5f, kFrontSlabZ),
+        pushWall("wall_front_left",
+                 glm::vec2(kCryptX + (left_outer + left_inner) * 0.5f, kFrontSlabZ),
                  glm::vec2((left_inner - left_outer) * 0.5f, kHalfThickness));
     }
-    // Right half-segment: X from +kDoorHalfWidth to +kHalfWidth.
     {
         const float right_inner = kDoorHalfWidth;
         const float right_outer = kHalfWidth;
-        pushWall(glm::vec2(kCryptX + (right_inner + right_outer) * 0.5f, kFrontSlabZ),
+        pushWall("wall_front_right",
+                 glm::vec2(kCryptX + (right_inner + right_outer) * 0.5f, kFrontSlabZ),
                  glm::vec2((right_outer - right_inner) * 0.5f, kHalfThickness));
     }
-    // Back wall (faces -Z, apse side). Single contiguous slab.
-    pushWall(glm::vec2(kCryptX, kCryptZ - kHalfLength + kHalfThickness),
-             glm::vec2(kHalfWidth, kHalfThickness));
-    // Left long wall (faces -X).
-    pushWall(glm::vec2(kCryptX - kHalfWidth + kHalfThickness, kCryptZ),
+    // Back wall: two slabs flanking the stair tunnel gap.
+    {
+        const float back_y = kCryptZ - kHalfLength + kHalfThickness;
+        const float left_outer = -kHalfWidth;
+        const float left_inner = -kSingleFlightHalfWidth;
+        pushWall("wall_back_left",
+                 glm::vec2(kCryptX + (left_outer + left_inner) * 0.5f, back_y),
+                 glm::vec2((left_inner - left_outer) * 0.5f, kHalfThickness));
+        const float right_inner = kSingleFlightHalfWidth;
+        const float right_outer = kHalfWidth;
+        pushWall("wall_back_right",
+                 glm::vec2(kCryptX + (right_inner + right_outer) * 0.5f, back_y),
+                 glm::vec2((right_outer - right_inner) * 0.5f, kHalfThickness));
+    }
+    pushWall("wall_side_left",
+             glm::vec2(kCryptX - kHalfWidth + kHalfThickness, kCryptZ),
              glm::vec2(kHalfThickness, kHalfLength));
-    // Right long wall (faces +X).
-    pushWall(glm::vec2(kCryptX + kHalfWidth - kHalfThickness, kCryptZ),
+    pushWall("wall_side_right",
+             glm::vec2(kCryptX + kHalfWidth - kHalfThickness, kCryptZ),
              glm::vec2(kHalfThickness, kHalfLength));
 
-    // Door header: camera-only box bridging the front wall's door gap
-    // from kDoorHeight up to kWallHeight. Stops the camera from
-    // tracking the player through the door by passing the line of
-    // sight through the wall ABOVE the door (the player walks under
-    // the header normally; player collision skips this box).
     {
         BoxCollider header;
         header.center = glm::vec2(kCryptX, kFrontSlabZ);
@@ -274,17 +278,10 @@ void populateCryptColliders(std::vector<BoxCollider>& out)
         header.y_base = y_base + kDoorHeight;
         header.half_height_y = (kWallHeight - kDoorHeight) * 0.5f;
         header.camera_only = true;
+        header.name = "door_header";
         out.push_back(header);
     }
 
-    // Roof slab: a flat box capping the chapel footprint at the
-    // walltop. Stops the camera from flying over the roof and
-    // revealing the interior from above when the player pitches the
-    // camera steeply upward. Apse hemicircle is approximated by
-    // extending the slab back to cover the apse footprint too
-    // (over-coverage by ~kApseRadius worth of corner is invisible —
-    // it sits outside the chapel mesh, the camera never reaches it
-    // through normal play).
     {
         BoxCollider roof;
         roof.center = glm::vec2(kCryptX, kCryptZ - kApseRadius * 0.5f);
@@ -292,6 +289,7 @@ void populateCryptColliders(std::vector<BoxCollider>& out)
         roof.y_base = y_base + kWallHeight;
         roof.half_height_y = 0.5f;
         roof.camera_only = true;
+        roof.name = "roof";
         out.push_back(roof);
     }
 }
@@ -308,7 +306,7 @@ void populateCryptColliders(std::vector<BoxCollider>& out)
 void populateCryptApseCylinders(std::vector<CylinderCollider>& out)
 {
     using namespace crypt_layout;
-    constexpr int kArcSegments = 16; // ~11° between cylinder centers
+    constexpr int kArcSegments = 32; // ~5.6° between cylinder centers — dense enough that only the tunnel-X gap is open in the apse-shell colliders
     // Radius chosen so adjacent cylinders overlap: arc spacing at
     // kArcRadius is ~0.32m between centers, so 0.20m radius (0.40m
     // diameter) gives ~0.08m of overlap. Without overlap a thin
@@ -321,7 +319,7 @@ void populateCryptApseCylinders(std::vector<CylinderCollider>& out)
     constexpr float kArcRadius = kApseRadius - kCylRadius;
     const float arc_cx = kCryptX;
     const float arc_cz = kCryptZ - kHalfLength;
-    const float arc_cy = sampleHeight(kCryptX, kCryptZ);
+    const float arc_cy = kChapelGroundY;
     for (int i = 0; i <= kArcSegments; ++i)
     {
         const float t = static_cast<float>(i) / static_cast<float>(kArcSegments);
@@ -330,33 +328,268 @@ void populateCryptApseCylinders(std::vector<CylinderCollider>& out)
         const float ang = -3.14159265f * t;
         const float x = arc_cx + std::cos(ang) * kArcRadius;
         const float z = arc_cz + std::sin(ang) * kArcRadius;
+        // Skip cylinders that fall inside the stair tunnel's X span
+        // (|X| <= kSingleFlightHalfWidth). The descent landing extends
+        // past the chapel back wall through the apse footprint; an
+        // apse cylinder here would push the player off the landing
+        // and prevent them from walking the descent path.
+        if (std::abs(x - arc_cx) <= kSingleFlightHalfWidth)
+            continue;
         CylinderCollider c;
         c.center = glm::vec3(x, arc_cy, z);
         c.radius = kCylRadius;
         c.half_height = kWallHeight * 0.5f;
         c.collision_only = true;
+        c.name = "apse_arc";
         out.push_back(c);
     }
+}
+
+// Descent stair colliders: two flanking upper-flight ramps + landing +
+// 4 corridor ramp segments + 3 corridor landings (with alcove walls) +
+// Acheron stub platform. Mirrors gen_crypt_foundation.py's
+// build_descent(). Coordinate convention: chapel-local Blender coords
+// (X lateral, +Y toward apse, Z up) map to world via:
+//   world_x = chapel_x + kCryptX                    (kCryptX = 0)
+//   world_z = kCryptZ - chapel_y                    (Blender +Y -> world -Z)
+//   world_y = (ground_y - kPlinthHeight + 0.01) + chapel_z
+// Walls + ceilings get camera_only=true so they don't block the player
+// at XZ (the player's Y already handles vertical clearance via the
+// ground sample); only the floor/step boxes get walkable_top=true.
+void populateCryptDescent(std::vector<BoxCollider>& out)
+{
+    using namespace crypt_layout;
+    constexpr float kZFightOffset = 0.01f;
+    const float ground_y = kChapelGroundY;
+    const float chapel_floor_world_y = ground_y - kPlinthHeight + kZFightOffset + kPlinthHeight;
+
+    // Helper: chapel-local (x, y, z) extents -> world BoxCollider.
+    // Half-extents are passed as chapel-local (hx, hy, hz). Caller
+    // sets walkable_top / camera_only / top_slope as appropriate.
+    // `tag` becomes the BoxCollider's debug-overlay name.
+    auto pushCL = [&](const char* tag, float cx, float cy, float cz, float hx, float hy,
+                      float hz, bool walkable, bool camera_only_flag,
+                      const glm::vec2& top_slope = glm::vec2(0.0f))
+    {
+        BoxCollider b;
+        b.center = glm::vec2(kCryptX + cx, kCryptZ - cy);
+        b.half_extents = glm::vec2(hx, hy);
+        b.y_base = (ground_y - kPlinthHeight + kZFightOffset) + cz - 2.0f * hz;
+        b.half_height_y = hz;
+        b.walkable_top = walkable;
+        b.camera_only = camera_only_flag;
+        b.top_slope = top_slope;
+        b.name = tag;
+        out.push_back(b);
+    };
+
+    // ---- Chapel-interior floor (door side of stair hole) ----
+    // Without this, the player walks off the chapel plinth top and
+    // freefalls onto the interior pit terrain (the depression carved
+    // into the heightmap to give the stair shaft clearance) until
+    // they reach the ramp box. The plinth's TOP is the architectural
+    // walking surface, not the pit floor underneath it. Slab spans
+    // the full interior width and covers chapel-local Y from the
+    // front interior wall up to the stair hole's near edge (Y=0).
+    constexpr float kInteriorHalfWidth = kHalfWidth - kWallThickness;
+    constexpr float kInteriorHalfLength = kHalfLength - kWallThickness;
+    constexpr float kFloorSlabThickness = 0.10f;
+    {
+        const float front_strip_cy = -kInteriorHalfLength * 0.5f;
+        const float front_strip_half_len_y = kInteriorHalfLength * 0.5f;
+        pushCL("chapel_floor_front", 0.0f, front_strip_cy,
+               kPlinthHeight,
+               kInteriorHalfWidth, front_strip_half_len_y,
+               kFloorSlabThickness * 0.5f,
+               /*walkable*/ true, /*camera_only*/ false);
+    }
+    // ---- Chapel-interior floor (side strips flanking the stair hole) ----
+    // The hole is narrower than the chapel interior (hole half-width
+    // = kSingleFlightHalfWidth < kInteriorHalfWidth), so there are
+    // solid plinth strips on each side of the hole along its Y range.
+    // Without colliders here, the player walking past the hole's near
+    // edge along the side falls into the descent shaft.
+    {
+        const float side_strip_inner_x = kSingleFlightHalfWidth;
+        const float side_strip_outer_x = kInteriorHalfWidth;
+        const float side_strip_half_w = (side_strip_outer_x - side_strip_inner_x) * 0.5f;
+        const float side_strip_cx_mag = side_strip_inner_x + side_strip_half_w;
+        const float side_strip_cy = kDescentForwardSign * (kUpperFlightRun * 0.5f);
+        const float side_strip_half_len_y = kUpperFlightRun * 0.5f;
+        for (float sign : {-1.0f, 1.0f})
+        {
+            pushCL("chapel_floor_side", sign * side_strip_cx_mag, side_strip_cy,
+                   kPlinthHeight,
+                   side_strip_half_w, side_strip_half_len_y,
+                   kFloorSlabThickness * 0.5f,
+                   /*walkable*/ true, /*camera_only*/ false);
+        }
+    }
+    // ---- Chapel-interior floor (apse-side strips flanking back-wall tunnel) ----
+    // 0.25m strip between hole far edge and chapel back wall. Two
+    // slabs flanking the back-wall tunnel X span; tunnel opening
+    // stays clear so the descending player passes UNDER it on the
+    // landing.
+    {
+        const float apse_strip_cy = kDescentForwardSign *
+            (kUpperFlightRun + (kInteriorHalfLength - kUpperFlightRun) * 0.5f);
+        const float apse_strip_half_len_y = (kInteriorHalfLength - kUpperFlightRun) * 0.5f;
+        const float apse_strip_half_w = (kInteriorHalfWidth - kSingleFlightHalfWidth) * 0.5f;
+        const float apse_strip_cx_mag = kSingleFlightHalfWidth + apse_strip_half_w;
+        if (apse_strip_half_len_y > 0.01f && apse_strip_half_w > 0.01f)
+        {
+            for (float sign : {-1.0f, 1.0f})
+            {
+                pushCL("chapel_floor_apse", sign * apse_strip_cx_mag, apse_strip_cy,
+                       kPlinthHeight,
+                       apse_strip_half_w, apse_strip_half_len_y,
+                       kFloorSlabThickness * 0.5f,
+                       /*walkable*/ true, /*camera_only*/ false);
+            }
+        }
+    }
+
+    // ---- Single wide upper flight as ONE sloped ramp ----
+    // Visible-step mesh over a continuous ramp collider.
+    // Per-step box colliders cause every-step snag/stutter and force
+    // the player to drop onto each step under gravity; a ramp gives
+    // smooth monotonic descent. The visual mesh still shows discrete
+    // steps (the player's eye reads them as stairs), and feet may sit
+    // slightly above or below individual step edges (tradeoff: smooth
+    // locomotion wins over per-step foot accuracy). If we add foot IK
+    // later, it solves to the ramp.
+    constexpr float kStairSlabThickness = 0.5f;
+    // Ramp top must match the LEADING EDGES of visible steps so the
+    // player never sinks below a step top. Leading edge of step i is
+    // at chapel_y = i*tread, top Z = kPlinthHeight - (i+1)*kStairRise.
+    // Line through these points (treating i as continuous):
+    //   ramp_top_cz(chapel_y) = (kPlinthHeight - kStairRise)
+    //                           - chapel_y * (kStairRise/kStairTread)
+    // At chapel_y = kUpperFlightRun*0.5 (midpoint), top_cz_center =
+    //   (kPlinthHeight - kStairRise) - kUpperFlightDrop * 0.5
+    const float ramp_top_cz_center =
+        (kPlinthHeight - kStairRise) - kUpperFlightDrop * 0.5f;
+    const float ramp_cy_center =
+        kUpperFlightTopChapelLocalY + kDescentForwardSign * kUpperFlightRun * 0.5f;
+    // Slope: walking +world_z = walking -chapel_y = BACKWARD up the
+    // ramp (cancels descent). With forward_sign=+1, top_slope.y is
+    // +rise/run (Y rises as world_z grows = going backward/up).
+    const float ramp_slope_world_z =
+        (kStairRise / kStairTread) * kDescentForwardSign;
+    pushCL("upper_flight_ramp", 0.0f, ramp_cy_center,
+           ramp_top_cz_center,
+           kSingleFlightHalfWidth,
+           kUpperFlightRun * 0.5f,
+           kStairSlabThickness * 0.5f,
+           /*walkable*/ true, /*camera_only*/ false,
+           glm::vec2(0.0f, ramp_slope_world_z));
+
+    // ---- Landing where flights converge ----
+    // Landing starts 0.5 tread BEFORE the ramp's nominal end (overlap
+    // with step 8 + step 9). The ramp's top is the leading-edges
+    // line, which extrapolates 0.16m BELOW the visible step 8/9 top
+    // at chapel_Y >= 8*tread; without the landing overlap, the
+    // player walking off the ramp at apse-side would drop and snap
+    // up onto the landing (a visible "teleport up onto a floor"
+    // step that breaks the descent feel).
+    const float landing_top_z = kPlinthHeight - kUpperFlightDrop;
+    const float landing_overlap = 0.5f * kStairTread;  // half a step
+    const float landing_extended_y_near = kUpperFlightTopChapelLocalY +
+        kDescentForwardSign * (kUpperFlightRun - landing_overlap);
+    const float landing_extended_y_far = kUpperFlightTopChapelLocalY +
+        kDescentForwardSign * (kUpperFlightRun + kLandingDepthY);
+    const float landing_cy = (landing_extended_y_near + landing_extended_y_far) * 0.5f;
+    const float landing_half_len_y =
+        std::abs(landing_extended_y_far - landing_extended_y_near) * 0.5f;
+    constexpr float kLandingSlabThickness = 0.4f;
+    pushCL("landing_top", 0.0f, landing_cy,
+           landing_top_z,
+           kLandingWidthX * 0.5f,
+           landing_half_len_y,
+           kLandingSlabThickness * 0.5f,
+           /*walkable*/ true, /*camera_only*/ false);
+
+    // ---- Corridor: ramp segments + in-between landings ----
+    float cursor_cy = kUpperFlightTopChapelLocalY +
+                      kDescentForwardSign * (kUpperFlightRun + kLandingDepthY);
+    float cursor_cz = landing_top_z;
+    const float corridor_hw = kCorridorWidth * 0.5f;
+    const float corridor_slope =
+        (kCorridorSegmentDrop / kCorridorSegmentRun) * kDescentForwardSign;
+    for (int seg = 0; seg < kCorridorSegmentCount; ++seg)
+    {
+        const float ramp_cy = cursor_cy + kDescentForwardSign * kCorridorSegmentRun * 0.5f;
+        const float ramp_top_z_center = cursor_cz - kCorridorSegmentDrop * 0.5f;
+        pushCL("corridor_ramp", 0.0f, ramp_cy,
+               ramp_top_z_center,
+               corridor_hw,
+               kCorridorSegmentRun * 0.5f,
+               kStairSlabThickness * 0.5f,
+               /*walkable*/ true, /*camera_only*/ false,
+               glm::vec2(0.0f, corridor_slope));
+        cursor_cy += kDescentForwardSign * kCorridorSegmentRun;
+        cursor_cz -= kCorridorSegmentDrop;
+
+        if (seg < kCorridorSegmentCount - 1)
+        {
+            const float landing_run = kCorridorLandingLength;
+            const float landing_cy_seg = cursor_cy + kDescentForwardSign * landing_run * 0.5f;
+            pushCL("corridor_landing", 0.0f, landing_cy_seg,
+                   cursor_cz,
+                   corridor_hw,
+                   landing_run * 0.5f,
+                   kStairSlabThickness * 0.5f,
+                   /*walkable*/ true, /*camera_only*/ false);
+            cursor_cy += kDescentForwardSign * landing_run;
+        }
+    }
+
+    // ---- Acheron stub platform ----
+    const float acheron_top_z = cursor_cz;
+    const float acheron_cy = cursor_cy + kDescentForwardSign * kAcheronPlatformHalfExtent;
+    pushCL("acheron_platform", 0.0f, acheron_cy,
+           acheron_top_z,
+           kAcheronPlatformHalfExtent,
+           kAcheronPlatformHalfExtent,
+           kStairSlabThickness * 0.5f,
+           /*walkable*/ true, /*camera_only*/ false);
+
+    (void)chapel_floor_world_y; // (referenced indirectly via pushCL math)
 }
 
 void populateCryptInteriorFootprint(std::vector<InteriorFootprint>& out)
 {
     using namespace crypt_layout;
-    // Indoor footprint extends 30cm PAST the door's outer face so
-    // that walking up to the threshold trips concrete on the foot
-    // that lands at the door, not the one that lands after stepping
-    // through it. Without the extension, the trailing foot during a
-    // threshold cross plants outside the chapel (heel-strike behind
-    // the body) and fires grass even though the player visually
-    // sees the leading foot already inside — a perceived "wrong
-    // sample" caused by walking biomechanics, not bug logic.
-    // Asymmetric: shifted toward the door (+Z), keeping the back/
-    // sides aligned with the chapel's outer face.
+    // Chapel interior — door side extends 30cm PAST the door's outer
+    // face so the foot landing AT the threshold trips concrete (not
+    // grass).
     constexpr float kDoorSideExtension = 0.30f;
-    InteriorFootprint f;
-    f.center = glm::vec2(kCryptX, kCryptZ + kDoorSideExtension * 0.5f);
-    f.half_extents = glm::vec2(kHalfWidth, kHalfLength + kDoorSideExtension * 0.5f);
-    out.push_back(f);
+    InteriorFootprint chapel;
+    chapel.center = glm::vec2(kCryptX, kCryptZ + kDoorSideExtension * 0.5f);
+    chapel.half_extents = glm::vec2(kHalfWidth, kHalfLength + kDoorSideExtension * 0.5f);
+    out.push_back(chapel);
+
+    // Descent footprint — covers the upper-flight stair, landing,
+    // corridor, and Acheron stub so the player remains "indoors" for
+    // the entire underground descent. Without this, the moment the
+    // player passes the chapel back wall the indoors flag drops and
+    // groundHeight's override stops firing — terrain (plateau Y
+    // ~31.96) wins over the landing collider top (~30.82) and the
+    // player is popped UP to plateau level instead of continuing
+    // down. X span matches the stair shaft; Z span runs from the
+    // chapel back wall all the way to the Acheron stub far edge.
+    const float descent_z_near = kCryptZ - kHalfLength + kWallThickness;
+    const float descent_z_far_chapel_local =
+        kUpperFlightRun + kLandingDepthY +
+        kCorridorSegmentCount * kCorridorSegmentRun +
+        (kCorridorSegmentCount - 1) * kCorridorLandingLength +
+        2.0f * kAcheronPlatformHalfExtent;
+    const float descent_z_far = kCryptZ - descent_z_far_chapel_local;
+    InteriorFootprint descent;
+    descent.center = glm::vec2(kCryptX, (descent_z_near + descent_z_far) * 0.5f);
+    descent.half_extents = glm::vec2(kSingleFlightHalfWidth,
+                                     (descent_z_near - descent_z_far) * 0.5f);
+    out.push_back(descent);
 }
 
 } // namespace
@@ -374,6 +607,7 @@ void initHubScene()
     populateHubTrees(sScene.cylinders);
     populateCryptColliders(sScene.boxes);
     populateCryptApseCylinders(sScene.cylinders);
+    populateCryptDescent(sScene.boxes);
     populateCryptInteriorFootprint(sScene.interior_footprints);
 
     // Authored framing around the crypt's façade. All four are
@@ -479,8 +713,12 @@ void resolveBodyCollision(glm::vec2& body_xz, float body_radius)
         int box_idx = 0;
         for (const auto& b : sScene.boxes)
         {
-            if (b.camera_only)
+            if (b.camera_only || b.walkable_top)
             {
+                // walkable_top: player walks on TOP of these boxes
+                // (stair steps, ramps, platforms). Including them in
+                // XZ push-out would shove the player off the stair
+                // instead of letting them stand on it.
                 ++box_idx;
                 continue;
             }

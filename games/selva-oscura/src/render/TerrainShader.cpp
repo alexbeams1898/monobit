@@ -53,6 +53,25 @@ uniform vec3 uSunDir;
 uniform vec3 uSunIntensity;
 uniform vec3 uCamPos;
 uniform float uExposure;
+
+// Axis-aligned XZ rectangle for terrain excision (chapel body
+// footprint). Fragments inside are discarded so the chapel mesh
+// provides the ground there without a competing terrain surface.
+// Set half-extents to (0, 0) to disable the rect.
+uniform vec2 uChapelDiscardCenter;
+uniform vec2 uChapelDiscardHalfExtents;
+// Half-disc (apse bulge) for terrain excision behind the chapel.
+// Center at the chapel back wall midpoint; only discards fragments
+// with z <= center.z (the apse-side half). Set radius to 0 to
+// disable.
+uniform vec2 uApseDiscardCenter;
+uniform float uApseDiscardRadius;
+// Descent shaft rect for terrain excision under the underground
+// descent path (landing + corridor + Acheron stub). Without it,
+// terrain renders over the descent area outside the chapel/apse
+// footprints. Set half-extents to (0, 0) to disable.
+uniform vec2 uDescentDiscardCenter;
+uniform vec2 uDescentDiscardHalfExtents;
 )glsl";
 
 const char* kTerrainFSMain = R"glsl(
@@ -86,6 +105,33 @@ float vnoise(vec3 p)
 
 void main()
 {
+    // Chapel-body excision: rectangular footprint.
+    if (uChapelDiscardHalfExtents.x > 0.0 && uChapelDiscardHalfExtents.y > 0.0)
+    {
+        vec2 d = abs(vWorldPos.xz - uChapelDiscardCenter);
+        if (d.x < uChapelDiscardHalfExtents.x && d.y < uChapelDiscardHalfExtents.y)
+            discard;
+    }
+    // Apse excision: half-disc behind the chapel body. Disc center
+    // at the chapel back wall midpoint; discard fragments with
+    // z <= center.z AND inside the radius. Avoids the rectangular
+    // void that would appear at the apse-bulge corners if we
+    // used a single rect that covered the apse Z range.
+    if (uApseDiscardRadius > 0.0)
+    {
+        vec2 ad = vWorldPos.xz - uApseDiscardCenter;
+        if (ad.y <= 0.0 && dot(ad, ad) < uApseDiscardRadius * uApseDiscardRadius)
+            discard;
+    }
+    // Descent shaft excision: rectangle covering the underground
+    // landing + corridor + Acheron stub.
+    if (uDescentDiscardHalfExtents.x > 0.0 && uDescentDiscardHalfExtents.y > 0.0)
+    {
+        vec2 d = abs(vWorldPos.xz - uDescentDiscardCenter);
+        if (d.x < uDescentDiscardHalfExtents.x && d.y < uDescentDiscardHalfExtents.y)
+            discard;
+    }
+
     // Two-octave noise sampled at world XZ (Y omitted so the texture
     // doesn't smear vertically up cliffs). Coarse 5m features + fine
     // 0.7m mottling, weighted 0.7 / 0.3.
@@ -134,6 +180,21 @@ GLint sUniShadowMapLoc = -1;
 GLint sUniLightViewProjLoc = -1;
 GLint sUniShadowSunDirLoc = -1;
 GLint sUniShadowCamPosLoc = -1;
+GLint sUniChapelDiscardCenterLoc = -1;
+GLint sUniChapelDiscardHalfExtentsLoc = -1;
+GLint sUniApseDiscardCenterLoc = -1;
+GLint sUniApseDiscardRadiusLoc = -1;
+GLint sUniDescentDiscardCenterLoc = -1;
+GLint sUniDescentDiscardHalfExtentsLoc = -1;
+
+// Cached last-set discard values so the collider debug overlay can
+// draw exactly what the terrain shader is using right now.
+glm::vec2 sLastChapelDiscardCenter{0.0f};
+glm::vec2 sLastChapelDiscardHalfExtents{0.0f};
+glm::vec2 sLastApseDiscardCenter{0.0f};
+float sLastApseDiscardRadius = 0.0f;
+glm::vec2 sLastDescentDiscardCenter{0.0f};
+glm::vec2 sLastDescentDiscardHalfExtents{0.0f};
 
 } // namespace
 
@@ -156,6 +217,12 @@ bool initTerrainShader()
     sUniLightViewProjLoc = glGetUniformLocation(sProgram, "uLightViewProj");
     sUniShadowSunDirLoc = glGetUniformLocation(sProgram, "uShadowSunDir");
     sUniShadowCamPosLoc = glGetUniformLocation(sProgram, "uShadowCameraPos");
+    sUniChapelDiscardCenterLoc = glGetUniformLocation(sProgram, "uChapelDiscardCenter");
+    sUniChapelDiscardHalfExtentsLoc = glGetUniformLocation(sProgram, "uChapelDiscardHalfExtents");
+    sUniApseDiscardCenterLoc = glGetUniformLocation(sProgram, "uApseDiscardCenter");
+    sUniApseDiscardRadiusLoc = glGetUniformLocation(sProgram, "uApseDiscardRadius");
+    sUniDescentDiscardCenterLoc = glGetUniformLocation(sProgram, "uDescentDiscardCenter");
+    sUniDescentDiscardHalfExtentsLoc = glGetUniformLocation(sProgram, "uDescentDiscardHalfExtents");
     return true;
 }
 
@@ -211,5 +278,36 @@ void setTerrainShadow(const glm::mat4& light_view_proj, const glm::vec3& sun_dir
     glUniform3f(sUniShadowCamPosLoc, shadow_cam_pos.x, shadow_cam_pos.y, shadow_cam_pos.z);
     glUniform1i(sUniShadowMapLoc, shadow_texture_unit);
 }
+
+void setTerrainChapelDiscard(const glm::vec2& center, const glm::vec2& half_extents)
+{
+    glUniform2f(sUniChapelDiscardCenterLoc, center.x, center.y);
+    glUniform2f(sUniChapelDiscardHalfExtentsLoc, half_extents.x, half_extents.y);
+    sLastChapelDiscardCenter = center;
+    sLastChapelDiscardHalfExtents = half_extents;
+}
+
+void setTerrainApseDiscard(const glm::vec2& center, float radius)
+{
+    glUniform2f(sUniApseDiscardCenterLoc, center.x, center.y);
+    glUniform1f(sUniApseDiscardRadiusLoc, radius);
+    sLastApseDiscardCenter = center;
+    sLastApseDiscardRadius = radius;
+}
+
+void setTerrainDescentDiscard(const glm::vec2& center, const glm::vec2& half_extents)
+{
+    glUniform2f(sUniDescentDiscardCenterLoc, center.x, center.y);
+    glUniform2f(sUniDescentDiscardHalfExtentsLoc, half_extents.x, half_extents.y);
+    sLastDescentDiscardCenter = center;
+    sLastDescentDiscardHalfExtents = half_extents;
+}
+
+glm::vec2 lastTerrainChapelDiscardCenter() { return sLastChapelDiscardCenter; }
+glm::vec2 lastTerrainChapelDiscardHalfExtents() { return sLastChapelDiscardHalfExtents; }
+glm::vec2 lastTerrainApseDiscardCenter() { return sLastApseDiscardCenter; }
+float     lastTerrainApseDiscardRadius() { return sLastApseDiscardRadius; }
+glm::vec2 lastTerrainDescentDiscardCenter() { return sLastDescentDiscardCenter; }
+glm::vec2 lastTerrainDescentDiscardHalfExtents() { return sLastDescentDiscardHalfExtents; }
 
 } // namespace selva::render

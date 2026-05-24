@@ -104,6 +104,7 @@ static void renderDebugSection(selva::tuning::Tunables& tun)
     ImGui::Checkbox("FPV roll camera + head -> fpv-roll-debug.log", &tun.debug_fpv_roll_log);
     ImGui::Checkbox("Collision pushes -> collision-debug.log", &tun.debug_collision_log);
     ImGui::Checkbox("Camera pull-in -> camera-debug.log", &tun.debug_camera_pull_in_log);
+    ImGui::Checkbox("Ground height -> ground-debug.log", &tun.debug_ground_height_log);
 }
 
 static void renderLocomotionSection(selva::tuning::Tunables& tun)

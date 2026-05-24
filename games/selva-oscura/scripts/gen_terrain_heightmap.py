@@ -206,7 +206,9 @@ def world_height(x, z, r):
     undulation_strength *= crypt_pad
 
     undulation = nx * nz * r["noise_amp"] * undulation_strength
-    return base + undulation
+    surface = base + undulation
+
+    return surface
 
 
 def crypt_flatten_factor(x, z, r):

@@ -29,6 +29,14 @@ const glm::mat4& lastView();
 //   useSceneProgram()  + setSceneAtmosphere(...)  -> renderGroundDecals()
 //                                                 + renderStaticMeshes()
 //   useTreeShader()    + setTreeAtmosphere(...)   -> renderTrees()
+// Stencil pre-pass: writes chapel-floor primitives into the stencil
+// buffer so the following renderTerrain() pass rejects fragments
+// inside the chapel indoor perimeter. Pixel-perfect carve-out using
+// the chapel mesh as its own mask source. Call this AFTER clearing
+// the stencil buffer and BEFORE renderTerrain(). renderTerrain
+// disables stencil test at the end so subsequent passes aren't
+// constrained.
+void renderChapelFloorMask();
 void renderTerrain();
 void renderGroundDecals();
 void renderStaticMeshes();

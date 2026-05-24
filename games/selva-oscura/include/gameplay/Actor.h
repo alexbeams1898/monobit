@@ -177,6 +177,9 @@ struct Actor
     glm::vec3 pos = glm::vec3(0.0f);
     float yaw = 0.0f;
     glm::vec2 velocity_xz = glm::vec2(0.0f);
+    // Vertical velocity for gravity / falling. Negative = falling.
+    // Snaps to 0 when the actor lands on ground.
+    float velocity_y = 0.0f;
 
     // --- Animation ---
     // Per-actor pose state. Each actor's clips advance in their

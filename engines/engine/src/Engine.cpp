@@ -43,6 +43,10 @@ bool Engine::init(const char* title, int width, int height)
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    // 8-bit stencil so renderers can use stencil-based masking
+    // (e.g. terrain-cut-by-architecture: render architecture floor
+    // into stencil first, then draw terrain with stencil rejection).
+    SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 
     // MSAA — set before window creation so the default framebuffer gets
     // multi-sample storage. msaa_samples == 0 leaves it disabled.

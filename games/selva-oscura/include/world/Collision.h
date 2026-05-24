@@ -34,6 +34,9 @@ struct CylinderCollider
     // colliders that approximate non-cylindrical architecture (e.g.
     // the apse rear curve).
     bool collision_only = false;
+    // Optional name for the collider-debug overlay. Static string
+    // literal (no allocation). nullptr = no label drawn.
+    const char* name = nullptr;
 };
 
 // Axis-aligned box collider in XZ. Walls of static architecture
@@ -56,6 +59,22 @@ struct BoxCollider
     // contract, so without this flag a roof's XZ footprint blocks
     // the player's walk-through path.
     bool camera_only = false;
+    // Walkable top: the actor's ground Y at XZ inside this box is
+    // the top of this box (y_base + 2*half_height_y), overriding
+    // the terrain sample. Used for stair steps and raised platforms
+    // that the player should stand on. Default false — walls,
+    // headers, roofs all want the actor to read terrain Y normally,
+    // not climb onto their top surface.
+    bool walkable_top = false;
+    // Top slope gradient (Y change per meter of XZ travel). Default
+    // zero = flat. For ramps / corridor stair sections, set this so
+    // groundHeight returns a Y that varies linearly across the box's
+    // XZ footprint. The top Y at the center is y_base + 2*half_height_y;
+    // top Y at (x, z) is center_top + dot(top_slope, (x-center, z-center)).
+    glm::vec2 top_slope{0.0f, 0.0f};
+    // Optional name for the collider-debug overlay. Static string
+    // literal (no allocation). nullptr = no label drawn.
+    const char* name = nullptr;
 };
 
 // XZ rectangle marking where the player counts as "indoors" — used

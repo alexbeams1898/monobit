@@ -57,6 +57,8 @@ bool loadPrimitive(const cgltf_primitive* prim, const float node_world[16],
         return false;
     const cgltf_size n = pos_acc->count;
     std::vector<Vertex> verts(n);
+    float bb_min[3] = {1e30f, 1e30f, 1e30f};
+    float bb_max[3] = {-1e30f, -1e30f, -1e30f};
     for (cgltf_size i = 0; i < n; ++i)
     {
         float p[3] = {0, 0, 0};
@@ -69,6 +71,11 @@ bool loadPrimitive(const cgltf_primitive* prim, const float node_world[16],
         verts[i].position[1] = wp[1];
         verts[i].position[2] = wp[2];
         verts[i].shade = 1.0f;
+        for (int k = 0; k < 3; ++k)
+        {
+            if (wp[k] < bb_min[k]) bb_min[k] = wp[k];
+            if (wp[k] > bb_max[k]) bb_max[k] = wp[k];
+        }
     }
 
     std::vector<std::uint32_t> indices;
@@ -99,6 +106,10 @@ bool loadPrimitive(const cgltf_primitive* prim, const float node_world[16],
     out.source_node_name = node_name;
     out.index_count = static_cast<int>(indices.size());
     out.vertex_count = static_cast<int>(verts.size());
+    // Floor mask: any node whose name starts with "crypt_plinth" is
+    // a chapel-floor slab. Used by the terrain stencil pass to carve
+    // terrain rendering out of the chapel indoor perimeter.
+    out.floor_mask = node_name.rfind("crypt_plinth", 0) == 0;
 
     GLuint vao = 0;
     GLuint vbo = 0;
@@ -127,6 +138,15 @@ bool loadPrimitive(const cgltf_primitive* prim, const float node_world[16],
     out.vao = vao;
     out.vbo = vbo;
     out.ebo = ebo;
+
+    std::fprintf(stderr,
+                 "[static-mesh-prim] node='%s' verts=%d tris=%d "
+                 "bbox=[%.2f,%.2f,%.2f .. %.2f,%.2f,%.2f] "
+                 "color=(%.2f,%.2f,%.2f)\n",
+                 node_name.c_str(), out.vertex_count, out.index_count / 3,
+                 bb_min[0], bb_min[1], bb_min[2],
+                 bb_max[0], bb_max[1], bb_max[2],
+                 out.base_color[0], out.base_color[1], out.base_color[2]);
     return true;
 }
 

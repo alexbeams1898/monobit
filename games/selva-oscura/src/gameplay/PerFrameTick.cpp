@@ -1973,6 +1973,45 @@ static const char* selectLocomotionClipFromSpeed(float target_speed, bool is_arm
             return is_armed ? "sword_and_shield_idle_4" : "unarmed_combat_idle";
         return "standard_idle";
     }
+    // Incline-based stair/slope detection: sample the ground gradient
+    // at the player's XZ, dot it with the walking direction. Negative
+    // dot product = ground tilts DOWN in the walk direction (descending),
+    // positive = UP. Works for stairs, ramps, hills uniformly — no
+    // dependence on per-frame Y motion (which fights with gravity).
+    {
+        const float spd_sq = glm::dot(sPlayer.velocity_xz, sPlayer.velocity_xz);
+        constexpr float kMinSpeedForSlopeDetect = 0.5f * 0.5f; // m/s squared
+        if (spd_sq > kMinSpeedForSlopeDetect)
+        {
+            // Sample ground in +X and +Z directions to get the gradient.
+            constexpr float kSampleStep = 0.30f; // half a stair tread
+            const float y_here = selva::world::groundHeight(sPlayer.pos.x, sPlayer.pos.z,
+                                                            sPlayer.pos.y);
+            const float y_xp = selva::world::groundHeight(sPlayer.pos.x + kSampleStep,
+                                                          sPlayer.pos.z, sPlayer.pos.y);
+            const float y_zp = selva::world::groundHeight(sPlayer.pos.x,
+                                                          sPlayer.pos.z + kSampleStep,
+                                                          sPlayer.pos.y);
+            const float dy_dx = (y_xp - y_here) / kSampleStep;
+            const float dy_dz = (y_zp - y_here) / kSampleStep;
+            // Walking direction (unit-ish).
+            const glm::vec2 walk_dir =
+                sPlayer.velocity_xz / std::sqrt(spd_sq);
+            // Slope along walk direction.
+            const float slope_along_walk = dy_dx * walk_dir.x + dy_dz * walk_dir.y;
+            // EMA smoothing to avoid flicker at step edges where the
+            // sampled gradient jumps between flat (on a tread) and
+            // a full rise.
+            static float sSmoothedSlope = 0.0f;
+            constexpr float kSmooth = 0.20f;
+            sSmoothedSlope = sSmoothedSlope * (1.0f - kSmooth) + slope_along_walk * kSmooth;
+            constexpr float kSlopeThreshold = 0.15f; // ~8.5° slope
+            if (sSmoothedSlope < -kSlopeThreshold)
+                return "descending_stairs";
+            if (sSmoothedSlope > kSlopeThreshold)
+                return "walking_up_the_stairs";
+        }
+    }
     if (target_speed <= tun.walk_to_run_speed)
         return "walking";
     return "running";
@@ -2744,14 +2783,23 @@ static LocomotionPick tickPlayerLocomotionAndSampler(const glm::vec3& moveIntent
     return pick;
 }
 
-// Resolve player vs static cylinders + enemy capsules, then snap to
-// terrain. Runs LAST in the per-frame tick so post-translation drift
-// from any source (velocity, clip-hip, dodge steer) is corrected
-// before render. Player capsule radius matches humanoid shoulder
-// width.
-static void resolvePlayerCollisionAndSnap()
+// Resolve player vs static cylinders + enemy capsules, then apply
+// gravity + snap to ground. Runs LAST in the per-frame tick so
+// post-translation drift from any source (velocity, clip-hip, dodge
+// steer) is corrected before render. Player capsule radius matches
+// humanoid shoulder width.
+//
+// Gravity model: integrate velocity_y (-9.81 m/s² accel) and pos.y
+// every frame. If the resulting pos.y is at or below ground, snap
+// to ground and zero velocity_y (landed). Otherwise leave pos.y in
+// the air, velocity_y unclamped (still falling). Short steps drop
+// the actor onto the next step naturally; walking off a ledge
+// produces a real fall instead of a Y-teleport.
+static void resolvePlayerCollisionAndSnap(float dt)
 {
     constexpr float kPlayerRadius = 0.35f;
+    constexpr float kGravity = -9.81f;     // m/s²
+    constexpr float kTerminalVelocity = -50.0f;
     glm::vec2 player_xz(sPlayer.pos.x, sPlayer.pos.z);
     selva::world::resolveBodyCollision(player_xz, kPlayerRadius);
     for (const auto* enemy : selva::gameplay::enemies())
@@ -2767,7 +2815,39 @@ static void resolvePlayerCollisionAndSnap()
     }
     sPlayer.pos.x = player_xz.x;
     sPlayer.pos.z = player_xz.y;
-    sPlayer.pos.y = selva::world::sampleHeight(sPlayer.pos.x, sPlayer.pos.z);
+
+    // Gravity. With continuous ramp colliders (no per-step boxes),
+    // walking down stairs/slopes returns a monotonically-decreasing
+    // ground Y — no need for a step-down snap hybrid. Just integrate
+    // velocity_y when airborne; snap when landing.
+    const float prev_y = sPlayer.pos.y;
+    sPlayer.velocity_y += kGravity * dt;
+    if (sPlayer.velocity_y < kTerminalVelocity)
+        sPlayer.velocity_y = kTerminalVelocity;
+    float new_y = prev_y + sPlayer.velocity_y * dt;
+    const float ground_y =
+        selva::world::groundHeight(sPlayer.pos.x, sPlayer.pos.z, prev_y);
+    if (new_y <= ground_y)
+    {
+        new_y = ground_y;
+        sPlayer.velocity_y = 0.0f;
+    }
+    sPlayer.pos.y = new_y;
+
+    if (selva::tuning::current().debug_ground_height_log)
+    {
+        static FILE* sGravLog = nullptr;
+        if (sGravLog == nullptr)
+            sGravLog = std::fopen("gravity-debug.log", "w");
+        if (sGravLog != nullptr)
+        {
+            std::fprintf(sGravLog,
+                         "pos=(%.3f,%.3f,%.3f) prev_y=%.3f ground_y=%.3f vy=%.3f result_y=%.3f\n",
+                         sPlayer.pos.x, sPlayer.pos.y, sPlayer.pos.z, prev_y, ground_y,
+                         sPlayer.velocity_y, sPlayer.pos.y);
+            std::fflush(sGravLog);
+        }
+    }
 }
 
 // Dev cheat: K instantly kills the player to exercise the second-death
@@ -2960,7 +3040,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
 
     applyPerFrameTranslation(moveIntent, tun.dodge_steer_rate, dt);
 
-    resolvePlayerCollisionAndSnap();
+    resolvePlayerCollisionAndSnap(dt);
 
     selva::gameplay::tickEnemies(dt);
 
@@ -3489,15 +3569,11 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
 
     const glm::mat4& lightVP = selva::render::lightViewProj();
 
-    {
-        ZoneScopedN("terrain");
-        selva::render::useTerrainShader();
-        selva::render::setTerrainViewProj(viewProj);
-        selva::render::setTerrainAtmosphere(kSunDir, kSunIntensity, camPos, kExposure);
-        selva::render::setTerrainShadow(lightVP, kSunDir, sPlayer.pos, 1);
-        selva::render::renderTerrain();
-    }
-
+    // Scene pass runs BEFORE terrain so the chapel mesh writes depth
+    // first. Terrain then depth-tests against chapel and loses where
+    // chapel is in front of it (the chapel-interior footprint). This
+    // is the cleanest carve-out: no shape uniforms, no stencil mask,
+    // just draw order + depth test.
     {
         ZoneScopedN("scene-pass");
         selva::render::useSceneProgram();
@@ -3521,13 +3597,22 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
             }
         }
         {
-            ZoneScopedN("ground-decals");
-            selva::render::renderGroundDecals();
-        }
-        {
             ZoneScopedN("static-meshes");
             selva::render::renderStaticMeshes();
         }
+        {
+            ZoneScopedN("ground-decals");
+            selva::render::renderGroundDecals();
+        }
+    }
+
+    {
+        ZoneScopedN("terrain");
+        selva::render::useTerrainShader();
+        selva::render::setTerrainViewProj(viewProj);
+        selva::render::setTerrainAtmosphere(kSunDir, kSunIntensity, camPos, kExposure);
+        selva::render::setTerrainShadow(lightVP, kSunDir, sPlayer.pos, 1);
+        selva::render::renderTerrain();
     }
 
     {

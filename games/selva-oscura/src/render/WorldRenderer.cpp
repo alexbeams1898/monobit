@@ -3,6 +3,7 @@
 #include "AppStateGlobal.h"
 #include "Tunables.h"
 #include "WallClock.h"
+#include "gl/ShaderUtils.h"
 #include "render/Camera.h"
 #include "render/SceneGeometry.h"
 #include "render/SceneShaders.h"
@@ -32,6 +33,43 @@ namespace selva::render
 namespace
 {
 glm::mat4 sLastView(1.0f);
+
+// Stencil-write program for the chapel floor mask. Positions-only
+// vertex shader (matches StaticMeshPrimitive vertex layout: location 0
+// = vec3 aPos), no fragment output. Compiled lazily on first use.
+const char* kStencilVS = R"glsl(
+#version 330 core
+layout(location = 0) in vec3 aPos;
+uniform mat4 uModel;
+uniform mat4 uViewProj;
+void main()
+{
+    gl_Position = uViewProj * uModel * vec4(aPos, 1.0);
+}
+)glsl";
+const char* kStencilFS = R"glsl(
+#version 330 core
+void main() {}
+)glsl";
+GLuint sStencilProgram = 0;
+GLint sStencilUniModel = -1;
+GLint sStencilUniViewProj = -1;
+glm::mat4 sLastViewProjForStencil(1.0f);
+
+GLuint ensureStencilProgram()
+{
+    if (sStencilProgram == 0)
+    {
+        sStencilProgram = engine::gl::compileProgram(kStencilVS, kStencilFS);
+        if (sStencilProgram != 0)
+        {
+            sStencilUniModel = glGetUniformLocation(sStencilProgram, "uModel");
+            sStencilUniViewProj = glGetUniformLocation(sStencilProgram, "uViewProj");
+        }
+    }
+    return sStencilProgram;
+}
+const glm::mat4& cryptModelMatrix();  // forward-decl; defined below in a later anon namespace
 } // namespace
 
 const glm::mat4& lastView()
@@ -382,11 +420,20 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
     }
     glm::vec3 camPos = lookAt + cam_dir * sSmoothedSeparation;
 
-    // Ground-clearance clamp.
+    // Ground-clearance clamp. Skip when the player is indoors (inside
+    // the chapel + descent shaft): the camera is following the player
+    // BELOW terrain plateau Y into the underground descent, and the
+    // raw terrain sample at the camera XZ is still at plateau Y up
+    // top (terrain doesn't know about the descent shaft). Clamping
+    // to terrain Y holds the camera at plateau height and yanks it
+    // away from the descending player. Using player Y as the floor
+    // instead lets the camera follow the descent.
     constexpr float kCamMinClearance = 1.0f;
-    const float terrain_at_cam = selva::world::sampleHeight(camPos.x, camPos.z);
-    if (camPos.y < terrain_at_cam + kCamMinClearance)
-        camPos.y = terrain_at_cam + kCamMinClearance;
+    const bool player_indoors = selva::world::isIndoors(glm::vec2(player_pos.x, player_pos.z));
+    const float floor_y = player_indoors ? player_pos.y
+                                         : selva::world::sampleHeight(camPos.x, camPos.z);
+    if (camPos.y < floor_y + kCamMinClearance)
+        camPos.y = floor_y + kCamMinClearance;
 
     if (tun.debug_camera_pull_in_log)
     {
@@ -466,11 +513,41 @@ void drawTreeMesh(const selva::world::TreeMesh& m)
 }
 } // namespace
 
+void renderChapelFloorMask()
+{
+    // Stencil approach removed (was view-dependent and rejected terrain
+    // pixels wherever the chapel floor projected to screen). Carve-out
+    // is now done by normal depth test: chapel mesh is drawn BEFORE
+    // terrain so chapel writes depth values; terrain depth-tests and
+    // fails wherever the chapel is in front of it (the chapel-interior
+    // floor footprint). Kept as a stub so the call site stays.
+}
+
 void renderTerrain()
 {
     // Terrain shader is bound by the caller (selvaRenderWorld) so
     // atmosphere uniforms can be set per-frame consistently with sky
     // and trees.
+    //
+    // Discard strategy: chapel mesh is drawn BEFORE terrain (scene
+    // pass) so the chapel naturally occludes terrain via depth test
+    // wherever it sits. But the open stair hole in the chapel floor
+    // has no mesh — terrain there renders at plateau Y and bleeds
+    // through to the descent below. So we use a SMALL rect discard
+    // covering only the hole footprint (X span = stair tunnel,
+    // Z range from chapel-back to the door-side hole edge so it
+    // covers both the stair hole and the back-wall tunnel mouth).
+    using namespace selva::world::crypt_layout;
+    const float hole_z_near = kCryptZ;  // chapel-local Y=0 (door side of hole)
+    const float hole_z_far = kCryptZ - kHalfLength;  // back wall (covers tunnel mouth too)
+    const float hole_center_z = (hole_z_near + hole_z_far) * 0.5f;
+    const float hole_half_z = (hole_z_near - hole_z_far) * 0.5f;
+    selva::render::setTerrainChapelDiscard(
+        glm::vec2(kCryptX, hole_center_z),
+        glm::vec2(kSingleFlightHalfWidth, hole_half_z));
+    selva::render::setTerrainApseDiscard(glm::vec2(0.0f), 0.0f);
+    selva::render::setTerrainDescentDiscard(glm::vec2(0.0f), glm::vec2(0.0f));
+
     for (int i = 0; i < selva::world::terrainRegionCount(); ++i)
     {
         const auto& r = selva::world::terrainRegion(i);
@@ -512,10 +589,9 @@ const glm::mat4& cryptModelMatrix()
         // though their Y comes from the terrain sample, which is
         // ~1cm below — imperceptible).
         constexpr float kZFightOffset = 0.01f;
-        const float ground_y = selva::world::sampleHeight(kCryptX, kCryptZ);
         sCached = glm::translate(
             glm::mat4(1.0f),
-            glm::vec3(kCryptX, ground_y - kPlinthHeight + kZFightOffset, kCryptZ));
+            glm::vec3(kCryptX, kChapelGroundY - kPlinthHeight + kZFightOffset, kCryptZ));
         sInit = true;
     }
     return sCached;
@@ -642,6 +718,14 @@ void renderTrees()
 
 void renderTerrainDepth()
 {
+    {
+        using namespace selva::world::crypt_layout;
+        selva::render::setTerrainDepthChapelDiscard(
+            glm::vec2(kCryptX, kCryptZ), glm::vec2(kHalfWidth, kHalfLength));
+        selva::render::setTerrainDepthApseDiscard(
+            glm::vec2(kCryptX, kCryptZ - kHalfLength), kApseRadius);
+        selva::render::setTerrainDepthDescentDiscard(glm::vec2(0.0f), glm::vec2(0.0f));
+    }
     for (int i = 0; i < selva::world::terrainRegionCount(); ++i)
     {
         const auto& r = selva::world::terrainRegion(i);

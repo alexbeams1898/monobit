@@ -21,6 +21,14 @@ struct StaticMeshPrimitive
     int vertex_count = 0;
     float base_color[3] = {0.8f, 0.8f, 0.8f};
     std::string source_node_name;
+    // Floor-mask flag: primitives whose XZ footprint should mask out
+    // terrain (so terrain doesn't render under them). Set by the
+    // loader based on naming convention (crypt_plinth_* nodes). When
+    // true, the stencil pre-pass before terrain draws this primitive
+    // into the stencil buffer; the terrain shader then rejects
+    // fragments where stencil != 0. Pixel-perfect carve-out without
+    // any duplicated polygon data.
+    bool floor_mask = false;
 };
 
 // A static-mesh asset: one or more primitives drawn at the same model

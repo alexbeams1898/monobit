@@ -57,6 +57,16 @@
             "name": "strafe_running_right",
             "blend_in_seconds": 0.22,
             "translation_source": "root_motion"
+        },
+        {
+            "name": "descending_stairs",
+            "blend_in_seconds": 0.28,
+            "translation_source": "velocity"
+        },
+        {
+            "name": "walking_up_the_stairs",
+            "blend_in_seconds": 0.28,
+            "translation_source": "velocity"
         }
     ]
 }

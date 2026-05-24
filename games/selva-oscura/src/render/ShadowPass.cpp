@@ -28,9 +28,46 @@ const char* kTerrainDepthVS = R"glsl(
 #version 330 core
 layout(location = 0) in vec3 aPos;
 uniform mat4 uLightViewProj;
+out vec3 vWorldPos;
 void main()
 {
+    vWorldPos = aPos;
     gl_Position = uLightViewProj * vec4(aPos, 1.0);
+}
+)glsl";
+
+// Terrain depth FS mirrors the main TerrainShader's chapel-excision
+// discard so the chapel doesn't get false self-shadowing from a
+// terrain shadow caster that the main pass doesn't draw.
+const char* kTerrainDepthFS = R"glsl(
+#version 330 core
+in vec3 vWorldPos;
+uniform vec2 uChapelDiscardCenter;
+uniform vec2 uChapelDiscardHalfExtents;
+uniform vec2 uApseDiscardCenter;
+uniform float uApseDiscardRadius;
+uniform vec2 uDescentDiscardCenter;
+uniform vec2 uDescentDiscardHalfExtents;
+void main()
+{
+    if (uChapelDiscardHalfExtents.x > 0.0 && uChapelDiscardHalfExtents.y > 0.0)
+    {
+        vec2 d = abs(vWorldPos.xz - uChapelDiscardCenter);
+        if (d.x < uChapelDiscardHalfExtents.x && d.y < uChapelDiscardHalfExtents.y)
+            discard;
+    }
+    if (uApseDiscardRadius > 0.0)
+    {
+        vec2 ad = vWorldPos.xz - uApseDiscardCenter;
+        if (ad.y <= 0.0 && dot(ad, ad) < uApseDiscardRadius * uApseDiscardRadius)
+            discard;
+    }
+    if (uDescentDiscardHalfExtents.x > 0.0 && uDescentDiscardHalfExtents.y > 0.0)
+    {
+        vec2 d2 = abs(vWorldPos.xz - uDescentDiscardCenter);
+        if (d2.x < uDescentDiscardHalfExtents.x && d2.y < uDescentDiscardHalfExtents.y)
+            discard;
+    }
 }
 )glsl";
 
@@ -117,6 +154,12 @@ void main() {}
 
 GLuint sTerrainDepthProgram = 0;
 GLint sTerrainDepthLVP = -1;
+GLint sTerrainDepthChapelDiscardCenterLoc = -1;
+GLint sTerrainDepthChapelDiscardHalfExtentsLoc = -1;
+GLint sTerrainDepthApseDiscardCenterLoc = -1;
+GLint sTerrainDepthApseDiscardRadiusLoc = -1;
+GLint sTerrainDepthDescentDiscardCenterLoc = -1;
+GLint sTerrainDepthDescentDiscardHalfExtentsLoc = -1;
 
 GLuint sSceneDepthProgram = 0;
 GLint sSceneDepthLVP = -1;
@@ -230,7 +273,7 @@ bool initShadowPass()
         return false;
     }
 
-    sTerrainDepthProgram = engine::gl::compileProgram(kTerrainDepthVS, kPassthroughFS);
+    sTerrainDepthProgram = engine::gl::compileProgram(kTerrainDepthVS, kTerrainDepthFS);
     sSceneDepthProgram = engine::gl::compileProgram(kSceneDepthVS, kPassthroughFS);
     sTreeDepthProgram = engine::gl::compileProgram(kTreeDepthVS, kTreeDepthFS);
     sSkeletalDepthProgram = engine::gl::compileProgram(kSkeletalDepthVS, kPassthroughFS);
@@ -242,6 +285,18 @@ bool initShadowPass()
     }
 
     sTerrainDepthLVP = glGetUniformLocation(sTerrainDepthProgram, "uLightViewProj");
+    sTerrainDepthChapelDiscardCenterLoc =
+        glGetUniformLocation(sTerrainDepthProgram, "uChapelDiscardCenter");
+    sTerrainDepthChapelDiscardHalfExtentsLoc =
+        glGetUniformLocation(sTerrainDepthProgram, "uChapelDiscardHalfExtents");
+    sTerrainDepthApseDiscardCenterLoc =
+        glGetUniformLocation(sTerrainDepthProgram, "uApseDiscardCenter");
+    sTerrainDepthApseDiscardRadiusLoc =
+        glGetUniformLocation(sTerrainDepthProgram, "uApseDiscardRadius");
+    sTerrainDepthDescentDiscardCenterLoc =
+        glGetUniformLocation(sTerrainDepthProgram, "uDescentDiscardCenter");
+    sTerrainDepthDescentDiscardHalfExtentsLoc =
+        glGetUniformLocation(sTerrainDepthProgram, "uDescentDiscardHalfExtents");
     sSceneDepthLVP = glGetUniformLocation(sSceneDepthProgram, "uLightViewProj");
     sSceneDepthModel = glGetUniformLocation(sSceneDepthProgram, "uModel");
     sTreeDepthLVP = glGetUniformLocation(sTreeDepthProgram, "uLightViewProj");
@@ -395,6 +450,24 @@ void useTerrainDepthShader()
 {
     glUseProgram(sTerrainDepthProgram);
     glUniformMatrix4fv(sTerrainDepthLVP, 1, GL_FALSE, glm::value_ptr(sLightViewProj));
+}
+
+void setTerrainDepthChapelDiscard(const glm::vec2& center, const glm::vec2& half_extents)
+{
+    glUniform2f(sTerrainDepthChapelDiscardCenterLoc, center.x, center.y);
+    glUniform2f(sTerrainDepthChapelDiscardHalfExtentsLoc, half_extents.x, half_extents.y);
+}
+
+void setTerrainDepthApseDiscard(const glm::vec2& center, float radius)
+{
+    glUniform2f(sTerrainDepthApseDiscardCenterLoc, center.x, center.y);
+    glUniform1f(sTerrainDepthApseDiscardRadiusLoc, radius);
+}
+
+void setTerrainDepthDescentDiscard(const glm::vec2& center, const glm::vec2& half_extents)
+{
+    glUniform2f(sTerrainDepthDescentDiscardCenterLoc, center.x, center.y);
+    glUniform2f(sTerrainDepthDescentDiscardHalfExtentsLoc, half_extents.x, half_extents.y);
 }
 
 void useSceneDepthShader()

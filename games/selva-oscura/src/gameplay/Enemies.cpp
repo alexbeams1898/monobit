@@ -254,9 +254,9 @@ void tickEnemyLocomotion(Actor& a, float dt, const selva::tuning::Tunables& tun)
         a.pos.x += a.velocity_xz.x * dt;
         a.pos.z += a.velocity_xz.y * dt;
     }
-    // Snap Y to terrain so the actor's feet stay on the heightmap
-    // surface as it walks across slopes.
-    a.pos.y = selva::world::sampleHeight(a.pos.x, a.pos.z);
+    // Snap Y to the ground so the actor's feet stay on the heightmap
+    // surface (or on any walkable BoxCollider like a stair step).
+    a.pos.y = selva::world::groundHeight(a.pos.x, a.pos.z, a.pos.y);
 
     // Turn yaw toward turn_intent_yaw, shortest-path. Wrap delta into
     // [-pi, pi] so a 350° desired yaw doesn't take the long way around.
