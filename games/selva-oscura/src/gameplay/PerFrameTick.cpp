@@ -43,7 +43,10 @@
 #include "render/TreeShader.h"
 #include "render/WorldRenderer.h"
 #include "ui/ComboHud.h"
+#include "physics/PhysicsWorld.h"
 #include "world/Collision.h"
+#include "world/PhysicsScene.h"
+#include "world/Scene.h"
 #include "world/Terrain.h"
 #include "world/TreeAssets.h"
 
@@ -1973,45 +1976,6 @@ static const char* selectLocomotionClipFromSpeed(float target_speed, bool is_arm
             return is_armed ? "sword_and_shield_idle_4" : "unarmed_combat_idle";
         return "standard_idle";
     }
-    // Incline-based stair/slope detection: sample the ground gradient
-    // at the player's XZ, dot it with the walking direction. Negative
-    // dot product = ground tilts DOWN in the walk direction (descending),
-    // positive = UP. Works for stairs, ramps, hills uniformly — no
-    // dependence on per-frame Y motion (which fights with gravity).
-    {
-        const float spd_sq = glm::dot(sPlayer.velocity_xz, sPlayer.velocity_xz);
-        constexpr float kMinSpeedForSlopeDetect = 0.5f * 0.5f; // m/s squared
-        if (spd_sq > kMinSpeedForSlopeDetect)
-        {
-            // Sample ground in +X and +Z directions to get the gradient.
-            constexpr float kSampleStep = 0.30f; // half a stair tread
-            const float y_here = selva::world::groundHeight(sPlayer.pos.x, sPlayer.pos.z,
-                                                            sPlayer.pos.y);
-            const float y_xp = selva::world::groundHeight(sPlayer.pos.x + kSampleStep,
-                                                          sPlayer.pos.z, sPlayer.pos.y);
-            const float y_zp = selva::world::groundHeight(sPlayer.pos.x,
-                                                          sPlayer.pos.z + kSampleStep,
-                                                          sPlayer.pos.y);
-            const float dy_dx = (y_xp - y_here) / kSampleStep;
-            const float dy_dz = (y_zp - y_here) / kSampleStep;
-            // Walking direction (unit-ish).
-            const glm::vec2 walk_dir =
-                sPlayer.velocity_xz / std::sqrt(spd_sq);
-            // Slope along walk direction.
-            const float slope_along_walk = dy_dx * walk_dir.x + dy_dz * walk_dir.y;
-            // EMA smoothing to avoid flicker at step edges where the
-            // sampled gradient jumps between flat (on a tread) and
-            // a full rise.
-            static float sSmoothedSlope = 0.0f;
-            constexpr float kSmooth = 0.20f;
-            sSmoothedSlope = sSmoothedSlope * (1.0f - kSmooth) + slope_along_walk * kSmooth;
-            constexpr float kSlopeThreshold = 0.15f; // ~8.5° slope
-            if (sSmoothedSlope < -kSlopeThreshold)
-                return "descending_stairs";
-            if (sSmoothedSlope > kSlopeThreshold)
-                return "walking_up_the_stairs";
-        }
-    }
     if (target_speed <= tun.walk_to_run_speed)
         return "walking";
     return "running";
@@ -2783,70 +2747,92 @@ static LocomotionPick tickPlayerLocomotionAndSampler(const glm::vec3& moveIntent
     return pick;
 }
 
-// Resolve player vs static cylinders + enemy capsules, then apply
-// gravity + snap to ground. Runs LAST in the per-frame tick so
-// post-translation drift from any source (velocity, clip-hip, dodge
-// steer) is corrected before render. Player capsule radius matches
-// humanoid shoulder width.
+// Drive the player via the physics character controller.
 //
-// Gravity model: integrate velocity_y (-9.81 m/s² accel) and pos.y
-// every frame. If the resulting pos.y is at or below ground, snap
-// to ground and zero velocity_y (landed). Otherwise leave pos.y in
-// the air, velocity_y unclamped (still falling). Short steps drop
-// the actor onto the next step naturally; walking off a ledge
-// produces a real fall instead of a Y-teleport.
+// Each frame:
+//   1) `applyPerFrameTranslation` (and root-motion clip hip-delta) have
+//      already written what the gameplay system WANTS the player's pos
+//      to be this frame. We compute a velocity from (desired - current)
+//      / dt and hand that to the Jolt CharacterVirtual.
+//   2) updatePhysics steps the world, the character integrates the
+//      velocity + gravity, swept-collides against terrain + chapel +
+//      every static body, slides along walls, climbs stairs ≤ step
+//      tolerance, slides off slopes too steep.
+//   3) Read the final position back into sPlayer.pos. That's the actual
+//      ground truth; combat / animation / camera all read sPlayer.pos
+//      so they see what physics agreed to.
 static void resolvePlayerCollisionAndSnap(float dt)
 {
-    constexpr float kPlayerRadius = 0.35f;
-    constexpr float kGravity = -9.81f;     // m/s²
-    constexpr float kTerminalVelocity = -50.0f;
-    glm::vec2 player_xz(sPlayer.pos.x, sPlayer.pos.z);
-    selva::world::resolveBodyCollision(player_xz, kPlayerRadius);
-    for (const auto* enemy : selva::gameplay::enemies())
-    {
-        const glm::vec2 e_xz(enemy->pos.x, enemy->pos.z);
-        const glm::vec2 delta = player_xz - e_xz;
-        const float dist_sq = glm::dot(delta, delta);
-        const float min_dist = kPlayerRadius + enemy->body.collider_radius;
-        if (dist_sq >= min_dist * min_dist || dist_sq <= 1e-8f)
-            continue;
-        const float dist = std::sqrt(dist_sq);
-        player_xz += (delta / dist) * (min_dist - dist);
-    }
-    sPlayer.pos.x = player_xz.x;
-    sPlayer.pos.z = player_xz.y;
+    using namespace engine::physics;
+    if (dt <= 0.0f) return;
 
-    // Gravity. With continuous ramp colliders (no per-step boxes),
-    // walking down stairs/slopes returns a monotonically-decreasing
-    // ground Y — no need for a step-down snap hybrid. Just integrate
-    // velocity_y when airborne; snap when landing.
-    const float prev_y = sPlayer.pos.y;
-    sPlayer.velocity_y += kGravity * dt;
-    if (sPlayer.velocity_y < kTerminalVelocity)
-        sPlayer.velocity_y = kTerminalVelocity;
-    float new_y = prev_y + sPlayer.velocity_y * dt;
-    const float ground_y =
-        selva::world::groundHeight(sPlayer.pos.x, sPlayer.pos.z, prev_y);
-    if (new_y <= ground_y)
+    const bool log_on = selva::tuning::current().debug_physics_log;
+    static FILE* sPhysLog = nullptr;
+    if (log_on && sPhysLog == nullptr)
     {
-        new_y = ground_y;
-        sPlayer.velocity_y = 0.0f;
+        sPhysLog = std::fopen("physics-debug.log", "w");
+        selva::world::writeInitStatsToLog(sPhysLog);
     }
-    sPlayer.pos.y = new_y;
 
-    if (selva::tuning::current().debug_ground_height_log)
+    // Lazy create on first frame (sPlayer.pos may not be settled until
+    // the first locomotion tick).
+    BodyHandle body = selva::world::playerBody();
+    if (body == kInvalidBody)
     {
-        static FILE* sGravLog = nullptr;
-        if (sGravLog == nullptr)
-            sGravLog = std::fopen("gravity-debug.log", "w");
-        if (sGravLog != nullptr)
+        body = selva::world::createPlayerBody(sPlayer.pos);
+        if (sPhysLog != nullptr)
         {
-            std::fprintf(sGravLog,
-                         "pos=(%.3f,%.3f,%.3f) prev_y=%.3f ground_y=%.3f vy=%.3f result_y=%.3f\n",
-                         sPlayer.pos.x, sPlayer.pos.y, sPlayer.pos.z, prev_y, ground_y,
-                         sPlayer.velocity_y, sPlayer.pos.y);
-            std::fflush(sGravLog);
+            std::fprintf(sPhysLog,
+                         "[create] body=%u spawn=(%.3f,%.3f,%.3f)\n",
+                         body.id, sPlayer.pos.x, sPlayer.pos.y, sPlayer.pos.z);
+            std::fflush(sPhysLog);
         }
+    }
+
+    // Compute desired XZ velocity from gameplay's intended position
+    // delta. Y is left to the character controller (gravity).
+    const glm::vec3 desired = sPlayer.pos;
+    const glm::vec3 current = characterPosition(body);
+    glm::vec3 v(0.0f);
+    v.x = (desired.x - current.x) / dt;
+    v.z = (desired.z - current.z) / dt;
+    setCharacterVelocity(body, v, /*apply_y*/ false);
+
+    updatePhysics(dt);
+
+    const glm::vec3 resolved = characterPosition(body);
+    sPlayer.pos = resolved;
+    // Keep velocity_xz / velocity_y fields in sync for existing
+    // animation/footstep/camera systems that read them.
+    sPlayer.velocity_xz = glm::vec2(v.x, v.z);
+    sPlayer.velocity_y = 0.0f; // physics owns Y now; animation reads only
+                                // for gait selection which uses XZ
+
+    if (sPhysLog != nullptr)
+    {
+        static int sFrameCounter = 0;
+        const BodyHandle ground = characterGroundBody(body);
+        const char* ground_name = (ground == kInvalidBody) ? "(none)" : bodyDebugName(ground);
+        static std::vector<BodyHandle> sContacts;
+        characterActiveContacts(body, sContacts);
+        std::fprintf(sPhysLog,
+                     "f=%d dt=%.4f pos=(%.3f,%.3f,%.3f) desired=(%.3f,%.3f,%.3f) "
+                     "v_xz=(%.3f,%.3f) onGround=%d ground='%s' "
+                     "pYaw=%.3f camYaw=%.3f camPitch=%.3f contacts=%zu",
+                     sFrameCounter, dt,
+                     sPlayer.pos.x, sPlayer.pos.y, sPlayer.pos.z,
+                     desired.x, desired.y, desired.z,
+                     v.x, v.z, isCharacterOnGround(body) ? 1 : 0,
+                     ground_name,
+                     sPlayer.yaw,
+                     selva::render::cameraYaw(),
+                     selva::render::cameraPitch(),
+                     sContacts.size());
+        for (BodyHandle c : sContacts)
+            std::fprintf(sPhysLog, " ['%s']", bodyDebugName(c));
+        std::fprintf(sPhysLog, "\n");
+        std::fflush(sPhysLog);
+        ++sFrameCounter;
     }
 }
 
@@ -3084,6 +3070,12 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
 
     tickCsvRecording(dt);
     logStateNarrative();
+
+    // Scene manager tick: advance any in-progress transitions, then
+    // check player overlap against the current scene's triggers
+    // (edge-fires a transition when player walks into a trigger AABB).
+    engine::world::tickSceneManager(static_cast<float>(dt));
+    engine::world::checkPlayerTriggers(sPlayer.pos);
 }
 
 // F2 toggle for the tree preview mode. While active, gameplay tick
@@ -3483,6 +3475,16 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
     const glm::vec3 camPos = sPlayer.pos - lookFwd * tun_atm.follow_distance +
                              glm::vec3(0.0f, tun_atm.follow_height, 0.0f);
 
+    // Scene-kind: drives whether terrain + sky are drawn. Interior
+    // scenes (chapel_interior, acheron) skip outdoor passes entirely
+    // because their world is sealed architecture; the sky pass would
+    // bleed light through wall seams + the terrain pass would draw
+    // surface ground BENEATH the chapel floor.
+    const engine::world::Scene* current_scene_ptr = engine::world::currentScenePtr();
+    const bool scene_is_interior =
+        current_scene_ptr != nullptr &&
+        current_scene_ptr->kind() == engine::world::SceneKind::Interior;
+
     // ---- Shadow depth pass ----
     {
         ZoneScopedN("shadow-depth-pass");
@@ -3581,8 +3583,25 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
         selva::render::setSceneViewProj(viewProj);
         selva::render::setSceneAtmosphere(kSunDir, kSunIntensity, camPos, kExposure);
         selva::render::setSceneShadow(lightVP, kSunDir, sPlayer.pos, 1);
-        const bool indoors = selva::world::isIndoors(glm::vec2(camPos.x, camPos.z));
+        const bool indoors = scene_is_interior;
         selva::render::setSceneIndoorMode(indoors);
+        selva::render::setSceneFlatShading(selva::tuning::current().debug_flat_shading);
+        if (selva::tuning::current().debug_msaa_state_log)
+        {
+            static int sMsaaFrameCounter = 0;
+            if ((sMsaaFrameCounter++ % 60) == 0)
+            {
+                GLint sample_buffers = -1, samples = -1, fb_binding = -1;
+                glGetIntegerv(GL_SAMPLE_BUFFERS, &sample_buffers);
+                glGetIntegerv(GL_SAMPLES, &samples);
+                glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &fb_binding);
+                const GLboolean msaa_enabled = glIsEnabled(GL_MULTISAMPLE);
+                std::fprintf(stderr,
+                             "[msaa-state] fbo=%d sample_buffers=%d samples=%d "
+                             "GL_MULTISAMPLE_enabled=%d\n",
+                             fb_binding, sample_buffers, samples, msaa_enabled);
+            }
+        }
         if (selva::tuning::current().debug_collision_log)
         {
             static FILE* sIndoorLog = nullptr;
@@ -3709,6 +3728,66 @@ void resetDebugRecordSamples(std::size_t expected)
 
 namespace selva::gameplay
 {
+void onSceneTransitionCommit(bool preserve_pos, const glm::vec3& spawn_pos,
+                             bool override_yaw, float spawn_yaw)
+{
+    if (preserve_pos)
+    {
+        // Seamless doorway: player stays at their current world
+        // position. Just sync the Jolt capsule to wherever
+        // sPlayer.pos already is (the body was destroyed with the
+        // old scene; new scene's bodies don't include the player,
+        // and the next resolvePlayerCollisionAndSnap will re-create
+        // it lazily at sPlayer.pos).
+        //
+        // Yaw: optionally override; otherwise keep.
+        if (override_yaw) sPlayer.yaw = spawn_yaw;
+        sPlayer.velocity_xz = glm::vec2(0.0f);
+        sPlayer.velocity_y = 0.0f;
+        const auto body = selva::world::playerBody();
+        if (body != engine::physics::kInvalidBody)
+            engine::physics::teleportCharacter(body, sPlayer.pos);
+        std::fprintf(stderr, "[teleport] PRESERVE pos=(%.3f,%.3f,%.3f) pYaw=%.3f\n",
+                     sPlayer.pos.x, sPlayer.pos.y, sPlayer.pos.z, sPlayer.yaw);
+        return;
+    }
+    teleportPlayerTo(spawn_pos, override_yaw, spawn_yaw);
+}
+
+void teleportPlayerTo(const glm::vec3& world_pos, bool override_yaw, float yaw)
+{
+    const float pre_pyaw = sPlayer.yaw;
+    const float pre_cyaw = selva::render::cameraYaw();
+    const float pre_cpitch = selva::render::cameraPitch();
+    std::fprintf(stderr,
+                 "[teleport] BEFORE pos=(%.3f,%.3f,%.3f) pYaw=%.3f camYaw=%.3f camPitch=%.3f vel_xz=(%.3f,%.3f) vel_y=%.3f\n",
+                 sPlayer.pos.x, sPlayer.pos.y, sPlayer.pos.z, pre_pyaw, pre_cyaw, pre_cpitch,
+                 sPlayer.velocity_xz.x, sPlayer.velocity_xz.y, sPlayer.velocity_y);
+    sPlayer.pos = world_pos;
+    if (override_yaw)
+        sPlayer.yaw = yaw;
+    sPlayer.velocity_xz = glm::vec2(0.0f);
+    sPlayer.velocity_y = 0.0f;
+    std::fprintf(stderr,
+                 "[teleport] AFTER  pos=(%.3f,%.3f,%.3f) pYaw=%.3f camYaw=%.3f camPitch=%.3f override_yaw=%d\n",
+                 sPlayer.pos.x, sPlayer.pos.y, sPlayer.pos.z, sPlayer.yaw,
+                 selva::render::cameraYaw(), selva::render::cameraPitch(),
+                 override_yaw ? 1 : 0);
+    // Also move the Jolt capsule, else physics snaps the player back
+    // to the previous position the next time resolvePlayerCollisionAndSnap
+    // reads characterPosition.
+    const auto body = selva::world::playerBody();
+    if (body != engine::physics::kInvalidBody)
+    {
+        engine::physics::teleportCharacter(body, world_pos);
+        std::fprintf(stderr, "[teleport] Jolt capsule moved\n");
+    }
+    else
+    {
+        std::fprintf(stderr, "[teleport] WARNING: player Jolt body is invalid\n");
+    }
+}
+
 void selvaPerFrame(::Engine& engine, ::EntityManager& em, double dt)
 {
     ::selvaPerFrame(engine, em, dt);
@@ -3732,18 +3811,16 @@ void loadActiveCharacterIntoPlayer(const selva::PlayerProfile& profile)
     // characters wake up where they quit.
     const glm::vec2 spawn_xz = selva::world::playerSpawnXZ();
     const float spawn_ground_y = selva::world::sampleHeight(spawn_xz.x, spawn_xz.y);
-    if (profile.has_saved_pose)
-    {
-        sPlayer.pos = glm::vec3(profile.pos_x, profile.pos_y, profile.pos_z);
-        sPlayer.yaw = profile.yaw;
-    }
-    else
-    {
-        sPlayer.pos = glm::vec3(spawn_xz.x, spawn_ground_y, spawn_xz.y);
-        sPlayer.yaw = sPlayer.spawn_yaw;
-    }
+    const glm::vec3 target_pos = profile.has_saved_pose
+        ? glm::vec3(profile.pos_x, profile.pos_y, profile.pos_z)
+        : glm::vec3(spawn_xz.x, spawn_ground_y, spawn_xz.y);
+    const float target_yaw = profile.has_saved_pose ? profile.yaw : sPlayer.spawn_yaw;
+    // Use teleportPlayerTo so the Jolt character body moves with
+    // sPlayer.pos. Without this, the body keeps the previous run's
+    // position and snaps sPlayer.pos back on the next physics tick
+    // (new game starts at old character's last position).
+    teleportPlayerTo(target_pos, true, target_yaw);
     sPlayer.spawn_pos = glm::vec3(spawn_xz.x, spawn_ground_y, spawn_xz.y);
-    sPlayer.velocity_xz = glm::vec2(0.0f);
     sPlayer.is_dead = false;
     sPlayer.death_time = -1.0f;
     sPlayer.last_damage_time = -1.0f;

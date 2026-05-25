@@ -4,6 +4,7 @@
 #include "Tunables.h"
 #include "WallClock.h"
 #include "gl/ShaderUtils.h"
+#include "physics/PhysicsWorld.h"
 #include "render/Camera.h"
 #include "render/SceneGeometry.h"
 #include "render/SceneShaders.h"
@@ -12,6 +13,8 @@
 #include "render/TreeShader.h"
 #include "world/Collision.h"
 #include "world/CryptLayout.h"
+#include "world/JsonScene.h"
+#include "world/Scene.h"
 #include "world/StaticMeshAssets.h"
 #include "world/Terrain.h"
 #include "world/TreeAssets.h"
@@ -107,8 +110,12 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
                                  ? static_cast<float>(windowWidth()) /
                                        static_cast<float>(windowHeight())
                                  : 1.0f;
+        // near plane matches the third-person path; see comment there.
+        // FPV uses 0.2 (a bit tighter than 0.5 because FPV camera
+        // sits inside the player capsule and can be very close to
+        // arm/hand geometry).
         const glm::mat4 proj = glm::perspective(
-            glm::radians(settings.fov_degrees_first_person), aspect, 0.1f, 200.0f);
+            glm::radians(settings.fov_degrees_first_person), aspect, 0.2f, 200.0f);
 
         // FPV head-position model: track the PLAYER position 1:1
         // (the camera follows the player's bulk motion without lag),
@@ -291,8 +298,11 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
 
     const glm::vec3 lookAt(player_pos.x, smoothed_lookat_y, player_pos.z);
 
-    // Indoor follow-distance lerp.
-    const bool indoors = selva::world::isIndoors(glm::vec2(player_pos.x, player_pos.z));
+    // Indoor follow-distance lerp. Indoor-ness is a scene-kind attribute
+    // now (uniform across the whole scene) — set per scene in scene.json.
+    const engine::world::Scene* scene_ptr = engine::world::currentScenePtr();
+    const bool indoors = scene_ptr != nullptr &&
+                         scene_ptr->kind() == engine::world::SceneKind::Interior;
     const float target_follow_distance =
         indoors ? tun.follow_distance_indoor : tun.follow_distance;
     static float sSmoothedFollowDistance = tun.follow_distance;
@@ -325,14 +335,15 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
                                                          : glm::vec3(0.0f, 1.0f, 0.0f);
     const float margin = tun.camera_pull_in_margin;
     const float sphere_radius = tun.camera_pull_in_radius;
-    const selva::world::RaycastHit hit = selva::world::raycastScene(
-        selva::world::currentScene(), lookAt, cam_dir, desired_separation + margin);
+    const engine::physics::RayHit hit =
+        engine::physics::raycast(lookAt, cam_dir, desired_separation + margin);
 
     const float min_separation = std::max(0.0f, tun.camera_pull_in_min_separation);
     float target_separation =
         hit.hit ? std::max(min_separation, hit.distance - margin) : desired_separation;
 
     // Push-out: shrink target separation until sphere doesn't overlap.
+    // Sphere catches walls perpendicular to the forward ray (corner-pocket).
     if (sphere_radius > 0.0f && target_separation > min_separation)
     {
         constexpr int kMaxPushOutSteps = 24;
@@ -341,8 +352,7 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
         for (int i = 0; i < kMaxPushOutSteps; ++i)
         {
             const glm::vec3 try_pos = lookAt + cam_dir * try_sep;
-            if (!selva::world::sphereOverlapsScene(selva::world::currentScene(), try_pos,
-                                                   sphere_radius))
+            if (!engine::physics::sphereOverlap(try_pos, sphere_radius))
                 break;
             if (try_sep <= min_separation)
                 break;
@@ -353,45 +363,12 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
         target_separation = try_sep;
     }
 
-    // Indoor enforcement folded into target_separation: if player is
-    // indoors but the candidate camera position is outdoors, shrink
-    // target until camera is also indoors. Done BEFORE smoothing so
-    // smoothing converges naturally instead of fighting a post-pass.
-    if (indoors)
-    {
-        const glm::vec3 candidate = lookAt + cam_dir * target_separation;
-        if (!selva::world::isIndoors(glm::vec2(candidate.x, candidate.z)))
-        {
-            // Check if ANY sep in [min_separation, target_separation]
-            // produces an indoor camera position. When cam_dir points
-            // out of the chapel (player just inside the threshold
-            // facing inward → camera ray fires outward), NO indoor
-            // sep exists along this ray, and enforcement would
-            // collapse the camera to player. Skip enforcement in
-            // that case — accept the outdoor camera until the player
-            // moves deeper inside and the ray geometry changes.
-            const glm::vec3 min_pos = lookAt + cam_dir * min_separation;
-            if (selva::world::isIndoors(glm::vec2(min_pos.x, min_pos.z)))
-            {
-                // Find LARGEST sep where camera is indoor.
-                float lo = min_separation;
-                float hi = target_separation;
-                for (int i = 0; i < 7; ++i)
-                {
-                    const float mid = (lo + hi) * 0.5f;
-                    const glm::vec3 p = lookAt + cam_dir * mid;
-                    if (selva::world::isIndoors(glm::vec2(p.x, p.z)))
-                        lo = mid;
-                    else
-                        hi = mid;
-                }
-                target_separation = lo;
-            }
-            // else: no valid indoor sep on this ray; leave
-            // target_separation alone (camera ends up outdoor, will
-            // self-correct as player walks deeper / turns).
-        }
-    }
+    // Note: the legacy "if-player-indoors-shrink-until-camera-indoors"
+    // enforcement is gone. Indoor-ness is now a per-scene attribute, so
+    // the camera is always in the same scene as the player — no risk of
+    // the camera "exiting" the chapel mid-frame. Walls of the active
+    // scene are real Jolt bodies, so the raycast + sphere-overlap above
+    // already keep the camera on the player's side of any wall.
 
     // SYMMETRIC smoothing both directions. Per Alex's spec: "each side
     // lerp the same to the chest." Wall safety is handled by the
@@ -420,6 +397,40 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
     }
     glm::vec3 camPos = lookAt + cam_dir * sSmoothedSeparation;
 
+    // Crosshair raycast log: aim camera at flickering surface, this
+    // walks 5 hits forward along the view ray, logs each body name +
+    // distance. Aim, wait 1s for the log, then read it to identify
+    // which mesh primitives are at the flicker spot.
+    if (tun.debug_crosshair_raycast_log)
+    {
+        static FILE* sXLog = nullptr;
+        static int sXFrame = 0;
+        if (sXLog == nullptr) sXLog = std::fopen("crosshair-debug.log", "w");
+        if (sXLog != nullptr && (sXFrame++ % 60) == 0)
+        {
+            const glm::vec3 ray_dir = lookFwd;  // camera forward (mouse look)
+            std::fprintf(sXLog, "[frame %d] camPos=(%.2f,%.2f,%.2f) lookFwd=(%.3f,%.3f,%.3f)\n",
+                         sXFrame, camPos.x, camPos.y, camPos.z, ray_dir.x, ray_dir.y, ray_dir.z);
+            glm::vec3 origin = camPos;
+            for (int i = 0; i < 6; ++i)
+            {
+                const auto hit_i = engine::physics::raycast(origin, ray_dir, 200.0f);
+                if (!hit_i.hit) {
+                    std::fprintf(sXLog, "  hit %d: (no hit)\n", i);
+                    break;
+                }
+                const char* nm = engine::physics::bodyDebugName(hit_i.body);
+                std::fprintf(sXLog,
+                             "  hit %d: dist=%.3f pos=(%.2f,%.2f,%.2f) normal=(%.2f,%.2f,%.2f) body='%s'\n",
+                             i, hit_i.distance, hit_i.position.x, hit_i.position.y, hit_i.position.z,
+                             hit_i.normal.x, hit_i.normal.y, hit_i.normal.z, nm ? nm : "(unnamed)");
+                // Step ray origin slightly past this hit so the next cast picks up the next surface.
+                origin = hit_i.position + ray_dir * 0.05f;
+            }
+            std::fflush(sXLog);
+        }
+    }
+
     // Ground-clearance clamp. Skip when the player is indoors (inside
     // the chapel + descent shaft): the camera is following the player
     // BELOW terrain plateau Y into the underground descent, and the
@@ -429,11 +440,41 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
     // away from the descending player. Using player Y as the floor
     // instead lets the camera follow the descent.
     constexpr float kCamMinClearance = 1.0f;
-    const bool player_indoors = selva::world::isIndoors(glm::vec2(player_pos.x, player_pos.z));
-    const float floor_y = player_indoors ? player_pos.y
-                                         : selva::world::sampleHeight(camPos.x, camPos.z);
+    const float terrain_floor_y = selva::world::sampleHeight(camPos.x, camPos.z);
+    const float floor_y = indoors ? player_pos.y : terrain_floor_y;
+    const float camY_before_clamp = camPos.y;
     if (camPos.y < floor_y + kCamMinClearance)
         camPos.y = floor_y + kCamMinClearance;
+    const float camY_after_clamp = camPos.y;
+
+    // Descent diagnosis log: when the player is below chapel-floor
+    // level, capture every input to the camera Y decision so we can
+    // see what's pinning the camera up (terrain sample, clamp, smooth
+    // separation, scene-kind, lookAt Y).
+    if (player_pos.y < 31.0f)
+    {
+        static FILE* sDescentLog = nullptr;
+        static int sDescentFrame = 0;
+        if (sDescentLog == nullptr)
+            sDescentLog = std::fopen("camera-descent-debug.log", "w");
+        if (sDescentLog != nullptr)
+        {
+            const char* scene_name =
+                (scene_ptr != nullptr) ? scene_ptr->sceneId().c_str() : "<none>";
+            std::fprintf(sDescentLog,
+                         "[%d] pY=%.3f lookAtY=%.3f camY_pre=%.3f camY_post=%.3f "
+                         "floor_y=%.3f terrain_y=%.3f indoors=%d scene='%s' "
+                         "sep=%.3f cam_dir.y=%.3f hit=%d hit_dist=%.3f "
+                         "smoothed_offset=%.3f\n",
+                         sDescentFrame, player_pos.y, lookAt.y, camY_before_clamp,
+                         camY_after_clamp, floor_y, terrain_floor_y,
+                         indoors ? 1 : 0, scene_name, sSmoothedSeparation,
+                         cam_dir.y, hit.hit ? 1 : 0, hit.distance,
+                         sSmoothedOffset);
+            std::fflush(sDescentLog);
+            ++sDescentFrame;
+        }
+    }
 
     if (tun.debug_camera_pull_in_log)
     {
@@ -444,8 +485,7 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
             sPullInLog = std::fopen("camera-debug.log", "w");
         if (sPullInLog != nullptr)
         {
-            const bool overlap = selva::world::sphereOverlapsScene(
-                selva::world::currentScene(), camPos, sphere_radius);
+            const bool overlap = engine::physics::sphereOverlap(camPos, sphere_radius);
             const float cam_y_above_chest = camPos.y - lookAt.y;
             const float cam_z_from_player = camPos.z - player_pos.z;
             const float cam_x_from_player = camPos.x - player_pos.x;
@@ -453,8 +493,9 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
                                                 cam_z_from_player * cam_z_from_player);
             const glm::vec3 player_vel = player_pos - sPrevPlayerPos;
             const float player_speed = glm::length(player_vel);
-            const bool cam_indoors =
-                selva::world::isIndoors(glm::vec2(camPos.x, camPos.z));
+            // cam_indoors == player indoors now: scene-kind is uniform
+            // across the whole scene.
+            const bool cam_indoors = indoors;
             std::fprintf(
                 sPullInLog,
                 "[%d] pPos=(%.2f,%.2f,%.2f) pVel=(%.3f,%.3f,%.3f) pSpd=%.3f "
@@ -484,8 +525,15 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
     const float aspect =
         windowHeight() > 0 ? static_cast<float>(windowWidth()) / static_cast<float>(windowHeight())
                            : 1.0f;
+    // Bumped near plane 0.1 → 0.5 to fix depth-precision flicker on
+    // descent corridor walls/ceiling. At 140m corridor length with
+    // standard depth precision and near/far ratio 2000, surfaces
+    // separated by <3cm z-fight. Bumping near 5× gives ~5× better
+    // precision everywhere, eliminating the corridor flicker. Cost:
+    // camera can't get within 0.5m of geometry without clipping —
+    // acceptable since camera_pull_in_min_separation is 0.5m.
     const glm::mat4 proj =
-        glm::perspective(glm::radians(settings.fov_degrees_third_person), aspect, 0.1f, 200.0f);
+        glm::perspective(glm::radians(settings.fov_degrees_third_person), aspect, 0.5f, 200.0f);
     return proj * sLastView;
 }
 
@@ -537,6 +585,13 @@ void renderTerrain()
     // covering only the hole footprint (X span = stair tunnel,
     // Z range from chapel-back to the door-side hole edge so it
     // covers both the stair hole and the back-wall tunnel mouth).
+    // Shader discard rect = stair shaft + back-wall tunnel mouth
+    // only. The chapel mesh has no interior floor primitive — the
+    // chapel interior IS terrain at plateau Y (the chapel plinth-top
+    // FlushAt modifier raises terrain to chapel-floor level). So we
+    // ONLY discard the shaft area (where the player must fall
+    // through to the descent) and leave terrain everywhere else
+    // inside the chapel as the walkable surface.
     using namespace selva::world::crypt_layout;
     const float hole_z_near = kCryptZ;  // chapel-local Y=0 (door side of hole)
     const float hole_z_far = kCryptZ - kHalfLength;  // back wall (covers tunnel mouth too)
@@ -580,18 +635,8 @@ const glm::mat4& cryptModelMatrix()
     static bool sInit = false;
     if (!sInit)
     {
-        using namespace selva::world::crypt_layout;
-        // Bury the plinth so the chapel's interior floor sits at
-        // terrain level. The kZFightOffset extra lift puts the
-        // interior stone slightly above the terrain plane so the
-        // two coplanar surfaces don't fight for depth (the stone
-        // wins; the player visually walks on the chapel floor even
-        // though their Y comes from the terrain sample, which is
-        // ~1cm below — imperceptible).
-        constexpr float kZFightOffset = 0.01f;
-        sCached = glm::translate(
-            glm::mat4(1.0f),
-            glm::vec3(kCryptX, kChapelGroundY - kPlinthHeight + kZFightOffset, kCryptZ));
+        sCached = glm::translate(glm::mat4(1.0f),
+                                 selva::world::crypt_layout::chapelWorldOrigin());
         sInit = true;
     }
     return sCached;
@@ -611,6 +656,18 @@ void drawStaticPrimitive(const selva::world::StaticMeshPrimitive& p)
 
 void renderStaticMeshes()
 {
+    // Active scene owns its static meshes (JsonScene::renderMeshes).
+    // Positions are baked in world space by the scene loader, so
+    // model matrix is identity; the scene-render call sets it.
+    auto* scene = dynamic_cast<selva::world::JsonScene*>(
+        engine::world::currentScenePtr());
+    if (scene != nullptr)
+    {
+        scene->renderMeshes();
+        return;
+    }
+    // Fallback: legacy chapel global (used before the scene system
+    // takes over, e.g. before any scene is activated at boot).
     const selva::world::StaticMesh* crypt = selva::world::cryptMesh();
     if (crypt == nullptr)
         return;
@@ -621,9 +678,6 @@ void renderStaticMeshes()
 
 void renderStaticMeshesDepth()
 {
-    const selva::world::StaticMesh* crypt = selva::world::cryptMesh();
-    if (crypt == nullptr)
-        return;
     // beginDepthPass set cull-front for self-shadow-acne reduction on
     // open geometry. Enclosed architecture has thick walls with faces
     // on both sides; cull-front omits surfaces perpendicular to the
@@ -632,15 +686,36 @@ void renderStaticMeshesDepth()
     // bug). Disable culling so both faces of every wall get written;
     // the receiver's normal-offset bias handles self-shadow.
     glDisable(GL_CULL_FACE);
-    const glm::mat4 model = cryptModelMatrix();
-    selva::render::setSceneDepthModel(model);
-    for (const auto& prim : crypt->primitives)
+
+    auto* scene = dynamic_cast<selva::world::JsonScene*>(
+        engine::world::currentScenePtr());
+    if (scene != nullptr)
     {
-        if (prim.vao == 0)
-            continue;
-        glBindVertexArray(prim.vao);
-        glDrawElements(GL_TRIANGLES, prim.index_count, GL_UNSIGNED_INT, nullptr);
+        // Scene-owned meshes: positions baked in world space; depth
+        // model matrix is identity. Use renderMeshesDepth which does
+        // NOT touch color shader state (different shader program is
+        // bound by the depth pass).
+        selva::render::setSceneDepthModel(glm::mat4(1.0f));
+        scene->renderMeshesDepth();
     }
+    else
+    {
+        // Legacy fallback.
+        const selva::world::StaticMesh* crypt = selva::world::cryptMesh();
+        if (crypt != nullptr)
+        {
+            const glm::mat4 model = cryptModelMatrix();
+            selva::render::setSceneDepthModel(model);
+            for (const auto& prim : crypt->primitives)
+            {
+                if (prim.vao == 0)
+                    continue;
+                glBindVertexArray(prim.vao);
+                glDrawElements(GL_TRIANGLES, prim.index_count, GL_UNSIGNED_INT, nullptr);
+            }
+        }
+    }
+
     // Restore cull-front for subsequent depth-pass casters (skeletal
     // actors, etc.) per the beginDepthPass contract.
     glEnable(GL_CULL_FACE);

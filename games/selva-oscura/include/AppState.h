@@ -134,6 +134,14 @@ struct PlayerProfile
     float pos_z = 0.0f;
     float yaw = 0.0f;
     bool has_saved_pose = false;
+
+    // Scene the player was in when saved. Player pos above is in this
+    // scene's local coordinate space. Missing / empty = "surface"
+    // (back-compat for save files written before the Scenes system
+    // existed). When the scene-aware load runs:
+    //   1. activateSceneImmediate(findSceneId(current_scene_id))
+    //   2. teleport player capsule to (pos_x, pos_y, pos_z), yaw
+    std::string current_scene_id;
 };
 
 // ---------------------------------------------------------------------------

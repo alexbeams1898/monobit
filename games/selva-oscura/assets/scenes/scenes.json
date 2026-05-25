@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "_comment": "Top-level scene registry. Engine reads this at boot, loads each scene's scene.json from assets/scenes/<scene_id>/scene.json. The default_spawn_scene is the scene a NEW character spawns in (no save data). For Selva Oscura that's the surface (wake-zone at the bottom of the colle).",
+  "scenes": [
+    "surface",
+    "chapel_interior",
+    "acheron"
+  ],
+  "default_spawn_scene": "surface"
+}

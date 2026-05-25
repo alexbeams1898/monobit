@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "scene_id": "surface",
+  "debug_name": "Selva surface (outdoor wake-zone + colle + chapel exterior)",
+  "_comment": "First scene. Today this contains the chapel mesh inline; the asset split (crypt_exterior.glb + crypt_interior.glb) happens in a later step. For now the same crypt.glb is loaded here so the game looks identical to pre-Scenes state.",
+  "terrain": {
+    "config": "assets/world/terrain/config.json",
+    "region": "selva_inner"
+  },
+  "static_meshes": [
+    {
+      "path": "assets/world/static_meshes/crypt.glb",
+      "world_origin": [0.0, 31.96, -210.0],
+      "surface_tag": "Architecture",
+      "debug_name": "chapel"
+    }
+  ],
+  "_terrain_modifiers_note": "Chapel plateau + stair shaft hole modifiers are STILL registered via crypt_layout::registerChapelTerrainModifiers() in main.cpp BEFORE initTerrain(), because terrain is a global singleton today. When terrain becomes scene-local, modifier declarations move into this JSON.",
+  "terrain_modifiers": [],
+  "triggers": [
+    {
+      "id": "chapel_door_enter",
+      "_comment": "Player walks into the chapel through the front door. Door is at chapel-local Y = -BODY_LENGTH/2 - PLINTH_PROJECTION ≈ -4.05, chapel center at (0, -210); world Z = -210 + 4 = -206 for the door's front face. Trigger sits just inside the door so the player has stepped onto the threshold before the transition fires.",
+      "center": [0.0, 33.0, -206.5],
+      "half_extents": [0.5, 1.2, 0.3],
+      "target_scene": "chapel_interior",
+      "preserve_player_pos": true,
+      "target_spawn_pos": [0.0, 33.0, -207.0],
+      "target_yaw": 3.14159,
+      "transition_mode": "Instant",
+      "fade_duration_seconds": 0.0,
+      "debug_name": "chapel_door_in"
+    }
+  ],
+  "ambient": { "color": [0.16, 0.18, 0.22] },
+  "sky": { "kind": "atmospheric" },
+  "footstep_default": "footstep_grass",
+  "default_spawn": { "pos": [0.0, 0.0, 0.0], "yaw": 0.0 }
+}

@@ -47,6 +47,7 @@ void transformPos(const float m[16], const float p[3], float out[3])
 }
 
 bool loadPrimitive(const cgltf_primitive* prim, const float node_world[16],
+                   const float world_offset[3],
                    const std::string& node_name, StaticMeshPrimitive& out)
 {
     // Vertex layout is position-only + per-vertex shade=1.0; normal is
@@ -66,6 +67,9 @@ bool loadPrimitive(const cgltf_primitive* prim, const float node_world[16],
 
         float wp[3];
         transformPos(node_world, p, wp);
+        wp[0] += world_offset[0];
+        wp[1] += world_offset[1];
+        wp[2] += world_offset[2];
 
         verts[i].position[0] = wp[0];
         verts[i].position[1] = wp[1];
@@ -110,6 +114,12 @@ bool loadPrimitive(const cgltf_primitive* prim, const float node_world[16],
     // a chapel-floor slab. Used by the terrain stencil pass to carve
     // terrain rendering out of the chapel indoor perimeter.
     out.floor_mask = node_name.rfind("crypt_plinth", 0) == 0;
+    // CPU copies for the physics layer to register as a static
+    // trimesh body. Positions are already in world space here.
+    out.cpu_positions.reserve(verts.size());
+    for (const auto& v : verts)
+        out.cpu_positions.emplace_back(v.position[0], v.position[1], v.position[2]);
+    out.cpu_indices = indices;
 
     GLuint vao = 0;
     GLuint vbo = 0;
@@ -150,7 +160,7 @@ bool loadPrimitive(const cgltf_primitive* prim, const float node_world[16],
     return true;
 }
 
-bool loadGltf(const char* path, StaticMesh& out)
+bool loadGltf(const char* path, const float world_offset[3], StaticMesh& out)
 {
     cgltf_options options{};
     cgltf_data* data = nullptr;
@@ -181,7 +191,7 @@ bool loadGltf(const char* path, StaticMesh& out)
         for (cgltf_size pi = 0; pi < node.mesh->primitives_count; ++pi)
         {
             StaticMeshPrimitive prim;
-            if (loadPrimitive(&node.mesh->primitives[pi], world, node_name, prim))
+            if (loadPrimitive(&node.mesh->primitives[pi], world, world_offset, node_name, prim))
                 out.primitives.push_back(std::move(prim));
         }
     }
@@ -192,13 +202,36 @@ bool loadGltf(const char* path, StaticMesh& out)
 
 } // namespace
 
+bool loadStaticMesh(const char* glb_path, const glm::vec3& world_origin,
+                    StaticMesh& out)
+{
+    out.primitives.clear();
+    out.asset_name = glb_path;
+    const float offset[3] = {world_origin.x, world_origin.y, world_origin.z};
+    return loadGltf(glb_path, offset, out);
+}
+
+void freeStaticMeshGLResources(StaticMesh& mesh)
+{
+    for (auto& p : mesh.primitives)
+    {
+        if (p.vao != 0) { glDeleteVertexArrays(1, &p.vao); p.vao = 0; }
+        if (p.vbo != 0) { glDeleteBuffers(1, &p.vbo); p.vbo = 0; }
+        if (p.ebo != 0) { glDeleteBuffers(1, &p.ebo); p.ebo = 0; }
+    }
+}
+
 bool initStaticMeshAssets()
 {
     if (sInitialized)
         return true;
     sCrypt.asset_name = "crypt";
     const char* path = "assets/world/static_meshes/crypt.glb";
-    if (!loadGltf(path, sCrypt))
+    // Legacy boot path: load with zero world offset (chapel mesh is
+    // currently treated as world-space already). JsonScene-driven
+    // scenes use loadStaticMesh() with proper world_origin.
+    const float kZeroOffset[3] = {0.0f, 0.0f, 0.0f};
+    if (!loadGltf(path, kZeroOffset, sCrypt))
     {
         std::fprintf(stderr, "[static-mesh] crypt load failed; static meshes disabled\n");
         return false;

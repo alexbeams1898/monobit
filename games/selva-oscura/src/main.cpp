@@ -35,6 +35,10 @@
 #include "ui/Screens.h"
 #include "ui/TuningPanel.h"
 #include "world/Collision.h"
+#include "world/CryptLayout.h"
+#include "world/PhysicsScene.h"
+#include "world/Scene.h"
+#include "world/SceneBootstrap.h"
 #include "world/StaticMeshAssets.h"
 #include "world/Terrain.h"
 #include "world/TreeAssets.h"
@@ -161,7 +165,7 @@ int main(int /*argc*/, char* /*argv*/[])
 
     // Maximized window with title bar/resize handles. 1280x720 is the
     // restore size when un-maximized.
-    engine.setWindowMode(Engine::WindowMode::Maximized);
+    engine.setWindowMode(Engine::WindowMode::BorderlessFullscreen);
 
     if (!engine.init("Selva Oscura", 1280, 720))
     {
@@ -205,10 +209,53 @@ int main(int /*argc*/, char* /*argv*/[])
 
     selva::render::setInitialWindowSize(engine.windowWidth(), engine.windowHeight());
     selva::render::initSceneGeometry();
+    // Terrain modifiers (chapel plateau, descent strip, etc) must be
+    // registered BEFORE initTerrain() — Terrain.cpp::buildRegionMesh
+    // queries the registry per vertex. Modifiers + heightmap PNG
+    // together produce the final terrain Y; render mesh and physics
+    // trimesh share that same Y.
+    selva::world::crypt_layout::registerChapelTerrainModifiers();
     selva::world::initTerrain();
     selva::world::initHubScene();
     selva::world::initTreeAssets();
     selva::world::initStaticMeshAssets();
+    // Physics: register terrain + chapel as static trimesh bodies.
+    // MUST run after both terrain and static-mesh-assets init so the
+    // CPU vertex copies exist on those structs.
+    selva::world::initPhysicsScene();
+
+    // Scene manager bootstrap + initial activation. The default
+    // spawn scene becomes the active scene at boot; its onActivate
+    // registers chapel/static-mesh bodies in Jolt. Legacy paths
+    // above have stopped registering the chapel (initPhysicsScene
+    // no longer calls registerChapel) so there's no double-register.
+    //
+    // Terrain modifiers (chapel plateau, shaft hole) are still
+    // registered BEFORE initTerrain via the call above, because
+    // terrain is a global singleton whose mesh is built once at
+    // initTerrain time. When per-scene terrain ships, those
+    // modifier declarations move into the scene's scene.json.
+    engine::world::initSceneManager();
+    // Post-commit hook: on each transition, after the new scene is
+    // committed, teleport the player capsule to the trigger's
+    // declared spawn pos + yaw. Engine doesn't know about the
+    // player; game wires it.
+    engine::world::setPostCommitCallback(
+        [](bool preserve_pos, const glm::vec3& spawn_pos,
+           bool override_yaw, float spawn_yaw) {
+            selva::gameplay::onSceneTransitionCommit(preserve_pos, spawn_pos,
+                                                     override_yaw, spawn_yaw);
+        });
+    const engine::world::SceneId default_scene = selva::world::loadAllScenes();
+    if (default_scene != engine::world::kInvalidScene)
+    {
+        engine::world::activateSceneImmediate(default_scene);
+    }
+    else
+    {
+        std::fprintf(stderr, "[main] WARNING: no default spawn scene; "
+                             "scenes system inert, chapel will not render\n");
+    }
 
     // Load runtime-tunable values BEFORE initializing actor pools so
     // their derived HP / stamina maxima read the JSON-tuned
@@ -290,6 +337,7 @@ int main(int /*argc*/, char* /*argv*/[])
 
     selva::gameplay::shutdownHubEnemies();
     selva::anim::shutdownSkeletalAssets();
+    engine::world::shutdownSceneManager();
     shutdownGeometry();
     selva::audio::shutdown();
     engine.shutdown();

@@ -2,6 +2,8 @@
 
 #include "Tunables.h"
 #include "world/Collision.h"
+#include "world/CryptLayout.h"
+#include "world/TerrainModifiers.h"
 
 #include <nlohmann/json.hpp>
 #include <stb_image.h>
@@ -98,7 +100,11 @@ void buildRegionMesh(TerrainRegion& r, int subdivide)
     std::vector<Vertex> verts(static_cast<std::size_t>(verts_per_side) *
                               static_cast<std::size_t>(verts_per_side));
 
-    // Sample heightmap per vertex (UV = [0..1] across the region).
+    // Sample heightmap per vertex (UV = [0..1] across the region),
+    // then apply any registered TerrainModifiers (chapel plateau,
+    // pits, etc) so the final Y reflects both the natural terrain
+    // and any architecture-driven deformations. Same final Y feeds
+    // render mesh + physics trimesh — single source.
     for (int iz = 0; iz < verts_per_side; ++iz)
     {
         for (int ix = 0; ix < verts_per_side; ++ix)
@@ -107,14 +113,14 @@ void buildRegionMesh(TerrainRegion& r, int subdivide)
             const float v = static_cast<float>(iz) / static_cast<float>(subdivide);
             const float wx = r.world_origin.x + (u * 2.0f - 1.0f) * half;
             const float wz = r.world_origin.y + (v * 2.0f - 1.0f) * half;
-            const float wy = bilinearSample(r.heights, r.hm_width, r.hm_height, u, v);
+            const float base_y = bilinearSample(r.heights, r.hm_width, r.hm_height, u, v);
+            const float wy = engine::world::applyTerrainModifiers(wx, wz, base_y);
             const int vi = iz * verts_per_side + ix;
             verts[vi].position[0] = wx;
             verts[vi].position[1] = wy;
             verts[vi].position[2] = wz;
             verts[vi].uv[0] = u;
             verts[vi].uv[1] = v;
-            // Normal computed in second pass below (needs neighbors).
             verts[vi].normal[0] = 0.0f;
             verts[vi].normal[1] = 1.0f;
             verts[vi].normal[2] = 0.0f;
@@ -158,32 +164,42 @@ void buildRegionMesh(TerrainRegion& r, int subdivide)
         }
     }
 
-    // Indices. Terrain excision around the chapel is done in the
-    // fragment shader (TerrainShader.cpp via uChapelDiscardCenter /
-    // uChapelDiscardHalfExtents) for pixel-perfect boundary matching.
-    // Mesh-side excision on this 2.67m-per-vertex grid would expand
-    // the void by up to one quad on each side (~9x11m for a 6x8m
-    // chapel footprint), leaving a visible halo around the chapel
-    // walls.
+    // Indices: render + physics use the SAME index buffer (every quad).
+    // Quads whose centroid falls inside a registered Hole-mode modifier
+    // are dropped entirely — neither rendered nor collidable. This is
+    // how true vertical holes (stair shafts, well openings) get carved
+    // out: the heightmap vertex grid is too coarse (2.7m spacing at
+    // current Selva settings) to express a small flat-bottomed hole
+    // via vertex Y alone — bilinear interpolation between rim vertices
+    // fills it back in. Quad removal sidesteps the resolution limit.
     std::vector<std::uint32_t> indices;
     indices.reserve(static_cast<std::size_t>(subdivide) * static_cast<std::size_t>(subdivide) * 6u);
     for (int iz = 0; iz < subdivide; ++iz)
     {
         for (int ix = 0; ix < subdivide; ++ix)
         {
+            const float quad_cx = r.world_origin.x - half + (static_cast<float>(ix) + 0.5f) * step;
+            const float quad_cz = r.world_origin.y - half + (static_cast<float>(iz) + 0.5f) * step;
+            if (engine::world::insideTerrainHole(quad_cx, quad_cz))
+                continue;
             const std::uint32_t i0 = static_cast<std::uint32_t>(iz * verts_per_side + ix);
             const std::uint32_t i1 = i0 + 1;
             const std::uint32_t i2 = i0 + static_cast<std::uint32_t>(verts_per_side);
             const std::uint32_t i3 = i2 + 1;
-            indices.push_back(i0);
-            indices.push_back(i3);
-            indices.push_back(i1);
-            indices.push_back(i0);
-            indices.push_back(i2);
-            indices.push_back(i3);
+            indices.push_back(i0); indices.push_back(i3); indices.push_back(i1);
+            indices.push_back(i0); indices.push_back(i2); indices.push_back(i3);
         }
     }
     r.index_count = static_cast<int>(indices.size());
+
+    // Physics + render share the same vertex positions: terrain Y
+    // already includes any registered TerrainModifiers (applied above).
+    // No separate "physics pit" hack — modifiers are the source of
+    // truth for terrain deformation.
+    r.cpu_positions.reserve(verts.size());
+    for (const auto& v : verts)
+        r.cpu_positions.emplace_back(v.position[0], v.position[1], v.position[2]);
+    r.cpu_indices = indices;
 
     GLuint vao = 0;
     GLuint vbo = 0;
