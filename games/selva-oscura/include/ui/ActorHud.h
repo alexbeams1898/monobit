@@ -24,4 +24,19 @@ void setShowHitVolumes(bool enabled);
 // rendered geometry.
 void renderColliderDebug();
 
+// Jolt physics body overlay: wireframe AABBs for every body in the
+// Jolt world (static trimeshes, static boxes, character capsules)
+// colored by surface tag. Gated by tun.debug_show_physics_bodies.
+// Source of truth for "is this mesh actually registered in physics?"
+void renderPhysicsBodyDebug();
+
+// Scene system overlays:
+//   * Always-on: scene-name chip in the corner + fade-to-black overlay
+//     during transitions
+//   * Debug-gated: trigger volume wireframes (color + label) inside
+//     the active scene
+//   * Debug-gated: scene state panel (current + transition state +
+//     body counts + force-transition buttons)
+void renderSceneOverlays();
+
 } // namespace selva::ui

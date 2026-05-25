@@ -103,6 +103,18 @@ bool Engine::init(const char* title, int width, int height)
     if (msaa_samples > 0)
         glEnable(GL_MULTISAMPLE);
 
+    // Log the actual MSAA sample count the driver granted (may be less
+    // than requested, may be 0 if driver refused). If this prints 0
+    // when msaa_samples was > 0, MSAA is silently disabled.
+    {
+        int actual_buffers = 0, actual_samples = 0;
+        SDL_GL_GetAttribute(SDL_GL_MULTISAMPLEBUFFERS, &actual_buffers);
+        SDL_GL_GetAttribute(SDL_GL_MULTISAMPLESAMPLES, &actual_samples);
+        std::fprintf(stderr,
+                     "[engine] MSAA: requested=%d samples, granted=%d buffers x %d samples\n",
+                     msaa_samples, actual_buffers, actual_samples);
+    }
+
     // Read the actual window size — fullscreen-desktop ignores the
     // requested width/height and uses the display's resolution, so the
     // request args are unreliable. Truth is whatever SDL gave us.

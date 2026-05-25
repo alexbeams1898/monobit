@@ -26,6 +26,12 @@ void setSceneBaseColor(const glm::vec3& rgb);
 // know about wall occlusion).
 void setSceneIndoorMode(bool indoors);
 
+// Debug: when true, fragment shader skips all lighting and outputs
+// flat uBaseColor per primitive. Use to bisect flicker bugs —
+// flicker on = shader math (likely dFdx/dFdy normal flip);
+// flicker remains = geometry / depth precision / rasterization.
+void setSceneFlatShading(bool on);
+
 // sun_dir is normalized inside; pass any non-zero direction.
 void setSceneAtmosphere(const glm::vec3& sun_dir, const glm::vec3& sun_intensity,
                         const glm::vec3& cam_pos, float exposure);

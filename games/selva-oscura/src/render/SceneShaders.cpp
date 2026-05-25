@@ -55,6 +55,7 @@ uniform vec3 uSunIntensity;
 uniform vec3 uCamPos;
 uniform float uExposure;
 uniform float uIndoorMode; // 1.0 inside enclosed architecture, 0.0 outside
+uniform float uFlatShading; // 1.0 = output flat uBaseColor (bisect debug); 0.0 = full lighting
 )glsl";
 
 // surface lit by sun via half-Lambert; in-scattered atmosphere
@@ -62,6 +63,17 @@ uniform float uIndoorMode; // 1.0 inside enclosed architecture, 0.0 outside
 const char* kSceneFragmentShaderMain = R"glsl(
 void main()
 {
+    // Bisect-debug: short-circuit to flat color if requested. Tests
+    // whether flicker is caused by anything downstream (normal,
+    // lighting, shadow, atmosphere, exposure, tonemap). If flicker
+    // disappears here, the cause is shader math (likely dFdx/dFdy
+    // normal flip). If flicker remains, cause is upstream (geometry /
+    // depth precision / MSAA / something else).
+    if (uFlatShading > 0.5)
+    {
+        fragColor = vec4(uBaseColor, 1.0);
+        return;
+    }
     vec3 N = normalize(cross(dFdx(vWorldPos), dFdy(vWorldPos)));
     float halfL = dot(N, uSunDir) * 0.5 + 0.5;
     float g = clamp(vShade * uTint, 0.0, 1.0);
@@ -108,6 +120,7 @@ GLint sUniLightViewProjLoc = -1;
 GLint sUniShadowSunDirLoc = -1;
 GLint sUniShadowCamPosLoc = -1;
 GLint sUniIndoorModeLoc = -1;
+GLint sUniFlatShadingLoc = -1;
 GLint sUniBaseColorLoc = -1;
 
 } // namespace
@@ -133,6 +146,7 @@ bool initSceneProgram()
     sUniShadowSunDirLoc = glGetUniformLocation(sProgram, "uShadowSunDir");
     sUniShadowCamPosLoc = glGetUniformLocation(sProgram, "uShadowCameraPos");
     sUniIndoorModeLoc = glGetUniformLocation(sProgram, "uIndoorMode");
+    sUniFlatShadingLoc = glGetUniformLocation(sProgram, "uFlatShading");
     sUniBaseColorLoc = glGetUniformLocation(sProgram, "uBaseColor");
     return true;
 }
@@ -179,6 +193,12 @@ void setSceneIndoorMode(bool indoors)
 {
     if (sUniIndoorModeLoc >= 0)
         glUniform1f(sUniIndoorModeLoc, indoors ? 1.0f : 0.0f);
+}
+
+void setSceneFlatShading(bool on)
+{
+    if (sUniFlatShadingLoc >= 0)
+        glUniform1f(sUniFlatShadingLoc, on ? 1.0f : 0.0f);
 }
 
 void setSceneBaseColor(const glm::vec3& rgb)

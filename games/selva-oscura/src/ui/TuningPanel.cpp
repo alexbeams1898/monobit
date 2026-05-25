@@ -93,6 +93,16 @@ static void renderDebugSection(selva::tuning::Tunables& tun)
     ImGui::TextUnformatted("Overlays");
     ImGui::Checkbox("AI vision cones + awareness label", &tun.debug_ai_perception);
     ImGui::Checkbox("World colliders (cylinders + boxes)", &tun.debug_show_colliders);
+    ImGui::Checkbox("Physics bodies (Jolt AABBs, colored by tag)",
+                    &tun.debug_show_physics_bodies);
+    ImGui::Checkbox("Flat shading (bisect: flicker on = shader, off = geometry)",
+                    &tun.debug_flat_shading);
+    ImGui::Checkbox("Log MSAA state at scene-pass (-> stderr.log)",
+                    &tun.debug_msaa_state_log);
+    ImGui::Checkbox("Crosshair raycast log (aim at flicker -> crosshair-debug.log)",
+                    &tun.debug_crosshair_raycast_log);
+    ImGui::Checkbox("Primitive-ID colors (use WITH flat shading; -> primitive-id-debug.log)",
+                    &tun.debug_primitive_id_colors);
     ImGui::Separator();
     ImGui::TextUnformatted("AI debug logs (-> combat-debug.log)");
     ImGui::Checkbox("AI tick firings", &tun.debug_ai_tick_log);
@@ -105,6 +115,7 @@ static void renderDebugSection(selva::tuning::Tunables& tun)
     ImGui::Checkbox("Collision pushes -> collision-debug.log", &tun.debug_collision_log);
     ImGui::Checkbox("Camera pull-in -> camera-debug.log", &tun.debug_camera_pull_in_log);
     ImGui::Checkbox("Ground height -> ground-debug.log", &tun.debug_ground_height_log);
+    ImGui::Checkbox("Physics (Jolt) -> physics-debug.log", &tun.debug_physics_log);
 }
 
 static void renderLocomotionSection(selva::tuning::Tunables& tun)
@@ -456,6 +467,8 @@ static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
 {
     renderActorHud();
     renderColliderDebug();
+    selva::ui::renderPhysicsBodyDebug();
+    selva::ui::renderSceneOverlays();
     renderComboHud();
     renderTreePreviewControls();
     if (!sShowTuningPanel)

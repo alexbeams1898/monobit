@@ -464,6 +464,46 @@ struct Tunables
     // Default OFF.
     bool debug_show_colliders = false;
 
+    // When true, the per-frame ImGui overlay draws every Jolt body
+    // (static trimeshes, static boxes, character capsules) as
+    // wireframe AABBs colored by surface tag. Source of truth for
+    // "is this mesh actually in physics?" — uses
+    // engine::physics::enumerateBodies() which walks the live Jolt
+    // body table. Default OFF.
+    bool debug_show_physics_bodies = false;
+
+    // When true, the scene fragment shader outputs a flat constant
+    // color (uBaseColor) per primitive — skipping all lighting,
+    // atmosphere, shadows, exposure, tonemap. Use to bisect flicker:
+    // if flicker DISAPPEARS with this on, the cause is shader math
+    // (most likely dFdx/dFdy-derived normal flipping on near-parallel
+    // surfaces). If flicker CONTINUES, the cause is geometry /
+    // rasterization / depth precision. See
+    // [[feedback_bisect_shader_inputs_with_constants]]. Default OFF.
+    bool debug_flat_shading = false;
+
+    // Diagnostic: print actual GL MSAA state every 60 frames so we
+    // can confirm whether MSAA is still enabled at scene-pass time
+    // (some driver / pass could be silently disabling it). Logs:
+    // GL_SAMPLE_BUFFERS, GL_SAMPLES, GL_MULTISAMPLE-enabled. Default OFF.
+    bool debug_msaa_state_log = false;
+
+    // Diagnostic: every frame, raycast from camera position through
+    // camera forward direction; log the first 5 bodies the ray hits.
+    // Aim the camera at a flickering surface to find out which
+    // primitive(s) are there. Logs to crosshair-debug.log to avoid
+    // spamming stderr. Default OFF.
+    bool debug_crosshair_raycast_log = false;
+
+    // Diagnostic: paint each chapel mesh primitive a unique color
+    // (deterministic hash of its draw index). Combined with
+    // debug_flat_shading skipping the lighting, flickering pixels
+    // visibly alternate between TWO colors which decode to TWO
+    // primitive indices — pinpointing the z-fighting pair instantly.
+    // Print the index→primitive-name mapping to primitive-id-debug.log
+    // on first toggle. Requires debug_flat_shading also ON. Default OFF.
+    bool debug_primitive_id_colors = false;
+
     // When true, world/Collision.cpp opens collision-debug.log and
     // writes per-frame pre/post body XZ + per-pass push events
     // (which collider was hit, the push vector). Use to diagnose
@@ -482,6 +522,12 @@ struct Tunables
     // Used to diagnose "player Y is wrong" (sinking through stairs,
     // teleporting to wrong platform, etc.). Default OFF.
     bool debug_ground_height_log = false;
+
+    // When true, the Jolt physics layer writes diagnostics to
+    // physics-debug.log: scene-init body counts, character creation,
+    // per-frame player capsule pos/velocity/ground-state.
+    // Default OFF.
+    bool debug_physics_log = false;
 };
 
 // JSON serialization — generates to_json / from_json for nlohmann::json

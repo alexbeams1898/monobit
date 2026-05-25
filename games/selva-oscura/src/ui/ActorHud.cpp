@@ -4,6 +4,7 @@
 #include "AppStateGlobal.h"
 #include "Tunables.h"
 #include "WallClock.h"
+#include "physics/PhysicsWorld.h"
 #include "anim/PoseSampler.h"
 #include "anim/SkeletalAssets.h"
 #include "anim/SkeletalMesh.h"
@@ -14,10 +15,12 @@
 #include "gameplay/Enemies.h"
 #include "gameplay/Perception.h"
 #include "gameplay/PlayerState.h"
+#include "physics/PhysicsWorld.h"
 #include "render/Camera.h"
 #include "render/TerrainShader.h"
 #include "world/Collision.h"
 #include "world/CryptLayout.h"
+#include "world/Scene.h"
 #include "world/Terrain.h"
 
 #include <SDL.h>
@@ -771,6 +774,146 @@ void renderColliderDebug()
                     vp, glm::vec3(ac.x, terrain_y + 0.05f, ac.y - apse_r), lp))
                 overlay->AddText(ImVec2(lp.x - 30.0f, lp.y), discard_color,
                                  "terrain_discard_apse");
+        }
+    }
+
+}
+
+void renderPhysicsBodyDebug()
+{
+    const auto& tun = selva::tuning::current();
+    if (!tun.debug_show_physics_bodies)
+        return;
+
+    const glm::mat4& vp = selva::render::lastViewProj();
+    ImDrawList* overlay = ImGui::GetForegroundDrawList();
+
+    // Enumerate every Jolt body (static trimeshes, static boxes,
+    // character capsules) and draw its world AABB colored by
+    // SurfaceTag. This is the ground truth for what physics sees —
+    // if a mesh isn't in here, it's not collidable, period.
+    using engine::physics::BodyDebugInfo;
+    using engine::physics::BodyKind;
+    using engine::physics::SurfaceTag;
+    static std::vector<BodyDebugInfo> bodies;
+    engine::physics::enumerateBodies(bodies);
+    // Skip if too many bodies — drawing thousands of AABBs costs
+    // perceptible frame time. ~900 bodies (chapel x2 + terrain) is
+    // the current Selva ceiling; cap at 2000 to leave headroom.
+    if (bodies.size() > 2000) return;
+
+    for (const auto& info : bodies)
+    {
+        ImU32 c;
+        switch (info.tag)
+        {
+        case SurfaceTag::Terrain:      c = IM_COL32(180, 120,  60, 180); break;
+        case SurfaceTag::Architecture: c = IM_COL32( 80, 180, 255, 180); break;
+        case SurfaceTag::Foliage:      c = IM_COL32(100, 220, 100, 180); break;
+        case SurfaceTag::Actor:        c = IM_COL32(255, 200,  80, 220); break;
+        default:                       c = IM_COL32(200, 200, 200, 160); break;
+        }
+        const glm::vec3 mn = info.world_aabb_min;
+        const glm::vec3 mx = info.world_aabb_max;
+        const glm::vec3 corners[8] = {
+            {mn.x, mn.y, mn.z}, {mx.x, mn.y, mn.z},
+            {mx.x, mn.y, mx.z}, {mn.x, mn.y, mx.z},
+            {mn.x, mx.y, mn.z}, {mx.x, mx.y, mn.z},
+            {mx.x, mx.y, mx.z}, {mn.x, mx.y, mx.z},
+        };
+        glm::vec2 sp[8];
+        bool      ok[8];
+        for (int i = 0; i < 8; ++i)
+            ok[i] = selva::render::worldToScreen(vp, corners[i], sp[i]);
+        const int edges[12][2] = {
+            {0,1},{1,2},{2,3},{3,0},  // bottom
+            {4,5},{5,6},{6,7},{7,4},  // top
+            {0,4},{1,5},{2,6},{3,7},  // verticals
+        };
+        for (auto& e : edges)
+        {
+            if (ok[e[0]] && ok[e[1]])
+                overlay->AddLine(ImVec2(sp[e[0]].x, sp[e[0]].y),
+                                 ImVec2(sp[e[1]].x, sp[e[1]].y), c, 1.0f);
+        }
+        // Label at the AABB's top-center so the user can see which
+        // body is which. Skip if name is empty.
+        const char* name = engine::physics::bodyDebugName(info.body);
+        if (name != nullptr && name[0] != '\0')
+        {
+            const glm::vec3 label_pos(
+                (mn.x + mx.x) * 0.5f, mx.y + 0.05f, (mn.z + mx.z) * 0.5f);
+            glm::vec2 lp;
+            if (selva::render::worldToScreen(vp, label_pos, lp))
+            {
+                // Estimate text width to center the label.
+                const float text_w = ImGui::CalcTextSize(name).x;
+                overlay->AddText(ImVec2(lp.x - text_w * 0.5f, lp.y - 14.0f), c, name);
+            }
+        }
+    }
+}
+
+void renderSceneOverlays()
+{
+    using namespace engine::world;
+    const auto& tun = selva::tuning::current();
+    ImDrawList* fg = ImGui::GetForegroundDrawList();
+    ImGuiIO& io = ImGui::GetIO();
+
+    // ---- Fade-to-black during transitions (always-on) ----
+    const float fade = transitionFadeAlpha();
+    if (fade > 0.001f)
+    {
+        const ImU32 col = IM_COL32(0, 0, 0, static_cast<int>(fade * 255.0f));
+        fg->AddRectFilled(ImVec2(0, 0),
+                          ImVec2(io.DisplaySize.x, io.DisplaySize.y), col);
+    }
+
+    // ---- Scene-name chip in top-right (always-on) ----
+    Scene* cur = currentScenePtr();
+    const std::string chip_text =
+        cur != nullptr ? ("scene: " + cur->sceneId()) : "scene: (none)";
+    const ImVec2 ts = ImGui::CalcTextSize(chip_text.c_str());
+    const float pad = 6.0f;
+    const ImVec2 chip_min(io.DisplaySize.x - ts.x - 2 * pad - 8.0f, 8.0f);
+    const ImVec2 chip_max(io.DisplaySize.x - 8.0f, 8.0f + ts.y + 2 * pad);
+    fg->AddRectFilled(chip_min, chip_max, IM_COL32(0, 0, 0, 180), 4.0f);
+    fg->AddText(ImVec2(chip_min.x + pad, chip_min.y + pad),
+                IM_COL32(255, 255, 255, 220), chip_text.c_str());
+
+    // ---- Trigger volume wireframes (gated by debug_show_colliders) ----
+    if (tun.debug_show_colliders && cur != nullptr)
+    {
+        const glm::mat4& vp = selva::render::lastViewProj();
+        const ImU32 trig_color = IM_COL32(255, 220, 80, 220);
+        for (const auto& t : cur->triggers())
+        {
+            const glm::vec3& c = t.center;
+            const glm::vec3& h = t.half_extents;
+            const glm::vec3 corners[8] = {
+                {c.x - h.x, c.y - h.y, c.z - h.z}, {c.x + h.x, c.y - h.y, c.z - h.z},
+                {c.x + h.x, c.y - h.y, c.z + h.z}, {c.x - h.x, c.y - h.y, c.z + h.z},
+                {c.x - h.x, c.y + h.y, c.z - h.z}, {c.x + h.x, c.y + h.y, c.z - h.z},
+                {c.x + h.x, c.y + h.y, c.z + h.z}, {c.x - h.x, c.y + h.y, c.z + h.z},
+            };
+            glm::vec2 sp[8]; bool ok[8];
+            for (int i = 0; i < 8; ++i)
+                ok[i] = selva::render::worldToScreen(vp, corners[i], sp[i]);
+            const int edges[12][2] = {
+                {0,1},{1,2},{2,3},{3,0}, {4,5},{5,6},{6,7},{7,4},
+                {0,4},{1,5},{2,6},{3,7},
+            };
+            for (auto& e : edges)
+            {
+                if (ok[e[0]] && ok[e[1]])
+                    fg->AddLine(ImVec2(sp[e[0]].x, sp[e[0]].y),
+                                ImVec2(sp[e[1]].x, sp[e[1]].y), trig_color, 1.5f);
+            }
+            glm::vec2 lp;
+            if (selva::render::worldToScreen(vp, c, lp))
+                fg->AddText(ImVec2(lp.x, lp.y - 14.0f), trig_color,
+                            t.debug_name.c_str());
         }
     }
 }
