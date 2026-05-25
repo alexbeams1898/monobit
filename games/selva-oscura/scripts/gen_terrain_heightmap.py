@@ -198,45 +198,18 @@ def world_height(x, z, r):
     nz = math.cos(z * r["noise_freq"])
     undulation_strength = 1.0 - 0.7 * smoothstep(0.0, r["plateau_height"], colle_above_floor)
 
-    # Crypt foundation pad: drive undulation to zero inside an XZ
-    # rectangle centered on the chapel so the foundation meets the
-    # terrain flush. The pad bleeds back into the natural undulation
-    # over `pad_falloff` so the seam is invisible.
-    crypt_pad = 1.0 - crypt_flatten_factor(x, z, r)
-    undulation_strength *= crypt_pad
+    # No architecture-specific flattening here — chapel plateau /
+    # other terrain deformations are applied at RUNTIME via the
+    # engine::world::TerrainModifiers registry (see CryptLayout.h
+    # registerChapelTerrainModifiers). The heightmap encodes ONLY the
+    # natural terrain shape (colle, wake-zone basin, noise). Single
+    # source of truth: heightmap = natural geology, registry =
+    # architecture-driven shaping.
 
     undulation = nx * nz * r["noise_amp"] * undulation_strength
     surface = base + undulation
 
     return surface
-
-
-def crypt_flatten_factor(x, z, r):
-    """Returns 1.0 inside the chapel footprint (pad), falling off to
-    0.0 outside. Used to zero out undulation under the chapel.
-
-    The pad covers the full body footprint plus a small margin so the
-    perimeter is also flat (no terrain dimple right against the wall).
-    """
-    # Chapel center + footprint half-extents from world/CryptLayout.h.
-    # Keep in sync if the C++ values change.
-    cx, cz = 0.0, -210.0
-    half_w, half_l = 3.0, 4.0
-    margin = 1.0
-    pad_falloff = 1.5
-    pad_w = half_w + margin
-    pad_l = half_l + margin
-    far_w = pad_w + pad_falloff
-    far_l = pad_l + pad_falloff
-    abs_dx = abs(x - cx)
-    abs_dz = abs(z - cz)
-    if abs_dx <= pad_w and abs_dz <= pad_l:
-        return 1.0
-    if abs_dx >= far_w or abs_dz >= far_l:
-        return 0.0
-    tx = 1.0 - smoothstep(pad_w, far_w, abs_dx) if abs_dx > pad_w else 1.0
-    tz = 1.0 - smoothstep(pad_l, far_l, abs_dz) if abs_dz > pad_l else 1.0
-    return tx * tz
 
 
 def pixel_to_world(px, py, res, extent, origin_x, origin_z):

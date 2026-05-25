@@ -1,6 +1,7 @@
 #pragma once
 
 #include <glm/vec2.hpp>
+#include <glm/vec3.hpp>
 
 #include <cstdint>
 #include <limits>
@@ -32,6 +33,11 @@ struct TerrainRegion
     // so the gameplay ground always matches the rendered surface.
     std::vector<float> mesh_y; // mesh_y[iz * verts_per_side + ix]
     int subdivide = 0;
+    // CPU copies of the mesh geometry (positions + triangle indices) so
+    // the physics layer can register this region as a static trimesh
+    // body. World-space; ready to hand to Jolt directly.
+    std::vector<glm::vec3>     cpu_positions;
+    std::vector<std::uint32_t> cpu_indices;
 };
 
 bool initTerrain();

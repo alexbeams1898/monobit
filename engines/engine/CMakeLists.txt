@@ -11,6 +11,10 @@ target_sources(engine PRIVATE
     src/SpriteCompositor.cpp
     src/FontManager.cpp
     src/UIRenderer.cpp
+    src/physics/PhysicsWorld.cpp
+    src/world/AsyncSceneLoader.cpp
+    src/world/Scene.cpp
+    src/world/TerrainModifiers.cpp
     src/systems/RenderSystem.cpp
     src/systems/CameraSystem.cpp
     src/systems/CollisionSystem.cpp
@@ -41,6 +45,7 @@ target_link_libraries(engine
         imgui::imgui
         TracyClient
         miniaudio::miniaudio
+        Jolt
 )
 
 # miniaudio on Windows requires these system libs (WASAPI/WinMM/COM).

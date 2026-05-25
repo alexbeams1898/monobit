@@ -59,6 +59,9 @@ add_library(selva-oscura-lib STATIC
     src/render/Texture.cpp
     src/render/TreeShader.cpp
     src/render/WorldRenderer.cpp
+    src/world/JsonScene.cpp
+    src/world/PhysicsScene.cpp
+    src/world/SceneBootstrap.cpp
     src/world/StaticMeshAssets.cpp
     src/world/Terrain.cpp
     src/world/TreeAssets.cpp

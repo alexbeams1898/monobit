@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <glm/vec3.hpp>
 #include <string>
 #include <vector>
 
@@ -29,6 +30,14 @@ struct StaticMeshPrimitive
     // fragments where stencil != 0. Pixel-perfect carve-out without
     // any duplicated polygon data.
     bool floor_mask = false;
+
+    // World-space CPU copies of the geometry (positions + indices)
+    // kept around so the physics layer can register this primitive
+    // as a static trimesh body. Without this, after upload to GL the
+    // mesh data is gone and physics would need to read it back from
+    // the .glb a second time.
+    std::vector<glm::vec3>     cpu_positions;
+    std::vector<std::uint32_t> cpu_indices;
 };
 
 // A static-mesh asset: one or more primitives drawn at the same model
@@ -46,5 +55,24 @@ void shutdownStaticMeshAssets();
 // The crypt mesh (entrance-to-Hell on the colle plateau). Loaded from
 // assets/world/static_meshes/crypt.glb. Returns nullptr if init failed.
 const StaticMesh* cryptMesh();
+
+// Generic loader used by JsonScene: load any .glb into a fresh
+// StaticMesh. Caller owns the returned StaticMesh; calls
+// freeStaticMeshGLResources(mesh) at scene-deactivate time to release
+// VAOs/VBOs. CPU data (cpu_positions/cpu_indices) is consumed by the
+// physics layer at scene activation and can be freed thereafter, or
+// kept around for re-registration if the scene loads/unloads
+// repeatedly.
+//
+// `world_origin` is added to every vertex position during load so the
+// CPU positions are world-space (matches the convention chapel uses).
+// GL vertex buffer is also uploaded with world-space positions, so the
+// renderer can draw at identity model matrix.
+bool loadStaticMesh(const char* glb_path, const glm::vec3& world_origin,
+                    StaticMesh& out);
+
+// Free GPU resources (VAO/VBO/EBO) for a mesh loaded via loadStaticMesh.
+// Idempotent.
+void freeStaticMeshGLResources(StaticMesh& mesh);
 
 } // namespace selva::world

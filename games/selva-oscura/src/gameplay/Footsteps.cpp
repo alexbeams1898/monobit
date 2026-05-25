@@ -4,6 +4,7 @@
 #include "WallClock.h"
 #include "audio/Audio.h"
 #include "gameplay/Actor.h"
+#include "physics/PhysicsWorld.h"
 #include "world/Collision.h"
 #include "world/Terrain.h"
 
@@ -196,19 +197,47 @@ void tickOneFoot(Actor::FootContact& fc, Actor& actor, const char* joint_name, f
         const float gain = plantGain(fc.peak_descent_vy);
         if (gain > 0.0f && can_fire)
         {
-            // Surface picker: the foot that just zero-crossed IS the
-            // foot that just planted. Sample isIndoors at that foot's
-            // world XZ. This is the simplest correct model.
+            // Surface picker: per real-physics doctrine, ask physics
+            // what the foot is standing on. Downward raycast from the
+            // foot's world XYZ; the hit body's SurfaceTag drives the
+            // bank selection. Terrain → grass; Architecture → concrete.
+            //
+            // No more XZ-rect "is the player inside the chapel?" check
+            // — that broke as soon as architecture extended underground
+            // (descent corridor) where the chapel-interior rect doesn't
+            // reach. Reading the actual contacted body generalizes:
+            // ANY future surface (sand, water, stone path, dungeon) just
+            // adds a SurfaceTag value, no rect to author.
             const glm::vec3 foot_world =
                 actor.sampler.jointWorldPosWithActor(fc.joint_idx);
-            const bool indoors =
-                selva::world::isIndoors(glm::vec2(foot_world.x, foot_world.z));
-            const char* sfx_name = indoors ? "footstep_concrete" : "footstep_grass";
+            engine::physics::SurfaceTag surface = engine::physics::SurfaceTag::Unknown;
+            {
+                const engine::physics::RayHit hit = engine::physics::raycast(
+                    foot_world + glm::vec3(0.0f, 0.10f, 0.0f),  // start just above foot
+                    glm::vec3(0.0f, -1.0f, 0.0f),
+                    1.0f);
+                if (hit.hit)
+                    surface = hit.tag;
+            }
+            const char* sfx_name = "footstep_grass";
+            switch (surface)
+            {
+            case engine::physics::SurfaceTag::Architecture:
+                sfx_name = "footstep_concrete";
+                break;
+            case engine::physics::SurfaceTag::Terrain:
+            case engine::physics::SurfaceTag::Foliage:
+            case engine::physics::SurfaceTag::Unknown:
+            case engine::physics::SurfaceTag::Actor:
+            default:
+                sfx_name = "footstep_grass";
+                break;
+            }
             footstepLogf(
                 "[event] surface foot=%s foot_xz=(%.3f,%.3f) body_xz=(%.3f,%.3f) "
-                "indoors=%d sfx=%s\n",
+                "surface_tag=%d sfx=%s\n",
                 footLabel(is_left), foot_world.x, foot_world.z, actor.pos.x, actor.pos.z,
-                indoors ? 1 : 0, sfx_name);
+                static_cast<int>(surface), sfx_name);
             selva::audio::playSfxScaled(sfx_name, gain);
             fc.last_fire_time = now;
             actor.last_footstep_fire_time = now;
