@@ -556,6 +556,34 @@ void characterActiveContacts(BodyHandle character, std::vector<BodyHandle>& out)
     }
 }
 
+void characterActiveContactDetails(BodyHandle character,
+                                   std::vector<CharacterContactDetail>& out)
+{
+    out.clear();
+    auto it = sHandles.find(character.id);
+    if (it == sHandles.end() || !it->second.character) return;
+    for (const auto& c : it->second.character->GetActiveContacts())
+    {
+        CharacterContactDetail d;
+        d.body = kInvalidBody;
+        for (const auto& [hid, e] : sHandles)
+        {
+            if (e.kind == HandleEntry::Kind::Static && e.body_id == c.mBodyB)
+            {
+                d.body = BodyHandle{hid};
+                break;
+            }
+        }
+        d.position = glm::vec3(c.mPosition.GetX(), c.mPosition.GetY(), c.mPosition.GetZ());
+        d.normal   = glm::vec3(c.mSurfaceNormal.GetX(),
+                                c.mSurfaceNormal.GetY(),
+                                c.mSurfaceNormal.GetZ());
+        d.tri_v0 = d.tri_v1 = d.tri_v2 = glm::vec3(0.0f);
+        d.is_trimesh_triangle = false;
+        out.push_back(d);
+    }
+}
+
 void teleportCharacter(BodyHandle character, const glm::vec3& position)
 {
     auto it = sHandles.find(character.id);

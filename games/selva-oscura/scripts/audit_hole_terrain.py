@@ -25,7 +25,7 @@ PNG = REPO / "games/selva-oscura/assets/world/terrain/selva_inner.png"
 # Terrain region config (from config.json) - keep in sync.
 WORLD_ORIGIN = (0.0, -180.0)
 WORLD_EXTENT = 512.0
-SUBDIVIDE = 192
+SUBDIVIDE = 384
 # Height range: 0..255 px maps to HEIGHT_MIN..HEIGHT_MAX meters.
 # MUST match assets/world/terrain/config.json (height_range_min,
 # height_range_max). Earlier this only used HEIGHT_MAX with no min,

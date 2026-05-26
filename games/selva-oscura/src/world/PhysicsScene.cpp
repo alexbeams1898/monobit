@@ -2,10 +2,10 @@
 
 #include "world/CryptLayout.h"
 #include "world/StaticMeshAssets.h"
+#include "world/StructureFootprints.h"
 #include "world/Terrain.h"
 #include "world/TerrainModifiers.h"
 
-#include <cmath>
 #include <cstdio>
 #include <vector>
 
@@ -71,72 +71,106 @@ namespace selva::world::crypt_layout
 void registerChapelTerrainModifiers()
 {
     using engine::world::TerrainModifier;
+    using engine::world::StructureFootprint;
 
-    // 1) Plateau under the chapel exterior + apse. Terrain rises to
-    //    meet the plinth top inside the rect, with a 2m soft pad
-    //    outside to ramp back down to natural elevation. The rect
-    //    extends slightly past the chapel BACK to cover both the
-    //    back-plinth slabs (which project ~0.9m behind the back
-    //    wall) AND the apse half-cylinder (which projects 1.8m +
-    //    a 5cm inset). Without this extension the plateau's blend_pad
-    //    starts ramping terrain DOWN immediately at the back wall
-    //    plane, leaving the back plinths + apse base floating over
-    //    sloped natural terrain — visible as dark holes on either
-    //    side of the apse.
-    constexpr float kApseRearProjection = 1.8f + 0.05f;  // APSE_RADIUS + apse_inset
-    constexpr float kPlateauRearExtra   = kApseRearProjection + 0.20f;  // safety margin
-    {
-        TerrainModifier m;
-        // Shift the center BACK by half of the rear-extra so the
-        // front edge stays at the chapel front (z=-206) — no
-        // unintended terrain rise on the door side.
-        m.center_xz = {kCryptX, kCryptZ - kPlateauRearExtra * 0.5f};
-        m.half_extents_xz = {kHalfWidth, kHalfLength + kPlateauRearExtra * 0.5f};
-        m.mode = TerrainModifier::Mode::FlushAt;
-        m.value = kChapelGroundY;  // plinth bottom = exterior ground level
-        m.blend_pad = 2.0f;
-        m.debug_name = "chapel_plateau";
-        engine::world::registerTerrainModifier(m);
-    }
-
-    // 2) Hole through terrain over the stair shaft. Drops terrain
-    //    quads inside the rect so the player can fall through
-    //    plateau-Y terrain into the descent. Required because the
-    //    chapel mesh has NO authored interior floor: terrain at
-    //    plateau Y IS the chapel's walkable floor everywhere
-    //    EXCEPT the shaft.
+    // Doctrine: terrain shows OUTSIDE the chapel mesh, HIDES inside it.
+    // "Inside" is automatically the XZ AABB of the loaded chapel mesh
+    // — no hand-set coordinates. Chapel widens, lengthens, sprouts a
+    // new wing, footprint follows automatically.
     //
-    //    Rect = upper-flight footprint + small margin so all quad
-    //    centroids inside the shaft are dropped at the current
-    //    terrain resolution (~2.7m/vertex).
+    // Two modifiers:
+    //   1) FlushAt outside the chapel so terrain meets plinth bottom.
+    //   2) StructureFootprint covering the chapel mesh AABB — Hole
+    //      drops physics terrain, shader discard hides visual terrain.
+
+    // 1) Exterior plateau: terrain meets plinth bottom around the
+    //    chapel. Extended forward by the threshold-ramp length so
+    //    terrain covers under the ramp (otherwise the ramp's bottom
+    //    face is exposed as a void in front of the door). Soft 2m
+    //    blend on -X/+X/-Z, SHARP +Z edge at the threshold OUTER face.
+    constexpr float kDoorThresholdRamp = 0.50f;  // matches threshold_run in build_door_threshold
     {
-        // Carve ONLY the upper-flight shaft (the part of the descent
-        // that intersects terrain at plateau Y). Past z=-214 the
-        // corridor descends below plateau Y immediately and never
-        // re-intersects terrain — the colle surface rises ABOVE the
-        // corridor for the remaining 140m, so carving the full
-        // descent footprint would punch holes through the colle
-        // visible from above. Only the shaft mouth needs carving.
-        const float shaft_z_chapel_near = kUpperFlightTopChapelLocalY;
-        const float shaft_z_chapel_far  = kUpperFlightTopChapelLocalY + kUpperFlightRun;
-        const float shaft_z_world_near = kCryptZ - shaft_z_chapel_near;
-        const float shaft_z_world_far  = kCryptZ - shaft_z_chapel_far;
-        constexpr float kQuadMargin = 0.5f;
         TerrainModifier m;
-        m.center_xz = {kCryptX, (shaft_z_world_near + shaft_z_world_far) * 0.5f};
-        m.half_extents_xz = {kSingleFlightHalfWidth + kQuadMargin,
-                             std::abs(shaft_z_world_near - shaft_z_world_far) * 0.5f + kQuadMargin};
-        m.mode = TerrainModifier::Mode::Hole;
-        m.debug_name = "chapel_stair_shaft_hole";
+        const float front_edge = kCryptZ + kHalfLength + kDoorThresholdRamp;
+        const float back_edge  = kCryptZ - kHalfLength;
+        m.center_xz = {kCryptX, (front_edge + back_edge) * 0.5f};
+        m.half_extents_xz = {kHalfWidth, (front_edge - back_edge) * 0.5f};
+        m.mode = TerrainModifier::Mode::FlushAt;
+        m.value = kChapelGroundY;
+        m.blend_pad = 2.0f;
+        m.blend_pad_pos_z = 0.0f;
+        m.debug_name = "chapel_exterior_plateau";
         engine::world::registerTerrainModifier(m);
     }
 
-    // NO descent strip / no terrain over the tunnel. The colle is
-    // independent of the underground tunnel; tunnel descends into
-    // rock beneath, invisible from above. If the tunnel ceiling slab
-    // happens to poke above the colle surface where the colle isn't
-    // tall enough, that's a CHAPEL MESH issue (lower the ceiling
-    // there), not a terrain issue.
+    // Corridor geometry shared by footprint + slope modifiers.
+    constexpr float kCorridorCeilingChapelLocalY = 1.58f;  // chapel-local Y of corridor ceiling top at chapel-side end
+    constexpr float kStairRise = 0.16f;
+    constexpr float kStairTread = 0.35f;
+    constexpr float kCorridorSlopeMpM = kStairRise / kStairTread;  // 0.46
+    constexpr float kNaturalTerrainY = 32.0f;
+    const float corridor_top_world_y_at_back_wall =
+        (kChapelGroundY - kPlinthHeight) + kCorridorCeilingChapelLocalY;  // 33.58
+    const float dist_until_buried =
+        (corridor_top_world_y_at_back_wall - kNaturalTerrainY) / kCorridorSlopeMpM;  // 3.43m
+
+    // 2) Structure footprint: chapel body only. Hole removes terrain
+    //    inside the chapel. Behind the chapel, terrain is handled by
+    //    the FlushSlope below — terrain follows the corridor roof
+    //    down for a few meters, then natural terrain takes over.
+    //
+    //    Front edge pulled BACK by one terrain quad spacing so the
+    //    "in front of door" terrain quad survives (chapel floor mesh
+    //    covers it visually).
+    //
+    //    Back edge pushed FORWARD by one terrain quad spacing so
+    //    surviving boundary quads' centroids are at Z < (chapel back
+    //    wall - quad_spacing). Their vertices then sit fully INSIDE
+    //    the wedge FlushSlope rect (where Y rides the corridor roof
+    //    down) instead of straddling the boundary between depressed
+    //    plateau Y and slope Y. Without this margin, the boundary
+    //    surviving quad has one vertex inside the plateau (Y=32.25 =
+    //    chapel ground, depressed) and one vertex inside the wedge
+    //    slope (Y=33+) — producing a tilted triangle that floats
+    //    INSIDE the corridor airspace and blocks the player descent
+    //    (verified by physics-debug.log contact at Y=32.25 in the
+    //    corridor mouth area).
+    constexpr float kTerrainQuadSpacing = 512.0f / 384.0f;  // 1.333m at subdivide=384
+    {
+        const float front_edge_z = kCryptZ + kHalfLength - kTerrainQuadSpacing;
+        const float back_edge_z  = (kCryptZ - kHalfLength) - kTerrainQuadSpacing;
+        StructureFootprint f;
+        f.center_xz = {kCryptX, (front_edge_z + back_edge_z) * 0.5f};
+        f.half_extents_xz = {kHalfWidth, (front_edge_z - back_edge_z) * 0.5f};
+        f.debug_name = "chapel_footprint";
+        engine::world::registerStructureFootprint(f);
+    }
+
+    // 3) Corridor wedge FlushSlope: terrain follows the corridor
+    //    ceiling roof down for kCorridorWedgeRun meters past the
+    //    chapel back wall, so the visible wedge gap between the
+    //    chapel back wall and natural terrain is filled by terrain
+    //    sloping along the corridor roof. Past this rect's back
+    //    edge, the corridor is naturally buried by natural-Y terrain.
+    {
+        constexpr float kCorridorWedgeRun = 4.0f;  // a bit past dist_until_buried (3.43) so blend has room
+        const float near_z = kCryptZ - kHalfLength;            // -214 (chapel back wall)
+        const float far_z  = near_z - kCorridorWedgeRun;       // -218
+        TerrainModifier m;
+        m.center_xz = {kCryptX, (near_z + far_z) * 0.5f};
+        m.half_extents_xz = {kHalfWidth, kCorridorWedgeRun * 0.5f};
+        m.mode = TerrainModifier::Mode::FlushSlope;
+        m.slope_axis = 2;       // Z axis
+        // FlushSlope interpolates from `value` at the -axis (-Z) edge
+        // to `value_far` at the +axis (+Z) edge. Our -Z edge is FAR
+        // from chapel (deeper, lower corridor Y); +Z edge is at
+        // chapel back wall (highest corridor Y).
+        m.value     = corridor_top_world_y_at_back_wall - kCorridorWedgeRun * kCorridorSlopeMpM;  // ~31.74 at far_z
+        m.value_far = corridor_top_world_y_at_back_wall;                                          // 33.58 at near_z
+        m.blend_pad = 0.0f;     // sharp +Z edge (butts to chapel footprint Hole); sharp -Z edge fine too (natural Y already similar)
+        m.debug_name = "chapel_corridor_wedge_slope";
+        engine::world::registerTerrainModifier(m);
+    }
 }
 
 } // namespace selva::world::crypt_layout

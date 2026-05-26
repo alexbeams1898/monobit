@@ -124,6 +124,158 @@ See memory `feedback_3d_pacing.md` for the operational rule.
 
 ---
 
+## 8. Structures own their seam with terrain
+
+When a static-mesh structure (chapel, ruin, well, archway, cave mouth)
+meets the terrain, **the structure brings the geometry that hides the
+seam — terrain stays simple.**
+
+**When this pillar applies:** any static mesh where the player will
+walk close enough to see where the asset meets the ground. Practical
+trigger:
+
+- Structure sits ON terrain and is visible from outside (chapel,
+  ruin, watchtower, well, statue base, large gravestone, archway).
+- Structure passes THROUGH terrain into an underground continuation
+  (descent corridor, cave mouth, stair shaft, dungeon mouth).
+- Structure's outline is sharper than 2× terrain mesh resolution
+  (Selva terrain is 2.67 m/vertex; anything with edges crisper than
+  ~5 m).
+
+**When this pillar does NOT apply:**
+
+- Foliage-scattered props (rocks, debris, bones, broken statuary).
+  These sink into terrain naturally and look fine.
+- Anything fully indoors / on another structure's floor slab (chests,
+  altars, interior furniture).
+- Anything airborne (banners, hanging cages, lanterns).
+
+Rule of thumb at design time: "would the player walk close enough to
+see where this meets the ground?" Yes → pillar 8 applies. No → ignore.
+
+Concretely, every above-ground structure ships with:
+
+1. **An authored floor slab** at the elevation the player walks on,
+   as part of the mesh. The structure does NOT use terrain as its
+   floor. Player walks on mesh, not heightmap.
+2. **Walls/ceilings closed enough** that no terrain is visible from
+   inside the structure regardless of camera angle.
+
+Terrain is then controlled through a SINGLE registration call:
+
+```cpp
+engine::world::registerStructureFootprint({
+    .center_xz = ...,
+    .half_extents_xz = ...,
+    .debug_name = "chapel_footprint",
+});
+```
+
+This one call wires BOTH sides of terrain handling:
+- **Physics:** registers a `Hole`-mode `TerrainModifier`, so the
+  terrain trimesh has its quads dropped inside the footprint rect.
+  Player never collides with terrain inside the chapel.
+- **Render:** the terrain fragment shader queries the registered
+  footprint list and discards pixels inside any footprint rect.
+  No visible terrain inside the chapel.
+
+Single source of truth, no physics-vs-render drift.
+
+**The quad-margin rule.** Heightmap terrain interpolates linearly
+between vertex Y values, and quads are dropped per-CENTROID. This
+creates two boundary artifacts:
+
+1. *Drop boundary:* a quad whose centroid is just OUTSIDE the
+   footprint survives, but uses vertices that are INSIDE (depressed
+   by any neighboring FlushAt modifier). Result: a tilted "surviving
+   boundary" triangle floats in airspace where the chapel mesh would
+   otherwise have been. **Player gets stuck on it.**
+2. *Visual seam:* the quad straddling the footprint edge has one
+   vertex inside (dropped) and one outside (rendered), producing
+   visible terrain that ends mid-quad.
+
+Both are fixed by extending the footprint rect by **≥ one terrain
+quad spacing** past the structure mesh's outer face on every edge.
+That guarantees every quad whose centroid falls outside the rect
+ALSO has all four vertices outside, eliminating tilted survivors.
+
+For Selva (`subdivide=384`, `world_extent=512`, spacing=1.333m), the
+footprint extends 1.33m past the chapel's visible walls on each edge.
+
+**Asymmetric blend modifiers.** Where a separate `FlushAt` modifier
+controls terrain Y outside the structure (e.g. "terrain meets plinth
+bottom around the chapel"), use per-side `blend_pad_neg_x/pos_x/
+neg_z/pos_z` overrides. The default `blend_pad` applies on sides where
+soft terrain transition is desired; set the per-side override to 0 on
+sides where a sharp edge is needed (e.g. `blend_pad_pos_z = 0` to make
+terrain return to natural Y immediately at the door plane, so the
+door threshold doesn't sit on a 2m ramp).
+
+**For sloped tunnel mouths:** when the chapel's descent corridor exits
+the back wall, its ceiling top is briefly above natural terrain Y for
+a few meters before going underground. Use a `FlushSlope` modifier
+covering that wedge — terrain Y interpolates from the corridor
+ceiling-top-at-back-wall down to natural Y at the bury point. Past
+the wedge's back edge, the corridor is deep enough that natural
+terrain covers it without help.
+
+(Why `subdivide=384` rather than higher: terrain MeshShape::Create
+scales linearly with triangle count. At 192² → 440ms × 2 preloads.
+At 1024² → ~12s × 2 preloads = 24s+ boot hang. 384² = ~1.7s × 2 =
+3.4s, acceptable. Tune resolution to balance quad-margin cost vs
+boot time.)
+
+**Why this pillar:** the chapel went through 6+ rounds of terrain-
+modifier tuning (per-side overhangs, FlushSlope dance, shader-discard
+rects, blend-pad sizing, plateau-vs-hole interaction). Every iteration
+re-derived a relationship that the mesh itself could have just owned.
+The bug class is "two systems (mesh shape + terrain rules) must agree
+on a per-feature contract that drifts the moment either side changes."
+Skirt geometry collapses both sides into one: the mesh declares its
+footprint, terrain depresses inside it, the skirt hides whatever's
+left.
+
+This is also the standard AAA pattern. Heightmap terrain can't
+represent overhangs or multi-level structures; the universal answer is
+"structure is a separate mesh placed on top, mesh has skirting that
+hides the seam." Elden Ring, every Unreal open-world, every Unity
+Terrain project does this. We had been doing the inverse — terrain
+custom-shaped per structure — and burning hours per chapel iteration.
+
+**Signs you're violating this pillar:**
+- Wiring `Hole` modifiers directly instead of going through
+  `registerStructureFootprint` (manual physics-only carve, render side
+  drifts).
+- Setting shader-discard rect uniforms directly from C++ instead of
+  reading from `structureFootprintAt(N)` (manual render-only carve,
+  physics side drifts).
+- Footprint rect sized to match the chapel walls exactly (no
+  quad-margin). Player will get stuck on a tilted boundary triangle.
+- Hardcoded back-edge / front-edge / corridor-strip-length constants
+  in PhysicsScene — these are derived from JOINT + heightmap math,
+  not free parameters.
+- Mention of "match this specific primitive's AABB" in modifier
+  values.
+
+**Operational rule:** when authoring a new structure that touches
+terrain, the C++ side is exactly two calls:
+
+```cpp
+// Optional: exterior plateau if terrain should meet a specific Y
+// around the structure (e.g. terrain meets plinth-bottom outside chapel).
+engine::world::registerTerrainModifier({...FlushAt...});
+
+// REQUIRED: physics + render terrain removal inside the structure.
+engine::world::registerStructureFootprint({
+    .center_xz = ...,
+    .half_extents_xz = {visible_half_w + quad_margin,
+                        visible_half_l + quad_margin},
+    .debug_name = "your_structure",
+});
+```
+
+---
+
 ## Anti-pillars
 
 Things that are NOT pillars, and that we explicitly reject:

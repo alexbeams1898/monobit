@@ -209,6 +209,10 @@ int main(int /*argc*/, char* /*argv*/[])
 
     selva::render::setInitialWindowSize(engine.windowWidth(), engine.windowHeight());
     selva::render::initSceneGeometry();
+    // Static mesh assets MUST load before chapel terrain modifiers so
+    // the modifier registration can auto-derive the chapel footprint
+    // from the loaded mesh's XZ AABB (no hand-set coords).
+    selva::world::initStaticMeshAssets();
     // Terrain modifiers (chapel plateau, descent strip, etc) must be
     // registered BEFORE initTerrain() — Terrain.cpp::buildRegionMesh
     // queries the registry per vertex. Modifiers + heightmap PNG
@@ -218,7 +222,7 @@ int main(int /*argc*/, char* /*argv*/[])
     selva::world::initTerrain();
     selva::world::initHubScene();
     selva::world::initTreeAssets();
-    selva::world::initStaticMeshAssets();
+    // (initStaticMeshAssets moved earlier — chapel footprint derived from mesh)
     // Physics: register terrain + chapel as static trimesh bodies.
     // MUST run after both terrain and static-mesh-assets init so the
     // CPU vertex copies exist on those structs.

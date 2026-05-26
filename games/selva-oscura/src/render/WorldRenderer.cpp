@@ -16,6 +16,7 @@
 #include "world/JsonScene.h"
 #include "world/Scene.h"
 #include "world/StaticMeshAssets.h"
+#include "world/StructureFootprints.h"
 #include "world/Terrain.h"
 #include "world/TreeAssets.h"
 
@@ -577,31 +578,34 @@ void renderTerrain()
     // atmosphere uniforms can be set per-frame consistently with sky
     // and trees.
     //
-    // Discard strategy: chapel mesh is drawn BEFORE terrain (scene
-    // pass) so the chapel naturally occludes terrain via depth test
-    // wherever it sits. But the open stair hole in the chapel floor
-    // has no mesh — terrain there renders at plateau Y and bleeds
-    // through to the descent below. So we use a SMALL rect discard
-    // covering only the hole footprint (X span = stair tunnel,
-    // Z range from chapel-back to the door-side hole edge so it
-    // covers both the stair hole and the back-wall tunnel mouth).
-    // Shader discard rect = stair shaft + back-wall tunnel mouth
-    // only. The chapel mesh has no interior floor primitive — the
-    // chapel interior IS terrain at plateau Y (the chapel plinth-top
-    // FlushAt modifier raises terrain to chapel-floor level). So we
-    // ONLY discard the shaft area (where the player must fall
-    // through to the descent) and leave terrain everywhere else
-    // inside the chapel as the walkable surface.
-    using namespace selva::world::crypt_layout;
-    const float hole_z_near = kCryptZ;  // chapel-local Y=0 (door side of hole)
-    const float hole_z_far = kCryptZ - kHalfLength;  // back wall (covers tunnel mouth too)
-    const float hole_center_z = (hole_z_near + hole_z_far) * 0.5f;
-    const float hole_half_z = (hole_z_near - hole_z_far) * 0.5f;
-    selva::render::setTerrainChapelDiscard(
-        glm::vec2(kCryptX, hole_center_z),
-        glm::vec2(kSingleFlightHalfWidth, hole_half_z));
+    // Structure footprints drive both physics-side (Hole modifier)
+    // AND render-side (shader discard) terrain removal — single
+    // source of truth, registered once at scene init. See
+    // engine::world::registerStructureFootprint.
+    //
+    // Terrain shader has 2 active discard rect slots (chapel + descent).
+    // First two registered footprints map to those slots; further
+    // footprints would need a shader-side array bump.
+    const int n_fp = engine::world::structureFootprintCount();
+    if (n_fp >= 1)
+    {
+        const auto& f = engine::world::structureFootprintAt(0);
+        selva::render::setTerrainChapelDiscard(f.center_xz, f.half_extents_xz);
+    }
+    else
+    {
+        selva::render::setTerrainChapelDiscard(glm::vec2(0.0f), glm::vec2(0.0f));
+    }
     selva::render::setTerrainApseDiscard(glm::vec2(0.0f), 0.0f);
-    selva::render::setTerrainDescentDiscard(glm::vec2(0.0f), glm::vec2(0.0f));
+    if (n_fp >= 2)
+    {
+        const auto& f = engine::world::structureFootprintAt(1);
+        selva::render::setTerrainDescentDiscard(f.center_xz, f.half_extents_xz);
+    }
+    else
+    {
+        selva::render::setTerrainDescentDiscard(glm::vec2(0.0f), glm::vec2(0.0f));
+    }
 
     for (int i = 0; i < selva::world::terrainRegionCount(); ++i)
     {
@@ -794,12 +798,28 @@ void renderTrees()
 void renderTerrainDepth()
 {
     {
-        using namespace selva::world::crypt_layout;
-        selva::render::setTerrainDepthChapelDiscard(
-            glm::vec2(kCryptX, kCryptZ), glm::vec2(kHalfWidth, kHalfLength));
-        selva::render::setTerrainDepthApseDiscard(
-            glm::vec2(kCryptX, kCryptZ - kHalfLength), kApseRadius);
-        selva::render::setTerrainDepthDescentDiscard(glm::vec2(0.0f), glm::vec2(0.0f));
+        // Mirror the main-pass footprint-driven discards exactly so
+        // terrain inside footprints doesn't cast phantom shadows.
+        const int n_fp = engine::world::structureFootprintCount();
+        if (n_fp >= 1)
+        {
+            const auto& f = engine::world::structureFootprintAt(0);
+            selva::render::setTerrainDepthChapelDiscard(f.center_xz, f.half_extents_xz);
+        }
+        else
+        {
+            selva::render::setTerrainDepthChapelDiscard(glm::vec2(0.0f), glm::vec2(0.0f));
+        }
+        selva::render::setTerrainDepthApseDiscard(glm::vec2(0.0f), 0.0f);
+        if (n_fp >= 2)
+        {
+            const auto& f = engine::world::structureFootprintAt(1);
+            selva::render::setTerrainDepthDescentDiscard(f.center_xz, f.half_extents_xz);
+        }
+        else
+        {
+            selva::render::setTerrainDepthDescentDiscard(glm::vec2(0.0f), glm::vec2(0.0f));
+        }
     }
     for (int i = 0; i < selva::world::terrainRegionCount(); ++i)
     {

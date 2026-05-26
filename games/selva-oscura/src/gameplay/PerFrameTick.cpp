@@ -48,6 +48,7 @@
 #include "world/PhysicsScene.h"
 #include "world/Scene.h"
 #include "world/Terrain.h"
+#include "world/TerrainModifiers.h"
 #include "world/TreeAssets.h"
 
 #include <imgui.h>
@@ -579,6 +580,100 @@ static void tickF1TuningPanelToggle(const Uint8* keys)
         // ui::tickMouseCapture, which now respects sShowTuningPanel.
     }
     sPrevF1 = f1Now;
+}
+
+// Rising-edge F3: dump full terrain diagnostic at the player's
+// current XZ to a DEDICATED FILE (terrain-probe.log) so the main
+// stderr.log stays clean. Each press appends one probe block.
+// Use when you see a visual artifact: stand on/near it, press F3,
+// paste the latest block from terrain-probe.log.
+static bool sPrevF3Probe = false;
+static int  sF3ProbeCount = 0;
+
+static void terrainProbeDump(const char* label, float px, float py, float pz)
+{
+    static std::FILE* probe_log = nullptr;
+    if (!probe_log)
+    {
+        // 'w' truncates: each game launch starts fresh. Use 'a' to
+        // append across launches.
+        probe_log = std::fopen("terrain-probe.log", "w");
+        if (!probe_log) { return; }
+        std::fprintf(probe_log,
+                     "# Selva terrain probe log. Press F3 in-game at any\n"
+                     "# visual artifact spot to append a probe block here.\n\n");
+    }
+    const float sampled = selva::world::sampleHeight(px, pz);
+    const bool is_hole = engine::world::insideTerrainHole(px, pz);
+    std::fprintf(probe_log,
+                 "====== PROBE #%d (%s) at player pos (%.3f, %.3f, %.3f) ======\n",
+                 ++sF3ProbeCount, label, px, py, pz);
+    std::fprintf(probe_log,
+                 "  sampleHeight(x,z) = %.3f (rendered terrain Y at player XZ)\n",
+                 sampled);
+    std::fprintf(probe_log,
+                 "  insideTerrainHole = %d (1 = terrain quad dropped at this XZ)\n",
+                 is_hole ? 1 : 0);
+    // Modifier stack: dump to a temporary buffer via a redirect.
+    // Simpler: just call debugDumpModifierStack (it writes to stderr)
+    // AND ALSO mirror the same lines to the probe log. To avoid
+    // duplicating logic, write a local mini-dumper using the public
+    // modifier-count API.
+    const int n_mods = engine::world::terrainModifierCount();
+    std::fprintf(probe_log, "  --- modifier stack (%d modifiers) ---\n", n_mods);
+    for (int i = 0; i < n_mods; ++i)
+    {
+        const auto& m = engine::world::terrainModifierAt(i);
+        const float dx = px - m.center_xz.x;
+        const float dz = pz - m.center_xz.y;
+        const float dx_out = std::abs(dx) - m.half_extents_xz.x;
+        const float dz_out = std::abs(dz) - m.half_extents_xz.y;
+        const bool inside = (dx_out <= 0.0f && dz_out <= 0.0f);
+        std::fprintf(probe_log,
+                     "    [%d] '%s' mode=%d center=(%.2f,%.2f) half=(%.2f,%.2f) val=%.2f  "
+                     "dx_out=%+.3f dz_out=%+.3f  %s\n",
+                     i, m.debug_name ? m.debug_name : "(no name)",
+                     static_cast<int>(m.mode),
+                     m.center_xz.x, m.center_xz.y,
+                     m.half_extents_xz.x, m.half_extents_xz.y,
+                     m.value, dx_out, dz_out,
+                     inside ? "INSIDE" : "outside");
+    }
+    // Sample the 4 surrounding terrain grid vertices.
+    constexpr float kQuad = 512.0f / 384.0f;  // = 1.333
+    const int gx = static_cast<int>(std::floor(px / kQuad));
+    const int gz = static_cast<int>(std::floor(pz / kQuad));
+    std::fprintf(probe_log, "  --- 4 surrounding terrain vertices (spacing %.3fm) ---\n", kQuad);
+    for (int dz = 0; dz <= 1; ++dz)
+    {
+        for (int dx = 0; dx <= 1; ++dx)
+        {
+            const float vx = (gx + dx) * kQuad;
+            const float vz = (gz + dz) * kQuad;
+            const float vy = selva::world::sampleHeight(vx, vz);
+            const bool vhole = engine::world::insideTerrainHole(vx, vz);
+            std::fprintf(probe_log,
+                         "    vertex (%.3f, %.3f) -> Y=%.3f hole=%d\n",
+                         vx, vz, vy, vhole ? 1 : 0);
+        }
+    }
+    std::fprintf(probe_log, "====== END PROBE #%d ======\n\n", sF3ProbeCount);
+    std::fflush(probe_log);
+}
+
+static void tickF3TerrainProbe(const Uint8* keys)
+{
+    const bool f3Now = keys[SDL_SCANCODE_F3] != 0;
+    if (f3Now && !sPrevF3Probe)
+    {
+        terrainProbeDump("F3", sPlayer.pos.x, sPlayer.pos.y, sPlayer.pos.z);
+        // Also flag to stderr so the user knows the keypress was
+        // received and the probe was written.
+        std::fprintf(stderr, "[terrain-f3] probe #%d written to terrain-probe.log\n",
+                     sF3ProbeCount);
+        std::fflush(stderr);
+    }
+    sPrevF3Probe = f3Now;
 }
 
 // Pose-match start time for a chain-link splice: source is the
@@ -2831,6 +2926,18 @@ static void resolvePlayerCollisionAndSnap(float dt)
         for (BodyHandle c : sContacts)
             std::fprintf(sPhysLog, " ['%s']", bodyDebugName(c));
         std::fprintf(sPhysLog, "\n");
+        // Detailed contact info: where on each body is the player touching?
+        static std::vector<CharacterContactDetail> sContactDetails;
+        characterActiveContactDetails(body, sContactDetails);
+        for (const auto& d : sContactDetails)
+        {
+            const char* name = (d.body == kInvalidBody) ? "(unknown)" : bodyDebugName(d.body);
+            std::fprintf(sPhysLog,
+                         "    contact body='%s' pos=(%.3f,%.3f,%.3f) normal=(%.3f,%.3f,%.3f)\n",
+                         name,
+                         d.position.x, d.position.y, d.position.z,
+                         d.normal.x,   d.normal.y,   d.normal.z);
+        }
         std::fflush(sPhysLog);
         ++sFrameCounter;
     }
@@ -2913,6 +3020,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
 
     tickDevKillKey(keys);
     tickF1TuningPanelToggle(keys);
+    tickF3TerrainProbe(keys);
     tickTreePreviewToggle(keys);
     tickFpvToggle(keys);
     // Preview mode: world simulation suspended, render handled by

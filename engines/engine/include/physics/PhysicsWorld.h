@@ -132,6 +132,23 @@ BodyHandle characterGroundBody(BodyHandle character);
 // "what wall am I jammed against?"
 void characterActiveContacts(BodyHandle character, std::vector<BodyHandle>& out);
 
+// Detailed contact info per active contact for the character. Each
+// entry: which body, contact point in world space, contact normal,
+// and (if available) the triangle's three vertex positions for
+// trimesh contacts. tri_v0/v1/v2 are zeroed if not a trimesh contact.
+struct CharacterContactDetail
+{
+    BodyHandle body;
+    glm::vec3  position;
+    glm::vec3  normal;
+    glm::vec3  tri_v0;
+    glm::vec3  tri_v1;
+    glm::vec3  tri_v2;
+    bool       is_trimesh_triangle = false;
+};
+void characterActiveContactDetails(BodyHandle character,
+                                   std::vector<CharacterContactDetail>& out);
+
 // Teleport a character (resets velocity, no collision sweep). Used
 // for spawn / scene load.
 void teleportCharacter(BodyHandle character, const glm::vec3& position);

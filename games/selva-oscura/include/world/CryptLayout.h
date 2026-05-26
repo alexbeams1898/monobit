@@ -46,7 +46,10 @@ constexpr float kStairTread = 0.35f;
 // Upper flights: two flanking, descend in chapel-local -Y (toward
 // chapel front, away from apse). Top step at chapel-floor level.
 // Single wide flight spanning the full chapel interior width.
-constexpr float kSingleFlightHalfWidth = 1.50f;  // = LANDING_WIDTH_X / 2 so the descent path width matches the landing's; the back-wall tunnel and chapel-floor hole share this width
+// MUST stay in sync with SINGLE_FLIGHT_HALF_WIDTH in
+// games/selva-oscura/scripts/blender/gen_crypt_foundation.py — both
+// must equal chapel interior half-width (BODY_WIDTH/2 - WALL_THICKNESS).
+constexpr float kSingleFlightHalfWidth = 2.40f;
 constexpr int kUpperFlightStepCount = 9;
 constexpr float kUpperFlightTopChapelLocalY = 0.0f; // chapel-local Y of top step
 constexpr float kUpperFlightDrop = kUpperFlightStepCount * kStairRise;   // 1.44m

@@ -66,11 +66,25 @@ struct TerrainModifier
     // along chapel-local Y / world -Z).
     int        slope_axis = 2;
     // Outside the rect, modifier strength falls smoothly to zero
-    // over `blend_pad` meters. 0 = sharp edge (sheer cliff at the
-    // pit/plateau boundary). Positive values produce a smooth ramp
-    // that prevents the rim-cliff artifacts that cause Jolt
+    // over the blend_pad on that side. 0 = sharp edge (sheer cliff
+    // at the pit/plateau boundary). Positive values produce a smooth
+    // ramp that prevents the rim-cliff artifacts that cause Jolt
     // CharacterVirtual to snag.
+    //
+    // Default value applied to all four sides. Use the per-side
+    // overrides below when a side needs different behavior — e.g.
+    // a chapel plateau with a tunnel exiting the back wall wants
+    // a soft ramp on the front/sides but a SHARP edge on the back
+    // so the soft ramp doesn't depress terrain into the tunnel.
     float      blend_pad = 0.0f;
+    // Per-side blend_pad overrides. -1.0f = use the default
+    // blend_pad above. Lets a single modifier express asymmetric
+    // transitions to surrounding terrain without spawning multiple
+    // overlapping modifiers / counter-modifiers.
+    float      blend_pad_neg_x = -1.0f;
+    float      blend_pad_pos_x = -1.0f;
+    float      blend_pad_neg_z = -1.0f;
+    float      blend_pad_pos_z = -1.0f;
     // Static-storage string literal for the F1 modifier overlay.
     // nullptr = no label drawn.
     const char* debug_name = nullptr;
@@ -98,5 +112,10 @@ float applyTerrainModifiers(float world_x, float world_z, float base_y);
 // rect. Mesh builder skips quads whose centroid returns true here
 // — those triangles never enter the render or physics mesh.
 bool insideTerrainHole(float world_x, float world_z);
+
+// Diagnostic: dump per-modifier weight + contribution at this XZ to
+// stderr. Use sparingly (one-shot probes only, never per-vertex).
+void debugDumpModifierStack(float world_x, float world_z, float base_y,
+                            const char* label);
 
 } // namespace engine::world

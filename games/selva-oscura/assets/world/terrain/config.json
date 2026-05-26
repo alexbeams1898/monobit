@@ -12,7 +12,7 @@
       "world_extent": 512.0,
       "height_range_min": -6.0,
       "height_range_max": 38.0,
-      "subdivide": 192,
+      "subdivide": 384,
       "base_color": [0.16, 0.13, 0.10]
     }
   }
