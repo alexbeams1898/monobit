@@ -45,6 +45,11 @@ engine::world::SceneId loadAllScenes()
     if (!readJson("assets/scenes/scenes.json", registry))
         return engine::world::kInvalidScene;
 
+    // Doctrine: ALL scenes preload at boot, never mid-game. Soulslike
+    // gameplay can't tolerate mid-session loading hitches; everything
+    // the player can transition into during a session is resident from
+    // before the main menu appears. Boot is allowed to take longer;
+    // gameplay frames are sacrosanct.
     const auto& scene_ids = registry.value("scenes", nlohmann::json::array());
     for (const auto& sid_val : scene_ids)
     {
@@ -59,9 +64,6 @@ engine::world::SceneId loadAllScenes()
             continue;
         }
         auto js = std::make_unique<JsonScene>(scene_json, folder);
-        // Pre-load all assets at boot. Resident-all-scenes model:
-        // file I/O + GL upload happens NOW, once. Transitions are
-        // pure body-swap (sub-ms), no load stall.
         js->preloadAssets();
         const engine::world::SceneId reg_id = engine::world::registerScene(std::move(js));
         std::fprintf(stderr, "[scene-bootstrap] registered scene '%s' as SceneId=%u\n",

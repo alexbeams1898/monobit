@@ -72,6 +72,7 @@ JsonScene::JsonScene(const nlohmann::json& scene_json, std::string scene_folder)
 
 void JsonScene::preloadAssets()
 {
+    if (mPreloaded) return;  // idempotent — lazy callers can call freely
     std::fprintf(stderr, "[json-scene '%s'] preloadAssets START\n", sceneId().c_str());
     // File I/O + GL upload + Jolt SHAPE construction happen HERE,
     // once at boot. Per-activation commit reuses preloaded shapes
@@ -137,10 +138,17 @@ void JsonScene::preloadAssets()
 
     std::fprintf(stderr, "[json-scene '%s'] preloadAssets END (%zu meshes, %zu terrain shapes)\n",
                  sceneId().c_str(), mMeshes.size(), mTerrainShapeHandles.size());
+    mPreloaded = true;
 }
 
 void JsonScene::commitPrepared(engine::world::SceneActivationContext& ctx)
 {
+    // Lazy preload: if a scene wasn't preloaded at boot (e.g.
+    // chapel_interior, which only loads when the player crosses
+    // the door trigger), do it now. Idempotent — preloadAssets
+    // short-circuits if already loaded.
+    if (!mPreloaded)
+        preloadAssets();
     std::fprintf(stderr, "[json-scene '%s'] commitPrepared (activation) START\n",
                  sceneId().c_str());
     // All Jolt shapes are preloaded in preloadAssets. This pass

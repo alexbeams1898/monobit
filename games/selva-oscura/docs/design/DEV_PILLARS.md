@@ -276,6 +276,56 @@ engine::world::registerStructureFootprint({
 
 ---
 
+## 9. Everything preloads before the main menu
+
+All assets the player can possibly hit during a game session
+(meshes, trimesh shapes, audio, animation clips, scene bodies for
+every reachable scene) load before the main menu is interactive.
+Mid-session loading is forbidden.
+
+**Why:** Selva is a soulslike. Gameplay rhythm — parry windows,
+i-frame timing, traversal momentum — depends on consistent
+frametimes. A 500 ms hitch during a door transition or first-time
+SFX play breaks the contract the genre makes with the player.
+Boot can take 5–10 seconds; a single mid-session hitch is worse
+than 5 extra seconds at startup.
+
+**Concretely:**
+
+- Every scene listed in `assets/scenes/scenes.json` calls
+  `preloadAssets()` at boot, regardless of whether it's the default
+  spawn scene. `SceneBootstrap::loadAllScenes()` is the chokepoint;
+  don't add a "lazy" flag.
+- Every audio bank registered in `audio.json` decodes at audio init,
+  not on first `playSfx`.
+- Every animation clip referenced anywhere loads in
+  `initSkeletalAssets`.
+- Static meshes, terrain trimesh, all Jolt shapes — preloaded.
+- The single exception is **save data**, which loads only when the
+  user clicks "Continue" / "Load" from the main menu (it's data,
+  not gameplay-rhythm-critical).
+
+**Signs you're violating this pillar:**
+
+- A `lazy_load` flag anywhere.
+- A `preload = false` JSON field.
+- A "Loading…" overlay that appears during gameplay (not boot, not
+  the main-menu→Playing transition — actually during play).
+- A code path that checks "is this asset loaded yet?" outside of
+  init.
+- "We can defer this to the first time the player needs it."
+
+If boot becomes slow enough to be a problem, the answer is to make
+boot loading faster (parallelism, format optimization, smaller
+assets) — not to defer work into gameplay.
+
+**Boot UX:** the engine renders a "Loading" screen with a growing
+list of completed init steps + a current step, so the user sees
+progress. See `Engine::renderLoadingFrame`. Call it at every
+boot-phase boundary in `main()`.
+
+---
+
 ## Anti-pillars
 
 Things that are NOT pillars, and that we explicitly reject:

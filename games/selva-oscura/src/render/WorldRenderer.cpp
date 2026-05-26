@@ -14,6 +14,7 @@
 #include "world/Collision.h"
 #include "world/CryptLayout.h"
 #include "world/JsonScene.h"
+#include "world/PhysicsScene.h"
 #include "world/Scene.h"
 #include "world/StaticMeshAssets.h"
 #include "world/StructureFootprints.h"
@@ -371,12 +372,21 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
     // scene are real Jolt bodies, so the raycast + sphere-overlap above
     // already keep the camera on the player's side of any wall.
 
-    // SYMMETRIC smoothing both directions. Per Alex's spec: "each side
-    // lerp the same to the chest." Wall safety is handled by the
-    // forward-raycast + push-out folding into target_separation BEFORE
-    // smoothing, so the smoothing target is always wall-clear; the
-    // camera lerping through it visually is a non-issue because the
-    // target moves continuously (raycast updates per-frame).
+    // ASYMMETRIC smoothing: instant pull-IN (snap), smoothed pull-OUT.
+    // Pull-in means the camera arm crossed into wall geometry and the
+    // raycast/push-out shrank target_separation. If we smooth this, the
+    // camera spends a few frames inside the wall during the lerp — and
+    // with near_clip > wall-distance for even a single frame, the wall
+    // gets near-clipped and outside shows through for a split second.
+    // SNAP instead. Pull-out (target_separation > current) means the
+    // wall has cleared and the camera is restoring its ideal arm length
+    // — smooth this normally for a glide-back feel.
+    //
+    // The legacy commit (95e9238) tried this and reverted due to an
+    // "aerial-view teleport" caused by indoor-enforcement step changes.
+    // We're not running indoor enforcement now — target_separation is
+    // a continuous raycast/sphere-overlap value, so the snap has no
+    // step input to amplify.
     static float sSmoothedSeparation = desired_separation;
     static bool sSeparationInit = false;
     {
@@ -389,8 +399,15 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
             sSmoothedSeparation = target_separation;
             sSeparationInit = true;
         }
+        else if (target_separation < sSmoothedSeparation)
+        {
+            // Pull-IN: snap so the camera never spends frames inside
+            // a wall during the transition.
+            sSmoothedSeparation = target_separation;
+        }
         else
         {
+            // Pull-OUT: smooth the return to ideal arm length.
             const float tau = std::max(1e-3f, tun.camera_pull_in_tau);
             const float alpha = 1.0f - std::exp(-sep_dt / tau);
             sSmoothedSeparation += (target_separation - sSmoothedSeparation) * alpha;
@@ -432,50 +449,20 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
         }
     }
 
-    // Ground-clearance clamp. Skip when the player is indoors (inside
-    // the chapel + descent shaft): the camera is following the player
-    // BELOW terrain plateau Y into the underground descent, and the
-    // raw terrain sample at the camera XZ is still at plateau Y up
-    // top (terrain doesn't know about the descent shaft). Clamping
-    // to terrain Y holds the camera at plateau height and yanks it
-    // away from the descending player. Using player Y as the floor
-    // instead lets the camera follow the descent.
-    constexpr float kCamMinClearance = 1.0f;
-    const float terrain_floor_y = selva::world::sampleHeight(camPos.x, camPos.z);
-    const float floor_y = indoors ? player_pos.y : terrain_floor_y;
-    const float camY_before_clamp = camPos.y;
-    if (camPos.y < floor_y + kCamMinClearance)
-        camPos.y = floor_y + kCamMinClearance;
-    const float camY_after_clamp = camPos.y;
-
-    // Descent diagnosis log: when the player is below chapel-floor
-    // level, capture every input to the camera Y decision so we can
-    // see what's pinning the camera up (terrain sample, clamp, smooth
-    // separation, scene-kind, lookAt Y).
-    if (player_pos.y < 31.0f)
-    {
-        static FILE* sDescentLog = nullptr;
-        static int sDescentFrame = 0;
-        if (sDescentLog == nullptr)
-            sDescentLog = std::fopen("camera-descent-debug.log", "w");
-        if (sDescentLog != nullptr)
-        {
-            const char* scene_name =
-                (scene_ptr != nullptr) ? scene_ptr->sceneId().c_str() : "<none>";
-            std::fprintf(sDescentLog,
-                         "[%d] pY=%.3f lookAtY=%.3f camY_pre=%.3f camY_post=%.3f "
-                         "floor_y=%.3f terrain_y=%.3f indoors=%d scene='%s' "
-                         "sep=%.3f cam_dir.y=%.3f hit=%d hit_dist=%.3f "
-                         "smoothed_offset=%.3f\n",
-                         sDescentFrame, player_pos.y, lookAt.y, camY_before_clamp,
-                         camY_after_clamp, floor_y, terrain_floor_y,
-                         indoors ? 1 : 0, scene_name, sSmoothedSeparation,
-                         cam_dir.y, hit.hit ? 1 : 0, hit.distance,
-                         sSmoothedOffset);
-            std::fflush(sDescentLog);
-            ++sDescentFrame;
-        }
-    }
+    // Ground-clearance clamp was deleted on 2026-05-26 — it lifted
+    // camPos.y up to terrain_y + 1.0 whenever the camera arm dipped
+    // below terrain, but during descent-tunnel play the player is
+    // underground at Y=22 while sampleHeight(camPos.xz) still reads
+    // ~32 (terrain doesn't know about the descent shaft beneath it).
+    // That produced an 8m camera teleport above the outdoor terrain,
+    // viewing the player through the ground. The forward raycast in
+    // the physics pull-in pipeline above already enforces "don't go
+    // through terrain" — if the camera arm dips below ground, the
+    // ray hits terrain and target_separation shrinks. A second
+    // belt-and-suspenders clamp built on a different data model
+    // (terrain heightmap, not real physics) violates the dual-
+    // source-of-truth doctrine and creates this exact bug class.
+    // See [[feedback_dual_source_of_truth_is_the_bug]].
 
     if (tun.debug_camera_pull_in_log)
     {
@@ -483,7 +470,43 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
         static int sPullInFrame = 0;
         static glm::vec3 sPrevPlayerPos = player_pos;
         if (sPullInLog == nullptr)
+        {
             sPullInLog = std::fopen("camera-debug.log", "w");
+            // One-shot: enumerate every physics body with its AABB +
+            // kind + tag at first-log-open. The "where can the camera
+            // actually go" question is fundamentally constrained by
+            // the set of physics bodies in the world, so we need to
+            // see that set explicitly. Anything mis-shaped, mis-named,
+            // or missing relative to the visible mesh will be obvious
+            // on inspection.
+            if (sPullInLog != nullptr)
+            {
+                static std::vector<engine::physics::BodyDebugInfo> sBodies;
+                sBodies.clear();
+                engine::physics::enumerateBodies(sBodies);
+                std::fprintf(sPullInLog,
+                             "=== physics body enumeration (%zu bodies) ===\n",
+                             sBodies.size());
+                for (const auto& b : sBodies)
+                {
+                    const char* nm = engine::physics::bodyDebugName(b.body);
+                    const char* kind =
+                        b.kind == engine::physics::BodyKind::Character     ? "Character"
+                        : b.kind == engine::physics::BodyKind::StaticBox   ? "Box"
+                        : b.kind == engine::physics::BodyKind::StaticTrimesh ? "Tri"
+                                                                          : "?";
+                    std::fprintf(
+                        sPullInLog,
+                        "  id=%u kind=%s tag=%d aabb=[(%.2f,%.2f,%.2f)-(%.2f,%.2f,%.2f)] "
+                        "name='%s'\n",
+                        b.body.id, kind, static_cast<int>(b.tag),
+                        b.world_aabb_min.x, b.world_aabb_min.y, b.world_aabb_min.z,
+                        b.world_aabb_max.x, b.world_aabb_max.y, b.world_aabb_max.z, nm);
+                }
+                std::fprintf(sPullInLog, "=== end enumeration ===\n");
+                std::fflush(sPullInLog);
+            }
+        }
         if (sPullInLog != nullptr)
         {
             const bool overlap = engine::physics::sphereOverlap(camPos, sphere_radius);
@@ -494,9 +517,140 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
                                                 cam_z_from_player * cam_z_from_player);
             const glm::vec3 player_vel = player_pos - sPrevPlayerPos;
             const float player_speed = glm::length(player_vel);
-            // cam_indoors == player indoors now: scene-kind is uniform
-            // across the whole scene.
             const bool cam_indoors = indoors;
+
+            // SAME-SIDE-OF-WALL PROBE — the load-bearing diagnostic for
+            // "can see outside while inside." Forward raycast (from
+            // lookAt along cam_dir, length desired_separation+margin)
+            // can return hit=0 when cam_dir clears the wall edge or
+            // threads a doorway — yet the final camPos can still land
+            // OUTSIDE a wall. To detect that, cast an INDEPENDENT ray
+            // from the actual camPos back to lookAt and report what
+            // it hits + at what distance. If this ray hits a wall
+            // with distance < |camPos - lookAt|, there's a wall
+            // between camera and player — camera is on the wrong side.
+            // Also probe player_pos (feet) → camPos, which catches
+            // walls that the lookAt-height ray flies over.
+            const glm::vec3 cam_to_look = lookAt - camPos;
+            const float cam_to_look_dist = glm::length(cam_to_look);
+            const glm::vec3 cam_to_look_dir =
+                cam_to_look_dist > 1e-4f ? cam_to_look / cam_to_look_dist : glm::vec3(0.0f);
+            const engine::physics::RayHit probe_cam_to_look =
+                cam_to_look_dist > 1e-4f
+                    ? engine::physics::raycast(camPos, cam_to_look_dir, cam_to_look_dist + 0.01f)
+                    : engine::physics::RayHit{};
+            const glm::vec3 feet_to_cam = camPos - player_pos;
+            const float feet_to_cam_dist = glm::length(feet_to_cam);
+            const glm::vec3 feet_to_cam_dir =
+                feet_to_cam_dist > 1e-4f ? feet_to_cam / feet_to_cam_dist : glm::vec3(0.0f);
+            const engine::physics::RayHit probe_feet_to_cam =
+                feet_to_cam_dist > 1e-4f
+                    ? engine::physics::raycast(player_pos, feet_to_cam_dir, feet_to_cam_dist + 0.01f)
+                    : engine::physics::RayHit{};
+            const char* probe_cam_to_look_name =
+                probe_cam_to_look.hit
+                    ? engine::physics::bodyDebugName(probe_cam_to_look.body) : "";
+            const char* probe_feet_to_cam_name =
+                probe_feet_to_cam.hit
+                    ? engine::physics::bodyDebugName(probe_feet_to_cam.body) : "";
+            // VERDICT: wall_between=1 means at least one independent
+            // probe found a wall between camera and player. That's
+            // the bug condition we want a regression test to assert
+            // never fires while the player is inside the chapel.
+            const bool wall_between = probe_cam_to_look.hit || probe_feet_to_cam.hit;
+
+            // WALL-NEAREST-POINT PROBE — for each overlap=1 frame,
+            // find the body that's overlapping the camera sphere and
+            // report (a) the closest point on that body to the
+            // camera, (b) the signed distance from camera to that
+            // point along the contact normal. This disambiguates the
+            // three see-outside hypotheses:
+            //   A) signed_dist > 0 but small (< kCameraNearPlane):
+            //      camera is inside, but the near clip plane lies
+            //      PAST the wall surface — wall gets near-clipped,
+            //      hole reveals outside.
+            //   B) signed_dist < 0: camera is ALREADY OUTSIDE the
+            //      wall — geometrically wrong side, view shows the
+            //      world from outside.
+            //   C) no overlap, see-outside still happens — something
+            //      else is responsible (frustum corner past wall,
+            //      missing wall body, shader/depth bug).
+            // Implementation: ray-cast outward from camera along the
+            // 6 axis-aligned directions, find the nearest hit, report
+            // the body name + distance + which axis.
+            float wall_nearest_dist = 999.0f;
+            const char* wall_nearest_name = "";
+            int wall_nearest_axis = -1;  // 0..5 = +X,-X,+Y,-Y,+Z,-Z
+            const glm::vec3 axis_dirs[6] = {
+                { 1, 0, 0}, {-1, 0, 0}, {0,  1, 0},
+                {0, -1, 0}, {0, 0,  1}, {0,  0,-1}
+            };
+            for (int ax = 0; ax < 6; ++ax)
+            {
+                const auto h = engine::physics::raycast(camPos, axis_dirs[ax], 2.0f);
+                if (h.hit && h.distance < wall_nearest_dist)
+                {
+                    wall_nearest_dist = h.distance;
+                    wall_nearest_name = engine::physics::bodyDebugName(h.body);
+                    wall_nearest_axis = ax;
+                }
+            }
+
+            // PHYSICS-STATE PROBES — exposes the "where is the player
+            // ACTUALLY standing" question that the camera bug
+            // diagnosis hangs on. Three independent measurements,
+            // because the player's reported Y (Jolt's foot position)
+            // and what they're geometrically standing on can disagree
+            // — and that disagreement is the smell of a deeper data
+            // model bug.
+            const engine::physics::BodyHandle pbody = selva::world::playerBody();
+            const engine::physics::BodyHandle ground =
+                pbody != engine::physics::kInvalidBody
+                    ? engine::physics::characterGroundBody(pbody)
+                    : engine::physics::kInvalidBody;
+            const char* ground_name =
+                ground != engine::physics::kInvalidBody
+                    ? engine::physics::bodyDebugName(ground) : "(none)";
+
+            // (1) Drop a ray STRAIGHT DOWN from player chest height
+            // (lookAt) to find the highest solid surface directly
+            // beneath the player. If feet_drop_y differs from
+            // player_pos.y by anything more than capsule radius, the
+            // Jolt-reported foot Y and the visible-floor Y are out
+            // of sync — that's the dual-source-of-truth bug.
+            const glm::vec3 drop_origin(player_pos.x, lookAt.y, player_pos.z);
+            const engine::physics::RayHit feet_drop =
+                engine::physics::raycast(drop_origin, glm::vec3(0, -1, 0), 50.0f);
+            const float feet_drop_y =
+                feet_drop.hit ? (lookAt.y - feet_drop.distance) : -999.0f;
+            const char* feet_drop_name =
+                feet_drop.hit ? engine::physics::bodyDebugName(feet_drop.body) : "";
+
+            // (2) Active contacts: every body the character capsule
+            // is currently touching. "Wedged between two things at
+            // different Ys" appears here as multiple contacts. Cap
+            // the list to keep the log readable.
+            static std::vector<engine::physics::BodyHandle> sActiveContacts;
+            sActiveContacts.clear();
+            if (pbody != engine::physics::kInvalidBody)
+                engine::physics::characterActiveContacts(pbody, sActiveContacts);
+            char contacts_buf[256] = "";
+            {
+                int written = 0;
+                for (std::size_t i = 0; i < sActiveContacts.size() && i < 6; ++i)
+                {
+                    const char* nm = engine::physics::bodyDebugName(sActiveContacts[i]);
+                    const int n = std::snprintf(
+                        contacts_buf + written,
+                        sizeof(contacts_buf) - static_cast<std::size_t>(written),
+                        "%s%s", i == 0 ? "" : ",", nm);
+                    if (n <= 0 ||
+                        static_cast<std::size_t>(written + n) >= sizeof(contacts_buf))
+                        break;
+                    written += n;
+                }
+            }
+
             std::fprintf(
                 sPullInLog,
                 "[%d] pPos=(%.2f,%.2f,%.2f) pVel=(%.3f,%.3f,%.3f) pSpd=%.3f "
@@ -506,7 +660,12 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
                 "follow_dist=%.2f indoors=%d cam_indoors=%d "
                 "hit=%d hit_dist=%.3f target_sep=%.3f smoothed_sep=%.3f "
                 "camPos=(%.2f,%.2f,%.2f) cam_y_above_chest=%.3f "
-                "cam_xz_from_player=%.3f overlap=%d\n",
+                "cam_xz_from_player=%.3f overlap=%d "
+                "wall_between=%d probe_c2l=(hit=%d dist=%.3f name='%s') "
+                "probe_f2c=(hit=%d dist=%.3f name='%s') "
+                "ground='%s' feet_drop=(hit=%d y=%.3f gap=%.3f name='%s') "
+                "active_contacts=%zu [%s] "
+                "wall_near=(dist=%.3f axis=%d name='%s')\n",
                 sPullInFrame, player_pos.x, player_pos.y, player_pos.z, player_vel.x,
                 player_vel.y, player_vel.z, player_speed, yaw, pitch, lookFwd.x, lookFwd.y,
                 lookFwd.z, lookAt.x, lookAt.y, lookAt.z, cam_dir.x, cam_dir.y, cam_dir.z,
@@ -514,7 +673,16 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
                 sSmoothedFollowDistance, indoors ? 1 : 0, cam_indoors ? 1 : 0,
                 hit.hit ? 1 : 0, hit.distance, target_separation, sSmoothedSeparation,
                 camPos.x, camPos.y, camPos.z, cam_y_above_chest, cam_dist_xz,
-                overlap ? 1 : 0);
+                overlap ? 1 : 0,
+                wall_between ? 1 : 0,
+                probe_cam_to_look.hit ? 1 : 0, probe_cam_to_look.distance, probe_cam_to_look_name,
+                probe_feet_to_cam.hit ? 1 : 0, probe_feet_to_cam.distance, probe_feet_to_cam_name,
+                ground_name,
+                feet_drop.hit ? 1 : 0, feet_drop_y,
+                feet_drop.hit ? (feet_drop_y - player_pos.y) : -999.0f,
+                feet_drop_name,
+                sActiveContacts.size(), contacts_buf,
+                wall_nearest_dist, wall_nearest_axis, wall_nearest_name);
             std::fflush(sPullInLog);
             ++sPullInFrame;
             sPrevPlayerPos = player_pos;
@@ -526,15 +694,15 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
     const float aspect =
         windowHeight() > 0 ? static_cast<float>(windowWidth()) / static_cast<float>(windowHeight())
                            : 1.0f;
-    // Bumped near plane 0.1 → 0.5 to fix depth-precision flicker on
-    // descent corridor walls/ceiling. At 140m corridor length with
-    // standard depth precision and near/far ratio 2000, surfaces
-    // separated by <3cm z-fight. Bumping near 5× gives ~5× better
-    // precision everywhere, eliminating the corridor flicker. Cost:
-    // camera can't get within 0.5m of geometry without clipping —
-    // acceptable since camera_pull_in_min_separation is 0.5m.
+    // Near plane restored to 0.1 (was bumped to 0.5 for descent corridor
+    // depth-flicker which produced the see-outside-through-wall bug: with
+    // near=0.5 and player flush against a wall, the camera arm sits with
+    // the wall closer than the near plane and the wall gets near-clipped,
+    // revealing what's outside through the hole. The corridor flicker
+    // gets handled separately via depth-bias / log-depth / scene-local
+    // far plane — see [[feedback_pos_y_dropped_in_matrices]] sibling.
     const glm::mat4 proj =
-        glm::perspective(glm::radians(settings.fov_degrees_third_person), aspect, 0.5f, 200.0f);
+        glm::perspective(glm::radians(settings.fov_degrees_third_person), aspect, 0.1f, 200.0f);
     return proj * sLastView;
 }
 

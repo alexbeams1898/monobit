@@ -46,6 +46,10 @@ public:
     // Selva's scale (10s of scenes max) this is trivial.
     void preloadAssets();
 
+    // True once preloadAssets has run. Used by lazy callers to
+    // detect whether the heavy boot-time work has happened yet.
+    bool isPreloaded() const { return mPreloaded; }
+
     // prepareAsync now no-ops (work moved to preloadAssets at boot).
     void prepareAsync() override {}
 
@@ -99,6 +103,7 @@ private:
     // preloadAssets, reused on each activation. Index aligns with
     // selva::world::terrainRegion(i).
     std::vector<engine::physics::ShapeHandle> mTerrainShapeHandles;
+    bool mPreloaded = false;
 };
 
 } // namespace selva::world

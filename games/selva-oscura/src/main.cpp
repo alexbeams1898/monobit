@@ -173,6 +173,13 @@ int main(int /*argc*/, char* /*argv*/[])
         return 1;
     }
 
+    // Loading screen: first frame as soon as the window + GL context
+    // exist so the user sees something other than a black
+    // "(Not Responding)" window during the multi-second mesh + physics
+    // init below. Each renderLoadingFrame call appends the previous
+    // step to the completed list and shows the new current step.
+    engine.renderLoadingFrame("starting up");
+
     // Keep in sync with kFogCool in PerFrameTick.cpp.
     engine.setClearColor(0.16f, 0.18f, 0.22f);
 
@@ -207,6 +214,8 @@ int main(int /*argc*/, char* /*argv*/[])
         return 1;
     }
 
+    engine.renderLoadingFrame("scene geometry");
+
     selva::render::setInitialWindowSize(engine.windowWidth(), engine.windowHeight());
     selva::render::initSceneGeometry();
     // Static mesh assets MUST load before chapel terrain modifiers so
@@ -219,6 +228,7 @@ int main(int /*argc*/, char* /*argv*/[])
     // together produce the final terrain Y; render mesh and physics
     // trimesh share that same Y.
     selva::world::crypt_layout::registerChapelTerrainModifiers();
+    engine.renderLoadingFrame("terrain mesh");
     selva::world::initTerrain();
     selva::world::initHubScene();
     selva::world::initTreeAssets();
@@ -250,6 +260,7 @@ int main(int /*argc*/, char* /*argv*/[])
             selva::gameplay::onSceneTransitionCommit(preserve_pos, spawn_pos,
                                                      override_yaw, spawn_yaw);
         });
+    engine.renderLoadingFrame("surface scene");
     const engine::world::SceneId default_scene = selva::world::loadAllScenes();
     if (default_scene != engine::world::kInvalidScene)
     {
@@ -267,6 +278,7 @@ int main(int /*argc*/, char* /*argv*/[])
     // to struct defaults if the file is missing or malformed.
     selva::tuning::loadFromFile(kTunablesPath);
 
+    engine.renderLoadingFrame("audio + animations");
     // Audio: init miniaudio engine + load name→path registry. Safe to
     // run before/after asset load; playSfx no-ops if init failed (no
     // audio hardware) or the name isn't registered.
