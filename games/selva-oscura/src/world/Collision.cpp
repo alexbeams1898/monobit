@@ -243,15 +243,13 @@ void populateCryptInteriorFootprint(std::vector<InteriorFootprint>& out)
     // chapel back wall all the way to the Acheron stub far edge.
     const float descent_z_near = kCryptZ - kHalfLength + kWallThickness;
     const float descent_z_far_chapel_local =
-        kUpperFlightRun + kLandingDepthY +
-        kCorridorSegmentCount * kCorridorSegmentRun +
-        (kCorridorSegmentCount - 1) * kCorridorLandingLength +
-        2.0f * kAcheronPlatformHalfExtent;
+        kUpperFlightRun + kLandingDepthY + kCorridorSegmentCount * kCorridorSegmentRun +
+        (kCorridorSegmentCount - 1) * kCorridorLandingLength + 2.0f * kAcheronPlatformHalfExtent;
     const float descent_z_far = kCryptZ - descent_z_far_chapel_local;
     InteriorFootprint descent;
     descent.center = glm::vec2(kCryptX, (descent_z_near + descent_z_far) * 0.5f);
-    descent.half_extents = glm::vec2(kSingleFlightHalfWidth,
-                                     (descent_z_near - descent_z_far) * 0.5f);
+    descent.half_extents =
+        glm::vec2(kSingleFlightHalfWidth, (descent_z_near - descent_z_far) * 0.5f);
     out.push_back(descent);
 }
 
@@ -338,8 +336,8 @@ void resolveBodyCollision(glm::vec2& body_xz, float body_radius)
     if (log_on)
     {
         ++sCollisionFrame;
-        collisionLog("[frame %d] enter pos=(%.3f,%.3f) r=%.3f\n", sCollisionFrame,
-                     entry_pos.x, entry_pos.y, body_radius);
+        collisionLog("[frame %d] enter pos=(%.3f,%.3f) r=%.3f\n", sCollisionFrame, entry_pos.x,
+                     entry_pos.y, body_radius);
     }
     // Multi-pass push-out. Single pass can leave the body wedged
     // when it's penetrating two adjacent cylinders/boxes — pushing
@@ -370,8 +368,8 @@ void resolveBodyCollision(glm::vec2& body_xz, float body_radius)
                 collisionLog("  pass=%d CYL[%d] center=(%.3f,%.3f) r=%.2f%s "
                              "push=(%.3f,%.3f) -> pos=(%.3f,%.3f)\n",
                              pass, cyl_idx, c.center.x, c.center.z, c.radius,
-                             c.collision_only ? " (collision_only)" : "",
-                             push_vec.x, push_vec.y, body_xz.x, body_xz.y);
+                             c.collision_only ? " (collision_only)" : "", push_vec.x, push_vec.y,
+                             body_xz.x, body_xz.y);
             ++cyl_idx;
         }
         // Box-vs-circle: find the closest point on the AABB to the
@@ -391,9 +389,8 @@ void resolveBodyCollision(glm::vec2& body_xz, float body_radius)
                 continue;
             }
             const glm::vec2 d = body_xz - b.center;
-            const glm::vec2 clamped(
-                std::max(-b.half_extents.x, std::min(b.half_extents.x, d.x)),
-                std::max(-b.half_extents.y, std::min(b.half_extents.y, d.y)));
+            const glm::vec2 clamped(std::max(-b.half_extents.x, std::min(b.half_extents.x, d.x)),
+                                    std::max(-b.half_extents.y, std::min(b.half_extents.y, d.y)));
             const glm::vec2 closest = b.center + clamped;
             const glm::vec2 to_body = body_xz - closest;
             const float dist_sq = glm::dot(to_body, to_body);
@@ -410,11 +407,11 @@ void resolveBodyCollision(glm::vec2& body_xz, float body_radius)
                 const float pen_y = b.half_extents.y - std::abs(d.y);
                 const glm::vec2 before = body_xz;
                 if (pen_x < pen_y)
-                    body_xz.x = b.center.x + (d.x >= 0.0f ? 1.0f : -1.0f) *
-                                                 (b.half_extents.x + body_radius);
+                    body_xz.x = b.center.x +
+                                (d.x >= 0.0f ? 1.0f : -1.0f) * (b.half_extents.x + body_radius);
                 else
-                    body_xz.y = b.center.y + (d.y >= 0.0f ? 1.0f : -1.0f) *
-                                                 (b.half_extents.y + body_radius);
+                    body_xz.y = b.center.y +
+                                (d.y >= 0.0f ? 1.0f : -1.0f) * (b.half_extents.y + body_radius);
                 any_push = true;
                 if (log_on)
                     collisionLog("  pass=%d BOX[%d] center=(%.3f,%.3f) he=(%.2f,%.2f) "
@@ -458,8 +455,8 @@ void resolveBodyCollision(glm::vec2& body_xz, float body_radius)
     {
         const glm::vec2 net = body_xz - entry_pos;
         if (std::abs(net.x) > 0.001f || std::abs(net.y) > 0.001f)
-            collisionLog("[frame %d] exit pos=(%.3f,%.3f) net_push=(%.3f,%.3f)\n",
-                         sCollisionFrame, body_xz.x, body_xz.y, net.x, net.y);
+            collisionLog("[frame %d] exit pos=(%.3f,%.3f) net_push=(%.3f,%.3f)\n", sCollisionFrame,
+                         body_xz.x, body_xz.y, net.x, net.y);
     }
 }
 
@@ -548,14 +545,12 @@ float intersectAabb(const glm::vec3& origin, const glm::vec3& dir, const BoxColl
 {
     const glm::vec3 ungrown_min(b.center.x - b.half_extents.x, b.y_base,
                                 b.center.y - b.half_extents.y);
-    const glm::vec3 ungrown_max(b.center.x + b.half_extents.x,
-                                b.y_base + 2.0f * b.half_height_y,
+    const glm::vec3 ungrown_max(b.center.x + b.half_extents.x, b.y_base + 2.0f * b.half_height_y,
                                 b.center.y + b.half_extents.y);
 
     // Origin inside the box: pathological; collapse to player.
-    if (origin.x >= ungrown_min.x && origin.x <= ungrown_max.x &&
-        origin.y >= ungrown_min.y && origin.y <= ungrown_max.y &&
-        origin.z >= ungrown_min.z && origin.z <= ungrown_max.z)
+    if (origin.x >= ungrown_min.x && origin.x <= ungrown_max.x && origin.y >= ungrown_min.y &&
+        origin.y <= ungrown_max.y && origin.z >= ungrown_min.z && origin.z <= ungrown_max.z)
         return 0.0f;
 
     float t_near = -std::numeric_limits<float>::infinity();
@@ -615,10 +610,8 @@ bool sphereOverlapsCylinder(const glm::vec3& center, float radius, const Cylinde
 // distance squared check.
 bool sphereOverlapsAabb(const glm::vec3& center, float radius, const BoxCollider& b)
 {
-    const glm::vec3 box_min(b.center.x - b.half_extents.x, b.y_base,
-                            b.center.y - b.half_extents.y);
-    const glm::vec3 box_max(b.center.x + b.half_extents.x,
-                            b.y_base + 2.0f * b.half_height_y,
+    const glm::vec3 box_min(b.center.x - b.half_extents.x, b.y_base, b.center.y - b.half_extents.y);
+    const glm::vec3 box_max(b.center.x + b.half_extents.x, b.y_base + 2.0f * b.half_height_y,
                             b.center.y + b.half_extents.y);
     const glm::vec3 clamped(std::max(box_min.x, std::min(box_max.x, center.x)),
                             std::max(box_min.y, std::min(box_max.y, center.y)),

@@ -1,10 +1,11 @@
 #include "world/StaticMeshAssets.h"
 
 #include <cgltf.h>
-#include <glad/glad.h>
 
 #include <cstdio>
 #include <vector>
+
+#include <glad/glad.h>
 
 namespace selva::world
 {
@@ -47,8 +48,8 @@ void transformPos(const float m[16], const float p[3], float out[3])
 }
 
 bool loadPrimitive(const cgltf_primitive* prim, const float node_world[16],
-                   const float world_offset[3],
-                   const std::string& node_name, StaticMeshPrimitive& out)
+                   const float world_offset[3], const std::string& node_name,
+                   StaticMeshPrimitive& out)
 {
     // Vertex layout is position-only + per-vertex shade=1.0; normal is
     // derived in the fragment shader via dFdx/dFdy on world position
@@ -77,8 +78,10 @@ bool loadPrimitive(const cgltf_primitive* prim, const float node_world[16],
         verts[i].shade = 1.0f;
         for (int k = 0; k < 3; ++k)
         {
-            if (wp[k] < bb_min[k]) bb_min[k] = wp[k];
-            if (wp[k] > bb_max[k]) bb_max[k] = wp[k];
+            if (wp[k] < bb_min[k])
+                bb_min[k] = wp[k];
+            if (wp[k] > bb_max[k])
+                bb_max[k] = wp[k];
         }
     }
 
@@ -133,8 +136,8 @@ bool loadPrimitive(const cgltf_primitive* prim, const float node_world[16],
                  verts.data(), GL_STATIC_DRAW);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER,
-                 static_cast<GLsizeiptr>(indices.size() * sizeof(std::uint32_t)),
-                 indices.data(), GL_STATIC_DRAW);
+                 static_cast<GLsizeiptr>(indices.size() * sizeof(std::uint32_t)), indices.data(),
+                 GL_STATIC_DRAW);
 
     constexpr GLsizei stride = sizeof(Vertex);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride,
@@ -153,10 +156,9 @@ bool loadPrimitive(const cgltf_primitive* prim, const float node_world[16],
                  "[static-mesh-prim] node='%s' verts=%d tris=%d "
                  "bbox=[%.2f,%.2f,%.2f .. %.2f,%.2f,%.2f] "
                  "color=(%.2f,%.2f,%.2f)\n",
-                 node_name.c_str(), out.vertex_count, out.index_count / 3,
-                 bb_min[0], bb_min[1], bb_min[2],
-                 bb_max[0], bb_max[1], bb_max[2],
-                 out.base_color[0], out.base_color[1], out.base_color[2]);
+                 node_name.c_str(), out.vertex_count, out.index_count / 3, bb_min[0], bb_min[1],
+                 bb_min[2], bb_max[0], bb_max[1], bb_max[2], out.base_color[0], out.base_color[1],
+                 out.base_color[2]);
     return true;
 }
 
@@ -202,8 +204,7 @@ bool loadGltf(const char* path, const float world_offset[3], StaticMesh& out)
 
 } // namespace
 
-bool loadStaticMesh(const char* glb_path, const glm::vec3& world_origin,
-                    StaticMesh& out)
+bool loadStaticMesh(const char* glb_path, const glm::vec3& world_origin, StaticMesh& out)
 {
     out.primitives.clear();
     out.asset_name = glb_path;
@@ -215,9 +216,21 @@ void freeStaticMeshGLResources(StaticMesh& mesh)
 {
     for (auto& p : mesh.primitives)
     {
-        if (p.vao != 0) { glDeleteVertexArrays(1, &p.vao); p.vao = 0; }
-        if (p.vbo != 0) { glDeleteBuffers(1, &p.vbo); p.vbo = 0; }
-        if (p.ebo != 0) { glDeleteBuffers(1, &p.ebo); p.ebo = 0; }
+        if (p.vao != 0)
+        {
+            glDeleteVertexArrays(1, &p.vao);
+            p.vao = 0;
+        }
+        if (p.vbo != 0)
+        {
+            glDeleteBuffers(1, &p.vbo);
+            p.vbo = 0;
+        }
+        if (p.ebo != 0)
+        {
+            glDeleteBuffers(1, &p.ebo);
+            p.ebo = 0;
+        }
     }
 }
 
@@ -236,8 +249,7 @@ bool initStaticMeshAssets()
         std::fprintf(stderr, "[static-mesh] crypt load failed; static meshes disabled\n");
         return false;
     }
-    std::fprintf(stderr, "[static-mesh] crypt loaded: %zu primitives\n",
-                 sCrypt.primitives.size());
+    std::fprintf(stderr, "[static-mesh] crypt loaded: %zu primitives\n", sCrypt.primitives.size());
     sInitialized = true;
     return true;
 }

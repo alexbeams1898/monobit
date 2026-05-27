@@ -26,7 +26,7 @@ void setTerrainDescentDiscard(const glm::vec2& center, const glm::vec2& half_ext
 glm::vec2 lastTerrainChapelDiscardCenter();
 glm::vec2 lastTerrainChapelDiscardHalfExtents();
 glm::vec2 lastTerrainApseDiscardCenter();
-float     lastTerrainApseDiscardRadius();
+float lastTerrainApseDiscardRadius();
 glm::vec2 lastTerrainDescentDiscardCenter();
 glm::vec2 lastTerrainDescentDiscardHalfExtents();
 

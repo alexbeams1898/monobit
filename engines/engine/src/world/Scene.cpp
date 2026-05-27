@@ -21,13 +21,15 @@ namespace engine::world
 
 void SceneActivationContext::addBody(engine::physics::BodyHandle h)
 {
-    if (h == engine::physics::kInvalidBody) return;
+    if (h == engine::physics::kInvalidBody)
+        return;
     mScene.engineAppendBody(h);
 }
 
 void SceneActivationContext::addBodies(const std::vector<engine::physics::BodyHandle>& hs)
 {
-    for (auto h : hs) addBody(h);
+    for (auto h : hs)
+        addBody(h);
 }
 
 void SceneActivationContext::addTrigger(const SceneTrigger& t)
@@ -43,36 +45,36 @@ namespace
 {
 struct ManagerState
 {
-    std::vector<std::unique_ptr<Scene>> scenes;        // owned, index = (SceneId-1)
-    SceneId             current = kInvalidScene;
+    std::vector<std::unique_ptr<Scene>> scenes; // owned, index = (SceneId-1)
+    SceneId current = kInvalidScene;
     PersistentSceneState persistent;
 
     // Transition state machine
-    TransitionState     state = TransitionState::Idle;
-    SceneId             target = kInvalidScene;
-    TransitionMode      mode = TransitionMode::Fade;
-    bool                preserve_player_pos = false;
-    glm::vec3           target_spawn_pos{0.0f};
-    bool                override_yaw = false;
-    float               target_yaw = 0.0f;
-    float               fade_duration = 0.4f;
-    float               fade_elapsed = 0.0f;
-    float               fade_alpha = 0.0f;
+    TransitionState state = TransitionState::Idle;
+    SceneId target = kInvalidScene;
+    TransitionMode mode = TransitionMode::Fade;
+    bool preserve_player_pos = false;
+    glm::vec3 target_spawn_pos{0.0f};
+    bool override_yaw = false;
+    float target_yaw = 0.0f;
+    float fade_duration = 0.4f;
+    float fade_elapsed = 0.0f;
+    float fade_alpha = 0.0f;
 
     // Edge-trigger tracking: which trigger (if any) the player was
     // inside last frame. Used to fire on entry-edge only, not every
     // frame inside.
-    std::string         player_inside_trigger_id;  // empty = inside no trigger
-    SceneId             player_inside_trigger_scene = kInvalidScene;
+    std::string player_inside_trigger_id; // empty = inside no trigger
+    SceneId player_inside_trigger_scene = kInvalidScene;
 
     // Async loading state. Populated when a transition begins; polled
     // in tickSceneManager. When the future is ready, we advance from
     // LoadingTarget to FadingOut.
-    std::future<void>   load_future;
-    bool                load_in_flight = false;
+    std::future<void> load_future;
+    bool load_in_flight = false;
 
     // Post-commit callback (game-side teleport hook).
-    PostCommitCallback  post_commit = nullptr;
+    PostCommitCallback post_commit = nullptr;
 };
 ManagerState g;
 } // namespace
@@ -87,7 +89,8 @@ SceneId registerScene(std::unique_ptr<Scene> s)
 
 SceneId findSceneId(const char* scene_id)
 {
-    if (!scene_id) return kInvalidScene;
+    if (!scene_id)
+        return kInvalidScene;
     for (std::size_t i = 0; i < g.scenes.size(); ++i)
     {
         if (g.scenes[i]->sceneId() == scene_id)
@@ -98,15 +101,31 @@ SceneId findSceneId(const char* scene_id)
 
 static Scene* sceneFromId(SceneId id)
 {
-    if (id.id == 0 || id.id > g.scenes.size()) return nullptr;
+    if (id.id == 0 || id.id > g.scenes.size())
+        return nullptr;
     return g.scenes[id.id - 1].get();
 }
 
-int   sceneCount()              { return static_cast<int>(g.scenes.size()); }
-SceneId sceneAt(int idx)        { return SceneId{static_cast<std::uint32_t>(idx + 1)}; }
-Scene*  scenePtr(SceneId id)    { return sceneFromId(id); }
-SceneId currentScene()          { return g.current; }
-Scene*  currentScenePtr()       { return sceneFromId(g.current); }
+int sceneCount()
+{
+    return static_cast<int>(g.scenes.size());
+}
+SceneId sceneAt(int idx)
+{
+    return SceneId{static_cast<std::uint32_t>(idx + 1)};
+}
+Scene* scenePtr(SceneId id)
+{
+    return sceneFromId(id);
+}
+SceneId currentScene()
+{
+    return g.current;
+}
+Scene* currentScenePtr()
+{
+    return sceneFromId(g.current);
+}
 
 // ---- Activation / deactivation -------------------------------------------
 
@@ -114,7 +133,8 @@ Scene*  currentScenePtr()       { return sceneFromId(g.current); }
 static void deactivateCurrent()
 {
     Scene* cur = currentScenePtr();
-    if (cur == nullptr) return;
+    if (cur == nullptr)
+        return;
     // Diamond cleanup: every body the scene declared via the context
     // is removed. Scene cannot leak.
     for (auto h : cur->ownedBodies())
@@ -156,10 +176,8 @@ void activateSceneImmediate(SceneId id)
 
 // ---- Transition state machine --------------------------------------------
 
-bool beginTransition(SceneId target, TransitionMode mode,
-                     bool preserve_player_pos,
-                     glm::vec3 target_spawn_pos,
-                     bool override_yaw, float target_yaw,
+bool beginTransition(SceneId target, TransitionMode mode, bool preserve_player_pos,
+                     glm::vec3 target_spawn_pos, bool override_yaw, float target_yaw,
                      float fade_duration_seconds)
 {
     if (g.state != TransitionState::Idle)
@@ -178,10 +196,9 @@ bool beginTransition(SceneId target, TransitionMode mode,
     std::fprintf(stderr,
                  "[scene-manager] beginTransition: target='%s' SceneId=%u "
                  "spawn=(%.2f,%.2f,%.2f) override_yaw=%d yaw=%.2f mode=%d fade=%.2fs\n",
-                 tgt->sceneId().c_str(), target.id,
-                 target_spawn_pos.x, target_spawn_pos.y, target_spawn_pos.z,
-                 override_yaw ? 1 : 0, target_yaw,
-                 static_cast<int>(mode), fade_duration_seconds);
+                 tgt->sceneId().c_str(), target.id, target_spawn_pos.x, target_spawn_pos.y,
+                 target_spawn_pos.z, override_yaw ? 1 : 0, target_yaw, static_cast<int>(mode),
+                 fade_duration_seconds);
     g.target = target;
     g.mode = mode;
     g.preserve_player_pos = preserve_player_pos;
@@ -191,9 +208,8 @@ bool beginTransition(SceneId target, TransitionMode mode,
     g.fade_duration = fade_duration_seconds > 0.0f ? fade_duration_seconds : 0.4f;
     g.fade_elapsed = 0.0f;
     g.fade_alpha = 0.0f;
-    g.state = (mode == TransitionMode::Instant)
-                  ? TransitionState::Committing
-                  : TransitionState::LoadingTarget;
+    g.state = (mode == TransitionMode::Instant) ? TransitionState::Committing
+                                                : TransitionState::LoadingTarget;
     std::fprintf(stderr, "[scene-manager] -> state=%d\n", static_cast<int>(g.state));
     return true;
 }
@@ -225,14 +241,13 @@ TransitionState tickSceneManager(float dt)
         bool ready = !g.load_in_flight;
         if (g.load_in_flight && g.load_future.valid())
         {
-            ready = (g.load_future.wait_for(std::chrono::seconds(0)) ==
-                     std::future_status::ready);
+            ready = (g.load_future.wait_for(std::chrono::seconds(0)) == std::future_status::ready);
         }
         if (ready)
         {
             if (g.load_in_flight)
             {
-                g.load_future.get();  // surface exceptions
+                g.load_future.get(); // surface exceptions
                 std::fprintf(stderr, "[scene-manager] async prepare ready\n");
             }
             g.load_in_flight = false;
@@ -273,8 +288,8 @@ TransitionState tickSceneManager(float dt)
                      "[scene-manager] COMMIT: deactivating + activating target SceneId=%u "
                      "(from_async=%d), then teleporting player to (%.2f,%.2f,%.2f) "
                      "override_yaw=%d\n",
-                     g.target.id, from_async ? 1 : 0,
-                     spawn_pos.x, spawn_pos.y, spawn_pos.z, override_yaw ? 1 : 0);
+                     g.target.id, from_async ? 1 : 0, spawn_pos.x, spawn_pos.y, spawn_pos.z,
+                     override_yaw ? 1 : 0);
         deactivateCurrent();
         activateInternal(g.target, from_async);
         g.target = kInvalidScene;
@@ -288,7 +303,9 @@ TransitionState tickSceneManager(float dt)
         }
         else
         {
-            std::fprintf(stderr, "[scene-manager] WARNING: post_commit callback NULL — player will not teleport\n");
+            std::fprintf(
+                stderr,
+                "[scene-manager] WARNING: post_commit callback NULL — player will not teleport\n");
         }
         if (g.mode == TransitionMode::Instant)
         {
@@ -318,30 +335,37 @@ TransitionState tickSceneManager(float dt)
     if (entry_state != g.state)
     {
         std::fprintf(stderr, "[scene-manager] state %d -> %d (fade_alpha=%.2f)\n",
-                     static_cast<int>(entry_state), static_cast<int>(g.state),
-                     g.fade_alpha);
+                     static_cast<int>(entry_state), static_cast<int>(g.state), g.fade_alpha);
     }
     return g.state;
 }
 
-TransitionState transitionState()       { return g.state; }
-float           transitionFadeAlpha()   { return g.fade_alpha; }
-SceneId         transitionTarget()      { return g.target; }
+TransitionState transitionState()
+{
+    return g.state;
+}
+float transitionFadeAlpha()
+{
+    return g.fade_alpha;
+}
+SceneId transitionTarget()
+{
+    return g.target;
+}
 
 // ---- Trigger overlap -----------------------------------------------------
 
-static bool aabbContainsPoint(const glm::vec3& center, const glm::vec3& half,
-                              const glm::vec3& p)
+static bool aabbContainsPoint(const glm::vec3& center, const glm::vec3& half, const glm::vec3& p)
 {
-    return std::abs(p.x - center.x) <= half.x &&
-           std::abs(p.y - center.y) <= half.y &&
+    return std::abs(p.x - center.x) <= half.x && std::abs(p.y - center.y) <= half.y &&
            std::abs(p.z - center.z) <= half.z;
 }
 
 const SceneTrigger* checkPlayerTriggers(const glm::vec3& player_pos)
 {
     Scene* cur = currentScenePtr();
-    if (cur == nullptr) return nullptr;
+    if (cur == nullptr)
+        return nullptr;
 
     // Find the trigger (if any) the player is inside this frame.
     const SceneTrigger* hit = nullptr;
@@ -364,24 +388,22 @@ const SceneTrigger* checkPlayerTriggers(const glm::vec3& player_pos)
         return nullptr;
     }
 
-    const bool same_as_last = (g.player_inside_trigger_scene == g.current) &&
-                              (g.player_inside_trigger_id == hit->id);
+    const bool same_as_last =
+        (g.player_inside_trigger_scene == g.current) && (g.player_inside_trigger_id == hit->id);
     g.player_inside_trigger_id = hit->id;
     g.player_inside_trigger_scene = g.current;
-    if (same_as_last) return nullptr;  // already-inside, no edge
+    if (same_as_last)
+        return nullptr; // already-inside, no edge
 
-    std::fprintf(stderr, "[scene-manager] trigger ENTER '%s' (player at %.2f,%.2f,%.2f) in scene '%s'\n",
-                 hit->id.c_str(), player_pos.x, player_pos.y, player_pos.z,
-                 cur->sceneId().c_str());
+    std::fprintf(stderr,
+                 "[scene-manager] trigger ENTER '%s' (player at %.2f,%.2f,%.2f) in scene '%s'\n",
+                 hit->id.c_str(), player_pos.x, player_pos.y, player_pos.z, cur->sceneId().c_str());
 
     // Fresh edge: queue the transition.
     if (g.state == TransitionState::Idle && hit->target != kInvalidScene)
     {
-        beginTransition(hit->target, hit->mode,
-                        hit->preserve_player_pos,
-                        hit->target_spawn_pos,
-                        hit->override_yaw, hit->target_yaw,
-                        hit->fade_duration_seconds);
+        beginTransition(hit->target, hit->mode, hit->preserve_player_pos, hit->target_spawn_pos,
+                        hit->override_yaw, hit->target_yaw, hit->fade_duration_seconds);
     }
     else
     {
@@ -391,10 +413,19 @@ const SceneTrigger* checkPlayerTriggers(const glm::vec3& player_pos)
     return hit;
 }
 
-void setPersistentState(const PersistentSceneState& s) { g.persistent = s; }
-const PersistentSceneState& persistentState()           { return g.persistent; }
+void setPersistentState(const PersistentSceneState& s)
+{
+    g.persistent = s;
+}
+const PersistentSceneState& persistentState()
+{
+    return g.persistent;
+}
 
-void setPostCommitCallback(PostCommitCallback cb)       { g.post_commit = cb; }
+void setPostCommitCallback(PostCommitCallback cb)
+{
+    g.post_commit = cb;
+}
 
 // ---- Bootstrap -----------------------------------------------------------
 
@@ -408,7 +439,8 @@ void shutdownSceneManager()
     deactivateCurrent();
     // Per-scene shutdown for resident-all-scenes asset freeing.
     for (auto& s : g.scenes)
-        if (s) s->onShutdown();
+        if (s)
+            s->onShutdown();
     g.scenes.clear();
     g = ManagerState{};
 }

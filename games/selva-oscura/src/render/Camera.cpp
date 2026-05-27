@@ -45,8 +45,8 @@ void setCameraMode(CameraMode mode)
 
 void toggleCameraMode()
 {
-    sCamMode = (sCamMode == CameraMode::ThirdPerson) ? CameraMode::FirstPerson
-                                                    : CameraMode::ThirdPerson;
+    sCamMode =
+        (sCamMode == CameraMode::ThirdPerson) ? CameraMode::FirstPerson : CameraMode::ThirdPerson;
 }
 
 int windowWidth()

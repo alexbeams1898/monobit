@@ -93,12 +93,10 @@ static void renderDebugSection(selva::tuning::Tunables& tun)
     ImGui::TextUnformatted("Overlays");
     ImGui::Checkbox("AI vision cones + awareness label", &tun.debug_ai_perception);
     ImGui::Checkbox("World colliders (cylinders + boxes)", &tun.debug_show_colliders);
-    ImGui::Checkbox("Physics bodies (Jolt AABBs, colored by tag)",
-                    &tun.debug_show_physics_bodies);
+    ImGui::Checkbox("Physics bodies (Jolt AABBs, colored by tag)", &tun.debug_show_physics_bodies);
     ImGui::Checkbox("Flat shading (bisect: flicker on = shader, off = geometry)",
                     &tun.debug_flat_shading);
-    ImGui::Checkbox("Log MSAA state at scene-pass (-> stderr.log)",
-                    &tun.debug_msaa_state_log);
+    ImGui::Checkbox("Log MSAA state at scene-pass (-> stderr.log)", &tun.debug_msaa_state_log);
     ImGui::Checkbox("Crosshair raycast log (aim at flicker -> crosshair-debug.log)",
                     &tun.debug_crosshair_raycast_log);
     ImGui::Checkbox("Primitive-ID colors (use WITH flat shading; -> primitive-id-debug.log)",
@@ -145,8 +143,8 @@ static void renderCameraSection(selva::tuning::Tunables& tun)
     tunedSlider("FOV (deg)", &tun.fov_degrees, 30.0f, 110.0f, 5.0f, "%.0f");
     tunedSlider("Pull-in margin (m)", &tun.camera_pull_in_margin, 0.0f, 1.5f, 0.05f, "%.2f");
     tunedSlider("Pull-in sphere radius (m)", &tun.camera_pull_in_radius, 0.0f, 1.0f, 0.05f, "%.2f");
-    tunedSlider("Pull-in min separation (m)", &tun.camera_pull_in_min_separation, 0.0f, 2.0f,
-                0.05f, "%.2f");
+    tunedSlider("Pull-in min separation (m)", &tun.camera_pull_in_min_separation, 0.0f, 2.0f, 0.05f,
+                "%.2f");
     tunedSlider("Pull-in smoothing tau (s)", &tun.camera_pull_in_tau, 0.0f, 0.5f, 0.01f, "%.2f");
 }
 

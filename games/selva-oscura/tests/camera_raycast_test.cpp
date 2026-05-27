@@ -5,13 +5,13 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+using Catch::Approx;
 using selva::world::BoxCollider;
 using selva::world::CollisionScene;
 using selva::world::CylinderCollider;
-using selva::world::raycastScene;
 using selva::world::RaycastHit;
+using selva::world::raycastScene;
 using selva::world::sphereOverlapsScene;
-using Catch::Approx;
 
 namespace
 {
@@ -55,7 +55,8 @@ TEST_CASE("raycastScene degenerate inputs return no hit", "[raycast]")
     }
     SECTION("zero max distance")
     {
-        const RaycastHit r = raycastScene(scene, glm::vec3(0.0f), glm::vec3(1.0f, 0.0f, 0.0f), 0.0f);
+        const RaycastHit r =
+            raycastScene(scene, glm::vec3(0.0f), glm::vec3(1.0f, 0.0f, 0.0f), 0.0f);
         REQUIRE_FALSE(r.hit);
     }
 }
@@ -68,8 +69,8 @@ TEST_CASE("raycastScene hits cylinder side from outside", "[raycast][cylinder]")
 
     // Ray from origin pointing +X at Y=2 (mid-height). Should hit the near
     // side of the cylinder at x = 5 - radius = 4 -> t = 4.
-    const RaycastHit r = raycastScene(scene, glm::vec3(0.0f, 2.0f, 0.0f),
-                                      glm::vec3(1.0f, 0.0f, 0.0f), 100.0f);
+    const RaycastHit r =
+        raycastScene(scene, glm::vec3(0.0f, 2.0f, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f), 100.0f);
     REQUIRE(r.hit);
     REQUIRE(r.distance == Approx(4.0f));
 }
@@ -82,8 +83,8 @@ TEST_CASE("raycastScene misses cylinder when ray passes over the top", "[raycast
 
     // Ray from origin Y=10 pointing +X stays at Y=10 forever; well above
     // the cylinder top of Y=4.
-    const RaycastHit r = raycastScene(scene, glm::vec3(0.0f, 10.0f, 0.0f),
-                                      glm::vec3(1.0f, 0.0f, 0.0f), 100.0f);
+    const RaycastHit r =
+        raycastScene(scene, glm::vec3(0.0f, 10.0f, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f), 100.0f);
     REQUIRE_FALSE(r.hit);
 }
 
@@ -95,8 +96,8 @@ TEST_CASE("raycastScene hits cylinder cap from above", "[raycast][cylinder]")
 
     // Ray straight down through the cylinder's axis from Y=10. Top cap at
     // Y=4 -> t = 6.
-    const RaycastHit r = raycastScene(scene, glm::vec3(0.0f, 10.0f, 0.0f),
-                                      glm::vec3(0.0f, -1.0f, 0.0f), 100.0f);
+    const RaycastHit r =
+        raycastScene(scene, glm::vec3(0.0f, 10.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f), 100.0f);
     REQUIRE(r.hit);
     REQUIRE(r.distance == Approx(6.0f));
 }
@@ -108,8 +109,8 @@ TEST_CASE("raycastScene misses cylinder when ray passes outside the radius", "[r
 
     // Ray parallel to +X but offset in Z by 5m; cylinder radius is 1, so
     // miss.
-    const RaycastHit r = raycastScene(scene, glm::vec3(0.0f, 2.0f, 5.0f),
-                                      glm::vec3(1.0f, 0.0f, 0.0f), 100.0f);
+    const RaycastHit r =
+        raycastScene(scene, glm::vec3(0.0f, 2.0f, 5.0f), glm::vec3(1.0f, 0.0f, 0.0f), 100.0f);
     REQUIRE_FALSE(r.hit);
 }
 
@@ -119,8 +120,8 @@ TEST_CASE("raycastScene respects max_distance", "[raycast]")
     scene.cylinders.push_back(makeCyl(glm::vec3(20.0f, 0.0f, 0.0f), 1.0f, 2.0f));
 
     // Cylinder at x=20, ray would hit at t=19. With max_distance=10, miss.
-    const RaycastHit r = raycastScene(scene, glm::vec3(0.0f, 2.0f, 0.0f),
-                                      glm::vec3(1.0f, 0.0f, 0.0f), 10.0f);
+    const RaycastHit r =
+        raycastScene(scene, glm::vec3(0.0f, 2.0f, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f), 10.0f);
     REQUIRE_FALSE(r.hit);
     REQUIRE(r.distance == Approx(10.0f));
 }
@@ -133,8 +134,8 @@ TEST_CASE("raycastScene normalizes non-unit direction", "[raycast]")
     // Same geometry as the side-hit case, but direction vector scaled by 3.
     // Distance is reported in world units, so the answer should be the same
     // 4m regardless of input magnitude.
-    const RaycastHit r = raycastScene(scene, glm::vec3(0.0f, 2.0f, 0.0f),
-                                      glm::vec3(3.0f, 0.0f, 0.0f), 100.0f);
+    const RaycastHit r =
+        raycastScene(scene, glm::vec3(0.0f, 2.0f, 0.0f), glm::vec3(3.0f, 0.0f, 0.0f), 100.0f);
     REQUIRE(r.hit);
     REQUIRE(r.distance == Approx(4.0f));
 }
@@ -146,8 +147,8 @@ TEST_CASE("raycastScene hits AABB front face", "[raycast][box]")
     scene.boxes.push_back(makeBox(glm::vec2(5.0f, 0.0f), glm::vec2(1.0f, 1.0f), 0.0f, 2.0f));
 
     // Ray from origin +X at mid-height. Hits near face at x = 4 -> t = 4.
-    const RaycastHit r = raycastScene(scene, glm::vec3(0.0f, 2.0f, 0.0f),
-                                      glm::vec3(1.0f, 0.0f, 0.0f), 100.0f);
+    const RaycastHit r =
+        raycastScene(scene, glm::vec3(0.0f, 2.0f, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f), 100.0f);
     REQUIRE(r.hit);
     REQUIRE(r.distance == Approx(4.0f));
 }
@@ -158,8 +159,8 @@ TEST_CASE("raycastScene misses AABB when ray clears the top", "[raycast][box]")
     scene.boxes.push_back(makeBox(glm::vec2(5.0f, 0.0f), glm::vec2(1.0f, 1.0f), 0.0f, 2.0f));
 
     // Ray from Y=10 pointing +X stays above box top (Y=4) the whole way.
-    const RaycastHit r = raycastScene(scene, glm::vec3(0.0f, 10.0f, 0.0f),
-                                      glm::vec3(1.0f, 0.0f, 0.0f), 100.0f);
+    const RaycastHit r =
+        raycastScene(scene, glm::vec3(0.0f, 10.0f, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f), 100.0f);
     REQUIRE_FALSE(r.hit);
 }
 
@@ -169,8 +170,8 @@ TEST_CASE("raycastScene misses AABB when ray parallel to slab and outside", "[ra
     scene.boxes.push_back(makeBox(glm::vec2(5.0f, 0.0f), glm::vec2(1.0f, 1.0f), 0.0f, 2.0f));
 
     // Ray parallel to +X but Z=5 (outside the Z-slab [-1, 1] of the box).
-    const RaycastHit r = raycastScene(scene, glm::vec3(0.0f, 2.0f, 5.0f),
-                                      glm::vec3(1.0f, 0.0f, 0.0f), 100.0f);
+    const RaycastHit r =
+        raycastScene(scene, glm::vec3(0.0f, 2.0f, 5.0f), glm::vec3(1.0f, 0.0f, 0.0f), 100.0f);
     REQUIRE_FALSE(r.hit);
 }
 
@@ -181,8 +182,8 @@ TEST_CASE("raycastScene picks nearest among multiple colliders", "[raycast]")
     scene.cylinders.push_back(makeCyl(glm::vec3(20.0f, 0.0f, 0.0f), 1.0f, 2.0f));
     scene.boxes.push_back(makeBox(glm::vec2(5.0f, 0.0f), glm::vec2(1.0f, 1.0f), 0.0f, 2.0f));
 
-    const RaycastHit r = raycastScene(scene, glm::vec3(0.0f, 2.0f, 0.0f),
-                                      glm::vec3(1.0f, 0.0f, 0.0f), 100.0f);
+    const RaycastHit r =
+        raycastScene(scene, glm::vec3(0.0f, 2.0f, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f), 100.0f);
     REQUIRE(r.hit);
     REQUIRE(r.distance == Approx(4.0f));
 }
@@ -195,8 +196,8 @@ TEST_CASE("raycastScene diagonal ray hits cylinder at expected distance", "[rayc
 
     // Diagonal ray at 45deg in XZ. Cylinder center is at distance
     // sqrt(50) ~= 7.071. Near surface at radius 1 inside -> t ~= 6.071.
-    const RaycastHit r = raycastScene(scene, glm::vec3(0.0f, 2.0f, 0.0f),
-                                      glm::vec3(1.0f, 0.0f, 1.0f), 100.0f);
+    const RaycastHit r =
+        raycastScene(scene, glm::vec3(0.0f, 2.0f, 0.0f), glm::vec3(1.0f, 0.0f, 1.0f), 100.0f);
     REQUIRE(r.hit);
     REQUIRE(r.distance == Approx(6.0710678f).margin(0.001f));
 }
@@ -209,8 +210,8 @@ TEST_CASE("raycastScene ignores collider when ray points away from it", "[raycas
 
     // Origin in open ground at X=0 (not inside the wall). Ray fires
     // in -X, AWAY from the wall. No hit.
-    const RaycastHit r = raycastScene(scene, glm::vec3(0.0f, 1.0f, 0.0f),
-                                      glm::vec3(-1.0f, 0.0f, 0.0f), 6.0f);
+    const RaycastHit r =
+        raycastScene(scene, glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(-1.0f, 0.0f, 0.0f), 6.0f);
     REQUIRE_FALSE(r.hit);
 }
 
@@ -223,8 +224,8 @@ TEST_CASE("raycastScene returns t=0 when origin is inside a box", "[raycast]")
     // Origin INSIDE the wall: pathological camera-inside-wall case.
     // Reports hit at t=0 so the caller collapses the camera onto the
     // player rather than rendering from inside the wall.
-    const RaycastHit r = raycastScene(scene, glm::vec3(1.0f, 1.0f, 0.0f),
-                                      glm::vec3(1.0f, 0.0f, 0.0f), 6.0f);
+    const RaycastHit r =
+        raycastScene(scene, glm::vec3(1.0f, 1.0f, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f), 6.0f);
     REQUIRE(r.hit);
     REQUIRE(r.distance == Approx(0.0f));
 }

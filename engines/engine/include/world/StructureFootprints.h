@@ -16,8 +16,8 @@ namespace engine::world
 // See games/selva-oscura/docs/design/DEV_PILLARS.md#8.
 struct StructureFootprint
 {
-    glm::vec2   center_xz{0.0f, 0.0f};
-    glm::vec2   half_extents_xz{0.0f, 0.0f};
+    glm::vec2 center_xz{0.0f, 0.0f};
+    glm::vec2 half_extents_xz{0.0f, 0.0f};
     const char* debug_name = nullptr;
 };
 
@@ -34,7 +34,7 @@ void registerStructureFootprint(const StructureFootprint& f);
 void clearStructureFootprints();
 
 // Count + accessor for render code that wants to read the list.
-int  structureFootprintCount();
+int structureFootprintCount();
 const StructureFootprint& structureFootprintAt(int idx);
 
 } // namespace engine::world

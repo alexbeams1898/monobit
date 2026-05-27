@@ -203,8 +203,8 @@ glm::vec2 sLastDescentDiscardHalfExtents{0.0f};
 
 bool initTerrainShader()
 {
-    const std::string fs = std::string(kTerrainFSCore) + kAtmosphereGLSL + kShadowGLSL +
-                           kTerrainFSMain;
+    const std::string fs =
+        std::string(kTerrainFSCore) + kAtmosphereGLSL + kShadowGLSL + kTerrainFSMain;
     sProgram = engine::gl::compileProgram(kTerrainVS, fs.c_str());
     if (sProgram == 0)
         return false;
@@ -306,11 +306,29 @@ void setTerrainDescentDiscard(const glm::vec2& center, const glm::vec2& half_ext
     sLastDescentDiscardHalfExtents = half_extents;
 }
 
-glm::vec2 lastTerrainChapelDiscardCenter() { return sLastChapelDiscardCenter; }
-glm::vec2 lastTerrainChapelDiscardHalfExtents() { return sLastChapelDiscardHalfExtents; }
-glm::vec2 lastTerrainApseDiscardCenter() { return sLastApseDiscardCenter; }
-float     lastTerrainApseDiscardRadius() { return sLastApseDiscardRadius; }
-glm::vec2 lastTerrainDescentDiscardCenter() { return sLastDescentDiscardCenter; }
-glm::vec2 lastTerrainDescentDiscardHalfExtents() { return sLastDescentDiscardHalfExtents; }
+glm::vec2 lastTerrainChapelDiscardCenter()
+{
+    return sLastChapelDiscardCenter;
+}
+glm::vec2 lastTerrainChapelDiscardHalfExtents()
+{
+    return sLastChapelDiscardHalfExtents;
+}
+glm::vec2 lastTerrainApseDiscardCenter()
+{
+    return sLastApseDiscardCenter;
+}
+float lastTerrainApseDiscardRadius()
+{
+    return sLastApseDiscardRadius;
+}
+glm::vec2 lastTerrainDescentDiscardCenter()
+{
+    return sLastDescentDiscardCenter;
+}
+glm::vec2 lastTerrainDescentDiscardHalfExtents()
+{
+    return sLastDescentDiscardHalfExtents;
+}
 
 } // namespace selva::render

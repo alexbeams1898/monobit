@@ -14,8 +14,10 @@ std::vector<TerrainModifier> sModifiers;
 // Hermite smoothstep — 3t^2 - 2t^3. Returns 0 at t<=0, 1 at t>=1.
 inline float smoothstep01(float t)
 {
-    if (t <= 0.0f) return 0.0f;
-    if (t >= 1.0f) return 1.0f;
+    if (t <= 0.0f)
+        return 0.0f;
+    if (t >= 1.0f)
+        return 1.0f;
     return t * t * (3.0f - 2.0f * t);
 }
 
@@ -52,18 +54,20 @@ inline float modifierWeight(const TerrainModifier& m, float x, float z)
     const float dz = (z - m.center_xz.y);
     const float dx_out = std::abs(dx) - m.half_extents_xz.x;
     const float dz_out = std::abs(dz) - m.half_extents_xz.y;
-    if (dx_out <= 0.0f && dz_out <= 0.0f) return 1.0f;
+    if (dx_out <= 0.0f && dz_out <= 0.0f)
+        return 1.0f;
 
-    const float pad_x = (dx < 0.0f)
-        ? blendPadForSide(m.blend_pad_neg_x, m.blend_pad)
-        : blendPadForSide(m.blend_pad_pos_x, m.blend_pad);
-    const float pad_z = (dz < 0.0f)
-        ? blendPadForSide(m.blend_pad_neg_z, m.blend_pad)
-        : blendPadForSide(m.blend_pad_pos_z, m.blend_pad);
+    const float pad_x = (dx < 0.0f) ? blendPadForSide(m.blend_pad_neg_x, m.blend_pad)
+                                    : blendPadForSide(m.blend_pad_pos_x, m.blend_pad);
+    const float pad_z = (dz < 0.0f) ? blendPadForSide(m.blend_pad_neg_z, m.blend_pad)
+                                    : blendPadForSide(m.blend_pad_pos_z, m.blend_pad);
 
-    auto axisBlend = [](float d_out, float pad) {
-        if (d_out <= 0.0f) return 1.0f;
-        if (pad <= 0.0f) return 0.0f;
+    auto axisBlend = [](float d_out, float pad)
+    {
+        if (d_out <= 0.0f)
+            return 1.0f;
+        if (pad <= 0.0f)
+            return 0.0f;
         return 1.0f - smoothstep01(d_out / pad);
     };
 
@@ -110,12 +114,10 @@ const TerrainModifier& terrainModifierAt(int idx)
 // Diagnostic: dump per-modifier weight + contribution for a single
 // XZ. Call this from probe sites; do NOT call per-vertex (would
 // flood stderr).
-void debugDumpModifierStack(float world_x, float world_z, float base_y,
-                            const char* label)
+void debugDumpModifierStack(float world_x, float world_z, float base_y, const char* label)
 {
-    std::fprintf(stderr,
-                 "[modstack] (%.2f,%.2f) base_y=%.2f  | %s\n",
-                 world_x, world_z, base_y, label);
+    std::fprintf(stderr, "[modstack] (%.2f,%.2f) base_y=%.2f  | %s\n", world_x, world_z, base_y,
+                 label);
     float y = base_y;
     for (const auto& m : sModifiers)
     {
@@ -124,30 +126,35 @@ void debugDumpModifierStack(float world_x, float world_z, float base_y,
         const float dx_out = std::abs(dx) - m.half_extents_xz.x;
         const float dz_out = std::abs(dz) - m.half_extents_xz.y;
         const float w = modifierWeight(m, world_x, world_z);
-        const float pad_x = (dx < 0.0f)
-            ? blendPadForSide(m.blend_pad_neg_x, m.blend_pad)
-            : blendPadForSide(m.blend_pad_pos_x, m.blend_pad);
-        const float pad_z = (dz < 0.0f)
-            ? blendPadForSide(m.blend_pad_neg_z, m.blend_pad)
-            : blendPadForSide(m.blend_pad_pos_z, m.blend_pad);
-        std::fprintf(stderr,
-                     "  '%s' mode=%d  dx_out=%.3f dz_out=%.3f  pad_x=%.2f pad_z=%.2f  weight=%.4f\n",
-                     m.debug_name ? m.debug_name : "(no name)",
-                     static_cast<int>(m.mode),
-                     dx_out, dz_out, pad_x, pad_z, w);
-        if (w <= 0.0f) continue;
-        if (m.mode == TerrainModifier::Mode::Hole) continue;
+        const float pad_x = (dx < 0.0f) ? blendPadForSide(m.blend_pad_neg_x, m.blend_pad)
+                                        : blendPadForSide(m.blend_pad_pos_x, m.blend_pad);
+        const float pad_z = (dz < 0.0f) ? blendPadForSide(m.blend_pad_neg_z, m.blend_pad)
+                                        : blendPadForSide(m.blend_pad_pos_z, m.blend_pad);
+        std::fprintf(
+            stderr, "  '%s' mode=%d  dx_out=%.3f dz_out=%.3f  pad_x=%.2f pad_z=%.2f  weight=%.4f\n",
+            m.debug_name ? m.debug_name : "(no name)", static_cast<int>(m.mode), dx_out, dz_out,
+            pad_x, pad_z, w);
+        if (w <= 0.0f)
+            continue;
+        if (m.mode == TerrainModifier::Mode::Hole)
+            continue;
         float target = y;
-        if (m.mode == TerrainModifier::Mode::FlushAt) target = m.value;
-        else if (m.mode == TerrainModifier::Mode::DepressTo) target = m.value;
-        else if (m.mode == TerrainModifier::Mode::AddDelta)  target = y + m.value;
+        if (m.mode == TerrainModifier::Mode::FlushAt)
+            target = m.value;
+        else if (m.mode == TerrainModifier::Mode::DepressTo)
+            target = m.value;
+        else if (m.mode == TerrainModifier::Mode::AddDelta)
+            target = y + m.value;
         else if (m.mode == TerrainModifier::Mode::FlushSlope)
         {
-            const float axis_pos    = (m.slope_axis == 0) ? world_x : world_z;
+            const float axis_pos = (m.slope_axis == 0) ? world_x : world_z;
             const float axis_center = (m.slope_axis == 0) ? m.center_xz.x : m.center_xz.y;
-            const float axis_half   = (m.slope_axis == 0) ? m.half_extents_xz.x : m.half_extents_xz.y;
+            const float axis_half = (m.slope_axis == 0) ? m.half_extents_xz.x : m.half_extents_xz.y;
             float t = (axis_pos - (axis_center - axis_half)) / (2.0f * axis_half);
-            if (t < 0.0f) t = 0.0f; else if (t > 1.0f) t = 1.0f;
+            if (t < 0.0f)
+                t = 0.0f;
+            else if (t > 1.0f)
+                t = 1.0f;
             target = m.value * (1.0f - t) + m.value_far * t;
         }
         const float new_y = y * (1.0f - w) + target * w;
@@ -167,7 +174,8 @@ float applyTerrainModifiers(float world_x, float world_z, float base_y)
     for (const auto& m : sModifiers)
     {
         const float w = modifierWeight(m, world_x, world_z);
-        if (w <= 0.0f) continue;
+        if (w <= 0.0f)
+            continue;
         float target = y;
         switch (m.mode)
         {
@@ -183,8 +191,10 @@ float applyTerrainModifiers(float world_x, float world_z, float base_y)
             const float axis_half = (m.slope_axis == 0) ? m.half_extents_xz.x : m.half_extents_xz.y;
             // t = 0 at -axis edge, 1 at +axis edge; clamp outside.
             float t = (axis_pos - (axis_center - axis_half)) / (2.0f * axis_half);
-            if (t < 0.0f) t = 0.0f;
-            else if (t > 1.0f) t = 1.0f;
+            if (t < 0.0f)
+                t = 0.0f;
+            else if (t > 1.0f)
+                t = 1.0f;
             target = m.value * (1.0f - t) + m.value_far * t;
             break;
         }
@@ -208,8 +218,10 @@ bool insideTerrainHole(float world_x, float world_z)
 {
     for (const auto& m : sModifiers)
     {
-        if (m.mode != TerrainModifier::Mode::Hole) continue;
-        if (rectSignedDistance(m, world_x, world_z) <= 0.0f) return true;
+        if (m.mode != TerrainModifier::Mode::Hole)
+            continue;
+        if (rectSignedDistance(m, world_x, world_z) <= 0.0f)
+            return true;
     }
     return false;
 }

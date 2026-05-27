@@ -29,7 +29,7 @@ struct CylinderCollider
     // >=0 = force a specific tree variant index. Used for authored
     // placements like the cypresses flanking the crypt.
     int forced_variant_idx = -1;
-    float forced_scale = 0.0f;       // 0 = use hash-driven scale
+    float forced_scale = 0.0f; // 0 = use hash-driven scale
     // Collision-only: skip in the tree renderer. Used for invisible
     // colliders that approximate non-cylindrical architecture (e.g.
     // the apse rear curve).
@@ -49,10 +49,10 @@ struct CylinderCollider
 // look up over a wall without the ray treating it as infinite-tall.
 struct BoxCollider
 {
-    glm::vec2 center;      // XZ center
-    glm::vec2 half_extents;// XZ half-width / half-depth
-    float y_base = 0.0f;       // bottom of the box in world Y
-    float half_height_y = 5.0f;// half vertical extent (top = y_base + 2*half)
+    glm::vec2 center;           // XZ center
+    glm::vec2 half_extents;     // XZ half-width / half-depth
+    float y_base = 0.0f;        // bottom of the box in world Y
+    float half_height_y = 5.0f; // half vertical extent (top = y_base + 2*half)
     // Camera-only: skip in resolveBodyCollision. Used for overhead
     // colliders (chapel roof slab) that the player walks UNDER but
     // the camera must not fly OVER. Player collision is XZ-only by

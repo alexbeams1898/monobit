@@ -143,8 +143,7 @@ GLint sUniShadowCamPosLoc = -1;
 
 bool initTreeShader()
 {
-    const std::string fs =
-        std::string(kTreeFSCore) + kAtmosphereGLSL + kShadowGLSL + kTreeFSMain;
+    const std::string fs = std::string(kTreeFSCore) + kAtmosphereGLSL + kShadowGLSL + kTreeFSMain;
     sProgram = engine::gl::compileProgram(kTreeVS, fs.c_str());
     if (sProgram == 0)
         return false;

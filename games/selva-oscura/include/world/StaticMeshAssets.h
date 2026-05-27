@@ -1,7 +1,8 @@
 #pragma once
 
-#include <cstdint>
 #include <glm/vec3.hpp>
+
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -36,7 +37,7 @@ struct StaticMeshPrimitive
     // as a static trimesh body. Without this, after upload to GL the
     // mesh data is gone and physics would need to read it back from
     // the .glb a second time.
-    std::vector<glm::vec3>     cpu_positions;
+    std::vector<glm::vec3> cpu_positions;
     std::vector<std::uint32_t> cpu_indices;
 };
 
@@ -68,8 +69,7 @@ const StaticMesh* cryptMesh();
 // CPU positions are world-space (matches the convention chapel uses).
 // GL vertex buffer is also uploaded with world-space positions, so the
 // renderer can draw at identity model matrix.
-bool loadStaticMesh(const char* glb_path, const glm::vec3& world_origin,
-                    StaticMesh& out);
+bool loadStaticMesh(const char* glb_path, const glm::vec3& world_origin, StaticMesh& out);
 
 // Free GPU resources (VAO/VBO/EBO) for a mesh loaded via loadStaticMesh.
 // Idempotent.

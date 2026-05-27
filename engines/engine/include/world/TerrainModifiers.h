@@ -54,17 +54,17 @@ struct TerrainModifier
         Hole,
     };
 
-    glm::vec2  center_xz{0.0f, 0.0f};
-    glm::vec2  half_extents_xz{0.0f, 0.0f};
-    Mode       mode = Mode::FlushAt;
-    float      value = 0.0f;
+    glm::vec2 center_xz{0.0f, 0.0f};
+    glm::vec2 half_extents_xz{0.0f, 0.0f};
+    Mode mode = Mode::FlushAt;
+    float value = 0.0f;
     // Used by FlushSlope only — Y at the +axis edge of the rect.
     // `value` is Y at the -axis edge. slope_axis picks the axis.
-    float      value_far = 0.0f;
+    float value_far = 0.0f;
     // 0 = X axis, 2 = Z axis (matches glm convention). Only used
     // when mode == FlushSlope. Defaults to Z (most common: descent
     // along chapel-local Y / world -Z).
-    int        slope_axis = 2;
+    int slope_axis = 2;
     // Outside the rect, modifier strength falls smoothly to zero
     // over the blend_pad on that side. 0 = sharp edge (sheer cliff
     // at the pit/plateau boundary). Positive values produce a smooth
@@ -76,15 +76,15 @@ struct TerrainModifier
     // a chapel plateau with a tunnel exiting the back wall wants
     // a soft ramp on the front/sides but a SHARP edge on the back
     // so the soft ramp doesn't depress terrain into the tunnel.
-    float      blend_pad = 0.0f;
+    float blend_pad = 0.0f;
     // Per-side blend_pad overrides. -1.0f = use the default
     // blend_pad above. Lets a single modifier express asymmetric
     // transitions to surrounding terrain without spawning multiple
     // overlapping modifiers / counter-modifiers.
-    float      blend_pad_neg_x = -1.0f;
-    float      blend_pad_pos_x = -1.0f;
-    float      blend_pad_neg_z = -1.0f;
-    float      blend_pad_pos_z = -1.0f;
+    float blend_pad_neg_x = -1.0f;
+    float blend_pad_pos_x = -1.0f;
+    float blend_pad_neg_z = -1.0f;
+    float blend_pad_pos_z = -1.0f;
     // Static-storage string literal for the F1 modifier overlay.
     // nullptr = no label drawn.
     const char* debug_name = nullptr;
@@ -97,7 +97,7 @@ void registerTerrainModifier(const TerrainModifier& mod);
 void clearTerrainModifiers();
 
 // Number of currently-registered modifiers (for the F1 debug overlay).
-int  terrainModifierCount();
+int terrainModifierCount();
 const TerrainModifier& terrainModifierAt(int idx);
 
 // Per-vertex query used by the terrain mesh builder. Given a base Y
@@ -115,7 +115,6 @@ bool insideTerrainHole(float world_x, float world_z);
 
 // Diagnostic: dump per-modifier weight + contribution at this XZ to
 // stderr. Use sparingly (one-shot probes only, never per-vertex).
-void debugDumpModifierStack(float world_x, float world_z, float base_y,
-                            const char* label);
+void debugDumpModifierStack(float world_x, float world_z, float base_y, const char* label);
 
 } // namespace engine::world

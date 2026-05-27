@@ -18,9 +18,8 @@ namespace selva::render
 // `player_yaw` and `one_shot_name` are diagnostic-only: used by the
 // fpv-roll-debug log when enabled.
 glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
-                        const glm::vec3& head_world_pos,
-                        const glm::mat4& head_world_mat, bool use_anim_orientation,
-                        float player_yaw, const char* one_shot_name);
+                        const glm::vec3& head_world_pos, const glm::mat4& head_world_mat,
+                        bool use_anim_orientation, float player_yaw, const char* one_shot_name);
 const glm::mat4& lastView();
 
 // Multi-pass environment draw. Caller binds the appropriate shader

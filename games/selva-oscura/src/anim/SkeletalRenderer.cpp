@@ -128,8 +128,7 @@ bool initSkeletalRenderer()
         return true; // idempotent
 
     using namespace selva::render;
-    const std::string fs =
-        std::string(kFragmentShaderCore) + kShadowGLSL + kFragmentShaderMain;
+    const std::string fs = std::string(kFragmentShaderCore) + kShadowGLSL + kFragmentShaderMain;
     sProgram = engine::gl::compileProgram(kVertexShader, fs.c_str());
     if (sProgram == 0)
     {

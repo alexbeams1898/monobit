@@ -21,7 +21,7 @@ namespace selva::world
 // onDeactivate: remove bodies (automatic via context tracking).
 class SurfaceScene : public engine::world::Scene
 {
-public:
+  public:
     SurfaceScene();
     void onActivate(engine::world::SceneActivationContext& ctx) override;
     void onDeactivate() override;

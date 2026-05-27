@@ -74,7 +74,7 @@ GLuint ensureStencilProgram()
     }
     return sStencilProgram;
 }
-const glm::mat4& cryptModelMatrix();  // forward-decl; defined below in a later anon namespace
+const glm::mat4& cryptModelMatrix(); // forward-decl; defined below in a later anon namespace
 } // namespace
 
 const glm::mat4& lastView()
@@ -84,8 +84,7 @@ const glm::mat4& lastView()
 
 glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
                         const glm::vec3& head_world_pos, const glm::mat4& head_world_mat,
-                        bool use_anim_orientation_in, float player_yaw,
-                        const char* one_shot_name)
+                        bool use_anim_orientation_in, float player_yaw, const char* one_shot_name)
 {
     const auto& tun = selva::tuning::current();
     const auto& settings = selva::saveData().settings;
@@ -108,16 +107,15 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
     {
         const float kEyeForwardOffset = tun.fpv_eye_fwd_offset;
         const float kEyeUpOffset = tun.fpv_eye_up_offset;
-        const float aspect = windowHeight() > 0
-                                 ? static_cast<float>(windowWidth()) /
-                                       static_cast<float>(windowHeight())
-                                 : 1.0f;
+        const float aspect = windowHeight() > 0 ? static_cast<float>(windowWidth()) /
+                                                      static_cast<float>(windowHeight())
+                                                : 1.0f;
         // near plane matches the third-person path; see comment there.
         // FPV uses 0.2 (a bit tighter than 0.5 because FPV camera
         // sits inside the player capsule and can be very close to
         // arm/hand geometry).
-        const glm::mat4 proj = glm::perspective(
-            glm::radians(settings.fov_degrees_first_person), aspect, 0.2f, 200.0f);
+        const glm::mat4 proj =
+            glm::perspective(glm::radians(settings.fov_degrees_first_person), aspect, 0.2f, 200.0f);
 
         // FPV head-position model: track the PLAYER position 1:1
         // (the camera follows the player's bulk motion without lag),
@@ -252,14 +250,13 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
                              "cam_up=(%.3f,%.3f,%.3f)\n",
                              sFpvRollFrame, now_seconds,
                              (one_shot_name != nullptr) ? one_shot_name : "(none)",
-                             use_anim_orientation_in ? 1 : 0, anim_weight,
-                             player_pos.x, player_pos.y, player_pos.z, player_yaw,
-                             head_world_pos.x, head_world_pos.y, head_world_pos.z,
-                             head_fwd_diag.x, head_fwd_diag.y, head_fwd_diag.z,
-                             head_up_diag.x, head_up_diag.y, head_up_diag.z,
-                             sSmoothedHeadPos.x, sSmoothedHeadPos.y, sSmoothedHeadPos.z,
-                             camPos.x, camPos.y, camPos.z, cam_fwd.x, cam_fwd.y, cam_fwd.z,
-                             cam_up.x, cam_up.y, cam_up.z);
+                             use_anim_orientation_in ? 1 : 0, anim_weight, player_pos.x,
+                             player_pos.y, player_pos.z, player_yaw, head_world_pos.x,
+                             head_world_pos.y, head_world_pos.z, head_fwd_diag.x, head_fwd_diag.y,
+                             head_fwd_diag.z, head_up_diag.x, head_up_diag.y, head_up_diag.z,
+                             sSmoothedHeadPos.x, sSmoothedHeadPos.y, sSmoothedHeadPos.z, camPos.x,
+                             camPos.y, camPos.z, cam_fwd.x, cam_fwd.y, cam_fwd.z, cam_up.x,
+                             cam_up.y, cam_up.z);
                 std::fflush(sFpvRollLog);
             }
             ++sFpvRollFrame;
@@ -398,26 +395,30 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
     {
         static FILE* sXLog = nullptr;
         static int sXFrame = 0;
-        if (sXLog == nullptr) sXLog = std::fopen("crosshair-debug.log", "w");
+        if (sXLog == nullptr)
+            sXLog = std::fopen("crosshair-debug.log", "w");
         if (sXLog != nullptr && (sXFrame++ % 60) == 0)
         {
-            const glm::vec3 ray_dir = lookFwd;  // camera forward (mouse look)
+            const glm::vec3 ray_dir = lookFwd; // camera forward (mouse look)
             std::fprintf(sXLog, "[frame %d] camPos=(%.2f,%.2f,%.2f) lookFwd=(%.3f,%.3f,%.3f)\n",
                          sXFrame, camPos.x, camPos.y, camPos.z, ray_dir.x, ray_dir.y, ray_dir.z);
             glm::vec3 origin = camPos;
             for (int i = 0; i < 6; ++i)
             {
                 const auto hit_i = engine::physics::raycast(origin, ray_dir, 200.0f);
-                if (!hit_i.hit) {
+                if (!hit_i.hit)
+                {
                     std::fprintf(sXLog, "  hit %d: (no hit)\n", i);
                     break;
                 }
                 const char* nm = engine::physics::bodyDebugName(hit_i.body);
-                std::fprintf(sXLog,
-                             "  hit %d: dist=%.3f pos=(%.2f,%.2f,%.2f) normal=(%.2f,%.2f,%.2f) body='%s'\n",
-                             i, hit_i.distance, hit_i.position.x, hit_i.position.y, hit_i.position.z,
-                             hit_i.normal.x, hit_i.normal.y, hit_i.normal.z, nm ? nm : "(unnamed)");
-                // Step ray origin slightly past this hit so the next cast picks up the next surface.
+                std::fprintf(
+                    sXLog,
+                    "  hit %d: dist=%.3f pos=(%.2f,%.2f,%.2f) normal=(%.2f,%.2f,%.2f) body='%s'\n",
+                    i, hit_i.distance, hit_i.position.x, hit_i.position.y, hit_i.position.z,
+                    hit_i.normal.x, hit_i.normal.y, hit_i.normal.z, nm ? nm : "(unnamed)");
+                // Step ray origin slightly past this hit so the next cast picks up the next
+                // surface.
                 origin = hit_i.position + ray_dir * 0.05f;
             }
             std::fflush(sXLog);
@@ -459,24 +460,21 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
                 static std::vector<engine::physics::BodyDebugInfo> sBodies;
                 sBodies.clear();
                 engine::physics::enumerateBodies(sBodies);
-                std::fprintf(sPullInLog,
-                             "=== physics body enumeration (%zu bodies) ===\n",
+                std::fprintf(sPullInLog, "=== physics body enumeration (%zu bodies) ===\n",
                              sBodies.size());
                 for (const auto& b : sBodies)
                 {
                     const char* nm = engine::physics::bodyDebugName(b.body);
-                    const char* kind =
-                        b.kind == engine::physics::BodyKind::Character     ? "Character"
-                        : b.kind == engine::physics::BodyKind::StaticBox   ? "Box"
-                        : b.kind == engine::physics::BodyKind::StaticTrimesh ? "Tri"
-                                                                          : "?";
-                    std::fprintf(
-                        sPullInLog,
-                        "  id=%u kind=%s tag=%d aabb=[(%.2f,%.2f,%.2f)-(%.2f,%.2f,%.2f)] "
-                        "name='%s'\n",
-                        b.body.id, kind, static_cast<int>(b.tag),
-                        b.world_aabb_min.x, b.world_aabb_min.y, b.world_aabb_min.z,
-                        b.world_aabb_max.x, b.world_aabb_max.y, b.world_aabb_max.z, nm);
+                    const char* kind = b.kind == engine::physics::BodyKind::Character ? "Character"
+                                       : b.kind == engine::physics::BodyKind::StaticBox     ? "Box"
+                                       : b.kind == engine::physics::BodyKind::StaticTrimesh ? "Tri"
+                                                                                            : "?";
+                    std::fprintf(sPullInLog,
+                                 "  id=%u kind=%s tag=%d aabb=[(%.2f,%.2f,%.2f)-(%.2f,%.2f,%.2f)] "
+                                 "name='%s'\n",
+                                 b.body.id, kind, static_cast<int>(b.tag), b.world_aabb_min.x,
+                                 b.world_aabb_min.y, b.world_aabb_min.z, b.world_aabb_max.x,
+                                 b.world_aabb_max.y, b.world_aabb_max.z, nm);
                 }
                 std::fprintf(sPullInLog, "=== end enumeration ===\n");
                 std::fflush(sPullInLog);
@@ -518,15 +516,13 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
             const glm::vec3 feet_to_cam_dir =
                 feet_to_cam_dist > 1e-4f ? feet_to_cam / feet_to_cam_dist : glm::vec3(0.0f);
             const engine::physics::RayHit probe_feet_to_cam =
-                feet_to_cam_dist > 1e-4f
-                    ? engine::physics::raycast(player_pos, feet_to_cam_dir, feet_to_cam_dist + 0.01f)
-                    : engine::physics::RayHit{};
+                feet_to_cam_dist > 1e-4f ? engine::physics::raycast(player_pos, feet_to_cam_dir,
+                                                                    feet_to_cam_dist + 0.01f)
+                                         : engine::physics::RayHit{};
             const char* probe_cam_to_look_name =
-                probe_cam_to_look.hit
-                    ? engine::physics::bodyDebugName(probe_cam_to_look.body) : "";
+                probe_cam_to_look.hit ? engine::physics::bodyDebugName(probe_cam_to_look.body) : "";
             const char* probe_feet_to_cam_name =
-                probe_feet_to_cam.hit
-                    ? engine::physics::bodyDebugName(probe_feet_to_cam.body) : "";
+                probe_feet_to_cam.hit ? engine::physics::bodyDebugName(probe_feet_to_cam.body) : "";
             // VERDICT: wall_between=1 means at least one independent
             // probe found a wall between camera and player. That's
             // the bug condition we want a regression test to assert
@@ -554,11 +550,9 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
             // the body name + distance + which axis.
             float wall_nearest_dist = 999.0f;
             const char* wall_nearest_name = "";
-            int wall_nearest_axis = -1;  // 0..5 = +X,-X,+Y,-Y,+Z,-Z
-            const glm::vec3 axis_dirs[6] = {
-                { 1, 0, 0}, {-1, 0, 0}, {0,  1, 0},
-                {0, -1, 0}, {0, 0,  1}, {0,  0,-1}
-            };
+            int wall_nearest_axis = -1; // 0..5 = +X,-X,+Y,-Y,+Z,-Z
+            const glm::vec3 axis_dirs[6] = {{1, 0, 0},  {-1, 0, 0}, {0, 1, 0},
+                                            {0, -1, 0}, {0, 0, 1},  {0, 0, -1}};
             for (int ax = 0; ax < 6; ++ax)
             {
                 const auto h = engine::physics::raycast(camPos, axis_dirs[ax], 2.0f);
@@ -579,12 +573,11 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
             // model bug.
             const engine::physics::BodyHandle pbody = selva::world::playerBody();
             const engine::physics::BodyHandle ground =
-                pbody != engine::physics::kInvalidBody
-                    ? engine::physics::characterGroundBody(pbody)
-                    : engine::physics::kInvalidBody;
-            const char* ground_name =
-                ground != engine::physics::kInvalidBody
-                    ? engine::physics::bodyDebugName(ground) : "(none)";
+                pbody != engine::physics::kInvalidBody ? engine::physics::characterGroundBody(pbody)
+                                                       : engine::physics::kInvalidBody;
+            const char* ground_name = ground != engine::physics::kInvalidBody
+                                          ? engine::physics::bodyDebugName(ground)
+                                          : "(none)";
 
             // (1) Drop a ray STRAIGHT DOWN from player chest height
             // (lookAt) to find the highest solid surface directly
@@ -595,8 +588,7 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
             const glm::vec3 drop_origin(player_pos.x, lookAt.y, player_pos.z);
             const engine::physics::RayHit feet_drop =
                 engine::physics::raycast(drop_origin, glm::vec3(0, -1, 0), 50.0f);
-            const float feet_drop_y =
-                feet_drop.hit ? (lookAt.y - feet_drop.distance) : -999.0f;
+            const float feet_drop_y = feet_drop.hit ? (lookAt.y - feet_drop.distance) : -999.0f;
             const char* feet_drop_name =
                 feet_drop.hit ? engine::physics::bodyDebugName(feet_drop.body) : "";
 
@@ -614,12 +606,11 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
                 for (std::size_t i = 0; i < sActiveContacts.size() && i < 6; ++i)
                 {
                     const char* nm = engine::physics::bodyDebugName(sActiveContacts[i]);
-                    const int n = std::snprintf(
-                        contacts_buf + written,
-                        sizeof(contacts_buf) - static_cast<std::size_t>(written),
-                        "%s%s", i == 0 ? "" : ",", nm);
-                    if (n <= 0 ||
-                        static_cast<std::size_t>(written + n) >= sizeof(contacts_buf))
+                    const int n =
+                        std::snprintf(contacts_buf + written,
+                                      sizeof(contacts_buf) - static_cast<std::size_t>(written),
+                                      "%s%s", i == 0 ? "" : ",", nm);
+                    if (n <= 0 || static_cast<std::size_t>(written + n) >= sizeof(contacts_buf))
                         break;
                     written += n;
                 }
@@ -640,23 +631,18 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
                 "ground='%s' feet_drop=(hit=%d y=%.3f gap=%.3f name='%s') "
                 "active_contacts=%zu [%s] "
                 "wall_near=(dist=%.3f axis=%d name='%s')\n",
-                sPullInFrame, player_pos.x, player_pos.y, player_pos.z, player_vel.x,
-                player_vel.y, player_vel.z, player_speed, yaw, pitch, lookFwd.x, lookFwd.y,
-                lookFwd.z, lookAt.x, lookAt.y, lookAt.z, cam_dir.x, cam_dir.y, cam_dir.z,
-                ideal_offset.x, ideal_offset.y, ideal_offset.z, desired_separation,
-                tun.follow_distance,
-                hit.hit ? 1 : 0, hit.distance, target_separation, sSmoothedSeparation,
-                camPos.x, camPos.y, camPos.z, cam_y_above_chest, cam_dist_xz,
-                overlap ? 1 : 0,
-                wall_between ? 1 : 0,
+                sPullInFrame, player_pos.x, player_pos.y, player_pos.z, player_vel.x, player_vel.y,
+                player_vel.z, player_speed, yaw, pitch, lookFwd.x, lookFwd.y, lookFwd.z, lookAt.x,
+                lookAt.y, lookAt.z, cam_dir.x, cam_dir.y, cam_dir.z, ideal_offset.x, ideal_offset.y,
+                ideal_offset.z, desired_separation, tun.follow_distance, hit.hit ? 1 : 0,
+                hit.distance, target_separation, sSmoothedSeparation, camPos.x, camPos.y, camPos.z,
+                cam_y_above_chest, cam_dist_xz, overlap ? 1 : 0, wall_between ? 1 : 0,
                 probe_cam_to_look.hit ? 1 : 0, probe_cam_to_look.distance, probe_cam_to_look_name,
                 probe_feet_to_cam.hit ? 1 : 0, probe_feet_to_cam.distance, probe_feet_to_cam_name,
-                ground_name,
-                feet_drop.hit ? 1 : 0, feet_drop_y,
-                feet_drop.hit ? (feet_drop_y - player_pos.y) : -999.0f,
-                feet_drop_name,
-                sActiveContacts.size(), contacts_buf,
-                wall_nearest_dist, wall_nearest_axis, wall_nearest_name);
+                ground_name, feet_drop.hit ? 1 : 0, feet_drop_y,
+                feet_drop.hit ? (feet_drop_y - player_pos.y) : -999.0f, feet_drop_name,
+                sActiveContacts.size(), contacts_buf, wall_nearest_dist, wall_nearest_axis,
+                wall_nearest_name);
             std::fflush(sPullInLog);
             ++sPullInFrame;
             sPrevPlayerPos = player_pos;
@@ -781,8 +767,7 @@ const glm::mat4& cryptModelMatrix()
     static bool sInit = false;
     if (!sInit)
     {
-        sCached = glm::translate(glm::mat4(1.0f),
-                                 selva::world::crypt_layout::chapelWorldOrigin());
+        sCached = glm::translate(glm::mat4(1.0f), selva::world::crypt_layout::chapelWorldOrigin());
         sInit = true;
     }
     return sCached;
@@ -793,8 +778,7 @@ void drawStaticPrimitive(const selva::world::StaticMeshPrimitive& p)
     if (p.vao == 0)
         return;
     selva::render::setSceneTint(1.0f);
-    selva::render::setSceneBaseColor(
-        glm::vec3(p.base_color[0], p.base_color[1], p.base_color[2]));
+    selva::render::setSceneBaseColor(glm::vec3(p.base_color[0], p.base_color[1], p.base_color[2]));
     glBindVertexArray(p.vao);
     glDrawElements(GL_TRIANGLES, p.index_count, GL_UNSIGNED_INT, nullptr);
 }
@@ -805,8 +789,7 @@ void renderStaticMeshes()
     // Active scene owns its static meshes (JsonScene::renderMeshes).
     // Positions are baked in world space by the scene loader, so
     // model matrix is identity; the scene-render call sets it.
-    auto* scene = dynamic_cast<selva::world::JsonScene*>(
-        engine::world::currentScenePtr());
+    auto* scene = dynamic_cast<selva::world::JsonScene*>(engine::world::currentScenePtr());
     if (scene != nullptr)
     {
         scene->renderMeshes();
@@ -833,8 +816,7 @@ void renderStaticMeshesDepth()
     // the receiver's normal-offset bias handles self-shadow.
     glDisable(GL_CULL_FACE);
 
-    auto* scene = dynamic_cast<selva::world::JsonScene*>(
-        engine::world::currentScenePtr());
+    auto* scene = dynamic_cast<selva::world::JsonScene*>(engine::world::currentScenePtr());
     if (scene != nullptr)
     {
         // Scene-owned meshes: positions baked in world space; depth

@@ -1,29 +1,5 @@
 #include "physics/PhysicsWorld.h"
 
-// Jolt includes — order matters; Jolt.h MUST come first.
-#include <Jolt/Jolt.h>
-#include <Jolt/Core/Factory.h>
-#include <Jolt/Core/JobSystemThreadPool.h>
-#include <Jolt/Core/TempAllocator.h>
-#include <Jolt/Math/Real.h>
-#include <Jolt/Physics/Body/BodyCreationSettings.h>
-#include <Jolt/Physics/Body/BodyInterface.h>
-#include <Jolt/Physics/Character/CharacterVirtual.h>
-#include <Jolt/Physics/Collision/CastResult.h>
-#include <Jolt/Physics/Collision/RayCast.h>
-#include <Jolt/Physics/Collision/Shape/BoxShape.h>
-#include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
-#include <Jolt/Physics/Collision/Shape/MeshShape.h>
-#include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
-#include <Jolt/Physics/Collision/Shape/SphereShape.h>
-#include <Jolt/Physics/Collision/CollideShape.h>
-#include <Jolt/Physics/Collision/CollisionCollectorImpl.h>
-#include <Jolt/Physics/Collision/BroadPhase/BroadPhaseLayer.h>
-#include <Jolt/Physics/Collision/ObjectLayer.h>
-#include <Jolt/Physics/PhysicsSettings.h>
-#include <Jolt/Physics/PhysicsSystem.h>
-#include <Jolt/RegisterTypes.h>
-
 #include <chrono>
 #include <cmath>
 #include <cstdarg>
@@ -32,6 +8,34 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+
+// clang-format off
+// Jolt include order is load-bearing: Jolt/Jolt.h MUST be the first
+// Jolt header. Alphabetizing puts Core/* before Jolt.h and breaks
+// the build with cryptic "atomic was not declared" errors.
+#include <Jolt/Jolt.h>
+#include <Jolt/Core/Factory.h>
+#include <Jolt/Core/JobSystemThreadPool.h>
+#include <Jolt/Core/TempAllocator.h>
+#include <Jolt/Math/Real.h>
+#include <Jolt/Physics/Body/BodyCreationSettings.h>
+#include <Jolt/Physics/Body/BodyInterface.h>
+#include <Jolt/Physics/Character/CharacterVirtual.h>
+#include <Jolt/Physics/Collision/BroadPhase/BroadPhaseLayer.h>
+#include <Jolt/Physics/Collision/CastResult.h>
+#include <Jolt/Physics/Collision/CollideShape.h>
+#include <Jolt/Physics/Collision/CollisionCollectorImpl.h>
+#include <Jolt/Physics/Collision/ObjectLayer.h>
+#include <Jolt/Physics/Collision/RayCast.h>
+#include <Jolt/Physics/Collision/Shape/BoxShape.h>
+#include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
+#include <Jolt/Physics/Collision/Shape/MeshShape.h>
+#include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
+#include <Jolt/Physics/Collision/Shape/SphereShape.h>
+#include <Jolt/Physics/PhysicsSettings.h>
+#include <Jolt/Physics/PhysicsSystem.h>
+#include <Jolt/RegisterTypes.h>
+// clang-format on
 
 namespace engine::physics
 {
@@ -50,7 +54,7 @@ namespace
 namespace Layers
 {
 constexpr JPH::ObjectLayer NON_MOVING = 0;
-constexpr JPH::ObjectLayer MOVING     = 1;
+constexpr JPH::ObjectLayer MOVING = 1;
 constexpr JPH::ObjectLayer NUM_LAYERS = 2;
 } // namespace Layers
 
@@ -63,11 +67,11 @@ constexpr JPH::uint NUM_LAYERS = 2;
 
 class BPLayerImpl final : public JPH::BroadPhaseLayerInterface
 {
-public:
+  public:
     BPLayerImpl()
     {
         mObjToBroad[Layers::NON_MOVING] = BroadPhaseLayers::NON_MOVING;
-        mObjToBroad[Layers::MOVING]     = BroadPhaseLayers::MOVING;
+        mObjToBroad[Layers::MOVING] = BroadPhaseLayers::MOVING;
     }
     JPH::uint GetNumBroadPhaseLayers() const override
     {
@@ -91,13 +95,13 @@ public:
         }
     }
 #endif
-private:
+  private:
     JPH::BroadPhaseLayer mObjToBroad[Layers::NUM_LAYERS];
 };
 
 class ObjectVsBPFilterImpl final : public JPH::ObjectVsBroadPhaseLayerFilter
 {
-public:
+  public:
     bool ShouldCollide(JPH::ObjectLayer inLayer1, JPH::BroadPhaseLayer inLayer2) const override
     {
         if (inLayer1 == Layers::NON_MOVING)
@@ -108,7 +112,7 @@ public:
 
 class ObjectLayerPairFilterImpl final : public JPH::ObjectLayerPairFilter
 {
-public:
+  public:
     bool ShouldCollide(JPH::ObjectLayer inLayer1, JPH::ObjectLayer inLayer2) const override
     {
         if (inLayer1 == Layers::NON_MOVING)
@@ -118,13 +122,13 @@ public:
 };
 
 // ---- Module state -----------------------------------------------------
-bool                                    sInit = false;
+bool sInit = false;
 std::unique_ptr<JPH::TempAllocatorImpl> sTempAlloc;
 std::unique_ptr<JPH::JobSystemThreadPool> sJobSystem;
-std::unique_ptr<BPLayerImpl>            sBPLayerImpl;
-std::unique_ptr<ObjectVsBPFilterImpl>   sObjectVsBPFilter;
+std::unique_ptr<BPLayerImpl> sBPLayerImpl;
+std::unique_ptr<ObjectVsBPFilterImpl> sObjectVsBPFilter;
 std::unique_ptr<ObjectLayerPairFilterImpl> sObjectLayerPairFilter;
-std::unique_ptr<JPH::PhysicsSystem>     sPhysics;
+std::unique_ptr<JPH::PhysicsSystem> sPhysics;
 
 // We track our own handle->body indirection so handle::id stays stable
 // across Jolt internals. Static bodies use Jolt's BodyID; character
@@ -133,12 +137,16 @@ std::unique_ptr<JPH::PhysicsSystem>     sPhysics;
 std::uint32_t sNextHandleId = 1;
 struct HandleEntry
 {
-    enum class Kind { Static, Character };
-    Kind                       kind = Kind::Static;
-    JPH::BodyID                body_id;                  // Static only
-    JPH::Ref<JPH::CharacterVirtual> character;           // Character only
-    SurfaceTag                 tag = SurfaceTag::Unknown;
-    std::string                debug_name;
+    enum class Kind
+    {
+        Static,
+        Character
+    };
+    Kind kind = Kind::Static;
+    JPH::BodyID body_id;                       // Static only
+    JPH::Ref<JPH::CharacterVirtual> character; // Character only
+    SurfaceTag tag = SurfaceTag::Unknown;
+    std::string debug_name;
 };
 std::unordered_map<std::uint32_t, HandleEntry> sHandles;
 
@@ -162,7 +170,8 @@ ShapeHandle allocShapeHandle()
 // Trace / assert hooks (no-op in release; route to stderr in debug).
 void TraceImpl(const char* fmt, ...)
 {
-    va_list args; va_start(args, fmt);
+    va_list args;
+    va_start(args, fmt);
     std::vfprintf(stderr, fmt, args);
     std::fputc('\n', stderr);
     va_end(args);
@@ -170,20 +179,27 @@ void TraceImpl(const char* fmt, ...)
 #ifdef JPH_ENABLE_ASSERTS
 bool AssertFailedImpl(const char* expr, const char* msg, const char* file, JPH::uint line)
 {
-    std::fprintf(stderr, "[jolt-assert] %s:%u  expr=%s  msg=%s\n",
-                 file, line, expr, msg ? msg : "");
+    std::fprintf(stderr, "[jolt-assert] %s:%u  expr=%s  msg=%s\n", file, line, expr,
+                 msg ? msg : "");
     return true; // breakpoint
 }
 #endif
 
-inline JPH::Vec3 toJ(const glm::vec3& v) { return JPH::Vec3(v.x, v.y, v.z); }
-inline glm::vec3 fromJ(const JPH::Vec3& v) { return {v.GetX(), v.GetY(), v.GetZ()}; }
+inline JPH::Vec3 toJ(const glm::vec3& v)
+{
+    return JPH::Vec3(v.x, v.y, v.z);
+}
+inline glm::vec3 fromJ(const JPH::Vec3& v)
+{
+    return {v.GetX(), v.GetY(), v.GetZ()};
+}
 
 } // namespace
 
 bool initPhysics()
 {
-    if (sInit) return false;
+    if (sInit)
+        return false;
 
     JPH::RegisterDefaultAllocator();
     JPH::Trace = TraceImpl;
@@ -194,8 +210,8 @@ bool initPhysics()
     JPH::RegisterTypes();
 
     sTempAlloc = std::make_unique<JPH::TempAllocatorImpl>(10 * 1024 * 1024); // 10 MB
-    sJobSystem = std::make_unique<JPH::JobSystemThreadPool>(
-        JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers, 2);
+    sJobSystem = std::make_unique<JPH::JobSystemThreadPool>(JPH::cMaxPhysicsJobs,
+                                                            JPH::cMaxPhysicsBarriers, 2);
     sBPLayerImpl = std::make_unique<BPLayerImpl>();
     sObjectVsBPFilter = std::make_unique<ObjectVsBPFilterImpl>();
     sObjectLayerPairFilter = std::make_unique<ObjectLayerPairFilterImpl>();
@@ -216,7 +232,8 @@ bool initPhysics()
 
 void shutdownPhysics()
 {
-    if (!sInit) return;
+    if (!sInit)
+        return;
     sHandles.clear();
     sShapes.clear();
     sPhysics.reset();
@@ -233,13 +250,14 @@ void shutdownPhysics()
 
 void updatePhysics(float dt)
 {
-    if (!sInit) return;
+    if (!sInit)
+        return;
     // Jolt prefers fixed sub-steps for stability. ~60Hz internal step,
     // up to 4 collision sub-steps per frame call.
-    constexpr int   cMaxSubSteps = 4;
+    constexpr int cMaxSubSteps = 4;
     constexpr float cFixedDt = 1.0f / 60.0f;
     float remaining = dt;
-    int   steps = 0;
+    int steps = 0;
     while (remaining > 0.0f && steps < cMaxSubSteps)
     {
         const float step = remaining > cFixedDt ? cFixedDt : remaining;
@@ -283,13 +301,10 @@ void updatePhysics(float dt)
                 // 0.5m below — gamey, anti-physics. Real falls (curb,
                 // stair edge, hill rim) should always trigger gravity.
                 settings.mStickToFloorStepDown = JPH::Vec3::sZero();
-                ch->ExtendedUpdate(
-                    step,
-                    sPhysics->GetGravity(),
-                    settings,
-                    sPhysics->GetDefaultBroadPhaseLayerFilter(Layers::MOVING),
-                    sPhysics->GetDefaultLayerFilter(Layers::MOVING),
-                    {}, {}, *sTempAlloc);
+                ch->ExtendedUpdate(step, sPhysics->GetGravity(), settings,
+                                   sPhysics->GetDefaultBroadPhaseLayerFilter(Layers::MOVING),
+                                   sPhysics->GetDefaultLayerFilter(Layers::MOVING), {}, {},
+                                   *sTempAlloc);
             }
         }
         remaining -= step;
@@ -298,8 +313,8 @@ void updatePhysics(float dt)
 }
 
 BodyHandle addStaticTrimesh(const std::vector<glm::vec3>& positions,
-                            const std::vector<std::uint32_t>& indices,
-                            SurfaceTag tag, const char* debug_name)
+                            const std::vector<std::uint32_t>& indices, SurfaceTag tag,
+                            const char* debug_name)
 {
     if (!sInit || positions.empty() || indices.size() < 3 || indices.size() % 3 != 0)
         return kInvalidBody;
@@ -322,8 +337,8 @@ BodyHandle addStaticTrimesh(const std::vector<glm::vec3>& positions,
     const double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
     if (ms > 5.0)
     {
-        std::fprintf(stderr, "[physics] MeshShape::Create %.1fms for '%s' (%zu tris)\n",
-                     ms, debug_name ? debug_name : "(unnamed)", indices.size() / 3);
+        std::fprintf(stderr, "[physics] MeshShape::Create %.1fms for '%s' (%zu tris)\n", ms,
+                     debug_name ? debug_name : "(unnamed)", indices.size() / 3);
     }
     if (result.HasError())
     {
@@ -332,9 +347,9 @@ BodyHandle addStaticTrimesh(const std::vector<glm::vec3>& positions,
         return kInvalidBody;
     }
 
-    JPH::BodyCreationSettings body_settings(
-        result.Get(), JPH::Vec3::sZero(), JPH::Quat::sIdentity(),
-        JPH::EMotionType::Static, Layers::NON_MOVING);
+    JPH::BodyCreationSettings body_settings(result.Get(), JPH::Vec3::sZero(),
+                                            JPH::Quat::sIdentity(), JPH::EMotionType::Static,
+                                            Layers::NON_MOVING);
     JPH::BodyInterface& bi = sPhysics->GetBodyInterface();
     JPH::BodyID body_id = bi.CreateAndAddBody(body_settings, JPH::EActivation::DontActivate);
     if (body_id.IsInvalid())
@@ -345,7 +360,8 @@ BodyHandle addStaticTrimesh(const std::vector<glm::vec3>& positions,
     entry.kind = HandleEntry::Kind::Static;
     entry.body_id = body_id;
     entry.tag = tag;
-    if (debug_name) entry.debug_name = debug_name;
+    if (debug_name)
+        entry.debug_name = debug_name;
     sHandles.emplace(h.id, std::move(entry));
     return h;
 }
@@ -374,8 +390,8 @@ ShapeHandle createStaticTrimeshShape(const std::vector<glm::vec3>& positions,
     const double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
     if (ms > 5.0)
     {
-        std::fprintf(stderr, "[physics] preload MeshShape::Create %.1fms (%zu tris)\n",
-                     ms, indices.size() / 3);
+        std::fprintf(stderr, "[physics] preload MeshShape::Create %.1fms (%zu tris)\n", ms,
+                     indices.size() / 3);
     }
     if (result.HasError())
     {
@@ -389,46 +405,16 @@ ShapeHandle createStaticTrimeshShape(const std::vector<glm::vec3>& positions,
     return sh;
 }
 
-BodyHandle addStaticBodyFromShape(ShapeHandle shape, SurfaceTag tag,
-                                  const char* debug_name)
+BodyHandle addStaticBodyFromShape(ShapeHandle shape, SurfaceTag tag, const char* debug_name)
 {
-    if (!sInit || shape == kInvalidShape) return kInvalidBody;
+    if (!sInit || shape == kInvalidShape)
+        return kInvalidBody;
     auto it = sShapes.find(shape.id);
-    if (it == sShapes.end()) return kInvalidBody;
-
-    JPH::BodyCreationSettings body_settings(
-        it->second, JPH::Vec3::sZero(), JPH::Quat::sIdentity(),
-        JPH::EMotionType::Static, Layers::NON_MOVING);
-    JPH::BodyInterface& bi = sPhysics->GetBodyInterface();
-    JPH::BodyID body_id = bi.CreateAndAddBody(body_settings, JPH::EActivation::DontActivate);
-    if (body_id.IsInvalid()) return kInvalidBody;
-
-    const BodyHandle h = allocHandle();
-    HandleEntry entry;
-    entry.kind = HandleEntry::Kind::Static;
-    entry.body_id = body_id;
-    entry.tag = tag;
-    if (debug_name) entry.debug_name = debug_name;
-    sHandles.emplace(h.id, std::move(entry));
-    return h;
-}
-
-BodyHandle addStaticBox(const glm::vec3& center, const glm::vec3& half_extents,
-                        SurfaceTag tag, const char* debug_name)
-{
-    if (!sInit || half_extents.x <= 0.0f || half_extents.y <= 0.0f || half_extents.z <= 0.0f)
+    if (it == sShapes.end())
         return kInvalidBody;
 
-    // BoxShape requires half-extents >= a convex-radius (Jolt default 0.05).
-    // Clamp tiny boxes up so very small step risers don't fail to build.
-    constexpr float kMinHalf = 0.06f;
-    JPH::Vec3 he(std::max(half_extents.x, kMinHalf),
-                 std::max(half_extents.y, kMinHalf),
-                 std::max(half_extents.z, kMinHalf));
-    JPH::Ref<JPH::Shape> shape = new JPH::BoxShape(he);
-    JPH::BodyCreationSettings body_settings(
-        shape, toJ(center), JPH::Quat::sIdentity(),
-        JPH::EMotionType::Static, Layers::NON_MOVING);
+    JPH::BodyCreationSettings body_settings(it->second, JPH::Vec3::sZero(), JPH::Quat::sIdentity(),
+                                            JPH::EMotionType::Static, Layers::NON_MOVING);
     JPH::BodyInterface& bi = sPhysics->GetBodyInterface();
     JPH::BodyID body_id = bi.CreateAndAddBody(body_settings, JPH::EActivation::DontActivate);
     if (body_id.IsInvalid())
@@ -439,7 +425,38 @@ BodyHandle addStaticBox(const glm::vec3& center, const glm::vec3& half_extents,
     entry.kind = HandleEntry::Kind::Static;
     entry.body_id = body_id;
     entry.tag = tag;
-    if (debug_name) entry.debug_name = debug_name;
+    if (debug_name)
+        entry.debug_name = debug_name;
+    sHandles.emplace(h.id, std::move(entry));
+    return h;
+}
+
+BodyHandle addStaticBox(const glm::vec3& center, const glm::vec3& half_extents, SurfaceTag tag,
+                        const char* debug_name)
+{
+    if (!sInit || half_extents.x <= 0.0f || half_extents.y <= 0.0f || half_extents.z <= 0.0f)
+        return kInvalidBody;
+
+    // BoxShape requires half-extents >= a convex-radius (Jolt default 0.05).
+    // Clamp tiny boxes up so very small step risers don't fail to build.
+    constexpr float kMinHalf = 0.06f;
+    JPH::Vec3 he(std::max(half_extents.x, kMinHalf), std::max(half_extents.y, kMinHalf),
+                 std::max(half_extents.z, kMinHalf));
+    JPH::Ref<JPH::Shape> shape = new JPH::BoxShape(he);
+    JPH::BodyCreationSettings body_settings(shape, toJ(center), JPH::Quat::sIdentity(),
+                                            JPH::EMotionType::Static, Layers::NON_MOVING);
+    JPH::BodyInterface& bi = sPhysics->GetBodyInterface();
+    JPH::BodyID body_id = bi.CreateAndAddBody(body_settings, JPH::EActivation::DontActivate);
+    if (body_id.IsInvalid())
+        return kInvalidBody;
+
+    const BodyHandle h = allocHandle();
+    HandleEntry entry;
+    entry.kind = HandleEntry::Kind::Static;
+    entry.body_id = body_id;
+    entry.tag = tag;
+    if (debug_name)
+        entry.debug_name = debug_name;
     sHandles.emplace(h.id, std::move(entry));
     return h;
 }
@@ -447,15 +464,18 @@ BodyHandle addStaticBox(const glm::vec3& center, const glm::vec3& half_extents,
 const char* bodyDebugName(BodyHandle body)
 {
     auto it = sHandles.find(body.id);
-    if (it == sHandles.end()) return "";
+    if (it == sHandles.end())
+        return "";
     return it->second.debug_name.c_str();
 }
 
 void removeBody(BodyHandle body)
 {
-    if (!sInit || body.id == 0) return;
+    if (!sInit || body.id == 0)
+        return;
     auto it = sHandles.find(body.id);
-    if (it == sHandles.end()) return;
+    if (it == sHandles.end())
+        return;
     if (it->second.kind == HandleEntry::Kind::Static && !it->second.body_id.IsInvalid())
     {
         JPH::BodyInterface& bi = sPhysics->GetBodyInterface();
@@ -473,8 +493,8 @@ BodyHandle addCharacter(const glm::vec3& position, float radius, float height)
     JPH::Ref<JPH::Shape> capsule = new JPH::CapsuleShape(cyl_half, radius);
     // Offset the capsule so its BOTTOM is at the controller's origin
     // (CharacterVirtual treats origin as the foot).
-    JPH::Ref<JPH::Shape> shape = new JPH::RotatedTranslatedShape(
-        JPH::Vec3(0, height * 0.5f, 0), JPH::Quat::sIdentity(), capsule);
+    JPH::Ref<JPH::Shape> shape = new JPH::RotatedTranslatedShape(JPH::Vec3(0, height * 0.5f, 0),
+                                                                 JPH::Quat::sIdentity(), capsule);
 
     JPH::CharacterVirtualSettings settings;
     settings.mShape = shape;
@@ -504,7 +524,8 @@ BodyHandle addCharacter(const glm::vec3& position, float radius, float height)
 void setCharacterVelocity(BodyHandle character, const glm::vec3& v, bool apply_y)
 {
     auto it = sHandles.find(character.id);
-    if (it == sHandles.end() || !it->second.character) return;
+    if (it == sHandles.end() || !it->second.character)
+        return;
     JPH::Vec3 current = it->second.character->GetLinearVelocity();
     JPH::Vec3 next(v.x, apply_y ? v.y : current.GetY(), v.z);
     it->second.character->SetLinearVelocity(next);
@@ -513,14 +534,16 @@ void setCharacterVelocity(BodyHandle character, const glm::vec3& v, bool apply_y
 glm::vec3 characterPosition(BodyHandle character)
 {
     auto it = sHandles.find(character.id);
-    if (it == sHandles.end() || !it->second.character) return {0, 0, 0};
+    if (it == sHandles.end() || !it->second.character)
+        return {0, 0, 0};
     return fromJ(it->second.character->GetPosition());
 }
 
 bool isCharacterOnGround(BodyHandle character)
 {
     auto it = sHandles.find(character.id);
-    if (it == sHandles.end() || !it->second.character) return false;
+    if (it == sHandles.end() || !it->second.character)
+        return false;
     using GS = JPH::CharacterVirtual::EGroundState;
     const GS s = it->second.character->GetGroundState();
     return s == GS::OnGround || s == GS::OnSteepGround;
@@ -529,9 +552,11 @@ bool isCharacterOnGround(BodyHandle character)
 BodyHandle characterGroundBody(BodyHandle character)
 {
     auto it = sHandles.find(character.id);
-    if (it == sHandles.end() || !it->second.character) return kInvalidBody;
+    if (it == sHandles.end() || !it->second.character)
+        return kInvalidBody;
     const JPH::BodyID ground_id = it->second.character->GetGroundBodyID();
-    if (ground_id.IsInvalid()) return kInvalidBody;
+    if (ground_id.IsInvalid())
+        return kInvalidBody;
     for (const auto& [hid, e] : sHandles)
         if (e.kind == HandleEntry::Kind::Static && e.body_id == ground_id)
             return BodyHandle{hid};
@@ -542,7 +567,8 @@ void characterActiveContacts(BodyHandle character, std::vector<BodyHandle>& out)
 {
     out.clear();
     auto it = sHandles.find(character.id);
-    if (it == sHandles.end() || !it->second.character) return;
+    if (it == sHandles.end() || !it->second.character)
+        return;
     for (const auto& c : it->second.character->GetActiveContacts())
     {
         for (const auto& [hid, e] : sHandles)
@@ -556,12 +582,12 @@ void characterActiveContacts(BodyHandle character, std::vector<BodyHandle>& out)
     }
 }
 
-void characterActiveContactDetails(BodyHandle character,
-                                   std::vector<CharacterContactDetail>& out)
+void characterActiveContactDetails(BodyHandle character, std::vector<CharacterContactDetail>& out)
 {
     out.clear();
     auto it = sHandles.find(character.id);
-    if (it == sHandles.end() || !it->second.character) return;
+    if (it == sHandles.end() || !it->second.character)
+        return;
     for (const auto& c : it->second.character->GetActiveContacts())
     {
         CharacterContactDetail d;
@@ -575,9 +601,8 @@ void characterActiveContactDetails(BodyHandle character,
             }
         }
         d.position = glm::vec3(c.mPosition.GetX(), c.mPosition.GetY(), c.mPosition.GetZ());
-        d.normal   = glm::vec3(c.mSurfaceNormal.GetX(),
-                                c.mSurfaceNormal.GetY(),
-                                c.mSurfaceNormal.GetZ());
+        d.normal =
+            glm::vec3(c.mSurfaceNormal.GetX(), c.mSurfaceNormal.GetY(), c.mSurfaceNormal.GetZ());
         d.tri_v0 = d.tri_v1 = d.tri_v2 = glm::vec3(0.0f);
         d.is_trimesh_triangle = false;
         out.push_back(d);
@@ -587,20 +612,23 @@ void characterActiveContactDetails(BodyHandle character,
 void teleportCharacter(BodyHandle character, const glm::vec3& position)
 {
     auto it = sHandles.find(character.id);
-    if (it == sHandles.end() || !it->second.character) return;
+    if (it == sHandles.end() || !it->second.character)
+        return;
     it->second.character->SetPosition(toJ(position));
     it->second.character->SetLinearVelocity(JPH::Vec3::sZero());
 }
 
-RayHit raycast(const glm::vec3& origin, const glm::vec3& direction,
-               float max_distance, BodyHandle ignore)
+RayHit raycast(const glm::vec3& origin, const glm::vec3& direction, float max_distance,
+               BodyHandle ignore)
 {
     RayHit hit;
-    if (!sInit) return hit;
+    if (!sInit)
+        return hit;
 
     glm::vec3 dir = direction;
     const float len = std::sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
-    if (len < 1e-6f) return hit;
+    if (len < 1e-6f)
+        return hit;
     dir /= len;
 
     JPH::RRayCast ray(toJ(origin), toJ(dir * max_distance));
@@ -608,10 +636,10 @@ RayHit raycast(const glm::vec3& origin, const glm::vec3& direction,
     // Static-only: rays are camera/world queries; ignore character
     // capsules (would self-hit the player otherwise).
     JPH::SpecifiedBroadPhaseLayerFilter bp_filter(BroadPhaseLayers::NON_MOVING);
-    JPH::SpecifiedObjectLayerFilter     obj_filter(Layers::NON_MOVING);
-    bool any = sPhysics->GetNarrowPhaseQuery().CastRay(
-        ray, result, bp_filter, obj_filter);
-    if (!any) return hit;
+    JPH::SpecifiedObjectLayerFilter obj_filter(Layers::NON_MOVING);
+    bool any = sPhysics->GetNarrowPhaseQuery().CastRay(ray, result, bp_filter, obj_filter);
+    if (!any)
+        return hit;
 
     // Filter out ignored body.
     (void)ignore; // TODO: BodyFilter for ignore; rare in our usage so far
@@ -624,7 +652,8 @@ RayHit raycast(const glm::vec3& origin, const glm::vec3& direction,
     if (lock.Succeeded())
     {
         const JPH::Body& b = lock.GetBody();
-        const JPH::Vec3 n = b.GetWorldSpaceSurfaceNormal(result.mSubShapeID2, ray.GetPointOnRay(result.mFraction));
+        const JPH::Vec3 n =
+            b.GetWorldSpaceSurfaceNormal(result.mSubShapeID2, ray.GetPointOnRay(result.mFraction));
         hit.normal = fromJ(n);
     }
     // Find our handle for tag lookup.
@@ -642,7 +671,8 @@ RayHit raycast(const glm::vec3& origin, const glm::vec3& direction,
 
 bool sphereOverlap(const glm::vec3& center, float radius)
 {
-    if (!sInit || radius <= 0.0f) return false;
+    if (!sInit || radius <= 0.0f)
+        return false;
 
     JPH::SphereShape sphere(radius);
     sphere.SetEmbedded();
@@ -653,42 +683,39 @@ bool sphereOverlap(const glm::vec3& center, float radius)
     // Static-only filter: camera cares about world geometry, not the
     // player capsule or other character bodies.
     JPH::SpecifiedBroadPhaseLayerFilter bp_filter(BroadPhaseLayers::NON_MOVING);
-    JPH::SpecifiedObjectLayerFilter     obj_filter(Layers::NON_MOVING);
+    JPH::SpecifiedObjectLayerFilter obj_filter(Layers::NON_MOVING);
 
     JPH::AnyHitCollisionCollector<JPH::CollideShapeCollector> collector;
     sPhysics->GetNarrowPhaseQuery().CollideShape(
-        &sphere,
-        JPH::Vec3::sReplicate(1.0f),
-        JPH::RMat44::sTranslation(toJ(center)),
-        settings,
-        JPH::Vec3::sZero(),
-        collector,
-        bp_filter,
-        obj_filter);
+        &sphere, JPH::Vec3::sReplicate(1.0f), JPH::RMat44::sTranslation(toJ(center)), settings,
+        JPH::Vec3::sZero(), collector, bp_filter, obj_filter);
     return collector.HadHit();
 }
 
 SurfaceTag bodySurfaceTag(BodyHandle body)
 {
     auto it = sHandles.find(body.id);
-    if (it == sHandles.end()) return SurfaceTag::Unknown;
+    if (it == sHandles.end())
+        return SurfaceTag::Unknown;
     return it->second.tag;
 }
 
 void enumerateBodies(std::vector<BodyDebugInfo>& out)
 {
     out.clear();
-    if (!sInit) return;
+    if (!sInit)
+        return;
     out.reserve(sHandles.size());
     const JPH::BodyLockInterfaceNoLock& lock_iface = sPhysics->GetBodyLockInterfaceNoLock();
     for (const auto& [id, entry] : sHandles)
     {
         BodyDebugInfo info;
         info.body = BodyHandle{id};
-        info.tag  = entry.tag;
+        info.tag = entry.tag;
         if (entry.kind == HandleEntry::Kind::Character)
         {
-            if (!entry.character) continue;
+            if (!entry.character)
+                continue;
             info.kind = BodyKind::Character;
             const JPH::Vec3 pos = entry.character->GetPosition();
             // Pull capsule dims off the inner shape. Our character
@@ -699,16 +726,20 @@ void enumerateBodies(std::vector<BodyDebugInfo>& out)
                 entry.character->GetWorldTransform(), JPH::Vec3::sReplicate(1.0f));
             info.world_aabb_min = fromJ(box.mMin);
             info.world_aabb_max = fromJ(box.mMax);
-            info.capsule_center = fromJ(pos) + glm::vec3(0, (info.world_aabb_max.y - info.world_aabb_min.y) * 0.5f, 0);
+            info.capsule_center =
+                fromJ(pos) +
+                glm::vec3(0, (info.world_aabb_max.y - info.world_aabb_min.y) * 0.5f, 0);
             info.capsule_radius = (info.world_aabb_max.x - info.world_aabb_min.x) * 0.5f;
-            info.capsule_half_height = (info.world_aabb_max.y - info.world_aabb_min.y) * 0.5f - info.capsule_radius;
+            info.capsule_half_height =
+                (info.world_aabb_max.y - info.world_aabb_min.y) * 0.5f - info.capsule_radius;
             out.push_back(info);
             continue;
         }
         // Static body — figure kind from the shape sub-type, then
         // pull its world-space AABB.
         JPH::BodyLockRead lock(lock_iface, entry.body_id);
-        if (!lock.Succeeded()) continue;
+        if (!lock.Succeeded())
+            continue;
         const JPH::Body& b = lock.GetBody();
         const JPH::Shape* shape = b.GetShape();
         info.kind = BodyKind::StaticTrimesh;

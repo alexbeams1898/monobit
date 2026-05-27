@@ -66,8 +66,8 @@ engine::world::SceneId loadAllScenes()
         auto js = std::make_unique<JsonScene>(scene_json, folder);
         js->preloadAssets();
         const engine::world::SceneId reg_id = engine::world::registerScene(std::move(js));
-        std::fprintf(stderr, "[scene-bootstrap] registered scene '%s' as SceneId=%u\n",
-                     sid.c_str(), reg_id.id);
+        std::fprintf(stderr, "[scene-bootstrap] registered scene '%s' as SceneId=%u\n", sid.c_str(),
+                     reg_id.id);
     }
 
     const std::string default_id = registry.value("default_spawn_scene", std::string{});
@@ -80,6 +80,9 @@ engine::world::SceneId loadAllScenes()
     return sDefaultSpawn;
 }
 
-engine::world::SceneId defaultSpawnScene() { return sDefaultSpawn; }
+engine::world::SceneId defaultSpawnScene()
+{
+    return sDefaultSpawn;
+}
 
 } // namespace selva::world

@@ -314,10 +314,10 @@ struct Actor
     {
         int joint_idx = -2; // -2 = unresolved, -1 = absent in skeleton
         float prev_y = 0.0f;
-        float prev_vy = 0.0f;       // foot Y velocity last frame (m/s)
+        float prev_vy = 0.0f;         // foot Y velocity last frame (m/s)
         float peak_descent_vy = 0.0f; // max |descent velocity| in current descent (m/s)
         float last_fire_time = -1000.0f;
-        bool initialized = false;   // skip first frame's bogus velocity
+        bool initialized = false; // skip first frame's bogus velocity
     };
     FootContact foot_left;
     FootContact foot_right;
@@ -326,7 +326,6 @@ struct Actor
     // fresh stride from idle isn't suppressed by the steady-state
     // threshold tuned for inter-stride wobble rejection.
     float last_footstep_fire_time = -1000.0f;
-
 
     // --- Active attack hitbox tracking ---
     // When the actor fires a swing, this stores the spawned hitbox's

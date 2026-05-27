@@ -23,10 +23,10 @@
 
 #include "physics/PhysicsWorld.h"
 
-#include <catch2/catch_test_macros.hpp>
-#include <catch2/catch_approx.hpp>
-
 #include <glm/vec3.hpp>
+
+#include <catch2/catch_approx.hpp>
+#include <catch2/catch_test_macros.hpp>
 
 namespace ph = engine::physics;
 using Catch::Approx;
@@ -44,29 +44,32 @@ struct PhysicsFixture
         ph::shutdownPhysics();
         REQUIRE(ph::initPhysics());
     }
-    ~PhysicsFixture() { ph::shutdownPhysics(); }
+    ~PhysicsFixture()
+    {
+        ph::shutdownPhysics();
+    }
 };
 
 // Build a 1m-cube axis-aligned static box centered at `center`.
 ph::BodyHandle addCube(const glm::vec3& center, const char* name)
 {
-    return ph::addStaticBox(center, glm::vec3(0.5f, 0.5f, 0.5f),
-                            ph::SurfaceTag::Architecture, name);
+    return ph::addStaticBox(center, glm::vec3(0.5f, 0.5f, 0.5f), ph::SurfaceTag::Architecture,
+                            name);
 }
 
 } // namespace
 
 TEST_CASE("raycast against a static box returns hit + distance + body", "[physics][raycast]")
 {
-    PhysicsFixture fx;
+    const PhysicsFixture fx;
 
     const auto wall = addCube(glm::vec3(5.0f, 0.0f, 0.0f), "wall");
     REQUIRE(wall != ph::kInvalidBody);
 
     SECTION("ray straight at face hits at face distance")
     {
-        const auto hit = ph::raycast(glm::vec3(0.0f, 0.0f, 0.0f),
-                                     glm::vec3(1.0f, 0.0f, 0.0f), 10.0f);
+        const auto hit =
+            ph::raycast(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f), 10.0f);
         REQUIRE(hit.hit);
         // Cube extends 4.5..5.5 on X — ray from origin hits at 4.5.
         REQUIRE(hit.distance == Approx(4.5f).margin(1e-3f));
@@ -75,23 +78,23 @@ TEST_CASE("raycast against a static box returns hit + distance + body", "[physic
 
     SECTION("ray missing the box returns no hit")
     {
-        const auto hit = ph::raycast(glm::vec3(0.0f, 5.0f, 0.0f),
-                                     glm::vec3(1.0f, 0.0f, 0.0f), 10.0f);
+        const auto hit =
+            ph::raycast(glm::vec3(0.0f, 5.0f, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f), 10.0f);
         REQUIRE_FALSE(hit.hit);
     }
 
     SECTION("ray pointing away from box returns no hit")
     {
-        const auto hit = ph::raycast(glm::vec3(0.0f, 0.0f, 0.0f),
-                                     glm::vec3(-1.0f, 0.0f, 0.0f), 10.0f);
+        const auto hit =
+            ph::raycast(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(-1.0f, 0.0f, 0.0f), 10.0f);
         REQUIRE_FALSE(hit.hit);
     }
 
     SECTION("max_distance clamp respected")
     {
         // Box is at 4.5m. Cast for only 3m.
-        const auto hit = ph::raycast(glm::vec3(0.0f, 0.0f, 0.0f),
-                                     glm::vec3(1.0f, 0.0f, 0.0f), 3.0f);
+        const auto hit =
+            ph::raycast(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f), 3.0f);
         REQUIRE_FALSE(hit.hit);
     }
 }
@@ -103,28 +106,28 @@ TEST_CASE("raycast threads through a gap between bodies", "[physics][raycast]")
     // between them; a ray aimed at the gap returns hit=0 even though
     // the surrounding bodies exist. This used to confuse the diagnosis
     // — testing it explicitly so future me doesn't second-guess.
-    PhysicsFixture fx;
+    const PhysicsFixture fx;
 
     // Two 1m cubes flanking a 1m gap centered on X=0, both at Z=5.
     // Left cube center X=-1, right cube center X=+1. Gap is at X in
     // [-0.5, +0.5]. Both cubes Z=5.
-    const auto left  = addCube(glm::vec3(-1.0f, 0.0f, 5.0f), "wall_left");
+    const auto left = addCube(glm::vec3(-1.0f, 0.0f, 5.0f), "wall_left");
     const auto right = addCube(glm::vec3(+1.0f, 0.0f, 5.0f), "wall_right");
-    REQUIRE(left  != ph::kInvalidBody);
+    REQUIRE(left != ph::kInvalidBody);
     REQUIRE(right != ph::kInvalidBody);
 
     SECTION("ray through the gap returns no hit")
     {
-        const auto hit = ph::raycast(glm::vec3(0.0f, 0.0f, 0.0f),
-                                     glm::vec3(0.0f, 0.0f, 1.0f), 10.0f);
+        const auto hit =
+            ph::raycast(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f), 10.0f);
         REQUIRE_FALSE(hit.hit);
     }
 
     SECTION("ray slightly off-axis hits the appropriate cube")
     {
         // Aim at +X side of gap; should hit the right cube.
-        const auto hit = ph::raycast(glm::vec3(0.7f, 0.0f, 0.0f),
-                                     glm::vec3(0.0f, 0.0f, 1.0f), 10.0f);
+        const auto hit =
+            ph::raycast(glm::vec3(0.7f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f), 10.0f);
         REQUIRE(hit.hit);
         REQUIRE(hit.body == right);
     }
@@ -132,7 +135,7 @@ TEST_CASE("raycast threads through a gap between bodies", "[physics][raycast]")
 
 TEST_CASE("sphereOverlap fires at the right boundary", "[physics][sphere]")
 {
-    PhysicsFixture fx;
+    const PhysicsFixture fx;
 
     addCube(glm::vec3(5.0f, 0.0f, 0.0f), "wall");
 
@@ -173,7 +176,7 @@ TEST_CASE("body debug name plumbing round-trips", "[physics][body-name]")
     // The camera-debug.log uses bodyDebugName to identify which wall
     // a raycast hit. If the name plumbing breaks, the log becomes
     // useless for diagnosing camera bugs.
-    PhysicsFixture fx;
+    const PhysicsFixture fx;
 
     const auto a = addCube(glm::vec3(5.0f, 0.0f, 0.0f), "chapel:wall_a");
     const auto b = addCube(glm::vec3(0.0f, 5.0f, 0.0f), "chapel:wall_b");
@@ -185,21 +188,19 @@ TEST_CASE("body debug name plumbing round-trips", "[physics][body-name]")
     REQUIRE(std::string(ph::bodyDebugName(unnamed)).empty());
 
     // Hit body carries the name through raycast.
-    const auto hit = ph::raycast(glm::vec3(0.0f, 0.0f, 0.0f),
-                                 glm::vec3(1.0f, 0.0f, 0.0f), 10.0f);
+    const auto hit = ph::raycast(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f), 10.0f);
     REQUIRE(hit.hit);
     REQUIRE(std::string(ph::bodyDebugName(hit.body)) == "chapel:wall_a");
 }
 
 TEST_CASE("raycast prefers nearest body when multiple are along the ray", "[physics][raycast]")
 {
-    PhysicsFixture fx;
+    const PhysicsFixture fx;
 
-    addCube(glm::vec3(5.0f, 0.0f, 0.0f),  "near_wall");
+    addCube(glm::vec3(5.0f, 0.0f, 0.0f), "near_wall");
     addCube(glm::vec3(10.0f, 0.0f, 0.0f), "far_wall");
 
-    const auto hit = ph::raycast(glm::vec3(0.0f, 0.0f, 0.0f),
-                                 glm::vec3(1.0f, 0.0f, 0.0f), 20.0f);
+    const auto hit = ph::raycast(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f), 20.0f);
     REQUIRE(hit.hit);
     REQUIRE(hit.distance == Approx(4.5f).margin(1e-3f));
     REQUIRE(std::string(ph::bodyDebugName(hit.body)) == "near_wall");

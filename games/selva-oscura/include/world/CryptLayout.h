@@ -21,8 +21,8 @@ namespace crypt_layout
 {
 constexpr float kCryptX = 0.0f;
 constexpr float kCryptZ = -210.0f;
-constexpr float kHalfWidth = 3.0f;   // body_width/2 = 6m/2
-constexpr float kHalfLength = 4.0f;  // body_length/2 = 8m/2
+constexpr float kHalfWidth = 3.0f;  // body_width/2 = 6m/2
+constexpr float kHalfLength = 4.0f; // body_length/2 = 8m/2
 constexpr float kWallThickness = 0.6f;
 constexpr float kPlinthHeight = 0.30f;
 constexpr float kDoorHalfWidth = 0.5f;
@@ -51,21 +51,21 @@ constexpr float kStairTread = 0.35f;
 // must equal chapel interior half-width (BODY_WIDTH/2 - WALL_THICKNESS).
 constexpr float kSingleFlightHalfWidth = 2.40f;
 constexpr int kUpperFlightStepCount = 9;
-constexpr float kUpperFlightTopChapelLocalY = 0.0f; // chapel-local Y of top step
-constexpr float kUpperFlightDrop = kUpperFlightStepCount * kStairRise;   // 1.44m
-constexpr float kUpperFlightRun = kUpperFlightStepCount * kStairTread;   // 3.15m
+constexpr float kUpperFlightTopChapelLocalY = 0.0f;                    // chapel-local Y of top step
+constexpr float kUpperFlightDrop = kUpperFlightStepCount * kStairRise; // 1.44m
+constexpr float kUpperFlightRun = kUpperFlightStepCount * kStairTread; // 3.15m
 
 // Continuous descent (from bottom of upper flight to Acheron). Must
 // match CONTINUOUS_DESCENT_STEP_COUNT in gen_crypt_foundation.py —
 // the .glb has this many descent_step_NNNN nodes. Total descent
 // footprint length = (upper flight + continuous descent) × tread.
-constexpr int   kContinuousDescentStepCount = 400;
-constexpr float kContinuousDescentDrop = kContinuousDescentStepCount * kStairRise;  // 64.00m
-constexpr float kContinuousDescentRun  = kContinuousDescentStepCount * kStairTread; // 140.00m
+constexpr int kContinuousDescentStepCount = 400;
+constexpr float kContinuousDescentDrop = kContinuousDescentStepCount * kStairRise; // 64.00m
+constexpr float kContinuousDescentRun = kContinuousDescentStepCount * kStairTread; // 140.00m
 // Full descent footprint along chapel-local Y from chapel center (=
 // world Z=-210). Both upper flight + continuous descent extend in
 // +chapel-local-Y direction (= world -Z) per kDescentForwardSign=+1.
-constexpr float kFullDescentRun = kUpperFlightRun + kContinuousDescentRun;  // 143.15m
+constexpr float kFullDescentRun = kUpperFlightRun + kContinuousDescentRun; // 143.15m
 // Sign of the forward direction of descent in chapel-local Y. +1 means
 // the corridor extends in +Y (toward the apse = world -Z = toward the
 // sun). -1 means -Y (toward chapel front = world +Z = toward spawn).
@@ -80,10 +80,10 @@ constexpr float kLandingClearance = 3.0f; // ceiling height above landing
 // Corridor.
 constexpr float kCorridorWidth = 2.5f;
 constexpr float kCorridorHeight = 3.0f;
-constexpr int   kCorridorSegmentCount = 4;
-constexpr float kCorridorSegmentRun = 12.0f;     // horizontal per ramp
-constexpr float kCorridorSegmentDrop = 14.5f;    // vertical per ramp
-constexpr float kCorridorLandingLength = 2.0f;   // flat landing between ramps
+constexpr int kCorridorSegmentCount = 4;
+constexpr float kCorridorSegmentRun = 12.0f;   // horizontal per ramp
+constexpr float kCorridorSegmentDrop = 14.5f;  // vertical per ramp
+constexpr float kCorridorLandingLength = 2.0f; // flat landing between ramps
 
 // Acheron stub at the bottom.
 constexpr float kAcheronPlatformHalfExtent = 12.0f;

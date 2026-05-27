@@ -30,7 +30,7 @@ namespace engine::world
 
 class AsyncCapableScene : public Scene
 {
-public:
+  public:
     using Scene::Scene;
 
     // Worker-thread phase. Read .glb files, build CPU vertex arrays,

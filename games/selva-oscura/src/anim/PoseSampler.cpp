@@ -978,8 +978,8 @@ glm::mat4 PoseSampler::jointWorldMatrixWithActor(int i) const
     actor_world[0] = glm::vec4(cy, 0.0f, -sy, 0.0f);
     actor_world[1] = glm::vec4(0.0f, 1.0f, 0.0f, 0.0f);
     actor_world[2] = glm::vec4(sy, 0.0f, cy, 0.0f);
-    actor_world[3] = glm::vec4(impl->actor_world_pos.x, impl->actor_world_pos.y,
-                               impl->actor_world_pos.z, 1.0f);
+    actor_world[3] =
+        glm::vec4(impl->actor_world_pos.x, impl->actor_world_pos.y, impl->actor_world_pos.z, 1.0f);
     return actor_world * model_mat;
 }
 

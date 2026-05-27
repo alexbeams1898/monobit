@@ -356,8 +356,7 @@ void updateShadowCamera(const glm::vec3& player_world_pos)
     const glm::vec4 player_in_anchor = anchor_view * glm::vec4(player_world_pos, 1.0f);
     const float snapped_lx = std::round(player_in_anchor.x / texel_size) * texel_size;
     const float snapped_ly = std::round(player_in_anchor.y / texel_size) * texel_size;
-    const glm::vec2 ls_snap_delta(snapped_lx - player_in_anchor.x,
-                                  snapped_ly - player_in_anchor.y);
+    const glm::vec2 ls_snap_delta(snapped_lx - player_in_anchor.x, snapped_ly - player_in_anchor.y);
 
     // Map the (xy-only) snap delta back to world space via the anchor
     // view's inverse rotation. The Z component stays 0 - snapping in
@@ -370,8 +369,8 @@ void updateShadowCamera(const glm::vec3& player_world_pos)
     const glm::vec3 snapped_target = player_world_pos + world_snap_delta;
     const glm::vec3 snapped_eye = snapped_target + sun_dir * 100.0f;
     const glm::mat4 snapped_view = glm::lookAt(snapped_eye, snapped_target, up);
-    const glm::mat4 light_proj = glm::ortho(-kOrthoHalfXY, kOrthoHalfXY, -kOrthoHalfXY,
-                                            kOrthoHalfXY, kOrthoNear, kOrthoFar);
+    const glm::mat4 light_proj =
+        glm::ortho(-kOrthoHalfXY, kOrthoHalfXY, -kOrthoHalfXY, kOrthoHalfXY, kOrthoNear, kOrthoFar);
     sLightViewProj = light_proj * snapped_view;
 
     if ((sFrameCount % kLogIntervalFrames) == 0)
@@ -518,8 +517,7 @@ void setSkeletalDepthModel(const glm::mat4& model)
 void setSkeletalDepthBones(const glm::mat4* bone_palette, int count)
 {
     const int clamped = (count > 128) ? 128 : count;
-    glUniformMatrix4fv(sSkeletalDepthBones, clamped, GL_FALSE,
-                       glm::value_ptr(bone_palette[0]));
+    glUniformMatrix4fv(sSkeletalDepthBones, clamped, GL_FALSE, glm::value_ptr(bone_palette[0]));
 }
 
 } // namespace selva::render

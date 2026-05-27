@@ -255,10 +255,9 @@ int main(int /*argc*/, char* /*argv*/[])
     // declared spawn pos + yaw. Engine doesn't know about the
     // player; game wires it.
     engine::world::setPostCommitCallback(
-        [](bool preserve_pos, const glm::vec3& spawn_pos,
-           bool override_yaw, float spawn_yaw) {
-            selva::gameplay::onSceneTransitionCommit(preserve_pos, spawn_pos,
-                                                     override_yaw, spawn_yaw);
+        [](bool preserve_pos, const glm::vec3& spawn_pos, bool override_yaw, float spawn_yaw) {
+            selva::gameplay::onSceneTransitionCommit(preserve_pos, spawn_pos, override_yaw,
+                                                     spawn_yaw);
         });
     engine.renderLoadingFrame("surface scene");
     const engine::world::SceneId default_scene = selva::world::loadAllScenes();

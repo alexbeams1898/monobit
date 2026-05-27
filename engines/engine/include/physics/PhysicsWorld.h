@@ -1,7 +1,8 @@
 #pragma once
 
-#include <cstdint>
 #include <glm/vec3.hpp>
+
+#include <cstdint>
 #include <vector>
 
 namespace engine::physics
@@ -13,8 +14,14 @@ namespace engine::physics
 struct BodyHandle
 {
     std::uint32_t id = 0;
-    bool operator==(BodyHandle o) const { return id == o.id; }
-    bool operator!=(BodyHandle o) const { return id != o.id; }
+    bool operator==(BodyHandle o) const
+    {
+        return id == o.id;
+    }
+    bool operator!=(BodyHandle o) const
+    {
+        return id != o.id;
+    }
 };
 inline constexpr BodyHandle kInvalidBody{0};
 
@@ -24,21 +31,21 @@ inline constexpr BodyHandle kInvalidBody{0};
 enum class SurfaceTag : std::uint8_t
 {
     Unknown = 0,
-    Terrain,        // outdoor heightmap surface
-    Architecture,   // chapel walls, plinth, descent, etc. (static)
-    Foliage,        // trees, vegetation
-    Actor,          // player / NPC capsule
+    Terrain,      // outdoor heightmap surface
+    Architecture, // chapel walls, plinth, descent, etc. (static)
+    Foliage,      // trees, vegetation
+    Actor,        // player / NPC capsule
 };
 
 // Hit result of a raycast.
 struct RayHit
 {
-    bool        hit = false;
-    float       distance = 0.0f;
-    glm::vec3   position{0.0f};
-    glm::vec3   normal{0.0f, 1.0f, 0.0f};
-    BodyHandle  body = kInvalidBody;
-    SurfaceTag  tag = SurfaceTag::Unknown;
+    bool hit = false;
+    float distance = 0.0f;
+    glm::vec3 position{0.0f};
+    glm::vec3 normal{0.0f, 1.0f, 0.0f};
+    BodyHandle body = kInvalidBody;
+    SurfaceTag tag = SurfaceTag::Unknown;
 };
 
 // Bring up Jolt. Idempotent — calling twice returns false the second
@@ -64,8 +71,8 @@ void updatePhysics(float dt);
 // hot-path activations (scene swap), use the split API below:
 // preload shapes at boot, then add bodies on activation.
 BodyHandle addStaticTrimesh(const std::vector<glm::vec3>& positions,
-                            const std::vector<std::uint32_t>& indices,
-                            SurfaceTag tag, const char* debug_name = nullptr);
+                            const std::vector<std::uint32_t>& indices, SurfaceTag tag,
+                            const char* debug_name = nullptr);
 
 // Opaque handle to a preloaded trimesh shape. Built once (slow:
 // BVH construction can take 100s of ms for large meshes in Debug),
@@ -73,8 +80,14 @@ BodyHandle addStaticTrimesh(const std::vector<glm::vec3>& positions,
 struct ShapeHandle
 {
     std::uint32_t id = 0;
-    bool operator==(ShapeHandle o) const { return id == o.id; }
-    bool operator!=(ShapeHandle o) const { return id != o.id; }
+    bool operator==(ShapeHandle o) const
+    {
+        return id == o.id;
+    }
+    bool operator!=(ShapeHandle o) const
+    {
+        return id != o.id;
+    }
 };
 inline constexpr ShapeHandle kInvalidShape{0};
 
@@ -92,8 +105,8 @@ BodyHandle addStaticBodyFromShape(ShapeHandle shape, SurfaceTag tag,
 
 // Add a static axis-aligned box. `center` is the world-space center;
 // `half_extents` are the half-widths along X/Y/Z.
-BodyHandle addStaticBox(const glm::vec3& center, const glm::vec3& half_extents,
-                        SurfaceTag tag, const char* debug_name = nullptr);
+BodyHandle addStaticBox(const glm::vec3& center, const glm::vec3& half_extents, SurfaceTag tag,
+                        const char* debug_name = nullptr);
 
 // Lookup the debug name for a body (returns "" if unknown).
 const char* bodyDebugName(BodyHandle body);
@@ -113,8 +126,7 @@ BodyHandle addCharacter(const glm::vec3& position, float radius, float height);
 // Set the character's intended horizontal velocity (m/s, world XZ).
 // Y is driven by gravity inside the controller; passing a Y here is
 // ignored unless `apply_y` is true (used for jump impulses later).
-void setCharacterVelocity(BodyHandle character, const glm::vec3& velocity_xz,
-                          bool apply_y = false);
+void setCharacterVelocity(BodyHandle character, const glm::vec3& velocity_xz, bool apply_y = false);
 
 // Read the character's current position (XYZ world).
 glm::vec3 characterPosition(BodyHandle character);
@@ -139,15 +151,14 @@ void characterActiveContacts(BodyHandle character, std::vector<BodyHandle>& out)
 struct CharacterContactDetail
 {
     BodyHandle body;
-    glm::vec3  position;
-    glm::vec3  normal;
-    glm::vec3  tri_v0;
-    glm::vec3  tri_v1;
-    glm::vec3  tri_v2;
-    bool       is_trimesh_triangle = false;
+    glm::vec3 position;
+    glm::vec3 normal;
+    glm::vec3 tri_v0;
+    glm::vec3 tri_v1;
+    glm::vec3 tri_v2;
+    bool is_trimesh_triangle = false;
 };
-void characterActiveContactDetails(BodyHandle character,
-                                   std::vector<CharacterContactDetail>& out);
+void characterActiveContactDetails(BodyHandle character, std::vector<CharacterContactDetail>& out);
 
 // Teleport a character (resets velocity, no collision sweep). Used
 // for spawn / scene load.
@@ -157,8 +168,8 @@ void teleportCharacter(BodyHandle character, const glm::vec3& position);
 
 // Cast a ray. Returns the nearest hit (or kNoHit) within max_distance.
 // Excludes `ignore` body (e.g. don't self-hit the player capsule).
-RayHit raycast(const glm::vec3& origin, const glm::vec3& direction,
-               float max_distance, BodyHandle ignore = kInvalidBody);
+RayHit raycast(const glm::vec3& origin, const glm::vec3& direction, float max_distance,
+               BodyHandle ignore = kInvalidBody);
 
 // True if a sphere at `center` with `radius` overlaps any static body
 // in the active scene. Used by the camera pull-in pipeline for
@@ -183,16 +194,16 @@ enum class BodyKind : std::uint8_t
 struct BodyDebugInfo
 {
     BodyHandle body;
-    BodyKind   kind;
+    BodyKind kind;
     SurfaceTag tag;
-    glm::vec3  world_aabb_min;
-    glm::vec3  world_aabb_max;
+    glm::vec3 world_aabb_min;
+    glm::vec3 world_aabb_max;
     // Character-only: capsule center + half-height (cylinder portion)
     // + radius. Drawn as a capsule wireframe. Static bodies leave these
     // zero.
-    glm::vec3  capsule_center{0.0f};
-    float      capsule_radius = 0.0f;
-    float      capsule_half_height = 0.0f;
+    glm::vec3 capsule_center{0.0f};
+    float capsule_radius = 0.0f;
+    float capsule_half_height = 0.0f;
 };
 
 // Enumerate every registered body (static + character) with its

@@ -36,7 +36,7 @@ struct TerrainRegion
     // CPU copies of the mesh geometry (positions + triangle indices) so
     // the physics layer can register this region as a static trimesh
     // body. World-space; ready to hand to Jolt directly.
-    std::vector<glm::vec3>     cpu_positions;
+    std::vector<glm::vec3> cpu_positions;
     std::vector<std::uint32_t> cpu_indices;
 };
 

@@ -63,8 +63,8 @@ bool Engine::init(const char* title, int width, int height)
     // physical pixels), the desktop compositor upscales the result,
     // and everything renders blurry — most visible after toggling
     // fullscreen on a 4K / HiDPI laptop screen.
-    Uint32 window_flags = SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN |
-                          SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
+    Uint32 window_flags =
+        SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
     switch (window_mode)
     {
     case WindowMode::Windowed:
@@ -261,8 +261,7 @@ void Engine::processEvents()
         // pinned to the original windowed dims and the scene gets
         // rendered into a subregion of the fullscreen framebuffer, which
         // the desktop compositor stretches to fill — visible as a blur.
-        if (event.type == SDL_WINDOWEVENT &&
-            event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED)
+        if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED)
         {
             // Use drawable size, not the event's logical size — the
             // logical size is DPI-scaled and smaller than the actual
@@ -349,7 +348,8 @@ static std::string sLoadingCurrentStep;
 
 void Engine::renderLoadingFrame(const char* status_text)
 {
-    if (!window || !gl_context) return;
+    if (!window || !gl_context)
+        return;
 
     // First call: just set current step. Subsequent calls: move the
     // previous current to completed, then set new current. Each call
@@ -375,8 +375,7 @@ void Engine::renderLoadingFrame(const char* status_text)
     // Full-screen transparent borderless window — "Loading" title at
     // top-center, list of completed steps + current step below.
     ImGui::SetNextWindowPos(ImVec2(0, 0));
-    ImGui::SetNextWindowSize(ImVec2(static_cast<float>(window_w),
-                                    static_cast<float>(window_h)));
+    ImGui::SetNextWindowSize(ImVec2(static_cast<float>(window_w), static_cast<float>(window_h)));
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                              ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs |
                              ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoNav;

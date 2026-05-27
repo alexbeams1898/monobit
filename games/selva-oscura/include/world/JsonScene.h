@@ -28,7 +28,7 @@ namespace selva::world
 // acheron scenes don't have terrain, so this isn't blocking.
 class JsonScene : public engine::world::AsyncCapableScene
 {
-public:
+  public:
     // Construct from already-parsed JSON + the folder the scene.json
     // lives in (used for asset path resolution).
     JsonScene(const nlohmann::json& scene_json, std::string scene_folder);
@@ -48,10 +48,15 @@ public:
 
     // True once preloadAssets has run. Used by lazy callers to
     // detect whether the heavy boot-time work has happened yet.
-    bool isPreloaded() const { return mPreloaded; }
+    bool isPreloaded() const
+    {
+        return mPreloaded;
+    }
 
     // prepareAsync now no-ops (work moved to preloadAssets at boot).
-    void prepareAsync() override {}
+    void prepareAsync() override
+    {
+    }
 
     // commitPrepared = main-thread per-activation work: insert Jolt
     // static trimesh bodies from already-loaded CPU positions,
@@ -68,7 +73,10 @@ public:
     // engine Scene::onShutdown override.
     void freeAssets();
 
-    void onShutdown() override { freeAssets(); }
+    void onShutdown() override
+    {
+        freeAssets();
+    }
 
     // Per-frame COLOR draw hook. Renders this scene's static meshes
     // through the scene color shader. Sets setSceneModel(identity)
@@ -81,18 +89,18 @@ public:
     // no color/tint setup.
     void renderMeshesDepth() const;
 
-private:
+  private:
     nlohmann::json mJson;
-    std::string    mFolder;
+    std::string mFolder;
 
     struct LoadedMesh
     {
-        std::string                       path;
-        glm::vec3                         world_origin{0.0f};
-        engine::physics::SurfaceTag       tag = engine::physics::SurfaceTag::Architecture;
-        std::string                       debug_name;
-        StaticMesh                        mesh;            // CPU + GPU
-        bool                              loaded = false;
+        std::string path;
+        glm::vec3 world_origin{0.0f};
+        engine::physics::SurfaceTag tag = engine::physics::SurfaceTag::Architecture;
+        std::string debug_name;
+        StaticMesh mesh; // CPU + GPU
+        bool loaded = false;
         // One ShapeHandle per primitive. Built once in preloadAssets
         // so commitPrepared can just add bodies (sub-ms) instead of
         // rebuilding BVHs every activation.

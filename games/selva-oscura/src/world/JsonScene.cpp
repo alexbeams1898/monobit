@@ -5,10 +5,10 @@
 #include "render/SceneShaders.h"
 #include "world/Terrain.h"
 
-#include <glad/glad.h>
-
 #include <cmath>
 #include <cstdio>
+
+#include <glad/glad.h>
 
 namespace selva::world
 {
@@ -18,44 +18,56 @@ namespace
 
 engine::physics::SurfaceTag parseSurfaceTag(const std::string& s)
 {
-    if (s == "Terrain")      return engine::physics::SurfaceTag::Terrain;
-    if (s == "Architecture") return engine::physics::SurfaceTag::Architecture;
-    if (s == "Foliage")      return engine::physics::SurfaceTag::Foliage;
-    if (s == "Actor")        return engine::physics::SurfaceTag::Actor;
+    if (s == "Terrain")
+        return engine::physics::SurfaceTag::Terrain;
+    if (s == "Architecture")
+        return engine::physics::SurfaceTag::Architecture;
+    if (s == "Foliage")
+        return engine::physics::SurfaceTag::Foliage;
+    if (s == "Actor")
+        return engine::physics::SurfaceTag::Actor;
     return engine::physics::SurfaceTag::Unknown;
 }
 
 engine::world::TransitionMode parseTransitionMode(const std::string& s)
 {
-    if (s == "Instant")    return engine::world::TransitionMode::Instant;
-    if (s == "Continuous") return engine::world::TransitionMode::Continuous;
+    if (s == "Instant")
+        return engine::world::TransitionMode::Instant;
+    if (s == "Continuous")
+        return engine::world::TransitionMode::Continuous;
     return engine::world::TransitionMode::Fade;
 }
 
 engine::world::TerrainModifier::Mode parseModifierMode(const std::string& s)
 {
     using M = engine::world::TerrainModifier::Mode;
-    if (s == "FlushSlope") return M::FlushSlope;
-    if (s == "DepressTo")  return M::DepressTo;
-    if (s == "AddDelta")   return M::AddDelta;
+    if (s == "FlushSlope")
+        return M::FlushSlope;
+    if (s == "DepressTo")
+        return M::DepressTo;
+    if (s == "AddDelta")
+        return M::AddDelta;
     return M::FlushAt;
 }
 
 engine::world::SceneKind parseSceneKind(const std::string& s)
 {
-    if (s == "Interior") return engine::world::SceneKind::Interior;
+    if (s == "Interior")
+        return engine::world::SceneKind::Interior;
     return engine::world::SceneKind::Exterior;
 }
 
-glm::vec3 parseVec3(const nlohmann::json& a, glm::vec3 def = {0,0,0})
+glm::vec3 parseVec3(const nlohmann::json& a, glm::vec3 def = {0, 0, 0})
 {
-    if (!a.is_array() || a.size() < 3) return def;
+    if (!a.is_array() || a.size() < 3)
+        return def;
     return glm::vec3(a[0].get<float>(), a[1].get<float>(), a[2].get<float>());
 }
 
-glm::vec2 parseVec2(const nlohmann::json& a, glm::vec2 def = {0,0})
+glm::vec2 parseVec2(const nlohmann::json& a, glm::vec2 def = {0, 0})
 {
-    if (!a.is_array() || a.size() < 2) return def;
+    if (!a.is_array() || a.size() < 2)
+        return def;
     return glm::vec2(a[0].get<float>(), a[1].get<float>());
 }
 
@@ -65,14 +77,15 @@ JsonScene::JsonScene(const nlohmann::json& scene_json, std::string scene_folder)
     : engine::world::AsyncCapableScene(
           scene_json.value("scene_id", std::string{}),
           scene_json.value("debug_name", std::string{}),
-          parseSceneKind(scene_json.value("scene_kind", std::string{"Exterior"})))
-    , mJson(scene_json)
-    , mFolder(std::move(scene_folder))
-{}
+          parseSceneKind(scene_json.value("scene_kind", std::string{"Exterior"}))),
+      mJson(scene_json), mFolder(std::move(scene_folder))
+{
+}
 
 void JsonScene::preloadAssets()
 {
-    if (mPreloaded) return;  // idempotent — lazy callers can call freely
+    if (mPreloaded)
+        return; // idempotent — lazy callers can call freely
     std::fprintf(stderr, "[json-scene '%s'] preloadAssets START\n", sceneId().c_str());
     // File I/O + GL upload + Jolt SHAPE construction happen HERE,
     // once at boot. Per-activation commit reuses preloaded shapes
@@ -90,8 +103,8 @@ void JsonScene::preloadAssets()
         lm->debug_name = m.value("debug_name", std::string{});
         if (!loadStaticMesh(lm->path.c_str(), lm->world_origin, lm->mesh))
         {
-            std::fprintf(stderr, "[json-scene '%s'] failed to load mesh: %s\n",
-                         sceneId().c_str(), lm->path.c_str());
+            std::fprintf(stderr, "[json-scene '%s'] failed to load mesh: %s\n", sceneId().c_str(),
+                         lm->path.c_str());
             continue;
         }
         lm->loaded = true;
@@ -106,12 +119,12 @@ void JsonScene::preloadAssets()
                 lm->shape_handles.push_back(engine::physics::kInvalidShape);
                 continue;
             }
-            lm->shape_handles.push_back(engine::physics::createStaticTrimeshShape(
-                prim.cpu_positions, prim.cpu_indices));
+            lm->shape_handles.push_back(
+                engine::physics::createStaticTrimeshShape(prim.cpu_positions, prim.cpu_indices));
         }
         std::fprintf(stderr, "[json-scene '%s'] preloaded mesh '%s' (%zu prims, %zu shapes)\n",
-                     sceneId().c_str(), lm->debug_name.c_str(),
-                     lm->mesh.primitives.size(), lm->shape_handles.size());
+                     sceneId().c_str(), lm->debug_name.c_str(), lm->mesh.primitives.size(),
+                     lm->shape_handles.size());
         mMeshes.push_back(std::move(lm));
     }
 
@@ -129,8 +142,8 @@ void JsonScene::preloadAssets()
                 mTerrainShapeHandles.push_back(engine::physics::kInvalidShape);
                 continue;
             }
-            mTerrainShapeHandles.push_back(engine::physics::createStaticTrimeshShape(
-                r.cpu_positions, r.cpu_indices));
+            mTerrainShapeHandles.push_back(
+                engine::physics::createStaticTrimeshShape(r.cpu_positions, r.cpu_indices));
             std::fprintf(stderr, "[json-scene '%s'] preloaded terrain shape '%s'\n",
                          sceneId().c_str(), r.name.c_str());
         }
@@ -160,7 +173,8 @@ void JsonScene::commitPrepared(engine::world::SceneActivationContext& ctx)
     for (std::size_t i = 0; i < mTerrainShapeHandles.size(); ++i)
     {
         const auto shape = mTerrainShapeHandles[i];
-        if (shape == engine::physics::kInvalidShape) continue;
+        if (shape == engine::physics::kInvalidShape)
+            continue;
         const auto& r = selva::world::terrainRegion(static_cast<int>(i));
         auto h = engine::physics::addStaticBodyFromShape(
             shape, engine::physics::SurfaceTag::Terrain, r.name.c_str());
@@ -171,16 +185,16 @@ void JsonScene::commitPrepared(engine::world::SceneActivationContext& ctx)
     // ---- Static mesh bodies ----
     for (const auto& lm : mMeshes)
     {
-        if (!lm->loaded) continue;
-        for (std::size_t i = 0; i < lm->mesh.primitives.size() &&
-                                i < lm->shape_handles.size(); ++i)
+        if (!lm->loaded)
+            continue;
+        for (std::size_t i = 0; i < lm->mesh.primitives.size() && i < lm->shape_handles.size(); ++i)
         {
             const auto shape = lm->shape_handles[i];
-            if (shape == engine::physics::kInvalidShape) continue;
+            if (shape == engine::physics::kInvalidShape)
+                continue;
             const auto& prim = lm->mesh.primitives[i];
             const std::string body_name = lm->debug_name + ":" + prim.source_node_name;
-            auto h = engine::physics::addStaticBodyFromShape(
-                shape, lm->tag, body_name.c_str());
+            auto h = engine::physics::addStaticBodyFromShape(shape, lm->tag, body_name.c_str());
             if (h != engine::physics::kInvalidBody)
                 ctx.addBody(h);
         }
@@ -199,14 +213,14 @@ void JsonScene::commitPrepared(engine::world::SceneActivationContext& ctx)
     for (const auto& m : mods_json)
     {
         engine::world::TerrainModifier mod;
-        mod.center_xz       = parseVec2(m.value("center_xz", nlohmann::json::array()));
+        mod.center_xz = parseVec2(m.value("center_xz", nlohmann::json::array()));
         mod.half_extents_xz = parseVec2(m.value("half_extents_xz", nlohmann::json::array()));
-        mod.mode            = parseModifierMode(m.value("mode", std::string{"FlushAt"}));
-        mod.value           = m.value("value", 0.0f);
-        mod.value_far       = m.value("value_far", 0.0f);
+        mod.mode = parseModifierMode(m.value("mode", std::string{"FlushAt"}));
+        mod.value = m.value("value", 0.0f);
+        mod.value_far = m.value("value_far", 0.0f);
         const std::string ax = m.value("slope_axis", std::string{"Z"});
-        mod.slope_axis      = (ax == "X") ? 0 : 2;
-        mod.blend_pad       = m.value("blend_pad", 0.0f);
+        mod.slope_axis = (ax == "X") ? 0 : 2;
+        mod.blend_pad = m.value("blend_pad", 0.0f);
         // debug_name is a c-string in the engine struct; we can't
         // easily own a string here long enough. Skip for now (overlay
         // labels become "" for JSON-driven modifiers). Fix when the
@@ -220,18 +234,18 @@ void JsonScene::commitPrepared(engine::world::SceneActivationContext& ctx)
     for (const auto& t : trigs_json)
     {
         engine::world::SceneTrigger trig;
-        trig.id               = t.value("id", std::string{});
-        trig.center           = parseVec3(t.value("center", nlohmann::json::array()));
-        trig.half_extents     = parseVec3(t.value("half_extents", nlohmann::json::array()));
+        trig.id = t.value("id", std::string{});
+        trig.center = parseVec3(t.value("center", nlohmann::json::array()));
+        trig.half_extents = parseVec3(t.value("half_extents", nlohmann::json::array()));
         const std::string target_scene_id = t.value("target_scene", std::string{});
-        trig.target           = engine::world::findSceneId(target_scene_id.c_str());
+        trig.target = engine::world::findSceneId(target_scene_id.c_str());
         trig.preserve_player_pos = t.value("preserve_player_pos", false);
         trig.target_spawn_pos = parseVec3(t.value("target_spawn_pos", nlohmann::json::array()));
-        trig.override_yaw     = t.value("override_yaw", false);
-        trig.target_yaw       = t.value("target_yaw", 0.0f);
-        trig.mode             = parseTransitionMode(t.value("transition_mode", std::string{"Fade"}));
+        trig.override_yaw = t.value("override_yaw", false);
+        trig.target_yaw = t.value("target_yaw", 0.0f);
+        trig.mode = parseTransitionMode(t.value("transition_mode", std::string{"Fade"}));
         trig.fade_duration_seconds = t.value("fade_duration_seconds", 0.4f);
-        trig.debug_name       = t.value("debug_name", std::string{});
+        trig.debug_name = t.value("debug_name", std::string{});
         ctx.addTrigger(trig);
         if (trig.target == engine::world::kInvalidScene)
         {
@@ -239,7 +253,8 @@ void JsonScene::commitPrepared(engine::world::SceneActivationContext& ctx)
                          sceneId().c_str(), trig.id.c_str(), target_scene_id.c_str());
         }
     }
-    std::fprintf(stderr, "[json-scene '%s'] commitPrepared END (%zu meshes, %zu mods, %zu triggers)\n",
+    std::fprintf(stderr,
+                 "[json-scene '%s'] commitPrepared END (%zu meshes, %zu mods, %zu triggers)\n",
                  sceneId().c_str(), mMeshes.size(), mods_json.size(), trigs_json.size());
 }
 
@@ -268,10 +283,12 @@ void JsonScene::renderMeshesDepth() const
     // shader program).
     for (const auto& lm : mMeshes)
     {
-        if (!lm->loaded) continue;
+        if (!lm->loaded)
+            continue;
         for (const auto& p : lm->mesh.primitives)
         {
-            if (p.vao == 0) continue;
+            if (p.vao == 0)
+                continue;
             glBindVertexArray(p.vao);
             glDrawElements(GL_TRIANGLES, p.index_count, GL_UNSIGNED_INT, nullptr);
         }
@@ -298,10 +315,12 @@ void JsonScene::renderMeshes() const
     int draw_idx = 0;
     for (const auto& lm : mMeshes)
     {
-        if (!lm->loaded) continue;
+        if (!lm->loaded)
+            continue;
         for (const auto& p : lm->mesh.primitives)
         {
-            if (p.vao == 0) continue;
+            if (p.vao == 0)
+                continue;
             selva::render::setSceneTint(1.0f);
             if (debug_id)
             {
@@ -309,16 +328,14 @@ void JsonScene::renderMeshes() const
                 // into 8-bit-per-channel RGB so consecutive primitives
                 // get visibly distinct colors and the index can be
                 // read back from a screenshot.
-                const float r = ((draw_idx * 73)  & 0xFF) / 255.0f;
+                const float r = ((draw_idx * 73) & 0xFF) / 255.0f;
                 const float g = ((draw_idx * 151) & 0xFF) / 255.0f;
                 const float b = ((draw_idx * 211) & 0xFF) / 255.0f;
                 selva::render::setSceneBaseColor(glm::vec3(r, g, b));
                 if (idmap_log != nullptr)
                 {
-                    std::fprintf(idmap_log,
-                                 "%d  rgb=(%.3f,%.3f,%.3f)  name='%s:%s'\n",
-                                 draw_idx, r, g, b, lm->debug_name.c_str(),
-                                 p.source_node_name.c_str());
+                    std::fprintf(idmap_log, "%d  rgb=(%.3f,%.3f,%.3f)  name='%s:%s'\n", draw_idx, r,
+                                 g, b, lm->debug_name.c_str(), p.source_node_name.c_str());
                 }
             }
             else

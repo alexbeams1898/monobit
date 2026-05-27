@@ -60,7 +60,7 @@ constexpr const char* kFootRightJointName = "mixamorig:RightFoot";
 // kMinPlantDescent is set just above wobble floor so wobbles don't
 // produce barely-audible ghost fires. The first step of a fresh
 // stride crosses this fine.
-constexpr float kMinPlantDescent = 0.35f;  // m/s; below = noise floor
+constexpr float kMinPlantDescent = 0.35f; // m/s; below = noise floor
 // Velocity at which audio reaches full volume. Plants above this
 // play at max gain; plants below scale linearly. Tuned so
 // steady-state walking sits ~0.7 of full gain (audible but not
@@ -88,8 +88,7 @@ float plantGain(float peak_descent)
         return 0.0f;
     if (peak_descent >= kFullVolumeDescent)
         return 1.0f;
-    const float t = (peak_descent - kMinPlantDescent) /
-                    (kFullVolumeDescent - kMinPlantDescent);
+    const float t = (peak_descent - kMinPlantDescent) / (kFullVolumeDescent - kMinPlantDescent);
     return kMinGain + (1.0f - kMinGain) * t;
 }
 
@@ -208,14 +207,12 @@ void tickOneFoot(Actor::FootContact& fc, Actor& actor, const char* joint_name, f
             // reach. Reading the actual contacted body generalizes:
             // ANY future surface (sand, water, stone path, dungeon) just
             // adds a SurfaceTag value, no rect to author.
-            const glm::vec3 foot_world =
-                actor.sampler.jointWorldPosWithActor(fc.joint_idx);
+            const glm::vec3 foot_world = actor.sampler.jointWorldPosWithActor(fc.joint_idx);
             engine::physics::SurfaceTag surface = engine::physics::SurfaceTag::Unknown;
             {
                 const engine::physics::RayHit hit = engine::physics::raycast(
-                    foot_world + glm::vec3(0.0f, 0.10f, 0.0f),  // start just above foot
-                    glm::vec3(0.0f, -1.0f, 0.0f),
-                    1.0f);
+                    foot_world + glm::vec3(0.0f, 0.10f, 0.0f), // start just above foot
+                    glm::vec3(0.0f, -1.0f, 0.0f), 1.0f);
                 if (hit.hit)
                     surface = hit.tag;
             }
@@ -233,11 +230,10 @@ void tickOneFoot(Actor::FootContact& fc, Actor& actor, const char* joint_name, f
                 sfx_name = "footstep_grass";
                 break;
             }
-            footstepLogf(
-                "[event] surface foot=%s foot_xz=(%.3f,%.3f) body_xz=(%.3f,%.3f) "
-                "surface_tag=%d sfx=%s\n",
-                footLabel(is_left), foot_world.x, foot_world.z, actor.pos.x, actor.pos.z,
-                static_cast<int>(surface), sfx_name);
+            footstepLogf("[event] surface foot=%s foot_xz=(%.3f,%.3f) body_xz=(%.3f,%.3f) "
+                         "surface_tag=%d sfx=%s\n",
+                         footLabel(is_left), foot_world.x, foot_world.z, actor.pos.x, actor.pos.z,
+                         static_cast<int>(surface), sfx_name);
             selva::audio::playSfxScaled(sfx_name, gain);
             fc.last_fire_time = now;
             actor.last_footstep_fire_time = now;
@@ -251,8 +247,7 @@ void tickOneFoot(Actor::FootContact& fc, Actor& actor, const char* joint_name, f
             footstepLogf("[event] SUPPRESS foot=%s peak_descent=%.3f foot_y=%.4f can_fire=%d "
                          "since_last=%.3fs gain=%.3f reason=%s\n",
                          footLabel(is_left), fc.peak_descent_vy, foot_y, can_fire ? 1 : 0,
-                         since_fire, gain,
-                         !can_fire ? "cooldown" : "below_min_descent");
+                         since_fire, gain, !can_fire ? "cooldown" : "below_min_descent");
         }
         fc.peak_descent_vy = 0.0f;
     }

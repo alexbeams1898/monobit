@@ -37,8 +37,14 @@ namespace engine::world
 struct SceneId
 {
     std::uint32_t id = 0;
-    bool operator==(SceneId o) const { return id == o.id; }
-    bool operator!=(SceneId o) const { return id != o.id; }
+    bool operator==(SceneId o) const
+    {
+        return id == o.id;
+    }
+    bool operator!=(SceneId o) const
+    {
+        return id != o.id;
+    }
 };
 inline constexpr SceneId kInvalidScene{0};
 
@@ -49,8 +55,8 @@ inline constexpr SceneId kInvalidScene{0};
 // one scene; if you need partial interior, that's a new scene.
 enum class SceneKind : std::uint8_t
 {
-    Exterior,   // outdoor / sky-bearing / wider follow distance
-    Interior,   // indoor / no-sky / tighter follow distance
+    Exterior, // outdoor / sky-bearing / wider follow distance
+    Interior, // indoor / no-sky / tighter follow distance
 };
 
 // Mode of a scene transition.
@@ -71,11 +77,11 @@ enum class TransitionMode : std::uint8_t
 // State machine for a transition in progress.
 enum class TransitionState : std::uint8_t
 {
-    Idle,            // no transition active
-    LoadingTarget,   // worker thread loading target scene assets
-    FadingOut,       // playing fade-to-black on screen
-    Committing,      // swapping bodies on main thread (single frame)
-    FadingIn,        // playing fade-in on screen
+    Idle,          // no transition active
+    LoadingTarget, // worker thread loading target scene assets
+    FadingOut,     // playing fade-to-black on screen
+    Committing,    // swapping bodies on main thread (single frame)
+    FadingIn,      // playing fade-in on screen
 };
 
 // Trigger volume: when a registered actor (player today, others later)
@@ -84,10 +90,10 @@ enum class TransitionState : std::uint8_t
 // re-fire while inside.
 struct SceneTrigger
 {
-    std::string  id;                       // unique within scene; used for save/load
-    glm::vec3    center{0.0f};             // world-space, in OWNER scene's local coords
-    glm::vec3    half_extents{0.0f};
-    SceneId      target = kInvalidScene;
+    std::string id;         // unique within scene; used for save/load
+    glm::vec3 center{0.0f}; // world-space, in OWNER scene's local coords
+    glm::vec3 half_extents{0.0f};
+    SceneId target = kInvalidScene;
     // If preserve_player_pos is true, the player's CURRENT world
     // position carries across the transition unchanged — the scene
     // swaps but the player doesn't move. This is the seamless
@@ -98,17 +104,17 @@ struct SceneTrigger
     // If false (cinematic / fast-travel default), the player is
     // teleported to target_spawn_pos in the target scene's local
     // coords.
-    bool         preserve_player_pos = false;
-    glm::vec3    target_spawn_pos{0.0f};   // local coords of target scene
+    bool preserve_player_pos = false;
+    glm::vec3 target_spawn_pos{0.0f}; // local coords of target scene
     // If override_yaw is true, the post-commit teleport sets the
     // player's yaw to target_yaw. If false, the player's previous
     // yaw is preserved across the transition (the seamless-traversal
     // default — walking through a door doesn't reorient you).
-    bool         override_yaw = false;
-    float        target_yaw = 0.0f;
+    bool override_yaw = false;
+    float target_yaw = 0.0f;
     TransitionMode mode = TransitionMode::Fade;
-    float        fade_duration_seconds = 0.4f;
-    std::string  debug_name;
+    float fade_duration_seconds = 0.4f;
+    std::string debug_name;
 };
 
 // Per-character state that crosses scene boundaries unchanged.
@@ -116,8 +122,8 @@ struct SceneTrigger
 struct PersistentSceneState
 {
     // Camera orientation persists so transitions don't disorient.
-    float        camera_yaw = 0.0f;
-    float        camera_pitch = 0.0f;
+    float camera_yaw = 0.0f;
+    float camera_pitch = 0.0f;
     // Everything else (hp, stamina, inventory, equipment, anim state)
     // is owned by gameplay code and is naturally persistent — the
     // engine does not touch it during transitions.
@@ -133,8 +139,10 @@ class Scene;
 
 class SceneActivationContext
 {
-public:
-    explicit SceneActivationContext(Scene& s) : mScene(s) {}
+  public:
+    explicit SceneActivationContext(Scene& s) : mScene(s)
+    {
+    }
 
     // Record a Jolt body this scene owns. Engine removes on deactivate.
     void addBody(engine::physics::BodyHandle h);
@@ -146,7 +154,7 @@ public:
     // local coords.
     void addTrigger(const SceneTrigger& t);
 
-private:
+  private:
     Scene& mScene;
 };
 
@@ -154,17 +162,26 @@ private:
 // scene.json and dispatches to context.addBody/addTrigger.
 class Scene
 {
-public:
+  public:
     explicit Scene(std::string scene_id, std::string debug_name,
                    SceneKind kind = SceneKind::Exterior)
-        : mSceneId(std::move(scene_id))
-        , mDebugName(std::move(debug_name))
-        , mKind(kind) {}
+        : mSceneId(std::move(scene_id)), mDebugName(std::move(debug_name)), mKind(kind)
+    {
+    }
     virtual ~Scene() = default;
 
-    const std::string& sceneId()  const { return mSceneId; }
-    const std::string& debugName() const { return mDebugName; }
-    SceneKind kind() const { return mKind; }
+    const std::string& sceneId() const
+    {
+        return mSceneId;
+    }
+    const std::string& debugName() const
+    {
+        return mDebugName;
+    }
+    SceneKind kind() const
+    {
+        return mKind;
+    }
 
     // Called by the engine when this scene becomes active. Subclass
     // registers all bodies + triggers via the context. Scene's
@@ -176,26 +193,46 @@ public:
     // colors, etc.). Engine handles body cleanup automatically based
     // on what context.addBody recorded — subclass does NOT remove
     // bodies itself.
-    virtual void onDeactivate() {}
+    virtual void onDeactivate()
+    {
+    }
 
     // Called once at engine shutdown for every registered scene.
     // Subclasses release pre-loaded GPU/CPU asset resources here
     // (resident-all-scenes model: assets stay through the session
     // and are freed only at exit).
-    virtual void onShutdown() {}
+    virtual void onShutdown()
+    {
+    }
 
     // Engine-internal: append/inspect body handles. JsonScene + Scene
     // subclasses should not touch these directly; use the context.
-    void engineAppendBody(engine::physics::BodyHandle h) { mOwnedBodies.push_back(h); }
-    void engineAppendTrigger(const SceneTrigger& t) { mTriggers.push_back(t); }
-    void engineClearOwnership()                          { mOwnedBodies.clear(); mTriggers.clear(); }
-    const std::vector<engine::physics::BodyHandle>& ownedBodies() const { return mOwnedBodies; }
-    const std::vector<SceneTrigger>& triggers() const { return mTriggers; }
+    void engineAppendBody(engine::physics::BodyHandle h)
+    {
+        mOwnedBodies.push_back(h);
+    }
+    void engineAppendTrigger(const SceneTrigger& t)
+    {
+        mTriggers.push_back(t);
+    }
+    void engineClearOwnership()
+    {
+        mOwnedBodies.clear();
+        mTriggers.clear();
+    }
+    const std::vector<engine::physics::BodyHandle>& ownedBodies() const
+    {
+        return mOwnedBodies;
+    }
+    const std::vector<SceneTrigger>& triggers() const
+    {
+        return mTriggers;
+    }
 
-private:
+  private:
     std::string mSceneId;
     std::string mDebugName;
-    SceneKind   mKind = SceneKind::Exterior;
+    SceneKind mKind = SceneKind::Exterior;
     std::vector<engine::physics::BodyHandle> mOwnedBodies;
     std::vector<SceneTrigger> mTriggers;
 };
@@ -216,10 +253,8 @@ void activateSceneImmediate(SceneId);
 // Begin a transition to the target scene. Returns false if a
 // transition is already in progress. The transition state machine
 // runs in tickSceneManager(); transitions complete asynchronously.
-bool beginTransition(SceneId target, TransitionMode mode,
-                     bool preserve_player_pos,
-                     glm::vec3 target_spawn_pos,
-                     bool override_yaw, float target_yaw,
+bool beginTransition(SceneId target, TransitionMode mode, bool preserve_player_pos,
+                     glm::vec3 target_spawn_pos, bool override_yaw, float target_yaw,
                      float fade_duration_seconds);
 
 // Per-frame tick: advances transition state machine, handles async
@@ -229,17 +264,17 @@ TransitionState tickSceneManager(float dt);
 
 // Currently active scene (the one whose bodies are in Jolt right now).
 SceneId currentScene();
-Scene*  currentScenePtr();   // may be null
+Scene* currentScenePtr(); // may be null
 
 // All registered scenes (for F1 force-transition menu).
-int   sceneCount();
+int sceneCount();
 SceneId sceneAt(int idx);
-Scene*  scenePtr(SceneId);
+Scene* scenePtr(SceneId);
 
 // Current transition state (for F1 diagnostics).
 TransitionState transitionState();
-float           transitionFadeAlpha();  // 0..1 black overlay alpha
-SceneId         transitionTarget();
+float transitionFadeAlpha(); // 0..1 black overlay alpha
+SceneId transitionTarget();
 
 // Player overlap check: pass the player's current world position
 // each frame; engine fires any matching trigger (queues a transition).
@@ -259,8 +294,8 @@ const PersistentSceneState& persistentState();
 //     should be kept (no teleport). spawn_pos is ignored.
 //   override_yaw: if true, set player yaw to spawn_yaw; else leave
 //     yaw alone.
-using PostCommitCallback = void(*)(bool preserve_pos, const glm::vec3& spawn_pos,
-                                   bool override_yaw, float spawn_yaw);
+using PostCommitCallback = void (*)(bool preserve_pos, const glm::vec3& spawn_pos,
+                                    bool override_yaw, float spawn_yaw);
 void setPostCommitCallback(PostCommitCallback cb);
 
 // Engine bootstrap / teardown.

@@ -186,8 +186,12 @@ void buildRegionMesh(TerrainRegion& r, int subdivide)
             const std::uint32_t i1 = i0 + 1;
             const std::uint32_t i2 = i0 + static_cast<std::uint32_t>(verts_per_side);
             const std::uint32_t i3 = i2 + 1;
-            indices.push_back(i0); indices.push_back(i3); indices.push_back(i1);
-            indices.push_back(i0); indices.push_back(i2); indices.push_back(i3);
+            indices.push_back(i0);
+            indices.push_back(i3);
+            indices.push_back(i1);
+            indices.push_back(i0);
+            indices.push_back(i2);
+            indices.push_back(i3);
         }
     }
     r.index_count = static_cast<int>(indices.size());
@@ -422,8 +426,8 @@ float groundHeight(float world_x, float world_z, float current_y)
     if (log_on && sGroundLog != nullptr)
         std::fprintf(sGroundLog,
                      "[%d] xz=(%.3f,%.3f) cur_y=%.3f terrain_y=%.3f use_ceil=%d ceil=%.3f\n",
-                     sGroundFrame, world_x, world_z, current_y, terrain_y,
-                     use_ceiling ? 1 : 0, ceil_for_consider);
+                     sGroundFrame, world_x, world_z, current_y, terrain_y, use_ceiling ? 1 : 0,
+                     ceil_for_consider);
 
     int box_idx = 0;
     for (const auto& b : currentScene().boxes)
@@ -467,10 +471,11 @@ float groundHeight(float world_x, float world_z, float current_y)
 
     if (log_on && sGroundLog != nullptr)
     {
-        std::fprintf(sGroundLog,
-                     "    -> indoors=%d in_walkable=%d walkable_best=%.3f override=%d result=%.3f\n",
-                     indoors ? 1 : 0, inside_walkable_box ? 1 : 0, walkable_best,
-                     override_fired ? 1 : 0, best);
+        std::fprintf(
+            sGroundLog,
+            "    -> indoors=%d in_walkable=%d walkable_best=%.3f override=%d result=%.3f\n",
+            indoors ? 1 : 0, inside_walkable_box ? 1 : 0, walkable_best, override_fired ? 1 : 0,
+            best);
         std::fflush(sGroundLog);
         ++sGroundFrame;
     }
