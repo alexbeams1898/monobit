@@ -1,6 +1,7 @@
 #include "world/Terrain.h"
 
 #include "Tunables.h"
+#include "physics/PhysicsWorld.h"
 #include "world/Collision.h"
 #include "world/CryptLayout.h"
 #include "world/TerrainModifiers.h"
@@ -387,99 +388,43 @@ glm::vec2 playerSpawnXZ()
     return sPlayerSpawnXZ;
 }
 
-bool isOnAuthoredSurface(float world_x, float world_z)
-{
-    for (const auto& b : currentScene().boxes)
-    {
-        if (!b.walkable_top)
-            continue;
-        const float dx = std::abs(world_x - b.center.x);
-        const float dz = std::abs(world_z - b.center.y);
-        if (dx <= b.half_extents.x && dz <= b.half_extents.y)
-            return true;
-    }
-    return false;
-}
-
 float groundHeight(float world_x, float world_z, float current_y)
 {
-    const bool log_on = selva::tuning::current().debug_ground_height_log;
-    static FILE* sGroundLog = nullptr;
-    static int sGroundFrame = 0;
-    if (log_on && sGroundLog == nullptr)
-        sGroundLog = std::fopen("ground-debug.log", "w");
-
-    const float terrain_y = sampleHeight(world_x, world_z);
-    float best = terrain_y;
-    bool inside_walkable_box = false;
-    float walkable_best = -std::numeric_limits<float>::infinity();
-    // Climb tolerance: max step-up height the actor can reach in
-    // one frame. Must be > the largest authored stair rise (kStairRise
-    // = 0.25m in CryptLayout); use 0.35m to leave headroom for slightly
-    // taller steps + small floating-point slop. Below this and an
-    // actor stepping onto their own stair "falls through" because the
-    // step top is rejected as unclimbable.
-    constexpr float kClimbToleranceUp = 0.35f;
-    const float ceil_for_consider = current_y + kClimbToleranceUp;
+    // Real-physics doctrine: ground is whatever solid surface the
+    // sun-of-gravity ray hits at this XZ. Cast straight down from
+    // well above the actor; the nearest hit IS the ground.
+    constexpr float kRayStartAbove = 100.0f;
+    constexpr float kRayMaxDistance = 500.0f;
     const bool use_ceiling = current_y != -std::numeric_limits<float>::infinity();
-
-    if (log_on && sGroundLog != nullptr)
-        std::fprintf(sGroundLog,
-                     "[%d] xz=(%.3f,%.3f) cur_y=%.3f terrain_y=%.3f use_ceil=%d ceil=%.3f\n",
-                     sGroundFrame, world_x, world_z, current_y, terrain_y, use_ceiling ? 1 : 0,
-                     ceil_for_consider);
-
-    int box_idx = 0;
-    for (const auto& b : currentScene().boxes)
+    const float origin_y = use_ceiling ? (current_y + kRayStartAbove) : kRayStartAbove;
+    const glm::vec3 origin(world_x, origin_y, world_z);
+    const auto hit = engine::physics::raycast(origin, glm::vec3(0.0f, -1.0f, 0.0f),
+                                              kRayMaxDistance);
+    if (!hit.hit)
     {
-        if (!b.walkable_top)
-        {
-            ++box_idx;
-            continue;
-        }
-        const float dx_signed = world_x - b.center.x;
-        const float dz_signed = world_z - b.center.y;
-        const float dx = std::abs(dx_signed);
-        const float dz = std::abs(dz_signed);
-        if (dx > b.half_extents.x || dz > b.half_extents.y)
-        {
-            ++box_idx;
-            continue;
-        }
-        const float center_top = b.y_base + 2.0f * b.half_height_y;
-        const float top_y = center_top + b.top_slope.x * dx_signed + b.top_slope.y * dz_signed;
-        const bool ceiling_skipped = use_ceiling && top_y > ceil_for_consider;
-        if (log_on && sGroundLog != nullptr)
-            std::fprintf(sGroundLog,
-                         "    box[%d] center=(%.3f,%.3f) half=(%.3f,%.3f) y_base=%.3f "
-                         "top_at_xz=%.3f ceiling_skipped=%d\n",
-                         box_idx, b.center.x, b.center.y, b.half_extents.x, b.half_extents.y,
-                         b.y_base, top_y, ceiling_skipped ? 1 : 0);
-        ++box_idx;
-        if (ceiling_skipped)
-            continue;
-        inside_walkable_box = true;
-        if (top_y > walkable_best)
-            walkable_best = top_y;
-        if (top_y > best)
-            best = top_y;
+        // Outside any physics geometry — fall back to heightmap sample.
+        // Happens before physics bodies are loaded for the active scene
+        // (init order) or in zones with no terrain/architecture present.
+        return sampleHeight(world_x, world_z);
     }
-    const bool indoors = isIndoors(glm::vec2(world_x, world_z));
-    const bool override_fired = inside_walkable_box && walkable_best < terrain_y && indoors;
-    if (override_fired)
-        best = walkable_best;
 
-    if (log_on && sGroundLog != nullptr)
+    const bool log_on = selva::tuning::current().debug_ground_height_log;
+    if (log_on)
     {
-        std::fprintf(
-            sGroundLog,
-            "    -> indoors=%d in_walkable=%d walkable_best=%.3f override=%d result=%.3f\n",
-            indoors ? 1 : 0, inside_walkable_box ? 1 : 0, walkable_best, override_fired ? 1 : 0,
-            best);
-        std::fflush(sGroundLog);
-        ++sGroundFrame;
+        static FILE* sGroundLog = nullptr;
+        static int sGroundFrame = 0;
+        if (sGroundLog == nullptr)
+            sGroundLog = std::fopen("ground-debug.log", "w");
+        if (sGroundLog != nullptr)
+        {
+            const char* nm = engine::physics::bodyDebugName(hit.body);
+            std::fprintf(sGroundLog, "[%d] xz=(%.3f,%.3f) cur_y=%.3f -> y=%.3f body='%s'\n",
+                         sGroundFrame, world_x, world_z, current_y, hit.position.y, nm);
+            std::fflush(sGroundLog);
+            ++sGroundFrame;
+        }
     }
-    return best;
+    return hit.position.y;
 }
 
 } // namespace selva::world

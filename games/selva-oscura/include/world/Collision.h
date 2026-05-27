@@ -77,16 +77,6 @@ struct BoxCollider
     const char* name = nullptr;
 };
 
-// XZ rectangle marking where the player counts as "indoors" — used
-// by surface-aware systems (footstep audio, future ambient/reverb)
-// to switch behavior when the player enters enclosed architecture.
-// Pure 2D: no Y semantics. Y comes from the terrain sample as usual.
-struct InteriorFootprint
-{
-    glm::vec2 center;
-    glm::vec2 half_extents;
-};
-
 // One named scene's worth of static colliders. Owned/loaded/unloaded
 // as a unit so multiple scenes can coexist or swap. For now there's
 // exactly one scene (the selva oscura hub), but the indirection means
@@ -99,13 +89,9 @@ struct CollisionScene
 {
     std::vector<CylinderCollider> cylinders;
     std::vector<BoxCollider> boxes;
-    std::vector<InteriorFootprint> interior_footprints;
     glm::vec2 boundary_center{0.0f, 0.0f};
     float boundary_radius = 0.0f;
 };
-
-// True if `body_xz` is inside any InteriorFootprint rectangle.
-bool isIndoors(const glm::vec2& body_xz);
 
 // Initialize the hub scene with its hardcoded cylinder set. Called
 // once at startup. Replace with a JSON loader when manual editing

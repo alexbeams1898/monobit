@@ -220,46 +220,12 @@ void populateHubTrees(std::vector<CylinderCollider>& out)
 // (regenerate via games/selva-oscura/scripts/blender/gen_crypt_*.sh)
 // rather than re-introducing C++ collider duplicates here.
 
-void populateCryptInteriorFootprint(std::vector<InteriorFootprint>& out)
-{
-    using namespace crypt_layout;
-    // Chapel interior — door side extends 30cm PAST the door's outer
-    // face so the foot landing AT the threshold trips concrete (not
-    // grass).
-    constexpr float kDoorSideExtension = 0.30f;
-    InteriorFootprint chapel;
-    chapel.center = glm::vec2(kCryptX, kCryptZ + kDoorSideExtension * 0.5f);
-    chapel.half_extents = glm::vec2(kHalfWidth, kHalfLength + kDoorSideExtension * 0.5f);
-    out.push_back(chapel);
-
-    // Descent footprint — covers the upper-flight stair, landing,
-    // corridor, and Acheron stub so the player remains "indoors" for
-    // the entire underground descent. Without this, the moment the
-    // player passes the chapel back wall the indoors flag drops and
-    // groundHeight's override stops firing — terrain (plateau Y
-    // ~31.96) wins over the landing collider top (~30.82) and the
-    // player is popped UP to plateau level instead of continuing
-    // down. X span matches the stair shaft; Z span runs from the
-    // chapel back wall all the way to the Acheron stub far edge.
-    const float descent_z_near = kCryptZ - kHalfLength + kWallThickness;
-    const float descent_z_far_chapel_local =
-        kUpperFlightRun + kLandingDepthY + kCorridorSegmentCount * kCorridorSegmentRun +
-        (kCorridorSegmentCount - 1) * kCorridorLandingLength + 2.0f * kAcheronPlatformHalfExtent;
-    const float descent_z_far = kCryptZ - descent_z_far_chapel_local;
-    InteriorFootprint descent;
-    descent.center = glm::vec2(kCryptX, (descent_z_near + descent_z_far) * 0.5f);
-    descent.half_extents =
-        glm::vec2(kSingleFlightHalfWidth, (descent_z_near - descent_z_far) * 0.5f);
-    out.push_back(descent);
-}
-
 } // namespace
 
 void initHubScene()
 {
     sScene.cylinders.clear();
     sScene.boxes.clear();
-    sScene.interior_footprints.clear();
     // Boundary disc centered on the colle plateau midpoint (Z=-210)
     // so the playable area covers spawn, the colle, and the
     // clear-view strip + back forest behind it.
@@ -272,9 +238,6 @@ void initHubScene()
     // populateCryptDescent C++ collider authoring was removed
     // 2026-05-24 to end the dual-source-of-truth between mesh and
     // code; see docs/design/audits/chapel_source_audit_2026-05-24.md.
-    // Interior footprint stays (read by indoor-aware systems that
-    // need an XZ region, not a collision shape).
-    populateCryptInteriorFootprint(sScene.interior_footprints);
 
     // Authored framing around the crypt's façade. All four are
     // hero `pine_a` (variant 0) — no real cypress in the pack yet.
@@ -317,17 +280,6 @@ const CollisionScene& currentScene()
     return sScene;
 }
 
-bool isIndoors(const glm::vec2& body_xz)
-{
-    for (const auto& f : sScene.interior_footprints)
-    {
-        const float dx = std::abs(body_xz.x - f.center.x);
-        const float dz = std::abs(body_xz.y - f.center.y);
-        if (dx <= f.half_extents.x && dz <= f.half_extents.y)
-            return true;
-    }
-    return false;
-}
 
 void resolveBodyCollision(glm::vec2& body_xz, float body_radius)
 {

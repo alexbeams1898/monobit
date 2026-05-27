@@ -505,11 +505,10 @@ struct Tunables
     // failures (camera clips a wall when it shouldn't). Default OFF.
     bool debug_camera_pull_in_log = false;
     // When true, world/Terrain.cpp's groundHeight writes per-call
-    // state to ground-debug.log: query XZ, terrain Y, every
-    // walkable_top box considered (and its top Y at that XZ), the
-    // negative-space override decision, and the final returned Y.
-    // Used to diagnose "player Y is wrong" (sinking through stairs,
-    // teleporting to wrong platform, etc.). Default OFF.
+    // state to ground-debug.log: query XZ, current Y, the resulting
+    // ground Y from the downward Jolt raycast, and the name of the
+    // physics body hit. Used to diagnose "player Y is wrong" (sinking
+    // through stairs, teleporting to wrong platform, etc.). Default OFF.
     bool debug_ground_height_log = false;
 
     // When true, the Jolt physics layer writes diagnostics to

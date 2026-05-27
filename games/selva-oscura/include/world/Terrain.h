@@ -65,11 +65,6 @@ float sampleHeight(float world_x, float world_z);
 float groundHeight(float world_x, float world_z,
                    float current_y = -std::numeric_limits<float>::infinity());
 
-// True if the actor's XZ is inside any walkable_top box (stair,
-// landing, corridor, platform). Used to pick stair-locomotion clips
-// when traversing authored vertical-movement geometry.
-bool isOnAuthoredSurface(float world_x, float world_z);
-
 // Player spawn position in world coordinates, loaded from the
 // terrain config (player_spawn { x, z }). Y is intentionally NOT
 // part of the config - callers should query sampleHeight(x, z) to
