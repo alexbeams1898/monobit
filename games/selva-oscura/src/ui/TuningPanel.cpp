@@ -140,10 +140,7 @@ static void renderCameraSection(selva::tuning::Tunables& tun)
 {
     if (!ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen))
         return;
-    tunedSlider("Follow distance (outdoor)", &tun.follow_distance, 1.0f, 15.0f, 0.5f, "%.1f");
-    tunedSlider("Follow distance (indoor)", &tun.follow_distance_indoor, 0.5f, 10.0f, 0.25f,
-                "%.2f");
-    tunedSlider("Indoor lerp tau (s)", &tun.follow_distance_indoor_tau, 0.0f, 1.5f, 0.05f, "%.2f");
+    tunedSlider("Follow distance", &tun.follow_distance, 1.0f, 15.0f, 0.5f, "%.1f");
     tunedSlider("Follow height", &tun.follow_height, 0.0f, 8.0f, 0.5f, "%.1f");
     tunedSlider("FOV (deg)", &tun.fov_degrees, 30.0f, 110.0f, 5.0f, "%.0f");
     tunedSlider("Pull-in margin (m)", &tun.camera_pull_in_margin, 0.0f, 1.5f, 0.05f, "%.2f");

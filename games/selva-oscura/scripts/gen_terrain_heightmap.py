@@ -75,12 +75,13 @@ SELVA_INNER = {
     # of relief above wake-zone floor (38m total height_max).
     #
     # Approach side (from spawn):
-    "valley_to_ramp_z": -80.0,    # gentle ramp starts here
-    "ramp_to_colle_z": -110.0,    # gentle ramp ends, steep climb begins
-                                  # (longer gentle ramp at 30m, was 10m)
-    "colle_top_start_z": -190.0,  # steep climb ends, plateau starts
-                                  # (steep climb is 80m long, was 35m,
-                                  # keeping slope ~22deg - a real hike)
+    "valley_to_ramp_z": -20.0,    # gentle ramp starts here
+                                  # (very close to spawn, was -80)
+    "ramp_to_colle_z": -60.0,     # gentle ramp ends, climb begins
+                                  # (40m gentle ramp)
+    "colle_top_start_z": -190.0,  # climb ends, plateau starts
+                                  # (climb is now 130m for the same 30m
+                                  # rise: ~13deg, countryside gentle)
     # Plateau (40m wide along the spine):
     "colle_top_end_z": -230.0,
     # Back-side descent (mirror of approach):

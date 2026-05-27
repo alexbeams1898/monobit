@@ -3583,16 +3583,6 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
     const glm::vec3 camPos = sPlayer.pos - lookFwd * tun_atm.follow_distance +
                              glm::vec3(0.0f, tun_atm.follow_height, 0.0f);
 
-    // Scene-kind: drives whether terrain + sky are drawn. Interior
-    // scenes (chapel_interior, acheron) skip outdoor passes entirely
-    // because their world is sealed architecture; the sky pass would
-    // bleed light through wall seams + the terrain pass would draw
-    // surface ground BENEATH the chapel floor.
-    const engine::world::Scene* current_scene_ptr = engine::world::currentScenePtr();
-    const bool scene_is_interior =
-        current_scene_ptr != nullptr &&
-        current_scene_ptr->kind() == engine::world::SceneKind::Interior;
-
     // ---- Shadow depth pass ----
     {
         ZoneScopedN("shadow-depth-pass");
@@ -3691,8 +3681,6 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
         selva::render::setSceneViewProj(viewProj);
         selva::render::setSceneAtmosphere(kSunDir, kSunIntensity, camPos, kExposure);
         selva::render::setSceneShadow(lightVP, kSunDir, sPlayer.pos, 1);
-        const bool indoors = scene_is_interior;
-        selva::render::setSceneIndoorMode(indoors);
         selva::render::setSceneFlatShading(selva::tuning::current().debug_flat_shading);
         if (selva::tuning::current().debug_msaa_state_log)
         {
@@ -3708,19 +3696,6 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
                              "[msaa-state] fbo=%d sample_buffers=%d samples=%d "
                              "GL_MULTISAMPLE_enabled=%d\n",
                              fb_binding, sample_buffers, samples, msaa_enabled);
-            }
-        }
-        if (selva::tuning::current().debug_collision_log)
-        {
-            static FILE* sIndoorLog = nullptr;
-            if (sIndoorLog == nullptr)
-                sIndoorLog = std::fopen("indoor-debug.log", "w");
-            if (sIndoorLog != nullptr)
-            {
-                std::fprintf(sIndoorLog, "cam=(%.3f,%.3f,%.3f) player=(%.3f,%.3f,%.3f) indoors=%d\n",
-                             camPos.x, camPos.y, camPos.z, sPlayer.pos.x, sPlayer.pos.y,
-                             sPlayer.pos.z, indoors ? 1 : 0);
-                std::fflush(sIndoorLog);
             }
         }
         {

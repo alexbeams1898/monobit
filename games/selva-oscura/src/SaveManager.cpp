@@ -82,8 +82,13 @@ SaveData load(const std::string& path)
             p.yaw = c.value("yaw", 0.0f);
             p.has_saved_pose = c.value("has_saved_pose", false);
             // Scenes: missing field = "surface" for back-compat with
-            // saves written before the Scenes system existed.
+            // saves written before the Scenes system existed. Older
+            // saves may reference "chapel_interior" or "acheron" —
+            // those scenes were collapsed into "surface" so remap.
             p.current_scene_id = c.value("current_scene_id", std::string{"surface"});
+            if (p.current_scene_id == "chapel_interior" ||
+                p.current_scene_id == "acheron")
+                p.current_scene_id = "surface";
             if (!p.name.empty())
                 data.characters.push_back(std::move(p));
         }

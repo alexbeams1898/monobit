@@ -54,7 +54,6 @@ uniform vec3 uSunDir;
 uniform vec3 uSunIntensity;
 uniform vec3 uCamPos;
 uniform float uExposure;
-uniform float uIndoorMode; // 1.0 inside enclosed architecture, 0.0 outside
 uniform float uFlatShading; // 1.0 = output flat uBaseColor (bisect debug); 0.0 = full lighting
 )glsl";
 
@@ -100,8 +99,6 @@ void main()
     vec3 transmittance;
     vec3 inScatter = atmosphereWithT(uCamPos, rayDir, uSunDir, uSunIntensity,
                                      dist, transmittance);
-    inScatter *= (1.0 - uIndoorMode);
-    transmittance = mix(transmittance, vec3(1.0), uIndoorMode);
 
     vec3 col = surface * transmittance + inScatter;
 
@@ -125,7 +122,6 @@ GLint sUniShadowMapLoc = -1;
 GLint sUniLightViewProjLoc = -1;
 GLint sUniShadowSunDirLoc = -1;
 GLint sUniShadowCamPosLoc = -1;
-GLint sUniIndoorModeLoc = -1;
 GLint sUniFlatShadingLoc = -1;
 GLint sUniBaseColorLoc = -1;
 
@@ -151,7 +147,6 @@ bool initSceneProgram()
     sUniLightViewProjLoc = glGetUniformLocation(sProgram, "uLightViewProj");
     sUniShadowSunDirLoc = glGetUniformLocation(sProgram, "uShadowSunDir");
     sUniShadowCamPosLoc = glGetUniformLocation(sProgram, "uShadowCameraPos");
-    sUniIndoorModeLoc = glGetUniformLocation(sProgram, "uIndoorMode");
     sUniFlatShadingLoc = glGetUniformLocation(sProgram, "uFlatShading");
     sUniBaseColorLoc = glGetUniformLocation(sProgram, "uBaseColor");
     return true;
@@ -193,12 +188,6 @@ void setSceneModel(const glm::mat4& model)
 void setSceneTint(float tint)
 {
     glUniform1f(sUniTintLoc, tint);
-}
-
-void setSceneIndoorMode(bool indoors)
-{
-    if (sUniIndoorModeLoc >= 0)
-        glUniform1f(sUniIndoorModeLoc, indoors ? 1.0f : 0.0f);
 }
 
 void setSceneFlatShading(bool on)

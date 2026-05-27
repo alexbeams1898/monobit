@@ -300,38 +300,13 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
 
     const glm::vec3 lookAt(player_pos.x, smoothed_lookat_y, player_pos.z);
 
-    // Indoor follow-distance lerp. Indoor-ness is a scene-kind attribute
-    // now (uniform across the whole scene) — set per scene in scene.json.
-    const engine::world::Scene* scene_ptr = engine::world::currentScenePtr();
-    const bool indoors = scene_ptr != nullptr &&
-                         scene_ptr->kind() == engine::world::SceneKind::Interior;
-    const float target_follow_distance =
-        indoors ? tun.follow_distance_indoor : tun.follow_distance;
-    static float sSmoothedFollowDistance = tun.follow_distance;
-    static bool sFollowDistInit = false;
-    {
-        static Uint64 sPrevFollowTicks = SDL_GetTicks64();
-        const Uint64 nowFollowTicks = SDL_GetTicks64();
-        const float follow_dt = static_cast<float>(nowFollowTicks - sPrevFollowTicks) * 0.001f;
-        sPrevFollowTicks = nowFollowTicks;
-        if (!sFollowDistInit)
-        {
-            sSmoothedFollowDistance = target_follow_distance;
-            sFollowDistInit = true;
-        }
-        else
-        {
-            const float follow_tau = std::max(1e-3f, tun.follow_distance_indoor_tau);
-            const float alpha = 1.0f - std::exp(-follow_dt / follow_tau);
-            sSmoothedFollowDistance +=
-                (target_follow_distance - sSmoothedFollowDistance) * alpha;
-        }
-    }
-
     // Pitch-coupled ideal camera offset. Y cap prevents pitch-down
-    // from flinging the camera arbitrarily high.
+    // from flinging the camera arbitrarily high. The physics pull-in
+    // pipeline below shrinks the actual arm length when geometry
+    // blocks the ray — no separate "indoor follow distance" flag is
+    // needed: pulling-in emerges naturally when walls are close.
     const glm::vec3 ideal_offset =
-        -lookFwd * sSmoothedFollowDistance + glm::vec3(0.0f, tun.follow_height, 0.0f);
+        -lookFwd * tun.follow_distance + glm::vec3(0.0f, tun.follow_height, 0.0f);
     const float desired_separation = glm::length(ideal_offset);
     const glm::vec3 cam_dir = desired_separation > 1e-4f ? ideal_offset / desired_separation
                                                          : glm::vec3(0.0f, 1.0f, 0.0f);
@@ -517,7 +492,6 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
                                                 cam_z_from_player * cam_z_from_player);
             const glm::vec3 player_vel = player_pos - sPrevPlayerPos;
             const float player_speed = glm::length(player_vel);
-            const bool cam_indoors = indoors;
 
             // SAME-SIDE-OF-WALL PROBE — the load-bearing diagnostic for
             // "can see outside while inside." Forward raycast (from
@@ -657,7 +631,7 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
                 "yaw=%.3f pitch=%.3f lookFwd=(%.3f,%.3f,%.3f) "
                 "lookAt=(%.2f,%.2f,%.2f) cam_dir=(%.3f,%.3f,%.3f) "
                 "ideal_off=(%.2f,%.2f,%.2f) ideal_off_len=%.2f "
-                "follow_dist=%.2f indoors=%d cam_indoors=%d "
+                "follow_dist=%.2f "
                 "hit=%d hit_dist=%.3f target_sep=%.3f smoothed_sep=%.3f "
                 "camPos=(%.2f,%.2f,%.2f) cam_y_above_chest=%.3f "
                 "cam_xz_from_player=%.3f overlap=%d "
@@ -670,7 +644,7 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
                 player_vel.y, player_vel.z, player_speed, yaw, pitch, lookFwd.x, lookFwd.y,
                 lookFwd.z, lookAt.x, lookAt.y, lookAt.z, cam_dir.x, cam_dir.y, cam_dir.z,
                 ideal_offset.x, ideal_offset.y, ideal_offset.z, desired_separation,
-                sSmoothedFollowDistance, indoors ? 1 : 0, cam_indoors ? 1 : 0,
+                tun.follow_distance,
                 hit.hit ? 1 : 0, hit.distance, target_separation, sSmoothedSeparation,
                 camPos.x, camPos.y, camPos.z, cam_y_above_chest, cam_dist_xz,
                 overlap ? 1 : 0,

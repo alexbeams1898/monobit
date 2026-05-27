@@ -96,21 +96,10 @@ struct Tunables
     float pitch_max = 1.45f;           // ~+83 deg
 
     // ---- Camera follow ----
+    // Ideal arm length. The pull-in pipeline shrinks this dynamically
+    // when geometry blocks the ray, so this is the OUTER bound the
+    // camera tries to maintain when nothing's in the way.
     float follow_distance = 6.0f;
-    // Indoor follow distance: a smaller follow distance kicks in
-    // when the player is inside an enclosed footprint (isIndoors).
-    // Outdoor framing (~6m) reads as cinematic but feels claustro-
-    // phobic in a 6x8m chapel; ~4m keeps the camera at a workable
-    // distance for interior navigation without losing context of
-    // the room around the player. The pull-in math operates on
-    // whichever distance is currently effective.
-    float follow_distance_indoor = 4.0f;
-    // Time-constant for the indoor<->outdoor follow-distance lerp
-    // when the player crosses an interior boundary. Longer than the
-    // pull-in tau because this is a soft "context" transition, not
-    // a wall-avoidance reflex. ~0.4s reads as a deliberate camera
-    // shift, not a snap.
-    float follow_distance_indoor_tau = 0.4f;
     float follow_height = 2.5f;
     float fov_degrees = 60.0f;
     // Camera pull-in: raycast from the lookAt anchor toward the

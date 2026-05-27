@@ -20,12 +20,6 @@ void setSceneTint(float tint);
 // just luminance, so different materials read distinctly.
 void setSceneBaseColor(const glm::vec3& rgb);
 
-// 1.0 when the camera is inside enclosed architecture, 0.0 outside.
-// Suppresses the atmospheric in-scatter term, which would otherwise
-// paint sky light onto interior surfaces (the scatter math doesn't
-// know about wall occlusion).
-void setSceneIndoorMode(bool indoors);
-
 // Debug: when true, fragment shader skips all lighting and outputs
 // flat uBaseColor per primitive. Use to bisect flicker bugs —
 // flicker on = shader math (likely dFdx/dFdy normal flip);
