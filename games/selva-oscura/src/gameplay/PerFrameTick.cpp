@@ -606,7 +606,7 @@ static void terrainProbeDump(const char* label, float px, float py, float pz)
                                 "# visual artifact spot to append a probe block here.\n\n");
     }
     const float sampled = selva::world::sampleHeight(px, pz);
-    const bool is_hole = engine::world::insideTerrainHole(px, pz);
+    const bool is_hole = engine::world::insideTerrainHole(nullptr, px, pz);
     std::fprintf(probe_log, "====== PROBE #%d (%s) at player pos (%.3f, %.3f, %.3f) ======\n",
                  ++sF3ProbeCount, label, px, py, pz);
     std::fprintf(probe_log, "  sampleHeight(x,z) = %.3f (rendered terrain Y at player XZ)\n",
@@ -647,7 +647,7 @@ static void terrainProbeDump(const char* label, float px, float py, float pz)
             const float vx = (gx + dx) * kQuad;
             const float vz = (gz + dz) * kQuad;
             const float vy = selva::world::sampleHeight(vx, vz);
-            const bool vhole = engine::world::insideTerrainHole(vx, vz);
+            const bool vhole = engine::world::insideTerrainHole(nullptr, vx, vz);
             std::fprintf(probe_log, "    vertex (%.3f, %.3f) -> Y=%.3f hole=%d\n", vx, vz, vy,
                          vhole ? 1 : 0);
         }

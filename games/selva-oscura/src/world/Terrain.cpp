@@ -114,8 +114,16 @@ void buildRegionMesh(TerrainRegion& r, int subdivide)
             const float v = static_cast<float>(iz) / static_cast<float>(subdivide);
             const float wx = r.world_origin.x + (u * 2.0f - 1.0f) * half;
             const float wz = r.world_origin.y + (v * 2.0f - 1.0f) * half;
-            const float base_y = bilinearSample(r.heights, r.hm_width, r.hm_height, u, v);
-            const float wy = engine::world::applyTerrainModifiers(wx, wz, base_y);
+            // Heightmap PNG encodes Y in [height_min, height_max] which
+            // is treated as an offset; r.y_offset places the encoded
+            // range anywhere in world Y. Selva surface: y_offset=0 so
+            // height_min/max ARE world Y directly. Underground regions
+            // (Limbo, etc.): y_offset is large/negative so the same
+            // PNG-encoding can place terrain anywhere without losing
+            // precision.
+            const float base_y =
+                bilinearSample(r.heights, r.hm_width, r.hm_height, u, v) + r.y_offset;
+            const float wy = engine::world::applyTerrainModifiers(r.name.c_str(), wx, wz, base_y);
             const int vi = iz * verts_per_side + ix;
             verts[vi].position[0] = wx;
             verts[vi].position[1] = wy;
@@ -181,7 +189,7 @@ void buildRegionMesh(TerrainRegion& r, int subdivide)
         {
             const float quad_cx = r.world_origin.x - half + (static_cast<float>(ix) + 0.5f) * step;
             const float quad_cz = r.world_origin.y - half + (static_cast<float>(iz) + 0.5f) * step;
-            if (engine::world::insideTerrainHole(quad_cx, quad_cz))
+            if (engine::world::insideTerrainHole(r.name.c_str(), quad_cx, quad_cz))
                 continue;
             const std::uint32_t i0 = static_cast<std::uint32_t>(iz * verts_per_side + ix);
             const std::uint32_t i1 = i0 + 1;
@@ -291,6 +299,7 @@ bool initTerrain()
         r.world_extent = cfg.value("world_extent", 256.0f);
         r.height_min = cfg.value("height_range_min", -2.0f);
         r.height_max = cfg.value("height_range_max", 15.0f);
+        r.y_offset = cfg.value("y_offset", 0.0f);
         const int subdivide = cfg.value("subdivide", 128);
         if (cfg.contains("base_color") && cfg["base_color"].is_array() &&
             cfg["base_color"].size() == 3)
@@ -299,6 +308,21 @@ bool initTerrain()
             r.base_color[1] = cfg["base_color"][1].get<float>();
             r.base_color[2] = cfg["base_color"][2].get<float>();
         }
+        if (cfg.contains("tone_dark") && cfg["tone_dark"].is_array() &&
+            cfg["tone_dark"].size() == 3)
+        {
+            r.tone_dark[0] = cfg["tone_dark"][0].get<float>();
+            r.tone_dark[1] = cfg["tone_dark"][1].get<float>();
+            r.tone_dark[2] = cfg["tone_dark"][2].get<float>();
+        }
+        if (cfg.contains("tone_light") && cfg["tone_light"].is_array() &&
+            cfg["tone_light"].size() == 3)
+        {
+            r.tone_light[0] = cfg["tone_light"][0].get<float>();
+            r.tone_light[1] = cfg["tone_light"][1].get<float>();
+            r.tone_light[2] = cfg["tone_light"][2].get<float>();
+        }
+        r.footstep_sound_id = cfg.value("footstep_sound_id", std::string{"footstep_grass"});
         if (!loadHeightmapPng(hm_path, r, r.heights, r.hm_width, r.hm_height))
             continue;
         buildRegionMesh(r, subdivide);
@@ -336,51 +360,75 @@ const TerrainRegion& terrainRegion(int idx)
     return sRegions[idx];
 }
 
-float sampleHeight(float world_x, float world_z)
+const TerrainRegion* terrainRegionAt(float world_x, float world_z)
 {
-    if (sRegions.empty())
-        return 0.0f;
-    const TerrainRegion& r = sRegions[0];
+    // Same iteration order as sampleHeight — first region whose XZ
+    // AABB contains the point wins.
+    for (const auto& r : sRegions)
+    {
+        const float half = r.world_extent * 0.5f;
+        const float dx = std::abs(world_x - r.world_origin.x);
+        const float dz = std::abs(world_z - r.world_origin.y);
+        if (dx <= half && dz <= half)
+            return &r;
+    }
+    return nullptr;
+}
+
+namespace
+{
+// Returns true and writes the sampled Y to *out_y if (world_x, world_z)
+// falls within this region's XZ AABB. Returns false if outside.
+bool sampleRegion(const TerrainRegion& r, float world_x, float world_z, float* out_y)
+{
     if (r.subdivide <= 0 || r.mesh_y.empty())
-        return 0.0f;
-    // Locate the (x, z) within the mesh grid. Each quad spans
-    // `world_extent / subdivide` meters.
+        return false;
     const float half = r.world_extent * 0.5f;
     const float u = (world_x - r.world_origin.x + half) / r.world_extent;
     const float v = (world_z - r.world_origin.y + half) / r.world_extent;
     if (u < 0.0f || u > 1.0f || v < 0.0f || v > 1.0f)
-        return 0.0f;
+        return false;
 
     const int verts_per_side = r.subdivide + 1;
     const float fx = u * static_cast<float>(r.subdivide);
     const float fz = v * static_cast<float>(r.subdivide);
     const int ix = std::clamp(static_cast<int>(std::floor(fx)), 0, r.subdivide - 1);
     const int iz = std::clamp(static_cast<int>(std::floor(fz)), 0, r.subdivide - 1);
-    const float tx = fx - static_cast<float>(ix); // 0..1 within the quad
+    const float tx = fx - static_cast<float>(ix);
     const float tz = fz - static_cast<float>(iz);
 
-    // Quad corners — same indexing the mesh-build uses:
-    //   i0 = (iz, ix)       i1 = (iz, ix+1)
-    //   i2 = (iz+1, ix)     i3 = (iz+1, ix+1)
     const float y00 = r.mesh_y[iz * verts_per_side + ix];
     const float y10 = r.mesh_y[iz * verts_per_side + (ix + 1)];
     const float y01 = r.mesh_y[(iz + 1) * verts_per_side + ix];
     const float y11 = r.mesh_y[(iz + 1) * verts_per_side + (ix + 1)];
 
     // Quad split: triangle A = (i0, i3, i1), triangle B = (i0, i2, i3).
-    // For point (tx, tz) inside the unit quad, A covers tz < tx
-    // (lower-right half), B covers tz >= tx (upper-left half).
-    // Barycentric within each triangle gives an exact match to
-    // what the renderer interpolates.
+    // A covers tz < tx (lower-right half), B covers tz >= tx (upper-
+    // left half). Barycentric within each triangle gives an exact
+    // match to what the renderer interpolates.
     if (tz < tx)
+        *out_y = (1.0f - tx) * y00 + tz * y11 + (tx - tz) * y10;
+    else
+        *out_y = (1.0f - tz) * y00 + (tz - tx) * y01 + tx * y11;
+    return true;
+}
+} // namespace
+
+float sampleHeight(float world_x, float world_z)
+{
+    // Iterate regions in registration order, returning the Y from the
+    // first region whose XZ AABB contains the query point. When
+    // multiple regions are loaded (Selva surface + Limbo + future
+    // circles), each will have a non-overlapping XZ footprint so this
+    // unambiguously selects the right one. Returns 0 if the point is
+    // outside every region (caller should treat as "no terrain here").
+    for (const auto& r : sRegions)
     {
-        // Triangle A: vertices at (0,0)=y00, (1,1)=y11, (1,0)=y10
-        // Barycentric: A=(1-tx), B=tz, C=(tx-tz). Sums to 1.
-        return (1.0f - tx) * y00 + tz * y11 + (tx - tz) * y10;
+        float y = 0.0f;
+        if (sampleRegion(r, world_x, world_z, &y))
+            return y;
     }
-    // Triangle B: vertices at (0,0)=y00, (0,1)=y01, (1,1)=y11
-    // Barycentric: A=(1-tz), B=(tz-tx), C=tx. Sums to 1.
-    return (1.0f - tz) * y00 + (tz - tx) * y01 + tx * y11;
+    return 0.0f;
 }
 
 glm::vec2 playerSpawnXZ()

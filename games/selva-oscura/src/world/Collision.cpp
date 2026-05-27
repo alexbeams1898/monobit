@@ -190,6 +190,16 @@ void populateHubTrees(std::vector<CylinderCollider>& out)
             const float z = std::sin(a) * r + scatter_origin_z;
             if (inWalkwayCorridor(x, z) || onPlateau(x, z) || inClearViewStrip(z))
                 continue;
+            // Trees scatter ONLY on the selva_inner terrain region.
+            // Other regions (Limbo, future Inferno layers) are
+            // underground and don't have foliage per the doctrine in
+            // [[project_acheron_river_lore]] — Limbo's "fresh green
+            // grass" canon is gone with Limbo's dysfunction; deeper
+            // circles never had foliage. Skip if this XZ isn't inside
+            // selva_inner.
+            const auto* region = terrainRegionAt(x, z);
+            if (region == nullptr || region->name != "selva_inner")
+                continue;
             // Keep breathing room around spawn so the wake-zone reads
             // as "found yourself in a wood" without a tree on top of
             // the player.

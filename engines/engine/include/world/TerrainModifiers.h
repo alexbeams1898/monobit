@@ -88,6 +88,12 @@ struct TerrainModifier
     // Static-storage string literal for the F1 modifier overlay.
     // nullptr = no label drawn.
     const char* debug_name = nullptr;
+    // Static-storage region name (matches TerrainRegion::name). Modifier
+    // only applies when the mesh builder queries this region. nullptr =
+    // no region filter, modifier applies to whichever region's XZ AABB
+    // contains the query (today's behavior — backward compatible with
+    // existing callers that register modifiers without a region tag).
+    const char* region_name = nullptr;
 };
 
 // Register a modifier. Called by world-setup code (e.g. chapel
@@ -104,14 +110,24 @@ const TerrainModifier& terrainModifierAt(int idx);
 // (from the heightmap) at world XZ, returns the modified Y after
 // applying all registered modifiers with their blend pads.
 //
+// `region_name` is the calling region's name (matches
+// TerrainRegion::name). Modifiers whose region_name is set apply
+// only when their region matches; modifiers with region_name=nullptr
+// apply to any region. Pass nullptr to opt out of filtering (skips
+// the check; all modifiers eligible) — matches pre-multi-region
+// behavior for callers that don't care.
+//
 // If no modifier covers (x, z), returns base_y unchanged.
-float applyTerrainModifiers(float world_x, float world_z, float base_y);
+float applyTerrainModifiers(const char* region_name,
+                            float world_x, float world_z, float base_y);
 
 // Per-quad query used by the terrain mesh builder. Returns true if
 // the XZ point falls inside any registered Hole-mode modifier's
-// rect. Mesh builder skips quads whose centroid returns true here
-// — those triangles never enter the render or physics mesh.
-bool insideTerrainHole(float world_x, float world_z);
+// rect AND that modifier matches the given region (per same rules
+// as applyTerrainModifiers). Mesh builder skips quads whose centroid
+// returns true here — those triangles never enter the render or
+// physics mesh.
+bool insideTerrainHole(const char* region_name, float world_x, float world_z);
 
 // Diagnostic: dump per-modifier weight + contribution at this XZ to
 // stderr. Use sparingly (one-shot probes only, never per-vertex).

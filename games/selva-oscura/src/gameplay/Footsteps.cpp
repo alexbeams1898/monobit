@@ -216,6 +216,18 @@ void tickOneFoot(Actor::FootContact& fc, Actor& actor, const char* joint_name, f
                 if (hit.hit)
                     surface = hit.tag;
             }
+            // Footstep bank selection. Architecture (chapel walls,
+            // descent stairs) gets the concrete bank; terrain looks up
+            // the region at the foot's XZ and uses that region's
+            // configured footstep bank (selva_inner → grass, limbo →
+            // limbo ground, etc.). Unknown / Foliage / Actor fall back
+            // to the Selva surface default.
+            std::string region_sfx;
+            if (surface == engine::physics::SurfaceTag::Terrain)
+            {
+                if (const auto* region = selva::world::terrainRegionAt(foot_world.x, foot_world.z))
+                    region_sfx = region->footstep_sound_id;
+            }
             const char* sfx_name = "footstep_grass";
             switch (surface)
             {
@@ -223,6 +235,8 @@ void tickOneFoot(Actor::FootContact& fc, Actor& actor, const char* joint_name, f
                 sfx_name = "footstep_concrete";
                 break;
             case engine::physics::SurfaceTag::Terrain:
+                sfx_name = region_sfx.empty() ? "footstep_grass" : region_sfx.c_str();
+                break;
             case engine::physics::SurfaceTag::Foliage:
             case engine::physics::SurfaceTag::Unknown:
             case engine::physics::SurfaceTag::Actor:

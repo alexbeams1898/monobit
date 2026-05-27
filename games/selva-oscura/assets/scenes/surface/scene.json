@@ -13,12 +13,6 @@
       "world_origin": [0.0, 22.0, -210.0],
       "surface_tag": "Architecture",
       "debug_name": "chapel"
-    },
-    {
-      "path": "assets/world/static_meshes/limbo.glb",
-      "world_origin": [0.0, 0.0, 0.0],
-      "surface_tag": "Architecture",
-      "debug_name": "limbo"
     }
   ],
   "_terrain_modifiers_note": "Chapel plateau + stair shaft hole modifiers are STILL registered via crypt_layout::registerChapelTerrainModifiers() in main.cpp BEFORE initTerrain(), because terrain is a global singleton today. When terrain becomes scene-local, modifier declarations move into this JSON.",

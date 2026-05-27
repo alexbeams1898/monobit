@@ -28,7 +28,28 @@ struct TerrainRegion
     float world_extent = 0.0f;
     float height_min = 0.0f;
     float height_max = 0.0f;
+    // World-space Y offset added to every sampled height. Lets a
+    // region's PNG encode heights in any range (typically near 0) and
+    // be placed anywhere in world Y by setting this offset. Selva
+    // surface uses 0 (heightmap encodes its world Y directly);
+    // underground layers (Limbo, etc.) use large negative offsets so
+    // the same PNG-encoding can place their terrain dozens of meters
+    // underground without losing PNG precision.
+    float y_offset = 0.0f;
     float base_color[3] = {0.16f, 0.13f, 0.10f};
+    // Two-tone palette for the terrain shader: `tone_dark` is read on
+    // flat / shaded ground; `tone_light` on slopes / exposed faces.
+    // The shader mixes between them by computed dryness. Defaults
+    // match the Selva surface "unstained wood floor" palette;
+    // underground regions override in config.json with their own
+    // colors (Limbo: near-black stone; deeper circles: per Dante's
+    // descriptions).
+    float tone_dark[3] = {0.08f, 0.07f, 0.06f};
+    float tone_light[3] = {0.20f, 0.13f, 0.09f};
+    // Footstep SFX bank to play when an actor's foot lands on this
+    // region. Names match audio.json sound IDs. Default is the Selva
+    // surface bank; underground regions override.
+    std::string footstep_sound_id = "footstep_grass";
     // Mesh-vertex Y values, mirroring the GPU mesh. Used by sampleHeight
     // so the gameplay ground always matches the rendered surface.
     std::vector<float> mesh_y; // mesh_y[iz * verts_per_side + ix]
@@ -45,6 +66,13 @@ void shutdownTerrain();
 
 int terrainRegionCount();
 const TerrainRegion& terrainRegion(int idx);
+
+// Find the terrain region whose XZ AABB contains (world_x, world_z).
+// Returns nullptr if no region matches (the XZ is outside all loaded
+// regions). Iterates regions in registration order — same priority as
+// sampleHeight. Use this to filter foliage / spawn / region-specific
+// gameplay rules.
+const TerrainRegion* terrainRegionAt(float world_x, float world_z);
 
 // Sample world Y at the given world (x, z). Bilinear interpolation
 // across the heightmap. Returns 0 if (x, z) falls outside any

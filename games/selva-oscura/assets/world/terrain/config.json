@@ -14,6 +14,20 @@
       "height_range_max": 38.0,
       "subdivide": 384,
       "base_color": [0.16, 0.13, 0.10]
+    },
+    "limbo": {
+      "_comment": "Limbo, the First Circle of Hell. Flat heightmap (encodes 0..1, dominated by 0). y_offset places the top surface at world Y = -43.13. Acheron + larvae piles + future features come from runtime TerrainModifiers tagged with region_name='limbo'. Palette per Inferno IV: Limbo is a dim featureless plain — Dante notes light from the Noble Castle but ground is unremarkable. With the 'Limbo non-functional' lore the meadow has gone fallow; barren ash-grey stone instead of the canonical 'fresh green grass'.",
+      "heightmap": "assets/world/terrain/limbo.png",
+      "world_origin": [0.0, -431.15],
+      "world_extent": 160.0,
+      "height_range_min": 0.0,
+      "height_range_max": 1.0,
+      "y_offset": -43.13,
+      "subdivide": 160,
+      "base_color": [0.03, 0.03, 0.03],
+      "tone_dark": [0.02, 0.02, 0.022],
+      "tone_light": [0.06, 0.06, 0.065],
+      "footstep_sound_id": "footstep_limbo"
     }
   }
 }

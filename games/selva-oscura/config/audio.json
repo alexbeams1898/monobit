@@ -66,6 +66,21 @@
         "assets/audio/footstep_walk_hallway_8.ogg"
       ]
     },
+    "footstep_limbo": {
+      "_comment": "Limbo (First Circle) ground. Dim ash-grey stone — see config/terrain/config.json limbo entry. Chopped from walking_on_limbo_ground.mp3 via chop_footsteps.py, normalized to -1 dBFS.",
+      "path": "assets/audio/footstep_walk_limbo_1.ogg",
+      "volume": 0.65,
+      "variations": [
+        "assets/audio/footstep_walk_limbo_1.ogg",
+        "assets/audio/footstep_walk_limbo_2.ogg",
+        "assets/audio/footstep_walk_limbo_3.ogg",
+        "assets/audio/footstep_walk_limbo_4.ogg",
+        "assets/audio/footstep_walk_limbo_5.ogg",
+        "assets/audio/footstep_walk_limbo_6.ogg",
+        "assets/audio/footstep_walk_limbo_7.ogg",
+        "assets/audio/footstep_walk_limbo_8.ogg"
+      ]
+    },
     "whoosh_jab": {
       "path": "assets/audio/whoosh_jab.mp3",
       "volume": 0.7

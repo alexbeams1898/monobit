@@ -40,6 +40,14 @@ import zlib
 from pathlib import Path
 
 
+# Registry of all terrain regions for Selva Oscura. Add a new entry here
+# to bake a new region (run with --region NAME or bake all). Each
+# region's keys correspond 1:1 with what gen_terrain_heightmap.py needs
+# to generate a heightmap PNG; the actual placement in world space is
+# stored in the engine's terrain config and read at runtime.
+REGIONS = {}
+
+
 SELVA_INNER = {
     "name": "selva_inner",
     "resolution": 512,
@@ -102,6 +110,35 @@ SELVA_INNER = {
     "colle_lateral_half_width": 15.0,
     "colle_lateral_falloff": 60.0,
 }
+REGIONS["selva_inner"] = SELVA_INNER
+
+
+# Limbo (First Circle of Hell). The widest layer below the surface,
+# placed in world Y via the runtime TerrainRegion::y_offset. Heightmap
+# is flat (0 everywhere); Acheron + larvae piles + future features all
+# come from runtime TerrainModifiers in the engine. Per the Inferno-
+# vertical-stack doctrine each layer gets its own region.
+LIMBO = {
+    "name": "limbo",
+    "kind": "flat",
+    "resolution": 256,
+    "world_extent": 160.0,        # 0.625m per pixel — finer than selva (1m/px)
+                                  # because Limbo is smaller; player encounters
+                                  # any per-quad detail at closer range.
+    # Match the static-mesh limbo's XZ footprint: near edge meets
+    # descent stair at Z=-353.15, extending 160m in -Z direction.
+    # Heightmap center = (near_edge - half_extent) along Z.
+    "world_origin_x": 0.0,
+    "world_origin_z": (-353.15 + 2.0) - 80.0,  # = -431.15 (matches gen_limbo.py)
+    # Heightmap encodes a tiny range near 0; y_offset on the
+    # TerrainRegion (in config.json) places it at the right world Y.
+    "height_min": 0.0,
+    "height_max": 1.0,
+    "subdivide": 160,             # ~1m per quad — comfortably fine for
+                                  # Acheron's 20m width + future banks.
+    "base_color": [0.05, 0.04, 0.04],
+}
+REGIONS["limbo"] = LIMBO
 
 
 def smoothstep(edge0, edge1, x):
@@ -189,7 +226,22 @@ def wake_zone_floor(x, z, r):
 
 
 def world_height(x, z, r):
-    """Compute world-space Y for a given (x, z) under region rules."""
+    """Compute world-space Y for a given (x, z) under region rules.
+
+    Branches on the region's `kind`:
+      - "selva_surface" — colle + wake-zone basin + noise (current
+        selva_inner generator).
+      - "flat" — featureless plateau at 0 (used for underground layers
+        like Limbo where the entire shape comes from runtime terrain
+        modifiers; y_offset on the TerrainRegion places the layer in
+        world Y).
+    """
+    kind = r.get("kind", "selva_surface")
+
+    if kind == "flat":
+        return 0.0
+
+    # Default: selva_surface generator.
     # Wake-zone basin / surround berm: the floor away from the colle.
     floor = wake_zone_floor(x, z, r)
 
@@ -281,9 +333,26 @@ def main():
             os.path.dirname(os.path.abspath(__file__)), "..", "assets", "world", "terrain"
         ),
     )
+    parser.add_argument(
+        "--region",
+        default=None,
+        help="Region name to bake (one of: " + ", ".join(sorted(REGIONS.keys())) + "). "
+             "If omitted, bakes all registered regions.",
+    )
     args = parser.parse_args()
     out_dir = os.path.abspath(args.out_dir)
-    generate_region(SELVA_INNER, os.path.join(out_dir, "selva_inner.png"))
+
+    if args.region is None:
+        targets = list(REGIONS.values())
+    else:
+        if args.region not in REGIONS:
+            parser.error(f"Unknown region '{args.region}'. Available: "
+                         + ", ".join(sorted(REGIONS.keys())))
+        targets = [REGIONS[args.region]]
+
+    for region in targets:
+        out_path = os.path.join(out_dir, f"{region['name']}.png")
+        generate_region(region, out_path)
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 
 namespace engine::world
 {
@@ -164,15 +165,34 @@ void debugDumpModifierStack(float world_x, float world_z, float base_y, const ch
     std::fprintf(stderr, "  FINAL: y=%.2f\n", y);
 }
 
-float applyTerrainModifiers(float world_x, float world_z, float base_y)
+namespace
+{
+// True if the modifier applies to the given region. Modifiers with
+// region_name=nullptr apply to any region (today's behavior); modifiers
+// with a non-null region only apply to that named region. Caller
+// passing region_name=nullptr means "skip the filter, all modifiers
+// eligible" — used by legacy code paths that don't yet pass a region.
+bool modifierMatchesRegion(const TerrainModifier& m, const char* query_region)
+{
+    if (query_region == nullptr) return true;       // caller opted out of filtering
+    if (m.region_name == nullptr) return true;      // modifier applies to any region
+    return std::strcmp(m.region_name, query_region) == 0;
+}
+} // namespace
+
+float applyTerrainModifiers(const char* region_name,
+                            float world_x, float world_z, float base_y)
 {
     float y = base_y;
     // Stack modifiers in registration order. Each modifier's target Y
     // is computed (FlushAt → value; DepressTo → value; AddDelta →
     // current + value) and blended with the current Y by the
-    // modifier's weight at this point.
+    // modifier's weight at this point. Skip modifiers whose region
+    // doesn't match the caller's region (when filtering is active).
     for (const auto& m : sModifiers)
     {
+        if (!modifierMatchesRegion(m, region_name))
+            continue;
         const float w = modifierWeight(m, world_x, world_z);
         if (w <= 0.0f)
             continue;
@@ -214,11 +234,13 @@ float applyTerrainModifiers(float world_x, float world_z, float base_y)
     return y;
 }
 
-bool insideTerrainHole(float world_x, float world_z)
+bool insideTerrainHole(const char* region_name, float world_x, float world_z)
 {
     for (const auto& m : sModifiers)
     {
         if (m.mode != TerrainModifier::Mode::Hole)
+            continue;
+        if (!modifierMatchesRegion(m, region_name))
             continue;
         if (rectSignedDistance(m, world_x, world_z) <= 0.0f)
             return true;
