@@ -55,7 +55,7 @@ constexpr float kUpperFlightTopChapelLocalY = 0.0f;                    // chapel
 constexpr float kUpperFlightDrop = kUpperFlightStepCount * kStairRise; // 1.44m
 constexpr float kUpperFlightRun = kUpperFlightStepCount * kStairTread; // 3.15m
 
-// Continuous descent (from bottom of upper flight to Acheron). Must
+// Continuous descent (from bottom of upper flight to Limbo). Must
 // match CONTINUOUS_DESCENT_STEP_COUNT in gen_crypt_foundation.py —
 // the .glb has this many descent_step_NNNN nodes. Total descent
 // footprint length = (upper flight + continuous descent) × tread.
@@ -85,8 +85,11 @@ constexpr float kCorridorSegmentRun = 12.0f;   // horizontal per ramp
 constexpr float kCorridorSegmentDrop = 14.5f;  // vertical per ramp
 constexpr float kCorridorLandingLength = 2.0f; // flat landing between ramps
 
-// Acheron stub at the bottom.
-constexpr float kAcheronPlatformHalfExtent = 12.0f;
+// Limbo platform at the bottom of the descent. The first circle of
+// Hell per Inferno cosmology — the widest, populated by virtuous
+// pagans. Acheron is the river that runs through Limbo (added as a
+// feature later).
+constexpr float kLimboPlatformHalfExtent = 12.0f;
 
 // Chapel's ground Y as a fixed design constant. Decoupled from the
 // terrain heightmap on purpose: prior versions sampled terrain at an
@@ -97,15 +100,22 @@ constexpr float kAcheronPlatformHalfExtent = 12.0f;
 // the chapel sits at a stable, designer-controlled height regardless
 // of any terrain mesh changes.
 //
-// Value chosen so the plinth (zoccolo) BOTTOM sits exactly on the
-// surrounding plateau terrain (runtime measurement: groundHeight
-// just outside chapel reads ~31.96m; model origin Y = kChapelGroundY
-// - kPlinthHeight + kZFightOffset = 31.96m means plinth bottom flush
-// with ground and the full 0.30m plinth reveals above as an
-// authentic Italian Romanesque zoccolo). If the plateau height
-// changes in terrain config, update this constant to match — the
-// chapel does NOT chase terrain.
-constexpr float kChapelGroundY = 32.25f;
+// Chapel ground Y — chosen so the chapel sits visibly above the
+// surrounding colle plateau on its foundation skirt. The skirt
+// primitive (build_foundation_skirt in gen_crypt_foundation.py)
+// extends from chapel-floor-Y down to ~Y=-3, bridging any terrain
+// height around the chapel. Terrain stays at its natural
+// heightmap-Y and meets the skirt's vertical face — no plateau
+// modifier required.
+//
+// To lower the entire chapel/descent/limbo stack: change this
+// constant AND scene.json's chapel world_origin.y (matched value)
+// AND gen_limbo.py's PLATFORM_CENTER_Y (matched delta). All three
+// must move together — the descent stairs are baked at
+// chapel-local-Y inside crypt.glb so they ride along automatically
+// via world_origin, but Limbo is its own asset with its own
+// world-space position.
+constexpr float kChapelGroundY = 22.3f;
 
 // World-space translation applied to chapel mesh local coords. Source
 // of truth shared by:
@@ -145,7 +155,7 @@ inline glm::vec3 chapelWorldOrigin()
 //    walk on). This makes the `descent_ceiling` mesh unnecessary
 //    for occlusion; it can stay as visible-interior detail.
 //
-// The descent corridor + acheron are far underground (y down to
+// The descent corridor + limbo are far underground (y down to
 // ~-30). Terrain doesn't need to depress that low because the
 // chapel mesh (stair shaft enclosure + descent walls + ceiling)
 // already seals the tunnel from terrain above.

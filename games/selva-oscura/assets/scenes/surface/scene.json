@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "scene_id": "surface",
-  "debug_name": "Selva surface + chapel + descent + acheron (all layers as one continuous world)",
-  "_comment": "Per Inferno-vertical-stack doctrine: one scene per vertical-slice region. The chapel + descent corridor + acheron platform are all in this scene as continuous geometry. The player walks from selva surface, into the chapel, down the descent, into acheron — no scene transitions, no fades, no loading.",
+  "debug_name": "Selva surface + chapel + descent + Limbo (all layers as one continuous world)",
+  "_comment": "Per Inferno-vertical-stack doctrine: one scene per vertical-slice region. The chapel + descent corridor + Limbo platform are all in this scene as continuous geometry. The player walks from selva surface, into the chapel, down the descent, into Limbo — no scene transitions, no fades, no loading.",
   "terrain": {
     "config": "assets/world/terrain/config.json",
     "region": "selva_inner"
@@ -10,9 +10,15 @@
   "static_meshes": [
     {
       "path": "assets/world/static_meshes/crypt.glb",
-      "world_origin": [0.0, 31.96, -210.0],
+      "world_origin": [0.0, 22.0, -210.0],
       "surface_tag": "Architecture",
       "debug_name": "chapel"
+    },
+    {
+      "path": "assets/world/static_meshes/limbo.glb",
+      "world_origin": [0.0, 0.0, 0.0],
+      "surface_tag": "Architecture",
+      "debug_name": "limbo"
     }
   ],
   "_terrain_modifiers_note": "Chapel plateau + stair shaft hole modifiers are STILL registered via crypt_layout::registerChapelTerrainModifiers() in main.cpp BEFORE initTerrain(), because terrain is a global singleton today. When terrain becomes scene-local, modifier declarations move into this JSON.",

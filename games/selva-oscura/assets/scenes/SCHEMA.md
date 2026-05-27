@@ -192,15 +192,15 @@ level (set via a top-level scene registry config); that scene's
       "debug_name": "chapel_door_out"
     },
     {
-      "id": "acheron_descent",
+      "id": "limbo_descent",
       "center": [0.0, -30.0, 140.0],
       "half_extents": [2.0, 1.0, 1.0],
-      "target_scene": "acheron",
+      "target_scene": "limbo",
       "target_spawn_pos": [0.0, 0.0, 5.0],
       "target_yaw": 3.14159,
       "transition_mode": "Fade",
       "fade_duration_seconds": 0.6,
-      "debug_name": "acheron_arrival"
+      "debug_name": "limbo_arrival"
     }
   ],
   "ambient": { "color": [0.06, 0.05, 0.04] },
@@ -214,7 +214,7 @@ level (set via a top-level scene registry config); that scene's
 ```json
 {
   "schema_version": 1,
-  "scenes": ["surface", "chapel_interior", "acheron"],
+  "scenes": ["surface", "chapel_interior", "limbo"],
   "default_spawn_scene": "surface"
 }
 ```

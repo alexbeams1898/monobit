@@ -24,8 +24,7 @@ namespace selva::world
 // Scene-local terrain (heightmap) is handled by the SurfaceScene
 // instance because the existing engine terrain module is a global
 // singleton today. Once a second terrain-bearing scene appears we'll
-// pull that into a scene-local state too. The chapel_interior and
-// acheron scenes don't have terrain, so this isn't blocking.
+// pull that into a scene-local state too.
 class JsonScene : public engine::world::AsyncCapableScene
 {
   public:

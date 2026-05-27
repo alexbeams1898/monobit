@@ -74,22 +74,33 @@ void registerChapelTerrainModifiers()
     using engine::world::StructureFootprint;
     using engine::world::TerrainModifier;
 
-    // Doctrine: terrain shows OUTSIDE the chapel mesh, HIDES inside it.
-    // "Inside" is automatically the XZ AABB of the loaded chapel mesh
-    // — no hand-set coordinates. Chapel widens, lengthens, sprouts a
-    // new wing, footprint follows automatically.
+    // Doctrine [[feedback_structures_own_terrain_seam]]: chapel OWNS
+    // its ground via three coordinated pieces:
+    //   1) FlushAt modifier — terrain depresses to plinth-BOTTOM Y
+    //      inside an exterior plateau footprint around the chapel,
+    //      with a soft blend pad on the lateral / back sides so
+    //      natural terrain ramps smoothly into the plateau.
+    //   2) StructureFootprint Hole inside the chapel body — terrain
+    //      doesn't render or collide inside (chapel floor mesh IS
+    //      the floor).
+    //   3) Foundation skirt primitive (build_foundation_skirt in
+    //      gen_crypt_foundation.py) — vertical stone wall from plinth
+    //      bottom down to deep below any plausible terrain, absorbing
+    //      any boundary drift during the blend pad transition.
     //
-    // Two modifiers:
-    //   1) FlushAt outside the chapel so terrain meets plinth bottom.
-    //   2) StructureFootprint covering the chapel mesh AABB — Hole
-    //      drops physics terrain, shader discard hides visual terrain.
+    // The plateau flushes to (chapel-floor-Y - plinth-height) so the
+    // visible plinth's bottom face sits exactly on terrain. The skirt
+    // sits inside the plateau (its top is at plinth-bottom + zfs,
+    // buried in the plinth) and only becomes visible where the blend
+    // pad ramps terrain back down to natural Y — the skirt fills any
+    // visible gap in that transition zone.
 
     // 1) Exterior plateau: terrain meets plinth bottom around the
-    //    chapel. Extended forward by the threshold-ramp length so
-    //    terrain covers under the ramp (otherwise the ramp's bottom
+    //    chapel. Extended forward by the door-threshold ramp length
+    //    so terrain covers under the ramp (otherwise the ramp's bottom
     //    face is exposed as a void in front of the door). Soft 2m
     //    blend on -X/+X/-Z, SHARP +Z edge at the threshold OUTER face.
-    constexpr float kDoorThresholdRamp = 0.50f; // matches threshold_run in build_door_threshold
+    constexpr float kDoorThresholdRamp = 0.50f;
     {
         TerrainModifier m;
         const float front_edge = kCryptZ + kHalfLength + kDoorThresholdRamp;
@@ -97,9 +108,9 @@ void registerChapelTerrainModifiers()
         m.center_xz = {kCryptX, (front_edge + back_edge) * 0.5f};
         m.half_extents_xz = {kHalfWidth, (front_edge - back_edge) * 0.5f};
         m.mode = TerrainModifier::Mode::FlushAt;
-        m.value = kChapelGroundY;
+        m.value = kChapelGroundY - kPlinthHeight; // plinth-bottom Y; plinth shows above
         m.blend_pad = 2.0f;
-        m.blend_pad_pos_z = 0.0f;
+        m.blend_pad_pos_z = 0.0f; // sharp +Z edge at threshold outer face
         m.debug_name = "chapel_exterior_plateau";
         engine::world::registerTerrainModifier(m);
     }

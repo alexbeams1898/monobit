@@ -87,13 +87,20 @@ SELVA_INNER = {
     # Back-side descent (mirror of approach):
     "ramp_from_colle_z": -310.0,  # steep descent ends
     "ramp_to_valley_z": -340.0,   # gentle ramp ends, wood floor resumes
-    "approach_rise": 5.0,         # was 2.0; gentler-into-steeper-feel
-    "plateau_height": 35.0,       # was 9.0; THE big change (~4x relief)
-
-    # Lateral falloff: the colle is a ridge along X=0; far X taper
-    # back into wood-floor terrain.
-    "colle_lateral_half_width": 35.0,  # was 25.0; plateau is wider too
-    "colle_lateral_falloff": 18.0,     # was 12.0; gentler shoulders
+    "approach_rise": 5.0,         # gentler-into-steeper-feel
+    # Plateau height — delta ABOVE wake_zone_y (-3), not absolute Y.
+    # Plateau world Y = wake_zone_y + plateau_height = -3 + 25 = 22.
+    # Chapel ground at world Y=22.5 sits ~50cm above this, so the
+    # foundation skirt is barely visible — chapel reads as built ON
+    # the hilltop with a low stone base.
+    "plateau_height": 25.0,
+    # Lateral falloff: the colle is a ridge along X=0; far X taper back
+    # into wood-floor terrain. Falloff widened (was 18) so the lateral
+    # sides feel like hill slopes, not cliffs. Half-width narrowed (was
+    # 35) so the gentle slope starts sooner — the plateau is a modest
+    # ridgetop rather than a wide flat mesa.
+    "colle_lateral_half_width": 15.0,
+    "colle_lateral_falloff": 60.0,
 }
 
 

@@ -10,10 +10,9 @@ namespace selva::world
 // terrain/static-mesh/physics state lives in global singletons that
 // are initialized at boot.
 //
-// Future scenes that don't need terrain (chapel_interior, acheron)
-// use JsonScene + scene.json instead. Once the singletons (terrain,
-// chapel mesh) are refactored to scene-local state, SurfaceScene
-// becomes a JsonScene too.
+// Future scenes that don't need terrain use JsonScene + scene.json
+// instead. Once the singletons (terrain, chapel mesh) are refactored
+// to scene-local state, SurfaceScene becomes a JsonScene too.
 //
 // onActivate: register the existing terrain + chapel + trees as
 // Jolt static bodies (via the legacy initPhysicsScene path) and
