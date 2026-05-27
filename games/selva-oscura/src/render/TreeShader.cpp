@@ -96,7 +96,12 @@ void main()
     // shading technique.
     const vec3 canopyN = vec3(0.0, 1.0, 0.0);
     float halfL = dot(canopyN, uSunDir) * 0.5 + 0.5;
-    vec3 ambient = vec3(0.15, 0.18, 0.24);
+    // Hemispheric ambient. With canopyN = up, this degenerates to
+    // skyAmbient — canopy receives sky light directly.
+    float skyFactor = dot(canopyN, vec3(0.0, 1.0, 0.0)) * 0.5 + 0.5;
+    vec3 skyAmbient    = vec3(0.18, 0.22, 0.28);
+    vec3 groundAmbient = vec3(0.08, 0.06, 0.05);
+    vec3 ambient = mix(groundAmbient, skyAmbient, skyFactor);
     vec3 sunTint = vec3(1.05, 0.78, 0.55);
     float shadow = sampleSunShadow(vWorldPos, canopyN);
     vec3 surface = base.rgb * (ambient + sunTint * halfL * shadow);

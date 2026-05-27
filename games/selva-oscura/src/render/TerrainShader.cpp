@@ -144,10 +144,13 @@ void main()
     float dryness = clamp(slope * 0.7 + (n - 0.5) * 0.6 + 0.15, 0.0, 1.0);
     vec3 dirt = mix(uDarkLoam, uDryDirt, dryness);
 
-    // Sun lighting (half-Lambert + ambient + sun tint), attenuated
-    // by the directional-light shadow map sample.
+    // Sun lighting (half-Lambert + hemispheric ambient + sun tint),
+    // attenuated by the directional-light shadow map sample.
     float halfL = dot(vNormal, uSunDir) * 0.5 + 0.5;
-    vec3 ambient = vec3(0.15, 0.18, 0.24);
+    float skyFactor = dot(vNormal, vec3(0.0, 1.0, 0.0)) * 0.5 + 0.5;
+    vec3 skyAmbient    = vec3(0.18, 0.22, 0.28);
+    vec3 groundAmbient = vec3(0.08, 0.06, 0.05);
+    vec3 ambient = mix(groundAmbient, skyAmbient, skyFactor);
     vec3 sunTint = vec3(1.05, 0.78, 0.55);
     float shadow = sampleSunShadow(vWorldPos, vNormal);
     vec3 surface = dirt * (ambient + sunTint * halfL * shadow);

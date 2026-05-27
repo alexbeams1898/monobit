@@ -91,7 +91,6 @@ games/selva-oscura/
 │   └── (build output: skeleton.ozz, X_Bot.glb, *.ozz clips)
 ├── docs/
 │   ├── ARCHITECTURE.md           this doc
-│   ├── BACKLOG.md                deferred items
 │   ├── design/                   game-design canon (story, classes, etc.)
 │   └── reference/                Dante source texts
 ├── tests/                        Catch2 unit tests

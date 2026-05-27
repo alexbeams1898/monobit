@@ -37,35 +37,32 @@ const float kPcfTexelStep = 1.0 / 4096.0;
 // ~1.5 texels of separation.
 const float kNormalOffset = 0.06; // world meters
 
-// Distance-based shadow fade. Shadow contribution lerps to fully-lit
-// over [kFadeStart, kFadeEnd] meters from the player. This absorbs
-// the visible artifact of "box edge passes over distant tree -
-// suddenly that tree starts casting shadow" - the affected region
-// is already in the fade band so the shadow contribution there is
-// near-zero and the pop-in is imperceptible.
-//
-// The fade has to be coordinated with kOrthoHalfXY in ShadowPass.cpp:
-// kFadeEnd should be < kOrthoHalfXY so the fade completes inside the
-// box. At kOrthoHalfXY=80m, kFadeEnd=70m gives a 10m buffer.
-const float kShadowFadeStart = 50.0;
-const float kShadowFadeEnd = 70.0;
+// uShadowCameraPos retained for future use (distance-based filter
+// sizing, e.g. larger PCF kernel at distance). Currently unused —
+// the previous distance-based shadow fade was removed because it
+// treated "distant from player" as a proxy for "doesn't need shadow,"
+// which broke for descent-corridor geometry 100m past the player
+// that IS sun-occluded. Real-lighting doctrine: shadow coverage is
+// determined by sun line-of-sight to the fragment, not heuristics.
+// See [[feedback_real_lighting_doctrine]].
 uniform vec3 uShadowCameraPos;
 
 float sampleSunShadow(vec3 worldPos, vec3 worldNormal)
 {
-    // Distance-based fade. Skip the actual shadow sample entirely if
-    // we're outside the fade-end distance - cheaper AND avoids any
-    // edge artifacts on geometry the shadow box happens to clip.
-    float distFromCam = length(worldPos - uShadowCameraPos);
-    if (distFromCam >= kShadowFadeEnd)
-        return 1.0;
-
     vec3 N = normalize(worldNormal);
     vec3 shadowSamplePos = worldPos + N * kNormalOffset;
 
     vec4 lp = uLightViewProj * vec4(shadowSamplePos, 1.0);
     vec3 ndc = lp.xyz / lp.w;
     vec3 sc = ndc * 0.5 + 0.5;
+    // Fragment outside the shadow map's coverage: we don't have
+    // ground-truth occlusion data for it. Returning 1.0 (fully lit)
+    // is the wrong answer for indoor/underground fragments past the
+    // 80m ortho extent (those are sun-occluded), but the correct
+    // answer for distant outdoor terrain. The general fix is wider
+    // coverage (cascaded shadow maps) — until that lands, this is
+    // the bounded-coverage limit. Document so the next person knows
+    // it's a coverage gap, not a doctrine violation.
     if (sc.x < 0.0 || sc.x > 1.0 || sc.y < 0.0 || sc.y > 1.0 || sc.z > 1.0)
         return 1.0;
 
@@ -82,13 +79,7 @@ float sampleSunShadow(vec3 worldPos, vec3 worldNormal)
             accum += texture(uShadowMap, vec3(sc.xy + off, sc.z));
         }
     }
-    float shadow = accum * (1.0 / 9.0);
-
-    // Lerp toward 1.0 (fully lit) across the fade band so the shadow
-    // smoothly disappears at distance rather than popping at the
-    // hard boundary.
-    float fade = smoothstep(kShadowFadeStart, kShadowFadeEnd, distFromCam);
-    return mix(shadow, 1.0, fade);
+    return accum * (1.0 / 9.0);
 }
 )glsl";
 

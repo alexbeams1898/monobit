@@ -78,9 +78,15 @@ void main()
     float halfL = dot(N, uSunDir) * 0.5 + 0.5;
     float g = clamp(vShade * uTint, 0.0, 1.0);
 
-    // Sun-attenuated through the atmosphere from above (simple: use
-    // the sun-aligned scattering color as the lit-surface tint).
-    vec3 ambient = vec3(0.15, 0.18, 0.24);
+    // Hemispheric ambient: dot(N, up)-driven blend between a sky
+    // tint and a ground bounce tint. Up-facing surfaces read sky,
+    // down-facing read ground, side-facing average. Restores per-
+    // face variation in shadowed regions where the sun term is zero.
+    vec3 N_up = vec3(0.0, 1.0, 0.0);
+    float skyFactor = dot(N, N_up) * 0.5 + 0.5;
+    vec3 skyAmbient    = vec3(0.18, 0.22, 0.28);  // overcast bluish overhead
+    vec3 groundAmbient = vec3(0.08, 0.06, 0.05);  // dim warm dirt bounce
+    vec3 ambient = mix(groundAmbient, skyAmbient, skyFactor);
     vec3 sunTint = vec3(1.05, 0.78, 0.55);
     float shadow = sampleSunShadow(vWorldPos, N);
     vec3 surface = uBaseColor * g * (ambient + sunTint * halfL * shadow);
