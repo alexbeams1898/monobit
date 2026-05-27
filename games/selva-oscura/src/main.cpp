@@ -228,6 +228,7 @@ int main(int /*argc*/, char* /*argv*/[])
     // together produce the final terrain Y; render mesh and physics
     // trimesh share that same Y.
     selva::world::crypt_layout::registerChapelTerrainModifiers();
+    selva::world::crypt_layout::registerLimboTerrainModifiers();
     engine.renderLoadingFrame("terrain mesh");
     selva::world::initTerrain();
     selva::world::initHubScene();

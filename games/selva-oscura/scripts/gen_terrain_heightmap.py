@@ -125,11 +125,14 @@ LIMBO = {
     "world_extent": 160.0,        # 0.625m per pixel — finer than selva (1m/px)
                                   # because Limbo is smaller; player encounters
                                   # any per-quad detail at closer range.
-    # Match the static-mesh limbo's XZ footprint: near edge meets
-    # descent stair at Z=-353.15, extending 160m in -Z direction.
-    # Heightmap center = (near_edge - half_extent) along Z.
+    # Limbo's XZ footprint: near edge meets descent stair at
+    # Z=-353.15, extending 160m in -Z direction. Heightmap center =
+    # (near_edge - half_extent) along Z. The 2m overlap pulls Limbo
+    # slightly under the stair's last steps so the stair-to-floor
+    # transition reads as the stair arriving onto the floor of Limbo
+    # rather than two surfaces butted together at a perfect seam.
     "world_origin_x": 0.0,
-    "world_origin_z": (-353.15 + 2.0) - 80.0,  # = -431.15 (matches gen_limbo.py)
+    "world_origin_z": (-353.15 + 2.0) - 80.0,  # = -431.15
     # Heightmap encodes a tiny range near 0; y_offset on the
     # TerrainRegion (in config.json) places it at the right world Y.
     "height_min": 0.0,

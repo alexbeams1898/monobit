@@ -3834,7 +3834,32 @@ void teleportPlayerTo(const glm::vec3& world_pos, bool override_yaw, float yaw)
                  "vel_xz=(%.3f,%.3f) vel_y=%.3f\n",
                  sPlayer.pos.x, sPlayer.pos.y, sPlayer.pos.z, pre_pyaw, pre_cyaw, pre_cpitch,
                  sPlayer.velocity_xz.x, sPlayer.velocity_xz.y, sPlayer.velocity_y);
-    sPlayer.pos = world_pos;
+
+    // Stuck-in-ground rescue: only fires when the player capsule is
+    // GEOMETRICALLY EMBEDDED in solid ground at the destination
+    // (sphere-overlap returns true at chest height). This catches
+    // saves whose XYZ is no longer valid because world geometry
+    // changed between save and load, NOT normal slope traversal or
+    // mid-air teleports. Preserves the player's saved Y in every
+    // other case.
+    glm::vec3 resolved = world_pos;
+    {
+        constexpr float kCapsuleRadius = 0.35f;       // matches createPlayerBody
+        constexpr float kChestOffsetY = 1.0f;         // ~chest above foot
+        const glm::vec3 probe(resolved.x, resolved.y + kChestOffsetY, resolved.z);
+        if (engine::physics::sphereOverlap(probe, kCapsuleRadius))
+        {
+            const float ground_y =
+                selva::world::groundHeight(resolved.x, resolved.z, resolved.y + 100.0f);
+            std::fprintf(stderr,
+                         "[teleport] STUCK: capsule overlaps geometry at XZY=(%.3f,%.3f,%.3f) — "
+                         "snapping up to ground Y=%.3f.\n",
+                         resolved.x, resolved.z, resolved.y, ground_y);
+            resolved.y = ground_y;
+        }
+    }
+
+    sPlayer.pos = resolved;
     if (override_yaw)
         sPlayer.yaw = yaw;
     sPlayer.velocity_xz = glm::vec2(0.0f);
@@ -3850,7 +3875,7 @@ void teleportPlayerTo(const glm::vec3& world_pos, bool override_yaw, float yaw)
     const auto body = selva::world::playerBody();
     if (body != engine::physics::kInvalidBody)
     {
-        engine::physics::teleportCharacter(body, world_pos);
+        engine::physics::teleportCharacter(body, resolved);
         std::fprintf(stderr, "[teleport] Jolt capsule moved\n");
     }
     else

@@ -322,6 +322,61 @@ order:
 3. `pre_render` — interpolation-dependent state (after ticks, before render)
 4. `render` — world + UI
 
+### Multi-region terrain
+
+Terrain is a multi-instance system. Each region has its own heightmap PNG,
+world position, material, lighting environment, and footstep bank. The
+game declares N regions in `terrain/config.json`; the engine builds one
+mesh per region, registers each as a Jolt static trimesh body, and
+applies modifiers at mesh-build time.
+
+**Why per-region (rather than one big heightmap):** different layers of a
+game's world have fundamentally different lighting + materials + sounds.
+Selva's surface is outdoor warm dirt under sunlight; its underground Limbo
+layer is dim grey stone in cavern darkness. Encoding both in one heightmap
+forces compromises (one global PNG, one global material, one footstep
+bank). Per-region keeps each layer authored independently.
+
+**Region anatomy** (`TerrainRegion` in `world/Terrain.h`):
+
+- **Footprint**: `world_origin: [x, z]` + `world_extent` (square XZ AABB).
+- **Heightmap**: PNG sampled into `height_range_min/max` Y range, plus
+  `y_offset` added at mesh-build time so the encoded range can be tiny
+  and the region placed anywhere in world Y.
+- **Material**: `base_color`, `tone_dark`, `tone_light` drive the
+  terrain shader's per-fragment palette.
+- **Lighting environment**: `sun_multiplier` (0 = no direct sun reaches),
+  `sky_ambient` + `ground_ambient` (hemispheric ambient blend).
+- **Footstep bank**: `footstep_sound_id` — name of an `audio.json` sound
+  played when an actor's foot lands on this region.
+
+**TerrainModifier registry is region-aware.** Modifiers have an optional
+`region_name` field. When the mesh builder asks "what's Y at this XZ
+vertex," it filters to modifiers matching the building region (or with
+no region tag → applies to any). Lets a feature like a river trench
+register once, only deforming its target region's mesh.
+
+**Per-body lookups, not per-XZ.** Foot raycasts return the body they
+hit, and each terrain body's `debug_name` is its region's name. The
+footstep-bank picker reads the hit body's name and looks up the
+region's `footstep_sound_id`. No XZ → region lookup, no "first region
+whose AABB contains XZ wins" heuristic (which fails when regions
+overlap, e.g. a smaller underground layer inside a larger surface
+heightmap). Every walkable surface owns its sound bank by being the
+specific body the foot hit. No default fallback sound — if a surface
+plays nothing, it's an unauthored bank (bug), not "fall back to grass."
+
+**Build-time tool**: `gen_terrain_heightmap.py --region NAME` bakes
+one region's PNG from a `REGIONS` dict. Each region's `kind` selects a
+generator function (`selva_surface` builds colle + wake-zone basin;
+`flat` builds an empty plain whose features come entirely from runtime
+modifiers).
+
+**Real-physics doctrine applies.** Terrain isn't a separate query
+system: ground Y comes from a Jolt downward raycast that sees every
+terrain body equally. Whichever region's mesh the ray hits at a given
+XZ is the ground.
+
 ---
 
 ## Code Organization

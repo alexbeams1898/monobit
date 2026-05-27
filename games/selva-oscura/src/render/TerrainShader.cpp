@@ -49,6 +49,15 @@ out vec4 fragColor;
 uniform vec3 uBaseColor;
 uniform vec3 uDarkLoam;
 uniform vec3 uDryDirt;
+// Per-region lighting environment (set by WorldRenderer's terrain
+// loop). uSunMultiplier scales direct-sun contribution to 0 for
+// underground regions where no sun reaches. uSkyAmbient + uGroundAmbient
+// drive the hemispheric ambient blend so each region's "above" and
+// "below" indirect light read appropriately (Selva surface: bluish sky
+// + warm dirt; Limbo: dim cavern).
+uniform float uSunMultiplier;
+uniform vec3 uSkyAmbient;
+uniform vec3 uGroundAmbient;
 uniform vec3 uSunDir;
 uniform vec3 uSunIntensity;
 uniform vec3 uCamPos;
@@ -148,10 +157,8 @@ void main()
     // attenuated by the directional-light shadow map sample.
     float halfL = dot(vNormal, uSunDir) * 0.5 + 0.5;
     float skyFactor = dot(vNormal, vec3(0.0, 1.0, 0.0)) * 0.5 + 0.5;
-    vec3 skyAmbient    = vec3(0.18, 0.22, 0.28);
-    vec3 groundAmbient = vec3(0.08, 0.06, 0.05);
-    vec3 ambient = mix(groundAmbient, skyAmbient, skyFactor);
-    vec3 sunTint = vec3(1.05, 0.78, 0.55);
+    vec3 ambient = mix(uGroundAmbient, uSkyAmbient, skyFactor);
+    vec3 sunTint = vec3(1.05, 0.78, 0.55) * uSunMultiplier;
     float shadow = sampleSunShadow(vWorldPos, vNormal);
     vec3 surface = dirt * (ambient + sunTint * halfL * shadow);
 
@@ -161,9 +168,16 @@ void main()
     vec3 transmittance;
     vec3 inScatter = atmosphereWithT(uCamPos, rayDir, uSunDir, uSunIntensity,
                                      dist, transmittance);
+    // Atmospheric in-scatter requires sun light to scatter; in regions
+    // with no sun reaching (underground) the in-scatter and the
+    // transmittance attenuation are both inappropriate. Gate both on
+    // the region's sun multiplier.
+    inScatter *= uSunMultiplier;
+    transmittance = mix(vec3(1.0), transmittance, uSunMultiplier);
 
     vec3 col = surface * transmittance + inScatter;
-    col = applyDistanceFog(col, rayDir, uSunDir, dist);
+    vec3 foggy = applyDistanceFog(col, rayDir, uSunDir, dist);
+    col = mix(col, foggy, uSunMultiplier);
     col = col * uExposure;
     col = col / (col + vec3(1.0));
     fragColor = vec4(col, 1.0);
@@ -189,6 +203,9 @@ GLint sUniApseDiscardCenterLoc = -1;
 GLint sUniApseDiscardRadiusLoc = -1;
 GLint sUniDescentDiscardCenterLoc = -1;
 GLint sUniDescentDiscardHalfExtentsLoc = -1;
+GLint sUniSunMultiplierLoc = -1;
+GLint sUniSkyAmbientLoc = -1;
+GLint sUniGroundAmbientLoc = -1;
 
 // Cached last-set discard values so the collider debug overlay can
 // draw exactly what the terrain shader is using right now.
@@ -226,6 +243,9 @@ bool initTerrainShader()
     sUniApseDiscardRadiusLoc = glGetUniformLocation(sProgram, "uApseDiscardRadius");
     sUniDescentDiscardCenterLoc = glGetUniformLocation(sProgram, "uDescentDiscardCenter");
     sUniDescentDiscardHalfExtentsLoc = glGetUniformLocation(sProgram, "uDescentDiscardHalfExtents");
+    sUniSunMultiplierLoc = glGetUniformLocation(sProgram, "uSunMultiplier");
+    sUniSkyAmbientLoc = glGetUniformLocation(sProgram, "uSkyAmbient");
+    sUniGroundAmbientLoc = glGetUniformLocation(sProgram, "uGroundAmbient");
     return true;
 }
 
@@ -271,6 +291,14 @@ void setTerrainTones(const glm::vec3& dark_loam, const glm::vec3& dry_dirt)
 {
     glUniform3f(sUniDarkLoamLoc, dark_loam.x, dark_loam.y, dark_loam.z);
     glUniform3f(sUniDryDirtLoc, dry_dirt.x, dry_dirt.y, dry_dirt.z);
+}
+
+void setTerrainLightingEnv(float sun_multiplier, const glm::vec3& sky_ambient,
+                            const glm::vec3& ground_ambient)
+{
+    glUniform1f(sUniSunMultiplierLoc, sun_multiplier);
+    glUniform3f(sUniSkyAmbientLoc, sky_ambient.x, sky_ambient.y, sky_ambient.z);
+    glUniform3f(sUniGroundAmbientLoc, ground_ambient.x, ground_ambient.y, ground_ambient.z);
 }
 
 void setTerrainShadow(const glm::mat4& light_view_proj, const glm::vec3& sun_dir,

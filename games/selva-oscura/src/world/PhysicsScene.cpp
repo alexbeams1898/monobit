@@ -189,6 +189,49 @@ void registerChapelTerrainModifiers()
     }
 }
 
+// Registers Limbo's terrain features. Currently: Acheron, the river
+// that cuts E-W across Limbo. Runs as a runtime TerrainModifier in the
+// limbo region (region_name="limbo") so it doesn't affect Selva surface.
+// Per [[project_acheron_river_lore]]: river runs across Limbo, the
+// near shore is where the descent stair arrives, the far shore is the
+// wide Limbo plain. Future: the river continues over a waterfall into
+// the next circle's descent.
+void registerLimboTerrainModifiers()
+{
+    using engine::world::TerrainModifier;
+
+    // Acheron trench. Limbo's flat plateau is at world Y = -43.13;
+    // trench depresses to Y = -47.13 (4m deep). blend_pad creates
+    // sloped banks naturally — vertices within blend_pad of the trench
+    // edge get partial weight, producing a ramp from shore Y down to
+    // trench-floor Y. The bank slope = trench_depth / blend_pad =
+    // 4m / 7m = ~30° (talus angle for sloped earth/stone).
+    constexpr float kLimboTopY = -43.13f;
+    constexpr float kTrenchDepth = 4.0f;
+    constexpr float kTrenchHalfWidth = 6.0f;  // 12m total width
+    constexpr float kBankBlendPad = 5.0f;     // sloped bank distance (~38° grade)
+    // Trench Z position: ~32m past the stair (Limbo's near edge is
+    // at Z=-351.15), giving the player breathing room on the near
+    // shore before the bank begins.
+    constexpr float kTrenchCenterZ = -385.0f;
+
+    TerrainModifier m;
+    // Trench runs the full Limbo X extent (so the player can walk
+    // along the riverbed laterally).
+    m.center_xz = {0.0f, kTrenchCenterZ};
+    m.half_extents_xz = {80.0f, kTrenchHalfWidth};
+    m.mode = TerrainModifier::Mode::FlushAt;
+    m.value = kLimboTopY - kTrenchDepth;
+    // Sharp on -X / +X edges (trench runs off Limbo's lateral sides
+    // into the cavern walls); sloped on -Z / +Z (the two banks).
+    m.blend_pad = 0.0f;
+    m.blend_pad_neg_z = kBankBlendPad;
+    m.blend_pad_pos_z = kBankBlendPad;
+    m.debug_name = "limbo_acheron_trench";
+    m.region_name = "limbo";
+    engine::world::registerTerrainModifier(m);
+}
+
 } // namespace selva::world::crypt_layout
 
 // Reopen selva::world for the rest of the translation unit's symbols.

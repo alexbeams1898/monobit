@@ -27,6 +27,9 @@
       "base_color": [0.03, 0.03, 0.03],
       "tone_dark": [0.02, 0.02, 0.022],
       "tone_light": [0.06, 0.06, 0.065],
+      "sun_multiplier": 0.0,
+      "sky_ambient": [0.18, 0.18, 0.20],
+      "ground_ambient": [0.10, 0.10, 0.11],
       "footstep_sound_id": "footstep_limbo"
     }
   }

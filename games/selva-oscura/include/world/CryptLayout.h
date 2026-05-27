@@ -108,13 +108,12 @@ constexpr float kLimboPlatformHalfExtent = 12.0f;
 // heightmap-Y and meets the skirt's vertical face — no plateau
 // modifier required.
 //
-// To lower the entire chapel/descent/limbo stack: change this
-// constant AND scene.json's chapel world_origin.y (matched value)
-// AND gen_limbo.py's PLATFORM_CENTER_Y (matched delta). All three
-// must move together — the descent stairs are baked at
-// chapel-local-Y inside crypt.glb so they ride along automatically
-// via world_origin, but Limbo is its own asset with its own
-// world-space position.
+// To lower the entire chapel/descent stack: change this constant AND
+// scene.json's chapel world_origin.y (matched value). The descent
+// stairs are baked at chapel-local-Y inside crypt.glb so they ride
+// along automatically via world_origin. Limbo is its own terrain
+// region (see assets/world/terrain/config.json: limbo.y_offset)
+// and tracks the chapel via the y_offset value.
 constexpr float kChapelGroundY = 22.3f;
 
 // World-space translation applied to chapel mesh local coords. Source
@@ -160,5 +159,10 @@ inline glm::vec3 chapelWorldOrigin()
 // chapel mesh (stair shaft enclosure + descent walls + ceiling)
 // already seals the tunnel from terrain above.
 void registerChapelTerrainModifiers();
+
+// Registers Limbo's terrain features (currently the Acheron trench)
+// as runtime TerrainModifiers in the "limbo" region. Must run BEFORE
+// world::initTerrain() builds the region meshes.
+void registerLimboTerrainModifiers();
 } // namespace crypt_layout
 } // namespace selva::world

@@ -743,6 +743,10 @@ void renderTerrain()
         selva::render::setTerrainTones(
             glm::vec3(r.tone_dark[0], r.tone_dark[1], r.tone_dark[2]),
             glm::vec3(r.tone_light[0], r.tone_light[1], r.tone_light[2]));
+        selva::render::setTerrainLightingEnv(
+            r.sun_multiplier,
+            glm::vec3(r.sky_ambient[0], r.sky_ambient[1], r.sky_ambient[2]),
+            glm::vec3(r.ground_ambient[0], r.ground_ambient[1], r.ground_ambient[2]));
         glBindVertexArray(r.vao);
         glDrawElements(GL_TRIANGLES, r.index_count, GL_UNSIGNED_INT, nullptr);
     }

@@ -209,52 +209,81 @@ void tickOneFoot(Actor::FootContact& fc, Actor& actor, const char* joint_name, f
             // adds a SurfaceTag value, no rect to author.
             const glm::vec3 foot_world = actor.sampler.jointWorldPosWithActor(fc.joint_idx);
             engine::physics::SurfaceTag surface = engine::physics::SurfaceTag::Unknown;
+            engine::physics::BodyHandle hit_body = engine::physics::kInvalidBody;
             {
                 const engine::physics::RayHit hit = engine::physics::raycast(
                     foot_world + glm::vec3(0.0f, 0.10f, 0.0f), // start just above foot
                     glm::vec3(0.0f, -1.0f, 0.0f), 1.0f);
                 if (hit.hit)
+                {
                     surface = hit.tag;
+                    hit_body = hit.body;
+                }
             }
-            // Footstep bank selection. Architecture (chapel walls,
-            // descent stairs) gets the concrete bank; terrain looks up
-            // the region at the foot's XZ and uses that region's
-            // configured footstep bank (selva_inner → grass, limbo →
-            // limbo ground, etc.). Unknown / Foliage / Actor fall back
-            // to the Selva surface default.
-            std::string region_sfx;
-            if (surface == engine::physics::SurfaceTag::Terrain)
-            {
-                if (const auto* region = selva::world::terrainRegionAt(foot_world.x, foot_world.z))
-                    region_sfx = region->footstep_sound_id;
-            }
-            const char* sfx_name = "footstep_grass";
+            // Footstep bank selection. The foot raycast tells us EXACTLY
+            // which body the foot hit; we look up that body's surface
+            // tag and (for terrain) its region. No XZ-region lookup —
+            // each surface knows what it is.
+            //   - Terrain bodies are tagged with their region name as
+            //     debug_name (see JsonScene.cpp); the region declares
+            //     its footstep_sound_id in terrain config.json.
+            //   - Architecture (chapel mesh, descent stairs) → concrete.
+            //   - No hit / unknown body → no footstep, intentional. We
+            //     never fall back to a "default" sound: every walkable
+            //     surface is authored to own its own bank.
+            const char* sfx_name = nullptr;
             switch (surface)
             {
             case engine::physics::SurfaceTag::Architecture:
                 sfx_name = "footstep_concrete";
                 break;
             case engine::physics::SurfaceTag::Terrain:
-                sfx_name = region_sfx.empty() ? "footstep_grass" : region_sfx.c_str();
+                if (hit_body != engine::physics::kInvalidBody)
+                {
+                    const char* region_name = engine::physics::bodyDebugName(hit_body);
+                    if (region_name != nullptr && *region_name != '\0')
+                    {
+                        if (const auto* region = selva::world::terrainRegionAtName(region_name))
+                            sfx_name = region->footstep_sound_id.c_str();
+                    }
+                }
                 break;
             case engine::physics::SurfaceTag::Foliage:
             case engine::physics::SurfaceTag::Unknown:
             case engine::physics::SurfaceTag::Actor:
             default:
-                sfx_name = "footstep_grass";
                 break;
             }
-            footstepLogf("[event] surface foot=%s foot_xz=(%.3f,%.3f) body_xz=(%.3f,%.3f) "
-                         "surface_tag=%d sfx=%s\n",
-                         footLabel(is_left), foot_world.x, foot_world.z, actor.pos.x, actor.pos.z,
-                         static_cast<int>(surface), sfx_name);
-            selva::audio::playSfxScaled(sfx_name, gain);
-            fc.last_fire_time = now;
-            actor.last_footstep_fire_time = now;
-            footstepLogf("[event] FIRE foot=%s gain=%.3f peak_descent=%.3f foot_y=%.4f "
-                         "since_last=%.3fs sfx=%s\n",
-                         footLabel(is_left), gain, fc.peak_descent_vy, foot_y, since_fire,
-                         sfx_name);
+            if (sfx_name == nullptr)
+            {
+                // No surface known. Don't play anything — every
+                // walkable surface should declare its bank. If this
+                // fires, it's an unauthored surface (bug), not a case
+                // where we fall back to a default sound.
+                footstepLogf("[event] surface foot=%s foot_xz=(%.3f,%.3f) surface_tag=%d "
+                             "body_name='%s' — NO SFX (unauthored surface)\n",
+                             footLabel(is_left), foot_world.x, foot_world.z,
+                             static_cast<int>(surface),
+                             hit_body != engine::physics::kInvalidBody
+                                 ? engine::physics::bodyDebugName(hit_body)
+                                 : "(no hit)");
+                fc.last_fire_time = now;
+                actor.last_footstep_fire_time = now;
+            }
+            else
+            {
+                footstepLogf("[event] surface foot=%s foot_xz=(%.3f,%.3f) body_xz=(%.3f,%.3f) "
+                             "surface_tag=%d sfx=%s\n",
+                             footLabel(is_left), foot_world.x, foot_world.z,
+                             actor.pos.x, actor.pos.z, static_cast<int>(surface), sfx_name);
+                selva::audio::playSfxScaled(sfx_name, gain);
+                fc.last_fire_time = now;
+                actor.last_footstep_fire_time = now;
+                footstepLogf("[event] FIRE foot=%s gain=%.3f peak_descent=%.3f foot_y=%.4f "
+                             "since_last=%.3fs sfx=%s\n",
+                             footLabel(is_left), gain, fc.peak_descent_vy, foot_y, since_fire,
+                             sfx_name);
+            }
         }
         else
         {

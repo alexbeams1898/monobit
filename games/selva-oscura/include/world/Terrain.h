@@ -46,6 +46,19 @@ struct TerrainRegion
     // descriptions).
     float tone_dark[3] = {0.08f, 0.07f, 0.06f};
     float tone_light[3] = {0.20f, 0.13f, 0.09f};
+    // Lighting environment for this region. Each region declares its
+    // own sun strength + hemispheric ambient so underground layers can
+    // be dim and neutral while Selva surface is warm and bright.
+    //   sun_multiplier: scales sun contribution to 0 = no direct sun
+    //   reaches this region (caves, deep circles). Default 1.0 for
+    //   outdoor regions where the sun is the dominant light source.
+    //   sky_ambient / ground_ambient: hemispheric ambient colors mixed
+    //   by dot(N, up). Default matches Selva surface (overcast bluish
+    //   overhead, warm dirt bounce); underground regions override
+    //   with cavern-appropriate values.
+    float sun_multiplier = 1.0f;
+    float sky_ambient[3] = {0.18f, 0.22f, 0.28f};
+    float ground_ambient[3] = {0.08f, 0.06f, 0.05f};
     // Footstep SFX bank to play when an actor's foot lands on this
     // region. Names match audio.json sound IDs. Default is the Selva
     // surface bank; underground regions override.
@@ -73,6 +86,11 @@ const TerrainRegion& terrainRegion(int idx);
 // sampleHeight. Use this to filter foliage / spawn / region-specific
 // gameplay rules.
 const TerrainRegion* terrainRegionAt(float world_x, float world_z);
+
+// Look up a region by name. Used by gameplay queries that already
+// have a body's debug_name (= region name for terrain bodies) and
+// want the region's metadata. Returns nullptr if no region matches.
+const TerrainRegion* terrainRegionAtName(const char* name);
 
 // Sample world Y at the given world (x, z). Bilinear interpolation
 // across the heightmap. Returns 0 if (x, z) falls outside any

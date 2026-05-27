@@ -323,6 +323,21 @@ bool initTerrain()
             r.tone_light[2] = cfg["tone_light"][2].get<float>();
         }
         r.footstep_sound_id = cfg.value("footstep_sound_id", std::string{"footstep_grass"});
+        r.sun_multiplier = cfg.value("sun_multiplier", 1.0f);
+        if (cfg.contains("sky_ambient") && cfg["sky_ambient"].is_array() &&
+            cfg["sky_ambient"].size() == 3)
+        {
+            r.sky_ambient[0] = cfg["sky_ambient"][0].get<float>();
+            r.sky_ambient[1] = cfg["sky_ambient"][1].get<float>();
+            r.sky_ambient[2] = cfg["sky_ambient"][2].get<float>();
+        }
+        if (cfg.contains("ground_ambient") && cfg["ground_ambient"].is_array() &&
+            cfg["ground_ambient"].size() == 3)
+        {
+            r.ground_ambient[0] = cfg["ground_ambient"][0].get<float>();
+            r.ground_ambient[1] = cfg["ground_ambient"][1].get<float>();
+            r.ground_ambient[2] = cfg["ground_ambient"][2].get<float>();
+        }
         if (!loadHeightmapPng(hm_path, r, r.heights, r.hm_width, r.hm_height))
             continue;
         buildRegionMesh(r, subdivide);
@@ -362,8 +377,10 @@ const TerrainRegion& terrainRegion(int idx)
 
 const TerrainRegion* terrainRegionAt(float world_x, float world_z)
 {
-    // Same iteration order as sampleHeight — first region whose XZ
-    // AABB contains the point wins.
+    // First region whose XZ AABB contains (x, z) wins. Regions should
+    // not overlap in XZ. For per-surface lookups (e.g. footstep bank),
+    // don't use XZ — use the body the foot raycast hit and look up
+    // its region by name via terrainRegionAtName.
     for (const auto& r : sRegions)
     {
         const float half = r.world_extent * 0.5f;
@@ -372,6 +389,16 @@ const TerrainRegion* terrainRegionAt(float world_x, float world_z)
         if (dx <= half && dz <= half)
             return &r;
     }
+    return nullptr;
+}
+
+const TerrainRegion* terrainRegionAtName(const char* name)
+{
+    if (name == nullptr)
+        return nullptr;
+    for (const auto& r : sRegions)
+        if (r.name == name)
+            return &r;
     return nullptr;
 }
 
@@ -416,12 +443,12 @@ bool sampleRegion(const TerrainRegion& r, float world_x, float world_z, float* o
 
 float sampleHeight(float world_x, float world_z)
 {
-    // Iterate regions in registration order, returning the Y from the
-    // first region whose XZ AABB contains the query point. When
-    // multiple regions are loaded (Selva surface + Limbo + future
-    // circles), each will have a non-overlapping XZ footprint so this
-    // unambiguously selects the right one. Returns 0 if the point is
-    // outside every region (caller should treat as "no terrain here").
+    // Iterate regions in registration order — first whose XZ AABB
+    // contains (x, z) wins. Regions should not overlap in XZ; if
+    // they do, the system can't disambiguate the answer here. For
+    // surface-specific queries (e.g. footstep bank by region), don't
+    // use sampleHeight — use the body returned by the foot raycast
+    // and look up its tagged region instead.
     for (const auto& r : sRegions)
     {
         float y = 0.0f;
