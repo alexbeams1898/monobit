@@ -422,9 +422,8 @@ void buildRegionMesh(TerrainRegion& r, int subdivide)
             std::fprintf(stderr,
                          "[wall-diag] region='%s' wall axis=%d const=%.2f "
                          "var=[%.2f,%.2f] emitted verts=%zu indices=%zu\n",
-                         r.name.c_str(), w.axis, w.const_axis_pos, w.var_axis_min,
-                         w.var_axis_max, verts.size() - verts_before_wall,
-                         indices.size() - indices_before_wall);
+                         r.name.c_str(), w.axis, w.const_axis_pos, w.var_axis_min, w.var_axis_max,
+                         verts.size() - verts_before_wall, indices.size() - indices_before_wall);
         }
     }
 
@@ -469,6 +468,95 @@ void buildRegionMesh(TerrainRegion& r, int subdivide)
     r.vao = vao;
     r.vbo = vbo;
     r.ebo = ebo;
+}
+
+// Forward decl: sampleHeight is defined later (namespace-scope) but
+// the audit helper below calls it.
+} // namespace
+
+float sampleHeight(float world_x, float world_z);
+
+namespace
+{
+
+void dumpRimAuditLog(const std::vector<TerrainRegion>& regions)
+{
+    std::FILE* audit = std::fopen("rim-audit.log", "w");
+    if (audit == nullptr)
+        return;
+    std::fprintf(audit, "# Rim-audit dump. One block per cuts_rim StructureFootprint.\n"
+                        "# Columns: x z | png_raw[0..255] png_decoded_y bilinear_y "
+                        "after_modifiers_y mesh_y_nearest | inside_footprint\n#\n");
+    const int fp_count = engine::world::structureFootprintCount();
+    for (int fi = 0; fi < fp_count; ++fi)
+    {
+        const auto& fp = engine::world::structureFootprintAt(fi);
+        if (!fp.cuts_rim)
+            continue;
+        const TerrainRegion* tr = nullptr;
+        if (fp.region_name != nullptr)
+        {
+            for (const auto& r : regions)
+                if (r.name == fp.region_name)
+                {
+                    tr = &r;
+                    break;
+                }
+        }
+        if (tr == nullptr)
+            continue;
+        std::fprintf(audit,
+                     "===== footprint '%s' region=%s center=(%.2f,%.2f) "
+                     "half=(%.2f,%.2f) cuts_rim=%d =====\n",
+                     fp.debug_name ? fp.debug_name : "(no name)",
+                     fp.region_name ? fp.region_name : "(global)", fp.center_xz.x, fp.center_xz.y,
+                     fp.half_extents_xz.x, fp.half_extents_xz.y, fp.cuts_rim ? 1 : 0);
+        constexpr float kSampleStep = 2.0f;
+        constexpr float kMargin = 20.0f;
+        const float x_lo = fp.center_xz.x - fp.half_extents_xz.x - kMargin;
+        const float x_hi = fp.center_xz.x + fp.half_extents_xz.x + kMargin;
+        const float z_lo = fp.center_xz.y - fp.half_extents_xz.y - kMargin;
+        const float z_hi = fp.center_xz.y + fp.half_extents_xz.y + kMargin;
+        const float half = tr->world_extent * 0.5f;
+        const float yrange = tr->height_max - tr->height_min;
+        for (float z = z_lo; z <= z_hi; z += kSampleStep)
+        {
+            for (float x = x_lo; x <= x_hi; x += kSampleStep)
+            {
+                const float u = (x - (tr->world_origin.x - half)) / tr->world_extent;
+                const float v = (z - (tr->world_origin.y - half)) / tr->world_extent;
+                int png_raw = -1;
+                float png_decoded_y = 0.0f;
+                if (u >= 0.0f && u <= 1.0f && v >= 0.0f && v <= 1.0f && tr->hm_width > 0 &&
+                    tr->hm_height > 0)
+                {
+                    const int px = static_cast<int>(u * static_cast<float>(tr->hm_width - 1));
+                    const int py = static_cast<int>(v * static_cast<float>(tr->hm_height - 1));
+                    const float decoded =
+                        tr->heights[static_cast<size_t>(py) * static_cast<size_t>(tr->hm_width) +
+                                    static_cast<size_t>(px)];
+                    png_decoded_y = decoded;
+                    const float t = (decoded - tr->height_min) / yrange;
+                    png_raw = static_cast<int>(t * 255.0f + 0.5f);
+                }
+                const float bilinear_y =
+                    bilinearSample(tr->heights, tr->hm_width, tr->hm_height, u, v) + tr->y_offset;
+                const float modified_y =
+                    engine::world::applyTerrainModifiers(tr->name.c_str(), x, z, bilinear_y);
+                const float mesh_y = selva::world::sampleHeight(x, z);
+                const bool inside = std::fabs(x - fp.center_xz.x) <= fp.half_extents_xz.x &&
+                                    std::fabs(z - fp.center_xz.y) <= fp.half_extents_xz.y;
+                std::fprintf(audit,
+                             "(%7.2f,%7.2f) | png=%3d decoded=%7.3f bilin=%7.3f "
+                             "mod=%7.3f mesh=%7.3f | inside=%d\n",
+                             x, z, png_raw, png_decoded_y, bilinear_y, modified_y, mesh_y,
+                             inside ? 1 : 0);
+            }
+            std::fprintf(audit, "\n");
+        }
+    }
+    std::fclose(audit);
+    std::fprintf(stderr, "[terrain] wrote rim-audit.log\n");
 }
 
 } // namespace
@@ -585,86 +673,7 @@ bool initTerrain()
         sRegions.push_back(std::move(r));
     }
 
-    // Init-time audit: for every cuts_rim StructureFootprint, dump
-    // a dense XZ grid of (PNG pixel, bilinear sample, modifier
-    // result, mesh Y) values inside + around the footprint to
-    // rim-audit.log. Catches "rim doesn't seal around corridor"
-    // bugs by showing exactly what the rim function emitted vs
-    // what the mesh actually contains.
-    if (std::FILE* audit = std::fopen("rim-audit.log", "w"))
-    {
-        std::fprintf(audit, "# Rim-audit dump. One block per cuts_rim StructureFootprint.\n"
-                            "# Columns: x z | png_raw[0..255] png_decoded_y bilinear_y "
-                            "after_modifiers_y mesh_y_nearest | inside_footprint\n#\n");
-        const int fp_count = engine::world::structureFootprintCount();
-        for (int fi = 0; fi < fp_count; ++fi)
-        {
-            const auto& fp = engine::world::structureFootprintAt(fi);
-            if (!fp.cuts_rim)
-                continue;
-            const TerrainRegion* tr =
-                (fp.region_name != nullptr) ? terrainRegionAtName(fp.region_name) : nullptr;
-            if (tr == nullptr)
-                continue;
-            std::fprintf(audit,
-                         "===== footprint '%s' region=%s center=(%.2f,%.2f) "
-                         "half=(%.2f,%.2f) cuts_rim=%d =====\n",
-                         fp.debug_name ? fp.debug_name : "(no name)",
-                         fp.region_name ? fp.region_name : "(global)", fp.center_xz.x,
-                         fp.center_xz.y, fp.half_extents_xz.x, fp.half_extents_xz.y,
-                         fp.cuts_rim ? 1 : 0);
-            // Sample a margin of 20m past the footprint on each side
-            // so we see the transition from "inside footprint" to
-            // "outside footprint" (where the rim should rise normally).
-            constexpr float kSampleStep = 2.0f;
-            constexpr float kMargin = 20.0f;
-            const float x_lo = fp.center_xz.x - fp.half_extents_xz.x - kMargin;
-            const float x_hi = fp.center_xz.x + fp.half_extents_xz.x + kMargin;
-            const float z_lo = fp.center_xz.y - fp.half_extents_xz.y - kMargin;
-            const float z_hi = fp.center_xz.y + fp.half_extents_xz.y + kMargin;
-            const float half = tr->world_extent * 0.5f;
-            const float yrange = tr->height_max - tr->height_min;
-            for (float z = z_lo; z <= z_hi; z += kSampleStep)
-            {
-                for (float x = x_lo; x <= x_hi; x += kSampleStep)
-                {
-                    const float u = (x - (tr->world_origin.x - half)) / tr->world_extent;
-                    const float v = (z - (tr->world_origin.y - half)) / tr->world_extent;
-                    int png_raw = -1;
-                    float png_decoded_y = 0.0f;
-                    if (u >= 0.0f && u <= 1.0f && v >= 0.0f && v <= 1.0f && tr->hm_width > 0 &&
-                        tr->hm_height > 0)
-                    {
-                        const int px = static_cast<int>(u * static_cast<float>(tr->hm_width - 1));
-                        const int py = static_cast<int>(v * static_cast<float>(tr->hm_height - 1));
-                        const float decoded = tr->heights[static_cast<size_t>(py) *
-                                                              static_cast<size_t>(tr->hm_width) +
-                                                          static_cast<size_t>(px)];
-                        png_decoded_y = decoded;
-                        const float t = (decoded - tr->height_min) / yrange;
-                        png_raw = static_cast<int>(t * 255.0f + 0.5f);
-                    }
-                    const float bilinear_y =
-                        bilinearSample(tr->heights, tr->hm_width, tr->hm_height, u, v) +
-                        tr->y_offset;
-                    const float modified_y =
-                        engine::world::applyTerrainModifiers(tr->name.c_str(), x, z, bilinear_y);
-                    const float mesh_y = sampleHeight(x, z);
-                    const bool inside = std::fabs(x - fp.center_xz.x) <= fp.half_extents_xz.x &&
-                                        std::fabs(z - fp.center_xz.y) <= fp.half_extents_xz.y;
-                    std::fprintf(audit,
-                                 "(%7.2f,%7.2f) | png=%3d decoded=%7.3f bilin=%7.3f "
-                                 "mod=%7.3f mesh=%7.3f | inside=%d\n",
-                                 x, z, png_raw, png_decoded_y, bilinear_y, modified_y, mesh_y,
-                                 inside ? 1 : 0);
-                }
-                std::fprintf(audit, "\n");
-            }
-        }
-        std::fclose(audit);
-        std::fprintf(stderr, "[terrain] wrote rim-audit.log\n");
-    }
-
+    dumpRimAuditLog(sRegions);
     return !sRegions.empty();
 }
 

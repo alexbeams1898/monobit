@@ -36,9 +36,9 @@
 #include "physics/PhysicsWorld.h"
 #include "render/Atmosphere.h"
 #include "render/Camera.h"
+#include "render/LightSpritePass.h"
 #include "render/SceneGeometry.h"
 #include "render/SceneShaders.h"
-#include "render/LightSpritePass.h"
 #include "render/ShadowPass.h"
 #include "render/SkyPass.h"
 #include "render/TerrainShader.h"
@@ -3826,8 +3826,7 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
             for (size_t li = 0; li < base_lights.size(); ++li)
             {
                 engine::world::LightSource L = base_lights[li];
-                L.intensity =
-                    engine::world::flickerIntensity(static_cast<int>(li), t);
+                L.intensity = engine::world::flickerIntensity(static_cast<int>(li), t);
                 flickered.push_back(L);
             }
             selva::render::setScenePointLights(flickered);

@@ -117,8 +117,8 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
         // FPV uses 0.2 (a bit tighter than 0.5 because FPV camera
         // sits inside the player capsule and can be very close to
         // arm/hand geometry).
-        const glm::mat4 proj =
-            glm::perspective(glm::radians(settings.fov_degrees_first_person), aspect, 0.2f, 2000.0f);
+        const glm::mat4 proj = glm::perspective(glm::radians(settings.fov_degrees_first_person),
+                                                aspect, 0.2f, 2000.0f);
 
         // FPV head-position model: track the PLAYER position 1:1
         // (the camera follows the player's bulk motion without lag),

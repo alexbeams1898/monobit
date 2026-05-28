@@ -31,8 +31,10 @@ prison-escape-game-v*/
 *.ozz
 
 # Downloaded build tools (FBX2glTF, Tracy profiler, etc).
-# Fetched per-checkout; not committed.
-tools/
+# Fetched per-checkout; not committed. Anchored to repo root so it
+# does NOT match games/<scope>/tools/, which holds first-party
+# build-time helpers (e.g. selva-oscura/tools/dump_world.cpp).
+/tools/
 
 # CMake generated
 CMakeCache.txt

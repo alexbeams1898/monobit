@@ -170,44 +170,24 @@ void registerChapelTerrainModifiers()
         engine::world::registerStructureFootprint(f);
     }
 
-    // 2b) Descent corridor footprint in Limbo. The corridor's tunnel
-    //     descends from the chapel back wall (Z = kCryptZ - kHalfLength
-    //     = -214) south through Limbo's airspace, piercing Limbo's
-    //     disc rim (at the disc's north edge Z=-321.15) and continuing
-    //     to the corridor's last-step exit ~Z=-354 where it meets the
-    //     Limbo floor.
-    //
-    //     This footprint declares cuts_rim + cuts_ceiling + cuts_wall
-    //     in the limbo region: the rim must NOT rise where the
-    //     corridor crosses, the ceiling must have a hole, and any
-    //     lateral wall the corridor would clip must drop the quad.
-    //     cuts_floor stays FALSE — the corridor lands on the Limbo
-    //     floor, doesn't pierce it.
-    //
-    //     X half-extent = corridor_half_w (2.4m) + wall_thickness
-    //     (0.6m) = 3.0m. Z extent from corridor's last step
-    //     (~Z=-354) to where it crosses the Limbo disc rim (Z=-321.15).
+    // 2b) Descent corridor footprint in Limbo. cuts_rim + cuts_ceiling
+    //     + cuts_wall (NOT cuts_floor — the corridor lands ON Limbo
+    //     floor). The vertical_profile below tells cavern surfaces
+    //     exactly where the corridor mesh sits; without it they'd cut
+    //     the whole 2D rect from floor to ceiling.
     {
         constexpr float kCorridorHalfW = 2.4f;
         constexpr float kCorridorWallThickness = 0.6f;
-        constexpr float kCorridorXHalf = kCorridorHalfW + kCorridorWallThickness; // 3.0m
-        constexpr float kLimboRimBlend =
-            12.0f; // mirrors LIMBO_RIM_BLEND in gen_terrain_heightmap.py
-        constexpr float kCorridorEntryZ = -321.15f + kLimboRimBlend; // -309.15: past rim outer edge
-        // Empirical from crypt.glb mesh AABB dump (May 27): step 0399
-        // world Z bbox = [-353.15, -352.80]. Use the FAR edge so slot
-        // covers the entire last step.
+        constexpr float kCorridorXHalf = kCorridorHalfW + kCorridorWallThickness;
+        constexpr float kLimboRimBlend = 12.0f; // mirror LIMBO_RIM_BLEND in gen_terrain_heightmap.py
+        // Entry extends past rim outer edge so the cut covers the whole
+        // rim_blend strip. Exit is the corridor mesh's last-step Z
+        // (empirical from crypt.glb AABB).
+        constexpr float kCorridorEntryZ = -321.15f + kLimboRimBlend;
         constexpr float kCorridorExitZ = -353.15f;
-        constexpr float kCorridorCeilingClearance = 4.0f; // matches gen_crypt_foundation.py JOINT
+        constexpr float kCorridorCeilingClearance = 4.0f;
         constexpr float kLimboFloorY = -43.13f;
-        // Corridor descends at STAIR_RISE/STAIR_TREAD = 0.16/0.35
-        // (gen_crypt_foundation.py constants). Step Y at world Z = z:
-        //   step_count_from_bottom = (kCorridorExitZ - z) / 0.35
-        //                            (z gets MORE NEGATIVE as we go south,
-        //                             so this is positive at chapel side)
-        //   step_y = kLimboFloorY + step_count_from_bottom * 0.16
-        // The corridor's outer slot at this Z is [step_y, step_y + clearance].
-        constexpr float kCorridorSlopePerM = 0.16f / 0.35f; // ~0.457
+        constexpr float kCorridorSlopePerM = 0.16f / 0.35f; // STAIR_RISE / STAIR_TREAD
 
         const float center_z = (kCorridorEntryZ + kCorridorExitZ) * 0.5f;
         const float half_z = (kCorridorEntryZ - kCorridorExitZ) * 0.5f;
@@ -221,32 +201,11 @@ void registerChapelTerrainModifiers()
         f.cuts_ceiling = true;
         f.cuts_wall = true;
 
-        // Vertical profile: 1×N grid along Z. Per-row sample: the
-        // corridor mesh's TRUE outer Y-range at that Z.
-        //
-        // Values derived from crypt.glb mesh AABBs (May 27 bake) to
-        // avoid drift between this code's formula and the actual
-        // wedge-ramp geometry the Blender script produces — the
-        // wedge ramp's ceiling slope differs slightly from the
-        // step slope (0.4592 vs 0.4565), so a tread+offset formula
-        // is off by up to 0.4m at the chapel end. Endpoints below
-        // capture the actual mesh extents.
-        //
-        // Endpoints (chapel side ↔ limbo side, world coords):
-        //   ceiling Y_top:        25.08 ↔ -39.14
-        //   wall_l/r Y_bottom:   (computed from wall slope, limbo end -43.64)
-        //   step Z_top:          -213.15 ↔ -353.15 (= kCorridorExitZ)
-        //
-        // y_max = ceiling top (cavern wall yields to this).
-        // y_min = wall bottom (cavern wall yields all the way to here
-        //         since the corridor wall mesh fills the space down to
-        //         this Y — otherwise the cavern wall would still be
-        //         intact in the corridor's X range below the floor,
-        //         creating a visible wall fragment poking up).
-        //
-        // Wedge wall bottom follows the descent slope: Y = -43.64 at
-        // limbo end (Z=-353.15), rising at 0.4571 per +Z toward chapel.
-        constexpr int kNz = 32; // 32 rows over 44m = ~1.4m per row
+        // Vertical profile: corridor's true outer Y-range per Z.
+        // Endpoints derived from crypt.glb mesh AABBs (not formula —
+        // the wedge-ramp ceiling slope drifts from the step slope by
+        // ~0.4m, formulas can't catch that).
+        constexpr int kNz = 32;
         constexpr float kStepZChapel = -213.15f;
         constexpr float kStepZLimbo = kCorridorExitZ; // -353.15
         constexpr float kCeilYChapel = 25.08f;
@@ -385,27 +344,16 @@ void registerLimboLights()
         engine::world::registerLight(L);
     };
 
-    // Warm dim torchlight (dying campfires, oil lamps).
-    constexpr glm::vec3 kWarm{1.00f, 0.55f, 0.22f};
-    // Pale sickly green (glowing-fungus bowls — the one organic source
-    // that doesn't need fuel).
-    constexpr glm::vec3 kFungus{0.40f, 0.85f, 0.45f};
-
-    // Flicker tuning: fire dances at mid frequency with noticeable
-    // amplitude; fungus pulses slowly with subtle amplitude (not fire,
-    // it's bioluminescent — gentle organic rhythm).
+    constexpr glm::vec3 kWarm{1.00f, 0.55f, 0.22f};   // campfires / oil lamps
+    constexpr glm::vec3 kFungus{0.40f, 0.85f, 0.45f}; // bioluminescent fungus
     constexpr float kFireAmp = 0.12f;
     constexpr float kFireFreq = 2.5f;
     constexpr float kFungusAmp = 0.06f;
     constexpr float kFungusFreq = 0.9f;
 
-    // Scatter weighted toward what will eventually become the Noble
-    // Castle's grounds (mid-far Limbo, X near 0, Z around -700..-750).
-    // Radii small (8-14m) so each lights a local patch without
-    // flood-lighting the cavern. Disc radius=300 keeps lights well
-    // inside the rim. v2 adds clustered "encampment" companions
-    // (4-15m from existing lights) so each looks like a small
-    // gathering rather than one isolated point.
+    // Scattered "encampments" weighted toward the future Castle area
+    // (mid-far Limbo). Each main light has a smaller companion 4-15m
+    // away so they read as gatherings, not isolated points.
     makeLight(-40.0f, -560.0f, kWarm, 0.8f, 11.0f, kFireAmp, kFireFreq, "limbo_campfire_a");
     makeLight(-32.0f, -566.0f, kWarm, 0.4f, 6.0f, kFireAmp, kFireFreq * 1.1f,
               "limbo_campfire_a_companion");

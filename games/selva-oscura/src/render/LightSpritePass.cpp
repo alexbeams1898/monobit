@@ -32,10 +32,7 @@ constexpr float kMinSize = 0.5f;
 
 // Two-triangle quad in local sprite space: [-1,-1] to [+1,+1] UV.
 constexpr float kQuadVerts[] = {
-    -1.0f, -1.0f,
-    +1.0f, -1.0f,
-    -1.0f, +1.0f,
-    +1.0f, +1.0f,
+    -1.0f, -1.0f, +1.0f, -1.0f, -1.0f, +1.0f, +1.0f, +1.0f,
 };
 
 const char* kVS = R"glsl(
@@ -166,16 +163,15 @@ void renderLightSprites(const glm::mat4& view_proj, const glm::vec3& cam_pos,
         const auto& L = all_lights[i];
         if (n >= kMaxLights)
             break;
-        if (region_name != nullptr && L.region_name != nullptr
-            && std::strcmp(region_name, L.region_name) != 0)
+        if (region_name != nullptr && L.region_name != nullptr &&
+            std::strcmp(region_name, L.region_name) != 0)
             continue;
         // Modulated intensity drives BOTH the sprite brightness AND
         // the point-light contribution to the ground (uploaded from
         // TerrainShader.cpp / SceneShaders.cpp using the same call).
         // Keeps visible flame brightness and floor illumination in
         // sync.
-        const float live_intensity =
-            engine::world::flickerIntensity(static_cast<int>(i), t);
+        const float live_intensity = engine::world::flickerIntensity(static_cast<int>(i), t);
         const float size = std::max(kMinSize, kSizePerRadius * L.radius);
         pos_size[n * 4 + 0] = L.position.x;
         pos_size[n * 4 + 1] = L.position.y;
