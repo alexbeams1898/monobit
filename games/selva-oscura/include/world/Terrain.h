@@ -63,6 +63,24 @@ struct TerrainRegion
     // region. Names match audio.json sound IDs. Default is the Selva
     // surface bank; underground regions override.
     std::string footstep_sound_id = "footstep_grass";
+
+    // --- Optional enclosure: ceiling + walls ---
+    // Underground regions are enclosed by rock above and around them.
+    // When `has_ceiling` is true, the mesh builder emits:
+    //   - A ceiling slab at `ceiling_y` covering the region's XZ AABB,
+    //     with downward-facing normals (so it's lit from below).
+    //   - Four vertical wall slabs at the XZ AABB edges, from ceiling_y
+    //     down to `wall_min_y`, with inward-facing normals.
+    // Quads pierced by registered StructureFootprint rects (with
+    // cuts_ceiling / cuts_wall set) are dropped — see
+    // engine::world::isInsideStructureFootprint. Single source of
+    // truth: every surface that can be cut by a structure consults
+    // the same footprint list.
+    // Floor-only regions (Selva surface, future open-air layers) leave
+    // has_ceiling false; mesh builder emits only the heightmap.
+    bool has_ceiling = false;
+    float ceiling_y = 0.0f;
+    float wall_min_y = 0.0f;
     // Mesh-vertex Y values, mirroring the GPU mesh. Used by sampleHeight
     // so the gameplay ground always matches the rendered surface.
     std::vector<float> mesh_y; // mesh_y[iz * verts_per_side + ix]

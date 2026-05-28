@@ -118,8 +118,7 @@ const TerrainModifier& terrainModifierAt(int idx);
 // behavior for callers that don't care.
 //
 // If no modifier covers (x, z), returns base_y unchanged.
-float applyTerrainModifiers(const char* region_name,
-                            float world_x, float world_z, float base_y);
+float applyTerrainModifiers(const char* region_name, float world_x, float world_z, float base_y);
 
 // Per-quad query used by the terrain mesh builder. Returns true if
 // the XZ point falls inside any registered Hole-mode modifier's

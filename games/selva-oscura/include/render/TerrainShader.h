@@ -3,6 +3,14 @@
 #include <glm/mat4x4.hpp>
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
+#include <glm/vec4.hpp>
+
+#include <vector>
+
+namespace engine::world
+{
+struct LightSource;
+}
 
 namespace selva::render
 {
@@ -20,19 +28,20 @@ void setTerrainTones(const glm::vec3& dark_loam, const glm::vec3& dry_dirt);
 // (outdoor regions), 0.0 = no direct sun (underground caverns). Sky
 // and ground ambients drive the hemispheric ambient blend.
 void setTerrainLightingEnv(float sun_multiplier, const glm::vec3& sky_ambient,
-                            const glm::vec3& ground_ambient);
+                           const glm::vec3& ground_ambient);
 void setTerrainShadow(const glm::mat4& light_view_proj, const glm::vec3& sun_dir,
                       const glm::vec3& shadow_cam_pos, int shadow_texture_unit);
-void setTerrainChapelDiscard(const glm::vec2& center, const glm::vec2& half_extents);
-void setTerrainApseDiscard(const glm::vec2& center, float radius);
-void setTerrainDescentDiscard(const glm::vec2& center, const glm::vec2& half_extents);
 
-// Read back the last-set discard values (for debug overlay display).
-glm::vec2 lastTerrainChapelDiscardCenter();
-glm::vec2 lastTerrainChapelDiscardHalfExtents();
-glm::vec2 lastTerrainApseDiscardCenter();
-float lastTerrainApseDiscardRadius();
-glm::vec2 lastTerrainDescentDiscardCenter();
-glm::vec2 lastTerrainDescentDiscardHalfExtents();
+// Upload the active point-light set. Iteration order is preserved.
+// Lights beyond the shader's max are dropped (logged once). The
+// shader sums contributions per fragment; empty list disables the
+// point-light pass.
+void setTerrainPointLights(const std::vector<engine::world::LightSource>& lights);
+
+// Upload the active discard-rect set. Each rect is packed as
+// (center.xy, half_extents.xy). Rects beyond the shader's max are
+// dropped (logged once). WorldRenderer's per-region draw loop
+// populates this from registered cuts_floor StructureFootprints.
+void setTerrainDiscardRects(const std::vector<glm::vec4>& rects);
 
 } // namespace selva::render

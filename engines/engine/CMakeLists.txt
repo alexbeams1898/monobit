@@ -16,6 +16,7 @@ target_sources(engine PRIVATE
     src/world/Scene.cpp
     src/world/TerrainModifiers.cpp
     src/world/StructureFootprints.cpp
+    src/world/Lights.cpp
     src/systems/RenderSystem.cpp
     src/systems/CameraSystem.cpp
     src/systems/CollisionSystem.cpp

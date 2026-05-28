@@ -3,10 +3,13 @@
 #include "gl/ShaderUtils.h"
 #include "render/AtmosphereShader.h"
 #include "render/ShadowShader.h"
+#include "world/Lights.h"
 
 #include <glm/gtc/type_ptr.hpp>
 
+#include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <string>
 
 #include <glad/glad.h>
@@ -55,6 +58,14 @@ uniform vec3 uSunIntensity;
 uniform vec3 uCamPos;
 uniform float uExposure;
 uniform float uFlatShading; // 1.0 = output flat uBaseColor (bisect debug); 0.0 = full lighting
+
+// Point lights. Same packing + cap as TerrainShader so the same light
+// set works across both programs without divergence. See TerrainShader
+// for the rationale on the cap.
+#define MAX_LIGHTS 64
+uniform vec4 uLightPosRadius[MAX_LIGHTS];
+uniform vec4 uLightColorIntensity[MAX_LIGHTS];
+uniform int uLightCount;
 )glsl";
 
 // surface lit by sun via half-Lambert; in-scattered atmosphere
@@ -88,7 +99,23 @@ void main()
     vec3 ambient = mix(groundAmbient, skyAmbient, skyFactor);
     vec3 sunTint = vec3(1.05, 0.78, 0.55);
     float shadow = sampleSunShadow(vWorldPos, N);
-    vec3 surface = uBaseColor * g * (ambient + sunTint * halfL * shadow);
+
+    vec3 pointLight = vec3(0.0);
+    for (int i = 0; i < uLightCount; ++i)
+    {
+        vec3 toLight = uLightPosRadius[i].xyz - vWorldPos;
+        float dist = length(toLight);
+        float radius = uLightPosRadius[i].w;
+        if (radius <= 0.0 || dist >= radius)
+            continue;
+        vec3 ldir = toLight / max(dist, 1e-4);
+        float ndotl = dot(N, ldir) * 0.5 + 0.5;
+        float falloff = 1.0 - smoothstep(0.0, radius, dist);
+        pointLight += uLightColorIntensity[i].rgb * uLightColorIntensity[i].w
+                      * (ndotl * falloff);
+    }
+
+    vec3 surface = uBaseColor * g * (ambient + sunTint * halfL * shadow + pointLight);
 
     // Aerial perspective: in-scatter + transmittance along view ray
     // from camera to this fragment. Zeroed when the camera is indoors
@@ -124,6 +151,12 @@ GLint sUniShadowSunDirLoc = -1;
 GLint sUniShadowCamPosLoc = -1;
 GLint sUniFlatShadingLoc = -1;
 GLint sUniBaseColorLoc = -1;
+GLint sUniLightPosRadiusLoc = -1;
+GLint sUniLightColorIntensityLoc = -1;
+GLint sUniLightCountLoc = -1;
+
+constexpr int kMaxLights = 64;
+bool sLightOverflowWarned = false;
 
 } // namespace
 
@@ -149,6 +182,9 @@ bool initSceneProgram()
     sUniShadowCamPosLoc = glGetUniformLocation(sProgram, "uShadowCameraPos");
     sUniFlatShadingLoc = glGetUniformLocation(sProgram, "uFlatShading");
     sUniBaseColorLoc = glGetUniformLocation(sProgram, "uBaseColor");
+    sUniLightPosRadiusLoc = glGetUniformLocation(sProgram, "uLightPosRadius");
+    sUniLightColorIntensityLoc = glGetUniformLocation(sProgram, "uLightColorIntensity");
+    sUniLightCountLoc = glGetUniformLocation(sProgram, "uLightCount");
     return true;
 }
 
@@ -212,6 +248,41 @@ void setSceneAtmosphere(const glm::vec3& sun_dir, const glm::vec3& sun_intensity
     glUniform3f(sUniSunIntensityLoc, sun_intensity.x, sun_intensity.y, sun_intensity.z);
     glUniform3f(sUniCamPosLoc, cam_pos.x, cam_pos.y, cam_pos.z);
     glUniform1f(sUniExposureLoc, exposure);
+}
+
+void setScenePointLights(const std::vector<engine::world::LightSource>& lights)
+{
+    const int total = static_cast<int>(lights.size());
+    const int n = std::min(total, kMaxLights);
+    if (total > kMaxLights && !sLightOverflowWarned)
+    {
+        std::fprintf(stderr,
+                     "[SceneShaders] light count %d exceeds MAX_LIGHTS=%d; "
+                     "extras dropped. Raise the cap or filter by region.\n",
+                     total, kMaxLights);
+        sLightOverflowWarned = true;
+    }
+
+    float pos_radius[kMaxLights * 4];
+    float color_intensity[kMaxLights * 4];
+    for (int i = 0; i < n; ++i)
+    {
+        const auto& L = lights[static_cast<size_t>(i)];
+        pos_radius[i * 4 + 0] = L.position.x;
+        pos_radius[i * 4 + 1] = L.position.y;
+        pos_radius[i * 4 + 2] = L.position.z;
+        pos_radius[i * 4 + 3] = L.radius;
+        color_intensity[i * 4 + 0] = L.color.x;
+        color_intensity[i * 4 + 1] = L.color.y;
+        color_intensity[i * 4 + 2] = L.color.z;
+        color_intensity[i * 4 + 3] = L.intensity;
+    }
+    if (n > 0)
+    {
+        glUniform4fv(sUniLightPosRadiusLoc, n, pos_radius);
+        glUniform4fv(sUniLightColorIntensityLoc, n, color_intensity);
+    }
+    glUniform1i(sUniLightCountLoc, n);
 }
 
 void setSceneShadow(const glm::mat4& light_view_proj, const glm::vec3& sun_dir,

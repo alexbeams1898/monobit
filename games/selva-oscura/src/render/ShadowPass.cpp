@@ -36,36 +36,25 @@ void main()
 }
 )glsl";
 
-// Terrain depth FS mirrors the main TerrainShader's chapel-excision
-// discard so the chapel doesn't get false self-shadowing from a
-// terrain shadow caster that the main pass doesn't draw.
+// Terrain depth FS mirrors the main TerrainShader's structure-
+// footprint discard so structure interiors don't get false self-
+// shadowing from a terrain shadow caster the main pass doesn't draw.
+// Same rect-array layout as TerrainShader; WorldRenderer uploads
+// the same per-region cuts_floor rects to both programs.
 const char* kTerrainDepthFS = R"glsl(
 #version 330 core
 in vec3 vWorldPos;
-uniform vec2 uChapelDiscardCenter;
-uniform vec2 uChapelDiscardHalfExtents;
-uniform vec2 uApseDiscardCenter;
-uniform float uApseDiscardRadius;
-uniform vec2 uDescentDiscardCenter;
-uniform vec2 uDescentDiscardHalfExtents;
+#define MAX_DISCARDS 16
+uniform vec4 uDiscardRects[MAX_DISCARDS];
+uniform int uDiscardCount;
 void main()
 {
-    if (uChapelDiscardHalfExtents.x > 0.0 && uChapelDiscardHalfExtents.y > 0.0)
+    for (int i = 0; i < uDiscardCount; ++i)
     {
-        vec2 d = abs(vWorldPos.xz - uChapelDiscardCenter);
-        if (d.x < uChapelDiscardHalfExtents.x && d.y < uChapelDiscardHalfExtents.y)
-            discard;
-    }
-    if (uApseDiscardRadius > 0.0)
-    {
-        vec2 ad = vWorldPos.xz - uApseDiscardCenter;
-        if (ad.y <= 0.0 && dot(ad, ad) < uApseDiscardRadius * uApseDiscardRadius)
-            discard;
-    }
-    if (uDescentDiscardHalfExtents.x > 0.0 && uDescentDiscardHalfExtents.y > 0.0)
-    {
-        vec2 d2 = abs(vWorldPos.xz - uDescentDiscardCenter);
-        if (d2.x < uDescentDiscardHalfExtents.x && d2.y < uDescentDiscardHalfExtents.y)
+        vec2 center = uDiscardRects[i].xy;
+        vec2 half_ext = uDiscardRects[i].zw;
+        vec2 d = abs(vWorldPos.xz - center);
+        if (d.x < half_ext.x && d.y < half_ext.y)
             discard;
     }
 }
@@ -154,12 +143,10 @@ void main() {}
 
 GLuint sTerrainDepthProgram = 0;
 GLint sTerrainDepthLVP = -1;
-GLint sTerrainDepthChapelDiscardCenterLoc = -1;
-GLint sTerrainDepthChapelDiscardHalfExtentsLoc = -1;
-GLint sTerrainDepthApseDiscardCenterLoc = -1;
-GLint sTerrainDepthApseDiscardRadiusLoc = -1;
-GLint sTerrainDepthDescentDiscardCenterLoc = -1;
-GLint sTerrainDepthDescentDiscardHalfExtentsLoc = -1;
+GLint sTerrainDepthDiscardRectsLoc = -1;
+GLint sTerrainDepthDiscardCountLoc = -1;
+constexpr int kMaxDepthDiscards = 16; // mirror kTerrainDepthFS MAX_DISCARDS
+bool sDepthDiscardOverflowWarned = false;
 
 GLuint sSceneDepthProgram = 0;
 GLint sSceneDepthLVP = -1;
@@ -285,18 +272,8 @@ bool initShadowPass()
     }
 
     sTerrainDepthLVP = glGetUniformLocation(sTerrainDepthProgram, "uLightViewProj");
-    sTerrainDepthChapelDiscardCenterLoc =
-        glGetUniformLocation(sTerrainDepthProgram, "uChapelDiscardCenter");
-    sTerrainDepthChapelDiscardHalfExtentsLoc =
-        glGetUniformLocation(sTerrainDepthProgram, "uChapelDiscardHalfExtents");
-    sTerrainDepthApseDiscardCenterLoc =
-        glGetUniformLocation(sTerrainDepthProgram, "uApseDiscardCenter");
-    sTerrainDepthApseDiscardRadiusLoc =
-        glGetUniformLocation(sTerrainDepthProgram, "uApseDiscardRadius");
-    sTerrainDepthDescentDiscardCenterLoc =
-        glGetUniformLocation(sTerrainDepthProgram, "uDescentDiscardCenter");
-    sTerrainDepthDescentDiscardHalfExtentsLoc =
-        glGetUniformLocation(sTerrainDepthProgram, "uDescentDiscardHalfExtents");
+    sTerrainDepthDiscardRectsLoc = glGetUniformLocation(sTerrainDepthProgram, "uDiscardRects");
+    sTerrainDepthDiscardCountLoc = glGetUniformLocation(sTerrainDepthProgram, "uDiscardCount");
     sSceneDepthLVP = glGetUniformLocation(sSceneDepthProgram, "uLightViewProj");
     sSceneDepthModel = glGetUniformLocation(sSceneDepthProgram, "uModel");
     sTreeDepthLVP = glGetUniformLocation(sTreeDepthProgram, "uLightViewProj");
@@ -451,22 +428,21 @@ void useTerrainDepthShader()
     glUniformMatrix4fv(sTerrainDepthLVP, 1, GL_FALSE, glm::value_ptr(sLightViewProj));
 }
 
-void setTerrainDepthChapelDiscard(const glm::vec2& center, const glm::vec2& half_extents)
+void setTerrainDepthDiscardRects(const std::vector<glm::vec4>& rects)
 {
-    glUniform2f(sTerrainDepthChapelDiscardCenterLoc, center.x, center.y);
-    glUniform2f(sTerrainDepthChapelDiscardHalfExtentsLoc, half_extents.x, half_extents.y);
-}
-
-void setTerrainDepthApseDiscard(const glm::vec2& center, float radius)
-{
-    glUniform2f(sTerrainDepthApseDiscardCenterLoc, center.x, center.y);
-    glUniform1f(sTerrainDepthApseDiscardRadiusLoc, radius);
-}
-
-void setTerrainDepthDescentDiscard(const glm::vec2& center, const glm::vec2& half_extents)
-{
-    glUniform2f(sTerrainDepthDescentDiscardCenterLoc, center.x, center.y);
-    glUniform2f(sTerrainDepthDescentDiscardHalfExtentsLoc, half_extents.x, half_extents.y);
+    const int total = static_cast<int>(rects.size());
+    const int n = std::min(total, kMaxDepthDiscards);
+    if (total > kMaxDepthDiscards && !sDepthDiscardOverflowWarned)
+    {
+        std::fprintf(stderr,
+                     "[ShadowPass] terrain-depth discard rect count %d exceeds "
+                     "MAX_DISCARDS=%d; extras dropped.\n",
+                     total, kMaxDepthDiscards);
+        sDepthDiscardOverflowWarned = true;
+    }
+    if (n > 0)
+        glUniform4fv(sTerrainDepthDiscardRectsLoc, n, glm::value_ptr(rects[0]));
+    glUniform1i(sTerrainDepthDiscardCountLoc, n);
 }
 
 void useSceneDepthShader()

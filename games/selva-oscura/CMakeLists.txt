@@ -422,3 +422,63 @@ endif()
 if(TARGET selva-oscura-convert-attacks)
     add_dependencies(selva-oscura-tests selva-oscura-convert-attacks)
 endif()
+
+# ---------------------------------------------------------------------------
+# dump_world — headless build-time tool. Links the engine + game lib,
+# runs registerAuthoredWorld(), serializes the StructureFootprint
+# registry to JSON. Build-time tools (Python heightmap baker, etc.)
+# consume the generated JSON to mirror the runtime registry without
+# linking the engine. See games/selva-oscura/tools/dump_world.cpp.
+# ---------------------------------------------------------------------------
+add_executable(selva-oscura-dump-world tools/dump_world.cpp)
+target_link_libraries(selva-oscura-dump-world PRIVATE selva-oscura-lib)
+if(MINGW)
+    target_link_options(selva-oscura-dump-world PRIVATE -static-libgcc -static-libstdc++)
+endif()
+
+# Bake step: invoke dump-world to produce the generated world-registry
+# JSON, then run the heightmap baker against it. Wiring this as a
+# build target means iteration is a single command (cmake --build
+# build --target selva-oscura-bake-terrain); whoever changes a
+# structure footprint just rebuilds and the heightmap regenerates.
+#
+# Output path is gitignored: assets/world/terrain/_world_registry.generated.json
+# (the underscore + .generated.json suffix marks it as derived).
+set(world_registry_json
+    ${CMAKE_CURRENT_SOURCE_DIR}/assets/world/terrain/_world_registry.generated.json
+)
+add_custom_command(
+    OUTPUT ${world_registry_json}
+    COMMAND $<TARGET_FILE:selva-oscura-dump-world> --out ${world_registry_json}
+    DEPENDS selva-oscura-dump-world
+    COMMENT "Dumping world structure registry → _world_registry.generated.json"
+    VERBATIM
+)
+
+# Python heightmap baker — depends on the generated registry so any
+# structure-footprint change in C++ propagates to the heightmap PNGs
+# on the next build. The bake script reads the JSON and applies
+# cuts_rim to the disc-rim heightmap (rim stays at floor Y inside
+# any cuts_rim footprint).
+#
+# OUTPUT names the terrain region PNGs so ninja tracks them as
+# generated artifacts; missing/stale PNG triggers a rebake.
+set(terrain_heightmap_dir ${CMAKE_CURRENT_SOURCE_DIR}/assets/world/terrain)
+set(terrain_heightmap_pngs
+    ${terrain_heightmap_dir}/selva_inner.png
+    ${terrain_heightmap_dir}/limbo.png
+)
+add_custom_command(
+    OUTPUT ${terrain_heightmap_pngs}
+    COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/gen_terrain_heightmap.py
+    DEPENDS
+        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/gen_terrain_heightmap.py
+        ${world_registry_json}
+    COMMENT "Baking terrain heightmaps (uses generated world registry)"
+    VERBATIM
+)
+add_custom_target(selva-oscura-bake-terrain ALL DEPENDS ${terrain_heightmap_pngs})
+# Heightmap PNGs are sync'd into build/bin/assets/ by selva-oscura-sync-config.
+# Run bake BEFORE sync so freshly-baked PNGs make it into the deployed assets.
+add_dependencies(selva-oscura-sync-config selva-oscura-bake-terrain)

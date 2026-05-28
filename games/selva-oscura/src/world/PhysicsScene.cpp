@@ -1,11 +1,13 @@
 #include "world/PhysicsScene.h"
 
 #include "world/CryptLayout.h"
+#include "world/Lights.h"
 #include "world/StaticMeshAssets.h"
 #include "world/StructureFootprints.h"
 #include "world/Terrain.h"
 #include "world/TerrainModifiers.h"
 
+#include <cmath>
 #include <cstdio>
 #include <vector>
 
@@ -117,15 +119,22 @@ void registerChapelTerrainModifiers()
 
     // Corridor geometry shared by footprint + slope modifiers.
     constexpr float kCorridorCeilingChapelLocalY =
-        1.58f; // chapel-local Y of corridor ceiling top at chapel-side end
+        3.08f; // chapel-local Y of corridor ceiling top at chapel-side end
+               // (= first_tread_z_chapel_local + corridor_ceiling_clearance
+               //   + corridor_ceiling_thickness; mirror of gen_crypt_foundation.py
+               //   JOINT["corridor_ceiling_clearance"] = 4.00 + thickness 0.30
+               //   relative to first tread at -1.22 = 3.08)
     constexpr float kStairRise = 0.16f;
     constexpr float kStairTread = 0.35f;
     constexpr float kCorridorSlopeMpM = kStairRise / kStairTread; // 0.46
-    constexpr float kNaturalTerrainY = 32.0f;
+    // Natural terrain Y at the chapel area (just past the back wall).
+    // Per gen_terrain_heightmap.py: wake_zone_y (-3) + plateau_height (25)
+    // at chapel XZ ≈ 22. Used to compute dist_until_buried below.
+    constexpr float kNaturalTerrainY = 22.0f;
     const float corridor_top_world_y_at_back_wall =
-        (kChapelGroundY - kPlinthHeight) + kCorridorCeilingChapelLocalY; // 33.58
+        (kChapelGroundY - kPlinthHeight) + kCorridorCeilingChapelLocalY;
     const float dist_until_buried =
-        (corridor_top_world_y_at_back_wall - kNaturalTerrainY) / kCorridorSlopeMpM; // 3.43m
+        (corridor_top_world_y_at_back_wall - kNaturalTerrainY) / kCorridorSlopeMpM;
 
     // 2) Structure footprint: chapel body only. Hole removes terrain
     //    inside the chapel. Behind the chapel, terrain is handled by
@@ -155,7 +164,109 @@ void registerChapelTerrainModifiers()
         StructureFootprint f;
         f.center_xz = {kCryptX, (front_edge_z + back_edge_z) * 0.5f};
         f.half_extents_xz = {kHalfWidth, (front_edge_z - back_edge_z) * 0.5f};
+        f.region_name = "selva_inner";
+        f.cuts_floor = true; // chapel body removes selva ground inside its rect
         f.debug_name = "chapel_footprint";
+        engine::world::registerStructureFootprint(f);
+    }
+
+    // 2b) Descent corridor footprint in Limbo. The corridor's tunnel
+    //     descends from the chapel back wall (Z = kCryptZ - kHalfLength
+    //     = -214) south through Limbo's airspace, piercing Limbo's
+    //     disc rim (at the disc's north edge Z=-321.15) and continuing
+    //     to the corridor's last-step exit ~Z=-354 where it meets the
+    //     Limbo floor.
+    //
+    //     This footprint declares cuts_rim + cuts_ceiling + cuts_wall
+    //     in the limbo region: the rim must NOT rise where the
+    //     corridor crosses, the ceiling must have a hole, and any
+    //     lateral wall the corridor would clip must drop the quad.
+    //     cuts_floor stays FALSE — the corridor lands on the Limbo
+    //     floor, doesn't pierce it.
+    //
+    //     X half-extent = corridor_half_w (2.4m) + wall_thickness
+    //     (0.6m) = 3.0m. Z extent from corridor's last step
+    //     (~Z=-354) to where it crosses the Limbo disc rim (Z=-321.15).
+    {
+        constexpr float kCorridorHalfW = 2.4f;
+        constexpr float kCorridorWallThickness = 0.6f;
+        constexpr float kCorridorXHalf = kCorridorHalfW + kCorridorWallThickness; // 3.0m
+        constexpr float kLimboRimBlend =
+            12.0f; // mirrors LIMBO_RIM_BLEND in gen_terrain_heightmap.py
+        constexpr float kCorridorEntryZ = -321.15f + kLimboRimBlend; // -309.15: past rim outer edge
+        // Empirical from crypt.glb mesh AABB dump (May 27): step 0399
+        // world Z bbox = [-353.15, -352.80]. Use the FAR edge so slot
+        // covers the entire last step.
+        constexpr float kCorridorExitZ = -353.15f;
+        constexpr float kCorridorCeilingClearance = 4.0f; // matches gen_crypt_foundation.py JOINT
+        constexpr float kLimboFloorY = -43.13f;
+        // Corridor descends at STAIR_RISE/STAIR_TREAD = 0.16/0.35
+        // (gen_crypt_foundation.py constants). Step Y at world Z = z:
+        //   step_count_from_bottom = (kCorridorExitZ - z) / 0.35
+        //                            (z gets MORE NEGATIVE as we go south,
+        //                             so this is positive at chapel side)
+        //   step_y = kLimboFloorY + step_count_from_bottom * 0.16
+        // The corridor's outer slot at this Z is [step_y, step_y + clearance].
+        constexpr float kCorridorSlopePerM = 0.16f / 0.35f; // ~0.457
+
+        const float center_z = (kCorridorEntryZ + kCorridorExitZ) * 0.5f;
+        const float half_z = (kCorridorEntryZ - kCorridorExitZ) * 0.5f;
+
+        StructureFootprint f;
+        f.center_xz = {kCryptX, center_z};
+        f.half_extents_xz = {kCorridorXHalf, half_z};
+        f.region_name = "limbo";
+        f.cuts_floor = false;
+        f.cuts_rim = true;
+        f.cuts_ceiling = true;
+        f.cuts_wall = true;
+
+        // Vertical profile: 1×N grid along Z. Per-row sample: the
+        // corridor mesh's TRUE outer Y-range at that Z.
+        //
+        // Values derived from crypt.glb mesh AABBs (May 27 bake) to
+        // avoid drift between this code's formula and the actual
+        // wedge-ramp geometry the Blender script produces — the
+        // wedge ramp's ceiling slope differs slightly from the
+        // step slope (0.4592 vs 0.4565), so a tread+offset formula
+        // is off by up to 0.4m at the chapel end. Endpoints below
+        // capture the actual mesh extents.
+        //
+        // Endpoints (chapel side ↔ limbo side, world coords):
+        //   ceiling Y_top:        25.08 ↔ -39.14
+        //   wall_l/r Y_bottom:   (computed from wall slope, limbo end -43.64)
+        //   step Z_top:          -213.15 ↔ -353.15 (= kCorridorExitZ)
+        //
+        // y_max = ceiling top (cavern wall yields to this).
+        // y_min = wall bottom (cavern wall yields all the way to here
+        //         since the corridor wall mesh fills the space down to
+        //         this Y — otherwise the cavern wall would still be
+        //         intact in the corridor's X range below the floor,
+        //         creating a visible wall fragment poking up).
+        //
+        // Wedge wall bottom follows the descent slope: Y = -43.64 at
+        // limbo end (Z=-353.15), rising at 0.4571 per +Z toward chapel.
+        constexpr int kNz = 32; // 32 rows over 44m = ~1.4m per row
+        constexpr float kStepZChapel = -213.15f;
+        constexpr float kStepZLimbo = kCorridorExitZ; // -353.15
+        constexpr float kCeilYChapel = 25.08f;
+        constexpr float kCeilYLimbo = -39.14f;
+        constexpr float kWallFloorYLimbo = -43.64f;     // wedge wall Y bottom at limbo end
+        constexpr float kCorridorSlope = 0.16f / 0.35f; // ~0.4571 Y per Z
+        f.vertical_profile.nx = 1;
+        f.vertical_profile.nz = kNz;
+        f.vertical_profile.cells.resize(kNz);
+        for (int i = 0; i < kNz; ++i)
+        {
+            const float t = static_cast<float>(i) / static_cast<float>(kNz - 1);
+            const float z = kCorridorExitZ + t * (kCorridorEntryZ - kCorridorExitZ);
+            const float step_t = (z - kStepZLimbo) / (kStepZChapel - kStepZLimbo);
+            const float ceiling_y = kCeilYLimbo + step_t * (kCeilYChapel - kCeilYLimbo);
+            const float wall_floor_y = kWallFloorYLimbo + (z - kStepZLimbo) * kCorridorSlope;
+            f.vertical_profile.cells[static_cast<size_t>(i)] = {wall_floor_y, ceiling_y};
+        }
+
+        f.debug_name = "descent_corridor_in_limbo";
         engine::world::registerStructureFootprint(f);
     }
 
@@ -166,10 +277,13 @@ void registerChapelTerrainModifiers()
     //    sloping along the corridor roof. Past this rect's back
     //    edge, the corridor is naturally buried by natural-Y terrain.
     {
-        constexpr float kCorridorWedgeRun =
-            4.0f; // a bit past dist_until_buried (3.43) so blend has room
-        const float near_z = kCryptZ - kHalfLength;     // -214 (chapel back wall)
-        const float far_z = near_z - kCorridorWedgeRun; // -218
+        // dist_until_buried is now ~6.7m (vs old 3.43m) because the
+        // corridor ceiling is higher and natural terrain Y dropped
+        // with the lowered colle. Use 1m past dist_until_buried so the
+        // wedge slope smoothly reaches natural terrain Y with margin.
+        const float kCorridorWedgeRun = dist_until_buried + 1.0f;
+        const float near_z = kCryptZ - kHalfLength; // chapel back wall
+        const float far_z = near_z - kCorridorWedgeRun;
         TerrainModifier m;
         m.center_xz = {kCryptX, (near_z + far_z) * 0.5f};
         m.half_extents_xz = {kHalfWidth, kCorridorWedgeRun * 0.5f};
@@ -200,36 +314,101 @@ void registerLimboTerrainModifiers()
 {
     using engine::world::TerrainModifier;
 
-    // Acheron trench. Limbo's flat plateau is at world Y = -43.13;
-    // trench depresses to Y = -47.13 (4m deep). blend_pad creates
-    // sloped banks naturally — vertices within blend_pad of the trench
-    // edge get partial weight, producing a ramp from shore Y down to
-    // trench-floor Y. The bank slope = trench_depth / blend_pad =
-    // 4m / 7m = ~30° (talus angle for sloped earth/stone).
+    // Acheron trench. Disc Limbo: radius 300, center Z=-621.15.
+    // Trench is a chord across the disc at Z=-385, ~32m south of the
+    // corridor landing at Z=-353.15 — the first feature the player
+    // encounters walking into Limbo. Disc south rim at Z=-921.15
+    // (536m of plain remains south of the trench for the soul-
+    // congregation lights). FlushAt rect X-clipped to stay inside
+    // the disc rim (rock-collar pixels past the radius MUST NOT be
+    // pulled down to trench-Y or we punch holes in the cavern wall).
     constexpr float kLimboTopY = -43.13f;
     constexpr float kTrenchDepth = 4.0f;
-    constexpr float kTrenchHalfWidth = 6.0f;  // 12m total width
-    constexpr float kBankBlendPad = 5.0f;     // sloped bank distance (~38° grade)
-    // Trench Z position: ~32m past the stair (Limbo's near edge is
-    // at Z=-351.15), giving the player breathing room on the near
-    // shore before the bank begins.
+    constexpr float kTrenchHalfWidth = 6.0f; // 12m total width
+    constexpr float kBankBlendPad = 5.0f;    // sloped bank distance (~38° grade)
     constexpr float kTrenchCenterZ = -385.0f;
+    // Disc chord half-length at Z=-385: sqrt(300^2 - 236.15^2) = 185m;
+    // use 170m so the trench ends 15m short of the rim on each side.
+    constexpr float kTrenchHalfExtentX = 170.0f;
 
     TerrainModifier m;
-    // Trench runs the full Limbo X extent (so the player can walk
-    // along the riverbed laterally).
     m.center_xz = {0.0f, kTrenchCenterZ};
-    m.half_extents_xz = {80.0f, kTrenchHalfWidth};
+    m.half_extents_xz = {kTrenchHalfExtentX, kTrenchHalfWidth};
     m.mode = TerrainModifier::Mode::FlushAt;
     m.value = kLimboTopY - kTrenchDepth;
-    // Sharp on -X / +X edges (trench runs off Limbo's lateral sides
-    // into the cavern walls); sloped on -Z / +Z (the two banks).
+    // Sharp on -X / +X edges (the disc rim resolves the lateral
+    // clip); sloped on -Z / +Z (the two banks).
     m.blend_pad = 0.0f;
     m.blend_pad_neg_z = kBankBlendPad;
     m.blend_pad_pos_z = kBankBlendPad;
     m.debug_name = "limbo_acheron_trench";
     m.region_name = "limbo";
     engine::world::registerTerrainModifier(m);
+}
+
+void registerLimboLights()
+{
+    using engine::world::LightSource;
+
+    // Limbo plateau top (must match registerLimboTerrainModifiers).
+    constexpr float kLimboTopY = -43.13f;
+    // Sit each light ~0.8m above the ground — waist-height for a
+    // brazier, lap-height for a fungus bowl. Authored as a single Y
+    // for v1; future per-source meshes (lamp / brazier / fungus) will
+    // each carry their own emitter height.
+    constexpr float kLightY = kLimboTopY + 0.8f;
+
+    // FAR shore = south of the Acheron trench (trench at Z=-500,
+    // bank ends ~Z=-505). All sources sit at Z = -520 .. -880 (the
+    // 360m-deep playable plain south of the river). The NEAR shore
+    // (Z ~-321 to -495) where the descent stair lets out stays
+    // unlit, so the player must craft a torch to see — and the
+    // visible lights across the river read as the soul congregation
+    // to head toward. Future Noble Castle placeholder will sit
+    // roughly at the center of this lit zone.
+    //
+    // Tag region_name = "limbo" so the per-region filter in
+    // WorldRenderer drops these for Selva-surface draws.
+
+    auto makeLight =
+        [&](float x, float z, glm::vec3 color, float intensity, float radius, const char* name)
+    {
+        LightSource L;
+        L.position = glm::vec3(x, kLightY, z);
+        L.color = color;
+        L.intensity = intensity;
+        L.radius = radius;
+        L.region_name = "limbo";
+        L.debug_name = name;
+        engine::world::registerLight(L);
+    };
+
+    // Warm dim torchlight (dying campfires, oil lamps).
+    constexpr glm::vec3 kWarm{1.00f, 0.55f, 0.22f};
+    // Pale sickly green (glowing-fungus bowls — the one organic source
+    // that doesn't need fuel).
+    constexpr glm::vec3 kFungus{0.40f, 0.85f, 0.45f};
+
+    // Scatter weighted toward what will eventually become the Noble
+    // Castle's grounds (mid-far Limbo, X near 0, Z around -700..-750).
+    // Radii small (8-14m) so each lights a local patch without
+    // flood-lighting the cavern. Disc radius=300 keeps lights well
+    // inside the rim.
+    makeLight(-40.0f, -560.0f, kWarm, 0.8f, 11.0f, "limbo_campfire_a");
+    makeLight(60.0f, -620.0f, kWarm, 0.7f, 10.0f, "limbo_campfire_b");
+    makeLight(-90.0f, -700.0f, kFungus, 0.5f, 9.0f, "limbo_fungus_a");
+    makeLight(80.0f, -740.0f, kWarm, 0.6f, 12.0f, "limbo_brazier_a");
+    makeLight(0.0f, -780.0f, kWarm, 1.0f, 16.0f, "limbo_brazier_b");
+    makeLight(120.0f, -650.0f, kFungus, 0.4f, 8.0f, "limbo_fungus_b");
+    makeLight(-130.0f, -820.0f, kWarm, 0.5f, 10.0f, "limbo_campfire_c");
+    makeLight(30.0f, -870.0f, kFungus, 0.4f, 7.0f, "limbo_fungus_c");
+}
+
+void registerAuthoredWorld()
+{
+    registerChapelTerrainModifiers();
+    registerLimboTerrainModifiers();
+    registerLimboLights();
 }
 
 } // namespace selva::world::crypt_layout

@@ -14,6 +14,7 @@
 #include "world/Collision.h"
 #include "world/CryptLayout.h"
 #include "world/JsonScene.h"
+#include "world/Lights.h"
 #include "world/PhysicsScene.h"
 #include "world/Scene.h"
 #include "world/StaticMeshAssets.h"
@@ -29,6 +30,8 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
+#include <vector>
 
 #include <glad/glad.h>
 
@@ -706,34 +709,20 @@ void renderTerrain()
     // atmosphere uniforms can be set per-frame consistently with sky
     // and trees.
     //
-    // Structure footprints drive both physics-side (Hole modifier)
-    // AND render-side (shader discard) terrain removal — single
-    // source of truth, registered once at scene init. See
-    // engine::world::registerStructureFootprint.
-    //
-    // Terrain shader has 2 active discard rect slots (chapel + descent).
-    // First two registered footprints map to those slots; further
-    // footprints would need a shader-side array bump.
-    const int n_fp = engine::world::structureFootprintCount();
-    if (n_fp >= 1)
-    {
-        const auto& f = engine::world::structureFootprintAt(0);
-        selva::render::setTerrainChapelDiscard(f.center_xz, f.half_extents_xz);
-    }
-    else
-    {
-        selva::render::setTerrainChapelDiscard(glm::vec2(0.0f), glm::vec2(0.0f));
-    }
-    selva::render::setTerrainApseDiscard(glm::vec2(0.0f), 0.0f);
-    if (n_fp >= 2)
-    {
-        const auto& f = engine::world::structureFootprintAt(1);
-        selva::render::setTerrainDescentDiscard(f.center_xz, f.half_extents_xz);
-    }
-    else
-    {
-        selva::render::setTerrainDescentDiscard(glm::vec2(0.0f), glm::vec2(0.0f));
-    }
+    // Structure footprints drive every terrain surface that a
+    // structure can pierce: physics floor (Hole modifier), render
+    // floor (shader discard), cavern ceiling/walls (quad emission),
+    // disc rim (heightmap PNG via dump-world). Single source of
+    // truth, registered once at scene init in
+    // crypt_layout::registerAuthoredWorld.
+
+    const auto& all_lights = engine::world::allLights();
+    std::vector<engine::world::LightSource> region_lights;
+    region_lights.reserve(all_lights.size());
+
+    const int fp_count = engine::world::structureFootprintCount();
+    std::vector<glm::vec4> region_discards;
+    region_discards.reserve(static_cast<size_t>(fp_count));
 
     for (int i = 0; i < selva::world::terrainRegionCount(); ++i)
     {
@@ -744,9 +733,40 @@ void renderTerrain()
             glm::vec3(r.tone_dark[0], r.tone_dark[1], r.tone_dark[2]),
             glm::vec3(r.tone_light[0], r.tone_light[1], r.tone_light[2]));
         selva::render::setTerrainLightingEnv(
-            r.sun_multiplier,
-            glm::vec3(r.sky_ambient[0], r.sky_ambient[1], r.sky_ambient[2]),
+            r.sun_multiplier, glm::vec3(r.sky_ambient[0], r.sky_ambient[1], r.sky_ambient[2]),
             glm::vec3(r.ground_ambient[0], r.ground_ambient[1], r.ground_ambient[2]));
+
+        // Each region's draw gets globals (region_name=null) plus lights
+        // tagged with this region's name. Avoids leaking torches across
+        // sealed boundaries (Selva sun-lit, Limbo cavern, etc).
+        region_lights.clear();
+        for (const auto& L : all_lights)
+        {
+            if (L.region_name == nullptr || std::strcmp(L.region_name, r.name.c_str()) == 0)
+            {
+                region_lights.push_back(L);
+            }
+        }
+        selva::render::setTerrainPointLights(region_lights);
+
+        // Discard rects: every cuts_floor footprint in this region
+        // (or unscoped) contributes one rect. Same filter rule as
+        // lights — region_name=null applies everywhere.
+        region_discards.clear();
+        for (int j = 0; j < fp_count; ++j)
+        {
+            const auto& f = engine::world::structureFootprintAt(j);
+            if (!f.cuts_floor)
+                continue;
+            const bool region_match =
+                (f.region_name == nullptr) || (std::strcmp(f.region_name, r.name.c_str()) == 0);
+            if (!region_match)
+                continue;
+            region_discards.emplace_back(f.center_xz.x, f.center_xz.y, f.half_extents_xz.x,
+                                         f.half_extents_xz.y);
+        }
+        selva::render::setTerrainDiscardRects(region_discards);
+
         glBindVertexArray(r.vao);
         glDrawElements(GL_TRIANGLES, r.index_count, GL_UNSIGNED_INT, nullptr);
     }
@@ -925,33 +945,32 @@ void renderTrees()
 
 void renderTerrainDepth()
 {
-    {
-        // Mirror the main-pass footprint-driven discards exactly so
-        // terrain inside footprints doesn't cast phantom shadows.
-        const int n_fp = engine::world::structureFootprintCount();
-        if (n_fp >= 1)
-        {
-            const auto& f = engine::world::structureFootprintAt(0);
-            selva::render::setTerrainDepthChapelDiscard(f.center_xz, f.half_extents_xz);
-        }
-        else
-        {
-            selva::render::setTerrainDepthChapelDiscard(glm::vec2(0.0f), glm::vec2(0.0f));
-        }
-        selva::render::setTerrainDepthApseDiscard(glm::vec2(0.0f), 0.0f);
-        if (n_fp >= 2)
-        {
-            const auto& f = engine::world::structureFootprintAt(1);
-            selva::render::setTerrainDepthDescentDiscard(f.center_xz, f.half_extents_xz);
-        }
-        else
-        {
-            selva::render::setTerrainDepthDescentDiscard(glm::vec2(0.0f), glm::vec2(0.0f));
-        }
-    }
+    const int fp_count = engine::world::structureFootprintCount();
+    std::vector<glm::vec4> region_discards;
+    region_discards.reserve(static_cast<size_t>(fp_count));
+
     for (int i = 0; i < selva::world::terrainRegionCount(); ++i)
     {
         const auto& r = selva::world::terrainRegion(i);
+
+        // Same per-region filter as the color pass — the depth pass
+        // MUST drop the same fragments, otherwise terrain inside the
+        // structure casts phantom shadow into the interior.
+        region_discards.clear();
+        for (int j = 0; j < fp_count; ++j)
+        {
+            const auto& f = engine::world::structureFootprintAt(j);
+            if (!f.cuts_floor)
+                continue;
+            const bool region_match =
+                (f.region_name == nullptr) || (std::strcmp(f.region_name, r.name.c_str()) == 0);
+            if (!region_match)
+                continue;
+            region_discards.emplace_back(f.center_xz.x, f.center_xz.y, f.half_extents_xz.x,
+                                         f.half_extents_xz.y);
+        }
+        selva::render::setTerrainDepthDiscardRects(region_discards);
+
         glBindVertexArray(r.vao);
         glDrawElements(GL_TRIANGLES, r.index_count, GL_UNSIGNED_INT, nullptr);
     }

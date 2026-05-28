@@ -164,5 +164,20 @@ void registerChapelTerrainModifiers();
 // as runtime TerrainModifiers in the "limbo" region. Must run BEFORE
 // world::initTerrain() builds the region meshes.
 void registerLimboTerrainModifiers();
+
+// Registers Limbo's point-light set. v1: ~6 dying-inhabitants' lights
+// scattered across the FAR shore of Acheron (the side opposite the
+// descent stair) — where the lost souls congregate. The near shore
+// stays dark, motivating the player's first crafting task (torch).
+// See games/selva-oscura/docs/design/limbo.md "Light direction".
+void registerLimboLights();
+
+// Single entry point that registers the entire authored world
+// (structure footprints, terrain modifiers, lights, anything else
+// that lives in the registries before initTerrain runs). Both the
+// game's main.cpp AND the build-time dump-world binary call this —
+// guaranteeing the same registry state in-game and at bake time.
+// Add new world-build helpers here, not at the call sites.
+void registerAuthoredWorld();
 } // namespace crypt_layout
 } // namespace selva::world

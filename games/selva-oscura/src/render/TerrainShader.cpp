@@ -3,10 +3,13 @@
 #include "gl/ShaderUtils.h"
 #include "render/AtmosphereShader.h"
 #include "render/ShadowShader.h"
+#include "world/Lights.h"
 
 #include <glm/gtc/type_ptr.hpp>
 
+#include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <string>
 
 #include <glad/glad.h>
@@ -63,24 +66,31 @@ uniform vec3 uSunIntensity;
 uniform vec3 uCamPos;
 uniform float uExposure;
 
-// Axis-aligned XZ rectangle for terrain excision (chapel body
-// footprint). Fragments inside are discarded so the chapel mesh
+// Axis-aligned XZ rectangles for terrain excision. Populated per
+// region from registered StructureFootprints with cuts_floor=true —
+// fragments inside any rect are discarded so the structure mesh
 // provides the ground there without a competing terrain surface.
-// Set half-extents to (0, 0) to disable the rect.
-uniform vec2 uChapelDiscardCenter;
-uniform vec2 uChapelDiscardHalfExtents;
-// Half-disc (apse bulge) for terrain excision behind the chapel.
-// Center at the chapel back wall midpoint; only discards fragments
-// with z <= center.z (the apse-side half). Set radius to 0 to
-// disable.
-uniform vec2 uApseDiscardCenter;
-uniform float uApseDiscardRadius;
-// Descent shaft rect for terrain excision under the underground
-// descent path (landing + corridor + Acheron stub). Without it,
-// terrain renders over the descent area outside the chapel/apse
-// footprints. Set half-extents to (0, 0) to disable.
-uniform vec2 uDescentDiscardCenter;
-uniform vec2 uDescentDiscardHalfExtents;
+//
+// Layout: uDiscardRects[i].xy = center XZ, uDiscardRects[i].zw =
+// half-extents XZ. Empty (uDiscardCount=0) disables all discards.
+// MAX_DISCARDS matches StructureFootprint runtime cap; raise both
+// together if any region ever needs more than this many cuts.
+#define MAX_DISCARDS 16
+uniform vec4 uDiscardRects[MAX_DISCARDS];
+uniform int uDiscardCount;
+
+// Point lights for the active region. Packed as:
+//   uLightPosRadius.xyz = world position
+//   uLightPosRadius.w   = radius (meters; brightness 0 past this)
+//   uLightColorIntensity.rgb = linear RGB color
+//   uLightColorIntensity.w   = intensity scalar
+// Variable count via uLightCount; lights beyond MAX_LIGHTS are dropped
+// at upload time (logged). 64 chosen to keep the uniform array under
+// most drivers' default vec4 cap without needing a UBO.
+#define MAX_LIGHTS 64
+uniform vec4 uLightPosRadius[MAX_LIGHTS];
+uniform vec4 uLightColorIntensity[MAX_LIGHTS];
+uniform int uLightCount;
 )glsl";
 
 const char* kTerrainFSMain = R"glsl(
@@ -114,30 +124,15 @@ float vnoise(vec3 p)
 
 void main()
 {
-    // Chapel-body excision: rectangular footprint.
-    if (uChapelDiscardHalfExtents.x > 0.0 && uChapelDiscardHalfExtents.y > 0.0)
+    // Structure-footprint excision: discard fragments inside any
+    // registered cuts_floor rect for this region. WorldRenderer
+    // uploads the rect list once per region before the draw.
+    for (int i = 0; i < uDiscardCount; ++i)
     {
-        vec2 d = abs(vWorldPos.xz - uChapelDiscardCenter);
-        if (d.x < uChapelDiscardHalfExtents.x && d.y < uChapelDiscardHalfExtents.y)
-            discard;
-    }
-    // Apse excision: half-disc behind the chapel body. Disc center
-    // at the chapel back wall midpoint; discard fragments with
-    // z <= center.z AND inside the radius. Avoids the rectangular
-    // void that would appear at the apse-bulge corners if we
-    // used a single rect that covered the apse Z range.
-    if (uApseDiscardRadius > 0.0)
-    {
-        vec2 ad = vWorldPos.xz - uApseDiscardCenter;
-        if (ad.y <= 0.0 && dot(ad, ad) < uApseDiscardRadius * uApseDiscardRadius)
-            discard;
-    }
-    // Descent shaft excision: rectangle covering the underground
-    // landing + corridor + Acheron stub.
-    if (uDescentDiscardHalfExtents.x > 0.0 && uDescentDiscardHalfExtents.y > 0.0)
-    {
-        vec2 d = abs(vWorldPos.xz - uDescentDiscardCenter);
-        if (d.x < uDescentDiscardHalfExtents.x && d.y < uDescentDiscardHalfExtents.y)
+        vec2 center = uDiscardRects[i].xy;
+        vec2 half_ext = uDiscardRects[i].zw;
+        vec2 d = abs(vWorldPos.xz - center);
+        if (d.x < half_ext.x && d.y < half_ext.y)
             discard;
     }
 
@@ -160,7 +155,27 @@ void main()
     vec3 ambient = mix(uGroundAmbient, uSkyAmbient, skyFactor);
     vec3 sunTint = vec3(1.05, 0.78, 0.55) * uSunMultiplier;
     float shadow = sampleSunShadow(vWorldPos, vNormal);
-    vec3 surface = dirt * (ambient + sunTint * halfL * shadow);
+
+    // Point-light contribution. Smooth falloff from full at distance 0
+    // to zero at radius; half-Lambert against the light direction so
+    // back-facing surfaces still pick up a faint wash (cheap stand-in
+    // for indirect bounce). No shadow-cast in v1.
+    vec3 pointLight = vec3(0.0);
+    for (int i = 0; i < uLightCount; ++i)
+    {
+        vec3 toLight = uLightPosRadius[i].xyz - vWorldPos;
+        float dist = length(toLight);
+        float radius = uLightPosRadius[i].w;
+        if (radius <= 0.0 || dist >= radius)
+            continue;
+        vec3 ldir = toLight / max(dist, 1e-4);
+        float ndotl = dot(vNormal, ldir) * 0.5 + 0.5;
+        float falloff = 1.0 - smoothstep(0.0, radius, dist);
+        pointLight += uLightColorIntensity[i].rgb * uLightColorIntensity[i].w
+                      * (ndotl * falloff);
+    }
+
+    vec3 surface = dirt * (ambient + sunTint * halfL * shadow + pointLight);
 
     vec3 viewVec = vWorldPos - uCamPos;
     float dist = length(viewVec);
@@ -197,24 +212,22 @@ GLint sUniShadowMapLoc = -1;
 GLint sUniLightViewProjLoc = -1;
 GLint sUniShadowSunDirLoc = -1;
 GLint sUniShadowCamPosLoc = -1;
-GLint sUniChapelDiscardCenterLoc = -1;
-GLint sUniChapelDiscardHalfExtentsLoc = -1;
-GLint sUniApseDiscardCenterLoc = -1;
-GLint sUniApseDiscardRadiusLoc = -1;
-GLint sUniDescentDiscardCenterLoc = -1;
-GLint sUniDescentDiscardHalfExtentsLoc = -1;
+GLint sUniDiscardRectsLoc = -1;
+GLint sUniDiscardCountLoc = -1;
 GLint sUniSunMultiplierLoc = -1;
 GLint sUniSkyAmbientLoc = -1;
 GLint sUniGroundAmbientLoc = -1;
+GLint sUniLightPosRadiusLoc = -1;
+GLint sUniLightColorIntensityLoc = -1;
+GLint sUniLightCountLoc = -1;
 
-// Cached last-set discard values so the collider debug overlay can
-// draw exactly what the terrain shader is using right now.
-glm::vec2 sLastChapelDiscardCenter{0.0f};
-glm::vec2 sLastChapelDiscardHalfExtents{0.0f};
-glm::vec2 sLastApseDiscardCenter{0.0f};
-float sLastApseDiscardRadius = 0.0f;
-glm::vec2 sLastDescentDiscardCenter{0.0f};
-glm::vec2 sLastDescentDiscardHalfExtents{0.0f};
+// Must match the MAX_LIGHTS define in the FS uniform block.
+constexpr int kMaxLights = 64;
+bool sLightOverflowWarned = false;
+
+// Must match the MAX_DISCARDS define in the FS uniform block.
+constexpr int kMaxDiscards = 16;
+bool sDiscardOverflowWarned = false;
 
 } // namespace
 
@@ -237,15 +250,14 @@ bool initTerrainShader()
     sUniLightViewProjLoc = glGetUniformLocation(sProgram, "uLightViewProj");
     sUniShadowSunDirLoc = glGetUniformLocation(sProgram, "uShadowSunDir");
     sUniShadowCamPosLoc = glGetUniformLocation(sProgram, "uShadowCameraPos");
-    sUniChapelDiscardCenterLoc = glGetUniformLocation(sProgram, "uChapelDiscardCenter");
-    sUniChapelDiscardHalfExtentsLoc = glGetUniformLocation(sProgram, "uChapelDiscardHalfExtents");
-    sUniApseDiscardCenterLoc = glGetUniformLocation(sProgram, "uApseDiscardCenter");
-    sUniApseDiscardRadiusLoc = glGetUniformLocation(sProgram, "uApseDiscardRadius");
-    sUniDescentDiscardCenterLoc = glGetUniformLocation(sProgram, "uDescentDiscardCenter");
-    sUniDescentDiscardHalfExtentsLoc = glGetUniformLocation(sProgram, "uDescentDiscardHalfExtents");
+    sUniDiscardRectsLoc = glGetUniformLocation(sProgram, "uDiscardRects");
+    sUniDiscardCountLoc = glGetUniformLocation(sProgram, "uDiscardCount");
     sUniSunMultiplierLoc = glGetUniformLocation(sProgram, "uSunMultiplier");
     sUniSkyAmbientLoc = glGetUniformLocation(sProgram, "uSkyAmbient");
     sUniGroundAmbientLoc = glGetUniformLocation(sProgram, "uGroundAmbient");
+    sUniLightPosRadiusLoc = glGetUniformLocation(sProgram, "uLightPosRadius");
+    sUniLightColorIntensityLoc = glGetUniformLocation(sProgram, "uLightColorIntensity");
+    sUniLightCountLoc = glGetUniformLocation(sProgram, "uLightCount");
     return true;
 }
 
@@ -294,11 +306,47 @@ void setTerrainTones(const glm::vec3& dark_loam, const glm::vec3& dry_dirt)
 }
 
 void setTerrainLightingEnv(float sun_multiplier, const glm::vec3& sky_ambient,
-                            const glm::vec3& ground_ambient)
+                           const glm::vec3& ground_ambient)
 {
     glUniform1f(sUniSunMultiplierLoc, sun_multiplier);
     glUniform3f(sUniSkyAmbientLoc, sky_ambient.x, sky_ambient.y, sky_ambient.z);
     glUniform3f(sUniGroundAmbientLoc, ground_ambient.x, ground_ambient.y, ground_ambient.z);
+}
+
+void setTerrainPointLights(const std::vector<engine::world::LightSource>& lights)
+{
+    const int total = static_cast<int>(lights.size());
+    const int n = std::min(total, kMaxLights);
+    if (total > kMaxLights && !sLightOverflowWarned)
+    {
+        std::fprintf(stderr,
+                     "[TerrainShader] light count %d exceeds MAX_LIGHTS=%d; "
+                     "extras dropped. Raise the cap or filter by region.\n",
+                     total, kMaxLights);
+        sLightOverflowWarned = true;
+    }
+
+    // Pack into transient stack buffers; one glUniform4fv per array.
+    float pos_radius[kMaxLights * 4];
+    float color_intensity[kMaxLights * 4];
+    for (int i = 0; i < n; ++i)
+    {
+        const auto& L = lights[static_cast<size_t>(i)];
+        pos_radius[i * 4 + 0] = L.position.x;
+        pos_radius[i * 4 + 1] = L.position.y;
+        pos_radius[i * 4 + 2] = L.position.z;
+        pos_radius[i * 4 + 3] = L.radius;
+        color_intensity[i * 4 + 0] = L.color.x;
+        color_intensity[i * 4 + 1] = L.color.y;
+        color_intensity[i * 4 + 2] = L.color.z;
+        color_intensity[i * 4 + 3] = L.intensity;
+    }
+    if (n > 0)
+    {
+        glUniform4fv(sUniLightPosRadiusLoc, n, pos_radius);
+        glUniform4fv(sUniLightColorIntensityLoc, n, color_intensity);
+    }
+    glUniform1i(sUniLightCountLoc, n);
 }
 
 void setTerrainShadow(const glm::mat4& light_view_proj, const glm::vec3& sun_dir,
@@ -310,53 +358,21 @@ void setTerrainShadow(const glm::mat4& light_view_proj, const glm::vec3& sun_dir
     glUniform1i(sUniShadowMapLoc, shadow_texture_unit);
 }
 
-void setTerrainChapelDiscard(const glm::vec2& center, const glm::vec2& half_extents)
+void setTerrainDiscardRects(const std::vector<glm::vec4>& rects)
 {
-    glUniform2f(sUniChapelDiscardCenterLoc, center.x, center.y);
-    glUniform2f(sUniChapelDiscardHalfExtentsLoc, half_extents.x, half_extents.y);
-    sLastChapelDiscardCenter = center;
-    sLastChapelDiscardHalfExtents = half_extents;
-}
-
-void setTerrainApseDiscard(const glm::vec2& center, float radius)
-{
-    glUniform2f(sUniApseDiscardCenterLoc, center.x, center.y);
-    glUniform1f(sUniApseDiscardRadiusLoc, radius);
-    sLastApseDiscardCenter = center;
-    sLastApseDiscardRadius = radius;
-}
-
-void setTerrainDescentDiscard(const glm::vec2& center, const glm::vec2& half_extents)
-{
-    glUniform2f(sUniDescentDiscardCenterLoc, center.x, center.y);
-    glUniform2f(sUniDescentDiscardHalfExtentsLoc, half_extents.x, half_extents.y);
-    sLastDescentDiscardCenter = center;
-    sLastDescentDiscardHalfExtents = half_extents;
-}
-
-glm::vec2 lastTerrainChapelDiscardCenter()
-{
-    return sLastChapelDiscardCenter;
-}
-glm::vec2 lastTerrainChapelDiscardHalfExtents()
-{
-    return sLastChapelDiscardHalfExtents;
-}
-glm::vec2 lastTerrainApseDiscardCenter()
-{
-    return sLastApseDiscardCenter;
-}
-float lastTerrainApseDiscardRadius()
-{
-    return sLastApseDiscardRadius;
-}
-glm::vec2 lastTerrainDescentDiscardCenter()
-{
-    return sLastDescentDiscardCenter;
-}
-glm::vec2 lastTerrainDescentDiscardHalfExtents()
-{
-    return sLastDescentDiscardHalfExtents;
+    const int total = static_cast<int>(rects.size());
+    const int n = std::min(total, kMaxDiscards);
+    if (total > kMaxDiscards && !sDiscardOverflowWarned)
+    {
+        std::fprintf(stderr,
+                     "[TerrainShader] discard rect count %d exceeds MAX_DISCARDS=%d; "
+                     "extras dropped. Raise the cap or split the region.\n",
+                     total, kMaxDiscards);
+        sDiscardOverflowWarned = true;
+    }
+    if (n > 0)
+        glUniform4fv(sUniDiscardRectsLoc, n, glm::value_ptr(rects[0]));
+    glUniform1i(sUniDiscardCountLoc, n);
 }
 
 } // namespace selva::render

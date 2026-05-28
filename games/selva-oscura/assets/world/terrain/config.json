@@ -16,21 +16,24 @@
       "base_color": [0.16, 0.13, 0.10]
     },
     "limbo": {
-      "_comment": "Limbo, the First Circle of Hell. Flat heightmap (encodes 0..1, dominated by 0). y_offset places the top surface at world Y = -43.13. Acheron + larvae piles + future features come from runtime TerrainModifiers tagged with region_name='limbo'. Palette per Inferno IV: Limbo is a dim featureless plain — Dante notes light from the Noble Castle but ground is unremarkable. With the 'Limbo non-functional' lore the meadow has gone fallow; barren ash-grey stone instead of the canonical 'fresh green grass'.",
+      "_comment": "Limbo, the First Circle of Hell. Disc shape per the Inferno cosmology — 300m playable radius, rock collar past the disc edge rises to meet the ceiling. y_offset places the disc floor at world Y = -43.13. Acheron + larvae piles + future features come from runtime TerrainModifiers tagged with region_name='limbo'. Descent stair lands at the disc's north rim (Z=-351.15), inset 30m from the rock wall.",
       "heightmap": "assets/world/terrain/limbo.png",
-      "world_origin": [0.0, -431.15],
-      "world_extent": 160.0,
+      "world_origin": [0.0, -621.15],
+      "world_extent": 600.0,
       "height_range_min": 0.0,
-      "height_range_max": 1.0,
+      "height_range_max": 36.13,
       "y_offset": -43.13,
-      "subdivide": 160,
+      "subdivide": 300,
       "base_color": [0.03, 0.03, 0.03],
       "tone_dark": [0.02, 0.02, 0.022],
       "tone_light": [0.06, 0.06, 0.065],
       "sun_multiplier": 0.0,
       "sky_ambient": [0.18, 0.18, 0.20],
       "ground_ambient": [0.10, 0.10, 0.11],
-      "footstep_sound_id": "footstep_limbo"
+      "footstep_sound_id": "footstep_limbo",
+      "_enclosure_comment": "Cavern ceiling. Ceiling at Y=-7; disc floor at Y=-43.13 → 36m of headroom (matches the chapel-corridor exit clearance). The rock collar (heightmap pixels past the disc radius) rises to exactly Y=-7 so the disc wall meets the ceiling continuously. Lateral square-edge walls are hidden behind the rock collar but kept for geometric closure. Hole cutouts (descent corridor, future shafts) come from registered StructureFootprints with cuts_ceiling/cuts_wall flags — see crypt_layout::registerChapelTerrainModifiers.",
+      "ceiling_y": -7.0,
+      "wall_min_y": -50.0
     }
   }
 }

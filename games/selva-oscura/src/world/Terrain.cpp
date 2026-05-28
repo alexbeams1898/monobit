@@ -4,6 +4,7 @@
 #include "physics/PhysicsWorld.h"
 #include "world/Collision.h"
 #include "world/CryptLayout.h"
+#include "world/StructureFootprints.h"
 #include "world/TerrainModifiers.h"
 
 #include <nlohmann/json.hpp>
@@ -203,6 +204,210 @@ void buildRegionMesh(TerrainRegion& r, int subdivide)
             indices.push_back(i3);
         }
     }
+    // Optional enclosure: ceiling + four lateral walls. Underground
+    // regions declare ceiling_y + wall_min_y in config; surface
+    // regions skip this entirely. Geometry is appended to the same
+    // vertex + index buffers so the whole enclosure draws as one mesh
+    // with one Jolt body. Ceiling normals point DOWN (lit from below);
+    // wall normals point INWARD (toward region interior).
+    if (r.has_ceiling)
+    {
+        // Ceiling: same XZ grid as floor (one vertex per floor vertex,
+        // at Y = ceiling_y). Indices reference these new vertices via
+        // an offset. Quads whose centroid is inside any ceiling hole
+        // are dropped (no triangles emitted).
+        const std::uint32_t ceiling_vertex_base = static_cast<std::uint32_t>(verts.size());
+        for (int iz = 0; iz < verts_per_side; ++iz)
+        {
+            for (int ix = 0; ix < verts_per_side; ++ix)
+            {
+                const float u = static_cast<float>(ix) / static_cast<float>(subdivide);
+                const float v = static_cast<float>(iz) / static_cast<float>(subdivide);
+                const float wx = r.world_origin.x + (u * 2.0f - 1.0f) * half;
+                const float wz = r.world_origin.y + (v * 2.0f - 1.0f) * half;
+                Vertex vert{};
+                vert.position[0] = wx;
+                vert.position[1] = r.ceiling_y;
+                vert.position[2] = wz;
+                vert.uv[0] = u;
+                vert.uv[1] = v;
+                vert.normal[0] = 0.0f;
+                vert.normal[1] = -1.0f; // ceiling faces DOWN
+                vert.normal[2] = 0.0f;
+                verts.push_back(vert);
+            }
+        }
+        for (int iz = 0; iz < subdivide; ++iz)
+        {
+            for (int ix = 0; ix < subdivide; ++ix)
+            {
+                const float quad_cx =
+                    r.world_origin.x - half + (static_cast<float>(ix) + 0.5f) * step;
+                const float quad_cz =
+                    r.world_origin.y - half + (static_cast<float>(iz) + 0.5f) * step;
+                // Drop ceiling quad only when a registered cuts_ceiling
+                // slot's Y range contains the ceiling Y at this XZ —
+                // i.e., the structure actually pierces the ceiling
+                // here. Falls back to 2D rect for footprints without
+                // a vertical_profile.
+                if (engine::world::isInsideStructureSlot(r.name.c_str(), quad_cx, r.ceiling_y,
+                                                         quad_cz,
+                                                         engine::world::SurfaceCut::Ceiling))
+                    continue;
+                const std::uint32_t i0 =
+                    ceiling_vertex_base + static_cast<std::uint32_t>(iz * verts_per_side + ix);
+                const std::uint32_t i1 = i0 + 1;
+                const std::uint32_t i2 = i0 + static_cast<std::uint32_t>(verts_per_side);
+                const std::uint32_t i3 = i2 + 1;
+                // Reversed winding vs floor so the ceiling's visible
+                // face is the bottom (player's view from below).
+                indices.push_back(i0);
+                indices.push_back(i1);
+                indices.push_back(i3);
+                indices.push_back(i0);
+                indices.push_back(i3);
+                indices.push_back(i2);
+            }
+        }
+
+        // Walls: four lateral slabs along the XZ AABB edges, each
+        // subdivided into a grid so structure footprints that
+        // intersect the wall plane can punch through cleanly (e.g.
+        // a corridor entering through both ceiling AND wall needs a
+        // matching cutout in both surfaces). Normals point INWARD.
+        const float x_min = r.world_origin.x - half;
+        const float x_max = r.world_origin.x + half;
+        const float z_min = r.world_origin.y - half;
+        const float z_max = r.world_origin.y + half;
+        const float y_bot = r.wall_min_y;
+        const float y_top = r.ceiling_y;
+
+        // Wall grid resolution. Quads sized roughly the same as floor
+        // quads so hole edges align reasonably. Height divided into
+        // similar-size cells.
+        const int wall_cells_horiz = subdivide;
+        const float wall_height = y_top - y_bot;
+        const int wall_cells_vert = std::max(1, static_cast<int>(wall_height / step));
+        const float wall_step_v = wall_height / static_cast<float>(wall_cells_vert);
+
+        // Each wall is parameterized by its constant-axis position
+        // (the X or Z it sits at) and its variable axis (the other
+        // one, running across the wall). Inward normal is +1 for
+        // walls on the -axis side, -1 for walls on the +axis side.
+        struct WallSpec
+        {
+            int axis;             // 0 = X-constant wall; 2 = Z-constant wall
+            float const_axis_pos; // X or Z value of the wall plane
+            float var_axis_min;   // start of variable axis range
+            float var_axis_max;   // end of variable axis range
+            glm::vec3 inward_normal;
+        };
+        const WallSpec walls[4] = {
+            {0, x_min, z_min, z_max, {+1.0f, 0.0f, 0.0f}}, // -X wall
+            {0, x_max, z_min, z_max, {-1.0f, 0.0f, 0.0f}}, // +X wall
+            {2, z_min, x_min, x_max, {0.0f, 0.0f, +1.0f}}, // -Z wall
+            {2, z_max, x_min, x_max, {0.0f, 0.0f, -1.0f}}, // +Z wall
+        };
+        for (const auto& w : walls)
+        {
+            const float var_step =
+                (w.var_axis_max - w.var_axis_min) / static_cast<float>(wall_cells_horiz);
+            // Quad sub-clipping against registered cuts_wall slots:
+            // each quad is clipped to up to 4 sub-rects representing
+            // the KEPT region (quad minus all matching slots). Sub-
+            // quads emit fresh vertices so the wall conforms to the
+            // slot's V bounds exactly regardless of quad-grid
+            // alignment.
+            //
+            // Y-axis: snap slot Y to the wall quad grid so the cut
+            // takes WHOLE quad rows in the Y dimension. Without
+            // snapping, slot top/bottom that fall MID-quad leave
+            // visible wall slivers across the structure's V range
+            // (e.g. a 0.4m wall strip just above the corridor outer
+            // ceiling). Snapping accepts ≤1 quad-row of over-cut on
+            // each side in exchange for clean visible edges.
+            const bool flip_winding = (w.inward_normal.x < 0.0f || w.inward_normal.z < 0.0f);
+            for (int iy = 0; iy < wall_cells_vert; ++iy)
+            {
+                const float y_quad_min = y_bot + iy * wall_step_v;
+                const float y_quad_max = y_quad_min + wall_step_v;
+                for (int iv = 0; iv < wall_cells_horiz; ++iv)
+                {
+                    const float v_quad_min = w.var_axis_min + iv * var_step;
+                    const float v_quad_max = v_quad_min + var_step;
+
+                    engine::world::ClipQuadQuery q{};
+                    q.region_name = r.name.c_str();
+                    q.var_axis = w.axis;
+                    q.const_pos = w.const_axis_pos;
+                    q.quad = {v_quad_min, v_quad_max, y_quad_min, y_quad_max};
+                    q.surface = engine::world::SurfaceCut::Wall;
+                    engine::world::ClipRect kept[8];
+                    const int n_kept = engine::world::clipQuadAgainstStructureSlots(q, kept, 8);
+
+                    for (int k = 0; k < n_kept; ++k)
+                    {
+                        const auto& kr = kept[k];
+                        // Build 4 fresh corner vertices for this
+                        // sub-quad. Yes, more memory than the shared
+                        // grid — but only emitted for kept regions
+                        // of straddling quads (most quads emit
+                        // exactly 1 sub-quad = the original).
+                        const std::uint32_t base = static_cast<std::uint32_t>(verts.size());
+                        for (int corner = 0; corner < 4; ++corner)
+                        {
+                            const float yy = (corner < 2) ? kr.y_min : kr.y_max;
+                            const float vv =
+                                ((corner == 0) || (corner == 3)) ? kr.var_min : kr.var_max;
+                            Vertex vert{};
+                            if (w.axis == 0)
+                            {
+                                vert.position[0] = w.const_axis_pos;
+                                vert.position[2] = vv;
+                            }
+                            else
+                            {
+                                vert.position[0] = vv;
+                                vert.position[2] = w.const_axis_pos;
+                            }
+                            vert.position[1] = yy;
+                            vert.uv[0] = 0.0f;
+                            vert.uv[1] = 0.0f;
+                            vert.normal[0] = w.inward_normal.x;
+                            vert.normal[1] = w.inward_normal.y;
+                            vert.normal[2] = w.inward_normal.z;
+                            verts.push_back(vert);
+                        }
+                        // Corner order: 0=(v_min, y_min), 1=(v_max,
+                        // y_min), 2=(v_max, y_max), 3=(v_min, y_max)
+                        const std::uint32_t i00 = base + 0;
+                        const std::uint32_t i10 = base + 1;
+                        const std::uint32_t i11 = base + 2;
+                        const std::uint32_t i01 = base + 3;
+                        if (flip_winding)
+                        {
+                            indices.push_back(i00);
+                            indices.push_back(i11);
+                            indices.push_back(i10);
+                            indices.push_back(i00);
+                            indices.push_back(i01);
+                            indices.push_back(i11);
+                        }
+                        else
+                        {
+                            indices.push_back(i00);
+                            indices.push_back(i10);
+                            indices.push_back(i11);
+                            indices.push_back(i00);
+                            indices.push_back(i11);
+                            indices.push_back(i01);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     r.index_count = static_cast<int>(indices.size());
 
     // Physics + render share the same vertex positions: terrain Y
@@ -323,6 +528,17 @@ bool initTerrain()
             r.tone_light[2] = cfg["tone_light"][2].get<float>();
         }
         r.footstep_sound_id = cfg.value("footstep_sound_id", std::string{"footstep_grass"});
+        // Optional enclosure (ceiling + walls). Presence of "ceiling_y"
+        // in config enables it; underground layers declare a ceiling
+        // and wall bottom. Hole cutouts come from registered
+        // StructureFootprints (cuts_ceiling / cuts_wall flags), not
+        // a per-region config list.
+        if (cfg.contains("ceiling_y"))
+        {
+            r.has_ceiling = true;
+            r.ceiling_y = cfg.value("ceiling_y", 0.0f);
+            r.wall_min_y = cfg.value("wall_min_y", r.ceiling_y - 10.0f);
+        }
         r.sun_multiplier = cfg.value("sun_multiplier", 1.0f);
         if (cfg.contains("sky_ambient") && cfg["sky_ambient"].is_array() &&
             cfg["sky_ambient"].size() == 3)
@@ -348,6 +564,87 @@ bool initTerrain()
                      r.height_min, r.height_max, subdivide);
         sRegions.push_back(std::move(r));
     }
+
+    // Init-time audit: for every cuts_rim StructureFootprint, dump
+    // a dense XZ grid of (PNG pixel, bilinear sample, modifier
+    // result, mesh Y) values inside + around the footprint to
+    // rim-audit.log. Catches "rim doesn't seal around corridor"
+    // bugs by showing exactly what the rim function emitted vs
+    // what the mesh actually contains.
+    if (std::FILE* audit = std::fopen("rim-audit.log", "w"))
+    {
+        std::fprintf(audit, "# Rim-audit dump. One block per cuts_rim StructureFootprint.\n"
+                            "# Columns: x z | png_raw[0..255] png_decoded_y bilinear_y "
+                            "after_modifiers_y mesh_y_nearest | inside_footprint\n#\n");
+        const int fp_count = engine::world::structureFootprintCount();
+        for (int fi = 0; fi < fp_count; ++fi)
+        {
+            const auto& fp = engine::world::structureFootprintAt(fi);
+            if (!fp.cuts_rim)
+                continue;
+            const TerrainRegion* tr =
+                (fp.region_name != nullptr) ? terrainRegionAtName(fp.region_name) : nullptr;
+            if (tr == nullptr)
+                continue;
+            std::fprintf(audit,
+                         "===== footprint '%s' region=%s center=(%.2f,%.2f) "
+                         "half=(%.2f,%.2f) cuts_rim=%d =====\n",
+                         fp.debug_name ? fp.debug_name : "(no name)",
+                         fp.region_name ? fp.region_name : "(global)", fp.center_xz.x,
+                         fp.center_xz.y, fp.half_extents_xz.x, fp.half_extents_xz.y,
+                         fp.cuts_rim ? 1 : 0);
+            // Sample a margin of 20m past the footprint on each side
+            // so we see the transition from "inside footprint" to
+            // "outside footprint" (where the rim should rise normally).
+            constexpr float kSampleStep = 2.0f;
+            constexpr float kMargin = 20.0f;
+            const float x_lo = fp.center_xz.x - fp.half_extents_xz.x - kMargin;
+            const float x_hi = fp.center_xz.x + fp.half_extents_xz.x + kMargin;
+            const float z_lo = fp.center_xz.y - fp.half_extents_xz.y - kMargin;
+            const float z_hi = fp.center_xz.y + fp.half_extents_xz.y + kMargin;
+            const float half = tr->world_extent * 0.5f;
+            const float yrange = tr->height_max - tr->height_min;
+            for (float z = z_lo; z <= z_hi; z += kSampleStep)
+            {
+                for (float x = x_lo; x <= x_hi; x += kSampleStep)
+                {
+                    const float u = (x - (tr->world_origin.x - half)) / tr->world_extent;
+                    const float v = (z - (tr->world_origin.y - half)) / tr->world_extent;
+                    int png_raw = -1;
+                    float png_decoded_y = 0.0f;
+                    if (u >= 0.0f && u <= 1.0f && v >= 0.0f && v <= 1.0f && tr->hm_width > 0 &&
+                        tr->hm_height > 0)
+                    {
+                        const int px = static_cast<int>(u * static_cast<float>(tr->hm_width - 1));
+                        const int py = static_cast<int>(v * static_cast<float>(tr->hm_height - 1));
+                        const float decoded = tr->heights[static_cast<size_t>(py) *
+                                                              static_cast<size_t>(tr->hm_width) +
+                                                          static_cast<size_t>(px)];
+                        png_decoded_y = decoded;
+                        const float t = (decoded - tr->height_min) / yrange;
+                        png_raw = static_cast<int>(t * 255.0f + 0.5f);
+                    }
+                    const float bilinear_y =
+                        bilinearSample(tr->heights, tr->hm_width, tr->hm_height, u, v) +
+                        tr->y_offset;
+                    const float modified_y =
+                        engine::world::applyTerrainModifiers(tr->name.c_str(), x, z, bilinear_y);
+                    const float mesh_y = sampleHeight(x, z);
+                    const bool inside = std::fabs(x - fp.center_xz.x) <= fp.half_extents_xz.x &&
+                                        std::fabs(z - fp.center_xz.y) <= fp.half_extents_xz.y;
+                    std::fprintf(audit,
+                                 "(%7.2f,%7.2f) | png=%3d decoded=%7.3f bilin=%7.3f "
+                                 "mod=%7.3f mesh=%7.3f | inside=%d\n",
+                                 x, z, png_raw, png_decoded_y, bilinear_y, modified_y, mesh_y,
+                                 inside ? 1 : 0);
+                }
+                std::fprintf(audit, "\n");
+            }
+        }
+        std::fclose(audit);
+        std::fprintf(stderr, "[terrain] wrote rim-audit.log\n");
+    }
+
     return !sRegions.empty();
 }
 
@@ -473,8 +770,8 @@ float groundHeight(float world_x, float world_z, float current_y)
     const bool use_ceiling = current_y != -std::numeric_limits<float>::infinity();
     const float origin_y = use_ceiling ? (current_y + kRayStartAbove) : kRayStartAbove;
     const glm::vec3 origin(world_x, origin_y, world_z);
-    const auto hit = engine::physics::raycast(origin, glm::vec3(0.0f, -1.0f, 0.0f),
-                                              kRayMaxDistance);
+    const auto hit =
+        engine::physics::raycast(origin, glm::vec3(0.0f, -1.0f, 0.0f), kRayMaxDistance);
     if (!hit.hit)
     {
         // Outside any physics geometry — fall back to heightmap sample.

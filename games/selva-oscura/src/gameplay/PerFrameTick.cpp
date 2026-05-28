@@ -45,8 +45,10 @@
 #include "render/WorldRenderer.h"
 #include "ui/ComboHud.h"
 #include "world/Collision.h"
+#include "world/Lights.h"
 #include "world/PhysicsScene.h"
 #include "world/Scene.h"
+#include "world/StructureFootprints.h"
 #include "world/Terrain.h"
 #include "world/TerrainModifiers.h"
 #include "world/TreeAssets.h"
@@ -652,6 +654,151 @@ static void terrainProbeDump(const char* label, float px, float py, float pz)
                          vhole ? 1 : 0);
         }
     }
+
+    // ---- StructureFootprint slot diagnostics ----
+    // For every registered footprint, dump rect + cuts_* flags and
+    // sample the slot at the probe XZ. Then enumerate wall quads in
+    // a 10m XZ radius around the probe and report which are dropped
+    // by the slot predicate (so we can see exactly where the wall
+    // is and isn't around the corridor).
+    const int n_fp = engine::world::structureFootprintCount();
+    std::fprintf(probe_log, "  --- structure footprints (%d) ---\n", n_fp);
+    for (int i = 0; i < n_fp; ++i)
+    {
+        const auto& f = engine::world::structureFootprintAt(i);
+        const float fdx_out = std::abs(px - f.center_xz.x) - f.half_extents_xz.x;
+        const float fdz_out = std::abs(pz - f.center_xz.y) - f.half_extents_xz.y;
+        const bool inside_xz = (fdx_out <= 0.0f && fdz_out <= 0.0f);
+        std::fprintf(probe_log,
+                     "    [%d] '%s' region=%s center=(%.2f,%.2f) half=(%.2f,%.2f) "
+                     "cuts=[floor=%d rim=%d ceil=%d wall=%d] inside_xz=%d\n",
+                     i, f.debug_name ? f.debug_name : "(no name)",
+                     f.region_name ? f.region_name : "(global)", f.center_xz.x, f.center_xz.y,
+                     f.half_extents_xz.x, f.half_extents_xz.y, f.cuts_floor ? 1 : 0,
+                     f.cuts_rim ? 1 : 0, f.cuts_ceiling ? 1 : 0, f.cuts_wall ? 1 : 0,
+                     inside_xz ? 1 : 0);
+        if (inside_xz && f.vertical_profile.nx > 0 && f.vertical_profile.nz > 0)
+        {
+            float y_min = 0.0f, y_max = 0.0f;
+            const bool has_slot = engine::world::sampleStructureSlot(f, px, pz, y_min, y_max);
+            if (has_slot)
+            {
+                const bool player_in_slot = (py >= y_min && py <= y_max);
+                std::fprintf(probe_log,
+                             "        slot at (%.2f,%.2f) = [%.3f, %.3f]  "
+                             "player_y=%.3f in_slot=%d\n",
+                             px, pz, y_min, y_max, py, player_in_slot ? 1 : 0);
+            }
+            else
+            {
+                std::fprintf(probe_log,
+                             "        slot at (%.2f,%.2f) = NONE (profile present but empty)\n", px,
+                             pz);
+            }
+        }
+    }
+
+    // ---- Wall quad scan: every limbo lateral wall quad in a 10m
+    // XZ radius around the probe, color-coded kept/dropped ----
+    const auto* region = selva::world::terrainRegionAtName("limbo");
+    if (region != nullptr && region->has_ceiling)
+    {
+        const float half = region->world_extent * 0.5f;
+        const float x_min = region->world_origin.x - half;
+        const float x_max = region->world_origin.x + half;
+        const float z_min = region->world_origin.y - half;
+        const float z_max = region->world_origin.y + half;
+        const float wall_step_h = region->world_extent / static_cast<float>(region->subdivide);
+        const float wall_height = region->ceiling_y - region->wall_min_y;
+        const int wall_cells_vert = std::max(1, static_cast<int>(wall_height / wall_step_h));
+        const float wall_step_v = wall_height / static_cast<float>(wall_cells_vert);
+        std::fprintf(probe_log,
+                     "  --- limbo wall scan (radius=10m from probe XZ) ---\n"
+                     "  region origin=(%.2f,%.2f) extent=%.2f wall_step_h=%.3f "
+                     "wall_step_v=%.3f ceiling_y=%.2f wall_min_y=%.2f\n",
+                     region->world_origin.x, region->world_origin.y, region->world_extent,
+                     wall_step_h, wall_step_v, region->ceiling_y, region->wall_min_y);
+
+        constexpr float kScanRadius = 10.0f;
+        struct WallSpec
+        {
+            const char* name;
+            int axis;
+            float const_pos;
+            float var_min;
+            float var_max;
+        };
+        const WallSpec walls[4] = {
+            {"-X", 0, x_min, z_min, z_max},
+            {"+X", 0, x_max, z_min, z_max},
+            {"-Z", 2, z_min, x_min, x_max},
+            {"+Z", 2, z_max, x_min, x_max},
+        };
+        for (const auto& w : walls)
+        {
+            const float dist_to_wall =
+                (w.axis == 0) ? std::abs(px - w.const_pos) : std::abs(pz - w.const_pos);
+            if (dist_to_wall > kScanRadius)
+                continue; // skip walls far from probe
+            std::fprintf(probe_log, "  wall '%s' axis=%d const_pos=%.3f (dist from probe=%.2f)\n",
+                         w.name, w.axis, w.const_pos, dist_to_wall);
+            const int wall_cells_horiz = region->subdivide;
+            const float var_step = (w.var_max - w.var_min) / static_cast<float>(wall_cells_horiz);
+            // Dump the actual sub-quads each input quad clips into,
+            // matching the wall-mesh emission path so we see EXACTLY
+            // what geometry the player sees.
+            for (int iy = 0; iy < wall_cells_vert; ++iy)
+            {
+                const float y_qmin = region->wall_min_y + iy * wall_step_v;
+                const float y_qmax = y_qmin + wall_step_v;
+                for (int iv = 0; iv < wall_cells_horiz; ++iv)
+                {
+                    const float v_qmin = w.var_min + iv * var_step;
+                    const float v_qmax = v_qmin + var_step;
+                    const float v_mid = (v_qmin + v_qmax) * 0.5f;
+                    const float quad_x = (w.axis == 0) ? w.const_pos : v_mid;
+                    const float quad_z = (w.axis == 2) ? w.const_pos : v_mid;
+                    const float dxq = quad_x - px;
+                    const float dzq = quad_z - pz;
+                    if (dxq * dxq + dzq * dzq > kScanRadius * kScanRadius)
+                        continue;
+                    engine::world::ClipQuadQuery q{};
+                    q.region_name = region->name.c_str();
+                    q.var_axis = w.axis;
+                    q.const_pos = w.const_pos;
+                    q.quad = {v_qmin, v_qmax, y_qmin, y_qmax};
+                    q.surface = engine::world::SurfaceCut::Wall;
+                    engine::world::ClipRect kept[8];
+                    const int n = engine::world::clipQuadAgainstStructureSlots(q, kept, 8);
+                    if (n == 0)
+                    {
+                        std::fprintf(probe_log,
+                                     "    quad iy=%2d iv=%4d v=[%.2f..%.2f] "
+                                     "y=[%.2f..%.2f] DROPPED\n",
+                                     iy, iv, v_qmin, v_qmax, y_qmin, y_qmax);
+                    }
+                    else if (n == 1 && kept[0].var_min == v_qmin && kept[0].var_max == v_qmax &&
+                             kept[0].y_min == y_qmin && kept[0].y_max == y_qmax)
+                    {
+                        // Whole quad kept (no clipping); skip for brevity.
+                        continue;
+                    }
+                    else
+                    {
+                        std::fprintf(probe_log,
+                                     "    quad iy=%2d iv=%4d v=[%.2f..%.2f] "
+                                     "y=[%.2f..%.2f] CLIPPED into %d sub-quads:\n",
+                                     iy, iv, v_qmin, v_qmax, y_qmin, y_qmax, n);
+                        for (int k = 0; k < n; ++k)
+                            std::fprintf(
+                                probe_log, "        sub[%d] v=[%.3f..%.3f] y=[%.3f..%.3f]\n", k,
+                                kept[k].var_min, kept[k].var_max, kept[k].y_min, kept[k].y_max);
+                    }
+                }
+            }
+        }
+    }
+
     std::fprintf(probe_log, "====== END PROBE #%d ======\n\n", sF3ProbeCount);
     std::fflush(probe_log);
 }
@@ -3667,6 +3814,7 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
         selva::render::setSceneViewProj(viewProj);
         selva::render::setSceneAtmosphere(kSunDir, kSunIntensity, camPos, kExposure);
         selva::render::setSceneShadow(lightVP, kSunDir, sPlayer.pos, 1);
+        selva::render::setScenePointLights(engine::world::allLights());
         selva::render::setSceneFlatShading(selva::tuning::current().debug_flat_shading);
         if (selva::tuning::current().debug_msaa_state_log)
         {
@@ -3844,8 +3992,8 @@ void teleportPlayerTo(const glm::vec3& world_pos, bool override_yaw, float yaw)
     // other case.
     glm::vec3 resolved = world_pos;
     {
-        constexpr float kCapsuleRadius = 0.35f;       // matches createPlayerBody
-        constexpr float kChestOffsetY = 1.0f;         // ~chest above foot
+        constexpr float kCapsuleRadius = 0.35f; // matches createPlayerBody
+        constexpr float kChestOffsetY = 1.0f;   // ~chest above foot
         const glm::vec3 probe(resolved.x, resolved.y + kChestOffsetY, resolved.z);
         if (engine::physics::sphereOverlap(probe, kCapsuleRadius))
         {

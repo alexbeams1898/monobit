@@ -3,6 +3,13 @@
 #include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
 
+#include <vector>
+
+namespace engine::world
+{
+struct LightSource;
+}
+
 namespace selva::render
 {
 
@@ -32,5 +39,11 @@ void setSceneAtmosphere(const glm::vec3& sun_dir, const glm::vec3& sun_intensity
 
 void setSceneShadow(const glm::mat4& light_view_proj, const glm::vec3& sun_dir,
                     const glm::vec3& shadow_cam_pos, int shadow_texture_unit);
+
+// Upload the active point-light set for subsequent draws. Same packing
+// + same cap (MAX_LIGHTS=64) as TerrainShader so any geometry the
+// scene program draws picks up the same in-region torches. Empty list
+// disables the point-light contribution.
+void setScenePointLights(const std::vector<engine::world::LightSource>& lights);
 
 } // namespace selva::render

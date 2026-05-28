@@ -33,6 +33,7 @@ peak).
 """
 
 import argparse
+import json
 import math
 import os
 import struct
@@ -113,32 +114,44 @@ SELVA_INNER = {
 REGIONS["selva_inner"] = SELVA_INNER
 
 
-# Limbo (First Circle of Hell). The widest layer below the surface,
-# placed in world Y via the runtime TerrainRegion::y_offset. Heightmap
-# is flat (0 everywhere); Acheron + larvae piles + future features all
-# come from runtime TerrainModifiers in the engine. Per the Inferno-
-# vertical-stack doctrine each layer gets its own region.
+# Limbo (First Circle of Hell). Disc-shaped per the Inferno-vertical-
+# stack doctrine (canonical cosmology = concentric circles, narrowing
+# toward Lucifer). Square heightmap holds a disc of radius
+# LIMBO_RADIUS; everything outside that radius is raised to the ceiling
+# to form a continuous rock wall around the playable disc. Each
+# successive circle (Lust, Gluttony, ..., Cocytus) reuses this same
+# kind ("disc") with a smaller radius — see RADIUS TABLE in
+# docs/design/inferno_stack.md (forthcoming).
+LIMBO_RADIUS = 300.0  # meters; disc half-width of the playable area
+LIMBO_RIM_BLEND = 12.0  # smooth rise band so the disc edge isn't a vertical cliff
 LIMBO = {
     "name": "limbo",
-    "kind": "flat",
-    "resolution": 256,
-    "world_extent": 160.0,        # 0.625m per pixel — finer than selva (1m/px)
-                                  # because Limbo is smaller; player encounters
-                                  # any per-quad detail at closer range.
-    # Limbo's XZ footprint: near edge meets descent stair at
-    # Z=-353.15, extending 160m in -Z direction. Heightmap center =
-    # (near_edge - half_extent) along Z. The 2m overlap pulls Limbo
-    # slightly under the stair's last steps so the stair-to-floor
-    # transition reads as the stair arriving onto the floor of Limbo
-    # rather than two surfaces butted together at a perfect seam.
+    "kind": "disc",
+    "resolution": 512,
+    # Square holds the 600m-diameter disc with no margin loss. 1.17m
+    # per pixel (close to selva's 1m/px). The rock-collar past the
+    # disc edge fills the corners.
+    "world_extent": 2.0 * LIMBO_RADIUS,
+    # Descent stair lets out near the disc's north rim, inset 30m so
+    # the player isn't on the wall. Disc center sits 30m + radius
+    # south of the stair landing at Z = -351.15.
+    #   stair_land_z = -351.15
+    #   disc_center_z = stair_land_z - (radius - inset_from_rim)
+    #                 = -351.15 - (300 - 30) = -621.15
     "world_origin_x": 0.0,
-    "world_origin_z": (-353.15 + 2.0) - 80.0,  # = -431.15
-    # Heightmap encodes a tiny range near 0; y_offset on the
-    # TerrainRegion (in config.json) places it at the right world Y.
+    "world_origin_z": -621.15,
+    "playable_radius": LIMBO_RADIUS,
+    "rim_blend": LIMBO_RIM_BLEND,
+    # Heightmap range: 0 (disc floor) → 1 (rim/rock-collar peak). The
+    # runtime y_offset in config.json places the disc floor at world
+    # Y = -43.13; the rock-collar tops out at y_offset + height_max,
+    # which needs to reach ceiling Y (-7.0) for a clean wall-ceiling
+    # join. So height_max = ceiling_y - y_offset = -7 - (-43.13) = 36.13.
     "height_min": 0.0,
-    "height_max": 1.0,
-    "subdivide": 160,             # ~1m per quad — comfortably fine for
-                                  # Acheron's 20m width + future banks.
+    "height_max": 36.13,
+    "subdivide": 300,             # ~2m per quad — finer than the v0 limbo
+                                  # because the disc is much larger
+                                  # and the rim curve needs smooth verts.
     "base_color": [0.05, 0.04, 0.04],
 }
 REGIONS["limbo"] = LIMBO
@@ -244,6 +257,37 @@ def world_height(x, z, r):
     if kind == "flat":
         return 0.0
 
+    if kind == "disc":
+        # Disc-shaped layer: floor sits at height_min everywhere inside
+        # `playable_radius`, then rises smoothly over `rim_blend` meters
+        # to height_max past the radius. Past (radius + rim_blend) the
+        # PNG saturates at height_max — the rock collar that fills the
+        # square's corners. The rim_blend strip is what the player sees
+        # as the cavern wall curving up from the disc floor.
+        #
+        # Structure footprints with cuts_rim=true (e.g. the descent
+        # corridor piercing Limbo's north edge) keep the rim at floor
+        # Y inside their rect. Source: _world_registry.generated.json,
+        # written by the dump-world C++ binary so the rim agrees with
+        # the runtime ceiling/wall/discard consumers.
+        for f in r.get("structures_cuts_rim", []):
+            cx, cz = f["center_xz"]
+            hx, hz = f["half_extents_xz"]
+            if abs(x - cx) <= hx and abs(z - cz) <= hz:
+                return r["height_min"]
+
+        radius = r["playable_radius"]
+        rim_blend = r.get("rim_blend", 0.0)
+        dx = x - r.get("world_origin_x", 0.0)
+        dz = z - r.get("world_origin_z", 0.0)
+        d = math.sqrt(dx * dx + dz * dz)
+        if d <= radius:
+            return r["height_min"]
+        if rim_blend <= 0.0 or d >= radius + rim_blend:
+            return r["height_max"]
+        t = smoothstep(radius, radius + rim_blend, d)
+        return r["height_min"] + (r["height_max"] - r["height_min"]) * t
+
     # Default: selva_surface generator.
     # Wake-zone basin / surround berm: the floor away from the colle.
     floor = wake_zone_floor(x, z, r)
@@ -328,6 +372,86 @@ def generate_region(region, out_path):
           f"origin=({ox:.0f},{oz:.0f}))")
 
 
+def load_world_registry(out_dir):
+    """Load `_world_registry.generated.json` (written by the
+    selva-oscura-dump-world binary) and bucket cuts_rim footprints
+    onto their target region. The rim function reads
+    `structures_cuts_rim` from each region's dict.
+
+    The generated file is the C++ runtime registry serialized at
+    build time — single source of truth across runtime engine and
+    bake-time tools. CMake wires the dump binary as a dependency of
+    this script's target so the file is always current.
+
+    Silent if the file is missing (first-bake bootstrap before the
+    engine target builds — the heightmap baker will produce a no-
+    cuts result; the next build cycle rebakes with the registry in
+    place).
+    """
+    reg_path = os.path.join(out_dir, "_world_registry.generated.json")
+    if not os.path.exists(reg_path):
+        print(f"[gen_terrain] world registry missing: {reg_path} (first-bake bootstrap)")
+        return
+    with open(reg_path, "r", encoding="utf-8") as fp:
+        reg = json.load(fp)
+    schema = reg.get("schema_version", 0)
+    if schema != 1:
+        raise SystemExit(
+            f"[gen_terrain] unsupported world-registry schema_version={schema} "
+            f"(expected 1). Rebuild selva-oscura-dump-world or update this script."
+        )
+    for f in reg.get("structures", []):
+        region = f.get("region")
+        if region not in REGIONS:
+            continue
+        cuts = f.get("cuts", {})
+        if cuts.get("rim"):
+            REGIONS[region].setdefault("structures_cuts_rim", []).append(f)
+
+
+def sample_structure_slot(f, x, z):
+    """Mirror of engine::world::sampleStructureSlot. Returns
+    (y_min, y_max) or None if no slot at this XZ.
+    """
+    vp = f.get("vertical_profile")
+    if vp is None:
+        return None
+    nx = vp.get("nx", 0)
+    nz = vp.get("nz", 0)
+    cells = vp.get("cells", [])
+    if nx <= 0 or nz <= 0 or len(cells) != nz:
+        return None
+    cx, cz = f["center_xz"]
+    hx, hz = f["half_extents_xz"]
+    if abs(x - cx) > hx or abs(z - cz) > hz:
+        return None
+    u = (x - (cx - hx)) / (2.0 * hx)
+    v = (z - (cz - hz)) / (2.0 * hz)
+    fx = u * (nx - 1)
+    fz = v * (nz - 1)
+    ix0 = max(0, min(nx - 1, int(math.floor(fx))))
+    iz0 = max(0, min(nz - 1, int(math.floor(fz))))
+    ix1 = min(ix0 + 1, nx - 1)
+    iz1 = min(iz0 + 1, nz - 1)
+    tx = max(0.0, min(1.0, fx - ix0))
+    tz = max(0.0, min(1.0, fz - iz0))
+
+    def cell(ix, iz):
+        return cells[iz][ix]
+
+    c00, c10, c01, c11 = cell(ix0, iz0), cell(ix1, iz0), cell(ix0, iz1), cell(ix1, iz1)
+    # Empty cells: y_min > y_max sentinel.
+    for c in (c00, c10, c01, c11):
+        if c[0] > c[1]:
+            return None
+    ymin_x0 = c00[0] + (c01[0] - c00[0]) * tz
+    ymin_x1 = c10[0] + (c11[0] - c10[0]) * tz
+    ymax_x0 = c00[1] + (c01[1] - c00[1]) * tz
+    ymax_x1 = c10[1] + (c11[1] - c10[1]) * tz
+    return (ymin_x0 + (ymin_x1 - ymin_x0) * tx,
+            ymax_x0 + (ymax_x1 - ymax_x0) * tx)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -344,6 +468,7 @@ def main():
     )
     args = parser.parse_args()
     out_dir = os.path.abspath(args.out_dir)
+    load_world_registry(out_dir)
 
     if args.region is None:
         targets = list(REGIONS.values())

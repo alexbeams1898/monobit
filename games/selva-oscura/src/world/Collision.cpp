@@ -290,7 +290,6 @@ const CollisionScene& currentScene()
     return sScene;
 }
 
-
 void resolveBodyCollision(glm::vec2& body_xz, float body_radius)
 {
     const glm::vec2 entry_pos = body_xz;

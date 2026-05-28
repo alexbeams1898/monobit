@@ -92,3 +92,8 @@ PLAN.md
 # `games/*/scripts/blender/` are excluded.
 games/*/scripts/blender/gen_*.py
 games/*/scripts/blender/gen_*.sh
+
+# Files derived at build time from C++ runtime state (e.g. the
+# StructureFootprint registry dumped by selva-oscura-dump-world).
+# Recipient build steps consume them; source-of-truth lives in C++.
+*.generated.json

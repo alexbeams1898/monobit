@@ -274,8 +274,8 @@ void tickOneFoot(Actor::FootContact& fc, Actor& actor, const char* joint_name, f
             {
                 footstepLogf("[event] surface foot=%s foot_xz=(%.3f,%.3f) body_xz=(%.3f,%.3f) "
                              "surface_tag=%d sfx=%s\n",
-                             footLabel(is_left), foot_world.x, foot_world.z,
-                             actor.pos.x, actor.pos.z, static_cast<int>(surface), sfx_name);
+                             footLabel(is_left), foot_world.x, foot_world.z, actor.pos.x,
+                             actor.pos.z, static_cast<int>(surface), sfx_name);
                 selva::audio::playSfxScaled(sfx_name, gain);
                 fc.last_fire_time = now;
                 actor.last_footstep_fire_time = now;

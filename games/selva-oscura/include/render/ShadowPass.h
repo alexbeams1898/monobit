@@ -3,8 +3,10 @@
 #include <glm/mat4x4.hpp>
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
+#include <glm/vec4.hpp>
 
 #include <cstdint>
+#include <vector>
 
 namespace selva::render
 {
@@ -39,12 +41,11 @@ void useTreeDepthShader();
 void useSceneDepthShader();
 void useSkeletalDepthShader(); // requires bone palette upload via uBones
 
-// Discard terrain shadow casts inside the chapel exterior footprint.
-// Mirror of the main TerrainShader's chapel discard so the depth pass
-// doesn't write shadow geometry the main pass omitted.
-void setTerrainDepthChapelDiscard(const glm::vec2& center, const glm::vec2& half_extents);
-void setTerrainDepthApseDiscard(const glm::vec2& center, float radius);
-void setTerrainDepthDescentDiscard(const glm::vec2& center, const glm::vec2& half_extents);
+// Discard terrain shadow casts inside any cuts_floor structure
+// footprint. Same rect packing + cap as the main TerrainShader so
+// the depth pass omits the exact same geometry the color pass does,
+// preventing false self-shadowing on enclosed surfaces.
+void setTerrainDepthDiscardRects(const std::vector<glm::vec4>& rects);
 
 // Per-program uniform setters for the skeletal depth shader. The
 // other depth shaders only need uLightViewProj + a model matrix

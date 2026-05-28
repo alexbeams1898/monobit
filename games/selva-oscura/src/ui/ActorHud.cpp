@@ -20,6 +20,7 @@
 #include "world/Collision.h"
 #include "world/CryptLayout.h"
 #include "world/Scene.h"
+#include "world/StructureFootprints.h"
 #include "world/Terrain.h"
 
 #include <glm/geometric.hpp>
@@ -733,39 +734,18 @@ void renderColliderDebug()
                 overlay->AddText(ImVec2(lp.x - 30.0f, lp.y), discard_color, label);
         };
 
-        drawRect(selva::render::lastTerrainChapelDiscardCenter(),
-                 selva::render::lastTerrainChapelDiscardHalfExtents(), "terrain_discard_chapel");
-        drawRect(selva::render::lastTerrainDescentDiscardCenter(),
-                 selva::render::lastTerrainDescentDiscardHalfExtents(), "terrain_discard_descent");
-
-        // Apse half-disc.
-        const float apse_r = selva::render::lastTerrainApseDiscardRadius();
-        if (apse_r > 0.0f)
+        // Draw every registered StructureFootprint that cuts the
+        // floor — these are exactly the rects the terrain shader
+        // discards. Walking the registry directly means the overlay
+        // can't drift from what the shader actually sees.
+        const int fp_count = engine::world::structureFootprintCount();
+        for (int i = 0; i < fp_count; ++i)
         {
-            const glm::vec2 ac = selva::render::lastTerrainApseDiscardCenter();
-            constexpr int kDiscSeg = 16;
-            glm::vec2 prev_sp;
-            bool have_prev = false;
-            for (int i = 0; i <= kDiscSeg; ++i)
-            {
-                const float t = static_cast<float>(i) / static_cast<float>(kDiscSeg);
-                const float ang = -3.14159265f * t;
-                const float x = ac.x + std::cos(ang) * apse_r;
-                const float z = ac.y + std::sin(ang) * apse_r;
-                glm::vec2 sp;
-                const bool ok =
-                    selva::render::worldToScreen(vp, glm::vec3(x, terrain_y + 0.05f, z), sp);
-                if (have_prev && ok)
-                    overlay->AddLine(ImVec2(prev_sp.x, prev_sp.y), ImVec2(sp.x, sp.y),
-                                     discard_color, 2.0f);
-                if (ok)
-                    prev_sp = sp;
-                have_prev = ok;
-            }
-            glm::vec2 lp;
-            if (selva::render::worldToScreen(vp, glm::vec3(ac.x, terrain_y + 0.05f, ac.y - apse_r),
-                                             lp))
-                overlay->AddText(ImVec2(lp.x - 30.0f, lp.y), discard_color, "terrain_discard_apse");
+            const auto& f = engine::world::structureFootprintAt(i);
+            if (!f.cuts_floor)
+                continue;
+            const char* label = f.debug_name ? f.debug_name : "structure_footprint";
+            drawRect(f.center_xz, f.half_extents_xz, label);
         }
     }
 }

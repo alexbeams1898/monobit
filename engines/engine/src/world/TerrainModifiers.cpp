@@ -174,14 +174,15 @@ namespace
 // eligible" — used by legacy code paths that don't yet pass a region.
 bool modifierMatchesRegion(const TerrainModifier& m, const char* query_region)
 {
-    if (query_region == nullptr) return true;       // caller opted out of filtering
-    if (m.region_name == nullptr) return true;      // modifier applies to any region
+    if (query_region == nullptr)
+        return true; // caller opted out of filtering
+    if (m.region_name == nullptr)
+        return true; // modifier applies to any region
     return std::strcmp(m.region_name, query_region) == 0;
 }
 } // namespace
 
-float applyTerrainModifiers(const char* region_name,
-                            float world_x, float world_z, float base_y)
+float applyTerrainModifiers(const char* region_name, float world_x, float world_z, float base_y)
 {
     float y = base_y;
     // Stack modifiers in registration order. Each modifier's target Y
