@@ -639,7 +639,7 @@ static void terrainProbeDump(const char* label, float px, float py, float pz)
                      m.value, dx_out, dz_out, inside ? "INSIDE" : "outside");
     }
     // Sample the 4 surrounding terrain grid vertices.
-    constexpr float kQuad = 512.0f / 384.0f; // = 1.333
+    constexpr float kQuad = 1024.0f / 384.0f; // = 2.667 (selva_inner extent / subdivide)
     const int gx = static_cast<int>(std::floor(px / kQuad));
     const int gz = static_cast<int>(std::floor(pz / kQuad));
     std::fprintf(probe_log, "  --- 4 surrounding terrain vertices (spacing %.3fm) ---\n", kQuad);

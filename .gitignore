@@ -12,10 +12,17 @@ desktop.ini
 
 # Build outputs
 build/
+build-*/
 cmake-build-*/
 dist/
 out/
 bin/
+# package.sh's transient staging dirs (NAME from
+# scripts/package.sh). Zip lands at repo root; staging dir is
+# normally cleaned up but the first-run failed mid-way left
+# selva-oscura-vunknown/ behind, so block staging dirs by pattern.
+selva-oscura-v*/
+prison-escape-game-v*/
 *.o
 *.exe
 *.dll

@@ -157,7 +157,7 @@ void registerChapelTerrainModifiers()
     //    INSIDE the corridor airspace and blocks the player descent
     //    (verified by physics-debug.log contact at Y=32.25 in the
     //    corridor mouth area).
-    constexpr float kTerrainQuadSpacing = 512.0f / 384.0f; // 1.333m at subdivide=384
+    constexpr float kTerrainQuadSpacing = 1024.0f / 384.0f; // 2.667m at subdivide=384, extent=1024
     {
         const float front_edge_z = kCryptZ + kHalfLength - kTerrainQuadSpacing;
         const float back_edge_z = (kCryptZ - kHalfLength) - kTerrainQuadSpacing;

@@ -52,10 +52,17 @@ REGIONS = {}
 SELVA_INNER = {
     "name": "selva_inner",
     "resolution": 512,
-    "world_extent": 512.0,        # 1m per pixel
-    "world_origin_x": 0.0,        # heightmap centered at (origin_x, origin_z)
-    "world_origin_z": -180.0,     # centered on the colle ridge (shifted south
-                                  # to fit the longer steep-climb segment)
+    # World-completeness doctrine: ground above any cavern must exist.
+    # Limbo extends from Z=-321 to Z=-921. Selva's south edge must
+    # reach past Limbo's south rim so the player can never see down
+    # into Limbo from atop the plateau. Keep the north edge at +76
+    # (spawn approach) — extend south to ~-948. Per-pixel resolution
+    # drops from 1m to 2m, fine because the far-south expanse is
+    # featureless wood-floor.
+    "world_extent": 1024.0,
+    "world_origin_x": 0.0,
+    "world_origin_z": -436.0,     # 1024-extent centered so north edge = +76,
+                                  # south edge = -948 (past Limbo's south rim -921)
     "height_min": -6.0,
     "height_max": 38.0,
 

@@ -7,9 +7,10 @@
   },
   "regions": {
     "selva_inner": {
+      "_comment": "Selva surface terrain. Extended south to Z=-948 (past Limbo's south rim at -921) so the world has ground above the entire Limbo cavern footprint — prevents the player from seeing down into Limbo's airspace from atop the plateau. Per-pixel resolution drops to 2m (was 1m); far-south expanse is featureless so the resolution loss is invisible.",
       "heightmap": "assets/world/terrain/selva_inner.png",
-      "world_origin": [0.0, -180.0],
-      "world_extent": 512.0,
+      "world_origin": [0.0, -436.0],
+      "world_extent": 1024.0,
       "height_range_min": -6.0,
       "height_range_max": 38.0,
       "subdivide": 384,
