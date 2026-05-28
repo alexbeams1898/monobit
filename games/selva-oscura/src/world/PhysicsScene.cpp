@@ -179,7 +179,8 @@ void registerChapelTerrainModifiers()
         constexpr float kCorridorHalfW = 2.4f;
         constexpr float kCorridorWallThickness = 0.6f;
         constexpr float kCorridorXHalf = kCorridorHalfW + kCorridorWallThickness;
-        constexpr float kLimboRimBlend = 12.0f; // mirror LIMBO_RIM_BLEND in gen_terrain_heightmap.py
+        constexpr float kLimboRimBlend =
+            12.0f; // mirror LIMBO_RIM_BLEND in gen_terrain_heightmap.py
         // Entry extends past rim outer edge so the cut covers the whole
         // rim_blend strip. Exit is the corridor mesh's last-step Z
         // (empirical from crypt.glb AABB).
