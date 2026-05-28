@@ -1073,8 +1073,8 @@ static bool fireClipForHand(selva::combat::HandSide hand, const char* clip_name,
     if (const char* whoosh = whooshForAttackClip(clip_name); whoosh != nullptr)
         selva::audio::playSfx(whoosh);
     setHandCancelWindow(hand, clip_name, *clip, rate, combo_input_buffer_seconds);
-    combatLog("[combat:fire] hand=%s clip=%s dur=%.3fs start=%.3fs rate=%.2f one_shot_active=%d "
-              "player_pos=(%.3f, %.3f)\n",
+    combatLog("[combat:fire] hand={} clip={} dur={:.3f}s start={:.3f}s rate={:.2f} "
+              "one_shot_active={} player_pos=({:.3f}, {:.3f})",
               (hand == selva::combat::HandSide::Right) ? "R" : "L", clip_name, clip->duration(),
               start_seconds, rate, one_shot_active ? 1 : 0, sPlayer.pos.x, sPlayer.pos.z);
 
@@ -1100,7 +1100,7 @@ static void bufferPostDodgeAttack(selva::combat::HandSide hand, const char* butt
     sPostDodgeAttack.hand = hand;
     sPostDodgeAttack.button = button;
     sPostDodgeAttack.buffered_at = selva::wallClock();
-    combatLog("[combat:rhythm %.4fs] press BUFFERED (dodge active)\n", selva::wallClock());
+    combatLog("[combat:rhythm {:.4f}s] press BUFFERED (dodge active)", selva::wallClock());
 }
 
 // Press while a one-shot is in flight: only fire if it advances a
@@ -1148,7 +1148,7 @@ static bool tryAttackInputDispatch(selva::combat::HandSide hand, bool press_edge
             buf.pending = true;
             buf.button = button;
             buf.buffered_at = now;
-            combatLog("[combat:rhythm] BUFFERED (one-shot in flight, no chain advance; %s)\n",
+            combatLog("[combat:rhythm] BUFFERED (one-shot in flight, no chain advance; {})",
                       button);
             return false;
         }
@@ -1158,7 +1158,7 @@ static bool tryAttackInputDispatch(selva::combat::HandSide hand, bool press_edge
                                                              w.open_at, w.close_at);
         if (clip_name == nullptr)
         {
-            combatLog("[combat:rhythm] press DROPPED (no clip mapping for %s)\n", button);
+            combatLog("[combat:rhythm] press DROPPED (no clip mapping for {})", button);
             return false;
         }
         if (fireClipForHand(hand, clip_name, combo_input_buffer_seconds))
@@ -1294,7 +1294,7 @@ static void logOneShotStateTransitions()
     if (sPrevOneShotActive != now && selva::combat::isCombatDebugEnabled())
     {
         const auto fd = sSampler.frameDiagnostics();
-        combatLog("[combat:one-shot %.4fs] active=%d weight=%.3f phase=%d clip=%s\n",
+        combatLog("[combat:one-shot {:.4f}s] active={} weight={:.3f} phase={} clip={}",
                   selva::wallClock(), now ? 1 : 0, fd.one_shot_weight, fd.one_shot_phase,
                   fd.one_shot_name ? fd.one_shot_name : "(none)");
     }
@@ -1331,7 +1331,7 @@ static bool tryFirePostDodgeAttack(bool shift_held, float combo_input_buffer_sec
                         /*force_first_strike=*/true))
     {
         fired = true;
-        combatLog("[combat:rhythm %.4fs] post-dodge attack FIRED (waited %.3fs since press)\n",
+        combatLog("[combat:rhythm {:.4f}s] post-dodge attack FIRED (waited {:.3f}s since press)",
                   selva::wallClock(), wait_seconds);
     }
     sPostDodgeAttack.pending = false;
@@ -1726,21 +1726,21 @@ static void logInputEdges(const Uint8* keys, bool press_lmb, bool release_lmb, b
     const bool sNow = keys[SDL_SCANCODE_S] != 0;
     const bool dNow = keys[SDL_SCANCODE_D] != 0;
     if (wNow != sPrevW)
-        combatLog("[input %.4fs] W %s\n", selva::wallClock(), wNow ? "DOWN" : "UP");
+        combatLog("[input {:.4f}s] W {}", selva::wallClock(), wNow ? "DOWN" : "UP");
     if (aNow != sPrevA)
-        combatLog("[input %.4fs] A %s\n", selva::wallClock(), aNow ? "DOWN" : "UP");
+        combatLog("[input {:.4f}s] A {}", selva::wallClock(), aNow ? "DOWN" : "UP");
     if (sNow != sPrevS)
-        combatLog("[input %.4fs] S %s\n", selva::wallClock(), sNow ? "DOWN" : "UP");
+        combatLog("[input {:.4f}s] S {}", selva::wallClock(), sNow ? "DOWN" : "UP");
     if (dNow != sPrevD)
-        combatLog("[input %.4fs] D %s\n", selva::wallClock(), dNow ? "DOWN" : "UP");
+        combatLog("[input {:.4f}s] D {}", selva::wallClock(), dNow ? "DOWN" : "UP");
     if (press_lmb)
-        combatLog("[input %.4fs] LMB DOWN\n", selva::wallClock());
+        combatLog("[input {:.4f}s] LMB DOWN", selva::wallClock());
     if (release_lmb)
-        combatLog("[input %.4fs] LMB UP\n", selva::wallClock());
+        combatLog("[input {:.4f}s] LMB UP", selva::wallClock());
     if (press_rmb)
-        combatLog("[input %.4fs] RMB DOWN\n", selva::wallClock());
+        combatLog("[input {:.4f}s] RMB DOWN", selva::wallClock());
     if (release_rmb)
-        combatLog("[input %.4fs] RMB UP\n", selva::wallClock());
+        combatLog("[input {:.4f}s] RMB UP", selva::wallClock());
     sPrevW = wNow;
     sPrevA = aNow;
     sPrevS = sNow;
@@ -1799,8 +1799,8 @@ static void fireBlockOneShot(bool loco_settled, const BlockClipSet& set)
     sBlockingActive = true;
     sActiveBlockIdleClip = set.idle;
     sActiveBlockLowerClip = set.lower;
-    combatLog("[combat:block-fire] mode=%s raise=%s idle=%s lower=%s loco=%s@%.3fs "
-              "prev_1shot=%s(phase=%d,w=%.2f)\n",
+    combatLog("[combat:block-fire] mode={} raise={} idle={} lower={} loco={}@{:.3f}s "
+              "prev_1shot={}(phase={},w={:.2f})",
               loco_settled ? "SETTLED" : "SNAP", set.raise, set.idle ? set.idle : "(none)",
               set.lower ? set.lower : "(none)",
               fd_pre.loco_current_name ? fd_pre.loco_current_name : "(none)",
@@ -2027,8 +2027,8 @@ static bool tryFireBufferedDodge(float backstep_playback_rate, float roll_playba
                                         roll_playback_rate);
     sBufferedDodge.pending = false;
     if (fired)
-        combatLog("[combat:rhythm %.4fs] buffered dodge FIRED (waited %.3fs since press, "
-                  "via=%s)\n",
+        combatLog("[combat:rhythm {:.4f}s] buffered dodge FIRED (waited {:.3f}s since press, "
+                  "via={})",
                   selva::wallClock(), age,
                   one_shot_cancel_open ? "one-shot-cancel"
                                        : (sSampler.isOneShotActive() ? "attack-cancel" : "clean"));
@@ -2085,7 +2085,7 @@ static bool fireOrBufferDodgeOnSpaceRelease(const glm::vec3& moveIntent,
     sBufferedDodge.pending = true;
     sBufferedDodge.move_intent_at_press = moveIntent;
     sBufferedDodge.buffered_at = selva::wallClock();
-    combatLog("[combat:rhythm %.4fs] dodge BUFFERED (%s in flight)\n", selva::wallClock(),
+    combatLog("[combat:rhythm {:.4f}s] dodge BUFFERED ({} in flight)", selva::wallClock(),
               sDodgeActive ? "dodge" : "one-shot");
     return false;
 }
@@ -2151,11 +2151,11 @@ capturePreUpdateJoints(bool loco_clip_changed, const std::string& clip_name, flo
     const Uint8* keys = SDL_GetKeyboardState(nullptr);
     const Actor* lt = resolveLockTarget();
     const bool locked = (lt != nullptr);
-    combatLog("[sm %.4fs] loco-pick %s@%.3fs -> %s (blend=%.3fs speed_now=%.2f target=%.2f "
-              "locked=%d sprint=%d WASD=%d%d%d%d)\n",
-              selva::wallClock(), sLastLocoClipName.c_str(), fd.loco_current_time,
-              clip_name.c_str(), blend_seconds, speed_now, sLastTargetSpeed, locked ? 1 : 0,
-              sPlayer.sprinting ? 1 : 0, keys[SDL_SCANCODE_W] ? 1 : 0, keys[SDL_SCANCODE_A] ? 1 : 0,
+    combatLog("[sm {:.4f}s] loco-pick {}@{:.3f}s -> {} (blend={:.3f}s speed_now={:.2f} "
+              "target={:.2f} locked={} sprint={} WASD={}{}{}{})",
+              selva::wallClock(), sLastLocoClipName, fd.loco_current_time, clip_name, blend_seconds,
+              speed_now, sLastTargetSpeed, locked ? 1 : 0, sPlayer.sprinting ? 1 : 0,
+              keys[SDL_SCANCODE_W] ? 1 : 0, keys[SDL_SCANCODE_A] ? 1 : 0,
               keys[SDL_SCANCODE_S] ? 1 : 0, keys[SDL_SCANCODE_D] ? 1 : 0);
     const char* names[] = {"mixamorig:RightHand", "mixamorig:LeftHand", "mixamorig:RightFoot",
                            "mixamorig:LeftFoot", "mixamorig:Hips"};
@@ -2402,8 +2402,8 @@ static void logSpliceResiduals(const std::vector<PreUpdateJoint>& pre_update_joi
         const bool anomaly = residual > threshold;
         if (anomaly)
             any_anomaly = true;
-        combatLog("  %s%s residual=|%.3fm|%s live=(%.2f,%.2f,%.2f) splice_t=%.3fs "
-                  "cand=(%.2f,%.2f,%.2f)\n",
+        combatLog("  {}{} residual=|{:.3f}m|{} live=({:.2f},{:.2f},{:.2f}) splice_t={:.3f}s "
+                  "cand=({:.2f},{:.2f},{:.2f})",
                   anomaly ? "[!] " : "    ", j.name, residual, anomaly ? " (>threshold)" : "",
                   j.live.x, j.live.y, j.live.z, splice_t, cand.x, cand.y, cand.z);
     }
@@ -2412,7 +2412,7 @@ static void logSpliceResiduals(const std::vector<PreUpdateJoint>& pre_update_joi
         // Echo the active state on an anomaly so the cause is right
         // there without having to scroll up: which one-shot, which
         // loco, which phase.
-        combatLog("  [!] context: 1shot=%s(phase=%d) loco=%s\n",
+        combatLog("  [!] context: 1shot={}(phase={}) loco={}",
                   fd.one_shot_name ? fd.one_shot_name : "(none)", fd.one_shot_phase,
                   fd.loco_current_name ? fd.loco_current_name : "(none)");
     }
@@ -2435,8 +2435,8 @@ static void logBlendOutFadeJoints()
         if (idx < 0)
             continue;
         const glm::vec3 p = sSampler.jointWorldPos(idx);
-        combatLog("    [fade %.4fs] %s=(%.2f,%.2f,%.2f) one_shot_w=%.2f\n", selva::wallClock(), n,
-                  p.x, p.y, p.z, fd.one_shot_weight);
+        combatLog("    [fade {:.4f}s] {}=({:.2f},{:.2f},{:.2f}) one_shot_w={:.2f}",
+                  selva::wallClock(), n, p.x, p.y, p.z, fd.one_shot_weight);
     }
 }
 
@@ -2674,7 +2674,7 @@ static void tickDodgeTimer(float dt)
     {
         sDodgeActive = false;
         if (selva::combat::isCombatDebugEnabled())
-            combatLog("[combat:dodge %.4fs] sDodgeActive=false (elapsed=%.3fs/%.3fs)\n",
+            combatLog("[combat:dodge {:.4f}s] sDodgeActive=false (elapsed={:.3f}s/{:.3f}s)",
                       selva::wallClock(), sDodgeElapsed, sDodgeDuration);
     }
 }
@@ -2812,8 +2812,7 @@ static void logStateNarrative()
     if (sSampler.isLocoFrozenByOneShot())
         line += "FROZEN ";
     appendBufferSection(line, now);
-    line += "\n";
-    combatLog("%s", line.c_str());
+    combatLog("{}", line);
 }
 
 // Apply one HitEvent: route to enemy or player, run applyDamage,
@@ -2848,7 +2847,7 @@ static void applyHitEvent(const selva::combat::HitEvent& ev, float now)
         // that hate their own kind), resolve from ev.attacker.kind.
         selva::gameplay::playEnemyHitReact(ev.target.index, dmg_applied, ev.poise_damage,
                                            ev.world_normal, sPlayer.pos);
-        selva::combat::combatLog("[hit] enemy[%d] region=%d dmg=%d hp=%d/%d\n", ev.target.index,
+        selva::combat::combatLog("[hit] enemy[{}] region={} dmg={} hp={}/{}", ev.target.index,
                                  static_cast<int>(ev.region), dmg_applied, e.hp.current, e.hp.max);
         return;
     }
@@ -2865,7 +2864,7 @@ static void applyHitEvent(const selva::combat::HitEvent& ev, float now)
         const bool crit = (ev.region == selva::combat::HurtRegion::Head);
         const glm::vec3 number_origin(ev.world_pos.x, sPlayer.pos.y + 2.0f, ev.world_pos.z);
         selva::combat::spawnDamageNumber(number_origin, dmg_applied, crit);
-        selva::combat::combatLog("[hit] player region=%d dmg=%d hp=%d/%d\n",
+        selva::combat::combatLog("[hit] player region={} dmg={} hp={}/{}",
                                  static_cast<int>(ev.region), dmg_applied, sPlayer.hp.current,
                                  sPlayer.hp.max);
         // Death gate. The Vagrant is killed in Hell — sangue exits,
@@ -2948,7 +2947,7 @@ static void tickPlayerSecondDeathLifecycle()
     if (elapsed < total)
         return;
 
-    selva::combat::combatLog("[player-respawn] respawning at t=%.3f\n", selva::wallClock());
+    selva::combat::combatLog("[player-respawn] respawning at t={:.3f}", selva::wallClock());
     sPlayer.is_dead = false;
     sPlayer.death_time = -1.0f;
     sPlayer.last_damage_time = -1.0f;

@@ -8,11 +8,12 @@
 #include <glm/geometric.hpp>
 
 #include <cmath>
-#include <cstdarg>
 #include <cstdio>
 #include <limits>
 #include <random>
 #include <utility>
+
+#include <fmt/core.h>
 
 namespace selva::world
 {
@@ -25,17 +26,20 @@ FILE* sCollisionLog = nullptr;
 int sCollisionFrame = 0;
 
 // Caller MUST gate on tun.debug_collision_log before invoking to keep
-// the disabled-state cost at zero (no variadic arg evaluation).
-void collisionLog(const char* fmt, ...)
+// the disabled-state cost at zero (the type-safe template still
+// instantiates a formatter per call site if not gated). Routed
+// through fmt::format → fwrite rather than the engine::log::Channel
+// because this file is a structured per-pass trace (CSV-like rows),
+// not a routed log — the channel "[name:LV]" prefix would corrupt
+// the format.
+template <typename... Args> void collisionLog(fmt::format_string<Args...> fmt, Args&&... args)
 {
     if (sCollisionLog == nullptr)
         sCollisionLog = std::fopen("collision-debug.log", "w");
     if (sCollisionLog == nullptr)
         return;
-    va_list args;
-    va_start(args, fmt);
-    std::vfprintf(sCollisionLog, fmt, args);
-    va_end(args);
+    const std::string line = fmt::format(fmt, std::forward<Args>(args)...);
+    std::fwrite(line.data(), 1, line.size(), sCollisionLog);
     std::fflush(sCollisionLog);
 }
 
@@ -309,8 +313,8 @@ bool pushOutOneCylinder(const CylinderCollider& c, int cyl_idx, int pass, float 
     const glm::vec2 push_vec = (delta / dist) * push;
     body_xz += push_vec;
     if (log_on)
-        collisionLog("  pass=%d CYL[%d] center=(%.3f,%.3f) r=%.2f%s "
-                     "push=(%.3f,%.3f) -> pos=(%.3f,%.3f)\n",
+        collisionLog("  pass={} CYL[{}] center=({:.3f},{:.3f}) r={:.2f}{} "
+                     "push=({:.3f},{:.3f}) -> pos=({:.3f},{:.3f})\n",
                      pass, cyl_idx, c.center.x, c.center.z, c.radius,
                      c.collision_only ? " (collision_only)" : "", push_vec.x, push_vec.y, body_xz.x,
                      body_xz.y);
@@ -346,9 +350,9 @@ bool pushOutOneBox(const BoxCollider& b, int box_idx, int pass, float body_radiu
             body_xz.y =
                 b.center.y + (d.y >= 0.0f ? 1.0f : -1.0f) * (b.half_extents.y + body_radius);
         if (log_on)
-            collisionLog("  pass=%d BOX[%d] center=(%.3f,%.3f) he=(%.2f,%.2f) "
-                         "INSIDE pen_x=%.3f pen_y=%.3f teleport=(%.3f,%.3f) -> "
-                         "(%.3f,%.3f)\n",
+            collisionLog("  pass={} BOX[{}] center=({:.3f},{:.3f}) he=({:.2f},{:.2f}) "
+                         "INSIDE pen_x={:.3f} pen_y={:.3f} teleport=({:.3f},{:.3f}) -> "
+                         "({:.3f},{:.3f})\n",
                          pass, box_idx, b.center.x, b.center.y, b.half_extents.x, b.half_extents.y,
                          pen_x, pen_y, before.x, before.y, body_xz.x, body_xz.y);
         return true;
@@ -358,8 +362,8 @@ bool pushOutOneBox(const BoxCollider& b, int box_idx, int pass, float body_radiu
     const glm::vec2 push_vec = (to_body / dist) * push;
     body_xz += push_vec;
     if (log_on)
-        collisionLog("  pass=%d BOX[%d] center=(%.3f,%.3f) he=(%.2f,%.2f) edge "
-                     "push=(%.3f,%.3f) -> pos=(%.3f,%.3f)\n",
+        collisionLog("  pass={} BOX[{}] center=({:.3f},{:.3f}) he=({:.2f},{:.2f}) edge "
+                     "push=({:.3f},{:.3f}) -> pos=({:.3f},{:.3f})\n",
                      pass, box_idx, b.center.x, b.center.y, b.half_extents.x, b.half_extents.y,
                      push_vec.x, push_vec.y, body_xz.x, body_xz.y);
     return true;
@@ -389,8 +393,8 @@ void resolveBodyCollision(glm::vec2& body_xz, float body_radius)
     if (log_on)
     {
         ++sCollisionFrame;
-        collisionLog("[frame %d] enter pos=(%.3f,%.3f) r=%.3f\n", sCollisionFrame, entry_pos.x,
-                     entry_pos.y, body_radius);
+        collisionLog("[frame {}] enter pos=({:.3f},{:.3f}) r={:.3f}\n", sCollisionFrame,
+                     entry_pos.x, entry_pos.y, body_radius);
     }
     // Multi-pass push-out. Single pass can leave the body wedged
     // when it's penetrating two adjacent cylinders/boxes — pushing
@@ -422,8 +426,8 @@ void resolveBodyCollision(glm::vec2& body_xz, float body_radius)
     {
         const glm::vec2 net = body_xz - entry_pos;
         if (std::abs(net.x) > 0.001f || std::abs(net.y) > 0.001f)
-            collisionLog("[frame %d] exit pos=(%.3f,%.3f) net_push=(%.3f,%.3f)\n", sCollisionFrame,
-                         body_xz.x, body_xz.y, net.x, net.y);
+            collisionLog("[frame {}] exit pos=({:.3f},{:.3f}) net_push=({:.3f},{:.3f})\n",
+                         sCollisionFrame, body_xz.x, body_xz.y, net.x, net.y);
     }
 }
 

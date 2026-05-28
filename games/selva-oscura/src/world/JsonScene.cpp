@@ -113,7 +113,11 @@ void JsonScene::preloadAssets()
         lm->shape_handles.reserve(lm->mesh.primitives.size());
         for (const auto& prim : lm->mesh.primitives)
         {
-            if (prim.cpu_positions.empty() || prim.cpu_indices.size() < 3)
+            // Push a kInvalidShape slot for skipped/invalid prims so the
+            // shape_handles index always parallels primitives index;
+            // commitPrepared depends on that alignment.
+            if (prim.cpu_positions.empty() || prim.cpu_indices.size() < 3 ||
+                prim.usage == StaticMeshUsage::Visual)
             {
                 lm->shape_handles.push_back(engine::physics::kInvalidShape);
                 continue;
@@ -288,6 +292,8 @@ void JsonScene::renderMeshesDepth() const
         {
             if (p.vao == 0)
                 continue;
+            if (p.usage == StaticMeshUsage::Collision)
+                continue; // physics-only proxy — not drawn
             glBindVertexArray(p.vao);
             glDrawElements(GL_TRIANGLES, p.index_count, GL_UNSIGNED_INT, nullptr);
         }
@@ -320,6 +326,8 @@ void JsonScene::renderMeshes() const
         {
             if (p.vao == 0)
                 continue;
+            if (p.usage == StaticMeshUsage::Collision)
+                continue; // physics-only proxy — not drawn
             selva::render::setSceneTint(1.0f);
             if (debug_id)
             {

@@ -1,7 +1,5 @@
 #include "combat/CombatLog.h"
 
-#include "anim/PoseSampler.h"
-
 namespace selva::combat
 {
 
@@ -11,7 +9,6 @@ namespace
 // cost is real (Tracy showed selvaPerFrame max 77ms vs ~1ms baseline
 // with debug active) — flip to false when not iterating on combat.
 bool sEnabled = false;
-FILE* sLogFile = nullptr;
 } // namespace
 
 bool isCombatDebugEnabled()
@@ -19,20 +16,20 @@ bool isCombatDebugEnabled()
     return sEnabled;
 }
 
-FILE* openCombatLog()
+engine::log::Channel& combatChannel()
 {
-    if (sLogFile == nullptr)
-        sLogFile = std::fopen("combat-debug.log", "w");
-    return sLogFile;
-}
-
-void closeCombatLog()
-{
-    if (sLogFile != nullptr)
-    {
-        std::fclose(sLogFile);
-        sLogFile = nullptr;
-    }
+    // First call wins: registers the "combat" channel writing to
+    // combat-debug.log with stderr mirror. Subsequent calls hit the
+    // cached lookup. The PoseSampler (selva/anim/PoseSampler.cpp)
+    // uses Channel::find("combat") to write into the same channel
+    // without owning the file. One source of truth.
+    static engine::log::Channel& ch = engine::log::Channel::get(
+        "combat", engine::log::Sink::File, "combat-debug.log", engine::log::Level::Trace,
+        /*mirror_to_stderr=*/true);
+    // Start disabled until setCombatDebugEnabled(true) flips it on.
+    // Idempotent — each call just re-asserts the current state.
+    ch.set_enabled(sEnabled);
+    return ch;
 }
 
 void setCombatDebugEnabled(bool enabled)
@@ -40,35 +37,7 @@ void setCombatDebugEnabled(bool enabled)
     if (sEnabled == enabled)
         return;
     sEnabled = enabled;
-    if (sEnabled && sLogFile == nullptr)
-    {
-        sLogFile = std::fopen("combat-debug.log", "w");
-        selva::anim::setSamplerDiagLog(sLogFile);
-    }
-    else if (!sEnabled && sLogFile != nullptr)
-    {
-        selva::anim::setSamplerDiagLog(nullptr);
-        std::fclose(sLogFile);
-        sLogFile = nullptr;
-    }
-}
-
-void combatLog(const char* fmt, ...)
-{
-    if (!sEnabled)
-        return;
-    va_list args1;
-    va_start(args1, fmt);
-    va_list args2;
-    va_copy(args2, args1);
-    std::vfprintf(stderr, fmt, args1); // NOLINT(clang-analyzer-valist.Uninitialized)
-    va_end(args1);
-    if (sLogFile != nullptr)
-    {
-        std::vfprintf(sLogFile, fmt, args2); // NOLINT(clang-analyzer-valist.Uninitialized)
-        std::fflush(sLogFile);
-    }
-    va_end(args2);
+    combatChannel().set_enabled(sEnabled);
 }
 
 } // namespace selva::combat

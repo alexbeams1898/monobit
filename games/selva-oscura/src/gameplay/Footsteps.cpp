@@ -4,15 +4,17 @@
 #include "WallClock.h"
 #include "audio/Audio.h"
 #include "gameplay/Actor.h"
+#include "log/Log.h"
 #include "physics/PhysicsWorld.h"
 #include "world/Collision.h"
 #include "world/Terrain.h"
 
 #include <glm/vec2.hpp>
 
-#include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
+
+#include <fmt/core.h>
 
 namespace selva::gameplay
 {
@@ -92,6 +94,11 @@ float plantGain(float peak_descent)
     return kMinGain + (1.0f - kMinGain) * t;
 }
 
+// Footstep "log" is really a CSV data file (trajectory rows +
+// [event] markers), NOT a routed engine::log::Channel — the channel
+// prefix "[name:LV]" would corrupt the CSV. We compose each row with
+// fmt::format then fwrite raw, which type-checks the format string
+// at compile time and keeps va_list out of the codebase.
 FILE* sLog = nullptr;
 bool sLogOpenAttempted = false;
 
@@ -107,27 +114,26 @@ FILE* footstepLog()
     sLog = std::fopen("footstep-debug.log", "w");
     if (sLog != nullptr)
     {
-        std::fprintf(sLog,
-                     "# footstep detector trace (v4 - model-space foot Y)\n"
-                     "# thresholds: min_descent=%.3fm/s full_vol_descent=%.3fm/s "
-                     "refire=%.3fs min_gain=%.3f\n"
-                     "# trajectory rows: t,foot,foot_y_model,vy,peak_descent_vy,since_last_fire\n"
-                     "# event rows: [event] ...\n",
-                     kMinPlantDescent, kFullVolumeDescent, kRefireCooldown, kMinGain);
+        const std::string header = fmt::format(
+            "# footstep detector trace (v4 - model-space foot Y)\n"
+            "# thresholds: min_descent={:.3f}m/s full_vol_descent={:.3f}m/s "
+            "refire={:.3f}s min_gain={:.3f}\n"
+            "# trajectory rows: t,foot,foot_y_model,vy,peak_descent_vy,since_last_fire\n"
+            "# event rows: [event] ...\n",
+            kMinPlantDescent, kFullVolumeDescent, kRefireCooldown, kMinGain);
+        std::fwrite(header.data(), 1, header.size(), sLog);
         std::fflush(sLog);
     }
     return sLog;
 }
 
-void footstepLogf(const char* fmt, ...)
+template <typename... Args> void footstepLogf(fmt::format_string<Args...> fmt, Args&&... args)
 {
     FILE* f = footstepLog();
     if (f == nullptr)
         return;
-    va_list args;
-    va_start(args, fmt);
-    std::vfprintf(f, fmt, args); // NOLINT(clang-analyzer-valist.Uninitialized)
-    va_end(args);
+    const std::string line = fmt::format(fmt, std::forward<Args>(args)...);
+    std::fwrite(line.data(), 1, line.size(), f);
     std::fflush(f);
 }
 
@@ -141,7 +147,7 @@ void resolveJointIdx(Actor::FootContact& fc, const Actor& actor, const char* joi
     if (fc.joint_idx != -2)
         return;
     fc.joint_idx = actor.sampler.findJoint(joint_name);
-    footstepLogf("[event] joint resolve name=%s idx=%d\n", joint_name, fc.joint_idx);
+    footstepLogf("[event] joint resolve name={} idx={}\n", joint_name, fc.joint_idx);
 }
 
 // Downward raycast just above the foot; reports tag + body so callers
@@ -212,8 +218,8 @@ void firePlantSfx(Actor::FootContact& fc, Actor& actor, const PlantContext& ctx,
 {
     if (sfx_name == nullptr)
     {
-        footstepLogf("[event] surface foot=%s foot_xz=(%.3f,%.3f) surface_tag=%d "
-                     "body_name='%s' — NO SFX (unauthored surface)\n",
+        footstepLogf("[event] surface foot={} foot_xz=({:.3f},{:.3f}) surface_tag={} "
+                     "body_name='{}' — NO SFX (unauthored surface)\n",
                      footLabel(ctx.is_left), ctx.foot_world.x, ctx.foot_world.z,
                      static_cast<int>(ctx.surface.tag),
                      ctx.surface.body != engine::physics::kInvalidBody
@@ -223,15 +229,15 @@ void firePlantSfx(Actor::FootContact& fc, Actor& actor, const PlantContext& ctx,
         actor.last_footstep_fire_time = ctx.now;
         return;
     }
-    footstepLogf("[event] surface foot=%s foot_xz=(%.3f,%.3f) body_xz=(%.3f,%.3f) "
-                 "surface_tag=%d sfx=%s\n",
+    footstepLogf("[event] surface foot={} foot_xz=({:.3f},{:.3f}) body_xz=({:.3f},{:.3f}) "
+                 "surface_tag={} sfx={}\n",
                  footLabel(ctx.is_left), ctx.foot_world.x, ctx.foot_world.z, actor.pos.x,
                  actor.pos.z, static_cast<int>(ctx.surface.tag), sfx_name);
     selva::audio::playSfxScaled(sfx_name, ctx.gain);
     fc.last_fire_time = ctx.now;
     actor.last_footstep_fire_time = ctx.now;
-    footstepLogf("[event] FIRE foot=%s gain=%.3f peak_descent=%.3f foot_y=%.4f "
-                 "since_last=%.3fs sfx=%s\n",
+    footstepLogf("[event] FIRE foot={} gain={:.3f} peak_descent={:.3f} foot_y={:.4f} "
+                 "since_last={:.3f}s sfx={}\n",
                  footLabel(ctx.is_left), ctx.gain, fc.peak_descent_vy, ctx.foot_y, ctx.since_fire,
                  sfx_name);
 }
@@ -257,8 +263,8 @@ void handlePlantEvent(Actor::FootContact& fc, Actor& actor, float foot_y, float 
     }
     else
     {
-        footstepLogf("[event] SUPPRESS foot=%s peak_descent=%.3f foot_y=%.4f can_fire=%d "
-                     "since_last=%.3fs gain=%.3f reason=%s\n",
+        footstepLogf("[event] SUPPRESS foot={} peak_descent={:.3f} foot_y={:.4f} can_fire={} "
+                     "since_last={:.3f}s gain={:.3f} reason={}\n",
                      footLabel(is_left), fc.peak_descent_vy, foot_y, can_fire ? 1 : 0, since_fire,
                      gain, !can_fire ? "cooldown" : "below_min_descent");
     }
@@ -307,7 +313,7 @@ void tickOneFoot(Actor::FootContact& fc, Actor& actor, const char* joint_name, f
             fc.peak_descent_vy = descent_speed;
     }
 
-    footstepLogf("%.4f,%s,%.4f,%.3f,%.3f,%.3f\n", now, footLabel(is_left), foot_y, vy,
+    footstepLogf("{:.4f},{},{:.4f},{:.3f},{:.3f},{:.3f}\n", now, footLabel(is_left), foot_y, vy,
                  fc.peak_descent_vy, since_fire);
 
     const bool zero_crossing = (fc.prev_vy < 0.0f) && (vy >= 0.0f);

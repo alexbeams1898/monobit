@@ -142,21 +142,37 @@ void gatedRenderImGui(::Engine& engine, ::EntityManager& em)
         selva::ui::selvaRenderImGui(engine, em);
 }
 
+// Time + log one boot-init step. Pattern is identical at every
+// boot site (capture t0, run f, log elapsed ms); the helper keeps
+// main() under the readability-function-size threshold without
+// hiding what each step does.
+template <typename F> void runBootStep(const char* label, F&& f)
+{
+    const Uint64 t0 = SDL_GetTicks64();
+    f();
+    std::fprintf(stderr, "[boot] %s: %llums\n", label,
+                 static_cast<unsigned long long>(SDL_GetTicks64() - t0));
+}
+
 } // namespace
 
 int main(int /*argc*/, char* /*argv*/[])
 {
-    // Combat-debug log file: opened at startup when combat-debug is on
-    // by default; otherwise lazily by the F1 toggle. Truncate on open
-    // so each run starts with a fresh log.
-    if (selva::combat::isCombatDebugEnabled())
-    {
-        FILE* log = selva::combat::openCombatLog();
-        if (log != nullptr)
-            std::fprintf(stderr, "[combat:log] writing diagnostics to combat-debug.log\n");
-        // Route sampler-side loco diagnostics into the same file.
-        selva::anim::setSamplerDiagLog(log);
-    }
+    // WIN32-subsystem build has no console; reopen stdout/stderr onto
+    // selva-oscura.log next to the exe so existing fprintf(stderr)
+    // diagnostics still land somewhere readable. Truncate per run so
+    // the log reflects the latest session only.
+    std::freopen("selva-oscura.log", "w", stdout);
+    std::freopen("selva-oscura.log", "a", stderr);
+    // Line-buffered: get progress as it happens without one-syscall-per-byte.
+    std::setvbuf(stderr, nullptr, _IOLBF, 4096);
+    std::setvbuf(stdout, nullptr, _IOLBF, 4096);
+
+    // Combat debug + sampler diagnostics flow through the
+    // engine::log::Channel registered under "combat" — opened lazily
+    // by the F1 toggle (selva::combat::setCombatDebugEnabled). No
+    // startup work needed here; the channel system handles file
+    // open + sampler routing through one named lookup.
 
     Engine engine;
 
@@ -222,22 +238,26 @@ int main(int /*argc*/, char* /*argv*/[])
 
     engine.renderLoadingFrame("scene geometry");
 
-    selva::render::setInitialWindowSize(engine.windowWidth(), engine.windowHeight());
-    selva::render::initSceneGeometry();
+    runBootStep("initSceneGeometry",
+                [&]
+                {
+                    selva::render::setInitialWindowSize(engine.windowWidth(),
+                                                        engine.windowHeight());
+                    selva::render::initSceneGeometry();
+                });
     // Static mesh assets MUST load before chapel terrain modifiers so
     // the modifier registration can auto-derive the chapel footprint
     // from the loaded mesh's XZ AABB (no hand-set coords).
-    selva::world::initStaticMeshAssets();
+    runBootStep("initStaticMeshAssets", [] { selva::world::initStaticMeshAssets(); });
     // Terrain modifiers (chapel plateau, descent strip, etc) must be
     // registered BEFORE initTerrain() — Terrain.cpp::buildRegionMesh
-    // queries the registry per vertex. Modifiers + heightmap PNG
-    // together produce the final terrain Y; render mesh and physics
-    // trimesh share that same Y.
-    selva::world::crypt_layout::registerAuthoredWorld();
+    // queries the registry per vertex.
+    runBootStep("registerAuthoredWorld",
+                [] { selva::world::crypt_layout::registerAuthoredWorld(); });
     engine.renderLoadingFrame("terrain mesh");
-    selva::world::initTerrain();
-    selva::world::initHubScene();
-    selva::world::initTreeAssets();
+    runBootStep("initTerrain", [] { selva::world::initTerrain(); });
+    runBootStep("initHubScene", [] { selva::world::initHubScene(); });
+    runBootStep("initTreeAssets", [] { selva::world::initTreeAssets(); });
     // (initStaticMeshAssets moved earlier — chapel footprint derived from mesh)
     // Physics: register terrain + chapel as static trimesh bodies.
     // MUST run after both terrain and static-mesh-assets init so the
@@ -266,10 +286,12 @@ int main(int /*argc*/, char* /*argv*/[])
                                                      spawn_yaw);
         });
     engine.renderLoadingFrame("surface scene");
-    const engine::world::SceneId default_scene = selva::world::loadAllScenes();
+    engine::world::SceneId default_scene;
+    runBootStep("loadAllScenes", [&] { default_scene = selva::world::loadAllScenes(); });
     if (default_scene != engine::world::kInvalidScene)
     {
-        engine::world::activateSceneImmediate(default_scene);
+        runBootStep("activateSceneImmediate",
+                    [&] { engine::world::activateSceneImmediate(default_scene); });
     }
     else
     {
@@ -362,6 +384,7 @@ int main(int /*argc*/, char* /*argv*/[])
     shutdownGeometry();
     selva::audio::shutdown();
     engine.shutdown();
-    selva::combat::closeCombatLog();
+    // engine::log channels are owned by the static registry — they
+    // close their files at process shutdown via Channel::~Channel.
     return 0;
 }

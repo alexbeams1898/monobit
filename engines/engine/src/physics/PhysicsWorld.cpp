@@ -1,5 +1,7 @@
 #include "physics/PhysicsWorld.h"
 
+#include "log/Log.h"
+
 #include <chrono>
 #include <cmath>
 #include <cstdarg>
@@ -167,21 +169,30 @@ ShapeHandle allocShapeHandle()
     return {sNextShapeId++};
 }
 
-// Trace / assert hooks (no-op in release; route to stderr in debug).
+// Jolt's trace hook signature is fixed C-style variadic; this
+// function is the single boundary between Jolt's C API and our typed
+// logger. We format with vsnprintf into a fixed buffer, then hand the
+// resulting string to the channel. This is the ONLY va_list use in
+// our code that's load-bearing (every other logger uses the typed
+// engine::log::Channel API directly).
+engine::log::Channel& joltChannel()
+{
+    static auto& ch = engine::log::Channel::get("jolt", engine::log::Sink::Stderr);
+    return ch;
+}
 void TraceImpl(const char* fmt, ...)
 {
+    char buf[1024];
     va_list args;
     va_start(args, fmt);
-    // NOLINTNEXTLINE(clang-analyzer-valist.Uninitialized) -- va_start initializes args via macro
-    std::vfprintf(stderr, fmt, args);
-    std::fputc('\n', stderr);
+    std::vsnprintf(buf, sizeof(buf), fmt, args);
     va_end(args);
+    joltChannel().info("{}", buf);
 }
 #ifdef JPH_ENABLE_ASSERTS
 bool AssertFailedImpl(const char* expr, const char* msg, const char* file, JPH::uint line)
 {
-    std::fprintf(stderr, "[jolt-assert] %s:%u  expr=%s  msg=%s\n", file, line, expr,
-                 msg ? msg : "");
+    joltChannel().error("assert {}:{}  expr={}  msg={}", file, line, expr, msg ? msg : "");
     return true; // breakpoint
 }
 #endif

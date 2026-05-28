@@ -520,10 +520,4 @@ struct PoseSampler
 // and mesh must outlive the returned sampler.
 PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh);
 
-// Diagnostic log target for sampler-side events (loco crossfade swaps,
-// reverse-blends, cache resumes). nullptr = stderr only. The game wires
-// this to its combat-debug.log so the user sees sampler events alongside
-// combat events without needing to launch from a shell.
-void setSamplerDiagLog(std::FILE* file);
-
 } // namespace selva::anim

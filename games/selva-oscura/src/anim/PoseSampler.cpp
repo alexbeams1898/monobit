@@ -5,6 +5,7 @@
 #include "anim/SkeletalAssets.h"
 #include "anim/SkeletalMesh.h"
 #include "anim/Skeleton.h"
+#include "log/Log.h"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
@@ -23,7 +24,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdarg>
 #include <cstdio>
 #include <cstring>
 #include <limits>
@@ -32,32 +32,32 @@
 namespace selva::anim
 {
 
-// Sampler diagnostic log target (set by game code at startup; nullptr
-// = stderr only). Used by samplerDiagLog below; called from the loco
-// crossfade path to record reverse-blend / cache-resume / cold-enter
-// events. Lets a normal launch (no shell stderr capture) still produce
-// a usable log via combat-debug.log.
 namespace
 {
-std::FILE* g_diag_log = nullptr;
+// Sampler diagnostics flow through the combat-debug channel (owned
+// by selva/combat/CombatLog.cpp), which writes to combat-debug.log +
+// mirrors to stderr. We use Channel::find rather than ::get so the
+// sampler can't accidentally create the channel before combat code
+// has decided whether to open the file — if combat-debug is off,
+// these writes are silently dropped at the gate, which is the
+// correct behavior.
+engine::log::Channel* samplerChannel()
+{
+    return engine::log::Channel::find("combat");
 }
 
-void setSamplerDiagLog(std::FILE* file)
+// Returns true if combat-debug is on. Used to gate setup-side blocks
+// that would do non-trivial work just to construct the log message.
+bool samplerLoggingActive()
 {
-    g_diag_log = file;
+    auto* ch = samplerChannel();
+    return ch != nullptr && ch->enabled();
 }
 
-namespace
+template <typename... Args> void samplerLog(fmt::format_string<Args...> fmt, Args&&... args)
 {
-void samplerDiagLog(const char* fmt, ...)
-{
-    if (g_diag_log == nullptr)
-        return;
-    va_list args;
-    va_start(args, fmt);
-    std::vfprintf(g_diag_log, fmt, args); // NOLINT(clang-analyzer-valist.Uninitialized)
-    std::fflush(g_diag_log);
-    va_end(args);
+    if (auto* ch = samplerChannel())
+        ch->debug(fmt, std::forward<Args>(args)...);
 }
 } // namespace
 
@@ -744,9 +744,9 @@ void PoseSampler::playOneShot(const AnimationClip& clip, float blend_in_seconds,
     // extractTrackHipDelta's two-branch behavior — traveling
     // clips translate world pos; in-place clips don't.
     s.one_shot.hip_path_cached = clipHipPathLength(clip).path_length;
-    samplerDiagLog("[hip-classify-oneshot] clip=%s path=%.3fm class=%s\n",
-                   s.one_shot.registry_key.c_str(), s.one_shot.hip_path_cached,
-                   s.one_shot.hip_path_cached >= 0.5f ? "TRAVELING" : "IN_PLACE");
+    samplerLog("[hip-classify-oneshot] clip={} path={:.3f}m class={}", s.one_shot.registry_key,
+               s.one_shot.hip_path_cached,
+               s.one_shot.hip_path_cached >= 0.5f ? "TRAVELING" : "IN_PLACE");
     const float dur = s.one_shot.animation ? s.one_shot.animation->duration() : 0.0f;
     s.one_shot.time_seconds = std::clamp(start_time_seconds, 0.0f, std::max(0.0f, dur - 1e-4f));
     s.one_shot_phase = OneShotPhase::BlendIn;
@@ -1783,9 +1783,9 @@ static void bindLocoCurrentToNewClip(PoseSampler::Impl& s, const ozz::animation:
                                       : locomotionConfig().translationSource(desired_key);
     const bool is_traveling = (src == TranslationSource::RootMotion) ||
                               (s.loco_current.hip_path_cached >= kTravelingClipThreshold);
-    samplerDiagLog("[hip-classify-loco] clip=%s path=%.3fm source=%s class=%s\n",
-                   desired_key.c_str(), s.loco_current.hip_path_cached, translationSourceName(src),
-                   is_traveling ? "TRAVELING" : "IN_PLACE");
+    samplerLog("[hip-classify-loco] clip={} path={:.3f}m source={} class={}", desired_key,
+               s.loco_current.hip_path_cached, translationSourceName(src),
+               is_traveling ? "TRAVELING" : "IN_PLACE");
     s.loco_current.finished = false;
     s.loco_current.resetHipTracking();
 }
@@ -1851,9 +1851,9 @@ void applyLocoCrossfade(PoseSampler::Impl& s, const ozz::animation::Animation* d
     const bool mid_blend_race =
         (s.loco_previous.animation != nullptr || s.loco_previous_is_snapshot) &&
         s.loco_blend_weight > 1e-3f && s.loco_blend_weight < 1.0f - 1e-3f;
-    samplerDiagLog("[loco] crossfade %s -> %s (resume t=%.3fs, blend=%.3fs, cold=%d, race=%d)\n",
-                   from_key, to_key, resume_t, blend_seconds, cold_enter ? 1 : 0,
-                   mid_blend_race ? 1 : 0);
+    samplerLog("[loco] crossfade {} -> {} (resume t={:.3f}s, blend={:.3f}s, cold={}, race={})",
+               from_key, to_key, resume_t, blend_seconds, cold_enter ? 1 : 0,
+               mid_blend_race ? 1 : 0);
     if (cold_enter || blend_seconds <= 0.0f)
         applyLocoCrossfadeColdEnter(s);
     else if (mid_blend_race)
@@ -1896,8 +1896,8 @@ void logFrozenSwap(PoseSampler::Impl& s, const char* from_key, const char* to_ke
     const std::string attempt_id = std::string(from_key) + ">" + to_key;
     if (s.last_frozen_swap_attempt == attempt_id)
         return;
-    samplerDiagLog("[loco] FROZEN swap %s -> %s (full-mask Hold; will resume at BlendOut)\n",
-                   from_key, to_key);
+    samplerLog("[loco] FROZEN swap {} -> {} (full-mask Hold; will resume at BlendOut)", from_key,
+               to_key);
     s.last_frozen_swap_attempt = attempt_id;
 }
 
@@ -1936,18 +1936,19 @@ void captureInertializationOffset(PoseSampler::Impl& s)
     // drift against animating destination), which is why
     // applyLocoCrossfade deliberately does NOT enroll inertialization.
     // If this log fires, a regression has re-introduced the overlap.
-    if (g_diag_log != nullptr && s.loco_previous.animation != nullptr &&
+    if (samplerLoggingActive() && s.loco_previous.animation != nullptr &&
         s.loco_blend_weight > 1e-3f && s.loco_blend_weight < 1.0f - 1e-3f)
     {
-        samplerDiagLog("[!!! OVERLAP] inert capture during active loco crossfade "
-                       "(loco_blend_weight=%.3f, prev=%s, cur=%s). "
-                       "This violates the harmony invariant — see "
-                       "applyLocoCrossfade comment.\n",
-                       s.loco_blend_weight,
-                       s.loco_previous.registry_key.empty() ? "(unknown)"
-                                                            : s.loco_previous.registry_key.c_str(),
-                       s.loco_current.registry_key.empty() ? "(unknown)"
-                                                           : s.loco_current.registry_key.c_str());
+        const char* prev_name = s.loco_previous.registry_key.empty()
+                                    ? "(unknown)"
+                                    : s.loco_previous.registry_key.c_str();
+        const char* cur_name =
+            s.loco_current.registry_key.empty() ? "(unknown)" : s.loco_current.registry_key.c_str();
+        samplerLog("[!!! OVERLAP] inert capture during active loco crossfade "
+                   "(loco_blend_weight={:.3f}, prev={}, cur={}). "
+                   "This violates the harmony invariant — see "
+                   "applyLocoCrossfade comment.",
+                   s.loco_blend_weight, prev_name, cur_name);
     }
     const std::size_t n_soa = s.final_locals.size();
     const ozz::math::SimdFloat4 base_simd = ozz::math::simd_float4::Load1(s.decay_base_seconds);
@@ -2331,8 +2332,8 @@ void tickLocoCrossfade(PoseSampler::Impl& s, float dt)
                                    : s.loco_previous.registry_key.c_str();
         const char* cur_key =
             s.loco_current.registry_key.empty() ? "(unknown)" : s.loco_current.registry_key.c_str();
-        samplerDiagLog("[loco] crossfade complete: %s -> %s (loco_previous dropped)\n", prev_key,
-                       cur_key);
+        samplerLog("[loco] crossfade complete: {} -> {} (loco_previous dropped)", prev_key,
+                   cur_key);
         s.loco_blend_weight = 1.0f;
         s.loco_blend_elapsed = 0.0f;
         s.loco_blend_duration = 0.0f;
@@ -2566,15 +2567,17 @@ bool runLocoBlend(PoseSampler::Impl& s)
     // weight but forgot the previous slot" case without the noise.
     const bool prev_has_data =
         (s.loco_previous.animation != nullptr) || s.loco_previous_is_snapshot;
-    if (g_diag_log != nullptr && s.loco_blend_duration == 0.0f && prev_has_data &&
+    if (samplerLoggingActive() && s.loco_blend_duration == 0.0f && prev_has_data &&
         !s.loco_previous_stale_logged)
     {
-        samplerDiagLog("[!!! STALE PREV] loco_previous=%s still bound at full weight 1.0 "
-                       "(blend cleanup missed). loco_current=%s\n",
-                       s.loco_previous.registry_key.empty() ? "(unknown)"
-                                                            : s.loco_previous.registry_key.c_str(),
-                       s.loco_current.registry_key.empty() ? "(unknown)"
-                                                           : s.loco_current.registry_key.c_str());
+        const char* prev_name = s.loco_previous.registry_key.empty()
+                                    ? "(unknown)"
+                                    : s.loco_previous.registry_key.c_str();
+        const char* cur_name =
+            s.loco_current.registry_key.empty() ? "(unknown)" : s.loco_current.registry_key.c_str();
+        samplerLog("[!!! STALE PREV] loco_previous={} still bound at full weight 1.0 "
+                   "(blend cleanup missed). loco_current={}",
+                   prev_name, cur_name);
         s.loco_previous_stale_logged = true;
     }
     if (!prev_has_data)

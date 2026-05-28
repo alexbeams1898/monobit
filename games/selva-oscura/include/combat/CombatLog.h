@@ -1,7 +1,9 @@
 #pragma once
 
-#include <cstdarg>
-#include <cstdio>
+#include "log/Log.h"
+
+#include <fmt/core.h>
+#include <fmt/format.h> // fmt::ptr for pointer formatting
 
 namespace selva::combat
 {
@@ -23,19 +25,25 @@ namespace selva::combat
 bool isCombatDebugEnabled();
 
 // Toggle combat debug. Opens combat-debug.log on enable, closes on
-// disable. Wires the open file into the PoseSampler diagnostic log.
+// disable. Anim sampler diagnostics flow through the same
+// engine::log::Channel ("combat"), so they auto-route alongside.
 void setCombatDebugEnabled(bool enabled);
 
-// Open the combat-debug.log file directly (used at startup if the
-// debug flag was on by default in source). Returns the FILE* so the
-// caller can wire it into PoseSampler diag. Pairs with closeCombatLog().
-FILE* openCombatLog();
-void closeCombatLog();
+// Returns the shared engine::log::Channel for combat diagnostics.
+// Lazily creates the channel on first call. Configured to write to
+// combat-debug.log + mirror to stderr; gated on isCombatDebugEnabled().
+// All callers (combat, sampler) write through this single channel,
+// which means combat-debug.log is the one source of truth — no more
+// hand-wired "set sampler log file pointer to combat's file pointer"
+// plumbing.
+engine::log::Channel& combatChannel();
 
-// Debug-gated log: no-op when isCombatDebugEnabled() is false.
-// Routes to stderr + the combat log file when enabled. Use for
-// high-frequency per-fire / per-frame diagnostics. fflush per line
-// keeps the log readable even after a crash.
-void combatLog(const char* fmt, ...);
+// Convenience: forwards to combatChannel().debug(...). Compile-time
+// format-string checked via fmt::format_string. Use this for the
+// previous combatLog(...) pattern at the call site.
+template <typename... Args> void combatLog(fmt::format_string<Args...> fmt, Args&&... args)
+{
+    combatChannel().debug(fmt, std::forward<Args>(args)...);
+}
 
 } // namespace selva::combat

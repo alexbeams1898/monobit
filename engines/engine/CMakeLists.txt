@@ -7,6 +7,7 @@ add_library(engine STATIC)
 
 target_sources(engine PRIVATE
     src/Engine.cpp
+    src/log/Log.cpp
     src/TextureManager.cpp
     src/SpriteCompositor.cpp
     src/FontManager.cpp
@@ -42,6 +43,7 @@ target_link_libraries(engine
         EnTT::EnTT
         glm::glm
         nlohmann_json::nlohmann_json
+        fmt::fmt
         FMOD::Core
         glad
         imgui::imgui

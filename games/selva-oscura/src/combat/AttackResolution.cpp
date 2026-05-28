@@ -109,12 +109,11 @@ void logChainEntry(std::size_t i, const WeaponAttack& atk, bool two_handed,
     }
     const float ms_frac = (dur > 0.0f) ? (motion_start / dur) : 0.0f;
     const float mp_frac = (dur > 0.0f) ? (motion_peak / dur) : 0.0f;
-    combatLog("  [%zu] %-30s dur=%.3fs  motion_start=%.3fs (%.0f%%)  "
-              "peak=%.3fs (%.0f%%)  cancel_open=%.3fs (%.0f%%)  "
-              "chain_start=%.3fs (%.0f%%)  role=%s\n",
-              i, atk.clip.c_str(), dur, motion_start, ms_frac * 100.0f, motion_peak,
-              mp_frac * 100.0f, open, open_frac * 100.0f, start, start_frac * 100.0f,
-              i == 0 ? "first" : "chain-link");
+    combatLog("  [{}] {:<30} dur={:.3f}s  motion_start={:.3f}s ({:.0f}%)  "
+              "peak={:.3f}s ({:.0f}%)  cancel_open={:.3f}s ({:.0f}%)  "
+              "chain_start={:.3f}s ({:.0f}%)  role={}",
+              i, atk.clip, dur, motion_start, ms_frac * 100.0f, motion_peak, mp_frac * 100.0f, open,
+              open_frac * 100.0f, start, start_frac * 100.0f, i == 0 ? "first" : "chain-link");
 }
 
 void logChain(const char* class_id, const char* slot, const std::vector<WeaponAttack>& chain,
@@ -123,7 +122,7 @@ void logChain(const char* class_id, const char* slot, const std::vector<WeaponAt
 {
     if (chain.empty())
         return;
-    combatLog("[combat:resolve] %s/%s chain (%zu entries):\n", class_id, slot, chain.size());
+    combatLog("[combat:resolve] {}/{} chain ({} entries):", class_id, slot, chain.size());
     for (std::size_t i = 0; i < chain.size(); ++i)
         logChainEntry(i, chain[i], two_handed, clips, sampler);
 }
@@ -153,12 +152,12 @@ void logBookendAlignment(const char* class_id, const char* slot,
         const glm::vec3 cur_rh =
             sampler.sampleJointWorldPos(*c_clip, cur.resolved_chain_link_start_seconds, rh);
         const glm::vec3 d = cur_rh - prev_rh;
-        combatLog("[combat:bookend] %s/%s [%zu->%zu]  prev=%s @ %.3fs RH=(%.3f,%.3f,%.3f)  "
-                  "next=%s @ %.3fs RH=(%.3f,%.3f,%.3f)  delta=(%+.3f,%+.3f,%+.3f) |%.3fm|\n",
-                  class_id, slot, i - 1, i, prev.clip.c_str(), prev.resolved_cancel_open_seconds,
-                  prev_rh.x, prev_rh.y, prev_rh.z, cur.clip.c_str(),
-                  cur.resolved_chain_link_start_seconds, cur_rh.x, cur_rh.y, cur_rh.z, d.x, d.y,
-                  d.z, glm::length(d));
+        combatLog("[combat:bookend] {}/{} [{}->{}]  prev={} @ {:.3f}s RH=({:.3f},{:.3f},{:.3f})  "
+                  "next={} @ {:.3f}s RH=({:.3f},{:.3f},{:.3f})  "
+                  "delta=({:+.3f},{:+.3f},{:+.3f}) |{:.3f}m|",
+                  class_id, slot, i - 1, i, prev.clip, prev.resolved_cancel_open_seconds, prev_rh.x,
+                  prev_rh.y, prev_rh.z, cur.clip, cur.resolved_chain_link_start_seconds, cur_rh.x,
+                  cur_rh.y, cur_rh.z, d.x, d.y, d.z, glm::length(d));
     }
 }
 
@@ -210,11 +209,8 @@ void resolveBlockClipStart(WeaponClass& cls, const selva::anim::ClipRegistry& cl
         const float motion_end = sampler.clipJointMotionEnd(*bclip, joints);
         cls.block_clip_end_seconds = std::clamp(motion_end, 0.0f, dur);
     }
-    std::fprintf(stderr,
-                 "[combat:resolve] %s block trim: start=%.3fs end=%.3fs (clip duration=%.3fs)\n",
-                 cls.id.c_str(), cls.block_clip_start_seconds, cls.block_clip_end_seconds, dur);
-    combatLog("[combat:resolve] %s block trim: start=%.3fs end=%.3fs (clip duration=%.3fs)\n",
-              cls.id.c_str(), cls.block_clip_start_seconds, cls.block_clip_end_seconds, dur);
+    combatLog("[combat:resolve] {} block trim: start={:.3f}s end={:.3f}s (clip duration={:.3f}s)",
+              cls.id, cls.block_clip_start_seconds, cls.block_clip_end_seconds, dur);
 }
 
 void resolveOneClass(WeaponClass& cls, const selva::anim::ClipRegistry& clips,

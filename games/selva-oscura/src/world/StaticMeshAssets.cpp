@@ -1,8 +1,10 @@
 #include "world/StaticMeshAssets.h"
 
 #include <cgltf.h>
+#include <nlohmann/json.hpp>
 
 #include <cstdio>
+#include <cstring>
 #include <vector>
 
 #include <glad/glad.h>
@@ -12,6 +14,36 @@ namespace selva::world
 
 namespace
 {
+
+// Parse a glTF node's `extras` JSON for `usage: "visual" | "collision"
+// | "both"`. Missing / malformed / absent key → Both. The extras
+// payload is a raw JSON string written by gen_crypt_foundation.py via
+// Blender's `obj["usage"] = "..."` (Blender promotes custom properties
+// into glTF node extras automatically on export).
+StaticMeshUsage parseUsageFromExtras(const char* extras_json)
+{
+    if (extras_json == nullptr || extras_json[0] == '\0')
+        return StaticMeshUsage::Both;
+    try
+    {
+        const auto doc = nlohmann::json::parse(extras_json);
+        if (!doc.is_object() || !doc.contains("usage"))
+            return StaticMeshUsage::Both;
+        const auto& v = doc["usage"];
+        if (!v.is_string())
+            return StaticMeshUsage::Both;
+        const std::string s = v.get<std::string>();
+        if (s == "visual")
+            return StaticMeshUsage::Visual;
+        if (s == "collision")
+            return StaticMeshUsage::Collision;
+        return StaticMeshUsage::Both;
+    }
+    catch (const std::exception&)
+    {
+        return StaticMeshUsage::Both;
+    }
+}
 
 // Vertex layout matches the SceneProgram (vec3 pos + float shade) so
 // static meshes draw with the same shader path as ground geometry —
@@ -49,8 +81,9 @@ void transformPos(const float m[16], const float p[3], float out[3])
 
 bool loadPrimitive(const cgltf_primitive* prim, const float node_world[16],
                    const float world_offset[3], const std::string& node_name,
-                   StaticMeshPrimitive& out)
+                   const char* node_extras_json, StaticMeshPrimitive& out)
 {
+    out.usage = parseUsageFromExtras(node_extras_json);
     // Vertex layout is position-only + per-vertex shade=1.0; normal is
     // derived in the fragment shader via dFdx/dFdy on world position
     // (see SceneShaders), so we don't query the glTF normal accessor.
@@ -155,10 +188,13 @@ bool loadPrimitive(const cgltf_primitive* prim, const float node_world[16],
     std::fprintf(stderr,
                  "[static-mesh-prim] node='%s' verts=%d tris=%d "
                  "bbox=[%.2f,%.2f,%.2f .. %.2f,%.2f,%.2f] "
-                 "color=(%.2f,%.2f,%.2f)\n",
+                 "color=(%.2f,%.2f,%.2f) usage=%s\n",
                  node_name.c_str(), out.vertex_count, out.index_count / 3, bb_min[0], bb_min[1],
                  bb_min[2], bb_max[0], bb_max[1], bb_max[2], out.base_color[0], out.base_color[1],
-                 out.base_color[2]);
+                 out.base_color[2],
+                 out.usage == StaticMeshUsage::Visual      ? "visual"
+                 : out.usage == StaticMeshUsage::Collision ? "collision"
+                                                           : "both");
     return true;
 }
 
@@ -190,10 +226,12 @@ bool loadGltf(const char* path, const float world_offset[3], StaticMesh& out)
         float world[16];
         cgltf_node_transform_world(&node, world);
         const std::string node_name = node.name != nullptr ? node.name : "";
+        const char* extras_json = node.extras.data;
         for (cgltf_size pi = 0; pi < node.mesh->primitives_count; ++pi)
         {
             StaticMeshPrimitive prim;
-            if (loadPrimitive(&node.mesh->primitives[pi], world, world_offset, node_name, prim))
+            if (loadPrimitive(&node.mesh->primitives[pi], world, world_offset, node_name,
+                              extras_json, prim))
                 out.primitives.push_back(std::move(prim));
         }
     }

@@ -87,9 +87,8 @@ std::uint32_t fireAction(Actor& actor, const EnemyAction& picked,
         hitbox_id = selva::combat::spawnAttackHitbox(sp);
     }
     selva::combat::combatLog(
-        "[ai-action] actor picked=%s clip=%s dist=%.2f cd_until=%.3f hitbox_id=%u\n",
-        picked.id.c_str(), picked.clip.c_str(), dist_to_target,
-        actor.action_state[picked.id].cooldown_until_time, hitbox_id);
+        "[ai-action] actor picked={} clip={} dist={:.2f} cd_until={:.3f} hitbox_id={}", picked.id,
+        picked.clip, dist_to_target, actor.action_state[picked.id].cooldown_until_time, hitbox_id);
     return hitbox_id;
 }
 
@@ -279,8 +278,8 @@ NodeResult LeafPickAction::tick(Actor& actor, const selva::tuning::Tunables& tun
     const auto* clip = selva::anim::clips().get(picked->clip);
     if (clip == nullptr || !clip->isLoaded())
     {
-        selva::combat::combatLog("[ai-action] picked='%s' but clip '%s' not loaded\n",
-                                 picked->id.c_str(), picked->clip.c_str());
+        selva::combat::combatLog("[ai-action] picked='{}' but clip '{}' not loaded", picked->id,
+                                 picked->clip);
         return NodeResult::Failure;
     }
     fireAction(actor, *picked, *clip, dist, now);

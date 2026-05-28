@@ -9,6 +9,20 @@
 namespace selva::world
 {
 
+// Per-primitive role in the render+physics pipelines. Authored as a
+// node-extras key in the .glb (`extras: { "usage": "visual" }`); the
+// loader reads it via cgltf_node::extras. Default = Both, so any mesh
+// authored without the extras key behaves the way it always has: both
+// drawn and collidable. Use Visual / Collision when authoring a pair
+// of meshes that share geometric intent but have different roles
+// (e.g. stair-silhouette visual + smooth-ramp collision).
+enum class StaticMeshUsage
+{
+    Both = 0,  // default: rendered AND used for physics
+    Visual,    // rendered only — physics layer skips
+    Collision, // physics only — renderer skips
+};
+
 // One drawable static-mesh primitive: VAO + VBO + EBO + a base color
 // (read from the source glTF material's baseColorFactor — no texture).
 // Static meshes are unanimated, untextured-for-now props: chapels,
@@ -31,6 +45,10 @@ struct StaticMeshPrimitive
     // fragments where stencil != 0. Pixel-perfect carve-out without
     // any duplicated polygon data.
     bool floor_mask = false;
+    // Role in the render+physics pipelines (see StaticMeshUsage above).
+    // Defaults to Both so authored meshes without the `usage` extras
+    // key behave the way they always have.
+    StaticMeshUsage usage = StaticMeshUsage::Both;
 
     // World-space CPU copies of the geometry (positions + indices)
     // kept around so the physics layer can register this primitive

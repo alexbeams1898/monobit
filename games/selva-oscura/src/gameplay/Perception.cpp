@@ -49,7 +49,7 @@ void setAwareness(PerceptionState& p, Awareness next, float now)
     // fresh (no stale timestamp from a prior engagement).
     if (prev == Awareness::Combat)
         p.outside_leash_since = -1.0f;
-    selva::combat::combatLog("[perception] %s -> %s at t=%.3f\n", awarenessName(prev),
+    selva::combat::combatLog("[perception] {} -> {} at t={:.3f}", awarenessName(prev),
                              awarenessName(next), now);
 }
 

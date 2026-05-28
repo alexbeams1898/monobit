@@ -388,21 +388,22 @@ void Engine::renderLoadingFrame(const char* status_text)
         ImGui::SetCursorPos(ImVec2(center_x, title_y));
         ImGui::TextUnformatted(title);
 
-        // Completed steps + current step, left-aligned to a column
-        // starting at ~40% width, just below the title.
-        const float col_x = static_cast<float>(window_w) * 0.40f;
+        // Completed steps + current step, horizontally centered under
+        // the title. Each line is independently centered (so a longer
+        // line doesn't push shorter lines off-center).
         float y = title_y + title_size.y * 2.0f;
-        for (const auto& step : sLoadingCompletedSteps)
+        auto draw_centered = [&](const std::string& text)
         {
-            ImGui::SetCursorPos(ImVec2(col_x, y));
-            ImGui::Text("%s  done", step.c_str());
+            const ImVec2 sz = ImGui::CalcTextSize(text.c_str());
+            const float x = (static_cast<float>(window_w) - sz.x) * 0.5f;
+            ImGui::SetCursorPos(ImVec2(x, y));
+            ImGui::TextUnformatted(text.c_str());
             y += title_size.y * 1.3f;
-        }
+        };
+        for (const auto& step : sLoadingCompletedSteps)
+            draw_centered(step + "  done");
         if (!sLoadingCurrentStep.empty())
-        {
-            ImGui::SetCursorPos(ImVec2(col_x, y));
-            ImGui::Text("%s  ...", sLoadingCurrentStep.c_str());
-        }
+            draw_centered(sLoadingCurrentStep + "  ...");
     }
     ImGui::End();
 

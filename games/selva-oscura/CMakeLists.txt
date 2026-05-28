@@ -92,7 +92,7 @@ target_link_libraries(selva-oscura-lib
 )
 
 # Game executable.
-add_executable(selva-oscura src/main.cpp)
+add_executable(selva-oscura WIN32 src/main.cpp)
 target_link_libraries(selva-oscura PRIVATE selva-oscura-lib)
 target_include_directories(selva-oscura SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/vendor/stb)
 

@@ -85,6 +85,25 @@ set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(nlohmann_json)
 
 # ---------------------------------------------------------------------------
+# fmt  (type-safe formatting — the basis for std::format, drop-in
+# replacement when the toolchain catches up). Used by engine::log for
+# typed log channels (no va_list anywhere in our code → eliminates the
+# clang-analyzer-valist.Uninitialized false-positive class at the
+# source, not by suppression).
+# ---------------------------------------------------------------------------
+set(FMT_INSTALL OFF CACHE BOOL "" FORCE)
+set(FMT_TEST    OFF CACHE BOOL "" FORCE)
+set(FMT_DOC     OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    fmt
+    GIT_REPOSITORY https://github.com/fmtlib/fmt.git
+    GIT_TAG        11.0.2
+    GIT_SHALLOW    TRUE
+    SYSTEM
+)
+FetchContent_MakeAvailable(fmt)
+
+# ---------------------------------------------------------------------------
 # Catch2  (unit testing — C++ equivalent of Jest)
 # ---------------------------------------------------------------------------
 FetchContent_Declare(

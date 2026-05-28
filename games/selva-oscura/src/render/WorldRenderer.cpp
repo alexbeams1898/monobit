@@ -816,6 +816,8 @@ void drawStaticPrimitive(const selva::world::StaticMeshPrimitive& p)
 {
     if (p.vao == 0)
         return;
+    if (p.usage == selva::world::StaticMeshUsage::Collision)
+        return; // physics-only proxy — not drawn
     selva::render::setSceneTint(1.0f);
     selva::render::setSceneBaseColor(glm::vec3(p.base_color[0], p.base_color[1], p.base_color[2]));
     glBindVertexArray(p.vao);
@@ -877,6 +879,8 @@ void renderStaticMeshesDepth()
             {
                 if (prim.vao == 0)
                     continue;
+                if (prim.usage == selva::world::StaticMeshUsage::Collision)
+                    continue; // physics-only proxy — not drawn
                 glBindVertexArray(prim.vao);
                 glDrawElements(GL_TRIANGLES, prim.index_count, GL_UNSIGNED_INT, nullptr);
             }
