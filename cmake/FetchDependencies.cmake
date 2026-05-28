@@ -248,6 +248,16 @@ set(CMAKE_WARN_DEPRECATED TRUE CACHE BOOL "" FORCE)
 # ---------------------------------------------------------------------------
 set(JPH_DISABLE_CUSTOM_ALLOCATOR ON  CACHE BOOL "" FORCE)
 set(USE_STATIC_MSVC_RUNTIME_LIBRARY OFF CACHE BOOL "" FORCE)
+# Enable C++ RTTI in Jolt so its typeinfo symbols are emitted. Our
+# PhysicsWorld.cpp inherits from JPH::BroadPhaseLayerInterface +
+# JPH::ObjectVsBroadPhaseLayerFilter + friends; each subclass's
+# vtable references the JPH base-class typeinfo. With Jolt's default
+# -fno-rtti, those references resolve at link time on Windows (weak
+# undefined symbol) but FAIL on Linux + clang in the sanitized build
+# (undefined reference to 'typeinfo for JPH::CharacterVirtual' etc).
+# Cost: ~K-byte per JPH class for the typeinfo struct + tiny per-cpp
+# compile overhead. No runtime perf change.
+set(CPP_RTTI_ENABLED ON CACHE BOOL "" FORCE)
 set(ENABLE_ALL_WARNINGS      OFF CACHE BOOL "" FORCE)
 set(INTERPROCEDURAL_OPTIMIZATION OFF CACHE BOOL "" FORCE)
 set(USE_AVX2     OFF CACHE BOOL "" FORCE)
