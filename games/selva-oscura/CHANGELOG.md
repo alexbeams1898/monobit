@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-28
+
+### Added
+
+- Limbo cavern as a 600m disc-shaped region with rock-collar rim wrapping the disc, sealed ceiling, and Acheron trench crossing the playable area.
+- Continuous descent corridor from chapel back wall down to Limbo floor with watertight tunnel-mouth where it pierces the cavern wall.
+- Point lights with flicker animation scattered across Limbo's far shore as warm campfires and pale-green fungus, visible as emissive billboards from any distance.
+- Compass HUD strip at top-center showing camera heading with cardinal and intercardinal letters.
+- Script that produces a ready-to-share zip bundle of the game.
+- Boot loading screen so all gameplay assets preload before the main menu becomes interactive.
+
+### Changed
+
+- Selva surface terrain extended south to fully cover Limbo's footprint; Limbo cavern is no longer visible from atop the plateau.
+- Camera far plane raised so distant cavern walls render correctly.
+- Ground-finding now uses real physics via downward raycast instead of the legacy flag-based system.
+
+### Removed
+
+- Legacy walkable_top / isIndoors / InteriorFootprint flag-based ground system, replaced by the physics raycast.
+
+### Fixed
+
+- Watertight seal between descent corridor and Limbo cavern wall with no light leak, no wall slivers, no over-cut holes.
+- Cavern wall back-face culling bug where X-axis walls of Limbo's enclosure rendered their wrong side.
+
 ## [0.1.0] - 2026-05-20
 
 ### Added
@@ -33,5 +59,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Player and enemy locomotion now share core systems (movement-locked gating during one-shots, root-motion vs velocity translation sources, hip-delta apply) so the same animation behavior holds on both sides.
 - Enemy combat retention now uses a distance-based leash with hysteresis instead of vision-based timers, so enemies stay engaged as long as the player is within range regardless of line of sight.
 
-[unreleased]: https://github.com/alexbeams1898/selva-oscura-releases/compare/v0.1.0...HEAD
+[unreleased]: https://github.com/alexbeams1898/selva-oscura-releases/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/alexbeams1898/selva-oscura-releases/releases/tag/v0.2.0
 [0.1.0]: https://github.com/alexbeams1898/selva-oscura-releases/releases/tag/v0.1.0
