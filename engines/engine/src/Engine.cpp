@@ -8,6 +8,7 @@
 
 #include <cmath>
 #include <string>
+#include <vector>
 
 // glad must be included before any SDL OpenGL header.
 #include <imgui.h>
@@ -43,6 +44,10 @@ bool Engine::init(const char* title, int width, int height)
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    // 8-bit stencil so renderers can use stencil-based masking
+    // (e.g. terrain-cut-by-architecture: render architecture floor
+    // into stencil first, then draw terrain with stencil rejection).
+    SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 
     // MSAA — set before window creation so the default framebuffer gets
     // multi-sample storage. msaa_samples == 0 leaves it disabled.
@@ -52,7 +57,14 @@ bool Engine::init(const char* title, int width, int height)
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, msaa_samples);
     }
 
-    Uint32 window_flags = SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE;
+    // SDL_WINDOW_ALLOW_HIGHDPI tells SDL to expose the physical
+    // framebuffer to GL on HiDPI displays. Without this, SDL on
+    // Windows hands GL a DPI-scaled framebuffer (smaller than the
+    // physical pixels), the desktop compositor upscales the result,
+    // and everything renders blurry — most visible after toggling
+    // fullscreen on a 4K / HiDPI laptop screen.
+    Uint32 window_flags =
+        SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
     switch (window_mode)
     {
     case WindowMode::Windowed:
@@ -99,10 +111,26 @@ bool Engine::init(const char* title, int width, int height)
     if (msaa_samples > 0)
         glEnable(GL_MULTISAMPLE);
 
-    // Read the actual window size — fullscreen-desktop ignores the
-    // requested width/height and uses the display's resolution, so the
-    // request args are unreliable. Truth is whatever SDL gave us.
-    SDL_GetWindowSize(window, &window_w, &window_h);
+    // Log the actual MSAA sample count the driver granted (may be less
+    // than requested, may be 0 if driver refused). If this prints 0
+    // when msaa_samples was > 0, MSAA is silently disabled.
+    {
+        int actual_buffers = 0, actual_samples = 0;
+        SDL_GL_GetAttribute(SDL_GL_MULTISAMPLEBUFFERS, &actual_buffers);
+        SDL_GL_GetAttribute(SDL_GL_MULTISAMPLESAMPLES, &actual_samples);
+        std::fprintf(stderr,
+                     "[engine] MSAA: requested=%d samples, granted=%d buffers x %d samples\n",
+                     msaa_samples, actual_buffers, actual_samples);
+    }
+
+    // Use DRAWABLE size (physical framebuffer pixels), not window
+    // size (logical / DPI-scaled). On Windows displays with DPI
+    // scaling (and on macOS Retina), these differ — SDL_GetWindowSize
+    // returns the DPI-scaled logical size which is smaller than the
+    // actual framebuffer. Rendering at the logical size and letting
+    // the compositor upscale to physical pixels produces a blurry
+    // image, most visible when toggling fullscreen on a HiDPI panel.
+    SDL_GL_GetDrawableSize(window, &window_w, &window_h);
 
     FontManager::init();
     UIRenderer::init(window_w, window_h);
@@ -116,6 +144,18 @@ bool Engine::init(const char* title, int width, int height)
     ImGui::CreateContext();
     ImGui::GetIO().IniFilename = nullptr; // don't write imgui.ini next to the exe
     ImGui::StyleColorsDark();
+    // Bake the default font atlas at a higher pixel size so text stays
+    // crisp on HiDPI / fullscreen displays. ImGui's default ProggyClean
+    // is a 13px bitmap that looks pixelated when stretched to physical
+    // pixels on a 4K panel. Loading the same font at 18px makes glyphs
+    // ~40% sharper without depending on any external TTF file.
+    {
+        ImFontConfig cfg;
+        cfg.SizePixels = 18.0f;
+        cfg.OversampleH = 2;
+        cfg.OversampleV = 2;
+        ImGui::GetIO().Fonts->AddFontDefault(&cfg);
+    }
     ImGui_ImplSDL2_InitForOpenGL(window, gl_context);
     ImGui_ImplOpenGL3_Init("#version 330 core");
 
@@ -214,10 +254,19 @@ void Engine::processEvents()
 
         if (event.type == SDL_QUIT)
             running = false;
-        if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_RESIZED)
+        // SIZE_CHANGED fires for ALL size changes including programmatic
+        // fullscreen toggles; RESIZED only fires for user-driven resizes
+        // (drag window edge). Handling SIZE_CHANGED is the SDL2 idiom
+        // for fullscreen sync. Without it the per-frame glViewport stays
+        // pinned to the original windowed dims and the scene gets
+        // rendered into a subregion of the fullscreen framebuffer, which
+        // the desktop compositor stretches to fill — visible as a blur.
+        if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED)
         {
-            window_w = event.window.data1;
-            window_h = event.window.data2;
+            // Use drawable size, not the event's logical size — the
+            // logical size is DPI-scaled and smaller than the actual
+            // framebuffer on HiDPI displays. See init() for context.
+            SDL_GL_GetDrawableSize(window, &window_w, &window_h);
             UIRenderer::resize(window_w, window_h);
             if (on_resize)
                 on_resize(*this, window_w, window_h);
@@ -289,6 +338,78 @@ void Engine::setWindowTitle(const std::string& title)
 {
     if (window)
         SDL_SetWindowTitle(window, title.c_str());
+}
+
+// Persistent state for the loading screen — each renderLoadingFrame
+// call moves the previous label to "completed" and renders the
+// growing list with the new current step.
+static std::vector<std::string> sLoadingCompletedSteps;
+static std::string sLoadingCurrentStep;
+
+void Engine::renderLoadingFrame(const char* status_text)
+{
+    if (!window || !gl_context)
+        return;
+
+    // First call: just set current step. Subsequent calls: move the
+    // previous current to completed, then set new current. Each call
+    // is one frame's worth of work (clear + 1 ImGui window + swap),
+    // not one frame per text change.
+    if (!sLoadingCurrentStep.empty())
+        sLoadingCompletedSteps.push_back(sLoadingCurrentStep);
+    sLoadingCurrentStep = status_text ? status_text : "";
+
+    // Pump SDL events so Windows doesn't mark the window unresponsive.
+    SDL_Event event;
+    while (SDL_PollEvent(&event))
+        ImGui_ImplSDL2_ProcessEvent(&event);
+
+    glViewport(0, 0, window_w, window_h);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplSDL2_NewFrame();
+    ImGui::NewFrame();
+
+    // Full-screen transparent borderless window — "Loading" title at
+    // top-center, list of completed steps + current step below.
+    ImGui::SetNextWindowPos(ImVec2(0, 0));
+    ImGui::SetNextWindowSize(ImVec2(static_cast<float>(window_w), static_cast<float>(window_h)));
+    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                                   ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs |
+                                   ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoNav;
+    if (ImGui::Begin("##loading", nullptr, flags))
+    {
+        const char* title = "Loading";
+        const ImVec2 title_size = ImGui::CalcTextSize(title);
+        const float center_x = (static_cast<float>(window_w) - title_size.x) * 0.5f;
+        const float title_y = static_cast<float>(window_h) * 0.40f;
+        ImGui::SetCursorPos(ImVec2(center_x, title_y));
+        ImGui::TextUnformatted(title);
+
+        // Completed steps + current step, horizontally centered under
+        // the title. Each line is independently centered (so a longer
+        // line doesn't push shorter lines off-center).
+        float y = title_y + title_size.y * 2.0f;
+        auto draw_centered = [&](const std::string& text)
+        {
+            const ImVec2 sz = ImGui::CalcTextSize(text.c_str());
+            const float x = (static_cast<float>(window_w) - sz.x) * 0.5f;
+            ImGui::SetCursorPos(ImVec2(x, y));
+            ImGui::TextUnformatted(text.c_str());
+            y += title_size.y * 1.3f;
+        };
+        for (const auto& step : sLoadingCompletedSteps)
+            draw_centered(step + "  done");
+        if (!sLoadingCurrentStep.empty())
+            draw_centered(sLoadingCurrentStep + "  ...");
+    }
+    ImGui::End();
+
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    SDL_GL_SwapWindow(window);
 }
 
 void Engine::render()

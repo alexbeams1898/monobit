@@ -119,3 +119,136 @@ implementation.
 - [Economy](economy.md) — sangue cost of Cord uses, sangue investment
   via OFFERINGS / Hand.
 - [UX](ux.md) — inventory screen, item-use UX.
+
+---
+
+## Brainstorming notes (2026-05-28) — teleport markers (working name TBD)
+
+> Status: in-progress design conversation, NOT canon yet.
+> Captured here so the thinking persists across sessions.
+
+### What the bonfire problem looks like in Selva
+
+Souls' bonfire bundles many functions (save / respawn / level-up /
+equip / heal / repair / fast-travel / world-reset / tonal anchor).
+Selva already distributes those across authored systems:
+
+| Function | Selva system |
+|---|---|
+| Save | Vestigia (autosave on death / retreat; manual Inscribe TBD) |
+| Respawn | The Wood (cosmologically, per fallback.md) |
+| Stat-up / level-up | OFFERINGS at the Wood; Hand makes portable late-game |
+| Equip / loadout | Inventory screen (UX TBD, but it's a screen, not a place) |
+| Heal | Hand (anywhere, late-game); pre-Hand healing is a real TBD |
+| Repair / craft | Imprint-making — the verb the Vagrant carries (per crafting.md brainstorming notes); no bench |
+| Fast travel out | The Cord (Hell → Wood) |
+| Tonal anchor | The Wood IS the tonal anchor; in-Hell rest is doctrinally absent |
+
+So "a checkpoint" in Selva has only one *unmet* function: **fast
+travel INTO Hell** (the Cord covers OUT). The marker system is
+designed for that one purpose. It is not a bonfire; it is a
+return-point.
+
+### The cosmological justification (the load-bearing piece)
+
+**The Vagrant cannot be marked, so he can mark.** Per setting.md
+*The unjudged*, Hell's killing-protocol cannot grip the Vagrant
+because he carries no imprint to complete. The unjudged-exemption
+is his defining cosmological property. He carries it into Hell.
+
+He can leave a piece of it in a place: spend sangue + intent,
+imprint the exemption into the geography. The spot becomes a
+small zone Hell's accounting cannot touch. **Because Hell cannot
+touch it, the Vagrant's body can re-arrive at it without being
+processed.** The marker is a teleport destination because it is
+a place Hell does not see.
+
+This composes with crafting.md's brainstorming notes — markers
+ARE imprints, same verb (imprint-making) producing a different
+kind of output. Substance flows the same way: sangue + intent →
+marked thing.
+
+### What the marker is, mechanically
+
+- **Player-placed.** The Vagrant chooses where, at the cost of a
+  sangue spend (paid at placement).
+- **One active marker per circle.** The exemption is finite; he
+  can hold it at one location per region. Removable (he reclaims
+  the exemption) and re-placeable elsewhere.
+- **Wood → marker teleport.** The Vagrant initiates from the Wood,
+  pays sangue (depth-scaled, same curve as the Cord), arrives at
+  the marker. The Wood remains the hub — markers do NOT enable
+  marker → marker direct teleport.
+- **Cord still works**: Hell → Wood. Marker fills the inverse leg.
+- **No save effect.** Vestigia handle save; markers don't change
+  that. Respawn on death is still the Wood, not the last marker.
+  No save-scum loop possible.
+- **No healing on arrival from the marker itself.** Healing is the
+  Hand's job (late-game) and consumables (TBD). The marker is not
+  a place to rest.
+- **Optional gentle softening:** the *transit itself* partially
+  restores HP — Hell briefly loses sight of the Vagrant mid-jump,
+  he reconstitutes at the destination. Avoids "teleport mid-fight
+  to low-HP arrival" feeling cheap without making the marker a
+  rest site.
+
+### Path implications
+
+- **Class-picker has markers** (parallel to the Cord, which is
+  class-picker-only).
+- **Unburdened does not have markers** (parallel to no Cord). The
+  unburdened path is canonically harder; they walk back. This
+  reinforces the path distinction without inventing new
+  asymmetry.
+
+### Verb-name candidates (Italian register, TBD)
+
+The marker needs a name in the world's vocabulary. Working
+candidates:
+
+- *Vestigio* (singular trace, footprint). Composes with the
+  *vestigia* save system but at the geographic-marker layer
+  instead of the run-state layer. Cautious: risks ambiguity with
+  save vestigia.
+- *Segno* (sign, mark). Direct, period-Italian, light theological
+  weight (cf. *signum* in Catholic Latin).
+- *Impronta* (imprint, fingerprint). Most directly tied to the
+  imprint-making frame from crafting.md notes — the verb and the
+  noun share a root.
+- *Sigillo minore* (lesser seal). Connects to *Il Sigillo* (the
+  Seal, single-use class-pick) but in a smaller, plural, reusable
+  register. Beautiful but possibly confusing — they ARE different
+  things mechanically.
+
+Lean: *Impronta* if we lock the imprint-making verb. *Segno* if
+we want neutrality.
+
+### Where this doesn't go
+
+- **Not save spots.** Vestigia stay locked.
+- **Not rest sites.** No healing-at-marker, no enemy-reset-on-rest.
+- **Not in the Wood.** The Wood already accepts player marks via
+  the deferred *Place / mark* verbs in wood.md (cairns / etched
+  names / fires). Those are *memorial*, not *transit*. Different
+  system entirely.
+- **Not workbenches.** Crafting is bench-less per the imprint-making
+  framing.
+- **Not Souls-bonfires.** Single function: teleport.
+
+### TBD before promotion to canon
+
+- Sangue cost curve for placement vs. transit (two separate spends
+  or one combined?).
+- Whether the marker is visible to the player as a geometric
+  object in the world, or as an entry in an inventory/menu.
+  Probably both: a small placed object the Vagrant can see at the
+  spot, plus a Wood-side menu of "places I have marked."
+- Whether the transit itself is fade-to-black (matches the colle's
+  Acheron-crossing register) or seamless (per the seamless-traversal
+  pillar). Probably fade — markers are explicitly fast travel, which
+  is the canonical fade-exception per the seamless-traversal
+  doctrine.
+- Whether Beatrice's threshold-light marks the geography in the
+  Wood that corresponds to the player's active markers (so the
+  Wood-side menu has a *spatial* presentation, not a list). Beautiful
+  if so; UX cost TBD.

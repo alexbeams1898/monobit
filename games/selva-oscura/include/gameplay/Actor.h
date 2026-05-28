@@ -177,6 +177,9 @@ struct Actor
     glm::vec3 pos = glm::vec3(0.0f);
     float yaw = 0.0f;
     glm::vec2 velocity_xz = glm::vec2(0.0f);
+    // Vertical velocity for gravity / falling. Negative = falling.
+    // Snaps to 0 when the actor lands on ground.
+    float velocity_y = 0.0f;
 
     // --- Animation ---
     // Per-actor pose state. Each actor's clips advance in their
@@ -301,6 +304,28 @@ struct Actor
     // spawn from std::random_device — different actors of the same
     // archetype roll independently so they don't synchronize.
     std::mt19937 rng;
+
+    // --- Footstep detector state ---
+    // Per-foot ground-contact tracker used by tickFootsteps. State
+    // machine cycles Airborne <-> Grounded as the foot bone's world Y
+    // crosses ground+epsilon. Joint indices are lazily resolved on
+    // first tick (cached so we only scan the skeleton once per actor).
+    struct FootContact
+    {
+        int joint_idx = -2; // -2 = unresolved, -1 = absent in skeleton
+        float prev_y = 0.0f;
+        float prev_vy = 0.0f;         // foot Y velocity last frame (m/s)
+        float peak_descent_vy = 0.0f; // max |descent velocity| in current descent (m/s)
+        float last_fire_time = -1000.0f;
+        bool initialized = false; // skip first frame's bogus velocity
+    };
+    FootContact foot_left;
+    FootContact foot_right;
+    // Wallclock of the last fire across EITHER foot. Drives the
+    // "first-step rescue" lower threshold so the leading step of a
+    // fresh stride from idle isn't suppressed by the steady-state
+    // threshold tuned for inter-stride wobble rejection.
+    float last_footstep_fire_time = -1000.0f;
 
     // --- Active attack hitbox tracking ---
     // When the actor fires a swing, this stores the spawned hitbox's

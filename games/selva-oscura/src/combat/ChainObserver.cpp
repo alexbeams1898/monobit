@@ -72,9 +72,8 @@ void rescanChain(const PlayerEquipment& eq)
     sObs.current.step = 0;
     if (sObs.count == 0 || eq.right == nullptr || eq.right->cls == nullptr)
     {
-        combatLog("[combat:obs] rescan EMPTY (count=%zu eq.right=%p) prev=%s@%d -> -@0\n",
-                  sObs.count, static_cast<const void*>(eq.right), prev_id ? prev_id : "-",
-                  prev_step);
+        combatLog("[combat:obs] rescan EMPTY (count={} eq.right={}) prev={}@{} -> -@0", sObs.count,
+                  fmt::ptr(eq.right), prev_id ? prev_id : "-", prev_step);
         return;
     }
     const auto& aset = gripSet(*eq.right, eq.grip);
@@ -105,12 +104,12 @@ void rescanChain(const PlayerEquipment& eq)
         // press would seed the same technique again at step 1.
         if (best_step >= static_cast<int>(best_tech->attacks.size()))
         {
-            combatLog("[combat:obs] rescan COMPLETE %s @ step %d -> reset history\n",
-                      best_tech->id.c_str(), best_step);
+            combatLog("[combat:obs] rescan COMPLETE {} @ step {} -> reset history", best_tech->id,
+                      best_step);
             sObs.count = 0;
         }
     }
-    combatLog("[combat:obs] rescan tech_count=%zu hist_count=%zu prev=%s@%d -> %s@%d\n",
+    combatLog("[combat:obs] rescan tech_count={} hist_count={} prev={}@{} -> {}@{}",
               aset.light.size(), sObs.count, prev_id ? prev_id : "-", prev_step,
               sObs.current.technique_id ? sObs.current.technique_id : "-", sObs.current.step);
 }
@@ -146,7 +145,7 @@ void recordPress(const PlayerEquipment& eq, const char* button, float wall_clock
     sObs.last_window_center = cancel_window_center;
     sObs.last_window_half = cancel_window_half_width;
 
-    combatLog("[combat:obs] recordPress button=%s t=%.4f hist_count=%zu acc=%.2f perfect=%d\n",
+    combatLog("[combat:obs] recordPress button={} t={:.4f} hist_count={} acc={:.2f} perfect={}",
               button, wall_clock_seconds, sObs.count, sObs.current.last_press_accuracy,
               sObs.current.last_press_perfect ? 1 : 0);
 
@@ -172,7 +171,7 @@ const CancelWindow& cancelWindow(HandSide hand)
 
 void resetChain()
 {
-    combatLog("[combat:obs] resetChain (was tech=%s@%d hist_count=%zu)\n",
+    combatLog("[combat:obs] resetChain (was tech={}@{} hist_count={})",
               sObs.current.technique_id ? sObs.current.technique_id : "-", sObs.current.step,
               sObs.count);
     sObs.count = 0;
@@ -195,7 +194,7 @@ void tickChainObserver(float wall_clock_seconds, bool one_shot_active)
     const float grace = selva::tuning::current().combo_reset_grace_seconds;
     if (sObs.last_press_t > 0.0f && wall_clock_seconds - sObs.last_press_t > grace)
     {
-        combatLog("[combat:obs] tick GRACE EXPIRED last_press_t=%.4f now=%.4f grace=%.2f\n",
+        combatLog("[combat:obs] tick GRACE EXPIRED last_press_t={:.4f} now={:.4f} grace={:.2f}",
                   sObs.last_press_t, wall_clock_seconds, grace);
         resetChain();
     }

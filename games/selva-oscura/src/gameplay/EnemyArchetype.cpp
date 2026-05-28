@@ -103,7 +103,7 @@ void EnemyArchetypeRegistry::loadDirectory(const std::filesystem::path& dir)
 {
     if (!std::filesystem::exists(dir) || !std::filesystem::is_directory(dir))
     {
-        selva::combat::combatLog("[archetype] directory not found: %s\n", dir.string().c_str());
+        selva::combat::combatLog("[archetype] directory not found: {}", dir.string());
         return;
     }
     for (const auto& entry : std::filesystem::directory_iterator(dir))
@@ -115,7 +115,7 @@ void EnemyArchetypeRegistry::loadDirectory(const std::filesystem::path& dir)
         std::ifstream in(entry.path());
         if (!in)
         {
-            selva::combat::combatLog("[archetype] cannot open %s\n", entry.path().string().c_str());
+            selva::combat::combatLog("[archetype] cannot open {}", entry.path().string());
             continue;
         }
         try
@@ -125,19 +125,19 @@ void EnemyArchetypeRegistry::loadDirectory(const std::filesystem::path& dir)
             EnemyArchetype arch = j.get<EnemyArchetype>();
             if (arch.id.empty())
             {
-                selva::combat::combatLog("[archetype] %s has empty id; skipping\n",
-                                         entry.path().string().c_str());
+                selva::combat::combatLog("[archetype] {} has empty id; skipping",
+                                         entry.path().string());
                 continue;
             }
             const std::string id = arch.id;
             by_id[id] = std::move(arch);
-            selva::combat::combatLog("[archetype] loaded '%s' (%zu actions) from %s\n", id.c_str(),
-                                     by_id[id].actions.size(), entry.path().string().c_str());
+            selva::combat::combatLog("[archetype] loaded '{}' ({} actions) from {}", id,
+                                     by_id[id].actions.size(), entry.path().string());
         }
         catch (const std::exception& e)
         {
-            selva::combat::combatLog("[archetype] parse error in %s: %s\n",
-                                     entry.path().string().c_str(), e.what());
+            selva::combat::combatLog("[archetype] parse error in {}: {}", entry.path().string(),
+                                     e.what());
         }
     }
 }

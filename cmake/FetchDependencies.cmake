@@ -85,6 +85,25 @@ set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(nlohmann_json)
 
 # ---------------------------------------------------------------------------
+# fmt  (type-safe formatting — the basis for std::format, drop-in
+# replacement when the toolchain catches up). Used by engine::log for
+# typed log channels (no va_list anywhere in our code → eliminates the
+# clang-analyzer-valist.Uninitialized false-positive class at the
+# source, not by suppression).
+# ---------------------------------------------------------------------------
+set(FMT_INSTALL OFF CACHE BOOL "" FORCE)
+set(FMT_TEST    OFF CACHE BOOL "" FORCE)
+set(FMT_DOC     OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    fmt
+    GIT_REPOSITORY https://github.com/fmtlib/fmt.git
+    GIT_TAG        11.0.2
+    GIT_SHALLOW    TRUE
+    SYSTEM
+)
+FetchContent_MakeAvailable(fmt)
+
+# ---------------------------------------------------------------------------
 # Catch2  (unit testing — C++ equivalent of Jest)
 # ---------------------------------------------------------------------------
 FetchContent_Declare(
@@ -220,4 +239,48 @@ FetchContent_Declare(
 # ozz uses an older cmake_minimum — same workaround pattern as GLAD/SDL2.
 set(CMAKE_WARN_DEPRECATED FALSE CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(ozz)
+set(CMAKE_WARN_DEPRECATED TRUE CACHE BOOL "" FORCE)
+
+# ---------------------------------------------------------------------------
+# Jolt Physics — capsule-vs-trimesh physics for player/NPC vs world.
+# MIT, C++17, CMake-native. Static linkage. Disabled CPU-feature autodetect
+# so the binary runs on the broadest set of machines (no AVX/SSE4 required).
+# ---------------------------------------------------------------------------
+set(JPH_DISABLE_CUSTOM_ALLOCATOR ON  CACHE BOOL "" FORCE)
+set(USE_STATIC_MSVC_RUNTIME_LIBRARY OFF CACHE BOOL "" FORCE)
+# Enable C++ RTTI in Jolt so its typeinfo symbols are emitted. Our
+# PhysicsWorld.cpp inherits from JPH::BroadPhaseLayerInterface +
+# JPH::ObjectVsBroadPhaseLayerFilter + friends; each subclass's
+# vtable references the JPH base-class typeinfo. With Jolt's default
+# -fno-rtti, those references resolve at link time on Windows (weak
+# undefined symbol) but FAIL on Linux + clang in the sanitized build
+# (undefined reference to 'typeinfo for JPH::CharacterVirtual' etc).
+# Cost: ~K-byte per JPH class for the typeinfo struct + tiny per-cpp
+# compile overhead. No runtime perf change.
+set(CPP_RTTI_ENABLED ON CACHE BOOL "" FORCE)
+set(ENABLE_ALL_WARNINGS      OFF CACHE BOOL "" FORCE)
+set(INTERPROCEDURAL_OPTIMIZATION OFF CACHE BOOL "" FORCE)
+set(USE_AVX2     OFF CACHE BOOL "" FORCE)
+set(USE_AVX      OFF CACHE BOOL "" FORCE)
+set(USE_SSE4_2   OFF CACHE BOOL "" FORCE)
+set(USE_SSE4_1   OFF CACHE BOOL "" FORCE)
+set(USE_LZCNT    OFF CACHE BOOL "" FORCE)
+set(USE_TZCNT    OFF CACHE BOOL "" FORCE)
+set(USE_F16C     OFF CACHE BOOL "" FORCE)
+set(USE_FMADD    OFF CACHE BOOL "" FORCE)
+set(TARGET_UNIT_TESTS       OFF CACHE BOOL "" FORCE)
+set(TARGET_HELLO_WORLD      OFF CACHE BOOL "" FORCE)
+set(TARGET_PERFORMANCE_TEST OFF CACHE BOOL "" FORCE)
+set(TARGET_SAMPLES          OFF CACHE BOOL "" FORCE)
+set(TARGET_VIEWER           OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    JoltPhysics
+    GIT_REPOSITORY https://github.com/jrouwe/JoltPhysics.git
+    GIT_TAG        v5.2.0
+    GIT_SHALLOW    TRUE
+    SOURCE_SUBDIR  Build
+    SYSTEM
+)
+set(CMAKE_WARN_DEPRECATED FALSE CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(JoltPhysics)
 set(CMAKE_WARN_DEPRECATED TRUE CACHE BOOL "" FORCE)

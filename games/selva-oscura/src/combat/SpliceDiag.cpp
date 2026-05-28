@@ -40,7 +40,7 @@ void logSpliceDiag(const SpliceDiag& d, const selva::anim::AnimationClip& new_cl
 {
     auto entry = [&](int j)
     { return (j >= 0) ? sampler.sampleJointWorldPos(new_clip, start_seconds, j) : glm::vec3(0); };
-    combatLog("%s  RH=%.3fm LH=%.3fm Hip=%.3fm LFoot=%.3fm RFoot=%.3fm\n", prefix,
+    combatLog("{}  RH={:.3f}m LH={:.3f}m Hip={:.3f}m LFoot={:.3f}m RFoot={:.3f}m", prefix,
               glm::length(entry(d.rh) - d.live_rh), glm::length(entry(d.lh) - d.live_lh),
               glm::length(entry(d.hp) - d.live_hp), glm::length(entry(d.lf) - d.live_lf),
               glm::length(entry(d.rf) - d.live_rf));

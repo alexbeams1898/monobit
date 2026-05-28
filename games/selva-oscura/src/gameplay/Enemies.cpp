@@ -91,8 +91,7 @@ void spawnEnemyActor(float x, float z, float yaw, const char* archetype_id)
     {
         e.archetype = archetypes().get(archetype_id);
         if (e.archetype == nullptr)
-            selva::combat::combatLog("[spawn] archetype '%s' not found in registry\n",
-                                     archetype_id);
+            selva::combat::combatLog("[spawn] archetype '{}' not found in registry", archetype_id);
     }
     // Phase-stagger the first AI tick so a wave of actors spawned on
     // the same frame doesn't all evaluate together. The pool index is
@@ -149,7 +148,7 @@ bool tickKnockdownLifecycle(Actor& a, float dt, const selva::anim::AnimationClip
         a.is_knocked_down = false;
         a.knockdown_start_time = -1.0f;
         a.sampler.releaseOneShot();
-        selva::combat::combatLog("[knockdown] actor recovered\n");
+        selva::combat::combatLog("[knockdown] actor recovered");
         return false;
     }
     if (idle_clip != nullptr && idle_clip->isLoaded())
@@ -203,7 +202,8 @@ void tickEnemyDecision(Actor& a, const selva::tuning::Tunables& tun)
     {
         const auto& p = a.perception.last_known_player_pos;
         selva::combat::combatLog(
-            "[ai-decision] awareness=%d target=(%.2f,%.2f) intent=(%.2f,%.2f) yaw=%.2f tree=%s\n",
+            "[ai-decision] awareness={} target=({:.2f},{:.2f}) intent=({:.2f},{:.2f}) "
+            "yaw={:.2f} tree={}",
             static_cast<int>(a.perception.awareness), p.x, p.z, a.intent_xz.x, a.intent_xz.y,
             a.turn_intent_yaw,
             (a.archetype != nullptr) ? a.archetype->tree_id.c_str() : "humanoid_basic");
@@ -254,9 +254,9 @@ void tickEnemyLocomotion(Actor& a, float dt, const selva::tuning::Tunables& tun)
         a.pos.x += a.velocity_xz.x * dt;
         a.pos.z += a.velocity_xz.y * dt;
     }
-    // Snap Y to terrain so the actor's feet stay on the heightmap
-    // surface as it walks across slopes.
-    a.pos.y = selva::world::sampleHeight(a.pos.x, a.pos.z);
+    // Snap Y to the ground so the actor's feet stay on the heightmap
+    // surface (or on any walkable BoxCollider like a stair step).
+    a.pos.y = selva::world::groundHeight(a.pos.x, a.pos.z, a.pos.y);
 
     // Turn yaw toward turn_intent_yaw, shortest-path. Wrap delta into
     // [-pi, pi] so a 350° desired yaw doesn't take the long way around.
@@ -289,7 +289,7 @@ bool tickDeathLifecycle(Actor& a, float dt, const selva::anim::AnimationClip* id
     const float respawn_delay = selva::tuning::current().enemy_respawn_after_death_seconds;
     if (a.death_time > 0.0f && (selva::wallClock() - a.death_time) >= respawn_delay)
     {
-        selva::combat::combatLog("[enemy-respawn] respawning actor at t=%.3f\n",
+        selva::combat::combatLog("[enemy-respawn] respawning actor at t={:.3f}",
                                  selva::wallClock());
         a.is_dead = false;
         a.death_time = -1.0f;
@@ -340,7 +340,7 @@ void fireEnemyKnockdown(Actor& e, int index, int damage, int poise_damage, float
                               start_t,
                               /*playback_rate=*/1.0f, opts);
         selva::combat::combatLog(
-            "[knockdown] firing knockdown clip dur=%.3fs start=%.2fs end_tunable=%.2fs\n",
+            "[knockdown] firing knockdown clip dur={:.3f}s start={:.2f}s end_tunable={:.2f}s",
             knockdown_clip->duration(), start_t, tun.knockdown_clip_end_seconds);
     }
     e.is_knocked_down = true;
@@ -348,8 +348,8 @@ void fireEnemyKnockdown(Actor& e, int index, int damage, int poise_damage, float
     e.poise.current = e.poise.max; // reset on break
     e.last_damage_time = now;
     selva::combat::combatLog(
-        "[knockdown] enemy[%d] poise broke (dmg=%d poise_dmg=%d) -> knockdown clip\n", index,
-        damage, poise_damage);
+        "[knockdown] enemy[{}] poise broke (dmg={} poise_dmg={}) -> knockdown clip", index, damage,
+        poise_damage);
 }
 
 // Pick the hit-react clip + blend timings from damage tier. For
@@ -391,7 +391,7 @@ void fireEnemyDeath(Actor& e, int index)
     // Bed layer — plays at clip start (the dread under the fall).
     if (!e.death_sfx_name.empty())
     {
-        selva::combat::combatLog("[death-audio] bed sfx='%s'\n", e.death_sfx_name.c_str());
+        selva::combat::combatLog("[death-audio] bed sfx='{}'", e.death_sfx_name);
         selva::audio::playSfx(e.death_sfx_name);
     }
     e.is_dead = true;
@@ -405,8 +405,8 @@ void fireEnemyDeath(Actor& e, int index)
         const float peak_offset = selva::audio::sfxPeakOffset(sfx_name);
         const float play_at = e.death_time + e.death_peak_align_seconds - peak_offset;
         selva::combat::combatLog(
-            "[death-audio] scheduled sfx='%s' peak_off=%.3fs align=%.3fs play_at=%.3f\n",
-            sfx_name.c_str(), peak_offset, e.death_peak_align_seconds, play_at);
+            "[death-audio] scheduled sfx='{}' peak_off={:.3f}s align={:.3f}s play_at={:.3f}",
+            sfx_name, peak_offset, e.death_peak_align_seconds, play_at);
         selva::audio::scheduleSfx(sfx_name, play_at);
     }
     // Player-only: duck the OST so the death audio reads clean
@@ -414,7 +414,7 @@ void fireEnemyDeath(Actor& e, int index)
     // tickPlayerSecondDeathLifecycle.
     if (e.controller == Controller::Input)
         selva::audio::duckMusic();
-    selva::combat::combatLog("[death] actor[%d] died (clip=%s)\n", index, clip_name);
+    selva::combat::combatLog("[death] actor[{}] died (clip={})", index, clip_name);
 }
 
 void initHubEnemies()
@@ -435,6 +435,51 @@ void shutdownHubEnemies()
                pool.end());
 }
 
+void resetEnemiesToSpawn()
+{
+    auto& pool = actors();
+    for (auto& a : pool)
+    {
+        if (a.controller == Controller::Input)
+            continue;
+
+        a.pos = a.spawn_pos;
+        a.yaw = a.spawn_yaw;
+        a.velocity_xz = glm::vec2(0.0f);
+        a.intent_xz = glm::vec2(0.0f);
+        a.turn_intent_yaw = a.spawn_yaw;
+
+        // Mortal pools back to max from archetype Body + Stats.
+        initActorPools(a.hp, a.stamina, a.poise, a.body, a.stats);
+
+        a.is_dead = false;
+        a.death_time = -1.0f;
+        a.is_knocked_down = false;
+        a.knockdown_start_time = -1.0f;
+        a.last_damage_time = -1.0f;
+        a.last_hit_react_time = -1.0f;
+
+        // Perception cleared - first-sighting double-take must replay.
+        a.perception = PerceptionState{};
+
+        a.lock_target_idx = -1;
+        a.duel_strafe_dir = 0;
+
+        a.action_state.clear();
+        a.active_attack_hitbox_id = 0;
+        a.active_attack_joint_idx = -1;
+        a.active_attack_tip_offset_z = 0.0f;
+
+        a.foot_left = Actor::FootContact{};
+        a.foot_right = Actor::FootContact{};
+
+        a.sampler.releaseOneShot();
+        if (const auto* idle = selva::anim::clips().get(kEnemyPeacefulIdleClipName);
+            idle != nullptr && idle->isLoaded())
+            a.sampler.update(*idle, 0.0f, 0.0f);
+    }
+}
+
 // Update the actor's lock_target_idx based on awareness. Idempotent
 // per tick; logs the edges (acquire/release). On acquisition the
 // strafe direction is rolled once and held for the engagement.
@@ -446,14 +491,14 @@ static void updateEnemyLockOnPlayer(Actor& a, const Actor& pc)
     {
         a.lock_target_idx = 0;
         a.duel_strafe_dir = (std::uniform_int_distribution<int>(0, 1)(a.rng) == 0) ? -1 : 1;
-        selva::combat::combatLog("[ai-lock] enemy acquired target (combat entry, strafe=%s)\n",
+        selva::combat::combatLog("[ai-lock] enemy acquired target (combat entry, strafe={})",
                                  a.duel_strafe_dir > 0 ? "right" : "left");
     }
     else if (!should_lock && a.lock_target_idx >= 0)
     {
         a.lock_target_idx = -1;
         a.duel_strafe_dir = 0;
-        selva::combat::combatLog("[ai-lock] enemy released target\n");
+        selva::combat::combatLog("[ai-lock] enemy released target");
     }
 }
 
@@ -526,7 +571,7 @@ static bool tickOneEnemy(Actor& a, const Actor& pc, float dt, const selva::tunin
     if (shouldTickAi(a, tun))
     {
         if (tun.debug_ai_tick_log)
-            selva::combat::combatLog("[ai-tick] actor pool_idx=%td awareness=%d t=%.3f\n",
+            selva::combat::combatLog("[ai-tick] actor pool_idx={} awareness={} t={:.3f}",
                                      &a - &actors().front(),
                                      static_cast<int>(a.perception.awareness), selva::wallClock());
         tickEnemyDecision(a, tun);
@@ -638,7 +683,7 @@ void playEnemyHitReact(int index, int damage, int poise_damage, const glm::vec3&
                           /*start_time_seconds=*/0.0f, /*playback_rate=*/1.0f, opts);
     e.last_hit_react_time = now;
     e.last_damage_time = now;
-    selva::combat::combatLog("[hit-react] enemy[%d] dmg=%d poise=%d/%d -> clip=%s\n", index, damage,
+    selva::combat::combatLog("[hit-react] enemy[{}] dmg={} poise={}/{} -> clip={}", index, damage,
                              e.poise.current, e.poise.max, pick.clip_name);
 }
 

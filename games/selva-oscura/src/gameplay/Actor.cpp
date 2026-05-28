@@ -194,8 +194,16 @@ void initActorPool()
     pc.death_peak_sfx_names = {"synth_echo", "soul_steal"};
     pc.death_peak_align_seconds = 3.5f;
     initActorPools(pc.hp, pc.stamina, pc.poise, pc.body, pc.stats);
-    pc.pos = glm::vec3(0.0f, 9.5f, -142.5f);
-    pc.spawn_pos = pc.pos;
+    // initActorPool is one-time, asset-binding only. Position, hp-fill,
+    // and any per-character state are NOT set here - those land via
+    // loadActiveCharacterIntoPlayer(profile) on Playing-enter. This
+    // separation is what lets New Game / Load Game both produce a
+    // clean spawn instead of inheriting the previous run's state.
+    //
+    // pos defaults to (0, 0, 0) until loadActiveCharacterIntoPlayer
+    // sets it; that's fine because nothing reads sPlayer.pos before
+    // we enter Playing.
+    pc.spawn_pos = glm::vec3(0.0f);
     // Player's sampler is bound to the shared skeleton + mesh at
     // first sampler.update() — same as any other actor. Pre-warm
     // it so the bone palette is valid before render.

@@ -1,8 +1,10 @@
 #pragma once
 
 #include <glm/vec2.hpp>
+#include <glm/vec3.hpp>
 
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -26,11 +28,68 @@ struct TerrainRegion
     float world_extent = 0.0f;
     float height_min = 0.0f;
     float height_max = 0.0f;
+    // World-space Y offset added to every sampled height. Lets a
+    // region's PNG encode heights in any range (typically near 0) and
+    // be placed anywhere in world Y by setting this offset. Selva
+    // surface uses 0 (heightmap encodes its world Y directly);
+    // underground layers (Limbo, etc.) use large negative offsets so
+    // the same PNG-encoding can place their terrain dozens of meters
+    // underground without losing PNG precision.
+    float y_offset = 0.0f;
     float base_color[3] = {0.16f, 0.13f, 0.10f};
+    // Two-tone palette for the terrain shader: `tone_dark` is read on
+    // flat / shaded ground; `tone_light` on slopes / exposed faces.
+    // The shader mixes between them by computed dryness. Defaults
+    // match the Selva surface "unstained wood floor" palette;
+    // underground regions override in config.json with their own
+    // colors (Limbo: near-black stone; deeper circles: per Dante's
+    // descriptions).
+    float tone_dark[3] = {0.08f, 0.07f, 0.06f};
+    float tone_light[3] = {0.20f, 0.13f, 0.09f};
+    // Lighting environment for this region. Each region declares its
+    // own sun strength + hemispheric ambient so underground layers can
+    // be dim and neutral while Selva surface is warm and bright.
+    //   sun_multiplier: scales sun contribution to 0 = no direct sun
+    //   reaches this region (caves, deep circles). Default 1.0 for
+    //   outdoor regions where the sun is the dominant light source.
+    //   sky_ambient / ground_ambient: hemispheric ambient colors mixed
+    //   by dot(N, up). Default matches Selva surface (overcast bluish
+    //   overhead, warm dirt bounce); underground regions override
+    //   with cavern-appropriate values.
+    float sun_multiplier = 1.0f;
+    float sky_ambient[3] = {0.18f, 0.22f, 0.28f};
+    float ground_ambient[3] = {0.08f, 0.06f, 0.05f};
+    // Footstep SFX bank to play when an actor's foot lands on this
+    // region. Names match audio.json sound IDs. Default is the Selva
+    // surface bank; underground regions override.
+    std::string footstep_sound_id = "footstep_grass";
+
+    // --- Optional enclosure: ceiling + walls ---
+    // Underground regions are enclosed by rock above and around them.
+    // When `has_ceiling` is true, the mesh builder emits:
+    //   - A ceiling slab at `ceiling_y` covering the region's XZ AABB,
+    //     with downward-facing normals (so it's lit from below).
+    //   - Four vertical wall slabs at the XZ AABB edges, from ceiling_y
+    //     down to `wall_min_y`, with inward-facing normals.
+    // Quads pierced by registered StructureFootprint rects (with
+    // cuts_ceiling / cuts_wall set) are dropped — see
+    // engine::world::isInsideStructureFootprint. Single source of
+    // truth: every surface that can be cut by a structure consults
+    // the same footprint list.
+    // Floor-only regions (Selva surface, future open-air layers) leave
+    // has_ceiling false; mesh builder emits only the heightmap.
+    bool has_ceiling = false;
+    float ceiling_y = 0.0f;
+    float wall_min_y = 0.0f;
     // Mesh-vertex Y values, mirroring the GPU mesh. Used by sampleHeight
     // so the gameplay ground always matches the rendered surface.
     std::vector<float> mesh_y; // mesh_y[iz * verts_per_side + ix]
     int subdivide = 0;
+    // CPU copies of the mesh geometry (positions + triangle indices) so
+    // the physics layer can register this region as a static trimesh
+    // body. World-space; ready to hand to Jolt directly.
+    std::vector<glm::vec3> cpu_positions;
+    std::vector<std::uint32_t> cpu_indices;
 };
 
 bool initTerrain();
@@ -39,10 +98,43 @@ void shutdownTerrain();
 int terrainRegionCount();
 const TerrainRegion& terrainRegion(int idx);
 
+// Find the terrain region whose XZ AABB contains (world_x, world_z).
+// Returns nullptr if no region matches (the XZ is outside all loaded
+// regions). Iterates regions in registration order — same priority as
+// sampleHeight. Use this to filter foliage / spawn / region-specific
+// gameplay rules.
+const TerrainRegion* terrainRegionAt(float world_x, float world_z);
+
+// Look up a region by name. Used by gameplay queries that already
+// have a body's debug_name (= region name for terrain bodies) and
+// want the region's metadata. Returns nullptr if no region matches.
+const TerrainRegion* terrainRegionAtName(const char* name);
+
 // Sample world Y at the given world (x, z). Bilinear interpolation
 // across the heightmap. Returns 0 if (x, z) falls outside any
 // region. v1 assumes one region; expand to nearest-region or
 // region-by-coordinate lookup when more ship.
 float sampleHeight(float world_x, float world_z);
+
+// Sample the actor's GROUND Y at (x, z): the highest of (a) the
+// terrain sample and (b) the top of any walkable BoxCollider whose
+// XZ footprint contains the query point. Used by gameplay to place
+// the player / enemies on stairs, raised platforms, etc. — anywhere
+// authored geometry sits above the terrain surface.
+//
+// Optional `current_y` lets callers prefer a ground at or below
+// their current Y (so walking off the edge of a step drops to the
+// next step, not up to an unrelated platform at the same XZ that
+// happens to be higher). Pass -inf to disable the preference.
+float groundHeight(float world_x, float world_z,
+                   float current_y = -std::numeric_limits<float>::infinity());
+
+// Player spawn position in world coordinates, loaded from the
+// terrain config (player_spawn { x, z }). Y is intentionally NOT
+// part of the config - callers should query sampleHeight(x, z) to
+// place the player on the ground, so the spawn always tracks the
+// current heightmap. Returns (0, 0) if the config is missing the
+// player_spawn block.
+glm::vec2 playerSpawnXZ();
 
 } // namespace selva::world

@@ -37,4 +37,13 @@ void shutdownSkeletalRenderer();
 void drawSkeletalMesh(const SkeletalMesh& mesh, const glm::mat4& model, const glm::mat4& view_proj,
                       const std::vector<glm::mat4>& bone_palette, const glm::vec3& tint);
 
+// Per-frame sun direction (normalized) for skeletal lambert shading.
+// Called once before drawing skeletal meshes.
+void setSkeletalSun(const glm::vec3& sun_dir);
+
+// Per-frame shadow sampling uniforms. Set once before the skeletal
+// draw block; subsequent drawSkeletalMesh calls inherit them.
+void setSkeletalShadow(const glm::mat4& light_view_proj, const glm::vec3& sun_dir,
+                       const glm::vec3& shadow_cam_pos, int shadow_texture_unit);
+
 } // namespace selva::anim

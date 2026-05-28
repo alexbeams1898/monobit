@@ -317,13 +317,16 @@ here after their circles' consumption may be encountered. Vestigia
 
 ### The circles
 
-Each circle is an explorable map, not an arena of waves. The 128×64
-viewport scrolls / pages between connected screens (Souls / Zelda
-hybrid). Multiple screens with enemies, NPCs, landmarks, and hazards.
+Each circle is an explorable map, not an arena of waves. Multiple
+zones with enemies, NPCs, landmarks, and hazards.
 
-- Circles get spatially smaller as you descend. Limbo is multiple
-  screens combined into a large area; Cocytus is a single 128×64
-  screen with Lucifer alone. The descent is geographic.
+- **The tornado / funnel model.** Circles get spatially smaller as
+  you descend, matching Dante's cosmography (the nine circles narrow
+  toward Lucifer at the pit's center). Limbo is the largest playable
+  area; Treachery / Cocytus is the smallest. Each circle is **mostly
+  flat within itself** — the funnel is *between* circles, not within
+  one. Vertical variation inside a circle is incidental
+  (hills, ramparts, riverbanks), not the defining geometry.
 - Story-specific landmarks per circle: the castle in Limbo, Dis the
   city, etc. — lifted from the *Commedia*.
 - The keeper of each circle waits in a dedicated arena room behind
@@ -492,11 +495,18 @@ oscura) and begun his instrumentalization: she named him, supplied
 his vocabulary, and **arranged his isolation** — routing other
 unjudged souls away from this selva oscura so he would remain alone,
 available, and warm-by-deprivation when her plan finally needed him.
-This is not strategic patience; it is *the slow expression of her
-unraveling.* The centuries of arranging the Guide's isolation are the
-same activity as staring at Hell's stagnation — both are the
-centuries-long pre-snap. She was preparing tools she could not yet
-bring herself to fire.
+She also **brought the light** to the Wood — its natural state had
+been dark, a real European hardwood valley at moonless midnight; she
+routed her threshold-light into the Wood as a beacon so the unjudged
+who would later arrive could find his way to the colle and the
+descent. The light arrived recently in cosmic-time terms; the Guide
+remembers the dark (he does not identify her as the cause). See
+[`wood.md`](wood.md) *The light is recent — the Wood's natural state
+was dark*. This is not strategic patience; it is *the slow expression
+of her unraveling.* The centuries of arranging the Guide's isolation
+and routing the light are the same activity as staring at Hell's
+stagnation — both are the centuries-long pre-snap. She was preparing
+tools she could not yet bring herself to fire.
 
 **Acceptable outcomes (her frame, post-hoc):** TRANSFIGURATION (Hell
 renewed), SURFEIT (cosmic catastrophe — Hell ends, swallowed in a

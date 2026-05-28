@@ -96,9 +96,34 @@ struct Tunables
     float pitch_max = 1.45f;           // ~+83 deg
 
     // ---- Camera follow ----
+    // Ideal arm length. The pull-in pipeline shrinks this dynamically
+    // when geometry blocks the ray, so this is the OUTER bound the
+    // camera tries to maintain when nothing's in the way.
     float follow_distance = 6.0f;
     float follow_height = 2.5f;
     float fov_degrees = 60.0f;
+    // Camera pull-in: raycast from the lookAt anchor toward the
+    // ideal camera position; if a wall or tree blocks the view, the
+    // camera slides forward to the hit point minus this margin so it
+    // sits just clear of the surface. ~0.3m keeps the lens off the
+    // wall texture without revealing the player's back.
+    float camera_pull_in_margin = 0.3f;
+    // Sphere-cast radius around the ray. Treats the camera as a small
+    // volume rather than a point so a wall edge near the camera
+    // produces tighter pull-in instead of the camera wrapping its
+    // view frustum around the edge. ~0.4m approximately matches the
+    // camera's near-plane width at 60deg FOV.
+    float camera_pull_in_radius = 0.4f;
+    // Minimum allowed camera-to-player distance. Below this the near
+    // plane reaches into the player mesh and renders the inside of
+    // the chest geometry (black screen / skin-color flat fill). Must
+    // be >= sphere_radius + half-near-plane-extent + body-mesh
+    // radius to keep the lens outside the player's torso.
+    float camera_pull_in_min_separation = 0.5f;
+    // Smoothing time-constant for the actual follow distance toward
+    // the raycast-derived target. Short (~80ms) so wall transitions
+    // glide instead of snapping when the player edges past a corner.
+    float camera_pull_in_tau = 0.08f;
 
     // ---- Animation transitions ----
     // Cross-fade duration (seconds) between two clips when the active
@@ -384,6 +409,113 @@ struct Tunables
     float knockdown_clip_end_seconds = 999.0f;
     float getting_up_clip_start_seconds = 0.0f;
     float getting_up_clip_end_seconds = 999.0f;
+
+    // ---- Per-clip audio event time (running jump) ----
+    // Time (seconds into the flying_knee_punch_combo clip) at which the
+    // left-arm whoosh should fire. Tunable so iteration is "tweak
+    // value, hit F1 save, listen" without code change. The fire
+    // happens on the first per-frame tick where the one-shot's clip
+    // time crosses this threshold. Set to a negative value to
+    // disable.
+    float flying_knee_whoosh_time_seconds = 0.95f;
+
+    // ---- First-person camera offsets ----
+    // Lift from the Mixamo `mixamorig:Head` joint (sits at head-base /
+    // neck-top) up to the player's eye line. Applied along the head's
+    // local up axis so the offset rotates correctly during rolls.
+    // Tune live to match the visible character's eyes.
+    float fpv_eye_up_offset = 0.15f;
+    // Forward push along the camera-fwd axis so the camera origin
+    // sits just outside the skull (avoids near-plane clipping into
+    // the back of the head when the player looks straight up).
+    float fpv_eye_fwd_offset = 0.12f;
+
+    // ---- Debug logging ----
+    // When true, render/WorldRenderer.cpp writes per-frame FPV camera
+    // + head bone state to fpv-roll-debug.log during rolls (and ~1s
+    // after, to capture the tail-hold and settling). Use to diagnose
+    // why a roll camera doesn't match the visible body. Default OFF.
+    bool debug_fpv_roll_log = false;
+    // When true, gameplay/Footsteps.cpp opens footstep-debug.log and
+    // writes per-frame trajectory rows + FIRE/SUPPRESS events. The
+    // per-frame fprintf + fflush is hot enough to cost a frame or two
+    // when running. Default OFF; F1 panel toggle when diagnosing.
+    bool debug_footstep_log = false;
+
+    // When true, render/ShadowPass.cpp opens shadow-debug.log and
+    // writes per-frame snap state (throttled to every 30 frames so
+    // cost is negligible, but keep gated for cleanliness). Default OFF.
+    bool debug_shadow_log = false;
+
+    // When true, the per-frame ImGui overlay draws every world
+    // collider (cylinders + boxes) as wireframe outlines. Lets you
+    // see where colliders sit relative to the rendered geometry.
+    // Default OFF.
+    bool debug_show_colliders = false;
+
+    // When true, the per-frame ImGui overlay draws every Jolt body
+    // (static trimeshes, static boxes, character capsules) as
+    // wireframe AABBs colored by surface tag. Source of truth for
+    // "is this mesh actually in physics?" — uses
+    // engine::physics::enumerateBodies() which walks the live Jolt
+    // body table. Default OFF.
+    bool debug_show_physics_bodies = false;
+
+    // When true, the scene fragment shader outputs a flat constant
+    // color (uBaseColor) per primitive — skipping all lighting,
+    // atmosphere, shadows, exposure, tonemap. Use to bisect flicker:
+    // if flicker DISAPPEARS with this on, the cause is shader math
+    // (most likely dFdx/dFdy-derived normal flipping on near-parallel
+    // surfaces). If flicker CONTINUES, the cause is geometry /
+    // rasterization / depth precision. See
+    // [[feedback_bisect_shader_inputs_with_constants]]. Default OFF.
+    bool debug_flat_shading = false;
+
+    // Diagnostic: print actual GL MSAA state every 60 frames so we
+    // can confirm whether MSAA is still enabled at scene-pass time
+    // (some driver / pass could be silently disabling it). Logs:
+    // GL_SAMPLE_BUFFERS, GL_SAMPLES, GL_MULTISAMPLE-enabled. Default OFF.
+    bool debug_msaa_state_log = false;
+
+    // Diagnostic: every frame, raycast from camera position through
+    // camera forward direction; log the first 5 bodies the ray hits.
+    // Aim the camera at a flickering surface to find out which
+    // primitive(s) are there. Logs to crosshair-debug.log to avoid
+    // spamming stderr. Default OFF.
+    bool debug_crosshair_raycast_log = false;
+
+    // Diagnostic: paint each chapel mesh primitive a unique color
+    // (deterministic hash of its draw index). Combined with
+    // debug_flat_shading skipping the lighting, flickering pixels
+    // visibly alternate between TWO colors which decode to TWO
+    // primitive indices — pinpointing the z-fighting pair instantly.
+    // Print the index→primitive-name mapping to primitive-id-debug.log
+    // on first toggle. Requires debug_flat_shading also ON. Default OFF.
+    bool debug_primitive_id_colors = false;
+
+    // When true, world/Collision.cpp opens collision-debug.log and
+    // writes per-frame pre/post body XZ + per-pass push events
+    // (which collider was hit, the push vector). Use to diagnose
+    // wedging or oscillation. Default OFF.
+    bool debug_collision_log = false;
+
+    // When true, buildViewProj writes per-frame camera pull-in state
+    // (origin, direction, desired/target/smoothed separation, hit
+    // distance) to camera-debug.log. Used to diagnose pull-in
+    // failures (camera clips a wall when it shouldn't). Default OFF.
+    bool debug_camera_pull_in_log = false;
+    // When true, world/Terrain.cpp's groundHeight writes per-call
+    // state to ground-debug.log: query XZ, current Y, the resulting
+    // ground Y from the downward Jolt raycast, and the name of the
+    // physics body hit. Used to diagnose "player Y is wrong" (sinking
+    // through stairs, teleporting to wrong platform, etc.). Default OFF.
+    bool debug_ground_height_log = false;
+
+    // When true, the Jolt physics layer writes diagnostics to
+    // physics-debug.log: scene-init body counts, character creation,
+    // per-frame player capsule pos/velocity/ground-state.
+    // Default OFF.
+    bool debug_physics_log = false;
 };
 
 // JSON serialization — generates to_json / from_json for nlohmann::json
@@ -408,7 +540,20 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     ai_confirmed_sightings_to_alert, ai_alerted_decay_seconds, ai_combat_engage_range_meters,
     ai_combat_leash_range_meters, ai_combat_disengage_seconds, debug_ai_perception,
     ai_decision_tick_hz, ai_decision_tick_combat_hz_multiplier, debug_ai_tick_log,
-    ai_turn_rate_radians_per_sec, debug_ai_decision_log, ai_action_freshness_seconds);
+    ai_turn_rate_radians_per_sec, debug_ai_decision_log, ai_action_freshness_seconds,
+    flying_knee_whoosh_time_seconds);
+// NOTE: fpv_eye_up_offset, fpv_eye_fwd_offset are NOT serialized -
+// they're live-tuning fields, kept here for the F1 slider during
+// FPV calibration. Hit the NLOHMANN_DEFINE_TYPE 64-field limit
+// otherwise. Promote to serialized fields by removing some old
+// unused tunable from the macro list if you want them persisted.
+// NOTE: debug_footstep_log and debug_shadow_log are NOT serialized -
+// they're session-only debug toggles. Keeping them out of the macro
+// also avoids hitting NLOHMANN_DEFINE_TYPE's variadic field-count
+// limit (~64).
+// NOTE: camera_pull_in_margin and camera_pull_in_tau are NOT serialized
+// for the same field-count reason; live-tuned via F1 panel and the
+// dialed-in values bake into the struct defaults.
 
 // Single global instance. Both gameplay code and the procedural driver
 // read from this; the ImGui panel edits it in place. Keep it global rather

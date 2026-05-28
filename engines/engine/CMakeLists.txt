@@ -7,10 +7,17 @@ add_library(engine STATIC)
 
 target_sources(engine PRIVATE
     src/Engine.cpp
+    src/log/Log.cpp
     src/TextureManager.cpp
     src/SpriteCompositor.cpp
     src/FontManager.cpp
     src/UIRenderer.cpp
+    src/physics/PhysicsWorld.cpp
+    src/world/AsyncSceneLoader.cpp
+    src/world/Scene.cpp
+    src/world/TerrainModifiers.cpp
+    src/world/StructureFootprints.cpp
+    src/world/Lights.cpp
     src/systems/RenderSystem.cpp
     src/systems/CameraSystem.cpp
     src/systems/CollisionSystem.cpp
@@ -36,11 +43,13 @@ target_link_libraries(engine
         EnTT::EnTT
         glm::glm
         nlohmann_json::nlohmann_json
+        fmt::fmt
         FMOD::Core
         glad
         imgui::imgui
         TracyClient
         miniaudio::miniaudio
+        Jolt
 )
 
 # miniaudio on Windows requires these system libs (WASAPI/WinMM/COM).

@@ -91,7 +91,6 @@ games/selva-oscura/
 │   └── (build output: skeleton.ozz, X_Bot.glb, *.ozz clips)
 ├── docs/
 │   ├── ARCHITECTURE.md           this doc
-│   ├── BACKLOG.md                deferred items
 │   ├── design/                   game-design canon (story, classes, etc.)
 │   └── reference/                Dante source texts
 ├── tests/                        Catch2 unit tests
@@ -877,7 +876,183 @@ test files.
 
 ---
 
-## 15. Cross-references
+## 15. World architecture
+
+How Selva's playable world is organized in code + assets. Reference
+before authoring new layers / regions / structures.
+
+### 15.1 The Inferno-vertical-stack
+
+Selva's world is a literal 3D model of Dante's Inferno: a vertical
+stack of progressively-smaller circles, each enclosed above by the
+underside of the layer above. Player descends from the surface (the
+selva, where the game starts) through the chapel and its descent
+corridor into Limbo (First Circle), eventually downward through Lust,
+Gluttony, etc.
+
+**Layers currently authored:**
+- **Selva surface** — outdoor wake-zone basin + colle hill + chapel
+  exterior. Single terrain region (`selva_inner`).
+- **Chapel + descent corridor** — `crypt.glb` static mesh, occupies
+  the colle peak with 400-step descent shaft inside. Owns its own
+  ground via a foundation skirt primitive (see 15.3).
+- **Limbo** — terrain region at `y_offset = -43.13` (~65m underground).
+  Acheron river is a runtime `TerrainModifier`. Material + lighting
+  declared per-region.
+
+Future layers (Lust through Treachery): each gets its own terrain
+region. Per [`project_inferno_vertical_stack`](../../../../.claude/projects/c--Users-alexb-Projects-monobit/memory/project_inferno_vertical_stack.md)
+the cosmology demands each lower circle is geometrically smaller +
+more depressed than the one above.
+
+### 15.2 Asset organization
+
+```
+games/selva-oscura/
+├── assets/
+│   ├── scenes/
+│   │   ├── scenes.json          # top-level registry (currently just "surface")
+│   │   └── surface/scene.json   # the single scene; entire playable world
+│   ├── world/
+│   │   ├── terrain/
+│   │   │   ├── config.json      # per-region terrain config (Selva surface,
+│   │   │   │                    #   Limbo, future circles)
+│   │   │   ├── selva_inner.png  # heightmap PNG, baked from
+│   │   │   │                    #   scripts/gen_terrain_heightmap.py
+│   │   │   └── limbo.png        # ditto for Limbo
+│   │   └── static_meshes/
+│   │       ├── crypt.glb        # chapel + descent corridor + walls
+│   │       └── source/
+│   │           └── crypt_foundation.blend  # source-of-truth Blender file
+│   └── audio/                   # SFX banks (footsteps, whoosh, etc.)
+└── scripts/
+    ├── gen_terrain_heightmap.py # bakes terrain PNGs from REGIONS dict
+    └── blender/
+        ├── gen_crypt_foundation.py + .sh  # bakes crypt.blend
+        └── gen_crypt_export.py + .sh      # exports crypt.blend → crypt.glb
+```
+
+**Single-scene architecture** (per
+[feedback_seamless_world_traversal](../../../../.claude/projects/c--Users-alexb-Projects-monobit/memory/feedback_seamless_world_traversal.md)):
+the entire playable world lives in `surface/scene.json`. No scene
+transitions, no fades. Walking from the colle into the chapel,
+down the descent, onto Limbo is one continuous traversal with no
+loading boundary. Future circles either grow this scene or split
+into a sibling scene when content density demands streaming.
+
+**Static mesh vs terrain region** — when to pick which:
+
+| Static mesh (`.glb`) | Terrain region |
+| -------------------- | -------------- |
+| Hand-authored architecture (chapel, walls, stair). | Procedural ground (hills, plains, plateaus). |
+| Discrete object with explicit XYZ. | Continuous heightfield with XZ AABB. |
+| Build via Blender script. | Build via `gen_terrain_heightmap.py` (PNG + code). |
+| Loaded as `static_meshes[]` entry in scene.json. | Loaded as `regions{}` entry in terrain/config.json. |
+
+The Acheron river is **NOT** a static mesh — it's a `TerrainModifier`
+that depresses Limbo's region. Same for the chapel's exterior plateau
+that flushes Selva terrain to plinth-bottom Y. Anything ground-shaped
+goes through the terrain modifier system; anything architectural
+goes through Blender → .glb.
+
+### 15.3 Chapel ↔ terrain seam (skirt + plateau coordination)
+
+The chapel sits at world Y ≈ 22.30 (top of plinth = `kChapelGroundY`),
+~10m above the colle peak (Y ≈ 22.00). It mustn't float over terrain,
+mustn't depress terrain weirdly, mustn't break when the colle is
+re-shaped. Per
+[feedback_structures_own_terrain_seam](../../../../.claude/projects/c--Users-alexb-Projects-monobit/memory/feedback_structures_own_terrain_seam.md),
+three coordinated pieces solve this:
+
+1. **Foundation skirt mesh** — vertical stone slab inside
+   `crypt.glb`, extending from plinth bottom DOWN 5m. Authored by
+   `build_foundation_skirt()` in `gen_crypt_foundation.py`. Bridges
+   any visual/physics gap between chapel and surrounding terrain.
+
+2. **FlushAt terrain modifier** (`chapel_exterior_plateau` in
+   `PhysicsScene.cpp::registerChapelTerrainModifiers`) — depresses
+   the terrain mesh's vertices inside the chapel footprint to
+   plinth-bottom Y. With a 2m blend pad on lateral / back sides,
+   terrain ramps smoothly from natural-Y outside the footprint up
+   to plinth-bottom Y at the chapel edge.
+
+3. **StructureFootprint Hole** — removes terrain quads INSIDE the
+   chapel body's XZ. Chapel's interior floor mesh is the floor;
+   terrain shouldn't render or collide inside.
+
+**Why all three:** the plateau modifier alone gives a smooth visual
+flush but the blend-pad ramp creates a ~20cm grade at the chapel
+edge that the skirt hides. The skirt alone (without the plateau)
+creates a 10m visible cliff between chapel and terrain. The Hole
+alone leaves the chapel's interior floor as the only floor inside.
+
+**To lower the entire chapel+descent stack** (which moves Limbo
+along with it):
+- Edit `kChapelGroundY` in `include/world/CryptLayout.h`.
+- Edit `world_origin.y` in scene.json's chapel `static_meshes[]`
+  entry (matched value).
+- Edit Limbo's `y_offset` in `terrain/config.json` (matched delta).
+
+**To lower the colle** (chapel stays put, hill height changes):
+- Edit `plateau_height` in `gen_terrain_heightmap.py` (relative to
+  `wake_zone_y`; see
+  [feedback_selva_terrain_y_offset](../../../../.claude/projects/c--Users-alexb-Projects-monobit/memory/feedback_selva_terrain_y_offset.md)).
+- Re-bake heightmap PNG.
+- Chapel skirt + plateau modifier absorbs the change. No mesh rebake.
+
+### 15.4 Per-region declarations in terrain/config.json
+
+Each terrain region declares its full personality in
+`assets/world/terrain/config.json`:
+
+```json
+"limbo": {
+  "heightmap": "assets/world/terrain/limbo.png",
+  "world_origin": [0.0, -431.15],
+  "world_extent": 160.0,
+  "height_range_min": 0.0,
+  "height_range_max": 1.0,
+  "y_offset": -43.13,
+  "subdivide": 160,
+  "base_color": [0.03, 0.03, 0.03],
+  "tone_dark": [0.02, 0.02, 0.022],
+  "tone_light": [0.06, 0.06, 0.065],
+  "sun_multiplier": 0.0,
+  "sky_ambient": [0.18, 0.18, 0.20],
+  "ground_ambient": [0.10, 0.10, 0.11],
+  "footstep_sound_id": "footstep_limbo"
+}
+```
+
+Fields:
+- **Geometry** (`heightmap`, `world_origin`, `world_extent`,
+  `height_range_min/max`, `y_offset`, `subdivide`): heightmap PNG +
+  XZ placement + Y placement + mesh resolution. `y_offset` decouples
+  the PNG's encoded Y range from the region's world Y, so the same
+  flat-zero PNG can represent a region anywhere underground.
+- **Material** (`base_color`, `tone_dark`, `tone_light`): three
+  colors fed to the terrain shader's per-fragment palette.
+- **Lighting** (`sun_multiplier`, `sky_ambient`, `ground_ambient`):
+  underground regions set `sun_multiplier: 0.0` so no direct sun
+  reaches them; sky/ground ambients drive the hemispheric ambient
+  blend (per real-lighting doctrine these should approach real
+  cavern values).
+- **Footstep bank** (`footstep_sound_id`): name of an `audio.json`
+  sound the foot raycast routes to when it hits this region's mesh.
+
+When adding a new layer:
+1. Add a `REGIONS["my_layer"]` entry in `gen_terrain_heightmap.py`
+   with a `kind` (`flat` for empty plains, `selva_surface` for
+   colle-like generators, future kinds as needed).
+2. Run `python gen_terrain_heightmap.py --region my_layer`.
+3. Add the same region name to `terrain/config.json` with the full
+   declaration above.
+4. Add features (rivers, holes, ramps) via `TerrainModifier`s
+   registered in `PhysicsScene.cpp` with `region_name = "my_layer"`.
+
+---
+
+## 16. Cross-references
 
 - Engine doctrine and shared utilities:
   `engines/engine/docs/ENGINE.md`.

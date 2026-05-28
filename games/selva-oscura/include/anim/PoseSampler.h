@@ -240,14 +240,29 @@ struct PoseSampler
     // (default: no early cancel).
     bool isOneShotPastCancelFraction() const;
 
-    // Read the world-space translation of joint `i` (in the current
-    // sampled pose, post-LocalToModelJob). Returns zero if `i` is out
-    // of range or the sampler hasn't been initialized. Used by the
-    // animation-debug CSV exporter to capture per-frame bone positions
-    // for diffing against the browser previewer.
+    // Read the MODEL-space translation of joint `i` (post-LocalToModelJob,
+    // pre-actor-transform). Returns zero if `i` is out of range or the
+    // sampler hasn't been initialized. Used by the animation-debug CSV
+    // exporter and the foot-plant detector's clip-side scratch reads.
     glm::vec3 jointWorldPos(int i) const;
     int jointCount() const;
     const char* jointName(int i) const;
+
+    // Read the WORLD-space translation of joint `i` (model-space joint
+    // transformed by the actor placement supplied via setActorPlacement).
+    // Convention:
+    //   world.xz = actor.pos.xz + R(actor_yaw) * model.xz
+    //   world.y  = actor.pos.y + model.y
+    // Returns zero on invalid index or uninitialized sampler. This is
+    // the accessor the foot-plant detector reads each frame.
+    glm::vec3 jointWorldPosWithActor(int i) const;
+
+    // Full world-space transform of joint `i` (rotation + translation),
+    // with the actor placement applied. Used by FPV camera-roll math:
+    // during dodge/roll one-shots the camera takes the head bone's
+    // orientation from the clip so the eyes tumble with the body.
+    // Returns identity on invalid index or uninitialized sampler.
+    glm::mat4 jointWorldMatrixWithActor(int i) const;
 
     // Per-frame hip translation delta the clip authored — i.e., how far
     // the clip wanted to move the character on this frame, in model
@@ -504,11 +519,5 @@ struct PoseSampler
 // Build a PoseSampler bound to the given skeleton + mesh. The skeleton
 // and mesh must outlive the returned sampler.
 PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh);
-
-// Diagnostic log target for sampler-side events (loco crossfade swaps,
-// reverse-blends, cache resumes). nullptr = stderr only. The game wires
-// this to its combat-debug.log so the user sees sampler events alongside
-// combat events without needing to launch from a shell.
-void setSamplerDiagLog(std::FILE* file);
 
 } // namespace selva::anim

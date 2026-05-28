@@ -142,9 +142,14 @@ jobs:
               HEADER_AFFECTED=$(cat /tmp/header-affected.txt)
             fi
 
-            # Union changed .cpp files + header-affected .cpp files
+            # Union changed .cpp files + header-affected .cpp files.
+            # Filter out anything under build/ or _deps/ — the ninja-deps
+            # awk above does basename-match against changed headers, so a
+            # header basename collision with a third-party dep (e.g. our
+            # PhysicsScene.h vs Jolt's) pulls in dep source files. We
+            # never want to lint third-party code; strip it here.
             FILES=$(printf "%s\n%s" "$CHANGED_CPPS" "$HEADER_AFFECTED" | \
-              grep -E '\.cpp$' | sort -u)
+              grep -E '\.cpp$' | grep -vE '^(build|_deps)/' | sort -u)
           else
             # Push to master: lint everything except archived subtrees.
             FILES=$(find engines games \

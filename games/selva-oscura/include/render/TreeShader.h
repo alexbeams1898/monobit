@@ -34,4 +34,9 @@ void setTreeAlphaCutoff(float cutoff);
 // Drive the time-uniform for wind. Pass selva::wallClock() each frame.
 void setTreeTime(float t);
 
+// Shadow sampling uniforms - light-space view-proj, sun direction for
+// bias slope-scaling, and the texture unit holding the depth map.
+void setTreeShadow(const glm::mat4& light_view_proj, const glm::vec3& sun_dir,
+                   const glm::vec3& shadow_cam_pos, int shadow_texture_unit);
+
 } // namespace selva::render

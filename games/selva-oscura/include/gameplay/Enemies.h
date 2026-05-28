@@ -23,6 +23,16 @@ using Enemy = Actor;
 void initHubEnemies();
 void shutdownHubEnemies();
 
+// Reset every AI actor in the pool back to its spawn baseline:
+// position/yaw to spawn_pos/spawn_yaw, perception cleared to Unaware,
+// hp/stamina/poise refilled, death + knockdown flags cleared, sampler
+// one-shot released, lock target dropped, intent zeroed. Pairs with
+// loadActiveCharacterIntoPlayer to give every Playing-enter a clean
+// world — without it, enemy aggro and damage persist across "New
+// Game" / "Load Game" transitions because actors() is a process-wide
+// pool initialized once at startup.
+void resetEnemiesToSpawn();
+
 // Per-frame tick: advance each enemy's animation. dt is real-time
 // seconds. Player animation tick lives in the player's per-frame
 // logic; this handles the AI-controlled actors only.

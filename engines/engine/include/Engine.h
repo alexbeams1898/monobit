@@ -110,6 +110,13 @@ class Engine
     // Set the window title string (for game-side HUD display).
     void setWindowTitle(const std::string& title);
 
+    // Render ONE black frame with a "Loading..." overlay and swap the
+    // buffers. Call from heavy init steps between window creation and
+    // the main frame loop so the user sees a responsive window instead
+    // of a frozen black rectangle. Pumps SDL events to keep the OS
+    // from marking the window as unresponsive.
+    void renderLoadingFrame(const char* status_text);
+
     // Request the engine to stop running (used by pause menu Quit option).
     void requestQuit()
     {

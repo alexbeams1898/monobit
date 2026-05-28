@@ -1,5 +1,6 @@
 #include "gameplay/PerFrameTick.h"
 
+#include "AppState.h"
 #include "Engine.h"
 #include "Tunables.h"
 #include "WallClock.h"
@@ -28,19 +29,29 @@
 #include "combat/Weapon.h"
 #include "combat/WeaponClass.h"
 #include "gameplay/Enemies.h"
+#include "gameplay/Footsteps.h"
 #include "gameplay/LocomotionStateMachine.h"
 #include "gameplay/PlayerState.h"
 #include "gameplay/TickState.h"
+#include "physics/PhysicsWorld.h"
+#include "render/Atmosphere.h"
 #include "render/Camera.h"
+#include "render/LightSpritePass.h"
 #include "render/SceneGeometry.h"
 #include "render/SceneShaders.h"
+#include "render/ShadowPass.h"
 #include "render/SkyPass.h"
 #include "render/TerrainShader.h"
 #include "render/TreeShader.h"
 #include "render/WorldRenderer.h"
 #include "ui/ComboHud.h"
 #include "world/Collision.h"
+#include "world/Lights.h"
+#include "world/PhysicsScene.h"
+#include "world/Scene.h"
+#include "world/StructureFootprints.h"
 #include "world/Terrain.h"
+#include "world/TerrainModifiers.h"
 #include "world/TreeAssets.h"
 
 #include <imgui.h>
@@ -66,6 +77,7 @@
 #include <filesystem>
 #include <limits>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <glad/glad.h>
@@ -238,6 +250,18 @@ static BufferedDodgePress sBufferedDodge;
 // NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy
 // 18 can't track inter-function dataflow.
 static float sDodgeElapsed = 0.0f;
+// Smooth yaw blend during a directional dodge roll. Replaces the
+// pre-fix instant snap (which caused a jarring "diagonal back-roll"
+// feel in FPV because the camera yawed and pitched in the same frame).
+// sDodgeYawTarget is the direction the dodge wants to go; sDodgeYawStart
+// is the player's pre-dodge yaw; sDodgeYawBlendDuration is how long to
+// take to interpolate between them (clamped to dodge duration). Only
+// used when the dodge has movement intent (rolls); backsteps don't
+// re-orient so this path is skipped for them.
+static float sDodgeYawStart = 0.0f;
+static float sDodgeYawTarget = 0.0f;
+static float sDodgeYawBlendDuration = 0.0f;
+static bool sDodgeHasYawBlend = false;
 // NOLINTNEXTLINE(misc-const-correctness): file-scope static mutated in functions below; clang-tidy
 // 18 can't track inter-function dataflow.
 static float sDodgeDuration = 0.0f;
@@ -328,10 +352,12 @@ struct TreePreviewState
 static TreePreviewState sTreePreview;
 // NOLINTNEXTLINE(misc-const-correctness): edge-tracker for F2.
 static bool sPrevF2 = false;
+static bool sPrevV = false;
 // Forward declarations of preview-mode helpers — definitions live
 // below near the other render-side helpers (drawActorMeshes etc.)
 // but selvaPerFrame needs to call the toggle + skip-tick gate.
 static void tickTreePreviewToggle(const Uint8* keys);
+static void tickFpvToggle(const Uint8* keys);
 static void renderTreePreview();
 
 // Combat debug toggle + log file owned by combat/CombatLog.{h,cpp}.
@@ -528,8 +554,16 @@ static void tickMouseLook(const selva::tuning::Tunables& tun)
     float pitch = selva::render::cameraPitch();
     yaw -= static_cast<float>(mdx) * tun.mouse_sensitivity;
     pitch -= static_cast<float>(mdy) * tun.mouse_sensitivity;
-    if (pitch < tun.pitch_min)
-        pitch = tun.pitch_min;
+    // FPV uses a tighter downward clamp so the player can't look
+    // straight down at their own body. Upward clamp stays wide so
+    // they can look at the sky. Third-person uses the wider tunable
+    // limits since the camera is over-shoulder and the player can
+    // need to look at the ground for navigation.
+    const bool fpv = selva::render::cameraMode() == selva::render::CameraMode::FirstPerson;
+    constexpr float kFpvPitchMin = -0.6f; // ~-34 deg
+    const float effective_min = fpv ? kFpvPitchMin : tun.pitch_min;
+    if (pitch < effective_min)
+        pitch = effective_min;
     if (pitch > tun.pitch_max)
         pitch = tun.pitch_max;
     selva::render::setCameraYaw(yaw);
@@ -545,10 +579,251 @@ static void tickF1TuningPanelToggle(const Uint8* keys)
     if (f1Now && !sPrevF1)
     {
         sShowTuningPanel = !sShowTuningPanel;
-        SDL_SetRelativeMouseMode(sShowTuningPanel ? SDL_FALSE : SDL_TRUE);
-        SDL_GetRelativeMouseState(nullptr, nullptr);
+        // Mouse-mode + cursor visibility are handled centrally in
+        // ui::tickMouseCapture, which now respects sShowTuningPanel.
     }
     sPrevF1 = f1Now;
+}
+
+// Rising-edge F3: dump full terrain diagnostic at the player's
+// current XZ to a DEDICATED FILE (terrain-probe.log) so the main
+// stderr.log stays clean. Each press appends one probe block.
+// Use when you see a visual artifact: stand on/near it, press F3,
+// paste the latest block from terrain-probe.log.
+static bool sPrevF3Probe = false;
+static int sF3ProbeCount = 0;
+
+static void probeDumpHeader(std::FILE* log, const char* label, int idx, float px, float py,
+                            float pz, float sampled, bool is_hole)
+{
+    std::fprintf(log, "====== PROBE #%d (%s) at player pos (%.3f, %.3f, %.3f) ======\n", idx, label,
+                 px, py, pz);
+    std::fprintf(log, "  sampleHeight(x,z) = %.3f (rendered terrain Y at player XZ)\n", sampled);
+    std::fprintf(log, "  insideTerrainHole = %d (1 = terrain quad dropped at this XZ)\n",
+                 is_hole ? 1 : 0);
+}
+
+static void probeDumpModifierStack(std::FILE* log, float px, float pz)
+{
+    const int n_mods = engine::world::terrainModifierCount();
+    std::fprintf(log, "  --- modifier stack (%d modifiers) ---\n", n_mods);
+    for (int i = 0; i < n_mods; ++i)
+    {
+        const auto& m = engine::world::terrainModifierAt(i);
+        const float dx_out = std::abs(px - m.center_xz.x) - m.half_extents_xz.x;
+        const float dz_out = std::abs(pz - m.center_xz.y) - m.half_extents_xz.y;
+        const bool inside = (dx_out <= 0.0f && dz_out <= 0.0f);
+        std::fprintf(log,
+                     "    [%d] '%s' mode=%d center=(%.2f,%.2f) half=(%.2f,%.2f) val=%.2f  "
+                     "dx_out=%+.3f dz_out=%+.3f  %s\n",
+                     i, m.debug_name ? m.debug_name : "(no name)", static_cast<int>(m.mode),
+                     m.center_xz.x, m.center_xz.y, m.half_extents_xz.x, m.half_extents_xz.y,
+                     m.value, dx_out, dz_out, inside ? "INSIDE" : "outside");
+    }
+}
+
+static void probeDumpSurroundingVertices(std::FILE* log, float px, float pz)
+{
+    constexpr float kQuad = 1024.0f / 384.0f; // selva_inner extent / subdivide
+    const int gx = static_cast<int>(std::floor(px / kQuad));
+    const int gz = static_cast<int>(std::floor(pz / kQuad));
+    std::fprintf(log, "  --- 4 surrounding terrain vertices (spacing %.3fm) ---\n", kQuad);
+    for (int dz = 0; dz <= 1; ++dz)
+    {
+        for (int dx = 0; dx <= 1; ++dx)
+        {
+            const float vx = static_cast<float>(gx + dx) * kQuad;
+            const float vz = static_cast<float>(gz + dz) * kQuad;
+            const float vy = selva::world::sampleHeight(vx, vz);
+            const bool vhole = engine::world::insideTerrainHole(nullptr, vx, vz);
+            std::fprintf(log, "    vertex (%.3f, %.3f) -> Y=%.3f hole=%d\n", vx, vz, vy,
+                         vhole ? 1 : 0);
+        }
+    }
+}
+
+static void probeDumpFootprintSlot(std::FILE* log, const engine::world::StructureFootprint& f,
+                                   int idx, float px, float py, float pz)
+{
+    const float fdx_out = std::abs(px - f.center_xz.x) - f.half_extents_xz.x;
+    const float fdz_out = std::abs(pz - f.center_xz.y) - f.half_extents_xz.y;
+    const bool inside_xz = (fdx_out <= 0.0f && fdz_out <= 0.0f);
+    std::fprintf(log,
+                 "    [%d] '%s' region=%s center=(%.2f,%.2f) half=(%.2f,%.2f) "
+                 "cuts=[floor=%d rim=%d ceil=%d wall=%d] inside_xz=%d\n",
+                 idx, f.debug_name ? f.debug_name : "(no name)",
+                 f.region_name ? f.region_name : "(global)", f.center_xz.x, f.center_xz.y,
+                 f.half_extents_xz.x, f.half_extents_xz.y, f.cuts_floor ? 1 : 0, f.cuts_rim ? 1 : 0,
+                 f.cuts_ceiling ? 1 : 0, f.cuts_wall ? 1 : 0, inside_xz ? 1 : 0);
+    if (!inside_xz || f.vertical_profile.nx == 0 || f.vertical_profile.nz == 0)
+        return;
+    float y_min = 0.0f, y_max = 0.0f;
+    const bool has_slot = engine::world::sampleStructureSlot(f, px, pz, y_min, y_max);
+    if (has_slot)
+    {
+        const bool player_in_slot = (py >= y_min && py <= y_max);
+        std::fprintf(log,
+                     "        slot at (%.2f,%.2f) = [%.3f, %.3f]  "
+                     "player_y=%.3f in_slot=%d\n",
+                     px, pz, y_min, y_max, py, player_in_slot ? 1 : 0);
+    }
+    else
+    {
+        std::fprintf(log, "        slot at (%.2f,%.2f) = NONE (profile present but empty)\n", px,
+                     pz);
+    }
+}
+
+static void probeDumpStructureFootprints(std::FILE* log, float px, float py, float pz)
+{
+    const int n_fp = engine::world::structureFootprintCount();
+    std::fprintf(log, "  --- structure footprints (%d) ---\n", n_fp);
+    for (int i = 0; i < n_fp; ++i)
+        probeDumpFootprintSlot(log, engine::world::structureFootprintAt(i), i, px, py, pz);
+}
+
+namespace
+{
+struct WallScanSpec
+{
+    const char* name;
+    int axis;
+    float const_pos;
+    float var_min;
+    float var_max;
+};
+} // namespace
+
+static void probeDumpWallScanClip(std::FILE* log, const selva::world::TerrainRegion& region,
+                                  const WallScanSpec& w, int wall_cells_vert, float wall_step_v,
+                                  float px, float pz)
+{
+    constexpr float kScanRadius = 10.0f;
+    const int wall_cells_horiz = region.subdivide;
+    const float var_step = (w.var_max - w.var_min) / static_cast<float>(wall_cells_horiz);
+    for (int iy = 0; iy < wall_cells_vert; ++iy)
+    {
+        const float y_qmin = region.wall_min_y + static_cast<float>(iy) * wall_step_v;
+        const float y_qmax = y_qmin + wall_step_v;
+        for (int iv = 0; iv < wall_cells_horiz; ++iv)
+        {
+            const float v_qmin = w.var_min + static_cast<float>(iv) * var_step;
+            const float v_qmax = v_qmin + var_step;
+            const float v_mid = (v_qmin + v_qmax) * 0.5f;
+            const float quad_x = (w.axis == 0) ? w.const_pos : v_mid;
+            const float quad_z = (w.axis == 2) ? w.const_pos : v_mid;
+            const float dxq = quad_x - px;
+            const float dzq = quad_z - pz;
+            if (dxq * dxq + dzq * dzq > kScanRadius * kScanRadius)
+                continue;
+            engine::world::ClipQuadQuery q{};
+            q.region_name = region.name.c_str();
+            q.var_axis = w.axis;
+            q.const_pos = w.const_pos;
+            q.quad = {v_qmin, v_qmax, y_qmin, y_qmax};
+            q.surface = engine::world::SurfaceCut::Wall;
+            engine::world::ClipRect kept[8];
+            const int n = engine::world::clipQuadAgainstStructureSlots(q, kept, 8);
+            if (n == 0)
+            {
+                std::fprintf(log, "    quad iy=%2d iv=%4d v=[%.2f..%.2f] y=[%.2f..%.2f] DROPPED\n",
+                             iy, iv, v_qmin, v_qmax, y_qmin, y_qmax);
+            }
+            else if (n == 1 && kept[0].var_min == v_qmin && kept[0].var_max == v_qmax &&
+                     kept[0].y_min == y_qmin && kept[0].y_max == y_qmax)
+            {
+                continue; // whole quad kept; skip for brevity
+            }
+            else
+            {
+                std::fprintf(log,
+                             "    quad iy=%2d iv=%4d v=[%.2f..%.2f] y=[%.2f..%.2f] "
+                             "CLIPPED into %d sub-quads:\n",
+                             iy, iv, v_qmin, v_qmax, y_qmin, y_qmax, n);
+                for (int k = 0; k < n; ++k)
+                    std::fprintf(log, "        sub[%d] v=[%.3f..%.3f] y=[%.3f..%.3f]\n", k,
+                                 kept[k].var_min, kept[k].var_max, kept[k].y_min, kept[k].y_max);
+            }
+        }
+    }
+}
+
+static void probeDumpLimboWallScan(std::FILE* log, float px, float pz)
+{
+    const auto* region = selva::world::terrainRegionAtName("limbo");
+    if (region == nullptr || !region->has_ceiling)
+        return;
+    const float half = region->world_extent * 0.5f;
+    const float x_min = region->world_origin.x - half;
+    const float x_max = region->world_origin.x + half;
+    const float z_min = region->world_origin.y - half;
+    const float z_max = region->world_origin.y + half;
+    const float wall_step_h = region->world_extent / static_cast<float>(region->subdivide);
+    const float wall_height = region->ceiling_y - region->wall_min_y;
+    const int wall_cells_vert = std::max(1, static_cast<int>(wall_height / wall_step_h));
+    const float wall_step_v = wall_height / static_cast<float>(wall_cells_vert);
+    std::fprintf(log,
+                 "  --- limbo wall scan (radius=10m from probe XZ) ---\n"
+                 "  region origin=(%.2f,%.2f) extent=%.2f wall_step_h=%.3f "
+                 "wall_step_v=%.3f ceiling_y=%.2f wall_min_y=%.2f\n",
+                 region->world_origin.x, region->world_origin.y, region->world_extent, wall_step_h,
+                 wall_step_v, region->ceiling_y, region->wall_min_y);
+
+    constexpr float kScanRadius = 10.0f;
+    const WallScanSpec walls[4] = {
+        {"-X", 0, x_min, z_min, z_max},
+        {"+X", 0, x_max, z_min, z_max},
+        {"-Z", 2, z_min, x_min, x_max},
+        {"+Z", 2, z_max, x_min, x_max},
+    };
+    for (const auto& w : walls)
+    {
+        const float dist_to_wall =
+            (w.axis == 0) ? std::abs(px - w.const_pos) : std::abs(pz - w.const_pos);
+        if (dist_to_wall > kScanRadius)
+            continue;
+        std::fprintf(log, "  wall '%s' axis=%d const_pos=%.3f (dist from probe=%.2f)\n", w.name,
+                     w.axis, w.const_pos, dist_to_wall);
+        probeDumpWallScanClip(log, *region, w, wall_cells_vert, wall_step_v, px, pz);
+    }
+}
+
+static void terrainProbeDump(const char* label, float px, float py, float pz)
+{
+    static std::FILE* probe_log = nullptr;
+    if (!probe_log)
+    {
+        // 'w' truncates each launch — use 'a' for cross-launch append.
+        probe_log = std::fopen("terrain-probe.log", "w");
+        if (!probe_log)
+            return;
+        std::fprintf(probe_log, "# Selva terrain probe log. Press F3 in-game at any\n"
+                                "# visual artifact spot to append a probe block here.\n\n");
+    }
+    const float sampled = selva::world::sampleHeight(px, pz);
+    const bool is_hole = engine::world::insideTerrainHole(nullptr, px, pz);
+    probeDumpHeader(probe_log, label, ++sF3ProbeCount, px, py, pz, sampled, is_hole);
+    probeDumpModifierStack(probe_log, px, pz);
+    probeDumpSurroundingVertices(probe_log, px, pz);
+    probeDumpStructureFootprints(probe_log, px, py, pz);
+    probeDumpLimboWallScan(probe_log, px, pz);
+    std::fprintf(probe_log, "====== END PROBE #%d ======\n\n", sF3ProbeCount);
+    std::fflush(probe_log);
+}
+
+static void tickF3TerrainProbe(const Uint8* keys)
+{
+    const bool f3Now = keys[SDL_SCANCODE_F3] != 0;
+    if (f3Now && !sPrevF3Probe)
+    {
+        terrainProbeDump("F3", sPlayer.pos.x, sPlayer.pos.y, sPlayer.pos.z);
+        // Also flag to stderr so the user knows the keypress was
+        // received and the probe was written.
+        std::fprintf(stderr, "[terrain-f3] probe #%d written to terrain-probe.log\n",
+                     sF3ProbeCount);
+        std::fflush(stderr);
+    }
+    sPrevF3Probe = f3Now;
 }
 
 // Pose-match start time for a chain-link splice: source is the
@@ -700,6 +975,58 @@ static void spawnPlayerAttackHitboxForClip(const char* clip_name,
     selva::combat::spawnAttackHitbox(sp);
 }
 
+// Map an attack clip name to its whoosh SFX. Returns nullptr if the
+// clip has no registered whoosh. Fires at clip start.
+//
+// flying_knee_punch_combo is NOT in this table - its whoosh fires
+// mid-clip via the per-clip event timing in tickFlyingKneeWhoosh
+// (tunable: flying_knee_whoosh_time_seconds) so the SFX lands at
+// the visible left-arm swing instead of at clip start.
+static const char* whooshForAttackClip(const char* clip_name)
+{
+    if (clip_name == nullptr || clip_name[0] == '\0')
+        return nullptr;
+    if (std::strcmp(clip_name, "jab") == 0)
+        return "whoosh_jab";
+    if (std::strcmp(clip_name, "hook") == 0)
+        return "whoosh_hook_right";
+    if (std::strcmp(clip_name, "combo") == 0)
+        return "whoosh_hook_left";
+    if (std::strcmp(clip_name, "heavy_punch") == 0)
+        return "whoosh_heavy";
+    return nullptr;
+}
+
+// State for flying_knee_punch_combo's mid-clip whoosh event. Tracks
+// the previous frame's one-shot time so we can detect the moment the
+// time crossed the tunable threshold and fire the whoosh exactly
+// once per swing. Reset when the one-shot leaves flying_knee.
+static float sFlyingKneePrevOneShotT = -1.0f;
+static bool sFlyingKneeWhooshFired = false;
+
+static void tickFlyingKneeWhoosh()
+{
+    const auto fd = sSampler.frameDiagnostics();
+    const bool is_flying_knee = fd.one_shot_name != nullptr &&
+                                std::strcmp(fd.one_shot_name, "flying_knee_punch_combo") == 0;
+    if (!is_flying_knee)
+    {
+        sFlyingKneePrevOneShotT = -1.0f;
+        sFlyingKneeWhooshFired = false;
+        return;
+    }
+    const float now_t = fd.one_shot_time;
+    const float prev_t = sFlyingKneePrevOneShotT;
+    const float fire_t = selva::tuning::current().flying_knee_whoosh_time_seconds;
+    if (!sFlyingKneeWhooshFired && fire_t >= 0.0f && prev_t >= 0.0f && now_t >= fire_t &&
+        prev_t < fire_t)
+    {
+        selva::audio::playSfx("whoosh_heavy");
+        sFlyingKneeWhooshFired = true;
+    }
+    sFlyingKneePrevOneShotT = now_t;
+}
+
 // dodge's mid-roll pose has no useful pose-match in an attack clip;
 // pose-matching would land on a late frame and visibly truncate the
 // punch. The caller knows the splice is cross-family; this function
@@ -743,9 +1070,11 @@ static bool fireClipForHand(selva::combat::HandSide hand, const char* clip_name,
 
     const float rate = effectiveAttackPlaybackRate(hand);
     fireOneShotWithProfile(*clip, profile, start_seconds, rate, clip_name);
+    if (const char* whoosh = whooshForAttackClip(clip_name); whoosh != nullptr)
+        selva::audio::playSfx(whoosh);
     setHandCancelWindow(hand, clip_name, *clip, rate, combo_input_buffer_seconds);
-    combatLog("[combat:fire] hand=%s clip=%s dur=%.3fs start=%.3fs rate=%.2f one_shot_active=%d "
-              "player_pos=(%.3f, %.3f)\n",
+    combatLog("[combat:fire] hand={} clip={} dur={:.3f}s start={:.3f}s rate={:.2f} "
+              "one_shot_active={} player_pos=({:.3f}, {:.3f})",
               (hand == selva::combat::HandSide::Right) ? "R" : "L", clip_name, clip->duration(),
               start_seconds, rate, one_shot_active ? 1 : 0, sPlayer.pos.x, sPlayer.pos.z);
 
@@ -771,7 +1100,7 @@ static void bufferPostDodgeAttack(selva::combat::HandSide hand, const char* butt
     sPostDodgeAttack.hand = hand;
     sPostDodgeAttack.button = button;
     sPostDodgeAttack.buffered_at = selva::wallClock();
-    combatLog("[combat:rhythm %.4fs] press BUFFERED (dodge active)\n", selva::wallClock());
+    combatLog("[combat:rhythm {:.4f}s] press BUFFERED (dodge active)", selva::wallClock());
 }
 
 // Press while a one-shot is in flight: only fire if it advances a
@@ -819,7 +1148,7 @@ static bool tryAttackInputDispatch(selva::combat::HandSide hand, bool press_edge
             buf.pending = true;
             buf.button = button;
             buf.buffered_at = now;
-            combatLog("[combat:rhythm] BUFFERED (one-shot in flight, no chain advance; %s)\n",
+            combatLog("[combat:rhythm] BUFFERED (one-shot in flight, no chain advance; {})",
                       button);
             return false;
         }
@@ -829,7 +1158,7 @@ static bool tryAttackInputDispatch(selva::combat::HandSide hand, bool press_edge
                                                              w.open_at, w.close_at);
         if (clip_name == nullptr)
         {
-            combatLog("[combat:rhythm] press DROPPED (no clip mapping for %s)\n", button);
+            combatLog("[combat:rhythm] press DROPPED (no clip mapping for {})", button);
             return false;
         }
         if (fireClipForHand(hand, clip_name, combo_input_buffer_seconds))
@@ -965,7 +1294,7 @@ static void logOneShotStateTransitions()
     if (sPrevOneShotActive != now && selva::combat::isCombatDebugEnabled())
     {
         const auto fd = sSampler.frameDiagnostics();
-        combatLog("[combat:one-shot %.4fs] active=%d weight=%.3f phase=%d clip=%s\n",
+        combatLog("[combat:one-shot {:.4f}s] active={} weight={:.3f} phase={} clip={}",
                   selva::wallClock(), now ? 1 : 0, fd.one_shot_weight, fd.one_shot_phase,
                   fd.one_shot_name ? fd.one_shot_name : "(none)");
     }
@@ -1002,7 +1331,7 @@ static bool tryFirePostDodgeAttack(bool shift_held, float combo_input_buffer_sec
                         /*force_first_strike=*/true))
     {
         fired = true;
-        combatLog("[combat:rhythm %.4fs] post-dodge attack FIRED (waited %.3fs since press)\n",
+        combatLog("[combat:rhythm {:.4f}s] post-dodge attack FIRED (waited {:.3f}s since press)",
                   selva::wallClock(), wait_seconds);
     }
     sPostDodgeAttack.pending = false;
@@ -1053,6 +1382,7 @@ static LocomotionFrameDecision sLocoDecision;
 // Forward decls: these live near the picker but are called from
 // tickPlayerVelocity / applyPerFrameTranslation via sLocoDecision.
 static const char* selectLockedLocomotionClip(const glm::vec3& moveIntent);
+static const char* selectFpvLocomotionClip(const glm::vec3& moveIntent);
 static const char* selectLocomotionClipFromSpeed(float target_speed, bool is_armed,
                                                  const selva::tuning::Tunables& tun);
 
@@ -1094,6 +1424,8 @@ static std::string pickLocomotionClipNameThisFrame(const glm::vec3& moveIntent,
         clip_name = sDebugClipName;
     else if (const char* locked = selectLockedLocomotionClip(moveIntent); locked != nullptr)
         clip_name = locked;
+    else if (const char* fpv = selectFpvLocomotionClip(moveIntent); fpv != nullptr)
+        clip_name = fpv;
     else
     {
         const float intent_mag = glm::length(moveIntent);
@@ -1334,6 +1666,36 @@ static void tickPlayerYaw(const glm::vec3& moveIntent, bool movement_locked, flo
             sPlayer.yaw = yawFromGroundDir(glm::normalize(to));
         return;
     }
+    // FPV body yaw: tracks move direction (smoothed) while moving;
+    // holds steady while idle so the head-bone-anchored camera
+    // doesn't arc on every mouse pixel. Backpedal (S relative to
+    // camera) holds body at camera-fwd so the back-walk clip reads
+    // correctly.
+    if (selva::render::cameraMode() == selva::render::CameraMode::FirstPerson)
+    {
+        if (glm::length(moveIntent) <= 0.0001f)
+            return;
+        const bool is_backpedal_clip = (sLocoDecision.clip_name == "walking_backward" ||
+                                        sLocoDecision.clip_name == "running_backward");
+        if (is_backpedal_clip)
+        {
+            sPlayer.yaw = selva::render::cameraYaw();
+            return;
+        }
+        const glm::vec3 dir_fpv = glm::normalize(moveIntent);
+        const float target_yaw_fpv = yawFromGroundDir(dir_fpv);
+        float delta_fpv = wrapAngleSigned(target_yaw_fpv - sPlayer.yaw);
+        constexpr float kPiFpv = 3.1415927f;
+        const float t_fpv = std::min(1.0f, std::abs(delta_fpv) / kPiFpv);
+        const float rate_fpv = turn_rate_min + (turn_rate_max - turn_rate_min) * t_fpv;
+        const float max_step_fpv = rate_fpv * dt;
+        if (delta_fpv > max_step_fpv)
+            delta_fpv = max_step_fpv;
+        else if (delta_fpv < -max_step_fpv)
+            delta_fpv = -max_step_fpv;
+        sPlayer.yaw += delta_fpv;
+        return;
+    }
     if (glm::length(moveIntent) <= 0.0001f)
         return;
     const glm::vec3 dir = glm::normalize(moveIntent);
@@ -1364,21 +1726,21 @@ static void logInputEdges(const Uint8* keys, bool press_lmb, bool release_lmb, b
     const bool sNow = keys[SDL_SCANCODE_S] != 0;
     const bool dNow = keys[SDL_SCANCODE_D] != 0;
     if (wNow != sPrevW)
-        combatLog("[input %.4fs] W %s\n", selva::wallClock(), wNow ? "DOWN" : "UP");
+        combatLog("[input {:.4f}s] W {}", selva::wallClock(), wNow ? "DOWN" : "UP");
     if (aNow != sPrevA)
-        combatLog("[input %.4fs] A %s\n", selva::wallClock(), aNow ? "DOWN" : "UP");
+        combatLog("[input {:.4f}s] A {}", selva::wallClock(), aNow ? "DOWN" : "UP");
     if (sNow != sPrevS)
-        combatLog("[input %.4fs] S %s\n", selva::wallClock(), sNow ? "DOWN" : "UP");
+        combatLog("[input {:.4f}s] S {}", selva::wallClock(), sNow ? "DOWN" : "UP");
     if (dNow != sPrevD)
-        combatLog("[input %.4fs] D %s\n", selva::wallClock(), dNow ? "DOWN" : "UP");
+        combatLog("[input {:.4f}s] D {}", selva::wallClock(), dNow ? "DOWN" : "UP");
     if (press_lmb)
-        combatLog("[input %.4fs] LMB DOWN\n", selva::wallClock());
+        combatLog("[input {:.4f}s] LMB DOWN", selva::wallClock());
     if (release_lmb)
-        combatLog("[input %.4fs] LMB UP\n", selva::wallClock());
+        combatLog("[input {:.4f}s] LMB UP", selva::wallClock());
     if (press_rmb)
-        combatLog("[input %.4fs] RMB DOWN\n", selva::wallClock());
+        combatLog("[input {:.4f}s] RMB DOWN", selva::wallClock());
     if (release_rmb)
-        combatLog("[input %.4fs] RMB UP\n", selva::wallClock());
+        combatLog("[input {:.4f}s] RMB UP", selva::wallClock());
     sPrevW = wNow;
     sPrevA = aNow;
     sPrevS = sNow;
@@ -1437,8 +1799,8 @@ static void fireBlockOneShot(bool loco_settled, const BlockClipSet& set)
     sBlockingActive = true;
     sActiveBlockIdleClip = set.idle;
     sActiveBlockLowerClip = set.lower;
-    combatLog("[combat:block-fire] mode=%s raise=%s idle=%s lower=%s loco=%s@%.3fs "
-              "prev_1shot=%s(phase=%d,w=%.2f)\n",
+    combatLog("[combat:block-fire] mode={} raise={} idle={} lower={} loco={}@{:.3f}s "
+              "prev_1shot={}(phase={},w={:.2f})",
               loco_settled ? "SETTLED" : "SNAP", set.raise, set.idle ? set.idle : "(none)",
               set.lower ? set.lower : "(none)",
               fd_pre.loco_current_name ? fd_pre.loco_current_name : "(none)",
@@ -1573,10 +1935,20 @@ static bool fireDodgeFromTap(const glm::vec3& moveIntent, float backstep_playbac
     const bool has_intent = glm::length(moveIntent) > 0.0001f;
     const char* clip_name = has_intent ? "falling_to_roll" : "standing_dodge_backward";
     sDodgeIsBackstep = !has_intent;
+    // Yaw blend setup: capture pre-dodge yaw + target direction, let
+    // tickDodgeYawBlend interpolate over the dodge duration. The
+    // gameplay-side yaw used to snap instantly here; in FPV that
+    // produced a frame-1 yaw change combined with the clip's pitch
+    // change, reading as "diagonal back-roll." Smoothing the yaw
+    // over the clip duration makes the camera (and visible body)
+    // turn naturally INTO the roll instead of teleporting first.
+    sDodgeHasYawBlend = false;
     if (has_intent)
     {
         const glm::vec3 dir = glm::normalize(moveIntent);
-        sPlayer.yaw = yawFromGroundDir(dir);
+        sDodgeYawStart = sPlayer.yaw;
+        sDodgeYawTarget = yawFromGroundDir(dir);
+        sDodgeHasYawBlend = true;
     }
     const auto* dodgeClip = sClips.get(clip_name);
     if (dodgeClip == nullptr || !dodgeClip->isLoaded())
@@ -1601,6 +1973,10 @@ static bool fireDodgeFromTap(const glm::vec3& moveIntent, float backstep_playbac
     sDodgePlaybackRate = std::max(0.1f, playback_rate);
     sDodgeDuration = dodgeClip->duration() / sDodgePlaybackRate;
     sDodgeFiredThisPress = true;
+    // Yaw-blend over the first ~50% of the dodge so the body has
+    // turned by the time the tumble peaks. Tuning the fraction
+    // higher = smoother but the dodge ends up off-direction.
+    sDodgeYawBlendDuration = sDodgeDuration * 0.5f;
     armDodgeCsvRecordingIfRequested(sDodgeDuration);
     armDodgeFrameCaptureIfRequested(sDodgeDuration);
     return true;
@@ -1651,8 +2027,8 @@ static bool tryFireBufferedDodge(float backstep_playback_rate, float roll_playba
                                         roll_playback_rate);
     sBufferedDodge.pending = false;
     if (fired)
-        combatLog("[combat:rhythm %.4fs] buffered dodge FIRED (waited %.3fs since press, "
-                  "via=%s)\n",
+        combatLog("[combat:rhythm {:.4f}s] buffered dodge FIRED (waited {:.3f}s since press, "
+                  "via={})",
                   selva::wallClock(), age,
                   one_shot_cancel_open ? "one-shot-cancel"
                                        : (sSampler.isOneShotActive() ? "attack-cancel" : "clean"));
@@ -1709,7 +2085,7 @@ static bool fireOrBufferDodgeOnSpaceRelease(const glm::vec3& moveIntent,
     sBufferedDodge.pending = true;
     sBufferedDodge.move_intent_at_press = moveIntent;
     sBufferedDodge.buffered_at = selva::wallClock();
-    combatLog("[combat:rhythm %.4fs] dodge BUFFERED (%s in flight)\n", selva::wallClock(),
+    combatLog("[combat:rhythm {:.4f}s] dodge BUFFERED ({} in flight)", selva::wallClock(),
               sDodgeActive ? "dodge" : "one-shot");
     return false;
 }
@@ -1775,11 +2151,11 @@ capturePreUpdateJoints(bool loco_clip_changed, const std::string& clip_name, flo
     const Uint8* keys = SDL_GetKeyboardState(nullptr);
     const Actor* lt = resolveLockTarget();
     const bool locked = (lt != nullptr);
-    combatLog("[sm %.4fs] loco-pick %s@%.3fs -> %s (blend=%.3fs speed_now=%.2f target=%.2f "
-              "locked=%d sprint=%d WASD=%d%d%d%d)\n",
-              selva::wallClock(), sLastLocoClipName.c_str(), fd.loco_current_time,
-              clip_name.c_str(), blend_seconds, speed_now, sLastTargetSpeed, locked ? 1 : 0,
-              sPlayer.sprinting ? 1 : 0, keys[SDL_SCANCODE_W] ? 1 : 0, keys[SDL_SCANCODE_A] ? 1 : 0,
+    combatLog("[sm {:.4f}s] loco-pick {}@{:.3f}s -> {} (blend={:.3f}s speed_now={:.2f} "
+              "target={:.2f} locked={} sprint={} WASD={}{}{}{})",
+              selva::wallClock(), sLastLocoClipName, fd.loco_current_time, clip_name, blend_seconds,
+              speed_now, sLastTargetSpeed, locked ? 1 : 0, sPlayer.sprinting ? 1 : 0,
+              keys[SDL_SCANCODE_W] ? 1 : 0, keys[SDL_SCANCODE_A] ? 1 : 0,
               keys[SDL_SCANCODE_S] ? 1 : 0, keys[SDL_SCANCODE_D] ? 1 : 0);
     const char* names[] = {"mixamorig:RightHand", "mixamorig:LeftHand", "mixamorig:RightFoot",
                            "mixamorig:LeftFoot", "mixamorig:Hips"};
@@ -1918,6 +2294,26 @@ static const char* selectLockedLocomotionClip(const glm::vec3& moveIntent)
     return selva::gameplay::directionalLocoClip(fwd, right, moveIntent, sPlayer.sprinting);
 }
 
+// FPV directional clip picker. Backpedal exception only: pure-S
+// relative to camera (cam-fwd · intent below -kFpvBackpedalDotThreshold)
+// plays walking_backward without rotating the body. Returns nullptr
+// to fall through to the speed picker for the common case.
+static const char* selectFpvLocomotionClip(const glm::vec3& moveIntent)
+{
+    if (selva::render::cameraMode() != selva::render::CameraMode::FirstPerson)
+        return nullptr;
+    const float intent_mag = glm::length(moveIntent);
+    if (intent_mag <= 0.0001f)
+        return nullptr;
+    const glm::vec3 cam_fwd(-std::sin(selva::render::cameraYaw()), 0.0f,
+                            -std::cos(selva::render::cameraYaw()));
+    const glm::vec3 intent_dir = moveIntent / intent_mag;
+    constexpr float kFpvBackpedalDotThreshold = 0.5f; // ~120° between cam-fwd and intent
+    if (glm::dot(cam_fwd, intent_dir) < -kFpvBackpedalDotThreshold)
+        return sPlayer.sprinting ? "running_backward" : "walking_backward";
+    return nullptr;
+}
+
 // Produce a LocomotionPick from the pre-decided clip name in
 // sLocoDecision. Layer 5 of the picker chain (loco-freeze) lives
 // here because it depends on sampler state (one-shot phase) that
@@ -2006,8 +2402,8 @@ static void logSpliceResiduals(const std::vector<PreUpdateJoint>& pre_update_joi
         const bool anomaly = residual > threshold;
         if (anomaly)
             any_anomaly = true;
-        combatLog("  %s%s residual=|%.3fm|%s live=(%.2f,%.2f,%.2f) splice_t=%.3fs "
-                  "cand=(%.2f,%.2f,%.2f)\n",
+        combatLog("  {}{} residual=|{:.3f}m|{} live=({:.2f},{:.2f},{:.2f}) splice_t={:.3f}s "
+                  "cand=({:.2f},{:.2f},{:.2f})",
                   anomaly ? "[!] " : "    ", j.name, residual, anomaly ? " (>threshold)" : "",
                   j.live.x, j.live.y, j.live.z, splice_t, cand.x, cand.y, cand.z);
     }
@@ -2016,7 +2412,7 @@ static void logSpliceResiduals(const std::vector<PreUpdateJoint>& pre_update_joi
         // Echo the active state on an anomaly so the cause is right
         // there without having to scroll up: which one-shot, which
         // loco, which phase.
-        combatLog("  [!] context: 1shot=%s(phase=%d) loco=%s\n",
+        combatLog("  [!] context: 1shot={}(phase={}) loco={}",
                   fd.one_shot_name ? fd.one_shot_name : "(none)", fd.one_shot_phase,
                   fd.loco_current_name ? fd.loco_current_name : "(none)");
     }
@@ -2039,8 +2435,8 @@ static void logBlendOutFadeJoints()
         if (idx < 0)
             continue;
         const glm::vec3 p = sSampler.jointWorldPos(idx);
-        combatLog("    [fade %.4fs] %s=(%.2f,%.2f,%.2f) one_shot_w=%.2f\n", selva::wallClock(), n,
-                  p.x, p.y, p.z, fd.one_shot_weight);
+        combatLog("    [fade {:.4f}s] {}=({:.2f},{:.2f},{:.2f}) one_shot_w={:.2f}",
+                  selva::wallClock(), n, p.x, p.y, p.z, fd.one_shot_weight);
     }
 }
 
@@ -2278,9 +2674,31 @@ static void tickDodgeTimer(float dt)
     {
         sDodgeActive = false;
         if (selva::combat::isCombatDebugEnabled())
-            combatLog("[combat:dodge %.4fs] sDodgeActive=false (elapsed=%.3fs/%.3fs)\n",
+            combatLog("[combat:dodge {:.4f}s] sDodgeActive=false (elapsed={:.3f}s/{:.3f}s)",
                       selva::wallClock(), sDodgeElapsed, sDodgeDuration);
     }
+}
+
+// Interpolate sPlayer.yaw from pre-dodge yaw toward dodge target over
+// the blend duration. Runs each frame while the dodge is active.
+// After blend completes the player faces the dodge direction;
+// subsequent locomotion / mouse-look picks up from there. Replaces
+// the instant snap at dodge-fire time.
+static void tickDodgeYawBlend(float dt)
+{
+    (void)dt;
+    if (!sDodgeActive || !sDodgeHasYawBlend)
+        return;
+    const float t = sDodgeYawBlendDuration > 0.0f
+                        ? std::min(1.0f, sDodgeElapsed / sDodgeYawBlendDuration)
+                        : 1.0f;
+    // Smoothstep so the early part of the roll has the most yaw
+    // travel (body turning into the dodge), tail is settled.
+    const float s = t * t * (3.0f - 2.0f * t);
+    const float delta = wrapAngleSigned(sDodgeYawTarget - sDodgeYawStart);
+    sPlayer.yaw = sDodgeYawStart + delta * s;
+    if (t >= 1.0f)
+        sDodgeHasYawBlend = false; // settled; stop updating
 }
 
 // Rising-edge Y/G toggles grip mode (one-handed ↔ two-handed).
@@ -2394,8 +2812,7 @@ static void logStateNarrative()
     if (sSampler.isLocoFrozenByOneShot())
         line += "FROZEN ";
     appendBufferSection(line, now);
-    line += "\n";
-    combatLog("%s", line.c_str());
+    combatLog("{}", line);
 }
 
 // Apply one HitEvent: route to enemy or player, run applyDamage,
@@ -2430,7 +2847,7 @@ static void applyHitEvent(const selva::combat::HitEvent& ev, float now)
         // that hate their own kind), resolve from ev.attacker.kind.
         selva::gameplay::playEnemyHitReact(ev.target.index, dmg_applied, ev.poise_damage,
                                            ev.world_normal, sPlayer.pos);
-        selva::combat::combatLog("[hit] enemy[%d] region=%d dmg=%d hp=%d/%d\n", ev.target.index,
+        selva::combat::combatLog("[hit] enemy[{}] region={} dmg={} hp={}/{}", ev.target.index,
                                  static_cast<int>(ev.region), dmg_applied, e.hp.current, e.hp.max);
         return;
     }
@@ -2447,7 +2864,7 @@ static void applyHitEvent(const selva::combat::HitEvent& ev, float now)
         const bool crit = (ev.region == selva::combat::HurtRegion::Head);
         const glm::vec3 number_origin(ev.world_pos.x, sPlayer.pos.y + 2.0f, ev.world_pos.z);
         selva::combat::spawnDamageNumber(number_origin, dmg_applied, crit);
-        selva::combat::combatLog("[hit] player region=%d dmg=%d hp=%d/%d\n",
+        selva::combat::combatLog("[hit] player region={} dmg={} hp={}/{}",
                                  static_cast<int>(ev.region), dmg_applied, sPlayer.hp.current,
                                  sPlayer.hp.max);
         // Death gate. The Vagrant is killed in Hell — sangue exits,
@@ -2530,7 +2947,7 @@ static void tickPlayerSecondDeathLifecycle()
     if (elapsed < total)
         return;
 
-    selva::combat::combatLog("[player-respawn] respawning at t=%.3f\n", selva::wallClock());
+    selva::combat::combatLog("[player-respawn] respawning at t={:.3f}", selva::wallClock());
     sPlayer.is_dead = false;
     sPlayer.death_time = -1.0f;
     sPlayer.last_damage_time = -1.0f;
@@ -2574,30 +2991,98 @@ static LocomotionPick tickPlayerLocomotionAndSampler(const glm::vec3& moveIntent
     return pick;
 }
 
-// Resolve player vs static cylinders + enemy capsules, then snap to
-// terrain. Runs LAST in the per-frame tick so post-translation drift
-// from any source (velocity, clip-hip, dodge steer) is corrected
-// before render. Player capsule radius matches humanoid shoulder
-// width.
-static void resolvePlayerCollisionAndSnap()
+// Drive the player via the physics character controller.
+//
+// Each frame:
+//   1) `applyPerFrameTranslation` (and root-motion clip hip-delta) have
+//      already written what the gameplay system WANTS the player's pos
+//      to be this frame. We compute a velocity from (desired - current)
+//      / dt and hand that to the Jolt CharacterVirtual.
+//   2) updatePhysics steps the world, the character integrates the
+//      velocity + gravity, swept-collides against terrain + chapel +
+//      every static body, slides along walls, climbs stairs ≤ step
+//      tolerance, slides off slopes too steep.
+//   3) Read the final position back into sPlayer.pos. That's the actual
+//      ground truth; combat / animation / camera all read sPlayer.pos
+//      so they see what physics agreed to.
+static void resolvePlayerCollisionAndSnap(float dt)
 {
-    constexpr float kPlayerRadius = 0.35f;
-    glm::vec2 player_xz(sPlayer.pos.x, sPlayer.pos.z);
-    selva::world::resolveBodyCollision(player_xz, kPlayerRadius);
-    for (const auto* enemy : selva::gameplay::enemies())
+    using namespace engine::physics;
+    if (dt <= 0.0f)
+        return;
+
+    const bool log_on = selva::tuning::current().debug_physics_log;
+    static FILE* sPhysLog = nullptr;
+    if (log_on && sPhysLog == nullptr)
     {
-        const glm::vec2 e_xz(enemy->pos.x, enemy->pos.z);
-        const glm::vec2 delta = player_xz - e_xz;
-        const float dist_sq = glm::dot(delta, delta);
-        const float min_dist = kPlayerRadius + enemy->body.collider_radius;
-        if (dist_sq >= min_dist * min_dist || dist_sq <= 1e-8f)
-            continue;
-        const float dist = std::sqrt(dist_sq);
-        player_xz += (delta / dist) * (min_dist - dist);
+        sPhysLog = std::fopen("physics-debug.log", "w");
+        selva::world::writeInitStatsToLog(sPhysLog);
     }
-    sPlayer.pos.x = player_xz.x;
-    sPlayer.pos.z = player_xz.y;
-    sPlayer.pos.y = selva::world::sampleHeight(sPlayer.pos.x, sPlayer.pos.z);
+
+    // Lazy create on first frame (sPlayer.pos may not be settled until
+    // the first locomotion tick).
+    BodyHandle body = selva::world::playerBody();
+    if (body == kInvalidBody)
+    {
+        body = selva::world::createPlayerBody(sPlayer.pos);
+        if (sPhysLog != nullptr)
+        {
+            std::fprintf(sPhysLog, "[create] body=%u spawn=(%.3f,%.3f,%.3f)\n", body.id,
+                         sPlayer.pos.x, sPlayer.pos.y, sPlayer.pos.z);
+            std::fflush(sPhysLog);
+        }
+    }
+
+    // Compute desired XZ velocity from gameplay's intended position
+    // delta. Y is left to the character controller (gravity).
+    const glm::vec3 desired = sPlayer.pos;
+    const glm::vec3 current = characterPosition(body);
+    glm::vec3 v(0.0f);
+    v.x = (desired.x - current.x) / dt;
+    v.z = (desired.z - current.z) / dt;
+    setCharacterVelocity(body, v, /*apply_y*/ false);
+
+    updatePhysics(dt);
+
+    const glm::vec3 resolved = characterPosition(body);
+    sPlayer.pos = resolved;
+    // Keep velocity_xz / velocity_y fields in sync for existing
+    // animation/footstep/camera systems that read them.
+    sPlayer.velocity_xz = glm::vec2(v.x, v.z);
+    sPlayer.velocity_y = 0.0f; // physics owns Y now; animation reads only
+                               // for gait selection which uses XZ
+
+    if (sPhysLog != nullptr)
+    {
+        static int sFrameCounter = 0;
+        const BodyHandle ground = characterGroundBody(body);
+        const char* ground_name = (ground == kInvalidBody) ? "(none)" : bodyDebugName(ground);
+        static std::vector<BodyHandle> sContacts;
+        characterActiveContacts(body, sContacts);
+        std::fprintf(sPhysLog,
+                     "f=%d dt=%.4f pos=(%.3f,%.3f,%.3f) desired=(%.3f,%.3f,%.3f) "
+                     "v_xz=(%.3f,%.3f) onGround=%d ground='%s' "
+                     "pYaw=%.3f camYaw=%.3f camPitch=%.3f contacts=%zu",
+                     sFrameCounter, dt, sPlayer.pos.x, sPlayer.pos.y, sPlayer.pos.z, desired.x,
+                     desired.y, desired.z, v.x, v.z, isCharacterOnGround(body) ? 1 : 0, ground_name,
+                     sPlayer.yaw, selva::render::cameraYaw(), selva::render::cameraPitch(),
+                     sContacts.size());
+        for (const BodyHandle c : sContacts)
+            std::fprintf(sPhysLog, " ['%s']", bodyDebugName(c));
+        std::fprintf(sPhysLog, "\n");
+        // Detailed contact info: where on each body is the player touching?
+        static std::vector<CharacterContactDetail> sContactDetails;
+        characterActiveContactDetails(body, sContactDetails);
+        for (const auto& d : sContactDetails)
+        {
+            const char* name = (d.body == kInvalidBody) ? "(unknown)" : bodyDebugName(d.body);
+            std::fprintf(
+                sPhysLog, "    contact body='%s' pos=(%.3f,%.3f,%.3f) normal=(%.3f,%.3f,%.3f)\n",
+                name, d.position.x, d.position.y, d.position.z, d.normal.x, d.normal.y, d.normal.z);
+        }
+        std::fflush(sPhysLog);
+        ++sFrameCounter;
+    }
 }
 
 // Dev cheat: K instantly kills the player to exercise the second-death
@@ -2675,13 +3160,11 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
 
     const Uint8* keys = SDL_GetKeyboardState(nullptr);
 
-    // Quit on Escape — handy until there's a pause menu.
-    if (keys[SDL_SCANCODE_ESCAPE])
-        engine.requestQuit();
-
     tickDevKillKey(keys);
     tickF1TuningPanelToggle(keys);
+    tickF3TerrainProbe(keys);
     tickTreePreviewToggle(keys);
+    tickFpvToggle(keys);
     // Preview mode: world simulation suspended, render handled by
     // renderTreePreview(). No need to tick combat, AI, locomotion,
     // collision, etc.
@@ -2750,6 +3233,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     // legacy script-push had, which is why we no longer need a
     // separate motion_end cutoff.
     tickDodgeTimer(dt);
+    tickDodgeYawBlend(dt);
     logOneShotStateTransitions();
     if (tryFirePostDodgeAttack(edges.shift_held, tun.combo_input_buffer_seconds))
         combat_input_this_frame = true;
@@ -2792,7 +3276,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
 
     applyPerFrameTranslation(moveIntent, tun.dodge_steer_rate, dt);
 
-    resolvePlayerCollisionAndSnap();
+    resolvePlayerCollisionAndSnap(dt);
 
     selva::gameplay::tickEnemies(dt);
 
@@ -2818,8 +3302,30 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
         applyHitEvent(ev, now);
     selva::combat::tickDamageNumbers(dt);
 
+    // Foot-plant footstep detection — fires SFX when the foot bone's
+    // world Y crosses below ground+epsilon while descending. Works on
+    // any clip (loco, attack windup, get-up, idle micro-sway) because
+    // the signal comes from the visible foot, not a per-clip cadence.
+    // See games/selva-oscura/src/gameplay/Footsteps.cpp.
+    selva::gameplay::tickFootsteps(sPlayer, static_cast<float>(dt));
+
+    tickFlyingKneeWhoosh();
+
+    // Whoosh detection — fires SFX on hand peak speed during attack
+    // one-shots. Active-hand hint comes from the running clip's
+    // declared hitbox_joint (1=Left, 2=Right, 0=both/unknown). When
+    // resolved, only the active hand is sampled - eliminates the
+    // entire class of "drift fires on the inactive hand mask the
+    // real strike" bugs. See gameplay/Whooshes.cpp.
+
     tickCsvRecording(dt);
     logStateNarrative();
+
+    // Scene manager tick: advance any in-progress transitions, then
+    // check player overlap against the current scene's triggers
+    // (edge-fires a transition when player walks into a trigger AABB).
+    engine::world::tickSceneManager(static_cast<float>(dt));
+    engine::world::checkPlayerTriggers(sPlayer.pos);
 }
 
 // F2 toggle for the tree preview mode. While active, gameplay tick
@@ -2835,6 +3341,34 @@ static void tickTreePreviewToggle(const Uint8* keys)
         SDL_GetRelativeMouseState(nullptr, nullptr);
     }
     sPrevF2 = f2Now;
+}
+
+// Rising-edge V toggles between third-person and first-person camera.
+// First-call init: synchronize sPrevV with the current key state so
+// the rising-edge check doesn't fire on a stale prev value. Without
+// this, sPrevV defaults to `false` at static-init time and the first
+// real call sees vNow transition false->true incorrectly if SDL's
+// keyboard-state array was stale during static init (common
+// SDL_GetKeyboardState gotcha).
+static void tickFpvToggle(const Uint8* keys)
+{
+    const bool vNow = keys[SDL_SCANCODE_V] != 0;
+    static bool sInit = false;
+    if (!sInit)
+    {
+        sPrevV = vNow;
+        sInit = true;
+        return;
+    }
+    if (vNow && !sPrevV)
+    {
+        selva::render::toggleCameraMode();
+        const auto mode = selva::render::cameraMode();
+        std::fprintf(stderr, "[fpv] V pressed, mode=%s\n",
+                     mode == selva::render::CameraMode::FirstPerson ? "FirstPerson"
+                                                                    : "ThirdPerson");
+    }
+    sPrevV = vNow;
 }
 
 // Build the preview's view-proj matrix from orbit yaw/pitch/distance
@@ -2854,7 +3388,7 @@ static glm::mat4 buildTreePreviewViewProj()
                              ? static_cast<float>(selva::render::windowWidth()) /
                                    static_cast<float>(selva::render::windowHeight())
                              : 1.0f;
-    const glm::mat4 proj = glm::perspective(glm::radians(60.0f), aspect, 0.1f, 200.0f);
+    const glm::mat4 proj = glm::perspective(glm::radians(60.0f), aspect, 0.1f, 2000.0f);
     return proj * view;
 }
 
@@ -2895,9 +3429,9 @@ static void renderTreePreview()
     if (sTreePreview.wireframe)
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
-    constexpr glm::vec3 kSunDir(0.0f, 0.7f, -0.7f);
-    constexpr glm::vec3 kSunIntensity(11.0f, 9.5f, 7.0f);
-    constexpr float kExposure = 1.0f;
+    const glm::vec3 kSunDir = selva::render::atmosphere::sunDirection();
+    const glm::vec3 kSunIntensity = selva::render::atmosphere::sunIntensity();
+    const float kExposure = selva::render::atmosphere::exposure();
     const float cy = std::cos(sTreePreview.orbit_yaw);
     const float sy = std::sin(sTreePreview.orbit_yaw);
     const float cp = std::cos(sTreePreview.orbit_pitch);
@@ -2999,10 +3533,34 @@ void renderTreePreviewControls()
 // player can tell them apart while there's no material variation yet.
 // Yaw applies a +pi offset because the Mixamo bind pose faces +Z while
 // our gameplay convention has yaw=0 mean facing -Z.
+// Apply FPV head-hide to a bone palette: copy `in` to `out`, replacing
+// the head + neck bone slots with a degenerate matrix that translates
+// their verts past the far plane so the rasterizer clips them. Verts
+// skinned to Spine2 and below remain unchanged so the body, shoulders,
+// and arms render normally - exactly the "arms visible, head not
+// rendering into the camera near plane" model.
+static void applyFpvHeadHide(const selva::anim::PoseSampler& sampler,
+                             const std::vector<glm::mat4>& in, std::vector<glm::mat4>& out)
+{
+    out = in;
+    static const char* kHiddenBones[] = {"mixamorig:Head", "mixamorig:Neck"};
+    // Degenerate: scale 0 then translate to (0, 1e6, 0). Verts collapse
+    // to a point then get pushed far above the camera; frustum clips.
+    glm::mat4 hide(0.0f);
+    hide[3] = glm::vec4(0.0f, 1.0e6f, 0.0f, 1.0f);
+    for (const char* name : kHiddenBones)
+    {
+        const int idx = sampler.findJoint(name);
+        if (idx >= 0 && idx < static_cast<int>(out.size()))
+            out[idx] = hide;
+    }
+}
+
 static void drawActorMeshes(const glm::mat4& viewProj)
 {
     if (!sPlayerMesh.isLoaded())
         return;
+    const bool fpv = selva::render::cameraMode() == selva::render::CameraMode::FirstPerson;
     if (!sSampler.bone_palette.empty())
     {
         const glm::vec3 player_pos(sPlayer.pos.x, sPlayer.pos.y - sPlayerMesh.foot_offset_y,
@@ -3010,8 +3568,21 @@ static void drawActorMeshes(const glm::mat4& viewProj)
         glm::mat4 player_model = glm::translate(glm::mat4(1.0f), player_pos);
         player_model =
             glm::rotate(player_model, sPlayer.yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
-        selva::anim::drawSkeletalMesh(sPlayerMesh, player_model, viewProj, sSampler.bone_palette,
-                                      glm::vec3(1.0f, 1.0f, 1.0f));
+        // In FPV: clone the bone palette and zero out head + neck so
+        // those bones' geometry clips off-screen. Arms + body remain
+        // visible, head doesn't render into the camera near plane.
+        if (fpv)
+        {
+            static std::vector<glm::mat4> sFpvPalette;
+            applyFpvHeadHide(sSampler, sSampler.bone_palette, sFpvPalette);
+            selva::anim::drawSkeletalMesh(sPlayerMesh, player_model, viewProj, sFpvPalette,
+                                          glm::vec3(1.0f, 1.0f, 1.0f));
+        }
+        else
+        {
+            selva::anim::drawSkeletalMesh(sPlayerMesh, player_model, viewProj,
+                                          sSampler.bone_palette, glm::vec3(1.0f, 1.0f, 1.0f));
+        }
     }
     for (const auto* enemy : selva::gameplay::enemies())
     {
@@ -3073,6 +3644,24 @@ static void tickFrameCaptureWrite()
     ++sFrameCaptureCounter;
 }
 
+// Apply per-light flicker (modulates intensity) so the scene mesh's
+// point-light contribution stays in sync with the sprite pass's
+// visible flame brightness.
+static void uploadFlickeredScenePointLights()
+{
+    const auto& base_lights = engine::world::allLights();
+    std::vector<engine::world::LightSource> flickered;
+    flickered.reserve(base_lights.size());
+    const float t = selva::wallClock();
+    for (size_t li = 0; li < base_lights.size(); ++li)
+    {
+        engine::world::LightSource L = base_lights[li];
+        L.intensity = engine::world::flickerIntensity(static_cast<int>(li), t);
+        flickered.push_back(L);
+    }
+    selva::render::setScenePointLights(flickered);
+}
+
 static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*camX*/,
                              float /*camY*/, float /*alpha*/)
 {
@@ -3082,26 +3671,55 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
         renderTreePreview();
         return;
     }
-    // LookAt height tracks the character's hip Y so dynamic poses
-    // (rolls, knockdowns) keep the body in frame. The sampler's
-    // jointWorldPos() returns the joint in MODEL-local space; add
-    // the model's world-Y translation (= pos.y - foot_offset_y, the
-    // same offset used when drawing the mesh) so the value is in
-    // world space. Smoothed (relative to ground) in buildViewProj.
-    float targetLookAtY = sPlayer.pos.y + 1.3f;
-    if (sSampler.jointCount() > 0)
+    // LookAt height = player feet Y + chest offset. Previously this
+    // sampled the hip joint's world Y per frame so dynamic poses
+    // (rolls, knockdowns) kept the body in frame - but the hip Y
+    // bobs every frame from idle clip animation, which propagated
+    // through buildViewProj's smoothing into a camera matrix that
+    // jittered per frame. That sub-pixel camera motion flipped the
+    // alpha-cutout discard decision on leaf cards per pixel per
+    // frame, producing visible foliage flicker that tapered off only
+    // when the sampler stopped (pause menu). Using a fixed offset
+    // above the player's feet kills the per-frame matrix jitter at
+    // the cost of camera not tracking knockdowns/rolls - which can
+    // come back later via a dedicated dynamic-pose camera mode.
+    const float targetLookAtY = sPlayer.pos.y + 1.3f;
+
+    // Head bone world position + matrix: required by FPV mode (the
+    // matrix is used for camera-roll during dodge/roll clips so the
+    // eyes tumble with the body). Fallback to a fixed eye-height
+    // identity matrix if the head joint isn't in the skeleton.
+    glm::vec3 head_world(sPlayer.pos.x, sPlayer.pos.y + 1.65f, sPlayer.pos.z);
+    glm::mat4 head_world_mat(1.0f);
+    if (const int head_idx = sSampler.findJoint("mixamorig:Head"); head_idx >= 0)
     {
-        for (int i = 0; i < sSampler.jointCount(); ++i)
+        head_world = sSampler.jointWorldPosWithActor(head_idx);
+        head_world_mat = sSampler.jointWorldMatrixWithActor(head_idx);
+    }
+
+    // Camera-roll during dodge clips: use the head bone's full world
+    // rotation so the eyes tumble with the body (cinematic FPV roll).
+    // Other one-shots (jab/hook/heavy) keep mouse-driven camera
+    // because they don't tumble the head and locking mouse-look
+    // would feel like a stutter.
+    bool use_anim_orientation = false;
+    if (sSampler.isOneShotActive())
+    {
+        const auto fd = sSampler.frameDiagnostics();
+        if (fd.one_shot_name != nullptr)
         {
-            if (std::strcmp(sSampler.jointName(i), "mixamorig:Hips") == 0)
-            {
-                const float model_world_y = sPlayer.pos.y - sPlayerMesh.foot_offset_y;
-                targetLookAtY = model_world_y + sSampler.jointWorldPos(i).y + 0.3f;
-                break;
-            }
+            const std::string_view name(fd.one_shot_name);
+            if (name.find("roll") != std::string_view::npos)
+                use_anim_orientation = true;
         }
     }
-    const glm::mat4 viewProj = selva::render::buildViewProj(sPlayer.pos, targetLookAtY);
+
+    const char* fd_one_shot = nullptr;
+    if (sSampler.isOneShotActive())
+        fd_one_shot = sSampler.frameDiagnostics().one_shot_name;
+    const glm::mat4 viewProj =
+        selva::render::buildViewProj(sPlayer.pos, targetLookAtY, head_world, head_world_mat,
+                                     use_anim_orientation, sPlayer.yaw, fd_one_shot);
     selva::render::setLastViewProj(viewProj);
 
     // Threshold-light direction toward the colle (-Z), held at deep
@@ -3110,9 +3728,9 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
     // as held twilight rather than late afternoon. Slight warm tint
     // pre-mul on the source itself (the light is already mystical
     // before the atmosphere shapes it).
-    constexpr glm::vec3 kSunDir(0.0f, 0.061f, -0.998f);
-    constexpr glm::vec3 kSunIntensity(11.0f, 9.5f, 7.0f);
-    constexpr float kExposure = 1.0f;
+    const glm::vec3 kSunDir = selva::render::atmosphere::sunDirection();
+    const glm::vec3 kSunIntensity = selva::render::atmosphere::sunIntensity();
+    const float kExposure = selva::render::atmosphere::exposure();
 
     // Camera position (matches buildViewProj math): player_pos - lookFwd
     // * follow_distance + (0, follow_height, 0). Reconstruct here.
@@ -3124,28 +3742,166 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
     const glm::vec3 camPos = sPlayer.pos - lookFwd * tun_atm.follow_distance +
                              glm::vec3(0.0f, tun_atm.follow_height, 0.0f);
 
-    selva::render::drawSky(glm::inverse(viewProj), kSunDir, kSunIntensity, camPos, kExposure);
+    // ---- Shadow depth pass ----
+    {
+        ZoneScopedN("shadow-depth-pass");
+        {
+            ZoneScopedN("shadow-update-cam");
+            selva::render::updateShadowCamera(sPlayer.pos);
+        }
+        {
+            ZoneScopedN("shadow-begin");
+            selva::render::beginDepthPass();
+        }
 
-    selva::render::useTerrainShader();
-    selva::render::setTerrainViewProj(viewProj);
-    selva::render::setTerrainAtmosphere(kSunDir, kSunIntensity, camPos, kExposure);
-    selva::render::renderTerrain();
+        {
+            ZoneScopedN("shadow-terrain");
+            selva::render::useTerrainDepthShader();
+            selva::render::renderTerrainDepth();
+        }
+        {
+            ZoneScopedN("shadow-trees");
+            selva::render::useTreeDepthShader();
+            selva::render::renderTreesDepth();
+        }
+        {
+            ZoneScopedN("shadow-static-meshes");
+            selva::render::useSceneDepthShader();
+            selva::render::renderStaticMeshesDepth();
+        }
 
-    selva::render::useSceneProgram();
-    selva::render::setSceneView(selva::render::lastView());
-    selva::render::setSceneViewProj(viewProj);
-    selva::render::setSceneAtmosphere(kSunDir, kSunIntensity, camPos, kExposure);
-    selva::render::renderGroundDecals();
+        // Scene cubes (ground decals). Currently no-op but the depth pass
+        // would draw them here once any get added to the scene.
 
-    selva::render::useTreeShader();
-    selva::render::setTreeViewProj(viewProj);
-    selva::render::setTreeAtmosphere(kSunDir, kSunIntensity, camPos, kExposure);
-    selva::render::renderTrees();
+        {
+            ZoneScopedN("shadow-skeletal");
+            selva::render::useSkeletalDepthShader();
+            // Shadow uses the FULL bone palette in FPV - the head-hide
+            // is only for the visible main-pass draw (so the head
+            // doesn't render into the camera near plane). The cast
+            // shadow on the ground should still show the player's
+            // complete silhouette, head included.
+            if (sPlayerMesh.isLoaded() && !sSampler.bone_palette.empty())
+            {
+                const glm::vec3 player_pos(sPlayer.pos.x, sPlayer.pos.y - sPlayerMesh.foot_offset_y,
+                                           sPlayer.pos.z);
+                glm::mat4 m = glm::translate(glm::mat4(1.0f), player_pos);
+                m = glm::rotate(m, sPlayer.yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
+                selva::render::setSkeletalDepthModel(m);
+                selva::render::setSkeletalDepthBones(
+                    sSampler.bone_palette.data(), static_cast<int>(sSampler.bone_palette.size()));
+                glBindVertexArray(sPlayerMesh.vao);
+                glDrawElements(GL_TRIANGLES, sPlayerMesh.index_count, GL_UNSIGNED_INT, nullptr);
+            }
+            for (const auto* enemy : selva::gameplay::enemies())
+            {
+                if (enemy->sampler.bone_palette.empty())
+                    continue;
+                const glm::vec3 enemy_pos(enemy->pos.x, enemy->pos.y - sPlayerMesh.foot_offset_y,
+                                          enemy->pos.z);
+                glm::mat4 m = glm::translate(glm::mat4(1.0f), enemy_pos);
+                m = glm::rotate(m, enemy->yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
+                selva::render::setSkeletalDepthModel(m);
+                selva::render::setSkeletalDepthBones(
+                    enemy->sampler.bone_palette.data(),
+                    static_cast<int>(enemy->sampler.bone_palette.size()));
+                glBindVertexArray(sPlayerMesh.vao);
+                glDrawElements(GL_TRIANGLES, sPlayerMesh.index_count, GL_UNSIGNED_INT, nullptr);
+            }
+        }
+
+        {
+            ZoneScopedN("shadow-end");
+            selva::render::endDepthPass(selva::render::windowWidth(),
+                                        selva::render::windowHeight());
+        }
+    }
+
+    // ---- Main pass: bind the shadow texture so main shaders can sample ----
+    selva::render::bindShadowTexture(1); // texture unit 1 reserved for shadows
+
+    {
+        ZoneScopedN("sky");
+        selva::render::drawSky(glm::inverse(viewProj), kSunDir, kSunIntensity, camPos, kExposure);
+    }
+
+    const glm::mat4& lightVP = selva::render::lightViewProj();
+
+    // Scene pass runs BEFORE terrain so the chapel mesh writes depth
+    // first. Terrain then depth-tests against chapel and loses where
+    // chapel is in front of it (the chapel-interior footprint). This
+    // is the cleanest carve-out: no shape uniforms, no stencil mask,
+    // just draw order + depth test.
+    {
+        ZoneScopedN("scene-pass");
+        selva::render::useSceneProgram();
+        selva::render::setSceneView(selva::render::lastView());
+        selva::render::setSceneViewProj(viewProj);
+        selva::render::setSceneAtmosphere(kSunDir, kSunIntensity, camPos, kExposure);
+        selva::render::setSceneShadow(lightVP, kSunDir, sPlayer.pos, 1);
+        uploadFlickeredScenePointLights();
+        selva::render::setSceneFlatShading(selva::tuning::current().debug_flat_shading);
+        if (selva::tuning::current().debug_msaa_state_log)
+        {
+            static int sMsaaFrameCounter = 0;
+            if ((sMsaaFrameCounter++ % 60) == 0)
+            {
+                GLint sample_buffers = -1, samples = -1, fb_binding = -1;
+                glGetIntegerv(GL_SAMPLE_BUFFERS, &sample_buffers);
+                glGetIntegerv(GL_SAMPLES, &samples);
+                glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &fb_binding);
+                const GLboolean msaa_enabled = glIsEnabled(GL_MULTISAMPLE);
+                std::fprintf(stderr,
+                             "[msaa-state] fbo=%d sample_buffers=%d samples=%d "
+                             "GL_MULTISAMPLE_enabled=%d\n",
+                             fb_binding, sample_buffers, samples, msaa_enabled);
+            }
+        }
+        {
+            ZoneScopedN("static-meshes");
+            selva::render::renderStaticMeshes();
+        }
+        {
+            ZoneScopedN("ground-decals");
+            selva::render::renderGroundDecals();
+        }
+    }
+
+    {
+        ZoneScopedN("terrain");
+        selva::render::useTerrainShader();
+        selva::render::setTerrainViewProj(viewProj);
+        selva::render::setTerrainAtmosphere(kSunDir, kSunIntensity, camPos, kExposure);
+        selva::render::setTerrainShadow(lightVP, kSunDir, sPlayer.pos, 1);
+        selva::render::renderTerrain();
+    }
+
+    {
+        ZoneScopedN("trees");
+        selva::render::useTreeShader();
+        selva::render::setTreeViewProj(viewProj);
+        selva::render::setTreeAtmosphere(kSunDir, kSunIntensity, camPos, kExposure);
+        selva::render::setTreeShadow(lightVP, kSunDir, sPlayer.pos, 1);
+        selva::render::renderTrees();
+    }
 
     glBindVertexArray(0);
     glUseProgram(0);
 
-    drawActorMeshes(viewProj);
+    {
+        ZoneScopedN("actor-meshes");
+        selva::anim::setSkeletalShadow(lightVP, kSunDir, sPlayer.pos, 1);
+        drawActorMeshes(viewProj);
+    }
+    {
+        ZoneScopedN("light-sprites");
+        // Render emissive billboards for every registered light. v1
+        // renders ALL lights regardless of region — caverns are
+        // visually separated by walls anyway, so cross-region leakage
+        // is bounded. When/if specific sealed boundaries need strict
+        // gating, pass a player-region name here.
+        selva::render::renderLightSprites(viewProj, camPos, nullptr);
+    }
     tickFrameCaptureWrite();
 }
 
@@ -3223,6 +3979,93 @@ void resetDebugRecordSamples(std::size_t expected)
 
 namespace selva::gameplay
 {
+void onSceneTransitionCommit(bool preserve_pos, const glm::vec3& spawn_pos, bool override_yaw,
+                             float spawn_yaw)
+{
+    if (preserve_pos)
+    {
+        // Seamless doorway: player stays at their current world
+        // position. Just sync the Jolt capsule to wherever
+        // sPlayer.pos already is (the body was destroyed with the
+        // old scene; new scene's bodies don't include the player,
+        // and the next resolvePlayerCollisionAndSnap will re-create
+        // it lazily at sPlayer.pos).
+        //
+        // Yaw: optionally override; otherwise keep.
+        if (override_yaw)
+            sPlayer.yaw = spawn_yaw;
+        sPlayer.velocity_xz = glm::vec2(0.0f);
+        sPlayer.velocity_y = 0.0f;
+        const auto body = selva::world::playerBody();
+        if (body != engine::physics::kInvalidBody)
+            engine::physics::teleportCharacter(body, sPlayer.pos);
+        std::fprintf(stderr, "[teleport] PRESERVE pos=(%.3f,%.3f,%.3f) pYaw=%.3f\n", sPlayer.pos.x,
+                     sPlayer.pos.y, sPlayer.pos.z, sPlayer.yaw);
+        return;
+    }
+    teleportPlayerTo(spawn_pos, override_yaw, spawn_yaw);
+}
+
+void teleportPlayerTo(const glm::vec3& world_pos, bool override_yaw, float yaw)
+{
+    const float pre_pyaw = sPlayer.yaw;
+    const float pre_cyaw = selva::render::cameraYaw();
+    const float pre_cpitch = selva::render::cameraPitch();
+    std::fprintf(stderr,
+                 "[teleport] BEFORE pos=(%.3f,%.3f,%.3f) pYaw=%.3f camYaw=%.3f camPitch=%.3f "
+                 "vel_xz=(%.3f,%.3f) vel_y=%.3f\n",
+                 sPlayer.pos.x, sPlayer.pos.y, sPlayer.pos.z, pre_pyaw, pre_cyaw, pre_cpitch,
+                 sPlayer.velocity_xz.x, sPlayer.velocity_xz.y, sPlayer.velocity_y);
+
+    // Stuck-in-ground rescue: only fires when the player capsule is
+    // GEOMETRICALLY EMBEDDED in solid ground at the destination
+    // (sphere-overlap returns true at chest height). This catches
+    // saves whose XYZ is no longer valid because world geometry
+    // changed between save and load, NOT normal slope traversal or
+    // mid-air teleports. Preserves the player's saved Y in every
+    // other case.
+    glm::vec3 resolved = world_pos;
+    {
+        constexpr float kCapsuleRadius = 0.35f; // matches createPlayerBody
+        constexpr float kChestOffsetY = 1.0f;   // ~chest above foot
+        const glm::vec3 probe(resolved.x, resolved.y + kChestOffsetY, resolved.z);
+        if (engine::physics::sphereOverlap(probe, kCapsuleRadius))
+        {
+            const float ground_y =
+                selva::world::groundHeight(resolved.x, resolved.z, resolved.y + 100.0f);
+            std::fprintf(stderr,
+                         "[teleport] STUCK: capsule overlaps geometry at XZY=(%.3f,%.3f,%.3f) — "
+                         "snapping up to ground Y=%.3f.\n",
+                         resolved.x, resolved.z, resolved.y, ground_y);
+            resolved.y = ground_y;
+        }
+    }
+
+    sPlayer.pos = resolved;
+    if (override_yaw)
+        sPlayer.yaw = yaw;
+    sPlayer.velocity_xz = glm::vec2(0.0f);
+    sPlayer.velocity_y = 0.0f;
+    std::fprintf(stderr,
+                 "[teleport] AFTER  pos=(%.3f,%.3f,%.3f) pYaw=%.3f camYaw=%.3f camPitch=%.3f "
+                 "override_yaw=%d\n",
+                 sPlayer.pos.x, sPlayer.pos.y, sPlayer.pos.z, sPlayer.yaw,
+                 selva::render::cameraYaw(), selva::render::cameraPitch(), override_yaw ? 1 : 0);
+    // Also move the Jolt capsule, else physics snaps the player back
+    // to the previous position the next time resolvePlayerCollisionAndSnap
+    // reads characterPosition.
+    const auto body = selva::world::playerBody();
+    if (body != engine::physics::kInvalidBody)
+    {
+        engine::physics::teleportCharacter(body, resolved);
+        std::fprintf(stderr, "[teleport] Jolt capsule moved\n");
+    }
+    else
+    {
+        std::fprintf(stderr, "[teleport] WARNING: player Jolt body is invalid\n");
+    }
+}
+
 void selvaPerFrame(::Engine& engine, ::EntityManager& em, double dt)
 {
     ::selvaPerFrame(engine, em, dt);
@@ -3230,5 +4073,50 @@ void selvaPerFrame(::Engine& engine, ::EntityManager& em, double dt)
 void selvaRenderWorld(::Engine& engine, ::EntityManager& em, float a, float b, float c)
 {
     ::selvaRenderWorld(engine, em, a, b, c);
+}
+void syncInputEdgesFromCurrentState()
+{
+    const Uint32 mouse_buttons = SDL_GetMouseState(nullptr, nullptr);
+    sPrevLMB = (mouse_buttons & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
+    sPrevRMB = (mouse_buttons & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
+    sPrevMMB = (mouse_buttons & SDL_BUTTON(SDL_BUTTON_MIDDLE)) != 0;
+}
+void loadActiveCharacterIntoPlayer(const selva::PlayerProfile& profile)
+{
+    // Position: prefer the saved pose if the character has one;
+    // otherwise spawn at the terrain's configured spawn point. New
+    // characters (has_saved_pose=false) always start at spawn; resumed
+    // characters wake up where they quit.
+    const glm::vec2 spawn_xz = selva::world::playerSpawnXZ();
+    const float spawn_ground_y = selva::world::sampleHeight(spawn_xz.x, spawn_xz.y);
+    const glm::vec3 target_pos = profile.has_saved_pose
+                                     ? glm::vec3(profile.pos_x, profile.pos_y, profile.pos_z)
+                                     : glm::vec3(spawn_xz.x, spawn_ground_y, spawn_xz.y);
+    const float target_yaw = profile.has_saved_pose ? profile.yaw : sPlayer.spawn_yaw;
+    // Use teleportPlayerTo so the Jolt character body moves with
+    // sPlayer.pos. Without this, the body keeps the previous run's
+    // position and snaps sPlayer.pos back on the next physics tick
+    // (new game starts at old character's last position).
+    teleportPlayerTo(target_pos, true, target_yaw);
+    sPlayer.spawn_pos = glm::vec3(spawn_xz.x, spawn_ground_y, spawn_xz.y);
+    sPlayer.is_dead = false;
+    sPlayer.death_time = -1.0f;
+    sPlayer.last_damage_time = -1.0f;
+    sPlayer.last_hit_react_time = -1.0f;
+    sPlayer.lock_target_idx = -1;
+    selva::gameplay::initActorPools(sPlayer.hp, sPlayer.stamina, sPlayer.poise, sPlayer.body,
+                                    sPlayer.stats);
+    sSampler.releaseOneShot();
+    sPlayer.foot_left = Actor::FootContact{};
+    sPlayer.foot_right = Actor::FootContact{};
+}
+
+void saveActiveCharacterFromPlayer(selva::PlayerProfile& profile)
+{
+    profile.pos_x = sPlayer.pos.x;
+    profile.pos_y = sPlayer.pos.y;
+    profile.pos_z = sPlayer.pos.z;
+    profile.yaw = sPlayer.yaw;
+    profile.has_saved_pose = true;
 }
 } // namespace selva::gameplay

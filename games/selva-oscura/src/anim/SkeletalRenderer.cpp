@@ -2,6 +2,7 @@
 
 #include "anim/SkeletalMesh.h"
 #include "gl/ShaderUtils.h"
+#include "render/ShadowShader.h"
 
 #include <glm/gtc/type_ptr.hpp>
 
@@ -47,6 +48,7 @@ uniform mat4 uViewProj;
 uniform mat4 uBones[128]; // matches kMaxBones in C++
 
 out vec3 vNormalWorld;
+out vec3 vWorldPos;
 out vec2 vUV;
 
 void main()
@@ -58,11 +60,10 @@ void main()
         aBoneWeights.w * uBones[aBoneIndices.w];
 
     vec4 localPos = skinMatrix * vec4(aPos, 1.0);
-    gl_Position = uViewProj * uModel * localPos;
+    vec4 worldPos4 = uModel * localPos;
+    gl_Position = uViewProj * worldPos4;
+    vWorldPos = worldPos4.xyz;
 
-    // Normal: skin and rotate to world space. Drop translation by
-    // promoting to vec4 with w=0. For non-uniform scaled rigs you'd use
-    // the inverse-transpose; uniform-scaled (our case) just works.
     vec4 localNormal = skinMatrix * vec4(aNormal, 0.0);
     vNormalWorld = normalize(mat3(uModel) * vec3(localNormal));
 
@@ -70,33 +71,31 @@ void main()
 }
 )glsl";
 
-// Fragment shader: simple Lambert lighting against a hardcoded directional
-// light (sun coming from above and slightly forward). Output is grayscale
-// so it matches the existing scene shader's visual register; the tumbling
-// scene cube and the soldier will read as the same world. Real lighting +
-// the 1-bit dither pass replaces this when the visual identity milestone
-// lands — this is the "looks 3D enough to validate the skinning works" stage.
-const char* kFragmentShader = R"glsl(
+// Fragment shader: half-Lambert lit by the centralized sun, attenuated
+// by the shadow map. Reads vWorldPos from the VS so the shadow sample
+// can compare against the depth FBO. Output is uTint-modulated (player
+// is white, enemies are bordeaux red) so silhouettes stay distinct.
+const char* kFragmentShaderCore = R"glsl(
 #version 330 core
 in vec3 vNormalWorld;
+in vec3 vWorldPos;
 in vec2 vUV;
 
 uniform vec3 uTint;
+uniform vec3 uSunDir;
 
 out vec4 fragColor;
+)glsl";
 
+const char* kFragmentShaderMain = R"glsl(
 void main()
 {
-    // Hardcoded sun: slightly above + in front of camera (camera looks
-    // down -Z, so positive Z = behind). Direction points TOWARD the light.
-    vec3 lightDir = normalize(vec3(0.3, 1.0, 0.6));
-    float ndotl = max(dot(normalize(vNormalWorld), lightDir), 0.0);
-
-    // Wrap a small ambient term so unlit faces aren't pitch black. 0.25
-    // ambient + 0.75 diffuse keeps the silhouette readable from any angle.
-    float lambert = 0.25 + 0.75 * ndotl;
-
-    vec3 c = clamp(lambert * uTint, 0.0, 1.0);
+    vec3 N = normalize(vNormalWorld);
+    vec3 L = normalize(uSunDir);
+    float halfL = dot(N, L) * 0.5 + 0.5;
+    float shadow = sampleSunShadow(vWorldPos, N);
+    float lit = 0.30 + 0.70 * halfL * shadow;
+    vec3 c = clamp(lit * uTint, 0.0, 1.0);
     fragColor = vec4(c, 1.0);
 }
 )glsl";
@@ -110,6 +109,16 @@ GLint sUniBones = -1; // first element of the array; OpenGL exposes the
                       // array as a single base location and you upload
                       // count consecutive matrices via glUniformMatrix4fv.
 GLint sUniTint = -1;
+GLint sUniSunDir = -1;
+GLint sUniShadowMap = -1;
+GLint sUniLightViewProj = -1;
+GLint sUniShadowSunDir = -1;
+GLint sUniShadowCamPos = -1;
+
+glm::vec3 sFrameSunDir(0.0f, 1.0f, 0.0f);
+glm::mat4 sFrameLightVP(1.0f);
+glm::vec3 sFrameShadowCamPos(0.0f);
+int sFrameShadowUnit = 1;
 
 } // namespace
 
@@ -118,7 +127,9 @@ bool initSkeletalRenderer()
     if (sProgram != 0)
         return true; // idempotent
 
-    sProgram = engine::gl::compileProgram(kVertexShader, kFragmentShader);
+    using namespace selva::render;
+    const std::string fs = std::string(kFragmentShaderCore) + kShadowGLSL + kFragmentShaderMain;
+    sProgram = engine::gl::compileProgram(kVertexShader, fs.c_str());
     if (sProgram == 0)
     {
         std::fprintf(stderr, "[SkeletalRenderer] shader compile/link failed\n");
@@ -128,7 +139,26 @@ bool initSkeletalRenderer()
     sUniViewProj = glGetUniformLocation(sProgram, "uViewProj");
     sUniBones = glGetUniformLocation(sProgram, "uBones");
     sUniTint = glGetUniformLocation(sProgram, "uTint");
+    sUniSunDir = glGetUniformLocation(sProgram, "uSunDir");
+    sUniShadowMap = glGetUniformLocation(sProgram, "uShadowMap");
+    sUniLightViewProj = glGetUniformLocation(sProgram, "uLightViewProj");
+    sUniShadowSunDir = glGetUniformLocation(sProgram, "uShadowSunDir");
+    sUniShadowCamPos = glGetUniformLocation(sProgram, "uShadowCameraPos");
     return true;
+}
+
+void setSkeletalSun(const glm::vec3& sun_dir)
+{
+    sFrameSunDir = sun_dir;
+}
+
+void setSkeletalShadow(const glm::mat4& light_view_proj, const glm::vec3& sun_dir,
+                       const glm::vec3& shadow_cam_pos, int shadow_texture_unit)
+{
+    sFrameLightVP = light_view_proj;
+    sFrameShadowUnit = shadow_texture_unit;
+    sFrameSunDir = sun_dir;
+    sFrameShadowCamPos = shadow_cam_pos;
 }
 
 void shutdownSkeletalRenderer()
@@ -150,6 +180,11 @@ void drawSkeletalMesh(const SkeletalMesh& mesh, const glm::mat4& model, const gl
     glUniformMatrix4fv(sUniModel, 1, GL_FALSE, glm::value_ptr(model));
     glUniformMatrix4fv(sUniViewProj, 1, GL_FALSE, glm::value_ptr(view_proj));
     glUniform3fv(sUniTint, 1, glm::value_ptr(tint));
+    glUniform3fv(sUniSunDir, 1, glm::value_ptr(sFrameSunDir));
+    glUniformMatrix4fv(sUniLightViewProj, 1, GL_FALSE, glm::value_ptr(sFrameLightVP));
+    glUniform3fv(sUniShadowSunDir, 1, glm::value_ptr(sFrameSunDir));
+    glUniform3fv(sUniShadowCamPos, 1, glm::value_ptr(sFrameShadowCamPos));
+    glUniform1i(sUniShadowMap, sFrameShadowUnit);
 
     // Upload the bone palette. Cap at kMaxBones — any rig past that gets
     // truncated. With 49 bones for the soldier we have lots of headroom.

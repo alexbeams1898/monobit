@@ -1,5 +1,7 @@
 #include "ui/ActorHud.h"
 
+#include "AppState.h"
+#include "AppStateGlobal.h"
 #include "Tunables.h"
 #include "WallClock.h"
 #include "anim/PoseSampler.h"
@@ -12,11 +14,20 @@
 #include "gameplay/Enemies.h"
 #include "gameplay/Perception.h"
 #include "gameplay/PlayerState.h"
+#include "physics/PhysicsWorld.h"
 #include "render/Camera.h"
+#include "render/TerrainShader.h"
+#include "world/Collision.h"
+#include "world/CryptLayout.h"
+#include "world/Scene.h"
+#include "world/StructureFootprints.h"
+#include "world/Terrain.h"
 
 #include <glm/geometric.hpp>
 #include <glm/vec2.hpp>
 #include <imgui.h>
+
+#include <SDL.h>
 
 #include <algorithm>
 #include <cmath>
@@ -509,6 +520,475 @@ void renderActorHud()
     }
 
     ImGui::End();
+
+    // Save indicator: brief bottom-right "Saving..." chip after every
+    // autosave. Non-intrusive corner position, fades after a short
+    // window. Hidden while the pause menu is open (the chip belongs
+    // to gameplay overlay, not menu overlay).
+    //
+    // Uses SDL_GetTicks64() rather than selva::wallClock() because
+    // wallClock freezes when the gameplay tick is gated off during
+    // pause; the indicator must keep counting down in real time even
+    // if the player paused immediately after triggering the save.
+    constexpr std::uint64_t kSaveIndicatorMs = 2000;
+    constexpr std::uint64_t kSaveIndicatorFadeStartMs = 1200;
+    const auto& ui = selva::uiState();
+    const bool pause_open = ui.isScreenOpen();
+    if (!pause_open && ui.last_save_ticks_ms > 0)
+    {
+        const std::uint64_t now_ms = SDL_GetTicks64();
+        const std::uint64_t age_ms =
+            (now_ms >= ui.last_save_ticks_ms) ? (now_ms - ui.last_save_ticks_ms) : 0;
+        if (age_ms < kSaveIndicatorMs)
+        {
+            float alpha = 1.0f;
+            if (age_ms > kSaveIndicatorFadeStartMs)
+                alpha = 1.0f - static_cast<float>(age_ms - kSaveIndicatorFadeStartMs) /
+                                   static_cast<float>(kSaveIndicatorMs - kSaveIndicatorFadeStartMs);
+
+            constexpr float kIndicatorMargin = 24.0f;
+            constexpr float kIndicatorW = 140.0f;
+            constexpr float kIndicatorH = 32.0f;
+            const ImVec2 pos(vp->WorkPos.x + vp->WorkSize.x - kIndicatorW - kIndicatorMargin,
+                             vp->WorkPos.y + vp->WorkSize.y - kIndicatorH - kIndicatorMargin);
+            ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
+            ImGui::SetNextWindowSize(ImVec2(kIndicatorW, kIndicatorH), ImGuiCond_Always);
+            ImGui::SetNextWindowBgAlpha(0.0f);
+            ImGui::Begin("##SaveIndicator", nullptr,
+                         ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav |
+                             ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoInputs |
+                             ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground);
+            auto* d = ImGui::GetWindowDrawList();
+            const ImVec2 p0 = ImGui::GetWindowPos();
+            const float cx = p0.x + 14.0f;
+            const float cy = p0.y + kIndicatorH * 0.5f;
+            const auto fade_u32 = [alpha](int r, int g, int b, int a)
+            { return IM_COL32(r, g, b, static_cast<int>(static_cast<float>(a) * alpha)); };
+            d->AddCircleFilled(ImVec2(cx, cy), 5.0f, fade_u32(200, 200, 220, 255));
+            d->AddText(ImVec2(cx + 12.0f, p0.y + 8.0f), fade_u32(220, 220, 230, 255), "Saving...");
+            ImGui::End();
+        }
+    }
+}
+
+void renderCompass()
+{
+    // Strip width + visible angular range.
+    constexpr float kStripWidth = 360.0f;
+    constexpr float kStripHeight = 26.0f;
+    constexpr float kVisibleArc = 120.0f; // ±60° from center → 120° total
+    constexpr float kPxPerDeg = kStripWidth / kVisibleArc;
+
+    // Convert camera yaw to compass degrees (0=N, 90=E, 180=S, 270=W).
+    // World convention: yaw=0 looks south (-Z); lookFwd derivation is
+    //   lookFwd.x = -sin(yaw), lookFwd.z = -cos(yaw)
+    // → yaw=π is north, yaw=3π/2 is east. Convert to standard compass:
+    //   compass_deg = (yaw_deg + 180) mod 360
+    constexpr float kPi = 3.14159265358979f;
+    const float yaw_rad = selva::render::cameraYaw();
+    const float yaw_deg = yaw_rad * (180.0f / kPi);
+    float compass_deg = std::fmod(yaw_deg + 180.0f, 360.0f);
+    if (compass_deg < 0.0f)
+        compass_deg += 360.0f;
+
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    const float center_x = vp->WorkPos.x + vp->WorkSize.x * 0.5f;
+    const float top_y = vp->WorkPos.y + 14.0f;
+    const float strip_left = center_x - kStripWidth * 0.5f;
+    const float strip_right = center_x + kStripWidth * 0.5f;
+    const float strip_top = top_y;
+    const float strip_bot = top_y + kStripHeight;
+
+    ImGui::SetNextWindowPos(ImVec2(strip_left - 4.0f, strip_top - 4.0f), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(kStripWidth + 8.0f, kStripHeight + 8.0f), ImGuiCond_Always);
+    ImGui::SetNextWindowBgAlpha(0.0f);
+    ImGui::Begin("##Compass", nullptr,
+                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav |
+                     ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoInputs |
+                     ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground);
+    auto* draw = ImGui::GetWindowDrawList();
+
+    // Strip background — thin dark band, low opacity so it doesn't
+    // dominate the view.
+    constexpr ImU32 kStripBg = IM_COL32(0, 0, 0, 130);
+    constexpr ImU32 kTickMinor = IM_COL32(180, 180, 180, 140);
+    constexpr ImU32 kTickMajor = IM_COL32(220, 220, 220, 220);
+    constexpr ImU32 kTextCard = IM_COL32(240, 240, 240, 235);
+    constexpr ImU32 kTextInter = IM_COL32(200, 200, 200, 200);
+    constexpr ImU32 kCenter = IM_COL32(255, 220, 120, 255);
+
+    draw->AddRectFilled(ImVec2(strip_left, strip_top), ImVec2(strip_right, strip_bot), kStripBg,
+                        2.0f);
+
+    // Compass tick marks every 5° (minor) and 15° (major); cardinal
+    // letters every 45°. Iterate ±60° around the heading so off-screen
+    // ticks aren't computed.
+    struct Marker
+    {
+        float deg;
+        const char* label;
+        ImU32 color;
+        bool major;
+    };
+    // Note: world axes in this game are +X = west, -X = east (camera
+    // yaw is set up so turning right from facing south points toward
+    // -X). Swap the intercardinal labels accordingly so the compass
+    // matches real-world convention from the player's POV (facing S,
+    // turning right shows SW → W → NW → N at center).
+    const Marker kMarkers[] = {
+        {0.0f, "N", kTextCard, true},   {45.0f, "NW", kTextInter, true},
+        {90.0f, "W", kTextCard, true},  {135.0f, "SW", kTextInter, true},
+        {180.0f, "S", kTextCard, true}, {225.0f, "SE", kTextInter, true},
+        {270.0f, "E", kTextCard, true}, {315.0f, "NE", kTextInter, true},
+    };
+
+    // Helper: map a compass-direction (deg) to an X pixel position
+    // in the strip. Returns NaN if the direction is more than half
+    // the visible arc away from the current heading.
+    auto degToX = [&](float dir_deg) -> float
+    {
+        const float diff = std::fmod(dir_deg - compass_deg + 540.0f, 360.0f) - 180.0f;
+        return center_x + diff * kPxPerDeg;
+    };
+
+    // Tick marks every 5°, sweep from -60 to +60 of center.
+    for (int i = -12; i <= 12; ++i)
+    {
+        const float dir = std::fmod(compass_deg + static_cast<float>(i) * 5.0f + 360.0f, 360.0f);
+        const float x = degToX(dir);
+        if (x < strip_left || x > strip_right)
+            continue;
+        const bool major = (i % 3) == 0; // every 15°
+        const float h = major ? 8.0f : 4.0f;
+        draw->AddLine(ImVec2(x, strip_bot - h), ImVec2(x, strip_bot - 1.0f),
+                      major ? kTickMajor : kTickMinor, 1.0f);
+    }
+
+    // Cardinal + intercardinal letters.
+    for (const auto& m : kMarkers)
+    {
+        const float x = degToX(m.deg);
+        if (x < strip_left - 16.0f || x > strip_right + 16.0f)
+            continue;
+        const ImVec2 tsz = ImGui::CalcTextSize(m.label);
+        draw->AddText(ImVec2(x - tsz.x * 0.5f, strip_top + 3.0f), m.color, m.label);
+    }
+
+    // Center marker — a small downward-pointing chevron above the
+    // strip top, plus a vertical line through the strip indicating
+    // "you are facing this direction."
+    const float cx = center_x;
+    draw->AddTriangleFilled(ImVec2(cx, strip_top - 2.0f), ImVec2(cx - 5.0f, strip_top - 9.0f),
+                            ImVec2(cx + 5.0f, strip_top - 9.0f), kCenter);
+    draw->AddLine(ImVec2(cx, strip_top), ImVec2(cx, strip_bot), kCenter, 1.5f);
+
+    ImGui::End();
+}
+
+namespace
+{
+// Draw one cylinder: top + bottom ring + spokes at quarter-turns +
+// label above the top center.
+void drawColliderCylinder(const selva::world::CylinderCollider& c, const glm::mat4& vp,
+                          ImDrawList* overlay)
+{
+    constexpr int kCylSegments = 16;
+    const ImU32 cyl_color = IM_COL32(255, 200, 80, 220);
+    const float ground_y = selva::world::sampleHeight(c.center.x, c.center.z);
+    const float top_y = ground_y + c.half_height * 2.0f;
+    glm::vec2 prev_lo;
+    glm::vec2 prev_hi;
+    bool have_prev = false;
+    for (int i = 0; i <= kCylSegments; ++i)
+    {
+        const float t = static_cast<float>(i) / static_cast<float>(kCylSegments);
+        const float ang = t * 6.2831853f;
+        const float x = c.center.x + std::cos(ang) * c.radius;
+        const float z = c.center.z + std::sin(ang) * c.radius;
+        glm::vec2 sp_lo;
+        glm::vec2 sp_hi;
+        const bool lo_ok = selva::render::worldToScreen(vp, glm::vec3(x, ground_y, z), sp_lo);
+        const bool hi_ok = selva::render::worldToScreen(vp, glm::vec3(x, top_y, z), sp_hi);
+        if (have_prev && lo_ok)
+            overlay->AddLine(ImVec2(prev_lo.x, prev_lo.y), ImVec2(sp_lo.x, sp_lo.y), cyl_color,
+                             1.0f);
+        if (have_prev && hi_ok)
+            overlay->AddLine(ImVec2(prev_hi.x, prev_hi.y), ImVec2(sp_hi.x, sp_hi.y), cyl_color,
+                             1.0f);
+        if (i % 4 == 0 && lo_ok && hi_ok)
+            overlay->AddLine(ImVec2(sp_lo.x, sp_lo.y), ImVec2(sp_hi.x, sp_hi.y), cyl_color, 1.0f);
+        if (lo_ok)
+            prev_lo = sp_lo;
+        if (hi_ok)
+            prev_hi = sp_hi;
+        have_prev = lo_ok && hi_ok;
+    }
+    if (c.name != nullptr)
+    {
+        glm::vec2 label_pos;
+        if (selva::render::worldToScreen(vp, glm::vec3(c.center.x, top_y + 0.10f, c.center.z),
+                                         label_pos))
+            overlay->AddText(ImVec2(label_pos.x - 4.0f, label_pos.y - 14.0f), cyl_color, c.name);
+    }
+}
+
+// Draw one box: 4 vertical edges + top/bottom rectangles, with
+// walkable_top slope rendered as a sloped top quad. Color encodes
+// type: cyan = standard, green = walkable_top, magenta = camera_only.
+void drawColliderBox(const selva::world::BoxCollider& b, const glm::mat4& vp, ImDrawList* overlay)
+{
+    const ImU32 col_standard = IM_COL32(80, 200, 255, 220);
+    const ImU32 col_walkable = IM_COL32(80, 255, 120, 220);
+    const ImU32 col_camera = IM_COL32(255, 100, 200, 220);
+    const float lo_y = b.y_base;
+    const float hi_y_center = b.y_base + 2.0f * b.half_height_y;
+    const glm::vec2 corners_xz[4] = {
+        {b.center.x - b.half_extents.x, b.center.y - b.half_extents.y},
+        {b.center.x + b.half_extents.x, b.center.y - b.half_extents.y},
+        {b.center.x + b.half_extents.x, b.center.y + b.half_extents.y},
+        {b.center.x - b.half_extents.x, b.center.y + b.half_extents.y},
+    };
+    glm::vec2 s_lo[4];
+    glm::vec2 s_hi[4];
+    bool ok_lo[4];
+    bool ok_hi[4];
+    for (int i = 0; i < 4; ++i)
+    {
+        const float dx = corners_xz[i].x - b.center.x;
+        const float dz = corners_xz[i].y - b.center.y;
+        const float hi_y_here = hi_y_center + b.top_slope.x * dx + b.top_slope.y * dz;
+        ok_lo[i] = selva::render::worldToScreen(
+            vp, glm::vec3(corners_xz[i].x, lo_y, corners_xz[i].y), s_lo[i]);
+        ok_hi[i] = selva::render::worldToScreen(
+            vp, glm::vec3(corners_xz[i].x, hi_y_here, corners_xz[i].y), s_hi[i]);
+    }
+    const ImU32 color = b.camera_only ? col_camera : (b.walkable_top ? col_walkable : col_standard);
+    for (int i = 0; i < 4; ++i)
+    {
+        const int j = (i + 1) % 4;
+        if (ok_lo[i] && ok_lo[j])
+            overlay->AddLine(ImVec2(s_lo[i].x, s_lo[i].y), ImVec2(s_lo[j].x, s_lo[j].y), color,
+                             1.5f);
+        if (ok_hi[i] && ok_hi[j])
+            overlay->AddLine(ImVec2(s_hi[i].x, s_hi[i].y), ImVec2(s_hi[j].x, s_hi[j].y), color,
+                             1.5f);
+        if (ok_lo[i] && ok_hi[i])
+            overlay->AddLine(ImVec2(s_lo[i].x, s_lo[i].y), ImVec2(s_hi[i].x, s_hi[i].y), color,
+                             1.5f);
+    }
+    if (b.name != nullptr)
+    {
+        glm::vec2 label_pos;
+        if (selva::render::worldToScreen(vp, glm::vec3(b.center.x, hi_y_center + 0.10f, b.center.y),
+                                         label_pos))
+            overlay->AddText(ImVec2(label_pos.x - 4.0f, label_pos.y - 14.0f), color, b.name);
+    }
+}
+
+// Draw every registered StructureFootprint that cuts the floor as a
+// red rect overlay. Reading the registry directly means the overlay
+// can't drift from what the terrain shader actually sees.
+void drawStructureFootprintRects(const glm::mat4& vp, ImDrawList* overlay)
+{
+    using namespace selva::world::crypt_layout;
+    const ImU32 discard_color = IM_COL32(255, 60, 60, 220);
+    const float terrain_y = selva::world::sampleHeight(kCryptX + kHalfWidth + 2.0f, kCryptZ);
+    auto drawRect = [&](const glm::vec2& center, const glm::vec2& half_extents, const char* label)
+    {
+        if (half_extents.x <= 0.0f || half_extents.y <= 0.0f)
+            return;
+        const float c[4][2] = {
+            {center.x - half_extents.x, center.y - half_extents.y},
+            {center.x + half_extents.x, center.y - half_extents.y},
+            {center.x + half_extents.x, center.y + half_extents.y},
+            {center.x - half_extents.x, center.y + half_extents.y},
+        };
+        glm::vec2 sp[4];
+        bool ok[4];
+        for (int i = 0; i < 4; ++i)
+            ok[i] = selva::render::worldToScreen(vp, glm::vec3(c[i][0], terrain_y + 0.05f, c[i][1]),
+                                                 sp[i]);
+        for (int i = 0; i < 4; ++i)
+        {
+            const int j = (i + 1) % 4;
+            if (ok[i] && ok[j])
+                overlay->AddLine(ImVec2(sp[i].x, sp[i].y), ImVec2(sp[j].x, sp[j].y), discard_color,
+                                 2.0f);
+        }
+        glm::vec2 lp;
+        if (selva::render::worldToScreen(vp, glm::vec3(center.x, terrain_y + 0.05f, center.y), lp))
+            overlay->AddText(ImVec2(lp.x - 30.0f, lp.y), discard_color, label);
+    };
+    const int fp_count = engine::world::structureFootprintCount();
+    for (int i = 0; i < fp_count; ++i)
+    {
+        const auto& f = engine::world::structureFootprintAt(i);
+        if (!f.cuts_floor)
+            continue;
+        const char* label = f.debug_name ? f.debug_name : "structure_footprint";
+        drawRect(f.center_xz, f.half_extents_xz, label);
+    }
+}
+} // namespace
+
+void renderColliderDebug()
+{
+    const auto& tun = selva::tuning::current();
+    if (!tun.debug_show_colliders)
+        return;
+    const auto& scene = selva::world::currentScene();
+    const glm::mat4& vp = selva::render::lastViewProj();
+    ImDrawList* overlay = ImGui::GetForegroundDrawList();
+    for (const auto& c : scene.cylinders)
+        drawColliderCylinder(c, vp, overlay);
+    for (const auto& b : scene.boxes)
+        drawColliderBox(b, vp, overlay);
+    drawStructureFootprintRects(vp, overlay);
+}
+
+void renderPhysicsBodyDebug()
+{
+    const auto& tun = selva::tuning::current();
+    if (!tun.debug_show_physics_bodies)
+        return;
+
+    const glm::mat4& vp = selva::render::lastViewProj();
+    ImDrawList* overlay = ImGui::GetForegroundDrawList();
+
+    // Enumerate every Jolt body (static trimeshes, static boxes,
+    // character capsules) and draw its world AABB colored by
+    // SurfaceTag. This is the ground truth for what physics sees —
+    // if a mesh isn't in here, it's not collidable, period.
+    using engine::physics::BodyDebugInfo;
+    using engine::physics::BodyKind;
+    using engine::physics::SurfaceTag;
+    static std::vector<BodyDebugInfo> bodies;
+    engine::physics::enumerateBodies(bodies);
+    // Skip if too many bodies — drawing thousands of AABBs costs
+    // perceptible frame time. ~900 bodies (chapel x2 + terrain) is
+    // the current Selva ceiling; cap at 2000 to leave headroom.
+    if (bodies.size() > 2000)
+        return;
+
+    for (const auto& info : bodies)
+    {
+        ImU32 c;
+        switch (info.tag)
+        {
+        case SurfaceTag::Terrain:
+            c = IM_COL32(180, 120, 60, 180);
+            break;
+        case SurfaceTag::Architecture:
+            c = IM_COL32(80, 180, 255, 180);
+            break;
+        case SurfaceTag::Foliage:
+            c = IM_COL32(100, 220, 100, 180);
+            break;
+        case SurfaceTag::Actor:
+            c = IM_COL32(255, 200, 80, 220);
+            break;
+        default:
+            c = IM_COL32(200, 200, 200, 160);
+            break;
+        }
+        const glm::vec3 mn = info.world_aabb_min;
+        const glm::vec3 mx = info.world_aabb_max;
+        const glm::vec3 corners[8] = {
+            {mn.x, mn.y, mn.z}, {mx.x, mn.y, mn.z}, {mx.x, mn.y, mx.z}, {mn.x, mn.y, mx.z},
+            {mn.x, mx.y, mn.z}, {mx.x, mx.y, mn.z}, {mx.x, mx.y, mx.z}, {mn.x, mx.y, mx.z},
+        };
+        glm::vec2 sp[8];
+        bool ok[8];
+        for (int i = 0; i < 8; ++i)
+            ok[i] = selva::render::worldToScreen(vp, corners[i], sp[i]);
+        const int edges[12][2] = {
+            {0, 1}, {1, 2}, {2, 3}, {3, 0}, // bottom
+            {4, 5}, {5, 6}, {6, 7}, {7, 4}, // top
+            {0, 4}, {1, 5}, {2, 6}, {3, 7}, // verticals
+        };
+        for (auto& e : edges)
+        {
+            if (ok[e[0]] && ok[e[1]])
+                overlay->AddLine(ImVec2(sp[e[0]].x, sp[e[0]].y), ImVec2(sp[e[1]].x, sp[e[1]].y), c,
+                                 1.0f);
+        }
+        // Label at the AABB's top-center so the user can see which
+        // body is which. Skip if name is empty.
+        const char* name = engine::physics::bodyDebugName(info.body);
+        if (name != nullptr && name[0] != '\0')
+        {
+            const glm::vec3 label_pos((mn.x + mx.x) * 0.5f, mx.y + 0.05f, (mn.z + mx.z) * 0.5f);
+            glm::vec2 lp;
+            if (selva::render::worldToScreen(vp, label_pos, lp))
+            {
+                // Estimate text width to center the label.
+                const float text_w = ImGui::CalcTextSize(name).x;
+                overlay->AddText(ImVec2(lp.x - text_w * 0.5f, lp.y - 14.0f), c, name);
+            }
+        }
+    }
+}
+
+void renderSceneOverlays()
+{
+    using namespace engine::world;
+    const auto& tun = selva::tuning::current();
+    ImDrawList* fg = ImGui::GetForegroundDrawList();
+    const ImGuiIO& io = ImGui::GetIO();
+
+    // ---- Fade-to-black during transitions (always-on) ----
+    const float fade = transitionFadeAlpha();
+    if (fade > 0.001f)
+    {
+        const ImU32 col = IM_COL32(0, 0, 0, static_cast<int>(fade * 255.0f));
+        fg->AddRectFilled(ImVec2(0, 0), ImVec2(io.DisplaySize.x, io.DisplaySize.y), col);
+    }
+
+    // ---- Scene-name chip in top-right (always-on) ----
+    Scene* cur = currentScenePtr();
+    const std::string chip_text = cur != nullptr ? ("scene: " + cur->sceneId()) : "scene: (none)";
+    const ImVec2 ts = ImGui::CalcTextSize(chip_text.c_str());
+    const float pad = 6.0f;
+    const ImVec2 chip_min(io.DisplaySize.x - ts.x - 2 * pad - 8.0f, 8.0f);
+    const ImVec2 chip_max(io.DisplaySize.x - 8.0f, 8.0f + ts.y + 2 * pad);
+    fg->AddRectFilled(chip_min, chip_max, IM_COL32(0, 0, 0, 180), 4.0f);
+    fg->AddText(ImVec2(chip_min.x + pad, chip_min.y + pad), IM_COL32(255, 255, 255, 220),
+                chip_text.c_str());
+
+    // ---- Trigger volume wireframes (gated by debug_show_colliders) ----
+    if (tun.debug_show_colliders && cur != nullptr)
+    {
+        const glm::mat4& vp = selva::render::lastViewProj();
+        const ImU32 trig_color = IM_COL32(255, 220, 80, 220);
+        for (const auto& t : cur->triggers())
+        {
+            const glm::vec3& c = t.center;
+            const glm::vec3& h = t.half_extents;
+            const glm::vec3 corners[8] = {
+                {c.x - h.x, c.y - h.y, c.z - h.z}, {c.x + h.x, c.y - h.y, c.z - h.z},
+                {c.x + h.x, c.y - h.y, c.z + h.z}, {c.x - h.x, c.y - h.y, c.z + h.z},
+                {c.x - h.x, c.y + h.y, c.z - h.z}, {c.x + h.x, c.y + h.y, c.z - h.z},
+                {c.x + h.x, c.y + h.y, c.z + h.z}, {c.x - h.x, c.y + h.y, c.z + h.z},
+            };
+            glm::vec2 sp[8];
+            bool ok[8];
+            for (int i = 0; i < 8; ++i)
+                ok[i] = selva::render::worldToScreen(vp, corners[i], sp[i]);
+            const int edges[12][2] = {
+                {0, 1}, {1, 2}, {2, 3}, {3, 0}, {4, 5}, {5, 6},
+                {6, 7}, {7, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7},
+            };
+            for (auto& e : edges)
+            {
+                if (ok[e[0]] && ok[e[1]])
+                    fg->AddLine(ImVec2(sp[e[0]].x, sp[e[0]].y), ImVec2(sp[e[1]].x, sp[e[1]].y),
+                                trig_color, 1.5f);
+            }
+            glm::vec2 lp;
+            if (selva::render::worldToScreen(vp, c, lp))
+                fg->AddText(ImVec2(lp.x, lp.y - 14.0f), trig_color, t.debug_name.c_str());
+        }
+    }
 }
 
 } // namespace selva::ui

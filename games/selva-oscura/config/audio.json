@@ -20,6 +20,82 @@
       "path": "assets/audio/soul_steal.mp3",
       "volume": 0.85,
       "peak_offset_seconds": 0.8
+    },
+    "footstep_grass": {
+      "_comment": "Outdoor wood-floor walking.",
+      "path": "assets/audio/footstep_walk_1.ogg",
+      "volume": 0.65,
+      "variations": [
+        "assets/audio/footstep_walk_1.ogg",
+        "assets/audio/footstep_walk_2.ogg",
+        "assets/audio/footstep_walk_3.ogg",
+        "assets/audio/footstep_walk_4.ogg",
+        "assets/audio/footstep_walk_5.ogg",
+        "assets/audio/footstep_walk_6.ogg",
+        "assets/audio/footstep_walk_7.ogg",
+        "assets/audio/footstep_walk_8.ogg"
+      ]
+    },
+    "footstep_concrete": {
+      "_comment": "Stone / paved surface. Used for indoor (chapel interior) walking and reserved for future non-grass exterior surfaces.",
+      "path": "assets/audio/footstep_walk_concrete_1.ogg",
+      "volume": 0.65,
+      "variations": [
+        "assets/audio/footstep_walk_concrete_1.ogg",
+        "assets/audio/footstep_walk_concrete_2.ogg",
+        "assets/audio/footstep_walk_concrete_3.ogg",
+        "assets/audio/footstep_walk_concrete_4.ogg",
+        "assets/audio/footstep_walk_concrete_5.ogg",
+        "assets/audio/footstep_walk_concrete_6.ogg",
+        "assets/audio/footstep_walk_concrete_7.ogg",
+        "assets/audio/footstep_walk_concrete_8.ogg"
+      ]
+    },
+    "footstep_hallway": {
+      "_comment": "Indoor / echoey-surface walking.",
+      "path": "assets/audio/footstep_walk_hallway_1.ogg",
+      "volume": 0.7,
+      "variations": [
+        "assets/audio/footstep_walk_hallway_1.ogg",
+        "assets/audio/footstep_walk_hallway_2.ogg",
+        "assets/audio/footstep_walk_hallway_3.ogg",
+        "assets/audio/footstep_walk_hallway_4.ogg",
+        "assets/audio/footstep_walk_hallway_5.ogg",
+        "assets/audio/footstep_walk_hallway_6.ogg",
+        "assets/audio/footstep_walk_hallway_7.ogg",
+        "assets/audio/footstep_walk_hallway_8.ogg"
+      ]
+    },
+    "footstep_limbo": {
+      "_comment": "Limbo (First Circle) ground. Dim ash-grey stone — see config/terrain/config.json limbo entry. Chopped from walking_on_limbo_ground.mp3 via chop_footsteps.py, normalized to -1 dBFS.",
+      "path": "assets/audio/footstep_walk_limbo_1.ogg",
+      "volume": 0.65,
+      "variations": [
+        "assets/audio/footstep_walk_limbo_1.ogg",
+        "assets/audio/footstep_walk_limbo_2.ogg",
+        "assets/audio/footstep_walk_limbo_3.ogg",
+        "assets/audio/footstep_walk_limbo_4.ogg",
+        "assets/audio/footstep_walk_limbo_5.ogg",
+        "assets/audio/footstep_walk_limbo_6.ogg",
+        "assets/audio/footstep_walk_limbo_7.ogg",
+        "assets/audio/footstep_walk_limbo_8.ogg"
+      ]
+    },
+    "whoosh_jab": {
+      "path": "assets/audio/whoosh_jab.mp3",
+      "volume": 0.7
+    },
+    "whoosh_hook_left": {
+      "path": "assets/audio/whoosh_hook_left.mp3",
+      "volume": 0.75
+    },
+    "whoosh_hook_right": {
+      "path": "assets/audio/whoosh_hook_right.mp3",
+      "volume": 0.75
+    },
+    "whoosh_heavy": {
+      "path": "assets/audio/whoosh_heavy.mp3",
+      "volume": 0.85
     }
   }
 }
