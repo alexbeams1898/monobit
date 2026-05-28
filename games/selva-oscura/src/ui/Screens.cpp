@@ -387,6 +387,67 @@ bool renderSystemTab()
 // ---------------------------------------------------------------------------
 // Pause menu overlay
 // ---------------------------------------------------------------------------
+namespace
+{
+void renderPauseStatusTab()
+{
+    ImGui::Spacing();
+    ImGui::Text("Character: %s", gameState().active_character.c_str());
+    ImGui::Spacing();
+    ImGui::TextDisabled("(stats, sangue totals, evolution stage TBD)");
+}
+
+void renderPauseInventoryTab()
+{
+    ImGui::Spacing();
+    const auto& inv = playerInventory();
+    ImGui::Text("Slots: %d / %d", static_cast<int>(inv.items.size()), inv.max_slots);
+    ImGui::Spacing();
+    if (inv.items.empty())
+    {
+        ImGui::TextDisabled("(empty - no items yet)");
+        return;
+    }
+    const auto& reg = itemRegistry();
+    for (const auto& it : inv.items)
+    {
+        const ItemDef* def = reg.find(it.config_path);
+        const char* name = (def != nullptr) ? def->name.c_str() : it.config_path.c_str();
+        if (it.quantity > 1)
+            ImGui::Text("- %s x%d", name, it.quantity);
+        else
+            ImGui::Text("- %s", name);
+    }
+}
+
+void renderPauseEquipmentTab()
+{
+    ImGui::Spacing();
+    const auto& inv = playerInventory();
+    const auto& eq = playerEquipment();
+    auto draw_slot = [&](const char* label, EquipSlot slot)
+    {
+        const std::string path = InventoryOps::equippedPath(inv, eq, slot);
+        if (path.empty())
+            ImGui::Text("%s: (none)", label);
+        else
+        {
+            const ItemDef* def = itemRegistry().find(path);
+            const char* name = (def != nullptr) ? def->name.c_str() : path.c_str();
+            ImGui::Text("%s: %s", label, name);
+        }
+    };
+    draw_slot("Right hand", EquipSlot::RightHand);
+    draw_slot("Left hand", EquipSlot::LeftHand);
+    draw_slot("Head", EquipSlot::Head);
+    draw_slot("Chest", EquipSlot::Chest);
+    draw_slot("Legs", EquipSlot::Legs);
+    draw_slot("Feet", EquipSlot::Feet);
+    draw_slot("Accessory 1", EquipSlot::Accessory1);
+    draw_slot("Accessory 2", EquipSlot::Accessory2);
+}
+} // namespace
+
 bool renderPauseMenu()
 {
     bool quit = false;
@@ -404,64 +465,19 @@ bool renderPauseMenu()
         if (ImGui::BeginTabItem("Status"))
         {
             ui.menu_tab = UIState::Tab::Status;
-            ImGui::Spacing();
-            ImGui::Text("Character: %s", gameState().active_character.c_str());
-            ImGui::Spacing();
-            ImGui::TextDisabled("(stats, sangue totals, evolution stage TBD)");
+            renderPauseStatusTab();
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Inventory"))
         {
             ui.menu_tab = UIState::Tab::Inventory;
-            ImGui::Spacing();
-            const auto& inv = playerInventory();
-            ImGui::Text("Slots: %d / %d", static_cast<int>(inv.items.size()), inv.max_slots);
-            ImGui::Spacing();
-            if (inv.items.empty())
-                ImGui::TextDisabled("(empty - no items yet)");
-            else
-            {
-                const auto& reg = itemRegistry();
-                for (std::size_t i = 0; i < inv.items.size(); ++i)
-                {
-                    const auto& it = inv.items[i];
-                    const ItemDef* def = reg.find(it.config_path);
-                    const char* name =
-                        (def != nullptr) ? def->name.c_str() : it.config_path.c_str();
-                    if (it.quantity > 1)
-                        ImGui::Text("- %s x%d", name, it.quantity);
-                    else
-                        ImGui::Text("- %s", name);
-                }
-            }
+            renderPauseInventoryTab();
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Equipment"))
         {
             ui.menu_tab = UIState::Tab::Equipment;
-            ImGui::Spacing();
-            const auto& inv = playerInventory();
-            const auto& eq = playerEquipment();
-            auto draw_slot = [&](const char* label, EquipSlot slot)
-            {
-                const std::string path = InventoryOps::equippedPath(inv, eq, slot);
-                if (path.empty())
-                    ImGui::Text("%s: (none)", label);
-                else
-                {
-                    const ItemDef* def = itemRegistry().find(path);
-                    const char* name = (def != nullptr) ? def->name.c_str() : path.c_str();
-                    ImGui::Text("%s: %s", label, name);
-                }
-            };
-            draw_slot("Right hand", EquipSlot::RightHand);
-            draw_slot("Left hand", EquipSlot::LeftHand);
-            draw_slot("Head", EquipSlot::Head);
-            draw_slot("Chest", EquipSlot::Chest);
-            draw_slot("Legs", EquipSlot::Legs);
-            draw_slot("Feet", EquipSlot::Feet);
-            draw_slot("Accessory 1", EquipSlot::Accessory1);
-            draw_slot("Accessory 2", EquipSlot::Accessory2);
+            renderPauseEquipmentTab();
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("System"))

@@ -23,7 +23,7 @@ void SceneActivationContext::addBody(engine::physics::BodyHandle h)
 {
     if (h == engine::physics::kInvalidBody)
         return;
-    mScene.engineAppendBody(h);
+    scene_ref.engineAppendBody(h);
 }
 
 void SceneActivationContext::addBodies(const std::vector<engine::physics::BodyHandle>& hs)
@@ -34,7 +34,7 @@ void SceneActivationContext::addBodies(const std::vector<engine::physics::BodyHa
 
 void SceneActivationContext::addTrigger(const SceneTrigger& t)
 {
-    mScene.engineAppendTrigger(t);
+    scene_ref.engineAppendTrigger(t);
 }
 
 // ---------------------------------------------------------------------------
@@ -214,6 +214,104 @@ bool beginTransition(SceneId target, TransitionMode mode, bool preserve_player_p
     return true;
 }
 
+namespace
+{
+void tickLoadingTarget()
+{
+    Scene* tgt = sceneFromId(g.target);
+    auto* async_tgt = dynamic_cast<AsyncCapableScene*>(tgt);
+    if (async_tgt != nullptr && !g.load_in_flight)
+    {
+        std::fprintf(stderr, "[scene-manager] kicking async prepare for '%s'\n",
+                     tgt->sceneId().c_str());
+        g.load_future = beginAsyncScenePrepare(*async_tgt);
+        g.load_in_flight = true;
+    }
+    bool ready = !g.load_in_flight;
+    if (g.load_in_flight && g.load_future.valid())
+        ready = (g.load_future.wait_for(std::chrono::seconds(0)) == std::future_status::ready);
+    if (!ready)
+        return;
+    if (g.load_in_flight)
+    {
+        g.load_future.get(); // surface exceptions
+        std::fprintf(stderr, "[scene-manager] async prepare ready\n");
+    }
+    g.load_in_flight = false;
+    g.state = TransitionState::FadingOut;
+    g.fade_elapsed = 0.0f;
+}
+
+void tickFadingOut(float dt)
+{
+    g.fade_elapsed += dt;
+    const float half = g.fade_duration * 0.5f;
+    g.fade_alpha = std::min(1.0f, g.fade_elapsed / half);
+    if (g.fade_elapsed >= half)
+    {
+        g.fade_alpha = 1.0f;
+        g.state = TransitionState::Committing;
+    }
+}
+
+void firePostCommit(bool preserve_pos, const glm::vec3& spawn_pos, bool override_yaw,
+                    float spawn_yaw)
+{
+    if (g.post_commit != nullptr)
+    {
+        std::fprintf(stderr, "[scene-manager] post-commit callback firing\n");
+        g.post_commit(preserve_pos, spawn_pos, override_yaw, spawn_yaw);
+    }
+    else
+    {
+        std::fprintf(
+            stderr,
+            "[scene-manager] WARNING: post_commit callback NULL — player will not teleport\n");
+    }
+}
+
+void tickCommitting()
+{
+    const bool from_async = (g.mode != TransitionMode::Instant);
+    const bool preserve_pos = g.preserve_player_pos;
+    const glm::vec3 spawn_pos = g.target_spawn_pos;
+    const bool override_yaw = g.override_yaw;
+    const float spawn_yaw = g.target_yaw;
+    std::fprintf(stderr,
+                 "[scene-manager] COMMIT: deactivating + activating target SceneId=%u "
+                 "(from_async=%d), then teleporting player to (%.2f,%.2f,%.2f) "
+                 "override_yaw=%d\n",
+                 g.target.id, from_async ? 1 : 0, spawn_pos.x, spawn_pos.y, spawn_pos.z,
+                 override_yaw ? 1 : 0);
+    deactivateCurrent();
+    activateInternal(g.target, from_async);
+    g.target = kInvalidScene;
+    firePostCommit(preserve_pos, spawn_pos, override_yaw, spawn_yaw);
+    if (g.mode == TransitionMode::Instant)
+    {
+        g.state = TransitionState::Idle;
+        g.fade_alpha = 0.0f;
+    }
+    else
+    {
+        g.state = TransitionState::FadingIn;
+        g.fade_elapsed = 0.0f;
+    }
+}
+
+void tickFadingIn(float dt)
+{
+    g.fade_elapsed += dt;
+    const float half = g.fade_duration * 0.5f;
+    g.fade_alpha = std::max(0.0f, 1.0f - (g.fade_elapsed / half));
+    if (g.fade_elapsed >= half)
+    {
+        g.fade_alpha = 0.0f;
+        g.state = TransitionState::Idle;
+    }
+}
+} // namespace
+
 TransitionState tickSceneManager(float dt)
 {
     const TransitionState entry_state = g.state;
@@ -222,115 +320,17 @@ TransitionState tickSceneManager(float dt)
     case TransitionState::Idle:
         break;
     case TransitionState::LoadingTarget:
-    {
-        // If the target supports async preparation, kick the worker
-        // on the first frame we enter this state. Subsequent frames
-        // poll the future; we don't advance to FadingOut until
-        // prepareAsync completes.
-        Scene* tgt = sceneFromId(g.target);
-        auto* async_tgt = dynamic_cast<AsyncCapableScene*>(tgt);
-        if (async_tgt != nullptr && !g.load_in_flight)
-        {
-            std::fprintf(stderr, "[scene-manager] kicking async prepare for '%s'\n",
-                         tgt->sceneId().c_str());
-            g.load_future = beginAsyncScenePrepare(*async_tgt);
-            g.load_in_flight = true;
-        }
-        // Poll: ready when (a) no async work was scheduled, or
-        // (b) the future is ready.
-        bool ready = !g.load_in_flight;
-        if (g.load_in_flight && g.load_future.valid())
-        {
-            ready = (g.load_future.wait_for(std::chrono::seconds(0)) == std::future_status::ready);
-        }
-        if (ready)
-        {
-            if (g.load_in_flight)
-            {
-                g.load_future.get(); // surface exceptions
-                std::fprintf(stderr, "[scene-manager] async prepare ready\n");
-            }
-            g.load_in_flight = false;
-            g.state = TransitionState::FadingOut;
-            g.fade_elapsed = 0.0f;
-        }
+        tickLoadingTarget();
         break;
-    }
     case TransitionState::FadingOut:
-    {
-        g.fade_elapsed += dt;
-        // Half the fade is used to fade OUT (alpha 0 -> 1); the
-        // other half fades back in after commit.
-        const float half = g.fade_duration * 0.5f;
-        g.fade_alpha = std::min(1.0f, g.fade_elapsed / half);
-        if (g.fade_elapsed >= half)
-        {
-            g.fade_alpha = 1.0f;
-            g.state = TransitionState::Committing;
-        }
+        tickFadingOut(dt);
         break;
-    }
     case TransitionState::Committing:
-    {
-        // Atomic swap on a single frame: deactivate current (remove
-        // bodies), activate target (register bodies). At no point are
-        // both scenes' bodies in Jolt at the same time.
-        //
-        // from_async = true when we're in the middle of a real
-        // transition (LoadingTarget ran prepareAsync already); false
-        // for Instant mode which skips loading.
-        const bool from_async = (g.mode != TransitionMode::Instant);
-        const bool preserve_pos = g.preserve_player_pos;
-        const glm::vec3 spawn_pos = g.target_spawn_pos;
-        const bool override_yaw = g.override_yaw;
-        const float spawn_yaw = g.target_yaw;
-        std::fprintf(stderr,
-                     "[scene-manager] COMMIT: deactivating + activating target SceneId=%u "
-                     "(from_async=%d), then teleporting player to (%.2f,%.2f,%.2f) "
-                     "override_yaw=%d\n",
-                     g.target.id, from_async ? 1 : 0, spawn_pos.x, spawn_pos.y, spawn_pos.z,
-                     override_yaw ? 1 : 0);
-        deactivateCurrent();
-        activateInternal(g.target, from_async);
-        g.target = kInvalidScene;
-        // Game-side hook: teleport player capsule into new scene's
-        // local coords. The hook is responsible for the actor; the
-        // engine only knows the spawn intent from the trigger.
-        if (g.post_commit != nullptr)
-        {
-            std::fprintf(stderr, "[scene-manager] post-commit callback firing\n");
-            g.post_commit(preserve_pos, spawn_pos, override_yaw, spawn_yaw);
-        }
-        else
-        {
-            std::fprintf(
-                stderr,
-                "[scene-manager] WARNING: post_commit callback NULL — player will not teleport\n");
-        }
-        if (g.mode == TransitionMode::Instant)
-        {
-            g.state = TransitionState::Idle;
-            g.fade_alpha = 0.0f;
-        }
-        else
-        {
-            g.state = TransitionState::FadingIn;
-            g.fade_elapsed = 0.0f;
-        }
+        tickCommitting();
         break;
-    }
     case TransitionState::FadingIn:
-    {
-        g.fade_elapsed += dt;
-        const float half = g.fade_duration * 0.5f;
-        g.fade_alpha = std::max(0.0f, 1.0f - (g.fade_elapsed / half));
-        if (g.fade_elapsed >= half)
-        {
-            g.fade_alpha = 0.0f;
-            g.state = TransitionState::Idle;
-        }
+        tickFadingIn(dt);
         break;
-    }
     }
     if (entry_state != g.state)
     {

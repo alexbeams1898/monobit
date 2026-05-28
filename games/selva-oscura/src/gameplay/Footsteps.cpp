@@ -144,6 +144,127 @@ void resolveJointIdx(Actor::FootContact& fc, const Actor& actor, const char* joi
     footstepLogf("[event] joint resolve name=%s idx=%d\n", joint_name, fc.joint_idx);
 }
 
+// Downward raycast just above the foot; reports tag + body so callers
+// can pick the right footstep bank.
+struct FootSurface
+{
+    engine::physics::SurfaceTag tag = engine::physics::SurfaceTag::Unknown;
+    engine::physics::BodyHandle body = engine::physics::kInvalidBody;
+};
+FootSurface raycastFootSurface(const glm::vec3& foot_world)
+{
+    FootSurface s;
+    const engine::physics::RayHit hit =
+        engine::physics::raycast(foot_world + glm::vec3(0.0f, 0.10f, 0.0f), // start just above foot
+                                 glm::vec3(0.0f, -1.0f, 0.0f), 1.0f);
+    if (hit.hit)
+    {
+        s.tag = hit.tag;
+        s.body = hit.body;
+    }
+    return s;
+}
+
+// Footstep bank for the raycast result. Terrain bodies carry their
+// region name as debug_name; the region declares its footstep_sound_id.
+// Returns nullptr for surfaces without an authored bank (intentional —
+// every walkable surface should own its own bank; nullptr is a bug
+// flag, not a "default sound" fallback).
+const char* pickFootstepSfx(const FootSurface& s)
+{
+    switch (s.tag)
+    {
+    case engine::physics::SurfaceTag::Architecture:
+        return "footstep_concrete";
+    case engine::physics::SurfaceTag::Terrain:
+    {
+        if (s.body == engine::physics::kInvalidBody)
+            return nullptr;
+        const char* region_name = engine::physics::bodyDebugName(s.body);
+        if (region_name == nullptr || *region_name == '\0')
+            return nullptr;
+        const auto* region = selva::world::terrainRegionAtName(region_name);
+        return region ? region->footstep_sound_id.c_str() : nullptr;
+    }
+    case engine::physics::SurfaceTag::Foliage:
+    case engine::physics::SurfaceTag::Unknown:
+    case engine::physics::SurfaceTag::Actor:
+    default:
+        return nullptr;
+    }
+}
+
+// Per-plant context — bundled so firePlantSfx + handlePlantEvent stay
+// under the param-count threshold and read naturally at the call site.
+struct PlantContext
+{
+    glm::vec3 foot_world;
+    FootSurface surface;
+    float gain;
+    float foot_y;
+    float since_fire;
+    float now;
+    bool is_left;
+};
+
+void firePlantSfx(Actor::FootContact& fc, Actor& actor, const PlantContext& ctx,
+                  const char* sfx_name)
+{
+    if (sfx_name == nullptr)
+    {
+        footstepLogf("[event] surface foot=%s foot_xz=(%.3f,%.3f) surface_tag=%d "
+                     "body_name='%s' — NO SFX (unauthored surface)\n",
+                     footLabel(ctx.is_left), ctx.foot_world.x, ctx.foot_world.z,
+                     static_cast<int>(ctx.surface.tag),
+                     ctx.surface.body != engine::physics::kInvalidBody
+                         ? engine::physics::bodyDebugName(ctx.surface.body)
+                         : "(no hit)");
+        fc.last_fire_time = ctx.now;
+        actor.last_footstep_fire_time = ctx.now;
+        return;
+    }
+    footstepLogf("[event] surface foot=%s foot_xz=(%.3f,%.3f) body_xz=(%.3f,%.3f) "
+                 "surface_tag=%d sfx=%s\n",
+                 footLabel(ctx.is_left), ctx.foot_world.x, ctx.foot_world.z, actor.pos.x,
+                 actor.pos.z, static_cast<int>(ctx.surface.tag), sfx_name);
+    selva::audio::playSfxScaled(sfx_name, ctx.gain);
+    fc.last_fire_time = ctx.now;
+    actor.last_footstep_fire_time = ctx.now;
+    footstepLogf("[event] FIRE foot=%s gain=%.3f peak_descent=%.3f foot_y=%.4f "
+                 "since_last=%.3fs sfx=%s\n",
+                 footLabel(ctx.is_left), ctx.gain, fc.peak_descent_vy, ctx.foot_y, ctx.since_fire,
+                 sfx_name);
+}
+
+// Handle a foot zero-crossing (transition from descent to ascent =
+// foot plant). Picks surface + bank, plays SFX if gain + cooldown
+// allow, otherwise logs a suppression reason. Resets peak_descent.
+void handlePlantEvent(Actor::FootContact& fc, Actor& actor, float foot_y, float now,
+                      float since_fire, bool can_fire, bool is_left)
+{
+    const float gain = plantGain(fc.peak_descent_vy);
+    if (gain > 0.0f && can_fire)
+    {
+        PlantContext ctx;
+        ctx.foot_world = actor.sampler.jointWorldPosWithActor(fc.joint_idx);
+        ctx.surface = raycastFootSurface(ctx.foot_world);
+        ctx.gain = gain;
+        ctx.foot_y = foot_y;
+        ctx.since_fire = since_fire;
+        ctx.now = now;
+        ctx.is_left = is_left;
+        firePlantSfx(fc, actor, ctx, pickFootstepSfx(ctx.surface));
+    }
+    else
+    {
+        footstepLogf("[event] SUPPRESS foot=%s peak_descent=%.3f foot_y=%.4f can_fire=%d "
+                     "since_last=%.3fs gain=%.3f reason=%s\n",
+                     footLabel(is_left), fc.peak_descent_vy, foot_y, can_fire ? 1 : 0, since_fire,
+                     gain, !can_fire ? "cooldown" : "below_min_descent");
+    }
+    fc.peak_descent_vy = 0.0f;
+}
+
 void tickOneFoot(Actor::FootContact& fc, Actor& actor, const char* joint_name, float dt,
                  bool is_left)
 {
@@ -190,110 +311,8 @@ void tickOneFoot(Actor::FootContact& fc, Actor& actor, const char* joint_name, f
                  fc.peak_descent_vy, since_fire);
 
     const bool zero_crossing = (fc.prev_vy < 0.0f) && (vy >= 0.0f);
-
     if (zero_crossing)
-    {
-        const float gain = plantGain(fc.peak_descent_vy);
-        if (gain > 0.0f && can_fire)
-        {
-            // Surface picker: per real-physics doctrine, ask physics
-            // what the foot is standing on. Downward raycast from the
-            // foot's world XYZ; the hit body's SurfaceTag drives the
-            // bank selection. Terrain → grass; Architecture → concrete.
-            //
-            // No more XZ-rect "is the player inside the chapel?" check
-            // — that broke as soon as architecture extended underground
-            // (descent corridor) where the chapel-interior rect doesn't
-            // reach. Reading the actual contacted body generalizes:
-            // ANY future surface (sand, water, stone path, dungeon) just
-            // adds a SurfaceTag value, no rect to author.
-            const glm::vec3 foot_world = actor.sampler.jointWorldPosWithActor(fc.joint_idx);
-            engine::physics::SurfaceTag surface = engine::physics::SurfaceTag::Unknown;
-            engine::physics::BodyHandle hit_body = engine::physics::kInvalidBody;
-            {
-                const engine::physics::RayHit hit = engine::physics::raycast(
-                    foot_world + glm::vec3(0.0f, 0.10f, 0.0f), // start just above foot
-                    glm::vec3(0.0f, -1.0f, 0.0f), 1.0f);
-                if (hit.hit)
-                {
-                    surface = hit.tag;
-                    hit_body = hit.body;
-                }
-            }
-            // Footstep bank selection. The foot raycast tells us EXACTLY
-            // which body the foot hit; we look up that body's surface
-            // tag and (for terrain) its region. No XZ-region lookup —
-            // each surface knows what it is.
-            //   - Terrain bodies are tagged with their region name as
-            //     debug_name (see JsonScene.cpp); the region declares
-            //     its footstep_sound_id in terrain config.json.
-            //   - Architecture (chapel mesh, descent stairs) → concrete.
-            //   - No hit / unknown body → no footstep, intentional. We
-            //     never fall back to a "default" sound: every walkable
-            //     surface is authored to own its own bank.
-            const char* sfx_name = nullptr;
-            switch (surface)
-            {
-            case engine::physics::SurfaceTag::Architecture:
-                sfx_name = "footstep_concrete";
-                break;
-            case engine::physics::SurfaceTag::Terrain:
-                if (hit_body != engine::physics::kInvalidBody)
-                {
-                    const char* region_name = engine::physics::bodyDebugName(hit_body);
-                    if (region_name != nullptr && *region_name != '\0')
-                    {
-                        if (const auto* region = selva::world::terrainRegionAtName(region_name))
-                            sfx_name = region->footstep_sound_id.c_str();
-                    }
-                }
-                break;
-            case engine::physics::SurfaceTag::Foliage:
-            case engine::physics::SurfaceTag::Unknown:
-            case engine::physics::SurfaceTag::Actor:
-            default:
-                break;
-            }
-            if (sfx_name == nullptr)
-            {
-                // No surface known. Don't play anything — every
-                // walkable surface should declare its bank. If this
-                // fires, it's an unauthored surface (bug), not a case
-                // where we fall back to a default sound.
-                footstepLogf("[event] surface foot=%s foot_xz=(%.3f,%.3f) surface_tag=%d "
-                             "body_name='%s' — NO SFX (unauthored surface)\n",
-                             footLabel(is_left), foot_world.x, foot_world.z,
-                             static_cast<int>(surface),
-                             hit_body != engine::physics::kInvalidBody
-                                 ? engine::physics::bodyDebugName(hit_body)
-                                 : "(no hit)");
-                fc.last_fire_time = now;
-                actor.last_footstep_fire_time = now;
-            }
-            else
-            {
-                footstepLogf("[event] surface foot=%s foot_xz=(%.3f,%.3f) body_xz=(%.3f,%.3f) "
-                             "surface_tag=%d sfx=%s\n",
-                             footLabel(is_left), foot_world.x, foot_world.z, actor.pos.x,
-                             actor.pos.z, static_cast<int>(surface), sfx_name);
-                selva::audio::playSfxScaled(sfx_name, gain);
-                fc.last_fire_time = now;
-                actor.last_footstep_fire_time = now;
-                footstepLogf("[event] FIRE foot=%s gain=%.3f peak_descent=%.3f foot_y=%.4f "
-                             "since_last=%.3fs sfx=%s\n",
-                             footLabel(is_left), gain, fc.peak_descent_vy, foot_y, since_fire,
-                             sfx_name);
-            }
-        }
-        else
-        {
-            footstepLogf("[event] SUPPRESS foot=%s peak_descent=%.3f foot_y=%.4f can_fire=%d "
-                         "since_last=%.3fs gain=%.3f reason=%s\n",
-                         footLabel(is_left), fc.peak_descent_vy, foot_y, can_fire ? 1 : 0,
-                         since_fire, gain, !can_fire ? "cooldown" : "below_min_descent");
-        }
-        fc.peak_descent_vy = 0.0f;
-    }
+        handlePlantEvent(fc, actor, foot_y, now, since_fire, can_fire, is_left);
 
     fc.prev_y = foot_y;
     fc.prev_vy = vy;

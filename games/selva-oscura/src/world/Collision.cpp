@@ -260,7 +260,7 @@ void initHubScene()
 
     constexpr float kBigScale = 0.9f;
     constexpr float kBigOffsetX = 5.5f;
-    for (float sx : {-1.0f, 1.0f})
+    for (const float sx : {-1.0f, 1.0f})
     {
         CylinderCollider t;
         t.center = glm::vec3(sx * kBigOffsetX, 0.0f, kFrontTreeZ);
@@ -273,7 +273,7 @@ void initHubScene()
 
     constexpr float kSmallScale = 0.6f;
     constexpr float kSmallOffsetX = 5.5f; // align X with the big pair so smalls sit directly behind
-    for (float sx : {-1.0f, 1.0f})
+    for (const float sx : {-1.0f, 1.0f})
     {
         CylinderCollider t;
         t.center = glm::vec3(sx * kSmallOffsetX, 0.0f, kBackTreeZ);
@@ -290,6 +290,98 @@ const CollisionScene& currentScene()
     return sScene;
 }
 
+namespace
+{
+// One cylinder-vs-body push-out pass; returns true if the body was
+// nudged. Skips no-overlap (>= min_dist) and origin-touching (~0)
+// cases.
+bool pushOutOneCylinder(const CylinderCollider& c, int cyl_idx, int pass, float body_radius,
+                        bool log_on, glm::vec2& body_xz)
+{
+    const glm::vec2 cyl_xz(c.center.x, c.center.z);
+    const glm::vec2 delta = body_xz - cyl_xz;
+    const float dist_sq = glm::dot(delta, delta);
+    const float min_dist = c.radius + body_radius;
+    if (dist_sq >= min_dist * min_dist || dist_sq <= 1e-8f)
+        return false;
+    const float dist = std::sqrt(dist_sq);
+    const float push = min_dist - dist;
+    const glm::vec2 push_vec = (delta / dist) * push;
+    body_xz += push_vec;
+    if (log_on)
+        collisionLog("  pass=%d CYL[%d] center=(%.3f,%.3f) r=%.2f%s "
+                     "push=(%.3f,%.3f) -> pos=(%.3f,%.3f)\n",
+                     pass, cyl_idx, c.center.x, c.center.z, c.radius,
+                     c.collision_only ? " (collision_only)" : "", push_vec.x, push_vec.y, body_xz.x,
+                     body_xz.y);
+    return true;
+}
+
+// One box-vs-circle push-out pass. Skips camera_only + walkable_top
+// boxes (walking on top, not against). Body-center-inside is handled
+// by axis-of-min-penetration teleport; edge contact uses the closest
+// point on the AABB.
+bool pushOutOneBox(const BoxCollider& b, int box_idx, int pass, float body_radius, bool log_on,
+                   glm::vec2& body_xz)
+{
+    if (b.camera_only || b.walkable_top)
+        return false;
+    const glm::vec2 d = body_xz - b.center;
+    const glm::vec2 clamped(std::max(-b.half_extents.x, std::min(b.half_extents.x, d.x)),
+                            std::max(-b.half_extents.y, std::min(b.half_extents.y, d.y)));
+    const glm::vec2 closest = b.center + clamped;
+    const glm::vec2 to_body = body_xz - closest;
+    const float dist_sq = glm::dot(to_body, to_body);
+    if (dist_sq >= body_radius * body_radius)
+        return false;
+    if (dist_sq <= 1e-8f)
+    {
+        const float pen_x = b.half_extents.x - std::abs(d.x);
+        const float pen_y = b.half_extents.y - std::abs(d.y);
+        const glm::vec2 before = body_xz;
+        if (pen_x < pen_y)
+            body_xz.x =
+                b.center.x + (d.x >= 0.0f ? 1.0f : -1.0f) * (b.half_extents.x + body_radius);
+        else
+            body_xz.y =
+                b.center.y + (d.y >= 0.0f ? 1.0f : -1.0f) * (b.half_extents.y + body_radius);
+        if (log_on)
+            collisionLog("  pass=%d BOX[%d] center=(%.3f,%.3f) he=(%.2f,%.2f) "
+                         "INSIDE pen_x=%.3f pen_y=%.3f teleport=(%.3f,%.3f) -> "
+                         "(%.3f,%.3f)\n",
+                         pass, box_idx, b.center.x, b.center.y, b.half_extents.x, b.half_extents.y,
+                         pen_x, pen_y, before.x, before.y, body_xz.x, body_xz.y);
+        return true;
+    }
+    const float dist = std::sqrt(dist_sq);
+    const float push = body_radius - dist;
+    const glm::vec2 push_vec = (to_body / dist) * push;
+    body_xz += push_vec;
+    if (log_on)
+        collisionLog("  pass=%d BOX[%d] center=(%.3f,%.3f) he=(%.2f,%.2f) edge "
+                     "push=(%.3f,%.3f) -> pos=(%.3f,%.3f)\n",
+                     pass, box_idx, b.center.x, b.center.y, b.half_extents.x, b.half_extents.y,
+                     push_vec.x, push_vec.y, body_xz.x, body_xz.y);
+    return true;
+}
+
+// Clamp body within the play-disc boundary. Pushes back along the
+// radial axis so the body's footprint stays fully inside.
+void clampToBoundary(glm::vec2& body_xz, float body_radius)
+{
+    if (sScene.boundary_radius <= 0.0f)
+        return;
+    const glm::vec2 delta = body_xz - sScene.boundary_center;
+    const float dist_sq = glm::dot(delta, delta);
+    const float max_dist = sScene.boundary_radius - body_radius;
+    if (max_dist > 0.0f && dist_sq > max_dist * max_dist && dist_sq > 1e-8f)
+    {
+        const float dist = std::sqrt(dist_sq);
+        body_xz = sScene.boundary_center + (delta / dist) * max_dist;
+    }
+}
+} // namespace
+
 void resolveBodyCollision(glm::vec2& body_xz, float body_radius)
 {
     const glm::vec2 entry_pos = body_xz;
@@ -302,8 +394,8 @@ void resolveBodyCollision(glm::vec2& body_xz, float body_radius)
     }
     // Multi-pass push-out. Single pass can leave the body wedged
     // when it's penetrating two adjacent cylinders/boxes — pushing
-    // out of one moves it deeper into the other. Two extra iterations
-    // resolve any realistic forest-density / wall-corner case.
+    // out of one moves it deeper into the other. Three passes resolve
+    // any realistic forest-density / wall-corner case.
     constexpr int kMaxPasses = 3;
     for (int pass = 0; pass < kMaxPasses; ++pass)
     {
@@ -311,107 +403,21 @@ void resolveBodyCollision(glm::vec2& body_xz, float body_radius)
         int cyl_idx = 0;
         for (const auto& c : sScene.cylinders)
         {
-            const glm::vec2 cyl_xz(c.center.x, c.center.z);
-            const glm::vec2 delta = body_xz - cyl_xz;
-            const float dist_sq = glm::dot(delta, delta);
-            const float min_dist = c.radius + body_radius;
-            if (dist_sq >= min_dist * min_dist || dist_sq <= 1e-8f)
-            {
-                ++cyl_idx;
-                continue;
-            }
-            const float dist = std::sqrt(dist_sq);
-            const float push = min_dist - dist;
-            const glm::vec2 push_vec = (delta / dist) * push;
-            body_xz += push_vec;
-            any_push = true;
-            if (log_on)
-                collisionLog("  pass=%d CYL[%d] center=(%.3f,%.3f) r=%.2f%s "
-                             "push=(%.3f,%.3f) -> pos=(%.3f,%.3f)\n",
-                             pass, cyl_idx, c.center.x, c.center.z, c.radius,
-                             c.collision_only ? " (collision_only)" : "", push_vec.x, push_vec.y,
-                             body_xz.x, body_xz.y);
+            if (pushOutOneCylinder(c, cyl_idx, pass, body_radius, log_on, body_xz))
+                any_push = true;
             ++cyl_idx;
         }
-        // Box-vs-circle: find the closest point on the AABB to the
-        // body, push out along that vector if the body is inside the
-        // box's expanded-by-radius zone. Standard technique for
-        // AABB-vs-disc overlap resolution.
         int box_idx = 0;
         for (const auto& b : sScene.boxes)
         {
-            if (b.camera_only || b.walkable_top)
-            {
-                // walkable_top: player walks on TOP of these boxes
-                // (stair steps, ramps, platforms). Including them in
-                // XZ push-out would shove the player off the stair
-                // instead of letting them stand on it.
-                ++box_idx;
-                continue;
-            }
-            const glm::vec2 d = body_xz - b.center;
-            const glm::vec2 clamped(std::max(-b.half_extents.x, std::min(b.half_extents.x, d.x)),
-                                    std::max(-b.half_extents.y, std::min(b.half_extents.y, d.y)));
-            const glm::vec2 closest = b.center + clamped;
-            const glm::vec2 to_body = body_xz - closest;
-            const float dist_sq = glm::dot(to_body, to_body);
-            if (dist_sq >= body_radius * body_radius)
-            {
-                ++box_idx;
-                continue;
-            }
-            if (dist_sq <= 1e-8f)
-            {
-                // Body center is inside the box. Push along the axis
-                // of minimum penetration to the nearest face.
-                const float pen_x = b.half_extents.x - std::abs(d.x);
-                const float pen_y = b.half_extents.y - std::abs(d.y);
-                const glm::vec2 before = body_xz;
-                if (pen_x < pen_y)
-                    body_xz.x = b.center.x +
-                                (d.x >= 0.0f ? 1.0f : -1.0f) * (b.half_extents.x + body_radius);
-                else
-                    body_xz.y = b.center.y +
-                                (d.y >= 0.0f ? 1.0f : -1.0f) * (b.half_extents.y + body_radius);
+            if (pushOutOneBox(b, box_idx, pass, body_radius, log_on, body_xz))
                 any_push = true;
-                if (log_on)
-                    collisionLog("  pass=%d BOX[%d] center=(%.3f,%.3f) he=(%.2f,%.2f) "
-                                 "INSIDE pen_x=%.3f pen_y=%.3f teleport=(%.3f,%.3f) -> "
-                                 "(%.3f,%.3f)\n",
-                                 pass, box_idx, b.center.x, b.center.y, b.half_extents.x,
-                                 b.half_extents.y, pen_x, pen_y, before.x, before.y, body_xz.x,
-                                 body_xz.y);
-                ++box_idx;
-                continue;
-            }
-            const float dist = std::sqrt(dist_sq);
-            const float push = body_radius - dist;
-            const glm::vec2 push_vec = (to_body / dist) * push;
-            body_xz += push_vec;
-            any_push = true;
-            if (log_on)
-                collisionLog("  pass=%d BOX[%d] center=(%.3f,%.3f) he=(%.2f,%.2f) edge "
-                             "push=(%.3f,%.3f) -> pos=(%.3f,%.3f)\n",
-                             pass, box_idx, b.center.x, b.center.y, b.half_extents.x,
-                             b.half_extents.y, push_vec.x, push_vec.y, body_xz.x, body_xz.y);
             ++box_idx;
         }
         if (!any_push)
             break;
     }
-
-    // Boundary: keep the body's footprint fully inside the play disc.
-    if (sScene.boundary_radius > 0.0f)
-    {
-        const glm::vec2 delta = body_xz - sScene.boundary_center;
-        const float dist_sq = glm::dot(delta, delta);
-        const float max_dist = sScene.boundary_radius - body_radius;
-        if (max_dist > 0.0f && dist_sq > max_dist * max_dist && dist_sq > 1e-8f)
-        {
-            const float dist = std::sqrt(dist_sq);
-            body_xz = sScene.boundary_center + (delta / dist) * max_dist;
-        }
-    }
+    clampToBoundary(body_xz, body_radius);
     if (log_on)
     {
         const glm::vec2 net = body_xz - entry_pos;
@@ -472,7 +478,7 @@ float intersectCylinder(const glm::vec3& origin, const glm::vec3& dir, const Cyl
     // t >= 0 requirement.
     if (std::abs(dir.y) > kRayEpsilon)
     {
-        for (float cap_y : {base_y, top_y})
+        for (const float cap_y : {base_y, top_y})
         {
             const float t = (cap_y - origin.y) / dir.y;
             if (t < 0.0f || t > max_t)
@@ -488,19 +494,31 @@ float intersectCylinder(const glm::vec3& origin, const glm::vec3& dir, const Cyl
     return best;
 }
 
+// One axis of the slab test. Returns false on miss; on hit narrows
+// t_near/t_far. Parallel-to-slab case (|d|<eps) is a miss if origin
+// is outside the slab; otherwise the axis doesn't constrain t.
+bool intersectAabbSlab(float o, float d, float mn, float mx, float& t_near, float& t_far)
+{
+    if (std::abs(d) < kRayEpsilon)
+        return !(o < mn || o > mx);
+    float t0 = (mn - o) / d;
+    float t1 = (mx - o) / d;
+    if (t0 > t1)
+        std::swap(t0, t1);
+    if (t0 > t_near)
+        t_near = t0;
+    if (t1 < t_far)
+        t_far = t1;
+    return t_near <= t_far;
+}
+
 // Ray vs axis-aligned 3D box (slab method). Sphere_radius is ignored
 // at this level — the caller (raycastScene) reports the t at which
 // the RAY CENTER enters the box, and the camera-side iterative
 // push-out (sphereOverlapsScene) handles the buffer around the
-// camera. This split avoids the "ghost zone" pathology a single
-// grown-box sphere-cast suffers: a player hugging a wall has its
-// lookAt sphere overlapping the wall, which a grown-box test
-// interprets as occlusion (collapsing the camera) when really it's
-// just "the player is near the wall, which is fine."
-//
-// Returns t >= 0 on hit, or -1 on miss. If the origin is inside the
-// box itself (camera literally inside a wall — pathological), returns
-// 0 so the caller falls back to the player position.
+// camera. Returns t >= 0 on hit, or -1 on miss. If the origin is
+// inside the box (camera literally inside a wall — pathological),
+// returns 0 so the caller falls back to the player position.
 float intersectAabb(const glm::vec3& origin, const glm::vec3& dir, const BoxCollider& b,
                     float max_t, float /*sphere_radius*/)
 {
@@ -509,7 +527,6 @@ float intersectAabb(const glm::vec3& origin, const glm::vec3& dir, const BoxColl
     const glm::vec3 ungrown_max(b.center.x + b.half_extents.x, b.y_base + 2.0f * b.half_height_y,
                                 b.center.y + b.half_extents.y);
 
-    // Origin inside the box: pathological; collapse to player.
     if (origin.x >= ungrown_min.x && origin.x <= ungrown_max.x && origin.y >= ungrown_min.y &&
         origin.y <= ungrown_max.y && origin.z >= ungrown_min.z && origin.z <= ungrown_max.z)
         return 0.0f;
@@ -518,25 +535,8 @@ float intersectAabb(const glm::vec3& origin, const glm::vec3& dir, const BoxColl
     float t_far = std::numeric_limits<float>::infinity();
     for (int axis = 0; axis < 3; ++axis)
     {
-        const float o = origin[axis];
-        const float d = dir[axis];
-        const float mn = ungrown_min[axis];
-        const float mx = ungrown_max[axis];
-        if (std::abs(d) < kRayEpsilon)
-        {
-            if (o < mn || o > mx)
-                return -1.0f;
-            continue;
-        }
-        float t0 = (mn - o) / d;
-        float t1 = (mx - o) / d;
-        if (t0 > t1)
-            std::swap(t0, t1);
-        if (t0 > t_near)
-            t_near = t0;
-        if (t1 < t_far)
-            t_far = t1;
-        if (t_near > t_far)
+        if (!intersectAabbSlab(origin[axis], dir[axis], ungrown_min[axis], ungrown_max[axis],
+                               t_near, t_far))
             return -1.0f;
     }
     if (t_near < 0.0f || t_near > max_t || t_far < 0.0f)

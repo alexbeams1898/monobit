@@ -101,7 +101,7 @@ void gatedPerFrame(::Engine& engine, ::EntityManager& em, double dt)
         // normal flow; defensive), pass a default-constructed profile -
         // the load still produces a clean spawn, just with no name-tied
         // persistent state.
-        selva::PlayerProfile default_profile;
+        const selva::PlayerProfile default_profile;
         const selva::PlayerProfile* active = &default_profile;
         for (const auto& c : selva::saveData().characters)
         {

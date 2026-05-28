@@ -164,7 +164,7 @@ bool loadPrimitive(const cgltf_primitive* prim, const float node_world[16],
 
 bool loadGltf(const char* path, const float world_offset[3], StaticMesh& out)
 {
-    cgltf_options options{};
+    const cgltf_options options{};
     cgltf_data* data = nullptr;
     cgltf_result r = cgltf_parse_file(&options, path, &data);
     if (r != cgltf_result_success || data == nullptr)

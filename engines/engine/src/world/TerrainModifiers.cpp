@@ -112,6 +112,64 @@ const TerrainModifier& terrainModifierAt(int idx)
     return sModifiers[idx];
 }
 
+namespace
+{
+// Resolve the target Y a modifier wants to push toward at (world_x,
+// world_z), regardless of weight. Mirrors the switch in
+// applyTerrainModifiers (Hole short-circuits at the call site).
+float modifierTargetY(const TerrainModifier& m, float world_x, float world_z, float current_y)
+{
+    switch (m.mode)
+    {
+    case TerrainModifier::Mode::FlushAt:
+    case TerrainModifier::Mode::DepressTo:
+        return m.value;
+    case TerrainModifier::Mode::AddDelta:
+        return current_y + m.value;
+    case TerrainModifier::Mode::FlushSlope:
+    {
+        const float axis_pos = (m.slope_axis == 0) ? world_x : world_z;
+        const float axis_center = (m.slope_axis == 0) ? m.center_xz.x : m.center_xz.y;
+        const float axis_half = (m.slope_axis == 0) ? m.half_extents_xz.x : m.half_extents_xz.y;
+        float t = (axis_pos - (axis_center - axis_half)) / (2.0f * axis_half);
+        if (t < 0.0f)
+            t = 0.0f;
+        else if (t > 1.0f)
+            t = 1.0f;
+        return m.value * (1.0f - t) + m.value_far * t;
+    }
+    case TerrainModifier::Mode::Hole:
+        break; // Hole never affects Y; fall through to default return
+    }
+    return current_y;
+}
+
+// Dump one modifier's header line + (when it contributes) its target
+// + before/after Y transition. Returns the new Y after this modifier.
+float dumpOneModifier(const TerrainModifier& m, float world_x, float world_z, float y)
+{
+    const float dx = (world_x - m.center_xz.x);
+    const float dz = (world_z - m.center_xz.y);
+    const float dx_out = std::abs(dx) - m.half_extents_xz.x;
+    const float dz_out = std::abs(dz) - m.half_extents_xz.y;
+    const float w = modifierWeight(m, world_x, world_z);
+    const float pad_x = (dx < 0.0f) ? blendPadForSide(m.blend_pad_neg_x, m.blend_pad)
+                                    : blendPadForSide(m.blend_pad_pos_x, m.blend_pad);
+    const float pad_z = (dz < 0.0f) ? blendPadForSide(m.blend_pad_neg_z, m.blend_pad)
+                                    : blendPadForSide(m.blend_pad_pos_z, m.blend_pad);
+    std::fprintf(stderr,
+                 "  '%s' mode=%d  dx_out=%.3f dz_out=%.3f  pad_x=%.2f pad_z=%.2f  weight=%.4f\n",
+                 m.debug_name ? m.debug_name : "(no name)", static_cast<int>(m.mode), dx_out,
+                 dz_out, pad_x, pad_z, w);
+    if (w <= 0.0f || m.mode == TerrainModifier::Mode::Hole)
+        return y;
+    const float target = modifierTargetY(m, world_x, world_z, y);
+    const float new_y = y * (1.0f - w) + target * w;
+    std::fprintf(stderr, "      target=%.2f  y: %.2f -> %.2f\n", target, y, new_y);
+    return new_y;
+}
+} // namespace
+
 // Diagnostic: dump per-modifier weight + contribution for a single
 // XZ. Call this from probe sites; do NOT call per-vertex (would
 // flood stderr).
@@ -121,47 +179,7 @@ void debugDumpModifierStack(float world_x, float world_z, float base_y, const ch
                  label);
     float y = base_y;
     for (const auto& m : sModifiers)
-    {
-        const float dx = (world_x - m.center_xz.x);
-        const float dz = (world_z - m.center_xz.y);
-        const float dx_out = std::abs(dx) - m.half_extents_xz.x;
-        const float dz_out = std::abs(dz) - m.half_extents_xz.y;
-        const float w = modifierWeight(m, world_x, world_z);
-        const float pad_x = (dx < 0.0f) ? blendPadForSide(m.blend_pad_neg_x, m.blend_pad)
-                                        : blendPadForSide(m.blend_pad_pos_x, m.blend_pad);
-        const float pad_z = (dz < 0.0f) ? blendPadForSide(m.blend_pad_neg_z, m.blend_pad)
-                                        : blendPadForSide(m.blend_pad_pos_z, m.blend_pad);
-        std::fprintf(
-            stderr, "  '%s' mode=%d  dx_out=%.3f dz_out=%.3f  pad_x=%.2f pad_z=%.2f  weight=%.4f\n",
-            m.debug_name ? m.debug_name : "(no name)", static_cast<int>(m.mode), dx_out, dz_out,
-            pad_x, pad_z, w);
-        if (w <= 0.0f)
-            continue;
-        if (m.mode == TerrainModifier::Mode::Hole)
-            continue;
-        float target = y;
-        if (m.mode == TerrainModifier::Mode::FlushAt)
-            target = m.value;
-        else if (m.mode == TerrainModifier::Mode::DepressTo)
-            target = m.value;
-        else if (m.mode == TerrainModifier::Mode::AddDelta)
-            target = y + m.value;
-        else if (m.mode == TerrainModifier::Mode::FlushSlope)
-        {
-            const float axis_pos = (m.slope_axis == 0) ? world_x : world_z;
-            const float axis_center = (m.slope_axis == 0) ? m.center_xz.x : m.center_xz.y;
-            const float axis_half = (m.slope_axis == 0) ? m.half_extents_xz.x : m.half_extents_xz.y;
-            float t = (axis_pos - (axis_center - axis_half)) / (2.0f * axis_half);
-            if (t < 0.0f)
-                t = 0.0f;
-            else if (t > 1.0f)
-                t = 1.0f;
-            target = m.value * (1.0f - t) + m.value_far * t;
-        }
-        const float new_y = y * (1.0f - w) + target * w;
-        std::fprintf(stderr, "      target=%.2f  y: %.2f -> %.2f\n", target, y, new_y);
-        y = new_y;
-    }
+        y = dumpOneModifier(m, world_x, world_z, y);
     std::fprintf(stderr, "  FINAL: y=%.2f\n", y);
 }
 
@@ -186,50 +204,21 @@ float applyTerrainModifiers(const char* region_name, float world_x, float world_
 {
     float y = base_y;
     // Stack modifiers in registration order. Each modifier's target Y
-    // is computed (FlushAt → value; DepressTo → value; AddDelta →
-    // current + value) and blended with the current Y by the
-    // modifier's weight at this point. Skip modifiers whose region
-    // doesn't match the caller's region (when filtering is active).
+    // is resolved via modifierTargetY (one source of truth — debug
+    // path uses the same helper) and blended with the current Y by
+    // the modifier's weight. Skip modifiers whose region doesn't
+    // match the caller's region; Hole skips per-vertex Y entirely
+    // (operates at quad-removal level).
     for (const auto& m : sModifiers)
     {
         if (!modifierMatchesRegion(m, region_name))
             continue;
+        if (m.mode == TerrainModifier::Mode::Hole)
+            continue;
         const float w = modifierWeight(m, world_x, world_z);
         if (w <= 0.0f)
             continue;
-        float target = y;
-        switch (m.mode)
-        {
-        case TerrainModifier::Mode::FlushAt:
-            target = m.value;
-            break;
-        case TerrainModifier::Mode::FlushSlope:
-        {
-            // Linear interp from `value` at -axis edge of rect to
-            // `value_far` at +axis edge.
-            const float axis_pos = (m.slope_axis == 0) ? world_x : world_z;
-            const float axis_center = (m.slope_axis == 0) ? m.center_xz.x : m.center_xz.y;
-            const float axis_half = (m.slope_axis == 0) ? m.half_extents_xz.x : m.half_extents_xz.y;
-            // t = 0 at -axis edge, 1 at +axis edge; clamp outside.
-            float t = (axis_pos - (axis_center - axis_half)) / (2.0f * axis_half);
-            if (t < 0.0f)
-                t = 0.0f;
-            else if (t > 1.0f)
-                t = 1.0f;
-            target = m.value * (1.0f - t) + m.value_far * t;
-            break;
-        }
-        case TerrainModifier::Mode::DepressTo:
-            target = m.value;
-            break;
-        case TerrainModifier::Mode::AddDelta:
-            target = y + m.value;
-            break;
-        case TerrainModifier::Mode::Hole:
-            // Hole mode operates at quad-removal level, not vertex Y.
-            // Skip this modifier when computing per-vertex Y.
-            continue;
-        }
+        const float target = modifierTargetY(m, world_x, world_z, y);
         y = y * (1.0f - w) + target * w;
     }
     return y;

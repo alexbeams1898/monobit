@@ -30,7 +30,7 @@ class JsonScene : public engine::world::AsyncCapableScene
   public:
     // Construct from already-parsed JSON + the folder the scene.json
     // lives in (used for asset path resolution).
-    JsonScene(const nlohmann::json& scene_json, std::string scene_folder);
+    JsonScene(const nlohmann::json& json_doc, std::string folder);
 
     // Pre-load all .glb meshes referenced by the JSON. Called ONCE
     // at boot (after scene registration). File I/O + GL upload +
@@ -49,7 +49,7 @@ class JsonScene : public engine::world::AsyncCapableScene
     // detect whether the heavy boot-time work has happened yet.
     bool isPreloaded() const
     {
-        return mPreloaded;
+        return is_preloaded;
     }
 
     // prepareAsync now no-ops (work moved to preloadAssets at boot).
@@ -89,8 +89,8 @@ class JsonScene : public engine::world::AsyncCapableScene
     void renderMeshesDepth() const;
 
   private:
-    nlohmann::json mJson;
-    std::string mFolder;
+    nlohmann::json scene_json;
+    std::string scene_folder;
 
     struct LoadedMesh
     {
@@ -105,12 +105,12 @@ class JsonScene : public engine::world::AsyncCapableScene
         // rebuilding BVHs every activation.
         std::vector<engine::physics::ShapeHandle> shape_handles;
     };
-    std::vector<std::unique_ptr<LoadedMesh>> mMeshes;
+    std::vector<std::unique_ptr<LoadedMesh>> loaded_meshes;
     // Preloaded shape handles for terrain regions. Built in
     // preloadAssets, reused on each activation. Index aligns with
     // selva::world::terrainRegion(i).
-    std::vector<engine::physics::ShapeHandle> mTerrainShapeHandles;
-    bool mPreloaded = false;
+    std::vector<engine::physics::ShapeHandle> terrain_shapes;
+    bool is_preloaded = false;
 };
 
 } // namespace selva::world

@@ -140,7 +140,7 @@ class Scene;
 class SceneActivationContext
 {
   public:
-    explicit SceneActivationContext(Scene& s) : mScene(s)
+    explicit SceneActivationContext(Scene& s) : scene_ref(s)
     {
     }
 
@@ -155,7 +155,7 @@ class SceneActivationContext
     void addTrigger(const SceneTrigger& t);
 
   private:
-    Scene& mScene;
+    Scene& scene_ref;
 };
 
 // Scene base. JsonScene (the only real subclass we ship) parses
@@ -163,24 +163,23 @@ class SceneActivationContext
 class Scene
 {
   public:
-    explicit Scene(std::string scene_id, std::string debug_name,
-                   SceneKind kind = SceneKind::Exterior)
-        : mSceneId(std::move(scene_id)), mDebugName(std::move(debug_name)), mKind(kind)
+    explicit Scene(std::string id, std::string name, SceneKind kind = SceneKind::Exterior)
+        : scene_id(std::move(id)), debug_name(std::move(name)), kind_val(kind)
     {
     }
     virtual ~Scene() = default;
 
     const std::string& sceneId() const
     {
-        return mSceneId;
+        return scene_id;
     }
     const std::string& debugName() const
     {
-        return mDebugName;
+        return debug_name;
     }
     SceneKind kind() const
     {
-        return mKind;
+        return kind_val;
     }
 
     // Called by the engine when this scene becomes active. Subclass
@@ -209,32 +208,32 @@ class Scene
     // subclasses should not touch these directly; use the context.
     void engineAppendBody(engine::physics::BodyHandle h)
     {
-        mOwnedBodies.push_back(h);
+        owned_bodies.push_back(h);
     }
     void engineAppendTrigger(const SceneTrigger& t)
     {
-        mTriggers.push_back(t);
+        trigger_list.push_back(t);
     }
     void engineClearOwnership()
     {
-        mOwnedBodies.clear();
-        mTriggers.clear();
+        owned_bodies.clear();
+        trigger_list.clear();
     }
     const std::vector<engine::physics::BodyHandle>& ownedBodies() const
     {
-        return mOwnedBodies;
+        return owned_bodies;
     }
     const std::vector<SceneTrigger>& triggers() const
     {
-        return mTriggers;
+        return trigger_list;
     }
 
   private:
-    std::string mSceneId;
-    std::string mDebugName;
-    SceneKind mKind = SceneKind::Exterior;
-    std::vector<engine::physics::BodyHandle> mOwnedBodies;
-    std::vector<SceneTrigger> mTriggers;
+    std::string scene_id;
+    std::string debug_name;
+    SceneKind kind_val = SceneKind::Exterior;
+    std::vector<engine::physics::BodyHandle> owned_bodies;
+    std::vector<SceneTrigger> trigger_list;
 };
 
 // ---- SceneManager (engine-global singleton) -------------------------------

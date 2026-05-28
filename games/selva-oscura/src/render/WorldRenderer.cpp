@@ -85,199 +85,416 @@ const glm::mat4& lastView()
     return sLastView;
 }
 
-glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
-                        const glm::vec3& head_world_pos, const glm::mat4& head_world_mat,
-                        bool use_anim_orientation_in, float player_yaw, const char* one_shot_name)
+namespace
+{
+// Per-frame snapshot of every value the camera-pull-in debug log
+// wants — bundled so the writer takes one parameter, not 14.
+struct CameraPullInFrame
+{
+    glm::vec3 player_pos;
+    float yaw;
+    float pitch;
+    glm::vec3 look_fwd;
+    glm::vec3 look_at;
+    glm::vec3 cam_dir;
+    glm::vec3 ideal_offset;
+    float desired_separation;
+    float follow_distance;
+    engine::physics::RayHit hit;
+    float target_separation;
+    float smoothed_separation;
+    glm::vec3 cam_pos;
+    float sphere_radius;
+};
+
+// Open the log file lazily; on first open, dump a one-shot
+// enumeration of every Jolt body so the "what bodies exist + where"
+// question is answerable from the log alone.
+FILE* openCameraPullInLog()
+{
+    static FILE* sPullInLog = nullptr;
+    static bool sOpenAttempted = false;
+    if (sPullInLog != nullptr || sOpenAttempted)
+        return sPullInLog;
+    sOpenAttempted = true;
+    sPullInLog = std::fopen("camera-debug.log", "w");
+    if (sPullInLog == nullptr)
+        return nullptr;
+    std::vector<engine::physics::BodyDebugInfo> bodies;
+    engine::physics::enumerateBodies(bodies);
+    std::fprintf(sPullInLog, "=== physics body enumeration (%zu bodies) ===\n", bodies.size());
+    for (const auto& b : bodies)
+    {
+        const char* nm = engine::physics::bodyDebugName(b.body);
+        const char* kind = b.kind == engine::physics::BodyKind::Character       ? "Character"
+                           : b.kind == engine::physics::BodyKind::StaticBox     ? "Box"
+                           : b.kind == engine::physics::BodyKind::StaticTrimesh ? "Tri"
+                                                                                : "?";
+        std::fprintf(sPullInLog,
+                     "  id=%u kind=%s tag=%d aabb=[(%.2f,%.2f,%.2f)-(%.2f,%.2f,%.2f)] "
+                     "name='%s'\n",
+                     b.body.id, kind, static_cast<int>(b.tag), b.world_aabb_min.x,
+                     b.world_aabb_min.y, b.world_aabb_min.z, b.world_aabb_max.x, b.world_aabb_max.y,
+                     b.world_aabb_max.z, nm);
+    }
+    std::fprintf(sPullInLog, "=== end enumeration ===\n");
+    std::fflush(sPullInLog);
+    return sPullInLog;
+}
+
+// Same-side-of-wall probe: independent rays from camera→player and
+// player→camera. If either hits a body, there's wall between them.
+struct WallBetweenProbe
+{
+    engine::physics::RayHit cam_to_look;
+    engine::physics::RayHit feet_to_cam;
+    bool wall_between;
+};
+WallBetweenProbe probeWallBetween(const glm::vec3& camPos, const glm::vec3& lookAt,
+                                  const glm::vec3& player_pos)
+{
+    WallBetweenProbe p;
+    const glm::vec3 cam_to_look = lookAt - camPos;
+    const float cam_to_look_dist = glm::length(cam_to_look);
+    if (cam_to_look_dist > 1e-4f)
+    {
+        const glm::vec3 dir = cam_to_look / cam_to_look_dist;
+        p.cam_to_look = engine::physics::raycast(camPos, dir, cam_to_look_dist + 0.01f);
+    }
+    const glm::vec3 feet_to_cam = camPos - player_pos;
+    const float feet_to_cam_dist = glm::length(feet_to_cam);
+    if (feet_to_cam_dist > 1e-4f)
+    {
+        const glm::vec3 dir = feet_to_cam / feet_to_cam_dist;
+        p.feet_to_cam = engine::physics::raycast(player_pos, dir, feet_to_cam_dist + 0.01f);
+    }
+    p.wall_between = p.cam_to_look.hit || p.feet_to_cam.hit;
+    return p;
+}
+
+// Six-axis nearest-wall probe from the camera. Used to disambiguate
+// the see-outside hypotheses (camera inside/outside/none).
+struct WallNearestProbe
+{
+    float dist = 999.0f;
+    const char* name = "";
+    int axis = -1;
+};
+WallNearestProbe probeWallNearest(const glm::vec3& camPos)
+{
+    WallNearestProbe p;
+    const glm::vec3 axis_dirs[6] = {{1, 0, 0},  {-1, 0, 0}, {0, 1, 0},
+                                    {0, -1, 0}, {0, 0, 1},  {0, 0, -1}};
+    for (int ax = 0; ax < 6; ++ax)
+    {
+        const auto h = engine::physics::raycast(camPos, axis_dirs[ax], 2.0f);
+        if (h.hit && h.distance < p.dist)
+        {
+            p.dist = h.distance;
+            p.name = engine::physics::bodyDebugName(h.body);
+            p.axis = ax;
+        }
+    }
+    return p;
+}
+
+// "Where is the player actually standing" probes — for diagnosing
+// dual-source-of-truth bugs between Jolt's foot Y and the visible floor.
+struct PlayerFloorProbe
+{
+    const char* ground_name = "(none)";
+    engine::physics::RayHit feet_drop;
+    float feet_drop_y = -999.0f;
+    const char* feet_drop_name = "";
+    std::size_t contact_count = 0;
+    char contacts_buf[256] = "";
+};
+PlayerFloorProbe probePlayerFloor(const glm::vec3& player_pos, const glm::vec3& lookAt)
+{
+    PlayerFloorProbe p;
+    const engine::physics::BodyHandle pbody = selva::world::playerBody();
+    if (pbody != engine::physics::kInvalidBody)
+    {
+        const engine::physics::BodyHandle ground = engine::physics::characterGroundBody(pbody);
+        if (ground != engine::physics::kInvalidBody)
+            p.ground_name = engine::physics::bodyDebugName(ground);
+    }
+    const glm::vec3 drop_origin(player_pos.x, lookAt.y, player_pos.z);
+    p.feet_drop = engine::physics::raycast(drop_origin, glm::vec3(0, -1, 0), 50.0f);
+    if (p.feet_drop.hit)
+    {
+        p.feet_drop_y = lookAt.y - p.feet_drop.distance;
+        p.feet_drop_name = engine::physics::bodyDebugName(p.feet_drop.body);
+    }
+    static std::vector<engine::physics::BodyHandle> sContacts;
+    sContacts.clear();
+    if (pbody != engine::physics::kInvalidBody)
+        engine::physics::characterActiveContacts(pbody, sContacts);
+    p.contact_count = sContacts.size();
+    int written = 0;
+    for (std::size_t i = 0; i < sContacts.size() && i < 6; ++i)
+    {
+        const char* nm = engine::physics::bodyDebugName(sContacts[i]);
+        const int n = std::snprintf(p.contacts_buf + written,
+                                    sizeof(p.contacts_buf) - static_cast<std::size_t>(written),
+                                    "%s%s", i == 0 ? "" : ",", nm);
+        if (n <= 0 || static_cast<std::size_t>(written) + static_cast<std::size_t>(n) >=
+                          sizeof(p.contacts_buf))
+            break;
+        written += n;
+    }
+    return p;
+}
+
+void debugWriteCameraPullInLog(const CameraPullInFrame& f)
+{
+    FILE* log = openCameraPullInLog();
+    if (log == nullptr)
+        return;
+
+    static int sFrame = 0;
+    static glm::vec3 sPrevPlayerPos = f.player_pos;
+
+    const bool overlap = engine::physics::sphereOverlap(f.cam_pos, f.sphere_radius);
+    const float cam_y_above_chest = f.cam_pos.y - f.look_at.y;
+    const float cam_x_from_player = f.cam_pos.x - f.player_pos.x;
+    const float cam_z_from_player = f.cam_pos.z - f.player_pos.z;
+    const float cam_dist_xz =
+        std::sqrt(cam_x_from_player * cam_x_from_player + cam_z_from_player * cam_z_from_player);
+    const glm::vec3 player_vel = f.player_pos - sPrevPlayerPos;
+    const float player_speed = glm::length(player_vel);
+
+    const WallBetweenProbe wbp = probeWallBetween(f.cam_pos, f.look_at, f.player_pos);
+    const char* probe_c2l_name =
+        wbp.cam_to_look.hit ? engine::physics::bodyDebugName(wbp.cam_to_look.body) : "";
+    const char* probe_f2c_name =
+        wbp.feet_to_cam.hit ? engine::physics::bodyDebugName(wbp.feet_to_cam.body) : "";
+    const WallNearestProbe wn = probeWallNearest(f.cam_pos);
+    const PlayerFloorProbe pf = probePlayerFloor(f.player_pos, f.look_at);
+
+    std::fprintf(log,
+                 "[%d] pPos=(%.2f,%.2f,%.2f) pVel=(%.3f,%.3f,%.3f) pSpd=%.3f "
+                 "yaw=%.3f pitch=%.3f lookFwd=(%.3f,%.3f,%.3f) "
+                 "lookAt=(%.2f,%.2f,%.2f) cam_dir=(%.3f,%.3f,%.3f) "
+                 "ideal_off=(%.2f,%.2f,%.2f) ideal_off_len=%.2f "
+                 "follow_dist=%.2f "
+                 "hit=%d hit_dist=%.3f target_sep=%.3f smoothed_sep=%.3f "
+                 "camPos=(%.2f,%.2f,%.2f) cam_y_above_chest=%.3f "
+                 "cam_xz_from_player=%.3f overlap=%d "
+                 "wall_between=%d probe_c2l=(hit=%d dist=%.3f name='%s') "
+                 "probe_f2c=(hit=%d dist=%.3f name='%s') "
+                 "ground='%s' feet_drop=(hit=%d y=%.3f gap=%.3f name='%s') "
+                 "active_contacts=%zu [%s] "
+                 "wall_near=(dist=%.3f axis=%d name='%s')\n",
+                 sFrame, f.player_pos.x, f.player_pos.y, f.player_pos.z, player_vel.x, player_vel.y,
+                 player_vel.z, player_speed, f.yaw, f.pitch, f.look_fwd.x, f.look_fwd.y,
+                 f.look_fwd.z, f.look_at.x, f.look_at.y, f.look_at.z, f.cam_dir.x, f.cam_dir.y,
+                 f.cam_dir.z, f.ideal_offset.x, f.ideal_offset.y, f.ideal_offset.z,
+                 f.desired_separation, f.follow_distance, f.hit.hit ? 1 : 0, f.hit.distance,
+                 f.target_separation, f.smoothed_separation, f.cam_pos.x, f.cam_pos.y, f.cam_pos.z,
+                 cam_y_above_chest, cam_dist_xz, overlap ? 1 : 0, wbp.wall_between ? 1 : 0,
+                 wbp.cam_to_look.hit ? 1 : 0, wbp.cam_to_look.distance, probe_c2l_name,
+                 wbp.feet_to_cam.hit ? 1 : 0, wbp.feet_to_cam.distance, probe_f2c_name,
+                 pf.ground_name, pf.feet_drop.hit ? 1 : 0, pf.feet_drop_y,
+                 pf.feet_drop.hit ? (pf.feet_drop_y - f.player_pos.y) : -999.0f, pf.feet_drop_name,
+                 pf.contact_count, pf.contacts_buf, wn.dist, wn.axis, wn.name);
+    std::fflush(log);
+    ++sFrame;
+    sPrevPlayerPos = f.player_pos;
+}
+} // namespace
+
+namespace
+{
+// FPV head-position smoother: tracks PLAYER position 1:1 and lightly
+// smooths the head's LOCAL offset (bob). >100ms gap = fresh FPV
+// session, snap to current head pos. ~30ms tau (~2 frames) so real
+// head bob tracks 1:1 — only sub-frame jitter is swallowed.
+glm::vec3 smoothFpvHeadPos(const glm::vec3& player_pos, const glm::vec3& head_world_pos)
+{
+    constexpr float kHeadBobTau = 0.03f;
+    const glm::vec3 head_local = head_world_pos - player_pos;
+    static glm::vec3 sSmoothedHeadLocal = head_local;
+    static bool sSmoothedInit = false;
+    static Uint64 sSmoothedPrevTicks = SDL_GetTicks64();
+    const Uint64 now_ticks = SDL_GetTicks64();
+    if (now_ticks - sSmoothedPrevTicks > 100)
+        sSmoothedInit = false;
+    if (!sSmoothedInit)
+    {
+        sSmoothedHeadLocal = head_local;
+        sSmoothedInit = true;
+        sSmoothedPrevTicks = now_ticks;
+    }
+    else
+    {
+        const float dt = static_cast<float>(now_ticks - sSmoothedPrevTicks) * 0.001f;
+        sSmoothedPrevTicks = now_ticks;
+        const float alpha = 1.0f - std::exp(-dt / kHeadBobTau);
+        sSmoothedHeadLocal += (head_local - sSmoothedHeadLocal) * alpha;
+    }
+    return player_pos + sSmoothedHeadLocal;
+}
+
+// Post-roll fade tracker. Returns anim_weight in [0,1]: 1.0 = pure
+// anim orientation (inside roll), 0.0 = pure mouse orientation
+// (settled), in-between values lerp. Avoids the "legs visible for a
+// moment" artifact when a roll one-shot ends.
+float computeFpvAnimWeight(bool use_anim_orientation_in)
+{
+    constexpr float kAnimOrientationFade = 0.35f;
+    static float sFadeStartTime = -1.0f;
+    static bool sPrevAnimIn = false;
+    const float now_seconds = static_cast<float>(SDL_GetTicks64()) * 0.001f;
+    if (use_anim_orientation_in)
+        sFadeStartTime = -1.0f;
+    else if (sPrevAnimIn)
+        sFadeStartTime = now_seconds;
+    sPrevAnimIn = use_anim_orientation_in;
+    const float fade_t =
+        sFadeStartTime < 0.0f
+            ? 0.0f
+            : std::min(1.0f, (now_seconds - sFadeStartTime) / kAnimOrientationFade);
+    const bool fade_in_progress = (sFadeStartTime >= 0.0f) && (fade_t < 1.0f);
+    return use_anim_orientation_in ? 1.0f : (fade_in_progress ? (1.0f - fade_t) : 0.0f);
+}
+
+struct FpvCameraPose
+{
+    glm::vec3 cam_fwd;
+    glm::vec3 cam_up;
+    glm::vec3 cam_pos;
+};
+
+// Pick camera pose based on anim_weight: pure anim (>=1.0), pure
+// mouse (<=0.0), or blended fade window in between. Position and
+// orientation are blended together so there's no orientation snap.
+FpvCameraPose composeFpvCameraPose(const glm::vec3& head_world_pos,
+                                   const glm::vec3& smoothed_head_pos, const glm::vec3& lookFwd,
+                                   const glm::vec3& head_fwd_diag, const glm::vec3& head_up_diag,
+                                   float anim_weight, float kEyeForwardOffset, float kEyeUpOffset)
+{
+    FpvCameraPose pose;
+    if (anim_weight >= 1.0f)
+    {
+        pose.cam_fwd = head_fwd_diag;
+        pose.cam_up = head_up_diag;
+        pose.cam_pos =
+            head_world_pos + pose.cam_fwd * kEyeForwardOffset + pose.cam_up * kEyeUpOffset;
+        return pose;
+    }
+    if (anim_weight <= 0.0f)
+    {
+        pose.cam_fwd = lookFwd;
+        pose.cam_up = glm::vec3(0.0f, 1.0f, 0.0f);
+        pose.cam_pos = smoothed_head_pos + pose.cam_fwd * kEyeForwardOffset +
+                       glm::vec3(0.0f, kEyeUpOffset, 0.0f);
+        return pose;
+    }
+    const glm::vec3 mouse_up(0.0f, 1.0f, 0.0f);
+    pose.cam_fwd = glm::normalize(head_fwd_diag * anim_weight + lookFwd * (1.0f - anim_weight));
+    pose.cam_up = glm::normalize(head_up_diag * anim_weight + mouse_up * (1.0f - anim_weight));
+    const glm::vec3 pos_anim =
+        head_world_pos + head_fwd_diag * kEyeForwardOffset + head_up_diag * kEyeUpOffset;
+    const glm::vec3 pos_mouse =
+        smoothed_head_pos + lookFwd * kEyeForwardOffset + glm::vec3(0.0f, kEyeUpOffset, 0.0f);
+    pose.cam_pos = pos_anim * anim_weight + pos_mouse * (1.0f - anim_weight);
+    return pose;
+}
+
+struct FpvRollLogRow
+{
+    bool use_anim_orientation_in;
+    float anim_weight;
+    glm::vec3 player_pos;
+    float player_yaw;
+    glm::vec3 head_world_pos;
+    glm::vec3 head_fwd_diag;
+    glm::vec3 head_up_diag;
+    glm::vec3 smoothed_head_pos;
+    glm::vec3 cam_pos;
+    glm::vec3 cam_fwd;
+    glm::vec3 cam_up;
+    const char* one_shot_name;
+};
+
+void writeFpvRollLog(const FpvRollLogRow& r)
+{
+    const bool is_roll_window = r.use_anim_orientation_in || r.anim_weight > 0.0f;
+    if (!selva::tuning::current().debug_fpv_roll_log || !is_roll_window)
+        return;
+    static FILE* sFpvRollLog = nullptr;
+    static int sFpvRollFrame = 0;
+    if (sFpvRollLog == nullptr)
+        sFpvRollLog = std::fopen("fpv-roll-debug.log", "w");
+    if (sFpvRollLog != nullptr)
+    {
+        const float now_seconds = static_cast<float>(SDL_GetTicks64()) * 0.001f;
+        std::fprintf(
+            sFpvRollLog,
+            "frame=%d t=%.4f clip=%s anim_in=%d anim_w=%.3f "
+            "player=(%.3f,%.3f,%.3f) yaw=%.4f "
+            "head_world=(%.3f,%.3f,%.3f) "
+            "head_fwd=(%.3f,%.3f,%.3f) head_up=(%.3f,%.3f,%.3f) "
+            "smoothed_head=(%.3f,%.3f,%.3f) "
+            "camPos=(%.3f,%.3f,%.3f) cam_fwd=(%.3f,%.3f,%.3f) "
+            "cam_up=(%.3f,%.3f,%.3f)\n",
+            sFpvRollFrame, now_seconds, (r.one_shot_name != nullptr) ? r.one_shot_name : "(none)",
+            r.use_anim_orientation_in ? 1 : 0, r.anim_weight, r.player_pos.x, r.player_pos.y,
+            r.player_pos.z, r.player_yaw, r.head_world_pos.x, r.head_world_pos.y,
+            r.head_world_pos.z, r.head_fwd_diag.x, r.head_fwd_diag.y, r.head_fwd_diag.z,
+            r.head_up_diag.x, r.head_up_diag.y, r.head_up_diag.z, r.smoothed_head_pos.x,
+            r.smoothed_head_pos.y, r.smoothed_head_pos.z, r.cam_pos.x, r.cam_pos.y, r.cam_pos.z,
+            r.cam_fwd.x, r.cam_fwd.y, r.cam_fwd.z, r.cam_up.x, r.cam_up.y, r.cam_up.z);
+        std::fflush(sFpvRollLog);
+    }
+    ++sFpvRollFrame;
+}
+
+// First-person view: camera aligned to head bone's world transform
+// (orientation included) with mouse-look pitch layered on top. Roll
+// one-shots fully override; settled state is mouse-driven with smoothed
+// head bob. See buildViewProj() for the dispatch.
+glm::mat4 buildFirstPersonViewProj(const glm::vec3& player_pos, const glm::vec3& head_world_pos,
+                                   const glm::mat4& head_world_mat, bool use_anim_orientation_in,
+                                   float player_yaw, const char* one_shot_name,
+                                   const glm::vec3& lookFwd)
 {
     const auto& tun = selva::tuning::current();
     const auto& settings = selva::saveData().settings;
-    const float yaw = cameraYaw();
-    const float pitch = cameraPitch();
-    const glm::vec3 lookFwd(std::cos(pitch) * -std::sin(yaw), std::sin(pitch),
-                            std::cos(pitch) * -std::cos(yaw));
+    const float kEyeForwardOffset = tun.fpv_eye_fwd_offset;
+    const float kEyeUpOffset = tun.fpv_eye_up_offset;
+    const float aspect =
+        windowHeight() > 0 ? static_cast<float>(windowWidth()) / static_cast<float>(windowHeight())
+                           : 1.0f;
+    // FPV near plane 0.2 — tighter than TPV (0.5) because the camera
+    // sits inside the player capsule and can be close to arm/hand
+    // geometry.
+    const glm::mat4 proj =
+        glm::perspective(glm::radians(settings.fov_degrees_first_person), aspect, 0.2f, 2000.0f);
 
-    // First-person path: camera is *aligned* to the head bone's full
-    // world transform (orientation included), with mouse-look pitch
-    // applied as an offset on top. This means:
-    //  - Head breathing / lean / tilt from the animation rides the
-    //    camera so you don't see your own torso bobbing in front of
-    //    you in idle/combat.
-    //  - Mouse yaw still rotates the actor (which rotates the head
-    //    via the body), so look-around works.
-    //  - Mouse pitch is layered on top of the head's pitch.
-    //  - Roll/dodge clips override completely (full anim-driven).
-    if (cameraMode() == CameraMode::FirstPerson)
-    {
-        const float kEyeForwardOffset = tun.fpv_eye_fwd_offset;
-        const float kEyeUpOffset = tun.fpv_eye_up_offset;
-        const float aspect = windowHeight() > 0 ? static_cast<float>(windowWidth()) /
-                                                      static_cast<float>(windowHeight())
-                                                : 1.0f;
-        // near plane matches the third-person path; see comment there.
-        // FPV uses 0.2 (a bit tighter than 0.5 because FPV camera
-        // sits inside the player capsule and can be very close to
-        // arm/hand geometry).
-        const glm::mat4 proj = glm::perspective(glm::radians(settings.fov_degrees_first_person),
-                                                aspect, 0.2f, 2000.0f);
+    const glm::vec3 smoothed_head_pos = smoothFpvHeadPos(player_pos, head_world_pos);
+    const float anim_weight = computeFpvAnimWeight(use_anim_orientation_in);
+    const glm::vec3 head_fwd_diag = glm::normalize(glm::vec3(head_world_mat[2]));
+    const glm::vec3 head_up_diag = glm::normalize(glm::vec3(head_world_mat[1]));
 
-        // FPV head-position model: track the PLAYER position 1:1
-        // (the camera follows the player's bulk motion without lag),
-        // and lightly smooth the head's LOCAL offset (the bob).
-        // Short tau (~30ms = ~2 frames) so REAL head bob tracks the
-        // eye 1:1 - the player should feel up-down motion with the
-        // neck during run cycles. The smoothing only swallows sub-
-        // frame numeric jitter, not authored animation motion.
-        constexpr float kHeadBobTau = 0.03f;
-        const glm::vec3 head_local = head_world_pos - player_pos;
-        static glm::vec3 sSmoothedHeadLocal = head_local;
-        static bool sSmoothedInit = false;
-        static Uint64 sSmoothedPrevTicks = SDL_GetTicks64();
-        // FPV entry detection: if more than 100ms since the smoother
-        // was last updated, this is a fresh FPV session (toggle from
-        // TPV or first entry). Reset the smoother so the camera
-        // snaps to the correct head position instead of panning in
-        // from a stale offset.
-        const Uint64 now_ticks = SDL_GetTicks64();
-        if (now_ticks - sSmoothedPrevTicks > 100)
-            sSmoothedInit = false;
-        if (!sSmoothedInit)
-        {
-            sSmoothedHeadLocal = head_local;
-            sSmoothedInit = true;
-            sSmoothedPrevTicks = now_ticks;
-        }
-        else
-        {
-            const float dt = static_cast<float>(now_ticks - sSmoothedPrevTicks) * 0.001f;
-            sSmoothedPrevTicks = now_ticks;
-            const float alpha = 1.0f - std::exp(-dt / kHeadBobTau);
-            sSmoothedHeadLocal += (head_local - sSmoothedHeadLocal) * alpha;
-        }
-        const glm::vec3 sSmoothedHeadPos = player_pos + sSmoothedHeadLocal;
+    const FpvCameraPose pose =
+        composeFpvCameraPose(head_world_pos, smoothed_head_pos, lookFwd, head_fwd_diag,
+                             head_up_diag, anim_weight, kEyeForwardOffset, kEyeUpOffset);
+    sLastView = glm::lookAt(pose.cam_pos, pose.cam_pos + pose.cam_fwd, pose.cam_up);
 
-        // Smooth cross-fade between anim-orientation (during rolls)
-        // and mouse-orientation (everything else). When the roll
-        // one-shot ends we don't snap - we LERP the camera's fwd/up
-        // from the head bone's orientation to the mouse-driven
-        // orientation over kAnimOrientationFade seconds. This avoids
-        // the "legs visible for a moment" artifact that comes from
-        // the clip's tail frames having the head pointed down (the
-        // character looking at the ground they're rolling on) while
-        // the body has already come back to standing.
-        constexpr float kAnimOrientationFade = 0.35f;
-        static float sFadeStartTime = -1.0f;
-        static bool sPrevAnimIn = false;
-        const float now_seconds = static_cast<float>(SDL_GetTicks64()) * 0.001f;
-        if (use_anim_orientation_in)
-            sFadeStartTime = -1.0f; // still in roll; no fade yet
-        else if (sPrevAnimIn)
-            sFadeStartTime = now_seconds; // falling edge: roll just ended
-        sPrevAnimIn = use_anim_orientation_in;
-        // Fade parameter: 0 just after roll ends, 1 when fade complete.
-        const float fade_t =
-            sFadeStartTime < 0.0f
-                ? 0.0f
-                : std::min(1.0f, (now_seconds - sFadeStartTime) / kAnimOrientationFade);
-        // anim_active is true throughout the fade window (so the log
-        // captures the transition), but the orientation itself is a
-        // blend, not a hard switch. Fade is "in progress" only when
-        // sFadeStartTime >= 0 AND fade_t hasn't reached 1.
-        const bool fade_in_progress = (sFadeStartTime >= 0.0f) && (fade_t < 1.0f);
-        const bool use_anim_orientation = use_anim_orientation_in || fade_in_progress;
-        const float anim_weight =
-            use_anim_orientation_in ? 1.0f : (fade_in_progress ? (1.0f - fade_t) : 0.0f);
+    writeFpvRollLog({use_anim_orientation_in, anim_weight, player_pos, player_yaw, head_world_pos,
+                     head_fwd_diag, head_up_diag, smoothed_head_pos, pose.cam_pos, pose.cam_fwd,
+                     pose.cam_up, one_shot_name});
 
-        // Compute final camera position + forward + up. During the
-        // post-roll fade window both branches blend by anim_weight:
-        // 1.0 = pure anim orientation (during roll), 0.0 = pure
-        // mouse orientation (after fade complete), in-between values
-        // smoothly interpolate so there's no orientation snap.
-        // Head bone basis for the diagnostic log (always computed; cheap).
-        const glm::vec3 head_fwd_diag = glm::normalize(glm::vec3(head_world_mat[2]));
-        const glm::vec3 head_up_diag = glm::normalize(glm::vec3(head_world_mat[1]));
+    return proj * sLastView;
+}
 
-        glm::vec3 cam_fwd;
-        glm::vec3 cam_up;
-        glm::vec3 camPos;
-        if (anim_weight >= 1.0f)
-        {
-            // Pure anim orientation - inside the roll itself.
-            cam_fwd = head_fwd_diag;
-            cam_up = head_up_diag;
-            camPos = head_world_pos + cam_fwd * kEyeForwardOffset + cam_up * kEyeUpOffset;
-        }
-        else if (anim_weight <= 0.0f)
-        {
-            // Pure mouse orientation - settled mouse-driven mode.
-            cam_fwd = lookFwd;
-            cam_up = glm::vec3(0.0f, 1.0f, 0.0f);
-            camPos = sSmoothedHeadPos + cam_fwd * kEyeForwardOffset +
-                     glm::vec3(0.0f, kEyeUpOffset, 0.0f);
-        }
-        else
-        {
-            // Post-roll fade window. Lerp fwd/up between anim and
-            // mouse orientations; position lerps between head bone
-            // (raw) and smoothed head position similarly.
-            const glm::vec3 mouse_up(0.0f, 1.0f, 0.0f);
-            cam_fwd = glm::normalize(head_fwd_diag * anim_weight + lookFwd * (1.0f - anim_weight));
-            cam_up = glm::normalize(head_up_diag * anim_weight + mouse_up * (1.0f - anim_weight));
-            const glm::vec3 pos_anim =
-                head_world_pos + head_fwd_diag * kEyeForwardOffset + head_up_diag * kEyeUpOffset;
-            const glm::vec3 pos_mouse = sSmoothedHeadPos + lookFwd * kEyeForwardOffset +
-                                        glm::vec3(0.0f, kEyeUpOffset, 0.0f);
-            camPos = pos_anim * anim_weight + pos_mouse * (1.0f - anim_weight);
-        }
-        sLastView = glm::lookAt(camPos, camPos + cam_fwd, cam_up);
-
-        // FPV roll diagnostic log (gated). Writes only while a roll
-        // one-shot is active or during the tail-hold window after.
-        // Logged columns are enough to reconstruct the camera vs body
-        // mismatch frame-by-frame.
-        const bool is_roll_window = use_anim_orientation_in || anim_weight > 0.0f;
-        if (selva::tuning::current().debug_fpv_roll_log && is_roll_window)
-        {
-            static FILE* sFpvRollLog = nullptr;
-            static int sFpvRollFrame = 0;
-            if (sFpvRollLog == nullptr)
-                sFpvRollLog = std::fopen("fpv-roll-debug.log", "w");
-            if (sFpvRollLog != nullptr)
-            {
-                std::fprintf(sFpvRollLog,
-                             "frame=%d t=%.4f clip=%s anim_in=%d anim_w=%.3f "
-                             "player=(%.3f,%.3f,%.3f) yaw=%.4f "
-                             "head_world=(%.3f,%.3f,%.3f) "
-                             "head_fwd=(%.3f,%.3f,%.3f) head_up=(%.3f,%.3f,%.3f) "
-                             "smoothed_head=(%.3f,%.3f,%.3f) "
-                             "camPos=(%.3f,%.3f,%.3f) cam_fwd=(%.3f,%.3f,%.3f) "
-                             "cam_up=(%.3f,%.3f,%.3f)\n",
-                             sFpvRollFrame, now_seconds,
-                             (one_shot_name != nullptr) ? one_shot_name : "(none)",
-                             use_anim_orientation_in ? 1 : 0, anim_weight, player_pos.x,
-                             player_pos.y, player_pos.z, player_yaw, head_world_pos.x,
-                             head_world_pos.y, head_world_pos.z, head_fwd_diag.x, head_fwd_diag.y,
-                             head_fwd_diag.z, head_up_diag.x, head_up_diag.y, head_up_diag.z,
-                             sSmoothedHeadPos.x, sSmoothedHeadPos.y, sSmoothedHeadPos.z, camPos.x,
-                             camPos.y, camPos.z, cam_fwd.x, cam_fwd.y, cam_fwd.z, cam_up.x,
-                             cam_up.y, cam_up.z);
-                std::fflush(sFpvRollLog);
-            }
-            ++sFpvRollFrame;
-        }
-
-        return proj * sLastView;
-    }
-
-    // Ground reference Y = the player's feet (= sampled terrain Y).
-    // Camera height + lookAt anchor both rest on this; climbing a
-    // hill moves them together, no relative drift.
-    const float ground_y = player_pos.y;
-
-    // LookAt anchor = ground + chest-height-offset. We smooth the
-    // OFFSET above ground (target_lookat_y - ground_y), not the
-    // absolute Y. Dynamic poses (knockdown, get-up) move the hip
-    // off-ground temporarily; the smoothing absorbs that without
-    // making the camera lurch when the player walks up a slope.
+// Smooth the OFFSET above ground (not absolute Y) so dynamic poses
+// (knockdown, get-up) absorb the hip-Y motion without making the
+// camera lurch when the player walks up a slope.
+float smoothTpvLookAtY(float ground_y, float target_lookat_y)
+{
     const float target_offset = target_lookat_y - ground_y;
     static float sSmoothedOffset = target_offset;
     static bool sOffsetInit = false;
@@ -296,15 +513,118 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
         const float alpha = 1.0f - std::exp(-frame_dt / kLookAtTau);
         sSmoothedOffset += (target_offset - sSmoothedOffset) * alpha;
     }
-    const float smoothed_lookat_y = ground_y + sSmoothedOffset;
+    return ground_y + sSmoothedOffset;
+}
 
+// Push-out: shrink target separation until sphere doesn't overlap.
+// Sphere catches walls perpendicular to the forward ray (corner-pocket).
+float spherePushOutSeparation(const glm::vec3& lookAt, const glm::vec3& cam_dir,
+                              float target_separation, float sphere_radius, float min_separation)
+{
+    if (sphere_radius <= 0.0f || target_separation <= min_separation)
+        return target_separation;
+    constexpr int kMaxPushOutSteps = 24;
+    constexpr float kPushStep = 0.15f;
+    float try_sep = target_separation;
+    for (int i = 0; i < kMaxPushOutSteps; ++i)
+    {
+        const glm::vec3 try_pos = lookAt + cam_dir * try_sep;
+        if (!engine::physics::sphereOverlap(try_pos, sphere_radius))
+            break;
+        if (try_sep <= min_separation)
+            break;
+        try_sep -= kPushStep;
+        if (try_sep < min_separation)
+            try_sep = min_separation;
+    }
+    return try_sep;
+}
+
+// ASYMMETRIC smoothing: snap on pull-IN (camera arm crossed into a
+// wall — smoothing would leave it inside for a few frames, near-
+// clipping the wall and revealing outside), smooth on pull-OUT for
+// the glide-back feel. The legacy commit (95e9238) failed because
+// indoor-enforcement was producing step-changes the snap amplified;
+// today's target_separation is a continuous raycast/sphere-overlap
+// value, so the snap has no step input to amplify.
+float smoothTpvSeparation(float target_separation, float pull_in_tau, float desired_separation)
+{
+    static float sSmoothedSeparation = desired_separation;
+    static bool sSeparationInit = false;
+    static Uint64 sPrevSepTicks = SDL_GetTicks64();
+    const Uint64 nowSepTicks = SDL_GetTicks64();
+    const float sep_dt = static_cast<float>(nowSepTicks - sPrevSepTicks) * 0.001f;
+    sPrevSepTicks = nowSepTicks;
+    if (!sSeparationInit)
+    {
+        sSmoothedSeparation = target_separation;
+        sSeparationInit = true;
+    }
+    else if (target_separation < sSmoothedSeparation)
+    {
+        sSmoothedSeparation = target_separation;
+    }
+    else
+    {
+        const float tau = std::max(1e-3f, pull_in_tau);
+        const float alpha = 1.0f - std::exp(-sep_dt / tau);
+        sSmoothedSeparation += (target_separation - sSmoothedSeparation) * alpha;
+    }
+    return sSmoothedSeparation;
+}
+
+// Crosshair raycast log: walks 6 hits forward along the view ray,
+// logs each body name + distance. Aim at the surface, wait 1s, read
+// the log to identify mesh primitives at the flicker spot.
+void writeCrosshairRaycastLog(const glm::vec3& camPos, const glm::vec3& lookFwd)
+{
+    static FILE* sXLog = nullptr;
+    static int sXFrame = 0;
+    if (sXLog == nullptr)
+        sXLog = std::fopen("crosshair-debug.log", "w");
+    if (sXLog == nullptr || (sXFrame++ % 60) != 0)
+        return;
+    std::fprintf(sXLog, "[frame %d] camPos=(%.2f,%.2f,%.2f) lookFwd=(%.3f,%.3f,%.3f)\n", sXFrame,
+                 camPos.x, camPos.y, camPos.z, lookFwd.x, lookFwd.y, lookFwd.z);
+    glm::vec3 origin = camPos;
+    for (int i = 0; i < 6; ++i)
+    {
+        const auto hit_i = engine::physics::raycast(origin, lookFwd, 200.0f);
+        if (!hit_i.hit)
+        {
+            std::fprintf(sXLog, "  hit %d: (no hit)\n", i);
+            break;
+        }
+        const char* nm = engine::physics::bodyDebugName(hit_i.body);
+        std::fprintf(sXLog,
+                     "  hit %d: dist=%.3f pos=(%.2f,%.2f,%.2f) normal=(%.2f,%.2f,%.2f) body='%s'\n",
+                     i, hit_i.distance, hit_i.position.x, hit_i.position.y, hit_i.position.z,
+                     hit_i.normal.x, hit_i.normal.y, hit_i.normal.z, nm ? nm : "(unnamed)");
+        origin = hit_i.position + lookFwd * 0.05f;
+    }
+    std::fflush(sXLog);
+}
+
+// Third-person view: orbital camera anchored at player chest height,
+// arm length shrinks when walls block the ray (raycast + sphere
+// push-out). Asymmetric smoothing on the arm length (see helpers).
+glm::mat4 buildThirdPersonViewProj(const glm::vec3& player_pos, float target_lookat_y,
+                                   const glm::vec3& lookFwd)
+{
+    const auto& tun = selva::tuning::current();
+    const auto& settings = selva::saveData().settings;
+    const float yaw = cameraYaw();
+    const float pitch = cameraPitch();
+
+    // Ground reference Y = the player's feet (= sampled terrain Y).
+    // Camera height + lookAt anchor both rest on this; climbing a hill
+    // moves them together, no relative drift.
+    const float smoothed_lookat_y = smoothTpvLookAtY(player_pos.y, target_lookat_y);
     const glm::vec3 lookAt(player_pos.x, smoothed_lookat_y, player_pos.z);
 
-    // Pitch-coupled ideal camera offset. Y cap prevents pitch-down
-    // from flinging the camera arbitrarily high. The physics pull-in
-    // pipeline below shrinks the actual arm length when geometry
-    // blocks the ray — no separate "indoor follow distance" flag is
-    // needed: pulling-in emerges naturally when walls are close.
+    // Pitch-coupled ideal offset. Pull-in pipeline below shrinks the
+    // actual arm length when geometry blocks the ray — no separate
+    // "indoor follow distance" flag needed.
     const glm::vec3 ideal_offset =
         -lookFwd * tun.follow_distance + glm::vec3(0.0f, tun.follow_height, 0.0f);
     const float desired_separation = glm::length(ideal_offset);
@@ -318,355 +638,45 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
     const float min_separation = std::max(0.0f, tun.camera_pull_in_min_separation);
     float target_separation =
         hit.hit ? std::max(min_separation, hit.distance - margin) : desired_separation;
+    target_separation =
+        spherePushOutSeparation(lookAt, cam_dir, target_separation, sphere_radius, min_separation);
 
-    // Push-out: shrink target separation until sphere doesn't overlap.
-    // Sphere catches walls perpendicular to the forward ray (corner-pocket).
-    if (sphere_radius > 0.0f && target_separation > min_separation)
-    {
-        constexpr int kMaxPushOutSteps = 24;
-        constexpr float kPushStep = 0.15f;
-        float try_sep = target_separation;
-        for (int i = 0; i < kMaxPushOutSteps; ++i)
-        {
-            const glm::vec3 try_pos = lookAt + cam_dir * try_sep;
-            if (!engine::physics::sphereOverlap(try_pos, sphere_radius))
-                break;
-            if (try_sep <= min_separation)
-                break;
-            try_sep -= kPushStep;
-            if (try_sep < min_separation)
-                try_sep = min_separation;
-        }
-        target_separation = try_sep;
-    }
+    const float smoothed_separation =
+        smoothTpvSeparation(target_separation, tun.camera_pull_in_tau, desired_separation);
+    const glm::vec3 camPos = lookAt + cam_dir * smoothed_separation;
 
-    // Note: the legacy "if-player-indoors-shrink-until-camera-indoors"
-    // enforcement is gone. Indoor-ness is now a per-scene attribute, so
-    // the camera is always in the same scene as the player — no risk of
-    // the camera "exiting" the chapel mid-frame. Walls of the active
-    // scene are real Jolt bodies, so the raycast + sphere-overlap above
-    // already keep the camera on the player's side of any wall.
-
-    // ASYMMETRIC smoothing: instant pull-IN (snap), smoothed pull-OUT.
-    // Pull-in means the camera arm crossed into wall geometry and the
-    // raycast/push-out shrank target_separation. If we smooth this, the
-    // camera spends a few frames inside the wall during the lerp — and
-    // with near_clip > wall-distance for even a single frame, the wall
-    // gets near-clipped and outside shows through for a split second.
-    // SNAP instead. Pull-out (target_separation > current) means the
-    // wall has cleared and the camera is restoring its ideal arm length
-    // — smooth this normally for a glide-back feel.
-    //
-    // The legacy commit (95e9238) tried this and reverted due to an
-    // "aerial-view teleport" caused by indoor-enforcement step changes.
-    // We're not running indoor enforcement now — target_separation is
-    // a continuous raycast/sphere-overlap value, so the snap has no
-    // step input to amplify.
-    static float sSmoothedSeparation = desired_separation;
-    static bool sSeparationInit = false;
-    {
-        static Uint64 sPrevSepTicks = SDL_GetTicks64();
-        const Uint64 nowSepTicks = SDL_GetTicks64();
-        const float sep_dt = static_cast<float>(nowSepTicks - sPrevSepTicks) * 0.001f;
-        sPrevSepTicks = nowSepTicks;
-        if (!sSeparationInit)
-        {
-            sSmoothedSeparation = target_separation;
-            sSeparationInit = true;
-        }
-        else if (target_separation < sSmoothedSeparation)
-        {
-            // Pull-IN: snap so the camera never spends frames inside
-            // a wall during the transition.
-            sSmoothedSeparation = target_separation;
-        }
-        else
-        {
-            // Pull-OUT: smooth the return to ideal arm length.
-            const float tau = std::max(1e-3f, tun.camera_pull_in_tau);
-            const float alpha = 1.0f - std::exp(-sep_dt / tau);
-            sSmoothedSeparation += (target_separation - sSmoothedSeparation) * alpha;
-        }
-    }
-    glm::vec3 camPos = lookAt + cam_dir * sSmoothedSeparation;
-
-    // Crosshair raycast log: aim camera at flickering surface, this
-    // walks 5 hits forward along the view ray, logs each body name +
-    // distance. Aim, wait 1s for the log, then read it to identify
-    // which mesh primitives are at the flicker spot.
     if (tun.debug_crosshair_raycast_log)
-    {
-        static FILE* sXLog = nullptr;
-        static int sXFrame = 0;
-        if (sXLog == nullptr)
-            sXLog = std::fopen("crosshair-debug.log", "w");
-        if (sXLog != nullptr && (sXFrame++ % 60) == 0)
-        {
-            const glm::vec3 ray_dir = lookFwd; // camera forward (mouse look)
-            std::fprintf(sXLog, "[frame %d] camPos=(%.2f,%.2f,%.2f) lookFwd=(%.3f,%.3f,%.3f)\n",
-                         sXFrame, camPos.x, camPos.y, camPos.z, ray_dir.x, ray_dir.y, ray_dir.z);
-            glm::vec3 origin = camPos;
-            for (int i = 0; i < 6; ++i)
-            {
-                const auto hit_i = engine::physics::raycast(origin, ray_dir, 200.0f);
-                if (!hit_i.hit)
-                {
-                    std::fprintf(sXLog, "  hit %d: (no hit)\n", i);
-                    break;
-                }
-                const char* nm = engine::physics::bodyDebugName(hit_i.body);
-                std::fprintf(
-                    sXLog,
-                    "  hit %d: dist=%.3f pos=(%.2f,%.2f,%.2f) normal=(%.2f,%.2f,%.2f) body='%s'\n",
-                    i, hit_i.distance, hit_i.position.x, hit_i.position.y, hit_i.position.z,
-                    hit_i.normal.x, hit_i.normal.y, hit_i.normal.z, nm ? nm : "(unnamed)");
-                // Step ray origin slightly past this hit so the next cast picks up the next
-                // surface.
-                origin = hit_i.position + ray_dir * 0.05f;
-            }
-            std::fflush(sXLog);
-        }
-    }
-
-    // Ground-clearance clamp was deleted on 2026-05-26 — it lifted
-    // camPos.y up to terrain_y + 1.0 whenever the camera arm dipped
-    // below terrain, but during descent-tunnel play the player is
-    // underground at Y=22 while sampleHeight(camPos.xz) still reads
-    // ~32 (terrain doesn't know about the descent shaft beneath it).
-    // That produced an 8m camera teleport above the outdoor terrain,
-    // viewing the player through the ground. The forward raycast in
-    // the physics pull-in pipeline above already enforces "don't go
-    // through terrain" — if the camera arm dips below ground, the
-    // ray hits terrain and target_separation shrinks. A second
-    // belt-and-suspenders clamp built on a different data model
-    // (terrain heightmap, not real physics) violates the dual-
-    // source-of-truth doctrine and creates this exact bug class.
-    // See [[feedback_dual_source_of_truth_is_the_bug]].
+        writeCrosshairRaycastLog(camPos, lookFwd);
 
     if (tun.debug_camera_pull_in_log)
-    {
-        static FILE* sPullInLog = nullptr;
-        static int sPullInFrame = 0;
-        static glm::vec3 sPrevPlayerPos = player_pos;
-        if (sPullInLog == nullptr)
-        {
-            sPullInLog = std::fopen("camera-debug.log", "w");
-            // One-shot: enumerate every physics body with its AABB +
-            // kind + tag at first-log-open. The "where can the camera
-            // actually go" question is fundamentally constrained by
-            // the set of physics bodies in the world, so we need to
-            // see that set explicitly. Anything mis-shaped, mis-named,
-            // or missing relative to the visible mesh will be obvious
-            // on inspection.
-            if (sPullInLog != nullptr)
-            {
-                static std::vector<engine::physics::BodyDebugInfo> sBodies;
-                sBodies.clear();
-                engine::physics::enumerateBodies(sBodies);
-                std::fprintf(sPullInLog, "=== physics body enumeration (%zu bodies) ===\n",
-                             sBodies.size());
-                for (const auto& b : sBodies)
-                {
-                    const char* nm = engine::physics::bodyDebugName(b.body);
-                    const char* kind = b.kind == engine::physics::BodyKind::Character ? "Character"
-                                       : b.kind == engine::physics::BodyKind::StaticBox     ? "Box"
-                                       : b.kind == engine::physics::BodyKind::StaticTrimesh ? "Tri"
-                                                                                            : "?";
-                    std::fprintf(sPullInLog,
-                                 "  id=%u kind=%s tag=%d aabb=[(%.2f,%.2f,%.2f)-(%.2f,%.2f,%.2f)] "
-                                 "name='%s'\n",
-                                 b.body.id, kind, static_cast<int>(b.tag), b.world_aabb_min.x,
-                                 b.world_aabb_min.y, b.world_aabb_min.z, b.world_aabb_max.x,
-                                 b.world_aabb_max.y, b.world_aabb_max.z, nm);
-                }
-                std::fprintf(sPullInLog, "=== end enumeration ===\n");
-                std::fflush(sPullInLog);
-            }
-        }
-        if (sPullInLog != nullptr)
-        {
-            const bool overlap = engine::physics::sphereOverlap(camPos, sphere_radius);
-            const float cam_y_above_chest = camPos.y - lookAt.y;
-            const float cam_z_from_player = camPos.z - player_pos.z;
-            const float cam_x_from_player = camPos.x - player_pos.x;
-            const float cam_dist_xz = std::sqrt(cam_x_from_player * cam_x_from_player +
-                                                cam_z_from_player * cam_z_from_player);
-            const glm::vec3 player_vel = player_pos - sPrevPlayerPos;
-            const float player_speed = glm::length(player_vel);
-
-            // SAME-SIDE-OF-WALL PROBE — the load-bearing diagnostic for
-            // "can see outside while inside." Forward raycast (from
-            // lookAt along cam_dir, length desired_separation+margin)
-            // can return hit=0 when cam_dir clears the wall edge or
-            // threads a doorway — yet the final camPos can still land
-            // OUTSIDE a wall. To detect that, cast an INDEPENDENT ray
-            // from the actual camPos back to lookAt and report what
-            // it hits + at what distance. If this ray hits a wall
-            // with distance < |camPos - lookAt|, there's a wall
-            // between camera and player — camera is on the wrong side.
-            // Also probe player_pos (feet) → camPos, which catches
-            // walls that the lookAt-height ray flies over.
-            const glm::vec3 cam_to_look = lookAt - camPos;
-            const float cam_to_look_dist = glm::length(cam_to_look);
-            const glm::vec3 cam_to_look_dir =
-                cam_to_look_dist > 1e-4f ? cam_to_look / cam_to_look_dist : glm::vec3(0.0f);
-            const engine::physics::RayHit probe_cam_to_look =
-                cam_to_look_dist > 1e-4f
-                    ? engine::physics::raycast(camPos, cam_to_look_dir, cam_to_look_dist + 0.01f)
-                    : engine::physics::RayHit{};
-            const glm::vec3 feet_to_cam = camPos - player_pos;
-            const float feet_to_cam_dist = glm::length(feet_to_cam);
-            const glm::vec3 feet_to_cam_dir =
-                feet_to_cam_dist > 1e-4f ? feet_to_cam / feet_to_cam_dist : glm::vec3(0.0f);
-            const engine::physics::RayHit probe_feet_to_cam =
-                feet_to_cam_dist > 1e-4f ? engine::physics::raycast(player_pos, feet_to_cam_dir,
-                                                                    feet_to_cam_dist + 0.01f)
-                                         : engine::physics::RayHit{};
-            const char* probe_cam_to_look_name =
-                probe_cam_to_look.hit ? engine::physics::bodyDebugName(probe_cam_to_look.body) : "";
-            const char* probe_feet_to_cam_name =
-                probe_feet_to_cam.hit ? engine::physics::bodyDebugName(probe_feet_to_cam.body) : "";
-            // VERDICT: wall_between=1 means at least one independent
-            // probe found a wall between camera and player. That's
-            // the bug condition we want a regression test to assert
-            // never fires while the player is inside the chapel.
-            const bool wall_between = probe_cam_to_look.hit || probe_feet_to_cam.hit;
-
-            // WALL-NEAREST-POINT PROBE — for each overlap=1 frame,
-            // find the body that's overlapping the camera sphere and
-            // report (a) the closest point on that body to the
-            // camera, (b) the signed distance from camera to that
-            // point along the contact normal. This disambiguates the
-            // three see-outside hypotheses:
-            //   A) signed_dist > 0 but small (< kCameraNearPlane):
-            //      camera is inside, but the near clip plane lies
-            //      PAST the wall surface — wall gets near-clipped,
-            //      hole reveals outside.
-            //   B) signed_dist < 0: camera is ALREADY OUTSIDE the
-            //      wall — geometrically wrong side, view shows the
-            //      world from outside.
-            //   C) no overlap, see-outside still happens — something
-            //      else is responsible (frustum corner past wall,
-            //      missing wall body, shader/depth bug).
-            // Implementation: ray-cast outward from camera along the
-            // 6 axis-aligned directions, find the nearest hit, report
-            // the body name + distance + which axis.
-            float wall_nearest_dist = 999.0f;
-            const char* wall_nearest_name = "";
-            int wall_nearest_axis = -1; // 0..5 = +X,-X,+Y,-Y,+Z,-Z
-            const glm::vec3 axis_dirs[6] = {{1, 0, 0},  {-1, 0, 0}, {0, 1, 0},
-                                            {0, -1, 0}, {0, 0, 1},  {0, 0, -1}};
-            for (int ax = 0; ax < 6; ++ax)
-            {
-                const auto h = engine::physics::raycast(camPos, axis_dirs[ax], 2.0f);
-                if (h.hit && h.distance < wall_nearest_dist)
-                {
-                    wall_nearest_dist = h.distance;
-                    wall_nearest_name = engine::physics::bodyDebugName(h.body);
-                    wall_nearest_axis = ax;
-                }
-            }
-
-            // PHYSICS-STATE PROBES — exposes the "where is the player
-            // ACTUALLY standing" question that the camera bug
-            // diagnosis hangs on. Three independent measurements,
-            // because the player's reported Y (Jolt's foot position)
-            // and what they're geometrically standing on can disagree
-            // — and that disagreement is the smell of a deeper data
-            // model bug.
-            const engine::physics::BodyHandle pbody = selva::world::playerBody();
-            const engine::physics::BodyHandle ground =
-                pbody != engine::physics::kInvalidBody ? engine::physics::characterGroundBody(pbody)
-                                                       : engine::physics::kInvalidBody;
-            const char* ground_name = ground != engine::physics::kInvalidBody
-                                          ? engine::physics::bodyDebugName(ground)
-                                          : "(none)";
-
-            // (1) Drop a ray STRAIGHT DOWN from player chest height
-            // (lookAt) to find the highest solid surface directly
-            // beneath the player. If feet_drop_y differs from
-            // player_pos.y by anything more than capsule radius, the
-            // Jolt-reported foot Y and the visible-floor Y are out
-            // of sync — that's the dual-source-of-truth bug.
-            const glm::vec3 drop_origin(player_pos.x, lookAt.y, player_pos.z);
-            const engine::physics::RayHit feet_drop =
-                engine::physics::raycast(drop_origin, glm::vec3(0, -1, 0), 50.0f);
-            const float feet_drop_y = feet_drop.hit ? (lookAt.y - feet_drop.distance) : -999.0f;
-            const char* feet_drop_name =
-                feet_drop.hit ? engine::physics::bodyDebugName(feet_drop.body) : "";
-
-            // (2) Active contacts: every body the character capsule
-            // is currently touching. "Wedged between two things at
-            // different Ys" appears here as multiple contacts. Cap
-            // the list to keep the log readable.
-            static std::vector<engine::physics::BodyHandle> sActiveContacts;
-            sActiveContacts.clear();
-            if (pbody != engine::physics::kInvalidBody)
-                engine::physics::characterActiveContacts(pbody, sActiveContacts);
-            char contacts_buf[256] = "";
-            {
-                int written = 0;
-                for (std::size_t i = 0; i < sActiveContacts.size() && i < 6; ++i)
-                {
-                    const char* nm = engine::physics::bodyDebugName(sActiveContacts[i]);
-                    const int n =
-                        std::snprintf(contacts_buf + written,
-                                      sizeof(contacts_buf) - static_cast<std::size_t>(written),
-                                      "%s%s", i == 0 ? "" : ",", nm);
-                    if (n <= 0 || static_cast<std::size_t>(written + n) >= sizeof(contacts_buf))
-                        break;
-                    written += n;
-                }
-            }
-
-            std::fprintf(
-                sPullInLog,
-                "[%d] pPos=(%.2f,%.2f,%.2f) pVel=(%.3f,%.3f,%.3f) pSpd=%.3f "
-                "yaw=%.3f pitch=%.3f lookFwd=(%.3f,%.3f,%.3f) "
-                "lookAt=(%.2f,%.2f,%.2f) cam_dir=(%.3f,%.3f,%.3f) "
-                "ideal_off=(%.2f,%.2f,%.2f) ideal_off_len=%.2f "
-                "follow_dist=%.2f "
-                "hit=%d hit_dist=%.3f target_sep=%.3f smoothed_sep=%.3f "
-                "camPos=(%.2f,%.2f,%.2f) cam_y_above_chest=%.3f "
-                "cam_xz_from_player=%.3f overlap=%d "
-                "wall_between=%d probe_c2l=(hit=%d dist=%.3f name='%s') "
-                "probe_f2c=(hit=%d dist=%.3f name='%s') "
-                "ground='%s' feet_drop=(hit=%d y=%.3f gap=%.3f name='%s') "
-                "active_contacts=%zu [%s] "
-                "wall_near=(dist=%.3f axis=%d name='%s')\n",
-                sPullInFrame, player_pos.x, player_pos.y, player_pos.z, player_vel.x, player_vel.y,
-                player_vel.z, player_speed, yaw, pitch, lookFwd.x, lookFwd.y, lookFwd.z, lookAt.x,
-                lookAt.y, lookAt.z, cam_dir.x, cam_dir.y, cam_dir.z, ideal_offset.x, ideal_offset.y,
-                ideal_offset.z, desired_separation, tun.follow_distance, hit.hit ? 1 : 0,
-                hit.distance, target_separation, sSmoothedSeparation, camPos.x, camPos.y, camPos.z,
-                cam_y_above_chest, cam_dist_xz, overlap ? 1 : 0, wall_between ? 1 : 0,
-                probe_cam_to_look.hit ? 1 : 0, probe_cam_to_look.distance, probe_cam_to_look_name,
-                probe_feet_to_cam.hit ? 1 : 0, probe_feet_to_cam.distance, probe_feet_to_cam_name,
-                ground_name, feet_drop.hit ? 1 : 0, feet_drop_y,
-                feet_drop.hit ? (feet_drop_y - player_pos.y) : -999.0f, feet_drop_name,
-                sActiveContacts.size(), contacts_buf, wall_nearest_dist, wall_nearest_axis,
-                wall_nearest_name);
-            std::fflush(sPullInLog);
-            ++sPullInFrame;
-            sPrevPlayerPos = player_pos;
-        }
-    }
+        debugWriteCameraPullInLog({player_pos, yaw, pitch, lookFwd, lookAt, cam_dir, ideal_offset,
+                                   desired_separation, tun.follow_distance, hit, target_separation,
+                                   smoothed_separation, camPos, sphere_radius});
 
     sLastView = glm::lookAt(camPos, lookAt, glm::vec3(0.0f, 1.0f, 0.0f));
 
     const float aspect =
         windowHeight() > 0 ? static_cast<float>(windowWidth()) / static_cast<float>(windowHeight())
                            : 1.0f;
-    // Near plane restored to 0.1 (was bumped to 0.5 for descent corridor
-    // depth-flicker which produced the see-outside-through-wall bug: with
-    // near=0.5 and player flush against a wall, the camera arm sits with
-    // the wall closer than the near plane and the wall gets near-clipped,
-    // revealing what's outside through the hole. The corridor flicker
-    // gets handled separately via depth-bias / log-depth / scene-local
-    // far plane — see [[feedback_pos_y_dropped_in_matrices]] sibling.
     const glm::mat4 proj =
         glm::perspective(glm::radians(settings.fov_degrees_third_person), aspect, 0.1f, 2000.0f);
     return proj * sLastView;
+}
+} // namespace
+
+glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
+                        const glm::vec3& head_world_pos, const glm::mat4& head_world_mat,
+                        bool use_anim_orientation_in, float player_yaw, const char* one_shot_name)
+{
+    const float yaw = cameraYaw();
+    const float pitch = cameraPitch();
+    const glm::vec3 lookFwd(std::cos(pitch) * -std::sin(yaw), std::sin(pitch),
+                            std::cos(pitch) * -std::cos(yaw));
+    if (cameraMode() == CameraMode::FirstPerson)
+        return buildFirstPersonViewProj(player_pos, head_world_pos, head_world_mat,
+                                        use_anim_orientation_in, player_yaw, one_shot_name,
+                                        lookFwd);
+    return buildThirdPersonViewProj(player_pos, target_lookat_y, lookFwd);
 }
 
 namespace

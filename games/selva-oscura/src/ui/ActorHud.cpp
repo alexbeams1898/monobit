@@ -586,7 +586,7 @@ void renderCompass()
     //   compass_deg = (yaw_deg + 180) mod 360
     constexpr float kPi = 3.14159265358979f;
     const float yaw_rad = selva::render::cameraYaw();
-    float yaw_deg = yaw_rad * (180.0f / kPi);
+    const float yaw_deg = yaw_rad * (180.0f / kPi);
     float compass_deg = std::fmod(yaw_deg + 180.0f, 360.0f);
     if (compass_deg < 0.0f)
         compass_deg += 360.0f;
@@ -647,7 +647,7 @@ void renderCompass()
     // the visible arc away from the current heading.
     auto degToX = [&](float dir_deg) -> float
     {
-        float diff = std::fmod(dir_deg - compass_deg + 540.0f, 360.0f) - 180.0f;
+        const float diff = std::fmod(dir_deg - compass_deg + 540.0f, 360.0f) - 180.0f;
         return center_x + diff * kPxPerDeg;
     };
 
@@ -685,183 +685,165 @@ void renderCompass()
     ImGui::End();
 }
 
+namespace
+{
+// Draw one cylinder: top + bottom ring + spokes at quarter-turns +
+// label above the top center.
+void drawColliderCylinder(const selva::world::CylinderCollider& c, const glm::mat4& vp,
+                          ImDrawList* overlay)
+{
+    constexpr int kCylSegments = 16;
+    const ImU32 cyl_color = IM_COL32(255, 200, 80, 220);
+    const float ground_y = selva::world::sampleHeight(c.center.x, c.center.z);
+    const float top_y = ground_y + c.half_height * 2.0f;
+    glm::vec2 prev_lo;
+    glm::vec2 prev_hi;
+    bool have_prev = false;
+    for (int i = 0; i <= kCylSegments; ++i)
+    {
+        const float t = static_cast<float>(i) / static_cast<float>(kCylSegments);
+        const float ang = t * 6.2831853f;
+        const float x = c.center.x + std::cos(ang) * c.radius;
+        const float z = c.center.z + std::sin(ang) * c.radius;
+        glm::vec2 sp_lo;
+        glm::vec2 sp_hi;
+        const bool lo_ok = selva::render::worldToScreen(vp, glm::vec3(x, ground_y, z), sp_lo);
+        const bool hi_ok = selva::render::worldToScreen(vp, glm::vec3(x, top_y, z), sp_hi);
+        if (have_prev && lo_ok)
+            overlay->AddLine(ImVec2(prev_lo.x, prev_lo.y), ImVec2(sp_lo.x, sp_lo.y), cyl_color,
+                             1.0f);
+        if (have_prev && hi_ok)
+            overlay->AddLine(ImVec2(prev_hi.x, prev_hi.y), ImVec2(sp_hi.x, sp_hi.y), cyl_color,
+                             1.0f);
+        if (i % 4 == 0 && lo_ok && hi_ok)
+            overlay->AddLine(ImVec2(sp_lo.x, sp_lo.y), ImVec2(sp_hi.x, sp_hi.y), cyl_color, 1.0f);
+        if (lo_ok)
+            prev_lo = sp_lo;
+        if (hi_ok)
+            prev_hi = sp_hi;
+        have_prev = lo_ok && hi_ok;
+    }
+    if (c.name != nullptr)
+    {
+        glm::vec2 label_pos;
+        if (selva::render::worldToScreen(vp, glm::vec3(c.center.x, top_y + 0.10f, c.center.z),
+                                         label_pos))
+            overlay->AddText(ImVec2(label_pos.x - 4.0f, label_pos.y - 14.0f), cyl_color, c.name);
+    }
+}
+
+// Draw one box: 4 vertical edges + top/bottom rectangles, with
+// walkable_top slope rendered as a sloped top quad. Color encodes
+// type: cyan = standard, green = walkable_top, magenta = camera_only.
+void drawColliderBox(const selva::world::BoxCollider& b, const glm::mat4& vp, ImDrawList* overlay)
+{
+    const ImU32 col_standard = IM_COL32(80, 200, 255, 220);
+    const ImU32 col_walkable = IM_COL32(80, 255, 120, 220);
+    const ImU32 col_camera = IM_COL32(255, 100, 200, 220);
+    const float lo_y = b.y_base;
+    const float hi_y_center = b.y_base + 2.0f * b.half_height_y;
+    const glm::vec2 corners_xz[4] = {
+        {b.center.x - b.half_extents.x, b.center.y - b.half_extents.y},
+        {b.center.x + b.half_extents.x, b.center.y - b.half_extents.y},
+        {b.center.x + b.half_extents.x, b.center.y + b.half_extents.y},
+        {b.center.x - b.half_extents.x, b.center.y + b.half_extents.y},
+    };
+    glm::vec2 s_lo[4];
+    glm::vec2 s_hi[4];
+    bool ok_lo[4];
+    bool ok_hi[4];
+    for (int i = 0; i < 4; ++i)
+    {
+        const float dx = corners_xz[i].x - b.center.x;
+        const float dz = corners_xz[i].y - b.center.y;
+        const float hi_y_here = hi_y_center + b.top_slope.x * dx + b.top_slope.y * dz;
+        ok_lo[i] = selva::render::worldToScreen(
+            vp, glm::vec3(corners_xz[i].x, lo_y, corners_xz[i].y), s_lo[i]);
+        ok_hi[i] = selva::render::worldToScreen(
+            vp, glm::vec3(corners_xz[i].x, hi_y_here, corners_xz[i].y), s_hi[i]);
+    }
+    const ImU32 color = b.camera_only ? col_camera : (b.walkable_top ? col_walkable : col_standard);
+    for (int i = 0; i < 4; ++i)
+    {
+        const int j = (i + 1) % 4;
+        if (ok_lo[i] && ok_lo[j])
+            overlay->AddLine(ImVec2(s_lo[i].x, s_lo[i].y), ImVec2(s_lo[j].x, s_lo[j].y), color,
+                             1.5f);
+        if (ok_hi[i] && ok_hi[j])
+            overlay->AddLine(ImVec2(s_hi[i].x, s_hi[i].y), ImVec2(s_hi[j].x, s_hi[j].y), color,
+                             1.5f);
+        if (ok_lo[i] && ok_hi[i])
+            overlay->AddLine(ImVec2(s_lo[i].x, s_lo[i].y), ImVec2(s_hi[i].x, s_hi[i].y), color,
+                             1.5f);
+    }
+    if (b.name != nullptr)
+    {
+        glm::vec2 label_pos;
+        if (selva::render::worldToScreen(vp, glm::vec3(b.center.x, hi_y_center + 0.10f, b.center.y),
+                                         label_pos))
+            overlay->AddText(ImVec2(label_pos.x - 4.0f, label_pos.y - 14.0f), color, b.name);
+    }
+}
+
+// Draw every registered StructureFootprint that cuts the floor as a
+// red rect overlay. Reading the registry directly means the overlay
+// can't drift from what the terrain shader actually sees.
+void drawStructureFootprintRects(const glm::mat4& vp, ImDrawList* overlay)
+{
+    using namespace selva::world::crypt_layout;
+    const ImU32 discard_color = IM_COL32(255, 60, 60, 220);
+    const float terrain_y = selva::world::sampleHeight(kCryptX + kHalfWidth + 2.0f, kCryptZ);
+    auto drawRect = [&](const glm::vec2& center, const glm::vec2& half_extents, const char* label)
+    {
+        if (half_extents.x <= 0.0f || half_extents.y <= 0.0f)
+            return;
+        const float c[4][2] = {
+            {center.x - half_extents.x, center.y - half_extents.y},
+            {center.x + half_extents.x, center.y - half_extents.y},
+            {center.x + half_extents.x, center.y + half_extents.y},
+            {center.x - half_extents.x, center.y + half_extents.y},
+        };
+        glm::vec2 sp[4];
+        bool ok[4];
+        for (int i = 0; i < 4; ++i)
+            ok[i] = selva::render::worldToScreen(vp, glm::vec3(c[i][0], terrain_y + 0.05f, c[i][1]),
+                                                 sp[i]);
+        for (int i = 0; i < 4; ++i)
+        {
+            const int j = (i + 1) % 4;
+            if (ok[i] && ok[j])
+                overlay->AddLine(ImVec2(sp[i].x, sp[i].y), ImVec2(sp[j].x, sp[j].y), discard_color,
+                                 2.0f);
+        }
+        glm::vec2 lp;
+        if (selva::render::worldToScreen(vp, glm::vec3(center.x, terrain_y + 0.05f, center.y), lp))
+            overlay->AddText(ImVec2(lp.x - 30.0f, lp.y), discard_color, label);
+    };
+    const int fp_count = engine::world::structureFootprintCount();
+    for (int i = 0; i < fp_count; ++i)
+    {
+        const auto& f = engine::world::structureFootprintAt(i);
+        if (!f.cuts_floor)
+            continue;
+        const char* label = f.debug_name ? f.debug_name : "structure_footprint";
+        drawRect(f.center_xz, f.half_extents_xz, label);
+    }
+}
+} // namespace
+
 void renderColliderDebug()
 {
     const auto& tun = selva::tuning::current();
     if (!tun.debug_show_colliders)
         return;
-
     const auto& scene = selva::world::currentScene();
     const glm::mat4& vp = selva::render::lastViewProj();
     ImDrawList* overlay = ImGui::GetForegroundDrawList();
-
-    // Cylinders: a top + bottom ring at ground vs half_height*2, plus a
-    // vertical spoke at each of N segments to suggest the volume.
-    constexpr int kCylSegments = 16;
-    const ImU32 cyl_color = IM_COL32(255, 200, 80, 220);
     for (const auto& c : scene.cylinders)
-    {
-        const float ground_y = selva::world::sampleHeight(c.center.x, c.center.z);
-        const float top_y = ground_y + c.half_height * 2.0f;
-        glm::vec2 prev_lo;
-        glm::vec2 prev_hi;
-        bool have_prev = false;
-        for (int i = 0; i <= kCylSegments; ++i)
-        {
-            const float t = static_cast<float>(i) / static_cast<float>(kCylSegments);
-            const float ang = t * 6.2831853f;
-            const float x = c.center.x + std::cos(ang) * c.radius;
-            const float z = c.center.z + std::sin(ang) * c.radius;
-            glm::vec2 sp_lo;
-            glm::vec2 sp_hi;
-            const bool lo_ok = selva::render::worldToScreen(vp, glm::vec3(x, ground_y, z), sp_lo);
-            const bool hi_ok = selva::render::worldToScreen(vp, glm::vec3(x, top_y, z), sp_hi);
-            if (have_prev && lo_ok)
-                overlay->AddLine(ImVec2(prev_lo.x, prev_lo.y), ImVec2(sp_lo.x, sp_lo.y), cyl_color,
-                                 1.0f);
-            if (have_prev && hi_ok)
-                overlay->AddLine(ImVec2(prev_hi.x, prev_hi.y), ImVec2(sp_hi.x, sp_hi.y), cyl_color,
-                                 1.0f);
-            if (i % 4 == 0 && lo_ok && hi_ok)
-                overlay->AddLine(ImVec2(sp_lo.x, sp_lo.y), ImVec2(sp_hi.x, sp_hi.y), cyl_color,
-                                 1.0f);
-            if (lo_ok)
-            {
-                prev_lo = sp_lo;
-            }
-            if (hi_ok)
-            {
-                prev_hi = sp_hi;
-            }
-            have_prev = lo_ok && hi_ok;
-        }
-        // Label above the cylinder top, centered.
-        if (c.name != nullptr)
-        {
-            glm::vec2 label_pos;
-            if (selva::render::worldToScreen(vp, glm::vec3(c.center.x, top_y + 0.10f, c.center.z),
-                                             label_pos))
-            {
-                overlay->AddText(ImVec2(label_pos.x - 4.0f, label_pos.y - 14.0f), cyl_color,
-                                 c.name);
-            }
-        }
-    }
-
-    // Boxes: draw the 4 vertical edges + top/bottom rectangles.
-    // Draw each box at its actual Y extent (y_base to y_base + 2*half_height_y).
-    // For walkable_top boxes with top_slope, render the top quad as a
-    // sloped quad so the slope is visible. Color encodes type:
-    //   - cyan: standard collider
-    //   - green: walkable_top
-    //   - magenta: camera_only
-    const ImU32 col_standard = IM_COL32(80, 200, 255, 220);
-    const ImU32 col_walkable = IM_COL32(80, 255, 120, 220);
-    const ImU32 col_camera = IM_COL32(255, 100, 200, 220);
+        drawColliderCylinder(c, vp, overlay);
     for (const auto& b : scene.boxes)
-    {
-        const float lo_y = b.y_base;
-        const float hi_y_center = b.y_base + 2.0f * b.half_height_y;
-        const glm::vec2 corners_xz[4] = {
-            {b.center.x - b.half_extents.x, b.center.y - b.half_extents.y},
-            {b.center.x + b.half_extents.x, b.center.y - b.half_extents.y},
-            {b.center.x + b.half_extents.x, b.center.y + b.half_extents.y},
-            {b.center.x - b.half_extents.x, b.center.y + b.half_extents.y},
-        };
-        glm::vec2 s_lo[4];
-        glm::vec2 s_hi[4];
-        bool ok_lo[4];
-        bool ok_hi[4];
-        for (int i = 0; i < 4; ++i)
-        {
-            const float dx = corners_xz[i].x - b.center.x;
-            const float dz = corners_xz[i].y - b.center.y;
-            const float hi_y_here = hi_y_center + b.top_slope.x * dx + b.top_slope.y * dz;
-            ok_lo[i] = selva::render::worldToScreen(
-                vp, glm::vec3(corners_xz[i].x, lo_y, corners_xz[i].y), s_lo[i]);
-            ok_hi[i] = selva::render::worldToScreen(
-                vp, glm::vec3(corners_xz[i].x, hi_y_here, corners_xz[i].y), s_hi[i]);
-        }
-        const ImU32 color =
-            b.camera_only ? col_camera : (b.walkable_top ? col_walkable : col_standard);
-        for (int i = 0; i < 4; ++i)
-        {
-            const int j = (i + 1) % 4;
-            if (ok_lo[i] && ok_lo[j])
-                overlay->AddLine(ImVec2(s_lo[i].x, s_lo[i].y), ImVec2(s_lo[j].x, s_lo[j].y), color,
-                                 1.5f);
-            if (ok_hi[i] && ok_hi[j])
-                overlay->AddLine(ImVec2(s_hi[i].x, s_hi[i].y), ImVec2(s_hi[j].x, s_hi[j].y), color,
-                                 1.5f);
-            if (ok_lo[i] && ok_hi[i])
-                overlay->AddLine(ImVec2(s_lo[i].x, s_lo[i].y), ImVec2(s_hi[i].x, s_hi[i].y), color,
-                                 1.5f);
-        }
-        // Label above the box top center.
-        if (b.name != nullptr)
-        {
-            glm::vec2 label_pos;
-            if (selva::render::worldToScreen(
-                    vp, glm::vec3(b.center.x, hi_y_center + 0.10f, b.center.y), label_pos))
-            {
-                overlay->AddText(ImVec2(label_pos.x - 4.0f, label_pos.y - 14.0f), color, b.name);
-            }
-        }
-    }
-
-    // Terrain-discard regions: reads the LAST-SET values from the
-    // terrain shader module so the overlay reflects what the renderer
-    // is actually doing this frame (not hardcoded shapes from when
-    // the discard logic was different). Shapes with zero extents/
-    // radius are skipped (disabled).
-    {
-        using namespace selva::world::crypt_layout;
-        const ImU32 discard_color = IM_COL32(255, 60, 60, 220);
-        const float terrain_y = selva::world::sampleHeight(kCryptX + kHalfWidth + 2.0f, kCryptZ);
-
-        auto drawRect =
-            [&](const glm::vec2& center, const glm::vec2& half_extents, const char* label)
-        {
-            if (half_extents.x <= 0.0f || half_extents.y <= 0.0f)
-                return;
-            const float c[4][2] = {
-                {center.x - half_extents.x, center.y - half_extents.y},
-                {center.x + half_extents.x, center.y - half_extents.y},
-                {center.x + half_extents.x, center.y + half_extents.y},
-                {center.x - half_extents.x, center.y + half_extents.y},
-            };
-            glm::vec2 sp[4];
-            bool ok[4];
-            for (int i = 0; i < 4; ++i)
-                ok[i] = selva::render::worldToScreen(
-                    vp, glm::vec3(c[i][0], terrain_y + 0.05f, c[i][1]), sp[i]);
-            for (int i = 0; i < 4; ++i)
-            {
-                const int j = (i + 1) % 4;
-                if (ok[i] && ok[j])
-                    overlay->AddLine(ImVec2(sp[i].x, sp[i].y), ImVec2(sp[j].x, sp[j].y),
-                                     discard_color, 2.0f);
-            }
-            glm::vec2 lp;
-            if (selva::render::worldToScreen(vp, glm::vec3(center.x, terrain_y + 0.05f, center.y),
-                                             lp))
-                overlay->AddText(ImVec2(lp.x - 30.0f, lp.y), discard_color, label);
-        };
-
-        // Draw every registered StructureFootprint that cuts the
-        // floor — these are exactly the rects the terrain shader
-        // discards. Walking the registry directly means the overlay
-        // can't drift from what the shader actually sees.
-        const int fp_count = engine::world::structureFootprintCount();
-        for (int i = 0; i < fp_count; ++i)
-        {
-            const auto& f = engine::world::structureFootprintAt(i);
-            if (!f.cuts_floor)
-                continue;
-            const char* label = f.debug_name ? f.debug_name : "structure_footprint";
-            drawRect(f.center_xz, f.half_extents_xz, label);
-        }
-    }
+        drawColliderBox(b, vp, overlay);
+    drawStructureFootprintRects(vp, overlay);
 }
 
 void renderPhysicsBodyDebug()
@@ -952,7 +934,7 @@ void renderSceneOverlays()
     using namespace engine::world;
     const auto& tun = selva::tuning::current();
     ImDrawList* fg = ImGui::GetForegroundDrawList();
-    ImGuiIO& io = ImGui::GetIO();
+    const ImGuiIO& io = ImGui::GetIO();
 
     // ---- Fade-to-black during transitions (always-on) ----
     const float fade = transitionFadeAlpha();

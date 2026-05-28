@@ -376,9 +376,9 @@ void Engine::renderLoadingFrame(const char* status_text)
     // top-center, list of completed steps + current step below.
     ImGui::SetNextWindowPos(ImVec2(0, 0));
     ImGui::SetNextWindowSize(ImVec2(static_cast<float>(window_w), static_cast<float>(window_h)));
-    ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
-                             ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs |
-                             ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoNav;
+    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                                   ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs |
+                                   ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoNav;
     if (ImGui::Begin("##loading", nullptr, flags))
     {
         const char* title = "Loading";

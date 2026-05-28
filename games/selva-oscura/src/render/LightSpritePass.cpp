@@ -214,7 +214,7 @@ void renderLightSprites(const glm::mat4& view_proj, const glm::vec3& cam_pos,
     // screen-left. Their world-space difference is the world-right axis.
     auto unproject = [&](float ndc_x, float ndc_y) -> glm::vec3
     {
-        glm::vec4 p = inv_vp * glm::vec4(ndc_x, ndc_y, 0.0f, 1.0f);
+        const glm::vec4 p = inv_vp * glm::vec4(ndc_x, ndc_y, 0.0f, 1.0f);
         return glm::vec3(p) / p.w;
     };
     const glm::vec3 p_center = unproject(0.0f, 0.0f);

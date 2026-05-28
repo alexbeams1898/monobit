@@ -53,14 +53,65 @@ bool sAudioReady = false;
 
 } // namespace
 
+namespace
+{
+// Load a single SFX entry from JSON. Skips invalid entries (returns
+// false without inserting).
+bool loadOneSfxEntry(const nlohmann::json& entry, SoundEntry& out)
+{
+    if (!entry.is_object())
+        return false;
+    out.path = entry.value("path", std::string());
+    out.volume = entry.value("volume", 1.0f);
+    out.peak_offset_seconds = entry.value("peak_offset_seconds", 0.0f);
+    if (entry.contains("variations") && entry["variations"].is_array())
+    {
+        for (const auto& v : entry["variations"])
+        {
+            if (v.is_string())
+                out.variations.push_back(v.get<std::string>());
+        }
+    }
+    return !(out.path.empty() && out.variations.empty());
+}
+
+void loadSfxRegistry(const nlohmann::json& doc)
+{
+    if (!doc.contains("sfx") || !doc["sfx"].is_object())
+        return;
+    const auto& sfx = doc["sfx"];
+    for (auto it = sfx.begin(); it != sfx.end(); ++it)
+    {
+        SoundEntry se;
+        if (loadOneSfxEntry(it.value(), se))
+            sSounds.emplace(it.key(), std::move(se));
+    }
+}
+
+void loadMusic(const nlohmann::json& doc)
+{
+    if (!doc.contains("music") || !doc["music"].is_object())
+        return;
+    const auto& m = doc["music"];
+    sMusic.path = m.value("path", std::string());
+    sMusic.volume = m.value("volume", 0.35f);
+    sMusic.loop = m.value("loop", true);
+    sMusic.fade_in_ms = m.value("fade_in_ms", 0);
+    sMusic.lowpass_during_death_hz = m.value("lowpass_during_death_hz", 700.0f);
+    if (sMusic.path.empty())
+        return;
+    AudioSystem::playMusic(sMusic.path, sMusic.volume, sMusic.loop, sMusic.fade_in_ms);
+    std::fprintf(stderr, "[audio] music start path='%s' vol=%.2f loop=%d fade=%dms\n",
+                 sMusic.path.c_str(), sMusic.volume, sMusic.loop ? 1 : 0, sMusic.fade_in_ms);
+}
+} // namespace
+
 bool init(const std::string& registry_path)
 {
     // AudioSystem is initialized inside Engine::init() before this
-    // runs. Calling it again here re-inits miniaudio's device which
-    // thrashes the engine's already-running sound voices and (on
-    // Windows) leaves the second init in a state where playSfx
-    // returns success but no audio reaches the device. We just trust
-    // engine init succeeded and load the registry on top.
+    // runs. Re-initing miniaudio's device thrashes the engine's already-
+    // running voices and (on Windows) leaves it silently broken. Just
+    // trust engine init succeeded and load the registry on top.
     sAudioReady = true;
 
     sSounds.clear();
@@ -84,53 +135,8 @@ bool init(const std::string& registry_path)
     if (!doc.is_object())
         return sAudioReady;
 
-    // SFX registry (nested under "sfx" so the schema has room for
-    // music + future audio categories alongside it).
-    if (doc.contains("sfx") && doc["sfx"].is_object())
-    {
-        const auto& sfx = doc["sfx"];
-        for (auto it = sfx.begin(); it != sfx.end(); ++it)
-        {
-            const auto& entry = it.value();
-            if (!entry.is_object())
-                continue;
-            SoundEntry se;
-            se.path = entry.value("path", std::string());
-            se.volume = entry.value("volume", 1.0f);
-            se.peak_offset_seconds = entry.value("peak_offset_seconds", 0.0f);
-            if (entry.contains("variations") && entry["variations"].is_array())
-            {
-                for (const auto& v : entry["variations"])
-                {
-                    if (v.is_string())
-                        se.variations.push_back(v.get<std::string>());
-                }
-            }
-            if (se.path.empty() && se.variations.empty())
-                continue;
-            sSounds.emplace(it.key(), std::move(se));
-        }
-    }
-
-    // Music: single looping OST track. Read config, then start it
-    // playing via the engine's music channel (separate from SFX so
-    // it can be ducked/muted independently).
-    if (doc.contains("music") && doc["music"].is_object())
-    {
-        const auto& m = doc["music"];
-        sMusic.path = m.value("path", std::string());
-        sMusic.volume = m.value("volume", 0.35f);
-        sMusic.loop = m.value("loop", true);
-        sMusic.fade_in_ms = m.value("fade_in_ms", 0);
-        sMusic.lowpass_during_death_hz = m.value("lowpass_during_death_hz", 700.0f);
-        if (!sMusic.path.empty())
-        {
-            AudioSystem::playMusic(sMusic.path, sMusic.volume, sMusic.loop, sMusic.fade_in_ms);
-            std::fprintf(stderr, "[audio] music start path='%s' vol=%.2f loop=%d fade=%dms\n",
-                         sMusic.path.c_str(), sMusic.volume, sMusic.loop ? 1 : 0,
-                         sMusic.fade_in_ms);
-        }
-    }
+    loadSfxRegistry(doc);
+    loadMusic(doc);
 
     std::fprintf(stderr, "[audio] loaded %zu sfx + music='%s' from %s\n", sSounds.size(),
                  sMusic.path.c_str(), registry_path.c_str());

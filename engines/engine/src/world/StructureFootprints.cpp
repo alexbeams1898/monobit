@@ -66,6 +66,58 @@ const StructureFootprint& structureFootprintAt(int idx)
     return sFootprints[idx];
 }
 
+namespace
+{
+void writeVerticalProfileJson(std::FILE* fp, const VerticalProfile& vp)
+{
+    const bool valid = vp.nx > 0 && vp.nz > 0 &&
+                       vp.cells.size() == static_cast<size_t>(vp.nx) * static_cast<size_t>(vp.nz);
+    if (!valid)
+    {
+        std::fprintf(fp, "      \"vertical_profile\": null\n");
+        return;
+    }
+    std::fprintf(fp, "      \"vertical_profile\": {\n");
+    std::fprintf(fp, "        \"nx\": %d,\n", vp.nx);
+    std::fprintf(fp, "        \"nz\": %d,\n", vp.nz);
+    std::fprintf(fp, "        \"cells\": [\n");
+    for (int iz = 0; iz < vp.nz; ++iz)
+    {
+        std::fprintf(fp, "          [");
+        for (int ix = 0; ix < vp.nx; ++ix)
+        {
+            const auto& c = vp.cells[static_cast<size_t>(iz) * static_cast<size_t>(vp.nx) +
+                                     static_cast<size_t>(ix)];
+            std::fprintf(fp, "[%.6f, %.6f]%s", c.y_min, c.y_max, (ix + 1 < vp.nx) ? ", " : "");
+        }
+        std::fprintf(fp, "]%s\n", (iz + 1 < vp.nz) ? "," : "");
+    }
+    std::fprintf(fp, "        ]\n");
+    std::fprintf(fp, "      }\n");
+}
+
+void writeFootprintJson(std::FILE* fp, const StructureFootprint& f, bool last)
+{
+    std::fprintf(fp, "    {\n");
+    std::fprintf(fp, "      \"name\": \"%s\",\n", f.debug_name ? f.debug_name : "");
+    if (f.region_name != nullptr)
+        std::fprintf(fp, "      \"region\": \"%s\",\n", f.region_name);
+    else
+        std::fprintf(fp, "      \"region\": null,\n");
+    std::fprintf(fp, "      \"center_xz\": [%.6f, %.6f],\n", f.center_xz.x, f.center_xz.y);
+    std::fprintf(fp, "      \"half_extents_xz\": [%.6f, %.6f],\n", f.half_extents_xz.x,
+                 f.half_extents_xz.y);
+    std::fprintf(fp, "      \"cuts\": {\n");
+    std::fprintf(fp, "        \"floor\": %s,\n", f.cuts_floor ? "true" : "false");
+    std::fprintf(fp, "        \"rim\": %s,\n", f.cuts_rim ? "true" : "false");
+    std::fprintf(fp, "        \"ceiling\": %s,\n", f.cuts_ceiling ? "true" : "false");
+    std::fprintf(fp, "        \"wall\": %s\n", f.cuts_wall ? "true" : "false");
+    std::fprintf(fp, "      },\n");
+    writeVerticalProfileJson(fp, f.vertical_profile);
+    std::fprintf(fp, "    }%s\n", last ? "" : ",");
+}
+} // namespace
+
 bool serializeStructureRegistryJson(const char* out_path)
 {
     std::FILE* fp = std::fopen(out_path, "wb");
@@ -75,62 +127,14 @@ bool serializeStructureRegistryJson(const char* out_path)
         return false;
     }
 
-    // Hand-rolled JSON to keep this engine module dependency-free
-    // (nlohmann::json is available in the engine but pulling it here
-    // would make the dump binary heavier than it needs to be).
+    // Hand-rolled JSON keeps this engine module dependency-free.
     // schema_version lets future tools detect/handle field additions
     // without silently breaking on old generated files.
     std::fprintf(fp, "{\n");
     std::fprintf(fp, "  \"schema_version\": 1,\n");
     std::fprintf(fp, "  \"structures\": [\n");
     for (size_t i = 0; i < sFootprints.size(); ++i)
-    {
-        const auto& f = sFootprints[i];
-        std::fprintf(fp, "    {\n");
-        std::fprintf(fp, "      \"name\": \"%s\",\n", f.debug_name ? f.debug_name : "");
-        if (f.region_name != nullptr)
-            std::fprintf(fp, "      \"region\": \"%s\",\n", f.region_name);
-        else
-            std::fprintf(fp, "      \"region\": null,\n");
-        std::fprintf(fp, "      \"center_xz\": [%.6f, %.6f],\n", f.center_xz.x, f.center_xz.y);
-        std::fprintf(fp, "      \"half_extents_xz\": [%.6f, %.6f],\n", f.half_extents_xz.x,
-                     f.half_extents_xz.y);
-        std::fprintf(fp, "      \"cuts\": {\n");
-        std::fprintf(fp, "        \"floor\": %s,\n", f.cuts_floor ? "true" : "false");
-        std::fprintf(fp, "        \"rim\": %s,\n", f.cuts_rim ? "true" : "false");
-        std::fprintf(fp, "        \"ceiling\": %s,\n", f.cuts_ceiling ? "true" : "false");
-        std::fprintf(fp, "        \"wall\": %s\n", f.cuts_wall ? "true" : "false");
-        std::fprintf(fp, "      },\n");
-
-        const auto& vp = f.vertical_profile;
-        if (vp.nx > 0 && vp.nz > 0 &&
-            vp.cells.size() == static_cast<size_t>(vp.nx) * static_cast<size_t>(vp.nz))
-        {
-            std::fprintf(fp, "      \"vertical_profile\": {\n");
-            std::fprintf(fp, "        \"nx\": %d,\n", vp.nx);
-            std::fprintf(fp, "        \"nz\": %d,\n", vp.nz);
-            std::fprintf(fp, "        \"cells\": [\n");
-            for (int iz = 0; iz < vp.nz; ++iz)
-            {
-                std::fprintf(fp, "          [");
-                for (int ix = 0; ix < vp.nx; ++ix)
-                {
-                    const auto& c = vp.cells[static_cast<size_t>(iz) * static_cast<size_t>(vp.nx) +
-                                             static_cast<size_t>(ix)];
-                    std::fprintf(fp, "[%.6f, %.6f]%s", c.y_min, c.y_max,
-                                 (ix + 1 < vp.nx) ? ", " : "");
-                }
-                std::fprintf(fp, "]%s\n", (iz + 1 < vp.nz) ? "," : "");
-            }
-            std::fprintf(fp, "        ]\n");
-            std::fprintf(fp, "      }\n");
-        }
-        else
-        {
-            std::fprintf(fp, "      \"vertical_profile\": null\n");
-        }
-        std::fprintf(fp, "    }%s\n", (i + 1 < sFootprints.size()) ? "," : "");
-    }
+        writeFootprintJson(fp, sFootprints[i], i + 1 == sFootprints.size());
     std::fprintf(fp, "  ]\n");
     std::fprintf(fp, "}\n");
     std::fclose(fp);

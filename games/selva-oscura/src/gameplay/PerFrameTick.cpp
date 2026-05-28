@@ -632,8 +632,8 @@ static void probeDumpSurroundingVertices(std::FILE* log, float px, float pz)
     {
         for (int dx = 0; dx <= 1; ++dx)
         {
-            const float vx = (gx + dx) * kQuad;
-            const float vz = (gz + dz) * kQuad;
+            const float vx = static_cast<float>(gx + dx) * kQuad;
+            const float vz = static_cast<float>(gz + dz) * kQuad;
             const float vy = selva::world::sampleHeight(vx, vz);
             const bool vhole = engine::world::insideTerrainHole(nullptr, vx, vz);
             std::fprintf(log, "    vertex (%.3f, %.3f) -> Y=%.3f hole=%d\n", vx, vz, vy,
@@ -703,11 +703,11 @@ static void probeDumpWallScanClip(std::FILE* log, const selva::world::TerrainReg
     const float var_step = (w.var_max - w.var_min) / static_cast<float>(wall_cells_horiz);
     for (int iy = 0; iy < wall_cells_vert; ++iy)
     {
-        const float y_qmin = region.wall_min_y + iy * wall_step_v;
+        const float y_qmin = region.wall_min_y + static_cast<float>(iy) * wall_step_v;
         const float y_qmax = y_qmin + wall_step_v;
         for (int iv = 0; iv < wall_cells_horiz; ++iv)
         {
-            const float v_qmin = w.var_min + iv * var_step;
+            const float v_qmin = w.var_min + static_cast<float>(iv) * var_step;
             const float v_qmax = v_qmin + var_step;
             const float v_mid = (v_qmin + v_qmax) * 0.5f;
             const float quad_x = (w.axis == 0) ? w.const_pos : v_mid;
@@ -3068,7 +3068,7 @@ static void resolvePlayerCollisionAndSnap(float dt)
                      desired.y, desired.z, v.x, v.z, isCharacterOnGround(body) ? 1 : 0, ground_name,
                      sPlayer.yaw, selva::render::cameraYaw(), selva::render::cameraPitch(),
                      sContacts.size());
-        for (BodyHandle c : sContacts)
+        for (const BodyHandle c : sContacts)
             std::fprintf(sPhysLog, " ['%s']", bodyDebugName(c));
         std::fprintf(sPhysLog, "\n");
         // Detailed contact info: where on each body is the player touching?
@@ -3684,7 +3684,7 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
     // above the player's feet kills the per-frame matrix jitter at
     // the cost of camera not tracking knockdowns/rolls - which can
     // come back later via a dedicated dynamic-pose camera mode.
-    float targetLookAtY = sPlayer.pos.y + 1.3f;
+    const float targetLookAtY = sPlayer.pos.y + 1.3f;
 
     // Head bone world position + matrix: required by FPV mode (the
     // matrix is used for camera-roll during dodge/roll clips so the
