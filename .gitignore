@@ -106,3 +106,6 @@ games/*/scripts/blender/gen_*.sh
 # StructureFootprint registry dumped by selva-oscura-dump-world).
 # Recipient build steps consume them; source-of-truth lives in C++.
 *.generated.json
+
+# Local brainstorming / scratch files — iteration surface, not canon.
+*-scratch.md
