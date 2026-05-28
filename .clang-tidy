@@ -33,7 +33,25 @@ Checks: >
   -bugprone-easily-swappable-parameters,
   -bugprone-exception-escape,
   -clang-analyzer-optin.core.EnumCastOutOfRange,
-  -clang-analyzer-unix.Malloc
+  -clang-analyzer-unix.Malloc,
+  -clang-analyzer-valist.Uninitialized
+# Disables explained:
+# - bugprone-easily-swappable-parameters: false positive on common
+#   patterns (x/y/z, w/h, etc.).
+# - bugprone-exception-escape: our code doesn't throw; analyzer
+#   complains about std lib calls in destructors.
+# - clang-analyzer-optin.core.EnumCastOutOfRange: false positive on
+#   Catch2 macros.
+# - clang-analyzer-unix.Malloc: analyzer can't model cgltf's malloc/free
+#   pattern.
+# - clang-analyzer-valist.Uninitialized: analyzer can't model va_start.
+#   We have ONE va_list site (engines/engine/src/physics/PhysicsWorld.cpp
+#   TraceImpl) — Jolt's JPH::Trace callback typedef is fixed C-style
+#   variadic, so there's no C++-typed way to receive its args. Every
+#   other logger in the codebase uses engine::log::Channel + fmt and
+#   never touches va_list. Refactor was attempted and is complete
+#   everywhere refactor was possible; this is the irreducible
+#   external-API boundary.
 
 # Treat warnings as errors locally and in CI — keeps the bar high
 WarningsAsErrors: '*'

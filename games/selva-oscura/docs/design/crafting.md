@@ -316,3 +316,83 @@ crafting moves from design to engineering.
   second deaths; Wood-craft persistence question lives here.
 - [Bestiary](bestiary.md) — what each enemy archetype drops;
   per-archetype substrate flavor.
+
+---
+
+## Brainstorming notes (2026-05-28) — imprint-making frame
+
+> Status: in-progress design conversation, NOT canon yet. Captured
+> here so the thinking persists across sessions. Promote pieces to
+> main canon body (and remove the workbench language) once locked.
+
+### "Crafting" is not crafting — it is *imprint-making*
+
+The workbench framing reads as industrial. Hell is not industrial.
+"Craft" implies a place you go to; the Vagrant carries his agency,
+he doesn't visit it. Reframe candidate:
+
+**The Vagrant marks matter the way Hell marks souls.** Hell's
+killing-protocol imprints sin onto a soul. The Vagrant — *the one
+soul Hell cannot imprint* — can do the inverse: imprint matter with
+his sangue and intent. Crafting is the inverse of being judged.
+
+This composes cosmologically:
+- The Vagrant's defining trait (per setting.md *The unjudged*) is
+  that Hell's protocol cannot grip him because he carries no
+  imprint to complete. He is the un-marked one. Reframing crafting
+  as imprint-*making* makes the verb structurally parallel to the
+  cosmological mechanic that defines him.
+- It eliminates the workbench. The verb is in the Vagrant's hand,
+  wherever he is. Substrate availability determines what he can make;
+  no station-based interaction.
+- It explains the cosmological flow: sangue + substrate + intent →
+  imprinted object. Substance moves from the Vagrant's wallet into
+  the matter. The matter becomes a *small fragment of him* — the
+  unjudged-exemption stamped onto raw substrate.
+
+### Sangue flows into everything he makes
+
+Already implied by the "Hell reclaims its substance on second death"
+rule in the main body. Making it explicit: **the player spends
+sangue at imprint-making time**, and that sangue is *in* the weapon
+from then on. Implications:
+
+- **Quality is the player's sangue allocation choice.** Spend more
+  sangue, higher quality imprint. Crafting becomes a real
+  competitor with OFFERINGS for the sangue budget.
+- **Hell-imprinted weapons reclaim on death** (matches existing
+  rule). They're substance Hell remembers; on second death, both
+  the wallet sangue and the sangue-in-weapons return to Hell.
+- **Wood-imprinted weapons persist** (resolves the open question in
+  the main body about Wood-craft survival). The Wood is outside
+  Hell's accounting; sangue spent on Wood-substrate imprints is
+  cosmologically rerouted, not reclaimed.
+- **Path register through the same mechanic:** class-picker sangue
+  is Hell-tainted; their imprints read dark, sangue-tainted, hot.
+  Unburdened sangue is pure; their imprints read pale, light-bound,
+  almost luminous. Same craft verb, different output flavor.
+
+### Imprint-making as the verb the cosmology requires
+
+`crafting.md` line load-bearing for this:
+
+> *"To craft a weapon in Hell is to take — to flay a shade for its
+> sinew, to break and shape its bone, to bind a damned soul's
+> substance into an edge."*
+
+That's already imprint-shaped. The Vagrant *binds*, *shapes*,
+*marks*. The substrate is given by the situation; the act is in
+his hands. We just promote what's implicit into explicit doctrine
+and remove the bench from the picture.
+
+### TBD before promotion to canon
+
+- Italian register name for the verb. *Impronta* (imprint),
+  *segnare* (to mark), *legare* (to bind) all candidates. Italian
+  grammar / register check needed.
+- Whether basic items (torch, wrap-cloth, walking-staff) require
+  the imprint verb at all, or are just *picked up* + held. Probably:
+  pickups exist; imprint-making is for weapons + sangue-bearing
+  objects. The torch as MVP is a pickup, not an imprint.
+- UX shape: hold-to-imprint with HP/sangue tick? Menu select? Quick
+  gesture? Defer to UX pass.
