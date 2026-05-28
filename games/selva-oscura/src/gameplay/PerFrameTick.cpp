@@ -38,6 +38,7 @@
 #include "render/Camera.h"
 #include "render/SceneGeometry.h"
 #include "render/SceneShaders.h"
+#include "render/LightSpritePass.h"
 #include "render/ShadowPass.h"
 #include "render/SkyPass.h"
 #include "render/TerrainShader.h"
@@ -3381,7 +3382,7 @@ static glm::mat4 buildTreePreviewViewProj()
                              ? static_cast<float>(selva::render::windowWidth()) /
                                    static_cast<float>(selva::render::windowHeight())
                              : 1.0f;
-    const glm::mat4 proj = glm::perspective(glm::radians(60.0f), aspect, 0.1f, 200.0f);
+    const glm::mat4 proj = glm::perspective(glm::radians(60.0f), aspect, 0.1f, 2000.0f);
     return proj * view;
 }
 
@@ -3814,7 +3815,23 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
         selva::render::setSceneViewProj(viewProj);
         selva::render::setSceneAtmosphere(kSunDir, kSunIntensity, camPos, kExposure);
         selva::render::setSceneShadow(lightVP, kSunDir, sPlayer.pos, 1);
-        selva::render::setScenePointLights(engine::world::allLights());
+        // Apply per-light flicker (modulates intensity) so the scene
+        // mesh's point-light contribution stays in sync with the
+        // sprite pass's visible flame brightness.
+        {
+            const auto& base_lights = engine::world::allLights();
+            std::vector<engine::world::LightSource> flickered;
+            flickered.reserve(base_lights.size());
+            const float t = selva::wallClock();
+            for (size_t li = 0; li < base_lights.size(); ++li)
+            {
+                engine::world::LightSource L = base_lights[li];
+                L.intensity =
+                    engine::world::flickerIntensity(static_cast<int>(li), t);
+                flickered.push_back(L);
+            }
+            selva::render::setScenePointLights(flickered);
+        }
         selva::render::setSceneFlatShading(selva::tuning::current().debug_flat_shading);
         if (selva::tuning::current().debug_msaa_state_log)
         {
@@ -3867,6 +3884,15 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
         ZoneScopedN("actor-meshes");
         selva::anim::setSkeletalShadow(lightVP, kSunDir, sPlayer.pos, 1);
         drawActorMeshes(viewProj);
+    }
+    {
+        ZoneScopedN("light-sprites");
+        // Render emissive billboards for every registered light. v1
+        // renders ALL lights regardless of region — caverns are
+        // visually separated by walls anyway, so cross-region leakage
+        // is bounded. When/if specific sealed boundaries need strict
+        // gating, pass a player-region name here.
+        selva::render::renderLightSprites(viewProj, camPos, nullptr);
     }
     tickFrameCaptureWrite();
 }

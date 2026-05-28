@@ -54,6 +54,7 @@ add_library(selva-oscura-lib STATIC
     src/render/SceneGeometry.cpp
     src/render/SceneShaders.cpp
     src/render/ShadowPass.cpp
+    src/render/LightSpritePass.cpp
     src/render/SkyPass.cpp
     src/render/TerrainShader.cpp
     src/render/Texture.cpp

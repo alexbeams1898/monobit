@@ -19,7 +19,7 @@
       "_comment": "Limbo, the First Circle of Hell. Disc shape per the Inferno cosmology — 300m playable radius, rock collar past the disc edge rises to meet the ceiling. y_offset places the disc floor at world Y = -43.13. Acheron + larvae piles + future features come from runtime TerrainModifiers tagged with region_name='limbo'. Descent stair lands at the disc's north rim (Z=-351.15), inset 30m from the rock wall.",
       "heightmap": "assets/world/terrain/limbo.png",
       "world_origin": [0.0, -621.15],
-      "world_extent": 600.0,
+      "world_extent": 624.0,
       "height_range_min": 0.0,
       "height_range_max": 36.13,
       "y_offset": -43.13,

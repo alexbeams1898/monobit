@@ -128,10 +128,12 @@ LIMBO = {
     "name": "limbo",
     "kind": "disc",
     "resolution": 512,
-    # Square holds the 600m-diameter disc with no margin loss. 1.17m
-    # per pixel (close to selva's 1m/px). The rock-collar past the
-    # disc edge fills the corners.
-    "world_extent": 2.0 * LIMBO_RADIUS,
+    # Square holds the disc PLUS a full rim_blend strip on every
+    # cardinal side, so the rock-collar wraps the disc continuously
+    # (no flat lateral-wall sections on cardinal axes where the disc
+    # edge would otherwise meet the square edge with no room for the
+    # collar). Total half-extent = radius + rim_blend = 312m.
+    "world_extent": 2.0 * (LIMBO_RADIUS + LIMBO_RIM_BLEND),
     # Descent stair lets out near the disc's north rim, inset 30m so
     # the player isn't on the wall. Disc center sits 30m + radius
     # south of the stair landing at Z = -351.15.

@@ -461,6 +461,7 @@ void renderTreePreviewControls();
 static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
 {
     renderActorHud();
+    selva::ui::renderCompass();
     renderColliderDebug();
     selva::ui::renderPhysicsBodyDebug();
     selva::ui::renderSceneOverlays();

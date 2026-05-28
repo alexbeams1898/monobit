@@ -31,6 +31,11 @@ struct LightSource
     // Forward-compatibility fields. Default values keep current
     // simple-point-light behavior; future shader features read these
     // when they exist.
+    // Flicker drives sprite brightness AND the underlying point-light
+    // intensity that lights the ground, so the visible flame and its
+    // illumination stay in sync.
+    //   intensity(t) = base × (1 + amp × sin(2π·freq·t + phase))
+    // Pick amp ≤ 1 to avoid the light briefly going negative.
     float flicker_amp = 0.0f;  // 0..1, fraction of intensity that oscillates
     float flicker_freq = 0.0f; // Hz
     bool cast_shadow = false;  // future: shadow cubemap per light
@@ -61,5 +66,15 @@ const LightSource& lightAt(int idx);
 
 // Range-based iteration for the renderer + debug overlays.
 const std::vector<LightSource>& allLights();
+
+// Time-modulated intensity for a single light. Applies sin-based
+// flicker via `flicker_amp + flicker_freq + per-light phase`. Returns
+// `intensity` unchanged when flicker_amp <= 0 (steady light).
+//
+// Phase comes from the light's index in the registry — keeps per-
+// light flickers desynced without storing phase explicitly on each
+// LightSource. Callers should pass the same `time_seconds` for one
+// frame to keep all shaders + sprites in sync.
+float flickerIntensity(int light_index, float time_seconds);
 
 } // namespace engine::world

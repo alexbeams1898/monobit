@@ -28,6 +28,7 @@
 #include "render/Camera.h"
 #include "render/SceneGeometry.h"
 #include "render/SceneShaders.h"
+#include "render/LightSpritePass.h"
 #include "render/ShadowPass.h"
 #include "render/SkyPass.h"
 #include "render/TerrainShader.h"
@@ -211,6 +212,11 @@ int main(int /*argc*/, char* /*argv*/[])
     if (!selva::render::initShadowPass())
     {
         std::fprintf(stderr, "Shadow pass init failed\n");
+        return 1;
+    }
+    if (!selva::render::initLightSpritePass())
+    {
+        std::fprintf(stderr, "Light sprite pass init failed\n");
         return 1;
     }
 

@@ -310,6 +310,8 @@ void buildRegionMesh(TerrainRegion& r, int subdivide)
         };
         for (const auto& w : walls)
         {
+            const std::size_t verts_before_wall = verts.size();
+            const std::size_t indices_before_wall = indices.size();
             const float var_step =
                 (w.var_axis_max - w.var_axis_min) / static_cast<float>(wall_cells_horiz);
             // Quad sub-clipping against registered cuts_wall slots:
@@ -326,7 +328,19 @@ void buildRegionMesh(TerrainRegion& r, int subdivide)
             // (e.g. a 0.4m wall strip just above the corridor outer
             // ceiling). Snapping accepts ≤1 quad-row of over-cut on
             // each side in exchange for clean visible edges.
-            const bool flip_winding = (w.inward_normal.x < 0.0f || w.inward_normal.z < 0.0f);
+            // Fresh-vertex sub-quad emission below uses corner order
+            // 0:(vmin,ymin), 1:(vmax,ymin), 2:(vmax,ymax), 3:(vmin,ymax),
+            // with V = Z for X-axis walls (axis=0) and V = X for Z-axis
+            // walls (axis=2). The triangle (i00,i10,i11) cross-product
+            // face normal works out to:
+            //   axis=0 (X-constant): face normal = (-ΔY·ΔZ, 0, 0) = -X
+            //   axis=2 (Z-constant): face normal = (0, 0, +ΔX·ΔY) = +Z
+            // Flip winding when the computed face normal points AWAY from
+            // the inward_normal we want. For -X wall (inward=+X) the
+            // computed -X faces outward → flip. For +Z wall (inward=-Z)
+            // the computed +Z faces outward → flip. Etc.
+            const bool flip_winding =
+                (w.axis == 0) ? (w.inward_normal.x > 0.0f) : (w.inward_normal.z < 0.0f);
             for (int iy = 0; iy < wall_cells_vert; ++iy)
             {
                 const float y_quad_min = y_bot + iy * wall_step_v;
@@ -405,6 +419,12 @@ void buildRegionMesh(TerrainRegion& r, int subdivide)
                     }
                 }
             }
+            std::fprintf(stderr,
+                         "[wall-diag] region='%s' wall axis=%d const=%.2f "
+                         "var=[%.2f,%.2f] emitted verts=%zu indices=%zu\n",
+                         r.name.c_str(), w.axis, w.const_axis_pos, w.var_axis_min,
+                         w.var_axis_max, verts.size() - verts_before_wall,
+                         indices.size() - indices_before_wall);
         }
     }
 

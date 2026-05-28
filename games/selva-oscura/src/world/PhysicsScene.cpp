@@ -370,14 +370,16 @@ void registerLimboLights()
     // Tag region_name = "limbo" so the per-region filter in
     // WorldRenderer drops these for Selva-surface draws.
 
-    auto makeLight =
-        [&](float x, float z, glm::vec3 color, float intensity, float radius, const char* name)
+    auto makeLight = [&](float x, float z, glm::vec3 color, float intensity, float radius,
+                         float flicker_amp, float flicker_freq, const char* name)
     {
         LightSource L;
         L.position = glm::vec3(x, kLightY, z);
         L.color = color;
         L.intensity = intensity;
         L.radius = radius;
+        L.flicker_amp = flicker_amp;
+        L.flicker_freq = flicker_freq;
         L.region_name = "limbo";
         L.debug_name = name;
         engine::world::registerLight(L);
@@ -389,19 +391,54 @@ void registerLimboLights()
     // that doesn't need fuel).
     constexpr glm::vec3 kFungus{0.40f, 0.85f, 0.45f};
 
+    // Flicker tuning: fire dances at mid frequency with noticeable
+    // amplitude; fungus pulses slowly with subtle amplitude (not fire,
+    // it's bioluminescent — gentle organic rhythm).
+    constexpr float kFireAmp = 0.12f;
+    constexpr float kFireFreq = 2.5f;
+    constexpr float kFungusAmp = 0.06f;
+    constexpr float kFungusFreq = 0.9f;
+
     // Scatter weighted toward what will eventually become the Noble
     // Castle's grounds (mid-far Limbo, X near 0, Z around -700..-750).
     // Radii small (8-14m) so each lights a local patch without
     // flood-lighting the cavern. Disc radius=300 keeps lights well
-    // inside the rim.
-    makeLight(-40.0f, -560.0f, kWarm, 0.8f, 11.0f, "limbo_campfire_a");
-    makeLight(60.0f, -620.0f, kWarm, 0.7f, 10.0f, "limbo_campfire_b");
-    makeLight(-90.0f, -700.0f, kFungus, 0.5f, 9.0f, "limbo_fungus_a");
-    makeLight(80.0f, -740.0f, kWarm, 0.6f, 12.0f, "limbo_brazier_a");
-    makeLight(0.0f, -780.0f, kWarm, 1.0f, 16.0f, "limbo_brazier_b");
-    makeLight(120.0f, -650.0f, kFungus, 0.4f, 8.0f, "limbo_fungus_b");
-    makeLight(-130.0f, -820.0f, kWarm, 0.5f, 10.0f, "limbo_campfire_c");
-    makeLight(30.0f, -870.0f, kFungus, 0.4f, 7.0f, "limbo_fungus_c");
+    // inside the rim. v2 adds clustered "encampment" companions
+    // (4-15m from existing lights) so each looks like a small
+    // gathering rather than one isolated point.
+    makeLight(-40.0f, -560.0f, kWarm, 0.8f, 11.0f, kFireAmp, kFireFreq, "limbo_campfire_a");
+    makeLight(-32.0f, -566.0f, kWarm, 0.4f, 6.0f, kFireAmp, kFireFreq * 1.1f,
+              "limbo_campfire_a_companion");
+
+    makeLight(60.0f, -620.0f, kWarm, 0.7f, 10.0f, kFireAmp, kFireFreq, "limbo_campfire_b");
+    makeLight(67.0f, -615.0f, kWarm, 0.35f, 5.5f, kFireAmp, kFireFreq * 0.9f,
+              "limbo_campfire_b_companion");
+
+    makeLight(-90.0f, -700.0f, kFungus, 0.5f, 9.0f, kFungusAmp, kFungusFreq, "limbo_fungus_a");
+    makeLight(-83.0f, -707.0f, kFungus, 0.30f, 6.0f, kFungusAmp, kFungusFreq * 1.2f,
+              "limbo_fungus_a_companion");
+
+    makeLight(80.0f, -740.0f, kWarm, 0.6f, 12.0f, kFireAmp, kFireFreq, "limbo_brazier_a");
+    makeLight(86.0f, -732.0f, kFungus, 0.25f, 5.0f, kFungusAmp, kFungusFreq * 0.8f,
+              "limbo_brazier_a_fungus_neighbor");
+
+    makeLight(0.0f, -780.0f, kWarm, 1.0f, 16.0f, kFireAmp * 1.2f, kFireFreq * 0.85f,
+              "limbo_brazier_b");
+    makeLight(-9.0f, -772.0f, kWarm, 0.4f, 7.0f, kFireAmp, kFireFreq, "limbo_brazier_b_companion");
+    makeLight(12.0f, -786.0f, kFungus, 0.35f, 6.0f, kFungusAmp, kFungusFreq * 1.1f,
+              "limbo_brazier_b_fungus");
+
+    makeLight(120.0f, -650.0f, kFungus, 0.4f, 8.0f, kFungusAmp, kFungusFreq, "limbo_fungus_b");
+    makeLight(127.0f, -657.0f, kFungus, 0.25f, 5.0f, kFungusAmp, kFungusFreq * 1.3f,
+              "limbo_fungus_b_companion");
+
+    makeLight(-130.0f, -820.0f, kWarm, 0.5f, 10.0f, kFireAmp, kFireFreq, "limbo_campfire_c");
+    makeLight(-122.0f, -825.0f, kWarm, 0.30f, 5.5f, kFireAmp, kFireFreq * 1.15f,
+              "limbo_campfire_c_companion");
+
+    makeLight(30.0f, -870.0f, kFungus, 0.4f, 7.0f, kFungusAmp, kFungusFreq, "limbo_fungus_c");
+    makeLight(38.0f, -863.0f, kFungus, 0.25f, 5.0f, kFungusAmp, kFungusFreq * 0.95f,
+              "limbo_fungus_c_companion");
 }
 
 void registerAuthoredWorld()

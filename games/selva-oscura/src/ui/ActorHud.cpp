@@ -571,6 +571,120 @@ void renderActorHud()
     }
 }
 
+void renderCompass()
+{
+    // Strip width + visible angular range.
+    constexpr float kStripWidth = 360.0f;
+    constexpr float kStripHeight = 26.0f;
+    constexpr float kVisibleArc = 120.0f; // ±60° from center → 120° total
+    constexpr float kPxPerDeg = kStripWidth / kVisibleArc;
+
+    // Convert camera yaw to compass degrees (0=N, 90=E, 180=S, 270=W).
+    // World convention: yaw=0 looks south (-Z); lookFwd derivation is
+    //   lookFwd.x = -sin(yaw), lookFwd.z = -cos(yaw)
+    // → yaw=π is north, yaw=3π/2 is east. Convert to standard compass:
+    //   compass_deg = (yaw_deg + 180) mod 360
+    constexpr float kPi = 3.14159265358979f;
+    const float yaw_rad = selva::render::cameraYaw();
+    float yaw_deg = yaw_rad * (180.0f / kPi);
+    float compass_deg = std::fmod(yaw_deg + 180.0f, 360.0f);
+    if (compass_deg < 0.0f)
+        compass_deg += 360.0f;
+
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    const float center_x = vp->WorkPos.x + vp->WorkSize.x * 0.5f;
+    const float top_y = vp->WorkPos.y + 14.0f;
+    const float strip_left = center_x - kStripWidth * 0.5f;
+    const float strip_right = center_x + kStripWidth * 0.5f;
+    const float strip_top = top_y;
+    const float strip_bot = top_y + kStripHeight;
+
+    ImGui::SetNextWindowPos(ImVec2(strip_left - 4.0f, strip_top - 4.0f), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(kStripWidth + 8.0f, kStripHeight + 8.0f), ImGuiCond_Always);
+    ImGui::SetNextWindowBgAlpha(0.0f);
+    ImGui::Begin("##Compass", nullptr,
+                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav |
+                     ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoInputs |
+                     ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground);
+    auto* draw = ImGui::GetWindowDrawList();
+
+    // Strip background — thin dark band, low opacity so it doesn't
+    // dominate the view.
+    constexpr ImU32 kStripBg = IM_COL32(0, 0, 0, 130);
+    constexpr ImU32 kTickMinor = IM_COL32(180, 180, 180, 140);
+    constexpr ImU32 kTickMajor = IM_COL32(220, 220, 220, 220);
+    constexpr ImU32 kTextCard = IM_COL32(240, 240, 240, 235);
+    constexpr ImU32 kTextInter = IM_COL32(200, 200, 200, 200);
+    constexpr ImU32 kCenter = IM_COL32(255, 220, 120, 255);
+
+    draw->AddRectFilled(ImVec2(strip_left, strip_top), ImVec2(strip_right, strip_bot), kStripBg,
+                        2.0f);
+
+    // Compass tick marks every 5° (minor) and 15° (major); cardinal
+    // letters every 45°. Iterate ±60° around the heading so off-screen
+    // ticks aren't computed.
+    struct Marker
+    {
+        float deg;
+        const char* label;
+        ImU32 color;
+        bool major;
+    };
+    // Note: world axes in this game are +X = west, -X = east (camera
+    // yaw is set up so turning right from facing south points toward
+    // -X). Swap the intercardinal labels accordingly so the compass
+    // matches real-world convention from the player's POV (facing S,
+    // turning right shows SW → W → NW → N at center).
+    const Marker kMarkers[] = {
+        {0.0f, "N", kTextCard, true},   {45.0f, "NW", kTextInter, true},
+        {90.0f, "W", kTextCard, true},  {135.0f, "SW", kTextInter, true},
+        {180.0f, "S", kTextCard, true}, {225.0f, "SE", kTextInter, true},
+        {270.0f, "E", kTextCard, true}, {315.0f, "NE", kTextInter, true},
+    };
+
+    // Helper: map a compass-direction (deg) to an X pixel position
+    // in the strip. Returns NaN if the direction is more than half
+    // the visible arc away from the current heading.
+    auto degToX = [&](float dir_deg) -> float
+    {
+        float diff = std::fmod(dir_deg - compass_deg + 540.0f, 360.0f) - 180.0f;
+        return center_x + diff * kPxPerDeg;
+    };
+
+    // Tick marks every 5°, sweep from -60 to +60 of center.
+    for (int i = -12; i <= 12; ++i)
+    {
+        const float dir = std::fmod(compass_deg + static_cast<float>(i) * 5.0f + 360.0f, 360.0f);
+        const float x = degToX(dir);
+        if (x < strip_left || x > strip_right)
+            continue;
+        const bool major = (i % 3) == 0; // every 15°
+        const float h = major ? 8.0f : 4.0f;
+        draw->AddLine(ImVec2(x, strip_bot - h), ImVec2(x, strip_bot - 1.0f),
+                      major ? kTickMajor : kTickMinor, 1.0f);
+    }
+
+    // Cardinal + intercardinal letters.
+    for (const auto& m : kMarkers)
+    {
+        const float x = degToX(m.deg);
+        if (x < strip_left - 16.0f || x > strip_right + 16.0f)
+            continue;
+        const ImVec2 tsz = ImGui::CalcTextSize(m.label);
+        draw->AddText(ImVec2(x - tsz.x * 0.5f, strip_top + 3.0f), m.color, m.label);
+    }
+
+    // Center marker — a small downward-pointing chevron above the
+    // strip top, plus a vertical line through the strip indicating
+    // "you are facing this direction."
+    const float cx = center_x;
+    draw->AddTriangleFilled(ImVec2(cx, strip_top - 2.0f), ImVec2(cx - 5.0f, strip_top - 9.0f),
+                            ImVec2(cx + 5.0f, strip_top - 9.0f), kCenter);
+    draw->AddLine(ImVec2(cx, strip_top), ImVec2(cx, strip_bot), kCenter, 1.5f);
+
+    ImGui::End();
+}
+
 void renderColliderDebug()
 {
     const auto& tun = selva::tuning::current();

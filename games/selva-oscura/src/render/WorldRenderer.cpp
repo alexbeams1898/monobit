@@ -118,7 +118,7 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
         // sits inside the player capsule and can be very close to
         // arm/hand geometry).
         const glm::mat4 proj =
-            glm::perspective(glm::radians(settings.fov_degrees_first_person), aspect, 0.2f, 200.0f);
+            glm::perspective(glm::radians(settings.fov_degrees_first_person), aspect, 0.2f, 2000.0f);
 
         // FPV head-position model: track the PLAYER position 1:1
         // (the camera follows the player's bulk motion without lag),
@@ -665,7 +665,7 @@ glm::mat4 buildViewProj(const glm::vec3& player_pos, float target_lookat_y,
     // gets handled separately via depth-bias / log-depth / scene-local
     // far plane — see [[feedback_pos_y_dropped_in_matrices]] sibling.
     const glm::mat4 proj =
-        glm::perspective(glm::radians(settings.fov_degrees_third_person), aspect, 0.1f, 200.0f);
+        glm::perspective(glm::radians(settings.fov_degrees_third_person), aspect, 0.1f, 2000.0f);
     return proj * sLastView;
 }
 
@@ -675,8 +675,8 @@ namespace
 // variant pick, yaw, scale, wind phase — all stable across runs.
 float hashXZ(float x, float z, std::uint32_t salt)
 {
-    std::uint32_t h = static_cast<std::uint32_t>(static_cast<int>(x * 1000.0f)) * 374761393u +
-                      static_cast<std::uint32_t>(static_cast<int>(z * 1000.0f)) * 668265263u + salt;
+    std::uint32_t h = static_cast<std::uint32_t>(static_cast<int>(x * 2000.0f)) * 374761393u +
+                      static_cast<std::uint32_t>(static_cast<int>(z * 2000.0f)) * 668265263u + salt;
     h = (h ^ (h >> 13)) * 1274126177u;
     h = h ^ (h >> 16);
     return static_cast<float>(h & 0xFFFFFFu) / static_cast<float>(0xFFFFFF);
@@ -719,6 +719,7 @@ void renderTerrain()
     const auto& all_lights = engine::world::allLights();
     std::vector<engine::world::LightSource> region_lights;
     region_lights.reserve(all_lights.size());
+    const float light_time = selva::wallClock();
 
     const int fp_count = engine::world::structureFootprintCount();
     std::vector<glm::vec4> region_discards;
@@ -740,11 +741,15 @@ void renderTerrain()
         // tagged with this region's name. Avoids leaking torches across
         // sealed boundaries (Selva sun-lit, Limbo cavern, etc).
         region_lights.clear();
-        for (const auto& L : all_lights)
+        for (size_t li = 0; li < all_lights.size(); ++li)
         {
+            const auto& L = all_lights[li];
             if (L.region_name == nullptr || std::strcmp(L.region_name, r.name.c_str()) == 0)
             {
-                region_lights.push_back(L);
+                engine::world::LightSource flickered = L;
+                flickered.intensity =
+                    engine::world::flickerIntensity(static_cast<int>(li), light_time);
+                region_lights.push_back(flickered);
             }
         }
         selva::render::setTerrainPointLights(region_lights);

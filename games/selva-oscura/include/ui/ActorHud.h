@@ -12,6 +12,12 @@ namespace selva::ui
 // state of its own; just visualization.
 void renderActorHud();
 
+// Compass strip at top-center. Horizontal Skyrim/Minecraft-style band
+// showing cardinal + intercardinal directions; the letter under the
+// center mark is the direction the camera is currently facing. Reads
+// at a glance, no screen real estate cost beyond a thin strip.
+void renderCompass();
+
 // Debug toggle: when true, the world-overlay pass draws projected
 // outlines of every hitbox + hurtbox in the pool. Toggled from the
 // F1 panel; off by default.
