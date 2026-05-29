@@ -1136,12 +1136,12 @@ static bool handleFreshAttackPress(selva::combat::HandSide hand, BufferedPress& 
                                    float swing_cost, float combo_input_buffer_seconds)
 {
     const float now = selva::wallClock();
-    const bool stamina_ok = sPlayer.stamina.current > 0;
+    const bool stamina_ok = selva::gameplay::canSpendStamina(sPlayer, swing_cost);
     if (sSampler.isOneShotActive())
     {
         if (stamina_ok && tryChainAdvanceFire(hand, button, mods, now, combo_input_buffer_seconds))
         {
-            selva::gameplay::consumeStamina(sPlayer, swing_cost);
+            selva::gameplay::spendStamina(sPlayer, swing_cost);
             return true;
         }
         buf.pending = true;
@@ -1160,7 +1160,7 @@ static bool handleFreshAttackPress(selva::combat::HandSide hand, BufferedPress& 
     }
     if (!stamina_ok || !fireClipForHand(hand, clip_name, combo_input_buffer_seconds))
         return false;
-    selva::gameplay::consumeStamina(sPlayer, swing_cost);
+    selva::gameplay::spendStamina(sPlayer, swing_cost);
     recordPressForCancelWindow(hand, button, now);
     return true;
 }
@@ -1180,11 +1180,12 @@ static bool handleBufferedAttackReplay(selva::combat::HandSide hand, BufferedPre
     const auto& w = selva::combat::cancelWindow(hand);
     const char* clip_name = selva::combat::clipForButton(sEquipment, hand, buf.button, mods, now,
                                                          w.open_at, w.close_at);
-    const bool fired = clip_name != nullptr && sPlayer.stamina.current > 0 &&
+    const bool fired = clip_name != nullptr &&
+                       selva::gameplay::canSpendStamina(sPlayer, swing_cost) &&
                        fireClipForHand(hand, clip_name, combo_input_buffer_seconds);
     if (fired)
     {
-        selva::gameplay::consumeStamina(sPlayer, swing_cost);
+        selva::gameplay::spendStamina(sPlayer, swing_cost);
         recordPressForCancelWindow(hand, buf.button, now);
     }
     buf.pending = false;
@@ -1350,11 +1351,11 @@ static bool tryFirePostDodgeAttack(bool shift_held, float combo_input_buffer_sec
                                      mods, selva::wallClock(), dw.open_at, dw.close_at);
     bool fired = false;
     const float swing_cost = selva::formulas::current().stamina.base_swing_cost;
-    if (clip_name != nullptr && sPlayer.stamina.current > 0.0f &&
+    if (clip_name != nullptr && selva::gameplay::canSpendStamina(sPlayer, swing_cost) &&
         fireClipForHand(sPostDodgeAttack.hand, clip_name, combo_input_buffer_seconds,
                         /*force_first_strike=*/true))
     {
-        selva::gameplay::consumeStamina(sPlayer, swing_cost);
+        selva::gameplay::spendStamina(sPlayer, swing_cost);
         fired = true;
         combatLog("[combat:rhythm {:.4f}s] post-dodge attack FIRED (waited {:.3f}s since press)",
                   selva::wallClock(), wait_seconds);
@@ -1957,9 +1958,9 @@ static void armDodgeFrameCaptureIfRequested(float dodge_duration)
 static bool fireDodgeFromTap(const glm::vec3& moveIntent, float backstep_playback_rate,
                              float roll_playback_rate)
 {
-    // Stamina gate. Refuses to fire if exhausted -- soulslike convention.
+    // Stamina gate: refuse to fire if the player can't afford the full cost.
     const float dodge_cost = selva::formulas::current().stamina.dodge_effort;
-    if (sPlayer.stamina.current <= 0.0f)
+    if (!selva::gameplay::canSpendStamina(sPlayer, dodge_cost))
         return false;
     const bool has_intent = glm::length(moveIntent) > 0.0001f;
     const char* clip_name = has_intent ? "falling_to_roll" : "standing_dodge_backward";
@@ -2008,7 +2009,7 @@ static bool fireDodgeFromTap(const glm::vec3& moveIntent, float backstep_playbac
     sDodgeYawBlendDuration = sDodgeDuration * 0.5f;
     armDodgeCsvRecordingIfRequested(sDodgeDuration);
     armDodgeFrameCaptureIfRequested(sDodgeDuration);
-    selva::gameplay::consumeStamina(sPlayer, dodge_cost);
+    selva::gameplay::spendStamina(sPlayer, dodge_cost);
     return true;
 }
 
@@ -2087,8 +2088,9 @@ static void tickJumpInput(const Uint8* keys)
     const bool gate_open = !sSampler.isOneShotActive() || sSampler.isOneShotPastCancelFraction();
     const float jump_cost = selva::formulas::current().stamina.jump_effort;
     if (clip != nullptr && clip->isLoaded() && gate_open &&
-        selva::gameplay::consumeStamina(sPlayer, jump_cost))
+        selva::gameplay::canSpendStamina(sPlayer, jump_cost))
     {
+        selva::gameplay::spendStamina(sPlayer, jump_cost);
         TransitionProfile profile = profiles::jump();
         float rate = 1.10f;
         sOneShotHipDeltaScale = 1.0f;
@@ -2138,16 +2140,14 @@ static bool tickSpaceInput(const Uint8* keys, const glm::vec3& moveIntent, float
     if (space_now)
     {
         sSpaceHeldSeconds += dt;
-        // Commit to sprint when EITHER Space is held past the
-        // tap-window OR WASD is held (movement intent is
-        // unambiguous, no reason to wait). Refuse to engage sprint at
-        // zero stamina -- otherwise WASD+Space at empty stamina re-stamps
-        // last_stamina_spend_time every frame in tickActorStamina and
-        // regen never starts.
+        // Commit to sprint when EITHER Space is held past the tap-window OR
+        // WASD is held (movement intent is unambiguous, no reason to wait).
+        // The stamina lockout (Stamina::sprint_locked) is enforced inside
+        // tickActorStamina -- if locked, sprinting=true gets cleared back to
+        // false on the very next stamina tick, so locomotion sees walk.
         const bool wasd_held = keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_A] ||
                                keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_D];
-        const bool has_stamina = sPlayer.stamina.current > 0.0f;
-        if (has_stamina && (sSpaceHeldSeconds >= dodge_tap_window || wasd_held))
+        if (sSpaceHeldSeconds >= dodge_tap_window || wasd_held)
             sPlayer.sprinting = true;
     }
     if (release_edge)

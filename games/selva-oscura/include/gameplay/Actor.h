@@ -61,17 +61,26 @@ struct Health
     int max = 100;
 };
 
-// Action pool. Drains on attack / dodge / sprint; regenerates while
-// not committing to actions. `current` is float because per-frame drain
-// (sprint_effort * dt at 60 FPS = ~0.05/frame) and regen (recovery_rate * dt)
-// are sub-unit operations -- representing them as `int` with per-frame ceil
-// quantizes every fractional step up to 1, blowing the rates to ~60x intended
-// (a Tracy-style hidden numeric bug). HUD and pause display cast to int for
-// display.
+// Action pool. Drains on attack / dodge / sprint / jump; regenerates while
+// not committing to actions.
+//
+// recovery_timer counts down from FormulaConfig::stamina::recovery_delay any
+// time stamina is spent. Regen runs only when the timer hits 0. Driving regen
+// off a countdown (not a wallclock comparison) keeps the system tight: every
+// spend resets it; no other system needs to know "when did spending last
+// happen?"
+//
+// sprint_locked is the post-exhaustion lockout. Set true when a sprint frame
+// drains the bar to 0. While locked, sprint input is ignored. Lock clears
+// only when stamina recovers to full. This is the standard mechanism that
+// makes holding WASD+Space at empty stamina silently walk while the bar
+// refills, instead of repeatedly re-stamping the recovery timer.
 struct Stamina
 {
     float current = 100.0f;
     float max = 100.0f;
+    float recovery_timer = 0.0f;
+    bool sprint_locked = false;
 };
 
 // Stagger reservoir. Souls-convention: starts at max, drains by
@@ -134,19 +143,25 @@ float computeMaxPoise(const Body& body, const Stats& stats);
 void initActorPools(Health& hp, Stamina& stamina, Poise& poise, const Body& body,
                     const Stats& stats);
 
-// Per-frame stamina tick. Drains while sprinting (rate scaled by
-// FormulaConfig::stamina::sprint_effort and DEX), regens after
-// FormulaConfig::stamina::recovery_delay seconds of no spending.
-// Forces sprinting=false when stamina hits 0.
+// Per-frame stamina tick:
+//   1. If sprint_locked: clear `sprinting` (sprint input ignored until lock
+//      releases at full stamina).
+//   2. If sprinting + stamina available: drain by sprint_effort * dt and arm
+//      the recovery timer. If the drain hits 0: set sprint_locked.
+//   3. Else if recovery_timer > 0: decrement (no regen yet).
+//   4. Else if current < max: regen at recovery_rate * dt.
+//   5. If sprint_locked AND current >= max: clear the lock.
 void tickActorStamina(Actor& a, float dt);
 
-// Discrete stamina spend for one-shot actions (swing, jump, dodge). Returns
-// false if `cost` exceeds current stamina (caller should refuse the action).
-// On success: subtracts cost, clamps at 0, stamps last_stamina_spend_time so
-// regen waits for recovery_delay. Soulslike convention: action FIRES even
-// when it would drain below zero, but the post-action exhaustion stagger
-// kicks in. For now we just gate at >0 -- exhaustion stagger comes later.
-bool consumeStamina(Actor& a, float cost);
+// Predicate: does the actor have enough stamina to pay `cost`? Call this at
+// every action-fire site BEFORE the action fires (attacks, dodge, jump).
+// Returns true for cost <= 0 (free actions).
+bool canSpendStamina(const Actor& a, float cost);
+
+// Deduct `cost` from stamina and arm the recovery timer. Caller is
+// responsible for checking canSpendStamina first; this just subtracts.
+// Clamps current at 0.
+void spendStamina(Actor& a, float cost);
 
 // Apply raw incoming damage to `hp`, mediated by `body.base_defense`.
 // Damage is clamped to at least 1 so even heavily-armored targets
@@ -208,12 +223,6 @@ struct Actor
     // Latched intent: sprinting (Input controller only). Future
     // controllers may add their own intent fields here.
     bool sprinting = false;
-
-    // Wallclock time of the last stamina-consuming action (sprint frame, swing,
-    // dodge). Drives the regen-delay gate -- stamina only starts refilling
-    // after FormulaConfig::stamina::recovery_delay seconds of no activity.
-    // -1 = never spent stamina (full bar, ready to regen).
-    float last_stamina_spend_time = -1.0f;
 
     // Lock-on target index into actors() (Input controller only).
     // -1 = unlocked; >=0 = combat mode: yaw snaps to target each frame,

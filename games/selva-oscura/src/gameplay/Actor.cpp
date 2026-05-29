@@ -2,7 +2,6 @@
 
 #include "Formulas.h"
 #include "Tunables.h"
-#include "WallClock.h"
 #include "anim/AnimationClip.h"
 #include "anim/SkeletalAssets.h"
 #include "anim/SkeletalMesh.h"
@@ -54,50 +53,49 @@ void tickActorStamina(Actor& a, float dt)
     if (a.is_dead)
         return;
     const auto& fc = selva::formulas::current();
-    const float now = selva::wallClock();
 
-    // Sprint drain. If sprinting flag is set but stamina is already empty,
-    // clear the flag WITHOUT stamping last_stamina_spend_time -- otherwise
-    // holding WASD+Space at empty stamina re-stamps every frame and regen
-    // never starts. The locomotion path will see sprinting=false and drop
-    // back to walk on its own.
-    if (a.sprinting)
+    // Sprint lockout: ignore sprint input while locked. Lock releases below.
+    if (a.stamina.sprint_locked)
+        a.sprinting = false;
+
+    if (a.sprinting && a.stamina.current > 0.0f)
     {
+        a.stamina.current = std::max(0.0f, a.stamina.current - fc.stamina.sprint_effort * dt);
+        a.stamina.recovery_timer = fc.stamina.recovery_delay;
         if (a.stamina.current <= 0.0f)
         {
+            a.stamina.sprint_locked = true;
             a.sprinting = false;
         }
-        else
-        {
-            const float dex_factor =
-                1.0f - static_cast<float>(a.stats.dex) * fc.stamina.sprint_dex_scale;
-            const float drain_per_sec = fc.stamina.sprint_effort * std::max(0.1f, dex_factor);
-            a.stamina.current = std::max(0.0f, a.stamina.current - drain_per_sec * dt);
-            a.last_stamina_spend_time = now;
-            if (a.stamina.current <= 0.0f)
-                a.sprinting = false;
-            return;
-        }
+    }
+    else if (a.stamina.recovery_timer > 0.0f)
+    {
+        a.stamina.recovery_timer = std::max(0.0f, a.stamina.recovery_timer - dt);
+    }
+    else if (a.stamina.current < a.stamina.max)
+    {
+        a.stamina.current =
+            std::min(a.stamina.max, a.stamina.current + fc.stamina.recovery_rate * dt);
     }
 
-    // Regen: only after recovery_delay seconds of no spending.
-    if (a.stamina.current >= a.stamina.max)
-        return;
-    if (a.last_stamina_spend_time > 0.0f &&
-        (now - a.last_stamina_spend_time) < fc.stamina.recovery_delay)
-        return;
-    a.stamina.current = std::min(a.stamina.max, a.stamina.current + fc.stamina.recovery_rate * dt);
+    if (a.stamina.sprint_locked && a.stamina.current >= a.stamina.max)
+        a.stamina.sprint_locked = false;
 }
 
-bool consumeStamina(Actor& a, float cost)
+bool canSpendStamina(const Actor& a, float cost)
 {
     if (cost <= 0.0f)
         return true;
-    if (a.stamina.current <= 0.0f)
-        return false;
+    return a.stamina.current >= cost;
+}
+
+void spendStamina(Actor& a, float cost)
+{
+    if (cost <= 0.0f)
+        return;
+    const auto& fc = selva::formulas::current();
     a.stamina.current = std::max(0.0f, a.stamina.current - cost);
-    a.last_stamina_spend_time = selva::wallClock();
-    return true;
+    a.stamina.recovery_timer = fc.stamina.recovery_delay;
 }
 
 void applyDamage(Health& hp, const Body& body, int raw_damage)
