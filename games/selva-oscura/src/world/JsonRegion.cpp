@@ -75,7 +75,12 @@ glm::vec2 parseVec2(const nlohmann::json& a, glm::vec2 def = {0, 0})
 
 JsonRegion::JsonRegion(const nlohmann::json& json_doc, std::string folder)
     : engine::world::AsyncCapableRegion(
-          json_doc.value("region_id", std::string{}), json_doc.value("debug_name", std::string{}),
+          // region_id is required; .at() throws on missing so the loader
+          // refuses to construct a nameless region (which would never
+          // resolve via findRegionId and would silently break the world).
+          // debug_name + region_kind are optional with sensible defaults.
+          json_doc.at("region_id").get<std::string>(),
+          json_doc.value("debug_name", std::string{}),
           parseRegionKind(json_doc.value("region_kind", std::string{"Exterior"}))),
       region_json(json_doc), region_folder(std::move(folder))
 {

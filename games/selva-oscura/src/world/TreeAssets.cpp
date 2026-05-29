@@ -467,7 +467,12 @@ static void buildRockVariantsFromMeshes(const std::vector<CpuMesh>& rocks)
 bool initTreeAssets()
 {
     loadRootDepthConfig();
-    const std::string gltf_path = std::string(kAssetDir) + "region.gltf";
+    // "scene.gltf" is the third-party tree-pack's filename; "scene" here
+    // is glTF-internal jargon (each glTF file has a top-level "scenes"
+    // array per the glTF spec), NOT Selva's Region concept. Do not
+    // rename this string to "region.gltf" -- the file on disk is
+    // scene.gltf and the rename would silently fail load.
+    const std::string gltf_path = std::string(kAssetDir) + "scene.gltf";
     const cgltf_options options = {};
     cgltf_data* data = nullptr;
     cgltf_result res = cgltf_parse_file(&options, gltf_path.c_str(), &data);

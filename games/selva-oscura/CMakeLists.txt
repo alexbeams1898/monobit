@@ -411,6 +411,7 @@ add_executable(selva-oscura-tests
     tests/save_manager_test.cpp
     tests/camera_raycast_test.cpp
     tests/camera_physics_primitives_test.cpp
+    tests/region_schema_test.cpp
 )
 target_link_libraries(selva-oscura-tests PRIVATE selva-oscura-lib Catch2::Catch2WithMain)
 set_target_properties(selva-oscura-tests PROPERTIES
