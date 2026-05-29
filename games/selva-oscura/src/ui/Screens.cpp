@@ -242,6 +242,7 @@ void renderCharCreate()
         SaveManager::save(saveData());
         gameState().active_character = sNameBuf;
         gameState().pending_world_create = true;
+        gameState().pending_wake_scene = true; // first arrival -> wake animation
         setPhase(GameState::Phase::Playing);
     }
     if (!name_valid || name_taken)

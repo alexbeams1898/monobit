@@ -76,6 +76,7 @@ add_library(selva-oscura-lib STATIC
     src/ops/InventoryOps.cpp
     src/Tunables.cpp
     src/Formulas.cpp
+    src/Scene.cpp
     src/WallClock.cpp
 )
 

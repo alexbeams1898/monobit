@@ -95,6 +95,11 @@ struct GameState
     // Defers world creation by one tick after the player selects new/load
     // game, so the loading overlay can render before the world spins up.
     bool pending_world_create = false;
+    // Set true ONLY on the New-Game path (not Load-Game). Consumed by
+    // selvaPerFrame on the first frame after world creation to fire the
+    // wake-up animation Scene. The Vagrant wakes only on the first
+    // arrival of a save; subsequent respawns place him standing.
+    bool pending_wake_scene = false;
     std::string active_character; // Name of the character for the current run.
 };
 

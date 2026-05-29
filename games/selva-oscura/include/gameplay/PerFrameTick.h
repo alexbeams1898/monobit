@@ -48,6 +48,12 @@ void loadActiveCharacterIntoPlayer(const selva::PlayerProfile& profile);
 // (PlayerProfile only carries `name`, which doesn't change at runtime).
 void saveActiveCharacterFromPlayer(selva::PlayerProfile& profile);
 
+// Begin the wake-up Scene: lock combat + movement, fire the getting_up
+// one-shot on the player. The Scene auto-ends when the one-shot
+// completes (handled per-frame inside selvaPerFrame). Called from the
+// New-Game flow only -- respawns place the Vagrant standing.
+void beginWakeScene();
+
 // Render-world entry point. Frame capture readback lives here too
 // (uses tickstate::frameCapture* flags).
 void selvaRenderWorld(::Engine& engine, ::EntityManager& em, float camX, float camY, float alpha);

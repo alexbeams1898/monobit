@@ -116,6 +116,14 @@ void gatedPerFrame(::Engine& engine, ::EntityManager& em, double dt)
         selva::gameplay::resetEnemiesToSpawn();
         gs.pending_world_create = false;
         gs.world_initialized = true;
+        // If this was a New Game, queue the wake-up Scene. Load-Game
+        // paths don't set pending_wake_scene -- the loaded character is
+        // wherever they were saved and shouldn't play the wake again.
+        if (gs.pending_wake_scene)
+        {
+            selva::gameplay::beginWakeScene();
+            gs.pending_wake_scene = false;
+        }
     }
     selva::gameplay::selvaPerFrame(engine, em, dt);
 }

@@ -3,6 +3,7 @@
 #include "AppState.h"
 #include "Engine.h"
 #include "Formulas.h"
+#include "Scene.h"
 #include "Tunables.h"
 #include "WallClock.h"
 #include "anim/AnimationClip.h"
@@ -3192,7 +3193,24 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     // sampler's advanceLocoTrack can read it without a Tunables
     // dependency. F1 panel writes tun; this line propagates.
     sLocomotionConfig.global_playback_rate = tun.loco_playback_rate;
-    tickMouseLook(tun);
+
+    // Tick the cinematic Scene system before any input handlers run.
+    // Scene-active state gates input categories below via
+    // selva::scene::currentLocks().
+    //
+    // Wake-Scene auto-end: the wake-Scene fires getting_up_3 as a
+    // one-shot. When the one-shot completes, end the Scene so the
+    // player regains input. Future Scenes will need their own
+    // end-conditions; the simplest pattern is "Scene ends when its
+    // triggering one-shot finishes" so most game-init Scenes are a
+    // one-liner like this.
+    if (selva::scene::active() && !sSampler.isOneShotActive())
+        selva::scene::end();
+    selva::scene::tick(static_cast<float>(dt));
+    const selva::scene::InputLock scene_locks = selva::scene::currentLocks();
+
+    if (!scene_locks.look)
+        tickMouseLook(tun);
 
     const Uint8* keys = SDL_GetKeyboardState(nullptr);
 
@@ -3226,9 +3244,11 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     const CombatInputEdges edges = readCombatInputEdges(keys);
     selva::combat::tickChainExpiry(selva::wallClock(), tun.combo_input_buffer_seconds);
     selva::combat::tickChainObserver(selva::wallClock(), sSampler.isOneShotActive());
-    // Combat input gated on alive-state. While dead, the second_death
-    // one-shot owns the body; player input is ignored until respawn.
-    if (!sShowTuningPanel && !sPlayer.is_dead && tickCombatInputPass(keys, edges, tun))
+    // Combat input gated on alive-state + Scene lock. While dead, the
+    // second_death one-shot owns the body; while a Scene is active with
+    // combat-lock, the cinematic owns input. Either way: ignore presses.
+    if (!sShowTuningPanel && !sPlayer.is_dead && !scene_locks.combat &&
+        tickCombatInputPass(keys, edges, tun))
         combat_input_this_frame = true;
     sPrevLMB = edges.lmb_now;
     sPrevRMB = edges.rmb_now;
@@ -3240,13 +3260,14 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     // moveIntent is computed unconditionally; the dead-gate downstream
     // (velocity_locked from the second_death one-shot) keeps it from
     // translating the body.
-    if (!sPlayer.is_dead)
+    if (!sPlayer.is_dead && !scene_locks.combat)
     {
         tickGripToggle(keys);
         tickJumpInput(keys);
     }
 
-    const glm::vec3 moveIntent = computeMoveIntent(keys);
+    const glm::vec3 moveIntent =
+        scene_locks.movement ? glm::vec3(0.0f) : computeMoveIntent(keys);
 
     // ONE locomotion decision for this frame. Both tickPlayerVelocity
     // and applyPerFrameTranslation consult sLocoDecision.source for
@@ -3256,10 +3277,10 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     // feedback_data_driven_over_convention.md.
     runLocomotionDecision(moveIntent, tun);
 
-    // Space (dodge / sprint) gated on alive-state. Dead body doesn't
-    // dodge.
-    if (!sPlayer.is_dead && tickSpaceInput(keys, moveIntent, dt, tun.dodge_tap_window,
-                                           tun.backstep_playback_rate, tun.roll_playback_rate))
+    // Space (dodge / sprint) gated on alive-state + Scene combat-lock.
+    if (!sPlayer.is_dead && !scene_locks.combat &&
+        tickSpaceInput(keys, moveIntent, dt, tun.dodge_tap_window, tun.backstep_playback_rate,
+                       tun.roll_playback_rate))
         combat_input_this_frame = true;
 
     // Stamina drain (while sprinting) + regen (after recovery_delay seconds
@@ -4151,6 +4172,27 @@ void loadActiveCharacterIntoPlayer(const selva::PlayerProfile& profile)
     sSampler.releaseOneShot();
     sPlayer.foot_left = Actor::FootContact{};
     sPlayer.foot_right = Actor::FootContact{};
+}
+
+void beginWakeScene()
+{
+    // Fire the getting-up clip on the player and lock combat + movement
+    // input for its duration. Mouse-look stays free so the player can
+    // look around while waking. The Scene's auto-end on clip completion
+    // is handled inside selvaPerFrame's per-frame block.
+    const char* clip_name = "getting_up_3";
+    const auto* clip = sClips.get(clip_name);
+    if (clip == nullptr || !clip->isLoaded())
+    {
+        std::fprintf(stderr, "[wake-scene] clip '%s' not loaded; skipping wake\n", clip_name);
+        return;
+    }
+    selva::anim::PoseSampler::OneShotOptions opts;
+    opts.clip_key = clip_name;
+    sSampler.playOneShot(*clip, /*blend_in_seconds=*/0.0f, /*blend_out_seconds=*/0.25f,
+                         selva::anim::PoseSampler::BodyMask::Full,
+                         /*start_time_seconds=*/0.0f, /*playback_rate=*/1.0f, opts);
+    selva::scene::begin({.combat = true, .movement = true, .look = false});
 }
 
 void saveActiveCharacterFromPlayer(selva::PlayerProfile& profile)
