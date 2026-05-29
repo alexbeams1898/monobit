@@ -47,7 +47,9 @@ type:
 - **Death = run-end.** The player-controlled entity's death triggers
   the run-end cutscene + death-card + run-stats screen. Other
   entities' deaths trigger sangue payout and per-circle reactivity
-  (NPC turning hostile, contrapasso leak, etc.).
+  (per setting.md *Per-circle reactivity* — keeper death restores
+  contrapasso to the circle, NPC promoted to new keeper, surviving
+  shades enter proper contrapasso, etc.).
 
 ## What only NPCs do
 
@@ -60,16 +62,26 @@ type:
   state (path, evolution, riversato, lifetime sangue, keepers
   felled) and branch on it. The Vagrant himself does not branch —
   he has no internal state reading the world.
-- **Carry contrapasso leak.** When a circle's keeper falls,
-  contrapasso routes into the surviving NPC and shades, plus the
-  class-picker Vagrant, plus the Guide. The *Vagrant* receives leak
-  too (under class-picker), but only as a passive accretion to his
-  imprint — he doesn't *carry* it the way an NPC does.
+- **Receive contrapasso-promotion.** When a circle's keeper falls,
+  contrapasso (the cosmological law per setting.md *Per-circle
+  reactivity*) restores to the circle. The NPC of that circle is
+  promoted into the new keeper role — their pre-keeper lucid window
+  was incipient keeper-consciousness Beatrice was preparing for this
+  moment. NPCs are the only entity type that promote in this way
+  (the class-picker Vagrant *accumulates* contrapasso-signature on
+  his imprint, but he is not promoted to a keeper-form; the
+  unburdened lets it pass through; the Guide receives it through
+  Beatrice's channel as erosion, not as installation).
 
 ## What both do identically
 
-- **Combat.** Damage, fire_rate, HP. No PC-only stat, no NPC-only
-  stat. The triad (HP / fire_rate / damage) governs both.
+- **Combat stats.** Same universal schema (STR / DEX / END / LCK
+  per classes.md *Stat schema model*) on every actor. No PC-only
+  stat, no NPC-only stat. Class-unlocked path-specific stats
+  (Heretic Faith, Unburdened Conduit/Threshold-state, etc.) exist
+  on every actor's `Stats` struct but are gated by per-stat
+  unlock-mask — present-but-invisible on actors that haven't
+  unlocked them.
 - **Sangue payout on death.** The Vagrant's wallet sangue returns to
   Hell on his death (Hell reclaims its substance from any dead body).
   Shades and keepers, when killed, deposit sangue into the Vagrant's
@@ -133,11 +145,11 @@ She is not state-aware in the NPC sense.
 
 ## Cross-references
 
-- [Classes](classes.md) — class is a stat profile; same triad applies
-  to enemies and bosses.
+- [Classes](classes.md) — class is a stat profile + unlock-mask;
+  same universal schema applies to enemies and bosses.
 - [Companions](companions.md) — the Guide as edge case.
 - [Setting](setting.md) — *The unjudged* (asymmetric second-death
   completion), *NPCs* (lucid window mechanic), *Per-circle
-  reactivity* (contrapasso leak distribution).
+  reactivity* (contrapasso restoration; NPC promotion to keeper).
 - [Fallback](fallback.md) — death = run-end (player-controlled
   entity only).

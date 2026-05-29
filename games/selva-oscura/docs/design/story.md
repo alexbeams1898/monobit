@@ -635,14 +635,30 @@ and the *class-evolution-as-Hell-loading* implication.
     Both Vagrant and Guide have been pawns; the Guide was used through
     a channel Beatrice constructed, and the channel destroyed him.
   - **Class evolution has been Hell loading itself into the Vagrant**
-    (class-picker, via contrapasso accretion) **or being channeled
-    away by him** (unburdened, via riversamento). The Vagrant's
-    transformation across the game has not been his choice; it has
-    been the cosmology operating on him.
+    (class-picker, the class-picker is Hell's installation taking
+    shape inside him) **or routing through him into Beatrice**
+    (unburdened — riversamento has been pouring substance INTO HER
+    SUBSTRATE, not into a neutral reservoir; per setting.md *Sangue
+    saturation of Beatrice*). The Vagrant's transformation across
+    the game has not been his choice; it has been the cosmology
+    operating on him.
+  - **Unburdened-specific R2 horror:** every riversamento has been a
+    drop of Hell-substance into Beatrice. The figure on the title
+    screen — the disintegrating Madonna-coded form — has been
+    transforming in real-time, across every boot of every cycle.
+    The halo cracking is Hell working outward inside her substrate.
+    The unburdened Vagrant thought he was choosing the gentle
+    ending; he has been *making a Satan-of-Paradiso* inside the
+    figure he is converging toward. PURITY, the ending he is
+    racing toward, will kill her before the transformation
+    completes. On post-R2 replay, every prior boot is horror.
   - Beatrice's intentions: radical reform of a failing cosmology,
     executed by a god ground down past coherence and visibly
     destabilized. Not a dictator — a stir-crazy reformer who acted
-    because the staring became unbearable.
+    because the staring became unbearable. The unburdened reveals
+    a second layer: she is also *the medium* of one of the endings,
+    and her substrate has been bearing the cost of that medium-ship
+    throughout.
 - **Tone:** the player does not get a clean villain. They get a
   fellow soul who broke under conditions the player has now
   experienced enough of to *understand.* The horror is partly that

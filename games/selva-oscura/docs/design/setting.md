@@ -162,22 +162,113 @@ cosmic geography hold the unjudged who would have ended up here.
 
 ### Sangue and the law of substance
 
-**Sangue** is the substance Hell is made of — coagulated suffering.
-Every shape in Hell (shades, keepers, walls, gates) is composed of it.
+**Sangue is the only substance in the cosmology. Everything is made of
+it. Every other system is downstream of how it is currently arranged.**
+
+Sangue is *coagulated suffering* — the substance that condenses where
+souls suffer. It is what Hell is made of. Not what fills Hell — what
+*constitutes* Hell. Every shape in Hell is sangue currently arranged in
+that shape: the rock-walls, the rivers (Acheron / Styx / Phlegethon /
+Cocytus — all one waterway per *Inf.* XIV), the gates, the chains, the
+fires, the shades, the keepers, Lucifer himself. Different states of
+the same substance.
+
+Hell's geography is sangue under maximum compression. Souls inside Hell
+are sangue arranged in soul-form. When a shade is given second death,
+the soul's arrangement collapses — the sangue returns to undifferentiated
+substance, which either flows into the Vagrant (installation) or through
+him to Beatrice (riversamento).
+
+**This means every mechanical surface in the game is one substance,
+accounted differently.** Stats are sangue accumulated in the Vagrant's
+substrate. Items are sangue arranged in object-form. Moves are sangue
+patterned into motor habit. Abilities are sangue installed as
+capability. Crafted weapons are sangue imprinted into blade-form.
+Vestigia are records of the Vagrant's current sangue-state. The wallet
+is just the most granular accounting unit; everything else is the same
+substance expressed at a different scale of arrangement.
+
+The cosmology has **no second currency**. No gold, no tokens, no
+experience-points, no fast-travel charges separate from sangue. Anything
+mechanical in this game must be expressible as sangue in some
+arrangement. The accounting categories (wallet, stats, items, moves)
+are *rendering*, not separate ontology.
+
+#### The Wood is also made of sangue
+
+The Wood — every tree, every stone, every fern, every selva-organism —
+is sangue that has *leaked out of Hell* and accumulated at the
+threshold. Hell's compression-engine doesn't reach here, so the
+substance has been free to take shapes Hell never intended. Trees, soil,
+biology. The Wood is sangue *not currently compressed*; it has the same
+substance as Hell but in its un-imprisoned register. Beatrice's
+threshold-light is also sangue — *her* sangue, the substrate of
+Paradiso, leaked at the same threshold. Hell's leaked-out sangue and
+Paradiso's leaked-out sangue meet across the Wood, with the colle as
+the point of greatest intersection. The Vagrant walks through their
+meeting on his way to the descent.
+
+#### The Vagrant is sangue too
+
+He has the same substance as everything else. What makes him cosmologically
+distinct is that his Vagrant-form was never properly imprinted by Hell's
+compression-engine. He is sangue arranged in an irregular form Hell
+cannot process. This is the cosmological mechanism of his unjudged
+status: not a moral status, a *substance-arrangement* status. Hell's
+killing-protocol can fire on him — sangue meeting sangue — but the
+completion can't land because there is no imprint to complete.
+
+#### The four laws of sangue
 
 1. **Sangue moves outward only.** Once collected by the Vagrant, it
-   either becomes part of him (installation, via OFFERINGS) or is
-   poured out (riversamento, for the unburdened). It does not flow
-   back into Hell from a living vessel of its own accord.
+   either becomes part of him (installation, via OFFERING) or moves
+   through him into Beatrice's reservoir (riversamento, for the
+   unburdened). It does not flow back into Hell from a living vessel of
+   its own accord.
 2. **Hell reclaims its substance from the dead.** Second death returns
-   all wallet sangue to Hell's reservoir. Hell takes back what it lent.
-3. **Sangue absorbed is gone forever.** No bloodstain / corpse-run.
-   The only way to obtain more sangue is to extract it from new
-   shades and keepers.
-4. **Hell does not let the Vagrant hoard.** The vessel is a wound
-   that holds substance briefly. The pressure is implemented through
-   overflow loss, scaling investment cost, and the lifetime cap;
-   the principle is that sangue at rest is sangue Hell is jealous of.
+   all wallet sangue to Hell's reservoir. Hell takes back what is on
+   the body, because the body's arrangement has collapsed and the
+   substance is unclaimed. **What was installed (in him) or routed
+   through (to Beatrice) is NOT reclaimed** — only uncommitted wallet
+   sangue is. Installation and riversamento are the acts that put
+   sangue out of Hell's reach.
+3. **Sangue absorbed is gone forever.** No bloodstain, no corpse-run.
+   The only way to obtain more sangue is to extract it from new shades
+   and keepers — and from the items / moves / abilities those acts
+   reveal as their downstream shapes.
+4. **Hell does not let the Vagrant hoard.** The vessel is a wound that
+   holds substance briefly. Wallet pressure is implemented through
+   *Disgorgement* at segment boundaries (per `economy.md`), overflow
+   loss, scaling installation cost, and the lifetime cap. The principle
+   is that sangue at rest is sangue Hell is jealous of. Commit it or
+   lose it.
+
+#### Two verbs, opposite vectors
+
+The class-picker / unburdened path distinction is, at the substance
+level, a distinction of which direction sangue moves through the
+Vagrant:
+
+- **Class-picker — OFFERING.** Sangue moves INTO the Vagrant. The
+  installation becomes part of his substrate. He grows. His stats /
+  items / moves / abilities are the expression of accumulated
+  substance. By TRANSFIGURATION he is sangue-saturated in Hell-shape —
+  fit to be Satan-2 of Hell because he *is* the substance arranged
+  to match the throne.
+- **Unburdened — RIVERSAMENTO.** Sangue moves THROUGH the Vagrant
+  into Beatrice's reservoir. The substance passing through *shapes
+  him into a conduit* — his stats / items / moves / abilities express
+  the form of having-passed-through. He thins visibly (Svuotato,
+  Diaphanous) because the substance that would have made his body
+  has gone elsewhere. By Diaphanous he is mostly verb, not noun —
+  almost the act of passage rather than a body conducting it.
+
+Same substance. Opposite directions. Both paths are *Satan-making* at
+the cosmological level (see [Beatrice / Sangue saturation of Beatrice],
+below). The class-picker makes a devil inside himself; the unburdened
+makes a devil inside Beatrice. The mechanical surfaces of both paths
+(stats grow, items collected, abilities unlock) are the same shape —
+they express what the substance is doing in or through the Vagrant.
 
 ### Time
 
@@ -327,6 +418,37 @@ zones with enemies, NPCs, landmarks, and hazards.
   flat within itself** — the funnel is *between* circles, not within
   one. Vertical variation inside a circle is incidental
   (hills, ramparts, riverbanks), not the defining geometry.
+- **Literal 3D vertical stack — no scene swaps.** The world is a
+  physical stack of layers in 3D space. Selva surface (Y ≈ +32) sits
+  above Acheron, which sits above Limbo, which sits above the
+  progressively-smaller circles of Lust, Gluttony, Greed, Wrath,
+  Heresy, Violence, Fraud, and Treachery/Cocytus at the bottom. Each
+  layer has a real **floor mesh** (player walks on it) AND a real
+  **ceiling mesh** (the underside of the floor above). A player
+  looking up from inside a circle sees rock vault, not sky. Authored
+  holes, light shafts, and chasms reveal the layer above where the
+  design wants. Layers connect by real **continuous descent
+  geometry** (corridor, stair, shaft) — never by scene-swap, never
+  by fade-to-black. The Acheron crossing is the exception (it elides
+  per Dante's text); all other layer-crossings are walked.
+- **One scene per vertical slice.** All connected layers load as
+  ONE scene, not separate scenes that swap. Indoor-ness emerges from
+  shadow-map occlusion against the real ceiling meshes, not from any
+  `scene_kind=Interior` flag.
+- **Acheron / Styx / Phlegethon / Cocytus are one waterway** (per
+  *Inf.* XIV — Virgil's exposition: all four rivers formed by tears
+  from the Old Man of Crete statue, descending through Hell as a
+  single continuous flow that changes names per circle). The trench
+  cut through Limbo connects downstream into the descent to Lust;
+  the river keeps descending through every circle until it reaches
+  Cocytus's frozen lake at the bottom. **Charon is currently absent**
+  from his post at the Acheron crossing — the gameplay-equivalent of
+  "restoring Charon's function" has not yet been won at game-start.
+  Until then, new souls arriving at Acheron cannot cross; they pile
+  on the near shore as larval damned (the soul-landfill described
+  in *Per-circle reactivity*). Charon's restoration is a possible
+  consequence of completing the Acheron / Limbo restoration arc;
+  TBD whether his return is mechanical or narrative-only.
 - Story-specific landmarks per circle: the castle in Limbo, Dis the
   city, etc. — lifted from the *Commedia*.
 - The keeper of each circle waits in a dedicated arena room behind
@@ -416,10 +538,40 @@ silent gotchas.
 
 ### The unburdened path (PURITY)
 
-The unburdened path is refusal of Hell's installation.
+The unburdened path is **the path of refusal**. It refuses Hell's
+installation, refuses class-marked progression, refuses the
+transactional substance economy. The unburdened grows — but not
+through any of the cosmological instruments the class-picker uses.
 
-- Stats are locked at 0/0/0 and not visible in any UI. Sangue is
-  collected but cannot be installed.
+- **Stats stay at universal baseline (1/1/1/1) forever.** Sangue
+  cannot install in him; he has no imprint to install on. There is
+  no OFFERING access, no vestigia (vestigia are the mark Hell's
+  measurement leaves; he was never measured). The HUD's stat
+  numbers do not move from frame one. This is genuinely the
+  *unmeasured* state expressed mechanically: the cosmology has no
+  hook into him, so it cannot write numbers on him.
+- **All path-specific growth comes from riversamento alone.** The
+  unburdened progresses by **pouring sangue out into Beatrice's
+  reservoir** (per *Sangue saturation of Beatrice*, above). The
+  more he pours, the more his evolution stages advance
+  (Unburdened → Svuotato → Diaphanous). Each evolution unlocks
+  **non-stat capability** — abilities, passives, and the
+  development of his unique combat technique (stillness /
+  interruption register, TBD specifics). **Nothing he gains is
+  installable, investable, or numerical in the OFFERING sense.**
+  Riversamento volume IS the only progression input.
+- **No class ability kit at L1.** Class-pickers receive one at the
+  Seal; the unburdened does not. His combat capability at L1 is
+  what the baseline body affords + crafted gear + items found in
+  the world. His distinctive technique emerges only via Svuotato
+  and Diaphanous, both gated on riversamento.
+- **No leveling instruments exist for him.** No vestigia (no mark),
+  no Cord (Hell resists, class-picker only), no Erasure (cannot
+  un-measure), no Hand (acquired post-Guide-handover, available
+  but for path-equivalent functions — riversamento-anywhere, not
+  OFFERING). The Wood-side chest is mundane storage and accessible
+  to him, but does not function as a leveling site for either
+  path.
 - The unburdened body is a **chosen vessel** (*vaso d'elezione* —
   Dante's phrase for St. Paul, Inf. II:28). Beatrice elected him
   for a specific cosmic role.
@@ -508,29 +660,101 @@ and routing the light are the same activity as staring at Hell's
 stagnation — both are the centuries-long pre-snap. She was preparing
 tools she could not yet bring herself to fire.
 
-**Acceptable outcomes (her frame, post-hoc):** TRANSFIGURATION (Hell
-renewed), SURFEIT (cosmic catastrophe — Hell ends, swallowed in a
-larger ending), PURITY (Hell ceases through the cosmic firing). All
-three end the stagnation she was staring at. Any of them satisfies
-her.
+### Sangue saturation of Beatrice
+
+The unburdened path's riversamento routes sangue into Beatrice's
+reservoir. **The reservoir is not a container she carries — it IS her
+substrate.** The cosmological mechanism is direct: the sangue the
+Vagrant pours out leaks back into Beatrice herself, settling into the
+substance of which she is made.
+
+Across the unburdened descent she becomes progressively
+sangue-saturated. By Diaphanous (the prerequisite stage for PURITY),
+her divine substrate is loaded with Hell-substance past its binding
+threshold. She is, at that point, *being transformed into a Satan-figure
+of Paradiso*. Structural mirror to the class-picker mechanism: the
+class-picker accumulates sangue in his own substrate and is groomed
+toward Satan-2 of Hell; the unburdened pours sangue into Beatrice's
+substrate and grooms her toward Satan-of-Paradiso. **Same mechanism,
+opposite recipient, opposite realm.** Both paths are devil-making.
+Both are concealed from the Vagrant.
+
+This makes the cosmology's *central irony* a design lock:
+
+> **The figure of grace prefers function over righteousness because
+> her saturation has inverted her compass.** TRANSFIGURATION (Hell
+> renewed) is her plan succeeding. PURITY (Hell ceases) is the
+> player calling her bluff — the coherent-pre-saturation Beatrice
+> *listed* PURITY as acceptable. The saturated-post-Diaphanous
+> Beatrice cannot let it happen, because *the firing kills her too
+> before her transformation completes*.
+
+### The title screen, retroactively
+
+The title-screen disintegration — the crowned Madonna-coded figure with
+the cracking halo, shown every boot — IS this transformation visible
+from frame 1. Halo cracking is Hell-substance inside her substrate
+working outward. The disintegration is her becoming a devil in real
+time, across every boot of every cycle. **On post-R2 replay, every
+prior boot is horror.** The image the player has walked past since they
+first launched the game has been the central cosmological event of the
+unburdened path, hidden in plain sight.
+
+### Coherent vs. rabid — the saturation curve
+
+Beatrice's earlier-vs-later behavior is not "stability collapsing
+abstractly." It is the **saturation curve made character**:
+
+- **Pre-saturation (coherent).** She articulates Hell's failure, names
+  what she did, names her tools, and lists PURITY as an acceptable
+  outcome. This is the Beatrice who placed the Vagrant at the gates.
+- **Mid-saturation (under strain).** Subtle. The held quality starts
+  to *cost* something. Her composure strains as the substrate-shift
+  begins to register. Tied to the light's mid-game register-shift in
+  `wood.md` *The light is her interior state*.
+- **Post-Diaphanous-saturation (rabid).** She cannot let PURITY
+  happen. Her *own* ending is in the cascade and the firing kills her
+  before her transformation completes. Her saturated self is fighting
+  for the same self-preservation any partly-becoming-Satan figure
+  would. She descends rabid because she is no longer the figure she
+  was when she made the plan.
+
+### Acceptable outcomes (her frame, pre-saturation)
+
+TRANSFIGURATION (Hell renewed), SURFEIT (cosmic catastrophe — Hell
+ends, swallowed in a larger ending), PURITY (Hell ceases through the
+cosmic firing). All three end the stagnation she was staring at.
+Coherent-Beatrice held all three as acceptable.
 
 **Unacceptable outcome:** REFUSAL. The Vagrant rejects the throne;
 nothing fires; Hell stays broken. The frustration that drove the
 transgression returns intact, with a new wound inside Hell.
 
 **She watches the player throughout the entire game.** Not as
-operator — she is too unraveled to operate — but as fixated witness.
-She cannot look away from the consequences of her act.
+operator — she is too unraveled to operate, AND on the unburdened
+path her substrate is being progressively reshaped by what she is
+watching — but as fixated witness. She cannot look away from the
+consequences of her act.
 
-**She descends rabid on the two paths that fail her plan.** REFUSAL
-(she gets nothing) and PURITY (her own ending is part of the cascade,
-specifically). On both paths she arrives in Cocytus already fully
-unhinged, fights the Vagrant in violent collapse, completes the
-title-screen disintegration in real-time, and falls. **Defeating her
-is the cost of completing the failure-path.** Failing the fight is
-ordinary death (run-end, retry). She does *not* descend on TRANSFIGURATION
-(her plan succeeds; no need) or SURFEIT (cosmic catastrophe takes her
-along with everything else; her ending is impersonal, swallowed).
+### She descends rabid on the two paths that fail her plan
+
+REFUSAL and PURITY. The reasons differ:
+
+- **REFUSAL:** she gets nothing. The transgression purchased no
+  outcome. Her frustration arrives whole, intensified by years of
+  watching, into the Cocytus arena.
+- **PURITY:** her own ending is part of the cascade, AND her
+  saturated substrate has now made survival a competing imperative
+  her coherent self never had. The descend-rabid behavior on PURITY
+  is the saturation curve fighting the player at the threshold.
+
+On both paths she arrives in Cocytus already fully unhinged, fights
+the Vagrant in violent collapse, completes the title-screen
+disintegration in real-time, and falls. **Defeating her is the cost
+of completing the failure-path.** Failing the fight is ordinary death
+(run-end, retry). She does *not* descend on TRANSFIGURATION (her plan
+succeeds; no need) or SURFEIT (cosmic catastrophe takes her along with
+everything else; her ending is impersonal, swallowed).
 
 **No one in the game is aware of Beatrice until R2.** No NPC mentions
 her. No Grimoire entry references her until the posthumous unlocks at
@@ -545,45 +769,133 @@ Formal register: *la Sperimentatrice* / *the Meddler* / *her*. Not
 
 ## Per-circle reactivity
 
+### Contrapasso is the law; the current keepers are the BREAK
+
+**Contrapasso is THE cosmological law of Hell.** It is the
+punishment-mechanism that makes Hell *function as a system* — the
+process by which sangue (the substance of suffering) is properly
+arranged into a soul's punishment-shape. Functional Hell runs on
+contrapasso. Broken Hell does not.
+
+The current keepers are **NOT enforcing contrapasso.** They are
+*holding it suspended.* Each keeper is the cosmological lock that
+keeps its circle frozen in stagnation — the bottleneck that prevents
+the law from operating. This is the structural mechanism of Hell's
+failure: the keepers, originally installed to officiate contrapasso,
+have become the means by which contrapasso has stopped running.
+Hell is stagnated because its keepers are *the brake on its own law*.
+
+**Killing a keeper is not "destroying enforcement." It is
+*removing the lock*.** Second-deathing the keeper releases the
+suspension. Contrapasso returns to its proper function in that
+circle. The cosmological law resumes operation on the souls there.
+
 ### Pre-keeper (whole circle)
 
-Full enforcement. The keeper holds the contrapasso together; shades
-suffer their punishment normally; the NPC is in their lucid window.
-Audio is the circle's standard tonal slot in the descent sequence.
+Stagnated state. The keeper holds the contrapasso suspended; shades
+endure their frozen punishment-poses without resolution; the NPC of
+the circle is in their lucid window (interiority retained because the
+contrapasso-machine is not properly processing them, leaving room
+for awareness). Larval damned bound for this circle pile at Acheron's
+near shore (per `crypt.md` *The larval damned*) because the
+delivery pipeline has jammed. Audio is the circle's standard tonal
+slot in the descent sequence — held, frozen, suspended.
 
-### Post-keeper (consumed circle)
+### Post-keeper (restored circle)
 
-The keeper is given second death and does not return. The contrapasso,
-no longer enforced, **leaks into the remaining inhabitants** —
-the NPC, the surviving shades, **the class-picker Vagrant himself**
-(through the imprint the Seal opened in him), and **the Guide**
-(through the channel Beatrice has constructed to use him). They are
-**supercharged** by the released contrapasso.
+The keeper is given second death and does not return. **Contrapasso
+RESTORES to that circle.** The substance flow that was suspended
+resumes. The system catches up:
 
-- **The circle becomes harder.** Defined per-circle changes apply
-  the contrapasso to the *Vagrant* rather than to the souls.
-- **The NPC becomes hostile.** Lucid window closed. Killing them
-  gives a meaningful sangue payout. Player can second-death the
-  NPC before consumption (skipping their item) or after (taking the
-  item, then fighting them later).
-- **The contrapasso-husk emerges.** A residual entity — fragment of
-  the released contrapasso seeking a new vessel.
-- **Audio shifts "weirder."** Tones detune; ambients go off-rhythm;
-  the keeper's musical motif persists faintly as a haunting.
+- **The NPC is promoted to the new keeper.** This is Beatrice's act.
+  The NPC's lucid window pre-keeper-fall was always *incipient
+  keeper-consciousness* — Beatrice has been preparing them across
+  centuries for the role they will assume when the lock comes off.
+  At the moment the old keeper falls, she promotes the NPC into
+  the keeper-function. The NPC's body transforms; the contrapasso
+  machinery installs into them; they become the law-of-the-circle
+  rather than a soul-of-the-circle. Lucid window closes because
+  there is no longer a soul to be lucid — the NPC has been
+  installed as Hell's mechanism for that circle.
+- **The surviving shades enter proper contrapasso.** Frozen
+  punishment-poses unfreeze. Wind blows on the lustful. Cerberus
+  rains on the gluttonous. The blood-river receives the violent.
+  This is the *resumed* state — what each circle SHOULD have looked
+  like before centuries of stagnation. Subsequent visits to the
+  circle find a *working Hell-zone* where there was previously a
+  graveyard.
+- **The contrapasso-husk dissolves.** The old keeper's residual is
+  a transitional excrescence — what's left of the broken state. As
+  the new keeper assumes function, the husk dissipates. Encountering
+  one in a recently-restored circle is encountering a *fading
+  remnant of the broken cosmology*, not an active threat.
+- **Fresh souls finally descend.** The larval damned that have been
+  piling at Acheron's near shore (the circle's backlog) finally
+  descend to this circle and begin their contrapasso. The pipeline
+  flows again for the first time in centuries. The circle becomes
+  populated by *actively-suffering souls* — vivid, articulate,
+  sculpted by the contrapasso that has resumed.
+- **Audio shifts to *working Hell*.** Tones detune from their frozen
+  register into active suffering — screaming, churning, the sounds
+  of a circle that is *processing*. The keeper's musical motif gives
+  way to the new keeper-NPC's motif. The ambient is no longer
+  haunted; it is *functioning*.
 
-The keeper does not respawn. Subsequent visits encounter only the
-contrapasso-husk, the supercharged shades, and the (now hostile) NPC.
+The keeper does not respawn (the OLD keeper, the one the Vagrant
+defeated, is gone forever). The NEW keeper is the promoted NPC, in
+its new form, and will be there on subsequent visits — installed as
+the circle's enforcement mechanism. The Vagrant can fight the new
+keeper-NPC, but doing so undoes the restoration: the NPC dies in its
+keeper-form; the circle stagnates again until Beatrice promotes
+*another* candidate. This is a costly, recursive option that exists
+mechanically but is rarely the right play.
 
-**Contrapasso and the Vagrant.** Contrapasso lands on the class-picker
-Vagrant because the Seal opened an imprint Hell can grip. The
-class-picker's evolution arc is partly *Hell loading itself into him*
-through accreted contrapasso. Stat investment via OFFERINGS and
-contrapasso accretion together produce evolved class-forms. Mechanical
-specifics in [`classes.md`](classes.md). The unburdened Vagrant
-remains imprint-free; contrapasso cannot land. The substance passes
-through and contributes to subtractive evolution (Svuotato →
-Diaphanous), which is the cumulative state of substance refusing to
-settle.
+### Contrapasso and the Vagrant
+
+**Contrapasso lands on the class-picker Vagrant because the Seal
+opened an imprint Hell can grip.** As each circle's contrapasso
+restores, some of the substance catches on the Vagrant's imprint —
+*Hell installing itself in him*, expressed mechanically as items
+acquired in the consumed circle, abilities learned there, stats
+unlocked at the next vestigium, the cosmological signature of having
+participated in the circle's restoration. The class-picker's evolution
+arc is the *accumulating shape of restored Hell catching on him*.
+By TRANSFIGURATION he carries all 9 circles' contrapasso-signatures
+in his substrate — *Hell, fully installed in him*. He is fit for the
+throne because he IS the substance Hell would now have on its throne.
+
+**The unburdened Vagrant remains imprint-free.** Restored contrapasso
+passes through him because there is nothing to catch on. The
+substance routes outward through riversamento toward Beatrice. The
+unburdened's subtractive evolution (Svuotato → Diaphanous) is *the
+cumulative state of substance refusing to settle* — every time
+contrapasso restores to a circle, the unburdened lets it pass, and
+each pass thins him further. By Diaphanous he is mostly the *act of
+passage*, not a body that contained substance.
+
+### Contrapasso and the Guide
+
+**The Guide receives leaked contrapasso through Beatrice's projection
+channel.** He is unjudged and imprint-free — contrapasso *should* not
+land on him — but the channel Beatrice built into him for the
+projection function doubles as a contrapasso conduit. As each circle
+restores, some of the substance routes through her channel into him.
+He cannot evade it; the channel was installed without his consent.
+By all 9 keepers down, he carries the cumulative load of 9 circles'
+restored contrapasso. The substance flowing through him erodes the
+vessel because the vessel was not built for it. His destruction is
+*acceptable cost* in Beatrice's plan (per *The Guide*, below).
+
+### Author's note — the inversion
+
+The original framing of contrapasso ("leaked contrapasso supercharges
+everything when the keeper falls; contrapasso-husk seeks a new
+vessel") has been **inverted**. Contrapasso is no longer leaking-out-
+of-broken-cosmology; it is *returning to function*. The same
+mechanical surfaces (NPC becomes hostile, husk appears, circle gets
+harder for the Vagrant) are preserved, but cosmologically they
+express the law restoring, not breaking further. This is the
+load-bearing reframe of the entire post-keeper cosmology.
 
 **Contrapasso and the Guide.** The Guide is unjudged and imprint-free;
 contrapasso should not land on him either. It does, because Beatrice
@@ -759,19 +1071,58 @@ bookkeeping.
 
 ### Vestigia
 
-**Vestigium** (singular) / **Vestigia** (plural) = save slots. Each
-character / run occupies a vestigium. Vestigia hold persistent state
-and allow loading from autosave (triggered on second death and
-voluntary retreat).
+**Vestigium** (singular) / **Vestigia** (plural) = *the mark the
+Seal leaves on the class-picker's soul*, manifesting both as a
+property of his substrate (Hell's grip-point) and as physical sites
+in the world (places where the mark can be read or further
+inscribed). Vestigia are **class-picker exclusive** — the Unburdened
+has no vestigium because he was never measured.
+
+For class-pickers, vestigia function as:
+- Save sites (autosave on visit)
+- OFFERING sites (spend sangue → invest in stats)
+- Class-evolution commit sites (L1→L2→L3 fires when requirements met
+  at a vestigium)
 
 UI verbs: *Inscribe* (save) / *Restore* (load), final wording TBD.
 Save/load language is built into the world's register, not labeled
 "save" / "load."
 
-Primary use: a player who makes a Wood-side mistake (e.g. spends
-sangue at OFFERINGS for a stat they didn't intend) can restore from
-last autosave. Death does not cost beyond the run's wallet; vestigia
-are not bloodstain-style recovery.
+### Saves are soulslike — commitments cannot be undone
+
+**Selva's save register matches the soulslike doctrine: every
+meaningful act commits immediately and cannot be walked back.**
+
+- **Saves are automatic and frequent.** Every OFFERING, every
+  riversamento, every item commit, every vestigium-visit autosaves
+  on the spot. Save-overwrite is the rule. There is no manual save-
+  slot system, no save-scumming.
+- **Restoration only happens on death.** When the Vagrant dies, he
+  respawns in the Wood with whatever state was committed up to
+  that point. The current run's wallet is reclaimed by Hell;
+  installed substance (stats raised at vestigia, items collected,
+  abilities unlocked, riversamento volume) persists.
+- **No Wood-side undo.** A class-picker who OFFERS to the wrong
+  stat lives with it. The cosmology recorded the act; the act
+  stands. The only stat-redo mechanism is **The Erasure** (per
+  inventory.md), late-game, item-gated, switches class among
+  Penitent / Heretic / Wretched but does not return invested
+  sangue.
+- **The Seal-use commits immediately.** An Unburdened who uses the
+  Seal class-picks at that moment, permanently breaks PURITY for
+  that save, and cannot reverse the decision. The cosmology
+  respects commitment in both directions.
+
+The save register's name is *vestigia* (singular *vestigium*) for
+class-pickers; the Unburdened's save register is **the chest** (the
+Wood-side mundane-storage object — see inventory.md). Unburdened
+saves trigger on chest-interaction + on death + on voluntary
+retreat. Specifics TBD.
+
+The doctrine: **the game lets every route reach a good outcome, but
+the player has to live with the route they chose.** Mistakes are
+real. The Erasure is the cosmology's only second chance, and it
+costs.
 
 ### Item system
 
@@ -787,9 +1138,16 @@ Items committed at the setting level:
   to unburdened.
 - **The Erasure** — late-game. Class-pickers switch among
   Penitent / Heretic / Wretched. Cannot grant unburdened status.
+  Requires a consumable activation material.
+- **The Hand** — acquired at climax. Heal (universal); class-picker
+  uses as portable OFFERINGS access, unburdened uses as portable
+  riversamento site. Permanent across cycles.
+- **The chest** — gothic-Italianate storage object in or near the
+  chapel. Cosmologically mundane (no Hell-grip); accessible to any
+  path. Items persist across cycles. Doubles as the unburdened's
+  autosave site (the unburdened has no vestigia).
 
-Other items (NPC rewards, vestigia-related artifacts) in
-[`inventory.md`](inventory.md).
+Other items (NPC rewards, etc.) in [`inventory.md`](inventory.md).
 
 ---
 

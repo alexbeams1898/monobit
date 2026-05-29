@@ -21,6 +21,12 @@ Per setting.md *Item system*:
   permanently. *Carriable indefinitely if not used.* Carrying it
   keeps the Vagrant imprint-free; the unburdened can use it at any
   later moment to permanently break PURITY for that save.
+  **Storable in the Wood-side chest.** The Seal has no cosmological
+  grip on the Vagrant until used, so it has no insist-on-presence
+  behavior — it sits wherever the player puts it. Storing it in the
+  chest does not affect anything; it just clears inventory slot
+  for players who want to commit visibly to the unburdened path.
+  Retrieve it from the chest at any time.
 
 - **The Cord** — mortal artifact lifted from *Inferno* XVI:106-108.
   Teleport from any circle back to the *selva oscura*. Unlimited
@@ -32,7 +38,11 @@ Per setting.md *Item system*:
 
 - **The Erasure** — late-game. **Single-use within its scope.**
   Class-pickers can switch among Penitent / Heretic / Wretched.
-  Cannot grant unburdened status (cannot un-measure).
+  Cannot grant unburdened status (cannot un-measure). **Requires a
+  consumable activation material** to use — the Erasure cannot fire
+  on intent alone; it needs substance to re-measure the soul. Specific
+  material TBD (likely a class-themed item dropped in a specific
+  circle).
 
 - **The Hand** — acquired at the climax (Guide's death — kill or
   handover). Per story.md *The Hand*: heal (universal), plus
@@ -41,6 +51,31 @@ Per setting.md *Item system*:
   cycles.** Once acquired, the Vagrant has it for the rest of the
   save.
 
+- **The chest** — a storage object in or immediately adjacent to
+  the chapel. **Cosmologically mundane** (no Hell-grip, no
+  installation behavior, accessible to any soul including the
+  unburdened) but **aesthetically loaded** (13th–15th century
+  Italianate / gothic register; cathedral-reliquary or pilgrim's-
+  alms-chest silhouette; same register as the chapel exterior —
+  Beatrice's gothic infrastructure for the Vagrant). Both paths
+  can put items into the chest and pull them out at any visit. The
+  Seal is the canonical first item the player might choose to
+  store (clearing inventory slot if committing to the unburdened
+  path; see *The Seal*, above). Items in the chest persist across
+  cycles — the chest is in the Wood, and the Wood remembers (per
+  wood.md *The Wood remembers*).
+  
+  **Unburdened save register.** For unburdened players (who have
+  no vestigia), the chest also functions as the autosave site —
+  interacting with it triggers an autosave. Class-pickers can use
+  the chest for the same purpose, though they typically save more
+  frequently at vestigia. Per setting.md *Saves are soulslike*,
+  the save is a commit; there is no Wood-side undo.
+  
+  Specifics — exact placement (inside the chapel antechamber vs.
+  outside on the plateau), interior detailing, capacity, whether
+  multiple chests exist — TBD.
+
 ## Path-specific carry rules
 
 Different paths have different available inventories.
@@ -48,9 +83,10 @@ Different paths have different available inventories.
 | Item | Class-picker | Unburdened |
 |---|---|---|
 | Grimoire | yes | yes |
-| Seal | consumed at beasts | carried indefinitely |
+| Seal | consumed (or storable in chest before consumption) | carried indefinitely (or storable in chest) |
 | Cord | yes | **no** |
 | Erasure | yes (switch class) | n/a (cannot reach) |
+| Chest (Wood-side storage + unburdened save site) | yes | yes |
 | Hand | yes (severed at kill) | yes (handover) |
 
 ## Slots / structure

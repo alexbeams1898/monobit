@@ -25,83 +25,135 @@ Vagrant also crafts in the Wood. The substrate differs by location
 (see *Substrate split* below), but the rule — **all weapons are
 crafted** — is invariant.
 
-## Crafting as consumption (Hell side)
+## Crafting is imprint-making
 
-Hell-craft is the Vagrant **consuming Hell into form.** This is the
-mechanical expression of the *consuming Hell* narrative (per
-setting.md). To craft a weapon in Hell is to *take* — to flay a shade
-for its sinew, to break and shape its bone, to bind a damned soul's
-substance into an edge.
+**Crafting has no bench.** The verb is in the Vagrant's hand. He
+marks matter the way Hell marks souls — he is the inverse of Hell's
+killing-protocol. Hell takes a soul, presses an imprint into it,
+fixes its punishment-shape. The Vagrant takes substance and presses
+an imprint into it, fixes its weapon-shape. Same cosmological act,
+opposite direction.
 
-Every Hell-crafted weapon carries the imprint of what was consumed
-to make it. A shade-bone dagger remembers the shade. A sinew-bound
-hilt remembers the gluttons whose flesh wove it. The weapon is not
-inert — it is **a fragment of Hell shaped to the Vagrant's will**,
-and the act of making it is itself a small *consuming-Hell* event.
+Per setting.md *Sangue and the law of substance*, **everything is
+sangue, arranged.** A weapon is sangue arranged in blade-form. The
+Vagrant arranging it IS the cosmological mechanism — substance
+flowing through his hand acquires the shape his intention provides.
+This is the *imprint-making* verb. No forge, no anvil, no recipe-
+sheet. He does it where he is, with what is at hand.
 
-This resolves a quiet tension in the cosmology: the Vagrant has no
-imprint Hell can grip (per setting.md *Second death* / *the
-unjudged*), but he is not merely *immune* — he is **active.** Hell
-moves through him out (riversamento, on the unburdened path) and
-into him as form (crafted matter, on either path). Crafting is the
-verb the *consuming Hell* narrative requires. Without it, "consuming
-Hell" stays abstract. With it, the player performs the verb every
-time they sit at a workbench.
+**Sangue flows into everything he makes at the moment of creation.**
+The wallet ticks down; the substance routes into the object-form.
+The amount allocated determines the weapon's quality (Crude → Common
+→ Fine → Superior → Masterwork — see *Rarity vs. quality*). A
+Masterwork shade-bone dagger took more sangue to imprint than a
+Crude one. The cost is real and the result expresses the cost.
+
+### Why this works cosmologically
+
+The Vagrant has no imprint Hell can grip (per setting.md *Second
+death* / *the unjudged*), but he is not merely *immune* — he is
+**the inverse verb.** Hell's killing-protocol imprints souls into
+punishment-shape. The Vagrant's imprint-making imprints substance
+into tool-shape. Both operate on sangue. Hell does it by
+compression; the Vagrant does it by intention.
+
+Without crafting, "consuming Hell" stays abstract. With crafting as
+imprint-making, the player performs the cosmological verb every time
+they shape substance.
+
+### Hell-imprint vs. Wood-imprint — persistence rules
+
+Where the Vagrant imprints determines what happens on second death.
+This is load-bearing for both paths.
+
+- **Hell-imprinted weapons reclaim on death.** Substance imprinted
+  inside Hell is *substance Hell remembers*. When the Vagrant dies,
+  Hell's killing-protocol fires and reclaims its substance — the
+  weapon dissolves with the body, returning to Hell's reservoir. The
+  imprint dissolves with it. The Vagrant respawns in the Wood
+  without it.
+- **Wood-imprinted weapons persist across cycles.** Substance
+  imprinted in the Wood is in *the substrate outside Hell's
+  accounting* (per setting.md / wood.md). Hell cannot reclaim it on
+  death. The weapon stays — in the Wood, or carried back to the Wood
+  before death — and survives the cycle. The Vagrant respawns and
+  the weapon is still where it was, or still in his hand if he died
+  in the Wood.
+
+This is the **mechanical expression of the substrate split.** Wood-
+imprinted gear accumulates across cycles. Hell-imprinted gear is
+single-cycle. The two operate as a permanence axis: do you imprint
+fast and cheap in Hell knowing you'll lose it, or slow and durable
+in the Wood knowing it survives?
+
+The path distinction layers on top: see *Path implications* below.
 
 ## Substrate split
 
 The substrate of crafting differs by location:
 
-| Location | Substrate | Register |
-|---|---|---|
-| **Wood (selva oscura)** | Root, branch, stone, pilgrim-relic, fallen-traveler matter | Humble, found, wooden |
-| **Hell** | Shade bone, sinew, damned-soul matter, contrapasso residue, sangue-coagulate | Visceral, wrenched, consuming |
+| Location | Substrate | Register | Persistence |
+|---|---|---|---|
+| **Wood (selva oscura)** | Root, branch, stone, pilgrim-relic, fallen-traveler matter | Humble, found, wooden | Across cycles |
+| **Hell** | Shade bone, sinew, damned-soul matter, contrapasso residue, sangue-coagulate | Visceral, wrenched, consuming | Single cycle (reclaimed on death) |
 
-The crafting *mechanic* is the same on both sides. The recipe registry,
-the workbench interaction, the material slots are shared system. What
-changes is the material pool the player has access to — gathered from
-what the location's substrate makes available.
+The crafting *mechanic* — imprint-making, sangue-cost-at-creation — is
+the same on both sides. What changes is the substance the location
+makes available and what happens to the imprint on second death.
 
 **Wood-craft is gentle in tone.** The Vagrant builds from what fell
 naturally or what was left behind. There is no violence required to
 gather. A walking-staff from a deadfall branch. A sling from sinew of
 a pilgrim's abandoned pack. The Wood does not bleed into the weapon.
+Wood-imprint persists.
 
 **Hell-craft is violent in tone.** Every Hell material was *taken*
 from a soul being punished. The wrenched-from-Hell register reads
 through the weapon's *visual*, its *flavor text*, its *sound* when
 swung. The same dagger silhouette in Wood-substrate and Hell-substrate
-feels different in the hand.
+feels different in the hand. Hell-imprint reclaims on death.
 
 ## Path implications
 
-**Both paths craft.** The unburdened path (sangue-pure, never invests
-at OFFERINGS, pours sangue out via riversamento) is not denied
-weapons. The unburdened still descends into Hell, still meets
-keepers, still faces shades — and still needs the means to dispatch
-them so they can receive second death and have their sangue return
-to circulation.
+**Both paths craft.** Both paths grow as characters (per economy.md
+*Path-specific economic shape*). The difference is in **what
+direction sangue moves through the Vagrant** while he imprints:
 
-The unburdened's craft inherits an additional flavor: the act of
-**taking matter from a shade to make a weapon is itself a form of
-forced repentance through second death** (per setting.md). The
-unburdened does not invest sangue, but they do extract substance —
-the very same substance — and reshape it as the means of granting
-the next second death. The cycle is closed: shade → weapon → next
-shade's second death → that shade's substance into the next weapon.
+- **Class-picker imprint**: sangue moves OUT of the wallet INTO the
+  blade-shape (Hell-side) OR into the lasting object (Wood-side).
+  The substance the Vagrant is shaping is the substance Hell has
+  already installed in him; crafting redirects some of it into
+  gear. His body grows separately through OFFERINGS at vestigia.
+- **Unburdened imprint**: same wallet → object motion, BUT the
+  substance flowing through the Vagrant during the imprint also
+  contributes to **what's routing toward Beatrice's reservoir**.
+  The act of imprinting is also a small riversamento — the
+  unburdened's imprint-making is *the substance passing through him
+  arrested briefly in tool-form before continuing onward*. Tools
+  imprinted on this path have a quality the class-picker's don't:
+  they carry the register of what is on its way to Beatrice. (TBD
+  whether this is purely lore-flavor or has a mechanical surface.)
 
-Class-picker craft has fewer cosmological knots — they install
-sangue at OFFERINGS, they spend, they grow stat-wise. Crafting is
-an orthogonal axis for them: their *equipment* gets stronger via
-crafting, their *body* gets stronger via OFFERINGS. The two are
-separate progression vectors.
+**Crafting is a critical progression vector for the unburdened.**
+Per setting.md *The unburdened path* and classes.md *Stat schema
+model*, the unburdened's stats stay locked at 1/1/1/1 baseline for
+the entire run (he has no vestigia, no OFFERING, no cosmological
+instrument that writes numbers on him). His mechanical strength
+in Hell comes from:
 
-For the unburdened, crafting is the *only* progression vector.
-Stats are locked at base (per classes.md). Their power comes from
-**what they have made** and how skillfully they use it. This makes
-crafting load-bearing for the unburdened in a way it isn't for
-class-pickers — and is one more piece of the unburdened path's
-distinct register.
+- **Crafted gear** — what he has imprinted into weapon-shape
+- **Items / abilities** found in the world
+- **Riversamento-unlocked capability** at Svuotato and Diaphanous
+  (passives, combat-technique development; non-stat)
+- **Skill**
+
+Crafting carries a special weight on the unburdened path because
+**every imprint is also a contribution to the riversamento toward
+Beatrice**. The unburdened imprinting a blade IS a cosmological act
+of devil-making toward Paradiso (per setting.md *Sangue saturation
+of Beatrice*) in the same way every other riversamento is. The
+class-picker imprinting a blade is a more ordinary act — substance
+redirecting within his closed system.
 
 ## System reuse: prison-escape-game's loot + crafting + item model
 
@@ -121,10 +173,11 @@ Dantean substrate. Specifically:
   Epic → Legendary`) — set per-ItemDef. Intrinsic to the *kind*
   of item; a "shade-bone dagger" template has a fixed rarity.
 - **QualityTier** (5 tiers: `Crude → Common → Fine → Superior →
-  Masterwork`) — set per-instance at craft/drop time. The same
-  item template can produce instances of different quality based
-  on craft conditions (workbench tier, material quality, future
-  luck/skill stat).
+  Masterwork`) — set per-instance at imprint-time. The same item
+  template can produce instances of different quality based on the
+  sangue allocated, the material quality of the substrate consumed,
+  and the Vagrant's stat-state (LCK and possibly path-specific
+  unlocks).
 - **RecipeDef + RecipeRegistry** — recipes live at
   `config/recipes/<name>.json` with the schema
   `{name, inputs: [{item, quantity}], output, output_quantity}`.
@@ -134,11 +187,11 @@ Dantean substrate. Specifically:
   available to inherit when needed.
 
 This means crafting in Selva starts with a proven, tested data
-model: enemies drop materials, materials are spent at workbenches
-following recipe JSONs, recipes produce items of a known
-rarity (intrinsic) and rolled quality (per-instance). The
-cosmological re-skin (substrate split, second-death reclamation)
-layers on top.
+model: enemies drop materials, sangue + materials are spent at the
+imprint-making moment following recipe JSONs, recipes produce items
+of a known rarity (intrinsic) and rolled quality (per-instance). The
+cosmological re-skin (no-bench imprint-making, substrate split,
+Hell-imprint reclamation, Wood-imprint persistence) layers on top.
 
 ### Rarity vs. quality — Dantean reading
 
@@ -153,15 +206,20 @@ register than they do in prison-escape:
 - **Quality** = how well the Vagrant *shaped* what he extracted.
   A *Masterwork* shade-bone dagger and a *Crude* shade-bone dagger
   are made from the same substrate; the difference is in the
-  Vagrant's hand at the bench. This is consistent with the
-  *consuming Hell* verb — the player is the agent of form, even
-  when the substance is the same.
+  Vagrant's hand at the moment of imprinting (how much sangue he
+  allocated; what his current stat-state supports). This is
+  consistent with the *imprint-making* verb — the player is the
+  agent of form, and the form he can produce depends on what he
+  has become.
 
-This split also resolves cleanly with the path distinction:
-class-pickers' stat growth gives them better craft-quality outcomes
-over time (their hand gets steadier); the unburdened's stat-locked
-state means their quality variance has different sources (TBD —
-candidates: ritual condition, riversamento count, NPC favor).
+This split resolves cleanly with the path distinction: both paths
+grow stats per setting.md / classes.md, and both paths' growth
+contributes to craft-quality outcomes. The unburdened's
+distinctive variance comes from the *Conduit / Threshold-state*
+unlocks at Svuotato / Diaphanous, which scale weapon-imprint
+quality in their own register (the substance passing through him
+at imprint-time carries a distinctive signature). Specifics TBD at
+gameplay tuning.
 
 ## Drops and gathering
 
@@ -197,25 +255,28 @@ Recipe JSONs follow the prison-escape schema (per ItemConfig.h
 
 Basic recipes are known from the start; advanced recipes are
 discovered through play. Recipe-learn triggers TBD (candidates:
-NPC dialogue per `setting.md`, Hell-side benches imprinted by past
+NPC dialogue per `setting.md`, Hell-side ritual sites left by past
 Vagrants, recipe-stones in the Wood). Recipe tree shape, branching,
 unlock conditions all TBD at gameplay tuning.
 
-## Workbench interaction
+## No workbench, no bench, no forge
 
-The Vagrant interacts with a **workbench** (or its equivalent) to
-craft. Workbenches exist in both substrates:
+**The verb is in the Vagrant's hand.** Imprint-making does not
+require a workbench, an anvil, a forge, a ritual circle, or any
+piece of equipment. Wherever the Vagrant is, with whatever substance
+is at hand, with enough sangue in the wallet to cost the imprint —
+he can make. No interaction site is required.
 
-- **Wood-side benches** — found objects at safe sites in the Wood.
-  Specifics (where they appear, how they look) TBD.
-- **Hell-side benches** — TBD. Working hypothesis: each circle has
-  a bench-equivalent the Vagrant can use. Form is open — could be
-  a literal forge, could be a body the Vagrant works at, could be
-  ritual-circles drawn in shade-ash. Whatever it is, it reads as
-  *visceral and improvised* rather than *industrial.*
+This is structurally important: the Vagrant is *himself* the verb
+of imprint-making (see *Crafting is imprint-making*, above). Adding
+a workbench would imply the verb is elsewhere — in the bench, in
+the tools, in the ritual setup. It isn't. He is the cosmological
+mechanism. The substance, the intention, and the cost are the only
+inputs.
 
-Whether a workbench is portable (carried with the Vagrant, like the
-Hand) or always stationary is TBD.
+The UX expression of imprint-making (menu? hold-button?
+contextual?) is TBD at implementation. The lore-frame is locked:
+no bench.
 
 ## Cosmological framing
 
@@ -278,22 +339,14 @@ crafting moves from design to engineering.
   output stats, unlock conditions — all TBD at gameplay tuning.
 - **Material drop tables.** Per-shade, per-keeper, per-contrapasso
   drop tables. TBD.
-- **Workbench form and placement.** Wood-side bench appearance;
-  Hell-side bench appearance per circle; whether benches are
-  portable. TBD.
-- **Wood-craft persistence rule.** Whether Wood-crafted weapons
-  survive second death, and if so under what conditions. TBD.
+- **Imprint-making UX.** How the imprint moment is expressed in the
+  hand — menu, hold-button, contextual visual, ritual mini-event.
+  The Wood-side and Hell-side registers differ visually; whether
+  the *UX* visibly differs between them is open.
 - **Recipe-learn triggers.** Whether recipes drop from kills, are
   found at sites, are taught by NPCs, or some mix. Per setting.md
   NPCs provide a benefit on first encounter — recipe-learn is a
   candidate form. TBD.
-- **Crafting UI register.** How the workbench interaction feels in
-  the hand (menu vs. ritual vs. physical-puzzle). The Wood-side
-  and Hell-side registers differ; whether the *UI* visibly differs
-  between them is open.
-- **Field-craft vs. bench-craft.** Whether some basic items can be
-  crafted in the field (a torch from a branch + flint) vs. all
-  crafting requiring a bench. TBD.
 - **Item categories.** Whether crafting produces only weapons +
   consumables, or also armor / tools / sangue-interacting items
   (the Cord, the Hand — per inventory.md). The Cord and Hand are

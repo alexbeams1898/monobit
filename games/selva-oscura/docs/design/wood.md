@@ -348,6 +348,53 @@ Wood is partly defined by what the ecology is doing.
 - **Ambient sound (deferred):** wind in canopy, distant bird calls,
   silence. Layered ambient sound is a separate design pass.
 
+### Wind as ecosystem variable (locked)
+
+Wind in the inner Wood is **not a constant ambient.** It is a state
+variable tied to **Hell's encroachment on the threshold.** The Wood
+at game-start is *old and watching* — a held breath, the silent
+guardianship Beatrice's threshold-light still maintains. Constant
+ambient wind contradicts that register.
+
+As the player consumes circles — felling keepers, restoring
+contrapasso, leaking substance — Hell breaches the threshold further.
+The air picks up. Wind arrives. Wind carries voices, smells, distant
+rumbles. **Wind is a signal of the world's state, not background
+noise.**
+
+Tiered progression (each tier is a content gate, not a code gate):
+
+1. **Pre-consumption (game-start, before any circle felled).**
+   Silence. Trees motionless. Maybe a single faint breath of air
+   far away. The Wood is holding its breath.
+2. **Early consumption (1-3 keepers down).** Faint distant wind in
+   the upper canopy. Not yet at ground level. The held-breath is
+   loosening.
+3. **Mid consumption (4-6 keepers down).** Audible whispers in the
+   wind — voices, fragments of speech. The contrapasso restoring
+   in the consumed circles is rising through the substance pathway
+   into the threshold-air.
+4. **Late consumption (7-8 keepers down).** Low rumble underneath
+   the wind. The ground itself begins responding to Hell's
+   restoration.
+5. **All keepers down.** Voices carrying contrapasso-specific
+   words — Lust-words on lust-wind, Greed-words on greed-wind,
+   etc. The threshold is structurally compromised. The Wood is
+   becoming an extension of restored Hell.
+
+Wind pairs with the **threshold-light degradation** (Beatrice's
+interior state, per *The light is her interior state* above). Both
+track the cosmic situation's progression; both are downstream of the
+same substance event. As the light's composure fails and the wind
+intensifies, the Wood is *returning toward its pre-Beatrice dark
+state* — Hell encroaches and Beatrice's intervention loses ground.
+
+The pre-Beatrice-dark state Beatrice's light kept at bay (per *The
+light is recent — the Wood's natural state was dark*) was a state of
+*no wind* too — moonless, breathless, held. End-game's full-wind
+state is **the same kind of stillness undone**: substance moving
+freely because the threshold no longer holds.
+
 ## World-vertical scale (canon)
 
 The Wood — and by extension Selva Oscura's entire vertical scale —
