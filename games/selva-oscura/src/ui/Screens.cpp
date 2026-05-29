@@ -6,6 +6,7 @@
 #include "SaveManager.h"
 #include "ecs/GameComponents.h"
 #include "ecs/ItemConfig.h"
+#include "gameplay/Actor.h"
 #include "gameplay/PerFrameTick.h"
 #include "gameplay/TickState.h"
 #include "ops/InventoryOps.h"
@@ -15,6 +16,7 @@
 #include <SDL.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <string>
 
@@ -26,11 +28,6 @@
 // share state through the AppStateGlobal singletons. The single entry point
 // renderScreens() dispatches on GameState::phase + UIState. Each screen
 // updates GameState/SaveData directly when the user takes an action.
-//
-// Modeled on prison-escape-game's screens/* family (MainMenuScreen,
-// CharCreateScreen, LoadGameScreen, SettingsScreen, PauseMenu). The
-// per-screen behavior is parallel; only the ImGui rendering is Selva-style
-// instead of UIRenderer-style.
 // ---------------------------------------------------------------------------
 
 namespace selva::ui
@@ -99,8 +96,7 @@ bool rmbClicked()
     return ImGui::IsMouseClicked(ImGuiMouseButton_Right);
 }
 
-// Back/cancel input - ESC or RMB. Matches prison-escape's pattern; see
-// games/prison-escape-game/src/screens/* for the canonical examples.
+// Back/cancel input - ESC or RMB.
 // Caller is responsible for consuming this in a single place per frame.
 bool wantBack()
 {
@@ -394,7 +390,18 @@ void renderPauseStatusTab()
     ImGui::Spacing();
     ImGui::Text("Character: %s", gameState().active_character.c_str());
     ImGui::Spacing();
-    ImGui::TextDisabled("(stats, sangue totals, evolution stage TBD)");
+
+    const auto& p = selva::gameplay::player();
+    ImGui::Text("HP      %d / %d", p.hp.current, p.hp.max);
+    ImGui::Text("Stamina %d / %d", static_cast<int>(std::floor(p.stamina.current)),
+                static_cast<int>(std::floor(p.stamina.max)));
+    ImGui::Text("Poise   %d / %d", static_cast<int>(std::floor(p.poise.current)),
+                static_cast<int>(std::floor(p.poise.max)));
+    ImGui::Spacing();
+    ImGui::Text("STR %d  DEX %d  END %d  LCK %d", p.stats.str, p.stats.dex, p.stats.end,
+                p.stats.lck);
+    ImGui::Spacing();
+    ImGui::TextDisabled("(offerings + vestigia leveling -- not yet wired)");
 }
 
 void renderPauseInventoryTab()
@@ -498,8 +505,8 @@ bool renderPauseMenu()
 // ---------------------------------------------------------------------------
 // Pause-menu open/close trigger. ESC during Playing opens the pause
 // overlay. ESC or RMB closes it (RMB doubles as the back gesture inside
-// any menu - matches prison-escape's pattern). Suppressed for one frame
-// after the overlay closes to keep the game from immediately re-pausing.
+// any menu). Suppressed for one frame after the overlay closes to keep
+// the game from immediately re-pausing.
 //
 // Note: RMB does NOT open the pause menu - during Playing the cursor is
 // captured for mouse-look and RMB is the combat block input. RMB only

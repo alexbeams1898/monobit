@@ -53,7 +53,7 @@ constexpr bool factionsHostile(Faction attacker, Faction target)
 }
 
 // Mortal pool. Current drops when damaged; max is derived from
-// Body::base_hp + Stats::vig scaling. HP <= 0 marks the actor for
+// Body::base_hp + FormulaConfig::hp scaling. HP <= 0 marks the actor for
 // death cleanup.
 struct Health
 {
@@ -62,12 +62,16 @@ struct Health
 };
 
 // Action pool. Drains on attack / dodge / sprint; regenerates while
-// not committing to actions. Recovery curves live in the tunables
-// JSON later.
+// not committing to actions. `current` is float because per-frame drain
+// (sprint_effort * dt at 60 FPS = ~0.05/frame) and regen (recovery_rate * dt)
+// are sub-unit operations -- representing them as `int` with per-frame ceil
+// quantizes every fractional step up to 1, blowing the rates to ~60x intended
+// (a Tracy-style hidden numeric bug). HUD and pause display cast to int for
+// display.
 struct Stamina
 {
-    int current = 100;
-    int max = 100;
+    float current = 100.0f;
+    float max = 100.0f;
 };
 
 // Stagger reservoir. Souls-convention: starts at max, drains by
@@ -76,28 +80,26 @@ struct Stamina
 // and poise resets to max. While not taking hits, poise refills
 // (full refill after poise_decay_window_seconds of no damage).
 //
-// Poise breakability is what defines combat weight: hits that don't
-// break poise are "absorbed" (light flinch / hit-react); hits that
-// break it commit the target to a knockdown — the whole-body
-// commitment that separates "tagged" from "staggered."
+// `current` is float for the same reason Stamina::current is -- continuous
+// per-frame refill at sub-1 units/frame would quantize to 60x intended rate
+// as int.
 struct Poise
 {
-    int current = 100;
-    int max = 100;
+    float current = 100.0f;
+    float max = 100.0f;
     // Wallclock time of the last poise-damage event. Drives the
     // decay-window refill timer. -1 = never hit.
     float last_damage_time = -1.0f;
 };
 
-// Souls-convention quad. Other stats (faith / intellect for
-// magic-equivalent systems) slot in when those systems arrive; the
-// schema is intentionally open.
+// Stats quad. Matches engine::ecs::Stats exactly so formulas loaded from
+// FormulaConfig compose without translation.
 struct Stats
 {
-    int vig = 10; // Vigor:     scales max HP
-    int end = 10; // Endurance: scales max stamina + equip load
-    int str = 10; // Strength:  scales STR-weapon damage, gates heavy weapons
-    int dex = 10; // Dexterity: scales DEX-weapon damage, gates light weapons
+    int str = 1; // Strength:  scales STR-weapon damage, gates heavy weapons
+    int dex = 1; // Dexterity: scales DEX-weapon damage, gates light weapons
+    int end = 1; // Endurance: scales max stamina + equip load + max HP
+    int lck = 1; // Luck:      drop rate, quality rolls
 };
 
 // Per-archetype "what species are you" properties. Not leveled.
@@ -116,14 +118,14 @@ struct Body
     float collider_radius = 0.35f;     // XZ capsule radius for collision
 };
 
-// Derived max HP / stamina / poise from Body + Stats. Soft linear
-// scaling for v1 — coefficients live in Tunables (hp_per_vig,
-// stamina_per_end, poise_per_end, poise_per_str) so they hot-reload
-// via the F1 panel. Souls-style diminishing curves replace these
-// when balance work begins; call sites don't change.
+// Derived max HP / stamina / poise from Body + Stats. Linear scaling for v1;
+// coefficients live in engine::ecs::FormulaConfig (loaded by
+// selva::formulas::current() from config/balance/formulas.json). Souls-style
+// diminishing curves replace these when balance work begins; call sites
+// don't change.
 int computeMaxHp(const Body& body, const Stats& stats);
-int computeMaxStamina(const Body& body, const Stats& stats);
-int computeMaxPoise(const Body& body, const Stats& stats);
+float computeMaxStamina(const Body& body, const Stats& stats);
+float computeMaxPoise(const Body& body, const Stats& stats);
 
 // Initialize the actor's mortal + action + stagger pools to full
 // from the archetype Body + Stats. Call once at spawn; thereafter
@@ -131,6 +133,20 @@ int computeMaxPoise(const Body& body, const Stats& stats);
 // stays put until stats change (level-up later).
 void initActorPools(Health& hp, Stamina& stamina, Poise& poise, const Body& body,
                     const Stats& stats);
+
+// Per-frame stamina tick. Drains while sprinting (rate scaled by
+// FormulaConfig::stamina::sprint_effort and DEX), regens after
+// FormulaConfig::stamina::recovery_delay seconds of no spending.
+// Forces sprinting=false when stamina hits 0.
+void tickActorStamina(Actor& a, float dt);
+
+// Discrete stamina spend for one-shot actions (swing, jump, dodge). Returns
+// false if `cost` exceeds current stamina (caller should refuse the action).
+// On success: subtracts cost, clamps at 0, stamps last_stamina_spend_time so
+// regen waits for recovery_delay. Soulslike convention: action FIRES even
+// when it would drain below zero, but the post-action exhaustion stagger
+// kicks in. For now we just gate at >0 -- exhaustion stagger comes later.
+bool consumeStamina(Actor& a, float cost);
 
 // Apply raw incoming damage to `hp`, mediated by `body.base_defense`.
 // Damage is clamped to at least 1 so even heavily-armored targets
@@ -142,9 +158,8 @@ void applyDamage(Health& hp, const Body& body, int raw_damage);
 // come from the weapon (or unarmed profile on the attacker's Body).
 // Returns an integer damage value to feed into applyDamage().
 //
-// Linear scaling for v1, matching prison-escape's pattern. The
-// Souls-style diminishing curve replaces this when balance work
-// begins — the call site doesn't change, only the function body.
+// Linear scaling for v1; diminishing-returns curve replaces this when
+// balance work begins -- the call site doesn't change, only the body.
 int computeAttackDamage(const Stats& attacker, float base, float str_scale, float dex_scale);
 
 // What kind of intent driver an actor uses. Each per-frame tick
@@ -193,6 +208,12 @@ struct Actor
     // Latched intent: sprinting (Input controller only). Future
     // controllers may add their own intent fields here.
     bool sprinting = false;
+
+    // Wallclock time of the last stamina-consuming action (sprint frame, swing,
+    // dodge). Drives the regen-delay gate -- stamina only starts refilling
+    // after FormulaConfig::stamina::recovery_delay seconds of no activity.
+    // -1 = never spent stamina (full bar, ready to regen).
+    float last_stamina_spend_time = -1.0f;
 
     // Lock-on target index into actors() (Input controller only).
     // -1 = unlocked; >=0 = combat mode: yaw snaps to target each frame,

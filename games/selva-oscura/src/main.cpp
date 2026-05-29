@@ -9,6 +9,7 @@
 #include "AppState.h"
 #include "AppStateGlobal.h"
 #include "Engine.h"
+#include "Formulas.h"
 #include "SaveManager.h"
 #include "Tunables.h"
 #include "anim/LocomotionConfig.h"
@@ -299,11 +300,12 @@ int main(int /*argc*/, char* /*argv*/[])
                              "scenes system inert, chapel will not render\n");
     }
 
-    // Load runtime-tunable values BEFORE initializing actor pools so
-    // their derived HP / stamina maxima read the JSON-tuned
-    // coefficients (hp_per_vig, stamina_per_end). Falls back silently
-    // to struct defaults if the file is missing or malformed.
+    // Load runtime-tunable values + RPG formula constants BEFORE
+    // initializing actor pools so computeMaxHp/Stamina/Poise reads the
+    // JSON-tuned coefficients. Each falls back silently to struct
+    // defaults if its file is missing or malformed.
     selva::tuning::loadFromFile(kTunablesPath);
+    selva::formulas::loadFromFile("config/balance/formulas.json");
 
     engine.renderLoadingFrame("audio + animations");
     // Audio: init miniaudio engine + load name→path registry. Safe to

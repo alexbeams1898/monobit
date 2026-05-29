@@ -209,6 +209,7 @@ void loadStaminaConfig(const json& j, FormulaConfig& f)
     f.stamina.dodge_effort = s.value("dodge_effort", f.stamina.dodge_effort);
     f.stamina.skill_effort = s.value("skill_effort", f.stamina.skill_effort);
     f.stamina.sprint_effort = s.value("sprint_effort", f.stamina.sprint_effort);
+    f.stamina.jump_effort = s.value("jump_effort", f.stamina.jump_effort);
     f.stamina.sprint_dex_scale = s.value("sprint_dex_scale", f.stamina.sprint_dex_scale);
     f.stamina.base = s.value("base", f.stamina.base);
     f.stamina.end_scale = s.value("end_scale", f.stamina.end_scale);

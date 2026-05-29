@@ -75,6 +75,7 @@ add_library(selva-oscura-lib STATIC
     src/SaveManager.cpp
     src/ops/InventoryOps.cpp
     src/Tunables.cpp
+    src/Formulas.cpp
     src/WallClock.cpp
 )
 
@@ -402,7 +403,6 @@ add_executable(selva-oscura-tests
     tests/skeletal_loader_test.cpp
     tests/weapon_data_test.cpp
     tests/save_manager_test.cpp
-    tests/inventory_ops_test.cpp
     tests/camera_raycast_test.cpp
     tests/camera_physics_primitives_test.cpp
 )

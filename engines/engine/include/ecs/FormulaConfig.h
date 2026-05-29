@@ -2,18 +2,14 @@
 
 // All balance formulas live here as pure data. Loaded once at game start
 // from a JSON file (each game picks its own path) and read-only during
-// gameplay. Ported from games/prison-escape-game/include/ecs/BalanceConfig.h
-// — promoted to the engine layer because the formula SHAPE is portable
-// across games; only the constants differ.
+// gameplay. The formula SHAPE is portable across games; only the constants
+// differ -- each game overrides defaults via its JSON config.
 //
 // To use:
 //   1. Construct FormulaConfig.
 //   2. Call engine::ecs::loadFormulaConfig(cfg, "path/to/formulas.json")
-//      from the game's startup code (loader in engine/src/ConfigLoaders.cpp).
+//      from the game's startup code.
 //   3. Read cfg.<sub-struct>.<field> wherever you need a constant.
-//
-// All defaults are PE's shipped values — sensible Souls-adjacent starting
-// points. Each game can override at runtime via its JSON config.
 
 namespace engine::ecs
 {
@@ -129,7 +125,7 @@ struct FormulaConfig
         float cooldown = 0.35f;
     } dodge;
 
-    // Player "essence" stat range (PE-specific currency-ish system).
+    // Player "essence" stat range (currency-ish system; per-game opt-in).
     struct
     {
         int min = 0;
@@ -147,6 +143,7 @@ struct FormulaConfig
         float dodge_effort = 2.5f;
         float skill_effort = 4.0f;
         float sprint_effort = 2.0f;
+        float jump_effort = 6.0f; // flat per-jump cost; soulslike convention
         float sprint_dex_scale = 0.15f;
         float base = 10.0f;
         float end_scale = 20.0f;
@@ -202,8 +199,8 @@ struct FormulaConfig
         float overloaded_speed = 0.4f;
     } equip_load;
 
-    // Combat AI tuning. PE-specific top-down concepts (slot rotation,
-    // engagement radius) — Selva will override most of these heavily.
+    // Combat AI tuning -- engagement-radius / slot-rotation defaults
+    // appropriate for top-down combat; each game can override.
     struct
     {
         int max_attack_tokens = 2;

@@ -253,14 +253,10 @@ struct Tunables
     // ---- Sprint-finisher (running attack) ----
 
     // ---- Actor formulas (player + enemies, see gameplay/Actor.h) ----
-    // Per-stat scaling for derived pools. Linear for v1; Souls-style
-    // diminishing curves replace these when balance work begins —
-    // call sites won't change, only the function bodies.
-    //
-    // max_hp      = body.base_hp      + vig * hp_per_vig
-    // max_stamina = body.base_stamina + end * stamina_per_end
-    float hp_per_vig = 5.0f;
-    float stamina_per_end = 3.0f;
+    // Per-stat scaling for derived pools is owned by
+    // engine::ecs::FormulaConfig (loaded by selva::formulas::current()
+    // from config/balance/formulas.json) -- NOT here. Tunables holds
+    // camera/animation/combat-feel knobs only.
 
     // Floor on damage after defense reduction. Even heavily-armored
     // targets take this much per hit so combat never stalls on
@@ -381,22 +377,9 @@ struct Tunables
     // wrong direction.
     float ai_action_freshness_seconds = 0.5f;
 
-    // ---- Poise / knockdown formulas ----
-    // Per-stat scaling for derived max poise. Linear for v1, mirrors
-    // hp_per_vig / stamina_per_end. Souls model: END contributes
-    // more than STR (endurance is the canonical "stagger resistance"
-    // stat), but both factor in. Knockdown threshold = poise reaches 0.
-    //   max_poise = body.base_poise + end * poise_per_end
-    //                                + str * poise_per_str
-    float poise_per_end = 2.0f;
-    float poise_per_str = 1.0f;
-
-    // Seconds of no poise-damage events before poise fully refills
-    // to max. Souls-style: a player who absorbs one hit then dodges
-    // the next gets their poise back; a player taking continuous
-    // hits drains it and eventually breaks. Linear refill: 0->max
-    // over decay_window_seconds.
-    float poise_decay_window_seconds = 5.0f;
+    // ---- Poise / knockdown ----
+    // Stat-scaling (poise_per_end, poise_per_str) and decay-window live
+    // in engine::ecs::FormulaConfig (config/balance/formulas.json).
 
     // Knockdown chain clip trimming. Both knockdown and getting_up
     // clips often have authored windup or trailing idle that we
@@ -531,10 +514,9 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     combo_reset_grace_seconds, combo_input_buffer_seconds, combo_chain_blend_seconds,
     first_strike_blend_seconds, attack_playback_rate, cancel_open_velocity_fraction,
     perfect_accuracy_threshold, roll_playback_rate, backstep_playback_rate, dodge_tap_window,
-    dodge_steer_rate, attack_lockout_extension_seconds, hp_per_vig, stamina_per_end, damage_floor,
-    hit_react_medium_threshold, hit_react_heavy_threshold, hit_react_cooldown_seconds,
-    enemy_respawn_after_death_seconds, enemy_recovery_after_knockdown_seconds, poise_per_end,
-    poise_per_str, poise_decay_window_seconds, knockdown_clip_start_seconds,
+    dodge_steer_rate, attack_lockout_extension_seconds, damage_floor, hit_react_medium_threshold,
+    hit_react_heavy_threshold, hit_react_cooldown_seconds, enemy_respawn_after_death_seconds,
+    enemy_recovery_after_knockdown_seconds, knockdown_clip_start_seconds,
     knockdown_clip_end_seconds, getting_up_clip_start_seconds, getting_up_clip_end_seconds,
     ai_vision_fov_degrees, ai_vision_range_meters, ai_suspicion_decay_seconds,
     ai_confirmed_sightings_to_alert, ai_alerted_decay_seconds, ai_combat_engage_range_meters,

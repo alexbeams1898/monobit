@@ -462,10 +462,14 @@ void renderActorHud()
 
     char hp_label[32];
     std::snprintf(hp_label, sizeof(hp_label), "HP  %d / %d", p.hp.current, p.hp.max);
+    char stamina_label[32];
+    std::snprintf(stamina_label, sizeof(stamina_label), "STA %d / %d",
+                  static_cast<int>(std::floor(p.stamina.current)),
+                  static_cast<int>(std::floor(p.stamina.max)));
     drawBar(draw, BarRect{origin.x, origin.y, kBarWidth, kHpHeight}, hp_fraction,
             BarColors{bar_bg, hp_fg, border}, hp_label);
     drawBar(draw, BarRect{origin.x, origin.y + kHpHeight + kBarGap, kBarWidth, kStaminaHeight},
-            stamina_fraction, BarColors{bar_bg, stamina_fg, border}, nullptr);
+            stamina_fraction, BarColors{bar_bg, stamina_fg, border}, stamina_label);
 
     ImGui::Dummy(ImVec2(kPanelW - 16.0f, kPanelH - 16.0f));
     ImGui::End();

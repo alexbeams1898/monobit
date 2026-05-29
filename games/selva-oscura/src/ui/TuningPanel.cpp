@@ -1,6 +1,7 @@
 #include "ui/TuningPanel.h"
 
 #include "Engine.h"
+#include "Formulas.h"
 #include "Tunables.h"
 #include "WallClock.h"
 #include "anim/AnimationClip.h"
@@ -295,9 +296,7 @@ static void renderPoiseSection(selva::tuning::Tunables& tun)
 {
     if (!ImGui::CollapsingHeader("Poise / Knockdown", ImGuiTreeNodeFlags_DefaultOpen))
         return;
-    tunedSlider("Poise per END", &tun.poise_per_end, 0.0f, 10.0f, 0.5f, "%.1f");
-    tunedSlider("Poise per STR", &tun.poise_per_str, 0.0f, 10.0f, 0.5f, "%.1f");
-    tunedSlider("Decay window (s)", &tun.poise_decay_window_seconds, 0.5f, 15.0f, 0.5f, "%.2f");
+    ImGui::TextDisabled("Stat scaling lives in config/balance/formulas.json");
     tunedSlider("Recovery (s)", &tun.enemy_recovery_after_knockdown_seconds, 0.5f, 10.0f, 0.25f,
                 "%.2f");
     tunedSlider("Knockdown clip start (s)", &tun.knockdown_clip_start_seconds, 0.0f, 5.0f, 0.05f,
@@ -449,7 +448,10 @@ static void renderSaveLoadButtons()
     }
     ImGui::SameLine();
     if (ImGui::Button("Reload from disk"))
+    {
         selva::tuning::loadFromFile(kTunablesPath);
+        selva::formulas::loadFromFile("config/balance/formulas.json");
+    }
 }
 
 // Defined in PerFrameTick.cpp. F2 toggles the tree preview mode; when

@@ -1,6 +1,8 @@
 #include "gameplay/Actor.h"
 
+#include "Formulas.h"
 #include "Tunables.h"
+#include "WallClock.h"
 #include "anim/AnimationClip.h"
 #include "anim/SkeletalAssets.h"
 #include "anim/SkeletalMesh.h"
@@ -15,24 +17,24 @@ namespace selva::gameplay
 
 int computeMaxHp(const Body& body, const Stats& stats)
 {
-    const auto& tun = selva::tuning::current();
+    const auto& f = selva::formulas::current();
     return body.base_hp +
-           static_cast<int>(std::floor(static_cast<float>(stats.vig) * tun.hp_per_vig));
+           static_cast<int>(std::floor(f.hp.base + static_cast<float>(stats.end) * f.hp.scale));
 }
 
-int computeMaxStamina(const Body& body, const Stats& stats)
+float computeMaxStamina(const Body& body, const Stats& stats)
 {
-    const auto& tun = selva::tuning::current();
-    return body.base_stamina +
-           static_cast<int>(std::floor(static_cast<float>(stats.end) * tun.stamina_per_end));
+    const auto& f = selva::formulas::current();
+    return static_cast<float>(body.base_stamina) + f.stamina.base +
+           static_cast<float>(stats.end) * f.stamina.end_scale;
 }
 
-int computeMaxPoise(const Body& body, const Stats& stats)
+float computeMaxPoise(const Body& body, const Stats& stats)
 {
-    const auto& tun = selva::tuning::current();
-    const float end_bonus = static_cast<float>(stats.end) * tun.poise_per_end;
-    const float str_bonus = static_cast<float>(stats.str) * tun.poise_per_str;
-    return body.base_poise + static_cast<int>(std::floor(end_bonus + str_bonus));
+    const auto& f = selva::formulas::current();
+    const float end_bonus = static_cast<float>(stats.end) * f.poise.end_scale;
+    const float str_bonus = static_cast<float>(stats.str) * f.poise.str_scale;
+    return static_cast<float>(body.base_poise) + end_bonus + str_bonus;
 }
 
 void initActorPools(Health& hp, Stamina& stamina, Poise& poise, const Body& body,
@@ -45,6 +47,57 @@ void initActorPools(Health& hp, Stamina& stamina, Poise& poise, const Body& body
     poise.max = computeMaxPoise(body, stats);
     poise.current = poise.max;
     poise.last_damage_time = -1.0f;
+}
+
+void tickActorStamina(Actor& a, float dt)
+{
+    if (a.is_dead)
+        return;
+    const auto& fc = selva::formulas::current();
+    const float now = selva::wallClock();
+
+    // Sprint drain. If sprinting flag is set but stamina is already empty,
+    // clear the flag WITHOUT stamping last_stamina_spend_time -- otherwise
+    // holding WASD+Space at empty stamina re-stamps every frame and regen
+    // never starts. The locomotion path will see sprinting=false and drop
+    // back to walk on its own.
+    if (a.sprinting)
+    {
+        if (a.stamina.current <= 0.0f)
+        {
+            a.sprinting = false;
+        }
+        else
+        {
+            const float dex_factor =
+                1.0f - static_cast<float>(a.stats.dex) * fc.stamina.sprint_dex_scale;
+            const float drain_per_sec = fc.stamina.sprint_effort * std::max(0.1f, dex_factor);
+            a.stamina.current = std::max(0.0f, a.stamina.current - drain_per_sec * dt);
+            a.last_stamina_spend_time = now;
+            if (a.stamina.current <= 0.0f)
+                a.sprinting = false;
+            return;
+        }
+    }
+
+    // Regen: only after recovery_delay seconds of no spending.
+    if (a.stamina.current >= a.stamina.max)
+        return;
+    if (a.last_stamina_spend_time > 0.0f &&
+        (now - a.last_stamina_spend_time) < fc.stamina.recovery_delay)
+        return;
+    a.stamina.current = std::min(a.stamina.max, a.stamina.current + fc.stamina.recovery_rate * dt);
+}
+
+bool consumeStamina(Actor& a, float cost)
+{
+    if (cost <= 0.0f)
+        return true;
+    if (a.stamina.current <= 0.0f)
+        return false;
+    a.stamina.current = std::max(0.0f, a.stamina.current - cost);
+    a.last_stamina_spend_time = selva::wallClock();
+    return true;
 }
 
 void applyDamage(Health& hp, const Body& body, int raw_damage)

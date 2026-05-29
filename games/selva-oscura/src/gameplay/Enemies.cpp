@@ -1,5 +1,6 @@
 #include "gameplay/Enemies.h"
 
+#include "Formulas.h"
 #include "Tunables.h"
 #include "WallClock.h"
 #include "anim/AnimationClip.h"
@@ -163,17 +164,14 @@ void tickPoiseRefill(Actor& a, float dt)
 {
     if (a.poise.current >= a.poise.max)
         return;
-    const auto& tun = selva::tuning::current();
+    const auto& f = selva::formulas::current();
     const float now = selva::wallClock();
-    if (a.poise.last_damage_time > 0.0f &&
-        (now - a.poise.last_damage_time) < tun.poise_decay_window_seconds)
+    if (a.poise.last_damage_time > 0.0f && (now - a.poise.last_damage_time) < f.poise.decay_window)
         return;
-    // Refill linearly. Use the decay window as the time-to-max
-    // duration so the refill rate is comprehensible: full bar
-    // refills in N seconds after the cooldown ends.
-    const float refill_rate = static_cast<float>(a.poise.max) / tun.poise_decay_window_seconds;
-    const float gained = refill_rate * dt;
-    a.poise.current = std::min(a.poise.max, a.poise.current + static_cast<int>(std::ceil(gained)));
+    // Refill linearly: full bar refills over decay_window seconds once the
+    // cooldown elapses. Float math -- see Stamina::current rationale.
+    const float refill_rate = a.poise.max / f.poise.decay_window;
+    a.poise.current = std::min(a.poise.max, a.poise.current + refill_rate * dt);
 }
 
 // Decision tick: traverse the actor's bound behavior tree. The tree
@@ -660,9 +658,9 @@ void playEnemyHitReact(int index, int damage, int poise_damage, const glm::vec3&
 
     // Apply poise damage. If poise breaks, fire knockdown chain
     // (overrides the normal hit-react tier).
-    e.poise.current = std::max(0, e.poise.current - poise_damage);
+    e.poise.current = std::max(0.0f, e.poise.current - static_cast<float>(poise_damage));
     e.poise.last_damage_time = now;
-    if (e.poise.current == 0)
+    if (e.poise.current <= 0.0f)
     {
         fireEnemyKnockdown(e, index, damage, poise_damage, now);
         return;
@@ -683,8 +681,8 @@ void playEnemyHitReact(int index, int damage, int poise_damage, const glm::vec3&
                           /*start_time_seconds=*/0.0f, /*playback_rate=*/1.0f, opts);
     e.last_hit_react_time = now;
     e.last_damage_time = now;
-    selva::combat::combatLog("[hit-react] enemy[{}] dmg={} poise={}/{} -> clip={}", index, damage,
-                             e.poise.current, e.poise.max, pick.clip_name);
+    selva::combat::combatLog("[hit-react] enemy[{}] dmg={} poise={:.1f}/{:.1f} -> clip={}", index,
+                             damage, e.poise.current, e.poise.max, pick.clip_name);
 }
 
 } // namespace selva::gameplay
