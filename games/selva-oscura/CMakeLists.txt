@@ -92,10 +92,15 @@ target_link_libraries(selva-oscura-lib
         cgltf::cgltf
 )
 
-# Game executable.
+# Game executable. Per-game output subdirectory under build/bin/ so config
+# trees can never collide with other games' (Selva and PE both have a
+# config/balance/formulas.json -- without per-game dirs the second-to-sync
+# clobbers the first at the shared build/bin/ path).
 add_executable(selva-oscura WIN32 src/main.cpp)
 target_link_libraries(selva-oscura PRIVATE selva-oscura-lib)
 target_include_directories(selva-oscura SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/vendor/stb)
+set_target_properties(selva-oscura PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/selva-oscura)
 
 # Static-link the MinGW runtime so the exe runs without libgcc/libstdc++ DLLs.
 # Mirrors the same option on prison-break-game; needed for distributable builds.
@@ -142,10 +147,11 @@ add_custom_target(selva-oscura-sync-config ALL
 set(xbot_dir ${CMAKE_CURRENT_SOURCE_DIR}/assets/characters/x_bot)
 set(fbx2gltf_exe ${CMAKE_SOURCE_DIR}/tools/fbx2gltf/FBX2glTF.exe)
 
-# Use CMAKE_RUNTIME_OUTPUT_DIRECTORY (set in root CMakeLists to build/bin) —
-# add_custom_command's OUTPUT can't contain generator expressions, so the
-# $<TARGET_FILE_DIR:...> form would fail at generate time.
-set(xbot_out_dir ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/assets/characters/x_bot)
+# Per-game build output (see selva-oscura exe's RUNTIME_OUTPUT_DIRECTORY).
+# add_custom_command's OUTPUT can't contain generator expressions, so this
+# is a literal path -- if the per-game subdir name changes, update both.
+set(selva_out_dir ${CMAKE_BINARY_DIR}/bin/selva-oscura)
+set(xbot_out_dir ${selva_out_dir}/assets/characters/x_bot)
 
 # 1. X Bot.fbx → X_Bot.glb. Mixamo's FBX export omits explicit per-vertex
 # normals (Mixamo's pipeline assumes the consumer derives them), so we
@@ -407,15 +413,17 @@ add_executable(selva-oscura-tests
     tests/camera_physics_primitives_test.cpp
 )
 target_link_libraries(selva-oscura-tests PRIVATE selva-oscura-lib Catch2::Catch2WithMain)
+set_target_properties(selva-oscura-tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/selva-oscura)
 
-# Run the test exe from build/bin so the relative paths in
+# Run the test exe from the per-game build dir so relative paths in
 # skeletal_loader_test.cpp ("assets/characters/...") resolve to the .ozz
 # files produced by the gltf2ozz custom command. Also make the test depend
 # on the conversion targets so the .ozz files exist by the time it runs.
 add_test(
     NAME selva-oscura-tests
     COMMAND selva-oscura-tests
-    WORKING_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
+    WORKING_DIRECTORY $<TARGET_FILE_DIR:selva-oscura-tests>
 )
 if(TARGET selva-oscura-convert-xbot)
     add_dependencies(selva-oscura-tests selva-oscura-convert-xbot)
