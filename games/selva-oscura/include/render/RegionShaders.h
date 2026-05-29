@@ -13,9 +13,9 @@ struct LightSource;
 namespace selva::render
 {
 
-bool initSceneProgram();
-void shutdownSceneProgram();
-void useSceneProgram();
+bool initRegionProgram();
+void shutdownRegionProgram();
+void useRegionProgram();
 
 void setSceneView(const glm::mat4& view);
 void setSceneViewProj(const glm::mat4& view_proj);

@@ -104,7 +104,7 @@ struct StructureFootprint
 // mesh-build time.
 void registerStructureFootprint(const StructureFootprint& f);
 
-// Clear all registered footprints (used by scene transitions).
+// Clear all registered footprints (used by region transitions).
 void clearStructureFootprints();
 
 // Count + indexed accessor for render consumers that walk the list.

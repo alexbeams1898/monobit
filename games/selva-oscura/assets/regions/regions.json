@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "_comment": "Top-level region registry. One region per vertical-slice. The 'surface' region holds all currently-realized layers of the Inferno stack (selva surface + chapel + descent corridor + Limbo). Future Lust / Gluttony / etc. either land in this region as added sub-zones or split into a new vertical-slice region when content forces it.",
+  "regions": [
+    "surface"
+  ],
+  "default_spawn_region": "surface"
+}

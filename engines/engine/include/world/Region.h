@@ -14,52 +14,52 @@ namespace engine::world
 {
 
 // ---------------------------------------------------------------------------
-// Scenes architecture.
+// Regions architecture.
 //
-// A Scene is a discrete world space: its own local-coordinate origin, its
+// A Region is a discrete world space: its own local-coordinate origin, its
 // own set of static physics bodies (terrain trimesh, architecture meshes,
-// triggers), its own ambient/sky/audio. At most one scene is "current" at
-// any moment; transitions swap which scene is active.
+// triggers), its own ambient/sky/audio. At most one region is "current" at
+// any moment; transitions swap which region is active.
 //
-// Real-physics doctrine: scenes never share collision space. Cross-scene
-// collisions are impossible by construction — when scene A deactivates,
-// the engine removes every Jolt body it owned before scene B activates.
+// Real-physics doctrine: regions never share collision space. Cross-region
+// collisions are impossible by construction — when region A deactivates,
+// the engine removes every Jolt body it owned before region B activates.
 //
 // The diamond invariants:
-//   1. No body outlives its scene (engine tracks handles per scene).
-//   2. Scenes are DATA: a single JsonScene class consumes scene.json
-//      from disk; no per-scene C++. New circle = author a folder.
+//   1. No body outlives its region (engine tracks handles per region).
+//   2. Regions are DATA: a single JsonRegion class consumes region.json
+//      from disk; no per-region C++. New circle = author a folder.
 //   3. Transitions are deterministic + testable (state machine,
 //      programmatically drivable, body counts auditable at each step).
 // ---------------------------------------------------------------------------
 
-// Opaque scene identifier. 0 = invalid.
-struct SceneId
+// Opaque region identifier. 0 = invalid.
+struct RegionId
 {
     std::uint32_t id = 0;
-    bool operator==(SceneId o) const
+    bool operator==(RegionId o) const
     {
         return id == o.id;
     }
-    bool operator!=(SceneId o) const
+    bool operator!=(RegionId o) const
     {
         return id != o.id;
     }
 };
-inline constexpr SceneId kInvalidScene{0};
+inline constexpr RegionId kInvalidRegion{0};
 
-// Scene kind: drives gameplay-side conventions that are uniform across
-// the whole scene (camera follow distance, ambient mix, sky/no-sky).
-// Replaces the per-XZ-rect isIndoors() trick — a chapel-interior scene
+// Region kind: drives gameplay-side conventions that are uniform across
+// the whole region (camera follow distance, ambient mix, sky/no-sky).
+// Replaces the per-XZ-rect isIndoors() trick — a chapel-interior region
 // is fully interior, the surface is fully exterior. No mixing within
-// one scene; if you need partial interior, that's a new scene.
-enum class SceneKind : std::uint8_t
+// one region; if you need partial interior, that's a new region.
+enum class RegionKind : std::uint8_t
 {
     Exterior, // outdoor / sky-bearing / wider follow distance
     Interior, // indoor / no-sky / tighter follow distance
 };
 
-// Mode of a scene transition.
+// Mode of a region transition.
 enum class TransitionMode : std::uint8_t
 {
     // Single-frame load swap. Fastest; suitable for teleports where
@@ -68,7 +68,7 @@ enum class TransitionMode : std::uint8_t
     // Fade-to-black, swap, fade-in. The fade duration sets the load
     // budget — async loading completes during the black frame.
     Fade,
-    // Both scenes coexist; old scene is destroyed when player crosses
+    // Both regions coexist; old region is destroyed when player crosses
     // a designated "commit" volume. Used for visible elevator-style
     // transitions where the player sees both sides.
     Continuous,
@@ -78,34 +78,34 @@ enum class TransitionMode : std::uint8_t
 enum class TransitionState : std::uint8_t
 {
     Idle,          // no transition active
-    LoadingTarget, // worker thread loading target scene assets
+    LoadingTarget, // worker thread loading target region assets
     FadingOut,     // playing fade-to-black on screen
     Committing,    // swapping bodies on main thread (single frame)
     FadingIn,      // playing fade-in on screen
 };
 
 // Trigger volume: when a registered actor (player today, others later)
-// enters this AABB, the engine queues a transition to `target_scene`.
+// enters this AABB, the engine queues a transition to `target_region`.
 // Edge-triggered: fires once on the frame the actor enters; does not
 // re-fire while inside.
-struct SceneTrigger
+struct RegionTrigger
 {
-    std::string id;         // unique within scene; used for save/load
-    glm::vec3 center{0.0f}; // world-space, in OWNER scene's local coords
+    std::string id;         // unique within region; used for save/load
+    glm::vec3 center{0.0f}; // world-space, in OWNER region's local coords
     glm::vec3 half_extents{0.0f};
-    SceneId target = kInvalidScene;
+    RegionId target = kInvalidRegion;
     // If preserve_player_pos is true, the player's CURRENT world
-    // position carries across the transition unchanged — the scene
+    // position carries across the transition unchanged — the region
     // swaps but the player doesn't move. This is the seamless
-    // doorway pattern: both scenes share world coordinates at the
-    // door, walking through means scene-swap with zero motion.
+    // doorway pattern: both regions share world coordinates at the
+    // door, walking through means region-swap with zero motion.
     // target_spawn_pos is ignored when this is true.
     //
     // If false (cinematic / fast-travel default), the player is
-    // teleported to target_spawn_pos in the target scene's local
+    // teleported to target_spawn_pos in the target region's local
     // coords.
     bool preserve_player_pos = false;
-    glm::vec3 target_spawn_pos{0.0f}; // local coords of target scene
+    glm::vec3 target_spawn_pos{0.0f}; // local coords of target region
     // If override_yaw is true, the post-commit teleport sets the
     // player's yaw to target_yaw. If false, the player's previous
     // yaw is preserved across the transition (the seamless-traversal
@@ -117,9 +117,9 @@ struct SceneTrigger
     std::string debug_name;
 };
 
-// Per-character state that crosses scene boundaries unchanged.
+// Per-character state that crosses region boundaries unchanged.
 // (Things the player keeps when they walk through a door.)
-struct PersistentSceneState
+struct PersistentRegionState
 {
     // Camera orientation persists so transitions don't disorient.
     float camera_yaw = 0.0f;
@@ -129,64 +129,64 @@ struct PersistentSceneState
     // engine does not touch it during transitions.
 };
 
-// A Scene declares what it contains and provides callbacks for the
+// A Region declares what it contains and provides callbacks for the
 // engine to register/unregister its contents. The diamond pattern:
-// the engine provides a SceneActivationContext during onActivate(),
-// the scene calls context.addBody() for each Jolt body it creates;
+// the engine provides a RegionActivationContext during onActivate(),
+// the region calls context.addBody() for each Jolt body it creates;
 // the engine remembers those handles. On deactivate, the engine
-// removes them all — the scene cannot leak.
-class Scene;
+// removes them all — the region cannot leak.
+class Region;
 
-class SceneActivationContext
+class RegionActivationContext
 {
   public:
-    explicit SceneActivationContext(Scene& s) : scene_ref(s)
+    explicit RegionActivationContext(Region& s) : region_ref(s)
     {
     }
 
-    // Record a Jolt body this scene owns. Engine removes on deactivate.
+    // Record a Jolt body this region owns. Engine removes on deactivate.
     void addBody(engine::physics::BodyHandle h);
 
     // Record multiple at once.
     void addBodies(const std::vector<engine::physics::BodyHandle>& hs);
 
-    // Add a trigger declaration. Trigger's `center` is in this scene's
+    // Add a trigger declaration. Trigger's `center` is in this region's
     // local coords.
-    void addTrigger(const SceneTrigger& t);
+    void addTrigger(const RegionTrigger& t);
 
   private:
-    Scene& scene_ref;
+    Region& region_ref;
 };
 
-// Scene base. JsonScene (the only real subclass we ship) parses
-// scene.json and dispatches to context.addBody/addTrigger.
-class Scene
+// Region base. JsonRegion (the only real subclass we ship) parses
+// region.json and dispatches to context.addBody/addTrigger.
+class Region
 {
   public:
-    explicit Scene(std::string id, std::string name, SceneKind kind = SceneKind::Exterior)
-        : scene_id(std::move(id)), debug_name(std::move(name)), kind_val(kind)
+    explicit Region(std::string id, std::string name, RegionKind kind = RegionKind::Exterior)
+        : region_id(std::move(id)), debug_name(std::move(name)), kind_val(kind)
     {
     }
-    virtual ~Scene() = default;
+    virtual ~Region() = default;
 
-    const std::string& sceneId() const
+    const std::string& regionId() const
     {
-        return scene_id;
+        return region_id;
     }
     const std::string& debugName() const
     {
         return debug_name;
     }
-    SceneKind kind() const
+    RegionKind kind() const
     {
         return kind_val;
     }
 
-    // Called by the engine when this scene becomes active. Subclass
-    // registers all bodies + triggers via the context. Scene's
+    // Called by the engine when this region becomes active. Subclass
+    // registers all bodies + triggers via the context. Region's
     // local-coords origin is world-origin unless the subclass
     // applies an offset to its bodies/triggers.
-    virtual void onActivate(SceneActivationContext& ctx) = 0;
+    virtual void onActivate(RegionActivationContext& ctx) = 0;
 
     // Hook for subclasses to release runtime state (audio bed, ambient
     // colors, etc.). Engine handles body cleanup automatically based
@@ -196,21 +196,21 @@ class Scene
     {
     }
 
-    // Called once at engine shutdown for every registered scene.
+    // Called once at engine shutdown for every registered region.
     // Subclasses release pre-loaded GPU/CPU asset resources here
-    // (resident-all-scenes model: assets stay through the session
+    // (resident-all-regions model: assets stay through the session
     // and are freed only at exit).
     virtual void onShutdown()
     {
     }
 
-    // Engine-internal: append/inspect body handles. JsonScene + Scene
+    // Engine-internal: append/inspect body handles. JsonRegion + Region
     // subclasses should not touch these directly; use the context.
     void engineAppendBody(engine::physics::BodyHandle h)
     {
         owned_bodies.push_back(h);
     }
-    void engineAppendTrigger(const SceneTrigger& t)
+    void engineAppendTrigger(const RegionTrigger& t)
     {
         trigger_list.push_back(t);
     }
@@ -223,72 +223,72 @@ class Scene
     {
         return owned_bodies;
     }
-    const std::vector<SceneTrigger>& triggers() const
+    const std::vector<RegionTrigger>& triggers() const
     {
         return trigger_list;
     }
 
   private:
-    std::string scene_id;
+    std::string region_id;
     std::string debug_name;
-    SceneKind kind_val = SceneKind::Exterior;
+    RegionKind kind_val = RegionKind::Exterior;
     std::vector<engine::physics::BodyHandle> owned_bodies;
-    std::vector<SceneTrigger> trigger_list;
+    std::vector<RegionTrigger> trigger_list;
 };
 
-// ---- SceneManager (engine-global singleton) -------------------------------
+// ---- RegionManager (engine-global singleton) -------------------------------
 
-// Register a scene with the manager. Takes ownership.
-SceneId registerScene(std::unique_ptr<Scene> s);
+// Register a region with the manager. Takes ownership.
+RegionId registerRegion(std::unique_ptr<Region> s);
 
-// Look up by scene_id string (the value of Scene::sceneId()).
-SceneId findSceneId(const char* scene_id);
+// Look up by region_id string (the value of Region::regionId()).
+RegionId findRegionId(const char* region_id);
 
-// Activate a scene immediately (synchronous, no fade). Used at engine
-// boot for the initial scene. Subsequent in-game transitions should
-// use transitionToScene.
-void activateSceneImmediate(SceneId);
+// Activate a region immediately (synchronous, no fade). Used at engine
+// boot for the initial region. Subsequent in-game transitions should
+// use transitionToRegion.
+void activateRegionImmediate(RegionId);
 
-// Begin a transition to the target scene. Returns false if a
+// Begin a transition to the target region. Returns false if a
 // transition is already in progress. The transition state machine
-// runs in tickSceneManager(); transitions complete asynchronously.
-bool beginTransition(SceneId target, TransitionMode mode, bool preserve_player_pos,
+// runs in tickRegionManager(); transitions complete asynchronously.
+bool beginTransition(RegionId target, TransitionMode mode, bool preserve_player_pos,
                      glm::vec3 target_spawn_pos, bool override_yaw, float target_yaw,
                      float fade_duration_seconds);
 
 // Per-frame tick: advances transition state machine, handles async
 // loading, swaps bodies on commit, advances fades. Returns the
 // current transition state (Idle when nothing's happening).
-TransitionState tickSceneManager(float dt);
+TransitionState tickRegionManager(float dt);
 
-// Currently active scene (the one whose bodies are in Jolt right now).
-SceneId currentScene();
-Scene* currentScenePtr(); // may be null
+// Currently active region (the one whose bodies are in Jolt right now).
+RegionId currentRegion();
+Region* currentRegionPtr(); // may be null
 
-// All registered scenes (for F1 force-transition menu).
-int sceneCount();
-SceneId sceneAt(int idx);
-Scene* scenePtr(SceneId);
+// All registered regions (for F1 force-transition menu).
+int regionCount();
+RegionId regionAt(int idx);
+Region* regionPtr(RegionId);
 
 // Current transition state (for F1 diagnostics).
 TransitionState transitionState();
 float transitionFadeAlpha(); // 0..1 black overlay alpha
-SceneId transitionTarget();
+RegionId transitionTarget();
 
 // Player overlap check: pass the player's current world position
 // each frame; engine fires any matching trigger (queues a transition).
 // Returns the trigger that fired (or nullptr).
-const SceneTrigger* checkPlayerTriggers(const glm::vec3& player_pos);
+const RegionTrigger* checkPlayerTriggers(const glm::vec3& player_pos);
 
 // Persistent state that the engine should preserve across transitions
 // (camera yaw/pitch). Gameplay state (HP, inventory) is preserved
-// trivially by NOT being scene-local — it lives in gameplay code that
+// trivially by NOT being region-local — it lives in gameplay code that
 // the engine doesn't touch.
-void setPersistentState(const PersistentSceneState& s);
-const PersistentSceneState& persistentState();
+void setPersistentState(const PersistentRegionState& s);
+const PersistentRegionState& persistentState();
 
 // Post-commit callback: invoked by the manager on the frame the new
-// scene becomes active.
+// region becomes active.
 //   preserve_pos: if true, the player's current world position
 //     should be kept (no teleport). spawn_pos is ignored.
 //   override_yaw: if true, set player yaw to spawn_yaw; else leave
@@ -298,7 +298,7 @@ using PostCommitCallback = void (*)(bool preserve_pos, const glm::vec3& spawn_po
 void setPostCommitCallback(PostCommitCallback cb);
 
 // Engine bootstrap / teardown.
-void initSceneManager();
-void shutdownSceneManager();
+void initRegionManager();
+void shutdownRegionManager();
 
 } // namespace engine::world

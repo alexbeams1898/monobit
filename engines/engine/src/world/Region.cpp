@@ -1,6 +1,6 @@
-#include "world/Scene.h"
+#include "world/Region.h"
 
-#include "world/AsyncSceneLoader.h"
+#include "world/AsyncRegionLoader.h"
 
 #include <algorithm>
 #include <chrono>
@@ -14,44 +14,44 @@ namespace engine::world
 {
 
 // ---------------------------------------------------------------------------
-// SceneActivationContext — passes scene's bodies/triggers into engine
-// tracking. Diamond invariant: scenes never touch their owned-body list
+// RegionActivationContext — passes region's bodies/triggers into engine
+// tracking. Diamond invariant: regions never touch their owned-body list
 // directly; they go through the context.
 // ---------------------------------------------------------------------------
 
-void SceneActivationContext::addBody(engine::physics::BodyHandle h)
+void RegionActivationContext::addBody(engine::physics::BodyHandle h)
 {
     if (h == engine::physics::kInvalidBody)
         return;
-    scene_ref.engineAppendBody(h);
+    region_ref.engineAppendBody(h);
 }
 
-void SceneActivationContext::addBodies(const std::vector<engine::physics::BodyHandle>& hs)
+void RegionActivationContext::addBodies(const std::vector<engine::physics::BodyHandle>& hs)
 {
     for (auto h : hs)
         addBody(h);
 }
 
-void SceneActivationContext::addTrigger(const SceneTrigger& t)
+void RegionActivationContext::addTrigger(const RegionTrigger& t)
 {
-    scene_ref.engineAppendTrigger(t);
+    region_ref.engineAppendTrigger(t);
 }
 
 // ---------------------------------------------------------------------------
-// SceneManager state
+// RegionManager state
 // ---------------------------------------------------------------------------
 
 namespace
 {
 struct ManagerState
 {
-    std::vector<std::unique_ptr<Scene>> scenes; // owned, index = (SceneId-1)
-    SceneId current = kInvalidScene;
-    PersistentSceneState persistent;
+    std::vector<std::unique_ptr<Region>> regions; // owned, index = (RegionId-1)
+    RegionId current = kInvalidRegion;
+    PersistentRegionState persistent;
 
     // Transition state machine
     TransitionState state = TransitionState::Idle;
-    SceneId target = kInvalidScene;
+    RegionId target = kInvalidRegion;
     TransitionMode mode = TransitionMode::Fade;
     bool preserve_player_pos = false;
     glm::vec3 target_spawn_pos{0.0f};
@@ -65,10 +65,10 @@ struct ManagerState
     // inside last frame. Used to fire on entry-edge only, not every
     // frame inside.
     std::string player_inside_trigger_id; // empty = inside no trigger
-    SceneId player_inside_trigger_scene = kInvalidScene;
+    RegionId player_inside_trigger_region = kInvalidRegion;
 
     // Async loading state. Populated when a transition begins; polled
-    // in tickSceneManager. When the future is ready, we advance from
+    // in tickRegionManager. When the future is ready, we advance from
     // LoadingTarget to FadingOut.
     std::future<void> load_future;
     bool load_in_flight = false;
@@ -81,94 +81,94 @@ ManagerState g;
 
 // ---- Registration / lookup -----------------------------------------------
 
-SceneId registerScene(std::unique_ptr<Scene> s)
+RegionId registerRegion(std::unique_ptr<Region> s)
 {
-    g.scenes.push_back(std::move(s));
-    return SceneId{static_cast<std::uint32_t>(g.scenes.size())};
+    g.regions.push_back(std::move(s));
+    return RegionId{static_cast<std::uint32_t>(g.regions.size())};
 }
 
-SceneId findSceneId(const char* scene_id)
+RegionId findRegionId(const char* region_id)
 {
-    if (!scene_id)
-        return kInvalidScene;
-    for (std::size_t i = 0; i < g.scenes.size(); ++i)
+    if (!region_id)
+        return kInvalidRegion;
+    for (std::size_t i = 0; i < g.regions.size(); ++i)
     {
-        if (g.scenes[i]->sceneId() == scene_id)
-            return SceneId{static_cast<std::uint32_t>(i + 1)};
+        if (g.regions[i]->regionId() == region_id)
+            return RegionId{static_cast<std::uint32_t>(i + 1)};
     }
-    return kInvalidScene;
+    return kInvalidRegion;
 }
 
-static Scene* sceneFromId(SceneId id)
+static Region* regionFromId(RegionId id)
 {
-    if (id.id == 0 || id.id > g.scenes.size())
+    if (id.id == 0 || id.id > g.regions.size())
         return nullptr;
-    return g.scenes[id.id - 1].get();
+    return g.regions[id.id - 1].get();
 }
 
-int sceneCount()
+int regionCount()
 {
-    return static_cast<int>(g.scenes.size());
+    return static_cast<int>(g.regions.size());
 }
-SceneId sceneAt(int idx)
+RegionId regionAt(int idx)
 {
-    return SceneId{static_cast<std::uint32_t>(idx + 1)};
+    return RegionId{static_cast<std::uint32_t>(idx + 1)};
 }
-Scene* scenePtr(SceneId id)
+Region* regionPtr(RegionId id)
 {
-    return sceneFromId(id);
+    return regionFromId(id);
 }
-SceneId currentScene()
+RegionId currentRegion()
 {
     return g.current;
 }
-Scene* currentScenePtr()
+Region* currentRegionPtr()
 {
-    return sceneFromId(g.current);
+    return regionFromId(g.current);
 }
 
 // ---- Activation / deactivation -------------------------------------------
 
-// Internal: deactivate the current scene, removing every body it owns.
+// Internal: deactivate the current region, removing every body it owns.
 static void deactivateCurrent()
 {
-    Scene* cur = currentScenePtr();
+    Region* cur = currentRegionPtr();
     if (cur == nullptr)
         return;
-    // Diamond cleanup: every body the scene declared via the context
-    // is removed. Scene cannot leak.
+    // Diamond cleanup: every body the region declared via the context
+    // is removed. Region cannot leak.
     for (auto h : cur->ownedBodies())
         engine::physics::removeBody(h);
     cur->engineClearOwnership();
     cur->onDeactivate();
-    g.current = kInvalidScene;
+    g.current = kInvalidRegion;
     g.player_inside_trigger_id.clear();
-    g.player_inside_trigger_scene = kInvalidScene;
+    g.player_inside_trigger_region = kInvalidRegion;
 }
 
-// Internal: activate a scene. `from_async` = the worker has already
+// Internal: activate a region. `from_async` = the worker has already
 // completed prepareAsync; we only need to commit on main thread. Else
 // it's the immediate path (boot, tests) and we run the full path.
-static void activateInternal(SceneId id, bool from_async)
+static void activateInternal(RegionId id, bool from_async)
 {
-    Scene* s = sceneFromId(id);
+    Region* s = regionFromId(id);
     if (s == nullptr)
     {
-        std::fprintf(stderr, "[scene-manager] activate: unknown SceneId=%u\n", id.id);
+        std::fprintf(stderr, "[region-manager] activate: unknown RegionId=%u\n", id.id);
         return;
     }
-    SceneActivationContext ctx(*s);
-    auto* async_s = dynamic_cast<AsyncCapableScene*>(s);
+    RegionActivationContext ctx(*s);
+    auto* async_s = dynamic_cast<AsyncCapableRegion*>(s);
     if (from_async && async_s != nullptr)
         async_s->commitPrepared(ctx);
     else
         s->onActivate(ctx);
     g.current = id;
-    std::fprintf(stderr, "[scene-manager] activated '%s' (%zu bodies, %zu triggers)\n",
-                 s->sceneId().c_str(), s->ownedBodies().size(), s->triggers().size());
+    std::fprintf(stderr, "[region-manager] activated '%s' (%zu bodies, %zu triggers)\n",
+                 s->regionId().c_str(), s->ownedBodies().size(), s->triggers().size());
 }
 
-void activateSceneImmediate(SceneId id)
+void activateRegionImmediate(RegionId id)
 {
     deactivateCurrent();
     activateInternal(id, /*from_async=*/false);
@@ -176,27 +176,27 @@ void activateSceneImmediate(SceneId id)
 
 // ---- Transition state machine --------------------------------------------
 
-bool beginTransition(SceneId target, TransitionMode mode, bool preserve_player_pos,
+bool beginTransition(RegionId target, TransitionMode mode, bool preserve_player_pos,
                      glm::vec3 target_spawn_pos, bool override_yaw, float target_yaw,
                      float fade_duration_seconds)
 {
     if (g.state != TransitionState::Idle)
     {
-        std::fprintf(stderr, "[scene-manager] beginTransition: already in progress (state=%d)\n",
+        std::fprintf(stderr, "[region-manager] beginTransition: already in progress (state=%d)\n",
                      static_cast<int>(g.state));
         return false;
     }
-    if (sceneFromId(target) == nullptr)
+    if (regionFromId(target) == nullptr)
     {
-        std::fprintf(stderr, "[scene-manager] beginTransition: unknown target SceneId=%u\n",
+        std::fprintf(stderr, "[region-manager] beginTransition: unknown target RegionId=%u\n",
                      target.id);
         return false;
     }
-    Scene* tgt = sceneFromId(target);
+    Region* tgt = regionFromId(target);
     std::fprintf(stderr,
-                 "[scene-manager] beginTransition: target='%s' SceneId=%u "
+                 "[region-manager] beginTransition: target='%s' RegionId=%u "
                  "spawn=(%.2f,%.2f,%.2f) override_yaw=%d yaw=%.2f mode=%d fade=%.2fs\n",
-                 tgt->sceneId().c_str(), target.id, target_spawn_pos.x, target_spawn_pos.y,
+                 tgt->regionId().c_str(), target.id, target_spawn_pos.x, target_spawn_pos.y,
                  target_spawn_pos.z, override_yaw ? 1 : 0, target_yaw, static_cast<int>(mode),
                  fade_duration_seconds);
     g.target = target;
@@ -210,7 +210,7 @@ bool beginTransition(SceneId target, TransitionMode mode, bool preserve_player_p
     g.fade_alpha = 0.0f;
     g.state = (mode == TransitionMode::Instant) ? TransitionState::Committing
                                                 : TransitionState::LoadingTarget;
-    std::fprintf(stderr, "[scene-manager] -> state=%d\n", static_cast<int>(g.state));
+    std::fprintf(stderr, "[region-manager] -> state=%d\n", static_cast<int>(g.state));
     return true;
 }
 
@@ -218,13 +218,13 @@ namespace
 {
 void tickLoadingTarget()
 {
-    Scene* tgt = sceneFromId(g.target);
-    auto* async_tgt = dynamic_cast<AsyncCapableScene*>(tgt);
+    Region* tgt = regionFromId(g.target);
+    auto* async_tgt = dynamic_cast<AsyncCapableRegion*>(tgt);
     if (async_tgt != nullptr && !g.load_in_flight)
     {
-        std::fprintf(stderr, "[scene-manager] kicking async prepare for '%s'\n",
-                     tgt->sceneId().c_str());
-        g.load_future = beginAsyncScenePrepare(*async_tgt);
+        std::fprintf(stderr, "[region-manager] kicking async prepare for '%s'\n",
+                     tgt->regionId().c_str());
+        g.load_future = beginAsyncRegionPrepare(*async_tgt);
         g.load_in_flight = true;
     }
     bool ready = !g.load_in_flight;
@@ -235,7 +235,7 @@ void tickLoadingTarget()
     if (g.load_in_flight)
     {
         g.load_future.get(); // surface exceptions
-        std::fprintf(stderr, "[scene-manager] async prepare ready\n");
+        std::fprintf(stderr, "[region-manager] async prepare ready\n");
     }
     g.load_in_flight = false;
     g.state = TransitionState::FadingOut;
@@ -259,14 +259,14 @@ void firePostCommit(bool preserve_pos, const glm::vec3& spawn_pos, bool override
 {
     if (g.post_commit != nullptr)
     {
-        std::fprintf(stderr, "[scene-manager] post-commit callback firing\n");
+        std::fprintf(stderr, "[region-manager] post-commit callback firing\n");
         g.post_commit(preserve_pos, spawn_pos, override_yaw, spawn_yaw);
     }
     else
     {
         std::fprintf(
             stderr,
-            "[scene-manager] WARNING: post_commit callback NULL — player will not teleport\n");
+            "[region-manager] WARNING: post_commit callback NULL — player will not teleport\n");
     }
 }
 
@@ -278,14 +278,14 @@ void tickCommitting()
     const bool override_yaw = g.override_yaw;
     const float spawn_yaw = g.target_yaw;
     std::fprintf(stderr,
-                 "[scene-manager] COMMIT: deactivating + activating target SceneId=%u "
+                 "[region-manager] COMMIT: deactivating + activating target RegionId=%u "
                  "(from_async=%d), then teleporting player to (%.2f,%.2f,%.2f) "
                  "override_yaw=%d\n",
                  g.target.id, from_async ? 1 : 0, spawn_pos.x, spawn_pos.y, spawn_pos.z,
                  override_yaw ? 1 : 0);
     deactivateCurrent();
     activateInternal(g.target, from_async);
-    g.target = kInvalidScene;
+    g.target = kInvalidRegion;
     firePostCommit(preserve_pos, spawn_pos, override_yaw, spawn_yaw);
     if (g.mode == TransitionMode::Instant)
     {
@@ -312,7 +312,7 @@ void tickFadingIn(float dt)
 }
 } // namespace
 
-TransitionState tickSceneManager(float dt)
+TransitionState tickRegionManager(float dt)
 {
     const TransitionState entry_state = g.state;
     switch (g.state)
@@ -334,7 +334,7 @@ TransitionState tickSceneManager(float dt)
     }
     if (entry_state != g.state)
     {
-        std::fprintf(stderr, "[scene-manager] state %d -> %d (fade_alpha=%.2f)\n",
+        std::fprintf(stderr, "[region-manager] state %d -> %d (fade_alpha=%.2f)\n",
                      static_cast<int>(entry_state), static_cast<int>(g.state), g.fade_alpha);
     }
     return g.state;
@@ -348,7 +348,7 @@ float transitionFadeAlpha()
 {
     return g.fade_alpha;
 }
-SceneId transitionTarget()
+RegionId transitionTarget()
 {
     return g.target;
 }
@@ -361,14 +361,14 @@ static bool aabbContainsPoint(const glm::vec3& center, const glm::vec3& half, co
            std::abs(p.z - center.z) <= half.z;
 }
 
-const SceneTrigger* checkPlayerTriggers(const glm::vec3& player_pos)
+const RegionTrigger* checkPlayerTriggers(const glm::vec3& player_pos)
 {
-    Scene* cur = currentScenePtr();
+    Region* cur = currentRegionPtr();
     if (cur == nullptr)
         return nullptr;
 
     // Find the trigger (if any) the player is inside this frame.
-    const SceneTrigger* hit = nullptr;
+    const RegionTrigger* hit = nullptr;
     for (const auto& t : cur->triggers())
     {
         if (aabbContainsPoint(t.center, t.half_extents, player_pos))
@@ -384,40 +384,40 @@ const SceneTrigger* checkPlayerTriggers(const glm::vec3& player_pos)
     {
         // Player left whatever trigger they were in (if any).
         g.player_inside_trigger_id.clear();
-        g.player_inside_trigger_scene = kInvalidScene;
+        g.player_inside_trigger_region = kInvalidRegion;
         return nullptr;
     }
 
     const bool same_as_last =
-        (g.player_inside_trigger_scene == g.current) && (g.player_inside_trigger_id == hit->id);
+        (g.player_inside_trigger_region == g.current) && (g.player_inside_trigger_id == hit->id);
     g.player_inside_trigger_id = hit->id;
-    g.player_inside_trigger_scene = g.current;
+    g.player_inside_trigger_region = g.current;
     if (same_as_last)
         return nullptr; // already-inside, no edge
 
-    std::fprintf(stderr,
-                 "[scene-manager] trigger ENTER '%s' (player at %.2f,%.2f,%.2f) in scene '%s'\n",
-                 hit->id.c_str(), player_pos.x, player_pos.y, player_pos.z, cur->sceneId().c_str());
+    std::fprintf(
+        stderr, "[region-manager] trigger ENTER '%s' (player at %.2f,%.2f,%.2f) in region '%s'\n",
+        hit->id.c_str(), player_pos.x, player_pos.y, player_pos.z, cur->regionId().c_str());
 
     // Fresh edge: queue the transition.
-    if (g.state == TransitionState::Idle && hit->target != kInvalidScene)
+    if (g.state == TransitionState::Idle && hit->target != kInvalidRegion)
     {
         beginTransition(hit->target, hit->mode, hit->preserve_player_pos, hit->target_spawn_pos,
                         hit->override_yaw, hit->target_yaw, hit->fade_duration_seconds);
     }
     else
     {
-        std::fprintf(stderr, "[scene-manager] trigger '%s' suppressed (state=%d, target=%u)\n",
+        std::fprintf(stderr, "[region-manager] trigger '%s' suppressed (state=%d, target=%u)\n",
                      hit->id.c_str(), static_cast<int>(g.state), hit->target.id);
     }
     return hit;
 }
 
-void setPersistentState(const PersistentSceneState& s)
+void setPersistentState(const PersistentRegionState& s)
 {
     g.persistent = s;
 }
-const PersistentSceneState& persistentState()
+const PersistentRegionState& persistentState()
 {
     return g.persistent;
 }
@@ -429,19 +429,19 @@ void setPostCommitCallback(PostCommitCallback cb)
 
 // ---- Bootstrap -----------------------------------------------------------
 
-void initSceneManager()
+void initRegionManager()
 {
     g = ManagerState{};
 }
 
-void shutdownSceneManager()
+void shutdownRegionManager()
 {
     deactivateCurrent();
-    // Per-scene shutdown for resident-all-scenes asset freeing.
-    for (auto& s : g.scenes)
+    // Per-region shutdown for resident-all-regions asset freeing.
+    for (auto& s : g.regions)
         if (s)
             s->onShutdown();
-    g.scenes.clear();
+    g.regions.clear();
     g = ManagerState{};
 }
 

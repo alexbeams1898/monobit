@@ -97,7 +97,7 @@ static void renderDebugSection(selva::tuning::Tunables& tun)
     ImGui::Checkbox("Physics bodies (Jolt AABBs, colored by tag)", &tun.debug_show_physics_bodies);
     ImGui::Checkbox("Flat shading (bisect: flicker on = shader, off = geometry)",
                     &tun.debug_flat_shading);
-    ImGui::Checkbox("Log MSAA state at scene-pass (-> stderr.log)", &tun.debug_msaa_state_log);
+    ImGui::Checkbox("Log MSAA state at region-pass (-> stderr.log)", &tun.debug_msaa_state_log);
     ImGui::Checkbox("Crosshair raycast log (aim at flicker -> crosshair-debug.log)",
                     &tun.debug_crosshair_raycast_log);
     ImGui::Checkbox("Primitive-ID colors (use WITH flat shading; -> primitive-id-debug.log)",

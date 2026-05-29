@@ -1,4 +1,4 @@
-#include "world/PhysicsScene.h"
+#include "world/PhysicsRegion.h"
 
 #include "world/CryptLayout.h"
 #include "world/Lights.h"
@@ -48,13 +48,13 @@ void writeInitStatsToLog(FILE* f)
     std::fflush(f);
 }
 
-bool initPhysicsScene()
+bool initPhysicsRegion()
 {
     if (sInit)
         return true;
     engine::physics::initPhysics();
-    // Terrain + chapel are scene-owned. JsonScene::commitPrepared
-    // inserts the terrain trimesh body (when the scene's JSON
+    // Terrain + chapel are region-owned. JsonRegion::commitPrepared
+    // inserts the terrain trimesh body (when the region's JSON
     // declares a `terrain` field) and the static-mesh bodies on
     // activation; engine removes them on deactivation. This module
     // no longer owns any world bodies — only the player character.
@@ -403,7 +403,7 @@ void registerAuthoredWorld()
 namespace selva::world
 {
 
-void shutdownPhysicsScene()
+void shutdownPhysicsRegion()
 {
     if (!sInit)
         return;

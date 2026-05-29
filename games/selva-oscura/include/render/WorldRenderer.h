@@ -25,7 +25,7 @@ const glm::mat4& lastView();
 // Multi-pass environment draw. Caller binds the appropriate shader
 // before each:
 //   useTerrainShader() + setTerrainAtmosphere(...) -> renderTerrain()
-//   useSceneProgram()  + setSceneAtmosphere(...)  -> renderGroundDecals()
+//   useRegionProgram()  + setSceneAtmosphere(...)  -> renderGroundDecals()
 //                                                 + renderStaticMeshes()
 //   useTreeShader()    + setTreeAtmosphere(...)   -> renderTrees()
 // Stencil pre-pass: writes chapel-floor primitives into the stencil

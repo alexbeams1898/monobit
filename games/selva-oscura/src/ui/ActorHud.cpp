@@ -19,7 +19,7 @@
 #include "render/TerrainShader.h"
 #include "world/Collision.h"
 #include "world/CryptLayout.h"
-#include "world/Scene.h"
+#include "world/Region.h"
 #include "world/StructureFootprints.h"
 #include "world/Terrain.h"
 
@@ -840,12 +840,12 @@ void renderColliderDebug()
     const auto& tun = selva::tuning::current();
     if (!tun.debug_show_colliders)
         return;
-    const auto& scene = selva::world::currentScene();
+    const auto& region = selva::world::currentRegion();
     const glm::mat4& vp = selva::render::lastViewProj();
     ImDrawList* overlay = ImGui::GetForegroundDrawList();
-    for (const auto& c : scene.cylinders)
+    for (const auto& c : region.cylinders)
         drawColliderCylinder(c, vp, overlay);
-    for (const auto& b : scene.boxes)
+    for (const auto& b : region.boxes)
         drawColliderBox(b, vp, overlay);
     drawStructureFootprintRects(vp, overlay);
 }
@@ -948,9 +948,11 @@ void renderSceneOverlays()
         fg->AddRectFilled(ImVec2(0, 0), ImVec2(io.DisplaySize.x, io.DisplaySize.y), col);
     }
 
-    // ---- Scene-name chip in top-right (always-on) ----
-    Scene* cur = currentScenePtr();
-    const std::string chip_text = cur != nullptr ? ("scene: " + cur->sceneId()) : "scene: (none)";
+    // ---- Region-name chip in top-right (always-on) ----
+    using engine::world::Region;
+    Region* cur = currentRegionPtr();
+    const std::string chip_text =
+        cur != nullptr ? ("region: " + cur->regionId()) : "region: (none)";
     const ImVec2 ts = ImGui::CalcTextSize(chip_text.c_str());
     const float pad = 6.0f;
     const ImVec2 chip_min(io.DisplaySize.x - ts.x - 2 * pad - 8.0f, 8.0f);

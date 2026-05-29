@@ -28,8 +28,8 @@
 #include "gameplay/PlayerState.h"
 #include "render/Camera.h"
 #include "render/LightSpritePass.h"
-#include "render/SceneGeometry.h"
-#include "render/SceneShaders.h"
+#include "render/RegionGeometry.h"
+#include "render/RegionShaders.h"
 #include "render/ShadowPass.h"
 #include "render/SkyPass.h"
 #include "render/TerrainShader.h"
@@ -38,9 +38,9 @@
 #include "ui/TuningPanel.h"
 #include "world/Collision.h"
 #include "world/CryptLayout.h"
-#include "world/PhysicsScene.h"
-#include "world/Scene.h"
-#include "world/SceneBootstrap.h"
+#include "world/PhysicsRegion.h"
+#include "world/Region.h"
+#include "world/RegionBootstrap.h"
 #include "world/StaticMeshAssets.h"
 #include "world/Terrain.h"
 #include "world/TreeAssets.h"
@@ -63,8 +63,8 @@ const std::string kTunablesPath = "config/tunables.json";
 
 void shutdownGeometry()
 {
-    selva::render::shutdownSceneGeometry();
-    selva::render::shutdownSceneProgram();
+    selva::render::shutdownRegionGeometry();
+    selva::render::shutdownRegionProgram();
     selva::render::shutdownSkyPass();
     selva::render::shutdownTreeShader();
     selva::render::shutdownTerrainShader();
@@ -206,9 +206,9 @@ int main(int /*argc*/, char* /*argv*/[])
     // leave the cursor free until the player enters Playing.
     SDL_SetRelativeMouseMode(SDL_FALSE);
 
-    if (!selva::render::initSceneProgram())
+    if (!selva::render::initRegionProgram())
     {
-        std::fprintf(stderr, "Scene shader compile/link failed\n");
+        std::fprintf(stderr, "Region shader compile/link failed\n");
         return 1;
     }
     if (!selva::render::initSkyPass())
@@ -237,14 +237,14 @@ int main(int /*argc*/, char* /*argv*/[])
         return 1;
     }
 
-    engine.renderLoadingFrame("scene geometry");
+    engine.renderLoadingFrame("region geometry");
 
-    runBootStep("initSceneGeometry",
+    runBootStep("initRegionGeometry",
                 [&]
                 {
                     selva::render::setInitialWindowSize(engine.windowWidth(),
                                                         engine.windowHeight());
-                    selva::render::initSceneGeometry();
+                    selva::render::initRegionGeometry();
                 });
     // Static mesh assets MUST load before chapel terrain modifiers so
     // the modifier registration can auto-derive the chapel footprint
@@ -257,46 +257,46 @@ int main(int /*argc*/, char* /*argv*/[])
                 [] { selva::world::crypt_layout::registerAuthoredWorld(); });
     engine.renderLoadingFrame("terrain mesh");
     runBootStep("initTerrain", [] { selva::world::initTerrain(); });
-    runBootStep("initHubScene", [] { selva::world::initHubScene(); });
+    runBootStep("initHubRegion", [] { selva::world::initHubRegion(); });
     runBootStep("initTreeAssets", [] { selva::world::initTreeAssets(); });
     // (initStaticMeshAssets moved earlier — chapel footprint derived from mesh)
     // Physics: register terrain + chapel as static trimesh bodies.
     // MUST run after both terrain and static-mesh-assets init so the
     // CPU vertex copies exist on those structs.
-    selva::world::initPhysicsScene();
+    selva::world::initPhysicsRegion();
 
-    // Scene manager bootstrap + initial activation. The default
-    // spawn scene becomes the active scene at boot; its onActivate
+    // Region manager bootstrap + initial activation. The default
+    // spawn region becomes the active region at boot; its onActivate
     // registers chapel/static-mesh bodies in Jolt. Legacy paths
-    // above have stopped registering the chapel (initPhysicsScene
+    // above have stopped registering the chapel (initPhysicsRegion
     // no longer calls registerChapel) so there's no double-register.
     //
     // Terrain modifiers (chapel plateau, shaft hole) are still
     // registered BEFORE initTerrain via the call above, because
     // terrain is a global singleton whose mesh is built once at
-    // initTerrain time. When per-scene terrain ships, those
-    // modifier declarations move into the scene's scene.json.
-    engine::world::initSceneManager();
-    // Post-commit hook: on each transition, after the new scene is
+    // initTerrain time. When per-region terrain ships, those
+    // modifier declarations move into the region's region.json.
+    engine::world::initRegionManager();
+    // Post-commit hook: on each transition, after the new region is
     // committed, teleport the player capsule to the trigger's
     // declared spawn pos + yaw. Engine doesn't know about the
     // player; game wires it.
     engine::world::setPostCommitCallback(
         [](bool preserve_pos, const glm::vec3& spawn_pos, bool override_yaw, float spawn_yaw) {
-            selva::gameplay::onSceneTransitionCommit(preserve_pos, spawn_pos, override_yaw,
+            selva::gameplay::onRegionTransitionCommit(preserve_pos, spawn_pos, override_yaw,
                                                      spawn_yaw);
         });
-    engine.renderLoadingFrame("surface scene");
-    engine::world::SceneId default_scene;
-    runBootStep("loadAllScenes", [&] { default_scene = selva::world::loadAllScenes(); });
-    if (default_scene != engine::world::kInvalidScene)
+    engine.renderLoadingFrame("surface region");
+    engine::world::RegionId default_region;
+    runBootStep("loadAllRegions", [&] { default_region = selva::world::loadAllRegions(); });
+    if (default_region != engine::world::kInvalidRegion)
     {
-        runBootStep("activateSceneImmediate",
-                    [&] { engine::world::activateSceneImmediate(default_scene); });
+        runBootStep("activateRegionImmediate",
+                    [&] { engine::world::activateRegionImmediate(default_region); });
     }
     else
     {
-        std::fprintf(stderr, "[main] WARNING: no default spawn scene; "
+        std::fprintf(stderr, "[main] WARNING: no default spawn region; "
                              "scenes system inert, chapel will not render\n");
     }
 
@@ -382,7 +382,7 @@ int main(int /*argc*/, char* /*argv*/[])
 
     selva::gameplay::shutdownHubEnemies();
     selva::anim::shutdownSkeletalAssets();
-    engine::world::shutdownSceneManager();
+    engine::world::shutdownRegionManager();
     shutdownGeometry();
     selva::audio::shutdown();
     engine.shutdown();

@@ -13,7 +13,7 @@
 //
 // What they DON'T cover yet:
 //   - The camera pull-in math itself (lives inside buildViewProj with
-//     static smoothing state + Tunables singleton + scene queries).
+//     static smoothing state + Tunables singleton + region queries).
 //     Extracting that into a pure function is a bigger refactor; when
 //     it lands, a camera_pullin_test.cpp file can be added alongside.
 //

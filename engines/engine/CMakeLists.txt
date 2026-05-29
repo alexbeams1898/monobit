@@ -16,8 +16,8 @@ target_sources(engine PRIVATE
     src/ops/InventoryOps.cpp
     src/ops/CraftingOps.cpp
     src/physics/PhysicsWorld.cpp
-    src/world/AsyncSceneLoader.cpp
-    src/world/Scene.cpp
+    src/world/AsyncRegionLoader.cpp
+    src/world/Region.cpp
     src/world/TerrainModifiers.cpp
     src/world/StructureFootprints.cpp
     src/world/Lights.cpp

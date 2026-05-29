@@ -1,15 +1,15 @@
-# scene.json schema
+# region.json schema
 
-Each scene lives in `games/selva-oscura/assets/scenes/<scene_id>/` and is
-declared by `scene.json` in that folder. The engine's `JsonScene` class
-consumes any scene.json — no per-scene C++ code.
+Each region lives in `games/selva-oscura/assets/regions/<region_id>/` and is
+declared by `region.json` in that folder. The engine's `JsonRegion` class
+consumes any region.json — no per-region C++ code.
 
 ## Top-level structure
 
 ```json
 {
   "schema_version": 1,
-  "scene_id": "surface",
+  "region_id": "surface",
   "debug_name": "Selva surface (outdoor)",
   "terrain": { ... } | null,
   "static_meshes": [ ... ],
@@ -25,7 +25,7 @@ consumes any scene.json — no per-scene C++ code.
 
 ### `terrain` (object | null)
 
-Present iff the scene has heightmap terrain. Null for interior scenes.
+Present iff the region has heightmap terrain. Null for interior regions.
 
 ```json
 {
@@ -36,7 +36,7 @@ Present iff the scene has heightmap terrain. Null for interior scenes.
 
 ### `static_meshes` (array)
 
-Each entry: a .glb file registered into the scene, with optional
+Each entry: a .glb file registered into the region, with optional
 world-space offset and surface tag.
 
 ```json
@@ -51,7 +51,7 @@ world-space offset and surface tag.
 ### `terrain_modifiers` (array)
 
 Surface-only. Applied during terrain mesh build. Empty array for
-interior scenes.
+interior regions.
 
 ```json
 {
@@ -68,17 +68,17 @@ interior scenes.
 
 ### `triggers` (array)
 
-Trigger volumes that initiate scene transitions when the player enters.
+Trigger volumes that initiate region transitions when the player enters.
 Edge-triggered (fires on first frame of overlap), one-way (paired by
-declaration on the target scene).
+declaration on the target region).
 
 ```json
 {
-  "id": "chapel_door_enter",            // unique per scene, used for save/load
+  "id": "chapel_door_enter",            // unique per region, used for save/load
   "center": [0.0, 33.0, -206.0],
   "half_extents": [0.6, 1.2, 0.4],
-  "target_scene": "chapel_interior",
-  "target_spawn_pos": [0.0, 0.0, -0.5], // in target scene's local coords
+  "target_region": "chapel_interior",
+  "target_spawn_pos": [0.0, 0.0, -0.5], // in target region's local coords
   "override_yaw": false,                 // optional; default false = preserve player yaw across transition (seamless-traversal default)
   "target_yaw": 3.14159,                 // only applied if override_yaw=true
   "transition_mode": "Instant",          // Instant | Fade | Continuous
@@ -108,17 +108,17 @@ declaration on the target scene).
 
 ### `default_spawn`
 
-Used for NEW characters when no save data dictates a position. One scene
-in the game is marked `is_default_spawn_scene: true` at the engine
-level (set via a top-level scene registry config); that scene's
+Used for NEW characters when no save data dictates a position. One region
+in the game is marked `is_default_spawn_region: true` at the engine
+level (set via a top-level region registry config); that region's
 `default_spawn` is the new-character spawn point.
 
-## Example: SurfaceScene
+## Example: SurfaceRegion
 
 ```json
 {
   "schema_version": 1,
-  "scene_id": "surface",
+  "region_id": "surface",
   "debug_name": "Selva surface",
   "terrain": {
     "config": "assets/world/terrain/config.json",
@@ -147,7 +147,7 @@ level (set via a top-level scene registry config); that scene's
       "id": "chapel_door_enter",
       "center": [0.0, 33.0, -206.0],
       "half_extents": [0.6, 1.2, 0.4],
-      "target_scene": "chapel_interior",
+      "target_region": "chapel_interior",
       "target_spawn_pos": [0.0, 0.5, -0.5],
       "target_yaw": 3.14159,
       "transition_mode": "Fade",
@@ -162,12 +162,12 @@ level (set via a top-level scene registry config); that scene's
 }
 ```
 
-## Example: ChapelInteriorScene
+## Example: ChapelInteriorRegion
 
 ```json
 {
   "schema_version": 1,
-  "scene_id": "chapel_interior",
+  "region_id": "chapel_interior",
   "debug_name": "Chapel + descent",
   "terrain": null,
   "static_meshes": [
@@ -184,7 +184,7 @@ level (set via a top-level scene registry config); that scene's
       "id": "chapel_door_exit",
       "center": [0.0, 1.0, 4.0],
       "half_extents": [0.6, 1.2, 0.4],
-      "target_scene": "surface",
+      "target_region": "surface",
       "target_spawn_pos": [0.0, 33.0, -205.0],
       "target_yaw": 0.0,
       "transition_mode": "Fade",
@@ -195,7 +195,7 @@ level (set via a top-level scene registry config); that scene's
       "id": "limbo_descent",
       "center": [0.0, -30.0, 140.0],
       "half_extents": [2.0, 1.0, 1.0],
-      "target_scene": "limbo",
+      "target_region": "limbo",
       "target_spawn_pos": [0.0, 0.0, 5.0],
       "target_yaw": 3.14159,
       "transition_mode": "Fade",
@@ -209,12 +209,12 @@ level (set via a top-level scene registry config); that scene's
 }
 ```
 
-## Engine top-level config: `assets/scenes/scenes.json`
+## Engine top-level config: `assets/regions/regions.json`
 
 ```json
 {
   "schema_version": 1,
-  "scenes": ["surface", "chapel_interior", "limbo"],
-  "default_spawn_scene": "surface"
+  "regions": ["surface", "chapel_interior", "limbo"],
+  "default_spawn_region": "surface"
 }
 ```

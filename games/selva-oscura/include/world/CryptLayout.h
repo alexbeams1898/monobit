@@ -109,7 +109,7 @@ constexpr float kLimboPlatformHalfExtent = 12.0f;
 // modifier required.
 //
 // To lower the entire chapel/descent stack: change this constant AND
-// scene.json's chapel world_origin.y (matched value). The descent
+// region.json's chapel world_origin.y (matched value). The descent
 // stairs are baked at chapel-local-Y inside crypt.glb so they ride
 // along automatically via world_origin. Limbo is its own terrain
 // region (see assets/world/terrain/config.json: limbo.y_offset)
@@ -120,7 +120,7 @@ constexpr float kChapelGroundY = 22.3f;
 // of truth shared by:
 //   * render/WorldRenderer.cpp cryptModelMatrix() (sets the GL model
 //     matrix when drawing the mesh)
-//   * world/PhysicsScene.cpp registerChapel() (bakes the transform
+//   * world/PhysicsRegion.cpp registerChapel() (bakes the transform
 //     into the Jolt static trimesh body so physics sees the chapel at
 //     the same world location as the renderer)
 // The 0.05m Z-fight offset keeps the chapel's plinth top safely above

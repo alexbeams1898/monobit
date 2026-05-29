@@ -1,6 +1,6 @@
-#include "render/SceneGeometry.h"
+#include "render/RegionGeometry.h"
 
-#include "render/SceneShaders.h"
+#include "render/RegionShaders.h"
 
 #include <cmath>
 #include <cstdint>
@@ -227,14 +227,14 @@ void drawIndexed(GLuint vao, GLsizei index_count, const glm::mat4& model, float 
 
 } // namespace
 
-void initSceneGeometry()
+void initRegionGeometry()
 {
     initCube();
     initGround();
     initDisc();
 }
 
-void shutdownSceneGeometry()
+void shutdownRegionGeometry()
 {
     glDeleteBuffers(1, &sGroundEbo);
     glDeleteBuffers(1, &sGroundVbo);

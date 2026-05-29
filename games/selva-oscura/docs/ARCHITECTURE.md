@@ -67,8 +67,8 @@ games/selva-oscura/
 │   └── PlayerState.cpp           sPlayer + wrapAngleSigned + yawFromGroundDir
 ├── src/render/
 │   ├── Camera.cpp                cameraYaw/Pitch + window size + onWindowResize
-│   ├── SceneGeometry.cpp         cube/floor/grid/axes VAOs + draw helpers
-│   ├── SceneShaders.cpp          scene shader program + uniform setters
+│   ├── RegionGeometry.cpp         cube/floor/grid/axes VAOs + draw helpers
+│   ├── RegionShaders.cpp          region shader program + uniform setters
 │   └── WorldRenderer.cpp         buildViewProj + renderEnvironment
 ├── src/ui/
 │   ├── ComboHud.cpp              renderComboHud + nextExpectedButtonLabel
@@ -910,9 +910,9 @@ more depressed than the one above.
 ```
 games/selva-oscura/
 ├── assets/
-│   ├── scenes/
-│   │   ├── scenes.json          # top-level registry (currently just "surface")
-│   │   └── surface/scene.json   # the single scene; entire playable world
+│   ├── regions/
+│   │   ├── regions.json          # top-level registry (currently just "surface")
+│   │   └── surface/region.json   # the single region; entire playable world
 │   ├── world/
 │   │   ├── terrain/
 │   │   │   ├── config.json      # per-region terrain config (Selva surface,
@@ -932,13 +932,13 @@ games/selva-oscura/
         └── gen_crypt_export.py + .sh      # exports crypt.blend → crypt.glb
 ```
 
-**Single-scene architecture** (per
+**Single-region architecture** (per
 [feedback_seamless_world_traversal](../../../../.claude/projects/c--Users-alexb-Projects-monobit/memory/feedback_seamless_world_traversal.md)):
-the entire playable world lives in `surface/scene.json`. No scene
+the entire playable world lives in `surface/region.json`. No region
 transitions, no fades. Walking from the colle into the chapel,
 down the descent, onto Limbo is one continuous traversal with no
-loading boundary. Future circles either grow this scene or split
-into a sibling scene when content density demands streaming.
+loading boundary. Future circles either grow this region or split
+into a sibling region when content density demands streaming.
 
 **Static mesh vs terrain region** — when to pick which:
 
@@ -947,7 +947,7 @@ into a sibling scene when content density demands streaming.
 | Hand-authored architecture (chapel, walls, stair). | Procedural ground (hills, plains, plateaus). |
 | Discrete object with explicit XYZ. | Continuous heightfield with XZ AABB. |
 | Build via Blender script. | Build via `gen_terrain_heightmap.py` (PNG + code). |
-| Loaded as `static_meshes[]` entry in scene.json. | Loaded as `regions{}` entry in terrain/config.json. |
+| Loaded as `static_meshes[]` entry in region.json. | Loaded as `regions{}` entry in terrain/config.json. |
 
 The Acheron river is **NOT** a static mesh — it's a `TerrainModifier`
 that depresses Limbo's region. Same for the chapel's exterior plateau
@@ -970,7 +970,7 @@ three coordinated pieces solve this:
    any visual/physics gap between chapel and surrounding terrain.
 
 2. **FlushAt terrain modifier** (`chapel_exterior_plateau` in
-   `PhysicsScene.cpp::registerChapelTerrainModifiers`) — depresses
+   `PhysicsRegion.cpp::registerChapelTerrainModifiers`) — depresses
    the terrain mesh's vertices inside the chapel footprint to
    plinth-bottom Y. With a 2m blend pad on lateral / back sides,
    terrain ramps smoothly from natural-Y outside the footprint up
@@ -989,7 +989,7 @@ alone leaves the chapel's interior floor as the only floor inside.
 **To lower the entire chapel+descent stack** (which moves Limbo
 along with it):
 - Edit `kChapelGroundY` in `include/world/CryptLayout.h`.
-- Edit `world_origin.y` in scene.json's chapel `static_meshes[]`
+- Edit `world_origin.y` in region.json's chapel `static_meshes[]`
   entry (matched value).
 - Edit Limbo's `y_offset` in `terrain/config.json` (matched delta).
 
@@ -1048,7 +1048,7 @@ When adding a new layer:
 3. Add the same region name to `terrain/config.json` with the full
    declaration above.
 4. Add features (rivers, holes, ramps) via `TerrainModifier`s
-   registered in `PhysicsScene.cpp` with `region_name = "my_layer"`.
+   registered in `PhysicsRegion.cpp` with `region_name = "my_layer"`.
 
 ---
 

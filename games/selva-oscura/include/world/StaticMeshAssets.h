@@ -75,7 +75,7 @@ void shutdownStaticMeshAssets();
 // assets/world/static_meshes/crypt.glb. Returns nullptr if init failed.
 const StaticMesh* cryptMesh();
 
-// Generic loader used by JsonScene: load any .glb into a fresh
+// Generic loader used by JsonRegion: load any .glb into a fresh
 // StaticMesh. Caller owns the returned StaticMesh; calls
 // freeStaticMeshGLResources(mesh) at scene-deactivate time to release
 // VAOs/VBOs. CPU data (cpu_positions/cpu_indices) is consumed by the

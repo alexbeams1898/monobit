@@ -7,8 +7,8 @@ namespace selva::render
 
 // Geometry init/shutdown. Call after the GL context exists; teardown
 // before the context dies.
-void initSceneGeometry();
-void shutdownSceneGeometry();
+void initRegionGeometry();
+void shutdownRegionGeometry();
 
 void drawGround(const glm::mat4& model, float tint);
 void drawCube(const glm::mat4& model, float tint);

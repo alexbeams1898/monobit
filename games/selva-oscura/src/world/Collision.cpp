@@ -20,7 +20,7 @@ namespace selva::world
 
 namespace
 {
-CollisionScene sScene;
+CollisionRegion sRegion;
 
 FILE* sCollisionLog = nullptr;
 int sCollisionFrame = 0;
@@ -223,7 +223,7 @@ void populateHubTrees(std::vector<CylinderCollider>& out)
 }
 
 // Chapel collision authoring moved to the Jolt-registered crypt.glb
-// mesh (see world/PhysicsScene.cpp::registerChapel). The legacy
+// mesh (see world/PhysicsRegion.cpp::registerChapel). The legacy
 // populateCryptColliders / populateCryptApseCylinders /
 // populateCryptDescent C++ collider authoring was removed
 // 2026-05-24 to end the dual-source-of-truth between mesh and code.
@@ -236,18 +236,18 @@ void populateHubTrees(std::vector<CylinderCollider>& out)
 
 } // namespace
 
-void initHubScene()
+void initHubRegion()
 {
-    sScene.cylinders.clear();
-    sScene.boxes.clear();
+    sRegion.cylinders.clear();
+    sRegion.boxes.clear();
     // Boundary disc centered on the colle plateau midpoint (Z=-210)
     // so the playable area covers spawn, the colle, and the
     // clear-view strip + back forest behind it.
-    sScene.boundary_center = glm::vec2(0.0f, -210.0f);
-    sScene.boundary_radius = kHubBoundaryRadius;
-    populateHubTrees(sScene.cylinders);
+    sRegion.boundary_center = glm::vec2(0.0f, -210.0f);
+    sRegion.boundary_radius = kHubBoundaryRadius;
+    populateHubTrees(sRegion.cylinders);
     // Chapel collision is owned by the Jolt-registered crypt.glb mesh
-    // (see world/PhysicsScene.cpp::registerChapel). The legacy
+    // (see world/PhysicsRegion.cpp::registerChapel). The legacy
     // populateCryptColliders / populateCryptApseCylinders /
     // populateCryptDescent C++ collider authoring was removed
     // 2026-05-24 to end the dual-source-of-truth between mesh and
@@ -272,7 +272,7 @@ void initHubScene()
         t.half_height = 6.0f;
         t.forced_variant_idx = kPineVariant;
         t.forced_scale = kBigScale;
-        sScene.cylinders.push_back(t);
+        sRegion.cylinders.push_back(t);
     }
 
     constexpr float kSmallScale = 0.6f;
@@ -285,13 +285,13 @@ void initHubScene()
         t.half_height = 4.0f;
         t.forced_variant_idx = kPineVariant;
         t.forced_scale = kSmallScale;
-        sScene.cylinders.push_back(t);
+        sRegion.cylinders.push_back(t);
     }
 }
 
-const CollisionScene& currentScene()
+const CollisionRegion& currentRegion()
 {
-    return sScene;
+    return sRegion;
 }
 
 namespace
@@ -373,15 +373,15 @@ bool pushOutOneBox(const BoxCollider& b, int box_idx, int pass, float body_radiu
 // radial axis so the body's footprint stays fully inside.
 void clampToBoundary(glm::vec2& body_xz, float body_radius)
 {
-    if (sScene.boundary_radius <= 0.0f)
+    if (sRegion.boundary_radius <= 0.0f)
         return;
-    const glm::vec2 delta = body_xz - sScene.boundary_center;
+    const glm::vec2 delta = body_xz - sRegion.boundary_center;
     const float dist_sq = glm::dot(delta, delta);
-    const float max_dist = sScene.boundary_radius - body_radius;
+    const float max_dist = sRegion.boundary_radius - body_radius;
     if (max_dist > 0.0f && dist_sq > max_dist * max_dist && dist_sq > 1e-8f)
     {
         const float dist = std::sqrt(dist_sq);
-        body_xz = sScene.boundary_center + (delta / dist) * max_dist;
+        body_xz = sRegion.boundary_center + (delta / dist) * max_dist;
     }
 }
 } // namespace
@@ -405,14 +405,14 @@ void resolveBodyCollision(glm::vec2& body_xz, float body_radius)
     {
         bool any_push = false;
         int cyl_idx = 0;
-        for (const auto& c : sScene.cylinders)
+        for (const auto& c : sRegion.cylinders)
         {
             if (pushOutOneCylinder(c, cyl_idx, pass, body_radius, log_on, body_xz))
                 any_push = true;
             ++cyl_idx;
         }
         int box_idx = 0;
-        for (const auto& b : sScene.boxes)
+        for (const auto& b : sRegion.boxes)
         {
             if (pushOutOneBox(b, box_idx, pass, body_radius, log_on, body_xz))
                 any_push = true;
@@ -436,9 +436,9 @@ namespace
 constexpr float kRayEpsilon = 1e-6f;
 
 // Ray vs axis-aligned Y cylinder. Sphere_radius is ignored at this
-// level — the caller (raycastScene) reports the t at which the RAY
+// level — the caller (raycastRegion) reports the t at which the RAY
 // CENTER enters the cylinder, and the camera-side iterative push-out
-// (sphereOverlapsScene) handles the buffer around the camera.
+// (sphereOverlapsRegion) handles the buffer around the camera.
 //
 // Pre-existing overlap (origin already inside the cylinder) is NOT
 // reported as a hit: the camera-pull-in caller would interpret
@@ -517,9 +517,9 @@ bool intersectAabbSlab(float o, float d, float mn, float mx, float& t_near, floa
 }
 
 // Ray vs axis-aligned 3D box (slab method). Sphere_radius is ignored
-// at this level — the caller (raycastScene) reports the t at which
+// at this level — the caller (raycastRegion) reports the t at which
 // the RAY CENTER enters the box, and the camera-side iterative
-// push-out (sphereOverlapsScene) handles the buffer around the
+// push-out (sphereOverlapsRegion) handles the buffer around the
 // camera. Returns t >= 0 on hit, or -1 on miss. If the origin is
 // inside the box (camera literally inside a wall — pathological),
 // returns 0 so the caller falls back to the player position.
@@ -586,21 +586,21 @@ bool sphereOverlapsAabb(const glm::vec3& center, float radius, const BoxCollider
 }
 } // namespace
 
-bool sphereOverlapsScene(const CollisionScene& scene, const glm::vec3& center, float radius)
+bool sphereOverlapsRegion(const CollisionRegion& region, const glm::vec3& center, float radius)
 {
     if (radius <= 0.0f)
         return false;
-    for (const auto& c : scene.cylinders)
+    for (const auto& c : region.cylinders)
         if (sphereOverlapsCylinder(center, radius, c))
             return true;
-    for (const auto& b : scene.boxes)
+    for (const auto& b : region.boxes)
         if (sphereOverlapsAabb(center, radius, b))
             return true;
     return false;
 }
 
-RaycastHit raycastScene(const CollisionScene& scene, const glm::vec3& origin,
-                        const glm::vec3& direction, float max_distance)
+RaycastHit raycastRegion(const CollisionRegion& region, const glm::vec3& origin,
+                         const glm::vec3& direction, float max_distance)
 {
     RaycastHit result;
     const float dir_len_sq = glm::dot(direction, direction);
@@ -610,7 +610,7 @@ RaycastHit raycastScene(const CollisionScene& scene, const glm::vec3& origin,
 
     float best = max_distance;
     bool any = false;
-    for (const auto& c : scene.cylinders)
+    for (const auto& c : region.cylinders)
     {
         const float t = intersectCylinder(origin, dir, c, best, 0.0f);
         if (t >= 0.0f && t < best)
@@ -619,7 +619,7 @@ RaycastHit raycastScene(const CollisionScene& scene, const glm::vec3& origin,
             any = true;
         }
     }
-    for (const auto& b : scene.boxes)
+    for (const auto& b : region.boxes)
     {
         const float t = intersectAabb(origin, dir, b, best, 0.0f);
         if (t >= 0.0f && t < best)

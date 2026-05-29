@@ -16,7 +16,7 @@ using Enemy = Actor;
 
 // Initialize the hub's enemies: one stationary humanoid in the
 // clearing, idling. Call once at startup after initSkeletalAssets()
-// and initHubScene(). Idempotent; clears + repopulates.
+// and initHubRegion(). Idempotent; clears + repopulates.
 //
 // Appends enemy actors to the shared pool (after the player at
 // index 0). The pool must already contain the player.

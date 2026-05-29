@@ -783,7 +783,7 @@ float groundHeight(float world_x, float world_z, float current_y)
     if (!hit.hit)
     {
         // Outside any physics geometry — fall back to heightmap sample.
-        // Happens before physics bodies are loaded for the active scene
+        // Happens before physics bodies are loaded for the active region
         // (init order) or in zones with no terrain/architecture present.
         return sampleHeight(world_x, world_z);
     }

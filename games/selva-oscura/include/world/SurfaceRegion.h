@@ -1,6 +1,6 @@
 #pragma once
 
-#include "world/Scene.h"
+#include "world/Region.h"
 
 namespace selva::world
 {
@@ -10,19 +10,19 @@ namespace selva::world
 // terrain/static-mesh/physics state lives in global singletons that
 // are initialized at boot.
 //
-// Future scenes that don't need terrain use JsonScene + scene.json
+// Future scenes that don't need terrain use JsonRegion + region.json
 // instead. Once the singletons (terrain, chapel mesh) are refactored
-// to scene-local state, SurfaceScene becomes a JsonScene too.
+// to scene-local state, SurfaceRegion becomes a JsonRegion too.
 //
 // onActivate: register the existing terrain + chapel + trees as
-// Jolt static bodies (via the legacy initPhysicsScene path) and
+// Jolt static bodies (via the legacy initPhysicsRegion path) and
 // record handles with the activation context.
 // onDeactivate: remove bodies (automatic via context tracking).
-class SurfaceScene : public engine::world::Scene
+class SurfaceRegion : public engine::world::Region
 {
   public:
-    SurfaceScene();
-    void onActivate(engine::world::SceneActivationContext& ctx) override;
+    SurfaceRegion();
+    void onActivate(engine::world::RegionActivationContext& ctx) override;
     void onDeactivate() override;
 };
 

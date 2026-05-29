@@ -36,7 +36,7 @@ void renderColliderDebug();
 // Source of truth for "is this mesh actually registered in physics?"
 void renderPhysicsBodyDebug();
 
-// Scene system overlays:
+// Region system overlays:
 //   * Always-on: scene-name chip in the corner + fade-to-black overlay
 //     during transitions
 //   * Debug-gated: trigger volume wireframes (color + label) inside

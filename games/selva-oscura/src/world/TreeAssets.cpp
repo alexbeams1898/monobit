@@ -467,7 +467,7 @@ static void buildRockVariantsFromMeshes(const std::vector<CpuMesh>& rocks)
 bool initTreeAssets()
 {
     loadRootDepthConfig();
-    const std::string gltf_path = std::string(kAssetDir) + "scene.gltf";
+    const std::string gltf_path = std::string(kAssetDir) + "region.gltf";
     const cgltf_options options = {};
     cgltf_data* data = nullptr;
     cgltf_result res = cgltf_parse_file(&options, gltf_path.c_str(), &data);

@@ -106,7 +106,7 @@ void main()
     float shadow = sampleSunShadow(vWorldPos, canopyN);
     vec3 surface = base.rgb * (ambient + sunTint * halfL * shadow);
 
-    // Aerial perspective (same atmosphere as scene + sky).
+    // Aerial perspective (same atmosphere as region + sky).
     vec3 viewVec = vWorldPos - uCamPos;
     float dist = length(viewVec);
     vec3 rayDir = viewVec / max(dist, 1e-4);

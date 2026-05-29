@@ -1,7 +1,7 @@
 # Stale code audit — 2026-05-24
 
 After today's Scenes architecture build (engine Scene/SceneManager,
-JsonScene, AsyncSceneLoader, terrain modifiers registry, Jolt physics
+JsonRegion, AsyncSceneLoader, terrain modifiers registry, Jolt physics
 migration, footstep-via-body-tag, save-schema scene-awareness), several
 pre-Jolt / pre-Scenes systems are partially or fully stale. This audit
 catalogs them with severity + recommended action.
@@ -72,15 +72,15 @@ not collide against chapel walls anymore via this path.
 intersectCylinder/intersectAabb support code in Collision.cpp.
 
 ### `currentScene()` legacy collision scene + `sScene` global (Collision.cpp:317)
-Holds the legacy `CollisionScene { cylinders, boxes, interior_footprints }`.
+Holds the legacy `CollisionRegion { cylinders, boxes, interior_footprints }`.
 Today contains only trees (cylinders) + chapel interior footprint
 (boxes is empty after populateCrypt* deletion). After:
 - Phase 6 (NPCs on Jolt): nothing else needs trees as collision data
 - Phase 7 (camera on Jolt): nothing needs trees as raycast targets
-…the entire CollisionScene struct becomes vestigial. Trees should be
+…the entire CollisionRegion struct becomes vestigial. Trees should be
 Jolt cylinder bodies registered at scene activation; interior
 footprints become a Scene-level "indoor zones" concept.
-**Action:** delete CollisionScene struct + currentScene() global after
+**Action:** delete CollisionRegion struct + currentScene() global after
 both phase migrations complete.
 
 ### `world::isIndoors` (Collision.cpp:322)
@@ -94,7 +94,7 @@ becomes `currentScenePtr()->kind == Interior` or similar.
 check at that time.
 
 ### `populateCryptInteriorFootprint` (Collision.cpp:223)
-Only caller is `initHubScene()` which builds the legacy CollisionScene.
+Only caller is `initHubScene()` which builds the legacy CollisionRegion.
 Footprint is read by `isIndoors`. Both dead-end together.
 **Action:** delete with isIndoors migration.
 
@@ -109,7 +109,7 @@ WorldRenderer.cpp camera-collision pipeline. Phase 7 (camera via Jolt
 raycast) replaces this with engine::physics::raycast.
 
 ### F1 collider debug overlay reads legacy `sScene.boxes/cylinders` (ActorHud.cpp:577..)
-Still iterates the legacy CollisionScene for trees + (empty) boxes.
+Still iterates the legacy CollisionRegion for trees + (empty) boxes.
 The Jolt-body overlay is wired alongside it (ActorHud.cpp:778..). Once
 the legacy collision is deleted, the legacy half of the overlay
 collapses to just trees-as-Jolt-bodies via enumerateBodies.
@@ -132,10 +132,10 @@ collapses to just trees-as-Jolt-bodies via enumerateBodies.
    `isOnAuthoredSurface`, `walkable_top` flag, all related branches.
 2. **After Phase 7 (camera on Jolt):** delete `raycastScene`,
    `sphereOverlapsScene`, `intersectCylinder`, `intersectAabb`,
-   `isIndoors` (replaced by scene-kind check), `CollisionScene`,
+   `isIndoors` (replaced by scene-kind check), `CollisionRegion`,
    `populateCryptInteriorFootprint`, `currentScene` global.
 3. **At that point Collision.cpp becomes ~50 lines** (trees-as-data
-   helper for the renderer; trees-as-Jolt-bodies live in PhysicsScene
+   helper for the renderer; trees-as-Jolt-bodies live in PhysicsRegion
    instead).
 
 ## Newly identified dual-source items (track but don't fix yet)
@@ -150,7 +150,7 @@ geometry config to JSON manifest read by both sides. Queued under
 
 ### Chapel `crypt.glb` includes BOTH exterior and descent geometry
 After the scene split (Step 8 of today's planning), this asset should
-be `crypt_exterior.glb` (SurfaceScene) + `crypt_interior.glb`
+be `crypt_exterior.glb` (SurfaceRegion) + `crypt_interior.glb`
 (ChapelInteriorScene). Currently the chapel mesh has 443 primitives
 spanning both — single .glb feeding the legacy boot. Until the split,
 the legacy boot still works, but the future ChapelInteriorScene

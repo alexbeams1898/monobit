@@ -45,11 +45,11 @@ StaticMeshUsage parseUsageFromExtras(const char* extras_json)
     }
 }
 
-// Vertex layout matches the SceneProgram (vec3 pos + float shade) so
+// Vertex layout matches the RegionProgram (vec3 pos + float shade) so
 // static meshes draw with the same shader path as ground geometry —
 // atmosphere, shadow, half-Lambert lighting all consistent. Normals
 // are computed at the fragment level via dFdx/dFdy on world position
-// in the scene fragment shader, so we don't store per-vertex normals.
+// in the region fragment shader, so we don't store per-vertex normals.
 struct Vertex
 {
     float position[3];
@@ -86,7 +86,7 @@ bool loadPrimitive(const cgltf_primitive* prim, const float node_world[16],
     out.usage = parseUsageFromExtras(node_extras_json);
     // Vertex layout is position-only + per-vertex shade=1.0; normal is
     // derived in the fragment shader via dFdx/dFdy on world position
-    // (see SceneShaders), so we don't query the glTF normal accessor.
+    // (see RegionShaders), so we don't query the glTF normal accessor.
     const cgltf_accessor* pos_acc = findAttribute(prim, cgltf_attribute_type_position);
     if (pos_acc == nullptr)
         return false;
@@ -279,7 +279,7 @@ bool initStaticMeshAssets()
     sCrypt.asset_name = "crypt";
     const char* path = "assets/world/static_meshes/crypt.glb";
     // Legacy boot path: load with zero world offset (chapel mesh is
-    // currently treated as world-space already). JsonScene-driven
+    // currently treated as world-space already). JsonRegion-driven
     // scenes use loadStaticMesh() with proper world_origin.
     const float kZeroOffset[3] = {0.0f, 0.0f, 0.0f};
     if (!loadGltf(path, kZeroOffset, sCrypt))

@@ -28,13 +28,13 @@ void initPlayer();
 // physics doesn't snap them back.
 void teleportPlayerTo(const glm::vec3& world_pos, bool override_yaw, float yaw);
 
-// Handle a scene-transition post-commit. If preserve_pos is true,
+// Handle a region-transition post-commit. If preserve_pos is true,
 // the player's current world position is kept and only Jolt's
-// capsule is moved into the new scene (no perceptible jump). If
+// capsule is moved into the new region (no perceptible jump). If
 // false, teleport to `spawn_pos`. Yaw handling follows
 // teleportPlayerTo semantics.
-void onSceneTransitionCommit(bool preserve_pos, const glm::vec3& spawn_pos, bool override_yaw,
-                             float spawn_yaw);
+void onRegionTransitionCommit(bool preserve_pos, const glm::vec3& spawn_pos, bool override_yaw,
+                              float spawn_yaw);
 
 // Wrap a yaw delta into [-pi, +pi] so rotation always takes the short path.
 float wrapAngleSigned(float delta);

@@ -1,8 +1,0 @@
-{
-  "schema_version": 1,
-  "_comment": "Top-level scene registry. One scene per vertical-slice region. The 'surface' scene holds all currently-realized layers of the Inferno stack (selva surface + chapel + descent corridor + Limbo). Future Lust / Gluttony / etc. either land in this scene as added regions or split into a new vertical-slice scene when streaming forces it.",
-  "scenes": [
-    "surface"
-  ],
-  "default_spawn_scene": "surface"
-}

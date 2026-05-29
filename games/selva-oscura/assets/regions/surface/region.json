@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "scene_id": "surface",
+  "region_id": "surface",
   "debug_name": "Selva surface + chapel + descent + Limbo (all layers as one continuous world)",
   "_comment": "Per Inferno-vertical-stack doctrine: one scene per vertical-slice region. The chapel + descent corridor + Limbo platform are all in this scene as continuous geometry. The player walks from selva surface, into the chapel, down the descent, into Limbo — no scene transitions, no fades, no loading.",
   "terrain": {

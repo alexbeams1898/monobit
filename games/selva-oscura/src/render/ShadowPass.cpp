@@ -20,7 +20,7 @@ namespace
 // Depth-only vertex shaders. One per geometry family because each has
 // its own input layout / transform model. All share the same single
 // uniform mat4 uLightViewProj. The terrain VS has aPos in world space
-// already (Terrain.cpp bakes world positions); scene + tree + skeletal
+// already (Terrain.cpp bakes world positions); region + tree + skeletal
 // each multiply by their own uModel; skeletal additionally applies the
 // bone palette.
 

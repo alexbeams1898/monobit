@@ -51,8 +51,8 @@ add_library(selva-oscura-lib STATIC
     src/combat/WeaponData.cpp
     src/render/Atmosphere.cpp
     src/render/Camera.cpp
-    src/render/SceneGeometry.cpp
-    src/render/SceneShaders.cpp
+    src/render/RegionGeometry.cpp
+    src/render/RegionShaders.cpp
     src/render/ShadowPass.cpp
     src/render/LightSpritePass.cpp
     src/render/SkyPass.cpp
@@ -60,9 +60,9 @@ add_library(selva-oscura-lib STATIC
     src/render/Texture.cpp
     src/render/TreeShader.cpp
     src/render/WorldRenderer.cpp
-    src/world/JsonScene.cpp
-    src/world/PhysicsScene.cpp
-    src/world/SceneBootstrap.cpp
+    src/world/JsonRegion.cpp
+    src/world/PhysicsRegion.cpp
+    src/world/RegionBootstrap.cpp
     src/world/StaticMeshAssets.cpp
     src/world/Terrain.cpp
     src/world/TreeAssets.cpp

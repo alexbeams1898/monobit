@@ -18,9 +18,9 @@ namespace selva::world
 // Must run AFTER initTerrain() and initStaticMeshAssets() so the CPU
 // vertex/index copies exist on those structs.
 // Idempotent. Returns false on failure.
-bool initPhysicsScene();
+bool initPhysicsRegion();
 
-void shutdownPhysicsScene();
+void shutdownPhysicsRegion();
 
 // Player body accessor. Lazily created on first call (or by an
 // explicit createPlayerBody) so we can fall back to a default

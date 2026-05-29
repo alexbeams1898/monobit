@@ -1,6 +1,6 @@
 #pragma once
 
-#include "world/AsyncSceneLoader.h"
+#include "world/AsyncRegionLoader.h"
 #include "world/StaticMeshAssets.h"
 #include "world/TerrainModifiers.h"
 
@@ -14,23 +14,23 @@
 namespace selva::world
 {
 
-// One scene loaded from a scene.json file. The schema is documented at
-// games/selva-oscura/assets/scenes/SCHEMA.md.
+// One scene loaded from a region.json file. The schema is documented at
+// games/selva-oscura/assets/regions/SCHEMA.md.
 //
 // Async-capable: prepareAsync() reads .glb files + builds CPU vertex
 // arrays off the main thread; commitPrepared() inserts Jolt bodies on
 // the main thread.
 //
-// Scene-local terrain (heightmap) is handled by the SurfaceScene
+// Region-local terrain (heightmap) is handled by the SurfaceRegion
 // instance because the existing engine terrain module is a global
 // singleton today. Once a second terrain-bearing scene appears we'll
 // pull that into a scene-local state too.
-class JsonScene : public engine::world::AsyncCapableScene
+class JsonRegion : public engine::world::AsyncCapableRegion
 {
   public:
-    // Construct from already-parsed JSON + the folder the scene.json
+    // Construct from already-parsed JSON + the folder the region.json
     // lives in (used for asset path resolution).
-    JsonScene(const nlohmann::json& json_doc, std::string folder);
+    JsonRegion(const nlohmann::json& json_doc, std::string folder);
 
     // Pre-load all .glb meshes referenced by the JSON. Called ONCE
     // at boot (after scene registration). File I/O + GL upload +
@@ -61,15 +61,15 @@ class JsonScene : public engine::world::AsyncCapableScene
     // static trimesh bodies from already-loaded CPU positions,
     // register terrain modifiers (no-op for non-terrain scenes),
     // register triggers. Fast (sub-ms for 444 bodies).
-    void commitPrepared(engine::world::SceneActivationContext& ctx) override;
+    void commitPrepared(engine::world::RegionActivationContext& ctx) override;
 
-    // Scene-local cleanup at deactivation. Bodies are automatic
+    // Region-local cleanup at deactivation. Bodies are automatic
     // (engine tracks via context). GL resources STAY allocated
     // (resident-all-scenes); freed at game shutdown via freeAssets.
     void onDeactivate() override;
 
     // Free GL/CPU resources at game shutdown. Hooked via the
-    // engine Scene::onShutdown override.
+    // engine Region::onShutdown override.
     void freeAssets();
 
     void onShutdown() override
@@ -89,8 +89,8 @@ class JsonScene : public engine::world::AsyncCapableScene
     void renderMeshesDepth() const;
 
   private:
-    nlohmann::json scene_json;
-    std::string scene_folder;
+    nlohmann::json region_json;
+    std::string region_folder;
 
     struct LoadedMesh
     {

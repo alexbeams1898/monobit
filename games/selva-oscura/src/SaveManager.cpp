@@ -85,9 +85,9 @@ SaveData load(const std::string& path)
             // saves written before the Scenes system existed. Older
             // saves may reference "chapel_interior" or "acheron" —
             // those scenes were collapsed into "surface" so remap.
-            p.current_scene_id = c.value("current_scene_id", std::string{"surface"});
-            if (p.current_scene_id == "chapel_interior" || p.current_scene_id == "acheron")
-                p.current_scene_id = "surface";
+            p.current_region_id = c.value("current_region_id", std::string{"surface"});
+            if (p.current_region_id == "chapel_interior" || p.current_region_id == "acheron")
+                p.current_region_id = "surface";
             if (!p.name.empty())
                 data.characters.push_back(std::move(p));
         }
@@ -138,7 +138,7 @@ bool save(const SaveData& data, const std::string& path)
             {"pos_z", c.pos_z},
             {"yaw", c.yaw},
             {"has_saved_pose", c.has_saved_pose},
-            {"current_scene_id", c.current_scene_id.empty() ? "surface" : c.current_scene_id},
+            {"current_region_id", c.current_region_id.empty() ? "surface" : c.current_region_id},
         });
     }
 

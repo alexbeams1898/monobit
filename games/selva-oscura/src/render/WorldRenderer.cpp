@@ -6,17 +6,17 @@
 #include "gl/ShaderUtils.h"
 #include "physics/PhysicsWorld.h"
 #include "render/Camera.h"
-#include "render/SceneGeometry.h"
-#include "render/SceneShaders.h"
+#include "render/RegionGeometry.h"
+#include "render/RegionShaders.h"
 #include "render/ShadowPass.h"
 #include "render/TerrainShader.h"
 #include "render/TreeShader.h"
 #include "world/Collision.h"
 #include "world/CryptLayout.h"
-#include "world/JsonScene.h"
+#include "world/JsonRegion.h"
 #include "world/Lights.h"
-#include "world/PhysicsScene.h"
-#include "world/Scene.h"
+#include "world/PhysicsRegion.h"
+#include "world/Region.h"
 #include "world/StaticMeshAssets.h"
 #include "world/StructureFootprints.h"
 #include "world/Terrain.h"
@@ -723,7 +723,7 @@ void renderTerrain()
     // structure can pierce: physics floor (Hole modifier), render
     // floor (shader discard), cavern ceiling/walls (quad emission),
     // disc rim (heightmap PNG via dump-world). Single source of
-    // truth, registered once at scene init in
+    // truth, registered once at region init in
     // crypt_layout::registerAuthoredWorld.
 
     const auto& all_lights = engine::world::allLights();
@@ -827,17 +827,17 @@ void drawStaticPrimitive(const selva::world::StaticMeshPrimitive& p)
 
 void renderStaticMeshes()
 {
-    // Active scene owns its static meshes (JsonScene::renderMeshes).
-    // Positions are baked in world space by the scene loader, so
-    // model matrix is identity; the scene-render call sets it.
-    auto* scene = dynamic_cast<selva::world::JsonScene*>(engine::world::currentScenePtr());
-    if (scene != nullptr)
+    // Active region owns its static meshes (JsonRegion::renderMeshes).
+    // Positions are baked in world space by the region loader, so
+    // model matrix is identity; the region-render call sets it.
+    auto* region = dynamic_cast<selva::world::JsonRegion*>(engine::world::currentRegionPtr());
+    if (region != nullptr)
     {
-        scene->renderMeshes();
+        region->renderMeshes();
         return;
     }
-    // Fallback: legacy chapel global (used before the scene system
-    // takes over, e.g. before any scene is activated at boot).
+    // Fallback: legacy chapel global (used before the region system
+    // takes over, e.g. before any region is activated at boot).
     const selva::world::StaticMesh* crypt = selva::world::cryptMesh();
     if (crypt == nullptr)
         return;
@@ -857,15 +857,15 @@ void renderStaticMeshesDepth()
     // the receiver's normal-offset bias handles self-shadow.
     glDisable(GL_CULL_FACE);
 
-    auto* scene = dynamic_cast<selva::world::JsonScene*>(engine::world::currentScenePtr());
-    if (scene != nullptr)
+    auto* region = dynamic_cast<selva::world::JsonRegion*>(engine::world::currentRegionPtr());
+    if (region != nullptr)
     {
-        // Scene-owned meshes: positions baked in world space; depth
+        // Region-owned meshes: positions baked in world space; depth
         // model matrix is identity. Use renderMeshesDepth which does
         // NOT touch color shader state (different shader program is
         // bound by the depth pass).
         selva::render::setSceneDepthModel(glm::mat4(1.0f));
-        scene->renderMeshesDepth();
+        region->renderMeshesDepth();
     }
     else
     {
@@ -919,7 +919,7 @@ void renderTrees()
     const int tree_variants = std::min(kTreeVariantEnd, variant_count);
     const int rock_variants = std::max(0, variant_count - tree_variants);
 
-    for (const auto& c : selva::world::currentScene().cylinders)
+    for (const auto& c : selva::world::currentRegion().cylinders)
     {
         if (c.collision_only)
             continue;
@@ -1018,7 +1018,7 @@ void renderTreesDepth()
     constexpr int kTreeVariantEnd = 4;
     const int tree_variants = std::min(kTreeVariantEnd, variant_count);
 
-    for (const auto& c : selva::world::currentScene().cylinders)
+    for (const auto& c : selva::world::currentRegion().cylinders)
     {
         if (c.collision_only)
             continue;

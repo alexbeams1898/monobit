@@ -38,8 +38,8 @@
 #include "render/Atmosphere.h"
 #include "render/Camera.h"
 #include "render/LightSpritePass.h"
-#include "render/SceneGeometry.h"
-#include "render/SceneShaders.h"
+#include "render/RegionGeometry.h"
+#include "render/RegionShaders.h"
 #include "render/ShadowPass.h"
 #include "render/SkyPass.h"
 #include "render/TerrainShader.h"
@@ -48,8 +48,8 @@
 #include "ui/ComboHud.h"
 #include "world/Collision.h"
 #include "world/Lights.h"
-#include "world/PhysicsScene.h"
-#include "world/Scene.h"
+#include "world/PhysicsRegion.h"
+#include "world/Region.h"
 #include "world/StructureFootprints.h"
 #include "world/Terrain.h"
 #include "world/TerrainModifiers.h"
@@ -3363,10 +3363,10 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     tickCsvRecording(dt);
     logStateNarrative();
 
-    // Scene manager tick: advance any in-progress transitions, then
-    // check player overlap against the current scene's triggers
+    // Region manager tick: advance any in-progress transitions, then
+    // check player overlap against the current region's triggers
     // (edge-fires a transition when player walks into a trigger AABB).
-    engine::world::tickSceneManager(static_cast<float>(dt));
+    engine::world::tickRegionManager(static_cast<float>(dt));
     engine::world::checkPlayerTriggers(sPlayer.pos);
 }
 
@@ -3686,7 +3686,7 @@ static void tickFrameCaptureWrite()
     ++sFrameCaptureCounter;
 }
 
-// Apply per-light flicker (modulates intensity) so the scene mesh's
+// Apply per-light flicker (modulates intensity) so the region mesh's
 // point-light contribution stays in sync with the sprite pass's
 // visible flame brightness.
 static void uploadFlickeredScenePointLights()
@@ -3812,8 +3812,8 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
             selva::render::renderStaticMeshesDepth();
         }
 
-        // Scene cubes (ground decals). Currently no-op but the depth pass
-        // would draw them here once any get added to the scene.
+        // Region cubes (ground decals). Currently no-op but the depth pass
+        // would draw them here once any get added to the region.
 
         {
             ZoneScopedN("shadow-skeletal");
@@ -3869,14 +3869,14 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
 
     const glm::mat4& lightVP = selva::render::lightViewProj();
 
-    // Scene pass runs BEFORE terrain so the chapel mesh writes depth
+    // Region pass runs BEFORE terrain so the chapel mesh writes depth
     // first. Terrain then depth-tests against chapel and loses where
     // chapel is in front of it (the chapel-interior footprint). This
     // is the cleanest carve-out: no shape uniforms, no stencil mask,
     // just draw order + depth test.
     {
-        ZoneScopedN("scene-pass");
-        selva::render::useSceneProgram();
+        ZoneScopedN("region-pass");
+        selva::render::useRegionProgram();
         selva::render::setSceneView(selva::render::lastView());
         selva::render::setSceneViewProj(viewProj);
         selva::render::setSceneAtmosphere(kSunDir, kSunIntensity, camPos, kExposure);
@@ -4021,7 +4021,7 @@ void resetDebugRecordSamples(std::size_t expected)
 
 namespace selva::gameplay
 {
-void onSceneTransitionCommit(bool preserve_pos, const glm::vec3& spawn_pos, bool override_yaw,
+void onRegionTransitionCommit(bool preserve_pos, const glm::vec3& spawn_pos, bool override_yaw,
                              float spawn_yaw)
 {
     if (preserve_pos)
@@ -4029,7 +4029,7 @@ void onSceneTransitionCommit(bool preserve_pos, const glm::vec3& spawn_pos, bool
         // Seamless doorway: player stays at their current world
         // position. Just sync the Jolt capsule to wherever
         // sPlayer.pos already is (the body was destroyed with the
-        // old scene; new scene's bodies don't include the player,
+        // old region; new region's bodies don't include the player,
         // and the next resolvePlayerCollisionAndSnap will re-create
         // it lazily at sPlayer.pos).
         //

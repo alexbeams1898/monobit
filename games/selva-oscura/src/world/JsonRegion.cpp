@@ -1,8 +1,8 @@
-#include "world/JsonScene.h"
+#include "world/JsonRegion.h"
 
 #include "Tunables.h"
 #include "physics/PhysicsWorld.h"
-#include "render/SceneShaders.h"
+#include "render/RegionShaders.h"
 #include "world/Terrain.h"
 
 #include <cmath>
@@ -50,11 +50,11 @@ engine::world::TerrainModifier::Mode parseModifierMode(const std::string& s)
     return M::FlushAt;
 }
 
-engine::world::SceneKind parseSceneKind(const std::string& s)
+engine::world::RegionKind parseRegionKind(const std::string& s)
 {
     if (s == "Interior")
-        return engine::world::SceneKind::Interior;
-    return engine::world::SceneKind::Exterior;
+        return engine::world::RegionKind::Interior;
+    return engine::world::RegionKind::Exterior;
 }
 
 glm::vec3 parseVec3(const nlohmann::json& a, glm::vec3 def = {0, 0, 0})
@@ -73,26 +73,26 @@ glm::vec2 parseVec2(const nlohmann::json& a, glm::vec2 def = {0, 0})
 
 } // namespace
 
-JsonScene::JsonScene(const nlohmann::json& json_doc, std::string folder)
-    : engine::world::AsyncCapableScene(
-          json_doc.value("scene_id", std::string{}), json_doc.value("debug_name", std::string{}),
-          parseSceneKind(json_doc.value("scene_kind", std::string{"Exterior"}))),
-      scene_json(json_doc), scene_folder(std::move(folder))
+JsonRegion::JsonRegion(const nlohmann::json& json_doc, std::string folder)
+    : engine::world::AsyncCapableRegion(
+          json_doc.value("region_id", std::string{}), json_doc.value("debug_name", std::string{}),
+          parseRegionKind(json_doc.value("region_kind", std::string{"Exterior"}))),
+      region_json(json_doc), region_folder(std::move(folder))
 {
 }
 
-void JsonScene::preloadAssets()
+void JsonRegion::preloadAssets()
 {
     if (is_preloaded)
         return; // idempotent — lazy callers can call freely
-    std::fprintf(stderr, "[json-scene '%s'] preloadAssets START\n", sceneId().c_str());
+    std::fprintf(stderr, "[json-region '%s'] preloadAssets START\n", regionId().c_str());
     // File I/O + GL upload + Jolt SHAPE construction happen HERE,
     // once at boot. Per-activation commit reuses preloaded shapes
     // to insert bodies in O(1) — no per-transition BVH rebuilds.
     // (Terrain alone is 73k tris and rebuilding its MeshShape on
-    // every scene-exit costs ~400ms in Debug. Shape preload keeps
+    // every region-exit costs ~400ms in Debug. Shape preload keeps
     // transitions truly instant.)
-    const auto& meshes_json = scene_json.value("static_meshes", nlohmann::json::array());
+    const auto& meshes_json = region_json.value("static_meshes", nlohmann::json::array());
     for (const auto& m : meshes_json)
     {
         auto lm = std::make_unique<LoadedMesh>();
@@ -102,7 +102,7 @@ void JsonScene::preloadAssets()
         lm->debug_name = m.value("debug_name", std::string{});
         if (!loadStaticMesh(lm->path.c_str(), lm->world_origin, lm->mesh))
         {
-            std::fprintf(stderr, "[json-scene '%s'] failed to load mesh: %s\n", sceneId().c_str(),
+            std::fprintf(stderr, "[json-region '%s'] failed to load mesh: %s\n", regionId().c_str(),
                          lm->path.c_str());
             continue;
         }
@@ -125,17 +125,17 @@ void JsonScene::preloadAssets()
             lm->shape_handles.push_back(
                 engine::physics::createStaticTrimeshShape(prim.cpu_positions, prim.cpu_indices));
         }
-        std::fprintf(stderr, "[json-scene '%s'] preloaded mesh '%s' (%zu prims, %zu shapes)\n",
-                     sceneId().c_str(), lm->debug_name.c_str(), lm->mesh.primitives.size(),
+        std::fprintf(stderr, "[json-region '%s'] preloaded mesh '%s' (%zu prims, %zu shapes)\n",
+                     regionId().c_str(), lm->debug_name.c_str(), lm->mesh.primitives.size(),
                      lm->shape_handles.size());
         loaded_meshes.push_back(std::move(lm));
     }
 
     // Terrain shapes — built once at boot for whichever scenes
     // declare `terrain`. Even though terrain regions are global
-    // today, preloading per scene that uses them keeps the shape
-    // tied to the scene's lifetime conceptually.
-    if (scene_json.contains("terrain") && !scene_json["terrain"].is_null())
+    // today, preloading per region that uses them keeps the shape
+    // tied to the region's lifetime conceptually.
+    if (region_json.contains("terrain") && !region_json["terrain"].is_null())
     {
         for (int i = 0; i < selva::world::terrainRegionCount(); ++i)
         {
@@ -147,26 +147,26 @@ void JsonScene::preloadAssets()
             }
             terrain_shapes.push_back(
                 engine::physics::createStaticTrimeshShape(r.cpu_positions, r.cpu_indices));
-            std::fprintf(stderr, "[json-scene '%s'] preloaded terrain shape '%s'\n",
-                         sceneId().c_str(), r.name.c_str());
+            std::fprintf(stderr, "[json-region '%s'] preloaded terrain shape '%s'\n",
+                         regionId().c_str(), r.name.c_str());
         }
     }
 
-    std::fprintf(stderr, "[json-scene '%s'] preloadAssets END (%zu meshes, %zu terrain shapes)\n",
-                 sceneId().c_str(), loaded_meshes.size(), terrain_shapes.size());
+    std::fprintf(stderr, "[json-region '%s'] preloadAssets END (%zu meshes, %zu terrain shapes)\n",
+                 regionId().c_str(), loaded_meshes.size(), terrain_shapes.size());
     is_preloaded = true;
 }
 
-void JsonScene::commitPrepared(engine::world::SceneActivationContext& ctx)
+void JsonRegion::commitPrepared(engine::world::RegionActivationContext& ctx)
 {
-    // Lazy preload: if a scene wasn't preloaded at boot (e.g.
+    // Lazy preload: if a region wasn't preloaded at boot (e.g.
     // chapel_interior, which only loads when the player crosses
     // the door trigger), do it now. Idempotent — preloadAssets
     // short-circuits if already loaded.
     if (!is_preloaded)
         preloadAssets();
-    std::fprintf(stderr, "[json-scene '%s'] commitPrepared (activation) START\n",
-                 sceneId().c_str());
+    std::fprintf(stderr, "[json-region '%s'] commitPrepared (activation) START\n",
+                 regionId().c_str());
     // All Jolt shapes are preloaded in preloadAssets. This pass
     // only inserts bodies referencing those cached shapes — O(1)
     // per body, sub-ms total even for 444-primitive chapels +
@@ -206,13 +206,13 @@ void JsonScene::commitPrepared(engine::world::SceneActivationContext& ctx)
     // ---- Terrain modifiers ----
     // NOTE: modifiers must be registered BEFORE the terrain region is
     // built, since the build queries the registry per vertex. For
-    // scenes whose terrain is rebuilt at activation (TODO: per-scene
+    // scenes whose terrain is rebuilt at activation (TODO: per-region
     // terrain), this is automatic. For the current global terrain
-    // (only SurfaceScene uses it, baked once at boot), modifiers are
+    // (only SurfaceRegion uses it, baked once at boot), modifiers are
     // applied at boot and changing them after requires a rebuild.
-    // Until per-scene terrain ships, modifiers in scene.json are
+    // Until per-region terrain ships, modifiers in region.json are
     // applied as the engine sees them.
-    const auto& mods_json = scene_json.value("terrain_modifiers", nlohmann::json::array());
+    const auto& mods_json = region_json.value("terrain_modifiers", nlohmann::json::array());
     for (const auto& m : mods_json)
     {
         engine::world::TerrainModifier mod;
@@ -233,15 +233,15 @@ void JsonScene::commitPrepared(engine::world::SceneActivationContext& ctx)
     }
 
     // ---- Triggers ----
-    const auto& trigs_json = scene_json.value("triggers", nlohmann::json::array());
+    const auto& trigs_json = region_json.value("triggers", nlohmann::json::array());
     for (const auto& t : trigs_json)
     {
-        engine::world::SceneTrigger trig;
+        engine::world::RegionTrigger trig;
         trig.id = t.value("id", std::string{});
         trig.center = parseVec3(t.value("center", nlohmann::json::array()));
         trig.half_extents = parseVec3(t.value("half_extents", nlohmann::json::array()));
-        const std::string target_scene_id = t.value("target_scene", std::string{});
-        trig.target = engine::world::findSceneId(target_scene_id.c_str());
+        const std::string target_region_id = t.value("target_region", std::string{});
+        trig.target = engine::world::findRegionId(target_region_id.c_str());
         trig.preserve_player_pos = t.value("preserve_player_pos", false);
         trig.target_spawn_pos = parseVec3(t.value("target_spawn_pos", nlohmann::json::array()));
         trig.override_yaw = t.value("override_yaw", false);
@@ -250,18 +250,18 @@ void JsonScene::commitPrepared(engine::world::SceneActivationContext& ctx)
         trig.fade_duration_seconds = t.value("fade_duration_seconds", 0.4f);
         trig.debug_name = t.value("debug_name", std::string{});
         ctx.addTrigger(trig);
-        if (trig.target == engine::world::kInvalidScene)
+        if (trig.target == engine::world::kInvalidRegion)
         {
-            std::fprintf(stderr, "[json-scene '%s'] trigger '%s' targets unknown scene '%s'\n",
-                         sceneId().c_str(), trig.id.c_str(), target_scene_id.c_str());
+            std::fprintf(stderr, "[json-region '%s'] trigger '%s' targets unknown region '%s'\n",
+                         regionId().c_str(), trig.id.c_str(), target_region_id.c_str());
         }
     }
     std::fprintf(stderr,
-                 "[json-scene '%s'] commitPrepared END (%zu meshes, %zu mods, %zu triggers)\n",
-                 sceneId().c_str(), loaded_meshes.size(), mods_json.size(), trigs_json.size());
+                 "[json-region '%s'] commitPrepared END (%zu meshes, %zu mods, %zu triggers)\n",
+                 regionId().c_str(), loaded_meshes.size(), mods_json.size(), trigs_json.size());
 }
 
-void JsonScene::onDeactivate()
+void JsonRegion::onDeactivate()
 {
     // Resident-all-scenes: GL resources stay allocated across the
     // game session so re-activation is sub-ms. They're freed at
@@ -269,7 +269,7 @@ void JsonScene::onDeactivate()
     // via the engine's owned-body tracking.
 }
 
-void JsonScene::freeAssets()
+void JsonRegion::freeAssets()
 {
     for (auto& lm : loaded_meshes)
     {
@@ -279,7 +279,7 @@ void JsonScene::freeAssets()
     loaded_meshes.clear();
 }
 
-void JsonScene::renderMeshesDepth() const
+void JsonRegion::renderMeshesDepth() const
 {
     // Depth pass: shader + model matrix already bound by caller.
     // Just draw the primitives. No color/tint state (different
@@ -300,7 +300,7 @@ void JsonScene::renderMeshesDepth() const
     }
 }
 
-void JsonScene::renderMeshes() const
+void JsonRegion::renderMeshes() const
 {
     // Draw every primitive of every loaded mesh at identity model
     // (positions are already world-space thanks to loadStaticMesh's

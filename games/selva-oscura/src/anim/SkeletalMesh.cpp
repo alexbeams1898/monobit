@@ -200,7 +200,7 @@ bool readMat4Array(const cgltf_accessor* acc, std::vector<glm::mat4>& out)
     return true;
 }
 
-// Find the scene node that uses a given mesh. glTF doesn't store the
+// Find the region node that uses a given mesh. glTF doesn't store the
 // reverse mapping, so we walk all nodes once. Returns nullptr if no node
 // references the mesh (rare — would be a malformed file).
 //
@@ -208,7 +208,7 @@ bool readMat4Array(const cgltf_accessor* acc, std::vector<glm::mat4>& out)
 // root node typically applies a unit-conversion scale (e.g. cm→m for
 // Mixamo) that we have to bake into the rest-pose vertices, otherwise
 // they'll be in centimeters while the bone palette (which gltf2ozz
-// already scene-graph-corrected) is in meters.
+// already region-graph-corrected) is in meters.
 const cgltf_node* findNodeForMesh(const cgltf_data* data, const cgltf_mesh* mesh)
 {
     for (cgltf_size i = 0; i < data->nodes_count; ++i)

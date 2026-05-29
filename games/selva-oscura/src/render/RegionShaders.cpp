@@ -1,4 +1,4 @@
-#include "render/SceneShaders.h"
+#include "render/RegionShaders.h"
 
 #include "gl/ShaderUtils.h"
 #include "render/AtmosphereShader.h"
@@ -160,7 +160,7 @@ bool sLightOverflowWarned = false;
 
 } // namespace
 
-bool initSceneProgram()
+bool initRegionProgram()
 {
     const std::string fs = std::string(kSceneFragmentShaderCore) + kAtmosphereGLSL + kShadowGLSL +
                            kSceneFragmentShaderMain;
@@ -188,7 +188,7 @@ bool initSceneProgram()
     return true;
 }
 
-void shutdownSceneProgram()
+void shutdownRegionProgram()
 {
     if (sProgram != 0)
     {
@@ -199,7 +199,7 @@ void shutdownSceneProgram()
         sUniSunIntensityLoc = sUniCamPosLoc = sUniCamPosVSLoc = sUniExposureLoc = -1;
 }
 
-void useSceneProgram()
+void useRegionProgram()
 {
     glUseProgram(sProgram);
     if (sUniBaseColorLoc >= 0)
@@ -257,7 +257,7 @@ void setScenePointLights(const std::vector<engine::world::LightSource>& lights)
     if (total > kMaxLights && !sLightOverflowWarned)
     {
         std::fprintf(stderr,
-                     "[SceneShaders] light count %d exceeds MAX_LIGHTS=%d; "
+                     "[RegionShaders] light count %d exceeds MAX_LIGHTS=%d; "
                      "extras dropped. Raise the cap or filter by region.\n",
                      total, kMaxLights);
         sLightOverflowWarned = true;
