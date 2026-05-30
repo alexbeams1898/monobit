@@ -26,6 +26,7 @@ add_library(selva-oscura-lib STATIC
     src/anim/Skeleton.cpp
     src/anim/SkeletalMesh.cpp
     src/anim/SkeletalRenderer.cpp
+    src/anim/SkeletonJointMap.cpp
     src/gameplay/Actor.cpp
     src/gameplay/AiBarriers.cpp
     src/gameplay/AiTick.cpp
@@ -146,6 +147,18 @@ add_custom_target(selva-oscura-sync-config ALL
 # between mismatched skeletons — it's to make sure there's only one.
 # See memory/feedback_no_bandaids_root_cause.md.
 # ---------------------------------------------------------------------------
+# NOTE: this entire X_Bot bake pipeline (lines ~145-405) will be
+# factored into a `_selva_register_skeleton(id, source_dir, mesh_filename)`
+# function when the WOLF skeleton lands in Phase B of the multi-skeleton
+# refactor (see docs/design/animals_and_multi_skeleton.md). The wolf's
+# bake follows the same shape: per-rig fbx2gltf -> per-rig gltf2ozz
+# with that rig's skeleton as retarget reference -> per-clip gltf2ozz
+# against the rig. Refactoring before the second skeleton exists is
+# speculative (can't test the function-call shape without two callers);
+# done concurrently with the wolf so both shape + behavior are verified
+# in the same change. The PoseSampler / SkeletalAssets / EnemyArchetype
+# C++ changes are already wolf-ready -- only the bake pipeline still
+# assumes one skeleton, and that's pure mechanical CMake rearrangement.
 set(xbot_dir ${CMAKE_CURRENT_SOURCE_DIR}/assets/characters/x_bot)
 set(fbx2gltf_exe ${CMAKE_SOURCE_DIR}/tools/fbx2gltf/FBX2glTF.exe)
 

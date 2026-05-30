@@ -103,8 +103,23 @@ JsonRegion::JsonRegion(const nlohmann::json& json_doc, std::string folder)
             const auto& pos_arr = s.at("pos");
             if (!pos_arr.is_array() || pos_arr.size() < 3)
                 throw std::runtime_error("enemy_spawns[].pos must be [x, y, z]");
-            d.pos = glm::vec3(pos_arr[0].get<float>(), pos_arr[1].get<float>(),
-                              pos_arr[2].get<float>());
+            const float px = pos_arr[0].get<float>();
+            const float pz = pos_arr[2].get<float>();
+            // pos[1] is either a numeric Y OR the string sentinel
+            // "auto_terrain" (resolves to groundHeight(x,z) at spawn).
+            float py = 0.0f;
+            if (pos_arr[1].is_string())
+            {
+                if (pos_arr[1].get<std::string>() == "auto_terrain")
+                    d.pos_y_auto_terrain = true;
+                else
+                    throw std::runtime_error("enemy_spawns[].pos[1] string must be \"auto_terrain\"");
+            }
+            else
+            {
+                py = pos_arr[1].get<float>();
+            }
+            d.pos = glm::vec3(px, py, pz);
             d.yaw = s.value("yaw", 0.0f);
             d.permanent_on_death = s.value("permanent_on_death", false);
             if (s.contains("patrol_path") && s["patrol_path"].is_array())

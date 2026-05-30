@@ -26,6 +26,14 @@ struct EnemySpawnDecl
     std::string id;                       // unique-within-region; required
     std::string archetype;                // archetype lookup id; required
     glm::vec3 pos = glm::vec3(0.0f);      // world XYZ; required
+    // If true, pos.y is IGNORED and the spawn-time code resolves Y
+    // via selva::world::groundHeight(pos.x, pos.z, +infinity-bias-fallback).
+    // Authored as the string "auto_terrain" in JSON pos[1] (vs a
+    // float literal Y). Useful for actors on terrain whose Y is
+    // tedious to hand-pick (slopes, future-circle plains where the
+    // author works in 2D maps); literal Y still works (16 limbo
+    // shades all use literal -43.13). Wolf is the first user.
+    bool pos_y_auto_terrain = false;
     float yaw = 0.0f;                     // facing radians; optional, default 0
     bool permanent_on_death = false;      // keepers=true (do not respawn on cycle); shades=false
     std::vector<glm::vec3> patrol_path;   // optional roaming waypoints; ignored until AI_Roaming lands

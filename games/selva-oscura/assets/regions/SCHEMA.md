@@ -158,7 +158,7 @@ actor in the world at boot.
 {
   "id": "limbo_shade_riverbank_01",      // unique within this region; persists across cycles for save state
   "archetype": "limbo_shade",             // archetype lookup id from config/enemies/
-  "pos": [12.5, -43.13, -18.0],           // world XYZ
+  "pos": [12.5, -43.13, -18.0],           // world XYZ; OR pos[1] can be the string "auto_terrain"
   "yaw": 1.57,                            // facing radians (optional, default 0)
   "permanent_on_death": false,            // optional, default false. true = "felled keeper does not respawn" per setting.md
   "patrol_path": [[12.5, -43.13, -18.0], [8.0, -43.13, -22.0]]  // optional roaming waypoints; ignored until AI_Roaming lands
@@ -168,6 +168,19 @@ actor in the world at boot.
 **Required:** `id`, `archetype`, `pos`. Missing any of these throws at
 boot rather than silently spawning nothing -- the same fail-loudly
 contract as the rest of the region schema.
+
+**`pos[1]` sentinel:** numeric Y is the literal world Y (default
+authoring). The string `"auto_terrain"` is a sentinel meaning
+"sample `groundHeight(x, z)` at spawn-time and use that Y." Useful
+for actors authored on a slope where the exact Y is tedious to
+hand-pick. The 16 Limbo shades all use literal Y=-43.13 (flat disc
+floor); the wolf placeholder on the colle's south slope uses
+`"auto_terrain"` because the slope's heightmap isn't trivially
+sample-able from the JSON. Example:
+
+```json
+"pos": [0.0, "auto_terrain", -90.0]
+```
 
 **Respawn semantics** are the canonical cycle-flow model per
 `docs/design/setting.md` *Per-circle reactivity* + *Cycle structure*:

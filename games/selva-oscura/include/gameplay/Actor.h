@@ -1,6 +1,7 @@
 #pragma once
 
 #include "anim/PoseSampler.h"
+#include "combat/HurtboxDecl.h"
 #include "gameplay/Perception.h"
 
 #include <glm/vec2.hpp>
@@ -116,6 +117,22 @@ struct Stats
 // before per-instance stats stack on top. For the player today this
 // holds the same humanoid defaults; tomorrow's class system layers
 // onto Stats, not Body.
+// Orientation of the body's collider capsule.
+//   Vertical -- capsule axis is world-Y. Standard humanoid (X_Bot,
+//     limbo shades). collider_length is ignored; the capsule height
+//     is implicitly the actor's standing height.
+//   AlongYaw -- capsule axis is the actor's facing direction
+//     (rotates with yaw, parallel to ground). Used for quadrupeds
+//     (wolf, lion, etc.) whose body is horizontal nose-to-tail.
+//     collider_length is the capsule length along the spine; the
+//     two end-caps land at p0 = pos - 0.5*length*forward and
+//     p1 = pos + 0.5*length*forward.
+enum class CapsuleAxis : std::uint8_t
+{
+    Vertical,
+    AlongYaw,
+};
+
 struct Body
 {
     int base_hp = 50;
@@ -124,7 +141,20 @@ struct Body
     int base_defense = 0; // flat damage reduction; clamped to >= 1 incoming
     float unarmed_damage = 6.0f;
     float unarmed_poise_damage = 8.0f; // baseline poise damage per fist hit
-    float collider_radius = 0.35f;     // XZ capsule radius for collision
+    float collider_radius = 0.35f;     // capsule radius (both axis modes)
+    // Capsule axis. Default Vertical preserves humanoid behavior
+    // (every existing actor is humanoid); AlongYaw used by quadrupeds.
+    CapsuleAxis collider_axis = CapsuleAxis::Vertical;
+    // Capsule length along the chosen axis. Only consulted when
+    // collider_axis == AlongYaw. For Vertical, the capsule height
+    // is implicit from the actor's standing pose.
+    float collider_length = 0.0f;
+    // Per-actor hurtbox layout. Authored per skeleton (player from
+    // config/skeletons/player_hurtboxes.json; enemies from their
+    // archetype JSON's hurtboxes array). Empty = no hurtboxes
+    // (actor takes no hits anywhere; intentional or
+    // misconfiguration).
+    std::vector<selva::combat::HurtboxDecl> hurtbox_decls;
 };
 
 // Derived max HP / stamina / poise from Body + Stats. Linear scaling for v1;
@@ -309,6 +339,14 @@ struct Actor
     // via region JSON.
     std::string spawn_region_id;
 
+    // Skeleton key (matches SkeletalAssets registry: "player" for
+    // humanoids reusing the X_Bot rig; "wolf" / etc. for distinct
+    // skeletons). Used by render + matrix-build call sites that need
+    // the actor's mesh-specific foot_offset_y. Empty defaults to
+    // "player" in selva::anim::meshByKey -- backward-compat for any
+    // call site that doesn't set this.
+    std::string skeleton_id;
+
     // If true, this actor stays dead across cycle resets -- the
     // canonical Souls "felled keeper does not respawn" contract per
     // setting.md cycle structure. Shades default false (cycle-flow
@@ -445,6 +483,14 @@ std::vector<Actor>& actors();
 // Assumes the pool has at least one entry — call after the
 // player has been initialized.
 Actor& player();
+
+// Per-actor mesh foot offset. Resolves via the actor's skeleton_id
+// through the SkeletalAssets registry. Empty skeleton_id falls back
+// to the player's mesh (backward-compat for any call site that
+// hasn't been updated yet). Used by render + matrix-build sites
+// (buildActorModelMatrix, lock-on target screen-project, etc.) so a
+// wolf's mesh lands at the right foot height vs the humanoid's.
+float actorFootOffsetY(const Actor& a);
 
 // Initialize the pool with the player at index 0. Called once at
 // startup, before any gameplay tick. Idempotent: clears + spawns.

@@ -2,6 +2,10 @@
 
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <nlohmann/json.hpp>
+
+#include <cstdio>
+#include <fstream>
 
 namespace selva::combat
 {
@@ -62,41 +66,69 @@ void appendActorHurtboxes(const selva::anim::PoseSampler& sampler, const glm::ma
         return;
     const float base_r = body.collider_radius;
     auto& pool = hurtboxes();
+    // Iterate declarations from the body. Authored per skeleton:
+    // player loads config/skeletons/player_hurtboxes.json; enemy
+    // archetypes carry their own hurtboxes array. Empty = no
+    // hurtboxes (actor takes no hits; intentional or misconfigured).
+    pool.reserve(pool.size() + body.hurtbox_decls.size());
+    for (const auto& d : body.hurtbox_decls)
+    {
+        Hurtbox h = capsuleBetween(sampler, actor_model, d.joint_a.c_str(), d.joint_b.c_str(),
+                                   d.region, base_r * d.radius_scale, owner, faction);
+        h.damage_multiplier = d.damage_multiplier;
+        pool.push_back(h);
+    }
+}
 
-    // Torso: hips to neck. Largest hurtbox.
-    pool.push_back(capsuleBetween(sampler, actor_model, "mixamorig:Hips", "mixamorig:Neck",
-                                  HurtRegion::Torso, base_r * 0.9f, owner, faction));
-    // Head: neck to head joint. Smaller radius, headshot multiplier
-    // will live on per-region damage when authoring lands.
-    Hurtbox head = capsuleBetween(sampler, actor_model, "mixamorig:Neck", "mixamorig:Head",
-                                  HurtRegion::Head, base_r * 0.55f, owner, faction);
-    head.damage_multiplier = 1.5f;
-    pool.push_back(head);
+namespace
+{
+HurtRegion parseHurtRegion(const std::string& s)
+{
+    if (s == "Head")
+        return HurtRegion::Head;
+    if (s == "UpperLimb")
+        return HurtRegion::UpperLimb;
+    if (s == "LowerLimb")
+        return HurtRegion::LowerLimb;
+    return HurtRegion::Torso;
+}
+} // namespace
 
-    // Upper limbs (4 capsules: each upper arm + each thigh).
-    pool.push_back(capsuleBetween(sampler, actor_model, "mixamorig:LeftArm",
-                                  "mixamorig:LeftForeArm", HurtRegion::UpperLimb, base_r * 0.35f,
-                                  owner, faction));
-    pool.push_back(capsuleBetween(sampler, actor_model, "mixamorig:RightArm",
-                                  "mixamorig:RightForeArm", HurtRegion::UpperLimb, base_r * 0.35f,
-                                  owner, faction));
-    pool.push_back(capsuleBetween(sampler, actor_model, "mixamorig:LeftUpLeg", "mixamorig:LeftLeg",
-                                  HurtRegion::UpperLimb, base_r * 0.5f, owner, faction));
-    pool.push_back(capsuleBetween(sampler, actor_model, "mixamorig:RightUpLeg",
-                                  "mixamorig:RightLeg", HurtRegion::UpperLimb, base_r * 0.5f, owner,
-                                  faction));
-
-    // Lower limbs (forearms + shins).
-    pool.push_back(capsuleBetween(sampler, actor_model, "mixamorig:LeftForeArm",
-                                  "mixamorig:LeftHand", HurtRegion::LowerLimb, base_r * 0.3f, owner,
-                                  faction));
-    pool.push_back(capsuleBetween(sampler, actor_model, "mixamorig:RightForeArm",
-                                  "mixamorig:RightHand", HurtRegion::LowerLimb, base_r * 0.3f,
-                                  owner, faction));
-    pool.push_back(capsuleBetween(sampler, actor_model, "mixamorig:LeftLeg", "mixamorig:LeftFoot",
-                                  HurtRegion::LowerLimb, base_r * 0.4f, owner, faction));
-    pool.push_back(capsuleBetween(sampler, actor_model, "mixamorig:RightLeg", "mixamorig:RightFoot",
-                                  HurtRegion::LowerLimb, base_r * 0.4f, owner, faction));
+std::vector<HurtboxDecl> loadHurtboxDecls(const char* json_path)
+{
+    std::vector<HurtboxDecl> out;
+    std::ifstream f(json_path);
+    if (!f.is_open())
+    {
+        std::fprintf(stderr, "[hurtbox-load] cannot open %s\n", json_path);
+        return out;
+    }
+    try
+    {
+        nlohmann::json doc;
+        f >> doc;
+        if (!doc.contains("hurtboxes") || !doc.at("hurtboxes").is_array())
+        {
+            std::fprintf(stderr, "[hurtbox-load] %s: missing 'hurtboxes' array\n", json_path);
+            return out;
+        }
+        for (const auto& h : doc.at("hurtboxes"))
+        {
+            HurtboxDecl d;
+            d.joint_a = h.value("joint_a", std::string{});
+            d.joint_b = h.value("joint_b", std::string{});
+            d.region = parseHurtRegion(h.value("region", std::string{"Torso"}));
+            d.radius_scale = h.value("radius_scale", 0.5f);
+            d.damage_multiplier = h.value("damage_multiplier", 1.0f);
+            out.push_back(std::move(d));
+        }
+        std::fprintf(stderr, "[hurtbox-load] %s: %zu decls\n", json_path, out.size());
+    }
+    catch (const std::exception& e)
+    {
+        std::fprintf(stderr, "[hurtbox-load] %s parse failed: %s\n", json_path, e.what());
+    }
+    return out;
 }
 
 } // namespace selva::combat

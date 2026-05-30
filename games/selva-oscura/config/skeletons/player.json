@@ -1,0 +1,13 @@
+{
+  "_comment": "Player (X_Bot) skeleton joint map. Decouples PoseSampler from Mixamo conventions by translating semantic joint roles (hips, foot_left, etc.) to this skeleton's actual joint names. Mirror values from the hardcoded mixamorig:* strings that used to live in PoseSampler.cpp. When ALL hardcoded mixamorig refs are removed (Phase A.4), this file is the single source of truth for which joints PoseSampler queries on the player rig.",
+  "skeleton_id": "player",
+  "joint_names": {
+    "hips": "mixamorig:Hips",
+    "upleg_left": "mixamorig:LeftUpLeg",
+    "upleg_right": "mixamorig:RightUpLeg",
+    "leg_left": "mixamorig:LeftLeg",
+    "leg_right": "mixamorig:RightLeg",
+    "foot_left": "mixamorig:LeftFoot",
+    "foot_right": "mixamorig:RightFoot"
+  }
+}

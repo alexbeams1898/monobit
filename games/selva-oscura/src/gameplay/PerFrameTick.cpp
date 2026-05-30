@@ -972,7 +972,7 @@ static void spawnPlayerAttackHitboxForClip(const char* clip_name,
     sp.clip_duration_seconds = clip.duration();
     sp.clip_start_seconds = start_seconds;
     sp.playback_rate = playback_rate;
-    sp.mesh_foot_offset_y = sPlayerMesh.foot_offset_y;
+    sp.mesh_foot_offset_y = selva::gameplay::actorFootOffsetY(sPlayer);
     selva::combat::resetHitMemo();
     selva::combat::spawnAttackHitbox(sp);
 }
@@ -3148,8 +3148,8 @@ static void tickDevKillKey(const Uint8* keys)
 static void populateActorHurtboxes()
 {
     selva::combat::clearHurtboxes();
-    const glm::mat4 player_model =
-        selva::combat::buildActorModelMatrix(sPlayer.pos, sPlayer.yaw, sPlayerMesh.foot_offset_y);
+    const glm::mat4 player_model = selva::combat::buildActorModelMatrix(
+        sPlayer.pos, sPlayer.yaw, selva::gameplay::actorFootOffsetY(sPlayer));
     selva::combat::appendActorHurtboxes(
         sSampler, player_model, sPlayer.body,
         selva::combat::OwnerRef{selva::combat::OwnerKind::Player, 0}, sPlayer.faction);
@@ -3159,7 +3159,7 @@ static void populateActorHurtboxes()
     {
         const auto& e = *list[i];
         const glm::mat4 m =
-            selva::combat::buildActorModelMatrix(e.pos, e.yaw, sPlayerMesh.foot_offset_y);
+            selva::combat::buildActorModelMatrix(e.pos, e.yaw, selva::gameplay::actorFootOffsetY(e));
         selva::combat::appendActorHurtboxes(
             e.sampler, m, e.body, selva::combat::OwnerRef{selva::combat::OwnerKind::Enemy, i},
             e.faction);
@@ -3627,8 +3627,8 @@ static void drawActorMeshes(const glm::mat4& viewProj)
     const bool fpv = selva::render::cameraMode() == selva::render::CameraMode::FirstPerson;
     if (!sSampler.bone_palette.empty())
     {
-        const glm::vec3 player_pos(sPlayer.pos.x, sPlayer.pos.y - sPlayerMesh.foot_offset_y,
-                                   sPlayer.pos.z);
+        const float pfoot = selva::gameplay::actorFootOffsetY(sPlayer);
+        const glm::vec3 player_pos(sPlayer.pos.x, sPlayer.pos.y - pfoot, sPlayer.pos.z);
         glm::mat4 player_model = glm::translate(glm::mat4(1.0f), player_pos);
         player_model =
             glm::rotate(player_model, sPlayer.yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
@@ -3652,12 +3652,18 @@ static void drawActorMeshes(const glm::mat4& viewProj)
     {
         if (enemy->sampler.bone_palette.empty())
             continue;
-        const glm::vec3 enemy_pos(enemy->pos.x, enemy->pos.y - sPlayerMesh.foot_offset_y,
-                                  enemy->pos.z);
+        // Resolve per-enemy mesh + foot offset so wolf draws with its
+        // own mesh + ground-aligned. Humanoid shades use the player
+        // mesh transparently (skeleton_id="player").
+        const std::string sk_id =
+            enemy->skeleton_id.empty() ? std::string("player") : enemy->skeleton_id;
+        auto& enemy_mesh = selva::anim::meshByKey(sk_id);
+        const float efoot = enemy_mesh.foot_offset_y;
+        const glm::vec3 enemy_pos(enemy->pos.x, enemy->pos.y - efoot, enemy->pos.z);
         glm::mat4 enemy_model = glm::translate(glm::mat4(1.0f), enemy_pos);
         enemy_model =
             glm::rotate(enemy_model, enemy->yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
-        selva::anim::drawSkeletalMesh(sPlayerMesh, enemy_model, viewProj,
+        selva::anim::drawSkeletalMesh(enemy_mesh, enemy_model, viewProj,
                                       enemy->sampler.bone_palette, glm::vec3(1.0f, 1.0f, 1.0f));
     }
 }
@@ -3844,8 +3850,8 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
             // complete silhouette, head included.
             if (sPlayerMesh.isLoaded() && !sSampler.bone_palette.empty())
             {
-                const glm::vec3 player_pos(sPlayer.pos.x, sPlayer.pos.y - sPlayerMesh.foot_offset_y,
-                                           sPlayer.pos.z);
+                const float pfoot = selva::gameplay::actorFootOffsetY(sPlayer);
+                const glm::vec3 player_pos(sPlayer.pos.x, sPlayer.pos.y - pfoot, sPlayer.pos.z);
                 glm::mat4 m = glm::translate(glm::mat4(1.0f), player_pos);
                 m = glm::rotate(m, sPlayer.yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
                 selva::render::setSkeletalDepthModel(m);
@@ -3858,16 +3864,19 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
             {
                 if (enemy->sampler.bone_palette.empty())
                     continue;
-                const glm::vec3 enemy_pos(enemy->pos.x, enemy->pos.y - sPlayerMesh.foot_offset_y,
-                                          enemy->pos.z);
+                const std::string sk_id =
+                    enemy->skeleton_id.empty() ? std::string("player") : enemy->skeleton_id;
+                auto& enemy_mesh = selva::anim::meshByKey(sk_id);
+                const float efoot = enemy_mesh.foot_offset_y;
+                const glm::vec3 enemy_pos(enemy->pos.x, enemy->pos.y - efoot, enemy->pos.z);
                 glm::mat4 m = glm::translate(glm::mat4(1.0f), enemy_pos);
                 m = glm::rotate(m, enemy->yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
                 selva::render::setSkeletalDepthModel(m);
                 selva::render::setSkeletalDepthBones(
                     enemy->sampler.bone_palette.data(),
                     static_cast<int>(enemy->sampler.bone_palette.size()));
-                glBindVertexArray(sPlayerMesh.vao);
-                glDrawElements(GL_TRIANGLES, sPlayerMesh.index_count, GL_UNSIGNED_INT, nullptr);
+                glBindVertexArray(enemy_mesh.vao);
+                glDrawElements(GL_TRIANGLES, enemy_mesh.index_count, GL_UNSIGNED_INT, nullptr);
             }
         }
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "combat/HurtboxDecl.h"
 #include "gameplay/Perception.h"
 
 #include <nlohmann/json_fwd.hpp>
@@ -68,6 +69,23 @@ struct EnemyArchetype
     // "humanoid_basic" — covers every humanoid in the bestiary
     // until a tree-specific behavior demands its own builder.
     std::string tree_id = "humanoid_basic";
+    // Skeleton key (matches SkeletalAssets registry: "player" for
+    // humanoids reusing the X_Bot rig; "wolf" / etc. for distinct
+    // skeletons). Default "player" preserves today's behavior --
+    // every existing humanoid shade reuses the player rig.
+    std::string skeleton_id = "player";
+    // Per-archetype clip names. Empty = "use the default for this
+    // skeleton" (the hardcoded humanoid defaults in Enemies.cpp).
+    // Wolf overrides these to its own clip names.
+    std::string idle_clip;       // empty -> "standard_idle"
+    std::string combat_idle_clip; // empty -> "unarmed_combat_idle"
+    std::string walk_clip;       // empty -> "walking"
+    std::string death_clip;      // empty -> "death"
+    std::string knockdown_clip;  // empty -> "stunned"
+    // Per-archetype hurtbox layout. Empty -> the archetype loads
+    // the player's hurtboxes (every humanoid shade today). Non-empty
+    // overrides (e.g. wolf authors its own 4-or-5 capsules).
+    std::vector<selva::combat::HurtboxDecl> hurtbox_decls;
 };
 
 // nlohmann JSON I/O for these structs. Defined in EnemyArchetype.cpp

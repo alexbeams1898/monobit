@@ -83,7 +83,7 @@ std::uint32_t fireAction(Actor& actor, const EnemyAction& picked,
         sp.clip_duration_seconds = clip.duration();
         sp.clip_start_seconds = 0.0f;
         sp.playback_rate = 1.0f;
-        sp.mesh_foot_offset_y = selva::anim::playerMesh().foot_offset_y;
+        sp.mesh_foot_offset_y = actorFootOffsetY(actor);
         hitbox_id = selva::combat::spawnAttackHitbox(sp);
     }
     selva::combat::combatLog(

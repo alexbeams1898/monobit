@@ -6,6 +6,7 @@
 #include "anim/AnimationClip.h"
 #include "anim/ClipRegistry.h"
 #include "anim/SkeletalAssets.h"
+#include "anim/SkeletonJointMap.h"
 #include "audio/Audio.h"
 #include "combat/CombatLog.h"
 #include "gameplay/AiBarriers.h"
@@ -18,6 +19,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace selva::gameplay
 {
@@ -75,14 +77,28 @@ void spawnEnemyFromDecl(const std::string& region_id, const EnemySpawnDecl& decl
     Actor e;
     e.controller = Controller::AI_Stationary;
     e.faction = Faction::Hostile;
+    // Resolve pos -- pos.y may be the "auto_terrain" sentinel,
+    // in which case sample the terrain at XZ for the spawn Y.
     e.pos = decl.pos;
+    if (decl.pos_y_auto_terrain)
+        e.pos.y = selva::world::groundHeight(decl.pos.x, decl.pos.z,
+                                             -std::numeric_limits<float>::infinity());
     e.yaw = decl.yaw;
     e.spawn_pos = e.pos;
     e.spawn_yaw = decl.yaw;
     e.spawn_id = region_id + ":" + decl.id;
     e.spawn_region_id = region_id;
     e.permanent_on_death = decl.permanent_on_death;
-    e.sampler = selva::anim::createPoseSampler(selva::anim::skeleton(), selva::anim::playerMesh());
+    // Bind sampler to the archetype's skeleton + mesh. Humanoid
+    // archetypes share the player rig (skeleton_id="player"); wolf
+    // and other non-humanoids bind to their own skeleton from the
+    // registry. Joint map is looked up by the same key. See
+    // [[design/animals_and_multi_skeleton]] for the architecture.
+    const std::string sk_id =
+        (e.archetype != nullptr) ? e.archetype->skeleton_id : std::string("player");
+    e.sampler = selva::anim::createPoseSampler(selva::anim::skeletonByKey(sk_id),
+                                               selva::anim::meshByKey(sk_id),
+                                               selva::anim::jointMapByKey(sk_id));
     initActorPools(e.hp, e.stamina, e.poise, e.body, e.stats);
     // Seed per-actor RNG. Two actors of the same archetype get
     // independent rolls so they don't synchronize their weighted
@@ -104,6 +120,18 @@ void spawnEnemyFromDecl(const std::string& region_id, const EnemySpawnDecl& decl
             selva::combat::combatLog("[spawn] archetype '{}' not found in registry (id='{}')",
                                      decl.archetype, e.spawn_id);
     }
+    // Skeleton: archetype's id (default "player"). Resolved by
+    // selva::anim::meshByKey / skeletonByKey at use sites.
+    e.skeleton_id = (e.archetype != nullptr) ? e.archetype->skeleton_id : std::string("player");
+    // Hurtbox decls. Archetype's own list wins; if archetype declared
+    // none, the actor inherits the player's hurtbox layout (every
+    // humanoid shade today -- they share the X_Bot skeleton). Wolves
+    // and other non-humanoid archetypes set their own hurtboxes in
+    // their archetype JSON.
+    if (e.archetype != nullptr && !e.archetype->hurtbox_decls.empty())
+        e.body.hurtbox_decls = e.archetype->hurtbox_decls;
+    else
+        e.body.hurtbox_decls = selva::gameplay::player().body.hurtbox_decls;
     // Phase-stagger the first AI tick so a wave of actors spawned on
     // the same frame doesn't all evaluate together. The pool index is
     // the soon-to-be position of this actor (after push_back).

@@ -5,6 +5,7 @@
 #include "anim/SkeletalAssets.h"
 #include "anim/SkeletalMesh.h"
 #include "anim/Skeleton.h"
+#include "anim/SkeletonJointMap.h"
 #include "log/Log.h"
 
 #include <glm/glm.hpp>
@@ -237,6 +238,12 @@ enum class OneShotPhase
 struct PoseSampler::Impl
 {
     const ozz::animation::Skeleton* skeleton = nullptr;
+    // Joint-name map for THIS sampler's skeleton. Owned by the caller
+    // (loaded once at boot from config/skeletons/<id>.json via
+    // loadAllSkeletonJointMaps); we hold a pointer for the sampler's
+    // lifetime. Used to translate semantic joint roles (hips, foot_left,
+    // upleg_right, etc.) to this skeleton's actual joint names.
+    const SkeletonJointMap* joint_map = nullptr;
 
     Track loco_current;
     Track loco_previous;
@@ -499,8 +506,8 @@ PoseSampler::~PoseSampler() = default;
 //
 // Mask construction is "leg-subtree-out" rather than "spine-subtree-in".
 // We start with everything = 1 (attack drives every joint) and then zero
-// out the leg subtrees (anything reachable from mixamorig:LeftUpLeg or
-// mixamorig:RightUpLeg). This keeps the Hips joint itself driven by the
+// out the leg subtrees (anything reachable from the joint map's
+// upleg_left or upleg_right). This keeps the hips joint itself driven by the
 // attack — critical for swing power, since hip rotation carries the
 // entire spine's wind-up. The legs (UpLeg → Leg → Foot → Toes) stay on
 // locomotion so a walking/sprinting character doesn't snap to standing.
@@ -564,10 +571,18 @@ static std::vector<ozz::math::SimdFloat4> packToSoaWeights(const std::vector<flo
     return weights;
 }
 
-std::vector<ozz::math::SimdFloat4> buildUpperBodyWeights(const ozz::animation::Skeleton& skel)
+std::vector<ozz::math::SimdFloat4> buildUpperBodyWeights(const ozz::animation::Skeleton& skel,
+                                                         const SkeletonJointMap& joint_map)
 {
-    const int left_leg = findJointByName(skel, "mixamorig:LeftUpLeg");
-    const int right_leg = findJointByName(skel, "mixamorig:RightUpLeg");
+    // Joint map provides per-skeleton leg roots (humanoid: LeftUpLeg /
+    // RightUpLeg; quadruped: maps to whichever joints define "the legs"
+    // for that skeleton). Empty -> -1 -> the mask becomes all-1.0
+    // (whole-body one-shots), which is the right fallback for a rig
+    // with no leg-separation concept.
+    const int left_leg =
+        joint_map.upleg_left.empty() ? -1 : findJointByName(skel, joint_map.upleg_left.c_str());
+    const int right_leg =
+        joint_map.upleg_right.empty() ? -1 : findJointByName(skel, joint_map.upleg_right.c_str());
     const auto per_joint = computeUpperBodyPerJointWeights(skel, left_leg, right_leg);
     const int n = skel.num_joints();
     int n_upper = 0;
@@ -575,13 +590,15 @@ std::vector<ozz::math::SimdFloat4> buildUpperBodyWeights(const ozz::animation::S
     for (int i = 0; i < n; ++i)
         (per_joint[i] > 0.5f ? n_upper : n_lower) += 1;
     std::fprintf(stderr,
-                 "[PoseSampler] upper-body mask: %d upper / %d lower (LeftUpLeg=%d, "
-                 "RightUpLeg=%d)\n",
-                 n_upper, n_lower, left_leg, right_leg);
+                 "[PoseSampler] upper-body mask: %d upper / %d lower (left='%s' idx=%d, "
+                 "right='%s' idx=%d)\n",
+                 n_upper, n_lower, joint_map.upleg_left.c_str(), left_leg,
+                 joint_map.upleg_right.c_str(), right_leg);
     return packToSoaWeights(per_joint, skel.num_soa_joints());
 }
 
-PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh)
+PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh,
+                              const SkeletonJointMap& joint_map)
 {
     PoseSampler ps;
     if (!skeleton.isLoaded())
@@ -592,6 +609,7 @@ PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh
     const int n_soa = ozz_skel.num_soa_joints();
 
     ps.impl->skeleton = &ozz_skel;
+    ps.impl->joint_map = &joint_map;
     ps.impl->loco_current.resize(n_joints, n_soa);
     ps.impl->loco_previous.resize(n_joints, n_soa);
     ps.impl->one_shot.resize(n_joints, n_soa);
@@ -616,19 +634,23 @@ PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh
     ps.impl->decay_elapsed_per_joint.assign(n_soa, ozz::math::simd_float4::zero());
     ps.impl->model_matrices.resize(n_joints);
     ps.bone_palette.resize(n_joints);
-    ps.impl->upper_body_weights = buildUpperBodyWeights(ozz_skel);
+    ps.impl->upper_body_weights = buildUpperBodyWeights(ozz_skel, joint_map);
     ps.impl->one_shot_joint_weights.resize(n_soa);
     ps.impl->one_shot_previous_joint_weights.resize(n_soa);
 
-    // Find Hips joint and stash its rest-pose translation (X and Z only;
-    // Y is left free so vertical walk-bob still plays). Used per-frame to
-    // cancel root motion in locomotion clips — see Impl docstring.
+    // Find Hips joint via the joint map and stash its rest-pose
+    // translation (X and Z only; Y is left free so vertical walk-bob
+    // still plays). Used per-frame to cancel root motion in
+    // locomotion clips -- see Impl docstring. Joint map's "hips"
+    // field IS the skeleton's actual joint name; empty = this
+    // skeleton has no hips concept (root-motion features no-op).
+    if (!joint_map.hips.empty())
     {
         const int n = ozz_skel.num_joints();
         const auto names = ozz_skel.joint_names();
         for (int i = 0; i < n; ++i)
         {
-            if (names[i] != nullptr && std::strcmp(names[i], "mixamorig:Hips") == 0)
+            if (names[i] != nullptr && std::strcmp(names[i], joint_map.hips.c_str()) == 0)
             {
                 ps.impl->hips_joint_idx = i;
                 // Rest pose is SoA-packed: lane = i % 4 of SoA index i / 4.
@@ -650,13 +672,28 @@ PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh
     ps.impl->root_transform = mesh.asset_root_transform;
     ps.impl->inverse_bind_matrices = mesh.inverse_bind_matrices;
 
-    ps.impl->ik_left_hip = findJointByName(ozz_skel, "mixamorig:LeftUpLeg");
-    ps.impl->ik_left_knee = findJointByName(ozz_skel, "mixamorig:LeftLeg");
-    ps.impl->ik_left_ankle = findJointByName(ozz_skel, "mixamorig:LeftFoot");
-    ps.impl->ik_right_hip = findJointByName(ozz_skel, "mixamorig:RightUpLeg");
-    ps.impl->ik_right_knee = findJointByName(ozz_skel, "mixamorig:RightLeg");
-    ps.impl->ik_right_ankle = findJointByName(ozz_skel, "mixamorig:RightFoot");
+    // Foot IK joints via the joint map. Empty strings -> -1, which
+    // disables IK for that side (the existing IK code already
+    // tolerates -1 since foot IK is gated by setFootIK enabling).
+    auto findOrNeg = [&](const std::string& name) {
+        return name.empty() ? -1 : findJointByName(ozz_skel, name.c_str());
+    };
+    ps.impl->ik_left_hip = findOrNeg(joint_map.upleg_left);
+    ps.impl->ik_left_knee = findOrNeg(joint_map.leg_left);
+    ps.impl->ik_left_ankle = findOrNeg(joint_map.foot_left);
+    ps.impl->ik_right_hip = findOrNeg(joint_map.upleg_right);
+    ps.impl->ik_right_knee = findOrNeg(joint_map.leg_right);
+    ps.impl->ik_right_ankle = findOrNeg(joint_map.foot_right);
     return ps;
+}
+
+// Backward-compat overload: defaults to the PLAYER's joint map (every
+// existing call site is player or a humanoid shade sharing the X_Bot
+// rig). New non-humanoid actors should call the 3-arg version
+// explicitly with their own joint map.
+PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh)
+{
+    return createPoseSampler(skeleton, mesh, jointMapByKey(std::string(kPlayerSkeletonKey)));
 }
 
 void PoseSampler::setFootIK(GroundProbeFn probe, bool position_enabled, bool orient_enabled)
@@ -2181,13 +2218,24 @@ void applyBlendOutLocoPoseMatch(PoseSampler::Impl& s)
 {
     if (s.loco_current.animation == nullptr)
         return;
-    const char* names[] = {"mixamorig:LeftUpLeg", "mixamorig:RightUpLeg", "mixamorig:LeftFoot",
-                           "mixamorig:RightFoot"};
+    if (s.joint_map == nullptr)
+        return; // sampler not fully constructed (shouldn't happen post-createPoseSampler)
+    // Pose-match candidates: leg roots + feet. The joint map provides
+    // per-skeleton names; an empty slot is skipped (skeleton lacks
+    // that joint -> just drop it from the candidate set).
+    const std::string candidate_slots[] = {
+        s.joint_map->upleg_left,
+        s.joint_map->upleg_right,
+        s.joint_map->foot_left,
+        s.joint_map->foot_right,
+    };
     std::vector<int> joints;
     std::vector<glm::vec3> ref;
-    for (const char* n : names)
+    for (const auto& name : candidate_slots)
     {
-        const int idx = findSkeletonJoint(*s.skeleton, n);
+        if (name.empty())
+            continue;
+        const int idx = findSkeletonJoint(*s.skeleton, name.c_str());
         glm::vec3 pos;
         if (readLiveJointWorldPos(s, idx, pos))
         {

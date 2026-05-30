@@ -189,7 +189,7 @@ void updateActiveAttackHitbox(Actor& actor)
     // hand at the hip), and the swing visually contacts the player
     // while the volume sits behind the attacker — visible as "AI
     // punches into the player but no damage."
-    const float foot_offset_y = selva::anim::playerMesh().foot_offset_y;
+    const float foot_offset_y = actorFootOffsetY(actor);
     const glm::mat4 model_mat =
         selva::combat::buildActorModelMatrix(actor.pos, actor.yaw, foot_offset_y);
     const glm::vec3 anchor_world = glm::vec3(
@@ -232,6 +232,12 @@ void initActorPool()
     Actor pc;
     pc.controller = Controller::Input;
     pc.faction = Faction::Player;
+    pc.skeleton_id = "player";
+    // Player hurtbox layout. Authored in
+    // config/skeletons/player_hurtboxes.json -- the data form of what
+    // ActorVolumes.cpp::appendActorHurtboxes used to hardcode.
+    pc.body.hurtbox_decls =
+        selva::combat::loadHurtboxDecls("config/skeletons/player_hurtboxes.json");
     pc.death_clip_name = "second_death";
     // The PC's death audio is a layered composition:
     //   * death_sfx_name (dark bed) — plays at clip start, dread
@@ -293,6 +299,12 @@ void tickActors(float dt)
         applyActorClipHipDelta(a);
     }
     (void)dt;
+}
+
+float actorFootOffsetY(const Actor& a)
+{
+    const std::string key = a.skeleton_id.empty() ? std::string("player") : a.skeleton_id;
+    return selva::anim::meshByKey(key).foot_offset_y;
 }
 
 } // namespace selva::gameplay

@@ -172,22 +172,23 @@ freedom for everything beyond the structural bones.
 
 ### The three beasts (lonza, leone, lupa)
 
-Canonical, instantly recognizable, but currently **deferred** as a
-mechanic. Dante's beasts are *forces that turn one back*, not
-opponents in the gameplay sense. Their cosmological role in our
-setting (the unjudged Vagrant) is unclear — they exist to block the
-*ascent*, and our Vagrant cannot ascend anyway.
+**Combat encounters in the opening** — see [story.md](story.md)
+Beat 2 for the authoritative beat. The Vagrant fights all three on
+the colle's south slope before the Guide arrives. Earlier framings
+of the beasts as "atmospheric / deferred / forces-only" are
+superseded by the combat-encounter design in story.md.
 
-Working options when they ship:
-- Skip them entirely (the unjudged is invisible to them; this
-  resolves the cosmological tension)
-- Present them as atmospheric glimpses only — silhouettes seen
-  through the trees on the colle's slope, never directly fought
-- Reintroduce them late-game when the Vagrant's cosmological status
-  has shifted (he has consumed enough of Hell to become *partly*
-  judged again; now the beasts can perceive him)
+The beasts are **figura-umana-exempt** per
+[bestiary.md](bestiary.md) — they are NOT damned souls (cosmologically
+distinct from shades and contrapasso-husks), so they get their own
+skeletons. Per the bestiary doctrine they're in a separate exemption
+category from classical guardians (Cerberus, Minotaur, etc.):
+classical guardians are Hell-created monsters; the Canto I beasts
+are encountered BEFORE descent, alive on the slope, allegorical
+forces given physical form.
 
-TBD when the late-game cosmology hardens.
+Engine architecture for non-humanoid actors lives in
+[animals_and_multi_skeleton.md](animals_and_multi_skeleton.md).
 
 ### Authoring rules for the inner Wood
 
@@ -213,12 +214,10 @@ These are not Dante; these are *how we honor Dante* in our medium:
   respawn; the world opens by walking.
 
 The three beasts of Dante's Canto I (*lonza*, *leone*, *lupa*) are
-**deferred**. They are canonical and instantly recognizable, but
-making them combat enemies trivializes them — Dante's beasts are
-*forces that turn one back*, not opponents. Options: skip them
-entirely (the unjudged is invisible to them), present them as
-atmospheric glimpses only, or introduce them late-game when the
-Vagrant's cosmological status has shifted. TBD.
+combat encounters in the opening per [story.md](story.md) Beat 2 +
+the section above. The earlier "deferred / forces-only" framing on
+this page is superseded; see the section heading above for the
+current cosmological framing and pointers to the engine refactor doc.
 
 ### Outer Wood — procedurally generated, persistent, ring-shaped
 
@@ -862,8 +861,9 @@ The Wood reads as: **aged gothic pine forest at eternal dusk**.
   Chunk size TBD.
 - **Player marks (cairns, etched names, fires).** Specific verbs
   and persistence rules. Deferred until save-data layer exists.
-- **The three beasts.** Skip / atmospheric / late-game mechanic.
-  TBD.
+- **The three beasts.** Combat encounters per [story.md](story.md)
+  Beat 2; lupa shipped as placeholder, lonza + leone pending custom
+  assets. See [animals_and_multi_skeleton.md](animals_and_multi_skeleton.md).
 - **Specific ambient sound design.** Deferred — own design pass.
 - **NPCs hidden in the Wood.** Identity, location-discovery,
   mechanics. TBD.

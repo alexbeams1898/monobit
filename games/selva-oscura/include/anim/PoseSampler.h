@@ -516,8 +516,16 @@ struct PoseSampler
     FrameDiagnostics frameDiagnostics() const;
 };
 
-// Build a PoseSampler bound to the given skeleton + mesh. The skeleton
-// and mesh must outlive the returned sampler.
+struct SkeletonJointMap; // anim/SkeletonJointMap.h
+
+// Build a PoseSampler bound to the given skeleton + mesh + joint map.
+// The skeleton, mesh, and joint map must outlive the returned sampler.
+//
+// Overload without joint map fetches the PLAYER's map by default --
+// matches every existing call site (player + every humanoid shade).
+// New non-humanoid actors (wolf, etc.) pass their own map.
+PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh,
+                              const SkeletonJointMap& joint_map);
 PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh);
 
 } // namespace selva::anim

@@ -23,6 +23,17 @@ Awareness parseAwareness(const std::string& s)
     return Awareness::Combat; // default; also matches "Combat"
 }
 
+selva::combat::HurtRegion parseHurtRegion(const std::string& s)
+{
+    if (s == "Head")
+        return selva::combat::HurtRegion::Head;
+    if (s == "UpperLimb")
+        return selva::combat::HurtRegion::UpperLimb;
+    if (s == "LowerLimb")
+        return selva::combat::HurtRegion::LowerLimb;
+    return selva::combat::HurtRegion::Torso;
+}
+
 const char* awarenessString(Awareness a)
 {
     switch (a)
@@ -97,6 +108,25 @@ void from_json(const nlohmann::json& j, EnemyArchetype& a)
         a.vision_fov_degrees = j.at("vision_fov_degrees").get<float>();
     if (j.contains("vision_range_meters"))
         a.vision_range_meters = j.at("vision_range_meters").get<float>();
+    a.skeleton_id = j.value("skeleton_id", std::string("player"));
+    a.idle_clip = j.value("idle_clip", std::string{});
+    a.combat_idle_clip = j.value("combat_idle_clip", std::string{});
+    a.walk_clip = j.value("walk_clip", std::string{});
+    a.death_clip = j.value("death_clip", std::string{});
+    a.knockdown_clip = j.value("knockdown_clip", std::string{});
+    if (j.contains("hurtboxes") && j.at("hurtboxes").is_array())
+    {
+        for (const auto& h : j.at("hurtboxes"))
+        {
+            selva::combat::HurtboxDecl d;
+            d.joint_a = h.value("joint_a", std::string{});
+            d.joint_b = h.value("joint_b", std::string{});
+            d.region = parseHurtRegion(h.value("region", std::string("Torso")));
+            d.radius_scale = h.value("radius_scale", 0.5f);
+            d.damage_multiplier = h.value("damage_multiplier", 1.0f);
+            a.hurtbox_decls.push_back(std::move(d));
+        }
+    }
 }
 
 void EnemyArchetypeRegistry::loadDirectory(const std::filesystem::path& dir)

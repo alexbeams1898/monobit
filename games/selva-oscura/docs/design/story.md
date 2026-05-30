@@ -106,6 +106,13 @@ Five minutes or twenty — the player chooses.
 
 ### Beat 2 — The beasts
 
+> **Implementation status:** **lupa shipped** (Quaternius placeholder,
+> CC0); **lonza + leone pending** until custom assets or paid pack
+> lands. See [animals_and_multi_skeleton.md](animals_and_multi_skeleton.md)
+> for the engine refactor + asset acquisition plan. The full trio
+> playing as designed below is the target; the current build is a
+> stub with just the lupa.
+
 When the Vagrant approaches the mountain, the three beasts appear
 in Dante's order:
 
