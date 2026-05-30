@@ -7,12 +7,19 @@
     "config": "assets/world/terrain/config.json",
     "region": "selva_inner"
   },
+  "_static_meshes_note": "Split out of the legacy crypt.glb in Commit 3 of the region-rebuild: chapel_exterior owns facade/walls/plinth/roof, chapel_interior owns interior floor + the entire descent staircase. Both share the same world_origin because they're authored in the same Blender file (one generator, sliced at export time by collection). When the 3-region split lands in Commit 5, chapel_interior moves to its own region.json (chapel_interior/region.json); for now both live in surface.",
   "static_meshes": [
     {
-      "path": "assets/world/static_meshes/crypt.glb",
+      "path": "assets/world/static_meshes/chapel_exterior.glb",
       "world_origin": [0.0, 22.0, -210.0],
       "surface_tag": "Architecture",
-      "debug_name": "chapel"
+      "debug_name": "chapel_exterior"
+    },
+    {
+      "path": "assets/world/static_meshes/chapel_interior.glb",
+      "world_origin": [0.0, 22.0, -210.0],
+      "surface_tag": "Architecture",
+      "debug_name": "chapel_interior"
     }
   ],
   "_terrain_modifiers_note": "Chapel plateau + stair shaft hole modifiers are STILL registered via crypt_layout::registerChapelTerrainModifiers() in main.cpp BEFORE initTerrain(), because terrain is a global singleton today. When terrain becomes scene-local, modifier declarations move into this JSON.",

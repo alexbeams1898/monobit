@@ -222,16 +222,17 @@ void populateHubTrees(std::vector<CylinderCollider>& out)
     }
 }
 
-// Chapel collision authoring moved to the Jolt-registered crypt.glb
-// mesh (see world/PhysicsRegion.cpp::registerChapel). The legacy
-// populateCryptColliders / populateCryptApseCylinders /
-// populateCryptDescent C++ collider authoring was removed
-// 2026-05-24 to end the dual-source-of-truth between mesh and code.
-// See docs/design/audits/chapel_source_audit_2026-05-24.md for the
-// audit + harmonization decision (option H1: mesh authoritative).
+// Chapel collision authoring moved to the chapel_exterior.glb +
+// chapel_interior.glb meshes (loaded by JsonRegion from the surface
+// region's static_meshes array, registered into Jolt at activation).
+// The legacy populateCryptColliders / populateCryptApseCylinders /
+// populateCryptDescent C++ collider authoring was removed 2026-05-24
+// to end the dual-source-of-truth between mesh and code. See
+// docs/design/audits/chapel_source_audit_2026-05-24.md for the audit
+// + harmonization decision (option H1: mesh authoritative).
 //
 // If new architecture needs collision, author it in the chapel .blend
-// (regenerate via games/selva-oscura/scripts/blender/gen_crypt_*.sh)
+// (regenerate via games/selva-oscura/scripts/blender/gen_crypt_*.py)
 // rather than re-introducing C++ collider duplicates here.
 
 } // namespace
@@ -246,8 +247,9 @@ void initHubRegion()
     sRegion.boundary_center = glm::vec2(0.0f, -210.0f);
     sRegion.boundary_radius = kHubBoundaryRadius;
     populateHubTrees(sRegion.cylinders);
-    // Chapel collision is owned by the Jolt-registered crypt.glb mesh
-    // (see world/PhysicsRegion.cpp::registerChapel). The legacy
+    // Chapel collision is owned by the chapel_exterior.glb +
+    // chapel_interior.glb meshes (loaded by JsonRegion from the
+    // surface region's static_meshes array). The legacy
     // populateCryptColliders / populateCryptApseCylinders /
     // populateCryptDescent C++ collider authoring was removed
     // 2026-05-24 to end the dual-source-of-truth between mesh and

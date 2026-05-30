@@ -60,20 +60,13 @@ struct StaticMeshPrimitive
 };
 
 // A static-mesh asset: one or more primitives drawn at the same model
-// matrix. The crypt is the first asset; future props use the same
-// loader.
+// matrix. JsonRegion::preloadAssets loads one StaticMesh per entry in
+// the region's `static_meshes` array.
 struct StaticMesh
 {
     std::vector<StaticMeshPrimitive> primitives;
     std::string asset_name;
 };
-
-bool initStaticMeshAssets();
-void shutdownStaticMeshAssets();
-
-// The crypt mesh (entrance-to-Hell on the colle plateau). Loaded from
-// assets/world/static_meshes/crypt.glb. Returns nullptr if init failed.
-const StaticMesh* cryptMesh();
 
 // Generic loader used by JsonRegion: load any .glb into a fresh
 // StaticMesh. Caller owns the returned StaticMesh; calls

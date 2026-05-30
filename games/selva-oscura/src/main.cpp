@@ -257,23 +257,22 @@ int main(int /*argc*/, char* /*argv*/[])
                                                         engine.windowHeight());
                     selva::render::initRegionGeometry();
                 });
-    // Static mesh assets MUST load before chapel terrain modifiers so
-    // the modifier registration can auto-derive the chapel footprint
-    // from the loaded mesh's XZ AABB (no hand-set coords).
-    runBootStep("initStaticMeshAssets", [] { selva::world::initStaticMeshAssets(); });
     // Terrain modifiers (chapel plateau, descent strip, etc) must be
     // registered BEFORE initTerrain() — Terrain.cpp::buildRegionMesh
-    // queries the registry per vertex.
+    // queries the registry per vertex. Chapel footprint comes from
+    // CryptLayout constants (kCryptX/kCryptZ/kHalfWidth/kHalfLength),
+    // not from sampling a loaded mesh -- so this no longer needs a
+    // legacy static-mesh-load step ahead of it.
     runBootStep("registerAuthoredWorld",
                 [] { selva::world::crypt_layout::registerAuthoredWorld(); });
     engine.renderLoadingFrame("terrain mesh");
     runBootStep("initTerrain", [] { selva::world::initTerrain(); });
     runBootStep("initHubRegion", [] { selva::world::initHubRegion(); });
     runBootStep("initTreeAssets", [] { selva::world::initTreeAssets(); });
-    // (initStaticMeshAssets moved earlier — chapel footprint derived from mesh)
-    // Physics: register terrain + chapel as static trimesh bodies.
-    // MUST run after both terrain and static-mesh-assets init so the
-    // CPU vertex copies exist on those structs.
+    // Physics: register terrain as static trimesh bodies. Chapel +
+    // descent + limbo geometry is loaded by JsonRegion::preloadAssets
+    // (per-region static_meshes array) and registered into Jolt at
+    // region activation, not here.
     selva::world::initPhysicsRegion();
 
     // Region manager bootstrap + initial activation. The default

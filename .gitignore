@@ -98,9 +98,20 @@ PLAN.md
 # gets refined by hand in Blender. Build-pipeline tools (rebookend_clip,
 # stage_baked_ozz, gen_terrain_heightmap, etc.) are still tracked — they
 # run on every build. Generators named `gen_*.py` / `gen_*.sh` under
-# `games/*/scripts/blender/` are excluded.
+# `games/*/scripts/blender/` are excluded by default.
 games/*/scripts/blender/gen_*.py
 games/*/scripts/blender/gen_*.sh
+
+# Carve-outs: parametric generators that are NOT one-shot. The chapel
+# generator is tuneable (stair_rise, body_width, JOINT dictionary etc.
+# regenerate the geometry whenever a constant changes) AND the chapel
+# exporter is the canonical build step that produces the runtime
+# chapel_*.glb files. Both are real build-pipeline code, not throwaway
+# bootstrappers. Add a carve-out here for any future parametric chapel-
+# style script; one-shot generators stay ignored.
+!games/selva-oscura/scripts/blender/gen_crypt_foundation.py
+!games/selva-oscura/scripts/blender/gen_crypt_export.py
+!games/selva-oscura/scripts/blender/gen_crypt_export.sh
 
 # Files derived at build time from C++ runtime state (e.g. the
 # StructureFootprint registry dumped by selva-oscura-dump-world).

@@ -183,7 +183,7 @@ void registerChapelTerrainModifiers()
             12.0f; // mirror LIMBO_RIM_BLEND in gen_terrain_heightmap.py
         // Entry extends past rim outer edge so the cut covers the whole
         // rim_blend strip. Exit is the corridor mesh's last-step Z
-        // (empirical from crypt.glb AABB).
+        // (empirical from chapel_interior.glb AABB).
         constexpr float kCorridorEntryZ = -321.15f + kLimboRimBlend;
         constexpr float kCorridorExitZ = -353.15f;
         constexpr float kCorridorCeilingClearance = 4.0f;
@@ -203,9 +203,9 @@ void registerChapelTerrainModifiers()
         f.cuts_wall = true;
 
         // Vertical profile: corridor's true outer Y-range per Z.
-        // Endpoints derived from crypt.glb mesh AABBs (not formula —
-        // the wedge-ramp ceiling slope drifts from the step slope by
-        // ~0.4m, formulas can't catch that).
+        // Endpoints derived from chapel_interior.glb mesh AABBs (not
+        // formula — the wedge-ramp ceiling slope drifts from the step
+        // slope by ~0.4m, formulas can't catch that).
         constexpr int kNz = 32;
         constexpr float kStepZChapel = -213.15f;
         constexpr float kStepZLimbo = kCorridorExitZ; // -353.15

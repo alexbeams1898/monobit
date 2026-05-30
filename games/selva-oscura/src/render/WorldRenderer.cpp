@@ -77,7 +77,6 @@ GLuint ensureStencilProgram()
     }
     return sStencilProgram;
 }
-const glm::mat4& cryptModelMatrix(); // forward-decl; defined below in a later anon namespace
 } // namespace
 
 const glm::mat4& lastView()
@@ -795,36 +794,6 @@ void renderGroundDecals()
     // shadow maps will replace fake contact shadows later.
 }
 
-namespace
-{
-// Crypt sits at the center of the colle plateau (per wood.md). Position
-// is fixed and the heightmap is immutable at runtime, so cache the
-// model matrix on first call rather than re-sampling per frame per pass.
-const glm::mat4& cryptModelMatrix()
-{
-    static glm::mat4 sCached(0.0f);
-    static bool sInit = false;
-    if (!sInit)
-    {
-        sCached = glm::translate(glm::mat4(1.0f), selva::world::crypt_layout::chapelWorldOrigin());
-        sInit = true;
-    }
-    return sCached;
-}
-
-void drawStaticPrimitive(const selva::world::StaticMeshPrimitive& p)
-{
-    if (p.vao == 0)
-        return;
-    if (p.usage == selva::world::StaticMeshUsage::Collision)
-        return; // physics-only proxy — not drawn
-    selva::render::setSceneTint(1.0f);
-    selva::render::setSceneBaseColor(glm::vec3(p.base_color[0], p.base_color[1], p.base_color[2]));
-    glBindVertexArray(p.vao);
-    glDrawElements(GL_TRIANGLES, p.index_count, GL_UNSIGNED_INT, nullptr);
-}
-} // namespace
-
 void renderStaticMeshes()
 {
     // Active region owns its static meshes (JsonRegion::renderMeshes).
@@ -832,18 +801,7 @@ void renderStaticMeshes()
     // model matrix is identity; the region-render call sets it.
     auto* region = dynamic_cast<selva::world::JsonRegion*>(engine::world::currentRegionPtr());
     if (region != nullptr)
-    {
         region->renderMeshes();
-        return;
-    }
-    // Fallback: legacy chapel global (used before the region system
-    // takes over, e.g. before any region is activated at boot).
-    const selva::world::StaticMesh* crypt = selva::world::cryptMesh();
-    if (crypt == nullptr)
-        return;
-    setSceneModel(cryptModelMatrix());
-    for (const auto& prim : crypt->primitives)
-        drawStaticPrimitive(prim);
 }
 
 void renderStaticMeshesDepth()
@@ -866,25 +824,6 @@ void renderStaticMeshesDepth()
         // bound by the depth pass).
         selva::render::setSceneDepthModel(glm::mat4(1.0f));
         region->renderMeshesDepth();
-    }
-    else
-    {
-        // Legacy fallback.
-        const selva::world::StaticMesh* crypt = selva::world::cryptMesh();
-        if (crypt != nullptr)
-        {
-            const glm::mat4 model = cryptModelMatrix();
-            selva::render::setSceneDepthModel(model);
-            for (const auto& prim : crypt->primitives)
-            {
-                if (prim.vao == 0)
-                    continue;
-                if (prim.usage == selva::world::StaticMeshUsage::Collision)
-                    continue; // physics-only proxy — not drawn
-                glBindVertexArray(prim.vao);
-                glDrawElements(GL_TRIANGLES, prim.index_count, GL_UNSIGNED_INT, nullptr);
-            }
-        }
     }
 
     // Restore cull-front for subsequent depth-pass casters (skeletal

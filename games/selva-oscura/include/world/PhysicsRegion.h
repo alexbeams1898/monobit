@@ -12,11 +12,12 @@ namespace selva::world
 // One-time bring-up of the physics world for the selva-oscura scene.
 // Calls engine::physics::initPhysics() and then registers:
 //   * each terrain region's mesh as a static trimesh body (Terrain tag)
-//   * each chapel static-mesh primitive as a static trimesh body
-//     (Architecture tag)
 //
-// Must run AFTER initTerrain() and initStaticMeshAssets() so the CPU
-// vertex/index copies exist on those structs.
+// Chapel + descent + limbo static-mesh primitives are owned by
+// JsonRegion (per-region static_meshes array) and registered into
+// Jolt at region activation, not here.
+//
+// Must run AFTER initTerrain() so the CPU vertex/index copies exist.
 // Idempotent. Returns false on failure.
 bool initPhysicsRegion();
 
