@@ -7,17 +7,32 @@
 namespace selva::world
 {
 
-// Boot the scene system: read assets/regions/regions.json, parse each
-// listed scene's region.json, register a JsonRegion per entry with the
-// engine RegionManager. Returns the RegionId of the default-spawn
-// scene (or kInvalidRegion on failure).
+// Boot the scene system, PHASE 1: read assets/regions/regions.json,
+// parse each listed scene's region.json, register a JsonRegion per
+// entry with the engine RegionManager + register each region's
+// authored terrain modifiers into the global modifier registry.
+// Returns the RegionId of the default-spawn scene (or kInvalidRegion
+// on failure).
+//
+// MUST run BEFORE initTerrain() so terrain modifiers are present when
+// the mesh builder samples per-vertex Y. The 2-phase split exists
+// because phase 2 (loadAllRegionsPreload) needs the terrain mesh to
+// exist (it builds Jolt shapes for the mesh), while phase 1 needs to
+// register modifiers that influence the mesh build itself.
 //
 // Must run AFTER engine::physics::initPhysics and AFTER the rest of
 // game-side asset modules (Tunables, audio.json, etc.) so scenes can
 // reference assets that exist.
-engine::world::RegionId loadAllRegions();
+engine::world::RegionId loadAllRegionsRegister();
 
-// The default-spawn scene id, set by loadAllRegions. Used by new-
+// Boot the scene system, PHASE 2: iterate the regions registered in
+// phase 1 + call preloadAssets() on each (.glb loading + GPU upload
+// + per-region terrain Jolt shape construction). MUST run AFTER
+// initTerrain() because the terrain CPU vertex arrays must exist for
+// shape construction.
+void loadAllRegionsPreload();
+
+// The default-spawn scene id, set by loadAllRegionsRegister. Used by new-
 // character spawn to know where to put the player.
 engine::world::RegionId defaultSpawnRegion();
 

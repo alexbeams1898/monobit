@@ -38,7 +38,7 @@ bool readJson(const char* path, nlohmann::json& out)
 
 } // namespace
 
-engine::world::RegionId loadAllRegions()
+engine::world::RegionId loadAllRegionsRegister()
 {
     sDefaultSpawn = engine::world::kInvalidRegion;
 
@@ -46,11 +46,20 @@ engine::world::RegionId loadAllRegions()
     if (!readJson("assets/regions/regions.json", registry))
         return engine::world::kInvalidRegion;
 
-    // Doctrine: ALL regions preload at boot, never mid-game. Soulslike
-    // gameplay can't tolerate mid-session loading hitches; everything
-    // the player can transition into during a session is resident from
-    // before the main menu appears. Boot is allowed to take longer;
-    // gameplay frames are sacrosanct.
+    // Phase 1 of region loading. Doctrine: ALL regions preload at
+    // boot, never mid-game. Soulslike gameplay can't tolerate mid-
+    // session loading hitches; everything the player can transition
+    // into during a session is resident from before the main menu
+    // appears. Boot is allowed to take longer; gameplay frames are
+    // sacrosanct.
+    //
+    // This phase: read each region.json, construct a JsonRegion (which
+    // parses enemy_spawns + terrain_modifiers in its ctor), register
+    // it into the engine RegionManager, and call registerModifiers()
+    // so the terrain mesh builder sees authored modifiers when it
+    // runs in initTerrain(). Phase 2 (loadAllRegionsPreload) runs
+    // AFTER initTerrain to build per-mesh Jolt shapes for the terrain
+    // and the region's static_meshes.
     //
     // Required-key contract: regions.json MUST contain "regions" (array
     // of region-id strings) and "default_spawn_region" (string). Missing
@@ -82,7 +91,7 @@ engine::world::RegionId loadAllRegions()
                 return engine::world::kInvalidRegion;
             }
             auto js = std::make_unique<JsonRegion>(region_json, folder);
-            js->preloadAssets();
+            js->registerModifiers();
             const engine::world::RegionId reg_id = engine::world::registerRegion(std::move(js));
             std::fprintf(stderr, "[region-bootstrap] registered region '%s' as RegionId=%u\n",
                          sid.c_str(), reg_id.id);
@@ -109,6 +118,20 @@ engine::world::RegionId loadAllRegions()
         return engine::world::kInvalidRegion;
     }
     return sDefaultSpawn;
+}
+
+void loadAllRegionsPreload()
+{
+    // Phase 2 of region loading: build terrain Jolt shapes + .glb
+    // mesh GPU buffers for every registered region. Runs AFTER
+    // initTerrain() so the terrain mesh's CPU vertex arrays exist.
+    for (int i = 0; i < engine::world::regionCount(); ++i)
+    {
+        auto* base = engine::world::regionPtr(engine::world::regionAt(i));
+        auto* js = dynamic_cast<JsonRegion*>(base);
+        if (js != nullptr)
+            js->preloadAssets();
+    }
 }
 
 engine::world::RegionId defaultSpawnRegion()

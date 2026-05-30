@@ -33,10 +33,23 @@ class JsonRegion : public engine::world::AsyncCapableRegion
     // lives in (used for asset path resolution).
     JsonRegion(const nlohmann::json& json_doc, std::string folder);
 
-    // Pre-load all .glb meshes referenced by the JSON. Called ONCE
-    // at boot (after scene registration). File I/O + GL upload +
-    // CPU vertex arrays — all heavy work. Body insertion does NOT
-    // happen here; that's per-activation.
+    // Phase 1 of boot: register this region's authored terrain
+    // modifiers into the global TerrainModifier registry. Called
+    // BEFORE initTerrain() so the terrain mesh builder sees them
+    // when sampling per-vertex Y. Idempotent — calling twice
+    // double-registers; loadAllRegionsRegister calls exactly once per region.
+    //
+    // Modifiers are parsed from the region.json's terrain_modifiers
+    // array in the JsonRegion constructor (owning their strings for
+    // stable lifetime); this method just hands them to the global
+    // registry.
+    void registerModifiers();
+
+    // Phase 2 of boot: pre-load all .glb meshes referenced by the
+    // JSON + build Jolt shapes for them, AND build Jolt shapes for
+    // the terrain mesh(es) this region uses. Called AFTER
+    // initTerrain() so the terrain CPU vertex arrays exist. Body
+    // INSERTION does NOT happen here; that's per-activation.
     //
     // Resident-all-scenes architecture: every scene's meshes stay
     // loaded in GPU memory + CPU vertex arrays for the entire game
@@ -123,6 +136,20 @@ class JsonRegion : public engine::world::AsyncCapableRegion
     // array. Authoritative source of truth for which enemies belong
     // to this region.
     std::vector<selva::gameplay::EnemySpawnDecl> enemy_spawn_decls;
+
+    // Parsed-in-constructor terrain modifiers. We own these for the
+    // region's lifetime (which is the program's lifetime per the
+    // resident-all-scenes architecture). The TerrainModifier struct
+    // stores const char* for debug_name / region_name; those pointers
+    // refer into parsed_strings below for stable lifetime. Strings go
+    // into one append-only vector so member growth doesn't invalidate
+    // .c_str() pointers we already handed to the modifier registry.
+    std::vector<engine::world::TerrainModifier> parsed_modifiers;
+    // Append-only string pool. Reserved up front to size of the
+    // parsed_modifiers list × 2 fields per modifier so push_back
+    // never reallocates. Strings stored as std::string for ownership;
+    // .c_str() is handed to the modifier registry via parsed_modifiers.
+    std::vector<std::unique_ptr<std::string>> parsed_strings;
 };
 
 } // namespace selva::world

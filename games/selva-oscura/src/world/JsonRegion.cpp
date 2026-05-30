@@ -120,6 +120,73 @@ JsonRegion::JsonRegion(const nlohmann::json& json_doc, std::string folder)
             enemy_spawn_decls.push_back(std::move(d));
         }
     }
+
+    // Parse terrain_modifiers in the constructor (not commitPrepared)
+    // so registration can happen at boot BEFORE initTerrain. The
+    // global terrain mesh builder samples per-vertex Y through the
+    // modifier registry; modifiers registered AFTER initTerrain don't
+    // affect the already-built mesh. We split JsonRegion's load into
+    // two phases: registerModifiers() runs before initTerrain, then
+    // preloadAssets() runs after (it needs the terrain mesh to exist).
+    //
+    // Owned strings (debug_name + terrain_region) live in
+    // parsed_strings; TerrainModifier stores const char* into them.
+    // unique_ptr<string> ensures push_back never invalidates the
+    // c_str() pointers held by parsed_modifiers.
+    if (region_json.contains("terrain_modifiers") &&
+        !region_json["terrain_modifiers"].is_null())
+    {
+        const auto& mods_json = region_json.at("terrain_modifiers");
+        if (!mods_json.is_array())
+            throw std::runtime_error("terrain_modifiers must be an array");
+        parsed_modifiers.reserve(mods_json.size());
+        // Reserve generously: 2 owned strings per modifier (debug_name + terrain_region).
+        parsed_strings.reserve(mods_json.size() * 2);
+        for (const auto& m : mods_json)
+        {
+            engine::world::TerrainModifier mod;
+            mod.center_xz = parseVec2(m.value("center_xz", nlohmann::json::array()));
+            mod.half_extents_xz = parseVec2(m.value("half_extents_xz", nlohmann::json::array()));
+            mod.mode = parseModifierMode(m.value("mode", std::string{"FlushAt"}));
+            mod.value = m.value("value", 0.0f);
+            mod.value_far = m.value("value_far", 0.0f);
+            const std::string ax = m.value("slope_axis", std::string{"Z"});
+            mod.slope_axis = (ax == "X") ? 0 : 2;
+            mod.blend_pad = m.value("blend_pad", 0.0f);
+            mod.blend_pad_neg_x = m.value("blend_pad_neg_x", -1.0f);
+            mod.blend_pad_pos_x = m.value("blend_pad_pos_x", -1.0f);
+            mod.blend_pad_neg_z = m.value("blend_pad_neg_z", -1.0f);
+            mod.blend_pad_pos_z = m.value("blend_pad_pos_z", -1.0f);
+            // debug_name + terrain_region: own the strings here so their
+            // c_str() outlives the registry's pointer copy.
+            if (m.contains("debug_name") && m["debug_name"].is_string())
+            {
+                parsed_strings.push_back(
+                    std::make_unique<std::string>(m["debug_name"].get<std::string>()));
+                mod.debug_name = parsed_strings.back()->c_str();
+            }
+            // terrain_region: which terrain region (from terrain/config.json)
+            // this modifier targets. nullptr / unset = global (applies to
+            // any terrain region whose XZ AABB contains the query). Setting
+            // it scopes the modifier to that one terrain region.
+            if (m.contains("terrain_region") && m["terrain_region"].is_string())
+            {
+                parsed_strings.push_back(
+                    std::make_unique<std::string>(m["terrain_region"].get<std::string>()));
+                mod.region_name = parsed_strings.back()->c_str();
+            }
+            parsed_modifiers.push_back(mod);
+        }
+    }
+}
+
+void JsonRegion::registerModifiers()
+{
+    for (const auto& mod : parsed_modifiers)
+        engine::world::registerTerrainModifier(mod);
+    if (!parsed_modifiers.empty())
+        std::fprintf(stderr, "[json-region '%s'] registered %zu terrain modifier(s)\n",
+                     regionId().c_str(), parsed_modifiers.size());
 }
 
 void JsonRegion::preloadAssets()
@@ -244,34 +311,9 @@ void JsonRegion::commitPrepared(engine::world::RegionActivationContext& ctx)
         }
     }
 
-    // ---- Terrain modifiers ----
-    // NOTE: modifiers must be registered BEFORE the terrain region is
-    // built, since the build queries the registry per vertex. For
-    // scenes whose terrain is rebuilt at activation (TODO: per-region
-    // terrain), this is automatic. For the current global terrain
-    // (only SurfaceRegion uses it, baked once at boot), modifiers are
-    // applied at boot and changing them after requires a rebuild.
-    // Until per-region terrain ships, modifiers in region.json are
-    // applied as the engine sees them.
-    const auto& mods_json = region_json.value("terrain_modifiers", nlohmann::json::array());
-    for (const auto& m : mods_json)
-    {
-        engine::world::TerrainModifier mod;
-        mod.center_xz = parseVec2(m.value("center_xz", nlohmann::json::array()));
-        mod.half_extents_xz = parseVec2(m.value("half_extents_xz", nlohmann::json::array()));
-        mod.mode = parseModifierMode(m.value("mode", std::string{"FlushAt"}));
-        mod.value = m.value("value", 0.0f);
-        mod.value_far = m.value("value_far", 0.0f);
-        const std::string ax = m.value("slope_axis", std::string{"Z"});
-        mod.slope_axis = (ax == "X") ? 0 : 2;
-        mod.blend_pad = m.value("blend_pad", 0.0f);
-        // debug_name is a c-string in the engine struct; we can't
-        // easily own a string here long enough. Skip for now (overlay
-        // labels become "" for JSON-driven modifiers). Fix when the
-        // overlay needs them.
-        mod.debug_name = nullptr;
-        engine::world::registerTerrainModifier(mod);
-    }
+    // Terrain modifiers are parsed in the constructor + registered
+    // by registerModifiers() (called at boot BEFORE initTerrain so
+    // the mesh builder sees them). Not touched here.
 
     // ---- Triggers ----
     const auto& trigs_json = region_json.value("triggers", nlohmann::json::array());
@@ -299,7 +341,8 @@ void JsonRegion::commitPrepared(engine::world::RegionActivationContext& ctx)
     }
     std::fprintf(stderr,
                  "[json-region '%s'] commitPrepared END (%zu meshes, %zu mods, %zu triggers)\n",
-                 regionId().c_str(), loaded_meshes.size(), mods_json.size(), trigs_json.size());
+                 regionId().c_str(), loaded_meshes.size(), parsed_modifiers.size(),
+                 trigs_json.size());
 }
 
 void JsonRegion::onDeactivate()

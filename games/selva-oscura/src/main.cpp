@@ -257,12 +257,34 @@ int main(int /*argc*/, char* /*argv*/[])
                                                         engine.windowHeight());
                     selva::render::initRegionGeometry();
                 });
-    // Terrain modifiers (chapel plateau, descent strip, etc) must be
-    // registered BEFORE initTerrain() — Terrain.cpp::buildRegionMesh
-    // queries the registry per vertex. Chapel footprint comes from
-    // CryptLayout constants (kCryptX/kCryptZ/kHalfWidth/kHalfLength),
-    // not from sampling a loaded mesh -- so this no longer needs a
-    // legacy static-mesh-load step ahead of it.
+    // RegionManager must exist before regions can register into it.
+    engine::world::initRegionManager();
+    // Post-commit hook: on each transition, after the new region is
+    // committed, teleport the player capsule to the trigger's
+    // declared spawn pos + yaw. Engine doesn't know about the
+    // player; game wires it.
+    engine::world::setPostCommitCallback(
+        [](bool preserve_pos, const glm::vec3& spawn_pos, bool override_yaw, float spawn_yaw) {
+            selva::gameplay::onRegionTransitionCommit(preserve_pos, spawn_pos, override_yaw,
+                                                     spawn_yaw);
+        });
+
+    // PHASE 1 of region loading: parse region.json files + register
+    // their authored terrain modifiers into the global modifier
+    // registry. Modifiers MUST be registered before initTerrain()
+    // because Terrain.cpp::buildRegionMesh queries the registry per
+    // vertex when building the mesh. See [[feedback_dual_source_of_truth_is_the_bug]]
+    // -- chapel terrain modifiers used to be authored in C++; they
+    // now live in surface/region.json's terrain_modifiers array so
+    // chapel geometry has ONE source of truth (the region JSON).
+    engine.renderLoadingFrame("regions");
+    engine::world::RegionId default_region;
+    runBootStep("loadAllRegionsRegister",
+                [&] { default_region = selva::world::loadAllRegionsRegister(); });
+
+    // registerLimboLights is the last surviving C++-side authored
+    // world content. Lights are not terrain modifiers and don't have
+    // a JSON schema yet; future commit can move them into JSON too.
     runBootStep("registerAuthoredWorld",
                 [] { selva::world::crypt_layout::registerAuthoredWorld(); });
     engine.renderLoadingFrame("terrain mesh");
@@ -275,30 +297,12 @@ int main(int /*argc*/, char* /*argv*/[])
     // region activation, not here.
     selva::world::initPhysicsRegion();
 
-    // Region manager bootstrap + initial activation. The default
-    // spawn region becomes the active region at boot; its onActivate
-    // registers chapel/static-mesh bodies in Jolt. Legacy paths
-    // above have stopped registering the chapel (initPhysicsRegion
-    // no longer calls registerChapel) so there's no double-register.
-    //
-    // Terrain modifiers (chapel plateau, shaft hole) are still
-    // registered BEFORE initTerrain via the call above, because
-    // terrain is a global singleton whose mesh is built once at
-    // initTerrain time. When per-region terrain ships, those
-    // modifier declarations move into the region's region.json.
-    engine::world::initRegionManager();
-    // Post-commit hook: on each transition, after the new region is
-    // committed, teleport the player capsule to the trigger's
-    // declared spawn pos + yaw. Engine doesn't know about the
-    // player; game wires it.
-    engine::world::setPostCommitCallback(
-        [](bool preserve_pos, const glm::vec3& spawn_pos, bool override_yaw, float spawn_yaw) {
-            selva::gameplay::onRegionTransitionCommit(preserve_pos, spawn_pos, override_yaw,
-                                                     spawn_yaw);
-        });
+    // PHASE 2 of region loading: build per-region Jolt shapes for
+    // terrain + .glb meshes. Needs initTerrain() to have completed
+    // so the terrain CPU vertex arrays exist.
     engine.renderLoadingFrame("surface region");
-    engine::world::RegionId default_region;
-    runBootStep("loadAllRegions", [&] { default_region = selva::world::loadAllRegions(); });
+    runBootStep("loadAllRegionsPreload", [] { selva::world::loadAllRegionsPreload(); });
+
     if (default_region != engine::world::kInvalidRegion)
     {
         runBootStep("activateRegionImmediate",

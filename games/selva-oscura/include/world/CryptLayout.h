@@ -160,12 +160,13 @@ inline glm::vec3 chapelWorldOrigin()
 // ~-30). Terrain doesn't need to depress that low because the
 // chapel mesh (stair shaft enclosure + descent walls + ceiling)
 // already seals the tunnel from terrain above.
-void registerChapelTerrainModifiers();
-
-// Registers Limbo's terrain features (currently the Acheron trench)
-// as runtime TerrainModifiers in the "limbo" region. Must run BEFORE
-// world::initTerrain() builds the region meshes.
-void registerLimboTerrainModifiers();
+// Note: the chapel + corridor terrain MODIFIERS (FlushAt plateau,
+// FlushSlope wedge) moved to surface/region.json's terrain_modifiers
+// array (Commit 4: dual-source-of-truth fix). C++ retains only the
+// StructureFootprints with vertical_profile data that doesn't map
+// cleanly to JSON yet. The Acheron trench modifier likewise moved
+// to JSON.
+void registerChapelStructureFootprints();
 
 // Registers Limbo's point-light set. v1: ~6 dying-inhabitants' lights
 // scattered across the FAR shore of Acheron (the side opposite the

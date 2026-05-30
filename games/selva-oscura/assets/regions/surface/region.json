@@ -22,8 +22,44 @@
       "debug_name": "chapel_interior"
     }
   ],
-  "_terrain_modifiers_note": "Chapel plateau + stair shaft hole modifiers are STILL registered via crypt_layout::registerChapelTerrainModifiers() in main.cpp BEFORE initTerrain(), because terrain is a global singleton today. When terrain becomes scene-local, modifier declarations move into this JSON.",
-  "terrain_modifiers": [],
+  "_terrain_modifiers_note": "Authored chapel + Acheron terrain modifiers. Each modifier targets a terrain_region (selva_inner = colle + surrounding selva, limbo = Acheron disc) and is registered into the global TerrainModifier registry at boot by loadAllRegionsRegister() BEFORE initTerrain(). When the 3-region split lands in Commit 5, the limbo_acheron_trench entry moves into limbo/region.json.",
+  "terrain_modifiers": [
+    {
+      "_comment": "Chapel exterior plateau. Terrain depresses to plinth-bottom Y (kChapelGroundY 22.3 - kPlinthHeight 0.30 = 22.0) around the chapel footprint, extended forward by the door-threshold ramp length (0.50m) so terrain covers under the ramp. Soft 2m blend on -X/+X/-Z, SHARP +Z edge at the threshold OUTER face (-205.5). See [[feedback_structures_own_terrain_seam]].",
+      "debug_name": "chapel_exterior_plateau",
+      "terrain_region": "selva_inner",
+      "mode": "FlushAt",
+      "center_xz": [0.0, -209.75],
+      "half_extents_xz": [3.0, 4.25],
+      "value": 22.0,
+      "blend_pad": 2.0,
+      "blend_pad_pos_z": 0.0
+    },
+    {
+      "_comment": "Corridor wedge FlushSlope. Terrain follows the descent corridor's ceiling roof down for ~7.74m past the chapel back wall (Z=-214 to Z=-221.74) so the gap between chapel back and natural terrain is filled by terrain sloping along the corridor roof. value at -Z edge (far_z=-221.74), value_far at +Z edge (near_z=-214, chapel back wall). Slope = kStairRise/kStairTread = 0.4571 per m.",
+      "debug_name": "chapel_corridor_wedge_slope",
+      "terrain_region": "selva_inner",
+      "mode": "FlushSlope",
+      "center_xz": [0.0, -217.87],
+      "half_extents_xz": [3.0, 3.87],
+      "slope_axis": "Z",
+      "value": 21.54,
+      "value_far": 25.08,
+      "blend_pad": 0.0
+    },
+    {
+      "_comment": "Acheron trench. The river that cuts E-W across Limbo per [[project_acheron_river_lore]]. Disc Limbo radius 300m, center Z=-621.15. Trench is a chord at Z=-385 (~32m south of the corridor landing at Z=-353.15) -- the first feature the player encounters walking into Limbo. Trench depth 4m below Limbo floor (-43.13), 12m wide N-S, 340m wide E-W (170m half-extent stays 15m short of disc rim at ±185m). Sharp -X/+X edges (disc rim clips laterally), sloped -Z/+Z banks (5m blend pad = ~38° grade). Moves to limbo/region.json when Commit 5 splits regions.",
+      "debug_name": "limbo_acheron_trench",
+      "terrain_region": "limbo",
+      "mode": "FlushAt",
+      "center_xz": [0.0, -385.0],
+      "half_extents_xz": [170.0, 6.0],
+      "value": -47.13,
+      "blend_pad": 0.0,
+      "blend_pad_neg_z": 5.0,
+      "blend_pad_pos_z": 5.0
+    }
+  ],
   "triggers": [],
   "_enemy_spawns_note": "Empty until the region split (limbo region) lands. Limbo shades will be authored in limbo/region.json's enemy_spawns array. Schema documented in SCHEMA.md.",
   "enemy_spawns": [],

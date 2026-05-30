@@ -50,21 +50,39 @@ world-space offset and surface tag.
 
 ### `terrain_modifiers` (array)
 
-Surface-only. Applied during terrain mesh build. Empty array for
-interior regions.
+Per-region terrain modifiers, registered into the global modifier
+registry at boot BEFORE `initTerrain()` so the per-vertex mesh build
+sees them. Authoritative source of truth: this array (the C++
+`registerChapelTerrainModifiers` was retired in favor of this).
 
 ```json
 {
+  "debug_name": "chapel_exterior_plateau", // optional; F1 modifier overlay label
+  "terrain_region": "selva_inner",         // optional; scopes modifier to one terrain region
+                                            // (matches a name in terrain/config.json).
+                                            // OMITTED = applies to any terrain region whose
+                                            // XZ AABB contains the query (legacy behavior).
+  "mode": "FlushAt",                       // FlushAt | FlushSlope | DepressTo | AddDelta | Hole
   "center_xz": [0.0, -210.0],
   "half_extents_xz": [3.0, 4.0],
-  "mode": "FlushAt",                    // FlushAt | FlushSlope | DepressTo | AddDelta
-  "value": 32.25,
-  "value_far": 0.0,                     // FlushSlope only
-  "slope_axis": "Z",                    // FlushSlope only: X or Z
-  "blend_pad": 2.0,
-  "debug_name": "chapel_plateau"
+  "value": 22.0,                            // mode-dependent meaning
+  "value_far": 25.08,                       // FlushSlope only: Y at +axis edge
+  "slope_axis": "Z",                        // FlushSlope only: "X" or "Z"
+  "blend_pad": 2.0,                         // default blend distance into surrounding terrain
+  "blend_pad_neg_x": 5.0,                   // optional per-side overrides (default -1 = use blend_pad)
+  "blend_pad_pos_x": -1.0,
+  "blend_pad_neg_z": 5.0,
+  "blend_pad_pos_z": 0.0                    // 0 = sharp edge (no blend on this side)
 }
 ```
+
+**Why the `terrain_region` field exists:** the JsonRegion that OWNS
+a modifier (e.g. `surface/region.json`) is not always the same as the
+terrain region the modifier affects (e.g. the Acheron trench is
+authored in `surface/region.json` today but targets the `"limbo"`
+terrain region). The field is explicit so the modifier author can
+target any terrain region without coupling JsonRegion identity to
+terrain-region identity.
 
 ### `triggers` (array)
 

@@ -79,7 +79,7 @@ enum class TransitionMode : std::uint8_t
 // LoadingTarget was deleted: per the preload-everything-before-main-menu
 // doctrine (pillar 9), all regions' assets (.glb meshes, Jolt shapes,
 // CPU vertex arrays) are eagerly preloaded at boot via
-// JsonRegion::preloadAssets() inside loadAllRegions(). Body insertion
+// JsonRegion::preloadAssets() inside loadAllRegionsPreload(). Body insertion
 // is the only per-activation work and is sub-millisecond. There is
 // nothing to "load" at transition time, so the LoadingTarget state
 // never had any work to do -- it just polled a future that was always
