@@ -121,48 +121,57 @@ Region* currentRegionPtr()
 
 // ---- Activation / deactivation -------------------------------------------
 
-// Internal: deactivate the current region, removing every body it owns.
-static void deactivateCurrent()
+// Internal: swap g.current to a different region, WITHOUT touching
+// any region's bodies (multi-resident architecture: every region's
+// bodies + meshes are resident at all times for zero-delay seamless
+// traversal). The trigger-edge state is cleared because we're now
+// in a different region's trigger frame.
+static void swapCurrentTo(RegionId id)
 {
-    Region* cur = currentRegionPtr();
-    if (cur == nullptr)
-        return;
-    // Diamond cleanup: every body the region declared via the context
-    // is removed. Region cannot leak.
-    for (auto h : cur->ownedBodies())
-        engine::physics::removeBody(h);
-    cur->engineClearOwnership();
-    cur->onDeactivate();
-    g.current = kInvalidRegion;
+    g.current = id;
     g.player_inside_trigger_id.clear();
     g.player_inside_trigger_region = kInvalidRegion;
 }
 
-// Internal: activate a region. Assets are eagerly preloaded at boot
-// (per pillar 9: preload-everything-before-main-menu), so activation
-// is just body insertion + trigger registration. onActivate() calls
-// commitPrepared() for AsyncCapableRegions (which is the actual
-// resident-shape body-insert), or runs the region's full onActivate
-// for non-async types.
-static void activateInternal(RegionId id)
+// Internal: insert this region's bodies + triggers into the engine.
+// Called ONCE per region at boot (multi-resident architecture). Per
+// pillar 9 (preload-everything-before-main-menu), assets are already
+// loaded; this just registers the prepared bodies + triggers.
+//
+// onActivate() runs commitPrepared() for AsyncCapableRegions (which
+// inserts preloaded shapes), or the region's full onActivate for
+// non-async types.
+static void makeRegionResident(RegionId id)
 {
     Region* s = regionFromId(id);
     if (s == nullptr)
     {
-        std::fprintf(stderr, "[region-manager] activate: unknown RegionId=%u\n", id.id);
+        std::fprintf(stderr, "[region-manager] makeResident: unknown RegionId=%u\n", id.id);
+        return;
+    }
+    if (!s->ownedBodies().empty())
+    {
+        // Already resident (idempotent guard for any caller that
+        // accidentally double-activates).
         return;
     }
     RegionActivationContext ctx(*s);
     s->onActivate(ctx);
-    g.current = id;
-    std::fprintf(stderr, "[region-manager] activated '%s' (%zu bodies, %zu triggers)\n",
+    std::fprintf(stderr,
+                 "[region-manager] region '%s' resident (%zu bodies, %zu triggers)\n",
                  s->regionId().c_str(), s->ownedBodies().size(), s->triggers().size());
 }
 
 void activateRegionImmediate(RegionId id)
 {
-    deactivateCurrent();
-    activateInternal(id);
+    // Multi-resident: ensure EVERY registered region is resident
+    // (idempotent), then set the requested one as current. This is
+    // called at boot exactly once -- subsequent transitions go
+    // through beginTransition() which only swaps g.current via
+    // swapCurrentTo() since all regions are already resident.
+    for (int i = 0; i < regionCount(); ++i)
+        makeRegionResident(regionAt(i));
+    swapCurrentTo(id);
 }
 
 // ---- Transition state machine --------------------------------------------
@@ -247,14 +256,14 @@ void tickCommitting()
     const bool override_yaw = g.override_yaw;
     const float spawn_yaw = g.target_yaw;
     std::fprintf(stderr,
-                 "[region-manager] COMMIT: deactivating + activating target RegionId=%u, "
+                 "[region-manager] COMMIT: swapping current to RegionId=%u, "
                  "then teleporting player to (%.2f,%.2f,%.2f) override_yaw=%d\n",
                  g.target.id, spawn_pos.x, spawn_pos.y, spawn_pos.z, override_yaw ? 1 : 0);
-    deactivateCurrent();
-    // Always synchronous commit: preloadAssets ran at boot so
-    // commitPrepared just inserts already-built shapes. The
-    // from_async toggle is gone with the LoadingTarget state.
-    activateInternal(g.target);
+    // Multi-resident: bodies + meshes are already in Jolt/GPU for
+    // every region (since boot). Transition is just swapping which
+    // region owns trigger-fire context + new-character spawn defaults.
+    // Sub-millisecond -- no body insertion/removal.
+    swapCurrentTo(g.target);
     g.target = kInvalidRegion;
     firePostCommit(preserve_pos, spawn_pos, override_yaw, spawn_yaw);
     if (g.mode == TransitionMode::Instant)
@@ -403,7 +412,18 @@ void initRegionManager()
 
 void shutdownRegionManager()
 {
-    deactivateCurrent();
+    // Multi-resident: every region's bodies are in Jolt. Remove each
+    // region's bodies before clearing the region list (the Region's
+    // dtor doesn't touch physics; we do that here explicitly).
+    for (auto& s : g.regions)
+    {
+        if (s == nullptr)
+            continue;
+        for (auto h : s->ownedBodies())
+            engine::physics::removeBody(h);
+        s->engineClearOwnership();
+        s->onDeactivate();
+    }
     // Per-region shutdown for resident-all-regions asset freeing.
     for (auto& s : g.regions)
         if (s)

@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "region_id": "chapel_interior",
+  "region_kind": "Interior",
+  "debug_name": "Chapel interior + descent staircase to Limbo",
+  "_comment": "Vertical-stack region 2 of 3: the chapel building's interior floor + the entire descent staircase down to Limbo. Owns chapel_interior.glb (interior floor + upper-flight steps + continuous descent + corridor walls/ceiling). No terrain (chapel floor + descent corridor are static mesh). Triggers fire on both seams: north back to surface (exiting the chapel door), south down to limbo (stepping off the last descent step).",
+  "terrain": null,
+  "static_meshes": [
+    {
+      "path": "assets/world/static_meshes/chapel_interior.glb",
+      "world_origin": [0.0, 22.0, -210.0],
+      "surface_tag": "Architecture",
+      "debug_name": "chapel_interior"
+    }
+  ],
+  "terrain_modifiers": [],
+  "triggers": [
+    {
+      "id": "chapel_door_exit",
+      "_comment": "Player walks back out the chapel door. Same trigger volume as surface's chapel_door_enter (mirrored across door threshold). Instant + preserve_player_pos -- continuous world, no teleport.",
+      "center": [0.0, 23.0, -214.30],
+      "half_extents": [0.5, 1.0, 0.25],
+      "target_region": "surface",
+      "preserve_player_pos": true,
+      "transition_mode": "Instant",
+      "fade_duration_seconds": 0.0,
+      "debug_name": "chapel_door_exit"
+    },
+    {
+      "id": "limbo_descent_enter",
+      "_comment": "Player steps off the last continuous-descent step onto Limbo's floor. Trigger sits at the bottom-of-stairs landing (world Z ~= -346.85, Y ~= -43.13). Corridor cross-section is 4.8m wide (±2.4m X). Instant + preserve_player_pos.",
+      "center": [0.0, -42.0, -346.85],
+      "half_extents": [2.4, 1.5, 0.5],
+      "target_region": "limbo",
+      "preserve_player_pos": true,
+      "transition_mode": "Instant",
+      "fade_duration_seconds": 0.0,
+      "debug_name": "limbo_descent_enter"
+    }
+  ],
+  "enemy_spawns": [],
+  "ambient": { "color": [0.06, 0.05, 0.04] },
+  "sky": { "kind": "void" },
+  "footstep_default": "footstep_concrete"
+}

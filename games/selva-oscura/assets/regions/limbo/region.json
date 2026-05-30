@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "region_id": "limbo",
+  "region_kind": "Interior",
+  "debug_name": "Limbo (First Circle)",
+  "_comment": "Vertical-stack region 3 of 3: the disc of Limbo, the First Circle. Owns the limbo terrain region (disc heightmap + ceiling + rock-collar walls) + the Acheron trench modifier. No static meshes today (no chapel-style architecture yet in Limbo); enemy_spawns will populate with shades in Commit 7. Return-trigger fires when player walks back into the descent corridor mouth (heading north toward Z > -346.85).",
+  "terrain": {
+    "config": "assets/world/terrain/config.json",
+    "region": "limbo"
+  },
+  "static_meshes": [],
+  "terrain_modifiers": [
+    {
+      "_comment": "Acheron trench. The river that cuts E-W across Limbo per [[project_acheron_river_lore]]. Disc Limbo radius 300m, center Z=-621.15. Trench is a chord at Z=-385 (~32m south of the corridor landing at Z=-353.15) -- the first feature the player encounters walking into Limbo. Trench depth 4m below Limbo floor (-43.13), 12m wide N-S, 340m wide E-W (170m half-extent stays 15m short of disc rim at ±185m). Sharp -X/+X edges (disc rim clips laterally), sloped -Z/+Z banks (5m blend pad = ~38° grade).",
+      "debug_name": "limbo_acheron_trench",
+      "terrain_region": "limbo",
+      "mode": "FlushAt",
+      "center_xz": [0.0, -385.0],
+      "half_extents_xz": [170.0, 6.0],
+      "value": -47.13,
+      "blend_pad": 0.0,
+      "blend_pad_neg_z": 5.0,
+      "blend_pad_pos_z": 5.0
+    }
+  ],
+  "triggers": [
+    {
+      "id": "limbo_descent_exit",
+      "_comment": "Player walks back into the descent corridor mouth from Limbo, heading north (toward Z=-346 then up the stairs). Mirrors chapel_interior's limbo_descent_enter trigger.",
+      "center": [0.0, -42.0, -346.85],
+      "half_extents": [2.4, 1.5, 0.5],
+      "target_region": "chapel_interior",
+      "preserve_player_pos": true,
+      "transition_mode": "Instant",
+      "fade_duration_seconds": 0.0,
+      "debug_name": "limbo_descent_exit"
+    }
+  ],
+  "enemy_spawns": [],
+  "ambient": { "color": [0.03, 0.03, 0.03] },
+  "sky": { "kind": "void" },
+  "footstep_default": "footstep_limbo"
+}

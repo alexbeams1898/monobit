@@ -91,11 +91,12 @@ TEST_CASE("every region in regions.json has a loadable region.json with required
     }
 }
 
-TEST_CASE("surface region has at least one static_mesh entry", "[region-schema]")
+TEST_CASE("surface region has chapel_exterior static_mesh entry", "[region-schema]")
 {
-    // The surface region is the entire playable world in v1; if its
-    // static_meshes array is empty, no chapel renders. This test fires
-    // on any rename / refactor that breaks the static_meshes key.
+    // The surface region owns the outdoor selva + chapel exterior; if
+    // its static_meshes array is empty or missing chapel_exterior.glb,
+    // there's no chapel to walk into. This test fires on any rename /
+    // refactor that breaks the static_meshes key.
     const auto region = loadJson("assets/regions/surface/region.json");
     REQUIRE(region.contains("static_meshes"));
     REQUIRE(region.at("static_meshes").is_array());
@@ -108,6 +109,37 @@ TEST_CASE("surface region has at least one static_mesh entry", "[region-schema]"
         REQUIRE(m.contains("path"));
         REQUIRE(m.at("path").is_string());
         REQUIRE_FALSE(m.at("path").get<std::string>().empty());
+    }
+}
+
+TEST_CASE("every region trigger targets a registered region", "[region-schema]")
+{
+    // Region triggers cross-reference other regions by id. If a trigger
+    // targets a region that doesn't exist in regions.json, the boot
+    // loader logs a warning but the trigger fires into the void. Catch
+    // those at data-validation time.
+    const auto registry = loadJson("assets/regions/regions.json");
+    std::vector<std::string> known_region_ids;
+    for (const auto& sid_val : registry.at("regions"))
+        known_region_ids.push_back(sid_val.get<std::string>());
+
+    for (const auto& sid : known_region_ids)
+    {
+        const std::string path = "assets/regions/" + sid + "/region.json";
+        const auto region = loadJson(path);
+        if (!region.contains("triggers") || region.at("triggers").is_null())
+            continue;
+        for (const auto& t : region.at("triggers"))
+        {
+            if (!t.contains("target_region"))
+                continue;
+            const std::string target = t.at("target_region").get<std::string>();
+            INFO("region '" << sid << "' trigger '"
+                            << (t.contains("id") ? t.at("id").get<std::string>() : "<no-id>")
+                            << "' targets unknown region '" << target << "'");
+            REQUIRE(std::find(known_region_ids.begin(), known_region_ids.end(), target) !=
+                    known_region_ids.end());
+        }
     }
 }
 

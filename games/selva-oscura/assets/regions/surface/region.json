@@ -1,28 +1,20 @@
 {
   "schema_version": 1,
   "region_id": "surface",
-  "debug_name": "Selva surface + chapel + descent + Limbo (all layers as one continuous world)",
-  "_comment": "Per Inferno-vertical-stack doctrine: one scene per vertical-slice region. The chapel + descent corridor + Limbo platform are all in this scene as continuous geometry. The player walks from selva surface, into the chapel, down the descent, into Limbo — no scene transitions, no fades, no loading.",
+  "debug_name": "Selva surface + chapel exterior",
+  "_comment": "Vertical-stack region 1 of 3: outdoor selva wood + colle plateau + chapel exterior (facade, walls, plinth, roof). Player enters chapel_interior via the chapel-door trigger; player descends from chapel_interior into limbo via the descent-bottom trigger. All three regions are RESIDENT in physics + render at all times (multi-resident architecture per [[feedback_seamless_world_traversal]]) so the player can see across seams.",
   "terrain": {
     "config": "assets/world/terrain/config.json",
     "region": "selva_inner"
   },
-  "_static_meshes_note": "Split out of the legacy crypt.glb in Commit 3 of the region-rebuild: chapel_exterior owns facade/walls/plinth/roof, chapel_interior owns interior floor + the entire descent staircase. Both share the same world_origin because they're authored in the same Blender file (one generator, sliced at export time by collection). When the 3-region split lands in Commit 5, chapel_interior moves to its own region.json (chapel_interior/region.json); for now both live in surface.",
   "static_meshes": [
     {
       "path": "assets/world/static_meshes/chapel_exterior.glb",
       "world_origin": [0.0, 22.0, -210.0],
       "surface_tag": "Architecture",
       "debug_name": "chapel_exterior"
-    },
-    {
-      "path": "assets/world/static_meshes/chapel_interior.glb",
-      "world_origin": [0.0, 22.0, -210.0],
-      "surface_tag": "Architecture",
-      "debug_name": "chapel_interior"
     }
   ],
-  "_terrain_modifiers_note": "Authored chapel + Acheron terrain modifiers. Each modifier targets a terrain_region (selva_inner = colle + surrounding selva, limbo = Acheron disc) and is registered into the global TerrainModifier registry at boot by loadAllRegionsRegister() BEFORE initTerrain(). When the 3-region split lands in Commit 5, the limbo_acheron_trench entry moves into limbo/region.json.",
   "terrain_modifiers": [
     {
       "_comment": "Chapel exterior plateau. Terrain depresses to plinth-bottom Y (kChapelGroundY 22.3 - kPlinthHeight 0.30 = 22.0) around the chapel footprint, extended forward by the door-threshold ramp length (0.50m) so terrain covers under the ramp. Soft 2m blend on -X/+X/-Z, SHARP +Z edge at the threshold OUTER face (-205.5). See [[feedback_structures_own_terrain_seam]].",
@@ -46,22 +38,21 @@
       "value": 21.54,
       "value_far": 25.08,
       "blend_pad": 0.0
-    },
-    {
-      "_comment": "Acheron trench. The river that cuts E-W across Limbo per [[project_acheron_river_lore]]. Disc Limbo radius 300m, center Z=-621.15. Trench is a chord at Z=-385 (~32m south of the corridor landing at Z=-353.15) -- the first feature the player encounters walking into Limbo. Trench depth 4m below Limbo floor (-43.13), 12m wide N-S, 340m wide E-W (170m half-extent stays 15m short of disc rim at ±185m). Sharp -X/+X edges (disc rim clips laterally), sloped -Z/+Z banks (5m blend pad = ~38° grade). Moves to limbo/region.json when Commit 5 splits regions.",
-      "debug_name": "limbo_acheron_trench",
-      "terrain_region": "limbo",
-      "mode": "FlushAt",
-      "center_xz": [0.0, -385.0],
-      "half_extents_xz": [170.0, 6.0],
-      "value": -47.13,
-      "blend_pad": 0.0,
-      "blend_pad_neg_z": 5.0,
-      "blend_pad_pos_z": 5.0
     }
   ],
-  "triggers": [],
-  "_enemy_spawns_note": "Empty until the region split (limbo region) lands. Limbo shades will be authored in limbo/region.json's enemy_spawns array. Schema documented in SCHEMA.md.",
+  "triggers": [
+    {
+      "id": "chapel_door_enter",
+      "_comment": "Stepping onto the chapel-door threshold ramp from outside fires this trigger. transition_mode Instant + preserve_player_pos true: the player's world coords are valid in both surface and chapel_interior (one continuous world), so we don't teleport -- we just swap the current region for trigger-context purposes. Multi-resident architecture means the chapel_interior mesh was already drawn this frame; the player visually walks right through.",
+      "center": [0.0, 23.0, -214.30],
+      "half_extents": [0.5, 1.0, 0.25],
+      "target_region": "chapel_interior",
+      "preserve_player_pos": true,
+      "transition_mode": "Instant",
+      "fade_duration_seconds": 0.0,
+      "debug_name": "chapel_door_enter"
+    }
+  ],
   "enemy_spawns": [],
   "ambient": { "color": [0.16, 0.18, 0.22] },
   "sky": { "kind": "atmospheric" },

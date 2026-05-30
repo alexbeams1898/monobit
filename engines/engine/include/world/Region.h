@@ -275,11 +275,23 @@ bool beginTransition(RegionId target, TransitionMode mode, bool preserve_player_
 // current transition state (Idle when nothing's happening).
 TransitionState tickRegionManager(float dt);
 
-// Currently active region (the one whose bodies are in Jolt right now).
+// Currently active region. In the multi-resident architecture (all
+// regions' bodies + meshes are resident from boot for zero-delay
+// seamless traversal), "current" specifically means:
+//   * Whose triggers the trigger-check iterates this frame
+//   * Where new-character spawn defaults apply
+//   * Which region's region_id the debug chip shows
+// It does NOT mean "the only region whose bodies are in physics" --
+// every registered region's bodies are in Jolt at all times, so the
+// player can cross seams without any body insertion/removal at the
+// transition moment.
 RegionId currentRegion();
 Region* currentRegionPtr(); // may be null
 
-// All registered regions (for F1 force-transition menu).
+// All registered regions (for F1 force-transition menu + the multi-
+// region renderer, which iterates every region's meshes each frame
+// instead of just the current one). Indices are stable across the
+// session.
 int regionCount();
 RegionId regionAt(int idx);
 Region* regionPtr(RegionId);

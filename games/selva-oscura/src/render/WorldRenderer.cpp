@@ -796,12 +796,20 @@ void renderGroundDecals()
 
 void renderStaticMeshes()
 {
-    // Active region owns its static meshes (JsonRegion::renderMeshes).
-    // Positions are baked in world space by the region loader, so
-    // model matrix is identity; the region-render call sets it.
-    auto* region = dynamic_cast<selva::world::JsonRegion*>(engine::world::currentRegionPtr());
-    if (region != nullptr)
-        region->renderMeshes();
+    // Multi-resident: iterate EVERY registered region's meshes, not
+    // just the current one. Positions are baked in world space by
+    // the region loader, so model matrix is identity. This is what
+    // lets the player see through the chapel door into chapel
+    // interior, and through the descent shaft down into Limbo, even
+    // though "current region" (for trigger context) is only one of
+    // them. See Region.h doctrine on currentRegion semantics.
+    for (int i = 0; i < engine::world::regionCount(); ++i)
+    {
+        auto* region = dynamic_cast<selva::world::JsonRegion*>(
+            engine::world::regionPtr(engine::world::regionAt(i)));
+        if (region != nullptr)
+            region->renderMeshes();
+    }
 }
 
 void renderStaticMeshesDepth()
@@ -815,15 +823,18 @@ void renderStaticMeshesDepth()
     // the receiver's normal-offset bias handles self-shadow.
     glDisable(GL_CULL_FACE);
 
-    auto* region = dynamic_cast<selva::world::JsonRegion*>(engine::world::currentRegionPtr());
-    if (region != nullptr)
+    // Multi-resident: same loop as the color pass. Region-owned
+    // meshes: positions baked in world space; depth model matrix
+    // is identity. Use renderMeshesDepth which does NOT touch
+    // color shader state (different shader program is bound by
+    // the depth pass).
+    selva::render::setSceneDepthModel(glm::mat4(1.0f));
+    for (int i = 0; i < engine::world::regionCount(); ++i)
     {
-        // Region-owned meshes: positions baked in world space; depth
-        // model matrix is identity. Use renderMeshesDepth which does
-        // NOT touch color shader state (different shader program is
-        // bound by the depth pass).
-        selva::render::setSceneDepthModel(glm::mat4(1.0f));
-        region->renderMeshesDepth();
+        auto* region = dynamic_cast<selva::world::JsonRegion*>(
+            engine::world::regionPtr(engine::world::regionAt(i)));
+        if (region != nullptr)
+            region->renderMeshesDepth();
     }
 
     // Restore cull-front for subsequent depth-pass casters (skeletal

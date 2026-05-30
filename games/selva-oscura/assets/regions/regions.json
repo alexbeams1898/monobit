@@ -1,8 +1,10 @@
 {
   "schema_version": 1,
-  "_comment": "Top-level region registry. One region per vertical-slice. The 'surface' region holds all currently-realized layers of the Inferno stack (selva surface + chapel + descent corridor + Limbo). Future Lust / Gluttony / etc. either land in this region as added sub-zones or split into a new vertical-slice region when content forces it.",
+  "_comment": "Top-level region registry. Three vertical-slice regions per [[project_inferno_vertical_stack]]: surface (selva wood + chapel exterior), chapel_interior (chapel building interior + descent staircase), limbo (the First Circle disc). All three are RESIDENT in physics + render at all times (multi-resident architecture for zero-delay seamless traversal); current-region pointer is used only for trigger-fire context + new-character spawn defaults. Future circles add as additional regions.",
   "regions": [
-    "surface"
+    "surface",
+    "chapel_interior",
+    "limbo"
   ],
   "default_spawn_region": "surface"
 }
