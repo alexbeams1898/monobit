@@ -106,6 +106,42 @@ declaration on the target region).
 }
 ```
 
+### `enemy_spawns` (array)
+
+Per-instance enemy placement for this region. Each entry references an
+archetype declared in `config/enemies/<archetype>.json` and places one
+actor in the world at boot.
+
+```json
+{
+  "id": "limbo_shade_riverbank_01",      // unique within this region; persists across cycles for save state
+  "archetype": "limbo_shade",             // archetype lookup id from config/enemies/
+  "pos": [12.5, -43.13, -18.0],           // world XYZ
+  "yaw": 1.57,                            // facing radians (optional, default 0)
+  "permanent_on_death": false,            // optional, default false. true = "felled keeper does not respawn" per setting.md
+  "patrol_path": [[12.5, -43.13, -18.0], [8.0, -43.13, -22.0]]  // optional roaming waypoints; ignored until AI_Roaming lands
+}
+```
+
+**Required:** `id`, `archetype`, `pos`. Missing any of these throws at
+boot rather than silently spawning nothing -- the same fail-loudly
+contract as the rest of the region schema.
+
+**Respawn semantics** are the canonical cycle-flow model per
+`docs/design/setting.md` *Per-circle reactivity* + *Cycle structure*:
+
+- `permanent_on_death: false` (shades, default) — re-spawn on every
+  new cycle. The cycle boundary is *player second-death* OR *new
+  game / load game*. Per cosmology: Hell re-streams souls into their
+  punishment positions every cycle.
+- `permanent_on_death: true` (keepers) — once felled, stay felled
+  across cycles. Per *fallback.md* "Class persists across cycles /
+  Keepers felled" — a felled keeper does not respawn.
+
+There is NO per-enemy respawn timer. The doctrine is intentional:
+Hell is timeless (no day/night, no aging); enemies don't "tick back
+to life" while the player watches. They re-flow on the next descent.
+
 ### `default_spawn`
 
 Used for NEW characters when no save data dictates a position. One region

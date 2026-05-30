@@ -2999,6 +2999,11 @@ static void tickPlayerSecondDeathLifecycle()
     sSampler.releaseOneShot();
     // Unmuffle the OST — bookends the duck applied in fireEnemyDeath.
     selva::audio::restoreMusic();
+    // Cycle boundary: per docs/design/setting.md "Per-circle reactivity"
+    // + "Cycle structure", a new descent begins on Vagrant respawn.
+    // Hell re-streams shades into their punishment positions.
+    // Permanent-on-death keepers stay fallen if they fell this cycle.
+    selva::gameplay::resetCycleEnemies();
 }
 
 // Compute the per-frame movement/velocity locks from one-shot state,
@@ -3652,11 +3657,8 @@ static void drawActorMeshes(const glm::mat4& viewProj)
         glm::mat4 enemy_model = glm::translate(glm::mat4(1.0f), enemy_pos);
         enemy_model =
             glm::rotate(enemy_model, enemy->yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
-        // Dark bordeaux red for the placeholder shade — distinct
-        // silhouette from the player, hints at the figura-umana
-        // damned-soul register (bloody / wretched).
         selva::anim::drawSkeletalMesh(sPlayerMesh, enemy_model, viewProj,
-                                      enemy->sampler.bone_palette, glm::vec3(0.45f, 0.10f, 0.13f));
+                                      enemy->sampler.bone_palette, glm::vec3(1.0f, 1.0f, 1.0f));
     }
 }
 

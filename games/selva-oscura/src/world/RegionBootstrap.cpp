@@ -1,5 +1,6 @@
 #include "world/RegionBootstrap.h"
 
+#include "gameplay/Enemies.h"
 #include "world/JsonRegion.h"
 
 #include <nlohmann/json.hpp>
@@ -113,6 +114,26 @@ engine::world::RegionId loadAllRegions()
 engine::world::RegionId defaultSpawnRegion()
 {
     return sDefaultSpawn;
+}
+
+void spawnActiveRegionEnemies()
+{
+    auto* base = engine::world::currentRegionPtr();
+    if (base == nullptr)
+    {
+        std::fprintf(stderr,
+                     "[region-bootstrap] spawnActiveRegionEnemies: no active region; skipping\n");
+        return;
+    }
+    auto* js = dynamic_cast<JsonRegion*>(base);
+    if (js == nullptr)
+    {
+        std::fprintf(stderr,
+                     "[region-bootstrap] spawnActiveRegionEnemies: active region is not a "
+                     "JsonRegion; skipping\n");
+        return;
+    }
+    selva::gameplay::spawnRegionEnemies(js->regionId(), js->enemySpawnDecls());
 }
 
 } // namespace selva::world

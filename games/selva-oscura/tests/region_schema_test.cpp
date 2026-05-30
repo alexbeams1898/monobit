@@ -20,8 +20,10 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <fstream>
 #include <string>
+#include <vector>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -118,4 +120,84 @@ TEST_CASE("tree-asset glTF file exists at the path TreeAssets.cpp reads", "[regi
     // on disk.
     std::ifstream f("assets/world/trees/low_poly_forest_tree_pack/scene.gltf");
     REQUIRE(f.is_open());
+}
+
+TEST_CASE("every region's enemy_spawns entries have required keys", "[region-schema]")
+{
+    // JsonRegion's parse path throws on missing id / archetype / pos.
+    // This test mirrors those required-key checks at the data-validation
+    // level so a missing key fails CI rather than crashing boot.
+    // permanent_on_death + yaw + patrol_path are optional with sensible
+    // defaults; not checked here.
+    const auto registry = loadJson("assets/regions/regions.json");
+    for (const auto& sid_val : registry.at("regions"))
+    {
+        const std::string sid = sid_val.get<std::string>();
+        const std::string path = "assets/regions/" + sid + "/region.json";
+        const auto region = loadJson(path);
+        if (!region.contains("enemy_spawns") || region.at("enemy_spawns").is_null())
+            continue;
+        REQUIRE(region.at("enemy_spawns").is_array());
+        for (const auto& s : region.at("enemy_spawns"))
+        {
+            REQUIRE(s.contains("id"));
+            REQUIRE(s.at("id").is_string());
+            REQUIRE_FALSE(s.at("id").get<std::string>().empty());
+            REQUIRE(s.contains("archetype"));
+            REQUIRE(s.at("archetype").is_string());
+            REQUIRE_FALSE(s.at("archetype").get<std::string>().empty());
+            REQUIRE(s.contains("pos"));
+            REQUIRE(s.at("pos").is_array());
+            REQUIRE(s.at("pos").size() >= 3);
+        }
+    }
+}
+
+TEST_CASE("enemy_spawn ids are unique within their region", "[region-schema]")
+{
+    // The id is used as the save-persistence key (prefixed with
+    // region_id). Collisions mean save data refers to ambiguous
+    // actors. Catch authoring typos here.
+    const auto registry = loadJson("assets/regions/regions.json");
+    for (const auto& sid_val : registry.at("regions"))
+    {
+        const std::string sid = sid_val.get<std::string>();
+        const std::string path = "assets/regions/" + sid + "/region.json";
+        const auto region = loadJson(path);
+        if (!region.contains("enemy_spawns") || region.at("enemy_spawns").is_null())
+            continue;
+        std::vector<std::string> ids;
+        for (const auto& s : region.at("enemy_spawns"))
+            ids.push_back(s.at("id").get<std::string>());
+        std::vector<std::string> sorted_ids = ids;
+        std::sort(sorted_ids.begin(), sorted_ids.end());
+        auto dup = std::adjacent_find(sorted_ids.begin(), sorted_ids.end());
+        INFO("region '" << sid << "': enemy_spawn id collision");
+        REQUIRE(dup == sorted_ids.end());
+    }
+}
+
+TEST_CASE("every enemy_spawn archetype id references a real archetype JSON", "[region-schema]")
+{
+    // If a region.json declares "archetype": "nonexistent_kind", the
+    // game logs a warning at spawn but the actor exists with no
+    // behavior tree. Catch this at data-validation time.
+    const auto registry = loadJson("assets/regions/regions.json");
+    for (const auto& sid_val : registry.at("regions"))
+    {
+        const std::string sid = sid_val.get<std::string>();
+        const std::string path = "assets/regions/" + sid + "/region.json";
+        const auto region = loadJson(path);
+        if (!region.contains("enemy_spawns") || region.at("enemy_spawns").is_null())
+            continue;
+        for (const auto& s : region.at("enemy_spawns"))
+        {
+            const std::string archetype = s.at("archetype").get<std::string>();
+            const std::string archetype_path = "config/enemies/" + archetype + ".json";
+            std::ifstream f(archetype_path);
+            INFO("region '" << sid << "' spawn '" << s.at("id").get<std::string>()
+                            << "' references missing archetype '" << archetype << "'");
+            REQUIRE(f.is_open());
+        }
+    }
 }

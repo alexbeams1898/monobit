@@ -18,6 +18,8 @@
   "_terrain_modifiers_note": "Chapel plateau + stair shaft hole modifiers are STILL registered via crypt_layout::registerChapelTerrainModifiers() in main.cpp BEFORE initTerrain(), because terrain is a global singleton today. When terrain becomes scene-local, modifier declarations move into this JSON.",
   "terrain_modifiers": [],
   "triggers": [],
+  "_enemy_spawns_note": "Empty until the region split (limbo region) lands. Limbo shades will be authored in limbo/region.json's enemy_spawns array. Schema documented in SCHEMA.md.",
+  "enemy_spawns": [],
   "ambient": { "color": [0.16, 0.18, 0.22] },
   "sky": { "kind": "atmospheric" },
   "footstep_default": "footstep_grass",

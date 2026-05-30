@@ -1,5 +1,6 @@
 #pragma once
 
+#include "gameplay/Enemies.h"
 #include "world/AsyncRegionLoader.h"
 #include "world/StaticMeshAssets.h"
 #include "world/TerrainModifiers.h"
@@ -88,6 +89,17 @@ class JsonRegion : public engine::world::AsyncCapableRegion
     // no color/tint setup.
     void renderMeshesDepth() const;
 
+    // Parsed enemy spawn declarations from the region.json's
+    // "enemy_spawns" array. Populated at construction. Spawn timing
+    // (when the actor pool gets populated from these decls) is
+    // separate -- see selva::world::spawnActiveRegionEnemies(), which
+    // requires the archetype registry + behavior trees to be loaded
+    // first.
+    const std::vector<selva::gameplay::EnemySpawnDecl>& enemySpawnDecls() const
+    {
+        return enemy_spawn_decls;
+    }
+
   private:
     nlohmann::json region_json;
     std::string region_folder;
@@ -111,6 +123,11 @@ class JsonRegion : public engine::world::AsyncCapableRegion
     // selva::world::terrainRegion(i).
     std::vector<engine::physics::ShapeHandle> terrain_shapes;
     bool is_preloaded = false;
+
+    // Parsed in constructor from the region_json's "enemy_spawns"
+    // array. Authoritative source of truth for which enemies belong
+    // to this region.
+    std::vector<selva::gameplay::EnemySpawnDecl> enemy_spawn_decls;
 };
 
 } // namespace selva::world

@@ -60,19 +60,26 @@ constexpr const char* kHitReactHeavyClipName = "hit_react_heavy";
 constexpr const char* kDeathClipName = "death";
 constexpr const char* kKnockdownClipName = "stunned";
 
-// Spawn an enemy actor into the shared pool. Caller must have
-// already initialized the pool (player at index 0). `archetype_id`
-// is looked up in the archetype registry; nullptr/missing = no
-// archetype bound (test-dummy fallback behavior).
-void spawnEnemyActor(float x, float z, float yaw, const char* archetype_id)
+// Spawn an enemy actor from a parsed declaration. Caller must have
+// already initialized the pool (player at index 0). The decl's
+// archetype_id is looked up in the archetype registry; empty/missing
+// = no archetype bound (test-dummy fallback behavior).
+//
+// Y is left at decl.pos.y at spawn time; per-frame tickEnemyLocomotion
+// snaps it to ground height via groundHeight() if outdoor terrain
+// owns the spot. Authors get to declare the explicit Y for indoor /
+// suspended-platform geometry.
+void spawnEnemyFromDecl(const std::string& region_id, const EnemySpawnDecl& decl)
 {
     Actor e;
     e.controller = Controller::AI_Stationary;
     e.faction = Faction::Hostile;
-    e.pos = glm::vec3(x, 0.0f, z);
-    e.yaw = yaw;
+    e.pos = decl.pos;
+    e.yaw = decl.yaw;
     e.spawn_pos = e.pos;
-    e.spawn_yaw = yaw;
+    e.spawn_yaw = decl.yaw;
+    e.spawn_id = region_id + ":" + decl.id;
+    e.permanent_on_death = decl.permanent_on_death;
     e.sampler = selva::anim::createPoseSampler(selva::anim::skeleton(), selva::anim::playerMesh());
     initActorPools(e.hp, e.stamina, e.poise, e.body, e.stats);
     // Seed per-actor RNG. Two actors of the same archetype get
@@ -80,19 +87,20 @@ void spawnEnemyActor(float x, float z, float yaw, const char* archetype_id)
     // action picks. random_device + a salt from spawn pos makes
     // co-spawned actors diverge on the first call.
     std::random_device rd;
-    e.rng.seed(rd() ^ static_cast<std::uint32_t>(static_cast<std::int64_t>(x * 1000.0f)) ^
-               static_cast<std::uint32_t>(static_cast<std::int64_t>(z * 1000.0f)));
+    e.rng.seed(rd() ^ static_cast<std::uint32_t>(static_cast<std::int64_t>(decl.pos.x * 1000.0f)) ^
+               static_cast<std::uint32_t>(static_cast<std::int64_t>(decl.pos.z * 1000.0f)));
     // Prime the sampler with peaceful idle — spawn awareness is
     // always Unaware. The pose-snapshot path in the sampler will
     // handle the eventual combat-idle swap when awareness escalates.
     if (const auto* idle = selva::anim::clips().get(kEnemyPeacefulIdleClipName);
         idle != nullptr && idle->isLoaded())
         e.sampler.update(*idle, 0.0f, 0.0f);
-    if (archetype_id != nullptr && archetype_id[0] != '\0')
+    if (!decl.archetype.empty())
     {
-        e.archetype = archetypes().get(archetype_id);
+        e.archetype = archetypes().get(decl.archetype);
         if (e.archetype == nullptr)
-            selva::combat::combatLog("[spawn] archetype '{}' not found in registry", archetype_id);
+            selva::combat::combatLog("[spawn] archetype '{}' not found in registry (id='{}')",
+                                     decl.archetype, e.spawn_id);
     }
     // Phase-stagger the first AI tick so a wave of actors spawned on
     // the same frame doesn't all evaluate together. The pool index is
@@ -284,21 +292,13 @@ bool tickDeathLifecycle(Actor& a, float dt, const selva::anim::AnimationClip* id
 {
     if (!a.is_dead)
         return false;
-    const float respawn_delay = selva::tuning::current().enemy_respawn_after_death_seconds;
-    if (a.death_time > 0.0f && (selva::wallClock() - a.death_time) >= respawn_delay)
-    {
-        selva::combat::combatLog("[enemy-respawn] respawning actor at t={:.3f}",
-                                 selva::wallClock());
-        a.is_dead = false;
-        a.death_time = -1.0f;
-        a.last_damage_time = -1.0f;
-        a.last_hit_react_time = -1.0f;
-        a.pos = a.spawn_pos;
-        a.yaw = a.spawn_yaw;
-        initActorPools(a.hp, a.stamina, a.poise, a.body, a.stats);
-        a.sampler.releaseOneShot();
-        return false;
-    }
+    // Cycle-respawn model: dead enemies stay dead until the next
+    // cycle boundary (player second-death or load-game), at which
+    // point resetCycleEnemies fires. While dead, the death-clip
+    // freeze_last holds the pose; we keep ticking the sampler with
+    // an idle update to keep its state machine alive even though
+    // the visible pose is frozen. See docs/design/setting.md
+    // "Cycle structure" + "Per-circle reactivity".
     if (idle_clip != nullptr && idle_clip->isLoaded())
         a.sampler.update(*idle_clip, dt, /*blend_seconds=*/0.20f, /*loops=*/true, idle_key);
     return true;
@@ -415,13 +415,12 @@ void fireEnemyDeath(Actor& e, int index)
     selva::combat::combatLog("[death] actor[{}] died (clip={})", index, clip_name);
 }
 
-void initHubEnemies()
+void spawnRegionEnemies(const std::string& region_id, const std::vector<EnemySpawnDecl>& decls)
 {
-    // Pool must already have the player at index 0; we append.
-    // First enemy: stationary humanoid 6m north of the clearing.
-    // The dummy is bound to the limbo_shade archetype so Sprint 4's
-    // behavior tree will pick from its declared actions.
-    spawnEnemyActor(0.0f, -6.0f, 0.0f, "limbo_shade");
+    for (const auto& d : decls)
+        spawnEnemyFromDecl(region_id, d);
+    selva::combat::combatLog("[spawn-region] region='{}' spawned {} enemy actor(s)", region_id,
+                             decls.size());
 }
 
 void shutdownHubEnemies()
@@ -433,12 +432,19 @@ void shutdownHubEnemies()
                pool.end());
 }
 
-void resetEnemiesToSpawn()
+void resetCycleEnemies()
 {
     auto& pool = actors();
     for (auto& a : pool)
     {
         if (a.controller == Controller::Input)
+            continue;
+
+        // Permanent-on-death keepers that fell stay fallen across
+        // cycles. The Souls "felled keeper does not respawn" canon
+        // per docs/design/fallback.md "Class persists across cycles
+        // / Keepers felled".
+        if (a.permanent_on_death && a.is_dead)
             continue;
 
         a.pos = a.spawn_pos;

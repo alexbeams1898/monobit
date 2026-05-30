@@ -276,11 +276,6 @@ struct Tunables
     // the one-shot from t=0 every frame and the enemy looks frozen.
     float hit_react_cooldown_seconds = 0.30f;
 
-    // Dev-only respawn timer. After death, restore the enemy to
-    // full HP at its spawn pose after this delay. Becomes proper
-    // despawn + persistence when the run / save system arrives.
-    float enemy_respawn_after_death_seconds = 3.0f;
-
     // How long an enemy stays in the knockdown freeze pose before
     // recovering in place. The sampler blends back to combat idle
     // via the one-shot's blend_out window; no get-up clip plays.
@@ -515,7 +510,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     first_strike_blend_seconds, attack_playback_rate, cancel_open_velocity_fraction,
     perfect_accuracy_threshold, roll_playback_rate, backstep_playback_rate, dodge_tap_window,
     dodge_steer_rate, attack_lockout_extension_seconds, damage_floor, hit_react_medium_threshold,
-    hit_react_heavy_threshold, hit_react_cooldown_seconds, enemy_respawn_after_death_seconds,
+    hit_react_heavy_threshold, hit_react_cooldown_seconds,
     enemy_recovery_after_knockdown_seconds, knockdown_clip_start_seconds,
     knockdown_clip_end_seconds, getting_up_clip_start_seconds, getting_up_clip_end_seconds,
     ai_vision_fov_degrees, ai_vision_range_meters, ai_suspicion_decay_seconds,

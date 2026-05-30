@@ -292,6 +292,23 @@ struct Actor
     glm::vec3 spawn_pos = glm::vec3(0.0f);
     float spawn_yaw = 0.0f;
 
+    // --- Region-scoped spawn identity ---
+    // Stable identifier authored in region.json's enemy_spawns array,
+    // qualified with the owning region_id ("region_id:spawn_id"). Lets
+    // save data refer to specific enemy instances ("which shades did
+    // the player kill on this cycle?") without relying on pool index
+    // (volatile across spawns/respawns) or position (drifts with
+    // patrol). Empty for the player and for any actor not authored
+    // via region JSON (test/debug spawns).
+    std::string spawn_id;
+
+    // If true, this actor stays dead across cycle resets -- the
+    // canonical Souls "felled keeper does not respawn" contract per
+    // setting.md cycle structure. Shades default false (cycle-flow
+    // model: each cycle Hell re-streams souls into their punishment
+    // positions). Keepers set true in region.json.
+    bool permanent_on_death = false;
+
     // --- AI perception state ---
     // Updated by tickPerception each frame. Behavior tree (future)
     // and locomotion-intent (future) read awareness + last-known-

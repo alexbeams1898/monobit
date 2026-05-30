@@ -4,6 +4,9 @@
 
 #include <glm/vec3.hpp>
 
+#include <string>
+#include <vector>
+
 namespace selva::gameplay
 {
 
@@ -14,24 +17,45 @@ namespace selva::gameplay
 // during the migration; new code should refer to Actor directly.
 using Enemy = Actor;
 
-// Initialize the hub's enemies: one stationary humanoid in the
-// clearing, idling. Call once at startup after initSkeletalAssets()
-// and initHubRegion(). Idempotent; clears + repopulates.
-//
-// Appends enemy actors to the shared pool (after the player at
-// index 0). The pool must already contain the player.
-void initHubEnemies();
+// Declarative spawn record parsed from a region.json's enemy_spawns
+// array. Authored content; JsonRegion produces these and hands them
+// to spawnRegionEnemies on region activation. Schema lives in
+// assets/regions/SCHEMA.md.
+struct EnemySpawnDecl
+{
+    std::string id;                       // unique-within-region; required
+    std::string archetype;                // archetype lookup id; required
+    glm::vec3 pos = glm::vec3(0.0f);      // world XYZ; required
+    float yaw = 0.0f;                     // facing radians; optional, default 0
+    bool permanent_on_death = false;      // keepers=true (do not respawn on cycle); shades=false
+    std::vector<glm::vec3> patrol_path;   // optional roaming waypoints; ignored until AI_Roaming lands
+};
+
+// Spawn every enemy declared in the given region's enemy_spawns into
+// the shared actor pool. Idempotent for the same region: re-call
+// after a clear/reset replaces the same set. The actor's spawn_id
+// gets prefixed with "region_id:" so two regions can share local ids
+// without collision.
+void spawnRegionEnemies(const std::string& region_id, const std::vector<EnemySpawnDecl>& decls);
+
 void shutdownHubEnemies();
 
-// Reset every AI actor in the pool back to its spawn baseline:
-// position/yaw to spawn_pos/spawn_yaw, perception cleared to Unaware,
-// hp/stamina/poise refilled, death + knockdown flags cleared, sampler
-// one-shot released, lock target dropped, intent zeroed. Pairs with
-// loadActiveCharacterIntoPlayer to give every Playing-enter a clean
-// world — without it, enemy aggro and damage persist across "New
-// Game" / "Load Game" transitions because actors() is a process-wide
-// pool initialized once at startup.
-void resetEnemiesToSpawn();
+// Cycle-respawn: reset every non-permanent AI actor in the pool back
+// to its spawn baseline (position/yaw, full pools, perception cleared,
+// death/knockdown flags cleared, sampler one-shot released, intent
+// zeroed). Permanent-on-death actors that are dead stay dead;
+// permanent-on-death actors that are alive also reset.
+//
+// Hooked into:
+//   - Player second-death respawn (new cycle begins; per setting.md
+//     cycle structure, Hell re-streams shades into their punishment
+//     positions every cycle).
+//   - New Game / Load Game transitions (clean world per save load).
+//
+// Replaces the per-enemy timer-respawn that was wired before. The
+// cycle-flow model is the canonical respawn semantics per docs/
+// design/setting.md "Per-circle reactivity" + "Cycle structure".
+void resetCycleEnemies();
 
 // Per-frame tick: advance each enemy's animation. dt is real-time
 // seconds. Player animation tick lives in the player's per-frame

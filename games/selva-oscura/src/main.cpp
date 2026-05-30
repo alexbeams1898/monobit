@@ -113,7 +113,10 @@ void gatedPerFrame(::Engine& engine, ::EntityManager& em, double dt)
             }
         }
         selva::gameplay::loadActiveCharacterIntoPlayer(*active);
-        selva::gameplay::resetEnemiesToSpawn();
+        // Cycle boundary on New Game / Load Game: re-stream enemies into
+        // their spawn positions (per setting.md "Per-circle reactivity").
+        // Permanent-on-death keepers stay dead if previously felled.
+        selva::gameplay::resetCycleEnemies();
         gs.pending_world_create = false;
         gs.world_initialized = true;
         // If this was a New Game, queue the wake-up Scene. Load-Game
@@ -347,16 +350,24 @@ int main(int /*argc*/, char* /*argv*/[])
         selva::anim::auditClipHipMotion();
 
         // Load enemy archetypes (action lists, perception overrides).
-        // Must run before initHubEnemies — spawn looks up archetype
-        // by id from this registry.
+        // Must run before any region activation -- spawn looks up
+        // archetype by id from this registry as JsonRegion::
+        // commitPrepared() iterates enemy_spawns.
         selva::gameplay::archetypes().loadDirectory("config/enemies");
 
         // Construct + register the behavior trees that archetypes
-        // bind to via tree_id. Must run before initHubEnemies since
-        // decision ticks lookup the tree at first fire.
+        // bind to via tree_id. Must run before any region activation
+        // spawns enemies since decision ticks look up the tree on
+        // first fire.
         selva::gameplay::initBehaviorTrees();
 
-        selva::gameplay::initHubEnemies();
+        // Region geometry was activated at boot (line above), but
+        // enemy spawning needs gameplay (archetypes + trees) loaded
+        // first. Now that gameplay is ready, spawn the enemies the
+        // active region declared. Subsequent transitions handle this
+        // automatically via the post-commit callback registered in
+        // setPostCommitCallback() above.
+        selva::world::spawnActiveRegionEnemies();
     }
 
     // Combat data: weapon classes, weapons, equipment loaded via

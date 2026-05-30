@@ -84,6 +84,42 @@ JsonRegion::JsonRegion(const nlohmann::json& json_doc, std::string folder)
           parseRegionKind(json_doc.value("region_kind", std::string{"Exterior"}))),
       region_json(json_doc), region_folder(std::move(folder))
 {
+    // Parse enemy_spawns. Each entry's id, archetype, and pos are
+    // REQUIRED; we throw on missing so a typo'd JSON file fails
+    // boot rather than silently spawning nothing (the same silent-
+    // fallback bug class that bit us in the Scene->Region rename;
+    // see [[feedback_check_clip_classification_first]]+
+    // region_schema_test.cpp).
+    if (json_doc.contains("enemy_spawns") && !json_doc["enemy_spawns"].is_null())
+    {
+        const auto& arr = json_doc.at("enemy_spawns");
+        if (!arr.is_array())
+            throw std::runtime_error("enemy_spawns must be an array");
+        for (const auto& s : arr)
+        {
+            selva::gameplay::EnemySpawnDecl d;
+            d.id = s.at("id").get<std::string>();
+            d.archetype = s.at("archetype").get<std::string>();
+            const auto& pos_arr = s.at("pos");
+            if (!pos_arr.is_array() || pos_arr.size() < 3)
+                throw std::runtime_error("enemy_spawns[].pos must be [x, y, z]");
+            d.pos = glm::vec3(pos_arr[0].get<float>(), pos_arr[1].get<float>(),
+                              pos_arr[2].get<float>());
+            d.yaw = s.value("yaw", 0.0f);
+            d.permanent_on_death = s.value("permanent_on_death", false);
+            if (s.contains("patrol_path") && s["patrol_path"].is_array())
+            {
+                for (const auto& wp : s["patrol_path"])
+                {
+                    if (!wp.is_array() || wp.size() < 3)
+                        continue;
+                    d.patrol_path.emplace_back(wp[0].get<float>(), wp[1].get<float>(),
+                                               wp[2].get<float>());
+                }
+            }
+            enemy_spawn_decls.push_back(std::move(d));
+        }
+    }
 }
 
 void JsonRegion::preloadAssets()
