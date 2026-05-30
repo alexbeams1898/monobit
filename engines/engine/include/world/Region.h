@@ -75,13 +75,27 @@ enum class TransitionMode : std::uint8_t
 };
 
 // State machine for a transition in progress.
+//
+// LoadingTarget was deleted: per the preload-everything-before-main-menu
+// doctrine (pillar 9), all regions' assets (.glb meshes, Jolt shapes,
+// CPU vertex arrays) are eagerly preloaded at boot via
+// JsonRegion::preloadAssets() inside loadAllRegions(). Body insertion
+// is the only per-activation work and is sub-millisecond. There is
+// nothing to "load" at transition time, so the LoadingTarget state
+// never had any work to do -- it just polled a future that was always
+// already-ready. Removing it eliminates the async polling overhead and
+// makes the transition contract trivially zero-delay.
+//
+// Fade mode kept: a fade-to-black is still useful for cinematic /
+// fast-travel / death transitions even when the underlying load is
+// instant. The fade just plays for its declared duration as a visual
+// effect, not as cover for loading.
 enum class TransitionState : std::uint8_t
 {
-    Idle,          // no transition active
-    LoadingTarget, // worker thread loading target region assets
-    FadingOut,     // playing fade-to-black on screen
-    Committing,    // swapping bodies on main thread (single frame)
-    FadingIn,      // playing fade-in on screen
+    Idle,       // no transition active
+    FadingOut,  // playing fade-to-black on screen
+    Committing, // swapping bodies on main thread (single frame)
+    FadingIn,   // playing fade-in on screen
 };
 
 // Trigger volume: when a registered actor (player today, others later)

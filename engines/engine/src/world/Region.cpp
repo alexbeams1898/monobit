@@ -3,11 +3,9 @@
 #include "world/AsyncRegionLoader.h"
 
 #include <algorithm>
-#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
-#include <future>
 #include <unordered_map>
 
 namespace engine::world
@@ -66,12 +64,6 @@ struct ManagerState
     // frame inside.
     std::string player_inside_trigger_id; // empty = inside no trigger
     RegionId player_inside_trigger_region = kInvalidRegion;
-
-    // Async loading state. Populated when a transition begins; polled
-    // in tickRegionManager. When the future is ready, we advance from
-    // LoadingTarget to FadingOut.
-    std::future<void> load_future;
-    bool load_in_flight = false;
 
     // Post-commit callback (game-side teleport hook).
     PostCommitCallback post_commit = nullptr;
@@ -146,10 +138,13 @@ static void deactivateCurrent()
     g.player_inside_trigger_region = kInvalidRegion;
 }
 
-// Internal: activate a region. `from_async` = the worker has already
-// completed prepareAsync; we only need to commit on main thread. Else
-// it's the immediate path (boot, tests) and we run the full path.
-static void activateInternal(RegionId id, bool from_async)
+// Internal: activate a region. Assets are eagerly preloaded at boot
+// (per pillar 9: preload-everything-before-main-menu), so activation
+// is just body insertion + trigger registration. onActivate() calls
+// commitPrepared() for AsyncCapableRegions (which is the actual
+// resident-shape body-insert), or runs the region's full onActivate
+// for non-async types.
+static void activateInternal(RegionId id)
 {
     Region* s = regionFromId(id);
     if (s == nullptr)
@@ -158,11 +153,7 @@ static void activateInternal(RegionId id, bool from_async)
         return;
     }
     RegionActivationContext ctx(*s);
-    auto* async_s = dynamic_cast<AsyncCapableRegion*>(s);
-    if (from_async && async_s != nullptr)
-        async_s->commitPrepared(ctx);
-    else
-        s->onActivate(ctx);
+    s->onActivate(ctx);
     g.current = id;
     std::fprintf(stderr, "[region-manager] activated '%s' (%zu bodies, %zu triggers)\n",
                  s->regionId().c_str(), s->ownedBodies().size(), s->triggers().size());
@@ -171,7 +162,7 @@ static void activateInternal(RegionId id, bool from_async)
 void activateRegionImmediate(RegionId id)
 {
     deactivateCurrent();
-    activateInternal(id, /*from_async=*/false);
+    activateInternal(id);
 }
 
 // ---- Transition state machine --------------------------------------------
@@ -208,40 +199,19 @@ bool beginTransition(RegionId target, TransitionMode mode, bool preserve_player_
     g.fade_duration = fade_duration_seconds > 0.0f ? fade_duration_seconds : 0.4f;
     g.fade_elapsed = 0.0f;
     g.fade_alpha = 0.0f;
-    g.state = (mode == TransitionMode::Instant) ? TransitionState::Committing
-                                                : TransitionState::LoadingTarget;
+    // Per pillar 9 (preload-everything-before-main-menu): all regions
+    // have their assets resident from boot, so there is no "load"
+    // phase. Instant goes straight to Committing (single-frame body
+    // swap). Fade plays a visual fade-to-black, then commits, then
+    // fades in -- the fade is purely cosmetic, not loading cover.
+    g.state =
+        (mode == TransitionMode::Instant) ? TransitionState::Committing : TransitionState::FadingOut;
     std::fprintf(stderr, "[region-manager] -> state=%d\n", static_cast<int>(g.state));
     return true;
 }
 
 namespace
 {
-void tickLoadingTarget()
-{
-    Region* tgt = regionFromId(g.target);
-    auto* async_tgt = dynamic_cast<AsyncCapableRegion*>(tgt);
-    if (async_tgt != nullptr && !g.load_in_flight)
-    {
-        std::fprintf(stderr, "[region-manager] kicking async prepare for '%s'\n",
-                     tgt->regionId().c_str());
-        g.load_future = beginAsyncRegionPrepare(*async_tgt);
-        g.load_in_flight = true;
-    }
-    bool ready = !g.load_in_flight;
-    if (g.load_in_flight && g.load_future.valid())
-        ready = (g.load_future.wait_for(std::chrono::seconds(0)) == std::future_status::ready);
-    if (!ready)
-        return;
-    if (g.load_in_flight)
-    {
-        g.load_future.get(); // surface exceptions
-        std::fprintf(stderr, "[region-manager] async prepare ready\n");
-    }
-    g.load_in_flight = false;
-    g.state = TransitionState::FadingOut;
-    g.fade_elapsed = 0.0f;
-}
-
 void tickFadingOut(float dt)
 {
     g.fade_elapsed += dt;
@@ -272,19 +242,19 @@ void firePostCommit(bool preserve_pos, const glm::vec3& spawn_pos, bool override
 
 void tickCommitting()
 {
-    const bool from_async = (g.mode != TransitionMode::Instant);
     const bool preserve_pos = g.preserve_player_pos;
     const glm::vec3 spawn_pos = g.target_spawn_pos;
     const bool override_yaw = g.override_yaw;
     const float spawn_yaw = g.target_yaw;
     std::fprintf(stderr,
-                 "[region-manager] COMMIT: deactivating + activating target RegionId=%u "
-                 "(from_async=%d), then teleporting player to (%.2f,%.2f,%.2f) "
-                 "override_yaw=%d\n",
-                 g.target.id, from_async ? 1 : 0, spawn_pos.x, spawn_pos.y, spawn_pos.z,
-                 override_yaw ? 1 : 0);
+                 "[region-manager] COMMIT: deactivating + activating target RegionId=%u, "
+                 "then teleporting player to (%.2f,%.2f,%.2f) override_yaw=%d\n",
+                 g.target.id, spawn_pos.x, spawn_pos.y, spawn_pos.z, override_yaw ? 1 : 0);
     deactivateCurrent();
-    activateInternal(g.target, from_async);
+    // Always synchronous commit: preloadAssets ran at boot so
+    // commitPrepared just inserts already-built shapes. The
+    // from_async toggle is gone with the LoadingTarget state.
+    activateInternal(g.target);
     g.target = kInvalidRegion;
     firePostCommit(preserve_pos, spawn_pos, override_yaw, spawn_yaw);
     if (g.mode == TransitionMode::Instant)
@@ -318,9 +288,6 @@ TransitionState tickRegionManager(float dt)
     switch (g.state)
     {
     case TransitionState::Idle:
-        break;
-    case TransitionState::LoadingTarget:
-        tickLoadingTarget();
         break;
     case TransitionState::FadingOut:
         tickFadingOut(dt);

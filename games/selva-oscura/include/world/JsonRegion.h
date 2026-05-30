@@ -53,11 +53,6 @@ class JsonRegion : public engine::world::AsyncCapableRegion
         return is_preloaded;
     }
 
-    // prepareAsync now no-ops (work moved to preloadAssets at boot).
-    void prepareAsync() override
-    {
-    }
-
     // commitPrepared = main-thread per-activation work: insert Jolt
     // static trimesh bodies from already-loaded CPU positions,
     // register terrain modifiers (no-op for non-terrain scenes),
