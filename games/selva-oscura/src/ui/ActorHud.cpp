@@ -948,18 +948,21 @@ void renderSceneOverlays()
         fg->AddRectFilled(ImVec2(0, 0), ImVec2(io.DisplaySize.x, io.DisplaySize.y), col);
     }
 
-    // ---- Region-name chip in top-right (always-on) ----
+    // ---- Region-name chip in top-right (debug-gated) ----
     using engine::world::Region;
     Region* cur = currentRegionPtr();
-    const std::string chip_text =
-        cur != nullptr ? ("region: " + cur->regionId()) : "region: (none)";
-    const ImVec2 ts = ImGui::CalcTextSize(chip_text.c_str());
-    const float pad = 6.0f;
-    const ImVec2 chip_min(io.DisplaySize.x - ts.x - 2 * pad - 8.0f, 8.0f);
-    const ImVec2 chip_max(io.DisplaySize.x - 8.0f, 8.0f + ts.y + 2 * pad);
-    fg->AddRectFilled(chip_min, chip_max, IM_COL32(0, 0, 0, 180), 4.0f);
-    fg->AddText(ImVec2(chip_min.x + pad, chip_min.y + pad), IM_COL32(255, 255, 255, 220),
-                chip_text.c_str());
+    if (tun.debug_show_region_chip)
+    {
+        const std::string chip_text =
+            cur != nullptr ? ("region: " + cur->regionId()) : "region: (none)";
+        const ImVec2 ts = ImGui::CalcTextSize(chip_text.c_str());
+        const float pad = 6.0f;
+        const ImVec2 chip_min(io.DisplaySize.x - ts.x - 2 * pad - 8.0f, 8.0f);
+        const ImVec2 chip_max(io.DisplaySize.x - 8.0f, 8.0f + ts.y + 2 * pad);
+        fg->AddRectFilled(chip_min, chip_max, IM_COL32(0, 0, 0, 180), 4.0f);
+        fg->AddText(ImVec2(chip_min.x + pad, chip_min.y + pad), IM_COL32(255, 255, 255, 220),
+                    chip_text.c_str());
+    }
 
     // ---- Trigger volume wireframes (gated by debug_show_colliders) ----
     if (tun.debug_show_colliders && cur != nullptr)

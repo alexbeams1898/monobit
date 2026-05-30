@@ -439,6 +439,16 @@ struct Tunables
     // body table. Default OFF.
     bool debug_show_physics_bodies = false;
 
+    // Top-right "region: <id>" chip. Useful when multiple regions
+    // exist (verifying transitions hit the expected target) but
+    // visually noisy during routine play. Default OFF.
+    bool debug_show_region_chip = false;
+
+    // Floating combo-step + rhythm-window debug overlay. Useful while
+    // tuning attack chain timings; otherwise occludes the bottom of
+    // the screen. Default OFF.
+    bool debug_show_combo_hud = false;
+
     // When true, the scene fragment shader outputs a flat constant
     // color (uBaseColor) per primitive — skipping all lighting,
     // atmosphere, shadows, exposure, tonemap. Use to bisect flicker:

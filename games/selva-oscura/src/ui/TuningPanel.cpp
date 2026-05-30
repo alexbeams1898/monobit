@@ -95,6 +95,9 @@ static void renderDebugSection(selva::tuning::Tunables& tun)
     ImGui::Checkbox("AI vision cones + awareness label", &tun.debug_ai_perception);
     ImGui::Checkbox("World colliders (cylinders + boxes)", &tun.debug_show_colliders);
     ImGui::Checkbox("Physics bodies (Jolt AABBs, colored by tag)", &tun.debug_show_physics_bodies);
+    ImGui::Checkbox("Region chip (top-right active-region label)", &tun.debug_show_region_chip);
+    ImGui::Checkbox("Combo HUD (chain step + rhythm window overlay)",
+                    &tun.debug_show_combo_hud);
     ImGui::Checkbox("Flat shading (bisect: flicker on = shader, off = geometry)",
                     &tun.debug_flat_shading);
     ImGui::Checkbox("Log MSAA state at region-pass (-> stderr.log)", &tun.debug_msaa_state_log);

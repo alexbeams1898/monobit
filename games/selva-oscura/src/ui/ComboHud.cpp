@@ -97,6 +97,8 @@ const char* nextExpectedButtonLabel()
 
 void renderComboHud()
 {
+    if (!selva::tuning::current().debug_show_combo_hud)
+        return;
     const ImGuiViewport* vp = ImGui::GetMainViewport();
     const float w = 360.0f;
     const float h = 80.0f;
