@@ -364,13 +364,13 @@ int main(int /*argc*/, char* /*argv*/[])
         // first fire.
         selva::gameplay::initBehaviorTrees();
 
-        // Region geometry was activated at boot (line above), but
-        // enemy spawning needs gameplay (archetypes + trees) loaded
-        // first. Now that gameplay is ready, spawn the enemies the
-        // active region declared. Subsequent transitions handle this
-        // automatically via the post-commit callback registered in
-        // setPostCommitCallback() above.
-        selva::world::spawnActiveRegionEnemies();
+        // Region bodies + meshes were registered at boot (line above),
+        // but enemy spawning needs gameplay (archetypes + trees)
+        // loaded first. Now that gameplay is ready, spawn enemies for
+        // EVERY resident region so the player encounters them in
+        // whichever region they cross into. Multi-resident: same
+        // doctrine as the renderer + physics.
+        selva::world::spawnAllRegionEnemies();
     }
 
     // Combat data: weapon classes, weapons, equipment loaded via

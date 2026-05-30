@@ -27,6 +27,7 @@ add_library(selva-oscura-lib STATIC
     src/anim/SkeletalMesh.cpp
     src/anim/SkeletalRenderer.cpp
     src/gameplay/Actor.cpp
+    src/gameplay/AiBarriers.cpp
     src/gameplay/AiTick.cpp
     src/gameplay/BehaviorTree.cpp
     src/gameplay/Enemies.cpp

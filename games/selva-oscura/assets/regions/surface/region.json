@@ -54,6 +54,8 @@
     }
   ],
   "enemy_spawns": [],
+  "_ai_block_volumes_note": "No barriers on surface. The single barrier that enforces 'shades stay on Limbo' lives in limbo/region.json (at the descent-corridor mouth) -- shades can't reach selva surface because they can't enter the corridor in the first place. Future circles' enemies will get their own barriers at THEIR boundary into outside-Hell zones.",
+  "ai_block_volumes": [],
   "ambient": { "color": [0.16, 0.18, 0.22] },
   "sky": { "kind": "atmospheric" },
   "footstep_default": "footstep_grass",

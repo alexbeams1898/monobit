@@ -8,6 +8,7 @@
 #include "anim/SkeletalAssets.h"
 #include "audio/Audio.h"
 #include "combat/CombatLog.h"
+#include "gameplay/AiBarriers.h"
 #include "gameplay/AiTick.h"
 #include "gameplay/BehaviorTree.h"
 #include "gameplay/EnemyArchetype.h"
@@ -79,6 +80,7 @@ void spawnEnemyFromDecl(const std::string& region_id, const EnemySpawnDecl& decl
     e.spawn_pos = e.pos;
     e.spawn_yaw = decl.yaw;
     e.spawn_id = region_id + ":" + decl.id;
+    e.spawn_region_id = region_id;
     e.permanent_on_death = decl.permanent_on_death;
     e.sampler = selva::anim::createPoseSampler(selva::anim::skeleton(), selva::anim::playerMesh());
     initActorPools(e.hp, e.stamina, e.poise, e.body, e.stats);
@@ -257,8 +259,27 @@ void tickEnemyLocomotion(Actor& a, float dt, const selva::tuning::Tunables& tun)
 
         // Integrate XZ position from velocity. Only when not in a
         // one-shot — clip-hip drives translation during the swing.
-        a.pos.x += a.velocity_xz.x * dt;
-        a.pos.z += a.velocity_xz.y * dt;
+        //
+        // AI barrier check: per [[gameplay/AiBarriers.h]], an actor
+        // cannot enter ai_block_volumes belonging to a region other
+        // than its own. A Limbo shade is blocked from walking into
+        // the chapel/descent corridor (those volumes are owned by
+        // chapel_interior / chapel_exterior, not by limbo). Apply
+        // the move axis-by-axis so a barrier on the X face still
+        // lets the actor slide along Z (and vice versa) -- standard
+        // axis-projection AABB-slide pattern.
+        const float new_x = a.pos.x + a.velocity_xz.x * dt;
+        const float new_z = a.pos.z + a.velocity_xz.y * dt;
+        const glm::vec3 try_x(new_x, a.pos.y, a.pos.z);
+        if (findAiBlockingVolume(try_x, a.spawn_region_id) == nullptr)
+            a.pos.x = new_x;
+        else
+            a.velocity_xz.x = 0.0f;
+        const glm::vec3 try_z(a.pos.x, a.pos.y, new_z);
+        if (findAiBlockingVolume(try_z, a.spawn_region_id) == nullptr)
+            a.pos.z = new_z;
+        else
+            a.velocity_xz.y = 0.0f;
     }
     // Snap Y to the ground so the actor's feet stay on the heightmap
     // surface (or on any walkable BoxCollider like a stair step).

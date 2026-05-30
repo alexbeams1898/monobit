@@ -36,16 +36,16 @@ void loadAllRegionsPreload();
 // character spawn to know where to put the player.
 engine::world::RegionId defaultSpawnRegion();
 
-// Pull the active region's parsed enemy_spawn_decls and hand them
-// to selva::gameplay::spawnRegionEnemies. Call ONCE at boot after
-// the archetype registry + behavior trees are loaded (their absence
-// at activateRegionImmediate time is why region commitPrepared
-// CAN'T spawn enemies itself).
+// Pull every resident region's enemy_spawn_decls and hand them to
+// selva::gameplay::spawnRegionEnemies. Call ONCE at boot after the
+// archetype registry + behavior trees are loaded (their absence at
+// activateRegionImmediate time is why region commitPrepared CAN'T
+// spawn enemies itself).
 //
-// Per-transition spawning (clear old region's enemies + spawn new
-// region's enemies as the player crosses a trigger) lands later
-// when the world is genuinely multi-region; today there is only
-// one region and one boot-time call is sufficient.
-void spawnActiveRegionEnemies();
+// Multi-resident architecture: every region's bodies + meshes are
+// in physics/render at all times, so every region's enemies must
+// be too. Per-region cycle-respawn handles state reset across the
+// whole pool when the Vagrant dies / starts a new game.
+void spawnAllRegionEnemies();
 
 } // namespace selva::world

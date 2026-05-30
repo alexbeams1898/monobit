@@ -302,6 +302,13 @@ struct Actor
     // via region JSON (test/debug spawns).
     std::string spawn_id;
 
+    // Region this actor was spawned in. Used by AI barriers (per
+    // gameplay/AiBarriers.h): an actor is blocked from entering the
+    // ai_block_volumes of OTHER regions, never its own. Empty for the
+    // player (the player is barrier-immune) and for actors not spawned
+    // via region JSON.
+    std::string spawn_region_id;
+
     // If true, this actor stays dead across cycle resets -- the
     // canonical Souls "felled keeper does not respawn" contract per
     // setting.md cycle structure. Shades default false (cycle-flow

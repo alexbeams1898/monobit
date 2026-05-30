@@ -39,6 +39,15 @@
     }
   ],
   "enemy_spawns": [],
+  "_ai_block_volumes_note": "Single thin barrier at the descent-corridor MOUTH (where the stairs meet Limbo's floor at Z=-346.85). Limbo shades can roam the entire Limbo disc (anywhere south of the mouth) but hit an invisible wall the moment they try to cross north into the corridor / climb the stairs. Doctrine: shades can only ever touch Limbo terrain; the corridor itself is the threshold to outside-Hell. Owner = chapel_interior so chapel_interior actors (none today) would ignore the barrier; Limbo shades (foreign region) hit it.",
+  "ai_block_volumes": [
+    {
+      "_comment": "Descent corridor mouth at Limbo's floor. Thin Z-wall just north of the corridor exit step (Z=-346.85). 4m deep covers the seam with margin so a fast shade can't tunnel through in one frame. Y range covers Limbo floor (-43.13) up a couple meters; doesn't need to extend higher since shades only walk along the floor plane.",
+      "debug_name": "descent_corridor_mouth_barrier",
+      "center": [0.0, -42.0, -348.85],
+      "half_extents": [3.0, 2.0, 2.0]
+    }
+  ],
   "ambient": { "color": [0.06, 0.05, 0.04] },
   "sky": { "kind": "void" },
   "footstep_default": "footstep_concrete"

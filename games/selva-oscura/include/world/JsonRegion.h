@@ -1,5 +1,6 @@
 #pragma once
 
+#include "gameplay/AiBarriers.h"
 #include "gameplay/Enemies.h"
 #include "world/AsyncRegionLoader.h"
 #include "world/StaticMeshAssets.h"
@@ -150,6 +151,12 @@ class JsonRegion : public engine::world::AsyncCapableRegion
     // never reallocates. Strings stored as std::string for ownership;
     // .c_str() is handed to the modifier registry via parsed_modifiers.
     std::vector<std::unique_ptr<std::string>> parsed_strings;
+
+    // Parsed-in-constructor AI barrier volumes (`ai_block_volumes`
+    // array in region.json). Each volume's owner_region_id is set
+    // automatically to this region's id. registerModifiers() hands
+    // them to the global AI-barrier registry at boot.
+    std::vector<selva::gameplay::AiBlockVolume> parsed_ai_block_volumes;
 };
 
 } // namespace selva::world

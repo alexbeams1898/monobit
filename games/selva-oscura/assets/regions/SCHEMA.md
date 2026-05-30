@@ -124,6 +124,30 @@ declaration on the target region).
 }
 ```
 
+### `ai_block_volumes` (array)
+
+World-space AABBs that AI actors from OTHER regions cannot enter.
+Used to enforce cosmological boundaries (per Selva canon: Hell-
+substance entities can't cross into the chapel / descent / outside-
+Hell zones). The player is always free to cross; only AI is
+constrained. An actor whose `spawn_region_id` matches a volume's
+owner region ignores that volume (you can never be barred from your
+own region).
+
+```json
+{
+  "debug_name": "chapel_interior_and_descent_barrier",
+  "center": [0.0, -10.42, -276.42],
+  "half_extents": [3.0, 32.72, 70.42]
+}
+```
+
+Each volume's owner is implicitly the region it's declared in.
+Authoring lives in `gameplay/AiBarriers.h`; integration with AI
+locomotion is in `Enemies.cpp::tickEnemyLocomotion` (axis-by-axis
+slide so a barrier on one face doesn't prevent sliding along the
+perpendicular axis).
+
 ### `enemy_spawns` (array)
 
 Per-instance enemy placement for this region. Each entry references an

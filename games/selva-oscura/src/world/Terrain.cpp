@@ -772,11 +772,25 @@ float groundHeight(float world_x, float world_z, float current_y)
 {
     // Real-physics doctrine: ground is whatever solid surface the
     // sun-of-gravity ray hits at this XZ. Cast straight down from
-    // well above the actor; the nearest hit IS the ground.
-    constexpr float kRayStartAbove = 100.0f;
+    // just above the actor's current Y; the nearest hit IS the ground.
+    //
+    // The "just above" bias matters in the vertical-stack world: the
+    // Limbo cavern sits UNDER the Selva surface at the SAME XZ
+    // coordinates. A ray cast from Y=+100 at a Limbo XZ would hit
+    // the Selva surface terrain at Y=-3 instead of the Limbo floor
+    // at Y=-43, teleporting the actor up to the wrong layer. Casting
+    // from current_y + small bias keeps the ray inside the actor's
+    // current vertical layer.
+    //
+    // If the caller passes -infinity (rare bootstrap case where no
+    // current_y is known), fall back to high-up cast accepting the
+    // overshoot risk -- caller must be aware they're querying a
+    // single-layer assumption.
+    constexpr float kRayStartAbove = 2.0f;     // ~head height above actor
+    constexpr float kRayStartAboveBoot = 100.0f; // fallback when current_y unknown
     constexpr float kRayMaxDistance = 500.0f;
     const bool use_ceiling = current_y != -std::numeric_limits<float>::infinity();
-    const float origin_y = use_ceiling ? (current_y + kRayStartAbove) : kRayStartAbove;
+    const float origin_y = use_ceiling ? (current_y + kRayStartAbove) : kRayStartAboveBoot;
     const glm::vec3 origin(world_x, origin_y, world_z);
     const auto hit =
         engine::physics::raycast(origin, glm::vec3(0.0f, -1.0f, 0.0f), kRayMaxDistance);

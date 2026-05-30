@@ -139,24 +139,20 @@ engine::world::RegionId defaultSpawnRegion()
     return sDefaultSpawn;
 }
 
-void spawnActiveRegionEnemies()
+void spawnAllRegionEnemies()
 {
-    auto* base = engine::world::currentRegionPtr();
-    if (base == nullptr)
+    // Multi-resident architecture: every region's bodies + meshes are
+    // resident at all times, so every region's enemies should be too.
+    // The player can transition to any region at any time and the
+    // enemies need to already exist there. Per-region cycle-respawn
+    // (selva::gameplay::resetCycleEnemies on Vagrant death / new
+    // game) handles state reset across the whole pool.
+    for (int i = 0; i < engine::world::regionCount(); ++i)
     {
-        std::fprintf(stderr,
-                     "[region-bootstrap] spawnActiveRegionEnemies: no active region; skipping\n");
-        return;
+        auto* js = dynamic_cast<JsonRegion*>(engine::world::regionPtr(engine::world::regionAt(i)));
+        if (js != nullptr)
+            selva::gameplay::spawnRegionEnemies(js->regionId(), js->enemySpawnDecls());
     }
-    auto* js = dynamic_cast<JsonRegion*>(base);
-    if (js == nullptr)
-    {
-        std::fprintf(stderr,
-                     "[region-bootstrap] spawnActiveRegionEnemies: active region is not a "
-                     "JsonRegion; skipping\n");
-        return;
-    }
-    selva::gameplay::spawnRegionEnemies(js->regionId(), js->enemySpawnDecls());
 }
 
 } // namespace selva::world

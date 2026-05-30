@@ -178,6 +178,25 @@ JsonRegion::JsonRegion(const nlohmann::json& json_doc, std::string folder)
             parsed_modifiers.push_back(mod);
         }
     }
+
+    // Parse ai_block_volumes. Each volume becomes an AABB that AI
+    // actors from foreign regions can't enter. Owner is implicitly
+    // this region. See AiBarriers.h doctrine.
+    if (region_json.contains("ai_block_volumes") && !region_json["ai_block_volumes"].is_null())
+    {
+        const auto& arr = region_json.at("ai_block_volumes");
+        if (!arr.is_array())
+            throw std::runtime_error("ai_block_volumes must be an array");
+        for (const auto& v : arr)
+        {
+            selva::gameplay::AiBlockVolume vol;
+            vol.center = parseVec3(v.at("center"));
+            vol.half_extents = parseVec3(v.at("half_extents"));
+            vol.owner_region_id = regionId();
+            vol.debug_name = v.value("debug_name", std::string{});
+            parsed_ai_block_volumes.push_back(std::move(vol));
+        }
+    }
 }
 
 void JsonRegion::registerModifiers()
@@ -187,6 +206,8 @@ void JsonRegion::registerModifiers()
     if (!parsed_modifiers.empty())
         std::fprintf(stderr, "[json-region '%s'] registered %zu terrain modifier(s)\n",
                      regionId().c_str(), parsed_modifiers.size());
+    for (const auto& vol : parsed_ai_block_volumes)
+        selva::gameplay::registerAiBlockVolume(vol);
 }
 
 void JsonRegion::preloadAssets()

@@ -36,7 +36,121 @@
       "debug_name": "limbo_descent_exit"
     }
   ],
-  "enemy_spawns": [],
+  "_enemy_spawns_note": "Shade encounter layout per [[project_acheron_river_lore]] + the canonical Limbo doctrine. All shades sit SOUTH of the Acheron trench (Z < -385) -- they're the human-gone-mad inhabitants who were on the far shore BEFORE the throughput stopped. The near-shore side will eventually carry the soul 'larvae' piling on the riverbank waiting for the absent ferry (separate system, TBD). Each light cluster from registerLimboLights gets a pair of shades flanking the light, both facing north (yaw=0 = -Z, the direction the player crosses Acheron from) -- they read as the dying-inhabitants' guards watching the river approach. 16 shades total across 8 light clusters. All Y=-43.13 (Limbo floor); tickEnemyLocomotion snaps to ground each frame.",
+  "enemy_spawns": [
+    {
+      "id": "shade_campfire_a_west",
+      "archetype": "limbo_shade",
+      "pos": [-44.0, -43.13, -560.0],
+      "yaw": 0.0,
+      "_comment": "Cluster 1 (limbo_campfire_a at -40,-560): 4m west of fire, facing north toward Acheron."
+    },
+    {
+      "id": "shade_campfire_a_east",
+      "archetype": "limbo_shade",
+      "pos": [-36.0, -43.13, -560.0],
+      "yaw": 0.0,
+      "_comment": "Cluster 1 (limbo_campfire_a): 4m east flank, watching the same approach."
+    },
+    {
+      "id": "shade_campfire_b_west",
+      "archetype": "limbo_shade",
+      "pos": [56.0, -43.13, -620.0],
+      "yaw": 0.0,
+      "_comment": "Cluster 2 (limbo_campfire_b at 60,-620): west flank guard."
+    },
+    {
+      "id": "shade_campfire_b_east",
+      "archetype": "limbo_shade",
+      "pos": [64.0, -43.13, -620.0],
+      "yaw": 0.0,
+      "_comment": "Cluster 2 (limbo_campfire_b): east flank guard."
+    },
+    {
+      "id": "shade_fungus_a_west",
+      "archetype": "limbo_shade",
+      "pos": [-94.0, -43.13, -700.0],
+      "yaw": 0.0,
+      "_comment": "Cluster 3 (limbo_fungus_a at -90,-700): west flank of the fungus bowl gathering."
+    },
+    {
+      "id": "shade_fungus_a_east",
+      "archetype": "limbo_shade",
+      "pos": [-86.0, -43.13, -700.0],
+      "yaw": 0.0,
+      "_comment": "Cluster 3 (limbo_fungus_a): east flank."
+    },
+    {
+      "id": "shade_fungus_b_west",
+      "archetype": "limbo_shade",
+      "pos": [116.0, -43.13, -650.0],
+      "yaw": 0.0,
+      "_comment": "Cluster 4 (limbo_fungus_b at 120,-650): far east of the lit field, west flank of bowl."
+    },
+    {
+      "id": "shade_fungus_b_east",
+      "archetype": "limbo_shade",
+      "pos": [124.0, -43.13, -650.0],
+      "yaw": 0.0,
+      "_comment": "Cluster 4 (limbo_fungus_b): east flank."
+    },
+    {
+      "id": "shade_brazier_a_west",
+      "archetype": "limbo_shade",
+      "pos": [76.0, -43.13, -740.0],
+      "yaw": 0.0,
+      "_comment": "Cluster 5 (limbo_brazier_a at 80,-740): bright warm brazier, west flank."
+    },
+    {
+      "id": "shade_brazier_a_east",
+      "archetype": "limbo_shade",
+      "pos": [84.0, -43.13, -740.0],
+      "yaw": 0.0,
+      "_comment": "Cluster 5 (limbo_brazier_a): east flank."
+    },
+    {
+      "id": "shade_brazier_b_west",
+      "archetype": "limbo_shade",
+      "pos": [-5.0, -43.13, -780.0],
+      "yaw": 0.0,
+      "_comment": "Cluster 6 (limbo_brazier_b at 0,-780): brightest light in Limbo (intensity 1.0, radius 16). Central pair, west flank."
+    },
+    {
+      "id": "shade_brazier_b_east",
+      "archetype": "limbo_shade",
+      "pos": [5.0, -43.13, -780.0],
+      "yaw": 0.0,
+      "_comment": "Cluster 6 (limbo_brazier_b): east flank of the central brazier."
+    },
+    {
+      "id": "shade_campfire_c_west",
+      "archetype": "limbo_shade",
+      "pos": [-134.0, -43.13, -820.0],
+      "yaw": 0.0,
+      "_comment": "Cluster 7 (limbo_campfire_c at -130,-820): deep south-west, west flank."
+    },
+    {
+      "id": "shade_campfire_c_east",
+      "archetype": "limbo_shade",
+      "pos": [-126.0, -43.13, -820.0],
+      "yaw": 0.0,
+      "_comment": "Cluster 7 (limbo_campfire_c): east flank."
+    },
+    {
+      "id": "shade_fungus_c_west",
+      "archetype": "limbo_shade",
+      "pos": [26.0, -43.13, -870.0],
+      "yaw": 0.0,
+      "_comment": "Cluster 8 (limbo_fungus_c at 30,-870): southernmost cluster, ~250m south of Acheron. West flank."
+    },
+    {
+      "id": "shade_fungus_c_east",
+      "archetype": "limbo_shade",
+      "pos": [34.0, -43.13, -870.0],
+      "yaw": 0.0,
+      "_comment": "Cluster 8 (limbo_fungus_c): east flank, deepest into Limbo. Reward encounter for full exploration."
+    }
+  ],
   "ambient": { "color": [0.03, 0.03, 0.03] },
   "sky": { "kind": "void" },
   "footstep_default": "footstep_limbo"
