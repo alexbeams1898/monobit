@@ -57,6 +57,12 @@
             "name": "strafe_running_right",
             "blend_in_seconds": 0.22,
             "translation_source": "root_motion"
+        },
+        {
+            "_comment":
+                "One-shot. Authored hip XZ travel is ~0.7m -- below the 1.5m default extraction threshold -- so it must declare root_motion explicitly or PoseSampler leaves the motion in the pose (mesh visibly travels, sPlayer.pos doesn't, slide-snap at clip end).",
+            "name": "getting_up_3",
+            "translation_source": "root_motion"
         }
     ]
 }

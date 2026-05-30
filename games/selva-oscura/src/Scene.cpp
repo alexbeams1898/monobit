@@ -35,9 +35,4 @@ const InputLock& currentLocks()
     return sActive ? sLocks : kZeroLocks;
 }
 
-void tick(float /*dt*/)
-{
-    // v2: advance camera scripting, check end-conditions, etc.
-}
-
 } // namespace selva::scene

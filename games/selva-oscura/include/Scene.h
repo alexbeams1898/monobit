@@ -9,11 +9,6 @@
 // the player keeps the camera and the world keeps rendering, but inputs
 // that would commit the Vagrant to actions are blocked.
 //
-// The Scene system is intentionally minimal. v1 = input lock + per-frame
-// tick + end. Camera scripting + scripted-event sequences arrive when
-// the first Scene that needs them lands (the Guide-rescue at the beasts
-// encounter).
-//
 // One Scene at a time. Begin must be matched by end before the next
 // begin. The mechanism is a Selva-side singleton (matches the existing
 // pattern of selva::tuning, selva::formulas).
@@ -47,10 +42,5 @@ bool active();
 // Read-only access to current locks. Input handlers in PerFrameTick query
 // this before processing presses.
 const InputLock& currentLocks();
-
-// Per-frame tick. Currently a no-op (no camera scripting / no end-
-// conditions yet); reserved for v2 when Scene systems grow. Called once
-// per frame from selvaPerFrame regardless of Scene-active state.
-void tick(float dt);
 
 } // namespace selva::scene

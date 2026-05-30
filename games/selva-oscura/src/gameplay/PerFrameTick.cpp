@@ -2536,14 +2536,15 @@ static void applyPerFrameTranslation(const glm::vec3& moveIntent, float dodge_st
         if (sDodgeActive)
             applyDodgeSteer(moveIntent, dodge_steer_rate, dt);
         applyHipDeltaToPlayerPos();
-        return;
     }
-    if (sLocoDecision.source == selva::anim::TranslationSource::RootMotion)
+    else if (sLocoDecision.source == selva::anim::TranslationSource::RootMotion)
     {
         applyHipDeltaToPlayerPos();
-        return;
     }
-    applyVelocityToPlayerPos(dt);
+    else
+    {
+        applyVelocityToPlayerPos(dt);
+    }
 }
 
 // Flush an in-progress CSV bone-trajectory recording to disk and clear
@@ -3194,19 +3195,14 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     // dependency. F1 panel writes tun; this line propagates.
     sLocomotionConfig.global_playback_rate = tun.loco_playback_rate;
 
-    // Tick the cinematic Scene system before any input handlers run.
-    // Scene-active state gates input categories below via
-    // selva::scene::currentLocks().
-    //
-    // Wake-Scene auto-end: the wake-Scene fires getting_up_3 as a
-    // one-shot. When the one-shot completes, end the Scene so the
-    // player regains input. Future Scenes will need their own
-    // end-conditions; the simplest pattern is "Scene ends when its
-    // triggering one-shot finishes" so most game-init Scenes are a
-    // one-liner like this.
+    // Cinematic Scene auto-end. Scene-active state gates input
+    // categories below via selva::scene::currentLocks(). Scenes end
+    // when their triggering one-shot completes -- the simplest pattern
+    // covers every Scene currently in flight (the wake scene). Future
+    // Scenes with bespoke end conditions can add their own checks
+    // ahead of this fallback.
     if (selva::scene::active() && !sSampler.isOneShotActive())
         selva::scene::end();
-    selva::scene::tick(static_cast<float>(dt));
     const selva::scene::InputLock scene_locks = selva::scene::currentLocks();
 
     if (!scene_locks.look)
@@ -4178,8 +4174,8 @@ void beginWakeScene()
 {
     // Fire the getting-up clip on the player and lock combat + movement
     // input for its duration. Mouse-look stays free so the player can
-    // look around while waking. The Scene's auto-end on clip completion
-    // is handled inside selvaPerFrame's per-frame block.
+    // look around while waking. Scene auto-ends when the one-shot
+    // completes (see the auto-end check in selvaPerFrame).
     const char* clip_name = "getting_up_3";
     const auto* clip = sClips.get(clip_name);
     if (clip == nullptr || !clip->isLoaded())
