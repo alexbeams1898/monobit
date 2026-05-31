@@ -35,35 +35,81 @@ loaf of bread both contain carbon. Substance is shared; form is not.
 
 ## Cosmological framing
 
-Hell is failing (per [setting.md](setting.md), per
-[wood.md](wood.md)). Substance leaks out of Hell into the threshold-
-Wood. The substance is **inert by itself** — it is just *stuff*. But
-the Wood is a biome with conditions (water, soil, light, time-stop)
-that, until the leak began, supported only *vestigial* life — moss,
-fungi, the simplest organisms — because nothing else had reason to
-be here.
+> **WIP — refined 2026-05-31** per
+> [[selva-wood-lore-locked-2026-05-31]] and
+> [[selva-epistemic-doctrine-2026-05-31]]. The Wood-state cause-chain
+> below replaces the older "always-leaking" framing.
 
-The leak introduces **novel conditions**: new soil chemistry, new
-energy sources, new niches. The Wood's vestigial life **responds**
-the way real life responds to new environmental inputs: through
-genetic variation, selection, speciation, and evolution. New
-organisms emerge that are *adapted to the new conditions.*
+Hell is failing (per [setting.md](setting.md), per
+[wood.md](wood.md)). The Wood, as Hell's surface-face, registers
+that failure as biological death: dead trees, leafless canopy, fauna
+gone. At game-start the Wood supports only *vestigial* life — moss,
+fungi, the simplest organisms that can persist on near-nothing. The
+three named legends that lived on the colle's south slope before
+Hell's failure — **Lonza**, **Leone**, **Lupa** — are mostly dead.
+Lonza and Leone died with the rest of the pre-failure fauna; Lupa
+alone survives at game-start (per [bestiary.md](bestiary.md)
+*The three legends of the Wood*).
+
+**The Wood heals as Hell heals — with a catch.** As the Vagrant fells
+keepers, each restored circle's contrapasso resumes, and the Wood
+heals as a direct consequence. Hell's sickness made the Wood sick;
+Hell's healing makes the Wood heal. **But sangue leaks in alongside
+the healing — an unaccounted-for phenomenon no actor in the cosmology
+models (not Hell, not Beatrice, not the Vagrant).** The leak tags
+along with the resumed contrapasso, infusing the healing Wood with
+Hell-substance. What grows back is not pure pre-failure restoration;
+it is healing-with-Hell-in-it.
+
+This is the cause-chain that drives every new Selva-organism: the
+healing brings new life into the Wood, the leak infuses it with
+sangue, the substrate it grows from includes the biological remnants
+of Lonza, Leone, and the smaller fauna that died. **New organisms
+emerge as more-Hellish descendant forms of the three legends and
+their combinations** — recognizable silhouettes (Lupa-shape,
+Leone-shape, Lonza-shape) with English-coined fantasy names,
+contrapasso-flavored by which circles the player has restored.
 
 This is not magic. It is **medieval natural philosophy** —
 specifically, the medieval theory of *spontaneous generation* (that
 new conditions in matter produce new life) — and modern evolutionary
 biology, sharing the same insight in different vocabulary. Dante's
 audience would have accepted this framing unquestioningly: substance
-plus conditions plus time produces life. Modern audiences accept
+plus conditions plus substrate produces life. Modern audiences accept
 the same thing through Darwin. The mechanic spans both worldviews.
 
 The Vagrant is therefore the **unintentional founder of a new
-ecosystem.** By consuming Hell — extracting its substance, letting
-it leak through him — he is responsible for the existence of every
-Selva-organism that ever spawns. They are, in a real sense, *a
-coincidence of his work.* The unburdened path, especially, develops
-a relationship with this — pouring sangue out is not just a
-cosmological act; it is **planting.**
+ecosystem.** By restoring keepers — healing Hell — he triggers the
+side-effect (the leak), and the leak shapes the new ecology. They are,
+in a real sense, *a coincidence of his work.* The unburdened path
+develops a particular relationship with this — *riversamento* is not
+just a cosmological act; it is **planting** in the most literal sense.
+
+**Italian-as-legend doctrine for the ecology (per
+[[selva-epistemic-doctrine-2026-05-31]]):**
+
+- The three ancients — **Lonza**, **Leone**, **Lupa** — are PROPER
+  NAMES of specific individual creatures, used like Cerberus or
+  Margit. Capitalized, no article. There is exactly one Lonza, one
+  Leone, one Lupa (Lupa being the only one still alive at game-start).
+  They are not species labels.
+- All descendant Selva-organisms get **English-coined fantasy names**
+  — they are kinds-of-things, not Named Things. Naming convention:
+  descendant names should INVOKE their ancient progenitor's silhouette
+  (e.g. a Lupa-line descendant feels lupine; the player who has met
+  Lupa reads the family resemblance) but are English / vernacular.
+- The Italian is reserved for the legends. Using it for descendant
+  species dilutes the register and reads as forced. WIP — specific
+  descendant naming convention is deferred to when the first
+  descendants ship.
+
+**Player-knowledge note:** the player is never told this mechanism
+directly. They walk into a dead Wood with one legend on the slope;
+across cycles they see the Wood transforming, new creatures appearing,
+the silhouettes echoing what they killed in Beat 2. Whether they
+piece together that the new ecology is Hell-infused descendants of
+the dead legends is iceberg-below — designer canon, surfaced in
+fragments only.
 
 ### Selva-organisms are NOT mission targets
 
@@ -426,6 +472,12 @@ late-development polish.
 - **Re-formation after Hell-death.** Whether captured allies re-form
   in the Wood on respawn, or are lost permanently. Cosmologically
   rich either way. TBD.
-- **Three beasts of Canto I.** If they ever appear, do they slot in
-  as canonical Hell-creatures, atmospheric only, or something else?
-  Cross-cuts with bestiary.md. TBD.
+- **The three legends of the Wood** (Lonza, Leone, Lupa). **Resolved
+  2026-05-31** per [[selva-wood-lore-locked-2026-05-31]]: they are
+  pre-failure apex-fauna of the Wood, not Hell-creatures and not
+  Selva-organisms. Lonza and Leone died during Hell's stagnation;
+  Lupa alone survives as the Beat 2 opening boss. Their silhouettes
+  re-emerge in the descendant ecology as the Wood heals (sangue-
+  infused new forms with English-coined names). See
+  [bestiary.md](bestiary.md) *The three legends of the Wood* for
+  the canonical framing.

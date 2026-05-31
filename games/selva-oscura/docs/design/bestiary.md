@@ -10,11 +10,23 @@
 The bestiary of Selva Oscura is built on one shared human skeleton.
 Damned souls — the overwhelming majority of enemies the player fights
 — are variations of that skeleton, deformed by **contrapasso** (the
-sin reshaping the body). Two canonical exemption classes get their
-own skeletons: **wood beasts** (the *lonza* / *leone* / *lupa* of
-Canto I, encountered before descent) and **classical guardians**
-(Cerberus, Minotaur, Geryon, Lucifer himself, guarding circles
-inside Hell). Both exemptions detailed below.
+sin reshaping the body). Three canonical exemption classes get their
+own skeletons:
+
+1. **The three legends of the Wood** — **Lonza**, **Leone**, **Lupa**
+   — the three named pre-failure apex-fauna of the *selva oscura*.
+   At game-start, only **Lupa** survives (the others died during
+   Hell's stagnation, per [[selva-wood-lore-locked-2026-05-31]]).
+   Encountered before descent.
+2. **Selva-organisms** — the new ecology that emerges as the Wood
+   heals (per [creatures.md](creatures.md)). Sangue-infused
+   descendant forms of the three legends and their combinations.
+   English-coined fantasy names. Distinct from the legends and
+   distinct from any Hell-creature.
+3. **Classical guardians** — Cerberus, Minotaur, Geryon, Lucifer
+   himself, guarding circles inside Hell. Drawn directly from Dante.
+
+All three exemptions are detailed below.
 
 We call the rule the *figura umana* — "the human figure" — internally.
 
@@ -49,30 +61,67 @@ schismatics, thieves, and so on — every sinner Dante meets is some
 distorted human, and so is every enemy in this game that was once a
 mortal.
 
-**Wood beasts (Canto I — rule does not apply):** encountered BEFORE
-descent into Hell, on the colle's south slope (see [story.md](story.md)
-Beat 2). The Vagrant fights all three in the opening. These are
-**alive on the slope** (real animals + allegorical forces); they are
-NOT post-mortem Hell-creatures and do not derive from any damned
-soul. Cosmologically distinct from classical guardians: classical
-guardians are *Hell-made monsters guarding circles*; wood beasts are
-*living animals encountered before descent*. Different exemption,
-same outcome (non-humanoid skeletons).
+**The three legends of the Wood (rule does not apply):** the pre-failure
+*selva oscura* hosted three named apex-fauna on the colle's south slope:
+**Lonza**, **Leone**, and **Lupa**. **Selva-canon: Lonza and Leone died
+during Hell's stagnation, before the Vagrant arrived. Only Lupa
+survives at game-start** as the lone surviving legend and the Beat 2
+opening boss (see [story.md](story.md) Beat 2 and
+[[selva-wood-lore-locked-2026-05-31]]).
 
-Canonical Canto I beasts:
+The three are **proper names of specific individual creatures**, used
+like Cerberus or Margit — capitalized, no article ("Lupa stalks the
+slope," NOT "the lupa stalks the slope"). There is exactly one Lonza,
+one Leone, one Lupa. They are individuals, not species. Italian here
+serves the **Italian-as-legend register doctrine** (see
+[[selva-epistemic-doctrine-2026-05-31]]): Italian is reserved for
+legends and Named Things; descendant species that emerge from the
+healing Wood get English-coined fantasy names.
+
+They are **alive on the slope** (real biological animals + allegorical
+forces given physical form); not post-mortem Hell-creatures, not
+derived from any damned soul, not Selva-organisms (those are the
+leak-evolved new ecology). Cosmologically distinct from classical
+guardians: classical guardians are *Hell-made monsters guarding
+circles inside Hell*; the legends are *living pre-failure inhabitants
+of the threshold-Wood, encountered before descent*. Different
+exemption, same outcome (non-humanoid skeletons).
+
+Canonical Canto I beasts (source-text references):
 
 - **Lonza** (*Inferno* I.31–33) — leopard / lynx, spotted, light-footed
 - **Leone** (*Inferno* I.45–48) — lion, head high, raging
 - **Lupa** (*Inferno* I.49–60) — she-wolf, gaunt, insatiable — the worst
 
 Allegorical readings: incontinence / violence / fraud (per the
-traditional gloss). Whether the game leans on the allegory is open;
-the encounter ships as combat regardless.
+traditional gloss). Whether the game leans on the allegory is open
+(WIP). The Lupa encounter ships as a tragic-register boss; the
+absence of Lonza and Leone is part of the encounter's emotional
+weight (see [[selva-wood-lore-locked-2026-05-31]]
+*Tonal register* for the Lupa fight).
+
+After Lupa falls, the slope stays empty in subsequent cycles. Lupa
+is `permanent_on_death: true`, fought once per save, same pattern as
+keepers. The empty slope itself becomes the monument to what was.
 
 Engine architecture for non-humanoid actors lives in
 [animals_and_multi_skeleton.md](animals_and_multi_skeleton.md).
-Asset acquisition plan: lupa ships from CC0 Quaternius placeholder;
-lonza + leone pending custom assets.
+Asset status (2026-05-31): **Lupa shipped** as Quaternius CC0 wolf
+placeholder. **Lonza and Leone are not pending assets** — they are
+dead in canon and have no in-game representation as legends. Their
+silhouettes survive only via the descendant ecology (per
+[creatures.md](creatures.md)) — sangue-infused new forms that echo
+the legends' shapes.
+
+**Selva-organisms (rule does not apply):** the leak-evolved new ecology
+that emerges as the Wood heals (see [creatures.md](creatures.md)).
+**More-Hellish descendant forms** of the three legends and their
+combinations, sangue-infused. Recognizable silhouettes (Lupa-shape,
+Leone-shape, Lonza-shape) but with English-coined fantasy names —
+they are kinds-of-things, not Named Things. They are NOT damned souls,
+NOT classical guardians, NOT legends. They are *new life that
+emerged because the Wood healed and sangue tagged along with the
+healing.* See [creatures.md](creatures.md) for the full framework.
 
 **Classical guardians (rule does not apply):** drawn directly from
 canonical Dante. These are infernal *creatures*, not damned humans.

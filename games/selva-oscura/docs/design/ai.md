@@ -355,7 +355,9 @@ extensions whose value is zero today and load-bearing later.
 - **Phase-driven HFSM.** Different BTs for boss phases (1, 2, rage,
   etc.). The `BehaviorTreeRegistry` already supports multiple trees;
   the HFSM is a thin wrapper around `actor.archetype->tree_id` that
-  swaps at runtime. Lands with the first boss — the three beasts.
+  swaps at runtime. Lands with the first boss — Lupa (the lone
+  surviving legend of the pre-failure Wood; see
+  [[selva-wood-lore-locked-2026-05-31]]).
 
 ## Per-circle considerations
 

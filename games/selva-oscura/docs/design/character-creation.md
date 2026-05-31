@@ -11,8 +11,10 @@ sequence*](story.md), Beats 1-5:
 
 - **Beat 1 — Cold-open in the basic-form Wood.** The Vagrant wakes
   in the *selva oscura*. Walkable, not a cutscene.
-- **Beat 2 — The beasts.** Lonza / Leone / Lupa, fought as Unburdened
-  (no measurement yet, imprint-free).
+- **Beat 2 — Lupa, the last legend.** Lupa is the lone surviving
+  pre-failure apex-legend (Lonza and Leone died during Hell's
+  stagnation per [[selva-wood-lore-locked-2026-05-31]]). Fought as
+  Unburdened (no measurement yet, imprint-free).
 - **Beat 3 — The Guide arrives.** Naming: the Guide elicits six
   letters from the player. *The name is given, not recovered.* The
   Guide offers The Seal.

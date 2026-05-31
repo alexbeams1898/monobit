@@ -104,31 +104,58 @@ save.)
 Player can take the opening at any pace. There is no time pressure.
 Five minutes or twenty — the player chooses.
 
-### Beat 2 — The beasts
+### Beat 2 — Lupa, the last legend
 
-> **Implementation status:** **lupa shipped** (Quaternius placeholder,
-> CC0); **lonza + leone pending** until custom assets or paid pack
-> lands. See [animals_and_multi_skeleton.md](animals_and_multi_skeleton.md)
-> for the engine refactor + asset acquisition plan. The full trio
-> playing as designed below is the target; the current build is a
-> stub with just the lupa.
+> **Selva-canon refined 2026-05-31** per
+> [[selva-wood-lore-locked-2026-05-31]]. The pre-failure *selva
+> oscura* had three named apex-legends on the slope —
+> **Lonza**, **Leone**, **Lupa** — but Lonza and Leone died during
+> Hell's stagnation, before the Vagrant ever arrived. Only Lupa
+> survives at game-start. Beat 2 is now the encounter with her
+> alone. Earlier "fights all three" framing is superseded.
 
-When the Vagrant approaches the mountain, the three beasts appear
-in Dante's order:
+> **Implementation status (2026-05-31):** Lupa ships with the
+> Quaternius CC0 wolf rig. Joint map, hurtboxes, archetype, and bake
+> all wired (see [animals_and_multi_skeleton.md](animals_and_multi_skeleton.md)).
+> Combat tuning, encounter pacing, and reward structure are WIP.
 
-1. **Lonza** (the leopard) — light-footed, spotted, the first
-   obstacle.
-2. **Leone** (the lion) — head high, raging.
-3. **Lupa** (the she-wolf) — gaunt, insatiable, the worst.
+When the Vagrant approaches the colle, **Lupa** stalks down from the
+slope. She is the last living thing in the Wood — gaunt, insatiable
+(per Dante's *Inferno* I.49–60), her nature the appetite-form that
+let her survive a dying biome where her sister-legends could not. Her
+silhouette on a dead slope is the player's first encounter with the
+register of the game: tragic, mournful, the absence of what should
+have been here felt in the air.
 
-The Vagrant fights all three. Combat profile is the Unburdened class
+The Vagrant fights Lupa alone. Combat profile is the Unburdened class
 (see [classes.md](classes.md)) since no measurement has occurred.
+`permanent_on_death: true` — fought once per save, same pattern as
+keepers. After she falls, the slope stays empty in every subsequent
+cycle. The empty slope itself becomes the monument to what was.
 
-**Texture note.** The beasts have been here a long time. They have
-encountered many failed pilgrims. Their fight has a *patina* of
-repetition — recognized moves, instinctive responses. They are
-worn but no less terrifying. The opening should communicate this
+**Tonal register: tragic, sift-of-melancholy.** The absence of Lonza
+and Leone is felt in the encounter — the slope was meant for three;
+only one stands. The player who pieces it together (via item text /
+NPC dialogue / Grimoire fragments across runs) reads the absence; the
+player who doesn't reads a lone gaunt apex-beast on a dead slope,
+which already lands tragically. Either way, the encounter carries
+the weight of *what was lost.* Quiet grief register, not horror, not
+boss-of-the-week.
+
+**Texture note.** Lupa has been here a long time — long enough to
+have outlasted her sister-legends, long enough to have hunted in a
+Wood progressively emptying around her. Her fight has a *patina* of
+endurance — wary moves, instinct sharpened by lonely centuries. She
+is worn but no less terrifying. The opening should communicate this
 texture without stating it. Specifics deferred to combat / writing.
+
+**Player-knowledge note (per
+[[selva-epistemic-doctrine-2026-05-31]]):** the player is not told
+why Lupa is alone. They are not told that there were three. They are
+not told what killed the others. They encounter a wolf on a dead
+slope; they may infer absence; the canon (Lonza and Leone died from
+Hell's stagnation, Lupa is the lone survivor) is iceberg-below,
+surfaced gradually only via fragments in later content.
 
 ### Beat 3 — The Guide arrives
 

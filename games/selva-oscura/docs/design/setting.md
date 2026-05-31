@@ -196,17 +196,63 @@ are *rendering*, not separate ontology.
 
 #### The Wood is also made of sangue
 
-The Wood — every tree, every stone, every fern, every selva-organism —
-is sangue that has *leaked out of Hell* and accumulated at the
-threshold. Hell's compression-engine doesn't reach here, so the
-substance has been free to take shapes Hell never intended. Trees, soil,
-biology. The Wood is sangue *not currently compressed*; it has the same
-substance as Hell but in its un-imprisoned register. Beatrice's
-threshold-light is also sangue — *her* sangue, the substrate of
-Paradiso, leaked at the same threshold. Hell's leaked-out sangue and
+> **WIP / refined 2026-05-31** — see
+> [[selva-wood-lore-locked-2026-05-31]] for the lock. This section
+> is being rewritten doc-by-doc; the canonical framing is below.
+
+The Wood — every tree, every stone, every fern, every Selva-organism —
+is sangue. Same substance as Hell, but un-compressed; the Wood is
+the **surface-face** of Hell, the visible body the cosmology beneath
+reads through. (See [wood.md *Lore — the Wood and Hell's failure*](wood.md).)
+
+**The relationship is bidirectional and surface-vs-interior.** Whatever
+Hell is doing — broken, healing, processing — registers on the Wood as
+a surface consequence. The Wood at game-start is the *dead* surface of
+Hell-in-stagnation: trees stripped, fauna largely gone, vestigial life
+only. The three legendary apex-beasts that lived on the colle's south
+slope before Hell's failure — **Lonza, Leone, Lupa** — died with the
+rest of the pre-failure Wood; only Lupa survives at game-start (her
+nature, the appetite-form, suits a dying biome).
+
+**The Wood heals as Hell heals.** As the Vagrant fells keepers, each
+restored circle's contrapasso resumes — and the Wood, as the
+surface-face, heals as a direct consequence. Hell's sickness made the
+Wood sick; Hell's healing makes the Wood heal. Per-keeper, cumulative.
+
+**With a catch: sangue leaks in alongside the healing.** **The leak is
+an unaccounted-for phenomenon: no actor in the cosmology models it,
+not Hell, not Beatrice, not the Vagrant.** It is consequence without
+design — sangue tags along with the resumed contrapasso, infusing the
+healing Wood with Hell-substance. The healing is not pure restoration
+to pre-failure state; it is healing-with-Hell-in-it.
+
+The catch shapes the new ecology. Resumed contrapasso brings life back
+into the Wood — into a substrate that includes the remnants of Lonza,
+Leone, and the smaller fauna that died — but the sangue infusing that
+life produces **more-Hellish descendant forms** of the three ancients,
+not pre-failure restoration. Literal evolution of the ancient-lines
+and their combinations, sangue-infused, contrapasso-flavored by which
+circles the player has restored. The Wood does not revert to its
+pre-failure form; it grows a new form, rooted in the corpse of the
+old Wood, marked everywhere by the sangue that tagged along with the
+healing. (See [creatures.md](creatures.md) for the descendant-ecology
+framework.)
+
+Beatrice's threshold-light is also sangue — *her* sangue, the substrate
+of Paradiso, leaked at the same threshold. Hell's leaked-out sangue and
 Paradiso's leaked-out sangue meet across the Wood, with the colle as
 the point of greatest intersection. The Vagrant walks through their
 meeting on his way to the descent.
+
+**Player-knowledge note (per [[selva-epistemic-doctrine-2026-05-31]]):**
+the player is never told any of this directly. What they *see* is a
+dead Wood at game-start with one beast on the slope, transforming
+across cycles as they progress in Hell. The mechanism (per-keeper
+sangue leak as unaccounted phenomenon) is iceberg-below — designer
+canon for authoring internally-consistent surface content, surfaced
+to the player only in fragments (Grimoire, item text, NPC speech)
+that they MAY piece together over many cycles. Status WIP — exact
+reveal pacing is deferred.
 
 #### The Vagrant is sangue too
 
@@ -380,7 +426,9 @@ NPCs are souls from inside it; the player triangulates between them.
 ```
 INTRO (lore framing scenes)
   → SELVA OSCURA (basic form — pre-Wood)
-    → THE BEASTS (Lonza / Leone / Lupa, fought once per save)
+    → LUPA (opening boss; lone surviving legend of the pre-failure
+            Wood; Lonza and Leone died during Hell's stagnation;
+            fought once per save, permanent on death)
       → choice: take The Seal (class-pick) or carry it forward (unburdened)
         → THE WOOD (hub, expanding)
           → GATE OF HELL
@@ -513,11 +561,11 @@ nothing on him.
 He is unjudged — no circle assigned, no sin catalogued, no role
 pre-written. Hell has no pattern to fit him to.
 
-### Paths — the choice at the beasts
+### Paths — the choice after Lupa
 
-After the three beasts fight, the Vagrant is presented with **The Seal**
-(*Il Sigillo*). Using it is the act of class-pick — Hell's first formal
-measurement of the soul.
+After Lupa falls (Beat 2 opening boss; see [story.md](story.md)), the
+Vagrant is presented with **The Seal** (*Il Sigillo*). Using it is the
+act of class-pick — Hell's first formal measurement of the soul.
 
 - **Use the Seal** → become a class-picker. Pick Penitent, Heretic, or
   Wretched. The Seal is consumed. Stats unlock.

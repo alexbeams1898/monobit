@@ -7,12 +7,13 @@
 
 ## What the Wood is
 
-The Wood is the **threshold-place** at the exit-wound of Hell. It
-is where the unjudged Vagrant resides between his descents (per
-[setting.md](setting.md) *The Vagrant / the unjudged*). It is the
-place Dante described in *Inferno* Canto I — the *selva oscura*,
-midway through the journey of our life, where the straight path is
-lost.
+The Wood is the **threshold-place** above Hell — its surface-face,
+the visible body of the cosmology beneath (see *Lore — the Wood and
+Hell's failure*, below). It is where the unjudged Vagrant resides
+between his descents (per [setting.md](setting.md) *The Vagrant /
+the unjudged*). It is the place Dante described in *Inferno* Canto I
+— the *selva oscura*, midway through the journey of our life, where
+the straight path is lost.
 
 Dante's text is *deliberately vague* about the Wood's physical
 specifics. He gives one quality (*aspra e forte* — harsh and dense),
@@ -31,38 +32,112 @@ edge that leads onward; it resists exit by direct means.
 
 ## Lore — the Wood and Hell's failure
 
-The Wood's *visible state* is the consequence of Hell's failure.
+> **WIP — refined 2026-05-31** per [[selva-wood-lore-locked-2026-05-31]]
+> and [[selva-epistemic-doctrine-2026-05-31]]. The framing below is the
+> current canonical one. Status WIP — specific reveal pacing, NPC
+> dialogue surfaces, and visual-progression tier specifics are deferred.
 
-Hell is made of sangue — coagulated suffering (per setting.md
-*Sangue and the law of substance*). Hell's accounting depends on
-sangue flowing in fixed cosmological patterns: souls deposit, Hell
-holds, Hell punishes, Hell extracts. Beatrice's protocol on the
-Vagrant failed — he is the unjudged — and the Vagrant *extracts*
-sangue from Hell without ever depositing. Across cycles, Hell loses
-substance.
+**The Wood is Hell's surface-face.** Like a human face registers what
+is happening inside an organ even when no one can see the organ
+directly, the Wood is the visible body of the cosmology beneath.
+Whatever Hell is doing — broken, healing, processing — registers on
+the Wood as a surface consequence. The player never sees Hell's
+internal mechanics from the Wood; they see the face.
 
-The Wood sits at the **exit wound** of this cosmological failure.
-Substance leaving Hell passes through the Wood. The Wood has been
-the threshold-place for centuries-or-millennia of cycles, and over
-that time, it has *accumulated* what Hell has lost.
+**Pre-failure, the Wood was alive.** A real biome: dense canopy,
+fauna throughout, three named apex-legends on the colle's south slope:
+**Lonza**, **Leone**, **Lupa**. Each is a proper name of a specific
+individual creature — used like Cerberus or Margit, not as a species
+label (see [bestiary.md](bestiary.md) *The three legends* for the
+naming doctrine). Smaller fauna and a richer understory ecology
+surrounded them. The pre-failure Wood was what a threshold-place looks
+like when the cosmology behind it is functioning.
 
-This produces the Wood's defining qualities:
+**Hell's failure killed the Wood.** Centuries of stagnation — keepers
+locked, contrapasso suspended, throughput jammed, larvae piling up at
+Acheron's near shore — propagated to the surface-face. The pre-failure
+fauna died. Lonza and Leone died with the rest. Lupa survived alone,
+*somehow* — her nature (gaunt, insatiable, the appetite-form per
+Dante's text) suits a dying biome where consuming the leftover is the
+only viable strategy. The Wood the Vagrant wakes into at game-start is
+the graveyard of its former self.
 
-- **The Wood is *aged*.** Not because time passed — time is *held
-  still* in the Wood (see below) — but because the threshold has
-  been receiving substance from Hell for a very long time.
-- **The Wood is *dense* and *vertical*.** Sangue-saturation has
-  fertilized the soil far beyond what nature alone would produce.
-  Trees grow tall, dense, undisturbed. The understory layers itself.
-- **The Wood is *perpetually dusk*.** Light (the canonical *rays
-  of the planet*) still falls on the colle — but the Wood-proper is
-  thick enough that little penetrates. The "darkness" of *selva
-  oscura* is not night; it is the *substance of the Wood* blocking
-  light. Eternal twilight, gothic register.
-- **The Wood is *gothic*, not horror.** Quiet wrongness, not jump-
-  scare. Dürer's *Melancholia I* more than a haunted house. The
-  player should feel *something is off here* without being able to
-  say what.
+**The Vagrant arrives into the already-dead Wood.** His arrival did
+NOT cause Lonza's or Leone's deaths — they died from Hell's stagnation
+before he ever showed up. He encounters Lupa as the lone surviving
+apex-legend; he fights her in Beat 2; the Guide arrives in Beat 3
+after she falls (per [story.md](story.md)). Killing Lupa ends the last
+animal life in the Wood — only dead substrate remains until restoration
+begins.
+
+This produces the Wood's defining qualities at game-start:
+
+- **The Wood is *dead* and *decrepit*.** Trees stripped of leaves.
+  No birdcalls. Sparse vestigial life only — moss, fungi, the
+  simplest organisms that can persist on near-nothing.
+- **The Wood is *aged*.** Not by time passing — time is *held still*
+  in the Wood (see below) — but by the death-event having locked in.
+  What died, stays dead, until something changes it.
+- **The Wood is *perpetually dusk*.** Light (the canonical *rays of
+  the planet*) still falls on the colle, faintly. Beatrice's
+  threshold-light is also faint — her composure cracking with the
+  same stagnation (per *The light is her interior state*, below).
+  The "darkness" of *selva oscura* is the dimness of a failing
+  threshold.
+- **The Wood is *gothic*, not horror.** Quiet wrongness, not
+  jump-scare. Dürer's *Melancholia I* more than a haunted house.
+  The dead body of a living wood, in the moment before something
+  starts growing back.
+
+**The Wood heals as Hell heals — with a catch.** As the Vagrant fells
+keepers, each restored circle's contrapasso resumes (per
+[setting.md](setting.md) *Post-keeper restored circle*). **The Wood
+heals as a direct consequence.** Hell's sickness made the Wood sick;
+Hell's healing makes the Wood heal. Per-keeper, cumulative across
+restorations. The Wood transforms visually across the run: dead and
+decrepit at game-start → progressively re-greened, denser, more
+populated as each keeper falls.
+
+**But the catch:** sangue leaks in alongside the healing. **The leak
+is an unaccounted-for phenomenon — no actor in the cosmology models
+it (not Hell, not Beatrice, not the Vagrant).** It is consequence
+without design. The leak tags along with the resumed contrapasso,
+infusing the healing Wood with Hell-substance. What grows back is not
+pure pre-failure restoration; it is healing-with-Hell-in-it.
+
+That catch shapes the new ecology. Resumed contrapasso brings life
+back into a substrate that includes the remnants of Lonza, Leone, and
+the smaller fauna that died. But the sangue infusing that life produces
+**more-Hellish descendant forms** of the three ancients (per
+[creatures.md](creatures.md)) — recognizable silhouettes (Lupa-shape,
+Leone-shape, Lonza-shape) marked by the sangue that tagged along.
+Bones-then-new-growth aesthetic: dead trees remain as substrate; new
+life sprouts through them, but the new life is contrapasso-flavored
+by which circles the player has restored. The Wood that grows back is
+not the Wood that was.
+
+Lupa is the only living link to the pre-failure Wood. Killing her in
+the Beat 2 opening boss encounter (see [story.md](story.md)) severs
+that link permanently. The slope stays empty in subsequent cycles —
+the empty slope itself becomes the monument to what was. Whatever new
+fauna eventually fill the Wood are descendants, never the ancients.
+
+**Player-knowledge note (per
+[[selva-epistemic-doctrine-2026-05-31]]):** the player is never told
+any of this directly. The game does not say "you are in Hell." What
+they *see* is a dead Wood, a beast on the slope, and a Wood that
+transforms across cycles as they progress. The mechanism (per-keeper
+restoration heals the Wood; sangue leaks in alongside as the catch)
+is iceberg-below — designer canon for authoring internally-consistent
+surface content. Surfaced to the player only in fragments (Grimoire,
+item text, NPC speech) they MAY piece together over many cycles.
+Exact reveal pacing is deferred.
+
+Cross-references:
+- [creatures.md](creatures.md) — descendant-ecology framework
+- [bestiary.md](bestiary.md) — the three legends, Italian-as-proper-name doctrine
+- [setting.md](setting.md) — per-keeper-restoration mechanic + sangue laws
+- [story.md](story.md) — Beat 2 (Lupa fight) and Beat 3 (Guide arrives)
 
 ### Time is held still in the Wood
 
@@ -73,9 +148,10 @@ have seasons — it is, perpetually, the same state.
 
 This is consistent with Hell's eternal-present (per setting.md):
 Hell knows no real time, only the accounting of substance. The
-Wood, at Hell's exit-wound, inherits Hell's stillness. What changes
-in the Wood is *what enters it* (substance from Hell), and *what
-acts upon it* (the Vagrant, and what spawns from leaked substance —
+Wood, as Hell's surface-face, inherits Hell's stillness. What changes
+in the Wood is *what the body underneath is doing* (Hell breaking,
+Hell healing) and *what acts upon it* (the Vagrant, and the new
+ecology that emerges from per-keeper restoration as the Wood heals —
 see [creatures.md](creatures.md)).
 
 ### The Wood remembers
@@ -111,8 +187,14 @@ describes** in the Commedia's opening. Canto I gives us:
   planet** (the sun) — light comes from *the top of the hill*
 - He starts to climb, *limping* — the firm foot always the lower one
 - On the slope: the **three beasts** (lonza / leone / lupa) drive
-  him back
+  him back (Dante's source text)
 - He is forced back down into the wood; Virgil meets him there
+
+(*Selva-canon adaptation:* in this game's lore, Lonza and Leone
+died during Hell's stagnation before the Vagrant arrived. Only
+Lupa survives at game-start as the lone apex-legend. The slope
+encounter is **Lupa alone** — see [story.md](story.md) Beat 2
+and *The three legends* section below.)
 
 The text describes *nothing else* about the wood's interior — no
 paths, no clearings, no other landmarks. This vagueness is
@@ -170,22 +252,46 @@ freedom for everything beyond the structural bones.
   sits at or just beyond this radius (its base inside ~30m, its
   rise extending another ~10-15m outward).
 
-### The three beasts (lonza, leone, lupa)
+### The three legends (Lonza, Leone, Lupa)
 
-**Combat encounters in the opening** — see [story.md](story.md)
-Beat 2 for the authoritative beat. The Vagrant fights all three on
-the colle's south slope before the Guide arrives. Earlier framings
-of the beasts as "atmospheric / deferred / forces-only" are
-superseded by the combat-encounter design in story.md.
+**Selva-canon: two of the three are dead.** Lonza and Leone died
+during Hell's stagnation, before the Vagrant ever arrived. Lupa
+alone survives at game-start. The opening boss encounter on the
+colle's south slope is **Lupa alone** — see [story.md](story.md)
+Beat 2. She is the last living link to the pre-failure Wood;
+killing her severs that link permanently. After her death, the
+slope stays empty in subsequent cycles — the empty slope itself
+becomes the monument to what was. (Save-persistence:
+`permanent_on_death: true`, fought once per save, same pattern as
+keepers.)
 
-The beasts are **figura-umana-exempt** per
-[bestiary.md](bestiary.md) — they are NOT damned souls (cosmologically
-distinct from shades and contrapasso-husks), so they get their own
-skeletons. Per the bestiary doctrine they're in a separate exemption
-category from classical guardians (Cerberus, Minotaur, etc.):
-classical guardians are Hell-created monsters; the Canto I beasts
-are encountered BEFORE descent, alive on the slope, allegorical
-forces given physical form.
+**Tonal register: tragic, sift-of-melancholy.** The absence of
+Lonza and Leone is felt in the encounter — the slope was meant
+for three; only one stands. Quiet grief register, not horror, not
+boss-of-the-week.
+
+The three legends are **proper names of specific individual
+creatures**, used like Cerberus or Margit — capitalized, no article
+("Lupa stalks the slope," NOT "the lupa stalks the slope"). There
+is exactly one Lonza, one Leone, one Lupa. They are individuals,
+not species. This is part of the **Italian-as-legend register
+doctrine** (see [bestiary.md](bestiary.md) and
+[[selva-epistemic-doctrine-2026-05-31]]): Italian is reserved for
+legends and named beings; descendant species that emerge from
+restoration leaks get English-coined fantasy names.
+
+**Cosmologically distinct from everything else in the bestiary:**
+- Not damned souls (no figura-umana rule applies)
+- Not classical guardians (Hell-made monsters guarding circles)
+- Not Selva-organisms (the leak-evolved new ecology that emerges
+  as the Wood heals)
+
+The legends are their own category: **ancient apex-fauna of the
+pre-failure Wood, allegorical forces given physical form, real
+biological animals.** Only Lupa now stands; Lonza and Leone exist
+only as dead substrate beneath the soil — biological remnants that
+the per-keeper restoration leaks will eventually weave into the
+descendant ecology (per [creatures.md](creatures.md)).
 
 Engine architecture for non-humanoid actors lives in
 [animals_and_multi_skeleton.md](animals_and_multi_skeleton.md).
@@ -213,11 +319,15 @@ These are not Dante; these are *how we honor Dante* in our medium:
   *inside* a wood, not in a clearing. Small visible area at
   respawn; the world opens by walking.
 
-The three beasts of Dante's Canto I (*lonza*, *leone*, *lupa*) are
-combat encounters in the opening per [story.md](story.md) Beat 2 +
-the section above. The earlier "deferred / forces-only" framing on
-this page is superseded; see the section heading above for the
-current cosmological framing and pointers to the engine refactor doc.
+The three legends of Dante's Canto I — **Lonza**, **Leone**, **Lupa**
+— are the named pre-failure apex-fauna of the Wood. Selva-canon: Lonza
+and Leone died during Hell's stagnation; Lupa alone survives at
+game-start as the Beat 2 opening boss (see [story.md](story.md) Beat
+2). All other ecology in the Wood is descendant species that emerge
+as the Wood heals (per [creatures.md](creatures.md)) — sangue-infused
+forms with the silhouettes of the three legends but English-coined
+fantasy names. See *The three legends* section above for the full
+framing.
 
 ### Outer Wood — procedurally generated, persistent, ring-shaped
 
@@ -861,9 +971,13 @@ The Wood reads as: **aged gothic pine forest at eternal dusk**.
   Chunk size TBD.
 - **Player marks (cairns, etched names, fires).** Specific verbs
   and persistence rules. Deferred until save-data layer exists.
-- **The three beasts.** Combat encounters per [story.md](story.md)
-  Beat 2; lupa shipped as placeholder, lonza + leone pending custom
-  assets. See [animals_and_multi_skeleton.md](animals_and_multi_skeleton.md).
+- **The Lupa boss encounter.** Beat 2 opening boss per
+  [story.md](story.md). She is the lone surviving legend of the
+  pre-failure Wood — Lonza and Leone died during Hell's stagnation,
+  per the 2026-05-31 wood-lore lock. Combat profile, encounter
+  pacing, and reward structure: TBD. See
+  [animals_and_multi_skeleton.md](animals_and_multi_skeleton.md)
+  for engine architecture.
 - **Specific ambient sound design.** Deferred — own design pass.
 - **NPCs hidden in the Wood.** Identity, location-discovery,
   mechanics. TBD.

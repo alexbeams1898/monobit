@@ -1,68 +1,81 @@
 # Animals & multi-skeleton support
 
-> **Owns:** the architecture for non-humanoid actors in Selva. Driven
-> by the canonical opening-sequence requirement — the Vagrant fights
-> the three beasts of *Inferno* Canto I (*lonza*, *leone*, *lupa*)
-> per [story.md](story.md) Beat 2. These are the project's first
-> non-humanoid actors and force the singleton skeleton/mesh model in
-> [`SkeletalAssets.cpp`](../../src/anim/SkeletalAssets.cpp) into a
-> keyed registry. The lupa (she-wolf) goes first; lion + leopard
-> follow when the asset trio is consolidated.
+> **Owns:** the architecture for non-humanoid actors in Selva.
 >
-> **Status:** design pre-execution; awaiting review.
+> Originally driven by the opening-sequence beast encounter. Per the
+> **2026-05-31 wood-lore lock** ([[selva-wood-lore-locked-2026-05-31]]),
+> the opening encounter is now **Lupa alone** — Lonza and Leone died
+> during Hell's stagnation before the Vagrant arrived. The
+> multi-skeleton architecture still ships (it's needed for Lupa, for
+> classical guardians, and for the descendant-form Selva-organism
+> ecology that emerges as the Wood heals — see
+> [creatures.md](creatures.md)).
+>
+> Status (2026-05-31): Lupa engine integration COMPLETE — joint map,
+> hurtboxes, archetype, bake all wired. The singleton skeleton/mesh
+> model in [`SkeletalAssets.cpp`](../../src/anim/SkeletalAssets.cpp)
+> has been promoted to a keyed registry per
+> [commit f9466af](#). CMake refactor for the bake pipeline deferred
+> to issue #131 (currently shipping via manually-baked committed .ozz
+> files). Combat tuning + spawn-placement + smoke-test verification:
+> WIP.
 
 ## Lore frame
 
-Per [story.md](story.md) Beat 2 ("The beasts"): when the Vagrant
-approaches the colle in the opening, all three beasts appear in
-Dante's order — lonza, leone, lupa. The Vagrant fights all three.
-Combat profile is the Unburdened class
+Per [story.md](story.md) Beat 2 and [bestiary.md](bestiary.md)
+*The three legends of the Wood*: the pre-failure *selva oscura* had
+three named apex-legends on the colle's south slope — **Lonza**,
+**Leone**, **Lupa**. Per the wood-lore lock, **Lonza and Leone died
+during Hell's stagnation, before the Vagrant arrived. Only Lupa
+survives at game-start.** The opening encounter is the Vagrant
+fighting Lupa alone (Beat 2); the Guide arrives in Beat 3 after she
+falls. Combat profile is the Unburdened class
 ([classes.md](classes.md)) since no measurement has occurred yet.
-After they fall the Guide appears (Beat 3, paralleling Virgil's
-arrival in *Inferno* I after the retreat).
 
-**Doctrinal exemption: the beasts are NOT *figura umana*.** Per
+**Doctrinal exemption: the legends are NOT *figura umana*.** Per
 [bestiary.md](bestiary.md), the bestiary rule is that *every damned
-soul wears the human form*, deformed by contrapasso. The three beasts
-of Canto I are not damned souls. They are *forces* in the canto
-(allegorical readings: incontinence / violence / fraud), staged in
-our world as living animals on the slope. Like Cerberus, the
-Minotaur, Geryon, and Lucifer, they are the canonical exceptions to
-the figura-umana rule — they get their own skeletons. The bestiary's
-classical-guardian carve-out is the right precedent.
+soul wears the human form*, deformed by contrapasso. Lonza, Leone,
+Lupa are not damned souls — they are pre-failure apex-fauna of the
+threshold-Wood, *real biological animals + allegorical forces given
+physical form*. Like Cerberus, the Minotaur, Geryon, and Lucifer,
+they are exempt from the figura-umana rule and get their own
+skeletons. The bestiary's three-exemption-classes framework (legends
+/ Selva-organisms / classical guardians) is the right precedent.
 
-> The beasts have been here a long time. They have encountered many
-> failed pilgrims. Their fight has a *patina* of repetition —
-> recognized moves, instinctive responses. They are worn but no
-> less terrifying.
-> *— story.md Beat 2 (texture note)*
+**Proper-name doctrine (per
+[[selva-epistemic-doctrine-2026-05-31]]):** Lonza, Leone, Lupa are
+proper names of specific individual creatures, NOT species labels.
+Used capitalized, no article ("Lupa stalks the slope," NOT "the lupa
+stalks the slope"). There is exactly one Lonza, one Leone, one Lupa.
+Italian is reserved for legends; descendant Selva-organism species
+get English-coined fantasy names.
 
-### Lore-tension to resolve
+> Lupa has been here a long time — long enough to have outlasted
+> her sister-legends, long enough to have hunted in a Wood
+> progressively emptying around her. Her fight has a *patina* of
+> endurance — wary moves, instinct sharpened by lonely centuries.
+> She is worn but no less terrifying.
+> *— story.md Beat 2 (texture note, refined 2026-05-31)*
 
-[wood.md:173-221](wood.md) currently says the beasts are *deferred*
-and frames them as "forces that turn one back, not opponents." This
-contradicts the canonical story.md Beat 2 (combat encounter). The
-wood.md framing is stale; **part of this commit must update
-wood.md** to point at story.md as the authoritative beats and remove
-the deferred/skip-option framing. Beasts as combat encounters is the
-locked direction.
+## The three legends
 
-## The three beasts
-
-Per Dante (and our staging order, matching the canto):
+Per Dante's Canto I source text (and the staging in the pre-failure
+Wood, before two of them died):
 
 1. **Lonza** — the leopard / lynx / spotted big cat. Light-footed,
-   spotted, first to appear. Allegorically: incontinence / lust.
+   spotted. Allegorically: incontinence / lust. **DEAD** (died during
+   Hell's stagnation; never encountered by the Vagrant).
 2. **Leone** — the lion. Head high, raging. Allegorically: violence
-   / pride.
+   / pride. **DEAD** (same).
 3. **Lupa** — the she-wolf. Gaunt, insatiable, the worst. The one
    Dante singles out at length. Allegorically: fraud / avarice /
-   incontinent appetite.
+   incontinent appetite. **SOLE SURVIVOR**, Beat 2 opening boss,
+   `permanent_on_death: true`.
 
-Start with the **lupa** (most lore-loaded, most abundant in free 3D
-asset libraries). Lion + leopard ship after the lupa pipeline is
-proven; their assets likely come together from a paid source (see
-*Asset acquisition* below).
+Lupa is the project's first and currently only non-humanoid actor.
+Future non-humanoid actors include classical guardians (Cerberus
+etc.) and the descendant-form Selva-organisms — both leverage the
+same multi-skeleton architecture.
 
 ## Asset acquisition
 
@@ -74,7 +87,7 @@ findings from
   [Quaternius Ultimate Animated Animal Pack](https://quaternius.com/packs/ultimateanimatedanimals.html)
   — full anim set per animal (idle, walk, run, attack, hit, death,
   jump, +others), FBX + glTF + Blend, CC0, low-poly stylized. Wolf
-  is included. Drop-in for the lupa.
+  is included. Drop-in for Lupa.
 - **Trio together (paid):**
   [Omabuarts Quirky Series Animals Ultimate Pack](https://omabuarts.itch.io/quirky-series-animals-ultimate-pack)
   ($299, one purchase). Wolf + lion + lioness + leopard in one
@@ -87,17 +100,20 @@ findings from
 **Style register.** Quaternius is flat-shaded stylized low-poly;
 X_Bot is mid-detail semi-realistic. There's visible mismatch when
 they share a shot. Per the choice during scoping: performance > style
-coherence for now, so the lupa ships stylized and the lion/leopard
-match style when they ship. Long-term the Selva tonal register
-(solemn, period-Italian, Commedia voice) leans semi-realistic, so a
-future swap to vukhiemton or Omabuarts is on the table.
+coherence for now, so Lupa ships stylized. Long-term the Selva tonal
+register (solemn, period-Italian, Commedia voice) leans
+semi-realistic, so a future swap to vukhiemton or a similar realistic
+wolf rig is on the table — that would be a Lupa visual upgrade, not
+a content addition.
 
-**Recommended path:**
-1. **Now (this commit):** Quaternius wolf, CC0, drop-in.
-2. **Lion + leopard land later:** decide between Omabuarts ($299 for
-   matched trio of all 3, would replace the Quaternius wolf too) and
-   vukhiemton (~$60 for matched trio in semi-realistic register). The
-   decision waits until lion/leopard authoring becomes urgent.
+**Note (2026-05-31):** earlier versions of this doc assumed Lupa was
+the first of three (Lonza + Leone + Lupa) and discussed paid packs
+for shipping the full trio. Per the wood-lore lock, Lonza and Leone
+are DEAD in canon and have no shipping plan — they exist only as
+biological remnants in the soil that feed the descendant Selva-
+organism ecology. The original asset-acquisition recommendation
+(Quaternius wolf for Lupa) is the final answer; the paid-trio
+options are no longer relevant.
 
 ## Engine refactor map
 
@@ -106,7 +122,7 @@ and one mesh. Per the
 [skeleton-pipeline-requirements workflow](../../../../.claude/projects/c--Users-alexb-Projects-monobit/9e927aca-1c34-4405-b011-b5861ef20519/tasks/w5668r96r.output)
 + the
 [archetype-actor-system workflow](../../../../.claude/projects/c--Users-alexb-Projects-monobit/9e927aca-1c34-4405-b011-b5861ef20519/tasks/w5668r96r.output),
-the lupa forces the following changes:
+Lupa forces the following changes:
 
 ### 1. SkeletalAssets singleton → keyed registry
 
@@ -258,51 +274,54 @@ The commit ships:
 
 ## Opening sequence sequencing
 
-`story.md` Beat 2 has the Vagrant fighting **all three** beasts
-before Beat 3 (Guide appears). **Locked: lupa ships alone for now;
-lion + leopard are TODO'd until custom assets exist.**
+**Per the 2026-05-31 wood-lore lock**
+([[selva-wood-lore-locked-2026-05-31]]): Beat 2 is the Vagrant
+fighting **Lupa alone**. Beat 3 is the Guide arriving after she
+falls. The earlier "all three beasts" framing is superseded — Lonza
+and Leone died during Hell's stagnation, before the Vagrant ever
+arrived. They are not a stub or a future-shipping item; they are
+DEAD in canon.
 
-**Why.** No single CC0 source has wolf + lion + leopard (per asset
-research). Paid packs ($60–$299) deferred per the no-purchase-now
-decision. Custom assets are planned but not yet authored. Three
-options were considered:
+This collapses the previous "stub framing" question. The architecture
+work (singleton → registry, archetype JSON, per-skeleton joint maps,
+per-skeleton hurtbox layouts) was justified in its own right — Lupa
+is non-humanoid, classical guardians are non-humanoid, and the
+descendant-form Selva-organisms (per [creatures.md](creatures.md))
+will each need their own skeletons too. The multi-skeleton
+architecture proves itself end-to-end with Lupa and scales naturally
+to every future non-humanoid.
 
-1. **Ship lupa alone, Beat 2 as stub.** Chosen.
-2. **Re-tint Quaternius wolves as lion + leopard.** Rejected — reads
-   as 3 wolves of different colors, worse than 1 clean wolf, AND
-   guarantees re-authoring later when custom assets land.
-3. **Hunt for free lion/leopard from other sources.** Rejected —
-   even if found, they wouldn't match the Quaternius wolf's rig or
-   style, so all 3 still need re-authoring later. Mismatched
-   placeholders are worse than one clean one.
+**Lupa's silhouette returns in the descendant ecology.** The Wood
+healing as the Vagrant restores keepers brings new life that echoes
+the three legends — Lupa-shape descendants, Leone-shape descendants,
+Lonza-shape descendants — but sangue-infused and English-named.
+The legends themselves don't return; their silhouettes do, transformed
+by the catch (sangue tagging along with the healing). See
+[creatures.md](creatures.md) for the descendant-ecology framework.
 
-The architecture refactor (singleton → registry, archetype JSON,
-etc.) proves itself end-to-end with one beast. Adding lion +
-leopard later is content-only — additional registry rows, additional
-archetype JSONs, no engine work. The scaling is built in.
-
-**Stub framing for the player.** Leading with the lupa is canon-
-defensible: she's the canto's most-lingered-on beast and the
-climactic blocker per Dante. A player encountering "just the wolf"
-reads as "stub of the full encounter," not "game missing pieces."
-
-**Doc updates this commit:**
-- `story.md` Beat 2: add a `**Status:** lupa shipped; lonza + leone
-  pending custom assets` marker. Keep the full Beat 2 design text.
-- `wood.md` deferred-beasts section: replace with pointer to
-  story.md as authoritative + the figura-umana exemption note.
-- `bestiary.md`: add "Canto I beasts (lonza, leone, lupa)" to the
-  classical-guardian exemption list.
+**Doc updates this commit (HISTORICAL — done in the 2026-05-31 doc
+sweep, see [[selva-wood-lore-locked-2026-05-31]]):**
+- `story.md` Beat 2 — rewritten to "Lupa, the last legend"
+- `wood.md` — Lore section + three-legends section rewritten;
+  healing-with-catch framing locked
+- `bestiary.md` — three-exemption-classes framework (legends /
+  Selva-organisms / classical guardians) installed
+- `setting.md` — Wood-is-sangue section updated with healing-with-
+  catch framing; topology line corrected to Lupa-alone
+- `creatures.md` — cosmological framing updated with per-keeper
+  healing causes the leak as catch; descendant-form ecology framed
+  as sangue-infused echoes of the three legends
 
 ## Final decisions
 
 All open questions resolved at root level — no bandaids:
 
-1. **No paid packs.** Free-only for placeholders; custom assets
-   (planned) ship later. Beat 2 plays as a stub (lupa alone) until
-   the trio is custom-authored. Reasoning: any paid-pack purchase
-   becomes throwaway when custom assets land; better to keep one
-   clean stub than ship mismatched placeholders.
+1. **No paid packs for Lupa.** Quaternius CC0 wolf is the shipping
+   asset. Per the 2026-05-31 wood-lore lock, Lonza and Leone are
+   dead in canon — there is no "trio" to ship. Lupa-alone IS the
+   canonical Beat 2 encounter, not a stub. The earlier framing of
+   Beat 2 as "lupa-alone stub awaiting custom trio assets" is
+   superseded.
 2. **Lupa spawn pos:** `[0, "auto_terrain", -90]`. The schema is
    extended this commit so `enemy_spawns[].pos[1]` accepts either
    a float Y (literal world Y — today's behavior, what the 16
@@ -323,23 +342,16 @@ All open questions resolved at root level — no bandaids:
    the joint map. Asset prep handles it once; the engine stays
    skeleton-agnostic. (Wood-beasts framing in `bestiary.md` below
    notes the asset-prep contract for future custom animals too.)
-5. **`wood.md`:** rip the deferred-beasts section
-   ([wood.md:173-221](wood.md), [wood.md:865](wood.md)), replace
-   with a short paragraph pointing at `story.md` Beat 2 as
-   authoritative + a note about the figura-umana exemption per
-   `bestiary.md`.
-6. **`bestiary.md` — new dedicated category, not lumped with
-   classical guardians:** the Canto I beasts (lonza, leone, lupa)
-   are cosmologically distinct from classical guardians
-   (Cerberus, Minotaur, Geryon, Lucifer). Classical guardians are
-   *post-mortem Hell-creatures, made by Hell itself, named in the
-   canto as Hell's enforcement.* Canto I beasts are *living
-   animals encountered BEFORE descent, allegorical forces in the
-   canto, not Hell-creatures at all.* Both groups are figura-umana
-   exempt but for different reasons: classical guardians because
-   Hell made them as monsters; Canto I beasts because they're not
-   Hell-creatures. A separate "Wood beasts (Canto I)" section in
-   `bestiary.md` preserves the cosmological distinction.
+5. **`wood.md`:** DONE in the 2026-05-31 doc sweep. Lore-failure
+   section + three-legends section rewritten with the
+   healing-with-catch framing and the Lupa-only Beat 2 framing.
+6. **`bestiary.md` — three exemption categories** (per the 2026-05-31
+   wood-lore lock): **the three legends** (Lonza, Leone, Lupa — only
+   Lupa alive), **Selva-organisms** (the descendant-form ecology
+   that emerges as the Wood heals), and **classical guardians**
+   (Cerberus, Minotaur, Geryon, Lucifer). Each is cosmologically
+   distinct and figura-umana exempt for its own reason. DONE in
+   the 2026-05-31 doc sweep.
 
 ## Doctrine pointers
 
