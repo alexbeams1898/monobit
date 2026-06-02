@@ -352,12 +352,16 @@ extensions whose value is zero today and load-bearing later.
   ally NPCs / faction conflict. ~5 lines once the second faction
   exists.
 
-- **Phase-driven HFSM.** Different BTs for boss phases (1, 2, rage,
-  etc.). The `BehaviorTreeRegistry` already supports multiple trees;
-  the HFSM is a thin wrapper around `actor.archetype->tree_id` that
-  swaps at runtime. Lands with the first boss — Lupa (the lone
-  surviving legend of the pre-failure Wood; see
-  [[selva-wood-lore-locked-2026-05-31]]).
+- **In-boss change system — TBD.** Selva's bosses may not use Souls-
+  style HP-threshold phase transitions. Whatever in-encounter
+  behavior shifts happen will be designed lore-first per-boss
+  (consequence-driven, not template-driven). Implementation deferred
+  until the design lands. Lupa (Beat 2 opening boss) is single-
+  encounter / single-behavior for v1 — no phase change. The
+  `BehaviorTreeRegistry` already supports multiple trees if/when the
+  shift mechanism is designed; today there's no swap-on-trigger
+  infra and no urgency to build one. See
+  [[selva-wood-lore-locked-2026-05-31]].
 
 ## Per-circle considerations
 

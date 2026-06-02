@@ -13,6 +13,7 @@
 #include "render/TreeShader.h"
 #include "world/Collision.h"
 #include "world/CryptLayout.h"
+#include "world/Door.h"
 #include "world/JsonRegion.h"
 #include "world/Lights.h"
 #include "world/PhysicsRegion.h"
@@ -839,6 +840,55 @@ void renderStaticMeshesDepth()
 
     // Restore cull-front for subsequent depth-pass casters (skeletal
     // actors, etc.) per the beginDepthPass contract.
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_FRONT);
+}
+
+void renderDoors()
+{
+    for (const auto& d : selva::world::doors())
+    {
+        if (d.visual_mesh.primitives.empty())
+            continue;
+        const glm::mat4 model = selva::world::doorModelMatrix(d);
+        selva::render::setSceneModel(model);
+        for (const auto& p : d.visual_mesh.primitives)
+        {
+            if (p.vao == 0)
+                continue;
+            if (p.usage == selva::world::StaticMeshUsage::Collision)
+                continue;
+            selva::render::setSceneTint(1.0f);
+            selva::render::setSceneBaseColor(
+                glm::vec3(p.base_color[0], p.base_color[1], p.base_color[2]));
+            glBindVertexArray(p.vao);
+            glDrawElements(GL_TRIANGLES, p.index_count, GL_UNSIGNED_INT, nullptr);
+        }
+    }
+    // Restore identity so subsequent static-mesh draws aren't offset.
+    selva::render::setSceneModel(glm::mat4(1.0f));
+}
+
+void renderDoorsDepth()
+{
+    glDisable(GL_CULL_FACE);
+    for (const auto& d : selva::world::doors())
+    {
+        if (d.visual_mesh.primitives.empty())
+            continue;
+        const glm::mat4 model = selva::world::doorModelMatrix(d);
+        selva::render::setSceneDepthModel(model);
+        for (const auto& p : d.visual_mesh.primitives)
+        {
+            if (p.vao == 0)
+                continue;
+            if (p.usage == selva::world::StaticMeshUsage::Collision)
+                continue;
+            glBindVertexArray(p.vao);
+            glDrawElements(GL_TRIANGLES, p.index_count, GL_UNSIGNED_INT, nullptr);
+        }
+    }
+    selva::render::setSceneDepthModel(glm::mat4(1.0f));
     glEnable(GL_CULL_FACE);
     glCullFace(GL_FRONT);
 }

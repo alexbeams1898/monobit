@@ -3,6 +3,7 @@
 #include "anim/PoseSampler.h"
 #include "combat/ActorVolumes.h"
 #include "gameplay/Actor.h"
+#include "gameplay/Enemies.h"
 
 #include <algorithm>
 
@@ -38,6 +39,13 @@ void tickHitboxes(float dt)
         hb.prev_shape = hb.shape;
         hb.has_prev = true;
         hb.remaining_seconds -= dt;
+        const selva::gameplay::Actor* owner = nullptr;
+        if (hb.attacker.kind == OwnerKind::Player)
+            owner = &selva::gameplay::player();
+        else
+            owner = selva::gameplay::enemyAt(hb.attacker.index);
+        if (owner == nullptr || !selva::gameplay::actorCanLandHits(*owner))
+            hb.remaining_seconds = 0.0f;
     }
     sHitboxes.erase(std::remove_if(sHitboxes.begin(), sHitboxes.end(),
                                    [](const Hitbox& h) { return h.remaining_seconds <= 0.0f; }),

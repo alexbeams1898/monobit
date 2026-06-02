@@ -2,6 +2,8 @@
   "time_scale": 1.0,
   "turn_rate_min": 9.0,
   "turn_rate_max": 25.0,
+  "lockon_camera_yaw_rate": 12.0,
+  "lockon_body_yaw_rate": 16.0,
   "wasd_debounce_seconds": 0.10,
   "loco_playback_rate": 1.0,
   "walk_speed": 1.6,

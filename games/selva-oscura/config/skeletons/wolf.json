@@ -1,0 +1,17 @@
+{
+  "_comment": "Wolf (Quaternius Ultimate Animated Animals, CC0) skeleton joint map. Quadruped using descriptive joint names rather than Mixamo conventions. hips=Body (the root) NOT Back: PoseSampler reads hips's per-frame translation as the root-motion signal that drives gameplay locomotion, and in this rig Body is the joint Quaternius translates to move the wolf through world space; Back stays mostly stable as a downstream spine joint. Same semantic role as Mixamo's mixamorig:Hips on the humanoid rig -- the joint whose XZ translation == forward motion. The humanoid-biased schema (upleg/leg/foot) maps to the wolf's BACK legs only -- those are the load-bearing chain for ground contact + IK. Front legs use FrontShoulder/FrontUpperLeg/FrontLowerLeg and are referenced directly by hurtbox/attack JSON when needed (no semantic-role slot in the joint map for them yet -- extend SkeletonJointMap with front_* fields when a feature actually needs the lookup). foot_left/right are empty because Quaternius's wolf has no separate foot joint -- the paw IS the bottom of BackLowerLeg. The PoseSampler tolerates empty slots (resolves to -1, disables that lookup), so leaving them blank is the right shape, not a workaround.",
+  "skeleton_id": "wolf",
+  "joint_names": {
+    "hips": "Body",
+    "upleg_left": "BackUpperLeg.L",
+    "upleg_right": "BackUpperLeg.R",
+    "leg_left": "BackLowerLeg.L",
+    "leg_right": "BackLowerLeg.R",
+    "foot_left": "",
+    "foot_right": ""
+  },
+  "_lockon_note": "Skeleton-level fallback (single chest point) for any wolf-skeleton archetype that doesn't author its own multi-point list. Lupa/wolf.json archetype overrides entirely with head/torso/hindleg_*.",
+  "lockon_points": [
+    { "id": "chest", "joint": "Torso2", "default": true }
+  ]
+}

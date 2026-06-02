@@ -1,13 +1,17 @@
 #pragma once
 
 #include "anim/PoseSampler.h"
+#include "anim/SkeletonJointMap.h"
 #include "combat/HurtboxDecl.h"
+#include "gameplay/BossState.h"
+#include "gameplay/Faction.h"
 #include "gameplay/Perception.h"
 
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
 #include <cstdint>
+#include <limits>
 #include <random>
 #include <string>
 #include <unordered_map>
@@ -32,26 +36,9 @@ namespace selva::gameplay
 // docs/design/bestiary.md for its bestiary-side consequence
 // (figura umana — one rig, deformed by sin).
 
-// Who an actor is hostile/friendly to. Damage application checks
-// faction pairs to decide if a hit applies. Start with a small
-// enum; widen to a hostility matrix only when the game demands it.
-enum class Faction
-{
-    Player,  // the PC; hostile to Hostile-faction actors
-    Hostile, // damned souls, demons; hostile to Player
-    Neutral, // can be attacked but doesn't attack first (NPCs in lucid window)
-    Allied,  // friendly to Player (the Guide; future companions)
-};
-
-// Returns true if `attacker` should damage `target` on hit.
-constexpr bool factionsHostile(Faction attacker, Faction target)
-{
-    if (attacker == Faction::Player && target == Faction::Hostile)
-        return true;
-    if (attacker == Faction::Hostile && (target == Faction::Player || target == Faction::Allied))
-        return true;
-    return false;
-}
+// Faction enum + factionsHostile() rule live in gameplay/Faction.h
+// (included above) so they can be referenced from EnemyArchetype.h
+// without pulling the full Actor.h.
 
 // Mortal pool. Current drops when damaged; max is derived from
 // Body::base_hp + FormulaConfig::hp scaling. HP <= 0 marks the actor for
@@ -173,6 +160,24 @@ float computeMaxPoise(const Body& body, const Stats& stats);
 void initActorPools(Health& hp, Stamina& stamina, Poise& poise, const Body& body,
                     const Stats& stats);
 
+// Apply per-Form defaults to Body + Stats before initActorPools runs.
+// Called at spawn time; archetype-level overrides (max_hp_override,
+// etc.) layer on top of the form-defaults. Form is the cosmological-
+// category axis ([[gameplay/Faction.h]] + bestiary.md
+// *Soul-form vs animal-form*); each form has a baseline body shape:
+//
+//   UnjudgedSoul    -- Vagrant, Guide. Low HP, low poise. Fragile.
+//   DamnedSoul      -- shades. Mid HP/poise. Sin-defined.
+//   Animal          -- Lupa, legends. High HP/poise/raw damage.
+//   HellMachinery   -- keepers. Legendary HP/poise. (Reserved.)
+//   Divine          -- Beatrice. Boss-class. (Reserved.)
+//
+// The defaults are starting points; archetypes still author their
+// own per-instance feel. Function is idempotent and overrides the
+// passed Body/Stats with form-baseline values; call BEFORE archetype
+// per-field overrides so the overrides win.
+void applyFormDefaults(Body& body, Stats& stats, Form form);
+
 // Per-frame stamina tick:
 //   1. If sprint_locked: clear `sprinting` (sprint input ignored until lock
 //      releases at full stamina).
@@ -265,12 +270,50 @@ struct Actor
     // stable across grow.
     int lock_target_idx = -1;
 
+    // Which lockon point on the locked target is active. Index into
+    // actorLockOnPoints(target). Reset to the default-flagged point
+    // when lock_target_idx changes; cycled by the lockon-cycle input
+    // (mouse wheel). -1 if no target locked. Per-archetype point lists
+    // live on EnemyArchetype.lockon_points; the skeleton-default list
+    // lives on SkeletonJointMap.default_lockon_points. Most actors
+    // have a single point ("chest") and never cycle; bosses like
+    // Lupa have multiple (head/torso/hindleg_*).
+    int lock_point_idx = 0;
+
     // Circle-strafe direction for AI duel mode. 0 = no committed
     // side (set on lock acquire to ±1 via actor.rng). +1 = strafe to
     // the target's right (player's left); -1 = strafe to the target's
     // left. Sticky for the duration of the engagement so the AI
     // doesn't flip sides every frame. Player ignores this field.
     int duel_strafe_dir = 0;
+
+    // --- Scripted-event state ---
+    // World position the actor should walk toward, driven by a Scene
+    // or scripted event (e.g. the Guide walking out of the chapel
+    // toward the player during the Lupa-rescue Scene). NaN sentinel
+    // (all components = NaN) means "no scripted target set"; non-NaN
+    // means LeafFollowScriptedTarget activates and writes intent
+    // toward this position. Cleared by the leaf when within
+    // scripted_stop_range OR by the Scene ending.
+    glm::vec3 scripted_target_pos{
+        std::numeric_limits<float>::quiet_NaN(),
+        std::numeric_limits<float>::quiet_NaN(),
+        std::numeric_limits<float>::quiet_NaN(),
+    };
+    float scripted_stop_range = 2.0f; // meters; default = standard NPC approach distance
+
+    // Wallclock at which Engaged -> Dying fires. -1 outside scripted
+    // death. Set by setBossState(Engaged) when archetype declares
+    // scripted_death_seconds > 0.
+    float scripted_death_at_wallclock = -1.0f;
+
+    // Wallclock at which the HP-drain curve hits 0. Spans the full
+    // (Engaged + Dying) window so the bar drains continuously across
+    // the transition. -1 outside scripted death.
+    float scripted_death_drain_end_wallclock = -1.0f;
+
+    // Wallclock at which Dying -> Felled fires. -1 outside Dying.
+    float dying_until_wallclock = -1.0f;
 
     // --- Combat reaction state ---
     // Wallclock time of last damage event. Drives in-world HP bar
@@ -354,6 +397,49 @@ struct Actor
     // positions). Keepers set true in region.json.
     bool permanent_on_death = false;
 
+    // --- Boss-backend fields (per docs/design/ideas/boss_backend.md) ---
+
+    // Mirrors archetype->is_boss for hot-path lookups (GUI / lockout
+    // poll the actor pool every frame; avoiding archetype indirection
+    // per-actor per-frame). Set in spawnEnemyFromDecl from archetype.
+    bool is_boss = false;
+
+    // Mirrors archetype->is_npc for hot-path lookups (interaction
+    // prompt scan walks the pool every frame for nearby NPCs;
+    // avoiding archetype indirection per-actor per-frame). Set in
+    // spawnEnemyFromDecl from archetype.
+    bool is_npc = false;
+
+    // Mirrors archetype->form (or set explicitly for the player at
+    // init -- UnjudgedSoul). Used by combat-permission rules
+    // (soul-on-soul forbidden in Wood, etc.) and per-form stat-spread
+    // defaults. Default DamnedSoul preserves the legacy shade
+    // behavior for unauthored archetypes. Per [[gameplay/Faction.h]]
+    // Form enum + [[soul-animal-form-combat-doctrine]].
+    Form form = Form::DamnedSoul;
+
+    // Spawn-decl id (Lupa = "lupa"). Used as the persistent identity
+    // for save's felled_bosses list -- when this actor dies with
+    // is_boss=true, this string is appended to the active profile's
+    // felled_bosses. Stable across cycles, unlike pool indexes.
+    std::string spawn_decl_id;
+
+    // Pattern B (already-there bosses): legacy string state, kept as
+    // a MIRROR of boss_state during migration. Empty = combat-ready;
+    // non-empty (e.g. "sitting") = pre-engage hold. AI tick reads
+    // this string; setBossState() writes it. Future cleanup migrates
+    // AI tick to read boss_state directly and drops this field.
+    std::string current_boss_state;
+
+    // SINGLE source of truth for the boss lifecycle (per
+    // [[gameplay/BossState.h]]). All transitions funnel through
+    // selva::gameplay::setBossState(). Default Dormant is fine for
+    // non-boss actors (nothing reads it for them). For boss actors
+    // (is_boss=true), spawnEnemyFromDecl calls setBossState(Dormant)
+    // explicitly to set up mirrors; engage trigger sets Engaged;
+    // disengage timer / death set Disengaged / Felled.
+    BossState boss_state = BossState::Dormant;
+
     // --- AI perception state ---
     // Updated by tickPerception each frame. Behavior tree (future)
     // and locomotion-intent (future) read awareness + last-known-
@@ -435,6 +521,34 @@ struct Actor
     std::uint32_t active_attack_hitbox_id = 0;
     int active_attack_joint_idx = -1;
     float active_attack_tip_offset_z = 0.0f;
+    // True when the currently-active one-shot was fired by a
+    // hard-lock action (EnemyAction.locks_movement=true). Velocity
+    // is zeroed for the entire one-shot regardless of cancel_fraction.
+    // Cleared automatically by tickEnemyLocomotion when the one-shot
+    // ends. Per-action authoring axis: heavy committed swings lock,
+    // light tracking jabs don't.
+    bool action_locks_movement = false;
+
+    // Pending (deferred) hitbox spawn for windup-modeled attacks.
+    // LeafPickAction queues this on fire; tickPendingAttackSpawns
+    // promotes it to a live hitbox when the wallclock crosses
+    // fire_at_time (= fire wallclock + action.windup_seconds).
+    // fire_at_time < 0 means none pending. Single-slot (at most one
+    // outstanding pending swing per actor; a new fireAction overwrites)
+    // -- matches the existing single-slot active_attack_hitbox_id
+    // model. lifetime stores the active-window length so the spawner
+    // can pass it through as remaining_seconds.
+    struct PendingAttackSpawn
+    {
+        std::string joint_name;
+        float radius = 0.18f;
+        float tip_offset_z = 0.0f;
+        int raw_damage = 0;
+        int poise_damage = 0;
+        float lifetime_seconds = 0.0f;
+        float fire_at_time = -1.0f;
+    };
+    PendingAttackSpawn pending_attack;
 };
 
 // Apply the actor's sampler-consumed hip-XZ delta to its world
@@ -452,6 +566,17 @@ void applyActorClipHipDelta(Actor& actor, float hip_delta_scale = 1.0f);
 // spawn so callers must re-resolve per-frame rather than caching.
 // Used by both PC (lock-on combat mode) and AI (engagement target).
 Actor* resolveLockTarget(const Actor& actor);
+
+// Resolved lockon-point list for an actor: archetype's points if it
+// authored its own, else the actor's skeleton's default_lockon_points.
+// Stable reference for the actor's lifetime. Returns an empty vector
+// if neither set (caller checks .empty() before indexing).
+const std::vector<selva::anim::LockOnPointDecl>& actorLockOnPoints(const Actor& actor);
+
+// Index into actorLockOnPoints(actor) of the entry whose is_default
+// is true; falls back to 0 if none flagged. Returns -1 if the list
+// is empty.
+int defaultLockOnPointIndex(const Actor& actor);
 
 // Choose a directional locomotion clip given a facing basis and
 // movement intent. Shared between PC (lock-on combat mode) and AI
@@ -483,6 +608,11 @@ std::vector<Actor>& actors();
 // Assumes the pool has at least one entry — call after the
 // player has been initialized.
 Actor& player();
+
+// False when this actor's in-flight hitboxes must be invalidated --
+// dead, knocked down, or in a non-fighting boss-state (Dying /
+// Felled / Disengaged). Read by tickHitboxes each frame.
+bool actorCanLandHits(const Actor& a);
 
 // Per-actor mesh foot offset. Resolves via the actor's skeleton_id
 // through the SkeletalAssets registry. Empty skeleton_id falls back

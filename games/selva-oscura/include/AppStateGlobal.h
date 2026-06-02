@@ -43,4 +43,33 @@ Inventory& playerInventory();
 // playerInventory().items, or -1 for empty.
 Equipment& playerEquipment();
 
+// Resolve the PlayerProfile for the currently-active character (named by
+// gameState().active_character). Returns nullptr if no profile matches
+// (no active character, or save out of sync). Mutable -- callers may
+// modify (e.g. append a felled-boss id then mark save dirty).
+PlayerProfile* activePlayerProfile();
+
+// Quest-flag helpers: read / write PlayerProfile.flags through a single
+// API so dedup + "first set?" semantics live in one place.
+//   hasFlag  -- true if the flag is in the set
+//   setFlag  -- adds the flag if not present; returns TRUE on first set,
+//               FALSE if already present (load-bearing for achievement
+//               systems that fire on first-set-only)
+//   clearFlag -- removes; returns TRUE if removed, FALSE if absent
+// All three are no-ops + return false on a null profile (defensive --
+// allows call-from-anywhere without active-character guard).
+//
+// Convention for flag names: stable semantic identifiers like
+// "lupa_felled", "met_guide", "grimoire_5". Renaming a flag breaks
+// existing saves; treat names like a save schema field.
+bool hasFlag(const PlayerProfile* profile, const std::string& flag);
+bool setFlag(PlayerProfile* profile, const std::string& flag);
+bool clearFlag(PlayerProfile* profile, const std::string& flag);
+
+// Convenience overloads that resolve the active profile. Same return
+// semantics; no-op if no active profile.
+bool hasFlag(const std::string& flag);
+bool setFlag(const std::string& flag);
+bool clearFlag(const std::string& flag);
+
 } // namespace selva

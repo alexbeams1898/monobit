@@ -1,0 +1,28 @@
+#pragma once
+
+// Per-event scripted-moment system. Bespoke "this beat plays once when
+// flag X transitions" code lives here, with each event a free function
+// that:
+//   1. Checks its precondition (flags, state, etc.).
+//   2. Calls selva::scene::begin() to lock player input categories.
+//   3. Mutates world state (open a door, set an Actor.scripted_target_pos,
+//      etc.) -- the world keeps simulating, the player watches.
+//   4. Watches for completion (target reached, animation done, ...).
+//   5. Calls selva::scene::end() and sets a "done" flag so it doesn't
+//      re-fire next session.
+//
+// tickScriptedEvents() is called once per frame from PerFrameTick.
+// Lightweight (a few flag checks). Per CLAUDE.md "Design before
+// implementing": this is the v1 shape; if events grow numerous, we
+// migrate to a declarative event registry (data-driven flag conditions
+// + scripted actions). For now: one C++ function per event.
+
+namespace selva::gameplay
+{
+
+// Per-frame: scan for trigger conditions on every scripted event,
+// fire the matching one if its precondition is newly satisfied,
+// advance any in-flight event toward completion.
+void tickScriptedEvents();
+
+} // namespace selva::gameplay

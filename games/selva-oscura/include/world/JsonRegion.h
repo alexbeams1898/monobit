@@ -3,6 +3,7 @@
 #include "gameplay/AiBarriers.h"
 #include "gameplay/Enemies.h"
 #include "world/AsyncRegionLoader.h"
+#include "world/Door.h"
 #include "world/StaticMeshAssets.h"
 #include "world/TerrainModifiers.h"
 
@@ -157,6 +158,11 @@ class JsonRegion : public engine::world::AsyncCapableRegion
     // automatically to this region's id. registerModifiers() hands
     // them to the global AI-barrier registry at boot.
     std::vector<selva::gameplay::AiBlockVolume> parsed_ai_block_volumes;
+
+    // Door instances declared in region.json "doors":[]. Registered
+    // with the world::Door system at commitPrepared time. See
+    // [[world/Door.h]] for the lifecycle.
+    std::vector<selva::world::DoorDecl> parsed_doors;
 };
 
 } // namespace selva::world

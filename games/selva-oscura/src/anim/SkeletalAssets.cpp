@@ -34,7 +34,22 @@ struct SkeletonBundle
     ClipRegistry clips;
 };
 
-std::unordered_map<std::string, std::unique_ptr<SkeletonBundle>> sBundles;
+// Construct-On-First-Use for all engine-wide anim singletons. File-
+// scope globals were exposed to a static-init-order-fiasco bug:
+// TuningPanel.cpp (and any other TU) binds `static ClipRegistry&
+// sClips = clips()` at static-init time. With file-scope `sBundles`
+// here in SkeletonAssets.cpp's TU, the order in which TuningPanel.cpp
+// vs SkeletalAssets.cpp's statics initialize is undefined. The
+// crashes we hit (null unique_ptr deref AND divide-by-zero in
+// std::unordered_map mod-by-zero-buckets) were both this. Function-
+// local statics fix it permanently -- the first call to the accessor
+// constructs the global on demand, guaranteed to be ready before any
+// caller observes it.
+std::unordered_map<std::string, std::unique_ptr<SkeletonBundle>>& sBundles()
+{
+    static std::unordered_map<std::string, std::unique_ptr<SkeletonBundle>> m;
+    return m;
+}
 
 // PoseSampler + LocomotionConfig remain process-wide singletons --
 // the sampler instance per actor is constructed via createPoseSampler
@@ -44,44 +59,78 @@ std::unordered_map<std::string, std::unique_ptr<SkeletonBundle>> sBundles;
 // LocomotionConfig is shared across all clips regardless of which
 // skeleton's clip it is (translation_source declarations are
 // per-clip-name, name-spaces collapse).
-PoseSampler sSampler;
-LocomotionConfig sLocomotionConfig;
+PoseSampler& sSampler()
+{
+    static PoseSampler p;
+    return p;
+}
+
+LocomotionConfig& sLocomotionConfig()
+{
+    static LocomotionConfig c;
+    return c;
+}
+
+// Lazy-init the player bundle on first access. TuningPanel.cpp and
+// other TUs bind file-scope `static ClipRegistry& sClips = clips()`
+// references at static-init time, BEFORE initSkeletalAssets() has
+// run. Pre-multi-skeleton the accessors returned default-constructed
+// file-scope globals (always valid, just empty); we have to preserve
+// that contract or the reference dangles. initSkeletalAssets later
+// fills the SAME bundle's slots in-place (does NOT replace the
+// unique_ptr), so the addresses TuningPanel captured stay valid.
+SkeletonBundle& playerBundleLazy()
+{
+    auto& slot = sBundles()[std::string(kPlayerSkeletonKey)];
+    if (!slot)
+        slot = std::make_unique<SkeletonBundle>();
+    return *slot;
+}
 
 SkeletonBundle& bundleOrFallback(const std::string& key)
 {
-    auto it = sBundles.find(key);
-    if (it != sBundles.end())
+    auto& bundles = sBundles();
+    auto it = bundles.find(key);
+    if (it != bundles.end() && it->second)
         return *it->second;
-    // Fallback to player bundle. Caller should have logged the miss.
-    auto player_it = sBundles.find(std::string(kPlayerSkeletonKey));
-    return *player_it->second;
+    // Fallback to player bundle, lazy-creating it if needed so callers
+    // at static-init time get a valid (empty) bundle instead of a
+    // null-deref crash.
+    return playerBundleLazy();
 }
 
 // Per-skeleton load. id is the registry key + the asset folder name.
 // assets live in assets/characters/<id>/ (skeleton.ozz + mesh .glb +
 // clip *.ozz files). Returns true on success; false if any required
 // piece is missing.
+//
+// Loads IN PLACE into the existing bundle slot if one already exists
+// (the player's slot is lazy-created by bundleOrFallback at static-
+// init time so file-scope references in TuningPanel etc. stay valid
+// across the eventual real load).
 bool loadBundle(const std::string& id, const std::string& mesh_filename)
 {
-    auto bundle = std::make_unique<SkeletonBundle>();
+    auto& slot = sBundles()[id];
+    if (!slot)
+        slot = std::make_unique<SkeletonBundle>();
+    SkeletonBundle& bundle = *slot;
     const std::string folder = "assets/characters/" + id;
-    bundle->skeleton = loadSkeleton((folder + "/skeleton.ozz").c_str());
-    if (!bundle->skeleton.isLoaded())
+    bundle.skeleton = loadSkeleton((folder + "/skeleton.ozz").c_str());
+    if (!bundle.skeleton.isLoaded())
     {
         std::fprintf(stderr, "[anim] skeleton.ozz missing for '%s' (path=%s)\n", id.c_str(),
                      folder.c_str());
         return false;
     }
-    const int n_clips = bundle->clips.loadDirectory(folder.c_str());
+    const int n_clips = bundle.clips.loadDirectory(folder.c_str());
     std::fprintf(stderr, "[anim] loaded %d clip(s) from %s\n", n_clips, folder.c_str());
-    bundle->mesh = loadSkeletalMesh((folder + "/" + mesh_filename).c_str(), bundle->skeleton);
-    if (!bundle->mesh.isLoaded())
+    bundle.mesh = loadSkeletalMesh((folder + "/" + mesh_filename).c_str(), bundle.skeleton);
+    if (!bundle.mesh.isLoaded())
     {
         std::fprintf(stderr, "[anim] mesh '%s' failed to load for '%s'\n", mesh_filename.c_str(),
                      id.c_str());
         return false;
     }
-    sBundles[id] = std::move(bundle);
     return true;
 }
 
@@ -119,17 +168,18 @@ ClipRegistry& clipsByKey(const std::string& key)
 
 bool hasSkeleton(const std::string& key)
 {
-    return sBundles.find(key) != sBundles.end();
+    auto& bundles = sBundles();
+    return bundles.find(key) != bundles.end();
 }
 
 PoseSampler& sampler()
 {
-    return sSampler;
+    return sSampler();
 }
 
 LocomotionConfig& locomotionConfig()
 {
-    return sLocomotionConfig;
+    return sLocomotionConfig();
 }
 
 const AnimationClip* idleClip()
@@ -156,23 +206,26 @@ bool initSkeletalAssets()
     {
         // Backward-compat: the existing on-disk layout puts the
         // player rig at assets/characters/x_bot/, not /player/.
-        // Try that path before failing.
-        auto bundle = std::make_unique<SkeletonBundle>();
-        bundle->skeleton = loadSkeleton("assets/characters/x_bot/skeleton.ozz");
-        if (!bundle->skeleton.isLoaded())
+        // Try that path before failing. Load IN PLACE into the
+        // already-allocated player slot (see playerBundleLazy).
+        auto& slot = sBundles()[std::string(kPlayerSkeletonKey)];
+        if (!slot)
+            slot = std::make_unique<SkeletonBundle>();
+        SkeletonBundle& bundle = *slot;
+        bundle.skeleton = loadSkeleton("assets/characters/x_bot/skeleton.ozz");
+        if (!bundle.skeleton.isLoaded())
         {
             std::fprintf(stderr, "[anim] player skeleton.ozz missing -- character disabled\n");
             return false;
         }
-        const int n = bundle->clips.loadDirectory("assets/characters/x_bot");
+        const int n = bundle.clips.loadDirectory("assets/characters/x_bot");
         std::fprintf(stderr, "[anim] loaded %d clip(s) from assets/characters/x_bot\n", n);
-        bundle->mesh = loadSkeletalMesh("assets/characters/x_bot/X_Bot.glb", bundle->skeleton);
-        if (!bundle->mesh.isLoaded())
+        bundle.mesh = loadSkeletalMesh("assets/characters/x_bot/X_Bot.glb", bundle.skeleton);
+        if (!bundle.mesh.isLoaded())
         {
             std::fprintf(stderr, "[anim] X_Bot.glb failed to load -- character disabled\n");
             return false;
         }
-        sBundles[std::string(kPlayerSkeletonKey)] = std::move(bundle);
     }
     if (idleClip() == nullptr || !idleClip()->isLoaded())
     {
@@ -184,7 +237,7 @@ bool initSkeletalAssets()
     // semantic-joint lookups (hips, upleg_left/right, foot_left/right);
     // construction crashes if the map isn't ready.
     loadAllSkeletonJointMaps();
-    sSampler = createPoseSampler(skeleton(), playerMesh());
+    sSampler() = createPoseSampler(skeleton(), playerMesh());
     if (!initSkeletalRenderer())
         return false;
 
@@ -203,20 +256,20 @@ bool initSkeletalAssets()
     for (const auto& b : kExtraBundles)
         loadBundle(b.id, b.mesh); // best-effort; logs internally
 
-    sSampler.update(*idleClip(), 0.0f, 0.0f);
+    sSampler().update(*idleClip(), 0.0f, 0.0f);
     return true;
 }
 
 void shutdownSkeletalAssets()
 {
     shutdownSkeletalRenderer();
-    sBundles.clear();
+    sBundles().clear();
 }
 
 void auditClipHipMotion()
 {
     auto& playerClips = clips();
-    if (playerClips.by_name.empty() || sSampler.bone_palette.empty())
+    if (playerClips.by_name.empty() || sSampler().bone_palette.empty())
         return;
     std::vector<std::string> names;
     names.reserve(playerClips.by_name.size());
@@ -246,7 +299,7 @@ void auditClipHipMotion()
         const auto* clip = playerClips.get(name);
         if (clip == nullptr || !clip->isLoaded())
             continue;
-        const auto scan = sSampler.clipHipPathLength(*clip, 60.0f, 0.0f);
+        const auto scan = sSampler().clipHipPathLength(*clip, 60.0f, 0.0f);
         const float dur = clip->duration();
         const float measured_speed = (dur > 1e-3f) ? scan.path_length / dur : 0.0f;
         write("  %-40s %7.2fs %7.3fm %12.3fm/s %s\n", name.c_str(), dur, scan.path_length,
@@ -287,7 +340,7 @@ void auditClipHipMotion()
         for (int i = 0; i <= 10; ++i)
         {
             const float t = (static_cast<float>(i) / 10.0f) * dur;
-            const glm::vec2 hip = sSampler.sampleHipXZAt(*clip, t);
+            const glm::vec2 hip = sSampler().sampleHipXZAt(*clip, t);
             const float step = (i == 0) ? 0.0f : glm::length(hip - prev);
             cumul += step;
             write("  %3d%% %5.2f %8.3f %8.3f %10.3f %12.3f\n", i * 10, t, hip.x, hip.y, step,

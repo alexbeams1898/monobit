@@ -98,8 +98,27 @@ enum class TransitionState : std::uint8_t
     FadingIn,   // playing fade-in on screen
 };
 
+// What a trigger does when it fires. The engine knows only how to
+// detect the AABB overlap and emit the trigger; the game decides
+// what each action means (engine generic / game semantics).
+//
+// - RegionTransition: the canonical original action -- engine queues
+//   a region swap to `target` per the geometry below. Engine handles
+//   this directly because region-transitions ARE an engine concept.
+// - Custom: the engine emits the trigger to the game; the game's
+//   trigger-dispatcher reads `action_payload` (a free-form string,
+//   convention is `"<verb>:<arg>"`) and decides what to do. Used by
+//   selva-oscura for boss spawning + boss engaging (per
+//   games/selva-oscura/docs/design/ideas/boss_backend.md).
+//   target/target_spawn_pos/etc. are ignored for Custom triggers.
+enum class TriggerAction : std::uint8_t
+{
+    RegionTransition,
+    Custom,
+};
+
 // Trigger volume: when a registered actor (player today, others later)
-// enters this AABB, the engine queues a transition to `target_region`.
+// enters this AABB, the engine fires the action below.
 // Edge-triggered: fires once on the frame the actor enters; does not
 // re-fire while inside.
 struct RegionTrigger
@@ -107,6 +126,9 @@ struct RegionTrigger
     std::string id;         // unique within region; used for save/load
     glm::vec3 center{0.0f}; // world-space, in OWNER region's local coords
     glm::vec3 half_extents{0.0f};
+    TriggerAction action = TriggerAction::RegionTransition;
+
+    // RegionTransition action fields. Ignored for Custom.
     RegionId target = kInvalidRegion;
     // If preserve_player_pos is true, the player's CURRENT world
     // position carries across the transition unchanged — the region
@@ -128,6 +150,12 @@ struct RegionTrigger
     float target_yaw = 0.0f;
     TransitionMode mode = TransitionMode::Fade;
     float fade_duration_seconds = 0.4f;
+
+    // Custom action payload. Convention: "<verb>:<arg>" e.g.
+    // "spawn:lupa" or "engage:lupa". The verb namespace is the
+    // game's, not the engine's. Empty for RegionTransition.
+    std::string action_payload;
+
     std::string debug_name;
 };
 

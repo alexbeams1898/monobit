@@ -26,6 +26,9 @@
 #include "gameplay/EnemyArchetype.h"
 #include "gameplay/PerFrameTick.h"
 #include "gameplay/PlayerState.h"
+#include "items/CategoryRegistry.h"
+#include "items/ItemRegistry.h"
+#include "items/SealHandlers.h"
 #include "render/Camera.h"
 #include "render/LightSpritePass.h"
 #include "render/RegionGeometry.h"
@@ -112,11 +115,7 @@ void gatedPerFrame(::Engine& engine, ::EntityManager& em, double dt)
                 break;
             }
         }
-        selva::gameplay::loadActiveCharacterIntoPlayer(*active);
-        // Cycle boundary on New Game / Load Game: re-stream enemies into
-        // their spawn positions (per setting.md "Per-circle reactivity").
-        // Permanent-on-death keepers stay dead if previously felled.
-        selva::gameplay::resetCycleEnemies();
+        selva::gameplay::loadActiveCharacterIntoWorld(*active);
         gs.pending_world_create = false;
         gs.world_initialized = true;
         // If this was a New Game, queue the wake-up Scene. Load-Game
@@ -352,6 +351,14 @@ int main(int /*argc*/, char* /*argv*/[])
         // source" at startup.
         selva::anim::auditClipHipMotion();
 
+        // Inventory category registry first; item registry validates
+        // each item's category against it so this MUST load before items.
+        // Use-handler registrations BEFORE the item registry so JSON
+        // references to handler keys resolve cleanly when items load.
+        selva::items::categoryRegistry().loadFromFile("config/inventory_categories.json");
+        selva::items::registerSealHandlers();
+        selva::items::itemRegistry().loadDirectory("config/items");
+
         // Load enemy archetypes (action lists, perception overrides).
         // Must run before any region activation -- spawn looks up
         // archetype by id from this registry as JsonRegion::
@@ -399,6 +406,13 @@ int main(int /*argc*/, char* /*argv*/[])
     engine.setRenderWorld(&gatedRenderWorld);
     engine.setRenderImGui(&gatedRenderImGui);
     engine.setOnResize(&selva::render::onWindowResize);
+
+    // Smoke-test marker: scripts/smoke_test.sh greps for this exact
+    // string to confirm the game reached the main loop without a
+    // pre-main crash (static-init-order fiasco, missing asset, etc).
+    // Don't change the wording without updating the script.
+    std::fprintf(stderr, "[smoke] main loop ready\n");
+    std::fflush(stderr);
 
     engine.run();
 

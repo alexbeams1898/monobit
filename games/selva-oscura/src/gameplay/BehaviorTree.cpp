@@ -56,39 +56,82 @@ bool actionLegal(const Actor& actor, const EnemyAction& a, float dist_to_target,
     return it == actor.action_state.end() || now >= it->second.cooldown_until_time;
 }
 
-// Fire the picked action's one-shot + spawn its hitbox if declared.
-// Returns the spawned hitbox id (0 if no hitbox). Logs the fire.
+// Fire the picked action's one-shot + spawn (or schedule) its hitbox
+// if declared. Returns the spawned hitbox id (0 if deferred via
+// windup or no hitbox). Logs the fire.
+//
+// Windup model (Souls-style attack timing):
+//   windup_seconds  -- delay from one-shot fire to hitbox spawn (the
+//                      tell; player's dodge window)
+//   active_seconds  -- hitbox lifetime once spawned (the strike)
+//   recovery        -- implicit: clip continues past spawn+active
+//                      with no hitbox; player's punish window
+// When windup_seconds == 0 (legacy actions) the spawn is immediate
+// and lifetime falls back to the existing lifetime_fraction calc.
 std::uint32_t fireAction(Actor& actor, const EnemyAction& picked,
                          const selva::anim::AnimationClip& clip, float dist_to_target, float now)
 {
     selva::anim::PoseSampler::OneShotOptions opts;
     opts.clip_key = picked.clip.c_str();
     opts.freeze_last = picked.freeze_last;
+    // cancel_fraction unlocks the velocity-zero gate in tickEnemyLocomotion
+    // once the one-shot's elapsed time passes this fraction of duration.
+    // Default 1.0 (legacy) = full clip is committed; configure per-action
+    // (typically = (windup+active)/clip_duration) for Souls "commit then
+    // free to move during recovery animation" feel.
+    opts.cancel_fraction = picked.cancel_fraction;
     actor.sampler.playOneShot(clip, picked.blend_in_seconds, picked.blend_out_seconds,
                               selva::anim::PoseSampler::BodyMask::Full,
                               /*start_time_seconds=*/0.0f, /*playback_rate=*/1.0f, opts);
+    // Hard movement lock for committed swings (wolf bite: body MUST
+    // NOT slide forward during recovery). tickEnemyLocomotion reads
+    // this and zeros velocity for the entire one-shot lifetime,
+    // ignoring cancel_fraction. Cleared when the one-shot ends.
+    actor.action_locks_movement = picked.locks_movement;
     actor.action_state[picked.id].cooldown_until_time = now + picked.cooldown_seconds;
     std::uint32_t hitbox_id = 0;
     if (!picked.hitbox_joint.empty())
     {
-        selva::combat::AttackHitboxSpawnParams sp;
-        sp.actor = &actor;
-        sp.attacker = selva::combat::OwnerRef{selva::combat::OwnerKind::Enemy, enemyIndex(actor)};
-        sp.attacker_faction = actor.faction;
-        sp.raw_damage = picked.raw_damage;
-        sp.poise_damage = picked.poise_damage;
-        sp.joint_name = picked.hitbox_joint.c_str();
-        sp.hitbox_radius = picked.hitbox_radius;
-        sp.hitbox_tip_offset_z = picked.hitbox_tip_offset_z;
-        sp.clip_duration_seconds = clip.duration();
-        sp.clip_start_seconds = 0.0f;
-        sp.playback_rate = 1.0f;
-        sp.mesh_foot_offset_y = actorFootOffsetY(actor);
-        hitbox_id = selva::combat::spawnAttackHitbox(sp);
+        if (picked.windup_seconds > 0.0f)
+        {
+            // Defer: queue a PendingAttackSpawn that tickPendingAttackSpawns
+            // promotes to a live hitbox when wallclock crosses fire_at_time.
+            // Single-slot per actor -- overwrite any prior pending swing.
+            const float active = (picked.active_seconds > 0.0f) ? picked.active_seconds : 0.18f;
+            actor.pending_attack.joint_name = picked.hitbox_joint;
+            actor.pending_attack.radius = picked.hitbox_radius;
+            actor.pending_attack.tip_offset_z = picked.hitbox_tip_offset_z;
+            actor.pending_attack.raw_damage = picked.raw_damage;
+            actor.pending_attack.poise_damage = picked.poise_damage;
+            actor.pending_attack.lifetime_seconds = active;
+            actor.pending_attack.fire_at_time = now + picked.windup_seconds;
+        }
+        else
+        {
+            // Legacy immediate spawn: hitbox lifetime computed from
+            // clip duration * lifetime_fraction inside spawnAttackHitbox.
+            selva::combat::AttackHitboxSpawnParams sp;
+            sp.actor = &actor;
+            sp.attacker =
+                selva::combat::OwnerRef{selva::combat::OwnerKind::Enemy, enemyIndex(actor)};
+            sp.attacker_faction = actor.faction;
+            sp.raw_damage = picked.raw_damage;
+            sp.poise_damage = picked.poise_damage;
+            sp.joint_name = picked.hitbox_joint.c_str();
+            sp.hitbox_radius = picked.hitbox_radius;
+            sp.hitbox_tip_offset_z = picked.hitbox_tip_offset_z;
+            sp.clip_duration_seconds = clip.duration();
+            sp.clip_start_seconds = 0.0f;
+            sp.playback_rate = 1.0f;
+            sp.mesh_foot_offset_y = actorFootOffsetY(actor);
+            hitbox_id = selva::combat::spawnAttackHitbox(sp);
+        }
     }
     selva::combat::combatLog(
-        "[ai-action] actor picked={} clip={} dist={:.2f} cd_until={:.3f} hitbox_id={}", picked.id,
-        picked.clip, dist_to_target, actor.action_state[picked.id].cooldown_until_time, hitbox_id);
+        "[ai-action] actor picked={} clip={} dist={:.2f} cd_until={:.3f} windup={:.2f}s "
+        "active={:.2f}s hitbox_id={}",
+        picked.id, picked.clip, dist_to_target, actor.action_state[picked.id].cooldown_until_time,
+        picked.windup_seconds, picked.active_seconds, hitbox_id);
     return hitbox_id;
 }
 
@@ -149,6 +192,36 @@ NodeResult LeafIdle::tick(Actor& actor, const selva::tuning::Tunables& /*tun*/)
     return NodeResult::Success;
 }
 
+NodeResult LeafFollowScriptedTarget::tick(Actor& actor, const selva::tuning::Tunables& tun)
+{
+    // Scripted target inactive if any component is NaN (sentinel).
+    if (std::isnan(actor.scripted_target_pos.x) || std::isnan(actor.scripted_target_pos.y) ||
+        std::isnan(actor.scripted_target_pos.z))
+        return NodeResult::Failure;
+    const float dx = actor.scripted_target_pos.x - actor.pos.x;
+    const float dz = actor.scripted_target_pos.z - actor.pos.z;
+    const float dist_sq = dx * dx + dz * dz;
+    const float stop = actor.scripted_stop_range;
+    if (dist_sq <= stop * stop)
+    {
+        // Arrived. Clear the target so we don't keep firing this leaf;
+        // face the player by default (last_known_player_pos may not be
+        // set for an NPC, so face the direction we WERE walking --
+        // which is toward the target). Caller scripting (Scene end)
+        // may rewrite scripted_target_pos for a follow-up beat.
+        actor.intent_xz = glm::vec2(0.0f);
+        actor.turn_intent_yaw = yawFacing(actor.pos, actor.scripted_target_pos);
+        actor.scripted_target_pos = glm::vec3(std::numeric_limits<float>::quiet_NaN(),
+                                              std::numeric_limits<float>::quiet_NaN(),
+                                              std::numeric_limits<float>::quiet_NaN());
+        return NodeResult::Success;
+    }
+    const float dist = std::sqrt(dist_sq);
+    actor.intent_xz = glm::vec2(dx / dist, dz / dist) * tun.walk_speed;
+    actor.turn_intent_yaw = yawFacing(actor.pos, actor.scripted_target_pos);
+    return NodeResult::Success;
+}
+
 NodeResult LeafIdleFace::tick(Actor& actor, const selva::tuning::Tunables& /*tun*/)
 {
     actor.intent_xz = glm::vec2(0.0f);
@@ -158,6 +231,11 @@ NodeResult LeafIdleFace::tick(Actor& actor, const selva::tuning::Tunables& /*tun
 
 NodeResult LeafCircleTarget::tick(Actor& actor, const selva::tuning::Tunables& tun)
 {
+    // Archetype opt-out: quadrupeds and other straight-line pursuers
+    // (wolf: locomotion IS aggression, no dance) skip this branch
+    // entirely and fall through to LeafMoveToTarget below.
+    if (actor.archetype != nullptr && actor.archetype->disable_circle_strafe)
+        return NodeResult::Failure;
     // Circle ONLY when the target is themselves strafing. Souls/
     // Elden feel: the duel-dance is reactive, not scripted. Default
     // is to charge; circling emerges when the player commits to
@@ -186,11 +264,18 @@ NodeResult LeafCircleTarget::tick(Actor& actor, const selva::tuning::Tunables& t
     if (!target_strafing)
         return NodeResult::Failure;
     const float dist = std::sqrt(dist_sq);
-    // Target is strafing. Mirror with our own strafe.
+    // Target is strafing. Mirror with our own strafe at the
+    // archetype's combat tempo -- a wolf gallops at chase_speed (6
+    // m/s), and the strafe must match that or there's a visible pop
+    // when she switches from chase to circle. Humanoid shades leave
+    // chase_speed unset and stay at walk_speed (the historic value).
     actor.turn_intent_yaw = yawFacing(actor.pos, target->pos);
     const float sign = static_cast<float>(actor.duel_strafe_dir);
     const glm::vec2 lateral(-dz / dist * sign, dx / dist * sign);
-    actor.intent_xz = lateral * tun.walk_speed;
+    const float speed = (actor.archetype != nullptr && actor.archetype->chase_speed > 0.0f)
+                            ? actor.archetype->chase_speed
+                            : tun.walk_speed;
+    actor.intent_xz = lateral * speed;
     return NodeResult::Success;
 }
 
@@ -205,7 +290,15 @@ NodeResult LeafMoveToTarget::tick(Actor& actor, const selva::tuning::Tunables& t
     if (dist_sq > stop_sq && dist_sq > 1e-6f)
     {
         const float dist = std::sqrt(dist_sq);
-        actor.intent_xz = glm::vec2(dx / dist, dz / dist) * tun.walk_speed;
+        // Per-archetype chase speed in Combat (e.g. wolf gallops at
+        // 6 m/s); otherwise fall back to walk_speed. Quadrupeds whose
+        // locomotion IS their aggression need this; humanoid shades
+        // leave chase_speed = 0 and stay at walking pace.
+        const float speed = (actor.archetype != nullptr && actor.archetype->chase_speed > 0.0f &&
+                             actor.perception.awareness >= Awareness::Combat)
+                                ? actor.archetype->chase_speed
+                                : tun.walk_speed;
+        actor.intent_xz = glm::vec2(dx / dist, dz / dist) * speed;
     }
     else
     {
@@ -275,11 +368,18 @@ NodeResult LeafPickAction::tick(Actor& actor, const selva::tuning::Tunables& tun
             break;
         }
     }
-    const auto* clip = selva::anim::clips().get(picked->clip);
+    // Look up the action clip in the actor's OWN skeleton registry --
+    // wolf actions reference clips in clipsByKey("wolf"), not the
+    // player registry. Feeding a player clip (e.g. 65-track) to the
+    // wolf sampler (53-joint) writes uninit SoaTransform lanes and
+    // asserts at IsNormalizedEst. Same root cause as the engage-time
+    // crash earlier this branch.
+    const auto& reg = selva::anim::clipsByKey(actor.skeleton_id);
+    const auto* clip = reg.get(picked->clip);
     if (clip == nullptr || !clip->isLoaded())
     {
-        selva::combat::combatLog("[ai-action] picked='{}' but clip '{}' not loaded", picked->id,
-                                 picked->clip);
+        selva::combat::combatLog("[ai-action] picked='{}' but clip '{}' not loaded on skeleton '{}'",
+                                 picked->id, picked->clip, actor.skeleton_id);
         return NodeResult::Failure;
     }
     fireAction(actor, *picked, *clip, dist, now);
@@ -347,13 +447,19 @@ std::unique_ptr<BehaviorTree> buildHumanoidBasicTree()
     // Combat-branch try order: fire an action (close enough + ready);
     // else circle-strafe (locked + inside duel range — Elden Ring
     // dance pattern); else close the gap.
+    // Scripted target wins above Combat: a Scene-driven scripted walk
+    // (Guide rescue, Patches-betrayal-style flee, etc.) overrides
+    // whatever combat AI would otherwise do. The leaf returns Failure
+    // when scripted_target_pos is NaN-sentinel, so the rest of the
+    // tree runs normally for non-scripted actors.
     auto combat_branch = makeSequence(std::make_unique<IfAwarenessAtLeast>(Awareness::Combat),
                                       makeSelector(std::make_unique<LeafPickAction>(),
                                                    std::make_unique<LeafCircleTarget>(),
                                                    std::make_unique<LeafMoveToTarget>()));
     auto alerted_branch = makeSequence(std::make_unique<IfAwarenessAtLeast>(Awareness::Alerted),
                                        std::make_unique<LeafMoveToTarget>());
-    auto root = makeSelector(std::move(combat_branch), std::move(alerted_branch),
+    auto root = makeSelector(std::make_unique<LeafFollowScriptedTarget>(),
+                             std::move(combat_branch), std::move(alerted_branch),
                              std::make_unique<LeafIdle>());
     return std::make_unique<BehaviorTree>(std::move(root));
 }

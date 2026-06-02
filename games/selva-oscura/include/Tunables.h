@@ -48,6 +48,17 @@ struct Tunables
     float turn_rate_min = 9.0f;  // small course corrections
     float turn_rate_max = 25.0f; // 180° reversal — snaps
 
+    // Lock-on camera + body yaw smoothing rates. Hard-snapping yaw to
+    // a MOVING target every frame produces visible jolt (target moves
+    // -> camera+body jump -> next frame target moves -> jump again).
+    // Souls/ER ease toward the target dir at a tunable rate so the
+    // camera lags slightly behind a sprinting boss instead of teleporting.
+    // Body rate slightly snappier than camera so the player always
+    // faces the target while the camera reads-tracks behind. Set high
+    // for snappy combat, lower for cinematic lag. Both in rad/s.
+    float lockon_camera_yaw_rate = 12.0f;
+    float lockon_body_yaw_rate = 16.0f;
+
     // Legacy SM debounce — UNUSED in the velocity-driven model
     // (velocity itself is naturally smoothed by accel/decel). Kept
     // for the JSON schema during the refactor; will be removed
@@ -512,7 +523,8 @@ struct Tunables
 // default-initialized value, so older tunables.json files don't break when
 // new fields are added.
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
-    Tunables, time_scale, turn_rate_min, turn_rate_max, wasd_debounce_seconds, loco_playback_rate,
+    Tunables, time_scale, turn_rate_min, turn_rate_max, lockon_camera_yaw_rate,
+    lockon_body_yaw_rate, wasd_debounce_seconds, loco_playback_rate,
     walk_speed, run_speed, locomotion_accel, locomotion_decel, idle_to_walk_speed,
     walk_to_run_speed, mouse_sensitivity, pitch_min, pitch_max, follow_distance, follow_height,
     fov_degrees, anim_blend_seconds, combat_idle_grace_seconds, combat_entry_delay_seconds,

@@ -1,0 +1,12 @@
+{
+  "_comment": "The Guide -- first NPC, lore-canonical Beatrice's voice fed through a hollow male body. Per dialogue.md 'Old register, calls Vagrant Pilgrim' + story.md (R2 reveal hinges on his death). Stub iteration: X_Bot humanoid skeleton (reuse player rig), Allied faction (player can't damage him with the current factionsHostile rule), is_npc=true (gates future dialogue + interaction prompt), no actions (he stands until scripted-spawn for the Lupa-defeat beat ships). Behavior tree falls through to LeafIdle because perception is gated by faction=Hostile (see tickPerception in gameplay/Perception.cpp) -- the Guide never aggros the player. Vision/awareness fields irrelevant because of the gate; left at humanoid defaults for consistency with shade.",
+  "id": "guide",
+  "faction": "Allied",
+  "form": "UnjudgedSoul",
+  "is_npc": true,
+  "skeleton_id": "player",
+  "vision_fov_degrees": 90.0,
+  "vision_range_meters": 12.0,
+  "tree": "humanoid_basic",
+  "actions": []
+}

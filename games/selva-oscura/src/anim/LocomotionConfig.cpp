@@ -10,6 +10,8 @@ TranslationSource parseTranslationSource(const std::string& s)
 {
     if (s == "root_motion")
         return TranslationSource::RootMotion;
+    if (s == "in_place")
+        return TranslationSource::InPlace;
     if (s == "velocity" || s.empty())
         return TranslationSource::Velocity;
     std::fprintf(stderr,
@@ -27,6 +29,8 @@ const char* translationSourceName(TranslationSource src)
         return "velocity";
     case TranslationSource::RootMotion:
         return "root_motion";
+    case TranslationSource::InPlace:
+        return "in_place";
     }
     return "?";
 }

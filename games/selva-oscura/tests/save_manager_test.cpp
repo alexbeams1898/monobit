@@ -107,6 +107,73 @@ TEST_CASE("SaveManager skips characters with empty names on load", "[save][robus
     cleanupTestFile(path);
 }
 
+TEST_CASE("SaveManager round-trip preserves felled_bosses", "[save][boss-backend]")
+{
+    const std::string path = testSavePath("felled-bosses");
+    cleanupTestFile(path);
+
+    selva::SaveData data;
+    selva::SaveManager::addCharacter(data, "PILGRIM");
+    data.characters[0].felled_bosses = {"lupa", "cerberus"};
+
+    REQUIRE(selva::SaveManager::save(data, path));
+
+    const selva::SaveData loaded = selva::SaveManager::load(path);
+    REQUIRE(loaded.characters.size() == 1);
+    REQUIRE(loaded.characters[0].felled_bosses.size() == 2);
+    REQUIRE(loaded.characters[0].felled_bosses[0] == "lupa");
+    REQUIRE(loaded.characters[0].felled_bosses[1] == "cerberus");
+
+    cleanupTestFile(path);
+}
+
+TEST_CASE("SaveManager omits felled_bosses for fresh characters", "[save][boss-backend]")
+{
+    // A new character has no felled bosses; verify the field is not
+    // emitted to keep save files compact, but loading either
+    // representation (missing field OR empty array) is valid.
+    const std::string path = testSavePath("fresh-felled");
+    cleanupTestFile(path);
+
+    selva::SaveData data;
+    selva::SaveManager::addCharacter(data, "FRESH");
+    REQUIRE(data.characters[0].felled_bosses.empty());
+
+    REQUIRE(selva::SaveManager::save(data, path));
+
+    const selva::SaveData loaded = selva::SaveManager::load(path);
+    REQUIRE(loaded.characters.size() == 1);
+    REQUIRE(loaded.characters[0].felled_bosses.empty());
+
+    cleanupTestFile(path);
+}
+
+TEST_CASE("SaveManager felled_bosses load tolerates missing field", "[save][boss-backend][back-compat]")
+{
+    // Pre-boss-backend save files have no felled_bosses field at all.
+    // Loader must default to empty list (not crash, not throw).
+    const std::string path = testSavePath("pre-boss-backend");
+    cleanupTestFile(path);
+
+    std::filesystem::create_directories(std::filesystem::path(path).parent_path());
+    {
+        FILE* f = std::fopen(path.c_str(), "w");
+        REQUIRE(f != nullptr);
+        std::fprintf(f, "{\n  \"schema_version\": 1,\n"
+                        "  \"characters\": [\n"
+                        "    {\"name\": \"LEGACY\", \"pos_x\": 1.0}\n"
+                        "  ]\n}\n");
+        std::fclose(f);
+    }
+
+    const selva::SaveData loaded = selva::SaveManager::load(path);
+    REQUIRE(loaded.characters.size() == 1);
+    REQUIRE(loaded.characters[0].name == "LEGACY");
+    REQUIRE(loaded.characters[0].felled_bosses.empty());
+
+    cleanupTestFile(path);
+}
+
 TEST_CASE("SaveManager migrate sets schema_version to current", "[save][migrate]")
 {
     selva::SaveData data;

@@ -9,5 +9,9 @@
     "leg_right": "mixamorig:RightLeg",
     "foot_left": "mixamorig:LeftFoot",
     "foot_right": "mixamorig:RightFoot"
-  }
+  },
+  "_lockon_note": "Default lockon points for humanoid actors (player + every shade archetype that doesn't author its own list). Single-target (chest). Boss archetypes with multiple targetable parts override entirely in their config/enemies/<id>.json (see wolf.json lockon_points = head/torso/hindleg_*).",
+  "lockon_points": [
+    { "id": "chest", "joint": "mixamorig:Spine2", "default": true }
+  ]
 }

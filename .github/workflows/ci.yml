@@ -265,7 +265,60 @@ jobs:
             -C 15 -L 250 -a 8 -w
 
   # -----------------------------------------------------------------------
-  # 5. SANITIZED TEST RUN  (ASan + UBSan)
+  # 5. BOOT SMOKE TEST  (selva-oscura.exe actually launches without crashing)
+  #
+  #    Catches pre-main / early-boot crashes that unit tests can't reach:
+  #    static-init-order fiasco, missing required asset, shader compile
+  #    failure, library link issue. The exe is built WIN32-subsystem and
+  #    has no console, so a crash here in production produces zero output
+  #    and exit 139 -- this script is the only thing that actually RUNS
+  #    the game in CI. Costs ~15s.
+  #
+  #    Runs under Xvfb so SDL+OpenGL init succeeds even on the headless
+  #    GitHub runner. The marker `[smoke] main loop ready` is logged just
+  #    before engine.run(), so a green smoke test means all static init
+  #    plus all loadXxx steps in main() completed.
+  # -----------------------------------------------------------------------
+  smoke:
+    name: Boot smoke test (selva-oscura)
+    runs-on: ubuntu-latest
+    needs: build  # reuses the build cache
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build clang \
+            libsdl2-dev libgl1-mesa-dev \
+            xvfb mesa-utils
+
+      - name: Restore build cache
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: ${{ runner.os }}-monobit-build-${{ hashFiles('cmake/**', 'CMakeLists.txt', 'engines/**', 'games/**', 'tests/**') }}
+          restore-keys: |
+            ${{ runner.os }}-monobit-build-
+
+      - name: Configure (if cache miss)
+        run: |
+          if [ ! -f build/build.ninja ]; then
+            cmake -S . -B build -G Ninja \
+              -DCMAKE_C_COMPILER=clang \
+              -DCMAKE_CXX_COMPILER=clang++ \
+              -DCMAKE_BUILD_TYPE=Debug
+          fi
+
+      - name: Build selva-oscura
+        run: cmake --build build --target selva-oscura
+
+      - name: Run smoke test under Xvfb
+        run: xvfb-run -a bash games/selva-oscura/scripts/smoke_test.sh
+
+  # -----------------------------------------------------------------------
+  # 6. SANITIZED TEST RUN  (ASan + UBSan)
   #    Builds a Debug build with -fsanitize=address,undefined and runs the
   #    test suite. Catches use-after-free, double-free, buffer overflow,
   #    signed overflow, null deref, misaligned access, etc. — at the line

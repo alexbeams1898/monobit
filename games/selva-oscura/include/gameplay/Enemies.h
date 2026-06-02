@@ -37,6 +37,34 @@ struct EnemySpawnDecl
     float yaw = 0.0f;                     // facing radians; optional, default 0
     bool permanent_on_death = false;      // keepers=true (do not respawn on cycle); shades=false
     std::vector<glm::vec3> patrol_path;   // optional roaming waypoints; ignored until AI_Roaming lands
+
+    // ----------------------------------------------------------------
+    // Boss fields (per boss_backend.md). Only consulted when the
+    // archetype's is_boss=true. All default to empty / zero so
+    // non-boss spawns carry no boss semantics.
+    // ----------------------------------------------------------------
+
+    // Pattern A (generic trigger-spawned boss): trigger id whose
+    // firing causes this enemy to spawn (instead of boot-spawning).
+    // Empty = boot-spawn (existing behavior; shades, ambient
+    // enemies, AND Pattern B bosses use boot-spawn).
+    std::string spawn_trigger_id;
+
+    // Pattern B (already-there boss like Lupa): trigger id whose
+    // firing transitions this (boot-spawned) boss from
+    // archetype.initial_state to combat-ready, playing
+    // archetype.engage_clip once. Empty = boss has no engage
+    // trigger (either it's combat-ready from spawn, or Pattern A).
+    std::string engage_trigger_id;
+
+    // Arena lockout AABB (world-space). While this boss is alive
+    // and engaged, the player is contained inside this AABB
+    // (soft push-back at boundary, velocity preserved). Zero
+    // half_extents = no lockout (free-roaming fight). Per-boss,
+    // not per-region (different bosses in same region can have
+    // different arenas).
+    glm::vec3 arena_center = glm::vec3(0.0f);
+    glm::vec3 arena_half_extents = glm::vec3(0.0f);
 };
 
 // Spawn every enemy declared in the given region's enemy_spawns into
@@ -45,6 +73,12 @@ struct EnemySpawnDecl
 // gets prefixed with "region_id:" so two regions can share local ids
 // without collision.
 void spawnRegionEnemies(const std::string& region_id, const std::vector<EnemySpawnDecl>& decls);
+
+// Spawn a single enemy from a decl. Exposed for trigger-spawned
+// bosses (per docs/design/ideas/boss_backend.md Pattern A): the
+// boss skips at boot, then the BossDispatcher calls this directly
+// when the spawn trigger fires.
+void spawnEnemyFromDecl(const std::string& region_id, const EnemySpawnDecl& decl);
 
 void shutdownHubEnemies();
 
@@ -70,6 +104,12 @@ void resetCycleEnemies();
 // logic; this handles the AI-controlled actors only.
 void tickEnemies(float dt);
 
+// Transition a scripted-death actor from Engaged to Dying NOW: plays
+// the archetype's pain clip, freezes locomotion, opens an
+// input-locking Scene if none is active. No-op if the actor is not
+// Engaged or has no scripted-death configuration.
+void beginScriptedDying(Actor& actor);
+
 // Read-only enemy view — the actors in the shared pool whose
 // controller is NOT Input. Returned as a std::vector by value so
 // existing call sites (range-for over a span) keep working. The
@@ -81,6 +121,12 @@ std::vector<Actor*> enemies();
 // present. Mirrors how hurtbox spawn keys OwnerRef{Enemy, i}; the
 // AI action-fire path needs the same id to spawn its hitbox.
 int enemyIndex(const Actor& actor);
+
+// Reverse of enemyIndex: returns the Actor pointer for the given
+// index in the filtered enemies() view, or nullptr if the index is
+// out of range. Used by combat-side code (HitVolumes) that has an
+// OwnerRef and needs to query the owning actor's state.
+const Actor* enemyAt(int index);
 
 // Fire a hit-react on the given enemy (indexed into the filtered
 // enemy view, see enemies()). Applies poise damage first; if poise

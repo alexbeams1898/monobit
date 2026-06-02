@@ -7,6 +7,7 @@
 #include "anim/SkeletalMesh.h"
 #include "combat/ActorVolumes.h"
 #include "combat/HitVolumes.h"
+#include "gameplay/EnemyArchetype.h"
 
 #include <algorithm>
 #include <cmath>
@@ -34,6 +35,62 @@ float computeMaxPoise(const Body& body, const Stats& stats)
     const float end_bonus = static_cast<float>(stats.end) * f.poise.end_scale;
     const float str_bonus = static_cast<float>(stats.str) * f.poise.str_scale;
     return static_cast<float>(body.base_poise) + end_bonus + str_bonus;
+}
+
+void applyFormDefaults(Body& body, Stats& stats, Form form)
+{
+    // Baseline body/stats per cosmological form. Numbers are starting
+    // points -- archetype overrides layer on top. Form drives the
+    // SHAPE (a wolf has more raw HP than a shade because animal-form
+    // has biological mass; a Guide has less HP than a shade because
+    // unjudged-soul has no substrate); per-instance authoring tunes
+    // within the shape. Per [[soul-animal-form-combat-doctrine]] +
+    // bestiary.md.
+    switch (form)
+    {
+    case Form::UnjudgedSoul:
+        body.base_hp = 60;
+        body.base_poise = 12;
+        body.base_stamina = 60;
+        body.base_defense = 0;
+        stats = {1, 1, 1, 1};
+        break;
+    case Form::DamnedSoul:
+        // Matches the legacy shade defaults so existing JSON behavior
+        // is preserved when this function is called on shades.
+        body.base_hp = 50;
+        body.base_poise = 30;
+        body.base_stamina = 80;
+        body.base_defense = 0;
+        stats = {1, 1, 1, 1};
+        break;
+    case Form::Animal:
+        body.base_hp = 200;
+        body.base_poise = 50;
+        body.base_stamina = 150;
+        body.base_defense = 2;
+        stats = {3, 2, 3, 1};
+        break;
+    case Form::HellMachinery:
+        // Reserved -- keepers not shipped yet. Legendary-tier numbers
+        // so future tuning starts from a high baseline.
+        body.base_hp = 1500;
+        body.base_poise = 200;
+        body.base_stamina = 300;
+        body.base_defense = 8;
+        stats = {5, 4, 5, 1};
+        break;
+    case Form::Divine:
+        // Reserved -- Beatrice not shipped yet. Boss-class numbers
+        // but the actual fight is "fragmentary, rabid" per canon, so
+        // these are placeholders; tune when implementing.
+        body.base_hp = 800;
+        body.base_poise = 150;
+        body.base_stamina = 200;
+        body.base_defense = 5;
+        stats = {4, 4, 4, 4};
+        break;
+    }
 }
 
 void initActorPools(Health& hp, Stamina& stamina, Poise& poise, const Body& body,
@@ -129,6 +186,24 @@ Actor* resolveLockTarget(const Actor& actor)
     return &pool[idx];
 }
 
+const std::vector<selva::anim::LockOnPointDecl>& actorLockOnPoints(const Actor& actor)
+{
+    if (actor.archetype != nullptr && !actor.archetype->lockon_points.empty())
+        return actor.archetype->lockon_points;
+    return selva::anim::jointMapByKey(actor.skeleton_id).default_lockon_points;
+}
+
+int defaultLockOnPointIndex(const Actor& actor)
+{
+    const auto& pts = actorLockOnPoints(actor);
+    if (pts.empty())
+        return -1;
+    for (std::size_t i = 0; i < pts.size(); ++i)
+        if (pts[i].is_default)
+            return static_cast<int>(i);
+    return 0;
+}
+
 const char* directionalLocoClip(const glm::vec3& fwd, const glm::vec3& right,
                                 const glm::vec3& intent, bool running)
 {
@@ -167,6 +242,23 @@ void applyActorClipHipDelta(Actor& actor, float hip_delta_scale)
     const glm::vec3 hip_world(-cy * hip_local.x - sy * hip_local.z, 0.0f,
                               sy * hip_local.x - cy * hip_local.z);
     actor.pos += hip_world * hip_delta_scale;
+}
+
+bool actorCanLandHits(const Actor& a)
+{
+    if (a.is_dead || a.is_knocked_down)
+        return false;
+    switch (a.boss_state)
+    {
+    case BossState::Dying:
+    case BossState::Felled:
+    case BossState::Disengaged:
+        return false;
+    case BossState::Dormant:
+    case BossState::Engaged:
+        return true;
+    }
+    return true;
 }
 
 void updateActiveAttackHitbox(Actor& actor)
@@ -232,6 +324,13 @@ void initActorPool()
     Actor pc;
     pc.controller = Controller::Input;
     pc.faction = Faction::Player;
+    // The Vagrant is an unjudged soul -- refused Hell's measurement,
+    // received by the selva oscura. Form drives base stat-spread
+    // (low HP, low poise, fragile vessel) before class-pick layers on
+    // top. Per [[soul-animal-form-combat-doctrine]] +
+    // story.md *The Guide / Identity* (the Vagrant is the second
+    // unjudged-soul, after the Guide).
+    pc.form = Form::UnjudgedSoul;
     pc.skeleton_id = "player";
     // Player hurtbox layout. Authored in
     // config/skeletons/player_hurtboxes.json -- the data form of what
@@ -250,6 +349,10 @@ void initActorPool()
     pc.death_sfx_name = "dark_sound";
     pc.death_peak_sfx_names = {"synth_echo", "soul_steal"};
     pc.death_peak_align_seconds = 3.5f;
+    // Apply form-defaults to Body + Stats before pool init. The class-
+    // pick system (future) will layer custom stat spreads on top --
+    // for now this is the unjudged-soul baseline (60 HP / 12 poise).
+    applyFormDefaults(pc.body, pc.stats, pc.form);
     initActorPools(pc.hp, pc.stamina, pc.poise, pc.body, pc.stats);
     // initActorPool is one-time, asset-binding only. Position, hp-fill,
     // and any per-character state are NOT set here - those land via

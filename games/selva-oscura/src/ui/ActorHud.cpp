@@ -6,6 +6,7 @@
 #include "WallClock.h"
 #include "anim/PoseSampler.h"
 #include "anim/SkeletalAssets.h"
+#include "anim/SkeletonJointMap.h"
 #include "anim/SkeletalMesh.h"
 #include "combat/ActorVolumes.h"
 #include "combat/HitFeedback.h"
@@ -306,22 +307,23 @@ void drawLockOnReticle(ImDrawList* overlay, const glm::mat4& view_proj)
     if (idx >= static_cast<int>(pool.size()))
         return;
     const auto& target = pool[idx];
-    // Anchor to the chest BONE, not actor pos + Y. During dynamic
-    // poses (knockdown, getting up, hit reacts) the rig decouples
-    // from actor.pos — pos stays standing while the body drops to
-    // the floor. Same pattern as ActorVolumes (jointWorld helper).
-    // NOTE: "mixamorig:Spine2" is humanoid-specific. For non-humanoid
-    // lock-on targets (wolf, etc.) the chest-equivalent joint name
-    // should come from a SkeletonJointMap field (TODO: extend
-    // SkeletonJointMap with a 'lockon_chest' role). For v1 the fallback
-    // is acceptable: -1 = no chest joint -> no reticle drawn for the
-    // wolf, which is rare-cosmetic.
-    const int chest_idx = target.sampler.findJoint("mixamorig:Spine2");
-    if (chest_idx < 0)
+    // Anchor to the lockon-point BONE. Point list is resolved per-
+    // actor via actorLockOnPoints (archetype's authored list else
+    // skeleton default). Player cycles between points with mouse
+    // wheel; lock_point_idx names the active entry.
+    const auto& points = selva::gameplay::actorLockOnPoints(target);
+    if (points.empty())
+        return;
+    const int point_idx =
+        (p.lock_point_idx >= 0 && p.lock_point_idx < static_cast<int>(points.size()))
+            ? p.lock_point_idx
+            : 0;
+    const int joint_idx = target.sampler.findJoint(points[point_idx].joint.c_str());
+    if (joint_idx < 0)
         return;
     const glm::mat4 model = selva::combat::buildActorModelMatrix(
         target.pos, target.yaw, selva::gameplay::actorFootOffsetY(target));
-    const glm::vec4 world = model * glm::vec4(target.sampler.jointWorldPos(chest_idx), 1.0f);
+    const glm::vec4 world = model * glm::vec4(target.sampler.jointWorldPos(joint_idx), 1.0f);
     glm::vec2 sp;
     if (!selva::render::worldToScreen(view_proj, glm::vec3(world), sp))
         return;

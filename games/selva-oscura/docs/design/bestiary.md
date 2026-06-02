@@ -143,6 +143,99 @@ Not every canonical exception will ship — some are placeholders for
 future scope. But any non-human enemy in this game **must** trace back
 to a Dantean source. We do not invent new monsters.
 
+## Soul-form vs animal-form (combat doctrine in the Wood)
+
+> **LOCKED 2026-06-01.** Foundational rule that explains why the
+> Lupa fight is permitted in the Wood AND why the Wood is otherwise a
+> no-combat zone. Memory: [[vagrant-silent-vessel-doctrine]] +
+> [[selva-core-framing]].
+
+Actors in this game fall into two cosmological **forms** for combat
+purposes:
+
+- **Soul-form** — unjudged souls (the Vagrant, the Guide, any future
+  Wood NPC who is a soul). Inside Hell, damned souls are also
+  soul-form (they wear the human figura umana even when deformed).
+- **Animal-form** — real biological animals + allegorical forces given
+  physical form. The three legends (Lonza, Leone, Lupa) are animal-
+  form, as are Selva-organisms (the leak-evolved descendants).
+  Classical guardians (Cerberus, Minotaur, etc.) are animal-form-
+  adjacent — they are infernal creatures, not damned souls, and obey
+  the same combat-permission rules as animal-form actors.
+
+### The Wood's combat protocol
+
+**The selva oscura permits combat across forms; it forbids combat
+within forms.** Stated explicitly:
+
+- **Soul-on-soul: FORBIDDEN.** The Vagrant cannot damage the Guide.
+  The Guide cannot damage the Vagrant. Future Wood NPCs (other
+  unjudged souls who eventually arrive) cannot damage the Vagrant
+  and cannot be damaged by him. This is the *Roundtable Hold*
+  equivalent — a structural peace that the Wood enforces as a
+  cosmological property of the place, not a per-NPC flag.
+- **Soul-on-animal: PERMITTED.** The Vagrant CAN damage Lupa. Lupa
+  CAN damage the Vagrant. The Guide could damage Lupa (he chose not
+  to — see *story.md Beat 3* on the poisoned-carcass approach). Any
+  future animal-form encounter in the Wood (a leak-evolved
+  descendant species, etc.) is freely combatable by soul-form actors.
+- **Animal-on-soul: PERMITTED** (the reverse of the above). Combat is
+  symmetric across forms.
+- **Animal-on-animal:** N/A within the Wood at game-start (only Lupa
+  remains; Lonza and Leone died of starvation pre-game). The
+  Selva-organism ecology that emerges later may produce animal-on-
+  animal combat as part of world simulation; the protocol does not
+  forbid it.
+
+### Why this matters mechanically
+
+The Lupa fight is **canonically permitted** by the form distinction.
+She is animal-form; the Vagrant is soul-form; the rule allows the
+combat. The fight is not a violation of the Wood's protocol — it is
+the one form-pairing the protocol explicitly permits.
+
+**After Lupa falls**, the Wood contains only soul-form actors (the
+Guide, the Vagrant, eventually other arriving unjudged souls). With
+no animal-form left, the cross-form combat-permission is vacuously
+inert. The Wood becomes a true no-combat zone as a *consequence* of
+Lupa's death, not as a separate magical effect that turns on. The
+peace is permanent because the conditions for combat are permanently
+removed.
+
+If the Wood eventually re-populates with animal-form creatures (the
+leak-evolved Selva-organism ecology per [creatures.md](creatures.md)),
+combat returns automatically — the protocol works on form, not on a
+timer or quest state.
+
+### Why this matters narratively
+
+- The opening Lupa encounter is the *only* combat the Vagrant can
+  ever experience in this part of the Wood. Every subsequent visit
+  is a soul-only zone. The Wood's no-combat property reads to the
+  player as "this is a refuge"; the truth is "this is a refuge for
+  souls because the apex animal is dead."
+- The Guide could not have fought Lupa directly. A soul-form actor
+  against a starving but functional apex predator is hopeless. The
+  Guide's choice of poison + patience is *his form's only available
+  approach*. He used craft because force was not on the table.
+- Future Wood NPC arrivals (other unjudged souls finding their way
+  to the threshold) cannot threaten the Vagrant and cannot be
+  threatened by him. Wood-NPC dialogue can hint at past Wood-violence
+  among animal-form creatures (Lonza, Leone, the legends' wider
+  ecology) without putting any future NPC at combat risk.
+
+### Engine implementation status
+
+**Doc-locked, not yet code-locked.** Engine-side `Form` distinction
+(an enum or actor flag) plus a Wood-protected-region property is the
+clean shape. Today Lupa is the only animal-form actor and the only
+potential damage source in the Wood, so the canonical rule is
+*currently* equivalent to the existing faction-based `factionsHostile`
+check. The form-rule becomes load-bearing the moment we ship a second
+Wood-resident NPC or Selva-organism. Track in
+[[engine-form-vs-faction-todo]] (memory) when the implementation
+ticket lands.
+
 ## How contrapasso reads on the human skeleton
 
 For a damned soul, the sin determines the deformation. Mechanical

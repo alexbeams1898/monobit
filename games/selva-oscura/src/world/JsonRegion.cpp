@@ -84,17 +84,29 @@ JsonRegion::JsonRegion(const nlohmann::json& json_doc, std::string folder)
           parseRegionKind(json_doc.value("region_kind", std::string{"Exterior"}))),
       region_json(json_doc), region_folder(std::move(folder))
 {
-    // Parse enemy_spawns. Each entry's id, archetype, and pos are
-    // REQUIRED; we throw on missing so a typo'd JSON file fails
-    // boot rather than silently spawning nothing (the same silent-
-    // fallback bug class that bit us in the Scene->Region rename;
-    // see [[feedback_check_clip_classification_first]]+
+    // Parse actor_spawns (legacy alias: enemy_spawns). Each entry's id,
+    // archetype, and pos are REQUIRED; we throw on missing so a typo'd
+    // JSON file fails boot rather than silently spawning nothing (the
+    // same silent-fallback bug class that bit us in the Scene->Region
+    // rename; see [[feedback_check_clip_classification_first]] +
     // region_schema_test.cpp).
-    if (json_doc.contains("enemy_spawns") && !json_doc["enemy_spawns"].is_null())
+    // Accept both `actor_spawns` (current name) and `enemy_spawns`
+    // (legacy alias, kept so older region JSON keeps working during
+    // migration). New regions should use `actor_spawns`. Per
+    // docs/systems.md, this list now holds ALL actor spawns (hostile
+    // enemies, allied NPCs, neutral merchants) -- the C++ structs
+    // remain named EnemyArchetype / EnemySpawnDecl during migration
+    // but the JSON field name is semantically accurate.
+    const char* spawns_key = nullptr;
+    if (json_doc.contains("actor_spawns") && !json_doc["actor_spawns"].is_null())
+        spawns_key = "actor_spawns";
+    else if (json_doc.contains("enemy_spawns") && !json_doc["enemy_spawns"].is_null())
+        spawns_key = "enemy_spawns";
+    if (spawns_key != nullptr)
     {
-        const auto& arr = json_doc.at("enemy_spawns");
+        const auto& arr = json_doc.at(spawns_key);
         if (!arr.is_array())
-            throw std::runtime_error("enemy_spawns must be an array");
+            throw std::runtime_error(std::string(spawns_key) + " must be an array");
         for (const auto& s : arr)
         {
             selva::gameplay::EnemySpawnDecl d;
@@ -102,7 +114,7 @@ JsonRegion::JsonRegion(const nlohmann::json& json_doc, std::string folder)
             d.archetype = s.at("archetype").get<std::string>();
             const auto& pos_arr = s.at("pos");
             if (!pos_arr.is_array() || pos_arr.size() < 3)
-                throw std::runtime_error("enemy_spawns[].pos must be [x, y, z]");
+                throw std::runtime_error("actor_spawns[].pos must be [x, y, z]");
             const float px = pos_arr[0].get<float>();
             const float pz = pos_arr[2].get<float>();
             // pos[1] is either a numeric Y OR the string sentinel
@@ -132,7 +144,64 @@ JsonRegion::JsonRegion(const nlohmann::json& json_doc, std::string folder)
                                                wp[2].get<float>());
                 }
             }
+            // Boss spawn fields. Optional; non-boss spawns leave all
+            // unset (defaults are empty / zero). See
+            // games/selva-oscura/docs/design/ideas/boss_backend.md.
+            d.spawn_trigger_id = s.value("spawn_trigger_id", std::string{});
+            d.engage_trigger_id = s.value("engage_trigger_id", std::string{});
+            if (s.contains("arena_center") && s["arena_center"].is_array() &&
+                s["arena_center"].size() >= 3)
+            {
+                d.arena_center = glm::vec3(s["arena_center"][0].get<float>(),
+                                           s["arena_center"][1].get<float>(),
+                                           s["arena_center"][2].get<float>());
+            }
+            if (s.contains("arena_half_extents") && s["arena_half_extents"].is_array() &&
+                s["arena_half_extents"].size() >= 3)
+            {
+                d.arena_half_extents = glm::vec3(s["arena_half_extents"][0].get<float>(),
+                                                 s["arena_half_extents"][1].get<float>(),
+                                                 s["arena_half_extents"][2].get<float>());
+            }
             enemy_spawn_decls.push_back(std::move(d));
+        }
+    }
+
+    // Parse doors. Each entry: id (required), pos (required), all
+    // other fields optional with sensible defaults. See world/Door.h.
+    if (json_doc.contains("doors") && !json_doc["doors"].is_null())
+    {
+        const auto& arr = json_doc.at("doors");
+        if (!arr.is_array())
+            throw std::runtime_error("doors must be an array");
+        for (const auto& s : arr)
+        {
+            selva::world::DoorDecl d;
+            d.id = s.at("id").get<std::string>();
+            const auto& pos_arr = s.at("pos");
+            if (!pos_arr.is_array() || pos_arr.size() < 3)
+                throw std::runtime_error("doors[].pos must be [x, y, z]");
+            d.pos = glm::vec3(pos_arr[0].get<float>(), pos_arr[1].get<float>(),
+                              pos_arr[2].get<float>());
+            d.yaw = s.value("yaw", 0.0f);
+            if (s.contains("hinge_offset") && s["hinge_offset"].is_array() &&
+                s["hinge_offset"].size() >= 3)
+            {
+                d.hinge_offset = glm::vec3(s["hinge_offset"][0].get<float>(),
+                                           s["hinge_offset"][1].get<float>(),
+                                           s["hinge_offset"][2].get<float>());
+            }
+            const std::string axis_str = s.value("hinge_axis", std::string("Y"));
+            d.hinge_axis = axis_str.empty() ? 'Y' : axis_str[0];
+            const float angle_deg = s.value("open_angle_degrees", 90.0f);
+            d.open_angle_radians = angle_deg * 3.14159265f / 180.0f;
+            d.open_animation_seconds = s.value("open_animation_seconds", 1.0f);
+            d.mesh_path = s.value("mesh", std::string{});
+            d.player_interactable = s.value("player_interactable", true);
+            d.persistent = s.value("persistent", true);
+            d.initial_state = selva::world::parseDoorState(
+                s.value("initial_state", std::string("Closed")));
+            parsed_doors.push_back(std::move(d));
         }
     }
 
@@ -272,6 +341,30 @@ void JsonRegion::preloadAssets()
         std::fprintf(stderr, "[json-region '%s'] preloaded mesh '%s' (%zu prims, %zu shapes)\n",
                      regionId().c_str(), lm->debug_name.c_str(), lm->mesh.primitives.size(),
                      lm->shape_handles.size());
+        // Bounds diagnostic: where does this mesh actually land in
+        // world space? Positions in cpu_positions are post-world_origin
+        // (loadStaticMesh transforms them), so this is true world-space.
+        glm::vec3 bmin( std::numeric_limits<float>::infinity());
+        glm::vec3 bmax(-std::numeric_limits<float>::infinity());
+        std::size_t total_verts = 0;
+        for (const auto& prim : lm->mesh.primitives)
+        {
+            for (const auto& p : prim.cpu_positions)
+            {
+                bmin = glm::min(bmin, p);
+                bmax = glm::max(bmax, p);
+            }
+            total_verts += prim.cpu_positions.size();
+        }
+        if (total_verts > 0)
+        {
+            std::fprintf(stderr,
+                         "  world-bounds: x=[%.2f, %.2f] y=[%.2f, %.2f] z=[%.2f, %.2f] "
+                         "center=(%.2f, %.2f, %.2f) verts=%zu\n",
+                         bmin.x, bmax.x, bmin.y, bmax.y, bmin.z, bmax.z,
+                         (bmin.x + bmax.x) * 0.5f, (bmin.y + bmax.y) * 0.5f,
+                         (bmin.z + bmax.z) * 0.5f, total_verts);
+        }
         loaded_meshes.push_back(std::move(lm));
     }
 
@@ -359,6 +452,16 @@ void JsonRegion::commitPrepared(engine::world::RegionActivationContext& ctx)
         trig.id = t.value("id", std::string{});
         trig.center = parseVec3(t.value("center", nlohmann::json::array()));
         trig.half_extents = parseVec3(t.value("half_extents", nlohmann::json::array()));
+        // Action: defaults to "RegionTransition" (existing semantics);
+        // "Custom" routes game-side via action_payload (see boss
+        // backend per docs/design/ideas/boss_backend.md).
+        const std::string action_str = t.value("action", std::string{"RegionTransition"});
+        if (action_str == "Custom")
+            trig.action = engine::world::TriggerAction::Custom;
+        else
+            trig.action = engine::world::TriggerAction::RegionTransition;
+        trig.action_payload = t.value("action_payload", std::string{});
+        // RegionTransition fields (ignored for Custom):
         const std::string target_region_id = t.value("target_region", std::string{});
         trig.target = engine::world::findRegionId(target_region_id.c_str());
         trig.preserve_player_pos = t.value("preserve_player_pos", false);
@@ -369,16 +472,22 @@ void JsonRegion::commitPrepared(engine::world::RegionActivationContext& ctx)
         trig.fade_duration_seconds = t.value("fade_duration_seconds", 0.4f);
         trig.debug_name = t.value("debug_name", std::string{});
         ctx.addTrigger(trig);
-        if (trig.target == engine::world::kInvalidRegion)
+        // Only warn about missing target_region for RegionTransition
+        // triggers -- Custom triggers don't need a target.
+        if (trig.action == engine::world::TriggerAction::RegionTransition &&
+            trig.target == engine::world::kInvalidRegion)
         {
             std::fprintf(stderr, "[json-region '%s'] trigger '%s' targets unknown region '%s'\n",
                          regionId().c_str(), trig.id.c_str(), target_region_id.c_str());
         }
     }
+    // Register doors with the world-Door system (creates colliders +
+    // resolves persisted state from active profile).
+    selva::world::registerDoorsForRegion(parsed_doors);
     std::fprintf(stderr,
-                 "[json-region '%s'] commitPrepared END (%zu meshes, %zu mods, %zu triggers)\n",
+                 "[json-region '%s'] commitPrepared END (%zu meshes, %zu mods, %zu triggers, %zu doors)\n",
                  regionId().c_str(), loaded_meshes.size(), parsed_modifiers.size(),
-                 trigs_json.size());
+                 trigs_json.size(), parsed_doors.size());
 }
 
 void JsonRegion::onDeactivate()

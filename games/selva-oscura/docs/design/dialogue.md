@@ -89,6 +89,39 @@ What choices affect:
 The Vagrant is hollow — dialogue is the player's expression, not his
 character development. He is whatever the player makes him.
 
+## The Vagrant does not speak (vessel doctrine, LOCKED)
+
+The Vagrant is mute in-world. His mouth never moves; no NPC ever hears
+his voice; he utters no line aloud. What the player sees as "Vagrant
+dialogue choices" is the **player using the Vagrant as a vessel** —
+the player's expression filtered through the hollow body. This is
+the canon mechanic for the silence, not a workaround.
+
+Implications:
+
+- The Vagrant has no voice acting, no subtitled utterances, no name
+  he can speak. NPCs cannot quote him back to himself.
+- Modern-register dialogue choices ARE the player choosing what gets
+  expressed through the vessel. The vessel passes the expression
+  outward as intent / posture / wordless signal — never as audible
+  speech.
+- NPCs respond as if they perceived intent. The Guide does not say
+  *"You said X"*; he says *"Thou seekst Y"* or *"Thy heart asks Z"*.
+  The reply pattern reads the player's choice as legible intent
+  without literally quoting it.
+- The register friction (modern player-voice / old NPC-voice) is
+  intact because the player-voice is the player's *thought language*,
+  not the Vagrant's spoken tongue. There is no Vagrant tongue.
+- UI implication: dialogue choices may be shown as the player's
+  voice (modern, plain, listed). NPC replies are shown as the NPC's
+  voice (old register, attributed to them). The Vagrant is never the
+  attributed speaker of anything on screen. He stands; the world
+  responds to what stands.
+- R5 ties in: the player IS the Vagrant's voice. Concealing this until
+  R5 is exactly the point — the player experiences "their" dialogue
+  for the whole game without realizing the Vagrant has been silent
+  the entire time.
+
 ## What no one says (concealment doctrine)
 
 - **No NPC mentions Beatrice** until R2 (posthumous Grimoire entries

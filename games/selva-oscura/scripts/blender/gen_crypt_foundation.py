@@ -559,12 +559,13 @@ def build_interior_floor():
     hole_y_near = hole_center_y - hole_half_l
     hole_y_far = hole_center_y + hole_half_l
 
-    # FromSoft intrusion rule: floor bottom sits z_fight_safety BELOW
-    # plinth top so the plinth/wall bases bury the floor's bottom face.
-    # The floor's top face (walkable surface) stays at the design Y;
-    # only the bottom extends DOWN into the plinth solid.
-    floor_bot_z = PLINTH_HEIGHT - JOINT["z_fight_safety"]
-    floor_top_z = PLINTH_HEIGHT + INTERIOR_FLOOR_THICKNESS
+    # Interior floor TOP sits 1mm ABOVE plinth top so the floor's
+    # interior-stone material wins the depth test inside the chapel
+    # (plinth top is buried below). 1mm is imperceptible to the
+    # player; no step problem at the doorway. Body extends DOWN
+    # through the plinth (buried; only the top face is visible).
+    floor_top_z = PLINTH_HEIGHT + 0.001
+    floor_bot_z = PLINTH_HEIGHT - INTERIOR_FLOOR_THICKNESS
     floor_cz = (floor_bot_z + floor_top_z) * 0.5
     floor_h = floor_top_z - floor_bot_z
 

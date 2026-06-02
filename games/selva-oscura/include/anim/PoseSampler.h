@@ -217,6 +217,17 @@ struct PoseSampler
         // commit-then-recover one-shot. Combat attacks use their own
         // per-clip wallclock cancel window (rhythm timing), not this.
         float cancel_fraction = 1.0f;
+        // Authoritative per-fire override of the one-shot's TRAVELING
+        // vs IN_PLACE classification. The auto-classifier uses a 0.5m
+        // hip-path threshold which is a coarse heuristic -- some bite
+        // clips have an authored "step into the bite" that crosses the
+        // threshold but the intended gameplay is visual-only (no world
+        // translation). Conversely a leap/pounce clip authored without
+        // hip travel needs forced TRAVELING.
+        //   0 = auto (legacy threshold-based behavior)
+        //   1 = force IN_PLACE (no extraction, clip is visual only)
+        //   2 = force TRAVELING (extract + translate world)
+        int hip_translation_mode = 0;
     };
 
     void playOneShot(const AnimationClip& clip, float blend_in_seconds, float blend_out_seconds,

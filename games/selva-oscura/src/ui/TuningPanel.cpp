@@ -23,6 +23,7 @@
 #include "gameplay/PlayerState.h"
 #include "gameplay/TickState.h"
 #include "ui/ActorHud.h"
+#include "ui/BossHud.h"
 #include "ui/ComboHud.h"
 
 #include <imgui.h>
@@ -524,5 +525,9 @@ namespace selva::ui
 void selvaRenderImGui(::Engine& engine, ::EntityManager& em)
 {
     ::selvaRenderImGui(engine, em);
+    // Boss HUD on top of everything else (HP bar, name, felled
+    // overlay). No-op when no boss is engaged. Per
+    // docs/design/ideas/boss_backend.md section 8.
+    renderBossHud();
 }
 } // namespace selva::ui

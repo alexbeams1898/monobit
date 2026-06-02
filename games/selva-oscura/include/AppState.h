@@ -1,5 +1,7 @@
 #pragma once
 
+#include "items/Inventory.h"
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -101,6 +103,23 @@ struct GameState
     // arrival of a save; subsequent respawns place him standing.
     bool pending_wake_scene = false;
     std::string active_character; // Name of the character for the current run.
+
+    // --- Boss-encounter active state (per docs/design/ideas/boss_backend.md
+    // section 6) ---
+
+    // Pool index of the actor that's the active boss this frame, or -1
+    // if no boss is engaged. Stored as INDEX (not pointer) because the
+    // actor pool may resize between frames; resolve to pointer at use
+    // site via selva::gameplay::actors()[active_boss_idx]. Set when an
+    // engage trigger fires (or a SpawnEntity trigger spawns a boss);
+    // cleared when the boss dies (post-felled-overlay).
+    int active_boss_idx = -1;
+
+    // The active boss's spawn-decl id (e.g. "lupa"). Stable across
+    // frames even if the pool resizes -- used as the persistent key
+    // for save's felled_bosses list when the boss dies. Empty when no
+    // boss engaged.
+    std::string active_boss_id;
 };
 
 // ---------------------------------------------------------------------------
@@ -147,6 +166,47 @@ struct PlayerProfile
     //   1. activateRegionImmediate(findRegionId(current_region_id))
     //   2. teleport player capsule to (pos_x, pos_y, pos_z), yaw
     std::string current_region_id;
+
+    // Bosses this character has felled. Per
+    // games/selva-oscura/docs/design/ideas/boss_backend.md section 5.
+    // When a boss actor dies (`actor.is_boss && actor.is_dead`) its
+    // spawn-decl id is appended here. On region load, any
+    // `enemy_spawns[]` entry whose id appears in this list is SKIPPED
+    // entirely -- the boss does not respawn, the slope stays empty
+    // for the rest of the save. Per [[selva-wood-lore-locked-2026-05-31]]
+    // the empty slope IS the monument.
+    //
+    // Future: this list may merge with `keepers_felled` (per setting.md
+    // *Cycle structure*) since keepers ARE a subset of bosses. Kept
+    // separate for v1 until the first keeper ships.
+    std::vector<std::string> felled_bosses;
+
+    // Generic quest-state flag set. Persistent string set. Used by:
+    //   - Dialogue trees (gate branches on flag presence)
+    //   - NPC spawn conditions (only spawn if flag X is set)
+    //   - Scripted-event triggers (fire X once if flag Y not set)
+    //   - Future: achievement system (derive Steam/PSN achievements
+    //     from declarative conditions over this set)
+    // Names are STABLE identifiers (renaming = breaking a save); use
+    // semantic prefixes like "lupa_felled", "met_guide", "grimoire_5".
+    // Access through hasFlag / setFlag / clearFlag in AppStateGlobal.h
+    // -- those normalize dedup behavior so direct push_back is never
+    // necessary. Empty = no flags set yet (back-compat default for
+    // saves written before the flag system shipped).
+    std::vector<std::string> flags;
+
+    // Persistent door state. (door_id, state_name) pairs. Only doors
+    // whose state has DEVIATED from their JSON-authored initial_state
+    // need entries here. State_name is one of "Locked", "Closed",
+    // "Open" (Opening is promoted to Open on save -- mid-animation
+    // doesn't persist). Per [[world/Door.h]].
+    std::vector<std::pair<std::string, std::string>> door_states;
+
+    // Per-character carried items. Categorized polymorphic entries
+    // (Possession / Stack / Instanced) keyed by category id from
+    // config/inventory_categories.json. Operate via selva::items
+    // ops (grant/addStack/has/remove). Empty for new characters.
+    selva::items::Inventory inventory;
 };
 
 // ---------------------------------------------------------------------------
@@ -172,7 +232,7 @@ struct Settings
 // ---------------------------------------------------------------------------
 struct SaveData
 {
-    static constexpr int CURRENT_VERSION = 1;
+    static constexpr int CURRENT_VERSION = 2;
 
     int schema_version = CURRENT_VERSION;
     std::vector<PlayerProfile> characters;

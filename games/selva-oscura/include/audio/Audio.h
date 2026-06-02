@@ -52,4 +52,14 @@ float sfxPeakOffset(const std::string& name);
 void duckMusic();
 void restoreMusic();
 
+// Music bed stack (per docs/design/ideas/boss_backend.md section 9
+// / impl plan step 10). Beds are named entries in audio.json's
+// "music_beds" object (alongside the default "music" entry which
+// is the ambient bed). pushMusicBed(name) saves the current bed
+// (engine plays the named one); popMusicBed() reverts to the
+// previously-pushed bed. Cheap no-op if `name` is unregistered or
+// the stack is empty.
+void pushMusicBed(const std::string& name);
+void popMusicBed();
+
 } // namespace selva::audio

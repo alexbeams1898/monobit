@@ -63,6 +63,37 @@
                 "One-shot. Authored hip XZ travel is ~0.7m -- below the 1.5m default extraction threshold -- so it must declare root_motion explicitly or PoseSampler leaves the motion in the pose (mesh visibly travels, sPlayer.pos doesn't, slide-snap at clip end).",
             "name": "getting_up_3",
             "translation_source": "root_motion"
+        },
+        {
+            "_comment": "Wolf clips (Quaternius rig). All in-place authoring: the animator built feet-cycling-while-body-stationary clips and leaves world translation to the engine. velocity lets walk drive via tun.walk_speed * dt; attack uses in_place so the bite's 0.586m authored hip step stays visual (no slide). gallop / gallop_jump removed -- Lupa is walk-only per the 'tired legend' framing in wolf.json; re-add entries here when a future archetype actually uses them.",
+            "name": "walk",
+            "blend_in_seconds": 0.28,
+            "translation_source": "velocity"
+        },
+        {
+            "name": "attack",
+            "translation_source": "in_place"
+        },
+        {
+            "_comment": "Lupa's pre-engage idle: looped chew on the Lonza carcass. In-place so the chew motion doesn't translate the actor (the carcass is fixed at her feet via static_meshes).",
+            "name": "eating",
+            "blend_in_seconds": 0.40,
+            "translation_source": "in_place"
+        },
+        {
+            "name": "idle",
+            "blend_in_seconds": 0.40,
+            "translation_source": "in_place"
+        },
+        {
+            "name": "idle_2",
+            "blend_in_seconds": 0.40,
+            "translation_source": "in_place"
+        },
+        {
+            "name": "idle_2_head_low",
+            "blend_in_seconds": 0.40,
+            "translation_source": "in_place"
         }
     ]
 }

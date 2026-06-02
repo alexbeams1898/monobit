@@ -31,13 +31,18 @@ add_library(selva-oscura-lib STATIC
     src/gameplay/AiBarriers.cpp
     src/gameplay/AiTick.cpp
     src/gameplay/BehaviorTree.cpp
+    src/gameplay/BossDispatcher.cpp
+    src/gameplay/BossRewards.cpp
+    src/gameplay/BossState.cpp
     src/gameplay/Enemies.cpp
     src/gameplay/EnemyArchetype.cpp
+    src/gameplay/Faction.cpp
     src/gameplay/Footsteps.cpp
     src/gameplay/LocomotionStateMachine.cpp
     src/gameplay/PerFrameTick.cpp
     src/gameplay/Perception.cpp
     src/gameplay/PlayerState.cpp
+    src/gameplay/ScriptedEvents.cpp
     src/combat/ActorVolumes.cpp
     src/combat/AttackChain.cpp
     src/combat/AttackResolution.cpp
@@ -62,6 +67,7 @@ add_library(selva-oscura-lib STATIC
     src/render/Texture.cpp
     src/render/TreeShader.cpp
     src/render/WorldRenderer.cpp
+    src/world/Door.cpp
     src/world/JsonRegion.cpp
     src/world/PhysicsRegion.cpp
     src/world/RegionBootstrap.cpp
@@ -69,12 +75,18 @@ add_library(selva-oscura-lib STATIC
     src/world/Terrain.cpp
     src/world/TreeAssets.cpp
     src/ui/ActorHud.cpp
+    src/ui/BossHud.cpp
     src/ui/ComboHud.cpp
     src/ui/Screens.cpp
     src/ui/TuningPanel.cpp
     src/world/Collision.cpp
     src/AppStateGlobal.cpp
     src/SaveManager.cpp
+    src/items/CategoryRegistry.cpp
+    src/items/InventoryOps.cpp
+    src/items/ItemRegistry.cpp
+    src/items/SealHandlers.cpp
+    src/items/UseHandlers.cpp
     src/ops/InventoryOps.cpp
     src/Tunables.cpp
     src/Formulas.cpp
@@ -427,6 +439,8 @@ add_executable(selva-oscura-tests
     tests/camera_raycast_test.cpp
     tests/camera_physics_primitives_test.cpp
     tests/region_schema_test.cpp
+    tests/boss_archetype_test.cpp
+    tests/boss_trigger_test.cpp
 )
 target_link_libraries(selva-oscura-tests PRIVATE selva-oscura-lib Catch2::Catch2WithMain)
 set_target_properties(selva-oscura-tests PROPERTIES

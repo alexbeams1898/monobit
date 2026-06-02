@@ -119,34 +119,51 @@ Five minutes or twenty — the player chooses.
 > all wired (see [animals_and_multi_skeleton.md](animals_and_multi_skeleton.md)).
 > Combat tuning, encounter pacing, and reward structure are WIP.
 
-When the Vagrant approaches the colle, **Lupa** stalks down from the
-slope. She is the last living thing in the Wood — gaunt, insatiable
-(per Dante's *Inferno* I.49–60), her nature the appetite-form that
-let her survive a dying biome where her sister-legends could not. Her
-silhouette on a dead slope is the player's first encounter with the
-register of the game: tragic, mournful, the absence of what should
-have been here felt in the air.
+When the Vagrant approaches the chapel, **Lupa** is already there —
+**sitting outside it**. Not stalking, not pacing. Sitting still.
+She is visibly weak, tired, malnourished, gaunt (per Dante's *Inferno*
+I.49–60, but worn further by the years she alone survived a dying
+Wood). She looks sad. She looks like an animal at the end of
+something. The player's first sight of her is grief, not threat —
+most opening-boss reveals signal "this will hurt you"; Lupa's reveal
+is the inverse. An animal that looks like it's barely surviving.
 
-The Vagrant fights Lupa alone. Combat profile is the Unburdened class
-(see [classes.md](classes.md)) since no measurement has occurred.
-`permanent_on_death: true` — fought once per save, same pattern as
-keepers. After she falls, the slope stays empty in every subsequent
-cycle. The empty slope itself becomes the monument to what was.
+**Encounter beat: sitting → standing → fighting.** Lupa does not rush
+the Vagrant. She stands up when he approaches close enough to be a
+real threat — that stand is its own animation moment (Quaternius
+`Jump_ToIdle` clip serves as the "rise to attention" beat;
+`Idle_2_HeadLow` or similar for the sad-standing-idle pre-engage).
+Then combat begins.
+
+**Combat tuning paradox (LOCKED):** despite the visible weakness,
+**Lupa is mechanically dangerous — two-tap deadly to an unprepared
+player**. She is an apex predator running on her last reserves, and
+an apex predator's last reserves are still apex. The contrast
+between visual weakness and mechanical reality IS the tragedy: the
+player kills something that looked sad, learns afterward it was
+still dangerous, and feels worse about it. **Do not tune her down to
+match the visual.**
+
+Combat profile is the Unburdened class (see [classes.md](classes.md))
+since no measurement has occurred. `permanent_on_death: true` —
+fought once per save, same pattern as keepers. After she falls, the
+chapel exterior stays empty in every subsequent cycle. The empty
+chapel-front itself becomes the monument to what was.
 
 **Tonal register: tragic, sift-of-melancholy.** The absence of Lonza
-and Leone is felt in the encounter — the slope was meant for three;
-only one stands. The player who pieces it together (via item text /
-NPC dialogue / Grimoire fragments across runs) reads the absence; the
-player who doesn't reads a lone gaunt apex-beast on a dead slope,
-which already lands tragically. Either way, the encounter carries
-the weight of *what was lost.* Quiet grief register, not horror, not
-boss-of-the-week.
+and Leone is felt in the encounter — the colle's slope was meant for
+three; only one sits at the chapel. The player who pieces it together
+(via item text / NPC dialogue / Grimoire fragments across runs) reads
+the absence; the player who doesn't reads a lone gaunt apex-beast in
+front of a stone tomb, which already lands tragically. Either way,
+the encounter carries the weight of *what was lost.* Quiet grief
+register, not horror, not boss-of-the-week.
 
 **Texture note.** Lupa has been here a long time — long enough to
 have outlasted her sister-legends, long enough to have hunted in a
 Wood progressively emptying around her. Her fight has a *patina* of
-endurance — wary moves, instinct sharpened by lonely centuries. She
-is worn but no less terrifying. The opening should communicate this
+endurance — wary moves, instinct sharpened by lonely centuries.
+Worn but no less terrifying. The opening should communicate this
 texture without stating it. Specifics deferred to combat / writing.
 
 **Player-knowledge note (per
@@ -159,28 +176,68 @@ surfaced gradually only via fragments in later content.
 
 ### Beat 3 — The Guide arrives
 
-After the beasts fall, the Guide appears in the Wood. Not before
-— specifically after struggle, paralleling Dante's Virgil meeting
-him in the lower place after the retreat.
+After Lupa falls, the Guide emerges from the chapel. The chapel door
+— locked at the Vagrant's arrival — opens, and the Guide steps out
+into the Wood. Not before; specifically after the encounter, paralleling
+Dante's Virgil meeting him in the lower place after the retreat.
 
 The Guide speaks in old register. He is **warm, friendly,
 procedural** — unambiguously a companion. No register-friction the
 player should feel; no faint wrongness; no uncanny undertone. The
 opening Guide is *fully himself*. He is **glad to see the Vagrant**
-in a way he cannot articulate — the warmth of a soul who has been
-alone for centuries, whose role-as-Guide has gone unused, finally
-able to be the thing he was named to be. He treats the Vagrant's
-presence as expected. He explains the descent as the path forward.
-He frames it as how souls proceed.
+in a way he cannot articulate — the warmth of a guide-shaped soul,
+finally able to be the thing he was named to be. He treats the
+Vagrant's presence as expected. He explains the descent as the path
+forward. He frames it as how souls proceed.
 
 The gladness is real but the conditions for it were authored.
-Beatrice arranged his isolation across centuries — routing other
-unjudged souls away from this selva oscura so the Guide-role would
-remain unused. By the time the Vagrant arrives, the Guide has been
-*made hungry* for the encounter. He doesn't know this. He just feels
+Beatrice positioned the Guide in this Wood, at this time, with this
+context, for this arrival. He doesn't know this. He just feels
 relief; he just feels the pleasure of finally being able to guide
 someone. (See *The Guide / Identity*, below, for the full
 instrumentalization.)
+
+> **How Lupa actually died (canonical).** The Guide did NOT fight her.
+> A soul-form actor cannot win a direct engagement with an apex animal,
+> and the Wood permits combat across forms (see
+> [bestiary.md](bestiary.md) *Soul-form vs animal-form*).
+> Instead: the Guide arrived in the Wood, found Lonza's carcass near
+> the chapel (Lonza had died of starvation in the dying pre-failure
+> Wood — also Beatrice-arranged), poisoned the carcass, and waited
+> inside the chapel for Lupa to scavenge it.
+>
+> Lupa, gaunt and starving — kin-of-Lonza, the last apex predator on
+> the slope — ate the carcass. She had no reason not to: the carcass
+> was unprecedented food, kin she had hunted alongside, and her hunger
+> was insatiable by canon (*Inferno* I.49–60: *mai non empie la
+> bramosa voglia*). The poison began acting immediately. By the
+> time the Vagrant arrives at the chapel, Lupa is already dying —
+> visibly weak, sad, sitting because she can no longer stand long.
+>
+> The Vagrant engages her. Mechanically the player damages her and
+> "kills" her; canonically she was already dead the moment she took
+> the bite. The Vagrant's role in her death is participatory but
+> not load-bearing. She would have died on the slope within minutes
+> if the Vagrant had simply walked past.
+>
+> The Guide perceives this as a deliberate act of self-preservation
+> and path-clearing: an apex animal in his vicinity, an unjudged soul
+> arriving, a poisonable carcass at hand, no other route. He believes
+> he chose. He chose the way a guide-shaped soul placed precisely
+> there with precisely those variables in front of him *would* choose.
+> Beatrice did not need to compel him. She arranged conditions such
+> that his own nature would produce the act. This is the pattern of
+> every subsequent thing he does for the Vagrant: he believes he is
+> acting; he is. He is also executing her plan. Both are true
+> simultaneously. **The cruelty of his instrumentalization is that
+> the act felt like his own choice.**
+>
+> The player's perception of the encounter: a starving wolf, a fight,
+> a victory, a companion who emerges. The actual structure: Beatrice's
+> opening move, executed through two pawns who do not know they are
+> pawns. The reveal — that the Guide killed Lupa, that Beatrice
+> authored the sequence — surfaces gradually via Grimoire fragments
+> and (specifically) the Guide's posthumous entries at R2.
 
 The Guide's *off-ness* develops only later, as the contrapasso-leak
 arc proceeds. Per the degradation table (below), he is *coherent,
@@ -305,10 +362,10 @@ volume center of the game.
 
 ### Identity
 
-He is a soul who **refused Hell's measurement at the gates centuries
-ago**. The selva oscura received him — the natural cosmological
-destination of the unjudged (per setting.md *The selva oscura as
-cosmological destination*). He has been there since.
+He is a soul who **refused Hell's measurement at the gates**. The
+selva oscura received him — the natural cosmological destination of
+the unjudged (per setting.md *The selva oscura as cosmological
+destination*). He has been there since.
 
 **He is unjudged**, like the Vagrant. The same cosmological rule
 applies — Hell cannot grip him because he carries no imprint. This is
@@ -323,9 +380,34 @@ unburdened. He does not know Beatrice found him long after he had
 lost any sense of his origins. He just is the Guide as he understands
 himself: a helpful figure in the Wood.
 
+**Character.** Easygoing, intelligent, tough, protective. A genuinely
+*good* soul. The kind of person who, in life, would be reliably there
+for others — quietly capable, refusing his own importance, returning
+warmth without expectation. The tragedy of his fate works *because*
+he is good. A used pawn who was selfish or weak would be a different
+story (a Patches betrayal). The Guide is the inverse: his goodness IS
+the leverage Beatrice uses on him. His instincts for help, for
+protection, for steady presence are real and unaltered; they are
+also the exact instruments by which the plan proceeds. He lost his
+way (refused measurement, eroded memory, became Beatrice's vessel) —
+but he never lost the *shape*. The shape is what kills him.
+
 **He does not know Beatrice's plan.** He believes he is helping. His
 warmth, his help, his belief that he is doing the right thing — all
 real, all genuine. He is a pawn who does not know he is a pawn.
+
+**Every act of his is plan-execution.** From the Lupa-poisoning
+(*Beat 2*, *Beat 3* above) through to the climax (*The climax*
+below), the Guide acts on what feels to him like agency: practical
+choice, self-preservation, helping the Vagrant, doing what a guide
+does. The Vagrant-facing perception aligns with this. The canonical
+reality is that every choice was authored — Beatrice arranged
+conditions such that his guide-shape, placed in those conditions,
+would naturally produce the outcome her plan required. She did not
+compel; she configured. The Lupa-poisoning was the first authored
+act the player witnesses (after the fact). The Seal-offer is the
+second. Every Hell-projection is the same pattern. **He believes he
+chose. He did. He chose the way she needed him to.** Both are true.
 
 **What he is, before Beatrice.** The Guide's *guide-shape* — his
 inclination toward help, his warmth, his patience — predates his
@@ -339,12 +421,11 @@ an unjudged soul whose natural inclination was to be helpful.
 of his original life had eroded and his guide-shape had no
 biographical anchor. She named what he was: *the Guide*. She
 supplied the role-as-identity his amnesia could not produce on its
-own. She also **arranged his isolation** — routing other unjudged
-souls away from this selva oscura so the Guide-role would remain
-unused until her plan needed it. By the time the Vagrant arrives,
-the Guide has been *himself* (guide-shaped) inside a *named role*
-(her construction) under *cultivated isolation* (her arrangement)
-for centuries.
+own. She positioned him in this Wood at this time for the Vagrant's
+arrival — placed for this moment, ready for this moment. The Guide
+has been *himself* (guide-shaped) inside a *named role* (her
+construction) inside a *configured arrival sequence* (her arrangement)
+from his placement onward.
 
 **What this means.** His warmth at the Vagrant's arrival is real —
 he is genuinely a helper-soul finally able to help. His role-as-Guide
@@ -353,7 +434,8 @@ pretense. Both are him. Both were captured by Beatrice. He is not a
 fake; he is *himself, used.* The cruelty of his instrumentalization is
 that she did not replace him with something he wasn't; she co-opted
 what was already true about him, deprived him of opportunity to
-express it, and released it on the Vagrant when her plan needed it.
+express it on his own terms, and released it on the Vagrant when her
+plan needed it.
 
 His unmeasured state is what lets him host Beatrice's projection
 without Hell installing him into something else. **The same projection

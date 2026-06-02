@@ -27,19 +27,17 @@ void selvaPerFrame(::Engine& engine, ::EntityManager& em, double dt);
 // pause menu).
 void syncInputEdgesFromCurrentState();
 
-// Materialize the active character's persistent state from a PlayerProfile
-// into the player Actor, AND set runtime-only fields (position from
-// terrain spawn config, full hp, cleared combat / lock / one-shot state).
+// Materialize an active character's profile into the live world. Owns
+// the entire load-character contract: player actor (pos/yaw/HP/clear
+// combat state), enemy pool (cycle-reset + apply profile.felled_bosses),
+// doors (apply profile.door_states or revert to JSON initial_state).
 //
-// Called on every Playing-enter (New Game or Load Game) so the runtime
-// player starts from a clean baseline plus whatever the profile says
-// the character knows / has earned. Both new and loaded characters
-// always spawn at the configured spawn point; position is NOT
-// persistent in v1 (the soulslike convention is to respawn at a save
-// point, not at the quit location). When persistent-character fields
-// land on PlayerProfile (class, evolution stage, lifetime sangue,
-// keepers felled, etc.), this function grows to copy them in.
-void loadActiveCharacterIntoPlayer(const selva::PlayerProfile& profile);
+// Called on every Playing-enter (New Game or Load Game). Every piece
+// of profile state that maps into world state MUST flow through this
+// function -- no scattered "applyX" calls in main.cpp. When a new
+// per-character field lands on PlayerProfile, the application step
+// goes here so character-switch reconciliation stays in one place.
+void loadActiveCharacterIntoWorld(const selva::PlayerProfile& profile);
 
 // Symmetric write-back: copy the player Actor's persistent fields out
 // to the given PlayerProfile. Called by the pause-menu Save action and
@@ -53,6 +51,10 @@ void saveActiveCharacterFromPlayer(selva::PlayerProfile& profile);
 // completes (handled per-frame inside selvaPerFrame). Called from the
 // New-Game flow only -- respawns place the Vagrant standing.
 void beginWakeScene();
+
+// Clears wake-scene runtime tracking. Call on Playing-exit so the
+// watcher doesn't carry across a character switch.
+void resetWakeSceneTracking();
 
 // Render-world entry point. Frame capture readback lives here too
 // (uses tickstate::frameCapture* flags).

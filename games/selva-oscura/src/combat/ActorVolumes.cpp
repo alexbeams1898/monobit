@@ -4,8 +4,10 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <nlohmann/json.hpp>
 
+#include <cstdint>
 #include <cstdio>
 #include <fstream>
+#include <unordered_set>
 
 namespace selva::combat
 {
@@ -71,6 +73,33 @@ void appendActorHurtboxes(const selva::anim::PoseSampler& sampler, const glm::ma
     // archetypes carry their own hurtboxes array. Empty = no
     // hurtboxes (actor takes no hits; intentional or misconfigured).
     pool.reserve(pool.size() + body.hurtbox_decls.size());
+    // Once-per-actor diagnostic: log the first time we build hurtboxes
+    // for each (owner kind, owner id) combo. Detects silent joint-name
+    // misses (findJoint -> -1 collapses the capsule to actor origin,
+    // and the player's swing-capsule sweeps over actor.pos which is at
+    // the wolf's FEET -- nowhere near her body -- so hits land but
+    // overlap nothing and the wolf takes no damage).
+    static std::unordered_set<std::uint64_t> s_logged;
+    const std::uint64_t key = (static_cast<std::uint64_t>(static_cast<int>(owner.kind)) << 32) |
+                              static_cast<std::uint64_t>(static_cast<std::uint32_t>(owner.index));
+    if (s_logged.insert(key).second)
+    {
+        std::fprintf(stderr,
+                     "[hurtbox-build] owner_kind=%d owner_index=%d decls=%zu base_r=%.3f\n",
+                     static_cast<int>(owner.kind), owner.index, body.hurtbox_decls.size(),
+                     base_r);
+        for (const auto& d : body.hurtbox_decls)
+        {
+            const int idx_a = sampler.findJoint(d.joint_a.c_str());
+            const int idx_b = sampler.findJoint(d.joint_b.c_str());
+            std::fprintf(stderr,
+                         "  '%s'->%d  '%s'->%d  region=%d radius_scale=%.2f%s\n",
+                         d.joint_a.c_str(), idx_a, d.joint_b.c_str(), idx_b,
+                         static_cast<int>(d.region), d.radius_scale,
+                         (idx_a < 0 || idx_b < 0) ? "  <-- MISSING JOINT" : "");
+        }
+        std::fflush(stderr);
+    }
     for (const auto& d : body.hurtbox_decls)
     {
         Hurtbox h = capsuleBetween(sampler, actor_model, d.joint_a.c_str(), d.joint_b.c_str(),

@@ -781,9 +781,27 @@ void PoseSampler::playOneShot(const AnimationClip& clip, float blend_in_seconds,
     // extractTrackHipDelta's two-branch behavior — traveling
     // clips translate world pos; in-place clips don't.
     s.one_shot.hip_path_cached = clipHipPathLength(clip).path_length;
-    samplerLog("[hip-classify-oneshot] clip={} path={:.3f}m class={}", s.one_shot.registry_key,
-               s.one_shot.hip_path_cached,
-               s.one_shot.hip_path_cached >= 0.5f ? "TRAVELING" : "IN_PLACE");
+    // Diagnostic: report the resolved source (explicit from
+    // locomotion.json or default Velocity) + the per-extract heuristic
+    // outcome the Velocity branch would land on, so we can see when a
+    // clip's hip path crosses the 1.5m threshold without an explicit
+    // declaration. Real extraction decision lives in
+    // extractTrackHipDelta -- same rule both sites.
+    const TranslationSource oneshot_src =
+        s.one_shot.registry_key.empty()
+            ? TranslationSource::Velocity
+            : locomotionConfig().translationSource(s.one_shot.registry_key);
+    constexpr float kOneShotThreshold = 1.5f;
+    const bool oneshot_traveling = (oneshot_src == TranslationSource::RootMotion) ||
+                                   (oneshot_src == TranslationSource::Velocity &&
+                                    s.one_shot.hip_path_cached >= kOneShotThreshold);
+    samplerLog("[hip-classify-oneshot] clip={} path={:.3f}m source={} class={}",
+               s.one_shot.registry_key, s.one_shot.hip_path_cached,
+               translationSourceName(oneshot_src), oneshot_traveling ? "TRAVELING" : "IN_PLACE");
+    std::fprintf(stderr, "[hip-classify-oneshot] clip='%s' path=%.3fm source=%s class=%s\n",
+                 s.one_shot.registry_key.c_str(), s.one_shot.hip_path_cached,
+                 translationSourceName(oneshot_src), oneshot_traveling ? "TRAVELING" : "IN_PLACE");
+    std::fflush(stderr);
     const float dur = s.one_shot.animation ? s.one_shot.animation->duration() : 0.0f;
     s.one_shot.time_seconds = std::clamp(start_time_seconds, 0.0f, std::max(0.0f, dur - 1e-4f));
     s.one_shot_phase = OneShotPhase::BlendIn;
@@ -1053,7 +1071,16 @@ glm::vec2 PoseSampler::sampleHipXZAt(const AnimationClip& clip, float t_seconds)
 
     ozz::animation::SamplingJob::Context ctx;
     ctx.Resize(n_joints);
+    // Init locals from rest pose so unwritten joints (clips that
+    // animate a subset) don't carry uninitialized quat garbage into
+    // LocalToModelJob's IsNormalizedEst assertion. Same bug class
+    // as computeHipXZPathLength below.
     std::vector<ozz::math::SoaTransform> locals(n_soa);
+    {
+        const auto rest = skel.joint_rest_poses();
+        for (int i = 0; i < n_soa; ++i)
+            locals[i] = rest[i];
+    }
     std::vector<ozz::math::Float4x4> models(n_joints);
 
     ozz::math::Float4x4 root_storage;
@@ -1095,7 +1122,13 @@ std::vector<glm::vec2> collectHipXZSamples(const ozz::animation::Animation& anim
     const int n_soa = skel.num_soa_joints();
     ozz::animation::SamplingJob::Context ctx;
     ctx.Resize(n_joints);
+    // Init locals from rest pose -- see computeHipXZPathLength.
     std::vector<ozz::math::SoaTransform> locals(n_soa);
+    {
+        const auto rest = skel.joint_rest_poses();
+        for (int i = 0; i < n_soa; ++i)
+            locals[i] = rest[i];
+    }
     std::vector<ozz::math::Float4x4> models(n_joints);
     samples.reserve(static_cast<std::size_t>(n_steps));
     for (int i = 0; i < n_steps; ++i)
@@ -1211,7 +1244,13 @@ std::vector<std::vector<glm::vec3>> collectJointXYZSamples(const ozz::animation:
     const int n_soa = skel.num_soa_joints();
     ozz::animation::SamplingJob::Context ctx;
     ctx.Resize(n_joints);
+    // Init locals from rest pose -- see computeHipXZPathLength.
     std::vector<ozz::math::SoaTransform> locals(n_soa);
+    {
+        const auto rest = skel.joint_rest_poses();
+        for (int i = 0; i < n_soa; ++i)
+            locals[i] = rest[i];
+    }
     std::vector<ozz::math::Float4x4> models(n_joints);
 
     std::vector<std::vector<glm::vec3>> joint_samples(joint_indices.size());
@@ -1811,18 +1850,32 @@ static void bindLocoCurrentToNewClip(PoseSampler::Impl& s, const ozz::animation:
     s.loco_current.animation = desired;
     s.loco_current.registry_key = desired_key;
     s.loco_current.time_seconds = resume_t;
+    std::fprintf(stderr,
+                 "[bind-loco] desired_key='%s' anim=%p skel=%p skel.num_joints=%d "
+                 "anim.num_tracks=%d\n",
+                 desired_key.c_str(), static_cast<const void*>(desired),
+                 static_cast<const void*>(s.skeleton),
+                 s.skeleton ? s.skeleton->num_joints() : -1,
+                 desired ? desired->num_tracks() : -1);
+    std::fflush(stderr);
     s.loco_current.hip_path_cached = computeHipXZPathLength(s, desired);
-    // Mirrors extractTrackHipDelta classification — JSON-declared
-    // source OR 1.5m hip-path threshold for unconfigured clips.
+    // Mirrors extractTrackHipDelta classification: explicit RootMotion
+    // / InPlace from locomotion.json wins; Velocity falls back to the
+    // 1.5m hip-path heuristic.
     constexpr float kTravelingClipThreshold = 1.5f;
     const TranslationSource src = desired_key.empty()
                                       ? TranslationSource::Velocity
                                       : locomotionConfig().translationSource(desired_key);
-    const bool is_traveling = (src == TranslationSource::RootMotion) ||
-                              (s.loco_current.hip_path_cached >= kTravelingClipThreshold);
+    const bool is_traveling =
+        (src == TranslationSource::RootMotion) ||
+        (src == TranslationSource::Velocity && s.loco_current.hip_path_cached >= kTravelingClipThreshold);
     samplerLog("[hip-classify-loco] clip={} path={:.3f}m source={} class={}", desired_key,
                s.loco_current.hip_path_cached, translationSourceName(src),
                is_traveling ? "TRAVELING" : "IN_PLACE");
+    std::fprintf(stderr, "[hip-classify-loco] clip='%s' path=%.3fm source=%s class=%s\n",
+                 desired_key.c_str(), s.loco_current.hip_path_cached, translationSourceName(src),
+                 is_traveling ? "TRAVELING" : "IN_PLACE");
+    std::fflush(stderr);
     s.loco_current.finished = false;
     s.loco_current.resetHipTracking();
 }
@@ -2105,9 +2158,35 @@ float computeHipXZPathLength(const PoseSampler::Impl& s, const ozz::animation::A
     const ozz::animation::Skeleton& skel = *s.skeleton;
     const int n_joints = skel.num_joints();
     const int n_soa = skel.num_soa_joints();
+    std::fprintf(stderr,
+                 "[hip-path-len] ENTER anim=%p skel.num_joints=%d skel.num_soa=%d "
+                 "anim.num_tracks=%d anim.duration=%.3f hips_joint_idx=%d\n",
+                 static_cast<const void*>(anim), n_joints, n_soa, anim->num_tracks(), dur,
+                 s.hips_joint_idx);
+    std::fflush(stderr);
+    if (anim->num_tracks() != n_joints)
+    {
+        std::fprintf(stderr,
+                     "[hip-path-len] !!! MISMATCH anim.num_tracks=%d vs skel.num_joints=%d "
+                     "-- clip baked against a different skeleton\n",
+                     anim->num_tracks(), n_joints);
+        std::fflush(stderr);
+    }
     ozz::animation::SamplingJob::Context ctx;
     ctx.Resize(n_joints);
+    // Initialize locals from the skeleton's rest pose. SamplingJob
+    // only writes joints the animation animates; if a clip animates
+    // a subset (common with extra-joints-vs-rig mismatches like the
+    // wolf having more bones than the player rig, or unused IK
+    // targets), the unwritten SoaTransform lanes contain garbage
+    // memory. LocalToModelJob then samples those garbage quats and
+    // hits the IsNormalizedEst assertion at soa_float4x4:105.
     std::vector<ozz::math::SoaTransform> locals(n_soa);
+    {
+        const auto rest = skel.joint_rest_poses();
+        for (int i = 0; i < n_soa; ++i)
+            locals[i] = rest[i];
+    }
     std::vector<ozz::math::Float4x4> models(n_joints);
     ozz::math::Float4x4 root_storage;
     std::memcpy(&root_storage, &s.root_transform, sizeof(glm::mat4));
@@ -2493,15 +2572,23 @@ void extractTrackHipDelta(Track& t, int hip_soa, int hip_lane)
         t.resetHipTracking();
         return;
     }
-    // RootMotion always extracts; Velocity extracts only above the
-    // hip-path threshold (smaller clips leave hip in pose for
-    // weight-shifts to read).
+    // Three explicit modes (per docs/design or locomotion.json):
+    //   RootMotion -> always extract+translate
+    //   InPlace    -> never extract; hip stays in pose
+    //   Velocity   -> heuristic: extract only above the 1.5m threshold
+    // The threshold is a fallback for unauthored clips. Every clip
+    // that matters should declare its mode in locomotion.json so the
+    // heuristic doesn't surprise us (the wolf bite's 0.586m
+    // path crossed the OLD 0.5m one-shot threshold and silently slid
+    // the actor forward each fire -- a bandaid the threshold raise
+    // would have papered over without removing the failure mode).
     constexpr float kTravelingClipThreshold = 1.5f;
     const TranslationSource source = t.registry_key.empty()
                                          ? TranslationSource::Velocity
                                          : locomotionConfig().translationSource(t.registry_key);
-    const bool is_traveling =
-        (source == TranslationSource::RootMotion) || (t.hip_path_cached >= kTravelingClipThreshold);
+    const bool is_traveling = (source == TranslationSource::RootMotion) ||
+                              (source == TranslationSource::Velocity &&
+                               t.hip_path_cached >= kTravelingClipThreshold);
 
     ozz::math::SoaTransform& T = t.local_transforms[hip_soa];
     alignas(16) float tx[4];

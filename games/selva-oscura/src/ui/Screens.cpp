@@ -4,11 +4,18 @@
 #include "AppStateGlobal.h"
 #include "Engine.h"
 #include "SaveManager.h"
+#include "Scene.h"
 #include "ecs/GameComponents.h"
 #include "ecs/ItemConfig.h"
 #include "gameplay/Actor.h"
+#include "gameplay/BossState.h"
 #include "gameplay/PerFrameTick.h"
 #include "gameplay/TickState.h"
+#include "items/CategoryRegistry.h"
+#include "items/InventoryOps.h"
+#include "items/ItemRegistry.h"
+#include "items/UseHandlers.h"
+#include "ui/BossHud.h"
 #include "ops/InventoryOps.h"
 
 #include <imgui.h>
@@ -59,9 +66,37 @@ void setPhase(GameState::Phase next)
     const bool was_playing = (gs.phase == GameState::Phase::Playing);
     const bool will_be_playing = (next == GameState::Phase::Playing);
     if (was_playing && !will_be_playing)
+    {
         sJustLeftPlaying = true;
+        // Symmetric teardown rule: any exit from active gameplay --
+        // quit-to-main-menu, save-and-quit, settings screen, ANY phase
+        // change leaving Playing -- runs the boss-state pipeline so
+        // the fight ends through the same channel as it started.
+        selva::gameplay::tearDownActiveBosses();
+        // End any active cinematic Scene. Without this, leaving Playing
+        // mid-scene (wake-anim, Lupa-death, Guide-rescue) leaves the
+        // Scene singleton in active state; the next Playing-enter would
+        // try begin() on top of it and assert.
+        if (selva::scene::active())
+            selva::scene::end();
+        selva::gameplay::resetWakeSceneTracking();
+    }
     if (!was_playing && will_be_playing)
+    {
         sJustEnteredPlaying = true;
+        // Drop per-session UI state that survives across the main-
+        // menu round-trip. Without this, BossHud's static cache holds
+        // the prior session's Active mode, then sees no engaged boss
+        // on the first frame of the new session and flashes the
+        // empty HP bar + transition to FadingOut/Felled. Per-session
+        // UI state must be reset on every session entry.
+        selva::ui::resetBossHud();
+        // Defensive: ensure no Scene is active when entering Playing.
+        // The leave-Playing branch above should have cleared it, but
+        // belt-and-suspenders against any path that bypassed setPhase.
+        if (selva::scene::active())
+            selva::scene::end();
+    }
     gs.phase = next;
 }
 
@@ -408,24 +443,128 @@ void renderPauseStatusTab()
 void renderPauseInventoryTab()
 {
     ImGui::Spacing();
-    const auto& inv = playerInventory();
-    ImGui::Text("Slots: %d / %d", static_cast<int>(inv.items.size()), inv.max_slots);
-    ImGui::Spacing();
-    if (inv.items.empty())
+    PlayerProfile* profile = activePlayerProfile();
+    if (profile == nullptr)
     {
-        ImGui::TextDisabled("(empty - no items yet)");
+        ImGui::TextDisabled("(no active character)");
         return;
     }
-    const auto& reg = itemRegistry();
-    for (const auto& it : inv.items)
+    selva::items::Inventory& inv = profile->inventory;
+    const auto& cats = selva::items::categoryRegistry().all();
+    const auto& items = selva::items::itemRegistry();
+    static std::string sSelectedCategory;
+    static std::string sSelectedItem;
+
+    if (cats.empty())
     {
-        const ItemDef* def = reg.find(it.config_path);
-        const char* name = (def != nullptr) ? def->name.c_str() : it.config_path.c_str();
-        if (it.quantity > 1)
-            ImGui::Text("- %s x%d", name, it.quantity);
-        else
-            ImGui::Text("- %s", name);
+        ImGui::TextDisabled("(no inventory categories loaded)");
+        return;
     }
+    if (sSelectedCategory.empty())
+        sSelectedCategory = cats.front().id;
+
+    // Category tab bar.
+    if (ImGui::BeginTabBar("##inv_cats"))
+    {
+        for (const auto& cat : cats)
+        {
+            if (ImGui::BeginTabItem(cat.display_name.c_str()))
+            {
+                if (sSelectedCategory != cat.id)
+                {
+                    sSelectedCategory = cat.id;
+                    sSelectedItem.clear();
+                }
+                ImGui::EndTabItem();
+            }
+        }
+        ImGui::EndTabBar();
+    }
+
+    const std::vector<selva::items::Entry>* entries =
+        selva::items::entriesIn(inv, sSelectedCategory);
+    ImGui::Spacing();
+
+    // Two-column layout: entry list (left) + detail panel (right).
+    const float left_w = 240.0f;
+    ImGui::BeginChild("##inv_list", ImVec2(left_w, 240), true);
+    if (entries == nullptr || entries->empty())
+    {
+        ImGui::TextDisabled("(empty)");
+    }
+    else
+    {
+        for (const auto& e : *entries)
+        {
+            std::string item_id;
+            std::string suffix;
+            if (const auto* p = std::get_if<selva::items::PossessionEntry>(&e))
+            {
+                item_id = p->item_id;
+            }
+            else if (const auto* s = std::get_if<selva::items::StackEntry>(&e))
+            {
+                item_id = s->item_id;
+                suffix = "  x" + std::to_string(s->count);
+            }
+            else if (const auto* x = std::get_if<selva::items::InstancedEntry>(&e))
+            {
+                item_id = x->item_id;
+                if (x->upgrade_level > 0)
+                    suffix = "  +" + std::to_string(x->upgrade_level);
+            }
+            const selva::items::ItemDef* def = items.get(item_id);
+            const std::string label =
+                (def != nullptr ? def->display_name : item_id) + suffix;
+            const bool selected = (sSelectedItem == item_id);
+            if (ImGui::Selectable(label.c_str(), selected))
+                sSelectedItem = item_id;
+        }
+    }
+    ImGui::EndChild();
+
+    ImGui::SameLine();
+    ImGui::BeginChild("##inv_detail", ImVec2(0, 240), true);
+    const selva::items::ItemDef* sel = items.get(sSelectedItem);
+    if (sel == nullptr)
+    {
+        ImGui::TextDisabled("Select an item.");
+    }
+    else
+    {
+        ImGui::TextUnformatted(sel->display_name.c_str());
+        ImGui::Separator();
+        ImGui::Spacing();
+        ImGui::TextWrapped("%s", sel->description.c_str());
+        ImGui::Spacing();
+
+        if (!sel->use_handler.empty())
+        {
+            selva::items::UseGate gate;
+            if (!sel->use_condition.empty())
+            {
+                const auto* cond = selva::items::getUseCondition(sel->use_condition);
+                if (cond != nullptr)
+                    gate = (*cond)();
+            }
+            if (!gate.enabled)
+                ImGui::BeginDisabled();
+            if (ImGui::Button("Use"))
+            {
+                const auto* action = selva::items::getUseAction(sel->use_handler);
+                if (action != nullptr)
+                    (*action)(inv, sSelectedItem);
+                sSelectedItem.clear();
+            }
+            if (!gate.enabled)
+            {
+                ImGui::EndDisabled();
+                if (!gate.disabled_reason.empty() && ImGui::IsItemHovered())
+                    ImGui::SetTooltip("%s", gate.disabled_reason.c_str());
+            }
+        }
+    }
+    ImGui::EndChild();
 }
 
 void renderPauseEquipmentTab()
@@ -459,7 +598,7 @@ void renderPauseEquipmentTab()
 bool renderPauseMenu()
 {
     bool quit = false;
-    beginCenteredWindow("##pause", ImVec2(460, 460));
+    beginCenteredWindow("##pause", ImVec2(720, 560));
     ImGui::SetWindowFontScale(1.3f);
     ImGui::TextUnformatted("Paused");
     ImGui::SetWindowFontScale(1.0f);
@@ -498,7 +637,7 @@ bool renderPauseMenu()
     }
 
     ImGui::End();
-    drawHintBar("[Esc/RMB] Resume", ImVec2(460, 460));
+    drawHintBar("[Esc/RMB] Resume", ImVec2(720, 560));
 
     return quit;
 }

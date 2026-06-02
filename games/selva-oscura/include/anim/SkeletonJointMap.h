@@ -1,9 +1,22 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 namespace selva::anim
 {
+
+// One lockon anchor on an actor. List authored per-archetype (wolf
+// has head/torso/hindleg_*) or per-skeleton as the fallback for
+// archetypes that don't author (humanoid shades: a single "chest"
+// point). Player cycles between points on the same target via the
+// lockon-cycle input.
+struct LockOnPointDecl
+{
+    std::string id;     // stable label ("head", "torso", "hindleg_left")
+    std::string joint;  // joint name in the skeleton, resolved via PoseSampler::findJoint
+    bool is_default = false; // first acquire snaps to this point; one entry should set true
+};
 
 // Per-skeleton named joint references. Decouples PoseSampler from
 // Mixamo conventions: any skeleton (X_Bot, wolf, custom quadruped,
@@ -36,6 +49,15 @@ struct SkeletonJointMap
     // Feet -- IK anchor + pose-match.
     std::string foot_left;
     std::string foot_right;
+    // Default lockon points for any actor on this skeleton whose
+    // archetype doesn't author its own. Humanoid: one entry at
+    // "mixamorig:Spine2" labeled "chest". Wolf: a default Lupa or
+    // other wolf-archetype that hasn't authored points falls back to
+    // these (e.g. just "chest" at "Torso2"). Lupa's wolf.json overrides
+    // with 4 points (head/torso/hindleg_*) so the player can cycle.
+    // Empty list = no lock-on support for this skeleton (reticle
+    // doesn't draw, no crash).
+    std::vector<LockOnPointDecl> default_lockon_points;
 };
 
 // Load a skeleton joint map from JSON. Path is config/skeletons/<id>.json.

@@ -39,6 +39,7 @@ void renderChapelFloorMask();
 void renderTerrain();
 void renderGroundDecals();
 void renderStaticMeshes();
+void renderDoors();
 void renderTrees();
 
 // Depth-pass variants for shadow map. The caller must have already
@@ -46,6 +47,7 @@ void renderTrees();
 // the same geometry as its main counterpart but with depth-only output.
 void renderTerrainDepth();
 void renderStaticMeshesDepth();
+void renderDoorsDepth();
 void renderTreesDepth();
 
 } // namespace selva::render

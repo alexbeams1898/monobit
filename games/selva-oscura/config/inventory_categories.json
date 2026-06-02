@@ -1,0 +1,10 @@
+{
+  "categories": [
+    { "id": "key_items",   "display_name": "Key Items",   "order": 0 },
+    { "id": "weapons",     "display_name": "Weapons",     "order": 1 },
+    { "id": "armor",       "display_name": "Armor",       "order": 2 },
+    { "id": "consumables", "display_name": "Consumables", "order": 3 },
+    { "id": "spells",      "display_name": "Spells",      "order": 4 },
+    { "id": "materials",   "display_name": "Materials",   "order": 5 }
+  ]
+}

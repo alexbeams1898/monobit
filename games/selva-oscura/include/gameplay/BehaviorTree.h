@@ -138,6 +138,19 @@ class IfAwarenessAtLeast : public Node
     Awareness min_required;
 };
 
+// Leaf -- scripted-event walk toward Actor.scripted_target_pos. When
+// the target is set (squared distance from spawn > 0), drive intent
+// toward it; stop and clear when within scripted_stop_range. Used
+// by the Guide-rescue Scene and any future "NPC walks to authored
+// position" event. Succeeds when the target is active (returns
+// before any Selector falls through to LeafIdle); Failure when no
+// target is set, letting the next branch handle the frame.
+class LeafFollowScriptedTarget : public Node
+{
+  public:
+    NodeResult tick(Actor& actor, const selva::tuning::Tunables& tun) override;
+};
+
 // Leaf — pick a legal action from the actor's archetype, fire its
 // clip via playOneShot, set the cooldown. "Legal" = in range
 // (range_min..range_max), off cooldown, awareness >= min_awareness,

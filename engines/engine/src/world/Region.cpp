@@ -354,6 +354,30 @@ const RegionTrigger* checkPlayerTriggers(const glm::vec3& player_pos)
         }
     }
 
+    // Diagnostic: every ~60th frame (rough 1Hz at 60fps), dump player
+    // pos + per-trigger distance from each AABB so we can see how close
+    // we are to firing. Strip once trigger-fire bugs are gone.
+    static int s_diag_tick = 0;
+    if ((++s_diag_tick % 60) == 0)
+    {
+        for (const auto& t : cur->triggers())
+        {
+            const float dx = std::abs(player_pos.x - t.center.x) - t.half_extents.x;
+            const float dy = std::abs(player_pos.y - t.center.y) - t.half_extents.y;
+            const float dz = std::abs(player_pos.z - t.center.z) - t.half_extents.z;
+            const bool inside = (dx <= 0.0f) && (dy <= 0.0f) && (dz <= 0.0f);
+            std::fprintf(stderr,
+                         "[trigger-diag] '%s' player=(%.2f,%.2f,%.2f) "
+                         "aabb_center=(%.2f,%.2f,%.2f) half=(%.2f,%.2f,%.2f) "
+                         "slack(x,y,z)=(%.2f,%.2f,%.2f) inside=%d\n",
+                         t.id.c_str(), player_pos.x, player_pos.y, player_pos.z,
+                         t.center.x, t.center.y, t.center.z,
+                         t.half_extents.x, t.half_extents.y, t.half_extents.z, -dx, -dy, -dz,
+                         inside ? 1 : 0);
+        }
+        std::fflush(stderr);
+    }
+
     // Edge detection: fire only when the player ENTERS a trigger
     // (was not inside one last frame, or was inside a different one).
     if (hit == nullptr)
@@ -375,17 +399,24 @@ const RegionTrigger* checkPlayerTriggers(const glm::vec3& player_pos)
         stderr, "[region-manager] trigger ENTER '%s' (player at %.2f,%.2f,%.2f) in region '%s'\n",
         hit->id.c_str(), player_pos.x, player_pos.y, player_pos.z, cur->regionId().c_str());
 
-    // Fresh edge: queue the transition.
-    if (g.state == TransitionState::Idle && hit->target != kInvalidRegion)
+    // Fresh edge. RegionTransition triggers queue a transition;
+    // Custom triggers are returned to the caller (game) to dispatch.
+    if (hit->action == TriggerAction::RegionTransition)
     {
-        beginTransition(hit->target, hit->mode, hit->preserve_player_pos, hit->target_spawn_pos,
-                        hit->override_yaw, hit->target_yaw, hit->fade_duration_seconds);
+        if (g.state == TransitionState::Idle && hit->target != kInvalidRegion)
+        {
+            beginTransition(hit->target, hit->mode, hit->preserve_player_pos, hit->target_spawn_pos,
+                            hit->override_yaw, hit->target_yaw, hit->fade_duration_seconds);
+        }
+        else
+        {
+            std::fprintf(stderr,
+                         "[region-manager] trigger '%s' suppressed (state=%d, target=%u)\n",
+                         hit->id.c_str(), static_cast<int>(g.state), hit->target.id);
+        }
     }
-    else
-    {
-        std::fprintf(stderr, "[region-manager] trigger '%s' suppressed (state=%d, target=%u)\n",
-                     hit->id.c_str(), static_cast<int>(g.state), hit->target.id);
-    }
+    // Custom-action triggers fall through: caller inspects
+    // hit->action and hit->action_payload, dispatches game-side.
     return hit;
 }
 
