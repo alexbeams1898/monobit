@@ -27,17 +27,18 @@ void selvaPerFrame(::Engine& engine, ::EntityManager& em, double dt);
 // pause menu).
 void syncInputEdgesFromCurrentState();
 
-// Materialize an active character's profile into the live world. Owns
-// the entire load-character contract: player actor (pos/yaw/HP/clear
-// combat state), enemy pool (cycle-reset + apply profile.felled_bosses),
-// doors (apply profile.door_states or revert to JSON initial_state).
-//
-// Called on every Playing-enter (New Game or Load Game). Every piece
-// of profile state that maps into world state MUST flow through this
-// function -- no scattered "applyX" calls in main.cpp. When a new
-// per-character field lands on PlayerProfile, the application step
-// goes here so character-switch reconciliation stays in one place.
-void loadActiveCharacterIntoWorld(const selva::PlayerProfile& profile);
+// Full session-boundary reset. SINGLE source of truth for "fresh
+// state for this character." Called on New Game / Load Game /
+// character switch. Resets cinematic scene, sampler, bosses, enemy
+// pool, doors, and player actor in canonical order. Adding a new
+// per-character state holder means adding ONE line to its body.
+void hardResetWorldForCharacter(const selva::PlayerProfile& profile);
+
+// Mid-character cycle-boundary reset. Called on player death/respawn.
+// Re-streams enemies into spawn positions per "Per-circle reactivity"
+// (setting.md). Tighter scope than the hard reset: player is alive,
+// no cinematic in flight, doors persist mid-cycle.
+void softResetWorldForCycle();
 
 // Symmetric write-back: copy the player Actor's persistent fields out
 // to the given PlayerProfile. Called by the pause-menu Save action and

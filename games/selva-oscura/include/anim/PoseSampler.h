@@ -238,6 +238,13 @@ struct PoseSampler
     // release a held (freeze_last) one-shot like the unarmed block.
     void releaseOneShot();
 
+    // Wipe all runtime state to inactive: loco tracks, one-shot,
+    // blend weights, inertialization, hip-delta history. Preserves
+    // bindings (skeleton, joint map, IK probe). Use on character
+    // switch / fresh session boundaries so the next update() produces
+    // a clean pose unaffected by the prior character's last frame.
+    void hardReset();
+
     // True while a one-shot is the dominant clip (>50% weight). Combat
     // gameplay reads this to gate movement, queue follow-ups, etc.
     bool isOneShotActive() const;

@@ -4,7 +4,6 @@
 #include "AppStateGlobal.h"
 #include "Engine.h"
 #include "SaveManager.h"
-#include "Scene.h"
 #include "ecs/GameComponents.h"
 #include "ecs/ItemConfig.h"
 #include "gameplay/Actor.h"
@@ -68,34 +67,16 @@ void setPhase(GameState::Phase next)
     if (was_playing && !will_be_playing)
     {
         sJustLeftPlaying = true;
-        // Symmetric teardown rule: any exit from active gameplay --
-        // quit-to-main-menu, save-and-quit, settings screen, ANY phase
-        // change leaving Playing -- runs the boss-state pipeline so
-        // the fight ends through the same channel as it started.
-        selva::gameplay::tearDownActiveBosses();
-        // End any active cinematic Scene. Without this, leaving Playing
-        // mid-scene (wake-anim, Lupa-death, Guide-rescue) leaves the
-        // Scene singleton in active state; the next Playing-enter would
-        // try begin() on top of it and assert.
-        if (selva::scene::active())
-            selva::scene::end();
-        selva::gameplay::resetWakeSceneTracking();
+        // Per-character world/cinematic/sampler state is reset by the
+        // next hardResetWorldForCharacter on Playing-enter, not here.
+        // setPhase only handles UI state that lives outside the world.
     }
     if (!was_playing && will_be_playing)
     {
         sJustEnteredPlaying = true;
-        // Drop per-session UI state that survives across the main-
-        // menu round-trip. Without this, BossHud's static cache holds
-        // the prior session's Active mode, then sees no engaged boss
-        // on the first frame of the new session and flashes the
-        // empty HP bar + transition to FadingOut/Felled. Per-session
-        // UI state must be reset on every session entry.
+        // BossHud cache is UI state, not world state -- reset here
+        // (hardResetWorldForCharacter doesn't own UI caches).
         selva::ui::resetBossHud();
-        // Defensive: ensure no Scene is active when entering Playing.
-        // The leave-Playing branch above should have cleared it, but
-        // belt-and-suspenders against any path that bypassed setPhase.
-        if (selva::scene::active())
-            selva::scene::end();
     }
     gs.phase = next;
 }

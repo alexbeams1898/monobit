@@ -356,11 +356,11 @@ void initActorPool()
     initActorPools(pc.hp, pc.stamina, pc.poise, pc.body, pc.stats);
     // initActorPool is one-time, asset-binding only. Position, hp-fill,
     // and any per-character state are NOT set here - those land via
-    // loadActiveCharacterIntoPlayer(profile) on Playing-enter. This
+    // hardResetWorldForCharacter(profile) on Playing-enter. This
     // separation is what lets New Game / Load Game both produce a
     // clean spawn instead of inheriting the previous run's state.
     //
-    // pos defaults to (0, 0, 0) until loadActiveCharacterIntoPlayer
+    // pos defaults to (0, 0, 0) until hardResetWorldForCharacter
     // sets it; that's fine because nothing reads sPlayer.pos before
     // we enter Playing.
     pc.spawn_pos = glm::vec3(0.0f);

@@ -115,7 +115,7 @@ void gatedPerFrame(::Engine& engine, ::EntityManager& em, double dt)
                 break;
             }
         }
-        selva::gameplay::loadActiveCharacterIntoWorld(*active);
+        selva::gameplay::hardResetWorldForCharacter(*active);
         gs.pending_world_create = false;
         gs.world_initialized = true;
         // If this was a New Game, queue the wake-up Scene. Load-Game

@@ -725,6 +725,51 @@ void PoseSampler::releaseOneShot()
     s.one_shot_phase = OneShotPhase::BlendOut;
 }
 
+void PoseSampler::hardReset()
+{
+    if (!impl)
+        return;
+    Impl& s = *impl;
+    auto wipe_track = [](Track& t) {
+        t.animation = nullptr;
+        t.registry_key.clear();
+        t.time_seconds = 0.0f;
+        t.hip_path_cached = -1.0f;
+        t.finished = false;
+        t.loops = true;
+        t.resetHipTracking();
+    };
+    wipe_track(s.loco_current);
+    wipe_track(s.loco_previous);
+    wipe_track(s.one_shot);
+    wipe_track(s.one_shot_previous);
+    s.loco_blend_weight = 1.0f;
+    s.loco_blend_elapsed = 0.0f;
+    s.loco_blend_duration = 0.0f;
+    s.loco_previous_is_snapshot = false;
+    s.loco_previous_stale_logged = false;
+    s.last_frozen_swap_attempt.clear();
+    s.last_clip_time.clear();
+    s.one_shot_phase = OneShotPhase::Inactive;
+    s.one_shot_weight = 0.0f;
+    s.one_shot_blend_in_seconds = 0.0f;
+    s.one_shot_blend_out_seconds = 0.0f;
+    s.one_shot_playback_rate = 1.0f;
+    s.one_shot_mask = PoseSampler::BodyMask::Full;
+    s.one_shot_freeze_last = false;
+    s.one_shot_freeze_at_seconds = 0.0f;
+    s.one_shot_freeze_loco = false;
+    s.one_shot_cancel_fraction = 1.0f;
+    s.one_shot_previous_weight = 0.0f;
+    s.one_shot_previous_fade_seconds = 0.0f;
+    s.one_shot_previous_playback_rate = 1.0f;
+    s.one_shot_previous_mask = PoseSampler::BodyMask::Full;
+    s.decay_active = false;
+    s.decay_elapsed = 0.0f;
+    s.pending_capture = false;
+    s.pending_capture_from_supplied_source = false;
+}
+
 void PoseSampler::playOneShot(const AnimationClip& clip, float blend_in_seconds,
                               float blend_out_seconds, BodyMask mask, float start_time_seconds,
                               float playback_rate, const OneShotOptions& options)

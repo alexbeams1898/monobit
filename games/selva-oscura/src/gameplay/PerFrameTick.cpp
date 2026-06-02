@@ -3144,11 +3144,9 @@ static void tickPlayerSecondDeathLifecycle()
     sSampler.releaseOneShot();
     // Unmuffle the OST — bookends the duck applied in fireEnemyDeath.
     selva::audio::restoreMusic();
-    // Cycle boundary: per docs/design/setting.md "Per-circle reactivity"
-    // + "Cycle structure", a new descent begins on Vagrant respawn.
-    // Hell re-streams shades into their punishment positions.
-    // Permanent-on-death keepers stay fallen if they fell this cycle.
-    selva::gameplay::resetCycleEnemies();
+    // Cycle boundary on Vagrant respawn (per setting.md "Per-circle
+    // reactivity" + "Cycle structure").
+    selva::gameplay::softResetWorldForCycle();
 }
 
 // Compute the per-frame movement/velocity locks from one-shot state,
@@ -3361,6 +3359,7 @@ static void populateActorHurtboxes()
 namespace selva::gameplay
 {
 void tickWakeSceneLifecycle();
+void resetWakeSceneTracking();
 }
 
 static void selvaPerFrame(Engine& engine, EntityManager& em, double dt_d)
@@ -4377,9 +4376,11 @@ void syncInputEdgesFromCurrentState()
     sPrevRMB = (mouse_buttons & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
     sPrevMMB = (mouse_buttons & SDL_BUTTON(SDL_BUTTON_MIDDLE)) != 0;
 }
-void loadActiveCharacterIntoWorld(const selva::PlayerProfile& profile)
+// Player actor reset. Position/yaw/pool/foot state. Does NOT touch
+// sampler, scene, or world systems -- those are owned by the
+// orchestrators below.
+static void resetPlayerActorForProfile(const selva::PlayerProfile& profile)
 {
-    // Player Actor.
     const glm::vec2 spawn_xz = selva::world::playerSpawnXZ();
     const float spawn_ground_y = selva::world::sampleHeight(spawn_xz.x, spawn_xz.y);
     const glm::vec3 target_pos = profile.has_saved_pose
@@ -4395,15 +4396,48 @@ void loadActiveCharacterIntoWorld(const selva::PlayerProfile& profile)
     sPlayer.lock_target_idx = -1;
     selva::gameplay::initActorPools(sPlayer.hp, sPlayer.stamina, sPlayer.poise, sPlayer.body,
                                     sPlayer.stats);
-    sSampler.releaseOneShot();
     sPlayer.foot_left = Actor::FootContact{};
     sPlayer.foot_right = Actor::FootContact{};
+}
 
-    // Enemy pool: reset to JSON baseline + apply profile.felled_bosses.
+// Full session-boundary reset. Called on New Game / Load Game /
+// character switch. Single source of truth for "the world is now in
+// fresh state for this character." Canonical order documented per
+// step. Adding a new per-character state holder = add ONE line here.
+void hardResetWorldForCharacter(const selva::PlayerProfile& profile)
+{
+    // 1. End any cinematic state from the prior session.
+    if (selva::scene::active())
+        selva::scene::end();
+    resetWakeSceneTracking();
+
+    // 2. Stop active session-audio + boss state (pops audio bed).
+    selva::gameplay::tearDownActiveBosses();
+
+    // 3. Hard-reset the player sampler so the next animation snaps in
+    //    without blending from the prior character's last pose.
+    sSampler.hardReset();
+
+    // 4. Enemy pool reset to JSON baseline, then re-apply this
+    //    profile's felled_bosses (idempotent fireEnemyDeath puts each
+    //    felled boss into death pose).
     selva::gameplay::resetCycleEnemies();
 
-    // Doors: profile state if persisted; else JSON initial_state.
+    // 5. Door states: profile if persisted, else JSON initial_state.
     selva::world::applyPersistedDoorStates();
+
+    // 6. Player Actor: teleport to spawn, restore pools, clear combat
+    //    reaction state.
+    resetPlayerActorForProfile(profile);
+}
+
+// Mid-character cycle-boundary reset. Called on player death/respawn.
+// Tighter scope than hardReset: the player is alive and animating,
+// no cinematic is in flight, doors persist mid-cycle. Only the
+// enemy pool needs cycle-restream.
+void softResetWorldForCycle()
+{
+    selva::gameplay::resetCycleEnemies();
 }
 
 // Wake-scene tracking. The wake scene's end condition is "the player's
