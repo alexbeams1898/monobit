@@ -30,6 +30,16 @@ void shutdownPhysicsRegion();
 engine::physics::BodyHandle playerBody();
 engine::physics::BodyHandle createPlayerBody(const glm::vec3& spawn_position);
 
+// Generic character body creation for any actor (NPC, enemy). Thin
+// wrapper around engine::physics::addCharacter that ensures the
+// physics world is initialized and applies the actor's collider
+// dimensions. Caller stores the returned handle on the Actor and is
+// responsible for destroying it on death / cycle reset via
+// destroyCharacterBody.
+engine::physics::BodyHandle createCharacterBody(const glm::vec3& spawn_position, float radius,
+                                                float height);
+void destroyCharacterBody(engine::physics::BodyHandle handle);
+
 // One-line dump of init stats (region/primitive/body/triangle counts).
 // Caller is responsible for the FILE* lifetime. Used by the F1-toggled
 // physics-debug.log writer in PerFrameTick.cpp so init info appears in

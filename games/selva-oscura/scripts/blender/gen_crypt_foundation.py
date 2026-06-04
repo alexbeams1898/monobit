@@ -1320,6 +1320,83 @@ def hollow_body():
     boolean_difference(body, cutter)
 
 
+def build_door_jamb():
+    """Architraved frame around the door cutout. Sits in FRONT of the
+    chapel wall (outward-projecting medieval-stone door surround) and
+    visually covers the 5mm air gap between the door slab edges and
+    the cutout interior walls. Without this the player can see a
+    sliver into the chapel through the hinge-side gap when the door
+    is closed.
+
+    Three pieces: top (head), left, right. The threshold piece
+    already exists as build_door_threshold(); the jamb stops at the
+    threshold's top face.
+
+    Geometry (chapel-local):
+      - Jamb depth: 5.5cm, projecting OUTWARD from the front wall face
+        (Blender Y range [-half_l - jamb_depth, -half_l - 0.005])
+        with a 5mm air gap to avoid coplanar z-fight with the wall.
+      - Jamb width: covers 5cm INWARD from each cutout edge, so the
+        visible opening (in player's eye) is 5cm narrower per side
+        than the actual cutout. Door slab (full cutout width) closes
+        BEHIND the jamb, so the slab-edge gap is hidden.
+      - Jamb top piece: spans the full jamb-outer width, sits at the
+        cutout top with 10cm height (5cm overlap into cutout + 5cm
+        above the cutout top for a slight crown).
+    """
+    half_l = BODY_LENGTH * 0.5
+    jamb_depth = 0.055
+    jamb_overlap = 0.05  # how far the jamb extends INWARD over the cutout
+    jamb_outer = DOOR_WIDTH * 0.5 + jamb_overlap   # 0.55
+    jamb_inner = DOOR_WIDTH * 0.5 - jamb_overlap   # 0.45
+    z_fight = 0.005
+
+    # Y range: just OUTSIDE the wall front face, with z_fight gap so
+    # the jamb's back face is not coplanar with the wall's front face.
+    y_outer = -half_l - jamb_depth - z_fight
+    y_inner = -half_l - z_fight
+    y_center = (y_outer + y_inner) * 0.5
+    y_size = y_inner - y_outer
+
+    # Top piece: head of the jamb, spans the full outer width.
+    head_z_bot = PLINTH_HEIGHT + DOOR_HEIGHT - jamb_overlap
+    head_z_top = PLINTH_HEIGHT + DOOR_HEIGHT + 0.05
+    head_z_center = (head_z_bot + head_z_top) * 0.5
+    head_z_size = head_z_top - head_z_bot
+    add_box(
+        name="crypt_door_jamb_head",
+        center=(0.0, y_center, head_z_center),
+        size=(2.0 * jamb_outer, y_size, head_z_size),
+        material=MAT_INTERIOR_STONE,
+    )
+
+    # Left + right side pieces: span from plinth top up to the head.
+    # The head overlaps the cutout top by jamb_overlap; the sides
+    # stop short of that overlap to avoid double-stacking at the
+    # corner.
+    side_z_bot = PLINTH_HEIGHT
+    side_z_top = head_z_bot
+    side_z_center = (side_z_bot + side_z_top) * 0.5
+    side_z_size = side_z_top - side_z_bot
+    side_x_size = jamb_outer - jamb_inner  # 0.10m
+
+    left_x_center = -(jamb_outer + jamb_inner) * 0.5
+    right_x_center = +(jamb_outer + jamb_inner) * 0.5
+
+    add_box(
+        name="crypt_door_jamb_left",
+        center=(left_x_center, y_center, side_z_center),
+        size=(side_x_size, y_size, side_z_size),
+        material=MAT_INTERIOR_STONE,
+    )
+    add_box(
+        name="crypt_door_jamb_right",
+        center=(right_x_center, y_center, side_z_center),
+        size=(side_x_size, y_size, side_z_size),
+        material=MAT_INTERIOR_STONE,
+    )
+
+
 def cut_door():
     """Cut the architraved door through the FRONT wall — punches from
     outside all the way into the hollow interior."""
@@ -2036,6 +2113,7 @@ def main():
         # build_apse()
         # build_apse_roof()
         build_cross_at_apex()
+        build_door_jamb()
         # Oculus is the only boolean cut left -- applied to the upper
         # front-wall slab (a chapel_exterior object). The door is a
         # constructed gap between two solid front-wall slabs; no
@@ -2060,6 +2138,24 @@ def main():
 
     dump_aabbs(["crypt_courtyard", "crypt_foundation_skirt", "crypt_floor",
                 "crypt_plinth", "crypt_wall", "crypt_apse", "stair_upper"])
+
+    # Defensive: recalculate outward normals on every mesh before save.
+    # The renderer's back-face culling requires consistent CCW winding;
+    # any add_box call that happened to author a face with reversed
+    # winding would produce a see-through patch in-game. This pass is
+    # idempotent on correctly-wound geometry and corrects anything
+    # accidentally inverted.
+    bpy.ops.object.mode_set(mode="OBJECT")
+    for obj in bpy.data.objects:
+        if obj.type != "MESH":
+            continue
+        bpy.context.view_layer.objects.active = obj
+        obj.select_set(True)
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.select_all(action="SELECT")
+        bpy.ops.mesh.normals_make_consistent(inside=False)
+        bpy.ops.object.mode_set(mode="OBJECT")
+        obj.select_set(False)
 
     plan_png = os.path.join(repo_root, "games/selva-oscura/.traces/crypt_plan.png")
     os.makedirs(os.path.dirname(plan_png), exist_ok=True)

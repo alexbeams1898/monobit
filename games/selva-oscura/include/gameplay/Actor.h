@@ -6,6 +6,7 @@
 #include "gameplay/BossState.h"
 #include "gameplay/Faction.h"
 #include "gameplay/Perception.h"
+#include "physics/PhysicsWorld.h"
 
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
@@ -136,6 +137,13 @@ struct Body
     // collider_axis == AlongYaw. For Vertical, the capsule height
     // is implicit from the actor's standing pose.
     float collider_length = 0.0f;
+    // Capsule total height (cylinder + caps) for Jolt character body
+    // creation. Vertical-axis actors use this directly. AlongYaw
+    // actors (quadrupeds) use a vertical-capsule approximation of
+    // their bounds for Jolt purposes -- this is the approximated
+    // height. Default 1.8m matches typical humanoid; wolf overrides
+    // to ~1.2m for the approximation.
+    float collider_height = 1.8f;
     // Per-actor hurtbox layout. Authored per skeleton (player from
     // config/skeletons/player_hurtboxes.json; enemies from their
     // archetype JSON's hurtboxes array). Empty = no hurtboxes
@@ -179,10 +187,10 @@ void initActorPools(Health& hp, Stamina& stamina, Poise& poise, const Body& body
 void applyFormDefaults(Body& body, Stats& stats, Form form);
 
 // Per-frame stamina tick:
-//   1. If sprint_locked: clear `sprinting` (sprint input ignored until lock
-//      releases at full stamina).
-//   2. If sprinting + stamina available: drain by sprint_effort * dt and arm
-//      the recovery timer. If the drain hits 0: set sprint_locked.
+//   1. If sprint_locked: demote loco_tier Sprint -> Jog (sprint input
+//      ignored until lock releases at full stamina).
+//   2. If loco_tier == Sprint + stamina available: drain by sprint_effort * dt
+//      and arm the recovery timer. If the drain hits 0: set sprint_locked.
 //   3. Else if recovery_timer > 0: decrement (no regen yet).
 //   4. Else if current < max: regen at recovery_rate * dt.
 //   5. If sprint_locked AND current >= max: clear the lock.
@@ -224,6 +232,16 @@ enum class Controller : std::uint8_t
     Corpse,        // dead actor; no intent, holds death pose
 };
 
+// Three-tier locomotion: walk (LAlt-held), jog (default WASD), sprint
+// (Space-held). Backward + strafe sprint clips don't exist; those
+// demote to the jog family.
+enum class LocoTier
+{
+    Walk,
+    Jog,
+    Sprint,
+};
+
 // One actor. Player + every enemy is an Actor instance in the
 // shared pool. The Controller tag is the ONLY thing that
 // differentiates them at the per-frame system level — schemas,
@@ -255,9 +273,11 @@ struct Actor
     Controller controller = Controller::AI_Stationary;
 
     // --- Per-controller intent flags ---
-    // Latched intent: sprinting (Input controller only). Future
-    // controllers may add their own intent fields here.
-    bool sprinting = false;
+    // Three-tier locomotion intent (Input controller only): Walk
+    // (LAlt-held), Jog (default), Sprint (Space-held). Walk and
+    // Sprint are mutually exclusive at input-edge level so this
+    // single field never carries a contradiction.
+    LocoTier loco_tier = LocoTier::Jog;
 
     // Lock-on target index into actors() (Input controller only).
     // -1 = unlocked; >=0 = combat mode: yaw snaps to target each frame,
@@ -301,6 +321,62 @@ struct Actor
         std::numeric_limits<float>::quiet_NaN(),
     };
     float scripted_stop_range = 2.0f; // meters; default = standard NPC approach distance
+    // Ordered queue of REMAINING waypoints AFTER the current
+    // scripted_target_pos -- next-up first, final destination last.
+    // When the actor reaches scripted_target_pos,
+    // LeafFollowScriptedTarget pops the front of this list into
+    // scripted_target_pos and keeps walking; only when both
+    // scripted_target_pos has been reached AND this queue is empty
+    // does the leaf clear to the NaN sentinel and fire the
+    // arrival event (spawn-flow's on_arrival_action).
+    //
+    // Together with scripted_target_pos this forms a (current, rest)
+    // walk queue. Decl-side (EnemySpawnDecl) authors the inverse
+    // shape -- a `scripted_path_waypoints` list of INTERMEDIATES plus
+    // a separate `scripted_target_pos` DESTINATION -- which
+    // spawnEnemyFromDecl flattens into this runtime shape.
+    std::vector<glm::vec3> scripted_path_waypoints;
+    // True if this actor was spawned with a scripted_target_pos
+    // authored on its spawn decl. Used by arrival-detecting systems
+    // (e.g. the larva conversion trigger) to distinguish "never had
+    // a target" (persistent NaN -> ignore) from "had one and arrived"
+    // (was non-NaN, leaf cleared to NaN -> fire arrival event).
+    bool had_scripted_target = false;
+    // Wallclock stamp of when this actor arrived at its scripted
+    // target. -1 = hasn't arrived yet. Set by the spawn-flow system
+    // (selva::spawn::FlowSpawner) on the frame the arrival sentinel
+    // fires. Read by the same system to gate delayed on_arrival
+    // actions (e.g. "convert this fresh larva to aged after 30s of
+    // standing at the shore"). Per [[project_soul_larvae_cosmology]].
+    float arrival_wallclock = -1.0f;
+    // Set once the delayed on_arrival action has fired. Prevents
+    // re-firing on subsequent ticks. Cleared on archetype swap (the
+    // new archetype is its own actor lifecycle, gets fresh arrival
+    // state if it ever scripts another target).
+    bool arrival_action_fired = false;
+    // The on_arrival_delay duration copied from the spawn flow that
+    // spawned this actor. Used by render-side systems that want to
+    // visualize the burn-progress (e.g. fresh larvae tint from white
+    // to red as they wait to turn aged). -1 = no delay info; render
+    // uses static tint only. Stamped by FlowSpawner at spawn time;
+    // unchanged across the actor's lifetime.
+    float arrival_action_delay_seconds = -1.0f;
+
+    // Hazard-zone entry tracking. Toggled by tickEnemyLocomotion's
+    // hazard-violation check; used to edge-trigger the
+    // [hazard-violation] debug log so it fires once on entry/exit
+    // instead of spamming per-frame while the actor sits in the zone.
+    bool was_in_avoided_hazard = false;
+
+    // The spawn flow that produced this actor, or empty if the actor
+    // was spawned by non-flow code (region JSON, scripted event, hand).
+    // Gates FlowSpawner::tickArrivals so arrival logic only runs for
+    // actors that the flow itself spawned. Without this, two flows
+    // sharing an archetype id would both try to run arrival actions
+    // on each other's actors, AND a hand-spawned actor with the same
+    // archetype would get its movement intent munged by a flow it
+    // never enrolled in. Stamped by FlowSpawner immediately post-spawn.
+    std::string spawning_flow_id;
 
     // Wallclock at which Engaged -> Dying fires. -1 outside scripted
     // death. Set by setBossState(Engaged) when archetype declares
@@ -410,6 +486,13 @@ struct Actor
     // spawnEnemyFromDecl from archetype.
     bool is_npc = false;
 
+    // Handle into selva::interact registry for NPCs. Registered at
+    // spawn (Talk-kind interactable that opens dialog with this NPC).
+    // 0 = not registered. The registry is world-state (closures
+    // capture spawn_decl_id, not character data) and survives
+    // character switches; no per-cycle reset needed.
+    std::uint32_t interactable_id = 0;
+
     // Mirrors archetype->form (or set explicitly for the player at
     // init -- UnjudgedSoul). Used by combat-permission rules
     // (soul-on-soul forbidden in Wood, etc.) and per-form stat-spread
@@ -423,6 +506,19 @@ struct Actor
     // is_boss=true, this string is appended to the active profile's
     // felled_bosses. Stable across cycles, unlike pool indexes.
     std::string spawn_decl_id;
+
+    // Post-flag spawn overrides (mirrored from EnemySpawnDecl at
+    // spawn time). resetCycleEnemies walks this list and overrides
+    // pos/yaw if the active profile has the flag set. Empty = always
+    // spawn at base spawn_pos.
+    struct FlagPosition
+    {
+        std::string flag;
+        glm::vec3 pos = glm::vec3(0.0f);
+        bool pos_y_auto_terrain = false;
+        float yaw = 0.0f;
+    };
+    std::vector<FlagPosition> post_flag_positions;
 
     // Pattern B (already-there bosses): legacy string state, kept as
     // a MIRROR of boss_state during migration. Empty = combat-ready;
@@ -529,6 +625,15 @@ struct Actor
     // light tracking jabs don't.
     bool action_locks_movement = false;
 
+    // True after this actor has already fired its aggro_clip once.
+    // Prevents the perception-transition hook from re-firing it on
+    // subsequent Suspicious->Alerted edges (e.g. after Combat decay
+    // back to Alerted then re-Alert). Also used by archetype-conversion
+    // events (fresh larva -> aged larva): the conversion event fires
+    // the aggro_clip itself and sets this flag so the perception hook
+    // doesn't double-fire on the actor's first sighting of the player.
+    bool aggro_already_fired = false;
+
     // Pending (deferred) hitbox spawn for windup-modeled attacks.
     // LeafPickAction queues this on fire; tickPendingAttackSpawns
     // promotes it to a live hitbox when the wallclock crosses
@@ -549,6 +654,21 @@ struct Actor
         float fire_at_time = -1.0f;
     };
     PendingAttackSpawn pending_attack;
+
+    // Jolt kinematic character body. Created at spawn (via
+    // selva::world::createCharacterBody), destroyed on death + on
+    // pool reset. Every actor in the world has one -- player + every
+    // enemy + every NPC -- so the same physics pipeline integrates
+    // them all. id=0 (kInvalidBody) means "not yet created" or
+    // "destroyed." Per the real-physics doctrine + the universal-
+    // actor-physics refactor.
+    //
+    // Driven each frame: BT or input writes intent_xz, the locomotion
+    // tick translates that to velocity, setCharacterVelocity hands
+    // it to Jolt, updatePhysics resolves contact + gravity, the
+    // post-step pass reads characterPosition back into actor.pos.
+    // No per-frame groundHeight snap; physics owns Y.
+    engine::physics::BodyHandle character_body{};
 };
 
 // Apply the actor's sampler-consumed hip-XZ delta to its world
@@ -559,7 +679,20 @@ struct Actor
 // translation (used for the walking-jump variant where authored
 // clip travel is scaled to 55% so the same clip covers shorter
 // distance at the same playback rate).
-void applyActorClipHipDelta(Actor& actor, float hip_delta_scale = 1.0f);
+// Consume the actor's per-frame authored hip-XZ delta and convert it
+// to a velocity contribution on actor.velocity_xz (added on top of
+// whatever the locomotion tick wrote). The velocity is what the
+// physics step will then integrate via setCharacterVelocity. dt is
+// needed because hip-delta is per-frame; velocity is per-second.
+//
+// Caller decides WHEN to call this (always for AI actors; only
+// during one-shots for the Input-controlled player). hip_delta_scale
+// is an optional multiplier for one-shot scaling (jumps).
+//
+// Old behavior (`actor.pos += hip_world * scale`) was direct
+// position writes that bypassed physics. The unified-physics
+// refactor routes hip motion through Jolt instead.
+void applyActorClipHipDelta(Actor& actor, float dt, float hip_delta_scale = 1.0f);
 
 // Resolve `actor.lock_target_idx` to a pointer into actors(), or
 // nullptr if unlocked / index stale. Pool can reallocate on enemy
@@ -582,11 +715,10 @@ int defaultLockOnPointIndex(const Actor& actor);
 // movement intent. Shared between PC (lock-on combat mode) and AI
 // (engagement strafe). Caller supplies the facing fwd / right
 // vectors (already-normalized XZ unit vectors) plus the world-frame
-// intent vector. `running` selects between walking and running
-// clip families. Returns nullptr if intent is effectively zero.
+// intent vector. Returns nullptr if intent is effectively zero.
 // Strafe wins any nonzero lateral input — diagonals are strafes.
 const char* directionalLocoClip(const glm::vec3& fwd, const glm::vec3& right,
-                                const glm::vec3& intent, bool running);
+                                const glm::vec3& intent, LocoTier tier);
 
 // Reparent the actor's active attack hitbox (if any) to the bone
 // joint that drives it, using the current pose. Called per-frame
@@ -608,6 +740,14 @@ std::vector<Actor>& actors();
 // Assumes the pool has at least one entry — call after the
 // player has been initialized.
 Actor& player();
+
+// Find an actor by spawn_decl_id. Returns nullptr if no actor in the
+// pool matches (including: actor never spawned, actor died and was
+// cleaned, decl_id typo). Includes dead actors in the search -- filter
+// is_dead at the call site if needed. O(N) scan over the pool;
+// centralized so the dozen interactable closures + scripted-event
+// handlers + boss HUD lookups don't each hand-write the same loop.
+Actor* actorByDeclId(const std::string& spawn_decl_id);
 
 // False when this actor's in-flight hitboxes must be invalidated --
 // dead, knocked down, or in a non-fighting boss-state (Dying /

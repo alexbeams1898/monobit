@@ -3,6 +3,7 @@
 #include "AppStateGlobal.h"
 #include "Tunables.h"
 #include "WallClock.h"
+#include "debug/Flags.h"
 #include "gl/ShaderUtils.h"
 #include "physics/PhysicsWorld.h"
 #include "render/Camera.h"
@@ -421,7 +422,7 @@ struct FpvRollLogRow
 void writeFpvRollLog(const FpvRollLogRow& r)
 {
     const bool is_roll_window = r.use_anim_orientation_in || r.anim_weight > 0.0f;
-    if (!selva::tuning::current().debug_fpv_roll_log || !is_roll_window)
+    if (!selva::debug::flags().fpv_roll_log || !is_roll_window)
         return;
     static FILE* sFpvRollLog = nullptr;
     static int sFpvRollFrame = 0;
@@ -645,10 +646,10 @@ glm::mat4 buildThirdPersonViewProj(const glm::vec3& player_pos, float target_loo
         smoothTpvSeparation(target_separation, tun.camera_pull_in_tau, desired_separation);
     const glm::vec3 camPos = lookAt + cam_dir * smoothed_separation;
 
-    if (tun.debug_crosshair_raycast_log)
+    if (selva::debug::flags().crosshair_raycast_log)
         writeCrosshairRaycastLog(camPos, lookFwd);
 
-    if (tun.debug_camera_pull_in_log)
+    if (selva::debug::flags().camera_pull_in_log)
         debugWriteCameraPullInLog({player_pos, yaw, pitch, lookFwd, lookAt, cam_dir, ideal_offset,
                                    desired_separation, tun.follow_distance, hit, target_separation,
                                    smoothed_separation, camPos, sphere_radius});

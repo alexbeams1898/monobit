@@ -17,15 +17,14 @@ void onBossFelled(const std::string& boss_id, Actor& /*killer*/)
 
     if (boss_id == "lupa")
     {
-        // TBD by Alex: what does Lupa drop?
-        // - Not sangue (she's not a demon; sangue is Hell-substance
-        //   only per [[selva-wood-lore-locked-2026-05-31]]).
-        // - Candidates: an item / offering / Grimoire-unlock /
-        //   world-state flip (e.g. wood begins to heal).
-        // - Stubbed for now -- the wiring is in place; content lands
-        //   in a follow-up commit.
-        selva::combat::combatLog(
-            "[boss-reward] lupa: no reward content yet (TBD per design)");
+        // What Lupa drops is unsettled (not sangue per Wood-side
+        // substance law: she's not a demon, sangue is Hell-substance
+        // only per [[selva-wood-lore-locked-2026-05-31]]; candidates
+        // are an item, an offering, a Grimoire unlock, or a
+        // world-state flip such as the wood beginning to heal). The
+        // reward path is stubbed -- wiring exists, content lands when
+        // the drop is chosen.
+        selva::combat::combatLog("[boss-reward] lupa: no reward content yet (TBD per design)");
         return;
     }
 

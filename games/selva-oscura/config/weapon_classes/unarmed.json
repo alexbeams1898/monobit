@@ -75,9 +75,9 @@
                 ]
             }
         ],
-        "_comment_running":
-            "Shift+LMB while sprinting fires the 'special' running attack (unarmed: flying-knee). Plain LMB/RMB while sprinting now falls through to the standard light slot-0 — the player smoothly stops, swings the normal jab/hook, then crossfades back into running.",
-        "running": [
+        "_comment_sprint":
+            "Shift+LMB while sprinting fires the 'special' sprint attack (unarmed: flying-knee). Plain LMB/RMB while sprinting falls through to the standard light slot-0 — the player smoothly stops, swings the normal jab/hook, then crossfades back into the sprint cycle.",
+        "sprint": [
             {
                 "id": "flying_knee",
                 "attacks": [
@@ -163,7 +163,7 @@
                 ]
             }
         ],
-        "running": [
+        "sprint": [
             {
                 "id": "flying_knee",
                 "attacks": [

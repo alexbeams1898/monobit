@@ -118,7 +118,7 @@ struct Run
     std::string timestamp;
     bool escaped = false;
     // Run was completed with god mode enabled. Such runs are excluded from the
-    // high-score leaderboard but still recorded so the player can review their
+    // high-score leaderboard but still recorded so the player can browse their
     // own history. Defaults to false so legacy save files load correctly.
     bool god_mode = false;
 };

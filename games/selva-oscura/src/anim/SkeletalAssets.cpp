@@ -194,7 +194,7 @@ const AnimationClip* walkClip()
 
 const AnimationClip* runClip()
 {
-    return clips().get("running");
+    return clips().get("jogging");
 }
 
 bool initSkeletalAssets()
@@ -220,6 +220,15 @@ bool initSkeletalAssets()
         }
         const int n = bundle.clips.loadDirectory("assets/characters/x_bot");
         std::fprintf(stderr, "[anim] loaded %d clip(s) from assets/characters/x_bot\n", n);
+        // Larva clips (Scary Zombie Pack) are retargeted against the
+        // X_Bot skeleton at bake time, so they live in the X_Bot bundle's
+        // ClipRegistry. Larva archetypes reference "zombie_walk" / etc.
+        // by name and lookupArchetypeClip resolves them through this
+        // shared registry. Per [[universal-humanoid-enemy-rule]] every
+        // Hell-side enemy reuses the X_Bot skeleton; the rig is shared,
+        // clips are namespaced by name only.
+        const int n_larva = bundle.clips.loadDirectory("assets/characters/larva");
+        std::fprintf(stderr, "[anim] loaded %d clip(s) from assets/characters/larva\n", n_larva);
         bundle.mesh = loadSkeletalMesh("assets/characters/x_bot/X_Bot.glb", bundle.skeleton);
         if (!bundle.mesh.isLoaded())
         {

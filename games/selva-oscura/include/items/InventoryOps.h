@@ -39,7 +39,6 @@ bool remove(Inventory& inv, const std::string& item_id);
 // Iteration helper: yield all entries in a category, in insertion
 // order. Returns nullptr if the category has no entries (or doesn't
 // exist in this inventory).
-const std::vector<Entry>* entriesIn(const Inventory& inv,
-                                    const std::string& category_id);
+const std::vector<Entry>* entriesIn(const Inventory& inv, const std::string& category_id);
 
 } // namespace selva::items

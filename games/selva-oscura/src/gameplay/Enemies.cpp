@@ -15,14 +15,23 @@
 #include "combat/ActorVolumes.h"
 #include "combat/CombatLog.h"
 #include "combat/HitVolumes.h"
+#include "debug/Flags.h"
+#include "dialog/DialogSystem.h"
 #include "gameplay/AiBarriers.h"
 #include "gameplay/AiTick.h"
 #include "gameplay/BehaviorTree.h"
 #include "gameplay/BossRewards.h"
 #include "gameplay/EnemyArchetype.h"
 #include "gameplay/Perception.h"
+#include "hazard/HazardZones.h"
+#include "interact/Interaction.h"
+#include "text/Examine.h"
+#include "text/TextPresentation.h"
 #include "world/Collision.h"
+#include "world/PhysicsRegion.h"
 #include "world/Terrain.h"
+
+#include <tracy/Tracy.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -40,7 +49,7 @@ namespace
 // rest of the game's feel parameters. Read fresh each call.
 
 constexpr float kEnemyWalkSpeedFloor = 0.15f; // m/s; above = walk, below = idle
-constexpr float kEnemyRunSpeedFloor = 3.0f;    // m/s; above = Run family, below = Walk family
+constexpr float kEnemyRunSpeedFloor = 3.0f;   // m/s; above = Run family, below = Walk family
 
 // Per-archetype clip family. Every animation lookup for an enemy
 // flows through lookupArchetypeClip(actor, family) -- the ONLY path
@@ -74,50 +83,72 @@ enum class ClipFamily
 
 // Resolve a family to (archetype override OR humanoid default) key.
 // Pure string mapping -- no registry access.
+// Data table indexed by ClipFamily. Table replaces a long switch
+// statement (lizard CCN budget). New family = add struct field +
+// row. Indices match ClipFamily enum order; static_assert at the
+// bottom catches misalignment.
+struct ClipFamilyRow
+{
+    ClipFamily fam;
+    const char* default_key;
+};
+constexpr ClipFamilyRow kClipFamilyTable[] = {
+    {ClipFamily::PeacefulIdle, "standard_idle"},
+    {ClipFamily::CombatIdle, "unarmed_combat_idle"},
+    {ClipFamily::Walk, "walking"},
+    {ClipFamily::Run, "jogging"},
+    {ClipFamily::WalkBack, "walking_backward"},
+    {ClipFamily::StrafeLeft, "strafe_walking_left"},
+    {ClipFamily::StrafeRight, "strafe_walking_right"},
+    {ClipFamily::Death, "death"},
+    {ClipFamily::Knockdown, "stunned"},
+    {ClipFamily::FlinchFront, "flinch_front"},
+    {ClipFamily::FlinchBack, "flinch_back"},
+    {ClipFamily::FlinchLeft, "flinch_left"},
+    {ClipFamily::FlinchRight, "flinch_right"},
+    {ClipFamily::HitReactMedium, "hit_react_medium"},
+    {ClipFamily::HitReactHeavy, "hit_react_heavy"},
+};
+
 const char* clipFamilyDefaultKey(ClipFamily fam)
 {
-    switch (fam)
-    {
-    case ClipFamily::PeacefulIdle: return "standard_idle";
-    case ClipFamily::CombatIdle: return "unarmed_combat_idle";
-    case ClipFamily::Walk: return "walking";
-    case ClipFamily::Run: return "running";
-    case ClipFamily::WalkBack: return "walking_backward";
-    case ClipFamily::StrafeLeft: return "strafe_walking_left";
-    case ClipFamily::StrafeRight: return "strafe_walking_right";
-    case ClipFamily::Death: return "death";
-    case ClipFamily::Knockdown: return "stunned";
-    case ClipFamily::FlinchFront: return "flinch_front";
-    case ClipFamily::FlinchBack: return "flinch_back";
-    case ClipFamily::FlinchLeft: return "flinch_left";
-    case ClipFamily::FlinchRight: return "flinch_right";
-    case ClipFamily::HitReactMedium: return "hit_react_medium";
-    case ClipFamily::HitReactHeavy: return "hit_react_heavy";
-    }
+    for (const auto& row : kClipFamilyTable)
+        if (row.fam == fam)
+            return row.default_key;
     return "";
 }
+
+// Table of pointer-to-member-string for the archetype-override lookup.
+// Same row count as kClipFamilyTable; matched by ClipFamily key.
+struct ClipFamilyOverrideRow
+{
+    ClipFamily fam;
+    std::string EnemyArchetype::*member;
+};
+const ClipFamilyOverrideRow kClipFamilyOverrideTable[] = {
+    {ClipFamily::PeacefulIdle, &EnemyArchetype::idle_clip},
+    {ClipFamily::CombatIdle, &EnemyArchetype::combat_idle_clip},
+    {ClipFamily::Walk, &EnemyArchetype::walk_clip},
+    {ClipFamily::Run, &EnemyArchetype::run_clip},
+    {ClipFamily::WalkBack, &EnemyArchetype::walk_back_clip},
+    {ClipFamily::StrafeLeft, &EnemyArchetype::strafe_left_clip},
+    {ClipFamily::StrafeRight, &EnemyArchetype::strafe_right_clip},
+    {ClipFamily::Death, &EnemyArchetype::death_clip},
+    {ClipFamily::Knockdown, &EnemyArchetype::knockdown_clip},
+    {ClipFamily::FlinchFront, &EnemyArchetype::flinch_front_clip},
+    {ClipFamily::FlinchBack, &EnemyArchetype::flinch_back_clip},
+    {ClipFamily::FlinchLeft, &EnemyArchetype::flinch_left_clip},
+    {ClipFamily::FlinchRight, &EnemyArchetype::flinch_right_clip},
+    {ClipFamily::HitReactMedium, &EnemyArchetype::hit_react_medium_clip},
+    {ClipFamily::HitReactHeavy, &EnemyArchetype::hit_react_heavy_clip},
+};
 
 const std::string& clipFamilyArchetypeOverride(const EnemyArchetype& arch, ClipFamily fam)
 {
     static const std::string kEmpty;
-    switch (fam)
-    {
-    case ClipFamily::PeacefulIdle: return arch.idle_clip;
-    case ClipFamily::CombatIdle: return arch.combat_idle_clip;
-    case ClipFamily::Walk: return arch.walk_clip;
-    case ClipFamily::Run: return arch.run_clip;
-    case ClipFamily::WalkBack: return arch.walk_back_clip;
-    case ClipFamily::StrafeLeft: return arch.strafe_left_clip;
-    case ClipFamily::StrafeRight: return arch.strafe_right_clip;
-    case ClipFamily::Death: return arch.death_clip;
-    case ClipFamily::Knockdown: return arch.knockdown_clip;
-    case ClipFamily::FlinchFront: return arch.flinch_front_clip;
-    case ClipFamily::FlinchBack: return arch.flinch_back_clip;
-    case ClipFamily::FlinchLeft: return arch.flinch_left_clip;
-    case ClipFamily::FlinchRight: return arch.flinch_right_clip;
-    case ClipFamily::HitReactMedium: return arch.hit_react_medium_clip;
-    case ClipFamily::HitReactHeavy: return arch.hit_react_heavy_clip;
-    }
+    for (const auto& row : kClipFamilyOverrideTable)
+        if (row.fam == fam)
+            return arch.*(row.member);
     return kEmpty;
 }
 
@@ -147,7 +178,7 @@ ClipLookup lookupArchetypeClip(const Actor& a, ClipFamily fam)
     return {c, key};
 }
 
-} // namespace (close anon ns; spawnEnemyFromDecl is declared in the
+} // namespace
   // header as selva::gameplay::spawnEnemyFromDecl so it must NOT be in
   // an anon namespace -- otherwise both this anon-ns function and the
   // public one are ambiguous within this TU)
@@ -161,6 +192,330 @@ ClipLookup lookupArchetypeClip(const Actor& a, ClipFamily fam)
 // snaps it to ground height via groundHeight() if outdoor terrain
 // owns the spot. Authors get to declare the explicit Y for indoor /
 // suspended-platform geometry.
+void initActorPoolsForArchetype(Actor& a)
+{
+    initActorPools(a.hp, a.stamina, a.poise, a.body, a.stats);
+    if (a.archetype != nullptr)
+    {
+        if (a.archetype->max_hp_override > 0)
+        {
+            a.hp.max = a.archetype->max_hp_override;
+            a.hp.current = a.hp.max;
+        }
+        if (a.archetype->max_poise_override > 0.0f)
+        {
+            a.poise.max = a.archetype->max_poise_override;
+            a.poise.current = a.archetype->max_poise_override;
+        }
+    }
+}
+
+// Resolve the actor's hurtbox layout from its current archetype.
+// Centralized so both spawn (spawnEnemyFromDecl) AND mid-life
+// archetype swaps (applyArchetypeSwap) use the same contract. Three
+// branches:
+//   * disable_hurtboxes=true -> explicitly no hurtboxes; this being
+//     cannot be hit (fresh larvae per the "too coherent for second-
+//     death" cosmology, future intact NPCs).
+//   * Archetype's own list non-empty -> use it.
+//   * Archetype list empty -> inherit player's hurtboxes (humanoid
+//     shades sharing the X_Bot skeleton).
+void applyArchetypeHurtboxes(Actor& a)
+{
+    if (a.archetype != nullptr && a.archetype->disable_hurtboxes)
+        a.body.hurtbox_decls.clear();
+    else if (a.archetype != nullptr && !a.archetype->hurtbox_decls.empty())
+        a.body.hurtbox_decls = a.archetype->hurtbox_decls;
+    else
+        a.body.hurtbox_decls = selva::gameplay::player().body.hurtbox_decls;
+}
+
+// Resolve the actor's interactable registration from its current
+// archetype. Idempotent: tears down any existing interactable
+// (so a swap from examinable -> non-examinable clears the prompt)
+// and registers a fresh one if the archetype declares interaction.
+// Two paths:
+//   * is_npc=true (Guide, future companions) -> Talk-kind, opens
+//     dialog tree.
+//   * Non-empty examine_text (fresh larvae, ambient observables)
+//     -> Examine-kind, opens one-line examine box.
+// is_npc takes precedence per the "named NPCs have dialog,
+// anonymous beings have examine" doctrine.
+void applyArchetypeInteractable(Actor& a)
+{
+    if (a.interactable_id != 0)
+    {
+        selva::interact::unregisterInteractable(a.interactable_id);
+        a.interactable_id = 0;
+    }
+    if (a.archetype == nullptr)
+        return;
+    const std::string sdid = a.spawn_decl_id;
+    if (a.is_npc)
+    {
+        const std::string label =
+            !a.archetype->display_name.empty() ? a.archetype->display_name : sdid;
+        selva::interact::Decl idecl;
+        idecl.kind = selva::interact::Kind::Talk;
+        idecl.position = [sdid]()
+        {
+            const Actor* act = actorByDeclId(sdid);
+            return act != nullptr ? act->pos : glm::vec3(0.0f);
+        };
+        constexpr float kDefaultTalkRangeMeters = 2.5f;
+        idecl.range_meters = (a.archetype->interact_range_meters > 0.0f)
+                                 ? a.archetype->interact_range_meters
+                                 : kDefaultTalkRangeMeters;
+        idecl.label = label;
+        idecl.on_interact = [sdid]() { selva::dialog::begin(sdid); };
+        idecl.available = []() { return !selva::text::active(); };
+        a.interactable_id = selva::interact::registerInteractable(std::move(idecl));
+        return;
+    }
+    if (!a.archetype->examine_text.empty())
+    {
+        const std::string label =
+            !a.archetype->display_name.empty() ? a.archetype->display_name : std::string{};
+        selva::interact::Decl idecl;
+        idecl.kind = selva::interact::Kind::Examine;
+        idecl.position = [sdid]()
+        {
+            const Actor* act = actorByDeclId(sdid);
+            return act != nullptr ? act->pos : glm::vec3(0.0f);
+        };
+        constexpr float kDefaultExamineRangeMeters = 2.0f;
+        idecl.range_meters = (a.archetype->interact_range_meters > 0.0f)
+                                 ? a.archetype->interact_range_meters
+                                 : kDefaultExamineRangeMeters;
+        idecl.label = label;
+        idecl.on_interact = [sdid]()
+        {
+            const Actor* act = actorByDeclId(sdid);
+            if (act != nullptr && act->archetype != nullptr)
+                selva::text::beginExamine(act->archetype->examine_text);
+        };
+        idecl.available = []() { return !selva::text::active(); };
+        a.interactable_id = selva::interact::registerInteractable(std::move(idecl));
+    }
+}
+
+// THE archetype-to-actor funnel. Single source of truth for "given
+// this actor and a target archetype, derive every archetype-driven
+// field." Called from spawnEnemyFromDecl (initial setup) AND
+// applyArchetypeSwap (mid-life transition). Adding a new archetype-
+// derived field means updating ONE site -- not two.
+//
+// Does NOT touch:
+//   * Identity: spawn_decl_id, spawn_pos, controller, rng (set once)
+//   * Sampler / skeleton binding (bound at spawn; cross-skeleton
+//     swaps would require sampler recreation -- not v1)
+//   * Physics body handle (created at spawn; destroyed at death).
+//     applyArchetypeSwap rebuilds the Jolt capsule itself when
+//     collider dims change -- this funnel writes body.collider_*
+//     fields but doesn't reach into Jolt.
+//   * Boss state machine (setBossState orchestrates transitions)
+//   * Animation transitions (e.g. aggro_clip play on swap, idle
+//     prime on spawn) -- those are CONTEXTUAL events the caller
+//     owns, not derived state.
+//
+// This is the diamond-foundation funnel. Per
+// [[feedback_dual_source_of_truth_is_the_bug]].
+void applyArchetypeToActor(Actor& a, const EnemyArchetype& target)
+{
+    a.archetype = &target;
+    a.faction = target.faction;
+    a.form = target.form;
+    a.is_boss = target.is_boss;
+    a.is_npc = target.is_npc;
+    // Per-form body/stat defaults derive from form, which we just set.
+    applyFormDefaults(a.body, a.stats, a.form);
+    initActorPoolsForArchetype(a);
+    applyArchetypeHurtboxes(a);
+    applyArchetypeInteractable(a);
+}
+
+namespace
+{
+// Resolve pos.y for the "auto_terrain" sentinel + mirror per-flag spawn
+// overrides. Identity-only setup; no archetype lookup yet.
+void initSpawnIdentity(Actor& e, const std::string& region_id, const EnemySpawnDecl& decl,
+                       const EnemyArchetype* /*archetype_ptr*/)
+{
+    e.controller = Controller::AI_Stationary;
+    e.pos = decl.pos;
+    if (decl.pos_y_auto_terrain)
+        e.pos.y = selva::world::groundHeight(decl.pos.x, decl.pos.z,
+                                             -std::numeric_limits<float>::infinity());
+    e.yaw = decl.yaw;
+    e.spawn_pos = e.pos;
+    e.spawn_yaw = decl.yaw;
+    e.spawn_id = region_id + ":" + decl.id;
+    e.spawn_region_id = region_id;
+    e.permanent_on_death = decl.permanent_on_death;
+    e.spawn_decl_id = decl.id;
+    e.post_flag_positions.clear();
+    e.post_flag_positions.reserve(decl.post_flag_positions.size());
+    for (const auto& fp : decl.post_flag_positions)
+    {
+        Actor::FlagPosition mirror;
+        mirror.flag = fp.flag;
+        mirror.pos = fp.pos;
+        mirror.pos_y_auto_terrain = fp.pos_y_auto_terrain;
+        mirror.yaw = fp.yaw;
+        e.post_flag_positions.push_back(std::move(mirror));
+    }
+}
+
+// Bind sampler to the archetype's skeleton + run the diamond funnel.
+// archetype_ptr is the early lookup result from spawnEnemyFromDecl
+// (passed in so we don't repeat the registry lookup).
+void bindSpawnArchetype(Actor& e, const EnemySpawnDecl& decl,
+                        const EnemyArchetype* archetype_ptr)
+{
+    if (!decl.archetype.empty())
+    {
+        e.archetype = (archetype_ptr != nullptr) ? archetype_ptr : archetypes().get(decl.archetype);
+        if (e.archetype == nullptr)
+            selva::combat::combatLog("[spawn] archetype '{}' not found in registry (id='{}')",
+                                     decl.archetype, e.spawn_id);
+    }
+    e.skeleton_id = (e.archetype != nullptr) ? e.archetype->skeleton_id : std::string("player");
+    e.sampler = selva::anim::createPoseSampler(selva::anim::skeletonByKey(e.skeleton_id),
+                                               selva::anim::meshByKey(e.skeleton_id),
+                                               selva::anim::jointMapByKey(e.skeleton_id));
+    std::random_device rd;
+    e.rng.seed(rd() ^ static_cast<std::uint32_t>(static_cast<std::int64_t>(decl.pos.x * 1000.0f)) ^
+               static_cast<std::uint32_t>(static_cast<std::int64_t>(decl.pos.z * 1000.0f)));
+    if (e.archetype != nullptr)
+    {
+        applyArchetypeToActor(e, *e.archetype);
+        if (selva::debug::flags().enemy_lifecycle)
+        {
+            std::fprintf(stderr,
+                         "[spawn] '%s' archetype='%s' form=%s hp.max=%d poise.max=%.1f "
+                         "(overrides: hp=%d poise=%.1f)\n",
+                         e.spawn_id.c_str(), decl.archetype.c_str(), formName(e.form), e.hp.max,
+                         e.poise.max, e.archetype->max_hp_override,
+                         e.archetype->max_poise_override);
+            std::fflush(stderr);
+        }
+    }
+    else
+    {
+        applyFormDefaults(e.body, e.stats, e.form);
+        initActorPoolsForArchetype(e);
+        e.faction = Faction::Hostile;
+    }
+}
+
+// Decl shape (intermediates + final destination) -> actor runtime shape
+// (current + remaining-queue). See Actor::scripted_path_waypoints doc.
+void applyScriptedPathFromDecl(Actor& e, const EnemySpawnDecl& decl)
+{
+    std::vector<glm::vec3> full_path = decl.scripted_path_waypoints;
+    full_path.push_back(*decl.scripted_target_pos);
+    e.scripted_target_pos = full_path.front();
+    e.scripted_path_waypoints.assign(full_path.begin() + 1, full_path.end());
+    e.scripted_stop_range = decl.scripted_stop_range;
+    e.had_scripted_target = true;
+}
+
+// Resolve archetype.spawn_clip || idle_clip into (clip, key) for the
+// initial loco bind.
+struct PrimeClipResolution
+{
+    const selva::anim::AnimationClip* clip = nullptr;
+    const char* key = nullptr;
+};
+
+PrimeClipResolution resolvePrimeClip(const Actor& e)
+{
+    PrimeClipResolution out;
+    if (e.archetype != nullptr && !e.archetype->spawn_clip.empty())
+    {
+        const auto& reg = selva::anim::clipsByKey(e.skeleton_id);
+        const selva::anim::AnimationClip* c = reg.get(e.archetype->spawn_clip.c_str());
+        if (c != nullptr && c->isLoaded())
+        {
+            out.clip = c;
+            out.key = e.archetype->spawn_clip.c_str();
+            return out;
+        }
+        selva::combat::combatLog(
+            "[spawn] spawn_clip '{}' not found on skeleton '{}' (actor '{}'); falling back to idle",
+            e.archetype->spawn_clip, e.skeleton_id, e.spawn_id);
+    }
+    ClipLookup spawn_idle = lookupArchetypeClip(e, ClipFamily::PeacefulIdle);
+    out.clip = spawn_idle.clip;
+    out.key = spawn_idle.key;
+    return out;
+}
+
+// Fire the optional initial-freeze one-shot for held-pose spawns.
+// Pattern A (initial_state + initial_freeze_at_seconds, e.g. Lupa) or
+// Pattern B (spawn_clip + spawn_clip_freeze_at_seconds, e.g. feeders).
+void firePoseHeldOneShot(Actor& e, const selva::anim::AnimationClip& clip, const char* clip_key)
+{
+    if (e.archetype == nullptr)
+        return;
+    const bool pattern_a = e.archetype->spawn_clip.empty() &&
+                           e.archetype->initial_freeze_at_seconds > 0.0f &&
+                           !e.archetype->initial_state.empty();
+    const bool pattern_b = !e.archetype->spawn_clip.empty() &&
+                           e.archetype->spawn_clip_freeze_at_seconds > 0.0f;
+    if (!pattern_a && !pattern_b)
+        return;
+    const float freeze_at = pattern_a ? e.archetype->initial_freeze_at_seconds
+                                       : e.archetype->spawn_clip_freeze_at_seconds;
+    selva::anim::PoseSampler::OneShotOptions opts;
+    opts.clip_key = clip_key;
+    opts.freeze_last = true;
+    opts.freeze_at_seconds = freeze_at;
+    e.sampler.playOneShot(clip, /*blend_in_seconds=*/0.0f, /*blend_out_seconds=*/0.20f,
+                          selva::anim::PoseSampler::BodyMask::Full,
+                          /*start_time_seconds=*/freeze_at, /*playback_rate=*/1.0f, opts);
+}
+
+void primeSpawnPose(Actor& e)
+{
+    // Bind the loco track to spawn_clip or idle_clip, whichever the
+    // archetype declares. Without this the first rendered frame is
+    // the standing idle even for actors whose spawn pose is prone
+    // (larva_fresh in zombie_crawl). See feedback memory for why the
+    // key MUST flow through to sampler.update.
+    PrimeClipResolution prime = resolvePrimeClip(e);
+    if (prime.clip == nullptr || !prime.clip->isLoaded())
+    {
+        selva::combat::combatLog("[spawn] no prime clip '{}' on skeleton '{}' (actor '{}')",
+                                 prime.key ? prime.key : "(none)", e.skeleton_id, e.spawn_id);
+        return;
+    }
+    e.sampler.update(*prime.clip, 0.0f, 0.0f, /*loops=*/true, prime.key);
+    firePoseHeldOneShot(e, *prime.clip, prime.key);
+}
+
+// Phase-stagger AI tick, create Jolt body, push into pool, fire dormant
+// state init if Pattern B.
+void finalizeSpawnActor(Actor& e)
+{
+    const int pool_index = static_cast<int>(actors().size());
+    seedAiTickPhase(e, pool_index, selva::tuning::current());
+    const bool needs_dormant_init =
+        (e.archetype != nullptr) && e.archetype->is_boss && !e.archetype->initial_state.empty();
+    e.character_body =
+        selva::world::createCharacterBody(e.pos, e.body.collider_radius, e.body.collider_height);
+    actors().push_back(std::move(e));
+    if (needs_dormant_init)
+    {
+        // setBossState skips no-op transitions; nudge through Engaged
+        // so the Dormant funnel mirror writes always run.
+        Actor& pooled = actors()[pool_index];
+        pooled.boss_state = BossState::Engaged;
+        setBossState(pooled, BossState::Dormant);
+    }
+}
+} // namespace
+
 void spawnEnemyFromDecl(const std::string& region_id, const EnemySpawnDecl& decl)
 {
     // Boss lifecycle gates. Resolved BEFORE allocating the actor so a
@@ -189,8 +544,7 @@ void spawnEnemyFromDecl(const std::string& region_id, const EnemySpawnDecl& decl
                 if (felled_id == decl.id)
                 {
                     selva::combat::combatLog(
-                        "[spawn] boss '{}' skipped at boot (already felled this save)",
-                        decl.id);
+                        "[spawn] boss '{}' skipped at boot (already felled this save)", decl.id);
                     return;
                 }
             }
@@ -200,170 +554,20 @@ void spawnEnemyFromDecl(const std::string& region_id, const EnemySpawnDecl& decl
     {
         // Trigger-spawned: skip at boot. The custom-trigger dispatcher
         // will call spawnEnemyFromDecl again when the trigger fires.
-        selva::combat::combatLog(
-            "[spawn] enemy '{}' deferred (waits on spawn_trigger '{}')", decl.id,
-            decl.spawn_trigger_id);
+        selva::combat::combatLog("[spawn] enemy '{}' deferred (waits on spawn_trigger '{}')",
+                                 decl.id, decl.spawn_trigger_id);
         return;
     }
 
     Actor e;
-    e.controller = Controller::AI_Stationary;
-    // Faction sourced from archetype (default Hostile if archetype
-    // didn't specify, matching the legacy hardcoded value). NPCs +
-    // future companions override to Allied / Neutral in their JSON.
-    e.faction = (archetype_ptr != nullptr) ? archetype_ptr->faction : Faction::Hostile;
-    // Resolve pos -- pos.y may be the "auto_terrain" sentinel,
-    // in which case sample the terrain at XZ for the spawn Y.
-    e.pos = decl.pos;
-    if (decl.pos_y_auto_terrain)
-        e.pos.y = selva::world::groundHeight(decl.pos.x, decl.pos.z,
-                                             -std::numeric_limits<float>::infinity());
-    e.yaw = decl.yaw;
-    e.spawn_pos = e.pos;
-    e.spawn_yaw = decl.yaw;
-    e.spawn_id = region_id + ":" + decl.id;
-    e.spawn_region_id = region_id;
-    e.permanent_on_death = decl.permanent_on_death;
-    // Bind archetype FIRST -- sampler creation below reads skeleton_id
-    // from the archetype, and previously we were reading e.archetype
-    // (still null at this point in the Actor's lifetime). Bug
-    // symptom: every non-player actor got a sampler bound to the
-    // player rig regardless of archetype.skeleton_id, which caused
-    // an ozz IsNormalizedEst quaternion assertion on first sample
-    // (wrong joint indices into the wrong skeleton).
-    if (!decl.archetype.empty())
-    {
-        e.archetype = (archetype_ptr != nullptr) ? archetype_ptr : archetypes().get(decl.archetype);
-        if (e.archetype == nullptr)
-            selva::combat::combatLog("[spawn] archetype '{}' not found in registry (id='{}')",
-                                     decl.archetype, e.spawn_id);
-    }
-    // Bind sampler to the archetype's skeleton + mesh. Humanoid
-    // archetypes share the player rig (skeleton_id="player"); wolf
-    // and other non-humanoids bind to their own skeleton from the
-    // registry. Joint map is looked up by the same key. See
-    // [[design/animals_and_multi_skeleton]] for the architecture.
-    const std::string sk_id =
-        (e.archetype != nullptr) ? e.archetype->skeleton_id : std::string("player");
-    e.sampler = selva::anim::createPoseSampler(selva::anim::skeletonByKey(sk_id),
-                                               selva::anim::meshByKey(sk_id),
-                                               selva::anim::jointMapByKey(sk_id));
-    // Mirror form from archetype (default DamnedSoul; existing shade
-    // JSON omits the field). Apply per-form Body/Stats DEFAULTS before
-    // initActorPools so the pools derive from form-baseline numbers.
-    // Per-archetype overrides (max_hp_override etc.) layer on AFTER
-    // pool init.
-    e.form = (e.archetype != nullptr) ? e.archetype->form : Form::DamnedSoul;
-    applyFormDefaults(e.body, e.stats, e.form);
-    initActorPools(e.hp, e.stamina, e.poise, e.body, e.stats);
-    // Per-archetype pool overrides for boss-tier actors. Lupa: legend
-    // HP, broken poise (her stagger easily but she TANKS hits).
-    if (e.archetype != nullptr)
-    {
-        if (e.archetype->max_hp_override > 0)
-        {
-            e.hp.max = e.archetype->max_hp_override;
-            e.hp.current = e.hp.max;
-        }
-        if (e.archetype->max_poise_override > 0.0f)
-        {
-            e.poise.max = e.archetype->max_poise_override;
-            e.poise.current = e.poise.max;
-        }
-        std::fprintf(stderr,
-                     "[spawn] '%s' archetype='%s' form=%s hp.max=%d poise.max=%.1f "
-                     "(overrides: hp=%d poise=%.1f)\n",
-                     e.spawn_id.c_str(), decl.archetype.c_str(), formName(e.form), e.hp.max,
-                     e.poise.max, e.archetype->max_hp_override,
-                     e.archetype->max_poise_override);
-        std::fflush(stderr);
-    }
-    // Seed per-actor RNG. Two actors of the same archetype get
-    // independent rolls so they don't synchronize their weighted
-    // action picks. random_device + a salt from spawn pos makes
-    // co-spawned actors diverge on the first call.
-    std::random_device rd;
-    e.rng.seed(rd() ^ static_cast<std::uint32_t>(static_cast<std::int64_t>(decl.pos.x * 1000.0f)) ^
-               static_cast<std::uint32_t>(static_cast<std::int64_t>(decl.pos.z * 1000.0f)));
-    // Skeleton: archetype's id (default "player"). Archetype was
-    // bound above (before sampler creation). Resolved by
-    // selva::anim::meshByKey / skeletonByKey at use sites.
-    e.skeleton_id = (e.archetype != nullptr) ? e.archetype->skeleton_id : std::string("player");
-    // Boss fields. Mirror archetype.is_boss for hot-path lookups.
-    // boss_state init follows: Pattern B (is_boss + non-empty
-    // initial_state) -> Dormant (the explicit setBossState call below
-    // writes the legacy current_boss_state mirror); Pattern A and
-    // non-bosses leave boss_state at default Dormant, which is
-    // semantically meaningless for them (nothing reads it).
-    e.is_boss = (e.archetype != nullptr) && e.archetype->is_boss;
-    e.is_npc = (e.archetype != nullptr) && e.archetype->is_npc;
-    e.spawn_decl_id = decl.id;
-    e.boss_state = BossState::Dormant; // default; setBossState below writes mirrors if Pattern B
-    e.current_boss_state.clear();      // setBossState(Dormant) will re-write from archetype if needed
-    // Prime the sampler with the peaceful-idle clip as the LOCO track.
-    // Resolved via the single archetype->per-skeleton-registry funnel
-    // (lookupArchetypeClip) so the wolf's sampler binds to a wolf clip,
-    // not the player's.
-    const ClipLookup spawn_idle = lookupArchetypeClip(e, ClipFamily::PeacefulIdle);
-    if (spawn_idle.clip != nullptr && spawn_idle.clip->isLoaded())
-    {
-        e.sampler.update(*spawn_idle.clip, 0.0f, 0.0f);
-        // Pattern B held-pose: if the archetype declares a freeze
-        // timestamp, fire idle_clip as a freeze-held one-shot on top
-        // of the loco track. Visually the actor lands and stays at
-        // the chosen mid-clip frame (Lupa: 1.69s of idle_2_head_low
-        // = the perfect sad sit). On engage, engage_clip starts as
-        // a fresh one-shot and crossfades over the held pose.
-        if (e.archetype != nullptr && e.archetype->initial_freeze_at_seconds > 0.0f &&
-            !e.archetype->initial_state.empty())
-        {
-            selva::anim::PoseSampler::OneShotOptions opts;
-            opts.clip_key = spawn_idle.key;
-            opts.freeze_last = true;
-            opts.freeze_at_seconds = e.archetype->initial_freeze_at_seconds;
-            // start_time_seconds = freeze_at_seconds: clip begins AT
-            // the freeze frame so the held pose is visible from frame
-            // one (otherwise the clip plays 0->1.69 first, then holds).
-            e.sampler.playOneShot(*spawn_idle.clip, /*blend_in_seconds=*/0.0f,
-                                  /*blend_out_seconds=*/0.20f,
-                                  selva::anim::PoseSampler::BodyMask::Full,
-                                  /*start_time_seconds=*/e.archetype->initial_freeze_at_seconds,
-                                  /*playback_rate=*/1.0f, opts);
-        }
-    }
-    else
-        selva::combat::combatLog(
-            "[spawn] no idle clip '{}' on skeleton '{}' (actor '{}')", spawn_idle.key,
-            e.skeleton_id, e.spawn_id);
-    // Hurtbox decls. Archetype's own list wins; if archetype declared
-    // none, the actor inherits the player's hurtbox layout (every
-    // humanoid shade today -- they share the X_Bot skeleton). Wolves
-    // and other non-humanoid archetypes set their own hurtboxes in
-    // their archetype JSON.
-    if (e.archetype != nullptr && !e.archetype->hurtbox_decls.empty())
-        e.body.hurtbox_decls = e.archetype->hurtbox_decls;
-    else
-        e.body.hurtbox_decls = selva::gameplay::player().body.hurtbox_decls;
-    // Phase-stagger the first AI tick so a wave of actors spawned on
-    // the same frame doesn't all evaluate together. The pool index is
-    // the soon-to-be position of this actor (after push_back).
-    const int pool_index = static_cast<int>(actors().size());
-    seedAiTickPhase(e, pool_index, selva::tuning::current());
-    const bool needs_dormant_init =
-        (e.archetype != nullptr) && e.archetype->is_boss &&
-        !e.archetype->initial_state.empty();
-    actors().push_back(std::move(e));
-    if (needs_dormant_init)
-    {
-        // Force a setBossState(Dormant) on the pooled actor so the
-        // mirror writes (current_boss_state = initial_state, etc.) run
-        // through the single funnel. Default boss_state is already
-        // Dormant -- but setBossState skips no-op transitions, so we
-        // need to temporarily nudge to a different state first.
-        Actor& pooled = actors()[pool_index];
-        pooled.boss_state = BossState::Engaged; // sentinel != Dormant
-        setBossState(pooled, BossState::Dormant);
-    }
+    initSpawnIdentity(e, region_id, decl, archetype_ptr);
+    bindSpawnArchetype(e, decl, archetype_ptr);
+    primeSpawnPose(e);
+    if (decl.scripted_target_pos.has_value())
+        applyScriptedPathFromDecl(e, decl);
+    e.boss_state = BossState::Dormant;
+    e.current_boss_state.clear();
+    finalizeSpawnActor(e);
 }
 
 namespace
@@ -474,7 +678,7 @@ void tickEnemyDecision(Actor& a, const selva::tuning::Tunables& tun)
     if (tree != nullptr)
         tree->tick(a, tun);
 
-    if (tun.debug_ai_decision_log)
+    if (selva::debug::flags().ai_decision_log)
     {
         const auto& p = a.perception.last_known_player_pos;
         selva::combat::combatLog(
@@ -491,109 +695,86 @@ void tickEnemyDecision(Actor& a, const selva::tuning::Tunables& tun)
 // frame on every AI actor (not gated by the AI scheduler — animation
 // and motion must run at full rate). Mirrors the player's velocity
 // ramp + turn-rate convention so PC/NPC locomotion behaves the same.
-void tickEnemyLocomotion(Actor& a, float dt, const selva::tuning::Tunables& tun)
+namespace
 {
-    // RootMotion gate — mirrors tickPlayerVelocity. If the actor's
-    // current loco clip drives world translation via consumedHipDelta
-    // (applyActorClipHipDelta at the end of tickOneEnemy), velocity
-    // integration must NOT also run or the two compound (visible foot-
-    // skate / "moves at 2x speed"). Read the active clip's source from
-    // the global locomotion config; default Velocity for unregistered
-    // clips. Wolf walk + gallop are root_motion per config/locomotion.json
-    // so wolf gait pace == authored cadence, no per-archetype walk_speed
-    // tuning. Same contract as the human directional gait clips.
+// True if the current loco clip drives world translation via
+// consumedHipDelta -- in which case velocity integration must NOT
+// also run or they compound (visible foot-skate / "moves at 2x speed").
+bool isLocoRootMotionDriven(const Actor& a)
+{
     const auto fd = a.sampler.frameDiagnostics();
     const char* cur_name = fd.loco_current_name;
     const selva::anim::TranslationSource src =
-        (cur_name != nullptr)
-            ? selva::anim::locomotionConfig().translationSource(cur_name)
-            : selva::anim::TranslationSource::Velocity;
-    const bool root_motion_clip = (src == selva::anim::TranslationSource::RootMotion);
+        (cur_name != nullptr) ? selva::anim::locomotionConfig().translationSource(cur_name)
+                              : selva::anim::TranslationSource::Velocity;
+    return src == selva::anim::TranslationSource::RootMotion;
+}
 
-    // One-shot lock — mirrors the PC's movement_locked / velocity_locked
-    // gates in tickPlayerVelocity. While a one-shot is in flight, the
-    // clip-hip path (applyActorClipHipDelta at the end of tickEnemies)
-    // owns translation; this function must not also integrate velocity*dt
-    // into pos, or the two translation sources compound and the actor
-    // slides during the swing. Zeroing velocity here also ensures that
-    // when the one-shot ends the actor starts from a clean state — the
-    // next intent (from the next decision tick) ramps velocity up from
-    // zero rather than carrying stale pre-swing momentum into the
-    // recovery.
-    // Movement-lock rules:
-    //   * action_locks_movement (EnemyAction.locks_movement=true):
-    //     velocity zeroed for FULL one-shot duration. Cancel_fraction
-    //     governs other things (chain-input) but not locomotion. Heavy
-    //     swings where the body MUST stay planted (wolf bite).
-    //   * Else cancel_fraction: zero only until past cancel-fraction;
-    //     after that, velocity ramp resumes WHILE recovery animation
-    //     plays. Light/tracking attacks where the actor should
-    //     reposition during recovery.
-    //   * Root-motion loco clip: always zero (clip drives translation,
-    //     velocity must not also integrate).
-    const bool one_shot_active = a.sampler.isOneShotActive();
-    const bool hard_lock = one_shot_active && a.action_locks_movement;
-    const bool soft_lock = one_shot_active && !a.sampler.isOneShotPastCancelFraction();
-    const bool gated = hard_lock || soft_lock || root_motion_clip;
-    // Clear the per-action lock once the one-shot ends so the next
-    // action starts from a clean slate.
-    if (!one_shot_active)
-        a.action_locks_movement = false;
-    if (gated)
-    {
-        a.velocity_xz = glm::vec2(0.0f);
-        // Yaw still ticks below (turn-while-rooted is correct -- the
-        // wolf rotates her body to face the player while authored
-        // walk drives forward translation).
-    }
+void rampVelocityToward(Actor& a, float dt, const selva::tuning::Tunables& tun)
+{
+    const glm::vec2 delta = a.intent_xz - a.velocity_xz;
+    const float delta_mag = glm::length(delta);
+    if (delta_mag <= 0.0001f)
+        return;
+    const float current_speed = glm::length(a.velocity_xz);
+    const float target_speed = glm::length(a.intent_xz);
+    const float rate =
+        (target_speed >= current_speed) ? tun.locomotion_accel : tun.locomotion_decel;
+    const float max_step = rate * dt;
+    if (delta_mag <= max_step)
+        a.velocity_xz = a.intent_xz;
     else
+        a.velocity_xz += (delta / delta_mag) * max_step;
+}
+
+// Belt-and-braces velocity clamp: even if some other system writes a
+// velocity that would carry the actor into an AI barrier or a hazard
+// it should avoid, this clears the offending axis BEFORE Jolt
+// integrates. Consulted axis-by-axis so a barrier on X still lets
+// the actor slide along Z.
+void clampVelocityAgainstBarriersAndHazards(Actor& a, float dt)
+{
+    const float new_x = a.pos.x + a.velocity_xz.x * dt;
+    const float new_z = a.pos.z + a.velocity_xz.y * dt;
+    const glm::vec3 try_x(new_x, a.pos.y, a.pos.z);
+    const glm::vec3 try_z(a.pos.x, a.pos.y, new_z);
+    const std::vector<std::string>* avoided =
+        (a.archetype != nullptr && !a.archetype->avoids_hazards.empty())
+            ? &a.archetype->avoids_hazards
+            : nullptr;
+    if (findAiBlockingVolume(try_x, a.spawn_region_id) != nullptr ||
+        (avoided != nullptr && selva::hazard::positionIsInAvoidedZone(try_x, *avoided)))
+        a.velocity_xz.x = 0.0f;
+    if (findAiBlockingVolume(try_z, a.spawn_region_id) != nullptr ||
+        (avoided != nullptr && selva::hazard::positionIsInAvoidedZone(try_z, *avoided)))
+        a.velocity_xz.y = 0.0f;
+}
+
+// Edge-triggered diagnostic: log when an actor with avoids_hazards
+// crosses into/out of one of its avoided zones. Gated by
+// selva::debug::flags().enemy_lifecycle.
+void traceHazardEntryExit(Actor& a)
+{
+    const std::vector<std::string>* avoided =
+        (a.archetype != nullptr && !a.archetype->avoids_hazards.empty())
+            ? &a.archetype->avoids_hazards
+            : nullptr;
+    const bool in_hazard_now =
+        (avoided != nullptr) && selva::hazard::positionIsInAvoidedZone(a.pos, *avoided);
+    if (in_hazard_now == a.was_in_avoided_hazard)
+        return;
+    if (selva::debug::flags().enemy_lifecycle)
     {
-        // Velocity ramp toward intent.
-        const glm::vec2 delta = a.intent_xz - a.velocity_xz;
-        const float delta_mag = glm::length(delta);
-        if (delta_mag > 0.0001f)
-        {
-            const float current_speed = glm::length(a.velocity_xz);
-            const float target_speed = glm::length(a.intent_xz);
-            const float rate =
-                (target_speed >= current_speed) ? tun.locomotion_accel : tun.locomotion_decel;
-            const float max_step = rate * dt;
-            if (delta_mag <= max_step)
-                a.velocity_xz = a.intent_xz;
-            else
-                a.velocity_xz += (delta / delta_mag) * max_step;
-        }
-
-        // Integrate XZ position from velocity. Only when not in a
-        // one-shot — clip-hip drives translation during the swing.
-        //
-        // AI barrier check: per [[gameplay/AiBarriers.h]], an actor
-        // cannot enter ai_block_volumes belonging to a region other
-        // than its own. A Limbo shade is blocked from walking into
-        // the chapel/descent corridor (those volumes are owned by
-        // chapel_interior / chapel_exterior, not by limbo). Apply
-        // the move axis-by-axis so a barrier on the X face still
-        // lets the actor slide along Z (and vice versa) -- standard
-        // axis-projection AABB-slide pattern.
-        const float new_x = a.pos.x + a.velocity_xz.x * dt;
-        const float new_z = a.pos.z + a.velocity_xz.y * dt;
-        const glm::vec3 try_x(new_x, a.pos.y, a.pos.z);
-        if (findAiBlockingVolume(try_x, a.spawn_region_id) == nullptr)
-            a.pos.x = new_x;
-        else
-            a.velocity_xz.x = 0.0f;
-        const glm::vec3 try_z(a.pos.x, a.pos.y, new_z);
-        if (findAiBlockingVolume(try_z, a.spawn_region_id) == nullptr)
-            a.pos.z = new_z;
-        else
-            a.velocity_xz.y = 0.0f;
+        std::fprintf(stderr, "[hazard-violation] %s arch=%s %s pos=(%.2f,%.2f,%.2f)\n",
+                     a.spawn_id.c_str(), a.archetype ? a.archetype->id.c_str() : "(null)",
+                     in_hazard_now ? "ENTER" : "EXIT", a.pos.x, a.pos.y, a.pos.z);
+        std::fflush(stderr);
     }
-    // Snap Y to the ground so the actor's feet stay on the heightmap
-    // surface (or on any walkable BoxCollider like a stair step).
-    a.pos.y = selva::world::groundHeight(a.pos.x, a.pos.z, a.pos.y);
+    a.was_in_avoided_hazard = in_hazard_now;
+}
 
-    // Turn yaw toward turn_intent_yaw, shortest-path. Wrap delta into
-    // [-pi, pi] so a 350° desired yaw doesn't take the long way around.
+void stepYawTowardIntent(Actor& a, float dt, const selva::tuning::Tunables& tun)
+{
     constexpr float kTwoPi = 6.2831853f;
     constexpr float kPi = 3.1415927f;
     float yaw_delta = a.turn_intent_yaw - a.yaw;
@@ -606,6 +787,43 @@ void tickEnemyLocomotion(Actor& a, float dt, const selva::tuning::Tunables& tun)
         a.yaw = a.turn_intent_yaw;
     else
         a.yaw += (yaw_delta > 0.0f ? max_yaw_step : -max_yaw_step);
+}
+} // namespace
+
+void tickEnemyLocomotion(Actor& a, float dt, const selva::tuning::Tunables& tun)
+{
+    // Movement-lock rules (see field comments on each):
+    //   * action_locks_movement: hard lock for the full one-shot.
+    //     Heavy swings where the body MUST stay planted (wolf bite).
+    //   * cancel_fraction: soft lock until past cancel; ramp resumes
+    //     WHILE recovery plays. Light tracking attacks.
+    //   * Root-motion loco clip: always zero (clip drives translation,
+    //     velocity must not also integrate -- universal physics
+    //     refactor's hip-delta vs velocity contract).
+    const bool root_motion_clip = isLocoRootMotionDriven(a);
+    const bool one_shot_active = a.sampler.isOneShotActive();
+    const bool hard_lock = one_shot_active && a.action_locks_movement;
+    const bool soft_lock = one_shot_active && !a.sampler.isOneShotPastCancelFraction();
+    const bool gated = hard_lock || soft_lock || root_motion_clip;
+    if (!one_shot_active)
+        a.action_locks_movement = false;
+    if (gated)
+    {
+        // Yaw still ticks below (turn-while-rooted is correct -- the
+        // wolf rotates her body to face the player while authored
+        // walk drives forward translation).
+        a.velocity_xz = glm::vec2(0.0f);
+    }
+    else
+    {
+        rampVelocityToward(a, dt, tun);
+        clampVelocityAgainstBarriersAndHazards(a, dt);
+    }
+    traceHazardEntryExit(a);
+    // Y is owned by Jolt's gravity in updatePhysics. The earlier
+    // groundHeight snap got removed (universal-actor-physics refactor):
+    // it produced teleport-up bugs in the vertical-stack world.
+    stepYawTowardIntent(a, dt, tun);
 }
 
 // Per-actor death + respawn handling. Returns true if the actor
@@ -703,53 +921,88 @@ HitReactPick pickHitReactFamily(int damage, float target_yaw, const glm::vec3& w
 // Public — exposed so the PC's death path in PerFrameTick can fire
 // the same one-shot routing as enemies do. Reads `e.death_clip_name`
 // so each actor controls its own visual; the PC's is "second_death".
-void fireEnemyDeath(Actor& e, int index)
+// Visual/state-only restoration of a previously-felled actor on
+// save-load. Snaps to the final frame of the death clip (no blend,
+// no audio, no scene-begin, no profile-list-append, no rewards). The
+// real-death-event path (fireEnemyDeath) owns those side effects;
+// this is the "the cosmology already knows this actor is dead --
+// just render them that way" path.
+namespace
 {
-    // Per-actor override (e.death_clip_name) wins so the player ("second_death")
-    // keeps working without an archetype. For enemies whose death_clip_name
-    // is unset OR points to a key that doesn't exist on the actor's
-    // skeleton, fall through to the archetype's Death family on the
-    // per-skeleton registry. The player path uses selva::anim::clips()
-    // (skel="player"); enemy actors use clipsByKey(skeleton_id).
+// Resolve the death clip for an actor. Per-actor death_clip_name
+// override wins (player uses "second_death"); falls through to the
+// archetype's Death family on the per-skeleton registry. clip_name
+// stays the empty string when nothing resolves.
+struct DeathClipResolution
+{
+    const selva::anim::AnimationClip* clip = nullptr;
+    const char* key = "";
+};
+
+DeathClipResolution resolveDeathClip(const Actor& e)
+{
+    DeathClipResolution out;
     const auto& reg = selva::anim::clipsByKey(e.skeleton_id);
-    const selva::anim::AnimationClip* death_clip = nullptr;
-    const char* clip_name = "";
     if (!e.death_clip_name.empty())
     {
         const auto* c = reg.get(e.death_clip_name);
         if (c != nullptr && c->isLoaded())
         {
-            death_clip = c;
-            clip_name = e.death_clip_name.c_str();
+            out.clip = c;
+            out.key = e.death_clip_name.c_str();
+            return out;
         }
     }
-    if (death_clip == nullptr)
-    {
-        const ClipLookup fallback = lookupArchetypeClip(e, ClipFamily::Death);
-        death_clip = fallback.clip;
-        clip_name = fallback.key;
-    }
+    const ClipLookup fallback = lookupArchetypeClip(e, ClipFamily::Death);
+    out.clip = fallback.clip;
+    out.key = fallback.key;
+    return out;
+}
+} // namespace
+
+void reapplyDeadPose(Actor& e)
+{
+    DeathClipResolution dc = resolveDeathClip(e);
+    const selva::anim::AnimationClip* death_clip = dc.clip;
+    const char* clip_name = dc.key;
     if (death_clip != nullptr && death_clip->isLoaded())
     {
         selva::anim::PoseSampler::OneShotOptions opts;
         opts.clip_key = clip_name;
         opts.freeze_last = true;
-        e.sampler.playOneShot(*death_clip, /*blend_in_seconds=*/0.25f,
-                              /*blend_out_seconds=*/0.25f, selva::anim::PoseSampler::BodyMask::Full,
-                              /*start_time_seconds=*/0.0f, /*playback_rate=*/1.0f, opts);
+        // Snap to the last frame (no blend, no audio, no flop).
+        e.sampler.playOneShot(*death_clip, /*blend_in_seconds=*/0.0f,
+                              /*blend_out_seconds=*/0.0f, selva::anim::PoseSampler::BodyMask::Full,
+                              /*start_time_seconds=*/death_clip->duration(),
+                              /*playback_rate=*/1.0f, opts);
     }
-    // Bed layer — plays at clip start (the dread under the fall).
+    e.is_dead = true;
+    e.death_time = 0.0f; // sentinel; not the real death timestamp
+    // Save-load restored a previously-felled actor: tear down its
+    // Jolt body so the corpse doesn't participate in physics. Same
+    // contract as fireEnemyDeath.
+    selva::world::destroyCharacterBody(e.character_body);
+    e.character_body = engine::physics::BodyHandle{};
+    if (e.is_boss)
+        setBossState(e, BossState::Felled);
+}
+
+namespace
+{
+void fireDeathClipAndAudio(Actor& e, const selva::anim::AnimationClip& death_clip,
+                           const char* clip_name)
+{
+    selva::anim::PoseSampler::OneShotOptions opts;
+    opts.clip_key = clip_name;
+    opts.freeze_last = true;
+    e.sampler.playOneShot(death_clip, /*blend_in_seconds=*/0.25f,
+                          /*blend_out_seconds=*/0.25f, selva::anim::PoseSampler::BodyMask::Full,
+                          /*start_time_seconds=*/0.0f, /*playback_rate=*/1.0f, opts);
     if (!e.death_sfx_name.empty())
     {
         selva::combat::combatLog("[death-audio] bed sfx='{}'", e.death_sfx_name);
         selva::audio::playSfx(e.death_sfx_name);
     }
-    e.is_dead = true;
-    e.death_time = selva::wallClock();
-    // Peak-aligned layers — each scheduled so its declared peak
-    // lands at death_time + peak_align_seconds. PC uses this to
-    // stack synth_echo + soul_steal both peaking together at the
-    // moment the second-death card snaps in.
     for (const auto& sfx_name : e.death_peak_sfx_names)
     {
         const float peak_offset = selva::audio::sfxPeakOffset(sfx_name);
@@ -759,56 +1012,152 @@ void fireEnemyDeath(Actor& e, int index)
             sfx_name, peak_offset, e.death_peak_align_seconds, play_at);
         selva::audio::scheduleSfx(sfx_name, play_at);
     }
-    // Player-only: duck the OST so the death audio reads clean
-    // against a muffled background. Restored on respawn in
+}
+
+void persistFelledBoss(Actor& e)
+{
+    if (!e.is_boss || e.spawn_decl_id.empty())
+        return;
+    // setBossState(Felled) is THE funnel: clears current_boss_state,
+    // active_boss_idx/id, pops the audio bed, logs the transition.
+    setBossState(e, BossState::Felled);
+    PlayerProfile* profile = selva::activePlayerProfile();
+    if (profile != nullptr)
+    {
+        const auto& fb = profile->felled_bosses;
+        if (std::find(fb.begin(), fb.end(), e.spawn_decl_id) == fb.end())
+        {
+            profile->felled_bosses.push_back(e.spawn_decl_id);
+            selva::combat::combatLog(
+                "[boss-felled] '{}' appended to profile '{}'.felled_bosses", e.spawn_decl_id,
+                profile->name);
+        }
+    }
+    // Reward dispatch. v1 assumes the player killed the boss; routing
+    // through hit-detection's owner field will refine attribution
+    // later when faction-conflict ships.
+    selva::gameplay::onBossFelled(e.spawn_decl_id, selva::gameplay::player());
+}
+} // namespace
+
+void fireEnemyDeath(Actor& e, int index)
+{
+    DeathClipResolution dc = resolveDeathClip(e);
+    if (dc.clip != nullptr && dc.clip->isLoaded())
+    {
+        e.death_time = selva::wallClock();
+        fireDeathClipAndAudio(e, *dc.clip, dc.key);
+    }
+    else
+    {
+        e.death_time = selva::wallClock();
+    }
+    e.is_dead = true;
+    // Tear down the Jolt character body -- corpses are visual-only
+    // (death clip freezes the pose); they no longer participate in
+    // physics. Per the real-physics doctrine.
+    selva::world::destroyCharacterBody(e.character_body);
+    e.character_body = engine::physics::BodyHandle{};
+    // Player-only: duck the OST so the death audio reads clean against
+    // a muffled background. Restored on respawn in
     // tickPlayerSecondDeathLifecycle.
     if (e.controller == Controller::Input)
         selva::audio::duckMusic();
-    // Boss-death save-persistence (per
-    // docs/design/ideas/boss_backend.md section 5): append the
-    // boss's spawn_decl_id to the active profile's felled_bosses
-    // list, clear GameState.active_boss_* so the GUI / music / arena
-    // lockout fall back to ambient. The boss-felled overlay (step 9)
-    // hooks the same edge by polling active_boss_idx transitioning
-    // from valid to -1.
-    if (e.is_boss && !e.spawn_decl_id.empty())
-    {
-        // SINGLE source of truth: setBossState(Felled) clears
-        // current_boss_state, active_boss_idx/id, pops the audio bed,
-        // logs the transition. Profile-write + reward dispatch happen
-        // here on the death edge regardless of prior state.
-        setBossState(e, BossState::Felled);
-        PlayerProfile* profile = selva::activePlayerProfile();
-        if (profile != nullptr)
-        {
-            // Idempotent: don't double-append if already felled
-            // (shouldn't happen since spawn-skip excludes felled
-            // bosses, but defensive).
-            const auto& fb = profile->felled_bosses;
-            if (std::find(fb.begin(), fb.end(), e.spawn_decl_id) == fb.end())
-            {
-                profile->felled_bosses.push_back(e.spawn_decl_id);
-                selva::combat::combatLog(
-                    "[boss-felled] '{}' appended to profile '{}'.felled_bosses",
-                    e.spawn_decl_id, profile->name);
-            }
-        }
-        // Reward dispatch. For v1 we assume the player killed the boss
-        // (true today; faction-conflict will refine the attribution
-        // later by routing through hit-detection's owner field).
-        selva::gameplay::onBossFelled(e.spawn_decl_id, selva::gameplay::player());
-    }
+    persistFelledBoss(e);
     if (e.archetype != nullptr && !e.archetype->felled_flag.empty())
         setFlag(e.archetype->felled_flag);
-    // Scripted-death actors open the cinematic Scene at the moment the
-    // death clip fires (not earlier at Dying), so the player can keep
-    // attacking through the pain stage.
+    // Scripted-death actors open the cinematic Scene on the death clip
+    // (not earlier at Dying) so the player can keep attacking through
+    // the pain stage.
     if (e.archetype != nullptr && e.archetype->scripted_death_seconds > 0.0f &&
         !selva::scene::active())
     {
         selva::scene::begin({/*combat=*/true, /*movement=*/true, /*look=*/false});
     }
-    selva::combat::combatLog("[death] actor[{}] died (clip={})", index, clip_name);
+    selva::combat::combatLog("[death] actor[{}] died (clip={})", index, dc.key);
+}
+
+bool applyArchetypeSwap(Actor& a, const EnemyArchetype& target)
+{
+    if (a.is_dead)
+        return false;
+    const std::string prev_id = (a.archetype != nullptr) ? a.archetype->id : std::string("(none)");
+    // Snapshot collider dims pre-swap so we can detect whether the
+    // new archetype's form (DamnedSoul / Animal / etc.) changed the
+    // Jolt capsule. The Jolt body is created at spawn from these
+    // values; applyArchetypeToActor -> applyFormDefaults will rewrite
+    // them. Without a rebuild the live Jolt capsule keeps the OLD
+    // shape while the actor struct says the new one -- dual-source-
+    // of-truth drift waiting to bite a cross-form swap.
+    const float prev_radius = a.body.collider_radius;
+    const float prev_height = a.body.collider_height;
+    // THE archetype-to-actor funnel: same call as spawn. Re-derives
+    // every archetype-driven field (faction, form, pools, hurtboxes,
+    // interactable, is_boss, is_npc). Adding a new archetype-derived
+    // field updates ONE site -- not two.
+    applyArchetypeToActor(a, target);
+    // Same-dim case is the common path (DamnedSoul -> DamnedSoul,
+    // e.g. larva_fresh -> larva_aged). Skip the rebuild cost. Cross-
+    // form swap rebuilds the capsule at the actor's current world pos.
+    constexpr float kColliderRebuildEpsilon = 0.001f;
+    if (std::fabs(a.body.collider_radius - prev_radius) > kColliderRebuildEpsilon ||
+        std::fabs(a.body.collider_height - prev_height) > kColliderRebuildEpsilon)
+    {
+        selva::world::destroyCharacterBody(a.character_body);
+        a.character_body = selva::world::createCharacterBody(a.pos, a.body.collider_radius,
+                                                             a.body.collider_height);
+    }
+    // Cooldowns from the prior archetype's actions are meaningless
+    // for the new one. Movement intent + velocity BOTH zeroed so the
+    // archetype swap is a true discontinuity: no carryover motion
+    // from the previous form, no half-decayed velocity ramp. Without
+    // this, the post-swap actor inherits whatever velocity_xz was on
+    // the actor at the moment of swap, plus the hip-delta-discontinuity
+    // that fires when a new clip starts (zombie_scream's hip is at a
+    // different absolute position than zombie_crawl's, so the first
+    // consumedHipDelta() after the new one-shot starts is a huge
+    // jump). Both inputs to velocity get reset; the BT picks fresh
+    // movement on the next tick from a clean zero state.
+    a.action_state.clear();
+    a.intent_xz = glm::vec2(0.0f);
+    a.velocity_xz = glm::vec2(0.0f);
+    // Aggro-clip: fire it immediately on swap so the transition has
+    // a visual cue. Mark aggro_already_fired so the perception
+    // Suspicious->Alerted hook won't double-fire it on the actor's
+    // first sighting moments later.
+    a.aggro_already_fired = true;
+    if (!target.aggro_clip.empty())
+    {
+        const auto& reg = selva::anim::clipsByKey(a.skeleton_id);
+        const selva::anim::AnimationClip* clip = reg.get(target.aggro_clip.c_str());
+        if (clip != nullptr && clip->isLoaded())
+        {
+            selva::anim::PoseSampler::OneShotOptions opts;
+            opts.clip_key = target.aggro_clip.c_str();
+            opts.cancel_fraction = 1.0f;
+            a.sampler.playOneShot(*clip, /*blend_in=*/0.20f, /*blend_out=*/0.20f,
+                                  selva::anim::PoseSampler::BodyMask::Full,
+                                  /*start_time_seconds=*/0.0f,
+                                  /*playback_rate=*/1.0f, opts);
+            a.action_locks_movement = true;
+        }
+    }
+    // After playOneShot, the first consumedHipDelta() may report a
+    // large value (discontinuity between the prior loco clip's hip
+    // and the new one-shot's frame-0 hip). Consume + discard it now
+    // so the next applyActorClipHipDelta call sees a fresh zero.
+    // Per [[feedback_hip_delta_two_sides]] -- the extract side leaves
+    // residual that the apply side would otherwise turn into a slide.
+    (void)a.sampler.consumedHipDelta();
+    if (selva::debug::flags().enemy_lifecycle)
+    {
+        std::fprintf(stderr,
+                     "[archetype-swap] %s '%s' -> '%s' at t=%.3f  hp=%d/%d  poise=%.1f/%.1f\n",
+                     a.spawn_id.c_str(), prev_id.c_str(), target.id.c_str(), selva::wallClock(),
+                     a.hp.current, a.hp.max, a.poise.current, a.poise.max);
+        std::fflush(stderr);
+    }
+    return true;
 }
 
 void spawnRegionEnemies(const std::string& region_id, const std::vector<EnemySpawnDecl>& decls)
@@ -822,72 +1171,107 @@ void spawnRegionEnemies(const std::string& region_id, const std::vector<EnemySpa
 void shutdownHubEnemies()
 {
     // Remove every AI actor from the pool; leave the player intact.
-    auto& pool = actors();
-    pool.erase(std::remove_if(pool.begin() + (pool.empty() ? 0 : 1), pool.end(),
-                              [](const Actor& a) { return a.controller != Controller::Input; }),
-               pool.end());
-}
-
-void resetCycleEnemies()
-{
-    // Phase 1: every AI actor resets to JSON-default alive baseline.
-    // Cross-character state (a corpse left from the prior profile)
-    // must not leak. The profile-felled reconciliation in phase 2 is
-    // the only source of "stays dead" for the new session.
+    // Destroy any live Jolt character bodies first so the physics
+    // world doesn't keep orphaned handles when the pool slot is gone.
     auto& pool = actors();
     for (auto& a : pool)
     {
         if (a.controller == Controller::Input)
             continue;
+        selva::world::destroyCharacterBody(a.character_body);
+        a.character_body = engine::physics::BodyHandle{};
+    }
+    pool.erase(std::remove_if(pool.begin() + (pool.empty() ? 0 : 1), pool.end(),
+                              [](const Actor& a) { return a.controller != Controller::Input; }),
+               pool.end());
+}
 
-        a.pos = a.spawn_pos;
-        a.yaw = a.spawn_yaw;
-        a.velocity_xz = glm::vec2(0.0f);
-        a.intent_xz = glm::vec2(0.0f);
-        a.turn_intent_yaw = a.spawn_yaw;
+namespace
+{
+void applyPostFlagSpawnOverrides(Actor& a)
+{
+    // Walk in JSON order; later entries win on tie so authors can layer
+    // "if recently met" -> "if signing committed" etc.
+    for (const auto& fp : a.post_flag_positions)
+    {
+        if (!selva::hasFlag(fp.flag))
+            continue;
+        glm::vec3 override_pos = fp.pos;
+        if (fp.pos_y_auto_terrain)
+            override_pos.y = selva::world::groundHeight(override_pos.x, override_pos.z,
+                                                        override_pos.y + 100.0f);
+        a.pos = override_pos;
+        a.yaw = fp.yaw;
+    }
+}
 
-        initActorPools(a.hp, a.stamina, a.poise, a.body, a.stats);
+void resetActorTransientState(Actor& a)
+{
+    a.velocity_xz = glm::vec2(0.0f);
+    a.intent_xz = glm::vec2(0.0f);
+    a.turn_intent_yaw = a.yaw;
+    a.is_dead = false;
+    a.death_time = -1.0f;
+    a.is_knocked_down = false;
+    a.knockdown_start_time = -1.0f;
+    a.last_damage_time = -1.0f;
+    a.last_hit_react_time = -1.0f;
+    a.scripted_death_at_wallclock = -1.0f;
+    a.scripted_death_drain_end_wallclock = -1.0f;
+    a.dying_until_wallclock = -1.0f;
+    a.perception = PerceptionState{};
+    a.lock_target_idx = -1;
+    a.duel_strafe_dir = 0;
+    a.action_state.clear();
+    a.active_attack_hitbox_id = 0;
+    a.active_attack_joint_idx = -1;
+    a.active_attack_tip_offset_z = 0.0f;
+    a.foot_left = Actor::FootContact{};
+    a.foot_right = Actor::FootContact{};
+}
 
-        a.is_dead = false;
-        a.death_time = -1.0f;
-        a.is_knocked_down = false;
-        a.knockdown_start_time = -1.0f;
-        a.last_damage_time = -1.0f;
-        a.last_hit_react_time = -1.0f;
+void resetActorToSpawn(Actor& a)
+{
+    a.pos = a.spawn_pos;
+    a.yaw = a.spawn_yaw;
+    applyPostFlagSpawnOverrides(a);
+    resetActorTransientState(a);
+    initActorPoolsForArchetype(a);
+    // setBossState skips no-op transitions; nudge through a sentinel
+    // so the Dormant mirror writes (audio bed pop, active_boss_*
+    // clear) fire even on no-op transitions.
+    if (a.is_boss && a.boss_state != BossState::Dormant)
+        setBossState(a, BossState::Dormant);
+    else if (a.is_boss)
+    {
+        a.boss_state = BossState::Engaged;
+        setBossState(a, BossState::Dormant);
+    }
+    a.sampler.releaseOneShot();
+    const ClipLookup reset_idle = lookupArchetypeClip(a, ClipFamily::PeacefulIdle);
+    if (reset_idle.clip != nullptr && reset_idle.clip->isLoaded())
+        a.sampler.update(*reset_idle.clip, 0.0f, 0.0f, /*loops=*/true, reset_idle.key);
+    // Rebuild the Jolt character body at the reset pos. Old body
+    // (if any -- actor may have been mid-life or dead pre-reset) is
+    // torn down first; the new body takes over physics integration
+    // from this frame on.
+    selva::world::destroyCharacterBody(a.character_body);
+    a.character_body =
+        selva::world::createCharacterBody(a.pos, a.body.collider_radius, a.body.collider_height);
+}
+} // namespace
 
-        // Boss state to Dormant. Nudge through a non-Dormant sentinel
-        // when already Dormant so the mirror writes (audio bed pop,
-        // active_boss_* clear) fire even on no-op transitions.
-        if (a.is_boss && a.boss_state != BossState::Dormant)
-        {
-            setBossState(a, BossState::Dormant);
-        }
-        else if (a.is_boss)
-        {
-            a.boss_state = BossState::Engaged;
-            setBossState(a, BossState::Dormant);
-        }
-        a.scripted_death_at_wallclock = -1.0f;
-        a.scripted_death_drain_end_wallclock = -1.0f;
-        a.dying_until_wallclock = -1.0f;
-
-        a.perception = PerceptionState{};
-
-        a.lock_target_idx = -1;
-        a.duel_strafe_dir = 0;
-
-        a.action_state.clear();
-        a.active_attack_hitbox_id = 0;
-        a.active_attack_joint_idx = -1;
-        a.active_attack_tip_offset_z = 0.0f;
-
-        a.foot_left = Actor::FootContact{};
-        a.foot_right = Actor::FootContact{};
-
-        a.sampler.releaseOneShot();
-        const ClipLookup reset_idle = lookupArchetypeClip(a, ClipFamily::PeacefulIdle);
-        if (reset_idle.clip != nullptr && reset_idle.clip->isLoaded())
-            a.sampler.update(*reset_idle.clip, 0.0f, 0.0f);
+void resetCycleEnemies()
+{
+    // Phase 1: every AI actor resets to JSON-default alive baseline.
+    // Cross-character corpse state must not leak; the profile-felled
+    // reconciliation in phase 2 is the only "stays dead" source.
+    auto& pool = actors();
+    for (auto& a : pool)
+    {
+        if (a.controller == Controller::Input)
+            continue;
+        resetActorToSpawn(a);
     }
 
     // Phase 2: re-apply the active profile's felled_bosses on top of
@@ -905,11 +1289,14 @@ void resetCycleEnemies()
             const auto& fb = profile->felled_bosses;
             if (std::find(fb.begin(), fb.end(), a.spawn_decl_id) == fb.end())
                 continue;
-            std::fprintf(stderr,
-                         "[reset-cycle] '%s' in profile.felled_bosses -> fireEnemyDeath\n",
-                         a.spawn_decl_id.c_str());
-            std::fflush(stderr);
-            fireEnemyDeath(a, enemyIndex(a));
+            if (selva::debug::flags().enemy_lifecycle)
+            {
+                std::fprintf(stderr,
+                             "[reset-cycle] '%s' in profile.felled_bosses -> reapplyDeadPose\n",
+                             a.spawn_decl_id.c_str());
+                std::fflush(stderr);
+            }
+            reapplyDeadPose(a);
         }
     }
 }
@@ -938,18 +1325,24 @@ static void updateEnemyLockOnPlayer(Actor& a, const Actor& pc)
 
 // Map directionalLocoClip's humanoid-default key string back to a
 // ClipFamily so the enemy path can re-resolve it through the per-
-// skeleton registry. Returns nullopt on unknown / non-locomotion
-// strings (player-only keys like "running_backward" -- enemies don't
-// sprint).
+// skeleton registry. Enemies pass LocoTier::Jog (no sprint), so jog
+// keys map to Run family (the per-archetype "fast" override slot --
+// wolves remap that to "gallop").
 std::optional<ClipFamily> familyFromDirectionalKey(const char* k)
 {
     if (k == nullptr)
         return std::nullopt;
     std::string s(k);
-    if (s == "walking") return ClipFamily::Walk;
-    if (s == "walking_backward") return ClipFamily::WalkBack;
-    if (s == "strafe_walking_left") return ClipFamily::StrafeLeft;
-    if (s == "strafe_walking_right") return ClipFamily::StrafeRight;
+    if (s == "walking")
+        return ClipFamily::Walk;
+    if (s == "walking_backward")
+        return ClipFamily::WalkBack;
+    if (s == "strafe_walking_left")
+        return ClipFamily::StrafeLeft;
+    if (s == "strafe_walking_right")
+        return ClipFamily::StrafeRight;
+    if (s == "jogging")
+        return ClipFamily::Run;
     return std::nullopt;
 }
 
@@ -963,65 +1356,37 @@ struct EnemyLocoPick
     const selva::anim::AnimationClip* clip;
     const char* key;
 };
-static EnemyLocoPick pickEnemyLocomotionClip(const Actor& a)
+namespace
+{
+ClipLookup pickGaitBaseClip(const Actor& a, bool& out_is_moving)
 {
     const ClipLookup walk = lookupArchetypeClip(a, ClipFamily::Walk);
     const ClipLookup run = lookupArchetypeClip(a, ClipFamily::Run);
     const ClipLookup combat_idle = lookupArchetypeClip(a, ClipFamily::CombatIdle);
     const ClipLookup peaceful_idle = lookupArchetypeClip(a, ClipFamily::PeacefulIdle);
-    // Speed read: prefer velocity when the actor moves via velocity
-    // integration; substitute intent magnitude when the current loco
-    // clip is RootMotion (velocity is zeroed by tickEnemyLocomotion in
-    // that case, so the gait picker would never see motion). Mirrors
-    // the sLastTargetSpeed pattern in tickPlayerVelocity. Without this,
-    // root-motion gait actors get stuck in idle.
+    // Substitute intent magnitude for velocity when the loco clip is
+    // RootMotion (velocity is zeroed by tickEnemyLocomotion in that
+    // case, so the picker would never see motion). Otherwise root-
+    // motion gait actors get stuck in idle.
     const float speed = std::max(glm::length(a.velocity_xz), glm::length(a.intent_xz));
-    const bool is_moving = (speed > kEnemyWalkSpeedFloor);
-    const bool is_running =
-        is_moving && (speed >= kEnemyRunSpeedFloor) && run.clip != nullptr && run.clip->isLoaded();
-    const bool is_walking = is_moving && walk.clip != nullptr && walk.clip->isLoaded();
+    out_is_moving = (speed > kEnemyWalkSpeedFloor);
+    const bool is_running = out_is_moving && (speed >= kEnemyRunSpeedFloor) &&
+                             run.clip != nullptr && run.clip->isLoaded();
+    const bool is_walking = out_is_moving && walk.clip != nullptr && walk.clip->isLoaded();
     const bool engaged = a.perception.awareness >= Awareness::Alerted;
-    const ClipLookup base = is_running ? run
-                            : is_walking ? walk
-                                         : (engaged ? combat_idle : peaceful_idle);
-    // Diagnostic: log gait picker decisions for wolf-skeleton actors.
-    // Throttled by frame counter (every 30th call ~ 2 Hz at 60fps to
-    // avoid log spam). Tells us why "run never fires" -- if speed is
-    // 1.6 m/s when it should be 6, the chase_speed isn't winning; if
-    // speed is 6 but run.clip is null, the lookup fails; if both OK
-    // and is_running=1 then the issue is downstream in PoseSampler.
-    if (a.skeleton_id == "wolf")
-    {
-        static int s_tick = 0;
-        if ((++s_tick % 30) == 0)
-        {
-            std::fprintf(stderr,
-                         "[gait-picker] wolf speed=%.2f (vel=%.2f intent=%.2f) floor_walk=%.2f "
-                         "floor_run=%.2f run.clip=%s walk.clip=%s -> is_running=%d is_walking=%d "
-                         "picked='%s'\n",
-                         speed, glm::length(a.velocity_xz), glm::length(a.intent_xz),
-                         kEnemyWalkSpeedFloor, kEnemyRunSpeedFloor,
-                         (run.clip != nullptr) ? "yes" : "NULL",
-                         (walk.clip != nullptr) ? "yes" : "NULL", is_running ? 1 : 0,
-                         is_walking ? 1 : 0, base.key ? base.key : "(none)");
-            std::fflush(stderr);
-        }
-    }
-    EnemyLocoPick out{base.clip, base.key};
-    if (!is_moving || a.lock_target_idx < 0)
-        return out;
-    // Directional override: shared with PC via directionalLocoClip.
-    // Basis from turn_intent_yaw (target facing) not actor.yaw -- yaw
-    // lags by turn rate and would thrash the picker frame-to-frame.
-    //
-    // ONLY override when intent has meaningful lateral component (i.e.,
-    // actor is actually strafing or backing up). Pure forward intent
-    // keeps the base pick (run/walk straight at target). Without this
-    // gate, a chasing wolf would be downgraded run -> walk every frame
-    // because directionalLocoClip only returns walk-family keys and
-    // never the run family -- the override would always replace the
-    // base 'gallop' pick with 'walk'. Bug surfaced when chase_speed
-    // landed and the wolf STILL refused to play her gallop clip.
+    return is_running   ? run
+           : is_walking ? walk
+                        : (engaged ? combat_idle : peaceful_idle);
+}
+
+// Strafe/back override on top of the base gait pick. ONLY fires when
+// intent has meaningful lateral component -- pure forward chase
+// preserves the run/walk base, so chasing actors don't get downgraded
+// every frame to a walk-family directional clip.
+EnemyLocoPick maybeApplyDirectionalOverride(const Actor& a, EnemyLocoPick base_pick)
+{
+    if (a.lock_target_idx < 0)
+        return base_pick;
     const float yaw = a.turn_intent_yaw;
     const glm::vec3 fwd(-std::sin(yaw), 0.0f, -std::cos(yaw));
     const glm::vec3 right(-fwd.z, 0.0f, fwd.x);
@@ -1030,22 +1395,29 @@ static EnemyLocoPick pickEnemyLocomotionClip(const Actor& a)
     if (intent_len > 1e-4f)
     {
         const glm::vec3 intent_dir = intent3 / intent_len;
-        const float fwd_dot = glm::dot(intent_dir, fwd);
-        constexpr float kForwardishDot = 0.85f; // ~32deg cone = "forward"
-        if (fwd_dot >= kForwardishDot)
-            return out; // pure-forward chase: keep base (run/walk) pick
+        constexpr float kForwardishDot = 0.85f; // ~32deg cone
+        if (glm::dot(intent_dir, fwd) >= kForwardishDot)
+            return base_pick;
     }
-    const char* dir_key = directionalLocoClip(fwd, right, intent3, /*running=*/false);
+    const char* dir_key = directionalLocoClip(fwd, right, intent3, LocoTier::Jog);
     const auto fam = familyFromDirectionalKey(dir_key);
     if (!fam.has_value())
-        return out;
+        return base_pick;
     const ClipLookup dir = lookupArchetypeClip(a, *fam);
     if (dir.clip != nullptr && dir.clip->isLoaded())
-    {
-        out.clip = dir.clip;
-        out.key = dir.key;
-    }
-    return out;
+        return {dir.clip, dir.key};
+    return base_pick;
+}
+} // namespace
+
+static EnemyLocoPick pickEnemyLocomotionClip(const Actor& a)
+{
+    bool is_moving = false;
+    const ClipLookup base = pickGaitBaseClip(a, is_moving);
+    EnemyLocoPick out{base.clip, base.key};
+    if (!is_moving)
+        return out;
+    return maybeApplyDirectionalOverride(a, out);
 }
 
 // Per-actor body of tickEnemies. Returns true if the lifecycle
@@ -1055,34 +1427,62 @@ static EnemyLocoPick pickEnemyLocomotionClip(const Actor& a)
 // player clip.
 static bool tickOneEnemy(Actor& a, const Actor& pc, float dt, const selva::tuning::Tunables& tun)
 {
-    // Per-frame motion stream for the wolf -- unthrottled so we can see
-    // every frame's pos/vel/yaw. If pos jumps non-linearly between
-    // frames OR yaw jolts at the AI tick rate (5Hz), the stutter is
-    // in tickEnemyLocomotion or the BT cadence. If pos/yaw are smooth
-    // but the visible mesh still jitters, it's rendering/camera side.
-    glm::vec3 prev_pos_for_log = a.pos;
-    float prev_yaw_for_log = a.yaw;
-    glm::vec2 prev_vel_for_log = a.velocity_xz;
-    bool log_this_frame = (a.skeleton_id == "wolf");
-
-    tickPerception(a, pc, dt, tun);
+    const Awareness pre_perception_awareness = a.perception.awareness;
+    {
+        ZoneScopedN("tickPerception");
+        tickPerception(a, pc, dt, tun);
+    }
     updateEnemyLockOnPlayer(a, pc);
+    // Aggro-clip hook: fires once when this actor crosses the
+    // Suspicious -> Alerted edge ("confirmed sighting" in the
+    // perception state machine; Souls/ER Hollow-wakes-up moment).
+    // Movement-locked for the clip's full duration; the BT's chase
+    // + attack only begins after the clip's one-shot finishes.
+    // archetype.aggro_clip empty = no scream / wake-up; actor goes
+    // straight from Alerted into chase. See [[project_soul_larvae_cosmology]].
+    if (a.archetype != nullptr && !a.archetype->aggro_clip.empty() && !a.aggro_already_fired &&
+        pre_perception_awareness < Awareness::Alerted &&
+        a.perception.awareness >= Awareness::Alerted)
+    {
+        const auto& reg = selva::anim::clipsByKey(a.skeleton_id);
+        const selva::anim::AnimationClip* aggro = reg.get(a.archetype->aggro_clip.c_str());
+        if (aggro != nullptr && aggro->isLoaded())
+        {
+            selva::anim::PoseSampler::OneShotOptions opts;
+            opts.clip_key = a.archetype->aggro_clip.c_str();
+            opts.cancel_fraction = 1.0f; // lock for full duration
+            a.sampler.playOneShot(*aggro, /*blend_in=*/0.20f, /*blend_out=*/0.20f,
+                                  selva::anim::PoseSampler::BodyMask::Full,
+                                  /*start_time_seconds=*/0.0f,
+                                  /*playback_rate=*/1.0f, opts);
+            a.action_locks_movement = true;
+            a.aggro_already_fired = true;
+            selva::combat::combatLog("[aggro] {} fired aggro_clip='{}' at t={:.3f}", a.spawn_id,
+                                     a.archetype->aggro_clip, selva::wallClock());
+        }
+        else
+        {
+            selva::combat::combatLog("[aggro] {} aggro_clip='{}' missing from skeleton '{}'",
+                                     a.spawn_id, a.archetype->aggro_clip, a.skeleton_id);
+        }
+    }
     const bool engaged_now = a.perception.awareness >= Awareness::Alerted;
     const ClipLookup lifecycle_idle =
         lookupArchetypeClip(a, engaged_now ? ClipFamily::CombatIdle : ClipFamily::PeacefulIdle);
     if (tickDeathLifecycle(a, dt, lifecycle_idle.clip, lifecycle_idle.key))
     {
-        applyActorClipHipDelta(a);
+        // Dead actors hold the death clip frozen (in_place); no
+        // translation needed. Body was destroyed at fireEnemyDeath.
         return true;
     }
     if (tickKnockdownLifecycle(a, dt, lifecycle_idle.clip, lifecycle_idle.key))
     {
-        applyActorClipHipDelta(a);
+        // Stunned/knockdown clips are in_place; the actor stays put.
         return true;
     }
     if (shouldTickAi(a, tun))
     {
-        if (tun.debug_ai_tick_log)
+        if (selva::debug::flags().ai_tick_log)
             selva::combat::combatLog("[ai-tick] actor pool_idx={} awareness={} t={:.3f}",
                                      &a - &actors().front(),
                                      static_cast<int>(a.perception.awareness), selva::wallClock());
@@ -1093,46 +1493,15 @@ static bool tickOneEnemy(Actor& a, const Actor& pc, float dt, const selva::tunin
     const EnemyLocoPick pick = pickEnemyLocomotionClip(a);
     if (pick.clip != nullptr && pick.clip->isLoaded())
         a.sampler.update(*pick.clip, dt, /*blend_seconds=*/0.20f, /*loops=*/true, pick.key);
-    applyActorClipHipDelta(a);
-    // Wolf one-shot / boss-state diagnostic. Fires regardless of state
-    // so we can see whether is_boss + initial_state actually apply
-    // and whether the held-pose one-shot is alive.
-    if (log_this_frame)
-    {
-        static int s_sit_tick = 0;
-        if ((++s_sit_tick % 60) == 0) // ~1 Hz
-        {
-            const auto fd = a.sampler.frameDiagnostics();
-            std::fprintf(stderr,
-                         "[wolf-state] is_boss=%d boss_state='%s' awareness=%d "
-                         "loco='%s' loco_t=%.2f one_shot='%s' one_shot_phase=%d "
-                         "one_shot_weight=%.2f one_shot_t=%.2f\n",
-                         a.is_boss ? 1 : 0, a.current_boss_state.c_str(),
-                         static_cast<int>(a.perception.awareness),
-                         fd.loco_current_name ? fd.loco_current_name : "(none)",
-                         fd.loco_current_time,
-                         fd.one_shot_name ? fd.one_shot_name : "(none)", fd.one_shot_phase,
-                         fd.one_shot_weight, fd.one_shot_time);
-            std::fflush(stderr);
-        }
-    }
-    if (log_this_frame && a.perception.awareness >= Awareness::Combat)
-    {
-        const glm::vec3 dpos = a.pos - prev_pos_for_log;
-        const float dpos_mag = glm::length(glm::vec2(dpos.x, dpos.z));
-        const float dyaw = a.yaw - prev_yaw_for_log;
-        const float dvel = glm::length(a.velocity_xz - prev_vel_for_log);
-        const bool one_shot = a.sampler.isOneShotActive();
-        const auto fd = a.sampler.frameDiagnostics();
-        std::fprintf(stderr,
-                     "[wolf-motion] dt=%.4f pos=(%.3f,%.3f) dpos=%.4fm vel=(%.2f,%.2f) "
-                     "|dvel|=%.3f yaw=%.3f intent=(%.2f,%.2f) loco='%s' oneshot=%d "
-                     "one_shot_clip='%s'\n",
-                     dt, a.pos.x, a.pos.z, dpos_mag, a.velocity_xz.x, a.velocity_xz.y, dvel,
-                     a.yaw, a.intent_xz.x, a.intent_xz.y, pick.key ? pick.key : "(none)",
-                     one_shot ? 1 : 0, fd.one_shot_name ? fd.one_shot_name : "(none)");
-        std::fflush(stderr);
-    }
+    // Hip-delta apply: converts the clip's authored hip-XZ for this
+    // frame into a velocity contribution on actor.velocity_xz. The
+    // unified post-tick physics pass picks that velocity up and
+    // hands it to Jolt; integration happens in updatePhysics, not
+    // here. Locomotion's velocity_xz write composes with this hip
+    // contribution (root-motion clips zero locomotion velocity so the
+    // hip is the only contribution; velocity gait clips don't have
+    // significant hip delta to apply).
+    applyActorClipHipDelta(a, dt);
     return false;
 }
 
@@ -1225,6 +1594,94 @@ void tickPendingAttackSpawns()
     }
 }
 
+namespace
+{
+// Scripted-death HP drain. Single continuous curve across the
+// Engaged-then-Dying window: drops from full to drain_to_fraction
+// over Engaged, then drain_to_fraction to 0 over Dying. Driven by
+// wallclock, not damage.
+void applyScriptedDeathHpDrain(Actor& a, float now)
+{
+    if (a.archetype == nullptr || a.archetype->scripted_death_drain_to_fraction <= 0.0f)
+        return;
+    const float drain_start =
+        a.scripted_death_at_wallclock - a.archetype->scripted_death_seconds;
+    const float total_window = a.scripted_death_drain_end_wallclock - drain_start;
+    const float elapsed = std::clamp(now - drain_start, 0.0f, total_window);
+    const float t = total_window > 0.0f ? elapsed / total_window : 1.0f;
+    const float engaged_fraction = a.archetype->scripted_death_seconds / total_window;
+    const float drain_to = a.archetype->scripted_death_drain_to_fraction;
+    float hp_fraction;
+    if (t <= engaged_fraction)
+    {
+        const float t_engaged = engaged_fraction > 0.0f ? t / engaged_fraction : 1.0f;
+        const float curve = std::pow(t_engaged, a.archetype->scripted_death_drain_exponent);
+        hp_fraction = 1.0f - (1.0f - drain_to) * curve;
+    }
+    else
+    {
+        const float dying_span = 1.0f - engaged_fraction;
+        const float t_dying = dying_span > 0.0f ? (t - engaged_fraction) / dying_span : 1.0f;
+        hp_fraction = drain_to * (1.0f - t_dying);
+    }
+    const int target_hp = static_cast<int>(std::round(static_cast<float>(a.hp.max) * hp_fraction));
+    if (target_hp < a.hp.current)
+        a.hp.current = std::max(0, target_hp);
+}
+
+void tickScriptedDeathDrainPhase(float now)
+{
+    for (auto& a : actors())
+    {
+        if (a.is_dead)
+            continue;
+        const bool in_scripted_death =
+            (a.boss_state == BossState::Engaged || a.boss_state == BossState::Dying);
+        if (!in_scripted_death || a.scripted_death_drain_end_wallclock < 0.0f)
+            continue;
+        applyScriptedDeathHpDrain(a, now);
+        if (a.boss_state == BossState::Engaged && now >= a.scripted_death_at_wallclock)
+        {
+            std::fprintf(stderr,
+                         "[scripted-death] '%s' deadline reached at t=%.2f (hp was %d/%d)\n",
+                         a.spawn_decl_id.c_str(), now, a.hp.current, a.hp.max);
+            std::fflush(stderr);
+            beginScriptedDying(a);
+        }
+    }
+}
+
+void tickScriptedDeathPainCompletion(float now)
+{
+    for (std::size_t i = 0; i < actors().size(); ++i)
+    {
+        Actor& a = actors()[i];
+        if (a.is_dead || a.boss_state != BossState::Dying)
+            continue;
+        if (a.dying_until_wallclock < 0.0f || now < a.dying_until_wallclock)
+            continue;
+        std::fprintf(stderr, "[scripted-death] '%s' pain stage ended at t=%.2f -> Felled\n",
+                     a.spawn_decl_id.c_str(), now);
+        std::fflush(stderr);
+        fireEnemyDeath(a, enemyIndex(a));
+    }
+}
+
+// Catches the non-death "abandoned mid-fight" path: a boss in Engaged
+// whose perception has dropped below Combat (player out of leash for
+// ai_combat_disengage_seconds). Felled is handled in fireEnemyDeath.
+void tickBossDisengageWatcher()
+{
+    for (auto& a : actors())
+    {
+        if (a.boss_state != BossState::Engaged || a.is_dead)
+            continue;
+        if (a.perception.awareness < Awareness::Combat)
+            setBossState(a, BossState::Disengaged);
+    }
+}
+} // namespace
+
 void tickEnemies(float dt)
 {
     const auto& tun = selva::tuning::current();
@@ -1236,106 +1693,18 @@ void tickEnemies(float dt)
         tickOneEnemy(a, pc, dt, tun);
     }
     tickPendingAttackSpawns();
-    // Scripted-death watchers. Two phases:
-    //   1. Engaged -> Dying. Triggered either by natural-deadline
-    //      expiry (this watcher) OR by the player-floor in PerFrameTick
-    //      calling beginScriptedDying directly. Either path runs the
-    //      same transition function.
-    //   2. Dying -> Felled when dying_until_wallclock passes. Routes
-    //      through fireEnemyDeath, which plays the death clip and sets
-    //      the archetype's felled_flag.
-    // Player damage that drops HP to zero also routes through
-    // fireEnemyDeath (Engaged -> Felled directly, skipping the pain
-    // stage -- damage-death is its own visual via the hit-react path).
+    // Scripted-death watchers run as two phases. Engaged -> Dying
+    // fires either from natural-deadline expiry OR from the player
+    // floor in PerFrameTick calling beginScriptedDying directly --
+    // same transition function either way. Dying -> Felled when
+    // dying_until_wallclock passes routes through fireEnemyDeath,
+    // which plays the death clip and sets the felled_flag. Damage
+    // death (HP -> 0) routes through fireEnemyDeath directly,
+    // skipping the pain stage (own visual via hit-react).
     const float now = selva::wallClock();
-    for (std::size_t i = 0; i < actors().size(); ++i)
-    {
-        Actor& a = actors()[i];
-        if (a.is_dead)
-            continue;
-        const bool in_scripted_death =
-            (a.boss_state == BossState::Engaged || a.boss_state == BossState::Dying);
-        if (!in_scripted_death)
-            continue;
-        if (a.scripted_death_drain_end_wallclock < 0.0f)
-            continue;
-        if (a.archetype != nullptr && a.archetype->scripted_death_drain_to_fraction > 0.0f)
-        {
-            // Drain runs across the full (Engaged + Dying) window.
-            // During Engaged: curve approaches drain_to_fraction.
-            // During Dying: continues from drain_to_fraction to 0 over
-            // the pain-clip duration. Single continuous timeline.
-            const float drain_start =
-                a.scripted_death_at_wallclock - a.archetype->scripted_death_seconds;
-            const float total_window = a.scripted_death_drain_end_wallclock - drain_start;
-            const float elapsed = std::clamp(now - drain_start, 0.0f, total_window);
-            const float t = total_window > 0.0f ? elapsed / total_window : 1.0f;
-            const float engaged_fraction = a.archetype->scripted_death_seconds / total_window;
-            const float drain_to = a.archetype->scripted_death_drain_to_fraction;
-            float hp_fraction;
-            if (t <= engaged_fraction)
-            {
-                const float t_engaged = engaged_fraction > 0.0f ? t / engaged_fraction : 1.0f;
-                const float curve =
-                    std::pow(t_engaged, a.archetype->scripted_death_drain_exponent);
-                hp_fraction = 1.0f - (1.0f - drain_to) * curve;
-            }
-            else
-            {
-                const float dying_span = 1.0f - engaged_fraction;
-                const float t_dying = dying_span > 0.0f ? (t - engaged_fraction) / dying_span : 1.0f;
-                hp_fraction = drain_to * (1.0f - t_dying);
-            }
-            const int target_hp =
-                static_cast<int>(std::round(static_cast<float>(a.hp.max) * hp_fraction));
-            if (target_hp < a.hp.current)
-                a.hp.current = std::max(0, target_hp);
-        }
-        if (a.boss_state == BossState::Engaged && now >= a.scripted_death_at_wallclock)
-        {
-            std::fprintf(stderr,
-                         "[scripted-death] '%s' deadline reached at t=%.2f (hp was %d/%d)\n",
-                         a.spawn_decl_id.c_str(), now, a.hp.current, a.hp.max);
-            std::fflush(stderr);
-            beginScriptedDying(a);
-        }
-    }
-    for (std::size_t i = 0; i < actors().size(); ++i)
-    {
-        Actor& a = actors()[i];
-        if (a.is_dead)
-            continue;
-        if (a.boss_state != BossState::Dying)
-            continue;
-        if (a.dying_until_wallclock < 0.0f || now < a.dying_until_wallclock)
-            continue;
-        std::fprintf(stderr,
-                     "[scripted-death] '%s' pain stage ended at t=%.2f -> Felled\n",
-                     a.spawn_decl_id.c_str(), now);
-        std::fflush(stderr);
-        const int enemy_idx = enemyIndex(a);
-        fireEnemyDeath(a, enemy_idx);
-    }
-    // Active-boss disengage watcher. Walks the pool for any actor in
-    // BossState::Engaged whose perception has dropped below Combat
-    // (player out of leash for ai_combat_disengage_seconds). Transition
-    // Engaged -> Disengaged via setBossState so mirrors + audio bed pop
-    // + log all happen in the single funnel.
-    //
-    // Note: Felled is handled directly in fireEnemyDeath (also via
-    // setBossState). This watcher only catches the non-death
-    // "abandoned mid-fight" path.
-    for (auto& a : actors())
-    {
-        if (a.boss_state != BossState::Engaged)
-            continue;
-        if (a.is_dead) // belt-and-suspenders; death should already have flipped to Felled
-            continue;
-        if (a.perception.awareness < Awareness::Combat)
-        {
-            setBossState(a, BossState::Disengaged);
-        }
-    }
+    tickScriptedDeathDrainPhase(now);
+    tickScriptedDeathPainCompletion(now);
+    tickBossDisengageWatcher();
 }
 
 std::vector<Actor*> enemies()

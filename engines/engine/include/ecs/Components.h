@@ -25,8 +25,8 @@
 // 3D code uses all six. Defaults keep 2D semantics intact (z=0, pitch=0,
 // roll=0, scale=1). `rotation` is the 2D yaw shorthand (degrees) and is the
 // same axis as `pitch`/`roll`'s missing 3D yaw — when the engine grows real
-// 3D systems we'll either rename or split, but for now keeping `rotation`
-// as the 2D-friendly name avoids a mass-rename across all 2D systems.
+// 3D systems we may either rename or split; today the 2D-friendly `rotation`
+// name lets every 2D system stay readable without a mass-rename.
 struct Transform
 {
     float x = 0.0f;

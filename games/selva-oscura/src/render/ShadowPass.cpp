@@ -1,6 +1,6 @@
 #include "render/ShadowPass.h"
 
-#include "Tunables.h"
+#include "debug/Flags.h"
 #include "gl/ShaderUtils.h"
 #include "render/Atmosphere.h"
 
@@ -197,7 +197,7 @@ constexpr int kLogIntervalFrames = 30;
 
 FILE* shadowLog()
 {
-    if (!selva::tuning::current().debug_shadow_log)
+    if (!selva::debug::flags().shadow_log)
         return nullptr;
     if (sLog != nullptr)
         return sLog;

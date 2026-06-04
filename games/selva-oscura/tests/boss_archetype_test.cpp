@@ -51,8 +51,7 @@ TEST_CASE("EnemyArchetype: from_json reads boss fields", "[boss-backend]")
     REQUIRE(a.engage_clip == "jump_to_idle");
 }
 
-TEST_CASE("EnemyArchetype: non-boss archetype has no boss-field bleed",
-          "[boss-backend]")
+TEST_CASE("EnemyArchetype: non-boss archetype has no boss-field bleed", "[boss-backend]")
 {
     // A typical non-boss archetype JSON (limbo_shade style) MUST parse
     // with all boss fields defaulted false / empty even though the JSON
@@ -94,8 +93,7 @@ TEST_CASE("EnemyArchetype: round-trip preserves boss fields", "[boss-backend]")
     REQUIRE(b.engage_clip == a.engage_clip);
 }
 
-TEST_CASE("EnemyArchetype: to_json omits empty boss fields for non-bosses",
-          "[boss-backend]")
+TEST_CASE("EnemyArchetype: to_json omits empty boss fields for non-bosses", "[boss-backend]")
 {
     // Non-boss serialization should be compact: empty boss fields are
     // not emitted, keeping the on-disk archetype JSONs clean.

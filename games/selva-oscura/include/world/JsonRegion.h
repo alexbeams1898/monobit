@@ -111,6 +111,21 @@ class JsonRegion : public engine::world::AsyncCapableRegion
     }
 
   private:
+    // Constructor delegates to these per-section parsers so the ctor
+    // itself stays a flat list of calls and lizard doesn't fail on
+    // its cyclomatic complexity.
+    void parseActorSpawns(const nlohmann::json& json_doc);
+    void parseDoors(const nlohmann::json& json_doc);
+    void parseTerrainModifiers();
+    void parseAiBlockVolumes();
+    void parseHazardZones();
+
+    // preloadAssets() delegates to these per-section helpers so it
+    // stays a flat call list and lizard doesn't fail on its
+    // cyclomatic complexity / length.
+    void preloadStaticMeshEntry(const nlohmann::json& m);
+    void preloadTerrainShapes();
+
     nlohmann::json region_json;
     std::string region_folder;
 

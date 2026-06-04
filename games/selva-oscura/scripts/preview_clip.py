@@ -46,10 +46,15 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ATTACKS_BUILD_DIR = REPO_ROOT / "build" / "selva-oscura-attacks"
+LARVA_BUILD_DIR = REPO_ROOT / "build" / "selva-oscura-larva"
 XBOT_ASSETS_DIR = (
     REPO_ROOT / "games" / "selva-oscura" / "assets" / "characters" / "x_bot"
 )
+LARVA_ASSETS_DIR = (
+    REPO_ROOT / "games" / "selva-oscura" / "assets" / "characters" / "larva"
+)
 PACKS_ROOT = XBOT_ASSETS_DIR / "source"
+LARVA_PACKS_ROOT = LARVA_ASSETS_DIR / "source"
 # Non-humanoid character roots. Each contains its own bundled .glb
 # (mesh + every animation track in one file). Three.js GLTFLoader
 # returns all tracks; viewer JS enumerates them as a sub-dropdown.
@@ -109,6 +114,16 @@ def discover(extra_scan_dirs: list[Path]) -> list[dict]:
                 if glb.exists():
                     add(glb, "Built clips")
 
+    # Larva-archetype built clips (Scary Zombie Pack retargeted to X_Bot).
+    # Mirrors the X_Bot built-clips pass above but globs the per-larva
+    # CMake temp dir. See [[project_soul_larvae_cosmology]].
+    if LARVA_BUILD_DIR.is_dir():
+        for sub in sorted(LARVA_BUILD_DIR.iterdir()):
+            if sub.is_dir():
+                glb = sub / f"{sub.name}.glb"
+                if glb.exists():
+                    add(glb, "Built clips (larva)")
+
     if XBOT_ASSETS_DIR.is_dir():
         for p in sorted(XBOT_ASSETS_DIR.glob("*.glb")):
             add(p, "X Bot assets")
@@ -139,6 +154,20 @@ def discover(extra_scan_dirs: list[Path]) -> list[dict]:
             if not _is_bot_mesh(p.stem):
                 add(p, "FBX source (loose)")
         for sub in sorted(PACKS_ROOT.iterdir()):
+            if not sub.is_dir():
+                continue
+            for p in sorted(sub.glob("*.fbx")):
+                if not _is_bot_mesh(p.stem):
+                    add(p, f"FBX source ({sub.name})")
+
+    # Larva FBX source packs (e.g. Scary Zombie Pack). Same shape as the
+    # X_Bot packs above; the larva archetype's FBX sources live under
+    # assets/characters/larva/source/.
+    if LARVA_PACKS_ROOT.is_dir():
+        for p in sorted(LARVA_PACKS_ROOT.glob("*.fbx")):
+            if not _is_bot_mesh(p.stem):
+                add(p, "FBX source (larva, loose)")
+        for sub in sorted(LARVA_PACKS_ROOT.iterdir()):
             if not sub.is_dir():
                 continue
             for p in sorted(sub.glob("*.fbx")):

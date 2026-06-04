@@ -117,14 +117,15 @@ unbound by the protocol-roles Hell installed in everyone else) and
 why second death, when applied to him, does not finish him (nothing
 to grip; the protocol fires, the body dies, the soul is ejected).
 
-**The Seal opens the imprint.** Using the Seal — class-pick — is
-Hell's first formal measurement of the soul. From that moment, the
-class-picker has an imprint Hell can grip. Contrapasso can land on
-him; second death could in principle land on him at the path's
-terminus (it doesn't, on TRANSFIGURATION/SURFEIT/REFUSAL, because
-those endings produce other states). The unburdened, who never uses
-the Seal, remains imprint-free — substance flows through and
-contributes to subtractive evolution; nothing settles.
+**The Signing opens the imprint.** Accepting the Signing — the
+Guide's Beat 3 ritual — is Hell's first formal measurement of the
+soul. From that moment, the class-picker has an imprint Hell can
+grip. Contrapasso can land on him; second death could in principle
+land on him at the path's terminus (it doesn't, on
+TRANSFIGURATION/SURFEIT/REFUSAL, because those endings produce
+other states). The unburdened, who refused the Signing, remains
+imprint-free — substance flows through and contributes to
+subtractive evolution; nothing settles.
 
 **Riversamento is the unburdened making his own form, in another's
 frame.** Pouring sangue out is the slow inscription of an imprint
@@ -316,6 +317,131 @@ makes a devil inside Beatrice. The mechanical surfaces of both paths
 (stats grow, items collected, abilities unlock) are the same shape —
 they express what the substance is doing in or through the Vagrant.
 
+### Hell's failure — Lucifer's act and its slow consequences
+
+Hell as Dante describes it is a perfect closed pipeline: a soul dies,
+is judged, is transported to Acheron, is ferried across by Charon,
+is deposited in its assigned circle, undergoes contrapasso eternally.
+Each step is exact. The machinery is divine, and so it is precise.
+
+That is the Hell we inherit *as text*. The Hell we render *as game*
+is broken — and the brokenness is the central condition the game
+plays inside.
+
+**Lucifer is the root cause.** Whatever he did from his position at
+the bottom of Cocytus initiated the failure. His act was not a
+direct strike against the keepers or against Charon; it was a
+disruption at the pit that PROPAGATED outward and upward through
+the machinery over time. Hell did not fail all at once. It has
+been *slowly* failing — sangue going rogue, contrapasso slipping,
+the closed pipeline leaking, the divine precision eroding circle by
+circle — for as long as it took the disruption to reach each layer.
+The specific shape of Lucifer's act is not narrated in canon; it is
+a question the game can surface gradually across the descent.
+
+**The original keepers of each circle are gone.** The divinely-
+installed administrators who ran each circle's contrapasso under
+divine sanction have been lost to the corruption. They do not exist
+at the seats at game-start. Their absence is the load-bearing reason
+contrapasso cannot continue properly.
+
+**The fate of each original is per-keeper specific.** Some originals
+were *transformed* by the corruption — they absorbed warped sangue,
+their function broke down, they twisted into the demonic figure that
+now sits the seat. The new keeper IS the original, irretrievably
+changed. Others may have been *destroyed* by the failure (consumed,
+dispersed, simply ceased) and replaced by external parasites that
+rose to fill the vacuum. Which keepers fall into which category is
+authored per circle; not all circles share the same mechanism.
+What is universal: the figure at the seat at game-start is NOT the
+divine keeper. What sits there now is a downstream effect of
+Lucifer's act.
+
+**The Vagrant fells the keeper at the seat; the released
+contrapasso installs into the circle's NPC, MANGLING them into the
+new keeper.** When the Vagrant kills the keeper, the suspended
+contrapasso of that circle is released. It flows toward the one
+figure Beatrice has been preparing across centuries — the circle's
+main NPC, whose pre-keeper lucid window was incipient keeper-
+consciousness shaped for this moment (per pc-vs-npc.md and
+*Per-circle reactivity* below). The contrapasso installs into them
+violently — *mangling* them — into a wounded version of what a
+keeper should be. The new keeper looks and functions like a damaged
+echo of the lost original; not a restoration of the original, but
+the closest approximation Hell can produce under the corruption.
+
+**This mangling is permanent damage.** Even fully-restored Hell
+post-victory is not pristine Hell. Each circle's restored keeper
+is a Beatrice-prepared NPC who has been broken into a keeper-form
+shaped by proximity to the lost original's pattern. The mangling
+reflects the fact that *the originals are gone forever*; no NPC can
+be a true replacement; what gets installed is the closest
+approximation Hell can produce, scarred by Lucifer's act and by
+Beatrice's own fragmentation. Hell can be RESTORED but never
+PERFECTED. The mark of the failure persists in every restored
+circle thereafter.
+
+**Why only the Vagrant works.** Per the unjudged-soul cosmology
+already established, Hell cannot process an unjudged soul. Only an
+unjudged soul can fell the keeper, because Hell's accounting system
+has no transactional record for the Vagrant; the killing-protocol
+fires and completes the keeper's dispossession in place of the
+unjudged's. Damned souls cannot do this because Hell's accounting
+accepts them as legitimate (both the keeper and the damned soul are
+captured by the same broken machinery).
+
+**Each restoration leaks sangue into the Wood.** The dispossession
+releases accumulated contrapasso-failure substance that had been
+bottled up while the corrupted keeper held the seat. The Wood-side
+ecology activates more fully per restoration. See *The Wood and
+its expansion across cycles* below.
+
+**Soul-delivery upstream of Acheron still functions partially.** The
+half of Hell's machinery responsible for marking a soul as judged
+and depositing it at Acheron's near-shore was less affected by the
+slow corruption than the downstream Charon-and-after half. But the
+mechanism by which souls actually MANIFEST on the shore has been
+deformed by what came before: there is no longer a clean
+materialization-at-the-bank. Instead, the centuries of dissolved
+soul-substance that has accumulated as the pile on the shore is the
+substrate from which new arrivals re-coalesce. Hell's protocol
+still requires a soul to appear at Acheron; in the broken pipeline,
+what appears is RE-FORMED out of the pile's dissolved substance.
+The pile is both the historical scar of refused descent AND the
+active production mechanism for new arrivals — the cosmological
+clog made visible.
+
+**The queue stands at the river's edge, eternally awaiting Charon.**
+The aged (still-coherent) souls face the water, refusing to step in
+(Acheron dissolves damned-soul substance on contact, per the law of
+sangue), refusing to retreat (their judgment-protocol named the
+crossing as the next step). They stand at the shoreline. They have
+been standing for centuries. The pile sits inland of them,
+producing more standing-waiters as old slots empty into the river
+(through inter-larva attrition over the long history) or into
+contrapasso (briefly, post-keeper-restoration). The tragedy is the
+facing: every soul in the queue is oriented toward what isn't
+coming.
+
+**Beatrice is NOT involved in Hell's machinery.** Hell's failure is
+INTERNAL to Hell. Beatrice is an external (heaven-side) agent who
+arranged for the Vagrant to be sent into Hell as an unjudged
+intercession. Her "fragmentary, rabid" status (see *Beatrice* below)
+is its own condition — it is not the cause of Hell's failure, and
+restoring Hell does not restore her.
+
+**What is NOT yet canon (parking-lot for keeper arcs):**
+- The specific shape of Lucifer's act. The disruption originated at
+  the pit and propagated outward; the mechanism is designable into
+  the late-game keeper arcs.
+- Per-keeper fate of the original — transformed vs destroyed-and-
+  parasitically-replaced. Each keeper arc authors its own answer.
+- The fate of Minos and other named pre-circle administrators
+  (Charon, the gate-warden, etc.). Same shape: corrupted-into-current-
+  form or replaced. Per-figure decisions.
+- What each post-restoration mangled-NPC keeper looks like, says,
+  and does. Each keeper arc designs this itself.
+
 ### Time
 
 There is no time in Hell. The circles are timeless tableau — no
@@ -429,7 +555,7 @@ INTRO (lore framing scenes)
     → LUPA (opening boss; lone surviving legend of the pre-failure
             Wood; Lonza and Leone died during Hell's stagnation;
             fought once per save, permanent on death)
-      → choice: take The Seal (class-pick) or carry it forward (unburdened)
+      → choice: accept the Signing (class-pick) or refuse it (unburdened)
         → THE WOOD (hub, expanding)
           → GATE OF HELL
             → CIRCLE 1 (Limbo) → ... → CIRCLE 9 (Cocytus / Lucifer)
@@ -564,24 +690,24 @@ pre-written. Hell has no pattern to fit him to.
 ### Paths — the choice after Lupa
 
 After Lupa falls (Beat 2 opening boss; see [story.md](story.md)), the
-Vagrant is presented with **The Seal** (*Il Sigillo*). Using it is the
-act of class-pick — Hell's first formal measurement of the soul.
+Guide approaches and offers **the Signing** (*La Firma*) — the ritual
+that performs Hell's first formal measurement of the soul. The Guide
+is the ritualist; the Vagrant is the subject.
 
-- **Use the Seal** → become a class-picker. Pick Penitent, Heretic, or
-  Wretched. The Seal is consumed. Stats unlock.
-- **Decline to use it** → continue as **the unburdened**. The Seal stays
-  in inventory, carriable indefinitely.
+- **Accept the Signing** → become a class-picker. Pick Penitent,
+  Heretic, or Wretched. Stats unlock.
+- **Refuse the Signing** → continue as **the unburdened**. The soul
+  remains unmeasured. The unburdened path commits in this moment by
+  the absence of the ritual.
 
-The unburdened can use the Seal at any later moment. Doing so:
-class-picks at that point, **permanently breaks PURITY for that save**,
-freezes the riversato counter, unlocks stat installation.
+A refused Signing cannot be redone later — the Guide performs it
+once. The unburdened path is irrevocable except via the late-game
+Erasure (whose Erase action can un-measure a class-picker into
+unburdened, but cannot re-measure an unburdened back to class-picker;
+nothing re-performs the Signing). See [inventory.md](inventory.md)
+*The Erasure*.
 
-A class-picker cannot return to unburdened. The Seal is single-use.
-The Erasure (a late-game item) can re-measure a class-picker —
-switching between {Penitent, Heretic, Wretched} — but cannot
-un-measure them back to unburdened.
-
-The game communicates the consequences of using the Seal clearly. No
+The game communicates the consequences of the Signing clearly. No
 silent gotchas.
 
 ### The unburdened path (PURITY)
@@ -609,7 +735,7 @@ through any of the cosmological instruments the class-picker uses.
   installable, investable, or numerical in the OFFERING sense.**
   Riversamento volume IS the only progression input.
 - **No class ability kit at L1.** Class-pickers receive one at the
-  Seal; the unburdened does not. His combat capability at L1 is
+  Signing; the unburdened does not. His combat capability at L1 is
   what the baseline body affords + crafted gear + items found in
   the world. His distinctive technique emerges only via Svuotato
   and Diaphanous, both gated on riversamento.
@@ -677,8 +803,8 @@ that has been pressed against a wall too long, not the move of a
 strategist.
 
 She is *somewhat coherent*. She can articulate Hell's failure, name
-what she did, name her tools (the Vagrant, the Guide, the Seal, the
-reservoir). She cannot be reasoned with about whether *any of this
+what she did, name her tools (the Vagrant, the Guide, the Signing,
+the reservoir). She cannot be reasoned with about whether *any of this
 should be happening.* The transgression has destabilized her
 visibly — the title-screen disintegration is the literal cost of the
 act, paid in plain view, halo shattering, form coming apart.
@@ -855,16 +981,25 @@ The keeper is given second death and does not return. **Contrapasso
 RESTORES to that circle.** The substance flow that was suspended
 resumes. The system catches up:
 
-- **The NPC is promoted to the new keeper.** This is Beatrice's act.
-  The NPC's lucid window pre-keeper-fall was always *incipient
-  keeper-consciousness* — Beatrice has been preparing them across
-  centuries for the role they will assume when the lock comes off.
-  At the moment the old keeper falls, she promotes the NPC into
-  the keeper-function. The NPC's body transforms; the contrapasso
-  machinery installs into them; they become the law-of-the-circle
-  rather than a soul-of-the-circle. Lucid window closes because
+- **The NPC is mangled into the new keeper.** This is Beatrice's
+  act, channeling Hell's released contrapasso. The NPC's lucid
+  window pre-keeper-fall was always *incipient keeper-consciousness*
+  — Beatrice has been preparing them across centuries for the role
+  they will assume when the lock comes off. At the moment the
+  corrupted keeper falls, the suspended contrapasso releases and
+  Beatrice routes it into the NPC. The installation is violent —
+  the NPC's body transforms under the load; the contrapasso
+  machinery embeds into them; they become a wounded approximation
+  of what a divine keeper of that circle should have been. Not a
+  clean promotion — a *mangling*, because the original divine
+  keeper is gone forever (lost to Lucifer's slow corruption) and
+  no NPC can be a true replacement. What gets installed is the
+  closest approximation Hell can produce, scarred by Lucifer's act
+  and by Beatrice's own fragmentation. Lucid window closes because
   there is no longer a soul to be lucid — the NPC has been
-  installed as Hell's mechanism for that circle.
+  installed as Hell's mechanism for that circle, in its damaged
+  form. See *Hell's failure — Lucifer's act and its slow
+  consequences* above.
 - **The surviving shades enter proper contrapasso.** Frozen
   punishment-poses unfreeze. Wind blows on the lustful. Cerberus
   rains on the gluttonous. The blood-river receives the violent.
@@ -889,18 +1024,20 @@ resumes. The system catches up:
   way to the new keeper-NPC's motif. The ambient is no longer
   haunted; it is *functioning*.
 
-The keeper does not respawn (the OLD keeper, the one the Vagrant
-defeated, is gone forever). The NEW keeper is the promoted NPC, in
-its new form, and will be there on subsequent visits — installed as
-the circle's enforcement mechanism. The Vagrant can fight the new
-keeper-NPC, but doing so undoes the restoration: the NPC dies in its
-keeper-form; the circle stagnates again until Beatrice promotes
-*another* candidate. This is a costly, recursive option that exists
-mechanically but is rarely the right play.
+The keeper does not respawn (the corrupted keeper the Vagrant
+defeated, and the divine original it was a downstream effect of,
+are both gone forever — see *Hell's failure*). The new keeper is
+the mangled NPC, in its damaged keeper-form, and will be there on
+subsequent visits — installed as the circle's enforcement mechanism.
+The Vagrant can fight the mangled-NPC keeper, but doing so undoes
+the restoration: the NPC dies in its keeper-form; the circle
+stagnates again until Beatrice routes contrapasso into *another*
+candidate (if one remains). This is a costly, recursive option
+that exists mechanically but is rarely the right play.
 
 ### Contrapasso and the Vagrant
 
-**Contrapasso lands on the class-picker Vagrant because the Seal
+**Contrapasso lands on the class-picker Vagrant because the Signing
 opened an imprint Hell can grip.** As each circle's contrapasso
 restores, some of the substance catches on the Vagrant's imprint —
 *Hell installing itself in him*, expressed mechanically as items
@@ -1120,7 +1257,7 @@ bookkeeping.
 ### Vestigia
 
 **Vestigium** (singular) / **Vestigia** (plural) = *the mark the
-Seal leaves on the class-picker's soul*, manifesting both as a
+Signing leaves on the class-picker's soul*, manifesting both as a
 property of his substrate (Hell's grip-point) and as physical sites
 in the world (places where the mark can be read or further
 inscribed). Vestigia are **class-picker exclusive** — the Unburdened
@@ -1156,10 +1293,10 @@ meaningful act commits immediately and cannot be walked back.**
   inventory.md), late-game, item-gated, switches class among
   Penitent / Heretic / Wretched but does not return invested
   sangue.
-- **The Seal-use commits immediately.** An Unburdened who uses the
-  Seal class-picks at that moment, permanently breaks PURITY for
-  that save, and cannot reverse the decision. The cosmology
-  respects commitment in both directions.
+- **The Signing commits immediately at Beat 3.** Accept = class-
+  picker; refuse = unburdened. The Guide performs the ritual once;
+  it cannot be revisited later. The cosmology respects commitment
+  in both directions.
 
 The save register's name is *vestigia* (singular *vestigium*) for
 class-pickers; the Unburdened's save register is **the chest** (the
@@ -1180,13 +1317,14 @@ Items committed at the setting level:
   *Hell's voice* — the artifact of Hell's passive self-awareness;
   the player reads it because the player is Hell-as-observer (see
   *Perspective — who the player is*).
-- **The Seal** (*Il Sigillo*) — given at the beasts. Single-use.
-  Class-pick mechanism. Carriable indefinitely if not used.
+- **The Signing** (*La Firma*) — not an item; a Guide ritual at the
+  beasts. Accepted = class-pick. Refused = unburdened.
 - **The Cord** — unlimited uses; each use costs sangue. Not available
   to unburdened.
-- **The Erasure** — late-game. Class-pickers switch among
-  Penitent / Heretic / Wretched. Cannot grant unburdened status.
-  Requires a consumable activation material.
+- **The Erasure** — late-game. Portable ritual tool with multiple
+  actions: Reseal (switch class among Penitent / Heretic / Wretched),
+  Erase (class-picker → unburdened). Cannot re-perform the Signing
+  on an unburdened. Requires a consumable activation material.
 - **The Hand** — acquired at climax. Heal (universal); class-picker
   uses as portable OFFERINGS access, unburdened uses as portable
   riversamento site. Permanent across cycles.

@@ -78,8 +78,8 @@ struct BoxCollider
 };
 
 // One named scene's worth of static colliders. Owned/loaded/unloaded
-// as a unit so multiple scenes can coexist or swap. For now there's
-// exactly one scene (the selva oscura hub), but the indirection means
+// as a unit so multiple scenes can coexist or swap. Today exactly
+// one scene exists (the selva oscura hub); the indirection means
 // adding a second area later is data work, not refactor work.
 //
 // boundary_radius defines a circular play area centered at boundary_center

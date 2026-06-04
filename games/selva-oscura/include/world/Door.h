@@ -126,7 +126,8 @@ struct DoorDecl
     DoorState initial_state;
 };
 void registerDoorsForRegion(const std::vector<DoorDecl>& decls);
-void removeDoorsForRegion(); // teardown on region deactivate (multi-region not yet supported; clears all)
+void removeDoorsForRegion(); // teardown on region deactivate (multi-region not yet supported;
+                             // clears all)
 
 // Re-read persisted door states from the active profile. Call after
 // profile activation (load-game / new-game flow) -- doors registered

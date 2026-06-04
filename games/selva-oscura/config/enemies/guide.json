@@ -4,6 +4,7 @@
   "faction": "Allied",
   "form": "UnjudgedSoul",
   "is_npc": true,
+  "display_name": "Guide",
   "skeleton_id": "player",
   "vision_fov_degrees": 90.0,
   "vision_range_meters": 12.0,

@@ -33,7 +33,7 @@ struct HurtboxDecl
     std::string joint_a;
     std::string joint_b;
     HurtRegion region = HurtRegion::Torso;
-    float radius_scale = 0.5f;     // multiplied by Body.collider_radius
+    float radius_scale = 0.5f;      // multiplied by Body.collider_radius
     float damage_multiplier = 1.0f; // overrides region default if non-1
 };
 

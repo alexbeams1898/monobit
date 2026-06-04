@@ -151,15 +151,41 @@ const std::vector<HitEvent>& detectHits()
 
             glm::vec3 contact_pos{};
             glm::vec3 contact_normal{};
-            // Swept test: union the previous-frame and current-frame
-            // hitbox segments by extending the attacker capsule from
-            // prev.p0..p1 to current.p0..p1. Cheap approximation —
-            // skips the tunnel between frames at low cost.
+            // Swept test: when the hitbox moved between frames (fast
+            // hand swing, weapon arc), construct a capsule whose
+            // segment spans the motion of the hitbox's p0 AND of its
+            // p1, then test that against the target hurtbox. The
+            // segment goes from prev-frame's anchor to current-frame's
+            // anchor -- the actual path the hitbox swept along.
+            //
+            // Previously this used component-wise min/max of (p0,p1),
+            // producing an AABB-diagonal capsule that misses
+            // non-axis-aligned motion (a hand swinging across the
+            // body in a yaw-rotated frame, the player's own swings,
+            // etc.). The bug only surfaced when an enemy's swept
+            // motion was diagonal enough that the AABB diagonal
+            // happened to land off the actual arc -- diagnosed via
+            // [hitbox-update] trace showing hand IN range of player
+            // hurtbox but no damage event firing.
             Capsule swept = hb.shape;
             if (hb.has_prev)
             {
-                swept.p0 = glm::min(hb.shape.p0, hb.prev_shape.p0);
-                swept.p1 = glm::max(hb.shape.p1, hb.prev_shape.p1);
+                // For a sphere hitbox (tip_offset_z == 0 -> p0 == p1
+                // within each frame; v1's only shape -- all current
+                // attacks are sphere fists/bites), the swept segment
+                // is prev_pos -> curr_pos, the actual line the sphere
+                // traveled along between frames.
+                //
+                // When extended-capsule weapons (sword with non-zero
+                // tip_offset_z) land, this needs to span the union of
+                // (prev.p0..prev.p1) and (curr.p0..curr.p1). The
+                // simple prev.p0 -> curr.p1 connection below is an
+                // approximation that's correct for spheres and a
+                // reasonable fallback for capsules where the motion
+                // direction is roughly along the capsule's axis.
+                // Refactor when the first non-sphere attack lands.
+                swept.p0 = hb.prev_shape.p0;
+                swept.p1 = hb.shape.p1;
                 swept.radius = std::max(hb.shape.radius, hb.prev_shape.radius);
             }
             if (!capsulesOverlap(swept, hu.shape, contact_pos, contact_normal))

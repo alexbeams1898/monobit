@@ -12,6 +12,7 @@
 #include "gameplay/Actor.h"
 #include "gameplay/Enemies.h"
 #include "gameplay/EnemyArchetype.h"
+#include "hazard/HazardZones.h"
 
 #include <cmath>
 #include <cstring>
@@ -37,6 +38,21 @@ float yawFacing(const glm::vec3& actor_pos, const glm::vec3& target_pos)
     return std::atan2(-dx, -dz);
 }
 
+// Resolve the effective reach for an action. Priority order:
+//   1. effective_reach_override (designer-authored, rare)
+//   2. resolved_effective_reach (computed at archetype-load from clip
+//      geometry + hitbox_radius + hitbox_tip_offset_z)
+//   3. 0 = unresolved; caller decides fallback semantics
+// See [[feedback_action_range_max_is_chase_stop_range]] for why this
+// is one number used by BOTH actionLegal (fire-gate) and
+// computeStopRange (chase-stop).
+float effectiveActionRange(const EnemyAction& a)
+{
+    if (a.effective_reach_override > 0.0f)
+        return a.effective_reach_override;
+    return a.resolved_effective_reach; // 0 if unresolved
+}
+
 // True if `a` is firable by `actor` right now: awareness gate met,
 // in range, off cooldown, weight > 0. Extracted from LeafPickAction
 // so the filter loop reads as one predicate per candidate.
@@ -48,7 +64,8 @@ bool actionLegal(const Actor& actor, const EnemyAction& a, float dist_to_target,
         return false;
     if (dist_to_target < a.range_min)
         return false;
-    if (a.range_max > 0.0f && dist_to_target > a.range_max)
+    const float reach = effectiveActionRange(a);
+    if (reach > 0.0f && dist_to_target > reach)
         return false;
     if (a.weight <= 0.0f)
         return false;
@@ -82,7 +99,7 @@ std::uint32_t fireAction(Actor& actor, const EnemyAction& picked,
     opts.cancel_fraction = picked.cancel_fraction;
     actor.sampler.playOneShot(clip, picked.blend_in_seconds, picked.blend_out_seconds,
                               selva::anim::PoseSampler::BodyMask::Full,
-                              /*start_time_seconds=*/0.0f, /*playback_rate=*/1.0f, opts);
+                              /*start_time_seconds=*/0.0f, picked.playback_rate, opts);
     // Hard movement lock for committed swings (wolf bite: body MUST
     // NOT slide forward during recovery). tickEnemyLocomotion reads
     // this and zeros velocity for the entire one-shot lifetime,
@@ -97,14 +114,19 @@ std::uint32_t fireAction(Actor& actor, const EnemyAction& picked,
             // Defer: queue a PendingAttackSpawn that tickPendingAttackSpawns
             // promotes to a live hitbox when wallclock crosses fire_at_time.
             // Single-slot per actor -- overwrite any prior pending swing.
+            //
+            // windup_seconds + active_seconds are in CLIP-AUTHORED time.
+            // Divide by playback_rate to convert to wall-time -- a clip
+            // played at 2x speed has its windup pass in half the wall-time.
             const float active = (picked.active_seconds > 0.0f) ? picked.active_seconds : 0.18f;
+            const float rate = (picked.playback_rate > 0.0f) ? picked.playback_rate : 1.0f;
             actor.pending_attack.joint_name = picked.hitbox_joint;
             actor.pending_attack.radius = picked.hitbox_radius;
             actor.pending_attack.tip_offset_z = picked.hitbox_tip_offset_z;
             actor.pending_attack.raw_damage = picked.raw_damage;
             actor.pending_attack.poise_damage = picked.poise_damage;
-            actor.pending_attack.lifetime_seconds = active;
-            actor.pending_attack.fire_at_time = now + picked.windup_seconds;
+            actor.pending_attack.lifetime_seconds = active / rate;
+            actor.pending_attack.fire_at_time = now + picked.windup_seconds / rate;
         }
         else
         {
@@ -155,10 +177,11 @@ float computeStopRange(const Actor& actor, const selva::tuning::Tunables& tun)
             continue;
         if (a.cooldown_seconds <= 0.0f) // declarative-only
             continue;
-        if (a.range_max <= 0.0f) // no upper bound = unconstrained
+        const float reach = effectiveActionRange(a);
+        if (reach <= 0.0f) // unresolved AND no override = unconstrained
             continue;
-        if (closest < 0.0f || a.range_max < closest)
-            closest = a.range_max;
+        if (closest < 0.0f || reach < closest)
+            closest = reach;
     }
     return (closest > 0.0f) ? closest : tun.ai_combat_engage_range_meters;
 }
@@ -198,17 +221,31 @@ NodeResult LeafFollowScriptedTarget::tick(Actor& actor, const selva::tuning::Tun
     if (std::isnan(actor.scripted_target_pos.x) || std::isnan(actor.scripted_target_pos.y) ||
         std::isnan(actor.scripted_target_pos.z))
         return NodeResult::Failure;
-    const float dx = actor.scripted_target_pos.x - actor.pos.x;
-    const float dz = actor.scripted_target_pos.z - actor.pos.z;
-    const float dist_sq = dx * dx + dz * dz;
     const float stop = actor.scripted_stop_range;
-    if (dist_sq <= stop * stop)
+    // Advance through any reached waypoints in a single tick so a
+    // dense waypoint chain doesn't take N frames to consume. The
+    // FINAL waypoint (empty list) triggers the arrival event.
+    while (true)
     {
-        // Arrived. Clear the target so we don't keep firing this leaf;
-        // face the player by default (last_known_player_pos may not be
-        // set for an NPC, so face the direction we WERE walking --
-        // which is toward the target). Caller scripting (Scene end)
-        // may rewrite scripted_target_pos for a follow-up beat.
+        const float dx = actor.scripted_target_pos.x - actor.pos.x;
+        const float dz = actor.scripted_target_pos.z - actor.pos.z;
+        const float dist_sq = dx * dx + dz * dz;
+        if (dist_sq > stop * stop)
+        {
+            const float dist = std::sqrt(dist_sq);
+            actor.intent_xz = glm::vec2(dx / dist, dz / dist) * tun.walk_speed;
+            actor.turn_intent_yaw = yawFacing(actor.pos, actor.scripted_target_pos);
+            return NodeResult::Success;
+        }
+        // Reached current target. Advance to next waypoint if any.
+        if (!actor.scripted_path_waypoints.empty())
+        {
+            actor.scripted_target_pos = actor.scripted_path_waypoints.front();
+            actor.scripted_path_waypoints.erase(actor.scripted_path_waypoints.begin());
+            continue; // loop runs again with the new target
+        }
+        // No more waypoints -- final arrival. Clear to NaN sentinel
+        // so spawn-flow / scene systems detect the transition.
         actor.intent_xz = glm::vec2(0.0f);
         actor.turn_intent_yaw = yawFacing(actor.pos, actor.scripted_target_pos);
         actor.scripted_target_pos = glm::vec3(std::numeric_limits<float>::quiet_NaN(),
@@ -216,10 +253,6 @@ NodeResult LeafFollowScriptedTarget::tick(Actor& actor, const selva::tuning::Tun
                                               std::numeric_limits<float>::quiet_NaN());
         return NodeResult::Success;
     }
-    const float dist = std::sqrt(dist_sq);
-    actor.intent_xz = glm::vec2(dx / dist, dz / dist) * tun.walk_speed;
-    actor.turn_intent_yaw = yawFacing(actor.pos, actor.scripted_target_pos);
-    return NodeResult::Success;
 }
 
 NodeResult LeafIdleFace::tick(Actor& actor, const selva::tuning::Tunables& /*tun*/)
@@ -282,6 +315,19 @@ NodeResult LeafCircleTarget::tick(Actor& actor, const selva::tuning::Tunables& t
 NodeResult LeafMoveToTarget::tick(Actor& actor, const selva::tuning::Tunables& tun)
 {
     actor.turn_intent_yaw = yawFacing(actor.pos, actor.perception.last_known_player_pos);
+    // Hazard-zone avoidance gate. If the target's position lies in a
+    // hazard zone whose kind this actor avoids (e.g. damned souls in
+    // Acheron), don't chase. The actor stays put and faces the target
+    // -- the canonical "eternally awaiting" tableau when the player
+    // wades into the river. Per [[project_soul_larvae_cosmology]]
+    // river-dissolves-on-contact + selva/hazard/HazardZones.h.
+    if (actor.archetype != nullptr && !actor.archetype->avoids_hazards.empty() &&
+        selva::hazard::positionIsInAvoidedZone(actor.perception.last_known_player_pos,
+                                               actor.archetype->avoids_hazards))
+    {
+        actor.intent_xz = glm::vec2(0.0f);
+        return NodeResult::Success;
+    }
     const float dx = actor.perception.last_known_player_pos.x - actor.pos.x;
     const float dz = actor.perception.last_known_player_pos.z - actor.pos.z;
     const float dist_sq = dx * dx + dz * dz;
@@ -378,8 +424,9 @@ NodeResult LeafPickAction::tick(Actor& actor, const selva::tuning::Tunables& tun
     const auto* clip = reg.get(picked->clip);
     if (clip == nullptr || !clip->isLoaded())
     {
-        selva::combat::combatLog("[ai-action] picked='{}' but clip '{}' not loaded on skeleton '{}'",
-                                 picked->id, picked->clip, actor.skeleton_id);
+        selva::combat::combatLog(
+            "[ai-action] picked='{}' but clip '{}' not loaded on skeleton '{}'", picked->id,
+            picked->clip, actor.skeleton_id);
         return NodeResult::Failure;
     }
     fireAction(actor, *picked, *clip, dist, now);
@@ -458,9 +505,8 @@ std::unique_ptr<BehaviorTree> buildHumanoidBasicTree()
                                                    std::make_unique<LeafMoveToTarget>()));
     auto alerted_branch = makeSequence(std::make_unique<IfAwarenessAtLeast>(Awareness::Alerted),
                                        std::make_unique<LeafMoveToTarget>());
-    auto root = makeSelector(std::make_unique<LeafFollowScriptedTarget>(),
-                             std::move(combat_branch), std::move(alerted_branch),
-                             std::make_unique<LeafIdle>());
+    auto root = makeSelector(std::make_unique<LeafFollowScriptedTarget>(), std::move(combat_branch),
+                             std::move(alerted_branch), std::make_unique<LeafIdle>());
     return std::make_unique<BehaviorTree>(std::move(root));
 }
 

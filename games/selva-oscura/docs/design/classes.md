@@ -10,11 +10,11 @@ The class system inherits structural rules from the cosmology. These
 are not class-design choices; they are inputs class-design must
 satisfy.
 
-- **The Seal opens the imprint.** Using the Seal is Hell's first
-  formal measurement. From that moment, the class-picker has an
-  imprint Hell can grip. Contrapasso (the cosmological law per
-  setting.md *Per-circle reactivity*) can land on him. The imprint-
-  free state is lost.
+- **The Signing opens the imprint.** Accepting the Guide's Signing
+  ritual at Beat 3 is Hell's first formal measurement. From that
+  moment, the class-picker has an imprint Hell can grip. Contrapasso
+  (the cosmological law per setting.md *Per-circle reactivity*) can
+  land on him. The imprint-free state is lost.
 - **Class evolution is the cumulative substance the Vagrant has
   participated in moving.** Every act in the world is sangue
   moving (per setting.md *Sangue and the law of substance*) — a
@@ -87,7 +87,7 @@ fantasy, mechanical identity, and combat profile TBD. Constraints:
 class TBD (Penitent / Mantle, Heretic / Tomb, Wretched-equivalent
 TBD).
 
-- L1 = base form, immediately post-Seal. Stats start at universal
+- L1 = base form, immediately post-Signing. Stats start at universal
   baseline (1/1/1/1).
 - L2 = mid-game. Triggered when the Vagrant's cumulative substance
   arrangement meets the class-specific L2 requirements
@@ -118,24 +118,20 @@ Visual progression: class-pickers gain mass / imprint detail
 specifics TBD.
 
 **A "true unburdened run" — total refusal — is mechanically
-possible.** A player can stay at L1 Unburdened for the entire run
-by simply never using a riversamento site. Stats stay 1/1/1/1,
-unburdened-evolution never fires, neither Svuotato nor Diaphanous
-unlocks. The run terminates only by run-restart (death) or by Seal-
-use (class-pick). This is the absolute refusal — the path that
-refuses Hell's measurement AND Beatrice's reservoir. Hard by
-design; offers no progression mechanic at all.
+possible.** A player who refused the Signing AND never uses a
+riversamento site stays at L1 Unburdened for the entire run. Stats
+stay 1/1/1/1, unburdened-evolution never fires, neither Svuotato
+nor Diaphanous unlocks. This is the absolute refusal — the path that
+refuses Hell's measurement AND Beatrice's reservoir. Hard by design;
+offers no progression mechanic at all.
 
-**The Seal works at any time.** The player may carry the Seal
-indefinitely (per setting.md *Paths*); using it later does not
-*retroactively* boost the resulting class. The class-pick gives you
-the L1 form of the chosen class regardless of how much the Vagrant
-had grown as Unburdened beforehand. The cosmological reason: the
-Seal opens an imprint into which substance can install; what was
-arranged in the Vagrant's body before the imprint opened does not
-*pre-fill* the imprint. Time spent as Unburdened pre-Seal is its own
-substance-event (routing toward Beatrice), and committing to a
-class-picker mid-game permanently breaks PURITY for that save.
+**The Signing happens once, at Beat 3.** The Guide performs the
+ritual once; the player accepts or refuses in that moment, and the
+choice is committed for the rest of the save. A refused Signing
+cannot be revisited later — there is no "carry the option forward
+and pick later." The late-game Erasure can re-shape a class-picker
+(switch class, or un-measure to unburdened) but cannot perform the
+Signing on a refusing unburdened.
 
 ## Stat schema model
 
@@ -187,7 +183,7 @@ in. They are how a class FEELS different on the same four numbers.
 incantations, miracles, weapon arts, contrapasso-resistance passives.
 Loaded from per-class JSON (sister to the enemy archetypes system).
 Not part of `Stats`. The class-picker receives a starter ability
-kit at the Seal; subsequent abilities unlock at L2 / L3 evolution.
+kit at the Signing; subsequent abilities unlock at L2 / L3 evolution.
 The Unburdened has **no kit at L1**; abilities arrive only via
 riversamento-gated unlocks at Svuotato (L2) and Diaphanous (L3) —
 specifics described in *The Unburdened does NOT use the unlock-mask
@@ -322,9 +318,9 @@ The fixed compile-time schema with unlock-mask is the right shape.
   evolution has been Hell loading itself in).
 - [PC vs NPC](pc-vs-npc.md) — symmetry rule, *class* is data not
   type.
-- [Character creation](character-creation.md) — Seal-use mechanism,
+- [Character creation](character-creation.md) — Signing mechanism,
   class pick at the beasts.
-- [Inventory](inventory.md) — Seal, Erasure (class-pickers can
-  switch between classes; cannot return to unburdened).
+- [Inventory](inventory.md) — the Signing, the Erasure (class-pickers
+  can switch between classes; cannot return to unburdened).
 - Existing memory: penitent vertical slice planned for next dev
   session.

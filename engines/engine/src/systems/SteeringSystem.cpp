@@ -291,7 +291,7 @@ void SteeringSystem::update(EntityManager& em, double dt)
         float rawSteerX = rep.x * cfg.repulsion_strength;
         float rawSteerY = rep.y * cfg.repulsion_strength;
 
-        // Crowd repulsion: compute into a temporary velocity, extract the
+        // Crowd repulsion: compute into a scratch velocity, extract the
         // delta as the crowd steering contribution.
         if (ctx.separation_strength > 0.0f)
         {

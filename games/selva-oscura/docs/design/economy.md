@@ -52,11 +52,12 @@ move.
   Vagrant catches what installs on his imprint (class-picker) or
   passes through (unburdened); the remainder is what fuels the
   restored cosmological law.
-- **The promoted NPC.** Post-keeper, the circle's old NPC is installed
-  as the new keeper (per setting.md). They CAN be killed, undoing the
-  restoration — sangue payout is high because their keeper-form
-  carries the substance of the restored law. This is a costly
-  recursive option, rarely the right play.
+- **The mangled NPC.** Post-keeper, the circle's NPC has been mangled
+  into the new keeper-form (per setting.md *Per-circle reactivity*
+  + *Hell's failure*). They CAN be killed, undoing the restoration
+  — sangue payout is high because their keeper-form carries the
+  substance of the restored law. This is a costly recursive option,
+  rarely the right play.
 - **Items found in circles.** An item picked up in Limbo is *Limbo's
   sangue arranged in object-form.* The act of picking it up is the
   same cosmological event as a sangue payout — substance moving into
@@ -79,7 +80,7 @@ direction defines the path:
 
 - **OFFERING — sangue moves INTO the Vagrant** (class-picker path).
   The substance accumulates in his substrate. Hell installs itself
-  in him via the imprint the Seal opened. Mechanically expressed as
+  in him via the imprint the Signing opened. Mechanically expressed as
   stat growth, item acquisition, ability unlocks — *every* form in
   which substance settles in him is an OFFERING in the cosmological
   sense, not only the explicit wallet-spend at vestigia. Once
@@ -302,11 +303,10 @@ technique. The path's structural difficulty:
   rabid to stop it.
 - **A player can stay at L1 Unburdened forever** by simply
   refusing to riversa. This is the *true unburdened run* — total
-  refusal of every cosmological transaction. No stat growth, no
-  unburdened-evolution, no class-pick. The run terminates only by
-  death (run-restart in the Wood) or by the player choosing to
-  use the Seal (which class-picks and permanently breaks PURITY
-  for the save).
+  refusal of every cosmological transaction. The unburdened
+  refused the Signing at Beat 3 (so no class-pick path) and never
+  uses a riversamento site (so no unburdened-evolution either).
+  The run terminates only by death (run-restart in the Wood).
 
 ## Cosmological framing (the economy is the cosmology)
 

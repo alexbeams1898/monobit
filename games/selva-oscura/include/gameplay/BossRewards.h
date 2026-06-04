@@ -7,11 +7,11 @@
 // (item drops, sangue grants, Grimoire unlocks, world-state flips).
 //
 // v1: code-dispatch by spawn_decl_id (one case per shipped boss).
-// Future: when enough bosses ship, becomes data-driven via fields
-// on EnemyArchetype (e.g. `drops`, `grimoire_unlock`, etc.). Coding
-// it generically now is premature -- the "how rewards work
-// mechanically" question hasn't been answered yet, so keep it
-// imperative for now.
+// When enough bosses ship to define the reward shape, this becomes
+// data-driven via fields on EnemyArchetype (e.g. `drops`,
+// `grimoire_unlock`). Today the "how rewards work mechanically"
+// question is open, so the implementation is imperative -- one
+// function per boss reward, called from the felled handler.
 //
 // Per docs/design/ideas/boss_backend.md section 12 + impl plan
 // step 11.

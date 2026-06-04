@@ -714,9 +714,28 @@ require updating every saved JSON.
 gameplay site reads it as `const auto& tun = selva::tuning::current()`.
 
 The F1 panel is a live ImGui editor for every tunable. Sliders,
-checkboxes for debug flags, and a Save button that writes back to
-`config/tunables.json`. Useful for combat-feel iteration without a
-recompile.
+debug-flag checkboxes (under a separate "Debug" section, see below),
+and a Save button that writes back to `config/tunables.json`. Useful
+for combat-feel iteration without a recompile.
+
+### 9.1 selva::debug::Flags — session-only diagnostic toggles
+
+Distinct from Tunables. Lives in `include/debug/Flags.h`. Every
+`debug_*` boolean (`ai_perception`, `collision_log`, `enemy_lifecycle`,
+…) belongs here, NOT on Tunables. The split exists because:
+
+- **Tunables ship and serialize.** Debug toggles don't.
+- **Shipping cost.** Every `if (tun.debug_X)` is a hot-path memory
+  load. Centralizing under Flags lets a future
+  `#ifdef ENABLE_DEV_FLAGS` strip the struct from release builds
+  without disturbing Tunables serialization.
+- **Save-file stability.** Adding/removing a debug toggle changes
+  the Tunables NLOHMANN macro; Flags being session-only means
+  churning them is free at the file-format layer.
+
+Read as `selva::debug::flags().<name>` in the hot-path gate. F1 panel
+renders the Flags struct under its own "Debug" section so a designer
+scrolling Tunables doesn't see diagnostic toggles next to walk_speed.
 
 `time_scale` is a global multiplier applied to `dt` at the top of
 `selvaPerFrame`. <1.0 slows everything (animation, gameplay) for

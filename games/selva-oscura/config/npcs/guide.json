@@ -1,0 +1,78 @@
+{
+  "npc_id": "guide",
+  "display_name": "Guide",
+  "topics": [
+    {
+      "id": "first_meeting",
+      "entry_point": true,
+      "speaker": "guide",
+      "line": "Pilgrim. Thou art unmarked. None can pass into the depths unmeasured. Bend thy head; I shall sign thee.",
+      "show_when": {
+        "flags_required": ["lupa_felled"],
+        "flags_forbidden": ["signing_accepted", "signing_refused", "seen_topic_signing_refused"]
+      },
+      "choices": [
+        { "id": "accept_signing", "label": "Accept the Signing.", "next_topic": "signing_accepted" },
+        { "id": "refuse_signing", "label": "Refuse the Signing.", "next_topic": "signing_refused" }
+      ]
+    },
+    {
+      "id": "first_meeting_repeat",
+      "entry_point": true,
+      "speaker": "guide",
+      "line": "Pilgrim. Thou art still unmarked. Wilt thou be signed now?",
+      "show_when": {
+        "flags_required": ["seen_topic_signing_refused"],
+        "flags_forbidden": ["signing_accepted", "signing_refused"]
+      },
+      "choices": [
+        { "id": "accept_signing", "label": "Accept the Signing.", "next_topic": "signing_accepted" },
+        { "id": "refuse_signing", "label": "Refuse the Signing.", "next_topic": "signing_refused_again" }
+      ]
+    },
+    {
+      "id": "signing_accepted",
+      "speaker": "guide",
+      "line": "It is done. The mark holds. May the descent receive thee.",
+      "choices": [
+        { "id": "ask_where",  "label": "Where now?",                "next_topic": "signing_accepted_where" },
+        { "id": "leave",      "label": "Leave.",                    "next_topic": "__end__",                "on_select": "guide_commit_signing" }
+      ]
+    },
+    {
+      "id": "signing_accepted_where",
+      "speaker": "guide",
+      "line": "(placeholder) Pilgrim, the door is open. The depths await thee. Pass through, and descend.",
+      "choices": [
+        { "id": "leave", "label": "Leave.", "next_topic": "__end__", "on_select": "guide_commit_signing" }
+      ]
+    },
+    {
+      "id": "signing_refused",
+      "speaker": "guide",
+      "line": "Thou art certain? The path is not made for the unmeasured. Yet if thou wilt pass unmarked, pass.",
+      "choices": [
+        { "id": "leave",      "label": "Leave.",                  "next_topic": "__end__",       "on_select": "guide_commit_refusal" },
+        { "id": "reconsider", "label": "Wait -- let me reconsider.", "next_topic": "first_meeting" }
+      ]
+    },
+    {
+      "id": "signing_refused_again",
+      "speaker": "guide",
+      "line": "So be it. Pass unmarked, then.",
+      "choices": [
+        { "id": "leave", "label": "Leave.", "next_topic": "__end__", "on_select": "guide_commit_refusal" }
+      ]
+    },
+    {
+      "id": "post_signing_accepted",
+      "entry_point": true,
+      "speaker": "guide",
+      "line": "Pilgrim. The way is open to thee.",
+      "show_when": { "flags_required": ["signing_accepted"] },
+      "choices": [
+        { "id": "leave", "label": "Leave.", "next_topic": "__end__" }
+      ]
+    }
+  ]
+}

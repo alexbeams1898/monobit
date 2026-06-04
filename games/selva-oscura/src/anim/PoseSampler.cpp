@@ -147,7 +147,7 @@ namespace
 struct Track
 {
     const ozz::animation::Animation* animation = nullptr;
-    // Registry key (e.g. "walking", "running", "unarmed_combat_idle")
+    // Registry key (e.g. "walking", "jogging", "unarmed_combat_idle")
     // for this track's bound animation. Used only by diagnostic logs;
     // the Mixamo ozz Animation::name() is always "mixamo.com" so the
     // registry key is the only human-meaningful identifier we have.
@@ -675,9 +675,8 @@ PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh
     // Foot IK joints via the joint map. Empty strings -> -1, which
     // disables IK for that side (the existing IK code already
     // tolerates -1 since foot IK is gated by setFootIK enabling).
-    auto findOrNeg = [&](const std::string& name) {
-        return name.empty() ? -1 : findJointByName(ozz_skel, name.c_str());
-    };
+    auto findOrNeg = [&](const std::string& name)
+    { return name.empty() ? -1 : findJointByName(ozz_skel, name.c_str()); };
     ps.impl->ik_left_hip = findOrNeg(joint_map.upleg_left);
     ps.impl->ik_left_knee = findOrNeg(joint_map.leg_left);
     ps.impl->ik_left_ankle = findOrNeg(joint_map.foot_left);
@@ -730,7 +729,8 @@ void PoseSampler::hardReset()
     if (!impl)
         return;
     Impl& s = *impl;
-    auto wipe_track = [](Track& t) {
+    auto wipe_track = [](Track& t)
+    {
         t.animation = nullptr;
         t.registry_key.clear();
         t.time_seconds = 0.0f;
@@ -826,27 +826,18 @@ void PoseSampler::playOneShot(const AnimationClip& clip, float blend_in_seconds,
     // extractTrackHipDelta's two-branch behavior — traveling
     // clips translate world pos; in-place clips don't.
     s.one_shot.hip_path_cached = clipHipPathLength(clip).path_length;
-    // Diagnostic: report the resolved source (explicit from
-    // locomotion.json or default Velocity) + the per-extract heuristic
-    // outcome the Velocity branch would land on, so we can see when a
-    // clip's hip path crosses the 1.5m threshold without an explicit
-    // declaration. Real extraction decision lives in
-    // extractTrackHipDelta -- same rule both sites.
+    // Classification: same rule as extractTrackHipDelta. Only
+    // RootMotion clips translate. Empty registry_key cannot be
+    // classified so it doesn't travel -- visible non-motion is the
+    // diagnostic when a clip is missing from locomotion.json.
     const TranslationSource oneshot_src =
         s.one_shot.registry_key.empty()
-            ? TranslationSource::Velocity
+            ? TranslationSource::InPlace
             : locomotionConfig().translationSource(s.one_shot.registry_key);
-    constexpr float kOneShotThreshold = 1.5f;
-    const bool oneshot_traveling = (oneshot_src == TranslationSource::RootMotion) ||
-                                   (oneshot_src == TranslationSource::Velocity &&
-                                    s.one_shot.hip_path_cached >= kOneShotThreshold);
+    const bool oneshot_traveling = (oneshot_src == TranslationSource::RootMotion);
     samplerLog("[hip-classify-oneshot] clip={} path={:.3f}m source={} class={}",
                s.one_shot.registry_key, s.one_shot.hip_path_cached,
                translationSourceName(oneshot_src), oneshot_traveling ? "TRAVELING" : "IN_PLACE");
-    std::fprintf(stderr, "[hip-classify-oneshot] clip='%s' path=%.3fm source=%s class=%s\n",
-                 s.one_shot.registry_key.c_str(), s.one_shot.hip_path_cached,
-                 translationSourceName(oneshot_src), oneshot_traveling ? "TRAVELING" : "IN_PLACE");
-    std::fflush(stderr);
     const float dur = s.one_shot.animation ? s.one_shot.animation->duration() : 0.0f;
     s.one_shot.time_seconds = std::clamp(start_time_seconds, 0.0f, std::max(0.0f, dur - 1e-4f));
     s.one_shot_phase = OneShotPhase::BlendIn;
@@ -1895,32 +1886,18 @@ static void bindLocoCurrentToNewClip(PoseSampler::Impl& s, const ozz::animation:
     s.loco_current.animation = desired;
     s.loco_current.registry_key = desired_key;
     s.loco_current.time_seconds = resume_t;
-    std::fprintf(stderr,
-                 "[bind-loco] desired_key='%s' anim=%p skel=%p skel.num_joints=%d "
-                 "anim.num_tracks=%d\n",
-                 desired_key.c_str(), static_cast<const void*>(desired),
-                 static_cast<const void*>(s.skeleton),
-                 s.skeleton ? s.skeleton->num_joints() : -1,
-                 desired ? desired->num_tracks() : -1);
-    std::fflush(stderr);
     s.loco_current.hip_path_cached = computeHipXZPathLength(s, desired);
-    // Mirrors extractTrackHipDelta classification: explicit RootMotion
-    // / InPlace from locomotion.json wins; Velocity falls back to the
-    // 1.5m hip-path heuristic.
-    constexpr float kTravelingClipThreshold = 1.5f;
+    // Mirrors extractTrackHipDelta: classification is authoritative.
+    // Only RootMotion clips travel. Empty registry_key cannot be
+    // classified so it cannot travel -- visible non-motion is the
+    // diagnostic when JSON registration is missing.
     const TranslationSource src = desired_key.empty()
-                                      ? TranslationSource::Velocity
+                                      ? TranslationSource::InPlace
                                       : locomotionConfig().translationSource(desired_key);
-    const bool is_traveling =
-        (src == TranslationSource::RootMotion) ||
-        (src == TranslationSource::Velocity && s.loco_current.hip_path_cached >= kTravelingClipThreshold);
+    const bool is_traveling = (src == TranslationSource::RootMotion);
     samplerLog("[hip-classify-loco] clip={} path={:.3f}m source={} class={}", desired_key,
                s.loco_current.hip_path_cached, translationSourceName(src),
                is_traveling ? "TRAVELING" : "IN_PLACE");
-    std::fprintf(stderr, "[hip-classify-loco] clip='%s' path=%.3fm source=%s class=%s\n",
-                 desired_key.c_str(), s.loco_current.hip_path_cached, translationSourceName(src),
-                 is_traveling ? "TRAVELING" : "IN_PLACE");
-    std::fflush(stderr);
     s.loco_current.finished = false;
     s.loco_current.resetHipTracking();
 }
@@ -1970,22 +1947,106 @@ static void applyLocoCrossfadeStandardSwap(PoseSampler::Impl& s, float blend_sec
     s.loco_blend_duration = blend_seconds;
 }
 
+// Foot-phase-aligned splice time for a gait -> gait loco swap. When
+// both outgoing and incoming clips are cyclic gaits (jog -> sprint,
+// walk -> jog, jogging_backward -> walking_backward, etc.), the new
+// clip must start at a time whose foot world-positions match the
+// outgoing clip's CURRENT foot pose -- otherwise the 0.20s crossfade
+// lerps between two phase-mismatched stride poses and the feet
+// visibly snap. Same pose-match technique chainLinkPoseMatchStart
+// uses for combat one-shot chains, applied to the locomotion track.
+// Returns -1.0f when the inputs are unusable; caller falls back to
+// the cached-or-zero resume_t.
+float computeLocoSplicePoseMatchTime(PoseSampler::Impl& s, const ozz::animation::Animation* desired,
+                                     const std::string& desired_key)
+{
+    if (s.loco_current.animation == nullptr || desired == nullptr || s.skeleton == nullptr)
+        return -1.0f;
+    // Only pose-match between traveling-gait clips. Idles, in-place
+    // clips, and freshly-cold-entered loco have no foot phase to align.
+    const TranslationSource src_out =
+        s.loco_current.registry_key.empty()
+            ? TranslationSource::Velocity
+            : locomotionConfig().translationSource(s.loco_current.registry_key);
+    const TranslationSource src_in = desired_key.empty()
+                                         ? TranslationSource::Velocity
+                                         : locomotionConfig().translationSource(desired_key);
+    const bool out_is_gait = (src_out == TranslationSource::RootMotion);
+    const bool in_is_gait = (src_in == TranslationSource::RootMotion);
+    if (!out_is_gait || !in_is_gait)
+        return -1.0f;
+    const ozz::animation::Skeleton& skel = *s.skeleton;
+    std::vector<int> joints;
+    for (const char* name : {"mixamorig:LeftFoot", "mixamorig:RightFoot"})
+    {
+        const int idx = findSkeletonJoint(skel, name);
+        if (idx >= 0)
+            joints.push_back(idx);
+    }
+    if (joints.empty())
+        return -1.0f;
+    ozz::math::Float4x4 root_storage;
+    std::memcpy(&root_storage, &s.root_transform, sizeof(glm::mat4));
+    PoseSampleScratch scratch;
+    scratch.resize(skel);
+    std::vector<glm::vec3> ref;
+    const float out_t = s.loco_current.time_seconds;
+    const float out_dur = s.loco_current.animation->duration();
+    if (!samplePoseAtTimeForJoints(*s.loco_current.animation, skel, root_storage, joints, out_t,
+                                   out_dur, scratch, ref))
+        return -1.0f;
+    constexpr float kLocoSpliceSampleHz = 60.0f;
+    return sweepArgminPoseMatch(*desired, skel, root_storage, joints, ref, 0.0f, -1.0f,
+                                kLocoSpliceSampleHz);
+}
+
+namespace
+{
+float resolveCrossfadeResumeTime(PoseSampler::Impl& s, const ozz::animation::Animation* desired,
+                                  const std::string& desired_key, bool& out_used_pose_match)
+{
+    const float new_dur = desired->duration();
+    // Phase-aligned splice for gait -> gait swaps; falls back to
+    // cached resume / zero for idle <-> gait or any swap where pose-
+    // match isn't applicable.
+    const float pose_match_t = computeLocoSplicePoseMatchTime(s, desired, desired_key);
+    out_used_pose_match = (pose_match_t >= 0.0f);
+    if (out_used_pose_match)
+        return pose_match_t;
+    const auto it = s.last_clip_time.find(desired);
+    return (it != s.last_clip_time.end())
+               ? std::fmod(it->second, std::max(new_dur, 1e-4f))
+               : 0.0f;
+}
+
+const char* keyOrFallback(const std::string& key, const char* fallback)
+{
+    return key.empty() ? fallback : key.c_str();
+}
+
+bool isMidBlendRace(const PoseSampler::Impl& s)
+{
+    return (s.loco_previous.animation != nullptr || s.loco_previous_is_snapshot) &&
+           s.loco_blend_weight > 1e-3f && s.loco_blend_weight < 1.0f - 1e-3f;
+}
+} // namespace
+
 void applyLocoCrossfade(PoseSampler::Impl& s, const ozz::animation::Animation* desired,
                         const std::string& desired_key, float blend_seconds)
 {
     const bool cold_enter = (s.loco_current.animation == nullptr);
     if (!cold_enter)
         s.last_clip_time[s.loco_current.animation] = s.loco_current.time_seconds;
-    const auto it = s.last_clip_time.find(desired);
-    const float new_dur = desired->duration();
-    const float resume_t =
-        (it != s.last_clip_time.end()) ? std::fmod(it->second, std::max(new_dur, 1e-4f)) : 0.0f;
-    const char* to_key = desired_key.empty() ? "(unknown)" : desired_key.c_str();
-    const char* from_key =
-        s.loco_current.registry_key.empty() ? "(none)" : s.loco_current.registry_key.c_str();
-    const bool mid_blend_race =
-        (s.loco_previous.animation != nullptr || s.loco_previous_is_snapshot) &&
-        s.loco_blend_weight > 1e-3f && s.loco_blend_weight < 1.0f - 1e-3f;
+    bool used_pose_match = false;
+    const float resume_t = resolveCrossfadeResumeTime(s, desired, desired_key, used_pose_match);
+    samplerLog("[loco-splice] {}@{:.3f}s -> {} resume_t={:.3f}s ({})",
+               keyOrFallback(s.loco_current.registry_key, "(none)"),
+               s.loco_current.animation ? s.loco_current.time_seconds : 0.0f,
+               keyOrFallback(desired_key, "(unknown)"), resume_t,
+               used_pose_match ? "pose-match" : "cached-or-zero");
+    const char* to_key = keyOrFallback(desired_key, "(unknown)");
+    const char* from_key = keyOrFallback(s.loco_current.registry_key, "(none)");
+    const bool mid_blend_race = isMidBlendRace(s);
     samplerLog("[loco] crossfade {} -> {} (resume t={:.3f}s, blend={:.3f}s, cold={}, race={})",
                from_key, to_key, resume_t, blend_seconds, cold_enter ? 1 : 0,
                mid_blend_race ? 1 : 0);
@@ -2617,23 +2678,22 @@ void extractTrackHipDelta(Track& t, int hip_soa, int hip_lane)
         t.resetHipTracking();
         return;
     }
-    // Three explicit modes (per docs/design or locomotion.json):
-    //   RootMotion -> always extract+translate
-    //   InPlace    -> never extract; hip stays in pose
-    //   Velocity   -> heuristic: extract only above the 1.5m threshold
-    // The threshold is a fallback for unauthored clips. Every clip
-    // that matters should declare its mode in locomotion.json so the
-    // heuristic doesn't surprise us (the wolf bite's 0.586m
-    // path crossed the OLD 0.5m one-shot threshold and silently slid
-    // the actor forward each fire -- a bandaid the threshold raise
-    // would have papered over without removing the failure mode).
-    constexpr float kTravelingClipThreshold = 1.5f;
+    // Classification is authoritative: only RootMotion clips have
+    // their hip extracted + zeroed. Velocity-classified clips leave
+    // hip in the pose; gameplay velocity drives motion. InPlace
+    // same. The OLD fallback ("extract Velocity clips with hip-path
+    // above a 1.5m threshold") was a heuristic that silently extracted
+    // motion from any unclassified or misclassified clip. When a
+    // sampler.update callsite forgot to pass clip_key, registry_key
+    // was empty -> defaulted to Velocity -> heuristic extracted
+    // anyway -> velocity compounded -> actor slid across the map.
+    // Now: empty key means we cannot classify, so we cannot extract.
+    // The compiler/test won't catch a missing JSON entry; an actor
+    // visibly NOT moving will -- which is the diagnostic we want.
     const TranslationSource source = t.registry_key.empty()
-                                         ? TranslationSource::Velocity
+                                         ? TranslationSource::InPlace
                                          : locomotionConfig().translationSource(t.registry_key);
-    const bool is_traveling = (source == TranslationSource::RootMotion) ||
-                              (source == TranslationSource::Velocity &&
-                               t.hip_path_cached >= kTravelingClipThreshold);
+    const bool is_traveling = (source == TranslationSource::RootMotion);
 
     ozz::math::SoaTransform& T = t.local_transforms[hip_soa];
     alignas(16) float tx[4];

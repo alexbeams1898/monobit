@@ -6,6 +6,7 @@
 #include "anim/SkeletalAssets.h"
 #include "anim/SkeletalMesh.h"
 #include "combat/ActorVolumes.h"
+#include "combat/CombatLog.h"
 #include "combat/HitVolumes.h"
 #include "gameplay/EnemyArchetype.h"
 
@@ -46,6 +47,18 @@ void applyFormDefaults(Body& body, Stats& stats, Form form)
     // unjudged-soul has no substrate); per-instance authoring tunes
     // within the shape. Per [[soul-animal-form-combat-doctrine]] +
     // bestiary.md.
+    // Collider defaults: every humanoid form uses the standard Vagrant
+    // capsule. Animal approximates a quadruped via a vertical capsule
+    // sized to the wolf's standing bounds (Jolt only supports vertical
+    // character capsules today; we approximate AlongYaw shapes as
+    // vertical for the physics body). Per-archetype overrides can
+    // tune further. Per universal-actor-physics doctrine.
+    auto applyHumanoidCollider = [&]()
+    {
+        body.collider_radius = 0.35f;
+        body.collider_height = 1.8f;
+        body.collider_axis = CapsuleAxis::Vertical;
+    };
     switch (form)
     {
     case Form::UnjudgedSoul:
@@ -54,6 +67,7 @@ void applyFormDefaults(Body& body, Stats& stats, Form form)
         body.base_stamina = 60;
         body.base_defense = 0;
         stats = {1, 1, 1, 1};
+        applyHumanoidCollider();
         break;
     case Form::DamnedSoul:
         // Matches the legacy shade defaults so existing JSON behavior
@@ -63,6 +77,7 @@ void applyFormDefaults(Body& body, Stats& stats, Form form)
         body.base_stamina = 80;
         body.base_defense = 0;
         stats = {1, 1, 1, 1};
+        applyHumanoidCollider();
         break;
     case Form::Animal:
         body.base_hp = 200;
@@ -70,6 +85,10 @@ void applyFormDefaults(Body& body, Stats& stats, Form form)
         body.base_stamina = 150;
         body.base_defense = 2;
         stats = {3, 2, 3, 1};
+        body.collider_radius = 0.55f;
+        body.collider_height = 1.2f;
+        body.collider_axis = CapsuleAxis::AlongYaw;
+        body.collider_length = 1.6f;
         break;
     case Form::HellMachinery:
         // Reserved -- keepers not shipped yet. Legendary-tier numbers
@@ -79,6 +98,8 @@ void applyFormDefaults(Body& body, Stats& stats, Form form)
         body.base_stamina = 300;
         body.base_defense = 8;
         stats = {5, 4, 5, 1};
+        applyHumanoidCollider();
+        body.collider_height = 2.4f; // keeper-tier taller
         break;
     case Form::Divine:
         // Reserved -- Beatrice not shipped yet. Boss-class numbers
@@ -89,6 +110,7 @@ void applyFormDefaults(Body& body, Stats& stats, Form form)
         body.base_stamina = 200;
         body.base_defense = 5;
         stats = {4, 4, 4, 4};
+        applyHumanoidCollider();
         break;
     }
 }
@@ -112,17 +134,17 @@ void tickActorStamina(Actor& a, float dt)
     const auto& fc = selva::formulas::current();
 
     // Sprint lockout: ignore sprint input while locked. Lock releases below.
-    if (a.stamina.sprint_locked)
-        a.sprinting = false;
+    if (a.stamina.sprint_locked && a.loco_tier == LocoTier::Sprint)
+        a.loco_tier = LocoTier::Jog;
 
-    if (a.sprinting && a.stamina.current > 0.0f)
+    if (a.loco_tier == LocoTier::Sprint && a.stamina.current > 0.0f)
     {
         a.stamina.current = std::max(0.0f, a.stamina.current - fc.stamina.sprint_effort * dt);
         a.stamina.recovery_timer = fc.stamina.recovery_delay;
         if (a.stamina.current <= 0.0f)
         {
             a.stamina.sprint_locked = true;
-            a.sprinting = false;
+            a.loco_tier = LocoTier::Jog;
         }
     }
     else if (a.stamina.recovery_timer > 0.0f)
@@ -205,7 +227,7 @@ int defaultLockOnPointIndex(const Actor& actor)
 }
 
 const char* directionalLocoClip(const glm::vec3& fwd, const glm::vec3& right,
-                                const glm::vec3& intent, bool running)
+                                const glm::vec3& intent, LocoTier tier)
 {
     if (glm::length(intent) <= 0.0001f)
         return nullptr;
@@ -214,34 +236,47 @@ const char* directionalLocoClip(const glm::vec3& fwd, const glm::vec3& right,
     // Any nonzero lateral input wins → strafe. Forward/back only on
     // essentially pure W/S input.
     const bool axis_is_forward = std::abs(right_dot) < 1e-3f;
+    // Sprint only has a forward clip; backward/strafe demote to jog.
+    if (axis_is_forward && fwd_dot >= 0.0f && tier == LocoTier::Sprint)
+        return "sprinting";
+    const LocoTier ground_tier = (tier == LocoTier::Sprint) ? LocoTier::Jog : tier;
+    const bool walk = (ground_tier == LocoTier::Walk);
     if (axis_is_forward)
     {
         if (fwd_dot >= 0.0f)
-            return running ? "running" : "walking";
-        return running ? "running_backward" : "walking_backward";
+            return walk ? "walking" : "jogging";
+        return walk ? "walking_backward" : "jogging_backward";
     }
     if (right_dot >= 0.0f)
-        return running ? "strafe_running_right" : "strafe_walking_right";
-    return running ? "strafe_running_left" : "strafe_walking_left";
+        return walk ? "strafe_walking_right" : "strafe_jogging_right";
+    return walk ? "strafe_walking_left" : "strafe_jogging_left";
 }
 
-void applyActorClipHipDelta(Actor& actor, float hip_delta_scale)
+void applyActorClipHipDelta(Actor& actor, float dt, float hip_delta_scale)
 {
     // Contract from feedback_hip_delta_two_sides.md: PoseSampler
     // extracts the clip's authored hip-XZ and zeros it in the local
     // pose. Gameplay must apply that consumed delta back to world
-    // position or the actor's feet treadmill. Caller decides WHEN
-    // to call this (always for AI actors; only during one-shots
-    // for the Input-controlled player whose locomotion is velocity-
-    // driven instead).
+    // motion or the actor's feet treadmill. Routed through the unified
+    // physics pipeline (universal-actor-physics refactor): the hip
+    // delta is converted to a velocity contribution that the next
+    // physics step integrates. Direct pos writes are gone.
     const glm::vec3 hip_local = actor.sampler.consumedHipDelta();
     if (std::abs(hip_local.x) <= 1e-6f && std::abs(hip_local.z) <= 1e-6f)
+        return;
+    if (dt <= 0.0001f)
         return;
     const float sy = std::sin(actor.yaw);
     const float cy = std::cos(actor.yaw);
     const glm::vec3 hip_world(-cy * hip_local.x - sy * hip_local.z, 0.0f,
                               sy * hip_local.x - cy * hip_local.z);
-    actor.pos += hip_world * hip_delta_scale;
+    // Add hip-derived velocity ON TOP of whatever the locomotion tick
+    // wrote. For root-motion clips the locomotion tick zeroes
+    // velocity_xz first, so this becomes the sole contribution; for
+    // mixed cases (a one-shot with authored hip motion firing while
+    // a velocity gait was active) the two compose.
+    actor.velocity_xz.x += hip_world.x * hip_delta_scale / dt;
+    actor.velocity_xz.y += hip_world.z * hip_delta_scale / dt;
 }
 
 bool actorCanLandHits(const Actor& a)
@@ -292,6 +327,21 @@ void updateActiveAttackHitbox(Actor& actor)
                   glm::vec3(model_mat *
                             glm::vec4(0.0f, 0.0f, actor.active_attack_tip_offset_z, 0.0f))
             : anchor_world;
+    // Snapshot the PRE-update shape into prev_shape before we
+    // overwrite it. detectHits later this frame uses (prev, curr) to
+    // build the swept capsule covering the motion between the last
+    // frame's pose and this one. Doing the snapshot here, rather
+    // than in tickHitboxes, makes prev always be "the shape from one
+    // frame ago at this exact same spawn-then-update lifecycle
+    // moment" regardless of where in the per-frame order tickHitboxes
+    // lands. Before this fix, tickHitboxes ran AFTER the shape
+    // update but BEFORE detectHits, copying curr -> prev and
+    // degenerating the swept capsule to a point -- no sweep, no hit.
+    // First frame after spawn: prev == shape == anchor_world (set by
+    // spawnHitbox), so the swept capsule collapses to the spawn-frame
+    // sphere. Subsequent frames see real motion.
+    hb->prev_shape = hb->shape;
+    hb->has_prev = true;
     hb->shape.p0 = anchor_world;
     hb->shape.p1 = tip_world;
 }
@@ -316,6 +366,16 @@ Actor& player()
     // shim is removed and the pool is the only state, this becomes
     // a hard precondition.
     return sActors.front();
+}
+
+Actor* actorByDeclId(const std::string& spawn_decl_id)
+{
+    if (spawn_decl_id.empty())
+        return nullptr;
+    for (auto& a : sActors)
+        if (a.spawn_decl_id == spawn_decl_id)
+            return &a;
+    return nullptr;
 }
 
 void initActorPool()
@@ -350,8 +410,8 @@ void initActorPool()
     pc.death_peak_sfx_names = {"synth_echo", "soul_steal"};
     pc.death_peak_align_seconds = 3.5f;
     // Apply form-defaults to Body + Stats before pool init. The class-
-    // pick system (future) will layer custom stat spreads on top --
-    // for now this is the unjudged-soul baseline (60 HP / 12 poise).
+    // pick system will layer custom stat spreads on top; the baseline
+    // applied here is the unjudged-soul default (60 HP / 12 poise).
     applyFormDefaults(pc.body, pc.stats, pc.form);
     initActorPools(pc.hp, pc.stamina, pc.poise, pc.body, pc.stats);
     // initActorPool is one-time, asset-binding only. Position, hp-fill,
@@ -399,9 +459,8 @@ void tickActors(float dt)
     {
         if (a.controller == Controller::Input)
             continue;
-        applyActorClipHipDelta(a);
+        applyActorClipHipDelta(a, dt);
     }
-    (void)dt;
 }
 
 float actorFootOffsetY(const Actor& a)

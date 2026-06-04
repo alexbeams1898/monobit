@@ -17,9 +17,9 @@ sequence*](story.md), Beats 1-5:
   Unburdened (no measurement yet, imprint-free).
 - **Beat 3 — The Guide arrives.** Naming: the Guide elicits six
   letters from the player. *The name is given, not recovered.* The
-  Guide offers The Seal.
-- **Beat 4 — The choice.** Use the Seal (class-pick: Penitent /
-  Heretic / Wretched) or carry it (unburdened). This is the
+  Guide offers the Signing.
+- **Beat 4 — The choice.** Accept the Signing (class-pick: Penitent
+  / Heretic / Wretched) or refuse it (unburdened). This is the
   game's class-creation moment.
 - **Beat 5 — Transition.** Vagrant proceeds to the gate of Hell;
   basic-form Wood transitions to hub-Wood.
@@ -34,14 +34,15 @@ in [ux.md](ux.md).
 
 ## Class pick
 
-Mechanism: **The Seal** (*Il Sigillo*). Single-use item given by the
-Guide at Beat 3. Using it triggers class selection (Penitent /
-Heretic / Wretched) and consumes the Seal; carrying it without using
-keeps the Vagrant imprint-free and continues him as Unburdened.
+Mechanism: **the Signing** (*La Firma*). A one-time ritual the Guide
+performs on the Vagrant at Beat 3. Accepting triggers class selection
+(Penitent / Heretic / Wretched) and inscribes the soul into Hell's
+processing registry; refusing leaves the Vagrant unmarked and commits
+the unburdened path.
 
 The class-pick fork, the three classes' identities, and evolution
-paths all live in [classes.md](classes.md). The Seal's mechanics and
-the Erasure (the late-game class-switching item) live in
+paths all live in [classes.md](classes.md). The Signing's role in
+the canon and the Erasure (the late-game ritual tool) live in
 [inventory.md](inventory.md).
 
 ## Cross-references
@@ -50,6 +51,6 @@ the Erasure (the late-game class-switching item) live in
   narrative spine of character creation.
 - [Classes](classes.md) — the three classes, evolutions, stat
   profiles.
-- [Inventory](inventory.md) — The Seal, the Erasure.
+- [Inventory](inventory.md) — the Signing, the Erasure.
 - [UX](ux.md) — name-entry screen, class-pick UI, transition
   sequencing.

@@ -9,7 +9,7 @@ namespace selva::items
 {
 
 // Possession kind: just an id. Used for unique single-instance items
-// (Seal, Grimoire, Cord).
+// (Grimoire, Cord, Hand, etc. per inventory.md).
 struct PossessionEntry
 {
     std::string item_id;

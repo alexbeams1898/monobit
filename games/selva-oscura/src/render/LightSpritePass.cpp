@@ -201,11 +201,13 @@ void renderLightSprites(const glm::mat4& view_proj, const glm::vec3& cam_pos,
     // because perspective mixes them. Instead, accept that this pass
     // expects the call site to expose right/up — pass them in.
     //
-    // Quick workaround for v1: compute right + up from cam_pos +
-    // assumed up-vector (0,1,0). View direction is from cam_pos
-    // toward region center... no, we need the actual camera basis.
-    // Use the inverse view matrix derived implicitly: extract from
-    // view_proj.
+    // BANDAID(approved): v1 derives right+up by inverting view_proj.
+    // Why: the pass needs the camera's screen-right and screen-up
+    // basis, but the caller (renderWorld) only passes view_proj. The
+    // root fix is to thread the inverse-view (or right+up) through
+    // the call site so we don't pay an inverse-mat4 per frame. The
+    // inverse is cheap enough on one matrix that the current
+    // structure ships fine; revisit if multiple light passes appear.
     //
     // Cleanest: extract right + up directly from view matrix. Caller
     // provides view_proj, we invert and read columns 0 + 1.

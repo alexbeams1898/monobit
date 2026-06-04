@@ -12,10 +12,10 @@
 //      re-fire next session.
 //
 // tickScriptedEvents() is called once per frame from PerFrameTick.
-// Lightweight (a few flag checks). Per CLAUDE.md "Design before
-// implementing": this is the v1 shape; if events grow numerous, we
-// migrate to a declarative event registry (data-driven flag conditions
-// + scripted actions). For now: one C++ function per event.
+// Lightweight (a few flag checks). v1 shape: one C++ function per
+// event. The migration target is a declarative event registry
+// (data-driven flag conditions + scripted actions); deferred until
+// the event count motivates the registry indirection.
 
 namespace selva::gameplay
 {

@@ -1,6 +1,6 @@
 #include "world/Terrain.h"
 
-#include "Tunables.h"
+#include "debug/Flags.h"
 #include "physics/PhysicsWorld.h"
 #include "world/Collision.h"
 #include "world/CryptLayout.h"
@@ -395,8 +395,8 @@ void buildRegionMesh(TerrainRegion& r, int subdivide)
 
     // Physics + render share the same vertex positions: terrain Y
     // already includes any registered TerrainModifiers (applied above).
-    // No separate "physics pit" hack — modifiers are the source of
-    // truth for terrain deformation.
+    // No separate "physics pit" override path -- modifiers are the
+    // sole source of truth for terrain deformation.
     r.cpu_positions.reserve(verts.size());
     for (const auto& v : verts)
         r.cpu_positions.emplace_back(v.position[0], v.position[1], v.position[2]);
@@ -786,7 +786,7 @@ float groundHeight(float world_x, float world_z, float current_y)
     // current_y is known), fall back to high-up cast accepting the
     // overshoot risk -- caller must be aware they're querying a
     // single-layer assumption.
-    constexpr float kRayStartAbove = 2.0f;     // ~head height above actor
+    constexpr float kRayStartAbove = 2.0f;       // ~head height above actor
     constexpr float kRayStartAboveBoot = 100.0f; // fallback when current_y unknown
     constexpr float kRayMaxDistance = 500.0f;
     const bool use_ceiling = current_y != -std::numeric_limits<float>::infinity();
@@ -802,7 +802,7 @@ float groundHeight(float world_x, float world_z, float current_y)
         return sampleHeight(world_x, world_z);
     }
 
-    const bool log_on = selva::tuning::current().debug_ground_height_log;
+    const bool log_on = selva::debug::flags().ground_height_log;
     if (log_on)
     {
         static FILE* sGroundLog = nullptr;

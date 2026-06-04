@@ -19,7 +19,7 @@ namespace selva::anim
 enum class TranslationSource
 {
     // World translation comes from `velocity_xz * dt`. Calibrated by
-    // `walk_speed` / `run_speed` tunables to match the clip's
+    // `walk_speed` / `jog_speed` / `sprint_speed` tunables to match the clip's
     // authored cadence (`walking` is hand-tuned at 1.6m/s to match
     // its 1.85m/1.16s hip travel). When no JSON entry exists, the
     // 1.5m hip-path heuristic in extractTrackHipDelta picks for you

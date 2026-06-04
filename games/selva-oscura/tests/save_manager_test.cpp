@@ -148,7 +148,8 @@ TEST_CASE("SaveManager omits felled_bosses for fresh characters", "[save][boss-b
     cleanupTestFile(path);
 }
 
-TEST_CASE("SaveManager felled_bosses load tolerates missing field", "[save][boss-backend][back-compat]")
+TEST_CASE("SaveManager felled_bosses load tolerates missing field",
+          "[save][boss-backend][back-compat]")
 {
     // Pre-boss-backend save files have no felled_bosses field at all.
     // Loader must default to empty list (not crash, not throw).

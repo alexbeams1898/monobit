@@ -21,10 +21,14 @@ const char* factionName(Faction f)
 {
     switch (f)
     {
-    case Faction::Player: return "Player";
-    case Faction::Hostile: return "Hostile";
-    case Faction::Neutral: return "Neutral";
-    case Faction::Allied: return "Allied";
+    case Faction::Player:
+        return "Player";
+    case Faction::Hostile:
+        return "Hostile";
+    case Faction::Neutral:
+        return "Neutral";
+    case Faction::Allied:
+        return "Allied";
     }
     return "?";
 }
@@ -33,11 +37,16 @@ const char* formName(Form f)
 {
     switch (f)
     {
-    case Form::UnjudgedSoul: return "UnjudgedSoul";
-    case Form::DamnedSoul: return "DamnedSoul";
-    case Form::Animal: return "Animal";
-    case Form::HellMachinery: return "HellMachinery";
-    case Form::Divine: return "Divine";
+    case Form::UnjudgedSoul:
+        return "UnjudgedSoul";
+    case Form::DamnedSoul:
+        return "DamnedSoul";
+    case Form::Animal:
+        return "Animal";
+    case Form::HellMachinery:
+        return "HellMachinery";
+    case Form::Divine:
+        return "Divine";
     }
     return "?";
 }

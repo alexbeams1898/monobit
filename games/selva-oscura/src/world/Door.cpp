@@ -16,20 +16,28 @@ const char* doorStateName(DoorState s)
 {
     switch (s)
     {
-    case DoorState::Locked: return "Locked";
-    case DoorState::Closed: return "Closed";
-    case DoorState::Opening: return "Opening";
-    case DoorState::Open: return "Open";
+    case DoorState::Locked:
+        return "Locked";
+    case DoorState::Closed:
+        return "Closed";
+    case DoorState::Opening:
+        return "Opening";
+    case DoorState::Open:
+        return "Open";
     }
     return "?";
 }
 
 DoorState parseDoorState(const std::string& s)
 {
-    if (s == "Locked") return DoorState::Locked;
-    if (s == "Closed") return DoorState::Closed;
-    if (s == "Opening") return DoorState::Open;     // promote interrupted Opening -> Open on load
-    if (s == "Open") return DoorState::Open;
+    if (s == "Locked")
+        return DoorState::Locked;
+    if (s == "Closed")
+        return DoorState::Closed;
+    if (s == "Opening")
+        return DoorState::Open; // promote interrupted Opening -> Open on load
+    if (s == "Open")
+        return DoorState::Open;
     return DoorState::Closed; // legacy / unknown -> Closed
 }
 
@@ -91,9 +99,8 @@ void ensureCollider(Door& door)
     const glm::vec3 half(kDoorColliderWidth * 0.5f, kDoorColliderHeight * 0.5f,
                          kDoorColliderDepth * 0.5f);
     const glm::vec3 center(door.pos.x, door.pos.y + kDoorColliderHeight * 0.5f, door.pos.z);
-    door.collider = engine::physics::addStaticBox(center, half,
-                                                  engine::physics::SurfaceTag::Architecture,
-                                                  door.id.c_str());
+    door.collider = engine::physics::addStaticBox(
+        center, half, engine::physics::SurfaceTag::Architecture, door.id.c_str());
 }
 
 void removeCollider(Door& door)
@@ -175,8 +182,7 @@ void tickDoors(float dt)
             d.opening_elapsed = d.open_animation_seconds;
             applyStateSideEffects(d);
             writePersistedState(d);
-            std::fprintf(stderr, "[door] '%s': Opening -> Open (collider removed)\n",
-                         d.id.c_str());
+            std::fprintf(stderr, "[door] '%s': Opening -> Open (collider removed)\n", d.id.c_str());
             std::fflush(stderr);
         }
     }
@@ -212,8 +218,7 @@ void registerDoorsForRegion(const std::vector<DoorDecl>& decls)
         {
             if (!loadStaticMesh(d.mesh_path.c_str(), glm::vec3(0.0f), d.visual_mesh))
             {
-                std::fprintf(stderr,
-                             "[door] '%s' mesh load failed for '%s'\n", d.id.c_str(),
+                std::fprintf(stderr, "[door] '%s' mesh load failed for '%s'\n", d.id.c_str(),
                              d.mesh_path.c_str());
                 std::fflush(stderr);
             }
@@ -267,10 +272,10 @@ glm::mat4 doorModelMatrix(const Door& door)
         door.open_animation_seconds > 0.0f
             ? std::clamp(door.opening_elapsed / door.open_animation_seconds, 0.0f, 1.0f)
             : 1.0f;
-    const float current_angle =
-        (door.state == DoorState::Open)         ? door.open_angle_radians
-        : (door.state == DoorState::Opening)    ? door.open_angle_radians * opening_frac
-                                                : 0.0f;
+    const float current_angle = (door.state == DoorState::Open) ? door.open_angle_radians
+                                : (door.state == DoorState::Opening)
+                                    ? door.open_angle_radians * opening_frac
+                                    : 0.0f;
     // Translate to hinge in world, rotate around hinge_axis by yaw and
     // current_angle, then translate back. hinge_offset is local; the
     // door's local origin is already AT the hinge per gen_chapel_door.py,
@@ -279,8 +284,10 @@ glm::mat4 doorModelMatrix(const Door& door)
     glm::mat4 m = glm::translate(glm::mat4(1.0f), door.pos);
     m = glm::rotate(m, door.yaw, glm::vec3(0.0f, 1.0f, 0.0f));
     glm::vec3 axis(0.0f, 1.0f, 0.0f);
-    if (door.hinge_axis == 'X') axis = glm::vec3(1.0f, 0.0f, 0.0f);
-    else if (door.hinge_axis == 'Z') axis = glm::vec3(0.0f, 0.0f, 1.0f);
+    if (door.hinge_axis == 'X')
+        axis = glm::vec3(1.0f, 0.0f, 0.0f);
+    else if (door.hinge_axis == 'Z')
+        axis = glm::vec3(0.0f, 0.0f, 1.0f);
     m = glm::translate(m, door.hinge_offset);
     m = glm::rotate(m, current_angle, axis);
     m = glm::translate(m, -door.hinge_offset);

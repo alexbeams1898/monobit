@@ -25,11 +25,11 @@ struct BossHudState
 {
     enum class Mode
     {
-        Hidden,        // no boss; HUD invisible
-        FadingIn,      // boss just engaged; alpha 0 -> 1
-        Active,        // boss engaged; HP bar + name shown at full alpha
-        Felled,        // boss just died; felled-message text fade
-        FadingOut,     // post-felled cleanup; HP bar fades out
+        Hidden,    // no boss; HUD invisible
+        FadingIn,  // boss just engaged; alpha 0 -> 1
+        Active,    // boss engaged; HP bar + name shown at full alpha
+        Felled,    // boss just died; felled-message text fade
+        FadingOut, // post-felled cleanup; HP bar fades out
     };
     Mode mode = Mode::Hidden;
     double mode_entered_at = 0.0;
@@ -61,7 +61,7 @@ BossHudState& state()
 // the smoke test -- expose as config if iteration shows the defaults
 // are wrong.
 constexpr float kFadeInSeconds = 0.5f;
-constexpr float kFelledFreezeSeconds = 0.5f;  // brief input-noticeable pause
+constexpr float kFelledFreezeSeconds = 0.5f; // brief input-noticeable pause
 constexpr float kFelledTextHoldSeconds = 2.0f;
 constexpr float kFadeOutSeconds = 1.0f;
 
@@ -144,8 +144,7 @@ void drawHpBarAndName(const std::string& name, float hp_norm, float alpha)
 // Draw the boss-felled overlay -- centered "X FELLED" text that
 // fades over kFelledTextHoldSeconds. Tragic register: no music sting,
 // no background overlay, no celebratory framing. Brief, mournful.
-void drawFelledOverlay(const std::string& boss_name, const std::string& felled_message,
-                       float alpha)
+void drawFelledOverlay(const std::string& boss_name, const std::string& felled_message, float alpha)
 {
     if (alpha <= 0.0f)
         return;
@@ -174,11 +173,16 @@ const char* modeName(BossHudState::Mode m)
 {
     switch (m)
     {
-    case BossHudState::Mode::Hidden: return "Hidden";
-    case BossHudState::Mode::FadingIn: return "FadingIn";
-    case BossHudState::Mode::Active: return "Active";
-    case BossHudState::Mode::Felled: return "Felled";
-    case BossHudState::Mode::FadingOut: return "FadingOut";
+    case BossHudState::Mode::Hidden:
+        return "Hidden";
+    case BossHudState::Mode::FadingIn:
+        return "FadingIn";
+    case BossHudState::Mode::Active:
+        return "Active";
+    case BossHudState::Mode::Felled:
+        return "Felled";
+    case BossHudState::Mode::FadingOut:
+        return "FadingOut";
     }
     return "?";
 }
@@ -187,8 +191,7 @@ const char* modeName(BossHudState::Mode m)
 void resetBossHud()
 {
     auto& s = state();
-    std::fprintf(stderr,
-                 "[boss-hud-reset] mode=%s cached_id='%s' -> Hidden, all cache cleared\n",
+    std::fprintf(stderr, "[boss-hud-reset] mode=%s cached_id='%s' -> Hidden, all cache cleared\n",
                  modeName(s.mode), s.cached_boss_id.c_str());
     std::fflush(stderr);
     s.mode = BossHudState::Mode::Hidden;
@@ -201,82 +204,80 @@ void resetBossHud()
     s.cached_boss_id.clear();
 }
 
-void renderBossHud()
+namespace
 {
-    auto& s = state();
-    const double now = selva::wallClock();
-    const auto* boss = resolveHudBoss();
-    const bool boss_visible = (boss != nullptr);
-
-    // Pulse log: every ~1s, dump the HUD's view of the world so we can
-    // see what it THINKS it's doing even when there are no transitions.
+void bossHudPulseLog(BossHudState& s, double now, const selva::gameplay::Actor* boss)
+{
     static double s_last_pulse = 0.0;
-    if (now - s_last_pulse >= 1.0)
+    if (now - s_last_pulse < 1.0)
+        return;
+    const auto* cached = findActorBySpawnDeclId(s.cached_boss_id);
+    std::fprintf(stderr,
+                 "[boss-hud-pulse] mode=%s engaged_actor=%s cached_id='%s' "
+                 "cached_actor_state=%s\n",
+                 modeName(s.mode), boss != nullptr ? boss->spawn_decl_id.c_str() : "(none)",
+                 s.cached_boss_id.c_str(),
+                 cached ? selva::gameplay::bossStateName(cached->boss_state) : "(no actor)");
+    std::fflush(stderr);
+    s_last_pulse = now;
+}
+
+// Boss left visible state (Engaged or Dying). Felled cached actor ->
+// Felled overlay; anything else (Disengaged / Dormant / missing) ->
+// silent FadingOut.
+void leftVisibleTransition(BossHudState& s, double now)
+{
+    const auto* cached = findActorBySpawnDeclId(s.cached_boss_id);
+    const bool felled =
+        (cached != nullptr) && cached->boss_state == selva::gameplay::BossState::Felled;
+    const auto* cached_state_name =
+        cached ? selva::gameplay::bossStateName(cached->boss_state) : "(no actor)";
+    const auto prev_mode = s.mode;
+    if (felled && s.cached_show_felled_overlay)
     {
-        const auto* cached = findActorBySpawnDeclId(s.cached_boss_id);
-        std::fprintf(stderr,
-                     "[boss-hud-pulse] mode=%s engaged_actor=%s cached_id='%s' "
-                     "cached_actor_state=%s\n",
-                     modeName(s.mode),
-                     boss_visible ? boss->spawn_decl_id.c_str() : "(none)",
-                     s.cached_boss_id.c_str(),
-                     cached ? selva::gameplay::bossStateName(cached->boss_state) : "(no actor)");
-        std::fflush(stderr);
-        s_last_pulse = now;
+        s.cached_hp_at_death = 0.0f;
+        s.mode = BossHudState::Mode::Felled;
     }
+    else
+    {
+        s.mode = BossHudState::Mode::FadingOut;
+    }
+    s.mode_entered_at = now;
+    std::fprintf(stderr, "[boss-hud] leftVisible: prev=%s cached_id='%s' cached_state=%s -> %s\n",
+                 modeName(prev_mode), s.cached_boss_id.c_str(), cached_state_name,
+                 modeName(s.mode));
+    std::fflush(stderr);
+}
 
-    // Helper: when boss leaves visible-state (Engaged or Dying), read
-    // the cached actor's current state. Felled -> show overlay.
-    // Anything else (Disengaged / Dormant / missing) -> silent hide.
-    auto leftVisibleTransition = [&]() {
-        const auto* cached = findActorBySpawnDeclId(s.cached_boss_id);
-        const bool felled =
-            (cached != nullptr) && cached->boss_state == selva::gameplay::BossState::Felled;
-        const auto* cached_state_name =
-            cached ? selva::gameplay::bossStateName(cached->boss_state) : "(no actor)";
-        const auto prev_mode = s.mode;
-        if (felled && s.cached_show_felled_overlay)
-        {
-            s.cached_hp_at_death = 0.0f;
-            s.mode = BossHudState::Mode::Felled;
-        }
-        else
-        {
-            s.mode = BossHudState::Mode::FadingOut;
-        }
-        s.mode_entered_at = now;
-        std::fprintf(stderr,
-                     "[boss-hud] leftVisible: prev=%s cached_id='%s' cached_state=%s -> %s\n",
-                     modeName(prev_mode), s.cached_boss_id.c_str(), cached_state_name,
-                     modeName(s.mode));
-        std::fflush(stderr);
-    };
+void cacheBossForFadeIn(BossHudState& s, double now, const selva::gameplay::Actor& boss)
+{
+    s.mode = BossHudState::Mode::FadingIn;
+    s.mode_entered_at = now;
+    s.cached_boss_name =
+        (boss.archetype != nullptr) ? boss.archetype->boss_name : std::string{};
+    s.cached_felled_message =
+        (boss.archetype != nullptr) ? boss.archetype->felled_message : std::string{};
+    s.cached_show_felled_overlay =
+        (boss.archetype != nullptr) ? boss.archetype->show_felled_overlay : true;
+    s.cached_hp_max = static_cast<float>(boss.hp.max);
+    s.cached_boss_id = boss.spawn_decl_id;
+    std::fprintf(stderr, "[boss-hud] Hidden -> FadingIn (engaged='%s' hp.max=%.0f)\n",
+                 s.cached_boss_id.c_str(), s.cached_hp_max);
+    std::fflush(stderr);
+}
 
+void advanceBossHudState(BossHudState& s, double now, const selva::gameplay::Actor* boss)
+{
+    const bool boss_visible = (boss != nullptr);
     switch (s.mode)
     {
     case BossHudState::Mode::Hidden:
         if (boss_visible)
-        {
-            // Newly engaged -- cache display data + begin fade-in.
-            s.mode = BossHudState::Mode::FadingIn;
-            s.mode_entered_at = now;
-            s.cached_boss_name =
-                (boss->archetype != nullptr) ? boss->archetype->boss_name : std::string{};
-            s.cached_felled_message =
-                (boss->archetype != nullptr) ? boss->archetype->felled_message : std::string{};
-            s.cached_show_felled_overlay =
-                (boss->archetype != nullptr) ? boss->archetype->show_felled_overlay : true;
-            s.cached_hp_max = static_cast<float>(boss->hp.max);
-            s.cached_boss_id = boss->spawn_decl_id;
-            std::fprintf(stderr,
-                         "[boss-hud] Hidden -> FadingIn (engaged='%s' hp.max=%.0f)\n",
-                         s.cached_boss_id.c_str(), s.cached_hp_max);
-            std::fflush(stderr);
-        }
-        break;
+            cacheBossForFadeIn(s, now, *boss);
+        return;
     case BossHudState::Mode::FadingIn:
         if (!boss_visible)
-            leftVisibleTransition();
+            leftVisibleTransition(s, now);
         else if (now - s.mode_entered_at >= kFadeInSeconds)
         {
             s.mode = BossHudState::Mode::Active;
@@ -284,11 +285,11 @@ void renderBossHud()
             std::fprintf(stderr, "[boss-hud] FadingIn -> Active\n");
             std::fflush(stderr);
         }
-        break;
+        return;
     case BossHudState::Mode::Active:
         if (!boss_visible)
-            leftVisibleTransition();
-        break;
+            leftVisibleTransition(s, now);
+        return;
     case BossHudState::Mode::Felled:
         if (now - s.mode_entered_at >= kFelledFreezeSeconds + kFelledTextHoldSeconds)
         {
@@ -297,7 +298,7 @@ void renderBossHud()
             std::fprintf(stderr, "[boss-hud] Felled -> FadingOut\n");
             std::fflush(stderr);
         }
-        break;
+        return;
     case BossHudState::Mode::FadingOut:
         if (now - s.mode_entered_at >= kFadeOutSeconds)
         {
@@ -309,56 +310,62 @@ void renderBossHud()
             std::fprintf(stderr, "[boss-hud] FadingOut -> Hidden (cache cleared)\n");
             std::fflush(stderr);
         }
-        break;
+        return;
     }
+}
 
-    // Render based on mode.
-    const float hp_norm = (boss != nullptr && boss->hp.max > 0)
-                              ? static_cast<float>(boss->hp.current) /
-                                    static_cast<float>(boss->hp.max)
-                              : 0.0f;
+void drawBossHudFelledMode(const BossHudState& s, double now)
+{
+    const double elapsed = now - s.mode_entered_at;
+    if (elapsed < kFelledFreezeSeconds)
+    {
+        drawHpBarAndName(s.cached_boss_name, 0.0f, 1.0f);
+        return;
+    }
+    // Past freeze: HP bar holds at 0 + full alpha; felled-text fades
+    // in then holds.
+    drawHpBarAndName(s.cached_boss_name, 0.0f, 1.0f);
+    const double text_elapsed = elapsed - kFelledFreezeSeconds;
+    const float text_alpha = static_cast<float>(std::clamp(text_elapsed / 0.4, 0.0, 1.0));
+    drawFelledOverlay(s.cached_boss_name, s.cached_felled_message, text_alpha);
+}
 
+void drawBossHudByMode(const BossHudState& s, double now, float hp_norm)
+{
     switch (s.mode)
     {
     case BossHudState::Mode::Hidden:
         return;
     case BossHudState::Mode::FadingIn:
-    {
-        const float a = fadeAlpha(now, s.mode_entered_at, kFadeInSeconds);
-        drawHpBarAndName(s.cached_boss_name, hp_norm, a);
-        break;
-    }
+        drawHpBarAndName(s.cached_boss_name, hp_norm,
+                          fadeAlpha(now, s.mode_entered_at, kFadeInSeconds));
+        return;
     case BossHudState::Mode::Active:
         drawHpBarAndName(s.cached_boss_name, hp_norm, 1.0f);
-        break;
+        return;
     case BossHudState::Mode::Felled:
-    {
-        // Brief freeze (no visual change), then text fade.
-        const double elapsed = now - s.mode_entered_at;
-        if (elapsed < kFelledFreezeSeconds)
-        {
-            // Hold HP bar at 0 during freeze.
-            drawHpBarAndName(s.cached_boss_name, 0.0f, 1.0f);
-        }
-        else
-        {
-            // HP bar still visible at full alpha; felled text fades
-            // in then holds.
-            drawHpBarAndName(s.cached_boss_name, 0.0f, 1.0f);
-            const double text_elapsed = elapsed - kFelledFreezeSeconds;
-            const float text_alpha = static_cast<float>(
-                std::clamp(text_elapsed / 0.4, 0.0, 1.0)); // 0.4s fade-in
-            drawFelledOverlay(s.cached_boss_name, s.cached_felled_message, text_alpha);
-        }
-        break;
-    }
+        drawBossHudFelledMode(s, now);
+        return;
     case BossHudState::Mode::FadingOut:
-    {
-        const float a = 1.0f - fadeAlpha(now, s.mode_entered_at, kFadeOutSeconds);
-        drawHpBarAndName(s.cached_boss_name, 0.0f, a);
-        break;
+        drawHpBarAndName(s.cached_boss_name, 0.0f,
+                          1.0f - fadeAlpha(now, s.mode_entered_at, kFadeOutSeconds));
+        return;
     }
-    }
+}
+} // namespace
+
+void renderBossHud()
+{
+    auto& s = state();
+    const double now = selva::wallClock();
+    const auto* boss = resolveHudBoss();
+    bossHudPulseLog(s, now, boss);
+    advanceBossHudState(s, now, boss);
+    const float hp_norm =
+        (boss != nullptr && boss->hp.max > 0)
+            ? static_cast<float>(boss->hp.current) / static_cast<float>(boss->hp.max)
+            : 0.0f;
+    drawBossHudByMode(s, now, hp_norm);
 }
 
 } // namespace selva::ui

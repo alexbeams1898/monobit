@@ -30,9 +30,12 @@ std::pair<std::string, int> findEntry(const Inventory& inv, const std::string& i
         {
             const Entry& e = vec[i];
             const std::string* id = nullptr;
-            if (const auto* p = std::get_if<PossessionEntry>(&e)) id = &p->item_id;
-            else if (const auto* s = std::get_if<StackEntry>(&e)) id = &s->item_id;
-            else if (const auto* x = std::get_if<InstancedEntry>(&e)) id = &x->item_id;
+            if (const auto* p = std::get_if<PossessionEntry>(&e))
+                id = &p->item_id;
+            else if (const auto* s = std::get_if<StackEntry>(&e))
+                id = &s->item_id;
+            else if (const auto* x = std::get_if<InstancedEntry>(&e))
+                id = &x->item_id;
             if (id != nullptr && *id == item_id)
                 return {cat_id, static_cast<int>(i)};
         }
@@ -53,8 +56,7 @@ bool grant(Inventory& inv, const std::string& item_id)
     }
     if (def->kind != EntryKind::Possession)
     {
-        std::fprintf(stderr,
-                     "[inventory] grant: '%s' is kind=%s, expected possession\n",
+        std::fprintf(stderr, "[inventory] grant: '%s' is kind=%s, expected possession\n",
                      item_id.c_str(), entryKindName(def->kind));
         std::fflush(stderr);
         return false;
@@ -143,8 +145,7 @@ InstancedEntry& addInstanced(Inventory& inv, const std::string& item_id)
     }
     if (def->kind != EntryKind::Instanced)
     {
-        std::fprintf(stderr,
-                     "[inventory] addInstanced: '%s' is kind=%s, expected instanced\n",
+        std::fprintf(stderr, "[inventory] addInstanced: '%s' is kind=%s, expected instanced\n",
                      item_id.c_str(), entryKindName(def->kind));
         std::fflush(stderr);
         return sFallback;

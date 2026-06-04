@@ -85,9 +85,9 @@ void registerChapelStructureFootprints()
     //      by loadAllRegionsRegister() at boot).
     //   2) StructureFootprint Hole inside the chapel body — terrain
     //      doesn't render or collide inside (chapel floor mesh IS
-    //      the floor). Footprints stay in C++ for now because they
-    //      carry computed vertical_profile data that doesn't map
-    //      cleanly to JSON yet.
+    //      the floor). Footprints stay in C++ because they carry
+    //      computed vertical_profile data that doesn't map cleanly
+    //      to JSON yet.
     //   3) Foundation skirt primitive (build_foundation_skirt in
     //      gen_crypt_foundation.py) — vertical stone wall from plinth
     //      bottom down to deep below any plausible terrain, absorbing
@@ -289,13 +289,12 @@ void registerAuthoredWorld()
     // [[feedback_dual_source_of_truth_is_the_bug]] for the doctrine.
     //
     // StructureFootprints (chapel body Hole + descent corridor in
-    // Limbo) stay in C++ for now — they carry computed vertical-
-    // profile data (32 cells per footprint) that doesn't map cleanly
-    // to JSON yet. Promote when JSON schema for footprints is needed.
+    // Limbo) stay in C++ -- they carry computed vertical-profile data
+    // (32 cells per footprint) that doesn't map cleanly to JSON yet.
+    // Promote when a JSON schema for footprints is needed.
     //
-    // Lights are still authored in C++ for now too -- they don't
-    // have a JSON schema yet, and there's no boot-ordering pressure
-    // to move them.
+    // Lights are still authored in C++ too: no JSON schema exists yet,
+    // and there's no boot-ordering pressure to move them.
     registerChapelStructureFootprints();
     registerLimboLights();
 }
@@ -333,6 +332,19 @@ engine::physics::BodyHandle createPlayerBody(const glm::vec3& spawn_position)
         return sPlayer;
     sPlayer = engine::physics::addCharacter(spawn_position, kPlayerRadius, kPlayerHeight);
     return sPlayer;
+}
+
+engine::physics::BodyHandle createCharacterBody(const glm::vec3& spawn_position, float radius,
+                                                float height)
+{
+    return engine::physics::addCharacter(spawn_position, radius, height);
+}
+
+void destroyCharacterBody(engine::physics::BodyHandle handle)
+{
+    if (handle == engine::physics::kInvalidBody)
+        return;
+    engine::physics::removeBody(handle);
 }
 
 } // namespace selva::world

@@ -2,6 +2,8 @@
   "id": "limbo_shade",
   "vision_fov_degrees": 90.0,
   "vision_range_meters": 12.0,
+  "avoids_hazards": ["acheron"],
+  "_comment_avoids_hazards": "Damned souls dissolve on contact with Acheron's sangue-flow. The BT chase leaf skips when target is in the river; locomotion velocity clamps at the boundary. Per setting.md substance law + soul-larvae cosmology.",
   "actions": [
     {
       "id": "shade_swing",

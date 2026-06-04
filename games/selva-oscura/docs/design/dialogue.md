@@ -131,7 +131,7 @@ Implications:
 - **No NPC mentions the throne** before the post-Lucifer sequence. R3
   is concealed throughout the descent.
 - **No NPC mentions PURITY by name** before the unburdened path's
-  discovery. Hints (the Guide's worry on Seal-carry, the riversamento
+  discovery. Hints (the Guide's worry on Signing-refusal, the riversamento
   sites that activate state-aware NPC dialogue) seed the path
   without naming it.
 - **No NPC addresses the player** (the human at the controller, past

@@ -4,6 +4,7 @@
 #include "AppStateGlobal.h"
 #include "Engine.h"
 #include "SaveManager.h"
+#include "dialog/DialogSystem.h"
 #include "ecs/GameComponents.h"
 #include "ecs/ItemConfig.h"
 #include "gameplay/Actor.h"
@@ -14,8 +15,9 @@
 #include "items/InventoryOps.h"
 #include "items/ItemRegistry.h"
 #include "items/UseHandlers.h"
-#include "ui/BossHud.h"
 #include "ops/InventoryOps.h"
+#include "text/TextPresentation.h"
+#include "ui/BossHud.h"
 
 #include <imgui.h>
 
@@ -421,6 +423,121 @@ void renderPauseStatusTab()
     ImGui::TextDisabled("(offerings + vestigia leveling -- not yet wired)");
 }
 
+namespace
+{
+struct InventoryEntryLabel
+{
+    std::string item_id;
+    std::string display;
+};
+
+InventoryEntryLabel buildInventoryEntryLabel(const selva::items::Entry& e,
+                                              const selva::items::ItemRegistry& items)
+{
+    InventoryEntryLabel out;
+    std::string suffix;
+    if (const auto* p = std::get_if<selva::items::PossessionEntry>(&e))
+        out.item_id = p->item_id;
+    else if (const auto* s = std::get_if<selva::items::StackEntry>(&e))
+    {
+        out.item_id = s->item_id;
+        suffix = "  x" + std::to_string(s->count);
+    }
+    else if (const auto* x = std::get_if<selva::items::InstancedEntry>(&e))
+    {
+        out.item_id = x->item_id;
+        if (x->upgrade_level > 0)
+            suffix = "  +" + std::to_string(x->upgrade_level);
+    }
+    const selva::items::ItemDef* def = items.get(out.item_id);
+    out.display = (def != nullptr ? def->display_name : out.item_id) + suffix;
+    return out;
+}
+
+void drawInventoryCategoryTabs(const std::vector<selva::items::CategoryDef>& cats,
+                                std::string& selected_category, std::string& selected_item)
+{
+    if (!ImGui::BeginTabBar("##inv_cats"))
+        return;
+    for (const auto& cat : cats)
+    {
+        if (!ImGui::BeginTabItem(cat.display_name.c_str()))
+            continue;
+        if (selected_category != cat.id)
+        {
+            selected_category = cat.id;
+            selected_item.clear();
+        }
+        ImGui::EndTabItem();
+    }
+    ImGui::EndTabBar();
+}
+
+void drawInventoryEntryList(const std::vector<selva::items::Entry>* entries,
+                             const selva::items::ItemRegistry& items, std::string& selected_item)
+{
+    if (entries == nullptr || entries->empty())
+    {
+        ImGui::TextDisabled("(empty)");
+        return;
+    }
+    for (const auto& e : *entries)
+    {
+        const InventoryEntryLabel label = buildInventoryEntryLabel(e, items);
+        const bool selected = (selected_item == label.item_id);
+        if (ImGui::Selectable(label.display.c_str(), selected))
+            selected_item = label.item_id;
+    }
+}
+
+void drawInventoryUseButton(const selva::items::ItemDef& sel, selva::items::Inventory& inv,
+                             std::string& selected_item)
+{
+    if (sel.use_handler.empty())
+        return;
+    selva::items::UseGate gate;
+    if (!sel.use_condition.empty())
+    {
+        const auto* cond = selva::items::getUseCondition(sel.use_condition);
+        if (cond != nullptr)
+            gate = (*cond)();
+    }
+    if (!gate.enabled)
+        ImGui::BeginDisabled();
+    if (ImGui::Button("Use"))
+    {
+        const auto* action = selva::items::getUseAction(sel.use_handler);
+        if (action != nullptr)
+            (*action)(inv, selected_item);
+        selected_item.clear();
+    }
+    if (!gate.enabled)
+    {
+        ImGui::EndDisabled();
+        if (!gate.disabled_reason.empty() && ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", gate.disabled_reason.c_str());
+    }
+}
+
+void drawInventoryDetailPanel(const std::string& selected_item, selva::items::Inventory& inv,
+                               const selva::items::ItemRegistry& items,
+                               std::string& selected_item_ref)
+{
+    const selva::items::ItemDef* sel = items.get(selected_item);
+    if (sel == nullptr)
+    {
+        ImGui::TextDisabled("Select an item.");
+        return;
+    }
+    ImGui::TextUnformatted(sel->display_name.c_str());
+    ImGui::Separator();
+    ImGui::Spacing();
+    ImGui::TextWrapped("%s", sel->description.c_str());
+    ImGui::Spacing();
+    drawInventoryUseButton(*sel, inv, selected_item_ref);
+}
+} // namespace
+
 void renderPauseInventoryTab()
 {
     ImGui::Spacing();
@@ -433,118 +550,26 @@ void renderPauseInventoryTab()
     selva::items::Inventory& inv = profile->inventory;
     const auto& cats = selva::items::categoryRegistry().all();
     const auto& items = selva::items::itemRegistry();
-    static std::string sSelectedCategory;
-    static std::string sSelectedItem;
-
     if (cats.empty())
     {
         ImGui::TextDisabled("(no inventory categories loaded)");
         return;
     }
+    static std::string sSelectedCategory;
+    static std::string sSelectedItem;
     if (sSelectedCategory.empty())
         sSelectedCategory = cats.front().id;
-
-    // Category tab bar.
-    if (ImGui::BeginTabBar("##inv_cats"))
-    {
-        for (const auto& cat : cats)
-        {
-            if (ImGui::BeginTabItem(cat.display_name.c_str()))
-            {
-                if (sSelectedCategory != cat.id)
-                {
-                    sSelectedCategory = cat.id;
-                    sSelectedItem.clear();
-                }
-                ImGui::EndTabItem();
-            }
-        }
-        ImGui::EndTabBar();
-    }
-
+    drawInventoryCategoryTabs(cats, sSelectedCategory, sSelectedItem);
     const std::vector<selva::items::Entry>* entries =
         selva::items::entriesIn(inv, sSelectedCategory);
     ImGui::Spacing();
-
-    // Two-column layout: entry list (left) + detail panel (right).
-    const float left_w = 240.0f;
-    ImGui::BeginChild("##inv_list", ImVec2(left_w, 240), true);
-    if (entries == nullptr || entries->empty())
-    {
-        ImGui::TextDisabled("(empty)");
-    }
-    else
-    {
-        for (const auto& e : *entries)
-        {
-            std::string item_id;
-            std::string suffix;
-            if (const auto* p = std::get_if<selva::items::PossessionEntry>(&e))
-            {
-                item_id = p->item_id;
-            }
-            else if (const auto* s = std::get_if<selva::items::StackEntry>(&e))
-            {
-                item_id = s->item_id;
-                suffix = "  x" + std::to_string(s->count);
-            }
-            else if (const auto* x = std::get_if<selva::items::InstancedEntry>(&e))
-            {
-                item_id = x->item_id;
-                if (x->upgrade_level > 0)
-                    suffix = "  +" + std::to_string(x->upgrade_level);
-            }
-            const selva::items::ItemDef* def = items.get(item_id);
-            const std::string label =
-                (def != nullptr ? def->display_name : item_id) + suffix;
-            const bool selected = (sSelectedItem == item_id);
-            if (ImGui::Selectable(label.c_str(), selected))
-                sSelectedItem = item_id;
-        }
-    }
+    constexpr float kLeftPaneWidth = 240.0f;
+    ImGui::BeginChild("##inv_list", ImVec2(kLeftPaneWidth, 240), true);
+    drawInventoryEntryList(entries, items, sSelectedItem);
     ImGui::EndChild();
-
     ImGui::SameLine();
     ImGui::BeginChild("##inv_detail", ImVec2(0, 240), true);
-    const selva::items::ItemDef* sel = items.get(sSelectedItem);
-    if (sel == nullptr)
-    {
-        ImGui::TextDisabled("Select an item.");
-    }
-    else
-    {
-        ImGui::TextUnformatted(sel->display_name.c_str());
-        ImGui::Separator();
-        ImGui::Spacing();
-        ImGui::TextWrapped("%s", sel->description.c_str());
-        ImGui::Spacing();
-
-        if (!sel->use_handler.empty())
-        {
-            selva::items::UseGate gate;
-            if (!sel->use_condition.empty())
-            {
-                const auto* cond = selva::items::getUseCondition(sel->use_condition);
-                if (cond != nullptr)
-                    gate = (*cond)();
-            }
-            if (!gate.enabled)
-                ImGui::BeginDisabled();
-            if (ImGui::Button("Use"))
-            {
-                const auto* action = selva::items::getUseAction(sel->use_handler);
-                if (action != nullptr)
-                    (*action)(inv, sSelectedItem);
-                sSelectedItem.clear();
-            }
-            if (!gate.enabled)
-            {
-                ImGui::EndDisabled();
-                if (!gate.disabled_reason.empty() && ImGui::IsItemHovered())
-                    ImGui::SetTooltip("%s", gate.disabled_reason.c_str());
-            }
-        }
-    }
+    drawInventoryDetailPanel(sSelectedItem, inv, items, sSelectedItem);
     ImGui::EndChild();
 }
 
@@ -693,7 +718,8 @@ void tickMouseCapture()
     if (gs.phase == GameState::Phase::Playing)
     {
         const bool tuning_open = selva::gameplay::tickstate::showTuningPanel();
-        const bool want_relative = !ui.isScreenOpen() && !tuning_open;
+        const bool dialog_open = selva::text::active();
+        const bool want_relative = !ui.isScreenOpen() && !tuning_open && !dialog_open;
         const bool is_relative = (SDL_GetRelativeMouseMode() == SDL_TRUE);
         if (want_relative != is_relative)
         {

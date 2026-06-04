@@ -47,8 +47,8 @@ type:
 - **Death = run-end.** The player-controlled entity's death triggers
   the run-end cutscene + death-card + run-stats screen. Other
   entities' deaths trigger sangue payout and per-circle reactivity
-  (per setting.md *Per-circle reactivity* — keeper death restores
-  contrapasso to the circle, NPC promoted to new keeper, surviving
+  (per setting.md *Per-circle reactivity* — keeper death releases
+  contrapasso, the NPC is mangled into the new keeper, surviving
   shades enter proper contrapasso, etc.).
 
 ## What only NPCs do
@@ -62,16 +62,21 @@ type:
   state (path, evolution, riversato, lifetime sangue, keepers
   felled) and branch on it. The Vagrant himself does not branch —
   he has no internal state reading the world.
-- **Receive contrapasso-promotion.** When a circle's keeper falls,
+- **Receive contrapasso-mangling.** When a circle's keeper falls,
   contrapasso (the cosmological law per setting.md *Per-circle
-  reactivity*) restores to the circle. The NPC of that circle is
-  promoted into the new keeper role — their pre-keeper lucid window
-  was incipient keeper-consciousness Beatrice was preparing for this
-  moment. NPCs are the only entity type that promote in this way
-  (the class-picker Vagrant *accumulates* contrapasso-signature on
-  his imprint, but he is not promoted to a keeper-form; the
-  unburdened lets it pass through; the Guide receives it through
-  Beatrice's channel as erosion, not as installation).
+  reactivity*) releases and Beatrice routes it into the circle's
+  NPC. The installation is violent — a *mangling*, not a clean
+  promotion — because the original divine keeper of that circle is
+  gone forever (lost to Lucifer's slow corruption per setting.md
+  *Hell's failure*). The NPC is broken into a wounded approximation
+  of what a divine keeper of that circle should have been; their
+  pre-keeper lucid window was incipient keeper-consciousness
+  Beatrice was preparing for exactly this moment. NPCs are the only
+  entity type that take the mangling in this way (the class-picker
+  Vagrant *accumulates* contrapasso-signature on his imprint, but
+  he is not installed as a keeper-form; the unburdened lets it pass
+  through; the Guide receives it through Beatrice's channel as
+  erosion, not as installation).
 
 ## What both do identically
 

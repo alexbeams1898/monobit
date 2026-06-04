@@ -55,6 +55,19 @@ jobs:
         run: python3 games/selva-oscura/scripts/check_comment_density.py
 
   # -----------------------------------------------------------------------
+  # 2b. BANDAID KEYWORDS  — grep source comments for TODO/FIXME/HACK/
+  #     bandaid/workaround/etc. Per CLAUDE.md "no deferred work in source"
+  #     doctrine: deferred work goes to GitHub issues, not source comments.
+  # -----------------------------------------------------------------------
+  bandaid_keywords:
+    name: Bandaid keyword scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run bandaid-keyword linter
+        run: python3 games/selva-oscura/scripts/check_bandaid_keywords.py
+
+  # -----------------------------------------------------------------------
   # 3. BUILD + LINT  (clang-tidy runs during the build via CMake)
   #    Also compiles everything — catches compiler errors on every PR.
   # -----------------------------------------------------------------------

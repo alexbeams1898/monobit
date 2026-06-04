@@ -50,7 +50,7 @@ class TileMapLoader
     static std::vector<Room> loadRooms(const std::string& dir);
 
     // Place rooms randomly onto the map. Centers are appended to 'centers'.
-    // TODO: upgrade to BSP partitioning (issue #XX)
+    // Naive placement; BSP partitioning would yield more even spreads.
     static void placeRooms(TileMap& map, const std::vector<Room>& rooms, std::mt19937& rng,
                            int count, std::vector<std::pair<int, int>>& centers);
 

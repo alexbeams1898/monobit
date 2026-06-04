@@ -1,7 +1,7 @@
 #include "world/Collision.h"
 
-#include "Tunables.h"
 #include "WallClock.h"
+#include "debug/Flags.h"
 #include "world/CryptLayout.h"
 #include "world/Terrain.h"
 
@@ -25,7 +25,7 @@ CollisionRegion sRegion;
 FILE* sCollisionLog = nullptr;
 int sCollisionFrame = 0;
 
-// Caller MUST gate on tun.debug_collision_log before invoking to keep
+// Caller MUST gate on selva::debug::flags().collision_log before invoking to keep
 // the disabled-state cost at zero (the type-safe template still
 // instantiates a formatter per call site if not gated). Routed
 // through fmt::format → fwrite rather than the engine::log::Channel
@@ -391,7 +391,7 @@ void clampToBoundary(glm::vec2& body_xz, float body_radius)
 void resolveBodyCollision(glm::vec2& body_xz, float body_radius)
 {
     const glm::vec2 entry_pos = body_xz;
-    const bool log_on = selva::tuning::current().debug_collision_log;
+    const bool log_on = selva::debug::flags().collision_log;
     if (log_on)
     {
         ++sCollisionFrame;

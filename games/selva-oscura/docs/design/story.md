@@ -97,7 +97,7 @@ upward. The player walks freely; the obvious goal is the hill.
 
 The basic-form Wood is the *pre-hub* version of the Wood — smaller,
 sparser, the stripped-down version of the place that will later open
-as a hub. (Once the Vagrant has used or carried the Seal, the Wood
+as a hub. (Once the Vagrant has met the Guide at Beat 3, the Wood
 opens to its hub form, and the basic-form Wood is gone for that
 save.)
 
@@ -262,33 +262,45 @@ six letters. The name is *given*, not *recovered* — the Vagrant
 does not remember his real name; he answers to whatever the player
 provides. (NAME_ENTRY UI specifics in [ux.md](ux.md).)
 
-The Guide then offers **The Seal** (*Il Sigillo*). He explains its
-function: it permits passage into Hell. *"Take the Seal, and ye may
-pass."* He does not present declining as an option — the offer is
-framed as the necessary thing.
+The Guide then offers **the Signing** (*La Firma*). This is a
+ritual he performs on the Vagrant, not an item he hands over. He
+explains its function as a formality of intake: *"Pilgrim, thou
+art unmarked. None can pass into the depths unmeasured. Bend thy
+head; I shall sign thee."* He does not present declining as an
+option — the ritual is framed as the necessary thing.
 
 ### Beat 4 — The choice
 
 The player can:
 
-- **Use the Seal** → class-pick. Penitent / Heretic / Wretched. The
-  Seal is consumed. Stats unlock. Standard path.
-- **Carry the Seal** → unburdened. The Seal stays in inventory. The
-  Vagrant remains unmeasured.
+- **Accept the Signing** → class-pick. Penitent / Heretic / Wretched.
+  Stats unlock. The Guide performs the ritual; the soul becomes
+  measured. Standard path.
+- **Refuse the Signing** → unburdened. The Guide does not perform
+  the ritual; the Vagrant remains unmeasured. The unburdened path
+  commits in this moment by the absence of the act.
 
 The Guide responds differently:
 
-- **On use:** encouraging. The Vagrant has stepped onto the path the
-  Guide expects. The Guide is reassured.
-- **On carry:** *worried*. The Guide does not understand declining;
-  he believes the Vagrant is making the journey harder than it needs
-  to be. He may say something like *"Thou art certain? The path is
-  not made for the unmeasured."* He thinks he is looking at
-  stubbornness. The framework Beatrice supplied — that the path is
-  *made for the measured* — is the only frame he has, and the
-  unburdened Vagrant violates it in a way the Guide cannot
-  articulate. He does not know that he himself is also unmeasured;
-  he does not remember refusing at the gates centuries ago.
+- **On accept:** encouraging. The Vagrant has stepped onto the path
+  the Guide expects. The Guide is reassured.
+- **On refuse:** *worried*. The Guide does not understand
+  declining; he believes the Vagrant is making the journey harder
+  than it needs to be. He may say something like *"Thou art
+  certain? The path is not made for the unmeasured."* He thinks he
+  is looking at stubbornness. The framework Beatrice supplied —
+  that the path is *made for the measured* — is the only frame he
+  has, and the unburdened Vagrant violates it in a way the Guide
+  cannot articulate. He does not know that he himself is also
+  unmeasured; he does not remember refusing at the gates centuries
+  ago.
+
+Per the Pawn Doctrine: the Guide believes the Signing is care for
+the Vagrant. He does not know (concealed pre-R2) that the Signing
+is also the mechanism by which Beatrice's saturation claims an
+unjudged soul. From his point of view, he is welcoming a pilgrim.
+From the canonical point of view, Beatrice configured the ritual
+his guide-shape produced.
 
 The worry is not *almost-recognition.* It is the Guide's framework
 failing to handle a case Beatrice did not prepare him for. (See
@@ -309,7 +321,7 @@ runs. The opening sequence ends. The descent begins.
 - Beasts in the Wood drove him back. He killed them.
 - A figure called the Guide met him, named him, gave him passage.
 - The path forward is downward.
-- He has The Seal — used (class-picker) or carried (unburdened).
+- The Guide signed him (class-picker) or did not (unburdened).
 
 What the player does *not* know after the opening (concealed
 intentionally — see *Concealment* below):
@@ -405,8 +417,8 @@ reality is that every choice was authored — Beatrice arranged
 conditions such that his guide-shape, placed in those conditions,
 would naturally produce the outcome her plan required. She did not
 compel; she configured. The Lupa-poisoning was the first authored
-act the player witnesses (after the fact). The Seal-offer is the
-second. Every Hell-projection is the same pattern. **He believes he
+act the player witnesses (after the fact). The Signing-offer is
+the second. Every Hell-projection is the same pattern. **He believes he
 chose. He did. He chose the way she needed him to.** Both are true.
 
 **What he is, before Beatrice.** The Guide's *guide-shape* — his
@@ -967,7 +979,7 @@ discrete reveal at the final scene of each ending.**
 
 - [Setting](setting.md) — the world this story takes place in. The
   cosmological rules, the geography, the locked terms (Vagrant /
-  Pilgrim, sangue, riversamento, the Seal, the Cord, the Erasure,
+  Pilgrim, sangue, riversamento, the Signing, the Cord, the Erasure,
   vestigia, the Hand).
 - [Classes](classes.md) — the Vagrant's combat capabilities,
   class-pick fork, evolutions, the Unburdened path mechanics.

@@ -49,8 +49,7 @@ TEST_CASE("RegionTrigger: Custom triggers don't need target", "[boss-backend]")
     REQUIRE(t.target.id == engine::world::kInvalidRegion.id);
 }
 
-TEST_CASE("RegionTrigger: payload convention is verb:arg parseable",
-          "[boss-backend]")
+TEST_CASE("RegionTrigger: payload convention is verb:arg parseable", "[boss-backend]")
 {
     // The action_payload convention is "<verb>:<arg>" (free-form
     // string). Game-side dispatcher splits on ':'. Verifying the

@@ -32,7 +32,23 @@ struct EnemyAction
     std::string id;   // unique key within archetype, e.g. "shade_swing"
     std::string clip; // ozz clip name to play
     float range_min = 0.0f;
-    float range_max = 0.0f; // 0 = no upper limit
+    // Optional designer override of the action's effective reach
+    // (meters). 0 = no override; the runtime-resolved reach computed
+    // from the clip + joint trajectory + hitbox geometry drives BT
+    // gating. Non-zero = force this number even if the clip would
+    // compute differently. Rarely needed; intended for big-boss
+    // actions where the designer wants forced-fire-distance for
+    // pacing reasons. See [[feedback_action_range_max_is_chase_stop_range]]
+    // for why this is a single number (BT chase-stop AND fire-gate
+    // resolve to the same value).
+    float effective_reach_override = 0.0f;
+    // Runtime-computed reach in meters. Populated by
+    // resolveActionReach() at archetype-load time from the action's
+    // clip + hitbox_joint trajectory during the active window +
+    // hitbox_radius + hitbox_tip_offset_z. Zero means "not yet
+    // resolved" -- consumers fall back to effective_reach_override,
+    // then to a safe default. Not serialized to JSON (it's derived).
+    float resolved_effective_reach = 0.0f;
     float cooldown_seconds = 0.0f;
     float weight = 1.0f;
     int raw_damage = 0;
@@ -76,6 +92,22 @@ struct EnemyAction
     // back to spawn-now + lifetime_fraction calc.
     float windup_seconds = 0.0f;
     float active_seconds = 0.0f;
+    // Per-action clip playback rate. 1.0 = author's authored cadence
+    // (default). 2.0 = clip plays at 2x speed (1s clip becomes 0.5s
+    // wall-time). Use when the source clip was authored at a tempo
+    // that doesn't fit the enemy's combat feel (e.g. Mixamo's zombie
+    // clips are at a deliberately-slow zombie pace, but feral larvae
+    // need a snappier swing).
+    //
+    // SEMANTIC NOTE: windup_seconds and active_seconds are in
+    // CLIP-AUTHORED time, not wall-time. The runtime divides them by
+    // playback_rate when scheduling fire_at_time + lifetime. This
+    // keeps windup/active values stable when playback_rate is tuned
+    // (a strike at clip-time 1.0s stays at windup=0.85 regardless of
+    // playback_rate). Reach computation uses the same clip-time
+    // window because reach is a property of the clip's authored
+    // joint geometry, not wallclock.
+    float playback_rate = 1.0f;
 
     // Souls "commit + recover" model: how far into the one-shot the
     // actor regains control. tickEnemyLocomotion checks
@@ -139,6 +171,30 @@ struct EnemyArchetype
     // ghost who turned). Default false so existing enemy archetypes
     // (shade, wolf) don't accidentally read as NPCs.
     bool is_npc = false;
+    // Human-readable label for the interaction prompt and dialog UI.
+    // Distinct from boss_name (which is uppercase / dramatic for the
+    // boss-HP overlay). NPCs without a boss role still need a name
+    // for "Talk to {display_name}". Empty falls back to the spawn id.
+    std::string display_name;
+    // Non-empty = this archetype is examinable. The spawn-flow system
+    // registers an Examine-kind interactable on spawn; pressing E
+    // shows this text in an examine-dialog (Grimoire register: Hell's
+    // third-person voice describing the being, not the being itself
+    // speaking -- larvae and similar are mute). Empty (default) = not
+    // examinable; spawn-flow skips interactable registration.
+    //
+    // Used for environmental flavor on non-dialog beings (fresh
+    // larvae, future ambient observables). NPCs that have a real
+    // dialog tree should use the dialog system instead (is_npc=true).
+    std::string examine_text;
+    // Interaction radius (meters) for the Talk or Examine prompt this
+    // archetype's spawn registers. Reaches both kinds because no
+    // archetype today opts into both (NPC -> Talk, examinable mob ->
+    // Examine). 0 = use default (2.5 for Talk, 2.0 for Examine -- the
+    // numbers that shipped before this field landed). Designer-tunable
+    // per archetype: bosses can broadcast prompts further; ambient
+    // mobs with examine_text can pull in tighter.
+    float interact_range_meters = 0.0f;
     // Which behavior tree drives this archetype's decisions. Tree
     // construction is in code (see BehaviorTree.cpp's tree-builder
     // registry); JSON just names which one to bind. Defaults to
@@ -156,21 +212,38 @@ struct EnemyArchetype
     // is always honored -- the wolf's sampler must never receive a
     // player clip (skel.num_joints != anim.num_tracks -> ozz garbage
     // -> IsNormalizedEst assert).
-    std::string idle_clip;            // empty -> "standard_idle"
-    std::string combat_idle_clip;     // empty -> "unarmed_combat_idle"
-    std::string walk_clip;            // empty -> "walking"
-    std::string walk_back_clip;       // empty -> "walking_backward"
-    std::string strafe_left_clip;     // empty -> "strafe_walking_left"
-    std::string strafe_right_clip;    // empty -> "strafe_walking_right"
-    std::string death_clip;           // empty -> "death"
-    std::string knockdown_clip;       // empty -> "stunned"
-    std::string flinch_front_clip;    // empty -> "flinch_front"
-    std::string flinch_back_clip;     // empty -> "flinch_back"
-    std::string flinch_left_clip;     // empty -> "flinch_left"
-    std::string flinch_right_clip;    // empty -> "flinch_right"
+    std::string idle_clip;             // empty -> "standard_idle"
+    std::string combat_idle_clip;      // empty -> "unarmed_combat_idle"
+    std::string walk_clip;             // empty -> "walking"
+    std::string walk_back_clip;        // empty -> "walking_backward"
+    std::string strafe_left_clip;      // empty -> "strafe_walking_left"
+    std::string strafe_right_clip;     // empty -> "strafe_walking_right"
+    std::string death_clip;            // empty -> "death"
+    std::string knockdown_clip;        // empty -> "stunned"
+    std::string flinch_front_clip;     // empty -> "flinch_front"
+    std::string flinch_back_clip;      // empty -> "flinch_back"
+    std::string flinch_left_clip;      // empty -> "flinch_left"
+    std::string flinch_right_clip;     // empty -> "flinch_right"
     std::string hit_react_medium_clip; // empty -> "hit_react_medium"
     std::string hit_react_heavy_clip;  // empty -> "hit_react_heavy"
-    std::string run_clip;              // empty -> "running" (humanoid sprint clip)
+    std::string run_clip;              // empty -> "jogging" (humanoid fast-gait)
+
+    // Aggro / wake-up clip. Fired once when this actor's perception
+    // transitions Suspicious -> Alerted (the "confirmed sighting"
+    // moment per Awareness comment in perception.h). Matches the
+    // Souls/ER pattern: Hollows wake from slumped idle, knights raise
+    // weapon, larvae scream as the imprint finds outlet. Movement is
+    // locked for the clip's full duration (action_locks_movement set
+    // alongside the playOneShot); the BT's chase + attack starts after
+    // the clip finishes. Empty = no aggro clip; the actor goes
+    // directly from Alerted into normal combat AI (existing behavior
+    // for archetypes that haven't been authored an aggro animation).
+    //
+    // This is distinct from engage_clip (Pattern B boss state-machine
+    // transition initial_state -> combat-ready). aggro_clip is
+    // perception-driven and applies to any actor; engage_clip is
+    // boss-trigger-driven and only fires on Pattern B bosses.
+    std::string aggro_clip;
 
     // Per-archetype chase speed when awareness >= Combat. <= 0 falls
     // back to tun.walk_speed (humanoid shades stay at walking pace).
@@ -222,6 +295,25 @@ struct EnemyArchetype
     // the player's hurtboxes (every humanoid shade today). Non-empty
     // overrides (e.g. wolf authors its own 4-or-5 capsules).
     std::vector<selva::combat::HurtboxDecl> hurtbox_decls;
+    // True -> this archetype has NO hurtboxes regardless of empty
+    // hurtbox_decls. Spawn-side code skips both the explicit and
+    // inherited hurtbox paths. Used for beings that are intentionally
+    // not killable: fresh larvae (substance too tightly arranged for
+    // the Vagrant's second-death-grant per project_soul_larvae_cosmology),
+    // future intact NPCs, decoration-tier entities.
+    bool disable_hurtboxes = false;
+
+    // Hazard kinds this archetype's actors avoid. Tags match the
+    // `kind` field of selva::hazard::HazardZone instances declared
+    // in region JSON's `hazard_zones`. Actors will not chase a
+    // target into a zone with a matching kind; their locomotion
+    // velocity clamps at the boundary. Empty -> avoids no hazards
+    // (default; the Vagrant + unjudged souls don't avoid anything;
+    // damned souls of every circle should include "acheron" since
+    // the river dissolves them per the substance law). See
+    // [[project_soul_larvae_cosmology]] river-dissolves-on-contact
+    // + selva/hazard/HazardZones.h.
+    std::vector<std::string> avoids_hazards;
 
     // Per-archetype lockon points. Empty -> fall back to the
     // skeleton's default_lockon_points (single "chest" for most rigs).
@@ -294,6 +386,53 @@ struct EnemyArchetype
     // engage_clip is a fresh one-shot that crossfades over the held
     // pose, so the 1.69 -> end portion of idle_clip never plays.
     float initial_freeze_at_seconds = 0.0f;
+
+    // Optional clip to bind as the LOCO track at spawn, instead of
+    // idle_clip. Use when the actor's spawn pose differs from its
+    // standing idle -- e.g. larva_fresh spawns prone in zombie_crawl,
+    // not standing in zombie_idle. Empty (default) = bind idle_clip
+    // at spawn (legacy behavior).
+    //
+    // Resolved via the skeleton's clip registry (clipsByKey(skeleton_id))
+    // so authors give a clip-name string here.
+    //
+    // Bound as the LOCO track only; the per-frame gait picker
+    // (pickEnemyLocomotionClip) takes over on the first tick after
+    // spawn. If the picked clip differs (e.g. spawn_clip was
+    // zombie_crawl but the actor stands still on its first tick and
+    // the picker selects idle_clip), the sampler blends between them
+    // via its standard transition. For larvae where spawn_clip and
+    // walk_clip are the same (both zombie_crawl), the transition is
+    // invisible.
+    std::string spawn_clip;
+
+    // Optional freeze-at-frame for spawn_clip, mirroring the
+    // initial_freeze_at_seconds pattern but on the spawn-clip track.
+    // 0 (default) = play spawn_clip normally (the actor's first
+    // frame is the clip's first frame, then it advances).
+    // > 0 = play as a freeze-held one-shot at this clip time, so the
+    // actor holds a specific pose-frame at spawn. Used when the
+    // spawn pose is a specific moment of the clip rather than its
+    // first frame.
+    float spawn_clip_freeze_at_seconds = 0.0f;
+
+    // Per-archetype render tint -- multiplied with the skeletal
+    // shader's lambert output. (1,1,1) = neutral white (default).
+    // Used to visually distinguish archetypes of the same skeleton
+    // (e.g. larva_fresh = leached pale white; larva_aged = sangue-
+    // darkened deep red). Cosmologically tied to the substance law:
+    // sangue darkens what it saturates. Read by the render loop in
+    // PerFrameTick.cpp's enemy draw block.
+    float tint_color[3] = {1.0f, 1.0f, 1.0f};
+
+    // Optional archetype id whose tint this actor LERPS TOWARD over
+    // its arrival-wait period. Used by render code to visualize the
+    // inward-burn progress (fresh larvae tint white -> aged-red as
+    // they wait at the shore). Empty (default) = no burn-lerp;
+    // render uses tint_color directly. The lerp uses the actor's
+    // arrival_wallclock + arrival_action_delay_seconds, both stamped
+    // by the spawn-flow on arrival.
+    std::string tint_burn_target_archetype;
 };
 
 // nlohmann JSON I/O for these structs. Defined in EnemyArchetype.cpp
@@ -313,6 +452,17 @@ class EnemyArchetypeRegistry
     // Load every *.json in `dir` as an archetype. Files whose JSON
     // parse fails are logged and skipped — never throws.
     void loadDirectory(const std::filesystem::path& dir);
+
+    // Walk every archetype's actions and populate
+    // EnemyAction.resolved_effective_reach from clip geometry.
+    // Must be called AFTER both loadDirectory() and the per-skeleton
+    // clip registries are populated (initSkeletalAssets at boot).
+    // Logs a [reach] line per action with its computed value so
+    // archetype tuning is observable in combat-debug.log.
+    //
+    // Safe to call more than once; recomputes from scratch each
+    // time (used by hot-reload paths if/when those land).
+    void resolveAllActionReach();
 
     // nullptr if no archetype with that id was loaded.
     const EnemyArchetype* get(const std::string& id) const;

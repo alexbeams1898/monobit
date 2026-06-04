@@ -157,8 +157,7 @@ static void makeRegionResident(RegionId id)
     }
     RegionActivationContext ctx(*s);
     s->onActivate(ctx);
-    std::fprintf(stderr,
-                 "[region-manager] region '%s' resident (%zu bodies, %zu triggers)\n",
+    std::fprintf(stderr, "[region-manager] region '%s' resident (%zu bodies, %zu triggers)\n",
                  s->regionId().c_str(), s->ownedBodies().size(), s->triggers().size());
 }
 
@@ -213,8 +212,8 @@ bool beginTransition(RegionId target, TransitionMode mode, bool preserve_player_
     // phase. Instant goes straight to Committing (single-frame body
     // swap). Fade plays a visual fade-to-black, then commits, then
     // fades in -- the fade is purely cosmetic, not loading cover.
-    g.state =
-        (mode == TransitionMode::Instant) ? TransitionState::Committing : TransitionState::FadingOut;
+    g.state = (mode == TransitionMode::Instant) ? TransitionState::Committing
+                                                : TransitionState::FadingOut;
     std::fprintf(stderr, "[region-manager] -> state=%d\n", static_cast<int>(g.state));
     return true;
 }
@@ -370,10 +369,9 @@ const RegionTrigger* checkPlayerTriggers(const glm::vec3& player_pos)
                          "[trigger-diag] '%s' player=(%.2f,%.2f,%.2f) "
                          "aabb_center=(%.2f,%.2f,%.2f) half=(%.2f,%.2f,%.2f) "
                          "slack(x,y,z)=(%.2f,%.2f,%.2f) inside=%d\n",
-                         t.id.c_str(), player_pos.x, player_pos.y, player_pos.z,
-                         t.center.x, t.center.y, t.center.z,
-                         t.half_extents.x, t.half_extents.y, t.half_extents.z, -dx, -dy, -dz,
-                         inside ? 1 : 0);
+                         t.id.c_str(), player_pos.x, player_pos.y, player_pos.z, t.center.x,
+                         t.center.y, t.center.z, t.half_extents.x, t.half_extents.y,
+                         t.half_extents.z, -dx, -dy, -dz, inside ? 1 : 0);
         }
         std::fflush(stderr);
     }
@@ -410,8 +408,7 @@ const RegionTrigger* checkPlayerTriggers(const glm::vec3& player_pos)
         }
         else
         {
-            std::fprintf(stderr,
-                         "[region-manager] trigger '%s' suppressed (state=%d, target=%u)\n",
+            std::fprintf(stderr, "[region-manager] trigger '%s' suppressed (state=%d, target=%u)\n",
                          hit->id.c_str(), static_cast<int>(g.state), hit->target.id);
         }
     }

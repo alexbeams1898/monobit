@@ -13,8 +13,8 @@ namespace selva::anim
 // lockon-cycle input.
 struct LockOnPointDecl
 {
-    std::string id;     // stable label ("head", "torso", "hindleg_left")
-    std::string joint;  // joint name in the skeleton, resolved via PoseSampler::findJoint
+    std::string id;          // stable label ("head", "torso", "hindleg_left")
+    std::string joint;       // joint name in the skeleton, resolved via PoseSampler::findJoint
     bool is_default = false; // first acquire snaps to this point; one entry should set true
 };
 

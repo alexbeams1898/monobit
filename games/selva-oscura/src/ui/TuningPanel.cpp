@@ -18,6 +18,7 @@
 #include "combat/PlayerEquipment.h"
 #include "combat/Weapon.h"
 #include "combat/WeaponClass.h"
+#include "debug/Flags.h"
 #include "gameplay/EnemyArchetype.h"
 #include "gameplay/LocomotionStateMachine.h"
 #include "gameplay/PlayerState.h"
@@ -25,6 +26,8 @@
 #include "ui/ActorHud.h"
 #include "ui/BossHud.h"
 #include "ui/ComboHud.h"
+#include "ui/DialogScreen.h"
+#include "ui/InteractionPrompt.h"
 
 #include <imgui.h>
 
@@ -83,6 +86,7 @@ static void tunedSlider(const char* label, float* val, float min, float max, flo
 
 static void renderDebugSection(selva::tuning::Tunables& tun)
 {
+    auto& dbg = selva::debug::flags();
     ImGui::TextUnformatted("Time scale");
     ImGui::SliderFloat("##time-scale", &tun.time_scale, 0.05f, 2.0f, "%.2fx");
     ImGui::SameLine();
@@ -93,32 +97,33 @@ static void renderDebugSection(selva::tuning::Tunables& tun)
         tun.time_scale = 0.25f;
     ImGui::Separator();
     ImGui::TextUnformatted("Overlays");
-    ImGui::Checkbox("AI vision cones + awareness label", &tun.debug_ai_perception);
-    ImGui::Checkbox("World colliders (cylinders + boxes)", &tun.debug_show_colliders);
-    ImGui::Checkbox("Physics bodies (Jolt AABBs, colored by tag)", &tun.debug_show_physics_bodies);
-    ImGui::Checkbox("Region chip (top-right active-region label)", &tun.debug_show_region_chip);
-    ImGui::Checkbox("Combo HUD (chain step + rhythm window overlay)",
-                    &tun.debug_show_combo_hud);
+    ImGui::Checkbox("AI vision cones + awareness label", &dbg.ai_perception);
+    ImGui::Checkbox("World colliders (cylinders + boxes)", &dbg.show_colliders);
+    ImGui::Checkbox("Physics bodies (Jolt AABBs, colored by tag)", &dbg.show_physics_bodies);
+    ImGui::Checkbox("Region chip (top-right active-region label)", &dbg.show_region_chip);
+    ImGui::Checkbox("Combo HUD (chain step + rhythm window overlay)", &dbg.show_combo_hud);
     ImGui::Checkbox("Flat shading (bisect: flicker on = shader, off = geometry)",
-                    &tun.debug_flat_shading);
-    ImGui::Checkbox("Log MSAA state at region-pass (-> stderr.log)", &tun.debug_msaa_state_log);
+                    &dbg.flat_shading);
+    ImGui::Checkbox("Log MSAA state at region-pass (-> stderr.log)", &dbg.msaa_state_log);
     ImGui::Checkbox("Crosshair raycast log (aim at flicker -> crosshair-debug.log)",
-                    &tun.debug_crosshair_raycast_log);
+                    &dbg.crosshair_raycast_log);
     ImGui::Checkbox("Primitive-ID colors (use WITH flat shading; -> primitive-id-debug.log)",
-                    &tun.debug_primitive_id_colors);
+                    &dbg.primitive_id_colors);
     ImGui::Separator();
-    ImGui::TextUnformatted("AI debug logs (-> combat-debug.log)");
-    ImGui::Checkbox("AI tick firings", &tun.debug_ai_tick_log);
-    ImGui::Checkbox("AI decisions", &tun.debug_ai_decision_log);
+    ImGui::TextUnformatted("AI / enemy debug logs (-> combat-debug.log + stderr)");
+    ImGui::Checkbox("AI tick firings", &dbg.ai_tick_log);
+    ImGui::Checkbox("AI decisions", &dbg.ai_decision_log);
+    ImGui::Checkbox("Enemy lifecycle (spawn, archetype-swap, hazard-violation, ...)",
+                    &dbg.enemy_lifecycle);
     ImGui::Separator();
     ImGui::TextUnformatted("Render / Audio debug logs");
-    ImGui::Checkbox("Footsteps -> footstep-debug.log", &tun.debug_footstep_log);
-    ImGui::Checkbox("Shadow camera -> shadow-debug.log", &tun.debug_shadow_log);
-    ImGui::Checkbox("FPV roll camera + head -> fpv-roll-debug.log", &tun.debug_fpv_roll_log);
-    ImGui::Checkbox("Collision pushes -> collision-debug.log", &tun.debug_collision_log);
-    ImGui::Checkbox("Camera pull-in -> camera-debug.log", &tun.debug_camera_pull_in_log);
-    ImGui::Checkbox("Ground height -> ground-debug.log", &tun.debug_ground_height_log);
-    ImGui::Checkbox("Physics (Jolt) -> physics-debug.log", &tun.debug_physics_log);
+    ImGui::Checkbox("Footsteps -> footstep-debug.log", &dbg.footstep_log);
+    ImGui::Checkbox("Shadow camera -> shadow-debug.log", &dbg.shadow_log);
+    ImGui::Checkbox("FPV roll camera + head -> fpv-roll-debug.log", &dbg.fpv_roll_log);
+    ImGui::Checkbox("Collision pushes -> collision-debug.log", &dbg.collision_log);
+    ImGui::Checkbox("Camera pull-in -> camera-debug.log", &dbg.camera_pull_in_log);
+    ImGui::Checkbox("Ground height -> ground-debug.log", &dbg.ground_height_log);
+    ImGui::Checkbox("Physics (Jolt) -> physics-debug.log", &dbg.physics_log);
 }
 
 static void renderLocomotionSection(selva::tuning::Tunables& tun)
@@ -288,8 +293,12 @@ static void renderEnemyArchetypesSection()
         ImGui::Text("Actions: %zu", arch.actions.size());
         for (const auto& a : arch.actions)
         {
-            ImGui::BulletText("%s -> clip=%s range=[%.1f, %.1f] cd=%.2fs w=%.1f pdmg=%d",
-                              a.id.c_str(), a.clip.c_str(), a.range_min, a.range_max,
+            // Effective reach: override wins; else clip-resolved value.
+            const float reach = (a.effective_reach_override > 0.0f) ? a.effective_reach_override
+                                                                    : a.resolved_effective_reach;
+            const char tag = (a.effective_reach_override > 0.0f) ? '*' : ' ';
+            ImGui::BulletText("%s -> clip=%s reach=[%.2f, %.2f]%c cd=%.2fs w=%.1f pdmg=%d",
+                              a.id.c_str(), a.clip.c_str(), a.range_min, reach, tag,
                               a.cooldown_seconds, a.weight, a.poise_damage);
         }
         ImGui::TreePop();
@@ -529,5 +538,9 @@ void selvaRenderImGui(::Engine& engine, ::EntityManager& em)
     // overlay). No-op when no boss is engaged. Per
     // docs/design/ideas/boss_backend.md section 8.
     renderBossHud();
+    // Interaction prompt. No-op when nothing is in range.
+    renderInteractionPrompt();
+    // Dialog box. No-op when no dialog is active.
+    renderDialogScreen();
 }
 } // namespace selva::ui

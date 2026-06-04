@@ -23,7 +23,7 @@ namespace selva::render
 // As the player walks the box follows but the orientation is fixed
 // (no rotation) so the shadow seams don't crawl when the camera
 // turns. Snap-to-texel for the camera origin would further reduce
-// crawl; deferred for now since the play radius is small.
+// crawl; small play radius doesn't yet justify it.
 //
 // Single-cascade for v1. Cascaded variant is a future polish lift
 // when shadow resolution close to the camera becomes the limiting

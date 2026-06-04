@@ -4,9 +4,10 @@
 #include "AppStateGlobal.h"
 #include "Scene.h"
 #include "combat/CombatLog.h"
+#include "dialog/DialogSystem.h"
 #include "gameplay/Actor.h"
 #include "gameplay/Enemies.h"
-#include "items/InventoryOps.h"
+#include "text/TextPresentation.h"
 #include "world/Door.h"
 
 #include <cmath>
@@ -44,69 +45,113 @@ bool guideRescuePrecondition()
     return hasFlag("lupa_felled");
 }
 
+// State machine driven entirely by PlayerProfile flags so the phase
+// survives save/load. Flags advance one direction; the event can
+// never regress. Phases:
+//   1. (precondition met)         -> setFlag guide_emerged
+//                                    open door, begin Scene, Guide idle
+//   2. door reaches Open          -> setFlag guide_door_open
+//                                    set Guide's scripted_target_pos
+//   3. Guide reaches player       -> setFlag guide_arrived
+//                                    dialog::begin
+//   4. dialog ends                -> scene::end (terminal)
 void beginGuideRescueScene()
 {
     setFlag("guide_emerged");
     if (!selva::scene::active())
         selva::scene::begin({/*combat=*/true, /*movement=*/true, /*look=*/false});
-
     selva::world::openDoor("chapel_front_door");
+    std::fprintf(stderr, "[scripted-event] guide_rescue: phase=emerged (door opening)\n");
+    std::fflush(stderr);
+}
+
+void advanceGuideRescue()
+{
+    if (!hasFlag("guide_emerged"))
+        return;
+
+    // Phase 4: dialog drives the Scene end.
+    if (hasFlag("guide_arrived"))
+    {
+        if (selva::scene::active() && !selva::text::active())
+        {
+            selva::scene::end();
+            std::fprintf(stderr, "[scripted-event] guide_rescue: phase=complete (dialog ended)\n");
+            std::fflush(stderr);
+            // Phase 5: if the Signing was committed, send the Guide
+            // to his post-Signing standing post (declared on his
+            // spawn record's post_flag_positions). Reads the first
+            // matching entry so the position lives in JSON, not
+            // hard-coded here.
+            if (hasFlag("signing_committed"))
+            {
+                Actor* guide = findGuideActor();
+                if (guide != nullptr)
+                {
+                    for (const auto& fp : guide->post_flag_positions)
+                    {
+                        if (fp.flag != "signing_committed")
+                            continue;
+                        guide->scripted_target_pos = fp.pos;
+                        guide->scripted_stop_range = 0.4f;
+                        std::fprintf(stderr,
+                                     "[scripted-event] guide_rescue: walking to "
+                                     "post-Signing post (%.2f,%.2f,%.2f)\n",
+                                     fp.pos.x, fp.pos.y, fp.pos.z);
+                        std::fflush(stderr);
+                        break;
+                    }
+                }
+            }
+        }
+        return;
+    }
 
     Actor* guide = findGuideActor();
     if (guide == nullptr)
     {
-        // No actor with the expected spawn id; mark arrived and bail
-        // so the event doesn't loop.
-        std::fprintf(stderr,
-                     "[scripted-event] guide_rescue: no Guide actor in pool; "
-                     "skipping walk-out\n");
+        // Defensive: no guide actor in the pool. Skip phases 2-4 so
+        // the event never deadlocks the Scene.
+        std::fprintf(stderr, "[scripted-event] guide_rescue: no Guide actor in pool; "
+                             "skipping walk-out\n");
         std::fflush(stderr);
         setFlag("guide_arrived");
         if (selva::scene::active())
             selva::scene::end();
         return;
     }
-    const Actor& pc = player();
-    guide->scripted_target_pos = pc.pos;
-    guide->scripted_stop_range = 2.0f;
-    std::fprintf(stderr,
-                 "[scripted-event] guide_rescue: BEGIN -- door opening, Guide -> "
-                 "(%.2f, %.2f, %.2f)\n",
-                 pc.pos.x, pc.pos.y, pc.pos.z);
-    std::fflush(stderr);
-}
 
-// Per-frame advance: if the Scene is active AND the Guide has cleared
-// his scripted_target_pos (LeafFollowScriptedTarget arrived), end the
-// Scene. Re-targets each frame for the live player position so the
-// Guide tracks a moving player instead of walking to a stale point.
-void advanceGuideRescue()
-{
-    if (!hasFlag("guide_emerged") || hasFlag("guide_arrived"))
-        return;
-    Actor* guide = findGuideActor();
-    if (guide == nullptr)
-        return;
-    if (std::isnan(guide->scripted_target_pos.x))
+    // Phase 2: wait for door to finish opening before sending the
+    // Guide through. Without this the Guide collides with the
+    // closed-then-opening door's collider and curves around it.
+    if (!hasFlag("guide_door_open"))
     {
-        // LeafFollowScriptedTarget cleared the target -- arrived.
-        setFlag("guide_arrived");
-        // Grant the Seal. Dialog will eventually intermediate this
-        // (Guide explains, player accepts); for now grant on arrival.
-        if (PlayerProfile* profile = selva::activePlayerProfile())
+        const selva::world::Door* door = selva::world::findDoor("chapel_front_door");
+        if (door == nullptr || door->state == selva::world::DoorState::Open)
         {
-            const bool granted = selva::items::grant(profile->inventory, "seal");
-            std::fprintf(stderr, "[scripted-event] guide_rescue: granted seal (new=%d)\n",
-                         granted ? 1 : 0);
+            setFlag("guide_door_open");
+            const Actor& pc = player();
+            guide->scripted_target_pos = pc.pos;
+            guide->scripted_stop_range = 2.0f;
+            std::fprintf(stderr,
+                         "[scripted-event] guide_rescue: phase=door_open "
+                         "(Guide -> %.2f,%.2f,%.2f)\n",
+                         pc.pos.x, pc.pos.y, pc.pos.z);
             std::fflush(stderr);
         }
-        selva::scene::end();
-        std::fprintf(stderr, "[scripted-event] guide_rescue: END -- Guide arrived\n");
+        return;
+    }
+
+    // Phase 3: Guide is walking. If he reached the target, advance.
+    if (std::isnan(guide->scripted_target_pos.x))
+    {
+        setFlag("guide_arrived");
+        selva::dialog::begin("guide");
+        std::fprintf(stderr, "[scripted-event] guide_rescue: phase=arrived (dialog open)\n");
         std::fflush(stderr);
         return;
     }
-    // Live-update the target to the current player position so the
-    // Guide tracks even if the player moves during the Scene.
+    // Live-update the target so the Guide tracks a moving player.
     guide->scripted_target_pos = player().pos;
 }
 

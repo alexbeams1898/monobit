@@ -90,8 +90,8 @@ void handleSpawnVerb(const std::string& spawn_id)
     {
         Actor& a = actors()[idx];
         setBossState(a, BossState::Engaged);
-        selva::combat::combatLog("[boss-dispatch] spawned + engaged '{}' (pool idx {})",
-                                 spawn_id, idx);
+        selva::combat::combatLog("[boss-dispatch] spawned + engaged '{}' (pool idx {})", spawn_id,
+                                 idx);
     }
 }
 
@@ -105,8 +105,8 @@ void handleEngageVerb(const std::string& spawn_id)
     const int idx = findActorIndexBySpawnDeclId(spawn_id);
     if (idx < 0)
     {
-        selva::combat::combatLog(
-            "[boss-dispatch] engage '{}' no matching alive boss in pool", spawn_id);
+        selva::combat::combatLog("[boss-dispatch] engage '{}' no matching alive boss in pool",
+                                 spawn_id);
         return;
     }
     Actor& a = actors()[idx];

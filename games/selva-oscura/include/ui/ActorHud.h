@@ -25,14 +25,13 @@ bool showHitVolumes();
 void setShowHitVolumes(bool enabled);
 
 // World-collider debug overlay: wireframe outlines for every cylinder
-// + box collider in the active scene. Gated by tun.debug_show_colliders
-// (F1 panel toggle). Useful for confirming wall positions match the
-// rendered geometry.
+// + box collider in the active scene. Gated by
+// selva::debug::flags().show_colliders (F1 panel toggle).
 void renderColliderDebug();
 
 // Jolt physics body overlay: wireframe AABBs for every body in the
 // Jolt world (static trimeshes, static boxes, character capsules)
-// colored by surface tag. Gated by tun.debug_show_physics_bodies.
+// colored by surface tag. Gated by selva::debug::flags().show_physics_bodies.
 // Source of truth for "is this mesh actually registered in physics?"
 void renderPhysicsBodyDebug();
 

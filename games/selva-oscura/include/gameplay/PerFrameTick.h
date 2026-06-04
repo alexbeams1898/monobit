@@ -57,6 +57,16 @@ void beginWakeScene();
 // watcher doesn't carry across a character switch.
 void resetWakeSceneTracking();
 
+// Input gating. Single source of truth for "is gameplay input
+// suppressed right now." Composes Scene locks, dialog, tuning panel,
+// pause menu, etc. Every gameplay-input site MUST go through these
+// instead of OR-ing flags inline -- without this contract, each new
+// UI overlay needs a hand-edit at every input check (the bug class
+// that left mouse-look firing during dialog).
+bool gameplayLookSuppressed();     // camera mouse-look
+bool gameplayCombatSuppressed();   // LMB/RMB attacks, dodge, jump
+bool gameplayMovementSuppressed(); // WASD locomotion
+
 // Render-world entry point. Frame capture readback lives here too
 // (uses tickstate::frameCapture* flags).
 void selvaRenderWorld(::Engine& engine, ::EntityManager& em, float camX, float camY, float alpha);

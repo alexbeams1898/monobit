@@ -72,4 +72,17 @@ bool hasFlag(const std::string& flag);
 bool setFlag(const std::string& flag);
 bool clearFlag(const std::string& flag);
 
+// Per-NPC encounter record. Lazily creates the entry on first access
+// so callers never null-check. Mutating the returned reference
+// persists through the next save. nullptr profile = returns a static
+// scratch entry (writes effectively no-op).
+selva::dialog::NpcEncounterState& npcEncounter(PlayerProfile* profile, const std::string& npc_id);
+
+// True if the player has seen the given topic for this NPC. Checks
+// the profile's encounter state. False for unknown NPC, no active
+// profile, or topic not yet seen.
+bool hasSeenTopic(const PlayerProfile* profile, const std::string& npc_id,
+                  const std::string& topic_id);
+bool hasSeenTopic(const std::string& npc_id, const std::string& topic_id);
+
 } // namespace selva

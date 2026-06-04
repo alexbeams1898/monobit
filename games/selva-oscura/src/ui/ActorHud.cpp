@@ -6,11 +6,12 @@
 #include "WallClock.h"
 #include "anim/PoseSampler.h"
 #include "anim/SkeletalAssets.h"
-#include "anim/SkeletonJointMap.h"
 #include "anim/SkeletalMesh.h"
+#include "anim/SkeletonJointMap.h"
 #include "combat/ActorVolumes.h"
 #include "combat/HitFeedback.h"
 #include "combat/HitVolumes.h"
+#include "debug/Flags.h"
 #include "gameplay/Actor.h"
 #include "gameplay/Enemies.h"
 #include "gameplay/Perception.h"
@@ -506,8 +507,8 @@ void renderActorHud()
     drawSecondDeathCard();
 
     // Debug overlay: AI vision cones + awareness label per AI actor.
-    // Toggled by F1 panel checkbox debug_ai_perception.
-    if (selva::tuning::current().debug_ai_perception)
+    // Toggled by F1 panel checkbox (selva::debug::flags().ai_perception).
+    if (selva::debug::flags().ai_perception)
     {
         const auto& tun_dbg = selva::tuning::current();
         const float half_fov_rad = 0.5f * tun_dbg.ai_vision_fov_degrees * 0.017453293f;
@@ -845,8 +846,7 @@ void drawStructureFootprintRects(const glm::mat4& vp, ImDrawList* overlay)
 
 void renderColliderDebug()
 {
-    const auto& tun = selva::tuning::current();
-    if (!tun.debug_show_colliders)
+    if (!selva::debug::flags().show_colliders)
         return;
     const auto& region = selva::world::currentRegion();
     const glm::mat4& vp = selva::render::lastViewProj();
@@ -860,8 +860,7 @@ void renderColliderDebug()
 
 void renderPhysicsBodyDebug()
 {
-    const auto& tun = selva::tuning::current();
-    if (!tun.debug_show_physics_bodies)
+    if (!selva::debug::flags().show_physics_bodies)
         return;
 
     const glm::mat4& vp = selva::render::lastViewProj();
@@ -944,7 +943,7 @@ void renderPhysicsBodyDebug()
 void renderSceneOverlays()
 {
     using namespace engine::world;
-    const auto& tun = selva::tuning::current();
+    const auto& dbg = selva::debug::flags();
     ImDrawList* fg = ImGui::GetForegroundDrawList();
     const ImGuiIO& io = ImGui::GetIO();
 
@@ -959,7 +958,7 @@ void renderSceneOverlays()
     // ---- Region-name chip in top-right (debug-gated) ----
     using engine::world::Region;
     Region* cur = currentRegionPtr();
-    if (tun.debug_show_region_chip)
+    if (dbg.show_region_chip)
     {
         const std::string chip_text =
             cur != nullptr ? ("region: " + cur->regionId()) : "region: (none)";
@@ -972,8 +971,8 @@ void renderSceneOverlays()
                     chip_text.c_str());
     }
 
-    // ---- Trigger volume wireframes (gated by debug_show_colliders) ----
-    if (tun.debug_show_colliders && cur != nullptr)
+    // ---- Trigger volume wireframes (gated by selva::debug::flags().show_colliders) ----
+    if (dbg.show_colliders && cur != nullptr)
     {
         const glm::mat4& vp = selva::render::lastViewProj();
         const ImU32 trig_color = IM_COL32(255, 220, 80, 220);

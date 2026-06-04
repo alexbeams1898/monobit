@@ -26,8 +26,8 @@ struct SkeletalMesh;
 //
 // One PoseSampler per animated character. Internally maintains three
 // tracks:
-//   * locomotion-current — the looping clip the gameplay asked for now
-//     (Idle/Walk/Run). Crossfades to previous when the caller switches.
+//   * locomotion-current — the looping clip the gameplay most-recently
+//     requested (Idle/Walk/Run). Crossfades to previous on switch.
 //   * locomotion-previous — the fading-out locomotion clip.
 //   * one-shot — a non-looping clip (attack, dodge, hit react). When
 //     active, dominates the output; locomotion keeps advancing in the
@@ -72,7 +72,7 @@ struct PoseSampler
     // Returns false if the inputs are invalid (no skeleton, no clip).
     //
     // `clip_key` is the human-meaningful registry key (e.g.
-    // "walking", "running") used only for diagnostic logging. Empty
+    // "walking", "jogging") used only for diagnostic logging. Empty
     // string is allowed; the log will fall back to ozz Animation
     // name (which for Mixamo clips is always "mixamo.com").
     bool update(const AnimationClip& clip, float dt, float blend_seconds, bool loops = true,

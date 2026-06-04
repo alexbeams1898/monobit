@@ -387,15 +387,16 @@ heat-of-sin enemies).
 
 ## Diagnostics
 
-Two F1-toggleable overlays:
+Two F1-toggleable overlays (in the F1 panel's Debug section, backed by
+`selva::debug::flags()` — session-only, never serialized):
 
-- **`debug_ai_perception`** — draws vision cone on the ground +
-  awareness label above each enemy. Colors: gray (Unaware), yellow
-  (Suspicious), orange (Alerted), red (Combat).
-- **`debug_ai_tick_log`** — emits `[ai-tick]` to `combat-debug.log`
-  each time an actor's decision tick fires. Confirms scheduling math.
+- **`ai_perception`** — draws vision cone on the ground + awareness label
+  above each enemy. Colors: gray (Unaware), yellow (Suspicious), orange
+  (Alerted), red (Combat).
+- **`ai_tick_log`** — emits `[ai-tick]` to `combat-debug.log` each time an
+  actor's decision tick fires. Confirms scheduling math.
 
-Both gated on the combat-debug master toggle. Off in normal play.
+Off by default at every launch.
 
 ## Cross-references
 

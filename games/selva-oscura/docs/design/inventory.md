@@ -15,18 +15,24 @@ Per setting.md *Item system*:
   carries / it sits hub-side, and entries appear to the player when
   triggered. Persistent across cycles. Always available.
 
-- **The Seal** (*Il Sigillo*) — given at the beasts (story.md *Beat
-  3*). **Single-use.** Class-pick mechanism: using opens the imprint
-  Hell can grip, locks the Vagrant out of the unburdened path
-  permanently. *Carriable indefinitely if not used.* Carrying it
-  keeps the Vagrant imprint-free; the unburdened can use it at any
-  later moment to permanently break PURITY for that save.
-  **Storable in the Wood-side chest.** The Seal has no cosmological
-  grip on the Vagrant until used, so it has no insist-on-presence
-  behavior — it sits wherever the player puts it. Storing it in the
-  chest does not affect anything; it just clears inventory slot
-  for players who want to commit visibly to the unburdened path.
-  Retrieve it from the chest at any time.
+- **The Signing** (*La Firma*) — **not an item; a Guide ritual.**
+  Performed once on the unjudged Vagrant at the beasts (story.md
+  *Beat 3*). The Guide inscribes the soul into Hell's processing
+  registry, making it mechanically legible to the contrapasso
+  machinery (class becomes selectable; stats become accruable;
+  judgement-protocols can grip). Without the Signing the soul is a
+  leak in Hell's accounting — playable but unmeasured.
+  
+  The Guide believes the ritual is a formality of intake — *"None
+  can pass into the depths unmeasured."* He does not know
+  (concealed pre-R2) that the Signing is also the act by which
+  Beatrice's saturation claims the soul; that knowledge lives only
+  in the player's retrospective reading after the R2 reveal.
+  
+  The player can **accept** the Signing (class-pick opens; standard
+  path) or **refuse** (the soul stays unmeasured; the unburdened
+  path commits). The choice is decisive and irreversible by the
+  Guide alone — only the late-game Erasure can revisit it.
 
 - **The Cord** — mortal artifact lifted from *Inferno* XVI:106-108.
   Teleport from any circle back to the *selva oscura*. Unlimited
@@ -36,13 +42,28 @@ Per setting.md *Item system*:
   containment in this circle has been spent). **Not available to
   unburdened.**
 
-- **The Erasure** — late-game. **Single-use within its scope.**
-  Class-pickers can switch among Penitent / Heretic / Wretched.
-  Cannot grant unburdened status (cannot un-measure). **Requires a
-  consumable activation material** to use — the Erasure cannot fire
-  on intent alone; it needs substance to re-measure the soul. Specific
-  material TBD (likely a class-themed item dropped in a specific
-  circle).
+- **The Erasure** — late-game. **A portable, player-controlled
+  ritual tool that performs what the Guide performs, in item form.**
+  Multiple charges per save (count TBD); each use is a real
+  decision. The item exposes one or more actions, all of which
+  re-shape what the Signing produced:
+  - **Reseal** — class-pickers switch among Penitent / Heretic /
+    Wretched.
+  - **Erase** — class-picker → unburdened (un-measures the soul;
+    one-way).
+  - Additional actions TBD when respec / class-pick systems land.
+  
+  The unburdened-to-class-picker direction is **not** an Erasure
+  action — the unburdened path is canonically unmeasured; nothing
+  re-measures except the Guide's original Signing, which is gone
+  by then.
+  
+  **Requires a consumable activation material** to use — the Erasure
+  cannot fire on intent alone; it needs substance to re-shape the
+  soul. Specific material TBD (likely a class-themed item dropped
+  in a specific circle). Found post-keepers (mid-game item, not
+  early) so the Signing decision still matters for the first ~5
+  hours.
 
 - **The Hand** — acquired at the climax (Guide's death — kill or
   handover). Per story.md *The Hand*: heal (universal), plus
@@ -58,12 +79,9 @@ Per setting.md *Item system*:
   Italianate / gothic register; cathedral-reliquary or pilgrim's-
   alms-chest silhouette; same register as the chapel exterior —
   Beatrice's gothic infrastructure for the Vagrant). Both paths
-  can put items into the chest and pull them out at any visit. The
-  Seal is the canonical first item the player might choose to
-  store (clearing inventory slot if committing to the unburdened
-  path; see *The Seal*, above). Items in the chest persist across
-  cycles — the chest is in the Wood, and the Wood remembers (per
-  wood.md *The Wood remembers*).
+  can put items into the chest and pull them out at any visit.
+  Items in the chest persist across cycles — the chest is in the
+  Wood, and the Wood remembers (per wood.md *The Wood remembers*).
   
   **Unburdened save register.** For unburdened players (who have
   no vestigia), the chest also functions as the autosave site —
@@ -80,12 +98,12 @@ Per setting.md *Item system*:
 
 Different paths have different available inventories.
 
-| Item | Class-picker | Unburdened |
+| Item / Ritual | Class-picker | Unburdened |
 |---|---|---|
 | Grimoire | yes | yes |
-| Seal | consumed (or storable in chest before consumption) | carried indefinitely (or storable in chest) |
+| Signing (Guide ritual, Beat 3) | accepted | refused |
 | Cord | yes | **no** |
-| Erasure | yes (switch class) | n/a (cannot reach) |
+| Erasure | yes (switch class, or commit to unburdened via Erase) | n/a (cannot reach) |
 | Chest (Wood-side storage + unburdened save site) | yes | yes |
 | Hand | yes (severed at kill) | yes (handover) |
 
@@ -106,14 +124,16 @@ it is a small named-slot system. Specifics:
 
 ## Item interactions
 
-- **Seal + Cord:** an unburdened Vagrant has no Cord. The Seal
-  carriers can use the Seal at any moment, including mid-Hell, to
-  class-pick — at which point the Cord becomes available (because
-  they are now class-picker).
-- **Erasure + Seal:** Erasure switches class only among already-
-  measured states. It cannot un-measure. The Seal is the only path
-  *out* of unburdened; once used, the Erasure is the only path
-  *between* class-picker classes.
+- **Signing + Cord:** an unburdened Vagrant (refused Signing) has no
+  Cord — the Cord requires the measured-soul shape that the Signing
+  creates. The Cord becomes available the moment the Signing is
+  accepted.
+- **Erasure + Signing:** the Erasure's *Reseal* action re-shapes
+  already-measured souls (class-picker → another class-picker
+  class). The Erasure's *Erase* action un-measures (class-picker →
+  unburdened). There is no path back from unburdened to class-
+  picker; the Signing was a one-time Guide ritual and the Guide
+  cannot re-perform it.
 - **Hand functions:** path-specific. Class-picker uses it as
   portable OFFERINGS access (sangue → stats anywhere). Unburdened
   uses it as portable riversamento site (riversa anywhere). The
@@ -150,7 +170,7 @@ implementation.
 
 - [Setting](setting.md) — *Item system*, *The Cord*, *Vestigia*,
   *Sangue and the law of substance*.
-- [Story](story.md) — *The Seal* (Beat 3-4), *The Hand* (climax).
+- [Story](story.md) — *The Signing* (Beat 3-4), *The Hand* (climax).
 - [Classes](classes.md) — Erasure switches class.
 - [Economy](economy.md) — sangue cost of Cord uses, sangue investment
   via OFFERINGS / Hand.
@@ -251,10 +271,10 @@ candidates:
 - *Impronta* (imprint, fingerprint). Most directly tied to the
   imprint-making frame from crafting.md notes — the verb and the
   noun share a root.
-- *Sigillo minore* (lesser seal). Connects to *Il Sigillo* (the
-  Seal, single-use class-pick) but in a smaller, plural, reusable
-  register. Beautiful but possibly confusing — they ARE different
-  things mechanically.
+- *Sigillo minore* (lesser seal). An old name from prior drafts; the
+  big-S Seal item is gone (the class-pick ritual is now the Guide's
+  Signing). Could survive here for markers if it doesn't read as
+  carrying the old meaning.
 
 Lean: *Impronta* if we lock the imprint-making verb. *Segno* if
 we want neutrality.

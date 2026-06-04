@@ -121,7 +121,7 @@ struct WeaponAttack
     // attack begins (i.e. when no other one-shot is active).
     // Default behavior: pose-match scans the first 0.30s of the
     // clip and picks the best splice time. Some attacks (e.g. the
-    // running flying-knee) have a t=0 windup pose that's
+    // sprint flying-knee) have a t=0 windup pose that's
     // geometrically far from the live gait pose; the 0.30s scan
     // window can't find a close match, so the splice snaps. Set
     // this to skip past the windup into a frame closer to the
@@ -156,7 +156,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(WeaponAttack, clip, recovery_sec
 // All attack clips available within one grip mode. Slots:
 //   light   — standing or walking primary attack chain
 //   heavy   — Shift-modified primary attack chain; bigger swings, longer recovery
-//   running — sprint-cancel attack; lunges forward,
+//   sprint  — sprint-cancel attack; lunges forward,
 //             distinct from light/heavy. Optional; if empty, gameplay
 //             falls back to light when sprinting + attacking.
 //
@@ -178,9 +178,9 @@ struct WeaponGripAnimSet
 {
     std::vector<WeaponTechnique> light;
     std::vector<WeaponTechnique> heavy;
-    std::vector<WeaponTechnique> running;
+    std::vector<WeaponTechnique> sprint;
 };
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(WeaponGripAnimSet, light, heavy, running);
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(WeaponGripAnimSet, light, heavy, sprint);
 
 // Where the weapon mesh attaches when held in either hand. Same offsets
 // for both — different weapons sit differently in the hand, but a given

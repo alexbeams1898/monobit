@@ -91,4 +91,31 @@ bool clearFlag(const std::string& flag)
     return clearFlag(activePlayerProfile(), flag);
 }
 
+selva::dialog::NpcEncounterState& npcEncounter(PlayerProfile* profile, const std::string& npc_id)
+{
+    static selva::dialog::NpcEncounterState scratch;
+    if (profile == nullptr || npc_id.empty())
+    {
+        scratch = selva::dialog::NpcEncounterState{};
+        return scratch;
+    }
+    return profile->npc_state[npc_id];
+}
+
+bool hasSeenTopic(const PlayerProfile* profile, const std::string& npc_id,
+                  const std::string& topic_id)
+{
+    if (profile == nullptr || npc_id.empty() || topic_id.empty())
+        return false;
+    const auto it = profile->npc_state.find(npc_id);
+    if (it == profile->npc_state.end())
+        return false;
+    return it->second.topics_seen.count(topic_id) > 0;
+}
+
+bool hasSeenTopic(const std::string& npc_id, const std::string& topic_id)
+{
+    return hasSeenTopic(activePlayerProfile(), npc_id, topic_id);
+}
+
 } // namespace selva

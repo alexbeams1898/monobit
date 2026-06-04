@@ -1,6 +1,7 @@
 #include "world/JsonRegion.h"
 
-#include "Tunables.h"
+#include "debug/Flags.h"
+#include "hazard/HazardZones.h"
 #include "physics/PhysicsWorld.h"
 #include "render/RegionShaders.h"
 #include "world/Terrain.h"
@@ -73,214 +74,247 @@ glm::vec2 parseVec2(const nlohmann::json& a, glm::vec2 def = {0, 0})
 
 } // namespace
 
-JsonRegion::JsonRegion(const nlohmann::json& json_doc, std::string folder)
-    : engine::world::AsyncCapableRegion(
-          // region_id is required; .at() throws on missing so the loader
-          // refuses to construct a nameless region (which would never
-          // resolve via findRegionId and would silently break the world).
-          // debug_name + region_kind are optional with sensible defaults.
-          json_doc.at("region_id").get<std::string>(),
-          json_doc.value("debug_name", std::string{}),
-          parseRegionKind(json_doc.value("region_kind", std::string{"Exterior"}))),
-      region_json(json_doc), region_folder(std::move(folder))
+namespace
 {
-    // Parse actor_spawns (legacy alias: enemy_spawns). Each entry's id,
-    // archetype, and pos are REQUIRED; we throw on missing so a typo'd
-    // JSON file fails boot rather than silently spawning nothing (the
-    // same silent-fallback bug class that bit us in the Scene->Region
-    // rename; see [[feedback_check_clip_classification_first]] +
-    // region_schema_test.cpp).
-    // Accept both `actor_spawns` (current name) and `enemy_spawns`
-    // (legacy alias, kept so older region JSON keeps working during
-    // migration). New regions should use `actor_spawns`. Per
-    // docs/systems.md, this list now holds ALL actor spawns (hostile
-    // enemies, allied NPCs, neutral merchants) -- the C++ structs
-    // remain named EnemyArchetype / EnemySpawnDecl during migration
-    // but the JSON field name is semantically accurate.
+glm::vec3 parsePosAllowAutoTerrain(const nlohmann::json& pos_arr, bool& out_auto_terrain,
+                                   const char* schema_label)
+{
+    if (!pos_arr.is_array() || pos_arr.size() < 3)
+        throw std::runtime_error(std::string(schema_label) + " must be [x, y, z]");
+    const float x = pos_arr[0].get<float>();
+    const float z = pos_arr[2].get<float>();
+    float y = 0.0f;
+    if (pos_arr[1].is_string())
+    {
+        if (pos_arr[1].get<std::string>() == "auto_terrain")
+            out_auto_terrain = true;
+        else
+            throw std::runtime_error(std::string(schema_label) +
+                                     "[1] string must be \"auto_terrain\"");
+    }
+    else
+    {
+        y = pos_arr[1].get<float>();
+    }
+    return glm::vec3(x, y, z);
+}
+
+void parsePostFlagPositions(const nlohmann::json& arr, selva::gameplay::EnemySpawnDecl& d)
+{
+    for (const auto& fp : arr)
+    {
+        if (!fp.is_object() || !fp.contains("flag") || !fp.contains("pos"))
+            continue;
+        selva::gameplay::EnemySpawnDecl::FlagPosition entry;
+        entry.flag = fp.at("flag").get<std::string>();
+        const auto& fp_pos = fp.at("pos");
+        if (!fp_pos.is_array() || fp_pos.size() < 3)
+            continue;
+        entry.pos = parsePosAllowAutoTerrain(fp_pos, entry.pos_y_auto_terrain,
+                                              "post_flag_positions[].pos");
+        entry.yaw = fp.value("yaw", 0.0f);
+        d.post_flag_positions.push_back(std::move(entry));
+    }
+}
+
+void parsePatrolPath(const nlohmann::json& s, selva::gameplay::EnemySpawnDecl& d)
+{
+    if (!s.contains("patrol_path") || !s["patrol_path"].is_array())
+        return;
+    for (const auto& wp : s["patrol_path"])
+        if (wp.is_array() && wp.size() >= 3)
+            d.patrol_path.emplace_back(wp[0].get<float>(), wp[1].get<float>(),
+                                       wp[2].get<float>());
+}
+
+void parseScriptedTarget(const nlohmann::json& s, selva::gameplay::EnemySpawnDecl& d)
+{
+    if (!s.contains("scripted_target_pos") || !s["scripted_target_pos"].is_array() ||
+        s["scripted_target_pos"].size() < 3)
+        return;
+    d.scripted_target_pos = glm::vec3(s["scripted_target_pos"][0].get<float>(),
+                                      s["scripted_target_pos"][1].get<float>(),
+                                      s["scripted_target_pos"][2].get<float>());
+}
+
+void parseArenaAndPostFlags(const nlohmann::json& s, selva::gameplay::EnemySpawnDecl& d)
+{
+    d.spawn_trigger_id = s.value("spawn_trigger_id", std::string{});
+    d.engage_trigger_id = s.value("engage_trigger_id", std::string{});
+    if (s.contains("arena_center") && s["arena_center"].is_array() && s["arena_center"].size() >= 3)
+        d.arena_center = parseVec3(s["arena_center"]);
+    if (s.contains("arena_half_extents") && s["arena_half_extents"].is_array() &&
+        s["arena_half_extents"].size() >= 3)
+        d.arena_half_extents = parseVec3(s["arena_half_extents"]);
+    if (s.contains("post_flag_positions") && s["post_flag_positions"].is_array())
+        parsePostFlagPositions(s["post_flag_positions"], d);
+}
+
+selva::gameplay::EnemySpawnDecl parseActorSpawn(const nlohmann::json& s)
+{
+    selva::gameplay::EnemySpawnDecl d;
+    d.id = s.at("id").get<std::string>();
+    d.archetype = s.at("archetype").get<std::string>();
+    d.pos = parsePosAllowAutoTerrain(s.at("pos"), d.pos_y_auto_terrain, "actor_spawns[].pos");
+    d.yaw = s.value("yaw", 0.0f);
+    d.permanent_on_death = s.value("permanent_on_death", false);
+    d.scripted_stop_range = s.value("scripted_stop_range", 0.5f);
+    parsePatrolPath(s, d);
+    parseScriptedTarget(s, d);
+    parseArenaAndPostFlags(s, d);
+    return d;
+}
+
+selva::world::DoorDecl parseDoor(const nlohmann::json& s)
+{
+    selva::world::DoorDecl d;
+    d.id = s.at("id").get<std::string>();
+    const auto& pos_arr = s.at("pos");
+    if (!pos_arr.is_array() || pos_arr.size() < 3)
+        throw std::runtime_error("doors[].pos must be [x, y, z]");
+    d.pos = glm::vec3(pos_arr[0].get<float>(), pos_arr[1].get<float>(), pos_arr[2].get<float>());
+    d.yaw = s.value("yaw", 0.0f);
+    if (s.contains("hinge_offset") && s["hinge_offset"].is_array() &&
+        s["hinge_offset"].size() >= 3)
+        d.hinge_offset = parseVec3(s["hinge_offset"]);
+    const std::string axis_str = s.value("hinge_axis", std::string("Y"));
+    d.hinge_axis = axis_str.empty() ? 'Y' : axis_str[0];
+    d.open_angle_radians = s.value("open_angle_degrees", 90.0f) * 3.14159265f / 180.0f;
+    d.open_animation_seconds = s.value("open_animation_seconds", 1.0f);
+    d.mesh_path = s.value("mesh", std::string{});
+    d.player_interactable = s.value("player_interactable", true);
+    d.persistent = s.value("persistent", true);
+    d.initial_state =
+        selva::world::parseDoorState(s.value("initial_state", std::string("Closed")));
+    return d;
+}
+
+engine::world::TerrainModifier parseTerrainModifier(
+    const nlohmann::json& m, std::vector<std::unique_ptr<std::string>>& owned_strings)
+{
+    engine::world::TerrainModifier mod;
+    mod.center_xz = parseVec2(m.value("center_xz", nlohmann::json::array()));
+    mod.half_extents_xz = parseVec2(m.value("half_extents_xz", nlohmann::json::array()));
+    mod.mode = parseModifierMode(m.value("mode", std::string{"FlushAt"}));
+    mod.value = m.value("value", 0.0f);
+    mod.value_far = m.value("value_far", 0.0f);
+    const std::string ax = m.value("slope_axis", std::string{"Z"});
+    mod.slope_axis = (ax == "X") ? 0 : 2;
+    mod.blend_pad = m.value("blend_pad", 0.0f);
+    mod.blend_pad_neg_x = m.value("blend_pad_neg_x", -1.0f);
+    mod.blend_pad_pos_x = m.value("blend_pad_pos_x", -1.0f);
+    mod.blend_pad_neg_z = m.value("blend_pad_neg_z", -1.0f);
+    mod.blend_pad_pos_z = m.value("blend_pad_pos_z", -1.0f);
+    if (m.contains("debug_name") && m["debug_name"].is_string())
+    {
+        owned_strings.push_back(std::make_unique<std::string>(m["debug_name"].get<std::string>()));
+        mod.debug_name = owned_strings.back()->c_str();
+    }
+    if (m.contains("terrain_region") && m["terrain_region"].is_string())
+    {
+        owned_strings.push_back(
+            std::make_unique<std::string>(m["terrain_region"].get<std::string>()));
+        mod.region_name = owned_strings.back()->c_str();
+    }
+    return mod;
+}
+} // namespace
+
+void JsonRegion::parseActorSpawns(const nlohmann::json& json_doc)
+{
+    // Accept both `actor_spawns` (current) and `enemy_spawns` (legacy
+    // alias). Required fields: id, archetype, pos. Throws on malformed
+    // input so a typo'd JSON fails at boot, not silently at runtime.
     const char* spawns_key = nullptr;
     if (json_doc.contains("actor_spawns") && !json_doc["actor_spawns"].is_null())
         spawns_key = "actor_spawns";
     else if (json_doc.contains("enemy_spawns") && !json_doc["enemy_spawns"].is_null())
         spawns_key = "enemy_spawns";
-    if (spawns_key != nullptr)
-    {
-        const auto& arr = json_doc.at(spawns_key);
-        if (!arr.is_array())
-            throw std::runtime_error(std::string(spawns_key) + " must be an array");
-        for (const auto& s : arr)
-        {
-            selva::gameplay::EnemySpawnDecl d;
-            d.id = s.at("id").get<std::string>();
-            d.archetype = s.at("archetype").get<std::string>();
-            const auto& pos_arr = s.at("pos");
-            if (!pos_arr.is_array() || pos_arr.size() < 3)
-                throw std::runtime_error("actor_spawns[].pos must be [x, y, z]");
-            const float px = pos_arr[0].get<float>();
-            const float pz = pos_arr[2].get<float>();
-            // pos[1] is either a numeric Y OR the string sentinel
-            // "auto_terrain" (resolves to groundHeight(x,z) at spawn).
-            float py = 0.0f;
-            if (pos_arr[1].is_string())
-            {
-                if (pos_arr[1].get<std::string>() == "auto_terrain")
-                    d.pos_y_auto_terrain = true;
-                else
-                    throw std::runtime_error("enemy_spawns[].pos[1] string must be \"auto_terrain\"");
-            }
-            else
-            {
-                py = pos_arr[1].get<float>();
-            }
-            d.pos = glm::vec3(px, py, pz);
-            d.yaw = s.value("yaw", 0.0f);
-            d.permanent_on_death = s.value("permanent_on_death", false);
-            if (s.contains("patrol_path") && s["patrol_path"].is_array())
-            {
-                for (const auto& wp : s["patrol_path"])
-                {
-                    if (!wp.is_array() || wp.size() < 3)
-                        continue;
-                    d.patrol_path.emplace_back(wp[0].get<float>(), wp[1].get<float>(),
-                                               wp[2].get<float>());
-                }
-            }
-            // Boss spawn fields. Optional; non-boss spawns leave all
-            // unset (defaults are empty / zero). See
-            // games/selva-oscura/docs/design/ideas/boss_backend.md.
-            d.spawn_trigger_id = s.value("spawn_trigger_id", std::string{});
-            d.engage_trigger_id = s.value("engage_trigger_id", std::string{});
-            if (s.contains("arena_center") && s["arena_center"].is_array() &&
-                s["arena_center"].size() >= 3)
-            {
-                d.arena_center = glm::vec3(s["arena_center"][0].get<float>(),
-                                           s["arena_center"][1].get<float>(),
-                                           s["arena_center"][2].get<float>());
-            }
-            if (s.contains("arena_half_extents") && s["arena_half_extents"].is_array() &&
-                s["arena_half_extents"].size() >= 3)
-            {
-                d.arena_half_extents = glm::vec3(s["arena_half_extents"][0].get<float>(),
-                                                 s["arena_half_extents"][1].get<float>(),
-                                                 s["arena_half_extents"][2].get<float>());
-            }
-            enemy_spawn_decls.push_back(std::move(d));
-        }
-    }
+    if (spawns_key == nullptr)
+        return;
+    const auto& arr = json_doc.at(spawns_key);
+    if (!arr.is_array())
+        throw std::runtime_error(std::string(spawns_key) + " must be an array");
+    for (const auto& s : arr)
+        enemy_spawn_decls.push_back(parseActorSpawn(s));
+}
 
-    // Parse doors. Each entry: id (required), pos (required), all
-    // other fields optional with sensible defaults. See world/Door.h.
-    if (json_doc.contains("doors") && !json_doc["doors"].is_null())
-    {
-        const auto& arr = json_doc.at("doors");
-        if (!arr.is_array())
-            throw std::runtime_error("doors must be an array");
-        for (const auto& s : arr)
-        {
-            selva::world::DoorDecl d;
-            d.id = s.at("id").get<std::string>();
-            const auto& pos_arr = s.at("pos");
-            if (!pos_arr.is_array() || pos_arr.size() < 3)
-                throw std::runtime_error("doors[].pos must be [x, y, z]");
-            d.pos = glm::vec3(pos_arr[0].get<float>(), pos_arr[1].get<float>(),
-                              pos_arr[2].get<float>());
-            d.yaw = s.value("yaw", 0.0f);
-            if (s.contains("hinge_offset") && s["hinge_offset"].is_array() &&
-                s["hinge_offset"].size() >= 3)
-            {
-                d.hinge_offset = glm::vec3(s["hinge_offset"][0].get<float>(),
-                                           s["hinge_offset"][1].get<float>(),
-                                           s["hinge_offset"][2].get<float>());
-            }
-            const std::string axis_str = s.value("hinge_axis", std::string("Y"));
-            d.hinge_axis = axis_str.empty() ? 'Y' : axis_str[0];
-            const float angle_deg = s.value("open_angle_degrees", 90.0f);
-            d.open_angle_radians = angle_deg * 3.14159265f / 180.0f;
-            d.open_animation_seconds = s.value("open_animation_seconds", 1.0f);
-            d.mesh_path = s.value("mesh", std::string{});
-            d.player_interactable = s.value("player_interactable", true);
-            d.persistent = s.value("persistent", true);
-            d.initial_state = selva::world::parseDoorState(
-                s.value("initial_state", std::string("Closed")));
-            parsed_doors.push_back(std::move(d));
-        }
-    }
+void JsonRegion::parseDoors(const nlohmann::json& json_doc)
+{
+    if (!json_doc.contains("doors") || json_doc["doors"].is_null())
+        return;
+    const auto& arr = json_doc.at("doors");
+    if (!arr.is_array())
+        throw std::runtime_error("doors must be an array");
+    for (const auto& s : arr)
+        parsed_doors.push_back(parseDoor(s));
+}
 
-    // Parse terrain_modifiers in the constructor (not commitPrepared)
-    // so registration can happen at boot BEFORE initTerrain. The
-    // global terrain mesh builder samples per-vertex Y through the
-    // modifier registry; modifiers registered AFTER initTerrain don't
-    // affect the already-built mesh. We split JsonRegion's load into
-    // two phases: registerModifiers() runs before initTerrain, then
-    // preloadAssets() runs after (it needs the terrain mesh to exist).
-    //
-    // Owned strings (debug_name + terrain_region) live in
-    // parsed_strings; TerrainModifier stores const char* into them.
-    // unique_ptr<string> ensures push_back never invalidates the
-    // c_str() pointers held by parsed_modifiers.
-    if (region_json.contains("terrain_modifiers") &&
-        !region_json["terrain_modifiers"].is_null())
-    {
-        const auto& mods_json = region_json.at("terrain_modifiers");
-        if (!mods_json.is_array())
-            throw std::runtime_error("terrain_modifiers must be an array");
-        parsed_modifiers.reserve(mods_json.size());
-        // Reserve generously: 2 owned strings per modifier (debug_name + terrain_region).
-        parsed_strings.reserve(mods_json.size() * 2);
-        for (const auto& m : mods_json)
-        {
-            engine::world::TerrainModifier mod;
-            mod.center_xz = parseVec2(m.value("center_xz", nlohmann::json::array()));
-            mod.half_extents_xz = parseVec2(m.value("half_extents_xz", nlohmann::json::array()));
-            mod.mode = parseModifierMode(m.value("mode", std::string{"FlushAt"}));
-            mod.value = m.value("value", 0.0f);
-            mod.value_far = m.value("value_far", 0.0f);
-            const std::string ax = m.value("slope_axis", std::string{"Z"});
-            mod.slope_axis = (ax == "X") ? 0 : 2;
-            mod.blend_pad = m.value("blend_pad", 0.0f);
-            mod.blend_pad_neg_x = m.value("blend_pad_neg_x", -1.0f);
-            mod.blend_pad_pos_x = m.value("blend_pad_pos_x", -1.0f);
-            mod.blend_pad_neg_z = m.value("blend_pad_neg_z", -1.0f);
-            mod.blend_pad_pos_z = m.value("blend_pad_pos_z", -1.0f);
-            // debug_name + terrain_region: own the strings here so their
-            // c_str() outlives the registry's pointer copy.
-            if (m.contains("debug_name") && m["debug_name"].is_string())
-            {
-                parsed_strings.push_back(
-                    std::make_unique<std::string>(m["debug_name"].get<std::string>()));
-                mod.debug_name = parsed_strings.back()->c_str();
-            }
-            // terrain_region: which terrain region (from terrain/config.json)
-            // this modifier targets. nullptr / unset = global (applies to
-            // any terrain region whose XZ AABB contains the query). Setting
-            // it scopes the modifier to that one terrain region.
-            if (m.contains("terrain_region") && m["terrain_region"].is_string())
-            {
-                parsed_strings.push_back(
-                    std::make_unique<std::string>(m["terrain_region"].get<std::string>()));
-                mod.region_name = parsed_strings.back()->c_str();
-            }
-            parsed_modifiers.push_back(mod);
-        }
-    }
+void JsonRegion::parseTerrainModifiers()
+{
+    // Parsed in the ctor (not commitPrepared) so registration happens
+    // at boot BEFORE initTerrain -- the global mesh builder samples
+    // per-vertex Y through the modifier registry. Strings the registry
+    // borrows by pointer live in `parsed_strings`.
+    if (!region_json.contains("terrain_modifiers") || region_json["terrain_modifiers"].is_null())
+        return;
+    const auto& mods_json = region_json.at("terrain_modifiers");
+    if (!mods_json.is_array())
+        throw std::runtime_error("terrain_modifiers must be an array");
+    parsed_modifiers.reserve(mods_json.size());
+    parsed_strings.reserve(mods_json.size() * 2);
+    for (const auto& m : mods_json)
+        parsed_modifiers.push_back(parseTerrainModifier(m, parsed_strings));
+}
 
-    // Parse ai_block_volumes. Each volume becomes an AABB that AI
-    // actors from foreign regions can't enter. Owner is implicitly
-    // this region. See AiBarriers.h doctrine.
-    if (region_json.contains("ai_block_volumes") && !region_json["ai_block_volumes"].is_null())
+void JsonRegion::parseAiBlockVolumes()
+{
+    if (!region_json.contains("ai_block_volumes") || region_json["ai_block_volumes"].is_null())
+        return;
+    const auto& arr = region_json.at("ai_block_volumes");
+    if (!arr.is_array())
+        throw std::runtime_error("ai_block_volumes must be an array");
+    for (const auto& v : arr)
     {
-        const auto& arr = region_json.at("ai_block_volumes");
-        if (!arr.is_array())
-            throw std::runtime_error("ai_block_volumes must be an array");
-        for (const auto& v : arr)
-        {
-            selva::gameplay::AiBlockVolume vol;
-            vol.center = parseVec3(v.at("center"));
-            vol.half_extents = parseVec3(v.at("half_extents"));
-            vol.owner_region_id = regionId();
-            vol.debug_name = v.value("debug_name", std::string{});
-            parsed_ai_block_volumes.push_back(std::move(vol));
-        }
+        selva::gameplay::AiBlockVolume vol;
+        vol.center = parseVec3(v.at("center"));
+        vol.half_extents = parseVec3(v.at("half_extents"));
+        vol.owner_region_id = regionId();
+        vol.debug_name = v.value("debug_name", std::string{});
+        parsed_ai_block_volumes.push_back(std::move(vol));
     }
+}
+
+void JsonRegion::parseHazardZones()
+{
+    if (!region_json.contains("hazard_zones") || region_json["hazard_zones"].is_null())
+        return;
+    const auto& arr = region_json.at("hazard_zones");
+    if (!arr.is_array())
+        throw std::runtime_error("hazard_zones must be an array");
+    for (const auto& v : arr)
+    {
+        selva::hazard::HazardZone zone;
+        zone.kind = v.at("kind").get<std::string>();
+        zone.center = parseVec3(v.at("center"));
+        zone.half_extents = parseVec3(v.at("half_extents"));
+        selva::hazard::registerZone(zone);
+    }
+}
+
+JsonRegion::JsonRegion(const nlohmann::json& json_doc, std::string folder)
+    : engine::world::AsyncCapableRegion(
+          // region_id is required; .at() throws so a nameless region
+          // fails boot rather than silently breaking findRegionId.
+          json_doc.at("region_id").get<std::string>(), json_doc.value("debug_name", std::string{}),
+          parseRegionKind(json_doc.value("region_kind", std::string{"Exterior"}))),
+      region_json(json_doc), region_folder(std::move(folder))
+{
+    parseActorSpawns(json_doc);
+    parseDoors(json_doc);
+    parseTerrainModifiers();
+    parseAiBlockVolumes();
+    parseHazardZones();
 }
 
 void JsonRegion::registerModifiers()
@@ -294,100 +328,101 @@ void JsonRegion::registerModifiers()
         selva::gameplay::registerAiBlockVolume(vol);
 }
 
+namespace
+{
+void logMeshWorldBounds(const StaticMesh& mesh)
+{
+    glm::vec3 bmin(std::numeric_limits<float>::infinity());
+    glm::vec3 bmax(-std::numeric_limits<float>::infinity());
+    std::size_t total_verts = 0;
+    for (const auto& prim : mesh.primitives)
+    {
+        for (const auto& p : prim.cpu_positions)
+        {
+            bmin = glm::min(bmin, p);
+            bmax = glm::max(bmax, p);
+        }
+        total_verts += prim.cpu_positions.size();
+    }
+    if (total_verts == 0)
+        return;
+    std::fprintf(stderr,
+                 "  world-bounds: x=[%.2f, %.2f] y=[%.2f, %.2f] z=[%.2f, %.2f] "
+                 "center=(%.2f, %.2f, %.2f) verts=%zu\n",
+                 bmin.x, bmax.x, bmin.y, bmax.y, bmin.z, bmax.z, (bmin.x + bmax.x) * 0.5f,
+                 (bmin.y + bmax.y) * 0.5f, (bmin.z + bmax.z) * 0.5f, total_verts);
+}
+} // namespace
+
+void JsonRegion::preloadStaticMeshEntry(const nlohmann::json& m)
+{
+    auto lm = std::make_unique<LoadedMesh>();
+    lm->path = m.value("path", std::string{});
+    lm->world_origin = parseVec3(m.value("world_origin", nlohmann::json::array()));
+    lm->tag = parseSurfaceTag(m.value("surface_tag", std::string{"Architecture"}));
+    lm->debug_name = m.value("debug_name", std::string{});
+    if (!loadStaticMesh(lm->path.c_str(), lm->world_origin, lm->mesh))
+    {
+        std::fprintf(stderr, "[json-region '%s'] failed to load mesh: %s\n", regionId().c_str(),
+                     lm->path.c_str());
+        return;
+    }
+    lm->loaded = true;
+    // One ShapeHandle per primitive. Slots stay aligned to mesh.primitives
+    // (kInvalidShape for skipped/visual-only prims) so commitPrepared can
+    // index either array safely.
+    lm->shape_handles.reserve(lm->mesh.primitives.size());
+    for (const auto& prim : lm->mesh.primitives)
+    {
+        if (prim.cpu_positions.empty() || prim.cpu_indices.size() < 3 ||
+            prim.usage == StaticMeshUsage::Visual)
+        {
+            lm->shape_handles.push_back(engine::physics::kInvalidShape);
+            continue;
+        }
+        lm->shape_handles.push_back(
+            engine::physics::createStaticTrimeshShape(prim.cpu_positions, prim.cpu_indices));
+    }
+    std::fprintf(stderr, "[json-region '%s'] preloaded mesh '%s' (%zu prims, %zu shapes)\n",
+                 regionId().c_str(), lm->debug_name.c_str(), lm->mesh.primitives.size(),
+                 lm->shape_handles.size());
+    logMeshWorldBounds(lm->mesh);
+    loaded_meshes.push_back(std::move(lm));
+}
+
+void JsonRegion::preloadTerrainShapes()
+{
+    if (!region_json.contains("terrain") || region_json["terrain"].is_null())
+        return;
+    for (int i = 0; i < selva::world::terrainRegionCount(); ++i)
+    {
+        const auto& r = selva::world::terrainRegion(i);
+        if (r.cpu_positions.empty() || r.cpu_indices.size() < 3)
+        {
+            terrain_shapes.push_back(engine::physics::kInvalidShape);
+            continue;
+        }
+        terrain_shapes.push_back(
+            engine::physics::createStaticTrimeshShape(r.cpu_positions, r.cpu_indices));
+        std::fprintf(stderr, "[json-region '%s'] preloaded terrain shape '%s'\n",
+                     regionId().c_str(), r.name.c_str());
+    }
+}
+
 void JsonRegion::preloadAssets()
 {
     if (is_preloaded)
         return; // idempotent — lazy callers can call freely
     std::fprintf(stderr, "[json-region '%s'] preloadAssets START\n", regionId().c_str());
     // File I/O + GL upload + Jolt SHAPE construction happen HERE,
-    // once at boot. Per-activation commit reuses preloaded shapes
-    // to insert bodies in O(1) — no per-transition BVH rebuilds.
-    // (Terrain alone is 73k tris and rebuilding its MeshShape on
-    // every region-exit costs ~400ms in Debug. Shape preload keeps
-    // transitions truly instant.)
+    // once at boot. Per-activation commit reuses preloaded shapes to
+    // insert bodies in O(1) -- no per-transition BVH rebuilds. (Terrain
+    // alone is 73k tris and rebuilding its MeshShape on every
+    // region-exit costs ~400ms in Debug.)
     const auto& meshes_json = region_json.value("static_meshes", nlohmann::json::array());
     for (const auto& m : meshes_json)
-    {
-        auto lm = std::make_unique<LoadedMesh>();
-        lm->path = m.value("path", std::string{});
-        lm->world_origin = parseVec3(m.value("world_origin", nlohmann::json::array()));
-        lm->tag = parseSurfaceTag(m.value("surface_tag", std::string{"Architecture"}));
-        lm->debug_name = m.value("debug_name", std::string{});
-        if (!loadStaticMesh(lm->path.c_str(), lm->world_origin, lm->mesh))
-        {
-            std::fprintf(stderr, "[json-region '%s'] failed to load mesh: %s\n", regionId().c_str(),
-                         lm->path.c_str());
-            continue;
-        }
-        lm->loaded = true;
-        // Build Jolt shape per primitive so activation can skip the
-        // BVH build (small primitives are cheap individually but
-        // 444 of them per chapel adds up).
-        lm->shape_handles.reserve(lm->mesh.primitives.size());
-        for (const auto& prim : lm->mesh.primitives)
-        {
-            // Push a kInvalidShape slot for skipped/invalid prims so the
-            // shape_handles index always parallels primitives index;
-            // commitPrepared depends on that alignment.
-            if (prim.cpu_positions.empty() || prim.cpu_indices.size() < 3 ||
-                prim.usage == StaticMeshUsage::Visual)
-            {
-                lm->shape_handles.push_back(engine::physics::kInvalidShape);
-                continue;
-            }
-            lm->shape_handles.push_back(
-                engine::physics::createStaticTrimeshShape(prim.cpu_positions, prim.cpu_indices));
-        }
-        std::fprintf(stderr, "[json-region '%s'] preloaded mesh '%s' (%zu prims, %zu shapes)\n",
-                     regionId().c_str(), lm->debug_name.c_str(), lm->mesh.primitives.size(),
-                     lm->shape_handles.size());
-        // Bounds diagnostic: where does this mesh actually land in
-        // world space? Positions in cpu_positions are post-world_origin
-        // (loadStaticMesh transforms them), so this is true world-space.
-        glm::vec3 bmin( std::numeric_limits<float>::infinity());
-        glm::vec3 bmax(-std::numeric_limits<float>::infinity());
-        std::size_t total_verts = 0;
-        for (const auto& prim : lm->mesh.primitives)
-        {
-            for (const auto& p : prim.cpu_positions)
-            {
-                bmin = glm::min(bmin, p);
-                bmax = glm::max(bmax, p);
-            }
-            total_verts += prim.cpu_positions.size();
-        }
-        if (total_verts > 0)
-        {
-            std::fprintf(stderr,
-                         "  world-bounds: x=[%.2f, %.2f] y=[%.2f, %.2f] z=[%.2f, %.2f] "
-                         "center=(%.2f, %.2f, %.2f) verts=%zu\n",
-                         bmin.x, bmax.x, bmin.y, bmax.y, bmin.z, bmax.z,
-                         (bmin.x + bmax.x) * 0.5f, (bmin.y + bmax.y) * 0.5f,
-                         (bmin.z + bmax.z) * 0.5f, total_verts);
-        }
-        loaded_meshes.push_back(std::move(lm));
-    }
-
-    // Terrain shapes — built once at boot for whichever scenes
-    // declare `terrain`. Even though terrain regions are global
-    // today, preloading per region that uses them keeps the shape
-    // tied to the region's lifetime conceptually.
-    if (region_json.contains("terrain") && !region_json["terrain"].is_null())
-    {
-        for (int i = 0; i < selva::world::terrainRegionCount(); ++i)
-        {
-            const auto& r = selva::world::terrainRegion(i);
-            if (r.cpu_positions.empty() || r.cpu_indices.size() < 3)
-            {
-                terrain_shapes.push_back(engine::physics::kInvalidShape);
-                continue;
-            }
-            terrain_shapes.push_back(
-                engine::physics::createStaticTrimeshShape(r.cpu_positions, r.cpu_indices));
-            std::fprintf(stderr, "[json-region '%s'] preloaded terrain shape '%s'\n",
-                         regionId().c_str(), r.name.c_str());
-        }
-    }
+        preloadStaticMeshEntry(m);
+    preloadTerrainShapes();
 
     std::fprintf(stderr, "[json-region '%s'] preloadAssets END (%zu meshes, %zu terrain shapes)\n",
                  regionId().c_str(), loaded_meshes.size(), terrain_shapes.size());
@@ -484,10 +519,11 @@ void JsonRegion::commitPrepared(engine::world::RegionActivationContext& ctx)
     // Register doors with the world-Door system (creates colliders +
     // resolves persisted state from active profile).
     selva::world::registerDoorsForRegion(parsed_doors);
-    std::fprintf(stderr,
-                 "[json-region '%s'] commitPrepared END (%zu meshes, %zu mods, %zu triggers, %zu doors)\n",
-                 regionId().c_str(), loaded_meshes.size(), parsed_modifiers.size(),
-                 trigs_json.size(), parsed_doors.size());
+    std::fprintf(
+        stderr,
+        "[json-region '%s'] commitPrepared END (%zu meshes, %zu mods, %zu triggers, %zu doors)\n",
+        regionId().c_str(), loaded_meshes.size(), parsed_modifiers.size(), trigs_json.size(),
+        parsed_doors.size());
 }
 
 void JsonRegion::onDeactivate()
@@ -537,7 +573,7 @@ void JsonRegion::renderMeshes() const
     // tinted skeletal pass that ran earlier this frame doesn't
     // bleed into our base-color path (the legacy chapel render had
     // the same guard).
-    const bool debug_id = selva::tuning::current().debug_primitive_id_colors;
+    const bool debug_id = selva::debug::flags().primitive_id_colors;
     static bool sLoggedIdMap = false;
     FILE* idmap_log = nullptr;
     if (debug_id && !sLoggedIdMap)

@@ -18,6 +18,7 @@ find_package(Python3 COMPONENTS Interpreter REQUIRED)
 # selva-oscura is one exe today.
 add_library(selva-oscura-lib STATIC
     src/anim/AnimationClip.cpp
+    src/anim/ClipGeometry.cpp
     src/anim/ClipRegistry.cpp
     src/audio/Audio.cpp
     src/anim/LocomotionConfig.cpp
@@ -77,17 +78,28 @@ add_library(selva-oscura-lib STATIC
     src/ui/ActorHud.cpp
     src/ui/BossHud.cpp
     src/ui/ComboHud.cpp
+    src/ui/DialogScreen.cpp
+    src/ui/InteractionPrompt.cpp
     src/ui/Screens.cpp
     src/ui/TuningPanel.cpp
     src/world/Collision.cpp
     src/AppStateGlobal.cpp
     src/SaveManager.cpp
+    src/dialog/DialogSystem.cpp
+    src/dialog/GuideHandlers.cpp
+    src/dialog/Handlers.cpp
+    src/dialog/TopicRegistry.cpp
+    src/interact/Interaction.cpp
     src/items/CategoryRegistry.cpp
     src/items/InventoryOps.cpp
+    src/debug/Flags.cpp
+    src/hazard/HazardZones.cpp
     src/items/ItemRegistry.cpp
-    src/items/SealHandlers.cpp
     src/items/UseHandlers.cpp
     src/ops/InventoryOps.cpp
+    src/spawn/FlowSpawner.cpp
+    src/text/Examine.cpp
+    src/text/TextPresentation.cpp
     src/Tunables.cpp
     src/Formulas.cpp
     src/Scene.cpp
@@ -398,6 +410,66 @@ if(attack_ozz_files)
     add_dependencies(selva-oscura-convert-attacks selva-oscura-sync-config)
 endif()
 
+# ---------------------------------------------------------------------------
+# Larva clip bake. Larvae are Hell-side contrapasso-shaped human souls
+# per [[universal-humanoid-enemy-rule]] -- they reuse the X_Bot
+# skeleton, so this pipeline mirrors the X_Bot pack bake above but
+# globs a separate source root and deploys to a separate output dir.
+# Source: assets/characters/larva/source/ (Mixamo Scary Zombie Pack +
+# any future larva-specific clips). Same retarget_config (X_Bot
+# skeleton.ozz, skeleton import disabled) -- Mixamo zombie clips are
+# bound to the standard Mixamo skeleton X_Bot uses, so retargeting
+# Just Works. Output: bin/selva-oscura/assets/characters/larva/*.ozz.
+# ---------------------------------------------------------------------------
+set(larva_dir ${CMAKE_CURRENT_SOURCE_DIR}/assets/characters/larva)
+set(larva_out_dir ${selva_out_dir}/assets/characters/larva)
+set(larva_ozz_files "")
+file(GLOB_RECURSE larva_fbx_files
+    CONFIGURE_DEPENDS
+    "${larva_dir}/source/*.fbx"
+)
+# Skip the Mixamo rig FBX shipped with the Scary Zombie Pack -- it's
+# a T-pose source, not a clip. Same exclusion the X_Bot bake uses
+# above. Matches "X Bot.fbx", "X_Bot.fbx", "x bot.fbx", etc.
+list(FILTER larva_fbx_files EXCLUDE REGEX ".*[Xx][ _][Bb]ot\\.fbx$")
+if(larva_fbx_files)
+    foreach(fbx ${larva_fbx_files})
+        _selva_sanitize_clip_name("${fbx}" clip_name)
+        set(clip_temp_dir ${CMAKE_BINARY_DIR}/selva-oscura-larva/${clip_name})
+        set(clip_glb ${clip_temp_dir}/${clip_name}.glb)
+        set(clip_final_ozz ${larva_out_dir}/${clip_name}.ozz)
+        add_custom_command(
+            OUTPUT ${clip_final_ozz}
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${clip_temp_dir}
+            COMMAND ${fbx2gltf_exe}
+                --binary
+                --keep-attribute auto
+                -i ${fbx}
+                -o ${clip_temp_dir}/${clip_name}
+            COMMAND ${CMAKE_COMMAND} -E chdir ${clip_temp_dir}
+                $<TARGET_FILE:gltf2ozz>
+                --file=${clip_glb}
+                --config_file=${retarget_config}
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/scripts/stage_baked_ozz.py
+                --temp-dir ${clip_temp_dir}
+                --out ${clip_final_ozz}
+            DEPENDS
+                ${fbx}
+                gltf2ozz
+                ${retarget_config}
+                ${xbot_out_dir}/skeleton.ozz
+            COMMENT "Converting ${clip_name}.fbx → larva/${clip_name}.ozz (retargeted to X Bot)"
+            VERBATIM
+        )
+        list(APPEND larva_ozz_files ${clip_final_ozz})
+    endforeach()
+endif()
+if(larva_ozz_files)
+    add_custom_target(selva-oscura-convert-larva ALL DEPENDS ${larva_ozz_files})
+    add_dependencies(selva-oscura-convert-larva selva-oscura-sync-config)
+endif()
+
 # Pre-baked .ozz files whose source FBXs are no longer in the tree
 # (e.g. unused sword & shield clips kept available for future use).
 # Copy each into build/bin alongside the freshly-baked clips so
@@ -433,7 +505,9 @@ endif()
 # SDL/GL are tested by running the game itself.
 # ---------------------------------------------------------------------------
 add_executable(selva-oscura-tests
+    tests/clip_geometry_test.cpp
     tests/skeletal_loader_test.cpp
+    tests/spawn_flow_test.cpp
     tests/weapon_data_test.cpp
     tests/save_manager_test.cpp
     tests/camera_raycast_test.cpp

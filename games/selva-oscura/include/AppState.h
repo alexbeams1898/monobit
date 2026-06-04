@@ -1,9 +1,11 @@
 #pragma once
 
+#include "dialog/Encounter.h"
 #include "items/Inventory.h"
 
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 // ---------------------------------------------------------------------------
@@ -14,12 +16,12 @@
 // SaveData) are reused verbatim from prison-escape; Selva-specific values
 // (Phase variants, schema fields) are scoped to Selva's cosmology.
 //
-// v1 schema is intentionally minimal: a character is just a name. The Seal
-// moment (class pick vs unburdened, per setting.md) happens in the opening
-// sequence inside Hell, not at the main menu, so the main-menu-side
-// character-create only needs to elicit a name. Class, stats, sangue totals,
-// evolution stage, keepers felled, etc. are added in later schema bumps as
-// those systems ship.
+// v1 schema is intentionally minimal: a character is just a name. The
+// Signing moment (class pick vs unburdened, per setting.md) happens in
+// the opening sequence inside Hell, not at the main menu, so the main-
+// menu-side character-create only needs to elicit a name. Class, stats,
+// sangue totals, evolution stage, keepers felled, etc. are added in
+// later schema bumps as those systems ship.
 // ---------------------------------------------------------------------------
 
 namespace selva
@@ -128,7 +130,7 @@ struct GameState
 //
 // Anticipated future fields (not yet in schema; documented for reference):
 //   - class:                Penitent / Heretic / Wretched / Unburdened
-//     (per setting.md - set during opening sequence at the Seal moment)
+//     (per setting.md - set during opening sequence at the Signing moment)
 //   - path:                 class-picker | unburdened (derived from class)
 //   - evolution_stage:      L1/L2/L3 for class-pickers, Unburdened/Svuotato/
 //                           Diaphanous for unburdened
@@ -207,6 +209,12 @@ struct PlayerProfile
     // config/inventory_categories.json. Operate via selva::items
     // ops (grant/addStack/has/remove). Empty for new characters.
     selva::items::Inventory inventory;
+
+    // Per-NPC encounter history (sparse). Only NPCs the player has
+    // talked to have entries. Use selva::npcEncounter(profile, id)
+    // to lazily create + read. Stable npc_ids match the topic
+    // registry (config/npcs/<id>.json).
+    std::unordered_map<std::string, selva::dialog::NpcEncounterState> npc_state;
 };
 
 // ---------------------------------------------------------------------------
@@ -232,7 +240,7 @@ struct Settings
 // ---------------------------------------------------------------------------
 struct SaveData
 {
-    static constexpr int CURRENT_VERSION = 2;
+    static constexpr int CURRENT_VERSION = 3;
 
     int schema_version = CURRENT_VERSION;
     std::vector<PlayerProfile> characters;

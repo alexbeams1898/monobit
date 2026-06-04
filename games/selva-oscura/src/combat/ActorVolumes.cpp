@@ -84,16 +84,13 @@ void appendActorHurtboxes(const selva::anim::PoseSampler& sampler, const glm::ma
                               static_cast<std::uint64_t>(static_cast<std::uint32_t>(owner.index));
     if (s_logged.insert(key).second)
     {
-        std::fprintf(stderr,
-                     "[hurtbox-build] owner_kind=%d owner_index=%d decls=%zu base_r=%.3f\n",
-                     static_cast<int>(owner.kind), owner.index, body.hurtbox_decls.size(),
-                     base_r);
+        std::fprintf(stderr, "[hurtbox-build] owner_kind=%d owner_index=%d decls=%zu base_r=%.3f\n",
+                     static_cast<int>(owner.kind), owner.index, body.hurtbox_decls.size(), base_r);
         for (const auto& d : body.hurtbox_decls)
         {
             const int idx_a = sampler.findJoint(d.joint_a.c_str());
             const int idx_b = sampler.findJoint(d.joint_b.c_str());
-            std::fprintf(stderr,
-                         "  '%s'->%d  '%s'->%d  region=%d radius_scale=%.2f%s\n",
+            std::fprintf(stderr, "  '%s'->%d  '%s'->%d  region=%d radius_scale=%.2f%s\n",
                          d.joint_a.c_str(), idx_a, d.joint_b.c_str(), idx_b,
                          static_cast<int>(d.region), d.radius_scale,
                          (idx_a < 0 || idx_b < 0) ? "  <-- MISSING JOINT" : "");

@@ -21,7 +21,10 @@ class CategoryRegistry
   public:
     void loadFromFile(const std::string& path);
 
-    const std::vector<CategoryDef>& all() const { return ordered; }
+    const std::vector<CategoryDef>& all() const
+    {
+        return ordered;
+    }
 
     // Lookup by id. Returns nullptr if no category with that id is loaded.
     const CategoryDef* get(const std::string& id) const;

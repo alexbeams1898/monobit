@@ -7,6 +7,7 @@
 #include "combat/CombatData.h"
 #include "combat/Weapon.h"
 #include "combat/WeaponClass.h"
+#include "debug/Flags.h"
 
 #include <imgui.h>
 
@@ -97,7 +98,7 @@ const char* nextExpectedButtonLabel()
 
 void renderComboHud()
 {
-    if (!selva::tuning::current().debug_show_combo_hud)
+    if (!selva::debug::flags().show_combo_hud)
         return;
     const ImGuiViewport* vp = ImGui::GetMainViewport();
     const float w = 360.0f;

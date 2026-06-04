@@ -14,9 +14,12 @@ const char* entryKindName(EntryKind k)
 {
     switch (k)
     {
-    case EntryKind::Possession: return "possession";
-    case EntryKind::Stack: return "stack";
-    case EntryKind::Instanced: return "instanced";
+    case EntryKind::Possession:
+        return "possession";
+    case EntryKind::Stack:
+        return "stack";
+    case EntryKind::Instanced:
+        return "instanced";
     }
     return "?";
 }
@@ -82,15 +85,15 @@ void ItemRegistry::loadDirectory(const std::filesystem::path& dir)
             }
             const std::string id = def.id;
             by_id[id] = std::move(def);
-            std::fprintf(stderr, "[items] loaded '%s' (kind=%s, category=%s) from %s\n",
-                         id.c_str(), entryKindName(by_id[id].kind), by_id[id].category.c_str(),
+            std::fprintf(stderr, "[items] loaded '%s' (kind=%s, category=%s) from %s\n", id.c_str(),
+                         entryKindName(by_id[id].kind), by_id[id].category.c_str(),
                          entry.path().string().c_str());
             std::fflush(stderr);
         }
         catch (const std::exception& e)
         {
-            std::fprintf(stderr, "[items] parse error in %s: %s\n",
-                         entry.path().string().c_str(), e.what());
+            std::fprintf(stderr, "[items] parse error in %s: %s\n", entry.path().string().c_str(),
+                         e.what());
             std::fflush(stderr);
         }
     }

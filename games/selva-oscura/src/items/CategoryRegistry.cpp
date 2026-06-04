@@ -25,8 +25,7 @@ void CategoryRegistry::loadFromFile(const std::string& path)
         in >> j;
         if (!j.contains("categories") || !j.at("categories").is_array())
         {
-            std::fprintf(stderr, "[item-categories] %s missing 'categories' array\n",
-                         path.c_str());
+            std::fprintf(stderr, "[item-categories] %s missing 'categories' array\n", path.c_str());
             std::fflush(stderr);
             return;
         }
