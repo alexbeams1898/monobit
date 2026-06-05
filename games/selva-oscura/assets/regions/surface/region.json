@@ -99,8 +99,15 @@
       "arena_half_extents": [18.0, 10.0, 16.0]
     }
   ],
-  "_ai_block_volumes_note": "No barriers on surface. The single barrier that enforces 'shades stay on Limbo' lives in limbo/region.json (at the descent-corridor mouth) -- shades can't reach selva surface because they can't enter the corridor in the first place. Future circles' enemies will get their own barriers at THEIR boundary into outside-Hell zones.",
-  "ai_block_volumes": [],
+  "_territory_note": "Single territory volume covering the entire selva surface (wood + colle plateau + chapel exterior). Large XZ extent + tall Y range. chapel_interior's chapel-building volume sits nested inside; smallest-wins gives chapel positions to chapel_interior.",
+  "territory": [
+    {
+      "_comment": "Surface region territory. Conservative AABB covering the playable wood + chapel plateau zone.",
+      "debug_name": "surface_main",
+      "center": [0.0, 30.0, -100.0],
+      "half_extents": [500.0, 200.0, 500.0]
+    }
+  ],
   "ambient": { "color": [0.16, 0.18, 0.22] },
   "sky": { "kind": "atmospheric" },
   "footstep_default": "footstep_grass",

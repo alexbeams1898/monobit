@@ -9,14 +9,18 @@
 #include "anim/SkeletalMesh.h"
 #include "combat/CombatLog.h"
 #include "combat/HitVolumes.h"
+#include "debug/Flags.h"
 #include "gameplay/Actor.h"
 #include "gameplay/Enemies.h"
 #include "gameplay/EnemyArchetype.h"
 #include "hazard/HazardZones.h"
+#include "world/Territory.h"
 
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <random>
+#include <unordered_map>
 #include <vector>
 
 namespace selva::gameplay
@@ -312,6 +316,30 @@ NodeResult LeafCircleTarget::tick(Actor& actor, const selva::tuning::Tunables& t
     return NodeResult::Success;
 }
 
+// Edge-triggered diagnostic for the territory gate. Logs only when
+// the per-actor blocked state changes. Gated by ai_tick_log.
+void logTerritoryGateEdge(const Actor& actor, const std::string& player_region, bool blocked)
+{
+    if (!selva::debug::flags().ai_tick_log)
+        return;
+    static std::unordered_map<const Actor*, bool> sLastBlocked;
+    auto it = sLastBlocked.find(&actor);
+    const bool first_see = (it == sLastBlocked.end());
+    const bool was_blocked = !first_see && it->second;
+    if (first_see || blocked != was_blocked)
+    {
+        const auto& a = actor.pos;
+        const auto& p = actor.perception.last_known_player_pos;
+        std::fprintf(stderr,
+                     "[territory-gate] '%s' blocked=%d actor_region='%s' "
+                     "actor=(%.2f,%.2f,%.2f) player_region='%s' "
+                     "player=(%.2f,%.2f,%.2f)\n",
+                     actor.spawn_id.c_str(), blocked ? 1 : 0, actor.spawn_region_id.c_str(), a.x,
+                     a.y, a.z, player_region.c_str(), p.x, p.y, p.z);
+    }
+    sLastBlocked[&actor] = blocked;
+}
+
 NodeResult LeafMoveToTarget::tick(Actor& actor, const selva::tuning::Tunables& tun)
 {
     actor.turn_intent_yaw = yawFacing(actor.pos, actor.perception.last_known_player_pos);
@@ -324,6 +352,21 @@ NodeResult LeafMoveToTarget::tick(Actor& actor, const selva::tuning::Tunables& t
     if (actor.archetype != nullptr && !actor.archetype->avoids_hazards.empty() &&
         selva::hazard::positionIsInAvoidedZone(actor.perception.last_known_player_pos,
                                                actor.archetype->avoids_hazards))
+    {
+        actor.intent_xz = glm::vec2(0.0f);
+        return NodeResult::Success;
+    }
+    // Territory chase gate: drop chase when the player is in a region
+    // foreign to this actor. The per-actor territory clamp in
+    // tickPhysicsAndSyncActors is the navigation backstop -- a larva
+    // chasing toward a player past a foreign boundary hits the
+    // boundary, gets snapped back, slides along, and over successive
+    // frames finds its way around.
+    const std::string& player_region =
+        engine::world::regionIdAtPosition(actor.perception.last_known_player_pos);
+    const bool player_in_foreign = !player_region.empty() && player_region != actor.spawn_region_id;
+    logTerritoryGateEdge(actor, player_region, player_in_foreign);
+    if (player_in_foreign)
     {
         actor.intent_xz = glm::vec2(0.0f);
         return NodeResult::Success;

@@ -17,7 +17,6 @@
 #include "combat/HitVolumes.h"
 #include "debug/Flags.h"
 #include "dialog/DialogSystem.h"
-#include "gameplay/AiBarriers.h"
 #include "gameplay/AiTick.h"
 #include "gameplay/BehaviorTree.h"
 #include "gameplay/BossRewards.h"
@@ -752,21 +751,18 @@ void rampVelocityToward(Actor& a, float dt, const selva::tuning::Tunables& tun)
 // it should avoid, this clears the offending axis BEFORE Jolt
 // integrates. Consulted axis-by-axis so a barrier on X still lets
 // the actor slide along Z.
-void clampVelocityAgainstBarriersAndHazards(Actor& a, float dt)
+void clampVelocityAgainstHazards(Actor& a, float dt)
 {
+    if (a.archetype == nullptr || a.archetype->avoids_hazards.empty())
+        return;
+    const auto& avoided = a.archetype->avoids_hazards;
     const float new_x = a.pos.x + a.velocity_xz.x * dt;
     const float new_z = a.pos.z + a.velocity_xz.y * dt;
     const glm::vec3 try_x(new_x, a.pos.y, a.pos.z);
     const glm::vec3 try_z(a.pos.x, a.pos.y, new_z);
-    const std::vector<std::string>* avoided =
-        (a.archetype != nullptr && !a.archetype->avoids_hazards.empty())
-            ? &a.archetype->avoids_hazards
-            : nullptr;
-    if (findAiBlockingVolume(try_x, a.spawn_region_id) != nullptr ||
-        (avoided != nullptr && selva::hazard::positionIsInAvoidedZone(try_x, *avoided)))
+    if (selva::hazard::positionIsInAvoidedZone(try_x, avoided))
         a.velocity_xz.x = 0.0f;
-    if (findAiBlockingVolume(try_z, a.spawn_region_id) != nullptr ||
-        (avoided != nullptr && selva::hazard::positionIsInAvoidedZone(try_z, *avoided)))
+    if (selva::hazard::positionIsInAvoidedZone(try_z, avoided))
         a.velocity_xz.y = 0.0f;
 }
 
@@ -837,7 +833,7 @@ void tickEnemyLocomotion(Actor& a, float dt, const selva::tuning::Tunables& tun)
     else
     {
         rampVelocityToward(a, dt, tun);
-        clampVelocityAgainstBarriersAndHazards(a, dt);
+        clampVelocityAgainstHazards(a, dt);
     }
     traceHazardEntryExit(a);
     // Y is owned by Jolt's gravity in updatePhysics. The earlier
@@ -1345,8 +1341,18 @@ ClipLookup pickGaitBaseClip(const Actor& a, bool& out_is_moving)
     const bool is_running = out_is_moving && (speed >= kEnemyRunSpeedFloor) &&
                             run.clip != nullptr && run.clip->isLoaded();
     const bool is_walking = out_is_moving && walk.clip != nullptr && walk.clip->isLoaded();
-    const bool engaged = a.perception.awareness >= Awareness::Alerted;
-    return is_running ? run : is_walking ? walk : (engaged ? combat_idle : peaceful_idle);
+    // PeacefulIdle is the actor's pre-disturbance cosmological pose
+    // (feeders biting at the pile, kneelers praying, etc.). Once the
+    // actor has crossed into Alerted EVER, they don't go back -- even
+    // if perception decays back to Unaware later. aggro_already_fired
+    // captures "has been disturbed" for the actor's lifetime. Without
+    // this, a feeder who lost sight of the player would revert to
+    // biting the pile, which is cosmologically wrong (the disturbed
+    // soul doesn't resume feeding; it stands and waits, agitated).
+    const bool engaged_now = a.perception.awareness >= Awareness::Alerted;
+    const bool ever_disturbed = a.aggro_already_fired;
+    const bool use_combat_idle = engaged_now || ever_disturbed;
+    return is_running ? run : is_walking ? walk : (use_combat_idle ? combat_idle : peaceful_idle);
 }
 
 // Strafe/back override on top of the base gait pick. ONLY fires when
@@ -1484,6 +1490,15 @@ static bool tickOneEnemy(Actor& a, const Actor& pc, float dt, const selva::tunin
     // hip is the only contribution; velocity gait clips don't have
     // significant hip delta to apply).
     applyActorClipHipDelta(a, dt);
+    // Re-clamp AFTER hip-delta: tickEnemyLocomotion's clamp only sees
+    // velocity-driven actors (root-motion clips zero velocity there).
+    // Hip-delta then ADDS the clip's authored translation as velocity,
+    // which would otherwise carry root-motion-clip actors (e.g. larvae
+    // walking with zombie_walk's authored hip) straight through any
+    // AI barrier / avoided hazard zone. Clamp again so the final
+    // velocity Jolt sees respects both barrier and hazard boundaries
+    // regardless of which path wrote it.
+    clampVelocityAgainstHazards(a, dt);
     return false;
 }
 

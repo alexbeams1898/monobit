@@ -66,6 +66,7 @@
 #include "world/StructureFootprints.h"
 #include "world/Terrain.h"
 #include "world/TerrainModifiers.h"
+#include "world/Territory.h"
 #include "world/TreeAssets.h"
 
 #include <imgui.h>
@@ -77,6 +78,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <ozz/base/maths/soa_transform.h>
 
@@ -3313,6 +3315,104 @@ void readActorPositionsFromJolt(engine::physics::BodyHandle player_body)
 // Soft post-physics clamp: while a boss is engaged AND its decl has a
 // non-zero arena AABB, constrain the player's XZ output to that box.
 // Constrains the output of the step; the step itself already ran.
+// Doctrine clamp: a region-owned actor whose post-physics position
+// classifies as foreign territory gets pushed OUT of the winning
+// foreign volume along its nearest face. "Inside foreign" means
+// regionIdAtPosition returns something other than the actor's
+// spawn_region_id. Implements the "shades belong to their ring's
+// law-domain, full stop" doctrine.
+//
+// Note: the actor's pos may sit INSIDE a larger own-region volume
+// while ALSO being inside a smaller foreign volume that wins by
+// smallest-volume ownership resolution (e.g. the descent corridor
+// nested inside Limbo's disc). A naive "clamp to my own AABB"
+// would no-op because the actor IS inside its own AABB. Instead
+// we find the smallest movement that exits the foreign volume,
+// which by ownership-resolution restores own-region classification.
+//
+// Player + actors without a spawn_region_id are skipped (the player
+// has no domain restriction; flow-spawned or hand-spawned actors
+// without a region id are intentionally region-free).
+// Find the foreign-owner territory (must be owned by `foreign_owner`)
+// whose OBB contains world_pos. Writes the actor's local-frame coords
+// into out_local. Returns nullptr if no such volume found (shouldn't
+// happen if regionIdAtPosition just returned foreign_owner).
+const engine::world::Territory* findContainingForeignVolume(const glm::vec3& world_pos,
+                                                            const std::string& foreign_owner,
+                                                            glm::vec3& out_local)
+{
+    for (int i = 0; i < engine::world::territoryCount(); ++i)
+    {
+        const auto& t = engine::world::territoryAt(i);
+        if (t.owner_region_id != foreign_owner)
+            continue;
+        const glm::vec3 local = glm::conjugate(t.orientation) * (world_pos - t.center);
+        if (local.x < -t.half_extents.x || local.x >= t.half_extents.x)
+            continue;
+        if (local.y < -t.half_extents.y || local.y >= t.half_extents.y)
+            continue;
+        if (local.z < -t.half_extents.z || local.z >= t.half_extents.z)
+            continue;
+        out_local = local;
+        return &t;
+    }
+    return nullptr;
+}
+
+// Compute the world-space position obtained by pushing local_in out of
+// the OBB along the nearest local-axis face, plus a small epsilon.
+glm::vec3 nearestFaceExit(const engine::world::Territory& t, const glm::vec3& local_in)
+{
+    constexpr float kPushEpsilon = 0.01f; // 1 cm past the face
+    const float targets[6] = {-t.half_extents.x - kPushEpsilon, t.half_extents.x + kPushEpsilon,
+                              -t.half_extents.y - kPushEpsilon, t.half_extents.y + kPushEpsilon,
+                              -t.half_extents.z - kPushEpsilon, t.half_extents.z + kPushEpsilon};
+    int best_idx = 0;
+    float best_abs = std::abs(targets[0] - local_in[0]);
+    for (int i = 1; i < 6; ++i)
+    {
+        const float d = std::abs(targets[i] - local_in[i / 2]);
+        if (d < best_abs)
+        {
+            best_abs = d;
+            best_idx = i;
+        }
+    }
+    glm::vec3 candidate = local_in;
+    candidate[best_idx / 2] = targets[best_idx];
+    return t.center + t.orientation * candidate;
+}
+
+void clampActorsToOwnTerritory()
+{
+    auto& pool = selva::gameplay::actors();
+    for (auto& a : pool)
+    {
+        if (a.controller == selva::gameplay::Controller::Input)
+            continue;
+        if (a.spawn_region_id.empty() || a.is_dead)
+            continue;
+        const std::string& at = engine::world::regionIdAtPosition(a.pos);
+        if (at == a.spawn_region_id || at.empty())
+            continue;
+        glm::vec3 winner_local{0.0f};
+        const engine::world::Territory* winner =
+            findContainingForeignVolume(a.pos, at, winner_local);
+        if (winner == nullptr)
+            continue;
+        const glm::vec3 candidate_world = nearestFaceExit(*winner, winner_local);
+        // Only commit if the push actually lands in own territory or
+        // void (Jolt handles void). If it lands in another foreign,
+        // skip (rare; would need cascading resolution).
+        const std::string& after = engine::world::regionIdAtPosition(candidate_world);
+        if (after.empty() || after == a.spawn_region_id)
+        {
+            a.pos = candidate_world;
+            a.velocity_xz = glm::vec2(0.0f);
+        }
+    }
+}
+
 void clampPlayerToActiveBossArena()
 {
     const auto& gs = selva::gameState();
@@ -3387,6 +3487,7 @@ static void tickPhysicsAndSyncActors(float dt)
     pushActorVelocitiesToJolt(player_body);
     updatePhysics(dt);
     readActorPositionsFromJolt(player_body);
+    clampActorsToOwnTerritory();
     clampPlayerToActiveBossArena();
     sPlayer.velocity_y = 0.0f;
     if (FILE* log = getOrOpenPhysicsLog())

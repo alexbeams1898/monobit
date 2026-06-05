@@ -8,7 +8,11 @@
   "static_meshes": [
     {
       "path": "assets/world/static_meshes/chapel_interior.glb",
-      "world_origin": [0.0, 22.0, -210.0],
+      "world_origin": [
+        0.0,
+        22.0,
+        -210.0
+      ],
       "surface_tag": "Architecture",
       "debug_name": "chapel_interior"
     }
@@ -18,8 +22,16 @@
     {
       "id": "chapel_door_exit",
       "_comment": "Player walks back out the chapel door. Same trigger volume as surface's chapel_door_enter (mirrored across door threshold). Instant + preserve_player_pos -- continuous world, no teleport.",
-      "center": [0.0, 23.0, -214.30],
-      "half_extents": [0.5, 1.0, 0.25],
+      "center": [
+        0.0,
+        23.0,
+        -214.3
+      ],
+      "half_extents": [
+        0.5,
+        1.0,
+        0.25
+      ],
       "target_region": "surface",
       "preserve_player_pos": true,
       "transition_mode": "Instant",
@@ -28,9 +40,17 @@
     },
     {
       "id": "limbo_descent_enter",
-      "_comment": "Player steps off the last continuous-descent step onto Limbo's floor. Trigger sits at the bottom-of-stairs landing (world Z ~= -346.85, Y ~= -43.13). Corridor cross-section is 4.8m wide (±2.4m X). Instant + preserve_player_pos.",
-      "center": [0.0, -42.0, -346.85],
-      "half_extents": [2.4, 1.5, 0.5],
+      "_comment": "Player steps off the last continuous-descent step onto Limbo's floor. Trigger sits at the bottom-of-stairs landing (world Z ~= -346.85, Y ~= -43.13). Corridor cross-section is 4.8m wide (\u00c2\u00b12.4m X). Instant + preserve_player_pos.",
+      "center": [
+        0.0,
+        -42.0,
+        -346.85
+      ],
+      "half_extents": [
+        2.4,
+        1.5,
+        0.5
+      ],
       "target_region": "limbo",
       "preserve_player_pos": true,
       "transition_mode": "Instant",
@@ -43,24 +63,71 @@
       "id": "guide",
       "_comment": "The Guide waits inside the chapel behind the front door at game start. Triggers post-Lupa: when the scripted-event watcher sees 'lupa_felled' set, beginGuideRescueScene() opens the door and hands the Guide a scripted_target_pos toward the player. Position ~2.5m behind the door (chapel front at Z=-205.5, Guide at Z=-208), centered on X, on the chapel floor (Y=22). Facing +Z (yaw=pi = toward the door). post_flag_positions: once the Signing is committed, the Guide stands forever after on the plateau, off to the left of the chapel door, facing the player approach.",
       "archetype": "guide",
-      "pos": [0.0, 22.0, -208.0],
+      "pos": [
+        0.0,
+        22.0,
+        -208.0
+      ],
       "yaw": 3.14159,
       "permanent_on_death": true,
       "post_flag_positions": [
-        { "flag": "signing_committed", "pos": [-2.0, 22.3, -203.5], "yaw": 3.14159 }
+        {
+          "flag": "signing_committed",
+          "pos": [
+            -2.0,
+            22.3,
+            -203.5
+          ],
+          "yaw": 3.14159
+        }
       ]
     }
   ],
-  "_ai_block_volumes_note": "Single thin barrier at the descent-corridor MOUTH (where the stairs meet Limbo's floor at Z=-346.85). Limbo shades can roam the entire Limbo disc (anywhere south of the mouth) but hit an invisible wall the moment they try to cross north into the corridor / climb the stairs. Doctrine: shades can only ever touch Limbo terrain; the corridor itself is the threshold to outside-Hell. Owner = chapel_interior so chapel_interior actors (none today) would ignore the barrier; Limbo shades (foreign region) hit it.",
-  "ai_block_volumes": [
+  "_territory_note": "Territory volumes declare chapel_interior's law-domain. AI chase-gate, audio/lighting region lookup, and future systems all derive which region claims this position from this geometry. (1) Chapel building interior. (2) Descent corridor as a single tilted OBB hugging the actual ramp surface (rotation_euler_deg around X axis matches the ramp slope so no false-foreign airspace wedges).",
+  "territory": [
     {
-      "_comment": "Descent corridor mouth at Limbo's floor. Thin Z-wall just north of the corridor exit step (Z=-346.85). 4m deep covers the seam with margin so a fast shade can't tunnel through in one frame. Y range covers Limbo floor (-43.13) up a couple meters; doesn't need to extend higher since shades only walk along the floor plane.",
-      "debug_name": "descent_corridor_mouth_barrier",
-      "center": [0.0, -42.0, -348.85],
-      "half_extents": [3.0, 2.0, 2.0]
+      "_comment": "Chapel building interior. Floor at Y=22, ceiling above. XZ matches chapel_footprint center=(0,-212.67) half=(3,4) plus a small margin for the door threshold and stained-glass apse.",
+      "debug_name": "chapel_interior_building",
+      "center": [
+        0.0,
+        25.0,
+        -212.67
+      ],
+      "half_extents": [
+        4.0,
+        6.0,
+        5.0
+      ]
+    },
+    {
+      "_comment": "Descent corridor + staircase as a single tilted OBB. Center is shifted perpendicular-up from the ramp surface midpoint by half_Y so the OBBs BOTTOM face exactly tracks the ramp surface (south-bottom corner lands at world (0,-43.31,-353.15), north-bottom at (0,20.71,-213.15)). half_Y=2.5m gives 5m of headroom above the ramp. half_X=2.4m matches corridor inner walls. half_Z=76.97m is half the 153.94m ramp diagonal length. Rotation -24.55 deg around X matches slope = atan(64.01 / 140) = 24.55 deg. Zero airspace wedges; zero below-floor void claimed.",
+      "debug_name": "chapel_descent_corridor",
+      "center": [
+        0.0,
+        -9.03,
+        -284.19
+      ],
+      "half_extents": [
+        2.4,
+        2.5,
+        76.97
+      ],
+      "rotation_euler_deg": [
+        -24.55,
+        0.0,
+        0.0
+      ]
     }
   ],
-  "ambient": { "color": [0.06, 0.05, 0.04] },
-  "sky": { "kind": "void" },
+  "ambient": {
+    "color": [
+      0.06,
+      0.05,
+      0.04
+    ]
+  },
+  "sky": {
+    "kind": "void"
+  },
   "footstep_default": "footstep_concrete"
 }

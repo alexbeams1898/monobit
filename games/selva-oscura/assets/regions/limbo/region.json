@@ -170,6 +170,15 @@
       "_comment": "Cluster 8 (limbo_fungus_c): east flank, deepest into Limbo. Reward encounter for full exploration."
     }
   ],
+  "_territory_note": "Single territory volume covering the entire Limbo disc. Centered at the disc center (0, ?, -621.15), extents 300m radius approximated as a 320m XZ AABB (overshoots into void at corners but the void claims no other region, so position queries near the rim return 'limbo' correctly). Y range covers the disc floor at -43.13 down a few meters (in case actors are ever knocked-down below) and up to the ceiling at Y=-7. Priority 0; chapel_interior's descent corridor volume sits at priority 0 too but is much smaller (~4600 m^3 vs limbo's ~3 million m^3) so smallest-wins gives chapel_interior the corridor positions and limbo gets the rest.",
+  "territory": [
+    {
+      "_comment": "Limbo disc territory. Conservative AABB approximation of the 300m-radius disc, Y range covers floor + below to ceiling.",
+      "debug_name": "limbo_disc",
+      "center": [0.0, -25.0, -621.15],
+      "half_extents": [320.0, 25.0, 320.0]
+    }
+  ],
   "ambient": { "color": [0.03, 0.03, 0.03] },
   "sky": { "kind": "void" },
   "footstep_default": "footstep_limbo"

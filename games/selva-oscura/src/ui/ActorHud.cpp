@@ -24,6 +24,7 @@
 #include "world/Region.h"
 #include "world/StructureFootprints.h"
 #include "world/Terrain.h"
+#include "world/Territory.h"
 
 #include <glm/geometric.hpp>
 #include <glm/vec2.hpp>
@@ -145,6 +146,54 @@ void setShowHitVolumes(bool enabled)
 
 namespace
 {
+
+// Per-region law-domain OBBs drawn as wireframe boxes. Color by
+// owning region so overlap is visually unambiguous (chapel's corridor
+// nesting inside limbo's disc shows up as two colors at the seam).
+// Each volume labeled with its debug_name at its center.
+void drawTerritoryWireframes(ImDrawList* fg)
+{
+    const glm::mat4& vp = selva::render::lastViewProj();
+    const int n = engine::world::territoryCount();
+    for (int idx = 0; idx < n; ++idx)
+    {
+        const auto& t = engine::world::territoryAt(idx);
+        std::uint32_t h = 2166136261u;
+        for (char ch : t.owner_region_id)
+            h = (h ^ static_cast<std::uint8_t>(ch)) * 16777619u;
+        const ImU32 color = IM_COL32(80 + (h & 0xFF) / 2, 80 + ((h >> 8) & 0xFF) / 2,
+                                     80 + ((h >> 16) & 0xFF) / 2, 220);
+        const glm::vec3& c = t.center;
+        const glm::vec3& hf = t.half_extents;
+        const glm::vec3 local_corners[8] = {
+            {-hf.x, -hf.y, -hf.z}, {hf.x, -hf.y, -hf.z}, {hf.x, -hf.y, hf.z}, {-hf.x, -hf.y, hf.z},
+            {-hf.x, hf.y, -hf.z},  {hf.x, hf.y, -hf.z},  {hf.x, hf.y, hf.z},  {-hf.x, hf.y, hf.z},
+        };
+        glm::vec2 sp[8];
+        bool ok[8];
+        for (int i = 0; i < 8; ++i)
+        {
+            const glm::vec3 world_corner = c + (t.orientation * local_corners[i]);
+            ok[i] = selva::render::worldToScreen(vp, world_corner, sp[i]);
+        }
+        const int edges[12][2] = {
+            {0, 1}, {1, 2}, {2, 3}, {3, 0}, {4, 5}, {5, 6},
+            {6, 7}, {7, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7},
+        };
+        for (auto& e : edges)
+        {
+            if (ok[e[0]] && ok[e[1]])
+                fg->AddLine(ImVec2(sp[e[0]].x, sp[e[0]].y), ImVec2(sp[e[1]].x, sp[e[1]].y), color,
+                            1.5f);
+        }
+        glm::vec2 lp;
+        if (selva::render::worldToScreen(vp, c, lp))
+        {
+            const std::string label = t.owner_region_id + ":" + t.debug_name;
+            fg->AddText(ImVec2(lp.x, lp.y - 14.0f), color, label.c_str());
+        }
+    }
+}
 
 struct AwarenessVisuals
 {
@@ -997,6 +1046,14 @@ void renderSceneOverlays()
         fg->AddText(ImVec2(chip_min.x + pad, chip_min.y + pad), IM_COL32(255, 255, 255, 220),
                     chip_text.c_str());
     }
+
+    // ---- Territory volume wireframes (gated by show_territories) ----
+    // Per-region law-domain AABBs. Color by owning region so overlap
+    // is visually unambiguous (chapel's corridor nesting inside
+    // limbo's disc shows up as two colors at the seam). Each volume
+    // labeled with its debug_name at its center.
+    if (dbg.show_territories)
+        drawTerritoryWireframes(fg);
 
     // ---- Trigger volume wireframes (gated by selva::debug::flags().show_colliders) ----
     if (dbg.show_colliders && cur != nullptr)

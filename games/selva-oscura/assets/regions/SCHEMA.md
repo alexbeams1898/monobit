@@ -124,29 +124,45 @@ declaration on the target region).
 }
 ```
 
-### `ai_block_volumes` (array)
+### `territory` (array)
 
-World-space AABBs that AI actors from OTHER regions cannot enter.
-Used to enforce cosmological boundaries (per Selva canon: Hell-
-substance entities can't cross into the chapel / descent / outside-
-Hell zones). The player is always free to cross; only AI is
-constrained. An actor whose `spawn_region_id` matches a volume's
-owner region ignores that volume (you can never be barred from your
-own region).
+World-space AABBs declaring this region's cosmological law-domain.
+The set of all territories across all regions partitions the world:
+any point belongs to exactly one region (resolved by priority then
+smallest volume) or to none (the void). Used by the AI chase gate
+(an actor drops chase when the player is in foreign territory) and
+will be the lookup target for future region-derived systems (audio
+ambiance, lighting, etc.). A single source of truth for "which
+region claims this position."
 
 ```json
 {
-  "debug_name": "chapel_interior_and_descent_barrier",
-  "center": [0.0, -10.42, -276.42],
-  "half_extents": [3.0, 32.72, 70.42]
+  "debug_name": "chapel_descent_corridor",
+  "center": [0.0, -11.305, -283.15],
+  "half_extents": [2.4, 2.5, 76.97],
+  "rotation_euler_deg": [-24.55, 0.0, 0.0],
+  "priority": 0
 }
 ```
 
+`rotation_euler_deg` is optional Euler XYZ in degrees (glm
+composition: rotate X, then Y, then Z). Identity (omit field) =
+axis-aligned box. Non-identity = oriented bounding box (OBB) — use
+for ramps and any rotated structure where an AABB would leave
+unowned wedges of empty airspace.
+
+`priority` defaults to 0. Higher priority wins overlap; ties broken
+by smallest volume (innermost). The corridor sitting inside Limbo's
+disc resolves correctly at priority 0 because the corridor volume is
+much smaller than the disc.
+
 Each volume's owner is implicitly the region it's declared in.
-Authoring lives in `gameplay/AiBarriers.h`; integration with AI
-locomotion is in `Enemies.cpp::tickEnemyLocomotion` (axis-by-axis
-slide so a barrier on one face doesn't prevent sliding along the
-perpendicular axis).
+Authoring lives in `world/Territory.h` (engine-side); integration
+with AI is in `BehaviorTree.cpp::LeafMoveToTarget` (queries
+`regionIdAtPosition` for the player-in-foreign-territory chase
+drop) and `PerFrameTick.cpp::clampActorsToOwnTerritory` (per-frame
+hard-clamp that pushes any actor outside its own region back to
+the nearest boundary face).
 
 ### `enemy_spawns` (array)
 

@@ -17,6 +17,7 @@ target_sources(engine PRIVATE
     src/ops/CraftingOps.cpp
     src/physics/PhysicsWorld.cpp
     src/world/Region.cpp
+    src/world/Territory.cpp
     src/world/TerrainModifiers.cpp
     src/world/StructureFootprints.cpp
     src/world/Lights.cpp

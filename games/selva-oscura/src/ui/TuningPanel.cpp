@@ -101,6 +101,7 @@ static void renderDebugSection(selva::tuning::Tunables& tun)
     ImGui::Checkbox("World colliders (cylinders + boxes)", &dbg.show_colliders);
     ImGui::Checkbox("Physics bodies (Jolt AABBs, colored by tag)", &dbg.show_physics_bodies);
     ImGui::Checkbox("Region chip (top-right active-region label)", &dbg.show_region_chip);
+    ImGui::Checkbox("Territory volumes (per-region law-domain wireframes)", &dbg.show_territories);
     ImGui::Checkbox("Combo HUD (chain step + rhythm window overlay)", &dbg.show_combo_hud);
     ImGui::Checkbox("Flat shading (bisect: flicker on = shader, off = geometry)",
                     &dbg.flat_shading);

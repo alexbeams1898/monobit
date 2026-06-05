@@ -1,12 +1,12 @@
 #pragma once
 
-#include "gameplay/AiBarriers.h"
 #include "gameplay/Enemies.h"
 #include "interact/Interaction.h"
 #include "world/AsyncRegionLoader.h"
 #include "world/Door.h"
 #include "world/StaticMeshAssets.h"
 #include "world/TerrainModifiers.h"
+#include "world/Territory.h"
 
 #include <glm/vec3.hpp>
 #include <nlohmann/json.hpp>
@@ -118,7 +118,7 @@ class JsonRegion : public engine::world::AsyncCapableRegion
     void parseActorSpawns(const nlohmann::json& json_doc);
     void parseDoors(const nlohmann::json& json_doc);
     void parseTerrainModifiers();
-    void parseAiBlockVolumes();
+    void parseTerritory();
     void parseHazardZones();
 
     // preloadAssets() delegates to these per-section helpers so it
@@ -186,11 +186,12 @@ class JsonRegion : public engine::world::AsyncCapableRegion
     // .c_str() is handed to the modifier registry via parsed_modifiers.
     std::vector<std::unique_ptr<std::string>> parsed_strings;
 
-    // Parsed-in-constructor AI barrier volumes (`ai_block_volumes`
-    // array in region.json). Each volume's owner_region_id is set
+    // Parsed-in-constructor territory volumes (`territory` array in
+    // region.json). Define which world-space positions belong to this
+    // region's law-domain. Each volume's owner_region_id is set
     // automatically to this region's id. registerModifiers() hands
-    // them to the global AI-barrier registry at boot.
-    std::vector<selva::gameplay::AiBlockVolume> parsed_ai_block_volumes;
+    // them to the global engine::world territory registry at boot.
+    std::vector<engine::world::Territory> parsed_territory;
 
     // Door instances declared in region.json "doors":[]. Registered
     // with the world::Door system at commitPrepared time. See

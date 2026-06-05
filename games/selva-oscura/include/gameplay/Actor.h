@@ -478,11 +478,11 @@ struct Actor
     // via region JSON (test/debug spawns).
     std::string spawn_id;
 
-    // Region this actor was spawned in. Used by AI barriers (per
-    // gameplay/AiBarriers.h): an actor is blocked from entering the
-    // ai_block_volumes of OTHER regions, never its own. Empty for the
-    // player (the player is barrier-immune) and for actors not spawned
-    // via region JSON.
+    // Region this actor was spawned in -- its cosmological law-domain.
+    // Used by the territory chase-gate (engine/world/Territory.h): an
+    // actor drops chase when the player is standing in (or the chase
+    // line crosses) a region OTHER than this one. Empty for the player
+    // (the player has no domain restriction) and for non-region actors.
     std::string spawn_region_id;
 
     // Skeleton key (matches SkeletalAssets registry: "player" for

@@ -268,21 +268,31 @@ void JsonRegion::parseTerrainModifiers()
         parsed_modifiers.push_back(parseTerrainModifier(m, parsed_strings));
 }
 
-void JsonRegion::parseAiBlockVolumes()
+void JsonRegion::parseTerritory()
 {
-    if (!region_json.contains("ai_block_volumes") || region_json["ai_block_volumes"].is_null())
+    if (!region_json.contains("territory") || region_json["territory"].is_null())
         return;
-    const auto& arr = region_json.at("ai_block_volumes");
+    const auto& arr = region_json.at("territory");
     if (!arr.is_array())
-        throw std::runtime_error("ai_block_volumes must be an array");
+        throw std::runtime_error("territory must be an array");
     for (const auto& v : arr)
     {
-        selva::gameplay::AiBlockVolume vol;
-        vol.center = parseVec3(v.at("center"));
-        vol.half_extents = parseVec3(v.at("half_extents"));
-        vol.owner_region_id = regionId();
-        vol.debug_name = v.value("debug_name", std::string{});
-        parsed_ai_block_volumes.push_back(std::move(vol));
+        engine::world::Territory t;
+        t.center = parseVec3(v.at("center"));
+        t.half_extents = parseVec3(v.at("half_extents"));
+        t.owner_region_id = regionId();
+        t.debug_name = v.value("debug_name", std::string{});
+        t.priority = v.value("priority", 0);
+        // Optional OBB rotation, authored as Euler XYZ in DEGREES
+        // for human readability. Order: rotate X, then Y, then Z
+        // (glm's default Euler composition). Identity when absent.
+        if (v.contains("rotation_euler_deg"))
+        {
+            const glm::vec3 deg = parseVec3(v.at("rotation_euler_deg"));
+            const glm::vec3 rad = deg * (3.14159265358979323846f / 180.0f);
+            t.orientation = glm::quat(rad);
+        }
+        parsed_territory.push_back(std::move(t));
     }
 }
 
@@ -314,7 +324,7 @@ JsonRegion::JsonRegion(const nlohmann::json& json_doc, std::string folder)
     parseActorSpawns(json_doc);
     parseDoors(json_doc);
     parseTerrainModifiers();
-    parseAiBlockVolumes();
+    parseTerritory();
     parseHazardZones();
 }
 
@@ -325,8 +335,8 @@ void JsonRegion::registerModifiers()
     if (!parsed_modifiers.empty())
         std::fprintf(stderr, "[json-region '%s'] registered %zu terrain modifier(s)\n",
                      regionId().c_str(), parsed_modifiers.size());
-    for (const auto& vol : parsed_ai_block_volumes)
-        selva::gameplay::registerAiBlockVolume(vol);
+    for (const auto& t : parsed_territory)
+        engine::world::registerTerritory(t);
 }
 
 namespace
