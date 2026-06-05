@@ -50,6 +50,12 @@ namespace
 // to full opacity and restarts the timer.
 constexpr float kEnemyHpBarHoldSeconds = 3.5f;
 constexpr float kEnemyHpBarFadeSeconds = 0.7f;
+// On-death override: when the actor dies, the bar should flash empty
+// and disappear almost immediately -- not linger 4s like the alive
+// case (the kill is the resolution; the bar's "fading" is just decor).
+// Brief hold + short fade reads as "kill registered, moving on."
+constexpr float kEnemyHpBarDeathHoldSeconds = 0.1f;
+constexpr float kEnemyHpBarDeathFadeSeconds = 0.2f;
 // Height above the head joint (in world meters) for the HP bar anchor.
 constexpr float kEnemyHpBarHeadOffset = 0.15f;
 // Size of the in-world HP bar in pixels (camera-space billboard).
@@ -273,19 +279,40 @@ void drawEnemyHpBars(ImDrawList* overlay, const glm::mat4& view_proj,
     for (const auto* ep : list)
     {
         const auto& e = *ep;
-        if (e.last_damage_time < 0.0f)
-            continue;
-        const float age = now - e.last_damage_time;
-        if (age > kEnemyHpBarHoldSeconds + kEnemyHpBarFadeSeconds)
+        // Dead actors use the on-death timer (death_time) with much
+        // shorter hold + fade -- the kill IS the resolution, the
+        // lingering bar is dead-actor-decor and shouldn't sit there
+        // for 4s the way it does on a live actor taking damage.
+        // Flow-spawned dead actors that haven't been "consumed" yet
+        // have death_time == 0 (sentinel) per fireEnemyDeath; for
+        // those, gate on is_dead alone and skip the bar entirely.
+        const bool dead = e.is_dead;
+        float age = 0.0f;
+        float hold = kEnemyHpBarHoldSeconds;
+        float fade = kEnemyHpBarFadeSeconds;
+        if (dead)
+        {
+            if (e.death_time <= 0.0f)
+                continue; // deferred-fade corpse: no HP bar at all
+            age = now - e.death_time;
+            hold = kEnemyHpBarDeathHoldSeconds;
+            fade = kEnemyHpBarDeathFadeSeconds;
+        }
+        else
+        {
+            if (e.last_damage_time < 0.0f)
+                continue;
+            age = now - e.last_damage_time;
+        }
+        if (age > hold + fade)
             continue;
         const glm::vec3 anchor(e.pos.x, e.pos.y + 1.8f + kEnemyHpBarHeadOffset, e.pos.z);
         glm::vec2 sp;
         if (!selva::render::worldToScreen(view_proj, anchor, sp))
             continue;
         float alpha = 1.0f;
-        if (age > kEnemyHpBarHoldSeconds)
-            alpha = std::clamp(1.0f - (age - kEnemyHpBarHoldSeconds) / kEnemyHpBarFadeSeconds, 0.0f,
-                               1.0f);
+        if (age > hold)
+            alpha = std::clamp(1.0f - (age - hold) / fade, 0.0f, 1.0f);
         const ImU32 bg = IM_COL32(20, 20, 20, static_cast<int>(220 * alpha));
         const ImU32 fg = IM_COL32(170, 30, 30, static_cast<int>(240 * alpha));
         const ImU32 bd = IM_COL32(0, 0, 0, static_cast<int>(220 * alpha));

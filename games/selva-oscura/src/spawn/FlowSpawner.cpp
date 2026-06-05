@@ -1,5 +1,6 @@
 #include "spawn/FlowSpawner.h"
 
+#include "Tunables.h"
 #include "WallClock.h"
 #include "anim/AnimationClip.h"
 #include "anim/ClipRegistry.h"
@@ -48,15 +49,18 @@ struct FlowConfig
     float spawn_interval_seconds = 30.0f;
     std::string on_arrival_action; // e.g. "convert_to:larva_aged" / "halt" / "despawn"
     float on_arrival_delay_seconds = 0.0f;
-    // Optional frozen-pose idle for trickle actors AFTER they arrive
-    // at the scripted target but BEFORE on_arrival_action fires.
-    // Plays the named clip as a one-shot with freeze_last + the given
-    // freeze_at_seconds so the actor holds a specific pose frame
-    // (e.g. zombie_crawl frozen at 0.1s = prone crawl pose, used to
-    // visually distinguish fresh-at-shore from standing aged). Empty
-    // = the trickle archetype's default idle plays (existing behavior).
-    std::string frozen_idle_clip;
-    float frozen_idle_freeze_at_seconds = 0.0f;
+    // Optional looping clip bound to the trickle actor's loco track
+    // AFTER they arrive at the scripted target but BEFORE
+    // on_arrival_action fires. Stamps Actor.idle_clip_override so the
+    // gait picker honors this clip regardless of speed/awareness
+    // (overridden until applyArchetypeSwap clears it on conversion).
+    // E.g. zombie_biting_2 loops while a fresh larva crouches over a
+    // corpse and bites. Empty = the trickle archetype's default idle
+    // plays.
+    std::string on_arrival_clip;
+    // Retained for back-compat with the prior freeze_last one-shot
+    // mechanism; ignored by the loco-track loop path that replaced it.
+    float on_arrival_clip_freeze_at_seconds = 0.0f;
     // Target-selection mode for trickle spawns.
     //   "fixed_target" (default): every trickle walks to scripted_target_pos.
     //   "first_vacant_slot": every trickle walks to the first vacant
@@ -108,6 +112,13 @@ struct FlowState
     // slot (or empty == vacant). Length matches initial_positions when
     // slot mode is active; empty for fixed-target flows.
     std::vector<std::string> slot_occupant;
+    // FIFO of spawn_decl_ids of dead actors from this flow awaiting
+    // consumption by the next trickle. Pushed in tickPostDeathQueueing
+    // when an actor from this flow dies; popped front in tickSpawnDecision
+    // when the next trickle picks its target. The popped id is stored
+    // on the trickle's Actor.feeding_on_actor_id so consumePairedCorpse
+    // can rewind the right body's death_time on conversion.
+    std::vector<std::string> pending_corpses;
 };
 
 std::vector<FlowState>& flows()
@@ -211,6 +222,13 @@ void tickInitialFill(FlowState& fs)
     fs.initial_fill_done = true;
     if (fs.cfg.initial_archetype_id.empty() || fs.cfg.initial_positions.empty())
         return;
+    // Doctrine: cycle reset (hardResetWorldForCharacter +
+    // softResetWorldForCycle) tears down the actor pool and clears
+    // initial_fill_done; this function then fires on the next tick
+    // against a known-empty pool. No idempotency check needed -- if
+    // we reach this point, initial_fill_done was just cleared by a
+    // reset, which means the pool was just emptied. Per
+    // [[feedback_rebuild_from_authored_on_reset]].
     const bool slot_mode = (fs.cfg.target_mode == "first_vacant_slot");
     if (slot_mode)
         fs.slot_occupant.assign(fs.cfg.initial_positions.size(), std::string{});
@@ -293,24 +311,42 @@ std::string resolveEffectiveArrivalAction(const FlowState& fs, const selva::game
     return fs.cfg.on_arrival_action;
 }
 
-// Optional frozen-pose idle played once on first arrival so an actor
-// visually distinguishes from its converted form (e.g. fresh larva in
-// the crawl pose vs the standing zombie_idle the aged form uses).
-void playFrozenIdleIfDeclared(const FlowState& fs, selva::gameplay::Actor& a)
+// Set the actor's loco-track override to the flow's on_arrival_clip.
+// pickEnemyLocomotionClip honors this override before consulting
+// gait-by-speed, so the clip loops continuously through the
+// on_arrival_delay window (the fresh larva crawl-bites the corpse
+// until conversion fires). applyArchetypeSwap on conversion clears
+// idle_clip_override so the new archetype's picker resumes normally.
+//
+// on_arrival_clip_freeze_at_seconds is retained for back-compat but
+// not used by the loop path (a looping loco track ignores it).
+void playOnArrivalClipIfDeclared(const FlowState& fs, selva::gameplay::Actor& a)
 {
-    if (fs.cfg.frozen_idle_clip.empty())
+    if (fs.cfg.on_arrival_clip.empty())
         return;
-    const auto& reg = selva::anim::clipsByKey(a.skeleton_id);
-    const selva::anim::AnimationClip* clip = reg.get(fs.cfg.frozen_idle_clip.c_str());
-    if (clip == nullptr || !clip->isLoaded())
+    a.idle_clip_override = fs.cfg.on_arrival_clip;
+}
+
+// On conversion, the fresh has been eating the specific corpse whose
+// id was paired with it at trickle-spawn time (Actor.feeding_on_actor_id).
+// Rewind THAT corpse's death_time so the body-fade pipeline in
+// drawActorMeshes treats the fade window as already at the hold
+// boundary -- the body fades the instant the fresh stands up feral.
+// 1:1 deterministic pairing, no spatial guess.
+// Reads enemy_death_fade_hold_seconds because computeEnemyDeathFadeAlpha
+// (PerFrameTick.cpp drawActorMeshes) is the load-bearing reader. If
+// that pipeline ever splits the fade-hold per-archetype, this rewind
+// silently goes out of sync -- search for "enemy_death_fade_hold_seconds"
+// before changing the tunable shape.
+void consumePairedCorpse(const selva::gameplay::Actor& fresh)
+{
+    if (fresh.feeding_on_actor_id.empty())
         return;
-    selva::anim::PoseSampler::OneShotOptions opts;
-    opts.clip_key = fs.cfg.frozen_idle_clip.c_str();
-    opts.freeze_last = true;
-    opts.freeze_at_seconds = fs.cfg.frozen_idle_freeze_at_seconds;
-    a.sampler.playOneShot(*clip, /*blend_in=*/0.20f, /*blend_out=*/0.20f,
-                          selva::anim::PoseSampler::BodyMask::Full,
-                          /*start_time_seconds=*/0.0f, /*playback_rate=*/1.0f, opts);
+    selva::gameplay::Actor* corpse = selva::gameplay::actorByDeclId(fresh.feeding_on_actor_id);
+    if (corpse == nullptr || !corpse->is_dead)
+        return;
+    const auto& tun = selva::tuning::current();
+    corpse->death_time = selva::wallClock() - tun.enemy_death_fade_hold_seconds;
 }
 
 // Fire the on_arrival_action verb for a single arrived actor. Returns
@@ -329,13 +365,13 @@ void fireArrivalAction(const FlowState& fs, selva::gameplay::Actor& a, const std
         const selva::gameplay::EnemyArchetype* target = selva::gameplay::archetypes().get(arg);
         if (target == nullptr)
         {
-            std::fprintf(stderr,
-                         "[spawn-flow] '%s' convert_to '%s': target archetype not found\n",
+            std::fprintf(stderr, "[spawn-flow] '%s' convert_to '%s': target archetype not found\n",
                          fs.cfg.id.c_str(), arg.c_str());
             std::fflush(stderr);
             a.arrival_action_fired = true;
             return;
         }
+        consumePairedCorpse(a);
         selva::gameplay::applyArchetypeSwap(a, *target);
         a.arrival_action_fired = true;
         return;
@@ -375,7 +411,7 @@ void tickArrivals(FlowState& fs)
         if (first_arrival)
         {
             a.arrival_wallclock = now;
-            playFrozenIdleIfDeclared(fs, a);
+            playOnArrivalClipIfDeclared(fs, a);
         }
         if (a.arrival_action_fired)
             continue;
@@ -399,7 +435,31 @@ void tickSpawnDecision(FlowState& fs, float dt)
     const bool slot_mode = (fs.cfg.target_mode == "first_vacant_slot");
     const glm::vec3* target_override = nullptr;
     int chosen_slot = -1;
-    if (slot_mode)
+    glm::vec3 corpse_target;
+    std::string corpse_id;
+    // Corpse-feeding has priority: if a prior-cycle corpse is waiting
+    // in the FIFO, the new trickle is paired with it 1:1. The popped
+    // id is stamped onto the trickle's Actor.feeding_on_actor_id so
+    // consumePairedCorpse can rewind that specific body's death_time
+    // at convert_to time. Deterministic, no spatial guess.
+    // Fall through to standard slot fill on first-cycle / queue-empty.
+    if (!fs.pending_corpses.empty())
+    {
+        corpse_id = fs.pending_corpses.front();
+        fs.pending_corpses.erase(fs.pending_corpses.begin());
+        if (const selva::gameplay::Actor* corpse = selva::gameplay::actorByDeclId(corpse_id))
+        {
+            corpse_target = corpse->pos;
+            target_override = &corpse_target;
+        }
+        else
+        {
+            // Corpse went away (pool removal / reset). Drop the pairing
+            // and fall through to a slot.
+            corpse_id.clear();
+        }
+    }
+    if (target_override == nullptr && slot_mode)
     {
         chosen_slot = firstVacantSlot(fs);
         if (chosen_slot < 0)
@@ -409,21 +469,17 @@ void tickSpawnDecision(FlowState& fs, float dt)
     selva::gameplay::EnemySpawnDecl d = buildSpawnDecl(fs, target_override);
     const std::string spawn_id = d.id;
     selva::gameplay::spawnEnemyFromDecl(fs.cfg.spawn_region_id, d);
-    if (slot_mode)
+    if (slot_mode && chosen_slot >= 0)
         fs.slot_occupant[chosen_slot] = spawn_id;
-    // Stamp arrival_action_delay_seconds + spawning_flow_id on the
-    // actor: the delay so render-side systems can visualize
-    // burn-progress (e.g. tint fresh -> aged as it ages), the flow id
-    // so tickArrivals gates matching by which flow spawned it rather
-    // than by archetype id (two flows sharing an archetype would
-    // otherwise both process each other's actors).
     if (auto* a = selva::gameplay::actorByDeclId(spawn_id))
     {
         a->arrival_action_delay_seconds = fs.cfg.on_arrival_delay_seconds;
         a->spawning_flow_id = fs.cfg.id;
+        a->feeding_on_actor_id = corpse_id; // empty if no corpse paired
     }
-    selva::combat::combatLog("[spawn-flow] '{}' check: active={}/{}  spawned '{}' slot={}",
-                             fs.cfg.id, active, fs.cfg.active_cap, spawn_id, chosen_slot);
+    selva::combat::combatLog(
+        "[spawn-flow] '{}' check: active={}/{}  spawned '{}' slot={} eats='{}'", fs.cfg.id, active,
+        fs.cfg.active_cap, spawn_id, chosen_slot, corpse_id);
 }
 
 glm::vec3 parseVec3(const nlohmann::json& arr)
@@ -449,7 +505,7 @@ void parseInitialPopulationPositions(const nlohmann::json& ip, FlowConfig& out)
 }
 
 void parseInitialPopulationParallelArray(const nlohmann::json& ip, const char* key,
-                                          std::vector<std::string>& out)
+                                         std::vector<std::string>& out)
 {
     if (!ip.contains(key) || !ip[key].is_array())
         return;
@@ -471,8 +527,7 @@ void parseInitialPopulation(const nlohmann::json& ip, FlowConfig& out)
     // without needing two separate flows.
     parseInitialPopulationParallelArray(ip, "archetypes", out.initial_archetypes_per_slot);
     out.on_arrival_actions_per_slot.assign(out.initial_positions.size(), std::string{});
-    parseInitialPopulationParallelArray(ip, "on_arrival_actions",
-                                         out.on_arrival_actions_per_slot);
+    parseInitialPopulationParallelArray(ip, "on_arrival_actions", out.on_arrival_actions_per_slot);
 }
 
 // Hand-rolled JSON parse, not NLOHMANN_DEFINE_TYPE. The reasons it
@@ -514,8 +569,8 @@ bool parseFlowJson(const nlohmann::json& j, FlowConfig& out)
         out.spawn_interval_seconds = j.value("spawn_interval_seconds", 30.0f);
         out.on_arrival_action = j.value("on_arrival_action", std::string{});
         out.on_arrival_delay_seconds = j.value("on_arrival_delay_seconds", 0.0f);
-        out.frozen_idle_clip = j.value("frozen_idle_clip", std::string{});
-        out.frozen_idle_freeze_at_seconds = j.value("frozen_idle_freeze_at_seconds", 0.0f);
+        out.on_arrival_clip = j.value("on_arrival_clip", std::string{});
+        out.on_arrival_clip_freeze_at_seconds = j.value("on_arrival_clip_freeze_at_seconds", 0.0f);
         out.target_mode = j.value("target_mode", std::string("fixed_target"));
         if (j.contains("initial_population") && j["initial_population"].is_object())
             parseInitialPopulation(j["initial_population"], out);
@@ -592,6 +647,23 @@ void initFlowSpawner()
     }
 }
 
+// Scan for newly-dead actors belonging to this flow and append their
+// spawn_decl_ids to the pending_corpses FIFO. flow_corpse_queued
+// prevents double-enqueue across frames. The queue is drained by
+// tickSpawnDecision when it pops the front to pair with a trickle.
+void tickPostDeathQueueing(FlowState& fs)
+{
+    for (auto& a : selva::gameplay::actors())
+    {
+        if (!a.is_dead || a.flow_corpse_queued)
+            continue;
+        if (a.spawning_flow_id != fs.cfg.id)
+            continue;
+        fs.pending_corpses.push_back(a.spawn_decl_id);
+        a.flow_corpse_queued = true;
+    }
+}
+
 void tickFlowSpawner(float dt)
 {
     for (auto& fs : flows())
@@ -602,6 +674,9 @@ void tickFlowSpawner(float dt)
         // for the trickle to claim immediately. No-op for non-slot
         // flows.
         sweepSlotOccupancy(fs);
+        // Push freshly-dead actors onto this flow's pending_corpses
+        // FIFO so the next trickle can pop one and walk to it.
+        tickPostDeathQueueing(fs);
         tickArrivals(fs);
         tickSpawnDecision(fs, dt);
     }
@@ -614,6 +689,12 @@ void resetFlowSpawner()
         fs.seconds_since_last_check = 0.0f;
         fs.initial_fill_done = false;
         fs.slot_occupant.clear();
+        // pending_corpses MUST be cleared on reset -- stale corpse-
+        // ids from the prior session would otherwise drive ghost
+        // trickles on the new session (each pop's actorByDeclId
+        // returns nullptr so it falls through to a slot, but the
+        // spurious spawn still happens and breaks the active_cap).
+        fs.pending_corpses.clear();
         // spawn_counter preserved across reset so dynamic ids never
         // collide across cycles.
     }

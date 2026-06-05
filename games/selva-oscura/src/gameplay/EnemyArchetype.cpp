@@ -118,7 +118,8 @@ namespace
 // per archetype-section to keep to_json itself a flat call list.
 void emitClipFields(nlohmann::json& j, const EnemyArchetype& a)
 {
-    auto emit = [&](const char* key, const std::string& v) {
+    auto emit = [&](const char* key, const std::string& v)
+    {
         if (!v.empty())
             j[key] = v;
     };
@@ -304,8 +305,7 @@ void loadLockOnPoints(const nlohmann::json& j, EnemyArchetype& a)
 
 void loadTintAndDecls(const nlohmann::json& j, EnemyArchetype& a)
 {
-    if (j.contains("tint_color") && j.at("tint_color").is_array() &&
-        j.at("tint_color").size() == 3)
+    if (j.contains("tint_color") && j.at("tint_color").is_array() && j.at("tint_color").size() == 3)
     {
         a.tint_color[0] = j.at("tint_color")[0].get<float>();
         a.tint_color[1] = j.at("tint_color")[1].get<float>();

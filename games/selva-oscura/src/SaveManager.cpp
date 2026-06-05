@@ -72,11 +72,9 @@ void loadDoorStates(const json& c, PlayerProfile& p)
         return;
     for (const auto& entry : c["door_states"])
     {
-        if (entry.is_array() && entry.size() == 2 && entry[0].is_string() &&
-            entry[1].is_string())
+        if (entry.is_array() && entry.size() == 2 && entry[0].is_string() && entry[1].is_string())
         {
-            p.door_states.emplace_back(entry[0].get<std::string>(),
-                                       entry[1].get<std::string>());
+            p.door_states.emplace_back(entry[0].get<std::string>(), entry[1].get<std::string>());
         }
     }
 }
@@ -214,9 +212,8 @@ nlohmann::json saveInventoryEntry(const selva::items::Entry& e)
     if (const auto* s = std::get_if<selva::items::StackEntry>(&e))
         return nlohmann::json{{"kind", "stack"}, {"id", s->item_id}, {"count", s->count}};
     if (const auto* x = std::get_if<selva::items::InstancedEntry>(&e))
-        return nlohmann::json{{"kind", "instanced"},
-                              {"id", x->item_id},
-                              {"upgrade_level", x->upgrade_level}};
+        return nlohmann::json{
+            {"kind", "instanced"}, {"id", x->item_id}, {"upgrade_level", x->upgrade_level}};
     return nlohmann::json::object();
 }
 

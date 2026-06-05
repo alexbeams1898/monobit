@@ -14,7 +14,7 @@ The Wood contains a living **ecology** of organisms. They are
 input of leaked Hell-substance.
 
 This distinction is **load-bearing.** Hell-creatures (keepers, shades,
-contrapasso-husks per [bestiary.md](bestiary.md)) are *spirit-
+corrupt-keeper residue per [bestiary.md](bestiary.md)) are *spirit-
 substance, post-mortem, judged.* They are punishment given form.
 **Selva-organisms are alive.** They have biology, lineages,
 reproductive cycles, real evolution. They are what *life made* of

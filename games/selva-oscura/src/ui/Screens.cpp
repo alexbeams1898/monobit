@@ -432,7 +432,7 @@ struct InventoryEntryLabel
 };
 
 InventoryEntryLabel buildInventoryEntryLabel(const selva::items::Entry& e,
-                                              const selva::items::ItemRegistry& items)
+                                             const selva::items::ItemRegistry& items)
 {
     InventoryEntryLabel out;
     std::string suffix;
@@ -455,7 +455,7 @@ InventoryEntryLabel buildInventoryEntryLabel(const selva::items::Entry& e,
 }
 
 void drawInventoryCategoryTabs(const std::vector<selva::items::CategoryDef>& cats,
-                                std::string& selected_category, std::string& selected_item)
+                               std::string& selected_category, std::string& selected_item)
 {
     if (!ImGui::BeginTabBar("##inv_cats"))
         return;
@@ -474,7 +474,7 @@ void drawInventoryCategoryTabs(const std::vector<selva::items::CategoryDef>& cat
 }
 
 void drawInventoryEntryList(const std::vector<selva::items::Entry>* entries,
-                             const selva::items::ItemRegistry& items, std::string& selected_item)
+                            const selva::items::ItemRegistry& items, std::string& selected_item)
 {
     if (entries == nullptr || entries->empty())
     {
@@ -491,7 +491,7 @@ void drawInventoryEntryList(const std::vector<selva::items::Entry>* entries,
 }
 
 void drawInventoryUseButton(const selva::items::ItemDef& sel, selva::items::Inventory& inv,
-                             std::string& selected_item)
+                            std::string& selected_item)
 {
     if (sel.use_handler.empty())
         return;
@@ -520,8 +520,8 @@ void drawInventoryUseButton(const selva::items::ItemDef& sel, selva::items::Inve
 }
 
 void drawInventoryDetailPanel(const std::string& selected_item, selva::items::Inventory& inv,
-                               const selva::items::ItemRegistry& items,
-                               std::string& selected_item_ref)
+                              const selva::items::ItemRegistry& items,
+                              std::string& selected_item_ref)
 {
     const selva::items::ItemDef* sel = items.get(selected_item);
     if (sel == nullptr)

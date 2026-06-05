@@ -98,13 +98,14 @@ TEST_CASE("acheron_larvae.json parses with expected fields", "[spawn][flow]")
         REQUIRE((tm == "fixed_target" || tm == "first_vacant_slot"));
     }
 
-    // Frozen-idle clip: optional. When non-empty, the trickle actor
-    // freezes its named clip at freeze_at_seconds on shore arrival
-    // (distinguishes fresh-at-shore from standing aged visually).
-    if (j.contains("frozen_idle_clip"))
+    // On-arrival clip: optional one-shot held on the actor from the
+    // moment it reaches its scripted target until the arrival action
+    // fires (paired conceptually with on_arrival_action). Larvae use
+    // it to crawl-bite a corpse while the conversion timer runs.
+    if (j.contains("on_arrival_clip"))
     {
-        REQUIRE(j["frozen_idle_clip"].is_string());
-        REQUIRE(j.contains("frozen_idle_freeze_at_seconds"));
-        REQUIRE(j["frozen_idle_freeze_at_seconds"].get<float>() >= 0.0f);
+        REQUIRE(j["on_arrival_clip"].is_string());
+        REQUIRE(j.contains("on_arrival_clip_freeze_at_seconds"));
+        REQUIRE(j["on_arrival_clip_freeze_at_seconds"].get<float>() >= 0.0f);
     }
 }

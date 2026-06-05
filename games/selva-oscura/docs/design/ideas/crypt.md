@@ -215,39 +215,50 @@ Don't paint into a corner that forbids this later.
 
 ---
 
-## E. Circle states — stuffed vs resumed
+## E. Circle states — chaos vs enforced
 
 **Leading hypothesis: each circle has two states, gated by keeper-defeat.**
 
-### State 1 — Stuffed (broken/static)
-- Pre-existing finite population of damned souls, frozen mid-contrapasso
-- No respawn, no new arrivals
-- Hand-placed encounters, designer-controlled pacing
+### State 1 — Chaos (corrupt-keeper / unenforced)
+- The corrupt keeper at the seat (transformed original or replacement
+  parasite) is doing fuckall about the ring's law and a great deal of
+  its own degenerate evil across the population
+- Souls of the ring, who arrived to be punished according to their sin,
+  instead encounter disorder shaped by the specific failure of this
+  specific lost role (the Acheron pile + queue is the worked template:
+  no Charon → souls don't cross → accumulate → dissolve → re-coalesce)
+- Hand-placed encounters expressing the ring's specific chaos register
 - Vagrant moves through methodically, resolves each via riversamento
-- Keeper is the final encounter; gates the circle's resolution
-- This is the "stagnated Hell" the player walks into
+- Keeper is the final encounter; killing them vacates the seat
+- This is the "rampant Hell" the player walks into
 
-### State 2 — Resumed (post-keeper-defeat)
-- Circle's stagnation is broken
-- Demons/contrapasso-enforcers begin spawning normally again
-- Hell is "working" in that circle — fresh souls arriving, fresh contrapasso firing
+### State 2 — Enforced (post-keeper-defeat)
+- The vacated enforcement role re-installs into Beatrice's prepared
+  NPC, mangling them into a wounded approximation of a proper keeper
+- Under that new keeper, the ring's law is finally being enforced
+  again — wind blows on the lustful, Cerberus rains on the gluttons,
+  the river receives the violent
+- Souls who had been caught in the chaos now encounter the actual
+  punishment they were sentenced to
 - Hostile encounters become procedural / dynamic / respawn-based
-- This is what the circle SHOULD look like before centuries of stagnation
+- This is what the circle SHOULD look like with a proper administrator
+  (but scarred — never the same as divine-era Hell, per
+  setting.md "Hell can be RESTORED but never PERFECTED")
 
 ### Why this works
-- **Unifies cosmology with gameplay loop.** Pre-keeper = story-meaningful finite encounters; post-keeper = systemically-spawning respawn. Same enemies in same place mean different things at different times.
-- **Rewards the player's act of resolution.** Defeating the keeper restarts the circle's clock. The player can FEEL the circle is alive now.
-- **Makes contrapasso-resolution a real cosmological act.** Vagrant's riversamento clears the backlog. Pipeline can flow again.
-- **Explains "why now" for each circle.** Stagnation could have resolved any time. It's resolved when the Vagrant arrives because he's the only mechanism capable. Keeper is the final lock.
-- **Organic difficulty curve.** Pre-keeper bespoke and learnable; post-keeper systemic and scaling. Cleared circles become return-to resource zones.
-- **Explains keepers cosmologically.** Keepers aren't just bosses — they ARE the mechanism of stagnation. Defeating one unblocks the system.
+- **Unifies cosmology with gameplay loop.** Pre-keeper = story-meaningful finite encounters in the ring's chaotic register; post-keeper = systemically-spawning respawn under restored enforcement. Same locations mean different things at different times.
+- **Rewards the player's act of resolution.** Defeating the keeper restores enforcement to the ring. The player can FEEL the circle is functioning now — terrible in a different way, lawful instead of arbitrary.
+- **Makes restoration a real cosmological act.** Vagrant's killing of the corrupt keeper enables Beatrice to install the new mangled keeper, which enables the law to be enforced again.
+- **Explains "why now" for each circle.** The corrupt keeper could have been killed any time but only an unjudged soul can do it (Hell's accounting won't accept a damned killer). The Vagrant is the only mechanism.
+- **Organic difficulty curve.** Pre-keeper bespoke and learnable (chaos register); post-keeper systemic and scaling (lawful register). Cleared circles become return-to resource zones.
+- **Explains keepers cosmologically.** Corrupt keepers aren't just bosses — they ARE what's preventing the law from being enforced. Killing one vacates the seat for proper enforcement to resume.
 
 ### The central paradox
-The Vagrant's act of resolving souls (riversamento) — which is PURITY's path — restarts the circle's function. He's inadvertently making Hell work again by trying to end it. PURITY's terminus (ending Hell) and the per-circle restoration are entangled. Late-game tension: he may not realize until very late that his progress has been restoring rather than destroying. *Extraordinary* narrative beat.
+The Vagrant's act of resolving souls (riversamento) — which is PURITY's path — restores each ring's enforcement. He's inadvertently making Hell work again by trying to end it. PURITY's terminus (ending Hell) and the per-circle restoration are entangled. Late-game tension: he may not realize until very late that his progress has been restoring rather than destroying. *Extraordinary* narrative beat.
 
 ### Aesthetic implications
-- Pre-keeper: eerie silence, frozen contrapasso, suspended-in-time register. Damned in mid-suffering pose, motionless.
-- Post-keeper: hum, motion, fresh blood, screaming. Different ambient audio, lighting tier, particle work. Player walks back into a re-functional circle and immediately FEELS it.
+- Pre-keeper: the ring's chaos register, distinctive per circle. Not silence — the noise of a ring without its rule. Souls caught in arbitrary disorder thematic to the specific lost role (Acheron template: pile of dissolved bodies, queue facing water-that-isn't-coming).
+- Post-keeper: hum, motion, fresh blood, screaming — but ORDERED. The sounds of a circle that is *processing*. Different ambient audio, lighting tier, particle work. Player walks back into a functioning ring and immediately FEELS the law is running again.
 
 ### Boss arenas post-defeat
 After the keeper falls, the arena becomes a normal area of the circle —

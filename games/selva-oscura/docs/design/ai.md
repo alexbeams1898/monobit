@@ -403,10 +403,10 @@ Off by default at every launch.
 - [`bestiary.md`](bestiary.md) — figura umana rule, enemy roster.
 - [`combat.md`](combat.md) — player-side combat grammar.
 - [`setting.md`](setting.md) *Per-circle reactivity* — how circles
-  behave pre-keeper vs. post-keeper. Once an enemy is *supercharged
-  by leaked contrapasso*, its action JSON's weights/cooldowns get
-  overridden by the circle's post-keeper modifier; the architecture
-  is the same.
+  behave pre-keeper vs. post-keeper. Once an enemy is *being
+  properly punished under the restored keeper's enforcement*, its
+  action JSON's weights/cooldowns get overridden by the circle's
+  post-keeper modifier; the architecture is the same.
 - [`DEV_PILLARS.md`](DEV_PILLARS.md) — design discipline. "Subtract
   before adding" applies hard here: every layer of the architecture
   was justified before being built.

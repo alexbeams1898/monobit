@@ -2003,7 +2003,7 @@ float computeLocoSplicePoseMatchTime(PoseSampler::Impl& s, const ozz::animation:
 namespace
 {
 float resolveCrossfadeResumeTime(PoseSampler::Impl& s, const ozz::animation::Animation* desired,
-                                  const std::string& desired_key, bool& out_used_pose_match)
+                                 const std::string& desired_key, bool& out_used_pose_match)
 {
     const float new_dur = desired->duration();
     // Phase-aligned splice for gait -> gait swaps; falls back to
@@ -2014,9 +2014,7 @@ float resolveCrossfadeResumeTime(PoseSampler::Impl& s, const ozz::animation::Ani
     if (out_used_pose_match)
         return pose_match_t;
     const auto it = s.last_clip_time.find(desired);
-    return (it != s.last_clip_time.end())
-               ? std::fmod(it->second, std::max(new_dur, 1e-4f))
-               : 0.0f;
+    return (it != s.last_clip_time.end()) ? std::fmod(it->second, std::max(new_dur, 1e-4f)) : 0.0f;
 }
 
 const char* keyOrFallback(const std::string& key, const char* fallback)

@@ -1,18 +1,10 @@
 #include "ecs/ItemConfig.h"
 
-// ---------------------------------------------------------------------------
-// Process-wide singleton storage for Selva's item registry.
-//
-// The registry TYPE lives in engine::ecs (see ecs/Items.h) but engine doesn't
-// instantiate a process-wide singleton -- that's a game-side decision. Selva
-// uses the same Meyer's-static pattern as its other registries
-// (selva::anim::clips(), selva::gameplay::archetypes()) and loads it from
-// config/items/*.json at boot.
-// ---------------------------------------------------------------------------
-
 namespace selva
 {
 
+// Process-wide ItemRegistry singleton. Engine ships the TYPE; the
+// instance is game-side, same Meyer's pattern as clips() / archetypes().
 ItemRegistry& itemRegistry()
 {
     static ItemRegistry s_registry;

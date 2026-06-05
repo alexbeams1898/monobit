@@ -451,11 +451,12 @@ plan needed it.
 
 His unmeasured state is what lets him host Beatrice's projection
 without Hell installing him into something else. **The same projection
-channel doubles as a contrapasso conduit** — leaked contrapasso from
-fallen keepers, which would normally land on the circle's NPC and
-shades, also routes through Beatrice's channel into the Guide. Senza
-forma should make him impervious; the channel overrides this. The
-result is degradation: substance flowing through him erodes the vessel.
+channel doubles as a sangue conduit** — when each fallen keeper's
+ring restores under its new mangled keeper, the bottled sangue of
+that ring starts moving again, and some of it routes through
+Beatrice's channel into the Guide. Senza forma should make him
+impervious; the channel overrides this. The result is degradation:
+substance flowing through him erodes the vessel.
 
 His destruction is *acceptable cost* in Beatrice's plan. She did not
 premeditate it as the goal; she did not think hard enough about whether
@@ -503,10 +504,11 @@ through the warmest exchange in the game: every time the Guide says
 
 ### Degradation across cycles
 
-As keepers fall, **the contrapasso of each consumed circle leaks**.
-Some lands on the Guide. He becomes a cumulative receptacle of
-leaked contrapasso — by 9 keepers down, loaded with all 9 circles'
-worth.
+As keepers fall, **each consumed circle's long-bottled sangue is
+released and starts moving again**. Some routes through Beatrice's
+projection channel into the Guide. He becomes a cumulative
+receptacle of restored-ring sangue — by 9 keepers down, loaded with
+substance from all 9 circles' worth of releases.
 
 The Hell-projection fails first. The Wood-body holds longer.
 
@@ -515,7 +517,7 @@ The Hell-projection fails first. The Wood-body holds longer.
 | 1-3 | Reliable. Appears at every per-keeper interlude. Coherent, helpful. | Coherent, warm, responsive. |
 | 4-6 | Cracks. Sometimes appears mid-sentence. Sometimes doesn't appear. Sometimes contradicts himself. | Visibly tired. Slower. Sadder. Less responsive. |
 | 7-8 | Rare. When it appears, it is a wisp. | Forgets which path the Vagrant is on. Repeats earlier statements. Sometimes doesn't recognize the Vagrant. |
-| All keepers down | Stopped entirely. No more in-Hell appearances. | Fully degraded. Loaded with all 9 circles' contrapasso. |
+| All keepers down | Stopped entirely. No more in-Hell appearances. | Fully degraded. Loaded with sangue from all 9 restored circles. |
 
 **Mechanical consequence:** the player loses access to in-Hell
 heal/offerings progressively before the climax. By 9 keepers down,

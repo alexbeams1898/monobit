@@ -308,11 +308,9 @@ void initCombatData()
     int n_weapons = 0;
     selva::combat::loadAllCombatData(&n_classes, &n_weapons);
     const auto& eq = selva::combat::equipment();
-    selva::combat::resolveAttackCancelOpenTimes(selva::combat::weaponClasses(),
-                                                selva::anim::clips(),
-                                                selva::gameplay::player().sampler);
-    std::fprintf(stderr,
-                 "[combat] loaded %d class(es), %d weapon(s); right=%s left=%s grip=%s\n",
+    selva::combat::resolveAttackCancelOpenTimes(
+        selva::combat::weaponClasses(), selva::anim::clips(), selva::gameplay::player().sampler);
+    std::fprintf(stderr, "[combat] loaded %d class(es), %d weapon(s); right=%s left=%s grip=%s\n",
                  n_classes, n_weapons, eq.right ? eq.right->id.c_str() : "(empty)",
                  eq.left ? eq.left->id.c_str() : "(empty)",
                  eq.grip == selva::combat::Grip::TwoHanded ? "two_handed" : "one_handed");

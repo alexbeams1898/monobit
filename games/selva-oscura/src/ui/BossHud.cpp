@@ -253,8 +253,7 @@ void cacheBossForFadeIn(BossHudState& s, double now, const selva::gameplay::Acto
 {
     s.mode = BossHudState::Mode::FadingIn;
     s.mode_entered_at = now;
-    s.cached_boss_name =
-        (boss.archetype != nullptr) ? boss.archetype->boss_name : std::string{};
+    s.cached_boss_name = (boss.archetype != nullptr) ? boss.archetype->boss_name : std::string{};
     s.cached_felled_message =
         (boss.archetype != nullptr) ? boss.archetype->felled_message : std::string{};
     s.cached_show_felled_overlay =
@@ -338,7 +337,7 @@ void drawBossHudByMode(const BossHudState& s, double now, float hp_norm)
         return;
     case BossHudState::Mode::FadingIn:
         drawHpBarAndName(s.cached_boss_name, hp_norm,
-                          fadeAlpha(now, s.mode_entered_at, kFadeInSeconds));
+                         fadeAlpha(now, s.mode_entered_at, kFadeInSeconds));
         return;
     case BossHudState::Mode::Active:
         drawHpBarAndName(s.cached_boss_name, hp_norm, 1.0f);
@@ -348,7 +347,7 @@ void drawBossHudByMode(const BossHudState& s, double now, float hp_norm)
         return;
     case BossHudState::Mode::FadingOut:
         drawHpBarAndName(s.cached_boss_name, 0.0f,
-                          1.0f - fadeAlpha(now, s.mode_entered_at, kFadeOutSeconds));
+                         1.0f - fadeAlpha(now, s.mode_entered_at, kFadeOutSeconds));
         return;
     }
 }

@@ -2,8 +2,11 @@
 
 #include "debug/Flags.h"
 #include "hazard/HazardZones.h"
+#include "interact/Interaction.h"
 #include "physics/PhysicsWorld.h"
 #include "render/RegionShaders.h"
+#include "text/Examine.h"
+#include "text/TextPresentation.h"
 #include "world/Terrain.h"
 
 #include <cmath>
@@ -110,8 +113,8 @@ void parsePostFlagPositions(const nlohmann::json& arr, selva::gameplay::EnemySpa
         const auto& fp_pos = fp.at("pos");
         if (!fp_pos.is_array() || fp_pos.size() < 3)
             continue;
-        entry.pos = parsePosAllowAutoTerrain(fp_pos, entry.pos_y_auto_terrain,
-                                              "post_flag_positions[].pos");
+        entry.pos =
+            parsePosAllowAutoTerrain(fp_pos, entry.pos_y_auto_terrain, "post_flag_positions[].pos");
         entry.yaw = fp.value("yaw", 0.0f);
         d.post_flag_positions.push_back(std::move(entry));
     }
@@ -123,8 +126,7 @@ void parsePatrolPath(const nlohmann::json& s, selva::gameplay::EnemySpawnDecl& d
         return;
     for (const auto& wp : s["patrol_path"])
         if (wp.is_array() && wp.size() >= 3)
-            d.patrol_path.emplace_back(wp[0].get<float>(), wp[1].get<float>(),
-                                       wp[2].get<float>());
+            d.patrol_path.emplace_back(wp[0].get<float>(), wp[1].get<float>(), wp[2].get<float>());
 }
 
 void parseScriptedTarget(const nlohmann::json& s, selva::gameplay::EnemySpawnDecl& d)
@@ -174,8 +176,7 @@ selva::world::DoorDecl parseDoor(const nlohmann::json& s)
         throw std::runtime_error("doors[].pos must be [x, y, z]");
     d.pos = glm::vec3(pos_arr[0].get<float>(), pos_arr[1].get<float>(), pos_arr[2].get<float>());
     d.yaw = s.value("yaw", 0.0f);
-    if (s.contains("hinge_offset") && s["hinge_offset"].is_array() &&
-        s["hinge_offset"].size() >= 3)
+    if (s.contains("hinge_offset") && s["hinge_offset"].is_array() && s["hinge_offset"].size() >= 3)
         d.hinge_offset = parseVec3(s["hinge_offset"]);
     const std::string axis_str = s.value("hinge_axis", std::string("Y"));
     d.hinge_axis = axis_str.empty() ? 'Y' : axis_str[0];
@@ -184,13 +185,13 @@ selva::world::DoorDecl parseDoor(const nlohmann::json& s)
     d.mesh_path = s.value("mesh", std::string{});
     d.player_interactable = s.value("player_interactable", true);
     d.persistent = s.value("persistent", true);
-    d.initial_state =
-        selva::world::parseDoorState(s.value("initial_state", std::string("Closed")));
+    d.initial_state = selva::world::parseDoorState(s.value("initial_state", std::string("Closed")));
     return d;
 }
 
-engine::world::TerrainModifier parseTerrainModifier(
-    const nlohmann::json& m, std::vector<std::unique_ptr<std::string>>& owned_strings)
+engine::world::TerrainModifier
+parseTerrainModifier(const nlohmann::json& m,
+                     std::vector<std::unique_ptr<std::string>>& owned_strings)
 {
     engine::world::TerrainModifier mod;
     mod.center_xz = parseVec2(m.value("center_xz", nlohmann::json::array()));
@@ -361,6 +362,22 @@ void JsonRegion::preloadStaticMeshEntry(const nlohmann::json& m)
     lm->world_origin = parseVec3(m.value("world_origin", nlohmann::json::array()));
     lm->tag = parseSurfaceTag(m.value("surface_tag", std::string{"Architecture"}));
     lm->debug_name = m.value("debug_name", std::string{});
+    // Optional Examine interactable: pressing E within range pops the
+    // text in Grimoire register. Anchor defaults to world_origin if
+    // examine_anchor isn't specified (most props -- the pile, vestigia
+    // -- want the prompt centered on the mesh origin).
+    lm->examine_text = m.value("examine_text", std::string{});
+    // Default label to debug_name so an author who declares examine_text
+    // without a label gets a sane prompt instead of an empty one.
+    lm->examine_label = m.value("examine_label", lm->debug_name);
+    if (m.contains("examine_anchor") && m["examine_anchor"].is_array() &&
+        m["examine_anchor"].size() >= 3)
+        lm->examine_anchor = parseVec3(m["examine_anchor"]);
+    else
+        lm->examine_anchor = lm->world_origin;
+    // Match the field name used by archetype-side interactables
+    // (EnemyArchetype::interact_range_meters) so authors don't guess.
+    lm->interact_range_meters = m.value("interact_range_meters", 2.5f);
     if (!loadStaticMesh(lm->path.c_str(), lm->world_origin, lm->mesh))
     {
         std::fprintf(stderr, "[json-region '%s'] failed to load mesh: %s\n", regionId().c_str(),
@@ -429,6 +446,30 @@ void JsonRegion::preloadAssets()
     is_preloaded = true;
 }
 
+// Per-mesh examine_text in region.json registers an Examine prompt
+// at the mesh's examine_anchor. Used for cosmological waypoints
+// (Acheron pile, vestigia, future shrines). Ids tracked in
+// mesh_interactable_ids; cleaned up on deactivate.
+void JsonRegion::registerStaticMeshExamines()
+{
+    for (const auto& lm : loaded_meshes)
+    {
+        if (lm->examine_text.empty())
+            continue;
+        selva::interact::Decl idecl;
+        idecl.kind = selva::interact::Kind::Examine;
+        const glm::vec3 anchor = lm->examine_anchor;
+        idecl.position = [anchor]() { return anchor; };
+        idecl.range_meters = lm->interact_range_meters;
+        idecl.label = lm->examine_label;
+        const std::string text = lm->examine_text;
+        idecl.on_interact = [text]() { selva::text::beginExamine(text); };
+        idecl.available = []() { return !selva::text::active(); };
+        const selva::interact::Id id = selva::interact::registerInteractable(std::move(idecl));
+        mesh_interactable_ids.push_back(id);
+    }
+}
+
 void JsonRegion::commitPrepared(engine::world::RegionActivationContext& ctx)
 {
     // Lazy preload: if a region wasn't preloaded at boot (e.g.
@@ -474,6 +515,8 @@ void JsonRegion::commitPrepared(engine::world::RegionActivationContext& ctx)
                 ctx.addBody(h);
         }
     }
+
+    registerStaticMeshExamines();
 
     // Terrain modifiers are parsed in the constructor + registered
     // by registerModifiers() (called at boot BEFORE initTerrain so
@@ -532,6 +575,15 @@ void JsonRegion::onDeactivate()
     // game session so re-activation is sub-ms. They're freed at
     // game shutdown via freeAssets(). Body cleanup is automatic
     // via the engine's owned-body tracking.
+    //
+    // Per-mesh Examine interactables MUST be unregistered: their
+    // closures captured the mesh's anchor pos + text by value, so
+    // the registry would otherwise keep them alive across regions
+    // and the player would press E to read a pile of larvae from
+    // miles away.
+    for (const auto id : mesh_interactable_ids)
+        selva::interact::unregisterInteractable(id);
+    mesh_interactable_ids.clear();
 }
 
 void JsonRegion::freeAssets()

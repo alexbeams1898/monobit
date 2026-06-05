@@ -378,6 +378,33 @@ struct Actor
     // never enrolled in. Stamped by FlowSpawner immediately post-spawn.
     std::string spawning_flow_id;
 
+    // For flow-spawned actors with a successor pattern (e.g. soul larvae:
+    // a fresh trickle-spawned to replace an aged eats the aged's corpse
+    // during its arrival/conversion window). spawn_decl_id of the corpse
+    // this actor was paired with at trickle-spawn time, popped from the
+    // flow's pending_corpses FIFO. On conversion, consumePairedCorpse
+    // rewinds that specific corpse's death_time so the right body fades.
+    // Empty for actors with no corpse to consume (initial population,
+    // first-cycle trickle before any deaths). Per
+    // [[project_soul_larvae_cosmology]] feeding-as-conversion doctrine.
+    std::string feeding_on_actor_id;
+
+    // Per-actor override for the locomotion-track clip pick. When
+    // non-empty, pickEnemyLocomotionClip returns this clip key
+    // regardless of speed/awareness — used when the actor must visibly
+    // do something specific that the normal gait picker wouldn't
+    // produce (a fresh larva crouched over a corpse, eating). Cleared
+    // by applyArchetypeSwap so a converted actor reverts to standard
+    // gait picking. Resolves via the actor's per-skeleton clip
+    // registry, same as the archetype-clip funnel.
+    std::string idle_clip_override;
+
+    // Set by FlowSpawner::tickPostDeathQueueing once this actor's
+    // spawn_decl_id has been pushed onto its flow's pending_corpses
+    // FIFO. Prevents double-enqueue if the per-frame scan sees the
+    // same corpse twice.
+    bool flow_corpse_queued = false;
+
     // Wallclock at which Engaged -> Dying fires. -1 outside scripted
     // death. Set by setBossState(Engaged) when archetype declares
     // scripted_death_seconds > 0.

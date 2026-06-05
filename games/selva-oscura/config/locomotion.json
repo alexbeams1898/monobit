@@ -64,9 +64,25 @@
             "translation_source": "root_motion"
         },
         {
-            "_comment":
-                "One-shot. Authored hip XZ travel is ~0.7m -- below the 1.5m default extraction threshold -- so it must declare root_motion explicitly or PoseSampler leaves the motion in the pose (mesh visibly travels, sPlayer.pos doesn't, slide-snap at clip end).",
+            "_section_comment":
+                "PC one-shots with authored hip travel. Classification is authoritative -- the 1.5m hip-path heuristic was removed, so every clip whose visible motion translates the body must declare root_motion or it stays in_place by default (mesh moves, body doesn't, camera doesn't follow). getting_up_3 from prone, falling_to_roll forward dodge, standing_dodge_backward backstep, running_jump WASD-held forward arc, jumping stationary (XZ near-zero so cls doesn't matter much but registered for consistency).",
             "name": "getting_up_3",
+            "translation_source": "root_motion"
+        },
+        {
+            "name": "falling_to_roll",
+            "translation_source": "root_motion"
+        },
+        {
+            "name": "standing_dodge_backward",
+            "translation_source": "root_motion"
+        },
+        {
+            "name": "running_jump",
+            "translation_source": "root_motion"
+        },
+        {
+            "name": "jumping",
             "translation_source": "root_motion"
         },
         {

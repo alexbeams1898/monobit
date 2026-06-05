@@ -52,8 +52,7 @@ void parseChoices(const nlohmann::json& t, Topic& topic)
         ch.id = c.value("id", std::string{});
         ch.label = c.value("label", std::string{});
         ch.next_topic = c.value("next_topic", std::string{});
-        ch.choice_show_when =
-            parseShowWhen(c.value("choice_show_when", nlohmann::json::object()));
+        ch.choice_show_when = parseShowWhen(c.value("choice_show_when", nlohmann::json::object()));
         ch.on_select = c.value("on_select", std::string{});
         topic.choices.push_back(std::move(ch));
     }
@@ -88,7 +87,7 @@ bool parseTopic(const nlohmann::json& t, const std::string& npc_id,
 }
 
 void validateNextTopicReferences(const NpcDialog& npc,
-                                  const std::unordered_set<std::string>& topic_ids)
+                                 const std::unordered_set<std::string>& topic_ids)
 {
     for (const auto& topic : npc.topics)
     {
@@ -106,10 +105,9 @@ void validateNextTopicReferences(const NpcDialog& npc,
                 continue;
             if (topic_ids.count(ch.next_topic) == 0)
             {
-                std::fprintf(stderr,
-                             "[npc-dialog] '%s' topic '%s' choice '%s' next_topic '%s' not found\n",
-                             npc.npc_id.c_str(), topic.id.c_str(), ch.id.c_str(),
-                             ch.next_topic.c_str());
+                std::fprintf(
+                    stderr, "[npc-dialog] '%s' topic '%s' choice '%s' next_topic '%s' not found\n",
+                    npc.npc_id.c_str(), topic.id.c_str(), ch.id.c_str(), ch.next_topic.c_str());
                 std::fflush(stderr);
             }
         }

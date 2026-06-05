@@ -97,8 +97,7 @@ void armScriptedDeathTimers(Actor& actor)
         if (clip != nullptr && clip->isLoaded())
             pain_duration = clip->duration();
     }
-    actor.scripted_death_drain_end_wallclock =
-        actor.scripted_death_at_wallclock + pain_duration;
+    actor.scripted_death_drain_end_wallclock = actor.scripted_death_at_wallclock + pain_duration;
     std::fprintf(stderr, "[scripted-death] '%s' armed: dying at %.2f, drain ends at %.2f\n",
                  actor.spawn_decl_id.c_str(), actor.scripted_death_at_wallclock,
                  actor.scripted_death_drain_end_wallclock);
@@ -120,8 +119,7 @@ void writeEngagedMirrors(Actor& actor, BossState prev)
         selva::audio::pushMusicBed(actor.archetype->encounter_audio_bed);
     }
     if (prev == BossState::Dormant && actor.archetype != nullptr &&
-        actor.archetype->scripted_death_seconds > 0.0f &&
-        actor.scripted_death_at_wallclock < 0.0f)
+        actor.archetype->scripted_death_seconds > 0.0f && actor.scripted_death_at_wallclock < 0.0f)
     {
         armScriptedDeathTimers(actor);
     }

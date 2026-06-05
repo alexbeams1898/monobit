@@ -2,6 +2,7 @@
 
 #include "gameplay/AiBarriers.h"
 #include "gameplay/Enemies.h"
+#include "interact/Interaction.h"
 #include "world/AsyncRegionLoader.h"
 #include "world/Door.h"
 #include "world/StaticMeshAssets.h"
@@ -125,6 +126,9 @@ class JsonRegion : public engine::world::AsyncCapableRegion
     // cyclomatic complexity / length.
     void preloadStaticMeshEntry(const nlohmann::json& m);
     void preloadTerrainShapes();
+    // commitPrepared helpers (keeps the orchestrator's CCN under the
+    // lizard threshold by extracting each phase).
+    void registerStaticMeshExamines();
 
     nlohmann::json region_json;
     std::string region_folder;
@@ -141,8 +145,22 @@ class JsonRegion : public engine::world::AsyncCapableRegion
         // so commitPrepared can just add bodies (sub-ms) instead of
         // rebuilding BVHs every activation.
         std::vector<engine::physics::ShapeHandle> shape_handles;
+        // Optional Examine interactable. Non-empty examine_text =
+        // pressing E within interact_range_meters of examine_anchor
+        // pops the text in Grimoire register. Used for cosmological
+        // waypoints (Acheron pile, vestigia, future shrines). Empty
+        // examine_text = no interactable. Field name matches the
+        // archetype-side EnemyArchetype::interact_range_meters.
+        std::string examine_text;
+        std::string examine_label;
+        glm::vec3 examine_anchor{0.0f};
+        float interact_range_meters = 2.5f;
     };
     std::vector<std::unique_ptr<LoadedMesh>> loaded_meshes;
+    // Interactable ids registered at commitPrepared for any
+    // loaded_mesh with non-empty examine_text. Unregistered on
+    // onDeactivate so a region transition doesn't leak examines.
+    std::vector<selva::interact::Id> mesh_interactable_ids;
     // Preloaded shape handles for terrain regions. Built in
     // preloadAssets, reused on each activation. Index aligns with
     // selva::world::terrainRegion(i).

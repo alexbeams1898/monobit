@@ -321,58 +321,104 @@ they express what the substance is doing in or through the Vagrant.
 
 Hell as Dante describes it is a perfect closed pipeline: a soul dies,
 is judged, is transported to Acheron, is ferried across by Charon,
-is deposited in its assigned circle, undergoes contrapasso eternally.
-Each step is exact. The machinery is divine, and so it is precise.
+is deposited in its assigned circle, where the **law of that circle**
+(its contrapasso — the matched-to-sin punishment) is enforced upon
+it eternally by the circle's divinely-installed administrator. Each
+step is exact. The machinery is divine, and so it is precise.
 
 That is the Hell we inherit *as text*. The Hell we render *as game*
 is broken — and the brokenness is the central condition the game
 plays inside.
 
-**Lucifer is the root cause.** Whatever he did from his position at
-the bottom of Cocytus initiated the failure. His act was not a
-direct strike against the keepers or against Charon; it was a
-disruption at the pit that PROPAGATED outward and upward through
-the machinery over time. Hell did not fail all at once. It has
-been *slowly* failing — sangue going rogue, contrapasso slipping,
-the closed pipeline leaking, the divine precision eroding circle by
-circle — for as long as it took the disruption to reach each layer.
-The specific shape of Lucifer's act is not narrated in canon; it is
-a question the game can surface gradually across the descent.
+#### What "broken" means here — and what it doesn't
 
-**The original keepers of each circle are gone.** The divinely-
-installed administrators who ran each circle's contrapasso under
-divine sanction have been lost to the corruption. They do not exist
-at the seats at game-start. Their absence is the load-bearing reason
-contrapasso cannot continue properly.
+The law of each circle is unchanged. Contrapasso is not a substance
+that can be lost or spilled; it is the **rule** of the ring, divinely
+established at the founding of Hell, and it persists whether anyone
+enforces it or not. The gluttony-circle's law is still "the gluttonous
+are rained on by Cerberus." The lust-circle's law is still "the
+lustful are torn by the wind." Etc. These laws are features of the
+cosmology itself.
 
-**The fate of each original is per-keeper specific.** Some originals
-were *transformed* by the corruption — they absorbed warped sangue,
-their function broke down, they twisted into the demonic figure that
-now sits the seat. The new keeper IS the original, irretrievably
-changed. Others may have been *destroyed* by the failure (consumed,
-dispersed, simply ceased) and replaced by external parasites that
-rose to fill the vacuum. Which keepers fall into which category is
-authored per circle; not all circles share the same mechanism.
-What is universal: the figure at the seat at game-start is NOT the
-divine keeper. What sits there now is a downstream effect of
-Lucifer's act.
+What's broken is the **enforcement** of those laws. The figures who
+ran the enforcement — the divine keepers of each circle, plus the
+pre-circle administrators (Charon, Minos, the gate-warden) — are
+gone. What sits at each seat at game-start is NOT the original
+keeper. What sits there now is a corrupt residue: the original
+transformed into something demonic that no longer enforces the law,
+or an external parasite that rose to fill the vacuum and is doing
+whatever it wants instead.
 
-**The Vagrant fells the keeper at the seat; the released
-contrapasso installs into the circle's NPC, MANGLING them into the
-new keeper.** When the Vagrant kills the keeper, the suspended
-contrapasso of that circle is released. It flows toward the one
-figure Beatrice has been preparing across centuries — the circle's
-main NPC, whose pre-keeper lucid window was incipient keeper-
-consciousness shaped for this moment (per pc-vs-npc.md and
-*Per-circle reactivity* below). The contrapasso installs into them
-violently — *mangling* them — into a wounded version of what a
-keeper should be. The new keeper looks and functions like a damaged
-echo of the lost original; not a restoration of the original, but
-the closest approximation Hell can produce under the corruption.
+The result, ring by ring: **the law of the circle stands, but no
+one administers it.** Souls who arrived there to be punished
+according to their sin instead encounter chaos. Not paused, not
+frozen — chaos. Every circle has become its own degenerate disorder,
+shaped by the specific failure of its specific lost keeper. The
+gluttony-circle without Cerberus produces its own kind of riot; the
+violence-circle without Phlegyas its own; etc. Each ring's chaos is
+*thematic* to its lost law — what happens when souls who came for
+that specific punishment instead find no one running it. (Author note:
+the specific failure-mode of each ring is designed into that ring's
+keeper arc, not pre-locked here. The Acheron failure-mode is the
+template: no Charon → souls accumulate, never cross, dissolve into a
+pile that re-coalesces new arrivals out of itself; everyone faces
+water that isn't coming.)
+
+#### Lucifer
+
+**Lucifer is the root cause** — whatever he did from his position at
+the bottom of Cocytus initiated the failure that has propagated
+outward through the machinery over centuries. The specific shape of
+his act is not narrated in canon; it is a question the game can
+surface gradually across the descent.
+
+**Lucifer is absent from the world the player encounters.** No NPC
+references him as a present agent. To the souls who have arrived
+since the disruption, he is at best a folk-figure invoked the way
+modern English invokes "hell" itself — a word in the air, not a
+believed entity. The discovery that Lucifer was real and what he
+specifically did is the player's payoff to earn, not something the
+world advertises.
+
+#### The keepers as the player meets them
+
+**The original keepers are gone.** Per-circle fate is authored
+individually. Some were *transformed* by the long corruption —
+absorbed warped sangue, their administrative function broke down,
+they twisted into the demonic figure that now sits the seat. The
+figure IS the original, irretrievably changed. Others may have been
+*destroyed* (consumed, dispersed, simply ceased) and replaced by
+external parasites that rose to fill the vacuum. Which keepers fall
+into which category is authored per ring.
+
+**What is universal: the figure at the seat at game-start is doing
+fuckall about the circle's law and a great deal of evil on its own
+account.** The lost original used to enforce contrapasso (terrible
+in its own right; the souls of that ring earned it). The replacement
+does not enforce contrapasso. It indulges its own degenerate
+inclinations across the ring's population, and the population
+suffers chaos rather than law. This is *worse* than proper Hell —
+the souls were sentenced to a specific just punishment; they instead
+get arbitrary disorder, and they degrade further inside it instead
+of paying their assigned debt.
+
+#### Restoration
+
+**The Vagrant kills the corrupt keeper at the seat.** With the seat
+vacated, the circle's enforcement role — the **administrative
+function** that the original keeper performed, unfilled for
+centuries while the corrupt residue squatted the seat — is finally
+available to be filled again. The role installs into the one figure
+Beatrice has been preparing across centuries: that circle's main
+NPC, whose pre-keeper lucid window was incipient keeper-consciousness
+shaped for this moment (per pc-vs-npc.md and *Per-circle reactivity*
+below). The installation is violent — it MANGLES the NPC into a
+wounded version of what a proper keeper should be. The new keeper
+looks and functions like a damaged echo of the lost original.
 
 **This mangling is permanent damage.** Even fully-restored Hell
-post-victory is not pristine Hell. Each circle's restored keeper
-is a Beatrice-prepared NPC who has been broken into a keeper-form
+post-victory is not pristine Hell. Each circle's restored keeper is
+a Beatrice-prepared NPC who has been broken into a keeper-form
 shaped by proximity to the lost original's pattern. The mangling
 reflects the fact that *the originals are gone forever*; no NPC can
 be a true replacement; what gets installed is the closest
@@ -380,6 +426,17 @@ approximation Hell can produce, scarred by Lucifer's act and by
 Beatrice's own fragmentation. Hell can be RESTORED but never
 PERFECTED. The mark of the failure persists in every restored
 circle thereafter.
+
+**Under the new keeper, the circle's law starts being enforced
+again.** Souls who had been caught in the corrupt-keeper's chaos
+now encounter the proper punishment of their ring for the first
+time in centuries. Cerberus rains on the gluttonous. The wind
+blows on the lustful. The river receives the violent. This is what
+the souls were sentenced to. The circle moves from chaos to
+enforced-law — a scarred enforcement under a mangled keeper, but
+enforcement nonetheless. The contrast between pre-restoration
+chaos and post-restoration enforced-law is the central visible
+demonstration of what the Vagrant has done.
 
 **Why only the Vagrant works.** Per the unjudged-soul cosmology
 already established, Hell cannot process an unjudged soul. Only an
@@ -390,26 +447,28 @@ unjudged's. Damned souls cannot do this because Hell's accounting
 accepts them as legitimate (both the keeper and the damned soul are
 captured by the same broken machinery).
 
-**Each restoration leaks sangue into the Wood.** The dispossession
-releases accumulated contrapasso-failure substance that had been
-bottled up while the corrupted keeper held the seat. The Wood-side
-ecology activates more fully per restoration. See *The Wood and
-its expansion across cycles* below.
+**Each restoration leaks sangue into the Wood.** When the corrupt
+keeper falls and the enforcement role re-installs, the long-bottled
+substance of the disrupted ring escapes. The Wood-side ecology
+activates more fully per restoration. See *The Wood and its
+expansion across cycles* below.
 
-**Soul-delivery upstream of Acheron still functions partially.** The
-half of Hell's machinery responsible for marking a soul as judged
+#### The Acheron failure — the template
+
+The pre-circle machinery responsible for marking a soul as judged
 and depositing it at Acheron's near-shore was less affected by the
-slow corruption than the downstream Charon-and-after half. But the
-mechanism by which souls actually MANIFEST on the shore has been
-deformed by what came before: there is no longer a clean
-materialization-at-the-bank. Instead, the centuries of dissolved
-soul-substance that has accumulated as the pile on the shore is the
-substrate from which new arrivals re-coalesce. Hell's protocol
-still requires a soul to appear at Acheron; in the broken pipeline,
-what appears is RE-FORMED out of the pile's dissolved substance.
-The pile is both the historical scar of refused descent AND the
-active production mechanism for new arrivals — the cosmological
-clog made visible.
+slow corruption than the keeper-and-after half. But Charon is gone
+(transformed, destroyed, or simply absent — not authored which yet),
+and the mechanism by which souls actually MANIFEST on the shore has
+been deformed by what came before. Without a ferryman, no one
+crosses. Without crossing, no one reaches their assigned circle.
+Souls accumulate, fail to be processed, dissolve over centuries
+into a pile of substance at the embarkation point. Hell's protocol
+still requires a soul to appear at Acheron at the moment of judgment;
+in the broken pipeline, what appears is RE-COALESCED out of the
+pile's dissolved substance. The pile is both the historical scar of
+refused descent AND the active production mechanism for new arrivals
+— the cosmological clog made visible.
 
 **The queue stands at the river's edge, eternally awaiting Charon.**
 The aged (still-coherent) souls face the water, refusing to step in
@@ -418,10 +477,18 @@ sangue), refusing to retreat (their judgment-protocol named the
 crossing as the next step). They stand at the shoreline. They have
 been standing for centuries. The pile sits inland of them,
 producing more standing-waiters as old slots empty into the river
-(through inter-larva attrition over the long history) or into
-contrapasso (briefly, post-keeper-restoration). The tragedy is the
-facing: every soul in the queue is oriented toward what isn't
-coming.
+(through inter-larva attrition over the long history) or finally
+into proper passage (briefly, post-keeper-restoration when whatever
+fills Charon's role resumes). The tragedy is the facing: every
+soul in the queue is oriented toward what isn't coming.
+
+This pattern — *the law of the ring stands, the enforcement is
+gone, chaos thematic to the specific lost role fills the vacuum* —
+is the template every circle's failure follows. The Acheron failure
+is the one the player sees first, in concrete cosmological form,
+before any vocabulary for it has been earned.
+
+#### Beatrice's separation
 
 **Beatrice is NOT involved in Hell's machinery.** Hell's failure is
 INTERNAL to Hell. Beatrice is an external (heaven-side) agent who
@@ -430,15 +497,20 @@ intercession. Her "fragmentary, rabid" status (see *Beatrice* below)
 is its own condition — it is not the cause of Hell's failure, and
 restoring Hell does not restore her.
 
-**What is NOT yet canon (parking-lot for keeper arcs):**
+#### What is NOT yet canon (parking-lot for keeper arcs)
+
 - The specific shape of Lucifer's act. The disruption originated at
   the pit and propagated outward; the mechanism is designable into
   the late-game keeper arcs.
 - Per-keeper fate of the original — transformed vs destroyed-and-
   parasitically-replaced. Each keeper arc authors its own answer.
-- The fate of Minos and other named pre-circle administrators
-  (Charon, the gate-warden, etc.). Same shape: corrupted-into-current-
-  form or replaced. Per-figure decisions.
+- The fate of Minos, Charon, the gate-warden, and the other named
+  pre-circle administrators. Same shape: corrupted-into-current-form
+  or replaced. Per-figure decisions.
+- The specific *thematic shape of chaos* in each circle — what does
+  the gluttony-circle look like with no Cerberus, the violence-circle
+  with no Phlegyas, etc. Each keeper arc designs this itself; the
+  Acheron failure (no Charon → pile + queue) is the worked template.
 - What each post-restoration mangled-NPC keeper looks like, says,
   and does. Each keeper arc designs this itself.
 
@@ -943,156 +1015,218 @@ Formal register: *la Sperimentatrice* / *the Meddler* / *her*. Not
 
 ## Per-circle reactivity
 
-### Contrapasso is the law; the current keepers are the BREAK
+### Contrapasso is the law; the current keepers are doing fuckall
 
 **Contrapasso is THE cosmological law of Hell.** It is the
-punishment-mechanism that makes Hell *function as a system* — the
-process by which sangue (the substance of suffering) is properly
-arranged into a soul's punishment-shape. Functional Hell runs on
-contrapasso. Broken Hell does not.
+punishment-rule of each ring — divinely established at the founding,
+matched to the sin the ring is dedicated to. Gluttons rained on,
+lustful wind-blown, violent boiled, etc. Contrapasso is not a
+substance. It is not bottled, it does not flow, it cannot be lost or
+spilled. It is the LAW of the ring and it persists regardless of who
+is or isn't enforcing it.
 
-The current keepers are **NOT enforcing contrapasso.** They are
-*holding it suspended.* Each keeper is the cosmological lock that
-keeps its circle frozen in stagnation — the bottleneck that prevents
-the law from operating. This is the structural mechanism of Hell's
-failure: the keepers, originally installed to officiate contrapasso,
-have become the means by which contrapasso has stopped running.
-Hell is stagnated because its keepers are *the brake on its own law*.
+What's broken is **enforcement**. The original keeper of each circle
+was the divinely-installed administrator who ran that ring's
+contrapasso. The originals are gone (transformed, destroyed, or
+replaced — see *Hell's failure*). What sits at each seat at game-
+start is a corrupt residue: a demonic mutation of the original, or
+a parasite that filled the vacuum. The current keeper **does not
+enforce the law of the circle.** It indulges its own degenerate
+inclinations and lets the ring become whatever chaos that produces.
+Souls who were sentenced to a specific just punishment find no one
+running it — they are caught in arbitrary disorder thematic to the
+specific lost keeper's absence. They suffer (Hell is still Hell),
+but they suffer wrong — not paying their debt, just degrading
+further inside the chaos.
 
-**Killing a keeper is not "destroying enforcement." It is
-*removing the lock*.** Second-deathing the keeper releases the
-suspension. Contrapasso returns to its proper function in that
-circle. The cosmological law resumes operation on the souls there.
+**Killing the corrupt keeper vacates the seat.** The enforcement
+role of that ring — the **administrative function** the original
+keeper performed, dormant for centuries while the corrupt residue
+squatted the seat — finally becomes available to be filled again.
 
 ### Pre-keeper (whole circle)
 
-Stagnated state. The keeper holds the contrapasso suspended; shades
-endure their frozen punishment-poses without resolution; the NPC of
-the circle is in their lucid window (interiority retained because the
+Chaotic state. The corrupt keeper at the seat is doing fuckall about
+the ring's law and a great deal of its own degenerate evil across
+the population. Souls of this ring, who arrived to be punished
+according to their sin, instead encounter disorder shaped by the
+specific failure of this specific lost role. The NPC of the circle
+is in their lucid window — interiority retained because the
 contrapasso-machine is not properly processing them, leaving room
-for awareness). Larval damned bound for this circle pile at Acheron's
-near shore (per `crypt.md` *The larval damned*) because the
-delivery pipeline has jammed. Audio is the circle's standard tonal
-slot in the descent sequence — held, frozen, suspended.
+for awareness. Larval damned bound for this circle pile at Acheron's
+near shore (per *Hell's failure* above) because the delivery
+pipeline has jammed at Charon. Audio is the ring's degenerate-chaos
+register, distinctive per circle — not the silence of a paused
+machine, the noise of a ring without its rule.
 
 ### Post-keeper (restored circle)
 
-The keeper is given second death and does not return. **Contrapasso
-RESTORES to that circle.** The substance flow that was suspended
-resumes. The system catches up:
+The keeper is given second death and does not return. **The
+enforcement role of the ring re-installs into Beatrice's prepared
+NPC, and under that new (mangled) keeper the ring's law starts
+being enforced again for the first time in centuries.**
 
 - **The NPC is mangled into the new keeper.** This is Beatrice's
-  act, channeling Hell's released contrapasso. The NPC's lucid
-  window pre-keeper-fall was always *incipient keeper-consciousness*
-  — Beatrice has been preparing them across centuries for the role
-  they will assume when the lock comes off. At the moment the
-  corrupted keeper falls, the suspended contrapasso releases and
-  Beatrice routes it into the NPC. The installation is violent —
-  the NPC's body transforms under the load; the contrapasso
-  machinery embeds into them; they become a wounded approximation
-  of what a divine keeper of that circle should have been. Not a
-  clean promotion — a *mangling*, because the original divine
-  keeper is gone forever (lost to Lucifer's slow corruption) and
-  no NPC can be a true replacement. What gets installed is the
+  act, channeling the vacated enforcement role of the ring into the
+  one figure she has been preparing across centuries for the moment
+  the seat opened. The NPC's lucid window pre-keeper-fall was
+  always *incipient keeper-consciousness* — Beatrice shaping them
+  for the role they will assume when it becomes fillable. The
+  installation is violent: the NPC's body transforms under the
+  load of taking on the keeper-function; they become a wounded
+  approximation of what a divine keeper of that ring should have
+  been. Not a clean promotion — a *mangling*, because the original
+  divine keeper is gone forever (lost to Lucifer's slow corruption)
+  and no NPC can be a true replacement. What gets installed is the
   closest approximation Hell can produce, scarred by Lucifer's act
   and by Beatrice's own fragmentation. Lucid window closes because
   there is no longer a soul to be lucid — the NPC has been
-  installed as Hell's mechanism for that circle, in its damaged
-  form. See *Hell's failure — Lucifer's act and its slow
-  consequences* above.
-- **The surviving shades enter proper contrapasso.** Frozen
-  punishment-poses unfreeze. Wind blows on the lustful. Cerberus
-  rains on the gluttonous. The blood-river receives the violent.
-  This is the *resumed* state — what each circle SHOULD have looked
-  like before centuries of stagnation. Subsequent visits to the
-  circle find a *working Hell-zone* where there was previously a
-  graveyard.
-- **The contrapasso-husk dissolves.** The old keeper's residual is
-  a transitional excrescence — what's left of the broken state. As
-  the new keeper assumes function, the husk dissipates. Encountering
-  one in a recently-restored circle is encountering a *fading
-  remnant of the broken cosmology*, not an active threat.
-- **Fresh souls finally descend.** The larval damned that have been
-  piling at Acheron's near shore (the circle's backlog) finally
-  descend to this circle and begin their contrapasso. The pipeline
-  flows again for the first time in centuries. The circle becomes
-  populated by *actively-suffering souls* — vivid, articulate,
-  sculpted by the contrapasso that has resumed.
-- **Audio shifts to *working Hell*.** Tones detune from their frozen
-  register into active suffering — screaming, churning, the sounds
-  of a circle that is *processing*. The keeper's musical motif gives
-  way to the new keeper-NPC's motif. The ambient is no longer
-  haunted; it is *functioning*.
+  installed as Hell's mechanism for that ring, in its damaged form.
+  See *Hell's failure — Lucifer's act and its slow consequences*
+  above.
+- **The shades enter proper contrapasso.** Under the new keeper,
+  the ring's law is finally being enforced. Wind blows on the
+  lustful. Cerberus rains on the gluttonous. The blood-river
+  receives the violent. The shades who had been caught in the
+  corrupt-keeper's chaos now encounter the actual punishment they
+  were sentenced to — terrible, but lawful, and consistent with
+  what their sin earned. Subsequent visits to the circle find a
+  *working Hell-zone* where there was previously a riot.
+- **The corrupt-keeper's residue dissolves.** Whatever the
+  defeated figure was — transformed-original or parasitic
+  replacement — its remaining substance is a transitional
+  excrescence. As the new keeper assumes function, the residue
+  dissipates. Encountering it in a recently-restored circle is
+  encountering a *fading remnant of the broken cosmology*, not an
+  active threat.
+- **Fresh souls finally descend.** The larval damned that have
+  been piling at Acheron's near shore (the circle's backlog)
+  finally descend to this circle and begin their proper
+  contrapasso. The pipeline flows again for the first time in
+  centuries. The circle becomes populated by *actively-suffering
+  souls* — vivid, articulate, sculpted by the ring's law as it
+  ought to operate.
+- **Audio shifts to *working Hell*.** Tones detune from the
+  ring's chaos register into active proper suffering — screaming,
+  churning, the sounds of a circle that is *processing*. The
+  corrupt-keeper's musical motif gives way to the new keeper-NPC's
+  motif. The ambient is no longer riot; it is *functioning*.
 
-The keeper does not respawn (the corrupted keeper the Vagrant
+The keeper does not respawn (the corrupt keeper the Vagrant
 defeated, and the divine original it was a downstream effect of,
 are both gone forever — see *Hell's failure*). The new keeper is
 the mangled NPC, in its damaged keeper-form, and will be there on
-subsequent visits — installed as the circle's enforcement mechanism.
-The Vagrant can fight the mangled-NPC keeper, but doing so undoes
-the restoration: the NPC dies in its keeper-form; the circle
-stagnates again until Beatrice routes contrapasso into *another*
-candidate (if one remains). This is a costly, recursive option
-that exists mechanically but is rarely the right play.
+subsequent visits — installed as the circle's enforcement
+mechanism. The Vagrant can fight the mangled-NPC keeper, but doing
+so undoes the restoration: the NPC dies in its keeper-form; the
+ring's law goes back to being unenforced (chaos returns) until
+Beatrice routes the role into *another* candidate (if one remains).
+This is a costly, recursive option that exists mechanically but is
+rarely the right play.
 
-### Contrapasso and the Vagrant
+### Who can absorb released sangue, and at what scale
 
-**Contrapasso lands on the class-picker Vagrant because the Signing
-opened an imprint Hell can grip.** As each circle's contrapasso
-restores, some of the substance catches on the Vagrant's imprint —
-*Hell installing itself in him*, expressed mechanically as items
-acquired in the consumed circle, abilities learned there, stats
-unlocked at the next vestigium, the cosmological signature of having
-participated in the circle's restoration. The class-picker's evolution
-arc is the *accumulating shape of restored Hell catching on him*.
-By TRANSFIGURATION he carries all 9 circles' contrapasso-signatures
-in his substrate — *Hell, fully installed in him*. He is fit for the
-throne because he IS the substance Hell would now have on its throne.
+Sangue is the substance of suffering; it carries the imprint-shape of
+whatever it has passed through. **Vessels that can receive sangue
+require an imprint Hell can grip on.** Hell's accounting is what
+makes the transfer happen, and the accounting only recognizes vessels
+with an imprint-handle to write to.
 
-**The unburdened Vagrant remains imprint-free.** Restored contrapasso
+This sorts the cosmology cleanly:
+
+- **Damned souls have imprints (the judgment opened them).** They can
+  receive sangue from other damned souls at any scale, including the
+  petty scale of one soul absorbing another's released substance. A
+  fresh larva consuming an aged-larva corpse is one damned soul
+  receiving another's sangue — Hell's accounting recognizes both ends
+  of the transfer because both have imprints.
+- **The class-picker Vagrant has an imprint (the Signing opened it).**
+  Sangue catches on him too, but only at the macro scale of the
+  keeper-fall events (per the next section). Petty scale — the sangue
+  released when a single shade dies to his swing — does not catch.
+  Hell's accounting recognizes him as a participant at the level of
+  ring-restoration; it does not recognize him as a destination for
+  every damned-soul-sized droplet of substance.
+- **The unburdened Vagrant has no imprint.** Sangue cannot catch on
+  him at any scale. Even keeper-fall sangue passes through; only the
+  riversamento channel toward Beatrice receives it.
+
+**Consequence: when the Vagrant kills a shade, almost no sangue is
+absorbed.** The released substance has nowhere to go — the killer is
+not a valid vessel at petty scale, and the shade was its only other
+imprint. The substance lingers in/around the corpse, waiting for
+another damned-soul vessel to take it. This is the cosmological
+reason the larva-feeding loop EXISTS: the body persists because no
+absorber has appeared; the next fresh larva is the next valid vessel;
+when it crawls onto the body and bites, the sangue finally moves; the
+corpse can then dissolve because there is nothing left for it to
+hold. The visual loop is the substance-law made physical.
+
+This also explains why the Vagrant's kill-drops are tiny. Players
+score sangue in playable amounts only at the keeper-fall ledger
+events; trash-mob kills are dramatic but produce barely any
+collectible substance. The cosmology is the answer to "why don't I
+get rich grinding shades" — *because you can't, you're the wrong
+kind of vessel*.
+
+### Sangue catches on the Vagrant after each restoration
+
+**Restoring a ring's enforcement releases bottled sangue, and on the
+class-picker Vagrant some of it catches.** The Signing opened an
+imprint Hell can grip; as each circle resumes proper contrapasso
+under its new mangled keeper, a portion of the long-bottled sangue
+of that ring catches on the Vagrant's imprint — *Hell installing
+itself in him*, expressed mechanically as items acquired in the
+consumed circle, abilities learned there, stats unlocked at the
+next vestigium, the cosmological signature of having participated
+in that ring's restoration. The class-picker's evolution arc is the
+*accumulating shape of restored Hell catching on him*. By
+TRANSFIGURATION he carries the signature of all 9 circles'
+restorations in his substrate — *Hell, fully installed in him*. He
+is fit for the throne because he IS the substance Hell would now
+have on its throne.
+
+**The unburdened Vagrant remains imprint-free.** Released sangue
 passes through him because there is nothing to catch on. The
 substance routes outward through riversamento toward Beatrice. The
 unburdened's subtractive evolution (Svuotato → Diaphanous) is *the
-cumulative state of substance refusing to settle* — every time
-contrapasso restores to a circle, the unburdened lets it pass, and
-each pass thins him further. By Diaphanous he is mostly the *act of
-passage*, not a body that contained substance.
+cumulative state of substance refusing to settle* — every time a
+ring's restoration releases sangue, the unburdened lets it pass,
+and each pass thins him further. By Diaphanous he is mostly the
+*act of passage*, not a body that contained substance.
 
-### Contrapasso and the Guide
+### Sangue corrodes the Guide via Beatrice's channel
 
-**The Guide receives leaked contrapasso through Beatrice's projection
-channel.** He is unjudged and imprint-free — contrapasso *should* not
+**The Guide receives leaked sangue through Beatrice's projection
+channel.** He is unjudged and imprint-free; sangue *should* not
 land on him — but the channel Beatrice built into him for the
-projection function doubles as a contrapasso conduit. As each circle
-restores, some of the substance routes through her channel into him.
-He cannot evade it; the channel was installed without his consent.
-By all 9 keepers down, he carries the cumulative load of 9 circles'
-restored contrapasso. The substance flowing through him erodes the
-vessel because the vessel was not built for it. His destruction is
-*acceptable cost* in Beatrice's plan (per *The Guide*, below).
+projection function doubles as a sangue conduit. As each circle's
+restoration releases bottled substance, some of it routes through
+her channel into him. He cannot evade it; the channel was installed
+without his consent. By all 9 keepers down, he carries the
+cumulative load of 9 circles' worth of released sangue. The
+substance flowing through him erodes the vessel because the vessel
+was not built for it. His destruction is *acceptable cost* in
+Beatrice's plan (per *The Guide*, below). She did not premeditate
+it as the goal; she configured him as a tool and did not think hard
+enough about whether using him would destroy him. The result is the
+same.
 
-### Author's note — the inversion
+### Author's note — terminology discipline
 
-The original framing of contrapasso ("leaked contrapasso supercharges
-everything when the keeper falls; contrapasso-husk seeks a new
-vessel") has been **inverted**. Contrapasso is no longer leaking-out-
-of-broken-cosmology; it is *returning to function*. The same
-mechanical surfaces (NPC becomes hostile, husk appears, circle gets
-harder for the Vagrant) are preserved, but cosmologically they
-express the law restoring, not breaking further. This is the
-load-bearing reframe of the entire post-keeper cosmology.
-
-**Contrapasso and the Guide.** The Guide is unjudged and imprint-free;
-contrapasso should not land on him either. It does, because Beatrice
-has constructed
-a channel that routes leaked contrapasso through him. She originally
-built the channel to host her Hell-side projections; it doubles as a
-contrapasso conduit. The Guide degrades because the channel is
-corrosive — substance flowing through him erodes the vessel. By
-9 keepers down, he is saturated past coherence. His destruction is
-known to her plan as an acceptable cost; she did not premeditate it
-exactly, she configured him as a tool and did not think hard enough
-about whether using him would destroy him. The result is the same.
+Contrapasso is **the law of each ring**, not a substance. It does
+not flow, bottle, leak, install, or catch. What flows / bottles /
+leaks / catches is **sangue** — Hell's actual substance, the
+material that the law operates on. Pre-restoration, sangue is
+bottled in the ring (the corrupt keeper holds the seat but does not
+process it; sangue accumulates). Post-restoration, the bottled
+sangue starts moving again — through the resumed enforcement
+(into shades as proper punishment), through Beatrice's channel
+(into the Guide, corroding him), through the Vagrant's imprint (on
+the class-picker), or refused-to-settle (on the unburdened, who
+passes it onward to Beatrice via riversamento). All the existing
+mechanical surfaces are preserved; the cosmological vocabulary is
+just disciplined to the right concepts.
 
 ---
 
@@ -1112,8 +1246,8 @@ right thing — all real, all genuine. He never figures out what he is.
 He dies not knowing.
 
 His unmeasured state lets him host Beatrice's projection without
-Hell installing him into something else. The same channel doubles as
-a contrapasso conduit: leaked contrapasso from fallen keepers routes
+Hell installing him into something else. The same channel doubles
+as a sangue conduit: released sangue from each restored ring routes
 through him, eroding the vessel as substance flows through. His
 destruction is acceptable cost in Beatrice's plan; she did not
 premeditate it as the goal but did not think hard enough about

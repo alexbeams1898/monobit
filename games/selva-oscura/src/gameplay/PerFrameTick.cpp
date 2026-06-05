@@ -3025,9 +3025,9 @@ static bool maybeFloorPlayerHpForScriptedDeath()
         const bool engaged_with_scripted_death =
             a.boss_state == selva::gameplay::BossState::Engaged && a.archetype != nullptr &&
             a.archetype->scripted_death_seconds > 0.0f;
-        const bool already_dying =
-            a.boss_state == selva::gameplay::BossState::Dying && a.archetype != nullptr &&
-            a.archetype->scripted_death_seconds > 0.0f;
+        const bool already_dying = a.boss_state == selva::gameplay::BossState::Dying &&
+                                   a.archetype != nullptr &&
+                                   a.archetype->scripted_death_seconds > 0.0f;
         if (engaged_with_scripted_death)
         {
             scripted_death_active = true;
@@ -3114,9 +3114,8 @@ static void applyHitToPlayer(const selva::combat::HitEvent& ev)
     const bool crit = (ev.region == selva::combat::HurtRegion::Head);
     const glm::vec3 number_origin(ev.world_pos.x, sPlayer.pos.y + 2.0f, ev.world_pos.z);
     selva::combat::spawnDamageNumber(number_origin, dmg_applied, crit);
-    selva::combat::combatLog("[hit] player region={} dmg={} hp={}/{}",
-                             static_cast<int>(ev.region), dmg_applied, sPlayer.hp.current,
-                             sPlayer.hp.max);
+    selva::combat::combatLog("[hit] player region={} dmg={} hp={}/{}", static_cast<int>(ev.region),
+                             dmg_applied, sPlayer.hp.current, sPlayer.hp.max);
     // Vagrant death = sangue exits, Hell's killing protocol fires
     // (second_death clip). Per setting.md *Second death*, the soul has
     // no imprint for Hell to grip; body dies + cosmology returns him
@@ -3277,7 +3276,7 @@ static engine::physics::BodyHandle ensurePlayerBody()
 namespace
 {
 engine::physics::BodyHandle actorPhysicsBody(const selva::gameplay::Actor& a,
-                                              engine::physics::BodyHandle player_body)
+                                             engine::physics::BodyHandle player_body)
 {
     return (a.controller == selva::gameplay::Controller::Input) ? player_body : a.character_body;
 }
@@ -3986,8 +3985,8 @@ void drawPlayerSkeletal(const glm::mat4& viewProj)
                                   glm::vec3(1.0f, 1.0f, 1.0f));
 }
 
-float computeEnemyDeathFadeAlpha(const selva::gameplay::Actor& enemy, float now_wc,
-                                  float fade_hold, float fade_duration)
+float computeEnemyDeathFadeAlpha(const selva::gameplay::Actor& enemy, float now_wc, float fade_hold,
+                                 float fade_duration)
 {
     if (!enemy.is_dead || enemy.death_time <= 0.0f)
         return 1.0f;
@@ -4021,7 +4020,7 @@ glm::vec3 resolveEnemyTint(const selva::gameplay::Actor& enemy, float now_wc)
     const float t = std::clamp(
         (now_wc - enemy.arrival_wallclock) / enemy.arrival_action_delay_seconds, 0.0f, 1.0f);
     const glm::vec3 target_tint(target->tint_color[0], target->tint_color[1],
-                                 target->tint_color[2]);
+                                target->tint_color[2]);
     return glm::mix(tint, target_tint, t);
 }
 
@@ -4034,8 +4033,7 @@ void drawOrQueueEnemy(const selva::gameplay::Actor& enemy, const glm::mat4& view
     const float alpha = computeEnemyDeathFadeAlpha(enemy, now_wc, fade_hold, fade_duration);
     if (alpha <= 0.001f)
         return;
-    const std::string sk_id =
-        enemy.skeleton_id.empty() ? std::string("player") : enemy.skeleton_id;
+    const std::string sk_id = enemy.skeleton_id.empty() ? std::string("player") : enemy.skeleton_id;
     auto& enemy_mesh = selva::anim::meshByKey(sk_id);
     const float efoot = enemy_mesh.foot_offset_y;
     const glm::vec3 enemy_pos(enemy.pos.x, enemy.pos.y - efoot, enemy.pos.z);
@@ -4046,9 +4044,8 @@ void drawOrQueueEnemy(const selva::gameplay::Actor& enemy, const glm::mat4& view
     if (alpha < 0.999f)
     {
         const glm::vec3 d = enemy.pos - camPos;
-        out_transparent.push_back(TransparentSkeletalDraw{&enemy_mesh, enemy_model,
-                                                          &enemy.sampler.bone_palette, tint, alpha,
-                                                          glm::dot(d, d)});
+        out_transparent.push_back(TransparentSkeletalDraw{
+            &enemy_mesh, enemy_model, &enemy.sampler.bone_palette, tint, alpha, glm::dot(d, d)});
         return;
     }
     selva::anim::drawSkeletalMesh(enemy_mesh, enemy_model, viewProj, enemy.sampler.bone_palette,
@@ -4198,9 +4195,9 @@ CameraFrame buildCameraFrame()
     }
 
     CameraFrame f;
-    f.viewProj = selva::render::buildViewProj(sPlayer.pos, targetLookAtY, head_world,
-                                              head_world_mat, use_anim_orientation, sPlayer.yaw,
-                                              fd_one_shot);
+    f.viewProj =
+        selva::render::buildViewProj(sPlayer.pos, targetLookAtY, head_world, head_world_mat,
+                                     use_anim_orientation, sPlayer.yaw, fd_one_shot);
     selva::render::setLastViewProj(f.viewProj);
 
     f.sunDir = selva::render::atmosphere::sunDirection();
@@ -4232,7 +4229,7 @@ void drawSkeletalsForDepthPass()
         m = glm::rotate(m, sPlayer.yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
         selva::render::setSkeletalDepthModel(m);
         selva::render::setSkeletalDepthBones(sSampler.bone_palette.data(),
-                                              static_cast<int>(sSampler.bone_palette.size()));
+                                             static_cast<int>(sSampler.bone_palette.size()));
         glBindVertexArray(sPlayerMesh.vao);
         glDrawElements(GL_TRIANGLES, sPlayerMesh.index_count, GL_UNSIGNED_INT, nullptr);
     }
@@ -4249,7 +4246,7 @@ void drawSkeletalsForDepthPass()
         m = glm::rotate(m, enemy->yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
         selva::render::setSkeletalDepthModel(m);
         selva::render::setSkeletalDepthBones(enemy->sampler.bone_palette.data(),
-                                              static_cast<int>(enemy->sampler.bone_palette.size()));
+                                             static_cast<int>(enemy->sampler.bone_palette.size()));
         glBindVertexArray(enemy_mesh.vao);
         glDrawElements(GL_TRIANGLES, enemy_mesh.index_count, GL_UNSIGNED_INT, nullptr);
     }
@@ -4667,6 +4664,13 @@ void hardResetWorldForCharacter(const selva::PlayerProfile& profile)
 void softResetWorldForCycle()
 {
     selva::gameplay::resetCycleEnemies();
+    // Flow spawners MUST reset alongside the pool tear-down: under
+    // the rebuild-from-authored doctrine, resetCycleEnemies clears
+    // the pool, and tickInitialFill is what re-populates the flow's
+    // authored positions on the next tick. Without this, init_fill
+    // stays true and the larvae never come back after first death.
+    // Same call ordering as hardResetWorldForCharacter above.
+    selva::spawn::resetFlowSpawner();
 }
 
 // Wake-scene tracking. The wake scene's end condition is "the player's

@@ -14,7 +14,9 @@
       "path": "assets/world/static_meshes/acheron_pile/acheron_pile.glb",
       "world_origin": [0.0, -43.13, -368.0],
       "surface_tag": "Architecture",
-      "debug_name": "acheron_pile"
+      "debug_name": "acheron_pile",
+      "examine_text": "A mound of bodies, half-sunk in pale matter. Limbs and faces surface and slump back. Something dark moves beneath.",
+      "interact_range_meters": 4.0
     }
   ],
   "terrain_modifiers": [
