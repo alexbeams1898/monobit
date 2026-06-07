@@ -33,12 +33,13 @@ The Vagrant obtains sangue by **the substance moving from somewhere
 else in the cosmology into him.** Hell's shades carry sangue arranged
 in soul-form; killing them collapses the arrangement and the substance
 flows into the Vagrant. The same logic applies to every source —
-**every item picked up, every move acquired, every vessel tick is
-the substance of the cosmology arriving in him in a different
+**every item picked up, every move acquired, every held-substance
+tick is the substance of the cosmology arriving in him in a different
 shape.** Stats are the exception: stats grow only via the Crucible
-(class-picker installation), so the unburdened collects items,
-learns moves, and accumulates vessel contents (in the Censer), but
-his stat numbers do not move.
+(class-picker's commit-verb), so the unburdened collects items,
+learns moves, and accumulates held substance, but his stat numbers
+do not move -- his only commit-verb is the Censer, which routes
+substance outward to Beatrice rather than installing it inward.
 
 - **Shade kills.** Per-shade sangue payouts. Pre-keeper shades (frozen
   in stagnated contrapasso) give baseline; post-keeper shades

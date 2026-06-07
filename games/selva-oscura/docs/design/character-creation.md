@@ -35,10 +35,13 @@ in [ux.md](ux.md).
 ## Class pick
 
 Mechanism: **the Signing** (*La Firma*). A one-time ritual the Guide
-performs on the Vagrant at Beat 3. Accepting triggers class selection
-(Penitent / Heretic / Wretched) and inscribes the soul into Hell's
-processing registry; refusing leaves the Vagrant unmarked and commits
-the unburdened path.
+performs on the Vagrant at Beat 4. Accepting triggers class selection
+(Penitent / Heretic / Wretched) and installs the chrism-fire that
+lets the Vagrant commit held substance inward into substrate.
+Refusing leaves the Vagrant unmarked but installs the channel-fire
+instead -- held substance routes outward to Beatrice's reservoir via
+riversamento. Both paths absorb substance; they differ only in which
+commit-fire the Guide installs.
 
 The class-pick fork, the three classes' identities, and evolution
 paths all live in [classes.md](classes.md). The Signing's role in

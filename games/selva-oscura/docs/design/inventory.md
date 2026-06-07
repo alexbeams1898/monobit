@@ -20,9 +20,17 @@ Per setting.md *Item system*:
   ritual as a formality of intake — *"None can pass into the depths
   unmeasured."* The class-picker UI then fires (modal full-screen,
   four options: Penitent / Heretic / Wretched / Refuse, two-step
-  confirm, no back button). Picking a class = Signing happens =
-  imprint created = Vagrant receives the Crucible. Refusing = no
-  Signing = refusal-channel opens = Vagrant receives the Censer.
+  confirm, no back button). Picking a class = Signing happens = the
+  Guide installs the chrism-fire that lets the Vagrant perform the
+  Crucible (commit held substance inward into substrate). Refusing =
+  no Signing = the Guide's posture opens the channel-fire that lets
+  the Vagrant perform the Censer (route held substance outward to
+  Beatrice). Same fire, opposite mouths.
+
+  The Vagrant's absorption-capacity is permanent from arrival in
+  Selva onward (per setting.md *The Vagrant's cosmological anomaly*).
+  Beat 4 doesn't unlock absorption; it unlocks the COMMIT verb. The
+  HUD counter accumulates pre-Beat-4 with nowhere to spend.
 
   The Guide believes the ritual is a formality of intake. He does
   not know (concealed pre-R2) that the Signing is also the act by
@@ -35,24 +43,27 @@ Per setting.md *Item system*:
   has nothing to draw on. Later Erasures re-enable the ritual via
   Vagrant-gathered material prerequisites.
 
-- **The Crucible** — class-picker's portable vessel for substance
-  installation. Alchemical fire-vessel: substance held in it is
-  burned (via the imprint's metabolic-fire / Galenic concoction-
-  enabler) into the Vagrant's substrate. Stats / items / moves /
-  abilities are the result. Permanent across cycles. The Crucible
-  IS the holding zone for uncommitted substance (no separate
-  wallet); auto-magnetizes on kills via subtle pulse animation;
-  optional QoL feast-on-body adds horror register and tradeoff
-  (slower, more vulnerable, more visceral).
+- **The Crucible** — **a cosmological commit-verb, not an item.** The
+  class-picker's ritual of installing held substance into substrate
+  via chrism-fire. Player-invoked, on demand, anywhere. The Vagrant
+  performs the Crucible; he doesn't carry it. Per the locked
+  cosmology (per [[project_crucible_censer_leveling_system]]): no
+  object materializes at Beat 4. What materializes is the capacity to
+  perform the ritual. Stats / abilities / capability are the result
+  of commits. Held substance pre-commit accumulates in the Vagrant
+  himself (HUD counter); auto-magnetizes on kills via subtle pulse
+  animation; optional QoL feast-on-body adds horror register and
+  tradeoff (slower, more vulnerable, more visceral).
 
-- **The Censer** — unburdened's portable vessel for substance
-  effusion. Alchemical fire-vessel: substance held in it is burned
-  into rising smoke that transits via the cosmological link to
-  Beatrice's reservoir. Riversamento volume accumulates with each
-  commitment. Permanent across cycles. Same holding-zone /
-  auto-magnetization / feast-QoL mechanics as the Crucible — the
-  difference is downstream cosmology (no imprint-fire means no
-  concoction, so substance routes outward instead of installing).
+- **The Censer** — **a cosmological commit-verb, not an item.** The
+  unburdened's ritual of routing held substance to Beatrice via
+  channel-fire. Player-invoked, on demand, anywhere. Same
+  performed-not-carried framing as the Crucible. The held substance
+  burns into smoke that transits via the cosmological link Beatrice
+  opened (at the moment of refusal) to her reservoir. Riversamento
+  volume accumulates with each commitment. The Vagrant grows
+  subtractively (Svuotato → Diaphanous) because his body is used as
+  transit-substrate without nourishment.
 
 - **Markers** — player-placed bidirectional teleport destinations
   replacing the old Cord. The Vagrant places a marker at a chosen
@@ -69,9 +80,10 @@ Per setting.md *Item system*:
   prerequisites (items / sangue from specific sources / insight
   unlocks) through play; when conditions are met, the Guide senses
   the cosmological possibility return and offers the ritual.
-  Erasure re-runs the class-picker UI (same modal as Beat 4); prior
-  commitments refund to the new vessel (Beatrice-mediated),
-  enabling path-switching in either direction. The Guide doesn't
+  Erasure re-runs the class-picker UI (same modal as Beat 4); the
+  Guide swaps the commit-fire (chrism-fire ↔ channel-fire) and prior
+  commitments refund to the Vagrant's held substance (Beatrice-
+  mediated), enabling path-switching in either direction. The Guide doesn't
   understand the mechanism — he just feels he can do it now.
   Specific Erasure prerequisites TBD.
 
@@ -94,17 +106,20 @@ Per setting.md *Item system*:
   outside on the plateau), interior detailing, capacity, whether
   multiple chests exist — TBD.
 
-## Path-specific carry rules
+## Path-specific items and capacities
 
-Different paths have different available inventories.
+Different paths carry different items and gain different cosmological
+capacities. The Crucible and Censer are NOT inventory items -- they
+are commit-verbs the Vagrant gains the capacity to perform at Beat 4
+depending on which path he chose.
 
-| Item / Ritual | Class-picker | Unburdened |
+| Item / Capacity | Class-picker | Unburdened |
 |---|---|---|
-| Grimoire | yes | yes |
+| Grimoire (carried) | yes | yes |
 | Signing (Guide ritual, Beat 4) | accepted | refused |
-| Crucible | yes | — |
-| Censer | — | yes |
-| Markers | yes | yes |
+| Crucible (commit-verb capacity) | yes | — |
+| Censer (commit-verb capacity) | — | yes |
+| Markers (carried) | yes | yes |
 | Erasure (Guide ritual, materials-gated) | yes (any direction) | yes (any direction) |
 | Chest (Wood-side storage) | yes | yes |
 

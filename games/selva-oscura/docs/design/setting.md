@@ -118,15 +118,18 @@ unbound by the protocol-roles Hell installed in everyone else) and
 why second death, when applied to him, does not finish him (nothing
 to grip; the protocol fires, the body dies, the soul is ejected).
 
-**The Signing opens the imprint.** Accepting the Signing — the
-Guide's Beat 3 ritual — is Hell's first formal measurement of the
-soul. From that moment, the class-picker has an imprint Hell can
-grip. Contrapasso can land on him; second death could in principle
-land on him at the path's terminus (it doesn't, on
-TRANSFIGURATION/SURFEIT/REFUSAL, because those endings produce
-other states). The unburdened, who refused the Signing, remains
-imprint-free — substance flows through and contributes to
-subtractive evolution; nothing settles.
+**The Signing installs the commit-fire.** Accepting the Signing — the
+Guide's Beat 4 ritual — is Hell's first formal measurement of the
+soul, AND the moment the Guide gives the Vagrant the chrism-fire
+that lets him commit held substance inward into substrate.
+Contrapasso can land on him from that moment; second death could in
+principle land on him at the path's terminus (it doesn't, on
+TRANSFIGURATION/SURFEIT/REFUSAL, because those endings produce other
+states). The unburdened, who refused the Signing, doesn't receive
+the chrism-fire — instead the refusal opens a channel-fire that
+routes held substance outward to Beatrice via riversamento. Both
+paths absorb substance (per the Vagrant-exception, below); they
+differ only in what commit-fire the Guide installs at Beat 4.
 
 **Riversamento is the unburdened making his own form, in another's
 frame.** Pouring sangue out is the slow inscription of an imprint
@@ -1165,60 +1168,92 @@ This sorts the cosmology cleanly:
   fresh larva consuming an aged-larva corpse is one damned soul
   receiving another's sangue — Hell's accounting recognizes both ends
   of the transfer because both have imprints.
-- **The class-picker Vagrant has an imprint (the Signing opened it).**
-  Sangue catches on him too, but only at the macro scale of the
-  keeper-fall events (per the next section). Petty scale — the sangue
-  released when a single shade dies to his swing — does not catch.
-  Hell's accounting recognizes him as a participant at the level of
-  ring-restoration; it does not recognize him as a destination for
-  every damned-soul-sized droplet of substance.
-- **The unburdened Vagrant has no imprint.** Sangue cannot catch on
-  him at any scale. Even keeper-fall sangue passes through; only the
-  riversamento channel toward Beatrice receives it.
+- **Unjudged souls normally cannot absorb.** No imprint = no handle.
+  Substance would pass through them without effect. This is what makes
+  unjudged souls cosmologically inert.
+- **The Vagrant is the singular exception.** He is unjudged AND
+  absorbs anyway, from the moment he arrives in Selva, regardless of
+  whether he later accepts the Signing or refuses it. **This
+  impossibility is the cosmological anomaly Beatrice engineered.**
+  Damned absorbing damned is normal; an unjudged Vagrant absorbing
+  substance is categorical irregularity Hell's accounting can't quite
+  parse. The Guide doesn't understand it. Beatrice does — she made
+  it. The fact that he CAN do this is what qualifies him for the
+  Lucifer-2 / Satan-of-Paradiso role at the endings: Lucifer
+  occupies exactly this position (a soul that processes Hell-substance
+  without being subject to Hell's laws), and the Vagrant is being
+  groomed toward that cosmological seat.
 
-**Consequence: when the Vagrant kills a shade, almost no sangue is
-absorbed.** The released substance has nowhere to go — the killer is
-not a valid vessel at petty scale, and the shade was its only other
-imprint. The substance lingers in/around the corpse, waiting for
-another damned-soul vessel to take it. This is the cosmological
-reason the larva-feeding loop EXISTS: the body persists because no
-absorber has appeared; the next fresh larva is the next valid vessel;
-when it crawls onto the body and bites, the sangue finally moves; the
-corpse can then dissolve because there is nothing left for it to
-hold. The visual loop is the substance-law made physical.
+**The Vagrant's absorption-capacity is permanent from arrival.** Beat
+4 doesn't unlock it; he already has it. What Beat 4 unlocks is the
+COMMIT capacity — the alchemical fire that transforms held substance.
+See *The Signing and the commit-fire*, below.
 
-This also explains why the Vagrant's kill-drops are tiny. Players
-score sangue in playable amounts only at the keeper-fall ledger
-events; trash-mob kills are dramatic but produce barely any
-collectible substance. The cosmology is the answer to "why don't I
-get rich grinding shades" — *because you can't, you're the wrong
-kind of vessel*.
+**The larva-feeding loop is parallel and independent.** Damned souls
+consume each other in the Charon-absent Limbo near-shore because the
+stalled Hell prevents normal contrapasso completion; they enact a
+futile mimicry of substance transfer (damned-to-damned, which works
+cosmologically — both have imprints). The corpses linger between
+consumption events because the next damned-soul vessel hasn't
+crawled by yet. The Vagrant absorbing or not is unrelated to this
+loop. He has his own anomaly; they have their own stalled cycle.
+
+### The Signing and the commit-fire
+
+**The Signing is not what makes the Vagrant absorptive.** He already
+absorbs. What the Signing does is install the alchemical fire that
+lets him **commit** held substance — transform it into a permanent
+form. The Guide gives him the means to either **feed himself**
+(chrism-fire, installation into substrate) or **feed Beatrice**
+(channel-fire, riversamento toward her reservoir). Same fire,
+opposite mouths.
+
+- **Accept the Signing** → Guide installs the chrism-fire → Vagrant
+  can perform the **Crucible** (his commit verb). Held substance burns
+  into substrate: stats grow, abilities unlock, the body inscribed.
+- **Refuse the Signing** → Guide's posture opens the channel toward
+  Beatrice instead → Vagrant can perform the **Censer** (his commit
+  verb). Held substance burns into smoke that transits to Beatrice's
+  reservoir. The body thins (Svuotato → Diaphanous) because nothing
+  retains; the substance was always going to leave.
+
+Pre-Beat-4 the Vagrant absorbs but has no commit verb. The counter
+accumulates with nowhere to spend. Post-Beat-4 he absorbs the same
+way AND can commit — the one new capacity he gains is the fire.
+
+**Neither commit verb is an inventory item.** No object materializes
+at Beat 4. The Crucible and Censer are cosmological capacities the
+Guide installs in the Vagrant. He *performs* them; he doesn't
+*carry* them.
 
 ### Sangue catches on the Vagrant after each restoration
 
-**Restoring a ring's enforcement releases bottled sangue, and on the
-class-picker Vagrant some of it catches.** The Signing opened an
-imprint Hell can grip; as each circle resumes proper contrapasso
-under its new mangled keeper, a portion of the long-bottled sangue
-of that ring catches on the Vagrant's imprint — *Hell installing
-itself in him*, expressed mechanically as items acquired in the
-consumed circle, abilities learned there, stats unlocked via the
-next Crucible commitment, the cosmological signature of having
-participated in that ring's restoration. The class-picker's evolution arc is the
-*accumulating shape of restored Hell catching on him*. By
-TRANSFIGURATION he carries the signature of all 9 circles'
-restorations in his substrate — *Hell, fully installed in him*. He
-is fit for the throne because he IS the substance Hell would now
-have on its throne.
+**Restoring a ring's enforcement releases bottled sangue, and the
+Vagrant absorbs his share regardless of path.** As each circle resumes
+proper contrapasso under its new mangled keeper, a portion of the
+long-bottled sangue of that ring releases — and per the Vagrant's
+anomaly, he can absorb it like any other substance. For the
+class-picker, the held substance commits into substrate at the next
+Crucible commitment — items acquired in the consumed circle,
+abilities learned there, stats unlocked via Crucible-fire, the
+cosmological signature of having participated in that ring's
+restoration. The class-picker's evolution arc is the *accumulating
+shape of restored Hell metabolized through him*. By TRANSFIGURATION
+he carries the signature of all 9 circles' restorations in his
+substrate — *Hell, fully installed in him*. He is fit for the throne
+because he IS the substance Hell would now have on its throne.
 
-**The unburdened Vagrant remains imprint-free.** Released sangue
-passes through him because there is nothing to catch on. The
-substance routes outward through riversamento toward Beatrice. The
-unburdened's subtractive evolution (Svuotato → Diaphanous) is *the
-cumulative state of substance refusing to settle* — every time a
-ring's restoration releases sangue, the unburdened lets it pass,
-and each pass thins him further. By Diaphanous he is mostly the
-*act of passage*, not a body that contained substance.
+**The unburdened Vagrant absorbs the same way, but commits
+differently.** Released sangue lands on him exactly as it lands on
+the class-picker (per the Vagrant-exception). What differs is the
+commit verb: he can only perform the Censer, which burns held
+substance into smoke that transits to Beatrice's reservoir. Held
+substance is therefore always going to leave him; nothing retains.
+The unburdened's subtractive evolution (Svuotato → Diaphanous) is
+*the cumulative state of substance routing through him* — every
+Censer commitment thins him further because his body has been used
+as transit-substrate without nourishment. By Diaphanous he is mostly
+the *act of passage*, not a body that retained substance.
 
 ### Sangue corrodes the Guide via Beatrice's channel
 

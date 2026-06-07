@@ -55,17 +55,19 @@ implementation.
 
 ## HUD
 
-*TBD — what's on screen during play. HP bar, vessel-contents counter
-(reading from the Crucible or Censer depending on path), etc.*
+*TBD — what's on screen during play. HP bar, held-substance counter
+(reads from the Vagrant; per the locked cosmology he IS the
+holding zone -- no separate vessel/wound feature), etc.*
 
 Locked-by-implication:
 - Three stats follow the engine triad (HP / fire_rate / damage).
-- The vessel-contents counter (replacing the older "wallet" concept)
-  reads roman-vinculum numerals; lifetime sangue counter bounded at
-  3,999,999 (vinculum-Roman cap, per setting.md).
+- The held-substance counter (replacing the older "wallet" concept)
+  reads double-vinculum Roman numerals; cap at 999,999,999 (the
+  cosmological ceiling -- 9^9, per setting.md *Hell's accounting
+  cap*).
 - Per [[project_substance_has_no_in_game_name]]: the substance
-  itself is NEVER labeled in any diegetic surface. The vessel has
-  a name (Crucible / Censer); the substance within it does not.
+  itself is NEVER labeled in any diegetic surface. The commit-verb
+  has a name (Crucible / Censer); the substance does not.
 - HUD must stay in Hell's register (Early Modern English; Italian
   loanwords only where load-bearing per
   [[project_foreign_language_load_bearing]]).

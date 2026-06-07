@@ -125,7 +125,7 @@ nor Diaphanous unlocks. This is the absolute refusal — the path that
 refuses Hell's measurement AND Beatrice's reservoir. Hard by design;
 offers no progression mechanic at all.
 
-**The Signing happens once, at Beat 3.** The Guide performs the
+**The Signing happens once, at Beat 4.** The Guide performs the
 ritual once; the player accepts or refuses in that moment, and the
 choice is committed for the rest of the save. A refused Signing
 cannot be revisited later — there is no "carry the option forward
