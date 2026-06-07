@@ -39,7 +39,10 @@
 #include "gameplay/Footsteps.h"
 #include "gameplay/LocomotionStateMachine.h"
 #include "gameplay/PlayerState.h"
+#include "gameplay/Sangue.h"
+#include "gameplay/SanguePulse.h"
 #include "gameplay/ScriptedEvents.h"
+#include "gameplay/TerritoryClamp.h"
 #include "gameplay/TickState.h"
 #include "hazard/HazardZones.h"
 #include "interact/Interaction.h"
@@ -56,6 +59,7 @@
 #include "render/WorldRenderer.h"
 #include "spawn/FlowSpawner.h"
 #include "text/TextPresentation.h"
+#include "ui/ActorHud.h"
 #include "ui/ComboHud.h"
 #include "world/Collision.h"
 #include "world/Door.h"
@@ -375,6 +379,7 @@ static bool sPrevV = false;
 // but selvaPerFrame needs to call the toggle + skip-tick gate.
 static void tickTreePreviewToggle(const Uint8* keys);
 static void tickFpvToggle(const Uint8* keys);
+static void tickF8SangueDebugSpawn(const Uint8* keys);
 static void renderTreePreview();
 
 // Combat debug toggle + log file owned by combat/CombatLog.{h,cpp}.
@@ -3205,6 +3210,11 @@ static void tickPlayerSecondDeathLifecycle()
     sSampler.releaseOneShot();
     // Unmuffle the OST — bookends the duck applied in fireEnemyDeath.
     selva::audio::restoreMusic();
+    // Hell reclaims uncommitted vessel contents from the dead (setting.md
+    // *Hell reclaims its substance from the dead*). Lifetime ledger is
+    // untouched -- Hell remembers what was ever earned.
+    if (selva::PlayerProfile* profile = selva::activePlayerProfile())
+        selva::sangue::reclaimVessel(*profile);
     // Cycle boundary on Vagrant respawn (per setting.md "Per-circle
     // reactivity" + "Cycle structure").
     selva::gameplay::softResetWorldForCycle();
@@ -3315,115 +3325,17 @@ void readActorPositionsFromJolt(engine::physics::BodyHandle player_body)
 // Soft post-physics clamp: while a boss is engaged AND its decl has a
 // non-zero arena AABB, constrain the player's XZ output to that box.
 // Constrains the output of the step; the step itself already ran.
-// Doctrine clamp: a region-owned actor whose post-physics position
-// classifies as foreign territory gets pushed OUT of the winning
-// foreign volume along its nearest face. "Inside foreign" means
-// regionIdAtPosition returns something other than the actor's
-// spawn_region_id. Implements the "shades belong to their ring's
-// law-domain, full stop" doctrine.
-//
-// Note: the actor's pos may sit INSIDE a larger own-region volume
-// while ALSO being inside a smaller foreign volume that wins by
-// smallest-volume ownership resolution (e.g. the descent corridor
-// nested inside Limbo's disc). A naive "clamp to my own AABB"
-// would no-op because the actor IS inside its own AABB. Instead
-// we find the smallest movement that exits the foreign volume,
-// which by ownership-resolution restores own-region classification.
-//
-// Player + actors without a spawn_region_id are skipped (the player
-// has no domain restriction; flow-spawned or hand-spawned actors
-// without a region id are intentionally region-free).
-// Find the foreign-owner territory (must be owned by `foreign_owner`)
-// whose OBB contains world_pos. Writes the actor's local-frame coords
-// into out_local. Returns nullptr if no such volume found (shouldn't
-// happen if regionIdAtPosition just returned foreign_owner).
-const engine::world::Territory* findContainingForeignVolume(const glm::vec3& world_pos,
-                                                            const std::string& foreign_owner,
-                                                            glm::vec3& out_local)
-{
-    for (int i = 0; i < engine::world::territoryCount(); ++i)
-    {
-        const auto& t = engine::world::territoryAt(i);
-        if (t.owner_region_id != foreign_owner)
-            continue;
-        const glm::vec3 local = glm::conjugate(t.orientation) * (world_pos - t.center);
-        if (local.x < -t.half_extents.x || local.x >= t.half_extents.x)
-            continue;
-        if (local.y < -t.half_extents.y || local.y >= t.half_extents.y)
-            continue;
-        if (local.z < -t.half_extents.z || local.z >= t.half_extents.z)
-            continue;
-        out_local = local;
-        return &t;
-    }
-    return nullptr;
-}
-
-// Compute the world-space position obtained by pushing local_in out of
-// the OBB along the nearest local-axis face, plus a small epsilon.
-glm::vec3 nearestFaceExit(const engine::world::Territory& t, const glm::vec3& local_in)
-{
-    constexpr float kPushEpsilon = 0.01f; // 1 cm past the face
-    const float targets[6] = {-t.half_extents.x - kPushEpsilon, t.half_extents.x + kPushEpsilon,
-                              -t.half_extents.y - kPushEpsilon, t.half_extents.y + kPushEpsilon,
-                              -t.half_extents.z - kPushEpsilon, t.half_extents.z + kPushEpsilon};
-    int best_idx = 0;
-    float best_abs = std::abs(targets[0] - local_in[0]);
-    for (int i = 1; i < 6; ++i)
-    {
-        const float d = std::abs(targets[i] - local_in[i / 2]);
-        if (d < best_abs)
-        {
-            best_abs = d;
-            best_idx = i;
-        }
-    }
-    glm::vec3 candidate = local_in;
-    candidate[best_idx / 2] = targets[best_idx];
-    return t.center + t.orientation * candidate;
-}
-
-void clampActorsToOwnTerritory()
-{
-    auto& pool = selva::gameplay::actors();
-    for (auto& a : pool)
-    {
-        if (a.controller == selva::gameplay::Controller::Input)
-            continue;
-        if (a.spawn_region_id.empty() || a.is_dead)
-            continue;
-        const std::string& at = engine::world::regionIdAtPosition(a.pos);
-        if (at == a.spawn_region_id || at.empty())
-            continue;
-        glm::vec3 winner_local{0.0f};
-        const engine::world::Territory* winner =
-            findContainingForeignVolume(a.pos, at, winner_local);
-        if (winner == nullptr)
-            continue;
-        const glm::vec3 candidate_world = nearestFaceExit(*winner, winner_local);
-        // Only commit if the push actually lands in own territory or
-        // void (Jolt handles void). If it lands in another foreign,
-        // skip (rare; would need cascading resolution).
-        const std::string& after = engine::world::regionIdAtPosition(candidate_world);
-        if (after.empty() || after == a.spawn_region_id)
-        {
-            a.pos = candidate_world;
-            a.velocity_xz = glm::vec2(0.0f);
-        }
-    }
-}
-
 void clampPlayerToActiveBossArena()
 {
     const auto& gs = selva::gameState();
-    auto& pool = selva::gameplay::actors();
+    const auto& pool = selva::gameplay::actors();
     if (gs.active_boss_idx < 0 || gs.active_boss_idx >= static_cast<int>(pool.size()))
         return;
     const auto& boss = pool[gs.active_boss_idx];
-    engine::world::Region* cur = engine::world::currentRegionPtr();
+    const engine::world::Region* cur = engine::world::currentRegionPtr();
     if (cur == nullptr)
         return;
-    auto* json_region = dynamic_cast<selva::world::JsonRegion*>(cur);
+    const auto* json_region = dynamic_cast<const selva::world::JsonRegion*>(cur);
     if (json_region == nullptr)
         return;
     for (const auto& d : json_region->enemySpawnDecls())
@@ -3487,7 +3399,7 @@ static void tickPhysicsAndSyncActors(float dt)
     pushActorVelocitiesToJolt(player_body);
     updatePhysics(dt);
     readActorPositionsFromJolt(player_body);
-    clampActorsToOwnTerritory();
+    selva::gameplay::clampActorsToOwnTerritory();
     clampPlayerToActiveBossArena();
     sPlayer.velocity_y = 0.0f;
     if (FILE* log = getOrOpenPhysicsLog())
@@ -3577,6 +3489,7 @@ void tickDevAndDebugKeys(const Uint8* keys)
     tickF3TerrainProbe(keys);
     tickTreePreviewToggle(keys);
     tickFpvToggle(keys);
+    tickF8SangueDebugSpawn(keys);
 }
 
 // Player combat-input pass + chain bookkeeping + grip/jump toggles +
@@ -3786,6 +3699,28 @@ static void selvaPerFrame(Engine& engine, EntityManager& em, double dt_d)
     for (const auto& ev : hit_events)
         applyHitEvent(ev, now);
     selva::combat::tickDamageNumbers(dt);
+    // Sangue pulses: materialize any pending world-space drops queued
+    // since last frame (fireEnemyDeath), then advance per-particle
+    // state and grant denominations on arrival. The HUD anchor is the
+    // single source of truth shared with the renderer.
+    {
+        const glm::vec2 hud_anchor = selva::ui::sangueHudAnchor();
+        const glm::mat4& view_proj = selva::render::lastViewProj();
+        struct ProjCtx
+        {
+            const glm::mat4* vp;
+        };
+        ProjCtx pctx{&view_proj};
+        selva::gameplay::materializePendingDrops(
+            hud_anchor,
+            [](const glm::vec3& world, glm::vec2& out_screen, void* raw_ctx) -> bool
+            {
+                auto* c = static_cast<ProjCtx*>(raw_ctx);
+                return selva::render::worldToScreen(*c->vp, world, out_screen);
+            },
+            &pctx);
+        selva::gameplay::tickSanguePulses(static_cast<float>(dt), hud_anchor);
+    }
 
     // Foot-plant footstep detection — fires SFX when the foot bone's
     // world Y crosses below ground+epsilon while descending. Works on
@@ -3863,6 +3798,52 @@ static void tickFpvToggle(const Uint8* keys)
                                                                     : "ThirdPerson");
     }
     sPrevV = vNow;
+}
+
+// F8 cycles through escalating test amounts and queues a synthetic
+// sangue drop at the Vagrant's feet so the pulse system can be tuned
+// visually without killing enemies. Per the sangue-pulse design
+// review: a single hotkey iterating {1, 10, 100, 1000, 10000, 100000,
+// 1000000, 999999999} surfaces each Roman tier in order so the
+// per-tier color/size palette can be eyeballed.
+static bool sPrevF8 = false;
+static int sF8AmountIndex = 0;
+static void tickF8SangueDebugSpawn(const Uint8* keys)
+{
+    const bool f8Now = keys[SDL_SCANCODE_F8] != 0;
+    if (f8Now && !sPrevF8)
+    {
+        // Stream-richness ladder: each step escalates "change" -- the
+        // additive Roman decomposition's quantity of low-tier remainders.
+        // 9 in every decimal place maximizes particle count per digit
+        // (each 9 = V + 4*I = 5 particles), so 999 / 9999 / etc. produce
+        // long streams across all tiers. Mixes singles (single tier,
+        // single particle) with these maximums to surface both ends.
+        constexpr std::uint32_t kTestAmounts[] = {
+            1u,         // I  -- single particle, smallest tier
+            9u,         // V + IIII = 5 particles, single tier-group
+            99u,        // L + XXXX + V + IIII = 10 particles
+            999u,       // D + CCCC + L + XXXX + V + IIII = 15 particles
+            9999u,      // M_*0 + M + DCCCC + LXXXX + VIIII = 20 particles
+            99999u,     // adds the 50K tier remainders -- 25 particles
+            999999u,    // 30 particles across 6 digit places
+            9999999u,   // 35 particles
+            99999999u,  // 40 particles
+            999999999u, // 45 particles -- maximum-change full stream
+        };
+        constexpr int kCount = sizeof(kTestAmounts) / sizeof(kTestAmounts[0]);
+        const std::uint32_t amount = kTestAmounts[sF8AmountIndex % kCount];
+        // Spawn a few meters in front of the Vagrant so the screen-
+        // projection lands in a visible part of the viewport.
+        const glm::vec3 forward = glm::vec3(-std::sin(sPlayer.yaw), 0.0f, -std::cos(sPlayer.yaw));
+        const glm::vec3 corpse = sPlayer.pos + forward * 3.0f + glm::vec3(0.0f, 1.0f, 0.0f);
+        selva::gameplay::queueSangueDrop(corpse, amount);
+        std::fprintf(stderr, "[sangue-debug] F8 queued amount=%u at (%.2f,%.2f,%.2f)\n", amount,
+                     corpse.x, corpse.y, corpse.z);
+        std::fflush(stderr);
+        sF8AmountIndex = (sF8AmountIndex + 1) % kCount;
+    }
+    sPrevF8 = f8Now;
 }
 
 // Build the preview's view-proj matrix from orbit yaw/pitch/distance

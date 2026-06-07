@@ -22,6 +22,8 @@
 #include "gameplay/BossRewards.h"
 #include "gameplay/EnemyArchetype.h"
 #include "gameplay/Perception.h"
+#include "gameplay/Sangue.h"
+#include "gameplay/SanguePulse.h"
 #include "hazard/HazardZones.h"
 #include "interact/Interaction.h"
 #include "text/Examine.h"
@@ -453,7 +455,7 @@ PrimeClipResolution resolvePrimeClip(const Actor& e)
     if (e.archetype != nullptr && !e.archetype->spawn_clip.empty())
     {
         const auto& reg = selva::anim::clipsByKey(e.skeleton_id);
-        const selva::anim::AnimationClip* c = reg.get(e.archetype->spawn_clip.c_str());
+        const selva::anim::AnimationClip* c = reg.get(e.archetype->spawn_clip);
         if (c != nullptr && c->isLoaded())
         {
             out.clip = c;
@@ -1053,6 +1055,41 @@ void persistFelledBoss(Actor& e)
     // later when faction-conflict ships.
     selva::gameplay::onBossFelled(e.spawn_decl_id, selva::gameplay::player());
 }
+
+// Spawn the sangue-magnetization pulse from the dead actor's body
+// center to the Vagrant's vessel. Skips player-self deaths (no
+// self-grant on second death) and zero-drop archetypes. Body center
+// uses the archetype's collider_height so quadrupeds anchor at their
+// true mid-body rather than the feet -- substrate-honest, no
+// per-archetype tuning needed.
+void queueSangueOnKill(const Actor& e)
+{
+    if (e.controller == Controller::Input || e.archetype == nullptr ||
+        e.archetype->sangue_drop == 0u)
+        return;
+    const glm::vec3 body_center = e.pos + glm::vec3(0.0f, e.body.collider_height * 0.5f, 0.0f);
+    selva::gameplay::queueSangueDrop(body_center, e.archetype->sangue_drop);
+}
+
+// Log Wood-side organic loot drops at death. The pickup + inventory
+// layer isn't wired yet; this hook logs the drop list so the
+// cosmology is observable until the item registry ships, at which
+// point this becomes the spawn-pickup / grant-inventory hook.
+void logItemDrops(const Actor& e)
+{
+    if (e.controller == Controller::Input || e.archetype == nullptr ||
+        e.archetype->item_drops.empty())
+        return;
+    std::string list;
+    for (const auto& id : e.archetype->item_drops)
+    {
+        if (!list.empty())
+            list += ", ";
+        list += id;
+    }
+    std::fprintf(stderr, "[item-drop] '%s' yields [%s]\n", e.spawn_id.c_str(), list.c_str());
+    std::fflush(stderr);
+}
 } // namespace
 
 void fireEnemyDeath(Actor& e, int index)
@@ -1090,6 +1127,8 @@ void fireEnemyDeath(Actor& e, int index)
     persistFelledBoss(e);
     if (e.archetype != nullptr && !e.archetype->felled_flag.empty())
         setFlag(e.archetype->felled_flag);
+    queueSangueOnKill(e);
+    logItemDrops(e);
     // Scripted-death actors open the cinematic Scene on the death clip
     // (not earlier at Dying) so the player can keep attacking through
     // the pain stage.
@@ -1157,7 +1196,7 @@ bool applyArchetypeSwap(Actor& a, const EnemyArchetype& target)
     if (!target.aggro_clip.empty())
     {
         const auto& reg = selva::anim::clipsByKey(a.skeleton_id);
-        const selva::anim::AnimationClip* clip = reg.get(target.aggro_clip.c_str());
+        const selva::anim::AnimationClip* clip = reg.get(target.aggro_clip);
         if (clip != nullptr && clip->isLoaded())
         {
             selva::anim::PoseSampler::OneShotOptions opts;
@@ -1396,7 +1435,7 @@ static EnemyLocoPick pickEnemyLocomotionClip(const Actor& a)
     if (!a.idle_clip_override.empty())
     {
         const auto& reg = selva::anim::clipsByKey(a.skeleton_id);
-        const selva::anim::AnimationClip* clip = reg.get(a.idle_clip_override.c_str());
+        const selva::anim::AnimationClip* clip = reg.get(a.idle_clip_override);
         if (clip != nullptr && clip->isLoaded())
             return EnemyLocoPick{clip, a.idle_clip_override.c_str()};
     }
@@ -1433,7 +1472,7 @@ static bool tickOneEnemy(Actor& a, const Actor& pc, float dt, const selva::tunin
         a.perception.awareness >= Awareness::Alerted)
     {
         const auto& reg = selva::anim::clipsByKey(a.skeleton_id);
-        const selva::anim::AnimationClip* aggro = reg.get(a.archetype->aggro_clip.c_str());
+        const selva::anim::AnimationClip* aggro = reg.get(a.archetype->aggro_clip);
         if (aggro != nullptr && aggro->isLoaded())
         {
             selva::anim::PoseSampler::OneShotOptions opts;

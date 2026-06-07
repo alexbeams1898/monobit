@@ -42,7 +42,12 @@ add_library(selva-oscura-lib STATIC
     src/gameplay/PerFrameTick.cpp
     src/gameplay/Perception.cpp
     src/gameplay/PlayerState.cpp
+    src/gameplay/RomanNumeral.cpp
+    src/gameplay/RomanTiers.cpp
+    src/gameplay/Sangue.cpp
+    src/gameplay/SanguePulse.cpp
     src/gameplay/ScriptedEvents.cpp
+    src/gameplay/TerritoryClamp.cpp
     src/combat/ActorVolumes.cpp
     src/combat/AttackChain.cpp
     src/combat/AttackResolution.cpp
@@ -513,7 +518,13 @@ add_executable(selva-oscura-tests
     tests/camera_physics_primitives_test.cpp
     tests/region_schema_test.cpp
     tests/boss_archetype_test.cpp
+    tests/boss_dispatch_idempotence_test.cpp
     tests/boss_trigger_test.cpp
+    tests/roman_numeral_test.cpp
+    tests/roman_tiers_test.cpp
+    tests/sangue_pulse_test.cpp
+    tests/sangue_test.cpp
+    tests/territory_clamp_form_gate_test.cpp
 )
 target_link_libraries(selva-oscura-tests PRIVATE selva-oscura-lib Catch2::Catch2WithMain)
 set_target_properties(selva-oscura-tests PROPERTIES

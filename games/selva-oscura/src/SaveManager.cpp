@@ -143,6 +143,15 @@ PlayerProfile loadCharacter(const json& c)
     loadDoorStates(c, p);
     loadInventory(c, p);
     loadNpcState(c, p);
+    // Sangue. Absent on legacy saves (pre-currency-system) and on
+    // fresh characters; both cases default to 0. value<uint32_t>
+    // tolerates the field being absent or numeric of a smaller type.
+    p.sangue_lifetime = c.value("sangue_lifetime", std::uint32_t{0});
+    p.sangue_vessel = c.value("sangue_vessel", std::uint32_t{0});
+    if (p.sangue_lifetime > SANGUE_LIFETIME_CAP)
+        p.sangue_lifetime = SANGUE_LIFETIME_CAP;
+    if (p.sangue_vessel > SANGUE_LIFETIME_CAP)
+        p.sangue_vessel = SANGUE_LIFETIME_CAP;
     return p;
 }
 
@@ -283,6 +292,13 @@ nlohmann::json saveCharacter(const PlayerProfile& c)
     }
     if (!c.npc_state.empty())
         char_json["npc_state"] = saveNpcState(c);
+    // Sangue persists only when non-zero -- new characters and full-reclamation
+    // states stay compact. sangue_vessel persists across quit-to-menu (a
+    // run pause, not a death); second-death zeroes it before save.
+    if (c.sangue_lifetime != 0u)
+        char_json["sangue_lifetime"] = c.sangue_lifetime;
+    if (c.sangue_vessel != 0u)
+        char_json["sangue_vessel"] = c.sangue_vessel;
     return char_json;
 }
 

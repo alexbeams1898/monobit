@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 // Boss-trigger dispatcher: routes Custom triggers (per
 // engines/engine/include/world/Region.h TriggerAction::Custom) to
 // game-side boss-lifecycle actions. The engine emits the trigger;
@@ -34,5 +36,17 @@ namespace selva::gameplay
 // action_payload, splits on the first ':', dispatches by verb.
 // Unknown verbs are logged + ignored.
 void dispatchCustomTrigger(const engine::world::RegionTrigger& trigger);
+
+// Verb handlers. Exposed for direct call from tests + future code
+// paths that bypass the trigger system. Both are idempotent against
+// the actor pool: re-firing the same verb for an existing (alive or
+// dead) boss is a no-op.
+//   - spawn: Pattern A. Spawns the named decl now; no-op if a boss
+//     with this id is already in the pool.
+//   - engage: Pattern B. Wakes an already-spawned Dormant boss; no-op
+//     if the boss is in any other state (Engaged, Dying, Felled) or
+//     missing entirely.
+void handleSpawnVerb(const std::string& spawn_id);
+void handleEngageVerb(const std::string& spawn_id);
 
 } // namespace selva::gameplay

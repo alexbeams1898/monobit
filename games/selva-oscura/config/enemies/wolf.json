@@ -40,6 +40,8 @@
   "scripted_death_drain_exponent": 1.5,
   "felled_flag": "lupa_felled",
   "show_felled_overlay": false,
+  "item_drops": ["lupa_meat", "lupa_bone", "lupa_hide"],
+  "_item_drops_note": "Wood-side organic loot, NOT Hell-substance. Per locked Wood-lore + Animal-form cosmology: Lupa is the lone surviving Wood-legend; killing her yields the matter of her body, not sangue. Sangue is absent from this archetype (sangue_drop field omitted) by design -- forcing Lupa into the Hell-substance economy would be cosmologically wrong. Item ids are stable identifiers; the pickup + inventory layer is TBD (item registry not yet wired). fireEnemyDeath currently logs the drop list; future commit ties to inventory.",
   "_actions_note": "ONE action: a single deadly bite. No pounce, no gap-closer, no chain. Souls-style windup/active/recovery: 300ms windup (player's dodge window) + 180ms active (hitbox live) + the rest of the clip as recovery (locked body, can't slide). 35 damage per bite = a few bites kill the player. cooldown 1.4s -- she can land roughly one bite per 2 seconds.",
   "actions": [
     {

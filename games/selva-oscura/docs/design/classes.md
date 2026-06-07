@@ -18,14 +18,14 @@ satisfy.
 - **Class evolution is the cumulative substance the Vagrant has
   participated in moving.** Every act in the world is sangue
   moving (per setting.md *Sangue and the law of substance*) — a
-  shade killed, an item picked up, a move learned, a stat raised at
-  a vestigium, a contrapasso restoring on a circle. All are
+  shade killed, an item picked up, a move learned, a stat installed
+  via the Crucible, a contrapasso restoring on a circle. All are
   accounting surfaces of the same substance event. The class-
   picker's evolution L1→L2→L3 fires when the **total substance
   installed in his imprint** meets the next form's requirements.
   Requirements may be expressed as stat thresholds + items + learned
   moves + abilities — all of these are just sangue-state checked at
-  the vestigium.
+  the next Crucible commitment.
 - **Class-evolution is Hell loading itself into the Vagrant.** As
   each circle's contrapasso restores (per setting.md), some of the
   substance catches on the class-picker's imprint. By
@@ -40,8 +40,8 @@ satisfy.
   Unburdened → L2 Svuotato → L3 Diaphanous fires on cumulative
   **riversamento volume** alone — not stat investment, not item
   collection, not move learning. **Stats stay at 1/1/1/1 baseline
-  forever** (no vestigia → no measurement → no instrument to write
-  numbers on him). Each evolution stage unlocks **non-stat
+  forever** (no imprint → no metabolic-fire → no installation). Each
+  evolution stage unlocks **non-stat
   capability** — abilities, passives, and the development of his
   unique combat technique (stillness / interruption register).
   Nothing the unburdened gains is investable or numerical. Visual
@@ -92,8 +92,8 @@ TBD).
 - L2 = mid-game. Triggered when the Vagrant's cumulative substance
   arrangement meets the class-specific L2 requirements
   (stat thresholds + items + learned moves + abilities). Commits at
-  a vestigium. The substance has installed enough to support the
-  next form.
+  the next Crucible use. The substance has installed enough to
+  support the next form.
 - L3 = late-game, full imprint. The halo arrives at L3 for Penitent /
   Heretic. Wretched at L3 has no halo (his punishment is
   non-completion).
@@ -141,7 +141,7 @@ end-to-end.
 
 The cosmological constraint above (contrapasso accretion contributes
 to evolution) means stat growth is driven by *both* sangue
-investment (player choice at OFFERINGS) *and* keeper-kills (passive,
+investment (player choice at the Crucible) *and* keeper-kills (passive,
 imposed). The interaction of these two sources is open — possibly
 keeper-kills unlock evolution *thresholds*, with sangue investment
 determining where in the schema growth lands.
@@ -156,9 +156,10 @@ baseline mortal floor.
 
 For the class-picker, growth from this floor is the cosmological
 event of substance accumulating in the substrate (Hell installing,
-at vestigia, via OFFERING). For the Unburdened, **the floor is the
+via the Crucible's fire). For the Unburdened, **the floor is the
 ceiling.** Stat numbers stay at 1/1/1/1 for the entire run; the
-unburdened path has no instrument to write numbers on him.
+unburdened path has no metabolic-fire (no imprint) to drive
+installation.
 Unburdened progression is non-stat (riversamento → ability /
 passive unlocks; see *Evolutions*, below).
 
@@ -195,7 +196,7 @@ the canonical case being a magic-school-equivalent stat — that field
 is added to the engine's `Stats` struct itself. It is present on
 every actor from boot. But it is **gated by an unlock-mask**
 (`stats_unlocked.faith = true`) and only appears in the HUD + at
-OFFERINGS when the unlock fires.
+the Crucible's stat-spend panel when the unlock fires.
 
 ### Concrete example: Heretic L2 unlocks Faith
 
@@ -208,9 +209,9 @@ The Heretic class-picker, at L2 evolution, gains the ability to cast
   the level-up panel. Incantations cannot be cast. The field exists
   on `Stats` but is invisible and unused.
 - **At Heretic L2:** the bit flips to `true`. The Faith row appears
-  in the OFFERINGS panel. The player can invest sangue to raise it.
-  Heretical incantations become available; their damage / range /
-  cost scale with Faith.
+  in the Crucible's stat-spend panel. The player can invest sangue
+  to raise it. Heretical incantations become available; their
+  damage / range / cost scale with Faith.
 - **Unburdened, Penitent, Wretched, every enemy:** never see Faith.
   The bit stays false for their entire run.
 

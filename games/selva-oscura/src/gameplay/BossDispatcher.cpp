@@ -43,7 +43,7 @@ const EnemySpawnDecl* findCurrentRegionSpawnDecl(const std::string& spawn_id)
     engine::world::Region* cur = engine::world::currentRegionPtr();
     if (cur == nullptr)
         return nullptr;
-    auto* json_region = dynamic_cast<selva::world::JsonRegion*>(cur);
+    const auto* json_region = dynamic_cast<selva::world::JsonRegion*>(cur);
     if (json_region == nullptr)
         return nullptr;
     for (const auto& d : json_region->enemySpawnDecls())
@@ -54,24 +54,40 @@ const EnemySpawnDecl* findCurrentRegionSpawnDecl(const std::string& spawn_id)
     return nullptr;
 }
 
-// Find an already-spawned boss actor by its spawn_decl_id. Returns
-// the actor pool index, or -1 if not found. Used by the engage verb.
-int findActorIndexBySpawnDeclId(const std::string& spawn_decl_id)
+// Find a boss actor by spawn_decl_id. `include_dead` toggles whether
+// felled bosses still in the pool (carrying their death-pose) count:
+//   - include_dead=false: engage-verb path -- only alive bosses are
+//     candidates for the Dormant->Engaged transition.
+//   - include_dead=true:  spawn-verb idempotence -- a felled boss
+//     in the pool means "this id has been here; don't duplicate."
+// Returns pool index, or -1 if no match.
+int findBossInPool(const std::string& spawn_decl_id, bool include_dead)
 {
-    auto& pool = actors();
+    const auto& pool = actors();
     for (std::size_t i = 0; i < pool.size(); ++i)
     {
-        if (pool[i].spawn_decl_id == spawn_decl_id && pool[i].is_boss && !pool[i].is_dead)
-            return static_cast<int>(i);
+        const auto& a = pool[i];
+        if (a.spawn_decl_id != spawn_decl_id || !a.is_boss)
+            continue;
+        if (!include_dead && a.is_dead)
+            continue;
+        return static_cast<int>(i);
     }
     return -1;
 }
+
+} // namespace
 
 // Verb: "spawn:<spawn_decl_id>". Pattern A trigger-spawned boss.
 // Spawns the named decl now. If the decl was tagged with spawn_trigger_id
 // it would have been skipped at boot; this is when it actually spawns.
 void handleSpawnVerb(const std::string& spawn_id)
 {
+    // Idempotent: a re-entering trigger must not duplicate-spawn the
+    // boss, nor revive a felled one. Matches handleEngageVerb's
+    // "verbs are state-setters that compose, not toggles" doctrine.
+    if (findBossInPool(spawn_id, /*include_dead=*/true) >= 0)
+        return;
     const EnemySpawnDecl* decl = findCurrentRegionSpawnDecl(spawn_id);
     if (decl == nullptr)
     {
@@ -85,7 +101,7 @@ void handleSpawnVerb(const std::string& spawn_id)
     // After spawn, find the actor we just inserted and set it active
     // via the single setBossState funnel (writes mirrors + audio bed
     // + logs the transition).
-    const int idx = findActorIndexBySpawnDeclId(spawn_id);
+    const int idx = findBossInPool(spawn_id, /*include_dead=*/false);
     if (idx >= 0)
     {
         Actor& a = actors()[idx];
@@ -102,7 +118,7 @@ void handleSpawnVerb(const std::string& spawn_id)
 // the AI tick as a side-effect of detecting the state-clear edge.
 void handleEngageVerb(const std::string& spawn_id)
 {
-    const int idx = findActorIndexBySpawnDeclId(spawn_id);
+    const int idx = findBossInPool(spawn_id, /*include_dead=*/false);
     if (idx < 0)
     {
         selva::combat::combatLog("[boss-dispatch] engage '{}' no matching alive boss in pool",
@@ -110,12 +126,17 @@ void handleEngageVerb(const std::string& spawn_id)
         return;
     }
     Actor& a = actors()[idx];
-    if (a.boss_state == BossState::Engaged)
-    {
-        // Already engaged. Idempotent -- trigger probably re-fired
-        // due to player leaving and re-entering. No-op.
+    // Idempotent for any "past Dormant" state: re-entering the engage
+    // trigger volume must not flip Dying/Felled back to Engaged. The
+    // engage verb is a one-way-or-noop transition out of Dormant; once
+    // the boss has been engaged once, subsequent fires are no-ops
+    // regardless of current state. Prior bug: the check matched only
+    // Engaged, so a re-fire during the Dying pain phase clobbered the
+    // state, cancelling the death sequence and falling through to the
+    // scripted_death_seconds deadline (Lupa decline took 30s instead
+    // of pain_duration). See games/selva-oscura/tests/boss_engage_test.cpp.
+    if (a.boss_state != BossState::Dormant)
         return;
-    }
     // Force-aggro: the engage trigger IS the engagement, so the BT's
     // Combat branch (IfAwarenessAtLeast Combat) must pass immediately.
     // Without this, perception starts at Unaware and Lupa idles until
@@ -161,8 +182,6 @@ void handleEngageVerb(const std::string& spawn_id)
                              spawn_id, idx,
                              (a.archetype != nullptr) ? a.archetype->engage_clip : "");
 }
-
-} // namespace
 
 void dispatchCustomTrigger(const engine::world::RegionTrigger& trigger)
 {

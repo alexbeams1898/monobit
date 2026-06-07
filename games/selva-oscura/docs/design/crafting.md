@@ -119,14 +119,15 @@ feels different in the hand. Hell-imprint reclaims on death.
 *Path-specific economic shape*). The difference is in **what
 direction sangue moves through the Vagrant** while he imprints:
 
-- **Class-picker imprint**: sangue moves OUT of the wallet INTO the
+- **Class-picker imprint**: sangue moves OUT of the Crucible INTO the
   blade-shape (Hell-side) OR into the lasting object (Wood-side).
   The substance the Vagrant is shaping is the substance Hell has
   already installed in him; crafting redirects some of it into
-  gear. His body grows separately through OFFERINGS at vestigia.
-- **Unburdened imprint**: same wallet → object motion, BUT the
-  substance flowing through the Vagrant during the imprint also
-  contributes to **what's routing toward Beatrice's reservoir**.
+  gear. His body grows separately through Crucible installation.
+- **Unburdened imprint**: same vessel → object motion (the Censer
+  holds the Vagrant's accumulated substance), BUT the substance
+  flowing through the Vagrant during the imprint also contributes
+  to **what's routing toward Beatrice's reservoir**.
   The act of imprinting is also a small riversamento — the
   unburdened's imprint-making is *the substance passing through him
   arrested briefly in tool-form before continuing onward*. Tools
@@ -137,9 +138,8 @@ direction sangue moves through the Vagrant** while he imprints:
 **Crafting is a critical progression vector for the unburdened.**
 Per setting.md *The unburdened path* and classes.md *Stat schema
 model*, the unburdened's stats stay locked at 1/1/1/1 baseline for
-the entire run (he has no vestigia, no OFFERING, no cosmological
-instrument that writes numbers on him). His mechanical strength
-in Hell comes from:
+the entire run (he has no imprint-fire / no metabolic-fire to drive
+installation). His mechanical strength in Hell comes from:
 
 - **Crafted gear** — what he has imprinted into weapon-shape
 - **Items / abilities** found in the world
@@ -299,19 +299,20 @@ A Hell-crafted weapon is therefore *not* metaphorically "made of
 Hell" — it is *literally* made of Hell. The matter inside it was
 substrate at the moment before the Vagrant took it. This means a
 weapon held by the Vagrant on his second death **returns to Hell
-along with his wallet sangue** (per economy.md *Reclamation*), since
-both are substance Hell remembers and reclaims.
+along with his uncommitted vessel contents** (per economy.md
+*Reclamation*), since both are substance Hell remembers and reclaims.
 
 Unless — TBD — there is a category of weapon (Wood-substrate only?
 Or items that have been *named* somehow?) that persists across
-runs. This connects to the vestigia system (per fallback.md) but
-specifics are open.
+runs. This connects to the vestigia save-register (per fallback.md)
+but specifics are open.
 
 ## Crafted weapons and the second-death framework
 
 When the Vagrant dies (per the second-death system), all
 **Hell-crafted weapons in inventory are reclaimed by Hell** alongside
-his wallet sangue. They are substance; Hell takes its substance back.
+his uncommitted vessel contents. They are substance; Hell takes its
+substance back.
 
 Wood-crafted weapons — TBD — may persist, since their substrate
 never belonged to Hell. This is the same logic as why the unburdened
@@ -330,8 +331,9 @@ The `inventory.md` doc (currently lighter than `economy.md`) needs
 a pass to align with this inherited model — specifically to declare
 which categories Selva uses, which ArmorSlots are active for the
 soulslike (probably all four), and how the existing locked items
-(Cord, Hand, Erasure) slot into the ItemDef schema. Deferred until
-crafting moves from design to engineering.
+(Crucible, Censer, markers, Erasure ritual, the Guide's relic)
+slot into the ItemDef schema. Deferred until crafting moves from
+design to engineering.
 
 ## Open questions
 
@@ -349,9 +351,9 @@ crafting moves from design to engineering.
   candidate form. TBD.
 - **Item categories.** Whether crafting produces only weapons +
   consumables, or also armor / tools / sangue-interacting items
-  (the Cord, the Hand — per inventory.md). The Cord and Hand are
-  Hell-given per current docs; whether crafted variants exist is
-  open.
+  (markers, the Crucible / Censer themselves — per inventory.md).
+  These are Beat-4-given or unjudged-exemption-derived per current
+  docs; whether crafted variants exist is open.
 
 ## Cross-references
 
@@ -359,12 +361,13 @@ crafting moves from design to engineering.
   *Consuming Hell*, *Forced repentance through second death*, *The
   Vagrant / the unjudged*.
 - [Economy](economy.md) — substance flow; Hell reclamation on
-  second death; the unburdened path's lack of OFFERINGS spend.
-- [Inventory](inventory.md) — item slots; Cord, Hand, Erasure;
-  weapon equip and use. Crafting outputs land in inventory.
-- [Classes](classes.md) — stat progression via OFFERINGS (class-
-  picker only); the unburdened's stats are locked and crafting is
-  their progression vector.
+  second death; the unburdened path's no-installation cosmology.
+- [Inventory](inventory.md) — item slots; Crucible, Censer, markers,
+  Erasure ritual; weapon equip and use. Crafting outputs land in
+  inventory.
+- [Classes](classes.md) — stat progression via the Crucible
+  (class-picker only); the unburdened's stats are locked and
+  crafting is their progression vector.
 - [Fallback](fallback.md) — vestigia / persistent state across
   second deaths; Wood-craft persistence question lives here.
 - [Bestiary](bestiary.md) — what each enemy archetype drops;
@@ -412,10 +415,11 @@ from then on. Implications:
 
 - **Quality is the player's sangue allocation choice.** Spend more
   sangue, higher quality imprint. Crafting becomes a real
-  competitor with OFFERINGS for the sangue budget.
+  competitor with installation (Crucible) for the sangue budget.
 - **Hell-imprinted weapons reclaim on death** (matches existing
   rule). They're substance Hell remembers; on second death, both
-  the wallet sangue and the sangue-in-weapons return to Hell.
+  the uncommitted vessel contents and the sangue-in-weapons return
+  to Hell.
 - **Wood-imprinted weapons persist** (resolves the open question in
   the main body about Wood-craft survival). The Wood is outside
   Hell's accounting; sangue spent on Wood-substrate imprints is

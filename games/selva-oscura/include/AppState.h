@@ -215,7 +215,32 @@ struct PlayerProfile
     // to lazily create + read. Stable npc_ids match the topic
     // registry (config/npcs/<id>.json).
     std::unordered_map<std::string, selva::dialog::NpcEncounterState> npc_state;
+
+    // Cumulative sangue ever collected across all cycles. Persistent;
+    // never resets. Hard-capped at SANGUE_LIFETIME_CAP (9^9 numerologically
+    // = 9 circles completed). Per setting.md *Hell's accounting cap* the
+    // renderer caps the displayed roman-numeral form at 3,999,999 (the
+    // vinculum cap), but the underlying ledger continues past that until
+    // the lifetime hard-cap. Counts EVERY sangue grant -- bookkeeping
+    // separate from the per-cycle vessel.
+    std::uint32_t sangue_lifetime = 0;
+
+    // Substance currently held in the Vagrant's vessel (the
+    // Crucible for class-pickers, the Censer for the unburdened, both
+    // TBD at Beat 4). Per [[project_crucible_censer_leveling_system]]
+    // the vessel IS the holding zone (no separate wallet); the HUD
+    // reads this field. Resets each cycle (uncommitted contents return
+    // to Hell on second death; see setting.md *Hell reclaims its
+    // substance from the dead*). For Increment 1, vessel is generic
+    // (no class distinction yet); class-specific Crucible/Censer
+    // mechanics arrive when the class-picker UI lands.
+    std::uint32_t sangue_vessel = 0;
 };
+
+// Hard ceiling on lifetime sangue. 9^9 numerologically -- "all of Hell,
+// completed" (9 circles, raised to the power of 9). Per cosmology lock
+// 2026-06-04. Saturating add at this value; further grants no-op.
+inline constexpr std::uint32_t SANGUE_LIFETIME_CAP = 999'999'999u;
 
 // ---------------------------------------------------------------------------
 // Settings - persistent user preferences. Lives at the save level (not

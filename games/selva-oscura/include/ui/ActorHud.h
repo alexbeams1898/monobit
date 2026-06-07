@@ -1,7 +1,16 @@
 #pragma once
 
+#include <glm/vec2.hpp>
+
 namespace selva::ui
 {
+
+// Screen-space anchor of the vessel sangue counter inside the HUD.
+// Sangue pulses target this point; the HUD readout draws at it.
+// Single source of truth so the pulse system and the HUD don't drift.
+// Returns (0, 0) if the main viewport hasn't been computed yet
+// (boot frame).
+glm::vec2 sangueHudAnchor();
 
 // Player HP + stamina HUD. Two stacked horizontal bars in the
 // top-left of the viewport (soulslike convention). HP red,

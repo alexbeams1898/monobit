@@ -81,10 +81,9 @@ What choices affect:
 - **Possibly: NPC reward branch** (different rewards per dialogue
   outcome — TBD per NPC).
 - **Not: stats.** Dialogue does not directly grant stat increases —
-  that path goes through OFFERINGS (sangue investment) or the Hand
-  (post-climax).
-- **Not: HP.** Dialogue does not heal — that path goes through the
-  Guide's projections, the Hand, or NPC items.
+  that path goes through the Crucible (class-picker installation).
+- **Not: HP.** Dialogue does not heal — healing comes from the
+  Guide's projections, NPC items, or other TBD mechanisms.
 
 The Vagrant is hollow — dialogue is the player's expression, not his
 character development. He is whatever the player makes him.

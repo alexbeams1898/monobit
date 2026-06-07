@@ -160,6 +160,10 @@ void emitCombatFields(nlohmann::json& j, const EnemyArchetype& a)
         j["scripted_death_drain_to_fraction"] = a.scripted_death_drain_to_fraction;
     if (a.scripted_death_drain_exponent != 1.0f)
         j["scripted_death_drain_exponent"] = a.scripted_death_drain_exponent;
+    if (a.sangue_drop != 0u)
+        j["sangue_drop"] = a.sangue_drop;
+    if (!a.item_drops.empty())
+        j["item_drops"] = a.item_drops;
 }
 
 void emitBossFields(nlohmann::json& j, const EnemyArchetype& a)
@@ -249,6 +253,13 @@ void loadCombatFields(const nlohmann::json& j, EnemyArchetype& a)
     a.scripted_death_pain_clip = j.value("scripted_death_pain_clip", std::string{});
     a.scripted_death_drain_to_fraction = j.value("scripted_death_drain_to_fraction", 0.0f);
     a.scripted_death_drain_exponent = j.value("scripted_death_drain_exponent", 1.0f);
+    a.sangue_drop = j.value("sangue_drop", std::uint32_t{0});
+    if (j.contains("item_drops") && j["item_drops"].is_array())
+    {
+        for (const auto& s : j["item_drops"])
+            if (s.is_string())
+                a.item_drops.push_back(s.get<std::string>());
+    }
 }
 
 void loadBossFields(const nlohmann::json& j, EnemyArchetype& a)

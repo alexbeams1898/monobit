@@ -87,10 +87,11 @@ type:
   on every actor's `Stats` struct but are gated by per-stat
   unlock-mask — present-but-invisible on actors that haven't
   unlocked them.
-- **Sangue payout on death.** The Vagrant's wallet sangue returns to
-  Hell on his death (Hell reclaims its substance from any dead body).
-  Shades and keepers, when killed, deposit sangue into the Vagrant's
-  wallet. Same mechanic, different direction.
+- **Sangue payout on death.** The Vagrant's uncommitted vessel
+  contents (Crucible or Censer) return to Hell on his death (Hell
+  reclaims its substance from any dead body). Shades and keepers,
+  when killed, deposit sangue into the Vagrant's vessel. Same
+  mechanic, different direction.
 - **Sprite rendering.** Same draw loop. Same sprite system. Same
   bitmap-based animation.
 - **Position / movement.** Same world-coordinate system, same
@@ -108,9 +109,10 @@ type:
 The Guide is an NPC that:
 - Appears in the Wood (the hub) consistently across runs.
 - Appears in Hell as a projection at per-keeper interludes.
-- Provides services (heal, OFFERINGS).
-- Eventually fights the Vagrant (class-picker climax) or hands over
-  the Hand (unburdened climax).
+- Provides services (heal, dialogue, eventually the Erasure ritual
+  when the Vagrant has gathered the prerequisites).
+- Eventually fights the Vagrant (class-picker climax) or passes the
+  relic (unburdened climax).
 
 He is *not a party member*. He does not follow the Vagrant in combat.
 He is a stationary or interlude NPC, mechanically. The "companion"
@@ -144,8 +146,8 @@ She is not state-aware in the NPC sense.
   closes). Pre-keeper, can the player attack them anyway? Defer.
 - **Bullet symmetry.** All bullets are entities. Some bullets belong
   to the player; some to enemies. Friendly-fire rules: defer.
-- **Whether the Hand's effects (heal, OFFERINGS-anywhere,
-  riversamento-anywhere) need a special trigger or use the same
+- **Whether the Crucible / Censer (commit invocation, vessel-fire,
+  refunds during Erasure) need a special trigger or use the same
   entity-interaction pattern as other in-world objects.** Defer to UX.
 
 ## Cross-references

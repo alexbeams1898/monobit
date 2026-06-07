@@ -107,6 +107,48 @@ TEST_CASE("SaveManager skips characters with empty names on load", "[save][robus
     cleanupTestFile(path);
 }
 
+TEST_CASE("SaveManager round-trip preserves sangue fields", "[save][sangue]")
+{
+    const std::string path = testSavePath("sangue-roundtrip");
+    cleanupTestFile(path);
+
+    selva::SaveData data;
+    selva::SaveManager::addCharacter(data, "PILGRIM");
+    data.characters[0].sangue_lifetime = 1234u;
+    data.characters[0].sangue_vessel = 56u;
+
+    REQUIRE(selva::SaveManager::save(data, path));
+
+    const selva::SaveData loaded = selva::SaveManager::load(path);
+    REQUIRE(loaded.characters.size() == 1);
+    REQUIRE(loaded.characters[0].sangue_lifetime == 1234u);
+    REQUIRE(loaded.characters[0].sangue_vessel == 56u);
+
+    cleanupTestFile(path);
+}
+
+TEST_CASE("SaveManager defaults sangue to zero on legacy saves", "[save][sangue]")
+{
+    // Pre-currency saves had no sangue fields. Load must default both
+    // to 0 without crashing or rejecting the file.
+    const std::string path = testSavePath("sangue-legacy");
+    cleanupTestFile(path);
+    std::filesystem::create_directories(std::filesystem::path(path).parent_path());
+
+    if (std::FILE* f = std::fopen(path.c_str(), "w"))
+    {
+        std::fprintf(f, "{\n  \"schema_version\": 1,\n"
+                        "  \"characters\": [ { \"name\": \"PILGRIM\" } ]\n}\n");
+        std::fclose(f);
+    }
+    const selva::SaveData loaded = selva::SaveManager::load(path);
+    REQUIRE(loaded.characters.size() == 1);
+    REQUIRE(loaded.characters[0].sangue_lifetime == 0u);
+    REQUIRE(loaded.characters[0].sangue_vessel == 0u);
+
+    cleanupTestFile(path);
+}
+
 TEST_CASE("SaveManager round-trip preserves felled_bosses", "[save][boss-backend]")
 {
     const std::string path = testSavePath("felled-bosses");

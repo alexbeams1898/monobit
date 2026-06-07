@@ -93,6 +93,39 @@ TEST_CASE("EnemyArchetype: round-trip preserves boss fields", "[boss-backend]")
     REQUIRE(b.engage_clip == a.engage_clip);
 }
 
+TEST_CASE("EnemyArchetype: item_drops round-trips", "[boss-backend][item-drops]")
+{
+    // Lupa-shape archetype: no sangue_drop (Animal-form actors don't
+    // yield Hell-substance), three item_drops (organic loot).
+    EnemyArchetype a;
+    a.id = "wolf";
+    a.item_drops = {"lupa_meat", "lupa_bone", "lupa_hide"};
+
+    nlohmann::json j = a;
+    REQUIRE(j.contains("item_drops"));
+    REQUIRE(j["item_drops"].size() == 3);
+    REQUIRE_FALSE(j.contains("sangue_drop"));
+
+    EnemyArchetype b = j.get<EnemyArchetype>();
+    REQUIRE(b.item_drops.size() == 3);
+    REQUIRE(b.item_drops[0] == "lupa_meat");
+    REQUIRE(b.item_drops[1] == "lupa_bone");
+    REQUIRE(b.item_drops[2] == "lupa_hide");
+    REQUIRE(b.sangue_drop == 0u);
+}
+
+TEST_CASE("EnemyArchetype: item_drops defaults to empty", "[boss-backend][item-drops]")
+{
+    EnemyArchetype a;
+    REQUIRE(a.item_drops.empty());
+
+    // A typical Hell-side archetype JSON (sangue only, no item_drops):
+    const nlohmann::json src = {{"id", "limbo_shade"}, {"sangue_drop", 1}};
+    EnemyArchetype b = src.get<EnemyArchetype>();
+    REQUIRE(b.sangue_drop == 1u);
+    REQUIRE(b.item_drops.empty());
+}
+
 TEST_CASE("EnemyArchetype: to_json omits empty boss fields for non-bosses", "[boss-backend]")
 {
     // Non-boss serialization should be compact: empty boss fields are

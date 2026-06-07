@@ -24,6 +24,8 @@
   "knockdown_clip": "zombie_dying",
   "_comment_physical_reactions": "Flinch + hit_react clips left at humanoid defaults. Moot for fresh larvae (no hurtboxes; no incoming hits) but preserved for the post-swap aged archetype semantics.",
   "max_hp_override": 1,
+  "sangue_drop": 1,
+  "_comment_sangue_drop": "Fresh larvae are normally unkillable by the Vagrant (disable_hurtboxes=true). The drop fires only when the paired-corpse FIFO consumes a fresh as part of the feeding cycle (HP->0 via consumption). Smaller than aged because the fresh imprint is barely loosened. Placeholder per [[project_imprint_handle_required_for_sangue]] -- pending the keeper-fall ledger.",
   "tint_color": [0.95, 0.92, 0.88],
   "_comment_tint_color": "Leached pale -- the fresh larva is a recently-arrived soul, imprint set but inward-burn hasn't yet darkened the substance. Slightly warm off-white reads better than pure white against the dark Limbo ambient.",
   "tint_burn_target_archetype": "larva_aged",

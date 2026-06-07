@@ -266,19 +266,33 @@ The Guide then offers **the Signing** (*La Firma*). This is a
 ritual he performs on the Vagrant, not an item he hands over. He
 explains its function as a formality of intake: *"Pilgrim, thou
 art unmarked. None can pass into the depths unmeasured. Bend thy
-head; I shall sign thee."* He does not present declining as an
-option — the ritual is framed as the necessary thing.
+head; I shall sign thee."*
 
-### Beat 4 — The choice
+### Beat 4 — The choice (class-picker UI)
 
-The player can:
+After the Guide's framing dialog, a **class-picker UI** fires:
+modal full-screen, four options laid out clearly, two-step
+confirmation, no back button, explicit-permanent text in the UI
+chrome. The Guide's belief that the Signing is necessary is HIS
+frame; the UI presents the choice honestly so the player can
+commit with eyes open.
 
-- **Accept the Signing** → class-pick. Penitent / Heretic / Wretched.
-  Stats unlock. The Guide performs the ritual; the soul becomes
-  measured. Standard path.
-- **Refuse the Signing** → unburdened. The Guide does not perform
-  the ritual; the Vagrant remains unmeasured. The unburdened path
-  commits in this moment by the absence of the act.
+Options:
+
+- **Penitent / Heretic / Wretched** (any of the three) →
+  Signing happens cosmologically → imprint is created → the
+  Vagrant receives **the Crucible**. Stats unlock. Standard path.
+- **Refuse** → no Signing → refusal-channel opens → the Vagrant
+  receives **the Censer**. Stats stay at baseline; growth comes
+  from riversamento alone via the Censer (per setting.md
+  *The unburdened path*).
+
+The choice is decisive at this beat. The Signing window is
+cosmologically one-shot for the Guide because the Lupa-fall
+arrangement supplied the chrism-equivalent substance the ritual
+required; once spent, the Guide has nothing to draw on. Later
+Erasures re-enable the ritual via Vagrant-gathered material
+prerequisites and re-run the same class-picker UI.
 
 The Guide responds differently:
 
@@ -570,33 +584,37 @@ supplied does not have an attack-pattern for an unburdened Vagrant.
 The Guide-as-tool was configured for a class-picker; the unburdened
 Vagrant slips past the configuration. With no instruction to follow,
 the Guide does what his original soul-shape (helper, guide) defaults
-to — he hands over The Hand. The severed-hand item passes willingly,
-or falls from his outstretched hand without resistance. He fades. No
-fight. The contrapasso saturating him is held back not by recognition
-but by the absence of a configured response.
+to — he passes the relic. The Vagrant receives it willingly, or it
+falls from the Guide's outstretched hand without resistance. He
+fades. No fight. The contrapasso saturating him is held back not by
+recognition but by the absence of a configured response.
 
 His final words on this path are minimal. Gestural, half-finished.
 The player infers from the totality of his arc what he was. The
 unburdened gets the same revelation as the class-picker, but
 quieter.
 
-### The Hand
+### What the Guide leaves behind (the relic)
 
-The item the Vagrant carries forward after the Guide's death.
+The Guide carries cosmological residue from his role as Beatrice's
+projection-channel. At his death, that residue collapses out of him
+and the Vagrant inherits something. The specific form and function
+of this inheritance is TBD — leveling is already portable from Beat 4
+via the Crucible / Censer, so the old "portable OFFERINGS access" role
+the Hand used to fill no longer exists.
 
-- **Severed at the kill** (class-picker) or **fallen from his
-  outstretched hand at the handover** (unburdened).
-- **The Vagrant carries it.** The hand is in inventory, terrible to
-  look at, terrible to know what was done.
-- **Functions:** heal (universal), plus path-specific:
-  - **Class-picker:** offerings access at any time.
-  - **Unburdened:** portable riversamento site (riversa anywhere).
-- **Available anywhere, anytime, after acquisition.** No interlude
-  gating.
+- **Severed at the kill** (class-picker) or **passed at the handover**
+  (unburdened).
+- **The Vagrant carries it.** Whatever it is, the relic is in
+  inventory, terrible to look at, terrible to know what was done.
+- **Function TBD.** Possible roles:
+  - Healing item (the pre-Hand-retired healing problem may resolve
+    here)
+  - A second cosmological tool that complements the vessel
+  - A late-game progression unlock that requires the Guide's residue
+  - A late-game class-evolution gate
 - **Permanent across cycles.** Once acquired, the Vagrant has it for
-  the rest of the save. (Even after second death — like stat
-  investments and lifetime totals, the Hand is permanent
-  acquisition.)
+  the rest of the save.
 
 ### Tone — the kill is Blaidd-coded
 
@@ -610,8 +628,8 @@ feel horrible *and* a relief — the resource pressure of the late
 cycles, when his projection has stopped appearing in Hell, has
 built up an actual mechanical reason to want the encounter to
 end. The player is complicit in his death; they wanted it for
-reasons that turn out to be Hell's reasons (the Hand is genuine
-progression).
+reasons that turn out to be Hell's reasons (the Guide's residue
+is genuine progression).
 
 ### The truth comes out posthumously
 
@@ -981,8 +999,8 @@ discrete reveal at the final scene of each ending.**
 
 - [Setting](setting.md) — the world this story takes place in. The
   cosmological rules, the geography, the locked terms (Vagrant /
-  Pilgrim, sangue, riversamento, the Signing, the Cord, the Erasure,
-  vestigia, the Hand).
+  Pilgrim, sangue, riversamento, the Signing, markers, the Erasure,
+  vestigia, the Crucible, the Censer).
 - [Classes](classes.md) — the Vagrant's combat capabilities,
   class-pick fork, evolutions, the Unburdened path mechanics.
 - [Companions](companions.md) — the Guide as character, in

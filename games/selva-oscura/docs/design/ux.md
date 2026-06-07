@@ -24,9 +24,9 @@ Example shapes:
 - **READ** is the universal inspect verb — used for entering detail
   pages (bestiary detail, TEXT body) regardless of whether the page
   itself is text or stats.
-- **R:KNOW** (the OFFERINGS right-arrow peek) is a *withheld*
-  control: it exists but is not advertised in the footer.
-  Discoverable, not signposted.
+- **R:KNOW** (the Crucible stat-spend right-arrow peek) is a
+  *withheld* control: it exists but is not advertised in the
+  footer. Discoverable, not signposted.
 
 Why this matters: a 128×64 screen cannot spare inconsistency. One
 rule, one voice — the player never has to re-read the footer in a
@@ -47,7 +47,7 @@ Locked-by-implication from setting.md / story.md / fallback.md:
   fallback.md *Death*).
 - Opening sequence Beats 1-5 (per story.md *The opening sequence*).
 - Per-keeper interlude (Guide projection appears, offers heal /
-  OFFERINGS — per companions.md, story.md *The Guide / Functions*).
+  dialogue — per companions.md, story.md *The Guide / Functions*).
 - Climax: Guide encounter → keeper 9 → post-Lucifer (path-dependent).
 
 Specific screen content, transitions, and ordering: TBD at
@@ -55,19 +55,25 @@ implementation.
 
 ## HUD
 
-*TBD — what's on screen during play. HP bar, sangue counter, vestigia
-indicator, etc.*
+*TBD — what's on screen during play. HP bar, vessel-contents counter
+(reading from the Crucible or Censer depending on path), etc.*
 
 Locked-by-implication:
 - Three stats follow the engine triad (HP / fire_rate / damage).
-- Lifetime sangue counter bounded at 3,999,999 (vinculum-Roman cap,
-  per setting.md).
-- HUD must stay in Hell's register (Italian loanwords / Early
-  Modern English where labels appear).
+- The vessel-contents counter (replacing the older "wallet" concept)
+  reads roman-vinculum numerals; lifetime sangue counter bounded at
+  3,999,999 (vinculum-Roman cap, per setting.md).
+- Per [[project_substance_has_no_in_game_name]]: the substance
+  itself is NEVER labeled in any diegetic surface. The vessel has
+  a name (Crucible / Censer); the substance within it does not.
+- HUD must stay in Hell's register (Early Modern English; Italian
+  loanwords only where load-bearing per
+  [[project_foreign_language_load_bearing]]).
 
 ## Menus
 
-*TBD — pause menu, inventory menu, vestigia menu, OFFERINGS, etc.*
+*TBD — pause menu, inventory menu, class-picker UI, Crucible stat-
+spend panel, etc.*
 
 Locked-by-implication:
 - Vestigia UI exists and shipped phase-3 (per memory + fallback.md).
@@ -85,8 +91,8 @@ gets the equivalent.*
 Locked-by-implication:
 - A = primary action / confirm (per footer-hint convention above).
 - B = back / cancel.
-- R (RIGHT) = inspect / peek (rare, withheld; used for OFFERINGS
-  KNOW).
+- R (RIGHT) = inspect / peek (rare, withheld; used for the
+  Crucible's stat-KNOW peek).
 
 ## Name-entry screen
 

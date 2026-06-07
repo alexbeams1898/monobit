@@ -7,6 +7,7 @@
 
 #include <nlohmann/json_fwd.hpp>
 
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -269,6 +270,23 @@ struct EnemyArchetype
     // dimensions outgrows two integers.
     int max_hp_override = 0;
     float max_poise_override = 0.0f;
+
+    // Sangue granted to the player's vessel + lifetime ledger when the
+    // player kills an actor of this archetype. Default 0 (no grant).
+    // Per [[project_imprint_handle_required_for_sangue]] trash kills
+    // produce barely any collectible substance; keeper-fall events are
+    // where playable amounts arrive. Tuned per archetype in JSON.
+    std::uint32_t sangue_drop = 0u;
+
+    // Physical items released on this archetype's death. Distinct from
+    // sangue: sangue is Hell-substance landing in the Vagrant's vessel
+    // (Hell-side cosmology); items are organic loot landing in inventory
+    // (Wood-side cosmology -- Lupa's meat / bone / hide, future
+    // descendant-fauna drops). Hell-side actors (shades, larvae,
+    // keepers) leave this empty; Animal-form actors author it. Stable
+    // identifiers; the pickup + inventory layer is TBD (item registry
+    // not yet wired -- fireEnemyDeath currently just logs them).
+    std::vector<std::string> item_drops;
 
     // Scripted-death timer (seconds). When > 0, the boss dies at
     // (engage_wallclock + scripted_death_seconds) regardless of damage

@@ -106,11 +106,12 @@ outside Hell's time, where unjudged souls reside. The cycle restarts
 because Hell cannot finish what it never began.
 
 The two frames matter for what persists. Hell's accounting resets each
-cycle (wallet sangue is reclaimed, HP and position refresh, transient
-combat state clears). The Wood's ledger is independent of Hell's time:
-stats invested at OFFERINGS, riversato lifetime total, class choice,
-keepers felled, NPC encounter history, Grimoire unlocks — these are
-Wood-frame, not Hell-frame, and survive any number of Hell-cycles.
+cycle (uncommitted vessel contents are reclaimed, HP and position
+refresh, transient combat state clears). The Wood's ledger is
+independent of Hell's time: stats installed via the Crucible, riversato
+lifetime total, class choice, keepers felled, NPC encounter history,
+Grimoire unlocks — these are Wood-frame, not Hell-frame, and survive
+any number of Hell-cycles.
 
 This is the structural reason the Vagrant grants second death (he is
 unbound by the protocol-roles Hell installed in everyone else) and
@@ -185,15 +186,16 @@ accounted differently.** Stats are sangue accumulated in the Vagrant's
 substrate. Items are sangue arranged in object-form. Moves are sangue
 patterned into motor habit. Abilities are sangue installed as
 capability. Crafted weapons are sangue imprinted into blade-form.
-Vestigia are records of the Vagrant's current sangue-state. The wallet
-is just the most granular accounting unit; everything else is the same
-substance expressed at a different scale of arrangement.
+Vestigia are records of the Vagrant's current sangue-state. The
+vessel (Crucible for class-picker, Censer for unburdened) is just the
+most granular accounting unit; everything else is the same substance
+expressed at a different scale of arrangement.
 
 The cosmology has **no second currency**. No gold, no tokens, no
 experience-points, no fast-travel charges separate from sangue. Anything
 mechanical in this game must be expressible as sangue in some
-arrangement. The accounting categories (wallet, stats, items, moves)
-are *rendering*, not separate ontology.
+arrangement. The accounting categories (vessel-held substance, stats,
+items, moves) are *rendering*, not separate ontology.
 
 #### The Wood is also made of sangue
 
@@ -268,23 +270,24 @@ completion can't land because there is no imprint to complete.
 #### The four laws of sangue
 
 1. **Sangue moves outward only.** Once collected by the Vagrant, it
-   either becomes part of him (installation, via OFFERING) or moves
-   through him into Beatrice's reservoir (riversamento, for the
-   unburdened). It does not flow back into Hell from a living vessel of
-   its own accord.
+   either becomes part of him (installation, via the Crucible) or moves
+   through him into Beatrice's reservoir (riversamento, via the Censer,
+   for the unburdened). It does not flow back into Hell from a living
+   vessel of its own accord.
 2. **Hell reclaims its substance from the dead.** Second death returns
-   all wallet sangue to Hell's reservoir. Hell takes back what is on
-   the body, because the body's arrangement has collapsed and the
-   substance is unclaimed. **What was installed (in him) or routed
-   through (to Beatrice) is NOT reclaimed** — only uncommitted wallet
-   sangue is. Installation and riversamento are the acts that put
-   sangue out of Hell's reach.
+   all uncommitted vessel contents to Hell's reservoir. Hell takes
+   back what is held in the wound, because the body's arrangement has
+   collapsed and the substance is unclaimed. **What was installed (in
+   him) or routed through (to Beatrice) is NOT reclaimed** — only the
+   uncommitted vessel contents are. Installation (Crucible) and
+   riversamento (Censer) are the acts that put sangue out of Hell's
+   reach.
 3. **Sangue absorbed is gone forever.** No bloodstain, no corpse-run.
    The only way to obtain more sangue is to extract it from new shades
    and keepers — and from the items / moves / abilities those acts
    reveal as their downstream shapes.
 4. **Hell does not let the Vagrant hoard.** The vessel is a wound that
-   holds substance briefly. Wallet pressure is implemented through
+   holds substance briefly. Vessel pressure is implemented through
    *Disgorgement* at segment boundaries (per `economy.md`), overflow
    loss, scaling installation cost, and the lifetime cap. The principle
    is that sangue at rest is sangue Hell is jealous of. Commit it or
@@ -296,19 +299,22 @@ The class-picker / unburdened path distinction is, at the substance
 level, a distinction of which direction sangue moves through the
 Vagrant:
 
-- **Class-picker — OFFERING.** Sangue moves INTO the Vagrant. The
-  installation becomes part of his substrate. He grows. His stats /
+- **Class-picker — INSTALLATION via the Crucible.** Sangue moves INTO
+  the Vagrant. The Crucible's fire (enabled by the imprint, which IS
+  the metabolic-fire / Galenic concoction-enabler the Signing creates)
+  burns the held substance into his substrate. He grows. His stats /
   items / moves / abilities are the expression of accumulated
   substance. By TRANSFIGURATION he is sangue-saturated in Hell-shape —
   fit to be Satan-2 of Hell because he *is* the substance arranged
   to match the throne.
-- **Unburdened — RIVERSAMENTO.** Sangue moves THROUGH the Vagrant
-  into Beatrice's reservoir. The substance passing through *shapes
-  him into a conduit* — his stats / items / moves / abilities express
-  the form of having-passed-through. He thins visibly (Svuotato,
-  Diaphanous) because the substance that would have made his body
-  has gone elsewhere. By Diaphanous he is mostly verb, not noun —
-  almost the act of passage rather than a body conducting it.
+- **Unburdened — RIVERSAMENTO via the Censer.** Sangue moves THROUGH
+  the Vagrant into Beatrice's reservoir. The Censer's fire burns the
+  held substance into rising smoke; the smoke transits to Beatrice's
+  body via the cosmological link the refusal opened. He thins visibly
+  (Svuotato, Diaphanous) because his body is used as transit-substrate
+  without ever being nourished — no imprint-fire means no concoction,
+  no installation, nothing stays. By Diaphanous he is mostly verb, not
+  noun — almost the act of passage rather than a body conducting it.
 
 Same substance. Opposite directions. Both paths are *Satan-making* at
 the cosmological level (see [Beatrice / Sangue saturation of Beatrice],
@@ -528,16 +534,35 @@ Vagrant cannot reach the hill, and the dawn never finishes.
 
 Each cycle is one descent attempt, ended by second death or other
 run termination. **Persistent across cycles:** lifetime sangue total,
-stats invested via OFFERINGS, riversato lifetime total, class choice,
-keepers felled, NPC encounter history, Grimoire unlocks. **Reset
-each cycle:** per-run sangue wallet, current HP and position,
-transient combat state.
+stats installed via the Crucible, riversato lifetime total, class
+choice, keepers felled, NPC encounter history, Grimoire unlocks.
+**Reset each cycle:** uncommitted vessel contents (the Crucible's or
+Censer's currently-held substance), current HP and position, transient
+combat state.
 
-### Hell's accounting cap (UX-only)
+### Hell's accounting cap (cosmological)
 
-The lifetime sangue counter is bounded at 3,999,999 (the renderer's
-vinculum-Roman cap). The game guides the player to spend sangue as
-they approach this. The cap is a UX concern, not an ending.
+The vessel and lifetime ledger are both bounded at **999,999,999**.
+This is 9³ — nine, raised to the power of nine — and cosmologically
+reads as *all of Hell completed*: every law of every circle's
+contrapasso fully accounted for, every imprint fully metabolized,
+every soul's substance fully tallied. Beyond this number there is no
+more substance for Hell to give — the cosmology contains a finite
+quantity, and the cap is the literal sum.
+
+**The cap is therefore a hard ceiling, not a soft UX nag.** When the
+vessel is full or the lifetime ledger is full, further substance
+released by kills or keeper-falls saturates silently — the substance
+exists in Hell still, but there is no room for it to land in the
+Vagrant's vessel or the Vagrant's history. Reaching the cap is a
+cosmologically loaded state: the Vagrant has touched (or routed
+toward Beatrice) the maximum substance the cosmology contains.
+
+The HUD renders the cap value cleanly using double-vinculum Roman
+notation (a double overbar marks ×1,000,000; a single overbar marks
+×1,000). 999,999,999 displays as three groups of CMXCIX with two,
+one, and zero bars respectively. No overflow indicator exists in the
+renderer because no overflow can exist in the cosmology.
 
 ---
 
@@ -790,34 +815,34 @@ transactional substance economy. The unburdened grows — but not
 through any of the cosmological instruments the class-picker uses.
 
 - **Stats stay at universal baseline (1/1/1/1) forever.** Sangue
-  cannot install in him; he has no imprint to install on. There is
-  no OFFERING access, no vestigia (vestigia are the mark Hell's
-  measurement leaves; he was never measured). The HUD's stat
-  numbers do not move from frame one. This is genuinely the
-  *unmeasured* state expressed mechanically: the cosmology has no
-  hook into him, so it cannot write numbers on him.
+  cannot install in him; he has no imprint to install on, no
+  metabolic-fire to drive installation. The HUD's stat numbers do
+  not move from frame one. This is genuinely the *unmeasured* state
+  expressed mechanically: the cosmology has no hook into him, so it
+  cannot write numbers on him.
 - **All path-specific growth comes from riversamento alone.** The
-  unburdened progresses by **pouring sangue out into Beatrice's
-  reservoir** (per *Sangue saturation of Beatrice*, above). The
-  more he pours, the more his evolution stages advance
+  unburdened progresses by **routing sangue through the Censer**
+  into Beatrice's reservoir (per *Sangue saturation of Beatrice*,
+  above). The Censer's fire burns held substance into rising smoke
+  that transits to Beatrice via the cosmological link the refusal
+  opened. The more he pours, the more his evolution stages advance
   (Unburdened → Svuotato → Diaphanous). Each evolution unlocks
   **non-stat capability** — abilities, passives, and the
   development of his unique combat technique (stillness /
   interruption register, TBD specifics). **Nothing he gains is
-  installable, investable, or numerical in the OFFERING sense.**
+  installable, investable, or numerical in the class-picker sense.**
   Riversamento volume IS the only progression input.
 - **No class ability kit at L1.** Class-pickers receive one at the
   Signing; the unburdened does not. His combat capability at L1 is
   what the baseline body affords + crafted gear + items found in
   the world. His distinctive technique emerges only via Svuotato
   and Diaphanous, both gated on riversamento.
-- **No leveling instruments exist for him.** No vestigia (no mark),
-  no Cord (Hell resists, class-picker only), no Erasure (cannot
-  un-measure), no Hand (acquired post-Guide-handover, available
-  but for path-equivalent functions — riversamento-anywhere, not
-  OFFERING). The Wood-side chest is mundane storage and accessible
-  to him, but does not function as a leveling site for either
-  path.
+- **No imprint-fire means no Crucible.** The Vagrant receives the
+  Censer at Beat 4 instead — same cosmological fire mechanism,
+  but routed to Beatrice rather than installed into the substrate.
+  Markers are placeable for teleport (see [[project_markers_replace_cord]])
+  on both paths; the Wood-side chest is mundane storage and
+  accessible to him, but does not function as a leveling site.
 - The unburdened body is a **chosen vessel** (*vaso d'elezione* —
   Dante's phrase for St. Paul, Inf. II:28). Beatrice elected him
   for a specific cosmic role.
@@ -1177,9 +1202,9 @@ imprint Hell can grip; as each circle resumes proper contrapasso
 under its new mangled keeper, a portion of the long-bottled sangue
 of that ring catches on the Vagrant's imprint — *Hell installing
 itself in him*, expressed mechanically as items acquired in the
-consumed circle, abilities learned there, stats unlocked at the
-next vestigium, the cosmological signature of having participated
-in that ring's restoration. The class-picker's evolution arc is the
+consumed circle, abilities learned there, stats unlocked via the
+next Crucible commitment, the cosmological signature of having
+participated in that ring's restoration. The class-picker's evolution arc is the
 *accumulating shape of restored Hell catching on him*. By
 TRANSFIGURATION he carries the signature of all 9 circles'
 restorations in his substrate — *Hell, fully installed in him*. He
@@ -1311,34 +1336,35 @@ than a class-picker with the same lifetime total.
 
 ## Movement and run-end
 
-### The Cord
+### Markers (Wood ↔ marker teleport)
 
-A mortal artifact lifted from Inferno XVI:106-108 (Virgil's casting of
-the cord into the abyss to summon Geryon). Allows teleport from any
-circle back to the *selva oscura*. **Charged with sangue at the moment
-of use**, not pre-charged.
+Player-placed teleport destinations replacing the old Cord mechanism.
+The Vagrant places a marker at a chosen location in any circle (one
+active marker per circle); marker becomes a bidirectional teleport
+node between the Wood and the placed location.
 
-Cord cost depends on circle and keeper status:
-- **Pre-keeper:** higher cost. Hell resists the Cord.
-- **Post-keeper:** lower cost. Hell's containment in this circle has
-  been spent.
+Cosmological justification: the Vagrant cannot be marked, so he can
+mark. He leaves a piece of his unjudged-exemption in the geography,
+imprinting a small zone Hell's accounting cannot touch. Because Hell
+cannot see the marker, his body can re-arrive at it without being
+processed.
 
-Late-game retreats are cheaper than early-game retreats.
-
-The Cord is **not available to the unburdened**. PURITY players
-return only via the manual walk-back — retracing through consumed
-circles to reach the *selva oscura*. Dangerous (consumed circles are
-harder), but free; skilled players can use it as a sangue-grinding
-loop. Death on the walk-back is second death.
+Mechanics summary (full spec in [[project_markers_replace_cord]]):
+- Player-placed, sangue cost at placement
+- One active marker per circle, removable and re-placeable
+- Bidirectional Wood ↔ marker (no marker → marker direct)
+- Per-use sangue cost (curve TBD, depth-scaled)
+- No save effect, no healing on arrival
+- Available to both class-picker and unburdened
 
 ### Second death
 
-When the Vagrant is killed: all wallet sangue returns to Hell
-(unrecoverable); stats / lifetime sangue / riversato persist; a
-dedicated cutscene plays (Vagrant suffers visibly, sangue exits his
-body — Hell's killing-protocol firing on him; the body dies but the
-soul, having no imprint to grip, is ejected to the Wood per *The
-unjudged*).
+When the Vagrant is killed: all uncommitted vessel contents (Crucible's
+or Censer's currently-held substance) return to Hell (unrecoverable);
+stats / lifetime sangue / riversato persist; a dedicated cutscene
+plays (Vagrant suffers visibly, sangue exits his body — Hell's
+killing-protocol firing on him; the body dies but the soul, having no
+imprint to grip, is ejected to the Wood per *The unjudged*).
 
 **At the cutscene's peak**, two-line text overlays the violence,
 sized like a title card, *YOU DIED*-coded:
@@ -1388,20 +1414,17 @@ bookkeeping.
 
 ## Save and inventory
 
-### Vestigia
+### Vestigia (the save register)
 
-**Vestigium** (singular) / **Vestigia** (plural) = *the mark the
-Signing leaves on the class-picker's soul*, manifesting both as a
-property of his substrate (Hell's grip-point) and as physical sites
-in the world (places where the mark can be read or further
-inscribed). Vestigia are **class-picker exclusive** — the Unburdened
-has no vestigium because he was never measured.
+**Vestigium** (singular) / **Vestigia** (plural) = *the cosmological
+record-imprint of the Vagrant's current state*. Not a physical site;
+not a place. The trace of run state that the cosmology preserves
+between commitments. The save register, period-named in the world's
+vocabulary.
 
-For class-pickers, vestigia function as:
-- Save sites (autosave on visit)
-- OFFERING sites (spend sangue → invest in stats)
-- Class-evolution commit sites (L1→L2→L3 fires when requirements met
-  at a vestigium)
+Both paths use the same save register. Symmetric, not asymmetric —
+the imprint vs no-imprint distinction matters for substance flow, not
+for save-state recording.
 
 UI verbs: *Inscribe* (save) / *Restore* (load), final wording TBD.
 Save/load language is built into the world's register, not labeled
@@ -1412,36 +1435,42 @@ Save/load language is built into the world's register, not labeled
 **Selva's save register matches the soulslike doctrine: every
 meaningful act commits immediately and cannot be walked back.**
 
-- **Saves are automatic and frequent.** Every OFFERING, every
-  riversamento, every item commit, every vestigium-visit autosaves
-  on the spot. Save-overwrite is the rule. There is no manual save-
-  slot system, no save-scumming.
+- **Saves are automatic and frequent.** Every Crucible commitment
+  (class-picker installation), every Censer commitment (unburdened
+  riversamento), every item commit, every voluntary retreat (via
+  markers), and every second death autosaves on the spot. Manual
+  save (Inscribe) is Wood-side; specifics deferred to UX. Save-
+  overwrite is the rule. There is no manual save-slot system, no
+  save-scumming.
 - **Restoration only happens on death.** When the Vagrant dies, he
   respawns in the Wood with whatever state was committed up to
-  that point. The current run's wallet is reclaimed by Hell;
-  installed substance (stats raised at vestigia, items collected,
-  abilities unlocked, riversamento volume) persists.
-- **No Wood-side undo.** A class-picker who OFFERS to the wrong
+  that point. The current run's uncommitted vessel contents are
+  reclaimed by Hell; installed substance (stats committed via the
+  Crucible, items collected, abilities unlocked, riversamento
+  volume) persists.
+- **No Wood-side undo.** A class-picker who installs the wrong
   stat lives with it. The cosmology recorded the act; the act
-  stands. The only stat-redo mechanism is **The Erasure** (per
-  inventory.md), late-game, item-gated, switches class among
-  Penitent / Heretic / Wretched but does not return invested
-  sangue.
-- **The Signing commits immediately at Beat 3.** Accept = class-
-  picker; refuse = unburdened. The Guide performs the ritual once;
-  it cannot be revisited later. The cosmology respects commitment
-  in both directions.
+  stands. The only stat-redo mechanism is **the Erasure** (per
+  inventory.md) — re-runs the class-picker UI, materials-gated,
+  Guide-performed, refunds prior commitments to the current vessel
+  for re-spending under the new path.
+- **The Signing commits immediately at Beat 4.** The class-picker UI
+  modal fires after the Guide's framing dialog; the player picks
+  Penitent / Heretic / Wretched / Refuse with two-step confirmation
+  and no back button. The cosmology respects commitment in both
+  directions. The Guide performs the Signing-equivalent only at this
+  one cosmological window (Beatrice-arranged via the Lupa-fall);
+  later Erasures require Vagrant-gathered material prerequisites to
+  re-enable the ritual.
 
-The save register's name is *vestigia* (singular *vestigium*) for
-class-pickers; the Unburdened's save register is **the chest** (the
-Wood-side mundane-storage object — see inventory.md). Unburdened
-saves trigger on chest-interaction + on death + on voluntary
-retreat. Specifics TBD.
+The save register's name is *vestigia* for both paths. Symmetric save
+triggers. The Wood-side **chest** is mundane storage only — no special
+save-site role.
 
 The doctrine: **the game lets every route reach a good outcome, but
 the player has to live with the route they chose.** Mistakes are
 real. The Erasure is the cosmology's only second chance, and it
-costs.
+costs (materials gathered through play).
 
 ### Item system
 
@@ -1451,21 +1480,43 @@ Items committed at the setting level:
   *Hell's voice* — the artifact of Hell's passive self-awareness;
   the player reads it because the player is Hell-as-observer (see
   *Perspective — who the player is*).
-- **The Signing** (*La Firma*) — not an item; a Guide ritual at the
-  beasts. Accepted = class-pick. Refused = unburdened.
-- **The Cord** — unlimited uses; each use costs sangue. Not available
-  to unburdened.
-- **The Erasure** — late-game. Portable ritual tool with multiple
-  actions: Reseal (switch class among Penitent / Heretic / Wretched),
-  Erase (class-picker → unburdened). Cannot re-perform the Signing
-  on an unburdened. Requires a consumable activation material.
-- **The Hand** — acquired at climax. Heal (universal); class-picker
-  uses as portable OFFERINGS access, unburdened uses as portable
-  riversamento site. Permanent across cycles.
+- **The Signing** (*La Firma*) — not an item; a Guide ritual at Beat 4
+  driven by a class-picker UI. Picking a class = Signing happens =
+  imprint is created = Vagrant receives the Crucible. Refusing =
+  no Signing = refusal-channel opens = Vagrant receives the Censer.
+- **The Crucible** — class-picker's portable holding-and-transformation
+  vessel. Substance auto-magnetizes from kills directly into the
+  Crucible (the HUD reads from it; the Crucible replaces the older
+  "wallet" abstraction with a real cosmological object). On commit,
+  the Crucible's fire (powered by the imprint's metabolic-fire / Galenic
+  concoction-enabler) burns the held substance into the Vagrant's
+  substrate. Stats / items / moves / abilities are the result.
+  Permanent across cycles. Replaces the old OFFERING-at-vestigia
+  mechanism.
+- **The Censer** — unburdened's portable holding-and-transformation
+  vessel. Substance auto-magnetizes from kills directly into the
+  Censer (the HUD reads from it; the Censer replaces the older
+  "wallet" abstraction with a real cosmological object). On commit,
+  the Censer's fire burns the held substance into rising smoke that
+  transits via the cosmological link to Beatrice's reservoir.
+  Riversamento volume accumulates with each commitment. Permanent
+  across cycles. Symmetric to the Crucible in operation; differs
+  only in cosmological outcome (effusion vs installation), because
+  the unburdened has no imprint-fire to drive concoction.
+- **Markers** — player-placed bidirectional teleport destinations
+  (one active per circle), replacing the old Cord. See
+  [[project_markers_replace_cord]]. Available to both paths.
+- **The Erasure** — not a portable item but a materials-gated ritual
+  the Guide performs. The Vagrant gathers cosmological prerequisites
+  (items, sangue from specific sources, insight unlocks) through
+  play; when conditions are met, the Guide senses the cosmological
+  possibility return and offers the ritual. Erasure re-runs the
+  class-picker UI; prior commitments refund to the new vessel,
+  enabling path-switching in either direction.
 - **The chest** — gothic-Italianate storage object in or near the
   chapel. Cosmologically mundane (no Hell-grip); accessible to any
-  path. Items persist across cycles. Doubles as the unburdened's
-  autosave site (the unburdened has no vestigia).
+  path. Items persist across cycles. Mundane storage only; no
+  special save-site role.
 
 Other items (NPC rewards, etc.) in [`inventory.md`](inventory.md).
 
@@ -1606,5 +1657,6 @@ Tracked here for future iteration:
   from leaked Hell-substance; biology rather than spirit-substance;
   capture as personal choice, not mission target.
 - [Dialogue](dialogue.md) — NPC trees, register, state branching.
-- [UX](ux.md) — screen flow, HUD, menus, vestigia, save/load language.
+- [UX](ux.md) — screen flow, HUD, menus, vessels (Crucible / Censer),
+  save/load language.
 - [Fallback](fallback.md) — death, retry, cycle persistence mechanics.

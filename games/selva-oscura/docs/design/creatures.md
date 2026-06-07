@@ -205,12 +205,12 @@ Behavior categories that act as evolutionary pressures:
   combat exposure; those that survive are *more combat-fit.* Same
   substance, different expression: aggression / armor / damage
   tolerance is selected for.
-- **Economic path.** Sangue-installation (OFFERINGS, class-picker)
-  vs sangue-pouring (riversamento, unburdened) produces different
-  selective pressures on captured creatures. Installers produce
-  *Hell-aligned* organisms (sangue-saturated, almost Hellish);
-  pourers produce *Wood-aligned* organisms (more rooted, more
-  plant-like).
+- **Economic path.** Sangue-installation (Crucible, class-picker)
+  vs sangue-effusion (Censer / riversamento, unburdened) produces
+  different selective pressures on captured creatures. Installers
+  produce *Hell-aligned* organisms (sangue-saturated, almost
+  Hellish); pourers produce *Wood-aligned* organisms (more rooted,
+  more plant-like).
 - **Spatial behavior.** Where the Vagrant lingers, walks repeatedly,
   places cairns (when that verb ships) — the Wood notices. Local
   populations cluster around player-presence-sites.
