@@ -627,13 +627,41 @@ void drawVesselCounter(ImDrawList* draw, const ImVec2& origin)
 {
     using namespace kActorHudLayout;
     std::uint32_t vessel = 0u;
+    PlayerClass cls = PlayerClass::None;
     if (const PlayerProfile* profile = activePlayerProfile())
+    {
         vessel = profile->sangue_vessel;
+        cls = profile->player_class;
+    }
     const auto rendering = selva::gameplay::encodeRoman(vessel);
     if (rendering.glyphs.empty())
         return; // empty vessel: render nothing
     const float text_y = origin.y + kHpHeight + kStaminaHeight + (kBarGap * 2.0f);
-    const ImU32 vessel_color = IM_COL32(220, 200, 180, 240);
+    // Per-class color cue. Subtle: same warm-amber base, shifted toward
+    // the path's cosmological flavor.
+    //   None       -- neutral warm-amber (pre-Beat-4 state).
+    //   Penitent   -- warmer + slightly redder (the bent walk).
+    //   Heretic    -- warmer + bronzed (the crooked carry).
+    //   Wretched   -- duller + cooler (the non-completion).
+    //   Unburdened -- paler + cooler (the channel toward Beatrice, light-bound).
+    ImU32 vessel_color = IM_COL32(220, 200, 180, 240);
+    switch (cls)
+    {
+    case PlayerClass::Penitent:
+        vessel_color = IM_COL32(225, 185, 155, 240);
+        break;
+    case PlayerClass::Heretic:
+        vessel_color = IM_COL32(210, 175, 130, 240);
+        break;
+    case PlayerClass::Wretched:
+        vessel_color = IM_COL32(190, 175, 165, 240);
+        break;
+    case PlayerClass::Unburdened:
+        vessel_color = IM_COL32(200, 215, 220, 240);
+        break;
+    case PlayerClass::None:
+        break;
+    }
     ImFont* font = ImGui::GetFont();
     const float font_size = ImGui::GetFontSize();
     float pen_x = origin.x;

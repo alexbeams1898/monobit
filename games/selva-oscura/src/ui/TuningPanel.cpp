@@ -25,6 +25,7 @@
 #include "gameplay/TickState.h"
 #include "ui/ActorHud.h"
 #include "ui/BossHud.h"
+#include "ui/ClassPickerScreen.h"
 #include "ui/ComboHud.h"
 #include "ui/DialogScreen.h"
 #include "ui/InteractionPrompt.h"
@@ -543,5 +544,10 @@ void selvaRenderImGui(::Engine& engine, ::EntityManager& em)
     renderInteractionPrompt();
     // Dialog box. No-op when no dialog is active.
     renderDialogScreen();
+    // Beat 4 class-picker modal (the Signing). No-op when inactive.
+    // Draws after the dialog screen so on the first frame after the
+    // dialog handler opens it, both can render (dialog dismisses
+    // on commit; modal takes over).
+    renderClassPicker();
 }
 } // namespace selva::ui

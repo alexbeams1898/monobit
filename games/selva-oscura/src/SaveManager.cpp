@@ -148,10 +148,14 @@ PlayerProfile loadCharacter(const json& c)
     // tolerates the field being absent or numeric of a smaller type.
     p.sangue_lifetime = c.value("sangue_lifetime", std::uint32_t{0});
     p.sangue_vessel = c.value("sangue_vessel", std::uint32_t{0});
+    p.sangue_riversato = c.value("sangue_riversato", std::uint32_t{0});
     if (p.sangue_lifetime > SANGUE_LIFETIME_CAP)
         p.sangue_lifetime = SANGUE_LIFETIME_CAP;
     if (p.sangue_vessel > SANGUE_LIFETIME_CAP)
         p.sangue_vessel = SANGUE_LIFETIME_CAP;
+    if (p.sangue_riversato > SANGUE_LIFETIME_CAP)
+        p.sangue_riversato = SANGUE_LIFETIME_CAP;
+    p.player_class = parsePlayerClass(c.value("player_class", std::string{}));
     return p;
 }
 
@@ -299,6 +303,10 @@ nlohmann::json saveCharacter(const PlayerProfile& c)
         char_json["sangue_lifetime"] = c.sangue_lifetime;
     if (c.sangue_vessel != 0u)
         char_json["sangue_vessel"] = c.sangue_vessel;
+    if (c.sangue_riversato != 0u)
+        char_json["sangue_riversato"] = c.sangue_riversato;
+    if (c.player_class != PlayerClass::None)
+        char_json["player_class"] = playerClassName(c.player_class);
     return char_json;
 }
 

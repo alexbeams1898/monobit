@@ -125,19 +125,51 @@ struct GameState
 };
 
 // ---------------------------------------------------------------------------
+// PlayerClass -- the Vagrant's cosmological identity, locked at Beat 4 via
+// the Signing modal. `None` is the pre-Beat-4 state (player hasn't faced
+// the Guide yet). Per setting.md *The Signing* + locked
+// [[project_crucible_censer_leveling_system]].
+//
+// Cosmologically: the choice determines which commit-fire the Guide installs
+// in the Vagrant. Penitent/Heretic/Wretched receive the chrism-fire (the
+// Crucible verb -- feed self / install into substrate). Unburdened receives
+// the channel-fire (the Censer verb -- feed Beatrice / route to her reservoir).
+// Same fire, opposite mouths. The absorption-capacity is path-independent
+// (Vagrant-exception per [[project_imprint_handle_required_for_sangue]]).
+// ---------------------------------------------------------------------------
+enum class PlayerClass : std::uint8_t
+{
+    None = 0,
+    Penitent = 1,
+    Heretic = 2,
+    Wretched = 3,
+    Unburdened = 4,
+};
+
+// Returns the stable JSON serialization string for a class. Used for
+// save/load round-trip. Symmetric with parsePlayerClass.
+const char* playerClassName(PlayerClass c);
+
+// Parse a class name (case-sensitive, matches playerClassName output).
+// Returns None on unknown / empty / null input (defensive for old saves).
+PlayerClass parsePlayerClass(const std::string& name);
+
+// True when the class carries the chrism-fire (Crucible verb -- feed self).
+// False for Unburdened (carries the channel-fire instead -- Censer verb,
+// feed Beatrice) and for None (no commit verb yet, pre-Beat-4).
+bool isClassPickerPath(PlayerClass c);
+
+// ---------------------------------------------------------------------------
 // PlayerProfile - persistent character identity. Schema starts minimal (just
 // a name) and grows via schema_version bumps as more systems ship.
 //
 // Anticipated future fields (not yet in schema; documented for reference):
-//   - class:                Penitent / Heretic / Wretched / Unburdened
-//     (per setting.md - set during opening sequence at the Signing moment)
-//   - path:                 class-picker | unburdened (derived from class)
 //   - evolution_stage:      L1/L2/L3 for class-pickers, Unburdened/Svuotato/
 //                           Diaphanous for unburdened
 //   - stats:                HP / fire_rate / damage (per CLAUDE.md three-stat
 //                           constraint)
-//   - lifetime_sangue:      cumulative sangue collected across all cycles
-//   - lifetime_riversato:   cumulative sangue poured out (unburdened only)
+//   - lifetime_riversato:   cumulative sangue routed to Beatrice via the
+//                           Censer commit-verb (unburdened path total)
 //   - keepers_felled:       set of "Charon", "Minos", etc. - per setting.md
 //                           Per-circle reactivity (drives world-state)
 //   - wood_marks:           cairns, etched names, riversamento sites placed
@@ -235,6 +267,21 @@ struct PlayerProfile
     // (no class distinction yet); class-specific Crucible/Censer
     // mechanics arrive when the class-picker UI lands.
     std::uint32_t sangue_vessel = 0;
+
+    // Cumulative sangue routed to Beatrice's reservoir across all cycles.
+    // Per setting.md *The unburdened path* + locked
+    // [[project_crucible_censer_leveling_system]]: this is the unburdened's
+    // progression axis -- every Censer commit adds to this total and
+    // contributes to the unburdened's subtractive evolution
+    // (Unburdened -> Svuotato -> Diaphanous). Class-pickers leave this at 0;
+    // their progression goes into substrate (stats / abilities) instead.
+    // Capped at SANGUE_LIFETIME_CAP, same ceiling as sangue_lifetime.
+    std::uint32_t sangue_riversato = 0;
+
+    // Cosmological identity locked at Beat 4 via the Signing modal. Default
+    // None for pre-Beat-4 (player hasn't faced the Guide's dialog choice
+    // yet). Per setting.md *The Signing and the commit-fire*.
+    PlayerClass player_class = PlayerClass::None;
 };
 
 // Hard ceiling on lifetime sangue. 9^9 numerologically -- "all of Hell,

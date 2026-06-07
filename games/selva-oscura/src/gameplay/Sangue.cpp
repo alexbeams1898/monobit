@@ -38,4 +38,33 @@ void reclaimVessel(PlayerProfile& p)
     p.sangue_vessel = 0u;
 }
 
+CommitResult commitVessel(PlayerProfile& p)
+{
+    CommitResult result;
+    if (p.player_class == PlayerClass::None)
+        return result; // pre-Beat-4: no commit verb yet
+    if (p.sangue_vessel == 0u)
+        return result; // empty vessel: no-op
+    result.amount = p.sangue_vessel;
+    result.fired = true;
+    result.fire_kind = p.player_class;
+    if (isClassPickerPath(p.player_class))
+    {
+        // Crucible: chrism-fire installs vessel contents into
+        // substrate. The substrate-effect (stat growth) is TBD; for
+        // now the substance is consumed -- it has gone "into him".
+        // No accumulator yet. When stat-installation lands, this is
+        // where the substance routes.
+        p.sangue_vessel = 0u;
+    }
+    else
+    {
+        // Unburdened: Censer / channel-fire routes vessel contents
+        // to Beatrice's reservoir. Accumulate riversamento volume.
+        saturatingAdd(p.sangue_riversato, result.amount);
+        p.sangue_vessel = 0u;
+    }
+    return result;
+}
+
 } // namespace selva::sangue

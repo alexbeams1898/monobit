@@ -149,6 +149,47 @@ TEST_CASE("SaveManager defaults sangue to zero on legacy saves", "[save][sangue]
     cleanupTestFile(path);
 }
 
+TEST_CASE("SaveManager round-trip preserves player_class + sangue_riversato",
+          "[save][player-class]")
+{
+    const std::string path = testSavePath("player-class-roundtrip");
+    cleanupTestFile(path);
+
+    selva::SaveData data;
+    selva::SaveManager::addCharacter(data, "PILGRIM");
+    data.characters[0].player_class = selva::PlayerClass::Heretic;
+    data.characters[0].sangue_riversato = 789u;
+
+    REQUIRE(selva::SaveManager::save(data, path));
+
+    const selva::SaveData loaded = selva::SaveManager::load(path);
+    REQUIRE(loaded.characters.size() == 1);
+    REQUIRE(loaded.characters[0].player_class == selva::PlayerClass::Heretic);
+    REQUIRE(loaded.characters[0].sangue_riversato == 789u);
+
+    cleanupTestFile(path);
+}
+
+TEST_CASE("SaveManager defaults player_class to None on legacy saves", "[save][player-class]")
+{
+    const std::string path = testSavePath("player-class-legacy");
+    cleanupTestFile(path);
+    std::filesystem::create_directories(std::filesystem::path(path).parent_path());
+
+    if (std::FILE* f = std::fopen(path.c_str(), "w"))
+    {
+        std::fprintf(f, "{\n  \"schema_version\": 1,\n"
+                        "  \"characters\": [ { \"name\": \"PILGRIM\" } ]\n}\n");
+        std::fclose(f);
+    }
+    const selva::SaveData loaded = selva::SaveManager::load(path);
+    REQUIRE(loaded.characters.size() == 1);
+    REQUIRE(loaded.characters[0].player_class == selva::PlayerClass::None);
+    REQUIRE(loaded.characters[0].sangue_riversato == 0u);
+
+    cleanupTestFile(path);
+}
+
 TEST_CASE("SaveManager round-trip preserves felled_bosses", "[save][boss-backend]")
 {
     const std::string path = testSavePath("felled-bosses");

@@ -81,6 +81,7 @@ add_library(selva-oscura-lib STATIC
     src/world/TreeAssets.cpp
     src/ui/ActorHud.cpp
     src/ui/BossHud.cpp
+    src/ui/ClassPickerScreen.cpp
     src/ui/ComboHud.cpp
     src/ui/DialogScreen.cpp
     src/ui/InteractionPrompt.cpp
@@ -88,6 +89,7 @@ add_library(selva-oscura-lib STATIC
     src/ui/TuningPanel.cpp
     src/world/Collision.cpp
     src/AppStateGlobal.cpp
+    src/PlayerClass.cpp
     src/SaveManager.cpp
     src/dialog/DialogSystem.cpp
     src/dialog/GuideHandlers.cpp
@@ -520,6 +522,7 @@ add_executable(selva-oscura-tests
     tests/boss_archetype_test.cpp
     tests/boss_dispatch_idempotence_test.cpp
     tests/boss_trigger_test.cpp
+    tests/player_class_test.cpp
     tests/roman_numeral_test.cpp
     tests/roman_tiers_test.cpp
     tests/sangue_pulse_test.cpp

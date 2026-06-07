@@ -38,4 +38,22 @@ std::uint32_t grantOnKill(PlayerProfile& p, std::uint32_t amount);
 // ever earned even when the vessel returns it.
 void reclaimVessel(PlayerProfile& p);
 
+// Result of a commit attempt. Returned to the UI / log so the caller
+// can show appropriate feedback (sound, animation, message).
+struct CommitResult
+{
+    std::uint32_t amount = 0u;                 // sangue moved out of the vessel this commit
+    bool fired = false;                        // true if the commit verb actually executed
+    PlayerClass fire_kind = PlayerClass::None; // which fire (None = no commit; profile lacks class)
+};
+
+// Invoke the commit-fire for the active profile. Class-pickers
+// (Penitent / Heretic / Wretched) fire the Crucible: vessel contents
+// install into substrate (substrate effect TBD; this commit logs the
+// kind and zeroes the vessel until stat-installation lands). Unburdened
+// fires the Censer: vessel contents transit to Beatrice's reservoir
+// (sangue_riversato accumulates). No-op for None (pre-Beat-4 -- no
+// commit verb yet) and for empty vessels.
+CommitResult commitVessel(PlayerProfile& p);
+
 } // namespace selva::sangue

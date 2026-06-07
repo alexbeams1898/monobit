@@ -60,6 +60,7 @@
 #include "spawn/FlowSpawner.h"
 #include "text/TextPresentation.h"
 #include "ui/ActorHud.h"
+#include "ui/ClassPickerScreen.h"
 #include "ui/ComboHud.h"
 #include "world/Collision.h"
 #include "world/Door.h"
@@ -380,6 +381,7 @@ static bool sPrevV = false;
 static void tickTreePreviewToggle(const Uint8* keys);
 static void tickFpvToggle(const Uint8* keys);
 static void tickF8SangueDebugSpawn(const Uint8* keys);
+static void tickF9CommitVessel(const Uint8* keys);
 static void renderTreePreview();
 
 // Combat debug toggle + log file owned by combat/CombatLog.{h,cpp}.
@@ -3490,6 +3492,7 @@ void tickDevAndDebugKeys(const Uint8* keys)
     tickTreePreviewToggle(keys);
     tickFpvToggle(keys);
     tickF8SangueDebugSpawn(keys);
+    tickF9CommitVessel(keys);
 }
 
 // Player combat-input pass + chain bookkeeping + grip/jump toggles +
@@ -3844,6 +3847,44 @@ static void tickF8SangueDebugSpawn(const Uint8* keys)
         sF8AmountIndex = (sF8AmountIndex + 1) % kCount;
     }
     sPrevF8 = f8Now;
+}
+
+// F9 invokes the commit-fire on the active profile. Class-picker
+// (Penitent / Heretic / Wretched) fires the Crucible: vessel contents
+// install into substrate (substrate effect TBD; this commit consumes
+// the vessel until stat-installation lands). Unburdened fires the
+// Censer: vessel contents transit to Beatrice's reservoir
+// (sangue_riversato accumulates). No-op pre-Beat-4 (player_class=None)
+// or when the vessel is empty.
+//
+// Edge-triggered. Held key only fires once per press.
+static bool sPrevF9 = false;
+static void tickF9CommitVessel(const Uint8* keys)
+{
+    const bool f9Now = keys[SDL_SCANCODE_F9] != 0;
+    if (f9Now && !sPrevF9)
+    {
+        if (auto* profile = selva::activePlayerProfile())
+        {
+            const auto result = selva::sangue::commitVessel(*profile);
+            if (result.fired)
+            {
+                std::fprintf(stderr,
+                             "[commit-vessel] F9 fired class=%s amount=%u "
+                             "vessel_after=%u riversato_after=%u\n",
+                             selva::playerClassName(result.fire_kind), result.amount,
+                             profile->sangue_vessel, profile->sangue_riversato);
+                std::fflush(stderr);
+            }
+            else
+            {
+                std::fprintf(stderr, "[commit-vessel] F9 no-op (class=%s vessel=%u)\n",
+                             selva::playerClassName(profile->player_class), profile->sangue_vessel);
+                std::fflush(stderr);
+            }
+        }
+    }
+    sPrevF9 = f9Now;
 }
 
 // Build the preview's view-proj matrix from orbit yaw/pitch/distance
@@ -4792,7 +4833,8 @@ void resetWakeSceneTracking()
 // etc.) means updating ONE site here, not three Suppressed predicates.
 static bool uiOverlayActive()
 {
-    return selva::text::active() || selva::uiState().isScreenOpen() || tickstate::showTuningPanel();
+    return selva::text::active() || selva::uiState().isScreenOpen() ||
+           tickstate::showTuningPanel() || selva::ui::classPickerActive();
 }
 
 bool gameplayLookSuppressed()

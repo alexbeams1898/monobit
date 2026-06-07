@@ -92,3 +92,84 @@ TEST_CASE("reclaimVessel on an empty vessel is safe", "[sangue]")
     REQUIRE(p.sangue_vessel == 0u);
     REQUIRE(p.sangue_lifetime == 0u);
 }
+
+TEST_CASE("commitVessel is a no-op pre-Beat-4 (player_class=None)", "[sangue][commit]")
+{
+    selva::PlayerProfile p;
+    p.sangue_vessel = 100u;
+    p.player_class = selva::PlayerClass::None;
+    const auto r = selva::sangue::commitVessel(p);
+    REQUIRE_FALSE(r.fired);
+    REQUIRE(r.amount == 0u);
+    REQUIRE(p.sangue_vessel == 100u); // unchanged
+}
+
+TEST_CASE("commitVessel is a no-op on empty vessel", "[sangue][commit]")
+{
+    selva::PlayerProfile p;
+    p.sangue_vessel = 0u;
+    p.player_class = selva::PlayerClass::Penitent;
+    const auto r = selva::sangue::commitVessel(p);
+    REQUIRE_FALSE(r.fired);
+    REQUIRE(p.sangue_vessel == 0u);
+    REQUIRE(p.sangue_riversato == 0u);
+}
+
+TEST_CASE("commitVessel for class-picker consumes vessel into substrate",
+          "[sangue][commit][crucible]")
+{
+    // Penitent fires Crucible. Vessel contents are consumed (TBD
+    // substrate effect); riversato stays 0. Lifetime untouched
+    // (lifetime is the ever-earned ledger; commit doesn't reverse it).
+    selva::PlayerProfile p;
+    p.sangue_vessel = 250u;
+    p.sangue_lifetime = 1000u;
+    p.player_class = selva::PlayerClass::Penitent;
+    const auto r = selva::sangue::commitVessel(p);
+    REQUIRE(r.fired);
+    REQUIRE(r.amount == 250u);
+    REQUIRE(r.fire_kind == selva::PlayerClass::Penitent);
+    REQUIRE(p.sangue_vessel == 0u);
+    REQUIRE(p.sangue_riversato == 0u);
+    REQUIRE(p.sangue_lifetime == 1000u);
+}
+
+TEST_CASE("commitVessel for unburdened routes vessel into riversato", "[sangue][commit][censer]")
+{
+    selva::PlayerProfile p;
+    p.sangue_vessel = 250u;
+    p.sangue_riversato = 100u;
+    p.player_class = selva::PlayerClass::Unburdened;
+    const auto r = selva::sangue::commitVessel(p);
+    REQUIRE(r.fired);
+    REQUIRE(r.amount == 250u);
+    REQUIRE(r.fire_kind == selva::PlayerClass::Unburdened);
+    REQUIRE(p.sangue_vessel == 0u);
+    REQUIRE(p.sangue_riversato == 350u); // 100 + 250
+}
+
+TEST_CASE("commitVessel for Heretic and Wretched also fire Crucible", "[sangue][commit][crucible]")
+{
+    for (auto c : {selva::PlayerClass::Heretic, selva::PlayerClass::Wretched})
+    {
+        selva::PlayerProfile p;
+        p.sangue_vessel = 50u;
+        p.player_class = c;
+        const auto r = selva::sangue::commitVessel(p);
+        REQUIRE(r.fired);
+        REQUIRE(r.fire_kind == c);
+        REQUIRE(p.sangue_vessel == 0u);
+        REQUIRE(p.sangue_riversato == 0u);
+    }
+}
+
+TEST_CASE("commitVessel riversato saturates at the lifetime cap", "[sangue][commit][censer][cap]")
+{
+    selva::PlayerProfile p;
+    p.sangue_vessel = 100u;
+    p.sangue_riversato = selva::SANGUE_LIFETIME_CAP - 30u;
+    p.player_class = selva::PlayerClass::Unburdened;
+    selva::sangue::commitVessel(p);
+    REQUIRE(p.sangue_riversato == selva::SANGUE_LIFETIME_CAP);
+    REQUIRE(p.sangue_vessel == 0u); // vessel still drains fully
+}
