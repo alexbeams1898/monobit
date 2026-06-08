@@ -2,6 +2,8 @@
 
 #include "gameplay/Perception.h"
 
+#include <glm/vec3.hpp>
+
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -16,6 +18,14 @@ namespace selva::gameplay
 {
 
 struct Actor;
+
+// Compute the yaw that points actor_pos toward target_pos (XZ plane,
+// engine yaw convention). Returns 0.0 when actor and target are at
+// the same XZ position so callers don't get a spurious yaw kick at
+// zero distance. Shared by the behavior-tree leaves AND the
+// gameplay-side yaw-acknowledgment overlay; lives here so any new
+// caller has a single function to reach for.
+float yawFacing(const glm::vec3& actor_pos, const glm::vec3& target_pos);
 
 // Return value from a behavior-tree node tick. The semantics mirror
 // the standard BT convention used by Unreal's BTService, Unity

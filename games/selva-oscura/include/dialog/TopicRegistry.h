@@ -44,6 +44,14 @@ struct Topic
     std::vector<Choice> choices;
     std::string on_enter;
     std::string on_exit;
+    // Insight node id to fire when the player enters this topic.
+    // Empty = no insight fire. Used by the "named-by-Guide" pattern:
+    // when the Guide tells the Vagrant about a thing the player has
+    // examined, this field names the insight node that promotes the
+    // language map entries elsewhere (the named thing's display name,
+    // its examine prose). Per the locked design: ENTIRE TOPIC fires
+    // the insight (not per-choice). One-shot reveals.
+    std::string unlocks_insight;
     // True if this topic is a valid conversation-start entry point
     // (something dialog::begin() can land on by picking the first
     // matching topic). False for internal transition topics that are
@@ -59,6 +67,11 @@ struct NpcDialog
 {
     std::string npc_id;
     std::string display_name;
+    // Language-map key for the speaker name shown in the dialog
+    // header. Tier-gated through the insight system; tier-0 is "???"
+    // until the player gains the insight that knows this NPC. When
+    // empty, the dialog falls back to display_name (literal).
+    std::string display_name_key;
     std::vector<Topic> topics;
 };
 

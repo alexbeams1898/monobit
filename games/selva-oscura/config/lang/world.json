@@ -1,0 +1,51 @@
+{
+  "_comment": "World-side player-facing strings: examine prompts (the '[E] Examine' label) and examine bodies. Two-stage reveal pattern (LOCKED 2026-06-09, see docs/design/insight_revelation_system.md): tier-0 = pre-examine sensory framing (what the player sees from a distance with no insight); tier-1 = operational-understanding from having examined it (what it's DOING, observed; no cosmological vocabulary); tier-2 = the Guide's cosmological naming after he's fed the frame by Beatrice. Cosmology words (soul, imprint, dissolved, Acheron, sangue, etc.) belong at tier-2 ONLY. tier-1 is observational/functional language a person could derive from looking; tier-2 is what only a cosmologically-positioned NPC could name.",
+
+  "world.acheron_pile.examine_label": {
+    "tier_0": "(TODO author: pre-examine label — sensory, no cosmology)",
+    "tier_1": "(TODO author: tier-1 label after player examines — functional description, no cosmology)",
+    "tier_2": "(TODO author: tier-2 label after Guide names the cosmology)",
+    "unlock_node_tier_1": "knows_dissolved_souls",
+    "unlock_node_tier_2": "guide_named_dissolved_souls"
+  },
+
+  "world.acheron_pile.examine_text": {
+    "tier_0": "(TODO author: pre-examine pile body — a heap of person-shapes the player sees at a distance, no cosmology)",
+    "tier_1": "(TODO author: tier-1 pile body after examine — what the player observes up close, in functional terms. NO 'soul' / 'imprint' / 'dissolved' / 'Acheron' — those are tier-2.)",
+    "tier_2": "(TODO author: tier-2 pile body after Guide names — the cosmological frame, free to use sangue/Acheron/dissolved/etc.)",
+    "unlock_node_tier_1": "knows_dissolved_souls",
+    "unlock_node_tier_2": "guide_named_dissolved_souls"
+  },
+
+  "world.larva_fresh.examine_label": {
+    "tier_0": "(TODO author: pre-examine label for a fresh larva — sensory, e.g. 'something thin, crawling')",
+    "tier_1": "(TODO author: tier-1 label after player examines — functional, e.g. what the thing is DOING)",
+    "tier_2": "(TODO author: tier-2 label after Guide names the arrival queue)",
+    "unlock_node_tier_1": "knows_arrival_queue",
+    "unlock_node_tier_2": "guide_named_arrival_queue"
+  },
+
+  "world.larva_fresh.examine_text": {
+    "tier_0": "(TODO author: pre-examine body — what the player sees at a distance, sensory only)",
+    "tier_1": "(TODO author: tier-1 body after examine — what the thing is doing observed up close. NO 'soul' / 'imprint' / 'arrival' — functional language only, e.g. 'It waits in a line. Its body is set in one posture and does not break it. Others crawl past behind it.')",
+    "tier_2": "(TODO author: tier-2 body after Guide names the arrival-queue cosmology — soul / imprint / queue-of-the-dead all live here)",
+    "unlock_node_tier_1": "knows_arrival_queue",
+    "unlock_node_tier_2": "guide_named_arrival_queue"
+  },
+
+  "world.larva_aged_feeder.examine_label": {
+    "tier_0": "(TODO author: pre-examine label for a feeding larva)",
+    "tier_1": "(TODO author: tier-1 label after examine — functional)",
+    "tier_2": "(TODO author: tier-2 label after Guide names the feeding cycle)",
+    "unlock_node_tier_1": "knows_feeding_cycle",
+    "unlock_node_tier_2": "guide_named_feeding_cycle"
+  },
+
+  "world.larva_aged_feeder.examine_text": {
+    "tier_0": "(TODO author: pre-examine body — sensory)",
+    "tier_1": "(TODO author: tier-1 body after examine — what the thing is doing, observed. NO 'soul' / 'imprint' / 'feeding-cycle' — functional, e.g. 'It crouches over the body of one of its kin and bites at it. The bites do not seem to take anything; the kin does not move.')",
+    "tier_2": "(TODO author: tier-2 body after Guide names the feeding-cycle cosmology)",
+    "unlock_node_tier_1": "knows_feeding_cycle",
+    "unlock_node_tier_2": "guide_named_feeding_cycle"
+  }
+}

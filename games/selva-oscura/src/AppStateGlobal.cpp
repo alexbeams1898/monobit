@@ -37,8 +37,12 @@ Equipment& playerEquipment()
 
 PlayerProfile* activePlayerProfile()
 {
+    // Unnamed runs are PlayerProfiles with name=="" living in
+    // saveData like any other. active_character holds "" for the
+    // unnamed case; the equality lookup just finds the empty-named
+    // profile. No separate in-memory branch.
     const std::string& name = gameState().active_character;
-    if (name.empty())
+    if (gameState().phase != GameState::Phase::Playing)
         return nullptr;
     for (auto& p : saveData().characters)
     {
@@ -46,6 +50,14 @@ PlayerProfile* activePlayerProfile()
             return &p;
     }
     return nullptr;
+}
+
+std::string activeCharacterDisplayName()
+{
+    const std::string& name = gameState().active_character;
+    if (name.empty())
+        return "???";
+    return name;
 }
 
 bool hasFlag(const PlayerProfile* profile, const std::string& flag)
@@ -89,6 +101,52 @@ bool setFlag(const std::string& flag)
 bool clearFlag(const std::string& flag)
 {
     return clearFlag(activePlayerProfile(), flag);
+}
+
+bool hasInsight(const PlayerProfile* profile, const std::string& node)
+{
+    if (profile == nullptr || node.empty())
+        return false;
+    const auto& v = profile->unlocked_insights;
+    return std::find(v.begin(), v.end(), node) != v.end();
+}
+
+bool setInsight(PlayerProfile* profile, const std::string& node)
+{
+    if (profile == nullptr || node.empty())
+        return false;
+    auto& v = profile->unlocked_insights;
+    if (std::find(v.begin(), v.end(), node) != v.end())
+        return false;
+    v.push_back(node);
+    return true;
+}
+
+bool clearInsight(PlayerProfile* profile, const std::string& node)
+{
+    if (profile == nullptr || node.empty())
+        return false;
+    auto& v = profile->unlocked_insights;
+    auto it = std::find(v.begin(), v.end(), node);
+    if (it == v.end())
+        return false;
+    v.erase(it);
+    return true;
+}
+
+bool hasInsight(const std::string& node)
+{
+    return hasInsight(activePlayerProfile(), node);
+}
+
+bool setInsight(const std::string& node)
+{
+    return setInsight(activePlayerProfile(), node);
+}
+
+bool clearInsight(const std::string& node)
+{
+    return clearInsight(activePlayerProfile(), node);
 }
 
 selva::dialog::NpcEncounterState& npcEncounter(PlayerProfile* profile, const std::string& npc_id)

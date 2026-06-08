@@ -589,6 +589,13 @@ struct Actor
     // controller-agnostic.
     glm::vec2 intent_xz = glm::vec2(0.0f); // XZ target direction × speed
     float turn_intent_yaw = 0.0f;          // yaw the actor wants to face
+    // True for the frame in which the yaw-acknowledgment overlay
+    // (see tickEnemyDecision) drove turn_intent_yaw. Read by
+    // stepYawTowardIntent to scale the turn rate down -- ack-driven
+    // turns are slow + attentive, combat/scripted-walk turns use the
+    // full base rate. Cleared at the start of each decision tick so
+    // it accurately reflects THIS frame's intent source.
+    bool yaw_intent_from_acknowledgment = false;
 
     // Per-action runtime state — cooldown timestamps for each
     // archetype-declared action. Lazy: actions are inserted on first

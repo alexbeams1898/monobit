@@ -67,6 +67,7 @@ bool parseTopic(const nlohmann::json& t, const std::string& npc_id,
     out.show_when = parseShowWhen(t.value("show_when", nlohmann::json::object()));
     out.on_enter = t.value("on_enter", std::string{});
     out.on_exit = t.value("on_exit", std::string{});
+    out.unlocks_insight = t.value("unlocks_insight", std::string{});
     out.entry_point = t.value("entry_point", false);
     if (out.id.empty())
     {
@@ -129,6 +130,7 @@ bool loadOneNpcDialog(const std::filesystem::path& path, NpcDialog& out)
         in >> j;
         out.npc_id = j.value("npc_id", std::string{});
         out.display_name = j.value("display_name", std::string{});
+        out.display_name_key = j.value("display_name_key", std::string{});
         if (out.npc_id.empty())
         {
             std::fprintf(stderr, "[npc-dialog] %s missing npc_id; skipping\n",

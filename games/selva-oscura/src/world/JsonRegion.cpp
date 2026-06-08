@@ -2,12 +2,16 @@
 
 #include "debug/Flags.h"
 #include "hazard/HazardZones.h"
+#include "insight/Insight.h"
 #include "interact/Interaction.h"
+#include "lang/Language.h"
 #include "physics/PhysicsWorld.h"
 #include "render/RegionShaders.h"
 #include "text/Examine.h"
 #include "text/TextPresentation.h"
 #include "world/Terrain.h"
+
+#include <SDL.h>
 
 #include <cmath>
 #include <cstdio>
@@ -186,6 +190,7 @@ selva::world::DoorDecl parseDoor(const nlohmann::json& s)
     d.player_interactable = s.value("player_interactable", true);
     d.persistent = s.value("persistent", true);
     d.initial_state = selva::world::parseDoorState(s.value("initial_state", std::string("Closed")));
+    d.label_key = s.value("label_key", std::string{});
     return d;
 }
 
@@ -378,8 +383,15 @@ void JsonRegion::preloadStaticMeshEntry(const nlohmann::json& m)
     // -- want the prompt centered on the mesh origin).
     lm->examine_text = m.value("examine_text", std::string{});
     // Default label to debug_name so an author who declares examine_text
-    // without a label gets a sane prompt instead of an empty one.
+    // without a label gets a sane prompt instead of an empty one. NOTE:
+    // debug_name is a designer identifier ('acheron_pile'), NOT
+    // player-facing -- if you see this in-game it means the author
+    // failed to declare examine_label_key OR examine_label. The
+    // language-map path is preferred; literal examine_label is a
+    // fallback for content with no tier reveal.
     lm->examine_label = m.value("examine_label", lm->debug_name);
+    lm->examine_label_key = m.value("examine_label_key", std::string{});
+    lm->examine_text_key = m.value("examine_text_key", std::string{});
     if (m.contains("examine_anchor") && m["examine_anchor"].is_array() &&
         m["examine_anchor"].size() >= 3)
         lm->examine_anchor = parseVec3(m["examine_anchor"]);
@@ -388,17 +400,21 @@ void JsonRegion::preloadStaticMeshEntry(const nlohmann::json& m)
     // Match the field name used by archetype-side interactables
     // (EnemyArchetype::interact_range_meters) so authors don't guess.
     lm->interact_range_meters = m.value("interact_range_meters", 2.5f);
+    const Uint64 t_load = SDL_GetTicks64();
     if (!loadStaticMesh(lm->path.c_str(), lm->world_origin, lm->mesh))
     {
         std::fprintf(stderr, "[json-region '%s'] failed to load mesh: %s\n", regionId().c_str(),
                      lm->path.c_str());
         return;
     }
+    const Uint64 t_load_done = SDL_GetTicks64();
     lm->loaded = true;
     // One ShapeHandle per primitive. Slots stay aligned to mesh.primitives
     // (kInvalidShape for skipped/visual-only prims) so commitPrepared can
     // index either array safely.
     lm->shape_handles.reserve(lm->mesh.primitives.size());
+    std::size_t total_tris = 0;
+    std::size_t shapes_built = 0;
     for (const auto& prim : lm->mesh.primitives)
     {
         if (prim.cpu_positions.empty() || prim.cpu_indices.size() < 3 ||
@@ -409,10 +425,18 @@ void JsonRegion::preloadStaticMeshEntry(const nlohmann::json& m)
         }
         lm->shape_handles.push_back(
             engine::physics::createStaticTrimeshShape(prim.cpu_positions, prim.cpu_indices));
+        total_tris += prim.cpu_indices.size() / 3;
+        ++shapes_built;
     }
-    std::fprintf(stderr, "[json-region '%s'] preloaded mesh '%s' (%zu prims, %zu shapes)\n",
+    const Uint64 t_shapes_done = SDL_GetTicks64();
+    std::fprintf(stderr,
+                 "[json-region '%s'] preloaded mesh '%s' (%zu prims, %zu shapes, %zu tris) "
+                 "load=%llums shapes=%llums\n",
                  regionId().c_str(), lm->debug_name.c_str(), lm->mesh.primitives.size(),
-                 lm->shape_handles.size());
+                 lm->shape_handles.size(), total_tris,
+                 static_cast<unsigned long long>(t_load_done - t_load),
+                 static_cast<unsigned long long>(t_shapes_done - t_load_done));
+    (void)shapes_built;
     logMeshWorldBounds(lm->mesh);
     loaded_meshes.push_back(std::move(lm));
 }
@@ -421,19 +445,14 @@ void JsonRegion::preloadTerrainShapes()
 {
     if (!region_json.contains("terrain") || region_json["terrain"].is_null())
         return;
+    // Terrain shapes are process-wide (the world is one mesh; multiple
+    // JsonRegions all share the same surface). Pull from the global
+    // cache built by buildAllTerrainShapes() at boot. Used to construct
+    // a fresh MeshShape per JsonRegion here -- 3 regions x 2 terrains x
+    // ~2.5s each = ~10s wasted at boot. The cache is built ONCE; each
+    // JsonRegion just borrows the handle.
     for (int i = 0; i < selva::world::terrainRegionCount(); ++i)
-    {
-        const auto& r = selva::world::terrainRegion(i);
-        if (r.cpu_positions.empty() || r.cpu_indices.size() < 3)
-        {
-            terrain_shapes.push_back(engine::physics::kInvalidShape);
-            continue;
-        }
-        terrain_shapes.push_back(
-            engine::physics::createStaticTrimeshShape(r.cpu_positions, r.cpu_indices));
-        std::fprintf(stderr, "[json-region '%s'] preloaded terrain shape '%s'\n",
-                     regionId().c_str(), r.name.c_str());
-    }
+        terrain_shapes.push_back(selva::world::terrainShapeFor(i));
 }
 
 void JsonRegion::preloadAssets()
@@ -447,9 +466,26 @@ void JsonRegion::preloadAssets()
     // alone is 73k tris and rebuilding its MeshShape on every
     // region-exit costs ~400ms in Debug.)
     const auto& meshes_json = region_json.value("static_meshes", nlohmann::json::array());
-    for (const auto& m : meshes_json)
-        preloadStaticMeshEntry(m);
+    // Per-step timing so we can attribute the surface-region 10s freeze
+    // to either static-mesh shape building (per-mesh) or terrain-shape
+    // building (one MeshShape for ~73k tris). Each line shows ms spent
+    // in that block. Cheap to keep -- couple of fprintfs per boot.
+    const Uint64 t_meshes_start = SDL_GetTicks64();
+    for (std::size_t mi = 0; mi < meshes_json.size(); ++mi)
+    {
+        const Uint64 t_mesh = SDL_GetTicks64();
+        preloadStaticMeshEntry(meshes_json[mi]);
+        std::fprintf(stderr, "[json-region '%s'] preloadAssets mesh[%zu]: %llums\n",
+                     regionId().c_str(), mi,
+                     static_cast<unsigned long long>(SDL_GetTicks64() - t_mesh));
+    }
+    std::fprintf(stderr, "[json-region '%s'] preloadAssets all meshes total: %llums\n",
+                 regionId().c_str(),
+                 static_cast<unsigned long long>(SDL_GetTicks64() - t_meshes_start));
+    const Uint64 t_terrain = SDL_GetTicks64();
     preloadTerrainShapes();
+    std::fprintf(stderr, "[json-region '%s'] preloadAssets terrain shapes: %llums\n",
+                 regionId().c_str(), static_cast<unsigned long long>(SDL_GetTicks64() - t_terrain));
 
     std::fprintf(stderr, "[json-region '%s'] preloadAssets END (%zu meshes, %zu terrain shapes)\n",
                  regionId().c_str(), loaded_meshes.size(), terrain_shapes.size());
@@ -464,16 +500,36 @@ void JsonRegion::registerStaticMeshExamines()
 {
     for (const auto& lm : loaded_meshes)
     {
-        if (lm->examine_text.empty())
+        // A mesh is examinable if it has authored EITHER a literal
+        // examine_text or an examine_text_key (the language-map path).
+        // The two paths are tier-gated parallel: language-map wins,
+        // literal is fallback for content with no tier reveal.
+        if (lm->examine_text.empty() && lm->examine_text_key.empty())
             continue;
         selva::interact::Decl idecl;
         idecl.kind = selva::interact::Kind::Examine;
         const glm::vec3 anchor = lm->examine_anchor;
         idecl.position = [anchor]() { return anchor; };
         idecl.range_meters = lm->interact_range_meters;
-        idecl.label = lm->examine_label;
-        const std::string text = lm->examine_text;
-        idecl.on_interact = [text]() { selva::text::beginExamine(text); };
+        // Label: lang-map key wins, literal fallback otherwise.
+        idecl.label = lm->examine_label_key.empty() ? lm->examine_label
+                                                    : selva::lang::resolve(lm->examine_label_key);
+        // Text: snapshot at registration since on_interact captures it.
+        // When tier-promotion-at-runtime ships, the on_interact closure
+        // should re-resolve each press; the lang-map key gives us that
+        // hook (capture the key, resolve on press).
+        const std::string text_key = lm->examine_text_key;
+        const std::string literal_text = lm->examine_text;
+        const std::string mesh_id = lm->debug_name;
+        idecl.on_interact = [text_key, literal_text, mesh_id]()
+        {
+            const std::string text =
+                text_key.empty() ? literal_text : selva::lang::resolve(text_key);
+            selva::text::beginExamine(text);
+            // Insight: this mesh was examined. tick() will fire any
+            // node whose examined trigger names this debug_name.
+            selva::insight::notifyExamined(mesh_id);
+        };
         idecl.available = []() { return !selva::text::active(); };
         const selva::interact::Id id = selva::interact::registerInteractable(std::move(idecl));
         mesh_interactable_ids.push_back(id);

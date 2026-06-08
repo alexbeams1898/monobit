@@ -211,6 +211,8 @@ void to_json(nlohmann::json& j, const EnemyArchetype& a)
         j["examine_text"] = a.examine_text;
     if (a.interact_range_meters > 0.0f)
         j["interact_range_meters"] = a.interact_range_meters;
+    if (!a.talk_requires_flag.empty())
+        j["talk_requires_flag"] = a.talk_requires_flag;
     if (a.form != Form::DamnedSoul)
         j["form"] = formName(a.form);
     if (!a.skeleton_id.empty() && a.skeleton_id != "player")
@@ -268,8 +270,10 @@ void loadBossFields(const nlohmann::json& j, EnemyArchetype& a)
     // unset and carry no boss semantics. See boss_backend.md 1-12.
     a.is_boss = j.value("is_boss", false);
     a.boss_name = j.value("boss_name", std::string{});
+    a.boss_name_key = j.value("boss_name_key", std::string{});
     a.encounter_audio_bed = j.value("encounter_audio_bed", std::string{});
     a.felled_message = j.value("felled_message", std::string{});
+    a.felled_message_key = j.value("felled_message_key", std::string{});
     a.felled_flag = j.value("felled_flag", std::string{});
     a.show_felled_overlay = j.value("show_felled_overlay", true);
     a.initial_state = j.value("initial_state", std::string{});
@@ -344,8 +348,15 @@ void from_json(const nlohmann::json& j, EnemyArchetype& a)
     a.faction = parseFaction(j.value("faction", std::string("Hostile")));
     a.is_npc = j.value("is_npc", false);
     a.display_name = j.value("display_name", std::string{});
+    a.display_name_key = j.value("display_name_key", std::string{});
+    a.examine_label_key = j.value("examine_label_key", std::string{});
+    a.examine_text_key = j.value("examine_text_key", std::string{});
     a.examine_text = j.value("examine_text", std::string{});
     a.interact_range_meters = j.value("interact_range_meters", 0.0f);
+    a.talk_requires_flag = j.value("talk_requires_flag", std::string{});
+    a.face_player_range_meters = j.value("face_player_range_meters", 0.0f);
+    a.acknowledgment_max_angle_radians = j.value("acknowledgment_max_angle_radians", 0.6f);
+    a.acknowledgment_turn_rate_scale = j.value("acknowledgment_turn_rate_scale", 0.15f);
     a.form = parseForm(j.value("form", std::string("DamnedSoul")));
     a.skeleton_id = j.value("skeleton_id", std::string("player"));
     loadClipFields(j, a);

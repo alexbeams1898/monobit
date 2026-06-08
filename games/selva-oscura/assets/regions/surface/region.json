@@ -72,7 +72,7 @@
   "doors": [
     {
       "id": "chapel_front_door",
-      "_comment": "Chapel front door. Locked at game start so the player can't escape into the chapel during the Lupa fight. Opens via a scripted-event watcher when 'lupa_felled' OR 'vagrant_rescued' flag is set (the Guide emerges and the door opens regardless of outcome). Once Open, terminal -- the chapel is permanently accessible thereafter. World position: chapel front face at Z=-205.5, door cutout centered on X=0, plateau Y=22.0. Hinge on the -X edge (door pivots inward, away from approaching player). Yaw=0 means the door's swinging edge points +X when closed; rotation pivots it toward +Z (inward, into the chapel) when opening.",
+      "_comment": "Chapel front door. Initial state Locked so the player can't enter during the Lupa fight. When 'lupa_felled' fires, the rescue scripted event calls unlockDoor() -- Locked -> Closed -- and a lock_unlock SFX cue plays. The player then walks up and uses E to open it themselves (player_interactable=true). This is the player's first manual door interaction in the game and serves as onboarding for the locked->unlocked->open mechanic that recurs throughout the descent. Once Open, terminal. World position: chapel front face at Z=-205.5, door cutout centered on X=0, plateau Y=22.0. Hinge on the -X edge (door pivots inward, away from approaching player). Yaw=0 means the door's swinging edge points +X when closed; rotation pivots it toward +Z (inward, into the chapel) when opening.",
       "pos": [-0.45, 22.305, -206.0],
       "yaw": 0.0,
       "hinge_offset": [0.0, 0.0, 0.0],
@@ -80,9 +80,10 @@
       "open_angle_degrees": 90.0,
       "open_animation_seconds": 1.5,
       "mesh": "assets/world/static_meshes/doors/chapel_door.glb",
-      "player_interactable": false,
+      "player_interactable": true,
       "persistent": true,
-      "initial_state": "Locked"
+      "initial_state": "Locked",
+      "label_key": "interact.door.chapel_front_door.label"
     }
   ],
   "enemy_spawns": [

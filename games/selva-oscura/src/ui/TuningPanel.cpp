@@ -29,6 +29,7 @@
 #include "ui/ComboHud.h"
 #include "ui/DialogScreen.h"
 #include "ui/InteractionPrompt.h"
+#include "ui/NamePromptScreen.h"
 
 #include <imgui.h>
 
@@ -477,13 +478,20 @@ void renderTreePreviewControls();
 
 static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
 {
-    renderActorHud();
-    selva::ui::renderCompass();
-    renderColliderDebug();
-    selva::ui::renderPhysicsBodyDebug();
-    selva::ui::renderSceneOverlays();
-    renderComboHud();
-    renderTreePreviewControls();
+    // World-HUD layer (health, compass, boss bar, debug overlays).
+    // Suppressed while any Beat-3/4 modal owns the screen (name
+    // prompt OR class picker) -- character-creation moments hide
+    // gameplay chrome.
+    if (!selva::ui::classPickerActive() && !selva::ui::namePromptActive())
+    {
+        renderActorHud();
+        selva::ui::renderCompass();
+        renderColliderDebug();
+        selva::ui::renderPhysicsBodyDebug();
+        selva::ui::renderSceneOverlays();
+        renderComboHud();
+        renderTreePreviewControls();
+    }
     if (!sShowTuningPanel)
         return;
     auto& tun = selva::tuning::current();
@@ -536,18 +544,18 @@ namespace selva::ui
 void selvaRenderImGui(::Engine& engine, ::EntityManager& em)
 {
     ::selvaRenderImGui(engine, em);
-    // Boss HUD on top of everything else (HP bar, name, felled
-    // overlay). No-op when no boss is engaged. Per
-    // docs/design/ideas/boss_backend.md section 8.
-    renderBossHud();
-    // Interaction prompt. No-op when nothing is in range.
-    renderInteractionPrompt();
-    // Dialog box. No-op when no dialog is active.
-    renderDialogScreen();
-    // Beat 4 class-picker modal (the Signing). No-op when inactive.
-    // Draws after the dialog screen so on the first frame after the
-    // dialog handler opens it, both can render (dialog dismisses
-    // on commit; modal takes over).
+    // Boss HUD + interaction prompt are world-HUD layer; suppress
+    // them when any Beat-3/4 modal is up. Dialog also suppressed.
+    if (!selva::ui::classPickerActive() && !selva::ui::namePromptActive())
+    {
+        renderBossHud();
+        renderInteractionPrompt();
+        renderDialogScreen();
+    }
+    // Beat-3 name prompt + Beat-4 class picker. Both render LAST so
+    // their backdrops + panels paint over everything else. Both are
+    // no-ops when inactive.
+    renderNamePrompt();
     renderClassPicker();
 }
 } // namespace selva::ui

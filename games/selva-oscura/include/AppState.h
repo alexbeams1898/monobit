@@ -75,8 +75,11 @@ struct UIState
 // ---------------------------------------------------------------------------
 // GameState - top-level application-mode state machine. Each value names a
 // distinct rendering and update path. The main loop dispatches on
-// GameState::phase; screens (MainMenu, CharCreate, LoadGame, Settings) are
-// stateless renderers that return an Action which transitions the phase.
+// GameState::phase; screens (MainMenu, LoadGame, Settings) are stateless
+// renderers that return an Action which transitions the phase. Character
+// creation -- naming + class pick -- happens IN-WORLD via the Beat-3
+// Guide-dialog beat + the Beat-4 picker; there is no main-menu CharCreate
+// step. Per docs/design/character-creation.md.
 //
 // Selva phases differ from prison-escape: no Victory/GameOver/HighScores/
 // RunSummary - Selva is roguelike, run-end loops back into Playing through
@@ -88,7 +91,6 @@ struct GameState
     enum class Phase
     {
         MainMenu,
-        CharCreate,
         LoadGame,
         Settings,
         Playing,
@@ -228,6 +230,27 @@ struct PlayerProfile
     // necessary. Empty = no flags set yet (back-compat default for
     // saves written before the flag system shipped).
     std::vector<std::string> flags;
+
+    // Per-character insight nodes the Vagrant has unlocked. Stable
+    // node id strings (e.g. "knows_guide", "knows_lupa",
+    // "knows_acheron_pile"). The language map's tier promotions
+    // (selva::lang::resolve) check membership here via
+    // selva::lang::isUnlocked(node_id) -- every tier-2 reveal flows
+    // through this single set. Per the doctrine, each Vagrant starts
+    // fresh: the set is empty on character create and rebuilt across
+    // play by the insight graph's trigger evaluators
+    // (selva::insight::tick).
+    //
+    // Vector (sorted, deduped) for save/load symmetry with flags. Use
+    // the helpers in AppStateGlobal: hasInsight / setInsight / clearInsight.
+    std::vector<std::string> unlocked_insights;
+
+    // Per-character cumulative kill counts by archetype id. Insight
+    // graph accumulator triggers (kill_count) read from this map; the
+    // fireEnemyDeath path writes to it. Authored archetype ids match
+    // config/enemies/<id>.json. Sparse: only archetypes the player
+    // has killed appear.
+    std::unordered_map<std::string, std::uint32_t> kill_counts;
 
     // Persistent door state. (door_id, state_name) pairs. Only doors
     // whose state has DEVIATED from their JSON-authored initial_state

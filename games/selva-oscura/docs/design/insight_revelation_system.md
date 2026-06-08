@@ -1,11 +1,84 @@
 # Insight revelation system — design direction
 
-Captured 2026-06-05. **WIP, not locked.** Refine as Selva develops.
+Captured 2026-06-05. **Pillar + architecture LOCKED 2026-06-09.**
+Per-node content + unlock channels still WIP per node.
 
-This doc captures the shape of an idea, not the final law. Some
-details (node count, unlock conditions, surface-specific behavior)
-are genuinely open. The PILLAR is what we're trying to defend; the
-mechanics underneath are negotiable.
+This doc captures the shape of the system and its implementation.
+The PILLAR is locked (every player-facing string flows through the
+language map; every reveal is gated by a named insight node; one
+backend powers every surface). The per-node content (which strings
+have which tiers, which triggers fire which nodes, how dense the
+authoring becomes) is the ongoing authoring work.
+
+## Implementation status
+
+**v1 SHIPPED 2026-06-09.** Two modules + one extended profile field:
+
+- **`selva::lang`** — [`include/lang/Language.h`](../../include/lang/Language.h). Reads
+  `config/lang/*.json` into a tiered string map. `resolve(key)` returns the
+  highest-unlocked-tier text; `isUnlocked(node)` is the seam (delegates to
+  `hasInsight(node)`). Missing keys return `[lang:KEY]` so authoring bugs
+  surface in-game.
+- **`selva::insight`** — [`include/insight/Insight.h`](../../include/insight/Insight.h).
+  Reads `config/insight/*.json` into a node graph. `tick()` runs per frame,
+  evaluates each unlocked node's trigger, fires matching nodes into the
+  active profile's `unlocked_insights` set. Event-source hooks
+  (`notifyDialogBegan` / `notifyExamined` / `notifyKill`) live in the publisher
+  sites (dialog::begin, examine on_interact, fireEnemyDeath).
+- **`PlayerProfile.unlocked_insights`** + **`PlayerProfile.kill_counts`** —
+  per-character storage; both round-trip through SaveManager. Per-character
+  per the locked doctrine; new Vagrant starts fresh, knows nothing, learns
+  by play. Reset on character create + cleared via the hardReset path.
+
+**v1 trigger kinds** (in `selva::insight`):
+
+| kind | JSON schema | fires when |
+|---|---|---|
+| `flag_set` | `{ flag: "..." }` | `hasFlag(p, flag)` is true |
+| `dialog_began` | `{ npc_id: "..." }` | player has talked to this NPC at least once |
+| `examined` | `{ mesh_debug_name: "..." }` | player has examined this static mesh at least once |
+| `kill_count` | `{ archetype: "...", threshold: N }` | `kill_counts[archetype] >= N` |
+| `sangue_accumulated` | `{ threshold: N }` | `sangue_lifetime >= N` |
+
+**Wired surfaces today** (all route through `selva::lang::resolve()`):
+
+- NPC dialog speaker name (via `NpcDialog::display_name_key` in `config/npcs/*.json`)
+- NPC talk-prompt label (via `EnemyArchetype::display_name_key` in `config/enemies/*.json`)
+- Boss HP-bar name (via `EnemyArchetype::boss_name_key`)
+- Boss felled-overlay message (via `EnemyArchetype::felled_message_key`)
+- Static-mesh examine prompt label (via region.json `examine_label_key`)
+- Static-mesh examine prose body (via region.json `examine_text_key`)
+- Door interact label (via region.json `doors[].label_key`)
+
+**Interact-prompt verbs are noun-stripped** as of v1: the prompt shows only
+"Talk" / "Examine" / "Open" / "Pickup" / "Use" — the noun would name things
+the player may not have insight for yet. The label is still computed
+(used for telemetry + future) but never rendered.
+
+**Authored nodes today** (3 nodes, 5 lang entries):
+
+| node id | trigger | promotes |
+|---|---|---|
+| `knows_guide` | `dialog_began:guide` | dialog speaker `???` → `Guide` |
+| `knows_lupa` | `flag_set:lupa_felled` | HP-bar `???` → `LUPA`; felled overlay `FELLED` → `LUPA FELLED` |
+| `knows_dissolved_souls` | `examined:acheron_pile` | pile label `the pile` → `a heap of the dissolved`; prose body deepens |
+
+**Not yet authored** (the language map supports them; entries just need writing):
+
+- Sangue-related strings (substance has no in-game name per
+  [[project_substance_has_no_in_game_name]] — tier-0 sensory only, NEVER
+  a tier-2 reveal)
+- Region chip labels
+- Item descriptions
+- Picker / pause-menu / dialog choice labels (these have no tier-2 leaks today
+  so literal-fallback works; route through the lang map as authoring grows)
+- Grimoire fragments (system itself not yet built)
+
+This doc captures the shape of an idea AND its implementation. Some
+content details (per-node text variants, unlock channels for nodes
+not yet authored, density of micro-unlocks) are genuinely open. The
+ARCHITECTURE is what's defended; per-node mechanics underneath are
+negotiable.
 
 ## The pillar
 
@@ -487,6 +560,211 @@ Selva's cosmology:
 - Tooltips connect sangue to weapon XP, vestigia, the
   Beatrice/riversamento system
 - The player now sees the system as the system
+
+## Authoring guide
+
+Practical reference for adding strings + nodes to the shipped v1
+system.
+
+### Adding a new player-facing string
+
+1. **Pick a stable key.** Convention: `<domain>.<thing>.<aspect>`. Domain is
+   the JSON file the entry lives in (`world`, `interact`, future `ui` /
+   `items` / etc.). Examples: `world.acheron_pile.examine_label`,
+   `interact.npc.guide.display_name`, `interact.boss.lupa.felled_message`.
+2. **Author the entry** in the appropriate `config/lang/<domain>.json`:
+   ```json
+   "world.my_thing.examine_text": {
+     "tier_0": "A sensory description with no cosmological vocabulary.",
+     "tier_1": "An operational English gloss when the player understands what it is.",
+     "tier_2": "The full canon, possibly with the proper Italian term.",
+     "unlock_node_tier_1": "knows_my_thing",
+     "unlock_node_tier_2": "knows_my_thing_cosmology"
+   }
+   ```
+   `tier_0` is REQUIRED. `tier_1` / `tier_2` are optional. `unlock_node_tier_1` /
+   `unlock_node_tier_2` are the node ids that promote the entry; both come from
+   `config/insight/*.json`.
+3. **Reference the key from code or schema.** The right field depends on what
+   surface this string lives on:
+   - **NPC display name (dialog speaker)**: add `display_name_key` to
+     `config/npcs/<id>.json` AND `config/enemies/<id>.json` (the dialog system
+     reads the former, the talk-prompt the latter; both fields point at the
+     same lang key).
+   - **Static-mesh examine prompt**: add `examine_label_key` + `examine_text_key`
+     to the mesh entry in `assets/regions/<region>/region.json`.
+   - **Door label**: add `label_key` to the door entry in the region's `doors[]` array.
+   - **Boss HP-bar / felled overlay**: add `boss_name_key` + `felled_message_key`
+     to `config/enemies/<archetype>.json`.
+   - **New surface**: pass the lang key through to wherever the string is rendered;
+     resolve with `selva::lang::resolve(key)` at render time. Prefer resolving
+     each draw so tier promotions update live (the boss HP-bar does this; see
+     `BossHud.cpp::resolveBossName`).
+4. **Test**: launch the game, find the surface, confirm the tier-0 string
+   shows. If you see `[lang:KEY]` the key isn't registered (typo or wrong
+   JSON file). If you see the wrong tier, the unlock node isn't firing
+   (check `selva-oscura.log` for `[insight] node fired:` lines).
+
+### Adding a new insight node
+
+1. **Pick a node id.** Convention: `knows_<thing>` for name-reveals (Guide,
+   Lupa, etc.); `<verb>_<thing>` for action-driven micro-unlocks
+   (`first_kill_felt`, `first_vessel_use`). Lowercase, underscore-separated.
+   Node ids are SAVE SCHEMA fields — renaming breaks existing saves AND every
+   `unlock_node_tier_*` reference in the language map. Treat them like flag
+   names.
+2. **Author the node** in the appropriate `config/insight/<domain>.json`
+   (`npcs.json`, `bosses.json`, `world.json`, future `items.json` / etc.):
+   ```json
+   "knows_my_thing": {
+     "_comment": "Fires when X happens.",
+     "trigger": {
+       "kind": "examined",
+       "mesh_debug_name": "my_thing"
+     }
+   }
+   ```
+   Pick the trigger kind from the v1 table above. Each kind has its own
+   required fields; missing fields log loudly and the node is skipped on load.
+3. **Verify the trigger source is wired.** Most trigger sources are already
+   hooked into the event publishers (dialog::begin, examine on_interact,
+   fireEnemyDeath). If you're triggering on a new kind of event, add a
+   `selva::insight::notify*` hook at the event site OR (simpler) have the
+   event set a gameplay flag and use `flag_set` as the trigger kind. Flags
+   are the universal lingua franca; any new bookkeeping flag becomes an
+   insight trigger for free.
+4. **Reference the node from a language entry.** The node exists to gate
+   tier promotions; add an `unlock_node_tier_1` (or `_2`) field on the
+   language entry that should reveal when this node fires.
+5. **Test in-game**: trigger the action, watch for `[insight] node fired:`
+   in the log. If the node never fires, check the publisher hook is in
+   the right code path; if the language entry doesn't promote after firing,
+   check the unlock node id is spelled identically in both files.
+
+### The examine-as-insight doctrine (LOCKED 2026-06-09)
+
+**Every examinable thing in the game fires an insight node on first
+examine.** This is a hard rule, not a suggestion:
+
+- Every static mesh with `examine_text` / `examine_text_key` in
+  `assets/regions/<region>/region.json` MUST have a corresponding
+  insight node in `config/insight/world.json` with an `examined`
+  trigger naming the mesh's `debug_name`.
+- Every actor archetype with `examine_text` / `examine_text_key` in
+  `config/enemies/<id>.json` MUST have a corresponding insight node
+  with an `examined` trigger naming the archetype's `id`.
+
+If you add an examinable without an insight node, the examine still
+works (the prose shows) but nothing in the world responds to the
+player having looked at it. That's a missed authoring opportunity —
+the examine becomes a dead end. Per the doctrine, examines ARE the
+primary information-loop driver in the early game: every look
+unlocks something elsewhere (a Guide topic, a deeper tier on the
+examined thing itself, a region-chip reveal, etc.).
+
+### The two-stage reveal pattern
+
+The pattern that drives most cosmological reveals in the world:
+
+1. **Stage 1 (player examines)** — examine fires the node
+   `knows_<thing>`. Lang map promotes the examined thing's tier-1
+   (the player's solo observation lands).
+2. **Stage 2 (Guide names)** — player returns to the Guide; a
+   topic gated on `examined:<thing>` becomes eligible. Entering the
+   topic fires `guide_named_<thing>` via the topic's
+   `unlocks_insight` field. Lang map promotes the examined thing's
+   tier-2 (the cosmological frame the player's solo observation
+   couldn't reach).
+
+The pattern is the foundation of the Guide's role: he's the
+cosmological-naming layer, fed exactly enough by Beatrice's channel
+to interpret what the Vagrant has already seen. Every Guide-side
+reveal topic should follow this two-stage shape — gated on a
+world-side examine, firing a Guide-named node, promoting a
+language-map entry.
+
+Schema for the two halves:
+
+```json
+// config/insight/world.json -- triggered node
+"knows_arrival_queue": {
+  "trigger": { "kind": "examined", "subject": "larva_fresh" }
+}
+
+// config/npcs/guide.json -- topic that fires the Guide-named node
+{
+  "id": "guide_reveals_arrival_queue",
+  "entry_point": true,
+  "show_when": {
+    "flags_required": ["seen_topic_post_signing_first_words",
+                       "examined:larva_fresh"],
+    "flags_forbidden": ["seen_topic_guide_reveals_arrival_queue"]
+  },
+  "unlocks_insight": "guide_named_arrival_queue",
+  "line": "...",
+  "choices": [...]
+}
+
+// config/lang/world.json -- entry with both tier promotions
+"world.larva_fresh.examine_text": {
+  "tier_0": "...",
+  "tier_1": "...",
+  "tier_2": "...",
+  "unlock_node_tier_1": "knows_arrival_queue",
+  "unlock_node_tier_2": "guide_named_arrival_queue"
+}
+```
+
+### Manually-set insight nodes
+
+Insight nodes come in two flavors:
+
+- **Triggered nodes** (the common case) live in `config/insight/*.json`
+  with a declarative trigger. The graph evaluates them per frame.
+- **Manually-set nodes** are fired directly from code via
+  `selva::setInsight(node_id)` OR from a dialog topic's
+  `unlocks_insight` field. They have NO declaration in the insight
+  JSON; their existence is implied by the unlock site.
+
+The `guide_named_*` nodes are the canonical manually-set case —
+they're fired from dialog topics, not by a world trigger. Both
+flavors land identically in `unlocked_insights` and both are looked
+up identically by `selva::lang::resolve()`. Authors don't need to
+declare manually-set nodes anywhere; the convention is "if no
+config/insight entry exists for a node id, the node is set
+manually." Grep for the node id in `config/npcs/` to find where it
+fires.
+
+Use the manually-set pattern when:
+- The unlock condition is conversational (a topic was reached) rather
+  than world-observable.
+- The unlock is a downstream consequence of another insight (you only
+  fire `guide_named_X` after `knows_X` has fired AND the player has
+  re-engaged the Guide).
+
+Use the triggered pattern when:
+- The unlock is a direct response to a world event the gameplay code
+  already publishes (kills, examines, flag-sets, sangue thresholds).
+
+### What NOT to do
+
+- **Don't hardcode player-facing strings in code.** Every literal "the
+  Guide", "LUPA", "the pile", etc. is a future drift bug. Route through
+  the lang map; literal-fallback fields exist on the schemas but are the
+  exception, not the rule.
+- **Don't tier-gate strings that have no insight to reveal.** Some strings
+  are tier-0 forever (the literal verbs "Talk" / "Examine"; UI chrome like
+  "Save" / "Quit"). Author them with only `tier_0` (no unlock nodes); they
+  resolve to that text forever. Don't invent a "knows_save_command" node.
+- **Don't author tier-2 sangue strings.** Per [[project_substance_has_no_in_game_name]],
+  the substance is referenced by function/metaphor/effect at every tier;
+  the proper name never reveals. Treat sangue as the canonical "tier-0 only,
+  no reveal" case.
+- **Don't add new trigger kinds for one-off cases.** If a node is hard to
+  express in the v1 5-kind schema, the answer is usually "have the gameplay
+  code set a flag at the right moment, use flag_set as the trigger." Adding
+  a new trigger kind is a real engineering commitment (parsing + evaluator
+  branch + tests); flags are free.
 
 ## What this is NOT
 

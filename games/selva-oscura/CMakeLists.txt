@@ -61,6 +61,8 @@ add_library(selva-oscura-lib STATIC
     src/combat/SpliceDiag.cpp
     src/combat/TransitionProfile.cpp
     src/combat/WeaponData.cpp
+    src/insight/Insight.cpp
+    src/lang/Language.cpp
     src/render/Atmosphere.cpp
     src/render/Camera.cpp
     src/render/RegionGeometry.cpp
@@ -85,8 +87,10 @@ add_library(selva-oscura-lib STATIC
     src/ui/ComboHud.cpp
     src/ui/DialogScreen.cpp
     src/ui/InteractionPrompt.cpp
+    src/ui/NamePromptScreen.cpp
     src/ui/Screens.cpp
     src/ui/TuningPanel.cpp
+    src/ui/UIComponents.cpp
     src/world/Collision.cpp
     src/AppStateGlobal.cpp
     src/PlayerClass.cpp

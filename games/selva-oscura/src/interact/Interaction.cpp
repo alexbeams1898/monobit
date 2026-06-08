@@ -11,12 +11,16 @@
 namespace selva::interact
 {
 
+// Verb shown in the "[E] <verb>" prompt. Verbs are bare -- no
+// trailing "to" or noun -- because the prompt itself is now noun-
+// stripped (the player is standing in front of the interactable; the
+// noun would name things they might not have insight for yet).
 const char* kindVerb(Kind k)
 {
     switch (k)
     {
     case Kind::Talk:
-        return "Talk to";
+        return "Talk";
     case Kind::Pickup:
         return "Pick up";
     case Kind::Examine:

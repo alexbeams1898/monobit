@@ -4,6 +4,8 @@
 #include "dialog/Encounter.h"
 #include "dialog/Handlers.h"
 #include "dialog/TopicRegistry.h"
+#include "insight/Insight.h"
+#include "lang/Language.h"
 #include "text/TextPresentation.h"
 
 #include <cstdio>
@@ -96,15 +98,20 @@ bool evalShowWhen(const std::string& npc_id, const ShowWhen& sw)
     return true;
 }
 
-// Resolve the speaker display name. NPC id -> registry display_name.
-// Empty / sentinel "narration" / "player" / "vagrant" -> empty
-// string (UI renders unattributed).
+// Resolve the speaker display name. NPC id -> registered NpcDialog's
+// language-map key -> tier-gated text. Falls back to literal
+// display_name if no key was authored. Empty / sentinel "narration" /
+// "player" / "vagrant" -> empty string (UI renders unattributed).
 std::string resolveSpeakerName(const std::string& speaker)
 {
     if (speaker.empty() || speaker == "narration" || speaker == "player" || speaker == "vagrant")
         return std::string{};
     const NpcDialog* npc = topicRegistry().get(speaker);
-    return (npc != nullptr) ? npc->display_name : speaker;
+    if (npc == nullptr)
+        return speaker;
+    if (!npc->display_name_key.empty())
+        return selva::lang::resolve(npc->display_name_key);
+    return npc->display_name;
 }
 
 // Build a text::ActiveTextView from a dialog topic. Used to push
@@ -178,8 +185,8 @@ void fireAction(const std::string& key, const std::string& npc_id, const std::st
 }
 
 // Enter a topic by id within the active NPC. Fires on_enter, marks
-// topic seen, rebuilds view. Caller must have validated topic_id
-// exists.
+// topic seen, rebuilds view, fires the topic's insight unlock (if
+// any). Caller must have validated topic_id exists.
 void enterTopic(const NpcDialog& npc, const Topic& topic)
 {
     auto& rs = state();
@@ -187,6 +194,12 @@ void enterTopic(const NpcDialog& npc, const Topic& topic)
     markTopicSeen(npc.npc_id, topic.id);
     rebuildView(npc, topic);
     fireAction(topic.on_enter, npc.npc_id, topic.id);
+    // Topic-level insight unlock. Per the locked doctrine: entering
+    // the topic at all (any path through it) is the reveal moment;
+    // the node fires here, not at on_exit / on_select. setInsight is
+    // idempotent so a repeat visit to the topic is harmless.
+    if (!topic.unlocks_insight.empty())
+        selva::setInsight(topic.unlocks_insight);
 }
 
 // Internal: actually apply a choice. Called from tick() with no UI
@@ -235,6 +248,9 @@ void begin(const std::string& npc_id)
     PlayerProfile* profile = selva::activePlayerProfile();
     auto& enc = selva::npcEncounter(profile, npc_id);
     enc.times_talked += 1;
+    // Insight: dialog opened with this NPC. tick() will fire any
+    // node whose dialog_began trigger names this npc_id.
+    selva::insight::notifyDialogBegan(npc_id);
     std::fprintf(stderr, "[dialog] begin '%s' -> entry topic '%s' (times_talked=%d)\n",
                  npc_id.c_str(), entry->id.c_str(), enc.times_talked);
     std::fflush(stderr);

@@ -21,6 +21,7 @@
 #include "physics/PhysicsWorld.h"
 #include "render/Camera.h"
 #include "render/TerrainShader.h"
+#include "ui/UIComponents.h"
 #include "world/Collision.h"
 #include "world/CryptLayout.h"
 #include "world/Region.h"
@@ -643,7 +644,7 @@ void drawVesselCounter(ImDrawList* draw, const ImVec2& origin)
     //   Penitent   -- warmer + slightly redder (the bent walk).
     //   Heretic    -- warmer + bronzed (the crooked carry).
     //   Wretched   -- duller + cooler (the non-completion).
-    //   Unburdened -- paler + cooler (the channel toward Beatrice, light-bound).
+    //   Unburdened -- paler + cooler (the channel toward Beatrice).
     ImU32 vessel_color = IM_COL32(220, 200, 180, 240);
     switch (cls)
     {
@@ -662,32 +663,8 @@ void drawVesselCounter(ImDrawList* draw, const ImVec2& origin)
     case PlayerClass::None:
         break;
     }
-    ImFont* font = ImGui::GetFont();
-    const float font_size = ImGui::GetFontSize();
-    float pen_x = origin.x;
-    // Bar positions. Single bar sits 2px above the glyph; double bar
-    // adds a second line 2px above that. Double-bar means ×1,000,000;
-    // the second stripe is the visual cue that we're in the millions.
-    constexpr float kSingleBarOffsetY = 2.0f;
-    constexpr float kDoubleBarStripeGapY = 2.5f;
-    for (std::size_t i = 0; i < rendering.glyphs.size(); ++i)
-    {
-        const char buf[2] = {rendering.glyphs[i], '\0'};
-        const ImVec2 size = font->CalcTextSizeA(font_size, FLT_MAX, 0.0f, buf);
-        draw->AddText(font, font_size, ImVec2(pen_x, text_y), vessel_color, buf);
-        const std::uint8_t bar_count = rendering.bars[i];
-        if (bar_count >= 1u)
-        {
-            const float y1 = text_y - kSingleBarOffsetY;
-            draw->AddLine(ImVec2(pen_x, y1), ImVec2(pen_x + size.x, y1), vessel_color, 1.0f);
-        }
-        if (bar_count >= 2u)
-        {
-            const float y2 = text_y - kSingleBarOffsetY - kDoubleBarStripeGapY;
-            draw->AddLine(ImVec2(pen_x, y2), ImVec2(pen_x + size.x, y2), vessel_color, 1.0f);
-        }
-        pen_x += size.x;
-    }
+    // Shared renderer (also used by the class picker's stat rows).
+    selva::ui::drawRomanGlyphs(draw, ImVec2(origin.x, text_y), rendering, vessel_color);
 }
 
 } // namespace

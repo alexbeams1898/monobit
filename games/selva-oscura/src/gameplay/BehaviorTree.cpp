@@ -26,9 +26,6 @@
 namespace selva::gameplay
 {
 
-namespace
-{
-
 // Forward yaw such that actor faces target. Convention: yaw=0 faces
 // -Z. atan2(-dx, -dz) rotates the forward vector (-Z) onto the XZ
 // vector (target - actor). Returns 0 if the two are within 1mm so
@@ -41,6 +38,9 @@ float yawFacing(const glm::vec3& actor_pos, const glm::vec3& target_pos)
         return 0.0f;
     return std::atan2(-dx, -dz);
 }
+
+namespace
+{
 
 // Resolve the effective reach for an action. Priority order:
 //   1. effective_reach_override (designer-authored, rare)

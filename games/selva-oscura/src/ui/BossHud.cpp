@@ -5,6 +5,7 @@
 #include "gameplay/Actor.h"
 #include "gameplay/Enemies.h"
 #include "gameplay/EnemyArchetype.h"
+#include "lang/Language.h"
 
 #include <imgui.h>
 
@@ -36,8 +37,14 @@ struct BossHudState
     // Boss display data captured at engage. Survives the actor
     // disappearing from the pool so the Felled overlay still has its
     // text.
+    // The cached name + felled-message are resolved fresh each draw
+    // via the lang-map keys below (cached_boss_name_key /
+    // cached_felled_message_key). Literal fallback values cached at
+    // engage for archetypes without language-map keys authored.
     std::string cached_boss_name;
+    std::string cached_boss_name_key;
     std::string cached_felled_message;
+    std::string cached_felled_message_key;
     bool cached_show_felled_overlay = true;
     float cached_hp_max = 1.0f;
     float cached_hp_at_death = 0.0f;
@@ -55,6 +62,23 @@ BossHudState& state()
 {
     static BossHudState s;
     return s;
+}
+
+// Resolve the boss display name via lang map, falling back to the
+// literal name cached at engage. Called each draw so tier promotions
+// (e.g. knows_lupa firing on death) flip the HP-bar label live.
+std::string resolveBossName(const BossHudState& s)
+{
+    if (!s.cached_boss_name_key.empty())
+        return selva::lang::resolve(s.cached_boss_name_key);
+    return s.cached_boss_name;
+}
+
+std::string resolveFelledMessage(const BossHudState& s)
+{
+    if (!s.cached_felled_message_key.empty())
+        return selva::lang::resolve(s.cached_felled_message_key);
+    return s.cached_felled_message;
 }
 
 // Animation tunings. Kept here (file-local) until the GUI ships in
@@ -197,7 +221,9 @@ void resetBossHud()
     s.mode = BossHudState::Mode::Hidden;
     s.mode_entered_at = 0.0;
     s.cached_boss_name.clear();
+    s.cached_boss_name_key.clear();
     s.cached_felled_message.clear();
+    s.cached_felled_message_key.clear();
     s.cached_show_felled_overlay = true;
     s.cached_hp_max = 1.0f;
     s.cached_hp_at_death = 0.0f;
@@ -254,8 +280,12 @@ void cacheBossForFadeIn(BossHudState& s, double now, const selva::gameplay::Acto
     s.mode = BossHudState::Mode::FadingIn;
     s.mode_entered_at = now;
     s.cached_boss_name = (boss.archetype != nullptr) ? boss.archetype->boss_name : std::string{};
+    s.cached_boss_name_key =
+        (boss.archetype != nullptr) ? boss.archetype->boss_name_key : std::string{};
     s.cached_felled_message =
         (boss.archetype != nullptr) ? boss.archetype->felled_message : std::string{};
+    s.cached_felled_message_key =
+        (boss.archetype != nullptr) ? boss.archetype->felled_message_key : std::string{};
     s.cached_show_felled_overlay =
         (boss.archetype != nullptr) ? boss.archetype->show_felled_overlay : true;
     s.cached_hp_max = static_cast<float>(boss.hp.max);
@@ -303,7 +333,9 @@ void advanceBossHudState(BossHudState& s, double now, const selva::gameplay::Act
         {
             s.mode = BossHudState::Mode::Hidden;
             s.cached_boss_name.clear();
+            s.cached_boss_name_key.clear();
             s.cached_felled_message.clear();
+            s.cached_felled_message_key.clear();
             s.cached_show_felled_overlay = true;
             s.cached_boss_id.clear();
             std::fprintf(stderr, "[boss-hud] FadingOut -> Hidden (cache cleared)\n");
@@ -315,39 +347,42 @@ void advanceBossHudState(BossHudState& s, double now, const selva::gameplay::Act
 
 void drawBossHudFelledMode(const BossHudState& s, double now)
 {
+    // Resolve once per call; both the HP-bar and the overlay use
+    // the same tier-gated name. When the insight node for THIS boss
+    // fires on death, this is the frame the name flips from "???"
+    // to the real name in front of the player.
+    const std::string name = resolveBossName(s);
+    const std::string felled = resolveFelledMessage(s);
     const double elapsed = now - s.mode_entered_at;
     if (elapsed < kFelledFreezeSeconds)
     {
-        drawHpBarAndName(s.cached_boss_name, 0.0f, 1.0f);
+        drawHpBarAndName(name, 0.0f, 1.0f);
         return;
     }
-    // Past freeze: HP bar holds at 0 + full alpha; felled-text fades
-    // in then holds.
-    drawHpBarAndName(s.cached_boss_name, 0.0f, 1.0f);
+    drawHpBarAndName(name, 0.0f, 1.0f);
     const double text_elapsed = elapsed - kFelledFreezeSeconds;
     const float text_alpha = static_cast<float>(std::clamp(text_elapsed / 0.4, 0.0, 1.0));
-    drawFelledOverlay(s.cached_boss_name, s.cached_felled_message, text_alpha);
+    drawFelledOverlay(name, felled, text_alpha);
 }
 
 void drawBossHudByMode(const BossHudState& s, double now, float hp_norm)
 {
+    const std::string name = resolveBossName(s);
     switch (s.mode)
     {
     case BossHudState::Mode::Hidden:
         return;
     case BossHudState::Mode::FadingIn:
-        drawHpBarAndName(s.cached_boss_name, hp_norm,
-                         fadeAlpha(now, s.mode_entered_at, kFadeInSeconds));
+        drawHpBarAndName(name, hp_norm, fadeAlpha(now, s.mode_entered_at, kFadeInSeconds));
         return;
     case BossHudState::Mode::Active:
-        drawHpBarAndName(s.cached_boss_name, hp_norm, 1.0f);
+        drawHpBarAndName(name, hp_norm, 1.0f);
         return;
     case BossHudState::Mode::Felled:
         drawBossHudFelledMode(s, now);
         return;
     case BossHudState::Mode::FadingOut:
-        drawHpBarAndName(s.cached_boss_name, 0.0f,
-                         1.0f - fadeAlpha(now, s.mode_entered_at, kFadeOutSeconds));
+        drawHpBarAndName(name, 0.0f, 1.0f - fadeAlpha(now, s.mode_entered_at, kFadeOutSeconds));
         return;
     }
 }

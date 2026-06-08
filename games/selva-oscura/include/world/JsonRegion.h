@@ -153,6 +153,15 @@ class JsonRegion : public engine::world::AsyncCapableRegion
         // archetype-side EnemyArchetype::interact_range_meters.
         std::string examine_text;
         std::string examine_label;
+        // Language-map keys for tier-gated player-facing strings.
+        // examine_label_key: resolves to the "[E] Examine ..." prompt
+        // noun. examine_text_key: resolves to the prose body that
+        // shows when E is pressed. When EITHER is set, it wins over
+        // the literal examine_label / examine_text field below
+        // (which serve as last-resort fallbacks for content that
+        // genuinely has no tier-2 reveal).
+        std::string examine_label_key;
+        std::string examine_text_key;
         glm::vec3 examine_anchor{0.0f};
         float interact_range_meters = 2.5f;
     };

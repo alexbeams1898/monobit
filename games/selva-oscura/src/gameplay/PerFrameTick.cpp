@@ -45,6 +45,7 @@
 #include "gameplay/TerritoryClamp.h"
 #include "gameplay/TickState.h"
 #include "hazard/HazardZones.h"
+#include "insight/Insight.h"
 #include "interact/Interaction.h"
 #include "physics/PhysicsWorld.h"
 #include "render/Atmosphere.h"
@@ -62,6 +63,7 @@
 #include "ui/ActorHud.h"
 #include "ui/ClassPickerScreen.h"
 #include "ui/ComboHud.h"
+#include "ui/NamePromptScreen.h"
 #include "world/Collision.h"
 #include "world/Door.h"
 #include "world/JsonRegion.h"
@@ -3408,18 +3410,31 @@ static void tickPhysicsAndSyncActors(float dt)
         writePhysicsLogFrame(log, dt, player_body);
 }
 
-// Dev cheat: K instantly kills the player to exercise the second-death
-// lifecycle. Edge-triggered so holding K doesn't re-fire each frame.
+// Forward decl -- definition lives further down in the file inside
+// namespace selva::gameplay. Internal linkage + namespace; the
+// forward decl must reach the same symbol so it goes inside the
+// same namespace.
+namespace selva::gameplay
+{
+static bool uiOverlayActive();
+} // namespace selva::gameplay
+
+// Dev cheat: F10 instantly kills the player to exercise the second-
+// death lifecycle. Edge-triggered so holding doesn't re-fire each
+// frame. F-row (not a letter key) so it can't collide with text-input
+// surfaces (name prompt, future search boxes, etc.). Suppressed
+// while ANY UI overlay owns the screen -- if the player is typing in
+// a modal, dev cheats should not fire.
 static void tickDevKillKey(const Uint8* keys)
 {
-    static bool sPrevK = false;
-    const bool k_now = (keys[SDL_SCANCODE_K] != 0);
-    if (k_now && !sPrevK && !sPlayer.is_dead)
+    static bool sPrevDevKill = false;
+    const bool now = (keys[SDL_SCANCODE_F10] != 0);
+    if (now && !sPrevDevKill && !sPlayer.is_dead && !selva::gameplay::uiOverlayActive())
     {
         sPlayer.hp.current = 0;
         selva::gameplay::fireEnemyDeath(sPlayer, /*index=*/0);
     }
-    sPrevK = k_now;
+    sPrevDevKill = now;
 }
 
 // Repopulate the per-frame hurtbox list from all actors' current poses.
@@ -3482,8 +3497,10 @@ void tickWalkTierModifier(const Uint8* keys, bool movement_suppressed)
         sPlayer.loco_tier = LocoTier::Jog;
 }
 
-// All dev/debug keybinds (F1/F3/F2/V/K cheats) that don't affect
-// gameplay state directly. Edge-triggered internally.
+// All dev/debug keybinds (F-row cheats + V camera-mode toggle) that
+// don't affect gameplay state directly. Edge-triggered internally.
+// Convention: F-row only -- letter keys collide with text-input
+// surfaces (name prompt, future search boxes).
 void tickDevAndDebugKeys(const Uint8* keys)
 {
     tickDevKillKey(keys);
@@ -3680,6 +3697,13 @@ static void selvaPerFrame(Engine& engine, EntityManager& em, double dt_d)
     // intents) but before next frame's input.
     selva::text::tick();
     selva::interact::tick();
+    // Insight graph tick: evaluate every loaded node's trigger
+    // against the active profile's state; fire (set in
+    // unlocked_insights) any node whose trigger condition is met.
+    // Runs AFTER dialog/text/interact tick so events that fired this
+    // frame (notifyDialogBegan / notifyExamined / notifyKill) are
+    // visible.
+    selva::insight::tick();
 
     // ---- Combat volume pipeline ----
     // Rebuild hurtboxes from current poses (cleared every frame —
@@ -3792,7 +3816,10 @@ static void tickFpvToggle(const Uint8* keys)
         sInit = true;
         return;
     }
-    if (vNow && !sPrevV)
+    // Suppress while any UI overlay owns the screen -- V is a letter
+    // key and would otherwise fire while the player types into the
+    // name prompt or any future text-input surface.
+    if (vNow && !sPrevV && !selva::gameplay::uiOverlayActive())
     {
         selva::render::toggleCameraMode();
         const auto mode = selva::render::cameraMode();
@@ -4834,7 +4861,8 @@ void resetWakeSceneTracking()
 static bool uiOverlayActive()
 {
     return selva::text::active() || selva::uiState().isScreenOpen() ||
-           tickstate::showTuningPanel() || selva::ui::classPickerActive();
+           tickstate::showTuningPanel() || selva::ui::classPickerActive() ||
+           selva::ui::namePromptActive();
 }
 
 bool gameplayLookSuppressed()

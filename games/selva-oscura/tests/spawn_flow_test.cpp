@@ -23,7 +23,7 @@ TEST_CASE("acheron_larvae.json parses with expected fields", "[spawn][flow]")
     REQUIRE(j["archetype"].get<std::string>() == "larva_fresh");
 
     REQUIRE(j.contains("spawn_region_id"));
-    REQUIRE(j["spawn_region_id"].get<std::string>() == "chapel_interior");
+    REQUIRE(j["spawn_region_id"].get<std::string>() == "limbo");
 
     REQUIRE(j.contains("spawn_position"));
     REQUIRE(j["spawn_position"].is_array());

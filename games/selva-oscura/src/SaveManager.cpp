@@ -66,6 +66,22 @@ void loadFlags(const json& c, PlayerProfile& p)
             p.flags.push_back(f.get<std::string>());
 }
 
+void loadInsights(const json& c, PlayerProfile& p)
+{
+    if (c.contains("unlocked_insights") && c["unlocked_insights"].is_array())
+    {
+        for (const auto& n : c["unlocked_insights"])
+            if (n.is_string())
+                p.unlocked_insights.push_back(n.get<std::string>());
+    }
+    if (c.contains("kill_counts") && c["kill_counts"].is_object())
+    {
+        for (auto it = c["kill_counts"].begin(); it != c["kill_counts"].end(); ++it)
+            if (it.value().is_number_unsigned())
+                p.kill_counts[it.key()] = it.value().get<std::uint32_t>();
+    }
+}
+
 void loadDoorStates(const json& c, PlayerProfile& p)
 {
     if (!c.contains("door_states") || !c["door_states"].is_array())
@@ -140,6 +156,7 @@ PlayerProfile loadCharacter(const json& c)
         p.current_region_id = "surface";
     loadFelledBosses(c, p);
     loadFlags(c, p);
+    loadInsights(c, p);
     loadDoorStates(c, p);
     loadInventory(c, p);
     loadNpcState(c, p);
@@ -286,6 +303,15 @@ nlohmann::json saveCharacter(const PlayerProfile& c)
         char_json["felled_bosses"] = c.felled_bosses;
     if (!c.flags.empty())
         char_json["flags"] = c.flags;
+    if (!c.unlocked_insights.empty())
+        char_json["unlocked_insights"] = c.unlocked_insights;
+    if (!c.kill_counts.empty())
+    {
+        json kc = json::object();
+        for (const auto& [archetype, count] : c.kill_counts)
+            kc[archetype] = count;
+        char_json["kill_counts"] = std::move(kc);
+    }
     if (!c.door_states.empty())
         char_json["door_states"] = saveDoorStates(c);
     if (!c.inventory.by_category.empty())

@@ -656,6 +656,12 @@ bool initTerrain()
     return !sRegions.empty();
 }
 
+// Process-wide cache of Jolt MeshShape handles, one per terrain
+// region. Indexed by region index (same as sRegions). kInvalidShape
+// sentinel means "not yet built." Built lazily via terrainShapeFor(),
+// or eagerly in one shot via buildAllTerrainShapes().
+static std::vector<engine::physics::ShapeHandle> sTerrainShapeCache;
+
 void shutdownTerrain()
 {
     for (auto& r : sRegions)
@@ -668,6 +674,33 @@ void shutdownTerrain()
             glDeleteBuffers(1, &r.ebo);
     }
     sRegions.clear();
+    // Shape lifetimes are owned by Jolt's shape registry; we just drop
+    // our handles. Re-init rebuilds the cache.
+    sTerrainShapeCache.clear();
+}
+
+engine::physics::ShapeHandle terrainShapeFor(int region_idx)
+{
+    if (region_idx < 0 || region_idx >= static_cast<int>(sRegions.size()))
+        return engine::physics::kInvalidShape;
+    if (sTerrainShapeCache.size() != sRegions.size())
+        sTerrainShapeCache.assign(sRegions.size(), engine::physics::kInvalidShape);
+    if (sTerrainShapeCache[region_idx] != engine::physics::kInvalidShape)
+        return sTerrainShapeCache[region_idx];
+    const auto& r = sRegions[region_idx];
+    if (r.cpu_positions.empty() || r.cpu_indices.size() < 3)
+        return engine::physics::kInvalidShape;
+    sTerrainShapeCache[region_idx] =
+        engine::physics::createStaticTrimeshShape(r.cpu_positions, r.cpu_indices);
+    return sTerrainShapeCache[region_idx];
+}
+
+void buildAllTerrainShapes()
+{
+    if (sTerrainShapeCache.size() != sRegions.size())
+        sTerrainShapeCache.assign(sRegions.size(), engine::physics::kInvalidShape);
+    for (int i = 0; i < static_cast<int>(sRegions.size()); ++i)
+        terrainShapeFor(i);
 }
 
 int terrainRegionCount()

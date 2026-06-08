@@ -177,6 +177,13 @@ struct EnemyArchetype
     // boss-HP overlay). NPCs without a boss role still need a name
     // for "Talk to {display_name}". Empty falls back to the spawn id.
     std::string display_name;
+    // Language-map key for the player-facing NPC name. When set,
+    // wins over display_name in the Talk-interactable prompt. Per
+    // the insight system: the player may know the NPC by a different
+    // word as their understanding grows. The Guide is just "Guide"
+    // at every tier; future NPCs (the keepers) may reveal proper
+    // names at tier 2.
+    std::string display_name_key;
     // Non-empty = this archetype is examinable. The spawn-flow system
     // registers an Examine-kind interactable on spawn; pressing E
     // shows this text in an examine-dialog (Grimoire register: Hell's
@@ -188,6 +195,13 @@ struct EnemyArchetype
     // larvae, future ambient observables). NPCs that have a real
     // dialog tree should use the dialog system instead (is_npc=true).
     std::string examine_text;
+    // Language-map keys for the examinable's prompt label and prose
+    // body. Tier-gated through the insight system (same pattern as
+    // static-mesh examines in region.json). When set, win over the
+    // literal examine_text field. Empty = use literal examine_text
+    // as fallback.
+    std::string examine_label_key;
+    std::string examine_text_key;
     // Interaction radius (meters) for the Talk or Examine prompt this
     // archetype's spawn registers. Reaches both kinds because no
     // archetype today opts into both (NPC -> Talk, examinable mob ->
@@ -196,6 +210,39 @@ struct EnemyArchetype
     // per archetype: bosses can broadcast prompts further; ambient
     // mobs with examine_text can pull in tighter.
     float interact_range_meters = 0.0f;
+    // Story-gated talk availability. If non-empty, the NPC's Talk
+    // prompt only appears when this flag is set on the active profile.
+    // Used for NPCs whose interactability is driven by a scripted
+    // sequence -- e.g. the Guide is silent inside the chapel until the
+    // post-Lupa rescue scene completes (talk_requires_flag =
+    // "signing_committed"). Default empty = always talkable (existing
+    // behavior).
+    std::string talk_requires_flag;
+    // Yaw-acknowledgment range (meters). If non-zero, this actor
+    // turns its yaw to face the player whenever the player is within
+    // this XZ range AND the actor is in a passive state (not in
+    // active combat, not on a scripted-walk leg). Souls-style "the
+    // NPC notices you walking by" behavior. 0 = disabled (default).
+    // Per-archetype because only named NPCs (Guide, future
+    // merchants/companions) should do this; ambient mobs ignore the
+    // player until they aggro.
+    float face_player_range_meters = 0.0f;
+    // Maximum angular deviation from spawn_yaw the acknowledgment
+    // overlay will turn to. Caps the turn so the NPC reads as
+    // glancing at the player rather than tracking like a camera --
+    // a person can't physically turn past their own shoulders. Past
+    // this angle the NPC simply holds at the cap (or returns to
+    // spawn_yaw if the player moves out of the human-natural
+    // viewing arc). Default 0.6 rad (~35deg) -- a head-turn, not a
+    // body-turn. 0 = no cap (overlay tracks freely).
+    float acknowledgment_max_angle_radians = 0.6f;
+    // Turn-rate multiplier for the acknowledgment overlay. The base
+    // turn rate is tun.ai_turn_rate_radians_per_sec (6.0 rad/s ~=
+    // combat snap); multiplying by 0.15 yields ~0.9 rad/s ~= 50deg/s,
+    // a slow attentive head-turn rather than a snap. Applied only
+    // when the overlay drove turn_intent_yaw this frame; combat and
+    // scripted-walk yaw updates use the full rate.
+    float acknowledgment_turn_rate_scale = 0.15f;
     // Which behavior tree drives this archetype's decisions. Tree
     // construction is in code (see BehaviorTree.cpp's tree-builder
     // registry); JSON just names which one to bind. Defaults to
@@ -354,6 +401,11 @@ struct EnemyArchetype
     // legends per [[selva-epistemic-doctrine-2026-05-31]] (e.g.
     // "LUPA"). Empty for non-bosses.
     std::string boss_name;
+    // Language-map key for the boss HP-bar name. Tier-gated through
+    // the insight system; tier-0 is "???" until the player gains the
+    // insight that knows this boss (typically fires on death). Empty
+    // = fall back to literal boss_name.
+    std::string boss_name_key;
 
     // Audio bed key to swap to on encounter start (push). On death
     // (post-felled-overlay), bed pops back to previous. Empty = no
@@ -366,6 +418,13 @@ struct EnemyArchetype
     // override lets each boss have a tonally-appropriate line
     // (tragic register for Lupa, etc.).
     std::string felled_message;
+    // Language-map key for the felled overlay. Tier-gated. When the
+    // player doesn't yet know the boss's name (insight unlock fires
+    // on death of THIS boss; the felled overlay is shown for ~3s
+    // after death, so the message you see depends on the same node
+    // that gates the HP bar -- per the locked design "same node
+    // gates both"). Empty = fall back to felled_message.
+    std::string felled_message_key;
 
     // PlayerProfile flag name to set when this actor dies via
     // fireEnemyDeath. Read by ScriptedEvents.cpp to gate world-state

@@ -28,8 +28,10 @@
 #include "gameplay/EnemyArchetype.h"
 #include "gameplay/PerFrameTick.h"
 #include "gameplay/PlayerState.h"
+#include "insight/Insight.h"
 #include "items/CategoryRegistry.h"
 #include "items/ItemRegistry.h"
+#include "lang/Language.h"
 #include "render/Camera.h"
 #include "render/LightSpritePass.h"
 #include "render/RegionGeometry.h"
@@ -55,8 +57,11 @@
 #define SDL_MAIN_HANDLED
 #include <SDL.h>
 
+#include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <string>
+#include <thread>
 
 namespace
 {
@@ -102,11 +107,11 @@ void gatedPerFrame(::Engine& engine, ::EntityManager& em, double dt)
     }
     if (gs.pending_world_create)
     {
-        // Find the active character's profile in SaveData and load it.
-        // If the active name isn't in the save (shouldn't happen via
-        // normal flow; defensive), pass a default-constructed profile -
-        // the load still produces a clean spawn, just with no name-tied
-        // persistent state.
+        // Unified resolution: the active character is always a
+        // PlayerProfile in saveData, looked up by name. Unnamed runs
+        // are name=="" entries; the equality loop resolves them the
+        // same as named ones. Fallback default-profile only if the
+        // lookup fails (defensive; shouldn't happen via normal flow).
         const selva::PlayerProfile default_profile;
         const selva::PlayerProfile* active = &default_profile;
         for (const auto& c : selva::saveData().characters)
@@ -164,6 +169,41 @@ template <typename F> void runBootStep(const char* label, F&& f)
     const Uint64 t0 = SDL_GetTicks64();
     f();
     std::fprintf(stderr, "[boot] %s: %llums\n", label,
+                 static_cast<unsigned long long>(SDL_GetTicks64() - t0));
+}
+
+// Like runBootStep, but f() runs on a worker thread while the main
+// thread pumps SDL events + redraws the loading screen at ~60Hz.
+// Keeps the OS-level event loop alive so Windows doesn't mark the
+// window unresponsive during a long synchronous CPU step.
+//
+// SAFETY: f() must touch ZERO main-thread-only state (OpenGL, ImGui,
+// SDL window APIs, the engine physics shape registry concurrently
+// with other writers). The current boot flow guarantees this because
+// the only thing on the main thread during the loading screen is
+// renderLoadingFrame itself, which is pure GL + ImGui and never
+// touches Jolt. Adding new threaded steps requires the same audit.
+template <typename F>
+void runBootStepThreaded(::Engine& engine, const char* label, const char* loading_text, F&& f)
+{
+    const Uint64 t0 = SDL_GetTicks64();
+    std::atomic<bool> done{false};
+    std::thread worker(
+        [&]
+        {
+            f();
+            done.store(true, std::memory_order_release);
+        });
+    // Pump the loading screen until the worker finishes. ~16ms cadence
+    // matches a 60Hz redraw and keeps Windows from flagging the window
+    // unresponsive. renderLoadingFrame also pumps SDL events internally.
+    while (!done.load(std::memory_order_acquire))
+    {
+        engine.renderLoadingFrame(loading_text);
+        std::this_thread::sleep_for(std::chrono::milliseconds(16));
+    }
+    worker.join();
+    std::fprintf(stderr, "[boot] %s (threaded): %llums\n", label,
                  static_cast<unsigned long long>(SDL_GetTicks64() - t0));
 }
 
@@ -253,6 +293,14 @@ void initRegionsAndTerrain(Engine& engine, engine::world::RegionId& out_default_
     runBootStep("initHubRegion", [] { selva::world::initHubRegion(); });
     runBootStep("initTreeAssets", [] { selva::world::initTreeAssets(); });
     selva::world::initPhysicsRegion();
+    // Build terrain physics shapes once, up front. Each JsonRegion
+    // borrows handles from the global cache rather than rebuilding
+    // its own copy (which used to triple the cost when 3 regions all
+    // referenced the same terrain). Run on a worker thread so the
+    // main thread can keep pumping SDL events + redrawing the
+    // loading screen during the ~4-5s of MeshShape construction.
+    runBootStepThreaded(engine, "buildAllTerrainShapes", "terrain physics",
+                        [] { selva::world::buildAllTerrainShapes(); });
 
     // Phase 2: build per-region Jolt shapes for terrain + .glb meshes.
     engine.renderLoadingFrame("surface region");
@@ -341,6 +389,16 @@ int main(int /*argc*/, char* /*argv*/[])
     SDL_SetRelativeMouseMode(SDL_FALSE);
     if (!initRenderSubsystems())
         return 1;
+    // Language map FIRST -- region activation registers examine
+    // interactables that resolve through lang::resolve() during
+    // initRegionsAndTerrain. If lang loads after regions, those
+    // interactables snapshot [lang:KEY] missing-key fallbacks as
+    // their permanent labels.
+    runBootStep("lang::loadDirectory", [] { selva::lang::loadDirectory("config/lang"); });
+    // Insight graph loads its node definitions from config/insight.
+    // Cheap; nodes are just trigger-decl structs. Eval happens per
+    // frame via insight::tick().
+    runBootStep("insight::loadDirectory", [] { selva::insight::loadDirectory("config/insight"); });
     engine.renderLoadingFrame("region geometry");
     engine::world::RegionId default_region;
     initRegionsAndTerrain(engine, default_region);
@@ -351,12 +409,14 @@ int main(int /*argc*/, char* /*argv*/[])
     selva::tuning::loadFromFile(kTunablesPath);
     selva::formulas::loadFromFile("config/balance/formulas.json");
     engine.renderLoadingFrame("audio + animations");
-    selva::audio::init("config/audio.json");
-    if (!selva::anim::initSkeletalAssets())
+    runBootStep("audio::init", [] { selva::audio::init("config/audio.json"); });
+    bool skel_ok = false;
+    runBootStep("initSkeletalAssets", [&] { skel_ok = selva::anim::initSkeletalAssets(); });
+    if (!skel_ok)
         std::fprintf(stderr, "[main] skeletal assets failed to load -- character disabled\n");
     else
-        initGameplaySubsystems();
-    initCombatData();
+        runBootStep("initGameplaySubsystems", [] { initGameplaySubsystems(); });
+    runBootStep("initCombatData", [] { initCombatData(); });
     // Persisted SaveData -- defaults if missing. Settings apply at load.
     selva::saveData() = selva::SaveManager::load();
 

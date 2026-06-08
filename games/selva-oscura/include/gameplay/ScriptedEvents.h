@@ -25,4 +25,11 @@ namespace selva::gameplay
 // advance any in-flight event toward completion.
 void tickScriptedEvents();
 
+// Custom-trigger entry point. The chapel_interior trigger volume
+// `guide_force_engage` calls this when the player walks past the
+// Guide toward the descent stairs without having talked to him.
+// Begins a Scene + sends the Guide on a scripted-walk to intercept.
+// Idempotent (no-op if already mid-intercept or Signing committed).
+void onForceEngageGuide();
+
 } // namespace selva::gameplay

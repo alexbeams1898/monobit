@@ -56,26 +56,43 @@
       "transition_mode": "Instant",
       "fade_duration_seconds": 0.0,
       "debug_name": "limbo_descent_enter"
+    },
+    {
+      "id": "guide_force_engage",
+      "_comment": "Forced-engage trigger for the Signing. Sits between the Guide (X=-1.888, Z=-208.315) and the descent staircase entrance (Z ~= -213). If the player walks past the Guide toward the stairs without talking to him, this fires force_engage:guide which begins a Scene + dispatches the Guide on a scripted-walk to intercept the player + opens the dialog. Player gets the Signing offered either way -- by approach (E-talk on the Guide) or by walking past (this trigger). Suppressed once signing_committed is set (the trigger has no flags_required gate today because the rescue handler also no-ops once committed; if the flag-gate becomes general infra in the future, this trigger gets flags_forbidden:[signing_committed]).",
+      "center": [
+        0.0,
+        22.5,
+        -211.0
+      ],
+      "half_extents": [
+        3.0,
+        2.0,
+        0.5
+      ],
+      "action": "Custom",
+      "action_payload": "force_engage:guide",
+      "debug_name": "guide_force_engage"
     }
   ],
   "actor_spawns": [
     {
       "id": "guide",
-      "_comment": "The Guide waits inside the chapel behind the front door at game start. Triggers post-Lupa: when the scripted-event watcher sees 'lupa_felled' set, beginGuideRescueScene() opens the door and hands the Guide a scripted_target_pos toward the player. Position ~2.5m behind the door (chapel front at Z=-205.5, Guide at Z=-208), centered on X, on the chapel floor (Y=22). Facing +Z (yaw=pi = toward the door). post_flag_positions: once the Signing is committed, the Guide stands forever after on the plateau, off to the left of the chapel door, facing the player approach.",
+      "_comment": "The Guide waits inside the chapel at the left side of the entryway. Position from F3 probe (-1.888, 22.301, -208.315). Default yaw = -pi/2 (~-1.5708) = facing west. The previous comment claimed +pi/2 was west based on derivation from yawFacing(), but in-game testing showed +pi/2 renders as east -- meaning the actor's model-space forward is rotated opposite of how I read it. Empirical value wins; corrected to -pi/2. Westward feels right cosmologically -- the player approaches from south through the door and descent is north, neither direction his focus; he stands transverse, contemplative. Lifecycle: until lupa_felled the Guide is silent (talk_requires_flag) + chapel door is Locked. Lupa-fall fires the rescue scripted event: (1) chapel door unlocks (audible lock-click), (2) Guide becomes talkable, (3) Guide stays in this spot until Signing commits. The yaw-acknowledgment overlay turns him up to ~35 degrees off this spawn yaw when the player is within 6m. Player either walks up to the Guide (E to talk) or tries to bypass him toward the stairs (forced-engage trigger fires). After Signing commits, the Guide does the post-Signing walk to the outside plateau (post_flag_positions[signing_committed]) and on subsequent save/load respawns there.",
       "archetype": "guide",
       "pos": [
-        0.0,
-        22.0,
-        -208.0
+        -1.888,
+        22.301,
+        -208.315
       ],
-      "yaw": 3.14159,
+      "yaw": -1.5708,
       "permanent_on_death": true,
       "post_flag_positions": [
         {
           "flag": "signing_committed",
           "pos": [
             -2.0,
-            22.3,
+            "auto_terrain",
             -203.5
           ],
           "yaw": 3.14159

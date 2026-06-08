@@ -1,6 +1,8 @@
 #include "world/Door.h"
 
 #include "AppStateGlobal.h"
+#include "audio/Audio.h"
+#include "lang/Language.h"
 #include "physics/PhysicsWorld.h"
 #include "world/StaticMeshAssets.h"
 
@@ -152,6 +154,7 @@ bool openDoor(const std::string& id)
     writePersistedState(*d);
     std::fprintf(stderr, "[door] '%s': -> Opening\n", d->id.c_str());
     std::fflush(stderr);
+    selva::audio::playSfx("door_open");
     return true;
 }
 
@@ -166,6 +169,7 @@ bool unlockDoor(const std::string& id)
     writePersistedState(*d);
     std::fprintf(stderr, "[door] '%s': Locked -> Closed\n", d->id.c_str());
     std::fflush(stderr);
+    selva::audio::playSfx("door_lock");
     return true;
 }
 
@@ -206,6 +210,7 @@ void registerDoorsForRegion(const std::vector<DoorDecl>& decls)
         d.persistent = decl.persistent;
         d.initial_state = decl.initial_state;
         d.state = decl.initial_state;
+        d.label_key = decl.label_key;
         if (decl.persistent)
         {
             if (const std::string* persisted = persistedStateFor(decl.id))
@@ -229,6 +234,56 @@ void registerDoorsForRegion(const std::vector<DoorDecl>& decls)
                      d.visual_mesh.primitives.size());
         std::fflush(stderr);
         sDoors.push_back(std::move(d));
+    }
+    // Second pass: register interactables for player-interactable doors.
+    // Done AFTER the doors are pushed so the closures can capture by id
+    // and resolve to a stable Door* via findDoor() each frame -- safer
+    // than capturing by index across vector growth. The available()
+    // closure live-gates the prompt on door state, so a single
+    // registration covers the entire Locked->Closed->Opening->Open
+    // lifecycle (Open hides the prompt; Locked hides the prompt).
+    for (auto& d : sDoors)
+    {
+        if (!d.player_interactable)
+            continue;
+        if (d.interactable_id != selva::interact::kInvalidId)
+            continue; // already registered (re-entry through region reload)
+        const std::string door_id = d.id;
+        selva::interact::Decl idecl;
+        idecl.kind = selva::interact::Kind::Open;
+        idecl.position = [door_id]()
+        {
+            const Door* dd = findDoor(door_id);
+            return dd != nullptr ? dd->pos : glm::vec3(0.0f);
+        };
+        idecl.range_meters = 2.5f;
+        // Label resolves through the language map. Authoring fallback:
+        // if a player-interactable door has no label_key, log loudly
+        // and use the door id (designer identifier; not player-facing
+        // but better than empty). Per the doctrine, every authored
+        // player-interactable door MUST declare a label_key.
+        if (d.label_key.empty())
+        {
+            std::fprintf(stderr,
+                         "[door] '%s' is player_interactable but has no label_key -- "
+                         "falling back to door id (player will see the identifier!)\n",
+                         d.id.c_str());
+            std::fflush(stderr);
+            idecl.label = door_id;
+        }
+        else
+        {
+            idecl.label = selva::lang::resolve(d.label_key);
+        }
+        idecl.on_interact = [door_id]() { openDoor(door_id); };
+        idecl.available = [door_id]()
+        {
+            const Door* dd = findDoor(door_id);
+            // Closed = unlocked + not yet opened. Only state where the
+            // E-press is meaningful. Locked, Opening, Open all suppress.
+            return dd != nullptr && dd->state == DoorState::Closed;
+        };
+        d.interactable_id = selva::interact::registerInteractable(std::move(idecl));
     }
 }
 
@@ -260,6 +315,11 @@ void removeDoorsForRegion()
 {
     for (auto& d : sDoors)
     {
+        if (d.interactable_id != selva::interact::kInvalidId)
+        {
+            selva::interact::unregisterInteractable(d.interactable_id);
+            d.interactable_id = selva::interact::kInvalidId;
+        }
         removeCollider(d);
         freeStaticMeshGLResources(d.visual_mesh);
     }

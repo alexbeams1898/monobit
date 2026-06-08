@@ -25,7 +25,9 @@
 #include "gameplay/Sangue.h"
 #include "gameplay/SanguePulse.h"
 #include "hazard/HazardZones.h"
+#include "insight/Insight.h"
 #include "interact/Interaction.h"
+#include "lang/Language.h"
 #include "text/Examine.h"
 #include "text/TextPresentation.h"
 #include "world/Collision.h"
@@ -255,8 +257,23 @@ void applyArchetypeInteractable(Actor& a)
     const std::string sdid = a.spawn_decl_id;
     if (a.is_npc)
     {
-        const std::string label =
-            !a.archetype->display_name.empty() ? a.archetype->display_name : sdid;
+        // Label preference order:
+        //   1. Language-map resolve via display_name_key (tier-gated;
+        //      preferred for any NPC whose name might reveal at a
+        //      higher tier).
+        //   2. Literal display_name field (fallback for NPCs whose
+        //      name is identical at every tier, or pre-language-map
+        //      authoring).
+        //   3. spawn_decl_id (designer identifier; player-visible only
+        //      if both fields are empty -- author bug).
+        std::string label;
+        if (!a.archetype->display_name_key.empty())
+            label = selva::lang::resolve(a.archetype->display_name_key);
+        else if (!a.archetype->display_name.empty())
+            label = a.archetype->display_name;
+        else
+            label = sdid;
+        const std::string required_flag = a.archetype->talk_requires_flag;
         selva::interact::Decl idecl;
         idecl.kind = selva::interact::Kind::Talk;
         idecl.position = [sdid]()
@@ -269,15 +286,49 @@ void applyArchetypeInteractable(Actor& a)
                                  ? a.archetype->interact_range_meters
                                  : kDefaultTalkRangeMeters;
         idecl.label = label;
-        idecl.on_interact = [sdid]() { selva::dialog::begin(sdid); };
-        idecl.available = []() { return !selva::text::active(); };
+        idecl.on_interact = [sdid]()
+        {
+            // Snap the NPC's facing toward the player at dialog-open.
+            // The yaw-acknowledgment overlay handles the gradual turn
+            // when the player walks past; this is the one-shot
+            // 'address the player who just engaged me' snap.
+            // turn_intent_yaw is the target the locomotion-yaw lerps
+            // toward; the lerp is fast enough this reads as a snap.
+            Actor* act = actorByDeclId(sdid);
+            if (act != nullptr)
+                act->turn_intent_yaw = yawFacing(act->pos, player().pos);
+            selva::dialog::begin(sdid);
+        };
+        // Story-gated talk: the Guide is silent inside the chapel until
+        // the post-Lupa rescue scene completes (his archetype declares
+        // talk_requires_flag = "signing_committed"). NPCs without the
+        // field stay always-talkable (empty string).
+        idecl.available = [required_flag]()
+        {
+            if (selva::text::active())
+                return false;
+            return required_flag.empty() || selva::hasFlag(required_flag);
+        };
         a.interactable_id = selva::interact::registerInteractable(std::move(idecl));
         return;
     }
-    if (!a.archetype->examine_text.empty())
+    // Actor is examinable if it has authored EITHER a literal
+    // examine_text OR a language-map key (examine_text_key). The
+    // lang-map path wins at resolve time; literal is fallback.
+    if (!a.archetype->examine_text.empty() || !a.archetype->examine_text_key.empty())
     {
-        const std::string label =
-            !a.archetype->display_name.empty() ? a.archetype->display_name : std::string{};
+        // Label preference order:
+        //   1. examine_label_key (lang-gated, preferred)
+        //   2. display_name_key (lang-gated NPC name as fallback)
+        //   3. display_name (literal NPC name)
+        //   4. empty (renders as bare "[E] Examine" -- noun-stripped per pillar)
+        std::string label;
+        if (!a.archetype->examine_label_key.empty())
+            label = selva::lang::resolve(a.archetype->examine_label_key);
+        else if (!a.archetype->display_name_key.empty())
+            label = selva::lang::resolve(a.archetype->display_name_key);
+        else if (!a.archetype->display_name.empty())
+            label = a.archetype->display_name;
         selva::interact::Decl idecl;
         idecl.kind = selva::interact::Kind::Examine;
         idecl.position = [sdid]()
@@ -293,8 +344,19 @@ void applyArchetypeInteractable(Actor& a)
         idecl.on_interact = [sdid]()
         {
             const Actor* act = actorByDeclId(sdid);
-            if (act != nullptr && act->archetype != nullptr)
-                selva::text::beginExamine(act->archetype->examine_text);
+            if (act == nullptr || act->archetype == nullptr)
+                return;
+            // Text resolution: lang key wins, literal fallback.
+            const std::string text = act->archetype->examine_text_key.empty()
+                                         ? act->archetype->examine_text
+                                         : selva::lang::resolve(act->archetype->examine_text_key);
+            selva::text::beginExamine(text);
+            // Insight: examining an actor is the same event class as
+            // examining a static mesh -- the insight system uses the
+            // ARCHETYPE id as the trigger key (per the doctrine: every
+            // examine fires an insight node). A node whose 'examined'
+            // trigger names this archetype id will fire on tick.
+            selva::insight::notifyExamined(act->archetype->id);
         };
         idecl.available = []() { return !selva::text::active(); };
         a.interactable_id = selva::interact::registerInteractable(std::move(idecl));
@@ -699,6 +761,62 @@ void tickEnemyDecision(Actor& a, const selva::tuning::Tunables& tun)
     if (tree != nullptr)
         tree->tick(a, tun);
 
+    // Yaw-acknowledgment overlay (Souls-style "the NPC notices you
+    // walking by"). Runs AFTER the tree so it only overrides yaw
+    // when the actor is in a passive state: no active scripted-walk
+    // leg, no Combat-tier perception, and the archetype opted in via
+    // face_player_range_meters. Idle leaf set turn_intent_yaw =
+    // spawn_yaw; we replace that with a CAPPED face-player turn,
+    // and mark the actor so stepYawTowardIntent picks the slow
+    // acknowledgment turn-rate (full rate would feel mechanical).
+    //
+    // The angle cap is the load-bearing piece: humans can't turn
+    // past their own shoulders without their body following. Past
+    // the cap the NPC just holds at the cap or returns to spawn_yaw
+    // -- the player walking around behind them no longer drags the
+    // head in a 360. Reads as natural attentiveness, not tracking.
+    a.yaw_intent_from_acknowledgment = false;
+    if (a.archetype != nullptr && a.archetype->face_player_range_meters > 0.0f &&
+        a.perception.awareness < Awareness::Combat && std::isnan(a.scripted_target_pos.x))
+    {
+        const Actor& pc = player();
+        const float dx = pc.pos.x - a.pos.x;
+        const float dz = pc.pos.z - a.pos.z;
+        const float dist_sq = dx * dx + dz * dz;
+        const float range = a.archetype->face_player_range_meters;
+        if (dist_sq <= range * range)
+        {
+            // Desired yaw: face the player. Then CLAMP to spawn_yaw
+            // +/- acknowledgment_max_angle_radians so the NPC can't
+            // turn past their natural viewing arc. If the player is
+            // outside that arc, the NPC holds at the cap (closest
+            // edge of the arc).
+            const float desired = yawFacing(a.pos, pc.pos);
+            const float max_angle = a.archetype->acknowledgment_max_angle_radians;
+            if (max_angle > 0.0f)
+            {
+                // Wrap the delta-from-spawn into [-pi, pi].
+                constexpr float kPi = 3.1415927f;
+                constexpr float kTwoPi = 6.2831853f;
+                float delta = desired - a.spawn_yaw;
+                while (delta > kPi)
+                    delta -= kTwoPi;
+                while (delta < -kPi)
+                    delta += kTwoPi;
+                if (delta > max_angle)
+                    delta = max_angle;
+                else if (delta < -max_angle)
+                    delta = -max_angle;
+                a.turn_intent_yaw = a.spawn_yaw + delta;
+            }
+            else
+            {
+                a.turn_intent_yaw = desired;
+            }
+            a.yaw_intent_from_acknowledgment = true;
+        }
+    }
+
     if (selva::debug::flags().ai_decision_log)
     {
         const auto& p = a.perception.last_known_player_pos;
@@ -800,7 +918,15 @@ void stepYawTowardIntent(Actor& a, float dt, const selva::tuning::Tunables& tun)
         yaw_delta -= kTwoPi;
     while (yaw_delta < -kPi)
         yaw_delta += kTwoPi;
-    const float max_yaw_step = tun.ai_turn_rate_radians_per_sec * dt;
+    // Acknowledgment-driven yaw uses the slow rate (per-archetype
+    // scale, default 0.15 = ~50deg/s); all other intents
+    // (combat / scripted-walk / idle-to-spawn) use the full rate
+    // (default 6.0 rad/s = ~344deg/s). The scale is read off the
+    // archetype so per-NPC tuning is possible.
+    float rate = tun.ai_turn_rate_radians_per_sec;
+    if (a.yaw_intent_from_acknowledgment && a.archetype != nullptr)
+        rate *= a.archetype->acknowledgment_turn_rate_scale;
+    const float max_yaw_step = rate * dt;
     if (std::abs(yaw_delta) <= max_yaw_step)
         a.yaw = a.turn_intent_yaw;
     else
@@ -1127,16 +1253,22 @@ void fireEnemyDeath(Actor& e, int index)
     persistFelledBoss(e);
     if (e.archetype != nullptr && !e.archetype->felled_flag.empty())
         setFlag(e.archetype->felled_flag);
+    // Insight: this archetype was killed. Bumps the profile's
+    // kill_counts map; insight::tick() will fire any kill_count
+    // trigger whose threshold this puts us at.
+    if (e.archetype != nullptr && !e.archetype->id.empty())
+        selva::insight::notifyKill(e.archetype->id);
     queueSangueOnKill(e);
     logItemDrops(e);
-    // Scripted-death actors open the cinematic Scene on the death clip
-    // (not earlier at Dying) so the player can keep attacking through
-    // the pain stage.
-    if (e.archetype != nullptr && e.archetype->scripted_death_seconds > 0.0f &&
-        !selva::scene::active())
-    {
-        selva::scene::begin({/*combat=*/true, /*movement=*/true, /*look=*/false});
-    }
+    // No Scene is opened on death. The death clip plays freely on the
+    // corpse; the player keeps movement and look. Previously the
+    // Guide-rescue handler took over the post-death input-lock to
+    // walk the Guide out of the chapel; that handoff is gone in the
+    // new flow (the player drives the chapel-door + Guide-talk
+    // sequence themselves). Without a follow-up handler the Scene
+    // would never end and the player would freeze. If a future
+    // cinematic moment wants to lock input on a specific death, it
+    // should open its own Scene + define its own end condition.
     selva::combat::combatLog("[death] actor[{}] died (clip={})", index, dc.key);
 }
 

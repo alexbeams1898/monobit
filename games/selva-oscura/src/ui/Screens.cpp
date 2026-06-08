@@ -18,6 +18,9 @@
 #include "ops/InventoryOps.h"
 #include "text/TextPresentation.h"
 #include "ui/BossHud.h"
+#include "ui/ClassPickerScreen.h"
+#include "ui/NamePromptScreen.h"
+#include "ui/UIComponents.h"
 
 #include <imgui.h>
 
@@ -25,7 +28,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstring>
 #include <string>
 
 // ---------------------------------------------------------------------------
@@ -43,12 +45,6 @@ namespace selva::ui
 
 namespace
 {
-
-// Six-letter name buffer for character creation (per story.md - the Guide
-// elicits six letters for the Vagrant's name). The buffer holds 7 to leave
-// room for the null terminator.
-constexpr int kNameMaxLen = 6;
-char sNameBuf[kNameMaxLen + 1] = "";
 
 // Set to true on the frame we transition into Playing, so main.cpp can
 // switch SDL_SetRelativeMouseMode + capture the mouse for gameplay.
@@ -83,96 +79,51 @@ void setPhase(GameState::Phase next)
     gs.phase = next;
 }
 
-// Center the next window's contents in the screen. ImGui-idiomatic helper.
-void beginCenteredWindow(const char* title, ImVec2 size)
-{
-    const ImGuiViewport* vp = ImGui::GetMainViewport();
-    const ImVec2 pos(vp->Pos.x + (vp->Size.x - size.x) * 0.5f,
-                     vp->Pos.y + (vp->Size.y - size.y) * 0.5f);
-    ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
-    ImGui::SetNextWindowSize(size, ImGuiCond_Always);
-    ImGui::Begin(title, nullptr,
-                 ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
-                     ImGuiWindowFlags_NoTitleBar);
-}
+// Window/button/back-gesture/hint-bar helpers live in ui::UIComponents
+// now (shared across every screen + the class picker). File-local
+// aliases keep this file's call-sites short; remove them after a
+// future readability pass once enough call sites point at the
+// namespaced versions directly.
+using selva::ui::beginCenteredWindow;
+using selva::ui::centeredButton;
+using selva::ui::drawHintBar;
+using selva::ui::rmbClicked;
+using selva::ui::wantBack;
 
-// Centered button helper - draws a button of fixed width in the current
-// window's content region.
-bool centeredButton(const char* label, float width = 200.0f)
-{
-    const float region = ImGui::GetContentRegionAvail().x;
-    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (region - width) * 0.5f);
-    return ImGui::Button(label, ImVec2(width, 0));
-}
-
-// True on the frame the right mouse button is pressed (transitions from
-// up to down). ImGui forwards SDL mouse events so this works in menu
-// contexts; in Playing the cursor is captured for mouse-look so RMB
-// would not fire here.
-bool rmbClicked()
-{
-    return ImGui::IsMouseClicked(ImGuiMouseButton_Right);
-}
-
-// Back/cancel input - ESC or RMB.
-// Caller is responsible for consuming this in a single place per frame.
-bool wantBack()
-{
-    return ImGui::IsKeyPressed(ImGuiKey_Escape) || rmbClicked();
-}
-
-// Helper-controls hint bar - a borderless, transparent window placed just
-// below the modal it accompanies. Anchored to (cx, modal_bottom + gap) where
-// cx is the modal's horizontal center. Used to teach players the ESC/RMB-
-// back binding without claiming a button slot inside the modal.
+// Flush the runtime player's persistent state into the active
+// character's PlayerProfile, then write the SaveData to disk.
 //
-// Call AFTER the modal's ImGui::End() so the modal's window rect is set on
-// the previous frame for layout (we use a stable position derived from the
-// viewport, not the previous window's actual rect, since ImGui doesn't
-// expose that cleanly mid-frame).
-void drawHintBar(const char* text, ImVec2 modal_size)
+// THIS IS THE SOLE SITE that triggers the "Saving..." indicator. The
+// indicator's `uiState().last_save_ticks_ms` field is written exactly
+// once per successful character-save here -- never from any other
+// call to SaveManager::save. That couples the visible "Saving..."
+// chip tightly to actual character-save events; menu-state writes
+// (addCharacter, deleteCharacter, settings changes) go through
+// SaveManager::save directly and do NOT show the chip because they
+// aren't saving the player's RUN.
+//
+// Unnamed-but-real character: an unnamed run (name=="") is a fully
+// real character in saveData; flushAndSave persists it the same as
+// any named character. The Status tab + Load menu render "???" for
+// empty names but the file write is unconditional.
+//
+// Defensive: if the active profile doesn't resolve (shouldn't
+// happen via normal flow), skip -- there's no run to save.
+//
+// Called by: pause-menu Save button, Quit-to-Main-Menu, pause-menu
+// open (Elden-Ring-style autosave). Returns true if a save actually
+// happened (caller doesn't read it today, but the bool surfaces
+// intent + supports future "save failed?" UX).
+bool flushAndSave()
 {
-    const ImGuiViewport* vp = ImGui::GetMainViewport();
-    constexpr float kGap = 8.0f;
-    const float modal_top = vp->Pos.y + (vp->Size.y - modal_size.y) * 0.5f;
-    const float modal_bottom = modal_top + modal_size.y;
-
-    const float w = ImGui::CalcTextSize(text).x + 24.0f;
-    const float h = ImGui::GetFontSize() + 16.0f;
-    const ImVec2 pos(vp->Pos.x + (vp->Size.x - w) * 0.5f, modal_bottom + kGap);
-    const ImVec2 size(w, h);
-
-    ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
-    ImGui::SetNextWindowSize(size, ImGuiCond_Always);
-    ImGui::SetNextWindowBgAlpha(0.0f);
-    ImGui::Begin("##hint", nullptr,
-                 ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
-                     ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoInputs |
-                     ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar);
-    ImGui::TextDisabled("%s", text);
-    ImGui::End();
-}
-
-// Flush the runtime player's persistent state into the active character's
-// PlayerProfile, then write the SaveData to disk. Called by every save
-// entry point - pause-menu Save button, Quit-to-Main-Menu - so what's on
-// disk reflects what's in the running game. If the active character isn't
-// found in the save (defensive; shouldn't happen via normal flow), just
-// writes the save with no flush.
-void flushAndSave()
-{
-    auto& sd = saveData();
-    const std::string& active = gameState().active_character;
-    for (auto& c : sd.characters)
-    {
-        if (c.name == active)
-        {
-            selva::gameplay::saveActiveCharacterFromPlayer(c);
-            break;
-        }
-    }
-    SaveManager::save(sd);
+    PlayerProfile* target = selva::activePlayerProfile();
+    if (target == nullptr)
+        return false;
+    selva::gameplay::saveActiveCharacterFromPlayer(*target);
+    if (!SaveManager::save(saveData()))
+        return false;
     uiState().last_save_ticks_ms = SDL_GetTicks64();
+    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -192,8 +143,35 @@ bool renderMainMenu()
 
     if (centeredButton("New Game"))
     {
-        std::memset(sNameBuf, 0, sizeof(sNameBuf));
-        setPhase(GameState::Phase::CharCreate);
+        // Unnamed-but-real character pattern. The unnamed character is
+        // a PlayerProfile with name=="" living in saveData like any
+        // other -- no separate in-memory branch. If an existing
+        // name=="" entry is already in saveData (an unfinished prior
+        // unnamed run), resume it; otherwise create a fresh one and
+        // persist immediately so the save is real from the first
+        // frame. The Guide-elicited naming dialog later mutates the
+        // name field directly; class picker writes player_class
+        // directly. Per the locked design: one unnamed character at
+        // a time.
+        auto& sd = saveData();
+        bool existing_unnamed = false;
+        for (const auto& c : sd.characters)
+        {
+            if (c.name.empty())
+            {
+                existing_unnamed = true;
+                break;
+            }
+        }
+        if (!existing_unnamed)
+        {
+            SaveManager::addCharacter(sd, "");
+            SaveManager::save(sd);
+        }
+        selva::gameState().active_character.clear(); // "" resolves to the unnamed profile
+        selva::gameState().pending_world_create = true;
+        selva::gameState().pending_wake_scene = true;
+        setPhase(GameState::Phase::Playing);
     }
     ImGui::Spacing();
 
@@ -218,62 +196,6 @@ bool renderMainMenu()
 }
 
 // ---------------------------------------------------------------------------
-// Character create screen
-// ---------------------------------------------------------------------------
-void renderCharCreate()
-{
-    beginCenteredWindow("##charcreate", ImVec2(360, 260));
-    ImGui::SetWindowFontScale(1.3f);
-    ImGui::TextUnformatted("Enter thy name");
-    ImGui::SetWindowFontScale(1.0f);
-    ImGui::Spacing();
-    ImGui::TextDisabled("(six letters)");
-    ImGui::Spacing();
-
-    ImGui::SetNextItemWidth(-FLT_MIN);
-    ImGui::InputText("##name", sNameBuf, sizeof(sNameBuf),
-                     ImGuiInputTextFlags_CharsUppercase | ImGuiInputTextFlags_CharsNoBlank);
-
-    ImGui::Spacing();
-    ImGui::Spacing();
-
-    const int name_len = static_cast<int>(std::strlen(sNameBuf));
-    const bool name_valid = name_len > 0;
-    const bool name_taken = [&]()
-    {
-        for (const auto& c : saveData().characters)
-            if (c.name == sNameBuf)
-                return true;
-        return false;
-    }();
-
-    if (name_taken)
-        ImGui::TextColored(ImVec4(1, 0.5f, 0.5f, 1), "Name already exists.");
-    else
-        ImGui::NewLine();
-
-    if (!name_valid || name_taken)
-        ImGui::BeginDisabled();
-    if (centeredButton("Begin", 160.0f))
-    {
-        SaveManager::addCharacter(saveData(), sNameBuf);
-        SaveManager::save(saveData());
-        gameState().active_character = sNameBuf;
-        gameState().pending_world_create = true;
-        gameState().pending_wake_scene = true; // first arrival -> wake animation
-        setPhase(GameState::Phase::Playing);
-    }
-    if (!name_valid || name_taken)
-        ImGui::EndDisabled();
-
-    ImGui::End();
-    drawHintBar("[Esc/RMB] Back", ImVec2(360, 260));
-
-    if (wantBack())
-        setPhase(GameState::Phase::MainMenu);
-}
-
-// ---------------------------------------------------------------------------
 // Load game screen
 // ---------------------------------------------------------------------------
 void renderLoadGame()
@@ -291,7 +213,11 @@ void renderLoadGame()
     {
         const auto& c = saveData().characters[i];
         ImGui::PushID(static_cast<int>(i));
-        if (ImGui::Button(c.name.c_str(), ImVec2(200, 0)))
+        // Unnamed characters (name=="") show as '???' in the slot.
+        // The lookup-by-name still works because active_character
+        // also goes empty for the unnamed run.
+        const std::string label = c.name.empty() ? "???" : c.name;
+        if (ImGui::Button(label.c_str(), ImVec2(200, 0)))
         {
             gameState().active_character = c.name;
             gameState().pending_world_create = true;
@@ -407,7 +333,10 @@ namespace
 void renderPauseStatusTab()
 {
     ImGui::Spacing();
-    ImGui::Text("Character: %s", gameState().active_character.c_str());
+    // Always shown -- unnamed characters render as '???' via the
+    // shared display-name helper (single source of truth for the
+    // empty-name placeholder).
+    ImGui::Text("Character: %s", selva::activeCharacterDisplayName().c_str());
     ImGui::Spacing();
 
     const auto& p = selva::gameplay::player();
@@ -719,7 +648,10 @@ void tickMouseCapture()
     {
         const bool tuning_open = selva::gameplay::tickstate::showTuningPanel();
         const bool dialog_open = selva::text::active();
-        const bool want_relative = !ui.isScreenOpen() && !tuning_open && !dialog_open;
+        const bool picker_open = selva::ui::classPickerActive();
+        const bool name_prompt_open = selva::ui::namePromptActive();
+        const bool want_relative =
+            !ui.isScreenOpen() && !tuning_open && !dialog_open && !picker_open && !name_prompt_open;
         const bool is_relative = (SDL_GetRelativeMouseMode() == SDL_TRUE);
         if (want_relative != is_relative)
         {
@@ -747,9 +679,6 @@ bool renderScreens(Engine& /*engine*/)
     {
     case GameState::Phase::MainMenu:
         quit = renderMainMenu();
-        break;
-    case GameState::Phase::CharCreate:
-        renderCharCreate();
         break;
     case GameState::Phase::LoadGame:
         renderLoadGame();

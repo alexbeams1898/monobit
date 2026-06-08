@@ -10,6 +10,7 @@
 #include "gameplay/Enemies.h"
 #include "gameplay/EnemyArchetype.h"
 #include "gameplay/Perception.h"
+#include "gameplay/ScriptedEvents.h"
 #include "world/JsonRegion.h"
 #include "world/Region.h"
 
@@ -193,6 +194,8 @@ void dispatchCustomTrigger(const engine::world::RegionTrigger& trigger)
         handleSpawnVerb(arg);
     else if (verb == "engage")
         handleEngageVerb(arg);
+    else if (verb == "force_engage" && arg == "guide")
+        onForceEngageGuide();
     else
         selva::combat::combatLog("[boss-dispatch] unknown verb '{}' (trigger '{}')", verb,
                                  trigger.id);

@@ -1,0 +1,11 @@
+{
+  "_comment": "Insight nodes for NPC name reveals. Per the locked doctrine (see docs/design/insight_revelation_system.md *Implementation status*), the name reveal fires on the ACT that proves the NPC is what they are -- not the first dialog open. For the Guide, that act is the Signing: him doing the thing he was sent to do is the moment the Vagrant understands 'this is the Guide.' The HP-bar / dialog speaker flip to 'Guide' the same frame the picker closes.",
+
+  "knows_guide": {
+    "_comment": "Fires on signing_committed. The Signing IS the guidance -- naming happens through act, not interaction. Before commit, he is a stranger with words.",
+    "trigger": {
+      "kind": "flag_set",
+      "flag": "signing_committed"
+    }
+  }
+}

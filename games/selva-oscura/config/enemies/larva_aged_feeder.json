@@ -4,6 +4,11 @@
   "inherits": "larva_aged",
   "spawn_clip": "zombie_biting",
   "_comment_spawn_clip": "Feeders spawn already crouched + biting. zombie_biting is a looping biting motion authored in-place -- the actor stays anchored at its spawn position, biting at the pile-substance below. When alerted (player approaches, perception transitions to Alerted), aggro_clip (zombie_scream) fires + standard chase begins; the feeder transitions from feeding to combat naturally.",
+  "examine_text": "",
+  "examine_label_key": "world.larva_aged_feeder.examine_label",
+  "examine_text_key": "world.larva_aged_feeder.examine_text",
+  "_comment_examine": "Examinable via the lang-map keys (literal examine_text is empty -- the lang map is authoritative). Per the insight doctrine: every examine fires an insight node. knows_feeding_cycle (config/insight/world.json) fires on first examine; promotes the lang entries to tier-1. The Guide subsequently naming the feeding cycle fires guide_named_feeding_cycle for tier-2. Range matches the feeder's interaction needs (player crouches close to observe the bite-loop).",
+  "interact_range_meters": 2.5,
   "idle_clip": "zombie_biting",
   "_comment_idle": "PeacefulIdle = zombie_biting (looping). This is what the locomotion gait picker selects when the actor has zero velocity AND awareness < Alerted -- which is the feeder's resting state. Without overriding idle_clip, the picker would swap to the default zombie_idle on frame 1, breaking the spawn pose. Combat_idle stays inherited (zombie_idle) because once alerted the feeder rises and engages like any aged larva."
 }

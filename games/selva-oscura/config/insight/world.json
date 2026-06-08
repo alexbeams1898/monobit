@@ -1,0 +1,27 @@
+{
+  "_comment": "Insight nodes triggered by examining the world. Every examinable surface in the game fires an insight node when examined for the first time -- per the locked authoring doctrine (docs/design/insight_revelation_system.md *Authoring guide*). These nodes (a) promote language-map entries on the examined thing itself, and (b) unlock Guide-side dialog topics where the Guide names what the Vagrant has seen.",
+
+  "knows_dissolved_souls": {
+    "_comment": "Fires on first examine of the acheron_pile (static mesh). Promotes the pile's own label + body text by one tier; unlocks a Guide-side reveal topic.",
+    "trigger": {
+      "kind": "examined",
+      "subject": "acheron_pile"
+    }
+  },
+
+  "knows_arrival_queue": {
+    "_comment": "Fires on first examine of a larva_fresh actor (fresh larva in the queue, crawling, hasn't reached a corpse to feed). Promotes the actor's tier-0 examine prose to a tier-1 reveal; unlocks a Guide-side reveal topic on the arrival-queue cosmology.",
+    "trigger": {
+      "kind": "examined",
+      "subject": "larva_fresh"
+    }
+  },
+
+  "knows_feeding_cycle": {
+    "_comment": "Fires on first examine of a larva_aged_feeder actor (aged larva mid-feed on a second-deathed corpse). Promotes the feeder's tier-0 examine prose to a tier-1 reveal; unlocks a Guide-side reveal topic on the feeding-cycle cosmology.",
+    "trigger": {
+      "kind": "examined",
+      "subject": "larva_aged_feeder"
+    }
+  }
+}

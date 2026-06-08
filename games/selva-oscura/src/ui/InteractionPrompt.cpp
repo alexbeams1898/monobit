@@ -1,6 +1,7 @@
 #include "ui/InteractionPrompt.h"
 
 #include "interact/Interaction.h"
+#include "ui/ClassPickerScreen.h"
 
 #include <imgui.h>
 
@@ -11,18 +12,28 @@ namespace selva::ui
 
 void renderInteractionPrompt()
 {
+    // Modals own the screen while they're up; the prompt would draw
+    // over the modal's panel and look like a UI glitch. Suppress here
+    // (not at the interact::tick layer) because targeting state stays
+    // valid -- the player resumes interacting with the same actor the
+    // moment the modal closes.
+    if (classPickerActive())
+        return;
     const auto* target = selva::interact::currentTarget();
     if (target == nullptr)
         return;
 
+    // Doctrine (insight pillar): the prompt is verb-only. The
+    // interactable is in the world right in front of the player; the
+    // noun would just be chrome AND would name things the player may
+    // not have insight for yet. Talk / Examine / Open / Pickup / Use.
+    // The target's label is still computed (used elsewhere, e.g.
+    // dialog speaker resolution + debug logs) but never rendered to
+    // the prompt.
     const char* verb = selva::interact::kindVerb(target->kind);
     std::string prompt = "[E] ";
     if (verb != nullptr && verb[0] != '\0')
-    {
         prompt += verb;
-        prompt += ' ';
-    }
-    prompt += target->label;
 
     const ImGuiViewport* vp = ImGui::GetMainViewport();
     const float vw = vp->Size.x;

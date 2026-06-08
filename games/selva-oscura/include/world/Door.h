@@ -1,5 +1,6 @@
 #pragma once
 
+#include "interact/Interaction.h"
 #include "physics/PhysicsWorld.h"
 #include "world/StaticMeshAssets.h"
 
@@ -79,6 +80,16 @@ struct Door
     // current opening rotation. Empty if mesh_path was missing or
     // failed to load.
     StaticMesh visual_mesh;
+    // Interactable registry id for the "[E] Open {label}" prompt. Set
+    // when registerDoorsForRegion installs the door; live state-gating
+    // happens in the interactable's available() closure (only fires
+    // the prompt when state == Closed && player_interactable). Cleared
+    // on removeDoorsForRegion.
+    selva::interact::Id interactable_id = selva::interact::kInvalidId;
+    // Language-map key the interactable label resolves through. Copied
+    // from the DoorDecl at registration. Empty for non-player-interactable
+    // doors.
+    std::string label_key;
 };
 
 // Per-frame model matrix for a door: world transform * current opening
@@ -124,6 +135,11 @@ struct DoorDecl
     bool player_interactable;
     bool persistent;
     DoorState initial_state;
+    // Language-map key for the "[E] Open ..." prompt label. Resolved
+    // each frame via selva::lang::resolve(). Empty = fall back to the
+    // door id (designer identifier, NOT player-facing -- only OK if
+    // the door isn't player_interactable).
+    std::string label_key;
 };
 void registerDoorsForRegion(const std::vector<DoorDecl>& decls);
 void removeDoorsForRegion(); // teardown on region deactivate (multi-region not yet supported;

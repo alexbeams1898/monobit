@@ -35,7 +35,13 @@ SaveData load(const std::string& path = "");
 // true on success.
 bool save(const SaveData& data, const std::string& path = "");
 
-// Add a new character profile (just a name in v1 schema).
+// Add a new character profile. Accepts empty name -- an
+// unnamed-but-real character is a PlayerProfile with name == ""
+// living in saveData like any other (per the locked design: one
+// unnamed character at a time; New Game resumes the existing
+// unnamed entry if it exists, else creates a new empty-named one).
+// The naming dialog later mutates the profile's `name` field
+// directly when the player commits a name.
 void addCharacter(SaveData& data, const std::string& name);
 
 // Remove a character by name. No-op if the name is not found.
