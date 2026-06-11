@@ -159,11 +159,19 @@ endif()
 # source-tree .ozz when sync runs second. Symptom: in-game animations
 # don't match the rebaked clips even though the bake intermediate is
 # correct.
+# copy_directory historically fails on the GitHub Actions Ubuntu runner
+# when the destination subtree already partially exists from a prior
+# bake step (bake writes ozz files into the same tree this sync
+# targets, and CMake's copy_directory chokes on overlapping writes).
+# Falling back to a python-driven recursive copy avoids the broken
+# cmake behavior; Python3 is already a required dep at configure time.
 add_custom_target(selva-oscura-sync-config ALL
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/sync_dir.py
         ${CMAKE_CURRENT_SOURCE_DIR}/config
         $<TARGET_FILE_DIR:selva-oscura>/config
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/sync_dir.py
         ${CMAKE_CURRENT_SOURCE_DIR}/assets
         $<TARGET_FILE_DIR:selva-oscura>/assets
     COMMENT "Syncing selva-oscura config + assets to build output..."
@@ -280,11 +288,15 @@ else()
     message(STATUS "selva-oscura: X_Bot.fbx not found; skipping FBX bake (using committed .glb + .ozz)")
     # Downstream bake rules (sword pack, larva) declare
     # ${xbot_out_dir}/skeleton.ozz as a DEPENDS input. Without an FBX
-    # bake to produce it, no CMake target satisfies the dependency on
-    # CI -- the committed source-tree skeleton.ozz is brought into the
-    # build output via selva-oscura-sync-config, but sync-config doesn't
-    # name skeleton.ozz as an output. Define a copy-from-source target
-    # that DOES name it as an output so downstream rules link up.
+    # bake to produce it, no CMake target satisfies that path on CI.
+    # sync-config already copies the committed source-tree skeleton.ozz
+    # to ${xbot_out_dir}/skeleton.ozz as a side-effect of its tree
+    # copy, but it doesn't name skeleton.ozz as an OUTPUT, so ninja's
+    # graph has no edge linking the sword/larva rules to sync-config's
+    # actual production of that file. The fix: a custom command whose
+    # OUTPUT is the file (so the graph is valid) and whose body
+    # explicitly copies it from source (so it works even if sync-config
+    # is reordered relative to it).
     set(xbot_src_skeleton ${xbot_dir}/skeleton.ozz)
     add_custom_command(
         OUTPUT ${xbot_out_dir}/skeleton.ozz
