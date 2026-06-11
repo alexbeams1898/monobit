@@ -278,6 +278,25 @@ if(EXISTS ${xbot_fbx})
     add_dependencies(selva-oscura-convert-xbot selva-oscura-sync-config)
 else()
     message(STATUS "selva-oscura: X_Bot.fbx not found; skipping FBX bake (using committed .glb + .ozz)")
+    # Downstream bake rules (sword pack, larva) declare
+    # ${xbot_out_dir}/skeleton.ozz as a DEPENDS input. Without an FBX
+    # bake to produce it, no CMake target satisfies the dependency on
+    # CI -- the committed source-tree skeleton.ozz is brought into the
+    # build output via selva-oscura-sync-config, but sync-config doesn't
+    # name skeleton.ozz as an output. Define a copy-from-source target
+    # that DOES name it as an output so downstream rules link up.
+    set(xbot_src_skeleton ${xbot_dir}/skeleton.ozz)
+    add_custom_command(
+        OUTPUT ${xbot_out_dir}/skeleton.ozz
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${xbot_out_dir}
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${xbot_src_skeleton} ${xbot_out_dir}/skeleton.ozz
+        DEPENDS ${xbot_src_skeleton}
+        COMMENT "Copying committed X Bot skeleton.ozz to build output..."
+        VERBATIM
+    )
+    add_custom_target(selva-oscura-convert-xbot ALL DEPENDS ${xbot_out_dir}/skeleton.ozz)
+    add_dependencies(selva-oscura-convert-xbot selva-oscura-sync-config)
 endif()
 
 # ---------------------------------------------------------------------------
