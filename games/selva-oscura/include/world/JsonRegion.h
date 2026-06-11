@@ -1,6 +1,7 @@
 #pragma once
 
 #include "gameplay/Enemies.h"
+#include "gameplay/PropArchetype.h"
 #include "interact/Interaction.h"
 #include "world/AsyncRegionLoader.h"
 #include "world/Door.h"
@@ -111,11 +112,31 @@ class JsonRegion : public engine::world::AsyncCapableRegion
         return enemy_spawn_decls;
     }
 
+    // Parsed prop declarations from the region.json `props[]` array.
+    // Populated at construction; consumed at region commit by the
+    // prop spawn funnel (which resolves each decl's archetype and
+    // attaches components / generates a cylinder collider for
+    // physical props).
+    const std::vector<selva::gameplay::PropDecl>& propDecls() const
+    {
+        return prop_decls;
+    }
+
+    // Parsed prop_scatter rules from the region.json `prop_scatter[]`
+    // array. Procgen siblings of propDecls(); evaluated at region
+    // commit (the producer emits PropDecls into the same downstream
+    // funnel).
+    const std::vector<selva::gameplay::PropScatterRule>& propScatterRules() const
+    {
+        return prop_scatter_rules;
+    }
+
   private:
     // Constructor delegates to these per-section parsers so the ctor
     // itself stays a flat list of calls and lizard doesn't fail on
     // its cyclomatic complexity.
     void parseActorSpawns(const nlohmann::json& json_doc);
+    void parseProps(const nlohmann::json& json_doc);
     void parseDoors(const nlohmann::json& json_doc);
     void parseTerrainModifiers();
     void parseTerritory();
@@ -162,6 +183,15 @@ class JsonRegion : public engine::world::AsyncCapableRegion
         // genuinely has no tier-2 reveal).
         std::string examine_label_key;
         std::string examine_text_key;
+        // Multi-tier examine text keys. When non-empty, indexed by the
+        // player's current examine count for this mesh (capped at the
+        // last index). On first examine count=0 -> [0], second
+        // count=1 -> [1], etc. When empty, falls back to the single
+        // examine_text_key / examine_text. Lets a mesh surface
+        // different prose on re-examine ("you notice on a closer
+        // look..."), and pairs with examined:<subject>:<N> insight
+        // flags so each tier can drive its own insight node.
+        std::vector<std::string> examine_text_keys;
         glm::vec3 examine_anchor{0.0f};
         float interact_range_meters = 2.5f;
     };
@@ -180,6 +210,17 @@ class JsonRegion : public engine::world::AsyncCapableRegion
     // array. Authoritative source of truth for which enemies belong
     // to this region.
     std::vector<selva::gameplay::EnemySpawnDecl> enemy_spawn_decls;
+
+    // Parsed in constructor from the region_json's "props" array.
+    // Authoritative source of truth for which props belong to this
+    // region. Consumed at commitPrepared by the prop spawn funnel.
+    std::vector<selva::gameplay::PropDecl> prop_decls;
+
+    // Parsed in constructor from the region_json's "prop_scatter"
+    // array. Each rule is evaluated by the scatter producer at
+    // region commit, emitting PropDecls into the runtime as side
+    // effects (the producer pushes directly to the CollisionRegion).
+    std::vector<selva::gameplay::PropScatterRule> prop_scatter_rules;
 
     // Parsed-in-constructor terrain modifiers. We own these for the
     // region's lifetime (which is the program's lifetime per the

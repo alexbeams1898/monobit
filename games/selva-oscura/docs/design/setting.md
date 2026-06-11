@@ -48,7 +48,7 @@ The character has two names. Which is used reflects the speaker.
 
 - **Vagrant** is the default. Hell sees him as a vagrant — a category
   error without a place in the bookkeeping. Player-facing UI, the
-  Grimoire's Hell-aligned entries, and this doc use this name.
+  Grimoire's entries, and this doc use this name.
 - **Pilgrim** is the formal register. Beatrice, the Guide, and NPCs
   in their lucid moment may use it — they see the journey he is on,
   even if he doesn't.
@@ -194,11 +194,45 @@ vessel (Crucible for class-picker, Censer for unburdened) is just the
 most granular accounting unit; everything else is the same substance
 expressed at a different scale of arrangement.
 
-The cosmology has **no second currency**. No gold, no tokens, no
-experience-points, no fast-travel charges separate from sangue. Anything
-mechanical in this game must be expressible as sangue in some
-arrangement. The accounting categories (vessel-held substance, stats,
-items, moves) are *rendering*, not separate ontology.
+The cosmology has **no second substance**. No gold, no tokens, no
+experience-points, no fast-travel charges separate from sangue. Any
+SUBSTANCE-LIKE mechanical surface in this game must be expressible as
+sangue in some arrangement. The accounting categories (vessel-held
+substance, stats, items, moves) are *rendering*, not separate
+ontology.
+
+**Mind is the parallel cognitive axis.** Mind is not substance -- it
+is cognitive capacity, the Vagrant's attention sharpening through
+use. It does not flow, accumulate as deposit, or arrange into form;
+it is not produced by suffering and is not held in a vessel.
+Substance is the body-axis of the cosmology; Mind is the cognitive
+axis. The rule above forbids parallel SUBSTANCES; it does not forbid
+parallel AXES. Christian-theological analog: body / soul;
+Aristotelian analog: appetitive / rational.
+
+**The Vagrant's cognitive structure has seven named properties**,
+five fixed by being-a-soul and three that grow through engagement:
+
+- **Fixed (the substrate of personhood):** Emotion, Memory,
+  Consciousness, Identity, Will. These come with being a soul;
+  they are not stats, do not appear in the Stats struct, and are
+  not surfaced on any UI. The unjudged-soul cosmology gives every
+  arriving soul these properties at full standard. The Vagrant
+  has them at parity with the Guide, with future arrivals, with
+  the damned souls in their circles.
+- **Growable (the cognitive stats):** Perception, Cognition,
+  Intelligence. These ARE stats, in the universal-base part of the
+  Stats struct alongside STR/DEX/END/LCK, and grow from specific
+  cognitive acts (observing, inferring, reasoning correctly). See
+  [classes.md *Mind: the resource pool vs the cognitive stats*](classes.md)
+  and [cognition-system.md](cognition-system.md) for the mechanical
+  shape. Mind-section stats are universal across all classes
+  including Unburdened; the Unburdened-stays-1/1/1/1 lock is on
+  body stats only.
+
+The Mind resource pool (the depletable capacity bar) is a derived
+quantity, not a stat -- its max is computed from the Cognition
+stat. See [cognition-system.md](cognition-system.md).
 
 #### The Wood is also made of sangue
 
@@ -571,77 +605,13 @@ renderer because no overflow can exist in the cosmology.
 
 ## Perspective — who the player is
 
-The human at the controller is not the Vagrant. The human is **Hell
-itself**, seated in the chair, feeding itself into a body it does not
-occupy. Every menu choice, every shot, every dodge is Hell watching
-itself try to process an unjudged soul.
-
-This is never stated directly. It is **mechanical, not narrative** —
-felt through structure, not declared by characters. R5 (the discrete
-reveal of player-as-Hell) lands only at the *final scene of each
-ending*, in different forms per ending (see story.md *Reveals*).
-
-**Mechanical hints across the entire game:**
-
-- **The Vagrant is hollow.** No facial animation registering pain,
-  surprise, recognition. He moves; he doesn't emote. The player
-  provides all reactivity.
-- **The Vagrant doesn't speak.** Dialogue trees are the *player's*
-  words, given to the Vagrant. The player *is* his voice.
-- **The Vagrant has no name until the player gives him one.** The
-  opening sequence's name-entry — six letters typed by the player —
-  hands identity to the body. The body is anonymous until the player
-  provides identity.
-- **The Grimoire is Hell's voice** (see *The Grimoire*, below). The
-  player reads Hell's self-narration because the player *is* Hell-as-
-  observer. Hell speaks through the Grimoire to itself; the player
-  listens.
-- **The interface is Hell's interface.** Save/load language
-  (*Inscribe* / *Restore*), the Grimoire, the death-card — all in
-  the Hell-aligned register. The player interacts with Hell's
-  bureaucracy, not the Vagrant's tools.
-- **The death-card carries the player's two voices in dialogue with
-  itself.** *NOT YET* (modern register) is the player-at-the-
-  controller refusing finality; *THOU DOST NOT BELONG* (Hell's
-  register) is the player-as-Hell saying the protocol cannot land.
-  Both lines are the player's voice, in two registers, in conflict.
-  Run-end is the player arguing with themselves. Only at R5 does the
-  player realize this has been the case from run 1.
-
-The Vagrant does not see the player; he is hollow. The player is the
-consciousness in the hollow. This is the structural reason Hell
-calls him **Vagrant** while Beatrice and her aligned speakers call
-him **Pilgrim** — the player sees the world through Hell's framing.
-
-### The Grimoire is Hell's voice
-
-The Grimoire is the artifact of Hell's passive self-awareness — the
-system narrating its own situation to itself. The player reads the
-Grimoire because the player *is* Hell-as-observer; Hell speaks
-through the Grimoire to itself, and the player listens.
-
-The Vagrant does not read the Grimoire. He carries it (or it sits
-hub-side in the Wood); the entries appear to the player when triggered.
-He is hollow; he is not the audience. The player is.
-
-The Grimoire's entries unlock progressively because Hell is
-*progressively figuring out* what is happening to it. Early entries
-are confident, doctrinal — Hell explaining itself in standard
-register. Later entries shift in tone — Hell admitting confusion,
-registering the failure of its protocols, eventually naming Beatrice
-(post-R2) as the agent of its transgression. The register-shift
-across the game is Hell waking up to what was done to it.
-
-Hell is exactly conscious enough to narrate; not conscious enough to
-intervene. The Grimoire is Hell speaking to itself in plain view of
-the player who is also Hell. This is consistent with *Hell is aware
-of its failure — passively, not as agent of it* (line 23, *The
-world*).
-
-NPC dialogue is *not* Hell's voice. NPCs are themselves — souls
-within Hell, blinkered to their own circle. Different sources have
-different voices. The Grimoire is Hell from outside the punishment;
-NPCs are souls from inside it; the player triangulates between them.
+The player controls the Vagrant as a video-game protagonist —
+straightforward third-person control, no special diegetic frame. The
+Vagrant speaks; dialogue choices are the lines he says, decided by
+the player as the standard player-character relationship. The opening
+name-entry lets the Vagrant name himself through the player's input.
+His interior voice — surfaced through the insight-tiered text the
+player reads — is the game's voice.
 
 ---
 
@@ -856,11 +826,7 @@ through any of the cosmological instruments the class-picker uses.
   **second-death reservoir** that exists nowhere in physical
   cosmology. Hell did not know about it at the time of Beatrice's
   transgression — the reservoir is the part of her plan that operates
-  outside Hell's perception. Beatrice knows. The Guide knows. Hell
-  *figures it out* progressively across the game (its passive
-  self-awareness articulating through the Grimoire — see *The
-  Grimoire is Hell's voice*); by the post-R2 entries, Hell has
-  named the reservoir to itself.
+  outside Hell's perception. Beatrice knows. The Guide knows.
 - Each riversamento materially contributes to the final cosmic
   application of second death at PURITY's terminus.
 
@@ -1409,29 +1375,20 @@ sized like a title card, *YOU DIED*-coded:
 THOU DOST NOT BELONG
 ```
 
-- *NOT YET* (top, large) — modern register. The player-at-the-
-  controller refusing finality. Two words, gut-punch.
+- *NOT YET* (top, large) — modern register. Refusing finality. Two
+  words, gut-punch.
 - *THOU DOST NOT BELONG* (bottom, smaller, Early Modern register) —
-  Hell's voice. Echoes Charon's *non sei di qua* (*Inf.* III.88) —
-  the canonical *Commedia* moment of Hell refusing a soul that does
-  not fit its protocol. Hell's refusal of the unjudged in its own
-  register.
-
-**Both lines are the player's voice, in two registers.** Under the
-player-as-Hell framing (R5), Hell's voice = the player's voice. The
-death-card is the player's two voices in conflict on the same screen:
-the modern *NOT YET* (the user-at-the-controller voice) and the old
-*THOU DOST NOT BELONG* (the player-as-Hell voice). Run-end is the
-player arguing with themselves. Only at R5 (the final scene of each
-ending) does the player realize this has been the case from run 1.
+  Hell speaking to the Vagrant in its own register. Echoes
+  Charon's *non sei di qua* (*Inf.* III.88) — the canonical
+  *Commedia* moment of Hell refusing a soul that does not fit its
+  protocol. Hell's refusal of the unjudged.
 
 Both lines age across the game. Run 1: read as the game's voice,
 flavor / refusal. Mid-game (after R1's Guide reveal): read as
 admission of failure — Hell trying its protocol on a soul it cannot
 finish. Late-game (after R2's Beatrice reveal): confirmation that
 Beatrice's transgression has placed an unresolvable soul where one
-should not be. Final scene (R5): retroactive recognition that *both
-voices on the death-card have been the player's all along.*
+should not be.
 
 After the death-card holds briefly, the screen transitions to a
 **run-stats screen** (no header text — full pixel budget for data).
@@ -1512,9 +1469,6 @@ costs (materials gathered through play).
 Items committed at the setting level:
 
 - **The Grimoire** (existing, hub-side, lore-text and unlock viewer).
-  *Hell's voice* — the artifact of Hell's passive self-awareness;
-  the player reads it because the player is Hell-as-observer (see
-  *Perspective — who the player is*).
 - **The Signing** (*La Firma*) — not an item; a Guide ritual at Beat 4
   driven by a class-picker UI. Picking a class = Signing happens =
   imprint is created = Vagrant receives the Crucible. Refusing =

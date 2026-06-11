@@ -44,19 +44,87 @@ struct UIState
         Menu,
     };
 
+    // Pause-menu top-level tabs. Vessel absorbs the prior Status +
+    // Equipment surfaces -- the Vagrant's form is one thing to regard,
+    // not two separate views. Sub-page selection lives in
+    // vessel_subpage so it persists across pause opens.
     enum class Tab
     {
-        Status = 0,
+        Vessel = 0,
         Inventory = 1,
-        Equipment = 2,
-        System = 3,
+        System = 2,
     };
-    static constexpr int TAB_COUNT = 4;
+
+    // Vessel-tab sub-pages -- regions of the form the player attends
+    // to. Overview is the landing page (high-level state); Form is
+    // the body's substrate state (HP/Stamina/Poise + stats); Hands is
+    // what they bear (equipment slots); Mind is what the Vagrant has
+    // come to know (fired insights grouped by category). Imprint /
+    // Eyes / etc. arrive as content for them ships.
+    enum class VesselSubpage
+    {
+        Overview = 0,
+        Form = 1,
+        Hands = 2,
+        Mind = 3,
+    };
 
     Screen active_screen = Screen::None;
-    Tab menu_tab = Tab::Status;
+    Tab menu_tab = Tab::Vessel;
+    VesselSubpage vessel_subpage = VesselSubpage::Overview;
     bool show_hud = true;
     bool input_suppressed = false;
+
+    // Mind sub-page selection model (unified). One list spanning both
+    // the library and the workbench. Each entry knows which surface
+    // the click came from. Buttons derive their enable conditions
+    // from this set + per-entry location. Clicking in one location
+    // while items from the other are selected clears the other
+    // automatically -- selections from library and workbench are
+    // mutually exclusive. Session-only; reset on pause-menu close.
+    struct MindSelectedItem
+    {
+        std::string id;
+        enum class Location : std::uint8_t
+        {
+            Library = 0,
+            Workbench = 1,
+        } location = Location::Workbench;
+    };
+    std::vector<MindSelectedItem> mind_selection;
+    // Reading picker state. When Infer matches an inference,
+    // mind_picker_inference is set + the picker modal opens.
+    // mind_picker_evidence is the linked evidence at commit time
+    // (so the picker can show warranted-vs-not per reading).
+    // mind_picker_existing_node is set when Reconsider opens the
+    // picker for an already-placed inference (caller updates that
+    // node in place instead of creating a new one).
+    std::string mind_picker_inference;
+    std::vector<std::string> mind_picker_evidence;
+    std::string mind_picker_existing_node;
+    // Two-stage Infer feedback. On Infer click the page shows a brief
+    // feedback panel ('you can infer' / 'you cannot infer'); after a
+    // short timer the panel either auto-opens the reading picker
+    // (success) or closes (failure). 0 = no feedback active.
+    std::uint64_t mind_feedback_open_ticks_ms = 0;
+    bool mind_feedback_success = false;
+    // Mind sub-page click-to-pick-up state. When non-empty, the
+    // cursor is 'carrying' that node id. Clicking on the workbench
+    // canvas places/transfers/moves the carried node to that
+    // position; clicking the library panel returns to library
+    // (lock-respecting); Esc or click outside both panels cancels.
+    // mind_carrying_origin tracks where the carry started ('library'
+    // or 'workbench') so the place logic knows whether to add a
+    // new entry or update an existing one.
+    std::string mind_carrying_id;
+    enum class MindCarryOrigin : std::uint8_t
+    {
+        Library = 0,
+        Workbench = 1,
+    } mind_carrying_origin = MindCarryOrigin::Library;
+    // Right-clicked node id, captured when the workbench context menu
+    // opens. Empty when the menu was opened on empty canvas.
+    std::string mind_context_target_id;
 
     // SDL_GetTicks64() value at the moment the last autosave completed.
     // Used by the save indicator chip on the HUD. We use SDL ticks here
@@ -251,6 +319,70 @@ struct PlayerProfile
     // config/enemies/<id>.json. Sparse: only archetypes the player
     // has killed appear.
     std::unordered_map<std::string, std::uint32_t> kill_counts;
+
+    // Conclusions that have been promoted from uncertain to certain --
+    // the player both deduced them AND received the confirming
+    // observation. Subset of unlocked_insights: every id in here is
+    // also in unlocked_insights; a conclusion in unlocked_insights but
+    // NOT in here is uncertain. Conclusions without a confirmed_by
+    // list never go through uncertain; they're added to BOTH sets at
+    // the moment of deduction.
+    std::vector<std::string> certain_conclusions;
+
+    // Mind sub-page persistent workbench. The workbench is the player's
+    // self-arranged graph of their understanding: observations they have
+    // committed to thinking about, conclusions they have deduced from
+    // them, all with player-set positions. Per the locked design
+    // (2026-06-09 workbench-as-designer): observations enter the
+    // workbench via drag from the library; once placed they persist
+    // across sessions. Conclusions appear here when deduced and stay
+    // permanently. The library only shows observations NOT on the
+    // workbench. Positions are in 0..1 normalized canvas space.
+    struct WorkbenchNode
+    {
+        std::string id;
+        float x = 0.5f;
+        float y = 0.5f;
+        // For inferences: the observation ids the player ACTUALLY
+        // selected at the moment of the Deduce act. Edges are drawn
+        // only from this list -- never from the node's authored
+        // requires. Locked once committed (cannot be removed while
+        // the inference is on the workbench).
+        std::vector<std::string> linked_observations;
+        // For inferences (per cognition-system v1): the authored
+        // reading id the player picked at Deduce time (or changed via
+        // Reconsider). The reading's prose is what displays. The
+        // reading's warrant_evidence is what determines whether the
+        // inference is warranted (linked_observations exact-set-
+        // matches the reading's warrant_evidence).
+        std::string reading_id;
+        // DEPRECATED 2026-06-10 (cognition-system v1 replaced the
+        // confirmation mechanic with readings + warrant). Field kept
+        // so old saves don't error on load; never populated by new
+        // code; never displayed.
+        std::vector<std::string> linked_confirmers;
+    };
+    std::vector<WorkbenchNode> workbench_observations;
+    std::vector<WorkbenchNode> workbench_inferences;
+
+    // Cognitive engagement counters per cognition-system v1. Each is
+    // raw count of qualifying events; the stat value is derived via
+    // computeCognitiveStat() = 1 + floor(log2(counter + 1)).
+    // Diminishing returns naturally fall out of the log curve. The
+    // counters are NOT decremented when Reconsider cascades release
+    // child inferences -- the simpler v1 model preserves growth so
+    // the system stays predictable. Future revision may track gains
+    // per inference and decrement on cascade.
+    std::uint32_t perception_growth = 0;
+    std::uint32_t cognition_growth = 0;
+    std::uint32_t intelligence_growth = 0;
+
+    // Per-subject examine count. Sparse: only subjects the player has
+    // examined appear. Drives multi-tier examine text (PropArchetype
+    // examine_text_keys[] indexes by count) and Nth-time-examined
+    // insight flags ("examined:<subject>:<N>"). Keyed by the same
+    // subject string passed to selva::insight::notifyExamined.
+    std::unordered_map<std::string, std::uint32_t> examine_counts;
 
     // Persistent door state. (door_id, state_name) pairs. Only doors
     // whose state has DEVIATED from their JSON-authored initial_state

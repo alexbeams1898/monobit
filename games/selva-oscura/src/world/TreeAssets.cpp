@@ -425,9 +425,9 @@ static void buildHeroVariantsFromMeshes(const std::vector<CpuMesh>& trunks,
         uploadMesh(canopy, cx, cz, base, variant.branches);
         variant.trunk.alpha_cutoff = 0.0f;
         // Standard alpha cutoff matches the glTF material's authored
-        // intent for foliage cards. Now that textures load with the
-        // correct UV orientation (stbi flip off), 0.5 gives a clean
-        // leaf-card silhouette.
+        // intent for foliage cards. 0.5 gives a clean leaf-card
+        // silhouette. The dead-wood look comes from the WorldRenderer
+        // foliage tint, not from cutout aggression.
         variant.branches.alpha_cutoff = 0.5f;
         variant.trunk.base_color_tex = selva::render::loadTexture2D(
             std::string(kAssetDir) + "textures/Tree_Trunk_" + trunk.family + "_baseColor.png");
@@ -517,6 +517,16 @@ int treeVariantCount()
 const TreeVariant& treeVariant(int idx)
 {
     return sVariants[idx];
+}
+
+int treeVariantIndexByName(const std::string& name)
+{
+    for (int i = 0; i < static_cast<int>(sVariants.size()); ++i)
+    {
+        if (sVariants[i].variant_name == name)
+            return i;
+    }
+    return -1;
 }
 
 } // namespace selva::world

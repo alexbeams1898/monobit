@@ -42,6 +42,8 @@ add_library(selva-oscura-lib STATIC
     src/gameplay/PerFrameTick.cpp
     src/gameplay/Perception.cpp
     src/gameplay/PlayerState.cpp
+    src/gameplay/PropArchetype.cpp
+    src/gameplay/PropSpawn.cpp
     src/gameplay/RomanNumeral.cpp
     src/gameplay/RomanTiers.cpp
     src/gameplay/Sangue.cpp
@@ -62,6 +64,7 @@ add_library(selva-oscura-lib STATIC
     src/combat/TransitionProfile.cpp
     src/combat/WeaponData.cpp
     src/insight/Insight.cpp
+    src/insight/InsightLayout.cpp
     src/lang/Language.cpp
     src/render/Atmosphere.cpp
     src/render/Camera.cpp

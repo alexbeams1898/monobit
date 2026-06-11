@@ -28,6 +28,7 @@
 #include "gameplay/EnemyArchetype.h"
 #include "gameplay/PerFrameTick.h"
 #include "gameplay/PlayerState.h"
+#include "gameplay/PropArchetype.h"
 #include "insight/Insight.h"
 #include "items/CategoryRegistry.h"
 #include "items/ItemRegistry.h"
@@ -338,9 +339,10 @@ void initGameplaySubsystems()
     selva::dialog::registerGuideHandlers();
     selva::dialog::topicRegistry().loadDirectory("config/npcs");
     // Archetypes BEFORE region activation -- spawn looks them up by id
-    // as JsonRegion::commitPrepared() iterates enemy_spawns.
+    // as JsonRegion::commitPrepared() iterates enemy_spawns + props.
     selva::gameplay::archetypes().loadDirectory("config/enemies");
     selva::gameplay::archetypes().resolveAllActionReach();
+    selva::gameplay::propArchetypes().loadDirectory("config/props");
     // FlowSpawner AFTER archetypes() (each flow validates its archetype
     // reference at load time).
     selva::spawn::initFlowSpawner();
@@ -348,6 +350,12 @@ void initGameplaySubsystems()
     // Region bodies + meshes were registered at boot, but enemy
     // spawning needs archetypes + trees loaded first.
     selva::world::spawnAllRegionEnemies();
+    // Prop spawn needs PropArchetypeRegistry loaded (above) + the
+    // TreeAssets variant list populated (initHubRegion-time) so the
+    // variant-name reverse lookup resolves. Cylinders appended here
+    // join the C++-literal cylinders from initHubRegion + the
+    // procgen scatter from populateHubTrees in the same render pass.
+    selva::world::spawnAllRegionProps();
 }
 
 void initCombatData()

@@ -50,9 +50,7 @@ both, neither remembering the difference.
 player gives him a name (six letters, elicited by the Guide in the
 opening sequence), responds for him through dialogue trees, and
 shapes his posture toward the world through choices. The Vagrant is
-*whoever the player makes him*. Setting.md's player-as-Hell framing
-is one of the things the player learns over time; the Vagrant never
-realizes it.
+*whoever the player makes him*.
 
 **No biography.** The game does not flesh out the Vagrant's pre-Hell
 life. No memories surface. No NPCs remember him. No Grimoire entries
@@ -70,11 +68,11 @@ moves as a shape, not a body.
 **Voice register.** The Vagrant speaks via dialogue trees in **modern
 register** — modern words for things he doesn't have old names for
 (*"some old man with a stick"* rather than *"Charon"*; *"this place"*
-rather than *"Acheron"*). Hell's voice — Grimoire entries, gate
-messaging, NPC speech, environmental signage — uses the
-Commedia-anchored register (Italian loanwords, Early Modern English).
-The friction between the two registers is the world's friction-engine:
-the player chooses modern phrasings; the world replies in old words.
+rather than *"Acheron"*). Grimoire entries, gate messaging, NPC
+speech, and environmental signage use the Commedia-anchored register
+(Italian loanwords, Early Modern English). The friction between the
+two registers is the world's friction-engine: the player chooses
+modern phrasings; the world replies in old words.
 
 ---
 
@@ -343,7 +341,6 @@ intentionally — see *Concealment* below):
 - That Beatrice exists, or chose him.
 - That the Guide is her instrument.
 - That he is unjudged / chosen / different from other souls.
-- That he is Hell-as-observer (player-as-Hell framing).
 - That a post-Lucifer fight exists.
 - That cycles will be cosmologically meaningful (the player will
   initially read death-as-restart as roguelike convention).
@@ -366,13 +363,12 @@ unlocks, environmental cues, and the Guide's slow breakdown.
    *Both kinds of players should feel rewarded* — the careful
    player by being right, the casual player by being moved.
 
-2. **The player learns through Hell.** The player is Hell-as-observer
-   (per setting.md *Perspective — who the player is*); the Grimoire
-   is Hell's voice narrating its own situation; NPC fragments are
-   souls speaking from inside their punishment; the Vagrant himself
-   is hollow and does not learn — the player synthesizes from Hell's
-   self-narration plus what souls let slip in their lucid windows.
-   The Vagrant carries no understanding across cycles; he is not the
+2. **The player learns; the Vagrant does not.** The Grimoire
+   narrates the cosmology in its own voice; NPC fragments are souls
+   speaking from inside their punishment; the Vagrant himself is
+   hollow and does not learn — the player synthesizes from these
+   sources plus what souls let slip in their lucid windows. The
+   Vagrant carries no understanding across cycles; he is not the
    audience. The player is the only consciousness in the loop that
    can integrate what unlocks.
 
@@ -701,7 +697,7 @@ Beatrice reveal) rather than as its own beat.
 ## Reveals
 
 The story arc is built on **gradual revelation** (per *Concealment as
-principle*, above). Reveals R1-R5 are the discrete narrative beats
+principle*, above). Reveals R1-R4 are the discrete narrative beats
 where the player's understanding inverts. Each has a *trigger* (what
 unlocks the reveal) and a *surface* (where the player sees it).
 
@@ -893,76 +889,6 @@ REFUSAL (no change) and PURITY (her own ending). She does not descend
 on TRANSFIGURATION (her plan succeeds) or SURFEIT (impersonal cosmic
 catastrophe). The player meets her only on the paths that fail her.
 
-### R5 — The player is Hell
-
-The player has been Hell-as-observer the entire game. Setting.md
-*Perspective — who the player is* commits the structural truth.
-R5 is the discrete reveal of this truth.
-
-R5 is the most abstract reveal. Explicit naming earlier would
-cheapen it. Instead: **mechanical hints throughout the entire game,
-discrete reveal at the final scene of each ending.**
-
-- **Hints throughout (mechanical, not declarative):** see setting.md
-  *Perspective — who the player is*. The Vagrant is hollow; he
-  doesn't speak; the player names him; the Grimoire is Hell's voice;
-  the interface is Hell's bureaucracy; the death-card has been the
-  player's two voices in conflict from run 1. None of these name
-  R5 — they produce the *feeling* of being a puppeteer in Hell's
-  chair.
-- **Trigger:** the final scene of each ending. R5 fires differently
-  per path; the surface is the ending itself.
-- **Surface — per ending:**
-
-  **TRANSFIGURATION final scene.** The Vagrant takes the throne;
-  becomes Satan-2; Hell renews around him. As the geography
-  reconfigures, the camera pulls back from the Vagrant-on-the-throne,
-  far enough that the player's perspective becomes explicit — the
-  player has just installed themselves a new vessel. Possible text:
-  *YOU REMAIN.* Hell continues; the player continues as Hell; the
-  Vagrant has been absorbed into the role. The cycle is the
-  cosmology's; the player is the cosmology.
-
-  **SURFEIT final scene.** The Vagrant ruptures; cosmic war;
-  universe ends. The player's view *also* ends. Black screen.
-  Silence. Possible text: *YOU END.* Or no text — the screen is
-  black, the audio is gone, and the player sits with the absence.
-  Hell ended; the player ended; everything ended. The horror is
-  that the player's *position* (Hell-as-observer) has been
-  consumed alongside Hell. There is no observer left because
-  there is nothing to observe.
-
-  **REFUSAL final scene.** The Vagrant walks out of Cocytus; Hell
-  stays broken; Beatrice is dead; the anomaly persists. In the
-  cutscene's pace, the Vagrant turns toward the camera. He does
-  not speak. But he looks. The player understands they have been
-  *seen* by their own avatar, finally, in the only ending where
-  the act of refusal gave the Vagrant enough will to register the
-  puppeteer. Possible text: *YOU REMAIN. SO DOES IT.* — both the
-  player and Hell persist; the failure is that *neither of you
-  ends.*
-
-  **PURITY final scene.** The cosmic firing fires through the
-  Vagrant; cascade unmakes Hell. The player's view changes during
-  the firing — the screen empties (Cocytus → geography → selva
-  oscura → title screen, image dispersing). Then black. Possible
-  text: *YOU WITNESSED.* Past tense. The player was the witness;
-  Hell is gone; there is nothing more to observe. The player's
-  role as Hell-as-observer is complete and concluded.
-
-- **What the player synthesizes (per ending):**
-  - TRANSFIGURATION: continuation horror — *I am now Hell installed.*
-  - SURFEIT: total absence — *I ended with everything.*
-  - REFUSAL: trapped persistence — *I and Hell, both broken, forever.*
-  - PURITY: completion — *the watching is done. The role resolves.*
-
-- **Why the *YOU* text overlays.** Through the entire game, even
-  *THOU DOST NOT BELONG* uses *thou* — Early Modern register the
-  player parses as Hell's archaic voice, not yet read as *to me.*
-  The R5 *YOU* is the modern register, breaking frame. **It is
-  the only time in the game *YOU* is addressed to the player
-  explicitly.** The phrases are heavy because they are unique.
-
 ---
 
 ## What's still TBD in this doc
@@ -972,21 +898,17 @@ discrete reveal at the final scene of each ending.**
    degradation already locked. World-state changes, NPC absences (NPCs
    fade across cycles per setting.md), gate messaging degradation.
 
-2. **The Grimoire as the surface that delivers reveals (specifics).**
-   The Grimoire's *role* is locked (Hell's voice, see setting.md
-   *The Grimoire is Hell's voice*). Open: what the entries actually
-   contain; what unlocks when; how the register-shift across the
-   game (Hell waking up to itself) is paced into specific entries.
-   R2's posthumous Grimoire entries especially — the explicit naming
-   of Beatrice and the unjudged condition at the Guide's death —
-   need their shape locked.
+2. **The Grimoire as a future surface (open).** Whether the
+   Grimoire ships, what voice authored it in-fiction, what its
+   entries contain, what unlocks when, and how it paces reveals
+   are all open. R2's posthumous content (the explicit naming of
+   Beatrice and the unjudged condition at the Guide's death) needs
+   a delivery surface; the Grimoire is one candidate among
+   others.
 
 3. **The four endings as narrative experiences (cutscene-level
-   detail).** Shape locked at the *Reveals / R5* level (per-ending
-   final scenes drafted). Open: full cutscene specifics, frame-by-frame
-   beats, exact text overlays (*YOU REMAIN.* / *YOU END.* / *YOU
-   REMAIN. SO DOES IT.* / *YOU WITNESSED.* are working candidates;
-   final wording TBD).
+   detail).** Open: full cutscene specifics, frame-by-frame beats,
+   per-ending final-scene shape, any text overlays.
 
 4. **Beatrice's appearances** — mostly answered. She does not appear
    before R2. She appears as a fight on REFUSAL and PURITY. Open: any

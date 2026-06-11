@@ -1,0 +1,13 @@
+{
+  "_comment": "Hero pine variant B. See pine_a for the archetype-id / variant-name binding + the shared examine doctrine.",
+  "id": "pine_b",
+  "category": "tree",
+  "cylinder_radius": 0.4,
+  "cylinder_half_height": 6.0,
+  "collision_kind": "cylinder",
+
+  "examine_label_key": "world.tree.examine_label",
+  "examine_text_key": "world.tree.examine_text",
+  "insight_trigger_subject": "tree",
+  "interact_range_meters": 2.5
+}

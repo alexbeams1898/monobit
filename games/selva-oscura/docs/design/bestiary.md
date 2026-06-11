@@ -147,7 +147,7 @@ to a Dantean source. We do not invent new monsters.
 
 > **LOCKED 2026-06-01.** Foundational rule that explains why the
 > Lupa fight is permitted in the Wood AND why the Wood is otherwise a
-> no-combat zone. Memory: [[vagrant-silent-vessel-doctrine]] +
+> no-combat zone. Memory: [[vagrant-speaks-player-chooses]] +
 > [[selva-core-framing]].
 
 Actors in this game fall into two cosmological **forms** for combat

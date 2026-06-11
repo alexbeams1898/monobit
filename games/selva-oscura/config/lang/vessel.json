@@ -1,0 +1,15 @@
+{
+  "_comment": "Vessel-tab Overview sub-page labels. Three ledger rows (held / committed / lifetime), each conditionally rendered by Screens.cpp on its gating insight node. Tier-0 only -- no Guide-named cosmological promotion path. Labels are the Vagrant's operational voice at unlock; sangue / vessel / riversamento etc. do NOT appear here.",
+
+  "vessel.overview.held.label": {
+    "tier_0": "(TODO: held-ledger label. Lesson at unlock: killing gave the Vagrant a count. Suggestion: 'Taken from killing:' / 'Drawn from kills:')"
+  },
+
+  "vessel.overview.committed.label": {
+    "tier_0": "(TODO: committed-ledger label. Lesson at unlock: the count can leave him by being given. Suggestion: 'Given:' / 'Sent forth:')"
+  },
+
+  "vessel.overview.lifetime.label": {
+    "tier_0": "(TODO: lifetime-ledger label. Lesson at unlock: the count is the record of every kill across his existence. Suggestion: 'All you have taken:' / 'Every count, kept:')"
+  }
+}

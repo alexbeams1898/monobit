@@ -22,12 +22,9 @@ Locked at setting.md *Second death*. Summary:
           NOT YET
   THOU DOST NOT BELONG
   ```
-  *NOT YET* (top, large, modern register) — the player-at-the-
-  controller refusing finality. *THOU DOST NOT BELONG* (bottom,
-  smaller, Early Modern register) — Hell's voice, echoing Charon's
-  *non sei di qua* (Inf. III.88).
-- **Both lines are the player's voice in two registers** under R5
-  (player-as-Hell). Retroactive reveal at the final scene.
+  *NOT YET* (top, large, modern register) — refusing finality.
+  *THOU DOST NOT BELONG* (bottom, smaller, Early Modern register) —
+  echoing Charon's *non sei di qua* (Inf. III.88).
 - **Run-stats screen follows** with no header text — full pixel budget
   for data (sangue lost, kills, keepers felled this run, etc.). Term
   *sangue* enters vocabulary in this screen, not on the death-card.
@@ -118,7 +115,7 @@ position, transient combat state.
   death*, *Save and inventory / Vestigia*.
 - [Story](story.md) — death and retry are narrative events; the
   run-end texture (NOT YET / THOU DOST NOT BELONG, run-stats
-  screen) is part of R1 / R5 reveal architecture.
+  screen) is part of the reveal architecture.
 - [Classes](classes.md) — class persists across cycles; stat
   investments persist.
 - [UX](ux.md) — screen flow for death-cutscene → death-card →

@@ -102,6 +102,12 @@ void initHubRegion();
 // at each cylinder) and for diagnostics.
 const CollisionRegion& currentRegion();
 
+// Mutable access for runtime systems that append to the region's
+// cylinder/box lists (the prop spawn funnel, future scatter
+// producers). Distinct accessor so the read-only path stays the
+// default and write callers are explicit.
+CollisionRegion& mutableCurrentRegion();
+
 // Resolve overlap: push body_xz radially out of any cylinder it
 // penetrates. Body-agnostic — same call used by the player today,
 // by enemies later. body_radius is the body's XZ capsule radius

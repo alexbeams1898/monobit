@@ -1,0 +1,13 @@
+{
+  "_comment": "Warm light source -- the umbrella archetype for Limbo's campfires, braziers, and oil lamps. Same warm-amber color + fire flicker; per-instance intensity/range overrides differentiate main encampment lights (1.0 / 16m) from smaller companion lights (0.3 / 5m) without proliferating archetype files. Defaults match the legacy registerLimboLights makeLight call for a typical 'campfire_a' main light.",
+  "id": "limbo_warm_light",
+  "category": "light",
+  "light_source": {
+    "color": [1.00, 0.55, 0.22],
+    "intensity": 0.8,
+    "range_meters": 11.0,
+    "flicker_amp": 0.12,
+    "flicker_freq": 2.5,
+    "kind": "campfire"
+  }
+}

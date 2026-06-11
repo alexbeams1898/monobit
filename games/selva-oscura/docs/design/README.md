@@ -32,6 +32,8 @@ references between sections are by link.
 | [Fallback](fallback.md) | structural | Death, retry, save semantics, vestigia |
 | [Combat](combat.md) | drafting | Melee/physical combat — bindings, stance, on-hand/off-hand grammar |
 | [Bestiary](bestiary.md) | drafting | *Figura umana* rule — shared human skeleton for damned souls, canonical exceptions for Hell's classical guardians |
+| [Cosmological hierarchy](cosmological_hierarchy.md) | reference | Quick-access tree of being-categories (souls / infernal creatures / keepers / animals / divine); where the Vagrant sits before/after the Signing |
+| [Cognition system](cognition-system.md) | structural | Inference/reading/warrant model + cascade rules + Perception/Cognition/Intelligence stats + Mind resource pool derivation. Replaces auto-confirmation mechanic. |
 | [Crafting](crafting.md) | drafting | All weapons/tools are crafted, not looted; Wood-substrate vs Hell-substrate split; crafting as the verb of *consuming Hell* |
 | [Wood](wood.md) | drafting | The Selva as a place: inner canonical core + outer procgen ring; Hell-leak as the threshold's defining condition; time-stop; persistence of player marks |
 | [Creatures](creatures.md) | drafting | Selva-organism ecology spawned from leaked Hell-substance; biology not spirit; four-layer evolution model; capture as personal choice not mission target |

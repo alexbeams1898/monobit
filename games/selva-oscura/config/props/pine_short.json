@@ -1,0 +1,13 @@
+{
+  "_comment": "Short pine variant (family 02 in the tree pack). See pine_a for binding doctrine. Smaller half_height than the others because this variant is a genuinely shorter species.",
+  "id": "pine_short",
+  "category": "tree",
+  "cylinder_radius": 0.35,
+  "cylinder_half_height": 4.5,
+  "collision_kind": "cylinder",
+
+  "examine_label_key": "world.tree.examine_label",
+  "examine_text_key": "world.tree.examine_text",
+  "insight_trigger_subject": "tree",
+  "interact_range_meters": 2.5
+}

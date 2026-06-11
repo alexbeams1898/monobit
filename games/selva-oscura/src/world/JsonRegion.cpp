@@ -171,6 +171,101 @@ selva::gameplay::EnemySpawnDecl parseActorSpawn(const nlohmann::json& s)
     return d;
 }
 
+selva::gameplay::PropDecl parseProp(const nlohmann::json& s)
+{
+    selva::gameplay::PropDecl d;
+    d.archetype = s.at("archetype").get<std::string>();
+    d.id = s.value("id", std::string{});
+    bool auto_terrain = false;
+    const glm::vec3 pos = parsePosAllowAutoTerrain(s.at("pos"), auto_terrain, "props[].pos");
+    d.pos_x = pos.x;
+    d.pos_y = pos.y;
+    d.pos_z = pos.z;
+    d.pos_y_auto_terrain = auto_terrain;
+    d.yaw = s.value("yaw", 0.0f);
+    d.scale_override = s.value("scale", 0.0f);
+    d.light_intensity_override = s.value("light_intensity", 0.0f);
+    d.light_range_override = s.value("light_range", 0.0f);
+    return d;
+}
+
+std::vector<selva::gameplay::PropExcludeAabbXZ> parseExcludeAabbList(const nlohmann::json& arr)
+{
+    std::vector<selva::gameplay::PropExcludeAabbXZ> out;
+    if (!arr.is_array())
+        return out;
+    for (const auto& a : arr)
+    {
+        selva::gameplay::PropExcludeAabbXZ e;
+        e.x_min = a.value("x_min", 0.0f);
+        e.x_max = a.value("x_max", 0.0f);
+        e.z_min = a.value("z_min", 0.0f);
+        e.z_max = a.value("z_max", 0.0f);
+        out.push_back(e);
+    }
+    return out;
+}
+
+std::vector<selva::gameplay::PropExcludeCircleXZ> parseExcludeCircleList(const nlohmann::json& arr)
+{
+    std::vector<selva::gameplay::PropExcludeCircleXZ> out;
+    if (!arr.is_array())
+        return out;
+    for (const auto& a : arr)
+    {
+        selva::gameplay::PropExcludeCircleXZ e;
+        if (a.contains("center_xz") && a["center_xz"].is_array() && a["center_xz"].size() == 2)
+        {
+            e.center_x = a["center_xz"][0].get<float>();
+            e.center_z = a["center_xz"][1].get<float>();
+        }
+        e.radius = a.value("radius", 0.0f);
+        out.push_back(e);
+    }
+    return out;
+}
+
+selva::gameplay::PropScatterRule parsePropScatter(const nlohmann::json& s)
+{
+    selva::gameplay::PropScatterRule r;
+    r.mode = s.value("mode", std::string{});
+    if (s.contains("archetypes") && s["archetypes"].is_array())
+    {
+        for (const auto& a : s["archetypes"])
+            if (a.is_string())
+                r.archetypes.push_back(a.get<std::string>());
+    }
+    r.seed = s.value("seed", 0u);
+    if (s.contains("radius_range") && s["radius_range"].is_array() && s["radius_range"].size() == 2)
+    {
+        r.radius_range[0] = s["radius_range"][0].get<float>();
+        r.radius_range[1] = s["radius_range"][1].get<float>();
+    }
+    if (s.contains("exclude_aabb_xz"))
+        r.exclude_aabb_xz = parseExcludeAabbList(s["exclude_aabb_xz"]);
+    if (s.contains("exclude_circle_xz"))
+        r.exclude_circle_xz = parseExcludeCircleList(s["exclude_circle_xz"]);
+    // Aisle-mode fields
+    r.z_start = s.value("z_start", 0.0f);
+    r.z_end = s.value("z_end", 0.0f);
+    r.count_per_side = s.value("count_per_side", 0);
+    r.x_band_inner = s.value("x_band_inner", 0.0f);
+    r.x_band_outer = s.value("x_band_outer", 0.0f);
+    r.x_jitter = s.value("x_jitter", 0.0f);
+    r.z_jitter = s.value("z_jitter", 0.0f);
+    // Disc-mode fields
+    if (s.contains("origin_xz") && s["origin_xz"].is_array() && s["origin_xz"].size() == 2)
+    {
+        r.origin_xz[0] = s["origin_xz"][0].get<float>();
+        r.origin_xz[1] = s["origin_xz"][1].get<float>();
+    }
+    r.boundary_radius = s.value("boundary_radius", 0.0f);
+    r.count = s.value("count", 0);
+    r.max_attempts = s.value("max_attempts", 0);
+    r.terrain_region = s.value("terrain_region", std::string{});
+    return r;
+}
+
 selva::world::DoorDecl parseDoor(const nlohmann::json& s)
 {
     selva::world::DoorDecl d;
@@ -243,6 +338,30 @@ void JsonRegion::parseActorSpawns(const nlohmann::json& json_doc)
         throw std::runtime_error(std::string(spawns_key) + " must be an array");
     for (const auto& s : arr)
         enemy_spawn_decls.push_back(parseActorSpawn(s));
+}
+
+void JsonRegion::parseProps(const nlohmann::json& json_doc)
+{
+    // region.json `props[]` -- single-instance prop authoring. Each
+    // decl references a PropArchetype by id + supplies per-instance
+    // pos/yaw/scale. prop_scatter[] is the procgen sibling: rules
+    // get parsed here, evaluated at region commit.
+    if (json_doc.contains("props") && !json_doc["props"].is_null())
+    {
+        const auto& arr = json_doc.at("props");
+        if (!arr.is_array())
+            throw std::runtime_error("props must be an array");
+        for (const auto& s : arr)
+            prop_decls.push_back(parseProp(s));
+    }
+    if (json_doc.contains("prop_scatter") && !json_doc["prop_scatter"].is_null())
+    {
+        const auto& arr = json_doc.at("prop_scatter");
+        if (!arr.is_array())
+            throw std::runtime_error("prop_scatter must be an array");
+        for (const auto& s : arr)
+            prop_scatter_rules.push_back(parsePropScatter(s));
+    }
 }
 
 void JsonRegion::parseDoors(const nlohmann::json& json_doc)
@@ -327,6 +446,7 @@ JsonRegion::JsonRegion(const nlohmann::json& json_doc, std::string folder)
       region_json(json_doc), region_folder(std::move(folder))
 {
     parseActorSpawns(json_doc);
+    parseProps(json_doc);
     parseDoors(json_doc);
     parseTerrainModifiers();
     parseTerritory();
@@ -392,6 +512,12 @@ void JsonRegion::preloadStaticMeshEntry(const nlohmann::json& m)
     lm->examine_label = m.value("examine_label", lm->debug_name);
     lm->examine_label_key = m.value("examine_label_key", std::string{});
     lm->examine_text_key = m.value("examine_text_key", std::string{});
+    if (m.contains("examine_text_keys") && m["examine_text_keys"].is_array())
+    {
+        for (const auto& k : m["examine_text_keys"])
+            if (k.is_string())
+                lm->examine_text_keys.push_back(k.get<std::string>());
+    }
     if (m.contains("examine_anchor") && m["examine_anchor"].is_array() &&
         m["examine_anchor"].size() >= 3)
         lm->examine_anchor = parseVec3(m["examine_anchor"]);
@@ -501,10 +627,11 @@ void JsonRegion::registerStaticMeshExamines()
     for (const auto& lm : loaded_meshes)
     {
         // A mesh is examinable if it has authored EITHER a literal
-        // examine_text or an examine_text_key (the language-map path).
-        // The two paths are tier-gated parallel: language-map wins,
-        // literal is fallback for content with no tier reveal.
-        if (lm->examine_text.empty() && lm->examine_text_key.empty())
+        // examine_text, a single examine_text_key, or a multi-tier
+        // examine_text_keys array (language-map paths). Tiered array
+        // wins, single key wins over literal.
+        if (lm->examine_text.empty() && lm->examine_text_key.empty() &&
+            lm->examine_text_keys.empty())
             continue;
         selva::interact::Decl idecl;
         idecl.kind = selva::interact::Kind::Examine;
@@ -514,20 +641,34 @@ void JsonRegion::registerStaticMeshExamines()
         // Label: lang-map key wins, literal fallback otherwise.
         idecl.label = lm->examine_label_key.empty() ? lm->examine_label
                                                     : selva::lang::resolve(lm->examine_label_key);
-        // Text: snapshot at registration since on_interact captures it.
-        // When tier-promotion-at-runtime ships, the on_interact closure
-        // should re-resolve each press; the lang-map key gives us that
-        // hook (capture the key, resolve on press).
+        // Capture keys + literal for the closure; resolve each press.
         const std::string text_key = lm->examine_text_key;
         const std::string literal_text = lm->examine_text;
+        const std::vector<std::string> tiered_keys = lm->examine_text_keys;
         const std::string mesh_id = lm->debug_name;
-        idecl.on_interact = [text_key, literal_text, mesh_id]()
+        idecl.on_interact = [text_key, literal_text, tiered_keys, mesh_id]()
         {
-            const std::string text =
-                text_key.empty() ? literal_text : selva::lang::resolve(text_key);
+            std::string text;
+            if (!tiered_keys.empty())
+            {
+                // Pre-increment count: this examine is about to land
+                // on (current_count). Resolve the key at that tier,
+                // capped at last index so post-final examines keep
+                // showing the deepest authored tier.
+                const std::uint32_t cur = selva::insight::examineCountOf(mesh_id);
+                const std::size_t idx =
+                    std::min<std::size_t>(static_cast<std::size_t>(cur), tiered_keys.size() - 1);
+                text = selva::lang::resolve(tiered_keys[idx]);
+            }
+            else
+            {
+                text = text_key.empty() ? literal_text : selva::lang::resolve(text_key);
+            }
             selva::text::beginExamine(text);
-            // Insight: this mesh was examined. tick() will fire any
-            // node whose examined trigger names this debug_name.
+            // notifyExamined sets the first-time flag, sets the
+            // Nth-time flag, and increments the count -- in that
+            // order, AFTER text resolution above used the pre-
+            // increment count.
             selva::insight::notifyExamined(mesh_id);
         };
         idecl.available = []() { return !selva::text::active(); };

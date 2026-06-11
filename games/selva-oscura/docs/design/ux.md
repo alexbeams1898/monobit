@@ -106,7 +106,7 @@ elicited by the Guide. UI specifics: TBD.
 
 - [Setting](setting.md) — register doctrine, *Inscribe* / *Restore*
   verbs, the vinculum-Roman accounting cap.
-- [Story](story.md) — opening sequence, R5 final-scene per ending,
+- [Story](story.md) — opening sequence, ending scenes,
   death-card spec.
 - [Fallback](fallback.md) — death-cutscene flow, run-stats screen,
   respawn semantics.

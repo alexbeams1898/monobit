@@ -46,6 +46,7 @@
 #include "gameplay/TickState.h"
 #include "hazard/HazardZones.h"
 #include "insight/Insight.h"
+#include "insight/InsightLayout.h"
 #include "interact/Interaction.h"
 #include "physics/PhysicsWorld.h"
 #include "render/Atmosphere.h"
@@ -4771,6 +4772,16 @@ void hardResetWorldForCharacter(const selva::PlayerProfile& profile)
     // internal state); the text layer's hardReset discards handlers
     // without invoking on_end (the producer is already cleaned up).
     selva::text::hardReset();
+    // Mind sub-page graph layout: recompute for the newly-active
+    // character's unlocked-insight set. tick()'s recompute-on-fire
+    // only catches NEW unlocks; load-character paths reuse the
+    // existing unlocked set and would otherwise leave the layout
+    // cache empty (every node draws at the canvas origin).
+    selva::insight::layout::recompute();
+    // Cognitive stats: sync from the loaded growth counters so the
+    // Form/Mind pages show the right values immediately. Calling any
+    // grow*(0) helper recomputes without changing counters.
+    selva::growPerception(0);
     // Interaction registry is world-state (closures capture
     // spawn_decl_id, not character data) -- intentionally NOT
     // hard-reset here. Survives character switches alongside the

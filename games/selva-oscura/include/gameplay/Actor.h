@@ -98,6 +98,15 @@ struct Stats
     int dex = 1; // Dexterity: scales DEX-weapon damage, gates light weapons
     int end = 1; // Endurance: scales max stamina + equip load + max HP
     int lck = 1; // Luck:      drop rate, quality rolls
+    // Mind-section stats per cognition-system v1. Universal across
+    // all classes including Unburdened (these grow from cognitive
+    // engagement, not sangue installation). All start at 1.
+    int per = 1;  // Perception:   grows from observations. Affects combat
+                  //               reading, examine depth, NPC subtext.
+    int cog = 1;  // Cognition:    grows from inferences (any). Drives
+                  //               Mind pool max + regen.
+    int intl = 1; // Intelligence: grows from warranted inferences.
+                  //               Scales ability potency; gates reveals.
 };
 
 // Per-archetype "what species are you" properties. Not leveled.

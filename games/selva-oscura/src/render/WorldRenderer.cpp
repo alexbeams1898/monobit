@@ -901,6 +901,14 @@ void renderTrees()
         return;
 
     selva::render::setTreeTime(selva::wallClock());
+    // Dead-wood foliage tint per wood.md *Trees stripped of leaves*.
+    // The asset is alive-canopy foliage cards; we don't try to strip
+    // them. Instead we crush the leaf color toward near-black with
+    // a faint cool bias so the canopy reads as "drained of life"
+    // rather than "warm autumn-coloured." Trunks render at identity
+    // (set per-draw below). Future per-keeper-restoration lifts
+    // this tint toward identity as the wood heals.
+    constexpr glm::vec3 kDeadFoliageTint(0.08f, 0.09f, 0.10f);
 
     // Translucent canopies need alpha test (already in the shader)
     // and back-face NOT culled (foliage planes are double-sided in
@@ -950,7 +958,9 @@ void renderTrees()
         selva::render::setTreeModel(model);
         selva::render::setTreeWindPhase(wind_phase);
 
+        selva::render::setTreeFoliageTint(glm::vec3(1.0f));
         drawTreeMesh(v.trunk);
+        selva::render::setTreeFoliageTint(kDeadFoliageTint);
         drawTreeMesh(v.branches);
     }
 

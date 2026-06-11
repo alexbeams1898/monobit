@@ -66,20 +66,98 @@ void loadFlags(const json& c, PlayerProfile& p)
             p.flags.push_back(f.get<std::string>());
 }
 
+// Load the player's unlocked insight node ids.
+void loadInsightUnlockedNodes(const json& c, PlayerProfile& p)
+{
+    if (!c.contains("unlocked_insights") || !c["unlocked_insights"].is_array())
+        return;
+    for (const auto& n : c["unlocked_insights"])
+        if (n.is_string())
+            p.unlocked_insights.push_back(n.get<std::string>());
+}
+
+// Load a per-key uint32 map field (kill_counts, examine_counts).
+void loadInsightCountMap(const json& c, const char* key,
+                         std::unordered_map<std::string, std::uint32_t>& dst)
+{
+    if (!c.contains(key) || !c[key].is_object())
+        return;
+    for (auto it = c[key].begin(); it != c[key].end(); ++it)
+        if (it.value().is_number_unsigned())
+            dst[it.key()] = it.value().get<std::uint32_t>();
+}
+
+// Load the deprecated certain_conclusions list (back-compat).
+void loadCertainConclusions(const json& c, PlayerProfile& p)
+{
+    if (!c.contains("certain_conclusions") || !c["certain_conclusions"].is_array())
+        return;
+    for (const auto& n : c["certain_conclusions"])
+        if (n.is_string())
+            p.certain_conclusions.push_back(n.get<std::string>());
+}
+
+// Load an array-of-strings JSON field into a string vector.
+void loadStringArrayField(const json& n, const char* key, std::vector<std::string>& dst)
+{
+    if (!n.contains(key) || !n[key].is_array())
+        return;
+    for (const auto& s : n[key])
+        if (s.is_string())
+            dst.push_back(s.get<std::string>());
+}
+
+// Load a single workbench node object into a WorkbenchNode struct.
+// Returns false if the node is missing its required `id` field.
+bool loadWorkbenchOne(const json& n, PlayerProfile::WorkbenchNode& w)
+{
+    if (!n.is_object() || !n.contains("id") || !n["id"].is_string())
+        return false;
+    w.id = n["id"].get<std::string>();
+    if (n.contains("x") && n["x"].is_number())
+        w.x = n["x"].get<float>();
+    if (n.contains("y") && n["y"].is_number())
+        w.y = n["y"].get<float>();
+    loadStringArrayField(n, "linked_observations", w.linked_observations);
+    if (n.contains("reading_id") && n["reading_id"].is_string())
+        w.reading_id = n["reading_id"].get<std::string>();
+    loadStringArrayField(n, "linked_confirmers", w.linked_confirmers);
+    return true;
+}
+
+// Load one workbench-node array into the destination vector.
+void loadWorkbenchVec(const json& arr, std::vector<PlayerProfile::WorkbenchNode>& out)
+{
+    for (const auto& n : arr)
+    {
+        PlayerProfile::WorkbenchNode w;
+        if (loadWorkbenchOne(n, w))
+            out.push_back(std::move(w));
+    }
+}
+
+// Load workbench observations + inferences (with back-compat for
+// `workbench_conclusions`, the cognition-system-v1 prior name).
+void loadWorkbenchNodes(const json& c, PlayerProfile& p)
+{
+    if (c.contains("workbench_observations") && c["workbench_observations"].is_array())
+        loadWorkbenchVec(c["workbench_observations"], p.workbench_observations);
+    if (c.contains("workbench_inferences") && c["workbench_inferences"].is_array())
+        loadWorkbenchVec(c["workbench_inferences"], p.workbench_inferences);
+    else if (c.contains("workbench_conclusions") && c["workbench_conclusions"].is_array())
+        loadWorkbenchVec(c["workbench_conclusions"], p.workbench_inferences);
+}
+
 void loadInsights(const json& c, PlayerProfile& p)
 {
-    if (c.contains("unlocked_insights") && c["unlocked_insights"].is_array())
-    {
-        for (const auto& n : c["unlocked_insights"])
-            if (n.is_string())
-                p.unlocked_insights.push_back(n.get<std::string>());
-    }
-    if (c.contains("kill_counts") && c["kill_counts"].is_object())
-    {
-        for (auto it = c["kill_counts"].begin(); it != c["kill_counts"].end(); ++it)
-            if (it.value().is_number_unsigned())
-                p.kill_counts[it.key()] = it.value().get<std::uint32_t>();
-    }
+    loadInsightUnlockedNodes(c, p);
+    loadInsightCountMap(c, "kill_counts", p.kill_counts);
+    loadCertainConclusions(c, p);
+    loadInsightCountMap(c, "examine_counts", p.examine_counts);
+    loadWorkbenchNodes(c, p);
+    p.perception_growth = c.value("perception_growth", std::uint32_t{0});
+    p.cognition_growth = c.value("cognition_growth", std::uint32_t{0});
+    p.intelligence_growth = c.value("intelligence_growth", std::uint32_t{0});
 }
 
 void loadDoorStates(const json& c, PlayerProfile& p)
@@ -286,6 +364,71 @@ nlohmann::json saveNpcState(const PlayerProfile& c)
     return npcs;
 }
 
+// Serialize a string-keyed uint32 map (kill_counts / examine_counts).
+json saveCountMap(const std::unordered_map<std::string, std::uint32_t>& src)
+{
+    json out = json::object();
+    for (const auto& [key, count] : src)
+        out[key] = count;
+    return out;
+}
+
+// Serialize one workbench-node vector to a JSON array.
+json saveWorkbenchVec(const std::vector<PlayerProfile::WorkbenchNode>& v)
+{
+    json arr = json::array();
+    for (const auto& w : v)
+    {
+        json o = json::object();
+        o["id"] = w.id;
+        o["x"] = w.x;
+        o["y"] = w.y;
+        if (!w.linked_observations.empty())
+            o["linked_observations"] = w.linked_observations;
+        if (!w.reading_id.empty())
+            o["reading_id"] = w.reading_id;
+        arr.push_back(std::move(o));
+    }
+    return arr;
+}
+
+// Write the optional insight-system fields (counts, conclusions,
+// growth counters, workbench nodes). Skip-emit-when-empty keeps
+// save files compact.
+void saveInsightFields(nlohmann::json& dst, const PlayerProfile& c)
+{
+    if (!c.unlocked_insights.empty())
+        dst["unlocked_insights"] = c.unlocked_insights;
+    if (!c.kill_counts.empty())
+        dst["kill_counts"] = saveCountMap(c.kill_counts);
+    if (!c.certain_conclusions.empty())
+        dst["certain_conclusions"] = c.certain_conclusions;
+    if (!c.examine_counts.empty())
+        dst["examine_counts"] = saveCountMap(c.examine_counts);
+    if (c.perception_growth > 0)
+        dst["perception_growth"] = c.perception_growth;
+    if (c.cognition_growth > 0)
+        dst["cognition_growth"] = c.cognition_growth;
+    if (c.intelligence_growth > 0)
+        dst["intelligence_growth"] = c.intelligence_growth;
+    if (!c.workbench_observations.empty())
+        dst["workbench_observations"] = saveWorkbenchVec(c.workbench_observations);
+    if (!c.workbench_inferences.empty())
+        dst["workbench_inferences"] = saveWorkbenchVec(c.workbench_inferences);
+}
+
+// Write the optional sangue economy fields. New characters and
+// full-reclamation states stay compact.
+void saveSangueFields(nlohmann::json& dst, const PlayerProfile& c)
+{
+    if (c.sangue_lifetime != 0u)
+        dst["sangue_lifetime"] = c.sangue_lifetime;
+    if (c.sangue_vessel != 0u)
+        dst["sangue_vessel"] = c.sangue_vessel;
+    if (c.sangue_riversato != 0u)
+        dst["sangue_riversato"] = c.sangue_riversato;
+}
+
 nlohmann::json saveCharacter(const PlayerProfile& c)
 {
     nlohmann::json char_json = {
@@ -297,21 +440,11 @@ nlohmann::json saveCharacter(const PlayerProfile& c)
         {"has_saved_pose", c.has_saved_pose},
         {"current_region_id", c.current_region_id.empty() ? "surface" : c.current_region_id},
     };
-    // Skip emitting empty per-character fields so save files stay compact
-    // (back-compat already tolerates absent keys on the load side).
     if (!c.felled_bosses.empty())
         char_json["felled_bosses"] = c.felled_bosses;
     if (!c.flags.empty())
         char_json["flags"] = c.flags;
-    if (!c.unlocked_insights.empty())
-        char_json["unlocked_insights"] = c.unlocked_insights;
-    if (!c.kill_counts.empty())
-    {
-        json kc = json::object();
-        for (const auto& [archetype, count] : c.kill_counts)
-            kc[archetype] = count;
-        char_json["kill_counts"] = std::move(kc);
-    }
+    saveInsightFields(char_json, c);
     if (!c.door_states.empty())
         char_json["door_states"] = saveDoorStates(c);
     if (!c.inventory.by_category.empty())
@@ -322,15 +455,7 @@ nlohmann::json saveCharacter(const PlayerProfile& c)
     }
     if (!c.npc_state.empty())
         char_json["npc_state"] = saveNpcState(c);
-    // Sangue persists only when non-zero -- new characters and full-reclamation
-    // states stay compact. sangue_vessel persists across quit-to-menu (a
-    // run pause, not a death); second-death zeroes it before save.
-    if (c.sangue_lifetime != 0u)
-        char_json["sangue_lifetime"] = c.sangue_lifetime;
-    if (c.sangue_vessel != 0u)
-        char_json["sangue_vessel"] = c.sangue_vessel;
-    if (c.sangue_riversato != 0u)
-        char_json["sangue_riversato"] = c.sangue_riversato;
+    saveSangueFields(char_json, c);
     if (c.player_class != PlayerClass::None)
         char_json["player_class"] = playerClassName(c.player_class);
     return char_json;

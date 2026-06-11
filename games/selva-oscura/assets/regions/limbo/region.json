@@ -171,6 +171,35 @@
       "_comment": "Cluster 8 (limbo_fungus_c): east flank, deepest into Limbo. Reward encounter for full exploration."
     }
   ],
+
+  "_props_note": "Light vignettes on Limbo's far shore. Migrated 2026-06-09 from PhysicsRegion.cpp::registerLimboLights to the PropArchetype pipeline. Two cosmological archetypes (limbo_warm_light for campfires/braziers/oil lamps; limbo_fungus_light for bioluminescent fungus); per-decl light_intensity / light_range overrides handle the main + companion size variation without proliferating archetype files. All Y = -43.13 (Limbo floor) + 0.8 (waist height) = -42.33. Eight encampments, each a main+companion pair = 16 instances. Layout matches the legacy registerLimboLights call exactly.",
+  "props": [
+    { "id": "limbo_campfire_a", "archetype": "limbo_warm_light", "pos": [-40.0, -42.33, -560.0] },
+    { "id": "limbo_campfire_a_companion", "archetype": "limbo_warm_light", "pos": [-32.0, -42.33, -566.0], "light_intensity": 0.4, "light_range": 6.0 },
+
+    { "id": "limbo_campfire_b", "archetype": "limbo_warm_light", "pos": [60.0, -42.33, -620.0], "light_intensity": 0.7, "light_range": 10.0 },
+    { "id": "limbo_campfire_b_companion", "archetype": "limbo_warm_light", "pos": [67.0, -42.33, -615.0], "light_intensity": 0.35, "light_range": 5.5 },
+
+    { "id": "limbo_fungus_a", "archetype": "limbo_fungus_light", "pos": [-90.0, -42.33, -700.0] },
+    { "id": "limbo_fungus_a_companion", "archetype": "limbo_fungus_light", "pos": [-83.0, -42.33, -707.0], "light_intensity": 0.30, "light_range": 6.0 },
+
+    { "id": "limbo_brazier_a", "archetype": "limbo_warm_light", "pos": [80.0, -42.33, -740.0], "light_intensity": 0.6, "light_range": 12.0 },
+    { "id": "limbo_brazier_a_fungus_neighbor", "archetype": "limbo_fungus_light", "pos": [86.0, -42.33, -732.0], "light_intensity": 0.25, "light_range": 5.0 },
+
+    { "id": "limbo_brazier_b", "archetype": "limbo_warm_light", "pos": [0.0, -42.33, -780.0], "light_intensity": 1.0, "light_range": 16.0 },
+    { "id": "limbo_brazier_b_companion", "archetype": "limbo_warm_light", "pos": [-9.0, -42.33, -772.0], "light_intensity": 0.4, "light_range": 7.0 },
+    { "id": "limbo_brazier_b_fungus", "archetype": "limbo_fungus_light", "pos": [12.0, -42.33, -786.0], "light_intensity": 0.35, "light_range": 6.0 },
+
+    { "id": "limbo_fungus_b", "archetype": "limbo_fungus_light", "pos": [120.0, -42.33, -650.0], "light_intensity": 0.4, "light_range": 8.0 },
+    { "id": "limbo_fungus_b_companion", "archetype": "limbo_fungus_light", "pos": [127.0, -42.33, -657.0], "light_intensity": 0.25, "light_range": 5.0 },
+
+    { "id": "limbo_campfire_c", "archetype": "limbo_warm_light", "pos": [-130.0, -42.33, -820.0], "light_intensity": 0.5, "light_range": 10.0 },
+    { "id": "limbo_campfire_c_companion", "archetype": "limbo_warm_light", "pos": [-122.0, -42.33, -825.0], "light_intensity": 0.30, "light_range": 5.5 },
+
+    { "id": "limbo_fungus_c", "archetype": "limbo_fungus_light", "pos": [30.0, -42.33, -870.0], "light_intensity": 0.4, "light_range": 7.0 },
+    { "id": "limbo_fungus_c_companion", "archetype": "limbo_fungus_light", "pos": [38.0, -42.33, -863.0], "light_intensity": 0.25, "light_range": 5.0 }
+  ],
+
   "_territory_note": "Single territory volume covering the entire Limbo disc. Centered at the disc center (0, ?, -621.15), extents 300m radius approximated as a 320m XZ AABB (overshoots into void at corners but the void claims no other region, so position queries near the rim return 'limbo' correctly). Y range covers the disc floor at -43.13 down a few meters (in case actors are ever knocked-down below) and up to the ceiling at Y=-7. Priority 0; chapel_interior's descent corridor volume sits at priority 0 too but is much smaller (~4600 m^3 vs limbo's ~3 million m^3) so smallest-wins gives chapel_interior the corridor positions and limbo gets the rest.",
   "territory": [
     {

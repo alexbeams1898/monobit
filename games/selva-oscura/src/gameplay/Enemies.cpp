@@ -245,6 +245,96 @@ void applyArchetypeHurtboxes(Actor& a)
 //     -> Examine-kind, opens one-line examine box.
 // is_npc takes precedence per the "named NPCs have dialog,
 // anonymous beings have examine" doctrine.
+// Resolve the player-visible label for an NPC's Talk interactable.
+// Preference order: display_name_key (lang) > display_name (literal) >
+// spawn_decl_id (designer fallback).
+std::string resolveNpcTalkLabel(const Actor& a, const std::string& sdid)
+{
+    if (!a.archetype->display_name_key.empty())
+        return selva::lang::resolve(a.archetype->display_name_key);
+    if (!a.archetype->display_name.empty())
+        return a.archetype->display_name;
+    return sdid;
+}
+
+// Build the NPC Talk Decl. Talk_requires_flag gates availability
+// (empty = always talkable). Snaps the NPC's facing toward the player
+// at dialog-open.
+selva::interact::Decl buildNpcTalkDecl(const Actor& a, const std::string& sdid)
+{
+    const std::string label = resolveNpcTalkLabel(a, sdid);
+    const std::string required_flag = a.archetype->talk_requires_flag;
+    selva::interact::Decl idecl;
+    idecl.kind = selva::interact::Kind::Talk;
+    idecl.position = [sdid]()
+    {
+        const Actor* act = actorByDeclId(sdid);
+        return act != nullptr ? act->pos : glm::vec3(0.0f);
+    };
+    constexpr float kDefaultTalkRangeMeters = 2.5f;
+    idecl.range_meters = (a.archetype->interact_range_meters > 0.0f)
+                             ? a.archetype->interact_range_meters
+                             : kDefaultTalkRangeMeters;
+    idecl.label = label;
+    idecl.on_interact = [sdid]()
+    {
+        Actor* act = actorByDeclId(sdid);
+        if (act != nullptr)
+            act->turn_intent_yaw = yawFacing(act->pos, player().pos);
+        selva::dialog::begin(sdid);
+    };
+    idecl.available = [required_flag]()
+    {
+        if (selva::text::active())
+            return false;
+        return required_flag.empty() || selva::hasFlag(required_flag);
+    };
+    return idecl;
+}
+
+// Resolve the player-visible label for an Examine interactable.
+// Preference order: examine_label_key > display_name_key > display_name > empty.
+std::string resolveExamineLabel(const Actor& a)
+{
+    if (!a.archetype->examine_label_key.empty())
+        return selva::lang::resolve(a.archetype->examine_label_key);
+    if (!a.archetype->display_name_key.empty())
+        return selva::lang::resolve(a.archetype->display_name_key);
+    return a.archetype->display_name;
+}
+
+// Build the Examine Decl for a non-NPC actor. Text resolution: lang
+// key wins, literal fallback. Examine fires an insight notify via the
+// actor's archetype id.
+selva::interact::Decl buildExamineDecl(const Actor& a, const std::string& sdid)
+{
+    selva::interact::Decl idecl;
+    idecl.kind = selva::interact::Kind::Examine;
+    idecl.position = [sdid]()
+    {
+        const Actor* act = actorByDeclId(sdid);
+        return act != nullptr ? act->pos : glm::vec3(0.0f);
+    };
+    constexpr float kDefaultExamineRangeMeters = 2.0f;
+    idecl.range_meters = (a.archetype->interact_range_meters > 0.0f)
+                             ? a.archetype->interact_range_meters
+                             : kDefaultExamineRangeMeters;
+    idecl.label = resolveExamineLabel(a);
+    idecl.on_interact = [sdid]()
+    {
+        const Actor* act = actorByDeclId(sdid);
+        if (act == nullptr || act->archetype == nullptr)
+            return;
+        const std::string text = act->archetype->examine_text_key.empty()
+                                     ? act->archetype->examine_text
+                                     : selva::lang::resolve(act->archetype->examine_text_key);
+        selva::text::beginExamine(text);
+        selva::insight::notifyExamined(act->archetype->id);
+    };
+    idecl.available = []() { return !selva::text::active(); };
+    return idecl;
+}
+
 void applyArchetypeInteractable(Actor& a)
 {
     if (a.interactable_id != 0)
@@ -257,109 +347,12 @@ void applyArchetypeInteractable(Actor& a)
     const std::string sdid = a.spawn_decl_id;
     if (a.is_npc)
     {
-        // Label preference order:
-        //   1. Language-map resolve via display_name_key (tier-gated;
-        //      preferred for any NPC whose name might reveal at a
-        //      higher tier).
-        //   2. Literal display_name field (fallback for NPCs whose
-        //      name is identical at every tier, or pre-language-map
-        //      authoring).
-        //   3. spawn_decl_id (designer identifier; player-visible only
-        //      if both fields are empty -- author bug).
-        std::string label;
-        if (!a.archetype->display_name_key.empty())
-            label = selva::lang::resolve(a.archetype->display_name_key);
-        else if (!a.archetype->display_name.empty())
-            label = a.archetype->display_name;
-        else
-            label = sdid;
-        const std::string required_flag = a.archetype->talk_requires_flag;
-        selva::interact::Decl idecl;
-        idecl.kind = selva::interact::Kind::Talk;
-        idecl.position = [sdid]()
-        {
-            const Actor* act = actorByDeclId(sdid);
-            return act != nullptr ? act->pos : glm::vec3(0.0f);
-        };
-        constexpr float kDefaultTalkRangeMeters = 2.5f;
-        idecl.range_meters = (a.archetype->interact_range_meters > 0.0f)
-                                 ? a.archetype->interact_range_meters
-                                 : kDefaultTalkRangeMeters;
-        idecl.label = label;
-        idecl.on_interact = [sdid]()
-        {
-            // Snap the NPC's facing toward the player at dialog-open.
-            // The yaw-acknowledgment overlay handles the gradual turn
-            // when the player walks past; this is the one-shot
-            // 'address the player who just engaged me' snap.
-            // turn_intent_yaw is the target the locomotion-yaw lerps
-            // toward; the lerp is fast enough this reads as a snap.
-            Actor* act = actorByDeclId(sdid);
-            if (act != nullptr)
-                act->turn_intent_yaw = yawFacing(act->pos, player().pos);
-            selva::dialog::begin(sdid);
-        };
-        // Story-gated talk: the Guide is silent inside the chapel until
-        // the post-Lupa rescue scene completes (his archetype declares
-        // talk_requires_flag = "signing_committed"). NPCs without the
-        // field stay always-talkable (empty string).
-        idecl.available = [required_flag]()
-        {
-            if (selva::text::active())
-                return false;
-            return required_flag.empty() || selva::hasFlag(required_flag);
-        };
-        a.interactable_id = selva::interact::registerInteractable(std::move(idecl));
+        a.interactable_id = selva::interact::registerInteractable(buildNpcTalkDecl(a, sdid));
         return;
     }
-    // Actor is examinable if it has authored EITHER a literal
-    // examine_text OR a language-map key (examine_text_key). The
-    // lang-map path wins at resolve time; literal is fallback.
     if (!a.archetype->examine_text.empty() || !a.archetype->examine_text_key.empty())
     {
-        // Label preference order:
-        //   1. examine_label_key (lang-gated, preferred)
-        //   2. display_name_key (lang-gated NPC name as fallback)
-        //   3. display_name (literal NPC name)
-        //   4. empty (renders as bare "[E] Examine" -- noun-stripped per pillar)
-        std::string label;
-        if (!a.archetype->examine_label_key.empty())
-            label = selva::lang::resolve(a.archetype->examine_label_key);
-        else if (!a.archetype->display_name_key.empty())
-            label = selva::lang::resolve(a.archetype->display_name_key);
-        else if (!a.archetype->display_name.empty())
-            label = a.archetype->display_name;
-        selva::interact::Decl idecl;
-        idecl.kind = selva::interact::Kind::Examine;
-        idecl.position = [sdid]()
-        {
-            const Actor* act = actorByDeclId(sdid);
-            return act != nullptr ? act->pos : glm::vec3(0.0f);
-        };
-        constexpr float kDefaultExamineRangeMeters = 2.0f;
-        idecl.range_meters = (a.archetype->interact_range_meters > 0.0f)
-                                 ? a.archetype->interact_range_meters
-                                 : kDefaultExamineRangeMeters;
-        idecl.label = label;
-        idecl.on_interact = [sdid]()
-        {
-            const Actor* act = actorByDeclId(sdid);
-            if (act == nullptr || act->archetype == nullptr)
-                return;
-            // Text resolution: lang key wins, literal fallback.
-            const std::string text = act->archetype->examine_text_key.empty()
-                                         ? act->archetype->examine_text
-                                         : selva::lang::resolve(act->archetype->examine_text_key);
-            selva::text::beginExamine(text);
-            // Insight: examining an actor is the same event class as
-            // examining a static mesh -- the insight system uses the
-            // ARCHETYPE id as the trigger key (per the doctrine: every
-            // examine fires an insight node). A node whose 'examined'
-            // trigger names this archetype id will fire on tick.
-            selva::insight::notifyExamined(act->archetype->id);
-        };
-        idecl.available = []() { return !selva::text::active(); };
-        a.interactable_id = selva::interact::registerInteractable(std::move(idecl));
+        a.interactable_id = selva::interact::registerInteractable(buildExamineDecl(a, sdid));
     }
 }
 
@@ -736,6 +729,48 @@ void tickPoiseRefill(Actor& a, float dt)
 // stale decision is the worst-case latency between a perception
 // change and an intent change.
 //
+// Yaw-acknowledgment overlay (Souls-style "the NPC notices you walking
+// by"). Runs after the BT tick so it only overrides yaw when the actor
+// is passive. Caps to archetype->acknowledgment_max_angle_radians so
+// the NPC can't turn past their natural viewing arc -- reads as
+// natural attentiveness, not tracking.
+void tickYawAcknowledgment(Actor& a)
+{
+    a.yaw_intent_from_acknowledgment = false;
+    if (a.archetype == nullptr || a.archetype->face_player_range_meters <= 0.0f)
+        return;
+    if (a.perception.awareness >= Awareness::Combat || !std::isnan(a.scripted_target_pos.x))
+        return;
+    const Actor& pc = player();
+    const float dx = pc.pos.x - a.pos.x;
+    const float dz = pc.pos.z - a.pos.z;
+    const float dist_sq = dx * dx + dz * dz;
+    const float range = a.archetype->face_player_range_meters;
+    if (dist_sq > range * range)
+        return;
+    const float desired = yawFacing(a.pos, pc.pos);
+    const float max_angle = a.archetype->acknowledgment_max_angle_radians;
+    if (max_angle <= 0.0f)
+    {
+        a.turn_intent_yaw = desired;
+        a.yaw_intent_from_acknowledgment = true;
+        return;
+    }
+    constexpr float kPi = 3.1415927f;
+    constexpr float kTwoPi = 6.2831853f;
+    float delta = desired - a.spawn_yaw;
+    while (delta > kPi)
+        delta -= kTwoPi;
+    while (delta < -kPi)
+        delta += kTwoPi;
+    if (delta > max_angle)
+        delta = max_angle;
+    else if (delta < -max_angle)
+        delta = -max_angle;
+    a.turn_intent_yaw = a.spawn_yaw + delta;
+    a.yaw_intent_from_acknowledgment = true;
+}
+
 // Tree binding: actor.archetype->tree_id selects which tree runs.
 // "humanoid_basic" is the default and covers every humanoid in the
 // bestiary until a specific archetype demands its own builder. If
@@ -761,61 +796,7 @@ void tickEnemyDecision(Actor& a, const selva::tuning::Tunables& tun)
     if (tree != nullptr)
         tree->tick(a, tun);
 
-    // Yaw-acknowledgment overlay (Souls-style "the NPC notices you
-    // walking by"). Runs AFTER the tree so it only overrides yaw
-    // when the actor is in a passive state: no active scripted-walk
-    // leg, no Combat-tier perception, and the archetype opted in via
-    // face_player_range_meters. Idle leaf set turn_intent_yaw =
-    // spawn_yaw; we replace that with a CAPPED face-player turn,
-    // and mark the actor so stepYawTowardIntent picks the slow
-    // acknowledgment turn-rate (full rate would feel mechanical).
-    //
-    // The angle cap is the load-bearing piece: humans can't turn
-    // past their own shoulders without their body following. Past
-    // the cap the NPC just holds at the cap or returns to spawn_yaw
-    // -- the player walking around behind them no longer drags the
-    // head in a 360. Reads as natural attentiveness, not tracking.
-    a.yaw_intent_from_acknowledgment = false;
-    if (a.archetype != nullptr && a.archetype->face_player_range_meters > 0.0f &&
-        a.perception.awareness < Awareness::Combat && std::isnan(a.scripted_target_pos.x))
-    {
-        const Actor& pc = player();
-        const float dx = pc.pos.x - a.pos.x;
-        const float dz = pc.pos.z - a.pos.z;
-        const float dist_sq = dx * dx + dz * dz;
-        const float range = a.archetype->face_player_range_meters;
-        if (dist_sq <= range * range)
-        {
-            // Desired yaw: face the player. Then CLAMP to spawn_yaw
-            // +/- acknowledgment_max_angle_radians so the NPC can't
-            // turn past their natural viewing arc. If the player is
-            // outside that arc, the NPC holds at the cap (closest
-            // edge of the arc).
-            const float desired = yawFacing(a.pos, pc.pos);
-            const float max_angle = a.archetype->acknowledgment_max_angle_radians;
-            if (max_angle > 0.0f)
-            {
-                // Wrap the delta-from-spawn into [-pi, pi].
-                constexpr float kPi = 3.1415927f;
-                constexpr float kTwoPi = 6.2831853f;
-                float delta = desired - a.spawn_yaw;
-                while (delta > kPi)
-                    delta -= kTwoPi;
-                while (delta < -kPi)
-                    delta += kTwoPi;
-                if (delta > max_angle)
-                    delta = max_angle;
-                else if (delta < -max_angle)
-                    delta = -max_angle;
-                a.turn_intent_yaw = a.spawn_yaw + delta;
-            }
-            else
-            {
-                a.turn_intent_yaw = desired;
-            }
-            a.yaw_intent_from_acknowledgment = true;
-        }
-    }
+    tickYawAcknowledgment(a);
 
     if (selva::debug::flags().ai_decision_log)
     {

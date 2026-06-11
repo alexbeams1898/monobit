@@ -102,6 +102,20 @@ bool hasInsight(const std::string& node);
 bool setInsight(const std::string& node);
 bool clearInsight(const std::string& node);
 
+// Per cognition-system v1: derive the displayed stat value from a
+// raw cognitive-engagement counter. stat = 1 + floor(log2(growth+1)).
+// First engagement -> 2; 3 events -> 3; 7 events -> 4; 15 events -> 5;
+// 31 events -> 6; ... Diminishing returns built into the curve.
+int computeCognitiveStat(std::uint32_t growth);
+
+// Grow the named cognitive counter on the active profile by `amount`
+// (default 1). Recomputes the corresponding Stats field on the
+// player actor in-place so the UI sees the new value next frame.
+// Three named counters: "perception" / "cognition" / "intelligence".
+void growPerception(std::uint32_t amount = 1);
+void growCognition(std::uint32_t amount = 1);
+void growIntelligence(std::uint32_t amount = 1);
+
 // Per-NPC encounter record. Lazily creates the entry on first access
 // so callers never null-check. Mutating the returned reference
 // persists through the next save. nullptr profile = returns a static

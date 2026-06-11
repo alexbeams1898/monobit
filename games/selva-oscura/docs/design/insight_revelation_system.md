@@ -107,9 +107,9 @@ everywhere.
 
 ## Why this matters cosmologically
 
-- The Vagrant is mute and hollow. They don't have vocabulary for
-  what they're seeing. UI / dialog / items that LABEL things they
-  can't yet name is lying. Progressive naming is honest.
+- The Vagrant arrives without vocabulary for what he's seeing. UI /
+  dialog / items that LABEL things he can't yet name is lying.
+  Progressive naming is honest.
 - Per [[project_selva_epistemic_doctrine_2026_05_31]] — Selva does
   not tell the player they are in Hell. Selva also should not tell
   the player what their resources are, what their stats mean, or
@@ -118,9 +118,6 @@ everywhere.
   invisible to its participants. The Vagrant gains the framework
   for understanding only through play. Every revelation channel
   mirrors that.
-- Per [[project_vagrant_silent_vessel_doctrine]] — the Vagrant
-  doesn't speak; the world reveals itself through what the player
-  DOES, not what NPCs explain.
 
 ## The shared backend (load-bearing architectural commitment)
 
@@ -366,8 +363,8 @@ in the world have access to them:
 
 But **sangue specifically** never reveals because **no one in the
 cosmology has the position to name the substance itself**. The
-Vagrant is mute and hollow. The Guide doesn't know what he is.
-NPCs are damned souls who know they're suffering but not why.
+Vagrant arrives without that vocabulary. The Guide doesn't know what
+he is. NPCs are damned souls who know they're suffering but not why.
 Beatrice doesn't speak. None of them have the cosmological vocabulary.
 
 The substance can be DESCRIBED — what it does, where it goes, what
@@ -566,6 +563,95 @@ Selva's cosmology:
 Practical reference for adding strings + nodes to the shipped v1
 system.
 
+### The implied-lesson doctrine (LOCKED 2026-06-09)
+
+This is the load-bearing authoring discipline that governs every
+lang map string and every insight node in the game. Read it before
+writing any player-facing prose.
+
+**The principle:** an insight unlock is not "the player encountered
+a thing." It is **the specific cognitive conclusion a paying-
+attention person would draw from the encounter, given everything
+else they have already concluded.**
+
+The trigger fires when an event happens. The lang-map text that
+promotes is the player's articulation of *what that event taught
+them, in their voice, with only the vocabulary they have earned*.
+
+**Three questions for every authored unlock:**
+
+For each new insight node + its lang strings, the author must
+answer in writing:
+
+1. **What did the player just do or just see?** (the trigger event)
+2. **What is already in their head when they did or saw it?** (the
+   prerequisite insight state — what else has fired)
+3. **Given #1 and #2, what is the smallest, most operational thing
+   a person who had been paying attention would conclude?** (the
+   tier-N text that promotes)
+
+If the tier-N text says more than #3 — uses cosmology vocabulary
+the player has no business knowing yet, asserts framing the player
+could not derive from the encounter alone — it is overpromoted and
+must be rewritten.
+
+**Worked example: first kill.**
+
+- *What did the player do?* Struck a thing. The thing died.
+  Something moved from it to them. A counter that wasn't there
+  before appeared on the HUD.
+- *What was already in their head?* Nothing relevant. This is the
+  Vagrant's first kill; no prior insights about absorption / sangue
+  / vessel exist.
+- *What would they conclude?* That killing a thing yields some
+  count. They don't know what the count is, where it goes, or what
+  it does — only that the act of killing produces it.
+
+Wrong tier-1: "The sangue of the felled accrues in thy vessel."
+That uses three terms (sangue, felled, vessel) the player has not
+earned.
+
+Right tier-1: "Killing gave me a count." Operational. The player's
+voice. No cosmology asserted.
+
+The cosmology terms (sangue, vessel, riversato) arrive only when
+other insights have fired that teach them — usually through Guide
+naming, examined-thing reveals, or item-text gates per the existing
+multi-channel unlock doctrine.
+
+**Worked example: examining the Acheron pile after watching the
+feeding cycle.**
+
+- *What did the player do?* Approached the heap of person-shapes
+  on the shore and looked at it.
+- *What was already in their head?* The player has already watched
+  larvae crawl out of the river, has examined a fresh larva, has
+  watched aged larvae feed on dead ones. The feeding-cycle insight
+  has fired.
+- *What would they conclude?* That this is where the things they
+  saw earlier accumulate. They saw the feeding; now they see the
+  source of the food.
+
+The tier-1 here is not "souls land at Acheron and dissolve" — the
+player has no concept of "soul" or "Acheron" yet. It is something
+like "this is where they pile up; the feeders take from this." The
+player's plain accounting of what they have now seen.
+
+**Why this matters:** without the implied-lesson discipline,
+authoring drifts toward exposition — explaining the world TO the
+player through tier-1 text rather than letting the player articulate
+what they have come to understand. The doctrine forces the author
+to write in the player's voice at their current state, not the
+designer's voice from omniscience.
+
+**How this composes with the multi-channel + tier system:** the
+same insight node may be reachable from multiple triggers. The
+implied-lesson differs by which trigger fired and what state the
+player was in when it fired. Authors may need to write multiple
+tier-1 variants for the same node, one per plausible discovery
+path. The lang map can gate variants on additional prerequisite
+nodes (`unlock_node_tier_1` + an additional prerequisite list).
+
 ### Adding a new player-facing string
 
 1. **Pick a stable key.** Convention: `<domain>.<thing>.<aspect>`. Domain is
@@ -605,6 +691,42 @@ system.
    JSON file). If you see the wrong tier, the unlock node isn't firing
    (check `selva-oscura.log` for `[insight] node fired:` lines).
 
+### Categories (LOCKED 2026-06-09)
+
+Every insight node declares a category. Categories drive the Mind
+sub-page on the pause-menu Vessel tab: fired insights group under
+their category heading so the player can see the shape of their
+accumulated understanding.
+
+**Three categories (start; add more only when content genuinely
+doesn't fit):**
+
+- `world` — what the Vagrant has come to understand about the place
+  he's in (the pile, the larvae, the wood, future encounters).
+- `self` — what he's come to understand about his own form (kills
+  yield count, he holds substance, his body changes when he
+  commits, etc.).
+- `others` — what he's come to understand about specific beings he
+  has met (the Guide, future NPCs, named keepers).
+
+**Schema:** add `"category": "world" | "self" | "others"` as a
+top-level field on the node JSON, alongside `trigger` and
+`_comment`. Missing or unknown values log loudly and the node will
+not appear on the Mind sub-page.
+
+```json
+"knows_arrival_queue": {
+  "category": "world",
+  "trigger": { "kind": "examined", "subject": "larva_fresh" }
+}
+```
+
+The Mind sub-page itself tier-gates its presentation in the future
+(currently flat per-category headers). The category set is closed
+for v1; expanding it requires a doctrine update because surfaces
+that render categorized insight (Mind, future region overviews,
+etc.) hardcode the three values.
+
 ### Adding a new insight node
 
 1. **Pick a node id.** Convention: `knows_<thing>` for name-reveals (Guide,
@@ -618,14 +740,18 @@ system.
    ```json
    "knows_my_thing": {
      "_comment": "Fires when X happens.",
+     "category": "world",
      "trigger": {
        "kind": "examined",
-       "mesh_debug_name": "my_thing"
+       "subject": "my_thing"
      }
    }
    ```
-   Pick the trigger kind from the v1 table above. Each kind has its own
-   required fields; missing fields log loudly and the node is skipped on load.
+   Pick the trigger kind from the v1 table above. Pick the category
+   from the three-value set above. Each trigger kind has its own
+   required fields; missing fields log loudly and the node is
+   skipped on load. Missing category logs but still loads (the node
+   just won't appear on the Mind sub-page).
 3. **Verify the trigger source is wired.** Most trigger sources are already
    hooked into the event publishers (dialog::begin, examine on_interact,
    fireEnemyDeath). If you're triggering on a new kind of event, add a
@@ -782,6 +908,41 @@ Use the triggered pattern when:
   divergence depth are all genuinely open. This doc captures the
   shape; the law is still being written.
 
+## Insight unlocks grow the cognitive stats
+
+Insight node firings drive Mind-section stat growth. The mapping is
+not direct ("each insight = +N to Mind pool") but mediated through
+the three cognitive stats:
+
+- **New observation firing** -> grows **Perception**.
+- **New inference deduced** (any state, warranted or not) -> grows
+  **Cognition**. Cognition's value drives the Mind resource pool's
+  MAX, so deducing inferences grows the resource pool indirectly.
+- **Warranted inference** (player's chosen reading matches the
+  evidence they linked) -> grows **Intelligence** in addition to
+  the Cognition gain.
+
+Re-firing a node gives nothing (the insight system gates re-firings
+via the `examined:<subject>` flag). Reconsidering an inference
+(changing its reading) cascades through downstream child inferences
+and removes the cognitive-stat gains those children contributed; the
+player can rebuild and earn back the growth.
+
+**Mind is the Vagrant's literal cognitive bandwidth** -- not MP, not
+a magic-mana pool. Current depletes from cognitive-act spending;
+current recovers at rest sites / vestigia. The MAX is the part that
+grows from learning -- specifically from Cognition stat growth, per
+the cognition system.
+
+See [cognition-system.md](cognition-system.md) for the inference /
+reading / warrant mechanics, the cascade rules, and the precise
+growth formulas. The insight revelation system (this doc) addresses
+language tier-promotion; cognition-system.md addresses the
+cognitive-stat system that consumes the same insight-firing events.
+
+This is the mechanical expression of the implied-lesson doctrine.
+Paying attention to the world rewards capacity to act on the world.
+
 ## Open questions for refinement
 
 1. **Tier count per node.** Two? Three? Per-node variable? Three is
@@ -823,8 +984,10 @@ Use the triggered pattern when:
   the insight unlocks
 - [[project_imprint_handle_required_for_sangue]] — class-asymmetric
   cosmology that motivates the per-class delivery pattern
-- [[project_vagrant_silent_vessel_doctrine]] — Vagrant is mute,
-  reinforces the "no labels until earned" rule
+- [[project_vagrant_speaks_player_chooses]] — Vagrant speaks; the
+  player chooses what he says. The "no labels until earned" rule
+  still holds because the Vagrant arrives without the cosmological
+  vocabulary, not because he can't speak.
 - [[project_selva_leveling_offerings]] — vestigia-mediated level-up
   system, plausible insight unlock site
 - [[project_soul_larvae_cosmology]] — the first system where sangue

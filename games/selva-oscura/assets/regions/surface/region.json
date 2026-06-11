@@ -19,7 +19,13 @@
       "path": "assets/world/static_meshes/dead_lonza/dead_lonza.glb",
       "world_origin": [-1.36, 22.0, -199.0],
       "surface_tag": "Architecture",
-      "debug_name": "dead_lonza"
+      "debug_name": "dead_lonza",
+      "examine_label_key": "world.dead_lonza.examine_label",
+      "examine_text_keys": [
+        "world.dead_lonza.examine_text.tier_0",
+        "world.dead_lonza.examine_text.tier_1"
+      ],
+      "interact_range_meters": 3.0
     }
   ],
   "terrain_modifiers": [
@@ -100,6 +106,77 @@
       "arena_half_extents": [18.0, 10.0, 16.0]
     }
   ],
+
+  "_props_note": "Authored single-instance props -- the four pines framing the chapel facade (outer front pair + inner back pair). Migrated from Collision.cpp::initHubRegion 2026-06-09 to test the prop authoring pipeline end-to-end. Scatter-driven forest trees moved to `prop_scatter[]` below 2026-06-09. Coordinates + scales match the C++ literal exactly: outer pair scale=0.9 at Z=-207; inner pair scale=0.6 at Z=-210; X offsets +/-5.5.",
+  "props": [
+    {
+      "id": "chapel_facade_pine_front_west",
+      "archetype": "pine_a",
+      "pos": [-5.5, 0.0, -207.0],
+      "scale": 0.9
+    },
+    {
+      "id": "chapel_facade_pine_front_east",
+      "archetype": "pine_a",
+      "pos": [5.5, 0.0, -207.0],
+      "scale": 0.9
+    },
+    {
+      "id": "chapel_facade_pine_back_west",
+      "archetype": "pine_a",
+      "pos": [-5.5, 0.0, -210.0],
+      "scale": 0.6
+    },
+    {
+      "id": "chapel_facade_pine_back_east",
+      "archetype": "pine_a",
+      "pos": [5.5, 0.0, -210.0],
+      "scale": 0.6
+    }
+  ],
+
+  "_prop_scatter_note": "Procgen scatter rules for the surface wood. Migrated 2026-06-09 from Collision.cpp::populateHubTrees + populateAisle. Two passes match the legacy ordering: aisle pass first (dense walkway approach), disc pass second (background scatter across the wood). Seed 894622 is the legacy kHubSeed (0xDA17E); preserving it means the tree layout stays bit-for-bit identical across the migration. Carve-outs encode the walkway corridor, plateau, and clear-view strip. The disc-mode terrain_region='selva_inner' constraint replicates the legacy filter that keeps trees out of Limbo etc.",
+  "prop_scatter": [
+    {
+      "_comment": "Aisle pass: dense corridor along the approach from spawn to colle, mirrored both sides. Trees skip the walkway interior and the plateau.",
+      "mode": "aisle",
+      "archetypes": ["pine_a", "pine_b", "pine_c", "pine_short"],
+      "seed": 894622,
+      "z_start": -5.0,
+      "z_end": -110.0,
+      "count_per_side": 30,
+      "x_band_inner": 5.5,
+      "x_band_outer": 14.0,
+      "x_jitter": 2.5,
+      "z_jitter": 1.5,
+      "radius_range": [0.28, 0.55],
+      "exclude_aabb_xz": [
+        { "_comment": "walkway corridor", "x_min": -4.0, "x_max": 4.0, "z_min": -110.0, "z_max": -5.0 },
+        { "_comment": "plateau", "x_min": -35.0, "x_max": 35.0, "z_min": -230.0, "z_max": -190.0 }
+      ]
+    },
+    {
+      "_comment": "Disc pass: background scatter through the wider wood. Disc origin biased to the plateau midpoint so flank density tracks the colle. Excludes the walkway, plateau, and clear-view strip behind the plateau; restricted to selva_inner terrain (no scatter onto Limbo or future deeper regions). min_distance_from_origin keeps a breathing circle around the wake-zone.",
+      "mode": "disc",
+      "archetypes": ["pine_a", "pine_b", "pine_c", "pine_short"],
+      "seed": 894623,
+      "origin_xz": [0.0, -210.0],
+      "boundary_radius": 230.0,
+      "count": 80,
+      "max_attempts": 8000,
+      "radius_range": [0.28, 0.55],
+      "terrain_region": "selva_inner",
+      "exclude_aabb_xz": [
+        { "_comment": "walkway corridor", "x_min": -4.0, "x_max": 4.0, "z_min": -110.0, "z_max": -5.0 },
+        { "_comment": "plateau", "x_min": -35.0, "x_max": 35.0, "z_min": -230.0, "z_max": -190.0 },
+        { "_comment": "clear-view strip behind plateau", "x_min": -500.0, "x_max": 500.0, "z_min": -290.0, "z_max": -230.0 }
+      ],
+      "exclude_circle_xz": [
+        { "_comment": "wake-zone breathing circle at world origin (legacy x*x+z*z<9 check)", "center_xz": [0.0, 0.0], "radius": 3.0 }
+      ]
+    }
+  ],
+
   "_territory_note": "Single territory volume covering the entire selva surface (wood + colle plateau + chapel exterior). Large XZ extent + tall Y range. chapel_interior's chapel-building volume sits nested inside; smallest-wins gives chapel positions to chapel_interior.",
   "territory": [
     {

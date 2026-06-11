@@ -22,7 +22,7 @@
       "speaker": "guide",
       "line": "(TODO author: Guide tells how he came to the wood -- recent arrival, found Lonza's carcass, poisoned it for Lupa to eat, waited in the chapel. 'I am sorry for it.' Per story.md Beat 3 + [[project_guide_pawn_doctrine_2026_06_01]].)",
       "choices": [
-        { "id": "continue", "label": "Continue.", "next_topic": "first_meeting_c" }
+        { "id": "continue", "label": "Continue.", "next_topic": "first_meeting_c", "on_select": "guide_confess_carcass" }
       ]
     },
     {

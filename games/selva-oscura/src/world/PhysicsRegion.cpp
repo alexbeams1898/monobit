@@ -188,115 +188,13 @@ void registerChapelStructureFootprints()
     }
 }
 
-// Limbo's terrain modifiers (Acheron trench) moved to
-// surface/region.json's terrain_modifiers array per the Commit 4
-// dual-source-of-truth fix. When the limbo region.json lands in
-// Commit 5, the trench moves into limbo/region.json (where it
-// conceptually belongs).
-
-void registerLimboLights()
-{
-    using engine::world::LightSource;
-
-    // Limbo plateau top (must match surface/region.json terrain
-    // y_offset for the "limbo" terrain region: -43.13).
-    constexpr float kLimboTopY = -43.13f;
-    // Sit each light ~0.8m above the ground — waist-height for a
-    // brazier, lap-height for a fungus bowl. Authored as a single Y
-    // for v1; future per-source meshes (lamp / brazier / fungus) will
-    // each carry their own emitter height.
-    constexpr float kLightY = kLimboTopY + 0.8f;
-
-    // FAR shore = south of the Acheron trench (trench at Z=-500,
-    // bank ends ~Z=-505). All sources sit at Z = -520 .. -880 (the
-    // 360m-deep playable plain south of the river). The NEAR shore
-    // (Z ~-321 to -495) where the descent stair lets out stays
-    // unlit, so the player must craft a torch to see — and the
-    // visible lights across the river read as the soul congregation
-    // to head toward. Future Noble Castle placeholder will sit
-    // roughly at the center of this lit zone.
-    //
-    // Tag region_name = "limbo" so the per-region filter in
-    // WorldRenderer drops these for Selva-surface draws.
-
-    auto makeLight = [&](float x, float z, glm::vec3 color, float intensity, float radius,
-                         float flicker_amp, float flicker_freq, const char* name)
-    {
-        LightSource L;
-        L.position = glm::vec3(x, kLightY, z);
-        L.color = color;
-        L.intensity = intensity;
-        L.radius = radius;
-        L.flicker_amp = flicker_amp;
-        L.flicker_freq = flicker_freq;
-        L.region_name = "limbo";
-        L.debug_name = name;
-        engine::world::registerLight(L);
-    };
-
-    constexpr glm::vec3 kWarm{1.00f, 0.55f, 0.22f};   // campfires / oil lamps
-    constexpr glm::vec3 kFungus{0.40f, 0.85f, 0.45f}; // bioluminescent fungus
-    constexpr float kFireAmp = 0.12f;
-    constexpr float kFireFreq = 2.5f;
-    constexpr float kFungusAmp = 0.06f;
-    constexpr float kFungusFreq = 0.9f;
-
-    // Scattered "encampments" weighted toward the future Castle area
-    // (mid-far Limbo). Each main light has a smaller companion 4-15m
-    // away so they read as gatherings, not isolated points.
-    makeLight(-40.0f, -560.0f, kWarm, 0.8f, 11.0f, kFireAmp, kFireFreq, "limbo_campfire_a");
-    makeLight(-32.0f, -566.0f, kWarm, 0.4f, 6.0f, kFireAmp, kFireFreq * 1.1f,
-              "limbo_campfire_a_companion");
-
-    makeLight(60.0f, -620.0f, kWarm, 0.7f, 10.0f, kFireAmp, kFireFreq, "limbo_campfire_b");
-    makeLight(67.0f, -615.0f, kWarm, 0.35f, 5.5f, kFireAmp, kFireFreq * 0.9f,
-              "limbo_campfire_b_companion");
-
-    makeLight(-90.0f, -700.0f, kFungus, 0.5f, 9.0f, kFungusAmp, kFungusFreq, "limbo_fungus_a");
-    makeLight(-83.0f, -707.0f, kFungus, 0.30f, 6.0f, kFungusAmp, kFungusFreq * 1.2f,
-              "limbo_fungus_a_companion");
-
-    makeLight(80.0f, -740.0f, kWarm, 0.6f, 12.0f, kFireAmp, kFireFreq, "limbo_brazier_a");
-    makeLight(86.0f, -732.0f, kFungus, 0.25f, 5.0f, kFungusAmp, kFungusFreq * 0.8f,
-              "limbo_brazier_a_fungus_neighbor");
-
-    makeLight(0.0f, -780.0f, kWarm, 1.0f, 16.0f, kFireAmp * 1.2f, kFireFreq * 0.85f,
-              "limbo_brazier_b");
-    makeLight(-9.0f, -772.0f, kWarm, 0.4f, 7.0f, kFireAmp, kFireFreq, "limbo_brazier_b_companion");
-    makeLight(12.0f, -786.0f, kFungus, 0.35f, 6.0f, kFungusAmp, kFungusFreq * 1.1f,
-              "limbo_brazier_b_fungus");
-
-    makeLight(120.0f, -650.0f, kFungus, 0.4f, 8.0f, kFungusAmp, kFungusFreq, "limbo_fungus_b");
-    makeLight(127.0f, -657.0f, kFungus, 0.25f, 5.0f, kFungusAmp, kFungusFreq * 1.3f,
-              "limbo_fungus_b_companion");
-
-    makeLight(-130.0f, -820.0f, kWarm, 0.5f, 10.0f, kFireAmp, kFireFreq, "limbo_campfire_c");
-    makeLight(-122.0f, -825.0f, kWarm, 0.30f, 5.5f, kFireAmp, kFireFreq * 1.15f,
-              "limbo_campfire_c_companion");
-
-    makeLight(30.0f, -870.0f, kFungus, 0.4f, 7.0f, kFungusAmp, kFungusFreq, "limbo_fungus_c");
-    makeLight(38.0f, -863.0f, kFungus, 0.25f, 5.0f, kFungusAmp, kFungusFreq * 0.95f,
-              "limbo_fungus_c_companion");
-}
+// Terrain modifiers + Limbo lights moved to region.json
+// (terrain_modifiers[] / props[]). StructureFootprints stay in C++
+// until vertical_profile gets a schema.
 
 void registerAuthoredWorld()
 {
-    // Chapel + Acheron terrain modifiers moved to
-    // surface/region.json's terrain_modifiers array (Commit 4 of the
-    // region rebuild). Authored as data, parsed by JsonRegion, and
-    // registered into the global modifier registry by
-    // loadAllRegionsRegister() at boot before initTerrain(). See
-    // [[feedback_dual_source_of_truth_is_the_bug]] for the doctrine.
-    //
-    // StructureFootprints (chapel body Hole + descent corridor in
-    // Limbo) stay in C++ -- they carry computed vertical-profile data
-    // (32 cells per footprint) that doesn't map cleanly to JSON yet.
-    // Promote when a JSON schema for footprints is needed.
-    //
-    // Lights are still authored in C++ too: no JSON schema exists yet,
-    // and there's no boot-ordering pressure to move them.
     registerChapelStructureFootprints();
-    registerLimboLights();
 }
 
 } // namespace selva::world::crypt_layout

@@ -1,6 +1,9 @@
 #include "AppStateGlobal.h"
 
+#include "gameplay/Actor.h"
+
 #include <algorithm>
+#include <cmath>
 
 namespace selva
 {
@@ -147,6 +150,64 @@ bool setInsight(const std::string& node)
 bool clearInsight(const std::string& node)
 {
     return clearInsight(activePlayerProfile(), node);
+}
+
+int computeCognitiveStat(std::uint32_t growth)
+{
+    // 1 + floor(log2(growth + 1)). 0 events -> 1, 1 -> 2, 3 -> 3, 7 -> 4,
+    // 15 -> 5, 31 -> 6, 63 -> 7, etc. Caps practically around 12-15
+    // for late-game grinders.
+    if (growth == 0)
+        return 1;
+    int s = 1;
+    std::uint32_t v = growth + 1;
+    while (v > 1)
+    {
+        v >>= 1;
+        ++s;
+    }
+    return s;
+}
+
+namespace
+{
+void syncCognitiveStatsToActor()
+{
+    PlayerProfile* p = activePlayerProfile();
+    if (p == nullptr)
+        return;
+    auto& a = selva::gameplay::player();
+    a.stats.per = computeCognitiveStat(p->perception_growth);
+    a.stats.cog = computeCognitiveStat(p->cognition_growth);
+    a.stats.intl = computeCognitiveStat(p->intelligence_growth);
+}
+} // namespace
+
+void growPerception(std::uint32_t amount)
+{
+    PlayerProfile* p = activePlayerProfile();
+    if (p == nullptr)
+        return;
+    p->perception_growth += amount;
+    syncCognitiveStatsToActor();
+}
+
+void growCognition(std::uint32_t amount)
+{
+    PlayerProfile* p = activePlayerProfile();
+    if (p == nullptr)
+        return;
+    p->cognition_growth += amount;
+    syncCognitiveStatsToActor();
+}
+
+void growIntelligence(std::uint32_t amount)
+{
+    PlayerProfile* p = activePlayerProfile();
+    if (p == nullptr)
+        return;
+    p->intelligence_growth += amount;
+    syncCognitiveStatsToActor();
 }
 
 selva::dialog::NpcEncounterState& npcEncounter(PlayerProfile* profile, const std::string& npc_id)

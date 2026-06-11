@@ -1,8 +1,10 @@
 {
-  "_comment": "Insight nodes triggered by examining the world. Every examinable surface in the game fires an insight node when examined for the first time -- per the locked authoring doctrine (docs/design/insight_revelation_system.md *Authoring guide*). These nodes (a) promote language-map entries on the examined thing itself, and (b) unlock Guide-side dialog topics where the Guide names what the Vagrant has seen.",
+  "_comment": "Insight nodes about the world. Two kinds: 'observation' nodes fire from triggers (examining a thing, talking to an NPC, etc); 'conclusion' nodes fire only when the player explicitly combines the required observations via the Mind sub-page deduction action. See docs/design/insight_revelation_system.md *Authoring guide* and *Observation vs conclusion*.",
 
   "knows_dissolved_souls": {
-    "_comment": "Fires on first examine of the acheron_pile (static mesh). Promotes the pile's own label + body text by one tier; unlocks a Guide-side reveal topic.",
+    "_comment": "Observation. Fires on first examine of the acheron_pile (static mesh). Promotes the pile's own label + body text by one tier; unlocks a Guide-side reveal topic.",
+    "kind": "observation",
+    "category": "world",
     "trigger": {
       "kind": "examined",
       "subject": "acheron_pile"
@@ -10,7 +12,9 @@
   },
 
   "knows_arrival_queue": {
-    "_comment": "Fires on first examine of a larva_fresh actor (fresh larva in the queue, crawling, hasn't reached a corpse to feed). Promotes the actor's tier-0 examine prose to a tier-1 reveal; unlocks a Guide-side reveal topic on the arrival-queue cosmology.",
+    "_comment": "Observation. Fires on first examine of a larva_fresh actor (fresh larva in the queue, crawling, hasn't reached a corpse to feed). Promotes the actor's tier-0 examine prose to a tier-1 reveal; unlocks a Guide-side reveal topic on the arrival-queue cosmology.",
+    "kind": "observation",
+    "category": "world",
     "trigger": {
       "kind": "examined",
       "subject": "larva_fresh"
@@ -18,10 +22,49 @@
   },
 
   "knows_feeding_cycle": {
-    "_comment": "Fires on first examine of a larva_aged_feeder actor (aged larva mid-feed on a second-deathed corpse). Promotes the feeder's tier-0 examine prose to a tier-1 reveal; unlocks a Guide-side reveal topic on the feeding-cycle cosmology.",
+    "_comment": "Observation. Fires on first examine of a larva_aged_feeder actor (aged larva mid-feed on a second-deathed corpse). Promotes the feeder's tier-0 examine prose to a tier-1 reveal; unlocks a Guide-side reveal topic on the feeding-cycle cosmology.",
+    "kind": "observation",
+    "category": "world",
     "trigger": {
       "kind": "examined",
       "subject": "larva_aged_feeder"
     }
+  },
+
+  "knows_wood_long_dead": {
+    "_comment": "Observation. Fires on first examine of any tree (all pine variants share insight_trigger_subject='tree'). The lesson the Vagrant draws per the implied-lesson doctrine: this wood died, and it died a long time ago. No fallen leaves underneath; no green; the silence. Operational, not cosmological. Foundational world-state node -- one of the first the player typically unlocks.",
+    "kind": "observation",
+    "category": "world",
+    "trigger": {
+      "kind": "examined",
+      "subject": "tree"
+    }
+  },
+
+  "knows_lonza_carcass": {
+    "_comment": "Observation. Fires on first examine of dead_lonza (examine count crosses 1). Implied lesson: the Vagrant has seen the half-eaten carcass at the foot of the slope; he knows another large beast lies dead here, and the wolf-like creature above had been feeding from it. Operational, no 'Lonza' name. Pairs with knows_lonza_carcass_tampered (second examine) which gates the Guide-dialog dig-deeper choice.",
+    "kind": "observation",
+    "category": "world",
+    "trigger": {
+      "kind": "flag_set",
+      "flag": "examined:dead_lonza:1"
+    }
+  },
+
+  "knows_lonza_carcass_tampered": {
+    "_comment": "Observation. Fires on SECOND examine of dead_lonza (examine count crosses 2). The Vagrant looks more closely and notices something off about the meat itself -- darkened streaks, a wrong-smelling sweetness. He does not yet know to call it poison. This observation is the gate on the dig-deeper Guide-dialog choice ('How did the beast fall so quickly?') that lets the player extract the Guide's confession. Combines later with knows_lupa_felled + knows_guide_poisoned_carcass into concludes_guide_killed_lupa for the full deduction.",
+    "kind": "observation",
+    "category": "world",
+    "trigger": {
+      "kind": "flag_set",
+      "flag": "examined:dead_lonza:2"
+    }
+  },
+
+  "concludes_place_long_wrong": {
+    "_comment": "Conclusion. v1 proof-of-loop. Combines knows_wood_long_dead (the trees died a long time ago) with knows_dissolved_souls (the pile of pale soul-shapes by the shore is here too) and yields the inference: this place has been wrong for a very long time. Implied lesson: the deadness of the wood and the heap of soul-remnants belong to the same long-running breakage, not to anything recent. Operational; no cosmological vocabulary (no 'Hell', no 'failure', no 'centuries'). Fires only when the player selects both required observations on the Mind sub-page deduction action.",
+    "kind": "inference",
+    "category": "world",
+    "requires": ["knows_wood_long_dead", "knows_dissolved_souls"]
   }
 }

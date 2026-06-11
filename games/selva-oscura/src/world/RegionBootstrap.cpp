@@ -1,6 +1,8 @@
 #include "world/RegionBootstrap.h"
 
 #include "gameplay/Enemies.h"
+#include "gameplay/PropSpawn.h"
+#include "world/Collision.h"
 #include "world/JsonRegion.h"
 
 #include <nlohmann/json.hpp>
@@ -152,6 +154,31 @@ void spawnAllRegionEnemies()
         auto* js = dynamic_cast<JsonRegion*>(engine::world::regionPtr(engine::world::regionAt(i)));
         if (js != nullptr)
             selva::gameplay::spawnRegionEnemies(js->regionId(), js->enemySpawnDecls());
+    }
+}
+
+void spawnAllRegionProps()
+{
+    // Iterate every JsonRegion's prop decls + scatter rules and
+    // route them through the prop spawn funnel. v1 only appends
+    // Tree-category props to the global CollisionRegion (which the
+    // existing renderer reads verbatim). Lights and future
+    // categories extend the funnel. Authored props[] run BEFORE
+    // prop_scatter[] so the scatter producer's tooCloseToExisting
+    // check honors authored decls -- the authored placements take
+    // priority over procgen samples.
+    selva::world::CollisionRegion& region = selva::world::mutableCurrentRegion();
+    for (int i = 0; i < engine::world::regionCount(); ++i)
+    {
+        auto* js = dynamic_cast<JsonRegion*>(engine::world::regionPtr(engine::world::regionAt(i)));
+        if (js != nullptr)
+            selva::gameplay::spawnPropsFromDecls(region, js->regionId().c_str(), js->propDecls());
+    }
+    for (int i = 0; i < engine::world::regionCount(); ++i)
+    {
+        auto* js = dynamic_cast<JsonRegion*>(engine::world::regionPtr(engine::world::regionAt(i)));
+        if (js != nullptr)
+            selva::gameplay::runPropScatterRules(region, js->propScatterRules());
     }
 }
 

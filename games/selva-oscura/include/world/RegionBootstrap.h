@@ -48,4 +48,11 @@ engine::world::RegionId defaultSpawnRegion();
 // whole pool when the Vagrant dies / starts a new game.
 void spawnAllRegionEnemies();
 
+// Walk every JsonRegion's prop decls and realize them via the prop
+// spawn funnel. Sibling of spawnAllRegionEnemies; same multi-resident
+// rationale. Call ONCE at boot after propArchetypes().loadDirectory.
+// v1 only appends cylinders for category=Tree props onto the global
+// CollisionRegion; lights deferred until the Limbo-lights step.
+void spawnAllRegionProps();
+
 } // namespace selva::world

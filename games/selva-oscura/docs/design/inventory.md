@@ -8,12 +8,9 @@
 
 Per setting.md *Item system*:
 
-- **The Grimoire** — hub-side, lore-text and unlock viewer. *Hell's
-  voice* — the artifact of Hell's passive self-awareness; the player
-  reads it because the player is Hell-as-observer (per setting.md
-  *The Grimoire is Hell's voice*). The Vagrant does not read it; he
-  carries / it sits hub-side, and entries appear to the player when
-  triggered. Persistent across cycles. Always available.
+- **The Grimoire** — hub-side, lore-text and unlock viewer. Entries
+  appear to the player when triggered. Persistent across cycles.
+  Always available.
 
 - **The Signing** (*La Firma*) — **not an item; a Guide ritual
   driven by the class-picker UI at Beat 4.** The Guide frames the
