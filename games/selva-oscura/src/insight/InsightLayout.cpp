@@ -83,7 +83,7 @@ Region regionFor(Category c)
 // columns) + a single 'free' column at the end. Returns the columns
 // in display order (cluster columns first, frees last).
 std::vector<std::vector<std::string>> buildCategoryColumns(const std::vector<std::string>& ids,
-                                                            Category cat)
+                                                           Category cat)
 {
     std::vector<std::string> nodes_in_cat;
     for (const auto& id : ids)

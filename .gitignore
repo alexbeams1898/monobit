@@ -83,6 +83,11 @@ traces/
 
 # AI debug dumps
 debug/
+# ...except in-source debug code (engine + game runtime debug toggles).
+!games/selva-oscura/src/debug/
+!games/selva-oscura/include/debug/
+!engines/engine/src/debug/
+!engines/engine/include/debug/
 
 # Claude
 .claude/

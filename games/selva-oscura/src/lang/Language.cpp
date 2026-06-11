@@ -82,8 +82,8 @@ bool buildLangEntry(const nlohmann::json& v, const std::filesystem::path& path,
 {
     if (!v.is_object())
     {
-        std::fprintf(stderr, "[lang] '%s' key '%s' must map to an object\n",
-                     path.string().c_str(), key.c_str());
+        std::fprintf(stderr, "[lang] '%s' key '%s' must map to an object\n", path.string().c_str(),
+                     key.c_str());
         return false;
     }
     if (!v.contains("tier_0") || !v["tier_0"].is_string())

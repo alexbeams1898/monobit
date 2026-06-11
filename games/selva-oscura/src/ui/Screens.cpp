@@ -624,8 +624,7 @@ void mindCtxItemReconsider(UIState& ui, const PlayerProfile& p,
                            const std::vector<std::string>& sel_wb_obs,
                            const std::string& sel_wb_inf, std::size_t tally_inferences)
 {
-    const bool can_reconsider =
-        !sel_wb_inf.empty() && sel_wb_obs.empty() && tally_inferences == 1;
+    const bool can_reconsider = !sel_wb_inf.empty() && sel_wb_obs.empty() && tally_inferences == 1;
     if (!ImGui::MenuItem("Reconsider", nullptr, false, can_reconsider))
         return;
     for (const auto& w : p.workbench_inferences)
@@ -675,16 +674,16 @@ void mindCtxItemReturnToLibrary(UIState& ui, PlayerProfile& p, const std::string
         return;
     if (tgt_is_obs)
     {
-        auto it = std::remove_if(
-            p.workbench_observations.begin(), p.workbench_observations.end(),
-            [&](const PlayerProfile::WorkbenchNode& w) { return w.id == tgt; });
+        auto it =
+            std::remove_if(p.workbench_observations.begin(), p.workbench_observations.end(),
+                           [&](const PlayerProfile::WorkbenchNode& w) { return w.id == tgt; });
         p.workbench_observations.erase(it, p.workbench_observations.end());
     }
     else
     {
-        auto it = std::remove_if(
-            p.workbench_inferences.begin(), p.workbench_inferences.end(),
-            [&](const PlayerProfile::WorkbenchNode& w) { return w.id == tgt; });
+        auto it =
+            std::remove_if(p.workbench_inferences.begin(), p.workbench_inferences.end(),
+                           [&](const PlayerProfile::WorkbenchNode& w) { return w.id == tgt; });
         p.workbench_inferences.erase(it, p.workbench_inferences.end());
     }
     mindEraseSelectionById(ui, tgt);
@@ -734,8 +733,8 @@ void renderMindContextMenu(UIState& ui, PlayerProfile& p)
 // Hit-test pass: returns the id of the topmost node under the
 // mouse + writes whether it was an inference via out param. Empty
 // string when nothing is hovered.
-std::string mindWorkbenchHitTest(const PlayerProfile& p, const ImVec2& wb_p0, const ImVec2& wb_avail,
-                                 const ImVec2& mouse, bool& out_is_inf)
+std::string mindWorkbenchHitTest(const PlayerProfile& p, const ImVec2& wb_p0,
+                                 const ImVec2& wb_avail, const ImVec2& mouse, bool& out_is_inf)
 {
     constexpr float kObsR = 10.0f;
     constexpr float kConcR = 13.0f;
@@ -940,8 +939,7 @@ void renderMindWorkbench(UIState& ui, PlayerProfile& p, float workbench_w, float
     const ImVec2 mouse = ImGui::GetIO().MousePos;
     const bool canvas_hovered = ImGui::IsItemHovered();
     bool hovered_is_inf = false;
-    const std::string hovered_id =
-        mindWorkbenchHitTest(p, wb_p0, wb_avail, mouse, hovered_is_inf);
+    const std::string hovered_id = mindWorkbenchHitTest(p, wb_p0, wb_avail, mouse, hovered_is_inf);
     (void)hovered_is_inf;
 
     if (canvas_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
@@ -1121,9 +1119,9 @@ void mindHandleReturnCarryToLibrary(UIState& ui, PlayerProfile& p)
     }
     else
     {
-        auto it = std::remove_if(
-            p.workbench_inferences.begin(), p.workbench_inferences.end(),
-            [&](const PlayerProfile::WorkbenchNode& w) { return w.id == drop_id; });
+        auto it =
+            std::remove_if(p.workbench_inferences.begin(), p.workbench_inferences.end(),
+                           [&](const PlayerProfile::WorkbenchNode& w) { return w.id == drop_id; });
         if (it != p.workbench_inferences.end())
         {
             p.workbench_inferences.erase(it, p.workbench_inferences.end());
@@ -1239,8 +1237,7 @@ void mindApplyReadingChoice(UIState& ui, PlayerProfile& p, const std::string& ch
 
 void renderMindReadingPicker(UIState& ui, PlayerProfile& p)
 {
-    if (!ImGui::BeginPopupModal("##reading-picker", nullptr,
-                                ImGuiWindowFlags_AlwaysAutoResize))
+    if (!ImGui::BeginPopupModal("##reading-picker", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
         return;
     const auto readings = selva::insight::readingsOf(ui.mind_picker_inference);
     ImGui::TextDisabled("Pick a reading:");

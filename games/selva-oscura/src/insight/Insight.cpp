@@ -216,8 +216,8 @@ void parseInferenceReadings(const nlohmann::json& v, Node& n, const std::filesys
 }
 
 // Parse the inference's deprecated `confirmed_by` list with a warning.
-void parseInferenceConfirmedBy(const nlohmann::json& v, Node& n,
-                               const std::filesystem::path& path, const std::string& node_id)
+void parseInferenceConfirmedBy(const nlohmann::json& v, Node& n, const std::filesystem::path& path,
+                               const std::string& node_id)
 {
     if (!v.contains("confirmed_by") || !v["confirmed_by"].is_array())
         return;
@@ -251,8 +251,7 @@ bool parseDialogBeganArgs(const nlohmann::json& t, Node& n, const std::filesyste
 {
     if (!t.contains("npc_id") || !t["npc_id"].is_string())
     {
-        std::fprintf(stderr,
-                     "[insight] '%s' node '%s' dialog_began trigger missing 'npc_id'\n",
+        std::fprintf(stderr, "[insight] '%s' node '%s' dialog_began trigger missing 'npc_id'\n",
                      path.string().c_str(), node_id.c_str());
         return false;
     }
@@ -268,8 +267,7 @@ bool parseExaminedArgs(const nlohmann::json& t, Node& n, const std::filesystem::
         n.string_arg = t["mesh_debug_name"].get<std::string>();
     else
     {
-        std::fprintf(stderr,
-                     "[insight] '%s' node '%s' examined trigger missing 'subject' string\n",
+        std::fprintf(stderr, "[insight] '%s' node '%s' examined trigger missing 'subject' string\n",
                      path.string().c_str(), node_id.c_str());
         return false;
     }
@@ -278,8 +276,8 @@ bool parseExaminedArgs(const nlohmann::json& t, Node& n, const std::filesystem::
 bool parseKillCountArgs(const nlohmann::json& t, Node& n, const std::filesystem::path& path,
                         const std::string& node_id)
 {
-    if (!t.contains("archetype") || !t["archetype"].is_string() ||
-        !t.contains("threshold") || !t["threshold"].is_number_unsigned())
+    if (!t.contains("archetype") || !t["archetype"].is_string() || !t.contains("threshold") ||
+        !t["threshold"].is_number_unsigned())
     {
         std::fprintf(stderr,
                      "[insight] '%s' node '%s' kill_count trigger missing "
@@ -291,8 +289,8 @@ bool parseKillCountArgs(const nlohmann::json& t, Node& n, const std::filesystem:
     n.threshold_arg = t["threshold"].get<std::uint32_t>();
     return true;
 }
-bool parseSangueAccumulatedArgs(const nlohmann::json& t, Node& n,
-                                const std::filesystem::path& path, const std::string& node_id)
+bool parseSangueAccumulatedArgs(const nlohmann::json& t, Node& n, const std::filesystem::path& path,
+                                const std::string& node_id)
 {
     if (!t.contains("threshold") || !t["threshold"].is_number_unsigned())
     {
@@ -345,8 +343,7 @@ bool parseObservationTrigger(const nlohmann::json& v, Node& n, const std::filesy
     if (!parseTriggerKind(t["kind"].get<std::string>(), n.kind))
     {
         std::fprintf(stderr, "[insight] '%s' node '%s' unknown trigger kind '%s'\n",
-                     path.string().c_str(), node_id.c_str(),
-                     t["kind"].get<std::string>().c_str());
+                     path.string().c_str(), node_id.c_str(), t["kind"].get<std::string>().c_str());
         return false;
     }
     return parseTriggerArgs(t, n, path, node_id);
