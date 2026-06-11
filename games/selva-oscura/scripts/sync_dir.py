@@ -16,15 +16,37 @@ import sys
 
 
 def _ensure_dir(path: str) -> None:
-    """Make `path` a directory. If it exists as a file, replace it.
+    """Make `path` a directory. If anything else exists at that path
+    (regular file, symlink, broken link), replace it.
 
-    CI sometimes ends up with a regular file at the destination root
-    (cmake artifact path collision); copy proceeds anyway."""
-    if os.path.isdir(path):
-        return
-    if os.path.exists(path):
-        os.remove(path)
-    os.makedirs(path, exist_ok=True)
+    Also probes the path's PARENT for the same issue -- on CI the
+    failure mode is that the parent (e.g. ``bin/selva-oscura``) ended
+    up as a regular file from a stray earlier write, so a plain
+    ``isfile``/``exists`` check on the target path returns false yet
+    ``os.makedirs`` blows up with NotADirectoryError on a parent
+    component. Walk parents and unlink anything that's not a dir."""
+    parts = []
+    cur = path
+    while cur and cur != os.path.sep and not os.path.isdir(cur):
+        parts.append(cur)
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            break
+        cur = parent
+    for p in reversed(parts):
+        if os.path.isdir(p):
+            continue
+        if os.path.lexists(p):
+            print(f"sync_dir: replacing non-dir at {p} with a directory",
+                  file=sys.stderr)
+            try:
+                os.unlink(p)
+            except OSError:
+                # Symlink-to-directory or other weird state; fall back
+                # to removing recursively.
+                import shutil as _shutil
+                _shutil.rmtree(p, ignore_errors=True)
+        os.makedirs(p, exist_ok=True)
 
 
 def sync(src: str, dst: str) -> None:
