@@ -15,18 +15,32 @@ import shutil
 import sys
 
 
+def _ensure_dir(path: str) -> None:
+    """Make `path` a directory. If it exists as a file, replace it.
+
+    CI sometimes ends up with a regular file at the destination root
+    (cmake artifact path collision); copy proceeds anyway."""
+    if os.path.isdir(path):
+        return
+    if os.path.exists(path):
+        os.remove(path)
+    os.makedirs(path, exist_ok=True)
+
+
 def sync(src: str, dst: str) -> None:
     if not os.path.isdir(src):
         print(f"sync_dir: source is not a directory: {src}", file=sys.stderr)
         sys.exit(1)
-    os.makedirs(dst, exist_ok=True)
+    _ensure_dir(dst)
     for root, dirs, files in os.walk(src):
         rel = os.path.relpath(root, src)
         out_dir = os.path.join(dst, rel) if rel != "." else dst
-        os.makedirs(out_dir, exist_ok=True)
+        _ensure_dir(out_dir)
         for name in files:
             src_file = os.path.join(root, name)
             dst_file = os.path.join(out_dir, name)
+            if os.path.isdir(dst_file):
+                shutil.rmtree(dst_file)
             try:
                 shutil.copy2(src_file, dst_file)
             except OSError as e:
