@@ -399,7 +399,10 @@ file(GLOB_RECURSE attack_fbx_files
     "${xbot_dir}/source/*.fbx"
 )
 list(FILTER attack_fbx_files EXCLUDE REGEX ".*[Xx][ _][Bb]ot\\.fbx$")
-if(attack_fbx_files)
+# Only run the sword-pack bake when FBX2glTF is available. On CI
+# (Linux without the gitignored FBX2glTF.exe), the bake is skipped and
+# the committed .ozz files in x_bot/ ship as the runtime artifacts.
+if(attack_fbx_files AND EXISTS ${fbx2gltf_exe})
     foreach(fbx ${attack_fbx_files})
         _selva_sanitize_clip_name("${fbx}" clip_name)
         set(clip_temp_dir ${CMAKE_BINARY_DIR}/selva-oscura-attacks/${clip_name})
@@ -476,7 +479,10 @@ file(GLOB_RECURSE larva_fbx_files
 # a T-pose source, not a clip. Same exclusion the X_Bot bake uses
 # above. Matches "X Bot.fbx", "X_Bot.fbx", "x bot.fbx", etc.
 list(FILTER larva_fbx_files EXCLUDE REGEX ".*[Xx][ _][Bb]ot\\.fbx$")
-if(larva_fbx_files)
+# Only run the larva bake when FBX2glTF is available. On CI (Linux
+# without the gitignored FBX2glTF.exe), the bake is skipped and the
+# committed .ozz files in larva/ ship as the runtime artifacts.
+if(larva_fbx_files AND EXISTS ${fbx2gltf_exe})
     foreach(fbx ${larva_fbx_files})
         _selva_sanitize_clip_name("${fbx}" clip_name)
         set(clip_temp_dir ${CMAKE_BINARY_DIR}/selva-oscura-larva/${clip_name})

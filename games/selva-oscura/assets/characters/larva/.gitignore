@@ -1,0 +1,9 @@
+# `source/` holds raw FBX authoring assets — the Scary Zombie Pack
+# from Mixamo. Tracked alongside the rig for now (small pack, easy
+# regeneration if needed).
+
+# Larva-rig .ozz files ARE committed (~10 MB total) so CI and
+# contributors without FBX2glTF installed can build and run.
+# Locally, the CMake bake regenerates them from FBX when present.
+# Negate the repo-root *.ozz rule for everything in this directory.
+!*.ozz
