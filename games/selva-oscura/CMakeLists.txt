@@ -5,7 +5,7 @@
 # Per-game project declaration -- the release pipeline reads this version
 # when a PR with prefix <bump>/selva-oscura/... merges. Starts at 0.0.0;
 # the first <bump>/selva-oscura/... merge advances it from there.
-project(SelvaOscura VERSION 0.2.0 LANGUAGES C CXX)
+project(SelvaOscura VERSION 0.3.0 LANGUAGES C CXX)
 
 # Python is used by the FBX → glb → ozz bake to glob the gltf2ozz
 # output regardless of its internal animation name. Required on MSYS2

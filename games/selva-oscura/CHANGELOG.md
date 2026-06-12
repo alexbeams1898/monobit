@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-12
+
+### Added
+
+- Soul larvae ecosystem at Acheron — fresh souls re-coalesce from a dissolved-soul pile, walk to slots, become feral when left too long, and feed on each other's corpses in a visible cycle.
+- Examine prompts for cosmological waypoints in the world. Press E near things to read about what they are.
+- Lupa boss fight in the chapel opening; scripted death sequence; Guide rescue; door system.
+- Beat 4 class-picker (Penitent / Heretic / Wretched / Unburdened) with a permanent commit verb that grows your stats or routes your sangue to an unknown destination based on the path.
+- Sangue counter on HUD. Killing enemies grants you something; pressing the commit verb spends it.
+- A Mind sub-page in the pause menu — your interior workbench for forming inferences from what you've seen. Observations gathered from the world appear in your library; pick them up to the workbench, combine them to infer, pick a reading. Your understanding grows three new stats: Perception, Cognition, Intelligence.
+- NPCs now acknowledge you when you walk by — turning their head within natural shoulder-range, holding when you pass behind them.
+- Doors you can interact with, with appropriate audio.
+- Universal humanoid combat — every actor now runs on the same physics + animation foundation, opening the door to all future enemy types.
+
+### Changed
+
+- Cycle reset (player death / save reload) now restores the world to its pristine spawn state cleanly. No stranded enemies, no save-load weirdness.
+- HP bars over defeated enemies fade almost instantly instead of lingering for several seconds.
+- Rolls and jumps now move the character through space the way the animation arc suggests (camera follows correctly).
+
+### Fixed
+
+- Larvae no longer duplicate after quit-to-menu.
+- Larvae respawn correctly after player death (cycle reset no longer leaves the Acheron shore permanently empty).
+- Static-init crash on Windows during shutdown.
+
 ## [0.2.0] - 2026-05-28
 
 ### Added
@@ -59,6 +85,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Player and enemy locomotion now share core systems (movement-locked gating during one-shots, root-motion vs velocity translation sources, hip-delta apply) so the same animation behavior holds on both sides.
 - Enemy combat retention now uses a distance-based leash with hysteresis instead of vision-based timers, so enemies stay engaged as long as the player is within range regardless of line of sight.
 
-[unreleased]: https://github.com/alexbeams1898/selva-oscura-releases/compare/v0.2.0...HEAD
+[unreleased]: https://github.com/alexbeams1898/selva-oscura-releases/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/alexbeams1898/selva-oscura-releases/releases/tag/v0.3.0
 [0.2.0]: https://github.com/alexbeams1898/selva-oscura-releases/releases/tag/v0.2.0
 [0.1.0]: https://github.com/alexbeams1898/selva-oscura-releases/releases/tag/v0.1.0
