@@ -1199,8 +1199,7 @@ void mindCommitNewInference(PlayerProfile& p, const UIState& ui, const std::stri
                 ++cnt;
             }
     const float cx = cnt > 0 ? sx / static_cast<float>(cnt) : 0.5f;
-    const float cy =
-        cnt > 0 ? std::max(0.10f, sy / static_cast<float>(cnt) - 0.10f) : 0.5f;
+    const float cy = cnt > 0 ? std::max(0.10f, sy / static_cast<float>(cnt) - 0.10f) : 0.5f;
     PlayerProfile::WorkbenchNode w;
     w.id = fired_id;
     w.x = cx;

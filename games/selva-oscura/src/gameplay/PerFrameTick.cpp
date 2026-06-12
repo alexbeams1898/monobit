@@ -4363,7 +4363,7 @@ CameraFrame buildCameraFrame()
     const glm::vec3 lookFwd(std::cos(camPitch) * -std::sin(camYaw), std::sin(camPitch),
                             std::cos(camPitch) * -std::cos(camYaw));
     f.cam_pos = sPlayer.pos - lookFwd * tun_atm.follow_distance +
-               glm::vec3(0.0f, tun_atm.follow_height, 0.0f);
+                glm::vec3(0.0f, tun_atm.follow_height, 0.0f);
     return f;
 }
 
