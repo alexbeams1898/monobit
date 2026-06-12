@@ -72,7 +72,7 @@ jobs:
   #    Also compiles everything — catches compiler errors on every PR.
   # -----------------------------------------------------------------------
   build:
-    name: Build and lint
+    name: Build and test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -109,62 +109,101 @@ jobs:
       - name: Build
         run: cmake --build build
 
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  # -----------------------------------------------------------------------
+  # 3. LINT  (clang-tidy)
+  #    Runs against compile_commands.json + the fetched _deps headers,
+  #    both produced at CMake CONFIGURE time. Does not need the build
+  #    artifacts -- runs in parallel with the main build/test job.
+  #
+  #    Scope selection (PR only; push-to-master lints everything):
+  #      - directly-changed .cpp files
+  #      - for each directly-changed .h/.hpp, every .cpp in the same
+  #        "src/" tree that mirrors the header's "include/" tree
+  #          e.g. include/render/Texture.h -> src/render/*.cpp
+  #          e.g. include/insight/Insight.h -> src/insight/*.cpp
+  #    Conservative compared to the old `ninja -t deps` pass (lints
+  #    sibling .cpp files even when they don't transitively include the
+  #    changed header), but does not require the build to have run --
+  #    which is what lets this job sit outside the `build` job.
+  # -----------------------------------------------------------------------
+  clang-tidy:
+    name: Lint (clang-tidy)
+    runs-on: ubuntu-latest
+    # No `needs: build`. clang-tidy reads compile_commands.json (written
+    # at CMake CONFIGURE) and the headers in build/_deps/ (fetched at
+    # CONFIGURE). Both are populated by `cmake -S . -B build` alone --
+    # no compilation needed. Runs in parallel with the build job.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # need history for the PR-base diff
+
+      - name: Install dependencies
+        run: |
+          # Pin to clang-format/clang-tidy 18.1.x from the LLVM apt repo;
+          # matches the local MSYS2 mingw64 toolchain.
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+          echo "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-18 main" \
+            | sudo tee /etc/apt/sources.list.d/llvm.list
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build clang-18 clang-tidy-18 \
+            libsdl2-dev libgl1-mesa-dev
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-18 100
+          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-18 100
+          sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/bin/clang-tidy-18 100
+
+      - name: Cache build directory
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: ${{ runner.os }}-monobit-build-${{ hashFiles('cmake/**', 'CMakeLists.txt', 'engines/**', 'games/**', 'tests/**') }}
+          restore-keys: |
+            ${{ runner.os }}-monobit-build-
+
+      - name: Configure
+        run: |
+          # Re-run configure unconditionally so compile_commands.json
+          # reflects the current tree even on a cache hit. CMake is
+          # incremental + fast (~5s) so this isn't a meaningful cost.
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_BUILD_TYPE=Debug
+
       - name: Find files to lint
         id: lint-files
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            # Diff against base, excluding archived subtrees (kept as read-only
-            # reference; mono's formatting rules differ from monobit's).
             CHANGED=$(git diff --name-only --diff-filter=d \
               origin/${{ github.base_ref }}...HEAD -- \
               'engines/' 'games/' \
               ':(exclude)engines/arduboy-legacy/**' \
               ':(exclude)games/rpg-arduboy/**')
 
-            # Directly changed .cpp files
             CHANGED_CPPS=$(echo "$CHANGED" | grep -E '\.cpp$' || true)
-
-            # Changed headers -- use ninja deps to find affected .cpp files
             CHANGED_HEADERS=$(echo "$CHANGED" | grep -E '\.h(pp)?$' || true)
+
+            # Map each changed header to its mirrored src/ directory and
+            # collect every .cpp in that directory.
+            # include/render/Texture.h -> src/render/ -> src/render/*.cpp
             HEADER_AFFECTED=""
+            for h in $CHANGED_HEADERS; do
+              src_dir=$(echo "$h" | sed -E 's|/include/|/src/|; s|/[^/]+\.h(pp)?$||')
+              if [ -d "$src_dir" ]; then
+                affected=$(find "$src_dir" -maxdepth 1 -name '*.cpp')
+                if [ -n "$affected" ]; then
+                  HEADER_AFFECTED=$(printf '%s\n%s' "$HEADER_AFFECTED" "$affected")
+                fi
+              fi
+            done
 
-            if [ -n "$CHANGED_HEADERS" ]; then
-              echo "$CHANGED_HEADERS" | xargs -n1 basename > /tmp/changed-headers.txt
-              echo "Changed headers:"
-              cat /tmp/changed-headers.txt
-
-              # Parse ninja dependency graph: for each build target, check if
-              # any of its transitive deps match a changed header basename.
-              # If so, record the target's source .cpp file.
-              ninja -C build -t deps 2>/dev/null | awk '
-                BEGIN { while ((getline h < "/tmp/changed-headers.txt") > 0) wanted[h]=1 }
-                /\.o(bj)?: #deps/ { src="" }
-                /^    / {
-                  dep=$0; gsub(/^ +/,"",dep)
-                  if (src=="" && dep ~ /\.cpp$/) src=dep
-                  n=split(dep,parts,"/")
-                  if (parts[n] in wanted) affected[src]=1
-                }
-                END { for(f in affected) if(f!="") print f }
-              ' > /tmp/header-affected.txt
-
-              # ninja deps uses absolute paths -- strip repo root prefix
-              REPO_ROOT="${{ github.workspace }}/"
-              sed -i "s|${REPO_ROOT}||g" /tmp/header-affected.txt
-
-              HEADER_AFFECTED=$(cat /tmp/header-affected.txt)
-            fi
-
-            # Union changed .cpp files + header-affected .cpp files.
-            # Filter out anything under build/ or _deps/ — the ninja-deps
-            # awk above does basename-match against changed headers, so a
-            # header basename collision with a third-party dep (e.g. our
-            # PhysicsScene.h vs Jolt's) pulls in dep source files. We
-            # never want to lint third-party code; strip it here.
             FILES=$(printf "%s\n%s" "$CHANGED_CPPS" "$HEADER_AFFECTED" | \
               grep -E '\.cpp$' | grep -vE '^(build|_deps)/' | sort -u)
           else
-            # Push to master: lint everything except archived subtrees.
             FILES=$(find engines games \
                 \( -path engines/arduboy-legacy -o -path games/rpg-arduboy \) -prune \
               -o -name '*.cpp' -print)
@@ -199,11 +238,8 @@ jobs:
               --warnings-as-errors='*' \
             < /tmp/lint-files.txt
 
-      - name: Test
-        run: ctest --test-dir build --output-on-failure
-
   # -----------------------------------------------------------------------
-  # 3. STATIC ANALYSIS  (cppcheck)
+  # 4. STATIC ANALYSIS  (cppcheck)
   #    Runs against the project compile_commands.json. Restricted to our
   #    source trees; suppresses noise in third-party deps and a small set
   #    of pedantic checks we don't want enforced.
