@@ -285,6 +285,7 @@ jobs:
         run: |
           cppcheck --project=build/compile_commands.json \
             --enable=all \
+            --inline-suppr \
             --suppress=missingInclude \
             --suppress=missingIncludeSystem \
             --suppress=unusedFunction \
