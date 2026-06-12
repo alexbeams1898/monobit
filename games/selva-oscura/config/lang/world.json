@@ -1,0 +1,79 @@
+{
+  "_comment": "World-side player-facing strings: examine labels + examine bodies. Tier doctrine lives in docs/design/insight_revelation_system.md (two-stage reveal pattern). Cosmology words (soul, imprint, dissolved, Acheron, sangue, etc.) belong at tier-2 ONLY; tier-1 is observational, tier-0 is sensory.",
+
+  "world.dead_lonza.examine_label": {
+    "tier_0": "(TODO: pre-examine label for the half-eaten carcass at Lupa's feet. Suggestion: 'A carcass, half-devoured.')"
+  },
+
+  "world.dead_lonza.examine_text.tier_0": {
+    "tier_0": "(TODO: first-examine body. Lesson: a large mauled animal lies here; the larger beast above had been feeding from it. Suggestion: 'A great hound, or a beast of like shape. Its flanks are torn. The larger beast above had been feeding here.')"
+  },
+
+  "world.dead_lonza.examine_text.tier_1": {
+    "tier_0": "(TODO: second-examine body. Lesson: something is wrong with the meat -- dark streaks within, a sweet smell that does not match honest rot. Gates the dig-deeper Guide-dialog choice. Suggestion: 'Looked at closer: the flesh within is streaked dark, and a sweetness in the air does not belong to honest rot. Something was wrong with what this beast ate.')"
+  },
+
+  "world.acheron_pile.examine_label": {
+    "tier_0": "(TODO: pre-examine label -- sensory.)",
+    "tier_1": "(TODO: tier-1 label after examine -- functional.)",
+    "tier_2": "(TODO: tier-2 label after Guide names the cosmology.)",
+    "unlock_node_tier_1": "knows_dissolved_souls",
+    "unlock_node_tier_2": "guide_named_dissolved_souls"
+  },
+
+  "world.acheron_pile.examine_text": {
+    "tier_0": "(TODO: pre-examine body -- heap of person-shapes seen at a distance.)",
+    "tier_1": "(TODO: post-examine body -- close observation in functional terms. No 'soul' / 'imprint' / 'dissolved' / 'Acheron'.)",
+    "tier_2": "(TODO: post-Guide body -- cosmological frame available.)",
+    "unlock_node_tier_1": "knows_dissolved_souls",
+    "unlock_node_tier_2": "guide_named_dissolved_souls"
+  },
+
+  "world.larva_fresh.examine_label": {
+    "tier_0": "(TODO: pre-examine label -- 'something thin, crawling'.)",
+    "tier_1": "(TODO: post-examine label -- what the thing is DOING.)",
+    "tier_2": "(TODO: post-Guide label -- arrival-queue cosmology named.)",
+    "unlock_node_tier_1": "knows_arrival_queue",
+    "unlock_node_tier_2": "guide_named_arrival_queue"
+  },
+
+  "world.larva_fresh.examine_text": {
+    "tier_0": "(TODO: pre-examine body -- sensory at a distance.)",
+    "tier_1": "(TODO: post-examine body -- functional. Suggestion: 'It waits in a line. Its body is set in one posture and does not break it. Others crawl past behind it.')",
+    "tier_2": "(TODO: post-Guide body -- soul/imprint/queue vocabulary available.)",
+    "unlock_node_tier_1": "knows_arrival_queue",
+    "unlock_node_tier_2": "guide_named_arrival_queue"
+  },
+
+  "world.larva_aged_feeder.examine_label": {
+    "tier_0": "(TODO: pre-examine label for a feeding larva.)",
+    "tier_1": "(TODO: post-examine label -- functional.)",
+    "tier_2": "(TODO: post-Guide label -- feeding-cycle named.)",
+    "unlock_node_tier_1": "knows_feeding_cycle",
+    "unlock_node_tier_2": "guide_named_feeding_cycle"
+  },
+
+  "world.larva_aged_feeder.examine_text": {
+    "tier_0": "(TODO: pre-examine body -- sensory.)",
+    "tier_1": "(TODO: post-examine body -- functional. Suggestion: 'It crouches over the body of one of its kin and bites at it. The bites do not seem to take anything; the kin does not move.')",
+    "tier_2": "(TODO: post-Guide body -- feeding-cycle vocabulary available.)",
+    "unlock_node_tier_1": "knows_feeding_cycle",
+    "unlock_node_tier_2": "guide_named_feeding_cycle"
+  },
+
+  "world.tree.examine_label": {
+    "tier_0": "(TODO: tier-0 label for a tree -- sensory. Suggestion: 'the tree' / 'a pine, bare'.)",
+    "tier_1": "(TODO: tier-1 label after examine. Suggestion: 'a long-dead pine' / 'the bare tree'.)",
+    "tier_2": "(TODO: tier-2 label after Guide names the wood cosmologically.)",
+    "unlock_node_tier_1": "knows_wood_long_dead",
+    "unlock_node_tier_2": "guide_named_wood"
+  },
+
+  "world.tree.examine_text": {
+    "tier_0": "(TODO: tier-0 body -- bark + leaflessness + no fallen leaves + no decay. Lesson: this tree died long ago.)",
+    "tier_1": "(TODO: tier-1 body -- the same observation, more deeply articulated. Still no cosmology vocabulary.)",
+    "tier_2": "(TODO: tier-2 body after Guide names the wood. Cosmological frame available.)",
+    "unlock_node_tier_1": "knows_wood_long_dead",
+    "unlock_node_tier_2": "guide_named_wood"
+  }
+}

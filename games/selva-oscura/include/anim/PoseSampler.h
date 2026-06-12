@@ -26,8 +26,8 @@ struct SkeletalMesh;
 //
 // One PoseSampler per animated character. Internally maintains three
 // tracks:
-//   * locomotion-current — the looping clip the gameplay asked for now
-//     (Idle/Walk/Run). Crossfades to previous when the caller switches.
+//   * locomotion-current — the looping clip the gameplay most-recently
+//     requested (Idle/Walk/Run). Crossfades to previous on switch.
 //   * locomotion-previous — the fading-out locomotion clip.
 //   * one-shot — a non-looping clip (attack, dodge, hit react). When
 //     active, dominates the output; locomotion keeps advancing in the
@@ -72,7 +72,7 @@ struct PoseSampler
     // Returns false if the inputs are invalid (no skeleton, no clip).
     //
     // `clip_key` is the human-meaningful registry key (e.g.
-    // "walking", "running") used only for diagnostic logging. Empty
+    // "walking", "jogging") used only for diagnostic logging. Empty
     // string is allowed; the log will fall back to ozz Animation
     // name (which for Mixamo clips is always "mixamo.com").
     bool update(const AnimationClip& clip, float dt, float blend_seconds, bool loops = true,
@@ -217,6 +217,17 @@ struct PoseSampler
         // commit-then-recover one-shot. Combat attacks use their own
         // per-clip wallclock cancel window (rhythm timing), not this.
         float cancel_fraction = 1.0f;
+        // Authoritative per-fire override of the one-shot's TRAVELING
+        // vs IN_PLACE classification. The auto-classifier uses a 0.5m
+        // hip-path threshold which is a coarse heuristic -- some bite
+        // clips have an authored "step into the bite" that crosses the
+        // threshold but the intended gameplay is visual-only (no world
+        // translation). Conversely a leap/pounce clip authored without
+        // hip travel needs forced TRAVELING.
+        //   0 = auto (legacy threshold-based behavior)
+        //   1 = force IN_PLACE (no extraction, clip is visual only)
+        //   2 = force TRAVELING (extract + translate world)
+        int hip_translation_mode = 0;
     };
 
     void playOneShot(const AnimationClip& clip, float blend_in_seconds, float blend_out_seconds,
@@ -226,6 +237,13 @@ struct PoseSampler
     // Request the active one-shot to start blending out NOW. Used to
     // release a held (freeze_last) one-shot like the unarmed block.
     void releaseOneShot();
+
+    // Wipe all runtime state to inactive: loco tracks, one-shot,
+    // blend weights, inertialization, hip-delta history. Preserves
+    // bindings (skeleton, joint map, IK probe). Use on character
+    // switch / fresh session boundaries so the next update() produces
+    // a clean pose unaffected by the prior character's last frame.
+    void hardReset();
 
     // True while a one-shot is the dominant clip (>50% weight). Combat
     // gameplay reads this to gate movement, queue follow-ups, etc.
@@ -516,8 +534,16 @@ struct PoseSampler
     FrameDiagnostics frameDiagnostics() const;
 };
 
-// Build a PoseSampler bound to the given skeleton + mesh. The skeleton
-// and mesh must outlive the returned sampler.
+struct SkeletonJointMap; // anim/SkeletonJointMap.h
+
+// Build a PoseSampler bound to the given skeleton + mesh + joint map.
+// The skeleton, mesh, and joint map must outlive the returned sampler.
+//
+// Overload without joint map fetches the PLAYER's map by default --
+// matches every existing call site (player + every humanoid shade).
+// New non-humanoid actors (wolf, etc.) pass their own map.
+PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh,
+                              const SkeletonJointMap& joint_map);
 PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh);
 
 } // namespace selva::anim

@@ -12,9 +12,12 @@ target_sources(engine PRIVATE
     src/SpriteCompositor.cpp
     src/FontManager.cpp
     src/UIRenderer.cpp
+    src/ecs/ConfigLoaders.cpp
+    src/ops/InventoryOps.cpp
+    src/ops/CraftingOps.cpp
     src/physics/PhysicsWorld.cpp
-    src/world/AsyncSceneLoader.cpp
-    src/world/Scene.cpp
+    src/world/Region.cpp
+    src/world/Territory.cpp
     src/world/TerrainModifiers.cpp
     src/world/StructureFootprints.cpp
     src/world/Lights.cpp
@@ -72,6 +75,10 @@ add_executable(engine-tests
     tests/ecs_test.cpp
     tests/collision_test.cpp
     tests/animation_test.cpp
+    tests/inventory_ops_test.cpp
+    tests/crafting_ops_test.cpp
+    tests/evolution_ops_test.cpp
+    tests/discovery_test.cpp
 )
 target_link_libraries(engine-tests PRIVATE engine Catch2::Catch2WithMain)
 

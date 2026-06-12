@@ -12,9 +12,9 @@ Two registers in tension throughout the game:
   voice, given to the Vagrant). Modern English. Used for things the
   Vagrant doesn't have old names for: *"some old man with a stick"*
   rather than *"Charon"*; *"this place"* rather than *"Acheron"*.
-- **Old register** — Hell's voice (Grimoire, gate signage, the
-  death-card's lower line, NPC speech, Beatrice's vocabulary). Italian
-  loanwords. Early Modern / Chaucer-recognizable English. Locked at
+- **Old register** — Grimoire, gate signage, the death-card's lower
+  line, NPC speech, Beatrice's vocabulary. Italian loanwords. Early
+  Modern / Chaucer-recognizable English. Locked at
   `.claude/rules-text.md`.
 
 The friction between the two registers is the world's friction-engine:
@@ -28,9 +28,9 @@ the player chooses modern phrasings; the world replies in old words.
 | The Guide | Old | Calls Vagrant **Pilgrim** (Beatrice's vocabulary fed through him) |
 | NPCs (default) | Old | Each circle's NPC speaks in their sin's tonal flavor within old register |
 | NPCs (lucid window) | Old, may switch to **Pilgrim** | Address-switch marks the lucidity itself |
-| Grimoire (Hell's voice) | Old, doctrinal | Register-shifts across the game as Hell wakes up to itself (early entries confident; mid-game entries admit confusion; post-R2 entries name Beatrice) |
+| Grimoire | Old, doctrinal | Register-shifts across the game (early entries confident; mid-game entries admit confusion; post-R2 entries name Beatrice) |
 | Gate signage / environmental text | Old, bureaucratic | Hell's accounting language |
-| Death-card | Mixed | *NOT YET* (modern, player) / *THOU DOST NOT BELONG* (old, Hell — also the player under R5) |
+| Death-card | Mixed | *NOT YET* (modern) / *THOU DOST NOT BELONG* (old) |
 | Beatrice (in Grimoire / her own register) | Old, formal | Calls Vagrant **Pilgrim**. Never speaks in-game until her appearance at R4 Branch B/C; even then, fragmentary / rabid |
 | Beatrice (in REFUSAL/PURITY combat) | Fragmentary | Rabid, no coherent sentences, no recognition of the Vagrant |
 
@@ -81,13 +81,40 @@ What choices affect:
 - **Possibly: NPC reward branch** (different rewards per dialogue
   outcome — TBD per NPC).
 - **Not: stats.** Dialogue does not directly grant stat increases —
-  that path goes through OFFERINGS (sangue investment) or the Hand
-  (post-climax).
-- **Not: HP.** Dialogue does not heal — that path goes through the
-  Guide's projections, the Hand, or NPC items.
+  that path goes through the Crucible (class-picker installation).
+- **Not: HP.** Dialogue does not heal — healing comes from the
+  Guide's projections, NPC items, or other TBD mechanisms.
 
-The Vagrant is hollow — dialogue is the player's expression, not his
-character development. He is whatever the player makes him.
+Dialogue is the player's expression. The Vagrant is whatever the
+player makes him.
+
+## The Vagrant speaks; the player chooses what he says (LOCKED)
+
+The Vagrant has a voice. When the player selects a dialogue choice,
+the Vagrant actually says that line in the world — NPCs hear it; the
+act of speaking happens. Diegetically: he is a person who speaks; the
+player is the agency that decides what he says. Standard
+player-character relationship, no special metafiction required.
+
+Implications:
+
+- NPCs hear what he says. They can quote him back, dispute his
+  words, correct him, repeat them in different register, build on
+  them. Reply patterns are not constrained to intent-reading;
+  characters can respond to literal speech.
+- Modern-register dialogue choices are the lines he speaks. He
+  speaks in the modern register; that is his tongue.
+- The register split (modern player choices / old NPC voice) stays
+  as a stylistic device. It is no longer a metaphysical claim about
+  "thought language" — it is a tonal choice. The Vagrant speaks
+  modern; the NPCs speak old. The friction is intentional and reads
+  as cultural / temporal / register distance between the Vagrant
+  and the Commedia-voiced world he has arrived into.
+- UI: dialogue choices are shown as the Vagrant's voice (modern,
+  plain, listed). NPC replies are shown as the NPC's voice (old
+  register, attributed to them). When NPC reply quotes or refers to
+  what the Vagrant said, that is the standard player-character
+  dialogue feedback loop.
 
 ## What no one says (concealment doctrine)
 
@@ -98,14 +125,9 @@ character development. He is whatever the player makes him.
 - **No NPC mentions the throne** before the post-Lucifer sequence. R3
   is concealed throughout the descent.
 - **No NPC mentions PURITY by name** before the unburdened path's
-  discovery. Hints (the Guide's worry on Seal-carry, the riversamento
+  discovery. Hints (the Guide's worry on Signing-refusal, the riversamento
   sites that activate state-aware NPC dialogue) seed the path
   without naming it.
-- **No NPC addresses the player** (the human at the controller, past
-  the Vagrant's avatar) until R5 — and even then, R5's reveal is at
-  the final scene of each ending, not via NPC dialogue. Hints toward
-  R5 are mechanical (the Vagrant's hollowness, the death-card, the
-  Grimoire-as-Hell's-voice), not declarative.
 
 ## Open questions
 
@@ -124,8 +146,7 @@ character development. He is whatever the player makes him.
 ## Cross-references
 
 - [Setting](setting.md) — *Naming convention*, *NPC dialogue is
-  state-aware*, *NPCs* (blinkered to circle), *The Grimoire is
-  Hell's voice*.
+  state-aware*, *NPCs* (blinkered to circle).
 - [Story](story.md) — *Voice register* (Vagrant), *The Guide / Calls
   the Vagrant Pilgrim*, *Reveals* (what gets revealed when).
 - [Companions](companions.md) — the Guide is the dialogue-volume

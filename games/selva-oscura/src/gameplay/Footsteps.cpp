@@ -1,8 +1,8 @@
 #include "gameplay/Footsteps.h"
 
-#include "Tunables.h"
 #include "WallClock.h"
 #include "audio/Audio.h"
+#include "debug/Flags.h"
 #include "gameplay/Actor.h"
 #include "log/Log.h"
 #include "physics/PhysicsWorld.h"
@@ -63,16 +63,36 @@ constexpr const char* kFootRightJointName = "mixamorig:RightFoot";
 // produce barely-audible ghost fires. The first step of a fresh
 // stride crosses this fine.
 constexpr float kMinPlantDescent = 0.35f; // m/s; below = noise floor
+// Maximum model-space foot Y at which a zero-crossing counts as a
+// plant. X_Bot's foot bone rests ~0.085m above hip-relative ground
+// across walk/jog/sprint authored clips, with ~1cm of micro-variation
+// per plant. Any vy zero-crossing significantly above that height is
+// a mid-trajectory local minimum, not a floor-touching plant.
+//
+// The new sprinting.ozz clip (Faster Running.fbx) has TWO local
+// minima per cycle on the right foot: a stride-mid dip at ~0.155m
+// (knee-tuck inflection) and the real floor-touch at ~0.087m. The
+// detector's original "any vy zero-crossing = plant" logic fired on
+// the 0.155m dip, then cooldown-suppressed the real 0.087m plant
+// ~67ms later -- producing the audible 400ms/233ms limp cadence on
+// sprint (real same-foot cadence 633ms, but alternating-foot fires
+// asymmetric). 0.12m sits cleanly between the real plants (<0.094m
+// observed) and the stride-dip (>0.150m observed); also rejects the
+// mid-swing apex at 0.72m. This is the structural definition of
+// "plant" -- foot near floor at moment of zero-vy -- not per-clip
+// tuning.
+constexpr float kMaxPlantFootY = 0.12f; // meters; above = stride-mid dip
 // Velocity at which audio reaches full volume. Plants above this
 // play at max gain; plants below scale linearly. Tuned so
 // steady-state walking sits ~0.7 of full gain (audible but not
 // shouting) and running sits at full.
 constexpr float kFullVolumeDescent = 2.5f; // m/s; saturation point
-// Per-foot debounce. Has to cover the secondary descent wobble that
-// happens ~0.22-0.25s after the primary plant in the X_Bot walk
-// clip's R-foot (and occasionally L). 0.30s catches the wobbles
-// while still leaving headroom under the steady-state same-foot
-// cadence of ~0.83s walk / ~0.67s run.
+// Per-foot debounce. Covers the secondary descent wobble that happens
+// ~0.22-0.25s after the primary plant in some gait clips. Headroom
+// under steady-state same-foot cadences: walk ~0.83s, jog ~0.67s,
+// sprint ~1.27s (sprint is slower same-foot because the flight phase
+// extends the cycle). Mid-air swing-arc inflections are filtered by
+// kMaxPlantFootY upstream, not by this cooldown.
 constexpr float kRefireCooldown = 0.30f;
 
 // Velocity-to-gain mapping. Linear ramp from kMinPlantDescent (gain
@@ -104,7 +124,7 @@ bool sLogOpenAttempted = false;
 
 FILE* footstepLog()
 {
-    if (!selva::tuning::current().debug_footstep_log)
+    if (!selva::debug::flags().footstep_log)
         return nullptr;
     if (sLog != nullptr)
         return sLog;
@@ -249,7 +269,8 @@ void handlePlantEvent(Actor::FootContact& fc, Actor& actor, float foot_y, float 
                       float since_fire, bool can_fire, bool is_left)
 {
     const float gain = plantGain(fc.peak_descent_vy);
-    if (gain > 0.0f && can_fire)
+    const bool foot_near_ground = (foot_y <= kMaxPlantFootY);
+    if (gain > 0.0f && can_fire && foot_near_ground)
     {
         PlantContext ctx;
         ctx.foot_world = actor.sampler.jointWorldPosWithActor(fc.joint_idx);
@@ -263,10 +284,13 @@ void handlePlantEvent(Actor::FootContact& fc, Actor& actor, float foot_y, float 
     }
     else
     {
+        const char* reason = !foot_near_ground ? "mid_swing_inflection"
+                             : !can_fire       ? "cooldown"
+                                               : "below_min_descent";
         footstepLogf("[event] SUPPRESS foot={} peak_descent={:.3f} foot_y={:.4f} can_fire={} "
                      "since_last={:.3f}s gain={:.3f} reason={}\n",
                      footLabel(is_left), fc.peak_descent_vy, foot_y, can_fire ? 1 : 0, since_fire,
-                     gain, !can_fire ? "cooldown" : "below_min_descent");
+                     gain, reason);
     }
     fc.peak_descent_vy = 0.0f;
 }

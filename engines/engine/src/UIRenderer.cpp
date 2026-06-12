@@ -90,25 +90,34 @@ static std::vector<Batch> sBatches;
 static GLuint sCurrentTex = 0;
 static bool sCurrentIsFont = false;
 
-static void pushQuad(float x, float y, float w, float h, float u0, float v0, float u1, float v1,
-                     const Color& c)
+// Screen-space destination rect (origin + size).
+struct QuadRect
+{
+    float x, y, w, h;
+};
+// UV-space source rect (corner-relative: u0/v0 = top-left, u1/v1 = bottom-right).
+struct QuadUV
+{
+    float u0, v0, u1, v1;
+};
+static void pushQuad(const QuadRect& r, const QuadUV& uv, const Color& c)
 {
     const size_t pos = sVertexData.size();
     sVertexData.resize(pos + FLOATS_PER_QUAD);
     float* d = sVertexData.data() + pos;
 
-    const float x1 = x + w;
-    const float y1 = y + h;
+    const float x1 = r.x + r.w;
+    const float y1 = r.y + r.h;
 
     // clang-format off
     // Triangle 1
-    *d++ = x;  *d++ = y;  *d++ = u0; *d++ = v0; *d++ = c.r; *d++ = c.g; *d++ = c.b; *d++ = c.a;
-    *d++ = x1; *d++ = y;  *d++ = u1; *d++ = v0; *d++ = c.r; *d++ = c.g; *d++ = c.b; *d++ = c.a;
-    *d++ = x1; *d++ = y1; *d++ = u1; *d++ = v1; *d++ = c.r; *d++ = c.g; *d++ = c.b; *d++ = c.a;
+    *d++ = r.x; *d++ = r.y; *d++ = uv.u0; *d++ = uv.v0; *d++ = c.r; *d++ = c.g; *d++ = c.b; *d++ = c.a;
+    *d++ = x1;  *d++ = r.y; *d++ = uv.u1; *d++ = uv.v0; *d++ = c.r; *d++ = c.g; *d++ = c.b; *d++ = c.a;
+    *d++ = x1;  *d++ = y1;  *d++ = uv.u1; *d++ = uv.v1; *d++ = c.r; *d++ = c.g; *d++ = c.b; *d++ = c.a;
     // Triangle 2
-    *d++ = x;  *d++ = y;  *d++ = u0; *d++ = v0; *d++ = c.r; *d++ = c.g; *d++ = c.b; *d++ = c.a;
-    *d++ = x1; *d++ = y1; *d++ = u1; *d++ = v1; *d++ = c.r; *d++ = c.g; *d++ = c.b; *d++ = c.a;
-    *d++ = x;  *d++ = y1; *d++ = u0; *d++ = v1; *d++ = c.r; *d++ = c.g; *d++ = c.b; *d++ = c.a;
+    *d++ = r.x; *d++ = r.y; *d++ = uv.u0; *d++ = uv.v0; *d++ = c.r; *d++ = c.g; *d++ = c.b; *d++ = c.a;
+    *d++ = x1;  *d++ = y1;  *d++ = uv.u1; *d++ = uv.v1; *d++ = c.r; *d++ = c.g; *d++ = c.b; *d++ = c.a;
+    *d++ = r.x; *d++ = y1;  *d++ = uv.u0; *d++ = uv.v1; *d++ = c.r; *d++ = c.g; *d++ = c.b; *d++ = c.a;
     // clang-format on
 }
 
@@ -294,7 +303,7 @@ void UIRenderer::endFrame()
 void UIRenderer::drawRect(float x, float y, float w, float h, const Color& color)
 {
     ensureBatch(sWhiteTex, false);
-    pushQuad(x, y, w, h, 0.0f, 0.0f, 1.0f, 1.0f, color);
+    pushQuad({x, y, w, h}, {0.0f, 0.0f, 1.0f, 1.0f}, color);
     sBatches.back().quad_count++;
 }
 
@@ -302,7 +311,7 @@ void UIRenderer::drawTexturedRect(const Rect& dst, uint32_t tex_id, const Rect& 
                                   const Color& tint)
 {
     ensureBatch(tex_id, false);
-    pushQuad(dst.x, dst.y, dst.w, dst.h, uv.x, uv.y, uv.x + uv.w, uv.y + uv.h, tint);
+    pushQuad({dst.x, dst.y, dst.w, dst.h}, {uv.x, uv.y, uv.x + uv.w, uv.y + uv.h}, tint);
     sBatches.back().quad_count++;
 }
 
@@ -330,7 +339,7 @@ float UIRenderer::drawText(FontHandle font, const std::string& text, float x, fl
         {
             const float gx = cursor_x + g->x_off;
             const float gy = baseline + g->y_off;
-            pushQuad(gx, gy, g->width, g->height, g->u0, g->v0, g->u1, g->v1, color);
+            pushQuad({gx, gy, g->width, g->height}, {g->u0, g->v0, g->u1, g->v1}, color);
             sBatches.back().quad_count++;
         }
         cursor_x += g->advance;

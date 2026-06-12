@@ -109,18 +109,20 @@ constexpr float kLimboPlatformHalfExtent = 12.0f;
 // modifier required.
 //
 // To lower the entire chapel/descent stack: change this constant AND
-// scene.json's chapel world_origin.y (matched value). The descent
-// stairs are baked at chapel-local-Y inside crypt.glb so they ride
-// along automatically via world_origin. Limbo is its own terrain
-// region (see assets/world/terrain/config.json: limbo.y_offset)
+// region.json's chapel_exterior + chapel_interior world_origin.y
+// (matched value across both static_meshes entries). The descent
+// stairs are baked at chapel-local-Y inside chapel_interior.glb so
+// they ride along automatically via world_origin. Limbo is its own
+// terrain region (see assets/world/terrain/config.json: limbo.y_offset)
 // and tracks the chapel via the y_offset value.
 constexpr float kChapelGroundY = 22.3f;
 
 // World-space translation applied to chapel mesh local coords. Source
 // of truth shared by:
-//   * render/WorldRenderer.cpp cryptModelMatrix() (sets the GL model
-//     matrix when drawing the mesh)
-//   * world/PhysicsScene.cpp registerChapel() (bakes the transform
+//   * assets/regions/surface/region.json static_meshes[].world_origin
+//     for chapel_exterior.glb / chapel_interior.glb (JsonRegion bakes
+//     this translation into vertex positions at load time)
+//   * world/PhysicsRegion.cpp registerChapel() (bakes the transform
 //     into the Jolt static trimesh body so physics sees the chapel at
 //     the same world location as the renderer)
 // The 0.05m Z-fight offset keeps the chapel's plinth top safely above
@@ -158,12 +160,13 @@ inline glm::vec3 chapelWorldOrigin()
 // ~-30). Terrain doesn't need to depress that low because the
 // chapel mesh (stair shaft enclosure + descent walls + ceiling)
 // already seals the tunnel from terrain above.
-void registerChapelTerrainModifiers();
-
-// Registers Limbo's terrain features (currently the Acheron trench)
-// as runtime TerrainModifiers in the "limbo" region. Must run BEFORE
-// world::initTerrain() builds the region meshes.
-void registerLimboTerrainModifiers();
+// Note: the chapel + corridor terrain MODIFIERS (FlushAt plateau,
+// FlushSlope wedge) moved to surface/region.json's terrain_modifiers
+// array (Commit 4: dual-source-of-truth fix). C++ retains only the
+// StructureFootprints with vertical_profile data that doesn't map
+// cleanly to JSON yet. The Acheron trench modifier likewise moved
+// to JSON.
+void registerChapelStructureFootprints();
 
 // Registers Limbo's point-light set. v1: ~6 dying-inhabitants' lights
 // scattered across the FAR shore of Acheron (the side opposite the

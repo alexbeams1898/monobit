@@ -25,7 +25,7 @@ const glm::mat4& lastView();
 // Multi-pass environment draw. Caller binds the appropriate shader
 // before each:
 //   useTerrainShader() + setTerrainAtmosphere(...) -> renderTerrain()
-//   useSceneProgram()  + setSceneAtmosphere(...)  -> renderGroundDecals()
+//   useRegionProgram()  + setSceneAtmosphere(...)  -> renderGroundDecals()
 //                                                 + renderStaticMeshes()
 //   useTreeShader()    + setTreeAtmosphere(...)   -> renderTrees()
 // Stencil pre-pass: writes chapel-floor primitives into the stencil
@@ -39,6 +39,7 @@ void renderChapelFloorMask();
 void renderTerrain();
 void renderGroundDecals();
 void renderStaticMeshes();
+void renderDoors();
 void renderTrees();
 
 // Depth-pass variants for shadow map. The caller must have already
@@ -46,6 +47,7 @@ void renderTrees();
 // the same geometry as its main counterpart but with depth-only output.
 void renderTerrainDepth();
 void renderStaticMeshesDepth();
+void renderDoorsDepth();
 void renderTreesDepth();
 
 } // namespace selva::render

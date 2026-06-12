@@ -50,9 +50,7 @@ both, neither remembering the difference.
 player gives him a name (six letters, elicited by the Guide in the
 opening sequence), responds for him through dialogue trees, and
 shapes his posture toward the world through choices. The Vagrant is
-*whoever the player makes him*. Setting.md's player-as-Hell framing
-is one of the things the player learns over time; the Vagrant never
-realizes it.
+*whoever the player makes him*.
 
 **No biography.** The game does not flesh out the Vagrant's pre-Hell
 life. No memories surface. No NPCs remember him. No Grimoire entries
@@ -70,11 +68,11 @@ moves as a shape, not a body.
 **Voice register.** The Vagrant speaks via dialogue trees in **modern
 register** — modern words for things he doesn't have old names for
 (*"some old man with a stick"* rather than *"Charon"*; *"this place"*
-rather than *"Acheron"*). Hell's voice — Grimoire entries, gate
-messaging, NPC speech, environmental signage — uses the
-Commedia-anchored register (Italian loanwords, Early Modern English).
-The friction between the two registers is the world's friction-engine:
-the player chooses modern phrasings; the world replies in old words.
+rather than *"Acheron"*). Grimoire entries, gate messaging, NPC
+speech, and environmental signage use the Commedia-anchored register
+(Italian loanwords, Early Modern English). The friction between the
+two registers is the world's friction-engine: the player chooses
+modern phrasings; the world replies in old words.
 
 ---
 
@@ -97,56 +95,147 @@ upward. The player walks freely; the obvious goal is the hill.
 
 The basic-form Wood is the *pre-hub* version of the Wood — smaller,
 sparser, the stripped-down version of the place that will later open
-as a hub. (Once the Vagrant has used or carried the Seal, the Wood
+as a hub. (Once the Vagrant has met the Guide at Beat 3, the Wood
 opens to its hub form, and the basic-form Wood is gone for that
 save.)
 
 Player can take the opening at any pace. There is no time pressure.
 Five minutes or twenty — the player chooses.
 
-### Beat 2 — The beasts
+### Beat 2 — Lupa, the last legend
 
-When the Vagrant approaches the mountain, the three beasts appear
-in Dante's order:
+> **Selva-canon refined 2026-05-31** per
+> [[selva-wood-lore-locked-2026-05-31]]. The pre-failure *selva
+> oscura* had three named apex-legends on the slope —
+> **Lonza**, **Leone**, **Lupa** — but Lonza and Leone died during
+> Hell's stagnation, before the Vagrant ever arrived. Only Lupa
+> survives at game-start. Beat 2 is now the encounter with her
+> alone. Earlier "fights all three" framing is superseded.
 
-1. **Lonza** (the leopard) — light-footed, spotted, the first
-   obstacle.
-2. **Leone** (the lion) — head high, raging.
-3. **Lupa** (the she-wolf) — gaunt, insatiable, the worst.
+> **Implementation status (2026-05-31):** Lupa ships with the
+> Quaternius CC0 wolf rig. Joint map, hurtboxes, archetype, and bake
+> all wired (see [animals_and_multi_skeleton.md](animals_and_multi_skeleton.md)).
+> Combat tuning, encounter pacing, and reward structure are WIP.
 
-The Vagrant fights all three. Combat profile is the Unburdened class
-(see [classes.md](classes.md)) since no measurement has occurred.
+When the Vagrant approaches the chapel, **Lupa** is already there —
+**sitting outside it**. Not stalking, not pacing. Sitting still.
+She is visibly weak, tired, malnourished, gaunt (per Dante's *Inferno*
+I.49–60, but worn further by the years she alone survived a dying
+Wood). She looks sad. She looks like an animal at the end of
+something. The player's first sight of her is grief, not threat —
+most opening-boss reveals signal "this will hurt you"; Lupa's reveal
+is the inverse. An animal that looks like it's barely surviving.
 
-**Texture note.** The beasts have been here a long time. They have
-encountered many failed pilgrims. Their fight has a *patina* of
-repetition — recognized moves, instinctive responses. They are
-worn but no less terrifying. The opening should communicate this
+**Encounter beat: sitting → standing → fighting.** Lupa does not rush
+the Vagrant. She stands up when he approaches close enough to be a
+real threat — that stand is its own animation moment (Quaternius
+`Jump_ToIdle` clip serves as the "rise to attention" beat;
+`Idle_2_HeadLow` or similar for the sad-standing-idle pre-engage).
+Then combat begins.
+
+**Combat tuning paradox (LOCKED):** despite the visible weakness,
+**Lupa is mechanically dangerous — two-tap deadly to an unprepared
+player**. She is an apex predator running on her last reserves, and
+an apex predator's last reserves are still apex. The contrast
+between visual weakness and mechanical reality IS the tragedy: the
+player kills something that looked sad, learns afterward it was
+still dangerous, and feels worse about it. **Do not tune her down to
+match the visual.**
+
+Combat profile is the Unburdened class (see [classes.md](classes.md))
+since no measurement has occurred. `permanent_on_death: true` —
+fought once per save, same pattern as keepers. After she falls, the
+chapel exterior stays empty in every subsequent cycle. The empty
+chapel-front itself becomes the monument to what was.
+
+**Tonal register: tragic, sift-of-melancholy.** The absence of Lonza
+and Leone is felt in the encounter — the colle's slope was meant for
+three; only one sits at the chapel. The player who pieces it together
+(via item text / NPC dialogue / Grimoire fragments across runs) reads
+the absence; the player who doesn't reads a lone gaunt apex-beast in
+front of a stone tomb, which already lands tragically. Either way,
+the encounter carries the weight of *what was lost.* Quiet grief
+register, not horror, not boss-of-the-week.
+
+**Texture note.** Lupa has been here a long time — long enough to
+have outlasted her sister-legends, long enough to have hunted in a
+Wood progressively emptying around her. Her fight has a *patina* of
+endurance — wary moves, instinct sharpened by lonely centuries.
+Worn but no less terrifying. The opening should communicate this
 texture without stating it. Specifics deferred to combat / writing.
+
+**Player-knowledge note (per
+[[selva-epistemic-doctrine-2026-05-31]]):** the player is not told
+why Lupa is alone. They are not told that there were three. They are
+not told what killed the others. They encounter a wolf on a dead
+slope; they may infer absence; the canon (Lonza and Leone died from
+Hell's stagnation, Lupa is the lone survivor) is iceberg-below,
+surfaced gradually only via fragments in later content.
 
 ### Beat 3 — The Guide arrives
 
-After the beasts fall, the Guide appears in the Wood. Not before
-— specifically after struggle, paralleling Dante's Virgil meeting
-him in the lower place after the retreat.
+After Lupa falls, the Guide emerges from the chapel. The chapel door
+— locked at the Vagrant's arrival — opens, and the Guide steps out
+into the Wood. Not before; specifically after the encounter, paralleling
+Dante's Virgil meeting him in the lower place after the retreat.
 
 The Guide speaks in old register. He is **warm, friendly,
 procedural** — unambiguously a companion. No register-friction the
 player should feel; no faint wrongness; no uncanny undertone. The
 opening Guide is *fully himself*. He is **glad to see the Vagrant**
-in a way he cannot articulate — the warmth of a soul who has been
-alone for centuries, whose role-as-Guide has gone unused, finally
-able to be the thing he was named to be. He treats the Vagrant's
-presence as expected. He explains the descent as the path forward.
-He frames it as how souls proceed.
+in a way he cannot articulate — the warmth of a guide-shaped soul,
+finally able to be the thing he was named to be. He treats the
+Vagrant's presence as expected. He explains the descent as the path
+forward. He frames it as how souls proceed.
 
 The gladness is real but the conditions for it were authored.
-Beatrice arranged his isolation across centuries — routing other
-unjudged souls away from this selva oscura so the Guide-role would
-remain unused. By the time the Vagrant arrives, the Guide has been
-*made hungry* for the encounter. He doesn't know this. He just feels
+Beatrice positioned the Guide in this Wood, at this time, with this
+context, for this arrival. He doesn't know this. He just feels
 relief; he just feels the pleasure of finally being able to guide
 someone. (See *The Guide / Identity*, below, for the full
 instrumentalization.)
+
+> **How Lupa actually died (canonical).** The Guide did NOT fight her.
+> A soul-form actor cannot win a direct engagement with an apex animal,
+> and the Wood permits combat across forms (see
+> [bestiary.md](bestiary.md) *Soul-form vs animal-form*).
+> Instead: the Guide arrived in the Wood, found Lonza's carcass near
+> the chapel (Lonza had died of starvation in the dying pre-failure
+> Wood — also Beatrice-arranged), poisoned the carcass, and waited
+> inside the chapel for Lupa to scavenge it.
+>
+> Lupa, gaunt and starving — kin-of-Lonza, the last apex predator on
+> the slope — ate the carcass. She had no reason not to: the carcass
+> was unprecedented food, kin she had hunted alongside, and her hunger
+> was insatiable by canon (*Inferno* I.49–60: *mai non empie la
+> bramosa voglia*). The poison began acting immediately. By the
+> time the Vagrant arrives at the chapel, Lupa is already dying —
+> visibly weak, sad, sitting because she can no longer stand long.
+>
+> The Vagrant engages her. Mechanically the player damages her and
+> "kills" her; canonically she was already dead the moment she took
+> the bite. The Vagrant's role in her death is participatory but
+> not load-bearing. She would have died on the slope within minutes
+> if the Vagrant had simply walked past.
+>
+> The Guide perceives this as a deliberate act of self-preservation
+> and path-clearing: an apex animal in his vicinity, an unjudged soul
+> arriving, a poisonable carcass at hand, no other route. He believes
+> he chose. He chose the way a guide-shaped soul placed precisely
+> there with precisely those variables in front of him *would* choose.
+> Beatrice did not need to compel him. She arranged conditions such
+> that his own nature would produce the act. This is the pattern of
+> every subsequent thing he does for the Vagrant: he believes he is
+> acting; he is. He is also executing her plan. Both are true
+> simultaneously. **The cruelty of his instrumentalization is that
+> the act felt like his own choice.**
+>
+> The player's perception of the encounter: a starving wolf, a fight,
+> a victory, a companion who emerges. The actual structure: Beatrice's
+> opening move, executed through two pawns who do not know they are
+> pawns. The reveal — that the Guide killed Lupa, that Beatrice
+> authored the sequence — surfaces gradually via Grimoire fragments
+> and (specifically) the Guide's posthumous entries at R2.
 
 The Guide's *off-ness* develops only later, as the contrapasso-leak
 arc proceeds. Per the degradation table (below), he is *coherent,
@@ -171,33 +260,59 @@ six letters. The name is *given*, not *recovered* — the Vagrant
 does not remember his real name; he answers to whatever the player
 provides. (NAME_ENTRY UI specifics in [ux.md](ux.md).)
 
-The Guide then offers **The Seal** (*Il Sigillo*). He explains its
-function: it permits passage into Hell. *"Take the Seal, and ye may
-pass."* He does not present declining as an option — the offer is
-framed as the necessary thing.
+The Guide then offers **the Signing** (*La Firma*). This is a
+ritual he performs on the Vagrant, not an item he hands over. He
+explains its function as a formality of intake: *"Pilgrim, thou
+art unmarked. None can pass into the depths unmeasured. Bend thy
+head; I shall sign thee."*
 
-### Beat 4 — The choice
+### Beat 4 — The choice (class-picker UI)
 
-The player can:
+After the Guide's framing dialog, a **class-picker UI** fires:
+modal full-screen, four options laid out clearly, two-step
+confirmation, no back button, explicit-permanent text in the UI
+chrome. The Guide's belief that the Signing is necessary is HIS
+frame; the UI presents the choice honestly so the player can
+commit with eyes open.
 
-- **Use the Seal** → class-pick. Penitent / Heretic / Wretched. The
-  Seal is consumed. Stats unlock. Standard path.
-- **Carry the Seal** → unburdened. The Seal stays in inventory. The
-  Vagrant remains unmeasured.
+Options:
+
+- **Penitent / Heretic / Wretched** (any of the three) →
+  Signing happens cosmologically → imprint is created → the
+  Vagrant receives **the Crucible**. Stats unlock. Standard path.
+- **Refuse** → no Signing → refusal-channel opens → the Vagrant
+  receives **the Censer**. Stats stay at baseline; growth comes
+  from riversamento alone via the Censer (per setting.md
+  *The unburdened path*).
+
+The choice is decisive at this beat. The Signing window is
+cosmologically one-shot for the Guide because the Lupa-fall
+arrangement supplied the chrism-equivalent substance the ritual
+required; once spent, the Guide has nothing to draw on. Later
+Erasures re-enable the ritual via Vagrant-gathered material
+prerequisites and re-run the same class-picker UI.
 
 The Guide responds differently:
 
-- **On use:** encouraging. The Vagrant has stepped onto the path the
-  Guide expects. The Guide is reassured.
-- **On carry:** *worried*. The Guide does not understand declining;
-  he believes the Vagrant is making the journey harder than it needs
-  to be. He may say something like *"Thou art certain? The path is
-  not made for the unmeasured."* He thinks he is looking at
-  stubbornness. The framework Beatrice supplied — that the path is
-  *made for the measured* — is the only frame he has, and the
-  unburdened Vagrant violates it in a way the Guide cannot
-  articulate. He does not know that he himself is also unmeasured;
-  he does not remember refusing at the gates centuries ago.
+- **On accept:** encouraging. The Vagrant has stepped onto the path
+  the Guide expects. The Guide is reassured.
+- **On refuse:** *worried*. The Guide does not understand
+  declining; he believes the Vagrant is making the journey harder
+  than it needs to be. He may say something like *"Thou art
+  certain? The path is not made for the unmeasured."* He thinks he
+  is looking at stubbornness. The framework Beatrice supplied —
+  that the path is *made for the measured* — is the only frame he
+  has, and the unburdened Vagrant violates it in a way the Guide
+  cannot articulate. He does not know that he himself is also
+  unmeasured; he does not remember refusing at the gates centuries
+  ago.
+
+Per the Pawn Doctrine: the Guide believes the Signing is care for
+the Vagrant. He does not know (concealed pre-R2) that the Signing
+is also the mechanism by which Beatrice's saturation claims an
+unjudged soul. From his point of view, he is welcoming a pilgrim.
+From the canonical point of view, Beatrice configured the ritual
+his guide-shape produced.
 
 The worry is not *almost-recognition.* It is the Guide's framework
 failing to handle a case Beatrice did not prepare him for. (See
@@ -218,7 +333,7 @@ runs. The opening sequence ends. The descent begins.
 - Beasts in the Wood drove him back. He killed them.
 - A figure called the Guide met him, named him, gave him passage.
 - The path forward is downward.
-- He has The Seal — used (class-picker) or carried (unburdened).
+- The Guide signed him (class-picker) or did not (unburdened).
 
 What the player does *not* know after the opening (concealed
 intentionally — see *Concealment* below):
@@ -226,7 +341,6 @@ intentionally — see *Concealment* below):
 - That Beatrice exists, or chose him.
 - That the Guide is her instrument.
 - That he is unjudged / chosen / different from other souls.
-- That he is Hell-as-observer (player-as-Hell framing).
 - That a post-Lucifer fight exists.
 - That cycles will be cosmologically meaningful (the player will
   initially read death-as-restart as roguelike convention).
@@ -249,13 +363,12 @@ unlocks, environmental cues, and the Guide's slow breakdown.
    *Both kinds of players should feel rewarded* — the careful
    player by being right, the casual player by being moved.
 
-2. **The player learns through Hell.** The player is Hell-as-observer
-   (per setting.md *Perspective — who the player is*); the Grimoire
-   is Hell's voice narrating its own situation; NPC fragments are
-   souls speaking from inside their punishment; the Vagrant himself
-   is hollow and does not learn — the player synthesizes from Hell's
-   self-narration plus what souls let slip in their lucid windows.
-   The Vagrant carries no understanding across cycles; he is not the
+2. **The player learns; the Vagrant does not.** The Grimoire
+   narrates the cosmology in its own voice; NPC fragments are souls
+   speaking from inside their punishment; the Vagrant himself is
+   hollow and does not learn — the player synthesizes from these
+   sources plus what souls let slip in their lucid windows. The
+   Vagrant carries no understanding across cycles; he is not the
    audience. The player is the only consciousness in the loop that
    can integrate what unlocks.
 
@@ -271,10 +384,10 @@ volume center of the game.
 
 ### Identity
 
-He is a soul who **refused Hell's measurement at the gates centuries
-ago**. The selva oscura received him — the natural cosmological
-destination of the unjudged (per setting.md *The selva oscura as
-cosmological destination*). He has been there since.
+He is a soul who **refused Hell's measurement at the gates**. The
+selva oscura received him — the natural cosmological destination of
+the unjudged (per setting.md *The selva oscura as cosmological
+destination*). He has been there since.
 
 **He is unjudged**, like the Vagrant. The same cosmological rule
 applies — Hell cannot grip him because he carries no imprint. This is
@@ -289,9 +402,34 @@ unburdened. He does not know Beatrice found him long after he had
 lost any sense of his origins. He just is the Guide as he understands
 himself: a helpful figure in the Wood.
 
+**Character.** Easygoing, intelligent, tough, protective. A genuinely
+*good* soul. The kind of person who, in life, would be reliably there
+for others — quietly capable, refusing his own importance, returning
+warmth without expectation. The tragedy of his fate works *because*
+he is good. A used pawn who was selfish or weak would be a different
+story (a Patches betrayal). The Guide is the inverse: his goodness IS
+the leverage Beatrice uses on him. His instincts for help, for
+protection, for steady presence are real and unaltered; they are
+also the exact instruments by which the plan proceeds. He lost his
+way (refused measurement, eroded memory, became Beatrice's vessel) —
+but he never lost the *shape*. The shape is what kills him.
+
 **He does not know Beatrice's plan.** He believes he is helping. His
 warmth, his help, his belief that he is doing the right thing — all
 real, all genuine. He is a pawn who does not know he is a pawn.
+
+**Every act of his is plan-execution.** From the Lupa-poisoning
+(*Beat 2*, *Beat 3* above) through to the climax (*The climax*
+below), the Guide acts on what feels to him like agency: practical
+choice, self-preservation, helping the Vagrant, doing what a guide
+does. The Vagrant-facing perception aligns with this. The canonical
+reality is that every choice was authored — Beatrice arranged
+conditions such that his guide-shape, placed in those conditions,
+would naturally produce the outcome her plan required. She did not
+compel; she configured. The Lupa-poisoning was the first authored
+act the player witnesses (after the fact). The Signing-offer is
+the second. Every Hell-projection is the same pattern. **He believes he
+chose. He did. He chose the way she needed him to.** Both are true.
 
 **What he is, before Beatrice.** The Guide's *guide-shape* — his
 inclination toward help, his warmth, his patience — predates his
@@ -305,12 +443,11 @@ an unjudged soul whose natural inclination was to be helpful.
 of his original life had eroded and his guide-shape had no
 biographical anchor. She named what he was: *the Guide*. She
 supplied the role-as-identity his amnesia could not produce on its
-own. She also **arranged his isolation** — routing other unjudged
-souls away from this selva oscura so the Guide-role would remain
-unused until her plan needed it. By the time the Vagrant arrives,
-the Guide has been *himself* (guide-shaped) inside a *named role*
-(her construction) under *cultivated isolation* (her arrangement)
-for centuries.
+own. She positioned him in this Wood at this time for the Vagrant's
+arrival — placed for this moment, ready for this moment. The Guide
+has been *himself* (guide-shaped) inside a *named role* (her
+construction) inside a *configured arrival sequence* (her arrangement)
+from his placement onward.
 
 **What this means.** His warmth at the Vagrant's arrival is real —
 he is genuinely a helper-soul finally able to help. His role-as-Guide
@@ -319,15 +456,17 @@ pretense. Both are him. Both were captured by Beatrice. He is not a
 fake; he is *himself, used.* The cruelty of his instrumentalization is
 that she did not replace him with something he wasn't; she co-opted
 what was already true about him, deprived him of opportunity to
-express it, and released it on the Vagrant when her plan needed it.
+express it on his own terms, and released it on the Vagrant when her
+plan needed it.
 
 His unmeasured state is what lets him host Beatrice's projection
 without Hell installing him into something else. **The same projection
-channel doubles as a contrapasso conduit** — leaked contrapasso from
-fallen keepers, which would normally land on the circle's NPC and
-shades, also routes through Beatrice's channel into the Guide. Senza
-forma should make him impervious; the channel overrides this. The
-result is degradation: substance flowing through him erodes the vessel.
+channel doubles as a sangue conduit** — when each fallen keeper's
+ring restores under its new mangled keeper, the bottled sangue of
+that ring starts moving again, and some of it routes through
+Beatrice's channel into the Guide. Senza forma should make him
+impervious; the channel overrides this. The result is degradation:
+substance flowing through him erodes the vessel.
 
 His destruction is *acceptable cost* in Beatrice's plan. She did not
 premeditate it as the goal; she did not think hard enough about whether
@@ -375,10 +514,11 @@ through the warmest exchange in the game: every time the Guide says
 
 ### Degradation across cycles
 
-As keepers fall, **the contrapasso of each consumed circle leaks**.
-Some lands on the Guide. He becomes a cumulative receptacle of
-leaked contrapasso — by 9 keepers down, loaded with all 9 circles'
-worth.
+As keepers fall, **each consumed circle's long-bottled sangue is
+released and starts moving again**. Some routes through Beatrice's
+projection channel into the Guide. He becomes a cumulative
+receptacle of restored-ring sangue — by 9 keepers down, loaded with
+substance from all 9 circles' worth of releases.
 
 The Hell-projection fails first. The Wood-body holds longer.
 
@@ -387,7 +527,7 @@ The Hell-projection fails first. The Wood-body holds longer.
 | 1-3 | Reliable. Appears at every per-keeper interlude. Coherent, helpful. | Coherent, warm, responsive. |
 | 4-6 | Cracks. Sometimes appears mid-sentence. Sometimes doesn't appear. Sometimes contradicts himself. | Visibly tired. Slower. Sadder. Less responsive. |
 | 7-8 | Rare. When it appears, it is a wisp. | Forgets which path the Vagrant is on. Repeats earlier statements. Sometimes doesn't recognize the Vagrant. |
-| All keepers down | Stopped entirely. No more in-Hell appearances. | Fully degraded. Loaded with all 9 circles' contrapasso. |
+| All keepers down | Stopped entirely. No more in-Hell appearances. | Fully degraded. Loaded with sangue from all 9 restored circles. |
 
 **Mechanical consequence:** the player loses access to in-Hell
 heal/offerings progressively before the climax. By 9 keepers down,
@@ -440,33 +580,37 @@ supplied does not have an attack-pattern for an unburdened Vagrant.
 The Guide-as-tool was configured for a class-picker; the unburdened
 Vagrant slips past the configuration. With no instruction to follow,
 the Guide does what his original soul-shape (helper, guide) defaults
-to — he hands over The Hand. The severed-hand item passes willingly,
-or falls from his outstretched hand without resistance. He fades. No
-fight. The contrapasso saturating him is held back not by recognition
-but by the absence of a configured response.
+to — he passes the relic. The Vagrant receives it willingly, or it
+falls from the Guide's outstretched hand without resistance. He
+fades. No fight. The contrapasso saturating him is held back not by
+recognition but by the absence of a configured response.
 
 His final words on this path are minimal. Gestural, half-finished.
 The player infers from the totality of his arc what he was. The
 unburdened gets the same revelation as the class-picker, but
 quieter.
 
-### The Hand
+### What the Guide leaves behind (the relic)
 
-The item the Vagrant carries forward after the Guide's death.
+The Guide carries cosmological residue from his role as Beatrice's
+projection-channel. At his death, that residue collapses out of him
+and the Vagrant inherits something. The specific form and function
+of this inheritance is TBD — leveling is already portable from Beat 4
+via the Crucible / Censer, so the old "portable OFFERINGS access" role
+the Hand used to fill no longer exists.
 
-- **Severed at the kill** (class-picker) or **fallen from his
-  outstretched hand at the handover** (unburdened).
-- **The Vagrant carries it.** The hand is in inventory, terrible to
-  look at, terrible to know what was done.
-- **Functions:** heal (universal), plus path-specific:
-  - **Class-picker:** offerings access at any time.
-  - **Unburdened:** portable riversamento site (riversa anywhere).
-- **Available anywhere, anytime, after acquisition.** No interlude
-  gating.
+- **Severed at the kill** (class-picker) or **passed at the handover**
+  (unburdened).
+- **The Vagrant carries it.** Whatever it is, the relic is in
+  inventory, terrible to look at, terrible to know what was done.
+- **Function TBD.** Possible roles:
+  - Healing item (the pre-Hand-retired healing problem may resolve
+    here)
+  - A second cosmological tool that complements the vessel
+  - A late-game progression unlock that requires the Guide's residue
+  - A late-game class-evolution gate
 - **Permanent across cycles.** Once acquired, the Vagrant has it for
-  the rest of the save. (Even after second death — like stat
-  investments and lifetime totals, the Hand is permanent
-  acquisition.)
+  the rest of the save.
 
 ### Tone — the kill is Blaidd-coded
 
@@ -480,8 +624,8 @@ feel horrible *and* a relief — the resource pressure of the late
 cycles, when his projection has stopped appearing in Hell, has
 built up an actual mechanical reason to want the encounter to
 end. The player is complicit in his death; they wanted it for
-reasons that turn out to be Hell's reasons (the Hand is genuine
-progression).
+reasons that turn out to be Hell's reasons (the Guide's residue
+is genuine progression).
 
 ### The truth comes out posthumously
 
@@ -553,7 +697,7 @@ Beatrice reveal) rather than as its own beat.
 ## Reveals
 
 The story arc is built on **gradual revelation** (per *Concealment as
-principle*, above). Reveals R1-R5 are the discrete narrative beats
+principle*, above). Reveals R1-R4 are the discrete narrative beats
 where the player's understanding inverts. Each has a *trigger* (what
 unlocks the reveal) and a *surface* (where the player sees it).
 
@@ -635,14 +779,30 @@ and the *class-evolution-as-Hell-loading* implication.
     Both Vagrant and Guide have been pawns; the Guide was used through
     a channel Beatrice constructed, and the channel destroyed him.
   - **Class evolution has been Hell loading itself into the Vagrant**
-    (class-picker, via contrapasso accretion) **or being channeled
-    away by him** (unburdened, via riversamento). The Vagrant's
-    transformation across the game has not been his choice; it has
-    been the cosmology operating on him.
+    (class-picker, the class-picker is Hell's installation taking
+    shape inside him) **or routing through him into Beatrice**
+    (unburdened — riversamento has been pouring substance INTO HER
+    SUBSTRATE, not into a neutral reservoir; per setting.md *Sangue
+    saturation of Beatrice*). The Vagrant's transformation across
+    the game has not been his choice; it has been the cosmology
+    operating on him.
+  - **Unburdened-specific R2 horror:** every riversamento has been a
+    drop of Hell-substance into Beatrice. The figure on the title
+    screen — the disintegrating Madonna-coded form — has been
+    transforming in real-time, across every boot of every cycle.
+    The halo cracking is Hell working outward inside her substrate.
+    The unburdened Vagrant thought he was choosing the gentle
+    ending; he has been *making a Satan-of-Paradiso* inside the
+    figure he is converging toward. PURITY, the ending he is
+    racing toward, will kill her before the transformation
+    completes. On post-R2 replay, every prior boot is horror.
   - Beatrice's intentions: radical reform of a failing cosmology,
     executed by a god ground down past coherence and visibly
     destabilized. Not a dictator — a stir-crazy reformer who acted
-    because the staring became unbearable.
+    because the staring became unbearable. The unburdened reveals
+    a second layer: she is also *the medium* of one of the endings,
+    and her substrate has been bearing the cost of that medium-ship
+    throughout.
 - **Tone:** the player does not get a clean villain. They get a
   fellow soul who broke under conditions the player has now
   experienced enough of to *understand.* The horror is partly that
@@ -729,76 +889,6 @@ REFUSAL (no change) and PURITY (her own ending). She does not descend
 on TRANSFIGURATION (her plan succeeds) or SURFEIT (impersonal cosmic
 catastrophe). The player meets her only on the paths that fail her.
 
-### R5 — The player is Hell
-
-The player has been Hell-as-observer the entire game. Setting.md
-*Perspective — who the player is* commits the structural truth.
-R5 is the discrete reveal of this truth.
-
-R5 is the most abstract reveal. Explicit naming earlier would
-cheapen it. Instead: **mechanical hints throughout the entire game,
-discrete reveal at the final scene of each ending.**
-
-- **Hints throughout (mechanical, not declarative):** see setting.md
-  *Perspective — who the player is*. The Vagrant is hollow; he
-  doesn't speak; the player names him; the Grimoire is Hell's voice;
-  the interface is Hell's bureaucracy; the death-card has been the
-  player's two voices in conflict from run 1. None of these name
-  R5 — they produce the *feeling* of being a puppeteer in Hell's
-  chair.
-- **Trigger:** the final scene of each ending. R5 fires differently
-  per path; the surface is the ending itself.
-- **Surface — per ending:**
-
-  **TRANSFIGURATION final scene.** The Vagrant takes the throne;
-  becomes Satan-2; Hell renews around him. As the geography
-  reconfigures, the camera pulls back from the Vagrant-on-the-throne,
-  far enough that the player's perspective becomes explicit — the
-  player has just installed themselves a new vessel. Possible text:
-  *YOU REMAIN.* Hell continues; the player continues as Hell; the
-  Vagrant has been absorbed into the role. The cycle is the
-  cosmology's; the player is the cosmology.
-
-  **SURFEIT final scene.** The Vagrant ruptures; cosmic war;
-  universe ends. The player's view *also* ends. Black screen.
-  Silence. Possible text: *YOU END.* Or no text — the screen is
-  black, the audio is gone, and the player sits with the absence.
-  Hell ended; the player ended; everything ended. The horror is
-  that the player's *position* (Hell-as-observer) has been
-  consumed alongside Hell. There is no observer left because
-  there is nothing to observe.
-
-  **REFUSAL final scene.** The Vagrant walks out of Cocytus; Hell
-  stays broken; Beatrice is dead; the anomaly persists. In the
-  cutscene's pace, the Vagrant turns toward the camera. He does
-  not speak. But he looks. The player understands they have been
-  *seen* by their own avatar, finally, in the only ending where
-  the act of refusal gave the Vagrant enough will to register the
-  puppeteer. Possible text: *YOU REMAIN. SO DOES IT.* — both the
-  player and Hell persist; the failure is that *neither of you
-  ends.*
-
-  **PURITY final scene.** The cosmic firing fires through the
-  Vagrant; cascade unmakes Hell. The player's view changes during
-  the firing — the screen empties (Cocytus → geography → selva
-  oscura → title screen, image dispersing). Then black. Possible
-  text: *YOU WITNESSED.* Past tense. The player was the witness;
-  Hell is gone; there is nothing more to observe. The player's
-  role as Hell-as-observer is complete and concluded.
-
-- **What the player synthesizes (per ending):**
-  - TRANSFIGURATION: continuation horror — *I am now Hell installed.*
-  - SURFEIT: total absence — *I ended with everything.*
-  - REFUSAL: trapped persistence — *I and Hell, both broken, forever.*
-  - PURITY: completion — *the watching is done. The role resolves.*
-
-- **Why the *YOU* text overlays.** Through the entire game, even
-  *THOU DOST NOT BELONG* uses *thou* — Early Modern register the
-  player parses as Hell's archaic voice, not yet read as *to me.*
-  The R5 *YOU* is the modern register, breaking frame. **It is
-  the only time in the game *YOU* is addressed to the player
-  explicitly.** The phrases are heavy because they are unique.
-
 ---
 
 ## What's still TBD in this doc
@@ -808,21 +898,17 @@ discrete reveal at the final scene of each ending.**
    degradation already locked. World-state changes, NPC absences (NPCs
    fade across cycles per setting.md), gate messaging degradation.
 
-2. **The Grimoire as the surface that delivers reveals (specifics).**
-   The Grimoire's *role* is locked (Hell's voice, see setting.md
-   *The Grimoire is Hell's voice*). Open: what the entries actually
-   contain; what unlocks when; how the register-shift across the
-   game (Hell waking up to itself) is paced into specific entries.
-   R2's posthumous Grimoire entries especially — the explicit naming
-   of Beatrice and the unjudged condition at the Guide's death —
-   need their shape locked.
+2. **The Grimoire as a future surface (open).** Whether the
+   Grimoire ships, what voice authored it in-fiction, what its
+   entries contain, what unlocks when, and how it paces reveals
+   are all open. R2's posthumous content (the explicit naming of
+   Beatrice and the unjudged condition at the Guide's death) needs
+   a delivery surface; the Grimoire is one candidate among
+   others.
 
 3. **The four endings as narrative experiences (cutscene-level
-   detail).** Shape locked at the *Reveals / R5* level (per-ending
-   final scenes drafted). Open: full cutscene specifics, frame-by-frame
-   beats, exact text overlays (*YOU REMAIN.* / *YOU END.* / *YOU
-   REMAIN. SO DOES IT.* / *YOU WITNESSED.* are working candidates;
-   final wording TBD).
+   detail).** Open: full cutscene specifics, frame-by-frame beats,
+   per-ending final-scene shape, any text overlays.
 
 4. **Beatrice's appearances** — mostly answered. She does not appear
    before R2. She appears as a fight on REFUSAL and PURITY. Open: any
@@ -835,8 +921,8 @@ discrete reveal at the final scene of each ending.**
 
 - [Setting](setting.md) — the world this story takes place in. The
   cosmological rules, the geography, the locked terms (Vagrant /
-  Pilgrim, sangue, riversamento, the Seal, the Cord, the Erasure,
-  vestigia, the Hand).
+  Pilgrim, sangue, riversamento, the Signing, markers, the Erasure,
+  vestigia, the Crucible, the Censer).
 - [Classes](classes.md) — the Vagrant's combat capabilities,
   class-pick fork, evolutions, the Unburdened path mechanics.
 - [Companions](companions.md) — the Guide as character, in

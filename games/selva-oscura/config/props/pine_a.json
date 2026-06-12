@@ -1,0 +1,14 @@
+{
+  "_comment": "Hero pine variant A. Visual source = the four loaded pine variants in assets/world/trees/low_poly_forest_tree_pack/. The archetype id MUST match the variant_name set by TreeAssets::collectTreeMeshesFromGltf (canonicalHeroVariantName: pine_a / pine_b / pine_c / pine_short) so the prop spawn funnel resolves the variant correctly. Examine fields are shared across all pine variants -- the cosmological lesson is about the wood (it died long ago), not about any specific variant. insight_trigger_subject='tree' so all pine examines fire the same insight node (knows_wood_long_dead).",
+
+  "id": "pine_a",
+  "category": "tree",
+  "cylinder_radius": 0.4,
+  "cylinder_half_height": 6.0,
+  "collision_kind": "cylinder",
+
+  "examine_label_key": "world.tree.examine_label",
+  "examine_text_key": "world.tree.examine_text",
+  "insight_trigger_subject": "tree",
+  "interact_range_meters": 2.5
+}

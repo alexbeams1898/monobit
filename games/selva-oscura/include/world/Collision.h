@@ -78,14 +78,14 @@ struct BoxCollider
 };
 
 // One named scene's worth of static colliders. Owned/loaded/unloaded
-// as a unit so multiple scenes can coexist or swap. For now there's
-// exactly one scene (the selva oscura hub), but the indirection means
+// as a unit so multiple scenes can coexist or swap. Today exactly
+// one scene exists (the selva oscura hub); the indirection means
 // adding a second area later is data work, not refactor work.
 //
 // boundary_radius defines a circular play area centered at boundary_center
 // (XZ); resolveBodyCollision pushes the body back inside if it tries to
 // leave. Set boundary_radius <= 0 to disable.
-struct CollisionScene
+struct CollisionRegion
 {
     std::vector<CylinderCollider> cylinders;
     std::vector<BoxCollider> boxes;
@@ -96,11 +96,17 @@ struct CollisionScene
 // Initialize the hub scene with its hardcoded cylinder set. Called
 // once at startup. Replace with a JSON loader when manual editing
 // becomes painful (~50+ cylinders).
-void initHubScene();
+void initHubRegion();
 
 // Read-only access for the renderer (drawing placeholder geometry
 // at each cylinder) and for diagnostics.
-const CollisionScene& currentScene();
+const CollisionRegion& currentRegion();
+
+// Mutable access for runtime systems that append to the region's
+// cylinder/box lists (the prop spawn funnel, future scatter
+// producers). Distinct accessor so the read-only path stays the
+// default and write callers are explicit.
+CollisionRegion& mutableCurrentRegion();
 
 // Resolve overlap: push body_xz radially out of any cylinder it
 // penetrates. Body-agnostic — same call used by the player today,
@@ -128,13 +134,13 @@ struct RaycastHit
 // along `direction` from `origin`.
 //
 // Used by the camera to pull in when its ideal position would clip
-// through a wall or tree. Pair with sphereOverlapsScene to enforce
+// through a wall or tree. Pair with sphereOverlapsRegion to enforce
 // a buffer around the camera position after pull-in.
 //
 // Takes the scene explicitly so the math is testable against
 // synthetic scenes without touching the singleton.
-RaycastHit raycastScene(const CollisionScene& scene, const glm::vec3& origin,
-                        const glm::vec3& direction, float max_distance);
+RaycastHit raycastRegion(const CollisionRegion& scene, const glm::vec3& origin,
+                         const glm::vec3& direction, float max_distance);
 
 // True if a sphere of `radius` centered at `center` overlaps any
 // cylinder or box in the scene. Used to enforce the camera-clearance
@@ -143,10 +149,10 @@ RaycastHit raycastScene(const CollisionScene& scene, const glm::vec3& origin,
 // caller shrinks the camera-to-player distance and re-queries until
 // clear (the iterative push-out pass).
 //
-// Used in tandem with raycastScene: raycastScene catches occluders
-// in the camera's forward path; sphereOverlapsScene catches the
+// Used in tandem with raycastRegion: raycastRegion catches occluders
+// in the camera's forward path; sphereOverlapsRegion catches the
 // "candidate camera position lands inside a perpendicular wall"
 // corner-pocket case that a single forward ray can't see.
-bool sphereOverlapsScene(const CollisionScene& scene, const glm::vec3& center, float radius);
+bool sphereOverlapsRegion(const CollisionRegion& scene, const glm::vec3& center, float radius);
 
 } // namespace selva::world

@@ -55,4 +55,10 @@ int treeVariantCount();
 // Access a loaded variant by index (0..treeVariantCount()-1).
 const TreeVariant& treeVariant(int idx);
 
+// Reverse lookup: variant name -> index. Returns -1 if no loaded
+// variant matches `name`. Used by the prop spawn funnel to resolve
+// a PropArchetype id ("pine_a") to a forced_variant_idx on the
+// generated CylinderCollider.
+int treeVariantIndexByName(const std::string& name);
+
 } // namespace selva::world

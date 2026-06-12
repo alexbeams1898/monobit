@@ -1,6 +1,6 @@
 #include "render/ShadowPass.h"
 
-#include "Tunables.h"
+#include "debug/Flags.h"
 #include "gl/ShaderUtils.h"
 #include "render/Atmosphere.h"
 
@@ -20,7 +20,7 @@ namespace
 // Depth-only vertex shaders. One per geometry family because each has
 // its own input layout / transform model. All share the same single
 // uniform mat4 uLightViewProj. The terrain VS has aPos in world space
-// already (Terrain.cpp bakes world positions); scene + tree + skeletal
+// already (Terrain.cpp bakes world positions); region + tree + skeletal
 // each multiply by their own uModel; skeletal additionally applies the
 // bone palette.
 
@@ -197,7 +197,7 @@ constexpr int kLogIntervalFrames = 30;
 
 FILE* shadowLog()
 {
-    if (!selva::tuning::current().debug_shadow_log)
+    if (!selva::debug::flags().shadow_log)
         return nullptr;
     if (sLog != nullptr)
         return sLog;

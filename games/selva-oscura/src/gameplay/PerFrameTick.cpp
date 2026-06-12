@@ -1,7 +1,10 @@
 #include "gameplay/PerFrameTick.h"
 
 #include "AppState.h"
+#include "AppStateGlobal.h"
 #include "Engine.h"
+#include "Formulas.h"
+#include "Scene.h"
 #include "Tunables.h"
 #include "WallClock.h"
 #include "anim/AnimationClip.h"
@@ -28,30 +31,50 @@
 #include "combat/TransitionProfile.h"
 #include "combat/Weapon.h"
 #include "combat/WeaponClass.h"
+#include "debug/Flags.h"
+#include "dialog/DialogSystem.h"
+#include "gameplay/BossDispatcher.h"
 #include "gameplay/Enemies.h"
+#include "gameplay/EnemyArchetype.h"
 #include "gameplay/Footsteps.h"
 #include "gameplay/LocomotionStateMachine.h"
 #include "gameplay/PlayerState.h"
+#include "gameplay/Sangue.h"
+#include "gameplay/SanguePulse.h"
+#include "gameplay/ScriptedEvents.h"
+#include "gameplay/TerritoryClamp.h"
 #include "gameplay/TickState.h"
+#include "hazard/HazardZones.h"
+#include "insight/Insight.h"
+#include "insight/InsightLayout.h"
+#include "interact/Interaction.h"
 #include "physics/PhysicsWorld.h"
 #include "render/Atmosphere.h"
 #include "render/Camera.h"
 #include "render/LightSpritePass.h"
-#include "render/SceneGeometry.h"
-#include "render/SceneShaders.h"
+#include "render/RegionGeometry.h"
+#include "render/RegionShaders.h"
 #include "render/ShadowPass.h"
 #include "render/SkyPass.h"
 #include "render/TerrainShader.h"
 #include "render/TreeShader.h"
 #include "render/WorldRenderer.h"
+#include "spawn/FlowSpawner.h"
+#include "text/TextPresentation.h"
+#include "ui/ActorHud.h"
+#include "ui/ClassPickerScreen.h"
 #include "ui/ComboHud.h"
+#include "ui/NamePromptScreen.h"
 #include "world/Collision.h"
+#include "world/Door.h"
+#include "world/JsonRegion.h"
 #include "world/Lights.h"
-#include "world/PhysicsScene.h"
-#include "world/Scene.h"
+#include "world/PhysicsRegion.h"
+#include "world/Region.h"
 #include "world/StructureFootprints.h"
 #include "world/Terrain.h"
 #include "world/TerrainModifiers.h"
+#include "world/Territory.h"
 #include "world/TreeAssets.h"
 
 #include <imgui.h>
@@ -63,6 +86,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <ozz/base/maths/soa_transform.h>
 
@@ -94,6 +118,7 @@ static selva::anim::SkeletalMesh& sPlayerMesh = selva::anim::playerMesh();
 static selva::anim::ClipRegistry& sClips = selva::anim::clips();
 static selva::anim::LocomotionConfig& sLocomotionConfig = selva::anim::locomotionConfig();
 using selva::gameplay::Actor;
+using selva::gameplay::LocoTier;
 using selva::gameplay::PlayerState;
 #define sPlayer (selva::gameplay::player())
 #define sSampler (selva::gameplay::player().sampler)
@@ -358,6 +383,8 @@ static bool sPrevV = false;
 // but selvaPerFrame needs to call the toggle + skip-tick gate.
 static void tickTreePreviewToggle(const Uint8* keys);
 static void tickFpvToggle(const Uint8* keys);
+static void tickF8SangueDebugSpawn(const Uint8* keys);
+static void tickF9CommitVessel(const Uint8* keys);
 static void renderTreePreview();
 
 // Combat debug toggle + log file owned by combat/CombatLog.{h,cpp}.
@@ -396,7 +423,7 @@ static std::string sDebugClipName;
 // per-frame SM pick. The ozz Animation::name() returns "mixamo.com"
 // for every Mixamo-exported clip, so it can't be used to identify
 // which loco clip is playing. This static IS the registry key
-// ("unarmed_combat_idle", "walking", "running", etc.).
+// ("unarmed_combat_idle", "walking", "jogging", etc.).
 static std::string sLastLocoClipName = "standard_idle";
 // Asymmetric commit time for loco-clip swaps. A cross-family swap
 // (forward/back ↔ strafe) takes kLocoCrossFamilyCommitSeconds of
@@ -863,7 +890,7 @@ static const selva::combat::WeaponAttack* findAttackForClip(const char* clip_nam
                            ? sEquipment.right->cls->two_handed
                            : sEquipment.right->cls->one_handed;
     const std::vector<const std::vector<selva::combat::WeaponTechnique>*> tech_lists{
-        &aset.light, &aset.heavy, &aset.running};
+        &aset.light, &aset.heavy, &aset.sprint};
     for (const auto* techs : tech_lists)
         for (const auto& tech : *techs)
             for (const auto& atk : tech.attacks)
@@ -970,7 +997,7 @@ static void spawnPlayerAttackHitboxForClip(const char* clip_name,
     sp.clip_duration_seconds = clip.duration();
     sp.clip_start_seconds = start_seconds;
     sp.playback_rate = playback_rate;
-    sp.mesh_foot_offset_y = sPlayerMesh.foot_offset_y;
+    sp.mesh_foot_offset_y = selva::gameplay::actorFootOffsetY(sPlayer);
     selva::combat::resetHitMemo();
     selva::combat::spawnAttackHitbox(sp);
 }
@@ -1128,6 +1155,69 @@ static bool tryChainAdvanceFire(selva::combat::HandSide hand, const char* button
 // Press handler: route the press through dodge-buffer, chain-advance,
 // fresh-fire, or buffer-for-replay. Returns true if a clip fired this
 // call (so the caller can mark combat_input_this_frame).
+// Press-edge body: chain-advance OR fresh-fire, both gated on stamina.
+// Returns true if a clip fired.
+static bool handleFreshAttackPress(selva::combat::HandSide hand, BufferedPress& buf,
+                                   const char* button, const selva::combat::PressModifiers& mods,
+                                   float swing_cost, float combo_input_buffer_seconds)
+{
+    const float now = selva::wallClock();
+    const bool stamina_ok = selva::gameplay::canSpendStamina(sPlayer, swing_cost);
+    if (sSampler.isOneShotActive())
+    {
+        if (stamina_ok && tryChainAdvanceFire(hand, button, mods, now, combo_input_buffer_seconds))
+        {
+            selva::gameplay::spendStamina(sPlayer, swing_cost);
+            return true;
+        }
+        buf.pending = true;
+        buf.button = button;
+        buf.buffered_at = now;
+        combatLog("[combat:rhythm] BUFFERED (one-shot in flight, no chain advance; {})", button);
+        return false;
+    }
+    const auto& w = selva::combat::cancelWindow(hand);
+    const char* clip_name =
+        selva::combat::clipForButton(sEquipment, hand, button, mods, now, w.open_at, w.close_at);
+    if (clip_name == nullptr)
+    {
+        combatLog("[combat:rhythm] press DROPPED (no clip mapping for {})", button);
+        return false;
+    }
+    if (!stamina_ok || !fireClipForHand(hand, clip_name, combo_input_buffer_seconds))
+        return false;
+    selva::gameplay::spendStamina(sPlayer, swing_cost);
+    recordPressForCancelWindow(hand, button, now);
+    return true;
+}
+
+// Buffered-replay body: if a press was buffered during a one-shot, retry
+// when the one-shot ends (within the buffer window).
+static bool handleBufferedAttackReplay(selva::combat::HandSide hand, BufferedPress& buf,
+                                       const selva::combat::PressModifiers& mods, float swing_cost,
+                                       float combo_input_buffer_seconds)
+{
+    const float now = selva::wallClock();
+    if (now - buf.buffered_at > combo_input_buffer_seconds)
+    {
+        buf.pending = false;
+        return false;
+    }
+    const auto& w = selva::combat::cancelWindow(hand);
+    const char* clip_name = selva::combat::clipForButton(sEquipment, hand, buf.button, mods, now,
+                                                         w.open_at, w.close_at);
+    const bool fired = clip_name != nullptr &&
+                       selva::gameplay::canSpendStamina(sPlayer, swing_cost) &&
+                       fireClipForHand(hand, clip_name, combo_input_buffer_seconds);
+    if (fired)
+    {
+        selva::gameplay::spendStamina(sPlayer, swing_cost);
+        recordPressForCancelWindow(hand, buf.button, now);
+    }
+    buf.pending = false;
+    return fired;
+}
+
 static bool tryAttackInputDispatch(selva::combat::HandSide hand, bool press_edge_this_frame,
                                    const char* button, const selva::combat::PressModifiers& mods,
                                    float combo_input_buffer_seconds)
@@ -1138,56 +1228,16 @@ static bool tryAttackInputDispatch(selva::combat::HandSide hand, bool press_edge
         bufferPostDodgeAttack(hand, button);
         return false;
     }
+    // Per-swing stamina cost. base_swing_cost is the flat per-attack budget;
+    // weapon weight scaling via swing_effort comes when weapons are wired.
+    // Exhausted presses are silently DROPPED (not buffered) so combat
+    // naturally pauses for regen.
+    const float swing_cost = selva::formulas::current().stamina.base_swing_cost;
     if (press_edge_this_frame)
-    {
-        const float now = selva::wallClock();
-        if (sSampler.isOneShotActive())
-        {
-            if (tryChainAdvanceFire(hand, button, mods, now, combo_input_buffer_seconds))
-                return true;
-            buf.pending = true;
-            buf.button = button;
-            buf.buffered_at = now;
-            combatLog("[combat:rhythm] BUFFERED (one-shot in flight, no chain advance; {})",
-                      button);
-            return false;
-        }
-        // No one-shot active: fire mapped clip directly.
-        const auto& w = selva::combat::cancelWindow(hand);
-        const char* clip_name = selva::combat::clipForButton(sEquipment, hand, button, mods, now,
-                                                             w.open_at, w.close_at);
-        if (clip_name == nullptr)
-        {
-            combatLog("[combat:rhythm] press DROPPED (no clip mapping for {})", button);
-            return false;
-        }
-        if (fireClipForHand(hand, clip_name, combo_input_buffer_seconds))
-        {
-            recordPressForCancelWindow(hand, button, now);
-            return true;
-        }
-        return false;
-    }
-
-    // No fresh press: replay buffered if one-shot just ended.
+        return handleFreshAttackPress(hand, buf, button, mods, swing_cost,
+                                      combo_input_buffer_seconds);
     if (buf.pending && !sSampler.isOneShotActive())
-    {
-        const float now = selva::wallClock();
-        if (now - buf.buffered_at > combo_input_buffer_seconds)
-        {
-            buf.pending = false;
-            return false;
-        }
-        const auto& w = selva::combat::cancelWindow(hand);
-        const char* clip_name = selva::combat::clipForButton(sEquipment, hand, buf.button, mods,
-                                                             now, w.open_at, w.close_at);
-        const bool fired =
-            clip_name != nullptr && fireClipForHand(hand, clip_name, combo_input_buffer_seconds);
-        if (fired)
-            recordPressForCancelWindow(hand, buf.button, now);
-        buf.pending = false;
-        return fired;
-    }
+        return handleBufferedAttackReplay(hand, buf, mods, swing_cost, combo_input_buffer_seconds);
     return false;
 }
 
@@ -1320,16 +1370,18 @@ static bool tryFirePostDodgeAttack(bool shift_held, float combo_input_buffer_sec
     // cancel point — don't gate on it.
     (void)sDodgeActive;
     const float wait_seconds = selva::wallClock() - sPostDodgeAttack.buffered_at;
-    const selva::combat::PressModifiers mods{shift_held, sPlayer.sprinting};
+    const selva::combat::PressModifiers mods{shift_held, sPlayer.loco_tier == LocoTier::Sprint};
     const auto& dw = selva::combat::cancelWindow(sPostDodgeAttack.hand);
     const char* clip_name =
         selva::combat::clipForButton(sEquipment, sPostDodgeAttack.hand, sPostDodgeAttack.button,
                                      mods, selva::wallClock(), dw.open_at, dw.close_at);
     bool fired = false;
-    if (clip_name != nullptr &&
+    const float swing_cost = selva::formulas::current().stamina.base_swing_cost;
+    if (clip_name != nullptr && selva::gameplay::canSpendStamina(sPlayer, swing_cost) &&
         fireClipForHand(sPostDodgeAttack.hand, clip_name, combo_input_buffer_seconds,
                         /*force_first_strike=*/true))
     {
+        selva::gameplay::spendStamina(sPlayer, swing_cost);
         fired = true;
         combatLog("[combat:rhythm {:.4f}s] post-dodge attack FIRED (waited {:.3f}s since press)",
                   selva::wallClock(), wait_seconds);
@@ -1340,7 +1392,7 @@ static bool tryFirePostDodgeAttack(bool shift_held, float combo_input_buffer_sec
 
 // Velocity-driven locomotion physics. Accelerates the player's
 // ground-plane velocity toward a target speed (idle when no input,
-// walk_speed when WASD held, run_speed when WASD+sprinting). On
+// walk/jog/sprint_speed by loco_tier when WASD held). On
 // release, decelerates toward zero. Acceleration vs deceleration are
 // separately tunable.
 //
@@ -1403,11 +1455,11 @@ static const char* selectLocomotionClipFromSpeed(float target_speed, bool is_arm
 // sustained input, all other transitions fire immediately.
 static int locomotionFamilyOf(const std::string& name)
 {
-    if (name == "walking" || name == "running" || name == "walking_backward" ||
-        name == "running_backward")
+    if (name == "walking" || name == "jogging" || name == "sprinting" ||
+        name == "walking_backward" || name == "jogging_backward")
         return 1;
     if (name == "strafe_walking_left" || name == "strafe_walking_right" ||
-        name == "strafe_running_left" || name == "strafe_running_right")
+        name == "strafe_jogging_left" || name == "strafe_jogging_right")
         return 2;
     return 0;
 }
@@ -1429,9 +1481,22 @@ static std::string pickLocomotionClipNameThisFrame(const glm::vec3& moveIntent,
     else
     {
         const float intent_mag = glm::length(moveIntent);
-        const float would_be_target = (intent_mag <= 0.0001f) ? 0.0f
-                                      : sPlayer.sprinting     ? tun.run_speed
-                                                              : tun.walk_speed;
+        float would_be_target = 0.0f;
+        if (intent_mag > 0.0001f)
+        {
+            switch (sPlayer.loco_tier)
+            {
+            case LocoTier::Walk:
+                would_be_target = tun.walk_speed;
+                break;
+            case LocoTier::Jog:
+                would_be_target = tun.jog_speed;
+                break;
+            case LocoTier::Sprint:
+                would_be_target = tun.sprint_speed;
+                break;
+            }
+        }
         const bool is_armed = !isUnarmed(sEquipment);
         clip_name = selectLocomotionClipFromSpeed(would_be_target, is_armed, tun);
     }
@@ -1498,7 +1563,19 @@ static void tickPlayerVelocity(const glm::vec3& moveIntent, bool movement_locked
     if (intent_mag > 0.0001f && use_velocity)
     {
         const glm::vec3 dir = moveIntent / intent_mag;
-        const float target_speed = sPlayer.sprinting ? tun.run_speed : tun.walk_speed;
+        float target_speed = 0.0f;
+        switch (sPlayer.loco_tier)
+        {
+        case LocoTier::Walk:
+            target_speed = tun.walk_speed;
+            break;
+        case LocoTier::Jog:
+            target_speed = tun.jog_speed;
+            break;
+        case LocoTier::Sprint:
+            target_speed = tun.sprint_speed;
+            break;
+        }
         target_velocity = glm::vec2(dir.x, dir.z) * target_speed;
     }
     // sLastTargetSpeed feeds the idle-vs-walk gate in the picker.
@@ -1597,9 +1674,11 @@ static Actor* resolveLockTarget()
 
 // Per-frame lock-on input + auto-release pass. Middle-mouse rising
 // edge toggles the lock; sprint engaging and target death auto-
-// release. Must run BEFORE consumers of the lock state (camera, yaw,
-// movement intent, locomotion picker).
-static void tickLockOnInput()
+// release. Mouse wheel cycles between lockon points on the current
+// target (ER convention: head -> torso -> hindleg_*, per the
+// archetype's authored list). Must run BEFORE consumers of the lock
+// state (camera, yaw, movement intent, locomotion picker).
+static void tickLockOnInput(int wheel_delta)
 {
     const Uint32 mouse_buttons = SDL_GetMouseState(nullptr, nullptr);
     const bool mmb_now = (mouse_buttons & SDL_BUTTON(SDL_BUTTON_MIDDLE)) != 0;
@@ -1616,6 +1695,25 @@ static void tickLockOnInput()
             sPlayer.lock_target_idx = -1;
     }
 
+    // Wheel cycle (only when already locked). Per-frame accumulated
+    // delta -- pos wheel = next point, neg = prev. Wrap modulo the
+    // resolved list length.
+    if (wheel_delta != 0 && sPlayer.lock_target_idx >= 0)
+    {
+        if (const Actor* t = resolveLockTarget(); t != nullptr)
+        {
+            const auto& pts = selva::gameplay::actorLockOnPoints(*t);
+            if (!pts.empty())
+            {
+                const int n = static_cast<int>(pts.size());
+                int next = (sPlayer.lock_point_idx + wheel_delta) % n;
+                if (next < 0)
+                    next += n;
+                sPlayer.lock_point_idx = next;
+            }
+        }
+    }
+
     if (!press_mmb || sShowTuningPanel)
         return;
 
@@ -1626,13 +1724,41 @@ static void tickLockOnInput()
     }
 
     sPlayer.lock_target_idx = acquireLockOnTarget();
+    // Snap to the archetype's default lockon point on acquire (Lupa:
+    // head). Player cycles from there with mouse wheel.
+    if (sPlayer.lock_target_idx >= 0)
+    {
+        if (const Actor* t = resolveLockTarget(); t != nullptr)
+            sPlayer.lock_point_idx = std::max(0, selva::gameplay::defaultLockOnPointIndex(*t));
+    }
 }
 
-// While locked, drive cameraYaw from the player→target XZ axis so
-// the third-person camera lines up looking at the target over the
-// player's shoulder. Pitch is left wherever tickMouseLook last left
-// it before lock engaged (mouse-Y ignored during lock).
-static void tickLockOnCamera()
+// Rate-limited shortest-arc yaw step. Steps `current` toward `target`
+// by at most `rate * dt` radians, picking the shortest direction. Used
+// for lock-on yaw chase so the camera + body don't HARD-SNAP to a
+// moving target each frame (which reads as jolt). Souls/ER convention:
+// the camera lags slightly behind a sprinting boss, eases into final
+// position. Match that here.
+static float stepYawToward(float current, float target, float rate, float dt)
+{
+    constexpr float kTwoPi = 6.2831853f;
+    constexpr float kPi = 3.1415927f;
+    float delta = target - current;
+    while (delta > kPi)
+        delta -= kTwoPi;
+    while (delta < -kPi)
+        delta += kTwoPi;
+    const float max_step = rate * dt;
+    if (std::abs(delta) <= max_step)
+        return target;
+    return current + (delta > 0.0f ? max_step : -max_step);
+}
+
+// While locked, drive cameraYaw toward the player→target XZ axis.
+// Rate-limited (lockon_camera_yaw_rate) so a sprinting target doesn't
+// cause per-frame camera jolt. Pitch is left wherever tickMouseLook
+// last left it before lock engaged (mouse-Y ignored during lock).
+static void tickLockOnCamera(float dt)
 {
     const Actor* target = resolveLockTarget();
     if (target == nullptr)
@@ -1640,7 +1766,28 @@ static void tickLockOnCamera()
     const glm::vec3 to(target->pos.x - sPlayer.pos.x, 0.0f, target->pos.z - sPlayer.pos.z);
     if (glm::dot(to, to) <= 1e-6f)
         return;
-    selva::render::setCameraYaw(yawFromGroundDir(glm::normalize(to)));
+    const float target_yaw = yawFromGroundDir(glm::normalize(to));
+    const float current_yaw = selva::render::cameraYaw();
+    const float rate = selva::tuning::current().lockon_camera_yaw_rate;
+    const float new_yaw = stepYawToward(current_yaw, target_yaw, rate, dt);
+    selva::render::setCameraYaw(new_yaw);
+    // Diagnostic: every frame the lock is active, dump yaw chase
+    // state. Lets us see whether the stutter is in the smoothing
+    // (delta exceeds rate*dt = a snap) or somewhere downstream
+    // (smoothing OK but render still jitters).
+    static int s_tick = 0;
+    if ((++s_tick % 6) == 0) // ~10 Hz at 60fps
+    {
+        const float delta_per_frame = std::abs(new_yaw - current_yaw);
+        const float gap_to_target = std::abs(target_yaw - current_yaw);
+        std::fprintf(stderr,
+                     "[lockon-yaw-cam] target_pos=(%.2f,%.2f) player_pos=(%.2f,%.2f) "
+                     "target_yaw=%.3f cur_yaw=%.3f new_yaw=%.3f gap=%.3f step=%.3f "
+                     "rate=%.1f dt=%.4f max_step=%.3f\n",
+                     target->pos.x, target->pos.z, sPlayer.pos.x, sPlayer.pos.z, target_yaw,
+                     current_yaw, new_yaw, gap_to_target, delta_per_frame, rate, dt, rate * dt);
+        std::fflush(stderr);
+    }
 }
 
 // Smooth-turn the player's yaw toward the move-intent direction.
@@ -1655,15 +1802,36 @@ static void tickPlayerYaw(const glm::vec3& moveIntent, bool movement_locked, flo
 {
     if (movement_locked)
         return;
-    // Lock-on overrides input-driven yaw: snap to the target each frame
-    // so the player always faces it. Translation reads sPlayer.yaw too,
-    // so the 4 directional combat clips will play with respect to a
-    // facing that's correct for the locked-mode WASD basis.
+    // Lock-on overrides input-driven yaw: ease the player's body
+    // toward the target. Rate-limited (lockon_body_yaw_rate) so a
+    // sprinting target doesn't cause per-frame body jolt. Slightly
+    // snappier than the camera so the directional combat clips
+    // resolve against a facing that's already correct for the
+    // locked-mode WASD basis. Translation reads sPlayer.yaw too, so
+    // the strafe/back-walk clips play with the right basis.
     if (const Actor* target = resolveLockTarget(); target != nullptr)
     {
         const glm::vec3 to(target->pos.x - sPlayer.pos.x, 0.0f, target->pos.z - sPlayer.pos.z);
         if (glm::dot(to, to) > 1e-6f)
-            sPlayer.yaw = yawFromGroundDir(glm::normalize(to));
+        {
+            const float target_yaw = yawFromGroundDir(glm::normalize(to));
+            const float rate = selva::tuning::current().lockon_body_yaw_rate;
+            const float old_yaw = sPlayer.yaw;
+            sPlayer.yaw = stepYawToward(sPlayer.yaw, target_yaw, rate, dt);
+            // Mirror the camera-yaw diagnostic so we can see both
+            // chase rates in the same log line stream.
+            static int s_tick = 0;
+            if ((++s_tick % 6) == 0)
+            {
+                const float gap = std::abs(target_yaw - old_yaw);
+                const float step = std::abs(sPlayer.yaw - old_yaw);
+                std::fprintf(stderr,
+                             "[lockon-yaw-body] target_yaw=%.3f cur=%.3f new=%.3f gap=%.3f "
+                             "step=%.3f rate=%.1f dt=%.4f max_step=%.3f\n",
+                             target_yaw, old_yaw, sPlayer.yaw, gap, step, rate, dt, rate * dt);
+                std::fflush(stderr);
+            }
+        }
         return;
     }
     // FPV body yaw: tracks move direction (smoothed) while moving;
@@ -1676,7 +1844,7 @@ static void tickPlayerYaw(const glm::vec3& moveIntent, bool movement_locked, flo
         if (glm::length(moveIntent) <= 0.0001f)
             return;
         const bool is_backpedal_clip = (sLocoDecision.clip_name == "walking_backward" ||
-                                        sLocoDecision.clip_name == "running_backward");
+                                        sLocoDecision.clip_name == "jogging_backward");
         if (is_backpedal_clip)
         {
             sPlayer.yaw = selva::render::cameraYaw();
@@ -1932,6 +2100,10 @@ static void armDodgeFrameCaptureIfRequested(float dodge_duration)
 static bool fireDodgeFromTap(const glm::vec3& moveIntent, float backstep_playback_rate,
                              float roll_playback_rate)
 {
+    // Stamina gate: refuse to fire if the player can't afford the full cost.
+    const float dodge_cost = selva::formulas::current().stamina.dodge_effort;
+    if (!selva::gameplay::canSpendStamina(sPlayer, dodge_cost))
+        return false;
     const bool has_intent = glm::length(moveIntent) > 0.0001f;
     const char* clip_name = has_intent ? "falling_to_roll" : "standing_dodge_backward";
     sDodgeIsBackstep = !has_intent;
@@ -1979,6 +2151,7 @@ static bool fireDodgeFromTap(const glm::vec3& moveIntent, float backstep_playbac
     sDodgeYawBlendDuration = sDodgeDuration * 0.5f;
     armDodgeCsvRecordingIfRequested(sDodgeDuration);
     armDodgeFrameCaptureIfRequested(sDodgeDuration);
+    selva::gameplay::spendStamina(sPlayer, dodge_cost);
     return true;
 }
 
@@ -2055,8 +2228,11 @@ static void tickJumpInput(const Uint8* keys)
     const char* clip_name = wasd_held ? "running_jump" : "jumping";
     const auto* clip = sClips.get(clip_name);
     const bool gate_open = !sSampler.isOneShotActive() || sSampler.isOneShotPastCancelFraction();
-    if (clip != nullptr && clip->isLoaded() && gate_open)
+    const float jump_cost = selva::formulas::current().stamina.jump_effort;
+    if (clip != nullptr && clip->isLoaded() && gate_open &&
+        selva::gameplay::canSpendStamina(sPlayer, jump_cost))
     {
+        selva::gameplay::spendStamina(sPlayer, jump_cost);
         TransitionProfile profile = profiles::jump();
         float rate = 1.10f;
         sOneShotHipDeltaScale = 1.0f;
@@ -2064,7 +2240,7 @@ static void tickJumpInput(const Uint8* keys)
         {
             profile.blend_out_seconds = 0.30f;
             rate = 1.0f;
-            if (!sPlayer.sprinting)
+            if (sPlayer.loco_tier != LocoTier::Sprint)
                 sOneShotHipDeltaScale = 0.55f;
         }
         fireOneShotWithProfile(*clip, profile, 0.0f, rate, clip_name);
@@ -2106,13 +2282,15 @@ static bool tickSpaceInput(const Uint8* keys, const glm::vec3& moveIntent, float
     if (space_now)
     {
         sSpaceHeldSeconds += dt;
-        // Commit to sprint when EITHER Space is held past the
-        // tap-window OR WASD is held (movement intent is
-        // unambiguous, no reason to wait).
+        // Commit to sprint when EITHER Space is held past the tap-window OR
+        // WASD is held (movement intent is unambiguous, no reason to wait).
+        // The stamina lockout (Stamina::sprint_locked) is enforced inside
+        // tickActorStamina -- if locked, sprinting=true gets cleared back to
+        // false on the very next stamina tick, so locomotion sees walk.
         const bool wasd_held = keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_A] ||
                                keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_D];
         if (sSpaceHeldSeconds >= dodge_tap_window || wasd_held)
-            sPlayer.sprinting = true;
+            sPlayer.loco_tier = LocoTier::Sprint;
     }
     if (release_edge)
     {
@@ -2120,7 +2298,10 @@ static bool tickSpaceInput(const Uint8* keys, const glm::vec3& moveIntent, float
         if (was_tap && !sDodgeFiredThisPress)
             fired = fireOrBufferDodgeOnSpaceRelease(moveIntent, backstep_playback_rate,
                                                     roll_playback_rate);
-        sPlayer.sprinting = false;
+        // Drop back to Jog; the per-frame LAlt-pass re-promotes to
+        // Walk on the next frame if LAlt is still held.
+        if (sPlayer.loco_tier == LocoTier::Sprint)
+            sPlayer.loco_tier = LocoTier::Jog;
     }
     sPrevSpace = space_now;
     return fired;
@@ -2151,12 +2332,15 @@ capturePreUpdateJoints(bool loco_clip_changed, const std::string& clip_name, flo
     const Uint8* keys = SDL_GetKeyboardState(nullptr);
     const Actor* lt = resolveLockTarget();
     const bool locked = (lt != nullptr);
+    const char* tier_label = sPlayer.loco_tier == LocoTier::Walk     ? "walk"
+                             : sPlayer.loco_tier == LocoTier::Sprint ? "sprint"
+                                                                     : "jog";
     combatLog("[sm {:.4f}s] loco-pick {}@{:.3f}s -> {} (blend={:.3f}s speed_now={:.2f} "
-              "target={:.2f} locked={} sprint={} WASD={}{}{}{})",
+              "target={:.2f} locked={} tier={} WASD={}{}{}{})",
               selva::wallClock(), sLastLocoClipName, fd.loco_current_time, clip_name, blend_seconds,
-              speed_now, sLastTargetSpeed, locked ? 1 : 0, sPlayer.sprinting ? 1 : 0,
-              keys[SDL_SCANCODE_W] ? 1 : 0, keys[SDL_SCANCODE_A] ? 1 : 0,
-              keys[SDL_SCANCODE_S] ? 1 : 0, keys[SDL_SCANCODE_D] ? 1 : 0);
+              speed_now, sLastTargetSpeed, locked ? 1 : 0, tier_label, keys[SDL_SCANCODE_W] ? 1 : 0,
+              keys[SDL_SCANCODE_A] ? 1 : 0, keys[SDL_SCANCODE_S] ? 1 : 0,
+              keys[SDL_SCANCODE_D] ? 1 : 0);
     const char* names[] = {"mixamorig:RightHand", "mixamorig:LeftHand", "mixamorig:RightFoot",
                            "mixamorig:LeftFoot", "mixamorig:Hips"};
     for (const char* n : names)
@@ -2181,9 +2365,10 @@ struct LocomotionPick
 
 // Pick the locomotion clip for this frame from the player's
 // continuous velocity magnitude. Speed thresholds:
-//   * speed <= idle_to_walk_speed  → idle
-//   * speed <= walk_to_run_speed   → walking
-//   * speed >  walk_to_run_speed   → running
+//   * speed <= idle_to_walk_speed   → idle
+//   * speed <= walk_to_jog_speed    → walking
+//   * speed <= jog_to_sprint_speed  → jogging
+//   * speed >  jog_to_sprint_speed  → sprinting
 // The idle clip is stance-dependent (combat-ready vs peaceful).
 //
 // Why velocity instead of (Idle/Walk/Run) state with debounced
@@ -2199,11 +2384,11 @@ struct LocomotionPick
 // current speed. Reading current speed produced a visible
 // idle->walking->running cascade on a fresh sprint-from-idle: as
 // velocity ramped through the 0.30 (idle_to_walk) and 3.0
-// (walk_to_run) thresholds, the picker fired three back-to-back
+// (walk_to_jog / jog_to_sprint) thresholds, the picker fired multiple back-to-back
 // cross-family transitions in ~150ms, stacking three pose-match
 // residuals + inertialization decays on top of each other and
 // producing a visible foot/leg spasm. Target speed is the player's
-// intent (walk_speed when WASD held; run_speed when WASD+sprint;
+// intent (walk/jog/sprint_speed per LocoTier when WASD held;
 // 0 otherwise) and changes only on input edges, so the picker fires
 // at most once per intent change. The crossfade hides the velocity
 // ramp; intent stays in lockstep with what the player asked for.
@@ -2220,9 +2405,11 @@ static const char* selectLocomotionClipFromSpeed(float target_speed, bool is_arm
             return is_armed ? "sword_and_shield_idle_4" : "unarmed_combat_idle";
         return "standard_idle";
     }
-    if (target_speed <= tun.walk_to_run_speed)
+    if (target_speed <= tun.walk_to_jog_speed)
         return "walking";
-    return "running";
+    if (target_speed <= tun.jog_to_sprint_speed)
+        return "jogging";
+    return "sprinting";
 }
 
 // Combat stance lifecycle (preserved from the old SM): CombatReady
@@ -2291,7 +2478,7 @@ static const char* selectLockedLocomotionClip(const glm::vec3& moveIntent)
         return nullptr;
     const glm::vec3 fwd = to / std::sqrt(to_len_sq);
     const glm::vec3 right(-fwd.z, 0.0f, fwd.x);
-    return selva::gameplay::directionalLocoClip(fwd, right, moveIntent, sPlayer.sprinting);
+    return selva::gameplay::directionalLocoClip(fwd, right, moveIntent, sPlayer.loco_tier);
 }
 
 // FPV directional clip picker. Backpedal exception only: pure-S
@@ -2310,7 +2497,12 @@ static const char* selectFpvLocomotionClip(const glm::vec3& moveIntent)
     const glm::vec3 intent_dir = moveIntent / intent_mag;
     constexpr float kFpvBackpedalDotThreshold = 0.5f; // ~120° between cam-fwd and intent
     if (glm::dot(cam_fwd, intent_dir) < -kFpvBackpedalDotThreshold)
-        return sPlayer.sprinting ? "running_backward" : "walking_backward";
+    {
+        // Sprint has no backpedal clip; sprint-while-backpedaling
+        // demotes to jog_backward (same demotion the directional
+        // picker does).
+        return sPlayer.loco_tier == LocoTier::Walk ? "walking_backward" : "jogging_backward";
+    }
     return nullptr;
 }
 
@@ -2450,11 +2642,13 @@ static void logBlendOutFadeJoints()
 // cadence (which would foot-skate at any tunable speed != the
 // clip's authored speed). Delegates to the shared
 // applyActorClipHipDelta — same math used by every other actor.
-static void applyHipDeltaToPlayerPos()
+static void applyHipDeltaToPlayerVelocity(float dt)
 {
     if (!sSampler.isOneShotActive())
         sOneShotHipDeltaScale = 1.0f;
-    selva::gameplay::applyActorClipHipDelta(sPlayer, sOneShotHipDeltaScale);
+    // Adds hip-derived velocity to sPlayer.velocity_xz; the unified
+    // per-frame physics pass picks that up and hands it to Jolt.
+    selva::gameplay::applyActorClipHipDelta(sPlayer, dt, sOneShotHipDeltaScale);
 }
 
 // Translate the player by their current XZ velocity. Velocity is
@@ -2462,9 +2656,15 @@ static void applyHipDeltaToPlayerPos()
 // tickPlayerVelocity) so the world-push rate is independent of the
 // loco clip's authored hip cadence. The clip's hip motion is ignored
 // for locomotion — only velocity * dt lands on sPlayer.pos.
-static void applyVelocityToPlayerPos(float dt)
+// No-op under the unified-physics refactor. The locomotion tick
+// writes sPlayer.velocity_xz; the per-frame physics pass reads it
+// and hands it to Jolt. Pos integration happens inside the physics
+// step, not here. Kept as a named function so the call site's
+// branching reads coherently.
+static void applyVelocityToPlayerPos(float /*dt*/)
 {
-    sPlayer.pos += glm::vec3(sPlayer.velocity_xz.x, 0.0f, sPlayer.velocity_xz.y) * dt;
+    // velocity_xz is already populated by tickPlayerVelocity; nothing
+    // to do until the physics step.
 }
 
 // Mid-roll yaw steer: bend the trajectory toward the live move-intent
@@ -2498,15 +2698,23 @@ static void applyPerFrameTranslation(const glm::vec3& moveIntent, float dodge_st
     {
         if (sDodgeActive)
             applyDodgeSteer(moveIntent, dodge_steer_rate, dt);
-        applyHipDeltaToPlayerPos();
-        return;
+        // One-shots zero velocity_xz inside tickPlayerVelocity (the
+        // movement_locked path); hip-delta is the sole velocity
+        // contribution during a one-shot.
+        sPlayer.velocity_xz = glm::vec2(0.0f);
+        applyHipDeltaToPlayerVelocity(dt);
     }
-    if (sLocoDecision.source == selva::anim::TranslationSource::RootMotion)
+    else if (sLocoDecision.source == selva::anim::TranslationSource::RootMotion)
     {
-        applyHipDeltaToPlayerPos();
-        return;
+        // Root-motion loco: tickPlayerVelocity already zeroed the
+        // velocity ramp; hip-delta provides the velocity.
+        sPlayer.velocity_xz = glm::vec2(0.0f);
+        applyHipDeltaToPlayerVelocity(dt);
     }
-    applyVelocityToPlayerPos(dt);
+    else
+    {
+        applyVelocityToPlayerPos(dt);
+    }
 }
 
 // Flush an in-progress CSV bone-trajectory recording to disk and clear
@@ -2640,7 +2848,7 @@ static bool tickCombatInputPass(const Uint8* keys, const CombatInputEdges& e,
     if (tryHandleStanceTogglePress(e.press_r, e.shift_held))
         fired = true;
 
-    const selva::combat::PressModifiers mods{e.shift_held, sPlayer.sprinting};
+    const selva::combat::PressModifiers mods{e.shift_held, sPlayer.loco_tier == LocoTier::Sprint};
     if (tryAttackInputDispatch(selva::combat::HandSide::Right, e.press_lmb, "LMB", mods,
                                tun.combo_input_buffer_seconds))
         fired = true;
@@ -2817,105 +3025,128 @@ static void logStateNarrative()
 
 // Apply one HitEvent: route to enemy or player, run applyDamage,
 // spawn the damage number, fire the hit-react clip, log [hit].
-// Extracted from selvaPerFrame to keep its CCN under the lint
-// threshold; the corpse-skip continue + per-target branch had
-// pushed it over.
+// Lethal hit on the player: scan for an Engaged scripted-death boss
+// and, if one is mid-encounter, floor player HP at 1 + nudge the boss
+// into Dying so the boss's death sequence plays out instead of an
+// abrupt second_death on the player. Returns true if the floor
+// applied (caller skips death handling that frame).
+static bool maybeFloorPlayerHpForScriptedDeath()
+{
+    bool scripted_death_active = false;
+    for (auto& a : selva::gameplay::actors())
+    {
+        const bool engaged_with_scripted_death =
+            a.boss_state == selva::gameplay::BossState::Engaged && a.archetype != nullptr &&
+            a.archetype->scripted_death_seconds > 0.0f;
+        const bool already_dying = a.boss_state == selva::gameplay::BossState::Dying &&
+                                   a.archetype != nullptr &&
+                                   a.archetype->scripted_death_seconds > 0.0f;
+        if (engaged_with_scripted_death)
+        {
+            scripted_death_active = true;
+            selva::gameplay::beginScriptedDying(a);
+        }
+        else if (already_dying)
+        {
+            scripted_death_active = true;
+        }
+    }
+    if (scripted_death_active)
+        sPlayer.hp.current = 1;
+    return scripted_death_active;
+}
+
+// Player hit-react clip pick. Souls convention: don't interrupt the
+// player's own swing -- that would feel awful (committed offense lost
+// to a free enemy poke). Fires only when no one-shot is active.
+static void playPlayerHitReact(int dmg_applied)
+{
+    if (sSampler.isOneShotActive())
+        return;
+    const auto& tun = selva::tuning::current();
+    const char* clip_name = "flinch_front"; // light hit default
+    float blend_in = 0.06f;
+    float blend_out = 0.15f;
+    if (static_cast<float>(dmg_applied) >= tun.hit_react_heavy_threshold)
+    {
+        clip_name = "hit_react_heavy";
+        blend_in = 0.08f;
+        blend_out = 0.20f;
+    }
+    else if (static_cast<float>(dmg_applied) >= tun.hit_react_medium_threshold)
+    {
+        clip_name = "hit_react_medium";
+    }
+    const auto* clip = sClips.get(clip_name);
+    if (clip == nullptr || !clip->isLoaded())
+        return;
+    selva::anim::PoseSampler::OneShotOptions opts;
+    opts.clip_key = clip_name;
+    sSampler.playOneShot(*clip, blend_in, blend_out, selva::anim::PoseSampler::BodyMask::Full,
+                         /*start_time_seconds=*/0.0f, /*playback_rate=*/1.0f, opts);
+}
+
+static void applyHitToEnemy(const selva::combat::HitEvent& ev, float now)
+{
+    auto enemy_view = selva::gameplay::enemies();
+    if (ev.target.index < 0 || ev.target.index >= static_cast<int>(enemy_view.size()))
+        return;
+    auto& e = *enemy_view[ev.target.index];
+    // Dead/down enemies are hit-immune. Without this, HP re-clamps at
+    // 0, damage numbers spawn on corpses, and [hit] logs fire after
+    // [enemy-death]. playEnemyHitReact has its own gate too but it
+    // runs after this block.
+    if (e.is_dead || e.is_knocked_down)
+        return;
+    const int hp_before = e.hp.current;
+    selva::gameplay::applyDamage(e.hp, e.body, ev.raw_damage);
+    const int dmg_applied = hp_before - e.hp.current;
+    e.last_damage_time = now;
+    const bool crit = (ev.region == selva::combat::HurtRegion::Head);
+    const glm::vec3 number_origin(ev.world_pos.x, e.pos.y + 2.0f, ev.world_pos.z);
+    selva::combat::spawnDamageNumber(number_origin, dmg_applied, crit);
+    // Attacker pos is the player for player-faction hits. When
+    // enemy-on-enemy comes online, resolve from ev.attacker.kind.
+    selva::gameplay::playEnemyHitReact(ev.target.index, dmg_applied, ev.poise_damage,
+                                       ev.world_normal, sPlayer.pos);
+    selva::combat::combatLog("[hit] enemy[{}] region={} dmg={} hp={}/{}", ev.target.index,
+                             static_cast<int>(ev.region), dmg_applied, e.hp.current, e.hp.max);
+}
+
+static void applyHitToPlayer(const selva::combat::HitEvent& ev)
+{
+    // Already-dead immunity: hits land on the corpse pose (freeze_last
+    // from second_death) but don't re-damage or re-fire any reaction.
+    if (sPlayer.is_dead)
+        return;
+    const int hp_before = sPlayer.hp.current;
+    selva::gameplay::applyDamage(sPlayer.hp, sPlayer.body, ev.raw_damage);
+    if (sPlayer.hp.current <= 0)
+        maybeFloorPlayerHpForScriptedDeath();
+    const int dmg_applied = hp_before - sPlayer.hp.current;
+    const bool crit = (ev.region == selva::combat::HurtRegion::Head);
+    const glm::vec3 number_origin(ev.world_pos.x, sPlayer.pos.y + 2.0f, ev.world_pos.z);
+    selva::combat::spawnDamageNumber(number_origin, dmg_applied, crit);
+    selva::combat::combatLog("[hit] player region={} dmg={} hp={}/{}", static_cast<int>(ev.region),
+                             dmg_applied, sPlayer.hp.current, sPlayer.hp.max);
+    // Vagrant death = sangue exits, Hell's killing protocol fires
+    // (second_death clip). Per setting.md *Second death*, the soul has
+    // no imprint for Hell to grip; body dies + cosmology returns him
+    // to the Wood (handled by tickPlayerSecondDeathLifecycle).
+    if (sPlayer.hp.current <= 0)
+    {
+        selva::gameplay::fireEnemyDeath(sPlayer, /*index=*/0);
+        return;
+    }
+    playPlayerHitReact(dmg_applied);
+}
+
 static void applyHitEvent(const selva::combat::HitEvent& ev, float now)
 {
     if (ev.target.kind == selva::combat::OwnerKind::Enemy)
-    {
-        auto enemy_view = selva::gameplay::enemies();
-        if (ev.target.index < 0 || ev.target.index >= static_cast<int>(enemy_view.size()))
-            return;
-        auto& e = *enemy_view[ev.target.index];
-        // Skip hits on dead/down enemies. Without this, HP gets
-        // re-applied (clamped at 0), damage numbers spawn on
-        // corpses, and [hit] logs fire after [enemy-death].
-        // playEnemyHitReact has its own immunity gate but it runs
-        // after this block.
-        if (e.is_dead || e.is_knocked_down)
-            return;
-        const int hp_before = e.hp.current;
-        selva::gameplay::applyDamage(e.hp, e.body, ev.raw_damage);
-        const int dmg_applied = hp_before - e.hp.current;
-        e.last_damage_time = now;
-        const bool crit = (ev.region == selva::combat::HurtRegion::Head);
-        const glm::vec3 number_origin(ev.world_pos.x, e.pos.y + 2.0f, ev.world_pos.z);
-        selva::combat::spawnDamageNumber(number_origin, dmg_applied, crit);
-        // Attacker pos is the player for player-faction hits. When
-        // enemy-on-enemy comes online (e.g. friendly fire on factions
-        // that hate their own kind), resolve from ev.attacker.kind.
-        selva::gameplay::playEnemyHitReact(ev.target.index, dmg_applied, ev.poise_damage,
-                                           ev.world_normal, sPlayer.pos);
-        selva::combat::combatLog("[hit] enemy[{}] region={} dmg={} hp={}/{}", ev.target.index,
-                                 static_cast<int>(ev.region), dmg_applied, e.hp.current, e.hp.max);
-        return;
-    }
-    if (ev.target.kind == selva::combat::OwnerKind::Player)
-    {
-        // Already-dead immunity: hits land on the corpse pose
-        // (freeze_last from the second_death one-shot) but don't
-        // re-damage or re-fire any reaction.
-        if (sPlayer.is_dead)
-            return;
-        const int hp_before = sPlayer.hp.current;
-        selva::gameplay::applyDamage(sPlayer.hp, sPlayer.body, ev.raw_damage);
-        const int dmg_applied = hp_before - sPlayer.hp.current;
-        const bool crit = (ev.region == selva::combat::HurtRegion::Head);
-        const glm::vec3 number_origin(ev.world_pos.x, sPlayer.pos.y + 2.0f, ev.world_pos.z);
-        selva::combat::spawnDamageNumber(number_origin, dmg_applied, crit);
-        selva::combat::combatLog("[hit] player region={} dmg={} hp={}/{}",
-                                 static_cast<int>(ev.region), dmg_applied, sPlayer.hp.current,
-                                 sPlayer.hp.max);
-        // Death gate. The Vagrant is killed in Hell — sangue exits,
-        // Hell's killing-protocol fires (visible suffering = the
-        // second_death clip). Per setting.md *Second death*, the
-        // soul has no imprint for Hell to grip, so the body dies and
-        // the cosmology routes him back to the Wood (handled by
-        // tickPlayerSecondDeathLifecycle below in selvaPerFrame).
-        if (sPlayer.hp.current <= 0)
-        {
-            // Player is at index 0 in the pool. fireEnemyDeath is
-            // actor-agnostic; reads sPlayer.death_clip_name = "second_death".
-            selva::gameplay::fireEnemyDeath(sPlayer, /*index=*/0);
-            return;
-        }
-        // Player hit-react. Don't interrupt the player's own swing —
-        // that would feel awful; you'd lose committed offense to a
-        // free enemy poke. Souls convention: hit-react fires only
-        // when not already animating something heavier. Pick clip
-        // by damage tier, same logic the enemy uses.
-        if (!sSampler.isOneShotActive())
-        {
-            const auto& tun = selva::tuning::current();
-            const char* clip_name = nullptr;
-            float blend_in = 0.06f;
-            float blend_out = 0.15f;
-            if (static_cast<float>(dmg_applied) >= tun.hit_react_heavy_threshold)
-            {
-                clip_name = "hit_react_heavy";
-                blend_in = 0.08f;
-                blend_out = 0.20f;
-            }
-            else if (static_cast<float>(dmg_applied) >= tun.hit_react_medium_threshold)
-            {
-                clip_name = "hit_react_medium";
-            }
-            else
-            {
-                clip_name = "flinch_front"; // a light hit; directional pick deferred for player
-            }
-            const auto* clip = sClips.get(clip_name);
-            if (clip != nullptr && clip->isLoaded())
-            {
-                selva::anim::PoseSampler::OneShotOptions opts;
-                opts.clip_key = clip_name;
-                sSampler.playOneShot(*clip, blend_in, blend_out,
-                                     selva::anim::PoseSampler::BodyMask::Full,
-                                     /*start_time_seconds=*/0.0f, /*playback_rate=*/1.0f, opts);
-            }
-        }
-    }
+        applyHitToEnemy(ev, now);
+    else if (ev.target.kind == selva::combat::OwnerKind::Player)
+        applyHitToPlayer(ev);
 }
 
 // Player second-death lifecycle. Detects elapsed time since
@@ -2953,14 +3184,46 @@ static void tickPlayerSecondDeathLifecycle()
     sPlayer.last_damage_time = -1.0f;
     sPlayer.last_hit_react_time = -1.0f;
     sPlayer.pos = sPlayer.spawn_pos;
+    // Re-sample terrain Y at the spawn XZ so the respawn lands ON the
+    // ground. Two failure modes the previous version still had:
+    //   1. groundHeight's current_y hint biases toward ground AT OR
+    //      BELOW the hint. Passing a stale / wrong spawn_pos.y can
+    //      return the wrong layer (or -inf if no surface is below).
+    //      Pass +large so the result is the HIGHEST walkable surface
+    //      at this XZ (the actual ground).
+    //   2. Updating sPlayer.pos.y in game-side state does NOT teleport
+    //      the Jolt character body. The character body retains its
+    //      world position from the moment of death (frozen mid-fall
+    //      or wherever death happened) until physics ticks again, at
+    //      which point the body's position wins over sPlayer.pos and
+    //      the player falls from that height. teleportCharacter is
+    //      the engine API that syncs both.
+    sPlayer.pos.y = selva::world::groundHeight(sPlayer.pos.x, sPlayer.pos.z, 1e6f);
     sPlayer.yaw = sPlayer.spawn_yaw;
     sPlayer.velocity_xz = glm::vec2(0.0f);
     sPlayer.lock_target_idx = -1;
+    // Sync the Jolt character body to the new world position.
+    // Without this the game-side pos and physics-side pos disagree
+    // and the character controller falls from its prior frozen
+    // location. teleportCharacter resets velocity too, so the
+    // character starts at rest on the ground rather than mid-fall.
+    if (const auto body = selva::world::playerBody(); body != engine::physics::kInvalidBody)
+    {
+        engine::physics::teleportCharacter(body, sPlayer.pos);
+    }
     selva::gameplay::initActorPools(sPlayer.hp, sPlayer.stamina, sPlayer.poise, sPlayer.body,
                                     sPlayer.stats);
     sSampler.releaseOneShot();
     // Unmuffle the OST — bookends the duck applied in fireEnemyDeath.
     selva::audio::restoreMusic();
+    // Hell reclaims uncommitted vessel contents from the dead (setting.md
+    // *Hell reclaims its substance from the dead*). Lifetime ledger is
+    // untouched -- Hell remembers what was ever earned.
+    if (selva::PlayerProfile* profile = selva::activePlayerProfile())
+        selva::sangue::reclaimVessel(*profile);
+    // Cycle boundary on Vagrant respawn (per setting.md "Per-circle
+    // reactivity" + "Cycle structure").
+    selva::gameplay::softResetWorldForCycle();
 }
 
 // Compute the per-frame movement/velocity locks from one-shot state,
@@ -3005,98 +3268,175 @@ static LocomotionPick tickPlayerLocomotionAndSampler(const glm::vec3& moveIntent
 //   3) Read the final position back into sPlayer.pos. That's the actual
 //      ground truth; combat / animation / camera all read sPlayer.pos
 //      so they see what physics agreed to.
-static void resolvePlayerCollisionAndSnap(float dt)
+// Ensure the player has a Jolt character body. Lazily created on
+// first call (sPlayer.pos may not be settled until the first
+// locomotion tick fires).
+static engine::physics::BodyHandle ensurePlayerBody()
 {
     using namespace engine::physics;
-    if (dt <= 0.0f)
-        return;
+    BodyHandle body = selva::world::playerBody();
+    if (body == kInvalidBody)
+        body = selva::world::createPlayerBody(sPlayer.pos);
+    return body;
+}
 
-    const bool log_on = selva::tuning::current().debug_physics_log;
+// Single per-frame physics pass for the unified-actor-physics model.
+//   Phase 1: push every alive actor's velocity_xz to its Jolt body.
+//   Phase 2: updatePhysics(dt) -- ONE step for the whole world.
+//   Phase 3: read characterPosition back into actor.pos.
+//   Phase 4: per-actor post-physics clamps (boss-arena lockout).
+//
+// This replaces the previous resolvePlayerCollisionAndSnap which
+// ran updatePhysics inside its own scope -- meaning enemies that
+// wrote velocity AFTER the player's update wouldn't get integrated
+// until next frame. The single-step model makes all actors
+// integrate against the same simulation tick.
+namespace
+{
+engine::physics::BodyHandle actorPhysicsBody(const selva::gameplay::Actor& a,
+                                             engine::physics::BodyHandle player_body)
+{
+    return (a.controller == selva::gameplay::Controller::Input) ? player_body : a.character_body;
+}
+
+void pushActorVelocitiesToJolt(engine::physics::BodyHandle player_body)
+{
+    using namespace engine::physics;
+    for (auto& a : selva::gameplay::actors())
+    {
+        if (a.is_dead)
+            continue;
+        const BodyHandle body = actorPhysicsBody(a, player_body);
+        if (body == kInvalidBody)
+            continue;
+        setCharacterVelocity(body, glm::vec3(a.velocity_xz.x, 0.0f, a.velocity_xz.y),
+                             /*apply_y=*/false);
+    }
+}
+
+void readActorPositionsFromJolt(engine::physics::BodyHandle player_body)
+{
+    using namespace engine::physics;
+    for (auto& a : selva::gameplay::actors())
+    {
+        if (a.is_dead)
+            continue;
+        const BodyHandle body = actorPhysicsBody(a, player_body);
+        if (body == kInvalidBody)
+            continue;
+        a.pos = characterPosition(body);
+    }
+}
+
+// Soft post-physics clamp: while a boss is engaged AND its decl has a
+// non-zero arena AABB, constrain the player's XZ output to that box.
+// Constrains the output of the step; the step itself already ran.
+void clampPlayerToActiveBossArena()
+{
+    const auto& gs = selva::gameState();
+    const auto& pool = selva::gameplay::actors();
+    if (gs.active_boss_idx < 0 || gs.active_boss_idx >= static_cast<int>(pool.size()))
+        return;
+    const auto& boss = pool[gs.active_boss_idx];
+    const engine::world::Region* cur = engine::world::currentRegionPtr();
+    if (cur == nullptr)
+        return;
+    const auto* json_region = dynamic_cast<const selva::world::JsonRegion*>(cur);
+    if (json_region == nullptr)
+        return;
+    for (const auto& d : json_region->enemySpawnDecls())
+    {
+        if (d.id != boss.spawn_decl_id)
+            continue;
+        if (d.arena_half_extents.x <= 0.0f || d.arena_half_extents.z <= 0.0f)
+            return;
+        const float min_x = d.arena_center.x - d.arena_half_extents.x;
+        const float max_x = d.arena_center.x + d.arena_half_extents.x;
+        const float min_z = d.arena_center.z - d.arena_half_extents.z;
+        const float max_z = d.arena_center.z + d.arena_half_extents.z;
+        sPlayer.pos.x = std::clamp(sPlayer.pos.x, min_x, max_x);
+        sPlayer.pos.z = std::clamp(sPlayer.pos.z, min_z, max_z);
+        return;
+    }
+}
+
+FILE* getOrOpenPhysicsLog()
+{
     static FILE* sPhysLog = nullptr;
-    if (log_on && sPhysLog == nullptr)
+    if (selva::debug::flags().physics_log && sPhysLog == nullptr)
     {
         sPhysLog = std::fopen("physics-debug.log", "w");
         selva::world::writeInitStatsToLog(sPhysLog);
     }
-
-    // Lazy create on first frame (sPlayer.pos may not be settled until
-    // the first locomotion tick).
-    BodyHandle body = selva::world::playerBody();
-    if (body == kInvalidBody)
-    {
-        body = selva::world::createPlayerBody(sPlayer.pos);
-        if (sPhysLog != nullptr)
-        {
-            std::fprintf(sPhysLog, "[create] body=%u spawn=(%.3f,%.3f,%.3f)\n", body.id,
-                         sPlayer.pos.x, sPlayer.pos.y, sPlayer.pos.z);
-            std::fflush(sPhysLog);
-        }
-    }
-
-    // Compute desired XZ velocity from gameplay's intended position
-    // delta. Y is left to the character controller (gravity).
-    const glm::vec3 desired = sPlayer.pos;
-    const glm::vec3 current = characterPosition(body);
-    glm::vec3 v(0.0f);
-    v.x = (desired.x - current.x) / dt;
-    v.z = (desired.z - current.z) / dt;
-    setCharacterVelocity(body, v, /*apply_y*/ false);
-
-    updatePhysics(dt);
-
-    const glm::vec3 resolved = characterPosition(body);
-    sPlayer.pos = resolved;
-    // Keep velocity_xz / velocity_y fields in sync for existing
-    // animation/footstep/camera systems that read them.
-    sPlayer.velocity_xz = glm::vec2(v.x, v.z);
-    sPlayer.velocity_y = 0.0f; // physics owns Y now; animation reads only
-                               // for gait selection which uses XZ
-
-    if (sPhysLog != nullptr)
-    {
-        static int sFrameCounter = 0;
-        const BodyHandle ground = characterGroundBody(body);
-        const char* ground_name = (ground == kInvalidBody) ? "(none)" : bodyDebugName(ground);
-        static std::vector<BodyHandle> sContacts;
-        characterActiveContacts(body, sContacts);
-        std::fprintf(sPhysLog,
-                     "f=%d dt=%.4f pos=(%.3f,%.3f,%.3f) desired=(%.3f,%.3f,%.3f) "
-                     "v_xz=(%.3f,%.3f) onGround=%d ground='%s' "
-                     "pYaw=%.3f camYaw=%.3f camPitch=%.3f contacts=%zu",
-                     sFrameCounter, dt, sPlayer.pos.x, sPlayer.pos.y, sPlayer.pos.z, desired.x,
-                     desired.y, desired.z, v.x, v.z, isCharacterOnGround(body) ? 1 : 0, ground_name,
-                     sPlayer.yaw, selva::render::cameraYaw(), selva::render::cameraPitch(),
-                     sContacts.size());
-        for (const BodyHandle c : sContacts)
-            std::fprintf(sPhysLog, " ['%s']", bodyDebugName(c));
-        std::fprintf(sPhysLog, "\n");
-        // Detailed contact info: where on each body is the player touching?
-        static std::vector<CharacterContactDetail> sContactDetails;
-        characterActiveContactDetails(body, sContactDetails);
-        for (const auto& d : sContactDetails)
-        {
-            const char* name = (d.body == kInvalidBody) ? "(unknown)" : bodyDebugName(d.body);
-            std::fprintf(
-                sPhysLog, "    contact body='%s' pos=(%.3f,%.3f,%.3f) normal=(%.3f,%.3f,%.3f)\n",
-                name, d.position.x, d.position.y, d.position.z, d.normal.x, d.normal.y, d.normal.z);
-        }
-        std::fflush(sPhysLog);
-        ++sFrameCounter;
-    }
+    return sPhysLog;
 }
 
-// Dev cheat: K instantly kills the player to exercise the second-death
-// lifecycle. Edge-triggered so holding K doesn't re-fire each frame.
+void writePhysicsLogFrame(FILE* log, float dt, engine::physics::BodyHandle player_body)
+{
+    using namespace engine::physics;
+    static int sFrameCounter = 0;
+    const BodyHandle ground = characterGroundBody(player_body);
+    const char* ground_name = (ground == kInvalidBody) ? "(none)" : bodyDebugName(ground);
+    static std::vector<BodyHandle> sContacts;
+    characterActiveContacts(player_body, sContacts);
+    std::fprintf(log,
+                 "f=%d dt=%.4f pos=(%.3f,%.3f,%.3f) "
+                 "v_xz=(%.3f,%.3f) onGround=%d ground='%s' "
+                 "pYaw=%.3f camYaw=%.3f camPitch=%.3f contacts=%zu",
+                 sFrameCounter, dt, sPlayer.pos.x, sPlayer.pos.y, sPlayer.pos.z,
+                 sPlayer.velocity_xz.x, sPlayer.velocity_xz.y,
+                 isCharacterOnGround(player_body) ? 1 : 0, ground_name, sPlayer.yaw,
+                 selva::render::cameraYaw(), selva::render::cameraPitch(), sContacts.size());
+    for (const BodyHandle c : sContacts)
+        std::fprintf(log, " ['%s']", bodyDebugName(c));
+    std::fprintf(log, "\n");
+    std::fflush(log);
+    ++sFrameCounter;
+}
+} // namespace
+
+static void tickPhysicsAndSyncActors(float dt)
+{
+    ZoneScopedN("tickPhysicsAndSyncActors");
+    using namespace engine::physics;
+    if (dt <= 0.0f)
+        return;
+    const BodyHandle player_body = ensurePlayerBody();
+    pushActorVelocitiesToJolt(player_body);
+    updatePhysics(dt);
+    readActorPositionsFromJolt(player_body);
+    selva::gameplay::clampActorsToOwnTerritory();
+    clampPlayerToActiveBossArena();
+    sPlayer.velocity_y = 0.0f;
+    if (FILE* log = getOrOpenPhysicsLog())
+        writePhysicsLogFrame(log, dt, player_body);
+}
+
+// Forward decl -- definition lives further down in the file inside
+// namespace selva::gameplay. Internal linkage + namespace; the
+// forward decl must reach the same symbol so it goes inside the
+// same namespace.
+namespace selva::gameplay
+{
+static bool uiOverlayActive();
+} // namespace selva::gameplay
+
+// Dev cheat: F10 instantly kills the player to exercise the second-
+// death lifecycle. Edge-triggered so holding doesn't re-fire each
+// frame. F-row (not a letter key) so it can't collide with text-input
+// surfaces (name prompt, future search boxes, etc.). Suppressed
+// while ANY UI overlay owns the screen -- if the player is typing in
+// a modal, dev cheats should not fire.
 static void tickDevKillKey(const Uint8* keys)
 {
-    static bool sPrevK = false;
-    const bool k_now = (keys[SDL_SCANCODE_K] != 0);
-    if (k_now && !sPrevK && !sPlayer.is_dead)
+    static bool sPrevDevKill = false;
+    const bool now = (keys[SDL_SCANCODE_F10] != 0);
+    if (now && !sPrevDevKill && !sPlayer.is_dead && !selva::gameplay::uiOverlayActive())
     {
         sPlayer.hp.current = 0;
         selva::gameplay::fireEnemyDeath(sPlayer, /*index=*/0);
     }
-    sPrevK = k_now;
+    sPrevDevKill = now;
 }
 
 // Repopulate the per-frame hurtbox list from all actors' current poses.
@@ -3105,8 +3445,8 @@ static void tickDevKillKey(const Uint8* keys)
 static void populateActorHurtboxes()
 {
     selva::combat::clearHurtboxes();
-    const glm::mat4 player_model =
-        selva::combat::buildActorModelMatrix(sPlayer.pos, sPlayer.yaw, sPlayerMesh.foot_offset_y);
+    const glm::mat4 player_model = selva::combat::buildActorModelMatrix(
+        sPlayer.pos, sPlayer.yaw, selva::gameplay::actorFootOffsetY(sPlayer));
     selva::combat::appendActorHurtboxes(
         sSampler, player_model, sPlayer.body,
         selva::combat::OwnerRef{selva::combat::OwnerKind::Player, 0}, sPlayer.faction);
@@ -3115,102 +3455,144 @@ static void populateActorHurtboxes()
     for (int i = 0; i < static_cast<int>(list.size()); ++i)
     {
         const auto& e = *list[i];
-        const glm::mat4 m =
-            selva::combat::buildActorModelMatrix(e.pos, e.yaw, sPlayerMesh.foot_offset_y);
+        const glm::mat4 m = selva::combat::buildActorModelMatrix(
+            e.pos, e.yaw, selva::gameplay::actorFootOffsetY(e));
         selva::combat::appendActorHurtboxes(
             e.sampler, m, e.body, selva::combat::OwnerRef{selva::combat::OwnerKind::Enemy, i},
             e.faction);
     }
 }
 
-static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
+namespace selva::gameplay
 {
-    ZoneScopedN("selvaPerFrame");
-    // Apply the global time-scale multiplier ONCE here. All downstream
-    // dt-driven systems (sampler.update, dodge timer, selva::wallClock(),
-    // lockouts, debounce, etc.) read this scaled dt. Set time_scale
-    // < 1.0 in the F1 panel to slow-mo every animation transition for
-    // debugging split-second issues.
-    const float dt = static_cast<float>(dt_d) * selva::tuning::current().time_scale;
+void tickWakeSceneLifecycle();
+void resetWakeSceneTracking();
+} // namespace selva::gameplay
 
-    bool combat_input_this_frame = false;
+namespace
+{
+// Per-frame keyboard interaction press: E-press edge -> trigger the
+// currently-targeted interactable. Suppressed under any combat-input
+// suppression (Scene, dialog, tuning panel, pause menu).
+void tickInteractEdge(const Uint8* keys, bool combat_suppressed)
+{
+    static bool s_prev_e = false;
+    const bool now_e = (keys[SDL_SCANCODE_E] != 0);
+    const bool e_edge = now_e && !s_prev_e;
+    s_prev_e = now_e;
+    if (e_edge && !combat_suppressed)
+        selva::interact::triggerCurrent();
+}
 
-    selva::advanceWallClock(dt);
+// LAlt = walk modifier (DS3 PC convention). Walk overrides Jog; does
+// NOT override Sprint (Space commits to sprint until released or
+// stamina-locked). Suppressed during movement-lock so dialog/scene
+// doesn't latch the player into walk tier.
+void tickWalkTierModifier(const Uint8* keys, bool movement_suppressed)
+{
+    if (movement_suppressed || sPlayer.is_dead)
+        return;
+    const bool lalt_held = keys[SDL_SCANCODE_LALT] != 0;
+    if (lalt_held && sPlayer.loco_tier == LocoTier::Jog)
+        sPlayer.loco_tier = LocoTier::Walk;
+    else if (!lalt_held && sPlayer.loco_tier == LocoTier::Walk)
+        sPlayer.loco_tier = LocoTier::Jog;
+}
 
-    // Audio: drain the scheduled-SFX queue (peak-aligned plays, e.g.
-    // the second-death synth firing so its peak lands on the card).
-    selva::audio::tickScheduledSfx();
-
-    // Player second-death lifecycle. Drives the dead->respawn timer
-    // off the same death_time set by fireEnemyDeath(player). Runs
-    // before any input/locomotion so a respawn this frame teleports
-    // the player to spawn_pos before downstream systems read sPlayer.
-    tickPlayerSecondDeathLifecycle();
-
-    // Title bar — game name + FPS. EMA-smoothed so the number doesn't flicker.
-    const int fps = static_cast<int>(std::lround(1.0 / engine.lastFrameTime()));
-    engine.setWindowTitle("Selva Oscura  |  FPS " + std::to_string(fps));
-
-    const auto& tun = selva::tuning::current();
-    // Mirror tun.loco_playback_rate onto LocomotionConfig so the
-    // sampler's advanceLocoTrack can read it without a Tunables
-    // dependency. F1 panel writes tun; this line propagates.
-    sLocomotionConfig.global_playback_rate = tun.loco_playback_rate;
-    tickMouseLook(tun);
-
-    const Uint8* keys = SDL_GetKeyboardState(nullptr);
-
+// All dev/debug keybinds (F-row cheats + V camera-mode toggle) that
+// don't affect gameplay state directly. Edge-triggered internally.
+// Convention: F-row only -- letter keys collide with text-input
+// surfaces (name prompt, future search boxes).
+void tickDevAndDebugKeys(const Uint8* keys)
+{
     tickDevKillKey(keys);
     tickF1TuningPanelToggle(keys);
     tickF3TerrainProbe(keys);
     tickTreePreviewToggle(keys);
     tickFpvToggle(keys);
-    // Preview mode: world simulation suspended, render handled by
-    // renderTreePreview(). No need to tick combat, AI, locomotion,
-    // collision, etc.
-    if (sTreePreview.active)
-        return;
-    // Lock-on input gated while dead — the corpse can't acquire/release
-    // a target. Camera still ticks so the lock-on framing remains
-    // coherent if the death happened mid-engagement.
-    if (!sPlayer.is_dead)
-        tickLockOnInput();
-    tickLockOnCamera();
+    tickF8SangueDebugSpawn(keys);
+    tickF9CommitVessel(keys);
+}
 
-    // -------- Combat input --------
-    //   LMB / RMB        — right-hand attacks (chain shared)
-    //   Shift+LMB/RMB    — heavy
-    //   Sprint+LMB/RMB   — running attack
-    //   F                — combat-stance toggle (Shift+F flips foot)
-    //   Y / G            — grip toggle
-    //   Space tap        — dodge; hold past tap window → sprint
-    //
-    // Tuning-panel-open suppresses combat-relevant clicks (mouse drag
-    // on sliders shouldn't trigger swings).
-    const CombatInputEdges edges = readCombatInputEdges(keys);
+// Player combat-input pass + chain bookkeeping + grip/jump toggles +
+// edge mirror. Returns true if a combat input fired this frame.
+bool tickCombatInputBlock(const Uint8* keys, const CombatInputEdges& edges,
+                          const selva::tuning::Tunables& tun, bool combat_suppressed)
+{
+    bool combat_input_this_frame = false;
     selva::combat::tickChainExpiry(selva::wallClock(), tun.combo_input_buffer_seconds);
     selva::combat::tickChainObserver(selva::wallClock(), sSampler.isOneShotActive());
-    // Combat input gated on alive-state. While dead, the second_death
-    // one-shot owns the body; player input is ignored until respawn.
-    if (!sShowTuningPanel && !sPlayer.is_dead && tickCombatInputPass(keys, edges, tun))
+    if (!sPlayer.is_dead && !combat_suppressed && tickCombatInputPass(keys, edges, tun))
         combat_input_this_frame = true;
     sPrevLMB = edges.lmb_now;
     sPrevRMB = edges.rmb_now;
     sPrevR = (keys[SDL_SCANCODE_R] != 0);
-
     selva::combat::cacheRightHandPos(sSampler);
-    // Grip toggle + jump input are player-driven state changes; dead
-    // gate so a corpse can't switch grip or initiate a jump. WASD-driven
-    // moveIntent is computed unconditionally; the dead-gate downstream
-    // (velocity_locked from the second_death one-shot) keeps it from
-    // translating the body.
-    if (!sPlayer.is_dead)
+    if (!sPlayer.is_dead && !combat_suppressed)
     {
         tickGripToggle(keys);
         tickJumpInput(keys);
     }
+    return combat_input_this_frame;
+}
 
-    const glm::vec3 moveIntent = computeMoveIntent(keys);
+// Once-per-frame setup: time-scale, wallclock advance, scheduled SFX,
+// player death lifecycle, FPS title, locomotion config mirror, scene
+// end watcher. Side-effects only.
+void tickFrameSetup(Engine& engine, float dt, const selva::tuning::Tunables& tun)
+{
+    selva::advanceWallClock(dt);
+    selva::audio::tickScheduledSfx();
+    tickPlayerSecondDeathLifecycle();
+    const int fps = static_cast<int>(std::lround(1.0 / engine.lastFrameTime()));
+    engine.setWindowTitle("Selva Oscura  |  FPS " + std::to_string(fps));
+    // Mirror tun.loco_playback_rate onto LocomotionConfig so the
+    // sampler's advanceLocoTrack reads it without a Tunables dep.
+    sLocomotionConfig.global_playback_rate = tun.loco_playback_rate;
+    selva::gameplay::tickWakeSceneLifecycle();
+}
+} // namespace
+
+static void selvaPerFrame(Engine& engine, EntityManager& em, double dt_d)
+{
+    ZoneScopedN("selvaPerFrame");
+    // Apply the global time-scale multiplier ONCE here. All downstream
+    // dt-driven systems read this scaled dt. F1 panel sets time_scale
+    // < 1.0 for slow-mo debugging of split-second transitions.
+    const auto& tun = selva::tuning::current();
+    const float dt = static_cast<float>(dt_d) * tun.time_scale;
+    tickFrameSetup(engine, dt, tun);
+
+    const bool look_suppressed = selva::gameplay::gameplayLookSuppressed();
+    const bool combat_suppressed = selva::gameplay::gameplayCombatSuppressed();
+    const bool movement_suppressed = selva::gameplay::gameplayMovementSuppressed();
+    if (!look_suppressed)
+        tickMouseLook(tun);
+    else
+        // Drain accumulated relative-mouse delta so resuming mouse-look
+        // doesn't jump.
+        SDL_GetRelativeMouseState(nullptr, nullptr);
+
+    const Uint8* keys = SDL_GetKeyboardState(nullptr);
+    tickInteractEdge(keys, combat_suppressed);
+    tickDevAndDebugKeys(keys);
+    // Preview mode suspends world sim; renderTreePreview handles the
+    // alternate render path.
+    if (sTreePreview.active)
+        return;
+    if (!sPlayer.is_dead)
+    {
+        const int wheel = em.mouse_wheel_y;
+        em.mouse_wheel_y = 0;
+        tickLockOnInput(wheel);
+    }
+    tickLockOnCamera(dt);
+
+    const CombatInputEdges edges = readCombatInputEdges(keys);
+    bool combat_input_this_frame = tickCombatInputBlock(keys, edges, tun, combat_suppressed);
+
+    const glm::vec3 moveIntent = movement_suppressed ? glm::vec3(0.0f) : computeMoveIntent(keys);
+    tickWalkTierModifier(keys, movement_suppressed);
 
     // ONE locomotion decision for this frame. Both tickPlayerVelocity
     // and applyPerFrameTranslation consult sLocoDecision.source for
@@ -3220,11 +3602,16 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     // feedback_data_driven_over_convention.md.
     runLocomotionDecision(moveIntent, tun);
 
-    // Space (dodge / sprint) gated on alive-state. Dead body doesn't
-    // dodge.
-    if (!sPlayer.is_dead && tickSpaceInput(keys, moveIntent, dt, tun.dodge_tap_window,
-                                           tun.backstep_playback_rate, tun.roll_playback_rate))
+    if (!sPlayer.is_dead && !combat_suppressed &&
+        tickSpaceInput(keys, moveIntent, dt, tun.dodge_tap_window, tun.backstep_playback_rate,
+                       tun.roll_playback_rate))
         combat_input_this_frame = true;
+
+    // Stamina drain (while in Sprint tier) + regen (after recovery_delay
+    // seconds of no spending). Reads from engine::ecs::FormulaConfig via
+    // selva::formulas::current(). If sprinting drains stamina to 0, the
+    // tick demotes loco_tier Sprint -> Jog so locomotion drops back.
+    selva::gameplay::tickActorStamina(sPlayer, dt);
 
     // Tick the dodge timer. The active gate ends at the clip's full
     // duration. With root motion, the clip's authored hip motion goes
@@ -3276,9 +3663,49 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
 
     applyPerFrameTranslation(moveIntent, tun.dodge_steer_rate, dt);
 
-    resolvePlayerCollisionAndSnap(dt);
+    {
+        ZoneScopedN("tickEnemies");
+        selva::gameplay::tickEnemies(dt);
+    }
 
-    selva::gameplay::tickEnemies(dt);
+    // Single unified physics pass. Every alive actor's velocity_xz
+    // (written above by the player path + by tickEnemies for each
+    // enemy) is pushed to Jolt; updatePhysics runs ONCE for the
+    // whole world; resolved positions are read back. Per the
+    // universal-actor-physics doctrine.
+    tickPhysicsAndSyncActors(dt);
+
+    // General spawn-and-flow tick. Runs after tickEnemies so the
+    // active-actor count reflects this frame's deaths. Walks all
+    // loaded flows: detects arrivals at scripted targets, fires
+    // delayed on_arrival actions, and runs the interval-polled
+    // spawn check. Per [[project_soul_larvae_cosmology]].
+    {
+        ZoneScopedN("tickFlowSpawner");
+        selva::spawn::tickFlowSpawner(dt);
+    }
+
+    // Advance any Opening doors; transition to Open when animation
+    // completes and remove their colliders. Per [[world/Door.h]].
+    selva::world::tickDoors(dt);
+
+    // Scripted events: per-frame check for trigger conditions on the
+    // Guide-rescue / future moments, advance any in-flight Scene.
+    // Per [[gameplay/ScriptedEvents.h]].
+    selva::gameplay::tickScriptedEvents();
+    selva::dialog::tick();
+    // Text-presentation tick: clears the just-began frame guard.
+    // Must run AFTER dialog::tick (which mutates state via pending
+    // intents) but before next frame's input.
+    selva::text::tick();
+    selva::interact::tick();
+    // Insight graph tick: evaluate every loaded node's trigger
+    // against the active profile's state; fire (set in
+    // unlocked_insights) any node whose trigger condition is met.
+    // Runs AFTER dialog/text/interact tick so events that fired this
+    // frame (notifyDialogBegan / notifyExamined / notifyKill) are
+    // visible.
+    selva::insight::tick();
 
     // ---- Combat volume pipeline ----
     // Rebuild hurtboxes from current poses (cleared every frame —
@@ -3301,6 +3728,28 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     for (const auto& ev : hit_events)
         applyHitEvent(ev, now);
     selva::combat::tickDamageNumbers(dt);
+    // Sangue pulses: materialize any pending world-space drops queued
+    // since last frame (fireEnemyDeath), then advance per-particle
+    // state and grant denominations on arrival. The HUD anchor is the
+    // single source of truth shared with the renderer.
+    {
+        const glm::vec2 hud_anchor = selva::ui::sangueHudAnchor();
+        const glm::mat4& view_proj = selva::render::lastViewProj();
+        struct ProjCtx
+        {
+            const glm::mat4* vp;
+        };
+        ProjCtx pctx{&view_proj};
+        selva::gameplay::materializePendingDrops(
+            hud_anchor,
+            [](const glm::vec3& world, glm::vec2& out_screen, void* raw_ctx) -> bool
+            {
+                auto* c = static_cast<ProjCtx*>(raw_ctx);
+                return selva::render::worldToScreen(*c->vp, world, out_screen);
+            },
+            &pctx);
+        selva::gameplay::tickSanguePulses(static_cast<float>(dt), hud_anchor);
+    }
 
     // Foot-plant footstep detection — fires SFX when the foot bone's
     // world Y crosses below ground+epsilon while descending. Works on
@@ -3321,11 +3770,20 @@ static void selvaPerFrame(Engine& engine, EntityManager& /*em*/, double dt_d)
     tickCsvRecording(dt);
     logStateNarrative();
 
-    // Scene manager tick: advance any in-progress transitions, then
-    // check player overlap against the current scene's triggers
+    // Region manager tick: advance any in-progress transitions, then
+    // check player overlap against the current region's triggers
     // (edge-fires a transition when player walks into a trigger AABB).
-    engine::world::tickSceneManager(static_cast<float>(dt));
-    engine::world::checkPlayerTriggers(sPlayer.pos);
+    engine::world::tickRegionManager(static_cast<float>(dt));
+    const engine::world::RegionTrigger* fired_trigger =
+        engine::world::checkPlayerTriggers(sPlayer.pos);
+    // RegionTransition triggers are handled engine-side. Custom
+    // triggers route game-side via the boss dispatcher (per
+    // docs/design/ideas/boss_backend.md). Empty payload = no-op.
+    if (fired_trigger != nullptr && fired_trigger->action == engine::world::TriggerAction::Custom &&
+        !fired_trigger->action_payload.empty())
+    {
+        selva::gameplay::dispatchCustomTrigger(*fired_trigger);
+    }
 }
 
 // F2 toggle for the tree preview mode. While active, gameplay tick
@@ -3360,7 +3818,10 @@ static void tickFpvToggle(const Uint8* keys)
         sInit = true;
         return;
     }
-    if (vNow && !sPrevV)
+    // Suppress while any UI overlay owns the screen -- V is a letter
+    // key and would otherwise fire while the player types into the
+    // name prompt or any future text-input surface.
+    if (vNow && !sPrevV && !selva::gameplay::uiOverlayActive())
     {
         selva::render::toggleCameraMode();
         const auto mode = selva::render::cameraMode();
@@ -3369,6 +3830,90 @@ static void tickFpvToggle(const Uint8* keys)
                                                                     : "ThirdPerson");
     }
     sPrevV = vNow;
+}
+
+// F8 cycles through escalating test amounts and queues a synthetic
+// sangue drop at the Vagrant's feet so the pulse system can be tuned
+// visually without killing enemies. Per the sangue-pulse design
+// review: a single hotkey iterating {1, 10, 100, 1000, 10000, 100000,
+// 1000000, 999999999} surfaces each Roman tier in order so the
+// per-tier color/size palette can be eyeballed.
+static bool sPrevF8 = false;
+static int sF8AmountIndex = 0;
+static void tickF8SangueDebugSpawn(const Uint8* keys)
+{
+    const bool f8Now = keys[SDL_SCANCODE_F8] != 0;
+    if (f8Now && !sPrevF8)
+    {
+        // Stream-richness ladder: each step escalates "change" -- the
+        // additive Roman decomposition's quantity of low-tier remainders.
+        // 9 in every decimal place maximizes particle count per digit
+        // (each 9 = V + 4*I = 5 particles), so 999 / 9999 / etc. produce
+        // long streams across all tiers. Mixes singles (single tier,
+        // single particle) with these maximums to surface both ends.
+        constexpr std::uint32_t kTestAmounts[] = {
+            1u,         // I  -- single particle, smallest tier
+            9u,         // V + IIII = 5 particles, single tier-group
+            99u,        // L + XXXX + V + IIII = 10 particles
+            999u,       // D + CCCC + L + XXXX + V + IIII = 15 particles
+            9999u,      // M_*0 + M + DCCCC + LXXXX + VIIII = 20 particles
+            99999u,     // adds the 50K tier remainders -- 25 particles
+            999999u,    // 30 particles across 6 digit places
+            9999999u,   // 35 particles
+            99999999u,  // 40 particles
+            999999999u, // 45 particles -- maximum-change full stream
+        };
+        constexpr int kCount = sizeof(kTestAmounts) / sizeof(kTestAmounts[0]);
+        const std::uint32_t amount = kTestAmounts[sF8AmountIndex % kCount];
+        // Spawn a few meters in front of the Vagrant so the screen-
+        // projection lands in a visible part of the viewport.
+        const glm::vec3 forward = glm::vec3(-std::sin(sPlayer.yaw), 0.0f, -std::cos(sPlayer.yaw));
+        const glm::vec3 corpse = sPlayer.pos + forward * 3.0f + glm::vec3(0.0f, 1.0f, 0.0f);
+        selva::gameplay::queueSangueDrop(corpse, amount);
+        std::fprintf(stderr, "[sangue-debug] F8 queued amount=%u at (%.2f,%.2f,%.2f)\n", amount,
+                     corpse.x, corpse.y, corpse.z);
+        std::fflush(stderr);
+        sF8AmountIndex = (sF8AmountIndex + 1) % kCount;
+    }
+    sPrevF8 = f8Now;
+}
+
+// F9 invokes the commit-fire on the active profile. Class-picker
+// (Penitent / Heretic / Wretched) fires the Crucible: vessel contents
+// install into substrate (substrate effect TBD; this commit consumes
+// the vessel until stat-installation lands). Unburdened fires the
+// Censer: vessel contents transit to Beatrice's reservoir
+// (sangue_riversato accumulates). No-op pre-Beat-4 (player_class=None)
+// or when the vessel is empty.
+//
+// Edge-triggered. Held key only fires once per press.
+static bool sPrevF9 = false;
+static void tickF9CommitVessel(const Uint8* keys)
+{
+    const bool f9Now = keys[SDL_SCANCODE_F9] != 0;
+    if (f9Now && !sPrevF9)
+    {
+        if (auto* profile = selva::activePlayerProfile())
+        {
+            const auto result = selva::sangue::commitVessel(*profile);
+            if (result.fired)
+            {
+                std::fprintf(stderr,
+                             "[commit-vessel] F9 fired class=%s amount=%u "
+                             "vessel_after=%u riversato_after=%u\n",
+                             selva::playerClassName(result.fire_kind), result.amount,
+                             profile->sangue_vessel, profile->sangue_riversato);
+                std::fflush(stderr);
+            }
+            else
+            {
+                std::fprintf(stderr, "[commit-vessel] F9 no-op (class=%s vessel=%u)\n",
+                             selva::playerClassName(profile->player_class), profile->sangue_vessel);
+                std::fflush(stderr);
+            }
+        }
+    }
+    sPrevF9 = f9Now;
 }
 
 // Build the preview's view-proj matrix from orbit yaw/pitch/distance
@@ -3556,49 +4101,139 @@ static void applyFpvHeadHide(const selva::anim::PoseSampler& sampler,
     }
 }
 
-static void drawActorMeshes(const glm::mat4& viewProj)
+namespace
+{
+struct TransparentSkeletalDraw
+{
+    const selva::anim::SkeletalMesh* mesh;
+    glm::mat4 model;
+    const std::vector<glm::mat4>* palette;
+    glm::vec3 tint;
+    float alpha;
+    float depth_sq;
+};
+
+void drawPlayerSkeletal(const glm::mat4& viewProj)
+{
+    if (sSampler.bone_palette.empty())
+        return;
+    const float pfoot = selva::gameplay::actorFootOffsetY(sPlayer);
+    const glm::vec3 player_pos(sPlayer.pos.x, sPlayer.pos.y - pfoot, sPlayer.pos.z);
+    glm::mat4 player_model = glm::translate(glm::mat4(1.0f), player_pos);
+    player_model =
+        glm::rotate(player_model, sPlayer.yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
+    const bool fpv = selva::render::cameraMode() == selva::render::CameraMode::FirstPerson;
+    if (fpv)
+    {
+        // FPV: zero head + neck bones in a clone of the palette so
+        // the head doesn't clip the near plane.
+        static std::vector<glm::mat4> sFpvPalette;
+        applyFpvHeadHide(sSampler, sSampler.bone_palette, sFpvPalette);
+        selva::anim::drawSkeletalMesh(sPlayerMesh, player_model, viewProj, sFpvPalette,
+                                      glm::vec3(1.0f, 1.0f, 1.0f));
+        return;
+    }
+    selva::anim::drawSkeletalMesh(sPlayerMesh, player_model, viewProj, sSampler.bone_palette,
+                                  glm::vec3(1.0f, 1.0f, 1.0f));
+}
+
+float computeEnemyDeathFadeAlpha(const selva::gameplay::Actor& enemy, float now_wc, float fade_hold,
+                                 float fade_duration)
+{
+    if (!enemy.is_dead || enemy.death_time <= 0.0f)
+        return 1.0f;
+    const float since_death = now_wc - enemy.death_time;
+    if (since_death <= fade_hold)
+        return 1.0f;
+    const float fade_t =
+        (fade_duration > 0.0001f) ? (since_death - fade_hold) / fade_duration : 1.0f;
+    return std::clamp(1.0f - fade_t, 0.0f, 1.0f);
+}
+
+// Per-actor tint. Default is the archetype's tint_color. If
+// tint_burn_target_archetype is set AND the actor has arrived at its
+// scripted target AND has a known on_arrival_delay, lerp toward the
+// target's tint over the wait. Visualizes the inward-burn -- fresh
+// larvae go pale to sangue-red as they age. See
+// [[project_soul_larvae_cosmology]].
+glm::vec3 resolveEnemyTint(const selva::gameplay::Actor& enemy, float now_wc)
+{
+    if (enemy.archetype == nullptr)
+        return glm::vec3(1.0f);
+    const auto& at = *enemy.archetype;
+    const glm::vec3 tint(at.tint_color[0], at.tint_color[1], at.tint_color[2]);
+    if (at.tint_burn_target_archetype.empty() || enemy.arrival_wallclock <= 0.0f ||
+        enemy.arrival_action_delay_seconds <= 0.0f)
+        return tint;
+    const selva::gameplay::EnemyArchetype* target =
+        selva::gameplay::archetypes().get(at.tint_burn_target_archetype);
+    if (target == nullptr)
+        return tint;
+    const float t = std::clamp(
+        (now_wc - enemy.arrival_wallclock) / enemy.arrival_action_delay_seconds, 0.0f, 1.0f);
+    const glm::vec3 target_tint(target->tint_color[0], target->tint_color[1],
+                                target->tint_color[2]);
+    return glm::mix(tint, target_tint, t);
+}
+
+void drawOrQueueEnemy(const selva::gameplay::Actor& enemy, const glm::mat4& viewProj,
+                      const glm::vec3& camPos, float now_wc, float fade_hold, float fade_duration,
+                      std::vector<TransparentSkeletalDraw>& out_transparent)
+{
+    if (enemy.sampler.bone_palette.empty())
+        return;
+    const float alpha = computeEnemyDeathFadeAlpha(enemy, now_wc, fade_hold, fade_duration);
+    if (alpha <= 0.001f)
+        return;
+    const std::string sk_id = enemy.skeleton_id.empty() ? std::string("player") : enemy.skeleton_id;
+    auto& enemy_mesh = selva::anim::meshByKey(sk_id);
+    const float efoot = enemy_mesh.foot_offset_y;
+    const glm::vec3 enemy_pos(enemy.pos.x, enemy.pos.y - efoot, enemy.pos.z);
+    glm::mat4 enemy_model = glm::translate(glm::mat4(1.0f), enemy_pos);
+    enemy_model =
+        glm::rotate(enemy_model, enemy.yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
+    const glm::vec3 tint = resolveEnemyTint(enemy, now_wc);
+    if (alpha < 0.999f)
+    {
+        const glm::vec3 d = enemy.pos - camPos;
+        out_transparent.push_back(TransparentSkeletalDraw{
+            &enemy_mesh, enemy_model, &enemy.sampler.bone_palette, tint, alpha, glm::dot(d, d)});
+        return;
+    }
+    selva::anim::drawSkeletalMesh(enemy_mesh, enemy_model, viewProj, enemy.sampler.bone_palette,
+                                  tint, 1.0f);
+}
+} // namespace
+
+static void drawActorMeshes(const glm::mat4& viewProj, const glm::vec3& camPos)
 {
     if (!sPlayerMesh.isLoaded())
         return;
-    const bool fpv = selva::render::cameraMode() == selva::render::CameraMode::FirstPerson;
-    if (!sSampler.bone_palette.empty())
-    {
-        const glm::vec3 player_pos(sPlayer.pos.x, sPlayer.pos.y - sPlayerMesh.foot_offset_y,
-                                   sPlayer.pos.z);
-        glm::mat4 player_model = glm::translate(glm::mat4(1.0f), player_pos);
-        player_model =
-            glm::rotate(player_model, sPlayer.yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
-        // In FPV: clone the bone palette and zero out head + neck so
-        // those bones' geometry clips off-screen. Arms + body remain
-        // visible, head doesn't render into the camera near plane.
-        if (fpv)
-        {
-            static std::vector<glm::mat4> sFpvPalette;
-            applyFpvHeadHide(sSampler, sSampler.bone_palette, sFpvPalette);
-            selva::anim::drawSkeletalMesh(sPlayerMesh, player_model, viewProj, sFpvPalette,
-                                          glm::vec3(1.0f, 1.0f, 1.0f));
-        }
-        else
-        {
-            selva::anim::drawSkeletalMesh(sPlayerMesh, player_model, viewProj,
-                                          sSampler.bone_palette, glm::vec3(1.0f, 1.0f, 1.0f));
-        }
-    }
+    // Death-fade tuning lives in tunables.json. Cosmologically:
+    // sangue is absorbed; residual substrate diffuses back into Hell's
+    // substance. Per [[project_soul_larvae_cosmology]] + setting.md.
+    const auto& fade_tun = selva::tuning::current();
+    const float fade_hold = fade_tun.enemy_death_fade_hold_seconds;
+    const float fade_duration = fade_tun.enemy_death_fade_duration_seconds;
+    const float now_wc = selva::wallClock();
+
+    // Collect transparent draws so they can be sorted back-to-front
+    // after opaques. Per SkeletalRenderer.h pass contract -- overlapping
+    // faded corpses produce alpha-order artifacts without sorting.
+    std::vector<TransparentSkeletalDraw> transparent;
+    selva::anim::beginSkeletalPass();
+    drawPlayerSkeletal(viewProj);
     for (const auto* enemy : selva::gameplay::enemies())
-    {
-        if (enemy->sampler.bone_palette.empty())
-            continue;
-        const glm::vec3 enemy_pos(enemy->pos.x, enemy->pos.y - sPlayerMesh.foot_offset_y,
-                                  enemy->pos.z);
-        glm::mat4 enemy_model = glm::translate(glm::mat4(1.0f), enemy_pos);
-        enemy_model =
-            glm::rotate(enemy_model, enemy->yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
-        // Dark bordeaux red for the placeholder shade — distinct
-        // silhouette from the player, hints at the figura-umana
-        // damned-soul register (bloody / wretched).
-        selva::anim::drawSkeletalMesh(sPlayerMesh, enemy_model, viewProj,
-                                      enemy->sampler.bone_palette, glm::vec3(0.45f, 0.10f, 0.13f));
-    }
+        drawOrQueueEnemy(*enemy, viewProj, camPos, now_wc, fade_hold, fade_duration, transparent);
+
+    // Back-to-front: far first so near-camera transparency composes
+    // correctly over fading bodies behind it.
+    std::sort(transparent.begin(), transparent.end(),
+              [](const TransparentSkeletalDraw& a, const TransparentSkeletalDraw& b)
+              { return a.depth_sq > b.depth_sq; });
+    for (const auto& td : transparent)
+        selva::anim::drawSkeletalMesh(*td.mesh, td.model, viewProj, *td.palette, td.tint, td.alpha);
+    selva::anim::endSkeletalPass();
 }
 
 // Frame capture: read back the back buffer at quarter-resolution and
@@ -3644,7 +4279,7 @@ static void tickFrameCaptureWrite()
     ++sFrameCaptureCounter;
 }
 
-// Apply per-light flicker (modulates intensity) so the scene mesh's
+// Apply per-light flicker (modulates intensity) so the region mesh's
 // point-light contribution stays in sync with the sprite pass's
 // visible flame brightness.
 static void uploadFlickeredScenePointLights()
@@ -3662,6 +4297,156 @@ static void uploadFlickeredScenePointLights()
     selva::render::setScenePointLights(flickered);
 }
 
+namespace
+{
+struct CameraFrame
+{
+    glm::mat4 view_proj;
+    glm::vec3 cam_pos;
+    glm::vec3 sun_dir;
+    glm::vec3 sun_intensity;
+    float exposure;
+};
+
+CameraFrame buildCameraFrame()
+{
+    // LookAt height = feet Y + chest offset. Sampling the hip joint
+    // per frame caused sub-pixel camera jitter that propagated to
+    // alpha-cutout discard on leaf cards (visible foliage flicker).
+    // Fixed offset above feet kills the jitter at the cost of dynamic-
+    // pose tracking; can come back later via a dedicated camera mode.
+    const float targetLookAtY = sPlayer.pos.y + 1.3f;
+
+    // Head bone world + matrix: FPV camera-roll during dodge clips
+    // uses the matrix to tumble the eyes with the body. Fallback to
+    // fixed eye-height identity matrix if the head joint isn't in
+    // the skeleton.
+    glm::vec3 head_world(sPlayer.pos.x, sPlayer.pos.y + 1.65f, sPlayer.pos.z);
+    glm::mat4 head_world_mat(1.0f);
+    if (const int head_idx = sSampler.findJoint("mixamorig:Head"); head_idx >= 0)
+    {
+        head_world = sSampler.jointWorldPosWithActor(head_idx);
+        head_world_mat = sSampler.jointWorldMatrixWithActor(head_idx);
+    }
+
+    // Camera-roll during dodge/roll clips only; other one-shots
+    // (jab/hook/heavy) keep mouse-driven camera because they don't
+    // tumble the head and locking mouse-look feels like a stutter.
+    bool use_anim_orientation = false;
+    const char* fd_one_shot = nullptr;
+    if (sSampler.isOneShotActive())
+    {
+        const auto fd = sSampler.frameDiagnostics();
+        fd_one_shot = fd.one_shot_name;
+        if (fd_one_shot != nullptr)
+        {
+            const std::string_view name(fd_one_shot);
+            if (name.find("roll") != std::string_view::npos)
+                use_anim_orientation = true;
+        }
+    }
+
+    CameraFrame f;
+    f.view_proj =
+        selva::render::buildViewProj(sPlayer.pos, targetLookAtY, head_world, head_world_mat,
+                                     use_anim_orientation, sPlayer.yaw, fd_one_shot);
+    selva::render::setLastViewProj(f.view_proj);
+
+    f.sun_dir = selva::render::atmosphere::sunDirection();
+    f.sun_intensity = selva::render::atmosphere::sunIntensity();
+    f.exposure = selva::render::atmosphere::exposure();
+
+    // Camera position mirrors buildViewProj math: player_pos -
+    // lookFwd*follow_distance + (0, follow_height, 0).
+    const auto& tun_atm = selva::tuning::current();
+    const float camYaw = selva::render::cameraYaw();
+    const float camPitch = selva::render::cameraPitch();
+    const glm::vec3 lookFwd(std::cos(camPitch) * -std::sin(camYaw), std::sin(camPitch),
+                            std::cos(camPitch) * -std::cos(camYaw));
+    f.cam_pos = sPlayer.pos - lookFwd * tun_atm.follow_distance +
+                glm::vec3(0.0f, tun_atm.follow_height, 0.0f);
+    return f;
+}
+
+void drawSkeletalsForDepthPass()
+{
+    // Shadow uses the FULL bone palette in FPV (head-hide is only for
+    // the visible main-pass draw -- the cast shadow on the ground
+    // should still show the player's complete silhouette).
+    if (sPlayerMesh.isLoaded() && !sSampler.bone_palette.empty())
+    {
+        const float pfoot = selva::gameplay::actorFootOffsetY(sPlayer);
+        const glm::vec3 player_pos(sPlayer.pos.x, sPlayer.pos.y - pfoot, sPlayer.pos.z);
+        glm::mat4 m = glm::translate(glm::mat4(1.0f), player_pos);
+        m = glm::rotate(m, sPlayer.yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
+        selva::render::setSkeletalDepthModel(m);
+        selva::render::setSkeletalDepthBones(sSampler.bone_palette.data(),
+                                             static_cast<int>(sSampler.bone_palette.size()));
+        glBindVertexArray(sPlayerMesh.vao);
+        glDrawElements(GL_TRIANGLES, sPlayerMesh.index_count, GL_UNSIGNED_INT, nullptr);
+    }
+    for (const auto* enemy : selva::gameplay::enemies())
+    {
+        if (enemy->sampler.bone_palette.empty())
+            continue;
+        const std::string sk_id =
+            enemy->skeleton_id.empty() ? std::string("player") : enemy->skeleton_id;
+        auto& enemy_mesh = selva::anim::meshByKey(sk_id);
+        const float efoot = enemy_mesh.foot_offset_y;
+        const glm::vec3 enemy_pos(enemy->pos.x, enemy->pos.y - efoot, enemy->pos.z);
+        glm::mat4 m = glm::translate(glm::mat4(1.0f), enemy_pos);
+        m = glm::rotate(m, enemy->yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
+        selva::render::setSkeletalDepthModel(m);
+        selva::render::setSkeletalDepthBones(enemy->sampler.bone_palette.data(),
+                                             static_cast<int>(enemy->sampler.bone_palette.size()));
+        glBindVertexArray(enemy_mesh.vao);
+        glDrawElements(GL_TRIANGLES, enemy_mesh.index_count, GL_UNSIGNED_INT, nullptr);
+    }
+}
+
+void runShadowDepthPass()
+{
+    ZoneScopedN("shadow-depth-pass");
+    {
+        ZoneScopedN("shadow-update-cam");
+        selva::render::updateShadowCamera(sPlayer.pos);
+    }
+    {
+        ZoneScopedN("shadow-begin");
+        selva::render::beginDepthPass();
+    }
+    {
+        ZoneScopedN("shadow-terrain");
+        selva::render::useTerrainDepthShader();
+        selva::render::renderTerrainDepth();
+    }
+    {
+        ZoneScopedN("shadow-trees");
+        selva::render::useTreeDepthShader();
+        selva::render::renderTreesDepth();
+    }
+    {
+        ZoneScopedN("shadow-static-meshes");
+        selva::render::useSceneDepthShader();
+        selva::render::renderStaticMeshesDepth();
+    }
+    {
+        ZoneScopedN("shadow-doors");
+        selva::render::useSceneDepthShader();
+        selva::render::renderDoorsDepth();
+    }
+    {
+        ZoneScopedN("shadow-skeletal");
+        selva::render::useSkeletalDepthShader();
+        drawSkeletalsForDepthPass();
+    }
+    {
+        ZoneScopedN("shadow-end");
+        selva::render::endDepthPass(selva::render::windowWidth(), selva::render::windowHeight());
+    }
+}
+} // namespace
+
 static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*camX*/,
                              float /*camY*/, float /*alpha*/)
 {
@@ -3671,154 +4456,17 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
         renderTreePreview();
         return;
     }
-    // LookAt height = player feet Y + chest offset. Previously this
-    // sampled the hip joint's world Y per frame so dynamic poses
-    // (rolls, knockdowns) kept the body in frame - but the hip Y
-    // bobs every frame from idle clip animation, which propagated
-    // through buildViewProj's smoothing into a camera matrix that
-    // jittered per frame. That sub-pixel camera motion flipped the
-    // alpha-cutout discard decision on leaf cards per pixel per
-    // frame, producing visible foliage flicker that tapered off only
-    // when the sampler stopped (pause menu). Using a fixed offset
-    // above the player's feet kills the per-frame matrix jitter at
-    // the cost of camera not tracking knockdowns/rolls - which can
-    // come back later via a dedicated dynamic-pose camera mode.
-    const float targetLookAtY = sPlayer.pos.y + 1.3f;
+    const CameraFrame cam = buildCameraFrame();
+    const glm::mat4 viewProj = cam.view_proj;
+    const glm::vec3 camPos = cam.cam_pos;
+    const glm::vec3 kSunDir = cam.sun_dir;
+    const glm::vec3 kSunIntensity = cam.sun_intensity;
+    const float kExposure = cam.exposure;
 
-    // Head bone world position + matrix: required by FPV mode (the
-    // matrix is used for camera-roll during dodge/roll clips so the
-    // eyes tumble with the body). Fallback to a fixed eye-height
-    // identity matrix if the head joint isn't in the skeleton.
-    glm::vec3 head_world(sPlayer.pos.x, sPlayer.pos.y + 1.65f, sPlayer.pos.z);
-    glm::mat4 head_world_mat(1.0f);
-    if (const int head_idx = sSampler.findJoint("mixamorig:Head"); head_idx >= 0)
-    {
-        head_world = sSampler.jointWorldPosWithActor(head_idx);
-        head_world_mat = sSampler.jointWorldMatrixWithActor(head_idx);
-    }
+    runShadowDepthPass();
 
-    // Camera-roll during dodge clips: use the head bone's full world
-    // rotation so the eyes tumble with the body (cinematic FPV roll).
-    // Other one-shots (jab/hook/heavy) keep mouse-driven camera
-    // because they don't tumble the head and locking mouse-look
-    // would feel like a stutter.
-    bool use_anim_orientation = false;
-    if (sSampler.isOneShotActive())
-    {
-        const auto fd = sSampler.frameDiagnostics();
-        if (fd.one_shot_name != nullptr)
-        {
-            const std::string_view name(fd.one_shot_name);
-            if (name.find("roll") != std::string_view::npos)
-                use_anim_orientation = true;
-        }
-    }
-
-    const char* fd_one_shot = nullptr;
-    if (sSampler.isOneShotActive())
-        fd_one_shot = sSampler.frameDiagnostics().one_shot_name;
-    const glm::mat4 viewProj =
-        selva::render::buildViewProj(sPlayer.pos, targetLookAtY, head_world, head_world_mat,
-                                     use_anim_orientation, sPlayer.yaw, fd_one_shot);
-    selva::render::setLastViewProj(viewProj);
-
-    // Threshold-light direction toward the colle (-Z), held at deep
-    // dusk elevation. Beatrice's light (per wood.md): no body, no
-    // movement. Intensity well below "Earth sun" so the world reads
-    // as held twilight rather than late afternoon. Slight warm tint
-    // pre-mul on the source itself (the light is already mystical
-    // before the atmosphere shapes it).
-    const glm::vec3 kSunDir = selva::render::atmosphere::sunDirection();
-    const glm::vec3 kSunIntensity = selva::render::atmosphere::sunIntensity();
-    const float kExposure = selva::render::atmosphere::exposure();
-
-    // Camera position (matches buildViewProj math): player_pos - lookFwd
-    // * follow_distance + (0, follow_height, 0). Reconstruct here.
-    const auto& tun_atm = selva::tuning::current();
-    const float camYaw = selva::render::cameraYaw();
-    const float camPitch = selva::render::cameraPitch();
-    const glm::vec3 lookFwd(std::cos(camPitch) * -std::sin(camYaw), std::sin(camPitch),
-                            std::cos(camPitch) * -std::cos(camYaw));
-    const glm::vec3 camPos = sPlayer.pos - lookFwd * tun_atm.follow_distance +
-                             glm::vec3(0.0f, tun_atm.follow_height, 0.0f);
-
-    // ---- Shadow depth pass ----
-    {
-        ZoneScopedN("shadow-depth-pass");
-        {
-            ZoneScopedN("shadow-update-cam");
-            selva::render::updateShadowCamera(sPlayer.pos);
-        }
-        {
-            ZoneScopedN("shadow-begin");
-            selva::render::beginDepthPass();
-        }
-
-        {
-            ZoneScopedN("shadow-terrain");
-            selva::render::useTerrainDepthShader();
-            selva::render::renderTerrainDepth();
-        }
-        {
-            ZoneScopedN("shadow-trees");
-            selva::render::useTreeDepthShader();
-            selva::render::renderTreesDepth();
-        }
-        {
-            ZoneScopedN("shadow-static-meshes");
-            selva::render::useSceneDepthShader();
-            selva::render::renderStaticMeshesDepth();
-        }
-
-        // Scene cubes (ground decals). Currently no-op but the depth pass
-        // would draw them here once any get added to the scene.
-
-        {
-            ZoneScopedN("shadow-skeletal");
-            selva::render::useSkeletalDepthShader();
-            // Shadow uses the FULL bone palette in FPV - the head-hide
-            // is only for the visible main-pass draw (so the head
-            // doesn't render into the camera near plane). The cast
-            // shadow on the ground should still show the player's
-            // complete silhouette, head included.
-            if (sPlayerMesh.isLoaded() && !sSampler.bone_palette.empty())
-            {
-                const glm::vec3 player_pos(sPlayer.pos.x, sPlayer.pos.y - sPlayerMesh.foot_offset_y,
-                                           sPlayer.pos.z);
-                glm::mat4 m = glm::translate(glm::mat4(1.0f), player_pos);
-                m = glm::rotate(m, sPlayer.yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
-                selva::render::setSkeletalDepthModel(m);
-                selva::render::setSkeletalDepthBones(
-                    sSampler.bone_palette.data(), static_cast<int>(sSampler.bone_palette.size()));
-                glBindVertexArray(sPlayerMesh.vao);
-                glDrawElements(GL_TRIANGLES, sPlayerMesh.index_count, GL_UNSIGNED_INT, nullptr);
-            }
-            for (const auto* enemy : selva::gameplay::enemies())
-            {
-                if (enemy->sampler.bone_palette.empty())
-                    continue;
-                const glm::vec3 enemy_pos(enemy->pos.x, enemy->pos.y - sPlayerMesh.foot_offset_y,
-                                          enemy->pos.z);
-                glm::mat4 m = glm::translate(glm::mat4(1.0f), enemy_pos);
-                m = glm::rotate(m, enemy->yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
-                selva::render::setSkeletalDepthModel(m);
-                selva::render::setSkeletalDepthBones(
-                    enemy->sampler.bone_palette.data(),
-                    static_cast<int>(enemy->sampler.bone_palette.size()));
-                glBindVertexArray(sPlayerMesh.vao);
-                glDrawElements(GL_TRIANGLES, sPlayerMesh.index_count, GL_UNSIGNED_INT, nullptr);
-            }
-        }
-
-        {
-            ZoneScopedN("shadow-end");
-            selva::render::endDepthPass(selva::render::windowWidth(),
-                                        selva::render::windowHeight());
-        }
-    }
-
-    // ---- Main pass: bind the shadow texture so main shaders can sample ----
-    selva::render::bindShadowTexture(1); // texture unit 1 reserved for shadows
+    // Main pass: bind the shadow texture so main shaders can sample.
+    selva::render::bindShadowTexture(1);
 
     {
         ZoneScopedN("sky");
@@ -3827,21 +4475,21 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
 
     const glm::mat4& lightVP = selva::render::lightViewProj();
 
-    // Scene pass runs BEFORE terrain so the chapel mesh writes depth
+    // Region pass runs BEFORE terrain so the chapel mesh writes depth
     // first. Terrain then depth-tests against chapel and loses where
     // chapel is in front of it (the chapel-interior footprint). This
     // is the cleanest carve-out: no shape uniforms, no stencil mask,
     // just draw order + depth test.
     {
-        ZoneScopedN("scene-pass");
-        selva::render::useSceneProgram();
+        ZoneScopedN("region-pass");
+        selva::render::useRegionProgram();
         selva::render::setSceneView(selva::render::lastView());
         selva::render::setSceneViewProj(viewProj);
         selva::render::setSceneAtmosphere(kSunDir, kSunIntensity, camPos, kExposure);
         selva::render::setSceneShadow(lightVP, kSunDir, sPlayer.pos, 1);
         uploadFlickeredScenePointLights();
-        selva::render::setSceneFlatShading(selva::tuning::current().debug_flat_shading);
-        if (selva::tuning::current().debug_msaa_state_log)
+        selva::render::setSceneFlatShading(selva::debug::flags().flat_shading);
+        if (selva::debug::flags().msaa_state_log)
         {
             static int sMsaaFrameCounter = 0;
             if ((sMsaaFrameCounter++ % 60) == 0)
@@ -3860,6 +4508,10 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
         {
             ZoneScopedN("static-meshes");
             selva::render::renderStaticMeshes();
+        }
+        {
+            ZoneScopedN("doors");
+            selva::render::renderDoors();
         }
         {
             ZoneScopedN("ground-decals");
@@ -3891,7 +4543,7 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
     {
         ZoneScopedN("actor-meshes");
         selva::anim::setSkeletalShadow(lightVP, kSunDir, sPlayer.pos, 1);
-        drawActorMeshes(viewProj);
+        drawActorMeshes(viewProj, camPos);
     }
     {
         ZoneScopedN("light-sprites");
@@ -3979,16 +4631,16 @@ void resetDebugRecordSamples(std::size_t expected)
 
 namespace selva::gameplay
 {
-void onSceneTransitionCommit(bool preserve_pos, const glm::vec3& spawn_pos, bool override_yaw,
-                             float spawn_yaw)
+void onRegionTransitionCommit(bool preserve_pos, const glm::vec3& spawn_pos, bool override_yaw,
+                              float spawn_yaw)
 {
     if (preserve_pos)
     {
         // Seamless doorway: player stays at their current world
         // position. Just sync the Jolt capsule to wherever
         // sPlayer.pos already is (the body was destroyed with the
-        // old scene; new scene's bodies don't include the player,
-        // and the next resolvePlayerCollisionAndSnap will re-create
+        // old region; new region's bodies don't include the player,
+        // and the next tickPhysicsAndSyncActors will re-create
         // it lazily at sPlayer.pos).
         //
         // Yaw: optionally override; otherwise keep.
@@ -4052,7 +4704,7 @@ void teleportPlayerTo(const glm::vec3& world_pos, bool override_yaw, float yaw)
                  sPlayer.pos.x, sPlayer.pos.y, sPlayer.pos.z, sPlayer.yaw,
                  selva::render::cameraYaw(), selva::render::cameraPitch(), override_yaw ? 1 : 0);
     // Also move the Jolt capsule, else physics snaps the player back
-    // to the previous position the next time resolvePlayerCollisionAndSnap
+    // to the previous position the next time tickPhysicsAndSyncActors
     // reads characterPosition.
     const auto body = selva::world::playerBody();
     if (body != engine::physics::kInvalidBody)
@@ -4081,22 +4733,17 @@ void syncInputEdgesFromCurrentState()
     sPrevRMB = (mouse_buttons & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
     sPrevMMB = (mouse_buttons & SDL_BUTTON(SDL_BUTTON_MIDDLE)) != 0;
 }
-void loadActiveCharacterIntoPlayer(const selva::PlayerProfile& profile)
+// Player actor reset. Position/yaw/pool/foot state. Does NOT touch
+// sampler, scene, or world systems -- those are owned by the
+// orchestrators below.
+static void resetPlayerActorForProfile(const selva::PlayerProfile& profile)
 {
-    // Position: prefer the saved pose if the character has one;
-    // otherwise spawn at the terrain's configured spawn point. New
-    // characters (has_saved_pose=false) always start at spawn; resumed
-    // characters wake up where they quit.
     const glm::vec2 spawn_xz = selva::world::playerSpawnXZ();
     const float spawn_ground_y = selva::world::sampleHeight(spawn_xz.x, spawn_xz.y);
     const glm::vec3 target_pos = profile.has_saved_pose
                                      ? glm::vec3(profile.pos_x, profile.pos_y, profile.pos_z)
                                      : glm::vec3(spawn_xz.x, spawn_ground_y, spawn_xz.y);
     const float target_yaw = profile.has_saved_pose ? profile.yaw : sPlayer.spawn_yaw;
-    // Use teleportPlayerTo so the Jolt character body moves with
-    // sPlayer.pos. Without this, the body keeps the previous run's
-    // position and snaps sPlayer.pos back on the next physics tick
-    // (new game starts at old character's last position).
     teleportPlayerTo(target_pos, true, target_yaw);
     sPlayer.spawn_pos = glm::vec3(spawn_xz.x, spawn_ground_y, spawn_xz.y);
     sPlayer.is_dead = false;
@@ -4106,9 +4753,161 @@ void loadActiveCharacterIntoPlayer(const selva::PlayerProfile& profile)
     sPlayer.lock_target_idx = -1;
     selva::gameplay::initActorPools(sPlayer.hp, sPlayer.stamina, sPlayer.poise, sPlayer.body,
                                     sPlayer.stats);
-    sSampler.releaseOneShot();
     sPlayer.foot_left = Actor::FootContact{};
     sPlayer.foot_right = Actor::FootContact{};
+}
+
+// Full session-boundary reset. Called on New Game / Load Game /
+// character switch. Single source of truth for "the world is now in
+// fresh state for this character." Canonical order documented per
+// step. Adding a new per-character state holder = add ONE line here.
+void hardResetWorldForCharacter(const selva::PlayerProfile& profile)
+{
+    // 1. End any cinematic state from the prior session.
+    if (selva::scene::active())
+        selva::scene::end();
+    resetWakeSceneTracking();
+    selva::dialog::hardReset();
+    // Text-presentation: tear down any active panel session.
+    // Must run AFTER dialog::hardReset (which clears the producer's
+    // internal state); the text layer's hardReset discards handlers
+    // without invoking on_end (the producer is already cleaned up).
+    selva::text::hardReset();
+    // Mind sub-page graph layout: recompute for the newly-active
+    // character's unlocked-insight set. tick()'s recompute-on-fire
+    // only catches NEW unlocks; load-character paths reuse the
+    // existing unlocked set and would otherwise leave the layout
+    // cache empty (every node draws at the canvas origin).
+    selva::insight::layout::recompute();
+    // Cognitive stats: sync from the loaded growth counters so the
+    // Form/Mind pages show the right values immediately. Calling any
+    // grow*(0) helper recomputes without changing counters.
+    selva::growPerception(0);
+    // Interaction registry is world-state (closures capture
+    // spawn_decl_id, not character data) -- intentionally NOT
+    // hard-reset here. Survives character switches alongside the
+    // actor pool itself.
+
+    // 2. Stop active session-audio + boss state (pops audio bed).
+    selva::gameplay::tearDownActiveBosses();
+
+    // 3. Hard-reset the player sampler so the next animation snaps in
+    //    without blending from the prior character's last pose.
+    sSampler.hardReset();
+
+    // 4. Enemy pool reset to JSON baseline, then re-apply this
+    //    profile's felled_bosses (idempotent fireEnemyDeath puts each
+    //    felled boss into death pose).
+    selva::gameplay::resetCycleEnemies();
+    // Spawn-flow timers reset so cadence starts fresh in the new
+    // character's session. Spawn counters preserved (dynamic ids
+    // never collide).
+    selva::spawn::resetFlowSpawner();
+    // Hazard zones are WORLD-state (per-region geometry, not per-
+    // character), so they SURVIVE character switches. Same contract
+    // as the interactable registry above -- regions only activate
+    // once at boot; if we cleared zones here they would not get
+    // re-registered until the next region activation, which never
+    // happens. Bug found via [bt-chase-enter] diagnostic: zones
+    // empty at runtime even though region JSON parsed correctly.
+
+    // 5. Door states: profile if persisted, else JSON initial_state.
+    selva::world::applyPersistedDoorStates();
+
+    // 6. Player Actor: teleport to spawn, restore pools, clear combat
+    //    reaction state.
+    resetPlayerActorForProfile(profile);
+}
+
+// Mid-character cycle-boundary reset. Called on player death/respawn.
+// Tighter scope than hardReset: the player is alive and animating,
+// no cinematic is in flight, doors persist mid-cycle. Only the
+// enemy pool needs cycle-restream.
+void softResetWorldForCycle()
+{
+    selva::gameplay::resetCycleEnemies();
+    // Flow spawners MUST reset alongside the pool tear-down: under
+    // the rebuild-from-authored doctrine, resetCycleEnemies clears
+    // the pool, and tickInitialFill is what re-populates the flow's
+    // authored positions on the next tick. Without this, init_fill
+    // stays true and the larvae never come back after first death.
+    // Same call ordering as hardResetWorldForCharacter above.
+    selva::spawn::resetFlowSpawner();
+}
+
+// Wake-scene tracking. The wake scene's end condition is "the player's
+// getting_up one-shot finished," which is specific to this scene --
+// other Scenes (Guide-rescue) have their own end watchers. Flagged
+// here so the global selvaPerFrame can run the watcher without
+// coupling the Scene system to player-sampler state.
+static bool sWakeSceneActive = false;
+
+void tickWakeSceneLifecycle()
+{
+    if (!sWakeSceneActive)
+        return;
+    if (sSampler.isOneShotActive())
+        return;
+    sWakeSceneActive = false;
+    if (selva::scene::active())
+        selva::scene::end();
+}
+
+// Called on Playing-exit so the wake-scene watcher does not fire
+// across a character switch.
+void resetWakeSceneTracking()
+{
+    sWakeSceneActive = false;
+}
+
+// Input-gating helpers. These collapse every "is some UI overlay
+// suppressing gameplay input right now" check into three predicates,
+// one per input category. Every gameplay input site -- mouse-look,
+// LMB/RMB combat, WASD locomotion -- routes through these instead
+// of OR-ing flags inline. Adding a new UI overlay = update these
+// helpers once, not five input sites.
+// True if any UI overlay (text/dialog box, full-screen menu, F1 tuning
+// panel) currently owns the screen. Every gameplay input category
+// suppresses on this. Adding a new overlay (debug panel, pause menu,
+// etc.) means updating ONE site here, not three Suppressed predicates.
+static bool uiOverlayActive()
+{
+    return selva::text::active() || selva::uiState().isScreenOpen() ||
+           tickstate::showTuningPanel() || selva::ui::classPickerActive() ||
+           selva::ui::namePromptActive();
+}
+
+bool gameplayLookSuppressed()
+{
+    return selva::scene::currentLocks().look || uiOverlayActive();
+}
+
+bool gameplayCombatSuppressed()
+{
+    return selva::scene::currentLocks().combat || uiOverlayActive();
+}
+
+bool gameplayMovementSuppressed()
+{
+    return selva::scene::currentLocks().movement || uiOverlayActive();
+}
+
+void beginWakeScene()
+{
+    const char* clip_name = "getting_up_3";
+    const auto* clip = sClips.get(clip_name);
+    if (clip == nullptr || !clip->isLoaded())
+    {
+        std::fprintf(stderr, "[wake-scene] clip '%s' not loaded; skipping wake\n", clip_name);
+        return;
+    }
+    selva::anim::PoseSampler::OneShotOptions opts;
+    opts.clip_key = clip_name;
+    sSampler.playOneShot(*clip, /*blend_in_seconds=*/0.0f, /*blend_out_seconds=*/0.25f,
+                         selva::anim::PoseSampler::BodyMask::Full,
+                         /*start_time_seconds=*/0.0f, /*playback_rate=*/1.0f, opts);
+    selva::scene::begin({.combat = true, .movement = true, .look = false});
+    sWakeSceneActive = true;
 }
 
 void saveActiveCharacterFromPlayer(selva::PlayerProfile& profile)

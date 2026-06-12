@@ -9,32 +9,43 @@ namespace selva::anim
 {
 
 // How world translation is produced while this clip is the active
-// loco track. The two values represent the only two valid patterns
-// in the engine; a third option (mixed) is what produces the
-// treadmill bug — see feedback_hip_delta_two_sides.md.
+// loco track or one-shot. Three explicit modes -- the data layer
+// owns the choice per clip; the runtime never guesses. (Prior to
+// the InPlace addition, an unauthored clip with hip path between
+// 0.5m and 1.5m got auto-classified TRAVELING by a heuristic, and
+// any "step into the bite" attack clip silently slid the actor
+// forward each fire. The heuristic survives only as a fallback for
+// clips with no JSON entry.)
 enum class TranslationSource
 {
-    // Default for unspecified clips. World translation comes from
-    // `velocity_xz * dt`, calibrated by `walk_speed` / `run_speed`
-    // tunables to match the clip's authored cadence (`walking` is
-    // hand-tuned at 1.6m/s to match its 1.85m/1.16s hip travel).
-    // The 1.5m hip-path threshold in extractTrackHipDelta decides
-    // whether to extract+zero the hip (path >= 1.5m → extract;
-    // smaller → leave in pose so micro-sway is visible).
+    // World translation comes from `velocity_xz * dt`. Calibrated by
+    // `walk_speed` / `jog_speed` / `sprint_speed` tunables to match the clip's
+    // authored cadence (`walking` is hand-tuned at 1.6m/s to match
+    // its 1.85m/1.16s hip travel). When no JSON entry exists, the
+    // 1.5m hip-path heuristic in extractTrackHipDelta picks for you
+    // -- but new clips should declare explicitly.
     Velocity,
     // World translation comes from PoseSampler::consumedHipDelta(),
-    // applied to actor pos every frame. Hip is ALWAYS extract+zeroed
-    // regardless of path length. velocity_xz is forced to zero while
-    // this is the active loco source so it doesn't fight the clip's
-    // authored motion. Used by every AI actor's locomotion, by all
-    // one-shots (dodge/attack), and by lock-on combat directional
-    // walks — wherever clip cadence IS the design intent for world
-    // speed.
+    // applied to actor pos every frame. Hip is extract+zeroed each
+    // frame. velocity_xz is forced to zero so it doesn't fight the
+    // clip's authored motion. Used by directional walks, dodges,
+    // attacks whose authored step IS the design intent (pounce
+    // leap), wherever clip cadence drives world speed.
     RootMotion,
+    // Hip stays in the pose, no extraction, no zeroing. World
+    // translation does NOT come from this clip at all -- whatever
+    // velocity_xz integrates is the only world motion. Used by
+    // attacks whose authored hip travel is purely visual (a bite
+    // where the head lunges forward but the body should NOT slide).
+    // Different from Velocity: InPlace promises no extraction even
+    // if hip path exceeds the heuristic threshold. Different from
+    // RootMotion: velocity_xz is NOT zeroed (gameplay still drives
+    // motion if it wants to).
+    InPlace,
 };
 
-// Parse "velocity" / "root_motion" → enum. Unknown values default
-// to Velocity and log a warning (loadFromFile fires the log).
+// Parse "velocity" / "root_motion" / "in_place" → enum. Unknown values
+// default to Velocity and log a warning (loadFromFile fires the log).
 TranslationSource parseTranslationSource(const std::string& s);
 const char* translationSourceName(TranslationSource src);
 

@@ -1,10 +1,12 @@
 #pragma once
 
+#include "combat/HurtboxDecl.h"
 #include "gameplay/Actor.h"
 
 #include <glm/vec3.hpp>
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace selva::combat
@@ -53,15 +55,10 @@ struct Capsule
     float radius = 0.10f;
 };
 
-// Body region the hurtbox covers. Drives the damage multiplier
-// when this region takes a hit (head crits, limbs less).
-enum class HurtRegion : std::uint8_t
-{
-    Head,
-    Torso,
-    UpperLimb,
-    LowerLimb,
-};
+// HurtRegion + HurtboxDecl now live in combat/HurtboxDecl.h so
+// gameplay/Actor.h can include them without a circular HitVolumes.h
+// -> Actor.h dependency. This file re-exposes HurtRegion via the
+// include below for callers who only want the runtime types.
 
 struct Hurtbox
 {

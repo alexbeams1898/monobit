@@ -46,10 +46,21 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ATTACKS_BUILD_DIR = REPO_ROOT / "build" / "selva-oscura-attacks"
+LARVA_BUILD_DIR = REPO_ROOT / "build" / "selva-oscura-larva"
 XBOT_ASSETS_DIR = (
     REPO_ROOT / "games" / "selva-oscura" / "assets" / "characters" / "x_bot"
 )
+LARVA_ASSETS_DIR = (
+    REPO_ROOT / "games" / "selva-oscura" / "assets" / "characters" / "larva"
+)
 PACKS_ROOT = XBOT_ASSETS_DIR / "source"
+LARVA_PACKS_ROOT = LARVA_ASSETS_DIR / "source"
+# Non-humanoid character roots. Each contains its own bundled .glb
+# (mesh + every animation track in one file). Three.js GLTFLoader
+# returns all tracks; viewer JS enumerates them as a sub-dropdown.
+NONHUMANOID_ROOTS = [
+    REPO_ROOT / "games" / "selva-oscura" / "assets" / "characters" / "wolf",
+]
 
 
 def sanitize(name: str) -> str:
@@ -103,9 +114,30 @@ def discover(extra_scan_dirs: list[Path]) -> list[dict]:
                 if glb.exists():
                     add(glb, "Built clips")
 
+    # Larva-archetype built clips (Scary Zombie Pack retargeted to X_Bot).
+    # Mirrors the X_Bot built-clips pass above but globs the per-larva
+    # CMake temp dir. See [[project_soul_larvae_cosmology]].
+    if LARVA_BUILD_DIR.is_dir():
+        for sub in sorted(LARVA_BUILD_DIR.iterdir()):
+            if sub.is_dir():
+                glb = sub / f"{sub.name}.glb"
+                if glb.exists():
+                    add(glb, "Built clips (larva)")
+
     if XBOT_ASSETS_DIR.is_dir():
         for p in sorted(XBOT_ASSETS_DIR.glob("*.glb")):
             add(p, "X Bot assets")
+
+    # Non-humanoid characters. Each ships its mesh + every animation
+    # track inside one .glb (Blender's default export shape). The
+    # viewer JS picks them apart into a per-clip sub-dropdown after
+    # load; from discover()'s perspective each is one file entry.
+    for root in NONHUMANOID_ROOTS:
+        if not root.is_dir():
+            continue
+        char_name = root.name
+        for p in sorted(root.glob("*.glb")):
+            add(p, f"Wolf assets" if char_name == "wolf" else f"{char_name} assets")
 
     # Each pack subdir under source/ becomes its own optgroup so the
     # picker has a clean Pro Sword and Shield Pack vs Action Adventure
@@ -122,6 +154,20 @@ def discover(extra_scan_dirs: list[Path]) -> list[dict]:
             if not _is_bot_mesh(p.stem):
                 add(p, "FBX source (loose)")
         for sub in sorted(PACKS_ROOT.iterdir()):
+            if not sub.is_dir():
+                continue
+            for p in sorted(sub.glob("*.fbx")):
+                if not _is_bot_mesh(p.stem):
+                    add(p, f"FBX source ({sub.name})")
+
+    # Larva FBX source packs (e.g. Scary Zombie Pack). Same shape as the
+    # X_Bot packs above; the larva archetype's FBX sources live under
+    # assets/characters/larva/source/.
+    if LARVA_PACKS_ROOT.is_dir():
+        for p in sorted(LARVA_PACKS_ROOT.glob("*.fbx")):
+            if not _is_bot_mesh(p.stem):
+                add(p, "FBX source (larva, loose)")
+        for sub in sorted(LARVA_PACKS_ROOT.iterdir()):
             if not sub.is_dir():
                 continue
             for p in sorted(sub.glob("*.fbx")):
@@ -173,6 +219,7 @@ VIEWER_HTML = r"""<!doctype html>
 <div id="app"></div>
 <div id="topbar">
   <select id="picker"></select>
+  <select id="trackPicker" style="max-width: 28ch;"></select>
   <span id="info">loading…</span>
 </div>
 <div id="ui">
@@ -230,7 +277,9 @@ let skeletonVisible = false;
 const clock = new THREE.Clock();
 
 const picker = document.getElementById('picker');
+const trackPicker = document.getElementById('trackPicker');
 const info   = document.getElementById('info');
+let loadedAnimations = []; // most-recent loadClip's animation array
 const playBtn = document.getElementById('play');
 const skelBtn = document.getElementById('skel');
 const scrub   = document.getElementById('scrub');
@@ -309,6 +358,23 @@ csvBtn.onclick = () => {
   mixer.update(0);
 };
 
+function playTrack(idx) {
+  if (!mixer || !loadedAnimations || idx < 0 || idx >= loadedAnimations.length)
+    return;
+  if (action) action.stop();
+  const clip = loadedAnimations[idx];
+  action = mixer.clipAction(clip);
+  action.play();
+  trackPicker.value = String(idx);
+  info.textContent =
+    `${clip.name || '(unnamed)'} · ${clip.duration.toFixed(2)}s · ${currentMeta ? currentMeta.kind : ''}`;
+}
+
+trackPicker.onchange = () => {
+  const idx = parseInt(trackPicker.value, 10);
+  if (!isNaN(idx)) playTrack(idx);
+};
+
 function disposeCurrent() {
   if (currentRoot) {
     scene.remove(currentRoot);
@@ -356,12 +422,22 @@ async function loadClip(meta) {
     skeletonHelper.visible = skeletonVisible;
     scene.add(skeletonHelper);
 
+    loadedAnimations = animations;
+    // Populate the in-file track sub-dropdown. Multi-clip GLBs (wolf
+    // bundle has 14 animation tracks; ER bosses commonly ship the
+    // same way) get one entry per track; single-clip files get one
+    // entry. Switching entries calls playTrack(idx) without reload.
+    trackPicker.innerHTML = '';
+    for (let i = 0; i < animations.length; ++i) {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = `${i}: ${animations[i].name || '(unnamed)'} (${animations[i].duration.toFixed(2)}s)`;
+      trackPicker.appendChild(opt);
+    }
+    trackPicker.style.display = (animations.length > 1) ? 'inline-block' : 'none';
     if (animations.length > 0) {
       mixer = new THREE.AnimationMixer(root);
-      action = mixer.clipAction(animations[0]);
-      action.play();
-      info.textContent =
-        `${animations[0].name} · ${animations[0].duration.toFixed(2)}s · ${meta.kind}`;
+      playTrack(0);
     } else {
       info.textContent = `${meta.label} · no animation · ${meta.kind}`;
     }

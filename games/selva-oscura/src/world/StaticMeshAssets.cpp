@@ -45,20 +45,17 @@ StaticMeshUsage parseUsageFromExtras(const char* extras_json)
     }
 }
 
-// Vertex layout matches the SceneProgram (vec3 pos + float shade) so
+// Vertex layout matches the RegionProgram (vec3 pos + float shade) so
 // static meshes draw with the same shader path as ground geometry —
 // atmosphere, shadow, half-Lambert lighting all consistent. Normals
 // are computed at the fragment level via dFdx/dFdy on world position
-// in the scene fragment shader, so we don't store per-vertex normals.
+// in the region fragment shader, so we don't store per-vertex normals.
 struct Vertex
 {
     float position[3];
     float shade;
 };
 static_assert(sizeof(Vertex) == 16, "StaticMesh vertex layout drifted");
-
-StaticMesh sCrypt;
-bool sInitialized = false;
 
 const cgltf_accessor* findAttribute(const cgltf_primitive* prim, cgltf_attribute_type type,
                                     int index = 0)
@@ -86,7 +83,7 @@ bool loadPrimitive(const cgltf_primitive* prim, const float node_world[16],
     out.usage = parseUsageFromExtras(node_extras_json);
     // Vertex layout is position-only + per-vertex shade=1.0; normal is
     // derived in the fragment shader via dFdx/dFdy on world position
-    // (see SceneShaders), so we don't query the glTF normal accessor.
+    // (see RegionShaders), so we don't query the glTF normal accessor.
     const cgltf_accessor* pos_acc = findAttribute(prim, cgltf_attribute_type_position);
     if (pos_acc == nullptr)
         return false;
@@ -270,48 +267,6 @@ void freeStaticMeshGLResources(StaticMesh& mesh)
             p.ebo = 0;
         }
     }
-}
-
-bool initStaticMeshAssets()
-{
-    if (sInitialized)
-        return true;
-    sCrypt.asset_name = "crypt";
-    const char* path = "assets/world/static_meshes/crypt.glb";
-    // Legacy boot path: load with zero world offset (chapel mesh is
-    // currently treated as world-space already). JsonScene-driven
-    // scenes use loadStaticMesh() with proper world_origin.
-    const float kZeroOffset[3] = {0.0f, 0.0f, 0.0f};
-    if (!loadGltf(path, kZeroOffset, sCrypt))
-    {
-        std::fprintf(stderr, "[static-mesh] crypt load failed; static meshes disabled\n");
-        return false;
-    }
-    std::fprintf(stderr, "[static-mesh] crypt loaded: %zu primitives\n", sCrypt.primitives.size());
-    sInitialized = true;
-    return true;
-}
-
-void shutdownStaticMeshAssets()
-{
-    for (auto& p : sCrypt.primitives)
-    {
-        if (p.vao != 0)
-            glDeleteVertexArrays(1, &p.vao);
-        if (p.vbo != 0)
-            glDeleteBuffers(1, &p.vbo);
-        if (p.ebo != 0)
-            glDeleteBuffers(1, &p.ebo);
-    }
-    sCrypt.primitives.clear();
-    sInitialized = false;
-}
-
-const StaticMesh* cryptMesh()
-{
-    if (!sInitialized || sCrypt.primitives.empty())
-        return nullptr;
-    return &sCrypt;
 }
 
 } // namespace selva::world

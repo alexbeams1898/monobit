@@ -47,7 +47,7 @@ Surfaced while doing the audit; flagged for Alex to triage. Not blocking the cur
 
 ### F-A: Renderer + physics each independently apply `chapelWorldOrigin()`
 
-The mesh vertices are local-space; renderer applies `cryptModelMatrix()` as a uniform; PhysicsScene bakes the same translation into the trimesh verts (via `world_positions = p + world_origin`). The two paths agree TODAY, but only because both call `crypt_layout::chapelWorldOrigin()` directly. If a future asset uses a non-identity ROTATION (e.g. tilted chapel for a non-default orientation), the renderer would naturally apply a rotation matrix while the physics path's `vec3 + vec3` would silently break. Solution: PhysicsScene should consume a `glm::mat4` (not just translation) when registering chapel mesh primitives, applied as a per-vertex transform, mirroring the renderer's model matrix exactly.
+The mesh vertices are local-space; renderer applies `cryptModelMatrix()` as a uniform; PhysicsRegion bakes the same translation into the trimesh verts (via `world_positions = p + world_origin`). The two paths agree TODAY, but only because both call `crypt_layout::chapelWorldOrigin()` directly. If a future asset uses a non-identity ROTATION (e.g. tilted chapel for a non-default orientation), the renderer would naturally apply a rotation matrix while the physics path's `vec3 + vec3` would silently break. Solution: PhysicsRegion should consume a `glm::mat4` (not just translation) when registering chapel mesh primitives, applied as a per-vertex transform, mirroring the renderer's model matrix exactly.
 
 ### F-B: 84 mesh primitives = 84 separate Jolt static trimesh bodies for one chapel
 
@@ -66,7 +66,7 @@ The mesh has 9 step boxes. The code has 1 sloped ramp. They cover the same XZ an
 
 These wrap the rear of the apse from outside. With Jolt I converted them to AABBs (cheaper than cylinder primitive), but **32 individual bodies for one curved wall** is silly when the chapel mesh already includes `crypt_apse` (a real curved half-dome trimesh). Once we pick mesh as source of truth, all 32 cylinders go.
 
-### F-F: F1 collider debug overlay reads only the legacy `CollisionScene`
+### F-F: F1 collider debug overlay reads only the legacy `CollisionRegion`
 
 If we delete `populateCrypt*`, the F1 overlay goes blank for the chapel. The overlay needs a Jolt-bodies enumeration path. Already noted, restated here for completeness.
 
@@ -117,7 +117,7 @@ The dual-source-of-truth is the bug class. Three ways to resolve, in order of re
 1. **Pick H1 (mesh as source of truth).** Aligns with the "physics owns world geometry" direction we're already going with Jolt.
 2. **Open `crypt_foundation.blend` in Blender, fix the back-wall-tunnel topology:** add a sloped transition between chapel floor (y=32.26) and landing top (y=30.82). Either ramp down through the tunnel, or extend the chapel floor THROUGH the wall to where the descent stairs begin. The current geometric topology has a 1.44m drop with no floor in between — that's a design problem, not a physics problem.
 3. **Re-export `crypt.glb`.**
-4. **Delete `populateCryptColliders`, `populateCryptDescent`, `populateCryptApseCylinders` from `Collision.cpp`.** Delete corresponding `registerSceneBoxes` from `PhysicsScene.cpp`.
-5. **Remove the `crypt_floor`, `crypt_wall_back`, `crypt_apse` skip-list** from `PhysicsScene::registerChapel` (will be no longer needed; mesh is canonical).
+4. **Delete `populateCryptColliders`, `populateCryptDescent`, `populateCryptApseCylinders` from `Collision.cpp`.** Delete corresponding `registerSceneBoxes` from `PhysicsRegion.cpp`.
+5. **Remove the `crypt_floor`, `crypt_wall_back`, `crypt_apse` skip-list** from `PhysicsRegion::registerChapel` (will be no longer needed; mesh is canonical).
 6. **Extend F1 collider overlay to enumerate Jolt bodies** so we keep visualization. Separate small task.
 7. **Re-run this audit** — should show 0 dual-source pairs.

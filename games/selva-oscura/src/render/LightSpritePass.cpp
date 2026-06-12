@@ -19,7 +19,7 @@ namespace selva::render
 namespace
 {
 
-// Must match MAX_LIGHTS used elsewhere (TerrainShader / SceneShaders).
+// Must match MAX_LIGHTS used elsewhere (TerrainShader / RegionShaders).
 constexpr int kMaxLights = 64;
 
 // Sprite world-space half-size in meters. Scales with light radius so
@@ -168,7 +168,7 @@ void renderLightSprites(const glm::mat4& view_proj, const glm::vec3& cam_pos,
             continue;
         // Modulated intensity drives BOTH the sprite brightness AND
         // the point-light contribution to the ground (uploaded from
-        // TerrainShader.cpp / SceneShaders.cpp using the same call).
+        // TerrainShader.cpp / RegionShaders.cpp using the same call).
         // Keeps visible flame brightness and floor illumination in
         // sync.
         const float live_intensity = engine::world::flickerIntensity(static_cast<int>(i), t);
@@ -201,11 +201,13 @@ void renderLightSprites(const glm::mat4& view_proj, const glm::vec3& cam_pos,
     // because perspective mixes them. Instead, accept that this pass
     // expects the call site to expose right/up — pass them in.
     //
-    // Quick workaround for v1: compute right + up from cam_pos +
-    // assumed up-vector (0,1,0). View direction is from cam_pos
-    // toward scene center... no, we need the actual camera basis.
-    // Use the inverse view matrix derived implicitly: extract from
-    // view_proj.
+    // BANDAID(approved): v1 derives right+up by inverting view_proj.
+    // Why: the pass needs the camera's screen-right and screen-up
+    // basis, but the caller (renderWorld) only passes view_proj. The
+    // root fix is to thread the inverse-view (or right+up) through
+    // the call site so we don't pay an inverse-mat4 per frame. The
+    // inverse is cheap enough on one matrix that the current
+    // structure ships fine; revisit if multiple light passes appear.
     //
     // Cleanest: extract right + up directly from view matrix. Caller
     // provides view_proj, we invert and read columns 0 + 1.
@@ -237,7 +239,7 @@ void renderLightSprites(const glm::mat4& view_proj, const glm::vec3& cam_pos,
     glUniform4fv(sUniColorLoc, n, color);
 
     // Additive blend: light sprites brighten what's behind them
-    // (atop terrain / scene / sky). Depth test stays on so lights are
+    // (atop terrain / region / sky). Depth test stays on so lights are
     // occluded by walls + terrain in front, but don't write depth so
     // they don't occlude geometry behind them.
     glEnable(GL_BLEND);

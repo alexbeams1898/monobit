@@ -34,7 +34,9 @@ Checks: >
   -bugprone-exception-escape,
   -clang-analyzer-optin.core.EnumCastOutOfRange,
   -clang-analyzer-unix.Malloc,
-  -clang-analyzer-valist.Uninitialized
+  -clang-analyzer-valist.Uninitialized,
+  -clang-analyzer-cplusplus.NewDelete,
+  -clang-analyzer-optin.performance.Padding
 # Disables explained:
 # - bugprone-easily-swappable-parameters: false positive on common
 #   patterns (x/y/z, w/h, etc.).
@@ -52,6 +54,14 @@ Checks: >
 #   never touches va_list. Refactor was attempted and is complete
 #   everywhere refactor was possible; this is the irreducible
 #   external-API boundary.
+# - clang-analyzer-cplusplus.NewDelete: triggers on Jolt's Reference.h
+#   atomic ref-count pattern (refs use intrusive ptr semantics; analyzer
+#   doesn't model the ownership transfer). Third-party header; false
+#   positive at our usage sites.
+# - clang-analyzer-optin.performance.Padding: encourages field reordering
+#   for tight packing. Our authoring layout matches save schema +
+#   doc-driven grouping; reordering for packing would scatter fields and
+#   make code harder to read. Padding cost is negligible at our sizes.
 
 # Treat warnings as errors locally and in CI — keeps the bar high
 WarningsAsErrors: '*'

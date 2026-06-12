@@ -90,9 +90,15 @@ configure_file(
 )
 target_include_directories(game-systems PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/generated)
 
-# Game executable.
+# Game executable. Each game's exe + assets live in their own subdirectory
+# under build/bin/ so two games' config/ trees can never collide. Selva and PE
+# both have a `config/balance/formulas.json`; without the per-game dir, the
+# second-to-sync game's file clobbers the first's at the shared build/bin/
+# path, and the wrong file gets loaded at runtime.
 add_executable(prison-break-game src/main.cpp)
 target_link_libraries(prison-break-game PRIVATE game-systems)
+set_target_properties(prison-break-game PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/prison-escape-game)
 
 # Static-link MinGW runtime so the exe runs without libgcc/libstdc++ DLLs.
 if(MINGW)
@@ -150,6 +156,8 @@ add_executable(game-tests
     tests/weapon_sprite_test.cpp
 )
 target_link_libraries(game-tests PRIVATE game-systems Catch2::Catch2WithMain)
+set_target_properties(game-tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/prison-escape-game)
 
 add_test(NAME game-tests COMMAND game-tests)
 set_tests_properties(game-tests PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})

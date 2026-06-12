@@ -54,7 +54,7 @@ struct LightSource
 // rendering (lights are additive).
 void registerLight(const LightSource& light);
 
-// Remove all registered lights. Called on scene unload.
+// Remove all registered lights. Called on region unload.
 void clearLights();
 
 // Count + indexed access. Renderer iterates these per draw call to

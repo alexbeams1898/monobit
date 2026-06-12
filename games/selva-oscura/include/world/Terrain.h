@@ -1,5 +1,7 @@
 #pragma once
 
+#include "physics/PhysicsWorld.h"
+
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
@@ -97,6 +99,22 @@ void shutdownTerrain();
 
 int terrainRegionCount();
 const TerrainRegion& terrainRegion(int idx);
+
+// Process-wide cache of Jolt physics shapes for terrain regions.
+// Built lazily on first call per-region; subsequent calls return the
+// cached handle. JsonRegion::preloadTerrainShapes() goes through this
+// so multiple regions referencing the same terrain (e.g. surface,
+// chapel_interior, limbo all see the same global terrain) share one
+// Jolt MeshShape instead of each rebuilding it (the 400k-tri
+// MeshShape takes ~3 seconds to construct -- doing it 3x burned 10
+// seconds at boot before this cache).
+engine::physics::ShapeHandle terrainShapeFor(int region_idx);
+
+// Pre-build all terrain shapes at once. Called from the boot
+// loading path so the cost is paid up-front in one place rather
+// than spread across per-region preload calls. Returns immediately
+// if all shapes are already cached.
+void buildAllTerrainShapes();
 
 // Find the terrain region whose XZ AABB contains (world_x, world_z).
 // Returns nullptr if no region matches (the XZ is outside all loaded

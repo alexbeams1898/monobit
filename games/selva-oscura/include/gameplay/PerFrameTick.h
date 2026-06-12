@@ -27,19 +27,18 @@ void selvaPerFrame(::Engine& engine, ::EntityManager& em, double dt);
 // pause menu).
 void syncInputEdgesFromCurrentState();
 
-// Materialize the active character's persistent state from a PlayerProfile
-// into the player Actor, AND set runtime-only fields (position from
-// terrain spawn config, full hp, cleared combat / lock / one-shot state).
-//
-// Called on every Playing-enter (New Game or Load Game) so the runtime
-// player starts from a clean baseline plus whatever the profile says
-// the character knows / has earned. Both new and loaded characters
-// always spawn at the configured spawn point; position is NOT
-// persistent in v1 (the soulslike convention is to respawn at a save
-// point, not at the quit location). When persistent-character fields
-// land on PlayerProfile (class, evolution stage, lifetime sangue,
-// keepers felled, etc.), this function grows to copy them in.
-void loadActiveCharacterIntoPlayer(const selva::PlayerProfile& profile);
+// Full session-boundary reset. SINGLE source of truth for "fresh
+// state for this character." Called on New Game / Load Game /
+// character switch. Resets cinematic scene, sampler, bosses, enemy
+// pool, doors, and player actor in canonical order. Adding a new
+// per-character state holder means adding ONE line to its body.
+void hardResetWorldForCharacter(const selva::PlayerProfile& profile);
+
+// Mid-character cycle-boundary reset. Called on player death/respawn.
+// Re-streams enemies into spawn positions per "Per-circle reactivity"
+// (setting.md). Tighter scope than the hard reset: player is alive,
+// no cinematic in flight, doors persist mid-cycle.
+void softResetWorldForCycle();
 
 // Symmetric write-back: copy the player Actor's persistent fields out
 // to the given PlayerProfile. Called by the pause-menu Save action and
@@ -47,6 +46,26 @@ void loadActiveCharacterIntoPlayer(const selva::PlayerProfile& profile);
 // file reflects what was earned in the run. v1 has nothing to write
 // (PlayerProfile only carries `name`, which doesn't change at runtime).
 void saveActiveCharacterFromPlayer(selva::PlayerProfile& profile);
+
+// Begin the wake-up Scene: lock combat + movement, fire the getting_up
+// one-shot on the player. The Scene auto-ends when the one-shot
+// completes (handled per-frame inside selvaPerFrame). Called from the
+// New-Game flow only -- respawns place the Vagrant standing.
+void beginWakeScene();
+
+// Clears wake-scene runtime tracking. Call on Playing-exit so the
+// watcher doesn't carry across a character switch.
+void resetWakeSceneTracking();
+
+// Input gating. Single source of truth for "is gameplay input
+// suppressed right now." Composes Scene locks, dialog, tuning panel,
+// pause menu, etc. Every gameplay-input site MUST go through these
+// instead of OR-ing flags inline -- without this contract, each new
+// UI overlay needs a hand-edit at every input check (the bug class
+// that left mouse-look firing during dialog).
+bool gameplayLookSuppressed();     // camera mouse-look
+bool gameplayCombatSuppressed();   // LMB/RMB attacks, dodge, jump
+bool gameplayMovementSuppressed(); // WASD locomotion
 
 // Render-world entry point. Frame capture readback lives here too
 // (uses tickstate::frameCapture* flags).

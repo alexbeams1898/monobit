@@ -18,6 +18,7 @@ find_package(Python3 COMPONENTS Interpreter REQUIRED)
 # selva-oscura is one exe today.
 add_library(selva-oscura-lib STATIC
     src/anim/AnimationClip.cpp
+    src/anim/ClipGeometry.cpp
     src/anim/ClipRegistry.cpp
     src/audio/Audio.cpp
     src/anim/LocomotionConfig.cpp
@@ -26,16 +27,29 @@ add_library(selva-oscura-lib STATIC
     src/anim/Skeleton.cpp
     src/anim/SkeletalMesh.cpp
     src/anim/SkeletalRenderer.cpp
+    src/anim/SkeletonJointMap.cpp
     src/gameplay/Actor.cpp
     src/gameplay/AiTick.cpp
     src/gameplay/BehaviorTree.cpp
+    src/gameplay/BossDispatcher.cpp
+    src/gameplay/BossRewards.cpp
+    src/gameplay/BossState.cpp
     src/gameplay/Enemies.cpp
     src/gameplay/EnemyArchetype.cpp
+    src/gameplay/Faction.cpp
     src/gameplay/Footsteps.cpp
     src/gameplay/LocomotionStateMachine.cpp
     src/gameplay/PerFrameTick.cpp
     src/gameplay/Perception.cpp
     src/gameplay/PlayerState.cpp
+    src/gameplay/PropArchetype.cpp
+    src/gameplay/PropSpawn.cpp
+    src/gameplay/RomanNumeral.cpp
+    src/gameplay/RomanTiers.cpp
+    src/gameplay/Sangue.cpp
+    src/gameplay/SanguePulse.cpp
+    src/gameplay/ScriptedEvents.cpp
+    src/gameplay/TerritoryClamp.cpp
     src/combat/ActorVolumes.cpp
     src/combat/AttackChain.cpp
     src/combat/AttackResolution.cpp
@@ -49,10 +63,13 @@ add_library(selva-oscura-lib STATIC
     src/combat/SpliceDiag.cpp
     src/combat/TransitionProfile.cpp
     src/combat/WeaponData.cpp
+    src/insight/Insight.cpp
+    src/insight/InsightLayout.cpp
+    src/lang/Language.cpp
     src/render/Atmosphere.cpp
     src/render/Camera.cpp
-    src/render/SceneGeometry.cpp
-    src/render/SceneShaders.cpp
+    src/render/RegionGeometry.cpp
+    src/render/RegionShaders.cpp
     src/render/ShadowPass.cpp
     src/render/LightSpritePass.cpp
     src/render/SkyPass.cpp
@@ -60,21 +77,45 @@ add_library(selva-oscura-lib STATIC
     src/render/Texture.cpp
     src/render/TreeShader.cpp
     src/render/WorldRenderer.cpp
-    src/world/JsonScene.cpp
-    src/world/PhysicsScene.cpp
-    src/world/SceneBootstrap.cpp
+    src/world/Door.cpp
+    src/world/JsonRegion.cpp
+    src/world/PhysicsRegion.cpp
+    src/world/RegionBootstrap.cpp
     src/world/StaticMeshAssets.cpp
     src/world/Terrain.cpp
     src/world/TreeAssets.cpp
     src/ui/ActorHud.cpp
+    src/ui/BossHud.cpp
+    src/ui/ClassPickerScreen.cpp
     src/ui/ComboHud.cpp
+    src/ui/DialogScreen.cpp
+    src/ui/InteractionPrompt.cpp
+    src/ui/NamePromptScreen.cpp
     src/ui/Screens.cpp
     src/ui/TuningPanel.cpp
+    src/ui/UIComponents.cpp
     src/world/Collision.cpp
     src/AppStateGlobal.cpp
+    src/PlayerClass.cpp
     src/SaveManager.cpp
+    src/dialog/DialogSystem.cpp
+    src/dialog/GuideHandlers.cpp
+    src/dialog/Handlers.cpp
+    src/dialog/TopicRegistry.cpp
+    src/interact/Interaction.cpp
+    src/items/CategoryRegistry.cpp
+    src/items/InventoryOps.cpp
+    src/debug/Flags.cpp
+    src/hazard/HazardZones.cpp
+    src/items/ItemRegistry.cpp
+    src/items/UseHandlers.cpp
     src/ops/InventoryOps.cpp
+    src/spawn/FlowSpawner.cpp
+    src/text/Examine.cpp
+    src/text/TextPresentation.cpp
     src/Tunables.cpp
+    src/Formulas.cpp
+    src/Scene.cpp
     src/WallClock.cpp
 )
 
@@ -91,10 +132,15 @@ target_link_libraries(selva-oscura-lib
         cgltf::cgltf
 )
 
-# Game executable.
+# Game executable. Per-game output subdirectory under build/bin/ so config
+# trees can never collide with other games' (Selva and PE both have a
+# config/balance/formulas.json -- without per-game dirs the second-to-sync
+# clobbers the first at the shared build/bin/ path).
 add_executable(selva-oscura WIN32 src/main.cpp)
 target_link_libraries(selva-oscura PRIVATE selva-oscura-lib)
 target_include_directories(selva-oscura SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/vendor/stb)
+set_target_properties(selva-oscura PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/selva-oscura)
 
 # Static-link the MinGW runtime so the exe runs without libgcc/libstdc++ DLLs.
 # Mirrors the same option on prison-break-game; needed for distributable builds.
@@ -113,11 +159,19 @@ endif()
 # source-tree .ozz when sync runs second. Symptom: in-game animations
 # don't match the rebaked clips even though the bake intermediate is
 # correct.
+# copy_directory historically fails on the GitHub Actions Ubuntu runner
+# when the destination subtree already partially exists from a prior
+# bake step (bake writes ozz files into the same tree this sync
+# targets, and CMake's copy_directory chokes on overlapping writes).
+# Falling back to a python-driven recursive copy avoids the broken
+# cmake behavior; Python3 is already a required dep at configure time.
 add_custom_target(selva-oscura-sync-config ALL
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/sync_dir.py
         ${CMAKE_CURRENT_SOURCE_DIR}/config
         $<TARGET_FILE_DIR:selva-oscura>/config
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/sync_dir.py
         ${CMAKE_CURRENT_SOURCE_DIR}/assets
         $<TARGET_FILE_DIR:selva-oscura>/assets
     COMMENT "Syncing selva-oscura config + assets to build output..."
@@ -138,13 +192,26 @@ add_custom_target(selva-oscura-sync-config ALL
 # between mismatched skeletons — it's to make sure there's only one.
 # See memory/feedback_no_bandaids_root_cause.md.
 # ---------------------------------------------------------------------------
+# NOTE: this entire X_Bot bake pipeline (lines ~145-405) will be
+# factored into a `_selva_register_skeleton(id, source_dir, mesh_filename)`
+# function when the WOLF skeleton lands in Phase B of the multi-skeleton
+# refactor (see docs/design/animals_and_multi_skeleton.md). The wolf's
+# bake follows the same shape: per-rig fbx2gltf -> per-rig gltf2ozz
+# with that rig's skeleton as retarget reference -> per-clip gltf2ozz
+# against the rig. Refactoring before the second skeleton exists is
+# speculative (can't test the function-call shape without two callers);
+# done concurrently with the wolf so both shape + behavior are verified
+# in the same change. The PoseSampler / SkeletalAssets / EnemyArchetype
+# C++ changes are already wolf-ready -- only the bake pipeline still
+# assumes one skeleton, and that's pure mechanical CMake rearrangement.
 set(xbot_dir ${CMAKE_CURRENT_SOURCE_DIR}/assets/characters/x_bot)
 set(fbx2gltf_exe ${CMAKE_SOURCE_DIR}/tools/fbx2gltf/FBX2glTF.exe)
 
-# Use CMAKE_RUNTIME_OUTPUT_DIRECTORY (set in root CMakeLists to build/bin) —
-# add_custom_command's OUTPUT can't contain generator expressions, so the
-# $<TARGET_FILE_DIR:...> form would fail at generate time.
-set(xbot_out_dir ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/assets/characters/x_bot)
+# Per-game build output (see selva-oscura exe's RUNTIME_OUTPUT_DIRECTORY).
+# add_custom_command's OUTPUT can't contain generator expressions, so this
+# is a literal path -- if the per-game subdir name changes, update both.
+set(selva_out_dir ${CMAKE_BINARY_DIR}/bin/selva-oscura)
+set(xbot_out_dir ${selva_out_dir}/assets/characters/x_bot)
 
 # 1. X Bot.fbx → X_Bot.glb. Mixamo's FBX export omits explicit per-vertex
 # normals (Mixamo's pipeline assumes the consumer derives them), so we
@@ -219,6 +286,29 @@ if(EXISTS ${xbot_fbx})
     add_dependencies(selva-oscura-convert-xbot selva-oscura-sync-config)
 else()
     message(STATUS "selva-oscura: X_Bot.fbx not found; skipping FBX bake (using committed .glb + .ozz)")
+    # Downstream bake rules (sword pack, larva) declare
+    # ${xbot_out_dir}/skeleton.ozz as a DEPENDS input. Without an FBX
+    # bake to produce it, no CMake target satisfies that path on CI.
+    # sync-config already copies the committed source-tree skeleton.ozz
+    # to ${xbot_out_dir}/skeleton.ozz as a side-effect of its tree
+    # copy, but it doesn't name skeleton.ozz as an OUTPUT, so ninja's
+    # graph has no edge linking the sword/larva rules to sync-config's
+    # actual production of that file. The fix: a custom command whose
+    # OUTPUT is the file (so the graph is valid) and whose body
+    # explicitly copies it from source (so it works even if sync-config
+    # is reordered relative to it).
+    set(xbot_src_skeleton ${xbot_dir}/skeleton.ozz)
+    add_custom_command(
+        OUTPUT ${xbot_out_dir}/skeleton.ozz
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${xbot_out_dir}
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${xbot_src_skeleton} ${xbot_out_dir}/skeleton.ozz
+        DEPENDS ${xbot_src_skeleton}
+        COMMENT "Copying committed X Bot skeleton.ozz to build output..."
+        VERBATIM
+    )
+    add_custom_target(selva-oscura-convert-xbot ALL DEPENDS ${xbot_out_dir}/skeleton.ozz)
+    add_dependencies(selva-oscura-convert-xbot selva-oscura-sync-config)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -309,7 +399,10 @@ file(GLOB_RECURSE attack_fbx_files
     "${xbot_dir}/source/*.fbx"
 )
 list(FILTER attack_fbx_files EXCLUDE REGEX ".*[Xx][ _][Bb]ot\\.fbx$")
-if(attack_fbx_files)
+# Only run the sword-pack bake when FBX2glTF is available. On CI
+# (Linux without the gitignored FBX2glTF.exe), the bake is skipped and
+# the committed .ozz files in x_bot/ ship as the runtime artifacts.
+if(attack_fbx_files AND EXISTS ${fbx2gltf_exe})
     foreach(fbx ${attack_fbx_files})
         _selva_sanitize_clip_name("${fbx}" clip_name)
         set(clip_temp_dir ${CMAKE_BINARY_DIR}/selva-oscura-attacks/${clip_name})
@@ -364,6 +457,69 @@ if(attack_ozz_files)
     add_dependencies(selva-oscura-convert-attacks selva-oscura-sync-config)
 endif()
 
+# ---------------------------------------------------------------------------
+# Larva clip bake. Larvae are Hell-side contrapasso-shaped human souls
+# per [[universal-humanoid-enemy-rule]] -- they reuse the X_Bot
+# skeleton, so this pipeline mirrors the X_Bot pack bake above but
+# globs a separate source root and deploys to a separate output dir.
+# Source: assets/characters/larva/source/ (Mixamo Scary Zombie Pack +
+# any future larva-specific clips). Same retarget_config (X_Bot
+# skeleton.ozz, skeleton import disabled) -- Mixamo zombie clips are
+# bound to the standard Mixamo skeleton X_Bot uses, so retargeting
+# Just Works. Output: bin/selva-oscura/assets/characters/larva/*.ozz.
+# ---------------------------------------------------------------------------
+set(larva_dir ${CMAKE_CURRENT_SOURCE_DIR}/assets/characters/larva)
+set(larva_out_dir ${selva_out_dir}/assets/characters/larva)
+set(larva_ozz_files "")
+file(GLOB_RECURSE larva_fbx_files
+    CONFIGURE_DEPENDS
+    "${larva_dir}/source/*.fbx"
+)
+# Skip the Mixamo rig FBX shipped with the Scary Zombie Pack -- it's
+# a T-pose source, not a clip. Same exclusion the X_Bot bake uses
+# above. Matches "X Bot.fbx", "X_Bot.fbx", "x bot.fbx", etc.
+list(FILTER larva_fbx_files EXCLUDE REGEX ".*[Xx][ _][Bb]ot\\.fbx$")
+# Only run the larva bake when FBX2glTF is available. On CI (Linux
+# without the gitignored FBX2glTF.exe), the bake is skipped and the
+# committed .ozz files in larva/ ship as the runtime artifacts.
+if(larva_fbx_files AND EXISTS ${fbx2gltf_exe})
+    foreach(fbx ${larva_fbx_files})
+        _selva_sanitize_clip_name("${fbx}" clip_name)
+        set(clip_temp_dir ${CMAKE_BINARY_DIR}/selva-oscura-larva/${clip_name})
+        set(clip_glb ${clip_temp_dir}/${clip_name}.glb)
+        set(clip_final_ozz ${larva_out_dir}/${clip_name}.ozz)
+        add_custom_command(
+            OUTPUT ${clip_final_ozz}
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${clip_temp_dir}
+            COMMAND ${fbx2gltf_exe}
+                --binary
+                --keep-attribute auto
+                -i ${fbx}
+                -o ${clip_temp_dir}/${clip_name}
+            COMMAND ${CMAKE_COMMAND} -E chdir ${clip_temp_dir}
+                $<TARGET_FILE:gltf2ozz>
+                --file=${clip_glb}
+                --config_file=${retarget_config}
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/scripts/stage_baked_ozz.py
+                --temp-dir ${clip_temp_dir}
+                --out ${clip_final_ozz}
+            DEPENDS
+                ${fbx}
+                gltf2ozz
+                ${retarget_config}
+                ${xbot_out_dir}/skeleton.ozz
+            COMMENT "Converting ${clip_name}.fbx → larva/${clip_name}.ozz (retargeted to X Bot)"
+            VERBATIM
+        )
+        list(APPEND larva_ozz_files ${clip_final_ozz})
+    endforeach()
+endif()
+if(larva_ozz_files)
+    add_custom_target(selva-oscura-convert-larva ALL DEPENDS ${larva_ozz_files})
+    add_dependencies(selva-oscura-convert-larva selva-oscura-sync-config)
+endif()
+
 # Pre-baked .ozz files whose source FBXs are no longer in the tree
 # (e.g. unused sword & shield clips kept available for future use).
 # Copy each into build/bin alongside the freshly-baked clips so
@@ -399,23 +555,36 @@ endif()
 # SDL/GL are tested by running the game itself.
 # ---------------------------------------------------------------------------
 add_executable(selva-oscura-tests
+    tests/clip_geometry_test.cpp
     tests/skeletal_loader_test.cpp
+    tests/spawn_flow_test.cpp
     tests/weapon_data_test.cpp
     tests/save_manager_test.cpp
-    tests/inventory_ops_test.cpp
     tests/camera_raycast_test.cpp
     tests/camera_physics_primitives_test.cpp
+    tests/region_schema_test.cpp
+    tests/boss_archetype_test.cpp
+    tests/boss_dispatch_idempotence_test.cpp
+    tests/boss_trigger_test.cpp
+    tests/player_class_test.cpp
+    tests/roman_numeral_test.cpp
+    tests/roman_tiers_test.cpp
+    tests/sangue_pulse_test.cpp
+    tests/sangue_test.cpp
+    tests/territory_clamp_form_gate_test.cpp
 )
 target_link_libraries(selva-oscura-tests PRIVATE selva-oscura-lib Catch2::Catch2WithMain)
+set_target_properties(selva-oscura-tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/selva-oscura)
 
-# Run the test exe from build/bin so the relative paths in
+# Run the test exe from the per-game build dir so relative paths in
 # skeletal_loader_test.cpp ("assets/characters/...") resolve to the .ozz
 # files produced by the gltf2ozz custom command. Also make the test depend
 # on the conversion targets so the .ozz files exist by the time it runs.
 add_test(
     NAME selva-oscura-tests
     COMMAND selva-oscura-tests
-    WORKING_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
+    WORKING_DIRECTORY $<TARGET_FILE_DIR:selva-oscura-tests>
 )
 if(TARGET selva-oscura-convert-xbot)
     add_dependencies(selva-oscura-tests selva-oscura-convert-xbot)

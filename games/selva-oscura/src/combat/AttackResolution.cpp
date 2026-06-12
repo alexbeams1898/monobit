@@ -218,19 +218,19 @@ void resolveOneClass(WeaponClass& cls, const selva::anim::ClipRegistry& clips,
 {
     resolveTechniques(cls.one_handed.light, false, clips, sampler, velocity_frac);
     resolveTechniques(cls.one_handed.heavy, false, clips, sampler, velocity_frac);
-    resolveTechniques(cls.one_handed.running, false, clips, sampler, velocity_frac);
+    resolveTechniques(cls.one_handed.sprint, false, clips, sampler, velocity_frac);
     resolveTechniques(cls.two_handed.light, true, clips, sampler, velocity_frac);
     resolveTechniques(cls.two_handed.heavy, true, clips, sampler, velocity_frac);
-    resolveTechniques(cls.two_handed.running, true, clips, sampler, velocity_frac);
+    resolveTechniques(cls.two_handed.sprint, true, clips, sampler, velocity_frac);
 
     resolveBlockClipStart(cls, clips, sampler);
 
     logTechniques(cls.id.c_str(), "1H light", cls.one_handed.light, false, clips, sampler);
     logTechniques(cls.id.c_str(), "1H heavy", cls.one_handed.heavy, false, clips, sampler);
-    logTechniques(cls.id.c_str(), "1H running", cls.one_handed.running, false, clips, sampler);
+    logTechniques(cls.id.c_str(), "1H sprint", cls.one_handed.sprint, false, clips, sampler);
     logTechniques(cls.id.c_str(), "2H light", cls.two_handed.light, true, clips, sampler);
     logTechniques(cls.id.c_str(), "2H heavy", cls.two_handed.heavy, true, clips, sampler);
-    logTechniques(cls.id.c_str(), "2H running", cls.two_handed.running, true, clips, sampler);
+    logTechniques(cls.id.c_str(), "2H sprint", cls.two_handed.sprint, true, clips, sampler);
 }
 
 } // namespace

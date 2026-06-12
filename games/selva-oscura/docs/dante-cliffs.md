@@ -119,9 +119,12 @@ Use this doc to settle questions about what's *on-theme* vs. invented.
 
 - The **9 circles** structure maps onto the descent (per setting.md
   *Geography*).
-- **Contrapasso** — keeper behavior reflects the circle's sin. Per
-  setting.md *Per-circle reactivity*, leaked contrapasso post-keeper
-  is a real cosmological mechanic, not just thematic flavor.
+- **Contrapasso** — the law of each circle, matching its punishment
+  to its sin. Per setting.md *Per-circle reactivity*, contrapasso
+  goes from unenforced (corrupt keeper) to enforced again (mangled
+  successor keeper after the Vagrant kills the corrupt one). Sangue
+  released by that restoration is the load-bearing cosmological
+  substance the game tracks — not the law itself, which never moves.
 - **Beatrice** — fully in scope. See `docs/design/setting.md` and
   `docs/design/story.md` for her role.
 - **Satan at the bottom** chews Judas, Brutus, Cassius — used as the

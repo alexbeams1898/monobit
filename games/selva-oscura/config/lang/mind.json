@@ -1,0 +1,59 @@
+{
+  "_comment": "Mind sub-page summaries. One entry per insight node, articulating the implied lesson at the moment the node fired. Vocabulary doctrine + tier semantics live in docs/design/insight_revelation_system.md. Convention: key = mind.<node_id>.summary.",
+
+  "mind.knows_guide.summary": {
+    "tier_0": "(TODO: Vagrant's interior voice the moment the Signing committed. Lesson: the man at the chapel did the thing he came for. Suggestion: '')"
+  },
+
+  "mind.knows_dissolved_souls.summary": {
+    "tier_0": "(TODO: after examining the pile on the shore. Lesson: people-shapes wash up in pale matter; some surface, some sink. Suggestion: '')"
+  },
+
+  "mind.knows_arrival_queue.summary": {
+    "tier_0": "(TODO: after examining a thin crawling figure. Lesson: they crawl up from the river and wait. Suggestion: '')"
+  },
+
+  "mind.knows_feeding_cycle.summary": {
+    "tier_0": "(TODO: after examining a crouching feeder. Lesson: it bites the unmoving one and gets nothing; the unmoving one does not stir. Suggestion: '')"
+  },
+
+  "mind.knows_substance_taken.summary": {
+    "tier_0": "(TODO: after the Vagrant's first kill. Lesson: killing yields a count; something passes from the killed into me. Suggestion: '')"
+  },
+
+  "mind.knows_substance_committed.summary": {
+    "tier_0": "(TODO: after the Signing. Lesson: the count can leave him; the Signing was a giving. Suggestion: '')"
+  },
+
+  "mind.knows_substance_lifetime.summary": {
+    "tier_0": "(TODO: after the Signing. Lesson: the count is the record of every kill he has made -- he has been keeping it without knowing. Suggestion: '')"
+  },
+
+  "mind.knows_wood_long_dead.summary": {
+    "tier_0": "(TODO: after examining a tree. Lesson: the wood died long ago, not recently. No fallen leaves, no green, no decay in progress. Suggestion: 'The trees are dead. They have been dead for a long time.')"
+  },
+
+  "mind.knows_lonza_carcass.summary": {
+    "tier_0": "(TODO: after first examining the half-eaten carcass at the foot of the slope. Lesson: another large beast lies here, mauled; the wolf-like one above had been feeding from it. Suggestion: 'A carcass of a great beast lies at the foot of the slope. The wolf-like one above had been feeding from it.')"
+  },
+
+  "mind.knows_lonza_carcass_tampered.summary": {
+    "tier_0": "(TODO: after looking at the carcass a second time. Lesson: something is wrong with the meat -- dark streaks in the flesh, a sweet smell that does not match honest rot. He does not yet have the word 'poison'. Suggestion: 'The meat itself is wrong. Dark streaks within the flesh, and a sweetness in the air that does not belong to honest rot.')"
+  },
+
+  "mind.concludes_place_long_wrong.summary": {
+    "tier_0": "(TODO: conclusion from trees-long-dead + pile-on-shore. Lesson: this place has been wrong for a very long time; the wood and the heap belong to the same long-running breakage. Suggestion: 'This place has been wrong for a very long time. The wood. The pile by the river. The same long wrongness, not anything recent.')"
+  },
+
+  "mind.knows_lupa_felled.summary": {
+    "tier_0": "(TODO: after the large wolf-like creature died on the slope. Lesson: there was a beast larger than any animal he had seen, and it died. Suggestion: 'There was a large beast on the slope. Wolf-like, but much larger. It died.')"
+  },
+
+  "mind.knows_guide_poisoned_carcass.summary": {
+    "tier_0": "(TODO: after the man at the chapel confesses he poisoned the carcass. Lesson: he has heard the claim; he has not yet connected it to the beast's death. Suggestion: 'The man at the chapel says he poisoned the food the beast was eating.')"
+  },
+
+  "mind.infers_meat_state.summary": {
+    "tier_0": "(Cognition-system v1: per-reading text lives in the inference's readings array in config/insight/npcs.json. This lang entry remains as a fallback for any UI that asks for a generic summary of the inference itself, but the workbench should render the chosen reading's text directly. Suggestion: 'What killed the beast.')"
+  }
+}

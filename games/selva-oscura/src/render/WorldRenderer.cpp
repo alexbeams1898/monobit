@@ -3,20 +3,22 @@
 #include "AppStateGlobal.h"
 #include "Tunables.h"
 #include "WallClock.h"
+#include "debug/Flags.h"
 #include "gl/ShaderUtils.h"
 #include "physics/PhysicsWorld.h"
 #include "render/Camera.h"
-#include "render/SceneGeometry.h"
-#include "render/SceneShaders.h"
+#include "render/RegionGeometry.h"
+#include "render/RegionShaders.h"
 #include "render/ShadowPass.h"
 #include "render/TerrainShader.h"
 #include "render/TreeShader.h"
 #include "world/Collision.h"
 #include "world/CryptLayout.h"
-#include "world/JsonScene.h"
+#include "world/Door.h"
+#include "world/JsonRegion.h"
 #include "world/Lights.h"
-#include "world/PhysicsScene.h"
-#include "world/Scene.h"
+#include "world/PhysicsRegion.h"
+#include "world/Region.h"
 #include "world/StaticMeshAssets.h"
 #include "world/StructureFootprints.h"
 #include "world/Terrain.h"
@@ -77,7 +79,6 @@ GLuint ensureStencilProgram()
     }
     return sStencilProgram;
 }
-const glm::mat4& cryptModelMatrix(); // forward-decl; defined below in a later anon namespace
 } // namespace
 
 const glm::mat4& lastView()
@@ -421,7 +422,7 @@ struct FpvRollLogRow
 void writeFpvRollLog(const FpvRollLogRow& r)
 {
     const bool is_roll_window = r.use_anim_orientation_in || r.anim_weight > 0.0f;
-    if (!selva::tuning::current().debug_fpv_roll_log || !is_roll_window)
+    if (!selva::debug::flags().fpv_roll_log || !is_roll_window)
         return;
     static FILE* sFpvRollLog = nullptr;
     static int sFpvRollFrame = 0;
@@ -645,10 +646,10 @@ glm::mat4 buildThirdPersonViewProj(const glm::vec3& player_pos, float target_loo
         smoothTpvSeparation(target_separation, tun.camera_pull_in_tau, desired_separation);
     const glm::vec3 camPos = lookAt + cam_dir * smoothed_separation;
 
-    if (tun.debug_crosshair_raycast_log)
+    if (selva::debug::flags().crosshair_raycast_log)
         writeCrosshairRaycastLog(camPos, lookFwd);
 
-    if (tun.debug_camera_pull_in_log)
+    if (selva::debug::flags().camera_pull_in_log)
         debugWriteCameraPullInLog({player_pos, yaw, pitch, lookFwd, lookAt, cam_dir, ideal_offset,
                                    desired_separation, tun.follow_distance, hit, target_separation,
                                    smoothed_separation, camPos, sphere_radius});
@@ -723,7 +724,7 @@ void renderTerrain()
     // structure can pierce: physics floor (Hole modifier), render
     // floor (shader discard), cavern ceiling/walls (quad emission),
     // disc rim (heightmap PNG via dump-world). Single source of
-    // truth, registered once at scene init in
+    // truth, registered once at region init in
     // crypt_layout::registerAuthoredWorld.
 
     const auto& all_lights = engine::world::allLights();
@@ -795,55 +796,22 @@ void renderGroundDecals()
     // shadow maps will replace fake contact shadows later.
 }
 
-namespace
-{
-// Crypt sits at the center of the colle plateau (per wood.md). Position
-// is fixed and the heightmap is immutable at runtime, so cache the
-// model matrix on first call rather than re-sampling per frame per pass.
-const glm::mat4& cryptModelMatrix()
-{
-    static glm::mat4 sCached(0.0f);
-    static bool sInit = false;
-    if (!sInit)
-    {
-        sCached = glm::translate(glm::mat4(1.0f), selva::world::crypt_layout::chapelWorldOrigin());
-        sInit = true;
-    }
-    return sCached;
-}
-
-void drawStaticPrimitive(const selva::world::StaticMeshPrimitive& p)
-{
-    if (p.vao == 0)
-        return;
-    if (p.usage == selva::world::StaticMeshUsage::Collision)
-        return; // physics-only proxy — not drawn
-    selva::render::setSceneTint(1.0f);
-    selva::render::setSceneBaseColor(glm::vec3(p.base_color[0], p.base_color[1], p.base_color[2]));
-    glBindVertexArray(p.vao);
-    glDrawElements(GL_TRIANGLES, p.index_count, GL_UNSIGNED_INT, nullptr);
-}
-} // namespace
-
 void renderStaticMeshes()
 {
-    // Active scene owns its static meshes (JsonScene::renderMeshes).
-    // Positions are baked in world space by the scene loader, so
-    // model matrix is identity; the scene-render call sets it.
-    auto* scene = dynamic_cast<selva::world::JsonScene*>(engine::world::currentScenePtr());
-    if (scene != nullptr)
+    // Multi-resident: iterate EVERY registered region's meshes, not
+    // just the current one. Positions are baked in world space by
+    // the region loader, so model matrix is identity. This is what
+    // lets the player see through the chapel door into chapel
+    // interior, and through the descent shaft down into Limbo, even
+    // though "current region" (for trigger context) is only one of
+    // them. See Region.h doctrine on currentRegion semantics.
+    for (int i = 0; i < engine::world::regionCount(); ++i)
     {
-        scene->renderMeshes();
-        return;
+        const auto* region = dynamic_cast<const selva::world::JsonRegion*>(
+            engine::world::regionPtr(engine::world::regionAt(i)));
+        if (region != nullptr)
+            region->renderMeshes();
     }
-    // Fallback: legacy chapel global (used before the scene system
-    // takes over, e.g. before any scene is activated at boot).
-    const selva::world::StaticMesh* crypt = selva::world::cryptMesh();
-    if (crypt == nullptr)
-        return;
-    setSceneModel(cryptModelMatrix());
-    for (const auto& prim : crypt->primitives)
-        drawStaticPrimitive(prim);
 }
 
 void renderStaticMeshesDepth()
@@ -857,38 +825,71 @@ void renderStaticMeshesDepth()
     // the receiver's normal-offset bias handles self-shadow.
     glDisable(GL_CULL_FACE);
 
-    auto* scene = dynamic_cast<selva::world::JsonScene*>(engine::world::currentScenePtr());
-    if (scene != nullptr)
+    // Multi-resident: same loop as the color pass. Region-owned
+    // meshes: positions baked in world space; depth model matrix
+    // is identity. Use renderMeshesDepth which does NOT touch
+    // color shader state (different shader program is bound by
+    // the depth pass).
+    selva::render::setSceneDepthModel(glm::mat4(1.0f));
+    for (int i = 0; i < engine::world::regionCount(); ++i)
     {
-        // Scene-owned meshes: positions baked in world space; depth
-        // model matrix is identity. Use renderMeshesDepth which does
-        // NOT touch color shader state (different shader program is
-        // bound by the depth pass).
-        selva::render::setSceneDepthModel(glm::mat4(1.0f));
-        scene->renderMeshesDepth();
-    }
-    else
-    {
-        // Legacy fallback.
-        const selva::world::StaticMesh* crypt = selva::world::cryptMesh();
-        if (crypt != nullptr)
-        {
-            const glm::mat4 model = cryptModelMatrix();
-            selva::render::setSceneDepthModel(model);
-            for (const auto& prim : crypt->primitives)
-            {
-                if (prim.vao == 0)
-                    continue;
-                if (prim.usage == selva::world::StaticMeshUsage::Collision)
-                    continue; // physics-only proxy — not drawn
-                glBindVertexArray(prim.vao);
-                glDrawElements(GL_TRIANGLES, prim.index_count, GL_UNSIGNED_INT, nullptr);
-            }
-        }
+        const auto* region = dynamic_cast<const selva::world::JsonRegion*>(
+            engine::world::regionPtr(engine::world::regionAt(i)));
+        if (region != nullptr)
+            region->renderMeshesDepth();
     }
 
     // Restore cull-front for subsequent depth-pass casters (skeletal
     // actors, etc.) per the beginDepthPass contract.
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_FRONT);
+}
+
+void renderDoors()
+{
+    for (const auto& d : selva::world::doors())
+    {
+        if (d.visual_mesh.primitives.empty())
+            continue;
+        const glm::mat4 model = selva::world::doorModelMatrix(d);
+        selva::render::setSceneModel(model);
+        for (const auto& p : d.visual_mesh.primitives)
+        {
+            if (p.vao == 0)
+                continue;
+            if (p.usage == selva::world::StaticMeshUsage::Collision)
+                continue;
+            selva::render::setSceneTint(1.0f);
+            selva::render::setSceneBaseColor(
+                glm::vec3(p.base_color[0], p.base_color[1], p.base_color[2]));
+            glBindVertexArray(p.vao);
+            glDrawElements(GL_TRIANGLES, p.index_count, GL_UNSIGNED_INT, nullptr);
+        }
+    }
+    // Restore identity so subsequent static-mesh draws aren't offset.
+    selva::render::setSceneModel(glm::mat4(1.0f));
+}
+
+void renderDoorsDepth()
+{
+    glDisable(GL_CULL_FACE);
+    for (const auto& d : selva::world::doors())
+    {
+        if (d.visual_mesh.primitives.empty())
+            continue;
+        const glm::mat4 model = selva::world::doorModelMatrix(d);
+        selva::render::setSceneDepthModel(model);
+        for (const auto& p : d.visual_mesh.primitives)
+        {
+            if (p.vao == 0)
+                continue;
+            if (p.usage == selva::world::StaticMeshUsage::Collision)
+                continue;
+            glBindVertexArray(p.vao);
+            glDrawElements(GL_TRIANGLES, p.index_count, GL_UNSIGNED_INT, nullptr);
+        }
+    }
+    selva::render::setSceneDepthModel(glm::mat4(1.0f));
     glEnable(GL_CULL_FACE);
     glCullFace(GL_FRONT);
 }
@@ -900,6 +901,14 @@ void renderTrees()
         return;
 
     selva::render::setTreeTime(selva::wallClock());
+    // Dead-wood foliage tint per wood.md *Trees stripped of leaves*.
+    // The asset is alive-canopy foliage cards; we don't try to strip
+    // them. Instead we crush the leaf color toward near-black with
+    // a faint cool bias so the canopy reads as "drained of life"
+    // rather than "warm autumn-coloured." Trunks render at identity
+    // (set per-draw below). Future per-keeper-restoration lifts
+    // this tint toward identity as the wood heals.
+    constexpr glm::vec3 kDeadFoliageTint(0.08f, 0.09f, 0.10f);
 
     // Translucent canopies need alpha test (already in the shader)
     // and back-face NOT culled (foliage planes are double-sided in
@@ -919,7 +928,7 @@ void renderTrees()
     const int tree_variants = std::min(kTreeVariantEnd, variant_count);
     const int rock_variants = std::max(0, variant_count - tree_variants);
 
-    for (const auto& c : selva::world::currentScene().cylinders)
+    for (const auto& c : selva::world::currentRegion().cylinders)
     {
         if (c.collision_only)
             continue;
@@ -949,7 +958,9 @@ void renderTrees()
         selva::render::setTreeModel(model);
         selva::render::setTreeWindPhase(wind_phase);
 
+        selva::render::setTreeFoliageTint(glm::vec3(1.0f));
         drawTreeMesh(v.trunk);
+        selva::render::setTreeFoliageTint(kDeadFoliageTint);
         drawTreeMesh(v.branches);
     }
 
@@ -1018,7 +1029,7 @@ void renderTreesDepth()
     constexpr int kTreeVariantEnd = 4;
     const int tree_variants = std::min(kTreeVariantEnd, variant_count);
 
-    for (const auto& c : selva::world::currentScene().cylinders)
+    for (const auto& c : selva::world::currentRegion().cylinders)
     {
         if (c.collision_only)
             continue;

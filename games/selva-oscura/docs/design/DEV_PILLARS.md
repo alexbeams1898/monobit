@@ -252,7 +252,7 @@ custom-shaped per structure — and burning hours per chapel iteration.
 - Footprint rect sized to match the chapel walls exactly (no
   quad-margin). Player will get stuck on a tilted boundary triangle.
 - Hardcoded back-edge / front-edge / corridor-strip-length constants
-  in PhysicsScene — these are derived from JOINT + heightmap math,
+  in PhysicsRegion — these are derived from JOINT + heightmap math,
   not free parameters.
 - Mention of "match this specific primitive's AABB" in modifier
   values.
@@ -279,8 +279,8 @@ engine::world::registerStructureFootprint({
 ## 9. Everything preloads before the main menu
 
 All assets the player can possibly hit during a game session
-(meshes, trimesh shapes, audio, animation clips, scene bodies for
-every reachable scene) load before the main menu is interactive.
+(meshes, trimesh shapes, audio, animation clips, region bodies for
+every reachable region) load before the main menu is interactive.
 Mid-session loading is forbidden.
 
 **Why:** Selva is a soulslike. Gameplay rhythm — parry windows,
@@ -292,9 +292,9 @@ than 5 extra seconds at startup.
 
 **Concretely:**
 
-- Every scene listed in `assets/scenes/scenes.json` calls
+- Every region listed in `assets/regions/regions.json` calls
   `preloadAssets()` at boot, regardless of whether it's the default
-  spawn scene. `SceneBootstrap::loadAllScenes()` is the chokepoint;
+  spawn region. `RegionBootstrap::loadAllRegions()` is the chokepoint;
   don't add a "lazy" flag.
 - Every audio bank registered in `audio.json` decodes at audio init,
   not on first `playSfx`.

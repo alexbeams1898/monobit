@@ -34,20 +34,20 @@ const WeaponGripAnimSet& gripSet(const Weapon& w, Grip grip)
     return (grip == Grip::TwoHanded) ? w.cls->two_handed : w.cls->one_handed;
 }
 
-// Sprint + Shift + LMB → running "special" finisher (flying knee for
-// unarmed, lunge for swords, etc.). Plain Sprint + LMB now falls
-// through to the standard light slot-0 attack so running combat
-// reads as "smooth stop → swing → smooth resume sprint" using the
-// same jab/hook clips as standing combat. Plain Sprint + RMB
-// likewise falls through.
+// Sprint + Shift + LMB → sprint "special" finisher (flying knee for
+// unarmed, lunge for swords, etc.). Plain Sprint + LMB falls through
+// to the standard light slot-0 attack so sprint combat reads as
+// "smooth stop → swing → smooth resume sprint" using the same
+// jab/hook clips as standing combat. Plain Sprint + RMB likewise
+// falls through.
 const char* sprintRunningClip(const WeaponGripAnimSet& aset, const char* button,
                               const PressModifiers& mods)
 {
     if (!mods.sprinting || !mods.shift || std::strcmp(button, "LMB") != 0)
         return nullptr;
-    if (aset.running.empty() || aset.running[0].attacks.empty())
+    if (aset.sprint.empty() || aset.sprint[0].attacks.empty())
         return nullptr;
-    return aset.running[0].attacks[0].clip.c_str();
+    return aset.sprint[0].attacks[0].clip.c_str();
 }
 
 // If the observer has a technique matched at step N AND this press

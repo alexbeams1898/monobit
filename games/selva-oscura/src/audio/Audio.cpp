@@ -49,6 +49,13 @@ struct MusicConfig
 std::unordered_map<std::string, SoundEntry> sSounds;
 std::vector<ScheduledEntry> sScheduled;
 MusicConfig sMusic;
+// Named music beds (encounter swaps). Populated from audio.json's
+// "music_beds" object at init time. Empty if none authored.
+std::unordered_map<std::string, MusicConfig> sNamedBeds;
+// Stack of previously-active beds for pushMusicBed/popMusicBed.
+// Each entry is a snapshot of `sMusic` at push-time; popping
+// restores it.
+std::vector<MusicConfig> sBedStack;
 bool sAudioReady = false;
 
 } // namespace
@@ -88,16 +95,38 @@ void loadSfxRegistry(const nlohmann::json& doc)
     }
 }
 
+// Parse a MusicConfig from a JSON object (the "music" entry's shape).
+// Default-on-missing values mirror the original loadMusic defaults.
+MusicConfig parseMusicConfig(const nlohmann::json& m)
+{
+    MusicConfig mc;
+    mc.path = m.value("path", std::string());
+    mc.volume = m.value("volume", 0.35f);
+    mc.loop = m.value("loop", true);
+    mc.fade_in_ms = m.value("fade_in_ms", 0);
+    mc.lowpass_during_death_hz = m.value("lowpass_during_death_hz", 700.0f);
+    return mc;
+}
+
 void loadMusic(const nlohmann::json& doc)
 {
+    // Named beds first (so push/pop has a registry even if there's no
+    // ambient bed). Per docs/design/ideas/boss_backend.md section 9.
+    if (doc.contains("music_beds") && doc["music_beds"].is_object())
+    {
+        const auto& beds = doc["music_beds"];
+        for (auto it = beds.begin(); it != beds.end(); ++it)
+        {
+            if (!it.value().is_object())
+                continue;
+            sNamedBeds.emplace(it.key(), parseMusicConfig(it.value()));
+        }
+        std::fprintf(stderr, "[audio] loaded %zu named music bed(s)\n", sNamedBeds.size());
+    }
+
     if (!doc.contains("music") || !doc["music"].is_object())
         return;
-    const auto& m = doc["music"];
-    sMusic.path = m.value("path", std::string());
-    sMusic.volume = m.value("volume", 0.35f);
-    sMusic.loop = m.value("loop", true);
-    sMusic.fade_in_ms = m.value("fade_in_ms", 0);
-    sMusic.lowpass_during_death_hz = m.value("lowpass_during_death_hz", 700.0f);
+    sMusic = parseMusicConfig(doc["music"]);
     if (sMusic.path.empty())
         return;
     AudioSystem::playMusic(sMusic.path, sMusic.volume, sMusic.loop, sMusic.fade_in_ms);
@@ -166,6 +195,43 @@ void restoreMusic()
     // cutoff <= 0 disables the filter; passing 0 returns the engine
     // to bypass (transparent).
     AudioSystem::setMusicLowPass(0.0f);
+}
+
+void pushMusicBed(const std::string& name)
+{
+    if (!sAudioReady)
+        return;
+    auto it = sNamedBeds.find(name);
+    if (it == sNamedBeds.end())
+    {
+        std::fprintf(stderr, "[audio] pushMusicBed: bed '%s' not registered (no swap)\n",
+                     name.c_str());
+        return;
+    }
+    // Push current bed onto the stack, then start the named one.
+    sBedStack.push_back(sMusic);
+    sMusic = it->second;
+    if (sMusic.path.empty())
+    {
+        std::fprintf(stderr, "[audio] pushMusicBed: bed '%s' has empty path; silence\n",
+                     name.c_str());
+        return;
+    }
+    AudioSystem::playMusic(sMusic.path, sMusic.volume, sMusic.loop, sMusic.fade_in_ms);
+    std::fprintf(stderr, "[audio] pushMusicBed '%s' (path='%s')\n", name.c_str(),
+                 sMusic.path.c_str());
+}
+
+void popMusicBed()
+{
+    if (sBedStack.empty())
+        return;
+    sMusic = sBedStack.back();
+    sBedStack.pop_back();
+    if (sMusic.path.empty())
+        return;
+    AudioSystem::playMusic(sMusic.path, sMusic.volume, sMusic.loop, sMusic.fade_in_ms);
+    std::fprintf(stderr, "[audio] popMusicBed -> '%s'\n", sMusic.path.c_str());
 }
 
 void playSfxInternal(const std::string& name, float gain)

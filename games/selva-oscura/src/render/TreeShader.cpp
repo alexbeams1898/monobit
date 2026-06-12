@@ -70,6 +70,14 @@ out vec4 fragColor;
 uniform sampler2D uBaseColor;
 uniform float uAlphaCutoff;
 
+// Per-frame foliage tint multiplier (vec3). Multiplied into base.rgb
+// AFTER texture sample, BEFORE lighting. v1: hardcoded to a warm
+// grey-brown at draw time to render the dead wood (per wood.md: the
+// wood is dead at game start, healing as keepers fall + sangue
+// leaks in). Identity = vec3(1.0) (default behavior, asset color
+// preserved). Future: per-region / per-keeper-restoration value.
+uniform vec3 uFoliageTint;
+
 uniform vec3 uSunDir;
 uniform vec3 uSunIntensity;
 uniform vec3 uCamPos;
@@ -84,6 +92,10 @@ void main()
     // Alpha-test for branch canopies. Trunks call with cutoff=0 so
     // this is a no-op.
     if (base.a < uAlphaCutoff) discard;
+
+    // Apply per-frame foliage tint BEFORE lighting (tint is a
+    // base-color modifier; lighting math reads the tinted color).
+    base.rgb *= uFoliageTint;
 
     // Foliage uses a hemispherical up-vector for lighting, not the
     // per-vertex card-aligned normal. Card normals at edge-on
@@ -106,7 +118,7 @@ void main()
     float shadow = sampleSunShadow(vWorldPos, canopyN);
     vec3 surface = base.rgb * (ambient + sunTint * halfL * shadow);
 
-    // Aerial perspective (same atmosphere as scene + sky).
+    // Aerial perspective (same atmosphere as region + sky).
     vec3 viewVec = vWorldPos - uCamPos;
     float dist = length(viewVec);
     vec3 rayDir = viewVec / max(dist, 1e-4);
@@ -130,6 +142,7 @@ GLint sUniTimeLoc = -1;
 GLint sUniWindPhaseLoc = -1;
 GLint sUniBaseColorLoc = -1;
 GLint sUniAlphaCutoffLoc = -1;
+GLint sUniFoliageTintLoc = -1;
 GLint sUniSunDirLoc = -1;
 GLint sUniSunIntensityLoc = -1;
 GLint sUniCamPosLoc = -1;
@@ -153,6 +166,7 @@ bool initTreeShader()
     sUniWindPhaseLoc = glGetUniformLocation(sProgram, "uWindPhase");
     sUniBaseColorLoc = glGetUniformLocation(sProgram, "uBaseColor");
     sUniAlphaCutoffLoc = glGetUniformLocation(sProgram, "uAlphaCutoff");
+    sUniFoliageTintLoc = glGetUniformLocation(sProgram, "uFoliageTint");
     sUniSunDirLoc = glGetUniformLocation(sProgram, "uSunDir");
     sUniSunIntensityLoc = glGetUniformLocation(sProgram, "uSunIntensity");
     sUniCamPosLoc = glGetUniformLocation(sProgram, "uCamPos");
@@ -164,6 +178,10 @@ bool initTreeShader()
 
     glUseProgram(sProgram);
     glUniform1i(sUniBaseColorLoc, 0);
+    // Identity foliage tint by default -- callers that don't set it
+    // get asset-color-preserved trees. Dead-wood rendering calls
+    // setTreeFoliageTint() per-frame to override.
+    glUniform3f(sUniFoliageTintLoc, 1.0f, 1.0f, 1.0f);
     glUseProgram(0);
     return true;
 }
@@ -176,8 +194,8 @@ void shutdownTreeShader()
         sProgram = 0;
     }
     sUniModelLoc = sUniViewProjLoc = sUniViewLoc = sUniTimeLoc = sUniWindPhaseLoc =
-        sUniBaseColorLoc = sUniAlphaCutoffLoc = sUniSunDirLoc = sUniSunIntensityLoc =
-            sUniCamPosLoc = sUniExposureLoc = -1;
+        sUniBaseColorLoc = sUniAlphaCutoffLoc = sUniFoliageTintLoc = sUniSunDirLoc =
+            sUniSunIntensityLoc = sUniCamPosLoc = sUniExposureLoc = -1;
 }
 
 void useTreeShader()
@@ -225,6 +243,11 @@ void setTreeBaseColor(std::uint32_t tex)
 void setTreeAlphaCutoff(float cutoff)
 {
     glUniform1f(sUniAlphaCutoffLoc, cutoff);
+}
+
+void setTreeFoliageTint(const glm::vec3& tint)
+{
+    glUniform3f(sUniFoliageTintLoc, tint.x, tint.y, tint.z);
 }
 
 void setTreeTime(float t)

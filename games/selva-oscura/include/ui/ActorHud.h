@@ -1,7 +1,16 @@
 #pragma once
 
+#include <glm/vec2.hpp>
+
 namespace selva::ui
 {
+
+// Screen-space anchor of the vessel sangue counter inside the HUD.
+// Sangue pulses target this point; the HUD readout draws at it.
+// Single source of truth so the pulse system and the HUD don't drift.
+// Returns (0, 0) if the main viewport hasn't been computed yet
+// (boot frame).
+glm::vec2 sangueHudAnchor();
 
 // Player HP + stamina HUD. Two stacked horizontal bars in the
 // top-left of the viewport (soulslike convention). HP red,
@@ -25,18 +34,17 @@ bool showHitVolumes();
 void setShowHitVolumes(bool enabled);
 
 // World-collider debug overlay: wireframe outlines for every cylinder
-// + box collider in the active scene. Gated by tun.debug_show_colliders
-// (F1 panel toggle). Useful for confirming wall positions match the
-// rendered geometry.
+// + box collider in the active scene. Gated by
+// selva::debug::flags().show_colliders (F1 panel toggle).
 void renderColliderDebug();
 
 // Jolt physics body overlay: wireframe AABBs for every body in the
 // Jolt world (static trimeshes, static boxes, character capsules)
-// colored by surface tag. Gated by tun.debug_show_physics_bodies.
+// colored by surface tag. Gated by selva::debug::flags().show_physics_bodies.
 // Source of truth for "is this mesh actually registered in physics?"
 void renderPhysicsBodyDebug();
 
-// Scene system overlays:
+// Region system overlays:
 //   * Always-on: scene-name chip in the corner + fade-to-black overlay
 //     during transitions
 //   * Debug-gated: trigger volume wireframes (color + label) inside

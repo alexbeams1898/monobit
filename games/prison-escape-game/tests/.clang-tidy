@@ -1,0 +1,5 @@
+# Tests-specific overrides. See games/selva-oscura/tests/.clang-tidy.
+InheritParentConfig: true
+Checks: >
+  -readability-function-cognitive-complexity,
+  -readability-function-size,

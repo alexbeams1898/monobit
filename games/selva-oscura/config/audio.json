@@ -96,6 +96,21 @@
     "whoosh_heavy": {
       "path": "assets/audio/whoosh_heavy.mp3",
       "volume": 0.85
+    },
+    "door_lock": {
+      "_comment": "Lock cylinder turning + bolt seating. Used for both locking AND unlocking transitions (Closed -> Locked or Locked -> Closed). Same asset, same affordance: the player hears 'something just changed about this door's accessibility.'",
+      "path": "assets/audio/lock_unlock.mp3",
+      "volume": 0.8
+    },
+    "door_open": {
+      "_comment": "Door swinging open. Fires at Closed -> Opening transition (player E-press or scripted).",
+      "path": "assets/audio/open_door.mp3",
+      "volume": 0.8
+    },
+    "door_close": {
+      "_comment": "Door swinging closed. Reserved for future closing transitions (chapel door is terminal-Open today, but the asset is in registry so future doors can use it).",
+      "path": "assets/audio/close_door.mp3",
+      "volume": 0.8
     }
   }
 }

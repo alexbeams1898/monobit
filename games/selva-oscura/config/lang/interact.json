@@ -1,0 +1,21 @@
+{
+  "_comment": "Interaction-prompt + speaker-attribution labels: the strings that appear in dialog headers, boss HP bars, felled overlays, examine prompts. Per the insight pillar, every name reveals only when the player gains the matching insight node (knows_guide, knows_lupa, etc.). Tier-0 is '???' for things-with-a-name; tier-1 is the name.",
+
+  "interact.npc.guide.display_name": {
+    "tier_0": "???",
+    "tier_1": "Guide",
+    "unlock_node_tier_1": "knows_guide"
+  },
+
+  "interact.boss.lupa.boss_name": {
+    "tier_0": "???",
+    "tier_1": "LUPA",
+    "unlock_node_tier_1": "knows_lupa"
+  },
+
+  "interact.boss.lupa.felled_message": {
+    "tier_0": "FELLED",
+    "tier_1": "LUPA FELLED",
+    "unlock_node_tier_1": "knows_lupa"
+  }
+}

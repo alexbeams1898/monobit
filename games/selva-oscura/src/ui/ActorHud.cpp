@@ -7,21 +7,27 @@
 #include "anim/PoseSampler.h"
 #include "anim/SkeletalAssets.h"
 #include "anim/SkeletalMesh.h"
+#include "anim/SkeletonJointMap.h"
 #include "combat/ActorVolumes.h"
 #include "combat/HitFeedback.h"
 #include "combat/HitVolumes.h"
+#include "debug/Flags.h"
 #include "gameplay/Actor.h"
 #include "gameplay/Enemies.h"
 #include "gameplay/Perception.h"
 #include "gameplay/PlayerState.h"
+#include "gameplay/RomanNumeral.h"
+#include "gameplay/SanguePulse.h"
 #include "physics/PhysicsWorld.h"
 #include "render/Camera.h"
 #include "render/TerrainShader.h"
+#include "ui/UIComponents.h"
 #include "world/Collision.h"
 #include "world/CryptLayout.h"
-#include "world/Scene.h"
+#include "world/Region.h"
 #include "world/StructureFootprints.h"
 #include "world/Terrain.h"
+#include "world/Territory.h"
 
 #include <glm/geometric.hpp>
 #include <glm/vec2.hpp>
@@ -31,11 +37,28 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <vector>
 
 namespace selva::ui
 {
+
+// Shared layout constants for the player HUD panel (HP / STA / vessel
+// counter). Single source of truth referenced by renderActorHud +
+// sangueHudAnchor so the pulse target and the displayed counter
+// always agree, even when the layout shifts.
+namespace kActorHudLayout
+{
+constexpr float kMargin = 18.0f;
+constexpr float kBarWidth = 260.0f;
+constexpr float kHpHeight = 14.0f;
+constexpr float kStaminaHeight = 10.0f;
+constexpr float kBarGap = 4.0f;
+constexpr float kVesselHeight = 16.0f;
+constexpr float kPanelW = kBarWidth + 16.0f;
+constexpr float kPanelH = kHpHeight + kStaminaHeight + kVesselHeight + (kBarGap * 2.0f) + 16.0f;
+} // namespace kActorHudLayout
 
 namespace
 {
@@ -48,6 +71,12 @@ namespace
 // to full opacity and restarts the timer.
 constexpr float kEnemyHpBarHoldSeconds = 3.5f;
 constexpr float kEnemyHpBarFadeSeconds = 0.7f;
+// On-death override: when the actor dies, the bar should flash empty
+// and disappear almost immediately -- not linger 4s like the alive
+// case (the kill is the resolution; the bar's "fading" is just decor).
+// Brief hold + short fade reads as "kill registered, moving on."
+constexpr float kEnemyHpBarDeathHoldSeconds = 0.1f;
+constexpr float kEnemyHpBarDeathFadeSeconds = 0.2f;
 // Height above the head joint (in world meters) for the HP bar anchor.
 constexpr float kEnemyHpBarHeadOffset = 0.15f;
 // Size of the in-world HP bar in pixels (camera-space billboard).
@@ -138,6 +167,54 @@ void setShowHitVolumes(bool enabled)
 namespace
 {
 
+// Per-region law-domain OBBs drawn as wireframe boxes. Color by
+// owning region so overlap is visually unambiguous (chapel's corridor
+// nesting inside limbo's disc shows up as two colors at the seam).
+// Each volume labeled with its debug_name at its center.
+void drawTerritoryWireframes(ImDrawList* fg)
+{
+    const glm::mat4& vp = selva::render::lastViewProj();
+    const int n = engine::world::territoryCount();
+    for (int idx = 0; idx < n; ++idx)
+    {
+        const auto& t = engine::world::territoryAt(idx);
+        std::uint32_t h = 2166136261u;
+        for (const char ch : t.owner_region_id)
+            h = (h ^ static_cast<std::uint8_t>(ch)) * 16777619u;
+        const ImU32 color = IM_COL32(80 + (h & 0xFF) / 2, 80 + ((h >> 8) & 0xFF) / 2,
+                                     80 + ((h >> 16) & 0xFF) / 2, 220);
+        const glm::vec3& c = t.center;
+        const glm::vec3& hf = t.half_extents;
+        const glm::vec3 local_corners[8] = {
+            {-hf.x, -hf.y, -hf.z}, {hf.x, -hf.y, -hf.z}, {hf.x, -hf.y, hf.z}, {-hf.x, -hf.y, hf.z},
+            {-hf.x, hf.y, -hf.z},  {hf.x, hf.y, -hf.z},  {hf.x, hf.y, hf.z},  {-hf.x, hf.y, hf.z},
+        };
+        glm::vec2 sp[8];
+        bool ok[8];
+        for (int i = 0; i < 8; ++i)
+        {
+            const glm::vec3 world_corner = c + (t.orientation * local_corners[i]);
+            ok[i] = selva::render::worldToScreen(vp, world_corner, sp[i]);
+        }
+        const int edges[12][2] = {
+            {0, 1}, {1, 2}, {2, 3}, {3, 0}, {4, 5}, {5, 6},
+            {6, 7}, {7, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7},
+        };
+        for (const auto* e : edges)
+        {
+            if (ok[e[0]] && ok[e[1]])
+                fg->AddLine(ImVec2(sp[e[0]].x, sp[e[0]].y), ImVec2(sp[e[1]].x, sp[e[1]].y), color,
+                            1.5f);
+        }
+        glm::vec2 lp;
+        if (selva::render::worldToScreen(vp, c, lp))
+        {
+            const std::string label = t.owner_region_id + ":" + t.debug_name;
+            fg->AddText(ImVec2(lp.x, lp.y - 14.0f), color, label.c_str());
+        }
+    }
+}
+
 struct AwarenessVisuals
 {
     ImU32 color;
@@ -222,6 +299,10 @@ void drawEnemyHpBars(ImDrawList* overlay, const glm::mat4& view_proj,
 // up and fades out over its lifetime.
 void drawFloatingDamageNumbers(ImDrawList* overlay, const glm::mat4& view_proj);
 
+// Draw in-flight sangue pulses (3-billboard trails from corpse to
+// Vagrant). Forward decl mirrors drawFloatingDamageNumbers.
+void drawSanguePulses(ImDrawList* overlay, const glm::mat4& view_proj);
+
 // Draw the lock-on reticle on the player's current target. Phase A
 // placeholder: 16×16 white square at chest-height. Phase B replaces
 // with an iconographic sprite.
@@ -271,19 +352,40 @@ void drawEnemyHpBars(ImDrawList* overlay, const glm::mat4& view_proj,
     for (const auto* ep : list)
     {
         const auto& e = *ep;
-        if (e.last_damage_time < 0.0f)
-            continue;
-        const float age = now - e.last_damage_time;
-        if (age > kEnemyHpBarHoldSeconds + kEnemyHpBarFadeSeconds)
+        // Dead actors use the on-death timer (death_time) with much
+        // shorter hold + fade -- the kill IS the resolution, the
+        // lingering bar is dead-actor-decor and shouldn't sit there
+        // for 4s the way it does on a live actor taking damage.
+        // Flow-spawned dead actors that haven't been "consumed" yet
+        // have death_time == 0 (sentinel) per fireEnemyDeath; for
+        // those, gate on is_dead alone and skip the bar entirely.
+        const bool dead = e.is_dead;
+        float age = 0.0f;
+        float hold = kEnemyHpBarHoldSeconds;
+        float fade = kEnemyHpBarFadeSeconds;
+        if (dead)
+        {
+            if (e.death_time <= 0.0f)
+                continue; // deferred-fade corpse: no HP bar at all
+            age = now - e.death_time;
+            hold = kEnemyHpBarDeathHoldSeconds;
+            fade = kEnemyHpBarDeathFadeSeconds;
+        }
+        else
+        {
+            if (e.last_damage_time < 0.0f)
+                continue;
+            age = now - e.last_damage_time;
+        }
+        if (age > hold + fade)
             continue;
         const glm::vec3 anchor(e.pos.x, e.pos.y + 1.8f + kEnemyHpBarHeadOffset, e.pos.z);
         glm::vec2 sp;
         if (!selva::render::worldToScreen(view_proj, anchor, sp))
             continue;
         float alpha = 1.0f;
-        if (age > kEnemyHpBarHoldSeconds)
-            alpha = std::clamp(1.0f - (age - kEnemyHpBarHoldSeconds) / kEnemyHpBarFadeSeconds, 0.0f,
-                               1.0f);
+        if (age > hold)
+            alpha = std::clamp(1.0f - (age - hold) / fade, 0.0f, 1.0f);
         const ImU32 bg = IM_COL32(20, 20, 20, static_cast<int>(220 * alpha));
         const ImU32 fg = IM_COL32(170, 30, 30, static_cast<int>(240 * alpha));
         const ImU32 bd = IM_COL32(0, 0, 0, static_cast<int>(220 * alpha));
@@ -306,16 +408,23 @@ void drawLockOnReticle(ImDrawList* overlay, const glm::mat4& view_proj)
     if (idx >= static_cast<int>(pool.size()))
         return;
     const auto& target = pool[idx];
-    // Anchor to the chest BONE, not actor pos + Y. During dynamic
-    // poses (knockdown, getting up, hit reacts) the rig decouples
-    // from actor.pos — pos stays standing while the body drops to
-    // the floor. Same pattern as ActorVolumes (jointWorld helper).
-    const int chest_idx = target.sampler.findJoint("mixamorig:Spine2");
-    if (chest_idx < 0)
+    // Anchor to the lockon-point BONE. Point list is resolved per-
+    // actor via actorLockOnPoints (archetype's authored list else
+    // skeleton default). Player cycles between points with mouse
+    // wheel; lock_point_idx names the active entry.
+    const auto& points = selva::gameplay::actorLockOnPoints(target);
+    if (points.empty())
+        return;
+    const int point_idx =
+        (p.lock_point_idx >= 0 && p.lock_point_idx < static_cast<int>(points.size()))
+            ? p.lock_point_idx
+            : 0;
+    const int joint_idx = target.sampler.findJoint(points[point_idx].joint.c_str());
+    if (joint_idx < 0)
         return;
     const glm::mat4 model = selva::combat::buildActorModelMatrix(
-        target.pos, target.yaw, selva::anim::playerMesh().foot_offset_y);
-    const glm::vec4 world = model * glm::vec4(target.sampler.jointWorldPos(chest_idx), 1.0f);
+        target.pos, target.yaw, selva::gameplay::actorFootOffsetY(target));
+    const glm::vec4 world = model * glm::vec4(target.sampler.jointWorldPos(joint_idx), 1.0f);
     glm::vec2 sp;
     if (!selva::render::worldToScreen(view_proj, glm::vec3(world), sp))
         return;
@@ -391,6 +500,91 @@ void drawSecondDeathCard()
     fg->AddText(font, msg_size, msg_pos, white, msg);
 }
 
+// Per-tier visual scaling. Tier index aligns with kRomanTiers in
+// RomanTiers.h: 0=I (denom 1), 1=V (5), 2=X (10), 3=L (50), 4=C (100),
+// 5=D (500), 6=M (1000), then vinculum'd tiers 7+. Darker + slightly
+// larger as denomination increases so the player reads magnitude at
+// a glance. Color matches the aged-larva tint palette (deep sangue-red
+// rather than bright blood).
+struct SangueTierVisual
+{
+    int r;
+    int g;
+    int b;
+    float radius_px;
+};
+
+constexpr SangueTierVisual kSangueTierVisuals[] = {
+    {180, 60, 50, 3.0f}, //  0: I    -- 1, brightest, smallest
+    {165, 50, 45, 3.4f}, //  1: V    -- 5
+    {150, 40, 40, 3.8f}, //  2: X    -- 10
+    {135, 35, 35, 4.2f}, //  3: L    -- 50
+    {120, 30, 28, 4.7f}, //  4: C    -- 100
+    {105, 25, 25, 5.2f}, //  5: D    -- 500
+    {90, 22, 22, 5.8f},  //  6: M    -- 1000
+    {78, 18, 18, 6.4f},  //  7: V_   -- 5000
+    {65, 16, 16, 7.0f},  //  8: X_   -- 10000
+    {55, 14, 14, 7.6f},  //  9: L_   -- 50000
+    {48, 12, 12, 8.2f},  // 10: C_   -- 100000
+    {42, 10, 10, 8.8f},  // 11: D_   -- 500000
+    {36, 9, 9, 9.4f},    // 12: M_   -- 1000000
+    {30, 8, 8, 10.0f},   // 13: V__  -- 5M
+    {26, 7, 7, 10.6f},   // 14: X__  -- 10M
+    {22, 6, 6, 11.2f},   // 15: L__  -- 50M
+    {18, 5, 5, 11.8f},   // 16: C__  -- 100M
+    {14, 4, 4, 12.4f},   // 17: D__  -- 500M
+};
+constexpr int kSangueTierVisualCount = sizeof(kSangueTierVisuals) / sizeof(kSangueTierVisuals[0]);
+
+const SangueTierVisual& tierVisual(int tier_index)
+{
+    const int clamped = std::clamp(tier_index, 0, kSangueTierVisualCount - 1);
+    return kSangueTierVisuals[clamped];
+}
+
+// Sangue pulses fly in 2D screen space from a corpse-projected point
+// to the HUD vessel counter, curved through a control point offset
+// toward screen-center so the path bulges then sucks into the HUD.
+// Per [[project_crucible_censer_leveling_system]] auto-magnetization.
+void drawSanguePulses(ImDrawList* overlay, const glm::mat4& /*view_proj*/)
+{
+    const auto& pulses = selva::gameplay::sanguePulses();
+    if (pulses.empty())
+        return;
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    const float center_x = vp ? (vp->WorkPos.x + vp->WorkSize.x * 0.5f) : 0.0f;
+    const float center_y = vp ? (vp->WorkPos.y + vp->WorkSize.y * 0.5f) : 0.0f;
+    for (const auto& p : pulses)
+    {
+        if (p.elapsed < p.delay)
+            continue; // still staging
+        const float flight_t = std::clamp((p.elapsed - p.delay) / p.lifetime, 0.0f, 1.0f);
+        // Speed curve: cubic ease-in, so the particle holds near the
+        // corpse, then accelerates HARD into the HUD. Reads as suction.
+        const float t_ease = flight_t * flight_t * flight_t;
+        // Quadratic Bezier with control point biased toward screen center.
+        // Bias scales down as the particle nears the target so the curve
+        // collapses into a straight tight pull at the end.
+        const float bezier_bias = 0.45f * (1.0f - t_ease);
+        const glm::vec2 control = glm::mix((p.source_screen + p.target_screen) * 0.5f,
+                                           glm::vec2(center_x, center_y), bezier_bias);
+        const glm::vec2 a = glm::mix(p.source_screen, control, t_ease);
+        const glm::vec2 b = glm::mix(control, p.target_screen, t_ease);
+        const glm::vec2 pos = glm::mix(a, b, t_ease);
+        const auto& vis = tierVisual(p.tier_index);
+        // Lifecycle alpha: bright through 80% of flight, fades sharply
+        // at the very end so the suck-in moment reads as "consumed"
+        // rather than "vanished."
+        const float fade_t = std::clamp((flight_t - 0.85f) / 0.15f, 0.0f, 1.0f);
+        const float lifecycle_alpha = 1.0f - fade_t;
+        const int alpha_byte = std::clamp(static_cast<int>(255.0f * lifecycle_alpha), 0, 255);
+        const ImU32 core = IM_COL32(vis.r, vis.g, vis.b, alpha_byte);
+        const ImU32 glow = IM_COL32(vis.r / 2, vis.g / 2, vis.b / 2, alpha_byte / 2);
+        overlay->AddCircleFilled(ImVec2(pos.x, pos.y), vis.radius_px * 1.7f, glow, 16);
+        overlay->AddCircleFilled(ImVec2(pos.x, pos.y), vis.radius_px, core, 16);
+    }
+}
+
 void drawFloatingDamageNumbers(ImDrawList* overlay, const glm::mat4& view_proj)
 {
     const auto& numbers = selva::combat::damageNumbers();
@@ -421,20 +615,88 @@ void drawFloatingDamageNumbers(ImDrawList* overlay, const glm::mat4& view_proj)
     }
 }
 
+// Draw the vessel counter in Roman numerals with manual vinculum
+// overbars. Per [[project_substance_has_no_in_game_name]] the
+// substance has no label; the count alone speaks. The encoder
+// returns a glyph string + parallel bar count (0 plain / 1 single /
+// 2 double). We iterate per-glyph so 1 or 2 horizontal lines can be
+// drawn above each barred character. The cosmological cap
+// (999,999,999) renders cleanly with three groups (double, single,
+// plain) so no overflow indicator is needed -- the renderer can
+// express every value the vessel can hold.
+void drawVesselCounter(ImDrawList* draw, const ImVec2& origin)
+{
+    using namespace kActorHudLayout;
+    std::uint32_t vessel = 0u;
+    PlayerClass cls = PlayerClass::None;
+    if (const PlayerProfile* profile = activePlayerProfile())
+    {
+        vessel = profile->sangue_vessel;
+        cls = profile->player_class;
+    }
+    const auto rendering = selva::gameplay::encodeRoman(vessel);
+    if (rendering.glyphs.empty())
+        return; // empty vessel: render nothing
+    const float text_y = origin.y + kHpHeight + kStaminaHeight + (kBarGap * 2.0f);
+    // Per-class color cue. Subtle: same warm-amber base, shifted toward
+    // the path's cosmological flavor.
+    //   None       -- neutral warm-amber (pre-Beat-4 state).
+    //   Penitent   -- warmer + slightly redder (the bent walk).
+    //   Heretic    -- warmer + bronzed (the crooked carry).
+    //   Wretched   -- duller + cooler (the non-completion).
+    //   Unburdened -- paler + cooler (the channel toward Beatrice).
+    ImU32 vessel_color = IM_COL32(220, 200, 180, 240);
+    switch (cls)
+    {
+    case PlayerClass::Penitent:
+        vessel_color = IM_COL32(225, 185, 155, 240);
+        break;
+    case PlayerClass::Heretic:
+        vessel_color = IM_COL32(210, 175, 130, 240);
+        break;
+    case PlayerClass::Wretched:
+        vessel_color = IM_COL32(190, 175, 165, 240);
+        break;
+    case PlayerClass::Unburdened:
+        vessel_color = IM_COL32(200, 215, 220, 240);
+        break;
+    case PlayerClass::None:
+        break;
+    }
+    // Shared renderer (also used by the class picker's stat rows).
+    selva::ui::drawRomanGlyphs(draw, ImVec2(origin.x, text_y), rendering, vessel_color);
+}
+
 } // namespace
+
+glm::vec2 sangueHudAnchor()
+{
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    if (vp == nullptr)
+        return glm::vec2(0.0f, 0.0f);
+    using namespace kActorHudLayout;
+    // Mirror renderActorHud's layout: panel anchored at WorkPos +
+    // kMargin, vessel text drawn at +kHpHeight + kStaminaHeight +
+    // 2*kBarGap from origin. Aim the pulse target at the center of
+    // the vessel text glyph row (approximate y center = text_y +
+    // kVesselHeight*0.5). Slight x bias so multi-particle streams
+    // arrive into the leading edge of the readout, not its center,
+    // which reads better when the counter pumps up.
+    const float origin_x = vp->WorkPos.x + kMargin;
+    const float origin_y = vp->WorkPos.y + kMargin;
+    const float vessel_text_y = origin_y + kHpHeight + kStaminaHeight + (kBarGap * 2.0f);
+    return glm::vec2(origin_x + 8.0f, vessel_text_y + kVesselHeight * 0.5f);
+}
 
 void renderActorHud()
 {
     const auto& p = selva::gameplay::player();
 
     // Soulslike layout: top-left, ~250px bars, HP above stamina.
-    constexpr float kMargin = 18.0f;
-    constexpr float kBarWidth = 260.0f;
-    constexpr float kHpHeight = 14.0f;
-    constexpr float kStaminaHeight = 10.0f;
-    constexpr float kBarGap = 4.0f;
-    constexpr float kPanelW = kBarWidth + 16.0f;
-    constexpr float kPanelH = kHpHeight + kStaminaHeight + kBarGap + 16.0f;
+    // Layout constants live at file scope (kActorHudLayout namespace
+    // below) so other systems (sangueHudAnchor, sangue pulse target)
+    // share one source of truth.
+    using namespace kActorHudLayout;
 
     const ImGuiViewport* vp = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(ImVec2(vp->WorkPos.x + kMargin, vp->WorkPos.y + kMargin),
@@ -462,10 +724,17 @@ void renderActorHud()
 
     char hp_label[32];
     std::snprintf(hp_label, sizeof(hp_label), "HP  %d / %d", p.hp.current, p.hp.max);
+    char stamina_label[32];
+    std::snprintf(stamina_label, sizeof(stamina_label), "STA %d / %d",
+                  static_cast<int>(std::floor(p.stamina.current)),
+                  static_cast<int>(std::floor(p.stamina.max)));
     drawBar(draw, BarRect{origin.x, origin.y, kBarWidth, kHpHeight}, hp_fraction,
             BarColors{bar_bg, hp_fg, border}, hp_label);
     drawBar(draw, BarRect{origin.x, origin.y + kHpHeight + kBarGap, kBarWidth, kStaminaHeight},
-            stamina_fraction, BarColors{bar_bg, stamina_fg, border}, nullptr);
+            stamina_fraction, BarColors{bar_bg, stamina_fg, border}, stamina_label);
+
+    // Vessel readout: number only, no label. Per
+    drawVesselCounter(draw, origin);
 
     ImGui::Dummy(ImVec2(kPanelW - 16.0f, kPanelH - 16.0f));
     ImGui::End();
@@ -490,12 +759,13 @@ void renderActorHud()
     const auto list = selva::gameplay::enemies();
     drawEnemyHpBars(overlay, view_proj, list, now);
     drawFloatingDamageNumbers(overlay, view_proj);
+    drawSanguePulses(overlay, view_proj);
     drawLockOnReticle(overlay, view_proj);
     drawSecondDeathCard();
 
     // Debug overlay: AI vision cones + awareness label per AI actor.
-    // Toggled by F1 panel checkbox debug_ai_perception.
-    if (selva::tuning::current().debug_ai_perception)
+    // Toggled by F1 panel checkbox (selva::debug::flags().ai_perception).
+    if (selva::debug::flags().ai_perception)
     {
         const auto& tun_dbg = selva::tuning::current();
         const float half_fov_rad = 0.5f * tun_dbg.ai_vision_fov_degrees * 0.017453293f;
@@ -628,7 +898,6 @@ void renderCompass()
         float deg;
         const char* label;
         ImU32 color;
-        bool major;
     };
     // Note: world axes in this game are +X = west, -X = east (camera
     // yaw is set up so turning right from facing south points toward
@@ -636,10 +905,9 @@ void renderCompass()
     // matches real-world convention from the player's POV (facing S,
     // turning right shows SW → W → NW → N at center).
     const Marker kMarkers[] = {
-        {0.0f, "N", kTextCard, true},   {45.0f, "NW", kTextInter, true},
-        {90.0f, "W", kTextCard, true},  {135.0f, "SW", kTextInter, true},
-        {180.0f, "S", kTextCard, true}, {225.0f, "SE", kTextInter, true},
-        {270.0f, "E", kTextCard, true}, {315.0f, "NE", kTextInter, true},
+        {0.0f, "N", kTextCard},     {45.0f, "NW", kTextInter},  {90.0f, "W", kTextCard},
+        {135.0f, "SW", kTextInter}, {180.0f, "S", kTextCard},   {225.0f, "SE", kTextInter},
+        {270.0f, "E", kTextCard},   {315.0f, "NE", kTextInter},
     };
 
     // Helper: map a compass-direction (deg) to an X pixel position
@@ -833,23 +1101,21 @@ void drawStructureFootprintRects(const glm::mat4& vp, ImDrawList* overlay)
 
 void renderColliderDebug()
 {
-    const auto& tun = selva::tuning::current();
-    if (!tun.debug_show_colliders)
+    if (!selva::debug::flags().show_colliders)
         return;
-    const auto& scene = selva::world::currentScene();
+    const auto& region = selva::world::currentRegion();
     const glm::mat4& vp = selva::render::lastViewProj();
     ImDrawList* overlay = ImGui::GetForegroundDrawList();
-    for (const auto& c : scene.cylinders)
+    for (const auto& c : region.cylinders)
         drawColliderCylinder(c, vp, overlay);
-    for (const auto& b : scene.boxes)
+    for (const auto& b : region.boxes)
         drawColliderBox(b, vp, overlay);
     drawStructureFootprintRects(vp, overlay);
 }
 
 void renderPhysicsBodyDebug()
 {
-    const auto& tun = selva::tuning::current();
-    if (!tun.debug_show_physics_bodies)
+    if (!selva::debug::flags().show_physics_bodies)
         return;
 
     const glm::mat4& vp = selva::render::lastViewProj();
@@ -906,7 +1172,7 @@ void renderPhysicsBodyDebug()
             {4, 5}, {5, 6}, {6, 7}, {7, 4}, // top
             {0, 4}, {1, 5}, {2, 6}, {3, 7}, // verticals
         };
-        for (auto& e : edges)
+        for (const auto* e : edges)
         {
             if (ok[e[0]] && ok[e[1]])
                 overlay->AddLine(ImVec2(sp[e[0]].x, sp[e[0]].y), ImVec2(sp[e[1]].x, sp[e[1]].y), c,
@@ -932,7 +1198,7 @@ void renderPhysicsBodyDebug()
 void renderSceneOverlays()
 {
     using namespace engine::world;
-    const auto& tun = selva::tuning::current();
+    const auto& dbg = selva::debug::flags();
     ImDrawList* fg = ImGui::GetForegroundDrawList();
     const ImGuiIO& io = ImGui::GetIO();
 
@@ -944,19 +1210,32 @@ void renderSceneOverlays()
         fg->AddRectFilled(ImVec2(0, 0), ImVec2(io.DisplaySize.x, io.DisplaySize.y), col);
     }
 
-    // ---- Scene-name chip in top-right (always-on) ----
-    Scene* cur = currentScenePtr();
-    const std::string chip_text = cur != nullptr ? ("scene: " + cur->sceneId()) : "scene: (none)";
-    const ImVec2 ts = ImGui::CalcTextSize(chip_text.c_str());
-    const float pad = 6.0f;
-    const ImVec2 chip_min(io.DisplaySize.x - ts.x - 2 * pad - 8.0f, 8.0f);
-    const ImVec2 chip_max(io.DisplaySize.x - 8.0f, 8.0f + ts.y + 2 * pad);
-    fg->AddRectFilled(chip_min, chip_max, IM_COL32(0, 0, 0, 180), 4.0f);
-    fg->AddText(ImVec2(chip_min.x + pad, chip_min.y + pad), IM_COL32(255, 255, 255, 220),
-                chip_text.c_str());
+    // ---- Region-name chip in top-right (debug-gated) ----
+    using engine::world::Region;
+    Region* cur = currentRegionPtr();
+    if (dbg.show_region_chip)
+    {
+        const std::string chip_text =
+            cur != nullptr ? ("region: " + cur->regionId()) : "region: (none)";
+        const ImVec2 ts = ImGui::CalcTextSize(chip_text.c_str());
+        const float pad = 6.0f;
+        const ImVec2 chip_min(io.DisplaySize.x - ts.x - 2 * pad - 8.0f, 8.0f);
+        const ImVec2 chip_max(io.DisplaySize.x - 8.0f, 8.0f + ts.y + 2 * pad);
+        fg->AddRectFilled(chip_min, chip_max, IM_COL32(0, 0, 0, 180), 4.0f);
+        fg->AddText(ImVec2(chip_min.x + pad, chip_min.y + pad), IM_COL32(255, 255, 255, 220),
+                    chip_text.c_str());
+    }
 
-    // ---- Trigger volume wireframes (gated by debug_show_colliders) ----
-    if (tun.debug_show_colliders && cur != nullptr)
+    // ---- Territory volume wireframes (gated by show_territories) ----
+    // Per-region law-domain AABBs. Color by owning region so overlap
+    // is visually unambiguous (chapel's corridor nesting inside
+    // limbo's disc shows up as two colors at the seam). Each volume
+    // labeled with its debug_name at its center.
+    if (dbg.show_territories)
+        drawTerritoryWireframes(fg);
+
+    // ---- Trigger volume wireframes (gated by selva::debug::flags().show_colliders) ----
+    if (dbg.show_colliders && cur != nullptr)
     {
         const glm::mat4& vp = selva::render::lastViewProj();
         const ImU32 trig_color = IM_COL32(255, 220, 80, 220);
@@ -978,7 +1257,7 @@ void renderSceneOverlays()
                 {0, 1}, {1, 2}, {2, 3}, {3, 0}, {4, 5}, {5, 6},
                 {6, 7}, {7, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7},
             };
-            for (auto& e : edges)
+            for (const auto* e : edges)
             {
                 if (ok[e[0]] && ok[e[1]])
                     fg->AddLine(ImVec2(sp[e[0]].x, sp[e[0]].y), ImVec2(sp[e[1]].x, sp[e[1]].y),

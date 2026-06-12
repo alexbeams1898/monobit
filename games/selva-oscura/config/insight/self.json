@@ -1,0 +1,33 @@
+{
+  "_comment": "Insight nodes about the Vagrant's own form -- what he has come to understand about himself through play. Category=self. Each unlock progressively reveals one ledger row on the Vessel-tab Overview sub-page (per the locked progressive-disclosure design: the Vagrant only sees ledgers for things he has the conceptual frame for).",
+
+  "knows_substance_taken": {
+    "_comment": "Fires on first sangue absorption (lifetime ledger crosses 1). Implied lesson: killing a thing yields a count. Unlocks the vessel-held ledger row on the Vessel Overview.",
+    "kind": "observation",
+    "category": "self",
+    "trigger": {
+      "kind": "sangue_accumulated",
+      "threshold": 1
+    }
+  },
+
+  "knows_substance_committed": {
+    "_comment": "Fires on signing_committed flag (Beat 4 Signing). The Signing IS the first commit act -- the moment substance leaves the Vagrant by being committed (Crucible installation or Censer release). Unlocks the riversato ledger row.",
+    "kind": "observation",
+    "category": "self",
+    "trigger": {
+      "kind": "flag_set",
+      "flag": "signing_committed"
+    }
+  },
+
+  "knows_substance_lifetime": {
+    "_comment": "Fires on signing_committed flag (same as knows_substance_committed). Doctrine: the moment the Vagrant understands substance can be committed, he implicitly understands he's been accumulating it across his existence. Unlocks the lifetime-accumulated ledger row. Future: split if a specific reveal surface for lifetime accounting is authored separately.",
+    "kind": "observation",
+    "category": "self",
+    "trigger": {
+      "kind": "flag_set",
+      "flag": "signing_committed"
+    }
+  }
+}

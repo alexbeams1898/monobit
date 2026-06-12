@@ -1,0 +1,120 @@
+{
+  "npc_id": "guide",
+  "display_name": "Guide",
+  "display_name_key": "interact.npc.guide.display_name",
+  "topics": [
+    {
+      "_comment": "Beat-3 opening: greeting + Lupa lore + name-elicit. Gated on lupa_felled (post-fight) and !name_given (Vagrant has no name yet). Fires once; on completion the Guide opens the name-prompt modal. The name-prompt's commit (NamePromptScreen::commit) chains DIRECTLY into the class picker -- naming + class-pick are ONE character-creation sequence, no re-engagement of the Guide between them. There is no separate 'offer-Signing' dialog beat; the picker's own header text IS the Signing-offer framing. After the picker commits, ClassPickerScreen calls SaveManager::finalizeUnnamedCharacter and post_signing_first_words becomes the next eligible topic when the player re-engages the Guide.",
+      "id": "first_meeting",
+      "entry_point": true,
+      "speaker": "guide",
+      "line": "(TODO author: Guide's greeting line -- warm, glad-to-see-someone, no NPC names yet. Vagrant has no name; Guide is talking to a stranger.)",
+      "show_when": {
+        "flags_required": ["lupa_felled"],
+        "flags_forbidden": ["name_given"]
+      },
+      "choices": [
+        { "id": "continue", "label": "Continue.", "next_topic": "first_meeting_b" }
+      ]
+    },
+    {
+      "id": "first_meeting_b",
+      "speaker": "guide",
+      "line": "(TODO author: Guide tells how he came to the wood -- recent arrival, found Lonza's carcass, poisoned it for Lupa to eat, waited in the chapel. 'I am sorry for it.' Per story.md Beat 3 + [[project_guide_pawn_doctrine_2026_06_01]].)",
+      "choices": [
+        { "id": "continue", "label": "Continue.", "next_topic": "first_meeting_c", "on_select": "guide_confess_carcass" }
+      ]
+    },
+    {
+      "id": "first_meeting_c",
+      "speaker": "guide",
+      "line": "(TODO author: Guide asks 'what shall I call thee' AND offers the Signing in the same beat -- the name-elicit IS the Signing-offer; one continuous moment of being marked by him. The next Continue. opens the name-prompt modal, which chains directly into the class picker on commit. NO separate offer-Signing beat between them.)",
+      "choices": [
+        { "id": "continue", "label": "Continue.", "next_topic": "__end__", "on_select": "guide_open_name_prompt" }
+      ]
+    },
+
+    {
+      "id": "post_signing_first_words",
+      "entry_point": true,
+      "speaker": "guide",
+      "line": "(TODO author: Guide's first words after the Signing commits. 'It is done.' He intends to stay at the chapel.)",
+      "show_when": {
+        "flags_required": ["signing_committed"],
+        "flags_forbidden": ["seen_topic_post_signing_first_words"]
+      },
+      "choices": [
+        { "id": "leave", "label": "Leave.", "next_topic": "__end__" }
+      ]
+    },
+
+    {
+      "_comment": "Guide-reveal topics, one per insight node from config/insight/world.json. Each topic is gated on (a) post_signing_first_words seen, AND (b) the world-side examine flag (examined:<subject>) set by selva::insight::notifyExamined. When the player enters the topic, it fires the Guide-named insight node via unlocks_insight -- which promotes the corresponding lang-map entries to tier-2. Topics ARE one-shot via the standard 'flags_forbidden: seen_topic_<id>' pattern (the dialog system tracks topic-seen automatically). Author the actual lines of the Guide-naming when ready; placeholder prose marked TODO so authoring bugs surface.",
+      "id": "guide_reveals_dissolved_souls",
+      "entry_point": true,
+      "speaker": "guide",
+      "line": "(TODO author: Guide's reveal line about the pile -- the cosmological frame Beatrice feeds him after the Vagrant examines the heap on Acheron's shore.)",
+      "show_when": {
+        "flags_required": ["seen_topic_post_signing_first_words", "examined:acheron_pile"],
+        "flags_forbidden": ["seen_topic_guide_reveals_dissolved_souls"]
+      },
+      "unlocks_insight": "guide_named_dissolved_souls",
+      "choices": [
+        { "id": "leave", "label": "Leave.", "next_topic": "__end__" }
+      ]
+    },
+    {
+      "id": "guide_reveals_arrival_queue",
+      "entry_point": true,
+      "speaker": "guide",
+      "line": "(TODO author: Guide's reveal line about the fresh larvae in the queue -- the cosmology of arrival, the jam, the wait.)",
+      "show_when": {
+        "flags_required": ["seen_topic_post_signing_first_words", "examined:larva_fresh"],
+        "flags_forbidden": ["seen_topic_guide_reveals_arrival_queue"]
+      },
+      "unlocks_insight": "guide_named_arrival_queue",
+      "choices": [
+        { "id": "leave", "label": "Leave.", "next_topic": "__end__" }
+      ]
+    },
+    {
+      "id": "guide_reveals_feeding_cycle",
+      "entry_point": true,
+      "speaker": "guide",
+      "line": "(TODO author: Guide's reveal line about the feeding cycle -- what the aged larva is doing when it crouches over a second-deathed corpse, why the act is futile yet compelled.)",
+      "show_when": {
+        "flags_required": ["seen_topic_post_signing_first_words", "examined:larva_aged_feeder"],
+        "flags_forbidden": ["seen_topic_guide_reveals_feeding_cycle"]
+      },
+      "unlocks_insight": "guide_named_feeding_cycle",
+      "choices": [
+        { "id": "leave", "label": "Leave.", "next_topic": "__end__" }
+      ]
+    },
+
+    {
+      "id": "post_signing_class_picker",
+      "entry_point": true,
+      "speaker": "guide",
+      "line": "(TODO author: Guide's standard post-Signing line for the signed path.)",
+      "show_when": {
+        "flags_required": ["signing_committed", "path_class_picker", "seen_topic_post_signing_first_words"]
+      },
+      "choices": [
+        { "id": "leave", "label": "Leave.", "next_topic": "__end__" }
+      ]
+    },
+    {
+      "id": "post_signing_unburdened",
+      "entry_point": true,
+      "speaker": "guide",
+      "line": "(TODO author: Guide's standard post-Signing line for the unburdened path.)",
+      "show_when": {
+        "flags_required": ["signing_committed", "path_unburdened", "seen_topic_post_signing_first_words"]
+      },
+      "choices": [
+        { "id": "leave", "label": "Leave.", "next_topic": "__end__" }
+      ]
+    }
+  ]
+}

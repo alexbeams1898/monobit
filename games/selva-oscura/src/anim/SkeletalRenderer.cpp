@@ -83,6 +83,7 @@ in vec2 vUV;
 
 uniform vec3 uTint;
 uniform vec3 uSunDir;
+uniform float uAlpha;
 
 out vec4 fragColor;
 )glsl";
@@ -96,7 +97,7 @@ void main()
     float shadow = sampleSunShadow(vWorldPos, N);
     float lit = 0.30 + 0.70 * halfL * shadow;
     vec3 c = clamp(lit * uTint, 0.0, 1.0);
-    fragColor = vec4(c, 1.0);
+    fragColor = vec4(c, uAlpha);
 }
 )glsl";
 
@@ -110,6 +111,7 @@ GLint sUniBones = -1; // first element of the array; OpenGL exposes the
                       // count consecutive matrices via glUniformMatrix4fv.
 GLint sUniTint = -1;
 GLint sUniSunDir = -1;
+GLint sUniAlpha = -1;
 GLint sUniShadowMap = -1;
 GLint sUniLightViewProj = -1;
 GLint sUniShadowSunDir = -1;
@@ -140,6 +142,7 @@ bool initSkeletalRenderer()
     sUniBones = glGetUniformLocation(sProgram, "uBones");
     sUniTint = glGetUniformLocation(sProgram, "uTint");
     sUniSunDir = glGetUniformLocation(sProgram, "uSunDir");
+    sUniAlpha = glGetUniformLocation(sProgram, "uAlpha");
     sUniShadowMap = glGetUniformLocation(sProgram, "uShadowMap");
     sUniLightViewProj = glGetUniformLocation(sProgram, "uLightViewProj");
     sUniShadowSunDir = glGetUniformLocation(sProgram, "uShadowSunDir");
@@ -170,35 +173,76 @@ void shutdownSkeletalRenderer()
     }
 }
 
+void beginSkeletalPass()
+{
+    if (sProgram == 0)
+        return;
+    glUseProgram(sProgram);
+    // Skeletal meshes from third-party sources (Quaternius, Mixamo)
+    // can't be assumed to have consistently outward-wound normals --
+    // back-face culling makes parts of those rigs see-through at some
+    // angles. Disable culling for the whole pass; correctness > fill
+    // rate. Static meshes get culling back at endSkeletalPass.
+    glDisable(GL_CULL_FACE);
+}
+
+void endSkeletalPass()
+{
+    // Restore the state the rest of the frame expects: cull-back ON,
+    // blend OFF, depth-mask ON, no program bound.
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
+    glDisable(GL_BLEND);
+    glDepthMask(GL_TRUE);
+    glUseProgram(0);
+}
+
 void drawSkeletalMesh(const SkeletalMesh& mesh, const glm::mat4& model, const glm::mat4& view_proj,
-                      const std::vector<glm::mat4>& bone_palette, const glm::vec3& tint)
+                      const std::vector<glm::mat4>& bone_palette, const glm::vec3& tint,
+                      float alpha)
 {
     if (sProgram == 0 || !mesh.isLoaded())
         return;
+    if (alpha <= 0.001f)
+        return;
 
-    glUseProgram(sProgram);
     glUniformMatrix4fv(sUniModel, 1, GL_FALSE, glm::value_ptr(model));
     glUniformMatrix4fv(sUniViewProj, 1, GL_FALSE, glm::value_ptr(view_proj));
     glUniform3fv(sUniTint, 1, glm::value_ptr(tint));
     glUniform3fv(sUniSunDir, 1, glm::value_ptr(sFrameSunDir));
+    glUniform1f(sUniAlpha, alpha);
     glUniformMatrix4fv(sUniLightViewProj, 1, GL_FALSE, glm::value_ptr(sFrameLightVP));
     glUniform3fv(sUniShadowSunDir, 1, glm::value_ptr(sFrameSunDir));
     glUniform3fv(sUniShadowCamPos, 1, glm::value_ptr(sFrameShadowCamPos));
     glUniform1i(sUniShadowMap, sFrameShadowUnit);
 
-    // Upload the bone palette. Cap at kMaxBones — any rig past that gets
-    // truncated. With 49 bones for the soldier we have lots of headroom.
+    // Upload the bone palette. Cap at kMaxBones -- any rig past that
+    // gets truncated. With 65 bones for the X_Bot rig we have headroom.
     const GLsizei bone_count =
         static_cast<GLsizei>(bone_palette.size() < kMaxBones ? bone_palette.size() : kMaxBones);
     if (bone_count > 0)
-    {
         glUniformMatrix4fv(sUniBones, bone_count, GL_FALSE, glm::value_ptr(bone_palette[0]));
+
+    // Per-draw blend state. Opaque draws keep depth-write on so they
+    // occlude correctly; transparent draws disable depth-write so
+    // overlapping fading corpses don't z-fight. Caller must order
+    // opaque-before-transparent and sort transparent back-to-front.
+    const bool blend_needed = (alpha < 0.999f);
+    if (blend_needed)
+    {
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthMask(GL_FALSE);
+    }
+    else
+    {
+        glDisable(GL_BLEND);
+        glDepthMask(GL_TRUE);
     }
 
     glBindVertexArray(mesh.vao);
     glDrawElements(GL_TRIANGLES, mesh.index_count, GL_UNSIGNED_INT, nullptr);
     glBindVertexArray(0);
-    glUseProgram(0);
 }
 
 } // namespace selva::anim

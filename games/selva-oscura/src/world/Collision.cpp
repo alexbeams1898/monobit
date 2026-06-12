@@ -1,7 +1,7 @@
 #include "world/Collision.h"
 
-#include "Tunables.h"
 #include "WallClock.h"
+#include "debug/Flags.h"
 #include "world/CryptLayout.h"
 #include "world/Terrain.h"
 
@@ -20,12 +20,12 @@ namespace selva::world
 
 namespace
 {
-CollisionScene sScene;
+CollisionRegion sRegion;
 
 FILE* sCollisionLog = nullptr;
 int sCollisionFrame = 0;
 
-// Caller MUST gate on tun.debug_collision_log before invoking to keep
+// Caller MUST gate on selva::debug::flags().collision_log before invoking to keep
 // the disabled-state cost at zero (the type-safe template still
 // instantiates a formatter per call site if not gated). Routed
 // through fmt::format → fwrite rather than the engine::log::Channel
@@ -67,231 +67,64 @@ template <typename... Args> void collisionLog(fmt::format_string<Args...> fmt, A
 // That clear view is where Beatrice's threshold-light is strongest;
 // it is the canonical "look toward the dawn" beat.
 constexpr float kHubBoundaryRadius = 230.0f;
-constexpr float kHubMinTreeSpacing = 3.5f;
-constexpr unsigned int kHubSeed = 0xDA17EU;
+// Tree-scatter constants (walkway/plateau/clear-view AABB bounds,
+// seed, counts, spacing) used to live here as kWalkway* / kAisle* /
+// kPlateau* / kClearView* / kHubSeed / kHubMinTreeSpacing /
+// kAisleTreeCount / kBackgroundTreeCount. Migrated 2026-06-09 to
+// surface/region.json's prop_scatter[] block (mode=aisle + mode=disc
+// rules) which encode the same shape declaratively. Boundary radius
+// stays here because it gates the playable-area disc, not just
+// scatter.
 
-constexpr float kWalkwayHalfWidth = 4.0f;
-constexpr float kAisleOuterX = 14.0f;
-
-// Approach side (spawn -> colle):
-constexpr float kWalkwayStartZ = -5.0f;
-constexpr float kWalkwayEndZ = -110.0f;
-
-// Plateau (hub):
-constexpr float kPlateauStartZ = -190.0f;
-constexpr float kPlateauEndZ = -230.0f;
-constexpr float kPlateauHalfX = 35.0f;
-
-// Clear-view strip behind the plateau. No trees scatter here so the
-// view from the plateau toward the light is uninterrupted.
-constexpr float kClearViewDepth = 60.0f;
-constexpr float kClearViewEndZ = kPlateauEndZ - kClearViewDepth; // -290
-
-constexpr int kAisleTreeCount = 30;      // approach aisle only (was 40 split between two)
-constexpr int kBackgroundTreeCount = 80; // scattered through the wider wood
-
-bool tooCloseToExisting(const std::vector<CylinderCollider>& placed, float x, float z, float radius)
-{
-    for (const auto& c : placed)
-    {
-        const float dx = x - c.center.x;
-        const float dz = z - c.center.z;
-        const float min_dist = radius + c.radius + kHubMinTreeSpacing;
-        if (dx * dx + dz * dz < min_dist * min_dist)
-            return true;
-    }
-    return false;
-}
-
-bool inApproachWalkway(float x, float z)
-{
-    return z <= kWalkwayStartZ && z >= kWalkwayEndZ && std::abs(x) <= kWalkwayHalfWidth;
-}
-
-bool inWalkwayCorridor(float x, float z)
-{
-    return inApproachWalkway(x, z);
-}
-
-bool onPlateau(float x, float z)
-{
-    return z <= kPlateauStartZ && z >= kPlateauEndZ && std::abs(x) <= kPlateauHalfX;
-}
-
-// The clear-view strip immediately behind the plateau. No trees here
-// (not even scatter) so the view from the plateau toward the light
-// is uninterrupted.
-bool inClearViewStrip(float z)
-{
-    return z < kPlateauEndZ && z >= kClearViewEndZ;
-}
-
-// Generic aisle population: lays out trees on either side of a
-// walkway corridor between (z_start, z_end). Jitter randomizes the
-// X and Z within the aisle band so the line isn't ruler-straight.
-void populateAisle(std::mt19937& rng, std::vector<CylinderCollider>& out, float z_start,
-                   float z_end, int tree_count_per_side)
-{
-    std::uniform_real_distribution<float> radius_dist(0.28f, 0.55f);
-    std::uniform_real_distribution<float> x_jitter(-2.5f, 2.5f);
-    std::uniform_real_distribution<float> z_jitter(-1.5f, 1.5f);
-    const float aisle_x_inner = kWalkwayHalfWidth + 1.5f;
-    const float aisle_x_outer = kAisleOuterX;
-    const float step_z = (z_start - z_end) / static_cast<float>(tree_count_per_side);
-    for (int i = 0; i < tree_count_per_side; ++i)
-    {
-        const float z_base = z_start - static_cast<float>(i) * step_z;
-        for (int side = 0; side < 2; ++side)
-        {
-            const float sign = (side == 0) ? -1.0f : 1.0f;
-            std::uniform_real_distribution<float> band(aisle_x_inner, aisle_x_outer);
-            const float x = sign * band(rng) + x_jitter(rng);
-            const float z = z_base + z_jitter(rng);
-            if (inWalkwayCorridor(x, z) || onPlateau(x, z))
-                continue;
-            const float trunk_r = radius_dist(rng);
-            if (tooCloseToExisting(out, x, z, trunk_r))
-                continue;
-            CylinderCollider c;
-            c.center = glm::vec3(x, 0.0f, z);
-            c.radius = trunk_r;
-            c.half_height = 2.0f;
-            out.push_back(c);
-        }
-    }
-}
-
-void populateHubTrees(std::vector<CylinderCollider>& out)
-{
-    std::mt19937 rng(kHubSeed);
-    std::uniform_real_distribution<float> radius_dist(0.28f, 0.55f);
-
-    // Pass 1: dense aisle on the approach (spawn -> colle). The
-    // back side of the colle gets NO mirror aisle - the plateau
-    // looks out onto a clear view through the kClearViewDepth strip.
-    populateAisle(rng, out, kWalkwayStartZ, kWalkwayEndZ, kAisleTreeCount);
-
-    // Pass 2: background scatter through the rest of the wood. Skips
-    // anything inside the walkway corridor, on the plateau, or in
-    // the clear-view strip behind the plateau.
-    {
-        std::uniform_real_distribution<float> angle_dist(0.0f, 2.0f * 3.14159265f);
-        std::uniform_real_distribution<float> radial_dist(0.0f, 1.0f);
-        int placed = 0;
-        int attempts = 0;
-        while (placed < kBackgroundTreeCount && attempts < 8000)
-        {
-            ++attempts;
-            const float u = radial_dist(rng);
-            const float r = std::sqrt(u) * kHubBoundaryRadius;
-            const float a = angle_dist(rng);
-            // Offset the scatter so it spreads around the colle
-            // ridge, not just from world origin. Bias toward the
-            // new plateau midpoint (Z=-210) so flank density tracks
-            // the colle.
-            const float scatter_origin_z = -210.0f;
-            const float x = std::cos(a) * r;
-            const float z = std::sin(a) * r + scatter_origin_z;
-            if (inWalkwayCorridor(x, z) || onPlateau(x, z) || inClearViewStrip(z))
-                continue;
-            // Trees scatter ONLY on the selva_inner terrain region.
-            // Other regions (Limbo, future Inferno layers) are
-            // underground and don't have foliage per the doctrine in
-            // [[project_acheron_river_lore]] — Limbo's "fresh green
-            // grass" canon is gone with Limbo's dysfunction; deeper
-            // circles never had foliage. Skip if this XZ isn't inside
-            // selva_inner.
-            const auto* region = terrainRegionAt(x, z);
-            if (region == nullptr || region->name != "selva_inner")
-                continue;
-            // Keep breathing room around spawn so the wake-zone reads
-            // as "found yourself in a wood" without a tree on top of
-            // the player.
-            if (x * x + z * z < 9.0f)
-                continue;
-            const float trunk_r = radius_dist(rng);
-            if (tooCloseToExisting(out, x, z, trunk_r))
-                continue;
-            CylinderCollider c;
-            c.center = glm::vec3(x, 0.0f, z);
-            c.radius = trunk_r;
-            c.half_height = 2.0f;
-            out.push_back(c);
-            ++placed;
-        }
-    }
-}
-
-// Chapel collision authoring moved to the Jolt-registered crypt.glb
-// mesh (see world/PhysicsScene.cpp::registerChapel). The legacy
-// populateCryptColliders / populateCryptApseCylinders /
-// populateCryptDescent C++ collider authoring was removed
-// 2026-05-24 to end the dual-source-of-truth between mesh and code.
-// See docs/design/audits/chapel_source_audit_2026-05-24.md for the
-// audit + harmonization decision (option H1: mesh authoritative).
+// Chapel collision authoring moved to the chapel_exterior.glb +
+// chapel_interior.glb meshes (loaded by JsonRegion from the surface
+// region's static_meshes array, registered into Jolt at activation).
+// The legacy populateCryptColliders / populateCryptApseCylinders /
+// populateCryptDescent C++ collider authoring was removed 2026-05-24
+// to end the dual-source-of-truth between mesh and code. See
+// docs/design/audits/chapel_source_audit_2026-05-24.md for the audit
+// + harmonization decision (option H1: mesh authoritative).
 //
 // If new architecture needs collision, author it in the chapel .blend
-// (regenerate via games/selva-oscura/scripts/blender/gen_crypt_*.sh)
+// (regenerate via games/selva-oscura/scripts/blender/gen_crypt_*.py)
 // rather than re-introducing C++ collider duplicates here.
 
 } // namespace
 
-void initHubScene()
+void initHubRegion()
 {
-    sScene.cylinders.clear();
-    sScene.boxes.clear();
+    sRegion.cylinders.clear();
+    sRegion.boxes.clear();
     // Boundary disc centered on the colle plateau midpoint (Z=-210)
     // so the playable area covers spawn, the colle, and the
     // clear-view strip + back forest behind it.
-    sScene.boundary_center = glm::vec2(0.0f, -210.0f);
-    sScene.boundary_radius = kHubBoundaryRadius;
-    populateHubTrees(sScene.cylinders);
-    // Chapel collision is owned by the Jolt-registered crypt.glb mesh
-    // (see world/PhysicsScene.cpp::registerChapel). The legacy
+    sRegion.boundary_center = glm::vec2(0.0f, -210.0f);
+    sRegion.boundary_radius = kHubBoundaryRadius;
+    // Chapel collision is owned by the chapel_exterior.glb +
+    // chapel_interior.glb meshes (loaded by JsonRegion from the
+    // surface region's static_meshes array). The legacy
     // populateCryptColliders / populateCryptApseCylinders /
     // populateCryptDescent C++ collider authoring was removed
     // 2026-05-24 to end the dual-source-of-truth between mesh and
     // code; see docs/design/audits/chapel_source_audit_2026-05-24.md.
-
-    // Authored framing around the crypt's façade. All four are
-    // hero `pine_a` (variant 0) — no real cypress in the pack yet.
-    // Outer pair flanks the front face at Z=-207; inner pair sits
-    // BEHIND the outer pair along the long wall at Z=-217, smaller
-    // scale for depth layering.
-    constexpr int kPineVariant = 0;
-    constexpr float kFrontTreeZ = -207.0f;
-    constexpr float kBackTreeZ = -210.0f; // ~3m behind the bigs, canopy gap ~1m
-
-    constexpr float kBigScale = 0.9f;
-    constexpr float kBigOffsetX = 5.5f;
-    for (const float sx : {-1.0f, 1.0f})
-    {
-        CylinderCollider t;
-        t.center = glm::vec3(sx * kBigOffsetX, 0.0f, kFrontTreeZ);
-        t.radius = 0.4f;
-        t.half_height = 6.0f;
-        t.forced_variant_idx = kPineVariant;
-        t.forced_scale = kBigScale;
-        sScene.cylinders.push_back(t);
-    }
-
-    constexpr float kSmallScale = 0.6f;
-    constexpr float kSmallOffsetX = 5.5f; // align X with the big pair so smalls sit directly behind
-    for (const float sx : {-1.0f, 1.0f})
-    {
-        CylinderCollider t;
-        t.center = glm::vec3(sx * kSmallOffsetX, 0.0f, kBackTreeZ);
-        t.radius = 0.3f;
-        t.half_height = 4.0f;
-        t.forced_variant_idx = kPineVariant;
-        t.forced_scale = kSmallScale;
-        sScene.cylinders.push_back(t);
-    }
+    //
+    // Tree cylinders (chapel-facade authored framing + procgen
+    // aisle + procgen background scatter) used to live here as
+    // C++ literals + the populateHubTrees / populateAisle helpers.
+    // Migrated 2026-06-09 to surface/region.json
+    // `props[]` + `prop_scatter[]` through the PropArchetype
+    // pipeline. All tree cylinders are appended to sRegion.cylinders
+    // by spawnAllRegionProps() at boot, AFTER this function runs.
 }
 
-const CollisionScene& currentScene()
+const CollisionRegion& currentRegion()
 {
-    return sScene;
+    return sRegion;
+}
+
+CollisionRegion& mutableCurrentRegion()
+{
+    return sRegion;
 }
 
 namespace
@@ -373,15 +206,15 @@ bool pushOutOneBox(const BoxCollider& b, int box_idx, int pass, float body_radiu
 // radial axis so the body's footprint stays fully inside.
 void clampToBoundary(glm::vec2& body_xz, float body_radius)
 {
-    if (sScene.boundary_radius <= 0.0f)
+    if (sRegion.boundary_radius <= 0.0f)
         return;
-    const glm::vec2 delta = body_xz - sScene.boundary_center;
+    const glm::vec2 delta = body_xz - sRegion.boundary_center;
     const float dist_sq = glm::dot(delta, delta);
-    const float max_dist = sScene.boundary_radius - body_radius;
+    const float max_dist = sRegion.boundary_radius - body_radius;
     if (max_dist > 0.0f && dist_sq > max_dist * max_dist && dist_sq > 1e-8f)
     {
         const float dist = std::sqrt(dist_sq);
-        body_xz = sScene.boundary_center + (delta / dist) * max_dist;
+        body_xz = sRegion.boundary_center + (delta / dist) * max_dist;
     }
 }
 } // namespace
@@ -389,7 +222,7 @@ void clampToBoundary(glm::vec2& body_xz, float body_radius)
 void resolveBodyCollision(glm::vec2& body_xz, float body_radius)
 {
     const glm::vec2 entry_pos = body_xz;
-    const bool log_on = selva::tuning::current().debug_collision_log;
+    const bool log_on = selva::debug::flags().collision_log;
     if (log_on)
     {
         ++sCollisionFrame;
@@ -405,14 +238,14 @@ void resolveBodyCollision(glm::vec2& body_xz, float body_radius)
     {
         bool any_push = false;
         int cyl_idx = 0;
-        for (const auto& c : sScene.cylinders)
+        for (const auto& c : sRegion.cylinders)
         {
             if (pushOutOneCylinder(c, cyl_idx, pass, body_radius, log_on, body_xz))
                 any_push = true;
             ++cyl_idx;
         }
         int box_idx = 0;
-        for (const auto& b : sScene.boxes)
+        for (const auto& b : sRegion.boxes)
         {
             if (pushOutOneBox(b, box_idx, pass, body_radius, log_on, body_xz))
                 any_push = true;
@@ -436,9 +269,9 @@ namespace
 constexpr float kRayEpsilon = 1e-6f;
 
 // Ray vs axis-aligned Y cylinder. Sphere_radius is ignored at this
-// level — the caller (raycastScene) reports the t at which the RAY
+// level — the caller (raycastRegion) reports the t at which the RAY
 // CENTER enters the cylinder, and the camera-side iterative push-out
-// (sphereOverlapsScene) handles the buffer around the camera.
+// (sphereOverlapsRegion) handles the buffer around the camera.
 //
 // Pre-existing overlap (origin already inside the cylinder) is NOT
 // reported as a hit: the camera-pull-in caller would interpret
@@ -517,9 +350,9 @@ bool intersectAabbSlab(float o, float d, float mn, float mx, float& t_near, floa
 }
 
 // Ray vs axis-aligned 3D box (slab method). Sphere_radius is ignored
-// at this level — the caller (raycastScene) reports the t at which
+// at this level — the caller (raycastRegion) reports the t at which
 // the RAY CENTER enters the box, and the camera-side iterative
-// push-out (sphereOverlapsScene) handles the buffer around the
+// push-out (sphereOverlapsRegion) handles the buffer around the
 // camera. Returns t >= 0 on hit, or -1 on miss. If the origin is
 // inside the box (camera literally inside a wall — pathological),
 // returns 0 so the caller falls back to the player position.
@@ -586,21 +419,21 @@ bool sphereOverlapsAabb(const glm::vec3& center, float radius, const BoxCollider
 }
 } // namespace
 
-bool sphereOverlapsScene(const CollisionScene& scene, const glm::vec3& center, float radius)
+bool sphereOverlapsRegion(const CollisionRegion& region, const glm::vec3& center, float radius)
 {
     if (radius <= 0.0f)
         return false;
-    for (const auto& c : scene.cylinders)
+    for (const auto& c : region.cylinders)
         if (sphereOverlapsCylinder(center, radius, c))
             return true;
-    for (const auto& b : scene.boxes)
+    for (const auto& b : region.boxes)
         if (sphereOverlapsAabb(center, radius, b))
             return true;
     return false;
 }
 
-RaycastHit raycastScene(const CollisionScene& scene, const glm::vec3& origin,
-                        const glm::vec3& direction, float max_distance)
+RaycastHit raycastRegion(const CollisionRegion& region, const glm::vec3& origin,
+                         const glm::vec3& direction, float max_distance)
 {
     RaycastHit result;
     const float dir_len_sq = glm::dot(direction, direction);
@@ -610,7 +443,7 @@ RaycastHit raycastScene(const CollisionScene& scene, const glm::vec3& origin,
 
     float best = max_distance;
     bool any = false;
-    for (const auto& c : scene.cylinders)
+    for (const auto& c : region.cylinders)
     {
         const float t = intersectCylinder(origin, dir, c, best, 0.0f);
         if (t >= 0.0f && t < best)
@@ -619,7 +452,7 @@ RaycastHit raycastScene(const CollisionScene& scene, const glm::vec3& origin,
             any = true;
         }
     }
-    for (const auto& b : scene.boxes)
+    for (const auto& b : region.boxes)
     {
         const float t = intersectAabb(origin, dir, b, best, 0.0f);
         if (t >= 0.0f && t < best)

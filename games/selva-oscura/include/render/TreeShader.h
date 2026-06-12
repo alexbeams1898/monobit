@@ -31,6 +31,14 @@ void setTreeBaseColor(std::uint32_t tex);
 // Per-draw alpha-test threshold. Trunks: 0 (no test). Branches: ~0.5.
 void setTreeAlphaCutoff(float cutoff);
 
+// Per-frame foliage tint multiplier. Applied as base.rgb *= tint
+// in the fragment shader, AFTER texture sample and BEFORE lighting.
+// Identity = vec3(1.0); dead-wood = warm grey-brown values < 1.0.
+// Per wood.md: the wood begins dead and heals as keepers fall;
+// today this is a global value; future restoration plumbs it per-
+// region or per-keeper-progress.
+void setTreeFoliageTint(const glm::vec3& tint);
+
 // Drive the time-uniform for wind. Pass selva::wallClock() each frame.
 void setTreeTime(float t);
 

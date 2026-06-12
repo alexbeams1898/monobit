@@ -78,7 +78,7 @@ float poseMatchStartFromLoco(const selva::anim::AnimationClip& new_clip, float w
 
 bool isMovingLocoClip(const std::string& name)
 {
-    return name == "walking" || name == "running" || name == "run_to_stop";
+    return name == "walking" || name == "jogging" || name == "sprinting" || name == "run_to_stop";
 }
 
 void cacheRightHandPos(const selva::anim::PoseSampler& sampler)

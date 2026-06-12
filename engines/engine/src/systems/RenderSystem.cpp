@@ -147,23 +147,36 @@ void RenderSystem::resize(int windowW, int windowH)
     glViewport(0, 0, windowW, windowH);
 }
 
+// Inputs to buildSrcRect: source-texture rect + total texture dims + flips.
+struct SrcRectInput
+{
+    int src_x, src_y, src_w, src_h;
+    int tex_w, tex_h;
+    bool flip_x, flip_y;
+};
+// Output UV rect (origin + extents; extents may be negative when flipped).
+struct SrcRectUV
+{
+    float x, y, w, h;
+};
 // Half-texel inset so GL_NEAREST always samples texel centers, not edges.
 // Non-power-of-2 textures (e.g. 3328px) produce repeating-decimal UVs in
 // float32 that can round to the adjacent texel at certain draw scales.
-static void buildSrcRect(int src_x, int src_y, int src_w, int src_h, int tex_w, int tex_h,
-                         bool flip_x, bool flip_y, float& uvX, float& uvY, float& uvW, float& uvH)
+static SrcRectUV buildSrcRect(const SrcRectInput& in)
 {
-    const float tw = static_cast<float>(tex_w > 0 ? tex_w : 1);
-    const float th = static_cast<float>(tex_h > 0 ? tex_h : 1);
+    const float tw = static_cast<float>(in.tex_w > 0 ? in.tex_w : 1);
+    const float th = static_cast<float>(in.tex_h > 0 ? in.tex_h : 1);
     constexpr float HALF = 0.5f;
-    const float x0 = (static_cast<float>(src_x) + HALF) / tw;
-    const float x1 = (static_cast<float>(src_x + src_w) - HALF) / tw;
-    const float y0 = (static_cast<float>(src_y) + HALF) / th;
-    const float y1 = (static_cast<float>(src_y + src_h) - HALF) / th;
-    uvX = flip_x ? x1 : x0;
-    uvW = flip_x ? -(x1 - x0) : (x1 - x0);
-    uvY = flip_y ? y1 : y0;
-    uvH = flip_y ? -(y1 - y0) : (y1 - y0);
+    const float x0 = (static_cast<float>(in.src_x) + HALF) / tw;
+    const float x1 = (static_cast<float>(in.src_x + in.src_w) - HALF) / tw;
+    const float y0 = (static_cast<float>(in.src_y) + HALF) / th;
+    const float y1 = (static_cast<float>(in.src_y + in.src_h) - HALF) / th;
+    SrcRectUV out;
+    out.x = in.flip_x ? x1 : x0;
+    out.w = in.flip_x ? -(x1 - x0) : (x1 - x0);
+    out.y = in.flip_y ? y1 : y0;
+    out.h = in.flip_y ? -(y1 - y0) : (y1 - y0);
+    return out;
 }
 
 struct DrawEntry
@@ -187,6 +200,96 @@ struct DrawEntry
     bool geo_mirror_x;
 };
 
+// Resolve texture id + dimensions for a sprite entity. Returns the
+// runtime tex id; writes dims via out params. Pre-baked-composite
+// path derives dims from Animation layout.
+static uint32_t resolveTextureBinding(EntityManager& em, TextureManager& tm, entt::entity entity,
+                                      const Sprite& sprite, int& tex_w, int& tex_h)
+{
+    const uint32_t tex_id =
+        sprite.texture_path.empty() ? sprite.texture_id : tm.load(sprite.texture_path);
+    if (!sprite.texture_path.empty())
+        tm.getDimensions(sprite.texture_path, tex_w, tex_h);
+    else if (const auto* anim = em.registry().try_get<Animation>(entity))
+    {
+        tex_w = anim->frame_width * anim->max_frames_per_state * anim->direction_count;
+        tex_h = anim->frame_height * anim->row_count;
+    }
+    return tex_id;
+}
+
+// Tint result: tr/tg/tb/ta + whether SolidColor took over (renders as
+// untextured fill in the draw loop).
+struct TintResult
+{
+    float tr = 1.0f, tg = 1.0f, tb = 1.0f, ta = 1.0f;
+    bool is_solid = false;
+};
+static TintResult resolveTint(EntityManager& em, entt::entity entity)
+{
+    TintResult r;
+    computeTint(em, entity, r.tr, r.tg, r.tb);
+    auto& reg = em.registry();
+    if (const auto* particle = reg.try_get<Particle>(entity))
+    {
+        const float t = particle->age / particle->lifetime;
+        r.ta = (1.0f - t) * (1.0f - t);
+    }
+    if (reg.all_of<SolidColor>(entity))
+    {
+        const auto& sc = reg.get<SolidColor>(entity);
+        r.tr = sc.r;
+        r.tg = sc.g;
+        r.tb = sc.b;
+        r.is_solid = true;
+    }
+    return r;
+}
+
+// Resolve flip flags: sprite-default unless overridden by FacingDirection.
+static void resolveFlips(EntityManager& em, entt::entity entity, const Sprite& sprite, bool& flip_x,
+                         bool& flip_y)
+{
+    auto& reg = em.registry();
+    flip_x = sprite.flip_x;
+    flip_y = false;
+    if (!reg.all_of<Animation>(entity) && reg.all_of<FacingDirection>(entity))
+    {
+        const auto& facing = reg.get<FacingDirection>(entity);
+        flip_x = facing.render_dx < -0.1f;
+        flip_y = facing.render_dy < -0.1f;
+    }
+}
+
+// Interpolate transform position toward the next frame for sub-tick
+// smoothness; rounds to whole pixels.
+static void resolveInterpolatedPos(EntityManager& em, entt::entity entity,
+                                   const Transform& transform, float alpha, float& drawX,
+                                   float& drawY)
+{
+    drawX = transform.x;
+    drawY = transform.y;
+    if (const auto* prev = em.registry().try_get<PreviousTransform>(entity))
+    {
+        drawX = prev->x + (transform.x - prev->x) * alpha;
+        drawY = prev->y + (transform.y - prev->y) * alpha;
+    }
+    drawX = std::round(drawX);
+    drawY = std::round(drawY);
+}
+
+// Glow extras: scale + alpha if a Glow component is attached.
+static void resolveGlow(EntityManager& em, entt::entity entity, float& glowScale, float& glowAlpha)
+{
+    glowScale = 0.0f;
+    glowAlpha = 0.0f;
+    if (const auto* glow = em.registry().try_get<Glow>(entity))
+    {
+        glowScale = glow->scale;
+        glowAlpha = glow->alpha;
+    }
+}
+
 static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::entity entity,
                                  const Transform& transform, const Sprite& sprite, float alpha,
                                  DrawEntry& out)
@@ -195,79 +298,24 @@ static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::en
     if (sprite.texture_path.empty() && sprite.texture_id == 0 && !hasSolidColor)
         return false;
 
-    const uint32_t tex_id =
-        sprite.texture_path.empty() ? sprite.texture_id : tm.load(sprite.texture_path);
     int tex_w = 0, tex_h = 0;
-    if (!sprite.texture_path.empty())
-    {
-        tm.getDimensions(sprite.texture_path, tex_w, tex_h);
-    }
-    else if (const auto* anim = em.registry().try_get<Animation>(entity))
-    {
-        // Pre-baked composite: derive sheet dims from animation layout.
-        tex_w = anim->frame_width * anim->max_frames_per_state * anim->direction_count;
-        tex_h = anim->frame_height * anim->row_count;
-    }
+    const uint32_t tex_id = resolveTextureBinding(em, tm, entity, sprite, tex_w, tex_h);
+    const TintResult tint = resolveTint(em, entity);
+    bool flip_x = false, flip_y = false;
+    resolveFlips(em, entity, sprite, flip_x, flip_y);
 
-    auto& reg = em.registry();
-
-    float tr = 1.0f, tg = 1.0f, tb = 1.0f;
-    float ta = 1.0f;
-    computeTint(em, entity, tr, tg, tb);
-
-    if (const auto* particle = reg.try_get<Particle>(entity))
-    {
-        const float t = particle->age / particle->lifetime;
-        ta = (1.0f - t) * (1.0f - t);
-    }
-
-    bool flip_x = sprite.flip_x;
-    bool flip_y = false;
-    if (!reg.all_of<Animation>(entity) && reg.all_of<FacingDirection>(entity))
-    {
-        const auto& facing = reg.get<FacingDirection>(entity);
-        flip_x = facing.render_dx < -0.1f;
-        flip_y = facing.render_dy < -0.1f;
-    }
-
-    bool is_solid = false;
-    if (reg.all_of<SolidColor>(entity))
-    {
-        const auto& sc = reg.get<SolidColor>(entity);
-        tr = sc.r;
-        tg = sc.g;
-        tb = sc.b;
-        is_solid = true;
-    }
-
-    float drawX = transform.x, drawY = transform.y;
-    if (const auto* prev = reg.try_get<PreviousTransform>(entity))
-    {
-        drawX = prev->x + (transform.x - prev->x) * alpha;
-        drawY = prev->y + (transform.y - prev->y) * alpha;
-    }
-    drawX = std::round(drawX);
-    drawY = std::round(drawY);
+    float drawX = 0.0f, drawY = 0.0f;
+    resolveInterpolatedPos(em, entity, transform, alpha, drawX, drawY);
 
     const float scale = transform.scale;
-
-    const Collider* col = reg.try_get<Collider>(entity);
-
-    float yOffset = 0.0f;
-    if (col)
-        yOffset = (static_cast<float>(sprite.src_h) * scale - col->height) * 0.5f;
-
+    const Collider* col = em.registry().try_get<Collider>(entity);
+    const float yOffset =
+        col ? (static_cast<float>(sprite.src_h) * scale - col->height) * 0.5f : 0.0f;
     const float sortY =
         sprite.use_sort_anchor ? sprite.sort_anchor : (col ? drawY + col->height * 0.5f : drawY);
-    const int subLayer = sprite.sub_layer;
 
-    float glowScale = 0.0f;
-    float glowAlpha = 0.0f;
-    if (const auto* glow = reg.try_get<Glow>(entity))
-    {
-        glowScale = glow->scale;
-        glowAlpha = glow->alpha;
-    }
+    float glowScale = 0.0f, glowAlpha = 0.0f;
+    resolveGlow(em, entity, glowScale, glowAlpha);
 
     out = {drawX - static_cast<float>(sprite.src_w) * scale * 0.5f,
            drawY - static_cast<float>(sprite.src_h) * scale * 0.5f - yOffset,
@@ -277,18 +325,18 @@ static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::en
            sprite.src_w,
            sprite.src_h,
            sprite.layer,
-           subLayer,
+           sprite.sub_layer,
            tex_id,
            tex_w,
            tex_h,
-           tr,
-           tg,
-           tb,
+           tint.tr,
+           tint.tg,
+           tint.tb,
            flip_x,
            flip_y,
-           is_solid,
+           tint.is_solid,
            scale,
-           ta,
+           tint.ta,
            glowScale,
            glowAlpha,
            sprite.rotation,
@@ -380,10 +428,9 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
             {
                 glBindTexture(GL_TEXTURE_2D, e.tex_id);
 
-                float uvX = 0.0f, uvY = 0.0f, uvW = 0.0f, uvH = 0.0f;
-                buildSrcRect(e.src_x, e.src_y, e.src_w, e.src_h, e.tex_w, e.tex_h, e.flip_x,
-                             e.flip_y, uvX, uvY, uvW, uvH);
-                glUniform4f(sLocSrcRect, uvX, uvY, uvW, uvH);
+                const SrcRectUV uv = buildSrcRect(
+                    {e.src_x, e.src_y, e.src_w, e.src_h, e.tex_w, e.tex_h, e.flip_x, e.flip_y});
+                glUniform4f(sLocSrcRect, uv.x, uv.y, uv.w, uv.h);
             }
 
             glUniform4f(sLocTint, e.tr, e.tg, e.tb, e.ta);

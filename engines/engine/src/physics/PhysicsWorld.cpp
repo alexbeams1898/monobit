@@ -2,6 +2,8 @@
 
 #include "log/Log.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <chrono>
 #include <cmath>
 #include <cstdarg>
@@ -260,65 +262,63 @@ void shutdownPhysics()
     sInit = false;
 }
 
+// Step one CharacterVirtual: gravity into velocity (free-fall accumulates,
+// on-ground resets Y), then ExtendedUpdate with stick-to-floor disabled.
+static void stepOneCharacter(JPH::CharacterVirtual* ch, float step)
+{
+    JPH::Vec3 v = ch->GetLinearVelocity();
+    using GS = JPH::CharacterVirtual::EGroundState;
+    const bool on_ground = (ch->GetGroundState() == GS::OnGround);
+    if (on_ground)
+        v = JPH::Vec3(v.GetX(), 0.0f, v.GetZ());
+    else
+        v += sPhysics->GetGravity() * step;
+    ch->SetLinearVelocity(v);
+
+    JPH::CharacterVirtual::ExtendedUpdateSettings settings;
+    settings.mStickToFloorStepDown = JPH::Vec3::sZero();
+    {
+        ZoneScopedN("physics-ExtendedUpdate");
+        ch->ExtendedUpdate(step, sPhysics->GetGravity(), settings,
+                           sPhysics->GetDefaultBroadPhaseLayerFilter(Layers::MOVING),
+                           sPhysics->GetDefaultLayerFilter(Layers::MOVING), {}, {}, *sTempAlloc);
+    }
+}
+
+// Step every registered character. Reports total count to Tracy.
+static void stepAllCharacters(float step)
+{
+    ZoneScopedN("physics-character-loop");
+    int character_count = 0;
+    for (const auto& kv : sHandles)
+    {
+        if (kv.second.kind != HandleEntry::Kind::Character || !kv.second.character)
+            continue;
+        ZoneScopedN("physics-character-step");
+        ++character_count;
+        stepOneCharacter(kv.second.character, step);
+    }
+    TracyPlot("physics-character-count", static_cast<int64_t>(character_count));
+}
+
 void updatePhysics(float dt)
 {
+    ZoneScopedN("physics-updatePhysics");
     if (!sInit)
         return;
-    // Jolt prefers fixed sub-steps for stability. ~60Hz internal step,
-    // up to 4 collision sub-steps per frame call.
     constexpr int cMaxSubSteps = 4;
     constexpr float cFixedDt = 1.0f / 60.0f;
     float remaining = dt;
     int steps = 0;
     while (remaining > 0.0f && steps < cMaxSubSteps)
     {
+        ZoneScopedN("physics-substep");
         const float step = remaining > cFixedDt ? cFixedDt : remaining;
-        sPhysics->Update(step, 1, sTempAlloc.get(), sJobSystem.get());
-        // Update character controllers — they're separate from body sim.
-        for (auto& kv : sHandles)
         {
-            if (kv.second.kind == HandleEntry::Kind::Character && kv.second.character)
-            {
-                // Apply gravity to velocity before stepping. Jolt's
-                // CharacterVirtual doesn't auto-accelerate the
-                // capsule — the inGravity parameter to ExtendedUpdate
-                // is for ground-body impulse reaction, not character
-                // motion. Standard Jolt sample pattern: accumulate
-                // gravity when in air; reset Y to 0 when supported
-                // (else gravity keeps adding to it while standing).
-                JPH::CharacterVirtual* ch = kv.second.character;
-                JPH::Vec3 v = ch->GetLinearVelocity();
-                using GS = JPH::CharacterVirtual::EGroundState;
-                const bool on_ground = (ch->GetGroundState() == GS::OnGround);
-                if (on_ground)
-                {
-                    // Reset vertical velocity when supported (else
-                    // gravity accumulates while standing).
-                    v = JPH::Vec3(v.GetX(), 0.0f, v.GetZ());
-                }
-                else
-                {
-                    // Free-fall: accumulate gravity into velocity.
-                    v += sPhysics->GetGravity() * step;
-                }
-                ch->SetLinearVelocity(v);
-
-                // EnhancedInternalEdgeRemoval is set at character
-                // creation (see addCharacter); no per-frame toggle.
-                JPH::CharacterVirtual::ExtendedUpdateSettings settings;
-                // Disable stick-to-floor entirely. Every drop is
-                // free-fall under gravity, no matter how small.
-                // Jolt's default mStickToFloorStepDown is (0, -0.5, 0)
-                // which makes the capsule snap onto any surface up to
-                // 0.5m below — gamey, anti-physics. Real falls (curb,
-                // stair edge, hill rim) should always trigger gravity.
-                settings.mStickToFloorStepDown = JPH::Vec3::sZero();
-                ch->ExtendedUpdate(step, sPhysics->GetGravity(), settings,
-                                   sPhysics->GetDefaultBroadPhaseLayerFilter(Layers::MOVING),
-                                   sPhysics->GetDefaultLayerFilter(Layers::MOVING), {}, {},
-                                   *sTempAlloc);
-            }
+            ZoneScopedN("physics-jolt-body-sim");
+            sPhysics->Update(step, 1, sTempAlloc.get(), sJobSystem.get());
         }
+        stepAllCharacters(step);
         remaining -= step;
         ++steps;
     }
@@ -654,8 +654,12 @@ RayHit raycast(const glm::vec3& origin, const glm::vec3& direction, float max_di
     if (!any)
         return hit;
 
-    // Filter out ignored body.
-    (void)ignore; // TODO: BodyFilter for ignore; rare in our usage so far
+    // `ignore` would map to a Jolt BodyFilter that skips a specific
+    // body during the cast; current callers never request it (raycasts
+    // are aimed at known geometry, not at "anything except self"), so
+    // the parameter is silenced. Wire the BodyFilter through if a
+    // caller needs it.
+    (void)ignore;
 
     hit.hit = true;
     hit.distance = result.mFraction * max_distance;

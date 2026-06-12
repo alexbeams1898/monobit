@@ -2,6 +2,8 @@
 
 #include "gameplay/Perception.h"
 
+#include <glm/vec3.hpp>
+
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -16,6 +18,14 @@ namespace selva::gameplay
 {
 
 struct Actor;
+
+// Compute the yaw that points actor_pos toward target_pos (XZ plane,
+// engine yaw convention). Returns 0.0 when actor and target are at
+// the same XZ position so callers don't get a spurious yaw kick at
+// zero distance. Shared by the behavior-tree leaves AND the
+// gameplay-side yaw-acknowledgment overlay; lives here so any new
+// caller has a single function to reach for.
+float yawFacing(const glm::vec3& actor_pos, const glm::vec3& target_pos);
 
 // Return value from a behavior-tree node tick. The semantics mirror
 // the standard BT convention used by Unreal's BTService, Unity
@@ -136,6 +146,19 @@ class IfAwarenessAtLeast : public Node
 
   private:
     Awareness min_required;
+};
+
+// Leaf -- scripted-event walk toward Actor.scripted_target_pos. When
+// the target is set (squared distance from spawn > 0), drive intent
+// toward it; stop and clear when within scripted_stop_range. Used
+// by the Guide-rescue Scene and any future "NPC walks to authored
+// position" event. Succeeds when the target is active (returns
+// before any Selector falls through to LeafIdle); Failure when no
+// target is set, letting the next branch handle the frame.
+class LeafFollowScriptedTarget : public Node
+{
+  public:
+    NodeResult tick(Actor& actor, const selva::tuning::Tunables& tun) override;
 };
 
 // Leaf — pick a legal action from the actor's archetype, fire its

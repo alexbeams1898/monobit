@@ -351,13 +351,19 @@ void Engine::renderLoadingFrame(const char* status_text)
     if (!window || !gl_context)
         return;
 
-    // First call: just set current step. Subsequent calls: move the
-    // previous current to completed, then set new current. Each call
-    // is one frame's worth of work (clear + 1 ImGui window + swap),
-    // not one frame per text change.
-    if (!sLoadingCurrentStep.empty())
-        sLoadingCompletedSteps.push_back(sLoadingCurrentStep);
-    sLoadingCurrentStep = status_text ? status_text : "";
+    // First call: just set current step. Subsequent calls with a NEW
+    // status_text: move the previous current to completed, then set
+    // new current. Subsequent calls with the SAME status_text (e.g.
+    // a busy-loop redrawing the screen while a worker thread runs)
+    // just redraw the same frame -- no list churn. Each call is one
+    // frame's worth of work (clear + 1 ImGui window + swap).
+    const std::string incoming = status_text ? status_text : "";
+    if (incoming != sLoadingCurrentStep)
+    {
+        if (!sLoadingCurrentStep.empty())
+            sLoadingCompletedSteps.push_back(sLoadingCurrentStep);
+        sLoadingCurrentStep = incoming;
+    }
 
     // Pump SDL events so Windows doesn't mark the window unresponsive.
     SDL_Event event;

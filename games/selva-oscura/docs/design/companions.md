@@ -18,25 +18,45 @@ Locked at story.md *The Guide / Functions* and *Geography*:
 
 - **Wood-side presence (real body).** The Guide is in the Wood
   between runs. The Vagrant interacts with him in the hub. Provides
-  warmth, dialogue, and access to OFFERINGS (stat upgrades for class-
-  pickers).
+  warmth, dialogue, and presence — the Crucible / Censer is portable
+  and works anywhere, so the Guide is no longer the gating
+  interaction for leveling, but his Wood-side presence remains the
+  emotional anchor for the player's return.
 - **Hell-side projections.** Per-keeper interludes (between a circle's
   play segment and its boss), the Guide appears as a projection
   sustained by Beatrice's intervention. Offers heal (sangue-for-heal,
-  RELIC-equivalent) and OFFERINGS access. The Guide is not aware of
-  the cosmological role these functions play; he believes he is
-  providing standard guide-services.
-- **Degradation across cycles.** As keepers fall, leaked contrapasso
-  routes through the channel Beatrice constructed and erodes him. The
-  Hell-projection fails first (cracks at keepers 4-6, rare at 7-8,
-  stops entirely after all 9). The Wood-body holds longer (visibly
-  tired by 4-6, forgets the Vagrant's path by 7-8, fully degraded at
-  all 9 keepers down). Full degradation table in story.md.
+  RELIC-equivalent) and dialogue. The Guide is not aware of the
+  cosmological role these functions play; he believes he is providing
+  standard guide-services.
+- **Degradation across cycles.** As keepers fall and contrapasso
+  restores to each consumed circle (per setting.md *Per-circle
+  reactivity*), some of the restored substance routes through the
+  channel Beatrice constructed in him for the projection function.
+  The channel doubles as a contrapasso conduit — substance moving
+  through erodes the vessel because the vessel was not built for
+  it. The Hell-projection fails first (cracks at keepers 4-6, rare
+  at 7-8, stops entirely after all 9). The Wood-body holds longer
+  (visibly tired by 4-6, forgets the Vagrant's path by 7-8, fully
+  degraded at all 9 keepers down). Full degradation table in
+  story.md.
+- **Parallel saturation with Beatrice (unburdened context).** On the
+  unburdened path, the Guide's degradation has a structural mirror
+  in Beatrice's transformation toward Satan-of-Paradiso (per
+  setting.md *Sangue saturation of Beatrice*). Both are
+  Beatrice-substrate eroded / corrupted by substance moving through
+  Beatrice-constructed infrastructure. The Guide is the channel; her
+  reservoir is the body. Substance flows from the unburdened Vagrant
+  through both. The class-picker still witnesses the Guide's
+  degradation (the conduit still erodes from the contrapasso
+  restoring through it), but his path does not also corrupt
+  Beatrice; that mirror is unburdened-exclusive.
 - **Climax encounter.** After all 9 keepers fall, the Vagrant
   returns to the Wood. Class-picker path: combat (Guide attacks,
   cycling through 9 circles' contrapasso patterns; Vagrant kills
-  him). Unburdened path: handover (Guide hands over the Hand without
-  resistance; fades; no fight).
+  him). Unburdened path: handover (Guide passes the relic without
+  resistance; fades; no fight). The specific form of the relic the
+  Guide leaves behind at his death is TBD (see story.md *What the
+  Guide leaves behind*).
 
 ## Beatrice is not a companion
 
@@ -65,7 +85,7 @@ Constraints:
 - The Guide must be implementable as an entity in the same pool as
   player and enemies (entity symmetry rule). He is data, not type.
 - His Hell-projection appearances are not full combat encounters
-  (until the climax); they are interaction points (heal, OFFERINGS).
+  (until the climax); they are interaction points (heal, dialogue).
 - His climax combat profile cycles through 9 circles' contrapasso
   patterns — this is an authored boss, not procedural.
 
@@ -95,11 +115,12 @@ interacts with. State that matters:
 ## Cross-references
 
 - [Story](story.md) — *The Guide* (full character: Identity, Geography,
-  Functions, Degradation, Climax, The Hand).
+  Functions, Degradation, Climax, the Guide's relic).
 - [Setting](setting.md) — *The Guide* (cosmological role).
 - [PC vs NPC](pc-vs-npc.md) — companions are NPCs sharing the Entity
   struct with the player. Mechanically symmetric.
 - [Dialogue](dialogue.md) — Guide's dialogue volume is the largest
   in the game.
-- [Inventory](inventory.md) — the Hand replaces the Guide's
-  Wood-Guide functions after his death (path-specific).
+- [Inventory](inventory.md) — the relic the Guide leaves at his
+  death (form TBD); the Crucible / Censer handle leveling, which
+  is portable from Beat 4 onward.

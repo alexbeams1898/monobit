@@ -9,7 +9,8 @@
 
 Locked at setting.md *Second death*. Summary:
 
-- **Mechanics on Vagrant-killed:** wallet sangue returns to Hell
+- **Mechanics on Vagrant-killed:** uncommitted vessel contents
+  (Crucible's or Censer's currently-held substance) return to Hell
   (unrecoverable); stats / lifetime sangue / riversato persist.
   Cycle structure (setting.md *Cycle structure*) governs what
   resets vs. what persists.
@@ -21,12 +22,9 @@ Locked at setting.md *Second death*. Summary:
           NOT YET
   THOU DOST NOT BELONG
   ```
-  *NOT YET* (top, large, modern register) — the player-at-the-
-  controller refusing finality. *THOU DOST NOT BELONG* (bottom,
-  smaller, Early Modern register) — Hell's voice, echoing Charon's
-  *non sei di qua* (Inf. III.88).
-- **Both lines are the player's voice in two registers** under R5
-  (player-as-Hell). Retroactive reveal at the final scene.
+  *NOT YET* (top, large, modern register) — refusing finality.
+  *THOU DOST NOT BELONG* (bottom, smaller, Early Modern register) —
+  echoing Charon's *non sei di qua* (Inf. III.88).
 - **Run-stats screen follows** with no header text — full pixel budget
   for data (sangue lost, kills, keepers felled this run, etc.). Term
   *sangue* enters vocabulary in this screen, not on the death-card.
@@ -49,34 +47,39 @@ Locked at setting.md *Second death*. Summary:
   carry forward. Stat investments persist. Riversato lifetime total
   persists. Keepers felled persist (a felled keeper does not
   respawn). NPC encounter history and Grimoire unlocks persist.
-- **Wallet sangue does not persist.** Lost on death (returned to
-  Hell). The only way to obtain more is to extract from new shades
-  and keepers.
+- **Uncommitted vessel contents do not persist.** Lost on death
+  (returned to Hell). The only way to obtain more is to extract from
+  new shades and keepers.
 
 ## Save semantics
 
-Save = **vestigium** (singular) / **vestigia** (plural). UI verbs:
+Save = **vestigium** (singular) / **vestigia** (plural). The save
+register is the cosmological record-imprint of the Vagrant's current
+state — not a physical site, just the trace of run state. UI verbs:
 *Inscribe* (save) / *Restore* (load). Save/load language is in the
 world's register, not labeled "save" / "load."
 
-- **Autosave triggers:** second death, voluntary retreat (via Cord or
-  manual walk-back), and other run termination.
+Symmetric across paths — both class-picker and unburdened use the same
+save register and the same triggers.
+
+- **Autosave triggers:** every Crucible commitment (class-picker
+  installation), every Censer commitment (unburdened riversamento),
+  every item commit, voluntary retreat (via markers), second death,
+  and other run termination.
 - **Manual save (Inscribe):** Wood-side. Specifics deferred to UX.
 - **Restore:** loads from autosave. Used primarily by players who
-  make a Wood-side mistake (e.g. spending sangue at OFFERINGS for a
-  stat they didn't intend).
+  make a Wood-side mistake (e.g. installing the wrong stat at the
+  Crucible).
 - **Persistence across power loss:** vestigia must be durable,
-  written to EEPROM (Arduboy) / file (SDL) atomically. Phase-3
-  vestigia UI shipped 2026-04-30; chunked 32-byte writes/reads
-  resolved the prior stack-overflow bug.
+  written to file atomically.
 
 ## Vestigia (player-experience role)
 
 - **Primary use:** restore from a Wood-side mistake. Death does not
-  cost beyond the run's wallet — vestigia are *not* bloodstain-style
-  recovery for in-Hell mistakes.
+  cost beyond the run's uncommitted vessel contents — vestigia are
+  *not* bloodstain-style recovery for in-Hell mistakes.
 - **Run-end is not a vestigium-loss event.** Persistence carries
-  through second death; only wallet sangue is lost.
+  through second death; only uncommitted vessel contents are lost.
 - **Each character / run occupies a vestigium slot.** Multiple
   vestigia let the player run multiple Vagrants in parallel
   (different paths, different classes, different choices).
@@ -86,13 +89,13 @@ world's register, not labeled "save" / "load."
 Per setting.md *Cycle structure*. Structural lock; narrative-
 experience pacing of cycles is open (story.md TBD item 1).
 
-**Persistent across cycles:** lifetime sangue total, stats invested
-via OFFERINGS, riversato lifetime total, class choice, keepers
-felled, NPC encounter history, Grimoire unlocks, the Hand (after
-acquisition).
+**Persistent across cycles:** lifetime sangue total, stats installed
+via the Crucible, riversato lifetime total, class choice, keepers
+felled, NPC encounter history, Grimoire unlocks, the active vessel
+(Crucible or Censer per path).
 
-**Reset each cycle:** per-run sangue wallet, current HP and position,
-transient combat state.
+**Reset each cycle:** uncommitted vessel contents, current HP and
+position, transient combat state.
 
 ## Open questions
 
@@ -112,7 +115,7 @@ transient combat state.
   death*, *Save and inventory / Vestigia*.
 - [Story](story.md) — death and retry are narrative events; the
   run-end texture (NOT YET / THOU DOST NOT BELONG, run-stats
-  screen) is part of R1 / R5 reveal architecture.
+  screen) is part of the reveal architecture.
 - [Classes](classes.md) — class persists across cycles; stat
   investments persist.
 - [UX](ux.md) — screen flow for death-cutscene → death-card →

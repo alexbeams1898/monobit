@@ -1,0 +1,54 @@
+{
+  "_comment": "Insight nodes for NPC name reveals. Per the locked doctrine (see docs/design/insight_revelation_system.md *Implementation status*), the name reveal fires on the ACT that proves the NPC is what they are -- not the first dialog open. For the Guide, that act is the Signing: him doing the thing he was sent to do is the moment the Vagrant understands 'this is the Guide.' The HP-bar / dialog speaker flip to 'Guide' the same frame the picker closes.",
+
+  "knows_guide": {
+    "_comment": "Fires on signing_committed. The Signing IS the guidance -- naming happens through act, not interaction. Before commit, he is a stranger with words.",
+    "kind": "observation",
+    "category": "others",
+    "trigger": {
+      "kind": "flag_set",
+      "flag": "signing_committed"
+    }
+  },
+
+  "knows_lupa_felled": {
+    "_comment": "Observation. Fires when the large wolf-like creature on the slope falls. Operational voice: he saw a beast die. No 'Lupa', no 'apex predator', no Italian -- those are reveals he hasn't earned. Pairs with knows_guide_poisoned_carcass to support concludes_guide_killed_lupa.",
+    "kind": "observation",
+    "category": "others",
+    "trigger": {
+      "kind": "flag_set",
+      "flag": "lupa_felled"
+    }
+  },
+
+  "knows_guide_poisoned_carcass": {
+    "_comment": "Observation. Fires when the player advances through the Guide's first_meeting_b dialog beat (where the Guide confesses he poisoned the carcass Lupa was feeding from). Triggered by an on_select hook on the Continue. choice in that topic that sets the gating flag. Operational voice: the man at the chapel says he poisoned the food the beast was eating. The Vagrant has heard a claim; he hasn't connected it to the beast's death yet -- that's the conclusion.",
+    "kind": "observation",
+    "category": "others",
+    "trigger": {
+      "kind": "flag_set",
+      "flag": "guide_confessed_carcass"
+    }
+  },
+
+  "infers_meat_state": {
+    "_comment": "Inference (cognition-system v1 simplified). Player picks one of three interpretations of what happened to the beast. Warrant is per-inference (does the player have linked evidence at all), not per-reading. WHO laid the poison lives on a separate downstream inference.",
+    "kind": "inference",
+    "category": "others",
+    "requires": ["knows_lupa_felled", "knows_lonza_carcass_tampered"],
+    "readings": [
+      {
+        "id": "meat_simply_spoiled",
+        "text": "The meat was rotten. The beast ate what it should not have eaten and sickened from it. Such is how the wild ends -- a careless meal, a slow turning of the body against itself."
+      },
+      {
+        "id": "meat_was_tampered",
+        "text": "Something was wrong with the flesh. Dark streaks within, a sweetness in the air that does not belong. Someone or something laid death into the meat the beast was eating."
+      },
+      {
+        "id": "meat_was_poisoned",
+        "text": "The meat the beast was eating was poisoned. Dark streaks within the flesh, a sweetness in the air that does not belong to honest rot. The beast ate. The beast died. Who laid the poison there, and to what end, I cannot yet say."
+      }
+    ]
+  }
+}

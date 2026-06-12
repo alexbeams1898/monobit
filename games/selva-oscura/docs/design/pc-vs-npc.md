@@ -47,7 +47,9 @@ type:
 - **Death = run-end.** The player-controlled entity's death triggers
   the run-end cutscene + death-card + run-stats screen. Other
   entities' deaths trigger sangue payout and per-circle reactivity
-  (NPC turning hostile, contrapasso leak, etc.).
+  (per setting.md *Per-circle reactivity* — keeper death releases
+  contrapasso, the NPC is mangled into the new keeper, surviving
+  shades enter proper contrapasso, etc.).
 
 ## What only NPCs do
 
@@ -60,20 +62,36 @@ type:
   state (path, evolution, riversato, lifetime sangue, keepers
   felled) and branch on it. The Vagrant himself does not branch —
   he has no internal state reading the world.
-- **Carry contrapasso leak.** When a circle's keeper falls,
-  contrapasso routes into the surviving NPC and shades, plus the
-  class-picker Vagrant, plus the Guide. The *Vagrant* receives leak
-  too (under class-picker), but only as a passive accretion to his
-  imprint — he doesn't *carry* it the way an NPC does.
+- **Receive contrapasso-mangling.** When a circle's keeper falls,
+  contrapasso (the cosmological law per setting.md *Per-circle
+  reactivity*) releases and Beatrice routes it into the circle's
+  NPC. The installation is violent — a *mangling*, not a clean
+  promotion — because the original divine keeper of that circle is
+  gone forever (lost to Lucifer's slow corruption per setting.md
+  *Hell's failure*). The NPC is broken into a wounded approximation
+  of what a divine keeper of that circle should have been; their
+  pre-keeper lucid window was incipient keeper-consciousness
+  Beatrice was preparing for exactly this moment. NPCs are the only
+  entity type that take the mangling in this way (the class-picker
+  Vagrant *accumulates* contrapasso-signature on his imprint, but
+  he is not installed as a keeper-form; the unburdened lets it pass
+  through; the Guide receives it through Beatrice's channel as
+  erosion, not as installation).
 
 ## What both do identically
 
-- **Combat.** Damage, fire_rate, HP. No PC-only stat, no NPC-only
-  stat. The triad (HP / fire_rate / damage) governs both.
-- **Sangue payout on death.** The Vagrant's wallet sangue returns to
-  Hell on his death (Hell reclaims its substance from any dead body).
-  Shades and keepers, when killed, deposit sangue into the Vagrant's
-  wallet. Same mechanic, different direction.
+- **Combat stats.** Same universal schema (STR / DEX / END / LCK
+  per classes.md *Stat schema model*) on every actor. No PC-only
+  stat, no NPC-only stat. Class-unlocked path-specific stats
+  (Heretic Faith, Unburdened Conduit/Threshold-state, etc.) exist
+  on every actor's `Stats` struct but are gated by per-stat
+  unlock-mask — present-but-invisible on actors that haven't
+  unlocked them.
+- **Sangue payout on death.** The Vagrant's uncommitted vessel
+  contents (Crucible or Censer) return to Hell on his death (Hell
+  reclaims its substance from any dead body). Shades and keepers,
+  when killed, deposit sangue into the Vagrant's vessel. Same
+  mechanic, different direction.
 - **Sprite rendering.** Same draw loop. Same sprite system. Same
   bitmap-based animation.
 - **Position / movement.** Same world-coordinate system, same
@@ -91,9 +109,10 @@ type:
 The Guide is an NPC that:
 - Appears in the Wood (the hub) consistently across runs.
 - Appears in Hell as a projection at per-keeper interludes.
-- Provides services (heal, OFFERINGS).
-- Eventually fights the Vagrant (class-picker climax) or hands over
-  the Hand (unburdened climax).
+- Provides services (heal, dialogue, eventually the Erasure ritual
+  when the Vagrant has gathered the prerequisites).
+- Eventually fights the Vagrant (class-picker climax) or passes the
+  relic (unburdened climax).
 
 He is *not a party member*. He does not follow the Vagrant in combat.
 He is a stationary or interlude NPC, mechanically. The "companion"
@@ -127,17 +146,17 @@ She is not state-aware in the NPC sense.
   closes). Pre-keeper, can the player attack them anyway? Defer.
 - **Bullet symmetry.** All bullets are entities. Some bullets belong
   to the player; some to enemies. Friendly-fire rules: defer.
-- **Whether the Hand's effects (heal, OFFERINGS-anywhere,
-  riversamento-anywhere) need a special trigger or use the same
+- **Whether the Crucible / Censer (commit invocation, vessel-fire,
+  refunds during Erasure) need a special trigger or use the same
   entity-interaction pattern as other in-world objects.** Defer to UX.
 
 ## Cross-references
 
-- [Classes](classes.md) — class is a stat profile; same triad applies
-  to enemies and bosses.
+- [Classes](classes.md) — class is a stat profile + unlock-mask;
+  same universal schema applies to enemies and bosses.
 - [Companions](companions.md) — the Guide as edge case.
 - [Setting](setting.md) — *The unjudged* (asymmetric second-death
   completion), *NPCs* (lucid window mechanic), *Per-circle
-  reactivity* (contrapasso leak distribution).
+  reactivity* (contrapasso restoration; NPC promotion to keeper).
 - [Fallback](fallback.md) — death = run-end (player-controlled
   entity only).

@@ -1,6 +1,6 @@
 #include "world/Terrain.h"
 
-#include "Tunables.h"
+#include "debug/Flags.h"
 #include "physics/PhysicsWorld.h"
 #include "world/Collision.h"
 #include "world/CryptLayout.h"
@@ -93,7 +93,7 @@ bool loadHeightmapPng(const std::string& path, const TerrainRegion& meta,
 // Cavern ceiling layer: one downward-facing quad per floor cell at
 // Y = ceiling_y. Quads inside a registered cuts_ceiling slot at the
 // ceiling Y are dropped (structure pierces here).
-void buildEnclosureCeiling(TerrainRegion& r, int subdivide, float half, float step,
+void buildEnclosureCeiling(const TerrainRegion& r, int subdivide, float half, float step,
                            std::vector<Vertex>& verts, std::vector<std::uint32_t>& indices)
 {
     const int verts_per_side = subdivide + 1;
@@ -241,7 +241,7 @@ void buildWallMesh(const TerrainRegion& r, const WallSpec& w, int wall_cells_hor
 
 // Build all four lateral walls + ceiling for an enclosed region.
 // Structure footprints (cuts_ceiling / cuts_wall) carve their slots.
-void buildEnclosureGeometry(TerrainRegion& r, int subdivide, float half, float step,
+void buildEnclosureGeometry(const TerrainRegion& r, int subdivide, float half, float step,
                             std::vector<Vertex>& verts, std::vector<std::uint32_t>& indices)
 {
     buildEnclosureCeiling(r, subdivide, half, step, verts, indices);
@@ -395,8 +395,8 @@ void buildRegionMesh(TerrainRegion& r, int subdivide)
 
     // Physics + render share the same vertex positions: terrain Y
     // already includes any registered TerrainModifiers (applied above).
-    // No separate "physics pit" hack — modifiers are the source of
-    // truth for terrain deformation.
+    // No separate "physics pit" override path -- modifiers are the
+    // sole source of truth for terrain deformation.
     r.cpu_positions.reserve(verts.size());
     for (const auto& v : verts)
         r.cpu_positions.emplace_back(v.position[0], v.position[1], v.position[2]);
@@ -656,6 +656,12 @@ bool initTerrain()
     return !sRegions.empty();
 }
 
+// Process-wide cache of Jolt MeshShape handles, one per terrain
+// region. Indexed by region index (same as sRegions). kInvalidShape
+// sentinel means "not yet built." Built lazily via terrainShapeFor(),
+// or eagerly in one shot via buildAllTerrainShapes().
+static std::vector<engine::physics::ShapeHandle> sTerrainShapeCache;
+
 void shutdownTerrain()
 {
     for (auto& r : sRegions)
@@ -668,6 +674,33 @@ void shutdownTerrain()
             glDeleteBuffers(1, &r.ebo);
     }
     sRegions.clear();
+    // Shape lifetimes are owned by Jolt's shape registry; we just drop
+    // our handles. Re-init rebuilds the cache.
+    sTerrainShapeCache.clear();
+}
+
+engine::physics::ShapeHandle terrainShapeFor(int region_idx)
+{
+    if (region_idx < 0 || region_idx >= static_cast<int>(sRegions.size()))
+        return engine::physics::kInvalidShape;
+    if (sTerrainShapeCache.size() != sRegions.size())
+        sTerrainShapeCache.assign(sRegions.size(), engine::physics::kInvalidShape);
+    if (sTerrainShapeCache[region_idx] != engine::physics::kInvalidShape)
+        return sTerrainShapeCache[region_idx];
+    const auto& r = sRegions[region_idx];
+    if (r.cpu_positions.empty() || r.cpu_indices.size() < 3)
+        return engine::physics::kInvalidShape;
+    sTerrainShapeCache[region_idx] =
+        engine::physics::createStaticTrimeshShape(r.cpu_positions, r.cpu_indices);
+    return sTerrainShapeCache[region_idx];
+}
+
+void buildAllTerrainShapes()
+{
+    if (sTerrainShapeCache.size() != sRegions.size())
+        sTerrainShapeCache.assign(sRegions.size(), engine::physics::kInvalidShape);
+    for (int i = 0; i < static_cast<int>(sRegions.size()); ++i)
+        terrainShapeFor(i);
 }
 
 int terrainRegionCount()
@@ -772,31 +805,45 @@ float groundHeight(float world_x, float world_z, float current_y)
 {
     // Real-physics doctrine: ground is whatever solid surface the
     // sun-of-gravity ray hits at this XZ. Cast straight down from
-    // well above the actor; the nearest hit IS the ground.
-    constexpr float kRayStartAbove = 100.0f;
+    // just above the actor's current Y; the nearest hit IS the ground.
+    //
+    // The "just above" bias matters in the vertical-stack world: the
+    // Limbo cavern sits UNDER the Selva surface at the SAME XZ
+    // coordinates. A ray cast from Y=+100 at a Limbo XZ would hit
+    // the Selva surface terrain at Y=-3 instead of the Limbo floor
+    // at Y=-43, teleporting the actor up to the wrong layer. Casting
+    // from current_y + small bias keeps the ray inside the actor's
+    // current vertical layer.
+    //
+    // If the caller passes -infinity (rare bootstrap case where no
+    // current_y is known), fall back to high-up cast accepting the
+    // overshoot risk -- caller must be aware they're querying a
+    // single-layer assumption.
+    constexpr float kRayStartAbove = 2.0f;       // ~head height above actor
+    constexpr float kRayStartAboveBoot = 100.0f; // fallback when current_y unknown
     constexpr float kRayMaxDistance = 500.0f;
     const bool use_ceiling = current_y != -std::numeric_limits<float>::infinity();
-    const float origin_y = use_ceiling ? (current_y + kRayStartAbove) : kRayStartAbove;
+    const float origin_y = use_ceiling ? (current_y + kRayStartAbove) : kRayStartAboveBoot;
     const glm::vec3 origin(world_x, origin_y, world_z);
     const auto hit =
         engine::physics::raycast(origin, glm::vec3(0.0f, -1.0f, 0.0f), kRayMaxDistance);
     if (!hit.hit)
     {
         // Outside any physics geometry — fall back to heightmap sample.
-        // Happens before physics bodies are loaded for the active scene
+        // Happens before physics bodies are loaded for the active region
         // (init order) or in zones with no terrain/architecture present.
         return sampleHeight(world_x, world_z);
     }
 
-    const bool log_on = selva::tuning::current().debug_ground_height_log;
+    const bool log_on = selva::debug::flags().ground_height_log;
     if (log_on)
     {
         static FILE* sGroundLog = nullptr;
-        static int sGroundFrame = 0;
         if (sGroundLog == nullptr)
             sGroundLog = std::fopen("ground-debug.log", "w");
         if (sGroundLog != nullptr)
         {
+            static int sGroundFrame = 0;
             const char* nm = engine::physics::bodyDebugName(hit.body);
             std::fprintf(sGroundLog, "[%d] xz=(%.3f,%.3f) cur_y=%.3f -> y=%.3f body='%s'\n",
                          sGroundFrame, world_x, world_z, current_y, hit.position.y, nm);

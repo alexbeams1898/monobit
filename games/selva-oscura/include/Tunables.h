@@ -48,6 +48,17 @@ struct Tunables
     float turn_rate_min = 9.0f;  // small course corrections
     float turn_rate_max = 25.0f; // 180° reversal — snaps
 
+    // Lock-on camera + body yaw smoothing rates. Hard-snapping yaw to
+    // a MOVING target every frame produces visible jolt (target moves
+    // -> camera+body jump -> next frame target moves -> jump again).
+    // Souls/ER ease toward the target dir at a tunable rate so the
+    // camera lags slightly behind a sprinting boss instead of teleporting.
+    // Body rate slightly snappier than camera so the player always
+    // faces the target while the camera reads-tracks behind. Set high
+    // for snappy combat, lower for cinematic lag. Both in rad/s.
+    float lockon_camera_yaw_rate = 12.0f;
+    float lockon_body_yaw_rate = 16.0f;
+
     // Legacy SM debounce — UNUSED in the velocity-driven model
     // (velocity itself is naturally smoothed by accel/decel). Kept
     // for the JSON schema during the refactor; will be removed
@@ -60,15 +71,19 @@ struct Tunables
     // (default 0 = use this global).
     float loco_playback_rate = 1.0f;
 
-    // Target walking speed (m/s) when WASD is held without sprint.
-    // Calibrated to match the walking clip's authored hip travel so
-    // the foot doesn't visibly skate (clip moves character N meters
-    // per cycle; walk_speed should match that cycle rate).
+    // Target speed (m/s) for the LAlt-held Walk tier (DS3 PC convention).
+    // Calibrated to match walking.ozz's authored hip travel so the
+    // foot doesn't visibly skate.
     float walk_speed = 1.6f;
 
-    // Target running speed (m/s) when sprinting + WASD held.
-    // Calibrated to match the running clip's authored hip travel.
-    float run_speed = 4.5f;
+    // Target speed (m/s) for the default Jog tier (plain WASD).
+    // Calibrated to jogging.ozz (renamed from running.ozz on
+    // 2026-06-03 to free the "sprint" name for the new faster gait).
+    float jog_speed = 4.5f;
+
+    // Target speed (m/s) for the Space-held Sprint tier. Calibrated
+    // to sprinting.ozz's authored hip travel (Faster Running.fbx).
+    float sprint_speed = 7.5f;
 
     // Acceleration toward target speed (m/s²). Higher = snappier
     // response to WASD press. Too high reads as "teleport into
@@ -82,13 +97,17 @@ struct Tunables
     // idle" complaint); too low: slidey overshoot.
     float locomotion_decel = 14.0f;
 
-    // Clip-speed blend thresholds. velocity_magnitude < idle_to_walk
-    // = pure idle; > walk_to_run = pure running; in between =
-    // weighted blend. Avoids hard mode boundaries — a single
-    // walking step doesn't snap to walking, but holding WASD long
-    // enough does as velocity ramps up.
+    // Clip-tier speed thresholds. velocity_magnitude:
+    //   <= idle_to_walk_speed   → idle
+    //   <= walk_to_jog_speed    → walking
+    //   <= jog_to_sprint_speed  → jogging
+    //   >  jog_to_sprint_speed  → sprinting
+    // Bands keep transitions hysteresis-free at the input edges since
+    // the picker reads TARGET speed (where intent is heading), not
+    // current velocity.
     float idle_to_walk_speed = 0.30f;
-    float walk_to_run_speed = 3.0f;
+    float walk_to_jog_speed = 3.0f;
+    float jog_to_sprint_speed = 5.5f;
 
     // ---- Mouse-look ----
     float mouse_sensitivity = 0.0025f; // radians per pixel
@@ -253,14 +272,10 @@ struct Tunables
     // ---- Sprint-finisher (running attack) ----
 
     // ---- Actor formulas (player + enemies, see gameplay/Actor.h) ----
-    // Per-stat scaling for derived pools. Linear for v1; Souls-style
-    // diminishing curves replace these when balance work begins —
-    // call sites won't change, only the function bodies.
-    //
-    // max_hp      = body.base_hp      + vig * hp_per_vig
-    // max_stamina = body.base_stamina + end * stamina_per_end
-    float hp_per_vig = 5.0f;
-    float stamina_per_end = 3.0f;
+    // Per-stat scaling for derived pools is owned by
+    // engine::ecs::FormulaConfig (loaded by selva::formulas::current()
+    // from config/balance/formulas.json) -- NOT here. Tunables holds
+    // camera/animation/combat-feel knobs only.
 
     // Floor on damage after defense reduction. Even heavily-armored
     // targets take this much per hit so combat never stalls on
@@ -280,15 +295,18 @@ struct Tunables
     // the one-shot from t=0 every frame and the enemy looks frozen.
     float hit_react_cooldown_seconds = 0.30f;
 
-    // Dev-only respawn timer. After death, restore the enemy to
-    // full HP at its spawn pose after this delay. Becomes proper
-    // despawn + persistence when the run / save system arrives.
-    float enemy_respawn_after_death_seconds = 3.0f;
-
     // How long an enemy stays in the knockdown freeze pose before
     // recovering in place. The sampler blends back to combat idle
     // via the one-shot's blend_out window; no get-up clip plays.
     float enemy_recovery_after_knockdown_seconds = 2.5f;
+
+    // Enemy corpse fade-out timing. Death triggers, then `hold` seconds
+    // of full alpha (read-the-kill beat), then linear fade to alpha=0
+    // over `duration` seconds, then the draw is skipped. Cosmologically
+    // the body dissolves back into Hell's substance per
+    // [[project_soul_larvae_cosmology]] dissolution doctrine.
+    float enemy_death_fade_hold_seconds = 0.3f;
+    float enemy_death_fade_duration_seconds = 0.7f;
 
     // ---- AI perception (Sprint 1) ----
     // Forward-facing vision cone. FOV is the full angular spread (so
@@ -333,10 +351,6 @@ struct Tunables
     // responsive once the player has actually escaped.
     float ai_combat_disengage_seconds = 1.0f;
 
-    // F1-toggleable debug overlay: draw vision cone + awareness label
-    // above each AI actor.
-    bool debug_ai_perception = false;
-
     // ---- AI decision-tick scheduler (Sprint 2) ----
     // Baseline rate at which an actor's decision-making code (behavior
     // tree, action selection) re-evaluates. Perception still runs at
@@ -350,22 +364,12 @@ struct Tunables
     // baseline is 10Hz.
     float ai_decision_tick_combat_hz_multiplier = 1.5f;
 
-    // F1-toggleable: log each [ai-tick] firing so you can verify the
-    // scheduling math from combat-debug.log. Off in normal play; on
-    // when working on AI infrastructure.
-    bool debug_ai_tick_log = false;
-
     // ---- AI locomotion (Sprint 4a) ----
     // Rate at which an AI actor rotates toward its turn_intent_yaw.
     // Souls convention: enemies turn faster than they move, so they
     // can re-orient before walking into a new direction. Per-
     // archetype overrides land in Sprint 4b.
     float ai_turn_rate_radians_per_sec = 6.0f;
-
-    // F1-toggleable: log [ai-decision] lines (one per decision tick)
-    // with awareness, target pos, intent. Useful while iterating on
-    // 4a behavior; off in normal play.
-    bool debug_ai_decision_log = false;
 
     // Action-fire freshness gate: how recently must the actor have
     // SEEN the player to fire an attack (vs walk to investigate).
@@ -381,22 +385,9 @@ struct Tunables
     // wrong direction.
     float ai_action_freshness_seconds = 0.5f;
 
-    // ---- Poise / knockdown formulas ----
-    // Per-stat scaling for derived max poise. Linear for v1, mirrors
-    // hp_per_vig / stamina_per_end. Souls model: END contributes
-    // more than STR (endurance is the canonical "stagger resistance"
-    // stat), but both factor in. Knockdown threshold = poise reaches 0.
-    //   max_poise = body.base_poise + end * poise_per_end
-    //                                + str * poise_per_str
-    float poise_per_end = 2.0f;
-    float poise_per_str = 1.0f;
-
-    // Seconds of no poise-damage events before poise fully refills
-    // to max. Souls-style: a player who absorbs one hit then dodges
-    // the next gets their poise back; a player taking continuous
-    // hits drains it and eventually breaks. Linear refill: 0->max
-    // over decay_window_seconds.
-    float poise_decay_window_seconds = 5.0f;
+    // ---- Poise / knockdown ----
+    // Stat-scaling (poise_per_end, poise_per_str) and decay-window live
+    // in engine::ecs::FormulaConfig (config/balance/formulas.json).
 
     // Knockdown chain clip trimming. Both knockdown and getting_up
     // clips often have authored windup or trailing idle that we
@@ -430,92 +421,10 @@ struct Tunables
     // the back of the head when the player looks straight up).
     float fpv_eye_fwd_offset = 0.12f;
 
-    // ---- Debug logging ----
-    // When true, render/WorldRenderer.cpp writes per-frame FPV camera
-    // + head bone state to fpv-roll-debug.log during rolls (and ~1s
-    // after, to capture the tail-hold and settling). Use to diagnose
-    // why a roll camera doesn't match the visible body. Default OFF.
-    bool debug_fpv_roll_log = false;
-    // When true, gameplay/Footsteps.cpp opens footstep-debug.log and
-    // writes per-frame trajectory rows + FIRE/SUPPRESS events. The
-    // per-frame fprintf + fflush is hot enough to cost a frame or two
-    // when running. Default OFF; F1 panel toggle when diagnosing.
-    bool debug_footstep_log = false;
-
-    // When true, render/ShadowPass.cpp opens shadow-debug.log and
-    // writes per-frame snap state (throttled to every 30 frames so
-    // cost is negligible, but keep gated for cleanliness). Default OFF.
-    bool debug_shadow_log = false;
-
-    // When true, the per-frame ImGui overlay draws every world
-    // collider (cylinders + boxes) as wireframe outlines. Lets you
-    // see where colliders sit relative to the rendered geometry.
-    // Default OFF.
-    bool debug_show_colliders = false;
-
-    // When true, the per-frame ImGui overlay draws every Jolt body
-    // (static trimeshes, static boxes, character capsules) as
-    // wireframe AABBs colored by surface tag. Source of truth for
-    // "is this mesh actually in physics?" — uses
-    // engine::physics::enumerateBodies() which walks the live Jolt
-    // body table. Default OFF.
-    bool debug_show_physics_bodies = false;
-
-    // When true, the scene fragment shader outputs a flat constant
-    // color (uBaseColor) per primitive — skipping all lighting,
-    // atmosphere, shadows, exposure, tonemap. Use to bisect flicker:
-    // if flicker DISAPPEARS with this on, the cause is shader math
-    // (most likely dFdx/dFdy-derived normal flipping on near-parallel
-    // surfaces). If flicker CONTINUES, the cause is geometry /
-    // rasterization / depth precision. See
-    // [[feedback_bisect_shader_inputs_with_constants]]. Default OFF.
-    bool debug_flat_shading = false;
-
-    // Diagnostic: print actual GL MSAA state every 60 frames so we
-    // can confirm whether MSAA is still enabled at scene-pass time
-    // (some driver / pass could be silently disabling it). Logs:
-    // GL_SAMPLE_BUFFERS, GL_SAMPLES, GL_MULTISAMPLE-enabled. Default OFF.
-    bool debug_msaa_state_log = false;
-
-    // Diagnostic: every frame, raycast from camera position through
-    // camera forward direction; log the first 5 bodies the ray hits.
-    // Aim the camera at a flickering surface to find out which
-    // primitive(s) are there. Logs to crosshair-debug.log to avoid
-    // spamming stderr. Default OFF.
-    bool debug_crosshair_raycast_log = false;
-
-    // Diagnostic: paint each chapel mesh primitive a unique color
-    // (deterministic hash of its draw index). Combined with
-    // debug_flat_shading skipping the lighting, flickering pixels
-    // visibly alternate between TWO colors which decode to TWO
-    // primitive indices — pinpointing the z-fighting pair instantly.
-    // Print the index→primitive-name mapping to primitive-id-debug.log
-    // on first toggle. Requires debug_flat_shading also ON. Default OFF.
-    bool debug_primitive_id_colors = false;
-
-    // When true, world/Collision.cpp opens collision-debug.log and
-    // writes per-frame pre/post body XZ + per-pass push events
-    // (which collider was hit, the push vector). Use to diagnose
-    // wedging or oscillation. Default OFF.
-    bool debug_collision_log = false;
-
-    // When true, buildViewProj writes per-frame camera pull-in state
-    // (origin, direction, desired/target/smoothed separation, hit
-    // distance) to camera-debug.log. Used to diagnose pull-in
-    // failures (camera clips a wall when it shouldn't). Default OFF.
-    bool debug_camera_pull_in_log = false;
-    // When true, world/Terrain.cpp's groundHeight writes per-call
-    // state to ground-debug.log: query XZ, current Y, the resulting
-    // ground Y from the downward Jolt raycast, and the name of the
-    // physics body hit. Used to diagnose "player Y is wrong" (sinking
-    // through stairs, teleporting to wrong platform, etc.). Default OFF.
-    bool debug_ground_height_log = false;
-
-    // When true, the Jolt physics layer writes diagnostics to
-    // physics-debug.log: scene-init body counts, character creation,
-    // per-frame player capsule pos/velocity/ground-state.
-    // Default OFF.
-    bool debug_physics_log = false;
+    // ---- Debug ----
+    // Session-only diagnostic toggles live in selva::debug::Flags
+    // (include/debug/Flags.h). They are deliberately NOT here:
+    // Tunables ships and serializes; Flags don't.
 };
 
 // JSON serialization — generates to_json / from_json for nlohmann::json
@@ -524,35 +433,30 @@ struct Tunables
 // default-initialized value, so older tunables.json files don't break when
 // new fields are added.
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
-    Tunables, time_scale, turn_rate_min, turn_rate_max, wasd_debounce_seconds, loco_playback_rate,
-    walk_speed, run_speed, locomotion_accel, locomotion_decel, idle_to_walk_speed,
-    walk_to_run_speed, mouse_sensitivity, pitch_min, pitch_max, follow_distance, follow_height,
+    Tunables, time_scale, turn_rate_min, turn_rate_max, lockon_camera_yaw_rate,
+    lockon_body_yaw_rate, wasd_debounce_seconds, loco_playback_rate, walk_speed, jog_speed,
+    sprint_speed, locomotion_accel, locomotion_decel, idle_to_walk_speed, walk_to_jog_speed,
+    jog_to_sprint_speed, mouse_sensitivity, pitch_min, pitch_max, follow_distance, follow_height,
     fov_degrees, anim_blend_seconds, combat_idle_grace_seconds, combat_entry_delay_seconds,
     combo_reset_grace_seconds, combo_input_buffer_seconds, combo_chain_blend_seconds,
     first_strike_blend_seconds, attack_playback_rate, cancel_open_velocity_fraction,
     perfect_accuracy_threshold, roll_playback_rate, backstep_playback_rate, dodge_tap_window,
-    dodge_steer_rate, attack_lockout_extension_seconds, hp_per_vig, stamina_per_end, damage_floor,
-    hit_react_medium_threshold, hit_react_heavy_threshold, hit_react_cooldown_seconds,
-    enemy_respawn_after_death_seconds, enemy_recovery_after_knockdown_seconds, poise_per_end,
-    poise_per_str, poise_decay_window_seconds, knockdown_clip_start_seconds,
+    dodge_steer_rate, attack_lockout_extension_seconds, damage_floor, hit_react_medium_threshold,
+    hit_react_heavy_threshold, hit_react_cooldown_seconds, enemy_recovery_after_knockdown_seconds,
+    enemy_death_fade_hold_seconds, enemy_death_fade_duration_seconds, knockdown_clip_start_seconds,
     knockdown_clip_end_seconds, getting_up_clip_start_seconds, getting_up_clip_end_seconds,
     ai_vision_fov_degrees, ai_vision_range_meters, ai_suspicion_decay_seconds,
     ai_confirmed_sightings_to_alert, ai_alerted_decay_seconds, ai_combat_engage_range_meters,
-    ai_combat_leash_range_meters, ai_combat_disengage_seconds, debug_ai_perception,
-    ai_decision_tick_hz, ai_decision_tick_combat_hz_multiplier, debug_ai_tick_log,
-    ai_turn_rate_radians_per_sec, debug_ai_decision_log, ai_action_freshness_seconds,
-    flying_knee_whoosh_time_seconds);
+    ai_combat_leash_range_meters, ai_combat_disengage_seconds, ai_decision_tick_hz,
+    ai_decision_tick_combat_hz_multiplier, ai_turn_rate_radians_per_sec,
+    ai_action_freshness_seconds, flying_knee_whoosh_time_seconds);
 // NOTE: fpv_eye_up_offset, fpv_eye_fwd_offset are NOT serialized -
-// they're live-tuning fields, kept here for the F1 slider during
-// FPV calibration. Hit the NLOHMANN_DEFINE_TYPE 64-field limit
-// otherwise. Promote to serialized fields by removing some old
-// unused tunable from the macro list if you want them persisted.
-// NOTE: debug_footstep_log and debug_shadow_log are NOT serialized -
-// they're session-only debug toggles. Keeping them out of the macro
-// also avoids hitting NLOHMANN_DEFINE_TYPE's variadic field-count
-// limit (~64).
-// NOTE: camera_pull_in_margin and camera_pull_in_tau are NOT serialized
-// for the same field-count reason; live-tuned via F1 panel and the
+// they're live-tuning fields. The NLOHMANN macro has a ~64-field
+// variadic limit; the count is fine now (debug_* moved out to
+// selva::debug::Flags) so any new tunable can be added freely. If
+// the count creeps back toward 60 reconsider; until then it's room.
+// NOTE: camera_pull_in_margin and camera_pull_in_tau still NOT
+// serialized for legacy reasons; live-tuned via F1 panel and the
 // dialed-in values bake into the struct defaults.
 
 // Single global instance. Both gameplay code and the procedural driver

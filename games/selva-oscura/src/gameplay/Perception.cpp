@@ -171,6 +171,19 @@ void tickPerception(Actor& actor, const Actor& player, float dt, const selva::tu
     PerceptionState& p = actor.perception;
     const float now = selva::wallClock();
 
+    // Faction gate: only Hostile actors track the player and progress
+    // the awareness ladder. Allied + Neutral NPCs (the Guide, future
+    // companions, passive merchants) stay at Unaware indefinitely
+    // unless gameplay code explicitly aggros them (e.g. player-attack
+    // flips faction to Hostile, then this gate falls through). Without
+    // this gate, the Guide would Combat-acquire the player on first
+    // sight and the BT would route him through LeafMoveToTarget --
+    // wrong for any non-aggressing actor. Faction-based gate (not
+    // is_npc) so a future Hostile-faction NPC (post-betrayal questline)
+    // still aggros correctly.
+    if (actor.faction != Faction::Hostile)
+        return;
+
     // Step 1: did we see the player this tick?
     const bool saw_now = targetInVisionCone(actor.pos, actor.yaw, player.pos,
                                             tun.ai_vision_fov_degrees, tun.ai_vision_range_meters);

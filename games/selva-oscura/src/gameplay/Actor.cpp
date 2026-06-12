@@ -1,11 +1,14 @@
 #include "gameplay/Actor.h"
 
+#include "Formulas.h"
 #include "Tunables.h"
 #include "anim/AnimationClip.h"
 #include "anim/SkeletalAssets.h"
 #include "anim/SkeletalMesh.h"
 #include "combat/ActorVolumes.h"
+#include "combat/CombatLog.h"
 #include "combat/HitVolumes.h"
+#include "gameplay/EnemyArchetype.h"
 
 #include <algorithm>
 #include <cmath>
@@ -15,24 +18,101 @@ namespace selva::gameplay
 
 int computeMaxHp(const Body& body, const Stats& stats)
 {
-    const auto& tun = selva::tuning::current();
+    const auto& f = selva::formulas::current();
     return body.base_hp +
-           static_cast<int>(std::floor(static_cast<float>(stats.vig) * tun.hp_per_vig));
+           static_cast<int>(std::floor(f.hp.base + static_cast<float>(stats.end) * f.hp.scale));
 }
 
-int computeMaxStamina(const Body& body, const Stats& stats)
+float computeMaxStamina(const Body& body, const Stats& stats)
 {
-    const auto& tun = selva::tuning::current();
-    return body.base_stamina +
-           static_cast<int>(std::floor(static_cast<float>(stats.end) * tun.stamina_per_end));
+    const auto& f = selva::formulas::current();
+    return static_cast<float>(body.base_stamina) + f.stamina.base +
+           static_cast<float>(stats.end) * f.stamina.end_scale;
 }
 
-int computeMaxPoise(const Body& body, const Stats& stats)
+float computeMaxPoise(const Body& body, const Stats& stats)
 {
-    const auto& tun = selva::tuning::current();
-    const float end_bonus = static_cast<float>(stats.end) * tun.poise_per_end;
-    const float str_bonus = static_cast<float>(stats.str) * tun.poise_per_str;
-    return body.base_poise + static_cast<int>(std::floor(end_bonus + str_bonus));
+    const auto& f = selva::formulas::current();
+    const float end_bonus = static_cast<float>(stats.end) * f.poise.end_scale;
+    const float str_bonus = static_cast<float>(stats.str) * f.poise.str_scale;
+    return static_cast<float>(body.base_poise) + end_bonus + str_bonus;
+}
+
+void applyFormDefaults(Body& body, Stats& stats, Form form)
+{
+    // Baseline body/stats per cosmological form. Numbers are starting
+    // points -- archetype overrides layer on top. Form drives the
+    // SHAPE (a wolf has more raw HP than a shade because animal-form
+    // has biological mass; a Guide has less HP than a shade because
+    // unjudged-soul has no substrate); per-instance authoring tunes
+    // within the shape. Per [[soul-animal-form-combat-doctrine]] +
+    // bestiary.md.
+    // Collider defaults: every humanoid form uses the standard Vagrant
+    // capsule. Animal approximates a quadruped via a vertical capsule
+    // sized to the wolf's standing bounds (Jolt only supports vertical
+    // character capsules today; we approximate AlongYaw shapes as
+    // vertical for the physics body). Per-archetype overrides can
+    // tune further. Per universal-actor-physics doctrine.
+    auto applyHumanoidCollider = [&]()
+    {
+        body.collider_radius = 0.35f;
+        body.collider_height = 1.8f;
+        body.collider_axis = CapsuleAxis::Vertical;
+    };
+    switch (form)
+    {
+    case Form::UnjudgedSoul:
+        body.base_hp = 60;
+        body.base_poise = 12;
+        body.base_stamina = 60;
+        body.base_defense = 0;
+        stats = {1, 1, 1, 1};
+        applyHumanoidCollider();
+        break;
+    case Form::DamnedSoul:
+        // Matches the legacy shade defaults so existing JSON behavior
+        // is preserved when this function is called on shades.
+        body.base_hp = 50;
+        body.base_poise = 30;
+        body.base_stamina = 80;
+        body.base_defense = 0;
+        stats = {1, 1, 1, 1};
+        applyHumanoidCollider();
+        break;
+    case Form::Animal:
+        body.base_hp = 200;
+        body.base_poise = 50;
+        body.base_stamina = 150;
+        body.base_defense = 2;
+        stats = {3, 2, 3, 1};
+        body.collider_radius = 0.55f;
+        body.collider_height = 1.2f;
+        body.collider_axis = CapsuleAxis::AlongYaw;
+        body.collider_length = 1.6f;
+        break;
+    case Form::HellMachinery:
+        // Reserved -- keepers not shipped yet. Legendary-tier numbers
+        // so future tuning starts from a high baseline.
+        body.base_hp = 1500;
+        body.base_poise = 200;
+        body.base_stamina = 300;
+        body.base_defense = 8;
+        stats = {5, 4, 5, 1};
+        applyHumanoidCollider();
+        body.collider_height = 2.4f; // keeper-tier taller
+        break;
+    case Form::Divine:
+        // Reserved -- Beatrice not shipped yet. Boss-class numbers
+        // but the actual fight is "fragmentary, rabid" per canon, so
+        // these are placeholders; tune when implementing.
+        body.base_hp = 800;
+        body.base_poise = 150;
+        body.base_stamina = 200;
+        body.base_defense = 5;
+        stats = {4, 4, 4, 4};
+        applyHumanoidCollider();
+        break;
+    }
 }
 
 void initActorPools(Health& hp, Stamina& stamina, Poise& poise, const Body& body,
@@ -45,6 +125,56 @@ void initActorPools(Health& hp, Stamina& stamina, Poise& poise, const Body& body
     poise.max = computeMaxPoise(body, stats);
     poise.current = poise.max;
     poise.last_damage_time = -1.0f;
+}
+
+void tickActorStamina(Actor& a, float dt)
+{
+    if (a.is_dead)
+        return;
+    const auto& fc = selva::formulas::current();
+
+    // Sprint lockout: ignore sprint input while locked. Lock releases below.
+    if (a.stamina.sprint_locked && a.loco_tier == LocoTier::Sprint)
+        a.loco_tier = LocoTier::Jog;
+
+    if (a.loco_tier == LocoTier::Sprint && a.stamina.current > 0.0f)
+    {
+        a.stamina.current = std::max(0.0f, a.stamina.current - fc.stamina.sprint_effort * dt);
+        a.stamina.recovery_timer = fc.stamina.recovery_delay;
+        if (a.stamina.current <= 0.0f)
+        {
+            a.stamina.sprint_locked = true;
+            a.loco_tier = LocoTier::Jog;
+        }
+    }
+    else if (a.stamina.recovery_timer > 0.0f)
+    {
+        a.stamina.recovery_timer = std::max(0.0f, a.stamina.recovery_timer - dt);
+    }
+    else if (a.stamina.current < a.stamina.max)
+    {
+        a.stamina.current =
+            std::min(a.stamina.max, a.stamina.current + fc.stamina.recovery_rate * dt);
+    }
+
+    if (a.stamina.sprint_locked && a.stamina.current >= a.stamina.max)
+        a.stamina.sprint_locked = false;
+}
+
+bool canSpendStamina(const Actor& a, float cost)
+{
+    if (cost <= 0.0f)
+        return true;
+    return a.stamina.current >= cost;
+}
+
+void spendStamina(Actor& a, float cost)
+{
+    if (cost <= 0.0f)
+        return;
+    const auto& fc = selva::formulas::current();
+    a.stamina.current = std::max(0.0f, a.stamina.current - cost);
+    a.stamina.recovery_timer = fc.stamina.recovery_delay;
 }
 
 void applyDamage(Health& hp, const Body& body, int raw_damage)
@@ -78,8 +208,26 @@ Actor* resolveLockTarget(const Actor& actor)
     return &pool[idx];
 }
 
+const std::vector<selva::anim::LockOnPointDecl>& actorLockOnPoints(const Actor& actor)
+{
+    if (actor.archetype != nullptr && !actor.archetype->lockon_points.empty())
+        return actor.archetype->lockon_points;
+    return selva::anim::jointMapByKey(actor.skeleton_id).default_lockon_points;
+}
+
+int defaultLockOnPointIndex(const Actor& actor)
+{
+    const auto& pts = actorLockOnPoints(actor);
+    if (pts.empty())
+        return -1;
+    for (std::size_t i = 0; i < pts.size(); ++i)
+        if (pts[i].is_default)
+            return static_cast<int>(i);
+    return 0;
+}
+
 const char* directionalLocoClip(const glm::vec3& fwd, const glm::vec3& right,
-                                const glm::vec3& intent, bool running)
+                                const glm::vec3& intent, LocoTier tier)
 {
     if (glm::length(intent) <= 0.0001f)
         return nullptr;
@@ -88,34 +236,64 @@ const char* directionalLocoClip(const glm::vec3& fwd, const glm::vec3& right,
     // Any nonzero lateral input wins → strafe. Forward/back only on
     // essentially pure W/S input.
     const bool axis_is_forward = std::abs(right_dot) < 1e-3f;
+    // Sprint only has a forward clip; backward/strafe demote to jog.
+    if (axis_is_forward && fwd_dot >= 0.0f && tier == LocoTier::Sprint)
+        return "sprinting";
+    const LocoTier ground_tier = (tier == LocoTier::Sprint) ? LocoTier::Jog : tier;
+    const bool walk = (ground_tier == LocoTier::Walk);
     if (axis_is_forward)
     {
         if (fwd_dot >= 0.0f)
-            return running ? "running" : "walking";
-        return running ? "running_backward" : "walking_backward";
+            return walk ? "walking" : "jogging";
+        return walk ? "walking_backward" : "jogging_backward";
     }
     if (right_dot >= 0.0f)
-        return running ? "strafe_running_right" : "strafe_walking_right";
-    return running ? "strafe_running_left" : "strafe_walking_left";
+        return walk ? "strafe_walking_right" : "strafe_jogging_right";
+    return walk ? "strafe_walking_left" : "strafe_jogging_left";
 }
 
-void applyActorClipHipDelta(Actor& actor, float hip_delta_scale)
+void applyActorClipHipDelta(Actor& actor, float dt, float hip_delta_scale)
 {
     // Contract from feedback_hip_delta_two_sides.md: PoseSampler
     // extracts the clip's authored hip-XZ and zeros it in the local
     // pose. Gameplay must apply that consumed delta back to world
-    // position or the actor's feet treadmill. Caller decides WHEN
-    // to call this (always for AI actors; only during one-shots
-    // for the Input-controlled player whose locomotion is velocity-
-    // driven instead).
+    // motion or the actor's feet treadmill. Routed through the unified
+    // physics pipeline (universal-actor-physics refactor): the hip
+    // delta is converted to a velocity contribution that the next
+    // physics step integrates. Direct pos writes are gone.
     const glm::vec3 hip_local = actor.sampler.consumedHipDelta();
     if (std::abs(hip_local.x) <= 1e-6f && std::abs(hip_local.z) <= 1e-6f)
+        return;
+    if (dt <= 0.0001f)
         return;
     const float sy = std::sin(actor.yaw);
     const float cy = std::cos(actor.yaw);
     const glm::vec3 hip_world(-cy * hip_local.x - sy * hip_local.z, 0.0f,
                               sy * hip_local.x - cy * hip_local.z);
-    actor.pos += hip_world * hip_delta_scale;
+    // Add hip-derived velocity ON TOP of whatever the locomotion tick
+    // wrote. For root-motion clips the locomotion tick zeroes
+    // velocity_xz first, so this becomes the sole contribution; for
+    // mixed cases (a one-shot with authored hip motion firing while
+    // a velocity gait was active) the two compose.
+    actor.velocity_xz.x += hip_world.x * hip_delta_scale / dt;
+    actor.velocity_xz.y += hip_world.z * hip_delta_scale / dt;
+}
+
+bool actorCanLandHits(const Actor& a)
+{
+    if (a.is_dead || a.is_knocked_down)
+        return false;
+    switch (a.boss_state)
+    {
+    case BossState::Dying:
+    case BossState::Felled:
+    case BossState::Disengaged:
+        return false;
+    case BossState::Dormant:
+    case BossState::Engaged:
+        return true;
+    }
+    return true;
 }
 
 void updateActiveAttackHitbox(Actor& actor)
@@ -138,7 +316,7 @@ void updateActiveAttackHitbox(Actor& actor)
     // hand at the hip), and the swing visually contacts the player
     // while the volume sits behind the attacker — visible as "AI
     // punches into the player but no damage."
-    const float foot_offset_y = selva::anim::playerMesh().foot_offset_y;
+    const float foot_offset_y = actorFootOffsetY(actor);
     const glm::mat4 model_mat =
         selva::combat::buildActorModelMatrix(actor.pos, actor.yaw, foot_offset_y);
     const glm::vec3 anchor_world = glm::vec3(
@@ -149,6 +327,21 @@ void updateActiveAttackHitbox(Actor& actor)
                   glm::vec3(model_mat *
                             glm::vec4(0.0f, 0.0f, actor.active_attack_tip_offset_z, 0.0f))
             : anchor_world;
+    // Snapshot the PRE-update shape into prev_shape before we
+    // overwrite it. detectHits later this frame uses (prev, curr) to
+    // build the swept capsule covering the motion between the last
+    // frame's pose and this one. Doing the snapshot here, rather
+    // than in tickHitboxes, makes prev always be "the shape from one
+    // frame ago at this exact same spawn-then-update lifecycle
+    // moment" regardless of where in the per-frame order tickHitboxes
+    // lands. Before this fix, tickHitboxes ran AFTER the shape
+    // update but BEFORE detectHits, copying curr -> prev and
+    // degenerating the swept capsule to a point -- no sweep, no hit.
+    // First frame after spawn: prev == shape == anchor_world (set by
+    // spawnHitbox), so the swept capsule collapses to the spawn-frame
+    // sphere. Subsequent frames see real motion.
+    hb->prev_shape = hb->shape;
+    hb->has_prev = true;
     hb->shape.p0 = anchor_world;
     hb->shape.p1 = tip_world;
 }
@@ -175,12 +368,35 @@ Actor& player()
     return sActors.front();
 }
 
+Actor* actorByDeclId(const std::string& spawn_decl_id)
+{
+    if (spawn_decl_id.empty())
+        return nullptr;
+    for (auto& a : sActors)
+        if (a.spawn_decl_id == spawn_decl_id)
+            return &a;
+    return nullptr;
+}
+
 void initActorPool()
 {
     sActors.clear();
     Actor pc;
     pc.controller = Controller::Input;
     pc.faction = Faction::Player;
+    // The Vagrant is an unjudged soul -- refused Hell's measurement,
+    // received by the selva oscura. Form drives base stat-spread
+    // (low HP, low poise, fragile vessel) before class-pick layers on
+    // top. Per [[soul-animal-form-combat-doctrine]] +
+    // story.md *The Guide / Identity* (the Vagrant is the second
+    // unjudged-soul, after the Guide).
+    pc.form = Form::UnjudgedSoul;
+    pc.skeleton_id = "player";
+    // Player hurtbox layout. Authored in
+    // config/skeletons/player_hurtboxes.json -- the data form of what
+    // ActorVolumes.cpp::appendActorHurtboxes used to hardcode.
+    pc.body.hurtbox_decls =
+        selva::combat::loadHurtboxDecls("config/skeletons/player_hurtboxes.json");
     pc.death_clip_name = "second_death";
     // The PC's death audio is a layered composition:
     //   * death_sfx_name (dark bed) — plays at clip start, dread
@@ -193,14 +409,18 @@ void initActorPool()
     pc.death_sfx_name = "dark_sound";
     pc.death_peak_sfx_names = {"synth_echo", "soul_steal"};
     pc.death_peak_align_seconds = 3.5f;
+    // Apply form-defaults to Body + Stats before pool init. The class-
+    // pick system will layer custom stat spreads on top; the baseline
+    // applied here is the unjudged-soul default (60 HP / 12 poise).
+    applyFormDefaults(pc.body, pc.stats, pc.form);
     initActorPools(pc.hp, pc.stamina, pc.poise, pc.body, pc.stats);
     // initActorPool is one-time, asset-binding only. Position, hp-fill,
     // and any per-character state are NOT set here - those land via
-    // loadActiveCharacterIntoPlayer(profile) on Playing-enter. This
+    // hardResetWorldForCharacter(profile) on Playing-enter. This
     // separation is what lets New Game / Load Game both produce a
     // clean spawn instead of inheriting the previous run's state.
     //
-    // pos defaults to (0, 0, 0) until loadActiveCharacterIntoPlayer
+    // pos defaults to (0, 0, 0) until hardResetWorldForCharacter
     // sets it; that's fine because nothing reads sPlayer.pos before
     // we enter Playing.
     pc.spawn_pos = glm::vec3(0.0f);
@@ -239,9 +459,14 @@ void tickActors(float dt)
     {
         if (a.controller == Controller::Input)
             continue;
-        applyActorClipHipDelta(a);
+        applyActorClipHipDelta(a, dt);
     }
-    (void)dt;
+}
+
+float actorFootOffsetY(const Actor& a)
+{
+    const std::string key = a.skeleton_id.empty() ? std::string("player") : a.skeleton_id;
+    return selva::anim::meshByKey(key).foot_offset_y;
 }
 
 } // namespace selva::gameplay
