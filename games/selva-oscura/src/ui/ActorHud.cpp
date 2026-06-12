@@ -200,7 +200,7 @@ void drawTerritoryWireframes(ImDrawList* fg)
             {0, 1}, {1, 2}, {2, 3}, {3, 0}, {4, 5}, {5, 6},
             {6, 7}, {7, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7},
         };
-        for (auto& e : edges)
+        for (const auto* e : edges)
         {
             if (ok[e[0]] && ok[e[1]])
                 fg->AddLine(ImVec2(sp[e[0]].x, sp[e[0]].y), ImVec2(sp[e[1]].x, sp[e[1]].y), color,
@@ -898,7 +898,6 @@ void renderCompass()
         float deg;
         const char* label;
         ImU32 color;
-        bool major;
     };
     // Note: world axes in this game are +X = west, -X = east (camera
     // yaw is set up so turning right from facing south points toward
@@ -906,10 +905,9 @@ void renderCompass()
     // matches real-world convention from the player's POV (facing S,
     // turning right shows SW → W → NW → N at center).
     const Marker kMarkers[] = {
-        {0.0f, "N", kTextCard, true},   {45.0f, "NW", kTextInter, true},
-        {90.0f, "W", kTextCard, true},  {135.0f, "SW", kTextInter, true},
-        {180.0f, "S", kTextCard, true}, {225.0f, "SE", kTextInter, true},
-        {270.0f, "E", kTextCard, true}, {315.0f, "NE", kTextInter, true},
+        {0.0f, "N", kTextCard},     {45.0f, "NW", kTextInter},  {90.0f, "W", kTextCard},
+        {135.0f, "SW", kTextInter}, {180.0f, "S", kTextCard},   {225.0f, "SE", kTextInter},
+        {270.0f, "E", kTextCard},   {315.0f, "NE", kTextInter},
     };
 
     // Helper: map a compass-direction (deg) to an X pixel position
@@ -1174,7 +1172,7 @@ void renderPhysicsBodyDebug()
             {4, 5}, {5, 6}, {6, 7}, {7, 4}, // top
             {0, 4}, {1, 5}, {2, 6}, {3, 7}, // verticals
         };
-        for (auto& e : edges)
+        for (const auto* e : edges)
         {
             if (ok[e[0]] && ok[e[1]])
                 overlay->AddLine(ImVec2(sp[e[0]].x, sp[e[0]].y), ImVec2(sp[e[1]].x, sp[e[1]].y), c,
@@ -1259,7 +1257,7 @@ void renderSceneOverlays()
                 {0, 1}, {1, 2}, {2, 3}, {3, 0}, {4, 5}, {5, 6},
                 {6, 7}, {7, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7},
             };
-            for (auto& e : edges)
+            for (const auto* e : edges)
             {
                 if (ok[e[0]] && ok[e[1]])
                     fg->AddLine(ImVec2(sp[e[0]].x, sp[e[0]].y), ImVec2(sp[e[1]].x, sp[e[1]].y),

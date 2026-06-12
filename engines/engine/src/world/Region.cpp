@@ -191,7 +191,7 @@ bool beginTransition(RegionId target, TransitionMode mode, bool preserve_player_
                      target.id);
         return false;
     }
-    Region* tgt = regionFromId(target);
+    const Region* tgt = regionFromId(target);
     std::fprintf(stderr,
                  "[region-manager] beginTransition: target='%s' RegionId=%u "
                  "spawn=(%.2f,%.2f,%.2f) override_yaw=%d yaw=%.2f mode=%d fade=%.2fs\n",
@@ -338,7 +338,7 @@ static bool aabbContainsPoint(const glm::vec3& center, const glm::vec3& half, co
 
 const RegionTrigger* checkPlayerTriggers(const glm::vec3& player_pos)
 {
-    Region* cur = currentRegionPtr();
+    const Region* cur = currentRegionPtr();
     if (cur == nullptr)
         return nullptr;
 

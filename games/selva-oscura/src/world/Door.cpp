@@ -52,7 +52,7 @@ std::vector<Door> sDoors;
 // to the JSON-authored initial_state.
 const std::string* persistedStateFor(const std::string& door_id)
 {
-    auto* profile = selva::activePlayerProfile();
+    const auto* profile = selva::activePlayerProfile();
     if (profile == nullptr)
         return nullptr;
     for (const auto& pair : profile->door_states)

@@ -151,7 +151,8 @@ void spawnAllRegionEnemies()
     // game) handles state reset across the whole pool.
     for (int i = 0; i < engine::world::regionCount(); ++i)
     {
-        auto* js = dynamic_cast<JsonRegion*>(engine::world::regionPtr(engine::world::regionAt(i)));
+        const auto* js =
+            dynamic_cast<const JsonRegion*>(engine::world::regionPtr(engine::world::regionAt(i)));
         if (js != nullptr)
             selva::gameplay::spawnRegionEnemies(js->regionId(), js->enemySpawnDecls());
     }

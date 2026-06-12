@@ -93,7 +93,7 @@ bool loadHeightmapPng(const std::string& path, const TerrainRegion& meta,
 // Cavern ceiling layer: one downward-facing quad per floor cell at
 // Y = ceiling_y. Quads inside a registered cuts_ceiling slot at the
 // ceiling Y are dropped (structure pierces here).
-void buildEnclosureCeiling(TerrainRegion& r, int subdivide, float half, float step,
+void buildEnclosureCeiling(const TerrainRegion& r, int subdivide, float half, float step,
                            std::vector<Vertex>& verts, std::vector<std::uint32_t>& indices)
 {
     const int verts_per_side = subdivide + 1;
@@ -241,7 +241,7 @@ void buildWallMesh(const TerrainRegion& r, const WallSpec& w, int wall_cells_hor
 
 // Build all four lateral walls + ceiling for an enclosed region.
 // Structure footprints (cuts_ceiling / cuts_wall) carve their slots.
-void buildEnclosureGeometry(TerrainRegion& r, int subdivide, float half, float step,
+void buildEnclosureGeometry(const TerrainRegion& r, int subdivide, float half, float step,
                             std::vector<Vertex>& verts, std::vector<std::uint32_t>& indices)
 {
     buildEnclosureCeiling(r, subdivide, half, step, verts, indices);
@@ -839,11 +839,11 @@ float groundHeight(float world_x, float world_z, float current_y)
     if (log_on)
     {
         static FILE* sGroundLog = nullptr;
-        static int sGroundFrame = 0;
         if (sGroundLog == nullptr)
             sGroundLog = std::fopen("ground-debug.log", "w");
         if (sGroundLog != nullptr)
         {
+            static int sGroundFrame = 0;
             const char* nm = engine::physics::bodyDebugName(hit.body);
             std::fprintf(sGroundLog, "[%d] xz=(%.3f,%.3f) cur_y=%.3f -> y=%.3f body='%s'\n",
                          sGroundFrame, world_x, world_z, current_y, hit.position.y, nm);

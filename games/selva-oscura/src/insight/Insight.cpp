@@ -788,7 +788,7 @@ bool sameStringSet(const std::vector<std::string>& a, const std::vector<std::str
 
 std::string matchInference(const std::vector<std::string>& selected_observation_ids)
 {
-    PlayerProfile* p = selva::activePlayerProfile();
+    const PlayerProfile* p = selva::activePlayerProfile();
     if (p == nullptr || selected_observation_ids.empty())
         return {};
     // Caller must have unlocked every observation in the selection.

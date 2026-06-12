@@ -1823,11 +1823,12 @@ static void tickPlayerYaw(const glm::vec3& moveIntent, bool movement_locked, flo
             static int s_tick = 0;
             if ((++s_tick % 6) == 0)
             {
+                const float gap = std::abs(target_yaw - old_yaw);
+                const float step = std::abs(sPlayer.yaw - old_yaw);
                 std::fprintf(stderr,
                              "[lockon-yaw-body] target_yaw=%.3f cur=%.3f new=%.3f gap=%.3f "
                              "step=%.3f rate=%.1f dt=%.4f max_step=%.3f\n",
-                             target_yaw, old_yaw, sPlayer.yaw, std::abs(target_yaw - old_yaw),
-                             std::abs(sPlayer.yaw - old_yaw), rate, dt, rate * dt);
+                             target_yaw, old_yaw, sPlayer.yaw, gap, step, rate, dt, rate * dt);
                 std::fflush(stderr);
             }
         }

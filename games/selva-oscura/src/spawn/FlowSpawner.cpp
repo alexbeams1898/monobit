@@ -390,7 +390,7 @@ void fireArrivalAction(const FlowState& fs, selva::gameplay::Actor& a, const std
     a.arrival_action_fired = true;
 }
 
-void tickArrivals(FlowState& fs)
+void tickArrivals(const FlowState& fs)
 {
     const float now = selva::wallClock();
     for (auto& a : selva::gameplay::actors())

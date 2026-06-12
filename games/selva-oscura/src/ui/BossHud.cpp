@@ -232,7 +232,7 @@ void resetBossHud()
 
 namespace
 {
-void bossHudPulseLog(BossHudState& s, double now, const selva::gameplay::Actor* boss)
+void bossHudPulseLog(const BossHudState& s, double now, const selva::gameplay::Actor* boss)
 {
     static double s_last_pulse = 0.0;
     if (now - s_last_pulse < 1.0)

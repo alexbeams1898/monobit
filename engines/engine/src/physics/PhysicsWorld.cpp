@@ -290,7 +290,7 @@ static void stepAllCharacters(float step)
 {
     ZoneScopedN("physics-character-loop");
     int character_count = 0;
-    for (auto& kv : sHandles)
+    for (const auto& kv : sHandles)
     {
         if (kv.second.kind != HandleEntry::Kind::Character || !kv.second.character)
             continue;

@@ -122,7 +122,7 @@ bool loadBundle(const std::string& id, const std::string& mesh_filename)
                      folder.c_str());
         return false;
     }
-    const int n_clips = bundle.clips.loadDirectory(folder.c_str());
+    const int n_clips = bundle.clips.loadDirectory(folder);
     std::fprintf(stderr, "[anim] loaded %d clip(s) from %s\n", n_clips, folder.c_str());
     bundle.mesh = loadSkeletalMesh((folder + "/" + mesh_filename).c_str(), bundle.skeleton);
     if (!bundle.mesh.isLoaded())
@@ -277,7 +277,7 @@ void shutdownSkeletalAssets()
 
 void auditClipHipMotion()
 {
-    auto& playerClips = clips();
+    const auto& playerClips = clips();
     if (playerClips.by_name.empty() || sSampler().bone_palette.empty())
         return;
     std::vector<std::string> names;

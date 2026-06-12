@@ -296,7 +296,7 @@ bool drawOptionList()
 // over the look + matches dialog selection style.
 void drawTabHeader()
 {
-    auto& s = state();
+    const auto& s = state();
     const float content_w = ImGui::GetContentRegionAvail().x;
     const float tab_w = (content_w - 8.0f) * 0.5f;
 
@@ -547,7 +547,7 @@ void openClassPicker(PlayerClass initial_selection)
 
 void renderClassPicker()
 {
-    auto& s = state();
+    const auto& s = state();
     if (s.phase == Phase::Inactive)
         return;
     // Full-screen dim sits behind both phases (Picking + Confirming)

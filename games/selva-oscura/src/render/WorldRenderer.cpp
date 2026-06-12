@@ -807,7 +807,7 @@ void renderStaticMeshes()
     // them. See Region.h doctrine on currentRegion semantics.
     for (int i = 0; i < engine::world::regionCount(); ++i)
     {
-        auto* region = dynamic_cast<selva::world::JsonRegion*>(
+        const auto* region = dynamic_cast<const selva::world::JsonRegion*>(
             engine::world::regionPtr(engine::world::regionAt(i)));
         if (region != nullptr)
             region->renderMeshes();
@@ -833,7 +833,7 @@ void renderStaticMeshesDepth()
     selva::render::setSceneDepthModel(glm::mat4(1.0f));
     for (int i = 0; i < engine::world::regionCount(); ++i)
     {
-        auto* region = dynamic_cast<selva::world::JsonRegion*>(
+        const auto* region = dynamic_cast<const selva::world::JsonRegion*>(
             engine::world::regionPtr(engine::world::regionAt(i)));
         if (region != nullptr)
             region->renderMeshesDepth();

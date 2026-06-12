@@ -217,8 +217,11 @@ void redirectStdioToLog()
     // WIN32-subsystem build has no console; reopen stdio onto
     // selva-oscura.log so existing fprintf diagnostics land somewhere
     // readable. Truncated per run.
-    std::freopen("selva-oscura.log", "w", stdout);
-    std::freopen("selva-oscura.log", "a", stderr);
+    // freopen returns the new stream or nullptr on failure; we don't
+    // care about the result -- if redirect fails, the existing stdout/
+    // stderr stays connected to wherever it was (likely the console).
+    (void)std::freopen("selva-oscura.log", "w", stdout);
+    (void)std::freopen("selva-oscura.log", "a", stderr);
     // Line-buffered: progress as it happens without one-syscall-per-byte.
     std::setvbuf(stderr, nullptr, _IOLBF, 4096);
     std::setvbuf(stdout, nullptr, _IOLBF, 4096);

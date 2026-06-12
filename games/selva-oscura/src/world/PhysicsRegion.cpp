@@ -143,9 +143,13 @@ void registerChapelStructureFootprints()
         // (empirical from chapel_interior.glb AABB).
         constexpr float kCorridorEntryZ = -321.15f + kLimboRimBlend;
         constexpr float kCorridorExitZ = -353.15f;
-        constexpr float kCorridorCeilingClearance = 4.0f;
-        constexpr float kLimboFloorY = -43.13f;
-        constexpr float kCorridorSlopePerM = 0.16f / 0.35f; // STAIR_RISE / STAIR_TREAD
+        // Reference dimensions (kept as documentation; the corridor
+        // collider derives its geometry from a region OBB authored in
+        // JSON, not from these constants).
+        [[maybe_unused]] constexpr float kCorridorCeilingClearance = 4.0f;
+        [[maybe_unused]] constexpr float kLimboFloorY = -43.13f;
+        [[maybe_unused]] constexpr float kCorridorSlopePerM =
+            0.16f / 0.35f; // STAIR_RISE / STAIR_TREAD
 
         const float center_z = (kCorridorEntryZ + kCorridorExitZ) * 0.5f;
         const float half_z = (kCorridorEntryZ - kCorridorExitZ) * 0.5f;

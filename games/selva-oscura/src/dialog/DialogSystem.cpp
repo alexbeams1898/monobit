@@ -286,7 +286,7 @@ void begin(const std::string& npc_id)
 
 void end()
 {
-    auto& rs = state();
+    const auto& rs = state();
     if (!rs.is_active)
         return;
     const NpcDialog* npc = topicRegistry().get(rs.npc_id);
@@ -346,7 +346,7 @@ namespace
 {
 void applyChoice(int choice_index)
 {
-    auto& rs = state();
+    const auto& rs = state();
     if (!rs.is_active)
         return;
     if (choice_index < 0 || static_cast<std::size_t>(choice_index) >= rs.view.choices.size())

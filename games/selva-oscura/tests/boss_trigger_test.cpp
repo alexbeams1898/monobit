@@ -30,6 +30,7 @@ TEST_CASE("RegionTrigger: Custom action carries payload", "[boss-backend]")
     t.action = TriggerAction::Custom;
     t.action_payload = "engage:lupa";
 
+    REQUIRE(t.id == "lupa_engage");
     REQUIRE(t.action == TriggerAction::Custom);
     REQUIRE(t.action_payload == "engage:lupa");
 }
@@ -46,6 +47,7 @@ TEST_CASE("RegionTrigger: Custom triggers don't need target", "[boss-backend]")
     // No target set; that's the point.
 
     REQUIRE(t.action == TriggerAction::Custom);
+    REQUIRE(t.action_payload == "spawn:dire_wolf");
     REQUIRE(t.target.id == engine::world::kInvalidRegion.id);
 }
 

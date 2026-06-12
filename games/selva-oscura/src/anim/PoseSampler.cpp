@@ -51,7 +51,7 @@ engine::log::Channel* samplerChannel()
 // that would do non-trivial work just to construct the log message.
 bool samplerLoggingActive()
 {
-    auto* ch = samplerChannel();
+    const auto* ch = samplerChannel();
     return ch != nullptr && ch->enabled();
 }
 
