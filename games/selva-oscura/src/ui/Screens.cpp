@@ -63,7 +63,7 @@ bool sJustLeftPlaying = false;
 // Called by the screens when the user selects an action.
 void setPhase(GameState::Phase next)
 {
-    const auto& gs = gameState();
+    auto& gs = gameState();
     const bool was_playing = (gs.phase == GameState::Phase::Playing);
     const bool will_be_playing = (next == GameState::Phase::Playing);
     if (was_playing && !will_be_playing)

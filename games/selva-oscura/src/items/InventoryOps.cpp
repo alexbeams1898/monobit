@@ -15,9 +15,10 @@ const ItemDef* defOf(const std::string& item_id)
     return itemRegistry().get(item_id);
 }
 
-// cppcheck-suppress[constParameterReference] -- the returned reference
-// is non-const so callers can mutate the vector; inv must stay
-// non-const even though this function body alone doesn't mutate it.
+// categoryVec returns a non-const reference into inv so callers can
+// mutate the vector; inv therefore must stay non-const even though
+// this function body alone doesn't mutate it.
+// cppcheck-suppress constParameterReference
 std::vector<Entry>& categoryVec(Inventory& inv, const std::string& category_id)
 {
     return inv.by_category[category_id];
