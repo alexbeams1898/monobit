@@ -63,7 +63,7 @@ bool grant(Inventory& inv, const std::string& item_id)
     }
     if (has(inv, item_id))
         return false;
-    categoryVec(inv, def->category).push_back(PossessionEntry{item_id});
+    categoryVec(inv, def->category).emplace_back(PossessionEntry{item_id});
     return true;
 }
 
@@ -95,7 +95,7 @@ int addStack(Inventory& inv, const std::string& item_id, int amount)
             }
         }
     }
-    vec.push_back(StackEntry{item_id, amount});
+    vec.emplace_back(StackEntry{item_id, amount});
     return amount;
 }
 
@@ -151,7 +151,7 @@ InstancedEntry& addInstanced(Inventory& inv, const std::string& item_id)
         return sFallback;
     }
     auto& vec = categoryVec(inv, def->category);
-    vec.push_back(InstancedEntry{item_id, 0});
+    vec.emplace_back(InstancedEntry{item_id, 0});
     return std::get<InstancedEntry>(vec.back());
 }
 

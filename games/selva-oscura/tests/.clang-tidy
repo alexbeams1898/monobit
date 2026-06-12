@@ -1,0 +1,9 @@
+# Tests-specific overrides on top of the root .clang-tidy. Test
+# TEST_CASE bodies legitimately accumulate many REQUIRE() calls and
+# therefore high cognitive complexity / function length scores; the
+# alternative (splitting every assertion into its own TEST_CASE) would
+# mean a flood of tiny test names that obscure the thing being tested.
+InheritParentConfig: true
+Checks: >
+  -readability-function-cognitive-complexity,
+  -readability-function-size,

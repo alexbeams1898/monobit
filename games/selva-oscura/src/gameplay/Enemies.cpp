@@ -489,7 +489,10 @@ void bindSpawnArchetype(Actor& e, const EnemySpawnDecl& decl, const EnemyArchety
 void applyScriptedPathFromDecl(Actor& e, const EnemySpawnDecl& decl)
 {
     std::vector<glm::vec3> full_path = decl.scripted_path_waypoints;
-    full_path.push_back(*decl.scripted_target_pos);
+    if (decl.scripted_target_pos.has_value())
+        full_path.push_back(*decl.scripted_target_pos);
+    if (full_path.empty())
+        return;
     e.scripted_target_pos = full_path.front();
     e.scripted_path_waypoints.assign(full_path.begin() + 1, full_path.end());
     e.scripted_stop_range = decl.scripted_stop_range;
@@ -521,7 +524,7 @@ PrimeClipResolution resolvePrimeClip(const Actor& e)
             "[spawn] spawn_clip '{}' not found on skeleton '{}' (actor '{}'); falling back to idle",
             e.archetype->spawn_clip, e.skeleton_id, e.spawn_id);
     }
-    ClipLookup spawn_idle = lookupArchetypeClip(e, ClipFamily::PeacefulIdle);
+    const ClipLookup spawn_idle = lookupArchetypeClip(e, ClipFamily::PeacefulIdle);
     out.clip = spawn_idle.clip;
     out.key = spawn_idle.key;
     return out;
@@ -559,7 +562,7 @@ void primeSpawnPose(Actor& e)
     // the standing idle even for actors whose spawn pose is prone
     // (larva_fresh in zombie_crawl). See feedback memory for why the
     // key MUST flow through to sampler.update.
-    PrimeClipResolution prime = resolvePrimeClip(e);
+    const PrimeClipResolution prime = resolvePrimeClip(e);
     if (prime.clip == nullptr || !prime.clip->isLoaded())
     {
         selva::combat::combatLog("[spawn] no prime clip '{}' on skeleton '{}' (actor '{}')",
@@ -1087,7 +1090,7 @@ DeathClipResolution resolveDeathClip(const Actor& e)
 
 void reapplyDeadPose(Actor& e)
 {
-    DeathClipResolution dc = resolveDeathClip(e);
+    const DeathClipResolution dc = resolveDeathClip(e);
     const selva::anim::AnimationClip* death_clip = dc.clip;
     const char* clip_name = dc.key;
     if (death_clip != nullptr && death_clip->isLoaded())
@@ -1201,7 +1204,7 @@ void logItemDrops(const Actor& e)
 
 void fireEnemyDeath(Actor& e, int index)
 {
-    DeathClipResolution dc = resolveDeathClip(e);
+    const DeathClipResolution dc = resolveDeathClip(e);
     if (dc.clip != nullptr && dc.clip->isLoaded())
     {
         e.death_time = selva::wallClock();
@@ -1315,7 +1318,7 @@ bool applyArchetypeSwap(Actor& a, const EnemyArchetype& target)
             selva::anim::PoseSampler::OneShotOptions opts;
             opts.clip_key = target.aggro_clip.c_str();
             opts.cancel_fraction = 1.0f;
-            a.sampler.playOneShot(*clip, /*blend_in=*/0.20f, /*blend_out=*/0.20f,
+            a.sampler.playOneShot(*clip, /*blend_in_seconds=*/0.20f, /*blend_out_seconds=*/0.20f,
                                   selva::anim::PoseSampler::BodyMask::Full,
                                   /*start_time_seconds=*/0.0f,
                                   /*playback_rate=*/1.0f, opts);
@@ -1452,7 +1455,7 @@ std::optional<ClipFamily> familyFromDirectionalKey(const char* k)
 {
     if (k == nullptr)
         return std::nullopt;
-    std::string s(k);
+    const std::string s(k);
     if (s == "walking")
         return ClipFamily::Walk;
     if (s == "walking_backward")
@@ -1591,7 +1594,7 @@ static bool tickOneEnemy(Actor& a, const Actor& pc, float dt, const selva::tunin
             selva::anim::PoseSampler::OneShotOptions opts;
             opts.clip_key = a.archetype->aggro_clip.c_str();
             opts.cancel_fraction = 1.0f; // lock for full duration
-            a.sampler.playOneShot(*aggro, /*blend_in=*/0.20f, /*blend_out=*/0.20f,
+            a.sampler.playOneShot(*aggro, /*blend_in_seconds=*/0.20f, /*blend_out_seconds=*/0.20f,
                                   selva::anim::PoseSampler::BodyMask::Full,
                                   /*start_time_seconds=*/0.0f,
                                   /*playback_rate=*/1.0f, opts);
@@ -1801,9 +1804,8 @@ void tickScriptedDeathDrainPhase(float now)
 
 void tickScriptedDeathPainCompletion(float now)
 {
-    for (std::size_t i = 0; i < actors().size(); ++i)
+    for (auto& a : actors())
     {
-        Actor& a = actors()[i];
         if (a.is_dead || a.boss_state != BossState::Dying)
             continue;
         if (a.dying_until_wallclock < 0.0f || now < a.dying_until_wallclock)

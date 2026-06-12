@@ -166,7 +166,7 @@ void handleEngageVerb(const std::string& spawn_id)
                          a.skeleton_id.c_str(), a.archetype->engage_clip.c_str(),
                          clip->trackCount(), clip->duration());
             std::fflush(stderr);
-            selva::anim::PoseSampler::OneShotOptions opts;
+            const selva::anim::PoseSampler::OneShotOptions opts;
             a.sampler.playOneShot(*clip, /*blend_in_seconds=*/0.15f,
                                   /*blend_out_seconds=*/0.20f,
                                   selva::anim::PoseSampler::BodyMask::Full,

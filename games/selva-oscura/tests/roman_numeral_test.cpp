@@ -17,7 +17,7 @@ namespace
 
 bool allBarsAre(const std::vector<std::uint8_t>& bars, std::uint8_t expected)
 {
-    for (std::uint8_t b : bars)
+    for (const std::uint8_t b : bars)
         if (b != expected)
             return false;
     return true;
@@ -182,7 +182,7 @@ TEST_CASE("encode 1234567 within single-vinculum range", "[roman-numeral][vincul
 
 TEST_CASE("bars vector length always matches glyph string length", "[roman-numeral][invariant]")
 {
-    for (std::uint32_t amount :
+    for (const std::uint32_t amount :
          {0u, 1u, 4u, 9u, 49u, 100u, 999u, 1000u, 3999u, 4000u, 99999u, 999999u, 3999999u, 4000000u,
           4000001u, 12345678u, 99999999u, 999999999u})
     {

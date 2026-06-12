@@ -76,7 +76,7 @@ struct Option
     const char* description; // one sensory line, tier-0 (no class names, no cosmology)
     std::uint32_t str;       // starting STR (rendered as roman numeral)
     std::uint32_t dex;       // starting DEX
-    std::uint32_t end_;      // starting END (end_ to dodge any <ctype.h> ::end macro)
+    std::uint32_t endurance;      // starting END (full name avoids the <ctype.h> ::end macro)
     std::uint32_t lck;       // starting LCK
     const char* trade_off;   // stub: real balance copy TBD
     const char* confirm_phrase;
@@ -211,7 +211,7 @@ void drawStatRow(const Option& opt, ImU32 color)
     ImGui::SameLine(0.0f, kStatSpacing);
     ImGui::TextDisabled("END");
     ImGui::SameLine(0.0f, 4.0f);
-    drawStatRoman(opt.end_, color);
+    drawStatRoman(opt.endurance, color);
     ImGui::SameLine(0.0f, kStatSpacing);
     ImGui::TextDisabled("LCK");
     ImGui::SameLine(0.0f, 4.0f);

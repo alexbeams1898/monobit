@@ -140,6 +140,12 @@ struct EnemyAction
 // "override the global tunable for this archetype." Absent means
 // "use the global value." That lets a fast scout enemy override
 // vision_range while a slow shade inherits the default.
+// NOLINTNEXTLINE(clang-analyzer-optin.performance.Padding)
+// Field order matches the authoring JSON schema and the bestiary doc
+// (lifecycle / combat / cosmology groupings). Reordering for tight
+// packing would scatter related fields and break the doc-mirrored
+// layout; the runtime cost (~40 bytes per archetype, of which we
+// have <100) is negligible.
 struct EnemyArchetype
 {
     std::string id;

@@ -99,7 +99,7 @@ TEST_CASE("conservation: sum of denominations always equals input", "[roman-tier
     // Sample arbitrary amounts across the range and assert the
     // additive sum equals the input. The greedy algorithm guarantees
     // this; the test pins it.
-    for (std::uint32_t amount :
+    for (const std::uint32_t amount :
          {1u, 7u, 13u, 42u, 99u, 500u, 1234u, 9999u, 10000u, 57892u, 999999u, 1000000u, 12345678u,
           99999999u, 100000000u, 500000000u, 999999999u})
     {

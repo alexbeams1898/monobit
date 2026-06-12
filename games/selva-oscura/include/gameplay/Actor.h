@@ -255,6 +255,12 @@ enum class LocoTier
 // shared pool. The Controller tag is the ONLY thing that
 // differentiates them at the per-frame system level — schemas,
 // animation, collision, combat are all identical.
+// NOLINTNEXTLINE(clang-analyzer-optin.performance.Padding)
+// Field order here groups by lifecycle/system (schema, identity, state)
+// to keep code readable; reordering for tight packing would scatter
+// related fields and break the lifecycle grouping for save/load. The
+// runtime cost (~50 bytes wasted per actor) is negligible at our actor
+// counts; the readability win is worth it.
 struct Actor
 {
     // --- Schema (same shape on player + enemy) ---

@@ -265,7 +265,7 @@ void pullConfirmersAdjacent(const std::vector<std::string>& ids,
         {
             if (pos.find(cb) == pos.end())
                 continue;
-            pos[cb] = {cit->second.x + offset * (n + 1), cit->second.y};
+            pos[cb] = {cit->second.x + offset * static_cast<float>(n + 1), cit->second.y};
             ++n;
         }
     }
@@ -290,6 +290,7 @@ void recompute()
     if (p == nullptr)
         return;
     std::vector<std::string> ids;
+    ids.reserve(p->unlocked_insights.size());
     for (const auto& id : p->unlocked_insights)
         ids.push_back(id);
     std::sort(ids.begin(), ids.end());
@@ -297,7 +298,7 @@ void recompute()
         return;
     std::unordered_map<std::string, NodePos> pos;
     const Category cats[] = {Category::World, Category::Self, Category::Others};
-    for (Category cat : cats)
+    for (const Category cat : cats)
     {
         const auto columns = buildCategoryColumns(ids, cat);
         if (columns.empty())

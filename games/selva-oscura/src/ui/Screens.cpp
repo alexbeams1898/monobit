@@ -470,8 +470,8 @@ std::string libraryShortLabel(const std::string& id)
     const std::string& full = selva::lang::resolve(key);
     if (full.empty() || full[0] == '[' || full[0] == '(')
         return id;
-    std::size_t period = full.find('.');
-    std::size_t cut = (period != std::string::npos && period < 60) ? (period + 1) : 60;
+    const std::size_t period = full.find('.');
+    const std::size_t cut = (period < 60U) ? (period + 1U) : std::size_t{60U};
     if (cut >= full.size())
         return full;
     return full.substr(0, cut) + " ...";
@@ -891,10 +891,15 @@ void renderMindWorkbenchEdges(const PlayerProfile& p, const ImVec2& wb_p0, const
         const float len = std::sqrt(dx * dx + dy * dy);
         if (len < 1.0f)
             return;
-        const float seg = 6.0f, gap = 4.0f;
-        for (float t = 0.0f; t < len; t += seg + gap)
+        constexpr float kSeg = 6.0f;
+        constexpr float kGap = 4.0f;
+        const int steps = static_cast<int>(len / (kSeg + kGap)) + 1;
+        for (int i = 0; i < steps; ++i)
         {
-            const float t2 = std::min(t + seg, len);
+            const float t = static_cast<float>(i) * (kSeg + kGap);
+            if (t >= len)
+                break;
+            const float t2 = std::min(t + kSeg, len);
             dl->AddLine(ImVec2(a.x + dx * t / len, a.y + dy * t / len),
                         ImVec2(a.x + dx * t2 / len, a.y + dy * t2 / len), col, thick);
         }
@@ -1154,12 +1159,12 @@ void renderMindLibrary(UIState& ui, PlayerProfile& p,
         const std::string& id = library_observations[i];
         const int row = static_cast<int>(i) / per_row;
         const int col = static_cast<int>(i) % per_row;
-        const ImVec2 c(origin_x + col * cell + kLibNodeR + kLibNodePad * 0.5f,
-                       origin_y + row * cell + kLibNodeR + kLibNodePad * 0.5f);
+        const ImVec2 c(origin_x + static_cast<float>(col) * cell + kLibNodeR + kLibNodePad * 0.5f,
+                       origin_y + static_cast<float>(row) * cell + kLibNodeR + kLibNodePad * 0.5f);
         renderMindLibNode(ui, id, c, kLibNodeR, dlx, mind_hover_id);
     }
     const int rows = (static_cast<int>(library_observations.size()) + per_row - 1) / per_row;
-    ImGui::SetCursorScreenPos(ImVec2(origin_x, origin_y + rows * cell));
+    ImGui::SetCursorScreenPos(ImVec2(origin_x, origin_y + static_cast<float>(rows) * cell));
     const ImVec2 dz_avail = ImGui::GetContentRegionAvail();
     if (dz_avail.x > 1.0f && dz_avail.y > 1.0f)
     {
@@ -1193,8 +1198,9 @@ void mindCommitNewInference(PlayerProfile& p, const UIState& ui, const std::stri
                 sy += w.y;
                 ++cnt;
             }
-    const float cx = cnt > 0 ? sx / cnt : 0.5f;
-    const float cy = cnt > 0 ? std::max(0.10f, sy / cnt - 0.10f) : 0.5f;
+    const float cx = cnt > 0 ? sx / static_cast<float>(cnt) : 0.5f;
+    const float cy =
+        cnt > 0 ? std::max(0.10f, sy / static_cast<float>(cnt) - 0.10f) : 0.5f;
     PlayerProfile::WorkbenchNode w;
     w.id = fired_id;
     w.x = cx;

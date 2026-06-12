@@ -1563,7 +1563,7 @@ static void tickPlayerVelocity(const glm::vec3& moveIntent, bool movement_locked
     if (intent_mag > 0.0001f && use_velocity)
     {
         const glm::vec3 dir = moveIntent / intent_mag;
-        float target_speed = tun.jog_speed;
+        float target_speed = 0.0f;
         switch (sPlayer.loco_tier)
         {
         case LocoTier::Walk:
@@ -4160,7 +4160,7 @@ glm::vec3 resolveEnemyTint(const selva::gameplay::Actor& enemy, float now_wc)
     if (enemy.archetype == nullptr)
         return glm::vec3(1.0f);
     const auto& at = *enemy.archetype;
-    glm::vec3 tint(at.tint_color[0], at.tint_color[1], at.tint_color[2]);
+    const glm::vec3 tint(at.tint_color[0], at.tint_color[1], at.tint_color[2]);
     if (at.tint_burn_target_archetype.empty() || enemy.arrival_wallclock <= 0.0f ||
         enemy.arrival_action_delay_seconds <= 0.0f)
         return tint;
@@ -4300,10 +4300,10 @@ namespace
 {
 struct CameraFrame
 {
-    glm::mat4 viewProj;
-    glm::vec3 camPos;
-    glm::vec3 sunDir;
-    glm::vec3 sunIntensity;
+    glm::mat4 view_proj;
+    glm::vec3 cam_pos;
+    glm::vec3 sun_dir;
+    glm::vec3 sun_intensity;
     float exposure;
 };
 
@@ -4346,13 +4346,13 @@ CameraFrame buildCameraFrame()
     }
 
     CameraFrame f;
-    f.viewProj =
+    f.view_proj =
         selva::render::buildViewProj(sPlayer.pos, targetLookAtY, head_world, head_world_mat,
                                      use_anim_orientation, sPlayer.yaw, fd_one_shot);
-    selva::render::setLastViewProj(f.viewProj);
+    selva::render::setLastViewProj(f.view_proj);
 
-    f.sunDir = selva::render::atmosphere::sunDirection();
-    f.sunIntensity = selva::render::atmosphere::sunIntensity();
+    f.sun_dir = selva::render::atmosphere::sunDirection();
+    f.sun_intensity = selva::render::atmosphere::sunIntensity();
     f.exposure = selva::render::atmosphere::exposure();
 
     // Camera position mirrors buildViewProj math: player_pos -
@@ -4362,7 +4362,7 @@ CameraFrame buildCameraFrame()
     const float camPitch = selva::render::cameraPitch();
     const glm::vec3 lookFwd(std::cos(camPitch) * -std::sin(camYaw), std::sin(camPitch),
                             std::cos(camPitch) * -std::cos(camYaw));
-    f.camPos = sPlayer.pos - lookFwd * tun_atm.follow_distance +
+    f.cam_pos = sPlayer.pos - lookFwd * tun_atm.follow_distance +
                glm::vec3(0.0f, tun_atm.follow_height, 0.0f);
     return f;
 }
@@ -4456,10 +4456,10 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
         return;
     }
     const CameraFrame cam = buildCameraFrame();
-    const glm::mat4 viewProj = cam.viewProj;
-    const glm::vec3 camPos = cam.camPos;
-    const glm::vec3 kSunDir = cam.sunDir;
-    const glm::vec3 kSunIntensity = cam.sunIntensity;
+    const glm::mat4 viewProj = cam.view_proj;
+    const glm::vec3 camPos = cam.cam_pos;
+    const glm::vec3 kSunDir = cam.sun_dir;
+    const glm::vec3 kSunIntensity = cam.sun_intensity;
     const float kExposure = cam.exposure;
 
     runShadowDepthPass();

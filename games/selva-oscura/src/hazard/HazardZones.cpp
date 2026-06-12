@@ -55,7 +55,7 @@ bool positionIsInAvoidedZone(const glm::vec3& pos, const std::vector<std::string
 {
     if (avoided_kinds.empty())
         return false;
-    std::unordered_set<std::string> as_set(avoided_kinds.begin(), avoided_kinds.end());
+    const std::unordered_set<std::string> as_set(avoided_kinds.begin(), avoided_kinds.end());
     return positionIsInAvoidedZone(pos, as_set);
 }
 

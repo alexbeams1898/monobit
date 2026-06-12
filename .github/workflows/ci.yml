@@ -180,6 +180,16 @@ jobs:
             cat /tmp/lint-files.txt
           fi
 
+      - name: Neutralize third-party .clang-tidy configs
+        if: steps.lint-files.outputs.skip != 'true'
+        # Tracy ships its own .clang-tidy with `AnalyzeTemporaryDtors`,
+        # an unknown key in clang-tidy 18+ that fails the run at config
+        # parse time. Our HeaderFilterRegex excludes their headers
+        # anyway; just remove their config so clang-tidy uses ours
+        # everywhere.
+        run: |
+          find build/_deps -name '.clang-tidy' -delete 2>/dev/null || true
+
       - name: Lint (clang-tidy)
         if: steps.lint-files.outputs.skip != 'true'
         run: |

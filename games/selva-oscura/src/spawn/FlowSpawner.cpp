@@ -241,7 +241,7 @@ void tickInitialFill(FlowState& fs)
         const std::string& arch_override = (i < fs.cfg.initial_archetypes_per_slot.size())
                                                ? fs.cfg.initial_archetypes_per_slot[i]
                                                : std::string{};
-        selva::gameplay::EnemySpawnDecl d = buildInitialDecl(fs, p, y, arch_override);
+        const selva::gameplay::EnemySpawnDecl d = buildInitialDecl(fs, p, y, arch_override);
         const std::string spawn_id = d.id;
         selva::gameplay::spawnEnemyFromDecl(fs.cfg.spawn_region_id, d);
         if (auto* a = selva::gameplay::actorByDeclId(spawn_id))
@@ -466,7 +466,7 @@ void tickSpawnDecision(FlowState& fs, float dt)
             return; // no vacancy; trickle waits
         target_override = &fs.cfg.initial_positions[chosen_slot];
     }
-    selva::gameplay::EnemySpawnDecl d = buildSpawnDecl(fs, target_override);
+    const selva::gameplay::EnemySpawnDecl d = buildSpawnDecl(fs, target_override);
     const std::string spawn_id = d.id;
     selva::gameplay::spawnEnemyFromDecl(fs.cfg.spawn_region_id, d);
     if (slot_mode && chosen_slot >= 0)

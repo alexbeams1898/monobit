@@ -122,15 +122,15 @@ JointReachResult computeJointReach(const AnimationClip& clip, const Skeleton& sk
     // Identity root: we want raw model-space joint positions, no
     // pre-rotation. The XZ delta between hip and target is the
     // rig-relative reach measurement.
-    ozz::math::Float4x4 root_storage = ozz::math::Float4x4::identity();
+    const ozz::math::Float4x4 root_storage = ozz::math::Float4x4::identity();
 
     ozz::animation::SamplingJob::Context ctx;
     ctx.Resize(skel.num_joints());
     std::vector<ozz::math::SoaTransform> locals(skel.num_soa_joints());
     std::vector<ozz::math::Float4x4> models(skel.num_joints());
 
-    PairSampleCtx pair{anim,          &skel,   &ctx,       &locals, &models,
-                       &root_storage, hip_idx, target_idx, dur};
+    const PairSampleCtx pair{anim,          &skel,   &ctx,       &locals, &models,
+                             &root_storage, hip_idx, target_idx, dur};
     const float step = 1.0f / sample_hz;
     const int n_steps = static_cast<int>(std::ceil((t_end - t_start) / step)) + 1;
     float xz_max_sq = 0.0f;

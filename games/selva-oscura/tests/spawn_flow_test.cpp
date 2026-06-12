@@ -71,7 +71,7 @@ TEST_CASE("acheron_larvae.json parses with expected fields", "[spawn][flow]")
     REQUIRE(ip["archetype"].get<std::string>() == "larva_aged");
     REQUIRE(ip.contains("positions"));
     REQUIRE(ip["positions"].is_array());
-    REQUIRE(ip["positions"].size() > 0);
+    REQUIRE(!ip["positions"].empty());
     for (const auto& p : ip["positions"])
     {
         REQUIRE(p.is_array());

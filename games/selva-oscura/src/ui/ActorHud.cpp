@@ -179,7 +179,7 @@ void drawTerritoryWireframes(ImDrawList* fg)
     {
         const auto& t = engine::world::territoryAt(idx);
         std::uint32_t h = 2166136261u;
-        for (char ch : t.owner_region_id)
+        for (const char ch : t.owner_region_id)
             h = (h ^ static_cast<std::uint8_t>(ch)) * 16777619u;
         const ImU32 color = IM_COL32(80 + (h & 0xFF) / 2, 80 + ((h >> 8) & 0xFF) / 2,
                                      80 + ((h >> 16) & 0xFF) / 2, 220);
