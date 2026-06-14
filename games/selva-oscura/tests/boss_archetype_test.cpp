@@ -93,37 +93,46 @@ TEST_CASE("EnemyArchetype: round-trip preserves boss fields", "[boss-backend]")
     REQUIRE(b.engage_clip == a.engage_clip);
 }
 
-TEST_CASE("EnemyArchetype: item_drops round-trips", "[boss-backend][item-drops]")
+TEST_CASE("EnemyArchetype: loot_drops round-trips", "[boss-backend][loot-drops]")
 {
     // Lupa-shape archetype: no sangue_drop (Animal-form actors don't
-    // yield Hell-substance), three item_drops (organic loot).
+    // yield Hell-substance), three loot drops (organic loot) each
+    // with their own chance + quantity range.
     EnemyArchetype a;
     a.id = "wolf";
-    a.item_drops = {"lupa_meat", "lupa_bone", "lupa_hide"};
+    a.loot_drops = {
+        {"config/items/materials/lupa_meat.json", 1, 2, 0.95f},
+        {"config/items/materials/lupa_bone.json", 1, 1, 0.50f},
+        {"config/items/materials/lupa_hide.json", 1, 1, 0.20f},
+    };
 
     const nlohmann::json j = a;
-    REQUIRE(j.contains("item_drops"));
-    REQUIRE(j["item_drops"].size() == 3);
+    REQUIRE(j.contains("loot_drops"));
+    REQUIRE(j["loot_drops"].size() == 3);
     REQUIRE_FALSE(j.contains("sangue_drop"));
 
     const EnemyArchetype b = j.get<EnemyArchetype>();
-    REQUIRE(b.item_drops.size() == 3);
-    REQUIRE(b.item_drops[0] == "lupa_meat");
-    REQUIRE(b.item_drops[1] == "lupa_bone");
-    REQUIRE(b.item_drops[2] == "lupa_hide");
+    REQUIRE(b.loot_drops.size() == 3);
+    REQUIRE(b.loot_drops[0].config_path == "config/items/materials/lupa_meat.json");
+    REQUIRE(b.loot_drops[0].min_qty == 1);
+    REQUIRE(b.loot_drops[0].max_qty == 2);
+    REQUIRE(b.loot_drops[0].base_chance == 0.95f);
+    REQUIRE(b.loot_drops[1].config_path == "config/items/materials/lupa_bone.json");
+    REQUIRE(b.loot_drops[2].config_path == "config/items/materials/lupa_hide.json");
+    REQUIRE(b.loot_drops[2].base_chance == 0.20f);
     REQUIRE(b.sangue_drop == 0u);
 }
 
-TEST_CASE("EnemyArchetype: item_drops defaults to empty", "[boss-backend][item-drops]")
+TEST_CASE("EnemyArchetype: loot_drops defaults to empty", "[boss-backend][loot-drops]")
 {
     const EnemyArchetype a;
-    REQUIRE(a.item_drops.empty());
+    REQUIRE(a.loot_drops.empty());
 
-    // A typical Hell-side archetype JSON (sangue only, no item_drops):
+    // A typical Hell-side archetype JSON (sangue only, no loot_drops):
     const nlohmann::json src = {{"id", "limbo_shade"}, {"sangue_drop", 1}};
     const EnemyArchetype b = src.get<EnemyArchetype>();
     REQUIRE(b.sangue_drop == 1u);
-    REQUIRE(b.item_drops.empty());
+    REQUIRE(b.loot_drops.empty());
 }
 
 TEST_CASE("EnemyArchetype: to_json omits empty boss fields for non-bosses", "[boss-backend]")

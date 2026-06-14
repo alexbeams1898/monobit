@@ -13,17 +13,67 @@ combatants. The keepers act on the bodies of the damned with claws,
 teeth, body weight, jaws, stingers, wings — what their substance
 already provides. Tools are *not native to Hell.*
 
-The Vagrant arrives empty-handed in a place full of bodies. Anything
-weapon-shaped he wields, he has **made.** This is the absolute rule.
-There are no chests of swords waiting to be looted. There are no
-fallen weapons on the ground next to dead shades. No NPC hands him a
-blade. Every weapon in his hands exists because **he extracted the
-matter for it and shaped that matter himself.**
+The Vagrant arrives empty-handed in a place full of bodies. Most of
+what he wields, he has **made**. The damned souls do not bear arms;
+the keepers act with the substance of their own bodies. **No NPC
+hands him a blade. No shade-corpse drops a weapon. Enemy loot tables
+yield materials and substance, never tools.**
+
+There is a single tightly-bounded exception: **world-placed weapons
+left by prior Vagrants and fallen Wood-travelers**. See *World-
+placed weapons* below. Every such weapon is hand-authored and
+hand-placed; there is no looted-from-mob path. The rule "the Vagrant
+crafts what he wields" remains the default; world-placed weapons
+exist because *someone else* once imprinted them and the residue
+persisted.
 
 This rule applies to both paths. The Vagrant crafts in Hell; the
 Vagrant also crafts in the Wood. The substrate differs by location
-(see *Substrate split* below), but the rule — **all weapons are
-crafted** — is invariant.
+(see *Substrate split* below), but the rule — **all weapons except
+the hand-authored world-placed ones are crafted** — is invariant.
+
+## World-placed weapons
+
+A small set of weapons exist in the world from game-start, hand-
+placed in specific locations the player will reach (the descent
+stairs, pilgrim camps, fallen-Vagrant remains, ossuary niches).
+These are the third loot source per inventory.md *Loot sources,
+summary* — distinct from enemy drops (materials + sangue only) and
+the Wood-side chest (player storage).
+
+Cosmologically, world-placed weapons exist for two reasons:
+
+- **Wood-craft persistence.** A pilgrim or Wood-traveler imprinted
+  the weapon from Wood-substrate (deadfall, bound stone, sinew) and
+  died. Wood-substrate sits outside Hell's accounting (per setting.md
+  *The Wood*), so the imprint did not dissolve. Centuries of
+  pilgrim-falls have scattered humble tier-0 / tier-1 weapons along
+  the descent routes. The starting weapon on the Acheron descent
+  stairs is one of these.
+
+- **Prior-Vagrant Hell-craft residue.** Hell's reclamation protocol
+  is broken (per setting.md *Hell's failure*). A prior Vagrant
+  imprinted a Hell-craft weapon and died; his weapon's substance
+  *should* have returned to Hell at his second death, but the broken
+  protocol failed to fully reclaim it. What's left is residue — a
+  fragmentary Hell-craft weapon, often partial or degraded. Deeper-
+  in-Hell containers (ossuaries, pyres, niches) hold these.
+
+Both flavors are hand-placed in region JSON. Neither rolls
+procedurally. Neither drops from enemies. The player encounters
+them as spatial discoveries; the act of picking one up is the
+counterpart to crafting — *someone before me made this and left
+it*. The Vagrant does not extract or shape the substance; he
+inherits the imprint as-is.
+
+Mechanically, world-placed weapons enter inventory through world-
+container interactions (per inventory.md *World containers*).
+They have a fixed quality at placement (no roll); their stat
+requirements gate equip; they gain weapon XP through use like any
+other weapon (per weapon-xp.md); and the substrate persistence
+rule decides whether they survive second death (Wood-craft
+persists; Hell-craft residue reclaims, finishing what the broken
+protocol started).
 
 ## Crafting is imprint-making
 

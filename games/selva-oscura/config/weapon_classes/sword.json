@@ -7,9 +7,7 @@
       {
         "id": "default",
         "attacks": [
-          { "clip": "sword_and_shield_slash"   },
-          { "clip": "sword_and_shield_slash_3", "chain_link_start_seconds": 0.60, "chain_link_blend_seconds": 0.275 },
-          { "clip": "sword_and_shield_slash_4" }
+          { "clip": "sword_and_shield_slash" }
         ]
       }
     ],
@@ -17,8 +15,7 @@
       {
         "id": "default",
         "attacks": [
-          { "clip": "sword_and_shield_attack"   },
-          { "clip": "sword_and_shield_attack_2" }
+          { "clip": "sword_and_shield_slash_2", "end_seconds": 0.92 }
         ]
       }
     ],
@@ -26,7 +23,7 @@
       {
         "id": "default",
         "attacks": [
-          { "clip": "sword_and_shield_slash_2"  }
+          { "clip": "sword_and_shield_slash_2", "end_seconds": 0.92 }
         ]
       }
     ]

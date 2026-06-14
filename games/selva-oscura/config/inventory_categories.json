@@ -1,10 +1,12 @@
 {
   "categories": [
-    { "id": "key_items",   "display_name": "Key Items",   "order": 0 },
-    { "id": "weapons",     "display_name": "Weapons",     "order": 1 },
-    { "id": "armor",       "display_name": "Armor",       "order": 2 },
-    { "id": "consumables", "display_name": "Consumables", "order": 3 },
-    { "id": "spells",      "display_name": "Spells",      "order": 4 },
-    { "id": "materials",   "display_name": "Materials",   "order": 5 }
+    { "id": "key_items",     "display_name": "Key Items",     "order": 0 },
+    { "id": "weapons",       "display_name": "Weapons",       "order": 1 },
+    { "id": "armor",         "display_name": "Armor",         "order": 2 },
+    { "id": "accessories",   "display_name": "Accessories",   "order": 3 },
+    { "id": "consumables",   "display_name": "Consumables",   "order": 4 },
+    { "id": "incantations",  "display_name": "Incantations",  "order": 5 },
+    { "id": "invocations",   "display_name": "Invocations",   "order": 6 },
+    { "id": "materials",     "display_name": "Materials",     "order": 7 }
   ]
 }

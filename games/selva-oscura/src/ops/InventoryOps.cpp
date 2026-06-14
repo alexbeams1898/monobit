@@ -1,14 +1,18 @@
 #include "ecs/ItemConfig.h"
 
+#include "items/ItemRegistry.h"
+
 namespace selva
 {
 
-// Process-wide ItemRegistry singleton. Engine ships the TYPE; the
-// instance is game-side, same Meyer's pattern as clips() / archetypes().
+// `selva::itemRegistry()` is the convenience alias accessor for the
+// engine ItemRegistry; the real Meyer's singleton lives in
+// `selva::items::itemRegistry()` so the loader (selva/src/items/
+// ItemRegistry.cpp) and the namespace-`selva` aliases see the same
+// instance. Avoid keeping two parallel statics.
 ItemRegistry& itemRegistry()
 {
-    static ItemRegistry s_registry;
-    return s_registry;
+    return selva::items::itemRegistry();
 }
 
 } // namespace selva

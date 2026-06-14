@@ -35,6 +35,22 @@ void renderInteractionPrompt()
     if (verb != nullptr && verb[0] != '\0')
         prompt += verb;
 
+    // When multiple in-range candidates exist, surface the cycle
+    // hint + the focus position so the player knows there's a choice
+    // (Souls/Elden Ring convention). The world-space ring around the
+    // focused candidate carries the rest of the signal; this string
+    // tells the player what key to press.
+    const auto& candidates = selva::interact::currentCandidates();
+    const int focus_idx = selva::interact::currentFocusIndex();
+    if (candidates.size() > 1 && focus_idx >= 0)
+    {
+        prompt += "   [Tab] Cycle (";
+        prompt += std::to_string(focus_idx + 1);
+        prompt += "/";
+        prompt += std::to_string(static_cast<int>(candidates.size()));
+        prompt += ")";
+    }
+
     const ImGuiViewport* vp = ImGui::GetMainViewport();
     const float vw = vp->Size.x;
     const float vh = vp->Size.y;

@@ -75,6 +75,7 @@ add_executable(engine-tests
     tests/ecs_test.cpp
     tests/collision_test.cpp
     tests/animation_test.cpp
+    tests/config_loaders_test.cpp
     tests/inventory_ops_test.cpp
     tests/crafting_ops_test.cpp
     tests/evolution_ops_test.cpp

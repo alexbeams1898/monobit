@@ -162,8 +162,23 @@ void emitCombatFields(nlohmann::json& j, const EnemyArchetype& a)
         j["scripted_death_drain_exponent"] = a.scripted_death_drain_exponent;
     if (a.sangue_drop != 0u)
         j["sangue_drop"] = a.sangue_drop;
-    if (!a.item_drops.empty())
-        j["item_drops"] = a.item_drops;
+    if (!a.loot_drops.empty())
+    {
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto& d : a.loot_drops)
+        {
+            nlohmann::json entry;
+            entry["config_path"] = d.config_path;
+            if (d.min_qty != 1)
+                entry["min"] = d.min_qty;
+            if (d.max_qty != 1)
+                entry["max"] = d.max_qty;
+            if (d.base_chance != 1.0f)
+                entry["chance"] = d.base_chance;
+            arr.push_back(std::move(entry));
+        }
+        j["loot_drops"] = std::move(arr);
+    }
 }
 
 void emitBossFields(nlohmann::json& j, const EnemyArchetype& a)
@@ -256,11 +271,21 @@ void loadCombatFields(const nlohmann::json& j, EnemyArchetype& a)
     a.scripted_death_drain_to_fraction = j.value("scripted_death_drain_to_fraction", 0.0f);
     a.scripted_death_drain_exponent = j.value("scripted_death_drain_exponent", 1.0f);
     a.sangue_drop = j.value("sangue_drop", std::uint32_t{0});
-    if (j.contains("item_drops") && j["item_drops"].is_array())
+    if (j.contains("loot_drops") && j["loot_drops"].is_array())
     {
-        for (const auto& s : j["item_drops"])
-            if (s.is_string())
-                a.item_drops.push_back(s.get<std::string>());
+        for (const auto& entry : j["loot_drops"])
+        {
+            if (!entry.is_object() || !entry.contains("config_path"))
+                continue;
+            engine::ecs::DropEntry d;
+            d.config_path = entry.value("config_path", std::string{});
+            d.min_qty = entry.value("min", 1);
+            d.max_qty = entry.value("max", 1);
+            d.base_chance = entry.value("chance", 1.0f);
+            if (d.max_qty < d.min_qty)
+                d.max_qty = d.min_qty;
+            a.loot_drops.push_back(std::move(d));
+        }
     }
 }
 

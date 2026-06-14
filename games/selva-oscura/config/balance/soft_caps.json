@@ -1,0 +1,14 @@
+{
+  "_comment": "Per-class soft-cap curves for derived stat values per [[project_class_stats_v2_locked_2026_06_14]]. Schema (B): each top-level key is a derived value (e.g. 'hp_from_end'), with per-class sub-blocks declaring single-bend curves. Below bend_at: full returns. Above: returns multiplied by post_bend_multiplier. The compute path multiplies the raw stat contribution by the soft-cap multiplier *after* the underlying formula runs, so the engine formula stays portable / class-agnostic.",
+
+  "_schema": "Each curve = { bend_at: int (stat level where returns bend), post_bend_multiplier: float (fraction of normal return above the bend; typically 0.1-0.4). Classes omitted from a curve block use multiplier 1.0 at all stat values (no soft cap = engine formula returns linear forever). Unburdened body stats are locked at 1/1/1/1; their curves are documented for completeness but never fire in practice.",
+
+  "_v1_scope": "Foundation + Penitent END->HP only. Other curves (stamina, poise, damage scaling per class) land alongside the gameplay systems that consume them, per the locked authoring pattern (add curve when the value being capped is needed for real tuning).",
+
+  "hp_from_end": {
+    "penitent":   { "bend_at": 50, "post_bend_multiplier": 0.65 },
+    "heretic":    { "bend_at": 20, "post_bend_multiplier": 0.20 },
+    "ferine":     { "bend_at": 35, "post_bend_multiplier": 0.45 },
+    "unburdened": { "bend_at": 1,  "post_bend_multiplier": 1.00 }
+  }
+}

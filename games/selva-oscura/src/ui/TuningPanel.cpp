@@ -1,5 +1,7 @@
 #include "ui/TuningPanel.h"
 
+#include "AppState.h"
+#include "AppStateGlobal.h"
 #include "Engine.h"
 #include "Formulas.h"
 #include "Tunables.h"
@@ -23,6 +25,8 @@
 #include "gameplay/LocomotionStateMachine.h"
 #include "gameplay/PlayerState.h"
 #include "gameplay/TickState.h"
+#include "items/ItemRegistry.h"
+#include "ops/InventoryOps.h"
 #include "ui/ActorHud.h"
 #include "ui/BossHud.h"
 #include "ui/ClassPickerScreen.h"
@@ -32,10 +36,12 @@
 #include "ui/NamePromptScreen.h"
 
 #include <imgui.h>
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -127,6 +133,155 @@ static void renderDebugSection(selva::tuning::Tunables& tun)
     ImGui::Checkbox("Camera pull-in -> camera-debug.log", &dbg.camera_pull_in_log);
     ImGui::Checkbox("Ground height -> ground-debug.log", &dbg.ground_height_log);
     ImGui::Checkbox("Physics (Jolt) -> physics-debug.log", &dbg.physics_log);
+
+    // Live grip-pose tuning for the currently equipped right-hand
+    // weapon. Mutates the in-memory ItemDef so the next render frame
+    // picks up the new values; "Save to JSON" writes them back to
+    // the source config file so the change persists. Only meaningful
+    // while a weapon is equipped; otherwise the section shows
+    // (nothing equipped). Cosmetic-only -- doesn't touch combat math.
+    ImGui::Separator();
+    ImGui::TextUnformatted("Equipped weapon grip pose");
+    {
+        auto* tune_profile = selva::activePlayerProfile();
+        engine::ecs::ItemDef* def = nullptr;
+        std::string config_path;
+        if (tune_profile != nullptr)
+        {
+            const auto eid = tune_profile->equipment.right_hand;
+            if (eid != engine::ecs::kInvalidItemInstanceId)
+            {
+                if (const auto* inst =
+                        engine::ops::inventory::findById(tune_profile->inventory, eid))
+                {
+                    config_path = inst->config_path;
+                    auto& defs = selva::items::itemRegistry().defs;
+                    auto def_it = defs.find(config_path);
+                    if (def_it != defs.end())
+                        def = &def_it->second;
+                }
+            }
+        }
+        if (def == nullptr)
+        {
+            ImGui::TextDisabled("(nothing equipped in right hand)");
+        }
+        else
+        {
+            ImGui::Text("%s  [%s]", def->name.c_str(), config_path.c_str());
+            ImGui::SliderFloat("offset.x", &def->grip_offset_x, -1.0f, 1.0f, "%.3f");
+            ImGui::SliderFloat("offset.y", &def->grip_offset_y, -1.0f, 1.0f, "%.3f");
+            ImGui::SliderFloat("offset.z", &def->grip_offset_z, -1.0f, 1.0f, "%.3f");
+            ImGui::SliderFloat("rot.x (pitch)", &def->grip_rot_deg_x, -180.0f, 180.0f, "%.1f");
+            ImGui::SliderFloat("rot.y (yaw)", &def->grip_rot_deg_y, -180.0f, 180.0f, "%.1f");
+            ImGui::SliderFloat("rot.z (roll)", &def->grip_rot_deg_z, -180.0f, 180.0f, "%.1f");
+            ImGui::SliderFloat("scale", &def->grip_scale, 0.05f, 5.0f, "%.3f");
+            if (ImGui::Button("Save grip pose to JSON"))
+            {
+                try
+                {
+                    std::ifstream in(config_path);
+                    nlohmann::json j;
+                    if (in)
+                        in >> j;
+                    in.close();
+                    j["grip_offset_x"] = def->grip_offset_x;
+                    j["grip_offset_y"] = def->grip_offset_y;
+                    j["grip_offset_z"] = def->grip_offset_z;
+                    j["grip_rot_deg_x"] = def->grip_rot_deg_x;
+                    j["grip_rot_deg_y"] = def->grip_rot_deg_y;
+                    j["grip_rot_deg_z"] = def->grip_rot_deg_z;
+                    j["grip_scale"] = def->grip_scale;
+                    std::ofstream out(config_path);
+                    out << j.dump(2) << '\n';
+                    std::fprintf(stderr, "[grip-tune] wrote grip pose to %s\n",
+                                 config_path.c_str());
+                    std::fflush(stderr);
+                }
+                catch (const std::exception& e)
+                {
+                    std::fprintf(stderr, "[grip-tune] save failed for %s: %s\n",
+                                 config_path.c_str(), e.what());
+                    std::fflush(stderr);
+                }
+            }
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Reset"))
+            {
+                def->grip_offset_x = 0.0f;
+                def->grip_offset_y = 0.0f;
+                def->grip_offset_z = 0.0f;
+                def->grip_rot_deg_x = 0.0f;
+                def->grip_rot_deg_y = 0.0f;
+                def->grip_rot_deg_z = 0.0f;
+                def->grip_scale = 1.0f;
+            }
+        }
+    }
+
+    // Signing-state shortcuts -- skip the Beat-1-through-4 playthrough
+    // when iterating on post-Signing systems (descent-stair starter
+    // dispenser, post-Signing dialog topics, weapon XP / evolution).
+    // These mutate the active PlayerProfile directly; the next
+    // autosave persists. Use ONLY for dev iteration -- they bypass
+    // the Signing's narrative beat entirely.
+    ImGui::Separator();
+    ImGui::TextUnformatted("Signing test (dev shortcuts)");
+    auto* profile = selva::activePlayerProfile();
+    if (profile == nullptr)
+    {
+        ImGui::TextDisabled("(no active character)");
+    }
+    else
+    {
+        ImGui::Text("Active: %s  class=%s  signed=%s",
+                    profile->name.empty() ? "(unnamed)" : profile->name.c_str(),
+                    selva::playerClassName(profile->player_class),
+                    selva::hasFlag(profile, "signing_committed") ? "yes" : "no");
+        const char* commit_labels[] = {"As Penitent", "As Heretic", "As Ferine", "As Unburdened"};
+        const selva::PlayerClass commit_classes[] = {
+            selva::PlayerClass::Penitent, selva::PlayerClass::Heretic,
+            selva::PlayerClass::Ferine, selva::PlayerClass::Unburdened};
+        for (int i = 0; i < 4; ++i)
+        {
+            if (i > 0)
+                ImGui::SameLine();
+            if (ImGui::SmallButton(commit_labels[i]))
+            {
+                profile->player_class = commit_classes[i];
+                selva::setFlag(profile, "signing_committed");
+                if (commit_classes[i] == selva::PlayerClass::Unburdened)
+                {
+                    selva::setFlag(profile, "signing_refused");
+                    selva::setFlag(profile, "path_unburdened");
+                    selva::clearFlag(profile, "signing_accepted");
+                    selva::clearFlag(profile, "path_class_picker");
+                }
+                else
+                {
+                    selva::setFlag(profile, "signing_accepted");
+                    selva::setFlag(profile, "path_class_picker");
+                    selva::clearFlag(profile, "signing_refused");
+                    selva::clearFlag(profile, "path_unburdened");
+                }
+                std::fprintf(stderr, "[debug] forced signing as %s\n",
+                             selva::playerClassName(commit_classes[i]));
+                std::fflush(stderr);
+            }
+        }
+        if (ImGui::SmallButton("Clear signing_committed + descent_starter_granted"))
+        {
+            selva::clearFlag(profile, "signing_committed");
+            selva::clearFlag(profile, "signing_accepted");
+            selva::clearFlag(profile, "signing_refused");
+            selva::clearFlag(profile, "path_class_picker");
+            selva::clearFlag(profile, "path_unburdened");
+            selva::clearFlag(profile, "descent_starter_granted");
+            profile->player_class = selva::PlayerClass::None;
+            std::fprintf(stderr, "[debug] cleared all Signing flags\n");
+            std::fflush(stderr);
+        }
+    }
 }
 
 static void renderLocomotionSection(selva::tuning::Tunables& tun)

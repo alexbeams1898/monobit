@@ -16,6 +16,7 @@
 #include "anim/PoseSampler.h"
 #include "anim/SkeletalAssets.h"
 #include "audio/Audio.h"
+#include "classmods/ClassModifiers.h"
 #include "combat/AttackResolution.h"
 #include "combat/CombatData.h"
 #include "combat/CombatLog.h"
@@ -29,6 +30,7 @@
 #include "gameplay/PerFrameTick.h"
 #include "gameplay/PlayerState.h"
 #include "gameplay/PropArchetype.h"
+#include "identity/Identity.h"
 #include "insight/Insight.h"
 #include "items/CategoryRegistry.h"
 #include "items/ItemRegistry.h"
@@ -41,6 +43,7 @@
 #include "render/SkyPass.h"
 #include "render/TerrainShader.h"
 #include "render/TreeShader.h"
+#include "softcaps/SoftCaps.h"
 #include "spawn/FlowSpawner.h"
 #include "ui/Screens.h"
 #include "ui/TuningPanel.h"
@@ -336,7 +339,8 @@ void initGameplaySubsystems()
     // Inventory categories before items (item registry validates each
     // item's category against the category list).
     selva::items::categoryRegistry().loadFromFile("config/inventory_categories.json");
-    selva::items::itemRegistry().loadDirectory("config/items");
+    selva::items::loadItemDirectory("config/items");
+    selva::items::loadRecipeDirectory("config/recipes");
     // Dialog handlers BEFORE the topic registry so JSON-referenced
     // handler keys resolve at first-use.
     selva::dialog::registerGuideHandlers();
@@ -419,6 +423,22 @@ int main(int /*argc*/, char* /*argv*/[])
     // back silently to struct defaults if its file is missing.
     selva::tuning::loadFromFile(kTunablesPath);
     selva::formulas::loadFromFile("config/balance/formulas.json");
+    // Per-class identity-stat functions per
+    // [[project_identity_stats_derived_erasure_locked_2026_06_14]].
+    // Failure is silent (Identity::loadFromFile logs); compute()
+    // returns 0 for any class whose function didn't load.
+    selva::identity::loadFromFile("config/balance/identity_functions.json");
+    // Per-class soft-cap curves on derived stat values per
+    // [[project_class_stats_v2_locked_2026_06_14]]. Failure is silent
+    // (SoftCaps::loadFromFile logs); apply() returns the raw value
+    // unchanged for any class/derived pair whose curve didn't load.
+    selva::softcaps::loadFromFile("config/balance/soft_caps.json");
+    // Per-class flat modifiers (hp_offset etc) layering on top of
+    // soft-cap-shaped contributions. The Penitent's body carries
+    // more vital substance than the Heretic's; their class adds a
+    // flat HP value separate from END investment. Per the same
+    // doctrine. Failure is silent; offsetFor returns 0.
+    selva::classmods::loadFromFile("config/balance/class_modifiers.json");
     engine.renderLoadingFrame("audio + animations");
     runBootStep("audio::init", [] { selva::audio::init("config/audio.json"); });
     bool skel_ok = false;

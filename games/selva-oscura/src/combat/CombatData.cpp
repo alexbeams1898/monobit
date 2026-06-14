@@ -1,8 +1,14 @@
 #include "combat/CombatData.h"
 
+#include "AppState.h"
+#include "AppStateGlobal.h"
 #include "Tunables.h"
+#include "ecs/Items.h"
+#include "items/ItemRegistry.h"
+#include "ops/InventoryOps.h"
 
 #include <cstdio>
+#include <unordered_map>
 
 namespace selva::combat
 {
@@ -18,6 +24,17 @@ WeaponClassRegistry sWeaponClasses;
 WeaponRegistry sWeapons;
 PlayerEquipment sEquipment;
 Weapon sFistsWeapon;
+
+// Synthesized combat::Weapon per equipped ItemInstance, keyed by the
+// item's config_path. The bridge populates these on first equip and
+// reuses them on later syncs. Pointer stability matches the
+// WeaponRegistry contract (entries live for the registry's lifetime).
+std::unordered_map<std::string, Weapon> sSynthesizedWeapons;
+
+// Last-synced ItemInstanceId per hand; the per-frame sync skips work
+// when this matches the current inventory state.
+engine::ecs::ItemInstanceId sLastSyncedRight = engine::ecs::kInvalidItemInstanceId;
+engine::ecs::ItemInstanceId sLastSyncedLeft = engine::ecs::kInvalidItemInstanceId;
 
 } // namespace
 
@@ -95,6 +112,61 @@ float effectiveAttackPlaybackRate(HandSide hand)
     if (w != nullptr && w->cls != nullptr && w->cls->attack_playback_rate > 0.0f)
         return w->cls->attack_playback_rate;
     return global;
+}
+
+const Weapon* resolveHandWeaponFor(engine::ecs::ItemInstanceId id,
+                                   const engine::ecs::Inventory& inv,
+                                   const engine::ecs::ItemRegistry& items,
+                                   const WeaponClassRegistry& classes)
+{
+    if (id == engine::ecs::kInvalidItemInstanceId)
+        return nullptr;
+    const engine::ecs::ItemInstance* inst = engine::ops::inventory::findById(inv, id);
+    if (inst == nullptr)
+        return nullptr;
+    const engine::ecs::ItemDef* def = items.find(inst->config_path);
+    if (def == nullptr || def->weapon_class_id.empty())
+        return nullptr;
+    const auto class_it = classes.by_id.find(def->weapon_class_id);
+    if (class_it == classes.by_id.end())
+        return nullptr;
+
+    auto& synth = sSynthesizedWeapons[inst->config_path];
+    synth.id = inst->config_path;
+    synth.name = def->name;
+    synth.class_id = def->weapon_class_id;
+    synth.cls = &class_it->second;
+    return &synth;
+}
+
+void resetSyncCacheForTesting()
+{
+    sLastSyncedRight = engine::ecs::kInvalidItemInstanceId;
+    sLastSyncedLeft = engine::ecs::kInvalidItemInstanceId;
+    sSynthesizedWeapons.clear();
+}
+
+void syncEquipmentFromInventory()
+{
+    const selva::PlayerProfile* profile = selva::activePlayerProfile();
+    if (profile == nullptr)
+        return;
+
+    const auto right_id = profile->equipment.right_hand;
+    const auto left_id = profile->equipment.left_hand;
+    if (right_id == sLastSyncedRight && left_id == sLastSyncedLeft)
+        return;
+
+    sLastSyncedRight = right_id;
+    sLastSyncedLeft = left_id;
+
+    const auto& items = selva::items::itemRegistry();
+    const Weapon* right = resolveHandWeaponFor(right_id, profile->inventory, items,
+                                                sWeaponClasses);
+    const Weapon* left = resolveHandWeaponFor(left_id, profile->inventory, items,
+                                               sWeaponClasses);
+    sEquipment.right = (right != nullptr) ? right : &sFistsWeapon;
+    sEquipment.left = (left != nullptr) ? left : &sFistsWeapon;
 }
 
 } // namespace selva::combat

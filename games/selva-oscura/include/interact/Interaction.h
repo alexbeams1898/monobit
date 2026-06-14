@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <vector>
 
 namespace selva::interact
 {
@@ -45,15 +46,37 @@ Id registerInteractable(Decl decl);
 // kInvalidId (no-op) or with an Id that's already removed (no-op).
 void unregisterInteractable(Id id);
 
-// Per-frame: scan registered interactables, pick the closest one
-// that is (a) within its range of the player XZ, (b) available()
-// returns true. Caches as the current target. Suppressed entirely
-// when a Scene is active (cinematic moments own the input).
+// Per-frame: scan registered interactables, collect every one that
+// is (a) within its range of the player XZ, (b) available() returns
+// true. Sorted by ascending XZ distance from the player. The first
+// entry is the default focus; cycle() advances through the rest.
+// Selection is sticky across frames: as long as the previously
+// focused interactable is still in the list, it stays focused even
+// if its distance ordering changes. When it falls out of the list
+// (out of range / unregistered / no longer available), focus snaps
+// to the closest candidate. Suppressed entirely when a Scene is
+// active (cinematic moments own the input).
 void tick();
 
-// Current interaction target, or nullptr if none. UI reads this to
-// render the prompt.
+// Current focused interactable, or nullptr if none. UI reads this
+// to render the prompt + the focus highlight.
 const TargetView* currentTarget();
+
+// All in-range candidates this frame, sorted closest-first. Used by
+// the HUD to draw unfocused-candidate markers so the player can see
+// what else they could cycle to.
+const std::vector<TargetView>& currentCandidates();
+
+// Index into currentCandidates() of the focused interactable, or -1
+// if none. Used by the HUD to render the focus highlight on the
+// right candidate.
+int currentFocusIndex();
+
+// Cycle focus to the next in-range candidate (wraps at the end).
+// No-op when fewer than 2 candidates are in range -- the player has
+// no meaningful choice. Called by the input layer on the cycle-key
+// edge.
+void cycleFocus();
 
 // Fires on_interact for the current target. Called by the input
 // layer on E-press edge while in Playing + no Scene + no dialog.

@@ -1,0 +1,8 @@
+{
+  "name": "Compact residue",
+  "inputs": [
+    { "item": "config/items/materials/larval_residue.json", "quantity": 3 }
+  ],
+  "output": "config/items/materials/refined_residue.json",
+  "output_quantity": 1
+}

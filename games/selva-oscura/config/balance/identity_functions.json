@@ -1,0 +1,18 @@
+{
+  "_comment": "Per-class identity stat functions per [[project_identity_stats_derived_erasure_locked_2026_06_14]]. Each class names which PlayerProfile counters feed its identity stat and at what weight. Identity stat value = sum(counter * weight) for all entries. v1 contains only the Signing anchor — class-shaped behavioral counters (hits_tanked, dialog_refusals, etc.) land alongside the gameplay systems that generate them. The signing_anchor weight of 1.0 gives every just-signed character their first identity-stat point from the act of signing itself.",
+
+  "_inputs": "Counter keys map to PlayerProfile state. Supported v1 input kinds: 'signing_anchor' (1 if signing_committed && current class == this entry's class, else 0). Future input kinds: 'counter:<key>' (read a uint counter), 'flag:<name>' (1 if flag set), 'lifetime:sangue', 'lifetime:riversamento'. Loader rejects unknown input kinds with a warning.",
+
+  "penitent": {
+    "signing_anchor": 1.0
+  },
+  "heretic": {
+    "signing_anchor": 1.0
+  },
+  "ferine": {
+    "signing_anchor": 1.0
+  },
+  "unburdened": {
+    "signing_anchor": 1.0
+  }
+}

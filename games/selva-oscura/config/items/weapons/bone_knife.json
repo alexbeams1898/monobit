@@ -1,0 +1,23 @@
+{
+  "_comment": "Tier-0 starter for the Heretic path. A knife shaped from a gnawed traitor's bone -- the material that fills the lowest circles of Cocytus (Inferno XXXII-XXXIII, Ugolino's teeth on the Archbishop's skull). Per [[project_class_stats_v2_locked_2026_06_14]] descent-stair starter doctrine: scales for the class without being class-named. Hell-substrate Hell-craft, left by a prior heretic-Vagrant who pulled the shard from somewhere deep. Bone is the cosmologically apt material for the Heretic: refusing what's given to you, taking what was someone else's body, sharpening it -- the act IS the refusal. Scales primarily on DEX (Heretic's high-soft-cap stat) with a trace of LCK (the heretical chance-strike) and light INT (the cunning's cognitive edge). Identity contribution from Anathema in a Heretic's hands. Mundane name -- just a bone knife.",
+
+  "name": "Bone knife",
+  "description": "A length of yellow bone, knapped to a wicked edge along one side. Someone gnawed this thin before they were strong enough to grind it sharp.",
+  "category": "weapon",
+  "rarity": "common",
+  "stackable": false,
+  "max_stack": 1,
+  "max_durability": 60.0,
+
+  "base_damage": 10.0,
+  "weight": 0.6,
+
+  "dex_scaling": 1.0,
+  "lck_scaling": 0.3,
+  "int_scaling": 0.6,
+  "dex_requirement": 1,
+
+  "identity_class": "heretic",
+  "identity_stat_scaling": 0.75,
+  "identity_stat_requirement": 0
+}

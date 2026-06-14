@@ -125,3 +125,30 @@ TEST_CASE("Unknown weapon id in loadout leaves slot null without crashing",
     // not throw and not return a stale pointer.
     REQUIRE(weapons.get("definitely_not_a_real_weapon") == nullptr);
 }
+
+TEST_CASE("WeaponAttack end_seconds parses from sword.json heavy chain",
+          "[combat][weaponclass][end_seconds]")
+{
+    // sword.json's one_handed.heavy chain authors slash_2 with
+    // end_seconds=0.92 so the runtime caps the visible swing at 0.92s
+    // and starts blending to idle from there. Default for all other
+    // attacks is the negative sentinel (-1.0f) meaning uncapped.
+    WeaponClassRegistry classes;
+    classes.loadDirectory("config/weapon_classes");
+    const auto* sword = classes.get("sword");
+    REQUIRE(sword != nullptr);
+    REQUIRE_FALSE(sword->one_handed.heavy.empty());
+    REQUIRE_FALSE(sword->one_handed.heavy[0].attacks.empty());
+
+    const auto& heavy0 = sword->one_handed.heavy[0].attacks[0];
+    REQUIRE(heavy0.clip == "sword_and_shield_slash_2");
+    REQUIRE(heavy0.end_seconds > 0.9f);
+    REQUIRE(heavy0.end_seconds < 0.95f);
+
+    // Light chain has NO end_seconds set; the field should be at its
+    // negative sentinel default.
+    REQUIRE_FALSE(sword->one_handed.light.empty());
+    REQUIRE_FALSE(sword->one_handed.light[0].attacks.empty());
+    const auto& light0 = sword->one_handed.light[0].attacks[0];
+    REQUIRE(light0.end_seconds < 0.0f);
+}

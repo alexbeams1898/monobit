@@ -17,12 +17,18 @@ namespace selva::ui
 namespace
 {
 
-// Two-tab layout for the Signing modal:
-//   - Accept tab: the three signed-class options (YIELD / WITHHOLD /
-//     ENDURE). Player selects one with arrow keys + Enter, or mouse
-//     hover + click.
-//   - Refuse tab: the single Refuse option. Same selection model;
-//     the option list happens to have one row.
+// Two-tab layout for the Signing modal -- the Guide stands as
+// keeper-of-intake (Minos-shaped: Hell's first formal measurement,
+// performed by the Guide stand-in because the Vagrant's anomaly let
+// him walk in unmeasured). The Vagrant is asked to give an account
+// of his appetite for the things of his life; each option is a
+// confession that, once heard, binds him to a category.
+//   - Speak tab: the three confessions that the keeper can sort
+//     (Penitent / Heretic / Ferine). Each is a two-beat sentence
+//     whose second clause reveals more than the speaker meant.
+//   - Refuse to speak tab: the Unburdened path. Refusing to give
+//     the account leaves the speaker unmeasurable -- the Diaphanous
+//     arc starts here.
 // Player switches tabs with Q / E (or mouse click on the tab header).
 // Within the active tab the option cursor moves with Up / Down / W /
 // S; selection is committed with Enter or mouse click on the row.
@@ -72,35 +78,80 @@ State& state()
 struct Option
 {
     PlayerClass cls;
-    const char* label;       // posture verb (YIELD / WITHHOLD / ENDURE / REFUSE)
-    const char* description; // one sensory line, tier-0 (no class names, no cosmology)
+    const char* confession;  // first-person two-beat account in the Vagrant's voice
+    const char* mechanical;  // legible stat-shape line, plain English
     std::uint32_t str;       // starting STR (rendered as roman numeral)
     std::uint32_t dex;       // starting DEX
     std::uint32_t endurance; // starting END (full name avoids the <ctype.h> ::end macro)
     std::uint32_t lck;       // starting LCK
-    const char* trade_off;   // stub: real balance copy TBD
+    // Identity stat per [[project_class_stats_v2_locked_2026_06_14]].
+    // At the picker the Vagrant has only the tier-0 (felt) name --
+    // he has not yet earned the named or cosmological tiers. The
+    // description is a tier-0 sentence in his own voice describing
+    // what the stat tracks operationally (which actions raise it),
+    // without revealing the cosmological reading. Tier promotion
+    // (Burden / Penance, Unorthodoxy / Anathema, etc.) arrives
+    // through play via the language map.
+    const char* identity_name_t0;
+    const char* identity_desc_t0;
     const char* confirm_phrase;
 };
 
 // Starting stats per class -- locked initial values, real balance
-// pass will tune. SHAPE is the lore commitment:
-//   - YIELD     (Penitent)   IV/IV/V/III  - balanced, slight END lean
-//   - WITHHOLD  (Heretic)    III/V/III/IV - DEX/LCK specialist
-//   - ENDURE    (Wretched)   V/III/V/II   - STR/END heavyweight
-//   - REFUSE    (Unburdened) I/I/I/I      - locked at the floor forever
-//     (classes.md *Unburdened* doctrine).
+// pass will tune. SHAPE is the lore commitment per
+// [[project_class_stats_v2_locked_2026_06_14]] soft-cap doctrine
+// (each class has 1 high-soft-cap stat + 1 low-soft-cap stat; LCK
+// neutral):
+//   - Penitent    IV/III/V/IV  - END high cap, DEX low
+//   - Heretic     III/V/III/IV - DEX high cap, END low
+//   - Ferine      V/II/IV/IV   - STR high cap, DEX low
+//   - Unburdened  I/I/I/I      - all body locked at floor; faster Mind
+//                                growth instead (classes.md *Unburdened*)
+//
+// Confessions are two-beat accounts -- the first sentence the Vagrant
+// means to give; the second the one that reveals more than he knew he
+// was confessing. Locked 2026-06-13. The confirm phrase is the same
+// across all four -- the keeper-stand-in receives every account the
+// same way ("It is heard").
 constexpr std::array<Option, 3> kAcceptOptions = {{
-    {PlayerClass::Penitent, "YIELD", "A soul that opens fully to what is given to it.", 4u, 4u, 5u,
-     3u, "(TBD - balanced, full installation; no exceptional edge)", "Thou wilt yield."},
-    {PlayerClass::Heretic, "WITHHOLD", "A soul that takes the gift but holds part of itself back.",
-     3u, 5u, 3u, 4u, "(TBD - sharp specialization; lower total ceilings)", "Thou wilt withhold."},
-    {PlayerClass::Wretched, "ENDURE", "A soul that takes the gift knowing it will not save it.", 5u,
-     3u, 5u, 2u, "(TBD - heaviest weight class; commits cost more)", "Thou wilt endure."},
+    {PlayerClass::Penitent,
+     "I took what was given. I did not know it could be refused.",
+     "Heavy strikes. Endures. END high, DEX low.",
+     4u, 3u, 5u, 4u,
+     "Vitality",
+     "Rises when you take and survive damage. Raises poise and damage "
+     "reduction. At higher levels, the body itself becomes harder to break.",
+     "It is heard."},
+    {PlayerClass::Heretic,
+     "I took what was forbidden. I did not believe it was forbidden.",
+     "Fast strikes. Precise. DEX high, END low.",
+     3u, 5u, 3u, 4u,
+     "Doubt",
+     "Rises when you parry and dodge attacks. Widens the parry window "
+     "and increases critical damage. At higher levels, you read attacks "
+     "before they land.",
+     "It is heard."},
+    {PlayerClass::Ferine,
+     "What I was given did not fill me. Nothing did.",
+     "Body as weapon. Closes the distance. STR high, DEX low.",
+     5u, 2u, 4u, 4u,
+     "Appetite",
+     "Rises with unarmed kills and feasting on corpses. Increases "
+     "unarmed damage and movement speed. At higher levels, the body "
+     "grows weapons of its own.",
+     "It is heard."},
 }};
 
 constexpr std::array<Option, 1> kRefuseOptions = {{
-    {PlayerClass::Unburdened, "REFUSE", "A soul that turns aside from what is offered.", 1u, 1u, 1u,
-     1u, "(TBD - stats locked at 1; power from technique, not numbers)", "Thou wilt refuse."},
+    {PlayerClass::Unburdened,
+     "I will not give an account. The asking is the wrong thing.",
+     "Body stats locked at floor. Power through technique, not numbers.",
+     1u, 1u, 1u, 1u,
+     "Resistance",
+     "Rises with every measure that passes through you instead of "
+     "being kept. Increases mind regeneration and channeled power. At "
+     "higher levels, the body itself thins toward transparency.",
+     "It is heard."},
 }};
 
 const Option* activeOptions(Tab t, std::size_t& count)
@@ -127,7 +178,7 @@ const Option* findOption(PlayerClass c)
 
 bool isAcceptClass(PlayerClass c)
 {
-    return c == PlayerClass::Penitent || c == PlayerClass::Heretic || c == PlayerClass::Wretched;
+    return c == PlayerClass::Penitent || c == PlayerClass::Heretic || c == PlayerClass::Ferine;
 }
 
 void snapCursorToTabDefault(State& s)
@@ -237,52 +288,128 @@ bool drawOptionList()
 
     bool clicked = false;
     PlayerClass hovered_cls = s.cursor;
+    // Two-channel split so the per-option hover/cursor box renders
+    // BEHIND the text. We draw all option content on channel 1 (fg),
+    // then go back to channel 0 (bg) per-option and draw the box
+    // rectangle into the captured Y-range before merging at the end.
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->ChannelsSplit(2);
     for (std::size_t i = 0; i < count; ++i)
     {
         const Option& opt = opts[i];
         const bool selected = (opt.cls == s.cursor);
         ImGui::PushID(static_cast<int>(opt.cls));
 
-        // Posture verb row. "> " marker prefixes the cursor row.
-        const std::string marker = selected ? "> " : "  ";
-        const std::string label = marker + opt.label;
+        dl->ChannelsSetCurrent(1);
+
+        // Capture the option block's top-left for the hover/cursor
+        // box. The box's left edge is the panel's content-region left
+        // (not the row's local cursor, which jitters as font scale
+        // changes); the right edge is the same as the content region.
+        // Padding is ~14px each side so content has visible breathing
+        // room between the text and the border.
+        constexpr float kBoxPadX = 14.0f;
+        constexpr float kBoxPadY = 12.0f;
+        const ImVec2 box_min{
+            ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMin().x - kBoxPadX,
+            ImGui::GetCursorScreenPos().y - kBoxPadY};
+        const float box_right =
+            ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x + kBoxPadX;
+
+        // Confession row -- the Vagrant's voice. The confession IS the
+        // option label; there is no separate verb header. The keeper-
+        // stand-in's question is the prompt above; each row is one
+        // possible answer. Hover detection is NOT on this row alone;
+        // it's done via a rect test against the whole option block
+        // below, so the player can hover anywhere on the option
+        // (confession, stats, mechanical line, identity) to focus it.
         const ImVec4 row_color =
             selected ? ImVec4(0.95f, 0.86f, 0.55f, 1.0f) : ImVec4(0.65f, 0.58f, 0.48f, 1.0f);
         ImGui::PushStyleColor(ImGuiCol_Text, row_color);
-        ImGui::SetWindowFontScale(selected ? 1.20f : 1.10f);
-        const bool row_clicked = ImGui::Selectable(label.c_str(), false, ImGuiSelectableFlags_None,
-                                                   ImVec2(0.0f, ImGui::GetFontSize() * 1.4f));
-        const bool row_hovered = ImGui::IsItemHovered();
+        ImGui::SetWindowFontScale(selected ? 1.35f : 1.25f);
+        ImGui::TextWrapped("%s", opt.confession);
         ImGui::SetWindowFontScale(1.0f);
         ImGui::PopStyleColor();
 
-        if (row_hovered && !s.keyboard_owns_cursor)
+        // Mechanical line + stat row + identity stat, indented under
+        // the confession. Per [[project_class_identity_two_layers]] the
+        // picker carries both registers stacked: the cosmological
+        // tier-0 (confession, above) and the mechanical legible layer
+        // (this stat + line). Per
+        // [[project_class_stats_v2_locked_2026_06_14]] each class also
+        // has one identity stat (tier-0 felt name + tier-0 description
+        // here; tier-1/2 promotion happens through play). Always
+        // rendered (not gated on selection) so the player can compare.
+        ImGui::Indent(28.0f);
+        const ImU32 stat_color = ImGui::ColorConvertFloat4ToU32(
+            selected ? ImVec4(0.95f, 0.86f, 0.55f, 1.0f) : ImVec4(0.70f, 0.62f, 0.52f, 1.0f));
+        drawStatRow(opt, stat_color);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.65f, 0.58f, 0.48f, 0.95f));
+        ImGui::TextWrapped("%s", opt.mechanical);
+        ImGui::PopStyleColor();
+
+        // Identity stat row -- name in the option's accent color so it
+        // visually pairs with the stat numerals; description in the
+        // muted body color so it reads as the explanatory sub-line.
+        ImGui::Spacing();
+        ImGui::PushStyleColor(ImGuiCol_Text,
+                              selected ? ImVec4(0.95f, 0.86f, 0.55f, 1.0f)
+                                       : ImVec4(0.78f, 0.68f, 0.55f, 1.0f));
+        ImGui::TextUnformatted(opt.identity_name_t0);
+        ImGui::PopStyleColor();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.65f, 0.58f, 0.48f, 0.95f));
+        ImGui::TextWrapped("%s", opt.identity_desc_t0);
+        ImGui::PopStyleColor();
+
+        ImGui::Unindent(28.0f);
+
+        // Capture the option block's bottom-Y before the inter-option
+        // padding -- the box should hug the content, not the gap.
+        const float box_bottom = ImGui::GetCursorScreenPos().y + kBoxPadY;
+
+        // Whole-block hit-test: hover anywhere on the option (not just
+        // the confession row) focuses the cursor; click anywhere
+        // commits. This is the responsiveness fix -- the prior version
+        // only hit-tested the confession Selectable, so cursoring over
+        // the stat row / mechanical line / identity did nothing.
+        const ImVec2 hit_min{box_min.x, box_min.y};
+        const ImVec2 hit_max{box_right, box_bottom};
+        const bool block_hovered = ImGui::IsMouseHoveringRect(hit_min, hit_max);
+        if (block_hovered && !s.keyboard_owns_cursor)
             hovered_cls = opt.cls;
-        if (row_clicked)
+        if (block_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
         {
-            // Click on a row commits the option. Snap cursor to it
-            // first so the Confirming phase reads the right class.
             hovered_cls = opt.cls;
             clicked = true;
         }
 
-        // Description + stat row + trade-off stub, indented under the
-        // posture verb. Always rendered (not gated on selection) so
-        // the player sees all options legibly.
-        ImGui::Indent(28.0f);
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.65f, 0.58f, 0.48f, 0.95f));
-        ImGui::TextWrapped("%s", opt.description);
-        ImGui::PopStyleColor();
-        const ImU32 stat_color = ImGui::ColorConvertFloat4ToU32(
-            selected ? ImVec4(0.95f, 0.86f, 0.55f, 1.0f) : ImVec4(0.70f, 0.62f, 0.52f, 1.0f));
-        drawStatRow(opt, stat_color);
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.50f, 0.45f, 0.38f, 0.80f));
-        ImGui::TextWrapped("%s", opt.trade_off);
-        ImGui::PopStyleColor();
-        ImGui::Unindent(28.0f);
-        ImGui::Spacing();
+        // Per-option padding -- separates each confession block
+        // visually so the eye reads them as four discrete answers,
+        // not a continuous paragraph. Sized so the hover/cursor boxes
+        // (kBoxPadY each side) don't touch between adjacent options.
+        ImGui::Dummy(ImVec2(0.0f, 16.0f));
+
+        // Box around the option, drawn on the BG channel so the text
+        // renders cleanly on top. Selected (keyboard cursor / mouse
+        // hover, since they are the same cls in this picker) gets a
+        // bright fill + border; un-selected gets nothing -- the box
+        // appears only on hover/focus.
+        if (selected)
+        {
+            dl->ChannelsSetCurrent(0);
+            const ImVec2 box_max{box_right, box_bottom};
+            const ImU32 fill_color =
+                ImGui::ColorConvertFloat4ToU32(ImVec4(0.20f, 0.15f, 0.09f, 0.55f));
+            const ImU32 border_color =
+                ImGui::ColorConvertFloat4ToU32(ImVec4(0.95f, 0.86f, 0.55f, 0.85f));
+            dl->AddRectFilled(box_min, box_max, fill_color, 3.0f);
+            dl->AddRect(box_min, box_max, border_color, 3.0f, 0, 1.5f);
+            dl->ChannelsSetCurrent(1);
+        }
+
         ImGui::PopID();
     }
+    dl->ChannelsMerge();
     s.cursor = hovered_cls;
     ImGui::PopStyleColor(3);
     return clicked;
@@ -320,9 +447,9 @@ void drawTabHeader()
         ImGui::SetWindowFontScale(1.0f);
         ImGui::PopStyleColor();
     };
-    draw_tab(Tab::Accept, "Accept the Signing");
+    draw_tab(Tab::Accept, "Speak");
     ImGui::SameLine(0.0f, 8.0f);
-    draw_tab(Tab::Refuse, "Refuse the Signing");
+    draw_tab(Tab::Refuse, "Refuse to speak");
 
     ImGui::PopStyleColor(3);
     // Underline under the active tab so the tab visual reads as
@@ -440,10 +567,13 @@ void drawPicking()
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(36.0f, 28.0f));
     selva::ui::beginCenteredWindow("##class_picker_panel", ImVec2(panel_w, panel_h));
 
-    // Header question. Tier-0: no ritual name.
+    // The keeper-stand-in's prompt. Tier-0 Vagrant-voice register, no
+    // ritual name, no "soul" giveaway -- the question is appetite-
+    // shaped (Dante's moral axis) and earthly-shaped ("things of thy
+    // life"). Each option below answers it directly.
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.92f, 0.85f, 0.68f, 1.0f));
     ImGui::SetWindowFontScale(1.3f);
-    ImGui::TextUnformatted("What manner of soul dost thou bring to this?");
+    ImGui::TextUnformatted("Speak of thine appetite for the things of thy life.");
     ImGui::SetWindowFontScale(1.0f);
     ImGui::PopStyleColor();
     ImGui::Spacing();

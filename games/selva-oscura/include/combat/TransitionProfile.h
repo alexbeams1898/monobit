@@ -83,7 +83,8 @@ void setLocoLockoutUntil(float t);
 void fireOneShotWithProfile(const selva::anim::AnimationClip& clip,
                             const TransitionProfile& profile, float start_seconds,
                             float playback_rate, selva::anim::PoseSampler& sampler,
-                            const char* clip_key = "", float freeze_at_seconds = 0.0f);
+                            const char* clip_key = "", float freeze_at_seconds = 0.0f,
+                            float end_seconds = -1.0f);
 
 // Apply a profile's lockout strategy. Called after chain code has
 // computed cancel_window_close_at for the just-fired attack.

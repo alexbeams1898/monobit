@@ -45,9 +45,15 @@
 #include "gameplay/TerritoryClamp.h"
 #include "gameplay/TickState.h"
 #include "hazard/HazardZones.h"
+#include "identity/Identity.h"
 #include "insight/Insight.h"
 #include "insight/InsightLayout.h"
 #include "interact/Interaction.h"
+#include "items/ItemRegistry.h"
+#include "loot/Pickups.h"
+#include "loot/StarterDispenser.h"
+#include "ops/InventoryOps.h"
+#include "ui/Notifications.h"
 #include "physics/PhysicsWorld.h"
 #include "render/Atmosphere.h"
 #include "render/Camera.h"
@@ -530,10 +536,10 @@ namespace profiles = selva::combat::profiles;
 static void fireOneShotWithProfile(const selva::anim::AnimationClip& clip,
                                    const TransitionProfile& profile, float start_seconds,
                                    float playback_rate, const char* clip_key = "",
-                                   float freeze_at_seconds = 0.0f)
+                                   float freeze_at_seconds = 0.0f, float end_seconds = -1.0f)
 {
     selva::combat::fireOneShotWithProfile(clip, profile, start_seconds, playback_rate, sSampler,
-                                          clip_key, freeze_at_seconds);
+                                          clip_key, freeze_at_seconds, end_seconds);
 }
 
 // Window size + onWindowResize callback owned by render/Camera.{h,cpp}.
@@ -950,6 +956,74 @@ static int resolveAttackPoiseDamage(const selva::combat::WeaponAttack* atk)
     return static_cast<int>(std::floor(sPlayer.body.unarmed_poise_damage));
 }
 
+// Compute the player's current swing damage from the equipped right-
+// hand weapon, or fall back to unarmed fist stats if nothing is
+// equipped. Identity-stat contribution applies only when the wielder's
+// class matches the weapon's authored identity_class per
+// [[class-stats-v2-locked-2026-06-14]] +
+// [[identity-stats-derived-erasure-locked-2026-06-14]]; off-class
+// wielders get the universal-axis terms only. Side-effect-free; safe
+// to call from anywhere on the per-frame attack path.
+static int resolvePlayerSwingDamage()
+{
+    selva::PlayerProfile* profile = selva::activePlayerProfile();
+    if (profile == nullptr)
+    {
+        // Pre-Playing phase / no character: fist defaults.
+        return selva::gameplay::computeAttackDamage(
+            sPlayer.stats, sPlayer.body.unarmed_damage, 0.5f, 0.5f);
+    }
+
+    const engine::ecs::ItemInstanceId equipped_id = profile->equipment.right_hand;
+    if (equipped_id == engine::ecs::kInvalidItemInstanceId)
+    {
+        return selva::gameplay::computeAttackDamage(
+            sPlayer.stats, sPlayer.body.unarmed_damage, 0.5f, 0.5f);
+    }
+    const engine::ecs::ItemInstance* inst =
+        engine::ops::inventory::findById(profile->inventory, equipped_id);
+    const auto& items = selva::items::itemRegistry();
+    const engine::ecs::ItemDef* def =
+        (inst != nullptr) ? items.find(inst->config_path) : nullptr;
+    if (def == nullptr)
+    {
+        return selva::gameplay::computeAttackDamage(
+            sPlayer.stats, sPlayer.body.unarmed_damage, 0.5f, 0.5f);
+    }
+
+    selva::gameplay::DamageInputs di;
+    di.base_damage = def->base_damage;
+    di.str_scaling = def->str_scaling;
+    di.dex_scaling = def->dex_scaling;
+    di.end_scaling = def->end_scaling;
+    di.lck_scaling = def->lck_scaling;
+    di.per_scaling = def->per_scaling;
+    di.cog_scaling = def->cog_scaling;
+    di.int_scaling = def->int_scaling;
+
+    int identity_value = 0;
+    float identity_scaling = 0.0f;
+    if (const auto* ext = selva::items::itemExtensions(inst->config_path); ext != nullptr)
+    {
+        // Identity contribution applies only on-class. Off-class
+        // wielders get the universal-axis terms; the doctrine says
+        // weapons "sing in their aligned class's hands" -- mechanically
+        // realized by zeroing the identity term off-class.
+        const std::string wielder_class = selva::playerClassName(profile->player_class);
+        std::string wielder_lower = wielder_class;
+        for (auto& c : wielder_lower)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (!ext->identity_class.empty() && ext->identity_class == wielder_lower)
+        {
+            identity_value = selva::identity::computeIdentityStat(*profile, profile->player_class);
+            identity_scaling = ext->identity_stat_scaling;
+        }
+    }
+
+    return selva::gameplay::computeAttackDamage(sPlayer.stats, di, identity_value,
+                                                identity_scaling);
+}
+
 // No chain bookkeeping. Returns true on successful fire.
 // `one_shot_active` selects the splice strategy: chainLink (pose-match
 // against the live one-shot) vs firstStrike (start clean from t=0).
@@ -988,8 +1062,7 @@ static void spawnPlayerAttackHitboxForClip(const char* clip_name,
     sp.actor = &sPlayer;
     sp.attacker = selva::combat::OwnerRef{selva::combat::OwnerKind::Player, 0};
     sp.attacker_faction = sPlayer.faction;
-    sp.raw_damage = selva::gameplay::computeAttackDamage(sPlayer.stats, sPlayer.body.unarmed_damage,
-                                                         0.5f, 0.5f);
+    sp.raw_damage = resolvePlayerSwingDamage();
     sp.poise_damage = resolveAttackPoiseDamage(atk);
     sp.joint_name = joint_name;
     sp.hitbox_radius = hitbox_radius;
@@ -1095,8 +1168,13 @@ static bool fireClipForHand(selva::combat::HandSide hand, const char* clip_name,
     if (blend_override >= 0.0f)
         profile.blend_out_seconds = blend_override;
 
+    const auto* atk_for_end = findAttackForClip(clip_name);
+    const float end_seconds =
+        (atk_for_end != nullptr) ? atk_for_end->end_seconds : -1.0f;
+
     const float rate = effectiveAttackPlaybackRate(hand);
-    fireOneShotWithProfile(*clip, profile, start_seconds, rate, clip_name);
+    fireOneShotWithProfile(*clip, profile, start_seconds, rate, clip_name,
+                           /*freeze_at_seconds=*/0.0f, end_seconds);
     if (const char* whoosh = whooshForAttackClip(clip_name); whoosh != nullptr)
         selva::audio::playSfx(whoosh);
     setHandCancelWindow(hand, clip_name, *clip, rate, combo_input_buffer_seconds);
@@ -1456,10 +1534,13 @@ static const char* selectLocomotionClipFromSpeed(float target_speed, bool is_arm
 static int locomotionFamilyOf(const std::string& name)
 {
     if (name == "walking" || name == "jogging" || name == "sprinting" ||
-        name == "walking_backward" || name == "jogging_backward")
+        name == "walking_backward" || name == "jogging_backward" ||
+        name == "sword_and_shield_walk_grip" || name == "sword_and_shield_walk_2_grip" ||
+        name == "sword_and_shield_run_grip")
         return 1;
     if (name == "strafe_walking_left" || name == "strafe_walking_right" ||
-        name == "strafe_jogging_left" || name == "strafe_jogging_right")
+        name == "strafe_jogging_left" || name == "strafe_jogging_right" ||
+        name == "sword_and_shield_strafe_grip" || name == "sword_and_shield_strafe_2_grip")
         return 2;
     return 0;
 }
@@ -2403,13 +2484,17 @@ static const char* selectLocomotionClipFromSpeed(float target_speed, bool is_arm
             sLocomotionSM.combat_stance == selva::gameplay::CombatStance::CombatReady;
         if (combat_ready)
             return is_armed ? "sword_and_shield_idle_4" : "unarmed_combat_idle";
-        return "standard_idle";
+        return is_armed ? "standard_idle_armed" : "standard_idle";
     }
     if (target_speed <= tun.walk_to_jog_speed)
-        return "walking";
+        return is_armed ? "sword_and_shield_walk_grip" : "walking";
     if (target_speed <= tun.jog_to_sprint_speed)
-        return "jogging";
-    return "sprinting";
+        return is_armed ? "sword_and_shield_run_grip" : "jogging";
+    // Sprint reuses the armed run clip played faster via
+    // tun.armed_sprint_run_multiplier in the per-frame playback-rate
+    // pass; the picker still returns "sword_and_shield_run_grip" here so
+    // there's no clip-swap transition between jog and sprint.
+    return is_armed ? "sword_and_shield_run_grip" : "sprinting";
 }
 
 // Combat stance lifecycle (preserved from the old SM): CombatReady
@@ -2478,7 +2563,9 @@ static const char* selectLockedLocomotionClip(const glm::vec3& moveIntent)
         return nullptr;
     const glm::vec3 fwd = to / std::sqrt(to_len_sq);
     const glm::vec3 right(-fwd.z, 0.0f, fwd.x);
-    return selva::gameplay::directionalLocoClip(fwd, right, moveIntent, sPlayer.loco_tier);
+    const bool is_armed = !isUnarmed(sEquipment);
+    return selva::gameplay::directionalLocoClip(fwd, right, moveIntent, sPlayer.loco_tier,
+                                                 is_armed);
 }
 
 // FPV directional clip picker. Backpedal exception only: pure-S
@@ -3064,18 +3151,19 @@ static void playPlayerHitReact(int dmg_applied)
     if (sSampler.isOneShotActive())
         return;
     const auto& tun = selva::tuning::current();
-    const char* clip_name = "flinch_front"; // light hit default
+    const bool is_armed = !isUnarmed(sEquipment);
+    const char* clip_name = is_armed ? "sword_and_shield_impact" : "flinch_front";
     float blend_in = 0.06f;
     float blend_out = 0.15f;
     if (static_cast<float>(dmg_applied) >= tun.hit_react_heavy_threshold)
     {
-        clip_name = "hit_react_heavy";
+        clip_name = is_armed ? "sword_and_shield_impact" : "hit_react_heavy";
         blend_in = 0.08f;
         blend_out = 0.20f;
     }
     else if (static_cast<float>(dmg_applied) >= tun.hit_react_medium_threshold)
     {
-        clip_name = "hit_react_medium";
+        clip_name = is_armed ? "sword_and_shield_impact" : "hit_react_medium";
     }
     const auto* clip = sClips.get(clip_name);
     if (clip == nullptr || !clip->isLoaded())
@@ -3211,8 +3299,13 @@ static void tickPlayerSecondDeathLifecycle()
     {
         engine::physics::teleportCharacter(body, sPlayer.pos);
     }
-    selva::gameplay::initActorPools(sPlayer.hp, sPlayer.stamina, sPlayer.poise, sPlayer.body,
-                                    sPlayer.stats);
+    {
+        const auto* profile = selva::activePlayerProfile();
+        const selva::PlayerClass cls = (profile != nullptr) ? profile->player_class
+                                                            : selva::PlayerClass::None;
+        selva::gameplay::initActorPools(sPlayer.hp, sPlayer.stamina, sPlayer.poise,
+                                        sPlayer.body, sPlayer.stats, cls);
+    }
     sSampler.releaseOneShot();
     // Unmuffle the OST — bookends the duck applied in fireEnemyDeath.
     selva::audio::restoreMusic();
@@ -3484,6 +3577,20 @@ void tickInteractEdge(const Uint8* keys, bool combat_suppressed)
         selva::interact::triggerCurrent();
 }
 
+// Tab-press edge -> cycle focus between in-range interactables. The
+// system itself is a no-op when fewer than two candidates are in
+// range, so unconditional firing is safe. Suppressed under the same
+// gates as E so cycling can't happen during dialog / scene / pause.
+void tickInteractCycleEdge(const Uint8* keys, bool combat_suppressed)
+{
+    static bool s_prev_tab = false;
+    const bool now_tab = (keys[SDL_SCANCODE_TAB] != 0);
+    const bool tab_edge = now_tab && !s_prev_tab;
+    s_prev_tab = now_tab;
+    if (tab_edge && !combat_suppressed)
+        selva::interact::cycleFocus();
+}
+
 // LAlt = walk modifier (DS3 PC convention). Walk overrides Jog; does
 // NOT override Sprint (Space commits to sprint until released or
 // stamina-locked). Suppressed during movement-lock so dialog/scene
@@ -3548,7 +3655,12 @@ void tickFrameSetup(Engine& engine, float dt, const selva::tuning::Tunables& tun
     engine.setWindowTitle("Selva Oscura  |  FPS " + std::to_string(fps));
     // Mirror tun.loco_playback_rate onto LocomotionConfig so the
     // sampler's advanceLocoTrack reads it without a Tunables dep.
-    sLocomotionConfig.global_playback_rate = tun.loco_playback_rate;
+    // Armed-sprint reuses the armed run clip played faster
+    // (tun.armed_sprint_run_multiplier) instead of a separate clip.
+    const bool armed_sprint =
+        sPlayer.loco_tier == selva::gameplay::LocoTier::Sprint && !isUnarmed(sEquipment);
+    const float armed_sprint_mult = armed_sprint ? tun.armed_sprint_run_multiplier : 1.0f;
+    sLocomotionConfig.global_playback_rate = tun.loco_playback_rate * armed_sprint_mult;
     selva::gameplay::tickWakeSceneLifecycle();
 }
 } // namespace
@@ -3575,6 +3687,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& em, double dt_d)
 
     const Uint8* keys = SDL_GetKeyboardState(nullptr);
     tickInteractEdge(keys, combat_suppressed);
+    tickInteractCycleEdge(keys, combat_suppressed);
     tickDevAndDebugKeys(keys);
     // Preview mode suspends world sim; renderTreePreview handles the
     // alternate render path.
@@ -3593,6 +3706,14 @@ static void selvaPerFrame(Engine& engine, EntityManager& em, double dt_d)
 
     const glm::vec3 moveIntent = movement_suppressed ? glm::vec3(0.0f) : computeMoveIntent(keys);
     tickWalkTierModifier(keys, movement_suppressed);
+
+    // Bridge inventory equipment into the combat system BEFORE the
+    // locomotion picker reads `is_armed`. If the sync runs later in
+    // the frame, frame 1 of a load picks `standard_idle` (unarmed)
+    // because sEquipment still holds the boot-time fists default,
+    // then frame 2 sees the armed state and triggers an idle->armed
+    // blend visible as a ~0.4s wrist-rotates-into-position artifact.
+    selva::combat::syncEquipmentFromInventory();
 
     // ONE locomotion decision for this frame. Both tickPlayerVelocity
     // and applyPerFrameTranslation consult sLocoDecision.source for
@@ -3750,6 +3871,25 @@ static void selvaPerFrame(Engine& engine, EntityManager& em, double dt_d)
             &pctx);
         selva::gameplay::tickSanguePulses(static_cast<float>(dt), hud_anchor);
     }
+
+    // Bottom-right pickup toasts: timer-down + rise-up. The render
+    // call lives in renderActorHud (HUD pass); the tick must run
+    // every frame regardless of HUD-render gating so entries fade
+    // at the same wall-clock rate during pause-resume cycles too.
+    selva::ui::tickNotifications(static_cast<float>(dt));
+
+    // World pickups: despawn any whose source corpse has vanished
+    // (recycled by the actor pool, or finished its fade clock). The
+    // pickup belongs to the corpse, period -- the rule lives here
+    // rather than in per-archetype JSON so any "corpse disappears"
+    // mechanic just works.
+    selva::loot::tickPickups();
+
+    // Descent-stair starter weapon dispenser: spawns one class-shaped
+    // tier-0 weapon partway down the chapel descent once the Signing
+    // commits, exactly once per character. Cheap when the gate is
+    // already satisfied.
+    selva::loot::tickStarterDispenser();
 
     // Foot-plant footstep detection — fires SFX when the foot bone's
     // world Y crosses below ground+epsilon while descending. Works on
@@ -4514,6 +4654,10 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
             selva::render::renderDoors();
         }
         {
+            ZoneScopedN("equipped-weapon");
+            selva::render::renderEquippedWeapon();
+        }
+        {
             ZoneScopedN("ground-decals");
             selva::render::renderGroundDecals();
         }
@@ -4751,8 +4895,13 @@ static void resetPlayerActorForProfile(const selva::PlayerProfile& profile)
     sPlayer.last_damage_time = -1.0f;
     sPlayer.last_hit_react_time = -1.0f;
     sPlayer.lock_target_idx = -1;
-    selva::gameplay::initActorPools(sPlayer.hp, sPlayer.stamina, sPlayer.poise, sPlayer.body,
-                                    sPlayer.stats);
+    {
+        const auto* profile = selva::activePlayerProfile();
+        const selva::PlayerClass cls = (profile != nullptr) ? profile->player_class
+                                                            : selva::PlayerClass::None;
+        selva::gameplay::initActorPools(sPlayer.hp, sPlayer.stamina, sPlayer.poise,
+                                        sPlayer.body, sPlayer.stats, cls);
+    }
     sPlayer.foot_left = Actor::FootContact{};
     sPlayer.foot_right = Actor::FootContact{};
 }
@@ -4787,6 +4936,18 @@ void hardResetWorldForCharacter(const selva::PlayerProfile& profile)
     // spawn_decl_id, not character data) -- intentionally NOT
     // hard-reset here. Survives character switches alongside the
     // actor pool itself.
+
+    // Loot pickups ARE mid-cycle dynamic state (per
+    // [[feedback_rebuild_from_authored_on_reset]]: rebuild from
+    // authored, don't reset in place). Wipe + unregister; the new
+    // character's session re-spawns pickups from kills, the way
+    // first-boot does.
+    selva::loot::hardReset();
+    selva::loot::hardResetStarterDispenser();
+
+    // Pickup toasts likewise: don't carry the prior character's
+    // "+1 Dried residue" half-faded into the new character's session.
+    selva::ui::clearNotifications();
 
     // 2. Stop active session-audio + boss state (pops audio bed).
     selva::gameplay::tearDownActiveBosses();

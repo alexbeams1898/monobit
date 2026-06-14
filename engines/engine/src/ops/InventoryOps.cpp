@@ -3,198 +3,304 @@
 namespace engine::ops::inventory
 {
 
+using engine::ecs::ItemCategory;
 using engine::ecs::ItemDef;
-
-int& slotIndex(Equipment& equip, EquipSlot slot)
-{
-    switch (slot)
-    {
-    case EquipSlot::RightHand:
-        return equip.right_hand;
-    case EquipSlot::LeftHand:
-        return equip.left_hand;
-    case EquipSlot::Head:
-        return equip.head;
-    case EquipSlot::Chest:
-        return equip.chest;
-    case EquipSlot::Legs:
-        return equip.legs;
-    case EquipSlot::Feet:
-        return equip.feet;
-    case EquipSlot::Accessory1:
-        return equip.accessory_1;
-    case EquipSlot::Accessory2:
-    default:
-        return equip.accessory_2;
-    }
-}
-
-int slotIndexConst(const Equipment& equip, EquipSlot slot)
-{
-    switch (slot)
-    {
-    case EquipSlot::RightHand:
-        return equip.right_hand;
-    case EquipSlot::LeftHand:
-        return equip.left_hand;
-    case EquipSlot::Head:
-        return equip.head;
-    case EquipSlot::Chest:
-        return equip.chest;
-    case EquipSlot::Legs:
-        return equip.legs;
-    case EquipSlot::Feet:
-        return equip.feet;
-    case EquipSlot::Accessory1:
-        return equip.accessory_1;
-    case EquipSlot::Accessory2:
-    default:
-        return equip.accessory_2;
-    }
-}
-
-const ItemInstance* equippedItem(const Inventory& inv, const Equipment& equip, EquipSlot slot)
-{
-    const int idx = slotIndexConst(equip, slot);
-    if (idx < 0 || idx >= static_cast<int>(inv.items.size()))
-        return nullptr;
-    return &inv.items[idx];
-}
-
-ItemInstance* equippedItemMut(Inventory& inv, const Equipment& equip, EquipSlot slot)
-{
-    const int idx = slotIndexConst(equip, slot);
-    if (idx < 0 || idx >= static_cast<int>(inv.items.size()))
-        return nullptr;
-    return &inv.items[idx];
-}
-
-std::string equippedPath(const Inventory& inv, const Equipment& equip, EquipSlot slot)
-{
-    const auto* item = equippedItem(inv, equip, slot);
-    return item != nullptr ? item->config_path : std::string{};
-}
-
-bool slotEmpty(const Equipment& equip, EquipSlot slot)
-{
-    return slotIndexConst(equip, slot) < 0;
-}
 
 namespace
 {
+
 constexpr EquipSlot ALL_SLOTS[] = {EquipSlot::RightHand,  EquipSlot::LeftHand,  EquipSlot::Head,
                                    EquipSlot::Chest,      EquipSlot::Legs,      EquipSlot::Feet,
                                    EquipSlot::Accessory1, EquipSlot::Accessory2};
 
-// Adjust all equipment indices after an inventory removal at `removed`.
-void adjustIndicesAfterRemoval(Equipment& equip, int removed)
+// Stable string keys for category buckets. Inventory.by_category uses
+// these as map keys; SaveManager round-trips them verbatim. The plural
+// form matches game-side category JSON ids (e.g. selva-oscura's
+// `inventory_categories.json`).
+const char* categoryKey(ItemCategory c)
 {
+    switch (c)
+    {
+    case ItemCategory::Weapon:
+        return "weapons";
+    case ItemCategory::Armor:
+        return "armor";
+    case ItemCategory::Consumable:
+        return "consumables";
+    case ItemCategory::KeyItem:
+        return "key_items";
+    case ItemCategory::Material:
+        return "materials";
+    case ItemCategory::Money:
+        return "money";
+    case ItemCategory::Accessory:
+        return "accessories";
+    case ItemCategory::Incantation:
+        return "incantations";
+    case ItemCategory::Invocation:
+        return "invocations";
+    }
+    return "materials";
+}
+
+// Clear any slot pointing at `id`. Used on remove.
+void clearEquipRefs(Equipment& equip, ItemInstanceId id)
+{
+    if (id == kInvalidItemInstanceId)
+        return;
     for (const auto s : ALL_SLOTS)
     {
-        int& idx = slotIndex(equip, s);
-        if (idx == removed)
-            idx = -1;
-        else if (idx > removed)
-            --idx;
+        if (slotIdConst(equip, s) == id)
+            slotId(equip, s) = kInvalidItemInstanceId;
     }
 }
+
 } // namespace
 
-bool isEquipped(const Equipment& equip, int inv_index)
+// --- Slot accessors ----------------------------------------------------
+
+ItemInstanceId& slotId(Equipment& equip, EquipSlot slot)
 {
-    if (inv_index < 0)
+    switch (slot)
+    {
+    case EquipSlot::RightHand:
+        return equip.right_hand;
+    case EquipSlot::LeftHand:
+        return equip.left_hand;
+    case EquipSlot::Head:
+        return equip.head;
+    case EquipSlot::Chest:
+        return equip.chest;
+    case EquipSlot::Legs:
+        return equip.legs;
+    case EquipSlot::Feet:
+        return equip.feet;
+    case EquipSlot::Accessory1:
+        return equip.accessory_1;
+    case EquipSlot::Accessory2:
+    default:
+        return equip.accessory_2;
+    }
+}
+
+ItemInstanceId slotIdConst(const Equipment& equip, EquipSlot slot)
+{
+    switch (slot)
+    {
+    case EquipSlot::RightHand:
+        return equip.right_hand;
+    case EquipSlot::LeftHand:
+        return equip.left_hand;
+    case EquipSlot::Head:
+        return equip.head;
+    case EquipSlot::Chest:
+        return equip.chest;
+    case EquipSlot::Legs:
+        return equip.legs;
+    case EquipSlot::Feet:
+        return equip.feet;
+    case EquipSlot::Accessory1:
+        return equip.accessory_1;
+    case EquipSlot::Accessory2:
+    default:
+        return equip.accessory_2;
+    }
+}
+
+// --- Inventory lookup --------------------------------------------------
+
+const ItemInstance* findById(const Inventory& inv, ItemInstanceId id)
+{
+    if (id == kInvalidItemInstanceId)
+        return nullptr;
+    for (const auto& [cat, items] : inv.by_category)
+    {
+        for (const auto& it : items)
+        {
+            if (it.id == id)
+                return &it;
+        }
+    }
+    return nullptr;
+}
+
+ItemInstance* findByIdMut(Inventory& inv, ItemInstanceId id)
+{
+    if (id == kInvalidItemInstanceId)
+        return nullptr;
+    for (auto& [cat, items] : inv.by_category)
+    {
+        for (auto& it : items)
+        {
+            if (it.id == id)
+                return &it;
+        }
+    }
+    return nullptr;
+}
+
+const ItemInstance* equippedItem(const Inventory& inv, const Equipment& equip, EquipSlot slot)
+{
+    return findById(inv, slotIdConst(equip, slot));
+}
+
+ItemInstance* equippedItemMut(Inventory& inv, const Equipment& equip, EquipSlot slot)
+{
+    return findByIdMut(inv, slotIdConst(equip, slot));
+}
+
+std::string equippedPath(const Inventory& inv, const Equipment& equip, EquipSlot slot)
+{
+    const auto* it = equippedItem(inv, equip, slot);
+    return it != nullptr ? it->config_path : std::string{};
+}
+
+// --- Equipment queries -------------------------------------------------
+
+bool slotEmpty(const Equipment& equip, EquipSlot slot)
+{
+    return slotIdConst(equip, slot) == kInvalidItemInstanceId;
+}
+
+bool isEquipped(const Equipment& equip, ItemInstanceId id)
+{
+    if (id == kInvalidItemInstanceId)
         return false;
     for (const auto s : ALL_SLOTS)
     {
-        if (slotIndexConst(equip, s) == inv_index)
+        if (slotIdConst(equip, s) == id)
             return true;
     }
     return false;
 }
 
-EquipSlot equippedInSlot(const Equipment& equip, int inv_index)
+EquipSlot equippedInSlot(const Equipment& equip, ItemInstanceId id)
 {
     for (const auto s : ALL_SLOTS)
     {
-        if (slotIndexConst(equip, s) == inv_index)
+        if (slotIdConst(equip, s) == id)
             return s;
     }
     return EquipSlot::RightHand;
 }
 
-bool addItem(Inventory& inv, const ItemInstance& item, const ItemRegistry& registry)
+// --- Add / remove ------------------------------------------------------
+
+ItemInstanceId addItem(Inventory& inv, const ItemInstance& item, const ItemRegistry& registry)
 {
     const ItemDef* def = registry.find(item.config_path);
-    const bool stackable = def != nullptr && def->stackable;
-    const int max_stack = (def != nullptr) ? def->max_stack : 1;
+    if (def == nullptr)
+        return kInvalidItemInstanceId;
 
+    const std::string bucket = categoryKey(def->category);
+    auto& vec = inv.by_category[bucket];
+
+    const bool stackable = def->stackable;
+    const int max_stack = def->max_stack;
     int remaining = item.quantity;
+    ItemInstanceId last_touched = kInvalidItemInstanceId;
 
     if (stackable)
     {
-        for (auto& existing : inv.items)
+        // Merge into existing stacks only when (config_path, quality) match
+        // -- quality is part of the item's identity and must survive in the
+        // bag so crafting/use can average qualities correctly. Stacks of the
+        // same item at different qualities live as separate entries.
+        for (auto& existing : vec)
         {
             if (remaining <= 0)
                 break;
-            if (existing.config_path == item.config_path && existing.quantity < max_stack)
+            if (existing.config_path == item.config_path && existing.quality == item.quality &&
+                existing.quantity < max_stack)
             {
                 const int space = max_stack - existing.quantity;
                 const int to_add = (remaining <= space) ? remaining : space;
                 existing.quantity += to_add;
                 remaining -= to_add;
+                last_touched = existing.id;
             }
         }
         if (remaining <= 0)
-            return true;
+            return last_touched;
     }
-
-    if (static_cast<int>(inv.items.size()) >= inv.max_slots)
-        return remaining <= 0;
 
     ItemInstance remainder = item;
     remainder.quantity = remaining;
-    inv.items.push_back(remainder);
-    return true;
+    remainder.id = inv.next_id++;
+    vec.push_back(remainder);
+    return remainder.id;
 }
 
-bool removeItem(Inventory& inv, Equipment& equip, int index)
+void addWithId(Inventory& inv, const ItemInstance& item, const ItemRegistry& registry)
 {
-    if (index < 0 || index >= static_cast<int>(inv.items.size()))
-        return false;
+    const ItemDef* def = registry.find(item.config_path);
+    // Fall back to "material" bucket if the registry doesn't know this
+    // path -- save-load tolerates unknown items rather than dropping
+    // them silently.
+    const std::string bucket = (def != nullptr) ? categoryKey(def->category) : "material";
 
-    inv.items.erase(inv.items.begin() + index);
-    adjustIndicesAfterRemoval(equip, index);
-    return true;
+    inv.by_category[bucket].push_back(item);
+
+    // Keep next_id strictly greater than any extant id so future
+    // allocations don't collide with re-loaded ones.
+    if (item.id >= inv.next_id)
+        inv.next_id = item.id + 1;
 }
 
-bool equipItemToSlot(Equipment& equip, int inv_index, EquipSlot slot)
+bool removeItem(Inventory& inv, Equipment& equip, ItemInstanceId id)
 {
-    if (inv_index < 0)
+    if (id == kInvalidItemInstanceId)
+        return false;
+    for (auto& [cat, items] : inv.by_category)
+    {
+        for (auto it = items.begin(); it != items.end(); ++it)
+        {
+            if (it->id == id)
+            {
+                items.erase(it);
+                clearEquipRefs(equip, id);
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+// --- Equip -------------------------------------------------------------
+
+bool equipItemToSlot(const Inventory& inv, Equipment& equip, ItemInstanceId id, EquipSlot slot)
+{
+    if (id == kInvalidItemInstanceId)
+        return false;
+    if (findById(inv, id) == nullptr)
         return false;
 
-    // If this item is already equipped in another slot, unequip it there first.
     for (const auto s : ALL_SLOTS)
     {
-        if (s != slot && slotIndexConst(equip, s) == inv_index)
-            slotIndex(equip, s) = -1;
+        if (s != slot && slotIdConst(equip, s) == id)
+            slotId(equip, s) = kInvalidItemInstanceId;
     }
-
-    slotIndex(equip, slot) = inv_index;
+    slotId(equip, slot) = id;
     return true;
 }
 
 void unequipSlot(Equipment& equip, EquipSlot slot)
 {
-    slotIndex(equip, slot) = -1;
+    slotId(equip, slot) = kInvalidItemInstanceId;
 }
+
+// --- Stack ops ---------------------------------------------------------
 
 int countItem(const Inventory& inv, const std::string& config_path)
 {
     int total = 0;
-    for (const auto& item : inv.items)
+    for (const auto& [cat, items] : inv.by_category)
     {
-        if (item.config_path == config_path)
-            total += item.quantity;
+        for (const auto& it : items)
+        {
+            if (it.config_path == config_path)
+                total += it.quantity;
+        }
     }
     return total;
 }
@@ -202,25 +308,33 @@ int countItem(const Inventory& inv, const std::string& config_path)
 bool consumeItems(Inventory& inv, Equipment& equip, const std::string& config_path, int qty)
 {
     int remaining = qty;
-    for (int i = static_cast<int>(inv.items.size()) - 1; i >= 0 && remaining > 0; --i)
+    for (auto& [cat, items] : inv.by_category)
     {
-        if (inv.items[i].config_path != config_path)
-            continue;
+        for (int i = static_cast<int>(items.size()) - 1; i >= 0 && remaining > 0; --i)
+        {
+            if (items[i].config_path != config_path)
+                continue;
 
-        if (inv.items[i].quantity <= remaining)
-        {
-            remaining -= inv.items[i].quantity;
-            inv.items.erase(inv.items.begin() + i);
-            adjustIndicesAfterRemoval(equip, i);
+            if (items[i].quantity <= remaining)
+            {
+                remaining -= items[i].quantity;
+                const ItemInstanceId removed_id = items[i].id;
+                items.erase(items.begin() + i);
+                clearEquipRefs(equip, removed_id);
+            }
+            else
+            {
+                items[i].quantity -= remaining;
+                remaining = 0;
+            }
         }
-        else
-        {
-            inv.items[i].quantity -= remaining;
-            remaining = 0;
-        }
+        if (remaining <= 0)
+            break;
     }
     return remaining <= 0;
 }
+
+// --- Evolution ---------------------------------------------------------
 
 bool canEvolve(const Inventory& inv, const Equipment& equip, const Weapon& weapon,
                const EvolutionPath& path)

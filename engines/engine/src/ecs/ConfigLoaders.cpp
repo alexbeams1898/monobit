@@ -30,6 +30,10 @@ ItemCategory parseCategory(const std::string& s)
         return ItemCategory::Money;
     if (s == "accessory")
         return ItemCategory::Accessory;
+    if (s == "incantation")
+        return ItemCategory::Incantation;
+    if (s == "invocation")
+        return ItemCategory::Invocation;
     return ItemCategory::Material;
 }
 
@@ -424,12 +428,23 @@ int loadItemRegistry(ItemRegistry& registry, const std::string& dir_path)
         def.weight = j.value("weight", 0.5f);
         def.str_scaling = j.value("str_scaling", 0.0f);
         def.dex_scaling = j.value("dex_scaling", 0.0f);
+        def.end_scaling = j.value("end_scaling", 0.0f);
+        def.lck_scaling = j.value("lck_scaling", 0.0f);
+        def.per_scaling = j.value("per_scaling", 0.0f);
+        def.cog_scaling = j.value("cog_scaling", 0.0f);
+        def.int_scaling = j.value("int_scaling", 0.0f);
         def.str_requirement = j.value("str_requirement", 0);
         def.dex_requirement = j.value("dex_requirement", 0);
+        def.end_requirement = j.value("end_requirement", 0);
+        def.lck_requirement = j.value("lck_requirement", 0);
+        def.per_requirement = j.value("per_requirement", 0);
+        def.cog_requirement = j.value("cog_requirement", 0);
+        def.int_requirement = j.value("int_requirement", 0);
         def.two_handed = j.value("two_handed", false);
         def.weapon_tier = j.value("weapon_tier", std::string{});
         def.damage_per_level = j.value("damage_per_level", -1.0f);
         def.scaling_per_level = j.value("scaling_per_level", -1.0f);
+        def.weapon_class_id = j.value("weapon_class_id", std::string{});
 
         def.ranged = j.value("ranged", false);
         def.projectile_speed = j.value("projectile_speed", 400.0f);
@@ -450,6 +465,13 @@ int loadItemRegistry(ItemRegistry& registry, const std::string& dir_path)
         def.weapon_icon = j.value("weapon_icon", std::string{});
         def.grip_x = j.value("grip_x", 0.0f);
         def.grip_y = j.value("grip_y", 0.0f);
+        def.grip_offset_x = j.value("grip_offset_x", 0.0f);
+        def.grip_offset_y = j.value("grip_offset_y", 0.0f);
+        def.grip_offset_z = j.value("grip_offset_z", 0.0f);
+        def.grip_rot_deg_x = j.value("grip_rot_deg_x", 0.0f);
+        def.grip_rot_deg_y = j.value("grip_rot_deg_y", 0.0f);
+        def.grip_rot_deg_z = j.value("grip_rot_deg_z", 0.0f);
+        def.grip_scale = j.value("grip_scale", 1.0f);
         def.attack_icon_ns = j.value("attack_icon_ns", std::string{});
         def.attack_grip_ns_x = j.value("attack_grip_ns_x", 0.0f);
         def.attack_grip_ns_y = j.value("attack_grip_ns_y", 0.0f);
@@ -528,6 +550,8 @@ int loadRecipeRegistry(RecipeRegistry& registry, const std::string& dir_path)
         recipe.name = j.value("name", std::string{});
         recipe.output_item = j.value("output", std::string{});
         recipe.output_quantity = j.value("output_quantity", 1);
+        recipe.sangue_cost = j.value("sangue_cost", 0);
+        recipe.substrate = j.value("substrate", std::string{});
 
         if (j.contains("inputs") && j["inputs"].is_array())
         {

@@ -156,9 +156,17 @@ def discover(extra_scan_dirs: list[Path]) -> list[dict]:
         for sub in sorted(PACKS_ROOT.iterdir()):
             if not sub.is_dir():
                 continue
-            for p in sorted(sub.glob("*.fbx")):
+            # Recurse one level: subdir-of-subdir packs (e.g.
+            # source/combat/sword/) host all FBX flat under the
+            # leaf directory. Without this, scans rooted at
+            # source/combat/ would miss the swords.
+            for p in sorted(sub.rglob("*.fbx")):
                 if not _is_bot_mesh(p.stem):
-                    add(p, f"FBX source ({sub.name})")
+                    # Use the immediate parent dir as the group label
+                    # so a recursed-into pack appears under its own
+                    # name (e.g. "FBX source (sword)") rather than the
+                    # top-level "combat" group.
+                    add(p, f"FBX source ({p.parent.name})")
 
     # Larva FBX source packs (e.g. Scary Zombie Pack). Same shape as the
     # X_Bot packs above; the larva archetype's FBX sources live under

@@ -27,7 +27,10 @@
 #include "hazard/HazardZones.h"
 #include "insight/Insight.h"
 #include "interact/Interaction.h"
+#include "items/ItemRegistry.h"
 #include "lang/Language.h"
+#include "loot/Pickups.h"
+#include "ops/InventoryOps.h"
 #include "text/Examine.h"
 #include "text/TextPresentation.h"
 #include "world/Collision.h"
@@ -41,6 +44,7 @@
 #include <cmath>
 #include <limits>
 #include <optional>
+#include <random>
 
 namespace selva::gameplay
 {
@@ -198,7 +202,11 @@ ClipLookup lookupArchetypeClip(const Actor& a, ClipFamily fam)
 // suspended-platform geometry.
 void initActorPoolsForArchetype(Actor& a)
 {
-    initActorPools(a.hp, a.stamina, a.poise, a.body, a.stats);
+    // Enemies never get the player's soft-cap; their HP is tuned via
+    // archetype overrides (max_hp_override below) on top of the raw
+    // engine formula. Pass PlayerClass::None to skip the per-class
+    // cap entirely.
+    initActorPools(a.hp, a.stamina, a.poise, a.body, a.stats, selva::PlayerClass::None);
     if (a.archetype != nullptr)
     {
         if (a.archetype->max_hp_override > 0)
@@ -257,6 +265,33 @@ std::string resolveNpcTalkLabel(const Actor& a, const std::string& sdid)
     return sdid;
 }
 
+// Resolve an actor's chest world position. Used by Talk + Examine
+// decl `position` closures so the focus highlight ring renders at
+// the chest rather than the feet -- same convention as Souls /
+// Elden Ring "talk-to / examine" anchor visuals. Resolves to the
+// first lockon-point joint when the skeleton authors one (default
+// for humanoid is "mixamorig:Spine2" = chest); falls back to
+// (pos.y + collider_height * 0.7) so actors without a lockon-point
+// rig still get a roughly-correct chest height. Costs one joint
+// lookup per frame the player is in range -- cheap.
+glm::vec3 actorChestWorldPos(const Actor& act)
+{
+    const auto& points = selva::gameplay::actorLockOnPoints(act);
+    if (!points.empty())
+    {
+        const int joint_idx = act.sampler.findJoint(points[0].joint.c_str());
+        if (joint_idx >= 0)
+        {
+            const float foot_offset = selva::gameplay::actorFootOffsetY(act);
+            const glm::mat4 model =
+                selva::combat::buildActorModelMatrix(act.pos, act.yaw, foot_offset);
+            const glm::vec3 local = act.sampler.jointWorldPos(joint_idx);
+            return glm::vec3(model * glm::vec4(local, 1.0f));
+        }
+    }
+    return glm::vec3(act.pos.x, act.pos.y + act.body.collider_height * 0.7f, act.pos.z);
+}
+
 // Build the NPC Talk Decl. Talk_requires_flag gates availability
 // (empty = always talkable). Snaps the NPC's facing toward the player
 // at dialog-open.
@@ -269,7 +304,7 @@ selva::interact::Decl buildNpcTalkDecl(const Actor& a, const std::string& sdid)
     idecl.position = [sdid]()
     {
         const Actor* act = actorByDeclId(sdid);
-        return act != nullptr ? act->pos : glm::vec3(0.0f);
+        return act != nullptr ? actorChestWorldPos(*act) : glm::vec3(0.0f);
     };
     constexpr float kDefaultTalkRangeMeters = 2.5f;
     idecl.range_meters = (a.archetype->interact_range_meters > 0.0f)
@@ -313,7 +348,7 @@ selva::interact::Decl buildExamineDecl(const Actor& a, const std::string& sdid)
     idecl.position = [sdid]()
     {
         const Actor* act = actorByDeclId(sdid);
-        return act != nullptr ? act->pos : glm::vec3(0.0f);
+        return act != nullptr ? actorChestWorldPos(*act) : glm::vec3(0.0f);
     };
     constexpr float kDefaultExamineRangeMeters = 2.0f;
     idecl.range_meters = (a.archetype->interact_range_meters > 0.0f)
@@ -331,7 +366,25 @@ selva::interact::Decl buildExamineDecl(const Actor& a, const std::string& sdid)
         selva::text::beginExamine(text);
         selva::insight::notifyExamined(act->archetype->id);
     };
-    idecl.available = []() { return !selva::text::active(); };
+    // Examine is a non-combat verb -- it only makes sense when the
+    // actor is alive AND in its resting pose (perception.awareness ==
+    // Unaware). The moment perception escalates (Suspicious / Alerted
+    // / Combat), the actor is in motion / posing for combat and an
+    // Examine prompt would visually fight the chase animation. For
+    // the soul-larva feeder specifically this is what makes the
+    // feeding-cycle examine fire ONLY while the feeder is crouched
+    // and biting (its Unaware resting pose); a feeder that has stood
+    // up and is chasing the player drops out of the Examine list
+    // until it disengages.
+    idecl.available = [sdid]()
+    {
+        if (selva::text::active())
+            return false;
+        const Actor* act = actorByDeclId(sdid);
+        if (act == nullptr || act->is_dead)
+            return false;
+        return act->perception.awareness == selva::gameplay::Awareness::Unaware;
+    };
     return idecl;
 }
 
@@ -1181,24 +1234,76 @@ void queueSangueOnKill(const Actor& e)
     selva::gameplay::queueSangueDrop(body_center, e.archetype->sangue_drop);
 }
 
-// Log Wood-side organic loot drops at death. The pickup + inventory
-// layer isn't wired yet; this hook logs the drop list so the
-// cosmology is observable until the item registry ships, at which
-// point this becomes the spawn-pickup / grant-inventory hook.
-void logItemDrops(const Actor& e)
+// Process-wide RNG for loot rolls. Seeded once at first use from
+// std::random_device so repeat playthroughs differ; subsequent rolls
+// thread through the same generator so the sequence is reproducible
+// within a run (useful for save-scum debugging). Intentionally NOT
+// in the deterministic path -- combat outcomes that need replay
+// stability use their own seeded generators elsewhere.
+std::mt19937& lootRng()
+{
+    static std::mt19937 rng(std::random_device{}());
+    return rng;
+}
+
+// Roll the archetype's loot table and spawn a world pickup for each
+// successful drop. Per [[project_items_loot_doctrine_locked]] LCK
+// scales drop chance via the engine FormulaConfig.luck.drop_scale
+// knob (default 15 -- each LCK point gives +15% relative bonus,
+// capped at 100% effective). Quantity is rolled uniformly in
+// [min_qty, max_qty]. Pickup spawns at the corpse position with a
+// small XZ scatter so multi-drop kills don't visually overlap; Y
+// snaps to terrain height under that XZ. Skips player deaths and
+// archetypes with empty loot tables.
+void rollAndSpawnLoot(const Actor& e)
 {
     if (e.controller == Controller::Input || e.archetype == nullptr ||
-        e.archetype->item_drops.empty())
+        e.archetype->loot_drops.empty())
         return;
-    std::string list;
-    for (const auto& id : e.archetype->item_drops)
+
+    const int lck = selva::gameplay::player().stats.lck;
+    const float drop_scale = selva::formulas::current().luck.drop_scale;
+
+    std::uniform_real_distribution<float> chance_roll(0.0f, 1.0f);
+
+    for (const auto& drop : e.archetype->loot_drops)
     {
-        if (!list.empty())
-            list += ", ";
-        list += id;
+        const float effective =
+            std::min(1.0f, drop.base_chance *
+                               (1.0f + static_cast<float>(lck) * drop_scale / 100.0f));
+        if (chance_roll(lootRng()) >= effective)
+            continue;
+
+        const int qty = (drop.max_qty > drop.min_qty)
+                            ? std::uniform_int_distribution<int>(drop.min_qty,
+                                                                  drop.max_qty)(lootRng())
+                            : drop.min_qty;
+        if (qty <= 0)
+            continue;
+
+        engine::ecs::ItemInstance instance;
+        instance.config_path = drop.config_path;
+        instance.quantity = qty;
+
+        // Spawn directly on the corpse's hips -- no scatter. The
+        // overlap case where multiple pickups stack on each other is
+        // resolved by the interaction-cycle system (Tab to switch
+        // between overlapping interactables), not by separating their
+        // world positions. world_pos here is just the fallback for
+        // when the source actor goes away; the live position is
+        // resolved each frame from the actor's hips joint in
+        // selva::loot::livePickupPos.
+        glm::vec3 pos = e.pos;
+        pos.y = e.pos.y + e.body.collider_height * 0.5f;
+
+        const auto pickup_id = selva::loot::spawnPickup(pos, instance, e.spawn_decl_id);
+        if (pickup_id == selva::loot::kInvalidId)
+            continue;
+
+        std::fprintf(stderr, "[loot] dropped %s x%d (chance %.2f%% eff, LCK %d)\n",
+                     drop.config_path.c_str(), qty, effective * 100.0f, lck);
+        std::fflush(stderr);
     }
-    std::fprintf(stderr, "[item-drop] '%s' yields [%s]\n", e.spawn_id.c_str(), list.c_str());
-    std::fflush(stderr);
 }
 } // namespace
 
@@ -1214,16 +1319,18 @@ void fireEnemyDeath(Actor& e, int index)
     {
         e.death_time = selva::wallClock();
     }
-    // Flow-spawned actors defer body fade-out until a same-flow fresh
-    // arrives and "consumes" the corpse (FlowSpawner::consumePairedCorpse
-    // rewrites death_time to start the fade). Sentinel 0 keeps the
-    // body fully opaque per drawActorMeshes' death_time > 0 guard.
-    // Audio + clip still fire on the real death_time above; only the
-    // alpha-fade is gated.
-    const bool defer_fade_until_consumed = !e.spawning_flow_id.empty();
+    // Corpses are PERMANENT by default -- Souls / Elden Ring
+    // convention: a body that fell stays where it fell. The audio +
+    // death clip fired on the real wall-clock time above; the
+    // alpha-fade clock is then zeroed (sentinel) so
+    // computeEnemyDeathFadeAlpha returns 1.0 forever. The only path
+    // that actually starts a fade is the soul-larvae feeder cycle:
+    // FlowSpawner::consumePairedCorpse rewrites death_time back to a
+    // recent wallClock value when a paired fresh arrives to feed.
+    // Other future "corpse vanishes" mechanics opt in by similarly
+    // writing a real death_time onto the actor.
     e.is_dead = true;
-    if (defer_fade_until_consumed)
-        e.death_time = 0.0f;
+    e.death_time = 0.0f;
     // Tear down the Jolt character body -- corpses are visual-only
     // (death clip freezes the pose); they no longer participate in
     // physics. Per the real-physics doctrine.
@@ -1243,7 +1350,7 @@ void fireEnemyDeath(Actor& e, int index)
     if (e.archetype != nullptr && !e.archetype->id.empty())
         selva::insight::notifyKill(e.archetype->id);
     queueSangueOnKill(e);
-    logItemDrops(e);
+    rollAndSpawnLoot(e);
     // No Scene is opened on death. The death clip plays freely on the
     // corpse; the player keeps movement and look. Previously the
     // Guide-rescue handler took over the post-death input-lock to

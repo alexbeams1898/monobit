@@ -1,0 +1,23 @@
+{
+  "_comment": "Tier-0 starter for the Unburdened path. A small sangue-stained glass vessel -- the Vagrant's first reservoir-object, given form by his first riversamento. Per locked cosmology (setting.md *Sangue saturation of Beatrice* + economy.md riversamento doctrine + [[project_class_stats_v2_locked_2026_06_14]]): the Unburdened routes substance OUTWARD to Beatrice; what comes back is invocation, channeled through objects he carries. The ampoule is the simplest such object: stained by his first commit, now holding the echo of Beatrice's response. NOT a prayer item (he doesn't pray to a generic divine); NOT a Catholic devotional (the cosmology is post-Catholic, novel). Just a glass vessel that received sangue and now carries the channel-fire back. Mundane name -- ampoule was the period-Catholic term for any small sacred-substance vessel; survived into the cosmology by accident. Scales on all three Mind stats with INT primary, COG mid, PER light. Identity contribution from Diaphany.",
+
+  "name": "Ampoule",
+  "description": "A small glass vessel, sangue-stained at the rim. It received a drop of substance once, and what answered still sits inside.",
+  "category": "invocation",
+  "rarity": "common",
+  "stackable": false,
+  "max_stack": 1,
+  "max_durability": 100.0,
+
+  "base_damage": 10.0,
+  "weight": 0.2,
+
+  "int_scaling": 1.0,
+  "cog_scaling": 0.65,
+  "per_scaling": 0.4,
+  "int_requirement": 1,
+
+  "identity_class": "unburdened",
+  "identity_stat_scaling": 0.75,
+  "identity_stat_requirement": 0
+}

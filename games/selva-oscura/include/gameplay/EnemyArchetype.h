@@ -2,6 +2,7 @@
 
 #include "anim/SkeletonJointMap.h"
 #include "combat/HurtboxDecl.h"
+#include "ecs/Items.h"
 #include "gameplay/Faction.h"
 #include "gameplay/Perception.h"
 
@@ -331,15 +332,18 @@ struct EnemyArchetype
     // where playable amounts arrive. Tuned per archetype in JSON.
     std::uint32_t sangue_drop = 0u;
 
-    // Physical items released on this archetype's death. Distinct from
-    // sangue: sangue is Hell-substance landing in the Vagrant's vessel
-    // (Hell-side cosmology); items are organic loot landing in inventory
-    // (Wood-side cosmology -- Lupa's meat / bone / hide, future
-    // descendant-fauna drops). Hell-side actors (shades, larvae,
-    // keepers) leave this empty; Animal-form actors author it. Stable
-    // identifiers; the pickup + inventory layer is TBD (item registry
-    // not yet wired -- fireEnemyDeath currently just logs them).
-    std::vector<std::string> item_drops;
+    // Loot drops rolled when the player kills an actor of this archetype.
+    // Distinct from sangue: sangue is the Hell-substance landing in the
+    // Vagrant's vessel; loot is physical material / consumables / rare
+    // flavor items dropped into inventory. Per
+    // [[project_items_loot_doctrine_locked]]: weapons NEVER drop from
+    // enemies (the damned do not bear arms); enemy loot is materials +
+    // rare flavor items only. Each entry rolls independently per kill:
+    // effective_chance = min(1.0, base_chance * (1 + LCK * drop_scale / 100)).
+    // Quantity is uniformly rolled in [min_qty, max_qty]. Resolved by
+    // engine::ecs::DropEntry shape (config_path string keys the engine
+    // ItemRegistry).
+    std::vector<engine::ecs::DropEntry> loot_drops;
 
     // Scripted-death timer (seconds). When > 0, the boss dies at
     // (engage_wallclock + scripted_death_seconds) regardless of damage

@@ -10,8 +10,36 @@
 namespace selva::render
 {
 
-std::uint32_t loadTexture2D(const std::string& path)
+namespace
 {
+// Shared upload path: takes an RGBA pixel buffer (already inverted /
+// processed as needed), creates the GL texture, sets standard sampler
+// params + anisotropy.
+std::uint32_t uploadRGBA(const unsigned char* data, int w, int h)
+{
+    GLuint tex = 0;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    constexpr GLenum kTextureMaxAnisotropyExt = 0x84FE;
+    constexpr GLenum kMaxTextureMaxAnisotropyExt = 0x84FF;
+    GLfloat max_aniso = 1.0f;
+    glGetFloatv(kMaxTextureMaxAnisotropyExt, &max_aniso);
+    glTexParameterf(GL_TEXTURE_2D, kTextureMaxAnisotropyExt, std::min(16.0f, max_aniso));
+    glBindTexture(GL_TEXTURE_2D, 0);
+    return tex;
+}
+} // namespace
+
+std::uint32_t loadTexture2DWithSize(const std::string& path, int& out_w, int& out_h)
+{
+    out_w = 0;
+    out_h = 0;
     int w = 0;
     int h = 0;
     int channels = 0;
@@ -29,28 +57,18 @@ std::uint32_t loadTexture2D(const std::string& path)
                      stbi_failure_reason());
         return 0;
     }
-    GLuint tex = 0;
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-    glGenerateMipmap(GL_TEXTURE_2D);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    // Anisotropic filtering reduces aliasing on textures sampled at
-    // shallow angles. Use the EXT_texture_filter_anisotropic extension
-    // constants - the core promotion landed in OpenGL 4.6, but our
-    // glad is set up for 3.3. The constants are widely supported
-    // since 2003 hardware so this is safe to enable unconditionally.
-    constexpr GLenum kTextureMaxAnisotropyExt = 0x84FE;
-    constexpr GLenum kMaxTextureMaxAnisotropyExt = 0x84FF;
-    GLfloat max_aniso = 1.0f;
-    glGetFloatv(kMaxTextureMaxAnisotropyExt, &max_aniso);
-    glTexParameterf(GL_TEXTURE_2D, kTextureMaxAnisotropyExt, std::min(16.0f, max_aniso));
-    glBindTexture(GL_TEXTURE_2D, 0);
+    const std::uint32_t tex = uploadRGBA(data, w, h);
     stbi_image_free(data);
+    out_w = w;
+    out_h = h;
     return tex;
+}
+
+std::uint32_t loadTexture2D(const std::string& path)
+{
+    int w = 0;
+    int h = 0;
+    return loadTexture2DWithSize(path, w, h);
 }
 
 void destroyTexture(std::uint32_t tex)

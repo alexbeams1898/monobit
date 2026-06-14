@@ -41,7 +41,9 @@ enum class ItemCategory : std::uint8_t
     KeyItem,
     Material,
     Money,
-    Accessory
+    Accessory,
+    Incantation,
+    Invocation
 };
 
 enum class ArmorSlot : std::uint8_t
@@ -113,16 +115,40 @@ struct ItemDef
     ItemCategory category = ItemCategory::Material;
     Rarity rarity = Rarity::Common;
 
-    // Weapon fields (only meaningful when category == Weapon).
+    // Weapon fields (only meaningful when category == Weapon). All
+    // SEVEN universal stat-scaling/requirement axes live here -- the
+    // body four (STR/DEX/END/LCK) and the mind three (PER/COG/INT)
+    // -- so any weapon can scale on any combination. A mind-coded
+    // staff scales on INT + COG; a body-coded mace on STR + END;
+    // bizarre cross-coded weapons (DEX + COG) are equally legal at
+    // the data layer. Identity-stat scaling (per-game cosmology) is
+    // a separate concern; in Selva it lives in selva::items::
+    // ItemExtensions. Default 0 means "this axis doesn't
+    // contribute," so weapons authored against the legacy STR/DEX-
+    // only model continue to behave identically.
     float base_damage = 0.0f;
     float weight = 0.5f;
     float str_scaling = 0.0f;
     float dex_scaling = 0.0f;
+    float end_scaling = 0.0f;
+    float lck_scaling = 0.0f;
+    float per_scaling = 0.0f;
+    float cog_scaling = 0.0f;
+    float int_scaling = 0.0f;
     int str_requirement = 0;
     int dex_requirement = 0;
+    int end_requirement = 0;
+    int lck_requirement = 0;
+    int per_requirement = 0;
+    int cog_requirement = 0;
+    int int_requirement = 0;
     std::string weapon_tier;         // references WeaponTierRegistry
     float damage_per_level = -1.0f;  // -1 = use tier default
     float scaling_per_level = -1.0f; // -1 = use tier default
+    // Animset key. Games that drive swing animations from a
+    // class-based WeaponClass registry resolve the live animation
+    // set from this id. Empty = unarmed / no class.
+    std::string weapon_class_id;
 
     // Ranged weapon fields (only meaningful when category == Weapon && ranged).
     bool ranged = false;
@@ -147,6 +173,26 @@ struct ItemDef
     std::string weapon_icon;
     float grip_x = 0.0f;
     float grip_y = 0.0f;
+    // 3D-specific grip pose. The 4x4 grip transform applied AFTER the
+    // hand-bone world matrix when drawing the equipped weapon mesh:
+    //   final_model = hand_world * T(grip_offset) * R(grip_rot_euler) * S(grip_scale)
+    // Translation slides the mesh so the GRIP POINT (where the
+    // character's fingers wrap the handle) lands at the wrist joint
+    // instead of the mesh origin. Rotation orients the haft along the
+    // hand's forward axis. Scale is a uniform multiplier (most weapons
+    // 1.0; placeholder meshes may need rescaling). All zero / scale=1
+    // means "use the mesh's authored pose at the hand joint" -- which
+    // is almost always wrong, but it's a defensible default that
+    // doesn't hide bugs.
+    //
+    // Euler degrees in XYZ order (pitch / yaw / roll). 2D games ignore.
+    float grip_offset_x = 0.0f;
+    float grip_offset_y = 0.0f;
+    float grip_offset_z = 0.0f;
+    float grip_rot_deg_x = 0.0f;
+    float grip_rot_deg_y = 0.0f;
+    float grip_rot_deg_z = 0.0f;
+    float grip_scale = 1.0f;
     std::string attack_icon_ns;
     float attack_grip_ns_x = 0.0f;
     float attack_grip_ns_y = 0.0f;
@@ -193,9 +239,16 @@ struct ItemRegistry
     }
 };
 
+using ItemInstanceId = std::uint64_t;
+constexpr ItemInstanceId kInvalidItemInstanceId = 0;
+
 // Per-copy instance state. Template data lives in ItemDef (via config_path).
+// `id` is stable across all inventory mutations -- Equipment slots address
+// items by id, never by vector index. `id` is assigned by Inventory::add /
+// loaded from save; do not assign by hand.
 struct ItemInstance
 {
+    ItemInstanceId id = kInvalidItemInstanceId;
     std::string config_path;
     QualityTier quality = QualityTier::Common;
     float durability = 100.0f;
@@ -211,27 +264,34 @@ struct ItemInstance
     }
 };
 
-// Bag of items. Index-addressed; Equipment refers to slot positions here.
+// Bag of items, category-bucketed. The bucket key is the item's category
+// (Weapons/Armor/Consumables/Materials/KeyItems/Accessories/Incants),
+// resolved from ItemDef.category at add time. Total capacity is unbounded;
+// per-ItemDef carry caps + overflow routing live in game-side ops.
+//
+// `next_id` is the monotonic id allocator. NEVER reused on remove --
+// equipment slots and any other cross-system handle stay valid for the
+// lifetime of the character. Persists across save/load.
 struct Inventory
 {
-    std::vector<ItemInstance> items;
-    int max_slots = 20;
+    std::unordered_map<std::string, std::vector<ItemInstance>> by_category;
+    ItemInstanceId next_id = 1;
 };
 
-// Currently equipped items. Each slot is an index into Inventory::items.
-// -1 = nothing equipped. Items stay in inventory; equipping just marks
-// which index each slot uses. Game-side systems sync these to render /
-// combat / stat-stacking each frame.
+// Currently equipped items. Each slot stores the equipped item's stable id.
+// kInvalidItemInstanceId = nothing equipped. Items stay in inventory;
+// equipping just marks which id each slot uses. Game-side systems sync
+// these to render / combat / stat-stacking each frame.
 struct Equipment
 {
-    int right_hand = -1;
-    int left_hand = -1;
-    int head = -1;
-    int chest = -1;
-    int legs = -1;
-    int feet = -1;
-    int accessory_1 = -1;
-    int accessory_2 = -1;
+    ItemInstanceId right_hand = kInvalidItemInstanceId;
+    ItemInstanceId left_hand = kInvalidItemInstanceId;
+    ItemInstanceId head = kInvalidItemInstanceId;
+    ItemInstanceId chest = kInvalidItemInstanceId;
+    ItemInstanceId legs = kInvalidItemInstanceId;
+    ItemInstanceId feet = kInvalidItemInstanceId;
+    ItemInstanceId accessory_1 = kInvalidItemInstanceId;
+    ItemInstanceId accessory_2 = kInvalidItemInstanceId;
 };
 
 // A world-space pickup entity. Carries xp_value (used by pickup systems)
@@ -274,6 +334,14 @@ struct RecipeDef
     std::vector<RecipeIngredient> inputs;
     std::string output_item;
     int output_quantity = 1;
+    // Cost the crafting verb deducts from a per-game cost pool. Default
+    // 0 = free. Engine treats this as an opaque integer; the game-side
+    // craft call is responsible for checking + deducting.
+    int sangue_cost = 0;
+    // Substrate tag drives per-game persistence rules. Empty = no tag.
+    // Selva uses "hell" / "wood" to decide whether outputs reclaim on
+    // second death; other games may ignore.
+    std::string substrate;
 };
 
 struct RecipeRegistry

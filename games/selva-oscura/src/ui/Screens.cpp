@@ -14,11 +14,13 @@
 #include "gameplay/TickState.h"
 #include "insight/Insight.h"
 #include "items/CategoryRegistry.h"
-#include "items/InventoryOps.h"
 #include "items/ItemRegistry.h"
 #include "items/UseHandlers.h"
+#include "notice/Notices.h"
 #include "lang/Language.h"
+#include "ops/CraftingOps.h"
 #include "ops/InventoryOps.h"
+#include "render/Texture.h"
 #include "text/TextPresentation.h"
 #include "ui/BossHud.h"
 #include "ui/ClassPickerScreen.h"
@@ -30,9 +32,11 @@
 #include <SDL.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <optional>
 #include <string>
+#include <vector>
 
 // ---------------------------------------------------------------------------
 // Screens.cpp - ImGui-driven screen rendering for Selva's main menu, character
@@ -124,7 +128,12 @@ bool flushAndSave()
     if (target == nullptr)
         return false;
     selva::gameplay::saveActiveCharacterFromPlayer(*target);
-    if (!SaveManager::save(saveData()))
+    // Souls-style Continue: stamp this save as the most-recent so the
+    // main menu can resume it without prompting the player to pick.
+    auto& sd = saveData();
+    sd.has_last_played = true;
+    sd.last_played_character = target->name;
+    if (!SaveManager::save(sd))
         return false;
     uiState().last_save_ticks_ms = SDL_GetTicks64();
     return true;
@@ -133,30 +142,116 @@ bool flushAndSave()
 // ---------------------------------------------------------------------------
 // Main menu screen
 // ---------------------------------------------------------------------------
-bool renderMainMenu()
+namespace
 {
-    bool quit = false;
-    beginCenteredWindow("##mainmenu", ImVec2(360, 320));
-    ImGui::SetWindowFontScale(1.6f);
-    ImGui::TextUnformatted("SELVA OSCURA");
-    ImGui::SetWindowFontScale(1.0f);
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::Spacing();
-    ImGui::Spacing();
+// Lazy-loaded logo texture. Loaded on first menu render (GL context is
+// guaranteed live by then); cached for the rest of the process. Width
+// + height stored so the draw code can preserve aspect ratio.
+struct LogoCache
+{
+    std::uint32_t tex = 0;
+    int w = 0;
+    int h = 0;
+    bool tried = false;
+};
+LogoCache& logoCache()
+{
+    static LogoCache c;
+    return c;
+}
 
-    if (centeredButton("New Game"))
+void ensureLogoLoaded()
+{
+    auto& c = logoCache();
+    if (c.tried)
+        return;
+    c.tried = true;
+    c.tex = selva::render::loadTexture2DWithSize("assets/ui/logo.png", c.w, c.h);
+}
+
+// Menu items as a discrete state machine: each entry is a label and an
+// action key. Selectable via keyboard up/down + Enter, or mouse hover
+// + click. The class picker has the same shape -- could be factored
+// later if a third screen wants it.
+enum class MainMenuAction : std::uint8_t
+{
+    Continue,
+    NewGame,
+    LoadGame,
+    Settings,
+    Quit,
+};
+struct MainMenuItem
+{
+    const char* label;
+    MainMenuAction action;
+    bool enabled;
+};
+
+// True when Continue can fire: the save file has a last_played stamp,
+// and that character (named or unnamed) still exists in saveData.
+bool canContinueRun()
+{
+    const auto& sd = saveData();
+    if (!sd.has_last_played)
+        return false;
+    for (const auto& c : sd.characters)
+        if (c.name == sd.last_played_character)
+            return true;
+    return false;
+}
+
+// Named entry points for Phase::Playing.
+//
+// Wake-scene is owned by ONLY the New Game path. Continue and Load
+// Game restore the player wherever they were saved -- a wake-up
+// animation would be wrong. Splitting the per-case copy-paste into
+// three named helpers makes the per-entry-point semantics
+// declarative: a new caller can't accidentally inherit New Game's
+// wake-scene by copying the wrong line.
+//
+// (Smell that prompted this: Continue silently fired the wake-up
+// animation because its case copy-pasted the NewGame body and kept
+// pending_wake_scene = true. Once the structure says "Continue is
+// not New Game," the bug can't recur.)
+void enterPlayingFromNewGame()
+{
+    selva::gameState().active_character.clear();
+    selva::gameState().pending_world_create = true;
+    selva::gameState().pending_wake_scene = true;
+    setPhase(GameState::Phase::Playing);
+}
+
+void enterPlayingFromContinue(const std::string& character_name)
+{
+    selva::gameState().active_character = character_name;
+    selva::gameState().pending_world_create = true;
+    // NO wake-scene -- the saved character is in-progress, not
+    // newly-arrived. Wake-scene is New Game's ritual.
+    setPhase(GameState::Phase::Playing);
+}
+
+void enterPlayingFromLoadGame(const std::string& character_name)
+{
+    selva::gameState().active_character = character_name;
+    selva::gameState().pending_world_create = true;
+    // NO wake-scene -- same reason as Continue.
+    setPhase(GameState::Phase::Playing);
+}
+
+void doMainMenuAction(MainMenuAction a, bool& out_quit)
+{
+    switch (a)
     {
-        // Unnamed-but-real character pattern. The unnamed character is
-        // a PlayerProfile with name=="" living in saveData like any
-        // other -- no separate in-memory branch. If an existing
-        // name=="" entry is already in saveData (an unfinished prior
-        // unnamed run), resume it; otherwise create a fresh one and
-        // persist immediately so the save is real from the first
-        // frame. The Guide-elicited naming dialog later mutates the
-        // name field directly; class picker writes player_class
-        // directly. Per the locked design: one unnamed character at
-        // a time.
+    case MainMenuAction::Continue:
+    {
+        if (!canContinueRun())
+            return;
+        enterPlayingFromContinue(saveData().last_played_character);
+        break;
+    }
+    case MainMenuAction::NewGame:
+    {
         auto& sd = saveData();
         bool existing_unnamed = false;
         for (const auto& c : sd.characters)
@@ -172,30 +267,176 @@ bool renderMainMenu()
             SaveManager::addCharacter(sd, "");
             SaveManager::save(sd);
         }
-        selva::gameState().active_character.clear(); // "" resolves to the unnamed profile
-        selva::gameState().pending_world_create = true;
-        selva::gameState().pending_wake_scene = true;
-        setPhase(GameState::Phase::Playing);
+        enterPlayingFromNewGame();
+        break;
     }
-    ImGui::Spacing();
-
-    const bool has_characters = !saveData().characters.empty();
-    if (!has_characters)
-        ImGui::BeginDisabled();
-    if (centeredButton("Load Game"))
+    case MainMenuAction::LoadGame:
         setPhase(GameState::Phase::LoadGame);
-    if (!has_characters)
-        ImGui::EndDisabled();
-    ImGui::Spacing();
-
-    if (centeredButton("Settings"))
+        break;
+    case MainMenuAction::Settings:
         setPhase(GameState::Phase::Settings);
-    ImGui::Spacing();
+        break;
+    case MainMenuAction::Quit:
+        out_quit = true;
+        break;
+    }
+}
+} // namespace
 
-    if (centeredButton("Quit"))
-        quit = true;
+bool renderMainMenu()
+{
+    bool quit = false;
+    ensureLogoLoaded();
+
+    // Full-screen transparent window. Logo top-third, menu items
+    // bottom-third, dim background covering whatever is behind.
+    // Dark-Souls layout: no frame, no buttons -- just the logo
+    // and a list of bare options the player navigates with keyboard
+    // or mouse.
+    const ImVec2 disp = ImGui::GetIO().DisplaySize;
+    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+    ImGui::SetNextWindowSize(disp);
+    ImGui::SetNextWindowBgAlpha(1.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(8, 8, 10, 255));
+    ImGui::Begin("##mainmenu", nullptr,
+                 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                     ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar |
+                     ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus);
+
+    // ---- Logo: top half, centered horizontally, max 80% of screen width ----
+    const auto& logo = logoCache();
+    if (logo.tex != 0 && logo.w > 0 && logo.h > 0)
+    {
+        const float aspect = static_cast<float>(logo.w) / static_cast<float>(logo.h);
+        const float target_w = std::min(disp.x * 0.7f, static_cast<float>(logo.w));
+        const float target_h = target_w / aspect;
+        const float x = (disp.x - target_w) * 0.5f;
+        const float y = disp.y * 0.18f;
+        ImGui::SetCursorPos(ImVec2(x, y));
+        ImGui::Image(reinterpret_cast<ImTextureID>(static_cast<std::uintptr_t>(logo.tex)),
+                     ImVec2(target_w, target_h));
+    }
+    else
+    {
+        // Fallback: text title in roughly the same position.
+        ImGui::SetCursorPos(ImVec2(0.0f, disp.y * 0.25f));
+        const char* fallback = "SELVA OSCURA";
+        ImGui::SetWindowFontScale(2.4f);
+        const ImVec2 ts = ImGui::CalcTextSize(fallback);
+        ImGui::SetCursorPosX((disp.x - ts.x) * 0.5f);
+        ImGui::TextUnformatted(fallback);
+        ImGui::SetWindowFontScale(1.0f);
+    }
+
+    // ---- Menu items: bottom third, centered ----
+    const bool has_characters = !saveData().characters.empty();
+    const bool can_continue = canContinueRun();
+    std::vector<MainMenuItem> items;
+    items.reserve(5);
+    // Continue only appears when there's a recent save to resume.
+    // Hiding (rather than greying) keeps the menu clean for first-boot.
+    if (can_continue)
+        items.push_back({"Continue", MainMenuAction::Continue, true});
+    items.push_back({"New Game", MainMenuAction::NewGame, true});
+    items.push_back({"Load Game", MainMenuAction::LoadGame, has_characters});
+    items.push_back({"Settings", MainMenuAction::Settings, true});
+    items.push_back({"Quit", MainMenuAction::Quit, true});
+
+    // Selection cursor: keyboard-owned by default; mouse movement
+    // releases it back to mouse-hover (same last-input-source-wins
+    // pattern the class picker uses).
+    static std::size_t cursor = 0;
+    static bool keyboard_owns_cursor = true;
+    const ImGuiIO& io = ImGui::GetIO();
+    const bool mouse_moved = (io.MouseDelta.x != 0.0f) || (io.MouseDelta.y != 0.0f);
+    if (mouse_moved)
+        keyboard_owns_cursor = false;
+
+    if (ImGui::IsKeyPressed(ImGuiKey_DownArrow, true) || ImGui::IsKeyPressed(ImGuiKey_S, true))
+    {
+        keyboard_owns_cursor = true;
+        for (std::size_t i = 1; i <= items.size(); ++i)
+        {
+            const std::size_t next = (cursor + i) % items.size();
+            if (items[next].enabled)
+            {
+                cursor = next;
+                break;
+            }
+        }
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_UpArrow, true) || ImGui::IsKeyPressed(ImGuiKey_W, true))
+    {
+        keyboard_owns_cursor = true;
+        for (std::size_t i = 1; i <= items.size(); ++i)
+        {
+            const std::size_t prev = (cursor + items.size() - i) % items.size();
+            if (items[prev].enabled)
+            {
+                cursor = prev;
+                break;
+            }
+        }
+    }
+
+    // When Continue is present, shift the whole block down by one line
+    // height so the padding around the items stays visually balanced
+    // (a 4-item block at 0.74 and a 5-item block at 0.74 have very
+    // different bottom-edge gaps; bumping items_y down compensates).
+    const float line_h = ImGui::GetFontSize() * 1.4f; // matches the items font scale below
+    const float items_y = disp.y * 0.74f + (can_continue ? line_h : 0.0f);
+    ImGui::SetCursorPos(ImVec2(0.0f, items_y));
+    ImGui::PushStyleColor(ImGuiCol_Header, IM_COL32(0, 0, 0, 0));
+    ImGui::PushStyleColor(ImGuiCol_HeaderHovered, IM_COL32(0, 0, 0, 0));
+    ImGui::PushStyleColor(ImGuiCol_HeaderActive, IM_COL32(0, 0, 0, 0));
+    ImGui::SetWindowFontScale(1.4f);
+    for (std::size_t i = 0; i < items.size(); ++i)
+    {
+        const auto& item = items[i];
+        const bool is_cursor = (i == cursor);
+        const ImU32 col = !item.enabled ? IM_COL32(60, 60, 60, 255)
+                          : is_cursor   ? IM_COL32(230, 220, 200, 255)
+                                        : IM_COL32(140, 130, 115, 255);
+        ImGui::PushStyleColor(ImGuiCol_Text, col);
+        std::string label_str = (is_cursor ? "> " : "  ");
+        label_str += item.label;
+        const ImVec2 ts = ImGui::CalcTextSize(label_str.c_str());
+        ImGui::SetCursorPosX((disp.x - ts.x) * 0.5f);
+        if (!item.enabled)
+            ImGui::BeginDisabled();
+        if (ImGui::Selectable(label_str.c_str(), false, ImGuiSelectableFlags_None,
+                              ImVec2(ts.x, ts.y)))
+        {
+            doMainMenuAction(item.action, quit);
+        }
+        if (!item.enabled)
+            ImGui::EndDisabled();
+        // Mouse hover takes over cursor when mouse is the last input source.
+        if (!keyboard_owns_cursor && ImGui::IsItemHovered() && item.enabled)
+            cursor = i;
+        ImGui::PopStyleColor();
+        ImGui::Spacing();
+    }
+    ImGui::SetWindowFontScale(1.0f);
+    ImGui::PopStyleColor(3);
+
+    // Keyboard commit: Enter / E activates the cursor item. E is the
+    // interact key in-world (DialogScreen + on-screen prompts use it),
+    // so the menu commit is the same key the player has been holding
+    // since they started playing.
+    if (keyboard_owns_cursor &&
+        (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_E)))
+    {
+        if (items[cursor].enabled)
+            doMainMenuAction(items[cursor].action, quit);
+    }
 
     ImGui::End();
+    ImGui::PopStyleColor();
+    ImGui::PopStyleVar(3);
     return quit;
 }
 
@@ -204,6 +445,15 @@ bool renderMainMenu()
 // ---------------------------------------------------------------------------
 void renderLoadGame()
 {
+    // Bounce back to main menu when the character list is empty (e.g.
+    // the player just deleted the last character, or arrived here with
+    // no saves). Without this, the screen renders with an empty list
+    // and the only escape is Back.
+    if (saveData().characters.empty())
+    {
+        setPhase(GameState::Phase::MainMenu);
+        return;
+    }
     beginCenteredWindow("##loadgame", ImVec2(420, 400));
     ImGui::SetWindowFontScale(1.3f);
     ImGui::TextUnformatted("Load Game");
@@ -223,9 +473,7 @@ void renderLoadGame()
         const std::string label = c.name.empty() ? "???" : c.name;
         if (ImGui::Button(label.c_str(), ImVec2(200, 0)))
         {
-            gameState().active_character = c.name;
-            gameState().pending_world_create = true;
-            setPhase(GameState::Phase::Playing);
+            enterPlayingFromLoadGame(c.name);
         }
         ImGui::SameLine();
         if (ImGui::Button("Delete", ImVec2(80, 0)))
@@ -273,6 +521,8 @@ void renderSettings()
     if (ImGui::SliderFloat("FOV (first person)", &s.fov_degrees_first_person, 50.0f, 120.0f,
                            "%.0f"))
         dirty = true;
+    if (ImGui::Checkbox("Show interaction ring", &s.show_interact_ring))
+        dirty = true;
 
     if (dirty)
         SaveManager::save(saveData());
@@ -291,11 +541,6 @@ bool renderSystemTab()
     bool quit = false;
     ImGui::Spacing();
 
-    if (centeredButton("Save", 220.0f))
-        flushAndSave();
-    ImGui::Spacing();
-    ImGui::Spacing();
-
     ImGui::TextDisabled("Settings");
     ImGui::Separator();
     ImGui::Spacing();
@@ -310,6 +555,8 @@ bool renderSystemTab()
         dirty = true;
     if (ImGui::SliderFloat("FOV (first person)", &s.fov_degrees_first_person, 50.0f, 120.0f,
                            "%.0f"))
+        dirty = true;
+    if (ImGui::Checkbox("Show interaction ring", &s.show_interact_ring))
         dirty = true;
     if (dirty)
         SaveManager::save(saveData());
@@ -413,23 +660,141 @@ void renderPauseVesselForm()
                 p.stats.lck);
 }
 
+namespace
+{
+
+// True if `it` can be equipped to `slot`. Filter for the slot-first
+// equipment picker per the Souls convention: clicking a slot shows
+// only items that fit there. Weapons / incantations / invocations
+// fit either hand; armor matches its armor_slot field; accessories
+// fit either accessory slot.
+bool itemFitsSlot(const engine::ecs::ItemDef& def, EquipSlot slot)
+{
+    using engine::ecs::ItemCategory;
+    using engine::ecs::ArmorSlot;
+    switch (slot)
+    {
+    case EquipSlot::RightHand:
+    case EquipSlot::LeftHand:
+        return def.category == ItemCategory::Weapon ||
+               def.category == ItemCategory::Incantation ||
+               def.category == ItemCategory::Invocation;
+    case EquipSlot::Head:
+        return def.category == ItemCategory::Armor && def.armor_slot == ArmorSlot::Head;
+    case EquipSlot::Chest:
+        return def.category == ItemCategory::Armor && def.armor_slot == ArmorSlot::Chest;
+    case EquipSlot::Legs:
+        return def.category == ItemCategory::Armor && def.armor_slot == ArmorSlot::Legs;
+    case EquipSlot::Feet:
+        return def.category == ItemCategory::Armor && def.armor_slot == ArmorSlot::Feet;
+    case EquipSlot::Accessory1:
+    case EquipSlot::Accessory2:
+        return def.category == ItemCategory::Accessory;
+    }
+    return false;
+}
+
+// Collect every item instance in the inventory that fits `slot`.
+// Walks every category bucket -- the filter is by ItemDef.category
+// + ItemDef.armor_slot, not by inventory bucket key (the buckets
+// already match category, but we filter on the def to be authoritative).
+std::vector<const engine::ecs::ItemInstance*>
+collectItemsFittingSlot(const engine::ecs::Inventory& inv,
+                        const engine::ecs::ItemRegistry& items, EquipSlot slot)
+{
+    std::vector<const engine::ecs::ItemInstance*> out;
+    for (const auto& [cat_key, bucket] : inv.by_category)
+    {
+        for (const auto& it : bucket)
+        {
+            const engine::ecs::ItemDef* def = items.find(it.config_path);
+            if (def != nullptr && itemFitsSlot(*def, slot))
+                out.push_back(&it);
+        }
+    }
+    return out;
+}
+
+} // namespace
+
 void renderPauseVesselHands()
 {
     ImGui::Spacing();
     const auto& inv = playerInventory();
-    const auto& eq = playerEquipment();
+    auto& eq = playerEquipment();
+    const auto& items = itemRegistry();
+
+    // Souls-style slot-first picker. Each slot row is a Selectable
+    // that opens a popup of every item that fits there (filtered by
+    // category + armor_slot). Clicking an item equips it; "(None)"
+    // unequips. Slot rows show the currently equipped name inline so
+    // the player can see the loadout at a glance without opening any
+    // popup.
     auto draw_slot = [&](const char* label, EquipSlot slot)
     {
         const std::string path = InventoryOps::equippedPath(inv, eq, slot);
+        std::string row;
         if (path.empty())
-            ImGui::Text("%s: (none)", label);
+        {
+            row = std::string(label) + ":  (none)";
+        }
         else
         {
-            const ItemDef* def = itemRegistry().find(path);
+            const ItemDef* def = items.find(path);
             const char* name = (def != nullptr) ? def->name.c_str() : path.c_str();
-            ImGui::Text("%s: %s", label, name);
+            row = std::string(label) + ":  " + name;
         }
+
+        ImGui::PushID(static_cast<int>(slot));
+        if (ImGui::Selectable(row.c_str(), false, ImGuiSelectableFlags_None,
+                              ImVec2(0.0f, ImGui::GetFontSize() * 1.4f)))
+        {
+            ImGui::OpenPopup("##slot_picker");
+        }
+
+        if (ImGui::BeginPopup("##slot_picker"))
+        {
+            ImGui::TextDisabled("%s", label);
+            ImGui::Separator();
+
+            // "None" entry -- always present, unequips the slot.
+            if (ImGui::Selectable("(None)"))
+            {
+                engine::ops::inventory::unequipSlot(eq, slot);
+                ImGui::CloseCurrentPopup();
+            }
+
+            const auto candidates = collectItemsFittingSlot(inv, items, slot);
+            if (candidates.empty())
+            {
+                ImGui::TextDisabled("(nothing fits here)");
+            }
+            else
+            {
+                for (const auto* candidate : candidates)
+                {
+                    const ItemDef* def = items.find(candidate->config_path);
+                    const std::string name = (def != nullptr && !def->name.empty())
+                                                 ? def->name
+                                                 : candidate->config_path;
+                    // Marker shows which item is currently equipped here.
+                    const bool already_equipped =
+                        (engine::ops::inventory::slotIdConst(eq, slot) == candidate->id);
+                    const std::string row_label =
+                        (already_equipped ? "[equipped]  " : "            ") + name;
+                    if (ImGui::Selectable(row_label.c_str()))
+                    {
+                        engine::ops::inventory::equipItemToSlot(inv, eq, candidate->id, slot);
+                        ImGui::CloseCurrentPopup();
+                    }
+                }
+            }
+
+            ImGui::EndPopup();
+        }
+        ImGui::PopID();
     };
+
     draw_slot("Right hand", EquipSlot::RightHand);
     draw_slot("Left hand", EquipSlot::LeftHand);
     draw_slot("Head", EquipSlot::Head);
@@ -1437,35 +1802,29 @@ namespace
 {
 struct InventoryEntryLabel
 {
-    std::string item_id;
+    engine::ecs::ItemInstanceId id = engine::ecs::kInvalidItemInstanceId;
     std::string display;
 };
 
-InventoryEntryLabel buildInventoryEntryLabel(const selva::items::Entry& e,
-                                             const selva::items::ItemRegistry& items)
+InventoryEntryLabel buildInventoryEntryLabel(const engine::ecs::ItemInstance& it,
+                                             const engine::ecs::ItemRegistry& items)
 {
     InventoryEntryLabel out;
+    out.id = it.id;
+    const engine::ecs::ItemDef* def = items.find(it.config_path);
+    const std::string base = (def != nullptr && !def->name.empty()) ? def->name : it.config_path;
     std::string suffix;
-    if (const auto* p = std::get_if<selva::items::PossessionEntry>(&e))
-        out.item_id = p->item_id;
-    else if (const auto* s = std::get_if<selva::items::StackEntry>(&e))
-    {
-        out.item_id = s->item_id;
-        suffix = "  x" + std::to_string(s->count);
-    }
-    else if (const auto* x = std::get_if<selva::items::InstancedEntry>(&e))
-    {
-        out.item_id = x->item_id;
-        if (x->upgrade_level > 0)
-            suffix = "  +" + std::to_string(x->upgrade_level);
-    }
-    const selva::items::ItemDef* def = items.get(out.item_id);
-    out.display = (def != nullptr ? def->display_name : out.item_id) + suffix;
+    if (it.quantity > 1)
+        suffix = "  x" + std::to_string(it.quantity);
+    else if (it.weapon_xp_level > 1)
+        suffix = "  +" + std::to_string(it.weapon_xp_level - 1);
+    out.display = base + suffix;
     return out;
 }
 
 void drawInventoryCategoryTabs(const std::vector<selva::items::CategoryDef>& cats,
-                               std::string& selected_category, std::string& selected_item)
+                               std::string& selected_category,
+                               engine::ecs::ItemInstanceId& selected_item)
 {
     if (!ImGui::BeginTabBar("##inv_cats"))
         return;
@@ -1476,39 +1835,68 @@ void drawInventoryCategoryTabs(const std::vector<selva::items::CategoryDef>& cat
         if (selected_category != cat.id)
         {
             selected_category = cat.id;
-            selected_item.clear();
+            selected_item = engine::ecs::kInvalidItemInstanceId;
         }
         ImGui::EndTabItem();
     }
     ImGui::EndTabBar();
 }
 
-void drawInventoryEntryList(const std::vector<selva::items::Entry>* entries,
-                            const selva::items::ItemRegistry& items, std::string& selected_item)
+void drawInventoryEntryList(const std::vector<engine::ecs::ItemInstance>* entries,
+                            const engine::ecs::ItemRegistry& items,
+                            engine::ecs::ItemInstanceId& selected_item)
 {
     if (entries == nullptr || entries->empty())
     {
         ImGui::TextDisabled("(empty)");
         return;
     }
-    for (const auto& e : *entries)
+    for (const auto& it : *entries)
     {
-        const InventoryEntryLabel label = buildInventoryEntryLabel(e, items);
-        const bool selected = (selected_item == label.item_id);
+        const InventoryEntryLabel label = buildInventoryEntryLabel(it, items);
+        const bool selected = (selected_item == label.id);
+
+        // NEW! badge: gold dot to the left of the row when this
+        // item is in the cross-domain unread-notices set. Cleared
+        // the moment the player selects the row -- Souls
+        // convention. The toast already announced novelty at
+        // pickup time; this badge catches the case where the toast
+        // fades before the inventory is opened. Storage lives in
+        // selva::notice, not on the ItemInstance, so the same dot
+        // pattern works for insights / topics / future systems.
+        const bool unread = selva::notice::isUnread(selva::notice::kDomainItem, it.config_path);
+        const ImVec2 cursor = ImGui::GetCursorScreenPos();
+        if (unread)
+        {
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            const float r = 4.0f;
+            const float cy = cursor.y + ImGui::GetTextLineHeight() * 0.5f;
+            const float cx = cursor.x + r;
+            dl->AddCircleFilled(ImVec2(cx, cy), r, IM_COL32(243, 218, 102, 230), 12);
+            ImGui::Dummy(ImVec2(r * 2.0f + 4.0f, 0.0f));
+            ImGui::SameLine(0.0f, 0.0f);
+        }
+
         if (ImGui::Selectable(label.display.c_str(), selected))
-            selected_item = label.item_id;
+        {
+            selected_item = label.id;
+            if (unread)
+                selva::notice::acknowledge(selva::notice::kDomainItem, it.config_path);
+        }
     }
 }
 
-void drawInventoryUseButton(const selva::items::ItemDef& sel, selva::items::Inventory& inv,
-                            std::string& selected_item)
+void drawInventoryUseButton(const engine::ecs::ItemInstance& it,
+                            engine::ecs::Inventory& inv,
+                            engine::ecs::ItemInstanceId& selected_item)
 {
-    if (sel.use_handler.empty())
+    const selva::items::ItemExtensions* ext = selva::items::itemExtensions(it.config_path);
+    if (ext == nullptr || ext->use_handler.empty())
         return;
     selva::items::UseGate gate;
-    if (!sel.use_condition.empty())
+    if (!ext->use_condition.empty())
     {
-        const auto* cond = selva::items::getUseCondition(sel.use_condition);
+        const auto* cond = selva::items::getUseCondition(ext->use_condition);
         if (cond != nullptr)
             gate = (*cond)();
     }
@@ -1516,10 +1904,10 @@ void drawInventoryUseButton(const selva::items::ItemDef& sel, selva::items::Inve
         ImGui::BeginDisabled();
     if (ImGui::Button("Use"))
     {
-        const auto* action = selva::items::getUseAction(sel.use_handler);
+        const auto* action = selva::items::getUseAction(ext->use_handler);
         if (action != nullptr)
-            (*action)(inv, selected_item);
-        selected_item.clear();
+            (*action)(inv, it.id);
+        selected_item = engine::ecs::kInvalidItemInstanceId;
     }
     if (!gate.enabled)
     {
@@ -1529,22 +1917,31 @@ void drawInventoryUseButton(const selva::items::ItemDef& sel, selva::items::Inve
     }
 }
 
-void drawInventoryDetailPanel(const std::string& selected_item, selva::items::Inventory& inv,
-                              const selva::items::ItemRegistry& items,
-                              std::string& selected_item_ref)
+
+void drawInventoryDetailPanel(engine::ecs::ItemInstanceId selected_item,
+                              engine::ecs::Inventory& inv,
+                              const engine::ecs::ItemRegistry& items,
+                              engine::ecs::ItemInstanceId& selected_item_ref)
 {
-    const selva::items::ItemDef* sel = items.get(selected_item);
-    if (sel == nullptr)
+    const engine::ecs::ItemInstance* it = engine::ops::inventory::findById(inv, selected_item);
+    if (it == nullptr)
     {
         ImGui::TextDisabled("Select an item.");
         return;
     }
-    ImGui::TextUnformatted(sel->display_name.c_str());
+    const engine::ecs::ItemDef* def = items.find(it->config_path);
+    const std::string title =
+        (def != nullptr && !def->name.empty()) ? def->name : it->config_path;
+    ImGui::TextUnformatted(title.c_str());
     ImGui::Separator();
     ImGui::Spacing();
-    ImGui::TextWrapped("%s", sel->description.c_str());
+    if (def != nullptr && !def->description.empty())
+        ImGui::TextWrapped("%s", def->description.c_str());
     ImGui::Spacing();
-    drawInventoryUseButton(*sel, inv, selected_item_ref);
+    // Equip / unequip is owned by the Hands sub-page (slot-first
+    // picker per the Souls convention). The inventory detail panel
+    // only surfaces non-equipment verbs like Use.
+    drawInventoryUseButton(*it, inv, selected_item_ref);
 }
 } // namespace
 
@@ -1557,7 +1954,7 @@ void renderPauseInventoryTab()
         ImGui::TextDisabled("(no active character)");
         return;
     }
-    selva::items::Inventory& inv = profile->inventory;
+    engine::ecs::Inventory& inv = profile->inventory;
     const auto& cats = selva::items::categoryRegistry().all();
     const auto& items = selva::items::itemRegistry();
     if (cats.empty())
@@ -1566,12 +1963,13 @@ void renderPauseInventoryTab()
         return;
     }
     static std::string sSelectedCategory;
-    static std::string sSelectedItem;
+    static engine::ecs::ItemInstanceId sSelectedItem = engine::ecs::kInvalidItemInstanceId;
     if (sSelectedCategory.empty())
         sSelectedCategory = cats.front().id;
     drawInventoryCategoryTabs(cats, sSelectedCategory, sSelectedItem);
-    const std::vector<selva::items::Entry>* entries =
-        selva::items::entriesIn(inv, sSelectedCategory);
+    const auto cat_it = inv.by_category.find(sSelectedCategory);
+    const std::vector<engine::ecs::ItemInstance>* entries =
+        (cat_it != inv.by_category.end()) ? &cat_it->second : nullptr;
     ImGui::Spacing();
     constexpr float kLeftPaneWidth = 240.0f;
     ImGui::BeginChild("##inv_list", ImVec2(kLeftPaneWidth, 240), true);
@@ -1581,6 +1979,86 @@ void renderPauseInventoryTab()
     ImGui::BeginChild("##inv_detail", ImVec2(0, 240), true);
     drawInventoryDetailPanel(sSelectedItem, inv, items, sSelectedItem);
     ImGui::EndChild();
+}
+
+// Count how many of `config_path` the inventory holds across all stacks.
+int countItemInInventory(const engine::ecs::Inventory& inv, const std::string& config_path)
+{
+    int total = 0;
+    for (const auto& [cat, items] : inv.by_category)
+    {
+        for (const auto& inst : items)
+        {
+            if (inst.config_path == config_path)
+                total += inst.quantity;
+        }
+    }
+    return total;
+}
+
+void renderPauseCraftTab()
+{
+    ImGui::Spacing();
+    PlayerProfile* profile = activePlayerProfile();
+    if (profile == nullptr)
+    {
+        ImGui::TextDisabled("(no active character)");
+        return;
+    }
+    const auto& recipes = selva::items::recipeRegistry().recipes;
+    const auto& items = selva::items::itemRegistry();
+    if (recipes.empty())
+    {
+        ImGui::TextDisabled("(no recipes loaded)");
+        return;
+    }
+
+    const ImVec4 have_color(0.55f, 0.85f, 0.55f, 1.0f);
+    const ImVec4 need_color(0.85f, 0.55f, 0.55f, 1.0f);
+
+    for (std::size_t i = 0; i < recipes.size(); ++i)
+    {
+        const auto& recipe = recipes[i];
+        ImGui::PushID(static_cast<int>(i));
+
+        const engine::ecs::ItemDef* out_def = items.find(recipe.output_item);
+        const std::string out_name =
+            (out_def != nullptr && !out_def->name.empty()) ? out_def->name : recipe.output_item;
+        ImGui::Text("%s  x%d", out_name.c_str(), recipe.output_quantity);
+
+        bool all_inputs_met = true;
+        for (const auto& ing : recipe.inputs)
+        {
+            const int have = countItemInInventory(profile->inventory, ing.config_path);
+            const bool met = have >= ing.quantity;
+            if (!met)
+                all_inputs_met = false;
+            const engine::ecs::ItemDef* in_def = items.find(ing.config_path);
+            const std::string in_name =
+                (in_def != nullptr && !in_def->name.empty()) ? in_def->name : ing.config_path;
+            ImGui::PushStyleColor(ImGuiCol_Text, met ? have_color : need_color);
+            ImGui::Text("  %s  %d / %d", in_name.c_str(), have, ing.quantity);
+            ImGui::PopStyleColor();
+        }
+
+        const bool can_craft = all_inputs_met &&
+                               engine::ops::crafting::canCraft(profile->inventory, recipe, items);
+        if (!can_craft)
+            ImGui::BeginDisabled();
+        if (ImGui::Button("Craft"))
+        {
+            if (engine::ops::crafting::craft(profile->inventory, recipe, items))
+            {
+                std::fprintf(stderr, "[craft] '%s' produced\n", recipe.name.c_str());
+                std::fflush(stderr);
+            }
+        }
+        if (!can_craft)
+            ImGui::EndDisabled();
+
+        ImGui::Separator();
+        ImGui::PopID();
+    }
 }
 
 } // namespace
@@ -1616,6 +2094,12 @@ bool renderPauseMenu()
         {
             ui.menu_tab = UIState::Tab::Inventory;
             renderPauseInventoryTab();
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Craft"))
+        {
+            ui.menu_tab = UIState::Tab::Craft;
+            renderPauseCraftTab();
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("System"))
@@ -1713,7 +2197,7 @@ void tickMouseCapture()
     // mouse; if we close them, re-capture. Without including the F1
     // panel here, the F1-toggle's SDL_SetRelativeMouseMode call gets
     // overwritten on the next frame by this routine.
-    const auto& gs = gameState();
+    auto& gs = gameState();
     auto& ui = uiState();
     if (gs.phase == GameState::Phase::Playing)
     {

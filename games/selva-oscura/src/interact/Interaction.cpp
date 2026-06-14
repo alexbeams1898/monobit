@@ -3,10 +3,12 @@
 #include "Scene.h"
 #include "gameplay/Actor.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <limits>
 #include <unordered_map>
+#include <vector>
 
 namespace selva::interact
 {
@@ -47,8 +49,22 @@ struct State
 {
     std::unordered_map<Id, RegistryEntry> by_id;
     Id next_id = 1;
-    bool has_target = false;
-    TargetView target;
+
+    // All in-range candidates this frame, sorted closest-first by
+    // XZ distance. Rebuilt every tick.
+    std::vector<TargetView> candidates;
+
+    // Id of the focused candidate carried over from the prior tick.
+    // Used to keep selection sticky across frames; whenever this id
+    // is still in `candidates`, it stays focused even if the
+    // distance ordering has shifted. Set to kInvalidId means "no
+    // sticky preference" (use index 0).
+    Id sticky_focus_id = kInvalidId;
+
+    // Index into `candidates` of the focused entry, or -1 if empty.
+    // Updated by tick() (sticky resolution) and cycleFocus().
+    int focus_index = -1;
+
     // Deferred-intent queue. triggerCurrent() sets pending_fire_id;
     // the next tick() consumes it and runs the on_interact handler.
     // Without deferral, the SAME E-press that triggers an interaction
@@ -96,11 +112,10 @@ void unregisterInteractable(Id id)
         return;
     auto& s = state();
     s.by_id.erase(id);
-    if (s.has_target && s.target.id == id)
-    {
-        s.has_target = false;
-        s.target = TargetView{};
-    }
+    // Clear sticky focus if it referenced this id; the next tick
+    // will rebuild candidates and resolve a new focus.
+    if (s.sticky_focus_id == id)
+        s.sticky_focus_id = kInvalidId;
 }
 
 void tick()
@@ -123,24 +138,30 @@ void tick()
                 cb();
         }
     }
+
+    s.candidates.clear();
+    s.focus_index = -1;
+
     // Suppress entirely during a cinematic Scene -- the world is in
     // input-locked mode; interaction prompts are not part of that
     // language.
     if (selva::scene::active())
-    {
-        if (s.has_target)
-        {
-            s.has_target = false;
-            s.target = TargetView{};
-        }
         return;
-    }
+
     const glm::vec3 pc = selva::gameplay::player().pos;
-    Id best_id = kInvalidId;
-    float best_d2 = std::numeric_limits<float>::infinity();
-    Kind best_kind = Kind::Custom;
-    std::string best_label;
-    glm::vec3 best_pos{0.0f};
+
+    // Collect every in-range, available interactable. Distance is
+    // computed once per entry; we sort by it after the scan.
+    struct ScratchEntry
+    {
+        Id id;
+        Kind kind;
+        std::string label;
+        glm::vec3 world_pos;
+        float d2;
+    };
+    std::vector<ScratchEntry> scratch;
+    scratch.reserve(s.by_id.size());
     for (const auto& [id, entry] : s.by_id)
     {
         const Decl& d = entry.decl;
@@ -150,53 +171,92 @@ void tick()
         const float d2 = xzDistanceSquared(pos, pc);
         if (d2 > d.range_meters * d.range_meters)
             continue;
-        if (d2 < best_d2)
-        {
-            best_d2 = d2;
-            best_id = id;
-            best_kind = d.kind;
-            best_label = d.label;
-            best_pos = pos;
-        }
+        scratch.push_back({id, d.kind, d.label, pos, d2});
     }
-    if (best_id == kInvalidId)
+    std::sort(scratch.begin(), scratch.end(),
+              [](const ScratchEntry& a, const ScratchEntry& b) { return a.d2 < b.d2; });
+
+    s.candidates.reserve(scratch.size());
+    for (auto& se : scratch)
     {
-        if (s.has_target)
-        {
-            s.has_target = false;
-            s.target = TargetView{};
-        }
+        TargetView tv;
+        tv.id = se.id;
+        tv.kind = se.kind;
+        tv.label = std::move(se.label);
+        tv.world_pos = se.world_pos;
+        s.candidates.push_back(std::move(tv));
+    }
+
+    if (s.candidates.empty())
+    {
+        s.sticky_focus_id = kInvalidId;
         return;
     }
-    s.has_target = true;
-    s.target.id = best_id;
-    s.target.kind = best_kind;
-    s.target.label = std::move(best_label);
-    s.target.world_pos = best_pos;
+
+    // Sticky focus: if the prior frame's focused id is still in the
+    // candidate list, keep it. Otherwise default to the closest.
+    if (s.sticky_focus_id != kInvalidId)
+    {
+        for (size_t i = 0; i < s.candidates.size(); ++i)
+        {
+            if (s.candidates[i].id == s.sticky_focus_id)
+            {
+                s.focus_index = static_cast<int>(i);
+                return;
+            }
+        }
+    }
+    s.focus_index = 0;
+    s.sticky_focus_id = s.candidates[0].id;
 }
 
 const TargetView* currentTarget()
 {
     const auto& s = state();
-    return s.has_target ? &s.target : nullptr;
+    if (s.focus_index < 0 || s.focus_index >= static_cast<int>(s.candidates.size()))
+        return nullptr;
+    return &s.candidates[static_cast<size_t>(s.focus_index)];
+}
+
+const std::vector<TargetView>& currentCandidates()
+{
+    return state().candidates;
+}
+
+int currentFocusIndex()
+{
+    return state().focus_index;
+}
+
+void cycleFocus()
+{
+    auto& s = state();
+    if (s.candidates.size() < 2)
+        return;
+    s.focus_index = (s.focus_index + 1) % static_cast<int>(s.candidates.size());
+    s.sticky_focus_id = s.candidates[static_cast<size_t>(s.focus_index)].id;
 }
 
 void triggerCurrent()
 {
     auto& s = state();
-    if (!s.has_target)
+    if (s.focus_index < 0 || s.focus_index >= static_cast<int>(s.candidates.size()))
         return;
-    s.pending_fire_id = s.target.id;
-    s.has_target = false;
-    s.target = TargetView{};
+    s.pending_fire_id = s.candidates[static_cast<size_t>(s.focus_index)].id;
+    // Clear the focus + sticky pin so the prompt vanishes immediately
+    // after the trigger press. tick() will rebuild on the next frame.
+    s.focus_index = -1;
+    s.candidates.clear();
+    s.sticky_focus_id = kInvalidId;
 }
 
 void hardReset()
 {
     auto& s = state();
     s.by_id.clear();
-    s.has_target = false;
-    s.target = TargetView{};
+    s.candidates.clear();
+    s.sticky_focus_id = kInvalidId;
+    s.focus_index = -1;
     s.next_id = 1;
     s.pending_fire_id = kInvalidId;
 }

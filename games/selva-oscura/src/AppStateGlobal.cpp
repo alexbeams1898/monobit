@@ -1,9 +1,13 @@
 #include "AppStateGlobal.h"
 
 #include "gameplay/Actor.h"
+#include "lang/Language.h"
+#include "notice/Notices.h"
+#include "ui/Notifications.h"
 
 #include <algorithm>
 #include <cmath>
+#include <string>
 
 namespace selva
 {
@@ -28,14 +32,20 @@ UIState& uiState()
 
 Inventory& playerInventory()
 {
-    static Inventory s_inv;
-    return s_inv;
+    // Forward to the active profile's inventory so the UI sees the
+    // same items the SaveManager persists. Falls back to a static
+    // empty inventory when no active profile (e.g. at MainMenu).
+    static Inventory s_empty;
+    PlayerProfile* p = activePlayerProfile();
+    return (p != nullptr) ? p->inventory : s_empty;
 }
 
 Equipment& playerEquipment()
 {
-    static Equipment s_eq;
-    return s_eq;
+    // Same active-profile forwarding as playerInventory().
+    static Equipment s_empty;
+    PlayerProfile* p = activePlayerProfile();
+    return (p != nullptr) ? p->equipment : s_empty;
 }
 
 PlayerProfile* activePlayerProfile()
@@ -122,6 +132,39 @@ bool setInsight(PlayerProfile* profile, const std::string& node)
     if (std::find(v.begin(), v.end(), node) != v.end())
         return false;
     v.push_back(node);
+
+    // Persistent unread marker for the Mind sub-page node badge.
+    // Shares storage with item / topic / recipe / future-domain
+    // unread state via the cross-domain notice module so we don't
+    // grow parallel per-domain fields. Acknowledged when the
+    // player clicks the node on the Mind sub-page (UI wires the
+    // acknowledge call). setInsight is also called from
+    // SaveManager-adjacent restore paths -- those go through
+    // unlocked_insights directly (NOT through this function), so
+    // save-load doesn't re-mark notices.
+    selva::notice::mark(selva::notice::kDomainInsight, node);
+
+    // Bottom-right toast on first-time unlock. Per [[project_cognition_system_v1]]
+    // this is an "observation" event -- the cognition system registered
+    // something new. Per-insight override via lang key
+    // `notif.<node>.title`; default is the generic "New observation."
+    // Cool cyan palette distinguishes cognitive events from item-pickup
+    // gold/neutral.
+    const std::string key = "notif." + node + ".title";
+    const std::string& resolved = selva::lang::resolve(key);
+    // resolve() returns "[lang:KEY]" on missing -- detect via prefix and
+    // fall back to the generic default. Authors can layer in per-insight
+    // overrides later by adding the lang key.
+    const bool has_override = resolved.rfind("[lang:", 0) != 0;
+    // Match the item toast format (+N <thing>) so the visual
+    // grammar is consistent across discovery types. Per-insight
+    // overrides supply their full string verbatim (the override is
+    // assumed to be authored as the complete toast); only the
+    // default uses the "+1" prefix.
+    const std::string toast = has_override ? resolved : std::string("+1 New Observation");
+    const glm::vec4 cyan{0.55f, 0.85f, 0.95f, 1.0f};
+    selva::ui::pushNotification(toast, cyan);
+
     return true;
 }
 

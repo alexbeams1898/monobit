@@ -217,6 +217,11 @@ struct PoseSampler
         // commit-then-recover one-shot. Combat attacks use their own
         // per-clip wallclock cancel window (rhythm timing), not this.
         float cancel_fraction = 1.0f;
+        // Cap the effective clip duration at this clip-local time.
+        // Distinct from freeze_at_seconds: freeze HOLDS the pose at a
+        // frame; end_seconds advances to that frame then blends out
+        // into locomotion. Negative = uncapped.
+        float end_seconds = -1.0f;
         // Authoritative per-fire override of the one-shot's TRAVELING
         // vs IN_PLACE classification. The auto-classifier uses a 0.5m
         // hip-path threshold which is a coarse heuristic -- some bite

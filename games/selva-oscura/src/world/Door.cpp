@@ -9,6 +9,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 
 namespace selva::world
@@ -254,7 +255,25 @@ void registerDoorsForRegion(const std::vector<DoorDecl>& decls)
         idecl.position = [door_id]()
         {
             const Door* dd = findDoor(door_id);
-            return dd != nullptr ? dd->pos : glm::vec3(0.0f);
+            if (dd == nullptr)
+                return glm::vec3(0.0f);
+            // Anchor the focus ring at the door's handle: opposite
+            // edge from the hinge, at roughly waist-height. The
+            // hinge sits at (pos + rotate(hinge_offset, yaw)); the
+            // handle sits at the far edge -- (pos + rotate(-
+            // hinge_offset, yaw)). Souls / Elden Ring convention --
+            // the visual cue points at "where you grab" rather than
+            // at the door's geometric center. Doors with zero
+            // hinge_offset (centered pivot / sliding doors) collapse
+            // back to the door's root position automatically.
+            const float cy = std::cos(dd->yaw);
+            const float sy = std::sin(dd->yaw);
+            const float lx = -dd->hinge_offset.x;
+            const float lz = -dd->hinge_offset.z;
+            const float wx = dd->pos.x + (cy * lx - sy * lz);
+            const float wz = dd->pos.z + (sy * lx + cy * lz);
+            constexpr float kHandleHeight = 1.05f;
+            return glm::vec3(wx, dd->pos.y + kHandleHeight, wz);
         };
         idecl.range_meters = 2.5f;
         // Label resolves through the language map. Authoring fallback:

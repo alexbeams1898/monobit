@@ -18,7 +18,10 @@
 #include "gameplay/PlayerState.h"
 #include "gameplay/RomanNumeral.h"
 #include "gameplay/SanguePulse.h"
+#include "interact/Interaction.h"
+#include "loot/Pickups.h"
 #include "physics/PhysicsWorld.h"
+#include "ui/Notifications.h"
 #include "render/Camera.h"
 #include "render/TerrainShader.h"
 #include "ui/UIComponents.h"
@@ -308,6 +311,19 @@ void drawSanguePulses(ImDrawList* overlay, const glm::mat4& view_proj);
 // with an iconographic sprite.
 void drawLockOnReticle(ImDrawList* overlay, const glm::mat4& view_proj);
 
+// Draw world-space pickup glow halos for every live selva::loot
+// Pickup. Color = rarity color * quality brightness (mirrors the
+// prison-escape palette). A subtle scale pulse on `now` makes the
+// halo readable from distance. Camera-distance attenuation keeps
+// the halo from dominating the screen at point-blank range.
+void drawWorldPickups(ImDrawList* overlay, const glm::mat4& view_proj, float now);
+
+// Draw a focus ring around the currently-targeted interactable and
+// dim markers around the other in-range candidates. Universal -- one
+// system for items, NPCs, examines, doors. The visual signal
+// distinguishes which interactable will receive an E-press.
+void drawInteractFocus(ImDrawList* overlay, const glm::mat4& view_proj, float now);
+
 // Draw the second-death card overlay (full-screen, foreground).
 // Appears when the player is dead and the post-clip hold has
 // elapsed; lingers until respawn. Two registers of text: "NOT YET"
@@ -585,6 +601,242 @@ void drawSanguePulses(ImDrawList* overlay, const glm::mat4& /*view_proj*/)
     }
 }
 
+// Per-rarity base color. Ported verbatim from prison-escape's palette
+// (gray for VeryCommon, purple gradient through Legendary's near-white).
+struct PickupRgb
+{
+    float r;
+    float g;
+    float b;
+};
+
+PickupRgb rarityColor(engine::ecs::Rarity r)
+{
+    // Palette is a purple gradient ramp -- substance IS sangue per
+    // economy.md, so even tier-0 drops carry the cool wash. Prison-
+    // escape's straight-gray VeryCommon reads as "nothing here" in
+    // Selva's render; the floor color leans into a dim cool purple
+    // so the player can see the pickup even at the lowest tier.
+    // Higher rarities push toward saturated purple, then near-white
+    // at Legendary.
+    switch (r)
+    {
+    case engine::ecs::Rarity::VeryCommon:
+        return {0.45f, 0.42f, 0.55f};
+    case engine::ecs::Rarity::Common:
+        return {0.55f, 0.48f, 0.72f};
+    case engine::ecs::Rarity::Uncommon:
+        return {0.55f, 0.4f, 0.85f};
+    case engine::ecs::Rarity::Rare:
+        return {0.65f, 0.3f, 0.95f};
+    case engine::ecs::Rarity::Epic:
+        return {0.8f, 0.3f, 1.0f};
+    case engine::ecs::Rarity::Legendary:
+        return {0.95f, 0.85f, 1.0f};
+    }
+    return {0.55f, 0.48f, 0.72f};
+}
+
+// Quality boosts the brightness of the rarity color (Crude dims,
+// Masterwork pushes toward white). Multiplied per channel then
+// clamped at 1.0 in the colorize step.
+float qualityBrightness(engine::ecs::QualityTier q)
+{
+    switch (q)
+    {
+    case engine::ecs::QualityTier::Crude:
+        return 0.75f;
+    case engine::ecs::QualityTier::Common:
+        return 1.0f;
+    case engine::ecs::QualityTier::Fine:
+        return 1.15f;
+    case engine::ecs::QualityTier::Superior:
+        return 1.3f;
+    case engine::ecs::QualityTier::Masterwork:
+        return 1.5f;
+    }
+    return 1.0f;
+}
+
+// Rarity + quality drive the halo scale + alpha. Same table as
+// prison-escape's DeathSystem -- VeryCommon items get no halo at
+// default quality but Fine+ adds one; rarities Rare+ guarantee
+// halos that grow with quality.
+struct GlowParams
+{
+    float scale = 0.0f; // multiplier on base core radius
+    float alpha = 0.0f; // 0..1 halo opacity
+};
+
+GlowParams glowFor(engine::ecs::Rarity r, engine::ecs::QualityTier q)
+{
+    // 3D-adapted from prison-escape's table: every tier gets at
+    // least a small halo (otherwise the player can't locate the
+    // pickup at any meaningful camera distance). Halo scale + alpha
+    // grow with rarity; quality boosts both.
+    GlowParams gp;
+    gp.scale = 1.8f;
+    gp.alpha = 0.10f;
+    if (r >= engine::ecs::Rarity::Common)
+    {
+        gp.scale = 2.0f;
+        gp.alpha = 0.15f;
+    }
+    if (r >= engine::ecs::Rarity::Uncommon)
+    {
+        gp.scale = 2.4f;
+        gp.alpha = 0.20f;
+    }
+    if (r >= engine::ecs::Rarity::Rare)
+    {
+        gp.scale = 3.0f;
+        gp.alpha = 0.30f;
+    }
+    if (r >= engine::ecs::Rarity::Epic)
+    {
+        gp.scale = 3.4f;
+        gp.alpha = 0.35f;
+    }
+    if (r >= engine::ecs::Rarity::Legendary)
+    {
+        gp.scale = 3.8f;
+        gp.alpha = 0.45f;
+    }
+    if (q >= engine::ecs::QualityTier::Fine)
+    {
+        gp.scale = std::max(gp.scale, 2.2f);
+        gp.alpha = std::max(gp.alpha, 0.15f);
+    }
+    if (q >= engine::ecs::QualityTier::Superior)
+    {
+        gp.scale = std::max(gp.scale, 2.7f);
+        gp.alpha = std::max(gp.alpha, 0.25f);
+    }
+    if (q >= engine::ecs::QualityTier::Masterwork)
+    {
+        gp.scale = std::max(gp.scale, 3.2f);
+        gp.alpha = std::max(gp.alpha, 0.35f);
+    }
+    return gp;
+}
+
+void drawWorldPickups(ImDrawList* overlay, const glm::mat4& view_proj, float now)
+{
+    const auto& pickups = selva::loot::allPickups();
+    if (pickups.empty())
+        return;
+
+    const glm::vec3 cam_pos = selva::gameplay::player().pos;
+
+    // Tunables -- read clean numbers, defer to one-spot edits later.
+    // Pickups sit at terrain height (rollAndSpawnLoot already snaps
+    // world_pos.y to sampleHeight before spawning), so the glow
+    // renders directly on the ground -- Souls / Elden Ring
+    // convention. Core radius is a small screen-space pixel value;
+    // halo scales the core by glowFor(...).scale. Kept deliberately
+    // small in 3D where the glow halo carries most of the visual
+    // weight, not the core.
+    constexpr float kCoreRadiusPx = 6.0f;
+    constexpr float kPulseAmplitude = 0.12f;
+    constexpr float kPulseHz = 1.1f;
+
+    for (const auto& p : pickups)
+    {
+        // Resolve the pickup's live position (rides the source
+        // actor's hips joint as the death clip plays).
+        const glm::vec3 live = selva::loot::livePickupPos(p);
+        glm::vec2 sp;
+        if (!selva::render::worldToScreen(view_proj, live, sp))
+            continue;
+
+        // Distance-based scale: bounded so close-range pickups don't
+        // dominate the screen and far-range pickups stay legible.
+        // The 6m reference distance reads as "comfortable arm's
+        // length combat range" in Selva's camera.
+        const float dist = glm::length(live - cam_pos);
+        const float dist_scale = std::clamp(6.0f / std::max(dist, 2.0f), 0.6f, 1.1f);
+
+        // Subtle pulse so static-camera pickups still read as alive.
+        const float pulse = 1.0f + kPulseAmplitude * std::sin(now * kPulseHz * 6.2831853f);
+
+        const PickupRgb base = rarityColor(p.rarity);
+        const float bright = qualityBrightness(p.quality);
+        const auto byte = [](float v) {
+            return static_cast<int>(std::clamp(v * 255.0f, 0.0f, 255.0f));
+        };
+        const int cr = byte(base.r * bright);
+        const int cg = byte(base.g * bright);
+        const int cb = byte(base.b * bright);
+
+        const GlowParams gp = glowFor(p.rarity, p.quality);
+        const float core_r = kCoreRadiusPx * dist_scale * pulse;
+
+        if (gp.scale > 0.0f && gp.alpha > 0.0f)
+        {
+            const int halo_a = byte(gp.alpha);
+            const ImU32 halo_color = IM_COL32(cr, cg, cb, halo_a);
+            overlay->AddCircleFilled(ImVec2(sp.x, sp.y), core_r * gp.scale, halo_color, 24);
+        }
+
+        const ImU32 core_color = IM_COL32(cr, cg, cb, 240);
+        overlay->AddCircleFilled(ImVec2(sp.x, sp.y), core_r, core_color, 20);
+    }
+}
+
+void drawInteractFocus(ImDrawList* overlay, const glm::mat4& view_proj, float now)
+{
+    // Player can hide the world-space ring from the Settings screen
+    // without affecting the screen-space "[E] Talk" / "[E] Open"
+    // prompt -- one is a visual aid for finding the in-world target,
+    // the other is the gameplay-critical input hint.
+    if (!selva::saveData().settings.show_interact_ring)
+        return;
+    const auto& candidates = selva::interact::currentCandidates();
+    if (candidates.empty())
+        return;
+    const int focus_idx = selva::interact::currentFocusIndex();
+
+    const glm::vec3 cam_pos = selva::gameplay::player().pos;
+
+    // Subtle pulse so the focus ring reads as alive against static
+    // scene geometry.
+    const float pulse = 1.0f + 0.10f * std::sin(now * 1.4f * 6.2831853f);
+
+    for (size_t i = 0; i < candidates.size(); ++i)
+    {
+        const auto& c = candidates[i];
+        glm::vec2 sp;
+        if (!selva::render::worldToScreen(view_proj, c.world_pos, sp))
+            continue;
+
+        const float dist = glm::length(c.world_pos - cam_pos);
+        const float dist_scale = std::clamp(6.0f / std::max(dist, 2.0f), 0.6f, 1.4f);
+        const float base_r = 9.0f * dist_scale;
+
+        const bool focused = (static_cast<int>(i) == focus_idx);
+        if (focused)
+        {
+            // Bright warm-white ring + soft inner halo. Same color
+            // palette as the interaction prompt border so the visual
+            // language ties together.
+            const float r = base_r * pulse;
+            const ImU32 halo = IM_COL32(240, 220, 170, 60);
+            const ImU32 ring = IM_COL32(255, 240, 200, 230);
+            overlay->AddCircleFilled(ImVec2(sp.x, sp.y), r * 1.4f, halo, 32);
+            overlay->AddCircle(ImVec2(sp.x, sp.y), r, ring, 32, 2.5f);
+        }
+        else
+        {
+            // Dim ring on every other candidate -- the player knows
+            // those exist + can be cycled to. Color carries less
+            // weight (cool neutral, partial alpha) so the focused
+            // one reads as the obvious target.
+            const ImU32 ring = IM_COL32(180, 180, 200, 110);
+            overlay->AddCircle(ImVec2(sp.x, sp.y), base_r * 0.85f, ring, 24, 1.5f);
+        }
+    }
+}
+
 void drawFloatingDamageNumbers(ImDrawList* overlay, const glm::mat4& view_proj)
 {
     const auto& numbers = selva::combat::damageNumbers();
@@ -643,7 +895,7 @@ void drawVesselCounter(ImDrawList* draw, const ImVec2& origin)
     //   None       -- neutral warm-amber (pre-Beat-4 state).
     //   Penitent   -- warmer + slightly redder (the bent walk).
     //   Heretic    -- warmer + bronzed (the crooked carry).
-    //   Wretched   -- duller + cooler (the non-completion).
+    //   Ferine     -- duller + cooler (the body-coded predator).
     //   Unburdened -- paler + cooler (the channel toward Beatrice).
     ImU32 vessel_color = IM_COL32(220, 200, 180, 240);
     switch (cls)
@@ -654,7 +906,7 @@ void drawVesselCounter(ImDrawList* draw, const ImVec2& origin)
     case PlayerClass::Heretic:
         vessel_color = IM_COL32(210, 175, 130, 240);
         break;
-    case PlayerClass::Wretched:
+    case PlayerClass::Ferine:
         vessel_color = IM_COL32(190, 175, 165, 240);
         break;
     case PlayerClass::Unburdened:
@@ -761,6 +1013,8 @@ void renderActorHud()
     drawFloatingDamageNumbers(overlay, view_proj);
     drawSanguePulses(overlay, view_proj);
     drawLockOnReticle(overlay, view_proj);
+    drawWorldPickups(overlay, view_proj, now);
+    drawInteractFocus(overlay, view_proj, now);
     drawSecondDeathCard();
 
     // Debug overlay: AI vision cones + awareness label per AI actor.
@@ -790,6 +1044,12 @@ void renderActorHud()
     }
 
     ImGui::End();
+
+    // Floating bottom-right toasts (item pickups + future feedback).
+    // Rendered to the foreground draw list so they sit above the
+    // gameplay overlay but below the pause menu (which uses its own
+    // window stack).
+    selva::ui::renderNotifications();
 
     // Save indicator: brief bottom-right "Saving..." chip after every
     // autosave. Non-intrusive corner position, fades after a short

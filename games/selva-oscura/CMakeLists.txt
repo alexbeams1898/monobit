@@ -72,6 +72,7 @@ add_library(selva-oscura-lib STATIC
     src/render/RegionShaders.cpp
     src/render/ShadowPass.cpp
     src/render/LightSpritePass.cpp
+    src/render/EquippedWeapon.cpp
     src/render/SkyPass.cpp
     src/render/TerrainShader.cpp
     src/render/Texture.cpp
@@ -91,6 +92,7 @@ add_library(selva-oscura-lib STATIC
     src/ui/DialogScreen.cpp
     src/ui/InteractionPrompt.cpp
     src/ui/NamePromptScreen.cpp
+    src/ui/Notifications.cpp
     src/ui/Screens.cpp
     src/ui/TuningPanel.cpp
     src/ui/UIComponents.cpp
@@ -103,13 +105,18 @@ add_library(selva-oscura-lib STATIC
     src/dialog/Handlers.cpp
     src/dialog/TopicRegistry.cpp
     src/interact/Interaction.cpp
+    src/classmods/ClassModifiers.cpp
     src/items/CategoryRegistry.cpp
-    src/items/InventoryOps.cpp
     src/debug/Flags.cpp
     src/hazard/HazardZones.cpp
+    src/identity/Identity.cpp
     src/items/ItemRegistry.cpp
     src/items/UseHandlers.cpp
+    src/loot/Pickups.cpp
+    src/loot/StarterDispenser.cpp
+    src/notice/Notices.cpp
     src/ops/InventoryOps.cpp
+    src/softcaps/SoftCaps.cpp
     src/spawn/FlowSpawner.cpp
     src/text/Examine.cpp
     src/text/TextPresentation.cpp
@@ -525,12 +532,27 @@ endif()
 # Copy each into build/bin alongside the freshly-baked clips so
 # loadDirectory() picks them up at runtime. The runtime directory
 # scan doesn't distinguish baked-from-FBX from archived.
+#
+# When a clip exists in BOTH archive AND source/, the FBX is now the
+# source of truth -- skip the stale archive copy. Otherwise CMake
+# errors on a duplicate custom-command output.
 set(archive_dir ${xbot_dir}/baked-archive)
 if(EXISTS ${archive_dir})
+    # Build the set of clip names that the source-FBX bake will produce.
+    set(baked_clip_names "")
+    foreach(fbx ${attack_fbx_files})
+        _selva_sanitize_clip_name("${fbx}" clip_name)
+        list(APPEND baked_clip_names ${clip_name})
+    endforeach()
+
     file(GLOB archive_ozz_files CONFIGURE_DEPENDS "${archive_dir}/*.ozz")
     set(archive_copied_files "")
     foreach(src ${archive_ozz_files})
         get_filename_component(name "${src}" NAME)
+        get_filename_component(stem "${src}" NAME_WE)
+        if(stem IN_LIST baked_clip_names)
+            continue()
+        endif()
         set(dst ${xbot_out_dir}/${name})
         add_custom_command(
             OUTPUT ${dst}
@@ -566,12 +588,20 @@ add_executable(selva-oscura-tests
     tests/boss_archetype_test.cpp
     tests/boss_dispatch_idempotence_test.cpp
     tests/boss_trigger_test.cpp
+    tests/class_modifiers_test.cpp
+    tests/identity_stat_test.cpp
     tests/player_class_test.cpp
     tests/roman_numeral_test.cpp
     tests/roman_tiers_test.cpp
     tests/sangue_pulse_test.cpp
     tests/sangue_test.cpp
+    tests/soft_cap_test.cpp
     tests/territory_clamp_form_gate_test.cpp
+    tests/weapon_damage_test.cpp
+    tests/equipment_bridge_test.cpp
+    tests/recipe_load_test.cpp
+    tests/directional_loco_test.cpp
+    tests/grip_transform_test.cpp
 )
 target_link_libraries(selva-oscura-tests PRIVATE selva-oscura-lib Catch2::Catch2WithMain)
 set_target_properties(selva-oscura-tests PROPERTIES

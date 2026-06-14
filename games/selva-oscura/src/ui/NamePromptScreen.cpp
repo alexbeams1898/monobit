@@ -52,8 +52,12 @@ bool isNameValid(const char* name, bool& out_taken)
 }
 
 // Commit the typed name: rename the active character's profile
-// in-place + sync gameState::active_character + raise the
-// name_given flag + chain into the class picker.
+// in-place + sync gameState::active_character + chain into the
+// class picker. NO intermediate flag is raised here -- the Signing
+// chain commits ATOMICALLY at the picker's commitClass(), where
+// signing_committed becomes the single transaction flag. This
+// makes a mid-Signing quit-to-desktop reload the chain cleanly:
+// no half-committed gating state strands the Guide.
 //
 // Unnamed-but-real character pattern: the active profile already
 // exists in saveData (name=="" until this commit); we mutate name
@@ -74,7 +78,6 @@ void commit(const char* name)
         profile->name = name;
         selva::gameState().active_character = name;
     }
-    selva::setFlag("name_given");
     std::fprintf(stderr, "[name-prompt] committed name='%s' -> opening class picker\n", name);
     std::fflush(stderr);
     selva::ui::openClassPicker();

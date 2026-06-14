@@ -40,6 +40,13 @@ void renderTerrain();
 void renderGroundDecals();
 void renderStaticMeshes();
 void renderDoors();
+// Player's equipped right-hand weapon as a static mesh parented to
+// the right-hand joint. Belongs to the scene-shader pass (same
+// program as renderStaticMeshes / renderDoors). Per-frame; no-op
+// when no weapon is equipped. The joint world transform is read
+// from the player's sampler which must already have setActorPlacement
+// applied for the frame.
+void renderEquippedWeapon();
 void renderTrees();
 
 // Depth-pass variants for shadow map. The caller must have already

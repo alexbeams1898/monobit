@@ -1,6 +1,6 @@
 #pragma once
 
-#include "items/Inventory.h"
+#include "ecs/Items.h"
 
 #include <functional>
 #include <string>
@@ -18,9 +18,14 @@ struct UseGate
 };
 
 // Use-action handler: called when the player triggers Use on an item.
-// Owns all side effects -- consuming the item (via remove()), setting
+// Owns all side effects -- consuming the item (via engine ops), setting
 // profile flags, opening downstream UI, firing scripted events.
-using UseActionFn = std::function<void(Inventory& inv, const std::string& item_id)>;
+//
+// `inv` is the active character's engine inventory. `item_id` is the
+// ItemInstance::id of the selected item -- look up via
+// engine::ops::inventory::findById (or findByIdMut for mutation).
+using UseActionFn =
+    std::function<void(engine::ecs::Inventory& inv, engine::ecs::ItemInstanceId item_id)>;
 
 // Use-condition handler: called every UI frame to decide whether the
 // Use button is active. Returning enabled=false renders the button

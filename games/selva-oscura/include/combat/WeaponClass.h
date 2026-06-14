@@ -128,6 +128,11 @@ struct WeaponAttack
     // gait pose. Negative = use the auto pose-match.
     float first_strike_start_seconds = -1.0f;
 
+    // Cap the one-shot's effective duration at this clip-local
+    // time. Frames past end_seconds never play; blend-out starts at
+    // (end_seconds - blend_out_seconds). Negative = uncapped.
+    float end_seconds = -1.0f;
+
     // Populated at load-time by resolveCancelOpenTime(). Holds the
     // effective clip-local cancel-open seconds (either the override
     // or the result of the joint-velocity scan). Not serialized to
@@ -150,8 +155,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(WeaponAttack, clip, recovery_sec
                                                 cancel_open_seconds, motion_joints,
                                                 chain_link_start_seconds, chain_link_blend_seconds,
                                                 blend_out_seconds, first_strike_start_seconds,
-                                                expected_button, hitbox_joint, hitbox_radius,
-                                                hitbox_tip_offset_z, poise_damage);
+                                                end_seconds, expected_button, hitbox_joint,
+                                                hitbox_radius, hitbox_tip_offset_z, poise_damage);
 
 // All attack clips available within one grip mode. Slots:
 //   light   — standing or walking primary attack chain

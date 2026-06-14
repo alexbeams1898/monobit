@@ -1,11 +1,12 @@
 #pragma once
 
 #include "dialog/Encounter.h"
-#include "items/Inventory.h"
+#include "ecs/Items.h"
 
 #include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 // ---------------------------------------------------------------------------
@@ -52,7 +53,8 @@ struct UIState
     {
         Vessel = 0,
         Inventory = 1,
-        System = 2,
+        Craft = 2,
+        System = 3,
     };
 
     // Vessel-tab sub-pages -- regions of the form the player attends
@@ -201,18 +203,24 @@ struct GameState
 // [[project_crucible_censer_leveling_system]].
 //
 // Cosmologically: the choice determines which commit-fire the Guide installs
-// in the Vagrant. Penitent/Heretic/Wretched receive the chrism-fire (the
+// in the Vagrant. Penitent/Heretic/Ferine receive the chrism-fire (the
 // Crucible verb -- feed self / install into substrate). Unburdened receives
 // the channel-fire (the Censer verb -- feed Beatrice / route to her reservoir).
 // Same fire, opposite mouths. The absorption-capacity is path-independent
 // (Vagrant-exception per [[project_imprint_handle_required_for_sangue]]).
+//
+// Naming history: the third class was originally "Wretched" (retired
+// 2026-06-11) -> "Feral" (working name) -> "Ferine" (locked 2026-06-14
+// per [[project_class_stats_v2_locked_2026_06_14]]). The enum integer
+// value (3) is unchanged so save back-compat for the enum integer holds;
+// SaveManager string parsing accepts both "Wretched" and "Ferine".
 // ---------------------------------------------------------------------------
 enum class PlayerClass : std::uint8_t
 {
     None = 0,
     Penitent = 1,
     Heretic = 2,
-    Wretched = 3,
+    Ferine = 3,
     Unburdened = 4,
 };
 
@@ -391,11 +399,39 @@ struct PlayerProfile
     // doesn't persist). Per [[world/Door.h]].
     std::vector<std::pair<std::string, std::string>> door_states;
 
-    // Per-character carried items. Categorized polymorphic entries
-    // (Possession / Stack / Instanced) keyed by category id from
-    // config/inventory_categories.json. Operate via selva::items
-    // ops (grant/addStack/has/remove). Empty for new characters.
-    selva::items::Inventory inventory;
+    // Per-character carried items, category-bucketed
+    // (engine::ecs::Inventory). Bucket keys are the engine category
+    // string ids ("weapons", "armor", "consumables", "key_items",
+    // "materials", "accessories", "incantations", "invocations") and
+    // also serve as the tab ids in config/inventory_categories.json.
+    // Each item carries a stable ItemInstanceId; Equipment slots
+    // address by id, not by index. Operate via
+    // engine::ops::inventory::* (addItem/removeItem/equipItemToSlot/
+    // findById/etc). Empty for new characters.
+    engine::ecs::Inventory inventory;
+
+    // Currently equipped items per slot. Each slot holds the stable
+    // ItemInstanceId of the equipped item, or kInvalidItemInstanceId
+    // if nothing equipped. Survives any inventory mutation (ids are
+    // stable). Empty for new characters.
+    engine::ecs::Equipment equipment;
+
+    // Compendium of item config_paths the Vagrant has ever picked up.
+    // Persists across deaths within a run (vestigia remember; per
+    // [[project_selva_core_framing]]) and serializes to save. Used to
+    // colorize the pickup notification (gold for first-time-ever vs
+    // neutral for repeat). Empty for new characters.
+    engine::ecs::Compendium compendium;
+
+    // Unread notices the player has discovered but not yet
+    // acknowledged in the UI. Cross-domain set keyed
+    // "<domain>:<id>" so any future "you have new X" surface
+    // (items, insights, NPC topics, recipes, bestiary, regions)
+    // shares one storage layer instead of growing parallel fields.
+    // Operate via selva::notice::* (mark/isUnread/acknowledge);
+    // never read/write directly. Persists across deaths within a
+    // run + serializes to save. Empty for new characters.
+    std::unordered_set<std::string> unread_notices;
 
     // Per-NPC encounter history (sparse). Only NPCs the player has
     // talked to have entries. Use selva::npcEncounter(profile, id)
@@ -458,6 +494,12 @@ struct Settings
     // body). User-tunable via the Settings screen.
     float fov_degrees_third_person = 60.0f;
     float fov_degrees_first_person = 75.0f;
+    // World-space focus ring drawn around interactables (E-prompt
+    // targets). On by default; the player can hide it from the
+    // Settings screen if they prefer a cleaner HUD. The screen-space
+    // "[E] Talk" / "[E] Open" prompt still renders regardless --
+    // the ring is purely a visual aid for finding the in-world target.
+    bool show_interact_ring = true;
 };
 
 // ---------------------------------------------------------------------------
@@ -467,11 +509,20 @@ struct Settings
 // ---------------------------------------------------------------------------
 struct SaveData
 {
-    static constexpr int CURRENT_VERSION = 3;
+    static constexpr int CURRENT_VERSION = 4;
 
     int schema_version = CURRENT_VERSION;
     std::vector<PlayerProfile> characters;
     Settings settings;
+
+    // Souls-style Continue: name of the character most recently
+    // saved/played. has_last_played distinguishes "no character has
+    // been played yet" (hide Continue) from "the unnamed character was
+    // most recent" (resume the empty-name profile, per the unnamed-
+    // but-real character pattern). Updated by flushAndSave before
+    // SaveManager::save persists the file.
+    std::string last_played_character;
+    bool has_last_played = false;
 };
 
 } // namespace selva

@@ -173,31 +173,79 @@ void loadDoorStates(const json& c, PlayerProfile& p)
     }
 }
 
-void loadInventoryEntry(const json& e, std::vector<selva::items::Entry>& vec)
+engine::ecs::ItemInstance loadInventoryEntry(const json& e)
 {
-    if (!e.is_object() || !e.contains("kind") || !e.contains("id"))
-        return;
-    const std::string kind = e.value("kind", std::string{});
-    const std::string id = e.value("id", std::string{});
-    if (kind == "possession")
-        vec.emplace_back(selva::items::PossessionEntry{id});
-    else if (kind == "stack")
-        vec.emplace_back(selva::items::StackEntry{id, e.value("count", 0)});
-    else if (kind == "instanced")
-        vec.emplace_back(selva::items::InstancedEntry{id, e.value("upgrade_level", 0)});
+    engine::ecs::ItemInstance item;
+    item.id = e.value("id", std::uint64_t{0});
+    item.config_path = e.value("config_path", std::string{});
+    item.quality = static_cast<engine::ecs::QualityTier>(
+        e.value("quality", static_cast<int>(engine::ecs::QualityTier::Common)));
+    item.durability = e.value("durability", 100.0f);
+    item.quantity = e.value("quantity", 1);
+    item.evolution_bonus = e.value("evolution_bonus", 0.0f);
+    item.newly_discovered = e.value("newly_discovered", false);
+    item.weapon_xp_level = e.value("weapon_xp_level", 1);
+    item.weapon_xp_current = e.value("weapon_xp_current", 0.0f);
+    return item;
 }
 
 void loadInventory(const json& c, PlayerProfile& p)
 {
     if (!c.contains("inventory") || !c["inventory"].is_object())
         return;
-    for (const auto& [cat_id, entries] : c["inventory"].items())
+    const auto& inv = c["inventory"];
+    p.inventory.next_id = inv.value("next_id", std::uint64_t{1});
+    if (!inv.contains("by_category") || !inv["by_category"].is_object())
+        return;
+    for (const auto& [cat_id, entries] : inv["by_category"].items())
     {
         if (!entries.is_array())
             continue;
         auto& vec = p.inventory.by_category[cat_id];
         for (const auto& e : entries)
-            loadInventoryEntry(e, vec);
+        {
+            if (!e.is_object() || !e.contains("config_path"))
+                continue;
+            vec.push_back(loadInventoryEntry(e));
+        }
+    }
+}
+
+void loadEquipment(const json& c, PlayerProfile& p)
+{
+    if (!c.contains("equipment") || !c["equipment"].is_object())
+        return;
+    const auto& e = c["equipment"];
+    using Id = engine::ecs::ItemInstanceId;
+    p.equipment.right_hand = e.value("right_hand", Id{0});
+    p.equipment.left_hand = e.value("left_hand", Id{0});
+    p.equipment.head = e.value("head", Id{0});
+    p.equipment.chest = e.value("chest", Id{0});
+    p.equipment.legs = e.value("legs", Id{0});
+    p.equipment.feet = e.value("feet", Id{0});
+    p.equipment.accessory_1 = e.value("accessory_1", Id{0});
+    p.equipment.accessory_2 = e.value("accessory_2", Id{0});
+}
+
+void loadCompendium(const json& c, PlayerProfile& p)
+{
+    if (!c.contains("compendium") || !c["compendium"].is_array())
+        return;
+    for (const auto& entry : c["compendium"])
+    {
+        if (entry.is_string())
+            p.compendium.discover(entry.get<std::string>());
+    }
+}
+
+void loadUnreadNotices(const json& c, PlayerProfile& p)
+{
+    if (!c.contains("unread_notices") || !c["unread_notices"].is_array())
+        return;
+    for (const auto& entry : c["unread_notices"])
+    {
+        if (entry.is_string())
+            p.unread_notices.insert(entry.get<std::string>());
     }
 }
 
@@ -237,6 +285,9 @@ PlayerProfile loadCharacter(const json& c)
     loadInsights(c, p);
     loadDoorStates(c, p);
     loadInventory(c, p);
+    loadEquipment(c, p);
+    loadCompendium(c, p);
+    loadUnreadNotices(c, p);
     loadNpcState(c, p);
     // Sangue. Absent on legacy saves (pre-currency-system) and on
     // fresh characters; both cases default to 0. value<uint32_t>
@@ -265,6 +316,8 @@ void loadSettings(const json& j, SaveData& data)
         s.value("fov_degrees_third_person", data.settings.fov_degrees_third_person);
     data.settings.fov_degrees_first_person =
         s.value("fov_degrees_first_person", data.settings.fov_degrees_first_person);
+    data.settings.show_interact_ring =
+        s.value("show_interact_ring", data.settings.show_interact_ring);
 }
 } // namespace
 
@@ -292,12 +345,18 @@ SaveData load(const std::string& path)
     {
         for (const auto& c : j["characters"])
         {
-            PlayerProfile p = loadCharacter(c);
-            if (!p.name.empty())
-                data.characters.push_back(std::move(p));
+            // Per the unnamed-but-real character pattern: empty name is
+            // a valid character (the in-progress unnamed Vagrant before
+            // the Guide's naming dialog). Don't filter it out on load.
+            data.characters.push_back(loadCharacter(c));
         }
     }
     loadSettings(j, data);
+    if (j.value("has_last_played", false))
+    {
+        data.has_last_played = true;
+        data.last_played_character = j.value("last_played_character", std::string{});
+    }
     std::fprintf(stderr, "[SaveManager] Loaded %zu characters from %s\n", data.characters.size(),
                  resolved.c_str());
     return data;
@@ -313,36 +372,76 @@ nlohmann::json saveDoorStates(const PlayerProfile& c)
     return arr;
 }
 
-nlohmann::json saveInventoryEntry(const selva::items::Entry& e)
+// Round-trip every ItemInstance field even when at its default --
+// instance state isn't a side-channel like flags; it's the item's
+// content. Skip-emit-when-default would create silent divergence on
+// reload.
+nlohmann::json saveInventoryEntry(const engine::ecs::ItemInstance& it)
 {
-    if (const auto* p = std::get_if<selva::items::PossessionEntry>(&e))
-        return nlohmann::json{{"kind", "possession"}, {"id", p->item_id}};
-    if (const auto* s = std::get_if<selva::items::StackEntry>(&e))
-        return nlohmann::json{{"kind", "stack"}, {"id", s->item_id}, {"count", s->count}};
-    if (const auto* x = std::get_if<selva::items::InstancedEntry>(&e))
-        return nlohmann::json{
-            {"kind", "instanced"}, {"id", x->item_id}, {"upgrade_level", x->upgrade_level}};
-    return nlohmann::json::object();
+    return nlohmann::json{
+        {"id", it.id},
+        {"config_path", it.config_path},
+        {"quality", static_cast<int>(it.quality)},
+        {"durability", it.durability},
+        {"quantity", it.quantity},
+        {"evolution_bonus", it.evolution_bonus},
+        {"newly_discovered", it.newly_discovered},
+        {"weapon_xp_level", it.weapon_xp_level},
+        {"weapon_xp_current", it.weapon_xp_current},
+    };
 }
 
 nlohmann::json saveInventory(const PlayerProfile& c)
 {
     nlohmann::json inv = nlohmann::json::object();
+    inv["next_id"] = c.inventory.next_id;
+    nlohmann::json by_cat = nlohmann::json::object();
     for (const auto& [cat_id, entries] : c.inventory.by_category)
     {
         if (entries.empty())
             continue;
         nlohmann::json arr = nlohmann::json::array();
         for (const auto& e : entries)
-        {
-            nlohmann::json je = saveInventoryEntry(e);
-            if (!je.empty())
-                arr.push_back(std::move(je));
-        }
-        if (!arr.empty())
-            inv[cat_id] = std::move(arr);
+            arr.push_back(saveInventoryEntry(e));
+        by_cat[cat_id] = std::move(arr);
     }
+    inv["by_category"] = std::move(by_cat);
     return inv;
+}
+
+bool equipmentIsEmpty(const engine::ecs::Equipment& e)
+{
+    using engine::ecs::kInvalidItemInstanceId;
+    return e.right_hand == kInvalidItemInstanceId && e.left_hand == kInvalidItemInstanceId &&
+           e.head == kInvalidItemInstanceId && e.chest == kInvalidItemInstanceId &&
+           e.legs == kInvalidItemInstanceId && e.feet == kInvalidItemInstanceId &&
+           e.accessory_1 == kInvalidItemInstanceId && e.accessory_2 == kInvalidItemInstanceId;
+}
+
+nlohmann::json saveEquipment(const engine::ecs::Equipment& e)
+{
+    return nlohmann::json{
+        {"right_hand", e.right_hand}, {"left_hand", e.left_hand},
+        {"head", e.head},             {"chest", e.chest},
+        {"legs", e.legs},             {"feet", e.feet},
+        {"accessory_1", e.accessory_1}, {"accessory_2", e.accessory_2},
+    };
+}
+
+nlohmann::json saveCompendium(const engine::ecs::Compendium& c)
+{
+    nlohmann::json arr = nlohmann::json::array();
+    for (const auto& path : c.discovered)
+        arr.push_back(path);
+    return arr;
+}
+
+nlohmann::json saveUnreadNotices(const std::unordered_set<std::string>& notices)
+{
+    nlohmann::json arr = nlohmann::json::array();
+    for (const auto& key : notices)
+        arr.push_back(key);
+    return arr;
 }
 
 nlohmann::json saveNpcState(const PlayerProfile& c)
@@ -447,12 +546,14 @@ nlohmann::json saveCharacter(const PlayerProfile& c)
     saveInsightFields(char_json, c);
     if (!c.door_states.empty())
         char_json["door_states"] = saveDoorStates(c);
-    if (!c.inventory.by_category.empty())
-    {
-        auto inv = saveInventory(c);
-        if (!inv.empty())
-            char_json["inventory"] = std::move(inv);
-    }
+    if (!c.inventory.by_category.empty() || c.inventory.next_id > 1)
+        char_json["inventory"] = saveInventory(c);
+    if (!equipmentIsEmpty(c.equipment))
+        char_json["equipment"] = saveEquipment(c.equipment);
+    if (!c.compendium.discovered.empty())
+        char_json["compendium"] = saveCompendium(c.compendium);
+    if (!c.unread_notices.empty())
+        char_json["unread_notices"] = saveUnreadNotices(c.unread_notices);
     if (!c.npc_state.empty())
         char_json["npc_state"] = saveNpcState(c);
     saveSangueFields(char_json, c);
@@ -494,7 +595,13 @@ bool save(const SaveData& data, const std::string& path)
         {"sfx_volume", data.settings.sfx_volume},
         {"fov_degrees_third_person", data.settings.fov_degrees_third_person},
         {"fov_degrees_first_person", data.settings.fov_degrees_first_person},
+        {"show_interact_ring", data.settings.show_interact_ring},
     };
+    if (data.has_last_played)
+    {
+        j["last_played_character"] = data.last_played_character;
+        j["has_last_played"] = true;
+    }
     std::ofstream file(resolved);
     if (!file.is_open())
     {

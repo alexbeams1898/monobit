@@ -19,6 +19,8 @@
 #include "world/Lights.h"
 #include "world/PhysicsRegion.h"
 #include "world/Region.h"
+#include "gameplay/Actor.h"
+#include "render/EquippedWeapon.h"
 #include "world/StaticMeshAssets.h"
 #include "world/StructureFootprints.h"
 #include "world/Terrain.h"
@@ -868,6 +870,16 @@ void renderDoors()
     }
     // Restore identity so subsequent static-mesh draws aren't offset.
     selva::render::setSceneModel(glm::mat4(1.0f));
+}
+
+void renderEquippedWeapon()
+{
+    // Static-mesh pass: scene shader is bound by the caller. Belongs
+    // here next to renderDoors() rather than in the skeletal pass
+    // because the weapon mesh is unanimated geometry rendered with
+    // the scene program. Depth-buffered against the player skin so
+    // it composes correctly regardless of draw order.
+    drawEquippedWeapon(selva::gameplay::player());
 }
 
 void renderDoorsDepth()

@@ -1,8 +1,15 @@
 # Classes
 
-> **Owns:** the player's class system — penitent / wretched / heretic,
-> their evolutions, stat profiles, what each *feels* like to play.
+> **Owns:** the player's class system — penitent / heretic / ferine /
+> unburdened, their evolutions, stat profiles, what each *feels* like
+> to play.
 > **Status:** structural locks; per-class mechanical detail TBD.
+>
+> **Naming history:** the third class was originally "Wretched"
+> (retired 2026-06-11) → "Feral" (working name through
+> 2026-06-14) → "**Ferine**" (locked). Older doc passages may still
+> say "Feral" / "Wretched" until the rename sweep lands; the
+> mechanical / cosmological content carries forward unchanged.
 
 ## Cosmological constraints (locked from setting.md / story.md)
 
@@ -179,6 +186,99 @@ to drive installation. Unburdened progression on the body side is
 non-stat (riversamento → ability / passive unlocks; see
 *Evolutions*, below).
 
+### Class is a bias of growth, not a gate (LOCKED 2026-06-12)
+
+For class-pickers (Penitent / Heretic / Feral), **class does not
+hard-lock which stats the player can install.** Every body stat and
+every mind stat is installable on every class-picker path. What
+class does is **bias the install cost** — installing a stat that
+aligns with the class's cosmological identity is cheaper in sangue
+per point; installing a stat orthogonal to the class's identity
+costs more.
+
+This is the Dantean reading. Free will is preserved: the path the
+Vagrant signed at Beat 4 shapes — but does not determine — what he
+can become. The cosmology punishes orthogonal growth with friction,
+not with refusal. A Feral player who *really* wants high INT can
+install it, slowly, expensively. He will lag behind a Heretic doing
+the same thing, late game, but he is not denied the road.
+
+Working bias shape (specific multipliers TBD at tuning):
+
+| Class | STR | DEX | END | LCK | INT (cog) | acquired-stat |
+|---|---|---|---|---|---|---|
+| Penitent | cheap | medium | cheap | medium-high | medium | cheap (built-in) |
+| Heretic | medium-high | cheap | medium | cheap | cheap-medium | cheap |
+| Feral | cheap | medium | cheap | high | high | cheap |
+
+The Unburdened is the structural exception — not biased, blocked.
+He cannot install body stats at all (1/1/1/1 lock). This is not a
+bias choice; the cosmology of the refused Signing means no
+imprint-fire exists to install through. Body progression is
+substituted by riversamento-gated non-stat capability (see
+*Evolutions*).
+
+Mind stats (Perception / Cognition / Intelligence) bias the same
+way for class-pickers but with smaller multipliers — they grow
+from engagement, so substance cost is partial, not full.
+
+### Non-melee combat verbs: incantations vs invocations (LOCKED 2026-06-12)
+
+Selva has two cosmologically distinct registers of non-melee
+combat verb. They are **peer item categories** in the data layer
+(engine `ItemCategory::Incantation` + `Invocation`); there is no
+umbrella term for "both" — the cosmology resists umbrella-ing them
+because they operate on structurally different mechanisms.
+
+| Register | Cosmological source | Mechanism |
+|---|---|---|
+| **Incantation** | The Vagrant's own installed substance | Vagrant exerts; substance leaves his substrate as the verb |
+| **Invocation** | Beatrice's reservoir, reached through the cosmological link | Beatrice acts *through* the Vagrant; he is the conduit |
+
+**Both registers administer second death.** Per setting.md
+*Forced repentance through second death*, granting second death
+to a shade trapped in stagnant contrapasso is the cosmologically
+correct act in a broken Hell. Whether the Vagrant grants it
+through his own crushed-weight, his heretical word, his feral
+howl, or Beatrice's grace channeled through him — the act IS
+the cosmologically required work. **Neither register is
+"evil magic"; both are how the broken protocol gets administered**
+by the only being who can do it. Catholic *maleficium* (unjust
+harm via cosmological force) does NOT apply, because the harm is
+just within the cosmology of forced repentance.
+
+**Class bias on incantation / invocation usage:**
+
+Class is a bias, not a gate, here too. Any class-picker can use
+either category; the scaling differs.
+
+- **Penitent / Heretic / Feral incantations**: incantation items
+  scale on stats the burdened class can install. Class-tilted
+  incantations (a Penitent-coded hammer-of-weight; a Heretic-
+  coded forbidden word; a Feral-coded paralyzing howl) scale
+  best for their aligned class but are usable by any burdened
+  class, just less effective.
+- **Invocations** are structurally the Unburdened verb. A
+  burdened class CAN pick up an invocation item and try to
+  trigger it; they have no riversamento volume, so the channel
+  cannot open — the invocation scales to nearly nothing.
+  Effectively (not by hard rule), invocations are an
+  Unburdened-only register.
+- Unburdened CAN pick up incantations but has no installed
+  substance to release — same scale-to-nearly-nothing problem
+  in the opposite direction.
+
+**The two-categories split is intentional asymmetry.** Burdened
+classes share their register and differentiate via tilt; the
+Unburdened-burdened wall is the genuine cosmological boundary,
+not a class-vs-class boundary.
+
+**The full incant + invocation item systems are designed in
+follow-up docs when those systems ship.** This section locks the
+category structure for the items-foundation branch; the
+mechanical specifics (per-incant stats, scaling formulas,
+animation hooks, riversamento gates per invocation) are TBD.
+
 Mind growth is independent of class for all paths -- see
 [cognition-system.md](cognition-system.md) for what each Mind stat
 does and how it grows. Briefly: Perception grows from observation
@@ -207,12 +307,31 @@ in. They are how a class FEELS different on the same four numbers.
 **2. Class-specific abilities / passives (own system).** Spells,
 incantations, miracles, weapon arts, contrapasso-resistance passives.
 Loaded from per-class JSON (sister to the enemy archetypes system).
-Not part of `Stats`. The class-picker receives a starter ability
-kit at the Signing; subsequent abilities unlock at L2 / L3 evolution.
-The Unburdened has **no kit at L1**; abilities arrive only via
-riversamento-gated unlocks at Svuotato (L2) and Diaphanous (L3) —
-specifics described in *The Unburdened does NOT use the unlock-mask
-for stats*, below.
+Not part of `Stats`. The class-picker receives a starter **ability
+kit** at the Signing; subsequent abilities unlock at L2 / L3
+evolution. The Unburdened has **no kit at L1**; abilities arrive
+only via riversamento-gated unlocks at Svuotato (L2) and Diaphanous
+(L3) — specifics described in *The Unburdened does NOT use the
+unlock-mask for stats*, below.
+
+**The starter ability kit at the Signing is NOT a starter weapon.**
+The Vagrant's first weapon is a world-placed object found on the
+descent stairs (per inventory.md *The starting weapon is in a world
+container* and crafting.md *World-placed weapons*). The Signing
+unlocks the commit-verb capacity (Crucible for class-pickers,
+Censer for Unburdened); it does not gift a weapon. Class-pickers
+and Unburdened reach the descent-stair weapon pre-Signing or post-
+Signing alike — the weapon is a world event, not a menu event.
+
+**Class passives may include weapon-scaling buffs.** The Feral's
+passive (per [[project_class_acquired_stat_doctrine]]) buffs unarmed
+damage scaling substantially — his body IS his weapon. Mechanically
+this is class-specific scaling on the shared `unarmed` `ItemInstance`
+every character carries (per inventory.md *Unarmed is a weapon*),
+not a separate "Feral fists" item. The data shape is one unarmed
+weapon; class differentiation is in the scaling multipliers and the
+Feral's acquired-stat tier-threshold gates on unarmed evolution
+branches (per weapon-evolution.md *Unarmed evolution*).
 
 **3. New BASE-stat fields, added rarely.** When a class genuinely
 needs a base value that can't be derived from the universal four —
@@ -641,6 +760,410 @@ to.
   without label; tier-2 = number + label). Or whether the number is
   always visible and only the LABEL tier-promotes.
 
+## Per-class identity stats: locked tier-promotion (LOCKED 2026-06-14)
+
+Replaces the working-name placeholders (Piety / Cunning / Feral)
+from project_class_acquired_stat_doctrine. Every class -- including
+Unburdened -- has ONE identity stat visible on the HUD that
+tier-promotes through play via the language map, same machinery as
+class names tier-promote.
+
+The promotion arc is **felt → named → cosmological**: the Vagrant
+feels a thing at tier-0 (familiar word, no cosmological vocabulary),
+recognizes what he's doing at tier-1 (named position), and
+understands the cosmological act at tier-2 (the anchor reveal). The
+mechanical scaling never changes -- only the language wrapping it,
+exactly like class names.
+
+| Class | Tier-0 (felt) | Tier-1 (named) | Tier-2 (cosmological) |
+|---|---|---|---|
+| Penitent | **Vitality** | **Burden** | **Penance** |
+| Heretic | **Doubt** | **Unorthodoxy** | **Anathema** |
+| Ferine | **Appetite** | **Voracity** | **Predation** |
+| Unburdened | **Resistance** | **Hollowing** | **Diaphany** |
+
+Each arc is the class's whole cosmology compressed into three
+words. The Vagrant who picked Penitent feels his Vitality grow,
+later recognizes he's bearing Burden, and finally understands he's
+performing Penance. The Heretic feels Doubt, recognizes he's
+landed in Unorthodoxy, learns he is Anathema (the formal cosmological
+cursed-position). The Ferine feels Appetite, recognizes Voracity,
+understands Predation. The Unburdened feels Resistance, recognizes
+Hollowing, sees Diaphany (the substance has been passing through
+him; he IS the through-passage; his L3 form Diaphanous matches the
+stat name at the same anchor).
+
+**Unburdened gets a HUD-visible stat (overrides the older
+HUD-hidden doctrine from project_class_acquired_stat_doctrine).**
+The Unburdened path is no longer the refuses-to-be-labeled
+exception at the stat layer. The cosmological refusal lives in the
+mechanics (no body-stat installation, riversamento volume drives
+form evolution) and in the L1→L2→L3 form names (Unburdened →
+Svuotato → Diaphanous). The stat is visible because all four
+classes deserve to see their own progression.
+
+**Tier-2 cosmological-anchor reveals fire through the same insight
+system that promotes class names**: a specific load-bearing event
+unlocks the tier-2 name (specifics per-class TBD at content
+authoring -- e.g. Diaphany may anchor on the same insight that
+fires Diaphanous L3 form).
+
+**Tier-0 / tier-1 / tier-2 mind summary prose per stat is TBD.**
+The locks here are the names + the tier shape; the in-fiction
+prose at the Mind sub-page summary for each tier lands at content
+authoring time.
+
+## Soft-cap stat curves: per-class scaling shape (LOCKED 2026-06-14)
+
+Replaces the install-cost bias doctrine from
+project_class_bias_and_magic_split. The new rule:
+
+**Install cost is universal.** Every class pays the same sangue
+per stat point at the Crucible. What differs per class is the
+**diminishing-returns curve shape** -- the Elden Ring soft-cap
+model.
+
+For each body stat, the per-stat return-on-point follows a curve
+that BENDS at a soft cap. Below the cap, each point gives full
+return; above the cap, each point gives diminishing return. **The
+position of the bend is class-specific.** A class that is "good at"
+a stat has its bend LATE (high soft cap, big returns deep into
+investment). A class that is "bad at" a stat has its bend EARLY
+(low soft cap, returns drop off quickly).
+
+The player can still install any stat to any value on any class.
+What changes is what their investment BUYS past the cap.
+
+Per-class body stat shape (LCK exempt from class bias; universal
+curve for all classes):
+
+| Class | High soft cap (good at) | Low soft cap (bad at) |
+|---|---|---|
+| Penitent | END | DEX |
+| Heretic | DEX | END |
+| Ferine | STR | DEX |
+| Unburdened | — (all body stats locked at 1/1/1/1) | — |
+
+The triangle (Penitent END/DEX, Heretic DEX/END, Ferine STR/DEX)
+makes each class's curve shape distinct from the other two:
+Penitent and Heretic are inverses on END/DEX, Ferine breaks
+sideways with STR.
+
+**The Penitent's identity stat (Penance) and the body-stat END
+soft-cap shape co-vary** -- a Penitent investing in END buys the
+high-cap curve AND can apply it through Penance-scaled weapons.
+This is the soft-cap doctrine doing double duty: signaling class
+identity at the stat-investment moment AND driving weapon scaling
+later.
+
+**Soft-cap curve numbers are tuning values, not doctrine.**
+Specific bend positions ("good-at bend = stat 40, bad-at bend =
+stat 15," or whatever shape feels right at tuning) live in
+config/balance/formulas.json. The doctrine here locks the SHAPE
+(per-class per-stat curves with bend-position bias). Numbers are
+revisable without doctrine change.
+
+## Unburdened: amended Mind doctrine (LOCKED 2026-06-14)
+
+Amends [[project_cognition_system_v1]] from "Mind grows uniformly
+across classes" to "Mind grows faster for the Unburdened than for
+the burdened classes." The cognition system's behavior-driven
+growth (Perception from observation, Cognition from inference,
+Intelligence from warranted inference) is unchanged; only the
+multiplier differs.
+
+Cosmologically: the Unburdened refuses body-stat installation, so
+the substance that would have densified his substrate instead
+clears his head. The path's locked 1/1/1/1 body floor is paid for
+by a Mind ceiling that climbs faster than the burdened classes can
+reach. He is the "glass cannon utilizing heavy Mind" archetype --
+fragile body, dominant cognition.
+
+This restores symmetry to the four classes: each path has SOMEWHERE
+it grows faster than the others. Penitent / Heretic / Ferine each
+have a body stat with a high soft cap (END / DEX / STR
+respectively). Unburdened has all three Mind stats with a higher
+growth multiplier. **No class is universally weaker; the asymmetries
+balance.**
+
+The Mind growth multiplier is a single number in
+config/balance/formulas.json (`mind_growth_multiplier_unburdened`,
+placeholder; tune at balance pass). Burdened classes use 1.0;
+Unburdened uses some value > 1.0 (tuning).
+
+## Class-shaped descent-stair starter weapons (LOCKED 2026-06-14)
+
+Replaces the inventory.md *The starting weapon is in a world
+container* shared-weapon framing. New rule:
+
+**The descent stairs spawn a class-shaped tier-0 starter weapon.**
+Each class (Penitent / Heretic / Ferine / Unburdened) sees a
+different humble weapon at the descent, matching their class's
+preferred stat profile. Visually the moment is a Dark Souls 1
+Asylum-stair ode: glow visible at distance, walk down, pick up.
+
+**The starter weapon is mundane, not class-named.** Per the
+explicit content rule: no "Penitent's Sword of Justice" naming at
+this tier. Just a humble weapon -- e.g. a plain sword, knife,
+bone-knuckle, vessel-incant -- whose scaling letter-grades happen
+to match the aligned class's stat curves.
+
+**Other classes can use it.** No hard class-lock. A Ferine who
+finds a Penitent-shaped sword can wield it; the soft-cap doctrine
+just means it scales worse for him (he's bad at END; the sword's
+END scaling is wasted past his low soft cap). Pokemon-starter
+analogy: yours from minute one but tradeable/swappable.
+
+**The starter is the same item in the universal weapon tree.**
+Lives in the same evolution tree all weapons live in. A Ferine
+wanting the Penitent's starter can find it deeper in the tree
+through normal crafting/evolution paths. The descent gift is just
+"your class's starter is given to you here" -- not a class-locked
+unique branch.
+
+**Class-signature unique weapons** (deeper-tree class-specific
+weapons with cosmologically loaded names and lore) are a separate
+concern handled at content authoring. The descent starter is the
+humble layer; signatures are the deep-cut layer.
+
+**Pre-Beat-4 doctrine unchanged.** The Vagrant arrives empty-
+handed in Beat 1, crosses Acheron and descends in Beats 2-3 with
+fists only, signs (or refuses) at Beat 4. The starter weapon
+appears at the descent stairs AFTER the Signing -- the cosmology
+delivers what soul-shape the Vagrant just signed for.
+
+## Identity stats are derived from action counters (LOCKED 2026-06-14)
+
+Resolves the "specific behavioral lists per class" and "exact
+derived-stat formulas per class" open questions from the prior
+acquired-stats doctrine. Identity stats are **not stored as
+separate fields**. They are **pure functions evaluated at read
+time** from the PlayerProfile's permanent action-counter ledger.
+
+### The mental model
+
+The world keeps a single record of what the Vagrant has DONE: kills
+tallied, examines counted, dialog choices flagged, sangue committed,
+hits tanked, refusals refused. This action ledger lives on
+`PlayerProfile` and grows monotonically across the run.
+
+**Each identity stat is a lens onto that ledger from one class's
+cosmological angle.** Penance reads the ledger and asks "how much
+have you tanked / endured / submitted?" Anathema asks "how much
+have you refused / defied?" Predation asks "how much have you
+consumed / feasted / preyed?" Diaphany asks "how much substance has
+flowed through you?"
+
+The ledger is permanent. The lens is the active class.
+
+### Implementation contract
+
+- **No identity-stat fields stored on `PlayerProfile`.** The
+  Identity stat is computed on demand. HUD reads
+  `computeIdentityStat(profile, profile.player_class)` each frame
+  (or caches with profile-change invalidation -- engine call).
+- **Per-class functions live in
+  `config/balance/formulas.json`.** Each class declares which
+  ledger counters feed its identity-stat formula + how. Tunable;
+  no code edit per balance pass.
+- **Counters added to `PlayerProfile` incrementally.** Today the
+  ledger has `kill_counts`, `examine_counts`, `flags`,
+  `sangue_lifetime`, `sangue_riversato`, `felled_bosses`,
+  `unlocked_insights`, `npc_state`. New behavioral counters
+  (hits-tanked, refusals-uttered, corpses-feasted-on, etc.) land
+  alongside the gameplay features that generate them. **No need to
+  author all counters today** -- the foundation is the rule
+  (identity = function of ledger), the content is the per-counter
+  growth as systems ship.
+
+### Why this shape
+
+- **Identity is what you DID, body is what you BOUGHT.** Sangue
+  commits buy body stats (Crucible verb); only actions earn identity
+  stats. The two progression vectors are mechanically separate.
+- **No conversion math at Erasure.** When the player switches class
+  the HUD just swaps which function it evaluates. The ledger is
+  unchanged. The Vagrant's history is permanent; only the lens
+  through which Hell measures it changes. See *Erasure mechanics*
+  below.
+- **Cosmologically honest.** A Penitent who occasionally refused
+  things has been doing heretical acts all along; Hell's accounting
+  saw them; the cosmology recognizes them when (and only when) the
+  Vagrant becomes the kind of soul those acts now count for.
+- **Cross-class acquisition emerges automatically.** A Penitent's
+  Anathema field is computable at any time -- it's just a function
+  call. The number stays at whatever heretical-acts-the-player-has
+  -done evaluates to. Late-game mechanics that let a Penitent
+  unlock the Heretic lens (special quests, NPC reveals) need no
+  new storage layer; the data is already there.
+
+### Authoring rule for new behavioral counters
+
+When a new gameplay action is added that should feed an identity
+stat:
+
+1. Add the counter to `PlayerProfile` (plain int / map / set, save
+   round-tripped).
+2. Increment it at the gameplay event hook (same pattern as
+   `kill_counts` today).
+3. Reference it in one or more per-class formulas in
+   `formulas.json`.
+
+That's the whole machinery. No new classes, no special-case logic,
+no per-class growth events.
+
+## Erasure mechanics (LOCKED 2026-06-14)
+
+Closes the "Persistence across class changes" silence. Per-direction
+rules:
+
+### Cross-burdened Erasure (Penitent ↔ Heretic ↔ Ferine)
+
+Functions as a **respec**, not a start-over.
+
+- **Body stats refund** as sangue to the vessel for re-spending
+  under the new class. Preserves existing canon (setting.md /
+  economy.md "refunds prior commitments to the new vessel").
+- **Identity stats re-evaluate automatically** under the new
+  class's lens. No conversion event; the ledger is unchanged. A
+  player who Erases from Penitent (Penance N) to Heretic gets
+  whatever Anathema their action ledger evaluates to under the
+  Heretic formula. A "pure Penitent" who never did anything
+  heretical starts Anathema low; a "compromised Penitent" who has
+  been making heretic-aligned choices starts higher.
+- **Inventory + equipment carry forward.** Items don't unequip on
+  Erasure. Equipment that no longer meets stat requirements (the
+  player just refunded their body stats) goes into a "below-req"
+  state per the existing stat-gated-equip doctrine -- still
+  equipped, with damage penalty per soft-cap -- until the player
+  re-installs the body stats their gear demands.
+- **Materials gate the ritual** per existing canon (Guide-performed,
+  materials-gated). Cross-burdened costs lower than crossing the
+  burdened-Unburdened wall (per balance pass).
+
+The fun-vs-realism trade lands here. A Penitent who has never
+refused anything Erasing to Heretic starts Anathema near 0 -- by
+strict cosmology that's correct (they did nothing heretical). The
+respec feel is preserved because **body-stat refund + fast Heretic
+re-investment is the lever**, not identity stat carry-over. Identity
+stays slow-and-earned; body is the fast respec.
+
+### Burdened → Unburdened Erasure
+
+**Jarring; cosmologically real.** The Vagrant is undoing the
+imprint, not swapping fighting styles.
+
+- **Body stats wipe to 1/1/1/1** (the Unburdened lock per existing
+  doctrine). All previously-installed sangue refunds to the vessel.
+- **The refunded sangue must riversa** -- the Vagrant has to pour
+  it back out. The Unburdened doesn't install; the refunded
+  substance is too much to hold. Until riversamento brings it back
+  to 0, the vessel sits full.
+- **Identity stats re-evaluate** under Diaphany's lens. The
+  Vagrant's previous action history mostly reads "you committed
+  substance you weren't supposed to commit" through the Diaphany
+  formula -- the Diaphany value starts low. Diaphany grows from
+  here through riversamento (per locked canon).
+- **Inventory + equipment unchanged** other than the body-stat-
+  gating consequence noted above. Most worn gear becomes unequip-
+  worthy because the Unburdened can't meet its requirements.
+
+### Unburdened → Burdened Erasure
+
+**Forbidden** per existing canon (classes.md:139-141 +
+[[project_commit_verb_unified_2026_06_11]]). The Guide "cannot
+perform the Signing on a refusing unburdened." Once refused, the
+imprint cannot be re-opened. The Erasure ritual offers no path back
+to a class-picker identity for an Unburdened-committed Vagrant.
+
+This is locked and intentional. The Unburdened is the only
+*irreversible* class commitment; the burdened classes are
+mutually-fungible via Erasure but the Unburdened wall is one-way.
+
+### Visual feedback at Erasure
+
+The class-picker UI fires again (per existing canon). The displayed
+identity stats for each option pre-evaluate under that option's
+lens so the player sees what their numbers would be BEFORE
+committing. ("If you Erase to Heretic, your Anathema would start
+at 12; to Ferine, Predation at 4.") No surprise; full preview of
+each option's mechanical landing point.
+
+## Ferine mouth-slot doctrine (LOCKED 2026-06-14, IMPLEMENTATION DEFERRED)
+
+The Ferine path's becoming-beast cosmology expresses mechanically at
+the equipment layer, not just the visual layer. Specifically: the
+Ferine gains a **mouth equipment slot** as a class-specific HUD
+addition, gated on form evolution.
+
+### The slot and what goes in it
+
+- **Mouth slot** exists ONLY for Ferine. The equipment screen
+  renders an extra slot row when `player_class == Ferine`; other
+  classes do not see it.
+- Items that go in the mouth slot are **fangs, teeth, jaw
+  augments** — body-weapon shapes appropriate to "the soul has
+  grown into something that bites." Authored as a new `MouthSlot`
+  marker on selva-side ItemExtensions (engine ItemDef stays
+  generic; mouth-slot is selva cosmology).
+
+### Stance mutex (the combat doctrine)
+
+- **Mouth and arms are mutually exclusive in combat.** A Ferine
+  with an arm weapon equipped CANNOT use the mouth slot. A Ferine
+  with a mouth item active CANNOT use arm weapons.
+- The combat input rebinds per stance: arms-active routes attack
+  input to the normal weapon-swing chain; mouth-active routes
+  attack input to a per-mouth-item attack hook (bite / gnash /
+  lunge — TBD per item).
+- A stance toggle (button or context) flips between the two.
+
+### Progression-gated unlock
+
+- The mouth slot is **NOT available at Ferine L1**. The L1 Ferine
+  is still mostly humanoid; their starting weapon (`fang.json`)
+  sits in the arm slot, used like any other hand weapon — a
+  grip-weapon shaped like teeth, not yet a mouth verb.
+- The mouth slot **unlocks at Ferine L2 evolution** (per the locked
+  cosmology: form shifts toward feral, body begins growing the
+  jaw-augment capacity).
+- At L3, the mouth slot is dominant — the body IS the mouth, arm
+  weapons feel vestigial (mechanical statement: arm scaling falls
+  off further, mouth scaling peaks).
+
+### Why this composes with locked doctrine
+
+- **Becoming-beast made mechanical**: the cosmology of "the
+  Ferine's commit rewrites the substrate" lands as a literal
+  equipment-layer change. The player FEELS the evolution by seeing
+  a new slot appear on their HUD.
+- **Class signaling through HUD presence**: choosing Ferine
+  literally adds a slot to the equipment screen at L2. No other
+  class gets it; the HUD itself communicates class identity.
+- **Predation stat as gating + scaling**: mouth items scale on
+  STR + Predation (the body-axis the Ferine already has). The L2
+  Predation threshold is the same threshold that unlocks the slot.
+- **Composing with unarmed-as-weapon**: the existing
+  `unarmed` item per [[project_items_loot_doctrine_locked]] is the
+  default arm-slot fallback. The mouth slot has its own default
+  ("teeth at L2") so the Ferine is never disarmed in BOTH slots
+  simultaneously.
+
+### Implementation deferred
+
+Building the mouth-slot equipment-screen rendering + arm-vs-mouth
+combat dispatcher + stance-toggle input is a focused next slice.
+For v1 (descent-stair starter weapons + world-pickup spawn) the
+Ferine starter (`fang.json`) ships as an arm-slot weapon -- humble
+"a fang shaped to be gripped in the hand," played like any other
+weapon. The mouth-slot verb arrives with the L2 system.
+
+This doctrine is locked so the data shape we author today doesn't
+contradict it. Specifically: the Ferine starter is named "Fang"
+(not "Fang Caestus" / "Beast Knuckle") so when L2 mouth verb lands
+the same item could move to the mouth slot via evolution without
+a renaming churn.
+
 ## Open questions
 
 - Per-class fantasy — what does each class *feel* like?
@@ -648,20 +1171,23 @@ to.
   scaling (before considering class-specific stats).
 - Which class-L2 unlocks introduce new base fields, and which stay
   on the universal four? (Heretic = Faith locked above. Penitent
-  and Wretched TBD.)
-- Exact derived-stat formulas per class.
+  and Ferine TBD.)
 - Whether the unlock-mask is per-stat booleans or a single
   `class_evolution_level: int`. (Working answer: per-stat boolean
   — more granular, simpler engine code.)
 - Whether derived-stat values are recomputed per frame, cached on
   stat-change, or only on level-up. (Working answer: cache on
   stat-change; cheap and predictable.)
-- Stage-name for Wretched at L3.
+- Stage-name for Ferine at L3.
 - How contrapasso accretion expresses mechanically — does it auto-
   invest into specific stats? Modify class-specific behaviors? Unlock
   evolution gates? *Decision deferred to gameplay tuning.*
 - Whether SURFEIT (all-stats-maxed) is reachable on all three
   classes equally, or whether one class hits the cap most easily.
+- Per-counter growth formulas per class (which counters feed which
+  identity stat at what weight) -- locked as a rule (formulas.json
+  config) but content lives in the per-system gameplay authoring as
+  features ship.
 
 ## Cross-references
 

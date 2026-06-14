@@ -36,11 +36,17 @@ SaveData& saveData();
 UIState& uiState();
 
 // Mutable singleton accessor. The player's inventory (bag of items).
+// Forwards to the active PlayerProfile's `inventory` so the UI and
+// SaveManager see the same instance. Returns an empty static at
+// MainMenu (no active profile).
 Inventory& playerInventory();
 
-// Mutable singleton accessor. The player's equipped slots (right hand, left
-// hand, armor pieces, accessories). Each value is an index into
-// playerInventory().items, or -1 for empty.
+// Mutable singleton accessor. The player's equipped slots (right hand,
+// left hand, armor pieces, accessories). Each slot stores the
+// stable ItemInstanceId of the equipped item (kInvalidItemInstanceId
+// = empty); resolve via engine::ops::inventory::findById against
+// playerInventory(). Forwards to the active PlayerProfile's
+// `equipment`.
 Equipment& playerEquipment();
 
 // Resolve the PlayerProfile for the currently-active character.

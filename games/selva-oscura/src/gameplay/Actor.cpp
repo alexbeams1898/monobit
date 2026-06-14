@@ -1,6 +1,9 @@
 #include "gameplay/Actor.h"
 
+#include "AppStateGlobal.h"
 #include "Formulas.h"
+#include "classmods/ClassModifiers.h"
+#include "softcaps/SoftCaps.h"
 #include "Tunables.h"
 #include "anim/AnimationClip.h"
 #include "anim/SkeletalAssets.h"
@@ -16,11 +19,23 @@
 namespace selva::gameplay
 {
 
-int computeMaxHp(const Body& body, const Stats& stats)
+int computeMaxHp(const Body& body, const Stats& stats, PlayerClass cls)
 {
     const auto& f = selva::formulas::current();
-    return body.base_hp +
-           static_cast<int>(std::floor(f.hp.base + static_cast<float>(stats.end) * f.hp.scale));
+    // Apply per-class soft-cap to END before it feeds the engine HP
+    // formula. Penitent's END bends late (high cap, big returns deep
+    // into investment); Heretic's END bends early. PlayerClass::None
+    // (enemies) returns the raw stat. Per
+    // [[project_class_stats_v2_locked_2026_06_14]].
+    const float effective_end =
+        selva::softcaps::apply(static_cast<float>(stats.end), cls, "hp_from_end");
+    // Class HP offset is the flat contribution the class itself adds
+    // ("the burden-bearing soul carries more vital substance"). Zero
+    // for enemies + Unburdened; positive for the burdened classes.
+    // Layers on top of the soft-cap-shaped END contribution.
+    const int class_hp_offset = selva::classmods::offsetFor(cls, "hp_offset");
+    return body.base_hp + class_hp_offset +
+           static_cast<int>(std::floor(f.hp.base + effective_end * f.hp.scale));
 }
 
 float computeMaxStamina(const Body& body, const Stats& stats)
@@ -116,9 +131,9 @@ void applyFormDefaults(Body& body, Stats& stats, Form form)
 }
 
 void initActorPools(Health& hp, Stamina& stamina, Poise& poise, const Body& body,
-                    const Stats& stats)
+                    const Stats& stats, PlayerClass cls)
 {
-    hp.max = computeMaxHp(body, stats);
+    hp.max = computeMaxHp(body, stats, cls);
     hp.current = hp.max;
     stamina.max = computeMaxStamina(body, stats);
     stamina.current = stamina.max;
@@ -197,6 +212,29 @@ int computeAttackDamage(const Stats& attacker, float base, float str_scale, floa
     return static_cast<int>(total);
 }
 
+int computeAttackDamage(const Stats& attacker, const DamageInputs& inputs, int identity_value,
+                        float identity_scaling)
+{
+    const float str_b = std::floor(static_cast<float>(attacker.str) * inputs.str_scaling);
+    const float dex_b = std::floor(static_cast<float>(attacker.dex) * inputs.dex_scaling);
+    const float end_b = std::floor(static_cast<float>(attacker.end) * inputs.end_scaling);
+    const float lck_b = std::floor(static_cast<float>(attacker.lck) * inputs.lck_scaling);
+    // Mind axes scale from the Mind sub-stats stored on the actor's
+    // Stats per [[cognition-system-v1]]. v1 actor::Stats does not yet
+    // carry Mind axes; the multiply collapses to zero until those
+    // ship. The formula bakes them in now so weapon JSON authoring
+    // (per_scaling / cog_scaling / int_scaling) is forward-compatible.
+    const float per_b = 0.0f; // attacker.per * inputs.per_scaling -- pending Stats expansion
+    const float cog_b = 0.0f; // attacker.cog * inputs.cog_scaling -- pending Stats expansion
+    const float int_b = 0.0f; // attacker.intl * inputs.int_scaling -- pending Stats expansion
+    const float identity_b = std::floor(static_cast<float>(identity_value) * identity_scaling);
+    const float total = inputs.base_damage + str_b + dex_b + end_b + lck_b + per_b + cog_b + int_b +
+                        identity_b;
+    if (total <= 0.0f)
+        return 0;
+    return static_cast<int>(total);
+}
+
 Actor* resolveLockTarget(const Actor& actor)
 {
     const int idx = actor.lock_target_idx;
@@ -227,7 +265,7 @@ int defaultLockOnPointIndex(const Actor& actor)
 }
 
 const char* directionalLocoClip(const glm::vec3& fwd, const glm::vec3& right,
-                                const glm::vec3& intent, LocoTier tier)
+                                const glm::vec3& intent, LocoTier tier, bool is_armed)
 {
     if (glm::length(intent) <= 0.0001f)
         return nullptr;
@@ -238,9 +276,25 @@ const char* directionalLocoClip(const glm::vec3& fwd, const glm::vec3& right,
     const bool axis_is_forward = std::abs(right_dot) < 1e-3f;
     // Sprint only has a forward clip; backward/strafe demote to jog.
     if (axis_is_forward && fwd_dot >= 0.0f && tier == LocoTier::Sprint)
-        return "sprinting";
+        return is_armed ? "sword_and_shield_run_grip" : "sprinting";
     const LocoTier ground_tier = (tier == LocoTier::Sprint) ? LocoTier::Jog : tier;
     const bool walk = (ground_tier == LocoTier::Walk);
+    if (is_armed)
+    {
+        // Pro Sword and Shield Pack ships walk forward/back + strafe
+        // L/R + run forward. Jog back / jog strafe / sprint side-and-
+        // back have no armed clips -- demote to the armed walk variant
+        // for those directions.
+        if (axis_is_forward)
+        {
+            if (fwd_dot >= 0.0f)
+                return walk ? "sword_and_shield_walk_grip" : "sword_and_shield_run_grip";
+            return "sword_and_shield_walk_2_grip";
+        }
+        if (right_dot >= 0.0f)
+            return "sword_and_shield_strafe_grip";
+        return "sword_and_shield_strafe_2_grip";
+    }
     if (axis_is_forward)
     {
         if (fwd_dot >= 0.0f)
@@ -413,7 +467,14 @@ void initActorPool()
     // pick system will layer custom stat spreads on top; the baseline
     // applied here is the unjudged-soul default (60 HP / 12 poise).
     applyFormDefaults(pc.body, pc.stats, pc.form);
-    initActorPools(pc.hp, pc.stamina, pc.poise, pc.body, pc.stats);
+    // The player's class drives the HP soft-cap; pre-Beat-4 (None)
+    // applies no cap. PerFrameTick re-runs initActorPools when class
+    // changes (Signing fire / Erasure) so cap shifts apply
+    // immediately.
+    const auto* profile = selva::activePlayerProfile();
+    const selva::PlayerClass cls = (profile != nullptr) ? profile->player_class
+                                                        : selva::PlayerClass::None;
+    initActorPools(pc.hp, pc.stamina, pc.poise, pc.body, pc.stats, cls);
     // initActorPool is one-time, asset-binding only. Position, hp-fill,
     // and any per-character state are NOT set here - those land via
     // hardResetWorldForCharacter(profile) on Playing-enter. This

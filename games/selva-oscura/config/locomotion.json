@@ -19,6 +19,60 @@
             "blend_in_seconds": 0.40
         },
         {
+            "name": "standard_idle_armed",
+            "blend_in_seconds": 0.40
+        },
+        {
+            "name": "sword_and_shield_walk",
+            "blend_in_seconds": 0.28,
+            "translation_source": "root_motion"
+        },
+        {
+            "name": "sword_and_shield_walk_2",
+            "blend_in_seconds": 0.28,
+            "translation_source": "root_motion"
+        },
+        {
+            "name": "sword_and_shield_run",
+            "blend_in_seconds": 0.22,
+            "translation_source": "root_motion"
+        },
+        {
+            "name": "sword_and_shield_strafe",
+            "blend_in_seconds": 0.28,
+            "translation_source": "root_motion"
+        },
+        {
+            "name": "sword_and_shield_strafe_2",
+            "blend_in_seconds": 0.28,
+            "translation_source": "root_motion"
+        },
+        {
+            "name": "sword_and_shield_walk_grip",
+            "blend_in_seconds": 0.28,
+            "translation_source": "root_motion"
+        },
+        {
+            "name": "sword_and_shield_walk_2_grip",
+            "blend_in_seconds": 0.28,
+            "translation_source": "root_motion"
+        },
+        {
+            "name": "sword_and_shield_run_grip",
+            "blend_in_seconds": 0.22,
+            "translation_source": "root_motion"
+        },
+        {
+            "name": "sword_and_shield_strafe_grip",
+            "blend_in_seconds": 0.28,
+            "translation_source": "root_motion"
+        },
+        {
+            "name": "sword_and_shield_strafe_2_grip",
+            "blend_in_seconds": 0.28,
+            "translation_source": "root_motion"
+        },
+        {
             "name": "walking",
             "blend_in_seconds": 0.28,
             "translation_source": "root_motion"

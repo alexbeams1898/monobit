@@ -3,7 +3,7 @@
 #include "AppState.h"
 
 // Beat 4 class-picker modal: the Signing UI. Full-screen modal,
-// four options (Penitent / Heretic / Wretched / Refuse), two-step
+// four options (Penitent / Heretic / Ferine / Refuse), two-step
 // confirm, no back button. Per setting.md *The Signing and the
 // commit-fire* + locked [[project_crucible_censer_leveling_system]].
 //

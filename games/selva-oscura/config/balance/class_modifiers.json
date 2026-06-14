@@ -1,0 +1,14 @@
+{
+  "_comment": "Per-class flat modifiers applied to derived stat values per [[project_class_stats_v2_locked_2026_06_14]]. Distinct from soft-cap curves (which scale stat contributions) and from engine formulas (which are class-agnostic). These are values the CLASS itself contributes -- 'the burden-bearing soul carries more vital substance' -- separate from what the stat investment buys. Added AFTER soft-cap is applied to the stat input + the engine formula computes the derived value.",
+
+  "_schema": "Top-level key = modifier key (e.g. 'hp_offset'). Per-class sub-block = flat amount the class adds. Classes omitted from a block contribute 0 (no modifier). The Unburdened body lock at 1/1/1/1 means their modifiers fire too but their stat investment is bounded; today's Unburdened offset of 0 keeps them at the locked-floor HP per the cosmological refusal-to-install doctrine.",
+
+  "_v1_scope": "hp_offset only. Other modifiers (stamina_offset, poise_offset, etc.) land alongside the gameplay systems that consume them per the locked authoring pattern (add modifier when the value is needed for real tuning).",
+
+  "hp_offset": {
+    "penitent":   50,
+    "heretic":    15,
+    "ferine":     30,
+    "unburdened": 0
+  }
+}

@@ -71,6 +71,11 @@ struct Tunables
     // (default 0 = use this global).
     float loco_playback_rate = 1.0f;
 
+    // Extra multiplier applied while armed + sprinting -- the armed
+    // run clip is reused for the sprint tier and played faster
+    // instead of authoring a separate sprint clip.
+    float armed_sprint_run_multiplier = 1.4f;
+
     // Target speed (m/s) for the LAlt-held Walk tier (DS3 PC convention).
     // Calibrated to match walking.ozz's authored hip travel so the
     // foot doesn't visibly skate.
@@ -434,7 +439,8 @@ struct Tunables
 // new fields are added.
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     Tunables, time_scale, turn_rate_min, turn_rate_max, lockon_camera_yaw_rate,
-    lockon_body_yaw_rate, wasd_debounce_seconds, loco_playback_rate, walk_speed, jog_speed,
+    lockon_body_yaw_rate, wasd_debounce_seconds, loco_playback_rate,
+    armed_sprint_run_multiplier, walk_speed, jog_speed,
     sprint_speed, locomotion_accel, locomotion_decel, idle_to_walk_speed, walk_to_jog_speed,
     jog_to_sprint_speed, mouse_sensitivity, pitch_min, pitch_max, follow_distance, follow_height,
     fov_degrees, anim_blend_seconds, combat_idle_grace_seconds, combat_entry_delay_seconds,

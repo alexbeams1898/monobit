@@ -12,6 +12,15 @@
 #include <glm/vec3.hpp>
 
 #include <cstdint>
+
+namespace selva
+{
+// Forward decl to avoid pulling AppState.h (which transitively
+// includes many other headers) into every translation unit that
+// touches Actor.h. The definition lives in AppState.h; .cpp files
+// that actually use the enum value include AppState.h directly.
+enum class PlayerClass : std::uint8_t;
+} // namespace selva
 #include <limits>
 #include <random>
 #include <string>
@@ -164,18 +173,23 @@ struct Body
 // Derived max HP / stamina / poise from Body + Stats. Linear scaling for v1;
 // coefficients live in engine::ecs::FormulaConfig (loaded by
 // selva::formulas::current() from config/balance/formulas.json). Souls-style
-// diminishing curves replace these when balance work begins; call sites
-// don't change.
-int computeMaxHp(const Body& body, const Stats& stats);
+// diminishing curves are applied per
+// [[project_class_stats_v2_locked_2026_06_14]] via selva::softcaps;
+// the engine formula stays class-agnostic, the wrapper here applies
+// the per-class soft-cap on the stat input before the engine math
+// runs. `cls` is the active player's class; pass `PlayerClass::None`
+// for enemies (no soft-cap, raw engine formula).
+int computeMaxHp(const Body& body, const Stats& stats, PlayerClass cls);
 float computeMaxStamina(const Body& body, const Stats& stats);
 float computeMaxPoise(const Body& body, const Stats& stats);
 
 // Initialize the actor's mortal + action + stagger pools to full
 // from the archetype Body + Stats. Call once at spawn; thereafter
 // `current` changes through gameplay (damage, regen) while `max`
-// stays put until stats change (level-up later).
+// stays put until stats change (level-up later). `cls` propagates
+// to HP soft-cap; pass `PlayerClass::None` for enemies.
 void initActorPools(Health& hp, Stamina& stamina, Poise& poise, const Body& body,
-                    const Stats& stats);
+                    const Stats& stats, PlayerClass cls);
 
 // Apply per-Form defaults to Body + Stats before initActorPools runs.
 // Called at spawn time; archetype-level overrides (max_hp_override,
@@ -228,6 +242,30 @@ void applyDamage(Health& hp, const Body& body, int raw_damage);
 // Linear scaling for v1; diminishing-returns curve replaces this when
 // balance work begins -- the call site doesn't change, only the body.
 int computeAttackDamage(const Stats& attacker, float base, float str_scale, float dex_scale);
+
+// Full damage formula across all seven universal scaling axes (STR /
+// DEX / END / LCK / PER / COG / INT) plus an optional identity-stat
+// contribution. ItemDef populates the seven scalings from JSON;
+// Selva-side ItemExtensions carries identity_class + identity_scaling
+// (see [[class-stats-v2-locked-2026-06-14]] +
+// [[identity-stats-derived-erasure-locked-2026-06-14]]). The identity
+// term is `identity_value * identity_scaling` and contributes ONLY
+// when the wielder's class matches the weapon's identity_class -- the
+// resolution helper sets identity_value=0 for off-class wielders.
+struct DamageInputs
+{
+    float base_damage = 0.0f;
+    float str_scaling = 0.0f;
+    float dex_scaling = 0.0f;
+    float end_scaling = 0.0f;
+    float lck_scaling = 0.0f;
+    float per_scaling = 0.0f;
+    float cog_scaling = 0.0f;
+    float int_scaling = 0.0f;
+};
+
+int computeAttackDamage(const Stats& attacker, const DamageInputs& inputs,
+                        int identity_value, float identity_scaling);
 
 // What kind of intent driver an actor uses. Each per-frame tick
 // reads `actor.controller` and dispatches to the correct intent
@@ -767,7 +805,7 @@ int defaultLockOnPointIndex(const Actor& actor);
 // intent vector. Returns nullptr if intent is effectively zero.
 // Strafe wins any nonzero lateral input — diagonals are strafes.
 const char* directionalLocoClip(const glm::vec3& fwd, const glm::vec3& right,
-                                const glm::vec3& intent, LocoTier tier);
+                                const glm::vec3& intent, LocoTier tier, bool is_armed = false);
 
 // Reparent the actor's active attack hitbox (if any) to the bone
 // joint that drives it, using the current pose. Called per-frame

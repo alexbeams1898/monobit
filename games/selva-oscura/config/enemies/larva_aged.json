@@ -23,6 +23,15 @@
   "max_hp_override": 10,
   "sangue_drop": 2,
   "_comment_sangue_drop": "Aged larvae have absorbed more inward-firing imprint than fresh; killing them releases slightly more sangue. Still small-scale per [[project_imprint_handle_required_for_sangue]] -- playable amounts arrive at keeper-fall events, not trash kills. Trash baseline locked at order-of-magnitude single-digit per kill.",
+  "_comment_loot": "First slice of the loot table per [[project_items_loot_doctrine_locked]]: a single tier-0 material with reasonable base chance. LCK scales effective chance by formulas.json luck.drop_scale (default 15 -- LCK 1 baseline = 70% * 1.15 = 80.5% eff; LCK 10 caps near 100%). Uncommon and rare flavor entries come later when those items are authored. No weapons by doctrine.",
+  "loot_drops": [
+    {
+      "config_path": "config/items/materials/larval_residue.json",
+      "min": 1,
+      "max": 1,
+      "chance": 0.70
+    }
+  ],
   "chase_speed": 4.5,
   "tint_color": [0.55, 0.15, 0.12],
   "_comment_tint_color": "Sangue-darkened deep red -- the aged larva's substance has been saturated by centuries of inward-firing imprint. larva_fresh.tint_burn_target_archetype points here, so the fresh-to-aged burn-lerp ends on this exact color (smooth transition at the moment of conversion).",

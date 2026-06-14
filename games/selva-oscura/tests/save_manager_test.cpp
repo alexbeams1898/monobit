@@ -81,13 +81,20 @@ TEST_CASE("SaveManager deleteCharacter removes by name", "[save][delete]")
     cleanupTestFile(path);
 }
 
-TEST_CASE("SaveManager skips characters with empty names on load", "[save][robustness]")
+TEST_CASE("SaveManager keeps unnamed-but-real characters on load",
+          "[save][robustness][unnamed-character]")
 {
     const std::string path = testSavePath("empty-names");
     cleanupTestFile(path);
 
     // Write a save file manually with one empty-name character and one
-    // valid character; loader should drop the empty one.
+    // valid character. Per the unnamed-but-real-character doctrine
+    // (see ClassPickerScreen.cpp and the atomic Signing chain locked
+    // 2026-06-13): pre-Signing the active profile has an empty name
+    // and IS a real character that must round-trip through
+    // save/load. The loader keeps it. This test used to assert the
+    // empty-name entry was dropped; that was a pre-doctrine
+    // assumption.
     std::filesystem::create_directories(std::filesystem::path(path).parent_path());
     {
         FILE* f = std::fopen(path.c_str(), "w");
@@ -101,8 +108,9 @@ TEST_CASE("SaveManager skips characters with empty names on load", "[save][robus
     }
 
     const selva::SaveData loaded = selva::SaveManager::load(path);
-    REQUIRE(loaded.characters.size() == 1);
-    REQUIRE(loaded.characters[0].name == "VALID");
+    REQUIRE(loaded.characters.size() == 2);
+    REQUIRE(loaded.characters[0].name.empty());
+    REQUIRE(loaded.characters[1].name == "VALID");
 
     cleanupTestFile(path);
 }

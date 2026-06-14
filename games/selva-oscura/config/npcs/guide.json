@@ -11,7 +11,7 @@
       "line": "(TODO author: Guide's greeting line -- warm, glad-to-see-someone, no NPC names yet. Vagrant has no name; Guide is talking to a stranger.)",
       "show_when": {
         "flags_required": ["lupa_felled"],
-        "flags_forbidden": ["name_given"]
+        "flags_forbidden": ["signing_committed"]
       },
       "choices": [
         { "id": "continue", "label": "Continue.", "next_topic": "first_meeting_b" }

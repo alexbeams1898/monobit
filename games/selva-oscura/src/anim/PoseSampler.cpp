@@ -319,6 +319,9 @@ struct PoseSampler::Impl
     // advanceOneShotTrack.
     float one_shot_freeze_at_seconds = 0.0f;
 
+    // Optional cap on the effective clip duration. -1 = uncapped.
+    float one_shot_end_seconds = -1.0f;
+
     // When true, the freeze gate suppresses loco clip swaps during
     // this one-shot's Hold + BlendOut phases. Set true for dodges/
     // blocks (player wasn't intending a loco-stance change; the
@@ -850,6 +853,7 @@ void PoseSampler::playOneShot(const AnimationClip& clip, float blend_in_seconds,
     s.one_shot_freeze_at_seconds = std::max(0.0f, options.freeze_at_seconds);
     s.one_shot_freeze_loco = freeze_loco_during_one_shot;
     s.one_shot_cancel_fraction = std::clamp(options.cancel_fraction, 0.0f, 1.0f);
+    s.one_shot_end_seconds = options.end_seconds;
     // Discontinuity: pose will pop from locomotion to one-shot. Force
     // next-frame delta to zero so we don't emit a giant pose-snap
     // delta on the one-shot track. (Locomotion tracks keep their own
@@ -2591,8 +2595,12 @@ bool oneShotShouldEnterBlendOut(const PoseSampler::Impl& s, float blend_out_clip
 {
     if (s.one_shot_freeze_last)
         return false;
-    const float dur = s.one_shot.animation ? s.one_shot.animation->duration() : 0.0f;
-    return dur > 0.0f && s.one_shot.time_seconds >= dur - blend_out_clip_time;
+    const float clip_dur = s.one_shot.animation ? s.one_shot.animation->duration() : 0.0f;
+    const float effective_dur =
+        (s.one_shot_end_seconds >= 0.0f && s.one_shot_end_seconds < clip_dur)
+            ? s.one_shot_end_seconds
+            : clip_dur;
+    return effective_dur > 0.0f && s.one_shot.time_seconds >= effective_dur - blend_out_clip_time;
 }
 
 // BlendIn step: ramp weight up; promote to Hold once full.
@@ -2712,11 +2720,20 @@ void extractTrackHipDelta(Track& t, int hip_soa, int hip_lane)
         return;
     }
 
-    // Loop-wrap frames return hip to clip start — that's an artifact
-    // of looping, not a gameplay step. Discard the wrap-frame delta.
-    if (t.just_wrapped || !t.last_hip_xz_valid)
+    // Loop-wrap frames return hip to clip start. Naive subtract would
+    // produce a large negative delta (jumping the actor backward).
+    // First-frame (no prior hip yet) zero is correct.
+    // Mid-loop wrap: keep the prior frame's delta so motion stays
+    // continuous through the seam, otherwise the actor visibly stops
+    // for one frame every clip-duration -- a periodic snap on short
+    // clips (e.g. sword_and_shield_run_grip at 0.70s).
+    if (!t.last_hip_xz_valid)
     {
         t.last_hip_delta = glm::vec3(0.0f);
+    }
+    else if (t.just_wrapped)
+    {
+        // Keep last_hip_delta as the previous frame's value (do nothing).
     }
     else
     {

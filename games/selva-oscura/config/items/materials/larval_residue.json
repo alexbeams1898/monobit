@@ -1,0 +1,9 @@
+{
+  "_comment": "Tier-0 material dropped by aged soul-larvae. Cosmologically: the unfired imprint discharged inward over centuries hollowed the soul out; what remains in the husk at second death is residue -- dried-out substrate that no longer holds the imprint shape. Useful only in early Wood-craft (crude bindings, padding for grips). Per [[project_implied_lesson_doctrine]] the name is tier-0 sensory English; Italian or cosmological-anchor labels arrive only after gating insights fire. Per the unified-Commedia voice doctrine, the description carries that register without modern phrasing.",
+  "name": "Dried residue",
+  "description": "A papery flake the colour of old blood. It crumbles between the fingers and smells of something that has long since finished burning.",
+  "category": "material",
+  "rarity": "very_common",
+  "stackable": true,
+  "max_stack": 99
+}

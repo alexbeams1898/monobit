@@ -1,0 +1,9 @@
+{
+  "_comment": "Tier-0 refined material. Three larval residues compacted into a single denser flake. The first crafted material; produced by the distill_larval_residue recipe.",
+  "name": "Compacted residue",
+  "description": "Three layers of dried residue pressed flat. The colour deepens at the seam where they joined; faintly warm against the palm.",
+  "category": "material",
+  "rarity": "common",
+  "stackable": true,
+  "max_stack": 99
+}

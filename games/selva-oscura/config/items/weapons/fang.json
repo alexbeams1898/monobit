@@ -1,0 +1,22 @@
+{
+  "_comment": "Tier-0 starter for the Ferine path. A fang torn from a contrapasso-warped damned soul -- body-residue from the bolge where rage tore tooth-from-jaw (Inferno VII avaricious/prodigal; the gluttons mauled by Cerberus in Canto VI). Per [[project_class_stats_v2_locked_2026_06_14]] descent-stair starter doctrine: scales for the class without being class-named. Per [[project_ferine_mouth_slot_locked_2026_06_14]] this item ships in the ARM slot for v1 (held as a knuckle/grip weapon) and is named so the same item can MOVE to the mouth slot at Ferine L2 evolution without renaming. Bone is Dante-grounded; this is bone shaped into a piercing tooth, the body becoming-weapon. Scales primarily on STR (Ferine's high-soft-cap stat) with END (the predation requires endurance). Identity contribution from Predation in a Ferine's hands. Mundane name -- just a fang.",
+
+  "name": "Fang",
+  "description": "A long curved tooth, root-end wrapped in sinew to make a grip. Holds the warmth of what it was torn from.",
+  "category": "weapon",
+  "rarity": "common",
+  "stackable": false,
+  "max_stack": 1,
+  "max_durability": 70.0,
+
+  "base_damage": 11.0,
+  "weight": 0.4,
+
+  "str_scaling": 1.0,
+  "end_scaling": 0.5,
+  "str_requirement": 1,
+
+  "identity_class": "ferine",
+  "identity_stat_scaling": 0.75,
+  "identity_stat_requirement": 0
+}

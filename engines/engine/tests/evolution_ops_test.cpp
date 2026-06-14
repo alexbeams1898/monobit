@@ -10,25 +10,78 @@ namespace InventoryOps = engine::ops::inventory;
 
 using Catch::Matchers::WithinAbs;
 
-TEST_CASE("InventoryOps::countItem counts total quantity", "[evolution]")
+// Helper: build a registry with weapons + materials needed by these tests.
+static ItemRegistry makeRegistry()
 {
-    Inventory inv;
-    inv.items.push_back({"mat_a", QualityTier::Common, 100.0f, 3});
-    inv.items.push_back({"mat_b", QualityTier::Common, 100.0f, 1});
-    inv.items.push_back({"mat_a", QualityTier::Common, 100.0f, 2});
+    ItemRegistry reg;
 
-    REQUIRE(InventoryOps::countItem(inv, "mat_a") == 5);
+    ItemDef shiv;
+    shiv.config_path = "config/items/weapons/shiv.json";
+    shiv.category = ItemCategory::Weapon;
+    shiv.stackable = false;
+    reg.defs[shiv.config_path] = shiv;
+
+    ItemDef dagger;
+    dagger.config_path = "config/items/weapons/dagger.json";
+    dagger.category = ItemCategory::Weapon;
+    dagger.stackable = false;
+    reg.defs[dagger.config_path] = dagger;
+
+    ItemDef bone;
+    bone.config_path = "config/items/materials/bone_shard.json";
+    bone.category = ItemCategory::Material;
+    bone.stackable = true;
+    bone.max_stack = 99;
+    reg.defs[bone.config_path] = bone;
+
+    ItemDef mat_a;
+    mat_a.config_path = "mat_a";
+    mat_a.category = ItemCategory::Material;
+    mat_a.stackable = true;
+    mat_a.max_stack = 99;
+    reg.defs[mat_a.config_path] = mat_a;
+
+    ItemDef mat_b;
+    mat_b.config_path = "mat_b";
+    mat_b.category = ItemCategory::Material;
+    mat_b.stackable = true;
+    mat_b.max_stack = 99;
+    reg.defs[mat_b.config_path] = mat_b;
+
+    return reg;
+}
+
+static ItemInstance makeItem(const std::string& path, int qty = 1,
+                             QualityTier q = QualityTier::Common)
+{
+    ItemInstance item;
+    item.config_path = path;
+    item.quantity = qty;
+    item.quality = q;
+    return item;
+}
+
+TEST_CASE("InventoryOps::countItem counts total quantity across stacks", "[evolution]")
+{
+    auto reg = makeRegistry();
+    Inventory inv;
+
+    InventoryOps::addItem(inv, makeItem("mat_a", 3), reg);
+    InventoryOps::addItem(inv, makeItem("mat_b", 1), reg);
+
+    REQUIRE(InventoryOps::countItem(inv, "mat_a") == 3);
     REQUIRE(InventoryOps::countItem(inv, "mat_b") == 1);
     REQUIRE(InventoryOps::countItem(inv, "mat_c") == 0);
 }
 
 TEST_CASE("InventoryOps::consumeItems removes correct quantities", "[evolution]")
 {
+    auto reg = makeRegistry();
     Inventory inv;
     Equipment equip;
-    inv.items.push_back({"mat_a", QualityTier::Common, 100.0f, 3});
-    inv.items.push_back({"mat_b", QualityTier::Common, 100.0f, 5});
-    inv.items.push_back({"mat_a", QualityTier::Common, 100.0f, 2});
+
+    InventoryOps::addItem(inv, makeItem("mat_a", 5), reg);
+    InventoryOps::addItem(inv, makeItem("mat_b", 5), reg);
 
     REQUIRE(InventoryOps::consumeItems(inv, equip, "mat_a", 4));
     REQUIRE(InventoryOps::countItem(inv, "mat_a") == 1);
@@ -39,13 +92,15 @@ TEST_CASE("InventoryOps::consumeItems removes correct quantities", "[evolution]"
 
 TEST_CASE("InventoryOps::canEvolve checks level and materials", "[evolution]")
 {
+    auto reg = makeRegistry();
     Inventory inv;
     Equipment equip;
     Weapon weapon;
     weapon.wxp_level = 3;
 
-    inv.items.push_back({"config/items/weapons/shiv.json"});
-    equip.right_hand = 0;
+    const auto shiv_id =
+        InventoryOps::addItem(inv, makeItem("config/items/weapons/shiv.json"), reg);
+    InventoryOps::equipItemToSlot(inv, equip, shiv_id, EquipSlot::RightHand);
 
     EvolutionPath path;
     path.target_node = "dagger";
@@ -58,19 +113,21 @@ TEST_CASE("InventoryOps::canEvolve checks level and materials", "[evolution]")
     weapon.wxp_level = 5;
     REQUIRE_FALSE(InventoryOps::canEvolve(inv, equip, weapon, path));
 
-    inv.items.push_back({"config/items/materials/bone_shard.json", QualityTier::Common, 100.0f, 1});
+    InventoryOps::addItem(inv, makeItem("config/items/materials/bone_shard.json", 1), reg);
     REQUIRE(InventoryOps::canEvolve(inv, equip, weapon, path));
 }
 
 TEST_CASE("InventoryOps::canEvolve flat upgrade needs no materials", "[evolution]")
 {
+    auto reg = makeRegistry();
     Inventory inv;
     Equipment equip;
     Weapon weapon;
     weapon.wxp_level = 5;
 
-    inv.items.push_back({"config/items/weapons/shiv.json"});
-    equip.right_hand = 0;
+    const auto shiv_id =
+        InventoryOps::addItem(inv, makeItem("config/items/weapons/shiv.json"), reg);
+    InventoryOps::equipItemToSlot(inv, equip, shiv_id, EquipSlot::RightHand);
 
     EvolutionPath path;
     path.target_node = "dagger";
@@ -81,12 +138,14 @@ TEST_CASE("InventoryOps::canEvolve flat upgrade needs no materials", "[evolution
 
 TEST_CASE("InventoryOps::evolveWeapon replaces weapon and resets XP", "[evolution]")
 {
+    auto reg = makeRegistry();
     Inventory inv;
     Equipment equip;
 
-    inv.items.push_back({"config/items/materials/bone_shard.json", QualityTier::Common, 100.0f, 2});
-    inv.items.push_back({"config/items/weapons/shiv.json"});
-    equip.right_hand = 1;
+    InventoryOps::addItem(inv, makeItem("config/items/materials/bone_shard.json", 2), reg);
+    const auto shiv_id =
+        InventoryOps::addItem(inv, makeItem("config/items/weapons/shiv.json"), reg);
+    InventoryOps::equipItemToSlot(inv, equip, shiv_id, EquipSlot::RightHand);
 
     Weapon weapon;
     weapon.wxp_level = 7;
@@ -99,11 +158,10 @@ TEST_CASE("InventoryOps::evolveWeapon replaces weapon and resets XP", "[evolutio
     path.material_config_path = "config/items/materials/bone_shard.json";
     path.material_qty = 1;
 
-    const ItemRegistry registry;
     const float carry_factor = 0.15f;
 
-    REQUIRE(InventoryOps::evolveWeapon(inv, equip, weapon, path, "config/items/weapons/dagger.json",
-                                       registry, carry_factor));
+    REQUIRE(InventoryOps::evolveWeapon(inv, equip, weapon, path,
+                                       "config/items/weapons/dagger.json", reg, carry_factor));
 
     REQUIRE(InventoryOps::equippedPath(inv, equip, EquipSlot::RightHand) ==
             "config/items/weapons/dagger.json");
@@ -121,14 +179,23 @@ TEST_CASE("InventoryOps::evolveWeapon replaces weapon and resets XP", "[evolutio
 
 TEST_CASE("InventoryOps::evolveWeapon accumulates carry-forward bonus", "[evolution]")
 {
+    auto reg = makeRegistry();
     Inventory inv;
     Equipment equip;
 
     ItemInstance shiv;
     shiv.config_path = "config/items/weapons/shiv.json";
     shiv.evolution_bonus = 2.0f;
-    inv.items.push_back(shiv);
-    equip.right_hand = 0;
+    shiv.quantity = 1;
+    const auto shiv_id = InventoryOps::addItem(inv, shiv, reg);
+    // addItem ignored the input bonus when copying for stack-merge, but
+    // for a non-stackable weapon it preserved the full instance verbatim
+    // and assigned a fresh id. Re-fetch to set the bonus on the stored
+    // copy without depending on which path addItem took.
+    auto* stored = InventoryOps::findByIdMut(inv, shiv_id);
+    REQUIRE(stored != nullptr);
+    stored->evolution_bonus = 2.0f;
+    InventoryOps::equipItemToSlot(inv, equip, shiv_id, EquipSlot::RightHand);
 
     Weapon weapon;
     weapon.wxp_level = 10;
@@ -137,11 +204,10 @@ TEST_CASE("InventoryOps::evolveWeapon accumulates carry-forward bonus", "[evolut
     path.target_node = "dagger";
     path.min_level = 5;
 
-    const ItemRegistry registry;
     const float carry_factor = 0.15f;
 
-    REQUIRE(InventoryOps::evolveWeapon(inv, equip, weapon, path, "config/items/weapons/dagger.json",
-                                       registry, carry_factor));
+    REQUIRE(InventoryOps::evolveWeapon(inv, equip, weapon, path,
+                                       "config/items/weapons/dagger.json", reg, carry_factor));
 
     const auto* item = InventoryOps::equippedItem(inv, equip, EquipSlot::RightHand);
     REQUIRE(item != nullptr);

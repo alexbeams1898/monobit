@@ -1,0 +1,34 @@
+{
+  "_comment": "Tier-0 starter for the Penitent path. A lead-headed mace -- the metal that crushes the hypocrites in their gilded cloaks (Inferno XXIII). Per [[project_class_stats_v2_locked_2026_06_14]] descent-stair starter doctrine: scales for the class without being class-named. Hell-substrate Hell-craft, left by a prior Vagrant who carried it down. Lead is the cosmologically perfect material for the Penitent: the punishment IS weight (Canto XXIII), the path is weight and struggle. The mace's head pulls the wielder forward into the swing -- endurance carries the verb. Scales primarily on END (Penitent's high-soft-cap stat) with STR contributing to the raw crush. Identity contribution from Penance in a Penitent's hands. Mundane name -- just a lead mace.",
+
+  "name": "Lead mace",
+  "description": "A lead head set on an iron haft. The weight pulls forward of its own will -- the swing wants only to be allowed.",
+  "category": "weapon",
+  "rarity": "common",
+  "stackable": false,
+  "max_stack": 1,
+  "max_durability": 120.0,
+
+  "visual_weapon": "assets/weapons/lead_mace/lead_mace.gltf",
+  "weapon_class_id": "sword",
+
+  "base_damage": 12.0,
+  "weight": 3.2,
+
+  "str_scaling": 0.6,
+  "end_scaling": 1.0,
+  "str_requirement": 1,
+  "end_requirement": 1,
+
+  "identity_class": "penitent",
+  "identity_stat_scaling": 0.75,
+  "identity_stat_requirement": 0,
+
+  "grip_offset_x": -0.065,
+  "grip_offset_y": 0.030,
+  "grip_offset_z": 0.015,
+  "grip_rot_deg_x": 12.5,
+  "grip_rot_deg_y": -6.2,
+  "grip_rot_deg_z": -67.4,
+  "grip_scale": 1.0
+}

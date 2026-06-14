@@ -148,9 +148,9 @@ TEST_CASE("commitVessel for unburdened routes vessel into riversato", "[sangue][
     REQUIRE(p.sangue_riversato == 350u); // 100 + 250
 }
 
-TEST_CASE("commitVessel for Heretic and Wretched also fire Crucible", "[sangue][commit][crucible]")
+TEST_CASE("commitVessel for Heretic and Ferine also fire Crucible", "[sangue][commit][crucible]")
 {
-    for (auto c : {selva::PlayerClass::Heretic, selva::PlayerClass::Wretched})
+    for (auto c : {selva::PlayerClass::Heretic, selva::PlayerClass::Ferine})
     {
         selva::PlayerProfile p;
         p.sangue_vessel = 50u;

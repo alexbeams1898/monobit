@@ -15,49 +15,56 @@ using engine::ecs::QualityTier;
 namespace
 {
 
-int countItem(const Inventory& inv, const std::string& config_path)
+// Consume a quantity of `config_path`, smallest-quality stacks first
+// (preserve best materials for future crafts). Removes empty stacks.
+// Returns the sum of quality-tier-indices consumed for averaging the
+// output quality.
+int consumeItemForCraft(Inventory& inv, const std::string& config_path, int quantity)
 {
-    int total = 0;
-    for (const auto& slot : inv.items)
+    // Collect (category_key, index) pairs of all matching stacks across
+    // every bucket, sort by quality, then consume in order.
+    struct Hit
     {
-        if (slot.config_path == config_path)
-            total += slot.quantity;
-    }
-    return total;
-}
-
-// Consume a quantity, smallest-quality stacks first (preserve best
-// materials). Returns the sum of quality-tier-indices consumed for
-// averaging the output quality.
-int consumeItem(Inventory& inv, const std::string& config_path, int quantity)
-{
-    std::vector<int> matches;
-    for (int i = 0; i < static_cast<int>(inv.items.size()); ++i)
+        std::string bucket;
+        int index;
+        int quality_idx;
+    };
+    std::vector<Hit> matches;
+    for (auto& [bucket, items] : inv.by_category)
     {
-        if (inv.items[i].config_path == config_path)
-            matches.push_back(i);
+        for (int i = 0; i < static_cast<int>(items.size()); ++i)
+        {
+            if (items[i].config_path == config_path)
+                matches.push_back({bucket, i, static_cast<int>(items[i].quality)});
+        }
     }
 
     std::sort(matches.begin(), matches.end(),
-              [&inv](int a, int b) { return inv.items[a].quality < inv.items[b].quality; });
+              [](const Hit& a, const Hit& b) { return a.quality_idx < b.quality_idx; });
 
     int remaining = quantity;
     int quality_sum = 0;
-    for (const int idx : matches)
+    for (const auto& m : matches)
     {
         if (remaining <= 0)
             break;
-        const int take = std::min(remaining, inv.items[idx].quantity);
-        quality_sum += static_cast<int>(inv.items[idx].quality) * take;
-        inv.items[idx].quantity -= take;
+        auto& stack = inv.by_category[m.bucket][m.index];
+        const int take = std::min(remaining, stack.quantity);
+        quality_sum += static_cast<int>(stack.quality) * take;
+        stack.quantity -= take;
         remaining -= take;
     }
 
-    // Remove empty stacks (reverse order preserves indices).
-    for (int i = static_cast<int>(inv.items.size()) - 1; i >= 0; --i)
+    // Remove empty stacks (reverse index order within each bucket so
+    // erasing one doesn't invalidate the indices of others we still
+    // want to touch).
+    for (auto& [bucket, items] : inv.by_category)
     {
-        if (inv.items[i].quantity <= 0 && inv.items[i].config_path == config_path)
-            inv.items.erase(inv.items.begin() + i);
+        for (int i = static_cast<int>(items.size()) - 1; i >= 0; --i)
+        {
+            if (items[i].quantity <= 0 && items[i].config_path == config_path)
+                items.erase(items.begin() + i);
+        }
     }
 
     return quality_sum;
@@ -69,7 +76,7 @@ bool canCraft(const Inventory& inv, const RecipeDef& recipe, const ItemRegistry&
 {
     for (const auto& ing : recipe.inputs)
     {
-        if (countItem(inv, ing.config_path) < ing.quantity)
+        if (engine::ops::inventory::countItem(inv, ing.config_path) < ing.quantity)
             return false;
     }
     return true;
@@ -81,27 +88,6 @@ bool craft(Inventory& inv, const RecipeDef& recipe, const ItemRegistry& registry
     if (!canCraft(inv, recipe, registry))
         return false;
 
-    // Pre-check: ensure output has room before consuming materials.
-    // Consuming inputs frees slots, so check pessimistically (current
-    // state). Stackable outputs that can merge into an existing stack
-    // always succeed.
-    const ItemDef* out_def = registry.find(recipe.output_item);
-    const bool output_stackable = out_def != nullptr && out_def->stackable;
-    bool output_can_merge = false;
-    if (output_stackable)
-    {
-        const int max_stack = out_def->max_stack;
-        int free_space = 0;
-        for (const auto& slot : inv.items)
-        {
-            if (slot.config_path == recipe.output_item && slot.quantity < max_stack)
-                free_space += max_stack - slot.quantity;
-        }
-        output_can_merge = free_space >= recipe.output_quantity;
-    }
-    if (!output_can_merge && static_cast<int>(inv.items.size()) >= inv.max_slots)
-        return false;
-
     // Consume ingredients, tracking quality for output.
     int total_quality = 0;
     int total_items = 0;
@@ -109,7 +95,7 @@ bool craft(Inventory& inv, const RecipeDef& recipe, const ItemRegistry& registry
     {
         for (const auto& ing : recipe.inputs)
         {
-            total_quality += consumeItem(inv, ing.config_path, ing.quantity);
+            total_quality += consumeItemForCraft(inv, ing.config_path, ing.quantity);
             total_items += ing.quantity;
         }
     }
