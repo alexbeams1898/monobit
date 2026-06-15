@@ -54,9 +54,9 @@ void tickNotifications(float dt)
         n.timer -= dt;
         n.y_offset += kRiseSpeedPxPerSec * dt;
     }
-    s.erase(std::remove_if(s.begin(), s.end(),
-                           [](const Notification& n) { return n.timer <= 0.0f; }),
-            s.end());
+    s.erase(
+        std::remove_if(s.begin(), s.end(), [](const Notification& n) { return n.timer <= 0.0f; }),
+        s.end());
 }
 
 void renderNotifications()
@@ -78,8 +78,7 @@ void renderNotifications()
     for (auto it = s.rbegin(); it != s.rend(); ++it)
     {
         const Notification& n = *it;
-        const float fade_alpha =
-            std::clamp(n.timer / kFadeWindow, 0.0f, 1.0f);
+        const float fade_alpha = std::clamp(n.timer / kFadeWindow, 0.0f, 1.0f);
 
         const ImVec2 text_size = ImGui::CalcTextSize(n.text.c_str());
         const float icon_slot = n.icon_path.empty() ? 0.0f : (kIconSizePx + kPadX);
@@ -92,8 +91,8 @@ void renderNotifications()
         // Background: dark panel scaled by fade.
         const int bg_alpha = static_cast<int>(140.0f * fade_alpha);
         const ImU32 bg_color = IM_COL32(0, 0, 0, bg_alpha);
-        fg->AddRectFilled(ImVec2(box_x, box_y), ImVec2(box_x + box_w, box_y + box_h),
-                          bg_color, 4.0f);
+        fg->AddRectFilled(ImVec2(box_x, box_y), ImVec2(box_x + box_w, box_y + box_h), bg_color,
+                          4.0f);
 
         // Icon slot reserved (filled when texture binding lands).
         // For now: a faint rounded square placeholder so authors

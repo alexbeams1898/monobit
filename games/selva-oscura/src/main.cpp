@@ -30,6 +30,7 @@
 #include "gameplay/PerFrameTick.h"
 #include "gameplay/PlayerState.h"
 #include "gameplay/PropArchetype.h"
+#include "gather/GatherSpawner.h"
 #include "identity/Identity.h"
 #include "insight/Insight.h"
 #include "items/CategoryRegistry.h"
@@ -37,6 +38,7 @@
 #include "lang/Language.h"
 #include "render/Camera.h"
 #include "render/LightSpritePass.h"
+#include "render/PickupSpritePass.h"
 #include "render/RegionGeometry.h"
 #include "render/RegionShaders.h"
 #include "render/ShadowPass.h"
@@ -262,6 +264,11 @@ bool initRenderSubsystems()
         std::fprintf(stderr, "Light sprite pass init failed\n");
         return false;
     }
+    if (!selva::render::initPickupSpritePass())
+    {
+        std::fprintf(stderr, "Pickup sprite pass init failed\n");
+        return false;
+    }
     return true;
 }
 
@@ -353,6 +360,7 @@ void initGameplaySubsystems()
     // FlowSpawner AFTER archetypes() (each flow validates its archetype
     // reference at load time).
     selva::spawn::initFlowSpawner();
+    selva::gather::initGatherSpawner();
     selva::gameplay::initBehaviorTrees();
     // Region bodies + meshes were registered at boot, but enemy
     // spawning needs archetypes + trees loaded first.

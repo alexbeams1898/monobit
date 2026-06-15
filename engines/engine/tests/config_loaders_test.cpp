@@ -6,13 +6,13 @@
 #include "ecs/ConfigLoaders.h"
 #include "ecs/Items.h"
 
-#include <catch2/catch_approx.hpp>
-#include <catch2/catch_test_macros.hpp>
-
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <string>
+
+#include <catch2/catch_approx.hpp>
+#include <catch2/catch_test_macros.hpp>
 
 using Catch::Approx;
 
@@ -23,8 +23,7 @@ namespace fs = std::filesystem;
 
 const fs::path kTmpRoot = "tmp/engine-config-loaders-tests";
 
-std::string writeFile(const std::string& subdir, const std::string& name,
-                      const std::string& body)
+std::string writeFile(const std::string& subdir, const std::string& name, const std::string& body)
 {
     const fs::path dir = kTmpRoot / subdir;
     std::error_code ec;
@@ -119,6 +118,7 @@ TEST_CASE("ItemDef fields default to zero when absent from JSON", "[engine][conf
     REQUIRE(def.per_requirement == 0);
     REQUIRE(def.weapon_class_id.empty());
     REQUIRE(def.visual_weapon.empty());
+    REQUIRE(def.world_mesh.empty());
     REQUIRE(def.grip_offset_x == Approx(0.0f));
     REQUIRE(def.grip_offset_y == Approx(0.0f));
     REQUIRE(def.grip_offset_z == Approx(0.0f));
@@ -128,7 +128,8 @@ TEST_CASE("ItemDef fields default to zero when absent from JSON", "[engine][conf
     REQUIRE(def.grip_scale == Approx(1.0f));
 }
 
-TEST_CASE("ItemDef loads grip_offset / grip_rot / grip_scale fields", "[engine][config][item][grip]")
+TEST_CASE("ItemDef loads grip_offset / grip_rot / grip_scale fields",
+          "[engine][config][item][grip]")
 {
     clearDir("itemgrip");
     const std::string body = R"({
@@ -161,6 +162,29 @@ TEST_CASE("ItemDef loads grip_offset / grip_rot / grip_scale fields", "[engine][
     REQUIRE(def.grip_scale == Approx(1.25f));
 }
 
+TEST_CASE("ItemDef loads world_mesh field for pickup rendering",
+          "[engine][config][item][world_mesh]")
+{
+    clearDir("itemworldmesh");
+    const std::string body = R"({
+        "name": "Bark scrap",
+        "category": "material",
+        "rarity": "common",
+        "stackable": true,
+        "max_stack": 99,
+        "world_mesh": "assets/world/materials/bark_scrap/bark_scrap.glb"
+    })";
+    writeFile("itemworldmesh", "bark_scrap.json", body);
+
+    engine::ecs::ItemRegistry reg;
+    REQUIRE(engine::ecs::loadItemRegistry(reg, (kTmpRoot / "itemworldmesh").generic_string()) == 1);
+    const auto& def = reg.defs.begin()->second;
+    REQUIRE(def.world_mesh == "assets/world/materials/bark_scrap/bark_scrap.glb");
+    REQUIRE(def.category == engine::ecs::ItemCategory::Material);
+    REQUIRE(def.stackable);
+    REQUIRE(def.max_stack == 99);
+}
+
 TEST_CASE("ItemCategory parses Incantation and Invocation strings",
           "[engine][config][item][category]")
 {
@@ -171,23 +195,20 @@ TEST_CASE("ItemCategory parses Incantation and Invocation strings",
               R"({"name":"Pray","category":"invocation","rarity":"common"})");
     writeFile("itemcat", "weapon.json",
               R"({"name":"Blade","category":"weapon","rarity":"common"})");
-    writeFile("itemcat", "armor.json",
-              R"({"name":"Vest","category":"armor","rarity":"common"})");
+    writeFile("itemcat", "armor.json", R"({"name":"Vest","category":"armor","rarity":"common"})");
     writeFile("itemcat", "consum.json",
               R"({"name":"Potion","category":"consumable","rarity":"common"})");
     writeFile("itemcat", "material.json",
               R"({"name":"Bone","category":"material","rarity":"common"})");
-    writeFile("itemcat", "key.json",
-              R"({"name":"Key","category":"key_item","rarity":"common"})");
-    writeFile("itemcat", "money.json",
-              R"({"name":"Gold","category":"money","rarity":"common"})");
-    writeFile("itemcat", "acc.json",
-              R"({"name":"Ring","category":"accessory","rarity":"common"})");
+    writeFile("itemcat", "key.json", R"({"name":"Key","category":"key_item","rarity":"common"})");
+    writeFile("itemcat", "money.json", R"({"name":"Gold","category":"money","rarity":"common"})");
+    writeFile("itemcat", "acc.json", R"({"name":"Ring","category":"accessory","rarity":"common"})");
 
     engine::ecs::ItemRegistry reg;
     REQUIRE(engine::ecs::loadItemRegistry(reg, (kTmpRoot / "itemcat").generic_string()) == 9);
 
-    auto byName = [&](const char* name) -> const engine::ecs::ItemDef* {
+    auto byName = [&](const char* name) -> const engine::ecs::ItemDef*
+    {
         for (const auto& [_, d] : reg.defs)
             if (d.name == name)
                 return &d;

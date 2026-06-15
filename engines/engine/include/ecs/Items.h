@@ -166,6 +166,15 @@ struct ItemDef
     float fire_rate = 0.0f;
     float stamina_cost = -1.0f;
 
+    // Path to a static mesh (.glb / .gltf) drawn at this item's
+    // pickup position when it sits in the world (as a dropped pickup
+    // or a procedurally-spawned gather node). Empty = no mesh; the
+    // pickup falls back to the per-game glow-sprite rendering.
+    // Materials and small props use this; weapons typically keep
+    // their glow rendering instead so the player can spot them at
+    // distance. Path is resolved by the per-game pickup-mesh render
+    // pass against the static-mesh loader.
+    std::string world_mesh;
     // Visual weapon fields. 2D-specific (sprite grip points) but kept on
     // the engine ItemDef so a port doesn't need a per-game schema split.
     // 3D games ignore the grip_* / weapon_icon fields; they're harmless.
@@ -318,6 +327,26 @@ struct Loot
     int xp_drop = 20;
     int level = 1;
     std::vector<DropEntry> drops;
+};
+
+// Weighted-selection pool: pick ONE entry from this distribution.
+// Sibling to Loot/DropEntry which models INDEPENDENT probabilities
+// for multi-drop events (enemy kills, container opens). WeightedPool
+// models pick-one-from-distribution events (gather node spawn type,
+// random encounter selection, future skill-mod rolls).
+//
+// Weights are relative integers; the roll helper normalizes by sum,
+// so authors can edit one entry's weight without re-balancing the
+// others. Empty pool returns empty config_path on roll.
+struct WeightedEntry
+{
+    std::string config_path;
+    int weight = 1;
+};
+
+struct WeightedPool
+{
+    std::vector<WeightedEntry> entries;
 };
 
 // Crafting recipe definition.

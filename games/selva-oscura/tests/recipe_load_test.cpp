@@ -7,9 +7,9 @@
 #include "ecs/Items.h"
 #include "items/ItemRegistry.h"
 
-#include <catch2/catch_test_macros.hpp>
-
 #include <algorithm>
+
+#include <catch2/catch_test_macros.hpp>
 
 TEST_CASE("loadRecipeDirectory populates the registry from disk", "[recipes][load]")
 {
@@ -19,10 +19,9 @@ TEST_CASE("loadRecipeDirectory populates the registry from disk", "[recipes][loa
 
     // The shipped distill_larval_residue recipe must be present with
     // the expected inputs / output.
-    const auto it = std::find_if(reg.recipes.begin(), reg.recipes.end(),
-                                  [](const engine::ecs::RecipeDef& r) {
-                                      return r.name == "Compact residue";
-                                  });
+    const auto it =
+        std::find_if(reg.recipes.begin(), reg.recipes.end(),
+                     [](const engine::ecs::RecipeDef& r) { return r.name == "Compact residue"; });
     REQUIRE(it != reg.recipes.end());
     REQUIRE(it->output_item == "config/items/materials/refined_residue.json");
     REQUIRE(it->output_quantity == 1);

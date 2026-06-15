@@ -35,6 +35,11 @@ struct Pickup
 {
     Id id = kInvalidId;
     glm::vec3 world_pos{0.0f, 0.0f, 0.0f};
+    // World-space yaw (radians) for mesh-rendered pickups. Random per
+    // pickup so adjacent gather nodes don't face the same way; static
+    // 0 for sprite-rendered pickups (sprite billboards the camera so
+    // yaw is irrelevant). Set by the spawn caller via spawnPickupYawed.
+    float world_yaw = 0.0f;
     engine::ecs::ItemInstance item;
     engine::ecs::Rarity rarity = engine::ecs::Rarity::Common;
     engine::ecs::QualityTier quality = engine::ecs::QualityTier::Common;
@@ -66,11 +71,13 @@ using OnGranted = std::function<void()>;
 // the Pickup for HUD coloring. `source_actor_id` ties the pickup
 // to a specific corpse for lifetime tracking; empty = permanent
 // (no auto-despawn). `on_granted` fires after a successful grant;
-// empty = no hook. Returns the new pickup Id, or kInvalidId if
-// the item's config_path is unknown to the registry.
+// empty = no hook. `world_yaw` (radians) is the Y rotation applied
+// when the pickup renders as a static mesh; 0 = no rotation. Returns
+// the new pickup Id, or kInvalidId if the item's config_path is
+// unknown to the registry.
 Id spawnPickup(const glm::vec3& world_pos, const engine::ecs::ItemInstance& item,
                const std::string& source_actor_id = std::string{},
-               OnGranted on_granted = OnGranted{});
+               OnGranted on_granted = OnGranted{}, float world_yaw = 0.0f);
 
 // Per-frame: drop pickups whose source corpse has vanished (faded
 // completely, or no longer exists in the actor pool). Called from

@@ -240,8 +240,8 @@ static void renderDebugSection(selva::tuning::Tunables& tun)
                     selva::hasFlag(profile, "signing_committed") ? "yes" : "no");
         const char* commit_labels[] = {"As Penitent", "As Heretic", "As Ferine", "As Unburdened"};
         const selva::PlayerClass commit_classes[] = {
-            selva::PlayerClass::Penitent, selva::PlayerClass::Heretic,
-            selva::PlayerClass::Ferine, selva::PlayerClass::Unburdened};
+            selva::PlayerClass::Penitent, selva::PlayerClass::Heretic, selva::PlayerClass::Ferine,
+            selva::PlayerClass::Unburdened};
         for (int i = 0; i < 4; ++i)
         {
             if (i > 0)

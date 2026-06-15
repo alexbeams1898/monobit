@@ -85,8 +85,7 @@ void grantPickup(Id pickup_id)
     const engine::ecs::ItemDef* def = registry.find(p->item.config_path);
     const std::string display_name =
         (def != nullptr && !def->name.empty()) ? def->name : p->item.config_path;
-    const engine::ecs::Rarity rarity =
-        (def != nullptr) ? def->rarity : engine::ecs::Rarity::Common;
+    const engine::ecs::Rarity rarity = (def != nullptr) ? def->rarity : engine::ecs::Rarity::Common;
 
     // Compendium check BEFORE addItem so the toast can reflect
     // first-time-ever discovery vs repeat. discover() returns true
@@ -103,8 +102,7 @@ void grantPickup(Id pickup_id)
     if (is_new)
         selva::notice::mark(selva::notice::kDomainItem, p->item.config_path);
 
-    const auto granted_id =
-        engine::ops::inventory::addItem(profile->inventory, p->item, registry);
+    const auto granted_id = engine::ops::inventory::addItem(profile->inventory, p->item, registry);
     if (granted_id == engine::ecs::kInvalidItemInstanceId)
     {
         std::fprintf(stderr, "[pickup] grant rejected for '%s'; item not in registry\n",
@@ -122,19 +120,17 @@ void grantPickup(Id pickup_id)
     {
         std::snprintf(buf, sizeof(buf), "+%d %s (NEW!)", p->item.quantity, display_name.c_str());
         const glm::vec4 gold{0.95f, 0.85f, 0.40f, 1.0f};
-        selva::ui::pushNotification(buf, gold,
-                                    def != nullptr ? def->icon_path : std::string{});
+        selva::ui::pushNotification(buf, gold, def != nullptr ? def->icon_path : std::string{});
     }
     else
     {
         std::snprintf(buf, sizeof(buf), "+%d %s", p->item.quantity, display_name.c_str());
         const glm::vec4 neutral{0.85f, 0.85f, 0.85f, 1.0f};
-        selva::ui::pushNotification(buf, neutral,
-                                    def != nullptr ? def->icon_path : std::string{});
+        selva::ui::pushNotification(buf, neutral, def != nullptr ? def->icon_path : std::string{});
     }
 
-    std::fprintf(stderr, "[pickup] +%d %s%s rarity=%d\n", p->item.quantity,
-                 display_name.c_str(), is_new ? " NEW!" : "", static_cast<int>(rarity));
+    std::fprintf(stderr, "[pickup] +%d %s%s rarity=%d\n", p->item.quantity, display_name.c_str(),
+                 is_new ? " NEW!" : "", static_cast<int>(rarity));
     std::fflush(stderr);
 
     // Capture the on_granted hook BEFORE removePickup destroys the
@@ -154,7 +150,7 @@ void grantPickup(Id pickup_id)
 } // namespace
 
 Id spawnPickup(const glm::vec3& world_pos, const engine::ecs::ItemInstance& item,
-               const std::string& source_actor_id, OnGranted on_granted)
+               const std::string& source_actor_id, OnGranted on_granted, float world_yaw)
 {
     const auto& registry = selva::items::itemRegistry();
     const engine::ecs::ItemDef* def = registry.find(item.config_path);
@@ -172,6 +168,7 @@ Id spawnPickup(const glm::vec3& world_pos, const engine::ecs::ItemInstance& item
     // away mid-frame; for source-bound pickups the live position is
     // resolved from the hips joint at render time.
     p.world_pos = world_pos;
+    p.world_yaw = world_yaw;
     p.item = item;
     p.rarity = def->rarity;
     p.quality = item.quality;
@@ -188,7 +185,8 @@ Id spawnPickup(const glm::vec3& world_pos, const engine::ecs::ItemInstance& item
     decl.kind = selva::interact::Kind::Pickup;
     decl.label = label;
     decl.range_meters = 2.5f;
-    decl.position = [pickup_id]() -> glm::vec3 {
+    decl.position = [pickup_id]() -> glm::vec3
+    {
         if (Pickup* pp = findById(pickup_id))
             return livePickupPos(*pp);
         return glm::vec3{0.0f, 0.0f, 0.0f};
@@ -233,8 +231,7 @@ glm::vec3 livePickupPos(const Pickup& p)
     // and transform the joint-local position with it. Mirror that
     // here rather than waiting on the engine-side fix.
     const auto& jmap = selva::anim::jointMapByKey(src->skeleton_id);
-    glm::vec3 anchor{src->pos.x, src->pos.y + src->body.collider_height * 0.5f,
-                     src->pos.z};
+    glm::vec3 anchor{src->pos.x, src->pos.y + src->body.collider_height * 0.5f, src->pos.z};
     if (!jmap.hips.empty())
     {
         const int joint_idx = src->sampler.findJoint(jmap.hips.c_str());
@@ -273,8 +270,8 @@ void tickPickups()
         return;
 
     const auto& tun = selva::tuning::current();
-    const float fade_window = tun.enemy_death_fade_hold_seconds +
-                              tun.enemy_death_fade_duration_seconds;
+    const float fade_window =
+        tun.enemy_death_fade_hold_seconds + tun.enemy_death_fade_duration_seconds;
     const float now = selva::wallClock();
 
     // Collect Ids to drop -- doing it in two passes keeps removePickup
@@ -291,8 +288,7 @@ void tickPickups()
             to_drop.push_back(p.id);
             continue;
         }
-        if (a->is_dead && a->death_time > 0.0f &&
-            (now - a->death_time) >= fade_window)
+        if (a->is_dead && a->death_time > 0.0f && (now - a->death_time) >= fade_window)
         {
             // Source corpse has run its full fade and vanished from
             // render. Pickup follows.

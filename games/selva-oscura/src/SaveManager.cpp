@@ -173,6 +173,45 @@ void loadDoorStates(const json& c, PlayerProfile& p)
     }
 }
 
+void loadGatherState(const json& c, PlayerProfile& p)
+{
+    if (c.contains("active_gather_nodes") && c["active_gather_nodes"].is_array())
+    {
+        for (const auto& e : c["active_gather_nodes"])
+        {
+            if (!e.is_object() || !e.contains("node_config_path") ||
+                !e["node_config_path"].is_string())
+                continue;
+            selva::gather::NodeState n;
+            n.id = e.value("id", std::uint32_t{0});
+            n.node_config_path = e["node_config_path"].get<std::string>();
+            n.material_config_path = e.value("material_config_path", std::string{});
+            n.pos_x = e.value("pos_x", 0.0f);
+            n.pos_y = e.value("pos_y", 0.0f);
+            n.pos_z = e.value("pos_z", 0.0f);
+            n.quality = static_cast<engine::ecs::QualityTier>(
+                e.value("quality", static_cast<int>(engine::ecs::QualityTier::Common)));
+            n.yaw = e.value("yaw", 0.0f);
+            p.active_gather_nodes.push_back(std::move(n));
+        }
+    }
+    p.next_gather_node_id = c.value("next_gather_node_id", std::uint32_t{1});
+    if (c.contains("gather_flows") && c["gather_flows"].is_array())
+    {
+        for (const auto& e : c["gather_flows"])
+        {
+            if (!e.is_object() || !e.contains("node_config_path") ||
+                !e["node_config_path"].is_string())
+                continue;
+            selva::gather::FlowState f;
+            f.node_config_path = e["node_config_path"].get<std::string>();
+            f.last_spawn_wallclock = e.value("last_spawn_wallclock", 0.0f);
+            f.initial_fill_done = e.value("initial_fill_done", false);
+            p.gather_flows.push_back(std::move(f));
+        }
+    }
+}
+
 engine::ecs::ItemInstance loadInventoryEntry(const json& e)
 {
     engine::ecs::ItemInstance item;
@@ -284,6 +323,7 @@ PlayerProfile loadCharacter(const json& c)
     loadFlags(c, p);
     loadInsights(c, p);
     loadDoorStates(c, p);
+    loadGatherState(c, p);
     loadInventory(c, p);
     loadEquipment(c, p);
     loadCompendium(c, p);
@@ -372,6 +412,39 @@ nlohmann::json saveDoorStates(const PlayerProfile& c)
     return arr;
 }
 
+nlohmann::json saveActiveGatherNodes(const PlayerProfile& c)
+{
+    nlohmann::json arr = nlohmann::json::array();
+    for (const auto& n : c.active_gather_nodes)
+    {
+        arr.push_back({
+            {"id", n.id},
+            {"node_config_path", n.node_config_path},
+            {"material_config_path", n.material_config_path},
+            {"pos_x", n.pos_x},
+            {"pos_y", n.pos_y},
+            {"pos_z", n.pos_z},
+            {"quality", static_cast<int>(n.quality)},
+            {"yaw", n.yaw},
+        });
+    }
+    return arr;
+}
+
+nlohmann::json saveGatherFlows(const PlayerProfile& c)
+{
+    nlohmann::json arr = nlohmann::json::array();
+    for (const auto& f : c.gather_flows)
+    {
+        arr.push_back({
+            {"node_config_path", f.node_config_path},
+            {"last_spawn_wallclock", f.last_spawn_wallclock},
+            {"initial_fill_done", f.initial_fill_done},
+        });
+    }
+    return arr;
+}
+
 // Round-trip every ItemInstance field even when at its default --
 // instance state isn't a side-channel like flags; it's the item's
 // content. Skip-emit-when-default would create silent divergence on
@@ -421,10 +494,14 @@ bool equipmentIsEmpty(const engine::ecs::Equipment& e)
 nlohmann::json saveEquipment(const engine::ecs::Equipment& e)
 {
     return nlohmann::json{
-        {"right_hand", e.right_hand}, {"left_hand", e.left_hand},
-        {"head", e.head},             {"chest", e.chest},
-        {"legs", e.legs},             {"feet", e.feet},
-        {"accessory_1", e.accessory_1}, {"accessory_2", e.accessory_2},
+        {"right_hand", e.right_hand},
+        {"left_hand", e.left_hand},
+        {"head", e.head},
+        {"chest", e.chest},
+        {"legs", e.legs},
+        {"feet", e.feet},
+        {"accessory_1", e.accessory_1},
+        {"accessory_2", e.accessory_2},
     };
 }
 
@@ -546,6 +623,12 @@ nlohmann::json saveCharacter(const PlayerProfile& c)
     saveInsightFields(char_json, c);
     if (!c.door_states.empty())
         char_json["door_states"] = saveDoorStates(c);
+    if (!c.active_gather_nodes.empty())
+        char_json["active_gather_nodes"] = saveActiveGatherNodes(c);
+    if (c.next_gather_node_id > 1)
+        char_json["next_gather_node_id"] = c.next_gather_node_id;
+    if (!c.gather_flows.empty())
+        char_json["gather_flows"] = saveGatherFlows(c);
     if (!c.inventory.by_category.empty() || c.inventory.next_id > 1)
         char_json["inventory"] = saveInventory(c);
     if (!equipmentIsEmpty(c.equipment))
@@ -630,9 +713,12 @@ void deleteCharacter(SaveData& data, const std::string& name)
 
 void migrate(SaveData& data)
 {
-    // v1 is the initial schema; no migration needed yet. Bump
-    // SaveData::CURRENT_VERSION and add version-specific migration logic here
-    // as fields are added (e.g. v1 -> v2 when class/stats land).
+    // v4 -> v5: gather-node persistence added. v4 saves have no
+    // active_gather_nodes / gather_flows fields. Defaults are correct
+    // (empty list + next_id=1 + empty flow timers) -- the GatherSpawner's
+    // first tick will see an empty population, run initial fill, and
+    // commit fresh state to the next save write. No explicit init
+    // needed; the defaults handle it.
     data.schema_version = SaveData::CURRENT_VERSION;
 }
 

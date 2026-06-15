@@ -44,6 +44,7 @@
 #include "gameplay/ScriptedEvents.h"
 #include "gameplay/TerritoryClamp.h"
 #include "gameplay/TickState.h"
+#include "gather/GatherSpawner.h"
 #include "hazard/HazardZones.h"
 #include "identity/Identity.h"
 #include "insight/Insight.h"
@@ -53,11 +54,12 @@
 #include "loot/Pickups.h"
 #include "loot/StarterDispenser.h"
 #include "ops/InventoryOps.h"
-#include "ui/Notifications.h"
 #include "physics/PhysicsWorld.h"
 #include "render/Atmosphere.h"
 #include "render/Camera.h"
 #include "render/LightSpritePass.h"
+#include "render/PickupMeshPass.h"
+#include "render/PickupSpritePass.h"
 #include "render/RegionGeometry.h"
 #include "render/RegionShaders.h"
 #include "render/ShadowPass.h"
@@ -71,6 +73,7 @@
 #include "ui/ClassPickerScreen.h"
 #include "ui/ComboHud.h"
 #include "ui/NamePromptScreen.h"
+#include "ui/Notifications.h"
 #include "world/Collision.h"
 #include "world/Door.h"
 #include "world/JsonRegion.h"
@@ -970,25 +973,24 @@ static int resolvePlayerSwingDamage()
     if (profile == nullptr)
     {
         // Pre-Playing phase / no character: fist defaults.
-        return selva::gameplay::computeAttackDamage(
-            sPlayer.stats, sPlayer.body.unarmed_damage, 0.5f, 0.5f);
+        return selva::gameplay::computeAttackDamage(sPlayer.stats, sPlayer.body.unarmed_damage,
+                                                    0.5f, 0.5f);
     }
 
     const engine::ecs::ItemInstanceId equipped_id = profile->equipment.right_hand;
     if (equipped_id == engine::ecs::kInvalidItemInstanceId)
     {
-        return selva::gameplay::computeAttackDamage(
-            sPlayer.stats, sPlayer.body.unarmed_damage, 0.5f, 0.5f);
+        return selva::gameplay::computeAttackDamage(sPlayer.stats, sPlayer.body.unarmed_damage,
+                                                    0.5f, 0.5f);
     }
     const engine::ecs::ItemInstance* inst =
         engine::ops::inventory::findById(profile->inventory, equipped_id);
     const auto& items = selva::items::itemRegistry();
-    const engine::ecs::ItemDef* def =
-        (inst != nullptr) ? items.find(inst->config_path) : nullptr;
+    const engine::ecs::ItemDef* def = (inst != nullptr) ? items.find(inst->config_path) : nullptr;
     if (def == nullptr)
     {
-        return selva::gameplay::computeAttackDamage(
-            sPlayer.stats, sPlayer.body.unarmed_damage, 0.5f, 0.5f);
+        return selva::gameplay::computeAttackDamage(sPlayer.stats, sPlayer.body.unarmed_damage,
+                                                    0.5f, 0.5f);
     }
 
     selva::gameplay::DamageInputs di;
@@ -1169,8 +1171,7 @@ static bool fireClipForHand(selva::combat::HandSide hand, const char* clip_name,
         profile.blend_out_seconds = blend_override;
 
     const auto* atk_for_end = findAttackForClip(clip_name);
-    const float end_seconds =
-        (atk_for_end != nullptr) ? atk_for_end->end_seconds : -1.0f;
+    const float end_seconds = (atk_for_end != nullptr) ? atk_for_end->end_seconds : -1.0f;
 
     const float rate = effectiveAttackPlaybackRate(hand);
     fireOneShotWithProfile(*clip, profile, start_seconds, rate, clip_name,
@@ -2565,7 +2566,7 @@ static const char* selectLockedLocomotionClip(const glm::vec3& moveIntent)
     const glm::vec3 right(-fwd.z, 0.0f, fwd.x);
     const bool is_armed = !isUnarmed(sEquipment);
     return selva::gameplay::directionalLocoClip(fwd, right, moveIntent, sPlayer.loco_tier,
-                                                 is_armed);
+                                                is_armed);
 }
 
 // FPV directional clip picker. Backpedal exception only: pure-S
@@ -3301,10 +3302,10 @@ static void tickPlayerSecondDeathLifecycle()
     }
     {
         const auto* profile = selva::activePlayerProfile();
-        const selva::PlayerClass cls = (profile != nullptr) ? profile->player_class
-                                                            : selva::PlayerClass::None;
-        selva::gameplay::initActorPools(sPlayer.hp, sPlayer.stamina, sPlayer.poise,
-                                        sPlayer.body, sPlayer.stats, cls);
+        const selva::PlayerClass cls =
+            (profile != nullptr) ? profile->player_class : selva::PlayerClass::None;
+        selva::gameplay::initActorPools(sPlayer.hp, sPlayer.stamina, sPlayer.poise, sPlayer.body,
+                                        sPlayer.stats, cls);
     }
     sSampler.releaseOneShot();
     // Unmuffle the OST — bookends the duck applied in fireEnemyDeath.
@@ -3804,6 +3805,13 @@ static void selvaPerFrame(Engine& engine, EntityManager& em, double dt_d)
     {
         ZoneScopedN("tickFlowSpawner");
         selva::spawn::tickFlowSpawner(dt);
+    }
+
+    // Wood gather nodes. Global wallClock-based: ticks regardless of
+    // active region so Wood refills while the player descends in Hell.
+    {
+        ZoneScopedN("tickGatherSpawner");
+        selva::gather::tickGatherSpawner(dt);
     }
 
     // Advance any Opening doors; transition to Open when animation
@@ -4658,6 +4666,14 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
             selva::render::renderEquippedWeapon();
         }
         {
+            ZoneScopedN("pickup-meshes");
+            // World-space static meshes for any live loot::Pickup
+            // whose ItemDef declares a world_mesh path. Wood gather
+            // materials use this; weapons keep their glow sprite.
+            // Same scene-shader bind as the surrounding draws.
+            selva::render::renderPickupMeshes();
+        }
+        {
             ZoneScopedN("ground-decals");
             selva::render::renderGroundDecals();
         }
@@ -4697,6 +4713,15 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
         // is bounded. When/if specific sealed boundaries need strict
         // gating, pass a player-region name here.
         selva::render::renderLightSprites(viewProj, camPos, nullptr);
+    }
+    {
+        ZoneScopedN("pickup-sprites");
+        // Depth-tested world-space billboards for every live loot
+        // Pickup -- replaces the prior ImDrawList HUD-overlay path
+        // that drew through walls and the ground (visible from Limbo
+        // through the Wood's terrain). Same pass family as lights:
+        // additive blend, depth test on, depth write off.
+        selva::render::renderPickupSprites(viewProj, camPos);
     }
     tickFrameCaptureWrite();
 }
@@ -4897,10 +4922,10 @@ static void resetPlayerActorForProfile(const selva::PlayerProfile& profile)
     sPlayer.lock_target_idx = -1;
     {
         const auto* profile = selva::activePlayerProfile();
-        const selva::PlayerClass cls = (profile != nullptr) ? profile->player_class
-                                                            : selva::PlayerClass::None;
-        selva::gameplay::initActorPools(sPlayer.hp, sPlayer.stamina, sPlayer.poise,
-                                        sPlayer.body, sPlayer.stats, cls);
+        const selva::PlayerClass cls =
+            (profile != nullptr) ? profile->player_class : selva::PlayerClass::None;
+        selva::gameplay::initActorPools(sPlayer.hp, sPlayer.stamina, sPlayer.poise, sPlayer.body,
+                                        sPlayer.stats, cls);
     }
     sPlayer.foot_left = Actor::FootContact{};
     sPlayer.foot_right = Actor::FootContact{};
@@ -4964,6 +4989,13 @@ void hardResetWorldForCharacter(const selva::PlayerProfile& profile)
     // character's session. Spawn counters preserved (dynamic ids
     // never collide).
     selva::spawn::resetFlowSpawner();
+    // Wood gather state belongs to the PROFILE (anti-cheese
+    // persistence per [[project_anti_cheese_rolls_locked_2026_06_14]]);
+    // hard-reset is character-switch, so any in-flight Interactables
+    // wired to the prior character's nodes must be unregistered. The
+    // next tick re-populates from the new profile's active_gather_nodes
+    // or runs initial fill if that profile has none yet.
+    selva::gather::resetGatherSpawner();
     // Hazard zones are WORLD-state (per-region geometry, not per-
     // character), so they SURVIVE character switches. Same contract
     // as the interactable registry above -- regions only activate
@@ -4994,6 +5026,11 @@ void softResetWorldForCycle()
     // stays true and the larvae never come back after first death.
     // Same call ordering as hardResetWorldForCharacter above.
     selva::spawn::resetFlowSpawner();
+    // Wood gather state rebuilt from authored on cycle reset (second
+    // death): all live nodes cleared, flow timers reset, next tick
+    // runs initial fill. The player's gathered MATERIALS remain in
+    // inventory (those are loot, not world state).
+    selva::gather::resetGatherSpawner();
 }
 
 // Wake-scene tracking. The wake scene's end condition is "the player's

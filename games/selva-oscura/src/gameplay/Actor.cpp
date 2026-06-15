@@ -2,16 +2,16 @@
 
 #include "AppStateGlobal.h"
 #include "Formulas.h"
-#include "classmods/ClassModifiers.h"
-#include "softcaps/SoftCaps.h"
 #include "Tunables.h"
 #include "anim/AnimationClip.h"
 #include "anim/SkeletalAssets.h"
 #include "anim/SkeletalMesh.h"
+#include "classmods/ClassModifiers.h"
 #include "combat/ActorVolumes.h"
 #include "combat/CombatLog.h"
 #include "combat/HitVolumes.h"
 #include "gameplay/EnemyArchetype.h"
+#include "softcaps/SoftCaps.h"
 
 #include <algorithm>
 #include <cmath>
@@ -228,8 +228,8 @@ int computeAttackDamage(const Stats& attacker, const DamageInputs& inputs, int i
     const float cog_b = 0.0f; // attacker.cog * inputs.cog_scaling -- pending Stats expansion
     const float int_b = 0.0f; // attacker.intl * inputs.int_scaling -- pending Stats expansion
     const float identity_b = std::floor(static_cast<float>(identity_value) * identity_scaling);
-    const float total = inputs.base_damage + str_b + dex_b + end_b + lck_b + per_b + cog_b + int_b +
-                        identity_b;
+    const float total =
+        inputs.base_damage + str_b + dex_b + end_b + lck_b + per_b + cog_b + int_b + identity_b;
     if (total <= 0.0f)
         return 0;
     return static_cast<int>(total);
@@ -472,8 +472,8 @@ void initActorPool()
     // changes (Signing fire / Erasure) so cap shifts apply
     // immediately.
     const auto* profile = selva::activePlayerProfile();
-    const selva::PlayerClass cls = (profile != nullptr) ? profile->player_class
-                                                        : selva::PlayerClass::None;
+    const selva::PlayerClass cls =
+        (profile != nullptr) ? profile->player_class : selva::PlayerClass::None;
     initActorPools(pc.hp, pc.stamina, pc.poise, pc.body, pc.stats, cls);
     // initActorPool is one-time, asset-binding only. Position, hp-fill,
     // and any per-character state are NOT set here - those land via

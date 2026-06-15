@@ -18,7 +18,7 @@ TEST_CASE("PlayerClass default is None (pre-Beat-4)", "[player-class]")
 TEST_CASE("playerClassName round-trips through parsePlayerClass", "[player-class]")
 {
     const selva::PlayerClass all[] = {
-        selva::PlayerClass::None,   selva::PlayerClass::Penitent, selva::PlayerClass::Heretic,
+        selva::PlayerClass::None,   selva::PlayerClass::Penitent,   selva::PlayerClass::Heretic,
         selva::PlayerClass::Ferine, selva::PlayerClass::Unburdened,
     };
     for (auto c : all)

@@ -121,8 +121,7 @@ void loadItemDirectory(const std::filesystem::path& dir)
                 ext.identity_stat_scaling = j.value("identity_stat_scaling", 0.0f);
                 ext.identity_stat_requirement = j.value("identity_stat_requirement", 0);
 
-                const bool has_extension = !ext.use_handler.empty() ||
-                                           !ext.use_condition.empty() ||
+                const bool has_extension = !ext.use_handler.empty() || !ext.use_condition.empty() ||
                                            !ext.identity_class.empty();
                 if (has_extension)
                 {
@@ -137,8 +136,7 @@ void loadItemDirectory(const std::filesystem::path& dir)
             }
             catch (const std::exception& e)
             {
-                std::fprintf(stderr,
-                             "[items] extension parse error in %s: %s\n",
+                std::fprintf(stderr, "[items] extension parse error in %s: %s\n",
                              config_path.c_str(), e.what());
                 std::fflush(stderr);
             }

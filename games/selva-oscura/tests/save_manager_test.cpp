@@ -273,3 +273,114 @@ TEST_CASE("SaveManager migrate sets schema_version to current", "[save][migrate]
     selva::SaveManager::migrate(data);
     REQUIRE(data.schema_version == selva::SaveData::CURRENT_VERSION);
 }
+
+TEST_CASE("SaveManager round-trips active_gather_nodes preserving all per-node fields",
+          "[save][gather][round-trip]")
+{
+    const std::string path = testSavePath("gather-nodes-roundtrip");
+    cleanupTestFile(path);
+
+    selva::SaveData data;
+    selva::SaveManager::addCharacter(data, "PILGRIM");
+    auto& profile = data.characters[0];
+    profile.next_gather_node_id = 7;
+
+    selva::gather::NodeState a;
+    a.id = 4;
+    a.node_config_path = "config/gather_nodes/wood_forage.json";
+    a.material_config_path = "config/items/materials/bark_scrap.json";
+    a.pos_x = 12.5f;
+    a.pos_y = -0.25f;
+    a.pos_z = -180.0f;
+    a.quality = engine::ecs::QualityTier::Fine;
+    a.yaw = 1.75f;
+    profile.active_gather_nodes.push_back(a);
+
+    selva::gather::NodeState b;
+    b.id = 6;
+    b.node_config_path = "config/gather_nodes/wood_forage.json";
+    b.material_config_path = "config/items/materials/pale_lichen.json";
+    b.pos_x = -34.0f;
+    b.pos_y = 0.12f;
+    b.pos_z = -220.5f;
+    b.quality = engine::ecs::QualityTier::Masterwork;
+    b.yaw = 4.20f;
+    profile.active_gather_nodes.push_back(b);
+
+    REQUIRE(selva::SaveManager::save(data, path));
+
+    const selva::SaveData loaded = selva::SaveManager::load(path);
+    REQUIRE(loaded.characters.size() == 1);
+    const auto& lp = loaded.characters[0];
+    REQUIRE(lp.next_gather_node_id == 7u);
+    REQUIRE(lp.active_gather_nodes.size() == 2);
+
+    const auto& la = lp.active_gather_nodes[0];
+    REQUIRE(la.id == 4u);
+    REQUIRE(la.node_config_path == "config/gather_nodes/wood_forage.json");
+    REQUIRE(la.material_config_path == "config/items/materials/bark_scrap.json");
+    REQUIRE(la.pos_x == 12.5f);
+    REQUIRE(la.pos_y == -0.25f);
+    REQUIRE(la.pos_z == -180.0f);
+    REQUIRE(la.quality == engine::ecs::QualityTier::Fine);
+    REQUIRE(la.yaw == 1.75f);
+
+    const auto& lb = lp.active_gather_nodes[1];
+    REQUIRE(lb.material_config_path == "config/items/materials/pale_lichen.json");
+    REQUIRE(lb.quality == engine::ecs::QualityTier::Masterwork);
+    REQUIRE(lb.yaw == 4.20f);
+
+    cleanupTestFile(path);
+}
+
+TEST_CASE("SaveManager round-trips gather_flows preserving initial_fill_done + timer",
+          "[save][gather][flows]")
+{
+    const std::string path = testSavePath("gather-flows-roundtrip");
+    cleanupTestFile(path);
+
+    selva::SaveData data;
+    selva::SaveManager::addCharacter(data, "PILGRIM");
+    auto& profile = data.characters[0];
+
+    selva::gather::FlowState f;
+    f.node_config_path = "config/gather_nodes/wood_forage.json";
+    f.last_spawn_wallclock = 123.456f;
+    f.initial_fill_done = true;
+    profile.gather_flows.push_back(f);
+
+    REQUIRE(selva::SaveManager::save(data, path));
+
+    const selva::SaveData loaded = selva::SaveManager::load(path);
+    REQUIRE(loaded.characters[0].gather_flows.size() == 1);
+    const auto& lf = loaded.characters[0].gather_flows[0];
+    REQUIRE(lf.node_config_path == "config/gather_nodes/wood_forage.json");
+    REQUIRE(lf.last_spawn_wallclock == 123.456f);
+    REQUIRE(lf.initial_fill_done == true);
+
+    cleanupTestFile(path);
+}
+
+TEST_CASE("SaveManager defaults gather state to empty on legacy v4 saves",
+          "[save][gather][migration]")
+{
+    // v4 saves have no active_gather_nodes / gather_flows fields.
+    // Load must default both to empty without crashing or rejecting.
+    const std::string path = testSavePath("gather-legacy-v4");
+    cleanupTestFile(path);
+    std::filesystem::create_directories(std::filesystem::path(path).parent_path());
+
+    if (std::FILE* f = std::fopen(path.c_str(), "w"))
+    {
+        std::fprintf(f, "{\n  \"schema_version\": 4,\n"
+                        "  \"characters\": [ { \"name\": \"PILGRIM\" } ]\n}\n");
+        std::fclose(f);
+    }
+    const selva::SaveData loaded = selva::SaveManager::load(path);
+    REQUIRE(loaded.characters.size() == 1);
+    REQUIRE(loaded.characters[0].active_gather_nodes.empty());
+    REQUIRE(loaded.characters[0].gather_flows.empty());
+    REQUIRE(loaded.characters[0].next_gather_node_id == 1u);
+
+    cleanupTestFile(path);
+}

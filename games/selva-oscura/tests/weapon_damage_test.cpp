@@ -132,8 +132,7 @@ TEST_CASE("computeAttackDamage: negative subtotal floors to 0", "[combat][damage
     REQUIRE(computeAttackDamage(s, di, 0, 0.0f) == 0);
 }
 
-TEST_CASE("computeAttackDamage: per-axis floor semantics (no fractional carry)",
-          "[combat][damage]")
+TEST_CASE("computeAttackDamage: per-axis floor semantics (no fractional carry)", "[combat][damage]")
 {
     // Two axes each contribute 0.5 * stat = 0.5 floored to 0
     // individually. Sum is 0 + 0 = 0, NOT 1 (which a single-flooring
@@ -147,8 +146,7 @@ TEST_CASE("computeAttackDamage: per-axis floor semantics (no fractional carry)",
     REQUIRE(computeAttackDamage(s, di, 0, 0.0f) == 0);
 }
 
-TEST_CASE("computeAttackDamage: fist 4-param overload unchanged (regression)",
-          "[combat][damage]")
+TEST_CASE("computeAttackDamage: fist 4-param overload unchanged (regression)", "[combat][damage]")
 {
     // The legacy 4-param overload is the unarmed-fallback path. Verify
     // it still yields the same shape so the fist-default code path

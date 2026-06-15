@@ -56,20 +56,19 @@ TEST_CASE("resolveHandWeaponFor returns nullptr for invalid id", "[combat][bridg
     const auto items = makeItemReg();
     const auto classes = makeClassReg();
     engine::ecs::Inventory inv;
-    const auto* w = selva::combat::resolveHandWeaponFor(
-        engine::ecs::kInvalidItemInstanceId, inv, items, classes);
+    const auto* w = selva::combat::resolveHandWeaponFor(engine::ecs::kInvalidItemInstanceId, inv,
+                                                        items, classes);
     REQUIRE(w == nullptr);
 }
 
-TEST_CASE("resolveHandWeaponFor returns nullptr when item not in inventory",
-          "[combat][bridge]")
+TEST_CASE("resolveHandWeaponFor returns nullptr when item not in inventory", "[combat][bridge]")
 {
     const auto items = makeItemReg();
     const auto classes = makeClassReg();
     engine::ecs::Inventory inv;
     // Pass an id that doesn't exist in the inventory bucket map.
-    const auto* w = selva::combat::resolveHandWeaponFor(
-        engine::ecs::ItemInstanceId{42}, inv, items, classes);
+    const auto* w =
+        selva::combat::resolveHandWeaponFor(engine::ecs::ItemInstanceId{42}, inv, items, classes);
     REQUIRE(w == nullptr);
 }
 

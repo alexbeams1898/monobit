@@ -15,6 +15,7 @@ target_sources(engine PRIVATE
     src/ecs/ConfigLoaders.cpp
     src/ops/InventoryOps.cpp
     src/ops/CraftingOps.cpp
+    src/ops/LootOps.cpp
     src/physics/PhysicsWorld.cpp
     src/world/Region.cpp
     src/world/Territory.cpp
@@ -80,6 +81,7 @@ add_executable(engine-tests
     tests/crafting_ops_test.cpp
     tests/evolution_ops_test.cpp
     tests/discovery_test.cpp
+    tests/loot_ops_test.cpp
 )
 target_link_libraries(engine-tests PRIVATE engine Catch2::Catch2WithMain)
 

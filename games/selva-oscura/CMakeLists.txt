@@ -72,6 +72,8 @@ add_library(selva-oscura-lib STATIC
     src/render/RegionShaders.cpp
     src/render/ShadowPass.cpp
     src/render/LightSpritePass.cpp
+    src/render/PickupSpritePass.cpp
+    src/render/PickupMeshPass.cpp
     src/render/EquippedWeapon.cpp
     src/render/SkyPass.cpp
     src/render/TerrainShader.cpp
@@ -118,6 +120,7 @@ add_library(selva-oscura-lib STATIC
     src/ops/InventoryOps.cpp
     src/softcaps/SoftCaps.cpp
     src/spawn/FlowSpawner.cpp
+    src/gather/GatherSpawner.cpp
     src/text/Examine.cpp
     src/text/TextPresentation.cpp
     src/Tunables.cpp

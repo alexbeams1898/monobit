@@ -1,0 +1,26 @@
+{
+  "_comment": "Unified Wood-side forage flow. ONE flow maintains a single active_cap across all Wood materials. Each new spawn rolls the drop_pool (engine::ecs::WeightedPool) to pick which material instantiates -- bark, clay, or pale lichen today. As new Wood materials ship, add them to drop_pool with appropriate weights and no other config changes are needed. The ItemDef.rarity field on each material is a UI label, not a spawn driver: spawn behavior is purely the pool weights here.",
+  "id": "wood_forage",
+  "prompt_label": "gather",
+  "active_cap": 100,
+  "respawn_seconds_key": "wood_gather_respawn_seconds",
+  "drop_pool": [
+    { "item": "config/items/materials/bark_scrap.json",  "weight": 40 },
+    { "item": "config/items/materials/clay.json",        "weight": 35 },
+    { "item": "config/items/materials/pale_lichen.json", "weight": 25 }
+  ],
+  "quality_lottery": {
+    "_comment": "Single shared quality lottery across all Wood materials. Per-material quality skew was a prior design that conflated rarity-of-material with quality-roll-within-material. The cleaner model: rarity controls IF the material drops (pool weight), quality controls how good the drop is (this lottery). Both apply uniformly.",
+    "crude":      0.10,
+    "common":     0.55,
+    "fine":       0.25,
+    "superior":   0.08,
+    "masterwork": 0.02
+  },
+  "sample_origin_xz": [0.0, -210.0],
+  "sample_radius": 230.0,
+  "min_distance_to_props": 0.4,
+  "min_distance_to_nodes": 4.0,
+  "min_distance_to_player": 8.0,
+  "_comment_placement": "Placement rules are zone-level (apply to all materials in this flow). Per-material environment biasing (bark/lichen near trees, clay anywhere) was a feature of the per-material configs that's lost in the unified model. If we want it back, it lives on ItemDef.world_spawn_rules so each material declares its own placement preference and the spawner reads them per-pick. Deferred until play shows we need it."
+}

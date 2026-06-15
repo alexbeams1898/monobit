@@ -2,6 +2,7 @@
 
 #include "dialog/Encounter.h"
 #include "ecs/Items.h"
+#include "gather/GatherState.h"
 
 #include <cstdint>
 #include <string>
@@ -399,6 +400,29 @@ struct PlayerProfile
     // doesn't persist). Per [[world/Door.h]].
     std::vector<std::pair<std::string, std::string>> door_states;
 
+    // Live gather-node population. One entry per spawned Wood gather
+    // node, with the quality ROLLED AT SPAWN TIME (anti-cheese
+    // commit-on-spawn -- pickup grants the persisted quality, never
+    // re-rolls). Persists across save/load so quit-reload returns to
+    // the same world state. Cycle reset (second death) clears this and
+    // the GatherSpawner re-rolls initial fill. See
+    // [[project_healing_system_locked_2026_06_14]] +
+    // [[project_anti_cheese_rolls_locked_2026_06_14]].
+    std::vector<selva::gather::NodeState> active_gather_nodes;
+
+    // Monotonic id allocator for active_gather_nodes. Never decrements;
+    // never reuses an id once assigned. Stable across save/load so any
+    // outstanding Interactable handle keyed on a NodeState.id stays
+    // valid after a reload.
+    std::uint32_t next_gather_node_id = 1;
+
+    // Per-gather-flow scheduler state. One entry per loaded gather
+    // node config (bark / earth / lichen each track their own
+    // last-spawn timer). Mirrors FlowSpawner's interval-based trickle
+    // but PERSISTS across save/load (FlowSpawner does NOT -- gather
+    // diverges here per anti-cheese doctrine).
+    std::vector<selva::gather::FlowState> gather_flows;
+
     // Per-character carried items, category-bucketed
     // (engine::ecs::Inventory). Bucket keys are the engine category
     // string ids ("weapons", "armor", "consumables", "key_items",
@@ -509,7 +533,7 @@ struct Settings
 // ---------------------------------------------------------------------------
 struct SaveData
 {
-    static constexpr int CURRENT_VERSION = 4;
+    static constexpr int CURRENT_VERSION = 5;
 
     int schema_version = CURRENT_VERSION;
     std::vector<PlayerProfile> characters;

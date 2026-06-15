@@ -264,8 +264,8 @@ struct DamageInputs
     float int_scaling = 0.0f;
 };
 
-int computeAttackDamage(const Stats& attacker, const DamageInputs& inputs,
-                        int identity_value, float identity_scaling);
+int computeAttackDamage(const Stats& attacker, const DamageInputs& inputs, int identity_value,
+                        float identity_scaling);
 
 // What kind of intent driver an actor uses. Each per-frame tick
 // reads `actor.controller` and dispatches to the correct intent

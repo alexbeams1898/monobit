@@ -1,5 +1,4 @@
 #include "ecs/ItemConfig.h"
-
 #include "items/ItemRegistry.h"
 
 namespace selva

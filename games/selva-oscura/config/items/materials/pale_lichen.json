@@ -1,0 +1,10 @@
+{
+  "_comment": "Tier-0 Wood-side gather material. Pale fungal growth on the trunks and lower limbs of certain pines; rarer than bark or earth, and the quality of the find varies more sharply. Hell cannot heal -- materials for medicinal preparations are gathered above, never below.",
+  "name": "Pale lichen",
+  "description": "A grey-green crust prised from the bark, brittle as parchment when dry and faintly bitter at the touch. The underside still bears the imprint of the tree it grew on.",
+  "category": "material",
+  "rarity": "uncommon",
+  "stackable": true,
+  "max_stack": 99,
+  "world_mesh": "assets/world/materials/pale_lichen/pale_lichen.glb"
+}

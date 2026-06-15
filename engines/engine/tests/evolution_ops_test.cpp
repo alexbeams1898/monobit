@@ -160,8 +160,8 @@ TEST_CASE("InventoryOps::evolveWeapon replaces weapon and resets XP", "[evolutio
 
     const float carry_factor = 0.15f;
 
-    REQUIRE(InventoryOps::evolveWeapon(inv, equip, weapon, path,
-                                       "config/items/weapons/dagger.json", reg, carry_factor));
+    REQUIRE(InventoryOps::evolveWeapon(inv, equip, weapon, path, "config/items/weapons/dagger.json",
+                                       reg, carry_factor));
 
     REQUIRE(InventoryOps::equippedPath(inv, equip, EquipSlot::RightHand) ==
             "config/items/weapons/dagger.json");
@@ -206,8 +206,8 @@ TEST_CASE("InventoryOps::evolveWeapon accumulates carry-forward bonus", "[evolut
 
     const float carry_factor = 0.15f;
 
-    REQUIRE(InventoryOps::evolveWeapon(inv, equip, weapon, path,
-                                       "config/items/weapons/dagger.json", reg, carry_factor));
+    REQUIRE(InventoryOps::evolveWeapon(inv, equip, weapon, path, "config/items/weapons/dagger.json",
+                                       reg, carry_factor));
 
     const auto* item = InventoryOps::equippedItem(inv, equip, EquipSlot::RightHand);
     REQUIRE(item != nullptr);

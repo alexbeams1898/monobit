@@ -6,10 +6,10 @@
 #include "AppState.h"
 #include "identity/Identity.h"
 
-#include <catch2/catch_test_macros.hpp>
-
 #include <cstdio>
 #include <filesystem>
+
+#include <catch2/catch_test_macros.hpp>
 
 namespace
 {
@@ -32,7 +32,7 @@ std::string writeAnchorOnlyConfig(const std::string& tag)
         "ferine":     { "signing_anchor": 1.0 },
         "unburdened": { "signing_anchor": 1.0 }
     })",
-              f);
+               f);
     std::fclose(f);
     return path;
 }
@@ -79,8 +79,7 @@ TEST_CASE("Signing as Penitent anchors +1 Penance only", "[identity]")
     REQUIRE(selva::identity::computeIdentityStat(p, selva::PlayerClass::Unburdened) == 0);
 }
 
-TEST_CASE("Each Signing anchors +1 in the committed class's lens only",
-          "[identity][class-cycle]")
+TEST_CASE("Each Signing anchors +1 in the committed class's lens only", "[identity][class-cycle]")
 {
     REQUIRE(selva::identity::loadFromFile(writeAnchorOnlyConfig("signing-cycle")));
 
@@ -106,8 +105,7 @@ TEST_CASE("Each Signing anchors +1 in the committed class's lens only",
     }
 }
 
-TEST_CASE("Erasure lens-swap: same ledger, different lens, different result",
-          "[identity][erasure]")
+TEST_CASE("Erasure lens-swap: same ledger, different lens, different result", "[identity][erasure]")
 {
     REQUIRE(selva::identity::loadFromFile(writeAnchorOnlyConfig("erasure-swap")));
 
@@ -130,8 +128,7 @@ TEST_CASE("Erasure lens-swap: same ledger, different lens, different result",
     REQUIRE(selva::identity::computeIdentityStat(p, selva::PlayerClass::Heretic) == 1);
 }
 
-TEST_CASE("computeIdentityStat returns 0 when no function loaded for the class",
-          "[identity]")
+TEST_CASE("computeIdentityStat returns 0 when no function loaded for the class", "[identity]")
 {
     // Write a config missing one class entry; computeIdentityStat
     // for that class returns 0 quietly rather than crashing.
@@ -145,7 +142,7 @@ TEST_CASE("computeIdentityStat returns 0 when no function loaded for the class",
     std::fputs(R"({
         "penitent": { "signing_anchor": 1.0 }
     })",
-              f);
+               f);
     std::fclose(f);
     REQUIRE(selva::identity::loadFromFile(path));
 

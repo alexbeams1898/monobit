@@ -439,23 +439,22 @@ struct Tunables
 // new fields are added.
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     Tunables, time_scale, turn_rate_min, turn_rate_max, lockon_camera_yaw_rate,
-    lockon_body_yaw_rate, wasd_debounce_seconds, loco_playback_rate,
-    armed_sprint_run_multiplier, walk_speed, jog_speed,
-    sprint_speed, locomotion_accel, locomotion_decel, idle_to_walk_speed, walk_to_jog_speed,
-    jog_to_sprint_speed, mouse_sensitivity, pitch_min, pitch_max, follow_distance, follow_height,
-    fov_degrees, anim_blend_seconds, combat_idle_grace_seconds, combat_entry_delay_seconds,
-    combo_reset_grace_seconds, combo_input_buffer_seconds, combo_chain_blend_seconds,
-    first_strike_blend_seconds, attack_playback_rate, cancel_open_velocity_fraction,
-    perfect_accuracy_threshold, roll_playback_rate, backstep_playback_rate, dodge_tap_window,
-    dodge_steer_rate, attack_lockout_extension_seconds, damage_floor, hit_react_medium_threshold,
-    hit_react_heavy_threshold, hit_react_cooldown_seconds, enemy_recovery_after_knockdown_seconds,
-    enemy_death_fade_hold_seconds, enemy_death_fade_duration_seconds, knockdown_clip_start_seconds,
-    knockdown_clip_end_seconds, getting_up_clip_start_seconds, getting_up_clip_end_seconds,
-    ai_vision_fov_degrees, ai_vision_range_meters, ai_suspicion_decay_seconds,
-    ai_confirmed_sightings_to_alert, ai_alerted_decay_seconds, ai_combat_engage_range_meters,
-    ai_combat_leash_range_meters, ai_combat_disengage_seconds, ai_decision_tick_hz,
-    ai_decision_tick_combat_hz_multiplier, ai_turn_rate_radians_per_sec,
-    ai_action_freshness_seconds, flying_knee_whoosh_time_seconds);
+    lockon_body_yaw_rate, wasd_debounce_seconds, loco_playback_rate, armed_sprint_run_multiplier,
+    walk_speed, jog_speed, sprint_speed, locomotion_accel, locomotion_decel, idle_to_walk_speed,
+    walk_to_jog_speed, jog_to_sprint_speed, mouse_sensitivity, pitch_min, pitch_max,
+    follow_distance, follow_height, fov_degrees, anim_blend_seconds, combat_idle_grace_seconds,
+    combat_entry_delay_seconds, combo_reset_grace_seconds, combo_input_buffer_seconds,
+    combo_chain_blend_seconds, first_strike_blend_seconds, attack_playback_rate,
+    cancel_open_velocity_fraction, perfect_accuracy_threshold, roll_playback_rate,
+    backstep_playback_rate, dodge_tap_window, dodge_steer_rate, attack_lockout_extension_seconds,
+    damage_floor, hit_react_medium_threshold, hit_react_heavy_threshold, hit_react_cooldown_seconds,
+    enemy_recovery_after_knockdown_seconds, enemy_death_fade_hold_seconds,
+    enemy_death_fade_duration_seconds, knockdown_clip_start_seconds, knockdown_clip_end_seconds,
+    getting_up_clip_start_seconds, getting_up_clip_end_seconds, ai_vision_fov_degrees,
+    ai_vision_range_meters, ai_suspicion_decay_seconds, ai_confirmed_sightings_to_alert,
+    ai_alerted_decay_seconds, ai_combat_engage_range_meters, ai_combat_leash_range_meters,
+    ai_combat_disengage_seconds, ai_decision_tick_hz, ai_decision_tick_combat_hz_multiplier,
+    ai_turn_rate_radians_per_sec, ai_action_freshness_seconds, flying_knee_whoosh_time_seconds);
 // NOTE: fpv_eye_up_offset, fpv_eye_fwd_offset are NOT serialized -
 // they're live-tuning fields. The NLOHMANN macro has a ~64-field
 // variadic limit; the count is fine now (debug_* moved out to

@@ -1268,16 +1268,15 @@ void rollAndSpawnLoot(const Actor& e)
 
     for (const auto& drop : e.archetype->loot_drops)
     {
-        const float effective =
-            std::min(1.0f, drop.base_chance *
-                               (1.0f + static_cast<float>(lck) * drop_scale / 100.0f));
+        const float effective = std::min(
+            1.0f, drop.base_chance * (1.0f + static_cast<float>(lck) * drop_scale / 100.0f));
         if (chance_roll(lootRng()) >= effective)
             continue;
 
-        const int qty = (drop.max_qty > drop.min_qty)
-                            ? std::uniform_int_distribution<int>(drop.min_qty,
-                                                                  drop.max_qty)(lootRng())
-                            : drop.min_qty;
+        const int qty =
+            (drop.max_qty > drop.min_qty)
+                ? std::uniform_int_distribution<int>(drop.min_qty, drop.max_qty)(lootRng())
+                : drop.min_qty;
         if (qty <= 0)
             continue;
 

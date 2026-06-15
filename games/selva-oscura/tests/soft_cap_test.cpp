@@ -7,11 +7,11 @@
 #include "AppState.h"
 #include "softcaps/SoftCaps.h"
 
-#include <catch2/catch_test_macros.hpp>
-#include <catch2/matchers/catch_matchers_floating_point.hpp>
-
 #include <cstdio>
 #include <filesystem>
+
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 using Catch::Matchers::WithinAbs;
 
@@ -36,7 +36,7 @@ std::string writeStandardConfig(const std::string& tag)
             "heretic":  { "bend_at": 15, "post_bend_multiplier": 0.20 }
         }
     })",
-              f);
+               f);
     std::fclose(f);
     return path;
 }
@@ -105,8 +105,7 @@ TEST_CASE("Unknown derived key returns raw stat (forward-compatible)", "[softcap
     // the raw value. The system fails-open: new derived values that
     // haven't been wired yet behave as if no cap applies, which
     // matches the engine's class-agnostic formula behavior.
-    REQUIRE_THAT(selva::softcaps::apply(80.0f, selva::PlayerClass::Penitent,
-                                        "stamina_from_end"),
+    REQUIRE_THAT(selva::softcaps::apply(80.0f, selva::PlayerClass::Penitent, "stamina_from_end"),
                  WithinAbs(80.0f, 0.001f));
 }
 
@@ -140,11 +139,10 @@ TEST_CASE("Multiplier >= 1.0 is a no-op cap (linear forever)", "[softcap]")
             "unburdened": { "bend_at": 1, "post_bend_multiplier": 1.0 }
         }
     })",
-              f);
+               f);
     std::fclose(f);
     REQUIRE(selva::softcaps::loadFromFile(path));
 
-    REQUIRE_THAT(
-        selva::softcaps::apply(100.0f, selva::PlayerClass::Unburdened, "hp_from_end"),
-        WithinAbs(100.0f, 0.001f));
+    REQUIRE_THAT(selva::softcaps::apply(100.0f, selva::PlayerClass::Unburdened, "hp_from_end"),
+                 WithinAbs(100.0f, 0.001f));
 }

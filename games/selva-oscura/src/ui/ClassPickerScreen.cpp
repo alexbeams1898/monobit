@@ -114,28 +114,19 @@ struct Option
 // across all four -- the keeper-stand-in receives every account the
 // same way ("It is heard").
 constexpr std::array<Option, 3> kAcceptOptions = {{
-    {PlayerClass::Penitent,
-     "I took what was given. I did not know it could be refused.",
-     "Heavy strikes. Endures. END high, DEX low.",
-     4u, 3u, 5u, 4u,
-     "Vitality",
+    {PlayerClass::Penitent, "I took what was given. I did not know it could be refused.",
+     "Heavy strikes. Endures. END high, DEX low.", 4u, 3u, 5u, 4u, "Vitality",
      "Rises when you take and survive damage. Raises poise and damage "
      "reduction. At higher levels, the body itself becomes harder to break.",
      "It is heard."},
-    {PlayerClass::Heretic,
-     "I took what was forbidden. I did not believe it was forbidden.",
-     "Fast strikes. Precise. DEX high, END low.",
-     3u, 5u, 3u, 4u,
-     "Doubt",
+    {PlayerClass::Heretic, "I took what was forbidden. I did not believe it was forbidden.",
+     "Fast strikes. Precise. DEX high, END low.", 3u, 5u, 3u, 4u, "Doubt",
      "Rises when you parry and dodge attacks. Widens the parry window "
      "and increases critical damage. At higher levels, you read attacks "
      "before they land.",
      "It is heard."},
-    {PlayerClass::Ferine,
-     "What I was given did not fill me. Nothing did.",
-     "Body as weapon. Closes the distance. STR high, DEX low.",
-     5u, 2u, 4u, 4u,
-     "Appetite",
+    {PlayerClass::Ferine, "What I was given did not fill me. Nothing did.",
+     "Body as weapon. Closes the distance. STR high, DEX low.", 5u, 2u, 4u, 4u, "Appetite",
      "Rises with unarmed kills and feasting on corpses. Increases "
      "unarmed damage and movement speed. At higher levels, the body "
      "grows weapons of its own.",
@@ -143,10 +134,8 @@ constexpr std::array<Option, 3> kAcceptOptions = {{
 }};
 
 constexpr std::array<Option, 1> kRefuseOptions = {{
-    {PlayerClass::Unburdened,
-     "I will not give an account. The asking is the wrong thing.",
-     "Body stats locked at floor. Power through technique, not numbers.",
-     1u, 1u, 1u, 1u,
+    {PlayerClass::Unburdened, "I will not give an account. The asking is the wrong thing.",
+     "Body stats locked at floor. Power through technique, not numbers.", 1u, 1u, 1u, 1u,
      "Resistance",
      "Rises with every measure that passes through you instead of "
      "being kept. Increases mind regeneration and channeled power. At "
@@ -310,9 +299,9 @@ bool drawOptionList()
         // room between the text and the border.
         constexpr float kBoxPadX = 14.0f;
         constexpr float kBoxPadY = 12.0f;
-        const ImVec2 box_min{
-            ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMin().x - kBoxPadX,
-            ImGui::GetCursorScreenPos().y - kBoxPadY};
+        const ImVec2 box_min{ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMin().x -
+                                 kBoxPadX,
+                             ImGui::GetCursorScreenPos().y - kBoxPadY};
         const float box_right =
             ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x + kBoxPadX;
 
@@ -352,9 +341,8 @@ bool drawOptionList()
         // visually pairs with the stat numerals; description in the
         // muted body color so it reads as the explanatory sub-line.
         ImGui::Spacing();
-        ImGui::PushStyleColor(ImGuiCol_Text,
-                              selected ? ImVec4(0.95f, 0.86f, 0.55f, 1.0f)
-                                       : ImVec4(0.78f, 0.68f, 0.55f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Text, selected ? ImVec4(0.95f, 0.86f, 0.55f, 1.0f)
+                                                      : ImVec4(0.78f, 0.68f, 0.55f, 1.0f));
         ImGui::TextUnformatted(opt.identity_name_t0);
         ImGui::PopStyleColor();
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.65f, 0.58f, 0.48f, 0.95f));

@@ -161,10 +161,8 @@ void syncEquipmentFromInventory()
     sLastSyncedLeft = left_id;
 
     const auto& items = selva::items::itemRegistry();
-    const Weapon* right = resolveHandWeaponFor(right_id, profile->inventory, items,
-                                                sWeaponClasses);
-    const Weapon* left = resolveHandWeaponFor(left_id, profile->inventory, items,
-                                               sWeaponClasses);
+    const Weapon* right = resolveHandWeaponFor(right_id, profile->inventory, items, sWeaponClasses);
+    const Weapon* left = resolveHandWeaponFor(left_id, profile->inventory, items, sWeaponClasses);
     sEquipment.right = (right != nullptr) ? right : &sFistsWeapon;
     sEquipment.left = (left != nullptr) ? left : &sFistsWeapon;
 }

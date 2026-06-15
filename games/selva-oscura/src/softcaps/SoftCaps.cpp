@@ -54,8 +54,7 @@ bool loadFromFile(const std::string& path)
     std::ifstream in(path);
     if (!in)
     {
-        std::fprintf(stderr, "[softcaps] cannot open %s; keeping previous curves\n",
-                     path.c_str());
+        std::fprintf(stderr, "[softcaps] cannot open %s; keeping previous curves\n", path.c_str());
         std::fflush(stderr);
         return false;
     }

@@ -85,9 +85,8 @@ void tickStarterDispenser()
     const char* config_path = starterConfigPathFor(profile->player_class);
     if (config_path == nullptr)
     {
-        std::fprintf(stderr,
-                     "[starter] signing_committed but player_class=None; "
-                     "skipping descent-stair spawn\n");
+        std::fprintf(stderr, "[starter] signing_committed but player_class=None; "
+                             "skipping descent-stair spawn\n");
         std::fflush(stderr);
         return;
     }
@@ -98,13 +97,15 @@ void tickStarterDispenser()
 
     const glm::vec3 pos = descentPickupPos();
     const Id spawned =
-        spawnPickup(pos, inst, std::string{}, []() {
-            if (PlayerProfile* p = activePlayerProfile())
-                setFlag(p, kGrantedFlag);
-            starterIdSlot() = kInvalidId;
-            std::fprintf(stderr, "[starter] granted; flag set, slot cleared\n");
-            std::fflush(stderr);
-        });
+        spawnPickup(pos, inst, std::string{},
+                    []()
+                    {
+                        if (PlayerProfile* p = activePlayerProfile())
+                            setFlag(p, kGrantedFlag);
+                        starterIdSlot() = kInvalidId;
+                        std::fprintf(stderr, "[starter] granted; flag set, slot cleared\n");
+                        std::fflush(stderr);
+                    });
 
     if (spawned == kInvalidId)
     {
@@ -114,9 +115,9 @@ void tickStarterDispenser()
     }
 
     slot = spawned;
-    std::fprintf(stderr, "[starter] spawned '%s' at (%.2f,%.2f,%.2f) for class=%d\n",
-                 config_path, static_cast<double>(pos.x), static_cast<double>(pos.y),
-                 static_cast<double>(pos.z), static_cast<int>(profile->player_class));
+    std::fprintf(stderr, "[starter] spawned '%s' at (%.2f,%.2f,%.2f) for class=%d\n", config_path,
+                 static_cast<double>(pos.x), static_cast<double>(pos.y), static_cast<double>(pos.z),
+                 static_cast<int>(profile->player_class));
     std::fflush(stderr);
 }
 

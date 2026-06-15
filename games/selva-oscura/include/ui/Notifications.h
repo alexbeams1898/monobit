@@ -33,8 +33,7 @@ struct Notification
 // Push a transient toast onto the stack. Stack is bounded; oldest
 // entries fall off when full. `color` carries the semantic palette
 // (gold for first-time discoveries, neutral for repeats, etc.).
-void pushNotification(std::string text, glm::vec4 color,
-                      std::string icon_path = std::string{});
+void pushNotification(std::string text, glm::vec4 color, std::string icon_path = std::string{});
 
 // Advance every active notification (timer down, y_offset up).
 // Called once per frame before render.

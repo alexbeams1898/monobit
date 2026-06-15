@@ -6,10 +6,10 @@
 #include "AppState.h"
 #include "classmods/ClassModifiers.h"
 
-#include <catch2/catch_test_macros.hpp>
-
 #include <cstdio>
 #include <filesystem>
+
+#include <catch2/catch_test_macros.hpp>
 
 namespace
 {
@@ -31,7 +31,7 @@ std::string writeStandardConfig(const std::string& tag)
             "unburdened":  0
         }
     })",
-              f);
+               f);
     std::fclose(f);
     return path;
 }
@@ -84,7 +84,7 @@ TEST_CASE("Class missing from a modifier block returns 0", "[classmods]")
             "penitent": 50
         }
     })",
-              f);
+               f);
     std::fclose(f);
     REQUIRE(selva::classmods::loadFromFile(path));
 

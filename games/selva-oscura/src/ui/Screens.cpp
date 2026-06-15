@@ -16,8 +16,8 @@
 #include "items/CategoryRegistry.h"
 #include "items/ItemRegistry.h"
 #include "items/UseHandlers.h"
-#include "notice/Notices.h"
 #include "lang/Language.h"
+#include "notice/Notices.h"
 #include "ops/CraftingOps.h"
 #include "ops/InventoryOps.h"
 #include "render/Texture.h"
@@ -670,14 +670,13 @@ namespace
 // fit either accessory slot.
 bool itemFitsSlot(const engine::ecs::ItemDef& def, EquipSlot slot)
 {
-    using engine::ecs::ItemCategory;
     using engine::ecs::ArmorSlot;
+    using engine::ecs::ItemCategory;
     switch (slot)
     {
     case EquipSlot::RightHand:
     case EquipSlot::LeftHand:
-        return def.category == ItemCategory::Weapon ||
-               def.category == ItemCategory::Incantation ||
+        return def.category == ItemCategory::Weapon || def.category == ItemCategory::Incantation ||
                def.category == ItemCategory::Invocation;
     case EquipSlot::Head:
         return def.category == ItemCategory::Armor && def.armor_slot == ArmorSlot::Head;
@@ -699,8 +698,8 @@ bool itemFitsSlot(const engine::ecs::ItemDef& def, EquipSlot slot)
 // + ItemDef.armor_slot, not by inventory bucket key (the buckets
 // already match category, but we filter on the def to be authoritative).
 std::vector<const engine::ecs::ItemInstance*>
-collectItemsFittingSlot(const engine::ecs::Inventory& inv,
-                        const engine::ecs::ItemRegistry& items, EquipSlot slot)
+collectItemsFittingSlot(const engine::ecs::Inventory& inv, const engine::ecs::ItemRegistry& items,
+                        EquipSlot slot)
 {
     std::vector<const engine::ecs::ItemInstance*> out;
     for (const auto& [cat_key, bucket] : inv.by_category)
@@ -774,9 +773,8 @@ void renderPauseVesselHands()
                 for (const auto* candidate : candidates)
                 {
                     const ItemDef* def = items.find(candidate->config_path);
-                    const std::string name = (def != nullptr && !def->name.empty())
-                                                 ? def->name
-                                                 : candidate->config_path;
+                    const std::string name =
+                        (def != nullptr && !def->name.empty()) ? def->name : candidate->config_path;
                     // Marker shows which item is currently equipped here.
                     const bool already_equipped =
                         (engine::ops::inventory::slotIdConst(eq, slot) == candidate->id);
@@ -1813,12 +1811,19 @@ InventoryEntryLabel buildInventoryEntryLabel(const engine::ecs::ItemInstance& it
     out.id = it.id;
     const engine::ecs::ItemDef* def = items.find(it.config_path);
     const std::string base = (def != nullptr && !def->name.empty()) ? def->name : it.config_path;
+    // Quality prefix only for non-Common rolls so Common items don't
+    // pick up cosmetic noise ("Common Bark scrap" reads as redundant).
+    // Above-Common qualities prefix the stamp; below-Common ("Crude")
+    // does too so the player knows when a gather rolled poorly.
+    std::string prefix;
+    if (it.quality != engine::ecs::QualityTier::Common)
+        prefix = std::string(engine::ecs::qualityName(it.quality)) + " ";
     std::string suffix;
     if (it.quantity > 1)
         suffix = "  x" + std::to_string(it.quantity);
     else if (it.weapon_xp_level > 1)
         suffix = "  +" + std::to_string(it.weapon_xp_level - 1);
-    out.display = base + suffix;
+    out.display = prefix + base + suffix;
     return out;
 }
 
@@ -1886,8 +1891,7 @@ void drawInventoryEntryList(const std::vector<engine::ecs::ItemInstance>* entrie
     }
 }
 
-void drawInventoryUseButton(const engine::ecs::ItemInstance& it,
-                            engine::ecs::Inventory& inv,
+void drawInventoryUseButton(const engine::ecs::ItemInstance& it, engine::ecs::Inventory& inv,
                             engine::ecs::ItemInstanceId& selected_item)
 {
     const selva::items::ItemExtensions* ext = selva::items::itemExtensions(it.config_path);
@@ -1917,10 +1921,8 @@ void drawInventoryUseButton(const engine::ecs::ItemInstance& it,
     }
 }
 
-
 void drawInventoryDetailPanel(engine::ecs::ItemInstanceId selected_item,
-                              engine::ecs::Inventory& inv,
-                              const engine::ecs::ItemRegistry& items,
+                              engine::ecs::Inventory& inv, const engine::ecs::ItemRegistry& items,
                               engine::ecs::ItemInstanceId& selected_item_ref)
 {
     const engine::ecs::ItemInstance* it = engine::ops::inventory::findById(inv, selected_item);
@@ -1930,8 +1932,7 @@ void drawInventoryDetailPanel(engine::ecs::ItemInstanceId selected_item,
         return;
     }
     const engine::ecs::ItemDef* def = items.find(it->config_path);
-    const std::string title =
-        (def != nullptr && !def->name.empty()) ? def->name : it->config_path;
+    const std::string title = (def != nullptr && !def->name.empty()) ? def->name : it->config_path;
     ImGui::TextUnformatted(title.c_str());
     ImGui::Separator();
     ImGui::Spacing();
@@ -2041,8 +2042,8 @@ void renderPauseCraftTab()
             ImGui::PopStyleColor();
         }
 
-        const bool can_craft = all_inputs_met &&
-                               engine::ops::crafting::canCraft(profile->inventory, recipe, items);
+        const bool can_craft =
+            all_inputs_met && engine::ops::crafting::canCraft(profile->inventory, recipe, items);
         if (!can_craft)
             ImGui::BeginDisabled();
         if (ImGui::Button("Craft"))

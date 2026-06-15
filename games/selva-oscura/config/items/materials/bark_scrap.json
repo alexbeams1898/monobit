@@ -1,0 +1,10 @@
+{
+  "_comment": "Tier-0 Wood-side gather material. Taken from the rough trunks of the selva's pines. Hell cannot heal -- materials for medicinal preparations are gathered above, never below. Quality varies with how much intact bark the gatherer finds; the lottery lives in the gather node config, not here.",
+  "name": "Bark scrap",
+  "description": "A strip torn from a pine. Resin clings to its inner side and sticks to the fingers; the wood beneath is paler than the outer black.",
+  "category": "material",
+  "rarity": "common",
+  "stackable": true,
+  "max_stack": 99,
+  "world_mesh": "assets/world/materials/bark_scrap/bark_scrap.glb"
+}

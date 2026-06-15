@@ -216,6 +216,15 @@ struct FormulaConfig
         float enemy_reach = 24.0f;
     } combat_ai;
 
+    // Gather-node respawn cadence. Real-time seconds between trickle
+    // spawns when a gather flow is below its active_cap. Single global
+    // value drives every gather flow today; per-flow override TBD if a
+    // specific material needs slower regrowth.
+    struct
+    {
+        float wood_gather_respawn_seconds = 30.0f;
+    } gather;
+
     // Core combat constants (attack lock, reach, backstab, parry/riposte).
     struct
     {

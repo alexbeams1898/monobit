@@ -1,0 +1,10 @@
+{
+  "_comment": "Tier-0 Wood-side gather material. Wedge of clay dug from a damp seam in the forest floor where the loam gives way to a finer, denser layer. Rarer than common bark or loose earth -- requires the right kind of ground. Hell cannot heal: materials for medicinal preparations are gathered above, never below. Clay poultices have period-medicinal precedent, which gives the substance honest grounding in the cosmology.",
+  "name": "Clay",
+  "description": "A grey-brown lump prised from a seam in the loam. Cool and heavy in the palm, smooth where the fingers pressed it, the surface still bearing the marks of whatever scraped it free.",
+  "category": "material",
+  "rarity": "uncommon",
+  "stackable": true,
+  "max_stack": 99,
+  "world_mesh": "assets/world/materials/clay/clay.glb"
+}

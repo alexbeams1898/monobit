@@ -9,12 +9,13 @@
 #include "render/RegionShaders.h"
 #include "world/StaticMeshAssets.h"
 
-#include <glad/glad.h>
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <cstdio>
 #include <string>
 #include <unordered_map>
+
+#include <glad/glad.h>
 
 namespace selva::render
 {
@@ -75,8 +76,7 @@ const selva::world::StaticMesh* resolveEquippedMesh()
         return nullptr;
 
     selva::world::StaticMesh mesh;
-    const bool ok =
-        selva::world::loadStaticMesh(def->visual_weapon.c_str(), glm::vec3(0.0f), mesh);
+    const bool ok = selva::world::loadStaticMesh(def->visual_weapon.c_str(), glm::vec3(0.0f), mesh);
     if (!ok)
     {
         std::fprintf(stderr,
@@ -87,10 +87,8 @@ const selva::world::StaticMesh* resolveEquippedMesh()
         loadFailureMemo()[inst->config_path] = true;
         return nullptr;
     }
-    std::fprintf(stderr,
-                 "[weapon-render] loaded '%s' for '%s' (%zu primitives)\n",
-                 def->visual_weapon.c_str(), inst->config_path.c_str(),
-                 mesh.primitives.size());
+    std::fprintf(stderr, "[weapon-render] loaded '%s' for '%s' (%zu primitives)\n",
+                 def->visual_weapon.c_str(), inst->config_path.c_str(), mesh.primitives.size());
     std::fflush(stderr);
 
     auto [inserted_it, _] = meshCache().emplace(inst->config_path, std::move(mesh));
@@ -105,8 +103,7 @@ glm::mat4 buildGripMatrix(const engine::ecs::ItemDef& def)
 {
     constexpr float kDeg2Rad = 3.14159265358979323846f / 180.0f;
     glm::mat4 grip(1.0f);
-    grip = glm::translate(
-        grip, glm::vec3(def.grip_offset_x, def.grip_offset_y, def.grip_offset_z));
+    grip = glm::translate(grip, glm::vec3(def.grip_offset_x, def.grip_offset_y, def.grip_offset_z));
     grip = glm::rotate(grip, def.grip_rot_deg_z * kDeg2Rad, glm::vec3(0.0f, 0.0f, 1.0f));
     grip = glm::rotate(grip, def.grip_rot_deg_y * kDeg2Rad, glm::vec3(0.0f, 1.0f, 0.0f));
     grip = glm::rotate(grip, def.grip_rot_deg_x * kDeg2Rad, glm::vec3(1.0f, 0.0f, 0.0f));

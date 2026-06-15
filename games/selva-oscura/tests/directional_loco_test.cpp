@@ -5,9 +5,9 @@
 
 #include "gameplay/Actor.h"
 
-#include <catch2/catch_test_macros.hpp>
-
 #include <cstring>
+
+#include <catch2/catch_test_macros.hpp>
 
 using selva::gameplay::directionalLocoClip;
 using selva::gameplay::LocoTier;
@@ -28,7 +28,10 @@ const glm::vec3 kBackward(0.0f, 0.0f, -1.0f);
 const glm::vec3 kStrafeRight(1.0f, 0.0f, 0.0f);
 const glm::vec3 kStrafeLeft(-1.0f, 0.0f, 0.0f);
 
-bool isClip(const char* a, const char* b) { return a != nullptr && std::strcmp(a, b) == 0; }
+bool isClip(const char* a, const char* b)
+{
+    return a != nullptr && std::strcmp(a, b) == 0;
+}
 
 } // namespace
 
@@ -40,11 +43,11 @@ TEST_CASE("directionalLocoClip returns nullptr for zero intent", "[loco][directi
 TEST_CASE("unarmed locked-on directional clips", "[loco][directional][unarmed]")
 {
     REQUIRE(isClip(directionalLocoClip(kFwd, kRight, kForward, LocoTier::Walk, false), "walking"));
-    REQUIRE(
-        isClip(directionalLocoClip(kFwd, kRight, kBackward, LocoTier::Walk, false), "walking_backward"));
+    REQUIRE(isClip(directionalLocoClip(kFwd, kRight, kBackward, LocoTier::Walk, false),
+                   "walking_backward"));
     REQUIRE(isClip(directionalLocoClip(kFwd, kRight, kForward, LocoTier::Jog, false), "jogging"));
-    REQUIRE(
-        isClip(directionalLocoClip(kFwd, kRight, kBackward, LocoTier::Jog, false), "jogging_backward"));
+    REQUIRE(isClip(directionalLocoClip(kFwd, kRight, kBackward, LocoTier::Jog, false),
+                   "jogging_backward"));
     REQUIRE(isClip(directionalLocoClip(kFwd, kRight, kStrafeRight, LocoTier::Walk, false),
                    "strafe_walking_right"));
     REQUIRE(isClip(directionalLocoClip(kFwd, kRight, kStrafeLeft, LocoTier::Walk, false),
@@ -54,7 +57,8 @@ TEST_CASE("unarmed locked-on directional clips", "[loco][directional][unarmed]")
     REQUIRE(isClip(directionalLocoClip(kFwd, kRight, kStrafeLeft, LocoTier::Jog, false),
                    "strafe_jogging_left"));
     // Sprint forward picks sprinting; sprint back/strafe demote to jog.
-    REQUIRE(isClip(directionalLocoClip(kFwd, kRight, kForward, LocoTier::Sprint, false), "sprinting"));
+    REQUIRE(
+        isClip(directionalLocoClip(kFwd, kRight, kForward, LocoTier::Sprint, false), "sprinting"));
     REQUIRE(isClip(directionalLocoClip(kFwd, kRight, kBackward, LocoTier::Sprint, false),
                    "jogging_backward"));
     REQUIRE(isClip(directionalLocoClip(kFwd, kRight, kStrafeRight, LocoTier::Sprint, false),

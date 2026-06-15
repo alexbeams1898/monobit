@@ -177,6 +177,14 @@ void loadPoiseConfig(const json& j, FormulaConfig& f)
     f.poise.decay_window = j["poise"].value("decay_window", f.poise.decay_window);
 }
 
+void loadGatherConfig(const json& j, FormulaConfig& f)
+{
+    if (!j.contains("gather"))
+        return;
+    f.gather.wood_gather_respawn_seconds =
+        j["gather"].value("wood_gather_respawn_seconds", f.gather.wood_gather_respawn_seconds);
+}
+
 void loadDodgeConfig(const json& j, FormulaConfig& f)
 {
     if (!j.contains("dodge"))
@@ -372,6 +380,7 @@ bool loadFormulaConfig(FormulaConfig& f, const std::string& file_path)
     loadStatRequirementConfig(j, f);
     loadLevelingConfig(j, f);
     loadPoiseConfig(j, f);
+    loadGatherConfig(j, f);
     loadDodgeConfig(j, f);
     loadEssenceConfig(j, f);
     loadXpDropConfig(j, f);
@@ -462,6 +471,7 @@ int loadItemRegistry(ItemRegistry& registry, const std::string& dir_path)
         def.stamina_cost = j.value("stamina_cost", -1.0f);
 
         def.visual_weapon = j.value("visual_weapon", std::string{});
+        def.world_mesh = j.value("world_mesh", std::string{});
         def.weapon_icon = j.value("weapon_icon", std::string{});
         def.grip_x = j.value("grip_x", 0.0f);
         def.grip_y = j.value("grip_y", 0.0f);

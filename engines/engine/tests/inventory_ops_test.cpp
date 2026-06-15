@@ -112,8 +112,7 @@ TEST_CASE("addItem to empty inventory", "[inventory]")
     auto reg = makeRegistry();
     Inventory inv;
 
-    const auto id =
-        InventoryOps::addItem(inv, makeItem("config/items/weapons/shiv.json"), reg);
+    const auto id = InventoryOps::addItem(inv, makeItem("config/items/weapons/shiv.json"), reg);
     REQUIRE(id != kInvalidItemInstanceId);
 
     const auto* weapons = bucket(inv, "weapons");
@@ -174,9 +173,8 @@ TEST_CASE("addItem stackable remainder gets correct quantity", "[inventory]")
     REQUIRE((*mats)[0].quantity == 95);
 
     // Add 10 more -- 4 merge into existing, 6 overflow to new stack.
-    REQUIRE(InventoryOps::addItem(
-                inv, makeItem("config/items/materials/scrap_metal.json", 10), reg) !=
-            kInvalidItemInstanceId);
+    REQUIRE(InventoryOps::addItem(inv, makeItem("config/items/materials/scrap_metal.json", 10),
+                                  reg) != kInvalidItemInstanceId);
     REQUIRE(mats->size() == 2);
     REQUIRE((*mats)[0].quantity == 99);
     REQUIRE((*mats)[1].quantity == 6);
@@ -187,8 +185,7 @@ TEST_CASE("addItem allocates unique stable ids", "[inventory]")
     auto reg = makeRegistry();
     Inventory inv;
 
-    const auto id_a =
-        InventoryOps::addItem(inv, makeItem("config/items/weapons/shiv.json"), reg);
+    const auto id_a = InventoryOps::addItem(inv, makeItem("config/items/weapons/shiv.json"), reg);
     const auto id_b =
         InventoryOps::addItem(inv, makeItem("config/items/weapons/iron_sword.json"), reg);
     REQUIRE(id_a != kInvalidItemInstanceId);
@@ -207,8 +204,8 @@ TEST_CASE("findById resolves across category buckets", "[inventory]")
 
     const auto weapon_id =
         InventoryOps::addItem(inv, makeItem("config/items/weapons/shiv.json"), reg);
-    const auto mat_id = InventoryOps::addItem(
-        inv, makeItem("config/items/materials/scrap_metal.json", 5), reg);
+    const auto mat_id =
+        InventoryOps::addItem(inv, makeItem("config/items/materials/scrap_metal.json", 5), reg);
 
     const auto* weapon = InventoryOps::findById(inv, weapon_id);
     REQUIRE(weapon != nullptr);
@@ -453,8 +450,7 @@ TEST_CASE("ItemInstance empty when config_path is empty", "[inventory]")
 // equipItemToSlot single-slot uniqueness
 // ---------------------------------------------------------------------------
 
-TEST_CASE("equipItemToSlot moves the same id between slots (single-slot uniqueness)",
-          "[inventory]")
+TEST_CASE("equipItemToSlot moves the same id between slots (single-slot uniqueness)", "[inventory]")
 {
     // Equipping the same item to a second slot must clear the first
     // slot. The item is one physical thing -- it cannot occupy both
@@ -488,13 +484,12 @@ TEST_CASE("consumeItems partial consumption commits and returns false", "[invent
     Inventory inv;
     Equipment equip;
 
-    InventoryOps::addItem(
-        inv, makeItem("config/items/materials/scrap_metal.json", 3), reg);
+    InventoryOps::addItem(inv, makeItem("config/items/materials/scrap_metal.json", 3), reg);
     REQUIRE(InventoryOps::countItem(inv, "config/items/materials/scrap_metal.json") == 3);
 
     // Request 5; only 3 available.
-    REQUIRE_FALSE(InventoryOps::consumeItems(
-        inv, equip, "config/items/materials/scrap_metal.json", 5));
+    REQUIRE_FALSE(
+        InventoryOps::consumeItems(inv, equip, "config/items/materials/scrap_metal.json", 5));
     // All 3 still consumed despite returning false.
     REQUIRE(InventoryOps::countItem(inv, "config/items/materials/scrap_metal.json") == 0);
 }
