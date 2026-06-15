@@ -6,6 +6,7 @@
 
 #include <imgui.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstdio>
@@ -192,7 +193,22 @@ void commitClass(PlayerClass c)
 {
     auto* profile = activePlayerProfile();
     if (profile != nullptr)
+    {
         profile->player_class = c;
+        // The Guide's parting gift: teach the Poultice recipe -- the
+        // entry-tier medicinal preparation -- to every Vagrant
+        // regardless of class. Higher tiers unlock via mastery (10
+        // Poultices -> Salve, etc) per
+        // [[project_healing_system_locked_2026_06_14]]. Idempotent: if
+        // the profile was loaded mid-Signing with the recipe already
+        // known, this is a no-op.
+        constexpr const char* kPoulticeRecipe = "config/recipes/craft_poultice.json";
+        if (std::find(profile->known_recipes.begin(), profile->known_recipes.end(),
+                      kPoulticeRecipe) == profile->known_recipes.end())
+        {
+            profile->known_recipes.push_back(kPoulticeRecipe);
+        }
+    }
     // signing_committed gates the dialog layer's post-Signing entry
     // topics. Path flag mirrors the cosmological identity (class-
     // pickers install the Crucible; Unburdened installs the Censer).

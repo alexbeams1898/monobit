@@ -324,6 +324,8 @@ PlayerProfile loadCharacter(const json& c)
     loadInsights(c, p);
     loadDoorStates(c, p);
     loadGatherState(c, p);
+    loadInsightCountMap(c, "craft_counts", p.craft_counts);
+    loadStringArrayField(c, "known_recipes", p.known_recipes);
     loadInventory(c, p);
     loadEquipment(c, p);
     loadCompendium(c, p);
@@ -629,6 +631,10 @@ nlohmann::json saveCharacter(const PlayerProfile& c)
         char_json["next_gather_node_id"] = c.next_gather_node_id;
     if (!c.gather_flows.empty())
         char_json["gather_flows"] = saveGatherFlows(c);
+    if (!c.craft_counts.empty())
+        char_json["craft_counts"] = saveCountMap(c.craft_counts);
+    if (!c.known_recipes.empty())
+        char_json["known_recipes"] = c.known_recipes;
     if (!c.inventory.by_category.empty() || c.inventory.next_id > 1)
         char_json["inventory"] = saveInventory(c);
     if (!equipmentIsEmpty(c.equipment))

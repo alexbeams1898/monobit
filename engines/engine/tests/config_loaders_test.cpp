@@ -257,6 +257,30 @@ TEST_CASE("RecipeDef loads sangue_cost and substrate fields", "[engine][config][
     REQUIRE(r.substrate == "hell");
 }
 
+TEST_CASE("RecipeDef loads unlocks_recipe + unlock_after for mastery chain",
+          "[engine][config][recipe][unlock]")
+{
+    clearDir("recipeunlock");
+    const std::string body = R"({
+        "name": "Poultice",
+        "inputs": [
+            { "item": "config/items/materials/bark_scrap.json", "quantity": 2 }
+        ],
+        "output": "config/items/consumables/poultice.json",
+        "output_quantity": 1,
+        "unlocks_recipe": "config/recipes/craft_salve.json",
+        "unlock_after": 10
+    })";
+    writeFile("recipeunlock", "craft_poultice.json", body);
+
+    engine::ecs::RecipeRegistry reg;
+    REQUIRE(engine::ecs::loadRecipeRegistry(
+                reg, (kTmpRoot / "recipeunlock").generic_string()) == 1);
+    const auto& r = reg.recipes[0];
+    REQUIRE(r.unlocks_recipe == "config/recipes/craft_salve.json");
+    REQUIRE(r.unlock_after == 10);
+}
+
 TEST_CASE("RecipeDef sangue_cost defaults to 0 and substrate defaults to empty",
           "[engine][config][recipe]")
 {
@@ -273,4 +297,6 @@ TEST_CASE("RecipeDef sangue_cost defaults to 0 and substrate defaults to empty",
     REQUIRE(reg.recipes[0].sangue_cost == 0);
     REQUIRE(reg.recipes[0].substrate.empty());
     REQUIRE(reg.recipes[0].output_quantity == 1);
+    REQUIRE(reg.recipes[0].unlocks_recipe.empty());
+    REQUIRE(reg.recipes[0].unlock_after == 0);
 }

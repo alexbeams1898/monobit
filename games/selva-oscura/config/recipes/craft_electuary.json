@@ -1,0 +1,13 @@
+{
+  "_comment": "Tier-3 heal craft. Unlocked after 25 Salves. Mastery threshold (50) unlocks Theriac (the legendary capstone). Heavier material cost reflects the reduction-and-recombination step.",
+  "name": "Electuary",
+  "inputs": [
+    { "item": "config/items/materials/bark_scrap.json",  "quantity": 4 },
+    { "item": "config/items/materials/clay.json",        "quantity": 3 },
+    { "item": "config/items/materials/pale_lichen.json", "quantity": 4 }
+  ],
+  "output": "config/items/consumables/electuary.json",
+  "output_quantity": 1,
+  "unlocks_recipe": "config/recipes/craft_theriac.json",
+  "unlock_after": 50
+}

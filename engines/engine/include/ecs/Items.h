@@ -371,6 +371,14 @@ struct RecipeDef
     // Selva uses "hell" / "wood" to decide whether outputs reclaim on
     // second death; other games may ignore.
     std::string substrate;
+    // Mastery-gated tier unlock chain. When the player crafts this
+    // recipe N times (`unlock_after`), the recipe at `unlocks_recipe`
+    // becomes known. Empty `unlocks_recipe` = no follow-on tier.
+    // Per-game tracking lives outside (Selva uses PlayerProfile.craft_counts
+    // + PlayerProfile.known_recipes); the engine just exposes the
+    // declarative chain. Per [[project_healing_system_locked_2026_06_14]].
+    std::string unlocks_recipe;
+    int unlock_after = 0;
 };
 
 struct RecipeRegistry

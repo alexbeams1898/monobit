@@ -31,6 +31,7 @@
 #include "gameplay/PlayerState.h"
 #include "gameplay/PropArchetype.h"
 #include "gather/GatherSpawner.h"
+#include "items/HealHandlers.h"
 #include "identity/Identity.h"
 #include "insight/Insight.h"
 #include "items/CategoryRegistry.h"
@@ -361,6 +362,7 @@ void initGameplaySubsystems()
     // reference at load time).
     selva::spawn::initFlowSpawner();
     selva::gather::initGatherSpawner();
+    selva::items::registerHealHandlers();
     selva::gameplay::initBehaviorTrees();
     // Region bodies + meshes were registered at boot, but enemy
     // spawning needs archetypes + trees loaded first.

@@ -50,6 +50,7 @@
 #include "insight/Insight.h"
 #include "insight/InsightLayout.h"
 #include "interact/Interaction.h"
+#include "items/HealHandlers.h"
 #include "items/ItemRegistry.h"
 #include "loot/Pickups.h"
 #include "loot/StarterDispenser.h"
@@ -3578,6 +3579,19 @@ void tickInteractEdge(const Uint8* keys, bool combat_suppressed)
         selva::interact::triggerCurrent();
 }
 
+// Q-press edge -> quick-heal. Picks highest-tier heal consumable the
+// player holds and applies it. Same suppression gates as E so the
+// hotkey can't fire during dialog / scene / pause / tuning panel.
+void tickQuickHealEdge(const Uint8* keys, bool combat_suppressed)
+{
+    static bool s_prev_q = false;
+    const bool now_q = (keys[SDL_SCANCODE_Q] != 0);
+    const bool q_edge = now_q && !s_prev_q;
+    s_prev_q = now_q;
+    if (q_edge && !combat_suppressed)
+        selva::items::tryQuickHeal();
+}
+
 // Tab-press edge -> cycle focus between in-range interactables. The
 // system itself is a no-op when fewer than two candidates are in
 // range, so unconditional firing is safe. Suppressed under the same
@@ -3689,6 +3703,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& em, double dt_d)
     const Uint8* keys = SDL_GetKeyboardState(nullptr);
     tickInteractEdge(keys, combat_suppressed);
     tickInteractCycleEdge(keys, combat_suppressed);
+    tickQuickHealEdge(keys, combat_suppressed);
     tickDevAndDebugKeys(keys);
     // Preview mode suspends world sim; renderTreePreview handles the
     // alternate render path.

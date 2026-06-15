@@ -361,6 +361,34 @@ TEST_CASE("SaveManager round-trips gather_flows preserving initial_fill_done + t
     cleanupTestFile(path);
 }
 
+TEST_CASE("SaveManager round-trips craft_counts and known_recipes",
+          "[save][craft][round-trip]")
+{
+    const std::string path = testSavePath("craft-progression-roundtrip");
+    cleanupTestFile(path);
+
+    selva::SaveData data;
+    selva::SaveManager::addCharacter(data, "PILGRIM");
+    auto& p = data.characters[0];
+    p.craft_counts["config/recipes/craft_poultice.json"] = 9;
+    p.craft_counts["config/recipes/craft_salve.json"] = 2;
+    p.known_recipes.push_back("config/recipes/craft_poultice.json");
+    p.known_recipes.push_back("config/recipes/craft_salve.json");
+
+    REQUIRE(selva::SaveManager::save(data, path));
+
+    const selva::SaveData loaded = selva::SaveManager::load(path);
+    REQUIRE(loaded.characters.size() == 1);
+    const auto& lp = loaded.characters[0];
+    REQUIRE(lp.craft_counts.at("config/recipes/craft_poultice.json") == 9u);
+    REQUIRE(lp.craft_counts.at("config/recipes/craft_salve.json") == 2u);
+    REQUIRE(lp.known_recipes.size() == 2);
+    REQUIRE(lp.known_recipes[0] == "config/recipes/craft_poultice.json");
+    REQUIRE(lp.known_recipes[1] == "config/recipes/craft_salve.json");
+
+    cleanupTestFile(path);
+}
+
 TEST_CASE("SaveManager defaults gather state to empty on legacy v4 saves",
           "[save][gather][migration]")
 {

@@ -1,0 +1,13 @@
+{
+  "_comment": "Tier-2 heal craft. Unlocked after 10 Poultices. Mastery threshold (25) unlocks Electuary. Material costs scale up to match the better output.",
+  "name": "Salve",
+  "inputs": [
+    { "item": "config/items/materials/bark_scrap.json",  "quantity": 3 },
+    { "item": "config/items/materials/clay.json",        "quantity": 2 },
+    { "item": "config/items/materials/pale_lichen.json", "quantity": 2 }
+  ],
+  "output": "config/items/consumables/salve.json",
+  "output_quantity": 1,
+  "unlocks_recipe": "config/recipes/craft_electuary.json",
+  "unlock_after": 25
+}

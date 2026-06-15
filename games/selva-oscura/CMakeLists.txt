@@ -114,6 +114,7 @@ add_library(selva-oscura-lib STATIC
     src/identity/Identity.cpp
     src/items/ItemRegistry.cpp
     src/items/UseHandlers.cpp
+    src/items/HealHandlers.cpp
     src/loot/Pickups.cpp
     src/loot/StarterDispenser.cpp
     src/notice/Notices.cpp

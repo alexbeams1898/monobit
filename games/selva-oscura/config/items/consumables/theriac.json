@@ -1,0 +1,10 @@
+{
+  "_comment": "Tier-4 heal -- the legendary capstone. Theriac was the universal remedy of antiquity, prepared by long compounding and reputed to cure all wounds. Unlocked only after sustained Electuary practice. Per [[project_healing_system_locked_2026_06_14]] -- do NOT slot anything above this.",
+  "name": "Theriac",
+  "description": "A dense block the colour of dried blood and old honey. The scent is layered: forest floor, resin, lichen long since dried -- and beneath those, something the senses refuse to name. A grain on the tongue is enough.",
+  "category": "consumable",
+  "rarity": "legendary",
+  "stackable": true,
+  "max_stack": 5,
+  "use_handler": "heal_consumable"
+}

@@ -1,0 +1,10 @@
+{
+  "_comment": "Tier-3 heal. A refined preparation -- the materials reduced and recombined into something taken as much as applied. Unlocked after sustained Salve practice.",
+  "name": "Electuary",
+  "description": "A dense paste, dark and sweet-bitter where the lichen's bite has been measured against the clay's earth-taste. A finger's worth, taken under the tongue, works upon the body's interior as the salves never could.",
+  "category": "consumable",
+  "rarity": "rare",
+  "stackable": true,
+  "max_stack": 10,
+  "use_handler": "heal_consumable"
+}

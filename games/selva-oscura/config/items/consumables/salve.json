@@ -1,0 +1,10 @@
+{
+  "_comment": "Tier-2 heal. Compounded preparation: the same materials, worked longer and with more discrimination, yield a stronger remedy. Unlocked after sustained Poultice practice.",
+  "name": "Salve",
+  "description": "A pale ointment with the bitter undersmell of lichen. Spread thin, it goes to work quickly; the bark's resin gives it body, the clay drinks the heat.",
+  "category": "consumable",
+  "rarity": "uncommon",
+  "stackable": true,
+  "max_stack": 20,
+  "use_handler": "heal_consumable"
+}

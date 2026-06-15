@@ -2017,9 +2017,16 @@ void renderPauseCraftTab()
     const ImVec4 have_color(0.55f, 0.85f, 0.55f, 1.0f);
     const ImVec4 need_color(0.85f, 0.55f, 0.55f, 1.0f);
 
+    int known_visible = 0;
     for (std::size_t i = 0; i < recipes.size(); ++i)
     {
         const auto& recipe = recipes[i];
+        // Mastery-gated: only show recipes the player has been taught
+        // or has unlocked. The Guide teaches Poultice at Signing; higher
+        // tiers unlock via the craft-count threshold in craftAndRecord.
+        if (!selva::items::isRecipeKnown(recipe.config_path))
+            continue;
+        ++known_visible;
         ImGui::PushID(static_cast<int>(i));
 
         const engine::ecs::ItemDef* out_def = items.find(recipe.output_item);
@@ -2042,13 +2049,25 @@ void renderPauseCraftTab()
             ImGui::PopStyleColor();
         }
 
+        // Mastery progress toward the next-tier unlock, when this recipe
+        // gates one. Reads PlayerProfile.craft_counts.
+        if (!recipe.unlocks_recipe.empty() && recipe.unlock_after > 0)
+        {
+            const auto it = profile->craft_counts.find(recipe.config_path);
+            const std::uint32_t count = (it != profile->craft_counts.end()) ? it->second : 0u;
+            if (count < static_cast<std::uint32_t>(recipe.unlock_after))
+            {
+                ImGui::TextDisabled("  mastery: %u / %d", count, recipe.unlock_after);
+            }
+        }
+
         const bool can_craft =
             all_inputs_met && engine::ops::crafting::canCraft(profile->inventory, recipe, items);
         if (!can_craft)
             ImGui::BeginDisabled();
         if (ImGui::Button("Craft"))
         {
-            if (engine::ops::crafting::craft(profile->inventory, recipe, items))
+            if (selva::items::craftAndRecord(recipe))
             {
                 std::fprintf(stderr, "[craft] '%s' produced\n", recipe.name.c_str());
                 std::fflush(stderr);
@@ -2060,6 +2079,8 @@ void renderPauseCraftTab()
         ImGui::Separator();
         ImGui::PopID();
     }
+    if (known_visible == 0)
+        ImGui::TextDisabled("(no recipes known yet)");
 }
 
 } // namespace

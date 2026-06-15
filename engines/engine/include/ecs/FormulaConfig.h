@@ -225,6 +225,19 @@ struct FormulaConfig
         float wood_gather_respawn_seconds = 30.0f;
     } gather;
 
+    // Heal percentages per tier (multiplied against max HP).
+    // Per [[project_healing_system_locked_2026_06_14]]: Poultice 20% /
+    // Salve 35% / Electuary 55% / Theriac 80%. Per-tier % so the
+    // numbers scale automatically as the HP cap grows -- no retuning
+    // when END/HP curves shift.
+    struct
+    {
+        float poultice_pct = 0.20f;
+        float salve_pct = 0.35f;
+        float electuary_pct = 0.55f;
+        float theriac_pct = 0.80f;
+    } heal;
+
     // Core combat constants (attack lock, reach, backstab, parry/riposte).
     struct
     {

@@ -393,6 +393,21 @@ struct PlayerProfile
     // subject string passed to selva::insight::notifyExamined.
     std::unordered_map<std::string, std::uint32_t> examine_counts;
 
+    // Mastery-gated crafting state.
+    //
+    // `craft_counts`: per-recipe success counter, incremented on every
+    // successful engine::ops::crafting::craft(). Keyed by recipe
+    // config_path. Drives the unlock chain (Poultice -> Salve ->
+    // Electuary -> Theriac per [[project_healing_system_locked_2026_06_14]])
+    // via the recipe's `unlock_after` threshold.
+    //
+    // `known_recipes`: set of recipe config_paths the player can
+    // currently craft. The Craft UI filters by this list. Starts with
+    // recipes the player has been TAUGHT (today: Guide teaches Poultice
+    // at Signing) and grows as unlock thresholds fire.
+    std::unordered_map<std::string, std::uint32_t> craft_counts;
+    std::vector<std::string> known_recipes;
+
     // Persistent door state. (door_id, state_name) pairs. Only doors
     // whose state has DEVIATED from their JSON-authored initial_state
     // need entries here. State_name is one of "Locked", "Closed",

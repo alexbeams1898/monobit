@@ -1,0 +1,10 @@
+{
+  "_comment": "Tier-1 heal. Bark + clay + lichen pressed together into a dressing. Crude in technique but reliable -- the entry-tier medicinal preparation. Per [[project_healing_system_locked_2026_06_14]].",
+  "name": "Poultice",
+  "description": "A small, sticky mass of bark, clay, and lichen worked together between the palms. Pressed against a wound, it draws and binds at once.",
+  "category": "consumable",
+  "rarity": "common",
+  "stackable": true,
+  "max_stack": 20,
+  "use_handler": "heal_consumable"
+}

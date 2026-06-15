@@ -185,6 +185,16 @@ void loadGatherConfig(const json& j, FormulaConfig& f)
         j["gather"].value("wood_gather_respawn_seconds", f.gather.wood_gather_respawn_seconds);
 }
 
+void loadHealConfig(const json& j, FormulaConfig& f)
+{
+    if (!j.contains("heal"))
+        return;
+    f.heal.poultice_pct = j["heal"].value("poultice_pct", f.heal.poultice_pct);
+    f.heal.salve_pct = j["heal"].value("salve_pct", f.heal.salve_pct);
+    f.heal.electuary_pct = j["heal"].value("electuary_pct", f.heal.electuary_pct);
+    f.heal.theriac_pct = j["heal"].value("theriac_pct", f.heal.theriac_pct);
+}
+
 void loadDodgeConfig(const json& j, FormulaConfig& f)
 {
     if (!j.contains("dodge"))
@@ -381,6 +391,7 @@ bool loadFormulaConfig(FormulaConfig& f, const std::string& file_path)
     loadLevelingConfig(j, f);
     loadPoiseConfig(j, f);
     loadGatherConfig(j, f);
+    loadHealConfig(j, f);
     loadDodgeConfig(j, f);
     loadEssenceConfig(j, f);
     loadXpDropConfig(j, f);
@@ -562,6 +573,8 @@ int loadRecipeRegistry(RecipeRegistry& registry, const std::string& dir_path)
         recipe.output_quantity = j.value("output_quantity", 1);
         recipe.sangue_cost = j.value("sangue_cost", 0);
         recipe.substrate = j.value("substrate", std::string{});
+        recipe.unlocks_recipe = j.value("unlocks_recipe", std::string{});
+        recipe.unlock_after = j.value("unlock_after", 0);
 
         if (j.contains("inputs") && j["inputs"].is_array())
         {

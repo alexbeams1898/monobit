@@ -1,8 +1,12 @@
 #include "items/ItemRegistry.h"
 
+#include "AppState.h"
+#include "AppStateGlobal.h"
 #include "ecs/ConfigLoaders.h"
 #include "items/CategoryRegistry.h"
+#include "ops/CraftingOps.h"
 
+#include <algorithm>
 #include <nlohmann/json.hpp>
 
 #include <cstdio>
@@ -165,6 +169,40 @@ void loadRecipeDirectory(const std::filesystem::path& dir)
         return;
     }
     engine::ecs::loadRecipeRegistry(recipeRegistry(), dir.generic_string());
+}
+
+bool craftAndRecord(const engine::ecs::RecipeDef& recipe)
+{
+    selva::PlayerProfile* profile = selva::activePlayerProfile();
+    if (profile == nullptr)
+        return false;
+    if (!engine::ops::crafting::craft(profile->inventory, recipe, itemRegistry()))
+        return false;
+
+    const std::uint32_t new_count = ++profile->craft_counts[recipe.config_path];
+
+    if (!recipe.unlocks_recipe.empty() && recipe.unlock_after > 0 &&
+        new_count >= static_cast<std::uint32_t>(recipe.unlock_after))
+    {
+        const auto& known = profile->known_recipes;
+        if (std::find(known.begin(), known.end(), recipe.unlocks_recipe) == known.end())
+        {
+            profile->known_recipes.push_back(recipe.unlocks_recipe);
+            std::fprintf(stderr, "[craft] unlocked '%s' after %u crafts of '%s'\n",
+                         recipe.unlocks_recipe.c_str(), new_count, recipe.config_path.c_str());
+            std::fflush(stderr);
+        }
+    }
+    return true;
+}
+
+bool isRecipeKnown(const std::string& recipe_path)
+{
+    const selva::PlayerProfile* profile = selva::activePlayerProfile();
+    if (profile == nullptr)
+        return false;
+    const auto& k = profile->known_recipes;
+    return std::find(k.begin(), k.end(), recipe_path) != k.end();
 }
 
 } // namespace selva::items

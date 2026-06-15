@@ -1,0 +1,11 @@
+{
+  "_comment": "Tier-4 heal craft -- the legendary capstone. Unlocked after 50 Electuaries. NO unlocks_recipe -- this is the top of the chain per [[project_healing_system_locked_2026_06_14]]. Heaviest material cost: theriac was historically prepared by long compounding and reputed to cure all wounds.",
+  "name": "Theriac",
+  "inputs": [
+    { "item": "config/items/materials/bark_scrap.json",  "quantity": 8 },
+    { "item": "config/items/materials/clay.json",        "quantity": 6 },
+    { "item": "config/items/materials/pale_lichen.json", "quantity": 8 }
+  ],
+  "output": "config/items/consumables/theriac.json",
+  "output_quantity": 1
+}

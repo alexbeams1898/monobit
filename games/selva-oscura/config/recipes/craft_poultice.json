@@ -1,0 +1,13 @@
+{
+  "_comment": "Tier-1 heal craft. Taught by the Guide at Signing. Mastery threshold (unlock_after=10) unlocks Salve. Inputs intentionally mix all three Wood materials so the recipe leans on the full forage loop.",
+  "name": "Poultice",
+  "inputs": [
+    { "item": "config/items/materials/bark_scrap.json",  "quantity": 2 },
+    { "item": "config/items/materials/clay.json",        "quantity": 1 },
+    { "item": "config/items/materials/pale_lichen.json", "quantity": 1 }
+  ],
+  "output": "config/items/consumables/poultice.json",
+  "output_quantity": 1,
+  "unlocks_recipe": "config/recipes/craft_salve.json",
+  "unlock_after": 10
+}

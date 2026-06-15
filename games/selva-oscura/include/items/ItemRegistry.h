@@ -68,4 +68,22 @@ void loadItemDirectory(const std::filesystem::path& dir);
 engine::ecs::RecipeRegistry& recipeRegistry();
 void loadRecipeDirectory(const std::filesystem::path& dir);
 
+// Selva-side craft entrypoint. Wraps engine::ops::crafting::craft()
+// with the mastery-gated tier-unlock chain per
+// [[project_healing_system_locked_2026_06_14]]:
+//   1. Forward to engine craft. Returns false on engine failure.
+//   2. On success: increment PlayerProfile.craft_counts[recipe.config_path].
+//   3. If the recipe declares unlocks_recipe + unlock_after AND
+//      the new count meets the threshold AND the unlocked recipe
+//      isn't already known: append it to PlayerProfile.known_recipes.
+//
+// Use this anywhere the player crafts. Engine-side ops::crafting stays
+// game-agnostic; this wrapper is where the unlock policy lives.
+bool craftAndRecord(const engine::ecs::RecipeDef& recipe);
+
+// True if `recipe_path` is in the active profile's known_recipes set.
+// Used by the Craft tab to filter visible recipes. Defensive: returns
+// false on null profile.
+bool isRecipeKnown(const std::string& recipe_path);
+
 } // namespace selva::items

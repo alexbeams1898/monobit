@@ -2,5 +2,6 @@
   "hp":      { "base": 80, "scale": 15.0, "level_scale": 0 },
   "stamina": { "base": 0, "end_scale": 3.0, "recovery_rate": 18.0, "recovery_delay": 0.6, "exhaustion_stagger": 0.6, "base_swing_cost": 8.0, "swing_effort": 0.5, "dodge_effort": 10.0, "sprint_effort": 3.5, "jump_effort": 10.0, "sprint_dex_scale": 0.04, "skill_effort": 18.0 },
   "poise":   { "end_scale": 2.0, "str_scale": 1.0, "stagger_duration": 0.5, "decay_window": 5.0 },
-  "gather":  { "wood_gather_respawn_seconds": 30.0 }
+  "gather":  { "wood_gather_respawn_seconds": 30.0 },
+  "heal":    { "poultice_pct": 0.20, "salve_pct": 0.35, "electuary_pct": 0.55, "theriac_pct": 0.80 }
 }
