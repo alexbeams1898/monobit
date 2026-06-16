@@ -80,6 +80,15 @@ void clearPickupMeshCache()
     loadFailureMemo().clear();
 }
 
+bool isPickupMeshLoadFailed(const std::string& world_mesh_path)
+{
+    if (world_mesh_path.empty())
+        return false;
+    auto& memo = loadFailureMemo();
+    auto it = memo.find(world_mesh_path);
+    return it != memo.end() && it->second;
+}
+
 void renderPickupMeshes()
 {
     const auto& pickups = selva::loot::allPickups();

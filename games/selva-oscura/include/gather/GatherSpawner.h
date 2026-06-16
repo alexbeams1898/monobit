@@ -1,16 +1,19 @@
 #pragma once
 
-// Wood gather-node spawner. Maintains a per-flow population of
-// procedurally-placed pickup nodes across the Wood region. One flow
-// per gather node config (bark_scrap_node.json, damp_earth_node.json,
-// pale_lichen_node.json today; more as content ships).
+// Wood gather-node spawner. Maintains a unified population of
+// procedurally-placed pickup nodes across the Wood region. ONE flow
+// per zone (today: `config/gather_nodes/wood_forage.json`); each new
+// spawn rolls the flow's WeightedPool drop_pool to pick which material
+// instantiates. Adding a new Wood material is one entry in drop_pool;
+// no new flow needed.
 //
-// Architecture: cap + interval loop, mirroring FlowSpawner. Each flow
+// Architecture: cap + interval loop, mirroring FlowSpawner. The flow
 // declares an active_cap; when the live count drops below it AND the
-// per-flow interval has elapsed since the last spawn, the spawner
-// places one new node via rejection sampling. Quality is rolled at
-// spawn time and persisted in PlayerProfile.active_gather_nodes per
-// the anti-cheese doctrine -- quit-reload returns to committed state.
+// interval has elapsed since the last spawn, the spawner places one
+// new node via rejection sampling and rolls its material from the
+// pool. Material + quality + yaw are all rolled at spawn time and
+// persisted in PlayerProfile.active_gather_nodes per the anti-cheese
+// doctrine -- quit-reload returns to committed state.
 //
 // Diverges from FlowSpawner in TWO important ways:
 //   1. Persistence: state lives in PlayerProfile, not in module-local
@@ -34,12 +37,14 @@ void initGatherSpawner();
 // while the player is in Hell. Reads/writes the active PlayerProfile's
 // gather state.
 //
-// Per tick, for each loaded NodeConfig:
-//   1. Count live nodes of this type in active_gather_nodes.
-//   2. If live < active_cap AND wallClock() - flow.last_spawn >= interval,
-//      attempt one spawn. Success: flow.last_spawn = wallClock().
-//   3. Register Interactables for any active_gather_nodes not yet wired
-//      (handles save/load and region transitions).
+// Per tick, for each loaded flow:
+//   1. Count live nodes in active_gather_nodes.
+//   2. If live < active_cap AND (initial fill not yet done OR
+//      wallClock() - flow.last_spawn >= interval), attempt one spawn:
+//      roll material from drop_pool, sample placement, roll quality,
+//      commit NodeState. Success: flow.last_spawn = wallClock().
+//   3. Register Interactables for any active_gather_nodes not yet
+//      wired (handles save/load and region transitions).
 void tickGatherSpawner(float dt);
 
 // Tear down + reset on hard reset (character switch, second-death

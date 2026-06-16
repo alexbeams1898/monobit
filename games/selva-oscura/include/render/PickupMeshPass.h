@@ -16,6 +16,8 @@
 // renderDoors / renderEquippedWeapon). Per-pickup model matrix =
 // T(world_pos) * R_y(world_yaw).
 
+#include <string>
+
 namespace selva::render
 {
 
@@ -28,5 +30,14 @@ void clearPickupMeshCache();
 // draws. No GL state changes outside the scene-shader-bound block
 // (matches renderEquippedWeapon convention).
 void renderPickupMeshes();
+
+// True if the given world_mesh path has been attempted and failed
+// (asset missing, parse error, etc). Used by PickupSpritePass to
+// decide whether to render its glow as a fallback -- without this,
+// a pickup with a broken world_mesh would be skipped by BOTH passes
+// (mesh-skip because load failed; sprite-skip because world_mesh is
+// non-empty) and render NOTHING. Empty path returns false (no failure
+// to report when there's nothing to attempt).
+bool isPickupMeshLoadFailed(const std::string& world_mesh_path);
 
 } // namespace selva::render

@@ -54,6 +54,23 @@ namespace selva::ui
 namespace
 {
 
+// Pure-name display with quality prefix. ONE source of truth for "what
+// to call this item" so the inventory list, the detail panel, the
+// equip-slot popup, and any future surface all show the same string.
+// Skips the prefix for Common quality so the most common roll doesn't
+// pick up cosmetic noise ("Common Bark scrap" reads as redundant);
+// above- and below-Common both prefix so the player knows when a roll
+// was unusual.
+std::string itemDisplayName(const engine::ecs::ItemInstance& it,
+                            const engine::ecs::ItemRegistry& items)
+{
+    const engine::ecs::ItemDef* def = items.find(it.config_path);
+    const std::string base = (def != nullptr && !def->name.empty()) ? def->name : it.config_path;
+    if (it.quality == engine::ecs::QualityTier::Common)
+        return base;
+    return std::string(engine::ecs::qualityName(it.quality)) + " " + base;
+}
+
 // Set to true on the frame we transition into Playing, so main.cpp can
 // switch SDL_SetRelativeMouseMode + capture the mouse for gameplay.
 // Cleared after one frame.
@@ -731,17 +748,15 @@ void renderPauseVesselHands()
     // popup.
     auto draw_slot = [&](const char* label, EquipSlot slot)
     {
-        const std::string path = InventoryOps::equippedPath(inv, eq, slot);
+        const engine::ecs::ItemInstance* equipped = InventoryOps::equippedItem(inv, eq, slot);
         std::string row;
-        if (path.empty())
+        if (equipped == nullptr)
         {
             row = std::string(label) + ":  (none)";
         }
         else
         {
-            const ItemDef* def = items.find(path);
-            const char* name = (def != nullptr) ? def->name.c_str() : path.c_str();
-            row = std::string(label) + ":  " + name;
+            row = std::string(label) + ":  " + itemDisplayName(*equipped, items);
         }
 
         ImGui::PushID(static_cast<int>(slot));
@@ -772,9 +787,7 @@ void renderPauseVesselHands()
             {
                 for (const auto* candidate : candidates)
                 {
-                    const ItemDef* def = items.find(candidate->config_path);
-                    const std::string name =
-                        (def != nullptr && !def->name.empty()) ? def->name : candidate->config_path;
+                    const std::string name = itemDisplayName(*candidate, items);
                     // Marker shows which item is currently equipped here.
                     const bool already_equipped =
                         (engine::ops::inventory::slotIdConst(eq, slot) == candidate->id);
@@ -1809,21 +1822,13 @@ InventoryEntryLabel buildInventoryEntryLabel(const engine::ecs::ItemInstance& it
 {
     InventoryEntryLabel out;
     out.id = it.id;
-    const engine::ecs::ItemDef* def = items.find(it.config_path);
-    const std::string base = (def != nullptr && !def->name.empty()) ? def->name : it.config_path;
-    // Quality prefix only for non-Common rolls so Common items don't
-    // pick up cosmetic noise ("Common Bark scrap" reads as redundant).
-    // Above-Common qualities prefix the stamp; below-Common ("Crude")
-    // does too so the player knows when a gather rolled poorly.
-    std::string prefix;
-    if (it.quality != engine::ecs::QualityTier::Common)
-        prefix = std::string(engine::ecs::qualityName(it.quality)) + " ";
+    const std::string name = itemDisplayName(it, items);
     std::string suffix;
     if (it.quantity > 1)
         suffix = "  x" + std::to_string(it.quantity);
     else if (it.weapon_xp_level > 1)
         suffix = "  +" + std::to_string(it.weapon_xp_level - 1);
-    out.display = prefix + base + suffix;
+    out.display = name + suffix;
     return out;
 }
 
@@ -1932,7 +1937,7 @@ void drawInventoryDetailPanel(engine::ecs::ItemInstanceId selected_item,
         return;
     }
     const engine::ecs::ItemDef* def = items.find(it->config_path);
-    const std::string title = (def != nullptr && !def->name.empty()) ? def->name : it->config_path;
+    const std::string title = itemDisplayName(*it, items);
     ImGui::TextUnformatted(title.c_str());
     ImGui::Separator();
     ImGui::Spacing();

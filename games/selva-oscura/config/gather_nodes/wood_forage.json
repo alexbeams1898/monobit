@@ -21,6 +21,5 @@
   "sample_radius": 230.0,
   "min_distance_to_props": 0.4,
   "min_distance_to_nodes": 4.0,
-  "min_distance_to_player": 8.0,
-  "_comment_placement": "Placement rules are zone-level (apply to all materials in this flow). Per-material environment biasing (bark/lichen near trees, clay anywhere) was a feature of the per-material configs that's lost in the unified model. If we want it back, it lives on ItemDef.world_spawn_rules so each material declares its own placement preference and the spawner reads them per-pick. Deferred until play shows we need it."
+  "min_distance_to_player": 8.0
 }

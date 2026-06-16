@@ -5,6 +5,7 @@
 #include "gl/ShaderUtils.h"
 #include "items/ItemRegistry.h"
 #include "loot/Pickups.h"
+#include "render/PickupMeshPass.h"
 
 #include <glm/gtc/type_ptr.hpp>
 
@@ -270,9 +271,14 @@ void renderPickupSprites(const glm::mat4& view_proj, const glm::vec3& cam_pos)
         // Skip pickups that render as a world mesh -- the mesh IS
         // the visual; layering a glow on top would defeat the
         // "blends with terrain" point. Weapons + special drops
-        // (no world_mesh) still get the sprite.
+        // (no world_mesh) still get the sprite. EXCEPTION: if the
+        // mesh path has been attempted and failed to load (asset
+        // missing, parse error, etc), fall through to the sprite as
+        // a fallback so the pickup is still visible to the player.
+        // Without this, a broken world_mesh path = invisible pickup.
         const engine::ecs::ItemDef* def = items.find(p.item.config_path);
-        if (def != nullptr && !def->world_mesh.empty())
+        if (def != nullptr && !def->world_mesh.empty() &&
+            !selva::render::isPickupMeshLoadFailed(def->world_mesh))
             continue;
         const glm::vec3 live = selva::loot::livePickupPos(p);
         const float dist = glm::length(live - cam_pos);

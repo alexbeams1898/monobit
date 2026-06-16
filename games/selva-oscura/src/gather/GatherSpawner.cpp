@@ -216,10 +216,7 @@ bool isWalkable(const NodeConfig& cfg, float x, float z)
     // Prop-distance check: trees and rocks are CylinderColliders in
     // the active CollisionRegion. Reject candidate XZ within
     // min_distance_to_props of any cylinder (keeps drops from clipping
-    // trunks). Per-material environment biasing (bark/lichen prefer
-    // trees, clay anywhere) was a feature of the prior per-material
-    // configs; if we want it back in the unified flow it lives as
-    // ItemDef.world_spawn_rules on each material, read here per-pick.
+    // trunks).
     const auto& region = selva::world::currentRegion();
     const float min_d2 = cfg.min_distance_to_props * cfg.min_distance_to_props;
     for (const auto& cyl : region.cylinders)
@@ -282,11 +279,13 @@ selva::gather::FlowState& findOrCreateFlow(selva::PlayerProfile& p, const NodeCo
     return p.gather_flows.back();
 }
 
-float resolveRespawnSeconds(const NodeConfig& cfg)
+float resolveRespawnSeconds(const NodeConfig& /*cfg*/)
 {
-    // One key today; expand the switch when per-flow tunables ship.
-    if (cfg.respawn_seconds_key == "wood_gather_respawn_seconds")
-        return selva::formulas::current().gather.wood_gather_respawn_seconds;
+    // All flows today share the wood_gather_respawn_seconds tunable.
+    // When per-flow respawn rates are needed (a different zone wanting
+    // a slower cadence), switch on cfg.respawn_seconds_key and route
+    // each key to its formulas.json field. Stays a single source of
+    // truth (formulas.json) either way.
     return selva::formulas::current().gather.wood_gather_respawn_seconds;
 }
 

@@ -432,10 +432,12 @@ struct PlayerProfile
     std::uint32_t next_gather_node_id = 1;
 
     // Per-gather-flow scheduler state. One entry per loaded gather
-    // node config (bark / earth / lichen each track their own
-    // last-spawn timer). Mirrors FlowSpawner's interval-based trickle
-    // but PERSISTS across save/load (FlowSpawner does NOT -- gather
-    // diverges here per anti-cheese doctrine).
+    // node config in `config/gather_nodes/`. Today there's a single
+    // unified `wood_forage` flow so this is effectively one entry, but
+    // the vector keeps the door open for additional zones (Hell-side
+    // forage when a circle adds one, etc). Mirrors FlowSpawner's
+    // interval-based trickle but PERSISTS across save/load (FlowSpawner
+    // does NOT -- gather diverges here per anti-cheese doctrine).
     std::vector<selva::gather::FlowState> gather_flows;
 
     // Per-character carried items, category-bucketed
