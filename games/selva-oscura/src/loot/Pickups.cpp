@@ -5,6 +5,7 @@
 #include "WallClock.h"
 #include "anim/SkeletonJointMap.h"
 #include "combat/ActorVolumes.h"
+#include "combat/QuickSlot.h"
 #include "gameplay/Actor.h"
 #include "gameplay/Enemies.h"
 #include "items/ItemRegistry.h"
@@ -132,6 +133,10 @@ void grantPickup(Id pickup_id)
     std::fprintf(stderr, "[pickup] +%d %s%s rarity=%d\n", p->item.quantity, display_name.c_str(),
                  is_new ? " NEW!" : "", static_cast<int>(rarity));
     std::fflush(stderr);
+
+    // QoL: when the auto-assign setting is on AND this is a consumable,
+    // append to the player's quick-slot rotation. Idempotent inside.
+    selva::combat::tryAutoAssignOnGrant(p->item.config_path);
 
     // Capture the on_granted hook BEFORE removePickup destroys the
     // Pickup entry; fire AFTER remove so the hook can observe the

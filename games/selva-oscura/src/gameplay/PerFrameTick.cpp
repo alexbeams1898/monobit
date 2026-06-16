@@ -50,6 +50,8 @@
 #include "insight/Insight.h"
 #include "insight/InsightLayout.h"
 #include "interact/Interaction.h"
+#include "combat/HandCycle.h"
+#include "combat/QuickSlot.h"
 #include "items/HealHandlers.h"
 #include "items/ItemRegistry.h"
 #include "loot/Pickups.h"
@@ -3579,17 +3581,61 @@ void tickInteractEdge(const Uint8* keys, bool combat_suppressed)
         selva::interact::triggerCurrent();
 }
 
-// Q-press edge -> quick-heal. Picks highest-tier heal consumable the
-// player holds and applies it. Same suppression gates as E so the
-// hotkey can't fire during dialog / scene / pause / tuning panel.
-void tickQuickHealEdge(const Uint8* keys, bool combat_suppressed)
+// Q-press edge -> use currently-primed quick-slot item. Generic over
+// any consumable assigned to the quick-slot rotation. Same suppression
+// gates as E.
+void tickQuickSlotUseEdge(const Uint8* keys, bool combat_suppressed)
 {
     static bool s_prev_q = false;
     const bool now_q = (keys[SDL_SCANCODE_Q] != 0);
     const bool q_edge = now_q && !s_prev_q;
     s_prev_q = now_q;
     if (q_edge && !combat_suppressed)
-        selva::items::tryQuickHeal();
+        selva::combat::useprimed();
+}
+
+// X-press edge -> cycle quick-slot primed index. Shift+X reverses.
+// Same suppression gates as Q. Stays a no-op when the rotation is
+// empty.
+void tickQuickSlotCycleEdge(const Uint8* keys, bool combat_suppressed)
+{
+    static bool s_prev_x = false;
+    const bool now_x = (keys[SDL_SCANCODE_X] != 0);
+    const bool x_edge = now_x && !s_prev_x;
+    s_prev_x = now_x;
+    if (combat_suppressed || !x_edge)
+        return;
+    const bool shift =
+        (keys[SDL_SCANCODE_LSHIFT] != 0) || (keys[SDL_SCANCODE_RSHIFT] != 0);
+    const auto dir = shift ? selva::combat::CycleDirection::Backward
+                           : selva::combat::CycleDirection::Forward;
+    selva::combat::cyclePrimed(dir);
+}
+
+// Z/C edges -> cycle left/right hand items. Shift modifier reverses.
+// Cycle order: empty -> fitting weapons (insertion order) -> empty.
+// Same suppression gates as the heal hotkey. Per
+// [[project_combat_hud_2026_06_15]] keybindings.
+void tickHandCycleEdges(const Uint8* keys, bool combat_suppressed)
+{
+    static bool s_prev_z = false;
+    static bool s_prev_c = false;
+    const bool now_z = (keys[SDL_SCANCODE_Z] != 0);
+    const bool now_c = (keys[SDL_SCANCODE_C] != 0);
+    const bool z_edge = now_z && !s_prev_z;
+    const bool c_edge = now_c && !s_prev_c;
+    s_prev_z = now_z;
+    s_prev_c = now_c;
+    if (combat_suppressed)
+        return;
+    const bool shift =
+        (keys[SDL_SCANCODE_LSHIFT] != 0) || (keys[SDL_SCANCODE_RSHIFT] != 0);
+    const auto dir = shift ? selva::combat::CycleDirection::Backward
+                           : selva::combat::CycleDirection::Forward;
+    if (z_edge)
+        selva::combat::cycleHand(engine::ecs::EquipSlot::LeftHand, dir);
+    if (c_edge)
+        selva::combat::cycleHand(engine::ecs::EquipSlot::RightHand, dir);
 }
 
 // Tab-press edge -> cycle focus between in-range interactables. The
@@ -3703,7 +3749,9 @@ static void selvaPerFrame(Engine& engine, EntityManager& em, double dt_d)
     const Uint8* keys = SDL_GetKeyboardState(nullptr);
     tickInteractEdge(keys, combat_suppressed);
     tickInteractCycleEdge(keys, combat_suppressed);
-    tickQuickHealEdge(keys, combat_suppressed);
+    tickQuickSlotUseEdge(keys, combat_suppressed);
+    tickQuickSlotCycleEdge(keys, combat_suppressed);
+    tickHandCycleEdges(keys, combat_suppressed);
     tickDevAndDebugKeys(keys);
     // Preview mode suspends world sim; renderTreePreview handles the
     // alternate render path.

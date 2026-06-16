@@ -2,6 +2,7 @@
 
 #include "AppState.h"
 #include "AppStateGlobal.h"
+#include "combat/QuickSlot.h"
 #include "ecs/ConfigLoaders.h"
 #include "items/CategoryRegistry.h"
 #include "ops/CraftingOps.h"
@@ -179,6 +180,11 @@ bool craftAndRecord(const engine::ecs::RecipeDef& recipe)
     if (!engine::ops::crafting::craft(profile->inventory, recipe, itemRegistry()))
         return false;
 
+    // QoL: auto-assign the just-crafted output (if it's a Consumable
+    // and the setting is on). Same hook used by loot pickups so both
+    // grant paths honor the toggle uniformly.
+    selva::combat::tryAutoAssignOnGrant(recipe.output_item);
+
     const std::uint32_t new_count = ++profile->craft_counts[recipe.config_path];
 
     if (!recipe.unlocks_recipe.empty() && recipe.unlock_after > 0 &&
@@ -203,6 +209,60 @@ bool isRecipeKnown(const std::string& recipe_path)
         return false;
     const auto& k = profile->known_recipes;
     return std::find(k.begin(), k.end(), recipe_path) != k.end();
+}
+
+bool itemFitsSlot(const engine::ecs::ItemDef& def, engine::ecs::EquipSlot slot)
+{
+    using engine::ecs::ArmorSlot;
+    using engine::ecs::EquipSlot;
+    using engine::ecs::ItemCategory;
+    switch (slot)
+    {
+    case EquipSlot::RightHand:
+    case EquipSlot::LeftHand:
+        return def.category == ItemCategory::Weapon ||
+               def.category == ItemCategory::Incantation ||
+               def.category == ItemCategory::Invocation;
+    case EquipSlot::Head:
+        return def.category == ItemCategory::Armor && def.armor_slot == ArmorSlot::Head;
+    case EquipSlot::Chest:
+        return def.category == ItemCategory::Armor && def.armor_slot == ArmorSlot::Chest;
+    case EquipSlot::Legs:
+        return def.category == ItemCategory::Armor && def.armor_slot == ArmorSlot::Legs;
+    case EquipSlot::Feet:
+        return def.category == ItemCategory::Armor && def.armor_slot == ArmorSlot::Feet;
+    case EquipSlot::Accessory1:
+    case EquipSlot::Accessory2:
+        return def.category == ItemCategory::Accessory;
+    }
+    return false;
+}
+
+std::vector<const engine::ecs::ItemInstance*>
+collectItemsFittingSlot(const engine::ecs::Inventory& inv,
+                        const engine::ecs::ItemRegistry& items, engine::ecs::EquipSlot slot)
+{
+    std::vector<const engine::ecs::ItemInstance*> out;
+    for (const auto& [cat_key, bucket] : inv.by_category)
+    {
+        for (const auto& it : bucket)
+        {
+            const engine::ecs::ItemDef* def = items.find(it.config_path);
+            if (def != nullptr && itemFitsSlot(*def, slot))
+                out.push_back(&it);
+        }
+    }
+    return out;
+}
+
+std::string itemDisplayName(const engine::ecs::ItemInstance& it,
+                            const engine::ecs::ItemRegistry& items)
+{
+    const engine::ecs::ItemDef* def = items.find(it.config_path);
+    const std::string base = (def != nullptr && !def->name.empty()) ? def->name : it.config_path;
+    if (it.quality == engine::ecs::QualityTier::Common)
+        return base;
+    return std::string(engine::ecs::qualityName(it.quality)) + " " + base;
 }
 
 } // namespace selva::items

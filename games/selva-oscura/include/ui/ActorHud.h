@@ -21,6 +21,18 @@ glm::vec2 sangueHudAnchor();
 // state of its own; just visualization.
 void renderActorHud();
 
+// Combat HUD: lower-left two-slot panel showing currently-equipped
+// LEFT and RIGHT hand items. Minimal-as-possible per the soulslike
+// convention: just two slot frames with text labels (item name with
+// quality prefix per selva::ui::itemDisplayName logic). Empty slots
+// render as a faint "(empty)" placeholder. Cycled in-place via the
+// Z (left hand) / C (right hand) hotkeys -- the player never has to
+// open the inventory menu during combat.
+//
+// Top-left renderActorHud (HP / stamina / vessel) is intentionally
+// separate. Status lives top-left, combat verbs live lower-left.
+void renderCombatHud();
+
 // Compass strip at top-center. Horizontal Skyrim/Minecraft-style band
 // showing cardinal + intercardinal directions; the letter under the
 // center mark is the direction the camera is currently facing. Reads

@@ -15,6 +15,7 @@
 #include "insight/Insight.h"
 #include "items/CategoryRegistry.h"
 #include "items/ItemRegistry.h"
+#include "combat/QuickSlot.h"
 #include "items/UseHandlers.h"
 #include "lang/Language.h"
 #include "notice/Notices.h"
@@ -54,22 +55,9 @@ namespace selva::ui
 namespace
 {
 
-// Pure-name display with quality prefix. ONE source of truth for "what
-// to call this item" so the inventory list, the detail panel, the
-// equip-slot popup, and any future surface all show the same string.
-// Skips the prefix for Common quality so the most common roll doesn't
-// pick up cosmetic noise ("Common Bark scrap" reads as redundant);
-// above- and below-Common both prefix so the player knows when a roll
-// was unusual.
-std::string itemDisplayName(const engine::ecs::ItemInstance& it,
-                            const engine::ecs::ItemRegistry& items)
-{
-    const engine::ecs::ItemDef* def = items.find(it.config_path);
-    const std::string base = (def != nullptr && !def->name.empty()) ? def->name : it.config_path;
-    if (it.quality == engine::ecs::QualityTier::Common)
-        return base;
-    return std::string(engine::ecs::qualityName(it.quality)) + " " + base;
-}
+// Local using-shim so existing callsites in this file stay unchanged.
+// Definition + doc-comment live in items/ItemRegistry.h (public).
+using selva::items::itemDisplayName;
 
 // Set to true on the frame we transition into Playing, so main.cpp can
 // switch SDL_SetRelativeMouseMode + capture the mouse for gameplay.
@@ -540,6 +528,9 @@ void renderSettings()
         dirty = true;
     if (ImGui::Checkbox("Show interaction ring", &s.show_interact_ring))
         dirty = true;
+    if (ImGui::Checkbox("Auto-assign new consumables to Quick-slot",
+                        &s.auto_assign_consumables_to_quick_slot))
+        dirty = true;
 
     if (dirty)
         SaveManager::save(saveData());
@@ -574,6 +565,9 @@ bool renderSystemTab()
                            "%.0f"))
         dirty = true;
     if (ImGui::Checkbox("Show interaction ring", &s.show_interact_ring))
+        dirty = true;
+    if (ImGui::Checkbox("Auto-assign new consumables to Quick-slot",
+                        &s.auto_assign_consumables_to_quick_slot))
         dirty = true;
     if (dirty)
         SaveManager::save(saveData());
@@ -680,57 +674,6 @@ void renderPauseVesselForm()
 namespace
 {
 
-// True if `it` can be equipped to `slot`. Filter for the slot-first
-// equipment picker per the Souls convention: clicking a slot shows
-// only items that fit there. Weapons / incantations / invocations
-// fit either hand; armor matches its armor_slot field; accessories
-// fit either accessory slot.
-bool itemFitsSlot(const engine::ecs::ItemDef& def, EquipSlot slot)
-{
-    using engine::ecs::ArmorSlot;
-    using engine::ecs::ItemCategory;
-    switch (slot)
-    {
-    case EquipSlot::RightHand:
-    case EquipSlot::LeftHand:
-        return def.category == ItemCategory::Weapon || def.category == ItemCategory::Incantation ||
-               def.category == ItemCategory::Invocation;
-    case EquipSlot::Head:
-        return def.category == ItemCategory::Armor && def.armor_slot == ArmorSlot::Head;
-    case EquipSlot::Chest:
-        return def.category == ItemCategory::Armor && def.armor_slot == ArmorSlot::Chest;
-    case EquipSlot::Legs:
-        return def.category == ItemCategory::Armor && def.armor_slot == ArmorSlot::Legs;
-    case EquipSlot::Feet:
-        return def.category == ItemCategory::Armor && def.armor_slot == ArmorSlot::Feet;
-    case EquipSlot::Accessory1:
-    case EquipSlot::Accessory2:
-        return def.category == ItemCategory::Accessory;
-    }
-    return false;
-}
-
-// Collect every item instance in the inventory that fits `slot`.
-// Walks every category bucket -- the filter is by ItemDef.category
-// + ItemDef.armor_slot, not by inventory bucket key (the buckets
-// already match category, but we filter on the def to be authoritative).
-std::vector<const engine::ecs::ItemInstance*>
-collectItemsFittingSlot(const engine::ecs::Inventory& inv, const engine::ecs::ItemRegistry& items,
-                        EquipSlot slot)
-{
-    std::vector<const engine::ecs::ItemInstance*> out;
-    for (const auto& [cat_key, bucket] : inv.by_category)
-    {
-        for (const auto& it : bucket)
-        {
-            const engine::ecs::ItemDef* def = items.find(it.config_path);
-            if (def != nullptr && itemFitsSlot(*def, slot))
-                out.push_back(&it);
-        }
-    }
-    return out;
-}
-
 } // namespace
 
 void renderPauseVesselHands()
@@ -778,7 +721,7 @@ void renderPauseVesselHands()
                 ImGui::CloseCurrentPopup();
             }
 
-            const auto candidates = collectItemsFittingSlot(inv, items, slot);
+            const auto candidates = selva::items::collectItemsFittingSlot(inv, items, slot);
             if (candidates.empty())
             {
                 ImGui::TextDisabled("(nothing fits here)");
@@ -1913,16 +1856,55 @@ void drawInventoryUseButton(const engine::ecs::ItemInstance& it, engine::ecs::In
         ImGui::BeginDisabled();
     if (ImGui::Button("Use"))
     {
-        const auto* action = selva::items::getUseAction(ext->use_handler);
-        if (action != nullptr)
-            (*action)(inv, it.id);
-        selected_item = engine::ecs::kInvalidItemInstanceId;
+        const selva::items::UseResult result = selva::items::useItem(inv, it.id);
+        // Clear the selection only when the action FIRED. Rejection
+        // keeps the item selected so the player can read its detail
+        // panel + try a different action (e.g. dismiss + heal under
+        // pressure later).
+        if (result.fired)
+            selected_item = engine::ecs::kInvalidItemInstanceId;
     }
     if (!gate.enabled)
     {
         ImGui::EndDisabled();
         if (!gate.disabled_reason.empty() && ImGui::IsItemHovered())
             ImGui::SetTooltip("%s", gate.disabled_reason.c_str());
+    }
+}
+
+// Assign / Unassign verb for the quick-slot rotation. Only renders for
+// Consumable items -- other categories don't belong in the quick-slot
+// (weapons go in hand slots; armor / accessories have their own slots).
+void drawAssignToQuickSlotButton(const engine::ecs::ItemInstance& it,
+                                 const engine::ecs::ItemRegistry& items)
+{
+    const engine::ecs::ItemDef* def = items.find(it.config_path);
+    if (def == nullptr || def->category != engine::ecs::ItemCategory::Consumable)
+        return;
+    const bool assigned = selva::combat::isAssignedToQuickSlot(it.config_path);
+    if (assigned)
+    {
+        if (ImGui::Button("Unassign from Quick-slot"))
+            selva::combat::unassignFromQuickSlot(it.config_path);
+    }
+    else
+    {
+        // Disable when at capacity to communicate the cap visually.
+        const auto* profile = selva::activePlayerProfile();
+        const bool at_cap = (profile != nullptr) &&
+                            (static_cast<int>(profile->quick_slot_assigned.size()) >=
+                             selva::kQuickSlotCapacity);
+        if (at_cap)
+            ImGui::BeginDisabled();
+        if (ImGui::Button("Assign to Quick-slot"))
+            selva::combat::assignToQuickSlot(it.config_path);
+        if (at_cap)
+        {
+            ImGui::EndDisabled();
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Quick-slot is full (%d). Unassign another first.",
+                                  selva::kQuickSlotCapacity);
+        }
     }
 }
 
@@ -1946,8 +1928,10 @@ void drawInventoryDetailPanel(engine::ecs::ItemInstanceId selected_item,
     ImGui::Spacing();
     // Equip / unequip is owned by the Hands sub-page (slot-first
     // picker per the Souls convention). The inventory detail panel
-    // only surfaces non-equipment verbs like Use.
+    // surfaces non-equipment verbs: Use + Assign-to-quick-slot.
     drawInventoryUseButton(*it, inv, selected_item_ref);
+    ImGui::SameLine();
+    drawAssignToQuickSlotButton(*it, items);
 }
 } // namespace
 

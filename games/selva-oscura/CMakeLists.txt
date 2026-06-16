@@ -56,6 +56,8 @@ add_library(selva-oscura-lib STATIC
     src/combat/ChainObserver.cpp
     src/combat/CombatData.cpp
     src/combat/CombatLog.cpp
+    src/combat/HandCycle.cpp
+    src/combat/QuickSlot.cpp
     src/combat/HitDetection.cpp
     src/combat/HitFeedback.cpp
     src/combat/HitVolumes.cpp
@@ -603,6 +605,8 @@ add_executable(selva-oscura-tests
     tests/territory_clamp_form_gate_test.cpp
     tests/weapon_damage_test.cpp
     tests/equipment_bridge_test.cpp
+    tests/hand_cycle_test.cpp
+    tests/use_handlers_test.cpp
     tests/recipe_load_test.cpp
     tests/directional_loco_test.cpp
     tests/grip_transform_test.cpp

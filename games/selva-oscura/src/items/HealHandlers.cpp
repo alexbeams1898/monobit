@@ -4,6 +4,7 @@
 #include "Formulas.h"
 #include "ecs/Items.h"
 #include "gameplay/Actor.h"
+#include "items/ItemRegistry.h"
 #include "items/UseHandlers.h"
 #include "ops/InventoryOps.h"
 
@@ -33,15 +34,6 @@ float tierPctFor(const std::string& config_path)
     return 0.0f;
 }
 
-// Ladder order, highest first. Q-hotkey walks this list and uses the
-// first one in inventory.
-const char* const kHealLadder[] = {
-    "config/items/consumables/theriac.json",
-    "config/items/consumables/electuary.json",
-    "config/items/consumables/salve.json",
-    "config/items/consumables/poultice.json",
-};
-
 // Apply tier % of max HP to the player. Caller handles consumption +
 // the inventory mutation. Returns the actual amount healed (clamped
 // at max-current).
@@ -56,24 +48,47 @@ int applyHealPct(float pct)
     return after - before;
 }
 
-void healAction(engine::ecs::Inventory& inv, engine::ecs::ItemInstanceId item_id)
+UseResult healAction(engine::ecs::Inventory& inv, engine::ecs::ItemInstanceId item_id)
 {
+    UseResult r;
     selva::PlayerProfile* profile = selva::activePlayerProfile();
     if (profile == nullptr)
-        return;
+    {
+        r.rejection_reason = "No active character.";
+        return r;
+    }
     const engine::ecs::ItemInstance* inst = engine::ops::inventory::findById(inv, item_id);
     if (inst == nullptr)
-        return;
+    {
+        r.rejection_reason = "Item not found.";
+        return r;
+    }
     const float pct = tierPctFor(inst->config_path);
     if (pct <= 0.0f)
-        return;
+    {
+        r.rejection_reason = "This item has no heal value.";
+        return r;
+    }
+    // Refuse-to-waste: full HP rejects with a player-facing reason.
+    // Action does NOT consume the item; the caller honors fired=false.
+    const auto& player = selva::gameplay::player();
+    if (player.hp.current >= player.hp.max)
+    {
+        r.rejection_reason = "Already at full health.";
+        return r;
+    }
+
     const int healed = applyHealPct(pct);
-    // Consume one of this item. `consumeItems` also handles stack
-    // decrement / removal cleanly.
-    engine::ops::inventory::consumeItems(inv, profile->equipment, inst->config_path, 1);
     std::fprintf(stderr, "[heal] %s -> +%d hp (cap %d/%d)\n", inst->config_path.c_str(), healed,
                  selva::gameplay::player().hp.current, selva::gameplay::player().hp.max);
     std::fflush(stderr);
+
+    const engine::ecs::ItemDef* def = selva::items::itemRegistry().find(inst->config_path);
+    const std::string name =
+        (def != nullptr && !def->name.empty()) ? def->name : inst->config_path;
+    r.fired = true;
+    r.success_message = "Used " + name;
+    return r;
 }
 
 } // namespace
@@ -81,29 +96,6 @@ void healAction(engine::ecs::Inventory& inv, engine::ecs::ItemInstanceId item_id
 void registerHealHandlers()
 {
     registerUseAction("heal_consumable", healAction);
-}
-
-bool tryQuickHeal()
-{
-    selva::PlayerProfile* profile = selva::activePlayerProfile();
-    if (profile == nullptr)
-        return false;
-    auto& inv = profile->inventory;
-    // Walk ladder highest -> lowest; pick first the player holds.
-    for (const char* path : kHealLadder)
-    {
-        if (engine::ops::inventory::countItem(inv, path) <= 0)
-            continue;
-        const float pct = tierPctFor(path);
-        if (pct <= 0.0f)
-            continue;
-        const int healed = applyHealPct(pct);
-        engine::ops::inventory::consumeItems(inv, profile->equipment, path, 1);
-        std::fprintf(stderr, "[heal:quick] %s -> +%d hp\n", path, healed);
-        std::fflush(stderr);
-        return true;
-    }
-    return false;
 }
 
 } // namespace selva::items

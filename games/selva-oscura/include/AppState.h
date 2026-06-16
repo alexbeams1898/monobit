@@ -408,6 +408,22 @@ struct PlayerProfile
     std::unordered_map<std::string, std::uint32_t> craft_counts;
     std::vector<std::string> known_recipes;
 
+    // Quick-slot rotation -- the Souls/ER consumables wheel. List of
+    // item config_paths the player has explicitly assigned to be
+    // cyclable in combat via X (or Shift+X to reverse). Q uses the
+    // currently-primed entry. Assignment is by config_path (not
+    // ItemInstanceId) so the slot survives crafting new instances of
+    // the same item type. Capacity bounded at kQuickSlotCapacity below
+    // (Souls = 5). Order is insertion order; the player rearranges via
+    // the inventory UI's Assign verb.
+    std::vector<std::string> quick_slot_assigned;
+
+    // Index into quick_slot_assigned of the currently-primed entry.
+    // -1 = none primed (also the state when assigned is empty). Cycle
+    // hotkeys (X) move this; use hotkey (Q) consumes one of the primed
+    // item from inventory. Wraps modulo size. Persists across save.
+    int quick_slot_primed_index = -1;
+
     // Persistent door state. (door_id, state_name) pairs. Only doors
     // whose state has DEVIATED from their JSON-authored initial_state
     // need entries here. State_name is one of "Locked", "Closed",
@@ -521,6 +537,12 @@ struct PlayerProfile
 // 2026-06-04. Saturating add at this value; further grants no-op.
 inline constexpr std::uint32_t SANGUE_LIFETIME_CAP = 999'999'999u;
 
+// Maximum entries in PlayerProfile.quick_slot_assigned. Souls / ER's
+// quick-slot rotation caps at 5 — small enough that X-cycling lands on
+// the right item in 2-3 presses, big enough to hold all current Wood
+// consumables plus 1-2 future categories.
+inline constexpr int kQuickSlotCapacity = 5;
+
 // ---------------------------------------------------------------------------
 // Settings - persistent user preferences. Lives at the save level (not
 // per-character) because settings apply to the whole install.
@@ -541,6 +563,14 @@ struct Settings
     // "[E] Talk" / "[E] Open" prompt still renders regardless --
     // the ring is purely a visual aid for finding the in-world target.
     bool show_interact_ring = true;
+
+    // QoL: when a newly-discovered consumable is granted to the
+    // player's inventory AND there's an empty quick_slot_assigned
+    // entry on the active profile, auto-append to it. Off by default
+    // (Souls convention: assignment is explicit). On = no friction;
+    // pick up a Poultice, it's instantly Q-able. Per-install setting
+    // because some players prefer the deliberate workflow.
+    bool auto_assign_consumables_to_quick_slot = false;
 };
 
 // ---------------------------------------------------------------------------
@@ -550,7 +580,7 @@ struct Settings
 // ---------------------------------------------------------------------------
 struct SaveData
 {
-    static constexpr int CURRENT_VERSION = 5;
+    static constexpr int CURRENT_VERSION = 6;
 
     int schema_version = CURRENT_VERSION;
     std::vector<PlayerProfile> characters;

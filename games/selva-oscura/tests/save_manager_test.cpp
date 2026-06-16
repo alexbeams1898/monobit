@@ -361,6 +361,66 @@ TEST_CASE("SaveManager round-trips gather_flows preserving initial_fill_done + t
     cleanupTestFile(path);
 }
 
+TEST_CASE("SaveManager round-trips quick_slot rotation + primed index",
+          "[save][quick-slot][round-trip]")
+{
+    const std::string path = testSavePath("quickslot-roundtrip");
+    cleanupTestFile(path);
+
+    selva::SaveData data;
+    selva::SaveManager::addCharacter(data, "PILGRIM");
+    auto& p = data.characters[0];
+    p.quick_slot_assigned.push_back("config/items/consumables/poultice.json");
+    p.quick_slot_assigned.push_back("config/items/consumables/salve.json");
+    p.quick_slot_primed_index = 1;
+
+    REQUIRE(selva::SaveManager::save(data, path));
+    const selva::SaveData loaded = selva::SaveManager::load(path);
+    REQUIRE(loaded.characters[0].quick_slot_assigned.size() == 2);
+    REQUIRE(loaded.characters[0].quick_slot_assigned[0] ==
+            "config/items/consumables/poultice.json");
+    REQUIRE(loaded.characters[0].quick_slot_assigned[1] ==
+            "config/items/consumables/salve.json");
+    REQUIRE(loaded.characters[0].quick_slot_primed_index == 1);
+
+    cleanupTestFile(path);
+}
+
+TEST_CASE("SaveManager defaults quick_slot fields on legacy v5 saves",
+          "[save][quick-slot][migration]")
+{
+    const std::string path = testSavePath("quickslot-legacy-v5");
+    cleanupTestFile(path);
+    std::filesystem::create_directories(std::filesystem::path(path).parent_path());
+
+    if (std::FILE* f = std::fopen(path.c_str(), "w"))
+    {
+        std::fprintf(f, "{\n  \"schema_version\": 5,\n"
+                        "  \"characters\": [ { \"name\": \"PILGRIM\" } ]\n}\n");
+        std::fclose(f);
+    }
+    const selva::SaveData loaded = selva::SaveManager::load(path);
+    REQUIRE(loaded.characters[0].quick_slot_assigned.empty());
+    REQUIRE(loaded.characters[0].quick_slot_primed_index == -1);
+
+    cleanupTestFile(path);
+}
+
+TEST_CASE("SaveManager round-trips auto_assign_consumables setting",
+          "[save][settings][quick-slot]")
+{
+    const std::string path = testSavePath("autoassign-setting");
+    cleanupTestFile(path);
+
+    selva::SaveData data;
+    data.settings.auto_assign_consumables_to_quick_slot = true;
+    REQUIRE(selva::SaveManager::save(data, path));
+    const selva::SaveData loaded = selva::SaveManager::load(path);
+    REQUIRE(loaded.settings.auto_assign_consumables_to_quick_slot == true);
+
+    cleanupTestFile(path);
+}
+
 TEST_CASE("SaveManager round-trips craft_counts and known_recipes",
           "[save][craft][round-trip]")
 {

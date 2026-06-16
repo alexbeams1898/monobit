@@ -326,6 +326,8 @@ PlayerProfile loadCharacter(const json& c)
     loadGatherState(c, p);
     loadInsightCountMap(c, "craft_counts", p.craft_counts);
     loadStringArrayField(c, "known_recipes", p.known_recipes);
+    loadStringArrayField(c, "quick_slot_assigned", p.quick_slot_assigned);
+    p.quick_slot_primed_index = c.value("quick_slot_primed_index", -1);
     loadInventory(c, p);
     loadEquipment(c, p);
     loadCompendium(c, p);
@@ -360,6 +362,9 @@ void loadSettings(const json& j, SaveData& data)
         s.value("fov_degrees_first_person", data.settings.fov_degrees_first_person);
     data.settings.show_interact_ring =
         s.value("show_interact_ring", data.settings.show_interact_ring);
+    data.settings.auto_assign_consumables_to_quick_slot =
+        s.value("auto_assign_consumables_to_quick_slot",
+                data.settings.auto_assign_consumables_to_quick_slot);
 }
 } // namespace
 
@@ -635,6 +640,10 @@ nlohmann::json saveCharacter(const PlayerProfile& c)
         char_json["craft_counts"] = saveCountMap(c.craft_counts);
     if (!c.known_recipes.empty())
         char_json["known_recipes"] = c.known_recipes;
+    if (!c.quick_slot_assigned.empty())
+        char_json["quick_slot_assigned"] = c.quick_slot_assigned;
+    if (c.quick_slot_primed_index >= 0)
+        char_json["quick_slot_primed_index"] = c.quick_slot_primed_index;
     if (!c.inventory.by_category.empty() || c.inventory.next_id > 1)
         char_json["inventory"] = saveInventory(c);
     if (!equipmentIsEmpty(c.equipment))
@@ -685,6 +694,8 @@ bool save(const SaveData& data, const std::string& path)
         {"fov_degrees_third_person", data.settings.fov_degrees_third_person},
         {"fov_degrees_first_person", data.settings.fov_degrees_first_person},
         {"show_interact_ring", data.settings.show_interact_ring},
+        {"auto_assign_consumables_to_quick_slot",
+         data.settings.auto_assign_consumables_to_quick_slot},
     };
     if (data.has_last_played)
     {
@@ -723,8 +734,15 @@ void migrate(SaveData& data)
     // active_gather_nodes / gather_flows fields. Defaults are correct
     // (empty list + next_id=1 + empty flow timers) -- the GatherSpawner's
     // first tick will see an empty population, run initial fill, and
-    // commit fresh state to the next save write. No explicit init
-    // needed; the defaults handle it.
+    // commit fresh state to the next save write.
+    //
+    // v5 -> v6: quick_slot_assigned + quick_slot_primed_index added.
+    // v5 saves have no quick_slot fields; defaults are empty rotation
+    // + primed_index=-1. Q-press is a no-op until the player assigns
+    // a consumable (or auto-assign is enabled in settings and they
+    // craft/pick one up).
+    //
+    // No explicit init needed for either bump; the defaults handle it.
     data.schema_version = SaveData::CURRENT_VERSION;
 }
 

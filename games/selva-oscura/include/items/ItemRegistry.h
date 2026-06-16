@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace selva::items
 {
@@ -85,5 +86,34 @@ bool craftAndRecord(const engine::ecs::RecipeDef& recipe);
 // Used by the Craft tab to filter visible recipes. Defensive: returns
 // false on null profile.
 bool isRecipeKnown(const std::string& recipe_path);
+
+// True if `def` is wearable in `slot`. Hand slots accept any
+// weapon / incantation / invocation; armor slots match the def's
+// armor_slot; accessory slots accept accessories. Engine layer stays
+// agnostic about category-vs-slot policy; this predicate is selva's
+// canonical version. Used by:
+//   - Inventory equip popup (selva::ui)
+//   - Combat hand-cycle hotkeys (selva::combat)
+//   - Any future "what could go here" surface
+bool itemFitsSlot(const engine::ecs::ItemDef& def, engine::ecs::EquipSlot slot);
+
+// Every item instance in `inv` that fits `slot`. Pointers are stable
+// for the lifetime of the inventory mutation; do NOT cache across
+// frames if the inventory might mutate. Order is bucket-key
+// (unordered_map iteration) -> insertion order within bucket.
+std::vector<const engine::ecs::ItemInstance*>
+collectItemsFittingSlot(const engine::ecs::Inventory& inv,
+                        const engine::ecs::ItemRegistry& items,
+                        engine::ecs::EquipSlot slot);
+
+// Display name for an ItemInstance, with quality prefix for non-Common
+// rolls. ONE source of truth for "what to call this item" across the
+// inventory list, the detail panel title, the equip-slot popup, the
+// combat HUD slots, and any future surface. Skips the prefix for
+// Common quality so the most common roll doesn't pick up cosmetic
+// noise ("Common Bark scrap" is redundant); above- and below-Common
+// both prefix.
+std::string itemDisplayName(const engine::ecs::ItemInstance& it,
+                            const engine::ecs::ItemRegistry& items);
 
 } // namespace selva::items

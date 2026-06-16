@@ -11,6 +11,7 @@
 #include "combat/ActorVolumes.h"
 #include "combat/HitFeedback.h"
 #include "combat/HitVolumes.h"
+#include "combat/QuickSlot.h"
 #include "debug/Flags.h"
 #include "gameplay/Actor.h"
 #include "gameplay/Enemies.h"
@@ -19,7 +20,9 @@
 #include "gameplay/RomanNumeral.h"
 #include "gameplay/SanguePulse.h"
 #include "interact/Interaction.h"
+#include "items/ItemRegistry.h"
 #include "loot/Pickups.h"
+#include "ops/InventoryOps.h"
 #include "physics/PhysicsWorld.h"
 #include "render/Camera.h"
 #include "render/TerrainShader.h"
@@ -62,6 +65,25 @@ constexpr float kVesselHeight = 16.0f;
 constexpr float kPanelW = kBarWidth + 16.0f;
 constexpr float kPanelH = kHpHeight + kStaminaHeight + kVesselHeight + (kBarGap * 2.0f) + 16.0f;
 } // namespace kActorHudLayout
+
+// Combat HUD (lower-left) layout. Three slot frames:
+//   Top row:    [Quick-slot wide]  (the X-cycle / Q-use consumable)
+//   Bottom row: [L hand][R hand]   (Z / C cycle, equipped weapons)
+// Quick-slot lives ABOVE the hand slots because Q presses are more
+// time-critical (heal under pressure) and the player's eye is already
+// near HP top-left when they panic; lower-left top-row is the closer
+// of the two combat-HUD rows.
+namespace kCombatHudLayout
+{
+constexpr float kMargin = 18.0f;
+constexpr float kSlotWidth = 140.0f;
+constexpr float kSlotHeight = 36.0f;
+constexpr float kSlotGap = 8.0f;
+constexpr float kRowGap = 6.0f;
+constexpr float kQuickSlotWidth = kSlotWidth * 2.0f + kSlotGap; // spans both columns
+constexpr float kPanelW = kQuickSlotWidth;
+constexpr float kPanelH = kSlotHeight * 2.0f + kRowGap + 4.0f;
+} // namespace kCombatHudLayout
 
 namespace
 {
@@ -751,6 +773,118 @@ glm::vec2 sangueHudAnchor()
     return glm::vec2(origin_x + 8.0f, vessel_text_y + kVesselHeight * 0.5f);
 }
 
+// Draw one combat hand slot at (origin_x, origin_y) of size
+// (kSlotWidth, kSlotHeight). Slot frame + item display name centered
+// vertically. Empty slot shows "(empty)" in faint gray.
+static void drawHandSlot(ImDrawList* draw, float origin_x, float origin_y, const char* label,
+                         const std::string& display_text, bool is_empty)
+{
+    using namespace kCombatHudLayout;
+    const ImU32 bg = IM_COL32(20, 20, 20, 200);
+    const ImU32 border = IM_COL32(0, 0, 0, 220);
+    const ImU32 label_color = IM_COL32(150, 150, 150, 200);
+    const ImU32 text_color = is_empty ? IM_COL32(110, 110, 110, 200) : IM_COL32(220, 220, 220, 240);
+
+    const ImVec2 top_left(origin_x, origin_y);
+    const ImVec2 bot_right(origin_x + kSlotWidth, origin_y + kSlotHeight);
+    draw->AddRectFilled(top_left, bot_right, bg);
+    draw->AddRect(top_left, bot_right, border, 0.0f, 0, 1.0f);
+
+    // Tiny "L" / "R" hint in the upper-left of the slot.
+    draw->AddText(ImVec2(origin_x + 4.0f, origin_y + 2.0f), label_color, label);
+
+    // Item name centered vertically, padded from left.
+    const ImVec2 text_size = ImGui::CalcTextSize(display_text.c_str());
+    const float text_y = origin_y + (kSlotHeight - text_size.y) * 0.5f;
+    draw->AddText(ImVec2(origin_x + 18.0f, text_y), text_color, display_text.c_str());
+}
+
+void renderCombatHud()
+{
+    selva::PlayerProfile* profile = selva::activePlayerProfile();
+    if (profile == nullptr)
+        return;
+    const auto& inv = profile->inventory;
+    const auto& eq = profile->equipment;
+    const auto& items = selva::items::itemRegistry();
+
+    using namespace kCombatHudLayout;
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    const float anchor_x = vp->WorkPos.x + kMargin;
+    const float anchor_y = vp->WorkPos.y + vp->WorkSize.y - kMargin - kPanelH;
+
+    ImGui::SetNextWindowPos(ImVec2(anchor_x, anchor_y), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(kPanelW + 16.0f, kPanelH + 16.0f), ImGuiCond_Always);
+    ImGui::SetNextWindowBgAlpha(0.0f);
+    ImGui::Begin("##CombatHUD", nullptr,
+                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav |
+                     ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoInputs |
+                     ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground);
+    auto* draw = ImGui::GetWindowDrawList();
+
+    // Top row: quick-slot. Shows the currently-primed item config_path
+    // resolved to display name + a count of how many the player holds
+    // (so a primed Poultice with 0 in inventory reads as dim "(0)").
+    const float quick_y = anchor_y;
+    const std::string primed = selva::combat::primedConfigPath();
+    {
+        std::string text;
+        bool empty = primed.empty();
+        if (empty)
+        {
+            text = "(no quick-slot)";
+        }
+        else
+        {
+            const engine::ecs::ItemDef* def = items.find(primed);
+            const std::string name = (def != nullptr && !def->name.empty()) ? def->name : primed;
+            const int count = engine::ops::inventory::countItem(inv, primed);
+            // Append "x N" with the count. Zero count -> dim (treat as
+            // empty visually so player knows Q would no-op).
+            empty = (count <= 0);
+            char buf[128];
+            std::snprintf(buf, sizeof(buf), "%s  x%d", name.c_str(), count);
+            text = buf;
+        }
+        // Reuse drawHandSlot but with a "Q" label and the full wide
+        // width spanning both columns of the row below.
+        const ImU32 bg = IM_COL32(20, 20, 20, 200);
+        const ImU32 border = IM_COL32(0, 0, 0, 220);
+        const ImU32 label_color = IM_COL32(150, 150, 150, 200);
+        const ImU32 text_color =
+            empty ? IM_COL32(110, 110, 110, 200) : IM_COL32(220, 220, 220, 240);
+        const ImVec2 tl(anchor_x, quick_y);
+        const ImVec2 br(anchor_x + kQuickSlotWidth, quick_y + kSlotHeight);
+        draw->AddRectFilled(tl, br, bg);
+        draw->AddRect(tl, br, border, 0.0f, 0, 1.0f);
+        draw->AddText(ImVec2(anchor_x + 4.0f, quick_y + 2.0f), label_color, "Q");
+        const ImVec2 text_size = ImGui::CalcTextSize(text.c_str());
+        const float text_y = quick_y + (kSlotHeight - text_size.y) * 0.5f;
+        draw->AddText(ImVec2(anchor_x + 18.0f, text_y), text_color, text.c_str());
+    }
+
+    // Bottom row: L / R hand slots.
+    const float hands_y = anchor_y + kSlotHeight + kRowGap;
+    const auto draw_slot_for = [&](float x, const char* label, engine::ecs::EquipSlot slot)
+    {
+        const engine::ecs::ItemInstance* it =
+            engine::ops::inventory::equippedItem(inv, eq, slot);
+        std::string text;
+        const bool empty = (it == nullptr);
+        if (empty)
+            text = "(empty)";
+        else
+            text = selva::items::itemDisplayName(*it, items);
+        drawHandSlot(draw, x, hands_y, label, text, empty);
+    };
+
+    draw_slot_for(anchor_x, "L", engine::ecs::EquipSlot::LeftHand);
+    draw_slot_for(anchor_x + kSlotWidth + kSlotGap, "R", engine::ecs::EquipSlot::RightHand);
+
+    ImGui::Dummy(ImVec2(kPanelW, kPanelH));
+    ImGui::End();
+}
+
 void renderActorHud()
 {
     const auto& p = selva::gameplay::player();
@@ -801,6 +935,8 @@ void renderActorHud()
 
     ImGui::Dummy(ImVec2(kPanelW - 16.0f, kPanelH - 16.0f));
     ImGui::End();
+
+    renderCombatHud();
 
     // In-world overlay: enemy HP bars above each damaged enemy +
     // floating damage numbers. Both project from world to viewport
