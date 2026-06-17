@@ -1000,7 +1000,15 @@ static int resolvePlayerSwingDamage()
     }
 
     selva::gameplay::DamageInputs di;
-    di.base_damage = def->base_damage;
+    // Size multiplies the weapon's BASE damage (not the stat-scaling
+    // or identity terms). Size models the weapon's physical mass --
+    // a heavier strike does more raw damage regardless of who swings
+    // it -- while stat scaling models the WIELDER's technique. Per
+    // weaponSizeDamageMultiplier: Small=0.85x, Normal=1.0x,
+    // Large=1.20x. Sub-linear with weight by design (bigger hits but
+    // slower swings + more stamina, the Souls trade -- swing speed
+    // + stamina cost are formula-land deferred).
+    di.base_damage = def->base_damage * engine::ecs::weaponSizeDamageMultiplier(inst->size);
     di.str_scaling = def->str_scaling;
     di.dex_scaling = def->dex_scaling;
     di.end_scaling = def->end_scaling;

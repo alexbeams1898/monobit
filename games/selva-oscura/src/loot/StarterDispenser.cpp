@@ -94,6 +94,14 @@ void tickStarterDispenser()
     engine::ecs::ItemInstance inst;
     inst.config_path = config_path;
     inst.quantity = 1;
+    // Starter weapon ships Small per design lock 2026-06-17. The
+    // descent-stair gift is the Vagrant's first humble weapon -- a
+    // smaller mesh reads as "humble starter" + signals from the
+    // jump that the player will want to convert / find a bigger
+    // weapon as their body progresses. Larger weapons drop from
+    // later enemies (deferred: per-archetype size weights once
+    // weapon drop tables land).
+    inst.size = engine::ecs::WeaponSize::Small;
 
     const glm::vec3 pos = descentPickupPos();
     const Id spawned =
