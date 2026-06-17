@@ -45,19 +45,20 @@ Hurtbox capsuleBetween(const selva::anim::PoseSampler& sampler, const glm::mat4&
 
 } // namespace
 
-glm::mat4 buildActorModelMatrix(const glm::vec3& pos, float yaw, float foot_offset_y)
+glm::mat4 buildActorModelMatrix(const glm::vec3& pos, float yaw, float foot_offset_y,
+                                float body_scale)
 {
     // pos.y is the actor's WORLD-space foot height (terrain Y at the
-    // actor's XZ). Subtracting foot_offset_y lifts the mesh so its
-    // model-space hip-Y lands on top of that world foot height,
-    // putting the visible feet on the ground at any elevation.
-    // Without the pos.y term, every actor floats at world Y=0 + joint
-    // model Y - invisible on flat ground but breaks lock-on reticle,
-    // hurtboxes, and any other matrix consumer the moment terrain
-    // rises.
-    const glm::mat4 m =
-        glm::translate(glm::mat4(1.0f), glm::vec3(pos.x, pos.y - foot_offset_y, pos.z));
-    return glm::rotate(m, yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
+    // actor's XZ). Subtracting foot_offset_y * body_scale lifts the
+    // mesh so its (scaled) model-space hip-Y lands on top of that
+    // world foot height, putting the visible feet on the ground at
+    // any elevation AND any body size. A 0.85-scale shade has shorter
+    // legs in world units; foot_offset_y must shrink with them or the
+    // feet sink below the terrain.
+    const glm::mat4 m = glm::translate(glm::mat4(1.0f),
+                                       glm::vec3(pos.x, pos.y - foot_offset_y * body_scale, pos.z));
+    const glm::mat4 r = glm::rotate(m, yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
+    return glm::scale(r, glm::vec3(body_scale));
 }
 
 void appendActorHurtboxes(const selva::anim::PoseSampler& sampler, const glm::mat4& actor_model,

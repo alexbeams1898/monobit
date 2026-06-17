@@ -48,6 +48,8 @@ int applyHealPct(float pct)
     return after - before;
 }
 
+} // namespace
+
 UseResult healAction(engine::ecs::Inventory& inv, engine::ecs::ItemInstanceId item_id)
 {
     UseResult r;
@@ -83,15 +85,13 @@ UseResult healAction(engine::ecs::Inventory& inv, engine::ecs::ItemInstanceId it
                  selva::gameplay::player().hp.current, selva::gameplay::player().hp.max);
     std::fflush(stderr);
 
-    const engine::ecs::ItemDef* def = selva::items::itemRegistry().find(inst->config_path);
-    const std::string name =
-        (def != nullptr && !def->name.empty()) ? def->name : inst->config_path;
+    // Route through itemDisplayName so "Used Fine Poultice" carries
+    // the quality stamp the player saw in the scrip / inventory.
+    const std::string name = selva::items::itemDisplayName(*inst, selva::items::itemRegistry());
     r.fired = true;
     r.success_message = "Used " + name;
     return r;
 }
-
-} // namespace
 
 void registerHealHandlers()
 {

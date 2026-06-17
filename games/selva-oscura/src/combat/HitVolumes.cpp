@@ -89,8 +89,8 @@ std::uint32_t spawnAttackHitbox(const AttackHitboxSpawnParams& p)
     const float effective_dur =
         std::max(0.0f, (p.clip_duration_seconds - p.clip_start_seconds) / rate);
     const float lifetime = std::max(0.10f, effective_dur * p.lifetime_fraction);
-    const glm::mat4 model_mat =
-        buildActorModelMatrix(p.actor->pos, p.actor->yaw, p.mesh_foot_offset_y);
+    const glm::mat4 model_mat = buildActorModelMatrix(
+        p.actor->pos, p.actor->yaw, p.mesh_foot_offset_y, p.actor->appearance.body_scale);
     const glm::vec3 anchor_world =
         glm::vec3(model_mat * glm::vec4(p.actor->sampler.jointWorldPos(joint_idx), 1.0f));
     // Weapon hitboxes extend along the joint's forward axis. For a

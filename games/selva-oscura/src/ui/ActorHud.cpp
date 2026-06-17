@@ -454,7 +454,8 @@ void drawLockOnReticle(ImDrawList* overlay, const glm::mat4& view_proj)
     if (joint_idx < 0)
         return;
     const glm::mat4 model = selva::combat::buildActorModelMatrix(
-        target.pos, target.yaw, selva::gameplay::actorFootOffsetY(target));
+        target.pos, target.yaw, selva::gameplay::actorFootOffsetY(target),
+        target.appearance.body_scale);
     const glm::vec4 world = model * glm::vec4(target.sampler.jointWorldPos(joint_idx), 1.0f);
     glm::vec2 sp;
     if (!selva::render::worldToScreen(view_proj, glm::vec3(world), sp))
@@ -774,15 +775,15 @@ glm::vec2 sangueHudAnchor()
 }
 
 // Draw one combat hand slot at (origin_x, origin_y) of size
-// (kSlotWidth, kSlotHeight). Slot frame + item display name centered
-// vertically. Empty slot shows "(empty)" in faint gray.
-static void drawHandSlot(ImDrawList* draw, float origin_x, float origin_y, const char* label,
+// (kSlotWidth, kSlotHeight). Slot frame + item display name centered.
+// Empty slot shows "(empty)" in faint gray. No in-slot key hint --
+// keybinds live on the dedicated Controls page.
+static void drawHandSlot(ImDrawList* draw, float origin_x, float origin_y,
                          const std::string& display_text, bool is_empty)
 {
     using namespace kCombatHudLayout;
     const ImU32 bg = IM_COL32(20, 20, 20, 200);
     const ImU32 border = IM_COL32(0, 0, 0, 220);
-    const ImU32 label_color = IM_COL32(150, 150, 150, 200);
     const ImU32 text_color = is_empty ? IM_COL32(110, 110, 110, 200) : IM_COL32(220, 220, 220, 240);
 
     const ImVec2 top_left(origin_x, origin_y);
@@ -790,13 +791,11 @@ static void drawHandSlot(ImDrawList* draw, float origin_x, float origin_y, const
     draw->AddRectFilled(top_left, bot_right, bg);
     draw->AddRect(top_left, bot_right, border, 0.0f, 0, 1.0f);
 
-    // Tiny "L" / "R" hint in the upper-left of the slot.
-    draw->AddText(ImVec2(origin_x + 4.0f, origin_y + 2.0f), label_color, label);
-
-    // Item name centered vertically, padded from left.
+    // Item name centered horizontally + vertically within the slot.
     const ImVec2 text_size = ImGui::CalcTextSize(display_text.c_str());
+    const float text_x = origin_x + (kSlotWidth - text_size.x) * 0.5f;
     const float text_y = origin_y + (kSlotHeight - text_size.y) * 0.5f;
-    draw->AddText(ImVec2(origin_x + 18.0f, text_y), text_color, display_text.c_str());
+    draw->AddText(ImVec2(text_x, text_y), text_color, display_text.c_str());
 }
 
 void renderCombatHud()
@@ -836,50 +835,71 @@ void renderCombatHud()
         }
         else
         {
-            const engine::ecs::ItemDef* def = items.find(primed);
-            const std::string name = (def != nullptr && !def->name.empty()) ? def->name : primed;
+            // Resolve an ItemInstance of the primed type so we can
+            // route through itemDisplayName + itemDisplayCountSuffix
+            // -- same canonical formatter the inventory list uses,
+            // so quality stamps + count appear consistently. If the
+            // player holds zero of the primed item, we still want
+            // the display name -- synthesize a stub instance from
+            // the def to keep the formatter happy.
+            const engine::ecs::ItemInstance* held = nullptr;
+            for (const auto& [cat, bucket] : inv.by_category)
+            {
+                for (const auto& itm : bucket)
+                {
+                    if (itm.config_path == primed)
+                    {
+                        held = &itm;
+                        break;
+                    }
+                }
+                if (held != nullptr)
+                    break;
+            }
+            engine::ecs::ItemInstance stub;
+            stub.config_path = primed;
+            const engine::ecs::ItemInstance& display = (held != nullptr) ? *held : stub;
             const int count = engine::ops::inventory::countItem(inv, primed);
-            // Append "x N" with the count. Zero count -> dim (treat as
-            // empty visually so player knows Q would no-op).
             empty = (count <= 0);
+            const std::string name = selva::items::itemDisplayName(display, items);
             char buf[128];
             std::snprintf(buf, sizeof(buf), "%s  x%d", name.c_str(), count);
             text = buf;
         }
-        // Reuse drawHandSlot but with a "Q" label and the full wide
-        // width spanning both columns of the row below.
+        // Wide quick-slot box spanning both columns of the row below.
+        // Text centered within the box; no in-slot key hint (keybinds
+        // live on the dedicated Controls page).
         const ImU32 bg = IM_COL32(20, 20, 20, 200);
         const ImU32 border = IM_COL32(0, 0, 0, 220);
-        const ImU32 label_color = IM_COL32(150, 150, 150, 200);
         const ImU32 text_color =
             empty ? IM_COL32(110, 110, 110, 200) : IM_COL32(220, 220, 220, 240);
         const ImVec2 tl(anchor_x, quick_y);
         const ImVec2 br(anchor_x + kQuickSlotWidth, quick_y + kSlotHeight);
         draw->AddRectFilled(tl, br, bg);
         draw->AddRect(tl, br, border, 0.0f, 0, 1.0f);
-        draw->AddText(ImVec2(anchor_x + 4.0f, quick_y + 2.0f), label_color, "Q");
         const ImVec2 text_size = ImGui::CalcTextSize(text.c_str());
+        const float text_x = anchor_x + (kQuickSlotWidth - text_size.x) * 0.5f;
         const float text_y = quick_y + (kSlotHeight - text_size.y) * 0.5f;
-        draw->AddText(ImVec2(anchor_x + 18.0f, text_y), text_color, text.c_str());
+        draw->AddText(ImVec2(text_x, text_y), text_color, text.c_str());
     }
 
-    // Bottom row: L / R hand slots.
+    // Bottom row: left + right hand slots side by side. Left on the
+    // left, right on the right, mirroring the player's physical layout.
     const float hands_y = anchor_y + kSlotHeight + kRowGap;
-    const auto draw_slot_for = [&](float x, const char* label, engine::ecs::EquipSlot slot)
+    const auto draw_slot_for = [&](float x, engine::ecs::EquipSlot slot)
     {
-        const engine::ecs::ItemInstance* it =
-            engine::ops::inventory::equippedItem(inv, eq, slot);
+        const engine::ecs::ItemInstance* it = engine::ops::inventory::equippedItem(inv, eq, slot);
         std::string text;
         const bool empty = (it == nullptr);
         if (empty)
             text = "(empty)";
         else
             text = selva::items::itemDisplayName(*it, items);
-        drawHandSlot(draw, x, hands_y, label, text, empty);
+        drawHandSlot(draw, x, hands_y, text, empty);
     };
 
-    draw_slot_for(anchor_x, "L", engine::ecs::EquipSlot::LeftHand);
-    draw_slot_for(anchor_x + kSlotWidth + kSlotGap, "R", engine::ecs::EquipSlot::RightHand);
+    draw_slot_for(anchor_x, engine::ecs::EquipSlot::LeftHand);
+    draw_slot_for(anchor_x + kSlotWidth + kSlotGap, engine::ecs::EquipSlot::RightHand);
 
     ImGui::Dummy(ImVec2(kPanelW, kPanelH));
     ImGui::End();

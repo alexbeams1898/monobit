@@ -261,6 +261,20 @@ struct EnemyArchetype
     // skeletons). Default "player" preserves today's behavior --
     // every existing humanoid shade reuses the player rig.
     std::string skeleton_id = "player";
+
+    // Visual appearance config path. Empty = default Appearance
+    // (body_scale = 1.0 -- same as existing behavior, so legacy
+    // archetypes with no appearance_path stay identical). Set
+    // per-archetype to make every instance of this enemy share a
+    // body shape -- e.g. "config/appearances/larva.json" with
+    // body_scale=0.85 for a slightly smaller larva, or
+    // "config/appearances/keeper.json" with 1.4 for a hulking
+    // keeper. spawnEnemyFromDecl loads this once at spawn into the
+    // actor's appearance field; every Actor consumer (renderer,
+    // buildActorModelMatrix, applyActorClipHipDelta) reads through
+    // the actor as it does for the player.
+    std::string appearance_path;
+
     // Per-archetype clip names. Empty = humanoid default (the X_Bot
     // mixamo names). Wolf overrides every entry. Read EXCLUSIVELY via
     // lookupArchetypeClip in Enemies.cpp so the per-skeleton registry
@@ -503,23 +517,18 @@ struct EnemyArchetype
     // first frame.
     float spawn_clip_freeze_at_seconds = 0.0f;
 
-    // Per-archetype render tint -- multiplied with the skeletal
-    // shader's lambert output. (1,1,1) = neutral white (default).
-    // Used to visually distinguish archetypes of the same skeleton
-    // (e.g. larva_fresh = leached pale white; larva_aged = sangue-
-    // darkened deep red). Cosmologically tied to the substance law:
-    // sangue darkens what it saturates. Read by the render loop in
-    // PerFrameTick.cpp's enemy draw block.
-    float tint_color[3] = {1.0f, 1.0f, 1.0f};
-
-    // Optional archetype id whose tint this actor LERPS TOWARD over
-    // its arrival-wait period. Used by render code to visualize the
-    // inward-burn progress (fresh larvae tint white -> aged-red as
-    // they wait at the shore). Empty (default) = no burn-lerp;
-    // render uses tint_color directly. The lerp uses the actor's
+    // Optional archetype id whose Appearance this actor LERPS TOWARD
+    // over its arrival-wait period. Used by render code to visualize
+    // a transformation in progress -- today the larva burn (fresh
+    // pale-and-small -> aged red-and-full-sized as they wait at the
+    // shore), tomorrow keeper falls / class form changes / etc.
+    // Empty (default) = no transformation; render uses this
+    // archetype's appearance verbatim. The lerp uses the actor's
     // arrival_wallclock + arrival_action_delay_seconds, both stamped
-    // by the spawn-flow on arrival.
-    std::string tint_burn_target_archetype;
+    // by the spawn-flow on arrival. resolveAppearance interpolates
+    // every appearance axis (color, body_scale, all future fields)
+    // simultaneously from the same progress fraction.
+    std::string transform_target_archetype;
 };
 
 // nlohmann JSON I/O for these structs. Defined in EnemyArchetype.cpp

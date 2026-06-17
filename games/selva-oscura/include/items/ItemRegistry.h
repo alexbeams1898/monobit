@@ -102,8 +102,7 @@ bool itemFitsSlot(const engine::ecs::ItemDef& def, engine::ecs::EquipSlot slot);
 // frames if the inventory might mutate. Order is bucket-key
 // (unordered_map iteration) -> insertion order within bucket.
 std::vector<const engine::ecs::ItemInstance*>
-collectItemsFittingSlot(const engine::ecs::Inventory& inv,
-                        const engine::ecs::ItemRegistry& items,
+collectItemsFittingSlot(const engine::ecs::Inventory& inv, const engine::ecs::ItemRegistry& items,
                         engine::ecs::EquipSlot slot);
 
 // Display name for an ItemInstance, with quality prefix for non-Common
@@ -115,5 +114,11 @@ collectItemsFittingSlot(const engine::ecs::Inventory& inv,
 // both prefix.
 std::string itemDisplayName(const engine::ecs::ItemInstance& it,
                             const engine::ecs::ItemRegistry& items);
+
+// Trailing suffix for a stack: "  x3" for stackables with qty > 1, or
+// "  +2" for weapons with xp_level > 1. Empty otherwise. Pure
+// composition helper -- combine with itemDisplayName for the full
+// "Fine Poultice  x3" form used by the inventory list + combat HUD.
+std::string itemDisplayCountSuffix(const engine::ecs::ItemInstance& it);
 
 } // namespace selva::items

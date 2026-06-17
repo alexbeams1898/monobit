@@ -33,6 +33,20 @@ enum class QualityTier : std::uint8_t
     Masterwork
 };
 
+// Per-instance physical size of a weapon (or any item that ships in
+// multiple-size variants). Three discrete tiers; visual mesh scale +
+// weight + damage all derive from this via lookup tables.
+//
+// Orthogonal to QualityTier (same Bronze Sword can roll any
+// quality x size combination). Default Normal so legacy instances
+// load as today's behavior unchanged.
+enum class WeaponSize : std::uint8_t
+{
+    Small = 0,
+    Normal,
+    Large
+};
+
 enum class ItemCategory : std::uint8_t
 {
     Weapon,
@@ -102,6 +116,85 @@ inline const char* qualityName(QualityTier q)
         return "Masterwork";
     }
     return "Common";
+}
+
+inline const char* weaponSizeName(WeaponSize s)
+{
+    switch (s)
+    {
+    case WeaponSize::Small:
+        return "Small";
+    case WeaponSize::Normal:
+        return "Normal";
+    case WeaponSize::Large:
+        return "Large";
+    }
+    return "Normal";
+}
+
+// Parse from string (save load + JSON authoring). Unknown / empty
+// values default to Normal so legacy data round-trips cleanly.
+inline WeaponSize parseWeaponSize(const std::string& s)
+{
+    if (s == "Small")
+        return WeaponSize::Small;
+    if (s == "Large")
+        return WeaponSize::Large;
+    return WeaponSize::Normal;
+}
+
+// Visual mesh scale for the weapon when held + when dropped. Small
+// reads visibly smaller than Normal; Large noticeably larger. These
+// are the user-tunable starting points discussed in the size design
+// pass; tweak as content lands.
+inline float weaponSizeVisualScale(WeaponSize s)
+{
+    switch (s)
+    {
+    case WeaponSize::Small:
+        return 0.75f;
+    case WeaponSize::Normal:
+        return 1.00f;
+    case WeaponSize::Large:
+        return 1.30f;
+    }
+    return 1.0f;
+}
+
+// Damage multiplier applied on top of the weapon's base damage.
+// Sub-linear with weight: Large hits harder but not by 1.30 -- the
+// trade is "bigger hits for slower swings + more stamina." Swing
+// speed + stamina cost derivations are formula land; this is just
+// the damage scalar.
+inline float weaponSizeDamageMultiplier(WeaponSize s)
+{
+    switch (s)
+    {
+    case WeaponSize::Small:
+        return 0.85f;
+    case WeaponSize::Normal:
+        return 1.00f;
+    case WeaponSize::Large:
+        return 1.20f;
+    }
+    return 1.0f;
+}
+
+// Weight multiplier applied to the weapon's base weight (used by
+// equip-load + stamina-per-swing systems). Larger weapons weigh more
+// roughly linearly with their visual scale.
+inline float weaponSizeWeightMultiplier(WeaponSize s)
+{
+    switch (s)
+    {
+    case WeaponSize::Small:
+        return 0.80f;
+    case WeaponSize::Normal:
+        return 1.00f;
+    case WeaponSize::Large:
+        return 1.30f;
+    }
+    return 1.0f;
 }
 
 // Item template / blueprint. Read-only after loading. Lookup keyed on
@@ -260,6 +353,12 @@ struct ItemInstance
     ItemInstanceId id = kInvalidItemInstanceId;
     std::string config_path;
     QualityTier quality = QualityTier::Common;
+    // Physical size of this instance. Per-instance roll at drop time
+    // (or stamped by crafting). Drives the visual mesh scale of the
+    // held + dropped weapon, plus damage / weight multipliers via
+    // the weaponSize*() helpers above. Default Normal preserves
+    // pre-size-system behavior for legacy items.
+    WeaponSize size = WeaponSize::Normal;
     float durability = 100.0f;
     int quantity = 1;
     float evolution_bonus = 0.0f;

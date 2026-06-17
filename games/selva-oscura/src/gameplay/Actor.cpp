@@ -306,6 +306,31 @@ const char* directionalLocoClip(const glm::vec3& fwd, const glm::vec3& right,
     return walk ? "strafe_walking_left" : "strafe_jogging_left";
 }
 
+glm::vec2 hipDeltaVelocityContribution(const glm::vec3& hip_local, float yaw, float dt,
+                                       float hip_delta_scale, float body_scale)
+{
+    if (std::abs(hip_local.x) <= 1e-6f && std::abs(hip_local.z) <= 1e-6f)
+        return glm::vec2(0.0f);
+    if (dt <= 0.0001f)
+        return glm::vec2(0.0f);
+    const float sy = std::sin(yaw);
+    const float cy = std::cos(yaw);
+    const glm::vec3 hip_world(-cy * hip_local.x - sy * hip_local.z, 0.0f,
+                              sy * hip_local.x - cy * hip_local.z);
+    // body_scale: the visible mesh is rendered at body_scale of bind-
+    // pose size by buildActorModelMatrix. The clip's authored hip
+    // delta is in BIND-POSE meters (the clip was authored for the
+    // unit-scale rig). A 0.85-scale shade's feet move 0.85 m for
+    // every 1 m the clip says; if we apply the unscaled delta to
+    // world pos, the world moves faster than the feet visibly do and
+    // the actor slides. Per
+    // [[feedback_hip_delta_two_sides]] + [[feedback_pose_sampler_key_propagation]]
+    // -- the two-sides contract here is "world motion must equal
+    // visible mesh foot motion."
+    const float scale = hip_delta_scale * body_scale;
+    return glm::vec2(hip_world.x * scale / dt, hip_world.z * scale / dt);
+}
+
 void applyActorClipHipDelta(Actor& actor, float dt, float hip_delta_scale)
 {
     // Contract from feedback_hip_delta_two_sides.md: PoseSampler
@@ -315,22 +340,15 @@ void applyActorClipHipDelta(Actor& actor, float dt, float hip_delta_scale)
     // physics pipeline (universal-actor-physics refactor): the hip
     // delta is converted to a velocity contribution that the next
     // physics step integrates. Direct pos writes are gone.
-    const glm::vec3 hip_local = actor.sampler.consumedHipDelta();
-    if (std::abs(hip_local.x) <= 1e-6f && std::abs(hip_local.z) <= 1e-6f)
-        return;
-    if (dt <= 0.0001f)
-        return;
-    const float sy = std::sin(actor.yaw);
-    const float cy = std::cos(actor.yaw);
-    const glm::vec3 hip_world(-cy * hip_local.x - sy * hip_local.z, 0.0f,
-                              sy * hip_local.x - cy * hip_local.z);
+    //
     // Add hip-derived velocity ON TOP of whatever the locomotion tick
     // wrote. For root-motion clips the locomotion tick zeroes
     // velocity_xz first, so this becomes the sole contribution; for
     // mixed cases (a one-shot with authored hip motion firing while
     // a velocity gait was active) the two compose.
-    actor.velocity_xz.x += hip_world.x * hip_delta_scale / dt;
-    actor.velocity_xz.y += hip_world.z * hip_delta_scale / dt;
+    const glm::vec3 hip_local = actor.sampler.consumedHipDelta();
+    actor.velocity_xz += hipDeltaVelocityContribution(hip_local, actor.yaw, dt, hip_delta_scale,
+                                                      actor.appearance.body_scale);
 }
 
 bool actorCanLandHits(const Actor& a)
@@ -371,8 +389,8 @@ void updateActiveAttackHitbox(Actor& actor)
     // while the volume sits behind the attacker — visible as "AI
     // punches into the player but no damage."
     const float foot_offset_y = actorFootOffsetY(actor);
-    const glm::mat4 model_mat =
-        selva::combat::buildActorModelMatrix(actor.pos, actor.yaw, foot_offset_y);
+    const glm::mat4 model_mat = selva::combat::buildActorModelMatrix(
+        actor.pos, actor.yaw, foot_offset_y, actor.appearance.body_scale);
     const glm::vec3 anchor_world = glm::vec3(
         model_mat * glm::vec4(actor.sampler.jointWorldPos(actor.active_attack_joint_idx), 1.0f));
     const glm::vec3 tip_world =
@@ -475,6 +493,15 @@ void initActorPool()
     const selva::PlayerClass cls =
         (profile != nullptr) ? profile->player_class : selva::PlayerClass::None;
     initActorPools(pc.hp, pc.stamina, pc.poise, pc.body, pc.stats, cls);
+    // Visual appearance load. Empty appearance_path => default
+    // (body_scale = 1.0); a valid path resolves through
+    // loadAppearance which tolerates missing/malformed files by
+    // returning defaults. Note: at boot, profile is nullptr (no
+    // character selected yet); resetPlayerActorForProfile re-loads
+    // appearance per character on Playing-enter, which is when the
+    // player actually sees their body.
+    if (profile != nullptr)
+        pc.appearance = loadAppearance(profile->appearance_path);
     // initActorPool is one-time, asset-binding only. Position, hp-fill,
     // and any per-character state are NOT set here - those land via
     // hardResetWorldForCharacter(profile) on Playing-enter. This

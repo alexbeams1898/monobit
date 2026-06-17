@@ -495,6 +495,13 @@ struct PoseSampler::Impl
     bool ik_orient_enabled = false;
     glm::vec3 actor_world_pos = glm::vec3(0.0f);
     float actor_yaw = 0.0f;
+    // Uniform body scale (per figura umana Appearance system) applied
+    // to actor-world coordinate transforms. 1.0 = unit-scale actor.
+    // Consumers: jointWorldPosWithActor + jointWorldMatrixWithActor
+    // -- both used to anchor things (equipped weapons, lock-on
+    // reticles) at the visible joint world position, which must
+    // match the renderer's buildActorModelMatrix scaling.
+    float actor_body_scale = 1.0f;
 };
 // NOLINTEND(clang-analyzer-optin.performance.Padding)
 
@@ -708,12 +715,13 @@ void PoseSampler::setFootIK(GroundProbeFn probe, bool position_enabled, bool ori
     impl->ik_orient_enabled = orient_enabled && have_probe;
 }
 
-void PoseSampler::setActorPlacement(const glm::vec3& world_pos, float yaw_radians)
+void PoseSampler::setActorPlacement(const glm::vec3& world_pos, float yaw_radians, float body_scale)
 {
     if (!impl)
         return;
     impl->actor_world_pos = world_pos;
     impl->actor_yaw = yaw_radians;
+    impl->actor_body_scale = body_scale;
 }
 
 void PoseSampler::releaseOneShot()
@@ -1044,9 +1052,18 @@ glm::vec3 PoseSampler::jointWorldPosWithActor(int i) const
         return glm::vec3(0.0f);
     glm::mat4 m;
     std::memcpy(&m, &impl->model_matrices[i], sizeof(glm::mat4));
-    const float model_x = m[3][0];
-    const float model_y = m[3][1];
-    const float model_z = m[3][2];
+    // body_scale applies to the joint's model-space offset BEFORE
+    // rotating into actor-world. Geometry: the renderer applies
+    // T(actor_world_pos) * R_y(yaw+pi) * S(body_scale) to the joint;
+    // we replicate that here so the returned world position matches
+    // the rendered hand/head/etc. Without the scale, downstream
+    // consumers (equipped weapon parented to the hand joint) anchor
+    // at the un-scaled joint position, leaving the weapon floating
+    // off the visible giant body.
+    const float s = impl->actor_body_scale;
+    const float model_x = m[3][0] * s;
+    const float model_y = m[3][1] * s;
+    const float model_z = m[3][2] * s;
     constexpr float kPi = 3.14159265358979323846f;
     const float yaw_with_flip = impl->actor_yaw + kPi;
     const float cy = std::cos(yaw_with_flip);
@@ -1062,17 +1079,24 @@ glm::mat4 PoseSampler::jointWorldMatrixWithActor(int i) const
         return glm::mat4(1.0f);
     glm::mat4 model_mat;
     std::memcpy(&model_mat, &impl->model_matrices[i], sizeof(glm::mat4));
-    // Mirror the renderer: rotate around Y by (actor_yaw + pi), then
-    // translate to actor world pos. Without the +pi flip the joint's
-    // rotation columns would be 180deg off from the visible mesh.
+    // Mirror the renderer's buildActorModelMatrix: rotate around Y
+    // by (actor_yaw + pi), translate to actor world pos, AND apply
+    // body_scale uniformly. The body_scale baked into actor_world
+    // here scales both the joint's position AND its rotation columns
+    // -- which is what consumers parenting meshes to a joint (e.g.
+    // equipped weapons) need to inherit the body's size + position.
+    // Without the +pi flip the joint's rotation columns would be
+    // 180deg off from the visible mesh; without the scale the joint
+    // matrix anchors meshes at the un-scaled position.
     constexpr float kPi = 3.14159265358979323846f;
     const float yaw_with_flip = impl->actor_yaw + kPi;
     const float cy = std::cos(yaw_with_flip);
     const float sy = std::sin(yaw_with_flip);
+    const float s = impl->actor_body_scale;
     glm::mat4 actor_world(1.0f);
-    actor_world[0] = glm::vec4(cy, 0.0f, -sy, 0.0f);
-    actor_world[1] = glm::vec4(0.0f, 1.0f, 0.0f, 0.0f);
-    actor_world[2] = glm::vec4(sy, 0.0f, cy, 0.0f);
+    actor_world[0] = glm::vec4(cy * s, 0.0f, -sy * s, 0.0f);
+    actor_world[1] = glm::vec4(0.0f, s, 0.0f, 0.0f);
+    actor_world[2] = glm::vec4(sy * s, 0.0f, cy * s, 0.0f);
     actor_world[3] =
         glm::vec4(impl->actor_world_pos.x, impl->actor_world_pos.y, impl->actor_world_pos.z, 1.0f);
     return actor_world * model_mat;

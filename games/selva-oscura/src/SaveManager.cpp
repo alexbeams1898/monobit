@@ -219,6 +219,11 @@ engine::ecs::ItemInstance loadInventoryEntry(const json& e)
     item.config_path = e.value("config_path", std::string{});
     item.quality = static_cast<engine::ecs::QualityTier>(
         e.value("quality", static_cast<int>(engine::ecs::QualityTier::Common)));
+    // Size: legacy saves (pre-v9) have no "size" key; default Normal
+    // preserves their visible behavior exactly. Stored as int for
+    // symmetry with quality.
+    item.size = static_cast<engine::ecs::WeaponSize>(
+        e.value("size", static_cast<int>(engine::ecs::WeaponSize::Normal)));
     item.durability = e.value("durability", 100.0f);
     item.quantity = e.value("quantity", 1);
     item.evolution_bonus = e.value("evolution_bonus", 0.0f);
@@ -346,6 +351,10 @@ PlayerProfile loadCharacter(const json& c)
     if (p.sangue_riversato > SANGUE_LIFETIME_CAP)
         p.sangue_riversato = SANGUE_LIFETIME_CAP;
     p.player_class = parsePlayerClass(c.value("player_class", std::string{}));
+    // Load appearance_path, with legacy v7 saves' shade_path as
+    // fallback. Both keys are tolerated; migrate() runs afterward and
+    // backfills the canonical default for any character still empty.
+    p.appearance_path = c.value("appearance_path", c.value("shade_path", std::string{}));
     return p;
 }
 
@@ -387,7 +396,17 @@ SaveData load(const std::string& path)
         return data;
     }
     data.schema_version = j.value("schema_version", 1);
-    migrate(data);
+    if (data.schema_version > SaveData::CURRENT_VERSION)
+    {
+        std::fprintf(stderr,
+                     "[SaveManager] save file is newer than this build "
+                     "(schema=%d > CURRENT_VERSION=%d); fields added in the newer "
+                     "schema will be ignored, and migrate() will rewrite the "
+                     "version to %d on next save. If you're playing an older build "
+                     "of an in-development save, expect data loss.\n",
+                     data.schema_version, SaveData::CURRENT_VERSION, SaveData::CURRENT_VERSION);
+        std::fflush(stderr);
+    }
     if (j.contains("characters") && j["characters"].is_array())
     {
         for (const auto& c : j["characters"])
@@ -404,6 +423,14 @@ SaveData load(const std::string& path)
         data.has_last_played = true;
         data.last_played_character = j.value("last_played_character", std::string{});
     }
+    // migrate AFTER characters + settings are loaded -- previously
+    // migrate ran before the character vector was populated, so any
+    // backfill logic targeting characters was a no-op (the loop
+    // iterated over an empty vector). Per
+    // [[feedback_rebuild_from_authored_on_reset]] the migration is
+    // the authoring source for upgrading old save shape; it must run
+    // when the data it's migrating is actually present.
+    migrate(data);
     std::fprintf(stderr, "[SaveManager] Loaded %zu characters from %s\n", data.characters.size(),
                  resolved.c_str());
     return data;
@@ -462,6 +489,7 @@ nlohmann::json saveInventoryEntry(const engine::ecs::ItemInstance& it)
         {"id", it.id},
         {"config_path", it.config_path},
         {"quality", static_cast<int>(it.quality)},
+        {"size", static_cast<int>(it.size)},
         {"durability", it.durability},
         {"quantity", it.quantity},
         {"evolution_bonus", it.evolution_bonus},
@@ -657,6 +685,8 @@ nlohmann::json saveCharacter(const PlayerProfile& c)
     saveSangueFields(char_json, c);
     if (c.player_class != PlayerClass::None)
         char_json["player_class"] = playerClassName(c.player_class);
+    if (!c.appearance_path.empty())
+        char_json["appearance_path"] = c.appearance_path;
     return char_json;
 }
 
@@ -717,6 +747,12 @@ void addCharacter(SaveData& data, const std::string& name)
 {
     PlayerProfile p;
     p.name = name;
+    // Default appearance for newly-created characters. The forthcoming
+    // character designer overwrites this with a per-character variant;
+    // until then every new pilgrim shares the default body. Existing
+    // saves with empty appearance_path are backfilled by migrate() to
+    // the same default.
+    p.appearance_path = "config/appearances/default_humanoid.json";
     data.characters.push_back(std::move(p));
 }
 
@@ -742,7 +778,39 @@ void migrate(SaveData& data)
     // a consumable (or auto-assign is enabled in settings and they
     // craft/pick one up).
     //
-    // No explicit init needed for either bump; the defaults handle it.
+    // v6 -> v7: shade_path field added.
+    // v7 -> v8: renamed shade_path -> appearance_path; config dir
+    // renamed config/shades -> config/appearances. (Reason: the
+    // parameter set is universal across cosmologies -- burdened
+    // shades, the Unburdened Vagrant, the Guide, divine emissaries
+    // all use the same body schema. "Shade" was overloaded to mean
+    // both a kind of being AND the visual config; "appearance"
+    // separates them.)
+    //
+    // The character JSON loader above accepts either key during this
+    // window: appearance_path wins; falls back to shade_path. Here we
+    // also rewrite any legacy path string (config/shades/X.json ->
+    // config/appearances/X.json) so the next save persists the
+    // canonical form. Finally we backfill the default for any
+    // character still empty -- without this, characters created on
+    // v6 or earlier silently lock at body_scale=1.0 even after JSON
+    // edits.
+    for (auto& c : data.characters)
+    {
+        const std::string kLegacyPrefix = "config/shades/";
+        const std::string kNewPrefix = "config/appearances/";
+        if (c.appearance_path.rfind(kLegacyPrefix, 0) == 0)
+            c.appearance_path = kNewPrefix + c.appearance_path.substr(kLegacyPrefix.size());
+        if (c.appearance_path.empty())
+            c.appearance_path = "config/appearances/default_humanoid.json";
+    }
+
+    // v8 -> v9: ItemInstance.size added (Small/Normal/Large). v8
+    // saves have no "size" key in inventory entries; the load helper
+    // defaults to Normal so legacy items keep their pre-size visible
+    // behavior. No explicit per-instance backfill needed -- the
+    // default IS the migration.
+
     data.schema_version = SaveData::CURRENT_VERSION;
 }
 

@@ -232,6 +232,8 @@ void to_json(nlohmann::json& j, const EnemyArchetype& a)
         j["form"] = formName(a.form);
     if (!a.skeleton_id.empty() && a.skeleton_id != "player")
         j["skeleton_id"] = a.skeleton_id;
+    if (!a.appearance_path.empty())
+        j["appearance_path"] = a.appearance_path;
     emitClipFields(j, a);
     emitCombatFields(j, a);
     emitBossFields(j, a);
@@ -345,13 +347,14 @@ void loadLockOnPoints(const nlohmann::json& j, EnemyArchetype& a)
 
 void loadTintAndDecls(const nlohmann::json& j, EnemyArchetype& a)
 {
-    if (j.contains("tint_color") && j.at("tint_color").is_array() && j.at("tint_color").size() == 3)
-    {
-        a.tint_color[0] = j.at("tint_color")[0].get<float>();
-        a.tint_color[1] = j.at("tint_color")[1].get<float>();
-        a.tint_color[2] = j.at("tint_color")[2].get<float>();
-    }
-    a.tint_burn_target_archetype = j.value("tint_burn_target_archetype", std::string{});
+    // Legacy v6 archetypes authored tint_color directly on the
+    // archetype. v7 moves color into the appearance JSON pointed at
+    // by appearance_path. Both keys ignored if present in modern
+    // archetypes; if you see tint_color in an archetype JSON, move
+    // it to the appearance file.
+    a.transform_target_archetype =
+        j.value("transform_target_archetype",
+                j.value("tint_burn_target_archetype", std::string{})); // accept legacy alias
     loadHurtboxDecls(j, a);
     a.disable_hurtboxes = j.value("disable_hurtboxes", false);
     if (j.contains("avoids_hazards") && j.at("avoids_hazards").is_array())
@@ -384,6 +387,7 @@ void from_json(const nlohmann::json& j, EnemyArchetype& a)
     a.acknowledgment_turn_rate_scale = j.value("acknowledgment_turn_rate_scale", 0.15f);
     a.form = parseForm(j.value("form", std::string("DamnedSoul")));
     a.skeleton_id = j.value("skeleton_id", std::string("player"));
+    a.appearance_path = j.value("appearance_path", std::string{});
     loadClipFields(j, a);
     loadCombatFields(j, a);
     loadBossFields(j, a);

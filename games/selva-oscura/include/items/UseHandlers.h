@@ -45,8 +45,8 @@ struct UseResult
 // `inv` is the active character's engine inventory. `item_id` is the
 // ItemInstance::id of the selected item -- look up via
 // engine::ops::inventory::findById for read.
-using UseActionFn = std::function<UseResult(engine::ecs::Inventory& inv,
-                                            engine::ecs::ItemInstanceId item_id)>;
+using UseActionFn =
+    std::function<UseResult(engine::ecs::Inventory& inv, engine::ecs::ItemInstanceId item_id)>;
 
 // Use-condition handler: called every UI frame to decide whether the
 // Use button is active. Returning enabled=false renders the button

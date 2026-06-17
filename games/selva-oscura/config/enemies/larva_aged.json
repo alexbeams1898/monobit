@@ -4,6 +4,8 @@
   "form": "DamnedSoul",
   "faction": "Hostile",
   "skeleton_id": "player",
+  "appearance_path": "config/appearances/larva_aged.json",
+  "_comment_appearance_path": "Sangue-darkened, full-sized -- the aged larva has been saturated by centuries of inward-firing imprint. The fresh archetype's transform_target_archetype points here, so the fresh-to-aged Appearance lerp ends on this exact body (smooth transition at the moment of conversion).",
   "tree_id": "humanoid_basic",
   "_comment_run_register": "Aged larvae have been infused by sangue + inward-imprint firing long enough to stand and charge. ALL movement registers as zombie_run -- no walking, no creeping. The feral aggression is the cosmology made motion; a creeping aged larva would dilute that. Strafe + back + walk all map to zombie_run; the BT's slow-pace strafing reads as a feral sideways run, which is acceptable for v1.",
   "idle_clip": "zombie_idle",
@@ -33,8 +35,6 @@
     }
   ],
   "chase_speed": 4.5,
-  "tint_color": [0.55, 0.15, 0.12],
-  "_comment_tint_color": "Sangue-darkened deep red -- the aged larva's substance has been saturated by centuries of inward-firing imprint. larva_fresh.tint_burn_target_archetype points here, so the fresh-to-aged burn-lerp ends on this exact color (smooth transition at the moment of conversion).",
   "avoids_hazards": ["acheron"],
   "_comment_avoids_hazards": "Damned souls dissolve on contact with Acheron's sangue-flow (river-dissolves-on-contact per setting.md substance law + soul-larvae cosmology). The BT chase leaf skips when target is in the river; locomotion velocity clamps at the boundary. Player in the river is effectively unreachable -- the queue stays at the bank, eternally awaiting.",
   "actions": [

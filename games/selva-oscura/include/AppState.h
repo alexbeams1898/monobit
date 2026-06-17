@@ -68,7 +68,7 @@ struct UIState
     {
         Overview = 0,
         Form = 1,
-        Hands = 2,
+        Borne = 2,
         Mind = 3,
     };
 
@@ -530,6 +530,15 @@ struct PlayerProfile
     // None for pre-Beat-4 (player hasn't faced the Guide's dialog choice
     // yet). Per setting.md *The Signing and the commit-fire*.
     PlayerClass player_class = PlayerClass::None;
+
+    // Path to the appearance JSON driving this character's visual
+    // body (uniform body_scale today; limb proportions, head size,
+    // skin tone, face blendshape weights, contrapasso deformation
+    // axes tomorrow). Empty = use default appearance
+    // (body_scale = 1.0). v1 defaults to
+    // "config/appearances/default_humanoid.json"; the forthcoming
+    // character designer writes per-character variants here.
+    std::string appearance_path;
 };
 
 // Hard ceiling on lifetime sangue. 9^9 numerologically -- "all of Hell,
@@ -580,7 +589,7 @@ struct Settings
 // ---------------------------------------------------------------------------
 struct SaveData
 {
-    static constexpr int CURRENT_VERSION = 6;
+    static constexpr int CURRENT_VERSION = 9;
 
     int schema_version = CURRENT_VERSION;
     std::vector<PlayerProfile> characters;

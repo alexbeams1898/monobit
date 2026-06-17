@@ -76,7 +76,18 @@ UseResult useItem(engine::ecs::Inventory& inv, engine::ecs::ItemInstanceId item_
         return r;
     const auto* action = getUseAction(ext->use_handler);
     if (action == nullptr)
+    {
+        // Loud diagnostic: item JSON references a handler key that
+        // wasn't registered at boot. Silent no-op would make this
+        // class of typo undebuggable.
+        std::fprintf(stderr,
+                     "[use-handlers] item '%s' references unregistered use_handler '%s'; "
+                     "Use button + Q quick-slot will silently no-op for it. Check "
+                     "selva::items::registerUseAction() callsites at boot.\n",
+                     config_path.c_str(), ext->use_handler.c_str());
+        std::fflush(stderr);
         return r;
+    }
 
     r = (*action)(inv, item_id);
 

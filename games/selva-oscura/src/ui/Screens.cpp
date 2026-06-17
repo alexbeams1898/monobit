@@ -4,6 +4,7 @@
 #include "AppStateGlobal.h"
 #include "Engine.h"
 #include "SaveManager.h"
+#include "combat/QuickSlot.h"
 #include "dialog/DialogSystem.h"
 #include "ecs/GameComponents.h"
 #include "ecs/ItemConfig.h"
@@ -15,7 +16,6 @@
 #include "insight/Insight.h"
 #include "items/CategoryRegistry.h"
 #include "items/ItemRegistry.h"
-#include "combat/QuickSlot.h"
 #include "items/UseHandlers.h"
 #include "lang/Language.h"
 #include "notice/Notices.h"
@@ -502,20 +502,14 @@ void renderLoadGame()
 }
 
 // ---------------------------------------------------------------------------
-// Settings screen
+// Settings controls (shared by the main-menu Settings screen + the
+// pause System tab). One source of truth -- every new setting flag
+// added to `Settings` only needs one row here, not two parallel
+// stanzas to keep in lockstep.
 // ---------------------------------------------------------------------------
-void renderSettings()
+static bool drawSettingsControls(Settings& s)
 {
-    beginCenteredWindow("##settings", ImVec2(420, 260));
-    ImGui::SetWindowFontScale(1.3f);
-    ImGui::TextUnformatted("Settings");
-    ImGui::SetWindowFontScale(1.0f);
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::Spacing();
-
     bool dirty = false;
-    auto& s = saveData().settings;
     if (ImGui::SliderFloat("BGM volume", &s.bgm_volume, 0.0f, 1.0f, "%.2f"))
         dirty = true;
     if (ImGui::SliderFloat("SFX volume", &s.sfx_volume, 0.0f, 1.0f, "%.2f"))
@@ -531,8 +525,23 @@ void renderSettings()
     if (ImGui::Checkbox("Auto-assign new consumables to Quick-slot",
                         &s.auto_assign_consumables_to_quick_slot))
         dirty = true;
+    return dirty;
+}
 
-    if (dirty)
+// ---------------------------------------------------------------------------
+// Settings screen
+// ---------------------------------------------------------------------------
+void renderSettings()
+{
+    beginCenteredWindow("##settings", ImVec2(420, 260));
+    ImGui::SetWindowFontScale(1.3f);
+    ImGui::TextUnformatted("Settings");
+    ImGui::SetWindowFontScale(1.0f);
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    if (drawSettingsControls(saveData().settings))
         SaveManager::save(saveData());
 
     ImGui::End();
@@ -552,24 +561,7 @@ bool renderSystemTab()
     ImGui::TextDisabled("Settings");
     ImGui::Separator();
     ImGui::Spacing();
-    bool dirty = false;
-    auto& s = saveData().settings;
-    if (ImGui::SliderFloat("BGM volume", &s.bgm_volume, 0.0f, 1.0f, "%.2f"))
-        dirty = true;
-    if (ImGui::SliderFloat("SFX volume", &s.sfx_volume, 0.0f, 1.0f, "%.2f"))
-        dirty = true;
-    if (ImGui::SliderFloat("FOV (third person)", &s.fov_degrees_third_person, 40.0f, 110.0f,
-                           "%.0f"))
-        dirty = true;
-    if (ImGui::SliderFloat("FOV (first person)", &s.fov_degrees_first_person, 50.0f, 120.0f,
-                           "%.0f"))
-        dirty = true;
-    if (ImGui::Checkbox("Show interaction ring", &s.show_interact_ring))
-        dirty = true;
-    if (ImGui::Checkbox("Auto-assign new consumables to Quick-slot",
-                        &s.auto_assign_consumables_to_quick_slot))
-        dirty = true;
-    if (dirty)
+    if (drawSettingsControls(saveData().settings))
         SaveManager::save(saveData());
 
     ImGui::Spacing();
@@ -676,7 +668,7 @@ namespace
 
 } // namespace
 
-void renderPauseVesselHands()
+void renderPauseVesselBorne()
 {
     ImGui::Spacing();
     const auto& inv = playerInventory();
@@ -757,6 +749,138 @@ void renderPauseVesselHands()
     draw_slot("Feet", EquipSlot::Feet);
     draw_slot("Accessory 1", EquipSlot::Accessory1);
     draw_slot("Accessory 2", EquipSlot::Accessory2);
+
+    // Scrip: the pilgrim's pouch the Vagrant carries -- a fixed-size
+    // (kQuickSlotCapacity) rotation of consumables the player can
+    // X-cycle and Q-use in combat. Inline TreeNode so the player
+    // sees all scrip slots without a separate dialog. Each row opens
+    // a popup of carried consumables; (None) clears the slot.
+    ImGui::Spacing();
+    if (ImGui::TreeNode("Scrip"))
+    {
+        // Build the consumables candidate list once per Body-page
+        // open; pointers are stable for the lifetime of this draw
+        // call.
+        std::vector<const engine::ecs::ItemInstance*> consumables;
+        for (const auto& [cat_key, bucket] : inv.by_category)
+        {
+            for (const auto& itm : bucket)
+            {
+                const engine::ecs::ItemDef* d = items.find(itm.config_path);
+                if (d != nullptr && d->category == engine::ecs::ItemCategory::Consumable)
+                    consumables.push_back(&itm);
+            }
+        }
+
+        for (int i = 0; i < selva::kQuickSlotCapacity; ++i)
+        {
+            const std::string current_path = selva::combat::getQuickSlot(i);
+            std::string row;
+            {
+                char prefix[16];
+                std::snprintf(prefix, sizeof(prefix), "Slot %d:  ", i + 1);
+                row = prefix;
+                if (current_path.empty())
+                {
+                    row += "(empty)";
+                }
+                else
+                {
+                    // Route through itemDisplayName -- find a held
+                    // instance for quality, or synth a stub so a
+                    // never-crafted-yet primed type still shows by
+                    // its base name.
+                    const engine::ecs::ItemInstance* held = nullptr;
+                    for (const auto& [cat, bucket] : inv.by_category)
+                    {
+                        for (const auto& itm : bucket)
+                        {
+                            if (itm.config_path == current_path)
+                            {
+                                held = &itm;
+                                break;
+                            }
+                        }
+                        if (held != nullptr)
+                            break;
+                    }
+                    engine::ecs::ItemInstance stub;
+                    stub.config_path = current_path;
+                    const engine::ecs::ItemInstance& display = (held != nullptr) ? *held : stub;
+                    row += selva::items::itemDisplayName(display, items);
+                }
+            }
+
+            ImGui::PushID(i);
+            if (ImGui::Selectable(row.c_str(), false, ImGuiSelectableFlags_None,
+                                  ImVec2(0.0f, ImGui::GetFontSize() * 1.4f)))
+            {
+                ImGui::OpenPopup("##scrip_slot_picker");
+            }
+
+            if (ImGui::BeginPopup("##scrip_slot_picker"))
+            {
+                char label[16];
+                std::snprintf(label, sizeof(label), "Slot %d", i + 1);
+                ImGui::TextDisabled("%s", label);
+                ImGui::Separator();
+
+                if (ImGui::Selectable("(None)"))
+                {
+                    selva::combat::setQuickSlot(i, std::string{});
+                    ImGui::CloseCurrentPopup();
+                }
+
+                if (consumables.empty())
+                {
+                    ImGui::TextDisabled("(no consumables)");
+                }
+                else
+                {
+                    // Track which paths we've already shown so two
+                    // stacks of the same item don't appear twice in
+                    // the picker.
+                    std::vector<std::string> shown;
+                    for (const auto* cand : consumables)
+                    {
+                        if (std::find(shown.begin(), shown.end(), cand->config_path) != shown.end())
+                            continue;
+                        shown.push_back(cand->config_path);
+
+                        const std::string name = itemDisplayName(*cand, items);
+                        const bool is_current = (cand->config_path == current_path);
+                        const bool elsewhere =
+                            !is_current && selva::combat::isAssignedToQuickSlot(cand->config_path);
+                        const char* marker = is_current  ? "[here]  "
+                                             : elsewhere ? "[other] "
+                                                         : "        ";
+                        const std::string row_label = std::string(marker) + name;
+
+                        // Disable rows assigned to a DIFFERENT scrip
+                        // slot so the player understands the
+                        // one-item-one-slot rule visually.
+                        if (elsewhere)
+                            ImGui::BeginDisabled();
+                        if (ImGui::Selectable(row_label.c_str()))
+                        {
+                            selva::combat::setQuickSlot(i, cand->config_path);
+                            ImGui::CloseCurrentPopup();
+                        }
+                        if (elsewhere)
+                        {
+                            ImGui::EndDisabled();
+                            if (ImGui::IsItemHovered())
+                                ImGui::SetTooltip(
+                                    "Already in another scrip slot. Clear that one first.");
+                        }
+                    }
+                }
+                ImGui::EndPopup();
+            }
+            ImGui::PopID();
+        }
+        ImGui::TreePop();
+    }
 }
 
 // Mind sub-page: persistent-canvas workbench + library panel.
@@ -1731,7 +1855,7 @@ void renderPauseVesselTab()
     ImGui::SameLine();
     subpage_button("Form", UIState::VesselSubpage::Form);
     ImGui::SameLine();
-    subpage_button("Hands", UIState::VesselSubpage::Hands);
+    subpage_button("Borne", UIState::VesselSubpage::Borne);
     ImGui::SameLine();
     subpage_button("Mind", UIState::VesselSubpage::Mind);
     ImGui::Separator();
@@ -1743,8 +1867,8 @@ void renderPauseVesselTab()
     case UIState::VesselSubpage::Form:
         renderPauseVesselForm();
         break;
-    case UIState::VesselSubpage::Hands:
-        renderPauseVesselHands();
+    case UIState::VesselSubpage::Borne:
+        renderPauseVesselBorne();
         break;
     case UIState::VesselSubpage::Mind:
         renderPauseVesselMind();
@@ -1765,13 +1889,7 @@ InventoryEntryLabel buildInventoryEntryLabel(const engine::ecs::ItemInstance& it
 {
     InventoryEntryLabel out;
     out.id = it.id;
-    const std::string name = itemDisplayName(it, items);
-    std::string suffix;
-    if (it.quantity > 1)
-        suffix = "  x" + std::to_string(it.quantity);
-    else if (it.weapon_xp_level > 1)
-        suffix = "  +" + std::to_string(it.weapon_xp_level - 1);
-    out.display = name + suffix;
+    out.display = itemDisplayName(it, items) + selva::items::itemDisplayCountSuffix(it);
     return out;
 }
 
@@ -1872,42 +1990,6 @@ void drawInventoryUseButton(const engine::ecs::ItemInstance& it, engine::ecs::In
     }
 }
 
-// Assign / Unassign verb for the quick-slot rotation. Only renders for
-// Consumable items -- other categories don't belong in the quick-slot
-// (weapons go in hand slots; armor / accessories have their own slots).
-void drawAssignToQuickSlotButton(const engine::ecs::ItemInstance& it,
-                                 const engine::ecs::ItemRegistry& items)
-{
-    const engine::ecs::ItemDef* def = items.find(it.config_path);
-    if (def == nullptr || def->category != engine::ecs::ItemCategory::Consumable)
-        return;
-    const bool assigned = selva::combat::isAssignedToQuickSlot(it.config_path);
-    if (assigned)
-    {
-        if (ImGui::Button("Unassign from Quick-slot"))
-            selva::combat::unassignFromQuickSlot(it.config_path);
-    }
-    else
-    {
-        // Disable when at capacity to communicate the cap visually.
-        const auto* profile = selva::activePlayerProfile();
-        const bool at_cap = (profile != nullptr) &&
-                            (static_cast<int>(profile->quick_slot_assigned.size()) >=
-                             selva::kQuickSlotCapacity);
-        if (at_cap)
-            ImGui::BeginDisabled();
-        if (ImGui::Button("Assign to Quick-slot"))
-            selva::combat::assignToQuickSlot(it.config_path);
-        if (at_cap)
-        {
-            ImGui::EndDisabled();
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("Quick-slot is full (%d). Unassign another first.",
-                                  selva::kQuickSlotCapacity);
-        }
-    }
-}
-
 void drawInventoryDetailPanel(engine::ecs::ItemInstanceId selected_item,
                               engine::ecs::Inventory& inv, const engine::ecs::ItemRegistry& items,
                               engine::ecs::ItemInstanceId& selected_item_ref)
@@ -1926,12 +2008,10 @@ void drawInventoryDetailPanel(engine::ecs::ItemInstanceId selected_item,
     if (def != nullptr && !def->description.empty())
         ImGui::TextWrapped("%s", def->description.c_str());
     ImGui::Spacing();
-    // Equip / unequip is owned by the Hands sub-page (slot-first
-    // picker per the Souls convention). The inventory detail panel
-    // surfaces non-equipment verbs: Use + Assign-to-quick-slot.
+    // Equip / unequip + scrip assignment are owned by the Borne
+    // sub-page (slot-first picker per the Souls convention). The
+    // inventory detail panel surfaces only the Use verb.
     drawInventoryUseButton(*it, inv, selected_item_ref);
-    ImGui::SameLine();
-    drawAssignToQuickSlotButton(*it, items);
 }
 } // namespace
 

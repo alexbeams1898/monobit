@@ -274,8 +274,8 @@ TEST_CASE("RecipeDef loads unlocks_recipe + unlock_after for mastery chain",
     writeFile("recipeunlock", "craft_poultice.json", body);
 
     engine::ecs::RecipeRegistry reg;
-    REQUIRE(engine::ecs::loadRecipeRegistry(
-                reg, (kTmpRoot / "recipeunlock").generic_string()) == 1);
+    REQUIRE(engine::ecs::loadRecipeRegistry(reg, (kTmpRoot / "recipeunlock").generic_string()) ==
+            1);
     const auto& r = reg.recipes[0];
     REQUIRE(r.unlocks_recipe == "config/recipes/craft_salve.json");
     REQUIRE(r.unlock_after == 10);

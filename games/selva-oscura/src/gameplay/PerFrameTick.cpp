@@ -15,6 +15,7 @@
 #include "anim/SkeletalMesh.h"
 #include "anim/SkeletalRenderer.h"
 #include "anim/Skeleton.h"
+#include "anim/SkeletonJointMap.h"
 #include "audio/Audio.h"
 #include "combat/ActorVolumes.h"
 #include "combat/AttackChain.h"
@@ -22,17 +23,20 @@
 #include "combat/ChainObserver.h"
 #include "combat/CombatData.h"
 #include "combat/CombatLog.h"
+#include "combat/HandCycle.h"
 #include "combat/HitDetection.h"
 #include "combat/HitFeedback.h"
 #include "combat/HitVolumes.h"
 #include "combat/PlayerEquipment.h"
 #include "combat/PressMapping.h"
+#include "combat/QuickSlot.h"
 #include "combat/SpliceDiag.h"
 #include "combat/TransitionProfile.h"
 #include "combat/Weapon.h"
 #include "combat/WeaponClass.h"
 #include "debug/Flags.h"
 #include "dialog/DialogSystem.h"
+#include "gameplay/AppearanceDeformation.h"
 #include "gameplay/BossDispatcher.h"
 #include "gameplay/Enemies.h"
 #include "gameplay/EnemyArchetype.h"
@@ -50,8 +54,6 @@
 #include "insight/Insight.h"
 #include "insight/InsightLayout.h"
 #include "interact/Interaction.h"
-#include "combat/HandCycle.h"
-#include "combat/QuickSlot.h"
 #include "items/HealHandlers.h"
 #include "items/ItemRegistry.h"
 #include "loot/Pickups.h"
@@ -73,6 +75,7 @@
 #include "spawn/FlowSpawner.h"
 #include "text/TextPresentation.h"
 #include "ui/ActorHud.h"
+#include "ui/CharacterPreview.h"
 #include "ui/ClassPickerScreen.h"
 #include "ui/ComboHud.h"
 #include "ui/NamePromptScreen.h"
@@ -3345,7 +3348,7 @@ static LocomotionPick tickPlayerLocomotionAndSampler(const glm::vec3& moveIntent
     if (pick.clip != nullptr && pick.clip->isLoaded())
     {
         ZoneScopedN("sampler.update");
-        sSampler.setActorPlacement(sPlayer.pos, sPlayer.yaw);
+        sSampler.setActorPlacement(sPlayer.pos, sPlayer.yaw, sPlayer.appearance.body_scale);
         sSampler.update(*pick.clip, dt, pick.blend_seconds, pick.loops, pick.clip_name.c_str());
     }
     return pick;
@@ -3543,7 +3546,8 @@ static void populateActorHurtboxes()
 {
     selva::combat::clearHurtboxes();
     const glm::mat4 player_model = selva::combat::buildActorModelMatrix(
-        sPlayer.pos, sPlayer.yaw, selva::gameplay::actorFootOffsetY(sPlayer));
+        sPlayer.pos, sPlayer.yaw, selva::gameplay::actorFootOffsetY(sPlayer),
+        sPlayer.appearance.body_scale);
     selva::combat::appendActorHurtboxes(
         sSampler, player_model, sPlayer.body,
         selva::combat::OwnerRef{selva::combat::OwnerKind::Player, 0}, sPlayer.faction);
@@ -3553,7 +3557,7 @@ static void populateActorHurtboxes()
     {
         const auto& e = *list[i];
         const glm::mat4 m = selva::combat::buildActorModelMatrix(
-            e.pos, e.yaw, selva::gameplay::actorFootOffsetY(e));
+            e.pos, e.yaw, selva::gameplay::actorFootOffsetY(e), e.appearance.body_scale);
         selva::combat::appendActorHurtboxes(
             e.sampler, m, e.body, selva::combat::OwnerRef{selva::combat::OwnerKind::Enemy, i},
             e.faction);
@@ -3605,10 +3609,9 @@ void tickQuickSlotCycleEdge(const Uint8* keys, bool combat_suppressed)
     s_prev_x = now_x;
     if (combat_suppressed || !x_edge)
         return;
-    const bool shift =
-        (keys[SDL_SCANCODE_LSHIFT] != 0) || (keys[SDL_SCANCODE_RSHIFT] != 0);
-    const auto dir = shift ? selva::combat::CycleDirection::Backward
-                           : selva::combat::CycleDirection::Forward;
+    const bool shift = (keys[SDL_SCANCODE_LSHIFT] != 0) || (keys[SDL_SCANCODE_RSHIFT] != 0);
+    const auto dir =
+        shift ? selva::combat::CycleDirection::Backward : selva::combat::CycleDirection::Forward;
     selva::combat::cyclePrimed(dir);
 }
 
@@ -3628,10 +3631,9 @@ void tickHandCycleEdges(const Uint8* keys, bool combat_suppressed)
     s_prev_c = now_c;
     if (combat_suppressed)
         return;
-    const bool shift =
-        (keys[SDL_SCANCODE_LSHIFT] != 0) || (keys[SDL_SCANCODE_RSHIFT] != 0);
-    const auto dir = shift ? selva::combat::CycleDirection::Backward
-                           : selva::combat::CycleDirection::Forward;
+    const bool shift = (keys[SDL_SCANCODE_LSHIFT] != 0) || (keys[SDL_SCANCODE_RSHIFT] != 0);
+    const auto dir =
+        shift ? selva::combat::CycleDirection::Backward : selva::combat::CycleDirection::Forward;
     if (z_edge)
         selva::combat::cycleHand(engine::ecs::EquipSlot::LeftHand, dir);
     if (c_edge)
@@ -4329,23 +4331,29 @@ void drawPlayerSkeletal(const glm::mat4& viewProj)
     if (sSampler.bone_palette.empty())
         return;
     const float pfoot = selva::gameplay::actorFootOffsetY(sPlayer);
-    const glm::vec3 player_pos(sPlayer.pos.x, sPlayer.pos.y - pfoot, sPlayer.pos.z);
-    glm::mat4 player_model = glm::translate(glm::mat4(1.0f), player_pos);
-    player_model =
-        glm::rotate(player_model, sPlayer.yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
+    const glm::mat4 player_model = selva::combat::buildActorModelMatrix(
+        sPlayer.pos, sPlayer.yaw, pfoot, sPlayer.appearance.body_scale);
+    // Per-bone appearance deformation (head_scale, future limb
+    // axes). Mutates bone_palette in-place; visual-only -- hurtboxes
+    // already ran for this frame off the un-deformed palette. Safe
+    // to mutate because PoseSampler::update() refills the palette
+    // next frame from scratch.
+    const std::string sk_id =
+        sPlayer.skeleton_id.empty() ? std::string("player") : sPlayer.skeleton_id;
+    selva::gameplay::applyAppearanceDeformation(sSampler, selva::anim::jointMapByKey(sk_id),
+                                                sPlayer.appearance);
     const bool fpv = selva::render::cameraMode() == selva::render::CameraMode::FirstPerson;
+    const glm::vec3 tint = sPlayer.appearance.color;
     if (fpv)
     {
         // FPV: zero head + neck bones in a clone of the palette so
         // the head doesn't clip the near plane.
         static std::vector<glm::mat4> sFpvPalette;
         applyFpvHeadHide(sSampler, sSampler.bone_palette, sFpvPalette);
-        selva::anim::drawSkeletalMesh(sPlayerMesh, player_model, viewProj, sFpvPalette,
-                                      glm::vec3(1.0f, 1.0f, 1.0f));
+        selva::anim::drawSkeletalMesh(sPlayerMesh, player_model, viewProj, sFpvPalette, tint);
         return;
     }
-    selva::anim::drawSkeletalMesh(sPlayerMesh, player_model, viewProj, sSampler.bone_palette,
-                                  glm::vec3(1.0f, 1.0f, 1.0f));
+    selva::anim::drawSkeletalMesh(sPlayerMesh, player_model, viewProj, sSampler.bone_palette, tint);
 }
 
 float computeEnemyDeathFadeAlpha(const selva::gameplay::Actor& enemy, float now_wc, float fade_hold,
@@ -4361,33 +4369,48 @@ float computeEnemyDeathFadeAlpha(const selva::gameplay::Actor& enemy, float now_
     return std::clamp(1.0f - fade_t, 0.0f, 1.0f);
 }
 
-// Per-actor tint. Default is the archetype's tint_color. If
-// tint_burn_target_archetype is set AND the actor has arrived at its
-// scripted target AND has a known on_arrival_delay, lerp toward the
-// target's tint over the wait. Visualizes the inward-burn -- fresh
-// larvae go pale to sangue-red as they age. See
+// Per-actor live Appearance. Base case: just returns the actor's
+// authored appearance verbatim. When the actor's archetype declares a
+// transform_target_archetype AND the actor has arrived at its
+// scripted target AND has a known on_arrival_delay, the function
+// lerps the WHOLE Appearance struct (color, body_scale, every future
+// axis) toward the target archetype's authored appearance over the
+// wait.
+//
+// One generalized primitive replaces the old per-channel
+// resolveEnemyTint. Authoring a transformation anywhere in the game
+// (larva burn, keeper fall, future Vagrant ascensions) reduces to
+// "from-archetype, to-archetype, duration" -- the renderer's
+// per-frame call automatically interpolates every appearance axis
+// that exists today AND every one added tomorrow.
+//
+// Visualizes the inward-burn -- fresh larvae go pale-and-small to
+// sangue-red-and-full-sized as they age. See
 // [[project_soul_larvae_cosmology]].
-glm::vec3 resolveEnemyTint(const selva::gameplay::Actor& enemy, float now_wc)
+selva::gameplay::Appearance resolveAppearance(const selva::gameplay::Actor& enemy, float now_wc)
 {
     if (enemy.archetype == nullptr)
-        return glm::vec3(1.0f);
+        return enemy.appearance;
     const auto& at = *enemy.archetype;
-    const glm::vec3 tint(at.tint_color[0], at.tint_color[1], at.tint_color[2]);
-    if (at.tint_burn_target_archetype.empty() || enemy.arrival_wallclock <= 0.0f ||
+    if (at.transform_target_archetype.empty() || enemy.arrival_wallclock <= 0.0f ||
         enemy.arrival_action_delay_seconds <= 0.0f)
-        return tint;
+        return enemy.appearance;
     const selva::gameplay::EnemyArchetype* target =
-        selva::gameplay::archetypes().get(at.tint_burn_target_archetype);
+        selva::gameplay::archetypes().get(at.transform_target_archetype);
     if (target == nullptr)
-        return tint;
+        return enemy.appearance;
+    const selva::gameplay::Appearance target_app =
+        selva::gameplay::loadAppearance(target->appearance_path);
     const float t = std::clamp(
         (now_wc - enemy.arrival_wallclock) / enemy.arrival_action_delay_seconds, 0.0f, 1.0f);
-    const glm::vec3 target_tint(target->tint_color[0], target->tint_color[1],
-                                target->tint_color[2]);
-    return glm::mix(tint, target_tint, t);
+    selva::gameplay::Appearance lerped;
+    lerped.body_scale = glm::mix(enemy.appearance.body_scale, target_app.body_scale, t);
+    lerped.head_scale = glm::mix(enemy.appearance.head_scale, target_app.head_scale, t);
+    lerped.color = glm::mix(enemy.appearance.color, target_app.color, t);
+    return lerped;
 }
 
-void drawOrQueueEnemy(const selva::gameplay::Actor& enemy, const glm::mat4& viewProj,
+void drawOrQueueEnemy(selva::gameplay::Actor& enemy, const glm::mat4& viewProj,
                       const glm::vec3& camPos, float now_wc, float fade_hold, float fade_duration,
                       std::vector<TransparentSkeletalDraw>& out_transparent)
 {
@@ -4399,11 +4422,20 @@ void drawOrQueueEnemy(const selva::gameplay::Actor& enemy, const glm::mat4& view
     const std::string sk_id = enemy.skeleton_id.empty() ? std::string("player") : enemy.skeleton_id;
     auto& enemy_mesh = selva::anim::meshByKey(sk_id);
     const float efoot = enemy_mesh.foot_offset_y;
-    const glm::vec3 enemy_pos(enemy.pos.x, enemy.pos.y - efoot, enemy.pos.z);
-    glm::mat4 enemy_model = glm::translate(glm::mat4(1.0f), enemy_pos);
-    enemy_model =
-        glm::rotate(enemy_model, enemy.yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
-    const glm::vec3 tint = resolveEnemyTint(enemy, now_wc);
+    // ONE Appearance per frame -- body_scale used for the model
+    // matrix and color used for the shader tint MUST come from the
+    // same lerp source, or a fresh-to-aged larva would grow at one
+    // rate and redden at another.
+    const selva::gameplay::Appearance live_app = resolveAppearance(enemy, now_wc);
+    const glm::mat4 enemy_model =
+        selva::combat::buildActorModelMatrix(enemy.pos, enemy.yaw, efoot, live_app.body_scale);
+    const glm::vec3 tint = live_app.color;
+    // Per-bone deformation (head_scale, future limb axes). Mutates
+    // enemy.sampler.bone_palette in-place; visual-only, hurtboxes
+    // already ran. Uses the LERPED appearance so larva burn-in
+    // animations grow heads alongside body and color.
+    selva::gameplay::applyAppearanceDeformation(enemy.sampler, selva::anim::jointMapByKey(sk_id),
+                                                live_app);
     if (alpha < 0.999f)
     {
         const glm::vec3 d = enemy.pos - camPos;
@@ -4434,7 +4466,7 @@ static void drawActorMeshes(const glm::mat4& viewProj, const glm::vec3& camPos)
     std::vector<TransparentSkeletalDraw> transparent;
     selva::anim::beginSkeletalPass();
     drawPlayerSkeletal(viewProj);
-    for (const auto* enemy : selva::gameplay::enemies())
+    for (auto* enemy : selva::gameplay::enemies())
         drawOrQueueEnemy(*enemy, viewProj, camPos, now_wc, fade_hold, fade_duration, transparent);
 
     // Back-to-front: far first so near-camera transparency composes
@@ -4587,9 +4619,8 @@ void drawSkeletalsForDepthPass()
     if (sPlayerMesh.isLoaded() && !sSampler.bone_palette.empty())
     {
         const float pfoot = selva::gameplay::actorFootOffsetY(sPlayer);
-        const glm::vec3 player_pos(sPlayer.pos.x, sPlayer.pos.y - pfoot, sPlayer.pos.z);
-        glm::mat4 m = glm::translate(glm::mat4(1.0f), player_pos);
-        m = glm::rotate(m, sPlayer.yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
+        const glm::mat4 m = selva::combat::buildActorModelMatrix(sPlayer.pos, sPlayer.yaw, pfoot,
+                                                                 sPlayer.appearance.body_scale);
         selva::render::setSkeletalDepthModel(m);
         selva::render::setSkeletalDepthBones(sSampler.bone_palette.data(),
                                              static_cast<int>(sSampler.bone_palette.size()));
@@ -4604,9 +4635,8 @@ void drawSkeletalsForDepthPass()
             enemy->skeleton_id.empty() ? std::string("player") : enemy->skeleton_id;
         auto& enemy_mesh = selva::anim::meshByKey(sk_id);
         const float efoot = enemy_mesh.foot_offset_y;
-        const glm::vec3 enemy_pos(enemy->pos.x, enemy->pos.y - efoot, enemy->pos.z);
-        glm::mat4 m = glm::translate(glm::mat4(1.0f), enemy_pos);
-        m = glm::rotate(m, enemy->yaw + glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
+        const glm::mat4 m = selva::combat::buildActorModelMatrix(enemy->pos, enemy->yaw, efoot,
+                                                                 enemy->appearance.body_scale);
         selva::render::setSkeletalDepthModel(m);
         selva::render::setSkeletalDepthBones(enemy->sampler.bone_palette.data(),
                                              static_cast<int>(enemy->sampler.bone_palette.size()));
@@ -4767,6 +4797,17 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
         ZoneScopedN("actor-meshes");
         selva::anim::setSkeletalShadow(lightVP, kSunDir, sPlayer.pos, 1);
         drawActorMeshes(viewProj, camPos);
+    }
+    // Character designer preview: render the player into the F1
+    // panel's offscreen FBO. Only when the panel is open so we don't
+    // pay the cost otherwise. Mutates GL state (binds FBO, restores
+    // back-buffer + viewport when done) and reads sPlayer's appearance
+    // + sampler.bone_palette which the gameplay draw above already
+    // finalized for this frame.
+    if (selva::gameplay::tickstate::showTuningPanel())
+    {
+        ZoneScopedN("character-preview");
+        selva::ui::renderCharacterPreview();
     }
     {
         ZoneScopedN("light-sprites");
@@ -4992,6 +5033,12 @@ static void resetPlayerActorForProfile(const selva::PlayerProfile& profile)
     }
     sPlayer.foot_left = Actor::FootContact{};
     sPlayer.foot_right = Actor::FootContact{};
+    // Visual appearance: rebuild from the active profile's
+    // appearance_path per [[feedback_rebuild_from_authored_on_reset]].
+    // initActorPool ran at boot when no profile was active, so the
+    // player Actor carries the default appearance; this is the
+    // per-character re-pool that finally applies the configured one.
+    sPlayer.appearance = selva::gameplay::loadAppearance(profile.appearance_path);
 }
 
 // Full session-boundary reset. Called on New Game / Load Game /

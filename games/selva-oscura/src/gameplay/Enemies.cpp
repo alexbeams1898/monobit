@@ -283,8 +283,8 @@ glm::vec3 actorChestWorldPos(const Actor& act)
         if (joint_idx >= 0)
         {
             const float foot_offset = selva::gameplay::actorFootOffsetY(act);
-            const glm::mat4 model =
-                selva::combat::buildActorModelMatrix(act.pos, act.yaw, foot_offset);
+            const glm::mat4 model = selva::combat::buildActorModelMatrix(
+                act.pos, act.yaw, foot_offset, act.appearance.body_scale);
             const glm::vec3 local = act.sampler.jointWorldPos(joint_idx);
             return glm::vec3(model * glm::vec4(local, 1.0f));
         }
@@ -442,6 +442,11 @@ void applyArchetypeToActor(Actor& a, const EnemyArchetype& target)
     initActorPoolsForArchetype(a);
     applyArchetypeHurtboxes(a);
     applyArchetypeInteractable(a);
+    // Visual appearance: every actor reads body_scale through its
+    // appearance field. Empty appearance_path returns the default
+    // (body_scale = 1.0) so legacy archetypes that don't author an
+    // appearance stay identical to today.
+    a.appearance = loadAppearance(target.appearance_path);
 }
 
 namespace

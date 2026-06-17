@@ -11,6 +11,7 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <cmath>
 #include <cstdio>
 #include <string>
 #include <unordered_map>
@@ -124,7 +125,29 @@ void drawEquippedWeapon(const selva::gameplay::Actor& actor)
     // World matrix of the right-hand joint, with the actor's pos+yaw
     // already baked in by setActorPlacement (called per-frame by
     // PerFrameTick before render).
-    const glm::mat4 joint_world = actor.sampler.jointWorldMatrixWithActor(joint_idx);
+    //
+    // The joint matrix's rotation columns (i = 0,1,2) carry the
+    // actor's body_scale -- by design, so the visible giant body's
+    // bones land where the renderer drew them. But the WEAPON is an
+    // independent object with its OWN authored physical size; we do
+    // NOT want body_scale to inherit into the weapon mesh. Per the
+    // size design pass: a giant holding a Normal sword shows a
+    // small-looking sword in their hand (the "find a bigger weapon"
+    // mechanic). So we strip body_scale out of the rotation columns,
+    // keeping only the translation (= world position of the giant
+    // hand) and the unit-rotation orientation. The weapon's grip +
+    // weaponSizeVisualScale then apply on top, fully decoupled from
+    // body_scale.
+    glm::mat4 joint_world = actor.sampler.jointWorldMatrixWithActor(joint_idx);
+    const float body_scale =
+        (std::abs(actor.appearance.body_scale) > 1e-5f) ? actor.appearance.body_scale : 1.0f;
+    if (std::abs(body_scale - 1.0f) > 1e-5f)
+    {
+        const float inv = 1.0f / body_scale;
+        joint_world[0] *= inv;
+        joint_world[1] *= inv;
+        joint_world[2] *= inv;
+    }
 
     // Per-weapon grip transform: slides + rotates + scales the mesh
     // in the hand's local space so the GRIP POINT of the handle lands
@@ -143,7 +166,17 @@ void drawEquippedWeapon(const selva::gameplay::Actor& actor)
         engine::ops::inventory::findById(profile->inventory, profile->equipment.right_hand);
     const engine::ecs::ItemDef* def = selva::items::itemRegistry().find(inst->config_path);
 
-    const glm::mat4 grip = buildGripMatrix(*def);
+    // The grip matrix carries the per-weapon authored
+    // offset+rotation+grip_scale. Weapon SIZE (Small/Normal/Large)
+    // stacks onto the grip's vertex-side scale so the held weapon
+    // mesh visibly changes size with the instance's size enum,
+    // anchored at the same hand joint. Composition: vertices get
+    // weaponSizeVisualScale FIRST (scale around mesh origin), then
+    // grip_scale, then the grip's R+T, then the joint world matrix
+    // (which already carries body_scale via PoseSampler so the
+    // anchor follows a giant hand).
+    glm::mat4 grip = buildGripMatrix(*def);
+    grip = glm::scale(grip, glm::vec3(engine::ecs::weaponSizeVisualScale(inst->size)));
     const glm::mat4 final_model = joint_world * grip;
     selva::render::setSceneModel(final_model);
 

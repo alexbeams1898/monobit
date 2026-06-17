@@ -29,32 +29,58 @@ bool assignToQuickSlot(const std::string& config_path)
     return true;
 }
 
-bool unassignFromQuickSlot(const std::string& config_path)
+bool setQuickSlot(int index, const std::string& config_path)
 {
     selva::PlayerProfile* profile = selva::activePlayerProfile();
     if (profile == nullptr)
         return false;
-    auto& assigned = profile->quick_slot_assigned;
-    const auto it = std::find(assigned.begin(), assigned.end(), config_path);
-    if (it == assigned.end())
+    if (index < 0 || index >= selva::kQuickSlotCapacity)
         return false;
-    const int removed_idx = static_cast<int>(std::distance(assigned.begin(), it));
-    assigned.erase(it);
-    // Adjust primed_index: if the rotation is now empty, -1. If we
-    // removed the entry at or before the primed index, decrement to
-    // keep the SAME logical entry primed (or 0 if removed_idx was 0
-    // and there's still something there). Clamp to new size.
-    if (assigned.empty())
+    auto& assigned = profile->quick_slot_assigned;
+
+    // Reject if this item is already assigned at a DIFFERENT index.
+    if (!config_path.empty())
     {
-        profile->quick_slot_primed_index = -1;
+        for (int i = 0; i < static_cast<int>(assigned.size()); ++i)
+        {
+            if (i != index && assigned[i] == config_path)
+                return false;
+        }
     }
-    else if (removed_idx <= profile->quick_slot_primed_index)
-    {
-        profile->quick_slot_primed_index = std::max(0, profile->quick_slot_primed_index - 1);
-        if (profile->quick_slot_primed_index >= static_cast<int>(assigned.size()))
-            profile->quick_slot_primed_index = static_cast<int>(assigned.size()) - 1;
-    }
+
+    // Pad with empty strings up to index if the rotation is shorter.
+    while (static_cast<int>(assigned.size()) <= index)
+        assigned.emplace_back();
+
+    assigned[static_cast<std::size_t>(index)] = config_path;
+
+    // Tidy trailing-empty entries so the rotation reflects the
+    // highest occupied slot. The vector is "slot index = vector
+    // index" up to its size; trailing empties carry no information.
+    while (!assigned.empty() && assigned.back().empty())
+        assigned.pop_back();
+
+    // primed_index housekeeping: if nothing was primed and we just
+    // populated something, prime this index. If primed_index now
+    // points past the (possibly shrunken) end, snap to the new last
+    // entry or -1.
+    if (!config_path.empty() && profile->quick_slot_primed_index < 0)
+        profile->quick_slot_primed_index = index;
+    if (profile->quick_slot_primed_index >= static_cast<int>(assigned.size()))
+        profile->quick_slot_primed_index =
+            assigned.empty() ? -1 : static_cast<int>(assigned.size()) - 1;
     return true;
+}
+
+std::string getQuickSlot(int index)
+{
+    const selva::PlayerProfile* profile = selva::activePlayerProfile();
+    if (profile == nullptr)
+        return std::string{};
+    const auto& a = profile->quick_slot_assigned;
+    if (index < 0 || index >= static_cast<int>(a.size()))
+        return std::string{};
+    return a[static_cast<std::size_t>(index)];
 }
 
 bool isAssignedToQuickSlot(const std::string& config_path)

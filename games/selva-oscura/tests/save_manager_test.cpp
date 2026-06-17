@@ -379,8 +379,7 @@ TEST_CASE("SaveManager round-trips quick_slot rotation + primed index",
     REQUIRE(loaded.characters[0].quick_slot_assigned.size() == 2);
     REQUIRE(loaded.characters[0].quick_slot_assigned[0] ==
             "config/items/consumables/poultice.json");
-    REQUIRE(loaded.characters[0].quick_slot_assigned[1] ==
-            "config/items/consumables/salve.json");
+    REQUIRE(loaded.characters[0].quick_slot_assigned[1] == "config/items/consumables/salve.json");
     REQUIRE(loaded.characters[0].quick_slot_primed_index == 1);
 
     cleanupTestFile(path);
@@ -406,8 +405,7 @@ TEST_CASE("SaveManager defaults quick_slot fields on legacy v5 saves",
     cleanupTestFile(path);
 }
 
-TEST_CASE("SaveManager round-trips auto_assign_consumables setting",
-          "[save][settings][quick-slot]")
+TEST_CASE("SaveManager round-trips auto_assign_consumables setting", "[save][settings][quick-slot]")
 {
     const std::string path = testSavePath("autoassign-setting");
     cleanupTestFile(path);
@@ -421,8 +419,7 @@ TEST_CASE("SaveManager round-trips auto_assign_consumables setting",
     cleanupTestFile(path);
 }
 
-TEST_CASE("SaveManager round-trips craft_counts and known_recipes",
-          "[save][craft][round-trip]")
+TEST_CASE("SaveManager round-trips craft_counts and known_recipes", "[save][craft][round-trip]")
 {
     const std::string path = testSavePath("craft-progression-roundtrip");
     cleanupTestFile(path);

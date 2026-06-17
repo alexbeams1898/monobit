@@ -32,11 +32,35 @@ enum class CycleDirection; // defined in HandCycle.h
 // If this is the FIRST assignment, primed_index becomes 0.
 bool assignToQuickSlot(const std::string& config_path);
 
-// Remove `config_path` from the active profile's quick_slot_assigned
-// if present. Adjusts primed_index so it remains valid (clamps to
-// new size; sets to -1 when list becomes empty). Returns true on
-// removal, false on not-found / no profile.
-bool unassignFromQuickSlot(const std::string& config_path);
+// Set the entry at slot `index` to `config_path`. Pads the rotation
+// with empty entries up to `index` if needed (so the player can
+// assign to slot 4 even if slots 0..3 are unset). To clear a slot,
+// pass an empty config_path -- the slot is set to empty string and
+// shifts down only if it's the LAST slot (otherwise the layout
+// stays stable so the player's mental "slot 0 = poultice" survives).
+//
+// Returns true on successful write. Returns false if:
+//   - no active profile
+//   - index < 0 or index >= kQuickSlotCapacity
+//   - config_path is already assigned at a different index (we don't
+//     allow the same item in two slots; rejecting is safer than the
+//     auto-clear-old policy a player might not expect)
+//
+// If config_path becomes assigned at index AND primed_index was -1,
+// primed_index advances to that index.
+bool setQuickSlot(int index, const std::string& config_path);
+
+// Read the entry at slot `index`. Returns empty string for an empty
+// slot, an out-of-range index, or no active profile.
+std::string getQuickSlot(int index);
+
+// Slot-emptying intent note: there is NO automatic unassign when a
+// stack runs out (intentional, mirroring Souls). The slot stays
+// assigned -- the combat HUD shows the count as zero / dim so the
+// player knows their loadout intent persists between crafts. The
+// only path to remove an item from a scrip slot is the Borne
+// sub-page's per-slot "(None)" picker, which routes through
+// setQuickSlot(idx, "").
 
 // True if `config_path` is in the active profile's quick_slot_assigned.
 // Defensive: returns false on null profile.

@@ -31,10 +31,10 @@
 #include "gameplay/PlayerState.h"
 #include "gameplay/PropArchetype.h"
 #include "gather/GatherSpawner.h"
-#include "items/HealHandlers.h"
 #include "identity/Identity.h"
 #include "insight/Insight.h"
 #include "items/CategoryRegistry.h"
+#include "items/HealHandlers.h"
 #include "items/ItemRegistry.h"
 #include "lang/Language.h"
 #include "render/Camera.h"
@@ -48,6 +48,7 @@
 #include "render/TreeShader.h"
 #include "softcaps/SoftCaps.h"
 #include "spawn/FlowSpawner.h"
+#include "ui/CharacterPreview.h"
 #include "ui/Screens.h"
 #include "ui/TuningPanel.h"
 #include "world/Collision.h"
@@ -86,6 +87,7 @@ void shutdownGeometry()
     selva::render::shutdownTreeShader();
     selva::render::shutdownTerrainShader();
     selva::render::shutdownShadowPass();
+    selva::ui::shutdownCharacterPreview();
     selva::world::shutdownTerrain();
     selva::world::shutdownTreeAssets();
 }
@@ -268,6 +270,11 @@ bool initRenderSubsystems()
     if (!selva::render::initPickupSpritePass())
     {
         std::fprintf(stderr, "Pickup sprite pass init failed\n");
+        return false;
+    }
+    if (!selva::ui::initCharacterPreview())
+    {
+        std::fprintf(stderr, "Character preview FBO init failed\n");
         return false;
     }
     return true;

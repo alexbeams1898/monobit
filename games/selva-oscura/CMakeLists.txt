@@ -46,6 +46,8 @@ add_library(selva-oscura-lib STATIC
     src/gameplay/PropSpawn.cpp
     src/gameplay/RomanNumeral.cpp
     src/gameplay/RomanTiers.cpp
+    src/gameplay/Appearance.cpp
+    src/gameplay/AppearanceDeformation.cpp
     src/gameplay/Sangue.cpp
     src/gameplay/SanguePulse.cpp
     src/gameplay/ScriptedEvents.cpp
@@ -91,6 +93,7 @@ add_library(selva-oscura-lib STATIC
     src/world/TreeAssets.cpp
     src/ui/ActorHud.cpp
     src/ui/BossHud.cpp
+    src/ui/CharacterPreview.cpp
     src/ui/ClassPickerScreen.cpp
     src/ui/ComboHud.cpp
     src/ui/DialogScreen.cpp
@@ -606,6 +609,10 @@ add_executable(selva-oscura-tests
     tests/weapon_damage_test.cpp
     tests/equipment_bridge_test.cpp
     tests/hand_cycle_test.cpp
+    tests/hand_cycle_integration_test.cpp
+    tests/quick_slot_test.cpp
+    tests/heal_handler_test.cpp
+    tests/appearance_test.cpp
     tests/use_handlers_test.cpp
     tests/recipe_load_test.cpp
     tests/directional_loco_test.cpp

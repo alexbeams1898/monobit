@@ -84,8 +84,10 @@ void grantPickup(Id pickup_id)
 
     const auto& registry = selva::items::itemRegistry();
     const engine::ecs::ItemDef* def = registry.find(p->item.config_path);
-    const std::string display_name =
-        (def != nullptr && !def->name.empty()) ? def->name : p->item.config_path;
+    // Route through itemDisplayName so "Fine Poultice" / "Crude Bark
+    // scrap" toasts match the inventory list + scrip surfaces. Bare
+    // def->name would drop the quality prefix.
+    const std::string display_name = selva::items::itemDisplayName(p->item, registry);
     const engine::ecs::Rarity rarity = (def != nullptr) ? def->rarity : engine::ecs::Rarity::Common;
 
     // Compendium check BEFORE addItem so the toast can reflect
@@ -243,8 +245,8 @@ glm::vec3 livePickupPos(const Pickup& p)
         if (joint_idx >= 0)
         {
             const float foot_offset = selva::gameplay::actorFootOffsetY(*src);
-            const glm::mat4 model_mat =
-                selva::combat::buildActorModelMatrix(src->pos, src->yaw, foot_offset);
+            const glm::mat4 model_mat = selva::combat::buildActorModelMatrix(
+                src->pos, src->yaw, foot_offset, src->appearance.body_scale);
             const glm::vec3 joint_local = src->sampler.jointWorldPos(joint_idx);
             anchor = glm::vec3(model_mat * glm::vec4(joint_local, 1.0f));
         }

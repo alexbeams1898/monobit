@@ -15,6 +15,23 @@
 // Slot fit is delegated to selva::items::itemFitsSlot so the equip
 // popup, the cycle hotkey, and any future "what can equip here" UI
 // share one source of truth.
+//
+// Cycle vs equip-popup policy parity (intentional divergence):
+//
+// The cycle (Z/C) EXCLUDES items already equipped in the OTHER hand,
+// because cycling is a quick combat verb -- the player expects "next
+// thing I could grab in this hand right now," not "silently move my
+// other weapon over here." That matches ER's D-pad cycle behavior.
+//
+// The Borne sub-page equip popup, by contrast, includes all fitting
+// items (no other-hand exclusion). It's a deliberate menu action;
+// engine::ops::inventory::equipItemToSlot auto-unequips from the
+// prior slot to enforce one-instance-one-slot. That matches ER's
+// menu-driven equipment screen.
+//
+// Two surfaces, two policies, same one-instance-one-slot invariant.
+// DO NOT unify them. The combat-versus-menu distinction is the
+// point.
 
 namespace selva::combat
 {

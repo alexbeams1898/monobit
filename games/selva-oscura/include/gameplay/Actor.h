@@ -3,6 +3,7 @@
 #include "anim/PoseSampler.h"
 #include "anim/SkeletonJointMap.h"
 #include "combat/HurtboxDecl.h"
+#include "gameplay/Appearance.h"
 #include "gameplay/BossState.h"
 #include "gameplay/Faction.h"
 #include "gameplay/Perception.h"
@@ -307,6 +308,16 @@ struct Actor
     Poise poise;
     Stats stats;
     Body body;
+    // Visual appearance: per figura umana, one humanoid rig
+    // deformed per being. Universal across cosmologies (damned
+    // shades, the Unburdened Vagrant, the Guide, divine emissaries
+    // all use this schema). Today: uniform body_scale. Future:
+    // limb proportions, head size, skin tone, face blendshape
+    // weights, contrapasso deformation axes. Player loads from
+    // PlayerProfile.appearance_path on spawn; enemy archetypes
+    // load from EnemyArchetype.appearance_path; empty = default
+    // (body_scale = 1.0).
+    Appearance appearance;
     Faction faction = Faction::Hostile;
 
     // --- Transform / motion ---
@@ -780,6 +791,16 @@ struct Actor
 // position writes that bypassed physics. The unified-physics
 // refactor routes hip motion through Jolt instead.
 void applyActorClipHipDelta(Actor& actor, float dt, float hip_delta_scale = 1.0f);
+
+// Pure math the above wraps. Given a clip-authored hip delta in
+// model-space, the actor's facing yaw, and the per-frame timestep,
+// returns the world-XZ velocity contribution to add to the actor's
+// velocity_xz. `body_scale` scales the world contribution so the
+// foot motion of a scaled mesh matches its world motion; pass 1.0
+// for "no body scaling." Exposed for tests; production reaches it
+// via applyActorClipHipDelta.
+glm::vec2 hipDeltaVelocityContribution(const glm::vec3& hip_local, float yaw, float dt,
+                                       float hip_delta_scale, float body_scale);
 
 // Resolve `actor.lock_target_idx` to a pointer into actors(), or
 // nullptr if unlocked / index stale. Pool can reallocate on enemy

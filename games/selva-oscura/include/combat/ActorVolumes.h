@@ -10,11 +10,22 @@ namespace selva::combat
 {
 
 // Build the actor-to-world transform for a character whose origin
-// is at (pos.x, -foot_offset_y, pos.z) and which faces +yaw with
-// the Mixamo 180-degree bind offset. Mirrors what the renderer
-// builds; centralized here so hitbox + hurtbox + render all agree
-// on the joint -> world mapping.
-glm::mat4 buildActorModelMatrix(const glm::vec3& pos, float yaw, float foot_offset_y);
+// is at (pos.x, -foot_offset_y * body_scale, pos.z), faces +yaw with
+// the Mixamo 180-degree bind offset, and renders at body_scale of
+// the bind-pose size. body_scale=1.0 reproduces the prior behavior
+// exactly. Mirrors what the renderer builds; centralized here so
+// hitbox + hurtbox + render all agree on the joint -> world mapping
+// AND on the visual size.
+//
+// Why body_scale lives on this matrix (not on a separate uniform):
+// the renderer + every hit/hurt volume callsite uses this single
+// transform to map model-space joints to world space. Scaling once
+// here means the body, its hurtboxes, its hitboxes, and the
+// equipped-weapon attachment all stay locked together at any size.
+// Adding it as a separate "scale uniform" downstream would split the
+// source of truth.
+glm::mat4 buildActorModelMatrix(const glm::vec3& pos, float yaw, float foot_offset_y,
+                                float body_scale);
 
 // Populate per-actor hurtboxes from joint world positions. Appends
 // to the global hurtbox pool — clearHurtboxes() must have been

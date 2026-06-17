@@ -7,9 +7,9 @@
 #include "items/CategoryRegistry.h"
 #include "ops/CraftingOps.h"
 
-#include <algorithm>
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <cstdio>
 #include <fstream>
 
@@ -220,8 +220,7 @@ bool itemFitsSlot(const engine::ecs::ItemDef& def, engine::ecs::EquipSlot slot)
     {
     case EquipSlot::RightHand:
     case EquipSlot::LeftHand:
-        return def.category == ItemCategory::Weapon ||
-               def.category == ItemCategory::Incantation ||
+        return def.category == ItemCategory::Weapon || def.category == ItemCategory::Incantation ||
                def.category == ItemCategory::Invocation;
     case EquipSlot::Head:
         return def.category == ItemCategory::Armor && def.armor_slot == ArmorSlot::Head;
@@ -239,8 +238,8 @@ bool itemFitsSlot(const engine::ecs::ItemDef& def, engine::ecs::EquipSlot slot)
 }
 
 std::vector<const engine::ecs::ItemInstance*>
-collectItemsFittingSlot(const engine::ecs::Inventory& inv,
-                        const engine::ecs::ItemRegistry& items, engine::ecs::EquipSlot slot)
+collectItemsFittingSlot(const engine::ecs::Inventory& inv, const engine::ecs::ItemRegistry& items,
+                        engine::ecs::EquipSlot slot)
 {
     std::vector<const engine::ecs::ItemInstance*> out;
     for (const auto& [cat_key, bucket] : inv.by_category)
@@ -260,9 +259,27 @@ std::string itemDisplayName(const engine::ecs::ItemInstance& it,
 {
     const engine::ecs::ItemDef* def = items.find(it.config_path);
     const std::string base = (def != nullptr && !def->name.empty()) ? def->name : it.config_path;
+    // Quality goes in the adjective slot ("Fine Bronze Sword"); size
+    // goes in a parenthesized suffix ("Bronze Sword (Large)") so the
+    // two axes don't blur into one long string. Normal-size weapons
+    // omit the suffix entirely -- it's the visual default, no need
+    // to say it explicitly. Same convention as Common quality: only
+    // surface deviations from the baseline.
+    const bool show_size = it.size != engine::ecs::WeaponSize::Normal;
+    const std::string size_suffix =
+        show_size ? std::string(" (") + engine::ecs::weaponSizeName(it.size) + ")" : std::string{};
     if (it.quality == engine::ecs::QualityTier::Common)
-        return base;
-    return std::string(engine::ecs::qualityName(it.quality)) + " " + base;
+        return base + size_suffix;
+    return std::string(engine::ecs::qualityName(it.quality)) + " " + base + size_suffix;
+}
+
+std::string itemDisplayCountSuffix(const engine::ecs::ItemInstance& it)
+{
+    if (it.quantity > 1)
+        return "  x" + std::to_string(it.quantity);
+    if (it.weapon_xp_level > 1)
+        return "  +" + std::to_string(it.weapon_xp_level - 1);
+    return std::string{};
 }
 
 } // namespace selva::items

@@ -511,8 +511,15 @@ struct PoseSampler
     void setFootIK(GroundProbeFn probe, bool position_enabled, bool orient_enabled);
 
     // Per-frame actor placement so the IK can convert between world
-    // and model space. Call before update() each frame when IK is on.
-    void setActorPlacement(const glm::vec3& world_pos, float yaw_radians);
+    // and model space, AND so jointWorldMatrixWithActor produces
+    // matrices that match what the renderer's buildActorModelMatrix
+    // actually drew. Pass body_scale=1.0 for unit-size actors;
+    // larger values mean the visible mesh is scaled (per the
+    // figura-umana Appearance system), and downstream consumers
+    // (equipped weapons parented to a hand joint, lock-on reticles,
+    // anything that maps a joint to its visible world position)
+    // need the scaled position. Call before update() each frame.
+    void setActorPlacement(const glm::vec3& world_pos, float yaw_radians, float body_scale = 1.0f);
 
     // Diagnostic accessors: read the sampler's internal state so the
     // gameplay side can log it for debugging. These are NOT for

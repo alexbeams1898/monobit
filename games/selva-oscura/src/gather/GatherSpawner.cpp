@@ -10,6 +10,7 @@
 #include "loot/Pickups.h"
 #include "ops/LootOps.h"
 #include "world/Collision.h"
+#include "world/StructureFootprints.h"
 #include "world/Terrain.h"
 #include "world/Territory.h"
 
@@ -199,6 +200,18 @@ bool isWalkable(const NodeConfig& cfg, float x, float z)
     const float ground_y = selva::world::groundHeight(x, z);
     const glm::vec3 candidate(x, ground_y + 0.5f, z);
     if (engine::world::regionIdAtPosition(candidate) != kSelvaTerritoryId)
+        return false;
+
+    // Reject XZ inside any structure-footprint that CUTS the Wood
+    // floor (chapel interior, descent-corridor opening, etc.). Without
+    // this, gather nodes can spawn on the chapel's stair-tops or in
+    // the corridor airspace where the terrain mesh has been cut away
+    // -- visually broken (Wood-side materials appearing in Hell-side
+    // architecture). Uses the same footprint registry the terrain
+    // mesh builder consults to cut its holes, so "where the chapel
+    // is" has one source of truth.
+    if (engine::world::isInsideStructureFootprint(kSelvaTerritoryId, x, z,
+                                                  engine::world::SurfaceCut::Floor))
         return false;
 
     constexpr float slope_radius = 0.5f;

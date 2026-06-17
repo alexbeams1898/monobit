@@ -6,17 +6,16 @@
 #include "combat/HandCycle.h"
 #include "ecs/Items.h"
 
-#include <catch2/catch_test_macros.hpp>
-
 #include <vector>
+
+#include <catch2/catch_test_macros.hpp>
 
 using engine::ecs::ItemInstanceId;
 using engine::ecs::kInvalidItemInstanceId;
 using selva::combat::CycleDirection;
 using selva::combat::nextCyclePosition;
 
-TEST_CASE("nextCyclePosition: empty candidate list returns kInvalid",
-          "[combat][hand-cycle]")
+TEST_CASE("nextCyclePosition: empty candidate list returns kInvalid", "[combat][hand-cycle]")
 {
     const std::vector<ItemInstanceId> empty;
     REQUIRE(nextCyclePosition(empty, kInvalidItemInstanceId, CycleDirection::Forward) ==
@@ -26,15 +25,13 @@ TEST_CASE("nextCyclePosition: empty candidate list returns kInvalid",
             kInvalidItemInstanceId);
 }
 
-TEST_CASE("nextCyclePosition: forward from empty steps to first item",
-          "[combat][hand-cycle]")
+TEST_CASE("nextCyclePosition: forward from empty steps to first item", "[combat][hand-cycle]")
 {
     const std::vector<ItemInstanceId> ids = {10, 20, 30};
     REQUIRE(nextCyclePosition(ids, kInvalidItemInstanceId, CycleDirection::Forward) == 10);
 }
 
-TEST_CASE("nextCyclePosition: forward through the list and wraps to empty",
-          "[combat][hand-cycle]")
+TEST_CASE("nextCyclePosition: forward through the list and wraps to empty", "[combat][hand-cycle]")
 {
     const std::vector<ItemInstanceId> ids = {10, 20, 30};
     REQUIRE(nextCyclePosition(ids, 10, CycleDirection::Forward) == 20);
@@ -44,15 +41,13 @@ TEST_CASE("nextCyclePosition: forward through the list and wraps to empty",
     REQUIRE(nextCyclePosition(ids, kInvalidItemInstanceId, CycleDirection::Forward) == 10);
 }
 
-TEST_CASE("nextCyclePosition: backward from empty steps to last item",
-          "[combat][hand-cycle]")
+TEST_CASE("nextCyclePosition: backward from empty steps to last item", "[combat][hand-cycle]")
 {
     const std::vector<ItemInstanceId> ids = {10, 20, 30};
     REQUIRE(nextCyclePosition(ids, kInvalidItemInstanceId, CycleDirection::Backward) == 30);
 }
 
-TEST_CASE("nextCyclePosition: backward through the list and wraps to empty",
-          "[combat][hand-cycle]")
+TEST_CASE("nextCyclePosition: backward through the list and wraps to empty", "[combat][hand-cycle]")
 {
     const std::vector<ItemInstanceId> ids = {10, 20, 30};
     REQUIRE(nextCyclePosition(ids, 30, CycleDirection::Backward) == 20);
@@ -70,8 +65,7 @@ TEST_CASE("nextCyclePosition: single-item list toggles between item and empty",
     REQUIRE(nextCyclePosition(ids, 42, CycleDirection::Backward) == kInvalidItemInstanceId);
 }
 
-TEST_CASE("nextCyclePosition: stale current_id treated as empty",
-          "[combat][hand-cycle]")
+TEST_CASE("nextCyclePosition: stale current_id treated as empty", "[combat][hand-cycle]")
 {
     // current_id 99 isn't in the candidate list (e.g. item was
     // consumed). Forward should land on the first candidate; backward

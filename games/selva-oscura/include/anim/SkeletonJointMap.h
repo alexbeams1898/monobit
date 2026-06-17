@@ -49,6 +49,11 @@ struct SkeletonJointMap
     // Feet -- IK anchor + pose-match.
     std::string foot_left;
     std::string foot_right;
+    // Head -- appearance deformation anchor (per-bone head_scale
+    // applied as a post-pass on the bone palette in
+    // applyAppearanceDeformation). Empty = no head joint on this
+    // rig; deformation is a no-op for this skeleton.
+    std::string head;
     // Default lockon points for any actor on this skeleton whose
     // archetype doesn't author its own. Humanoid: one entry at
     // "mixamorig:Spine2" labeled "chest". Wolf: a default Lupa or

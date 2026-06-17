@@ -10,9 +10,9 @@
 #include "items/ItemRegistry.h"
 #include "items/UseHandlers.h"
 
-#include <catch2/catch_test_macros.hpp>
-
 #include <string>
+
+#include <catch2/catch_test_macros.hpp>
 
 namespace
 {
@@ -20,10 +20,10 @@ namespace
 // Register a fake item def + extension pointing at a fake use_handler
 // key. Returns the registered ItemInstance id so tests can pass it to
 // useItem.
-engine::ecs::ItemInstanceId
-setupFakeUsableItem(const std::string& config_path, const std::string& handler_key,
-                    int initial_count, engine::ecs::Inventory& inv,
-                    engine::ecs::ItemRegistry& reg)
+engine::ecs::ItemInstanceId setupFakeUsableItem(const std::string& config_path,
+                                                const std::string& handler_key, int initial_count,
+                                                engine::ecs::Inventory& inv,
+                                                engine::ecs::ItemRegistry& reg)
 {
     engine::ecs::ItemDef def;
     def.config_path = config_path;
@@ -73,8 +73,7 @@ TEST_CASE("UseActionFn returns UseResult with fired=true and success message",
     REQUIRE(result.rejection_reason.empty());
 }
 
-TEST_CASE("UseActionFn can reject with reason and fired=false",
-          "[items][use-handlers]")
+TEST_CASE("UseActionFn can reject with reason and fired=false", "[items][use-handlers]")
 {
     selva::items::UseActionFn fake = [](engine::ecs::Inventory&,
                                         engine::ecs::ItemInstanceId) -> selva::items::UseResult
@@ -91,8 +90,7 @@ TEST_CASE("UseActionFn can reject with reason and fired=false",
     REQUIRE(result.success_message.empty());
 }
 
-TEST_CASE("registerUseAction / getUseAction round-trip the new signature",
-          "[items][use-handlers]")
+TEST_CASE("registerUseAction / getUseAction round-trip the new signature", "[items][use-handlers]")
 {
     selva::items::registerUseAction(
         "test_action_unique_key_for_round_trip",
@@ -111,8 +109,7 @@ TEST_CASE("registerUseAction / getUseAction round-trip the new signature",
     REQUIRE(result.success_message == "ok");
 }
 
-TEST_CASE("useItem returns default UseResult when item not in inventory",
-          "[items][use-handlers]")
+TEST_CASE("useItem returns default UseResult when item not in inventory", "[items][use-handlers]")
 {
     engine::ecs::Inventory inv;
     const auto r = selva::items::useItem(inv, 999);

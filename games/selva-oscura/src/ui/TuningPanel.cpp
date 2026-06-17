@@ -21,6 +21,8 @@
 #include "combat/Weapon.h"
 #include "combat/WeaponClass.h"
 #include "debug/Flags.h"
+#include "gameplay/Actor.h"
+#include "gameplay/Appearance.h"
 #include "gameplay/EnemyArchetype.h"
 #include "gameplay/LocomotionStateMachine.h"
 #include "gameplay/PlayerState.h"
@@ -29,6 +31,7 @@
 #include "ops/InventoryOps.h"
 #include "ui/ActorHud.h"
 #include "ui/BossHud.h"
+#include "ui/CharacterPreview.h"
 #include "ui/ClassPickerScreen.h"
 #include "ui/ComboHud.h"
 #include "ui/DialogScreen.h"
@@ -40,6 +43,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <fstream>
 #include <string>
@@ -631,6 +635,124 @@ static void renderSaveLoadButtons()
 // ImGui pass can call it without an extra header.
 void renderTreePreviewControls();
 
+// Renders the orbit-preview image + handles its drag/scroll input.
+// Extracted from the Character tab body so the tab callsite stays
+// readable. Reads + writes the global preview camera state via the
+// addCharacterPreview* helpers.
+static void renderCharacterPreviewImage()
+{
+    const unsigned int tex = selva::ui::characterPreviewTexture();
+    const int w = selva::ui::characterPreviewWidth();
+    const int h = selva::ui::characterPreviewHeight();
+    if (tex == 0 || w <= 0 || h <= 0)
+    {
+        ImGui::TextDisabled("(preview FBO not initialized)");
+        return;
+    }
+    // ImageButton (not Image): claims input ownership over its rect
+    // so left-drag goes to us instead of dragging the whole ImGui
+    // window. Frame padding 0 so the visible image matches the FBO
+    // pixel dimensions.
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
+    ImGui::ImageButton("##character-preview-image",
+                       static_cast<ImTextureID>(static_cast<std::uintptr_t>(tex)),
+                       ImVec2(static_cast<float>(w), static_cast<float>(h)), ImVec2(0.0f, 1.0f),
+                       ImVec2(1.0f, 0.0f));
+    ImGui::PopStyleVar();
+    const ImGuiIO& io = ImGui::GetIO();
+    if (ImGui::IsItemHovered())
+    {
+        if (io.MouseWheel != 0.0f)
+            selva::ui::addCharacterPreviewZoom(-io.MouseWheel * 0.10f);
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+            selva::ui::resetCharacterPreviewCamera();
+    }
+    if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0.0f))
+    {
+        const ImVec2 d = ImGui::GetMouseDragDelta(ImGuiMouseButton_Left, 0.0f);
+        const float dx_deg = (d.x / static_cast<float>(w)) * 360.0f;
+        const float dy_deg = (d.y / static_cast<float>(h)) * 180.0f;
+        selva::ui::addCharacterPreviewYaw(dx_deg);
+        selva::ui::addCharacterPreviewPitch(dy_deg);
+        ImGui::ResetMouseDragDelta(ImGuiMouseButton_Left);
+    }
+    ImGui::TextDisabled("Left-drag rotate  |  Scroll zoom  |  Right-click reset");
+}
+
+// Renders the slider column + Save/Revert/Reset buttons. Edits land
+// directly on sPlayer.appearance; the preview render reads it next
+// frame so changes are live. Save persists to the active profile's
+// appearance_path; Revert re-loads from disk.
+static void renderCharacterDesignerSliders()
+{
+    selva::gameplay::Actor& player = selva::gameplay::player();
+    selva::gameplay::Appearance& app = player.appearance;
+
+    ImGui::TextUnformatted("Appearance");
+    ImGui::Spacing();
+
+    // SliderFloat returns true when the value changed this frame --
+    // edits apply immediately, no commit step.
+    ImGui::SliderFloat("Body scale", &app.body_scale, 0.25f, 5.0f, "%.2f");
+    ImGui::SliderFloat("Head scale", &app.head_scale, 0.5f, 2.5f, "%.2f");
+    ImGui::Spacing();
+    ImGui::TextUnformatted("Color tint");
+    // Souls-style: three R/G/B sliders always visible (not a swatch
+    // that opens a popup). Live swatch alongside so the user sees
+    // the resulting color without reading the preview viewport.
+    ImGui::SliderFloat("R##color", &app.color.x, 0.0f, 1.0f, "%.2f");
+    ImGui::SliderFloat("G##color", &app.color.y, 0.0f, 1.0f, "%.2f");
+    ImGui::SliderFloat("B##color", &app.color.z, 0.0f, 1.0f, "%.2f");
+    ImGui::ColorButton("##color-swatch", ImVec4(app.color.x, app.color.y, app.color.z, 1.0f),
+                       ImGuiColorEditFlags_NoTooltip, ImVec2(60.0f, 20.0f));
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    const selva::PlayerProfile* profile = selva::activePlayerProfile();
+    const bool has_profile = profile != nullptr && !profile->appearance_path.empty();
+    if (has_profile)
+        ImGui::TextDisabled("File: %s", profile->appearance_path.c_str());
+    else
+        ImGui::TextDisabled("(no active profile / appearance_path)");
+
+    // Save -> writes the in-memory Appearance back to the profile's
+    // appearance_path. Disabled when no profile is active.
+    if (!has_profile)
+        ImGui::BeginDisabled();
+    if (ImGui::Button("Save to JSON"))
+        selva::gameplay::saveAppearance(profile->appearance_path, app);
+    ImGui::SameLine();
+    if (ImGui::Button("Revert from JSON"))
+        player.appearance = selva::gameplay::loadAppearance(profile->appearance_path);
+    if (!has_profile)
+        ImGui::EndDisabled();
+
+    ImGui::SameLine();
+    if (ImGui::Button("Reset to defaults"))
+        player.appearance = selva::gameplay::Appearance{};
+}
+
+static void renderCharacterDesignerTab()
+{
+    // Two-column split: sliders on the left, preview on the right.
+    // Preview column sized to fit the FBO + a small margin; slider
+    // column gets the rest.
+    const float preview_col_w = static_cast<float>(selva::ui::characterPreviewWidth()) + 16.0f;
+    const float avail_w = ImGui::GetContentRegionAvail().x;
+    const float slider_col_w = std::max(180.0f, avail_w - preview_col_w);
+
+    ImGui::BeginChild("##char-sliders", ImVec2(slider_col_w, 0), false);
+    renderCharacterDesignerSliders();
+    ImGui::EndChild();
+
+    ImGui::SameLine();
+    ImGui::BeginChild("##char-preview", ImVec2(0, 0), false);
+    renderCharacterPreviewImage();
+    ImGui::EndChild();
+}
+
 static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
 {
     // World-HUD layer (health, compass, boss bar, debug overlays).
@@ -650,6 +772,16 @@ static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
     if (!sShowTuningPanel)
         return;
     auto& tun = selva::tuning::current();
+    // Default size + position mirror the pause menu (85% of viewport,
+    // centered). FirstUseEver = the user can still drag / resize the
+    // window mid-session if they want; only the FIRST appearance is
+    // forced to the Souls-style default footprint.
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    const ImVec2 panel_size(vp->Size.x * 0.85f, vp->Size.y * 0.85f);
+    const ImVec2 panel_pos(vp->Pos.x + (vp->Size.x - panel_size.x) * 0.5f,
+                           vp->Pos.y + (vp->Size.y - panel_size.y) * 0.5f);
+    ImGui::SetNextWindowSize(panel_size, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(panel_pos, ImGuiCond_FirstUseEver);
     ImGui::Begin("Selva Oscura Tuning (F1)", &sShowTuningPanel);
     // Save/Load lives above the tabs — always one click away regardless
     // of which category is active.
@@ -687,6 +819,11 @@ static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
         if (ImGui::BeginTabItem("Debug"))
         {
             renderDebugSection(tun);
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Character"))
+        {
+            renderCharacterDesignerTab();
             ImGui::EndTabItem();
         }
         ImGui::EndTabBar();

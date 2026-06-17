@@ -4,18 +4,19 @@
 #include <glm/vec3.hpp>
 
 // Pickup sprite pass: renders each live selva::loot::Pickup as a
-// world-space billboard (camera-facing quad) with soft radial glow.
+// vertical PILLAR OF LIGHT growing from the ground -- the Elden-Ring
+// drop convention. World-up quad billboarded around its Y axis so it
+// always presents its broad face to the camera but never tilts off
+// vertical. Fragment shader gives a hot core + soft horizontal
+// falloff and a candleflame-style vertical taper-to-point.
 // Depth-tested against the 3D scene so terrain, walls, and meshes
-// occlude pickups behind them -- replaces the prior ImDrawList HUD-
-// overlay path that drew through everything (including the ground
-// when the camera was in Limbo below the Wood). Mirrors
-// LightSpritePass architecture: same instanced billboard + additive
-// blend + depth-test-on / depth-write-off.
+// occlude pillars behind them. Instanced quad + additive blend +
+// depth-test-on / depth-write-off.
 //
-// Distance-falloff convention: full brightness within near_distance,
-// fades to zero at far_distance, invisible beyond. Tunable so the
-// pickup reads as "discovery reward when you get close" rather than
-// "navigation beacon visible across the map."
+// The pillar IS the discovery cue: tuned to read across a Selva
+// clearing, not just at close range. Layered on top of any
+// world_mesh, so a Wood material pickup shows both the mesh (when
+// you walk up) and the pillar (from across the area).
 //
 // Order: AFTER opaque geometry (so depth buffer is populated), BEFORE
 // UI. Called alongside renderLightSprites in the render pipeline.

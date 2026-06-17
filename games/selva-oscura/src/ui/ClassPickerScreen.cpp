@@ -202,6 +202,12 @@ void commitClass(PlayerClass c)
         // [[project_healing_system_locked_2026_06_14]]. Idempotent: if
         // the profile was loaded mid-Signing with the recipe already
         // known, this is a no-op.
+        //
+        // Note: Settings.auto_assign_consumables_to_quick_slot does
+        // NOT fire here because no Poultice INSTANCE has been granted
+        // yet -- the Guide gives knowledge, not stash. The first
+        // craft is when auto-assign actually populates the scrip
+        // slot. This is by design (see locked memory).
         constexpr const char* kPoulticeRecipe = "config/recipes/craft_poultice.json";
         if (std::find(profile->known_recipes.begin(), profile->known_recipes.end(),
                       kPoulticeRecipe) == profile->known_recipes.end())

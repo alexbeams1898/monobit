@@ -1,5 +1,7 @@
 #pragma once
 
+#include "items/UseHandlers.h"
+
 // Heal-consumable Use handler. Registers the "heal_consumable" key
 // with selva::items::registerUseAction so that any ItemDef declaring
 // `use_handler: "heal_consumable"` (today: Poultice / Salve /
@@ -24,5 +26,12 @@ namespace selva::items
 // hotkey entrypoint.
 
 void registerHealHandlers();
+
+// Exposed for tests: the use_action body called when "heal_consumable"
+// fires. Production code reaches it via selva::items::useItem ->
+// UseActionFn registry dispatch and SHOULD NOT call this directly.
+// Reads player().hp + writes player().hp; does NOT consume the item
+// (the caller does, on fired=true).
+UseResult healAction(engine::ecs::Inventory& inv, engine::ecs::ItemInstanceId item_id);
 
 } // namespace selva::items
