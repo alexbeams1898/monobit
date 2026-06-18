@@ -285,16 +285,19 @@ void renderCharacterPreview()
                                    /*shadow_cam_pos=*/glm::vec3(0.0f, 0.0f, 0.0f),
                                    /*shadow_texture_unit=*/0);
 
-    // Apply the appearance deformation in-place; matches what the
-    // gameplay draw does. Reads sPlayer.appearance.
+    // Apply the appearance deformation into a preview-local scratch
+    // buffer (not the player's deformed_bone_palette, which the
+    // gameplay draw reuses each frame -- the preview's render order
+    // means we can't share). Reads sPlayer.appearance.
     const std::string sk_id =
         player.skeleton_id.empty() ? std::string("player") : player.skeleton_id;
+    static std::vector<glm::mat4> sPreviewPalette;
     selva::gameplay::applyAppearanceDeformation(player.sampler, selva::anim::jointMapByKey(sk_id),
-                                                player.appearance);
+                                                player.appearance, sPreviewPalette);
 
     selva::anim::beginSkeletalPass();
-    selva::anim::drawSkeletalMesh(selva::anim::playerMesh(), model_mat, view_proj,
-                                  player.sampler.bone_palette, player.appearance.color);
+    selva::anim::drawSkeletalMesh(selva::anim::playerMesh(), model_mat, view_proj, sPreviewPalette,
+                                  player.appearance.color);
     selva::anim::endSkeletalPass();
 
     // Resolve the multisample render into the single-sample texture

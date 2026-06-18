@@ -1830,6 +1830,16 @@ int PoseSampler::findJoint(const char* name) const
     return -1;
 }
 
+int PoseSampler::jointParent(int i) const
+{
+    if (!impl || !impl->skeleton)
+        return -1;
+    const ozz::animation::Skeleton& skel = *impl->skeleton;
+    if (i < 0 || i >= skel.num_joints())
+        return -1;
+    return skel.joint_parents()[i];
+}
+
 PoseSampler::FrameDiagnostics PoseSampler::frameDiagnostics() const
 {
     FrameDiagnostics d{};

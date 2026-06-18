@@ -695,6 +695,9 @@ static void renderCharacterDesignerSliders()
     // edits apply immediately, no commit step.
     ImGui::SliderFloat("Body scale", &app.body_scale, 0.25f, 5.0f, "%.2f");
     ImGui::SliderFloat("Head scale", &app.head_scale, 0.5f, 2.5f, "%.2f");
+    ImGui::SliderFloat("Torso scale", &app.torso_scale, 0.5f, 2.0f, "%.2f");
+    ImGui::SliderFloat("Arm scale", &app.arm_scale, 0.5f, 2.0f, "%.2f");
+    ImGui::SliderFloat("Leg scale", &app.leg_scale, 0.5f, 2.0f, "%.2f");
     ImGui::Spacing();
     ImGui::TextUnformatted("Color tint");
     // Souls-style: three R/G/B sliders always visible (not a swatch

@@ -164,6 +164,15 @@ struct GameState
         MainMenu,
         LoadGame,
         Settings,
+        // Pre-Selva soul-shaping. Player adjusts the appearance
+        // schema's identity-defining fields + claims a name BEFORE
+        // any world / cosmology renders. Confirmed by the
+        // CharacterCreationScreen, which atomically writes
+        // appearance + name onto the PlayerProfile and transitions
+        // to Playing with the wake-scene flag. Quit-during this
+        // phase = no PlayerProfile written (any placeholder added
+        // by the New Game button gets discarded).
+        CharacterCreation,
         Playing,
     };
 

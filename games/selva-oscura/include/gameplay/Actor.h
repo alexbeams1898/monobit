@@ -333,6 +333,16 @@ struct Actor
     // own sampler, blended against the shared skeleton + mesh.
     selva::anim::PoseSampler sampler;
 
+    // Per-actor deformed-palette scratch. The appearance deformation
+    // pass writes here each frame from sampler.bone_palette. Owned
+    // per-Actor so transparent-pass draws can hold a stable pointer
+    // until the back-to-front sort + draw runs, and so the pause
+    // overlay's re-draw of the still-rendering world doesn't
+    // compound deformations frame-over-frame (the original bug:
+    // in-place mutation + no sampler re-tick under pause = visibly
+    // exploding mesh).
+    std::vector<glm::mat4> deformed_bone_palette;
+
     // --- Controller / behavior ---
     Controller controller = Controller::AI_Stationary;
 

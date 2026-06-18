@@ -407,6 +407,12 @@ struct PoseSampler
     // clipJointMotionEnd.
     int findJoint(const char* name) const;
 
+    // Parent joint index for joint `i`, or -1 if `i` is the root or
+    // out of range. Used by appearance deformation to walk a
+    // subtree (scale upper-arm + recurse through elbow + wrist +
+    // fingers). Pure read; no allocation.
+    int jointParent(int i) const;
+
     // Scan `next_clip` at fixed-rate samples and find the time at
     // which the watched joints' positions are closest (in summed
     // Euclidean distance) to those same joints' positions in

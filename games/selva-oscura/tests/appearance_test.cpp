@@ -95,6 +95,19 @@ TEST_CASE("default-constructed Appearance has head_scale 1.0", "[appearance][def
     REQUIRE(a.head_scale == Approx(1.0f));
 }
 
+TEST_CASE("default-constructed Appearance has arm_scale + leg_scale 1.0", "[appearance][defaults]")
+{
+    selva::gameplay::Appearance a;
+    REQUIRE(a.arm_scale == Approx(1.0f));
+    REQUIRE(a.leg_scale == Approx(1.0f));
+}
+
+TEST_CASE("default-constructed Appearance has torso_scale 1.0", "[appearance][defaults]")
+{
+    selva::gameplay::Appearance a;
+    REQUIRE(a.torso_scale == Approx(1.0f));
+}
+
 TEST_CASE("empty appearance_path returns default Appearance", "[appearance][loader]")
 {
     const auto a = selva::gameplay::loadAppearance(std::string{});

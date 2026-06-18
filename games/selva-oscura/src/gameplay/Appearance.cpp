@@ -44,6 +44,12 @@ Appearance loadAppearance(const std::string& path)
         out.body_scale = j["body_scale"].get<float>();
     if (j.contains("head_scale") && j["head_scale"].is_number())
         out.head_scale = j["head_scale"].get<float>();
+    if (j.contains("arm_scale") && j["arm_scale"].is_number())
+        out.arm_scale = j["arm_scale"].get<float>();
+    if (j.contains("leg_scale") && j["leg_scale"].is_number())
+        out.leg_scale = j["leg_scale"].get<float>();
+    if (j.contains("torso_scale") && j["torso_scale"].is_number())
+        out.torso_scale = j["torso_scale"].get<float>();
     if (j.contains("color") && j["color"].is_array() && j["color"].size() == 3)
     {
         // Souls-convention RGB: clamp each channel to [0, 1] so
@@ -79,6 +85,9 @@ bool saveAppearance(const std::string& path, const Appearance& appearance)
     nlohmann::json j;
     j["body_scale"] = appearance.body_scale;
     j["head_scale"] = appearance.head_scale;
+    j["arm_scale"] = appearance.arm_scale;
+    j["leg_scale"] = appearance.leg_scale;
+    j["torso_scale"] = appearance.torso_scale;
     j["color"] = {appearance.color.x, appearance.color.y, appearance.color.z};
     std::ofstream f(path);
     if (!f.is_open())

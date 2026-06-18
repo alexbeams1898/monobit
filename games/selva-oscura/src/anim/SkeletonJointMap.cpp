@@ -36,6 +36,9 @@ void parseInto(SkeletonJointMap& out, const nlohmann::json& doc)
     out.foot_left = str("foot_left");
     out.foot_right = str("foot_right");
     out.head = str("head");
+    out.uparm_left = str("uparm_left");
+    out.uparm_right = str("uparm_right");
+    out.torso = str("torso");
     // Default lockon points for any archetype on this skeleton that
     // doesn't author its own list. Wolf's wolf.json overrides this
     // entirely (head/torso/hindleg_*). Skeleton JSON shape:

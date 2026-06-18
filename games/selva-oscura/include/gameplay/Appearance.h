@@ -61,11 +61,31 @@ struct Appearance
     // head joint's world-space matrix gets a uniform scale around
     // its own origin -- the skull grows upward from the neck, the
     // neck itself stays the body's size.
-    //
-    // First per-bone parameter in the system; establishes the
-    // pattern future limb proportions / shoulder width / arm length
-    // / leg length will follow.
     float head_scale = 1.0f;
+
+    // Per-bone scale on the upper-arm joints (applied to both left
+    // and right symmetrically, then recursively to their descendants
+    // -- lower arm + hand). 1.0 = no change. 1.3 = longer + thicker
+    // "noodle arms"; 0.7 = stubby arms. Independent of body_scale
+    // per Souls-style character creator convention: arm_scale is the
+    // FINAL visible arm size relative to bind pose, regardless of
+    // body's overall size. The deformation pass counter-scales by
+    // body_scale internally.
+    float arm_scale = 1.0f;
+
+    // Same shape as arm_scale, applied to upper-leg joints + all
+    // descendants (knee, ankle, foot). 1.3 = stilt-like long legs;
+    // 0.8 = short stocky legs.
+    float leg_scale = 1.0f;
+
+    // Per-bone scale on the torso root (Mixamo Spine), applied
+    // recursively to its descendants -- which on the humanoid rig
+    // INCLUDES the neck/head and the shoulder/arm chains. That's
+    // correct anatomy: a broader torso naturally widens shoulders +
+    // raises the head. If you want torso-only (head + arms
+    // independent), set head_scale + arm_scale to compensate (same
+    // counter-scale doctrine head_scale uses against body).
+    float torso_scale = 1.0f;
 };
 
 // Load an Appearance from JSON. Returns the default-constructed

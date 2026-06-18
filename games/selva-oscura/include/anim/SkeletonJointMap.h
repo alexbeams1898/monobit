@@ -54,6 +54,20 @@ struct SkeletonJointMap
     // applyAppearanceDeformation). Empty = no head joint on this
     // rig; deformation is a no-op for this skeleton.
     std::string head;
+    // Upper-arm roots (shoulder joints). Appearance deformation
+    // anchor for arm_scale: the scale applies to these joints AND
+    // recursively to their descendants (elbow + wrist + fingers),
+    // so the whole arm chain grows/shrinks uniformly. Symmetric per
+    // limb-design lock 2026-06-17: one arm_scale value drives both
+    // sides. Empty = no arm deformation for this rig.
+    std::string uparm_left;
+    std::string uparm_right;
+    // Torso root (spine base). Appearance deformation anchor for
+    // torso_scale: scale propagates to the entire upper-body
+    // subtree (chest, neck, head, shoulders, arms) so a broader
+    // torso naturally broadens shoulders + raises head. Empty = no
+    // torso deformation for this rig.
+    std::string torso;
     // Default lockon points for any actor on this skeleton whose
     // archetype doesn't author its own. Humanoid: one entry at
     // "mixamorig:Spine2" labeled "chest". Wolf: a default Lupa or

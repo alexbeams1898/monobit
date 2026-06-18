@@ -93,6 +93,7 @@ add_library(selva-oscura-lib STATIC
     src/world/TreeAssets.cpp
     src/ui/ActorHud.cpp
     src/ui/BossHud.cpp
+    src/ui/CharacterCreationScreen.cpp
     src/ui/CharacterPreview.cpp
     src/ui/ClassPickerScreen.cpp
     src/ui/ComboHud.cpp

@@ -24,6 +24,7 @@
 #include "render/Texture.h"
 #include "text/TextPresentation.h"
 #include "ui/BossHud.h"
+#include "ui/CharacterCreationScreen.h"
 #include "ui/ClassPickerScreen.h"
 #include "ui/NamePromptScreen.h"
 #include "ui/UIComponents.h"
@@ -227,6 +228,20 @@ void enterPlayingFromNewGame()
     setPhase(GameState::Phase::Playing);
 }
 
+// Named entry: confirmed-creation -> Playing. Character is fully
+// formed (named + appearance committed) by CharacterCreationScreen;
+// active_character is set to the new character so
+// resetPlayerActorForProfile loads the right body. Wake-scene
+// fires per [[feedback_named_entry_points_for_phase_changes_2026_06_13]]
+// -- this IS a New Game in the diegetic sense.
+void enterPlayingFromCreation(const std::string& character_name)
+{
+    selva::gameState().active_character = character_name;
+    selva::gameState().pending_world_create = true;
+    selva::gameState().pending_wake_scene = true;
+    setPhase(GameState::Phase::Playing);
+}
+
 void enterPlayingFromContinue(const std::string& character_name)
 {
     selva::gameState().active_character = character_name;
@@ -258,6 +273,12 @@ void doMainMenuAction(MainMenuAction a, bool& out_quit)
     case MainMenuAction::NewGame:
     {
         auto& sd = saveData();
+        // Placeholder PlayerProfile created here. The Creation
+        // screen opens, lets the player shape + name; commit
+        // writes onto this last-in-vector entry. Quit-before-confirm
+        // leaves an unnamed draft the player can delete from
+        // LoadGame; reentry from MainMenu re-opens the Creation
+        // screen for the same draft (re-uses the existing slot).
         bool existing_unnamed = false;
         for (const auto& c : sd.characters)
         {
@@ -272,7 +293,7 @@ void doMainMenuAction(MainMenuAction a, bool& out_quit)
             SaveManager::addCharacter(sd, "");
             SaveManager::save(sd);
         }
-        enterPlayingFromNewGame();
+        selva::ui::openCharacterCreationScreen();
         break;
     }
     case MainMenuAction::LoadGame:
@@ -2331,6 +2352,18 @@ bool renderScreens(Engine& /*engine*/)
         break;
     case GameState::Phase::Settings:
         renderSettings();
+        break;
+    case GameState::Phase::CharacterCreation:
+        // Confirm transitions atomically to Playing with the
+        // wake-scene flag. Quit-mid-screen leaves the draft
+        // PlayerProfile in place; reentry from MainMenu re-opens
+        // the screen for the same draft.
+        if (selva::ui::renderCharacterCreationScreen())
+        {
+            const auto& chars = saveData().characters;
+            if (!chars.empty())
+                enterPlayingFromCreation(chars.back().name);
+        }
         break;
     case GameState::Phase::Playing:
         tickPauseToggle();

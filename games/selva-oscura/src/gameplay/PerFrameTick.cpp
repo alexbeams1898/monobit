@@ -4349,7 +4349,7 @@ void drawPlayerSkeletal(const glm::mat4& viewProj)
     const std::string sk_id =
         sPlayer.skeleton_id.empty() ? std::string("player") : sPlayer.skeleton_id;
     selva::gameplay::applyAppearanceDeformation(sSampler, selva::anim::jointMapByKey(sk_id),
-                                                sPlayer.appearance);
+                                                sPlayer.appearance, sPlayer.deformed_bone_palette);
     const bool fpv = selva::render::cameraMode() == selva::render::CameraMode::FirstPerson;
     const glm::vec3 tint = sPlayer.appearance.color;
     if (fpv)
@@ -4357,11 +4357,12 @@ void drawPlayerSkeletal(const glm::mat4& viewProj)
         // FPV: zero head + neck bones in a clone of the palette so
         // the head doesn't clip the near plane.
         static std::vector<glm::mat4> sFpvPalette;
-        applyFpvHeadHide(sSampler, sSampler.bone_palette, sFpvPalette);
+        applyFpvHeadHide(sSampler, sPlayer.deformed_bone_palette, sFpvPalette);
         selva::anim::drawSkeletalMesh(sPlayerMesh, player_model, viewProj, sFpvPalette, tint);
         return;
     }
-    selva::anim::drawSkeletalMesh(sPlayerMesh, player_model, viewProj, sSampler.bone_palette, tint);
+    selva::anim::drawSkeletalMesh(sPlayerMesh, player_model, viewProj,
+                                  sPlayer.deformed_bone_palette, tint);
 }
 
 float computeEnemyDeathFadeAlpha(const selva::gameplay::Actor& enemy, float now_wc, float fade_hold,
@@ -4414,6 +4415,9 @@ selva::gameplay::Appearance resolveAppearance(const selva::gameplay::Actor& enem
     selva::gameplay::Appearance lerped;
     lerped.body_scale = glm::mix(enemy.appearance.body_scale, target_app.body_scale, t);
     lerped.head_scale = glm::mix(enemy.appearance.head_scale, target_app.head_scale, t);
+    lerped.arm_scale = glm::mix(enemy.appearance.arm_scale, target_app.arm_scale, t);
+    lerped.leg_scale = glm::mix(enemy.appearance.leg_scale, target_app.leg_scale, t);
+    lerped.torso_scale = glm::mix(enemy.appearance.torso_scale, target_app.torso_scale, t);
     lerped.color = glm::mix(enemy.appearance.color, target_app.color, t);
     return lerped;
 }
@@ -4438,20 +4442,20 @@ void drawOrQueueEnemy(selva::gameplay::Actor& enemy, const glm::mat4& viewProj,
     const glm::mat4 enemy_model =
         selva::combat::buildActorModelMatrix(enemy.pos, enemy.yaw, efoot, live_app.body_scale);
     const glm::vec3 tint = live_app.color;
-    // Per-bone deformation (head_scale, future limb axes). Mutates
-    // enemy.sampler.bone_palette in-place; visual-only, hurtboxes
-    // already ran. Uses the LERPED appearance so larva burn-in
-    // animations grow heads alongside body and color.
+    // Per-bone deformation (head_scale + limb axes). Writes into
+    // enemy.deformed_bone_palette; visual-only, hurtboxes use the
+    // un-deformed sampler palette. Uses the LERPED appearance so
+    // larva burn-in animations grow heads alongside body and color.
     selva::gameplay::applyAppearanceDeformation(enemy.sampler, selva::anim::jointMapByKey(sk_id),
-                                                live_app);
+                                                live_app, enemy.deformed_bone_palette);
     if (alpha < 0.999f)
     {
         const glm::vec3 d = enemy.pos - camPos;
         out_transparent.push_back(TransparentSkeletalDraw{
-            &enemy_mesh, enemy_model, &enemy.sampler.bone_palette, tint, alpha, glm::dot(d, d)});
+            &enemy_mesh, enemy_model, &enemy.deformed_bone_palette, tint, alpha, glm::dot(d, d)});
         return;
     }
-    selva::anim::drawSkeletalMesh(enemy_mesh, enemy_model, viewProj, enemy.sampler.bone_palette,
+    selva::anim::drawSkeletalMesh(enemy_mesh, enemy_model, viewProj, enemy.deformed_bone_palette,
                                   tint, 1.0f);
 }
 } // namespace
