@@ -124,11 +124,39 @@ void drawPreviewImage()
     ImGui::TextDisabled("Right-click  -  Reset");
 }
 
+// Lowercase + replace non-[a-z0-9_] with '_' so a character named
+// "Alex" gets a sensible "alex" path, "BÆR" gets "b__r", etc.
+// Used to derive a per-character appearance_path. Length capped
+// at 6 (matches kNameMaxLen) so the path is bounded.
+std::string sanitizeNameForPath(const std::string& name)
+{
+    std::string out;
+    out.reserve(name.size());
+    for (char c : name)
+    {
+        if (c >= 'A' && c <= 'Z')
+            out.push_back(static_cast<char>(c - 'A' + 'a'));
+        else if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_')
+            out.push_back(c);
+        else
+            out.push_back('_');
+    }
+    if (out.empty())
+        out = "anon";
+    return out;
+}
+
 // Commit the in-flight name + appearance onto the most-recent
-// (placeholder) PlayerProfile. Atomic: BOTH name AND appearance
-// land on the SAME profile in the same call, no intermediate
+// (placeholder) PlayerProfile. Atomic: name + appearance_path +
+// appearance file all land in the SAME call, no intermediate
 // half-committed state. Returns true on success; false if the
 // state is unexpected (no characters / no placeholder).
+//
+// PER-CHARACTER APPEARANCE FILE: every PlayerProfile gets its OWN
+// JSON at config/appearances/<safe_name>.json. Two characters
+// with different colors/sizes never overwrite each other. The
+// shared default_humanoid.json stays untouched as the fallback /
+// preset starting point.
 bool commitCreation(const State& s)
 {
     auto& sd = selva::saveData();
@@ -139,18 +167,8 @@ bool commitCreation(const State& s)
     // this screen.
     selva::PlayerProfile& p = sd.characters.back();
     p.name = s.name_buf;
-    p.appearance_path = "config/appearances/default_humanoid.json";
-    // appearance_path resolves to a per-character file in a future
-    // milestone (presets, designer-saved files). v1 reuses the
-    // default and the per-instance Appearance lives directly on the
-    // Actor at spawn -- which happens via resetPlayerActorForProfile,
-    // which calls loadAppearance(profile.appearance_path). The
-    // in-flight in-memory edits the screen made to player().appearance
-    // are about to be OVERWRITTEN by that load.
-    //
-    // For v1: bake the in-flight edits into default_humanoid.json so
-    // the file IS the player's chosen body. Future milestone replaces
-    // this with per-character appearance files.
+    const std::string safe = sanitizeNameForPath(p.name);
+    p.appearance_path = "config/appearances/" + safe + ".json";
     selva::gameplay::saveAppearance(p.appearance_path, s.app);
     sd.last_played_character = p.name;
     sd.has_last_played = true;

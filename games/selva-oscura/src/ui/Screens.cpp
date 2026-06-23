@@ -26,7 +26,6 @@
 #include "ui/BossHud.h"
 #include "ui/CharacterCreationScreen.h"
 #include "ui/ClassPickerScreen.h"
-#include "ui/NamePromptScreen.h"
 #include "ui/UIComponents.h"
 
 #include <imgui.h>
@@ -116,10 +115,11 @@ using selva::ui::wantBack;
 // SaveManager::save directly and do NOT show the chip because they
 // aren't saving the player's RUN.
 //
-// Unnamed-but-real character: an unnamed run (name=="") is a fully
-// real character in saveData; flushAndSave persists it the same as
-// any named character. The Vessel tab + Load menu render "???" for
-// empty names but the file write is unconditional.
+// Post-CharacterCreationScreen: every committed PlayerProfile has
+// a non-empty name. The save vector may briefly hold an unnamed
+// placeholder mid-creation (added by doMainMenuAction's New Game
+// branch, populated by the creation screen on confirm), but no
+// SAVE write happens until commitCreation finalizes the name.
 //
 // Defensive: if the active profile doesn't resolve (shouldn't
 // happen via normal flow), skip -- there's no run to save.
@@ -248,6 +248,14 @@ void enterPlayingFromContinue(const std::string& character_name)
     selva::gameState().pending_world_create = true;
     // NO wake-scene -- the saved character is in-progress, not
     // newly-arrived. Wake-scene is New Game's ritual.
+    //
+    // DEFENSIVELY CLEAR the flag: if a prior in-session New Game
+    // set it but never reached Playing (e.g. user backed out of
+    // creation, then clicked Continue), the stale flag would fire
+    // the wake on the loaded character. The pending_wake_scene flag
+    // is doctrinally OWNED by the New Game entry path; every other
+    // entry path explicitly clears it.
+    selva::gameState().pending_wake_scene = false;
     setPhase(GameState::Phase::Playing);
 }
 
@@ -255,7 +263,8 @@ void enterPlayingFromLoadGame(const std::string& character_name)
 {
     selva::gameState().active_character = character_name;
     selva::gameState().pending_world_create = true;
-    // NO wake-scene -- same reason as Continue.
+    // NO wake-scene -- same reason as Continue. Defensive clear.
+    selva::gameState().pending_wake_scene = false;
     setPhase(GameState::Phase::Playing);
 }
 
@@ -492,12 +501,14 @@ void renderLoadGame()
     for (std::size_t i = 0; i < saveData().characters.size(); ++i)
     {
         const auto& c = saveData().characters[i];
+        // CharacterCreationScreen never commits an unnamed profile,
+        // so an empty name here is a pre-commit placeholder that
+        // shouldn't be loadable. Skip it entirely instead of
+        // surfacing a '???' slot the player can click into.
+        if (c.name.empty())
+            continue;
         ImGui::PushID(static_cast<int>(i));
-        // Unnamed characters (name=="") show as '???' in the slot.
-        // The lookup-by-name still works because active_character
-        // also goes empty for the unnamed run.
-        const std::string label = c.name.empty() ? "???" : c.name;
-        if (ImGui::Button(label.c_str(), ImVec2(200, 0)))
+        if (ImGui::Button(c.name.c_str(), ImVec2(200, 0)))
         {
             enterPlayingFromLoadGame(c.name);
         }
@@ -513,6 +524,15 @@ void renderLoadGame()
         const std::string name = saveData().characters[static_cast<std::size_t>(delete_index)].name;
         SaveManager::deleteCharacter(saveData(), name);
         SaveManager::save(saveData());
+        // Deleting the last character leaves the screen empty -- the
+        // MainMenu's Load Game entry will be disabled on next tick.
+        // Bounce back instead of stranding the player on a blank panel.
+        if (saveData().characters.empty())
+        {
+            setPhase(GameState::Phase::MainMenu);
+            ImGui::End();
+            return;
+        }
     }
 
     ImGui::End();
@@ -2316,9 +2336,8 @@ void tickMouseCapture()
         const bool tuning_open = selva::gameplay::tickstate::showTuningPanel();
         const bool dialog_open = selva::text::active();
         const bool picker_open = selva::ui::classPickerActive();
-        const bool name_prompt_open = selva::ui::namePromptActive();
         const bool want_relative =
-            !ui.isScreenOpen() && !tuning_open && !dialog_open && !picker_open && !name_prompt_open;
+            !ui.isScreenOpen() && !tuning_open && !dialog_open && !picker_open;
         const bool is_relative = (SDL_GetRelativeMouseMode() == SDL_TRUE);
         if (want_relative != is_relative)
         {

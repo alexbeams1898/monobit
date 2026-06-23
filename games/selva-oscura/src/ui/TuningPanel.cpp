@@ -36,7 +36,6 @@
 #include "ui/ComboHud.h"
 #include "ui/DialogScreen.h"
 #include "ui/InteractionPrompt.h"
-#include "ui/NamePromptScreen.h"
 
 #include <imgui.h>
 #include <nlohmann/json.hpp>
@@ -759,10 +758,9 @@ static void renderCharacterDesignerTab()
 static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
 {
     // World-HUD layer (health, compass, boss bar, debug overlays).
-    // Suppressed while any Beat-3/4 modal owns the screen (name
-    // prompt OR class picker) -- character-creation moments hide
-    // gameplay chrome.
-    if (!selva::ui::classPickerActive() && !selva::ui::namePromptActive())
+    // Suppressed while the Beat-4 class picker owns the screen --
+    // the Signing moment hides gameplay chrome.
+    if (!selva::ui::classPickerActive())
     {
         renderActorHud();
         selva::ui::renderCompass();
@@ -840,17 +838,15 @@ void selvaRenderImGui(::Engine& engine, ::EntityManager& em)
 {
     ::selvaRenderImGui(engine, em);
     // Boss HUD + interaction prompt are world-HUD layer; suppress
-    // them when any Beat-3/4 modal is up. Dialog also suppressed.
-    if (!selva::ui::classPickerActive() && !selva::ui::namePromptActive())
+    // them when the Beat-4 class picker is up. Dialog also suppressed.
+    if (!selva::ui::classPickerActive())
     {
         renderBossHud();
         renderInteractionPrompt();
         renderDialogScreen();
     }
-    // Beat-3 name prompt + Beat-4 class picker. Both render LAST so
-    // their backdrops + panels paint over everything else. Both are
-    // no-ops when inactive.
-    renderNamePrompt();
+    // Beat-4 class picker. Renders LAST so its backdrop + panel paint
+    // over everything else. No-op when inactive.
     renderClassPicker();
 }
 } // namespace selva::ui
