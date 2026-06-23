@@ -91,7 +91,7 @@ struct SkeletalMesh
 
 // Load a skinned mesh from a glTF file (.glb or .gltf). Path is relative
 // to the working directory. Reads the FIRST mesh's FIRST primitive — for
-// X_Bot.glb that's the single skinned body mesh. We can extend to
+// humanoid.glb that's the single skinned body mesh. We can extend to
 // multi-primitive / multi-mesh loading when we need armor swaps.
 //
 // The skeleton must already be loaded — we use its bone names to remap

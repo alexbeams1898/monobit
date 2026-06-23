@@ -171,7 +171,7 @@
             "translation_source": "in_place"
         },
         {
-            "_comment": "Soul larva (Scary Zombie Pack, retargeted to X_Bot) clips. zombie_walk/run/crawl declared root_motion: the Mixamo zombie clips have authored hip-XZ travel at the animator's chosen shamble cadence, NOT at engine walk_speed. Velocity-driven translation at tun.walk_speed=1.6 produced visible skating (feet authored ~0.6 m/s, body translated at 1.6). Root motion lets the clip's authored cadence drive world translation -- the foot rate matches the visible step rate by construction. Idle/attack/death/scream stay in_place (no XZ translation; the actor stops/bites/dies on the spot). All zombie clips MUST be enumerated here per [[feedback_locomotion_clip_register]].",
+            "_comment": "Soul larva (Scary Zombie Pack, retargeted to humanoid) clips. zombie_walk/run/crawl declared root_motion: the Mixamo zombie clips have authored hip-XZ travel at the animator's chosen shamble cadence, NOT at engine walk_speed. Velocity-driven translation at tun.walk_speed=1.6 produced visible skating (feet authored ~0.6 m/s, body translated at 1.6). Root motion lets the clip's authored cadence drive world translation -- the foot rate matches the visible step rate by construction. Idle/attack/death/scream stay in_place (no XZ translation; the actor stops/bites/dies on the spot). All zombie clips MUST be enumerated here per [[feedback_locomotion_clip_register]].",
             "name": "zombie_walk",
             "blend_in_seconds": 0.30,
             "translation_source": "root_motion"

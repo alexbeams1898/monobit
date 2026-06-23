@@ -217,7 +217,7 @@ void drawSkeletalMesh(const SkeletalMesh& mesh, const glm::mat4& model, const gl
     glUniform1i(sUniShadowMap, sFrameShadowUnit);
 
     // Upload the bone palette. Cap at kMaxBones -- any rig past that
-    // gets truncated. With 65 bones for the X_Bot rig we have headroom.
+    // gets truncated. The humanoid rig (~57 bones) has headroom.
     const GLsizei bone_count =
         static_cast<GLsizei>(bone_palette.size() < kMaxBones ? bone_palette.size() : kMaxBones);
     if (bone_count > 0)

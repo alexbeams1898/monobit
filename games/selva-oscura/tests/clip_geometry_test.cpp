@@ -12,14 +12,14 @@ using selva::anim::loadSkeleton;
 using selva::anim::Skeleton;
 
 // Tests run from build/bin (per skeletal_loader_test.cpp comment block).
-// X_Bot skeleton + a known clip with a hand swing give us real data to
+// Humanoid skeleton + a known clip with a hand swing give us real data to
 // scan. We reuse sword_and_shield_idle which is already used by the
 // loader test, plus a swing clip with meaningful hand motion.
 
 namespace
 {
-const char* kSkeletonPath = "assets/characters/x_bot/skeleton.ozz";
-const char* kSwingPath = "assets/characters/x_bot/sword_and_shield_slash.ozz";
+const char* kSkeletonPath = "assets/characters/humanoid/skeleton.ozz";
+const char* kSwingPath = "assets/characters/humanoid/sword_and_shield_slash.ozz";
 const char* kHips = "mixamorig:Hips";
 const char* kRightHand = "mixamorig:RightHand";
 } // namespace

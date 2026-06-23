@@ -99,7 +99,6 @@ add_library(selva-oscura-lib STATIC
     src/ui/ComboHud.cpp
     src/ui/DialogScreen.cpp
     src/ui/InteractionPrompt.cpp
-    src/ui/NamePromptScreen.cpp
     src/ui/Notifications.cpp
     src/ui/Screens.cpp
     src/ui/TuningPanel.cpp
@@ -166,11 +165,11 @@ if(MINGW)
 endif()
 
 # Sync config + assets to the build output on every build so the exe finds
-# config/tunables.json and assets/characters/x_bot/X_Bot.glb at runtime.
+# config/tunables.json and assets/characters/humanoid/humanoid.glb at runtime.
 # ALL custom target (not POST_BUILD) so file edits are picked up even when
 # no .cpp changed; same pattern as prison-escape-game.
 #
-# Bake targets (selva-oscura-convert-attacks, selva-oscura-convert-xbot)
+# Bake targets (selva-oscura-convert-attacks, selva-oscura-convert-humanoid)
 # depend on this so they run AFTER sync. Without the order constraint,
 # Ninja races them: freshly-baked .ozz gets clobbered by the older
 # source-tree .ozz when sync runs second. Symptom: in-game animations
@@ -196,20 +195,19 @@ add_custom_target(selva-oscura-sync-config ALL
 )
 
 # ---------------------------------------------------------------------------
-# X Bot is the canonical character — Mixamo's standard humanoid rig. All
-# clips in selva-oscura are authored against this skeleton (the Pro Sword
-# and Shield Pack ships with X Bot's exact rig). Choosing X Bot as the
-# source-of-truth means there is exactly one skeleton in the runtime and
-# zero retargeting work — every Mixamo asset just plays.
+# The humanoid is the canonical character rig -- standard Mixamo joint
+# naming. All player + most enemy clips are authored against this
+# skeleton. Choosing one shared skeleton means zero retargeting work --
+# every Mixamo asset baked against it just plays.
 #
-# The previous incarnation used a custom Three.js Soldier mesh which
+# A previous incarnation used a custom Three.js Soldier mesh which
 # *looked* like a Mixamo character but had a different bind pose and
 # different units (centimeters vs glTF's meters). That mismatch made
 # every imported clip distort the geometry. The fix isn't to translate
 # between mismatched skeletons — it's to make sure there's only one.
 # See memory/feedback_no_bandaids_root_cause.md.
 # ---------------------------------------------------------------------------
-# NOTE: this entire X_Bot bake pipeline (lines ~145-405) will be
+# NOTE: this entire humanoid bake pipeline (lines ~145-405) will be
 # factored into a `_selva_register_skeleton(id, source_dir, mesh_filename)`
 # function when the WOLF skeleton lands in Phase B of the multi-skeleton
 # refactor (see docs/design/animals_and_multi_skeleton.md). The wolf's
@@ -221,37 +219,37 @@ add_custom_target(selva-oscura-sync-config ALL
 # in the same change. The PoseSampler / SkeletalAssets / EnemyArchetype
 # C++ changes are already wolf-ready -- only the bake pipeline still
 # assumes one skeleton, and that's pure mechanical CMake rearrangement.
-set(xbot_dir ${CMAKE_CURRENT_SOURCE_DIR}/assets/characters/x_bot)
+set(humanoid_dir ${CMAKE_CURRENT_SOURCE_DIR}/assets/characters/humanoid)
 set(fbx2gltf_exe ${CMAKE_SOURCE_DIR}/tools/fbx2gltf/FBX2glTF.exe)
 
 # Per-game build output (see selva-oscura exe's RUNTIME_OUTPUT_DIRECTORY).
 # add_custom_command's OUTPUT can't contain generator expressions, so this
 # is a literal path -- if the per-game subdir name changes, update both.
 set(selva_out_dir ${CMAKE_BINARY_DIR}/bin/selva-oscura)
-set(xbot_out_dir ${selva_out_dir}/assets/characters/x_bot)
+set(humanoid_out_dir ${selva_out_dir}/assets/characters/humanoid)
 
-# 1. X Bot.fbx → X_Bot.glb. Mixamo's FBX export omits explicit per-vertex
+# 1. humanoid.fbx → humanoid.glb. Mixamo's FBX export omits explicit per-vertex
 # normals (Mixamo's pipeline assumes the consumer derives them), so we
 # pass --compute-normals missing to FBX2glTF — without that flag, the
 # resulting glb has no NORMAL attribute and our loader rejects the mesh
 # as invalid. Doing the computation here means the runtime always sees a
 # fully-attributed mesh — no special-case at load time.
 #
-# X_Bot.glb is treated as a build artifact: regenerated from the FBX on
+# humanoid.glb is treated as a build artifact: regenerated from the FBX on
 # fresh local checkouts (FBX is the authoring source), but the baked
 # .glb + skeleton.ozz + per-clip .ozz files are also committed in the
 # asset tree so CI / contributors without the gitignored Mixamo FBX
 # pack can build and run. The FBX-bake pipeline below is wrapped in
-# `if(EXISTS xbot_fbx)` — when the FBX is present locally, the bake
+# `if(EXISTS humanoid_fbx)` — when the FBX is present locally, the bake
 # regenerates artifacts; when absent (CI), the committed bakes are used.
-set(xbot_fbx ${xbot_dir}/source/rig/X_Bot.fbx)
-set(xbot_glb ${xbot_dir}/X_Bot.glb)
-if(EXISTS ${xbot_fbx})
+set(humanoid_fbx ${humanoid_dir}/source/rig/humanoid.fbx)
+set(humanoid_glb ${humanoid_dir}/humanoid.glb)
+if(EXISTS ${humanoid_fbx})
     add_custom_command(
-        OUTPUT ${xbot_glb}
+        OUTPUT ${humanoid_glb}
         # FBX2glTF's --keep-attribute auto drops NORMAL and TEXCOORD if they
-        # aren't strictly required by the schema. Mixamo's X Bot ships with
-        # both, but auto-mode strips them — the resulting glb has only
+        # aren't strictly required by the schema. Mixamo characters ship
+        # with both, but auto-mode strips them — the resulting glb has only
         # POSITION/JOINTS/WEIGHTS, which our loader rejects (no NORMAL).
         # Listing the attributes explicitly forces FBX2glTF to keep them.
         # --compute-normals always re-derives normals from geometry to be
@@ -262,70 +260,86 @@ if(EXISTS ${xbot_fbx})
             --keep-attribute normal
             --keep-attribute uv0
             --compute-normals always
-            -i ${xbot_fbx}
-            -o ${xbot_dir}/X_Bot
-        DEPENDS ${xbot_fbx} ${fbx2gltf_exe}
-        COMMENT "Converting X_Bot.fbx → X_Bot.glb..."
+            -i ${humanoid_fbx}
+            -o ${humanoid_dir}/humanoid
+        DEPENDS ${humanoid_fbx} ${fbx2gltf_exe}
+        COMMENT "Converting humanoid.fbx → humanoid.glb..."
         VERBATIM
     )
 
-    # 2. Skeleton-only conversion config: X_Bot.glb ships with no real
+    # 2. Skeleton-only conversion config: humanoid.glb ships with no real
     # animations (just a degenerate "Take 001" T-pose), so explicitly tell
     # gltf2ozz to skip animation extraction. Without "animations": [],
     # gltf2ozz fails its animation-validation step and exits non-zero — even
     # though the skeleton was already written successfully — making ninja
     # think the build step failed.
-    set(xbot_skeleton_config ${CMAKE_BINARY_DIR}/selva-oscura-xbot/skeleton_only.json)
-    file(WRITE ${xbot_skeleton_config}
+    set(humanoid_skeleton_config ${CMAKE_BINARY_DIR}/selva-oscura-humanoid/skeleton_only.json)
+    file(WRITE ${humanoid_skeleton_config}
     "{\n"
     "  \"skeleton\": { \"filename\": \"skeleton.ozz\", \"import\": { \"enable\": true } },\n"
     "  \"animations\": []\n"
     "}\n"
     )
 
-    # 3. Extract the skeleton from X_Bot.glb.
-    set(xbot_ozz_files
-        ${xbot_out_dir}/skeleton.ozz
+    # 3. Extract the skeleton from humanoid.glb.
+    set(humanoid_ozz_files
+        ${humanoid_out_dir}/skeleton.ozz
     )
     add_custom_command(
-        OUTPUT ${xbot_ozz_files}
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${xbot_out_dir}
-        COMMAND ${CMAKE_COMMAND} -E chdir ${xbot_out_dir}
+        OUTPUT ${humanoid_ozz_files}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${humanoid_out_dir}
+        # Normalize the rig glb scale BEFORE gltf2ozz reads it. The
+        # MB-Lab+auto-rigger humanoid.fbx ships with a 100x scale on
+        # the Armature parent node (cm-to-m unit conversion baked
+        # into the hierarchy instead of the vertex data). gltf2ozz
+        # extracts skeleton.ozz INCLUDING that 100x scale on the
+        # root joint's rest pose, which then propagates to every
+        # bone palette at runtime (every actor renders 100x). We
+        # bake the scale into the static translations so skeleton.ozz
+        # comes out unit-scale.
+        COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/scripts/normalize_glb_scale.py
+            --inplace ${humanoid_glb}
+        COMMAND ${CMAKE_COMMAND} -E chdir ${humanoid_out_dir}
             $<TARGET_FILE:gltf2ozz>
-            --file=${xbot_glb}
-            --config_file=${xbot_skeleton_config}
-        DEPENDS ${xbot_glb} gltf2ozz ${xbot_skeleton_config}
-        COMMENT "Extracting X Bot skeleton to ozz runtime format..."
+            --file=${humanoid_glb}
+            --config_file=${humanoid_skeleton_config}
+        DEPENDS
+            ${humanoid_glb}
+            gltf2ozz
+            ${humanoid_skeleton_config}
+            ${CMAKE_CURRENT_SOURCE_DIR}/scripts/normalize_glb_scale.py
+        COMMENT "Extracting humanoid skeleton to ozz runtime format..."
         VERBATIM
     )
-    add_custom_target(selva-oscura-convert-xbot ALL DEPENDS ${xbot_ozz_files})
+    add_custom_target(selva-oscura-convert-humanoid ALL DEPENDS ${humanoid_ozz_files})
     # Bake runs AFTER sync so freshly-baked skeleton.ozz isn't clobbered.
-    add_dependencies(selva-oscura-convert-xbot selva-oscura-sync-config)
+    add_dependencies(selva-oscura-convert-humanoid selva-oscura-sync-config)
 else()
-    message(STATUS "selva-oscura: X_Bot.fbx not found; skipping FBX bake (using committed .glb + .ozz)")
+    message(STATUS "selva-oscura: humanoid.fbx not found; skipping FBX bake (using committed .glb + .ozz)")
     # Downstream bake rules (sword pack, larva) declare
-    # ${xbot_out_dir}/skeleton.ozz as a DEPENDS input. Without an FBX
+    # ${humanoid_out_dir}/skeleton.ozz as a DEPENDS input. Without an FBX
     # bake to produce it, no CMake target satisfies that path on CI.
     # sync-config already copies the committed source-tree skeleton.ozz
-    # to ${xbot_out_dir}/skeleton.ozz as a side-effect of its tree
+    # to ${humanoid_out_dir}/skeleton.ozz as a side-effect of its tree
     # copy, but it doesn't name skeleton.ozz as an OUTPUT, so ninja's
     # graph has no edge linking the sword/larva rules to sync-config's
     # actual production of that file. The fix: a custom command whose
     # OUTPUT is the file (so the graph is valid) and whose body
     # explicitly copies it from source (so it works even if sync-config
     # is reordered relative to it).
-    set(xbot_src_skeleton ${xbot_dir}/skeleton.ozz)
+    set(humanoid_src_skeleton ${humanoid_dir}/skeleton.ozz)
     add_custom_command(
-        OUTPUT ${xbot_out_dir}/skeleton.ozz
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${xbot_out_dir}
+        OUTPUT ${humanoid_out_dir}/skeleton.ozz
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${humanoid_out_dir}
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            ${xbot_src_skeleton} ${xbot_out_dir}/skeleton.ozz
-        DEPENDS ${xbot_src_skeleton}
-        COMMENT "Copying committed X Bot skeleton.ozz to build output..."
+            ${humanoid_src_skeleton} ${humanoid_out_dir}/skeleton.ozz
+        DEPENDS ${humanoid_src_skeleton}
+        COMMENT "Copying committed humanoid skeleton.ozz to build output..."
         VERBATIM
     )
-    add_custom_target(selva-oscura-convert-xbot ALL DEPENDS ${xbot_out_dir}/skeleton.ozz)
-    add_dependencies(selva-oscura-convert-xbot selva-oscura-sync-config)
+    add_custom_target(selva-oscura-convert-humanoid ALL DEPENDS ${humanoid_out_dir}/skeleton.ozz)
+    add_dependencies(selva-oscura-convert-humanoid selva-oscura-sync-config)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -333,17 +347,17 @@ endif()
 #
 # Pipeline per FBX:
 #   1. FBX2glTF converts the .fbx to a per-clip .glb in a build temp dir.
-#   2. gltf2ozz runs with a config pointing at X Bot's skeleton.ozz as
-#      the reference, with skeleton import disabled. The pack-extracted
+#   2. gltf2ozz runs with a config pointing at the humanoid skeleton.ozz
+#      as the reference, with skeleton import disabled. The pack-extracted
 #      glb has its own skeleton + an extra "RootNode" wrapper joint that
-#      isn't in X Bot's skeleton; using X Bot as the reference means
-#      gltf2ozz strips that wrapper and indexes the animation tracks
-#      against X Bot's joint order. Result: clips play correctly on the
-#      X Bot skeleton at runtime with no further retargeting.
+#      isn't in the humanoid skeleton; using the humanoid as the reference
+#      means gltf2ozz strips that wrapper and indexes the animation tracks
+#      against the humanoid's joint order. Result: clips play correctly on
+#      the humanoid skeleton at runtime with no further retargeting.
 #   3. The single animation track in each Mixamo FBX is named "mixamo.com"
 #      internally — gltf2ozz emits it as "mixamo.com.ozz" regardless of
-#      filename. We rename it to <sanitized-filename>.ozz alongside
-#      X Bot's skeleton.ozz.
+#      filename. We rename it to <sanitized-filename>.ozz alongside the
+#      humanoid skeleton.ozz.
 #
 # The pack ships locomotion clips alongside attack clips, so no separate
 # Idle/Walk/Run extraction is needed — sword_and_shield_idle/walk/run.ozz
@@ -353,15 +367,20 @@ endif()
 # repeats collapsed. "sword and shield slash (2).fbx" →
 # "sword_and_shield_slash_2.ozz".
 #
-# Source layout under x_bot/source/ is purpose-based — every .fbx
+# Source layout under humanoid/source/ is purpose-based — every .fbx
 # anywhere under that tree is converted to a clip, except the rig
-# (rig/X_Bot.fbx) which goes through a separate pipeline above. Drop
+# (rig/humanoid.fbx) which goes through a separate pipeline above. Drop
 # new clips into the matching subdir (loco/, combat/sword/attacks/,
 # dodge/, etc.) and they're picked up automatically.
+#
+# Override convention: clips under source/authored/ win by sanitized
+# name over same-named clips elsewhere. Lets us replace Mixamo
+# downloads with hand-authored MB-Lab versions one at a time; the
+# rest keep using the Mixamo fallback.
 # ---------------------------------------------------------------------------
 
 # Generate the gltf2ozz retarget config once at configure time. Refers to
-# X Bot's skeleton.ozz by absolute path so each clip's per-temp-dir
+# the humanoid skeleton.ozz by absolute path so each clip's per-temp-dir
 # gltf2ozz invocation can find it regardless of cwd.
 #
 # The "motion" block extracts root motion (hip translation/rotation) out
@@ -381,7 +400,7 @@ set(retarget_config ${CMAKE_BINARY_DIR}/selva-oscura-attacks/retarget_config.jso
 file(WRITE ${retarget_config}
 "{\n"
 "  \"skeleton\": {\n"
-"    \"filename\": \"${xbot_out_dir}/skeleton.ozz\",\n"
+"    \"filename\": \"${humanoid_out_dir}/skeleton.ozz\",\n"
 "    \"import\": { \"enable\": false }\n"
 "  },\n"
 "  \"animations\": [\n"
@@ -406,25 +425,56 @@ function(_selva_sanitize_clip_name fbx_filename out_var)
 endfunction()
 
 set(attack_ozz_files "")
-# Every .fbx anywhere under x_bot/source/ becomes a per-clip .ozz.
+# Every .fbx anywhere under humanoid/source/ becomes a per-clip .ozz.
 # Layout is purpose-based (loco/, combat/, dodge/, ...); recursive
-# glob lets new subdirs work without listing them here. X_Bot.fbx
-# (the rig under rig/) is converted separately above into X_Bot.glb
+# glob lets new subdirs work without listing them here. humanoid.fbx
+# (the rig under rig/) is converted separately above into humanoid.glb
 # and excluded by the filter below.
 file(GLOB_RECURSE attack_fbx_files
     CONFIGURE_DEPENDS
-    "${xbot_dir}/source/*.fbx"
+    "${humanoid_dir}/source/*.fbx"
 )
-list(FILTER attack_fbx_files EXCLUDE REGEX ".*[Xx][ _][Bb]ot\\.fbx$")
+# Exclude rig FBXs: our humanoid.fbx in source/rig/, plus legacy
+# "X Bot.fbx" / "X_Bot.fbx" rig mannequins shipped inside Mixamo
+# packs (e.g. Creature Pack). These are T-pose mesh sources, not
+# clips -- gltf2ozz fails to validate them as animations.
+list(FILTER attack_fbx_files EXCLUDE REGEX ".*humanoid\\.fbx$|.*[Xx][ _]?[Bb]ot.*\\.fbx$")
+
+# Authored override: any .fbx under source/authored/ wins by sanitized
+# name over the same-named clip from elsewhere in source/. Lets us
+# author MB-Lab clips that replace Mixamo equivalents one at a time;
+# unauthored clips keep falling back to the Mixamo download.
+set(_authored_clip_names "")
+foreach(fbx ${attack_fbx_files})
+    if(fbx MATCHES "/source/authored/")
+        _selva_sanitize_clip_name("${fbx}" _name)
+        list(APPEND _authored_clip_names ${_name})
+    endif()
+endforeach()
+if(_authored_clip_names)
+    set(_deduped_fbx "")
+    foreach(fbx ${attack_fbx_files})
+        _selva_sanitize_clip_name("${fbx}" _name)
+        if(fbx MATCHES "/source/authored/")
+            list(APPEND _deduped_fbx ${fbx})
+        else()
+            list(FIND _authored_clip_names ${_name} _idx)
+            if(_idx EQUAL -1)
+                list(APPEND _deduped_fbx ${fbx})
+            endif()
+        endif()
+    endforeach()
+    set(attack_fbx_files ${_deduped_fbx})
+endif()
 # Only run the sword-pack bake when FBX2glTF is available. On CI
 # (Linux without the gitignored FBX2glTF.exe), the bake is skipped and
-# the committed .ozz files in x_bot/ ship as the runtime artifacts.
+# the committed .ozz files in humanoid/ ship as the runtime artifacts.
 if(attack_fbx_files AND EXISTS ${fbx2gltf_exe})
     foreach(fbx ${attack_fbx_files})
         _selva_sanitize_clip_name("${fbx}" clip_name)
         set(clip_temp_dir ${CMAKE_BINARY_DIR}/selva-oscura-attacks/${clip_name})
         set(clip_glb ${clip_temp_dir}/${clip_name}.glb)
-        set(clip_final_ozz ${xbot_out_dir}/${clip_name}.ozz)
+        set(clip_final_ozz ${humanoid_out_dir}/${clip_name}.ozz)
         add_custom_command(
             OUTPUT ${clip_final_ozz}
             # 1. Convert FBX → glb (FBX2glTF -o is a stem; it appends .glb).
@@ -434,13 +484,24 @@ if(attack_fbx_files AND EXISTS ${fbx2gltf_exe})
                 --keep-attribute auto
                 -i ${fbx}
                 -o ${clip_temp_dir}/${clip_name}
-            # 2. gltf2ozz with the retarget config — skeleton import
-            #    disabled, animation indexed against X Bot's skeleton.
+            # 2. Normalize glb scale -- Mixamo "With Skin" downloads
+            #    against our MB-Lab+auto-rigger humanoid carry
+            #    cm-magnitude bone translations + a 100x scale on the
+            #    hips/mesh nodes. gltf2ozz strips per-joint scale but
+            #    keeps the cm translations -> runtime renders 100x.
+            #    This step bakes the 100x scale into the translation
+            #    tracks so gltf2ozz sees meter-scale values. No-op on
+            #    glbs without non-unit scale (idempotent / safe).
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/scripts/normalize_glb_scale.py
+                --inplace ${clip_glb}
+            # 3. gltf2ozz with the retarget config — skeleton import
+            #    disabled, animation indexed against the humanoid skeleton.
             COMMAND ${CMAKE_COMMAND} -E chdir ${clip_temp_dir}
                 $<TARGET_FILE:gltf2ozz>
                 --file=${clip_glb}
                 --config_file=${retarget_config}
-            # 3. Stage the gltf2ozz output into the final name.
+            # 4. Stage the gltf2ozz output into the final name.
             #    gltf2ozz names output by the animation's internal name
             #    (mixamo.com.ozz for Mixamo, Scene.ozz for Blender-
             #    re-exports). stage_baked_ozz.py globs for whatever
@@ -453,10 +514,11 @@ if(attack_fbx_files AND EXISTS ${fbx2gltf_exe})
                 ${fbx}
                 gltf2ozz
                 ${retarget_config}
-                # The retarget config refers to X Bot's skeleton.ozz —
+                ${CMAKE_CURRENT_SOURCE_DIR}/scripts/normalize_glb_scale.py
+                # The retarget config refers to the humanoid skeleton.ozz —
                 # it must exist before gltf2ozz reads it.
-                ${xbot_out_dir}/skeleton.ozz
-            COMMENT "Converting ${clip_name}.fbx → ${clip_name}.ozz (retargeted to X Bot)"
+                ${humanoid_out_dir}/skeleton.ozz
+            COMMENT "Converting ${clip_name}.fbx → ${clip_name}.ozz (retargeted to humanoid)"
             VERBATIM
         )
         list(APPEND attack_ozz_files ${clip_final_ozz})
@@ -476,13 +538,13 @@ endif()
 
 # ---------------------------------------------------------------------------
 # Larva clip bake. Larvae are Hell-side contrapasso-shaped human souls
-# per [[universal-humanoid-enemy-rule]] -- they reuse the X_Bot
-# skeleton, so this pipeline mirrors the X_Bot pack bake above but
+# per [[universal-humanoid-enemy-rule]] -- they reuse the humanoid
+# skeleton, so this pipeline mirrors the humanoid pack bake above but
 # globs a separate source root and deploys to a separate output dir.
 # Source: assets/characters/larva/source/ (Mixamo Scary Zombie Pack +
-# any future larva-specific clips). Same retarget_config (X_Bot
+# any future larva-specific clips). Same retarget_config (humanoid
 # skeleton.ozz, skeleton import disabled) -- Mixamo zombie clips are
-# bound to the standard Mixamo skeleton X_Bot uses, so retargeting
+# bound to the standard Mixamo skeleton the humanoid uses, so retargeting
 # Just Works. Output: bin/selva-oscura/assets/characters/larva/*.ozz.
 # ---------------------------------------------------------------------------
 set(larva_dir ${CMAKE_CURRENT_SOURCE_DIR}/assets/characters/larva)
@@ -493,8 +555,8 @@ file(GLOB_RECURSE larva_fbx_files
     "${larva_dir}/source/*.fbx"
 )
 # Skip the Mixamo rig FBX shipped with the Scary Zombie Pack -- it's
-# a T-pose source, not a clip. Same exclusion the X_Bot bake uses
-# above. Matches "X Bot.fbx", "X_Bot.fbx", "x bot.fbx", etc.
+# a T-pose source, not a clip. Matches "X Bot.fbx", "X_Bot.fbx",
+# "x bot.fbx", etc. (legacy filenames from the original pack contents).
 list(FILTER larva_fbx_files EXCLUDE REGEX ".*[Xx][ _][Bb]ot\\.fbx$")
 # Only run the larva bake when FBX2glTF is available. On CI (Linux
 # without the gitignored FBX2glTF.exe), the bake is skipped and the
@@ -513,6 +575,11 @@ if(larva_fbx_files AND EXISTS ${fbx2gltf_exe})
                 --keep-attribute auto
                 -i ${fbx}
                 -o ${clip_temp_dir}/${clip_name}
+            # Normalize glb scale (same fix as the humanoid pack -- see
+            # comment there for the full story).
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/scripts/normalize_glb_scale.py
+                --inplace ${clip_glb}
             COMMAND ${CMAKE_COMMAND} -E chdir ${clip_temp_dir}
                 $<TARGET_FILE:gltf2ozz>
                 --file=${clip_glb}
@@ -525,8 +592,9 @@ if(larva_fbx_files AND EXISTS ${fbx2gltf_exe})
                 ${fbx}
                 gltf2ozz
                 ${retarget_config}
-                ${xbot_out_dir}/skeleton.ozz
-            COMMENT "Converting ${clip_name}.fbx → larva/${clip_name}.ozz (retargeted to X Bot)"
+                ${CMAKE_CURRENT_SOURCE_DIR}/scripts/normalize_glb_scale.py
+                ${humanoid_out_dir}/skeleton.ozz
+            COMMENT "Converting ${clip_name}.fbx → larva/${clip_name}.ozz (retargeted to humanoid)"
             VERBATIM
         )
         list(APPEND larva_ozz_files ${clip_final_ozz})
@@ -546,7 +614,7 @@ endif()
 # When a clip exists in BOTH archive AND source/, the FBX is now the
 # source of truth -- skip the stale archive copy. Otherwise CMake
 # errors on a duplicate custom-command output.
-set(archive_dir ${xbot_dir}/baked-archive)
+set(archive_dir ${humanoid_dir}/baked-archive)
 if(EXISTS ${archive_dir})
     # Build the set of clip names that the source-FBX bake will produce.
     set(baked_clip_names "")
@@ -563,10 +631,10 @@ if(EXISTS ${archive_dir})
         if(stem IN_LIST baked_clip_names)
             continue()
         endif()
-        set(dst ${xbot_out_dir}/${name})
+        set(dst ${humanoid_out_dir}/${name})
         add_custom_command(
             OUTPUT ${dst}
-            COMMAND ${CMAKE_COMMAND} -E make_directory ${xbot_out_dir}
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${humanoid_out_dir}
             COMMAND ${CMAKE_COMMAND} -E copy_if_different ${src} ${dst}
             DEPENDS ${src}
             COMMENT "Staging archived clip ${name}"
@@ -632,8 +700,8 @@ add_test(
     COMMAND selva-oscura-tests
     WORKING_DIRECTORY $<TARGET_FILE_DIR:selva-oscura-tests>
 )
-if(TARGET selva-oscura-convert-xbot)
-    add_dependencies(selva-oscura-tests selva-oscura-convert-xbot)
+if(TARGET selva-oscura-convert-humanoid)
+    add_dependencies(selva-oscura-tests selva-oscura-convert-humanoid)
 endif()
 if(TARGET selva-oscura-convert-attacks)
     add_dependencies(selva-oscura-tests selva-oscura-convert-attacks)

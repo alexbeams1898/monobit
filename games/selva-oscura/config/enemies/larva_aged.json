@@ -1,5 +1,5 @@
 {
-  "_comment": "Soul larva, aged state. Per project_soul_larvae_cosmology: judged soul that has been stalled at Acheron shore long enough for the unfired imprint to have begun discharging inward, hollowing the soul out. Hostile -- aggression is the imprint seeking outlet on any moving substrate. Lunges at the Vagrant on sight, dies in 1-2 hits, drops more sangue than fresh. Visual differentiation: sangue-darkened texture, more deformed mesh (TBD), lurching run+bite clips. Mesh + rig shared with X_Bot per universal-humanoid-enemy-rule. Every clip family explicitly overridden to a zombie clip; silent fallback to X_Bot defaults would surface X_Bot humanoid combat clips during Combat states.",
+  "_comment": "Soul larva, aged state. Per project_soul_larvae_cosmology: judged soul that has been stalled at Acheron shore long enough for the unfired imprint to have begun discharging inward, hollowing the soul out. Hostile -- aggression is the imprint seeking outlet on any moving substrate. Lunges at the Vagrant on sight, dies in 1-2 hits, drops more sangue than fresh. Visual differentiation: sangue-darkened texture, more deformed mesh (TBD), lurching run+bite clips. Mesh + rig shared with the humanoid per universal-humanoid-enemy-rule. Every clip family explicitly overridden to a zombie clip; silent fallback to humanoid defaults would surface human combat clips during Combat states.",
   "id": "larva_aged",
   "form": "DamnedSoul",
   "faction": "Hostile",
@@ -17,7 +17,7 @@
   "run_clip": "zombie_run",
   "death_clip": "zombie_death",
   "knockdown_clip": "zombie_dying",
-  "_comment_physical_reactions": "Flinch + hit_react clips left at humanoid defaults (X_Bot flinch_*, hit_react_*). These are physical reactions to external force, not expressions of contrapasso state -- a sword hit causes a sword-hit reaction regardless of which contrapasso-shaped soul receives it. Overriding to zombie_scream made the larva scream on every hit, which read as fatigued rather than menacing.",
+  "_comment_physical_reactions": "Flinch + hit_react clips left at humanoid defaults (flinch_*, hit_react_*). These are physical reactions to external force, not expressions of contrapasso state -- a sword hit causes a sword-hit reaction regardless of which contrapasso-shaped soul receives it. Overriding to zombie_scream made the larva scream on every hit, which read as fatigued rather than menacing.",
   "aggro_clip": "zombie_scream",
   "_comment_aggro": "zombie_scream fires once on Suspicious -> Alerted (Souls Hollow-wake convention). Movement-locked for full duration; chase begins after. Cosmologically: the inward-firing imprint finds outlet at the moment of sighting.",
   "vision_fov_degrees": 120.0,

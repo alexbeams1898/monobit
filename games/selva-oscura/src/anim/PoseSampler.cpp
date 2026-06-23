@@ -697,9 +697,9 @@ PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh
 }
 
 // Backward-compat overload: defaults to the PLAYER's joint map (every
-// existing call site is player or a humanoid shade sharing the X_Bot
-// rig). New non-humanoid actors should call the 3-arg version
-// explicitly with their own joint map.
+// existing call site is player or a humanoid shade sharing the
+// humanoid rig). New non-humanoid actors should call the 3-arg
+// version explicitly with their own joint map.
 PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh)
 {
     return createPoseSampler(skeleton, mesh, jointMapByKey(std::string(kPlayerSkeletonKey)));

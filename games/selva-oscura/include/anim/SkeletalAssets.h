@@ -12,7 +12,7 @@ class PoseSampler;
 class LocomotionConfig;
 class AnimationClip;
 
-// Player skeleton id ("player" → the X_Bot rig). All existing actors
+// Player skeleton id ("player" → the humanoid rig). All existing actors
 // (player + every shade) share this rig today. Wolf adds key "wolf".
 // Future custom rigs add their own keys.
 constexpr const char* kPlayerSkeletonKey = "player";

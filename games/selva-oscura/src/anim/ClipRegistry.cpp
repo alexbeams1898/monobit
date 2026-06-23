@@ -34,6 +34,13 @@ int ClipRegistry::loadDirectory(const std::string& dir)
             std::fprintf(stderr, "[anim] ClipRegistry: failed to load %s\n", path.string().c_str());
             continue;
         }
+        // Diagnostic: log every clip's track count so a mismatched
+        // skeleton clip (e.g. 65 vs 57 after a mesh swap) is named
+        // up-front instead of identified by mystery pointer at
+        // sample-time assertion.
+        std::fprintf(stderr, "[anim] loaded '%s' tracks=%d duration=%.3f\n", stem.c_str(),
+                     clip.trackCount(), static_cast<double>(clip.duration()));
+        std::fflush(stderr);
         by_name.emplace(stem, std::move(clip));
         ++loaded;
     }

@@ -64,7 +64,7 @@ constexpr const char* kFootRightJointName = "mixamorig:RightFoot";
 // stride crosses this fine.
 constexpr float kMinPlantDescent = 0.35f; // m/s; below = noise floor
 // Maximum model-space foot Y at which a zero-crossing counts as a
-// plant. X_Bot's foot bone rests ~0.085m above hip-relative ground
+// plant. The humanoid's foot bone rests ~0.085m above hip-relative ground
 // across walk/jog/sprint authored clips, with ~1cm of micro-variation
 // per plant. Any vy zero-crossing significantly above that height is
 // a mid-trajectory local minimum, not a floor-touching plant.

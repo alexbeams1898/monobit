@@ -197,7 +197,7 @@ The two are the same insight at different layers:
 - This distortion-spectrum maps directly onto how much bespoke art
   spend each tier deserves.
 
-**Rig-reusable population (X_Bot humanoid rig + mesh/texture
+**Rig-reusable population (the humanoid rig + mesh/texture
 customization):**
 - All damned souls in their circles — Limbo's pale shades, Lust's
   wind-blown, etc. The trash combat population.
@@ -233,7 +233,7 @@ the full game.
 Per setting.md *Restoration*, when the Vagrant kills the corrupt
 keeper at a seat, the role re-installs into the Beatrice-prepared
 NPC at that circle — and that NPC is a soul (human-form,
-X_Bot-compatible). So even though the player fights a bespoke-mesh
+humanoid-rig-compatible). So even though the player fights a bespoke-mesh
 corrupt keeper as a boss, the AFTER state (the restored keeper in
 the post-victory world) can ride the standard humanoid rig with
 appropriate wounded-keeper detailing.
@@ -271,7 +271,7 @@ of when to spend bespoke art budget. They're the same insight.
 - [creatures.md](creatures.md) — Wood-animals are biology not
   infernal-creatures
 - Memory: [[project_universal_humanoid_enemy_rule]] — engine-side
-  rule that all Hell-side combat enemies use X_Bot rig; this doc
+  rule that all Hell-side combat enemies use the humanoid rig; this doc
   surfaces the theological reasoning behind it
 - Memory: [[project_contrapasso_shaped_soul_doctrine]] — every
   Hell-side combat being is a contrapasso-shaped human soul or

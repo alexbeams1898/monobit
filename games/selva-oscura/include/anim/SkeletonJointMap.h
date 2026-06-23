@@ -19,7 +19,7 @@ struct LockOnPointDecl
 };
 
 // Per-skeleton named joint references. Decouples PoseSampler from
-// Mixamo conventions: any skeleton (X_Bot, wolf, custom quadruped,
+// Mixamo conventions: any skeleton (humanoid, wolf, custom quadruped,
 // custom four-armed monstrosity) provides its own joint-name map
 // in config/skeletons/<id>.json. PoseSampler looks up by SEMANTIC
 // role (hips, foot_left, etc.) and the map translates to the

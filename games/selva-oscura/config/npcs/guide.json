@@ -4,7 +4,7 @@
   "display_name_key": "interact.npc.guide.display_name",
   "topics": [
     {
-      "_comment": "Beat-3 opening: greeting + Lupa lore + name-elicit. Gated on lupa_felled (post-fight) and !name_given (Vagrant has no name yet). Fires once; on completion the Guide opens the name-prompt modal. The name-prompt's commit (NamePromptScreen::commit) chains DIRECTLY into the class picker -- naming + class-pick are ONE character-creation sequence, no re-engagement of the Guide between them. There is no separate 'offer-Signing' dialog beat; the picker's own header text IS the Signing-offer framing. After the picker commits, ClassPickerScreen calls SaveManager::finalizeUnnamedCharacter and post_signing_first_words becomes the next eligible topic when the player re-engages the Guide.",
+      "_comment": "Beat-3 opening: greeting + Lupa lore. Gated on lupa_felled (post-fight) and !signing_committed (Signing not yet finalized). Fires once; on completion the Guide opens the class picker (name was already given on CharacterCreationScreen pre-Playing). After the picker commits signing_committed, post_signing_first_words becomes the next eligible topic when the player re-engages the Guide.",
       "id": "first_meeting",
       "entry_point": true,
       "speaker": "guide",
@@ -28,9 +28,9 @@
     {
       "id": "first_meeting_c",
       "speaker": "guide",
-      "line": "(TODO author: Guide asks 'what shall I call thee' AND offers the Signing in the same beat -- the name-elicit IS the Signing-offer; one continuous moment of being marked by him. The next Continue. opens the name-prompt modal, which chains directly into the class picker on commit. NO separate offer-Signing beat between them.)",
+      "line": "(TODO author: Guide offers the Signing -- one continuous moment of being marked by him. The next Continue. opens the class picker directly. NO separate offer-Signing beat between them.)",
       "choices": [
-        { "id": "continue", "label": "Continue.", "next_topic": "__end__", "on_select": "guide_open_name_prompt" }
+        { "id": "continue", "label": "Continue.", "next_topic": "__end__", "on_select": "guide_open_picker" }
       ]
     },
 

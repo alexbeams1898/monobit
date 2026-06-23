@@ -257,7 +257,7 @@ struct EnemyArchetype
     // until a tree-specific behavior demands its own builder.
     std::string tree_id = "humanoid_basic";
     // Skeleton key (matches SkeletalAssets registry: "player" for
-    // humanoids reusing the X_Bot rig; "wolf" / etc. for distinct
+    // humanoids reusing the humanoid rig; "wolf" / etc. for distinct
     // skeletons). Default "player" preserves today's behavior --
     // every existing humanoid shade reuses the player rig.
     std::string skeleton_id = "player";
@@ -275,8 +275,8 @@ struct EnemyArchetype
     // the actor as it does for the player.
     std::string appearance_path;
 
-    // Per-archetype clip names. Empty = humanoid default (the X_Bot
-    // mixamo names). Wolf overrides every entry. Read EXCLUSIVELY via
+    // Per-archetype clip names. Empty = humanoid default (the standard
+    // Mixamo names). Wolf overrides every entry. Read EXCLUSIVELY via
     // lookupArchetypeClip in Enemies.cpp so the per-skeleton registry
     // is always honored -- the wolf's sampler must never receive a
     // player clip (skel.num_joints != anim.num_tracks -> ozz garbage

@@ -1,5 +1,5 @@
 {
-  "_comment": "Player (X_Bot) hurtbox layout. Mirrors the previously-hardcoded 9 capsules in ActorVolumes.cpp::appendActorHurtboxes. Each radius is a scale factor multiplied by Body.collider_radius (player default 0.35m). damage_multiplier defaults 1.0; head gets 1.5x. Enemies share this layout today via the same data path (limbo_shade archetype loads its own from its archetype JSON; same numbers).",
+  "_comment": "Player (humanoid) hurtbox layout. Mirrors the previously-hardcoded 9 capsules in ActorVolumes.cpp::appendActorHurtboxes. Each radius is a scale factor multiplied by Body.collider_radius (player default 0.35m). damage_multiplier defaults 1.0; head gets 1.5x. Enemies share this layout today via the same data path (limbo_shade archetype loads its own from its archetype JSON; same numbers).",
   "hurtboxes": [
     {
       "_comment": "Torso: hips to neck. Largest hurtbox.",

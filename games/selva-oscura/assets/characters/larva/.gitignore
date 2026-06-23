@@ -7,3 +7,12 @@
 # Locally, the CMake bake regenerates them from FBX when present.
 # Negate the repo-root *.ozz rule for everything in this directory.
 !*.ozz
+
+# Old-rig backups + workflow markers from the MB-Lab humanoid swap
+# (2026-06-18). Disk-only, never committed -- kept locally in case
+# we ever want to A/B compare against the pre-MB-Lab versions.
+*.PRE_MBLAB_REDOWNLOAD
+*.PRE_MBLAB_BACKUP
+*.NOT_YET_REDOWNLOADED
+*.NOT_A_CLIP
+*.audit.json

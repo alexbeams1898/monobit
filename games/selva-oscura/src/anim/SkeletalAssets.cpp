@@ -199,40 +199,41 @@ const AnimationClip* runClip()
 
 bool initSkeletalAssets()
 {
-    // PLAYER (X_Bot) bundle is required; non-player bundles are
+    // Player humanoid bundle is required; non-player bundles are
     // optional (their archetype JSONs declare what to load, and
     // missing bundles are caught at spawn).
-    if (!loadBundle(std::string(kPlayerSkeletonKey), "X_Bot.glb"))
+    if (!loadBundle(std::string(kPlayerSkeletonKey), "humanoid.glb"))
     {
-        // Backward-compat: the existing on-disk layout puts the
-        // player rig at assets/characters/x_bot/, not /player/.
-        // Try that path before failing. Load IN PLACE into the
-        // already-allocated player slot (see playerBundleLazy).
+        // Backward-compat: the on-disk layout puts the player rig at
+        // assets/characters/humanoid/, not /player/. Try that path
+        // before failing. Load IN PLACE into the already-allocated
+        // player slot (see playerBundleLazy).
         auto& slot = sBundles()[std::string(kPlayerSkeletonKey)];
         if (!slot)
             slot = std::make_unique<SkeletonBundle>();
         SkeletonBundle& bundle = *slot;
-        bundle.skeleton = loadSkeleton("assets/characters/x_bot/skeleton.ozz");
+        bundle.skeleton = loadSkeleton("assets/characters/humanoid/skeleton.ozz");
         if (!bundle.skeleton.isLoaded())
         {
             std::fprintf(stderr, "[anim] player skeleton.ozz missing -- character disabled\n");
             return false;
         }
-        const int n = bundle.clips.loadDirectory("assets/characters/x_bot");
-        std::fprintf(stderr, "[anim] loaded %d clip(s) from assets/characters/x_bot\n", n);
+        const int n = bundle.clips.loadDirectory("assets/characters/humanoid");
+        std::fprintf(stderr, "[anim] loaded %d clip(s) from assets/characters/humanoid\n", n);
         // Larva clips (Scary Zombie Pack) are retargeted against the
-        // X_Bot skeleton at bake time, so they live in the X_Bot bundle's
-        // ClipRegistry. Larva archetypes reference "zombie_walk" / etc.
-        // by name and lookupArchetypeClip resolves them through this
-        // shared registry. Per [[universal-humanoid-enemy-rule]] every
-        // Hell-side enemy reuses the X_Bot skeleton; the rig is shared,
-        // clips are namespaced by name only.
+        // humanoid skeleton at bake time, so they live in the
+        // humanoid bundle's ClipRegistry. Larva archetypes reference
+        // "zombie_walk" / etc. by name and lookupArchetypeClip
+        // resolves them through this shared registry. Per
+        // [[universal-humanoid-enemy-rule]] every Hell-side enemy
+        // reuses the humanoid skeleton; the rig is shared, clips
+        // are namespaced by name only.
         const int n_larva = bundle.clips.loadDirectory("assets/characters/larva");
         std::fprintf(stderr, "[anim] loaded %d clip(s) from assets/characters/larva\n", n_larva);
-        bundle.mesh = loadSkeletalMesh("assets/characters/x_bot/X_Bot.glb", bundle.skeleton);
+        bundle.mesh = loadSkeletalMesh("assets/characters/humanoid/humanoid.glb", bundle.skeleton);
         if (!bundle.mesh.isLoaded())
         {
-            std::fprintf(stderr, "[anim] X_Bot.glb failed to load -- character disabled\n");
+            std::fprintf(stderr, "[anim] humanoid.glb failed to load -- character disabled\n");
             return false;
         }
     }
@@ -251,7 +252,7 @@ bool initSkeletalAssets()
         return false;
 
     // Try to load any non-player skeletons named in the manifest.
-    // assets/characters/<id>/ subdirs OTHER than x_bot/player are
+    // assets/characters/<id>/ subdirs OTHER than humanoid/player are
     // candidate bundles. For v1 we hardcode the wolf attempt
     // (Phase B asset drop); when more skeletons land, generalize
     // to a config/skeletons/manifest.json listing.

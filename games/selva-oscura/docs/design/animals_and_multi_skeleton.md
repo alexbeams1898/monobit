@@ -98,7 +98,7 @@ findings from
   — wolf, lion, snow leopard in realistic style, ~$15–30 each.
 
 **Style register.** Quaternius is flat-shaded stylized low-poly;
-X_Bot is mid-detail semi-realistic. There's visible mismatch when
+the humanoid rig is mid-detail semi-realistic. There's visible mismatch when
 they share a shot. Per the choice during scoping: performance > style
 coherence for now, so Lupa ships stylized. Long-term the Selva tonal
 register (solemn, period-Italian, Commedia voice) leans
@@ -117,7 +117,7 @@ options are no longer relevant.
 
 ## Engine refactor map
 
-The current pipeline assumes one skeleton (X_Bot, Mixamo conventions)
+The current pipeline assumes one skeleton (humanoid, Mixamo conventions)
 and one mesh. Per the
 [skeleton-pipeline-requirements workflow](../../../../.claude/projects/c--Users-alexb-Projects-monobit/9e927aca-1c34-4405-b011-b5861ef20519/tasks/w5668r96r.output)
 + the
@@ -133,7 +133,7 @@ Lupa forces the following changes:
   [`Actor.cpp:261`](../../src/gameplay/Actor.cpp)).
 - Required: promote to
   `std::unordered_map<std::string, Skeleton/SkeletalMesh/ClipRegistry>`
-  keyed by skeleton id. Player gets key `"player"` (or `"x_bot"`);
+  keyed by skeleton id. Player gets key `"player"` (or `"humanoid"`);
   lupa gets `"wolf"`. `initSkeletalAssets` iterates a manifest of
   `{id, skeleton_path, mesh_path, clip_dir}` and loads each.
 
@@ -179,11 +179,11 @@ Lupa forces the following changes:
 
 - Today: one
   [`selva-oscura-convert-attacks`](../../CMakeLists.txt) target uses
-  one retarget config pointing at `x_bot/skeleton.ozz`. Funnels every
+  one retarget config pointing at `humanoid/skeleton.ozz`. Funnels every
   FBX in `source/` through Mixamo-shape assumptions.
-- Required: parameterize the X_Bot block into a function
+- Required: parameterize the humanoid block into a function
   `_selva_register_skeleton(id, fbx_dir, ...)` instantiated twice —
-  once for X_Bot, once for the wolf. Wolf FBXs go in
+  once for the humanoid, once for the wolf. Wolf FBXs go in
   `assets/characters/wolf/source/`, retarget against
   `assets/characters/wolf/skeleton.ozz`, output to
   `assets/characters/wolf/<clip_name>.ozz`. Both targets feed

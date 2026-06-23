@@ -231,7 +231,7 @@ void initActorPoolsForArchetype(Actor& a)
 //     death" cosmology, future intact NPCs).
 //   * Archetype's own list non-empty -> use it.
 //   * Archetype list empty -> inherit player's hurtboxes (humanoid
-//     shades sharing the X_Bot skeleton).
+//     shades sharing the humanoid skeleton).
 void applyArchetypeHurtboxes(Actor& a)
 {
     if (a.archetype != nullptr && a.archetype->disable_hurtboxes)

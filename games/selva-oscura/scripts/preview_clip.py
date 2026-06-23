@@ -20,8 +20,8 @@ Usage:
 
 Default discovery roots:
   1. build/selva-oscura-attacks/<name>/<name>.glb       (built clips)
-  2. games/selva-oscura/assets/characters/x_bot/        (mesh + ozz dir)
-  3. games/selva-oscura/assets/characters/x_bot/source/<pack>/
+  2. games/selva-oscura/assets/characters/humanoid/     (mesh + ozz dir)
+  3. games/selva-oscura/assets/characters/humanoid/source/<pack>/
                                                         (raw Mixamo .fbx —
                                                         every pack subdir is
                                                         scanned automatically)
@@ -47,13 +47,13 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ATTACKS_BUILD_DIR = REPO_ROOT / "build" / "selva-oscura-attacks"
 LARVA_BUILD_DIR = REPO_ROOT / "build" / "selva-oscura-larva"
-XBOT_ASSETS_DIR = (
-    REPO_ROOT / "games" / "selva-oscura" / "assets" / "characters" / "x_bot"
+HUMANOID_ASSETS_DIR = (
+    REPO_ROOT / "games" / "selva-oscura" / "assets" / "characters" / "humanoid"
 )
 LARVA_ASSETS_DIR = (
     REPO_ROOT / "games" / "selva-oscura" / "assets" / "characters" / "larva"
 )
-PACKS_ROOT = XBOT_ASSETS_DIR / "source"
+PACKS_ROOT = HUMANOID_ASSETS_DIR / "source"
 LARVA_PACKS_ROOT = LARVA_ASSETS_DIR / "source"
 # Non-humanoid character roots. Each contains its own bundled .glb
 # (mesh + every animation track in one file). Three.js GLTFLoader
@@ -76,7 +76,7 @@ def discover(extra_scan_dirs: list[Path]) -> list[dict]:
 
     `id` is what /clip?name=<id> consumes. We use the sanitized stem so
     multiple sources sharing a name don't collide; later sources in the
-    list shadow earlier ones (preference: built > xbot > pack > extra).
+    list shadow earlier ones (preference: built > humanoid > pack > extra).
     """
     found: list[dict] = []
     seen_ids: set[str] = set()
@@ -114,9 +114,10 @@ def discover(extra_scan_dirs: list[Path]) -> list[dict]:
                 if glb.exists():
                     add(glb, "Built clips")
 
-    # Larva-archetype built clips (Scary Zombie Pack retargeted to X_Bot).
-    # Mirrors the X_Bot built-clips pass above but globs the per-larva
-    # CMake temp dir. See [[project_soul_larvae_cosmology]].
+    # Larva-archetype built clips (Scary Zombie Pack retargeted to
+    # the humanoid skeleton). Mirrors the humanoid built-clips pass
+    # above but globs the per-larva CMake temp dir. See
+    # [[project_soul_larvae_cosmology]].
     if LARVA_BUILD_DIR.is_dir():
         for sub in sorted(LARVA_BUILD_DIR.iterdir()):
             if sub.is_dir():
@@ -124,9 +125,9 @@ def discover(extra_scan_dirs: list[Path]) -> list[dict]:
                 if glb.exists():
                     add(glb, "Built clips (larva)")
 
-    if XBOT_ASSETS_DIR.is_dir():
-        for p in sorted(XBOT_ASSETS_DIR.glob("*.glb")):
-            add(p, "X Bot assets")
+    if HUMANOID_ASSETS_DIR.is_dir():
+        for p in sorted(HUMANOID_ASSETS_DIR.glob("*.glb")):
+            add(p, "Humanoid assets")
 
     # Non-humanoid characters. Each ships its mesh + every animation
     # track inside one .glb (Blender's default export shape). The
@@ -143,11 +144,13 @@ def discover(extra_scan_dirs: list[Path]) -> list[dict]:
     # picker has a clean Pro Sword and Shield Pack vs Action Adventure
     # Pack split. Loose .fbx at the top of source/ (Stand To Roll,
     # Standard Idle, etc.) get a "FBX source (loose)" group. The
-    # bound-character `X Bot.fbx` shipped inside each pack is filtered
-    # out — it's the mesh, not a clip, and we already have it via the
-    # X_Bot.glb conversion above.
+    # bound-character mesh FBX shipped inside each pack (legacy "X Bot.fbx"
+    # filenames from Mixamo packs, or the current humanoid.fbx) is
+    # filtered out — it's the mesh, not a clip, and we already have it
+    # via the humanoid.glb conversion above.
     def _is_bot_mesh(stem: str) -> bool:
-        return re.fullmatch(r"x[ _]?bot", stem.lower()) is not None
+        s = stem.lower()
+        return re.fullmatch(r"x[ _]?bot", s) is not None or s == "humanoid"
 
     if PACKS_ROOT.is_dir():
         for p in sorted(PACKS_ROOT.glob("*.fbx")):
@@ -169,7 +172,7 @@ def discover(extra_scan_dirs: list[Path]) -> list[dict]:
                     add(p, f"FBX source ({p.parent.name})")
 
     # Larva FBX source packs (e.g. Scary Zombie Pack). Same shape as the
-    # X_Bot packs above; the larva archetype's FBX sources live under
+    # humanoid packs above; the larva archetype's FBX sources live under
     # assets/characters/larva/source/.
     if LARVA_PACKS_ROOT.is_dir():
         for p in sorted(LARVA_PACKS_ROOT.glob("*.fbx")):

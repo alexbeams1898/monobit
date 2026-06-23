@@ -125,7 +125,7 @@ struct Stats
 // holds the same humanoid defaults; tomorrow's class system layers
 // onto Stats, not Body.
 // Orientation of the body's collider capsule.
-//   Vertical -- capsule axis is world-Y. Standard humanoid (X_Bot,
+//   Vertical -- capsule axis is world-Y. Standard humanoid (player,
 //     limbo shades). collider_length is ignored; the capsule height
 //     is implicitly the actor's standing height.
 //   AlongYaw -- capsule axis is the actor's facing direction
@@ -560,7 +560,7 @@ struct Actor
     std::string spawn_region_id;
 
     // Skeleton key (matches SkeletalAssets registry: "player" for
-    // humanoids reusing the X_Bot rig; "wolf" / etc. for distinct
+    // humanoids reusing the humanoid rig; "wolf" / etc. for distinct
     // skeletons). Used by render + matrix-build call sites that need
     // the actor's mesh-specific foot_offset_y. Empty defaults to
     // "player" in selva::anim::meshByKey -- backward-compat for any

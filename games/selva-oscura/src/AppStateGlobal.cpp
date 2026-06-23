@@ -67,9 +67,14 @@ PlayerProfile* activePlayerProfile()
 
 std::string activeCharacterDisplayName()
 {
+    // Post-CharacterCreationScreen: every committed PlayerProfile
+    // has a non-empty name (the screen's confirm button is gated on
+    // trimmed-non-empty). An empty active_character here means the
+    // active profile is the in-flight creation placeholder, which
+    // is a pre-Playing state and shouldn't reach the Vessel HUD.
     const std::string& name = gameState().active_character;
     if (name.empty())
-        return "???";
+        return "(unnamed)";
     return name;
 }
 

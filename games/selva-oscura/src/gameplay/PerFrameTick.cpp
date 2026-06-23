@@ -78,7 +78,6 @@
 #include "ui/CharacterPreview.h"
 #include "ui/ClassPickerScreen.h"
 #include "ui/ComboHud.h"
-#include "ui/NamePromptScreen.h"
 #include "ui/Notifications.h"
 #include "world/Collision.h"
 #include "world/Door.h"
@@ -4294,7 +4293,7 @@ void renderTreePreviewControls()
     ImGui::End();
 }
 
-// Draw player + enemies. All actors share the X_Bot rig (figura umana
+// Draw player + enemies. All actors share the humanoid rig (figura umana
 // canon, see docs/design/bestiary.md); enemies tint differently so the
 // player can tell them apart while there's no material variation yet.
 // Yaw applies a +pi offset because the Mixamo bind pose faces +Z while
@@ -4341,11 +4340,6 @@ void drawPlayerSkeletal(const glm::mat4& viewProj)
     const float pfoot = selva::gameplay::actorFootOffsetY(sPlayer);
     const glm::mat4 player_model = selva::combat::buildActorModelMatrix(
         sPlayer.pos, sPlayer.yaw, pfoot, sPlayer.appearance.body_scale);
-    // Per-bone appearance deformation (head_scale, future limb
-    // axes). Mutates bone_palette in-place; visual-only -- hurtboxes
-    // already ran for this frame off the un-deformed palette. Safe
-    // to mutate because PoseSampler::update() refills the palette
-    // next frame from scratch.
     const std::string sk_id =
         sPlayer.skeleton_id.empty() ? std::string("player") : sPlayer.skeleton_id;
     selva::gameplay::applyAppearanceDeformation(sSampler, selva::anim::jointMapByKey(sk_id),
@@ -5193,8 +5187,7 @@ void resetWakeSceneTracking()
 static bool uiOverlayActive()
 {
     return selva::text::active() || selva::uiState().isScreenOpen() ||
-           tickstate::showTuningPanel() || selva::ui::classPickerActive() ||
-           selva::ui::namePromptActive();
+           tickstate::showTuningPanel() || selva::ui::classPickerActive();
 }
 
 bool gameplayLookSuppressed()

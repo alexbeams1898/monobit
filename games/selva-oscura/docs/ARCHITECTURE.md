@@ -80,15 +80,16 @@ games/selva-oscura/
 │   ├── loadout.json              player's equipped weapons
 │   ├── weapon_classes/*.json     animation chains per weapon type
 │   └── weapons/*.json            per-weapon stat sheets
-├── assets/characters/x_bot/
+├── assets/characters/humanoid/
 │   ├── source/                   Mixamo FBX (gitignored, locally authored)
-│   │   ├── rig/                  X_Bot.fbx (skeleton + mesh)
+│   │   ├── rig/                  humanoid.fbx (skeleton + mesh)
 │   │   ├── loco/                 idle, walking, running, run_to_stop
 │   │   ├── combat/sword/         attacks, blocks, idle, reposed
 │   │   ├── combat/unarmed/       jab, hook, combo, etc.
 │   │   └── dodge/                falling_to_roll, standing_dodge_backward, stand_to_roll
+│   ├── mblab_generated/          MB-Lab + Mixamo auto-rigger intermediates
 │   ├── baked-archive/            kept-but-FBX-less .ozz files (tracked)
-│   └── (build output: skeleton.ozz, X_Bot.glb, *.ozz clips)
+│   └── (build output: skeleton.ozz, humanoid.glb, *.ozz clips)
 ├── docs/
 │   ├── ARCHITECTURE.md           this doc
 │   ├── design/                   game-design canon (story, classes, etc.)
@@ -151,7 +152,7 @@ smoothly.
 All in `games/selva-oscura/include/anim/` and the matching `src/anim/`:
 
 - **`Skeleton`** — wraps `ozz::animation::Skeleton`. One per character
-  rig. Loaded from `skeleton.ozz`, which is baked from `X_Bot.fbx` via
+  rig. Loaded from `skeleton.ozz`, which is baked from `humanoid.fbx` via
   `gltf2ozz`.
 - **`AnimationClip`** — wraps a single `ozz::animation::Animation`.
   Holds duration + track count. Loaded from `*.ozz` files baked from
@@ -163,7 +164,7 @@ All in `games/selva-oscura/include/anim/` and the matching `src/anim/`:
   at world Y=0).
 - **`ClipRegistry`** — a name → `AnimationClip` map. `loadDirectory()`
   scans a folder for `.ozz` files and loads each. The runtime calls
-  this once at startup against `assets/characters/x_bot/`.
+  this once at startup against `assets/characters/humanoid/`.
 - **`PoseSampler`** — the heart of the system. Section 4.3.
 - **`SkeletalRenderer`** (`drawSkeletalMesh`) — issues a skinned draw
   call given a mesh, a model matrix, a view-projection, and a bone
@@ -174,14 +175,14 @@ All in `games/selva-oscura/include/anim/` and the matching `src/anim/`:
 Mixamo ships FBX. Ozz wants `.ozz`. The CMake build chain owns the
 conversion:
 
-1. **Rig**: `source/rig/X_Bot.fbx` → `X_Bot.glb` (FBX2glTF) →
+1. **Rig**: `source/rig/humanoid.fbx` → `humanoid.glb` (FBX2glTF) →
    `skeleton.ozz` (gltf2ozz with `import: enable=true`, no animations).
    This produces the canonical skeleton every clip retargets against.
-   Target: `selva-oscura-convert-xbot`.
+   Target: `selva-oscura-convert-humanoid`.
 2. **Per-clip animations**: each `*.fbx` under
    `source/{loco,combat,dodge}/` gets:
    - `FBX2glTF` → per-clip `.glb` in a temp dir
-   - `gltf2ozz` with a retarget config that says "use X_Bot's
+   - `gltf2ozz` with a retarget config that says "use the humanoid
      skeleton, don't import a new one, optimize, bake out root motion"
    - rename `mixamo.com.ozz` → `<sanitized_name>.ozz`
    Target: `selva-oscura-convert-attacks`. CMake uses `GLOB_RECURSE`
@@ -190,15 +191,15 @@ conversion:
 3. **Filename sanitization**: `_selva_sanitize_clip_name()` lowercases
    and replaces non-alphanumeric runs with underscores. `"sword and
    shield slash (2).fbx"` → `sword_and_shield_slash_2.ozz`.
-4. **Archived clips**: `assets/characters/x_bot/baked-archive/`
+4. **Archived clips**: `assets/characters/humanoid/baked-archive/`
    contains pre-baked `.ozz` files whose source FBX is no longer in
    the tree (kept for future use). `selva-oscura-stage-archive` copies
    them into the runtime output. The directory has a local
    `.gitignore` exception so the `*.ozz` rule in the repo-root
    `.gitignore` doesn't ignore them.
 
-The runtime sees a flat `build/bin/assets/characters/x_bot/` of
-`.ozz` files plus `skeleton.ozz` and `X_Bot.glb`. It doesn't know
+The runtime sees a flat `build/bin/assets/characters/humanoid/` of
+`.ozz` files plus `skeleton.ozz` and `humanoid.glb`. It doesn't know
 about the source layout.
 
 ### 4.3 PoseSampler: the dual-track blend
@@ -871,7 +872,7 @@ asset paths resolve:
   equipment and grip.
 
 Both depend on the asset-bake targets, so `selva-oscura-tests`
-implicitly requires `selva-oscura-convert-xbot` +
+implicitly requires `selva-oscura-convert-humanoid` +
 `selva-oscura-convert-attacks`.
 
 Systems that need an SDL window or GL context are tested by running

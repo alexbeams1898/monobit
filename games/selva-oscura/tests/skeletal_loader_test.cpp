@@ -10,7 +10,7 @@ using selva::anim::Skeleton;
 
 // These tests run from the test exe's working directory, which CMake sets
 // to ${CMAKE_RUNTIME_OUTPUT_DIRECTORY} (build/bin) by default for executable
-// targets. The .ozz files live at build/bin/assets/characters/x_bot/...
+// targets. The .ozz files live at build/bin/assets/characters/humanoid/...
 // because the gltf2ozz custom command writes them there at build time.
 //
 // If a test fails with "cannot open" or "not a skeleton archive", the most
@@ -20,9 +20,9 @@ using selva::anim::Skeleton;
 
 namespace
 {
-const char* kSkeletonPath = "assets/characters/x_bot/skeleton.ozz";
-const char* kIdlePath = "assets/characters/x_bot/sword_and_shield_idle.ozz";
-const char* kWalkPath = "assets/characters/x_bot/sword_and_shield_walk.ozz";
+const char* kSkeletonPath = "assets/characters/humanoid/skeleton.ozz";
+const char* kIdlePath = "assets/characters/humanoid/sword_and_shield_idle.ozz";
+const char* kWalkPath = "assets/characters/humanoid/sword_and_shield_walk.ozz";
 } // namespace
 
 TEST_CASE("Skeleton loads from X Bot skeleton.ozz", "[anim][skeleton][load]")

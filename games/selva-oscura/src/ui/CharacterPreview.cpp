@@ -35,7 +35,7 @@ namespace
 constexpr int kPreviewWidth = 400;
 constexpr int kPreviewHeight = 600;
 
-// Canonical Mixamo X_Bot bind-pose height in meters. Used to scale
+// Canonical humanoid bind-pose height in meters. Used to scale
 // the preview camera framing so the whole figure (feet to top of
 // head) fits in the viewport regardless of body_scale -- at 0.6x
 // the figure is ~1.1m and the camera tucks in, at 4.0x the figure

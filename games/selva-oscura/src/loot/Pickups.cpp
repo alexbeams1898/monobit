@@ -220,7 +220,7 @@ glm::vec3 livePickupPos(const Pickup& p)
     if (src == nullptr)
         return p.world_pos;
 
-    // Resolve the actor's hips joint each frame. The X_Bot rig + the
+    // Resolve the actor's hips joint each frame. The humanoid rig + the
     // wolf rig both declare a `hips` slot in their joint map; if for
     // some reason the lookup fails (no skeleton mapped, no hips slot,
     // joint index out of range) we fall back to the actor's world
