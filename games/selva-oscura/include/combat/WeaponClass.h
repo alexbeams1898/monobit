@@ -49,7 +49,7 @@ namespace selva::combat
 //   * `motion_joints`: which joint(s) to watch when auto-detecting.
 //     Empty = use the grip-default set (right hand for one-handed,
 //     both hands for two-handed) — see resolveAttackMotionEndTime in
-//     main.cpp. List specific joints (Mixamo names) to override.
+//     main.cpp. List specific joint names to override.
 //
 // `recovery_seconds` is unrelated to the cancel window — it gates how
 // long after the swing starts the chain auto-resets to step 0.
@@ -65,12 +65,13 @@ struct WeaponAttack
     // mouse only. Pressing the wrong button is a chain miss.
     std::string expected_button;
 
-    // Joint the hitbox is parented to while this attack swings. Mixamo
-    // bone name (e.g. "mixamorig:LeftHand"). Empty = fall back to the
-    // weapon's grip bone_right (the standard weapon hand). Set per-clip
-    // when the animation drives a non-default limb — e.g. unarmed jab
-    // animates the LEFT hand even though the dispatch hand is Right;
-    // a kick animates RightFoot; etc.
+    // Joint the hitbox is parented to while this attack swings. Bone
+    // name as it appears in the skeleton (e.g. "mixamorig:LeftHand").
+    // Empty = fall back to the weapon's grip bone_right (the standard
+    // weapon hand). Set per-clip when the animation drives a non-
+    // default limb — e.g. unarmed jab animates the LEFT hand even
+    // though the dispatch hand is Right; a kick animates RightFoot;
+    // etc.
     std::string hitbox_joint;
 
     // Hitbox shape. The capsule spans `hitbox_joint` (p0) to a point
@@ -93,9 +94,9 @@ struct WeaponAttack
     float poise_damage = 0.0f;
     // Override: if >= 0, force resolved_chain_link_start_seconds to
     // this value instead of motion_start - 0.05. Set to 0.0 for clips
-    // that have a Blender-authored bookend in their first ~5-10
-    // frames — we want the splice to enter at frame 0 so the bookend
-    // pose is what the player sees, not skipped past as windup.
+    // that have a hand-authored bookend in their first ~5-10 frames —
+    // we want the splice to enter at frame 0 so the bookend pose is
+    // what the player sees, not skipped past as windup.
     float chain_link_start_seconds = -1.0f;
 
     // Override: blend duration when entering THIS clip as a chain
@@ -190,7 +191,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(WeaponGripAnimSet, light, heavy,
 // Where the weapon mesh attaches when held in either hand. Same offsets
 // for both — different weapons sit differently in the hand, but a given
 // weapon's grip pose doesn't change between hands. Bone names follow
-// Mixamo convention (mixamorig:RightHand / mixamorig:LeftHand).
+// the skeleton's naming (e.g. mixamorig:RightHand / mixamorig:LeftHand
+// on the legacy rig).
 struct WeaponAttach
 {
     std::string bone_right = "mixamorig:RightHand";

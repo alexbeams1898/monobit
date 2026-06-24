@@ -149,9 +149,10 @@ struct Track
     const ozz::animation::Animation* animation = nullptr;
     // Registry key (e.g. "walking", "jogging", "unarmed_combat_idle")
     // for this track's bound animation. Used only by diagnostic logs;
-    // the Mixamo ozz Animation::name() is always "mixamo.com" so the
-    // registry key is the only human-meaningful identifier we have.
-    // Empty when no animation bound.
+    // the embedded ozz Animation::name() is typically a generic
+    // exporter string ("mixamo.com") so the registry key is the only
+    // human-meaningful identifier we have. Empty when no animation
+    // bound.
     std::string registry_key;
     ozz::animation::SamplingJob::Context context;
     std::vector<ozz::math::SoaTransform> local_transforms;
@@ -390,8 +391,8 @@ struct PoseSampler::Impl
     // pose-snap, not real motion.
     //
     // Hip joint index is cached at construction; a value of -1 means
-    // "no hip found, skip the freeze" (graceful fallback for non-Mixamo
-    // rigs).
+    // "no hip found, skip the freeze" (graceful fallback for skeletons
+    // whose joint map omits the hips slot).
     int hips_joint_idx = -1;
     ozz::math::SimdFloat4 hips_rest_translation =
         ozz::math::simd_float4::Load(0.0f, 0.0f, 0.0f, 0.0f);
@@ -702,7 +703,7 @@ PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh
 // version explicitly with their own joint map.
 PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh)
 {
-    return createPoseSampler(skeleton, mesh, jointMapByKey(std::string(kPlayerSkeletonKey)));
+    return createPoseSampler(skeleton, mesh, jointMapByKey(std::string(kHumanoidLegacyKey)));
 }
 
 void PoseSampler::setFootIK(GroundProbeFn probe, bool position_enabled, bool orient_enabled)
@@ -1847,9 +1848,9 @@ PoseSampler::FrameDiagnostics PoseSampler::frameDiagnostics() const
         return d;
     const Impl& s = *impl;
     // Prefer the registry key (e.g. "walking") over ozz Animation
-    // name (always "mixamo.com" for Mixamo clips). Empty key falls
-    // back to ozz name so partially-instrumented call sites still
-    // produce something.
+    // name (typically the generic exporter string "mixamo.com").
+    // Empty key falls back to ozz name so partially-instrumented call
+    // sites still produce something.
     d.loco_current_name =
         !s.loco_current.registry_key.empty()
             ? s.loco_current.registry_key.c_str()
@@ -1887,7 +1888,7 @@ namespace
 // further down. Needed by handleLocoClipChange.
 float computeHipXZPathLength(const PoseSampler::Impl& s, const ozz::animation::Animation* anim);
 
-// Find joint by Mixamo name in the skeleton.
+// Find joint by name in the skeleton.
 int findSkeletonJoint(const ozz::animation::Skeleton& skel, const char* name)
 {
     for (int j = 0; j < skel.num_joints(); ++j)

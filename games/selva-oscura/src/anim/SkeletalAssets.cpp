@@ -22,11 +22,11 @@ namespace selva::anim
 namespace
 {
 
-// Per-skeleton bundle. The PLAYER bundle (key "player") always exists
-// after initSkeletalAssets; non-player bundles (key "wolf" etc.) are
-// loaded if their config + assets are present and skipped silently
-// otherwise (their archetypes log a "missing skeleton" warning at
-// spawn time, not at boot).
+// Per-skeleton bundle. The legacy humanoid bundle (key "humanoid_legacy")
+// always exists after initSkeletalAssets; non-humanoid bundles (key "wolf"
+// etc.) are loaded if their config + assets are present and skipped silently
+// otherwise (their archetypes log a "missing skeleton" warning at spawn
+// time, not at boot).
 struct SkeletonBundle
 {
     Skeleton skeleton;
@@ -81,7 +81,7 @@ LocomotionConfig& sLocomotionConfig()
 // unique_ptr), so the addresses TuningPanel captured stay valid.
 SkeletonBundle& playerBundleLazy()
 {
-    auto& slot = sBundles()[std::string(kPlayerSkeletonKey)];
+    auto& slot = sBundles()[std::string(kHumanoidLegacyKey)];
     if (!slot)
         slot = std::make_unique<SkeletonBundle>();
     return *slot;
@@ -138,17 +138,17 @@ bool loadBundle(const std::string& id, const std::string& mesh_filename)
 
 Skeleton& skeleton()
 {
-    return bundleOrFallback(std::string(kPlayerSkeletonKey)).skeleton;
+    return bundleOrFallback(std::string(kHumanoidLegacyKey)).skeleton;
 }
 
 SkeletalMesh& playerMesh()
 {
-    return bundleOrFallback(std::string(kPlayerSkeletonKey)).mesh;
+    return bundleOrFallback(std::string(kHumanoidLegacyKey)).mesh;
 }
 
 ClipRegistry& clips()
 {
-    return bundleOrFallback(std::string(kPlayerSkeletonKey)).clips;
+    return bundleOrFallback(std::string(kHumanoidLegacyKey)).clips;
 }
 
 Skeleton& skeletonByKey(const std::string& key)
@@ -199,43 +199,26 @@ const AnimationClip* runClip()
 
 bool initSkeletalAssets()
 {
-    // Player humanoid bundle is required; non-player bundles are
-    // optional (their archetype JSONs declare what to load, and
-    // missing bundles are caught at spawn).
-    if (!loadBundle(std::string(kPlayerSkeletonKey), "humanoid.glb"))
+    // Legacy humanoid bundle is required (every existing humanoid actor
+    // -- player, Guide, larvae -- shares it). Non-humanoid bundles are
+    // optional (their archetype JSONs declare what to load, and missing
+    // bundles are caught at spawn).
+    if (!loadBundle(std::string(kHumanoidLegacyKey), "humanoid.glb"))
     {
-        // Backward-compat: the on-disk layout puts the player rig at
-        // assets/characters/humanoid/, not /player/. Try that path
-        // before failing. Load IN PLACE into the already-allocated
-        // player slot (see playerBundleLazy).
-        auto& slot = sBundles()[std::string(kPlayerSkeletonKey)];
-        if (!slot)
-            slot = std::make_unique<SkeletonBundle>();
-        SkeletonBundle& bundle = *slot;
-        bundle.skeleton = loadSkeleton("assets/characters/humanoid/skeleton.ozz");
-        if (!bundle.skeleton.isLoaded())
-        {
-            std::fprintf(stderr, "[anim] player skeleton.ozz missing -- character disabled\n");
-            return false;
-        }
-        const int n = bundle.clips.loadDirectory("assets/characters/humanoid");
-        std::fprintf(stderr, "[anim] loaded %d clip(s) from assets/characters/humanoid\n", n);
-        // Larva clips (Scary Zombie Pack) are retargeted against the
-        // humanoid skeleton at bake time, so they live in the
-        // humanoid bundle's ClipRegistry. Larva archetypes reference
-        // "zombie_walk" / etc. by name and lookupArchetypeClip
-        // resolves them through this shared registry. Per
-        // [[universal-humanoid-enemy-rule]] every Hell-side enemy
-        // reuses the humanoid skeleton; the rig is shared, clips
-        // are namespaced by name only.
+        std::fprintf(stderr, "[anim] humanoid_legacy bundle missing -- character disabled\n");
+        return false;
+    }
+    // Larva clips (Scary Zombie Pack) are retargeted against the
+    // humanoid skeleton at bake time, so they live in the legacy
+    // humanoid bundle's ClipRegistry. Larva archetypes reference
+    // "zombie_walk" / etc. by name and lookupArchetypeClip resolves
+    // them through this shared registry. Per [[universal-humanoid-enemy-rule]]
+    // every Hell-side enemy reuses the humanoid skeleton; the rig is
+    // shared, clips are namespaced by name only.
+    {
+        SkeletonBundle& bundle = *sBundles()[std::string(kHumanoidLegacyKey)];
         const int n_larva = bundle.clips.loadDirectory("assets/characters/larva");
         std::fprintf(stderr, "[anim] loaded %d clip(s) from assets/characters/larva\n", n_larva);
-        bundle.mesh = loadSkeletalMesh("assets/characters/humanoid/humanoid.glb", bundle.skeleton);
-        if (!bundle.mesh.isLoaded())
-        {
-            std::fprintf(stderr, "[anim] humanoid.glb failed to load -- character disabled\n");
-            return false;
-        }
     }
     if (idleClip() == nullptr || !idleClip()->isLoaded())
     {
@@ -251,16 +234,17 @@ bool initSkeletalAssets()
     if (!initSkeletalRenderer())
         return false;
 
-    // Try to load any non-player skeletons named in the manifest.
-    // assets/characters/<id>/ subdirs OTHER than humanoid/player are
-    // candidate bundles. For v1 we hardcode the wolf attempt
-    // (Phase B asset drop); when more skeletons land, generalize
-    // to a config/skeletons/manifest.json listing.
+    // Best-effort load of additional skeletons. Missing assets log
+    // internally and don't fail boot -- archetypes referencing a
+    // missing key warn at spawn time. When more skeletons land,
+    // generalize to a config/skeletons/manifest.json listing.
     static const struct
     {
         const char* id;
         const char* mesh;
     } kExtraBundles[] = {
+        {"humanoid_male", "humanoid.glb"},
+        {"humanoid_female", "humanoid.glb"},
         {"wolf", "wolf.glb"},
     };
     for (const auto& b : kExtraBundles)

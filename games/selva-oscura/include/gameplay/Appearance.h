@@ -78,13 +78,13 @@ struct Appearance
     // 0.8 = short stocky legs.
     float leg_scale = 1.0f;
 
-    // Per-bone scale on the torso root (Mixamo Spine), applied
-    // recursively to its descendants -- which on the humanoid rig
-    // INCLUDES the neck/head and the shoulder/arm chains. That's
-    // correct anatomy: a broader torso naturally widens shoulders +
-    // raises the head. If you want torso-only (head + arms
-    // independent), set head_scale + arm_scale to compensate (same
-    // counter-scale doctrine head_scale uses against body).
+    // Per-bone scale on the torso root joint, applied recursively to
+    // its descendants -- which on the humanoid rig INCLUDES the
+    // neck/head and the shoulder/arm chains. That's correct anatomy:
+    // a broader torso naturally widens shoulders + raises the head.
+    // If you want torso-only (head + arms independent), set
+    // head_scale + arm_scale to compensate (same counter-scale
+    // doctrine head_scale uses against body).
     float torso_scale = 1.0f;
 };
 

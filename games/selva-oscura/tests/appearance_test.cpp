@@ -21,10 +21,10 @@ using selva::gameplay::hipDeltaVelocityContribution;
 TEST_CASE("hip-delta velocity scales linearly with body_scale",
           "[appearance][hip-delta][two-sides]")
 {
-    // Forward axis = -Z in actor-local space (Mixamo bind convention
-    // in this codebase). With yaw=0 the world-Z velocity should be
-    // POSITIVE for a forward step. The exact sign matters less than
-    // the linear scaling with body_scale.
+    // Forward axis = -Z in actor-local space (the codebase's bind
+    // convention). With yaw=0 the world-Z velocity should be POSITIVE
+    // for a forward step. The exact sign matters less than the linear
+    // scaling with body_scale.
     const glm::vec3 hip(0.0f, 0.0f, -0.1f);
     const float yaw = 0.0f;
     const float dt = 1.0f / 60.0f;

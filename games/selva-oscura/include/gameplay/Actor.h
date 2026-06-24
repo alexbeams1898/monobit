@@ -164,7 +164,7 @@ struct Body
     // to ~1.2m for the approximation.
     float collider_height = 1.8f;
     // Per-actor hurtbox layout. Authored per skeleton (player from
-    // config/skeletons/player_hurtboxes.json; enemies from their
+    // config/skeletons/humanoid_legacy_hurtboxes.json; enemies from their
     // archetype JSON's hurtboxes array). Empty = no hurtboxes
     // (actor takes no hits anywhere; intentional or
     // misconfiguration).
@@ -559,12 +559,12 @@ struct Actor
     // (the player has no domain restriction) and for non-region actors.
     std::string spawn_region_id;
 
-    // Skeleton key (matches SkeletalAssets registry: "player" for
-    // humanoids reusing the humanoid rig; "wolf" / etc. for distinct
+    // Skeleton key (matches SkeletalAssets registry: "humanoid_legacy"
+    // for actors on the legacy rig; "wolf" / etc. for distinct
     // skeletons). Used by render + matrix-build call sites that need
     // the actor's mesh-specific foot_offset_y. Empty defaults to
-    // "player" in selva::anim::meshByKey -- backward-compat for any
-    // call site that doesn't set this.
+    // "humanoid_legacy" in selva::anim::meshByKey -- backward-compat
+    // for any call site that doesn't set this.
     std::string skeleton_id;
 
     // If true, this actor stays dead across cycle resets -- the

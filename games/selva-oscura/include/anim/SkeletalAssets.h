@@ -12,10 +12,11 @@ class PoseSampler;
 class LocomotionConfig;
 class AnimationClip;
 
-// Player skeleton id ("player" → the humanoid rig). All existing actors
-// (player + every shade) share this rig today. Wolf adds key "wolf".
-// Future custom rigs add their own keys.
-constexpr const char* kPlayerSkeletonKey = "player";
+// Legacy humanoid rig key. Every humanoid actor (player, Guide,
+// larvae) shares it today. The new humanoid_male / humanoid_female
+// rigs are being introduced; actors migrate to them one-by-one. See
+// docs/design/character-canvas.md.
+constexpr const char* kHumanoidLegacyKey = "humanoid_legacy";
 
 // Singleton accessors for the PLAYER's rig + clip registry + pose
 // sampler + locomotion config. Backward-compatible: every existing

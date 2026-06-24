@@ -47,12 +47,11 @@ bool isNameTaken(const char* name)
     return false;
 }
 
-// Render the identity-editing column. Today: Tint only. Future:
-// shape sliders (face geometry, build, posture) that affect HOW the
-// body looks without exposing a literal size axis -- size emerges
-// from gameplay state (class, stats, evolution), not from the
-// player's direct choice. The placeholder slot for those sliders
-// lives here.
+// Render the identity-editing column. Hue + proportions. body_scale
+// is intentionally NOT here -- size emerges from gameplay state
+// (class, stats, evolution), not from the player's direct choice.
+// The four proportion knobs (head/torso/arm/leg) ARE player-facing
+// because proportions are sculpting (face/build shape), not size.
 void drawIdentitySliders(selva::gameplay::Appearance& app)
 {
     ImGui::SetWindowFontScale(1.4f);
@@ -65,6 +64,18 @@ void drawIdentitySliders(selva::gameplay::Appearance& app)
     ImGui::SliderFloat("B##creator-color", &app.color.z, 0.0f, 1.0f, "%.2f");
     ImGui::ColorButton("##creator-swatch", ImVec4(app.color.x, app.color.y, app.color.z, 1.0f),
                        ImGuiColorEditFlags_NoTooltip, ImVec2(60.0f, 20.0f));
+
+    ImGui::Spacing();
+    ImGui::Spacing();
+    ImGui::SetWindowFontScale(1.4f);
+    ImGui::TextUnformatted("Proportions");
+    ImGui::SetWindowFontScale(1.0f);
+    ImGui::Separator();
+    ImGui::Spacing();
+    ImGui::SliderFloat("Head##creator-head", &app.head_scale, 0.5f, 2.5f, "%.2f");
+    ImGui::SliderFloat("Torso##creator-torso", &app.torso_scale, 0.5f, 2.0f, "%.2f");
+    ImGui::SliderFloat("Arms##creator-arms", &app.arm_scale, 0.5f, 2.0f, "%.2f");
+    ImGui::SliderFloat("Legs##creator-legs", &app.leg_scale, 0.5f, 2.0f, "%.2f");
 }
 
 void drawNameField(char* buf, std::size_t buf_size)

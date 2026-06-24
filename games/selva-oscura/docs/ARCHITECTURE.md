@@ -80,7 +80,7 @@ games/selva-oscura/
 │   ├── loadout.json              player's equipped weapons
 │   ├── weapon_classes/*.json     animation chains per weapon type
 │   └── weapons/*.json            per-weapon stat sheets
-├── assets/characters/humanoid/
+├── assets/characters/humanoid_legacy/
 │   ├── source/                   Mixamo FBX (gitignored, locally authored)
 │   │   ├── rig/                  humanoid.fbx (skeleton + mesh)
 │   │   ├── loco/                 idle, walking, running, run_to_stop
@@ -164,7 +164,7 @@ All in `games/selva-oscura/include/anim/` and the matching `src/anim/`:
   at world Y=0).
 - **`ClipRegistry`** — a name → `AnimationClip` map. `loadDirectory()`
   scans a folder for `.ozz` files and loads each. The runtime calls
-  this once at startup against `assets/characters/humanoid/`.
+  this once at startup against `assets/characters/humanoid_legacy/`.
 - **`PoseSampler`** — the heart of the system. Section 4.3.
 - **`SkeletalRenderer`** (`drawSkeletalMesh`) — issues a skinned draw
   call given a mesh, a model matrix, a view-projection, and a bone
@@ -191,14 +191,14 @@ conversion:
 3. **Filename sanitization**: `_selva_sanitize_clip_name()` lowercases
    and replaces non-alphanumeric runs with underscores. `"sword and
    shield slash (2).fbx"` → `sword_and_shield_slash_2.ozz`.
-4. **Archived clips**: `assets/characters/humanoid/baked-archive/`
+4. **Archived clips**: `assets/characters/humanoid_legacy/baked-archive/`
    contains pre-baked `.ozz` files whose source FBX is no longer in
    the tree (kept for future use). `selva-oscura-stage-archive` copies
    them into the runtime output. The directory has a local
    `.gitignore` exception so the `*.ozz` rule in the repo-root
    `.gitignore` doesn't ignore them.
 
-The runtime sees a flat `build/bin/assets/characters/humanoid/` of
+The runtime sees a flat `build/bin/assets/characters/humanoid_legacy/` of
 `.ozz` files plus `skeleton.ozz` and `humanoid.glb`. It doesn't know
 about the source layout.
 

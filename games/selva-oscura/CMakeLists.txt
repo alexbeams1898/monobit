@@ -165,11 +165,11 @@ if(MINGW)
 endif()
 
 # Sync config + assets to the build output on every build so the exe finds
-# config/tunables.json and assets/characters/humanoid/humanoid.glb at runtime.
+# config/tunables.json and assets/characters/humanoid_legacy/humanoid.glb at runtime.
 # ALL custom target (not POST_BUILD) so file edits are picked up even when
 # no .cpp changed; same pattern as prison-escape-game.
 #
-# Bake targets (selva-oscura-convert-attacks, selva-oscura-convert-humanoid)
+# Bake targets (selva-oscura-convert-attacks, selva-oscura-convert-humanoid-legacy)
 # depend on this so they run AFTER sync. Without the order constraint,
 # Ninja races them: freshly-baked .ozz gets clobbered by the older
 # source-tree .ozz when sync runs second. Symptom: in-game animations
@@ -195,152 +195,150 @@ add_custom_target(selva-oscura-sync-config ALL
 )
 
 # ---------------------------------------------------------------------------
-# The humanoid is the canonical character rig -- standard Mixamo joint
-# naming. All player + most enemy clips are authored against this
-# skeleton. Choosing one shared skeleton means zero retargeting work --
-# every Mixamo asset baked against it just plays.
-#
-# A previous incarnation used a custom Three.js Soldier mesh which
-# *looked* like a Mixamo character but had a different bind pose and
-# different units (centimeters vs glTF's meters). That mismatch made
-# every imported clip distort the geometry. The fix isn't to translate
-# between mismatched skeletons — it's to make sure there's only one.
-# See memory/feedback_no_bandaids_root_cause.md.
+# Per-rig bake pipeline. Each character skeleton lives under
+# assets/characters/<rig>/ with source/rig/humanoid.fbx as the authoring
+# input and humanoid.glb + skeleton.ozz as the committed build artifacts.
+# When the FBX is present locally we regenerate; on CI without the
+# gitignored FBX the committed bakes ship as-is. Every clip must target
+# exactly one rig -- mismatched skeletons distort geometry (see
+# memory/feedback_no_bandaids_root_cause.md).
 # ---------------------------------------------------------------------------
-# NOTE: this entire humanoid bake pipeline (lines ~145-405) will be
-# factored into a `_selva_register_skeleton(id, source_dir, mesh_filename)`
-# function when the WOLF skeleton lands in Phase B of the multi-skeleton
-# refactor (see docs/design/animals_and_multi_skeleton.md). The wolf's
-# bake follows the same shape: per-rig fbx2gltf -> per-rig gltf2ozz
-# with that rig's skeleton as retarget reference -> per-clip gltf2ozz
-# against the rig. Refactoring before the second skeleton exists is
-# speculative (can't test the function-call shape without two callers);
-# done concurrently with the wolf so both shape + behavior are verified
-# in the same change. The PoseSampler / SkeletalAssets / EnemyArchetype
-# C++ changes are already wolf-ready -- only the bake pipeline still
-# assumes one skeleton, and that's pure mechanical CMake rearrangement.
-set(humanoid_dir ${CMAKE_CURRENT_SOURCE_DIR}/assets/characters/humanoid)
 set(fbx2gltf_exe ${CMAKE_SOURCE_DIR}/tools/fbx2gltf/FBX2glTF.exe)
-
 # Per-game build output (see selva-oscura exe's RUNTIME_OUTPUT_DIRECTORY).
 # add_custom_command's OUTPUT can't contain generator expressions, so this
 # is a literal path -- if the per-game subdir name changes, update both.
 set(selva_out_dir ${CMAKE_BINARY_DIR}/bin/selva-oscura)
-set(humanoid_out_dir ${selva_out_dir}/assets/characters/humanoid)
 
-# 1. humanoid.fbx → humanoid.glb. Mixamo's FBX export omits explicit per-vertex
-# normals (Mixamo's pipeline assumes the consumer derives them), so we
-# pass --compute-normals missing to FBX2glTF — without that flag, the
-# resulting glb has no NORMAL attribute and our loader rejects the mesh
-# as invalid. Doing the computation here means the runtime always sees a
-# fully-attributed mesh — no special-case at load time.
+# Bake one rig's FBX → glb → skeleton.ozz, exposing a
+# selva-oscura-convert-<rig> target downstream rules can depend on. Sets
+# parent-scope <rig>_dir / <rig>_out_dir / <rig>_glb so attack-pack bake
+# code can reference per-rig paths without re-deriving them.
 #
-# humanoid.glb is treated as a build artifact: regenerated from the FBX on
-# fresh local checkouts (FBX is the authoring source), but the baked
-# .glb + skeleton.ozz + per-clip .ozz files are also committed in the
-# asset tree so CI / contributors without the gitignored Mixamo FBX
-# pack can build and run. The FBX-bake pipeline below is wrapped in
-# `if(EXISTS humanoid_fbx)` — when the FBX is present locally, the bake
-# regenerates artifacts; when absent (CI), the committed bakes are used.
-set(humanoid_fbx ${humanoid_dir}/source/rig/humanoid.fbx)
-set(humanoid_glb ${humanoid_dir}/humanoid.glb)
-if(EXISTS ${humanoid_fbx})
-    add_custom_command(
-        OUTPUT ${humanoid_glb}
-        # FBX2glTF's --keep-attribute auto drops NORMAL and TEXCOORD if they
-        # aren't strictly required by the schema. Mixamo characters ship
-        # with both, but auto-mode strips them — the resulting glb has only
-        # POSITION/JOINTS/WEIGHTS, which our loader rejects (no NORMAL).
-        # Listing the attributes explicitly forces FBX2glTF to keep them.
-        # --compute-normals always re-derives normals from geometry to be
-        # safe (any FBX-export artifact gets cleaned up).
-        COMMAND ${fbx2gltf_exe}
-            --binary
-            --keep-attribute position
-            --keep-attribute normal
-            --keep-attribute uv0
-            --compute-normals always
-            -i ${humanoid_fbx}
-            -o ${humanoid_dir}/humanoid
-        DEPENDS ${humanoid_fbx} ${fbx2gltf_exe}
-        COMMENT "Converting humanoid.fbx → humanoid.glb..."
-        VERBATIM
-    )
+# COMPUTE_NORMALS arg: pass "always" for FBX sources that ship without
+# per-vertex normals; pass "missing" or omit for sources that include
+# them. Without the right setting the glb has no NORMAL attribute and
+# our loader rejects the mesh as invalid.
+function(_selva_register_skeleton)
+    set(options "")
+    set(one_value_args NAME COMPUTE_NORMALS)
+    set(multi_value_args "")
+    cmake_parse_arguments(RIG "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
+    if(NOT RIG_NAME)
+        message(FATAL_ERROR "_selva_register_skeleton: NAME is required")
+    endif()
+    if(NOT RIG_COMPUTE_NORMALS)
+        set(RIG_COMPUTE_NORMALS "missing")
+    endif()
 
-    # 2. Skeleton-only conversion config: humanoid.glb ships with no real
-    # animations (just a degenerate "Take 001" T-pose), so explicitly tell
-    # gltf2ozz to skip animation extraction. Without "animations": [],
-    # gltf2ozz fails its animation-validation step and exits non-zero — even
-    # though the skeleton was already written successfully — making ninja
-    # think the build step failed.
-    set(humanoid_skeleton_config ${CMAKE_BINARY_DIR}/selva-oscura-humanoid/skeleton_only.json)
-    file(WRITE ${humanoid_skeleton_config}
-    "{\n"
-    "  \"skeleton\": { \"filename\": \"skeleton.ozz\", \"import\": { \"enable\": true } },\n"
-    "  \"animations\": []\n"
-    "}\n"
-    )
+    set(rig_dir ${CMAKE_CURRENT_SOURCE_DIR}/assets/characters/${RIG_NAME})
+    set(rig_out_dir ${selva_out_dir}/assets/characters/${RIG_NAME})
+    set(rig_fbx ${rig_dir}/source/rig/humanoid.fbx)
+    set(rig_glb ${rig_dir}/humanoid.glb)
+    set(rig_target selva-oscura-convert-${RIG_NAME})
 
-    # 3. Extract the skeleton from humanoid.glb.
-    set(humanoid_ozz_files
-        ${humanoid_out_dir}/skeleton.ozz
-    )
-    add_custom_command(
-        OUTPUT ${humanoid_ozz_files}
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${humanoid_out_dir}
-        # Normalize the rig glb scale BEFORE gltf2ozz reads it. The
-        # MB-Lab+auto-rigger humanoid.fbx ships with a 100x scale on
-        # the Armature parent node (cm-to-m unit conversion baked
-        # into the hierarchy instead of the vertex data). gltf2ozz
-        # extracts skeleton.ozz INCLUDING that 100x scale on the
-        # root joint's rest pose, which then propagates to every
-        # bone palette at runtime (every actor renders 100x). We
-        # bake the scale into the static translations so skeleton.ozz
-        # comes out unit-scale.
-        COMMAND ${Python3_EXECUTABLE}
-            ${CMAKE_CURRENT_SOURCE_DIR}/scripts/normalize_glb_scale.py
-            --inplace ${humanoid_glb}
-        COMMAND ${CMAKE_COMMAND} -E chdir ${humanoid_out_dir}
-            $<TARGET_FILE:gltf2ozz>
-            --file=${humanoid_glb}
-            --config_file=${humanoid_skeleton_config}
-        DEPENDS
-            ${humanoid_glb}
-            gltf2ozz
-            ${humanoid_skeleton_config}
-            ${CMAKE_CURRENT_SOURCE_DIR}/scripts/normalize_glb_scale.py
-        COMMENT "Extracting humanoid skeleton to ozz runtime format..."
-        VERBATIM
-    )
-    add_custom_target(selva-oscura-convert-humanoid ALL DEPENDS ${humanoid_ozz_files})
-    # Bake runs AFTER sync so freshly-baked skeleton.ozz isn't clobbered.
-    add_dependencies(selva-oscura-convert-humanoid selva-oscura-sync-config)
-else()
-    message(STATUS "selva-oscura: humanoid.fbx not found; skipping FBX bake (using committed .glb + .ozz)")
-    # Downstream bake rules (sword pack, larva) declare
-    # ${humanoid_out_dir}/skeleton.ozz as a DEPENDS input. Without an FBX
-    # bake to produce it, no CMake target satisfies that path on CI.
-    # sync-config already copies the committed source-tree skeleton.ozz
-    # to ${humanoid_out_dir}/skeleton.ozz as a side-effect of its tree
-    # copy, but it doesn't name skeleton.ozz as an OUTPUT, so ninja's
-    # graph has no edge linking the sword/larva rules to sync-config's
-    # actual production of that file. The fix: a custom command whose
-    # OUTPUT is the file (so the graph is valid) and whose body
-    # explicitly copies it from source (so it works even if sync-config
-    # is reordered relative to it).
-    set(humanoid_src_skeleton ${humanoid_dir}/skeleton.ozz)
-    add_custom_command(
-        OUTPUT ${humanoid_out_dir}/skeleton.ozz
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${humanoid_out_dir}
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            ${humanoid_src_skeleton} ${humanoid_out_dir}/skeleton.ozz
-        DEPENDS ${humanoid_src_skeleton}
-        COMMENT "Copying committed humanoid skeleton.ozz to build output..."
-        VERBATIM
-    )
-    add_custom_target(selva-oscura-convert-humanoid ALL DEPENDS ${humanoid_out_dir}/skeleton.ozz)
-    add_dependencies(selva-oscura-convert-humanoid selva-oscura-sync-config)
-endif()
+    if(EXISTS ${rig_fbx})
+        add_custom_command(
+            OUTPUT ${rig_glb}
+            # --keep-attribute auto drops NORMAL/TEXCOORD if not strictly
+            # required by the schema; listing them explicitly forces them
+            # through. --compute-normals re-derives from geometry when
+            # the source FBX omits them.
+            COMMAND ${fbx2gltf_exe}
+                --binary
+                --keep-attribute position
+                --keep-attribute normal
+                --keep-attribute uv0
+                --compute-normals ${RIG_COMPUTE_NORMALS}
+                -i ${rig_fbx}
+                -o ${rig_dir}/humanoid
+            DEPENDS ${rig_fbx} ${fbx2gltf_exe}
+            COMMENT "Converting ${RIG_NAME}/humanoid.fbx → humanoid.glb..."
+            VERBATIM
+        )
+
+        # Skeleton-only gltf2ozz config: humanoid.glb ships with no real
+        # animations (just a degenerate T-pose), so empty "animations": []
+        # skips the animation-validation step that would otherwise fail
+        # the build despite the skeleton extracting successfully.
+        set(rig_skeleton_config ${CMAKE_BINARY_DIR}/selva-oscura-${RIG_NAME}/skeleton_only.json)
+        file(WRITE ${rig_skeleton_config}
+        "{\n"
+        "  \"skeleton\": { \"filename\": \"skeleton.ozz\", \"import\": { \"enable\": true } },\n"
+        "  \"animations\": []\n"
+        "}\n"
+        )
+
+        add_custom_command(
+            OUTPUT ${rig_out_dir}/skeleton.ozz
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${rig_out_dir}
+            # Normalize glb scale BEFORE gltf2ozz reads it. Some FBX
+            # exports ship with a 100x scale on the Armature parent
+            # node (cm-to-m baked into the hierarchy instead of the
+            # vertex data). Left alone, the 100x lands on the root
+            # joint's rest pose and every actor renders 100x larger
+            # at runtime. Bake the scale into static translations so
+            # skeleton.ozz comes out unit-scale.
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/scripts/normalize_glb_scale.py
+                --inplace ${rig_glb}
+            COMMAND ${CMAKE_COMMAND} -E chdir ${rig_out_dir}
+                $<TARGET_FILE:gltf2ozz>
+                --file=${rig_glb}
+                --config_file=${rig_skeleton_config}
+            DEPENDS
+                ${rig_glb}
+                gltf2ozz
+                ${rig_skeleton_config}
+                ${CMAKE_CURRENT_SOURCE_DIR}/scripts/normalize_glb_scale.py
+            COMMENT "Extracting ${RIG_NAME} skeleton to ozz runtime format..."
+            VERBATIM
+        )
+        add_custom_target(${rig_target} ALL DEPENDS ${rig_out_dir}/skeleton.ozz)
+        # Bake runs AFTER sync so freshly-baked skeleton.ozz isn't clobbered.
+        add_dependencies(${rig_target} selva-oscura-sync-config)
+    else()
+        message(STATUS "selva-oscura: ${RIG_NAME}/humanoid.fbx not found; using committed .glb + .ozz")
+        # Downstream attack-pack / per-character bake rules declare
+        # ${rig_out_dir}/skeleton.ozz as a DEPENDS input. Without an FBX
+        # bake producing it, no CMake target satisfies that path on CI.
+        # sync-config copies the committed source-tree skeleton.ozz to
+        # the out_dir as a side-effect of its tree copy, but doesn't name
+        # skeleton.ozz as an OUTPUT -- ninja's graph has no edge linking
+        # downstream rules to sync-config's actual production. Custom
+        # command with explicit OUTPUT + explicit copy fixes the graph.
+        set(rig_src_skeleton ${rig_dir}/skeleton.ozz)
+        add_custom_command(
+            OUTPUT ${rig_out_dir}/skeleton.ozz
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${rig_out_dir}
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${rig_src_skeleton} ${rig_out_dir}/skeleton.ozz
+            DEPENDS ${rig_src_skeleton}
+            COMMENT "Copying committed ${RIG_NAME} skeleton.ozz to build output..."
+            VERBATIM
+        )
+        add_custom_target(${rig_target} ALL DEPENDS ${rig_out_dir}/skeleton.ozz)
+        add_dependencies(${rig_target} selva-oscura-sync-config)
+    endif()
+
+    # Expose per-rig paths to parent scope so attack-pack bake code can
+    # reference ${<RIG_NAME>_dir} / ${<RIG_NAME>_out_dir} / ${<RIG_NAME>_glb}
+    # without re-deriving them.
+    set(${RIG_NAME}_dir ${rig_dir} PARENT_SCOPE)
+    set(${RIG_NAME}_out_dir ${rig_out_dir} PARENT_SCOPE)
+    set(${RIG_NAME}_glb ${rig_glb} PARENT_SCOPE)
+endfunction()
+
+# Legacy humanoid rig -- frozen, every shipped clip targets it. The
+# source FBX omits per-vertex normals, so force re-computation; the
+# loader rejects meshes without NORMAL.
+_selva_register_skeleton(NAME humanoid_legacy COMPUTE_NORMALS always)
+
+# The two parametric humanoid rigs -- canvas substrate every damned
+# soul (player + NPCs + larvae) is built from. Player creator surfaces
+# them as "Body Type 1 / 2". Source FBXs include explicit normals so
+# the default --compute-normals missing is correct.
+_selva_register_skeleton(NAME humanoid_male)
+_selva_register_skeleton(NAME humanoid_female)
 
 # ---------------------------------------------------------------------------
 # Convert Mixamo Pro Sword and Shield Pack FBXs → per-clip .ozz at build.
@@ -400,7 +398,7 @@ set(retarget_config ${CMAKE_BINARY_DIR}/selva-oscura-attacks/retarget_config.jso
 file(WRITE ${retarget_config}
 "{\n"
 "  \"skeleton\": {\n"
-"    \"filename\": \"${humanoid_out_dir}/skeleton.ozz\",\n"
+"    \"filename\": \"${humanoid_legacy_out_dir}/skeleton.ozz\",\n"
 "    \"import\": { \"enable\": false }\n"
 "  },\n"
 "  \"animations\": [\n"
@@ -432,7 +430,7 @@ set(attack_ozz_files "")
 # and excluded by the filter below.
 file(GLOB_RECURSE attack_fbx_files
     CONFIGURE_DEPENDS
-    "${humanoid_dir}/source/*.fbx"
+    "${humanoid_legacy_dir}/source/*.fbx"
 )
 # Exclude rig FBXs: our humanoid.fbx in source/rig/, plus legacy
 # "X Bot.fbx" / "X_Bot.fbx" rig mannequins shipped inside Mixamo
@@ -474,7 +472,7 @@ if(attack_fbx_files AND EXISTS ${fbx2gltf_exe})
         _selva_sanitize_clip_name("${fbx}" clip_name)
         set(clip_temp_dir ${CMAKE_BINARY_DIR}/selva-oscura-attacks/${clip_name})
         set(clip_glb ${clip_temp_dir}/${clip_name}.glb)
-        set(clip_final_ozz ${humanoid_out_dir}/${clip_name}.ozz)
+        set(clip_final_ozz ${humanoid_legacy_out_dir}/${clip_name}.ozz)
         add_custom_command(
             OUTPUT ${clip_final_ozz}
             # 1. Convert FBX → glb (FBX2glTF -o is a stem; it appends .glb).
@@ -517,7 +515,7 @@ if(attack_fbx_files AND EXISTS ${fbx2gltf_exe})
                 ${CMAKE_CURRENT_SOURCE_DIR}/scripts/normalize_glb_scale.py
                 # The retarget config refers to the humanoid skeleton.ozz —
                 # it must exist before gltf2ozz reads it.
-                ${humanoid_out_dir}/skeleton.ozz
+                ${humanoid_legacy_out_dir}/skeleton.ozz
             COMMENT "Converting ${clip_name}.fbx → ${clip_name}.ozz (retargeted to humanoid)"
             VERBATIM
         )
@@ -593,7 +591,7 @@ if(larva_fbx_files AND EXISTS ${fbx2gltf_exe})
                 gltf2ozz
                 ${retarget_config}
                 ${CMAKE_CURRENT_SOURCE_DIR}/scripts/normalize_glb_scale.py
-                ${humanoid_out_dir}/skeleton.ozz
+                ${humanoid_legacy_out_dir}/skeleton.ozz
             COMMENT "Converting ${clip_name}.fbx → larva/${clip_name}.ozz (retargeted to humanoid)"
             VERBATIM
         )
@@ -614,7 +612,7 @@ endif()
 # When a clip exists in BOTH archive AND source/, the FBX is now the
 # source of truth -- skip the stale archive copy. Otherwise CMake
 # errors on a duplicate custom-command output.
-set(archive_dir ${humanoid_dir}/baked-archive)
+set(archive_dir ${humanoid_legacy_dir}/baked-archive)
 if(EXISTS ${archive_dir})
     # Build the set of clip names that the source-FBX bake will produce.
     set(baked_clip_names "")
@@ -631,10 +629,10 @@ if(EXISTS ${archive_dir})
         if(stem IN_LIST baked_clip_names)
             continue()
         endif()
-        set(dst ${humanoid_out_dir}/${name})
+        set(dst ${humanoid_legacy_out_dir}/${name})
         add_custom_command(
             OUTPUT ${dst}
-            COMMAND ${CMAKE_COMMAND} -E make_directory ${humanoid_out_dir}
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${humanoid_legacy_out_dir}
             COMMAND ${CMAKE_COMMAND} -E copy_if_different ${src} ${dst}
             DEPENDS ${src}
             COMMENT "Staging archived clip ${name}"
@@ -700,8 +698,14 @@ add_test(
     COMMAND selva-oscura-tests
     WORKING_DIRECTORY $<TARGET_FILE_DIR:selva-oscura-tests>
 )
-if(TARGET selva-oscura-convert-humanoid)
-    add_dependencies(selva-oscura-tests selva-oscura-convert-humanoid)
+if(TARGET selva-oscura-convert-humanoid-legacy)
+    add_dependencies(selva-oscura-tests selva-oscura-convert-humanoid-legacy)
+endif()
+if(TARGET selva-oscura-convert-humanoid_male)
+    add_dependencies(selva-oscura-tests selva-oscura-convert-humanoid_male)
+endif()
+if(TARGET selva-oscura-convert-humanoid_female)
+    add_dependencies(selva-oscura-tests selva-oscura-convert-humanoid_female)
 endif()
 if(TARGET selva-oscura-convert-attacks)
     add_dependencies(selva-oscura-tests selva-oscura-convert-attacks)

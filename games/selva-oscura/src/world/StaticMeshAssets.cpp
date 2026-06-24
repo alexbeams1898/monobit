@@ -17,9 +17,9 @@ namespace
 
 // Parse a glTF node's `extras` JSON for `usage: "visual" | "collision"
 // | "both"`. Missing / malformed / absent key → Both. The extras
-// payload is a raw JSON string written by gen_crypt_foundation.py via
-// Blender's `obj["usage"] = "..."` (Blender promotes custom properties
-// into glTF node extras automatically on export).
+// payload is a raw JSON string written by the upstream authoring
+// pipeline (custom mesh properties promoted into glTF node extras at
+// export time).
 StaticMeshUsage parseUsageFromExtras(const char* extras_json)
 {
     if (extras_json == nullptr || extras_json[0] == '\0')

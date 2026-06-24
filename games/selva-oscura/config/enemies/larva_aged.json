@@ -3,7 +3,7 @@
   "id": "larva_aged",
   "form": "DamnedSoul",
   "faction": "Hostile",
-  "skeleton_id": "player",
+  "skeleton_id": "humanoid_legacy",
   "appearance_path": "config/appearances/larva_aged.json",
   "_comment_appearance_path": "Sangue-darkened, full-sized -- the aged larva has been saturated by centuries of inward-firing imprint. The fresh archetype's transform_target_archetype points here, so the fresh-to-aged Appearance lerp ends on this exact body (smooth transition at the moment of conversion).",
   "tree_id": "humanoid_basic",

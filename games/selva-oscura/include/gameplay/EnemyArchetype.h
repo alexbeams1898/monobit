@@ -97,9 +97,9 @@ struct EnemyAction
     // Per-action clip playback rate. 1.0 = author's authored cadence
     // (default). 2.0 = clip plays at 2x speed (1s clip becomes 0.5s
     // wall-time). Use when the source clip was authored at a tempo
-    // that doesn't fit the enemy's combat feel (e.g. Mixamo's zombie
-    // clips are at a deliberately-slow zombie pace, but feral larvae
-    // need a snappier swing).
+    // that doesn't fit the enemy's combat feel (e.g. stock zombie
+    // clips are at a deliberately-slow shamble, but feral larvae need
+    // a snappier swing).
     //
     // SEMANTIC NOTE: windup_seconds and active_seconds are in
     // CLIP-AUTHORED time, not wall-time. The runtime divides them by
@@ -256,11 +256,13 @@ struct EnemyArchetype
     // "humanoid_basic" — covers every humanoid in the bestiary
     // until a tree-specific behavior demands its own builder.
     std::string tree_id = "humanoid_basic";
-    // Skeleton key (matches SkeletalAssets registry: "player" for
-    // humanoids reusing the humanoid rig; "wolf" / etc. for distinct
-    // skeletons). Default "player" preserves today's behavior --
-    // every existing humanoid shade reuses the player rig.
-    std::string skeleton_id = "player";
+    // Skeleton key (matches SkeletalAssets registry: "humanoid_legacy"
+    // for actors on the legacy rig; "wolf" / etc. for distinct
+    // skeletons). Default "humanoid_legacy" preserves today's
+    // behavior -- every existing humanoid shade reuses the legacy rig
+    // until the new humanoid_male / humanoid_female rigs are wired up
+    // per actor.
+    std::string skeleton_id = "humanoid_legacy";
 
     // Visual appearance config path. Empty = default Appearance
     // (body_scale = 1.0 -- same as existing behavior, so legacy
@@ -276,11 +278,11 @@ struct EnemyArchetype
     std::string appearance_path;
 
     // Per-archetype clip names. Empty = humanoid default (the standard
-    // Mixamo names). Wolf overrides every entry. Read EXCLUSIVELY via
-    // lookupArchetypeClip in Enemies.cpp so the per-skeleton registry
-    // is always honored -- the wolf's sampler must never receive a
-    // player clip (skel.num_joints != anim.num_tracks -> ozz garbage
-    // -> IsNormalizedEst assert).
+    // clip set on the legacy rig). Wolf overrides every entry. Read
+    // EXCLUSIVELY via lookupArchetypeClip in Enemies.cpp so the per-
+    // skeleton registry is always honored -- the wolf's sampler must
+    // never receive a humanoid clip (skel.num_joints != anim.num_tracks
+    // -> ozz garbage -> IsNormalizedEst assert).
     std::string idle_clip;             // empty -> "standard_idle"
     std::string combat_idle_clip;      // empty -> "unarmed_combat_idle"
     std::string walk_clip;             // empty -> "walking"

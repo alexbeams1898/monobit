@@ -1,18 +1,24 @@
 #!/usr/bin/env python3
-"""Bandaid-keyword linter for Selva Oscura source.
+"""Comment-keyword linter for Selva Oscura source.
 
-Greps tracked C++ source for keywords that mark deferred work or
-bandaid-flavored fixes:
+Greps tracked C++ source for keywords that mark deferred work,
+bandaid-flavored fixes, OR authoring-tool / vendor pipeline names:
 
   TODO  FIXME  HACK  XXX  REVIEW
   bandaid  workaround  paper over  papered over
   "for now"  "temporary"  "temp fix"
+  MB-Lab  CharMorph  Rigify  Mixamo  Blender  Auto-Rig Pro  ARP
+  FBX2glTF  Quaternius  ManuelBastioni  Gaming armature
 
 Per .claude/CLAUDE.md doctrine:
   - Deferred work goes to GitHub issues, not source comments
   - Bandaids are explicitly flagged with an issue + ticket
   - Code comments stay general (explain WHY); they don't reference
     issue numbers (issues get renumbered)
+  - Source describes the engine artifact, not the tool that produced it.
+    Tool/vendor names rot when the tool gets swapped -- describe rigs as
+    rigs, skeletons as skeletons, glbs as glbs. Authoring-tool history
+    belongs in docs/ or commit messages, never in shipped source.
 
 If a flagged comment is genuinely temporary work in flight, the
 escape hatch is appending the marker to the line:
@@ -36,9 +42,14 @@ Skipped:
 Exit 0 on clean, 1 on any flagged line.
 """
 
+import io
 import re
 import sys
 from pathlib import Path
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -71,6 +82,25 @@ PATTERNS = [
     (re.compile(r"\bfor\s+now\b", re.IGNORECASE), "for-now"),
     (re.compile(r"\btemporary\b", re.IGNORECASE), "temporary"),
     (re.compile(r"\btemp\s+fix\b", re.IGNORECASE), "temp-fix"),
+    # Authoring tools / vendor pipelines -- describe the artifact, not
+    # the toolchain. These rot the moment a tool gets swapped.
+    # Carve-out: referencing on-disk identifiers like `mixamorig:Hips`
+    # is allowed (describes real persisted data). The negative lookahead
+    # on "Mixamo" excludes "mixamorig:" so identifier references survive.
+    (re.compile(r"\bMB[-_ ]?Lab\b", re.IGNORECASE), "tool-name"),
+    (re.compile(r"\bCharMorph\b", re.IGNORECASE), "tool-name"),
+    (re.compile(r"\bRigify\b", re.IGNORECASE), "tool-name"),
+    (re.compile(r"\bMixamo(?!rig|\.com)\b", re.IGNORECASE), "tool-name"),
+    # Blender as a standalone word; "scripts/blender/" path refs are
+    # citing real on-disk locations and exempt via the negative
+    # lookbehind on a slash. "Blender's" / "Blender-authored" still flag.
+    (re.compile(r"(?<![/\\])\bBlender\b", re.IGNORECASE), "tool-name"),
+    (re.compile(r"\bAuto[-_ ]?Rig[-_ ]?Pro\b", re.IGNORECASE), "tool-name"),
+    (re.compile(r"\bARP\b"), "tool-name"),
+    (re.compile(r"\bFBX2glTF\b", re.IGNORECASE), "tool-name"),
+    (re.compile(r"\bQuaternius\b", re.IGNORECASE), "tool-name"),
+    (re.compile(r"\bManuel[-_ ]?Bastioni\b", re.IGNORECASE), "tool-name"),
+    (re.compile(r"\bGaming\s+armature\b", re.IGNORECASE), "tool-name"),
 ]
 
 EXEMPT_MARKER = re.compile(r"BANDAID\(approved\):")

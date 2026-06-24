@@ -4,10 +4,8 @@
 
 #include <string>
 
-// Bottom-right floating toast for transient feedback (item pickups
-// for now; future: insight unlocks, evolution events, etc.).
-// Ported from prison-escape's NotificationSystem and adapted for
-// Selva's HUD overlay style.
+// Bottom-right floating toast for transient feedback (item pickups,
+// insight unlocks, evolution events).
 //
 // Each push() drops one toast onto a fixed-capacity ring. The
 // renderer fades + slides each entry over 2 seconds. Color and

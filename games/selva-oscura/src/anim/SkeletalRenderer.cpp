@@ -178,11 +178,11 @@ void beginSkeletalPass()
     if (sProgram == 0)
         return;
     glUseProgram(sProgram);
-    // Skeletal meshes from third-party sources (Quaternius, Mixamo)
-    // can't be assumed to have consistently outward-wound normals --
-    // back-face culling makes parts of those rigs see-through at some
-    // angles. Disable culling for the whole pass; correctness > fill
-    // rate. Static meshes get culling back at endSkeletalPass.
+    // Skeletal meshes from third-party sources can't be assumed to
+    // have consistently outward-wound normals -- back-face culling
+    // makes parts of those rigs see-through at some angles. Disable
+    // culling for the whole pass; correctness > fill rate. Static
+    // meshes get culling back at endSkeletalPass.
     glDisable(GL_CULL_FACE);
 }
 

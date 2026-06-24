@@ -18,8 +18,8 @@ using selva::anim::Skeleton;
 
 namespace
 {
-const char* kSkeletonPath = "assets/characters/humanoid/skeleton.ozz";
-const char* kSwingPath = "assets/characters/humanoid/sword_and_shield_slash.ozz";
+const char* kSkeletonPath = "assets/characters/humanoid_legacy/skeleton.ozz";
+const char* kSwingPath = "assets/characters/humanoid_legacy/sword_and_shield_slash.ozz";
 const char* kHips = "mixamorig:Hips";
 const char* kRightHand = "mixamorig:RightHand";
 } // namespace

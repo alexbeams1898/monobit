@@ -230,7 +230,7 @@ void to_json(nlohmann::json& j, const EnemyArchetype& a)
         j["talk_requires_flag"] = a.talk_requires_flag;
     if (a.form != Form::DamnedSoul)
         j["form"] = formName(a.form);
-    if (!a.skeleton_id.empty() && a.skeleton_id != "player")
+    if (!a.skeleton_id.empty() && a.skeleton_id != "humanoid_legacy")
         j["skeleton_id"] = a.skeleton_id;
     if (!a.appearance_path.empty())
         j["appearance_path"] = a.appearance_path;
@@ -386,7 +386,7 @@ void from_json(const nlohmann::json& j, EnemyArchetype& a)
     a.acknowledgment_max_angle_radians = j.value("acknowledgment_max_angle_radians", 0.6f);
     a.acknowledgment_turn_rate_scale = j.value("acknowledgment_turn_rate_scale", 0.15f);
     a.form = parseForm(j.value("form", std::string("DamnedSoul")));
-    a.skeleton_id = j.value("skeleton_id", std::string("player"));
+    a.skeleton_id = j.value("skeleton_id", std::string("humanoid_legacy"));
     a.appearance_path = j.value("appearance_path", std::string{});
     loadClipFields(j, a);
     loadCombatFields(j, a);

@@ -21,11 +21,12 @@ bool initSkeletalRenderer();
 void shutdownSkeletalRenderer();
 
 // Pass scope. drawSkeletalMesh expects the program bound, culling
-// disabled (Mixamo/Quaternius rigs have inconsistent winding), and
-// alpha-blend state managed per draw. Call beginSkeletalPass() ONCE
-// before drawing any skeletal mesh in a frame; call endSkeletalPass()
-// after the last one to restore default GL state for the next pass
-// (terrain / static meshes assume cull-back-enabled).
+// disabled (third-party skinned rigs have inconsistent triangle
+// winding), and alpha-blend state managed per draw. Call
+// beginSkeletalPass() ONCE before drawing any skeletal mesh in a
+// frame; call endSkeletalPass() after the last one to restore default
+// GL state for the next pass (terrain / static meshes assume
+// cull-back-enabled).
 void beginSkeletalPass();
 void endSkeletalPass();
 

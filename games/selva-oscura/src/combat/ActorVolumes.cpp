@@ -70,7 +70,7 @@ void appendActorHurtboxes(const selva::anim::PoseSampler& sampler, const glm::ma
     const float base_r = body.collider_radius;
     auto& pool = hurtboxes();
     // Iterate declarations from the body. Authored per skeleton:
-    // player loads config/skeletons/player_hurtboxes.json; enemy
+    // player loads config/skeletons/humanoid_legacy_hurtboxes.json; enemy
     // archetypes carry their own hurtboxes array. Empty = no
     // hurtboxes (actor takes no hits; intentional or misconfigured).
     pool.reserve(pool.size() + body.hurtbox_decls.size());

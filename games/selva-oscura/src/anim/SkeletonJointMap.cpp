@@ -1,6 +1,6 @@
 #include "anim/SkeletonJointMap.h"
 
-#include "anim/SkeletalAssets.h" // for kPlayerSkeletonKey
+#include "anim/SkeletalAssets.h" // for kHumanoidLegacyKey
 
 #include <nlohmann/json.hpp>
 
@@ -91,7 +91,7 @@ const SkeletonJointMap& jointMapByKey(const std::string& key)
     auto it = sMaps.find(key);
     if (it != sMaps.end())
         return it->second;
-    auto player_it = sMaps.find(std::string(kPlayerSkeletonKey));
+    auto player_it = sMaps.find(std::string(kHumanoidLegacyKey));
     if (player_it != sMaps.end())
         return player_it->second;
     return sEmpty;
@@ -100,9 +100,9 @@ const SkeletonJointMap& jointMapByKey(const std::string& key)
 void loadAllSkeletonJointMaps()
 {
     // Player map is required for the humanoid rig.
-    sMaps[std::string(kPlayerSkeletonKey)] = loadSkeletonJointMap(std::string(kPlayerSkeletonKey));
-    // Non-player maps are best-effort. Wolf is the v1 extra skeleton.
-    static const char* kExtraSkeletons[] = {"wolf"};
+    sMaps[std::string(kHumanoidLegacyKey)] = loadSkeletonJointMap(std::string(kHumanoidLegacyKey));
+    // Non-player maps are best-effort.
+    static const char* kExtraSkeletons[] = {"humanoid_male", "humanoid_female", "wolf"};
     for (const char* id : kExtraSkeletons)
     {
         auto m = loadSkeletonJointMap(std::string(id));

@@ -73,8 +73,9 @@ struct PoseSampler
     //
     // `clip_key` is the human-meaningful registry key (e.g.
     // "walking", "jogging") used only for diagnostic logging. Empty
-    // string is allowed; the log will fall back to ozz Animation
-    // name (which for Mixamo clips is always "mixamo.com").
+    // string is allowed; the log will fall back to the ozz Animation
+    // name embedded in the .ozz file (typically a generic exporter
+    // string like "mixamo.com").
     bool update(const AnimationClip& clip, float dt, float blend_seconds, bool loops = true,
                 const char* clip_key = "");
 
@@ -199,8 +200,8 @@ struct PoseSampler
         // than wherever the clip happens to end. Ignored otherwise.
         float freeze_at_seconds = 0.0f;
         // Registry key for diagnostic logs (e.g. "jab"). Empty
-        // string = falls back to ozz Animation::name() which is
-        // always "mixamo.com" for Mixamo clips.
+        // string = falls back to ozz Animation::name(), which is the
+        // generic exporter string ("mixamo.com") for most clips.
         const char* clip_key = "";
         // Suppress SM-driven loco clip swaps during this one-shot's
         // Hold + BlendOut phases. True for dodges/blocks (no
@@ -401,9 +402,9 @@ struct PoseSampler
     // start-pose. Returns (0,0,0) on invalid inputs.
     glm::vec3 sampleJointWorldPos(const AnimationClip& clip, float t_seconds, int joint_idx) const;
 
-    // Look up a joint by Mixamo bone name. Returns -1 if not found.
-    // Used by combat config resolution to translate JSON joint-name
-    // overrides (e.g. "mixamorig:RightHand") to skeleton indices for
+    // Look up a joint by bone name. Returns -1 if not found. Used by
+    // combat config resolution to translate JSON joint-name overrides
+    // (e.g. "mixamorig:RightHand") to skeleton indices for
     // clipJointMotionEnd.
     int findJoint(const char* name) const;
 

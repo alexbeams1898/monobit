@@ -204,11 +204,11 @@ void renderCharacterPreview()
     glEnable(GL_MULTISAMPLE);
 
     // Camera: framed to fit the whole figure regardless of body_scale.
-    // Mesh authored-forward is +Z (Mixamo convention); the +pi flip
-    // in buildActorModelMatrix rotates that to world-forward = -Z
-    // (the codebase's actor-forward convention). The FRONT of the
-    // figure is therefore the -Z side -- camera at -Z looks at the
-    // face. See PoseSampler.cpp jointWorldMatrixWithActor for the
+    // The rig's mesh authored-forward is +Z; the +pi flip in
+    // buildActorModelMatrix rotates that to world-forward = -Z (the
+    // codebase's actor-forward convention). The FRONT of the figure
+    // is therefore the -Z side -- camera at -Z looks at the face.
+    // See PoseSampler.cpp jointWorldMatrixWithActor for the
     // canonical comment on this flip.
     //
     // Distance derivation: given a desired fraction F of the viewport
@@ -290,7 +290,7 @@ void renderCharacterPreview()
     // gameplay draw reuses each frame -- the preview's render order
     // means we can't share). Reads sPlayer.appearance.
     const std::string sk_id =
-        player.skeleton_id.empty() ? std::string("player") : player.skeleton_id;
+        player.skeleton_id.empty() ? std::string("humanoid_legacy") : player.skeleton_id;
     static std::vector<glm::mat4> sPreviewPalette;
     selva::gameplay::applyAppearanceDeformation(player.sampler, selva::anim::jointMapByKey(sk_id),
                                                 player.appearance, sPreviewPalette);

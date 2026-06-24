@@ -18,13 +18,13 @@ struct LockOnPointDecl
     bool is_default = false; // first acquire snaps to this point; one entry should set true
 };
 
-// Per-skeleton named joint references. Decouples PoseSampler from
-// Mixamo conventions: any skeleton (humanoid, wolf, custom quadruped,
-// custom four-armed monstrosity) provides its own joint-name map
-// in config/skeletons/<id>.json. PoseSampler looks up by SEMANTIC
-// role (hips, foot_left, etc.) and the map translates to the
-// skeleton's actual joint name (which is then resolved to an
-// index via findJointByName).
+// Per-skeleton named joint references. Decouples PoseSampler from any
+// single skeleton's naming convention: any rig (humanoid, wolf, custom
+// quadruped, custom four-armed monstrosity) provides its own joint-
+// name map in config/skeletons/<id>.json. PoseSampler looks up by
+// SEMANTIC role (hips, foot_left, etc.) and the map translates to the
+// skeleton's actual joint name (which is then resolved to an index
+// via findJointByName).
 //
 // All fields are joint NAMES, not indices. Empty string = this
 // skeleton doesn't have that joint (e.g. a snake skeleton has no
@@ -90,7 +90,7 @@ SkeletonJointMap loadSkeletonJointMap(const std::string& id);
 const SkeletonJointMap& jointMapByKey(const std::string& key);
 
 // Load all skeleton joint maps at boot. Called from
-// initSkeletalAssets. Player map ("player") is required; others
+// initSkeletalAssets. Legacy humanoid map ("humanoid_legacy") is required; others
 // best-effort (their archetypes log a miss if absent).
 void loadAllSkeletonJointMaps();
 

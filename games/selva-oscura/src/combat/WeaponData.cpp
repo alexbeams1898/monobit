@@ -61,8 +61,8 @@ void from_json(const nlohmann::json& j, Weapon& w)
         j.at("id").get_to(w.id);
     if (j.contains("name"))
         j.at("name").get_to(w.name);
-    // JSON key is "class" (matches Souls/Mixamo terminology and reads naturally
-    // in the file); C++ field is class_id since `class` is a keyword.
+    // JSON key is "class" (reads naturally in the file); C++ field is
+    // class_id since `class` is a keyword.
     if (j.contains("class"))
         j.at("class").get_to(w.class_id);
     if (j.contains("mesh"))

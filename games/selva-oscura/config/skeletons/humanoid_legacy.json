@@ -1,6 +1,6 @@
 {
-  "_comment": "Player (humanoid) skeleton joint map. Decouples PoseSampler from Mixamo conventions by translating semantic joint roles (hips, foot_left, etc.) to this skeleton's actual joint names. Mirror values from the hardcoded mixamorig:* strings that used to live in PoseSampler.cpp. When ALL hardcoded mixamorig refs are removed (Phase A.4), this file is the single source of truth for which joints PoseSampler queries on the player rig.",
-  "skeleton_id": "player",
+  "_comment": "Humanoid (legacy Mixamo-baked rig) skeleton joint map. Decouples PoseSampler from Mixamo conventions by translating semantic joint roles (hips, foot_left, etc.) to this skeleton's actual joint names. This rig is FROZEN -- all existing animation clips (player + Guide + larvae) bake against it. The new MB-Lab-native 'humanoid' rig replaces it actor-by-actor; until full migration, every humanoid actor still references skeleton_id=humanoid_legacy. See docs/design/character-canvas.md.",
+  "skeleton_id": "humanoid_legacy",
   "joint_names": {
     "hips": "mixamorig:Hips",
     "upleg_left": "mixamorig:LeftUpLeg",

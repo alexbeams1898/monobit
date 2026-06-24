@@ -434,10 +434,10 @@ using selva::combat::combatLog;
 static std::string sDebugClipName;
 // The locomotion clip name (registry key) selected on the previous
 // frame — read this frame by combat-fire code that runs BEFORE the
-// per-frame SM pick. The ozz Animation::name() returns "mixamo.com"
-// for every Mixamo-exported clip, so it can't be used to identify
-// which loco clip is playing. This static IS the registry key
-// ("unarmed_combat_idle", "walking", "jogging", etc.).
+// per-frame SM pick. The embedded ozz Animation::name() is typically
+// a generic exporter string ("mixamo.com"), so it can't be used to
+// identify which loco clip is playing. This static IS the registry
+// key ("unarmed_combat_idle", "walking", "jogging", etc.).
 static std::string sLastLocoClipName = "standard_idle";
 // Asymmetric commit time for loco-clip swaps. A cross-family swap
 // (forward/back ↔ strafe) takes kLocoCrossFamilyCommitSeconds of
@@ -2073,8 +2073,8 @@ static void fireBlockOneShot(bool loco_settled, const BlockClipSet& set)
 
 // Resolve the block-lifecycle clip set for the current equipment +
 // modifiers. Buckler uses sword_and_shield_block + _idle (no lower
-// yet). Unarmed+shift uses the 3-clip set baked from Mixamo's
-// Center Block. Returns nullptr raise = caller treats RMB as a
+// yet). Unarmed+shift uses the 3-clip set baked from the center-
+// block source. Returns nullptr raise = caller treats RMB as a
 // normal attack input.
 static BlockClipSet resolveBlockClip(bool shift_held)
 {
@@ -4296,7 +4296,7 @@ void renderTreePreviewControls()
 // Draw player + enemies. All actors share the humanoid rig (figura umana
 // canon, see docs/design/bestiary.md); enemies tint differently so the
 // player can tell them apart while there's no material variation yet.
-// Yaw applies a +pi offset because the Mixamo bind pose faces +Z while
+// Yaw applies a +pi offset because the rig's bind pose faces +Z while
 // our gameplay convention has yaw=0 mean facing -Z.
 // Apply FPV head-hide to a bone palette: copy `in` to `out`, replacing
 // the head + neck bone slots with a degenerate matrix that translates
@@ -4341,7 +4341,7 @@ void drawPlayerSkeletal(const glm::mat4& viewProj)
     const glm::mat4 player_model = selva::combat::buildActorModelMatrix(
         sPlayer.pos, sPlayer.yaw, pfoot, sPlayer.appearance.body_scale);
     const std::string sk_id =
-        sPlayer.skeleton_id.empty() ? std::string("player") : sPlayer.skeleton_id;
+        sPlayer.skeleton_id.empty() ? std::string("humanoid_legacy") : sPlayer.skeleton_id;
     selva::gameplay::applyAppearanceDeformation(sSampler, selva::anim::jointMapByKey(sk_id),
                                                 sPlayer.appearance, sPlayer.deformed_bone_palette);
     const bool fpv = selva::render::cameraMode() == selva::render::CameraMode::FirstPerson;
@@ -4425,7 +4425,8 @@ void drawOrQueueEnemy(selva::gameplay::Actor& enemy, const glm::mat4& viewProj,
     const float alpha = computeEnemyDeathFadeAlpha(enemy, now_wc, fade_hold, fade_duration);
     if (alpha <= 0.001f)
         return;
-    const std::string sk_id = enemy.skeleton_id.empty() ? std::string("player") : enemy.skeleton_id;
+    const std::string sk_id =
+        enemy.skeleton_id.empty() ? std::string("humanoid_legacy") : enemy.skeleton_id;
     auto& enemy_mesh = selva::anim::meshByKey(sk_id);
     const float efoot = enemy_mesh.foot_offset_y;
     // ONE Appearance per frame -- body_scale used for the model
@@ -4638,7 +4639,7 @@ void drawSkeletalsForDepthPass()
         if (enemy->sampler.bone_palette.empty())
             continue;
         const std::string sk_id =
-            enemy->skeleton_id.empty() ? std::string("player") : enemy->skeleton_id;
+            enemy->skeleton_id.empty() ? std::string("humanoid_legacy") : enemy->skeleton_id;
         auto& enemy_mesh = selva::anim::meshByKey(sk_id);
         const float efoot = enemy_mesh.foot_offset_y;
         const glm::mat4 m = selva::combat::buildActorModelMatrix(enemy->pos, enemy->yaw, efoot,

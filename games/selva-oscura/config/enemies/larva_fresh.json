@@ -4,7 +4,7 @@
   "form": "DamnedSoul",
   "faction": "Neutral",
   "_comment_faction": "Fresh larvae are NOT aggro-able. faction=Neutral gates the perception ladder at Unaware (tickPerception's faction check returns early). The applyArchetypeSwap to larva_aged later flips faction=Hostile via the new archetype's faction field.",
-  "skeleton_id": "player",
+  "skeleton_id": "humanoid_legacy",
   "appearance_path": "config/appearances/larva_fresh.json",
   "_comment_appearance_path": "Per figura umana: same humanoid rig, deformed per being. Fresh larvae are noticeably small (body_scale=0.60, leached pale color) -- the imprint has not yet hollowed them out into the aged form. The transform_target_archetype below points at larva_aged; while a fresh larva waits at the shore, resolveAppearance lerps body_scale + color from THIS appearance toward larva_aged's appearance, so the player watches the larva grow AND redden simultaneously as the inward-burn progresses. Future deformation axes (gauntness, hunch) will layer on top and be lerped too without code changes.",
   "tree_id": "humanoid_basic",

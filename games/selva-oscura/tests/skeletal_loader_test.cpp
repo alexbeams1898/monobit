@@ -10,7 +10,7 @@ using selva::anim::Skeleton;
 
 // These tests run from the test exe's working directory, which CMake sets
 // to ${CMAKE_RUNTIME_OUTPUT_DIRECTORY} (build/bin) by default for executable
-// targets. The .ozz files live at build/bin/assets/characters/humanoid/...
+// targets. The .ozz files live at build/bin/assets/characters/humanoid_legacy/
 // because the gltf2ozz custom command writes them there at build time.
 //
 // If a test fails with "cannot open" or "not a skeleton archive", the most
@@ -20,16 +20,16 @@ using selva::anim::Skeleton;
 
 namespace
 {
-const char* kSkeletonPath = "assets/characters/humanoid/skeleton.ozz";
-const char* kIdlePath = "assets/characters/humanoid/sword_and_shield_idle.ozz";
-const char* kWalkPath = "assets/characters/humanoid/sword_and_shield_walk.ozz";
+const char* kSkeletonPath = "assets/characters/humanoid_legacy/skeleton.ozz";
+const char* kIdlePath = "assets/characters/humanoid_legacy/sword_and_shield_idle.ozz";
+const char* kWalkPath = "assets/characters/humanoid_legacy/sword_and_shield_walk.ozz";
 } // namespace
 
-TEST_CASE("Skeleton loads from X Bot skeleton.ozz", "[anim][skeleton][load]")
+TEST_CASE("Skeleton loads from humanoid_legacy skeleton.ozz", "[anim][skeleton][load]")
 {
     const Skeleton skel = loadSkeleton(kSkeletonPath);
     REQUIRE(skel.isLoaded());
-    // X Bot ships with a 65-joint Mixamo humanoid rig. Test the lower
+    // The legacy humanoid rig ships with ~65 joints. Test the lower
     // bound (in case of small rig variants) rather than strict equality.
     REQUIRE(skel.boneCount() >= 49);
     // Sanity ceiling — we'd notice if something exploded the count.

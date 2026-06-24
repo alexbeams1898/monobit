@@ -463,12 +463,12 @@ void initActorPool()
     // story.md *The Guide / Identity* (the Vagrant is the second
     // unjudged-soul, after the Guide).
     pc.form = Form::UnjudgedSoul;
-    pc.skeleton_id = "player";
-    // Player hurtbox layout. Authored in
-    // config/skeletons/player_hurtboxes.json -- the data form of what
-    // ActorVolumes.cpp::appendActorHurtboxes used to hardcode.
+    pc.skeleton_id = "humanoid_legacy";
+    // Humanoid hurtbox layout. Authored in
+    // config/skeletons/humanoid_legacy_hurtboxes.json -- the data form
+    // of what ActorVolumes.cpp::appendActorHurtboxes used to hardcode.
     pc.body.hurtbox_decls =
-        selva::combat::loadHurtboxDecls("config/skeletons/player_hurtboxes.json");
+        selva::combat::loadHurtboxDecls("config/skeletons/humanoid_legacy_hurtboxes.json");
     pc.death_clip_name = "second_death";
     // The PC's death audio is a layered composition:
     //   * death_sfx_name (dark bed) — plays at clip start, dread
@@ -553,7 +553,7 @@ void tickActors(float dt)
 
 float actorFootOffsetY(const Actor& a)
 {
-    const std::string key = a.skeleton_id.empty() ? std::string("player") : a.skeleton_id;
+    const std::string key = a.skeleton_id.empty() ? std::string("humanoid_legacy") : a.skeleton_id;
     return selva::anim::meshByKey(key).foot_offset_y;
 }
 

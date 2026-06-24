@@ -17,7 +17,7 @@ correctly.
 
 - **Source:** https://github.com/animate1978/MB-Lab
 - **Asset:** humanoid.fbx / humanoid.glb (under
-  `assets/characters/humanoid/`)
+  `assets/characters/humanoid_legacy/`)
 - **License:** MB-Lab itself is licensed AGPL-3.0; the *generated
   character output* (mesh + textures) is released by MB-Lab under
   the Creative Commons CC0 1.0 Universal license per the MB-Lab
@@ -45,7 +45,7 @@ archives via the ozz-animation toolchain.
 
 - **Source:** https://www.mixamo.com/
 - **Pipeline:** Mixamo FBX export -> Blender clean (rebookend.py) ->
-  ozz `gltf2ozz` baking -> `assets/characters/humanoid/baked-archive/*.ozz`
+  ozz `gltf2ozz` baking -> `assets/characters/humanoid_legacy/baked-archive/*.ozz`
 - **License:** Mixamo Terms of Use (same as above).
 
 ## World art

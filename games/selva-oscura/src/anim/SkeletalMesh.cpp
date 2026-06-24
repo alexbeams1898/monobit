@@ -204,11 +204,11 @@ bool readMat4Array(const cgltf_accessor* acc, std::vector<glm::mat4>& out)
 // reverse mapping, so we walk all nodes once. Returns nullptr if no node
 // references the mesh (rare — would be a malformed file).
 //
-// We need this to compute the mesh's world-space transform: the Character
-// root node typically applies a unit-conversion scale (e.g. cm→m for
-// Mixamo) that we have to bake into the rest-pose vertices, otherwise
-// they'll be in centimeters while the bone palette (which gltf2ozz
-// already region-graph-corrected) is in meters.
+// We need this to compute the mesh's world-space transform: the root
+// node typically applies a unit-conversion scale (e.g. cm→m on some
+// FBX exports) that we have to bake into the rest-pose vertices,
+// otherwise they'll be in centimeters while the bone palette (which
+// gltf2ozz already region-graph-corrected) is in meters.
 const cgltf_node* findNodeForMesh(const cgltf_data* data, const cgltf_mesh* mesh)
 {
     for (cgltf_size i = 0; i < data->nodes_count; ++i)
@@ -302,8 +302,8 @@ static bool readMeshAttributes(const cgltf_primitive& prim, const std::string& p
 }
 
 // Compute the asset root transform from the mesh node's parent chain.
-// Mixamo's "Character" node has a 0.01 cm→m scale baked in; we apply
-// it at load time. Identity if there's no parent.
+// Some exports apply a 0.01 cm→m scale on a top-level container node;
+// we bake it in at load time. Identity if there's no parent.
 static glm::mat4 computeAssetRoot(const cgltf_data* data)
 {
     glm::mat4 asset_root(1.0f);

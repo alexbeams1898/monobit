@@ -95,8 +95,8 @@ void renderNotifications()
                           4.0f);
 
         // Icon slot reserved (filled when texture binding lands).
-        // For now: a faint rounded square placeholder so authors
-        // can see where the icon will sit.
+        // Faint rounded-square placeholder so authors can see where
+        // the icon will sit.
         if (!n.icon_path.empty())
         {
             const float ix = box_x + kPadX;

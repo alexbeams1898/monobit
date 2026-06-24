@@ -9,7 +9,7 @@
   "talk_requires_flag": "lupa_felled",
   "face_player_range_meters": 6.0,
   "_comment_face_player": "Yaw-acknowledgment: turns to face the player when within 6m, in passive (non-combat, non-scripted-walk) state. Souls-style 'the NPC notices you walking by.' Tunable per archetype; 0 = disabled. Per docs/design/insight_revelation_system.md authoring guide.",
-  "skeleton_id": "player",
+  "skeleton_id": "humanoid_legacy",
   "vision_fov_degrees": 90.0,
   "vision_range_meters": 12.0,
   "tree": "humanoid_basic",

@@ -41,8 +41,9 @@ struct SkeletalMesh
     GLuint ebo = 0;
     GLsizei index_count = 0;
 
-    // Cumulative transform of the mesh's ancestor nodes in the glTF scene
-    // graph (e.g. Mixamo's "Character" node applies a 0.01 cm→m scale).
+    // Cumulative transform of the mesh's ancestor nodes in the glTF
+    // scene graph (e.g. a unit-conversion node applying a 0.01 cm→m
+    // scale at the asset root).
     // We bake this into vertex positions and normals at load time, AND
     // the caller must feed the same transform into the bone palette
     // computation (PoseSampler / LocalToModelJob's `root` parameter) so
@@ -67,12 +68,12 @@ struct SkeletalMesh
     // both sides during load to bring them into the same baked space.
     std::vector<glm::mat4> inverse_bind_matrices;
 
-    // Lowest vertex Y in the baked rest pose. Different rigs author the
-    // mesh origin differently — Mixamo puts it near toe-level (a few cm
-    // below the feet); other rigs put it at hips, on the floor, or
-    // anywhere else. To plant a character's feet at world y=0, draw
-    // with y_offset = -foot_offset_y. We measure this once at load
-    // time so any character mesh works without per-asset tuning.
+    // Lowest vertex Y in the baked rest pose. Different rigs author
+    // the mesh origin differently — some put it near toe-level (a few
+    // cm below the feet), some at hips, some on the floor. To plant
+    // a character's feet at world y=0, draw with y_offset =
+    // -foot_offset_y. Measured once at load time so any character
+    // mesh works without per-asset tuning.
     float foot_offset_y = 0.0f;
 
     SkeletalMesh() = default;

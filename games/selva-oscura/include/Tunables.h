@@ -204,10 +204,10 @@ struct Tunables
     // (PoseSampler::setInertializationScaling) for future opt-in
     // callers; this game does not configure it.
     // Playback-rate multiplier applied to attack one-shots. >1 plays
-    // faster, scaling clip duration by 1/rate. Mixamo sword-and-shield
-    // attacks were authored at a deliberate combat pace — fine for
-    // demonstration but reads as slow in a snappier context.
-    // Beyond ~1.6 the windup disappears and reads as a teleport-swing.
+    // faster, scaling clip duration by 1/rate. Sword-and-shield attack
+    // clips were authored at a deliberate combat pace; the multiplier
+    // tunes them for a snappier feel. Beyond ~1.6 the windup
+    // disappears and reads as a teleport-swing.
     float attack_playback_rate = 1.3f;
     // Threshold (fraction of peak hand-velocity) at which the auto-
     // detected cancel window opens. Applied at clip-load time when
@@ -221,13 +221,12 @@ struct Tunables
     //     velocity continuity and a less "stop-and-restart" feel.
     //   * 0.80 = near peak: cancel almost on contact. Very snappy,
     //     visibly cuts the swing short.
-    // 0.50 is the practical sweet spot for Mixamo-style clips that
-    // weren't authored with bookend matching: cancel mid-follow-through
-    // (hand past contact, still in motion) so the chain-link splice
-    // enters the next swing with continuous velocity rather than
-    // restarting from rest. 0.10 = full settle, slower rhythm.
-    // Above ~0.70 cancels too
-    // close to contact and the swings visibly cut short.
+    // 0.50 is the practical sweet spot for clips that weren't authored
+    // with bookend matching: cancel mid-follow-through (hand past
+    // contact, still in motion) so the chain-link splice enters the
+    // next swing with continuous velocity rather than restarting from
+    // rest. 0.10 = full settle, slower rhythm. Above ~0.70 cancels
+    // too close to contact and the swings visibly cut short.
     float cancel_open_velocity_fraction = 0.50f;
     // Threshold for a "perfect" chain press. The accuracy score is
     // 1.0 at dead-center of the rhythm window and 0.0 at the edges.
@@ -416,7 +415,7 @@ struct Tunables
     float flying_knee_whoosh_time_seconds = 0.95f;
 
     // ---- First-person camera offsets ----
-    // Lift from the Mixamo `mixamorig:Head` joint (sits at head-base /
+    // Lift from the `mixamorig:Head` joint (sits at head-base /
     // neck-top) up to the player's eye line. Applied along the head's
     // local up axis so the offset rotates correctly during rolls.
     // Tune live to match the visible character's eyes.

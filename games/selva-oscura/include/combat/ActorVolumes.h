@@ -11,8 +11,8 @@ namespace selva::combat
 
 // Build the actor-to-world transform for a character whose origin
 // is at (pos.x, -foot_offset_y * body_scale, pos.z), faces +yaw with
-// the Mixamo 180-degree bind offset, and renders at body_scale of
-// the bind-pose size. body_scale=1.0 reproduces the prior behavior
+// the 180-degree bind offset, and renders at body_scale of the
+// bind-pose size. body_scale=1.0 reproduces the prior behavior
 // exactly. Mirrors what the renderer builds; centralized here so
 // hitbox + hurtbox + render all agree on the joint -> world mapping
 // AND on the visual size.
@@ -43,7 +43,7 @@ void appendActorHurtboxes(const selva::anim::PoseSampler& sampler, const glm::ma
 //   ] }
 // Returns empty vector if the file is missing / malformed; caller
 // inspects empty + logs. Used at boot to populate Body.hurtbox_decls
-// for the player (config/skeletons/player_hurtboxes.json) and for
+// for the player (config/skeletons/humanoid_legacy_hurtboxes.json) and for
 // each enemy archetype via its archetype JSON.
 std::vector<HurtboxDecl> loadHurtboxDecls(const char* json_path);
 
