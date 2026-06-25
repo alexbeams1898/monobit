@@ -1,8 +1,8 @@
-# source/ holds raw FBX authoring assets. Gitignored to avoid heavy
-# (10s of MB) authoring artifacts in the repo. The bake regenerates
-# humanoid.glb + skeleton.ozz + per-clip .ozz from these locally; the
-# baked outputs ARE committed so CI / contributors without the source
-# can build and run.
+# source/ holds raw .glb authoring exports (Blender's native glTF
+# exporter). Gitignored to avoid heavy (10s of MB) authoring artifacts
+# in the repo. The bake regenerates the committed humanoid.glb +
+# skeleton.ozz from source/ locally; the baked outputs ARE committed
+# so CI / contributors without source/ can build and run.
 source/
 
 # blender_authoring/ holds in-tree .blend files + intermediate exports

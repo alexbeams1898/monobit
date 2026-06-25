@@ -328,17 +328,83 @@ function(_selva_register_skeleton)
     set(${RIG_NAME}_glb ${rig_glb} PARENT_SCOPE)
 endfunction()
 
-# Legacy humanoid rig -- frozen, every shipped clip targets it. The
+# Legacy humanoid rig -- frozen, every shipped clip targets it. Kept
+# as historical reference / fallback for the Mixamo-sourced clip
+# library; new work uses _selva_register_humanoid below instead. The
 # source FBX omits per-vertex normals, so force re-computation; the
 # loader rejects meshes without NORMAL.
 _selva_register_skeleton(NAME humanoid_legacy COMPUTE_NORMALS always)
 
-# The two parametric humanoid rigs -- canvas substrate every damned
-# soul (player + NPCs + larvae) is built from. Player creator surfaces
-# them as "Body Type 1 / 2". Source FBXs include explicit normals so
-# the default --compute-normals missing is correct.
-_selva_register_skeleton(NAME humanoid_male)
-_selva_register_skeleton(NAME humanoid_female)
+# Minimal bake for rigs sourced from Blender's native glTF exporter.
+# Source layout: assets/characters/<name>/source/rig/humanoid.glb.
+# Two steps: stage the .glb into the committed location, then run
+# gltf2ozz to extract skeleton.ozz. No FBX2glTF, no scale normalize,
+# no Python -- Blender's exporter respects scene units and produces
+# a single-skin glb directly.
+function(_selva_register_humanoid)
+    set(one_value_args NAME)
+    cmake_parse_arguments(RIG "" "${one_value_args}" "" ${ARGN})
+    if(NOT RIG_NAME)
+        message(FATAL_ERROR "_selva_register_humanoid: NAME is required")
+    endif()
+
+    set(rig_dir ${CMAKE_CURRENT_SOURCE_DIR}/assets/characters/${RIG_NAME})
+    set(rig_out_dir ${selva_out_dir}/assets/characters/${RIG_NAME})
+    set(rig_src_glb ${rig_dir}/source/rig/humanoid.glb)
+    set(rig_glb ${rig_dir}/humanoid.glb)
+    set(rig_target selva-oscura-convert-${RIG_NAME})
+
+    set(rig_skeleton_config ${CMAKE_BINARY_DIR}/selva-oscura-${RIG_NAME}/skeleton_only.json)
+    file(WRITE ${rig_skeleton_config}
+    "{\n"
+    "  \"skeleton\": { \"filename\": \"skeleton.ozz\", \"import\": { \"enable\": true } },\n"
+    "  \"animations\": []\n"
+    "}\n"
+    )
+
+    if(EXISTS ${rig_src_glb})
+        add_custom_command(
+            OUTPUT ${rig_glb}
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different ${rig_src_glb} ${rig_glb}
+            DEPENDS ${rig_src_glb}
+            COMMENT "Staging ${RIG_NAME}/humanoid.glb..."
+            VERBATIM
+        )
+        add_custom_command(
+            OUTPUT ${rig_out_dir}/skeleton.ozz
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${rig_out_dir}
+            COMMAND ${CMAKE_COMMAND} -E chdir ${rig_out_dir}
+                $<TARGET_FILE:gltf2ozz>
+                --file=${rig_glb}
+                --config_file=${rig_skeleton_config}
+            DEPENDS ${rig_glb} gltf2ozz ${rig_skeleton_config}
+            COMMENT "Extracting ${RIG_NAME} skeleton.ozz..."
+            VERBATIM
+        )
+        add_custom_target(${rig_target} ALL DEPENDS ${rig_out_dir}/skeleton.ozz)
+        add_dependencies(${rig_target} selva-oscura-sync-config)
+    else()
+        message(STATUS "selva-oscura: ${RIG_NAME}/source/rig/humanoid.glb not found; using committed .glb + .ozz")
+        set(rig_src_skeleton ${rig_dir}/skeleton.ozz)
+        add_custom_command(
+            OUTPUT ${rig_out_dir}/skeleton.ozz
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${rig_out_dir}
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${rig_src_skeleton} ${rig_out_dir}/skeleton.ozz
+            DEPENDS ${rig_src_skeleton}
+            COMMENT "Copying committed ${RIG_NAME} skeleton.ozz..."
+            VERBATIM
+        )
+        add_custom_target(${rig_target} ALL DEPENDS ${rig_out_dir}/skeleton.ozz)
+        add_dependencies(${rig_target} selva-oscura-sync-config)
+    endif()
+endfunction()
+
+# Parametric humanoid rigs -- canvas substrate every damned soul
+# (player + NPCs + larvae) is built from. Player creator surfaces
+# them as "Body Type 1 / 2".
+_selva_register_humanoid(NAME humanoid_male)
+_selva_register_humanoid(NAME humanoid_female)
 
 # ---------------------------------------------------------------------------
 # Convert Mixamo Pro Sword and Shield Pack FBXs → per-clip .ozz at build.

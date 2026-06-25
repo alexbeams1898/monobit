@@ -513,8 +513,8 @@ void bindSpawnArchetype(Actor& e, const EnemySpawnDecl& decl, const EnemyArchety
             selva::combat::combatLog("[spawn] archetype '{}' not found in registry (id='{}')",
                                      decl.archetype, e.spawn_id);
     }
-    e.skeleton_id =
-        (e.archetype != nullptr) ? e.archetype->skeleton_id : std::string("humanoid_legacy");
+    e.skeleton_id = (e.archetype != nullptr) ? e.archetype->skeleton_id
+                                              : std::string(selva::anim::kHumanoidLegacyKey);
     e.sampler = selva::anim::createPoseSampler(selva::anim::skeletonByKey(e.skeleton_id),
                                                selva::anim::meshByKey(e.skeleton_id),
                                                selva::anim::jointMapByKey(e.skeleton_id));

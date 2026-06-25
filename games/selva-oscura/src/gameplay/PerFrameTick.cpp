@@ -4341,7 +4341,7 @@ void drawPlayerSkeletal(const glm::mat4& viewProj)
     const glm::mat4 player_model = selva::combat::buildActorModelMatrix(
         sPlayer.pos, sPlayer.yaw, pfoot, sPlayer.appearance.body_scale);
     const std::string sk_id =
-        sPlayer.skeleton_id.empty() ? std::string("humanoid_legacy") : sPlayer.skeleton_id;
+        sPlayer.skeleton_id.empty() ? std::string(selva::anim::kHumanoidLegacyKey) : sPlayer.skeleton_id;
     selva::gameplay::applyAppearanceDeformation(sSampler, selva::anim::jointMapByKey(sk_id),
                                                 sPlayer.appearance, sPlayer.deformed_bone_palette);
     const bool fpv = selva::render::cameraMode() == selva::render::CameraMode::FirstPerson;
@@ -4426,7 +4426,7 @@ void drawOrQueueEnemy(selva::gameplay::Actor& enemy, const glm::mat4& viewProj,
     if (alpha <= 0.001f)
         return;
     const std::string sk_id =
-        enemy.skeleton_id.empty() ? std::string("humanoid_legacy") : enemy.skeleton_id;
+        enemy.skeleton_id.empty() ? std::string(selva::anim::kHumanoidLegacyKey) : enemy.skeleton_id;
     auto& enemy_mesh = selva::anim::meshByKey(sk_id);
     const float efoot = enemy_mesh.foot_offset_y;
     // ONE Appearance per frame -- body_scale used for the model
@@ -4639,7 +4639,7 @@ void drawSkeletalsForDepthPass()
         if (enemy->sampler.bone_palette.empty())
             continue;
         const std::string sk_id =
-            enemy->skeleton_id.empty() ? std::string("humanoid_legacy") : enemy->skeleton_id;
+            enemy->skeleton_id.empty() ? std::string(selva::anim::kHumanoidLegacyKey) : enemy->skeleton_id;
         auto& enemy_mesh = selva::anim::meshByKey(sk_id);
         const float efoot = enemy_mesh.foot_offset_y;
         const glm::mat4 m = selva::combat::buildActorModelMatrix(enemy->pos, enemy->yaw, efoot,

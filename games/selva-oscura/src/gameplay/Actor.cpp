@@ -553,7 +553,8 @@ void tickActors(float dt)
 
 float actorFootOffsetY(const Actor& a)
 {
-    const std::string key = a.skeleton_id.empty() ? std::string("humanoid_legacy") : a.skeleton_id;
+    const std::string key =
+        a.skeleton_id.empty() ? std::string(selva::anim::kHumanoidLegacyKey) : a.skeleton_id;
     return selva::anim::meshByKey(key).foot_offset_y;
 }
 

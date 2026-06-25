@@ -683,6 +683,32 @@ PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh
     ps.impl->root_transform = mesh.asset_root_transform;
     ps.impl->inverse_bind_matrices = mesh.inverse_bind_matrices;
 
+    // Bind-pose-fill model_matrices + bone_palette so the renderer has
+    // a visually-correct pose before any clip plays. Default-constructed
+    // glm::mat4 is all-zeros, not identity; rendering zero-matrix
+    // palettes collapses every vertex to the origin (invisible). Without
+    // this fill, an actor on a clip-less rig never renders even though
+    // mesh + skeleton load successfully.
+    {
+        ozz::animation::LocalToModelJob ljob;
+        ljob.skeleton = &ozz_skel;
+        ljob.input = ozz_skel.joint_rest_poses();
+        ljob.output = ozz::make_span(ps.impl->model_matrices);
+        if (ljob.Run())
+        {
+            for (int i = 0; i < n_joints; ++i)
+            {
+                glm::mat4 model;
+                std::memcpy(&model, &ps.impl->model_matrices[i], sizeof(glm::mat4));
+                const glm::mat4 inv_bind =
+                    (static_cast<std::size_t>(i) < ps.impl->inverse_bind_matrices.size())
+                        ? ps.impl->inverse_bind_matrices[i]
+                        : glm::mat4(1.0f);
+                ps.bone_palette[i] = model * inv_bind;
+            }
+        }
+    }
+
     // Foot IK joints via the joint map. Empty strings -> -1, which
     // disables IK for that side (the existing IK code already
     // tolerates -1 since foot IK is gated by setFootIK enabling).

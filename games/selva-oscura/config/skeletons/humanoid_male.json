@@ -1,21 +1,21 @@
 {
-  "_comment": "Humanoid Body Type 1 skeleton joint map. One of two parametric base bodies the player creator surfaces as 'Body Type 1 / 2'. The canvas substrate every damned soul (player + NPCs + larvae) is built from -- see docs/design/character-canvas.md. Joint naming convention: hips=spine (the root joint), spine.003 is the chest where shoulders attach, spine.005 is the head. Joint names are identical to humanoid_female (same rig topology); only rest-pose proportions differ.",
+  "_comment": "Humanoid Body Type 1 skeleton joint map. One of two parametric base bodies the player creator surfaces as 'Body Type 1 / 2'. The canvas substrate every damned soul (player + NPCs + larvae) is built from -- see docs/design/character-canvas.md. Rigify-Tweaked deform-bone naming: every joint prefixed DEF-, .L/.R for sides. hips=DEF-spine (root), DEF-spine.003 is the chest where shoulders attach, DEF-spine.005 is the head. Bendy splits (DEF-thigh.L.001, DEF-shin.L.001, etc.) are mid-segment deformers; semantic-role mapping uses the upper-segment primary. Joint names are identical to humanoid_female (same rig topology); only rest-pose proportions differ.",
   "skeleton_id": "humanoid_male",
   "joint_names": {
-    "hips": "spine",
-    "upleg_left": "thigh.L",
-    "upleg_right": "thigh.R",
-    "leg_left": "shin.L",
-    "leg_right": "shin.R",
-    "foot_left": "foot.L",
-    "foot_right": "foot.R",
-    "head": "spine.005",
-    "uparm_left": "upper_arm.L",
-    "uparm_right": "upper_arm.R",
-    "torso": "spine.003"
+    "hips": "DEF-spine",
+    "upleg_left": "DEF-thigh.L",
+    "upleg_right": "DEF-thigh.R",
+    "leg_left": "DEF-shin.L",
+    "leg_right": "DEF-shin.R",
+    "foot_left": "DEF-foot.L",
+    "foot_right": "DEF-foot.R",
+    "head": "DEF-spine.005",
+    "uparm_left": "DEF-upper_arm.L",
+    "uparm_right": "DEF-upper_arm.R",
+    "torso": "DEF-spine.003"
   },
   "_lockon_note": "Skeleton-level fallback. Per-archetype overrides (e.g. larva) will author their own list once the rig is in use.",
   "lockon_points": [
-    { "id": "chest", "joint": "spine.003", "default": true }
+    { "id": "chest", "joint": "DEF-spine.003", "default": true }
   ]
 }
