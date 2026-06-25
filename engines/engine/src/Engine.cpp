@@ -38,10 +38,14 @@ bool Engine::init(const char* title, int width, int height)
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0)
         return false;
 
-    // OpenGL 3.3 core profile — modern rendering without legacy cruft.
-    // Core profile removes deprecated features (glBegin, glOrtho, etc.)
-    // and requires explicit VAO/VBO/shader usage.
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    // OpenGL 4.3 core profile -- SSBO + compute shaders + indirect draws
+    // beyond what 3.3 offered. 4.3 is from 2012; any GPU + driver from
+    // the last decade supports it (NVIDIA Fermi+, AMD GCN+, Intel
+    // Haswell+). Bumped from 3.3 when the SkeletalRenderer's bone
+    // palette outgrew the uniform-array cap (the legacy ~57-bone
+    // Mixamo rig had headroom; the new Rigify-based humanoid has
+    // 166 bones, requiring SSBO).
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     // 8-bit stencil so renderers can use stencil-based masking

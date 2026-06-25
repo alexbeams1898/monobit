@@ -33,10 +33,13 @@ namespace
 //   we strip translation by promoting to a vec4 with w=0.0.
 // ---------------------------------------------------------------------------
 
-constexpr int kMaxBones = 128;
+// Bone palette lives in an SSBO -- no compile-time cap. Rigs of any
+// size upload as one buffer-orphan per draw. Binding=0 matches the
+// glBindBufferBase call in drawSkeletalMesh.
+constexpr GLuint kBonePaletteBinding = 0;
 
 const char* kVertexShader = R"glsl(
-#version 330 core
+#version 430 core
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aUV;
@@ -45,7 +48,10 @@ layout(location = 4) in vec4 aBoneWeights;
 
 uniform mat4 uModel;
 uniform mat4 uViewProj;
-uniform mat4 uBones[128]; // matches kMaxBones in C++
+
+layout(std430, binding = 0) readonly buffer BonePalette {
+    mat4 uBones[];
+};
 
 out vec3 vNormalWorld;
 out vec3 vWorldPos;
@@ -76,7 +82,7 @@ void main()
 // can compare against the depth FBO. Output is uTint-modulated (player
 // is white, enemies are bordeaux red) so silhouettes stay distinct.
 const char* kFragmentShaderCore = R"glsl(
-#version 330 core
+#version 430 core
 in vec3 vNormalWorld;
 in vec3 vWorldPos;
 in vec2 vUV;
@@ -104,11 +110,11 @@ void main()
 // Module-state for the program + cached uniform locations. One program
 // shared across all skinned draws.
 GLuint sProgram = 0;
+GLuint sBoneSsbo = 0; // shader-storage buffer holding the bone palette
+                      // for the current draw. Reused across all draws --
+                      // glBufferData with the per-actor palette per call.
 GLint sUniModel = -1;
 GLint sUniViewProj = -1;
-GLint sUniBones = -1; // first element of the array; OpenGL exposes the
-                      // array as a single base location and you upload
-                      // count consecutive matrices via glUniformMatrix4fv.
 GLint sUniTint = -1;
 GLint sUniSunDir = -1;
 GLint sUniAlpha = -1;
@@ -139,7 +145,6 @@ bool initSkeletalRenderer()
     }
     sUniModel = glGetUniformLocation(sProgram, "uModel");
     sUniViewProj = glGetUniformLocation(sProgram, "uViewProj");
-    sUniBones = glGetUniformLocation(sProgram, "uBones");
     sUniTint = glGetUniformLocation(sProgram, "uTint");
     sUniSunDir = glGetUniformLocation(sProgram, "uSunDir");
     sUniAlpha = glGetUniformLocation(sProgram, "uAlpha");
@@ -147,6 +152,8 @@ bool initSkeletalRenderer()
     sUniLightViewProj = glGetUniformLocation(sProgram, "uLightViewProj");
     sUniShadowSunDir = glGetUniformLocation(sProgram, "uShadowSunDir");
     sUniShadowCamPos = glGetUniformLocation(sProgram, "uShadowCameraPos");
+
+    glGenBuffers(1, &sBoneSsbo);
     return true;
 }
 
@@ -166,6 +173,11 @@ void setSkeletalShadow(const glm::mat4& light_view_proj, const glm::vec3& sun_di
 
 void shutdownSkeletalRenderer()
 {
+    if (sBoneSsbo != 0)
+    {
+        glDeleteBuffers(1, &sBoneSsbo);
+        sBoneSsbo = 0;
+    }
     if (sProgram != 0)
     {
         glDeleteProgram(sProgram);
@@ -216,12 +228,18 @@ void drawSkeletalMesh(const SkeletalMesh& mesh, const glm::mat4& model, const gl
     glUniform3fv(sUniShadowCamPos, 1, glm::value_ptr(sFrameShadowCamPos));
     glUniform1i(sUniShadowMap, sFrameShadowUnit);
 
-    // Upload the bone palette. Cap at kMaxBones -- any rig past that
-    // gets truncated. The humanoid rig (~57 bones) has headroom.
-    const GLsizei bone_count =
-        static_cast<GLsizei>(bone_palette.size() < kMaxBones ? bone_palette.size() : kMaxBones);
-    if (bone_count > 0)
-        glUniformMatrix4fv(sUniBones, bone_count, GL_FALSE, glm::value_ptr(bone_palette[0]));
+    // Upload the bone palette to the SSBO. Orphan + refill each draw
+    // (NULL data + new data) lets the driver allocate fresh storage
+    // without stalling on in-flight draws using the previous palette.
+    if (!bone_palette.empty())
+    {
+        const GLsizeiptr bytes =
+            static_cast<GLsizeiptr>(bone_palette.size() * sizeof(glm::mat4));
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, sBoneSsbo);
+        glBufferData(GL_SHADER_STORAGE_BUFFER, bytes, glm::value_ptr(bone_palette[0]),
+                     GL_STREAM_DRAW);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kBonePaletteBinding, sBoneSsbo);
+    }
 
     // Per-draw blend state. Opaque draws keep depth-write on so they
     // occlude correctly; transparent draws disable depth-write so

@@ -6,9 +6,11 @@ include(FetchContent)
 find_package(OpenGL REQUIRED)
 
 # ---------------------------------------------------------------------------
-# GLAD  (OpenGL 3.3 core function loader)
+# GLAD  (OpenGL 4.3 core function loader)
 # Generates glad.h + glad.c at configure time using Python.
-# Requires Python 3 — install on MSYS2 with: pacman -S python
+# Requires Python 3 -- install on MSYS2 with: pacman -S python
+# Engine targets GL 4.3 (SSBO + compute + indirect draws); the runtime
+# SDL_GL_SetAttribute(...) requests a 4.3 context to match.
 # ---------------------------------------------------------------------------
 FetchContent_Declare(
     glad
@@ -18,7 +20,7 @@ FetchContent_Declare(
     SYSTEM
 )
 set(GLAD_PROFILE   "core" CACHE STRING "" FORCE)
-set(GLAD_API       "gl=3.3" CACHE STRING "" FORCE)
+set(GLAD_API       "gl=4.3" CACHE STRING "" FORCE)
 set(GLAD_GENERATOR "c" CACHE STRING "" FORCE)
 set(GLAD_EXTENSIONS "" CACHE STRING "" FORCE)
 # GLAD v0.1.36 declares cmake_minimum_required(VERSION 2.8) which triggers a

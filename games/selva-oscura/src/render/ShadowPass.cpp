@@ -114,14 +114,19 @@ void main()
 }
 )glsl";
 
+// Bone palette lives in an SSBO -- see SkeletalRenderer.cpp for the
+// matching binding (=0) on the main pass. Same buffer is rebound by
+// the shadow pass per draw to keep both passes in sync.
 const char* kSkeletalDepthVS = R"glsl(
-#version 330 core
+#version 430 core
 layout(location = 0) in vec3 aPos;
 layout(location = 3) in ivec4 aBoneIndices;
 layout(location = 4) in vec4 aBoneWeights;
 uniform mat4 uModel;
-uniform mat4 uBones[128];
 uniform mat4 uLightViewProj;
+layout(std430, binding = 0) readonly buffer BonePalette {
+    mat4 uBones[];
+};
 void main()
 {
     mat4 skin =
@@ -137,7 +142,7 @@ void main()
 // glDrawBuffer(GL_NONE) alone because some drivers still link an FS;
 // the simplest path is a no-op FS that lets the depth pipeline run.
 const char* kPassthroughFS = R"glsl(
-#version 330 core
+#version 430 core
 void main() {}
 )glsl";
 
@@ -163,7 +168,8 @@ GLint sTreeDepthAlphaCutoff = -1;
 GLuint sSkeletalDepthProgram = 0;
 GLint sSkeletalDepthLVP = -1;
 GLint sSkeletalDepthModel = -1;
-GLint sSkeletalDepthBones = -1;
+GLuint sSkeletalDepthBoneSsbo = 0;
+constexpr GLuint kSkeletalDepthBonePaletteBinding = 0;
 
 // Shadow map resolution + box half-extent. Texel size = 2*half/res.
 // 4096 / half=80m = 3.9cm/texel. Larger box than the textbook
@@ -284,7 +290,7 @@ bool initShadowPass()
     sTreeDepthAlphaCutoff = glGetUniformLocation(sTreeDepthProgram, "uAlphaCutoff");
     sSkeletalDepthLVP = glGetUniformLocation(sSkeletalDepthProgram, "uLightViewProj");
     sSkeletalDepthModel = glGetUniformLocation(sSkeletalDepthProgram, "uModel");
-    sSkeletalDepthBones = glGetUniformLocation(sSkeletalDepthProgram, "uBones");
+    glGenBuffers(1, &sSkeletalDepthBoneSsbo);
     return true;
 }
 
@@ -299,6 +305,11 @@ void shutdownShadowPass()
     {
         glDeleteTextures(1, &sDepthTex);
         sDepthTex = 0;
+    }
+    if (sSkeletalDepthBoneSsbo != 0)
+    {
+        glDeleteBuffers(1, &sSkeletalDepthBoneSsbo);
+        sSkeletalDepthBoneSsbo = 0;
     }
 }
 
@@ -492,8 +503,14 @@ void setSkeletalDepthModel(const glm::mat4& model)
 
 void setSkeletalDepthBones(const glm::mat4* bone_palette, int count)
 {
-    const int clamped = (count > 128) ? 128 : count;
-    glUniformMatrix4fv(sSkeletalDepthBones, clamped, GL_FALSE, glm::value_ptr(bone_palette[0]));
+    if (count <= 0 || bone_palette == nullptr)
+        return;
+    const GLsizeiptr bytes = static_cast<GLsizeiptr>(count) * sizeof(glm::mat4);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, sSkeletalDepthBoneSsbo);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, bytes, glm::value_ptr(bone_palette[0]),
+                 GL_STREAM_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kSkeletalDepthBonePaletteBinding,
+                     sSkeletalDepthBoneSsbo);
 }
 
 } // namespace selva::render
