@@ -381,7 +381,51 @@ function(_selva_register_humanoid)
             COMMENT "Extracting ${RIG_NAME} skeleton.ozz..."
             VERBATIM
         )
-        add_custom_target(${rig_target} ALL DEPENDS ${rig_out_dir}/skeleton.ozz)
+        # Per-clip bake: any .glb under source/clips/ becomes a per-clip
+        # .ozz against this rig's skeleton. Retargeting + export was
+        # done in Blender (via scripts/blender/retarget_mixamo.py); the
+        # script writes .glb directly so this step is just gltf2ozz.
+        # No FBX2glTF, no scale-normalize -- the .glb is already on the
+        # target skeleton.
+        set(rig_clip_ozz_files "")
+        file(GLOB_RECURSE rig_clip_glb_files
+            CONFIGURE_DEPENDS
+            "${rig_dir}/source/clips/*.glb"
+        )
+        set(rig_clip_config ${CMAKE_BINARY_DIR}/selva-oscura-${RIG_NAME}/clip_only.json)
+        file(WRITE ${rig_clip_config}
+        "{\n"
+        "  \"skeleton\": { \"filename\": \"${rig_out_dir}/skeleton.ozz\", \"import\": { \"enable\": false } }\n"
+        "}\n"
+        )
+        if(rig_clip_glb_files)
+            foreach(clip_glb ${rig_clip_glb_files})
+                get_filename_component(clip_name ${clip_glb} NAME_WE)
+                set(clip_temp_dir ${CMAKE_BINARY_DIR}/selva-oscura-${RIG_NAME}-clips/${clip_name})
+                set(clip_final_ozz ${rig_out_dir}/${clip_name}.ozz)
+                add_custom_command(
+                    OUTPUT ${clip_final_ozz}
+                    COMMAND ${CMAKE_COMMAND} -E make_directory ${clip_temp_dir}
+                    COMMAND ${CMAKE_COMMAND} -E chdir ${clip_temp_dir}
+                        $<TARGET_FILE:gltf2ozz>
+                        --file=${clip_glb}
+                        --config_file=${rig_clip_config}
+                    COMMAND ${Python3_EXECUTABLE}
+                        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/stage_baked_ozz.py
+                        --temp-dir ${clip_temp_dir}
+                        --out ${clip_final_ozz}
+                    DEPENDS
+                        ${clip_glb}
+                        gltf2ozz
+                        ${rig_clip_config}
+                        ${rig_out_dir}/skeleton.ozz
+                    COMMENT "Baking ${RIG_NAME}/${clip_name}.glb -> ${clip_name}.ozz"
+                    VERBATIM
+                )
+                list(APPEND rig_clip_ozz_files ${clip_final_ozz})
+            endforeach()
+        endif()
+        add_custom_target(${rig_target} ALL DEPENDS ${rig_out_dir}/skeleton.ozz ${rig_clip_ozz_files})
         add_dependencies(${rig_target} selva-oscura-sync-config)
     else()
         message(STATUS "selva-oscura: ${RIG_NAME}/source/rig/humanoid.glb not found; using committed .glb + .ozz")

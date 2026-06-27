@@ -4644,6 +4644,23 @@ void drawSkeletalsForDepthPass()
         const float efoot = enemy_mesh.foot_offset_y;
         const glm::mat4 m = selva::combat::buildActorModelMatrix(enemy->pos, enemy->yaw, efoot,
                                                                  enemy->appearance.body_scale);
+        if (sk_id == "humanoid_male" || sk_id == "humanoid_female")
+        {
+            static std::set<std::string> seen;
+            if (seen.insert(enemy->spawn_id).second)
+            {
+                const auto& p = enemy->sampler.bone_palette;
+                const auto& m0 = p.empty() ? glm::mat4(0.0f) : p[0];
+                std::fprintf(stderr,
+                             "[render-diag] sk=%s mesh.vao=%u idx=%u palette=%zu pos=(%.2f,%.2f,%.2f) "
+                             "scale=%.3f foot=%.3f model.col3=(%.2f,%.2f,%.2f) "
+                             "bone0.col3=(%.3f,%.3f,%.3f)\n",
+                             sk_id.c_str(), enemy_mesh.vao, enemy_mesh.index_count, p.size(),
+                             enemy->pos.x, enemy->pos.y, enemy->pos.z,
+                             enemy->appearance.body_scale, enemy_mesh.foot_offset_y, m[3].x, m[3].y,
+                             m[3].z, m0[3].x, m0[3].y, m0[3].z);
+            }
+        }
         selva::render::setSkeletalDepthModel(m);
         selva::render::setSkeletalDepthBones(enemy->sampler.bone_palette.data(),
                                              static_cast<int>(enemy->sampler.bone_palette.size()));
