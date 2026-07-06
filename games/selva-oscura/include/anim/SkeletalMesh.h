@@ -13,33 +13,140 @@ namespace selva::anim
 
 struct Skeleton; // forward — full def in anim/Skeleton.h
 
-// A skinned 3D mesh — geometry that deforms when its skeleton's bones move.
-// Owns GPU buffers (VAO/VBO/EBO). One SkeletalMesh per character mesh part
-// (single-primitive characters like X Bot ship one mesh; multi-mesh rigs
-// would need one SkeletalMesh per primitive).
+// Material describes the shader inputs needed to draw one
+// MeshPrimitive. Owned by SkeletalMesh in a vector indexed by
+// MeshPrimitive::material_index. Default-constructed Material =
+// "white-tinted, no textures" -- equivalent to the engine's
+// pre-textures behavior, so loading a .glb with no PBR material
+// produces today's flat-shaded look.
 //
-// Vertex layout in the VBO is interleaved:
+// Adding a new texture slot: add a `GLuint xxx_tex` here, add the
+// corresponding `sampler2D` to the FS, cache a uniform location in
+// the renderer init, add binding+upload in the per-primitive draw
+// path. ~4 mechanical edits, no callsite refactor.
+struct Material
+{
+    // Albedo / base-color texture. 0 = no texture, sample uses
+    // base_color_factor only. Must be uploaded as GL_SRGB8_ALPHA8
+    // so hardware decodes sRGB-encoded bytes to linear at sample.
+    GLuint base_color_tex = 0;
+
+    // Per-material scalar tint, multiplied with the texture sample
+    // (or used alone when base_color_tex == 0). Sourced from glTF
+    // material.pbrMetallicRoughness.baseColorFactor at load.
+    // Linear-space.
+    glm::vec4 base_color_factor = glm::vec4(1.0f);
+
+    // Render-state hints. Defaults are skin-suitable.
+    bool double_sided = false;
+
+    enum class AlphaMode
+    {
+        Opaque,
+        Mask, // shader discards where sampled alpha < alpha_cutoff
+        Blend
+    };
+    AlphaMode alpha_mode = AlphaMode::Opaque;
+    float alpha_cutoff = 0.5f;
+
+    // Semantic role, populated at load time by matching the glTF
+    // material name against known submesh materials. Body / eye / hair
+    // primitives ride the same mesh in the character bake; the
+    // renderer needs to know WHICH one it's drawing to apply
+    // per-role tinting (eye_tint overrides body color, hair uses
+    // Colorize mode, etc.). None = the default body primitive.
+    enum class Role
+    {
+        None = 0,
+        Eyes,
+    };
+    Role role = Role::None;
+};
+
+// Per-primitive vertex + index buffers + morph data. A glTF mesh
+// can ship multiple primitives (body + eyes + lips as one .glb with
+// 3 primitives, each with its own material). One MeshPrimitive per
+// glTF primitive.
 //
-//   struct Vertex {
-//       vec3   position;    // location 0
-//       vec3   normal;      // location 1
-//       vec2   uv;          // location 2  (texture coords; unused today)
-//       ivec4  bone_indices;// location 3  (which bones influence this vertex)
-//       vec4   bone_weights;// location 4  (how much, must sum to ~1.0)
-//   };
-//
-// Index buffer is unsigned int; cgltf gives us the source component type
-// and we promote-on-load if it's smaller.
-//
-// Bones-per-vertex is hardcoded at 4. This is convention — works on every
-// GPU since OpenGL 3.3 and is enough for almost all rigs (extra weights
-// past the top-4 get re-normalised at load time).
-struct SkeletalMesh
+// Morphs are per-primitive because glTF authors them per-primitive.
+// Cross-primitive morph names are looked up at draw time -- if the
+// caller's morph_weights map has "nose-hump-incr" and primitive 0
+// has that morph but primitive 1 doesn't, primitive 1 just doesn't
+// apply it.
+struct MeshPrimitive
 {
     GLuint vao = 0;
     GLuint vbo = 0;
     GLuint ebo = 0;
     GLsizei index_count = 0;
+    int vertex_count = 0;
+
+    // Index into the parent SkeletalMesh::materials vector.
+    // -1 = use the default-constructed Material (white, no texture).
+    int material_index = -1;
+
+    // Morph delta SSBO: vec4 entries indexed by
+    // [morph_idx * vertex_count + gl_VertexID]. .w padding for
+    // std430 layout. 0 if morph_target_count == 0.
+    GLuint morph_delta_ssbo = 0;
+    int morph_target_count = 0;
+
+    // Per-primitive morph names. Indexed parallel to morph_delta_ssbo
+    // along the morph_idx axis. The shared SkeletalMesh::morph_names
+    // is the union across all primitives (for UI / save-load); this
+    // primitive's view is the subset it actually has data for.
+    std::vector<std::string> morph_names;
+};
+
+// A skinned 3D mesh — geometry that deforms when its skeleton's
+// bones move. Composed of one or more MeshPrimitive (typically 1 for
+// the body, +1 for eyes if rigged as a separate primitive). Owns
+// GPU buffers per primitive; shared bone palette + inverse-bind
+// matrices live here at the mesh level.
+//
+// Texture ownership: Materials hold raw GLuint handles BORROWED
+// from the mesh's `textures` vector. The mesh destructor deletes
+// every texture in `textures`; Materials are pure value types and
+// must not free the handles themselves. When multiple Materials
+// or primitives reference the same image, they all hold the same
+// GLuint -- no double-free because ownership is centralized here.
+//
+// Vertex layout in each primitive's VBO is interleaved:
+//
+//   struct Vertex {
+//       vec3   position;    // location 0
+//       vec3   normal;      // location 1
+//       vec2   uv;          // location 2
+//       ivec4  bone_indices;// location 3
+//       vec4   bone_weights;// location 4
+//   };
+//
+// Index buffer is unsigned int; cgltf gives us the source component
+// type and we promote-on-load if it's smaller.
+//
+// Bones-per-vertex is hardcoded at 4. This is convention — works on
+// every GPU since OpenGL 3.3 and is enough for almost all rigs
+// (extra weights past the top-4 get re-normalised at load time).
+struct SkeletalMesh
+{
+    // Per-primitive geometry + morph. Body is primitives[0]; eyes/hair
+    // attachments would land at primitives[1..].
+    std::vector<MeshPrimitive> primitives;
+
+    // Per-material data, indexed by MeshPrimitive::material_index.
+    // Empty vector = every primitive uses the default Material.
+    std::vector<Material> materials;
+
+    // GL texture handles owned by this mesh, deleted in the destructor.
+    // Materials reference these via raw GLuint (borrowed, not owned).
+    // Indexed by glTF image order; one entry per unique sampled image.
+    std::vector<GLuint> textures;
+
+    // Union of morph names across all primitives. Used by the UI
+    // (which doesn't care which primitive owns a morph) and for
+    // save/load. Per-primitive shader binding uses
+    // MeshPrimitive::morph_names for its local indexing.
+    std::vector<std::string> morph_names;
 
     // Cumulative transform of the mesh's ancestor nodes in the glTF
     // scene graph (e.g. a unit-conversion node applying a 0.01 cm→m
@@ -68,12 +175,9 @@ struct SkeletalMesh
     // both sides during load to bring them into the same baked space.
     std::vector<glm::mat4> inverse_bind_matrices;
 
-    // Lowest vertex Y in the baked rest pose. Different rigs author
-    // the mesh origin differently — some put it near toe-level (a few
-    // cm below the feet), some at hips, some on the floor. To plant
-    // a character's feet at world y=0, draw with y_offset =
-    // -foot_offset_y. Measured once at load time so any character
-    // mesh works without per-asset tuning.
+    // Lowest vertex Y across all primitives in the baked rest pose.
+    // Used by the renderer to plant the character's feet at world y=0
+    // (draw with y_offset = -foot_offset_y).
     float foot_offset_y = 0.0f;
 
     SkeletalMesh() = default;
@@ -83,10 +187,13 @@ struct SkeletalMesh
     SkeletalMesh& operator=(SkeletalMesh&&) noexcept;
     ~SkeletalMesh();
 
-    // True if GPU buffers were created and we have triangles to draw.
+    // True if at least one primitive is loaded + has triangles.
     bool isLoaded() const
     {
-        return vao != 0 && index_count > 0;
+        for (const auto& p : primitives)
+            if (p.vao != 0 && p.index_count > 0)
+                return true;
+        return false;
     }
 };
 

@@ -178,7 +178,17 @@ static GLuint uploadCompositeTexture(const std::vector<uint8_t>& buffer, int w, 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, buffer.data());
+    // sRGB-decode on sample: the composited buffer holds sRGB-byte
+    // pixel art. The CPU-side alphaBlendOver step UPSTREAM of this
+    // call blends bytes in sRGB-encoded space (mathematically wrong
+    // for a linear-correct pipeline -- correct path would decode each
+    // source layer to linear, blend, then re-encode). Selva doesn't
+    // use this code path; prison-escape does. The wrong-but-stable
+    // CPU blend is the same behavior shipping today; the sRGB-decode
+    // at sample time at least gets the lit shading math right on the
+    // composited result. Real fix is a per-layer-linearize CPU pass.
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_SRGB8_ALPHA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+                 buffer.data());
     glBindTexture(GL_TEXTURE_2D, 0);
     return texId;
 }

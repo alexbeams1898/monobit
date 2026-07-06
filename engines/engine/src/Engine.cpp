@@ -1,5 +1,6 @@
 #include "Engine.h"
 
+#include "CrashHandler.h"
 #include "FontManager.h"
 #include "UIRenderer.h"
 #include "ecs/Components.h"
@@ -7,6 +8,7 @@
 #include "utils/DebugDraw.h"
 
 #include <cmath>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -52,6 +54,14 @@ bool Engine::init(const char* title, int width, int height)
     // (e.g. terrain-cut-by-architecture: render architecture floor
     // into stencil first, then draw terrain with stencil rejection).
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
+
+    // Request a sRGB-capable default backbuffer. Pairs with the
+    // glEnable(GL_FRAMEBUFFER_SRGB) below + sRGB-formatted color
+    // attachments throughout the codebase. Without this attribute,
+    // glEnable(GL_FRAMEBUFFER_SRGB) is silently ignored for the
+    // default framebuffer and the linear-light shader outputs are
+    // written raw (resulting in too-dark midtones on display).
+    SDL_GL_SetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, 1);
 
     // MSAA — set before window creation so the default framebuffer gets
     // multi-sample storage. msaa_samples == 0 leaves it disabled.
@@ -104,6 +114,16 @@ bool Engine::init(const char* title, int width, int height)
 
     // Vsync on by default — will become a user setting in the options menu.
     SDL_GL_SetSwapInterval(1);
+
+    // sRGB framebuffer encode. With this enabled, the GPU re-encodes
+    // shader-output linear values to sRGB on framebuffer writes. The
+    // shader pipeline produces linear-light radiance (lighting math,
+    // tonemap output); the display expects sRGB. Without this enable
+    // the linear values get written raw and the image looks too dark
+    // / oversaturated. ImGui rendering wraps glDisable/glEnable
+    // around its draws because its colors are authored sRGB and its
+    // shaders don't compensate.
+    glEnable(GL_FRAMEBUFFER_SRGB);
 
     // Depth testing: enabled once at startup, used by any 3D draw path. 2D
     // sprite paths (game-side) write Z=0 for everything so depth test
@@ -163,8 +183,122 @@ bool Engine::init(const char* title, int width, int height)
     ImGui_ImplSDL2_InitForOpenGL(window, gl_context);
     ImGui_ImplOpenGL3_Init("#version 330 core");
 
+    // Force ImGui backend to allocate all its GL resources NOW instead
+    // of lazily on the first RenderDrawData call:
+    //   - Compile the vertex + fragment shaders
+    //   - Upload the font atlas texture
+    //   - Create the VBO/EBO handles
+    // The lazy path fires from ImGui_ImplOpenGL3_NewFrame() when it
+    // sees ShaderHandle == 0 or FontTexture == 0. The loading screen
+    // hits that path early too, but tracing showed a 197 ms imgui-gl-draw
+    // spike on the first gameplay frame regardless -- likely a
+    // driver-side sync/shader-warmup cost that only surfaces on the
+    // first REAL draw (heavier than the loading screen's minimal text).
+    // Making the creation explicit here + doing a throwaway NewFrame/
+    // Render/RenderDrawData round-trip against an offscreen scratch
+    // primes every code path that would otherwise fire on the first
+    // gameplay frame.
+    ImGui_ImplOpenGL3_CreateDeviceObjects();
+    ImGui_ImplOpenGL3_CreateFontsTexture();
+    // Prime the ImGui pipeline with one throwaway frame so the FIRST
+    // gameplay frame doesn't pay any hidden first-draw cost (buffer
+    // grow, shader link finalisation, driver-side stream-draw path).
+    // The frame renders a single invisible dummy window; no visible
+    // pixels change because we're calling this before the first
+    // swap-buffers.
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplSDL2_NewFrame();
+    ImGui::NewFrame();
+    ImGui::SetNextWindowPos(ImVec2(-1000.0f, -1000.0f));
+    ImGui::SetNextWindowSize(ImVec2(1.0f, 1.0f));
+    if (ImGui::Begin("##imgui_prime", nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoBackground |
+                         ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoSavedSettings))
+    {
+        ImGui::TextUnformatted(".");
+    }
+    ImGui::End();
+    ImGui::Render();
+    glDisable(GL_FRAMEBUFFER_SRGB);
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    glEnable(GL_FRAMEBUFFER_SRGB);
+
     return true;
 }
+
+// Per-frame body extracted from Engine::run so the loop body can be
+// wrapped in __try/__except for SEH recovery (which can't share a
+// function with C++ destructors). `noexcept` enforces that no C++
+// exception leaves this function -- the C++-exception case is
+// caught one level up (try/catch in run()) and the SEH case by the
+// __except wrapper there.
+//
+// `crashed_this_frame` is set to true by the wrapper when the SEH
+// __except branch fires; this function never reads it directly --
+// it's the wrapper's signal to reset frame timing on the next
+// iteration (avoid snapping the player across the map due to a
+// multi-second pause in the crash handler).
+namespace
+{
+void runFrameBody(Engine& eng, EntityManager& entity_manager, double& previousTime,
+                  double& accumulator, double& last_frame_time, double& frame_dt,
+                  bool& timing_reset_pending, Engine::PerFrameFn per_frame_update,
+                  Engine::PreRenderFn pre_render, std::function<void()> processEvents,
+                  std::function<void(double)> update, std::function<void()> render) noexcept
+{
+    const double currentTime = static_cast<double>(SDL_GetTicks64()) / 1000.0;
+    double frameTime = currentTime - previousTime;
+    previousTime = currentTime;
+
+    last_frame_time = last_frame_time * 0.97 + frameTime * 0.03; // EMA smoothing
+    frame_dt = frameTime; // raw wall-clock dt for animation timing
+    if (frameTime > MAX_FRAME_TIME)
+        frameTime = MAX_FRAME_TIME;
+
+    accumulator += frameTime;
+
+    processEvents();
+
+    if (per_frame_update)
+        per_frame_update(eng, entity_manager, frame_dt);
+
+    entity_manager.ticks_this_frame = 0;
+
+    while (accumulator >= FIXED_TIMESTEP)
+    {
+        for (auto [entity, transform] : entity_manager.registry().view<Transform>().each())
+        {
+            auto& prev = entity_manager.registry().get_or_emplace<PreviousTransform>(entity);
+            prev.x = transform.x;
+            prev.y = transform.y;
+        }
+        for (auto [entity, camera] : entity_manager.registry().view<Camera>().each())
+        {
+            camera.prev_x = camera.x;
+            camera.prev_y = camera.y;
+            camera.prev_offset_x = camera.offset_x;
+            camera.prev_offset_y = camera.offset_y;
+        }
+        update(FIXED_TIMESTEP);
+        accumulator -= FIXED_TIMESTEP;
+        ++entity_manager.ticks_this_frame;
+
+        if (timing_reset_pending)
+        {
+            timing_reset_pending = false;
+            previousTime = static_cast<double>(SDL_GetTicks64()) / 1000.0;
+            accumulator = 0.0;
+            last_frame_time = 1.0 / 60.0;
+            break;
+        }
+    }
+
+    entity_manager.render_alpha = static_cast<float>(accumulator / FIXED_TIMESTEP);
+    if (pre_render)
+        pre_render(eng, entity_manager);
+    render();
+}
+} // namespace
 
 void Engine::run()
 {
@@ -174,67 +308,27 @@ void Engine::run()
 
     while (running)
     {
-        const double currentTime = static_cast<double>(SDL_GetTicks64()) / 1000.0;
-        double frameTime = currentTime - previousTime;
-        previousTime = currentTime;
+        // Per-frame OS-handler refresh (defense-in-depth against
+        // third-party libraries that might install their own
+        // SetUnhandledExceptionFilter / std::set_terminate after our
+        // boot). Cheap atomic OS-handle stores.
+        engine::armCrashRecovery();
 
-        last_frame_time = last_frame_time * 0.97 + frameTime * 0.03; // EMA smoothing
-        frame_dt = frameTime; // raw wall-clock dt for animation timing
-        if (frameTime > MAX_FRAME_TIME)
-            frameTime = MAX_FRAME_TIME;
-
-        accumulator += frameTime;
-
-        processEvents();
-
-        if (per_frame_update)
-            per_frame_update(*this, entity_manager, frame_dt);
-
-        // Reset per-frame tick counter so render UI can detect 0-tick frames
-        // and avoid clearing one-shot input buffers that no consumer saw yet.
-        entity_manager.ticks_this_frame = 0;
-
-        // Fixed-rate update — always steps in 1/60s increments.
-        while (accumulator >= FIXED_TIMESTEP)
-        {
-            // Snapshot positions before this tick for render interpolation.
-            for (auto [entity, transform] : entity_manager.registry().view<Transform>().each())
-            {
-                auto& prev = entity_manager.registry().get_or_emplace<PreviousTransform>(entity);
-                prev.x = transform.x;
-                prev.y = transform.y;
-            }
-            for (auto [entity, camera] : entity_manager.registry().view<Camera>().each())
-            {
-                camera.prev_x = camera.x;
-                camera.prev_y = camera.y;
-                camera.prev_offset_x = camera.offset_x;
-                camera.prev_offset_y = camera.offset_y;
-            }
-            update(FIXED_TIMESTEP);
-            accumulator -= FIXED_TIMESTEP;
-            ++entity_manager.ticks_this_frame;
-
-            // After a heavy synchronous operation (map gen), snap the clock
-            // forward so no catch-up ticks fire and the FPS counter stays clean.
-            if (timing_reset_pending)
-            {
-                timing_reset_pending = false;
-                previousTime = static_cast<double>(SDL_GetTicks64()) / 1000.0;
-                accumulator = 0.0;
-                last_frame_time = 1.0 / 60.0;
-                break;
-            }
-        }
-
-        entity_manager.render_alpha = static_cast<float>(accumulator / FIXED_TIMESTEP);
-        // pre_render runs at wall-clock rate (not fixed-step) and after
-        // render_alpha is computed. Game code uses this slot for any
-        // per-frame work that needs the final alpha (sprite animation
-        // advance, aim interpolation, visual-sync systems, etc.).
-        if (pre_render)
-            pre_render(*this, entity_manager);
-        render();
+        // Per-frame body. SEH faults inside ANY callback, tick, or
+        // render path are caught by the Vectored Exception Handler
+        // installed by CrashHandler (AddVectoredExceptionHandler).
+        // VEH writes a crash dump + emergency-save + std::_Exit(1) --
+        // it does NOT attempt to resume execution. Industry standard
+        // (Unreal/Unity/id Tech/Source all do this): after a fatal
+        // fault the process state is unknown and continuing risks
+        // corrupting the save. An earlier resume design with VEH
+        // RIP/RSP rewriting infinite-looped under fault because RSP
+        // cannot be reliably restored without __try/__except (which
+        // MinGW G++/clang don't accept). Removed.
+        runFrameBody(
+            *this, entity_manager, previousTime, accumulator, last_frame_time, frame_dt,
+            timing_reset_pending, per_frame_update, pre_render, [this]() { processEvents(); },
+            [this](double dt) { update(dt); }, [this]() { render(); });
 
         // Tracy frame marker — marks the end of one complete frame.
         // When Tracy is disabled (TRACY_ENABLE=OFF) this compiles to nothing.
@@ -418,7 +512,14 @@ void Engine::renderLoadingFrame(const char* status_text)
     ImGui::End();
 
     ImGui::Render();
+    // ImGui colors + themes were authored against a non-sRGB framebuffer
+    // (vertex colors pass through to the framebuffer as raw 8-bit, no
+    // sRGB-encode awareness in ImGui shaders). Disabling
+    // GL_FRAMEBUFFER_SRGB around the ImGui pass keeps it looking
+    // identical to its pre-sRGB-rewrite appearance.
+    glDisable(GL_FRAMEBUFFER_SRGB);
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    glEnable(GL_FRAMEBUFFER_SRGB);
     SDL_GL_SwapWindow(window);
 }
 
@@ -508,7 +609,11 @@ void Engine::render()
         }
         {
             ZoneScopedN("imgui-gl-draw");
+            // See loading-screen ImGui draw above for the rationale on
+            // bypassing GL_FRAMEBUFFER_SRGB around the ImGui pass.
+            glDisable(GL_FRAMEBUFFER_SRGB);
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+            glEnable(GL_FRAMEBUFFER_SRGB);
         }
     }
 
@@ -554,4 +659,20 @@ void Engine::shutdown()
     }
     SDL_Quit();
     running = false;
+}
+
+void Engine::hideWindow()
+{
+    if (window == nullptr)
+        return;
+    SDL_HideWindow(window);
+    // Drain any pending events so the message queue isn't backed up
+    // when the OS processes our hide request -- otherwise the window
+    // can briefly appear in a "Not Responding" state for the moment
+    // before it disappears.
+    SDL_Event ev;
+    while (SDL_PollEvent(&ev))
+    {
+        // intentionally discard
+    }
 }

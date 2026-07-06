@@ -54,6 +54,8 @@ bool LocomotionConfig::loadFromFile(const std::string& path)
                 continue;
             blend_in_by_clip[c.name] = c.blend_in_seconds;
             source_by_clip[c.name] = parseTranslationSource(c.translation_source);
+            if (c.playback_rate != 1.0f)
+                playback_rate_by_clip[c.name] = c.playback_rate;
         }
         std::fprintf(stderr, "[anim] LocomotionConfig: loaded %zu clip entry(ies) from %s\n",
                      blend_in_by_clip.size(), path.c_str());
@@ -77,6 +79,12 @@ TranslationSource LocomotionConfig::translationSource(const std::string& clip_na
 {
     const auto it = source_by_clip.find(clip_name);
     return it == source_by_clip.end() ? TranslationSource::Velocity : it->second;
+}
+
+float LocomotionConfig::playbackRate(const std::string& clip_name) const
+{
+    const auto it = playback_rate_by_clip.find(clip_name);
+    return it == playback_rate_by_clip.end() ? 1.0f : it->second;
 }
 
 } // namespace selva::anim

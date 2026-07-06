@@ -45,6 +45,42 @@ std::unordered_map<std::string, bool>& loadFailureMemo()
     return memo;
 }
 
+// Force-load `def`'s visual_weapon into the cache. No-op on cache hit
+// or previously-failed path. Returns the cached mesh pointer, or
+// nullptr on empty path / load failure. Shared by resolveEquippedMesh
+// (which walks profile/inventory to find the ItemDef) and the boot-
+// time preloader (which walks every def in itemRegistry() and pre-
+// warms the cache so no gameplay frame pays a cold mesh load).
+const selva::world::StaticMesh* loadWeaponMeshInto(const engine::ecs::ItemDef& def,
+                                                   const std::string& config_path)
+{
+    if (def.visual_weapon.empty())
+        return nullptr;
+    if (auto it = meshCache().find(config_path); it != meshCache().end())
+        return &it->second;
+    if (loadFailureMemo()[config_path])
+        return nullptr;
+
+    selva::world::StaticMesh mesh;
+    const bool ok = selva::world::loadStaticMesh(def.visual_weapon.c_str(), glm::vec3(0.0f), mesh);
+    if (!ok)
+    {
+        std::fprintf(stderr,
+                     "[weapon-render] failed to load mesh '%s' for item '%s'; "
+                     "will not retry this session\n",
+                     def.visual_weapon.c_str(), config_path.c_str());
+        std::fflush(stderr);
+        loadFailureMemo()[config_path] = true;
+        return nullptr;
+    }
+    std::fprintf(stderr, "[weapon-render] loaded '%s' for '%s' (%zu primitives)\n",
+                 def.visual_weapon.c_str(), config_path.c_str(), mesh.primitives.size());
+    std::fflush(stderr);
+
+    auto [inserted_it, _] = meshCache().emplace(config_path, std::move(mesh));
+    return &inserted_it->second;
+}
+
 // Resolve the right-hand-equipped weapon's mesh, loading on first
 // touch. Returns nullptr if no profile / nothing equipped / item
 // has no visual_weapon / load failed.
@@ -65,35 +101,10 @@ const selva::world::StaticMesh* resolveEquippedMesh()
 
     const auto& items = selva::items::itemRegistry();
     const engine::ecs::ItemDef* def = items.find(inst->config_path);
-    if (def == nullptr || def->visual_weapon.empty())
+    if (def == nullptr)
         return nullptr;
 
-    // Cache hit.
-    if (auto it = meshCache().find(inst->config_path); it != meshCache().end())
-        return &it->second;
-
-    // Skip retries on a previously-failed path.
-    if (loadFailureMemo()[inst->config_path])
-        return nullptr;
-
-    selva::world::StaticMesh mesh;
-    const bool ok = selva::world::loadStaticMesh(def->visual_weapon.c_str(), glm::vec3(0.0f), mesh);
-    if (!ok)
-    {
-        std::fprintf(stderr,
-                     "[weapon-render] failed to load mesh '%s' for item '%s'; "
-                     "will not retry this session\n",
-                     def->visual_weapon.c_str(), inst->config_path.c_str());
-        std::fflush(stderr);
-        loadFailureMemo()[inst->config_path] = true;
-        return nullptr;
-    }
-    std::fprintf(stderr, "[weapon-render] loaded '%s' for '%s' (%zu primitives)\n",
-                 def->visual_weapon.c_str(), inst->config_path.c_str(), mesh.primitives.size());
-    std::fflush(stderr);
-
-    auto [inserted_it, _] = meshCache().emplace(inst->config_path, std::move(mesh));
-    return &inserted_it->second;
+    return loadWeaponMeshInto(*def, inst->config_path);
 }
 
 constexpr const char* kRightHandJoint = "mixamorig:RightHand";
@@ -204,6 +215,21 @@ void clearEquippedWeaponCache()
         selva::world::freeStaticMeshGLResources(mesh);
     meshCache().clear();
     loadFailureMemo().clear();
+}
+
+void preloadAllEquippedWeaponMeshes()
+{
+    const auto& items = selva::items::itemRegistry();
+    int loaded = 0;
+    for (const auto& [path, def] : items.defs)
+    {
+        if (def.visual_weapon.empty())
+            continue;
+        if (loadWeaponMeshInto(def, path) != nullptr)
+            ++loaded;
+    }
+    std::fprintf(stderr, "[weapon-render] pre-warmed %d weapon mesh(es)\n", loaded);
+    std::fflush(stderr);
 }
 
 } // namespace selva::render

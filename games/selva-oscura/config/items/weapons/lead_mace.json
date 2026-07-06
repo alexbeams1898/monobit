@@ -24,11 +24,11 @@
   "identity_stat_scaling": 0.75,
   "identity_stat_requirement": 0,
 
-  "grip_offset_x": -0.065,
-  "grip_offset_y": 0.030,
-  "grip_offset_z": 0.015,
-  "grip_rot_deg_x": 12.5,
-  "grip_rot_deg_y": -6.2,
-  "grip_rot_deg_z": -67.4,
+  "grip_offset_x": -0.018,
+  "grip_offset_y": 0.075,
+  "grip_offset_z": 0.007,
+  "grip_rot_deg_x": 64.7,
+  "grip_rot_deg_y": 39.4,
+  "grip_rot_deg_z": -23.5,
   "grip_scale": 1.0
 }

@@ -146,22 +146,26 @@ struct Rgb
 // purple, then near-white at Legendary.
 Rgb rarityColor(engine::ecs::Rarity r)
 {
+    // Linear-space; originally sRGB-authored (purple ramp from
+    // muted-lavender to near-white-blue). Linearized via the IEC
+    // 61966-2-1 transfer curve so the sRGB-framebuffer round-trip
+    // produces the same on-screen tier-color the author tuned for.
     switch (r)
     {
     case engine::ecs::Rarity::VeryCommon:
-        return {0.45f, 0.42f, 0.55f};
+        return {0.1706f, 0.1473f, 0.2633f};
     case engine::ecs::Rarity::Common:
-        return {0.55f, 0.48f, 0.72f};
+        return {0.2633f, 0.1960f, 0.4770f};
     case engine::ecs::Rarity::Uncommon:
-        return {0.55f, 0.40f, 0.85f};
+        return {0.2633f, 0.1329f, 0.6921f};
     case engine::ecs::Rarity::Rare:
-        return {0.65f, 0.30f, 0.95f};
+        return {0.3801f, 0.0732f, 0.8900f};
     case engine::ecs::Rarity::Epic:
-        return {0.80f, 0.30f, 1.00f};
+        return {0.6038f, 0.0732f, 1.0000f};
     case engine::ecs::Rarity::Legendary:
-        return {0.95f, 0.85f, 1.00f};
+        return {0.8900f, 0.6921f, 1.0000f};
     }
-    return {0.55f, 0.48f, 0.72f};
+    return {0.2633f, 0.1960f, 0.4770f};
 }
 
 // Quality boosts brightness of the rarity color (Crude dims toward

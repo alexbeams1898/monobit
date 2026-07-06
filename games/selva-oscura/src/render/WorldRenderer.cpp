@@ -920,7 +920,10 @@ void renderTrees()
     // rather than "warm autumn-coloured." Trunks render at identity
     // (set per-draw below). Future per-keeper-restoration lifts
     // this tint toward identity as the wood heals.
-    constexpr glm::vec3 kDeadFoliageTint(0.08f, 0.09f, 0.10f);
+    // Linear-space; originally sRGB-authored (0.08, 0.09, 0.10) "drained
+    // of life, cool-bias near-black." Linearized so the shader+framebuffer
+    // round-trip lands at the same perceptual color the author tuned for.
+    constexpr glm::vec3 kDeadFoliageTint(0.0072f, 0.0085f, 0.0100f);
 
     // Translucent canopies need alpha test (already in the shader)
     // and back-face NOT culled (foliage planes are double-sided in

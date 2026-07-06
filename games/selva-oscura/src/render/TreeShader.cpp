@@ -1,8 +1,11 @@
 #include "render/TreeShader.h"
 
+#include "Tunables.h"
 #include "gl/ShaderUtils.h"
+#include "render/AmbientConstants.h"
 #include "render/AtmosphereShader.h"
 #include "render/ShadowShader.h"
+#include "render/TonemapShader.h"
 
 #include <glm/gtc/type_ptr.hpp>
 
@@ -81,7 +84,7 @@ uniform vec3 uFoliageTint;
 uniform vec3 uSunDir;
 uniform vec3 uSunIntensity;
 uniform vec3 uCamPos;
-uniform float uExposure;
+// uExposure is declared inside kTonemapGLSL alongside tonemap().
 )glsl";
 
 const char* kTreeFSMain = R"glsl(
@@ -111,12 +114,10 @@ void main()
     // Hemispheric ambient. With canopyN = up, this degenerates to
     // skyAmbient — canopy receives sky light directly.
     float skyFactor = dot(canopyN, vec3(0.0, 1.0, 0.0)) * 0.5 + 0.5;
-    vec3 skyAmbient    = vec3(0.18, 0.22, 0.28);
-    vec3 groundAmbient = vec3(0.08, 0.06, 0.05);
-    vec3 ambient = mix(groundAmbient, skyAmbient, skyFactor);
-    vec3 sunTint = vec3(1.05, 0.78, 0.55);
+    // kSkyAmbient / kGroundAmbient / kSunTint -- from kAmbientConstantsGLSL.
+    vec3 ambient = mix(kGroundAmbient, kSkyAmbient, skyFactor);
     float shadow = sampleSunShadow(vWorldPos, canopyN);
-    vec3 surface = base.rgb * (ambient + sunTint * halfL * shadow);
+    vec3 surface = base.rgb * (ambient + kSunTint * halfL * shadow);
 
     // Aerial perspective (same atmosphere as region + sky).
     vec3 viewVec = vWorldPos - uCamPos;
@@ -128,8 +129,7 @@ void main()
 
     vec3 col = surface * transmittance + inScatter;
     col = applyDistanceFog(col, rayDir, uSunDir, dist);
-    col = col * uExposure;
-    col = col / (col + vec3(1.0));
+    col = tonemap(col);
     fragColor = vec4(col, 1.0);
 }
 )glsl";
@@ -151,12 +151,16 @@ GLint sUniShadowMapLoc = -1;
 GLint sUniLightViewProjLoc = -1;
 GLint sUniShadowSunDirLoc = -1;
 GLint sUniShadowCamPosLoc = -1;
+GLint sUniKSkyAmbientLoc = -1;
+GLint sUniKGroundAmbientLoc = -1;
+GLint sUniKSunTintLoc = -1;
 
 } // namespace
 
 bool initTreeShader()
 {
-    const std::string fs = std::string(kTreeFSCore) + kAtmosphereGLSL + kShadowGLSL + kTreeFSMain;
+    const std::string fs = std::string(kTreeFSCore) + kAmbientConstantsGLSL + kAtmosphereGLSL +
+                           kShadowGLSL + kTonemapGLSL + kTreeFSMain;
     sProgram = engine::gl::compileProgram(kTreeVS, fs.c_str());
     if (sProgram == 0)
         return false;
@@ -175,6 +179,9 @@ bool initTreeShader()
     sUniLightViewProjLoc = glGetUniformLocation(sProgram, "uLightViewProj");
     sUniShadowSunDirLoc = glGetUniformLocation(sProgram, "uShadowSunDir");
     sUniShadowCamPosLoc = glGetUniformLocation(sProgram, "uShadowCameraPos");
+    sUniKSkyAmbientLoc = glGetUniformLocation(sProgram, "uKSkyAmbient");
+    sUniKGroundAmbientLoc = glGetUniformLocation(sProgram, "uKGroundAmbient");
+    sUniKSunTintLoc = glGetUniformLocation(sProgram, "uKSunTint");
 
     glUseProgram(sProgram);
     glUniform1i(sUniBaseColorLoc, 0);
@@ -201,6 +208,15 @@ void shutdownTreeShader()
 void useTreeShader()
 {
     glUseProgram(sProgram);
+    // Push global ambient + sun tint from Tunables (F1-tunable).
+    const auto& L = selva::tuning::current().lighting;
+    if (sUniKSkyAmbientLoc >= 0)
+        glUniform3f(sUniKSkyAmbientLoc, L.sky_ambient.x, L.sky_ambient.y, L.sky_ambient.z);
+    if (sUniKGroundAmbientLoc >= 0)
+        glUniform3f(sUniKGroundAmbientLoc, L.ground_ambient.x, L.ground_ambient.y,
+                    L.ground_ambient.z);
+    if (sUniKSunTintLoc >= 0)
+        glUniform3f(sUniKSunTintLoc, L.sun_tint.x, L.sun_tint.y, L.sun_tint.z);
 }
 
 void setTreeView(const glm::mat4& /*view*/)

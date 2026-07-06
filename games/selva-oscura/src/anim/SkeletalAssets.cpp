@@ -22,11 +22,11 @@ namespace selva::anim
 namespace
 {
 
-// Per-skeleton bundle. The legacy humanoid bundle (key "humanoid_legacy")
-// always exists after initSkeletalAssets; non-humanoid bundles (key "wolf"
-// etc.) are loaded if their config + assets are present and skipped silently
-// otherwise (their archetypes log a "missing skeleton" warning at spawn
-// time, not at boot).
+// Per-skeleton bundle. The player bundle (key kPlayerSkeletonKey)
+// always exists after initSkeletalAssets; non-humanoid bundles (key
+// "wolf" etc.) are loaded if their config + assets are present and
+// skipped silently otherwise (their archetypes log a "missing skeleton"
+// warning at spawn time, not at boot).
 struct SkeletonBundle
 {
     Skeleton skeleton;
@@ -81,7 +81,7 @@ LocomotionConfig& sLocomotionConfig()
 // unique_ptr), so the addresses TuningPanel captured stay valid.
 SkeletonBundle& playerBundleLazy()
 {
-    auto& slot = sBundles()[std::string(kHumanoidLegacyKey)];
+    auto& slot = sBundles()[std::string(kPlayerSkeletonKey)];
     if (!slot)
         slot = std::make_unique<SkeletonBundle>();
     return *slot;
@@ -136,19 +136,42 @@ bool loadBundle(const std::string& id, const std::string& mesh_filename)
 
 } // namespace
 
+namespace
+{
+// Mutable runtime resolver -- defaults to the boot constant; flipped
+// by setPlayerSkeletonKey() when a character with body_type=Type2
+// loads.
+const char*& playerSkeletonKeyRef()
+{
+    static const char* s = kPlayerSkeletonKey;
+    return s;
+}
+} // namespace
+
+const char* playerSkeletonKey()
+{
+    return playerSkeletonKeyRef();
+}
+
+void setPlayerSkeletonKey(const char* key)
+{
+    if (key && *key)
+        playerSkeletonKeyRef() = key;
+}
+
 Skeleton& skeleton()
 {
-    return bundleOrFallback(std::string(kHumanoidLegacyKey)).skeleton;
+    return bundleOrFallback(std::string(playerSkeletonKey())).skeleton;
 }
 
 SkeletalMesh& playerMesh()
 {
-    return bundleOrFallback(std::string(kHumanoidLegacyKey)).mesh;
+    return bundleOrFallback(std::string(playerSkeletonKey())).mesh;
 }
 
 ClipRegistry& clips()
 {
-    return bundleOrFallback(std::string(kHumanoidLegacyKey)).clips;
+    return bundleOrFallback(std::string(playerSkeletonKey())).clips;
 }
 
 Skeleton& skeletonByKey(const std::string& key)
@@ -159,6 +182,42 @@ Skeleton& skeletonByKey(const std::string& key)
 SkeletalMesh& meshByKey(const std::string& key)
 {
     return bundleOrFallback(key).mesh;
+}
+
+// Path-keyed cache of archetype meshes. Populated lazily on first
+// call to meshByArchetypePath(). Owns the SkeletalMesh instances
+// (moves them in). The fallback path (empty path or load failure)
+// intentionally returns a reference to the shared bundle's mesh so
+// gameplay never renders a missing-mesh placeholder.
+static std::unordered_map<std::string, SkeletalMesh>& sArchetypeMeshes()
+{
+    static std::unordered_map<std::string, SkeletalMesh> m;
+    return m;
+}
+
+SkeletalMesh& meshByArchetypePath(const std::string& path, const std::string& fallback_skeleton_id)
+{
+    if (path.empty())
+        return meshByKey(fallback_skeleton_id);
+    auto& cache = sArchetypeMeshes();
+    auto it = cache.find(path);
+    if (it != cache.end())
+        return it->second;
+    // Load into the cache, resolving inverse-bind matrices against
+    // the fallback skeleton bundle (shared rig by FromSoft-pattern
+    // convention -- every humanoid enemy variant reuses the same
+    // skeleton so animation clips work across archetypes).
+    const Skeleton& skel = bundleOrFallback(fallback_skeleton_id).skeleton;
+    SkeletalMesh mesh = loadSkeletalMesh(path, skel);
+    if (!mesh.isLoaded())
+    {
+        std::fprintf(stderr,
+                     "[anim] archetype mesh '%s' failed to load; falling back to '%s' default\n",
+                     path.c_str(), fallback_skeleton_id.c_str());
+        return meshByKey(fallback_skeleton_id);
+    }
+    auto emplaced = cache.emplace(path, std::move(mesh));
+    return emplaced.first->second;
 }
 
 ClipRegistry& clipsByKey(const std::string& key)
@@ -199,26 +258,25 @@ const AnimationClip* runClip()
 
 bool initSkeletalAssets()
 {
-    // Legacy humanoid bundle is required (every existing humanoid actor
-    // -- player, Guide, larvae -- shares it). Non-humanoid bundles are
-    // optional (their archetype JSONs declare what to load, and missing
-    // bundles are caught at spawn).
-    if (!loadBundle(std::string(kHumanoidLegacyKey), "humanoid.glb"))
+    // Player bundle is required. Non-humanoid bundles (wolf, etc) are
+    // optional -- their archetype JSONs declare what to load, missing
+    // bundles caught at spawn. Larvae now ride the humanoid_male bundle
+    // (per [[universal-humanoid-enemy-rule]] every Hell-side enemy
+    // reuses the humanoid skeleton); zombie_* clips ship in that
+    // bundle's ClipRegistry directly from its source/clips/ bake.
+    if (!loadBundle(std::string(kPlayerSkeletonKey), "humanoid.glb"))
     {
-        std::fprintf(stderr, "[anim] humanoid_legacy bundle missing -- character disabled\n");
+        std::fprintf(stderr, "[anim] player bundle '%s' missing -- character disabled\n",
+                     kPlayerSkeletonKey);
         return false;
     }
-    // Larva clips (Scary Zombie Pack) are retargeted against the
-    // humanoid skeleton at bake time, so they live in the legacy
-    // humanoid bundle's ClipRegistry. Larva archetypes reference
-    // "zombie_walk" / etc. by name and lookupArchetypeClip resolves
-    // them through this shared registry. Per [[universal-humanoid-enemy-rule]]
-    // every Hell-side enemy reuses the humanoid skeleton; the rig is
-    // shared, clips are namespaced by name only.
+    // Body Type 2 (humanoid_female) is optional: missing bundle just
+    // means body-type-2 characters fall back to humanoid_male via
+    // bundleOrFallback. Logged for diagnostics; not fatal.
+    if (!loadBundle(std::string("humanoid_female"), "humanoid.glb"))
     {
-        SkeletonBundle& bundle = *sBundles()[std::string(kHumanoidLegacyKey)];
-        const int n_larva = bundle.clips.loadDirectory("assets/characters/larva");
-        std::fprintf(stderr, "[anim] loaded %d clip(s) from assets/characters/larva\n", n_larva);
+        std::fprintf(stderr, "[anim] humanoid_female bundle missing -- Body Type 2 characters will "
+                             "fall back to Body Type 1\n");
     }
     if (idleClip() == nullptr || !idleClip()->isLoaded())
     {
@@ -243,7 +301,6 @@ bool initSkeletalAssets()
         const char* id;
         const char* mesh;
     } kExtraBundles[] = {
-        {"humanoid_male", "humanoid.glb"},
         {"humanoid_female", "humanoid.glb"},
         {"wolf", "wolf.glb"},
     };

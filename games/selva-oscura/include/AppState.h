@@ -540,14 +540,13 @@ struct PlayerProfile
     // yet). Per setting.md *The Signing and the commit-fire*.
     PlayerClass player_class = PlayerClass::None;
 
-    // Path to the appearance JSON driving this character's visual
-    // body (uniform body_scale today; limb proportions, head size,
-    // skin tone, face blendshape weights, contrapasso deformation
-    // axes tomorrow). Empty = use default appearance
-    // (body_scale = 1.0). v1 defaults to
-    // "config/appearances/default_humanoid.json"; the forthcoming
-    // character designer writes per-character variants here.
-    std::string appearance_path;
+    // Path to the AuthoredCharacter JSON driving this character's
+    // visual body (body_scale, morphs, tint) AND the identity slice
+    // (stats / player_class / hand items) when the file carries
+    // them (has_* flags). Empty = default character. v1 defaults to
+    // a shared "default_humanoid" file; the Effigie designer writes
+    // per-character variants here.
+    std::string character_path;
 };
 
 // Hard ceiling on lifetime sangue. 9^9 numerologically -- "all of Hell,
@@ -598,7 +597,7 @@ struct Settings
 // ---------------------------------------------------------------------------
 struct SaveData
 {
-    static constexpr int CURRENT_VERSION = 9;
+    static constexpr int CURRENT_VERSION = 10;
 
     int schema_version = CURRENT_VERSION;
     std::vector<PlayerProfile> characters;

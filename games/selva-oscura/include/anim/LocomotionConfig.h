@@ -61,9 +61,14 @@ struct LocomotionClipConfig
     std::string name;
     float blend_in_seconds = 0.20f;
     std::string translation_source = "velocity";
+    // Per-clip time scale. Multiplied with global_playback_rate; a
+    // root-motion clip plays faster AND translates proportionally
+    // faster (foot cadence stays locked to translation, no skating).
+    // 1.0 = author cadence; >1 = faster.
+    float playback_rate = 1.0f;
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(LocomotionClipConfig, name, blend_in_seconds,
-                                                translation_source);
+                                                translation_source, playback_rate);
 
 // Top-level config wrapping the clip list. Wrapped (vs naked array) so
 // we can add more locomotion-wide tunables later without changing the
@@ -80,6 +85,7 @@ struct LocomotionConfig
 {
     std::unordered_map<std::string, float> blend_in_by_clip;
     std::unordered_map<std::string, TranslationSource> source_by_clip;
+    std::unordered_map<std::string, float> playback_rate_by_clip;
     // Global loco playback rate. Mirror of tun.loco_playback_rate;
     // gameplay's per-frame tick keeps this in sync so the sampler
     // (which doesn't reach into Tunables) has a single source.
@@ -99,6 +105,10 @@ struct LocomotionConfig
     // Per-clip translation source. Missing entry returns the default
     // (Velocity) — matches legacy behavior for clips not in the JSON.
     TranslationSource translationSource(const std::string& clip_name) const;
+
+    // Per-clip playback rate. Missing entry returns 1.0 (author cadence).
+    // Combine with global_playback_rate at the consume site.
+    float playbackRate(const std::string& clip_name) const;
 };
 
 } // namespace selva::anim

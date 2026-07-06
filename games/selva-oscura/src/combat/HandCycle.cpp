@@ -5,6 +5,8 @@
 #include "items/ItemRegistry.h"
 #include "ops/InventoryOps.h"
 
+#include <tracy/Tracy.hpp>
+
 namespace selva::combat
 {
 
@@ -45,6 +47,10 @@ nextCyclePosition(const std::vector<engine::ecs::ItemInstanceId>& candidate_ids,
 
 engine::ecs::ItemInstanceId cycleHand(engine::ecs::EquipSlot slot, CycleDirection direction)
 {
+    // Perf-trace correlation: weapon swap fires here. Pair with
+    // spike zones in Tracy to identify whether first-of-kind
+    // weapon setup (mesh/material/etc) is causing render hitches.
+    TracyMessageL("cycleHand");
     selva::PlayerProfile* profile = selva::activePlayerProfile();
     if (profile == nullptr)
         return engine::ecs::kInvalidItemInstanceId;

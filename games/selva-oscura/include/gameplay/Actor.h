@@ -21,6 +21,11 @@ namespace selva
 // touches Actor.h. The definition lives in AppState.h; .cpp files
 // that actually use the enum value include AppState.h directly.
 enum class PlayerClass : std::uint8_t;
+struct PlayerProfile;
+namespace anim
+{
+class AnimSet;
+}
 } // namespace selva
 #include <limits>
 #include <random>
@@ -164,7 +169,7 @@ struct Body
     // to ~1.2m for the approximation.
     float collider_height = 1.8f;
     // Per-actor hurtbox layout. Authored per skeleton (player from
-    // config/skeletons/humanoid_legacy_hurtboxes.json; enemies from their
+    // config/skeletons/humanoid_male_hurtboxes.json; enemies from their
     // archetype JSON's hurtboxes array). Empty = no hurtboxes
     // (actor takes no hits anywhere; intentional or
     // misconfiguration).
@@ -314,8 +319,8 @@ struct Actor
     // all use this schema). Today: uniform body_scale. Future:
     // limb proportions, head size, skin tone, face blendshape
     // weights, contrapasso deformation axes. Player loads from
-    // PlayerProfile.appearance_path on spawn; enemy archetypes
-    // load from EnemyArchetype.appearance_path; empty = default
+    // PlayerProfile.character_path on spawn; enemy archetypes
+    // load from EnemyArchetype.character_path; empty = default
     // (body_scale = 1.0).
     Appearance appearance;
     Faction faction = Faction::Hostile;
@@ -559,13 +564,31 @@ struct Actor
     // (the player has no domain restriction) and for non-region actors.
     std::string spawn_region_id;
 
-    // Skeleton key (matches SkeletalAssets registry: "humanoid_legacy"
+    // Skeleton key (matches SkeletalAssets registry: "humanoid_male"
     // for actors on the legacy rig; "wolf" / etc. for distinct
     // skeletons). Used by render + matrix-build call sites that need
     // the actor's mesh-specific foot_offset_y. Empty defaults to
-    // "humanoid_legacy" in selva::anim::meshByKey -- backward-compat
+    // "humanoid_male" in selva::anim::meshByKey -- backward-compat
     // for any call site that doesn't set this.
     std::string skeleton_id;
+
+    // Optional per-actor mesh override (FromSoft-pattern: every
+    // humanoid enemy archetype has its own baked .glb with its own
+    // skin diffuse, while all humanoids share the skeleton_id
+    // bundle's clip library for animation). Empty => use the shared
+    // bundle's default mesh (backward-compat for actors that don't
+    // ship their own baked variant). Set by EnemyArchetype loader
+    // from the archetype JSON's "mesh_path" field.
+    std::string mesh_path;
+
+    // When an archetype declares mesh_path_variants (a pool of pre-
+    // baked meshes -- e.g. male + female), the spawn rolls a uniform
+    // index and stashes it here so subsequent archetype swaps
+    // (fresh->aged) can preserve the SAME index against the new
+    // archetype's variant list. Result: a male fresh larva swaps to
+    // a male aged larva, not a random gender re-roll. -1 sentinel
+    // means "no variants used at spawn" (single mesh_path or none).
+    int mesh_variant_index = -1;
 
     // If true, this actor stays dead across cycle resets -- the
     // canonical Souls "felled keeper does not respawn" contract per
@@ -836,7 +859,8 @@ int defaultLockOnPointIndex(const Actor& actor);
 // intent vector. Returns nullptr if intent is effectively zero.
 // Strafe wins any nonzero lateral input — diagonals are strafes.
 const char* directionalLocoClip(const glm::vec3& fwd, const glm::vec3& right,
-                                const glm::vec3& intent, LocoTier tier, bool is_armed = false);
+                                const glm::vec3& intent, LocoTier tier,
+                                const selva::anim::AnimSet* anim_set);
 
 // Reparent the actor's active attack hitbox (if any) to the bone
 // joint that drives it, using the current pose. Called per-frame
@@ -883,6 +907,22 @@ float actorFootOffsetY(const Actor& a);
 // Initialize the pool with the player at index 0. Called once at
 // startup, before any gameplay tick. Idempotent: clears + spawns.
 void initActorPool();
+
+// Build a fully-formed player Actor from scratch, parameterized by
+// the given profile (pass nullptr at boot when no character has been
+// picked yet). All Actor fields land at their per-character starting
+// state -- pools filled per profile.player_class, appearance loaded
+// from profile.character_path, skeleton bound per body_type, sampler
+// created and warmed. NO world queries (no terrain sampling, no
+// physics -- position is left at the profile's saved pos, or (0,0,0)
+// for a fresh character; placement in the world is a separate step).
+//
+// The Souls-lineage doctrine: character switches destroy-and-replace
+// the player Actor rather than mutating fields in place. Adding a
+// new Actor field costs zero maintenance -- its default value at
+// construction IS the reset behavior, no separate reset function to
+// remember to update.
+Actor constructPlayerActor(const selva::PlayerProfile* profile);
 
 // Per-frame tick driving actor-agnostic systems. Iterates the
 // pool, advances each actor's animation, applies the consumed

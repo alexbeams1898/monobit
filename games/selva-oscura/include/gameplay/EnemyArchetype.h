@@ -256,26 +256,58 @@ struct EnemyArchetype
     // "humanoid_basic" — covers every humanoid in the bestiary
     // until a tree-specific behavior demands its own builder.
     std::string tree_id = "humanoid_basic";
-    // Skeleton key (matches SkeletalAssets registry: "humanoid_legacy"
-    // for actors on the legacy rig; "wolf" / etc. for distinct
-    // skeletons). Default "humanoid_legacy" preserves today's
-    // behavior -- every existing humanoid shade reuses the legacy rig
-    // until the new humanoid_male / humanoid_female rigs are wired up
-    // per actor.
-    std::string skeleton_id = "humanoid_legacy";
+    // Skeleton key (matches SkeletalAssets registry: "humanoid_male"
+    // for the default humanoid Body Type 1; "humanoid_female" for
+    // Body Type 2; "wolf" / etc. for distinct skeletons). Default is
+    // the player skeleton key so any humanoid archetype that doesn't
+    // override gets a working rig.
+    std::string skeleton_id = "humanoid_male";
 
-    // Visual appearance config path. Empty = default Appearance
-    // (body_scale = 1.0 -- same as existing behavior, so legacy
-    // archetypes with no appearance_path stay identical). Set
-    // per-archetype to make every instance of this enemy share a
-    // body shape -- e.g. "config/appearances/larva.json" with
-    // body_scale=0.85 for a slightly smaller larva, or
-    // "config/appearances/keeper.json" with 1.4 for a hulking
-    // keeper. spawnEnemyFromDecl loads this once at spawn into the
-    // actor's appearance field; every Actor consumer (renderer,
-    // buildActorModelMatrix, applyActorClipHipDelta) reads through
-    // the actor as it does for the player.
-    std::string appearance_path;
+    // Optional per-archetype mesh override (FromSoft-pattern:
+    // every humanoid enemy archetype has its own baked .glb with its
+    // own skin diffuse -- leached-pale larva, sangue-darkened aged
+    // larva, etc. All humanoid archetypes SHARE the skeleton_id
+    // bundle's clip library for animation.) Empty => use the shared
+    // bundle's default mesh. Load path is resolved via
+    // selva::anim::meshByArchetypePath() at draw time.
+    std::string mesh_path;
+
+    // Optional multi-variant mesh pool (FromSoft-pattern: one
+    // archetype conceptually maps to N pre-baked meshes -- e.g.
+    // male + female larvae -- and each spawned actor picks one at
+    // random). When non-empty, OVERRIDES mesh_path; the spawn code
+    // rolls a uniform random index and assigns the picked path to
+    // Actor::mesh_path. Two typical variants (male, female) but the
+    // list is unbounded so future ethnicity/skin-tone variants slot
+    // in without schema changes. Use the flat mesh_path field for
+    // archetypes with a single canonical baked mesh.
+    std::vector<std::string> mesh_path_variants;
+
+    // Per-actor face-morph randomization flag. When true, spawn code
+    // rolls random values from a hardcoded range table (see
+    // selva::gameplay::rollRandomFaceMorphs) and writes them into
+    // Actor::appearance.morph_weights so no two spawned actors of
+    // this archetype look identical. Off by default -- most player-
+    // creator characters + boss actors want their exact-configured
+    // face. Enemy archetypes that spawn in crowds (larvae, future
+    // trash zombies) opt in via "random_face_morphs": true in JSON.
+    bool random_face_morphs = false;
+
+    // AuthoredCharacter config path. Empty = default character
+    // (default appearance + no identity overlay -- same as existing
+    // behavior, so legacy archetypes with no character_path stay
+    // identical). Set per-archetype to make every instance of this
+    // enemy share a body shape -- e.g. a larva file with
+    // body_scale=0.85 for a slightly smaller larva, or a keeper file
+    // with 1.4 for a hulking keeper. Named characters (Guide,
+    // Beatrice, bosses) additionally author identity keys
+    // (display_name_key, player_class, stats, rh_item, lh_item) that
+    // overlay onto the spawned Actor when the corresponding has_*
+    // flag is set in the file. spawnEnemyFromDecl loads this once at
+    // spawn; every Actor consumer (renderer, buildActorModelMatrix,
+    // applyActorClipHipDelta) reads through the actor as it does for
+    // the player.
+    std::string character_path;
 
     // Per-archetype clip names. Empty = humanoid default (the standard
     // clip set on the legacy rig). Wolf overrides every entry. Read
@@ -393,6 +425,18 @@ struct EnemyArchetype
     // the Vagrant's second-death-grant per project_soul_larvae_cosmology),
     // future intact NPCs, decoration-tier entities.
     bool disable_hurtboxes = false;
+
+    // Cosmological "insubstantial" flag. True -> spawned actors live
+    // in the physics INCORPOREAL layer: they still stand on terrain
+    // (gravity + ground snap intact) and hazards still catch them,
+    // but the player and other actors walk through them and they walk
+    // through each other. Used for fresh larvae (soul-substance too
+    // loose to displace flesh; the Vagrant passes through the pile
+    // per project_soul_larvae_cosmology), future incorporeal NPCs.
+    // Distinct from disable_hurtboxes: an actor can be intangible and
+    // still take damage (a soul-form the player hits with a weapon),
+    // and can be tangible while unkillable (a Guide NPC).
+    bool intangible = false;
 
     // Hazard kinds this archetype's actors avoid. Tags match the
     // `kind` field of selva::hazard::HazardZone instances declared

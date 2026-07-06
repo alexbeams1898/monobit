@@ -1,230 +1,69 @@
 {
-    "_comment":
-        "Per-clip locomotion metadata. blend_in_seconds = inertialization decay duration when this clip becomes loco_current. translation_source: 'velocity' (clip-cadence-must-match-walk/jog/sprint_speed) or 'root_motion' (clip drives world translation directly via consumedHipDelta). All directional gait clips use root_motion so world speed always matches authored foot cadence — no foot-skate, no per-tier speed tuning needed. Idles stay on velocity (default) since they're stationary anyway.",
-    "clips": [
-        {
-            "name": "standard_idle",
-            "blend_in_seconds": 0.40
-        },
-        {
-            "name": "unarmed_combat_idle",
-            "blend_in_seconds": 0.40
-        },
-        {
-            "name": "unarmed_block_idle",
-            "blend_in_seconds": 0.15
-        },
-        {
-            "name": "sword_and_shield_idle_4",
-            "blend_in_seconds": 0.40
-        },
-        {
-            "name": "standard_idle_armed",
-            "blend_in_seconds": 0.40
-        },
-        {
-            "name": "sword_and_shield_walk",
-            "blend_in_seconds": 0.28,
-            "translation_source": "root_motion"
-        },
-        {
-            "name": "sword_and_shield_walk_2",
-            "blend_in_seconds": 0.28,
-            "translation_source": "root_motion"
-        },
-        {
-            "name": "sword_and_shield_run",
-            "blend_in_seconds": 0.22,
-            "translation_source": "root_motion"
-        },
-        {
-            "name": "sword_and_shield_strafe",
-            "blend_in_seconds": 0.28,
-            "translation_source": "root_motion"
-        },
-        {
-            "name": "sword_and_shield_strafe_2",
-            "blend_in_seconds": 0.28,
-            "translation_source": "root_motion"
-        },
-        {
-            "name": "sword_and_shield_walk_grip",
-            "blend_in_seconds": 0.28,
-            "translation_source": "root_motion"
-        },
-        {
-            "name": "sword_and_shield_walk_2_grip",
-            "blend_in_seconds": 0.28,
-            "translation_source": "root_motion"
-        },
-        {
-            "name": "sword_and_shield_run_grip",
-            "blend_in_seconds": 0.22,
-            "translation_source": "root_motion"
-        },
-        {
-            "name": "sword_and_shield_strafe_grip",
-            "blend_in_seconds": 0.28,
-            "translation_source": "root_motion"
-        },
-        {
-            "name": "sword_and_shield_strafe_2_grip",
-            "blend_in_seconds": 0.28,
-            "translation_source": "root_motion"
-        },
-        {
-            "name": "walking",
-            "blend_in_seconds": 0.28,
-            "translation_source": "root_motion"
-        },
-        {
-            "name": "jogging",
-            "blend_in_seconds": 0.22,
-            "translation_source": "root_motion"
-        },
-        {
-            "name": "sprinting",
-            "blend_in_seconds": 0.20,
-            "translation_source": "root_motion"
-        },
-        {
-            "name": "walking_backward",
-            "blend_in_seconds": 0.28,
-            "translation_source": "root_motion"
-        },
-        {
-            "name": "jogging_backward",
-            "blend_in_seconds": 0.22,
-            "translation_source": "root_motion"
-        },
-        {
-            "name": "strafe_walking_left",
-            "blend_in_seconds": 0.28,
-            "translation_source": "root_motion"
-        },
-        {
-            "name": "strafe_walking_right",
-            "blend_in_seconds": 0.28,
-            "translation_source": "root_motion"
-        },
-        {
-            "name": "strafe_jogging_left",
-            "blend_in_seconds": 0.22,
-            "translation_source": "root_motion"
-        },
-        {
-            "name": "strafe_jogging_right",
-            "blend_in_seconds": 0.22,
-            "translation_source": "root_motion"
-        },
-        {
-            "_section_comment":
-                "PC one-shots with authored hip travel. Classification is authoritative -- the 1.5m hip-path heuristic was removed, so every clip whose visible motion translates the body must declare root_motion or it stays in_place by default (mesh moves, body doesn't, camera doesn't follow). getting_up_3 from prone, falling_to_roll forward dodge, standing_dodge_backward backstep, running_jump WASD-held forward arc, jumping stationary (XZ near-zero so cls doesn't matter much but registered for consistency).",
-            "name": "getting_up_3",
-            "translation_source": "root_motion"
-        },
-        {
-            "name": "falling_to_roll",
-            "translation_source": "root_motion"
-        },
-        {
-            "name": "standing_dodge_backward",
-            "translation_source": "root_motion"
-        },
-        {
-            "name": "running_jump",
-            "translation_source": "root_motion"
-        },
-        {
-            "name": "jumping",
-            "translation_source": "root_motion"
-        },
-        {
-            "_comment": "Wolf clips (Quaternius rig). All in-place authoring: the animator built feet-cycling-while-body-stationary clips and leaves world translation to the engine. velocity lets walk drive via tun.walk_speed * dt; attack uses in_place so the bite's 0.586m authored hip step stays visual (no slide). gallop / gallop_jump removed -- Lupa is walk-only per the 'tired legend' framing in wolf.json; re-add entries here when a future archetype actually uses them.",
-            "name": "walk",
-            "blend_in_seconds": 0.28,
-            "translation_source": "velocity"
-        },
-        {
-            "name": "attack",
-            "translation_source": "in_place"
-        },
-        {
-            "_comment": "Lupa's pre-engage idle: looped chew on the Lonza carcass. In-place so the chew motion doesn't translate the actor (the carcass is fixed at her feet via static_meshes).",
-            "name": "eating",
-            "blend_in_seconds": 0.40,
-            "translation_source": "in_place"
-        },
-        {
-            "name": "idle",
-            "blend_in_seconds": 0.40,
-            "translation_source": "in_place"
-        },
-        {
-            "name": "idle_2",
-            "blend_in_seconds": 0.40,
-            "translation_source": "in_place"
-        },
-        {
-            "name": "idle_2_head_low",
-            "blend_in_seconds": 0.40,
-            "translation_source": "in_place"
-        },
-        {
-            "_comment": "Soul larva (Scary Zombie Pack, retargeted to humanoid) clips. zombie_walk/run/crawl declared root_motion: the Mixamo zombie clips have authored hip-XZ travel at the animator's chosen shamble cadence, NOT at engine walk_speed. Velocity-driven translation at tun.walk_speed=1.6 produced visible skating (feet authored ~0.6 m/s, body translated at 1.6). Root motion lets the clip's authored cadence drive world translation -- the foot rate matches the visible step rate by construction. Idle/attack/death/scream stay in_place (no XZ translation; the actor stops/bites/dies on the spot). All zombie clips MUST be enumerated here per [[feedback_locomotion_clip_register]].",
-            "name": "zombie_walk",
-            "blend_in_seconds": 0.30,
-            "translation_source": "root_motion"
-        },
-        {
-            "name": "zombie_run",
-            "blend_in_seconds": 0.22,
-            "translation_source": "root_motion"
-        },
-        {
-            "name": "zombie_crawl",
-            "blend_in_seconds": 0.30,
-            "translation_source": "root_motion"
-        },
-        {
-            "name": "zombie_idle",
-            "blend_in_seconds": 0.40,
-            "translation_source": "in_place"
-        },
-        {
-            "name": "zombie_attack",
-            "blend_in_seconds": 0.15,
-            "translation_source": "in_place"
-        },
-        {
-            "name": "zombie_biting",
-            "blend_in_seconds": 0.15,
-            "translation_source": "in_place"
-        },
-        {
-            "name": "zombie_biting_2",
-            "blend_in_seconds": 0.15,
-            "translation_source": "in_place"
-        },
-        {
-            "name": "zombie_neck_bite",
-            "blend_in_seconds": 0.15,
-            "translation_source": "in_place"
-        },
-        {
-            "name": "zombie_scream",
-            "blend_in_seconds": 0.20,
-            "translation_source": "in_place"
-        },
-        {
-            "name": "zombie_death",
-            "blend_in_seconds": 0.20,
-            "translation_source": "in_place"
-        },
-        {
-            "name": "zombie_dying",
-            "blend_in_seconds": 0.20,
-            "translation_source": "in_place"
-        }
-    ]
+  "_comment": "Per-clip locomotion metadata. blend_in_seconds = inertialization decay duration when this clip becomes loco_current. translation_source: 'velocity' (engine drives via velocity_xz * dt, requires walk/jog/sprint_speed tuning to match clip cadence), 'root_motion' (clip drives world translation via consumedHipDelta), 'in_place' (no extraction; the actor stays put). playback_rate scales BOTH foot cadence AND root translation (no skating). For directional gait clips that travel, prefer root_motion so world speed always matches authored foot cadence -- velocity needs hand-tuning per clip pair to avoid skating.",
+  "clips": [
+    {
+      "_section_comment": "PC HUMANOID locomotion -- unarmed + sword_and_shield. AnimSet (config/anim/*.json) resolves intent -> clip; this file tunes per-clip blend + translation source. All gait clips are root_motion: each Mixamo source ships its own authored cadence and we don't want to fight it with tuned velocity numbers."
+    },
+    { "name": "standard_idle",          "blend_in_seconds": 0.40 },
+    { "name": "unarmed_combat_idle",    "blend_in_seconds": 0.40 },
+
+    { "name": "walking",                "blend_in_seconds": 0.28, "translation_source": "root_motion" },
+    { "name": "walking_backward",       "blend_in_seconds": 0.28, "translation_source": "root_motion" },
+    { "name": "strafe_walking_left",    "blend_in_seconds": 0.28, "translation_source": "root_motion" },
+    { "name": "strafe_walking_right",   "blend_in_seconds": 0.28, "translation_source": "root_motion" },
+
+    { "name": "jogging",                "blend_in_seconds": 0.22, "translation_source": "root_motion" },
+    { "name": "jogging_backward",       "blend_in_seconds": 0.22, "translation_source": "root_motion" },
+    { "name": "strafe_jogging_left",    "blend_in_seconds": 0.22, "translation_source": "root_motion" },
+    { "name": "strafe_jogging_right",   "blend_in_seconds": 0.22, "translation_source": "root_motion" },
+
+    { "name": "strafe_running_left",    "blend_in_seconds": 0.20, "translation_source": "root_motion" },
+    { "name": "strafe_running_right",   "blend_in_seconds": 0.20, "translation_source": "root_motion" },
+
+    { "name": "sword_and_shield_idle",         "blend_in_seconds": 0.40 },
+    { "name": "sword_and_shield_block_idle",   "blend_in_seconds": 0.15 },
+    { "name": "sword_and_shield_crouch_idle",  "blend_in_seconds": 0.30 },
+    { "name": "sword_and_shield_crouch_block_idle", "blend_in_seconds": 0.15 },
+
+    { "name": "sword_and_shield_walk",         "blend_in_seconds": 0.28, "translation_source": "root_motion" },
+    { "name": "sword_and_shield_run",          "blend_in_seconds": 0.22, "translation_source": "root_motion" },
+    { "name": "sword_and_shield_strafe",       "blend_in_seconds": 0.28, "translation_source": "root_motion" },
+    { "name": "sword_and_shield_crouching",    "blend_in_seconds": 0.30, "translation_source": "root_motion" },
+    { "name": "running_crawl",                 "blend_in_seconds": 0.30, "translation_source": "root_motion" },
+
+    {
+      "_section_comment": "PC one-shots with authored hip travel. Classification is authoritative -- the 1.5m hip-path heuristic was removed, so every clip whose visible motion translates the body must declare root_motion or it stays in_place by default (mesh moves, body doesn't, camera doesn't follow)."
+    },
+    { "name": "getting_up",              "translation_source": "root_motion" },
+    { "name": "falling_to_roll",         "translation_source": "root_motion" },
+    { "name": "standing_dodge_backward", "translation_source": "root_motion" },
+    { "name": "running_jump",            "translation_source": "root_motion" },
+    { "name": "standing_jump",           "translation_source": "root_motion" },
+    { "name": "sword_and_shield_jump",   "translation_source": "root_motion" },
+    { "name": "sword_and_shield_180_turn", "translation_source": "in_place" },
+
+    {
+      "_section_comment": "Wolf clips (Quaternius rig). In-place authoring: feet-cycling-while-body-stationary, world translation comes from gameplay velocity. walk uses velocity so tun.walk_speed * dt drives motion; attack/eating/idle stay in_place because the clip's own micro-motion is purely visual (a bite that lunges forward should NOT slide the body)."
+    },
+    { "name": "walk",             "blend_in_seconds": 0.28, "translation_source": "velocity" },
+    { "name": "attack",                                     "translation_source": "in_place" },
+    { "name": "eating",           "blend_in_seconds": 0.40, "translation_source": "in_place" },
+    { "name": "idle",             "blend_in_seconds": 0.40, "translation_source": "in_place" },
+    { "name": "idle_2",           "blend_in_seconds": 0.40, "translation_source": "in_place" },
+    { "name": "idle_2_head_low",  "blend_in_seconds": 0.40, "translation_source": "in_place" },
+
+    {
+      "_section_comment": "Soul larva (Scary Zombie Pack, baked against humanoid rig). zombie_walk/run/crawl declared root_motion: Mixamo zombie clips have authored hip-XZ travel at the animator's chosen shamble cadence, NOT at engine walk_speed -- velocity-driven translation at tun.walk_speed=1.6 produced visible skating because feet were authored ~0.6 m/s. Root motion lets the clip's authored cadence drive world translation, foot rate matches step rate by construction."
+    },
+    { "name": "zombie_walk",      "blend_in_seconds": 0.30, "translation_source": "root_motion" },
+    { "name": "zombie_run",       "blend_in_seconds": 0.22, "translation_source": "root_motion" },
+    { "name": "zombie_crawl",     "blend_in_seconds": 0.30, "translation_source": "root_motion" },
+    { "name": "zombie_idle",      "blend_in_seconds": 0.40, "translation_source": "in_place" },
+    { "name": "zombie_attack",    "blend_in_seconds": 0.15, "translation_source": "in_place" },
+    { "name": "zombie_biting",    "blend_in_seconds": 0.15, "translation_source": "in_place" },
+    { "name": "zombie_neck_bite", "blend_in_seconds": 0.15, "translation_source": "in_place" },
+    { "name": "zombie_scream",    "blend_in_seconds": 0.20, "translation_source": "in_place" },
+    { "name": "zombie_death",     "blend_in_seconds": 0.20, "translation_source": "in_place" },
+    { "name": "zombie_dying",     "blend_in_seconds": 0.20, "translation_source": "in_place" }
+  ]
 }

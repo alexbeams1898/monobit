@@ -126,6 +126,13 @@ FetchContent_MakeAvailable(Catch2)
 # instrumentation overhead matters.
 # ---------------------------------------------------------------------------
 option(TRACY_ENABLE "Enable Tracy profiler client" ON)
+# Tracy installs its own SetUnhandledExceptionFilter by default,
+# which would override OUR engine::CrashHandler -- crashes would
+# get dumped by Tracy (or silently swallowed if no Tracy server is
+# attached) instead of routing through our handler that writes the
+# crash log + recovers to the main menu. We own crash handling;
+# Tracy stays out of it.
+set(TRACY_NO_CRASH_HANDLER ON CACHE BOOL "Disable Tracy's crash handler" FORCE)
 FetchContent_Declare(
     tracy
     GIT_REPOSITORY https://github.com/wolfpld/tracy.git

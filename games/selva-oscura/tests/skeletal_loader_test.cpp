@@ -10,7 +10,7 @@ using selva::anim::Skeleton;
 
 // These tests run from the test exe's working directory, which CMake sets
 // to ${CMAKE_RUNTIME_OUTPUT_DIRECTORY} (build/bin) by default for executable
-// targets. The .ozz files live at build/bin/assets/characters/humanoid_legacy/
+// targets. The .ozz files live at build/bin/assets/characters/humanoid_male/
 // because the gltf2ozz custom command writes them there at build time.
 //
 // If a test fails with "cannot open" or "not a skeleton archive", the most
@@ -20,12 +20,12 @@ using selva::anim::Skeleton;
 
 namespace
 {
-const char* kSkeletonPath = "assets/characters/humanoid_legacy/skeleton.ozz";
-const char* kIdlePath = "assets/characters/humanoid_legacy/sword_and_shield_idle.ozz";
-const char* kWalkPath = "assets/characters/humanoid_legacy/sword_and_shield_walk.ozz";
+const char* kSkeletonPath = "assets/characters/humanoid_male/skeleton.ozz";
+const char* kIdlePath = "assets/characters/humanoid_male/sword_and_shield_idle.ozz";
+const char* kWalkPath = "assets/characters/humanoid_male/sword_and_shield_walk.ozz";
 } // namespace
 
-TEST_CASE("Skeleton loads from humanoid_legacy skeleton.ozz", "[anim][skeleton][load]")
+TEST_CASE("Skeleton loads from humanoid_male skeleton.ozz", "[anim][skeleton][load]")
 {
     const Skeleton skel = loadSkeleton(kSkeletonPath);
     REQUIRE(skel.isLoaded());

@@ -7,6 +7,7 @@ add_library(engine STATIC)
 
 target_sources(engine PRIVATE
     src/Engine.cpp
+    src/CrashHandler.cpp
     src/log/Log.cpp
     src/TextureManager.cpp
     src/SpriteCompositor.cpp
@@ -58,7 +59,7 @@ target_link_libraries(engine
 
 # miniaudio on Windows requires these system libs (WASAPI/WinMM/COM).
 if(WIN32)
-    target_link_libraries(engine PUBLIC winmm ole32)
+    target_link_libraries(engine PUBLIC winmm ole32 dbghelp)
 endif()
 
 target_compile_features(engine PUBLIC cxx_std_17)

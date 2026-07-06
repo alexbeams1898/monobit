@@ -117,6 +117,6 @@ TEST_CASE("empty appearance_path returns default Appearance", "[appearance][load
 TEST_CASE("missing appearance file falls back to default + logs", "[appearance][loader]")
 {
     const auto a =
-        selva::gameplay::loadAppearance("config/appearances/__definitely_does_not_exist__.json");
+        selva::gameplay::loadAppearance("config/characters/__definitely_does_not_exist__.json");
     REQUIRE(a.body_scale == Approx(1.0f));
 }

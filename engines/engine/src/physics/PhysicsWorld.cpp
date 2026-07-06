@@ -51,22 +51,28 @@ namespace
 // Jolt uses two layer concepts:
 //   * ObjectLayer (uint16): per-body. Drives object-vs-object filtering.
 //   * BroadPhaseLayer (uint8): coarse bucket for broadphase.
-// We define two object layers (Static, Moving) and two broadphase
-// buckets (Static, Moving). Static <-> Static collisions are skipped
-// (no point), Moving <-> {Static, Moving} are tested.
+// Three object layers, three broadphase buckets:
+//   * NON_MOVING: static terrain / architecture. Only tests against MOVING.
+//   * MOVING: normal actors. Tests against NON_MOVING and MOVING.
+//   * INCORPOREAL: actors that share space with normal ones (fresh
+//     larvae, ghost forms). Tests against NON_MOVING only, so gravity
+//     and ground snap still work, but the player and other actors walk
+//     right through them and they walk through each other.
 
 namespace Layers
 {
 constexpr JPH::ObjectLayer NON_MOVING = 0;
 constexpr JPH::ObjectLayer MOVING = 1;
-constexpr JPH::ObjectLayer NUM_LAYERS = 2;
+constexpr JPH::ObjectLayer INCORPOREAL = 2;
+constexpr JPH::ObjectLayer NUM_LAYERS = 3;
 } // namespace Layers
 
 namespace BroadPhaseLayers
 {
 constexpr JPH::BroadPhaseLayer NON_MOVING(0);
 constexpr JPH::BroadPhaseLayer MOVING(1);
-constexpr JPH::uint NUM_LAYERS = 2;
+constexpr JPH::BroadPhaseLayer INCORPOREAL(2);
+constexpr JPH::uint NUM_LAYERS = 3;
 } // namespace BroadPhaseLayers
 
 class BPLayerImpl final : public JPH::BroadPhaseLayerInterface
@@ -76,6 +82,7 @@ class BPLayerImpl final : public JPH::BroadPhaseLayerInterface
     {
         obj_to_broad[Layers::NON_MOVING] = BroadPhaseLayers::NON_MOVING;
         obj_to_broad[Layers::MOVING] = BroadPhaseLayers::MOVING;
+        obj_to_broad[Layers::INCORPOREAL] = BroadPhaseLayers::INCORPOREAL;
     }
     JPH::uint GetNumBroadPhaseLayers() const override
     {
@@ -94,6 +101,8 @@ class BPLayerImpl final : public JPH::BroadPhaseLayerInterface
             return "NON_MOVING";
         case static_cast<JPH::BroadPhaseLayer::Type>(BroadPhaseLayers::MOVING):
             return "MOVING";
+        case static_cast<JPH::BroadPhaseLayer::Type>(BroadPhaseLayers::INCORPOREAL):
+            return "INCORPOREAL";
         default:
             return "?";
         }
@@ -110,7 +119,9 @@ class ObjectVsBPFilterImpl final : public JPH::ObjectVsBroadPhaseLayerFilter
     {
         if (inLayer1 == Layers::NON_MOVING)
             return inLayer2 == BroadPhaseLayers::MOVING;
-        return true; // MOVING collides with anything
+        if (inLayer1 == Layers::INCORPOREAL)
+            return inLayer2 == BroadPhaseLayers::NON_MOVING;
+        return true; // MOVING collides with NON_MOVING + MOVING (not INCORPOREAL)
     }
 };
 
@@ -121,7 +132,10 @@ class ObjectLayerPairFilterImpl final : public JPH::ObjectLayerPairFilter
     {
         if (inLayer1 == Layers::NON_MOVING)
             return inLayer2 == Layers::MOVING;
-        return true;
+        if (inLayer1 == Layers::INCORPOREAL)
+            return inLayer2 == Layers::NON_MOVING;
+        // MOVING: with NON_MOVING and MOVING, but never INCORPOREAL.
+        return inLayer2 != Layers::INCORPOREAL;
     }
 };
 
@@ -147,8 +161,9 @@ struct HandleEntry
         Character
     };
     Kind kind = Kind::Static;
-    JPH::BodyID body_id;                       // Static only
-    JPH::Ref<JPH::CharacterVirtual> character; // Character only
+    JPH::BodyID body_id;                               // Static only
+    JPH::Ref<JPH::CharacterVirtual> character;         // Character only
+    JPH::ObjectLayer character_layer = Layers::MOVING; // Character only; drives update-time filters
     SurfaceTag tag = SurfaceTag::Unknown;
     std::string debug_name;
 };
@@ -264,7 +279,10 @@ void shutdownPhysics()
 
 // Step one CharacterVirtual: gravity into velocity (free-fall accumulates,
 // on-ground resets Y), then ExtendedUpdate with stick-to-floor disabled.
-static void stepOneCharacter(JPH::CharacterVirtual* ch, float step)
+// `layer` is the character's object layer; the filters use it so an
+// INCORPOREAL character only tests against NON_MOVING and a MOVING
+// character tests against NON_MOVING + MOVING.
+static void stepOneCharacter(JPH::CharacterVirtual* ch, JPH::ObjectLayer layer, float step)
 {
     JPH::Vec3 v = ch->GetLinearVelocity();
     using GS = JPH::CharacterVirtual::EGroundState;
@@ -280,8 +298,8 @@ static void stepOneCharacter(JPH::CharacterVirtual* ch, float step)
     {
         ZoneScopedN("physics-ExtendedUpdate");
         ch->ExtendedUpdate(step, sPhysics->GetGravity(), settings,
-                           sPhysics->GetDefaultBroadPhaseLayerFilter(Layers::MOVING),
-                           sPhysics->GetDefaultLayerFilter(Layers::MOVING), {}, {}, *sTempAlloc);
+                           sPhysics->GetDefaultBroadPhaseLayerFilter(layer),
+                           sPhysics->GetDefaultLayerFilter(layer), {}, {}, *sTempAlloc);
     }
 }
 
@@ -296,7 +314,7 @@ static void stepAllCharacters(float step)
             continue;
         ZoneScopedN("physics-character-step");
         ++character_count;
-        stepOneCharacter(kv.second.character, step);
+        stepOneCharacter(kv.second.character, kv.second.character_layer, step);
     }
     TracyPlot("physics-character-count", static_cast<int64_t>(character_count));
 }
@@ -498,10 +516,13 @@ void removeBody(BodyHandle body)
     sHandles.erase(it);
 }
 
-BodyHandle addCharacter(const glm::vec3& position, float radius, float height)
+BodyHandle addCharacter(const glm::vec3& position, float radius, float height,
+                        CharacterCollision collision)
 {
     if (!sInit || radius <= 0.0f || height < 2.0f * radius)
         return kInvalidBody;
+    const JPH::ObjectLayer layer =
+        (collision == CharacterCollision::Incorporeal) ? Layers::INCORPOREAL : Layers::MOVING;
     const float cyl_half = height * 0.5f - radius;
     const JPH::Ref<JPH::Shape> capsule = new JPH::CapsuleShape(cyl_half, radius);
     // Offset the capsule so its BOTTOM is at the controller's origin
@@ -513,7 +534,7 @@ BodyHandle addCharacter(const glm::vec3& position, float radius, float height)
     settings.mShape = shape;
     settings.mMaxSlopeAngle = JPH::DegreesToRadians(50.0f);
     settings.mInnerBodyShape = shape;
-    settings.mInnerBodyLayer = Layers::MOVING;
+    settings.mInnerBodyLayer = layer;
     settings.mSupportingVolume = JPH::Plane(JPH::Vec3(0, 1, 0), -radius);
     // Internal-edge removal: when the swept capsule crosses a shared
     // triangle edge in a trimesh (walking over a hill curve), the
@@ -529,6 +550,7 @@ BodyHandle addCharacter(const glm::vec3& position, float radius, float height)
     HandleEntry entry;
     entry.kind = HandleEntry::Kind::Character;
     entry.character = ch;
+    entry.character_layer = layer;
     entry.tag = SurfaceTag::Actor;
     sHandles.emplace(h.id, std::move(entry));
     return h;

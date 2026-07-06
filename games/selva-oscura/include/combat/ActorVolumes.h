@@ -43,7 +43,7 @@ void appendActorHurtboxes(const selva::anim::PoseSampler& sampler, const glm::ma
 //   ] }
 // Returns empty vector if the file is missing / malformed; caller
 // inspects empty + logs. Used at boot to populate Body.hurtbox_decls
-// for the player (config/skeletons/humanoid_legacy_hurtboxes.json) and for
+// for the player (config/skeletons/humanoid_male_hurtboxes.json) and for
 // each enemy archetype via its archetype JSON.
 std::vector<HurtboxDecl> loadHurtboxDecls(const char* json_path);
 

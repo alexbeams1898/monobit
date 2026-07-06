@@ -1,0 +1,45 @@
+{
+  "arm_scale": 1.0,
+  "body_scale": 1.0,
+  "body_type": 1,
+  "color": [
+    1.0,
+    1.0,
+    1.0
+  ],
+  "display_name_key": "interact.npc.guide.display_name",
+  "eye_tint": [
+    1.0,
+    1.0,
+    1.0
+  ],
+  "hair_style_id": "cc0/elvs_double_mh_braid",
+  "hair_tint": [
+    0.5799999833106995,
+    0.5799999833106995,
+    0.5899999737739563
+  ],
+  "head_scale": 1.0,
+  "leg_scale": 1.0,
+  "morphs": {
+    "mouth-scale-horiz-decr": 0.0,
+    "mouth-scale-horiz-incr": 0.44999998807907104,
+    "nose-hump-decr": 0.09000000357627869,
+    "nose-hump-incr": 0.0,
+    "nose-volume-decr": 0.0,
+    "nose-volume-incr": 0.4000000059604645,
+    "nose-width2-decr": 0.0,
+    "nose-width2-incr": 0.4000000059604645
+  },
+  "player_class": "Unburdened",
+  "stats": {
+    "cog": 1,
+    "dex": 1,
+    "end": 1,
+    "intl": 1,
+    "lck": 1,
+    "per": 1,
+    "str": 1
+  },
+  "torso_scale": 1.0
+}

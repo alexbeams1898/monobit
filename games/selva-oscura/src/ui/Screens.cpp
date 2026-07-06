@@ -2,6 +2,7 @@
 
 #include "AppState.h"
 #include "AppStateGlobal.h"
+#include "CrashHandler.h"
 #include "Engine.h"
 #include "SaveManager.h"
 #include "combat/QuickSlot.h"
@@ -29,6 +30,7 @@
 #include "ui/UIComponents.h"
 
 #include <imgui.h>
+#include <tracy/Tracy.hpp>
 
 #include <SDL.h>
 
@@ -68,8 +70,11 @@ bool sJustEnteredPlaying = false;
 // so main.cpp can release the mouse.
 bool sJustLeftPlaying = false;
 
+} // namespace
+
 // Sets the active phase, releasing or capturing the mouse as appropriate.
-// Called by the screens when the user selects an action.
+// Public to selva::ui per Screens.h -- crash handler teardown calls
+// this; cannot be in the anonymous namespace.
 void setPhase(GameState::Phase next)
 {
     auto& gs = gameState();
@@ -91,6 +96,9 @@ void setPhase(GameState::Phase next)
     }
     gs.phase = next;
 }
+
+namespace
+{
 
 // Window/button/back-gesture/hint-bar helpers live in ui::UIComponents
 // now (shared across every screen + the class picker). File-local
@@ -364,6 +372,38 @@ bool renderMainMenu()
         ImGui::SetCursorPosX((disp.x - ts.x) * 0.5f);
         ImGui::TextUnformatted(fallback);
         ImGui::SetWindowFontScale(1.0f);
+    }
+
+    // ---- Crash-recovery banner (if the previous run ended badly) ----
+    // Non-modal; dismissable with the X. Tells the player their
+    // progress is safe + where the dump went, in neutral language
+    // (no cosmological terminology -- the opening's disorientation
+    // doctrine forbids any "soul / Hell / form" copy in shipped
+    // surfaces). Clears the banner state on dismiss so it doesn't
+    // re-appear on the next phase change.
+    if (engine::hadPreviousCrash())
+    {
+        const float banner_w = std::min(disp.x * 0.7f, 800.0f);
+        const float banner_x = (disp.x - banner_w) * 0.5f;
+        const float banner_y = disp.y * 0.62f;
+        ImGui::SetCursorPos(ImVec2(banner_x, banner_y));
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(60, 30, 30, 220));
+        ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(160, 80, 80, 255));
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 1.0f);
+        if (ImGui::BeginChild("##crash_banner", ImVec2(banner_w, 0.0f),
+                              ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Border,
+                              ImGuiWindowFlags_None))
+        {
+            ImGui::TextWrapped("The previous session ended unexpectedly. Your progress is safe.");
+            ImGui::Spacing();
+            ImGui::TextDisabled("%s", engine::lastCrashSummary().c_str());
+            ImGui::Spacing();
+            if (ImGui::SmallButton("Dismiss"))
+                engine::clearLastCrashSummary();
+        }
+        ImGui::EndChild();
+        ImGui::PopStyleVar();
+        ImGui::PopStyleColor(2);
     }
 
     // ---- Menu items: bottom third, centered ----
@@ -2197,6 +2237,7 @@ void renderPauseCraftTab()
 
 bool renderPauseMenu()
 {
+    ZoneScopedN("pause-menu");
     bool quit = false;
     // Full-screen darkening scrim behind the pause panel so the game
     // dims to background. The pause panel itself is sized at 85% of
@@ -2218,24 +2259,28 @@ bool renderPauseMenu()
     {
         if (ImGui::BeginTabItem("Vessel"))
         {
+            ZoneScopedN("pause-vessel");
             ui.menu_tab = UIState::Tab::Vessel;
             renderPauseVesselTab();
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Inventory"))
         {
+            ZoneScopedN("pause-inventory");
             ui.menu_tab = UIState::Tab::Inventory;
             renderPauseInventoryTab();
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Craft"))
         {
+            ZoneScopedN("pause-craft");
             ui.menu_tab = UIState::Tab::Craft;
             renderPauseCraftTab();
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("System"))
         {
+            ZoneScopedN("pause-system");
             ui.menu_tab = UIState::Tab::System;
             quit = renderSystemTab() || quit;
             ImGui::EndTabItem();
@@ -2352,6 +2397,16 @@ void tickMouseCapture()
 } // namespace
 
 // ---------------------------------------------------------------------------
+void preloadScreenAssets()
+{
+    // Same pattern as archetype-mesh / pickup-mesh pre-warm: pay the
+    // cost during the boot phase (already blocking) instead of on the
+    // first render frame that touches the asset. ensureLogoLoaded is
+    // idempotent (guarded by LogoCache::tried) so this is safe to
+    // call again at runtime.
+    ensureLogoLoaded();
+}
+
 // Public entry point - dispatch on Phase + UIState. Called once per frame
 // from selvaRenderImGui (which is registered with engine.setRenderImGui in
 // main.cpp).
@@ -2364,31 +2419,46 @@ bool renderScreens(Engine& /*engine*/)
     switch (gs.phase)
     {
     case GameState::Phase::MainMenu:
+    {
+        ZoneScopedN("screens-mainmenu");
         quit = renderMainMenu();
-        break;
+    }
+    break;
     case GameState::Phase::LoadGame:
+    {
+        ZoneScopedN("screens-loadgame");
         renderLoadGame();
-        break;
+    }
+    break;
     case GameState::Phase::Settings:
+    {
+        ZoneScopedN("screens-settings");
         renderSettings();
-        break;
+    }
+    break;
     case GameState::Phase::CharacterCreation:
         // Confirm transitions atomically to Playing with the
         // wake-scene flag. Quit-mid-screen leaves the draft
         // PlayerProfile in place; reentry from MainMenu re-opens
         // the screen for the same draft.
-        if (selva::ui::renderCharacterCreationScreen())
         {
-            const auto& chars = saveData().characters;
-            if (!chars.empty())
-                enterPlayingFromCreation(chars.back().name);
+            ZoneScopedN("screens-charcreate");
+            if (selva::ui::renderCharacterCreationScreen())
+            {
+                const auto& chars = saveData().characters;
+                if (!chars.empty())
+                    enterPlayingFromCreation(chars.back().name);
+            }
         }
         break;
     case GameState::Phase::Playing:
+    {
+        ZoneScopedN("screens-playing");
         tickPauseToggle();
         if (uiState().isScreenOpen())
             quit = renderPauseMenu() || quit;
-        break;
+    }
+    break;
     }
 
     tickMouseCapture();

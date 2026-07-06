@@ -1,0 +1,397 @@
+{
+  "_comment": "Hair style registry. Loaded at boot into selva::hair::hairRegistry(). Buckets by length. Short 1 = cc0/short01 (creator default). Bucketing = keyword heuristic + manual FORCE_LONG/FORCE_SHORT overrides in scripts/regen_hair_registry.py; awaiting a full visual-audit pass by Alex to drop duplicates and finalize buckets.",
+  "styles": [
+    {
+      "id": "cc0/short01",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/short01/humanoid_male_hair.glb",
+      "length": "short",
+      "display_name": "Short 1"
+    },
+    {
+      "id": "cc0/afro01",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/afro01/humanoid_male_hair.glb",
+      "length": "short",
+      "display_name": "Short 2"
+    },
+    {
+      "id": "cc0/bob01",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/bob01/humanoid_male_hair.glb",
+      "length": "short",
+      "display_name": "Short 3"
+    },
+    {
+      "id": "cc0/bob02",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/bob02/humanoid_male_hair.glb",
+      "length": "short",
+      "display_name": "Short 4"
+    },
+    {
+      "id": "cc0/cortu_short_messy_hair",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/cortu_short_messy_hair/humanoid_male_hair.glb",
+      "length": "short",
+      "display_name": "Short 5"
+    },
+    {
+      "id": "cc0/cortu_straight_bangs",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/cortu_straight_bangs/humanoid_male_hair.glb",
+      "length": "short",
+      "display_name": "Short 6"
+    },
+    {
+      "id": "cc0/littleright_bobcut_hair",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/littleright_bobcut_hair/humanoid_male_hair.glb",
+      "length": "short",
+      "display_name": "Short 7"
+    },
+    {
+      "id": "cc0/rehmanpolanski_hair_bun_brown",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/rehmanpolanski_hair_bun_brown/humanoid_male_hair.glb",
+      "length": "short",
+      "display_name": "Short 8"
+    },
+    {
+      "id": "cc0/short02",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/short02/humanoid_male_hair.glb",
+      "length": "short",
+      "display_name": "Short 9"
+    },
+    {
+      "id": "cc0/short03",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/short03/humanoid_male_hair.glb",
+      "length": "short",
+      "display_name": "Short 10"
+    },
+    {
+      "id": "cc0/short04",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/short04/humanoid_male_hair.glb",
+      "length": "short",
+      "display_name": "Short 11"
+    },
+    {
+      "id": "cc0/toigo_blunt_bob",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/toigo_blunt_bob/humanoid_male_hair.glb",
+      "length": "short",
+      "display_name": "Short 12"
+    },
+    {
+      "id": "cc0/toigo_curled_under_bob",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/toigo_curled_under_bob/humanoid_male_hair.glb",
+      "length": "short",
+      "display_name": "Short 13"
+    },
+    {
+      "id": "cc0/toigo_inverted_bob",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/toigo_inverted_bob/humanoid_male_hair.glb",
+      "length": "short",
+      "display_name": "Short 14"
+    },
+    {
+      "id": "ccby/elvs_inverted_curly_bob",
+      "license": "ccby",
+      "mesh_path_male": "assets/characters/hair/ccby/elvs_inverted_curly_bob/humanoid_male_hair.glb",
+      "length": "short",
+      "display_name": "Short 15"
+    },
+    {
+      "id": "ccby/elvs_micky_afro",
+      "license": "ccby",
+      "mesh_path_male": "assets/characters/hair/ccby/elvs_micky_afro/humanoid_male_hair.glb",
+      "length": "short",
+      "display_name": "Short 16"
+    },
+    {
+      "id": "ccby/elvs_short_daisy_hair",
+      "license": "ccby",
+      "mesh_path_male": "assets/characters/hair/ccby/elvs_short_daisy_hair/humanoid_male_hair.glb",
+      "length": "short",
+      "display_name": "Short 17"
+    },
+    {
+      "id": "ccby/elvs_short_side_do",
+      "license": "ccby",
+      "mesh_path_male": "assets/characters/hair/ccby/elvs_short_side_do/humanoid_male_hair.glb",
+      "length": "short",
+      "display_name": "Short 18"
+    },
+    {
+      "id": "ccby/elvs_wavy_bob",
+      "license": "ccby",
+      "mesh_path_male": "assets/characters/hair/ccby/elvs_wavy_bob/humanoid_male_hair.glb",
+      "length": "short",
+      "display_name": "Short 19"
+    },
+    {
+      "id": "ccby/elvs_witchy_lil_bob",
+      "license": "ccby",
+      "mesh_path_male": "assets/characters/hair/ccby/elvs_witchy_lil_bob/humanoid_male_hair.glb",
+      "length": "short",
+      "display_name": "Short 20"
+    },
+    {
+      "id": "cc0/braid01",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/braid01/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 1"
+    },
+    {
+      "id": "cc0/cortu_shaggy_green_hair",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/cortu_shaggy_green_hair/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 2"
+    },
+    {
+      "id": "cc0/cortu_strawberry_cloud_hair",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/cortu_strawberry_cloud_hair/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 3"
+    },
+    {
+      "id": "cc0/culturalibre_hair_01",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/culturalibre_hair_01/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 4"
+    },
+    {
+      "id": "cc0/culturalibre_hair_02",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/culturalibre_hair_02/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 5"
+    },
+    {
+      "id": "cc0/culturalibre_hair_05",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/culturalibre_hair_05/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 6"
+    },
+    {
+      "id": "cc0/culturalibre_hair_06",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/culturalibre_hair_06/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 7"
+    },
+    {
+      "id": "cc0/elvs_double_mh_braid",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/elvs_double_mh_braid/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 8"
+    },
+    {
+      "id": "cc0/elvs_french_braid_variation",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/elvs_french_braid_variation/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 9"
+    },
+    {
+      "id": "cc0/elvs_reverse_french_braid_bun",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/elvs_reverse_french_braid_bun/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 10"
+    },
+    {
+      "id": "cc0/elvs_unkempt_french_braid",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/elvs_unkempt_french_braid/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 11"
+    },
+    {
+      "id": "cc0/faydaen_hair_1",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/faydaen_hair_1/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 12"
+    },
+    {
+      "id": "cc0/learning_anime_hair",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/learning_anime_hair/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 13"
+    },
+    {
+      "id": "cc0/long01",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/long01/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 14"
+    },
+    {
+      "id": "cc0/o4saken_long01",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/o4saken_long01/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 15"
+    },
+    {
+      "id": "cc0/ponytail01",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/ponytail01/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 16"
+    },
+    {
+      "id": "cc0/sonntag78_blond_with_headband",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/sonntag78_blond_with_headband/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 17"
+    },
+    {
+      "id": "cc0/sonntag78_junglebook_hair",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/sonntag78_junglebook_hair/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 18"
+    },
+    {
+      "id": "cc0/toigo_blunt_bob_with_bangs",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/toigo_blunt_bob_with_bangs/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 19"
+    },
+    {
+      "id": "cc0/toigo_curled_under_bob_with_bangs",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/toigo_curled_under_bob_with_bangs/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 20"
+    },
+    {
+      "id": "cc0/toigo_inverted_bob_with_bangs",
+      "license": "cc0",
+      "mesh_path_male": "assets/characters/hair/cc0/toigo_inverted_bob_with_bangs/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 21"
+    },
+    {
+      "id": "ccby/elvs_50s_updo",
+      "license": "ccby",
+      "mesh_path_male": "assets/characters/hair/ccby/elvs_50s_updo/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 22"
+    },
+    {
+      "id": "ccby/elvs_adrienne_hair",
+      "license": "ccby",
+      "mesh_path_male": "assets/characters/hair/ccby/elvs_adrienne_hair/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 23"
+    },
+    {
+      "id": "ccby/elvs_ashley_may_hair",
+      "license": "ccby",
+      "mesh_path_male": "assets/characters/hair/ccby/elvs_ashley_may_hair/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 24"
+    },
+    {
+      "id": "ccby/elvs_braid_bun",
+      "license": "ccby",
+      "mesh_path_male": "assets/characters/hair/ccby/elvs_braid_bun/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 25"
+    },
+    {
+      "id": "ccby/elvs_braided_rows",
+      "license": "ccby",
+      "mesh_path_male": "assets/characters/hair/ccby/elvs_braided_rows/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 26"
+    },
+    {
+      "id": "ccby/elvs_daisy_hair",
+      "license": "ccby",
+      "mesh_path_male": "assets/characters/hair/ccby/elvs_daisy_hair/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 27"
+    },
+    {
+      "id": "ccby/elvs_grump_hair",
+      "license": "ccby",
+      "mesh_path_male": "assets/characters/hair/ccby/elvs_grump_hair/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 28"
+    },
+    {
+      "id": "ccby/elvs_hazel_hair",
+      "license": "ccby",
+      "mesh_path_male": "assets/characters/hair/ccby/elvs_hazel_hair/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 29"
+    },
+    {
+      "id": "ccby/elvs_island_princess_hair",
+      "license": "ccby",
+      "mesh_path_male": "assets/characters/hair/ccby/elvs_island_princess_hair/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 30"
+    },
+    {
+      "id": "ccby/elvs_katherine_hair",
+      "license": "ccby",
+      "mesh_path_male": "assets/characters/hair/ccby/elvs_katherine_hair/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 31"
+    },
+    {
+      "id": "ccby/elvs_keylth_hair",
+      "license": "ccby",
+      "mesh_path_male": "assets/characters/hair/ccby/elvs_keylth_hair/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 32"
+    },
+    {
+      "id": "ccby/elvs_lady_hippy_hair",
+      "license": "ccby",
+      "mesh_path_male": "assets/characters/hair/ccby/elvs_lady_hippy_hair/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 33"
+    },
+    {
+      "id": "ccby/elvs_lara_hair",
+      "license": "ccby",
+      "mesh_path_male": "assets/characters/hair/ccby/elvs_lara_hair/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 34"
+    },
+    {
+      "id": "ccby/elvs_maxwell_hair",
+      "license": "ccby",
+      "mesh_path_male": "assets/characters/hair/ccby/elvs_maxwell_hair/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 35"
+    },
+    {
+      "id": "ccby/elvs_that_80s_babe_hair",
+      "license": "ccby",
+      "mesh_path_male": "assets/characters/hair/ccby/elvs_that_80s_babe_hair/humanoid_male_hair.glb",
+      "length": "long",
+      "display_name": "Long 36"
+    }
+  ]
+}

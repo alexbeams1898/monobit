@@ -24,6 +24,19 @@ namespace selva::render
 // Free GPU resources for every cached pickup mesh. Called at shutdown.
 void clearPickupMeshCache();
 
+// Pre-warm the pickup-mesh cache by walking the item registry and
+// force-loading every def's world_mesh right now. Called at boot
+// (during the loading screen phase, when a synchronous disk read +
+// GPU upload is already blocking gameplay anyway) so the first
+// on-screen appearance of any item type doesn't stall a gameplay
+// frame with a cold load.
+//
+// Same pattern as the archetype-mesh pre-warm in main.cpp for enemy
+// meshes -- addresses the "first-of-kind mesh load hits a random
+// gameplay frame" perf class that traces 13/14/15 surfaced as
+// pickup-meshes zone spikes up to 24 ms.
+void preloadAllPickupMeshes();
+
 // Draw every live loot::Pickup that has a world_mesh path on its
 // ItemDef. Scene shader is bound by the caller; this just sets per-
 // pickup model matrix + per-primitive base color and issues the

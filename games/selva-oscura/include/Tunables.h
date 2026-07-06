@@ -1,5 +1,6 @@
 #pragma once
 
+#include <glm/vec3.hpp>
 #include <nlohmann/json.hpp>
 
 #include <string>
@@ -24,8 +25,94 @@
 // when we cross that threshold. See conversation notes 2026-05-05.
 // ---------------------------------------------------------------------------
 
+// glm::vec3 JSON I/O. Placed in the `glm` namespace so nlohmann's
+// internal get<glm::vec3>() finds them via ADL. nlohmann doesn't
+// ship a glm specialization out of the box; this is the standard
+// recipe for binding glm types to nlohmann.
+namespace glm
+{
+inline void to_json(nlohmann::json& j, const vec3& v)
+{
+    j = nlohmann::json::array({v.x, v.y, v.z});
+}
+inline void from_json(const nlohmann::json& j, vec3& v)
+{
+    if (j.is_array() && j.size() == 3)
+    {
+        v.x = j[0].get<float>();
+        v.y = j[1].get<float>();
+        v.z = j[2].get<float>();
+    }
+}
+} // namespace glm
+
 namespace selva::tuning
 {
+
+// Lighting sub-struct -- kept nested so the flat-field count in
+// Tunables stays under the NLOHMANN macro's variadic cap. Holds every
+// value the scene/sky/terrain/tree/skeletal shaders read from the
+// atmosphere module. Live-mutable via the F1 panel's Lighting tab.
+//
+// All color values are LINEAR-SPACE. Authoring sRGB defaults +
+// converting in source is a future helper; for now defaults are
+// stored linear and the F1 panel surfaces them directly.
+struct Lighting
+{
+    // Direction TO the sun (raw, gets normalized on read). +X right,
+    // +Y up, +Z out-of-screen (so the wood's twilight beacon is -Z).
+    glm::vec3 sun_dir = glm::vec3(0.0f, 0.42f, -0.91f);
+
+    // HDR radiance fed into the Rayleigh+Mie scattering integral.
+    // Big numbers (>>1) are expected: this is pre-tonemap radiance,
+    // not display color. Reinhard saturates above ~3 so changes here
+    // mostly affect twilight tints, not headline brightness.
+    glm::vec3 sun_intensity = glm::vec3(11.0f, 9.5f, 7.0f);
+
+    // Post-tonemap multiplier (acts BEFORE Reinhard saturation, so
+    // this is the most effective overall-brightness knob). 1.0 =
+    // pre-rewrite default; lower dims everything uniformly.
+    float exposure = 0.7f;
+
+    // Color of the directional sun term in the world's lighting
+    // model. Multiplied with half-Lambert + shadow for the lit-side
+    // contribution on terrain/tree/region/skeletal. Linear-space.
+    glm::vec3 sun_tint = glm::vec3(0.55f, 0.40f, 0.25f);
+
+    // Hemispheric ambient terms. Sky-facing surfaces lerp toward
+    // sky_ambient; ground-facing toward ground_ambient. Linear-space.
+    glm::vec3 sky_ambient = glm::vec3(0.0272f, 0.0397f, 0.0637f);
+    glm::vec3 ground_ambient = glm::vec3(0.0072f, 0.0049f, 0.0039f);
+};
+
+inline void to_json(nlohmann::json& j, const Lighting& l)
+{
+    j = nlohmann::json{
+        {"sun_dir", l.sun_dir},         {"sun_intensity", l.sun_intensity},
+        {"exposure", l.exposure},       {"sun_tint", l.sun_tint},
+        {"sky_ambient", l.sky_ambient}, {"ground_ambient", l.ground_ambient},
+    };
+}
+inline void from_json(const nlohmann::json& j, Lighting& l)
+{
+    // Per-field defaults from a fresh struct so missing keys fall
+    // back to the in-source defaults (forward-compat with older
+    // tunables.json files that predate this sub-struct).
+    const Lighting d{};
+    auto readVec3 = [&j](const char* key, const glm::vec3& fallback) -> glm::vec3
+    {
+        auto it = j.find(key);
+        if (it == j.end())
+            return fallback;
+        return it->get<glm::vec3>();
+    };
+    l.sun_dir = readVec3("sun_dir", d.sun_dir);
+    l.sun_intensity = readVec3("sun_intensity", d.sun_intensity);
+    l.exposure = j.value("exposure", d.exposure);
+    l.sun_tint = readVec3("sun_tint", d.sun_tint);
+    l.sky_ambient = readVec3("sky_ambient", d.sky_ambient);
+    l.ground_ambient = readVec3("ground_ambient", d.ground_ambient);
+}
 
 struct Tunables
 {
@@ -75,6 +162,10 @@ struct Tunables
     // run clip is reused for the sprint tier and played faster
     // instead of authoring a separate sprint clip.
     float armed_sprint_run_multiplier = 1.4f;
+    // Same pattern for the unarmed side: sprint reuses the jogging
+    // clip (humanoid_unarmed.json's LocoSprint = "jogging") played
+    // faster instead of a dedicated sprint clip.
+    float unarmed_sprint_run_multiplier = 1.3f;
 
     // Target speed (m/s) for the LAlt-held Walk tier (DS3 PC convention).
     // Calibrated to match walking.ozz's authored hip travel so the
@@ -425,6 +516,13 @@ struct Tunables
     // the back of the head when the player looks straight up).
     float fpv_eye_fwd_offset = 0.12f;
 
+    // ---- Lighting ----
+    // Atmosphere / scene-lighting state. See the Lighting struct
+    // above for per-field doctrine. Lifted from constexpr in
+    // src/render/Atmosphere.cpp on 2026-06-30 so the F1 panel can
+    // drive it live instead of edit-rebuild-relaunch per tweak.
+    Lighting lighting{};
+
     // ---- Debug ----
     // Session-only diagnostic toggles live in selva::debug::Flags
     // (include/debug/Flags.h). They are deliberately NOT here:
@@ -439,21 +537,22 @@ struct Tunables
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     Tunables, time_scale, turn_rate_min, turn_rate_max, lockon_camera_yaw_rate,
     lockon_body_yaw_rate, wasd_debounce_seconds, loco_playback_rate, armed_sprint_run_multiplier,
-    walk_speed, jog_speed, sprint_speed, locomotion_accel, locomotion_decel, idle_to_walk_speed,
-    walk_to_jog_speed, jog_to_sprint_speed, mouse_sensitivity, pitch_min, pitch_max,
-    follow_distance, follow_height, fov_degrees, anim_blend_seconds, combat_idle_grace_seconds,
-    combat_entry_delay_seconds, combo_reset_grace_seconds, combo_input_buffer_seconds,
-    combo_chain_blend_seconds, first_strike_blend_seconds, attack_playback_rate,
-    cancel_open_velocity_fraction, perfect_accuracy_threshold, roll_playback_rate,
-    backstep_playback_rate, dodge_tap_window, dodge_steer_rate, attack_lockout_extension_seconds,
-    damage_floor, hit_react_medium_threshold, hit_react_heavy_threshold, hit_react_cooldown_seconds,
-    enemy_recovery_after_knockdown_seconds, enemy_death_fade_hold_seconds,
-    enemy_death_fade_duration_seconds, knockdown_clip_start_seconds, knockdown_clip_end_seconds,
-    getting_up_clip_start_seconds, getting_up_clip_end_seconds, ai_vision_fov_degrees,
-    ai_vision_range_meters, ai_suspicion_decay_seconds, ai_confirmed_sightings_to_alert,
-    ai_alerted_decay_seconds, ai_combat_engage_range_meters, ai_combat_leash_range_meters,
-    ai_combat_disengage_seconds, ai_decision_tick_hz, ai_decision_tick_combat_hz_multiplier,
-    ai_turn_rate_radians_per_sec, ai_action_freshness_seconds, flying_knee_whoosh_time_seconds);
+    unarmed_sprint_run_multiplier, walk_speed, jog_speed, sprint_speed, locomotion_accel,
+    locomotion_decel, idle_to_walk_speed, walk_to_jog_speed, jog_to_sprint_speed, mouse_sensitivity,
+    pitch_min, pitch_max, follow_distance, follow_height, fov_degrees, anim_blend_seconds,
+    combat_idle_grace_seconds, combat_entry_delay_seconds, combo_reset_grace_seconds,
+    combo_input_buffer_seconds, combo_chain_blend_seconds, first_strike_blend_seconds,
+    attack_playback_rate, cancel_open_velocity_fraction, perfect_accuracy_threshold,
+    roll_playback_rate, backstep_playback_rate, dodge_tap_window, dodge_steer_rate,
+    attack_lockout_extension_seconds, damage_floor, hit_react_medium_threshold,
+    hit_react_heavy_threshold, hit_react_cooldown_seconds, enemy_recovery_after_knockdown_seconds,
+    enemy_death_fade_hold_seconds, enemy_death_fade_duration_seconds, knockdown_clip_start_seconds,
+    knockdown_clip_end_seconds, getting_up_clip_start_seconds, getting_up_clip_end_seconds,
+    ai_vision_fov_degrees, ai_vision_range_meters, ai_suspicion_decay_seconds,
+    ai_confirmed_sightings_to_alert, ai_alerted_decay_seconds, ai_combat_engage_range_meters,
+    ai_combat_leash_range_meters, ai_combat_disengage_seconds, ai_decision_tick_hz,
+    ai_decision_tick_combat_hz_multiplier, ai_turn_rate_radians_per_sec,
+    ai_action_freshness_seconds, flying_knee_whoosh_time_seconds, lighting);
 // NOTE: fpv_eye_up_offset, fpv_eye_fwd_offset are NOT serialized -
 // they're live-tuning fields. The NLOHMANN macro has a ~64-field
 // variadic limit; the count is fine now (debug_* moved out to

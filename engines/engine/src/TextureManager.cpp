@@ -43,7 +43,12 @@ uint32_t TextureManager::load(const std::string& path)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    // sRGB-decode on sample: PNG art is authored in sRGB; the
+    // shader pipeline expects linear-light inputs after the sRGB
+    // framebuffer rewrite. GL_SRGB8_ALPHA8 internal format makes
+    // the GPU do the decode in hardware at sample time.
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_SRGB8_ALPHA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+                 pixels);
 
     stbi_image_free(pixels);
     glBindTexture(GL_TEXTURE_2D, 0);
@@ -114,7 +119,11 @@ uint32_t TextureManager::makeFallback()
     glBindTexture(GL_TEXTURE_2D, texId);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, size, size, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    // sRGB to match the real loader above; the magenta checkerboard
+    // is meant to be visually obvious and the value stays pure-magenta
+    // through the decode, which is the goal.
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_SRGB8_ALPHA8, size, size, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+                 pixels);
     glBindTexture(GL_TEXTURE_2D, 0);
 
     fallback_id = static_cast<uint32_t>(texId);

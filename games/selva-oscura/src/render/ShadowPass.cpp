@@ -507,8 +507,7 @@ void setSkeletalDepthBones(const glm::mat4* bone_palette, int count)
         return;
     const GLsizeiptr bytes = static_cast<GLsizeiptr>(count) * sizeof(glm::mat4);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, sSkeletalDepthBoneSsbo);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, bytes, glm::value_ptr(bone_palette[0]),
-                 GL_STREAM_DRAW);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, bytes, glm::value_ptr(bone_palette[0]), GL_STREAM_DRAW);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, kSkeletalDepthBonePaletteBinding,
                      sSkeletalDepthBoneSsbo);
 }

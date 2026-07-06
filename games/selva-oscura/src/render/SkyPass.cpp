@@ -3,6 +3,7 @@
 #include "gl/ShaderUtils.h"
 #include "render/AtmosphereShader.h"
 #include "render/Camera.h"
+#include "render/TonemapShader.h"
 
 #include <glm/gtc/type_ptr.hpp>
 
@@ -40,7 +41,7 @@ uniform vec2 uViewport;
 uniform vec3 uSunDir;
 uniform vec3 uSunIntensity;
 uniform vec3 uCamPos;
-uniform float uExposure;
+// uExposure is declared inside kTonemapGLSL alongside tonemap().
 )glsl";
 
 const char* kSkyFSMain = R"glsl(
@@ -67,12 +68,17 @@ void main()
     // so the horizon line itself is mostly-fog (matching far terrain
     // which is also fully fogged), and the sky cleanly takes over
     // upward.
-    float horizonT = 1.0 - smoothstep(-0.05, 0.15, R.y);
+    // Extended horizon fog ramp: was smoothstep(-0.05, 0.15) which
+    // confined fog to a thin band right at the horizon line, leaving
+    // Beatrice's light visible above it as un-fogged bright sky.
+    // Extending the upper end to ~0.50 means fog persists higher up
+    // the sky, so the sun glow itself reads as fogged from any
+    // direction that looks toward it (including from under the wood
+    // canopy looking out across the colle).
+    float horizonT = 1.0 - smoothstep(-0.05, 0.50, R.y);
     vec3 fogged = applyDistanceFog(col, R, uSunDir, 1e6);
     col = mix(col, fogged, horizonT);
-
-    col = col * uExposure;
-    col = col / (col + vec3(1.0));
+    col = tonemap(col);
     fragColor = vec4(col, 1.0);
 }
 )glsl";
@@ -92,7 +98,7 @@ GLint sUniExposureLoc = -1;
 bool initSkyPass()
 {
     // Compose fragment shader: declarations + atmosphere() + main.
-    const std::string fs = std::string(kSkyFSCore) + kAtmosphereGLSL + kSkyFSMain;
+    const std::string fs = std::string(kSkyFSCore) + kAtmosphereGLSL + kTonemapGLSL + kSkyFSMain;
     sProgram = engine::gl::compileProgram(kSkyVS, fs.c_str());
     if (sProgram == 0)
         return false;

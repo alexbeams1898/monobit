@@ -1,8 +1,11 @@
 #include "render/TerrainShader.h"
 
+#include "Tunables.h"
 #include "gl/ShaderUtils.h"
+#include "render/AmbientConstants.h"
 #include "render/AtmosphereShader.h"
 #include "render/ShadowShader.h"
+#include "render/TonemapShader.h"
 #include "world/Lights.h"
 
 #include <glm/gtc/type_ptr.hpp>
@@ -64,7 +67,7 @@ uniform vec3 uGroundAmbient;
 uniform vec3 uSunDir;
 uniform vec3 uSunIntensity;
 uniform vec3 uCamPos;
-uniform float uExposure;
+// uExposure is declared inside kTonemapGLSL alongside tonemap().
 
 // Axis-aligned XZ rectangles for terrain excision. Populated per
 // region from registered StructureFootprints with cuts_floor=true —
@@ -153,7 +156,9 @@ void main()
     float halfL = dot(vNormal, uSunDir) * 0.5 + 0.5;
     float skyFactor = dot(vNormal, vec3(0.0, 1.0, 0.0)) * 0.5 + 0.5;
     vec3 ambient = mix(uGroundAmbient, uSkyAmbient, skyFactor);
-    vec3 sunTint = vec3(1.05, 0.78, 0.55) * uSunMultiplier;
+    // kSunTint from kAmbientConstantsGLSL. Per-region uSunMultiplier
+    // gates whether the sun reaches this region at all.
+    vec3 sunTint = kSunTint * uSunMultiplier;
     float shadow = sampleSunShadow(vWorldPos, vNormal);
 
     // Point-light contribution. Smooth falloff from full at distance 0
@@ -193,8 +198,7 @@ void main()
     vec3 col = surface * transmittance + inScatter;
     vec3 foggy = applyDistanceFog(col, rayDir, uSunDir, dist);
     col = mix(col, foggy, uSunMultiplier);
-    col = col * uExposure;
-    col = col / (col + vec3(1.0));
+    col = tonemap(col);
     fragColor = vec4(col, 1.0);
 }
 )glsl";
@@ -217,6 +221,8 @@ GLint sUniDiscardCountLoc = -1;
 GLint sUniSunMultiplierLoc = -1;
 GLint sUniSkyAmbientLoc = -1;
 GLint sUniGroundAmbientLoc = -1;
+GLint sUniKSunTintLoc = -1; // global sun tint from Tunables (Terrain
+                            // also has uSunMultiplier per-region).
 GLint sUniLightPosRadiusLoc = -1;
 GLint sUniLightColorIntensityLoc = -1;
 GLint sUniLightCountLoc = -1;
@@ -233,8 +239,8 @@ bool sDiscardOverflowWarned = false;
 
 bool initTerrainShader()
 {
-    const std::string fs =
-        std::string(kTerrainFSCore) + kAtmosphereGLSL + kShadowGLSL + kTerrainFSMain;
+    const std::string fs = std::string(kTerrainFSCore) + kAmbientConstantsGLSL + kAtmosphereGLSL +
+                           kShadowGLSL + kTonemapGLSL + kTerrainFSMain;
     sProgram = engine::gl::compileProgram(kTerrainVS, fs.c_str());
     if (sProgram == 0)
         return false;
@@ -258,6 +264,7 @@ bool initTerrainShader()
     sUniLightPosRadiusLoc = glGetUniformLocation(sProgram, "uLightPosRadius");
     sUniLightColorIntensityLoc = glGetUniformLocation(sProgram, "uLightColorIntensity");
     sUniLightCountLoc = glGetUniformLocation(sProgram, "uLightCount");
+    sUniKSunTintLoc = glGetUniformLocation(sProgram, "uKSunTint");
     return true;
 }
 
@@ -275,6 +282,12 @@ void shutdownTerrainShader()
 void useTerrainShader()
 {
     glUseProgram(sProgram);
+    // Push global sun tint from Tunables (F1-tunable). Terrain's
+    // ambient is per-region (uSkyAmbient/uGroundAmbient via
+    // setTerrainLightingEnv), so only kSunTint needs pulling here.
+    const auto& L = selva::tuning::current().lighting;
+    if (sUniKSunTintLoc >= 0)
+        glUniform3f(sUniKSunTintLoc, L.sun_tint.x, L.sun_tint.y, L.sun_tint.z);
 }
 
 void setTerrainViewProj(const glm::mat4& view_proj)

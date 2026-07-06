@@ -8,10 +8,12 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "AppState.h"
 #include "AppStateGlobal.h"
+#include "CrashHandler.h"
 #include "Engine.h"
 #include "Formulas.h"
 #include "SaveManager.h"
 #include "Tunables.h"
+#include "anim/AnimSetRegistry.h"
 #include "anim/LocomotionConfig.h"
 #include "anim/PoseSampler.h"
 #include "anim/SkeletalAssets.h"
@@ -24,6 +26,8 @@
 #include "dialog/GuideHandlers.h"
 #include "dialog/TopicRegistry.h"
 #include "gameplay/Actor.h"
+#include "gameplay/AppearanceRegistry.h"
+#include "gameplay/AppearanceTransformWriter.h"
 #include "gameplay/BehaviorTree.h"
 #include "gameplay/Enemies.h"
 #include "gameplay/EnemyArchetype.h"
@@ -31,6 +35,7 @@
 #include "gameplay/PlayerState.h"
 #include "gameplay/PropArchetype.h"
 #include "gather/GatherSpawner.h"
+#include "hair/HairRegistry.h"
 #include "identity/Identity.h"
 #include "insight/Insight.h"
 #include "items/CategoryRegistry.h"
@@ -38,7 +43,10 @@
 #include "items/ItemRegistry.h"
 #include "lang/Language.h"
 #include "render/Camera.h"
+#include "render/EquippedWeapon.h"
+#include "render/HairRenderer.h"
 #include "render/LightSpritePass.h"
+#include "render/PickupMeshPass.h"
 #include "render/PickupSpritePass.h"
 #include "render/RegionGeometry.h"
 #include "render/RegionShaders.h"
@@ -63,11 +71,14 @@
 #include <stb_image_write.h>
 
 #define SDL_MAIN_HANDLED
+#include <tracy/Tracy.hpp>
+
 #include <SDL.h>
 
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <thread>
 
@@ -81,6 +92,9 @@ const std::string kTunablesPath = "config/tunables.json";
 
 void shutdownGeometry()
 {
+    // Production exit path skips this -- main calls std::_exit(0)
+    // after the menu Quit, OS reclaims everything. Function kept as
+    // public for any test/tool that opts out of the fast-exit path.
     selva::render::shutdownRegionGeometry();
     selva::render::shutdownRegionProgram();
     selva::render::shutdownSkyPass();
@@ -161,12 +175,18 @@ void gatedRenderWorld(::Engine& engine, ::EntityManager& em, float camX, float c
 // is invoked when the user picks Quit from main menu or pause menu.
 void gatedRenderImGui(::Engine& engine, ::EntityManager& em)
 {
-    if (selva::ui::renderScreens(engine))
-        engine.requestQuit();
+    {
+        ZoneScopedN("imgui-screens");
+        if (selva::ui::renderScreens(engine))
+            engine.requestQuit();
+    }
 
     // F1 tuning panel is only relevant during Playing.
     if (selva::gameState().phase == selva::GameState::Phase::Playing)
+    {
+        ZoneScopedN("imgui-selva");
         selva::ui::selvaRenderImGui(engine, em);
+    }
 }
 
 // Time + log one boot-init step. Pattern is identical at every
@@ -350,12 +370,36 @@ void initGameplaySubsystems()
     // Per-clip locomotion metadata BEFORE the audit so the audit can
     // print each clip's declared source.
     selva::anim::locomotionConfig().loadFromFile("config/locomotion.json");
+    // Per-variant animation sets (humanoid_unarmed, humanoid_sword_and_shield,
+    // etc.). Each set maps AnimIntent -> clip key; equipment-change code
+    // swaps the active set pointer on actors. Load asserts every intent
+    // is mapped so missing entries fail loud at startup.
+    selva::anim::AnimSetRegistry::instance().loadFromDirectory("config/anim");
+    // Appearance slider registry. Single source of truth for the
+    // character-creator slider vocabulary; the creator UI iterates this
+    // list to render sliders, so adding a new slider is one JSON edit.
+    selva::gameplay::AppearanceRegistry::instance().loadFromFile("config/characters/sliders.json");
     selva::anim::auditClipHipMotion();
     // Inventory categories before items (item registry validates each
     // item's category against the category list).
     selva::items::categoryRegistry().loadFromFile("config/inventory_categories.json");
     selva::items::loadItemDirectory("config/items");
     selva::items::loadRecipeDirectory("config/recipes");
+    // Pre-warm pickup mesh cache (same rationale as archetype-mesh
+    // pre-warm below): first on-screen appearance of an item type
+    // should not stall a gameplay frame with a synchronous disk read.
+    selva::render::preloadAllPickupMeshes();
+    // Weapon meshes (visual_weapon on ItemDef): same pattern -- first
+    // equip should not stall. Trace analysis showed equipped-weapon
+    // zone max 15.8ms on first equip prior to this pre-warm.
+    selva::render::preloadAllEquippedWeaponMeshes();
+    // Hair style registry + pre-warm every hair mesh at boot. First
+    // hair-choice change in the character creator (or first appearance
+    // of an NPC with a hair_style_id) should not stall a frame with a
+    // cold mesh load. 56 styles at ~3MB each = ~180MB resident but
+    // fully paid-once at boot; runtime hair swap is a cache hit.
+    selva::hair::loadHairRegistry("config/hair_styles.json");
+    selva::render::preloadAllHairMeshes();
     // Dialog handlers BEFORE the topic registry so JSON-referenced
     // handler keys resolve at first-use.
     selva::dialog::registerGuideHandlers();
@@ -364,7 +408,34 @@ void initGameplaySubsystems()
     // as JsonRegion::commitPrepared() iterates enemy_spawns + props.
     selva::gameplay::archetypes().loadDirectory("config/enemies");
     selva::gameplay::archetypes().resolveAllActionReach();
+    // Pre-warm archetype meshes so the first spawn of each variant
+    // doesn't stall a gameplay frame with a synchronous disk read +
+    // GPU upload. Walk every registered archetype, force-load both
+    // mesh_path (single-variant archetypes) and every mesh_path_variants
+    // entry (multi-variant archetypes like larvae) through the
+    // per-path cache in SkeletalAssets. Load failures are silent-
+    // benign: the archetype's spawn will hit the same failure path
+    // later and fall back to the shared bundle mesh.
+    //
+    // Root cause this addresses: prior to pre-warm, the acheron_larvae
+    // spawn-flow's initial-fill would cold-load 1-2 mesh variants on
+    // the first frame after region activation (Continue-button click),
+    // stalling the main thread ~290ms. Trace 11 captured this as a
+    // tickFlowSpawner spike at t=18s.
+    for (const auto& [id, arch] : selva::gameplay::archetypes().all())
+    {
+        if (!arch.mesh_path.empty())
+            selva::anim::meshByArchetypePath(arch.mesh_path, arch.skeleton_id);
+        for (const auto& variant : arch.mesh_path_variants)
+            selva::anim::meshByArchetypePath(variant, arch.skeleton_id);
+    }
     selva::gameplay::propArchetypes().loadDirectory("config/props");
+    // Built-in AppearanceTransform sources -- registers
+    // `archetype_transform` (the generalized replacement for the
+    // legacy EnemyArchetype.transform_target_archetype lerp path).
+    // Must run AFTER archetypes() loads so the source's
+    // per-actor target_path lookup can resolve archetype refs.
+    selva::gameplay::initBuiltinAppearanceTransformSources();
     // FlowSpawner AFTER archetypes() (each flow validates its archetype
     // reference at load time).
     selva::spawn::initFlowSpawner();
@@ -403,6 +474,30 @@ int main(int /*argc*/, char* /*argv*/[])
     // Combat debug + sampler diagnostics flow through the engine::log
     // channel registered as "combat" -- opened lazily by the F1 toggle.
 
+    // Build fingerprint -- first line of every run's log. Lets us
+    // answer "which exact binary did this run use?" without having
+    // to stat the .exe after the fact (often by then the binary
+    // has been rebuilt for the next attempt). Stale-binary
+    // misattribution has bitten investigations before; this kills
+    // the ambiguity at the source.
+#ifndef SELVA_GIT_COMMIT
+#define SELVA_GIT_COMMIT "unknown"
+#endif
+#ifndef SELVA_CONFIGURE_TIME
+#define SELVA_CONFIGURE_TIME "unknown"
+#endif
+    std::fprintf(stderr, "[build] selva-oscura commit=%s configured=%s\n", SELVA_GIT_COMMIT,
+                 SELVA_CONFIGURE_TIME);
+    std::fflush(stderr);
+
+    // Install the crash handler IMMEDIATELY -- before any subsystem
+    // init, so a crash during init also gets a dump. Callbacks left
+    // null at this point; we'll populate them after SaveManager and
+    // the ui/Screens setPhase chokepoint are wired up. Default
+    // crash dir is "./crashes" until SDL gives us the real pref
+    // path (then setCrashSaveDirectory below switches).
+    engine::installCrashHandler({}, {});
+
     Engine engine;
     engine.setMSAA(8);
     engine.setWindowMode(Engine::WindowMode::BorderlessFullscreen);
@@ -415,7 +510,13 @@ int main(int /*argc*/, char* /*argv*/[])
     // exist so the user sees something instead of a black "(Not
     // Responding)" window during the multi-second init below.
     engine.renderLoadingFrame("starting up");
-    engine.setClearColor(0.16f, 0.18f, 0.22f); // keep in sync with kFogCool
+    // Linear-space; originally sRGB-authored (0.16, 0.18, 0.22) -- the
+    // sky/atmosphere baseline. The "keep in sync with kFogCool" comment
+    // that used to live here was wrong: the original value matches
+    // surface/region.json's ambient.color, NOT kFogCool. With the sRGB
+    // framebuffer doing the encode on write, this needs to be linear
+    // for the displayed bytes to match the original eyeballed value.
+    engine.setClearColor(0.0220f, 0.0272f, 0.0397f);
     // Cursor capture is managed by ui/Screens.cpp's state machine;
     // we boot in MainMenu so leave the cursor free.
     SDL_SetRelativeMouseMode(SDL_FALSE);
@@ -468,22 +569,71 @@ int main(int /*argc*/, char* /*argv*/[])
     // Persisted SaveData -- defaults if missing. Settings apply at load.
     selva::saveData() = selva::SaveManager::load();
 
+    // Crash handler -- now that SaveManager + setPhase exist, wire
+    // their callbacks. Switch the crash dump directory to the same
+    // per-user pref path the save file lives in (resolved by SDL --
+    // safe to call now that engine.init() ran).
+    engine::setCrashSaveDirectory(selva::SaveManager::getSaveDir() + "crashes");
+    engine::setCrashRecoveryCallbacks(
+        /*save_cb=*/
+        []() -> bool
+        {
+            // Emergency save: snapshot the active runtime state back
+            // into the active profile, then write the SaveData blob.
+            // Each step is best-effort; we'd rather have a partial
+            // save than no save.
+            selva::PlayerProfile* active = selva::activePlayerProfile();
+            if (active != nullptr)
+                selva::gameplay::saveActiveCharacterFromPlayer(*active);
+            return selva::SaveManager::save(selva::saveData());
+        },
+        /*teardown_cb=*/
+        []()
+        {
+            // Force-return to MainMenu. setPhase is the existing
+            // chokepoint that tears down audio, region, actors etc.
+            // before swapping phase; using it (rather than a custom
+            // teardown path) keeps the recovery flow on the same
+            // rails as a normal main-menu return.
+            selva::ui::setPhase(selva::GameState::Phase::MainMenu);
+        });
+
     engine.setPerFrameUpdate(&gatedPerFrame);
     engine.setRenderWorld(&gatedRenderWorld);
     engine.setRenderImGui(&gatedRenderImGui);
     engine.setOnResize(&selva::render::onWindowResize);
+    // Pre-warm screen assets (main menu logo, etc.) so the first render
+    // of MainMenu doesn't stall with a synchronous texture load. Trace
+    // 20 identified `screens-mainmenu` first-frame spikes to 31 ms from
+    // this exact path.
+    selva::ui::preloadScreenAssets();
     // scripts/smoke_test.sh greps this exact string to confirm the game
     // reached the main loop without a pre-main crash. Don't reword
     // without updating the script.
     std::fprintf(stderr, "[smoke] main loop ready\n");
     std::fflush(stderr);
     engine.run();
-    selva::gameplay::shutdownHubEnemies();
-    selva::anim::shutdownSkeletalAssets();
-    engine::world::shutdownRegionManager();
-    shutdownGeometry();
-    selva::audio::shutdown();
-    engine.shutdown();
+    // Shutdown sequence:
+    //   1. Hide the window IMMEDIATELY so the player sees a clean
+    //      disappear instead of a frozen frame during teardown.
+    //   2. Flush the save (defensive; the in-game Save & Quit path
+    //      already saved, but this catches any "user closed via
+    //      window X" path that bypasses the menu).
+    //   3. std::_Exit(0) -- skip C++ destructors entirely. The OS
+    //      reclaims all memory, file handles, GL context, audio
+    //      device, threads. This is the standard shipping-game
+    //      pattern (Doom/Source/Unity all do this) and is the
+    //      ONLY way to avoid the slow-destructor + threaded-audio
+    //      hang we hit under ASan when freeing the multi-megabyte
+    //      terrain vectors. Regular Debug builds also benefit:
+    //      instant exit, zero possibility of deadlock at the
+    //      audio/GL/Jolt teardown boundary.
+    //
+    // Anything that needs to PERSIST across runs must already have
+    // been flushed to disk before this point. Per `flushAndSave`
+    // (Screens.cpp), every Save & Quit path covers this.
+    engine.hideWindow();
+    std::_Exit(0);
     // engine::log channels close their files at process shutdown via
     // Channel::~Channel; nothing to clean up here.
     return 0;

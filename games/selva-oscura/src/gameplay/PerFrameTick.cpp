@@ -2,11 +2,15 @@
 
 #include "AppState.h"
 #include "AppStateGlobal.h"
+#include "CrashHandler.h"
 #include "Engine.h"
 #include "Formulas.h"
 #include "Scene.h"
 #include "Tunables.h"
 #include "WallClock.h"
+#include "anim/AnimIntent.h"
+#include "anim/AnimSet.h"
+#include "anim/AnimSetRegistry.h"
 #include "anim/AnimationClip.h"
 #include "anim/ClipRegistry.h"
 #include "anim/LocomotionConfig.h"
@@ -37,6 +41,7 @@
 #include "debug/Flags.h"
 #include "dialog/DialogSystem.h"
 #include "gameplay/AppearanceDeformation.h"
+#include "gameplay/AppearanceTransformWriter.h"
 #include "gameplay/BossDispatcher.h"
 #include "gameplay/Enemies.h"
 #include "gameplay/EnemyArchetype.h"
@@ -62,6 +67,7 @@
 #include "physics/PhysicsWorld.h"
 #include "render/Atmosphere.h"
 #include "render/Camera.h"
+#include "render/HairRenderer.h"
 #include "render/LightSpritePass.h"
 #include "render/PickupMeshPass.h"
 #include "render/PickupSpritePass.h"
@@ -127,9 +133,23 @@
 // player is actors()[0]. Defined as macros so they resolve fresh
 // each call (after initPlayer() the pool is non-empty; before, any
 // access crashes — same precondition as the old globals had).
-static selva::anim::Skeleton& sSkeleton = selva::anim::skeleton();
-static selva::anim::SkeletalMesh& sPlayerMesh = selva::anim::playerMesh();
-static selva::anim::ClipRegistry& sClips = selva::anim::clips();
+// These three resolve per-call so body-type swaps at character load
+// pick up the right bundle. The accessors are O(1) hash lookups, so
+// per-frame call cost is negligible; pre-caching them as references
+// would freeze the player to the boot-time bundle and break body-type
+// swapping.
+inline selva::anim::Skeleton& sSkeleton()
+{
+    return selva::anim::skeleton();
+}
+inline selva::anim::SkeletalMesh& sPlayerMesh()
+{
+    return selva::anim::playerMesh();
+}
+inline selva::anim::ClipRegistry& sClips()
+{
+    return selva::anim::clips();
+}
 static selva::anim::LocomotionConfig& sLocomotionConfig = selva::anim::locomotionConfig();
 using selva::gameplay::Actor;
 using selva::gameplay::LocoTier;
@@ -439,6 +459,36 @@ static std::string sDebugClipName;
 // identify which loco clip is playing. This static IS the registry
 // key ("unarmed_combat_idle", "walking", "jogging", etc.).
 static std::string sLastLocoClipName = "standard_idle";
+
+// Active AnimSet for the player given current equipment + body type.
+// Single authority for "which clip library does the player use right
+// now" -- equipment-state branching (armed vs unarmed) AND body-type
+// branching (Body Type 1 vs 2) both live HERE, not as ternaries
+// scattered through clip pickers. Body Type 2 (humanoid_female) uses
+// its own sets because clips authored against the male rest pose
+// don't replay cleanly on the female mesh; female clips ship under
+// humanoid_female_* AnimSet JSONs.
+static const selva::anim::AnimSet* playerAnimSet()
+{
+    const bool female = sPlayer.appearance.body_type == selva::gameplay::BodyType::Type2;
+    const char* set_id;
+    if (female)
+        set_id =
+            isUnarmed(sEquipment) ? "humanoid_female_unarmed" : "humanoid_female_sword_and_shield";
+    else
+        set_id = isUnarmed(sEquipment) ? "humanoid_unarmed" : "humanoid_sword_and_shield";
+    return selva::anim::AnimSetRegistry::instance().get(set_id);
+}
+
+// Helper: resolve an intent through the current player's AnimSet,
+// returning a C-string pointer suitable for the existing clip-name
+// APIs. Returns "" if the set isn't loaded (load failure logged at
+// startup) so downstream code still gets a non-null pointer.
+static const char* playerClip(selva::anim::AnimIntent intent)
+{
+    const auto* set = playerAnimSet();
+    return set ? set->clipKey(intent).data() : "";
+}
 // Asymmetric commit time for loco-clip swaps. A cross-family swap
 // (forward/back ↔ strafe) takes kLocoCrossFamilyCommitSeconds of
 // sustained intent before firing — keyboard digital input naturally
@@ -529,7 +579,7 @@ static void logSpliceDiag(const SpliceDiag& d, const selva::anim::AnimationClip&
 static float poseMatchStartFromLoco(const selva::anim::AnimationClip& new_clip,
                                     float window_seconds)
 {
-    return selva::combat::poseMatchStartFromLoco(new_clip, window_seconds, sSampler, sClips,
+    return selva::combat::poseMatchStartFromLoco(new_clip, window_seconds, sSampler, sClips(),
                                                  sLastLocoClipName);
 }
 
@@ -569,7 +619,7 @@ using selva::gameplay::yawFromGroundDir;
 // don't need to thread the registries explicitly.
 static void resolveAttackCancelOpenTimes()
 {
-    selva::combat::resolveAttackCancelOpenTimes(sWeaponClasses, sClips, sSampler);
+    selva::combat::resolveAttackCancelOpenTimes(sWeaponClasses, sClips(), sSampler);
 }
 
 // ---------------------------------------------------------------------------
@@ -877,7 +927,7 @@ static void tickF3TerrainProbe(const Uint8* keys)
 static float chainLinkPoseMatchStart(const selva::anim::AnimationClip& clip,
                                      const char* prev_clip_name, float prev_clip_time)
 {
-    const auto* prev_clip = sClips.get(prev_clip_name);
+    const auto* prev_clip = sClips().get(prev_clip_name);
     if (prev_clip == nullptr || !prev_clip->isLoaded())
         return -1.0f;
     std::vector<int> joints;
@@ -1149,7 +1199,7 @@ static void tickFlyingKneeWhoosh()
 static bool fireClipForHand(selva::combat::HandSide hand, const char* clip_name,
                             float combo_input_buffer_seconds, bool force_first_strike = false)
 {
-    const auto* clip = sClips.get(clip_name);
+    const auto* clip = sClips().get(clip_name);
     if (clip == nullptr || !clip->isLoaded())
         return false;
     const bool one_shot_active = sSampler.isOneShotActive() && !force_first_strike;
@@ -1527,7 +1577,7 @@ static LocomotionFrameDecision sLocoDecision;
 // tickPlayerVelocity / applyPerFrameTranslation via sLocoDecision.
 static const char* selectLockedLocomotionClip(const glm::vec3& moveIntent);
 static const char* selectFpvLocomotionClip(const glm::vec3& moveIntent);
-static const char* selectLocomotionClipFromSpeed(float target_speed, bool is_armed,
+static const char* selectLocomotionClipFromSpeed(float target_speed,
                                                  const selva::tuning::Tunables& tun);
 
 // Run the top-of-frame locomotion decision: layers 1-4 from the
@@ -1545,17 +1595,42 @@ static const char* selectLocomotionClipFromSpeed(float target_speed, bool is_arm
 // Family ids for the locomotion cross-family commit gate. fwd/back vs
 // strafe vs idle/other; transitions between fwd/back and strafe require
 // sustained input, all other transitions fire immediately.
+// Classify a loco clip name as fwd/back family (1), strafe family (2),
+// or other (0). Membership is derived from every loaded AnimSet's
+// resolution of the LocoWalk/LocoJog/etc intents, so adding a new
+// variant set automatically picks up its strafe + forward clip names
+// without touching this function.
 static int locomotionFamilyOf(const std::string& name)
 {
-    if (name == "walking" || name == "jogging" || name == "sprinting" ||
-        name == "walking_backward" || name == "jogging_backward" ||
-        name == "sword_and_shield_walk_grip" || name == "sword_and_shield_walk_2_grip" ||
-        name == "sword_and_shield_run_grip")
-        return 1;
-    if (name == "strafe_walking_left" || name == "strafe_walking_right" ||
-        name == "strafe_jogging_left" || name == "strafe_jogging_right" ||
-        name == "sword_and_shield_strafe_grip" || name == "sword_and_shield_strafe_2_grip")
-        return 2;
+    using selva::anim::AnimIntent;
+    static constexpr AnimIntent kFwdBackIntents[] = {
+        AnimIntent::LocoWalk,    AnimIntent::LocoWalkBack, AnimIntent::LocoJog,
+        AnimIntent::LocoJogBack, AnimIntent::LocoSprint,
+    };
+    static constexpr AnimIntent kStrafeIntents[] = {
+        AnimIntent::LocoStrafeLeft,
+        AnimIntent::LocoStrafeRight,
+        AnimIntent::LocoJogStrafeLeft,
+        AnimIntent::LocoJogStrafeRight,
+    };
+    static constexpr const char* kSets[] = {
+        "humanoid_unarmed",
+        "humanoid_sword_and_shield",
+        "humanoid_female_unarmed",
+        "humanoid_female_sword_and_shield",
+    };
+    for (const char* set_id : kSets)
+    {
+        const auto* set = selva::anim::AnimSetRegistry::instance().get(set_id);
+        if (!set)
+            continue;
+        for (AnimIntent i : kFwdBackIntents)
+            if (set->clipKey(i) == name)
+                return 1;
+        for (AnimIntent i : kStrafeIntents)
+            if (set->clipKey(i) == name)
+                return 2;
+    }
     return 0;
 }
 
@@ -1592,8 +1667,7 @@ static std::string pickLocomotionClipNameThisFrame(const glm::vec3& moveIntent,
                 break;
             }
         }
-        const bool is_armed = !isUnarmed(sEquipment);
-        clip_name = selectLocomotionClipFromSpeed(would_be_target, is_armed, tun);
+        clip_name = selectLocomotionClipFromSpeed(would_be_target, tun);
     }
     if (sBlockingActive && sActiveBlockIdleClip != nullptr)
         clip_name = sActiveBlockIdleClip;
@@ -1938,8 +2012,12 @@ static void tickPlayerYaw(const glm::vec3& moveIntent, bool movement_locked, flo
     {
         if (glm::length(moveIntent) <= 0.0001f)
             return;
-        const bool is_backpedal_clip = (sLocoDecision.clip_name == "walking_backward" ||
-                                        sLocoDecision.clip_name == "jogging_backward");
+        const auto* unarmed_set = selva::anim::AnimSetRegistry::instance().get("humanoid_unarmed");
+        const bool is_backpedal_clip =
+            unarmed_set != nullptr &&
+            (sLocoDecision.clip_name ==
+                 unarmed_set->clipKey(selva::anim::AnimIntent::LocoWalkBack) ||
+             sLocoDecision.clip_name == unarmed_set->clipKey(selva::anim::AnimIntent::LocoJogBack));
         if (is_backpedal_clip)
         {
             sPlayer.yaw = selva::render::cameraYaw();
@@ -2047,7 +2125,7 @@ struct BlockClipSet
 // blockFromLatch vs blockLive profile.
 static void fireBlockOneShot(bool loco_settled, const BlockClipSet& set)
 {
-    const auto* raise_clip = sClips.get(set.raise);
+    const auto* raise_clip = sClips().get(set.raise);
     if (raise_clip == nullptr || !raise_clip->isLoaded())
         return;
     const auto fd_pre = sSampler.frameDiagnostics();
@@ -2078,10 +2156,13 @@ static void fireBlockOneShot(bool loco_settled, const BlockClipSet& set)
 // normal attack input.
 static BlockClipSet resolveBlockClip(bool shift_held)
 {
+    using selva::anim::AnimIntent;
     if (offHandCanBlock(sEquipment))
-        return {"sword_and_shield_block", "sword_and_shield_block_idle", nullptr};
+        return {playerClip(AnimIntent::ActionBlockRaise), playerClip(AnimIntent::LocoIdleBlock),
+                nullptr};
     if (isUnarmed(sEquipment) && shift_held)
-        return {"unarmed_block_raise", "unarmed_block_idle", "unarmed_block_lower"};
+        return {playerClip(AnimIntent::ActionBlockRaise), playerClip(AnimIntent::LocoIdleBlock),
+                playerClip(AnimIntent::ActionBlockLower)};
     return {nullptr, nullptr, nullptr};
 }
 
@@ -2118,7 +2199,7 @@ static bool tickBlockingFromRMB(const BlockClipSet& set, bool press_rmb, bool re
             // Fire the lower one-shot. The current loco-track idle
             // override clears as sBlockingActive flips false; the
             // one-shot plays over the resuming combat-idle.
-            const auto* lower = sClips.get(sActiveBlockLowerClip);
+            const auto* lower = sClips().get(sActiveBlockLowerClip);
             if (lower != nullptr && lower->isLoaded())
             {
                 const TransitionProfile profile = profiles::blockLive();
@@ -2200,7 +2281,8 @@ static bool fireDodgeFromTap(const glm::vec3& moveIntent, float backstep_playbac
     if (!selva::gameplay::canSpendStamina(sPlayer, dodge_cost))
         return false;
     const bool has_intent = glm::length(moveIntent) > 0.0001f;
-    const char* clip_name = has_intent ? "falling_to_roll" : "standing_dodge_backward";
+    const char* clip_name = playerClip(has_intent ? selva::anim::AnimIntent::ActionDodgeRoll
+                                                  : selva::anim::AnimIntent::ActionDodgeBackward);
     sDodgeIsBackstep = !has_intent;
     // Yaw blend setup: capture pre-dodge yaw + target direction, let
     // tickDodgeYawBlend interpolate over the dodge duration. The
@@ -2217,7 +2299,7 @@ static bool fireDodgeFromTap(const glm::vec3& moveIntent, float backstep_playbac
         sDodgeYawTarget = yawFromGroundDir(dir);
         sDodgeHasYawBlend = true;
     }
-    const auto* dodgeClip = sClips.get(clip_name);
+    const auto* dodgeClip = sClips().get(clip_name);
     if (dodgeClip == nullptr || !dodgeClip->isLoaded())
         return false;
     const float playback_rate = sDodgeIsBackstep ? backstep_playback_rate : roll_playback_rate;
@@ -2320,8 +2402,9 @@ static void tickJumpInput(const Uint8* keys)
     }
     const bool wasd_held = keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_S] ||
                            keys[SDL_SCANCODE_D];
-    const char* clip_name = wasd_held ? "running_jump" : "jumping";
-    const auto* clip = sClips.get(clip_name);
+    const char* clip_name = playerClip(wasd_held ? selva::anim::AnimIntent::ActionJumpRunning
+                                                 : selva::anim::AnimIntent::ActionJumpStanding);
+    const auto* clip = sClips().get(clip_name);
     const bool gate_open = !sSampler.isOneShotActive() || sSampler.isOneShotPastCancelFraction();
     const float jump_cost = selva::formulas::current().stamina.jump_effort;
     if (clip != nullptr && clip->isLoaded() && gate_open &&
@@ -2487,7 +2570,7 @@ struct LocomotionPick
 // 0 otherwise) and changes only on input edges, so the picker fires
 // at most once per intent change. The crossfade hides the velocity
 // ramp; intent stays in lockstep with what the player asked for.
-static const char* selectLocomotionClipFromSpeed(float target_speed, bool is_armed,
+static const char* selectLocomotionClipFromSpeed(float target_speed,
                                                  const selva::tuning::Tunables& tun)
 {
     if (target_speed <= tun.idle_to_walk_speed)
@@ -2497,18 +2580,19 @@ static const char* selectLocomotionClipFromSpeed(float target_speed, bool is_arm
         const bool combat_ready =
             sLocomotionSM.combat_stance == selva::gameplay::CombatStance::CombatReady;
         if (combat_ready)
-            return is_armed ? "sword_and_shield_idle_4" : "unarmed_combat_idle";
-        return is_armed ? "standard_idle_armed" : "standard_idle";
+            return playerClip(selva::anim::AnimIntent::LocoIdleCombat);
+        return playerClip(selva::anim::AnimIntent::LocoIdle);
     }
     if (target_speed <= tun.walk_to_jog_speed)
-        return is_armed ? "sword_and_shield_walk_grip" : "walking";
+        return playerClip(selva::anim::AnimIntent::LocoWalk);
     if (target_speed <= tun.jog_to_sprint_speed)
-        return is_armed ? "sword_and_shield_run_grip" : "jogging";
-    // Sprint reuses the armed run clip played faster via
-    // tun.armed_sprint_run_multiplier in the per-frame playback-rate
-    // pass; the picker still returns "sword_and_shield_run_grip" here so
-    // there's no clip-swap transition between jog and sprint.
-    return is_armed ? "sword_and_shield_run_grip" : "sprinting";
+        return playerClip(selva::anim::AnimIntent::LocoJog);
+    // Sprint reuses the LocoJog clip in the armed AnimSet (since the
+    // sword_and_shield set doesn't have a distinct sprint variant);
+    // playback-rate bump via tun.armed_sprint_run_multiplier keeps
+    // foot cadence matched, and there's no clip-swap transition
+    // between jog and sprint visually.
+    return playerClip(selva::anim::AnimIntent::LocoSprint);
 }
 
 // Combat stance lifecycle (preserved from the old SM): CombatReady
@@ -2577,9 +2661,8 @@ static const char* selectLockedLocomotionClip(const glm::vec3& moveIntent)
         return nullptr;
     const glm::vec3 fwd = to / std::sqrt(to_len_sq);
     const glm::vec3 right(-fwd.z, 0.0f, fwd.x);
-    const bool is_armed = !isUnarmed(sEquipment);
     return selva::gameplay::directionalLocoClip(fwd, right, moveIntent, sPlayer.loco_tier,
-                                                is_armed);
+                                                playerAnimSet());
 }
 
 // FPV directional clip picker. Backpedal exception only: pure-S
@@ -2602,7 +2685,9 @@ static const char* selectFpvLocomotionClip(const glm::vec3& moveIntent)
         // Sprint has no backpedal clip; sprint-while-backpedaling
         // demotes to jog_backward (same demotion the directional
         // picker does).
-        return sPlayer.loco_tier == LocoTier::Walk ? "walking_backward" : "jogging_backward";
+        return playerClip(sPlayer.loco_tier == LocoTier::Walk
+                              ? selva::anim::AnimIntent::LocoWalkBack
+                              : selva::anim::AnimIntent::LocoJogBack);
     }
     return nullptr;
 }
@@ -2644,7 +2729,7 @@ static LocomotionPick selectLocomotionClip(const glm::vec3& /*moveIntent*/, floa
         pick.clip_name != sLastLocoClipName)
         pick.clip_name = sLastLocoClipName;
 
-    pick.clip = sClips.get(pick.clip_name);
+    pick.clip = sClips().get(pick.clip_name);
     const bool loco_clip_changed = (pick.clip_name != sLastLocoClipName);
     pick.blend_seconds = sLocomotionConfig.blendInSeconds(pick.clip_name, pick.blend_seconds);
     // Capture pre-update joints AND emit the [sm loco-pick] log after
@@ -3165,21 +3250,15 @@ static void playPlayerHitReact(int dmg_applied)
     if (sSampler.isOneShotActive())
         return;
     const auto& tun = selva::tuning::current();
-    const bool is_armed = !isUnarmed(sEquipment);
-    const char* clip_name = is_armed ? "sword_and_shield_impact" : "flinch_front";
+    const char* clip_name = playerClip(selva::anim::AnimIntent::ActionImpact);
     float blend_in = 0.06f;
     float blend_out = 0.15f;
     if (static_cast<float>(dmg_applied) >= tun.hit_react_heavy_threshold)
     {
-        clip_name = is_armed ? "sword_and_shield_impact" : "hit_react_heavy";
         blend_in = 0.08f;
         blend_out = 0.20f;
     }
-    else if (static_cast<float>(dmg_applied) >= tun.hit_react_medium_threshold)
-    {
-        clip_name = is_armed ? "sword_and_shield_impact" : "hit_react_medium";
-    }
-    const auto* clip = sClips.get(clip_name);
+    const auto* clip = sClips().get(clip_name);
     if (clip == nullptr || !clip->isLoaded())
         return;
     selva::anim::PoseSampler::OneShotOptions opts;
@@ -3725,12 +3804,15 @@ void tickFrameSetup(Engine& engine, float dt, const selva::tuning::Tunables& tun
     engine.setWindowTitle("Selva Oscura  |  FPS " + std::to_string(fps));
     // Mirror tun.loco_playback_rate onto LocomotionConfig so the
     // sampler's advanceLocoTrack reads it without a Tunables dep.
-    // Armed-sprint reuses the armed run clip played faster
-    // (tun.armed_sprint_run_multiplier) instead of a separate clip.
-    const bool armed_sprint =
-        sPlayer.loco_tier == selva::gameplay::LocoTier::Sprint && !isUnarmed(sEquipment);
-    const float armed_sprint_mult = armed_sprint ? tun.armed_sprint_run_multiplier : 1.0f;
-    sLocomotionConfig.global_playback_rate = tun.loco_playback_rate * armed_sprint_mult;
+    // Sprint reuses the active jog/run clip played faster (per
+    // tun.armed_sprint_run_multiplier / unarmed_sprint_run_multiplier)
+    // instead of a separate sprint clip.
+    const bool sprinting = sPlayer.loco_tier == selva::gameplay::LocoTier::Sprint;
+    float sprint_mult = 1.0f;
+    if (sprinting)
+        sprint_mult = isUnarmed(sEquipment) ? tun.unarmed_sprint_run_multiplier
+                                            : tun.armed_sprint_run_multiplier;
+    sLocomotionConfig.global_playback_rate = tun.loco_playback_rate * sprint_mult;
     selva::gameplay::tickWakeSceneLifecycle();
 }
 } // namespace
@@ -3781,11 +3863,12 @@ static void selvaPerFrame(Engine& engine, EntityManager& em, double dt_d)
     tickWalkTierModifier(keys, movement_suppressed);
 
     // Bridge inventory equipment into the combat system BEFORE the
-    // locomotion picker reads `is_armed`. If the sync runs later in
-    // the frame, frame 1 of a load picks `standard_idle` (unarmed)
-    // because sEquipment still holds the boot-time fists default,
-    // then frame 2 sees the armed state and triggers an idle->armed
-    // blend visible as a ~0.4s wrist-rotates-into-position artifact.
+    // locomotion picker reads sEquipment (via playerAnimSet's check
+    // on isUnarmed). If the sync runs later in the frame, frame 1
+    // of a load resolves intents through the unarmed AnimSet because
+    // sEquipment still holds the boot-time fists default, then frame
+    // 2 sees the armed state and triggers a set swap visible as a
+    // ~0.4s wrist-rotates-into-position artifact.
     selva::combat::syncEquipmentFromInventory();
 
     // ONE locomotion decision for this frame. Both tickPlayerVelocity
@@ -3859,6 +3942,7 @@ static void selvaPerFrame(Engine& engine, EntityManager& em, double dt_d)
 
     {
         ZoneScopedN("tickEnemies");
+        engine::CrashContextScope cx("tickEnemies");
         selva::gameplay::tickEnemies(dt);
     }
 
@@ -3899,7 +3983,10 @@ static void selvaPerFrame(Engine& engine, EntityManager& em, double dt_d)
     // Must run AFTER dialog::tick (which mutates state via pending
     // intents) but before next frame's input.
     selva::text::tick();
-    selva::interact::tick();
+    {
+        engine::CrashContextScope cx("interact::tick");
+        selva::interact::tick();
+    }
     // Insight graph tick: evaluate every loaded node's trigger
     // against the active profile's state; fire (set in
     // unlocked_insights) any node whose trigger condition is met.
@@ -3956,14 +4043,20 @@ static void selvaPerFrame(Engine& engine, EntityManager& em, double dt_d)
     // call lives in renderActorHud (HUD pass); the tick must run
     // every frame regardless of HUD-render gating so entries fade
     // at the same wall-clock rate during pause-resume cycles too.
-    selva::ui::tickNotifications(static_cast<float>(dt));
+    {
+        engine::CrashContextScope cx("tickNotifications");
+        selva::ui::tickNotifications(static_cast<float>(dt));
+    }
 
     // World pickups: despawn any whose source corpse has vanished
     // (recycled by the actor pool, or finished its fade clock). The
     // pickup belongs to the corpse, period -- the rule lives here
     // rather than in per-archetype JSON so any "corpse disappears"
     // mechanic just works.
-    selva::loot::tickPickups();
+    {
+        engine::CrashContextScope cx("tickPickups");
+        selva::loot::tickPickups();
+    }
 
     // Descent-stair starter weapon dispenser: spawns one class-shaped
     // tier-0 weapon partway down the chapel descent once the Signing
@@ -4187,8 +4280,9 @@ static void renderTreePreview()
     selva::render::setLastViewProj(viewProj);
 
     // Clear so we render against a flat dark background, not whatever
-    // was last drawn.
-    glClearColor(0.10f, 0.10f, 0.12f, 1.0f);
+    // was last drawn. Linear-space; originally sRGB-authored
+    // (0.10, 0.10, 0.12).
+    glClearColor(0.0100f, 0.0100f, 0.0134f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     if (sTreePreview.wireframe)
@@ -4337,26 +4431,61 @@ void drawPlayerSkeletal(const glm::mat4& viewProj)
 {
     if (sSampler.bone_palette.empty())
         return;
+    // Reconcile the player's transforms list against world state
+    // (sangue load, future class-evolution flags, etc.), then
+    // resolve the live appearance. ALL render-path reads below
+    // (body_scale, color, morph weights) must come from
+    // `live_app`, not `sPlayer.appearance`, or transforms won't
+    // show through to the rendered frame.
+    selva::gameplay::reconcileAppearanceTransforms(sPlayer);
+    const selva::gameplay::Appearance live_app =
+        selva::gameplay::resolveLiveAppearance(sPlayer.appearance);
     const float pfoot = selva::gameplay::actorFootOffsetY(sPlayer);
-    const glm::mat4 player_model = selva::combat::buildActorModelMatrix(
-        sPlayer.pos, sPlayer.yaw, pfoot, sPlayer.appearance.body_scale);
-    const std::string sk_id =
-        sPlayer.skeleton_id.empty() ? std::string(selva::anim::kHumanoidLegacyKey) : sPlayer.skeleton_id;
+    const glm::mat4 player_model =
+        selva::combat::buildActorModelMatrix(sPlayer.pos, sPlayer.yaw, pfoot, live_app.body_scale);
+    const std::string sk_id = sPlayer.skeleton_id.empty()
+                                  ? std::string(selva::anim::kPlayerSkeletonKey)
+                                  : sPlayer.skeleton_id;
     selva::gameplay::applyAppearanceDeformation(sSampler, selva::anim::jointMapByKey(sk_id),
-                                                sPlayer.appearance, sPlayer.deformed_bone_palette);
+                                                live_app, sPlayer.deformed_bone_palette);
+    // Resolve morph weights name->dense order matching mesh.morph_names.
+    // The shader indexes by morph_idx; we ship a per-draw vector where
+    // morph_weights[i] is the weight for mesh.morph_names[i]. Missing
+    // map entries default to 0.0 (rest pose contribution). Empty
+    // result vector when the mesh has zero morphs -- draw call's
+    // identity early-exit handles that.
+    static std::vector<float> sPlayerMorphWeights;
+    sPlayerMorphWeights.clear();
+    {
+        const auto& mesh = sPlayerMesh();
+        sPlayerMorphWeights.reserve(mesh.morph_names.size());
+        for (const auto& name : mesh.morph_names)
+            sPlayerMorphWeights.push_back(selva::gameplay::appearanceMorphWeight(live_app, name));
+    }
     const bool fpv = selva::render::cameraMode() == selva::render::CameraMode::FirstPerson;
-    const glm::vec3 tint = sPlayer.appearance.color;
+    const glm::vec3 tint = live_app.color;
+    // Eye tint: applies to the eye submesh via material.role == Eyes.
+    // Auto-resets inside drawSkeletalMesh so subsequent draws (hair,
+    // next actor) aren't affected.
+    selva::anim::setSkeletalEyeTint(live_app.eye_tint);
     if (fpv)
     {
         // FPV: zero head + neck bones in a clone of the palette so
         // the head doesn't clip the near plane.
         static std::vector<glm::mat4> sFpvPalette;
         applyFpvHeadHide(sSampler, sPlayer.deformed_bone_palette, sFpvPalette);
-        selva::anim::drawSkeletalMesh(sPlayerMesh, player_model, viewProj, sFpvPalette, tint);
+        selva::anim::drawSkeletalMesh(sPlayerMesh(), player_model, viewProj, sFpvPalette, tint,
+                                      /*alpha=*/1.0f, sPlayerMorphWeights);
         return;
     }
-    selva::anim::drawSkeletalMesh(sPlayerMesh, player_model, viewProj,
-                                  sPlayer.deformed_bone_palette, tint);
+    selva::anim::drawSkeletalMesh(sPlayerMesh(), player_model, viewProj,
+                                  sPlayer.deformed_bone_palette, tint, /*alpha=*/1.0f,
+                                  sPlayerMorphWeights);
+    // Hair as a second skinned draw against the SAME bone palette --
+    // the hair mesh's per-vertex bone_indices resolve against
+    // sPlayer's skeleton (mixamo 52-bone convention), so the head-
+    // weighted verts follow the actor's head bone automatically.
+    selva::render::drawHair(sPlayer, viewProj, sPlayer.deformed_bone_palette, pfoot);
 }
 
 float computeEnemyDeathFadeAlpha(const selva::gameplay::Actor& enemy, float now_wc, float fade_hold,
@@ -4372,49 +4501,12 @@ float computeEnemyDeathFadeAlpha(const selva::gameplay::Actor& enemy, float now_
     return std::clamp(1.0f - fade_t, 0.0f, 1.0f);
 }
 
-// Per-actor live Appearance. Base case: just returns the actor's
-// authored appearance verbatim. When the actor's archetype declares a
-// transform_target_archetype AND the actor has arrived at its
-// scripted target AND has a known on_arrival_delay, the function
-// lerps the WHOLE Appearance struct (color, body_scale, every future
-// axis) toward the target archetype's authored appearance over the
-// wait.
-//
-// One generalized primitive replaces the old per-channel
-// resolveEnemyTint. Authoring a transformation anywhere in the game
-// (larva burn, keeper fall, future Vagrant ascensions) reduces to
-// "from-archetype, to-archetype, duration" -- the renderer's
-// per-frame call automatically interpolates every appearance axis
-// that exists today AND every one added tomorrow.
-//
-// Visualizes the inward-burn -- fresh larvae go pale-and-small to
-// sangue-red-and-full-sized as they age. See
-// [[project_soul_larvae_cosmology]].
-selva::gameplay::Appearance resolveAppearance(const selva::gameplay::Actor& enemy, float now_wc)
-{
-    if (enemy.archetype == nullptr)
-        return enemy.appearance;
-    const auto& at = *enemy.archetype;
-    if (at.transform_target_archetype.empty() || enemy.arrival_wallclock <= 0.0f ||
-        enemy.arrival_action_delay_seconds <= 0.0f)
-        return enemy.appearance;
-    const selva::gameplay::EnemyArchetype* target =
-        selva::gameplay::archetypes().get(at.transform_target_archetype);
-    if (target == nullptr)
-        return enemy.appearance;
-    const selva::gameplay::Appearance target_app =
-        selva::gameplay::loadAppearance(target->appearance_path);
-    const float t = std::clamp(
-        (now_wc - enemy.arrival_wallclock) / enemy.arrival_action_delay_seconds, 0.0f, 1.0f);
-    selva::gameplay::Appearance lerped;
-    lerped.body_scale = glm::mix(enemy.appearance.body_scale, target_app.body_scale, t);
-    lerped.head_scale = glm::mix(enemy.appearance.head_scale, target_app.head_scale, t);
-    lerped.arm_scale = glm::mix(enemy.appearance.arm_scale, target_app.arm_scale, t);
-    lerped.leg_scale = glm::mix(enemy.appearance.leg_scale, target_app.leg_scale, t);
-    lerped.torso_scale = glm::mix(enemy.appearance.torso_scale, target_app.torso_scale, t);
-    lerped.color = glm::mix(enemy.appearance.color, target_app.color, t);
-    return lerped;
-}
+// Legacy per-actor live-Appearance lerp REPLACED by the
+// AppearanceTransform primitive (see character-canvas.md *The
+// AppearanceTransform primitive*). The fresh->aged larva burn now
+// flows through the `archetype_transform` TransformSource
+// registered in AppearanceTransformBootstrap.cpp; drawOrQueueEnemy
+// reconciles + resolves per-frame below.
 
 void drawOrQueueEnemy(selva::gameplay::Actor& enemy, const glm::mat4& viewProj,
                       const glm::vec3& camPos, float now_wc, float fade_hold, float fade_duration,
@@ -4425,15 +4517,22 @@ void drawOrQueueEnemy(selva::gameplay::Actor& enemy, const glm::mat4& viewProj,
     const float alpha = computeEnemyDeathFadeAlpha(enemy, now_wc, fade_hold, fade_duration);
     if (alpha <= 0.001f)
         return;
-    const std::string sk_id =
-        enemy.skeleton_id.empty() ? std::string(selva::anim::kHumanoidLegacyKey) : enemy.skeleton_id;
-    auto& enemy_mesh = selva::anim::meshByKey(sk_id);
+    const std::string sk_id = enemy.skeleton_id.empty()
+                                  ? std::string(selva::anim::kPlayerSkeletonKey)
+                                  : enemy.skeleton_id;
+    auto& enemy_mesh = enemy.mesh_path.empty()
+                           ? selva::anim::meshByKey(sk_id)
+                           : selva::anim::meshByArchetypePath(enemy.mesh_path, sk_id);
     const float efoot = enemy_mesh.foot_offset_y;
-    // ONE Appearance per frame -- body_scale used for the model
-    // matrix and color used for the shader tint MUST come from the
-    // same lerp source, or a fresh-to-aged larva would grow at one
-    // rate and redden at another.
-    const selva::gameplay::Appearance live_app = resolveAppearance(enemy, now_wc);
+    // Reconcile transforms first (pure derivation from world state,
+    // overwrites whatever was on enemy.appearance.transforms last
+    // frame), then resolve. ONE Appearance per frame -- body_scale
+    // used for the model matrix and color used for the shader tint
+    // MUST come from the same lerp source, or a fresh-to-aged larva
+    // would grow at one rate and redden at another.
+    selva::gameplay::reconcileAppearanceTransforms(enemy);
+    const selva::gameplay::Appearance live_app =
+        selva::gameplay::resolveLiveAppearance(enemy.appearance);
     const glm::mat4 enemy_model =
         selva::combat::buildActorModelMatrix(enemy.pos, enemy.yaw, efoot, live_app.body_scale);
     const glm::vec3 tint = live_app.color;
@@ -4450,14 +4549,20 @@ void drawOrQueueEnemy(selva::gameplay::Actor& enemy, const glm::mat4& viewProj,
             &enemy_mesh, enemy_model, &enemy.deformed_bone_palette, tint, alpha, glm::dot(d, d)});
         return;
     }
+    // Eye tint per-actor (auto-resets inside drawSkeletalMesh).
+    selva::anim::setSkeletalEyeTint(live_app.eye_tint);
     selva::anim::drawSkeletalMesh(enemy_mesh, enemy_model, viewProj, enemy.deformed_bone_palette,
                                   tint, 1.0f);
+    // Hair for enemies with an authored hair_style_id (NPCs, humanoid
+    // townsfolk, future variant-humanoid archetypes). No-op for the
+    // vast majority of archetypes today which leave the field empty.
+    selva::render::drawHair(enemy, viewProj, enemy.deformed_bone_palette, efoot);
 }
 } // namespace
 
 static void drawActorMeshes(const glm::mat4& viewProj, const glm::vec3& camPos)
 {
-    if (!sPlayerMesh.isLoaded())
+    if (!sPlayerMesh().isLoaded())
         return;
     // Death-fade tuning lives in tunables.json. Cosmologically:
     // sangue is absorbed; residual substrate diffuses back into Hell's
@@ -4623,7 +4728,7 @@ void drawSkeletalsForDepthPass()
     // Shadow uses the FULL bone palette in FPV (head-hide is only for
     // the visible main-pass draw -- the cast shadow on the ground
     // should still show the player's complete silhouette).
-    if (sPlayerMesh.isLoaded() && !sSampler.bone_palette.empty())
+    if (sPlayerMesh().isLoaded() && !sSampler.bone_palette.empty())
     {
         const float pfoot = selva::gameplay::actorFootOffsetY(sPlayer);
         const glm::mat4 m = selva::combat::buildActorModelMatrix(sPlayer.pos, sPlayer.yaw, pfoot,
@@ -4631,41 +4736,41 @@ void drawSkeletalsForDepthPass()
         selva::render::setSkeletalDepthModel(m);
         selva::render::setSkeletalDepthBones(sSampler.bone_palette.data(),
                                              static_cast<int>(sSampler.bone_palette.size()));
-        glBindVertexArray(sPlayerMesh.vao);
-        glDrawElements(GL_TRIANGLES, sPlayerMesh.index_count, GL_UNSIGNED_INT, nullptr);
+        for (const auto& prim : sPlayerMesh().primitives)
+        {
+            if (prim.vao == 0 || prim.index_count == 0)
+                continue;
+            glBindVertexArray(prim.vao);
+            glDrawElements(GL_TRIANGLES, prim.index_count, GL_UNSIGNED_INT, nullptr);
+        }
     }
     for (const auto* enemy : selva::gameplay::enemies())
     {
         if (enemy->sampler.bone_palette.empty())
             continue;
-        const std::string sk_id =
-            enemy->skeleton_id.empty() ? std::string(selva::anim::kHumanoidLegacyKey) : enemy->skeleton_id;
-        auto& enemy_mesh = selva::anim::meshByKey(sk_id);
+        const std::string sk_id = enemy->skeleton_id.empty()
+                                      ? std::string(selva::anim::kPlayerSkeletonKey)
+                                      : enemy->skeleton_id;
+        auto& enemy_mesh = enemy->mesh_path.empty()
+                               ? selva::anim::meshByKey(sk_id)
+                               : selva::anim::meshByArchetypePath(enemy->mesh_path, sk_id);
         const float efoot = enemy_mesh.foot_offset_y;
         const glm::mat4 m = selva::combat::buildActorModelMatrix(enemy->pos, enemy->yaw, efoot,
                                                                  enemy->appearance.body_scale);
-        if (sk_id == "humanoid_male" || sk_id == "humanoid_female")
-        {
-            static std::set<std::string> seen;
-            if (seen.insert(enemy->spawn_id).second)
-            {
-                const auto& p = enemy->sampler.bone_palette;
-                const auto& m0 = p.empty() ? glm::mat4(0.0f) : p[0];
-                std::fprintf(stderr,
-                             "[render-diag] sk=%s mesh.vao=%u idx=%u palette=%zu pos=(%.2f,%.2f,%.2f) "
-                             "scale=%.3f foot=%.3f model.col3=(%.2f,%.2f,%.2f) "
-                             "bone0.col3=(%.3f,%.3f,%.3f)\n",
-                             sk_id.c_str(), enemy_mesh.vao, enemy_mesh.index_count, p.size(),
-                             enemy->pos.x, enemy->pos.y, enemy->pos.z,
-                             enemy->appearance.body_scale, enemy_mesh.foot_offset_y, m[3].x, m[3].y,
-                             m[3].z, m0[3].x, m0[3].y, m0[3].z);
-            }
-        }
         selva::render::setSkeletalDepthModel(m);
         selva::render::setSkeletalDepthBones(enemy->sampler.bone_palette.data(),
                                              static_cast<int>(enemy->sampler.bone_palette.size()));
-        glBindVertexArray(enemy_mesh.vao);
-        glDrawElements(GL_TRIANGLES, enemy_mesh.index_count, GL_UNSIGNED_INT, nullptr);
+        // Iterate primitives -- multi-primitive support lands here
+        // ahead of Step 4 (eyes as separate primitive). Shadow depth
+        // pass still does not apply morphs (Gotcha O latent bug);
+        // fix scheduled with the rest of the depth-pass overhaul.
+        for (const auto& prim : enemy_mesh.primitives)
+        {
+            if (prim.vao == 0 || prim.index_count == 0)
+                continue;
+            glBindVertexArray(prim.vao);
+            glDrawElements(GL_TRIANGLES, prim.index_count, GL_UNSIGNED_INT, nullptr);
+        }
     }
 }
 
@@ -4784,6 +4889,7 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
         }
         {
             ZoneScopedN("pickup-meshes");
+            engine::CrashContextScope cx("renderPickupMeshes");
             // World-space static meshes for any live loot::Pickup
             // whose ItemDef declares a world_mesh path. Wood gather
             // materials use this; weapons keep their glow sprite.
@@ -4820,6 +4926,7 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
     {
         ZoneScopedN("actor-meshes");
         selva::anim::setSkeletalShadow(lightVP, kSunDir, sPlayer.pos, 1);
+        selva::anim::setSkeletalExposure(selva::render::atmosphere::exposure());
         drawActorMeshes(viewProj, camPos);
     }
     // Character designer preview: render the player into the F1
@@ -4831,6 +4938,11 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
     if (selva::gameplay::tickstate::showTuningPanel())
     {
         ZoneScopedN("character-preview");
+        // F1 panel wants to preview the LIVE player -- push their
+        // appearance in every frame the panel is open. This is the
+        // only bridge from gameplay state to preview state; anything
+        // that ever wanted this coupling had to opt in explicitly.
+        selva::ui::setCharacterPreviewAppearance(selva::gameplay::player().appearance);
         selva::ui::renderCharacterPreview();
     }
     {
@@ -4844,6 +4956,7 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
     }
     {
         ZoneScopedN("pickup-sprites");
+        engine::CrashContextScope cx("renderPickupSprites");
         // Depth-tested world-space billboards for every live loot
         // Pickup -- replaces the prior ImDrawList HUD-overlay path
         // that drew through walls and the ground (visible from Limbo
@@ -5033,36 +5146,27 @@ void syncInputEdgesFromCurrentState()
 // Player actor reset. Position/yaw/pool/foot state. Does NOT touch
 // sampler, scene, or world systems -- those are owned by the
 // orchestrators below.
-static void resetPlayerActorForProfile(const selva::PlayerProfile& profile)
+// World-side hookup for a freshly-constructed player Actor. Handles
+// terrain sampling (world-query, must run after the region has
+// activated) and physics-body teleport (which requires the Jolt
+// character body to be valid). Separated from constructPlayerActor
+// so the pure data-assembly step has no world/physics dependency.
+static void placePlayerInWorld(const selva::PlayerProfile& profile)
 {
     const glm::vec2 spawn_xz = selva::world::playerSpawnXZ();
     const float spawn_ground_y = selva::world::sampleHeight(spawn_xz.x, spawn_xz.y);
+    // Saved position wins if the profile carries one; otherwise the
+    // authored spawn point at world-sampled ground height.
     const glm::vec3 target_pos = profile.has_saved_pose
                                      ? glm::vec3(profile.pos_x, profile.pos_y, profile.pos_z)
                                      : glm::vec3(spawn_xz.x, spawn_ground_y, spawn_xz.y);
     const float target_yaw = profile.has_saved_pose ? profile.yaw : sPlayer.spawn_yaw;
     teleportPlayerTo(target_pos, true, target_yaw);
+    // Authored spawn is where the character returns on soft-reset
+    // (respawn after death); it's the world-clamped ground position,
+    // not the saved-pose one. Stored separately so death->respawn
+    // doesn't need another world query.
     sPlayer.spawn_pos = glm::vec3(spawn_xz.x, spawn_ground_y, spawn_xz.y);
-    sPlayer.is_dead = false;
-    sPlayer.death_time = -1.0f;
-    sPlayer.last_damage_time = -1.0f;
-    sPlayer.last_hit_react_time = -1.0f;
-    sPlayer.lock_target_idx = -1;
-    {
-        const auto* profile = selva::activePlayerProfile();
-        const selva::PlayerClass cls =
-            (profile != nullptr) ? profile->player_class : selva::PlayerClass::None;
-        selva::gameplay::initActorPools(sPlayer.hp, sPlayer.stamina, sPlayer.poise, sPlayer.body,
-                                        sPlayer.stats, cls);
-    }
-    sPlayer.foot_left = Actor::FootContact{};
-    sPlayer.foot_right = Actor::FootContact{};
-    // Visual appearance: rebuild from the active profile's
-    // appearance_path per [[feedback_rebuild_from_authored_on_reset]].
-    // initActorPool ran at boot when no profile was active, so the
-    // player Actor carries the default appearance; this is the
-    // per-character re-pool that finally applies the configured one.
-    sPlayer.appearance = selva::gameplay::loadAppearance(profile.appearance_path);
 }
 
 // Full session-boundary reset. Called on New Game / Load Game /
@@ -5111,9 +5215,12 @@ void hardResetWorldForCharacter(const selva::PlayerProfile& profile)
     // 2. Stop active session-audio + boss state (pops audio bed).
     selva::gameplay::tearDownActiveBosses();
 
-    // 3. Hard-reset the player sampler so the next animation snaps in
-    //    without blending from the prior character's last pose.
-    sSampler.hardReset();
+    // 3. Sampler hardReset is no longer needed here -- step 6 below
+    //    reconstructs sPlayer from scratch (including a fresh sampler
+    //    via createPoseSampler), so any prior-session sampler tracks
+    //    are destroyed with the old Actor. Kept as a doc-only note so
+    //    the ordering (world state clears BEFORE the player rebuild)
+    //    stays clear.
 
     // 4. Enemy pool reset to JSON baseline, then re-apply this
     //    profile's felled_bosses (idempotent fireEnemyDeath puts each
@@ -5141,9 +5248,27 @@ void hardResetWorldForCharacter(const selva::PlayerProfile& profile)
     // 5. Door states: profile if persisted, else JSON initial_state.
     selva::world::applyPersistedDoorStates();
 
-    // 6. Player Actor: teleport to spawn, restore pools, clear combat
-    //    reaction state.
-    resetPlayerActorForProfile(profile);
+    // 6. Player Actor: DESTROY and RECONSTRUCT from the profile.
+    //    Souls-lineage doctrine (per this bug's postmortem): character
+    //    switches replace the player rather than mutating fields in
+    //    place. `constructPlayerActor` is the SINGLE source of "how to
+    //    build a player" -- adding an Actor field costs zero
+    //    maintenance because the field's default value at construction
+    //    IS the reset behavior.
+    //
+    //    Prior architecture reset ~15 of ~40 Actor fields explicitly
+    //    and leaked the other 25 across character switches (pose,
+    //    animation state, action state, sampler tracks, deformed
+    //    palette, morph weights, ...). All leaks vanish with a
+    //    from-scratch construction.
+    //
+    //    actors() is guaranteed non-empty here: initActorPool ran at
+    //    boot and there is exactly one player at index 0.
+    selva::gameplay::actors().front() = selva::gameplay::constructPlayerActor(&profile);
+    // World-side placement: terrain sampling + physics teleport
+    // (requires the region to be active + the Jolt character body to
+    // exist, hence separated from the pure data construction).
+    placePlayerInWorld(profile);
 }
 
 // Mid-character cycle-boundary reset. Called on player death/respawn.
@@ -5225,8 +5350,8 @@ bool gameplayMovementSuppressed()
 
 void beginWakeScene()
 {
-    const char* clip_name = "getting_up_3";
-    const auto* clip = sClips.get(clip_name);
+    const char* clip_name = playerClip(selva::anim::AnimIntent::ActionGetUp);
+    const auto* clip = sClips().get(clip_name);
     if (clip == nullptr || !clip->isLoaded())
     {
         std::fprintf(stderr, "[wake-scene] clip '%s' not loaded; skipping wake\n", clip_name);

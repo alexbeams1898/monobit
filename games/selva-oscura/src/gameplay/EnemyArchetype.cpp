@@ -230,10 +230,16 @@ void to_json(nlohmann::json& j, const EnemyArchetype& a)
         j["talk_requires_flag"] = a.talk_requires_flag;
     if (a.form != Form::DamnedSoul)
         j["form"] = formName(a.form);
-    if (!a.skeleton_id.empty() && a.skeleton_id != "humanoid_legacy")
+    if (!a.skeleton_id.empty() && a.skeleton_id != "humanoid_male")
         j["skeleton_id"] = a.skeleton_id;
-    if (!a.appearance_path.empty())
-        j["appearance_path"] = a.appearance_path;
+    if (!a.mesh_path.empty())
+        j["mesh_path"] = a.mesh_path;
+    if (!a.mesh_path_variants.empty())
+        j["mesh_path_variants"] = a.mesh_path_variants;
+    if (a.random_face_morphs)
+        j["random_face_morphs"] = a.random_face_morphs;
+    if (!a.character_path.empty())
+        j["character_path"] = a.character_path;
     emitClipFields(j, a);
     emitCombatFields(j, a);
     emitBossFields(j, a);
@@ -347,16 +353,16 @@ void loadLockOnPoints(const nlohmann::json& j, EnemyArchetype& a)
 
 void loadTintAndDecls(const nlohmann::json& j, EnemyArchetype& a)
 {
-    // Legacy v6 archetypes authored tint_color directly on the
-    // archetype. v7 moves color into the appearance JSON pointed at
-    // by appearance_path. Both keys ignored if present in modern
-    // archetypes; if you see tint_color in an archetype JSON, move
-    // it to the appearance file.
+    // Color lives on the AuthoredCharacter file referenced by
+    // character_path, not on the archetype. If tint_color shows up
+    // in an archetype JSON it's an old file; move the color into the
+    // character file and delete the archetype key.
     a.transform_target_archetype =
         j.value("transform_target_archetype",
                 j.value("tint_burn_target_archetype", std::string{})); // accept legacy alias
     loadHurtboxDecls(j, a);
     a.disable_hurtboxes = j.value("disable_hurtboxes", false);
+    a.intangible = j.value("intangible", false);
     if (j.contains("avoids_hazards") && j.at("avoids_hazards").is_array())
         for (const auto& s : j.at("avoids_hazards"))
             a.avoids_hazards.push_back(s.get<std::string>());
@@ -386,8 +392,16 @@ void from_json(const nlohmann::json& j, EnemyArchetype& a)
     a.acknowledgment_max_angle_radians = j.value("acknowledgment_max_angle_radians", 0.6f);
     a.acknowledgment_turn_rate_scale = j.value("acknowledgment_turn_rate_scale", 0.15f);
     a.form = parseForm(j.value("form", std::string("DamnedSoul")));
-    a.skeleton_id = j.value("skeleton_id", std::string("humanoid_legacy"));
-    a.appearance_path = j.value("appearance_path", std::string{});
+    a.skeleton_id = j.value("skeleton_id", std::string("humanoid_male"));
+    a.mesh_path = j.value("mesh_path", std::string{});
+    a.mesh_path_variants = j.value("mesh_path_variants", std::vector<std::string>{});
+    a.random_face_morphs = j.value("random_face_morphs", false);
+    // Accept legacy "appearance_path" JSON key as a fallback for
+    // archetype files written before the character_path rename. The
+    // authored file on disk changed shape (Appearance -> AuthoredChar)
+    // but the referencing archetype's key was renamed at the same
+    // time; both spellings resolve to the same on-disk file.
+    a.character_path = j.value("character_path", j.value("appearance_path", std::string{}));
     loadClipFields(j, a);
     loadCombatFields(j, a);
     loadBossFields(j, a);

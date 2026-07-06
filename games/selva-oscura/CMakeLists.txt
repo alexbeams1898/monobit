@@ -7,6 +7,25 @@
 # the first <bump>/selva-oscura/... merge advances it from there.
 project(SelvaOscura VERSION 0.3.0 LANGUAGES C CXX)
 
+# Build fingerprint -- short git commit hash + configure timestamp.
+# Stamped into the binary as compile defines so the boot log can
+# print them unconditionally. Lets us answer "which exact binary
+# did the player run?" when investigating crashes / bug reports.
+# Re-evaluated every CMake configure -- not every build -- which is
+# fine because the binary's own mtime is the second half of the
+# fingerprint.
+execute_process(
+    COMMAND git rev-parse --short HEAD
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    OUTPUT_VARIABLE SELVA_GIT_COMMIT
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+if(NOT SELVA_GIT_COMMIT)
+    set(SELVA_GIT_COMMIT "unknown")
+endif()
+string(TIMESTAMP SELVA_CONFIGURE_TIME "%Y-%m-%dT%H:%M:%S")
+
 # Python is used by the FBX → glb → ozz bake to glob the gltf2ozz
 # output regardless of its internal animation name. Required on MSYS2
 # already (GLAD uses it at configure time); this just exposes the
@@ -18,6 +37,9 @@ find_package(Python3 COMPONENTS Interpreter REQUIRED)
 # selva-oscura is one exe today.
 add_library(selva-oscura-lib STATIC
     src/anim/AnimationClip.cpp
+    src/anim/AnimIntent.cpp
+    src/anim/AnimSet.cpp
+    src/anim/AnimSetRegistry.cpp
     src/anim/ClipGeometry.cpp
     src/anim/ClipRegistry.cpp
     src/audio/Audio.cpp
@@ -47,7 +69,12 @@ add_library(selva-oscura-lib STATIC
     src/gameplay/RomanNumeral.cpp
     src/gameplay/RomanTiers.cpp
     src/gameplay/Appearance.cpp
+    src/gameplay/AuthoredCharacter.cpp
     src/gameplay/AppearanceDeformation.cpp
+    src/gameplay/AppearanceRegistry.cpp
+    src/gameplay/AppearanceTransformWriter.cpp
+    src/gameplay/AppearanceTransformBootstrap.cpp
+    src/gameplay/AppearanceVariance.cpp
     src/gameplay/Sangue.cpp
     src/gameplay/SanguePulse.cpp
     src/gameplay/ScriptedEvents.cpp
@@ -79,6 +106,8 @@ add_library(selva-oscura-lib STATIC
     src/render/PickupSpritePass.cpp
     src/render/PickupMeshPass.cpp
     src/render/EquippedWeapon.cpp
+    src/render/HairRenderer.cpp
+    src/hair/HairRegistry.cpp
     src/render/SkyPass.cpp
     src/render/TerrainShader.cpp
     src/render/Texture.cpp
@@ -93,6 +122,7 @@ add_library(selva-oscura-lib STATIC
     src/world/TreeAssets.cpp
     src/ui/ActorHud.cpp
     src/ui/BossHud.cpp
+    src/ui/AppearanceEditor.cpp
     src/ui/CharacterCreationScreen.cpp
     src/ui/CharacterPreview.cpp
     src/ui/ClassPickerScreen.cpp
@@ -155,6 +185,11 @@ target_link_libraries(selva-oscura-lib
 add_executable(selva-oscura WIN32 src/main.cpp)
 target_link_libraries(selva-oscura PRIVATE selva-oscura-lib)
 target_include_directories(selva-oscura SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/vendor/stb)
+# Build fingerprint -- visible in the boot log + crash dumps so we
+# can always answer "which exact binary did this come from?"
+target_compile_definitions(selva-oscura PRIVATE
+    SELVA_GIT_COMMIT="${SELVA_GIT_COMMIT}"
+    SELVA_CONFIGURE_TIME="${SELVA_CONFIGURE_TIME}")
 set_target_properties(selva-oscura PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/selva-oscura)
 
@@ -164,8 +199,28 @@ if(MINGW)
     target_link_options(selva-oscura PRIVATE -static-libgcc -static-libstdc++)
 endif()
 
+# Crash-dump symbol resolution -- MinGW GCC's default -g emits DWARF
+# which Windows DbgHelp cannot read; the engine::CrashHandler dump
+# would then show only addresses (frame #10 0x00007ff... rather than
+# selva::gameplay::tickEnemies (Enemies.cpp:1234)). -gcodeview emits
+# MS CodeView format that DbgHelp resolves natively into the dump.
+# Compile-side adds debug info, link-side asks the linker to keep it
+# in a separate .pdb sidecar file rather than discarding it.
+# Debug builds only -- release builds don't ship PDBs (different
+# stripping policy + smaller install).
+if(MINGW AND CMAKE_BUILD_TYPE STREQUAL "Debug")
+    target_compile_options(selva-oscura PRIVATE -gcodeview)
+    target_link_options(selva-oscura PRIVATE -Wl,-pdb=)
+    # Engine static lib + selva static lib must ALSO emit codeview
+    # otherwise their frames stay as opaque addresses even though
+    # the executable's own frames resolve. Applied here (rather than
+    # in each subdir) so the policy lives next to the consumer.
+    target_compile_options(engine PRIVATE -gcodeview)
+    target_compile_options(selva-oscura-lib PRIVATE -gcodeview)
+endif()
+
 # Sync config + assets to the build output on every build so the exe finds
-# config/tunables.json and assets/characters/humanoid_legacy/humanoid.glb at runtime.
+# config/tunables.json and assets/characters/humanoid_male/humanoid.glb at runtime.
 # ALL custom target (not POST_BUILD) so file edits are picked up even when
 # no .cpp changed; same pattern as prison-escape-game.
 #
@@ -195,15 +250,96 @@ add_custom_target(selva-oscura-sync-config ALL
 )
 
 # ---------------------------------------------------------------------------
-# Per-rig bake pipeline. Each character skeleton lives under
-# assets/characters/<rig>/ with source/rig/humanoid.fbx as the authoring
-# input and humanoid.glb + skeleton.ozz as the committed build artifacts.
-# When the FBX is present locally we regenerate; on CI without the
-# gitignored FBX the committed bakes ship as-is. Every clip must target
-# exactly one rig -- mismatched skeletons distort geometry (see
-# memory/feedback_no_bandaids_root_cause.md).
+# The Effigie -- standalone character designer.
+#
+# Same engine, same selva-oscura-lib, same Appearance struct. NO
+# world / gameplay / physics / audio / dialog / region init -- boots
+# straight into a preview-only window. Sits at build/bin/selva-effigie/
+# to keep its assets + logs separate from the game exe.
+#
+# Doctrinal shape: authoring tool that WRITES config/characters/*.json
+# snapshots the game consumes at runtime. See src/effigie/main.cpp for
+# the Phase 1 empty-shell boot; Phase 2+ lands the designer UI.
 # ---------------------------------------------------------------------------
-set(fbx2gltf_exe ${CMAKE_SOURCE_DIR}/tools/fbx2gltf/FBX2glTF.exe)
+add_executable(selva-effigie WIN32 src/effigie/main.cpp)
+target_link_libraries(selva-effigie PRIVATE selva-oscura-lib)
+target_include_directories(selva-effigie SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/vendor/stb)
+set_target_properties(selva-effigie PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/selva-effigie)
+if(MINGW)
+    target_link_options(selva-effigie PRIVATE -static-libgcc -static-libstdc++)
+endif()
+
+# Effigie needs its OWN copy of config + assets in its bin dir since it
+# runs from build/bin/selva-effigie/. Same python sync script the game
+# uses; syncs the full config + assets tree so any subsystem load
+# (Appearance sliders, hair registry, humanoid.glb, iris texture) just
+# finds its data.
+#
+# Trades disk (double-copy of ~200MB) for zero-configure simplicity --
+# no per-subsystem path indirection, no environment variable, no
+# "which config dir am I reading" ambiguity. Dev-tool concern; ship
+# concern is only the game exe.
+add_custom_target(selva-effigie-sync-config ALL
+    COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/sync_dir.py
+        ${CMAKE_CURRENT_SOURCE_DIR}/config
+        $<TARGET_FILE_DIR:selva-effigie>/config
+    COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/sync_dir.py
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets
+        $<TARGET_FILE_DIR:selva-effigie>/assets
+    # Overlay the game exe's asset dir on top -- pulls in baked
+    # skeleton.ozz + per-clip .ozz files that the bake pipeline emits
+    # into build/bin/selva-oscura/. Those artifacts never live in the
+    # source tree (gitignored); the Effigie needs them to load the
+    # humanoid skeleton and drive its idle clip. Depends on the game
+    # exe so the bakes run first.
+    COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/sync_dir.py
+        $<TARGET_FILE_DIR:selva-oscura>/assets
+        $<TARGET_FILE_DIR:selva-effigie>/assets
+    COMMENT "Syncing selva-effigie config + assets to build output..."
+    VERBATIM
+)
+# Order: the game exe's bake steps must run first so .ozz files exist.
+add_dependencies(selva-effigie-sync-config selva-oscura)
+
+# ---------------------------------------------------------------------------
+# Per-rig bake pipeline. Each character skeleton lives under
+# assets/characters/<rig>/ with humanoid.glb as the authoring artifact +
+# skeleton.ozz as the runtime extract.
+#
+# **humanoid.glb is produced by gen_humanoid.py (Blender extension),
+# NOT by this build.** Earlier this pipeline ran fbx2gltf on the .fbx
+# to produce .glb, but fbx2gltf strips glTF morph targets, breaking the
+# AppearanceTransform / morph-slider system that requires them. gen_humanoid
+# now writes humanoid.glb directly (preserving morphs through Blender's
+# native glTF exporter) and the build just consumes it. To regen, run:
+#
+#     "/c/Program Files/Blender Foundation/Blender 4.2/blender.exe" \
+#         --background --python \
+#         games/selva-oscura/scripts/blender/gen_humanoid.py -- \
+#         --gender male \
+#         --out-blend assets/characters/humanoid_male/blender_authoring/humanoid_male.blend \
+#         --out-fbx assets/characters/humanoid_male/source/rig/humanoid.fbx \
+#         --out-glb assets/characters/humanoid_male/humanoid.glb \
+#         --skin-diffuse assets/characters/humanoid_male/skin_diffuse.png \
+#         --eyes-mhclo assets/characters/iris/high-poly.mhclo \
+#         --eyes-diffuse assets/characters/iris/iris_diffuse.png
+#
+# The --eyes-mhclo + --eyes-diffuse pair is REQUIRED for a functional
+# humanoid; without them the bake writes a .glb with no eye asset
+# (single primitive, no HumanoidEyes material), and the eye submesh
+# is entirely absent from the rendered character. There is no
+# graceful degradation for this omission -- the character will render
+# as an eyeless body.
+#
+# (same for --gender female, swapping paths). The .fbx is still written
+# for Mixamo upload + animation round-trips, but the runtime mesh path
+# is .glb only. Every clip must target exactly one rig -- mismatched
+# skeletons distort geometry (see memory/feedback_no_bandaids_root_cause.md).
+# ---------------------------------------------------------------------------
 # Per-game build output (see selva-oscura exe's RUNTIME_OUTPUT_DIRECTORY).
 # add_custom_command's OUTPUT can't contain generator expressions, so this
 # is a literal path -- if the per-game subdir name changes, update both.
@@ -232,30 +368,15 @@ function(_selva_register_skeleton)
 
     set(rig_dir ${CMAKE_CURRENT_SOURCE_DIR}/assets/characters/${RIG_NAME})
     set(rig_out_dir ${selva_out_dir}/assets/characters/${RIG_NAME})
-    set(rig_fbx ${rig_dir}/source/rig/humanoid.fbx)
     set(rig_glb ${rig_dir}/humanoid.glb)
     set(rig_target selva-oscura-convert-${RIG_NAME})
 
-    if(EXISTS ${rig_fbx})
-        add_custom_command(
-            OUTPUT ${rig_glb}
-            # --keep-attribute auto drops NORMAL/TEXCOORD if not strictly
-            # required by the schema; listing them explicitly forces them
-            # through. --compute-normals re-derives from geometry when
-            # the source FBX omits them.
-            COMMAND ${fbx2gltf_exe}
-                --binary
-                --keep-attribute position
-                --keep-attribute normal
-                --keep-attribute uv0
-                --compute-normals ${RIG_COMPUTE_NORMALS}
-                -i ${rig_fbx}
-                -o ${rig_dir}/humanoid
-            DEPENDS ${rig_fbx} ${fbx2gltf_exe}
-            COMMENT "Converting ${RIG_NAME}/humanoid.fbx → humanoid.glb..."
-            VERBATIM
-        )
+    # COMPUTE_NORMALS was a legacy fbx2gltf-pipeline flag. gen_humanoid's
+    # Blender exporter always writes normals, so the knob is dead. Kept
+    # in the function signature for caller-compat; silenced here.
+    set(_unused ${RIG_COMPUTE_NORMALS})
 
+    if(EXISTS ${rig_glb})
         # Skeleton-only gltf2ozz config: humanoid.glb ships with no real
         # animations (just a degenerate T-pose), so empty "animations": []
         # skips the animation-validation step that would otherwise fail
@@ -297,7 +418,7 @@ function(_selva_register_skeleton)
         # Bake runs AFTER sync so freshly-baked skeleton.ozz isn't clobbered.
         add_dependencies(${rig_target} selva-oscura-sync-config)
     else()
-        message(STATUS "selva-oscura: ${RIG_NAME}/humanoid.fbx not found; using committed .glb + .ozz")
+        message(STATUS "selva-oscura: ${RIG_NAME}/humanoid.glb not found; using committed skeleton.ozz")
         # Downstream attack-pack / per-character bake rules declare
         # ${rig_out_dir}/skeleton.ozz as a DEPENDS input. Without an FBX
         # bake producing it, no CMake target satisfies that path on CI.
@@ -327,13 +448,6 @@ function(_selva_register_skeleton)
     set(${RIG_NAME}_out_dir ${rig_out_dir} PARENT_SCOPE)
     set(${RIG_NAME}_glb ${rig_glb} PARENT_SCOPE)
 endfunction()
-
-# Legacy humanoid rig -- frozen, every shipped clip targets it. Kept
-# as historical reference / fallback for the Mixamo-sourced clip
-# library; new work uses _selva_register_humanoid below instead. The
-# source FBX omits per-vertex normals, so force re-computation; the
-# loader rejects meshes without NORMAL.
-_selva_register_skeleton(NAME humanoid_legacy COMPUTE_NORMALS always)
 
 # Minimal bake for rigs sourced from Blender's native glTF exporter.
 # Source layout: assets/characters/<name>/source/rig/humanoid.glb.
@@ -450,312 +564,6 @@ endfunction()
 _selva_register_humanoid(NAME humanoid_male)
 _selva_register_humanoid(NAME humanoid_female)
 
-# ---------------------------------------------------------------------------
-# Convert Mixamo Pro Sword and Shield Pack FBXs → per-clip .ozz at build.
-#
-# Pipeline per FBX:
-#   1. FBX2glTF converts the .fbx to a per-clip .glb in a build temp dir.
-#   2. gltf2ozz runs with a config pointing at the humanoid skeleton.ozz
-#      as the reference, with skeleton import disabled. The pack-extracted
-#      glb has its own skeleton + an extra "RootNode" wrapper joint that
-#      isn't in the humanoid skeleton; using the humanoid as the reference
-#      means gltf2ozz strips that wrapper and indexes the animation tracks
-#      against the humanoid's joint order. Result: clips play correctly on
-#      the humanoid skeleton at runtime with no further retargeting.
-#   3. The single animation track in each Mixamo FBX is named "mixamo.com"
-#      internally — gltf2ozz emits it as "mixamo.com.ozz" regardless of
-#      filename. We rename it to <sanitized-filename>.ozz alongside the
-#      humanoid skeleton.ozz.
-#
-# The pack ships locomotion clips alongside attack clips, so no separate
-# Idle/Walk/Run extraction is needed — sword_and_shield_idle/walk/run.ozz
-# come from this same pipeline.
-#
-# Filename sanitization: lowercase, spaces and parens to underscores,
-# repeats collapsed. "sword and shield slash (2).fbx" →
-# "sword_and_shield_slash_2.ozz".
-#
-# Source layout under humanoid/source/ is purpose-based — every .fbx
-# anywhere under that tree is converted to a clip, except the rig
-# (rig/humanoid.fbx) which goes through a separate pipeline above. Drop
-# new clips into the matching subdir (loco/, combat/sword/attacks/,
-# dodge/, etc.) and they're picked up automatically.
-#
-# Override convention: clips under source/authored/ win by sanitized
-# name over same-named clips elsewhere. Lets us replace Mixamo
-# downloads with hand-authored MB-Lab versions one at a time; the
-# rest keep using the Mixamo fallback.
-# ---------------------------------------------------------------------------
-
-# Generate the gltf2ozz retarget config once at configure time. Refers to
-# the humanoid skeleton.ozz by absolute path so each clip's per-temp-dir
-# gltf2ozz invocation can find it regardless of cwd.
-#
-# The "motion" block extracts root motion (hip translation/rotation) out
-# of the animation tracks and bakes it back in as zero — i.e. the
-# imported clip animates "in place" with the character staying at origin
-# and only rotation/swing motion preserved on the joints. Mixamo's
-# walk/run clips ship with hip translation that drives the character
-# forward across the clip; without this extraction, the animation
-# moves the character forward each loop and snaps back at wrap, while
-# our gameplay code is also driving sPlayer.pos via WASD — total
-# duplication, looks like skipping.
-#
-# bake=true means "consume the motion delta and re-zero the animation
-# track." We drop the extracted-motion track files (filename references
-# a tmp scratch path) since gameplay drives translation, not animation.
-set(retarget_config ${CMAKE_BINARY_DIR}/selva-oscura-attacks/retarget_config.json)
-file(WRITE ${retarget_config}
-"{\n"
-"  \"skeleton\": {\n"
-"    \"filename\": \"${humanoid_legacy_out_dir}/skeleton.ozz\",\n"
-"    \"import\": { \"enable\": false }\n"
-"  },\n"
-"  \"animations\": [\n"
-"    {\n"
-"      \"clip\": \"*\",\n"
-"      \"filename\": \"*.ozz\",\n"
-"      \"additive\": false,\n"
-"      \"optimize\": true\n"
-"    }\n"
-"  ]\n"
-"}\n"
-)
-
-# Helper: turn a Mixamo filename into our sanitized clip name.
-function(_selva_sanitize_clip_name fbx_filename out_var)
-    get_filename_component(stem "${fbx_filename}" NAME_WE)
-    string(TOLOWER "${stem}" sanitized)
-    string(REGEX REPLACE "[^a-z0-9]+" "_" sanitized "${sanitized}")
-    string(REGEX REPLACE "_+" "_" sanitized "${sanitized}")
-    string(REGEX REPLACE "^_|_$" "" sanitized "${sanitized}")
-    set(${out_var} "${sanitized}" PARENT_SCOPE)
-endfunction()
-
-set(attack_ozz_files "")
-# Every .fbx anywhere under humanoid/source/ becomes a per-clip .ozz.
-# Layout is purpose-based (loco/, combat/, dodge/, ...); recursive
-# glob lets new subdirs work without listing them here. humanoid.fbx
-# (the rig under rig/) is converted separately above into humanoid.glb
-# and excluded by the filter below.
-file(GLOB_RECURSE attack_fbx_files
-    CONFIGURE_DEPENDS
-    "${humanoid_legacy_dir}/source/*.fbx"
-)
-# Exclude rig FBXs: our humanoid.fbx in source/rig/, plus legacy
-# "X Bot.fbx" / "X_Bot.fbx" rig mannequins shipped inside Mixamo
-# packs (e.g. Creature Pack). These are T-pose mesh sources, not
-# clips -- gltf2ozz fails to validate them as animations.
-list(FILTER attack_fbx_files EXCLUDE REGEX ".*humanoid\\.fbx$|.*[Xx][ _]?[Bb]ot.*\\.fbx$")
-
-# Authored override: any .fbx under source/authored/ wins by sanitized
-# name over the same-named clip from elsewhere in source/. Lets us
-# author MB-Lab clips that replace Mixamo equivalents one at a time;
-# unauthored clips keep falling back to the Mixamo download.
-set(_authored_clip_names "")
-foreach(fbx ${attack_fbx_files})
-    if(fbx MATCHES "/source/authored/")
-        _selva_sanitize_clip_name("${fbx}" _name)
-        list(APPEND _authored_clip_names ${_name})
-    endif()
-endforeach()
-if(_authored_clip_names)
-    set(_deduped_fbx "")
-    foreach(fbx ${attack_fbx_files})
-        _selva_sanitize_clip_name("${fbx}" _name)
-        if(fbx MATCHES "/source/authored/")
-            list(APPEND _deduped_fbx ${fbx})
-        else()
-            list(FIND _authored_clip_names ${_name} _idx)
-            if(_idx EQUAL -1)
-                list(APPEND _deduped_fbx ${fbx})
-            endif()
-        endif()
-    endforeach()
-    set(attack_fbx_files ${_deduped_fbx})
-endif()
-# Only run the sword-pack bake when FBX2glTF is available. On CI
-# (Linux without the gitignored FBX2glTF.exe), the bake is skipped and
-# the committed .ozz files in humanoid/ ship as the runtime artifacts.
-if(attack_fbx_files AND EXISTS ${fbx2gltf_exe})
-    foreach(fbx ${attack_fbx_files})
-        _selva_sanitize_clip_name("${fbx}" clip_name)
-        set(clip_temp_dir ${CMAKE_BINARY_DIR}/selva-oscura-attacks/${clip_name})
-        set(clip_glb ${clip_temp_dir}/${clip_name}.glb)
-        set(clip_final_ozz ${humanoid_legacy_out_dir}/${clip_name}.ozz)
-        add_custom_command(
-            OUTPUT ${clip_final_ozz}
-            # 1. Convert FBX → glb (FBX2glTF -o is a stem; it appends .glb).
-            COMMAND ${CMAKE_COMMAND} -E make_directory ${clip_temp_dir}
-            COMMAND ${fbx2gltf_exe}
-                --binary
-                --keep-attribute auto
-                -i ${fbx}
-                -o ${clip_temp_dir}/${clip_name}
-            # 2. Normalize glb scale -- Mixamo "With Skin" downloads
-            #    against our MB-Lab+auto-rigger humanoid carry
-            #    cm-magnitude bone translations + a 100x scale on the
-            #    hips/mesh nodes. gltf2ozz strips per-joint scale but
-            #    keeps the cm translations -> runtime renders 100x.
-            #    This step bakes the 100x scale into the translation
-            #    tracks so gltf2ozz sees meter-scale values. No-op on
-            #    glbs without non-unit scale (idempotent / safe).
-            COMMAND ${Python3_EXECUTABLE}
-                ${CMAKE_CURRENT_SOURCE_DIR}/scripts/normalize_glb_scale.py
-                --inplace ${clip_glb}
-            # 3. gltf2ozz with the retarget config — skeleton import
-            #    disabled, animation indexed against the humanoid skeleton.
-            COMMAND ${CMAKE_COMMAND} -E chdir ${clip_temp_dir}
-                $<TARGET_FILE:gltf2ozz>
-                --file=${clip_glb}
-                --config_file=${retarget_config}
-            # 4. Stage the gltf2ozz output into the final name.
-            #    gltf2ozz names output by the animation's internal name
-            #    (mixamo.com.ozz for Mixamo, Scene.ozz for Blender-
-            #    re-exports). stage_baked_ozz.py globs for whatever
-            #    .ozz exists and copies it — names aren't load-bearing.
-            COMMAND ${Python3_EXECUTABLE}
-                ${CMAKE_CURRENT_SOURCE_DIR}/scripts/stage_baked_ozz.py
-                --temp-dir ${clip_temp_dir}
-                --out ${clip_final_ozz}
-            DEPENDS
-                ${fbx}
-                gltf2ozz
-                ${retarget_config}
-                ${CMAKE_CURRENT_SOURCE_DIR}/scripts/normalize_glb_scale.py
-                # The retarget config refers to the humanoid skeleton.ozz —
-                # it must exist before gltf2ozz reads it.
-                ${humanoid_legacy_out_dir}/skeleton.ozz
-            COMMENT "Converting ${clip_name}.fbx → ${clip_name}.ozz (retargeted to humanoid)"
-            VERBATIM
-        )
-        list(APPEND attack_ozz_files ${clip_final_ozz})
-    endforeach()
-endif()
-
-# Only define the target if there's at least one .fbx; otherwise CMake
-# warns about empty custom targets. Missing pack is a soft failure — the
-# game runs without attack clips, just with whatever JSON references stay
-# unresolved.
-if(attack_ozz_files)
-    add_custom_target(selva-oscura-convert-attacks ALL DEPENDS ${attack_ozz_files})
-    # Bake runs AFTER sync so freshly-baked .ozz isn't clobbered by the
-    # source-tree's older .ozz (which copy_directory above re-deploys).
-    add_dependencies(selva-oscura-convert-attacks selva-oscura-sync-config)
-endif()
-
-# ---------------------------------------------------------------------------
-# Larva clip bake. Larvae are Hell-side contrapasso-shaped human souls
-# per [[universal-humanoid-enemy-rule]] -- they reuse the humanoid
-# skeleton, so this pipeline mirrors the humanoid pack bake above but
-# globs a separate source root and deploys to a separate output dir.
-# Source: assets/characters/larva/source/ (Mixamo Scary Zombie Pack +
-# any future larva-specific clips). Same retarget_config (humanoid
-# skeleton.ozz, skeleton import disabled) -- Mixamo zombie clips are
-# bound to the standard Mixamo skeleton the humanoid uses, so retargeting
-# Just Works. Output: bin/selva-oscura/assets/characters/larva/*.ozz.
-# ---------------------------------------------------------------------------
-set(larva_dir ${CMAKE_CURRENT_SOURCE_DIR}/assets/characters/larva)
-set(larva_out_dir ${selva_out_dir}/assets/characters/larva)
-set(larva_ozz_files "")
-file(GLOB_RECURSE larva_fbx_files
-    CONFIGURE_DEPENDS
-    "${larva_dir}/source/*.fbx"
-)
-# Skip the Mixamo rig FBX shipped with the Scary Zombie Pack -- it's
-# a T-pose source, not a clip. Matches "X Bot.fbx", "X_Bot.fbx",
-# "x bot.fbx", etc. (legacy filenames from the original pack contents).
-list(FILTER larva_fbx_files EXCLUDE REGEX ".*[Xx][ _][Bb]ot\\.fbx$")
-# Only run the larva bake when FBX2glTF is available. On CI (Linux
-# without the gitignored FBX2glTF.exe), the bake is skipped and the
-# committed .ozz files in larva/ ship as the runtime artifacts.
-if(larva_fbx_files AND EXISTS ${fbx2gltf_exe})
-    foreach(fbx ${larva_fbx_files})
-        _selva_sanitize_clip_name("${fbx}" clip_name)
-        set(clip_temp_dir ${CMAKE_BINARY_DIR}/selva-oscura-larva/${clip_name})
-        set(clip_glb ${clip_temp_dir}/${clip_name}.glb)
-        set(clip_final_ozz ${larva_out_dir}/${clip_name}.ozz)
-        add_custom_command(
-            OUTPUT ${clip_final_ozz}
-            COMMAND ${CMAKE_COMMAND} -E make_directory ${clip_temp_dir}
-            COMMAND ${fbx2gltf_exe}
-                --binary
-                --keep-attribute auto
-                -i ${fbx}
-                -o ${clip_temp_dir}/${clip_name}
-            # Normalize glb scale (same fix as the humanoid pack -- see
-            # comment there for the full story).
-            COMMAND ${Python3_EXECUTABLE}
-                ${CMAKE_CURRENT_SOURCE_DIR}/scripts/normalize_glb_scale.py
-                --inplace ${clip_glb}
-            COMMAND ${CMAKE_COMMAND} -E chdir ${clip_temp_dir}
-                $<TARGET_FILE:gltf2ozz>
-                --file=${clip_glb}
-                --config_file=${retarget_config}
-            COMMAND ${Python3_EXECUTABLE}
-                ${CMAKE_CURRENT_SOURCE_DIR}/scripts/stage_baked_ozz.py
-                --temp-dir ${clip_temp_dir}
-                --out ${clip_final_ozz}
-            DEPENDS
-                ${fbx}
-                gltf2ozz
-                ${retarget_config}
-                ${CMAKE_CURRENT_SOURCE_DIR}/scripts/normalize_glb_scale.py
-                ${humanoid_legacy_out_dir}/skeleton.ozz
-            COMMENT "Converting ${clip_name}.fbx → larva/${clip_name}.ozz (retargeted to humanoid)"
-            VERBATIM
-        )
-        list(APPEND larva_ozz_files ${clip_final_ozz})
-    endforeach()
-endif()
-if(larva_ozz_files)
-    add_custom_target(selva-oscura-convert-larva ALL DEPENDS ${larva_ozz_files})
-    add_dependencies(selva-oscura-convert-larva selva-oscura-sync-config)
-endif()
-
-# Pre-baked .ozz files whose source FBXs are no longer in the tree
-# (e.g. unused sword & shield clips kept available for future use).
-# Copy each into build/bin alongside the freshly-baked clips so
-# loadDirectory() picks them up at runtime. The runtime directory
-# scan doesn't distinguish baked-from-FBX from archived.
-#
-# When a clip exists in BOTH archive AND source/, the FBX is now the
-# source of truth -- skip the stale archive copy. Otherwise CMake
-# errors on a duplicate custom-command output.
-set(archive_dir ${humanoid_legacy_dir}/baked-archive)
-if(EXISTS ${archive_dir})
-    # Build the set of clip names that the source-FBX bake will produce.
-    set(baked_clip_names "")
-    foreach(fbx ${attack_fbx_files})
-        _selva_sanitize_clip_name("${fbx}" clip_name)
-        list(APPEND baked_clip_names ${clip_name})
-    endforeach()
-
-    file(GLOB archive_ozz_files CONFIGURE_DEPENDS "${archive_dir}/*.ozz")
-    set(archive_copied_files "")
-    foreach(src ${archive_ozz_files})
-        get_filename_component(name "${src}" NAME)
-        get_filename_component(stem "${src}" NAME_WE)
-        if(stem IN_LIST baked_clip_names)
-            continue()
-        endif()
-        set(dst ${humanoid_legacy_out_dir}/${name})
-        add_custom_command(
-            OUTPUT ${dst}
-            COMMAND ${CMAKE_COMMAND} -E make_directory ${humanoid_legacy_out_dir}
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different ${src} ${dst}
-            DEPENDS ${src}
-            COMMENT "Staging archived clip ${name}"
-            VERBATIM
-        )
-        list(APPEND archive_copied_files ${dst})
-    endforeach()
-    if(archive_copied_files)
-        add_custom_target(selva-oscura-stage-archive ALL DEPENDS ${archive_copied_files})
-        # Archived clips also stage AFTER sync, same anti-clobber reason.
-        add_dependencies(selva-oscura-stage-archive selva-oscura-sync-config)
-    endif()
-endif()
 
 # ---------------------------------------------------------------------------
 # Game tests — pure-compute logic that doesn't need a GL context (animation
@@ -790,6 +598,7 @@ add_executable(selva-oscura-tests
     tests/quick_slot_test.cpp
     tests/heal_handler_test.cpp
     tests/appearance_test.cpp
+    tests/authored_character_test.cpp
     tests/use_handlers_test.cpp
     tests/recipe_load_test.cpp
     tests/directional_loco_test.cpp

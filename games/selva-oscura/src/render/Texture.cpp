@@ -20,7 +20,12 @@ std::uint32_t uploadRGBA(const unsigned char* data, int w, int h)
     GLuint tex = 0;
     glGenTextures(1, &tex);
     glBindTexture(GL_TEXTURE_2D, tex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+    // sRGB-decode on sample: PNG art is authored sRGB; shaders want
+    // linear-light inputs. GL_SRGB8_ALPHA8 does the hardware decode
+    // at sample time AND makes glGenerateMipmap downsample in
+    // linear space (mathematically correct, vs the buggy gray
+    // mip-fade you get when sRGB-encoded bytes get averaged raw).
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_SRGB8_ALPHA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
     glGenerateMipmap(GL_TEXTURE_2D);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);

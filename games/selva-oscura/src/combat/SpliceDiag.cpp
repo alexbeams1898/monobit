@@ -1,5 +1,8 @@
 #include "combat/SpliceDiag.h"
 
+#include "anim/AnimIntent.h"
+#include "anim/AnimSet.h"
+#include "anim/AnimSetRegistry.h"
 #include "anim/ClipRegistry.h"
 #include "combat/CombatLog.h"
 
@@ -78,7 +81,24 @@ float poseMatchStartFromLoco(const selva::anim::AnimationClip& new_clip, float w
 
 bool isMovingLocoClip(const std::string& name)
 {
-    return name == "walking" || name == "jogging" || name == "sprinting" || name == "run_to_stop";
+    // Derive membership from every AnimSet's forward-locomotion intents
+    // so new variant sets register automatically.
+    using selva::anim::AnimIntent;
+    static constexpr AnimIntent kForwardLoco[] = {AnimIntent::LocoWalk, AnimIntent::LocoJog,
+                                                  AnimIntent::LocoSprint};
+    static constexpr const char* kSets[] = {"humanoid_unarmed", "humanoid_sword_and_shield",
+                                            "humanoid_female_unarmed",
+                                            "humanoid_female_sword_and_shield"};
+    for (const char* set_id : kSets)
+    {
+        const auto* set = selva::anim::AnimSetRegistry::instance().get(set_id);
+        if (!set)
+            continue;
+        for (AnimIntent i : kForwardLoco)
+            if (set->clipKey(i) == name)
+                return true;
+    }
+    return false;
 }
 
 void cacheRightHandPos(const selva::anim::PoseSampler& sampler)

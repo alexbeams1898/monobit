@@ -1,45 +1,36 @@
 #include "render/Atmosphere.h"
 
+#include "Tunables.h"
+
 #include <glm/geometric.hpp>
+
+#include <cmath>
 
 namespace selva::render::atmosphere
 {
 
-namespace
-{
-
-// Direction TO the sun. The wood's sun is the twilight beacon over
-// the colle (-Z). Elevation lifted from ~3.5deg (true horizon, pure
-// scattering math) to ~25deg so cast shadows are visually grounded
-// rather than horizon-stretched ten-times-the-caster's-height. The
-// sky pass still reads as deep dusk because the Rayleigh+Mie
-// scattering tints stay tuned for low-elevation jewel-tone. Bump
-// back toward horizon if a "true sunset" sky shape becomes the
-// priority.
-constexpr glm::vec3 kSunDirRaw(0.0f, 0.42f, -0.91f);
-
-// Mystical-register sun radiance. Warm: red highest, green mid, blue
-// lowest. The atmosphere scattering converts this into the cool-violet
-// sky (Rayleigh on blue) + warm jewel disc (Mie around the sun).
-constexpr glm::vec3 kSunIntensity(11.0f, 9.5f, 7.0f);
-
-constexpr float kExposure = 1.0f;
-
-} // namespace
+// Atmosphere state lives in selva::tuning::current().lighting; this
+// module is now a thin pass-through that normalizes the sun direction
+// on read. The F1 Lighting tab edits the tuning fields directly. See
+// include/Tunables.h's Lighting struct for per-field doctrine.
 
 glm::vec3 sunDirection()
 {
-    return glm::normalize(kSunDirRaw);
+    const auto& raw = selva::tuning::current().lighting.sun_dir;
+    const float len2 = raw.x * raw.x + raw.y * raw.y + raw.z * raw.z;
+    if (len2 < 1e-12f)
+        return glm::vec3(0.0f, 1.0f, 0.0f); // degenerate -- straight up fallback
+    return raw * (1.0f / std::sqrt(len2));
 }
 
 glm::vec3 sunIntensity()
 {
-    return kSunIntensity;
+    return selva::tuning::current().lighting.sun_intensity;
 }
 
 float exposure()
 {
-    return kExposure;
+    return selva::tuning::current().lighting.exposure;
 }
 
 } // namespace selva::render::atmosphere

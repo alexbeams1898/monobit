@@ -1,6 +1,7 @@
 #include "gameplay/PropArchetype.h"
 
 #include "combat/CombatLog.h"
+#include "gl/SrgbColor.h"
 
 #include <nlohmann/json.hpp>
 
@@ -47,9 +48,15 @@ void loadLightSource(const nlohmann::json& j, PropArchetype& a)
     const auto& ls = j["light_source"];
     if (ls.contains("color") && ls["color"].is_array() && ls["color"].size() == 3)
     {
-        a.light_source.color[0] = ls["color"][0].get<float>();
-        a.light_source.color[1] = ls["color"][1].get<float>();
-        a.light_source.color[2] = ls["color"][2].get<float>();
+        // Light-emitter color authored sRGB; linearize so the shader
+        // (which multiplies the color with linear-light radiance math)
+        // produces the perceptual on-screen result the author picked.
+        const glm::vec3 srgb(ls["color"][0].get<float>(), ls["color"][1].get<float>(),
+                             ls["color"][2].get<float>());
+        const glm::vec3 linear = engine::gl::linearize(srgb);
+        a.light_source.color[0] = linear.x;
+        a.light_source.color[1] = linear.y;
+        a.light_source.color[2] = linear.z;
     }
     a.light_source.intensity = ls.value("intensity", 1.0f);
     a.light_source.range_meters = ls.value("range_meters", 0.0f);

@@ -1,0 +1,68 @@
+{
+  "_comment": "Humanoid Body Type 1 (humanoid_male) hurtbox layout. 10 capsules covering torso/head/upper-and-lower-limbs on the Mixamo 52-bone skeleton. Used by every actor with skeleton_id=humanoid_male (player + Guide + humanoid enemies + larvae). humanoid_female actors reuse the same layout via the shared skeleton; per-Body-Type hurtbox tuning can fork this file when needed.",
+  "hurtboxes": [
+    {
+      "_comment": "Torso: hips to neck. Largest hurtbox.",
+      "joint_a": "mixamorig:Hips",
+      "joint_b": "mixamorig:Neck",
+      "region": "Torso",
+      "radius_scale": 0.9
+    },
+    {
+      "_comment": "Head: neck to head. Headshot crit multiplier 1.5x.",
+      "joint_a": "mixamorig:Neck",
+      "joint_b": "mixamorig:Head",
+      "region": "Head",
+      "radius_scale": 0.55,
+      "damage_multiplier": 1.5
+    },
+    {
+      "joint_a": "mixamorig:LeftArm",
+      "joint_b": "mixamorig:LeftForeArm",
+      "region": "UpperLimb",
+      "radius_scale": 0.35
+    },
+    {
+      "joint_a": "mixamorig:RightArm",
+      "joint_b": "mixamorig:RightForeArm",
+      "region": "UpperLimb",
+      "radius_scale": 0.35
+    },
+    {
+      "joint_a": "mixamorig:LeftUpLeg",
+      "joint_b": "mixamorig:LeftLeg",
+      "region": "UpperLimb",
+      "radius_scale": 0.5
+    },
+    {
+      "joint_a": "mixamorig:RightUpLeg",
+      "joint_b": "mixamorig:RightLeg",
+      "region": "UpperLimb",
+      "radius_scale": 0.5
+    },
+    {
+      "joint_a": "mixamorig:LeftForeArm",
+      "joint_b": "mixamorig:LeftHand",
+      "region": "LowerLimb",
+      "radius_scale": 0.3
+    },
+    {
+      "joint_a": "mixamorig:RightForeArm",
+      "joint_b": "mixamorig:RightHand",
+      "region": "LowerLimb",
+      "radius_scale": 0.3
+    },
+    {
+      "joint_a": "mixamorig:LeftLeg",
+      "joint_b": "mixamorig:LeftFoot",
+      "region": "LowerLimb",
+      "radius_scale": 0.4
+    },
+    {
+      "joint_a": "mixamorig:RightLeg",
+      "joint_b": "mixamorig:RightFoot",
+      "region": "LowerLimb",
+      "radius_scale": 0.4
+    }
+  ]
+}

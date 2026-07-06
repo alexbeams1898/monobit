@@ -90,7 +90,7 @@ SkeletonJointMap loadSkeletonJointMap(const std::string& id);
 const SkeletonJointMap& jointMapByKey(const std::string& key);
 
 // Load all skeleton joint maps at boot. Called from
-// initSkeletalAssets. Legacy humanoid map ("humanoid_legacy") is required; others
+// initSkeletalAssets. Legacy humanoid map ("humanoid_male") is required; others
 // best-effort (their archetypes log a miss if absent).
 void loadAllSkeletonJointMaps();
 

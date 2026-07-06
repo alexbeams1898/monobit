@@ -1,9 +1,8 @@
 """Normalize a glb's coordinate system from cm-with-100x-scale to
 meters-with-unit-scale before gltf2ozz consumes it.
 
-Background: Mixamo's "With Skin" download for a character that was
-uploaded with cm-encoded vertex data + armature scale=1.0 (which is
-the case for our MB-Lab + auto-rigger humanoid) carries bone
+Background: when an FBX is uploaded with cm-encoded vertex data and
+armature scale=1.0, Mixamo's "With Skin" download carries bone
 translations in cm magnitude and applies a 100x scale on the hips +
 mesh nodes. FBX2glTF passes those values verbatim into the glb.
 gltf2ozz strips per-joint scale during animation extraction but

@@ -1,0 +1,48 @@
+{
+  "_comment": "Animation set for the humanoid actor wielding a sword + shield. Same skeleton as humanoid_unarmed; different clip resolutions per intent. The active set on an actor swaps from humanoid_unarmed -> humanoid_sword_and_shield when a sword is equipped. Gameplay code never branches on weapon state.",
+  "set_id": "humanoid_sword_and_shield",
+  "skeleton_id": "humanoid_male",
+  "clips": {
+    "LocoIdle":              "sword_and_shield_idle",
+    "LocoIdleCombat":        "sword_and_shield_idle",
+    "LocoIdleBlock":         "sword_and_shield_block_idle",
+    "LocoIdleCrouch":        "sword_and_shield_crouch_idle",
+    "LocoIdleCrouchBlock":   "sword_and_shield_crouch_block_idle",
+
+    "LocoWalk":              "sword_and_shield_walk",
+    "LocoWalkBack":          "sword_and_shield_walk",
+    "LocoStrafeLeft":        "sword_and_shield_strafe",
+    "LocoStrafeRight":       "sword_and_shield_strafe",
+
+    "LocoJog":               "sword_and_shield_run",
+    "LocoJogBack":           "sword_and_shield_run",
+    "LocoJogStrafeLeft":     "sword_and_shield_strafe",
+    "LocoJogStrafeRight":    "sword_and_shield_strafe",
+
+    "LocoSprint":            "sword_and_shield_run",
+    "LocoCrouch":            "sword_and_shield_crouching",
+
+    "ActionJumpStanding":    "sword_and_shield_jump",
+    "ActionJumpRunning":     "sword_and_shield_jump",
+    "ActionDodgeBackward":   "standing_dodge_backward",
+    "ActionDodgeRoll":       "falling_to_roll",
+    "ActionGetUp":           "getting_up",
+
+    "ActionBlockRaise":      "sword_and_shield_block",
+    "ActionBlockLower":      "sword_and_shield_block",
+
+    "ActionDrawWeapon":      "draw_sword_1",
+    "ActionSheathWeapon":    "sheath_sword_1",
+
+    "ActionAttackLight1":    "sword_and_shield_slash",
+    "ActionAttackLight2":    "sword_and_shield_attack",
+    "ActionAttackHeavy":     "sword_and_shield_attack",
+    "ActionAttackKick":      "sword_and_shield_kick",
+    "ActionAttackCasting":   "sword_and_shield_casting",
+    "ActionAttackPowerUp":   "sword_and_shield_power_up",
+
+    "ActionImpact":          "sword_and_shield_impact",
+    "ActionDeath":           "sword_and_shield_death",
+    "ActionDying":           "sword_and_shield_death"
+  }
+}

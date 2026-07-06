@@ -29,11 +29,11 @@ From the repo root (so relative paths resolve):
 
 ```bash
 games/selva-oscura/scripts/blender/rebookend.sh \
-    --source "games/selva-oscura/assets/characters/humanoid_legacy/source/Pro Sword and Shield Pack/sword and shield slash.fbx" \
+    --source "games/selva-oscura/assets/characters/humanoid_male/source/Pro Sword and Shield Pack/sword and shield slash.fbx" \
     --source-time 0.683 \
-    --target "games/selva-oscura/assets/characters/humanoid_legacy/source/Pro Sword and Shield Pack/sword and shield slash (3).fbx" \
+    --target "games/selva-oscura/assets/characters/humanoid_male/source/Pro Sword and Shield Pack/sword and shield slash (3).fbx" \
     --target-blend-frames 8 \
-    --output "games/selva-oscura/assets/characters/humanoid_legacy/source/Pro Sword and Shield Pack Reposed/sword and shield slash (3).fbx"
+    --output "games/selva-oscura/assets/characters/humanoid_male/source/Pro Sword and Shield Pack Reposed/sword and shield slash (3).fbx"
 ```
 
 ### Wiring the output back into the build

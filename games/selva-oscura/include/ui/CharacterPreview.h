@@ -1,32 +1,32 @@
 #pragma once
 
-// Souls-style character preview viewport for the F1 character designer.
-// Renders the player's skinned mesh (and only the mesh -- no world,
-// no enemies, no terrain) into an offscreen framebuffer, which the F1
-// panel displays via ImGui::Image.
+// Souls-style character preview viewport, used by BOTH the character-
+// creator (Playing pre-entry) and the F1 tuning panel (Playing).
+// Renders a single humanoid figure -- no world, no enemies, no
+// terrain -- into an offscreen framebuffer that ImGui::Image displays.
 //
-// Lifecycle:
-//   * initCharacterPreview(): one-time GL setup (FBO + color tex +
-//     depth tex). Idempotent.
-//   * renderCharacterPreview(): per-frame render into the FBO. Caller
-//     invokes only on frames the character designer tab is open.
-//   * characterPreviewTexture(): returns the GL color texture id the
-//     panel passes to ImGui::Image.
-//   * shutdownCharacterPreview(): frees the FBO + textures.
+// Data ownership (post-refactor 2026-07-01):
+//   * The preview owns its ENTIRE render state: appearance, sampler,
+//     bone palette, morph vector, skeleton binding, clip cursor. No
+//     read of sPlayer, no read of any global gameplay actor. Callers
+//     push what they want rendered via setCharacterPreviewAppearance().
+//   * The creator pushes state().app (the in-flight slider edit) so
+//     preview updates on every slider drag. The F1 panel pushes
+//     player().appearance so the tuning knobs preview the actual live
+//     player. Same rendering module, different data sources, zero
+//     coupling between the two clients.
+//   * The preview's sampler is REBOUND to the appearance's skeleton
+//     bundle only when body_type changes -- cheap on the common case.
 //
-// Camera: a fixed framing (~2m in front of player, chest height) for
-// M1. M2 will add orbit + zoom via mouse drag inside the panel.
+// Doctrine: creator preview state and gameplay player state share a
+// STRUCT TYPE (Appearance), not a struct instance. Nothing in the
+// preview can leak into gameplay; nothing in gameplay can leak into
+// the preview.
 //
-// Lighting: a neutral 3-light feel achieved through the existing
-// skeletal shader's lambert. Shadow sampling is bypassed by setting
-// the shadow map's projection to push samples off the map (border
-// color = fully lit, matching the existing shadow pass setup).
-//
-// Why an FBO instead of just drawing the player in-world? Souls'
-// creator viewport shows the character against a flat background and
-// neutral lighting -- the world isn't behind them. Offscreen
-// rendering also lets the panel show the character at a calibrated
-// angle independent of the gameplay camera state.
+// Camera / lighting / FBO details unchanged from the earlier
+// implementation.
+
+#include "gameplay/Appearance.h"
 
 namespace selva::ui
 {
@@ -34,10 +34,21 @@ namespace selva::ui
 bool initCharacterPreview();
 void shutdownCharacterPreview();
 
+// Push the Appearance the next render should draw. Cheap -- copies
+// the struct in, rebinds the sampler only if body_type changed
+// (which selects a different skeleton bundle). Callers push whatever
+// they want previewed each frame:
+//   * character creator: setCharacterPreviewAppearance(state().app)
+//   * F1 tuning panel: setCharacterPreviewAppearance(player().appearance)
+// If no client has pushed yet in a session, the preview renders a
+// default Appearance (bald, default body-type-1 skin, natural
+// proportions).
+void setCharacterPreviewAppearance(const selva::gameplay::Appearance& appearance);
+
 // Render one frame of the preview into the FBO. No-op before init or
-// after shutdown. Reads sPlayer's appearance + sampler.bone_palette;
-// applies the appearance deformation pass internally so live slider
-// edits show immediately. Safe to call every frame the panel is open.
+// after shutdown, and idempotent within a frame (subsequent calls in
+// the same frame short-circuit -- the creator + F1 panel both call
+// this from their own render paths, and they must not double-render).
 void renderCharacterPreview();
 
 // GL texture id of the preview color attachment, suitable for passing
@@ -62,5 +73,28 @@ void addCharacterPreviewYaw(float delta_degrees);
 void addCharacterPreviewPitch(float delta_degrees);
 void addCharacterPreviewZoom(float delta_factor);
 void resetCharacterPreviewCamera();
+
+// Absolute camera setters. Used by the character creator's
+// category navigator to snap framing when the user picks a section
+// (Eyes -> close-up on face; Proportions -> full body; etc.).
+//
+// snapCharacterPreviewFraming sets the four framing knobs in one
+// call: yaw + pitch (camera angle), zoom multiplier on the auto-
+// derived distance, and the look-at point as a fraction of the
+// body height (0 = feet, 1 = top of head). Pass NaN for any value
+// to leave it unchanged. After this call the manual orbit (drag /
+// scroll) layers on top of the new framing -- the user can still
+// adjust from there.
+void snapCharacterPreviewFraming(float yaw_degrees, float pitch_degrees, float zoom,
+                                 float look_at_fraction);
+
+// Override the skeleton/mesh/clip bundle the preview draws. Empty
+// string clears the override and falls back to sPlayer's bundle
+// (humanoid_male by default). When set to a key like "humanoid_male",
+// the preview lazily builds a per-key PoseSampler that ticks against
+// the bundle's "standard_idle" clip -- a no-risk in-engine validation
+// path for newly-baked humanoid rigs before swapping live gameplay.
+void setCharacterPreviewSkeletonOverride(const char* skeleton_id);
+const char* characterPreviewSkeletonOverride();
 
 } // namespace selva::ui

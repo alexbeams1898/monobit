@@ -15,6 +15,7 @@
 
 #include <glm/mat4x4.hpp>
 #include <glm/vec4.hpp>
+#include <tracy/Tracy.hpp>
 
 #include <cstdio>
 #include <string>
@@ -66,6 +67,8 @@ void removePickup(Id id)
 
 void grantPickup(Id pickup_id)
 {
+    // Perf-trace correlation marker.
+    TracyMessageL("grantPickup");
     Pickup* p = findById(pickup_id);
     if (p == nullptr)
         return;

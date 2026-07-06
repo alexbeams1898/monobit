@@ -1,6 +1,7 @@
 #include "world/Terrain.h"
 
 #include "debug/Flags.h"
+#include "gl/SrgbColor.h"
 #include "physics/PhysicsWorld.h"
 #include "world/Collision.h"
 #include "world/CryptLayout.h"
@@ -546,6 +547,9 @@ namespace
 {
 // Load a JSON array of 3 floats into a float[3] dest if present and
 // well-formed. Missing or wrong-shaped keys leave dest untouched.
+// Color-space-agnostic -- callers reading COLOR fields should prefer
+// readSrgbColorField so sRGB-authored JSON values land in linear
+// space ready for the shader pipeline.
 void readVec3Field(const nlohmann::json& cfg, const char* key, float dest[3])
 {
     if (!cfg.contains(key) || !cfg[key].is_array() || cfg[key].size() != 3)
@@ -553,6 +557,22 @@ void readVec3Field(const nlohmann::json& cfg, const char* key, float dest[3])
     dest[0] = cfg[key][0].get<float>();
     dest[1] = cfg[key][1].get<float>();
     dest[2] = cfg[key][2].get<float>();
+}
+
+// Same as readVec3Field but treats the value as a sRGB-authored color
+// and linearizes on load. Use for every JSON color field consumed by
+// the shader (base_color, tone_dark, tone_light, sky_ambient,
+// ground_ambient, etc).
+void readSrgbColorField(const nlohmann::json& cfg, const char* key, float dest[3])
+{
+    if (!cfg.contains(key) || !cfg[key].is_array() || cfg[key].size() != 3)
+        return;
+    const glm::vec3 srgb(cfg[key][0].get<float>(), cfg[key][1].get<float>(),
+                         cfg[key][2].get<float>());
+    const glm::vec3 linear = engine::gl::linearize(srgb);
+    dest[0] = linear.x;
+    dest[1] = linear.y;
+    dest[2] = linear.z;
 }
 
 void readPlayerSpawn(const nlohmann::json& doc)
@@ -587,9 +607,9 @@ int parseRegionConfig(const std::string& name, const nlohmann::json& cfg, Terrai
     r.height_min = cfg.value("height_range_min", -2.0f);
     r.height_max = cfg.value("height_range_max", 15.0f);
     r.y_offset = cfg.value("y_offset", 0.0f);
-    readVec3Field(cfg, "base_color", r.base_color);
-    readVec3Field(cfg, "tone_dark", r.tone_dark);
-    readVec3Field(cfg, "tone_light", r.tone_light);
+    readSrgbColorField(cfg, "base_color", r.base_color);
+    readSrgbColorField(cfg, "tone_dark", r.tone_dark);
+    readSrgbColorField(cfg, "tone_light", r.tone_light);
     r.footstep_sound_id = cfg.value("footstep_sound_id", std::string{"footstep_grass"});
     // Optional enclosure (ceiling + walls). Presence of "ceiling_y"
     // in config enables it; underground layers declare a ceiling and
@@ -603,8 +623,8 @@ int parseRegionConfig(const std::string& name, const nlohmann::json& cfg, Terrai
         r.wall_min_y = cfg.value("wall_min_y", r.ceiling_y - 10.0f);
     }
     r.sun_multiplier = cfg.value("sun_multiplier", 1.0f);
-    readVec3Field(cfg, "sky_ambient", r.sky_ambient);
-    readVec3Field(cfg, "ground_ambient", r.ground_ambient);
+    readSrgbColorField(cfg, "sky_ambient", r.sky_ambient);
+    readSrgbColorField(cfg, "ground_ambient", r.ground_ambient);
     return cfg.value("subdivide", 128);
 }
 } // namespace
@@ -664,6 +684,10 @@ static std::vector<engine::physics::ShapeHandle> sTerrainShapeCache;
 
 void shutdownTerrain()
 {
+    // In the production exit path main.cpp's std::_exit(0) skips
+    // this entirely (OS reclaims everything; instant exit). Kept as
+    // a public symbol so any test/tool that does NOT take the
+    // exit-fast path still has a teardown entrypoint.
     for (auto& r : sRegions)
     {
         if (r.vao != 0)
@@ -674,8 +698,6 @@ void shutdownTerrain()
             glDeleteBuffers(1, &r.ebo);
     }
     sRegions.clear();
-    // Shape lifetimes are owned by Jolt's shape registry; we just drop
-    // our handles. Re-init rebuilds the cache.
     sTerrainShapeCache.clear();
 }
 

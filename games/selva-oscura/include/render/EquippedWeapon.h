@@ -40,6 +40,17 @@ void drawEquippedWeapon(const selva::gameplay::Actor& actor);
 // (or on a hard cache invalidate during dev iteration).
 void clearEquippedWeaponCache();
 
+// Pre-warm the weapon-mesh cache: walk every ItemDef in itemRegistry()
+// and force-load any def with a non-empty visual_weapon. Same rationale
+// as preloadAllPickupMeshes -- first equip of a weapon should not
+// stall a gameplay frame with a cold mesh load. Called during the
+// loading-screen boot phase, next to the other preload steps.
+//
+// Trace analysis prior to this fix showed equipped-weapon zone maxing
+// at 15.8 ms on first equip (avg 0.01 ms). Post-fix, first-equip cost
+// is paid at boot instead.
+void preloadAllEquippedWeaponMeshes();
+
 // Build the per-weapon grip transform from ItemDef fields. Pure math
 // (no GL, no globals); the live render code multiplies this by the
 // hand-bone world matrix. Composition: T(offset) * R_z(rot.z) *

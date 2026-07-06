@@ -1,8 +1,11 @@
 #include "render/RegionShaders.h"
 
+#include "Tunables.h"
 #include "gl/ShaderUtils.h"
+#include "render/AmbientConstants.h"
 #include "render/AtmosphereShader.h"
 #include "render/ShadowShader.h"
+#include "render/TonemapShader.h"
 #include "world/Lights.h"
 
 #include <glm/gtc/type_ptr.hpp>
@@ -56,7 +59,7 @@ uniform vec3 uBaseColor;  // per-primitive RGB color factor (1,1,1 = no tint)
 uniform vec3 uSunDir;
 uniform vec3 uSunIntensity;
 uniform vec3 uCamPos;
-uniform float uExposure;
+// uExposure is declared inside kTonemapGLSL alongside tonemap().
 uniform float uFlatShading; // 1.0 = output flat uBaseColor (bisect debug); 0.0 = full lighting
 
 // Point lights. Same packing + cap as TerrainShader so the same light
@@ -94,10 +97,8 @@ void main()
     // face variation in shadowed regions where the sun term is zero.
     vec3 N_up = vec3(0.0, 1.0, 0.0);
     float skyFactor = dot(N, N_up) * 0.5 + 0.5;
-    vec3 skyAmbient    = vec3(0.18, 0.22, 0.28);  // overcast bluish overhead
-    vec3 groundAmbient = vec3(0.08, 0.06, 0.05);  // dim warm dirt bounce
-    vec3 ambient = mix(groundAmbient, skyAmbient, skyFactor);
-    vec3 sunTint = vec3(1.05, 0.78, 0.55);
+    // kSkyAmbient / kGroundAmbient / kSunTint -- from kAmbientConstantsGLSL.
+    vec3 ambient = mix(kGroundAmbient, kSkyAmbient, skyFactor);
     float shadow = sampleSunShadow(vWorldPos, N);
 
     vec3 pointLight = vec3(0.0);
@@ -115,7 +116,7 @@ void main()
                       * (ndotl * falloff);
     }
 
-    vec3 surface = uBaseColor * g * (ambient + sunTint * halfL * shadow + pointLight);
+    vec3 surface = uBaseColor * g * (ambient + kSunTint * halfL * shadow + pointLight);
 
     // Aerial perspective: in-scatter + transmittance along view ray
     // from camera to this fragment. Zeroed when the camera is indoors
@@ -128,9 +129,7 @@ void main()
                                      dist, transmittance);
 
     vec3 col = surface * transmittance + inScatter;
-
-    col = col * uExposure;
-    col = col / (col + vec3(1.0));
+    col = tonemap(col);
     fragColor = vec4(col, 1.0);
 }
 )glsl";
@@ -154,6 +153,9 @@ GLint sUniBaseColorLoc = -1;
 GLint sUniLightPosRadiusLoc = -1;
 GLint sUniLightColorIntensityLoc = -1;
 GLint sUniLightCountLoc = -1;
+GLint sUniKSkyAmbientLoc = -1;
+GLint sUniKGroundAmbientLoc = -1;
+GLint sUniKSunTintLoc = -1;
 
 constexpr int kMaxLights = 64;
 bool sLightOverflowWarned = false;
@@ -162,8 +164,8 @@ bool sLightOverflowWarned = false;
 
 bool initRegionProgram()
 {
-    const std::string fs = std::string(kSceneFragmentShaderCore) + kAtmosphereGLSL + kShadowGLSL +
-                           kSceneFragmentShaderMain;
+    const std::string fs = std::string(kSceneFragmentShaderCore) + kAmbientConstantsGLSL +
+                           kAtmosphereGLSL + kShadowGLSL + kTonemapGLSL + kSceneFragmentShaderMain;
     sProgram = engine::gl::compileProgram(kSceneVertexShader, fs.c_str());
     if (sProgram == 0)
         return false;
@@ -185,6 +187,9 @@ bool initRegionProgram()
     sUniLightPosRadiusLoc = glGetUniformLocation(sProgram, "uLightPosRadius");
     sUniLightColorIntensityLoc = glGetUniformLocation(sProgram, "uLightColorIntensity");
     sUniLightCountLoc = glGetUniformLocation(sProgram, "uLightCount");
+    sUniKSkyAmbientLoc = glGetUniformLocation(sProgram, "uKSkyAmbient");
+    sUniKGroundAmbientLoc = glGetUniformLocation(sProgram, "uKGroundAmbient");
+    sUniKSunTintLoc = glGetUniformLocation(sProgram, "uKSunTint");
     return true;
 }
 
@@ -204,6 +209,17 @@ void useRegionProgram()
     glUseProgram(sProgram);
     if (sUniBaseColorLoc >= 0)
         glUniform3f(sUniBaseColorLoc, 1.0f, 1.0f, 1.0f);
+    // Pull global ambient/sun-tint from Tunables so the F1 panel can
+    // drive them live. Per-region terrain overrides (which only
+    // TerrainShader uses) layer on top via setTerrainLightingEnv.
+    const auto& L = selva::tuning::current().lighting;
+    if (sUniKSkyAmbientLoc >= 0)
+        glUniform3f(sUniKSkyAmbientLoc, L.sky_ambient.x, L.sky_ambient.y, L.sky_ambient.z);
+    if (sUniKGroundAmbientLoc >= 0)
+        glUniform3f(sUniKGroundAmbientLoc, L.ground_ambient.x, L.ground_ambient.y,
+                    L.ground_ambient.z);
+    if (sUniKSunTintLoc >= 0)
+        glUniform3f(sUniKSunTintLoc, L.sun_tint.x, L.sun_tint.y, L.sun_tint.z);
 }
 
 void setSceneView(const glm::mat4& view)

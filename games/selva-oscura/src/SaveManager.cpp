@@ -351,10 +351,14 @@ PlayerProfile loadCharacter(const json& c)
     if (p.sangue_riversato > SANGUE_LIFETIME_CAP)
         p.sangue_riversato = SANGUE_LIFETIME_CAP;
     p.player_class = parsePlayerClass(c.value("player_class", std::string{}));
-    // Load appearance_path, with legacy v7 saves' shade_path as
-    // fallback. Both keys are tolerated; migrate() runs afterward and
-    // backfills the canonical default for any character still empty.
-    p.appearance_path = c.value("appearance_path", c.value("shade_path", std::string{}));
+    // Load character_path, with legacy fallback chain:
+    //   v8 saves wrote appearance_path (AuthoredCharacter files still
+    //   backward-compat with the older Appearance schema)
+    //   v7 saves wrote shade_path
+    // migrate() runs afterward and backfills the canonical default
+    // for any character still empty.
+    p.character_path =
+        c.value("character_path", c.value("appearance_path", c.value("shade_path", std::string{})));
     return p;
 }
 
@@ -685,8 +689,8 @@ nlohmann::json saveCharacter(const PlayerProfile& c)
     saveSangueFields(char_json, c);
     if (c.player_class != PlayerClass::None)
         char_json["player_class"] = playerClassName(c.player_class);
-    if (!c.appearance_path.empty())
-        char_json["appearance_path"] = c.appearance_path;
+    if (!c.character_path.empty())
+        char_json["character_path"] = c.character_path;
     return char_json;
 }
 
@@ -747,12 +751,12 @@ void addCharacter(SaveData& data, const std::string& name)
 {
     PlayerProfile p;
     p.name = name;
-    // Default appearance for newly-created characters. The forthcoming
-    // character designer overwrites this with a per-character variant;
-    // until then every new pilgrim shares the default body. Existing
-    // saves with empty appearance_path are backfilled by migrate() to
+    // Default character for newly-created pilgrims. The Effigie
+    // designer overwrites this with a per-character variant; until
+    // then every new pilgrim shares the default body. Existing
+    // saves with empty character_path are backfilled by migrate() to
     // the same default.
-    p.appearance_path = "config/appearances/default_humanoid.json";
+    p.character_path = "config/characters/default_humanoid.json";
     data.characters.push_back(std::move(p));
 }
 
@@ -780,29 +784,33 @@ void migrate(SaveData& data)
     //
     // v6 -> v7: shade_path field added.
     // v7 -> v8: renamed shade_path -> appearance_path; config dir
-    // renamed config/shades -> config/appearances. (Reason: the
-    // parameter set is universal across cosmologies -- burdened
-    // shades, the Unburdened Vagrant, the Guide, divine emissaries
-    // all use the same body schema. "Shade" was overloaded to mean
-    // both a kind of being AND the visual config; "appearance"
-    // separates them.)
+    // renamed config/shades -> config/appearances.
+    // v9 -> v10: renamed appearance_path -> character_path; config
+    // dir renamed config/appearances -> config/characters. (Reason:
+    // the file now carries the identity slice too -- stats, class,
+    // hand equipment when the author opts in -- so "appearance" was
+    // an incomplete name. "character" reflects the full authored
+    // record.)
     //
-    // The character JSON loader above accepts either key during this
-    // window: appearance_path wins; falls back to shade_path. Here we
-    // also rewrite any legacy path string (config/shades/X.json ->
-    // config/appearances/X.json) so the next save persists the
-    // canonical form. Finally we backfill the default for any
+    // The character JSON loader above accepts every legacy key
+    // (shade_path -> appearance_path -> character_path). Here we
+    // also rewrite legacy path strings so the next save persists
+    // the canonical form, and backfill the default for any
     // character still empty -- without this, characters created on
     // v6 or earlier silently lock at body_scale=1.0 even after JSON
     // edits.
     for (auto& c : data.characters)
     {
-        const std::string kLegacyPrefix = "config/shades/";
-        const std::string kNewPrefix = "config/appearances/";
-        if (c.appearance_path.rfind(kLegacyPrefix, 0) == 0)
-            c.appearance_path = kNewPrefix + c.appearance_path.substr(kLegacyPrefix.size());
-        if (c.appearance_path.empty())
-            c.appearance_path = "config/appearances/default_humanoid.json";
+        const std::string kShadesPrefix = "config/shades/";
+        const std::string kAppearancesPrefix = "config/appearances/";
+        const std::string kCharactersPrefix = "config/characters/";
+        if (c.character_path.rfind(kShadesPrefix, 0) == 0)
+            c.character_path = kCharactersPrefix + c.character_path.substr(kShadesPrefix.size());
+        else if (c.character_path.rfind(kAppearancesPrefix, 0) == 0)
+            c.character_path =
+                kCharactersPrefix + c.character_path.substr(kAppearancesPrefix.size());
+        if (c.character_path.empty())
+            c.character_path = "config/characters/default_humanoid.json";
     }
 
     // v8 -> v9: ItemInstance.size added (Small/Normal/Large). v8

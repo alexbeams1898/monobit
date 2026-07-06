@@ -164,8 +164,14 @@ vec3 applyDistanceFog(vec3 color, vec3 viewDir, vec3 sunDir, float dist)
 {
     const float kFogStart   = 35.0;
     const float kFogEnd     = 220.0;
-    const vec3  kFogCool    = vec3(0.16, 0.13, 0.10);
-    const vec3  kFogWarm    = vec3(0.42, 0.30, 0.20);
+    // Linear-space. Cool-tinted light grey -- balanced channels with
+    // a subtle blue lean so the fog reads as overcast haze that blends
+    // into the cool sky ambient at the horizon rather than clashing.
+    // kFogCool covers rays away from the sun (most of the screen);
+    // kFogWarm is the sun-facing variant blended in by sunFacing dot
+    // product (kept slightly warmer for the under-the-sun area).
+    const vec3  kFogCool    = vec3(0.080, 0.090, 0.105);
+    const vec3  kFogWarm    = vec3(0.110, 0.105, 0.095);
 
     float t = clamp((dist - kFogStart) / (kFogEnd - kFogStart), 0.0, 1.0);
     t = smoothstep(0.0, 1.0, t);

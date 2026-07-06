@@ -2,11 +2,18 @@
 
 #include "text/TextPresentation.h"
 
+#include <tracy/Tracy.hpp>
+
 namespace selva::text
 {
 
 void beginExamine(const std::string& text, const std::string& speaker)
 {
+    // Correlation marker for perf traces: examine opens produce a
+    // "beginExamine" message so the analyzer can pair spike zones
+    // with the exact input event that produced them. Cheap message
+    // send; only visible when Tracy is capturing.
+    TracyMessageL("beginExamine");
     ActiveTextView view;
     view.speaker = speaker;
     view.line = text;

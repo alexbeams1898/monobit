@@ -729,7 +729,7 @@ PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh
 // version explicitly with their own joint map.
 PoseSampler createPoseSampler(const Skeleton& skeleton, const SkeletalMesh& mesh)
 {
-    return createPoseSampler(skeleton, mesh, jointMapByKey(std::string(kHumanoidLegacyKey)));
+    return createPoseSampler(skeleton, mesh, jointMapByKey(std::string(kPlayerSkeletonKey)));
 }
 
 void PoseSampler::setFootIK(GroundProbeFn probe, bool position_enabled, bool orient_enabled)
@@ -2508,7 +2508,8 @@ void advanceLocoTrack(Track& t, float dt)
 {
     if (!t.animation)
         return;
-    t.time_seconds += dt * locomotionConfig().global_playback_rate;
+    t.time_seconds += dt * locomotionConfig().global_playback_rate *
+                      locomotionConfig().playbackRate(t.registry_key);
     const float dur = t.animation->duration();
     if (dur > 0.0f && t.time_seconds >= dur)
     {
@@ -2745,6 +2746,13 @@ void extractTrackHipDelta(Track& t, int hip_soa, int hip_lane)
         t.resetHipTracking();
         return;
     }
+
+    // DIAG: dump hip translation reads + computed deltas so we can
+    // see if root-motion extraction is producing weird values for
+    // humanoid_male jogging.
+    static int sDiagFrameCount = 0;
+    const bool diag_active =
+        (t.registry_key == "jogging" || t.registry_key == "walking") && sDiagFrameCount < 40;
     // Classification is authoritative: only RootMotion clips have
     // their hip extracted + zeroed. Velocity-classified clips leave
     // hip in the pose; gameplay velocity drives motion. InPlace
@@ -2764,10 +2772,23 @@ void extractTrackHipDelta(Track& t, int hip_soa, int hip_lane)
 
     ozz::math::SoaTransform& T = t.local_transforms[hip_soa];
     alignas(16) float tx[4];
+    alignas(16) float ty[4];
     alignas(16) float tz[4];
     ozz::math::StorePtr(T.translation.x, tx);
+    ozz::math::StorePtr(T.translation.y, ty);
     ozz::math::StorePtr(T.translation.z, tz);
     const glm::vec2 cur(tx[hip_lane], tz[hip_lane]);
+
+    if (diag_active)
+    {
+        std::fprintf(
+            stderr, "[hip-extract] clip=%s frame=%d hip_local=(x=%.4f, y=%.4f, z=%.4f) source=%s\n",
+            t.registry_key.c_str(), sDiagFrameCount, tx[hip_lane], ty[hip_lane], tz[hip_lane],
+            (source == TranslationSource::RootMotion) ? "root_motion"
+            : (source == TranslationSource::InPlace)  ? "in_place"
+                                                      : "velocity");
+        ++sDiagFrameCount;
+    }
 
     if (!is_traveling)
     {

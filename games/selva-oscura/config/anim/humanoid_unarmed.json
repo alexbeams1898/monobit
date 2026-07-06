@@ -1,0 +1,49 @@
+{
+  "_comment": "Animation set for the humanoid actor in the unarmed weapon state. Gameplay requests an AnimIntent; this file resolves which clip plays. Equipment-state branching (armed vs unarmed) lives in WHICH set is active on the actor, not in gameplay code -- see [[anim-intent-animset-architecture]] in agent memory. To add a new intent: add it to AnimIntent enum + map it here. The AnimSet loader asserts every intent is mapped, so missing entries fail loud at load time.",
+  "_placeholders": "Some intents alias to imperfect clips because the unarmed library lacks a dedicated source. Acceptable for now; re-download a proper clip from Mixamo when polish requires it. Today's known aliases: LocoCrouch=running_crawl (prone, not crouch), ActionGetUp=getting_up (correct), ActionBlock*=center_block (held stance used as raise/hold/lower), ActionImpact=sword_and_shield_impact (no unarmed flinch yet), Action(Dying|Death)=sword_and_shield_death (sword-holding death used for unarmed), ActionAttackCasting/PowerUp=combo (unarmed isn't typically magic-using).",
+  "set_id": "humanoid_unarmed",
+  "skeleton_id": "humanoid_male",
+  "clips": {
+    "LocoIdle":              "standard_idle",
+    "LocoIdleCombat":        "unarmed_combat_idle",
+    "LocoIdleBlock":         "center_block",
+    "LocoIdleCrouch":        "standard_idle",
+    "LocoIdleCrouchBlock":   "center_block",
+
+    "LocoWalk":              "walking",
+    "LocoWalkBack":          "walking_backward",
+    "LocoStrafeLeft":        "strafe_walking_left",
+    "LocoStrafeRight":       "strafe_walking_right",
+
+    "LocoJog":               "jogging",
+    "LocoJogBack":           "jogging_backward",
+    "LocoJogStrafeLeft":     "strafe_jogging_left",
+    "LocoJogStrafeRight":    "strafe_jogging_right",
+
+    "LocoSprint":            "jogging",
+    "LocoCrouch":            "running_crawl",
+
+    "ActionJumpStanding":    "standing_jump",
+    "ActionJumpRunning":     "running_jump",
+    "ActionDodgeBackward":   "standing_dodge_backward",
+    "ActionDodgeRoll":       "falling_to_roll",
+    "ActionGetUp":           "getting_up",
+
+    "ActionBlockRaise":      "center_block",
+    "ActionBlockLower":      "center_block",
+
+    "ActionDrawWeapon":      "draw_sword_1",
+    "ActionSheathWeapon":    "sheath_sword_1",
+
+    "ActionAttackLight1":    "jab",
+    "ActionAttackLight2":    "hook",
+    "ActionAttackHeavy":     "heavy_punch",
+    "ActionAttackKick":      "flying_knee_punch_combo",
+    "ActionAttackCasting":   "combo",
+    "ActionAttackPowerUp":   "combo",
+
+    "ActionImpact":          "sword_and_shield_impact",
+    "ActionDeath":           "sword_and_shield_death",
+    "ActionDying":           "sword_and_shield_death"
+  }
+}

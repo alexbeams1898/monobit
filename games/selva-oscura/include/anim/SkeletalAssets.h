@@ -12,11 +12,25 @@ class PoseSampler;
 class LocomotionConfig;
 class AnimationClip;
 
-// Legacy humanoid rig key. Every humanoid actor (player, Guide,
-// larvae) shares it today. The new humanoid_male / humanoid_female
-// rigs are being introduced; actors migrate to them one-by-one. See
-// docs/design/character-canvas.md.
-constexpr const char* kHumanoidLegacyKey = "humanoid_legacy";
+// Default player skeleton bundle. Body Type 1 in the character creator;
+// the parametric pair humanoid_male / humanoid_female both ship today
+// (per [[anim-intent-animset-architecture]]). Used as the fallback for
+// any actor whose skeleton_id is empty (archetype JSONs should always
+// specify). The PLAYER's active skeleton is resolved at runtime via
+// playerSkeletonKey() reading sPlayer.appearance.body_type, so the
+// accessors below (skeleton/playerMesh/clips) automatically swap
+// based on the loaded character.
+constexpr const char* kPlayerSkeletonKey = "humanoid_male";
+
+// Runtime player-skeleton resolver. Returns the key set by
+// setPlayerSkeletonKey() (called when the player's Appearance loads),
+// or kPlayerSkeletonKey at boot before the player is constructed.
+// Read by the no-arg accessors below + by PerFrameTick's AnimSet /
+// joint-map lookups. Decoupled from gameplay/Actor.h to avoid an
+// include cycle: gameplay sets the key when Appearance loads;
+// SkeletalAssets reads it.
+const char* playerSkeletonKey();
+void setPlayerSkeletonKey(const char* key);
 
 // Singleton accessors for the PLAYER's rig + clip registry + pose
 // sampler + locomotion config. Backward-compatible: every existing
@@ -35,6 +49,22 @@ LocomotionConfig& locomotionConfig();
 Skeleton& skeletonByKey(const std::string& key);
 SkeletalMesh& meshByKey(const std::string& key);
 ClipRegistry& clipsByKey(const std::string& key);
+
+// Per-archetype mesh override, keyed by .glb path (relative to CWD
+// at boot time -- usually "assets/characters/enemies/<id>/humanoid.glb").
+// Follows the FromSoft pattern: every humanoid enemy archetype has
+// its own baked mesh with its own skin diffuse, but shares the
+// skeleton_id bundle's clip library for animation.
+//
+// The mesh's inverse-bind matrices MUST match the shared skeleton
+// bundle's skeleton (same joint order + rest pose). Skeleton is
+// picked up via the caller's skeleton_id lookup; only the mesh
+// varies here.
+//
+// Loads on first call and caches. If the path is missing / fails to
+// load, logs and returns the shared bundle's default mesh (via the
+// provided fallback_skeleton_id) so gameplay keeps rendering.
+SkeletalMesh& meshByArchetypePath(const std::string& path, const std::string& fallback_skeleton_id);
 
 // True if the key resolves to a real registered skeleton (not the
 // player fallback). Use to detect typos / missing archetypes at

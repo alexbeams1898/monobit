@@ -23,6 +23,7 @@
 #include "debug/Flags.h"
 #include "gameplay/Actor.h"
 #include "gameplay/Appearance.h"
+#include "gameplay/AuthoredCharacter.h"
 #include "gameplay/EnemyArchetype.h"
 #include "gameplay/LocomotionStateMachine.h"
 #include "gameplay/PlayerState.h"
@@ -39,11 +40,13 @@
 
 #include <imgui.h>
 #include <nlohmann/json.hpp>
+#include <tracy/Tracy.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -58,7 +61,11 @@ namespace tickstate = selva::gameplay::tickstate;
 
 // References to combat singletons + sampler etc � the panel reads them
 // to populate sliders and writes back to debug arms.
-static selva::anim::ClipRegistry& sClips = selva::anim::clips();
+// Resolves per-call so body-type swaps pick up the current player bundle.
+inline selva::anim::ClipRegistry& sClips()
+{
+    return selva::anim::clips();
+}
 static selva::anim::LocomotionConfig& sLocomotionConfig = selva::anim::locomotionConfig();
 static selva::combat::PlayerEquipment& sEquipment = selva::combat::equipment();
 static selva::combat::WeaponClassRegistry& sWeaponClasses = selva::combat::weaponClasses();
@@ -67,7 +74,7 @@ static selva::combat::WeaponClassRegistry& sWeaponClasses = selva::combat::weapo
 // to a 0-arg version to mirror main.cpp's earlier wrapper usage.
 static void resolveAttackCancelOpenTimes()
 {
-    selva::combat::resolveAttackCancelOpenTimes(sWeaponClasses, sClips,
+    selva::combat::resolveAttackCancelOpenTimes(sWeaponClasses, sClips(),
                                                 selva::gameplay::player().sampler);
 }
 
@@ -121,6 +128,9 @@ static void renderDebugSection(selva::tuning::Tunables& tun)
                     &dbg.crosshair_raycast_log);
     ImGui::Checkbox("Primitive-ID colors (use WITH flat shading; -> primitive-id-debug.log)",
                     &dbg.primitive_id_colors);
+    ImGui::Checkbox("Skeletal UV debug (paint near-red pixels with sampling UV; cyan/blue/magenta "
+                    "= placeholder iris blobs)",
+                    &dbg.skeletal_uv_debug);
     ImGui::Separator();
     ImGui::TextUnformatted("AI / enemy debug logs (-> combat-debug.log + stderr)");
     ImGui::Checkbox("AI tick firings", &dbg.ai_tick_log);
@@ -344,7 +354,7 @@ static void renderSlot1ChainLinkStartSlider(selva::tuning::Tunables& tun)
     if (chain_vec.size() < 2)
         return;
     auto& slot1 = chain_vec[1];
-    const auto* clip = sClips.get(slot1.clip);
+    const auto* clip = sClips().get(slot1.clip);
     const float dur = (clip != nullptr && clip->isLoaded()) ? clip->duration() : 1.5f;
     float val = slot1.resolved_chain_link_start_seconds;
     if (ImGui::SliderFloat("Slot1 chain_link_start (s)", &val, 0.0f, dur, "%.3f"))
@@ -486,16 +496,72 @@ static void renderPoiseSection(selva::tuning::Tunables& tun)
     tunedSlider("FPV eye fwd offset (m)", &tun.fpv_eye_fwd_offset, 0.0f, 0.4f, 0.005f, "%.3f");
 }
 
+static void renderLightingSection(selva::tuning::Tunables& tun)
+{
+    auto& L = tun.lighting;
+
+    if (ImGui::CollapsingHeader("Exposure + Sun radiance", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        ImGui::TextDisabled(
+            "Exposure scales BEFORE Reinhard tonemap (most effective brightness knob).");
+        tunedSlider("Exposure", &L.exposure, 0.0f, 3.0f, 0.05f, "%.2f");
+        ImGui::Separator();
+        ImGui::TextDisabled(
+            "Sun radiance feeds atmosphere scattering (HDR; Reinhard saturates above ~3).");
+        tunedSlider("Sun radiance R", &L.sun_intensity.x, 0.0f, 30.0f, 0.5f, "%.1f");
+        tunedSlider("Sun radiance G", &L.sun_intensity.y, 0.0f, 30.0f, 0.5f, "%.1f");
+        tunedSlider("Sun radiance B", &L.sun_intensity.z, 0.0f, 30.0f, 0.5f, "%.1f");
+    }
+    if (ImGui::CollapsingHeader("Sun direction", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        ImGui::TextDisabled("Direction TO the sun (normalized at use). +Y up, -Z forward.");
+        tunedSlider("Sun dir X", &L.sun_dir.x, -1.0f, 1.0f, 0.05f, "%.2f");
+        tunedSlider("Sun dir Y", &L.sun_dir.y, -1.0f, 1.0f, 0.05f, "%.2f");
+        tunedSlider("Sun dir Z", &L.sun_dir.z, -1.0f, 1.0f, 0.05f, "%.2f");
+    }
+    if (ImGui::CollapsingHeader("Directional sun tint", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        ImGui::TextDisabled("Color of directional sun term (half-Lambert * shadow). Linear-space.");
+        tunedSlider("Sun tint R", &L.sun_tint.x, 0.0f, 2.0f, 0.01f, "%.3f");
+        tunedSlider("Sun tint G", &L.sun_tint.y, 0.0f, 2.0f, 0.01f, "%.3f");
+        tunedSlider("Sun tint B", &L.sun_tint.z, 0.0f, 2.0f, 0.01f, "%.3f");
+        ImGui::ColorButton("##sun-tint-swatch",
+                           ImVec4(L.sun_tint.x, L.sun_tint.y, L.sun_tint.z, 1.0f),
+                           ImGuiColorEditFlags_NoTooltip, ImVec2(60.0f, 20.0f));
+    }
+    if (ImGui::CollapsingHeader("Hemispheric ambient", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        ImGui::TextDisabled(
+            "Sky-facing surfaces lerp to sky_ambient; ground-facing to ground_ambient.");
+        tunedSlider("Sky ambient R", &L.sky_ambient.x, 0.0f, 0.5f, 0.001f, "%.4f");
+        tunedSlider("Sky ambient G", &L.sky_ambient.y, 0.0f, 0.5f, 0.001f, "%.4f");
+        tunedSlider("Sky ambient B", &L.sky_ambient.z, 0.0f, 0.5f, 0.001f, "%.4f");
+        ImGui::ColorButton("##sky-amb-swatch",
+                           ImVec4(L.sky_ambient.x, L.sky_ambient.y, L.sky_ambient.z, 1.0f),
+                           ImGuiColorEditFlags_NoTooltip, ImVec2(60.0f, 20.0f));
+        ImGui::Separator();
+        tunedSlider("Ground ambient R", &L.ground_ambient.x, 0.0f, 0.5f, 0.001f, "%.4f");
+        tunedSlider("Ground ambient G", &L.ground_ambient.y, 0.0f, 0.5f, 0.001f, "%.4f");
+        tunedSlider("Ground ambient B", &L.ground_ambient.z, 0.0f, 0.5f, 0.001f, "%.4f");
+        ImGui::ColorButton("##ground-amb-swatch",
+                           ImVec4(L.ground_ambient.x, L.ground_ambient.y, L.ground_ambient.z, 1.0f),
+                           ImGuiColorEditFlags_NoTooltip, ImVec2(60.0f, 20.0f));
+    }
+    ImGui::Spacing();
+    if (ImGui::Button("Reset lighting to defaults"))
+        L = selva::tuning::Lighting{};
+}
+
 // Build / cache a sorted clip-name list. Static cache so we don't
 // allocate per frame; rebuilt when the registry size changes.
 static const std::vector<std::string>& sortedClipNames()
 {
     static std::vector<std::string> cache;
-    if (cache.size() != sClips.by_name.size())
+    if (cache.size() != sClips().by_name.size())
     {
         cache.clear();
-        cache.reserve(sClips.by_name.size());
-        for (const auto& kv : sClips.by_name)
+        cache.reserve(sClips().by_name.size());
+        for (const auto& kv : sClips().by_name)
             cache.push_back(kv.first);
         std::sort(cache.begin(), cache.end());
     }
@@ -598,7 +664,7 @@ static void renderAnimationDebugSection()
     renderClipPicker();
     if (!sDebugClipName.empty())
     {
-        const auto* dbg = sClips.get(sDebugClipName);
+        const auto* dbg = sClips().get(sDebugClipName);
         if (dbg != nullptr && dbg->isLoaded())
             ImGui::Text("duration: %.3fs   tracks: %d", dbg->duration(), dbg->trackCount());
         if (ImGui::Button("Stop debug clip"))
@@ -681,7 +747,10 @@ static void renderCharacterPreviewImage()
 // Renders the slider column + Save/Revert/Reset buttons. Edits land
 // directly on sPlayer.appearance; the preview render reads it next
 // frame so changes are live. Save persists to the active profile's
-// appearance_path; Revert re-loads from disk.
+// character_path (reading the existing AuthoredCharacter file,
+// replacing only its appearance slice, writing back -- so any
+// identity fields already in the file are preserved). Revert
+// re-loads the appearance slice from disk.
 static void renderCharacterDesignerSliders()
 {
     selva::gameplay::Actor& player = selva::gameplay::player();
@@ -713,27 +782,53 @@ static void renderCharacterDesignerSliders()
     ImGui::Spacing();
 
     const selva::PlayerProfile* profile = selva::activePlayerProfile();
-    const bool has_profile = profile != nullptr && !profile->appearance_path.empty();
+    const bool has_profile = profile != nullptr && !profile->character_path.empty();
     if (has_profile)
-        ImGui::TextDisabled("File: %s", profile->appearance_path.c_str());
+        ImGui::TextDisabled("File: %s", profile->character_path.c_str());
     else
-        ImGui::TextDisabled("(no active profile / appearance_path)");
+        ImGui::TextDisabled("(no active profile / character_path)");
 
-    // Save -> writes the in-memory Appearance back to the profile's
-    // appearance_path. Disabled when no profile is active.
+    // Save -> read the full AuthoredCharacter file, replace only its
+    // appearance slice with the live edits, write back. Preserves any
+    // identity keys (display_name_key, stats, class, hand items) the
+    // Effigie may have authored.
     if (!has_profile)
         ImGui::BeginDisabled();
     if (ImGui::Button("Save to JSON"))
-        selva::gameplay::saveAppearance(profile->appearance_path, app);
+    {
+        selva::gameplay::AuthoredCharacter c =
+            selva::gameplay::loadAuthoredCharacter(profile->character_path);
+        c.appearance = app;
+        selva::gameplay::saveAuthoredCharacter(profile->character_path, c);
+    }
     ImGui::SameLine();
     if (ImGui::Button("Revert from JSON"))
-        player.appearance = selva::gameplay::loadAppearance(profile->appearance_path);
+        player.appearance =
+            selva::gameplay::loadAuthoredCharacter(profile->character_path).appearance;
     if (!has_profile)
         ImGui::EndDisabled();
 
     ImGui::SameLine();
     if (ImGui::Button("Reset to defaults"))
         player.appearance = selva::gameplay::Appearance{};
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+    ImGui::TextUnformatted("Preview override (live gameplay unaffected)");
+    // Cycle through available preview targets. Empty = live player
+    // bundle (humanoid_male today). Set non-empty to validate a
+    // newly-baked rig (humanoid_male / humanoid_female) in-engine
+    // before swapping live gameplay over.
+    const char* current = selva::ui::characterPreviewSkeletonOverride();
+    static const char* kPreviewOptions[] = {"", "humanoid_male", "humanoid_female"};
+    static const char* kPreviewLabels[] = {"Live player", "humanoid_male", "humanoid_female"};
+    int sel = 0;
+    for (int i = 0; i < 3; ++i)
+        if (std::strcmp(current, kPreviewOptions[i]) == 0)
+            sel = i;
+    if (ImGui::Combo("##preview-skel", &sel, kPreviewLabels, 3))
+        selva::ui::setCharacterPreviewSkeletonOverride(kPreviewOptions[sel]);
 }
 
 static void renderCharacterDesignerTab()
@@ -762,13 +857,37 @@ static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
     // the Signing moment hides gameplay chrome.
     if (!selva::ui::classPickerActive())
     {
-        renderActorHud();
-        selva::ui::renderCompass();
-        renderColliderDebug();
-        selva::ui::renderPhysicsBodyDebug();
-        selva::ui::renderSceneOverlays();
-        renderComboHud();
-        renderTreePreviewControls();
+        // Sub-zones let a Tracy trace pinpoint which HUD subroutine
+        // is behind an imgui-callback spike -- otherwise the whole
+        // callback rolls up as one opaque number.
+        {
+            ZoneScopedN("hud-actor");
+            renderActorHud();
+        }
+        {
+            ZoneScopedN("hud-compass");
+            selva::ui::renderCompass();
+        }
+        {
+            ZoneScopedN("hud-collider");
+            renderColliderDebug();
+        }
+        {
+            ZoneScopedN("hud-physics");
+            selva::ui::renderPhysicsBodyDebug();
+        }
+        {
+            ZoneScopedN("hud-overlays");
+            selva::ui::renderSceneOverlays();
+        }
+        {
+            ZoneScopedN("hud-combo");
+            renderComboHud();
+        }
+        {
+            ZoneScopedN("hud-treepv");
+            renderTreePreviewControls();
+        }
     }
     if (!sShowTuningPanel)
         return;
@@ -817,6 +936,11 @@ static void selvaRenderImGui(Engine& /*engine*/, EntityManager& /*em*/)
             renderAnimationDebugSection();
             ImGui::EndTabItem();
         }
+        if (ImGui::BeginTabItem("Lighting"))
+        {
+            renderLightingSection(tun);
+            ImGui::EndTabItem();
+        }
         if (ImGui::BeginTabItem("Debug"))
         {
             renderDebugSection(tun);
@@ -837,16 +961,24 @@ namespace selva::ui
 void selvaRenderImGui(::Engine& engine, ::EntityManager& em)
 {
     ::selvaRenderImGui(engine, em);
-    // Boss HUD + interaction prompt are world-HUD layer; suppress
-    // them when the Beat-4 class picker is up. Dialog also suppressed.
     if (!selva::ui::classPickerActive())
     {
-        renderBossHud();
-        renderInteractionPrompt();
-        renderDialogScreen();
+        {
+            ZoneScopedN("hud-boss");
+            renderBossHud();
+        }
+        {
+            ZoneScopedN("hud-interact");
+            renderInteractionPrompt();
+        }
+        {
+            ZoneScopedN("hud-dialog");
+            renderDialogScreen();
+        }
     }
-    // Beat-4 class picker. Renders LAST so its backdrop + panel paint
-    // over everything else. No-op when inactive.
-    renderClassPicker();
+    {
+        ZoneScopedN("hud-classpicker");
+        renderClassPicker();
+    }
 }
 } // namespace selva::ui

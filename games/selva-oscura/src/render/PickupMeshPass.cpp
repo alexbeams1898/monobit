@@ -80,6 +80,24 @@ void clearPickupMeshCache()
     loadFailureMemo().clear();
 }
 
+void preloadAllPickupMeshes()
+{
+    // Walk every ItemDef and warm the mesh cache. resolveMesh() is
+    // idempotent (early-outs on cache hit) so successive calls are
+    // no-ops. Only defs with non-empty world_mesh do any real work.
+    const auto& items = selva::items::itemRegistry();
+    int loaded = 0;
+    for (const auto& [path, def] : items.defs)
+    {
+        if (def.world_mesh.empty())
+            continue;
+        if (resolveMesh(def) != nullptr)
+            ++loaded;
+    }
+    std::fprintf(stderr, "[pickup-mesh] pre-warmed %d world mesh(es)\n", loaded);
+    std::fflush(stderr);
+}
+
 bool isPickupMeshLoadFailed(const std::string& world_mesh_path)
 {
     if (world_mesh_path.empty())

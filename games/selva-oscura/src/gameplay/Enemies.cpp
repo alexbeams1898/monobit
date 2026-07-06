@@ -5,6 +5,9 @@
 #include "Scene.h"
 #include "Tunables.h"
 #include "WallClock.h"
+#include "anim/AnimIntent.h"
+#include "anim/AnimSet.h"
+#include "anim/AnimSetRegistry.h"
 #include "anim/AnimationClip.h"
 #include "anim/ClipRegistry.h"
 #include "anim/LocomotionConfig.h"
@@ -18,6 +21,8 @@
 #include "debug/Flags.h"
 #include "dialog/DialogSystem.h"
 #include "gameplay/AiTick.h"
+#include "gameplay/AppearanceVariance.h"
+#include "gameplay/AuthoredCharacter.h"
 #include "gameplay/BehaviorTree.h"
 #include "gameplay/BossRewards.h"
 #include "gameplay/EnemyArchetype.h"
@@ -442,11 +447,49 @@ void applyArchetypeToActor(Actor& a, const EnemyArchetype& target)
     initActorPoolsForArchetype(a);
     applyArchetypeHurtboxes(a);
     applyArchetypeInteractable(a);
+    // Mesh-path resolution. Runs on BOTH spawn and archetype swap so
+    // a fresh->aged transition picks up the aged archetype's mesh.
+    // On swap, prefer to REUSE the actor's stashed variant index so
+    // gender (or other variant axis) is preserved across the swap --
+    // a male fresh larva swaps to a male aged larva, not a coin-flip
+    // re-roll. On spawn the caller sets mesh_variant_index BEFORE
+    // this function runs so the same code path handles both.
+    if (!target.mesh_path_variants.empty())
+    {
+        int idx = a.mesh_variant_index;
+        if (idx < 0 || idx >= static_cast<int>(target.mesh_path_variants.size()))
+            idx = 0; // safe fallback if the new archetype has fewer variants
+        a.mesh_path = target.mesh_path_variants[idx];
+        a.mesh_variant_index = idx;
+    }
+    else if (!target.mesh_path.empty())
+    {
+        a.mesh_path = target.mesh_path;
+        a.mesh_variant_index = -1;
+    }
+    // If neither field set, leave mesh_path alone -- gameplay falls
+    // back to the shared skeleton_id bundle default.
     // Visual appearance: every actor reads body_scale through its
-    // appearance field. Empty appearance_path returns the default
-    // (body_scale = 1.0) so legacy archetypes that don't author an
-    // appearance stay identical to today.
-    a.appearance = loadAppearance(target.appearance_path);
+    // appearance field. Empty character_path returns the default
+    // (body_scale = 1.0) so legacy archetypes that don't author a
+    // character file stay identical to today. Enemies consume ONLY
+    // the appearance slice of AuthoredCharacter -- identity fields
+    // (display_name_key, player_class, stats, equipment) that a
+    // character file may carry stay on the archetype for enemies;
+    // only the player path overlays identity from the file.
+    a.appearance = loadAuthoredCharacter(target.character_path).appearance;
+    // Per-actor face randomization -- only for archetypes that opt in
+    // (crowds like larvae; not boss/named actors whose face is authored).
+    // Runs AFTER loadAuthoredCharacter so any authored morph_weights from the
+    // appearance JSON stay in place for morphs the variance table does
+    // NOT cover (e.g. head-scale, mouth-scale left alone by design).
+    // Also runs on archetype SWAP -- so a fresh->aged transition
+    // gets a re-roll and looks like a "new person". Because most face
+    // structure is authored fresh->aged as a continuous progression,
+    // re-rolling per-swap is fine here; if this ever looks bad we can
+    // stash the morph_weights on the actor and reuse them.
+    if (target.random_face_morphs)
+        selva::gameplay::rollRandomFaceMorphs(a.appearance.morph_weights);
 }
 
 namespace
@@ -514,10 +557,42 @@ void bindSpawnArchetype(Actor& e, const EnemySpawnDecl& decl, const EnemyArchety
                                      decl.archetype, e.spawn_id);
     }
     e.skeleton_id = (e.archetype != nullptr) ? e.archetype->skeleton_id
-                                              : std::string(selva::anim::kHumanoidLegacyKey);
-    e.sampler = selva::anim::createPoseSampler(selva::anim::skeletonByKey(e.skeleton_id),
-                                               selva::anim::meshByKey(e.skeleton_id),
-                                               selva::anim::jointMapByKey(e.skeleton_id));
+                                             : std::string(selva::anim::kPlayerSkeletonKey);
+    // Seed the mesh variant index at spawn. The actual mesh_path
+    // resolution happens inside applyArchetypeToActor (below) so
+    // the same code path handles both spawn AND archetype swap.
+    // Here we just pick which variant this specific actor lives on:
+    //   - archetype with mesh_path_variants: roll uniformly, stash idx
+    //   - archetype with single mesh_path: no variant, idx = -1
+    //   - no archetype: no variant, idx = -1
+    // On subsequent archetype swaps (fresh -> aged), applyArchetype
+    // preserves the stashed index so gender stays constant.
+    if (e.archetype != nullptr && !e.archetype->mesh_path_variants.empty())
+    {
+        static thread_local std::mt19937 spawn_rng(std::random_device{}());
+        std::uniform_int_distribution<std::size_t> pick(0,
+                                                        e.archetype->mesh_path_variants.size() - 1);
+        e.mesh_variant_index = static_cast<int>(pick(spawn_rng));
+    }
+    else
+    {
+        e.mesh_variant_index = -1;
+    }
+    // Provisional mesh path (applyArchetypeToActor below will re-resolve
+    // authoritatively; we set it here so the PoseSampler creation gets
+    // the right inverse-binds).
+    if (e.mesh_variant_index >= 0)
+        e.mesh_path = e.archetype->mesh_path_variants[e.mesh_variant_index];
+    else if (e.archetype != nullptr)
+        e.mesh_path = e.archetype->mesh_path;
+    else
+        e.mesh_path.clear();
+    selva::anim::SkeletalMesh& sampler_mesh =
+        e.mesh_path.empty() ? selva::anim::meshByKey(e.skeleton_id)
+                            : selva::anim::meshByArchetypePath(e.mesh_path, e.skeleton_id);
+    e.sampler =
+        selva::anim::createPoseSampler(selva::anim::skeletonByKey(e.skeleton_id), sampler_mesh,
+                                       selva::anim::jointMapByKey(e.skeleton_id));
     std::random_device rd;
     e.rng.seed(rd() ^ static_cast<std::uint32_t>(static_cast<std::int64_t>(decl.pos.x * 1000.0f)) ^
                static_cast<std::uint32_t>(static_cast<std::int64_t>(decl.pos.z * 1000.0f)));
@@ -640,8 +715,11 @@ void finalizeSpawnActor(Actor& e)
     seedAiTickPhase(e, pool_index, selva::tuning::current());
     const bool needs_dormant_init =
         (e.archetype != nullptr) && e.archetype->is_boss && !e.archetype->initial_state.empty();
-    e.character_body =
-        selva::world::createCharacterBody(e.pos, e.body.collider_radius, e.body.collider_height);
+    const auto body_collision = (e.archetype != nullptr && e.archetype->intangible)
+                                    ? engine::physics::CharacterCollision::Incorporeal
+                                    : engine::physics::CharacterCollision::Solid;
+    e.character_body = selva::world::createCharacterBody(e.pos, e.body.collider_radius,
+                                                         e.body.collider_height, body_collision);
     actors().push_back(std::move(e));
     if (needs_dormant_init)
     {
@@ -763,7 +841,9 @@ bool tickKnockdownLifecycle(Actor& a, float dt, const selva::anim::AnimationClip
         return false;
     }
     if (idle_clip != nullptr && idle_clip->isLoaded())
+    {
         a.sampler.update(*idle_clip, dt, /*blend_seconds=*/0.20f, /*loops=*/true, idle_key);
+    }
     return true;
 }
 
@@ -1382,6 +1462,7 @@ bool applyArchetypeSwap(Actor& a, const EnemyArchetype& target)
     // of-truth drift waiting to bite a cross-form swap.
     const float prev_radius = a.body.collider_radius;
     const float prev_height = a.body.collider_height;
+    const bool prev_intangible = (a.archetype != nullptr) && a.archetype->intangible;
     // THE archetype-to-actor funnel: same call as spawn. Re-derives
     // every archetype-driven field (faction, form, pools, hurtboxes,
     // interactable, is_boss, is_npc). Adding a new archetype-derived
@@ -1389,14 +1470,22 @@ bool applyArchetypeSwap(Actor& a, const EnemyArchetype& target)
     applyArchetypeToActor(a, target);
     // Same-dim case is the common path (DamnedSoul -> DamnedSoul,
     // e.g. larva_fresh -> larva_aged). Skip the rebuild cost. Cross-
-    // form swap rebuilds the capsule at the actor's current world pos.
+    // form swap and intangibility swap rebuild the capsule at the
+    // actor's current world pos (larva_fresh is incorporeal, larva_aged
+    // is solid -- the fresh-to-aged trickle crosses layers and needs a
+    // fresh Jolt body to move into the new layer).
     constexpr float kColliderRebuildEpsilon = 0.001f;
-    if (std::fabs(a.body.collider_radius - prev_radius) > kColliderRebuildEpsilon ||
+    const bool intangibility_changed = target.intangible != prev_intangible;
+    if (intangibility_changed ||
+        std::fabs(a.body.collider_radius - prev_radius) > kColliderRebuildEpsilon ||
         std::fabs(a.body.collider_height - prev_height) > kColliderRebuildEpsilon)
     {
+        const auto body_collision = target.intangible
+                                        ? engine::physics::CharacterCollision::Incorporeal
+                                        : engine::physics::CharacterCollision::Solid;
         selva::world::destroyCharacterBody(a.character_body);
-        a.character_body = selva::world::createCharacterBody(a.pos, a.body.collider_radius,
-                                                             a.body.collider_height);
+        a.character_body = selva::world::createCharacterBody(
+            a.pos, a.body.collider_radius, a.body.collider_height, body_collision);
     }
     // Cooldowns from the prior archetype's actions are meaningless
     // for the new one. Movement intent + velocity BOTH zeroed so the
@@ -1642,7 +1731,11 @@ EnemyLocoPick maybeApplyDirectionalOverride(const Actor& a, EnemyLocoPick base_p
         if (glm::dot(intent_dir, fwd) >= kForwardishDot)
             return base_pick;
     }
-    const char* dir_key = directionalLocoClip(fwd, right, intent3, LocoTier::Jog);
+    // AI directional picker just needs a clip name to feed familyFromDirectionalKey.
+    // Use the unarmed humanoid set as the reference vocabulary; archetype-specific
+    // clip selection happens downstream via lookupArchetypeClip().
+    const auto* dir_set = selva::anim::AnimSetRegistry::instance().get("humanoid_unarmed");
+    const char* dir_key = directionalLocoClip(fwd, right, intent3, LocoTier::Jog, dir_set);
     const auto fam = familyFromDirectionalKey(dir_key);
     if (!fam.has_value())
         return base_pick;

@@ -117,11 +117,26 @@ void removeBody(BodyHandle body);
 
 // --- Character controller ---
 
+// How a character collides with other characters. Solid is the
+// default — pushes and is pushed by the player and other actors,
+// like every normal creature. Incorporeal still stands on static
+// terrain (gravity, ground snap, hazards all work) but passes
+// through other characters. Used for actors that share space with
+// the player: piles of larvae the player runs through, ghost / soul
+// forms, incorporeal NPCs.
+enum class CharacterCollision : std::uint8_t
+{
+    Solid = 0,
+    Incorporeal = 1,
+};
+
 // Add a kinematic character (player or NPC). Uses Jolt's
 // CharacterVirtual under the hood with built-in step-up + slope
 // handling. `radius` is XZ capsule radius, `height` is total capsule
-// height (cylinder portion + caps).
-BodyHandle addCharacter(const glm::vec3& position, float radius, float height);
+// height (cylinder portion + caps). `collision` picks which layer
+// the character occupies — see CharacterCollision above.
+BodyHandle addCharacter(const glm::vec3& position, float radius, float height,
+                        CharacterCollision collision = CharacterCollision::Solid);
 
 // Set the character's intended horizontal velocity (m/s, world XZ).
 // Y is driven by gravity inside the controller; passing a Y here is

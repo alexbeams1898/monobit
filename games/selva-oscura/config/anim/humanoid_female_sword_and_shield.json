@@ -1,0 +1,48 @@
+{
+  "_comment": "Stub AnimSet for the Body Type 2 (humanoid_female) unarmed state. Until female-specific clips are downloaded from Mixamo + baked, every intent aliases to standard_idle so the character has something playable. As clips get added under assets/characters/humanoid_female/source/clips/, replace each alias entry with the proper clip name.",
+  "set_id": "humanoid_female_sword_and_shield",
+  "skeleton_id": "humanoid_female",
+  "clips": {
+    "LocoIdle":              "standard_idle",
+    "LocoIdleCombat":        "standard_idle",
+    "LocoIdleBlock":         "standard_idle",
+    "LocoIdleCrouch":        "standard_idle",
+    "LocoIdleCrouchBlock":   "standard_idle",
+
+    "LocoWalk":              "standard_idle",
+    "LocoWalkBack":          "standard_idle",
+    "LocoStrafeLeft":        "standard_idle",
+    "LocoStrafeRight":       "standard_idle",
+
+    "LocoJog":               "standard_idle",
+    "LocoJogBack":           "standard_idle",
+    "LocoJogStrafeLeft":     "standard_idle",
+    "LocoJogStrafeRight":    "standard_idle",
+
+    "LocoSprint":            "standard_idle",
+    "LocoCrouch":            "standard_idle",
+
+    "ActionJumpStanding":    "standard_idle",
+    "ActionJumpRunning":     "standard_idle",
+    "ActionDodgeBackward":   "standard_idle",
+    "ActionDodgeRoll":       "standard_idle",
+    "ActionGetUp":           "standard_idle",
+
+    "ActionBlockRaise":      "standard_idle",
+    "ActionBlockLower":      "standard_idle",
+
+    "ActionDrawWeapon":      "standard_idle",
+    "ActionSheathWeapon":    "standard_idle",
+
+    "ActionAttackLight1":    "standard_idle",
+    "ActionAttackLight2":    "standard_idle",
+    "ActionAttackHeavy":     "standard_idle",
+    "ActionAttackKick":      "standard_idle",
+    "ActionAttackCasting":   "standard_idle",
+    "ActionAttackPowerUp":   "standard_idle",
+
+    "ActionImpact":          "standard_idle",
+    "ActionDeath":           "standard_idle",
+    "ActionDying":           "standard_idle"
+  }
+}

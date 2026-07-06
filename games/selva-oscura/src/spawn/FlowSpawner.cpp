@@ -107,6 +107,12 @@ struct FlowState
     float seconds_since_last_check = 0.0f;
     int spawn_counter = 0;
     bool initial_fill_done = false;
+    // Amortized initial-fill progress: index into cfg.initial_positions
+    // of the NEXT slot to fill. Each tick pops one (or a few) slots
+    // instead of spawning all N in a single frame, keeping the
+    // Continue-button click and region-activation frames responsive.
+    // Reset alongside initial_fill_done in resetFlowSpawner().
+    std::size_t initial_fill_cursor = 0;
     // Slot occupancy tracking when target_mode == "first_vacant_slot".
     // Each entry is the spawn_decl_id of the actor currently in that
     // slot (or empty == vacant). Length matches initial_positions when
@@ -213,28 +219,44 @@ selva::gameplay::EnemySpawnDecl buildInitialDecl(FlowState& fs, const glm::vec3&
 // Initial fill: run once per flow, on the first tick after init or
 // reset. Spawns one actor per entry in initial_positions, each at
 // its own authored XYZ + yaw. Authors scatter the population by hand;
-// the trickle loop maintains the cap from there. Marks fill_done
-// after firing so subsequent ticks skip this pass.
+// the trickle loop maintains the cap from there.
+//
+// Amortized across frames: one actor per tick (bounded by
+// kInitialFillPerTick) so the initial-fill cost never lands on the
+// Continue-button click frame. With 8 authored slots this stretches
+// the fill across ~8 gameplay frames (~130 ms at 60fps) with each
+// frame paying ~30 ms of spawn cost instead of one frame paying the
+// whole ~290 ms stall Trace 11 captured.
+//
+// Marks fill_done after ALL slots are populated so subsequent ticks
+// skip this pass entirely.
 void tickInitialFill(FlowState& fs)
 {
     if (fs.initial_fill_done)
         return;
-    fs.initial_fill_done = true;
     if (fs.cfg.initial_archetype_id.empty() || fs.cfg.initial_positions.empty())
+    {
+        fs.initial_fill_done = true;
         return;
+    }
     // Doctrine: cycle reset (hardResetWorldForCharacter +
     // softResetWorldForCycle) tears down the actor pool and clears
-    // initial_fill_done; this function then fires on the next tick
-    // against a known-empty pool. No idempotency check needed -- if
-    // we reach this point, initial_fill_done was just cleared by a
-    // reset, which means the pool was just emptied. Per
-    // [[feedback_rebuild_from_authored_on_reset]].
+    // initial_fill_done + initial_fill_cursor; this function then
+    // fires on subsequent ticks against a known-empty pool, spawning
+    // one actor per tick. Per [[feedback_rebuild_from_authored_on_reset]].
     const bool slot_mode = (fs.cfg.target_mode == "first_vacant_slot");
-    if (slot_mode)
+    // First entry into this fill cycle: allocate the slot table.
+    if (slot_mode && fs.slot_occupant.size() != fs.cfg.initial_positions.size())
         fs.slot_occupant.assign(fs.cfg.initial_positions.size(), std::string{});
-    int spawned = 0;
-    for (std::size_t i = 0; i < fs.cfg.initial_positions.size(); ++i)
+    // Spawn up to N actors per tick, resuming from initial_fill_cursor.
+    // Small N keeps per-frame cost bounded while still filling the
+    // authored population inside a couple seconds.
+    constexpr int kInitialFillPerTick = 1;
+    int spawned_this_tick = 0;
+    while (spawned_this_tick < kInitialFillPerTick &&
+           fs.initial_fill_cursor < fs.cfg.initial_positions.size())
     {
+        const std::size_t i = fs.initial_fill_cursor;
         const glm::vec3& p = fs.cfg.initial_positions[i];
         const float y =
             (i < fs.cfg.initial_yaws.size()) ? fs.cfg.initial_yaws[i] : fs.cfg.spawn_yaw;
@@ -248,11 +270,16 @@ void tickInitialFill(FlowState& fs)
             a->spawning_flow_id = fs.cfg.id;
         if (slot_mode)
             fs.slot_occupant[i] = spawn_id;
-        ++spawned;
+        ++fs.initial_fill_cursor;
+        ++spawned_this_tick;
     }
-    selva::combat::combatLog(
-        "[spawn-flow] '{}' initial-fill: spawned {} '{}' actors at authored positions", fs.cfg.id,
-        spawned, fs.cfg.initial_archetype_id);
+    if (fs.initial_fill_cursor >= fs.cfg.initial_positions.size())
+    {
+        fs.initial_fill_done = true;
+        selva::combat::combatLog("[spawn-flow] '{}' initial-fill complete: {} '{}' actors placed",
+                                 fs.cfg.id, fs.cfg.initial_positions.size(),
+                                 fs.cfg.initial_archetype_id);
+    }
 }
 
 // Slot bookkeeping: sweep occupants, clear any whose actor is dead or
@@ -688,6 +715,7 @@ void resetFlowSpawner()
     {
         fs.seconds_since_last_check = 0.0f;
         fs.initial_fill_done = false;
+        fs.initial_fill_cursor = 0;
         fs.slot_occupant.clear();
         // pending_corpses MUST be cleared on reset -- stale corpse-
         // ids from the prior session would otherwise drive ghost

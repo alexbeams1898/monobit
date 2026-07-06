@@ -3,6 +3,8 @@
 #include "AppStateGlobal.h"
 #include "Formulas.h"
 #include "Tunables.h"
+#include "anim/AnimIntent.h"
+#include "anim/AnimSet.h"
 #include "anim/AnimationClip.h"
 #include "anim/SkeletalAssets.h"
 #include "anim/SkeletalMesh.h"
@@ -10,6 +12,7 @@
 #include "combat/ActorVolumes.h"
 #include "combat/CombatLog.h"
 #include "combat/HitVolumes.h"
+#include "gameplay/AuthoredCharacter.h"
 #include "gameplay/EnemyArchetype.h"
 #include "softcaps/SoftCaps.h"
 
@@ -265,45 +268,31 @@ int defaultLockOnPointIndex(const Actor& actor)
 }
 
 const char* directionalLocoClip(const glm::vec3& fwd, const glm::vec3& right,
-                                const glm::vec3& intent, LocoTier tier, bool is_armed)
+                                const glm::vec3& intent, LocoTier tier,
+                                const selva::anim::AnimSet* anim_set)
 {
-    if (glm::length(intent) <= 0.0001f)
+    if (glm::length(intent) <= 0.0001f || !anim_set)
         return nullptr;
     const float fwd_dot = glm::dot(intent, fwd);
     const float right_dot = glm::dot(intent, right);
-    // Any nonzero lateral input wins → strafe. Forward/back only on
+    // Any nonzero lateral input wins -> strafe. Forward/back only on
     // essentially pure W/S input.
     const bool axis_is_forward = std::abs(right_dot) < 1e-3f;
     // Sprint only has a forward clip; backward/strafe demote to jog.
     if (axis_is_forward && fwd_dot >= 0.0f && tier == LocoTier::Sprint)
-        return is_armed ? "sword_and_shield_run_grip" : "sprinting";
+        return anim_set->clipKey(selva::anim::AnimIntent::LocoSprint).data();
     const LocoTier ground_tier = (tier == LocoTier::Sprint) ? LocoTier::Jog : tier;
     const bool walk = (ground_tier == LocoTier::Walk);
-    if (is_armed)
-    {
-        // Pro Sword and Shield Pack ships walk forward/back + strafe
-        // L/R + run forward. Jog back / jog strafe / sprint side-and-
-        // back have no armed clips -- demote to the armed walk variant
-        // for those directions.
-        if (axis_is_forward)
-        {
-            if (fwd_dot >= 0.0f)
-                return walk ? "sword_and_shield_walk_grip" : "sword_and_shield_run_grip";
-            return "sword_and_shield_walk_2_grip";
-        }
-        if (right_dot >= 0.0f)
-            return "sword_and_shield_strafe_grip";
-        return "sword_and_shield_strafe_2_grip";
-    }
+    using selva::anim::AnimIntent;
+    AnimIntent picked;
     if (axis_is_forward)
-    {
-        if (fwd_dot >= 0.0f)
-            return walk ? "walking" : "jogging";
-        return walk ? "walking_backward" : "jogging_backward";
-    }
-    if (right_dot >= 0.0f)
-        return walk ? "strafe_walking_right" : "strafe_jogging_right";
-    return walk ? "strafe_walking_left" : "strafe_jogging_left";
+        picked = (fwd_dot >= 0.0f) ? (walk ? AnimIntent::LocoWalk : AnimIntent::LocoJog)
+                                   : (walk ? AnimIntent::LocoWalkBack : AnimIntent::LocoJogBack);
+    else if (right_dot >= 0.0f)
+        picked = walk ? AnimIntent::LocoStrafeRight : AnimIntent::LocoJogStrafeRight;
+    else
+        picked = walk ? AnimIntent::LocoStrafeLeft : AnimIntent::LocoJogStrafeLeft;
+    return anim_set->clipKey(picked).data();
 }
 
 glm::vec2 hipDeltaVelocityContribution(const glm::vec3& hip_local, float yaw, float dt,
@@ -347,8 +336,20 @@ void applyActorClipHipDelta(Actor& actor, float dt, float hip_delta_scale)
     // mixed cases (a one-shot with authored hip motion firing while
     // a velocity gait was active) the two compose.
     const glm::vec3 hip_local = actor.sampler.consumedHipDelta();
-    actor.velocity_xz += hipDeltaVelocityContribution(hip_local, actor.yaw, dt, hip_delta_scale,
-                                                      actor.appearance.body_scale);
+    const glm::vec2 vel_add = hipDeltaVelocityContribution(
+        hip_local, actor.yaw, dt, hip_delta_scale, actor.appearance.body_scale);
+    actor.velocity_xz += vel_add;
+    static int sDiagCnt = 0;
+    if (sDiagCnt < 40 && (hip_local.x != 0.0f || hip_local.z != 0.0f))
+    {
+        std::fprintf(stderr,
+                     "[hip-apply] sk=%s hip_local=(%.4f,%.4f,%.4f) yaw=%.2f dt=%.4f "
+                     "scale=%.2f body=%.2f -> vel_add=(%.4f,%.4f) actor_pos=(%.2f,%.2f,%.2f)\n",
+                     actor.skeleton_id.c_str(), hip_local.x, hip_local.y, hip_local.z, actor.yaw,
+                     dt, hip_delta_scale, actor.appearance.body_scale, vel_add.x, vel_add.y,
+                     actor.pos.x, actor.pos.y, actor.pos.z);
+        ++sDiagCnt;
+    }
 }
 
 bool actorCanLandHits(const Actor& a)
@@ -450,75 +451,82 @@ Actor* actorByDeclId(const std::string& spawn_decl_id)
     return nullptr;
 }
 
-void initActorPool()
+Actor constructPlayerActor(const selva::PlayerProfile* profile)
 {
-    sActors.clear();
     Actor pc;
     pc.controller = Controller::Input;
     pc.faction = Faction::Player;
     // The Vagrant is an unjudged soul -- refused Hell's measurement,
     // received by the selva oscura. Form drives base stat-spread
-    // (low HP, low poise, fragile vessel) before class-pick layers on
-    // top. Per [[soul-animal-form-combat-doctrine]] +
-    // story.md *The Guide / Identity* (the Vagrant is the second
-    // unjudged-soul, after the Guide).
+    // before class-pick layers on top. Per
+    // [[soul-animal-form-combat-doctrine]] + story.md *The Guide /
+    // Identity* (the Vagrant is the second unjudged-soul, after the
+    // Guide).
     pc.form = Form::UnjudgedSoul;
-    pc.skeleton_id = "humanoid_legacy";
-    // Humanoid hurtbox layout. Authored in
-    // config/skeletons/humanoid_legacy_hurtboxes.json -- the data form
-    // of what ActorVolumes.cpp::appendActorHurtboxes used to hardcode.
+    // Humanoid hurtbox layout. Today both body types share one hurtbox
+    // file -- same skeleton topology, different rest-pose proportions.
     pc.body.hurtbox_decls =
-        selva::combat::loadHurtboxDecls("config/skeletons/humanoid_legacy_hurtboxes.json");
+        selva::combat::loadHurtboxDecls("config/skeletons/humanoid_male_hurtboxes.json");
     pc.death_clip_name = "second_death";
     // The PC's death audio is a layered composition:
-    //   * death_sfx_name (dark bed) — plays at clip start, dread
-    //     under the fall.
-    //   * death_peak_sfx_names (verdict jump-scare) — multiple SFX
-    //     scheduled so each one's peak lands at the moment the
-    //     second-death card snaps in. The align target matches
-    //     kPlayerSecondDeathClipHoldSeconds in PerFrameTick /
-    //     ActorHud (both consume the same 3.5s).
+    //   * death_sfx_name (dark bed) plays at clip start, dread under
+    //     the fall.
+    //   * death_peak_sfx_names (verdict jump-scare) scheduled so each
+    //     one's peak lands at the moment the second-death card snaps
+    //     in. Align target matches kPlayerSecondDeathClipHoldSeconds
+    //     in PerFrameTick / ActorHud (both consume the same 3.5s).
     pc.death_sfx_name = "dark_sound";
     pc.death_peak_sfx_names = {"synth_echo", "soul_steal"};
     pc.death_peak_align_seconds = 3.5f;
     // Apply form-defaults to Body + Stats before pool init. The class-
-    // pick system will layer custom stat spreads on top; the baseline
-    // applied here is the unjudged-soul default (60 HP / 12 poise).
+    // pick system will layer custom stat spreads on top.
     applyFormDefaults(pc.body, pc.stats, pc.form);
-    // The player's class drives the HP soft-cap; pre-Beat-4 (None)
-    // applies no cap. PerFrameTick re-runs initActorPools when class
-    // changes (Signing fire / Erasure) so cap shifts apply
-    // immediately.
-    const auto* profile = selva::activePlayerProfile();
+    // Load character FIRST so body_type is known before skeleton
+    // derivation. Empty character_path => default (bare)
+    // AuthoredCharacter; a valid path resolves through
+    // loadAuthoredCharacter which tolerates missing/malformed files.
+    // Player consumes ONLY the appearance slice from the file today
+    // -- identity fields (stats, class, hand items) still come from
+    // PlayerProfile / class-picker / equipment flow. When authored-
+    // stats / authored-class-lock ships, this is the site to overlay
+    // them via the AuthoredCharacter's has_* flags.
+    if (profile != nullptr)
+        pc.appearance = loadAuthoredCharacter(profile->character_path).appearance;
+    // Body type drives skeleton bundle selection. Flip the runtime
+    // player-skeleton resolver so clips()/skeleton()/playerMesh()
+    // return the right bundle. Equipment-state branching (via
+    // AnimSet) layers on top -- it picks unarmed-vs-armed within
+    // whichever skeleton bundle was selected here.
+    pc.skeleton_id = selva::gameplay::bodyTypeSkeletonId(pc.appearance.body_type);
+    selva::anim::setPlayerSkeletonKey(pc.skeleton_id.c_str());
+    // Class-driven pool sizing (HP soft-cap, etc.). Pre-Beat-4 profile
+    // has class = None which applies no cap; PerFrameTick re-runs
+    // initActorPools when class changes (Signing fire / Erasure).
     const selva::PlayerClass cls =
         (profile != nullptr) ? profile->player_class : selva::PlayerClass::None;
     initActorPools(pc.hp, pc.stamina, pc.poise, pc.body, pc.stats, cls);
-    // Visual appearance load. Empty appearance_path => default
-    // (body_scale = 1.0); a valid path resolves through
-    // loadAppearance which tolerates missing/malformed files by
-    // returning defaults. Note: at boot, profile is nullptr (no
-    // character selected yet); resetPlayerActorForProfile re-loads
-    // appearance per character on Playing-enter, which is when the
-    // player actually sees their body.
-    if (profile != nullptr)
-        pc.appearance = loadAppearance(profile->appearance_path);
-    // initActorPool is one-time, asset-binding only. Position, hp-fill,
-    // and any per-character state are NOT set here - those land via
-    // hardResetWorldForCharacter(profile) on Playing-enter. This
-    // separation is what lets New Game / Load Game both produce a
-    // clean spawn instead of inheriting the previous run's state.
-    //
-    // pos defaults to (0, 0, 0) until hardResetWorldForCharacter
-    // sets it; that's fine because nothing reads sPlayer.pos before
-    // we enter Playing.
-    pc.spawn_pos = glm::vec3(0.0f);
-    // Player's sampler is bound to the shared skeleton + mesh at
-    // first sampler.update() — same as any other actor. Pre-warm
-    // it so the bone palette is valid before render.
-    pc.sampler = selva::anim::createPoseSampler(selva::anim::skeleton(), selva::anim::playerMesh());
+    // Saved position + yaw if the profile carries them; otherwise
+    // origin. World placement (terrain sampling, physics teleport)
+    // is a separate step called by hardResetWorldForCharacter.
+    if (profile != nullptr && profile->has_saved_pose)
+    {
+        pc.pos = glm::vec3(profile->pos_x, profile->pos_y, profile->pos_z);
+        pc.yaw = profile->yaw;
+    }
+    pc.spawn_pos = pc.pos;
+    // Sampler bound to the selected skeleton + mesh. Pre-warmed with
+    // idle so the bone palette is valid before the first render.
+    pc.sampler = selva::anim::createPoseSampler(selva::anim::skeletonByKey(pc.skeleton_id),
+                                                selva::anim::meshByKey(pc.skeleton_id));
     if (const auto* idle = selva::anim::idleClip(); idle != nullptr && idle->isLoaded())
         pc.sampler.update(*idle, 0.0f, 0.0f);
-    sActors.push_back(std::move(pc));
+    return pc;
+}
+
+void initActorPool()
+{
+    sActors.clear();
+    sActors.push_back(constructPlayerActor(selva::activePlayerProfile()));
 }
 
 void tickActors(float dt)
@@ -554,7 +562,7 @@ void tickActors(float dt)
 float actorFootOffsetY(const Actor& a)
 {
     const std::string key =
-        a.skeleton_id.empty() ? std::string(selva::anim::kHumanoidLegacyKey) : a.skeleton_id;
+        a.skeleton_id.empty() ? std::string(selva::anim::kPlayerSkeletonKey) : a.skeleton_id;
     return selva::anim::meshByKey(key).foot_offset_y;
 }
 

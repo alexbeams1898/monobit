@@ -50,17 +50,62 @@ void endSkeletalPass();
 //                must sort transparent draws back-to-front to avoid
 //                alpha-order artifacts when multiple fading corpses
 //                overlap.
+// morph_weights: per-actor weights in the same order as mesh.morph_names
+// (indexable by morph_idx). Empty disables the morph pipeline (vertex
+// shader's uMorphCount=0 = early-exit). When non-empty, must match
+// mesh.morph_target_count entries -- excess is dropped, deficit is
+// treated as trailing zeros. Used by the player creator + future
+// per-actor face customization; enemies pass {} (default) since they
+// don't have morphs today.
 void drawSkeletalMesh(const SkeletalMesh& mesh, const glm::mat4& model, const glm::mat4& view_proj,
                       const std::vector<glm::mat4>& bone_palette, const glm::vec3& tint,
-                      float alpha = 1.0f);
+                      float alpha = 1.0f, const std::vector<float>& morph_weights = {});
 
 // Per-frame sun direction (normalized) for skeletal lambert shading.
 // Called once before drawing skeletal meshes.
 void setSkeletalSun(const glm::vec3& sun_dir);
 
+// Per-frame exposure multiplier driving the Reinhard tonemap.
+// Default 1.0 if never set. Matches terrain/region/tree/sky semantics.
+void setSkeletalExposure(float exposure);
+
 // Per-frame shadow sampling uniforms. Set once before the skeletal
 // draw block; subsequent drawSkeletalMesh calls inherit them.
 void setSkeletalShadow(const glm::mat4& light_view_proj, const glm::vec3& sun_dir,
                        const glm::vec3& shadow_cam_pos, int shadow_texture_unit);
+
+// Override the hemispheric ambient + sun-tint values for the next
+// beginSkeletalPass(). Defaults to Tunables.lighting (world look).
+// The character preview overrides these to use a softer portrait
+// fill so downward-facing surfaces (legs, palms) don't go pure
+// black against an empty background. Call BEFORE beginSkeletalPass.
+//
+// Call clearSkeletalAmbientOverride() after the pass to return to
+// the world defaults; otherwise gameplay inherits the portrait fill.
+void setSkeletalAmbientOverride(const glm::vec3& sky_ambient, const glm::vec3& ground_ambient,
+                                const glm::vec3& sun_tint);
+void clearSkeletalAmbientOverride();
+
+// How the tint uniform composes with the sampled diffuse for the NEXT
+// drawSkeletalMesh call. Auto-resets to Multiply after each draw so
+// state is opt-in and doesn't leak to subsequent actors. Default is
+// Multiply (body + eyes: subtle re-tint). Colorize desaturates the
+// diffuse to luminance THEN multiplies by tint, so the tint drives
+// the final HUE while strand detail survives. Used by HairRenderer
+// so a red tint on brown hair actually looks red, not warm-brown.
+enum class TintMode : int
+{
+    Multiply = 0,
+    Colorize = 1,
+};
+void setSkeletalTintMode(TintMode mode);
+
+// Per-actor eye colour. When set, any primitive in the next
+// drawSkeletalMesh call whose material.role == Eyes gets tinted in
+// Colorize mode with this colour; other primitives keep the actor's
+// body tint. Auto-resets after the draw so eye colour doesn't leak
+// between actors -- each actor's drawer must set its own if needed.
+// Skip setting to leave eye colour at the baked default (no override).
+void setSkeletalEyeTint(const glm::vec3& linear_rgb);
 
 } // namespace selva::anim

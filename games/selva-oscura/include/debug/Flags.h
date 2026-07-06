@@ -122,6 +122,16 @@ struct Flags
     // pairs instantly. Requires flat_shading also ON.
     bool primitive_id_colors = false;
 
+    // Skeletal fragment shader: for any pixel whose post-lighting RGB
+    // looks near-red (R high, G+B low), paint instead with
+    // (uv.x, uv.y, 0) so the UV that's sampling the bad pixel reads
+    // off the screen as a color you can decode. Plus pixels that ARE
+    // sampling specific suspect UV regions get painted bright cyan to
+    // distinguish them. Use to pinpoint the source of unexplained red
+    // patches on characters (e.g. the placeholder iris blobs in skin
+    // packs that haven't been authored over yet).
+    bool skeletal_uv_debug = false;
+
     // ---- World / physics ----
     // world/Collision.cpp opens collision-debug.log and writes
     // per-frame pre/post body XZ + per-pass push events (which collider

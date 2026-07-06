@@ -1,2 +1,32 @@
 # Tracy profiler trace captures — local only, can be huge.
 .traces/
+
+# Hair authoring inputs. The runtime consumes only the baked
+# humanoid_male_hair.glb per style; the .mhclo / .obj / .mhmat / raw
+# diffuse are inputs to gen_hair.py's bake step, not shipped assets.
+# Re-baking requires re-downloading the community packs, but that's
+# a rare workflow and worth trading for a lean repo. Keep the .glb
+# outputs tracked so runtime consumers don't need to re-bake to run.
+assets/characters/hair/**/*.mhclo
+assets/characters/hair/**/*.mhmat
+assets/characters/hair/**/*.obj
+assets/characters/hair/**/*.thumb
+assets/characters/hair/**/*.png
+# Un-ignore the actual baked output the runtime loads.
+!assets/characters/hair/**/humanoid_male_hair.glb
+!assets/characters/hair/**/humanoid_female_hair.glb
+
+# Humanoid bake intermediates. gen_humanoid.py regenerates these on
+# every rebake; the runtime consumes only the .glb (which stays
+# tracked). Blender authoring files + FBX round-trip artifacts are
+# rebuild outputs, not sources of truth.
+assets/characters/humanoid_male/blender_authoring/
+assets/characters/humanoid_male/source/rig/
+assets/characters/humanoid_female/blender_authoring/
+assets/characters/humanoid_female/source/rig/
+
+# Stubbed larva female bake dirs -- baked artifacts pending re-enable
+# once the female clip pipeline stabilizes. Not referenced by any
+# archetype today (see larva_fresh.json's stubbed comment).
+assets/characters/enemies/larva_fresh_female/
+assets/characters/enemies/larva_aged_female/

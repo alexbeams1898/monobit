@@ -10,6 +10,8 @@
   "face_player_range_meters": 6.0,
   "_comment_face_player": "Yaw-acknowledgment: turns to face the player when within 6m, in passive (non-combat, non-scripted-walk) state. Souls-style 'the NPC notices you walking by.' Tunable per archetype; 0 = disabled. Per docs/design/insight_revelation_system.md authoring guide.",
   "skeleton_id": "humanoid_male",
+  "character_path": "config/characters/guide.json",
+  "_comment_character_path": "AuthoredCharacter file authored via the Effigie designer. Currently only the appearance slice is consumed by enemy spawn -- identity fields (stats, class, hand items) present on the file are ignored for enemies. Named-character identity comes from this archetype (display_name_key etc.).",
   "vision_fov_degrees": 90.0,
   "vision_range_meters": 12.0,
   "tree": "humanoid_basic",

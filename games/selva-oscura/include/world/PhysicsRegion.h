@@ -33,11 +33,14 @@ engine::physics::BodyHandle createPlayerBody(const glm::vec3& spawn_position);
 // Generic character body creation for any actor (NPC, enemy). Thin
 // wrapper around engine::physics::addCharacter that ensures the
 // physics world is initialized and applies the actor's collider
-// dimensions. Caller stores the returned handle on the Actor and is
-// responsible for destroying it on death / cycle reset via
+// dimensions. `collision` picks the physics layer — Solid pushes and
+// is pushed by other actors, Incorporeal still stands on terrain but
+// passes through them. Caller stores the returned handle on the Actor
+// and is responsible for destroying it on death / cycle reset via
 // destroyCharacterBody.
-engine::physics::BodyHandle createCharacterBody(const glm::vec3& spawn_position, float radius,
-                                                float height);
+engine::physics::BodyHandle createCharacterBody(
+    const glm::vec3& spawn_position, float radius, float height,
+    engine::physics::CharacterCollision collision = engine::physics::CharacterCollision::Solid);
 void destroyCharacterBody(engine::physics::BodyHandle handle);
 
 // One-line dump of init stats (region/primitive/body/triangle counts).

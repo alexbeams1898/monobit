@@ -123,6 +123,16 @@ class Engine
         running = false;
     }
 
+    // Hide the SDL window immediately. Used by the shutdown sequence so
+    // the window can't appear "Not Responding" to Windows while the
+    // multi-second teardown runs (audio/threads/GL/large terrain vec
+    // frees happen one after another, none of which pump events).
+    // After hideWindow() the window is invisible + receives no further
+    // input; the OS's responsiveness watchdog also stops checking it,
+    // so the user sees a clean disappear instead of a frozen ghost.
+    // Safe to call once before shutdown(); idempotent.
+    void hideWindow();
+
     int windowWidth() const
     {
         return window_w;

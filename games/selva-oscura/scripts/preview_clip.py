@@ -20,8 +20,8 @@ Usage:
 
 Default discovery roots:
   1. build/selva-oscura-attacks/<name>/<name>.glb       (built clips)
-  2. games/selva-oscura/assets/characters/humanoid_legacy/     (mesh + ozz dir)
-  3. games/selva-oscura/assets/characters/humanoid_legacy/source/<pack>/
+  2. games/selva-oscura/assets/characters/humanoid_male/     (mesh + ozz dir)
+  3. games/selva-oscura/assets/characters/humanoid_male/source/<pack>/
                                                         (raw Mixamo .fbx —
                                                         every pack subdir is
                                                         scanned automatically)

@@ -17,7 +17,7 @@ correctly.
 
 - **Source:** https://github.com/animate1978/MB-Lab
 - **Asset:** humanoid.fbx / humanoid.glb (under
-  `assets/characters/humanoid_legacy/`)
+  `assets/characters/humanoid_male/`)
 - **License:** MB-Lab itself is licensed AGPL-3.0; the *generated
   character output* (mesh + textures) is released by MB-Lab under
   the Creative Commons CC0 1.0 Universal license per the MB-Lab
@@ -35,6 +35,84 @@ against it without per-clip retargeting work.
   and commercial projects. See
   https://helpx.adobe.com/creative-cloud/faq/mixamo-faq.html
 
+### Iris texture (MakeHuman Community)
+
+The shared iris+sclera texture used by the shader-side iris override
+for the humanoid eye geometry (`assets/characters/iris/iris_diffuse.png`)
+is the "brown_eye" entry from the MakeHuman Community **system assets**
+pack. Two eyeball discs are laid out in opposite quadrants of the
+1024x1024 image and remapped at runtime onto the body diffuse's
+placeholder iris UV regions.
+
+- **Source:** https://files.makehumancommunity.org/asset_packs/makehuman_system_assets/makehuman_system_assets_cc0.zip
+- **License:** CC0 1.0 Universal.
+
+### Skin diffuse textures (MakeHuman Community)
+
+The body diffuse textures used on the humanoid meshes
+(`skin_diffuse.png` under each of `humanoid_male/` and
+`humanoid_female/`) are from MakeHuman Community asset packs, both
+authored by user **toigo** and bundled by the MakeHuman Community
+at files.makehumancommunity.org.
+
+- **Male:** "light skin male bronze" entry from the **skins02** pack
+  (https://files.makehumancommunity.org/asset_packs/skins02/skins02_cc0.zip).
+- **Female:** "light skin female bronze" entry from the **skins01**
+  pack
+  (https://files.makehumancommunity.org/asset_packs/skins01/skins01_cc0.zip).
+- **License:** CC0 1.0 Universal (public domain dedication; no
+  attribution required, freely usable in commercial and non-commercial
+  work). Pack name suffix `_cc0` denotes CC0-only contents.
+- **Attribution offered as courtesy:** authored by `toigo` and
+  released to the public domain via the MakeHuman Community asset
+  pack distribution.
+
+### Hair styles (MakeHuman Community)
+
+The hair asset library at `assets/characters/hair/` is sourced from
+MakeHuman Community asset packs. Attached at bake time via the same
+mhclo-attach mechanism as the eye asset; the runtime skeletal mesh
+loader ships each hair as an extra primitive on the actor's single
+mesh.
+
+- **`assets/characters/hair/cc0/`** (35 styles) -- MakeHuman Community
+  base pack (10 styles) + **hair01** pack (25 styles). Both packs are
+  CC0 1.0 Universal (public domain dedication; no attribution
+  required). Contributor prefixes preserved in style ids for
+  provenance (cortu, culturalibre, elvs, faydaen, littleright,
+  o4saken, rehmanpolanski, sonntag78, toigo).
+  - Base pack:
+    https://github.com/makehumancommunity/makehuman-assets/tree/master/base/hair
+  - hair01:
+    https://files.makehumancommunity.org/asset_packs/hair01/hair01_cc0.zip
+
+- **`assets/characters/hair/ccby/`** (21 styles) -- MakeHuman Community
+  **hair02** pack, authored by **Elvaerwyn**. All 21 styles licensed
+  under CC-BY 4.0. Attribution required per license terms.
+  - Source:
+    https://files.makehumancommunity.org/asset_packs/hair02/hair02_ccby.zip
+  - Author: Elvaerwyn (MakeHuman Community)
+
+Per CC-BY-4.0 attribution requirement for the hair02 pack:
+
+> Hair styles under `assets/characters/hair/ccby/` are based on the
+> "hair02" MakeHuman Community asset pack by Elvaerwyn, licensed under
+> CC-BY 4.0 (http://creativecommons.org/licenses/by/4.0/).
+
+### Hair authoring templates (MakeHuman Community, hair editor)
+
+Two Blender geometry-nodes template files (`hair.blend`, `fur.blend`)
+by **Tomáš Klecer** ship under `games/selva-oscura/authoring/hair_editor/`
+as an authoring resource for baking new custom hair styles from
+scratch. They are NOT shipped runtime assets; they are Blender source
+files that produce mesh + diffuse outputs which then flow into the
+same mhclo pipeline as the packaged hair styles above.
+
+- **Source:** https://files.makehumancommunity.org/functional/haireditor.zip
+- **License:** CC0 1.0 Universal (public domain dedication).
+- **Attribution offered as courtesy:** Tomáš Klecer, via the
+  MakeHuman Community hair editor asset pack.
+
 ## Animation clips
 
 The locomotion and combat animation clips (idle, walking, running,
@@ -45,7 +123,7 @@ archives via the ozz-animation toolchain.
 
 - **Source:** https://www.mixamo.com/
 - **Pipeline:** Mixamo FBX export -> Blender clean (rebookend.py) ->
-  ozz `gltf2ozz` baking -> `assets/characters/humanoid_legacy/baked-archive/*.ozz`
+  ozz `gltf2ozz` baking -> `assets/characters/humanoid_male/source/clips_in/*.ozz`
 - **License:** Mixamo Terms of Use (same as above).
 
 ## World art
