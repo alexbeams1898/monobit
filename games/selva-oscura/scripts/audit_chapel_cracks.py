@@ -12,7 +12,7 @@ We allowlist designed openings by world-XYZ AABB. Any boundary edge
 falling outside the allowlist is reported as a crack with its world
 position and the source primitive name.
 
-Run AFTER gen_crypt_export.sh produces crypt.glb. Outputs to stdout.
+Run AFTER gen_chapel_and_descent_export.sh produces crypt.glb. Outputs to stdout.
 Exit code 0 = no unexpected cracks, 1 = cracks found.
 """
 

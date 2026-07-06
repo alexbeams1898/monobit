@@ -7,7 +7,7 @@ surfaces whose AABBs in the other two axes also overlap. Those
 pairs WILL z-fight as the camera moves.
 
 This is the structural defense against the recurring flicker bugs
-we kept hitting. Run after gen_crypt_export.sh.
+we kept hitting. Run after gen_chapel_and_descent_export.sh.
 
 Approach:
 1. For each primitive, find its axis-aligned faces (faces whose

@@ -37,7 +37,7 @@ constexpr float kWallHeight = 5.0f;
 // header collider bridges Y in [kDoorHeight, kWallHeight].
 constexpr float kDoorHeight = 2.2f;
 
-// ---- Descent stair (must stay in sync with gen_crypt_foundation.py) ----
+// ---- Descent stair (must stay in sync with gen_chapel_and_descent.py) ----
 // Step proportions used by the visual mesh; collision treats each
 // flight as a single sloped ramp (top_slope), not per-step boxes.
 constexpr float kStairRise = 0.16f;
@@ -47,7 +47,7 @@ constexpr float kStairTread = 0.35f;
 // chapel front, away from apse). Top step at chapel-floor level.
 // Single wide flight spanning the full chapel interior width.
 // MUST stay in sync with SINGLE_FLIGHT_HALF_WIDTH in
-// games/selva-oscura/scripts/blender/gen_crypt_foundation.py — both
+// games/selva-oscura/scripts/blender/gen_chapel_and_descent.py — both
 // must equal chapel interior half-width (BODY_WIDTH/2 - WALL_THICKNESS).
 constexpr float kSingleFlightHalfWidth = 2.40f;
 constexpr int kUpperFlightStepCount = 9;
@@ -56,7 +56,7 @@ constexpr float kUpperFlightDrop = kUpperFlightStepCount * kStairRise; // 1.44m
 constexpr float kUpperFlightRun = kUpperFlightStepCount * kStairTread; // 3.15m
 
 // Continuous descent (from bottom of upper flight to Limbo). Must
-// match CONTINUOUS_DESCENT_STEP_COUNT in gen_crypt_foundation.py —
+// match CONTINUOUS_DESCENT_STEP_COUNT in gen_chapel_and_descent.py —
 // the .glb has this many descent_step_NNNN nodes. Total descent
 // footprint length = (upper flight + continuous descent) × tread.
 constexpr int kContinuousDescentStepCount = 400;
@@ -69,7 +69,7 @@ constexpr float kFullDescentRun = kUpperFlightRun + kContinuousDescentRun; // 14
 // Sign of the forward direction of descent in chapel-local Y. +1 means
 // the corridor extends in +Y (toward the apse = world -Z = toward the
 // sun). -1 means -Y (toward chapel front = world +Z = toward spawn).
-// Must match gen_crypt_foundation.py's DESCENT_FORWARD_SIGN.
+// Must match gen_chapel_and_descent.py's DESCENT_FORWARD_SIGN.
 constexpr float kDescentForwardSign = 1.0f;
 
 // Landing where the two flights meet.
@@ -102,7 +102,7 @@ constexpr float kLimboPlatformHalfExtent = 12.0f;
 //
 // Chapel ground Y — chosen so the chapel sits visibly above the
 // surrounding colle plateau on its foundation skirt. The skirt
-// primitive (build_foundation_skirt in gen_crypt_foundation.py)
+// primitive (build_foundation_skirt in gen_chapel_and_descent.py)
 // extends from chapel-floor-Y down to ~Y=-3, bridging any terrain
 // height around the chapel. Terrain stays at its natural
 // heightmap-Y and meets the skirt's vertical face — no plateau

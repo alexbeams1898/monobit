@@ -76,20 +76,20 @@ games/selva-oscura/
 ├── include/                      matching .h files (incl. gameplay/TickState.h for cross-module accessors)
 ├── config/
 │   ├── tunables.json             runtime feel parameters
-│   ├── locomotion.json           per-clip blend overrides
+│   ├── locomotion.json           per-clip blend + translation_source overrides
+│   ├── anim/                     per-variant AnimSet (intent -> clip) JSONs
+│   ├── skeletons/                per-skeleton joint maps + hurtboxes
 │   ├── loadout.json              player's equipped weapons
 │   ├── weapon_classes/*.json     animation chains per weapon type
 │   └── weapons/*.json            per-weapon stat sheets
-├── assets/characters/humanoid_legacy/
-│   ├── source/                   Mixamo FBX (gitignored, locally authored)
-│   │   ├── rig/                  humanoid.fbx (skeleton + mesh)
-│   │   ├── loco/                 idle, walking, running, run_to_stop
-│   │   ├── combat/sword/         attacks, blocks, idle, reposed
-│   │   ├── combat/unarmed/       jab, hook, combo, etc.
-│   │   └── dodge/                falling_to_roll, standing_dodge_backward, stand_to_roll
-│   ├── mblab_generated/          MB-Lab + Mixamo auto-rigger intermediates
-│   ├── baked-archive/            kept-but-FBX-less .ozz files (tracked)
-│   └── (build output: skeleton.ozz, humanoid.glb, *.ozz clips)
+├── assets/characters/humanoid_male/   (also humanoid_female, larva, wolf)
+│   ├── blender_authoring/        humanoid_male.blend, .fbx (Mixamo upload), .blend1 backup
+│   ├── source/
+│   │   ├── rig/humanoid.glb      static rig + mesh exported by gen_humanoid.py --gender male
+│   │   ├── clips_in/             Mixamo .fbx downloads (+ pack subdirs)
+│   │   └── clips/                .glb clips baked by batch_bake.sh
+│   ├── humanoid.glb              staged copy (build reads from here)
+│   └── (build output: skeleton.ozz, *.ozz per clip)
 ├── docs/
 │   ├── ARCHITECTURE.md           this doc
 │   ├── design/                   game-design canon (story, classes, etc.)
@@ -164,7 +164,7 @@ All in `games/selva-oscura/include/anim/` and the matching `src/anim/`:
   at world Y=0).
 - **`ClipRegistry`** — a name → `AnimationClip` map. `loadDirectory()`
   scans a folder for `.ozz` files and loads each. The runtime calls
-  this once at startup against `assets/characters/humanoid_legacy/`.
+  this once at startup against `assets/characters/humanoid_male/`.
 - **`PoseSampler`** — the heart of the system. Section 4.3.
 - **`SkeletalRenderer`** (`drawSkeletalMesh`) — issues a skinned draw
   call given a mesh, a model matrix, a view-projection, and a bone
@@ -191,14 +191,14 @@ conversion:
 3. **Filename sanitization**: `_selva_sanitize_clip_name()` lowercases
    and replaces non-alphanumeric runs with underscores. `"sword and
    shield slash (2).fbx"` → `sword_and_shield_slash_2.ozz`.
-4. **Archived clips**: `assets/characters/humanoid_legacy/baked-archive/`
+4. **Archived clips**: `assets/characters/humanoid_male/source/clips_in/`
    contains pre-baked `.ozz` files whose source FBX is no longer in
    the tree (kept for future use). `selva-oscura-stage-archive` copies
    them into the runtime output. The directory has a local
    `.gitignore` exception so the `*.ozz` rule in the repo-root
    `.gitignore` doesn't ignore them.
 
-The runtime sees a flat `build/bin/assets/characters/humanoid_legacy/` of
+The runtime sees a flat `build/bin/assets/characters/humanoid_male/` of
 `.ozz` files plus `skeleton.ozz` and `humanoid.glb`. It doesn't know
 about the source layout.
 
@@ -943,13 +943,13 @@ games/selva-oscura/
 │   │   └── static_meshes/
 │   │       ├── crypt.glb        # chapel + descent corridor + walls
 │   │       └── source/
-│   │           └── crypt_foundation.blend  # source-of-truth Blender file
+│   │           └── chapel_and_descent.blend  # source-of-truth Blender file
 │   └── audio/                   # SFX banks (footsteps, whoosh, etc.)
 └── scripts/
     ├── gen_terrain_heightmap.py # bakes terrain PNGs from REGIONS dict
     └── blender/
-        ├── gen_crypt_foundation.py + .sh  # bakes crypt.blend
-        └── gen_crypt_export.py + .sh      # exports crypt.blend → crypt.glb
+        ├── gen_chapel_and_descent.py + .sh  # bakes crypt.blend
+        └── gen_chapel_and_descent_export.py + .sh      # exports crypt.blend → crypt.glb
 ```
 
 **Single-region architecture** (per
@@ -986,7 +986,7 @@ three coordinated pieces solve this:
 
 1. **Foundation skirt mesh** — vertical stone slab inside
    `crypt.glb`, extending from plinth bottom DOWN 5m. Authored by
-   `build_foundation_skirt()` in `gen_crypt_foundation.py`. Bridges
+   `build_foundation_skirt()` in `gen_chapel_and_descent.py`. Bridges
    any visual/physics gap between chapel and surrounding terrain.
 
 2. **FlushAt terrain modifier** (`chapel_exterior_plateau` in

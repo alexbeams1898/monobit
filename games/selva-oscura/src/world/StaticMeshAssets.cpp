@@ -192,6 +192,20 @@ bool loadPrimitive(const cgltf_primitive* prim, const float node_world[16],
                  out.usage == StaticMeshUsage::Visual      ? "visual"
                  : out.usage == StaticMeshUsage::Collision ? "collision"
                                                            : "both");
+    // Diagnostic: for the castle specifically, dump every vertex's
+    // final world-space position so we can see EXACTLY what the GPU
+    // will render (positions are baked here; renderer uses identity
+    // model matrix). If the bbox looks right but the visual looks
+    // wrong, this catches any per-vertex weirdness the aggregate
+    // bbox line might hide.
+    if (node_name.find("castle") != std::string::npos)
+    {
+        for (cgltf_size i = 0; i < n; ++i)
+        {
+            std::fprintf(stderr, "  [castle-vert %zu] world=(%.3f, %.3f, %.3f)\n", i,
+                         verts[i].position[0], verts[i].position[1], verts[i].position[2]);
+        }
+    }
     return true;
 }
 
@@ -244,6 +258,13 @@ bool loadStaticMesh(const char* glb_path, const glm::vec3& world_origin, StaticM
     out.primitives.clear();
     out.asset_name = glb_path;
     const float offset[3] = {world_origin.x, world_origin.y, world_origin.z};
+    // Diagnostic: log every incoming world_origin so we can catch any
+    // mismatch between region.json values and what actually reaches
+    // the loader. Especially useful when a config edit doesn't seem to
+    // move a mesh at runtime.
+    std::fprintf(stderr,
+                 "[static-mesh-load] path='%s' world_origin=(%.3f, %.3f, %.3f)\n",
+                 glb_path, world_origin.x, world_origin.y, world_origin.z);
     return loadGltf(glb_path, offset, out);
 }
 

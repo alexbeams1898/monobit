@@ -89,7 +89,7 @@ void registerChapelStructureFootprints()
     //      computed vertical_profile data that doesn't map cleanly
     //      to JSON yet.
     //   3) Foundation skirt primitive (build_foundation_skirt in
-    //      gen_crypt_foundation.py) — vertical stone wall from plinth
+    //      gen_chapel_and_descent.py) — vertical stone wall from plinth
     //      bottom down to deep below any plausible terrain, absorbing
     //      any boundary drift during the blend pad transition.
 
@@ -237,9 +237,10 @@ engine::physics::BodyHandle createPlayerBody(const glm::vec3& spawn_position)
 }
 
 engine::physics::BodyHandle createCharacterBody(const glm::vec3& spawn_position, float radius,
-                                                float height)
+                                                float height,
+                                                engine::physics::CharacterCollision collision)
 {
-    return engine::physics::addCharacter(spawn_position, radius, height);
+    return engine::physics::addCharacter(spawn_position, radius, height, collision);
 }
 
 void destroyCharacterBody(engine::physics::BodyHandle handle)

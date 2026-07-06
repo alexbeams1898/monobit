@@ -34,7 +34,7 @@ SUBDIVIDE = 384
 HEIGHT_MIN = -6.0
 HEIGHT_MAX = 38.0
 
-# Chapel constants (from CryptLayout.h + gen_crypt_foundation.py).
+# Chapel constants (from CryptLayout.h + gen_chapel_and_descent.py).
 CRYPT_X = 0.0
 CRYPT_Z = -210.0
 PLINTH_HEIGHT = 0.30

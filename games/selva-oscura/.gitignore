@@ -1,6 +1,9 @@
 # Tracy profiler trace captures — local only, can be huge.
 .traces/
 
+# Python bytecode caches from Blender authoring scripts.
+scripts/blender/lib/__pycache__/
+
 # Hair authoring inputs. The runtime consumes only the baked
 # humanoid_male_hair.glb per style; the .mhclo / .obj / .mhmat / raw
 # diffuse are inputs to gen_hair.py's bake step, not shipped assets.
