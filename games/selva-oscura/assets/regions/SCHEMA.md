@@ -62,19 +62,44 @@ sees them. Authoritative source of truth: this array (the C++
                                             // (matches a name in terrain/config.json).
                                             // OMITTED = applies to any terrain region whose
                                             // XZ AABB contains the query (legacy behavior).
-  "mode": "FlushAt",                       // FlushAt | FlushSlope | DepressTo | AddDelta | Hole
-  "center_xz": [0.0, -210.0],
-  "half_extents_xz": [3.0, 4.0],
+  "mode": "FlushAt",                       // FlushAt | FlushSlope | DepressTo | AddDelta | Hole | PolygonFlushAt
+  "center_xz": [0.0, -210.0],               // rect modes only; ignored for PolygonFlushAt
+  "half_extents_xz": [3.0, 4.0],            // rect modes only; ignored for PolygonFlushAt
   "value": 22.0,                            // mode-dependent meaning
   "value_far": 25.08,                       // FlushSlope only: Y at +axis edge
   "slope_axis": "Z",                        // FlushSlope only: "X" or "Z"
   "blend_pad": 2.0,                         // default blend distance into surrounding terrain
-  "blend_pad_neg_x": 5.0,                   // optional per-side overrides (default -1 = use blend_pad)
+  "blend_pad_neg_x": 5.0,                   // rect: optional per-side overrides (default -1 = use blend_pad)
   "blend_pad_pos_x": -1.0,
   "blend_pad_neg_z": 5.0,
-  "blend_pad_pos_z": 0.0                    // 0 = sharp edge (no blend on this side)
+  "blend_pad_pos_z": 0.0,                   // 0 = sharp edge (no blend on this side)
+  "vertices_xz": [                          // PolygonFlushAt only. CCW winding.
+    [-170.0, -391.0],                       // Concave polygons are supported.
+    [ 170.0, -391.0],
+    [ 170.0, -379.0],
+    [-170.0, -379.0]
+  ],
+  "edge_blend_pads": [5.0, -1.0, 5.0, -1.0] // PolygonFlushAt only. One per vertex; edge i =
+                                            // vertex i -> vertex i+1 (mod N). -1 = fall back to
+                                            // scalar `blend_pad`. Length MUST match vertex count
+                                            // if provided; wrong-size arrays skip registration.
 }
 ```
+
+**PolygonFlushAt mode.** For water bodies, moats, rivers, and any
+depression whose footprint isn't a rectangle. `vertices_xz` is the
+polygon outline in world-XZ, counter-clockwise-wound (viewed from
+above with +X right, +Z up). Concave polygons are supported —
+point-in-polygon uses winding number, and distance-to-polygon uses
+nearest-edge SDF, so a concave L-shape or T-shape works. The
+polygon's target Y comes from `value` (same as FlushAt). The
+`blend_pad` (scalar) provides the default per-edge falloff; if
+`edge_blend_pads` is present, its entries override per-edge (a
+value of `-1` on any entry falls back to `blend_pad` for that
+specific edge). Center/extents fields are ignored for polygon
+modes; a bounding-box cache computed at registration time
+short-circuits the polygon SDF for vertices far outside the
+polygon's AABB.
 
 **Why the `terrain_region` field exists:** the JsonRegion that OWNS
 a modifier (e.g. `surface/region.json`) is not always the same as the

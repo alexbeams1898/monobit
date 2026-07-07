@@ -52,6 +52,16 @@ struct TerrainModifier
         // ignored for this mode; a quad is "in" or "out" by whether
         // its centroid falls inside the rect.
         Hole,
+        // Y = `value` inside a polygon (possibly concave). Use for
+        // water bodies, rivers, moats, arbitrary-shaped depressions
+        // where a rect footprint isn't accurate. Vertices in
+        // `polygon_vertices_xz`; edges connect consecutive vertices
+        // and close the loop (last->first implicit). Center/extents
+        // fields are IGNORED for this mode — the polygon defines
+        // the footprint. blend_pad falls off from the nearest edge;
+        // `polygon_edge_blend_pads` (if non-empty) provides per-edge
+        // overrides matching the vertex-list length.
+        PolygonFlushAt,
     };
 
     glm::vec2 center_xz{0.0f, 0.0f};
@@ -94,6 +104,34 @@ struct TerrainModifier
     // contains the query (today's behavior — backward compatible with
     // existing callers that register modifiers without a region tag).
     const char* region_name = nullptr;
+
+    // Polygon footprint — used only when mode == PolygonFlushAt.
+    // Vertices in world-XZ, ordered COUNTER-CLOCKWISE (when viewed
+    // from above with +X right, +Z up). Concave polygons are
+    // supported; the point-in-polygon test uses winding number.
+    // Minimum 3 vertices; a runtime check rejects fewer.
+    std::vector<glm::vec2> polygon_vertices_xz;
+    // Per-edge blend pads (one per vertex, edge i connects vertex
+    // i to vertex i+1 modulo N). Empty vector = fall back to the
+    // scalar `blend_pad` above for every edge. A single value that
+    // is negative = use `blend_pad` fallback for that specific edge.
+    // Non-empty and shorter than polygon_vertices_xz is a runtime
+    // error caught at registration.
+    std::vector<float> polygon_edge_blend_pads;
+
+    // Cached polygon AABB (min_x, min_z, max_x, max_z), computed at
+    // registration time. Used to short-circuit polygon SDF for points
+    // clearly outside — checking AABB rejection first is O(1) vs
+    // polygon SDF O(N). Populated by registerTerrainModifier for
+    // polygon modes; unused for rect modes.
+    float polygon_aabb_min_x = 0.0f;
+    float polygon_aabb_min_z = 0.0f;
+    float polygon_aabb_max_x = 0.0f;
+    float polygon_aabb_max_z = 0.0f;
+    // Maximum blend pad across all edges — used to know how far
+    // outside the AABB the modifier can influence. Cached with the
+    // AABB. 0 for pure-hard-edge polygons.
+    float polygon_max_blend_pad = 0.0f;
 };
 
 // Register a modifier. Called by world-setup code (e.g. chapel

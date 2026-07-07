@@ -701,15 +701,30 @@ static void probeDumpModifierStack(std::FILE* log, float px, float pz)
     for (int i = 0; i < n_mods; ++i)
     {
         const auto& m = engine::world::terrainModifierAt(i);
-        const float dx_out = std::abs(px - m.center_xz.x) - m.half_extents_xz.x;
-        const float dz_out = std::abs(pz - m.center_xz.y) - m.half_extents_xz.y;
-        const bool inside = (dx_out <= 0.0f && dz_out <= 0.0f);
-        std::fprintf(log,
-                     "    [%d] '%s' mode=%d center=(%.2f,%.2f) half=(%.2f,%.2f) val=%.2f  "
-                     "dx_out=%+.3f dz_out=%+.3f  %s\n",
-                     i, m.debug_name ? m.debug_name : "(no name)", static_cast<int>(m.mode),
-                     m.center_xz.x, m.center_xz.y, m.half_extents_xz.x, m.half_extents_xz.y,
-                     m.value, dx_out, dz_out, inside ? "INSIDE" : "outside");
+        if (m.mode == engine::world::TerrainModifier::Mode::PolygonFlushAt)
+        {
+            const bool inside_aabb = (px >= m.polygon_aabb_min_x && px <= m.polygon_aabb_max_x &&
+                                      pz >= m.polygon_aabb_min_z && pz <= m.polygon_aabb_max_z);
+            std::fprintf(log,
+                         "    [%d] '%s' mode=Polygon verts=%zu aabb=(%.2f,%.2f..%.2f,%.2f) "
+                         "val=%.2f max_pad=%.2f  %s\n",
+                         i, m.debug_name ? m.debug_name : "(no name)", m.polygon_vertices_xz.size(),
+                         m.polygon_aabb_min_x, m.polygon_aabb_min_z, m.polygon_aabb_max_x,
+                         m.polygon_aabb_max_z, m.value, m.polygon_max_blend_pad,
+                         inside_aabb ? "AABB-inside" : "AABB-outside");
+        }
+        else
+        {
+            const float dx_out = std::abs(px - m.center_xz.x) - m.half_extents_xz.x;
+            const float dz_out = std::abs(pz - m.center_xz.y) - m.half_extents_xz.y;
+            const bool inside = (dx_out <= 0.0f && dz_out <= 0.0f);
+            std::fprintf(log,
+                         "    [%d] '%s' mode=%d center=(%.2f,%.2f) half=(%.2f,%.2f) val=%.2f  "
+                         "dx_out=%+.3f dz_out=%+.3f  %s\n",
+                         i, m.debug_name ? m.debug_name : "(no name)", static_cast<int>(m.mode),
+                         m.center_xz.x, m.center_xz.y, m.half_extents_xz.x, m.half_extents_xz.y,
+                         m.value, dx_out, dz_out, inside ? "INSIDE" : "outside");
+        }
     }
 }
 

@@ -42,7 +42,8 @@
 - **JsonRegion** — data-driven region loaded from `assets/regions/<id>/region.json`: static_meshes, terrain_modifiers, triggers, enemy_spawns, doors, territory, hazard_zones — [include/world/JsonRegion.h](../include/world/JsonRegion.h)
 - **PhysicsRegion** — Jolt integration, kinematic player capsule, static colliders (terrain + architecture + doors) — [include/world/PhysicsRegion.h](../include/world/PhysicsRegion.h)
 - **Door** — ER-style door world-object: state machine (Locked / Closed / Opening / Open), per-door `openDoor` / `unlockDoor`, profile-persistent state — [include/world/Door.h](../include/world/Door.h)
-- **Terrain** — global heightmap + modifiers (FlushAt / FlushSlope / Hole), per-region `terrain_region` carves — [include/world/Terrain.h](../include/world/Terrain.h)
+- **Terrain** — global heightmap + modifiers (FlushAt / FlushSlope / DepressTo / AddDelta / Hole / PolygonFlushAt), per-region `terrain_region` carves — [include/world/Terrain.h](../include/world/Terrain.h)
+- **TerrainModifier** — per-vertex Y adjustment applied by the terrain mesh builder. Rect modes take `center_xz + half_extents_xz + per-side blend pads`. **PolygonFlushAt** takes `vertices_xz` (CCW, concave supported via winding-number point-in-polygon) plus optional per-edge `edge_blend_pads` for shorelines with mixed soft/sharp banks. Registered at region boot; queried per terrain-vertex — [engines/engine/include/world/TerrainModifiers.h](../../../engines/engine/include/world/TerrainModifiers.h)
 - **StaticMeshAssets** — `.glb` loader, per-primitive trimesh collision, surface tags (Architecture / Foliage / etc.) — [include/world/StaticMeshAssets.h](../include/world/StaticMeshAssets.h)
 - **RegionBootstrap** — registers all regions at boot, owns region instances — [include/world/RegionBootstrap.h](../include/world/RegionBootstrap.h)
 

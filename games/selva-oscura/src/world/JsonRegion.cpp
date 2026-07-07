@@ -55,6 +55,10 @@ engine::world::TerrainModifier::Mode parseModifierMode(const std::string& s)
         return M::DepressTo;
     if (s == "AddDelta")
         return M::AddDelta;
+    if (s == "Hole")
+        return M::Hole;
+    if (s == "PolygonFlushAt")
+        return M::PolygonFlushAt;
     return M::FlushAt;
 }
 
@@ -316,6 +320,25 @@ parseTerrainModifier(const nlohmann::json& m,
         owned_strings.push_back(
             std::make_unique<std::string>(m["terrain_region"].get<std::string>()));
         mod.region_name = owned_strings.back()->c_str();
+    }
+    // Polygon fields — only meaningful when mode == PolygonFlushAt.
+    // vertices_xz is an array of [x, z] pairs. edge_blend_pads (if
+    // present) is a parallel array of per-edge pads (-1 = fall back
+    // to scalar blend_pad on that edge).
+    if (m.contains("vertices_xz") && m["vertices_xz"].is_array())
+    {
+        for (const auto& v : m["vertices_xz"])
+        {
+            if (v.is_array() && v.size() >= 2)
+            {
+                mod.polygon_vertices_xz.emplace_back(v[0].get<float>(), v[1].get<float>());
+            }
+        }
+    }
+    if (m.contains("edge_blend_pads") && m["edge_blend_pads"].is_array())
+    {
+        for (const auto& p : m["edge_blend_pads"])
+            mod.polygon_edge_blend_pads.push_back(p.get<float>());
     }
     return mod;
 }

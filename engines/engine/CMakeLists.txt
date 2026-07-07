@@ -83,6 +83,7 @@ add_executable(engine-tests
     tests/evolution_ops_test.cpp
     tests/discovery_test.cpp
     tests/loot_ops_test.cpp
+    tests/terrain_modifiers_test.cpp
 )
 target_link_libraries(engine-tests PRIVATE engine Catch2::Catch2WithMain)
 
