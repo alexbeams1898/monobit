@@ -68,6 +68,23 @@ jobs:
         run: python3 games/selva-oscura/scripts/check_bandaid_keywords.py
 
   # -----------------------------------------------------------------------
+  # 2c. DANTE-TERM LEAK  — scan source / docs / config for Dante-Inferno
+  #     proper nouns (Limbo, Acheron, Aristotle, etc.). Selva must not
+  #     leak the source-material names — every named thing has a
+  #     Selva-native rename. Grandfathered: Beatrice.
+  #
+  #     Warning-only on branch PRs (exit 0). Flip to --error on the
+  #     merge-to-master gate once the codebase is clean.
+  # -----------------------------------------------------------------------
+  dante_terms:
+    name: Dante-term leak scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run dante-term linter
+        run: python3 games/selva-oscura/scripts/check_dante_terms.py
+
+  # -----------------------------------------------------------------------
   # 3. BUILD + LINT  (clang-tidy runs during the build via CMake)
   #    Also compiles everything — catches compiler errors on every PR.
   # -----------------------------------------------------------------------

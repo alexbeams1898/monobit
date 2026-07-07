@@ -1,0 +1,9 @@
+{
+  "_comment": "Tier-0 gather material for the underground region. Dry root fibers pulled from the floor. Kindling for fires; a component in the fire weapon tree.",
+  "name": "Fibrous root",
+  "description": "A tangle of dry root, pale and papery. It parts along the grain when pulled and takes flame at the first spark.",
+  "category": "material",
+  "rarity": "common",
+  "stackable": true,
+  "max_stack": 99
+}

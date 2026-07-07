@@ -1,9 +1,12 @@
 #pragma once
 
+#include "world/Lights.h"
+
 #include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
 
 #include <cstdint>
+#include <vector>
 
 namespace selva::render
 {
@@ -46,5 +49,11 @@ void setTreeTime(float t);
 // bias slope-scaling, and the texture unit holding the depth map.
 void setTreeShadow(const glm::mat4& light_view_proj, const glm::vec3& sun_dir,
                    const glm::vec3& shadow_cam_pos, int shadow_texture_unit);
+
+// Upload point-light array. Same schema as setTerrainPointLights /
+// setScenePointLights / setSkeletalPointLights. Foliage picks up
+// torches and campfires against a canopy up-vector normal (leaves
+// are treated as diffuse sky-facing volumes).
+void setTreePointLights(const std::vector<engine::world::LightSource>& lights);
 
 } // namespace selva::render

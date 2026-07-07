@@ -214,6 +214,19 @@ void commitClass(PlayerClass c)
         {
             profile->known_recipes.push_back(kPoulticeRecipe);
         }
+        // Fire weapon tree entry -- torch + its stick pre-craft. Both
+        // recipes granted at Signing so every Vagrant has portable
+        // light + the first fire-weapon tree entry from character
+        // start, class-agnostic.
+        for (const char* r : {"config/recipes/craft_stick.json",
+                              "config/recipes/craft_torch.json"})
+        {
+            if (std::find(profile->known_recipes.begin(), profile->known_recipes.end(), r)
+                == profile->known_recipes.end())
+            {
+                profile->known_recipes.push_back(r);
+            }
+        }
     }
     // signing_committed gates the dialog layer's post-Signing entry
     // topics. Path flag mirrors the cosmological identity (class-

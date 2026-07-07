@@ -1,6 +1,7 @@
 #include "anim/SkeletalRenderer.h"
 
 #include "Tunables.h"
+#include "render/ActiveLightingEnv.h"
 #include "anim/SkeletalMesh.h"
 #include "debug/Flags.h"
 #include "gl/ShaderUtils.h"
@@ -139,6 +140,7 @@ in vec2 vUV;
 
 uniform vec3 uTint;
 uniform vec3 uSunDir;
+uniform vec3 uCamPos;   // world-space camera position; used for rim light
 uniform float uAlpha;
 // Tint application mode. 0 = multiply (default, body + eyes): tint
 // scales the sampled diffuse per channel; a red tint on brown hair
@@ -167,6 +169,17 @@ uniform float     uAlphaCutoff;
 // the suspect pixel reads off the screen as a green/red gradient.
 // Tied to selva::debug::flags().skeletal_uv_debug.
 uniform int       uDebugUvVis;
+
+// Point-light array. Matches the schema used by the terrain and
+// static-mesh shaders: xyz = world position, w = radius (meters,
+// brightness falls to zero past this); rgb = linear color,
+// w = intensity. Iterate `uLightCount` entries. Same formula as
+// the other lit shader paths so a torch or campfire lights the
+// character the same way it lights terrain / walls / props.
+#define MAX_LIGHTS 32
+uniform vec4 uLightPosRadius[MAX_LIGHTS];
+uniform vec4 uLightColorIntensity[MAX_LIGHTS];
+uniform int uLightCount;
 
 out vec4 fragColor;
 )glsl";
@@ -197,7 +210,50 @@ void main()
     vec3 N_up = vec3(0.0, 1.0, 0.0);
     float skyFactor = dot(N, N_up) * 0.5 + 0.5;
     vec3 ambient = mix(kGroundAmbient, kSkyAmbient, skyFactor);
-    vec3 lit = ambient + kSunTint * halfL * shadow;
+
+    // Point-light contribution. Same formula as terrain + static-mesh
+    // shaders: smooth radius falloff + half-Lambert against the light
+    // direction so back-facing surfaces still pick up a faint wash.
+    // Without this, characters would stay silhouetted inside a torch's
+    // glow even as the terrain around them warms.
+    vec3 pointLight = vec3(0.0);
+    for (int i = 0; i < uLightCount; ++i)
+    {
+        vec3 toLight = uLightPosRadius[i].xyz - vWorldPos;
+        float dist = length(toLight);
+        float radius = uLightPosRadius[i].w;
+        if (radius <= 0.0 || dist >= radius)
+            continue;
+        vec3 ldir = toLight / max(dist, 1e-4);
+        float ndotl = dot(N, ldir) * 0.5 + 0.5;
+        // Inverse-square attenuation with smooth cutoff (see TerrainShader).
+        float dr = dist / max(radius, 1e-4);
+        float invSq = 1.0 / (1.0 + 2.0 * dr + dr * dr);
+        float window = 1.0 - smoothstep(radius * 0.75, radius, dist);
+        float falloff = invSq * window;
+        pointLight += uLightColorIntensity[i].rgb * uLightColorIntensity[i].w
+                      * (ndotl * falloff);
+    }
+
+    // Rim light: subtle wash on surfaces whose normal faces AWAY from
+    // the viewer, giving the silhouette definition in dark scenes
+    // where ambient + sun contribution are near zero. Standard Souls
+    // convention — without it, characters in the dark read as flat
+    // black-cutout blobs even when a torch lights their front. Rim
+    // strength gates on total scene light level so it doesn't
+    // overpower a sunlit exterior.
+    vec3 V = normalize(uCamPos - vWorldPos);
+    float rim = 1.0 - max(dot(N, V), 0.0);
+    rim = pow(rim, 2.5);
+    float sceneLightLevel =
+        (ambient.r + ambient.g + ambient.b) * 0.333 +
+        (kSunTint.r + kSunTint.g + kSunTint.b) * 0.333 * halfL * shadow;
+    float rimGate = 1.0 - smoothstep(0.05, 0.4, sceneLightLevel);
+    vec3 rimTint = mix(vec3(0.55, 0.60, 0.75),
+                      pointLight * 3.0, clamp(length(pointLight) * 4.0, 0.0, 1.0));
+    vec3 rimLight = rimTint * rim * rimGate * 0.6;
+
+    vec3 lit = ambient + kSunTint * halfL * shadow + pointLight + rimLight;
     // Compose base albedo based on tint mode. Multiply mode multiplies
     // the sample against tint per channel (subtle re-tinting).
     // Colorize mode replaces the sample's chroma with the tint's while
@@ -282,6 +338,8 @@ GLint sUniShadowMap = -1;
 GLint sUniLightViewProj = -1;
 GLint sUniShadowSunDir = -1;
 GLint sUniShadowCamPos = -1;
+GLint sUniCamPos = -1;
+glm::vec3 sFrameCamPos(0.0f);
 GLint sUniMorphCount = -1;
 GLint sUniVertexCount = -1;
 GLint sUniMorphWeights = -1; // base location of the float[32] array
@@ -296,6 +354,17 @@ GLint sUniBaseColorFactor = -1;
 GLint sUniAlphaCutoff = -1;
 GLint sUniTintMode = -1;
 GLint sUniDebugUvVis = -1;
+GLint sUniLightPosRadiusLoc = -1;
+GLint sUniLightColorIntensityLoc = -1;
+GLint sUniLightCountLoc = -1;
+
+// Point light cache. Uploaded per-frame via setSkeletalPointLights;
+// re-set on each drawSkeletalMesh so a stale light set from an old
+// frame doesn't persist.
+constexpr int kMaxLights = 32;
+int sFrameLightCount = 0;
+float sFrameLightPosRadius[kMaxLights * 4] = {};
+float sFrameLightColorIntensity[kMaxLights * 4] = {};
 
 // Per-frame tint mode. Set by setSkeletalTintMode() before a draw
 // call and cleared back to Multiply after each draw so the default
@@ -356,6 +425,7 @@ bool initSkeletalRenderer()
     sUniLightViewProj = glGetUniformLocation(sProgram, "uLightViewProj");
     sUniShadowSunDir = glGetUniformLocation(sProgram, "uShadowSunDir");
     sUniShadowCamPos = glGetUniformLocation(sProgram, "uShadowCameraPos");
+    sUniCamPos = glGetUniformLocation(sProgram, "uCamPos");
     sUniMorphCount = glGetUniformLocation(sProgram, "uMorphCount");
     sUniVertexCount = glGetUniformLocation(sProgram, "uVertexCount");
     sUniMorphWeights = glGetUniformLocation(sProgram, "uMorphWeights[0]");
@@ -369,6 +439,9 @@ bool initSkeletalRenderer()
     sUniAlphaCutoff = glGetUniformLocation(sProgram, "uAlphaCutoff");
     sUniTintMode = glGetUniformLocation(sProgram, "uTintMode");
     sUniDebugUvVis = glGetUniformLocation(sProgram, "uDebugUvVis");
+    sUniLightPosRadiusLoc = glGetUniformLocation(sProgram, "uLightPosRadius[0]");
+    sUniLightColorIntensityLoc = glGetUniformLocation(sProgram, "uLightColorIntensity[0]");
+    sUniLightCountLoc = glGetUniformLocation(sProgram, "uLightCount");
 
     glGenBuffers(1, &sBoneSsbo);
     return true;
@@ -377,6 +450,11 @@ bool initSkeletalRenderer()
 void setSkeletalSun(const glm::vec3& sun_dir)
 {
     sFrameSunDir = sun_dir;
+}
+
+void setSkeletalCamPos(const glm::vec3& cam_pos)
+{
+    sFrameCamPos = cam_pos;
 }
 
 void setSkeletalExposure(float exposure)
@@ -405,6 +483,25 @@ void setSkeletalAmbientOverride(const glm::vec3& sky_ambient, const glm::vec3& g
 void clearSkeletalAmbientOverride()
 {
     sAmbientOverrideActive = false;
+}
+
+void setSkeletalPointLights(const std::vector<engine::world::LightSource>& lights)
+{
+    const int total = static_cast<int>(lights.size());
+    const int n = std::min(total, kMaxLights);
+    for (int i = 0; i < n; ++i)
+    {
+        const auto& L = lights[static_cast<size_t>(i)];
+        sFrameLightPosRadius[i * 4 + 0] = L.position.x;
+        sFrameLightPosRadius[i * 4 + 1] = L.position.y;
+        sFrameLightPosRadius[i * 4 + 2] = L.position.z;
+        sFrameLightPosRadius[i * 4 + 3] = L.radius;
+        sFrameLightColorIntensity[i * 4 + 0] = L.color.x;
+        sFrameLightColorIntensity[i * 4 + 1] = L.color.y;
+        sFrameLightColorIntensity[i * 4 + 2] = L.color.z;
+        sFrameLightColorIntensity[i * 4 + 3] = L.intensity;
+    }
+    sFrameLightCount = n;
 }
 
 void setSkeletalTintMode(TintMode mode)
@@ -437,9 +534,12 @@ void beginSkeletalPass()
     if (sProgram == 0)
         return;
     glUseProgram(sProgram);
-    // Ambient + sun tint: Tunables.lighting by default, OR the
-    // portrait-fill override if the caller (CharacterPreview) set
-    // one. Override stays sticky until clearSkeletalAmbientOverride.
+    // Ambient + sun tint resolution order:
+    //   1. Portrait-fill override (CharacterPreview) — sticky until cleared.
+    //   2. Frame's active lighting env (resolved from camera XZ by
+    //      PerFrameTick) — the correct per-region ambient.
+    //   3. Tunables fallback (boot-time draws before the first frame's
+    //      env resolve).
     glm::vec3 sky, ground, tint;
     if (sAmbientOverrideActive)
     {
@@ -449,10 +549,17 @@ void beginSkeletalPass()
     }
     else
     {
-        const auto& L = selva::tuning::current().lighting;
-        sky = L.sky_ambient;
-        ground = L.ground_ambient;
-        tint = L.sun_tint;
+        const auto& env = selva::render::activeLightingEnv();
+        const auto& fallback = selva::tuning::current().lighting;
+        sky = (env.sky_ambient.x + env.sky_ambient.y + env.sky_ambient.z) > 0.0f
+                  ? env.sky_ambient
+                  : fallback.sky_ambient;
+        ground = (env.ground_ambient.x + env.ground_ambient.y + env.ground_ambient.z) > 0.0f
+                     ? env.ground_ambient
+                     : fallback.ground_ambient;
+        tint = (env.sun_tint.x + env.sun_tint.y + env.sun_tint.z) > 0.0f
+                   ? env.sun_tint * env.sun_multiplier
+                   : fallback.sun_tint;
     }
     if (sUniKSkyAmbient >= 0)
         glUniform3f(sUniKSkyAmbient, sky.x, sky.y, sky.z);
@@ -460,6 +567,21 @@ void beginSkeletalPass()
         glUniform3f(sUniKGroundAmbient, ground.x, ground.y, ground.z);
     if (sUniKSunTint >= 0)
         glUniform3f(sUniKSunTint, tint.x, tint.y, tint.z);
+    // Camera position for rim-light view vector. Falls back to origin
+    // if unset — rim contribution stays visually plausible near the
+    // origin.
+    if (sUniCamPos >= 0)
+        glUniform3f(sUniCamPos, sFrameCamPos.x, sFrameCamPos.y, sFrameCamPos.z);
+    // Upload point lights (torches, campfires, braziers) so characters
+    // pick up illumination the same way terrain + static meshes do.
+    // Skipped when no lights are set (count = 0 upload keeps the loop
+    // in the fragment shader trivially cheap).
+    if (sFrameLightCount > 0 && sUniLightPosRadiusLoc >= 0)
+        glUniform4fv(sUniLightPosRadiusLoc, sFrameLightCount, sFrameLightPosRadius);
+    if (sFrameLightCount > 0 && sUniLightColorIntensityLoc >= 0)
+        glUniform4fv(sUniLightColorIntensityLoc, sFrameLightCount, sFrameLightColorIntensity);
+    if (sUniLightCountLoc >= 0)
+        glUniform1i(sUniLightCountLoc, sFrameLightCount);
     // Skeletal meshes from third-party sources can't be assumed to
     // have consistently outward-wound normals -- back-face culling
     // makes parts of those rigs see-through at some angles. Disable

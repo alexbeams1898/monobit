@@ -1,5 +1,7 @@
 #pragma once
 
+#include "world/Lights.h"
+
 #include <glm/glm.hpp>
 
 #include <vector>
@@ -64,6 +66,11 @@ void drawSkeletalMesh(const SkeletalMesh& mesh, const glm::mat4& model, const gl
 // Per-frame sun direction (normalized) for skeletal lambert shading.
 // Called once before drawing skeletal meshes.
 void setSkeletalSun(const glm::vec3& sun_dir);
+// World-space camera position. Used by the fragment shader's rim-
+// light term (view-vector) to give characters silhouette definition
+// in dark scenes where ambient + sun contribution are near zero.
+// Call BEFORE beginSkeletalPass each frame.
+void setSkeletalCamPos(const glm::vec3& cam_pos);
 
 // Per-frame exposure multiplier driving the Reinhard tonemap.
 // Default 1.0 if never set. Matches terrain/region/tree/sky semantics.
@@ -85,6 +92,13 @@ void setSkeletalShadow(const glm::mat4& light_view_proj, const glm::vec3& sun_di
 void setSkeletalAmbientOverride(const glm::vec3& sky_ambient, const glm::vec3& ground_ambient,
                                 const glm::vec3& sun_tint);
 void clearSkeletalAmbientOverride();
+
+// Upload point-light array for the next skeletal pass. Same schema as
+// setTerrainPointLights / setScenePointLights so torches, campfires,
+// braziers illuminate characters the same way they illuminate terrain
+// + static meshes. Capped at MAX_LIGHTS in the shader (32 today);
+// extras beyond that are dropped. Call BEFORE beginSkeletalPass.
+void setSkeletalPointLights(const std::vector<engine::world::LightSource>& lights);
 
 // How the tint uniform composes with the sampled diffuse for the NEXT
 // drawSkeletalMesh call. Auto-resets to Multiply after each draw so

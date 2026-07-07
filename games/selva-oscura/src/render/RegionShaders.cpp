@@ -1,6 +1,7 @@
 #include "render/RegionShaders.h"
 
 #include "Tunables.h"
+#include "render/ActiveLightingEnv.h"
 #include "gl/ShaderUtils.h"
 #include "render/AmbientConstants.h"
 #include "render/AtmosphereShader.h"
@@ -111,7 +112,11 @@ void main()
             continue;
         vec3 ldir = toLight / max(dist, 1e-4);
         float ndotl = dot(N, ldir) * 0.5 + 0.5;
-        float falloff = 1.0 - smoothstep(0.0, radius, dist);
+        // Inverse-square attenuation with smooth cutoff (see TerrainShader).
+        float dr = dist / max(radius, 1e-4);
+        float invSq = 1.0 / (1.0 + 2.0 * dr + dr * dr);
+        float window = 1.0 - smoothstep(radius * 0.75, radius, dist);
+        float falloff = invSq * window;
         pointLight += uLightColorIntensity[i].rgb * uLightColorIntensity[i].w
                       * (ndotl * falloff);
     }
@@ -209,17 +214,32 @@ void useRegionProgram()
     glUseProgram(sProgram);
     if (sUniBaseColorLoc >= 0)
         glUniform3f(sUniBaseColorLoc, 1.0f, 1.0f, 1.0f);
-    // Pull global ambient/sun-tint from Tunables so the F1 panel can
-    // drive them live. Per-region terrain overrides (which only
-    // TerrainShader uses) layer on top via setTerrainLightingEnv.
-    const auto& L = selva::tuning::current().lighting;
+    // Read the frame's active lighting env (resolved from camera XZ
+    // by PerFrameTick). Static-mesh geometry (walls, props, held
+    // weapons) picks up dark-cavern ambient when the camera is
+    // underground, sunlit ambient when above. Fall back to Tunables
+    // when the env hasn't been set yet (boot-time draws before the
+    // first frame).
+    const auto& env = selva::render::activeLightingEnv();
+    const auto& fallback = selva::tuning::current().lighting;
+    const glm::vec3 sky =
+        (env.sky_ambient.x + env.sky_ambient.y + env.sky_ambient.z) > 0.0f
+            ? env.sky_ambient
+            : fallback.sky_ambient;
+    const glm::vec3 ground =
+        (env.ground_ambient.x + env.ground_ambient.y + env.ground_ambient.z) > 0.0f
+            ? env.ground_ambient
+            : fallback.ground_ambient;
+    const glm::vec3 tint =
+        (env.sun_tint.x + env.sun_tint.y + env.sun_tint.z) > 0.0f
+            ? env.sun_tint * env.sun_multiplier
+            : fallback.sun_tint;
     if (sUniKSkyAmbientLoc >= 0)
-        glUniform3f(sUniKSkyAmbientLoc, L.sky_ambient.x, L.sky_ambient.y, L.sky_ambient.z);
+        glUniform3f(sUniKSkyAmbientLoc, sky.x, sky.y, sky.z);
     if (sUniKGroundAmbientLoc >= 0)
-        glUniform3f(sUniKGroundAmbientLoc, L.ground_ambient.x, L.ground_ambient.y,
-                    L.ground_ambient.z);
+        glUniform3f(sUniKGroundAmbientLoc, ground.x, ground.y, ground.z);
     if (sUniKSunTintLoc >= 0)
-        glUniform3f(sUniKSunTintLoc, L.sun_tint.x, L.sun_tint.y, L.sun_tint.z);
+        glUniform3f(sUniKSunTintLoc, tint.x, tint.y, tint.z);
 }
 
 void setSceneView(const glm::mat4& view)

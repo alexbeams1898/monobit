@@ -1,0 +1,9 @@
+{
+  "_comment": "Tier-0 crafted intermediate. Bark scrap trimmed and split into sticks. Cheap and unlimited so the fire weapon tree has a reliable shaft supply.",
+  "name": "Stick",
+  "inputs": [
+    { "item": "config/items/materials/bark_scrap.json", "quantity": 1 }
+  ],
+  "output": "config/items/materials/stick.json",
+  "output_quantity": 2
+}

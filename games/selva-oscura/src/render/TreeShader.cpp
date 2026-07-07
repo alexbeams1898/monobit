@@ -2,6 +2,7 @@
 
 #include "Tunables.h"
 #include "gl/ShaderUtils.h"
+#include "render/ActiveLightingEnv.h"
 #include "render/AmbientConstants.h"
 #include "render/AtmosphereShader.h"
 #include "render/ShadowShader.h"
@@ -85,6 +86,16 @@ uniform vec3 uSunDir;
 uniform vec3 uSunIntensity;
 uniform vec3 uCamPos;
 // uExposure is declared inside kTonemapGLSL alongside tonemap().
+
+// Point-light array. Same schema as terrain/static-mesh/skeletal
+// shaders: xyz = world position, w = radius; rgb = linear color,
+// w = intensity. Iterated per fragment against the CANOPY normal
+// (up-vector); trees are treated as diffuse sky-facing volumes so
+// point-light hit depends on distance not surface facing.
+#define MAX_LIGHTS 32
+uniform vec4 uLightPosRadius[MAX_LIGHTS];
+uniform vec4 uLightColorIntensity[MAX_LIGHTS];
+uniform int uLightCount;
 )glsl";
 
 const char* kTreeFSMain = R"glsl(
@@ -117,7 +128,30 @@ void main()
     // kSkyAmbient / kGroundAmbient / kSunTint -- from kAmbientConstantsGLSL.
     vec3 ambient = mix(kGroundAmbient, kSkyAmbient, skyFactor);
     float shadow = sampleSunShadow(vWorldPos, canopyN);
-    vec3 surface = base.rgb * (ambient + kSunTint * halfL * shadow);
+
+    // Point-light contribution against the canopy up-vector. Same
+    // formula as terrain / static-mesh / skeletal. Trees close to a
+    // torch pick up a warm wash on their sky-facing side.
+    vec3 pointLight = vec3(0.0);
+    for (int i = 0; i < uLightCount; ++i)
+    {
+        vec3 toLight = uLightPosRadius[i].xyz - vWorldPos;
+        float dist = length(toLight);
+        float radius = uLightPosRadius[i].w;
+        if (radius <= 0.0 || dist >= radius)
+            continue;
+        vec3 ldir = toLight / max(dist, 1e-4);
+        float ndotl = dot(canopyN, ldir) * 0.5 + 0.5;
+        // Inverse-square attenuation with smooth cutoff (see TerrainShader).
+        float dr = dist / max(radius, 1e-4);
+        float invSq = 1.0 / (1.0 + 2.0 * dr + dr * dr);
+        float window = 1.0 - smoothstep(radius * 0.75, radius, dist);
+        float falloff = invSq * window;
+        pointLight += uLightColorIntensity[i].rgb * uLightColorIntensity[i].w
+                      * (ndotl * falloff);
+    }
+
+    vec3 surface = base.rgb * (ambient + kSunTint * halfL * shadow + pointLight);
 
     // Aerial perspective (same atmosphere as region + sky).
     vec3 viewVec = vWorldPos - uCamPos;
@@ -154,6 +188,14 @@ GLint sUniShadowCamPosLoc = -1;
 GLint sUniKSkyAmbientLoc = -1;
 GLint sUniKGroundAmbientLoc = -1;
 GLint sUniKSunTintLoc = -1;
+GLint sUniLightPosRadiusLoc = -1;
+GLint sUniLightColorIntensityLoc = -1;
+GLint sUniLightCountLoc = -1;
+
+constexpr int kMaxLights = 32;
+int sTreeLightCount = 0;
+float sTreeLightPosRadius[kMaxLights * 4] = {};
+float sTreeLightColorIntensity[kMaxLights * 4] = {};
 
 } // namespace
 
@@ -182,6 +224,9 @@ bool initTreeShader()
     sUniKSkyAmbientLoc = glGetUniformLocation(sProgram, "uKSkyAmbient");
     sUniKGroundAmbientLoc = glGetUniformLocation(sProgram, "uKGroundAmbient");
     sUniKSunTintLoc = glGetUniformLocation(sProgram, "uKSunTint");
+    sUniLightPosRadiusLoc = glGetUniformLocation(sProgram, "uLightPosRadius[0]");
+    sUniLightColorIntensityLoc = glGetUniformLocation(sProgram, "uLightColorIntensity[0]");
+    sUniLightCountLoc = glGetUniformLocation(sProgram, "uLightCount");
 
     glUseProgram(sProgram);
     glUniform1i(sUniBaseColorLoc, 0);
@@ -208,15 +253,59 @@ void shutdownTreeShader()
 void useTreeShader()
 {
     glUseProgram(sProgram);
-    // Push global ambient + sun tint from Tunables (F1-tunable).
-    const auto& L = selva::tuning::current().lighting;
+    // Read the frame's active lighting env (resolved from camera XZ).
+    // Foliage in the Wood picks up sunlit ambient; if a tree ever
+    // grows in Limbo it'd pick up cavern ambient instead. Fall back
+    // to Tunables when env isn't set yet.
+    const auto& env = selva::render::activeLightingEnv();
+    const auto& fallback = selva::tuning::current().lighting;
+    const glm::vec3 sky =
+        (env.sky_ambient.x + env.sky_ambient.y + env.sky_ambient.z) > 0.0f
+            ? env.sky_ambient
+            : fallback.sky_ambient;
+    const glm::vec3 ground =
+        (env.ground_ambient.x + env.ground_ambient.y + env.ground_ambient.z) > 0.0f
+            ? env.ground_ambient
+            : fallback.ground_ambient;
+    const glm::vec3 tint =
+        (env.sun_tint.x + env.sun_tint.y + env.sun_tint.z) > 0.0f
+            ? env.sun_tint * env.sun_multiplier
+            : fallback.sun_tint;
     if (sUniKSkyAmbientLoc >= 0)
-        glUniform3f(sUniKSkyAmbientLoc, L.sky_ambient.x, L.sky_ambient.y, L.sky_ambient.z);
+        glUniform3f(sUniKSkyAmbientLoc, sky.x, sky.y, sky.z);
     if (sUniKGroundAmbientLoc >= 0)
-        glUniform3f(sUniKGroundAmbientLoc, L.ground_ambient.x, L.ground_ambient.y,
-                    L.ground_ambient.z);
+        glUniform3f(sUniKGroundAmbientLoc, ground.x, ground.y, ground.z);
     if (sUniKSunTintLoc >= 0)
-        glUniform3f(sUniKSunTintLoc, L.sun_tint.x, L.sun_tint.y, L.sun_tint.z);
+        glUniform3f(sUniKSunTintLoc, tint.x, tint.y, tint.z);
+    // Push point lights (torches, campfires) accumulated by
+    // setTreePointLights. Same schema as terrain / static-mesh /
+    // skeletal shaders so a torch lights foliage the same way it
+    // lights walls.
+    if (sTreeLightCount > 0 && sUniLightPosRadiusLoc >= 0)
+        glUniform4fv(sUniLightPosRadiusLoc, sTreeLightCount, sTreeLightPosRadius);
+    if (sTreeLightCount > 0 && sUniLightColorIntensityLoc >= 0)
+        glUniform4fv(sUniLightColorIntensityLoc, sTreeLightCount, sTreeLightColorIntensity);
+    if (sUniLightCountLoc >= 0)
+        glUniform1i(sUniLightCountLoc, sTreeLightCount);
+}
+
+void setTreePointLights(const std::vector<engine::world::LightSource>& lights)
+{
+    const int total = static_cast<int>(lights.size());
+    const int n = std::min(total, kMaxLights);
+    for (int i = 0; i < n; ++i)
+    {
+        const auto& L = lights[static_cast<size_t>(i)];
+        sTreeLightPosRadius[i * 4 + 0] = L.position.x;
+        sTreeLightPosRadius[i * 4 + 1] = L.position.y;
+        sTreeLightPosRadius[i * 4 + 2] = L.position.z;
+        sTreeLightPosRadius[i * 4 + 3] = L.radius;
+        sTreeLightColorIntensity[i * 4 + 0] = L.color.x;
+        sTreeLightColorIntensity[i * 4 + 1] = L.color.y;
+        sTreeLightColorIntensity[i * 4 + 2] = L.color.z;
+        sTreeLightColorIntensity[i * 4 + 3] = L.intensity;
+    }
+    sTreeLightCount = n;
 }
 
 void setTreeView(const glm::mat4& /*view*/)

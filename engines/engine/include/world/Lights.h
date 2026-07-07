@@ -54,6 +54,21 @@ struct LightSource
 // rendering (lights are additive).
 void registerLight(const LightSource& light);
 
+// Register OR update a light identified by a stable string id. First
+// call with a new id appends; subsequent calls overwrite the entry's
+// fields. Use for moving lights (held torches, actor-carried
+// lanterns) whose position must be re-set per frame. Passing an
+// empty id is equivalent to registerLight() — a permanent entry
+// without an update handle. Calls without an intervening
+// clearLights() persist across frames.
+void registerOrUpdateLight(const char* id, const LightSource& light);
+
+// Remove a single light by its id. No-op if the id was never
+// registered via registerOrUpdateLight (or has already been
+// unregistered). Used for despawn (weapon un-equipped, actor
+// removed).
+void unregisterLight(const char* id);
+
 // Remove all registered lights. Called on region unload.
 void clearLights();
 

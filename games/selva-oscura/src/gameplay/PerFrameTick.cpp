@@ -75,6 +75,7 @@
 #include "render/RegionShaders.h"
 #include "render/ShadowPass.h"
 #include "render/SkyPass.h"
+#include "render/ActiveLightingEnv.h"
 #include "render/TerrainShader.h"
 #include "render/TreeShader.h"
 #include "render/WorldRenderer.h"
@@ -4652,7 +4653,13 @@ static void tickFrameCaptureWrite()
 // Apply per-light flicker (modulates intensity) so the region mesh's
 // point-light contribution stays in sync with the sprite pass's
 // visible flame brightness.
-static void uploadFlickeredScenePointLights()
+// Push the current registered lights to the non-terrain shader paths,
+// filtered by the active terrain region so lights authored for one
+// region (e.g. Limbo campfires) don't bleed into another (e.g. Wood
+// surface). Lights with `region_name == nullptr` apply everywhere.
+// Terrain draws multiple regions per frame; it runs its own per-region
+// filter in WorldRenderer.
+static void uploadFlickeredScenePointLights(const char* active_terrain_region)
 {
     const auto& base_lights = engine::world::allLights();
     std::vector<engine::world::LightSource> flickered;
@@ -4660,11 +4667,21 @@ static void uploadFlickeredScenePointLights()
     const float t = selva::wallClock();
     for (size_t li = 0; li < base_lights.size(); ++li)
     {
-        engine::world::LightSource L = base_lights[li];
+        const auto& src = base_lights[li];
+        if (src.region_name != nullptr && active_terrain_region != nullptr
+            && std::strcmp(src.region_name, active_terrain_region) != 0)
+            continue;
+        engine::world::LightSource L = src;
         L.intensity = engine::world::flickerIntensity(static_cast<int>(li), t);
         flickered.push_back(L);
     }
     selva::render::setScenePointLights(flickered);
+    // Same set feeds the skeletal shader so characters + NPCs pick up
+    // torches, campfires, braziers the same way terrain + walls do.
+    selva::anim::setSkeletalPointLights(flickered);
+    // Same set feeds the tree shader so foliage picks up point lights
+    // (a torch approaching a pine warms the leaves nearest the flame).
+    selva::render::setTreePointLights(flickered);
 }
 
 namespace
@@ -4848,6 +4865,34 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
     const glm::vec3 kSunIntensity = cam.sun_intensity;
     const float kExposure = cam.exposure;
 
+    // Resolve the frame's ambient environment from the terrain region
+    // the camera is standing in. All shader use...() functions read
+    // this so characters + walls + trees pick up the correct ambient
+    // for the current region (dark cavern in Limbo, sunlit Wood on
+    // the surface). Also used for region-scoped light culling so a
+    // Wood-side campfire doesn't leak illumination into Limbo below.
+    const auto* activeTerrainRegion =
+        selva::world::terrainRegionAt(camPos.x, camPos.z);
+    const char* activeTerrainRegionName =
+        (activeTerrainRegion != nullptr) ? activeTerrainRegion->name.c_str() : nullptr;
+    {
+        selva::render::ActiveLightingEnv env{};
+        const auto* tregion = activeTerrainRegion;
+        if (tregion != nullptr)
+        {
+            env.sky_ambient =
+                glm::vec3(tregion->sky_ambient[0], tregion->sky_ambient[1],
+                          tregion->sky_ambient[2]);
+            env.ground_ambient =
+                glm::vec3(tregion->ground_ambient[0], tregion->ground_ambient[1],
+                          tregion->ground_ambient[2]);
+            const auto& L = selva::tuning::current().lighting;
+            env.sun_tint = L.sun_tint;
+            env.sun_multiplier = tregion->sun_multiplier;
+        }
+        selva::render::setActiveLightingEnv(env);
+    }
+
     runShadowDepthPass();
 
     // Main pass: bind the shadow texture so main shaders can sample.
@@ -4872,7 +4917,7 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
         selva::render::setSceneViewProj(viewProj);
         selva::render::setSceneAtmosphere(kSunDir, kSunIntensity, camPos, kExposure);
         selva::render::setSceneShadow(lightVP, kSunDir, sPlayer.pos, 1);
-        uploadFlickeredScenePointLights();
+        uploadFlickeredScenePointLights(activeTerrainRegionName);
         selva::render::setSceneFlatShading(selva::debug::flags().flat_shading);
         if (selva::debug::flags().msaa_state_log)
         {
@@ -4941,6 +4986,7 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
     {
         ZoneScopedN("actor-meshes");
         selva::anim::setSkeletalShadow(lightVP, kSunDir, sPlayer.pos, 1);
+        selva::anim::setSkeletalCamPos(camPos);
         selva::anim::setSkeletalExposure(selva::render::atmosphere::exposure());
         drawActorMeshes(viewProj, camPos);
     }

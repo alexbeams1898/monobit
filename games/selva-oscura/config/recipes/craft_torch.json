@@ -1,0 +1,11 @@
+{
+  "_comment": "Base entry of the fire weapon tree. Stick shaft, pale-lichen wick, larval-residue fuel. Yields one torch. Subsequent tiers of the fire weapon tree unlock via mastery / weapon XP.",
+  "name": "Torch",
+  "inputs": [
+    { "item": "config/items/materials/stick.json",          "quantity": 1 },
+    { "item": "config/items/materials/pale_lichen.json",    "quantity": 1 },
+    { "item": "config/items/materials/larval_residue.json", "quantity": 1 }
+  ],
+  "output": "config/items/weapons/torch.json",
+  "output_quantity": 1
+}

@@ -175,7 +175,15 @@ void main()
             continue;
         vec3 ldir = toLight / max(dist, 1e-4);
         float ndotl = dot(vNormal, ldir) * 0.5 + 0.5;
-        float falloff = 1.0 - smoothstep(0.0, radius, dist);
+        // Inverse-square attenuation with smooth cutoff at radius.
+        // Standard Elden Ring form: brightness ~1.0 at the light,
+        // ~0.25 at half radius, ~0.05 at radius. Windowing term
+        // pulls the residual cleanly to zero so the light doesn't
+        // leak past its declared range.
+        float dr = dist / max(radius, 1e-4);
+        float invSq = 1.0 / (1.0 + 2.0 * dr + dr * dr);
+        float window = 1.0 - smoothstep(radius * 0.75, radius, dist);
+        float falloff = invSq * window;
         pointLight += uLightColorIntensity[i].rgb * uLightColorIntensity[i].w
                       * (ndotl * falloff);
     }

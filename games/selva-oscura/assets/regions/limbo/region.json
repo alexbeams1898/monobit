@@ -29,16 +29,44 @@
   ],
   "terrain_modifiers": [
     {
-      "_comment": "Acheron trench. The river that cuts E-W across Limbo per [[project_acheron_river_lore]]. Disc Limbo radius 300m, center Z=-621.15. Trench is a chord at Z=-385 (~32m south of the corridor landing at Z=-353.15) -- the first feature the player encounters walking into Limbo. Trench depth 4m below Limbo floor (-43.13), 12m wide N-S, 340m wide E-W (170m half-extent stays 15m short of disc rim at ±185m). Sharp -X/+X edges (disc rim clips laterally), sloped -Z/+Z banks (5m blend pad = ~38° grade).",
-      "debug_name": "limbo_acheron_trench",
+      "_comment": "Acheron + castle moat as ONE concave polygon. The E-W Acheron main channel (Z=[-391,-379], X=[-170,+170]) branches south via a 12m channel (X=[-152,-140]) that terminates at the castle's moat. The moat half-wraps the castle on its compass-north and compass-east faces (an L-shape hugging the NE corner) -- historically accurate to Castel Sant'Angelo where the Tiber only bends around part of the mausoleum. Inner moat edges TOUCH the castle outer wall (Z=-607.5 on north, X=-101.5 on east) with sharp blend pad so terrain doesn't ramp into the castle foundation. Outer moat + Acheron banks use soft 5m pads for natural shorelines. Disc-rim E/W edges of Acheron sharp (0m) so they clip against the disc boundary. Vertices CCW-wound starting at Acheron SW. Water surface Y = -47.13 (4m below Limbo floor at -43.13).",
+      "debug_name": "limbo_acheron_and_moat",
       "terrain_region": "limbo",
-      "mode": "FlushAt",
-      "center_xz": [0.0, -385.0],
-      "half_extents_xz": [170.0, 6.0],
+      "mode": "PolygonFlushAt",
       "value": -47.13,
-      "blend_pad": 0.0,
-      "blend_pad_neg_z": 5.0,
-      "blend_pad_pos_z": 5.0
+      "blend_pad": 5.0,
+      "vertices_xz": [
+        [-170.0, -391.0],
+        [-152.0, -391.0],
+        [-152.0, -592.5],
+        [-190.5, -592.5],
+        [-190.5, -607.5],
+        [-101.5, -607.5],
+        [-101.5, -696.5],
+        [ -86.5, -696.5],
+        [ -86.5, -592.5],
+        [-140.0, -592.5],
+        [-140.0, -391.0],
+        [ 170.0, -391.0],
+        [ 170.0, -379.0],
+        [-170.0, -379.0]
+      ],
+      "edge_blend_pads": [
+        -1.0,
+        -1.0,
+        -1.0,
+        -1.0,
+         0.0,
+         0.0,
+        -1.0,
+        -1.0,
+        -1.0,
+        -1.0,
+        -1.0,
+         0.0,
+        -1.0,
+         0.0
+      ]
     }
   ],
   "triggers": [

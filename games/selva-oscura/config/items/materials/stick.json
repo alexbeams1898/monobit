@@ -1,0 +1,9 @@
+{
+  "_comment": "Tier-0 crafted intermediate. Bark scrap trimmed and split -- the wood beneath the outer black. Used as the shaft for the fire weapon tree (torch base) and eventually other tool crafts. Universal, class-agnostic; both Wood-side and Hell-side crafters use the same stick.",
+  "name": "Stick",
+  "description": "A length of pale pine, split from the inner bark. Straight enough to hold, hard enough to burn.",
+  "category": "material",
+  "rarity": "common",
+  "stackable": true,
+  "max_stack": 99
+}

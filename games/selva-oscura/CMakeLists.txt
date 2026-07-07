@@ -97,6 +97,7 @@ add_library(selva-oscura-lib STATIC
     src/insight/Insight.cpp
     src/insight/InsightLayout.cpp
     src/lang/Language.cpp
+    src/render/ActiveLightingEnv.cpp
     src/render/Atmosphere.cpp
     src/render/Camera.cpp
     src/render/RegionGeometry.cpp

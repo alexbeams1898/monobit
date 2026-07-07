@@ -1,0 +1,22 @@
+{
+  "_comment": "Base entry of the fire weapon tree. A stick wound with lichen dipped in larval residue that keeps a flame. Dual-purpose: illuminates the darker reaches of the descent (Limbo, the castle's interior corridors) AND functions as a light bludgeon. Refinements of the tree land later (firebrand, cauterizer, class-specific end-tiers). Held in either hand like any weapon. Damage is low; the value is the light.",
+
+  "name": "Torch",
+  "description": "A stick wound with pale lichen and dipped in larval residue. The flame will not go out.",
+  "category": "weapon",
+  "rarity": "common",
+  "stackable": false,
+  "max_stack": 1,
+  "max_durability": 80.0,
+
+  "visual_weapon": "assets/weapons/torch/torch.gltf",
+  "weapon_class_id": "sword",
+
+  "base_damage": 15.0,
+  "weight": 1.4,
+
+  "dex_scaling": 0.5,
+  "str_scaling": 0.3,
+  "dex_requirement": 1,
+  "str_requirement": 1
+}

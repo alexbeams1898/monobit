@@ -181,6 +181,17 @@ the **Ornate Medieval Mace** model from Polyhaven.
   AO/roughness/metallic)
 - **Polycount:** ~15K triangles
 
+### Dead Quiver Branch (torch shaft)
+
+The torch's shaft (`assets/weapons/torch/`) uses the **Dead Quiver
+Branch 01** model from Polyhaven, repurposed as a wooden torch handle.
+
+- **Source:** https://polyhaven.com/a/dead_quiver_branch_01
+- **License:** CC0 1.0 Universal (public domain dedication; no
+  attribution required, credit given as courtesy)
+- **Format:** glTF 2.0 (.gltf + .bin + 1K JPG textures: diffuse, normal,
+  AO/roughness/metallic)
+
 ## Audio
 
 ### Music
