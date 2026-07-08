@@ -5,6 +5,7 @@ project(WaywornHush VERSION 0.1.0 LANGUAGES C CXX)
 # Game-specific logic -- static library linked by both the game exe and tests.
 add_library(wayworn-systems STATIC
     src/GameLoop.cpp
+    src/WorldInit.cpp
 )
 
 target_include_directories(wayworn-systems PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)

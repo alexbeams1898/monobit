@@ -1,8 +1,10 @@
 #include "Engine.h"
 #include "GameLoop.h"
 #include "Version.h"
+#include "WorldInit.h"
 #include "ecs/EntityManager.h"
 #include "gl/PixelRenderTarget.h"
+#include "systems/TileMapRenderer.h"
 
 #include <csignal>
 #include <cstdio>
@@ -98,11 +100,17 @@ int main(int argc, char* argv[])
     engine::gl::pixelTargetResize(engine.windowWidth(), engine.windowHeight());
     engine.setOnResize([](Engine&, int w, int h) { engine::gl::pixelTargetResize(w, h); });
 
+    // World-render subsystem (game-owned; mirrors the renderWorld callback).
+    TileMapRenderer::init();
+    world_init::buildPlaceholderRegion(em);
+    TileMapRenderer::upload(em.tile_map, em.tile_config, engine.textureManager());
+
     engine.setGameUpdate(&gameUpdate);
     engine.setRenderWorld(&gameRenderWorld);
     engine.setRenderUI(&gameRenderUI);
     engine.run();
 
+    TileMapRenderer::shutdown();
     engine::gl::pixelTargetShutdown();
     return 0;
 }
