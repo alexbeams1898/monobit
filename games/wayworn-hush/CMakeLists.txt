@@ -7,6 +7,7 @@ add_library(wayworn-systems STATIC
     src/GameLoop.cpp
     src/WorldInit.cpp
     src/PlayerMovement.cpp
+    src/PlayerConfig.cpp
 )
 
 target_include_directories(wayworn-systems PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)

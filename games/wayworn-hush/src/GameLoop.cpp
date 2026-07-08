@@ -13,25 +13,11 @@
 
 #include <SDL.h>
 
-#include <cmath>
-
-// Player walk speed in world px/sec. ~4 tiles/sec at 32px tiles -- an unhurried
-// wander pace (the game is about walking, not rushing). Tunable.
-namespace
-{
-constexpr float kPlayerSpeed = 130.0f;
-entt::entity sPlayer = entt::null;
-} // namespace
-
-void gameSetPlayer(entt::entity player)
-{
-    sPlayer = player;
-}
-
 void gameUpdate(Engine& engine, EntityManager& em, double dt)
 {
     (void)engine;
     auto& reg = em.registry();
+    const GameState& gs = reg.ctx().get<GameState>();
 
     // Snapshot positions for render interpolation before integrating.
     for (auto [e, t, pt] : reg.view<Transform, PreviousTransform>().each())
@@ -41,31 +27,31 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     }
 
     const Uint8* keys = SDL_GetKeyboardState(nullptr);
-    player_movement::update(em, sPlayer, keys, kPlayerSpeed, static_cast<float>(dt));
+    const PlayerConfig& pc = gs.player_config;
 
-    // Facing + walk/idle from the resulting velocity. Moving -> face movement
-    // direction (diagonals snap to the dominant cardinal) and animate; still ->
-    // hold the current direction's first (standing) frame.
-    if (reg.valid(sPlayer))
+    // Hold Shift to fast-walk: faster movement + brisker leg cadence.
+    const bool fast = keys[SDL_SCANCODE_LSHIFT] != 0 || keys[SDL_SCANCODE_RSHIFT] != 0;
+    const float speed = fast ? pc.speed * pc.run_speed_mult : pc.speed;
+    player_movement::update(em, gs.player, keys, speed, static_cast<float>(dt));
+
+    // Facing + state from the resulting velocity. Moving -> face movement
+    // direction (diagonals snap to the dominant cardinal) and play walk or
+    // fast-walk; still -> hold the standing pose for the last direction.
+    auto& anim = reg.get<Animation>(gs.player);
+    const auto& vel = reg.get<Velocity>(gs.player);
+    if (vel.dx != 0.0f || vel.dy != 0.0f)
     {
-        if (auto* anim = reg.try_get<Animation>(sPlayer))
-        {
-            const auto& vel = reg.get<Velocity>(sPlayer);
-            const bool moving = (vel.dx != 0.0f || vel.dy != 0.0f);
-            if (moving)
-            {
-                anim->dir = engine::direction::snapMovement(vel.dx, vel.dy, anim->direction_count);
-                anim->current_row = 0; // Walk
-                anim->current_frames = 4;
-                anim->current_duration = 0.14f; // ~7fps
-            }
-            else
-            {
-                anim->current_row = 1; // Idle (standing pose, holds last direction)
-                anim->current_frames = 1;
-                anim->current_duration = 0.0f;
-            }
-        }
+        anim.dir = engine::direction::snapMovement(vel.dx, vel.dy, anim.direction_count);
+        const PlayerConfig::AnimState& st = fast ? pc.fast_walk : pc.walk;
+        anim.current_row = st.row;
+        anim.current_frames = st.frames;
+        anim.current_duration = st.duration;
+    }
+    else
+    {
+        anim.current_row = pc.idle.row;
+        anim.current_frames = pc.idle.frames;
+        anim.current_duration = pc.idle.duration;
     }
 
     // Snap the active camera to its entity (the player).

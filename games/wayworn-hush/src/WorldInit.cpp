@@ -14,10 +14,8 @@ constexpr int kRock = 1;  // solid
 constexpr int kRegionW = 48;
 constexpr int kRegionH = 48;
 
-// Placeholder player box. 32x64 art bounds; the collider is a small foot box so
-// the sprite tucks behind objects and Y-sorts by the feet.
-constexpr int kPlayerArtW = 32;
-constexpr int kPlayerArtH = 64;
+// Foot collider: a small box at the sprite's base so the character tucks behind
+// objects and Y-sorts by where it stands. Fixed geometry, not animation data.
 constexpr float kPlayerFootW = 24.0f;
 constexpr float kPlayerFootH = 12.0f;
 } // namespace
@@ -55,7 +53,7 @@ void buildPlaceholderRegion(EntityManager& em)
     cfg.tile_visuals[kRock] = {0, 0, 0.34f, 0.35f, 0.38f};  // cool stone grey
 }
 
-entt::entity spawnPlayer(EntityManager& em)
+entt::entity spawnPlayer(EntityManager& em, const PlayerConfig& cfg)
 {
     auto& reg = em.registry();
     const entt::entity player = reg.create();
@@ -68,33 +66,29 @@ entt::entity spawnPlayer(EntityManager& em)
     reg.emplace<Velocity>(player);
     reg.emplace<Collider>(player, Collider{kPlayerFootW, kPlayerFootH, true});
 
-    // The protagonist sprite sheet (4 dirs x 4 walk frames, 32x64 cells).
-    // With an Animation component, RenderSystem draws the cell the animation
-    // selects (dir + frame); src_w/h define the cell size. sort_anchor at the
-    // feet so Y-sort orders it by where it stands, not its top.
+    // Animated sprite sheet. RenderSystem draws the cell the Animation selects
+    // (dir + frame); src_w/h are the cell size. sort_anchor at the feet so
+    // Y-sort orders the sprite by where it stands, not its top.
     Sprite spr{};
-    spr.texture_path = "assets/sprites/player_walk.png";
-    spr.src_w = kPlayerArtW;
-    spr.src_h = kPlayerArtH;
+    spr.texture_path = cfg.texture;
+    spr.src_w = cfg.frame_width;
+    spr.src_h = cfg.frame_height;
     spr.layer = 2; // characters layer (above ground tiles)
     spr.use_sort_anchor = true;
     spr.sort_anchor = kPlayerFootH * 0.5f;
     reg.emplace<Sprite>(player, spr);
 
-    // Sheet layout: one Walk row, 4 directions, 4 frames each. Column selected
-    // by the engine as dir_index * max_frames + frame_index -- matches how the
-    // sheet was assembled (see scripts / assets/sprites/player_walk.png).
-    // Row 0 = Walk (4 frames/dir), row 1 = Idle (1 standing frame/dir). Column
-    // stride is max_frames_per_state (4) so both rows align to dir*4 + frame.
+    // Column = dir_index * max_frames_per_state + frame_index, so every state
+    // row aligns to the same per-direction stride. Starts idle (standing).
     Animation anim{};
-    anim.frame_width = kPlayerArtW;
-    anim.frame_height = kPlayerArtH;
-    anim.max_frames_per_state = 4;
+    anim.frame_width = cfg.frame_width;
+    anim.frame_height = cfg.frame_height;
+    anim.max_frames_per_state = cfg.max_frames_per_state;
+    anim.direction_count = cfg.direction_count;
     anim.row_count = 2;
-    anim.direction_count = 4;
-    anim.current_row = 1; // start idle (standing)
-    anim.current_frames = 1;
-    anim.current_duration = 0.0f;
+    anim.current_row = cfg.idle.row;
+    anim.current_frames = cfg.idle.frames;
+    anim.current_duration = cfg.idle.duration;
     reg.emplace<Animation>(player, anim);
 
     Camera cam{};

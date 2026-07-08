@@ -1,9 +1,19 @@
 #pragma once
 
+#include "PlayerConfig.h"
+
 #include <entt/entt.hpp>
 
 class Engine;
 class EntityManager;
+
+// Game-wide runtime state, stored as a singleton in the entt registry context
+// (reg.ctx()). Systems read it from there rather than from file-scope globals.
+struct GameState
+{
+    entt::entity player = entt::null;
+    PlayerConfig player_config;
+};
 
 // Internal pixel-art resolution. The world renders here, then integer-upscales
 // to the window (see gl/PixelRenderTarget). 768x432 = 16:9, 24x13.5 tiles at
@@ -22,12 +32,7 @@ inline constexpr float kAmbientB = 0.24f;
 
 // Game-side per-frame callbacks the engine invokes. The engine owns the frame
 // (window, GL, fixed-step loop, clear, swap); these are where the game does its
-// work. Slice stage: the world renders into the pixel target (empty for now)
-// and blits up. Systems fill in as the vertical slice is built.
-
-// Tells the game loop which entity is the player (movement target). Called once
-// after the player is spawned.
-void gameSetPlayer(entt::entity player);
+// work. State (player entity, config) lives in the registry-context GameState.
 
 void gameUpdate(Engine& engine, EntityManager& em, double dt);
 void gamePreRender(Engine& engine, EntityManager& em);

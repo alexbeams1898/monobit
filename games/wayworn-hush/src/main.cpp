@@ -110,7 +110,10 @@ int main(int argc, char* argv[])
 
     world_init::buildPlaceholderRegion(em);
     TileMapRenderer::upload(em.tile_map, em.tile_config, engine.textureManager());
-    gameSetPlayer(world_init::spawnPlayer(em));
+
+    GameState& gs = em.registry().ctx().emplace<GameState>();
+    gs.player_config = loadPlayerConfig("config/player.json");
+    gs.player = world_init::spawnPlayer(em, gs.player_config);
 
     // The region's ambient bed. Loops with a slow fade-in so the world eases in
     // rather than snapping on. Low volume -- the score is sparse and unhurried
