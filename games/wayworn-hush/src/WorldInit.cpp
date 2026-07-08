@@ -68,17 +68,16 @@ entt::entity spawnPlayer(EntityManager& em)
     reg.emplace<Velocity>(player);
     reg.emplace<Collider>(player, Collider{kPlayerFootW, kPlayerFootH, true});
 
-    // Placeholder colored box at the 32x64 art size. SolidColor renders it as an
-    // untextured fill until the authored sprite lands. sort_anchor at the feet so
-    // Y-sort orders it by where it stands, not its top.
+    // The protagonist sprite (32x64, RGBA with transparent background).
+    // sort_anchor at the feet so Y-sort orders it by where it stands, not its top.
     Sprite spr{};
+    spr.texture_path = "assets/sprites/player.png";
     spr.src_w = kPlayerArtW;
     spr.src_h = kPlayerArtH;
     spr.layer = 2; // characters layer (above ground tiles)
     spr.use_sort_anchor = true;
     spr.sort_anchor = kPlayerFootH * 0.5f;
     reg.emplace<Sprite>(player, spr);
-    reg.emplace<SolidColor>(player, SolidColor{0.82f, 0.58f, 0.36f}); // warm placeholder
 
     Camera cam{};
     cam.x = cx;
