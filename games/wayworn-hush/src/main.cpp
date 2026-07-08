@@ -2,6 +2,7 @@
 #include "GameLoop.h"
 #include "Version.h"
 #include "ecs/EntityManager.h"
+#include "gl/PixelRenderTarget.h"
 
 #include <csignal>
 #include <cstdio>
@@ -84,15 +85,20 @@ int main(int argc, char* argv[])
     // This game's world grid: 16px tiles (the 8-16-bit overworld register).
     em.tile_map.tile_size = 16;
 
-    // Placeholder ambient background. The palette direction is deliberately
-    // unresolved (see docs/design/AESTHETIC.md); this muted slate is a neutral
-    // stand-in, not a committed color.
-    engine.setClearColor(0.20f, 0.22f, 0.24f);
+    // The engine clear fills the window (letterbox bars); the pixel target
+    // clears the internal image to the same color -- so the two agree.
+    engine.setClearColor(kAmbientR, kAmbientG, kAmbientB);
+
+    // Pixel-perfect upscaling target: world renders at internal res, blits up.
+    engine::gl::pixelTargetInit(kInternalWidth, kInternalHeight);
+    engine::gl::pixelTargetResize(engine.windowWidth(), engine.windowHeight());
+    engine.setOnResize([](Engine&, int w, int h) { engine::gl::pixelTargetResize(w, h); });
 
     engine.setGameUpdate(&gameUpdate);
     engine.setRenderWorld(&gameRenderWorld);
     engine.setRenderUI(&gameRenderUI);
     engine.run();
 
+    engine::gl::pixelTargetShutdown();
     return 0;
 }

@@ -32,6 +32,7 @@ target_sources(engine PRIVATE
     src/systems/CameraPanSystem.cpp
     src/utils/DirectionUtils.cpp
     src/gl/ShaderUtils.cpp
+    src/gl/PixelRenderTarget.cpp
 )
 
 target_include_directories(engine

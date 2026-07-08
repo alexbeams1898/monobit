@@ -2,10 +2,12 @@
 
 #include "Engine.h"
 #include "ecs/EntityManager.h"
+#include "gl/PixelRenderTarget.h"
 
-// Scaffold stage: no world, no systems yet. The engine clears the framebuffer
-// to the ambient color and swaps; these callbacks intentionally do nothing
-// until the tilemap, player, and render passes land in later slice steps.
+// Slice stage: no world content or systems yet. The world-render callback binds
+// the internal-res pixel target, clears it, draws nothing, and blits it up to
+// the window. Tilemap, player, and render passes drop into the marked span in
+// later slice steps.
 
 void gameUpdate(Engine& engine, EntityManager& em, double dt)
 {
@@ -16,11 +18,14 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
 
 void gameRenderWorld(Engine& engine, EntityManager& em, float camX, float camY, float alpha)
 {
-    (void)engine;
     (void)em;
     (void)camX;
     (void)camY;
     (void)alpha;
+
+    engine::gl::pixelTargetBegin(kAmbientR, kAmbientG, kAmbientB);
+    // --- world draws here (TileMapRenderer + RenderSystem) in later steps ---
+    engine::gl::pixelTargetEnd(engine.windowWidth(), engine.windowHeight());
 }
 
 void gameRenderUI(Engine& engine, EntityManager& em)
