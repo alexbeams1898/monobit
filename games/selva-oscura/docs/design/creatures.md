@@ -205,8 +205,8 @@ Behavior categories that act as evolutionary pressures:
   combat exposure; those that survive are *more combat-fit.* Same
   substance, different expression: aggression / armor / damage
   tolerance is selected for.
-- **Economic path.** Sangue-installation (Crucible, class-picker)
-  vs sangue-effusion (Censer / riversamento, unburdened) produces
+- **Economic path.** Sangue-installation (commit, class-picker)
+  vs sangue-effusion (commit / riversamento, unburdened) produces
   different selective pressures on captured creatures. Installers
   produce *Hell-aligned* organisms (sangue-saturated, almost
   Hellish); pourers produce *Wood-aligned* organisms (more rooted,

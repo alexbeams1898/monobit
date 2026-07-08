@@ -32,7 +32,7 @@ the player chooses modern phrasings; the world replies in old words.
 | Gate signage / environmental text | Old, bureaucratic | Hell's accounting language |
 | Death-card | Mixed | *NOT YET* (modern) / *THOU DOST NOT BELONG* (old) |
 | Beatrice (in Grimoire / her own register) | Old, formal | Calls Vagrant **Pilgrim**. Never speaks in-game until her appearance at R4 Branch B/C; even then, fragmentary / rabid |
-| Beatrice (in REFUSAL/PURITY combat) | Fragmentary | Rabid, no coherent sentences, no recognition of the Vagrant |
+| Beatrice (in REFUSAL / RIVERSAMENTO / PURITY combat) | Fragmentary | Rabid, no coherent sentences, no recognition of the Vagrant |
 
 ## NPC dialogue is state-aware
 
@@ -81,7 +81,7 @@ What choices affect:
 - **Possibly: NPC reward branch** (different rewards per dialogue
   outcome — TBD per NPC).
 - **Not: stats.** Dialogue does not directly grant stat increases —
-  that path goes through the Crucible (class-picker installation).
+  that path goes through commit (class-picker installation).
 - **Not: HP.** Dialogue does not heal — healing comes from the
   Guide's projections, NPC items, or other TBD mechanisms.
 
@@ -124,7 +124,7 @@ Implications:
   unidentified title-screen image.
 - **No NPC mentions the throne** before the post-Lucifer sequence. R3
   is concealed throughout the descent.
-- **No NPC mentions PURITY by name** before the unburdened path's
+- **No NPC mentions RIVERSAMENTO by name** before the unburdened path's
   discovery. Hints (the Guide's worry on Signing-refusal, the riversamento
   sites that activate state-aware NPC dialogue) seed the path
   without naming it.

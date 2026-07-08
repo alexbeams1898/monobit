@@ -26,13 +26,13 @@ satisfy.
   participated in moving.** Every act in the world is sangue
   moving (per setting.md *Sangue and the law of substance*) — a
   shade killed, an item picked up, a move learned, a stat installed
-  via the Crucible, a contrapasso restoring on a circle. All are
+  via commit, a contrapasso restoring on a circle. All are
   accounting surfaces of the same substance event. The class-
   picker's evolution L1→L2→L3 fires when the **total substance
   installed in his imprint** meets the next form's requirements.
   Requirements may be expressed as stat thresholds + items + learned
   moves + abilities — all of these are just sangue-state checked at
-  the next Crucible commitment.
+  the next commit.
 - **Class-evolution is Hell loading itself into the Vagrant.** As
   each circle's contrapasso restores (per setting.md), some of the
   substance catches on the class-picker's imprint. By
@@ -99,7 +99,7 @@ TBD).
 - L2 = mid-game. Triggered when the Vagrant's cumulative substance
   arrangement meets the class-specific L2 requirements
   (stat thresholds + items + learned moves + abilities). Commits at
-  the next Crucible use. The substance has installed enough to
+  the next commit. The substance has installed enough to
   support the next form.
 - L3 = late-game, full imprint. The halo arrives at L3 for Penitent /
   Heretic. Wretched at L3 has no halo (his punishment is
@@ -115,7 +115,7 @@ TBD).
   development + non-stat passives (specifics TBD; **no new stat
   fields are added by Svuotato**).
 - L3 = Diaphanous (the translucent) — has routed most of what could
-  be collected. The prerequisite for PURITY. Unlocks deeper
+  be collected. The prerequisite for RIVERSAMENTO. Unlocks deeper
   riversamento-themed capability (specifics TBD; **no new stat
   fields**).
 
@@ -126,11 +126,42 @@ specifics TBD.
 
 **A "true unburdened run" — total refusal — is mechanically
 possible.** A player who refused the Signing AND never uses a
-riversamento site stays at L1 Unburdened for the entire run. Stats
-stay 1/1/1/1, unburdened-evolution never fires, neither Svuotato
-nor Diaphanous unlocks. This is the absolute refusal — the path that
-refuses Hell's measurement AND Beatrice's reservoir. Hard by design;
-offers no progression mechanic at all.
+riversamento site stays at L1 Unburdened for the entire run on the
+BODY axis. Stats stay 1/1/1/1, unburdened-body-evolution never fires,
+neither Svuotato nor Diaphanous unlocks.
+
+**Formalized 2026-07-07: the Unburdened path has two branches.**
+Refusing the Signing at Beat 4 puts the Vagrant at the Unburdened
+base (L1). From there, the run branches on the riversamento decision:
+
+- **Riversamento branch (existing).** Vagrant performs riversamento.
+  Body-arc unlocks: L1 Unburdened → L2 Svuotato → L3 Diaphanous
+  (per the doctrine above). Ending: RIVERSAMENTO. See setting.md
+  *Endings*.
+- **True refusal branch (the Warden path).** Vagrant never performs
+  riversamento. Body stays at L1 Unburdened forever. Progression is
+  entirely mind-arc: the Mind stats (Perception / Cognition /
+  Intelligence) grow via cognitive engagement per
+  [cognition-system.md](cognition-system.md), and the True Refuser's
+  L2 and L3 milestones on the Mind arc are working-named **Gnosis**
+  (L2) and **Hierophant** (L3). Gnostic register — direct-knowing
+  and revealer-of-the-sacred, matching Soma's own philosophical
+  lineage. Ending: PURITY (the Warden ending, new). See setting.md
+  *Endings*.
+
+The mind-arc's stage names (Gnosis / Hierophant) are working-named
+and not yet content-locked. They ride on the shipped Mind stat
+system per [cognition-system.md](cognition-system.md); no new
+mechanic — the names are milestones on the existing arc, with L3
+Hierophant loading as the epistemic threshold for the Warden
+ending's reveal-eligibility.
+
+Doctrinally: the Unburdened path always was two-branched (the true
+refusal option was written as "mechanically possible" without a
+name). The 2026-07-07 formalization gives the true refusal branch a
+distinct ending (PURITY / the Warden) and a distinct progression
+readout (mind-arc). Both branches share L1 Unburdened; both refuse
+the Signing.
 
 **The Signing happens once, at Beat 4.** The Guide performs the
 ritual once; the player accepts or refuses in that moment, and the
@@ -148,7 +179,7 @@ end-to-end.
 
 The cosmological constraint above (contrapasso accretion contributes
 to evolution) means stat growth is driven by *both* sangue
-investment (player choice at the Crucible) *and* keeper-kills (passive,
+investment (player choice at commit) *and* keeper-kills (passive,
 imposed). The interaction of these two sources is open — possibly
 keeper-kills unlock evolution *thresholds*, with sangue investment
 determining where in the schema growth lands.
@@ -162,7 +193,7 @@ schema of base stats, organized into two groups:
 **Body (universal four):**
 
 - **STR**, **DEX**, **END**, **LCK** — the substrate axes. Grow
-  through Crucible-fire (sangue installation) for class-pickers;
+  through commit (sangue installation) for class-pickers;
   stay at 1/1/1/1 forever for the Unburdened, who refuses the
   installation channel. **All actors start at 1/1/1/1** at this
   floor.
@@ -179,7 +210,7 @@ schema of base stats, organized into two groups:
 
 For the class-picker, body-stat growth from the floor is the
 cosmological event of substance accumulating in the substrate (Hell
-installing, via the Crucible's fire). For the Unburdened, **the
+installing, via commit's fire). For the Unburdened, **the
 body floor is the ceiling.** Body numbers stay at 1/1/1/1 for the
 entire run; the unburdened path has no metabolic-fire (no imprint)
 to drive installation. Unburdened progression on the body side is
@@ -318,8 +349,9 @@ unlock-mask for stats*, below.
 The Vagrant's first weapon is a world-placed object found on the
 descent stairs (per inventory.md *The starting weapon is in a world
 container* and crafting.md *World-placed weapons*). The Signing
-unlocks the commit-verb capacity (Crucible for class-pickers,
-Censer for Unburdened); it does not gift a weapon. Class-pickers
+unlocks the commit-verb capacity (class-picker: installation
+outcome; Unburdened: riversamento outcome); it does not gift a
+weapon. Class-pickers
 and Unburdened reach the descent-stair weapon pre-Signing or post-
 Signing alike — the weapon is a world event, not a menu event.
 
@@ -339,7 +371,7 @@ the canonical case being a magic-school-equivalent stat — that field
 is added to the engine's `Stats` struct itself. It is present on
 every actor from boot. But it is **gated by an unlock-mask**
 (`stats_unlocked.faith = true`) and only appears in the HUD + at
-the Crucible's stat-spend panel when the unlock fires.
+the commit stat-spend panel when the unlock fires.
 
 ### Concrete example: Heretic L2 unlocks Faith
 
@@ -352,7 +384,7 @@ The Heretic class-picker, at L2 evolution, gains the ability to cast
   the level-up panel. Incantations cannot be cast. The field exists
   on `Stats` but is invisible and unused.
 - **At Heretic L2:** the bit flips to `true`. The Faith row appears
-  in the Crucible's stat-spend panel. The player can invest sangue
+  in the commit stat-spend panel. The player can invest sangue
   to raise it. Heretical incantations become available; their
   damage / range / cost scale with Faith.
 - **Unburdened, Penitent, Wretched, every enemy:** never see Faith.
@@ -456,15 +488,15 @@ both cosmologically outside the substance economy:
 **Universal across all four classes, including the Unburdened.**
 Both the resource pool AND the Mind-section stats grow on every
 path. The Unburdened-stays-at-1/1/1/1 lock applies only to body
-stats; cognitive growth has no Crucible dependency. Unburdened on
-PURITY route especially benefits because their non-stat-based
+stats; cognitive growth has no commit dependency. Unburdened on
+Warden-PURITY route especially benefits because their non-stat-based
 capabilities (passives, ability modifiers, frames-of-immunity per
 *The Unburdened does NOT use the unlock-mask for stats*, above) are
 Mind-pool-spent and Intelligence-scaled.
 
 **Mind pool powers cognitive abilities; class-specific scaling stats
 multiply them.** Concretely for the Heretic at L2: Faith
-(class-specific unlock-mask stat, raised at Crucible) scales
+(class-specific unlock-mask stat, raised via commit) scales
 incantation damage / range / cost. Intelligence (universal Mind
 stat) multiplies that further. Mind (this resource pool) is the
 capacity spent per cast. Three-way scaling per ability:
@@ -482,13 +514,13 @@ that display on Form.
 
 Locked 2026-06-11. Answers the long-standing tension between "the
 Vagrant arrives knowing nothing" and "the player needs to make an
-informed mechanical choice at the Crucible." Resolves the question
+informed mechanical choice at Beat 4." Resolves the question
 by SEPARATING the layers cleanly.
 
 ### The two layers
 
 **Mechanical identity is LEGIBLE.** When the player stands at the
-Crucible at Beat 4, the picker shows what each option DOES in plain
+class picker at Beat 4, the picker shows what each option DOES in plain
 terms: which stats it favors, what playstyle it enables, what the
 power curve looks like. The player is not gambling on an inscrutable
 label. They know they're picking the strength/endurance build vs
@@ -496,14 +528,14 @@ the cognitive build vs the precision build, the same way Souls
 players know "Knight" is the heavy-armor melee start.
 
 **Cosmological identity is VEILED.** The Vagrant does not know what
-the Crucible IS. He does not know what an imprint does. He does not
+the commit act IS. He does not know what an imprint does. He does not
 know what "Sumerian", "Roman", "Greek" mean cosmologically. The
 class names, the path names, the framing prose all arrive in their
 tier-0 voice — the Vagrant's voice at this state, per the implied-
 lesson doctrine. He sees a fire-vessel he's been told to commit
 into. He understands the stakes operationally, not metaphysically.
 
-These two layers COEXIST on the same screen. The Crucible picker
+These two layers COEXIST on the same screen. The Beat 4 class picker
 has both registers stacked:
 
 - **Mechanical layer (player-space):** "+STR, +END" / "heavy melee,
@@ -519,7 +551,7 @@ second.
 
 ### Why this is OK (and not a violation of the implied-lesson doctrine)
 
-The Crucible picker is a META-FRAME surface — it's the PLAYER
+The Beat 4 class picker is a META-FRAME surface — it's the PLAYER
 choosing, not the Vagrant. Same way the HUD sangue count and HP bar
 don't pretend to be in-fiction. The mechanical labels live in the
 player's space; the in-fiction prose lives in the Vagrant's space.
@@ -529,7 +561,7 @@ serves the player.
 
 This is the same separation already at work elsewhere: the player
 knows the HP bar shows damage capacity, the Vagrant knows only that
-he feels weaker. The Crucible picker just makes the separation
+he feels weaker. The Beat 4 class picker just makes the separation
 visible at a decision point.
 
 ### Promotion: the class name itself grows through play
@@ -579,7 +611,7 @@ significantly under this doctrine:
   class names in the language map; same machinery as every other
   insight unlock.
 - "Does the player know what they're picking?" — yes,
-  mechanically. The Crucible picker shows mechanical identity in
+  mechanically. The Beat 4 class picker shows mechanical identity in
   player-space.
 - "How do we balance mystery vs confusion?" — mystery lives in the
   in-fiction layer (cosmological identity, what the path MEANS);
@@ -819,7 +851,7 @@ Replaces the install-cost bias doctrine from
 project_class_bias_and_magic_split. The new rule:
 
 **Install cost is universal.** Every class pays the same sangue
-per stat point at the Crucible. What differs per class is the
+per stat point at commit time. What differs per class is the
 **diminishing-returns curve shape** -- the Elden Ring soft-cap
 model.
 
@@ -979,7 +1011,7 @@ The ledger is permanent. The lens is the active class.
 ### Why this shape
 
 - **Identity is what you DID, body is what you BOUGHT.** Sangue
-  commits buy body stats (Crucible verb); only actions earn identity
+  commits buy body stats (commit verb); only actions earn identity
   stats. The two progression vectors are mechanically separate.
 - **No conversion math at Erasure.** When the player switches class
   the HUD just swaps which function it evaluates. The ledger is

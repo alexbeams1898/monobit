@@ -55,7 +55,7 @@ namespace selva::gameplay
 //
 // `player_visible=false` hides the slider from the creator UI but the
 // runtime + save/load still honor the value. Used for dev-only knobs
-// (body_scale) and archetype-authored values (larva_fresh body_scale).
+// (body_scale) and archetype-authored values (foundling body_scale).
 struct AppearanceSliderDef
 {
     std::string id;

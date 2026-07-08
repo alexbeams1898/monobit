@@ -36,6 +36,13 @@ namespace selva::render
 // matrix is current.
 void drawEquippedWeapon(const selva::gameplay::Actor& actor);
 
+// Per-frame tick for the held-torch light. Called from PerFrameTick
+// (NOT the render pass, because the render pass returns early when
+// nothing is equipped, which would leak the last torch light after
+// a swap to unarmed). Registers a warm point light at the torch tip
+// when a torch is equipped in the right hand; unregisters otherwise.
+void tickHeldTorchLight(const selva::gameplay::Actor& actor);
+
 // Free GL resources for every cached weapon mesh. Called at shutdown
 // (or on a hard cache invalidate during dev iteration).
 void clearEquippedWeaponCache();

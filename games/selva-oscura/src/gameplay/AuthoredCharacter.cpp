@@ -77,7 +77,7 @@ AuthoredCharacter loadAuthoredCharacter(const std::string& path)
         return out;
     }
     // Appearance keys share the top-level namespace with identity
-    // keys. Pre-existing pure-Appearance files (larva_fresh.json,
+    // keys. Pre-existing pure-Appearance files (foundling.json,
     // keeper.json, ...) load cleanly -- the identity readers just
     // don't find their fields and leave defaults in place.
     readAppearanceFromJson(j, out.appearance, path);

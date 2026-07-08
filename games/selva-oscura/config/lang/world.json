@@ -29,7 +29,7 @@
     "unlock_node_tier_2": "guide_named_dissolved_souls"
   },
 
-  "world.larva_fresh.examine_label": {
+  "world.foundling.examine_label": {
     "tier_0": "(TODO: pre-examine label -- 'something thin, crawling'.)",
     "tier_1": "(TODO: post-examine label -- what the thing is DOING.)",
     "tier_2": "(TODO: post-Guide label -- arrival-queue cosmology named.)",
@@ -37,7 +37,7 @@
     "unlock_node_tier_2": "guide_named_arrival_queue"
   },
 
-  "world.larva_fresh.examine_text": {
+  "world.foundling.examine_text": {
     "tier_0": "(TODO: pre-examine body -- sensory at a distance.)",
     "tier_1": "(TODO: post-examine body -- functional. Suggestion: 'It waits in a line. Its body is set in one posture and does not break it. Others crawl past behind it.')",
     "tier_2": "(TODO: post-Guide body -- soul/imprint/queue vocabulary available.)",
@@ -45,7 +45,7 @@
     "unlock_node_tier_2": "guide_named_arrival_queue"
   },
 
-  "world.larva_aged_feeder.examine_label": {
+  "world.gorged_foundling_feeder.examine_label": {
     "tier_0": "(TODO: pre-examine label for a feeding larva.)",
     "tier_1": "(TODO: post-examine label -- functional.)",
     "tier_2": "(TODO: post-Guide label -- feeding-cycle named.)",
@@ -53,7 +53,7 @@
     "unlock_node_tier_2": "guide_named_feeding_cycle"
   },
 
-  "world.larva_aged_feeder.examine_text": {
+  "world.gorged_foundling_feeder.examine_text": {
     "tier_0": "(TODO: pre-examine body -- sensory.)",
     "tier_1": "(TODO: post-examine body -- functional. Suggestion: 'It crouches over the body of one of its kin and bites at it. The bites do not seem to take anything; the kin does not move.')",
     "tier_2": "(TODO: post-Guide body -- feeding-cycle vocabulary available.)",

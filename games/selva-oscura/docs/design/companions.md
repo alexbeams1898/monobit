@@ -18,7 +18,7 @@ Locked at story.md *The Guide / Functions* and *Geography*:
 
 - **Wood-side presence (real body).** The Guide is in the Wood
   between runs. The Vagrant interacts with him in the hub. Provides
-  warmth, dialogue, and presence — the Crucible / Censer is portable
+  warmth, dialogue, and presence — commit is portable
   and works anywhere, so the Guide is no longer the gating
   interaction for leveling, but his Wood-side presence remains the
   emotional anchor for the player's return.
@@ -65,9 +65,9 @@ figure). She is **not a companion** — see setting.md *Beatrice* and
 story.md *Reveals / R2*.
 
 She is offstage throughout the game (no one in the game knows about
-her until R2). She appears as a *boss* on REFUSAL and PURITY (per
-setting.md *Cocytus and the post-Lucifer arena* — Branches B and
-C), not as an ally. She is not selectable, not partyable, not
+her until R2). She appears as a *boss* on REFUSAL, RIVERSAMENTO, and
+PURITY (the Warden ending) per setting.md *Cocytus and the
+post-Lucifer arena* — Branches B, C, and D, not as an ally. She is not selectable, not partyable, not
 controllable.
 
 The existing Beatrice sprite-set (NPC dialog poses, intro cutscene
@@ -122,5 +122,5 @@ interacts with. State that matters:
 - [Dialogue](dialogue.md) — Guide's dialogue volume is the largest
   in the game.
 - [Inventory](inventory.md) — the relic the Guide leaves at his
-  death (form TBD); the Crucible / Censer handle leveling, which
-  is portable from Beat 4 onward.
+  death (form TBD); commit handles leveling, which is portable
+  from Beat 4 onward.

@@ -8,7 +8,7 @@
 // File-schema notes:
 //   * Appearance keys sit at the TOP LEVEL (body_type, morphs,
 //     hair_style_id, ...). Pre-existing files that carried only
-//     Appearance keys (larva_fresh.json, keeper.json, humanoid.json)
+//     Appearance keys (foundling.json, keeper.json, humanoid.json)
 //     load into an AuthoredCharacter with default identity fields.
 //     No file rewrite needed.
 //   * Identity keys (display_name, player_class, stats, rh_item,

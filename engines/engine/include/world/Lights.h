@@ -40,6 +40,14 @@ struct LightSource
     float flicker_freq = 0.0f; // Hz
     bool cast_shadow = false;  // future: shadow cubemap per light
 
+    // Optional per-light override of the visible flame sprite size
+    // (LightSpritePass). Meters. LightSpritePass falls back to
+    // kSizePerRadius × radius when this is <= 0. Use for hand-held
+    // torches whose FLAME is small even though the illuminated
+    // radius is large — a torch tip should read as ~0.1-0.2m regardless
+    // of how far the light reaches.
+    float sprite_size_override = 0.0f;
+
     // Optional region tag (static-storage string literal, like
     // TerrainModifier::region_name). nullptr = applies globally.
     const char* region_name = nullptr;

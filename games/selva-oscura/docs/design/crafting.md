@@ -169,13 +169,13 @@ feels different in the hand. Hell-imprint reclaims on death.
 *Path-specific economic shape*). The difference is in **what
 direction sangue moves through the Vagrant** while he imprints:
 
-- **Class-picker imprint**: sangue moves OUT of the Crucible INTO the
-  blade-shape (Hell-side) OR into the lasting object (Wood-side).
+- **Class-picker imprint**: sangue moves OUT of the held state INTO
+  the blade-shape (Hell-side) OR into the lasting object (Wood-side).
   The substance the Vagrant is shaping is the substance Hell has
   already installed in him; crafting redirects some of it into
-  gear. His body grows separately through Crucible installation.
-- **Unburdened imprint**: same vessel → object motion (the Censer
-  holds the Vagrant's accumulated substance), BUT the substance
+  gear. His body grows separately through commit installation.
+- **Unburdened imprint**: same held-state → object motion (the Vagrant
+  holds accumulated substance), BUT the substance
   flowing through the Vagrant during the imprint also contributes
   to **what's routing toward Beatrice's reservoir**.
   The act of imprinting is also a small riversamento — the
@@ -381,7 +381,7 @@ The `inventory.md` doc (currently lighter than `economy.md`) needs
 a pass to align with this inherited model — specifically to declare
 which categories Selva uses, which ArmorSlots are active for the
 soulslike (probably all four), and how the existing locked items
-(Crucible, Censer, markers, Erasure ritual, the Guide's relic)
+(markers, Erasure ritual, the Guide's relic)
 slot into the ItemDef schema. Deferred until crafting moves from
 design to engineering.
 
@@ -401,7 +401,7 @@ design to engineering.
   candidate form. TBD.
 - **Item categories.** Whether crafting produces only weapons +
   consumables, or also armor / tools / sangue-interacting items
-  (markers, the Crucible / Censer themselves — per inventory.md).
+  (markers — per inventory.md).
   These are Beat-4-given or unjudged-exemption-derived per current
   docs; whether crafted variants exist is open.
 
@@ -412,10 +412,10 @@ design to engineering.
   Vagrant / the unjudged*.
 - [Economy](economy.md) — substance flow; Hell reclamation on
   second death; the unburdened path's no-installation cosmology.
-- [Inventory](inventory.md) — item slots; Crucible, Censer, markers,
+- [Inventory](inventory.md) — item slots; commit verb, markers,
   Erasure ritual; weapon equip and use. Crafting outputs land in
   inventory.
-- [Classes](classes.md) — stat progression via the Crucible
+- [Classes](classes.md) — stat progression via commit
   (class-picker only); the unburdened's stats are locked and
   crafting is their progression vector.
 - [Fallback](fallback.md) — vestigia / persistent state across
@@ -465,7 +465,7 @@ from then on. Implications:
 
 - **Quality is the player's sangue allocation choice.** Spend more
   sangue, higher quality imprint. Crafting becomes a real
-  competitor with installation (Crucible) for the sangue budget.
+  competitor with installation (commit) for the sangue budget.
 - **Hell-imprinted weapons reclaim on death** (matches existing
   rule). They're substance Hell remembers; on second death, both
   the uncommitted vessel contents and the sangue-in-weapons return

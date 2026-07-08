@@ -33,12 +33,15 @@ Hell's failure, name what she did, name her tools — but visibly
 destabilized, decaying further as the consequences of her transgression
 play out. She did not design a specific outcome. She acted because the
 staring became unbearable. She listed acceptable outcomes (any change
-that ends the stagnation: TRANSFIGURATION, SURFEIT, PURITY) post-hoc.
-The unacceptable outcome (REFUSAL — no change, plus a new wound) and
-PURITY (her own ending, specifically) are the two paths she snaps on
-at the threshold and descends rabid to oppose.
+that ends the stagnation: TRANSFIGURATION, SURFEIT, RIVERSAMENTO)
+post-hoc. The unacceptable outcomes (REFUSAL — no change, plus a new
+wound; and PURITY — the Warden ending — a permutation she never
+modeled) are the paths she snaps on at the threshold and descends
+rabid to oppose, alongside RIVERSAMENTO (her own ending, specifically,
+because the cascade takes her too).
 
-Outcomes — TRANSFIGURATION, SURFEIT, REFUSAL, PURITY — see *Endings*.
+Outcomes — TRANSFIGURATION, SURFEIT, REFUSAL, RIVERSAMENTO, PURITY —
+see *Endings*.
 
 ---
 
@@ -108,7 +111,7 @@ because Hell cannot finish what it never began.
 The two frames matter for what persists. Hell's accounting resets each
 cycle (uncommitted vessel contents are reclaimed, HP and position
 refresh, transient combat state clears). The Wood's ledger is
-independent of Hell's time: stats installed via the Crucible, riversato
+independent of Hell's time: stats installed via commit, riversato
 lifetime total, class choice, keepers felled, NPC encounter history,
 Grimoire unlocks — these are Wood-frame, not Hell-frame, and survive
 any number of Hell-cycles.
@@ -118,24 +121,25 @@ unbound by the protocol-roles Hell installed in everyone else) and
 why second death, when applied to him, does not finish him (nothing
 to grip; the protocol fires, the body dies, the soul is ejected).
 
-**The Signing installs the commit-fire.** Accepting the Signing — the
+**The Signing unlocks the commit verb.** Accepting the Signing — the
 Guide's Beat 4 ritual — is Hell's first formal measurement of the
-soul, AND the moment the Guide gives the Vagrant the chrism-fire
-that lets him commit held substance inward into substrate.
-Contrapasso can land on him from that moment; second death could in
-principle land on him at the path's terminus (it doesn't, on
-TRANSFIGURATION/SURFEIT/REFUSAL, because those endings produce other
-states). The unburdened, who refused the Signing, doesn't receive
-the chrism-fire — instead the refusal opens a channel-fire that
-routes held substance outward to Beatrice via riversamento. Both
-paths absorb substance (per the Vagrant-exception, below); they
-differ only in what commit-fire the Guide installs at Beat 4.
+soul, AND the moment the Guide gives the Vagrant the ability to
+commit held substance. Class-picker outcome installs into substrate;
+Unburdened refusal opens a routing-out outcome via riversamento.
+Contrapasso can land on the class-picker from that moment; second
+death could in principle land on him at the path's terminus (it
+doesn't, on TRANSFIGURATION/SURFEIT/REFUSAL, because those endings
+produce other states). Both paths absorb substance (per the
+Vagrant-exception, below); they differ only in what OUTCOME the
+commit produces after Beat 4. See [[project_commit_verb_unified_2026_06_11]]
+for the unified commit doctrine that supersedes prior Crucible/Censer
+naming.
 
 **Riversamento is the unburdened making his own form, in another's
 frame.** Pouring sangue out is the slow inscription of an imprint
 Beatrice can read, not Hell. By Diaphanous, the imprint is complete
-in her ledger. PURITY's terminus is the firing that resolves the
-form he made himself.
+in her ledger. RIVERSAMENTO's terminus is the firing that resolves
+the form he made himself.
 
 ### The selva oscura as cosmological destination
 
@@ -190,8 +194,9 @@ substrate. Items are sangue arranged in object-form. Moves are sangue
 patterned into motor habit. Abilities are sangue installed as
 capability. Crafted weapons are sangue imprinted into blade-form.
 Vestigia are records of the Vagrant's current sangue-state. The
-vessel (Crucible for class-picker, Censer for unburdened) is just the
-most granular accounting unit; everything else is the same substance
+held-sangue counter (accumulated pre-commit; class-outcome-dependent
+on commit) is just the most granular accounting unit; everything
+else is the same substance
 expressed at a different scale of arrangement.
 
 The cosmology has **no second substance**. No gold, no tokens, no
@@ -307,18 +312,18 @@ completion can't land because there is no imprint to complete.
 #### The four laws of sangue
 
 1. **Sangue moves outward only.** Once collected by the Vagrant, it
-   either becomes part of him (installation, via the Crucible) or moves
-   through him into Beatrice's reservoir (riversamento, via the Censer,
-   for the unburdened). It does not flow back into Hell from a living
+   either becomes part of him (installation, via commit as class-picker)
+   or moves through him into Beatrice's reservoir (riversamento, via
+   commit as unburdened). It does not flow back into Hell from a living
    vessel of its own accord.
 2. **Hell reclaims its substance from the dead.** Second death returns
    all uncommitted vessel contents to Hell's reservoir. Hell takes
    back what is held in the wound, because the body's arrangement has
    collapsed and the substance is unclaimed. **What was installed (in
    him) or routed through (to Beatrice) is NOT reclaimed** — only the
-   uncommitted vessel contents are. Installation (Crucible) and
-   riversamento (Censer) are the acts that put sangue out of Hell's
-   reach.
+   uncommitted held sangue is. The two commit outcomes (installation
+   for class-picker, riversamento for unburdened) are what put sangue
+   out of Hell's reach.
 3. **Sangue absorbed is gone forever.** No bloodstain, no corpse-run.
    The only way to obtain more sangue is to extract it from new shades
    and keepers — and from the items / moves / abilities those acts
@@ -336,17 +341,16 @@ The class-picker / unburdened path distinction is, at the substance
 level, a distinction of which direction sangue moves through the
 Vagrant:
 
-- **Class-picker — INSTALLATION via the Crucible.** Sangue moves INTO
-  the Vagrant. The Crucible's fire (enabled by the imprint, which IS
-  the metabolic-fire / Galenic concoction-enabler the Signing creates)
+- **Class-picker — INSTALLATION via commit.** Sangue moves INTO
+  the Vagrant. Commit (enabled by the imprint the Signing creates)
   burns the held substance into his substrate. He grows. His stats /
   items / moves / abilities are the expression of accumulated
   substance. By TRANSFIGURATION he is sangue-saturated in Hell-shape —
   fit to be Satan-2 of Hell because he *is* the substance arranged
   to match the throne.
-- **Unburdened — RIVERSAMENTO via the Censer.** Sangue moves THROUGH
-  the Vagrant into Beatrice's reservoir. The Censer's fire burns the
-  held substance into rising smoke; the smoke transits to Beatrice's
+- **Unburdened — RIVERSAMENTO via commit.** Sangue moves THROUGH
+  the Vagrant into Beatrice's reservoir. Commit routes the held
+  substance outward; it transits to Beatrice's
   body via the cosmological link the refusal opened. He thins visibly
   (Svuotato, Diaphanous) because his body is used as transit-substrate
   without ever being nourished — no imprint-fire means no concoction,
@@ -571,10 +575,10 @@ Vagrant cannot reach the hill, and the dawn never finishes.
 
 Each cycle is one descent attempt, ended by second death or other
 run termination. **Persistent across cycles:** lifetime sangue total,
-stats installed via the Crucible, riversato lifetime total, class
-choice, keepers felled, NPC encounter history, Grimoire unlocks.
-**Reset each cycle:** uncommitted vessel contents (the Crucible's or
-Censer's currently-held substance), current HP and position, transient
+stats installed via commit, riversato lifetime total, class choice,
+keepers felled, NPC encounter history, Grimoire unlocks.
+**Reset each cycle:** uncommitted held sangue, current HP and
+position, transient
 combat state.
 
 ### Hell's accounting cap (cosmological)
@@ -725,12 +729,25 @@ itself.
   TRANSFIGURATION (sit), SURFEIT (sit with all stats maxed), or
   REFUSAL (walk away).
 
-- **Unburdened path (PURITY)** — the cosmos cannot intervene. PURITY
-  operates on Beatrice's reservoir — infrastructure she has built
-  outside the cosmos's reach — and the cosmos has no leverage over it.
-  No heavens-descent. The firing cocks at Lucifer's defeat but does
-  not fire: Beatrice is the holdback. **She descends rabid.** The
-  Vagrant fights her. Defeating her releases the firing.
+- **Unburdened / riversamento branch (RIVERSAMENTO)** — the cosmos
+  cannot intervene. The oblation operates on Beatrice's reservoir —
+  infrastructure she has built outside the cosmos's reach — and the
+  cosmos has no leverage over it. No heavens-descent. The firing
+  cocks at Lucifer's defeat but does not fire: Beatrice is the
+  holdback. **She descends rabid.** The Vagrant fights her. Defeating
+  her releases the firing.
+
+- **Unburdened / true refusal branch (PURITY — the Warden ending)** —
+  same rule as RIVERSAMENTO: no heavens-descent, cosmos cannot
+  qualify the Vagrant for a Cocytus throne he is not going to sit.
+  Something reroutes the Vagrant back UP to Limbo post-Lucifer
+  (mechanism WIP). **Beatrice descends rabid** — not the
+  self-preservation rabidness of RIVERSAMENTO (riversamento never
+  fired, no substrate saturation) but the frustration rabidness of
+  REFUSAL. Combat profile is the same disintegrating figure. The
+  Vagrant defeats her; the Warden installation completes; Hell
+  restructures around the refusal-doctrine rooted at Limbo. Specifics
+  WIP.
 
 - **REFUSAL fight** — when the class-picker walks away from the
   throne, **Beatrice descends rabid** to prevent his exit from
@@ -739,9 +756,10 @@ itself.
   to leave; failing the fight is ordinary death.
 
 **The unifying rule: Beatrice descends on the paths she is mad at.**
-REFUSAL (no change) and PURITY (her own ending). She does not descend
-on TRANSFIGURATION (her plan succeeds) or SURFEIT (impersonal cosmic
-catastrophe).
+REFUSAL, RIVERSAMENTO (her own ending — cascade takes her too),
+PURITY (a permutation she never modeled produces a permanent rival
+cosmological authority). She does not descend on TRANSFIGURATION (her
+plan succeeds) or SURFEIT (impersonal cosmic catastrophe).
 
 Roster of the heavens-descent and combat profiles deferred to
 per-encounter design.
@@ -780,7 +798,13 @@ nothing re-performs the Signing). See [inventory.md](inventory.md)
 The game communicates the consequences of the Signing clearly. No
 silent gotchas.
 
-### The unburdened path (PURITY)
+### The unburdened path (RIVERSAMENTO branch)
+
+*(The unburdened path has two branches: the riversamento branch
+detailed here, ending in RIVERSAMENTO; and the true refusal branch,
+detailed in [`classes.md`](classes.md), ending in PURITY / the Warden
+ending. Both refuse the Signing at Beat 4. They diverge on whether
+riversamento fires during the run.)*
 
 The unburdened path is **the path of refusal**. It refuses Hell's
 installation, refuses class-marked progression, refuses the
@@ -794,10 +818,10 @@ through any of the cosmological instruments the class-picker uses.
   expressed mechanically: the cosmology has no hook into him, so it
   cannot write numbers on him.
 - **All path-specific growth comes from riversamento alone.** The
-  unburdened progresses by **routing sangue through the Censer**
-  into Beatrice's reservoir (per *Sangue saturation of Beatrice*,
-  above). The Censer's fire burns held substance into rising smoke
-  that transits to Beatrice via the cosmological link the refusal
+  unburdened progresses by **committing held sangue outward via
+  riversamento** into Beatrice's reservoir (per *Sangue saturation
+  of Beatrice*, above). Commit routes the held substance outward;
+  it transits to Beatrice via the cosmological link the refusal
   opened. The more he pours, the more his evolution stages advance
   (Unburdened → Svuotato → Diaphanous). Each evolution unlocks
   **non-stat capability** — abilities, passives, and the
@@ -810,9 +834,10 @@ through any of the cosmological instruments the class-picker uses.
   what the baseline body affords + crafted gear + items found in
   the world. His distinctive technique emerges only via Svuotato
   and Diaphanous, both gated on riversamento.
-- **No imprint-fire means no Crucible.** The Vagrant receives the
-  Censer at Beat 4 instead — same cosmological fire mechanism,
-  but routed to Beatrice rather than installed into the substrate.
+- **No imprint means no installation-outcome on commit.** The
+  Vagrant's commit at Beat 4 (and onward) routes outward to
+  Beatrice's reservoir instead of installing into his substrate.
+  Same commit verb, different outcome by class.
   Markers are placeable for teleport (see [[project_markers_replace_cord]])
   on both paths; the Wood-side chest is mundane storage and
   accessible to him, but does not function as a leveling site.
@@ -828,7 +853,7 @@ through any of the cosmological instruments the class-picker uses.
   transgression — the reservoir is the part of her plan that operates
   outside Hell's perception. Beatrice knows. The Guide knows.
 - Each riversamento materially contributes to the final cosmic
-  application of second death at PURITY's terminus.
+  application of second death at RIVERSAMENTO's terminus.
 
 The riversamento mechanism is **not exposed at the start**. The player
 accumulates sangue with no way to spend it and no obvious purpose.
@@ -841,7 +866,7 @@ environmental sites, the Guide, and Grimoire entries.
   amount of sangue. Visibly thinner.
 - **L3: Diaphanous** ("the translucent") — has poured most of what
   could be collected. Barely visible. Sprite mostly outline. The
-  prerequisite for PURITY.
+  prerequisite for RIVERSAMENTO.
 
 Visual progression is **subtractive** — thinning, transparency,
 partial vanishing. No halo or anti-halo. The halo is Hell's
@@ -909,7 +934,8 @@ Vagrant pours out leaks back into Beatrice herself, settling into the
 substance of which she is made.
 
 Across the unburdened descent she becomes progressively
-sangue-saturated. By Diaphanous (the prerequisite stage for PURITY),
+sangue-saturated. By Diaphanous (the prerequisite stage for
+RIVERSAMENTO),
 her divine substrate is loaded with Hell-substance past its binding
 threshold. She is, at that point, *being transformed into a Satan-figure
 of Paradiso*. Structural mirror to the class-picker mechanism: the
@@ -923,9 +949,9 @@ This makes the cosmology's *central irony* a design lock:
 
 > **The figure of grace prefers function over righteousness because
 > her saturation has inverted her compass.** TRANSFIGURATION (Hell
-> renewed) is her plan succeeding. PURITY (Hell ceases) is the
+> renewed) is her plan succeeding. RIVERSAMENTO (Hell ceases) is the
 > player calling her bluff — the coherent-pre-saturation Beatrice
-> *listed* PURITY as acceptable. The saturated-post-Diaphanous
+> *listed* RIVERSAMENTO as acceptable. The saturated-post-Diaphanous
 > Beatrice cannot let it happen, because *the firing kills her too
 > before her transformation completes*.
 
@@ -946,13 +972,13 @@ Beatrice's earlier-vs-later behavior is not "stability collapsing
 abstractly." It is the **saturation curve made character**:
 
 - **Pre-saturation (coherent).** She articulates Hell's failure, names
-  what she did, names her tools, and lists PURITY as an acceptable
+  what she did, names her tools, and lists RIVERSAMENTO as an acceptable
   outcome. This is the Beatrice who placed the Vagrant at the gates.
 - **Mid-saturation (under strain).** Subtle. The held quality starts
   to *cost* something. Her composure strains as the substrate-shift
   begins to register. Tied to the light's mid-game register-shift in
   `wood.md` *The light is her interior state*.
-- **Post-Diaphanous-saturation (rabid).** She cannot let PURITY
+- **Post-Diaphanous-saturation (rabid).** She cannot let RIVERSAMENTO
   happen. Her *own* ending is in the cascade and the firing kills her
   before her transformation completes. Her saturated self is fighting
   for the same self-preservation any partly-becoming-Satan figure
@@ -962,13 +988,19 @@ abstractly." It is the **saturation curve made character**:
 ### Acceptable outcomes (her frame, pre-saturation)
 
 TRANSFIGURATION (Hell renewed), SURFEIT (cosmic catastrophe — Hell
-ends, swallowed in a larger ending), PURITY (Hell ceases through the
-cosmic firing). All three end the stagnation she was staring at.
+ends, swallowed in a larger ending), RIVERSAMENTO (Hell ceases through
+the cosmic firing). All three end the stagnation she was staring at.
 Coherent-Beatrice held all three as acceptable.
 
-**Unacceptable outcome:** REFUSAL. The Vagrant rejects the throne;
-nothing fires; Hell stays broken. The frustration that drove the
-transgression returns intact, with a new wound inside Hell.
+**Unacceptable outcomes:** REFUSAL and PURITY (the new Warden
+ending). REFUSAL: the Vagrant rejects the throne; nothing fires; Hell
+stays broken. The frustration that drove the transgression returns
+intact, with a new wound inside Hell. PURITY: a permutation of her
+own infrastructure produces a permanent rival cosmological authority
+rooted at Limbo — an outcome she never modeled because prior
+proto-Vagrants had always treated Sign-refusal and Lucifer-defeat as
+mutually exclusive. Her transgression purchased something worse than
+inaction: an active counterweight in the cosmos.
 
 **She watches the player throughout the entire game.** Not as
 operator — she is too unraveled to operate, AND on the unburdened
@@ -976,20 +1008,28 @@ path her substrate is being progressively reshaped by what she is
 watching — but as fixated witness. She cannot look away from the
 consequences of her act.
 
-### She descends rabid on the two paths that fail her plan
+### She descends rabid on the paths that fail her plan
 
-REFUSAL and PURITY. The reasons differ:
+REFUSAL, RIVERSAMENTO, and PURITY. The reasons differ:
 
 - **REFUSAL:** she gets nothing. The transgression purchased no
   outcome. Her frustration arrives whole, intensified by years of
   watching, into the Cocytus arena.
-- **PURITY:** her own ending is part of the cascade, AND her
-  saturated substrate has now made survival a competing imperative
-  her coherent self never had. The descend-rabid behavior on PURITY
-  is the saturation curve fighting the player at the threshold.
+- **RIVERSAMENTO** *(the ending previously called PURITY)*: her own
+  ending is part of the cascade, AND her saturated substrate has now
+  made survival a competing imperative her coherent self never had.
+  The descend-rabid behavior is the saturation curve fighting the
+  player at the threshold.
+- **PURITY** *(the new Warden ending)*: she gets nothing AND the
+  Warden ending installs a permanent rival cosmological authority
+  outside her reach. Same frustration-mode as REFUSAL (no substrate
+  saturation applies — riversamento never fired on this branch), but
+  intensified by the specific injury of watching an emergent
+  permutation of her own infrastructure produce an outcome she never
+  modeled and cannot undo.
 
-On both paths she arrives in Cocytus already fully unhinged, fights
-the Vagrant in violent collapse, completes the title-screen
+On all three paths she arrives in Cocytus already fully unhinged,
+fights the Vagrant in violent collapse, completes the title-screen
 disintegration in real-time, and falls. **Defeating her is the cost
 of completing the failure-path.** Failing the fight is ordinary death
 (run-end, retry). She does *not* descend on TRANSFIGURATION (her plan
@@ -1152,8 +1192,8 @@ This sorts the cosmology cleanly:
 
 **The Vagrant's absorption-capacity is permanent from arrival.** Beat
 4 doesn't unlock it; he already has it. What Beat 4 unlocks is the
-COMMIT capacity — the alchemical fire that transforms held substance.
-See *The Signing and the commit-fire*, below.
+COMMIT capacity — the act that resolves held substance.
+See *The Signing and the commit verb*, below.
 
 **The larva-feeding loop is parallel and independent.** Damned souls
 consume each other in the Charon-absent Limbo near-shore because the
@@ -1164,22 +1204,20 @@ consumption events because the next damned-soul vessel hasn't
 crawled by yet. The Vagrant absorbing or not is unrelated to this
 loop. He has his own anomaly; they have their own stalled cycle.
 
-### The Signing and the commit-fire
+### The Signing and the commit verb
 
 **The Signing is not what makes the Vagrant absorptive.** He already
 absorbs. What the Signing does is install the alchemical fire that
 lets him **commit** held substance — transform it into a permanent
 form. The Guide gives him the means to either **feed himself**
-(chrism-fire, installation into substrate) or **feed Beatrice**
-(channel-fire, riversamento toward her reservoir). Same fire,
-opposite mouths.
+(installation into substrate) or **feed Beatrice** (riversamento
+toward her reservoir). Same commit verb, opposite outcomes.
 
-- **Accept the Signing** → Guide installs the chrism-fire → Vagrant
-  can perform the **Crucible** (his commit verb). Held substance burns
-  into substrate: stats grow, abilities unlock, the body inscribed.
-- **Refuse the Signing** → Guide's posture opens the channel toward
-  Beatrice instead → Vagrant can perform the **Censer** (his commit
-  verb). Held substance burns into smoke that transits to Beatrice's
+- **Accept the Signing** → Vagrant's commit outcome is INSTALLATION.
+  Held substance goes into substrate: stats grow, abilities unlock,
+  the body inscribed.
+- **Refuse the Signing** → Vagrant's commit outcome is RIVERSAMENTO.
+  Held substance transits to Beatrice's
   reservoir. The body thins (Svuotato → Diaphanous) because nothing
   retains; the substance was always going to leave.
 
@@ -1187,9 +1225,9 @@ Pre-Beat-4 the Vagrant absorbs but has no commit verb. The counter
 accumulates with nowhere to spend. Post-Beat-4 he absorbs the same
 way AND can commit — the one new capacity he gains is the fire.
 
-**Neither commit verb is an inventory item.** No object materializes
-at Beat 4. The Crucible and Censer are cosmological capacities the
-Guide installs in the Vagrant. He *performs* them; he doesn't
+**The commit verb is not an inventory item.** No object materializes
+at Beat 4. Commit is a cosmological capacity the Guide unlocks in
+the Vagrant. He *performs* it; he doesn't
 *carry* them.
 
 ### Sangue catches on the Vagrant after each restoration
@@ -1200,9 +1238,9 @@ proper contrapasso under its new mangled keeper, a portion of the
 long-bottled sangue of that ring releases — and per the Vagrant's
 anomaly, he can absorb it like any other substance. For the
 class-picker, the held substance commits into substrate at the next
-Crucible commitment — items acquired in the consumed circle,
-abilities learned there, stats unlocked via Crucible-fire, the
-cosmological signature of having participated in that ring's
+commit — items acquired in the consumed circle, abilities learned
+there, stats unlocked via commit, the cosmological signature of
+having participated in that ring's
 restoration. The class-picker's evolution arc is the *accumulating
 shape of restored Hell metabolized through him*. By TRANSFIGURATION
 he carries the signature of all 9 circles' restorations in his
@@ -1212,13 +1250,13 @@ because he IS the substance Hell would now have on its throne.
 **The unburdened Vagrant absorbs the same way, but commits
 differently.** Released sangue lands on him exactly as it lands on
 the class-picker (per the Vagrant-exception). What differs is the
-commit verb: he can only perform the Censer, which burns held
-substance into smoke that transits to Beatrice's reservoir. Held
+commit outcome: for the unburdened, commit routes held substance
+outward to Beatrice's reservoir. Held
 substance is therefore always going to leave him; nothing retains.
 The unburdened's subtractive evolution (Svuotato → Diaphanous) is
 *the cumulative state of substance routing through him* — every
-Censer commitment thins him further because his body has been used
-as transit-substrate without nourishment. By Diaphanous he is mostly
+commit thins him further because his body has been used as
+transit-substrate without nourishment. By Diaphanous he is mostly
 the *act of passage*, not a body that retained substance.
 
 ### Sangue corrodes the Guide via Beatrice's channel
@@ -1360,9 +1398,9 @@ Mechanics summary (full spec in [[project_markers_replace_cord]]):
 
 ### Second death
 
-When the Vagrant is killed: all uncommitted vessel contents (Crucible's
-or Censer's currently-held substance) return to Hell (unrecoverable);
-stats / lifetime sangue / riversato persist; a dedicated cutscene
+When the Vagrant is killed: all uncommitted held sangue returns to
+Hell (unrecoverable); stats / lifetime sangue / riversato persist;
+a dedicated cutscene
 plays (Vagrant suffers visibly, sangue exits his body — Hell's
 killing-protocol firing on him; the body dies but the soul, having no
 imprint to grip, is ejected to the Wood per *The unjudged*).
@@ -1396,7 +1434,7 @@ The run-stats screen names *sangue* in context (sangue lost, kills,
 keepers felled, etc.) — the term enters vocabulary here, not on the
 death-card.
 
-PURITY's terminus — the cosmic firing — is the only run-end that
+RIVERSAMENTO's terminus — the cosmic firing — is the only run-end that
 does *not* show this card. The absence is the player's confirmation
 that something fundamentally different has occurred: Hell's accounting
 language has gone silent because Hell is no longer doing the
@@ -1427,9 +1465,10 @@ Save/load language is built into the world's register, not labeled
 **Selva's save register matches the soulslike doctrine: every
 meaningful act commits immediately and cannot be walked back.**
 
-- **Saves are automatic and frequent.** Every Crucible commitment
-  (class-picker installation), every Censer commitment (unburdened
-  riversamento), every item commit, every voluntary retreat (via
+- **Saves are automatic and frequent.** Every commit (whichever
+  outcome the class produces — class-picker installation or
+  unburdened riversamento), every item commit, every voluntary
+  retreat (via
   markers), and every second death autosaves on the spot. Manual
   save (Inscribe) is Wood-side; specifics deferred to UX. Save-
   overwrite is the rule. There is no manual save-slot system, no
@@ -1437,9 +1476,9 @@ meaningful act commits immediately and cannot be walked back.**
 - **Restoration only happens on death.** When the Vagrant dies, he
   respawns in the Wood with whatever state was committed up to
   that point. The current run's uncommitted vessel contents are
-  reclaimed by Hell; installed substance (stats committed via the
-  Crucible, items collected, abilities unlocked, riversamento
-  volume) persists.
+  reclaimed by Hell; installed substance (stats committed as
+  class-picker, items collected, abilities unlocked, riversamento
+  volume for unburdened) persists.
 - **No Wood-side undo.** A class-picker who installs the wrong
   stat lives with it. The cosmology recorded the act; the act
   stands. The only stat-redo mechanism is **the Erasure** (per
@@ -1471,27 +1510,22 @@ Items committed at the setting level:
 - **The Grimoire** (existing, hub-side, lore-text and unlock viewer).
 - **The Signing** (*La Firma*) — not an item; a Guide ritual at Beat 4
   driven by a class-picker UI. Picking a class = Signing happens =
-  imprint is created = Vagrant receives the Crucible. Refusing =
-  no Signing = refusal-channel opens = Vagrant receives the Censer.
-- **The Crucible** — class-picker's portable holding-and-transformation
-  vessel. Substance auto-magnetizes from kills directly into the
-  Crucible (the HUD reads from it; the Crucible replaces the older
-  "wallet" abstraction with a real cosmological object). On commit,
-  the Crucible's fire (powered by the imprint's metabolic-fire / Galenic
-  concoction-enabler) burns the held substance into the Vagrant's
-  substrate. Stats / items / moves / abilities are the result.
-  Permanent across cycles. Replaces the old OFFERING-at-vestigia
-  mechanism.
-- **The Censer** — unburdened's portable holding-and-transformation
-  vessel. Substance auto-magnetizes from kills directly into the
-  Censer (the HUD reads from it; the Censer replaces the older
-  "wallet" abstraction with a real cosmological object). On commit,
-  the Censer's fire burns the held substance into rising smoke that
-  transits via the cosmological link to Beatrice's reservoir.
-  Riversamento volume accumulates with each commitment. Permanent
-  across cycles. Symmetric to the Crucible in operation; differs
-  only in cosmological outcome (effusion vs installation), because
-  the unburdened has no imprint-fire to drive concoction.
+  imprint is created = commit outcome is installation. Refusing =
+  no Signing = commit outcome is riversamento.
+- **Commit** — the Vagrant's single leveling verb, unlocked at Beat 4.
+  Substance auto-magnetizes from kills into an invisible held state
+  (the HUD counter reads this). One button. Class determines outcome:
+  - **Class-picker outcome**: held substance installs into substrate.
+    Stats / items / moves / abilities are the result. Permanent across
+    cycles. Replaces the old OFFERING-at-vestigia mechanism.
+  - **Unburdened outcome**: held substance routes outward via the
+    cosmological link the refusal opened, transiting to Beatrice's
+    reservoir. Riversamento volume accumulates with each commit.
+    Permanent across cycles.
+  The commit act is symmetric in operation between paths; differs only
+  in cosmological outcome (installation vs riversamento). See
+  [[project_commit_verb_unified_2026_06_11]] — this doctrine supersedes
+  earlier Crucible/Censer vessel framing.
 - **Markers** — player-placed bidirectional teleport destinations
   (one active per circle), replacing the old Cord. See
   [[project_markers_replace_cord]]. Available to both paths.
@@ -1513,48 +1547,78 @@ Other items (NPC rewards, etc.) in [`inventory.md`](inventory.md).
 
 ## Endings
 
-Four endings, two paths.
+Five endings across the two paths.
+
+**Naming note (2026-07-07 change):** the ending previously called
+PURITY (the Unburdened-Diaphanous oblation-firing) is renamed
+**RIVERSAMENTO** — named after its defining verb (the outpouring)
+the entire path is built on. The name **PURITY** is now reassigned
+to a new fifth ending unlocked by the *true refusal* run (Unburdened
+who refuses riversamento entirely). Both endings are on the
+Unburdened path; they diverge on whether the Vagrant pours out or
+never pours.
 
 | Ending | Path | Trigger | Beatrice descent? | World consequence |
 |---|---|---|---|---|
-| **TRANSFIGURATION** | Class-picker | Defeat Lucifer + heavens-descent + take throne, normal stats | No (her plan succeeds) | Hell renewed. Vagrant becomes Satan-2. The only ending that leaves a continuable cosmology. |
+| **TRANSFIGURATION** | Class-picker | Defeat Lucifer + heavens-descent + take throne, normal stats | No (her plan succeeds) | Hell renewed. Vagrant becomes Satan-2. The only class-picker ending that leaves a continuable cosmology. |
 | **SURFEIT** | Class-picker | Same as TRANSFIGURATION + **all stats maxed** | No (cosmic catastrophe takes her along; impersonal) | Vagrant-as-Satan loses control and destroys the universe in a final war. |
-| **REFUSAL** | Class-picker | Heavens-descent survived + **reject the throne** + defeat Beatrice | **Yes** (rabid, descends to prevent exit) | Vagrant refuses Satan. Beatrice falls. Worst outcome cosmologically — unresolved anomaly inside Hell, growing past Hell's ability to process — but the only outcome that opposes Beatrice's transgression. |
-| **PURITY** | Unburdened | Defeat Lucifer **as Diaphanous** + defeat Beatrice | **Yes** (rabid, descends to abort the firing) | Cosmic second-death sacrament fires. Cascade: Beatrice → Lucifer's effects → every shade and keeper → Hell's geography → the Vagrant. Hell ceases. |
+| **REFUSAL** | Class-picker | Heavens-descent survived + **reject the throne** + defeat Beatrice | **Yes** (rabid, descends to prevent exit) | Vagrant refuses Satan. Beatrice falls. Worst outcome cosmologically for the class-picker path — unresolved anomaly inside Hell, growing past Hell's ability to process — but the only class-picker outcome that opposes Beatrice's transgression. |
+| **RIVERSAMENTO** *(was PURITY)* | Unburdened → riversamento branch | Defeat Lucifer **as Diaphanous** + defeat Beatrice | **Yes** (rabid, descends to abort the firing) | Cosmic second-death sacrament fires. Cascade: Beatrice → Lucifer's effects → every shade and keeper → Hell's geography → the Vagrant. Hell ceases. |
+| **PURITY** *(new — the Warden)* | Unburdened → true refusal branch | Never Sign + never perform riversamento + defeat Lucifer + defeat Beatrice + reach the epistemic threshold | **Yes** (rabid, descends to prevent the Warden installation) | The Vagrant is installed as **Warden of the refuser-community in Limbo.** Hell restructures around the refusal-doctrine rooted at Limbo instead of the punishment-engine at Cocytus. Continuable cosmology alongside TRANSFIGURATION. Design shape WIP; specifics deferred to per-encounter design. |
 
 **SURFEIT source synthesis:** Christian iconography (Satan, Lucifer,
 the lake of fire, the second death) + Ragnarök's structural beats
 (bound enemy released, cosmic war, mutual annihilation, world ends).
 Specific cutscene TBD; shape locked.
 
-**PURITY is reached without the heavens-descent.** The cosmos cannot
-intervene: PURITY operates on Beatrice's reservoir — infrastructure
-she has built outside the cosmos's reach — and the cosmos has no
-leverage over it. By the time the firing is cocked, no descending
-entity could stop it. Only Beatrice can intervene; at the threshold
-she withdraws cooperation (the *somewhat coherent* version of her had
-listed PURITY as acceptable; the *rabid* version cannot let it
-happen), and the unburdened Vagrant must defeat her to release the
-firing.
+**RIVERSAMENTO is reached without the heavens-descent.** The cosmos
+cannot intervene: RIVERSAMENTO operates on Beatrice's reservoir —
+infrastructure she has built outside the cosmos's reach — and the
+cosmos has no leverage over it. By the time the firing is cocked, no
+descending entity could stop it. Only Beatrice can intervene; at the
+threshold she withdraws cooperation (the *somewhat coherent* version
+of her had listed the oblation-firing as acceptable; the *rabid*
+version cannot let it happen), and the Diaphanous Vagrant must defeat
+her to release the firing.
+
+**PURITY (the Warden ending) is also reached without the
+heavens-descent** — same rule as RIVERSAMENTO. The cosmos cannot
+qualify the Vagrant for a Cocytus throne he is not going to sit; the
+seat he ends up in is at Limbo, not the pit. Beatrice descends rabid
+for a different reason than RIVERSAMENTO: the Warden ending is a
+permutation of her own infrastructure she never modeled (Vagrant
+refused Signing AND refused riversamento AND killed Lucifer AND
+survived — every prior proto-Vagrant treated these as mutually
+exclusive), and she opposes it because it installs a permanent rival
+cosmological authority. Distinct from the Riversamento-saturation
+rabidness (self-preservation mode) — this is frustration mode, closer
+to REFUSAL. Combat profile is the same rabid disintegrating figure;
+the flavor of pre-fight motivation differs. Design specifics WIP.
 
 **REFUSAL has its own Beatrice fight.** After surviving the
 heavens-descent and walking away from the throne, Beatrice descends
 rabid to prevent the Vagrant from leaving Cocytus. Defeating her
 seals the refusal; failing the fight is ordinary death. The fight
-uses the same Beatrice combat profile as PURITY (rabid, disintegrating,
-title-screen animation completing in real-time) — only the trigger
-context differs.
+uses the same Beatrice combat profile as RIVERSAMENTO / PURITY
+(rabid, disintegrating, title-screen animation completing in
+real-time) — only the trigger context differs.
 
 **Player meets Beatrice only on the paths that fail her plan.**
-TRANSFIGURATION/SURFEIT players never see her. REFUSAL/PURITY players
-fight her.
+TRANSFIGURATION/SURFEIT players never see her. REFUSAL / RIVERSAMENTO
+/ PURITY players fight her. She descends rabid on all three because
+her transgression purchased no outcome she wanted — RIVERSAMENTO is
+tempered by the fact that coherent-Beatrice listed it as acceptable
+(her rabid self overrides), REFUSAL and PURITY are entirely
+frustration-driven.
 
-**Sequel material.** Only TRANSFIGURATION leaves a continuable world.
-Future games in this universe — including a possible Purgatorio-themed
-sequel, intentionally not tied to the same character or exact
-narrative — would anchor on TRANSFIGURATION as canonical past. Not a
-commitment to a sequel; a commitment that *if* a sequel exists, this
-is the path it follows.
+**Sequel material.** Two endings now leave continuable worlds:
+TRANSFIGURATION (canonical Inferno restored under Vagrant-as-Satan-2)
+and PURITY (Hell restructured as a Warden-rooted teaching cosmology,
+proto-Purgatorio in shape). Future games in this universe — including
+a possible Purgatorio-themed sequel, intentionally not tied to the
+same character or exact narrative — could anchor on either. Not a
+commitment to a sequel; a commitment that *if* a sequel exists, one
+of these two is its canonical past.
 
 ---
 
@@ -1597,7 +1661,7 @@ mode. Wood, title screen, post-Lucifer audio TBD.
 Tracked here for future iteration:
 
 - SURFEIT cutscene specifics — shape locked, text and frame-by-frame TBD.
-- PURITY cutscene specifics — shape locked (cascade order:
+- RIVERSAMENTO cutscene specifics — shape locked (cascade order:
   Beatrice → Lucifer's effects → shades and keepers → Hell's geography
   → the Vagrant), text and frame-by-frame TBD.
 - REFUSAL cutscene specifics — shape locked (post-Beatrice-fight, the
@@ -1609,7 +1673,7 @@ Tracked here for future iteration:
   light-based, Marian iconography in violent collapse. Specifics TBD.
 - **Title-screen-disintegration completion mechanic** — how the
   title-screen animation completes during the Beatrice fight (and
-  whether the title screen changes post-PURITY for subsequent boots).
+  whether the title screen changes post-RIVERSAMENTO for subsequent boots).
 - Per-circle landmarks — the castle in Limbo, Dis the city, etc.
 - Per-circle post-keeper transformations — exact mechanical changes,
   including how each circle expresses its overcrowding texture.
@@ -1646,6 +1710,6 @@ Tracked here for future iteration:
   from leaked Hell-substance; biology rather than spirit-substance;
   capture as personal choice, not mission target.
 - [Dialogue](dialogue.md) — NPC trees, register, state branching.
-- [UX](ux.md) — screen flow, HUD, menus, vessels (Crucible / Censer),
-  save/load language.
+- [UX](ux.md) — screen flow, HUD, menus, commit verb, save/load
+  language.
 - [Fallback](fallback.md) — death, retry, cycle persistence mechanics.

@@ -28,8 +28,13 @@ assets/characters/humanoid_male/source/rig/
 assets/characters/humanoid_female/blender_authoring/
 assets/characters/humanoid_female/source/rig/
 
-# Stubbed larva female bake dirs -- baked artifacts pending re-enable
+# Stubbed Foundling female bake dirs -- baked artifacts pending re-enable
 # once the female clip pipeline stabilizes. Not referenced by any
-# archetype today (see larva_fresh.json's stubbed comment).
+# archetype today (see foundling.json's stubbed comment). Historical
+# note: 2026-07-07 rename retained old ignore paths for any still-present
+# artifacts; new bakes should land under the foundling_* / gorged_foundling_*
+# directory names below.
+assets/characters/enemies/foundling_female/
+assets/characters/enemies/gorged_foundling_female/
 assets/characters/enemies/larva_fresh_female/
 assets/characters/enemies/larva_aged_female/

@@ -27,6 +27,8 @@ constexpr int kMaxLights = 64;
 // kSizePerRadius=1.0 means a light with radius=10m has a 10m sprite.
 // Tuned in iteration; flame should read as "object" at close range
 // without dominating the view, and as "bright point" at far range.
+// Hand-held torches override this via sprite_size_override for the
+// fist-sized flame at the branch tip.
 constexpr float kSizePerRadius = 0.20f;
 constexpr float kMinSize = 0.5f;
 
@@ -172,7 +174,12 @@ void renderLightSprites(const glm::mat4& view_proj, const glm::vec3& cam_pos,
         // Keeps visible flame brightness and floor illumination in
         // sync.
         const float live_intensity = engine::world::flickerIntensity(static_cast<int>(i), t);
-        const float size = std::max(kMinSize, kSizePerRadius * L.radius);
+        // Sprite size: per-light override wins (hand-held torches use
+        // a small sprite regardless of illumination radius), otherwise
+        // default to kSizePerRadius × radius for campfire-style lights.
+        const float size = (L.sprite_size_override > 0.0f)
+                               ? L.sprite_size_override
+                               : std::max(kMinSize, kSizePerRadius * L.radius);
         pos_size[n * 4 + 0] = L.position.x;
         pos_size[n * 4 + 1] = L.position.y;
         pos_size[n * 4 + 2] = L.position.z;

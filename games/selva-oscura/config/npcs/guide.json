@@ -67,9 +67,9 @@
       "id": "guide_reveals_arrival_queue",
       "entry_point": true,
       "speaker": "guide",
-      "line": "(TODO author: Guide's reveal line about the fresh larvae in the queue -- the cosmology of arrival, the jam, the wait.)",
+      "line": "(TODO author: Guide's reveal line about the Foundlings in the queue -- the cosmology of arrival, the jam, the wait.)",
       "show_when": {
-        "flags_required": ["seen_topic_post_signing_first_words", "examined:larva_fresh"],
+        "flags_required": ["seen_topic_post_signing_first_words", "examined:foundling"],
         "flags_forbidden": ["seen_topic_guide_reveals_arrival_queue"]
       },
       "unlocks_insight": "guide_named_arrival_queue",
@@ -81,9 +81,9 @@
       "id": "guide_reveals_feeding_cycle",
       "entry_point": true,
       "speaker": "guide",
-      "line": "(TODO author: Guide's reveal line about the feeding cycle -- what the aged larva is doing when it crouches over a second-deathed corpse, why the act is futile yet compelled.)",
+      "line": "(TODO author: Guide's reveal line about the feeding cycle -- what the Gorged Foundling is doing when it crouches over a second-deathed corpse, why the act is futile yet compelled.)",
       "show_when": {
-        "flags_required": ["seen_topic_post_signing_first_words", "examined:larva_aged_feeder"],
+        "flags_required": ["seen_topic_post_signing_first_words", "examined:gorged_foundling_feeder"],
         "flags_forbidden": ["seen_topic_guide_reveals_feeding_cycle"]
       },
       "unlocks_insight": "guide_named_feeding_cycle",

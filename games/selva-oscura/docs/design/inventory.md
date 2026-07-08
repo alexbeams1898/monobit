@@ -168,7 +168,7 @@ fell. The player crosses Acheron with fists; descends; finds the
 container; picks up the weapon; suddenly has a verb in hand.
 
 **This replaces the earlier "starter kit at the Signing" framing
-for weapons.** The Signing remains the commit-verb unlock (Crucible
+for weapons.** The Signing remains the commit-verb unlock (commit
 appears as cosmological capacity) but it does NOT gift a starting
 weapon. The weapon is a *world event*, not a *menu event*. Class-
 pickers still receive a *starter ability kit* at the Signing (per
@@ -198,8 +198,7 @@ The full pipeline of how items enter the Vagrant's inventory:
 |---|---|---|
 | Grimoire (carried) | yes | yes |
 | Signing (Guide ritual, Beat 4) | accepted | refused |
-| Crucible (commit-verb capacity) | yes | — |
-| Censer (commit-verb capacity) | — | yes |
+| Commit outcome | INSTALLATION | RIVERSAMENTO |
 | Markers (carried) | yes | yes |
 | Erasure (Guide ritual, materials-gated) | yes | yes |
 | Chest (Wood-side storage) | yes | yes |

@@ -54,7 +54,7 @@ namespace selva::insight
 // piece of content genuinely doesn't fit.
 //
 //   World   -- what the Vagrant has come to understand about the
-//              place he's in (the pile, the larvae, the wood,
+//              place he's in (the pile, the Foundlings, the wood,
 //              future encounters).
 //   Self    -- what he's come to understand about his own form
 //              (kills yield count, he holds substance, his body
@@ -161,7 +161,7 @@ NodeKind kindOf(const std::string& node_id);
 // share iff they came from the same in-world subject:
 //   - examined trigger  : the examine subject string (e.g. "dead_lonza")
 //   - dialog_began      : the npc id (e.g. "guide")
-//   - kill_count        : the archetype id (e.g. "larva_aged")
+//   - kill_count        : the archetype id (e.g. "gorged_foundling")
 //   - flag_set          : empty (these are mechanical triggers with no
 //                         shared subject by default)
 //   - sangue_accumulated: empty

@@ -12,22 +12,22 @@
   },
 
   "knows_arrival_queue": {
-    "_comment": "Observation. Fires on first examine of a larva_fresh actor (fresh larva in the queue, crawling, hasn't reached a corpse to feed). Promotes the actor's tier-0 examine prose to a tier-1 reveal; unlocks a Guide-side reveal topic on the arrival-queue cosmology.",
+    "_comment": "Observation. Fires on first examine of a foundling actor (Foundling in the queue, crawling, hasn't reached a corpse to feed). Promotes the actor's tier-0 examine prose to a tier-1 reveal; unlocks a Guide-side reveal topic on the arrival-queue cosmology.",
     "kind": "observation",
     "category": "world",
     "trigger": {
       "kind": "examined",
-      "subject": "larva_fresh"
+      "subject": "foundling"
     }
   },
 
   "knows_feeding_cycle": {
-    "_comment": "Observation. Fires on first examine of a larva_aged_feeder actor (aged larva mid-feed on a second-deathed corpse). Promotes the feeder's tier-0 examine prose to a tier-1 reveal; unlocks a Guide-side reveal topic on the feeding-cycle cosmology.",
+    "_comment": "Observation. Fires on first examine of a gorged_foundling_feeder actor (Gorged Foundling mid-feed on a second-deathed corpse). Promotes the feeder's tier-0 examine prose to a tier-1 reveal; unlocks a Guide-side reveal topic on the feeding-cycle cosmology.",
     "kind": "observation",
     "category": "world",
     "trigger": {
       "kind": "examined",
-      "subject": "larva_aged_feeder"
+      "subject": "gorged_foundling_feeder"
     }
   },
 

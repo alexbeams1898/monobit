@@ -1,7 +1,7 @@
 {
-  "_comment": "Soul larvae spawn-and-flow at Acheron near-shore. See [[project_soul_larvae_cosmology]]. Slot mode: initial_population scatters 6 aged larvae across authored slot positions at the shore; when a slot's occupant dies, the next fresh trickle targets THAT specific slot and (after the inward-burn delay) becomes aged in the same spot. The queue feels lived-in -- positions persist across kills.",
-  "id": "acheron_larvae",
-  "archetype": "larva_fresh",
+  "_comment": "Foundling spawn-and-flow at Acheron near-shore. See [[project_soul_larvae_cosmology]]. Slot mode: initial_population scatters 6 aged larvae across authored slot positions at the shore; when a slot's occupant dies, the next fresh trickle targets THAT specific slot and (after the inward-burn delay) becomes aged in the same spot. The queue feels lived-in -- positions persist across kills.",
+  "id": "acheron_foundlings",
+  "archetype": "foundling",
   "spawn_region_id": "limbo",
   "_comment_spawn_region": "Tags actors as limbo-owned for AI-barrier ownership. Cosmologically larvae belong to Limbo's law-domain, not chapel_interior's -- they live on Limbo's floor, eternally awaiting Charon. Owning region is FOREIGN to the chapel_interior-owned descent-corridor barrier, so the barrier correctly blocks them from climbing the stairs. Visible spawn pos is unchanged (controlled by spawn_position above); only the ownership label moves.",
   "spawn_position": [0.0, -43.13, -368.0],
@@ -10,10 +10,10 @@
   "scripted_target_pos": [0.0, -43.13, -360.0],
   "scripted_stop_range": 0.1,
   "_comment_stop_range": "0.1m -- tight enough that the larva fully reaches its slot rather than parking 0.5m short. Was 0.5 originally; meant 'near enough' but visually read as 'didn't arrive' because the actor stopped before the authored position. Tighter range = exact position match.",
-  "active_count_includes": ["larva_fresh", "larva_aged", "larva_aged_feeder"],
+  "active_count_includes": ["foundling", "gorged_foundling", "gorged_foundling_feeder"],
   "active_cap": 8,
   "spawn_interval_seconds": 8.0,
-  "on_arrival_action": "convert_to:larva_aged",
+  "on_arrival_action": "convert_to:gorged_foundling",
   "on_arrival_delay_seconds": 30.0,
   "target_mode": "first_vacant_slot",
   "_comment_target_mode": "Slot mode: each fresh's scripted target is the first vacant slot from initial_population.positions. Kill a feral on the far left, the next fresh crawls there. Lived-in queue.",
@@ -21,8 +21,8 @@
   "on_arrival_clip_freeze_at_seconds": 0.0,
   "_comment_on_arrival_clip": "Crawl-bite arrival pose: fresh that walked to a dead aged's body crouches over it and bites. Cosmologically the feeding-as-conversion: the imprint drives the fresh to consume the dissolved sangue, the act of feeding IS the inward-burn made physical, and the tint-burn (white -> sangue red over the wait) reads as the corpse's sangue moving into the fresh. zombie_biting_ground is the crawl-prone bite (not the standing zombie_biting feeder pose). Released on archetype swap when applyArchetypeSwap clears action_state.",
   "initial_population": {
-    "_comment": "Two populations rendered as one queue: (1) the standing aged at the riverbank facing the water -- eternally awaiting Charon, 6 slots from earlier F3-captured positions; (2) two FEEDERS crouched at the pile (X=0, Z=-368), futilely biting the dissolved sangue per [[project_soul_larvae_cosmology]] feeder doctrine. Feeder slots use larva_aged_feeder archetype via the per-slot 'archetypes' array. The visual tableau: standing queue at the river, prone feeders at the pile inland of them. Yaws face the water for standing aged; feeders face inward (yaw=pi=facing-north back into the queue, so they're hunched over the pile's center). When a feeder dies, the slot is filled by a standing aged on the next trickle (v1 limitation: the flow-level on_arrival_action is uniform; per-slot conversion targets deferred until needed twice).",
-    "archetype": "larva_aged",
+    "_comment": "Two populations rendered as one queue: (1) the standing aged at the riverbank facing the water -- eternally awaiting Charon, 6 slots from earlier F3-captured positions; (2) two FEEDERS crouched at the pile (X=0, Z=-368), futilely biting the dissolved sangue per [[project_soul_larvae_cosmology]] feeder doctrine. Feeder slots use gorged_foundling_feeder archetype via the per-slot 'archetypes' array. The visual tableau: standing queue at the river, prone feeders at the pile inland of them. Yaws face the water for standing aged; feeders face inward (yaw=pi=facing-north back into the queue, so they're hunched over the pile's center). When a feeder dies, the slot is filled by a standing aged on the next trickle (v1 limitation: the flow-level on_arrival_action is uniform; per-slot conversion targets deferred until needed twice).",
+    "archetype": "gorged_foundling",
     "positions": [
       [-25.12, -43.13, -371.6, -0.12],
       [-14.71, -43.13, -370.4,  0.05],
@@ -40,8 +40,8 @@
       "",
       "",
       "",
-      "larva_aged_feeder",
-      "larva_aged_feeder"
+      "gorged_foundling_feeder",
+      "gorged_foundling_feeder"
     ],
     "on_arrival_actions": [
       "",
@@ -50,9 +50,9 @@
       "",
       "",
       "",
-      "convert_to:larva_aged_feeder",
-      "convert_to:larva_aged_feeder"
+      "convert_to:gorged_foundling_feeder",
+      "convert_to:gorged_foundling_feeder"
     ],
-    "_comment_on_arrival_actions": "Per-slot conversion target. Empty entries fall back to the flow-level on_arrival_action (convert_to:larva_aged). Feeder slots convert fresh -> larva_aged_feeder so the slot's visual role persists across kill-and-respawn cycles -- kill a feeder, the next fresh arrives and resumes feeding rather than standing."
+    "_comment_on_arrival_actions": "Per-slot conversion target. Empty entries fall back to the flow-level on_arrival_action (convert_to:gorged_foundling). Feeder slots convert fresh -> gorged_foundling_feeder so the slot's visual role persists across kill-and-respawn cycles -- kill a feeder, the next fresh arrives and resumes feeding rather than standing."
   }
 }

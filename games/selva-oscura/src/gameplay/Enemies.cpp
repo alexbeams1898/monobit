@@ -694,7 +694,7 @@ void primeSpawnPose(Actor& e)
     // Bind the loco track to spawn_clip or idle_clip, whichever the
     // archetype declares. Without this the first rendered frame is
     // the standing idle even for actors whose spawn pose is prone
-    // (larva_fresh in zombie_crawl). See feedback memory for why the
+    // (foundling in zombie_crawl). See feedback memory for why the
     // key MUST flow through to sampler.update.
     const PrimeClipResolution prime = resolvePrimeClip(e);
     if (prime.clip == nullptr || !prime.clip->isLoaded())
@@ -1315,8 +1315,19 @@ void queueSangueOnKill(const Actor& e)
 {
     if (e.controller == Controller::Input || e.archetype == nullptr ||
         e.archetype->sangue_drop == 0u)
+    {
+        std::fprintf(stderr,
+                     "[sangue-drop] SKIP actor='%s' arch=%p sangue_drop=%u controller=%d\n",
+                     e.spawn_decl_id.c_str(), (void*)e.archetype,
+                     e.archetype != nullptr ? e.archetype->sangue_drop : 0u,
+                     static_cast<int>(e.controller));
         return;
+    }
     const glm::vec3 body_center = e.pos + glm::vec3(0.0f, e.body.collider_height * 0.5f, 0.0f);
+    std::fprintf(stderr,
+                 "[sangue-drop] QUEUED actor='%s' arch_id='%s' amount=%u pos=(%.2f,%.2f,%.2f)\n",
+                 e.spawn_decl_id.c_str(), e.archetype->id.c_str(),
+                 e.archetype->sangue_drop, body_center.x, body_center.y, body_center.z);
     selva::gameplay::queueSangueDrop(body_center, e.archetype->sangue_drop);
 }
 
@@ -1469,11 +1480,11 @@ bool applyArchetypeSwap(Actor& a, const EnemyArchetype& target)
     // field updates ONE site -- not two.
     applyArchetypeToActor(a, target);
     // Same-dim case is the common path (DamnedSoul -> DamnedSoul,
-    // e.g. larva_fresh -> larva_aged). Skip the rebuild cost. Cross-
-    // form swap and intangibility swap rebuild the capsule at the
-    // actor's current world pos (larva_fresh is incorporeal, larva_aged
-    // is solid -- the fresh-to-aged trickle crosses layers and needs a
-    // fresh Jolt body to move into the new layer).
+    // e.g. foundling -> gorged_foundling). Skip the rebuild cost.
+    // Cross-form swap and intangibility swap rebuild the capsule at the
+    // actor's current world pos (foundling is incorporeal, gorged_foundling
+    // is solid -- the fresh-to-gorged trickle crosses layers and needs
+    // a fresh Jolt body to move into the new layer).
     constexpr float kColliderRebuildEpsilon = 0.001f;
     const bool intangibility_changed = target.intangible != prev_intangible;
     if (intangibility_changed ||

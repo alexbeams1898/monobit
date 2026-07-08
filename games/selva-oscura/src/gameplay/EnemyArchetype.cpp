@@ -458,7 +458,7 @@ void EnemyArchetypeRegistry::loadDirectory(const std::filesystem::path& dir)
     // beneath the child via merge_patch semantics: child object keys
     // override parent, child arrays replace parent arrays wholesale.
     // For our schema this gives the right behavior -- inheriting
-    // larva_aged_feeder from larva_aged shares the actions[] array,
+    // gorged_foundling_feeder from gorged_foundling shares the actions[] array,
     // tints, hazard list, etc. unless the child explicitly re-declares
     // them.
     constexpr int kMaxInheritDepth = 8;

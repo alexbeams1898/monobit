@@ -279,15 +279,16 @@ Options:
 
 - **Penitent / Heretic / Wretched** (any of the three) →
   Signing happens cosmologically → imprint is created → the
-  Vagrant receives **the Crucible**. Stats unlock. Standard path.
-- **Refuse** → no Signing → refusal-channel opens → the Vagrant
-  receives **the Censer**. Stats stay at baseline; growth comes
-  from riversamento alone via the Censer (per setting.md
+  Vagrant gains the commit verb (installation outcome).
+  Stats unlock. Standard path.
+- **Refuse** → no Signing → refusal opens the riversamento channel → the Vagrant
+  gains the commit verb (riversamento outcome). Stats stay at
+  baseline; growth comes from riversamento alone (per setting.md
   *The unburdened path*).
 
 The choice is decisive at this beat. The Signing window is
 cosmologically one-shot for the Guide because the Lupa-fall
-arrangement supplied the chrism-equivalent substance the ritual
+arrangement supplied the substance the ritual
 required; once spent, the Guide has nothing to draw on. Later
 Erasures re-enable the ritual via Vagrant-gathered material
 prerequisites and re-run the same class-picker UI.
@@ -596,7 +597,7 @@ The Guide carries cosmological residue from his role as Beatrice's
 projection-channel. At his death, that residue collapses out of him
 and the Vagrant inherits something. The specific form and function
 of this inheritance is TBD — leveling is already portable from Beat 4
-via the Crucible / Censer, so the old "portable OFFERINGS access" role
+via commit, so the old "portable OFFERINGS access" role
 the Hand used to fill no longer exists.
 
 - **Severed at the kill** (class-picker) or **passed at the handover**
@@ -793,8 +794,9 @@ and the *class-evolution-as-Hell-loading* implication.
     The halo cracking is Hell working outward inside her substrate.
     The unburdened Vagrant thought he was choosing the gentle
     ending; he has been *making a Satan-of-Paradiso* inside the
-    figure he is converging toward. PURITY, the ending he is
-    racing toward, will kill her before the transformation
+    figure he is converging toward. RIVERSAMENTO, the ending he is
+    racing toward on the riversamento branch, will kill her before
+    the transformation
     completes. On post-R2 replay, every prior boot is horror.
   - Beatrice's intentions: radical reform of a failing cosmology,
     executed by a god ground down past coherence and visibly
@@ -854,7 +856,9 @@ what kind of soul produced it. Three branches:
   him for the throne (R3 follows).
 - *Beatrice does not descend on this branch.*
 
-**Branch B — Unburdened / Beatrice fight (PURITY).**
+**Branch B — Unburdened / riversamento branch / Beatrice fight (RIVERSAMENTO).**
+*(Formerly called PURITY; renamed 2026-07-07. See setting.md
+*Endings*.)*
 - *Trigger:* Lucifer felled by Diaphanous Vagrant. Firing cocks but
   does not fire; Beatrice is the holdback.
 - *Surface:* Beatrice descends — already fully rabid, already coming
@@ -872,6 +876,25 @@ what kind of soul produced it. Three branches:
   Beatrice → Lucifer's effects → shades and keepers → Hell's
   geography → the Vagrant. Hell ceases.
 
+**Branch D — Unburdened / true refusal branch / Warden ending (PURITY).**
+*(New 2026-07-07; ending shape WIP. See setting.md *Endings* and
+classes.md *Evolutions* for the two-branches structure.)*
+- *Trigger:* Lucifer felled by an Unburdened Vagrant who never
+  performed riversamento (stays L1 Unburdened on body, progresses on
+  Mind-arc through Gnosis / Hierophant).
+- *Surface:* something reroutes the Vagrant back UP to Limbo
+  post-Lucifer (mechanism WIP). Beatrice descends rabid — not
+  substrate-saturation rabid (riversamento never fired) but
+  frustration-rabid, like REFUSAL. Same combat profile as
+  RIVERSAMENTO / REFUSAL (rabid, disintegrating, title-screen
+  animation completing in real-time). The Vagrant defeats her.
+- *Aftermath:* the Warden installation completes at Limbo. Hell
+  restructures around the refusal-doctrine rooted at Limbo, not the
+  punishment-engine at Cocytus. The Vagrant becomes the Warden — a
+  seat that is not the Cocytus throne. Continuable cosmology
+  alongside TRANSFIGURATION; a possible Purgatorio-themed sequel
+  could anchor on either. Specifics WIP.
+
 **Branch C — REFUSAL / Beatrice fight.**
 - *Trigger:* class-picker walks away from the throne after surviving
   the heavens-descent. The throne stays empty; nothing fires.
@@ -884,9 +907,11 @@ what kind of soul produced it. Three branches:
 - *Aftermath:* she falls. The Vagrant walks out of Cocytus. REFUSAL
   ending fires. Hell stays broken; the anomaly persists.
 
-**The unifying rule: Beatrice descends on the paths she is mad at.**
-REFUSAL (no change) and PURITY (her own ending). She does not descend
-on TRANSFIGURATION (her plan succeeds) or SURFEIT (impersonal cosmic
+**The unifying rule: Beatrice descends on the paths that fail her plan.**
+REFUSAL (no change), RIVERSAMENTO (her own ending — cascade takes her
+too), and PURITY (the new Warden ending — a permutation of her own
+infrastructure she never modeled). She does not descend on
+TRANSFIGURATION (her plan succeeds) or SURFEIT (impersonal cosmic
 catastrophe). The player meets her only on the paths that fail her.
 
 ---
@@ -911,9 +936,10 @@ catastrophe). The player meets her only on the paths that fail her.
    per-ending final-scene shape, any text overlays.
 
 4. **Beatrice's appearances** — mostly answered. She does not appear
-   before R2. She appears as a fight on REFUSAL and PURITY. Open: any
-   other appearances (dreams between cycles, post-credit content,
-   subsequent-boot title-screen state changes after PURITY).
+   before R2. She appears as a fight on REFUSAL, RIVERSAMENTO, and
+   PURITY (the Warden ending). Open: any other appearances (dreams
+   between cycles, post-credit content, subsequent-boot title-screen
+   state changes after RIVERSAMENTO).
 
 ---
 
@@ -922,7 +948,7 @@ catastrophe). The player meets her only on the paths that fail her.
 - [Setting](setting.md) — the world this story takes place in. The
   cosmological rules, the geography, the locked terms (Vagrant /
   Pilgrim, sangue, riversamento, the Signing, markers, the Erasure,
-  vestigia, the Crucible, the Censer).
+  vestigia, commit).
 - [Classes](classes.md) — the Vagrant's combat capabilities,
   class-pick fork, evolutions, the Unburdened path mechanics.
 - [Companions](companions.md) — the Guide as character, in

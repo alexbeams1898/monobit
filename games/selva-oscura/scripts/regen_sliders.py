@@ -43,7 +43,7 @@ EXISTING = [
     {"id": "body_scale", "label": "Body Scale", "category": "proportions",
      "min": 0.5, "max": 1.5, "default": 1.0,
      "applies_to": "uniform_scale", "param": "", "player_visible": False,
-     "_comment": "Dev-only -- the player creator excludes size knobs; size emerges from gameplay state (class, stats, evolution) per the canon. Authoring + NPC config (larva_fresh body_scale=0.60) use it freely."},
+     "_comment": "Dev-only -- the player creator excludes size knobs; size emerges from gameplay state (class, stats, evolution) per the canon. Authoring + NPC config (foundling body_scale=0.60) use it freely."},
 ]
 
 # ---- Axis table ----

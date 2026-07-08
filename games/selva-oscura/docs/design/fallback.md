@@ -9,8 +9,8 @@
 
 Locked at setting.md *Second death*. Summary:
 
-- **Mechanics on Vagrant-killed:** uncommitted vessel contents
-  (Crucible's or Censer's currently-held substance) return to Hell
+- **Mechanics on Vagrant-killed:** uncommitted held sangue returns
+  to Hell
   (unrecoverable); stats / lifetime sangue / riversato persist.
   Cycle structure (setting.md *Cycle structure*) governs what
   resets vs. what persists.
@@ -28,7 +28,7 @@ Locked at setting.md *Second death*. Summary:
 - **Run-stats screen follows** with no header text — full pixel budget
   for data (sangue lost, kills, keepers felled this run, etc.). Term
   *sangue* enters vocabulary in this screen, not on the death-card.
-- **PURITY's terminus is the only run-end without the death-card.**
+- **RIVERSAMENTO's terminus is the only run-end without the death-card.**
   The cosmic firing replaces it. The absence is the player's
   confirmation that something fundamentally different has occurred.
 
@@ -62,14 +62,14 @@ world's register, not labeled "save" / "load."
 Symmetric across paths — both class-picker and unburdened use the same
 save register and the same triggers.
 
-- **Autosave triggers:** every Crucible commitment (class-picker
-  installation), every Censer commitment (unburdened riversamento),
-  every item commit, voluntary retreat (via markers), second death,
+- **Autosave triggers:** every commit (installation for class-picker
+  or riversamento for unburdened), every item commit, voluntary
+  retreat (via markers), second death,
   and other run termination.
 - **Manual save (Inscribe):** Wood-side. Specifics deferred to UX.
 - **Restore:** loads from autosave. Used primarily by players who
-  make a Wood-side mistake (e.g. installing the wrong stat at the
-  Crucible).
+  make a Wood-side mistake (e.g. installing the wrong stat via
+  commit).
 - **Persistence across power loss:** vestigia must be durable,
   written to file atomically.
 
@@ -90,9 +90,9 @@ Per setting.md *Cycle structure*. Structural lock; narrative-
 experience pacing of cycles is open (story.md TBD item 1).
 
 **Persistent across cycles:** lifetime sangue total, stats installed
-via the Crucible, riversato lifetime total, class choice, keepers
-felled, NPC encounter history, Grimoire unlocks, the active vessel
-(Crucible or Censer per path).
+via commit, riversato lifetime total, class choice, keepers felled,
+NPC encounter history, Grimoire unlocks, the active commit outcome
+(installation or riversamento per path).
 
 **Reset each cycle:** uncommitted vessel contents, current HP and
 position, transient combat state.

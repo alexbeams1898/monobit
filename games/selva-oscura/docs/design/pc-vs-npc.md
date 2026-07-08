@@ -87,8 +87,8 @@ type:
   on every actor's `Stats` struct but are gated by per-stat
   unlock-mask — present-but-invisible on actors that haven't
   unlocked them.
-- **Sangue payout on death.** The Vagrant's uncommitted vessel
-  contents (Crucible or Censer) return to Hell on his death (Hell
+- **Sangue payout on death.** The Vagrant's uncommitted held sangue
+  returns to Hell on his death (Hell
   reclaims its substance from any dead body). Shades and keepers,
   when killed, deposit sangue into the Vagrant's vessel. Same
   mechanic, different direction.
@@ -126,8 +126,9 @@ state, and per-cycle degradation flag.
 
 ## Beatrice as boss edge case
 
-Beatrice, when she appears at R4 Branches B and C (PURITY and
-REFUSAL), is a boss entity. Same Entity struct as a keeper, with
+Beatrice, when she appears at R4 Branches B, C, and D (RIVERSAMENTO,
+REFUSAL, and PURITY — the Warden ending), is a boss entity. Same
+Entity struct as a keeper, with
 combat profile data appropriate to her (rabid, light-based,
 disintegrating in real-time).
 
@@ -146,8 +147,8 @@ She is not state-aware in the NPC sense.
   closes). Pre-keeper, can the player attack them anyway? Defer.
 - **Bullet symmetry.** All bullets are entities. Some bullets belong
   to the player; some to enemies. Friendly-fire rules: defer.
-- **Whether the Crucible / Censer (commit invocation, vessel-fire,
-  refunds during Erasure) need a special trigger or use the same
+- **Whether commit (invocation, refunds during Erasure)
+  needs a special trigger or uses the same
   entity-interaction pattern as other in-world objects.** Defer to UX.
 
 ## Cross-references

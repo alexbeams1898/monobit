@@ -76,6 +76,7 @@
 #include "render/ShadowPass.h"
 #include "render/SkyPass.h"
 #include "render/ActiveLightingEnv.h"
+#include "render/EquippedWeapon.h"
 #include "render/TerrainShader.h"
 #include "render/TreeShader.h"
 #include "render/WorldRenderer.h"
@@ -4054,6 +4055,15 @@ static void selvaPerFrame(Engine& engine, EntityManager& em, double dt_d)
             &pctx);
         selva::gameplay::tickSanguePulses(static_cast<float>(dt), hud_anchor);
     }
+
+    // Held torch light lifecycle: registers/updates when the player
+    // has a torch equipped in the right hand, unregisters otherwise.
+    // Runs unconditionally because the render-side path returns
+    // early when nothing is equipped and would leak a stale light
+    // after a swap to unarmed. Requires the current-frame sampler
+    // pose so the tip position tracks the swing; per-frame call
+    // fits between the actor tick and the render pass.
+    selva::render::tickHeldTorchLight(selva::gameplay::player());
 
     // Bottom-right pickup toasts: timer-down + rise-up. The render
     // call lives in renderActorHud (HUD pass); the tick must run

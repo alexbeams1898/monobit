@@ -171,7 +171,7 @@ converge:
   K shades, accumulate X sangue, visit Y regions
 - **Specific items / discoveries** — finding a tutorial-grimoire
   fragment that "teaches" the player symbols
-- **Vessel commitments** — first Crucible / Censer use, first
+- **Commit events** — first commit (either outcome), first
   successful installation / riversamento
 - **Action-driven micro-unlocks** — small "you did this for the
   first time" triggers (first kill, first item use, first death,
@@ -717,7 +717,7 @@ not appear on the Mind sub-page.
 ```json
 "knows_arrival_queue": {
   "category": "world",
-  "trigger": { "kind": "examined", "subject": "larva_fresh" }
+  "trigger": { "kind": "examined", "subject": "foundling" }
 }
 ```
 
@@ -814,7 +814,7 @@ Schema for the two halves:
 ```json
 // config/insight/world.json -- triggered node
 "knows_arrival_queue": {
-  "trigger": { "kind": "examined", "subject": "larva_fresh" }
+  "trigger": { "kind": "examined", "subject": "foundling" }
 }
 
 // config/npcs/guide.json -- topic that fires the Guide-named node
@@ -823,7 +823,7 @@ Schema for the two halves:
   "entry_point": true,
   "show_when": {
     "flags_required": ["seen_topic_post_signing_first_words",
-                       "examined:larva_fresh"],
+                       "examined:foundling"],
     "flags_forbidden": ["seen_topic_guide_reveals_arrival_queue"]
   },
   "unlocks_insight": "guide_named_arrival_queue",
@@ -832,7 +832,7 @@ Schema for the two halves:
 }
 
 // config/lang/world.json -- entry with both tier promotions
-"world.larva_fresh.examine_text": {
+"world.foundling.examine_text": {
   "tier_0": "...",
   "tier_1": "...",
   "tier_2": "...",

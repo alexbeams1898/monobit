@@ -59,7 +59,7 @@
       "applies_to": "uniform_scale",
       "param": "",
       "player_visible": false,
-      "_comment": "Dev-only -- the player creator excludes size knobs; size emerges from gameplay state (class, stats, evolution) per the canon. Authoring + NPC config (larva_fresh body_scale=0.60) use it freely."
+      "_comment": "Dev-only -- the player creator excludes size knobs; size emerges from gameplay state (class, stats, evolution) per the canon. Authoring + NPC config (foundling body_scale=0.60) use it freely."
     },
     {
       "id": "face_width",

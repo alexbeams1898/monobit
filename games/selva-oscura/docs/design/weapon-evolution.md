@@ -150,7 +150,7 @@ parallel to how crafting from scratch spends sangue (per
 crafting.md *Sangue flows into everything he makes*).
 
 Implication: **evolution competes with stat installation
-(Crucible) and marker placement for the sangue budget**. The
+(commit) and marker placement for the sangue budget**. The
 player is always choosing what to spend substance on. A
 class-picker descending with a stockpile of sangue may pour it
 into an evolution mid-run rather than commit to a stat raise;

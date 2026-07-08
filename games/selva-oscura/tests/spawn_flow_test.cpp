@@ -9,18 +9,18 @@
 // FlowSpawner code expects. Catches schema-drift bugs at CI time
 // instead of in-game.
 
-TEST_CASE("acheron_larvae.json parses with expected fields", "[spawn][flow]")
+TEST_CASE("acheron_foundlings.json parses with expected fields", "[spawn][flow]")
 {
-    std::ifstream in("config/spawn_flows/acheron_larvae.json");
+    std::ifstream in("config/spawn_flows/acheron_foundlings.json");
     REQUIRE(in.is_open());
     nlohmann::json j;
     in >> j;
 
     REQUIRE(j.contains("id"));
-    REQUIRE(j["id"].get<std::string>() == "acheron_larvae");
+    REQUIRE(j["id"].get<std::string>() == "acheron_foundlings");
 
     REQUIRE(j.contains("archetype"));
-    REQUIRE(j["archetype"].get<std::string>() == "larva_fresh");
+    REQUIRE(j["archetype"].get<std::string>() == "foundling");
 
     REQUIRE(j.contains("spawn_region_id"));
     REQUIRE(j["spawn_region_id"].get<std::string>() == "limbo");
@@ -39,9 +39,9 @@ TEST_CASE("acheron_larvae.json parses with expected fields", "[spawn][flow]")
     bool has_aged = false;
     for (const auto& s : j["active_count_includes"])
     {
-        if (s.get<std::string>() == "larva_fresh")
+        if (s.get<std::string>() == "foundling")
             has_fresh = true;
-        if (s.get<std::string>() == "larva_aged")
+        if (s.get<std::string>() == "gorged_foundling")
             has_aged = true;
     }
     REQUIRE(has_fresh);
@@ -68,7 +68,7 @@ TEST_CASE("acheron_larvae.json parses with expected fields", "[spawn][flow]")
     const auto& ip = j["initial_population"];
     REQUIRE(ip.is_object());
     REQUIRE(ip.contains("archetype"));
-    REQUIRE(ip["archetype"].get<std::string>() == "larva_aged");
+    REQUIRE(ip["archetype"].get<std::string>() == "gorged_foundling");
     REQUIRE(ip.contains("positions"));
     REQUIRE(ip["positions"].is_array());
     REQUIRE(!ip["positions"].empty());
@@ -100,8 +100,8 @@ TEST_CASE("acheron_larvae.json parses with expected fields", "[spawn][flow]")
 
     // On-arrival clip: optional one-shot held on the actor from the
     // moment it reaches its scripted target until the arrival action
-    // fires (paired conceptually with on_arrival_action). Larvae use
-    // it to crawl-bite a corpse while the conversion timer runs.
+    // fires (paired conceptually with on_arrival_action). Foundlings
+    // use it to crawl-bite a corpse while the conversion timer runs.
     if (j.contains("on_arrival_clip"))
     {
         REQUIRE(j["on_arrival_clip"].is_string());

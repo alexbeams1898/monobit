@@ -47,7 +47,7 @@ struct FlowConfig
     std::vector<std::string> active_count_includes; // archetype ids
     int active_cap = 1;
     float spawn_interval_seconds = 30.0f;
-    std::string on_arrival_action; // e.g. "convert_to:larva_aged" / "halt" / "despawn"
+    std::string on_arrival_action; // e.g. "convert_to:gorged_foundling" / "halt" / "despawn"
     float on_arrival_delay_seconds = 0.0f;
     // Optional looping clip bound to the trickle actor's loco track
     // AFTER they arrive at the scripted target but BEFORE
@@ -89,14 +89,14 @@ struct FlowConfig
     // entries are empty string by default (use initial_archetype_id).
     // Non-empty entries spawn that slot with the named archetype
     // instead, allowing visual variants within one queue (e.g.
-    // larva_aged + larva_aged_feeder mixed in the larva flow).
+    // gorged_foundling + gorged_foundling_feeder mixed in the Foundling flow).
     std::vector<std::string> initial_archetypes_per_slot;
     // Optional per-slot on_arrival_action overrides. Parallel to
     // positions; entries are empty string by default (use the flow-
     // level on_arrival_action). Non-empty entries fire that action
     // when a trickle actor reaches THIS slot, allowing mixed-mode
-    // queues -- e.g. feeder slots convert fresh -> larva_aged_feeder
-    // while standing slots convert fresh -> larva_aged.
+    // queues -- e.g. feeder slots convert fresh -> gorged_foundling_feeder
+    // while standing slots convert fresh -> gorged_foundling.
     std::vector<std::string> on_arrival_actions_per_slot;
 };
 
@@ -134,7 +134,7 @@ std::vector<FlowState>& flows()
 }
 
 // Parse an action string into (verb, optional arg). E.g.
-// "convert_to:larva_aged" -> ("convert_to", "larva_aged").
+// "convert_to:gorged_foundling" -> ("convert_to", "gorged_foundling").
 // "halt" -> ("halt", "").
 // "" -> ("", "").
 std::pair<std::string, std::string> parseAction(const std::string& s)
@@ -549,8 +549,8 @@ void parseInitialPopulation(const nlohmann::json& ip, FlowConfig& out)
     // Optional parallel "archetypes" / "on_arrival_actions" arrays
     // (each same length as positions). Empty/omitted entries fall
     // back to the flow-level default. Lets one flow mix variants
-    // (larva_aged + larva_aged_feeder) and per-slot conversions
-    // (feeder slots -> larva_aged_feeder; standing slots -> larva_aged)
+    // (gorged_foundling + gorged_foundling_feeder) and per-slot conversions
+    // (feeder slots -> gorged_foundling_feeder; standing slots -> gorged_foundling)
     // without needing two separate flows.
     parseInitialPopulationParallelArray(ip, "archetypes", out.initial_archetypes_per_slot);
     out.on_arrival_actions_per_slot.assign(out.initial_positions.size(), std::string{});

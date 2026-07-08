@@ -412,12 +412,12 @@ void initGameplaySubsystems()
     // doesn't stall a gameplay frame with a synchronous disk read +
     // GPU upload. Walk every registered archetype, force-load both
     // mesh_path (single-variant archetypes) and every mesh_path_variants
-    // entry (multi-variant archetypes like larvae) through the
+    // entry (multi-variant archetypes like Foundlings) through the
     // per-path cache in SkeletalAssets. Load failures are silent-
     // benign: the archetype's spawn will hit the same failure path
     // later and fall back to the shared bundle mesh.
     //
-    // Root cause this addresses: prior to pre-warm, the acheron_larvae
+    // Root cause this addresses: prior to pre-warm, the acheron_foundlings
     // spawn-flow's initial-fill would cold-load 1-2 mesh variants on
     // the first frame after region activation (Continue-button click),
     // stalling the main thread ~290ms. Trace 11 captured this as a

@@ -265,8 +265,8 @@ struct EnemyArchetype
 
     // Optional per-archetype mesh override (FromSoft-pattern:
     // every humanoid enemy archetype has its own baked .glb with its
-    // own skin diffuse -- leached-pale larva, sangue-darkened aged
-    // larva, etc. All humanoid archetypes SHARE the skeleton_id
+    // own skin diffuse -- leached-pale Foundling, sangue-darkened
+    // Gorged Foundling, etc. All humanoid archetypes SHARE the skeleton_id
     // bundle's clip library for animation.) Empty => use the shared
     // bundle's default mesh. Load path is resolved via
     // selva::anim::meshByArchetypePath() at draw time.
@@ -289,7 +289,7 @@ struct EnemyArchetype
     // Actor::appearance.morph_weights so no two spawned actors of
     // this archetype look identical. Off by default -- most player-
     // creator characters + boss actors want their exact-configured
-    // face. Enemy archetypes that spawn in crowds (larvae, future
+    // face. Enemy archetypes that spawn in crowds (Foundlings, future
     // trash zombies) opt in via "random_face_morphs": true in JSON.
     bool random_face_morphs = false;
 
@@ -297,8 +297,8 @@ struct EnemyArchetype
     // (default appearance + no identity overlay -- same as existing
     // behavior, so legacy archetypes with no character_path stay
     // identical). Set per-archetype to make every instance of this
-    // enemy share a body shape -- e.g. a larva file with
-    // body_scale=0.85 for a slightly smaller larva, or a keeper file
+    // enemy share a body shape -- e.g. a Foundling file with
+    // body_scale=0.85 for a slightly smaller Foundling, or a keeper file
     // with 1.4 for a hulking keeper. Named characters (Guide,
     // Beatrice, bosses) additionally author identity keys
     // (display_name_key, player_class, stats, rh_item, lh_item) that
@@ -335,7 +335,7 @@ struct EnemyArchetype
     // transitions Suspicious -> Alerted (the "confirmed sighting"
     // moment per Awareness comment in perception.h). Matches the
     // Souls/ER pattern: Hollows wake from slumped idle, knights raise
-    // weapon, larvae scream as the imprint finds outlet. Movement is
+    // weapon, Foundlings scream as the imprint finds outlet. Movement is
     // locked for the clip's full duration (action_locks_movement set
     // alongside the playOneShot); the BT's chase + attack starts after
     // the clip finishes. Empty = no aggro clip; the actor goes
@@ -421,7 +421,7 @@ struct EnemyArchetype
     // True -> this archetype has NO hurtboxes regardless of empty
     // hurtbox_decls. Spawn-side code skips both the explicit and
     // inherited hurtbox paths. Used for beings that are intentionally
-    // not killable: fresh larvae (substance too tightly arranged for
+    // not killable: Foundlings (substance too tightly arranged for
     // the Vagrant's second-death-grant per project_soul_larvae_cosmology),
     // future intact NPCs, decoration-tier entities.
     bool disable_hurtboxes = false;
@@ -536,7 +536,7 @@ struct EnemyArchetype
 
     // Optional clip to bind as the LOCO track at spawn, instead of
     // idle_clip. Use when the actor's spawn pose differs from its
-    // standing idle -- e.g. larva_fresh spawns prone in zombie_crawl,
+    // standing idle -- e.g. foundling spawns prone in zombie_crawl,
     // not standing in zombie_idle. Empty (default) = bind idle_clip
     // at spawn (legacy behavior).
     //
@@ -548,7 +548,7 @@ struct EnemyArchetype
     // spawn. If the picked clip differs (e.g. spawn_clip was
     // zombie_crawl but the actor stands still on its first tick and
     // the picker selects idle_clip), the sampler blends between them
-    // via its standard transition. For larvae where spawn_clip and
+    // via its standard transition. For Foundlings where spawn_clip and
     // walk_clip are the same (both zombie_crawl), the transition is
     // invisible.
     std::string spawn_clip;
@@ -565,9 +565,9 @@ struct EnemyArchetype
 
     // Optional archetype id whose Appearance this actor LERPS TOWARD
     // over its arrival-wait period. Used by render code to visualize
-    // a transformation in progress -- today the larva burn (fresh
-    // pale-and-small -> aged red-and-full-sized as they wait at the
-    // shore), tomorrow keeper falls / class form changes / etc.
+    // a transformation in progress -- today the Foundling burn (fresh
+    // pale-and-small -> Gorged Foundling red-and-full-sized as they
+    // wait at the shore), tomorrow keeper falls / class form changes / etc.
     // Empty (default) = no transformation; render uses this
     // archetype's appearance verbatim. The lerp uses the actor's
     // arrival_wallclock + arrival_action_delay_seconds, both stamped
@@ -585,9 +585,9 @@ void to_json(nlohmann::json& j, const EnemyArchetype& a);
 void from_json(const nlohmann::json& j, EnemyArchetype& a);
 
 // Process-wide archetype registry. Loaded once at startup; read by
-// gameplay code via archetypes(). Sprint 3 ships with one entry —
-// "limbo_shade" — but the registry scales to as many archetypes as
-// the bestiary has files for.
+// gameplay code via archetypes(). Sprint 3 shipped with "limbo_shade";
+// as of 2026-07-07 the registry also holds foundling, gorged_foundling,
+// gorged_foundling_feeder plus the Wood entries. Scales without bound.
 class EnemyArchetypeRegistry
 {
   public:

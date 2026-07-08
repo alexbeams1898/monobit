@@ -1,0 +1,14 @@
+{
+  "_comment": "Gorged Foundling — FEEDER variant. Inherits from gorged_foundling; overrides only the visual + behavioral fields that differ. Per [[project_soul_larvae_cosmology]] LOCKED 2026-06-04: 'some Gorged Foundlings are visually authored as crouched over the pile, playing zombie_biting on loop. The pile is sangue; the imprint drives them outward; the act of feeding is the imprint compelling them to consume any substance they can reach. Cosmologically the act is FUTILE -- pile-substance cannot be reincorporated into another soul's arrangement (proper contrapasso machinery is the only mechanism that re-shapes sangue between forms).' Mechanically identical to gorged_foundling for combat -- the variant is purely visual: spawns and idles in zombie_biting, only standing up when alerted. The visual narrative is 'even within Hell, the dissolved cannot be saved by other damned souls' -- a darker Dantean reading.",
+  "id": "gorged_foundling_feeder",
+  "inherits": "gorged_foundling",
+  "spawn_clip": "zombie_biting",
+  "_comment_spawn_clip": "Feeders spawn already crouched + biting. zombie_biting is a looping biting motion authored in-place -- the actor stays anchored at its spawn position, biting at the pile-substance below. When alerted (player approaches, perception transitions to Alerted), aggro_clip (zombie_scream) fires + standard chase begins; the feeder transitions from feeding to combat naturally.",
+  "examine_text": "",
+  "examine_label_key": "world.gorged_foundling_feeder.examine_label",
+  "examine_text_key": "world.gorged_foundling_feeder.examine_text",
+  "_comment_examine": "Examinable via the lang-map keys (literal examine_text is empty -- the lang map is authoritative). Per the insight doctrine: every examine fires an insight node. knows_feeding_cycle (config/insight/world.json) fires on first examine; promotes the lang entries to tier-1. The Guide subsequently naming the feeding cycle fires guide_named_feeding_cycle for tier-2. Range matches the feeder's interaction needs (player crouches close to observe the bite-loop).",
+  "interact_range_meters": 2.5,
+  "idle_clip": "zombie_biting",
+  "_comment_idle": "PeacefulIdle = zombie_biting (looping). This is what the locomotion gait picker selects when the actor has zero velocity AND awareness < Alerted -- which is the feeder's resting state. Without overriding idle_clip, the picker would swap to the default zombie_idle on frame 1, breaking the spawn pose. Combat_idle stays inherited (zombie_idle) because once alerted the feeder rises and engages like any Gorged Foundling."
+}

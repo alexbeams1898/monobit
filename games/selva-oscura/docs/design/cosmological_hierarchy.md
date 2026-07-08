@@ -110,11 +110,11 @@ classical guardian, never becomes a lesser devil.
 **Post-Signing (Beat 4 onward, accept-path):**
 - Still a soul. Still human-spirit-substance.
 - The Signing is **Hell's first formal measurement** of him
-  (per setting.md *The Signing installs the commit-fire*).
+  (per setting.md *The Signing unlocks the commit verb*).
 - He now carries an imprint Hell can grip — moves into the
   SOULS / judged-by-Hell sub-category structurally.
 - Contrapasso can land on him from this moment.
-- The Crucible's commit-fire installs substance into his substrate.
+- Commit installs substance into his substrate.
 - **He does NOT become a fallen angel.** Fallen angels were never
   souls; they originated as pure-spirit beings created by God who
   rebelled. The Vagrant remains a soul, just a measured one.
@@ -122,18 +122,18 @@ classical guardian, never becomes a lesser devil.
 **Post-Signing (Beat 4 onward, refuse-path = Unburdened):**
 - Still a soul. Still unjudged.
 - Stays imprint-free for the entire run; Hell never gets a grip.
-- Beatrice's channel-fire routes held substance outward via
-  *riversamento* instead of inward via the Crucible.
+- The Vagrant's commit outcome is *riversamento*, routing held
+  substance outward instead of installing it inward.
 - The Unburdened is the only path that remains structurally
   unjudged from start to end.
 
 ## What the Signing actually does, in three bullets
 
-Per [setting.md *The Signing installs the commit-fire*](setting.md):
+Per [setting.md *The Signing unlocks the commit verb*](setting.md):
 
 1. Hell's first formal measurement of the soul.
-2. The Guide installs the chrism-fire (the Crucible's metabolic
-   fire that enables commit-into-substrate).
+2. The Guide unlocks the commit verb (whose class-picker outcome is
+   installation into substrate).
 3. Contrapasso can land on the Vagrant from that moment.
 
 The Signing does NOT:
@@ -142,8 +142,7 @@ The Signing does NOT:
 - Move him out of the soul category.
 
 It moves him FROM the unjudged-soul slot TO the
-measured-soul-with-installed-commit-fire slot. Both slots are
-inside SOULS.
+measured-soul-with-commit-verb slot. Both slots are inside SOULS.
 
 ## What about the four classes (Penitent / Heretic / Wretched / Unburdened)?
 
@@ -154,8 +153,8 @@ of the same human-form substrate stats every soul carries** (per
 - The universal base — STR / DEX / END / LCK at 1/1/1/1 — is on
   every actor in the game: every player, every shade, every fallen
   angel, every NPC. It is the floor of being a measurable-form.
-- For class-picker players (Penitent / Heretic / Wretched), the
-  Crucible installs sangue into the substrate, growing the
+- For class-picker players (Penitent / Heretic / Wretched),
+  commit installs sangue into the substrate, growing the
   baseline values + later evolutions may add new unlocked
   stat fields (Heretic L2 unlocks Faith; Penitent L2 TBD;
   Wretched may add none and stay on the universal four).

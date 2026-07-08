@@ -24,7 +24,7 @@ Example shapes:
 - **READ** is the universal inspect verb — used for entering detail
   pages (bestiary detail, TEXT body) regardless of whether the page
   itself is text or stats.
-- **R:KNOW** (the Crucible stat-spend right-arrow peek) is a
+- **R:KNOW** (the commit stat-spend right-arrow peek) is a
   *withheld* control: it exists but is not advertised in the
   footer. Discoverable, not signposted.
 
@@ -66,16 +66,18 @@ Locked-by-implication:
   cosmological ceiling -- 9^9, per setting.md *Hell's accounting
   cap*).
 - Per [[project_substance_has_no_in_game_name]]: the substance
-  itself is NEVER labeled in any diegetic surface. The commit-verb
-  has a name (Crucible / Censer); the substance does not.
+  itself is NEVER labeled in any diegetic surface. The commit verb
+  has an internal-doc name (commit); its player-facing label is TBD
+  per [[project_commit_verb_unified_2026_06_11]]. The substance does
+  not.
 - HUD must stay in Hell's register (Early Modern English; Italian
   loanwords only where load-bearing per
   [[project_foreign_language_load_bearing]]).
 
 ## Menus
 
-*TBD — pause menu, inventory menu, class-picker UI, Crucible stat-
-spend panel, etc.*
+*TBD — pause menu, inventory menu, class-picker UI, commit
+stat-spend panel, etc.*
 
 Locked-by-implication:
 - Vestigia UI exists and shipped phase-3 (per memory + fallback.md).
@@ -94,7 +96,7 @@ Locked-by-implication:
 - A = primary action / confirm (per footer-hint convention above).
 - B = back / cancel.
 - R (RIGHT) = inspect / peek (rare, withheld; used for the
-  Crucible's stat-KNOW peek).
+  commit's stat-KNOW peek).
 
 ## Name-entry screen
 

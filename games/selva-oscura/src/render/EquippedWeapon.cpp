@@ -208,43 +208,74 @@ void drawEquippedWeapon(const selva::gameplay::Actor& actor)
     // Restore identity model matrix so subsequent draws (any caller
     // assuming default identity) aren't offset by our hand transform.
     selva::render::setSceneModel(glm::mat4(1.0f));
+}
 
-    // Torch light: if the equipped weapon carries the torch item id,
-    // register / update a warm point light at the weapon's world-space
-    // head (offset a short distance along local +Y from the grip so
-    // the light emits from the tip, not the hand). Position + intensity
-    // recomputed every frame so the light follows the swing and idle
-    // sway. On un-equip / swap the weapon path changes; the stale
-    // "torch_right" light entry stays until the next equip refreshes
-    // it or clearLights fires on region change. Cheap: one entry in
-    // the light registry.
-    if (def->config_path == "config/items/weapons/torch.json")
-    {
-        // Head position: 0.25m up the weapon's local +Y axis from the grip.
-        // Weapon meshes are authored small (branch is ~30cm long); the
-        // grip is at origin, tip roughly at (+Y). Adjust if the visible
-        // flame ends up not at the branch head.
-        const glm::vec4 tip_local{0.0f, 0.25f, 0.0f, 1.0f};
-        const glm::vec3 tip_world{final_model * tip_local};
-
-        engine::world::LightSource ls;
-        ls.position = tip_world;
-        ls.color = glm::vec3(1.00f, 0.55f, 0.22f); // warm amber
-        // Intensity tuned against the inverse-square + windowing
-        // attenuation model. 2.5 gives ~2.5 at the flame, ~0.6 at 3m
-        // out, ~0.15 at 6m, ~0.03 at 12m — matches the visible falloff
-        // of a real hand-held torch.
-        ls.intensity = 2.5f;
-        ls.radius = 12.0f;
-        ls.flicker_amp = 0.15f;
-        ls.flicker_freq = 3.0f;
-        ls.debug_name = "player_torch";
-        engine::world::registerOrUpdateLight("player_torch", ls);
-    }
-    else
+void tickHeldTorchLight(const selva::gameplay::Actor& actor)
+{
+    // Torch light lifecycle. Runs unconditionally each frame from
+    // PerFrameTick — NOT from the render pass, because the render
+    // pass returns early when the actor holds nothing (mesh == null),
+    // which used to skip the unregister branch and leak the torch
+    // light after a swap to unarmed. Called after animation sample
+    // so the joint palette is current.
+    selva::PlayerProfile* profile = selva::activePlayerProfile();
+    if (profile == nullptr)
     {
         engine::world::unregisterLight("player_torch");
+        return;
     }
+    const engine::ecs::ItemInstance* inst =
+        engine::ops::inventory::findById(profile->inventory, profile->equipment.right_hand);
+    if (inst == nullptr)
+    {
+        engine::world::unregisterLight("player_torch");
+        return;
+    }
+    const engine::ecs::ItemDef* def = selva::items::itemRegistry().find(inst->config_path);
+    if (def == nullptr || def->config_path != "config/items/weapons/torch.json")
+    {
+        engine::world::unregisterLight("player_torch");
+        return;
+    }
+    const int joint_idx = actor.sampler.findJoint(kRightHandJoint);
+    if (joint_idx < 0)
+    {
+        engine::world::unregisterLight("player_torch");
+        return;
+    }
+    glm::mat4 joint_world = actor.sampler.jointWorldMatrixWithActor(joint_idx);
+    const float body_scale =
+        (std::abs(actor.appearance.body_scale) > 1e-5f) ? actor.appearance.body_scale : 1.0f;
+    if (std::abs(body_scale - 1.0f) > 1e-5f)
+    {
+        const float inv = 1.0f / body_scale;
+        joint_world[0] *= inv;
+        joint_world[1] *= inv;
+        joint_world[2] *= inv;
+    }
+    glm::mat4 grip = buildGripMatrix(*def);
+    grip = glm::scale(grip, glm::vec3(engine::ecs::weaponSizeVisualScale(inst->size)));
+    const glm::mat4 final_model = joint_world * grip;
+
+    const glm::vec4 tip_local{0.0f, 0.25f, 0.0f, 1.0f};
+    const glm::vec3 tip_world{final_model * tip_local};
+
+    engine::world::LightSource ls;
+    ls.position = tip_world;
+    ls.color = glm::vec3(1.00f, 0.55f, 0.22f);
+    // Intensity tuned against the inverse-square + windowing
+    // attenuation model. 2.5 gives ~2.5 at the flame, ~0.6 at 3m
+    // out, ~0.15 at 6m, ~0.03 at 12m — matches the visible falloff
+    // of a real hand-held torch.
+    ls.intensity = 2.5f;
+    ls.radius = 12.0f;
+    ls.flicker_amp = 0.15f;
+    ls.flicker_freq = 3.0f;
+    // Small flame sprite — a real torch flame is roughly the size
+    // of a fist, not a bonfire.
+    ls.sprite_size_override = 0.15f;
+    ls.debug_name = "player_torch";
+    engine::world::registerOrUpdateLight("player_torch", ls);
 }
 
 void clearEquippedWeaponCache()

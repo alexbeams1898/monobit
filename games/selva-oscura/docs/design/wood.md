@@ -629,7 +629,7 @@ the cause. (He never identifies Beatrice at all, per
   below), the Wood is *returning* toward what it always was.
   Late-game darkening is not just a mood shift — it is the Wood
   *un-becoming* the place her intervention had made of it. By the
-  end (especially on PURITY where she dies in the cascade), the
+  end (especially on RIVERSAMENTO where she dies in the cascade), the
   Wood is becoming the dark valley Dante's pilgrim *should* have
   woken in.
 - **The Guide's pre-Beatrice memory:** he lived in the dark Wood

@@ -100,8 +100,8 @@ wave picks one at random.
 
 ```jsonc
 "mesh_path_variants": [
-  "assets/characters/enemies/larva_fresh/humanoid.glb",
-  "assets/characters/enemies/larva_fresh_female/humanoid.glb"
+  "assets/characters/enemies/foundling/humanoid.glb",
+  "assets/characters/enemies/foundling_female/humanoid.glb"
 ]
 ```
 
@@ -303,7 +303,7 @@ tick.
 
 ## Registering a new archetype: the full checklist
 
-1. Pick an id `<archetype_id>` — snake_case, e.g. `larva_fresh`.
+1. Pick an id `<archetype_id>` — snake_case, e.g. `foundling`.
 2. Create `config/enemies/<archetype_id>.json` — mirror an existing
    archetype whose behaviour is closest to what you want (an ambient
    mob for a walker, a boss archetype for a boss).
