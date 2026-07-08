@@ -54,6 +54,16 @@ feeling as a game aesthetic.
 
 ## Palette
 
+> **Open tension (unresolved — do not treat the muted direction below as
+> settled).** There's active interest in studying and replicating Pokemon
+> Emerald's actual palettes and shading, with some EarthBound warmth mixed in.
+> Emerald/EarthBound run *brighter and warmer* than the "muted, low-saturation"
+> direction stated below. Both are valid; they pull different ways. This is a
+> deliberate later decision — whether melancholy comes from desaturated color,
+> or from music/pacing/writing over a brighter Emerald-register palette, or from
+> a muted default with warm Emerald beats reserved for affective moments. Left
+> open on purpose. See [SCALE.md](SCALE.md) open questions.
+
 - **Muted, low-saturation.** Not vibrant. Not Pokemon Ruby's tropical
   brightness. Closer to Mother 3's Chapter 1 farm environments, or
   Chrono Trigger's Zenan Bridge fog scene, or Kino's Journey's late-
