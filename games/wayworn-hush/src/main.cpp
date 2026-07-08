@@ -77,13 +77,17 @@ int main(int argc, char* argv[])
 
     Engine engine;
 
-    if (!engine.init("Wayworn Hush v" GAME_VERSION, 1280, 720))
+    // 1536x864 = exactly 2x the 768x432 internal target: clean fullscreen blit,
+    // no letterbox at the default window size.
+    if (!engine.init("Wayworn Hush v" GAME_VERSION, 1536, 864))
         return 1;
 
     auto& em = engine.entityManager();
 
-    // This game's world grid: 16px tiles (the 8-16-bit overworld register).
-    em.tile_map.tile_size = 16;
+    // This game's world grid: 32px tiles. Sized to the 32x64 protagonist sprite
+    // so on-screen scale stays EarthBound/Pokemon (~1 tile wide, 2 tall) at the
+    // sprite's pixel density. See docs/design/SCALE.md.
+    em.tile_map.tile_size = 32;
 
     // The engine clear fills the window (letterbox bars); the pixel target
     // clears the internal image to the same color -- so the two agree.

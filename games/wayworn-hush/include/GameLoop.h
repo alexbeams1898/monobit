@@ -4,10 +4,10 @@ class Engine;
 class EntityManager;
 
 // Internal pixel-art resolution. The world renders here, then integer-upscales
-// to the window (see gl/PixelRenderTarget). 384x216 = 16:9, 24x13.5 tiles at
-// 16px; ints scale cleanly to 1080p (x5). See docs/design/SCALE.md.
-inline constexpr int kInternalWidth = 384;
-inline constexpr int kInternalHeight = 216;
+// to the window (see gl/PixelRenderTarget). 768x432 = 16:9, 24x13.5 tiles at
+// 32px; x2.5 = 1920x1080 exactly. See docs/design/SCALE.md.
+inline constexpr int kInternalWidth = 768;
+inline constexpr int kInternalHeight = 432;
 
 // Ambient background / letterbox color. Shared by the engine clear and the
 // pixel-target clear so the internal image and the letterbox bars agree.
