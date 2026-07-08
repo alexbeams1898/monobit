@@ -4,6 +4,7 @@
 #include "WorldInit.h"
 #include "ecs/EntityManager.h"
 #include "gl/PixelRenderTarget.h"
+#include "systems/AudioSystem.h"
 #include "systems/RenderSystem.h"
 #include "systems/TileMapRenderer.h"
 
@@ -110,6 +111,14 @@ int main(int argc, char* argv[])
     world_init::buildPlaceholderRegion(em);
     TileMapRenderer::upload(em.tile_map, em.tile_config, engine.textureManager());
     gameSetPlayer(world_init::spawnPlayer(em));
+
+    // The region's ambient bed. Loops with a slow fade-in so the world eases in
+    // rather than snapping on. Low volume -- the score is sparse and unhurried
+    // (see docs/design/AESTHETIC.md). Runs silent if no audio device.
+    // (AudioSystem's init/shutdown are owned by the engine; the game only
+    // decides what to play.)
+    AudioSystem::playMusic("assets/audio/ambient_meadow.ogg", 0.55f, /*loop=*/true,
+                           /*fade_in_ms=*/3000);
 
     engine.setGameUpdate(&gameUpdate);
     engine.setRenderWorld(&gameRenderWorld);
