@@ -1,2 +1,11 @@
 # Tracy profiler trace captures — local only, can be huge.
 .traces/
+
+# Character bake artifacts + source assets (mesh bakes, hair variants,
+# authoring source). Regenerated locally via Blender scripts; not
+# tracked. Add specific asset subdirs here if any need to be
+# committed as shipped artifacts.
+assets/characters/enemies/
+assets/characters/hair/
+assets/characters/humanoid_female/
+assets/characters/humanoid_male/
