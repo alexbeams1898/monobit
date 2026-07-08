@@ -1,5 +1,6 @@
 #include "WorldInit.h"
 
+#include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 
 namespace world_init
@@ -12,6 +13,13 @@ constexpr int kRock = 1;  // solid
 
 constexpr int kRegionW = 48;
 constexpr int kRegionH = 48;
+
+// Placeholder player box. 32x64 art bounds; the collider is a small foot box so
+// the sprite tucks behind objects and Y-sorts by the feet.
+constexpr int kPlayerArtW = 32;
+constexpr int kPlayerArtH = 64;
+constexpr float kPlayerFootW = 24.0f;
+constexpr float kPlayerFootH = 12.0f;
 } // namespace
 
 void buildPlaceholderRegion(EntityManager& em)
@@ -45,5 +53,41 @@ void buildPlaceholderRegion(EntityManager& em)
     cfg.tiles[kRock] = {"", false};
     cfg.tile_visuals[kGrass] = {0, 0, 0.36f, 0.44f, 0.31f}; // muted grass green
     cfg.tile_visuals[kRock] = {0, 0, 0.34f, 0.35f, 0.38f};  // cool stone grey
+}
+
+entt::entity spawnPlayer(EntityManager& em)
+{
+    auto& reg = em.registry();
+    const entt::entity player = reg.create();
+
+    const float cx = static_cast<float>(em.tile_map.width * em.tile_map.tile_size) * 0.5f;
+    const float cy = static_cast<float>(em.tile_map.height * em.tile_map.tile_size) * 0.5f;
+
+    reg.emplace<Transform>(player, Transform{cx, cy});
+    reg.emplace<PreviousTransform>(player, PreviousTransform{cx, cy});
+    reg.emplace<Velocity>(player);
+    reg.emplace<Collider>(player, Collider{kPlayerFootW, kPlayerFootH, true});
+
+    // Placeholder colored box at the 32x64 art size. SolidColor renders it as an
+    // untextured fill until the authored sprite lands. sort_anchor at the feet so
+    // Y-sort orders it by where it stands, not its top.
+    Sprite spr{};
+    spr.src_w = kPlayerArtW;
+    spr.src_h = kPlayerArtH;
+    spr.layer = 2; // characters layer (above ground tiles)
+    spr.use_sort_anchor = true;
+    spr.sort_anchor = kPlayerFootH * 0.5f;
+    reg.emplace<Sprite>(player, spr);
+    reg.emplace<SolidColor>(player, SolidColor{0.82f, 0.58f, 0.36f}); // warm placeholder
+
+    Camera cam{};
+    cam.x = cx;
+    cam.y = cy;
+    cam.prev_x = cx;
+    cam.prev_y = cy;
+    cam.active = true;
+    reg.emplace<Camera>(player, cam);
+
+    return player;
 }
 } // namespace world_init

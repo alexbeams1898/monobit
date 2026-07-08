@@ -1,5 +1,7 @@
 #pragma once
 
+#include <entt/entt.hpp>
+
 class Engine;
 class EntityManager;
 
@@ -22,6 +24,10 @@ inline constexpr float kAmbientB = 0.24f;
 // (window, GL, fixed-step loop, clear, swap); these are where the game does its
 // work. Slice stage: the world renders into the pixel target (empty for now)
 // and blits up. Systems fill in as the vertical slice is built.
+
+// Tells the game loop which entity is the player (movement target). Called once
+// after the player is spawned.
+void gameSetPlayer(entt::entity player);
 
 void gameUpdate(Engine& engine, EntityManager& em, double dt);
 void gameRenderWorld(Engine& engine, EntityManager& em, float camX, float camY, float alpha);

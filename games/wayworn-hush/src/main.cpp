@@ -4,6 +4,7 @@
 #include "WorldInit.h"
 #include "ecs/EntityManager.h"
 #include "gl/PixelRenderTarget.h"
+#include "systems/RenderSystem.h"
 #include "systems/TileMapRenderer.h"
 
 #include <csignal>
@@ -100,16 +101,22 @@ int main(int argc, char* argv[])
     engine::gl::pixelTargetResize(engine.windowWidth(), engine.windowHeight());
     engine.setOnResize([](Engine&, int w, int h) { engine::gl::pixelTargetResize(w, h); });
 
-    // World-render subsystem (game-owned; mirrors the renderWorld callback).
+    // World-render subsystems (game-owned; mirror the renderWorld callback).
+    // RenderSystem draws sprites into the internal-res pixel target, so it is
+    // sized to the internal resolution, not the window.
     TileMapRenderer::init();
+    RenderSystem::init(kInternalWidth, kInternalHeight);
+
     world_init::buildPlaceholderRegion(em);
     TileMapRenderer::upload(em.tile_map, em.tile_config, engine.textureManager());
+    gameSetPlayer(world_init::spawnPlayer(em));
 
     engine.setGameUpdate(&gameUpdate);
     engine.setRenderWorld(&gameRenderWorld);
     engine.setRenderUI(&gameRenderUI);
     engine.run();
 
+    RenderSystem::shutdown();
     TileMapRenderer::shutdown();
     engine::gl::pixelTargetShutdown();
     return 0;
