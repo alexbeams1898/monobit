@@ -68,16 +68,34 @@ entt::entity spawnPlayer(EntityManager& em)
     reg.emplace<Velocity>(player);
     reg.emplace<Collider>(player, Collider{kPlayerFootW, kPlayerFootH, true});
 
-    // The protagonist sprite (32x64, RGBA with transparent background).
-    // sort_anchor at the feet so Y-sort orders it by where it stands, not its top.
+    // The protagonist sprite sheet (4 dirs x 4 walk frames, 32x64 cells).
+    // With an Animation component, RenderSystem draws the cell the animation
+    // selects (dir + frame); src_w/h define the cell size. sort_anchor at the
+    // feet so Y-sort orders it by where it stands, not its top.
     Sprite spr{};
-    spr.texture_path = "assets/sprites/player.png";
+    spr.texture_path = "assets/sprites/player_walk.png";
     spr.src_w = kPlayerArtW;
     spr.src_h = kPlayerArtH;
     spr.layer = 2; // characters layer (above ground tiles)
     spr.use_sort_anchor = true;
     spr.sort_anchor = kPlayerFootH * 0.5f;
     reg.emplace<Sprite>(player, spr);
+
+    // Sheet layout: one Walk row, 4 directions, 4 frames each. Column selected
+    // by the engine as dir_index * max_frames + frame_index -- matches how the
+    // sheet was assembled (see scripts / assets/sprites/player_walk.png).
+    // Row 0 = Walk (4 frames/dir), row 1 = Idle (1 standing frame/dir). Column
+    // stride is max_frames_per_state (4) so both rows align to dir*4 + frame.
+    Animation anim{};
+    anim.frame_width = kPlayerArtW;
+    anim.frame_height = kPlayerArtH;
+    anim.max_frames_per_state = 4;
+    anim.row_count = 2;
+    anim.direction_count = 4;
+    anim.current_row = 1; // start idle (standing)
+    anim.current_frames = 1;
+    anim.current_duration = 0.0f;
+    reg.emplace<Animation>(player, anim);
 
     Camera cam{};
     cam.x = cx;

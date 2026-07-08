@@ -121,6 +121,7 @@ int main(int argc, char* argv[])
                            /*fade_in_ms=*/3000);
 
     engine.setGameUpdate(&gameUpdate);
+    engine.setPreRender(&gamePreRender);
     engine.setRenderWorld(&gameRenderWorld);
     engine.setRenderUI(&gameRenderUI);
     engine.run();

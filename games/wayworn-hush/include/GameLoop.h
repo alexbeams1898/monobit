@@ -30,5 +30,6 @@ inline constexpr float kAmbientB = 0.24f;
 void gameSetPlayer(entt::entity player);
 
 void gameUpdate(Engine& engine, EntityManager& em, double dt);
+void gamePreRender(Engine& engine, EntityManager& em);
 void gameRenderWorld(Engine& engine, EntityManager& em, float camX, float camY, float alpha);
 void gameRenderUI(Engine& engine, EntityManager& em);
