@@ -160,13 +160,14 @@ static void clampToWalkable(const TileMap& tm, float& x, float& y)
 
     // Check all 4 corners of the pickup's 12x12 bounding box.
     constexpr float HALF = 6.0f;
+    const int ts = tm.tile_size;
     bool allWalkable = true;
     for (const float oy : {-HALF, HALF})
     {
         for (const float ox : {-HALF, HALF})
         {
-            const int c = static_cast<int>(x + ox) / TileMap::TILE_SIZE;
-            const int r = static_cast<int>(y + oy) / TileMap::TILE_SIZE;
+            const int c = static_cast<int>(x + ox) / ts;
+            const int r = static_cast<int>(y + oy) / ts;
             if (!tm.in_bounds(c, r) || !tm.at(c, r).walkable)
             {
                 allWalkable = false;
@@ -179,8 +180,8 @@ static void clampToWalkable(const TileMap& tm, float& x, float& y)
     if (allWalkable)
         return;
 
-    const int col = static_cast<int>(x) / TileMap::TILE_SIZE;
-    const int row = static_cast<int>(y) / TileMap::TILE_SIZE;
+    const int col = static_cast<int>(x) / ts;
+    const int row = static_cast<int>(y) / ts;
 
     constexpr int MAX_RING = 3;
     for (int ring = 1; ring <= MAX_RING; ++ring)
@@ -195,10 +196,8 @@ static void clampToWalkable(const TileMap& tm, float& x, float& y)
                 const int nr = row + dy;
                 if (tm.in_bounds(nc, nr) && tm.at(nc, nr).walkable)
                 {
-                    x = static_cast<float>(nc * TileMap::TILE_SIZE) +
-                        static_cast<float>(TileMap::TILE_SIZE) * 0.5f;
-                    y = static_cast<float>(nr * TileMap::TILE_SIZE) +
-                        static_cast<float>(TileMap::TILE_SIZE) * 0.5f;
+                    x = static_cast<float>(nc * ts) + static_cast<float>(ts) * 0.5f;
+                    y = static_cast<float>(nr * ts) + static_cast<float>(ts) * 0.5f;
                     return;
                 }
             }

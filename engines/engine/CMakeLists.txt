@@ -74,6 +74,7 @@ target_include_directories(engine SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/vendor/stb)
 add_executable(engine-tests
     tests/ecs_test.cpp
     tests/collision_test.cpp
+    tests/tilemap_test.cpp
     tests/animation_test.cpp
     tests/inventory_ops_test.cpp
     tests/crafting_ops_test.cpp

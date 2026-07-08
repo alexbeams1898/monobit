@@ -12,7 +12,7 @@
 // Check if a rectangle centered at (cx, cy) with half-extents (hw, hh) overlaps any wall tile.
 static bool touchesWall(const EntityManager& em, float cx, float cy, float hw, float hh)
 {
-    const float ts = static_cast<float>(TileMap::TILE_SIZE);
+    const float ts = static_cast<float>(em.tile_map.tile_size);
     const int cmin = static_cast<int>(std::floor((cx - hw) / ts));
     const int cmax = static_cast<int>(std::floor((cx + hw) / ts));
     const int rmin = static_cast<int>(std::floor((cy - hh) / ts));

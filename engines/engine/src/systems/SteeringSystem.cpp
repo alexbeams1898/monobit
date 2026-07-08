@@ -262,7 +262,7 @@ void SteeringSystem::update(EntityManager& em, double dt)
         // Tile-map wall repulsion: check nearby tiles for non-walkable cells.
         if (em.tile_map.valid())
         {
-            const float ts = static_cast<float>(TileMap::TILE_SIZE);
+            const float ts = static_cast<float>(em.tile_map.tile_size);
             const float tileHalf = ts * 0.5f;
             const int col0 =
                 static_cast<int>(std::floor((transform.x - cfg.repulsion_radius) / ts));

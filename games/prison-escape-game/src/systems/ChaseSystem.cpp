@@ -373,8 +373,8 @@ static void assignSlotAngle(entt::registry& reg, entt::entity entity, AIControll
         {
             const float sx = px + std::cos(test) * waitR;
             const float sy = py + std::sin(test) * waitR;
-            const int tc = static_cast<int>(sx) / TileMap::TILE_SIZE;
-            const int tr = static_cast<int>(sy) / TileMap::TILE_SIZE;
+            const int tc = static_cast<int>(sx) / tile_map.tile_size;
+            const int tr = static_cast<int>(sy) / tile_map.tile_size;
             if (!tile_map.in_bounds(tc, tr) || !tile_map.at(tc, tr).walkable)
                 continue;
         }
@@ -392,8 +392,8 @@ static bool isSlotWalkable(const TileMap& tile_map, float px, float py, float an
         return true;
     const float sx = px + std::cos(angle) * radius;
     const float sy = py + std::sin(angle) * radius;
-    const int tc = static_cast<int>(sx) / TileMap::TILE_SIZE;
-    const int tr = static_cast<int>(sy) / TileMap::TILE_SIZE;
+    const int tc = static_cast<int>(sx) / tile_map.tile_size;
+    const int tr = static_cast<int>(sy) / tile_map.tile_size;
     return tile_map.in_bounds(tc, tr) && tile_map.at(tc, tr).walkable;
 }
 

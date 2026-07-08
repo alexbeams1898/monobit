@@ -154,7 +154,7 @@ void TileMapRenderer::upload(const TileMap& map, const TileConfig& config, Textu
     std::vector<float> verts;
     verts.reserve(tile_count * 48); // 6 verts * 8 floats
 
-    const float ts = static_cast<float>(TileMap::TILE_SIZE);
+    const float ts = static_cast<float>(map.tile_size);
 
     for (int row = 0; row < map.height; ++row)
     {

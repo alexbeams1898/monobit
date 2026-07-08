@@ -24,9 +24,9 @@ struct TileConfig
     // When non-empty, TileMapRenderer uses textured quads instead of flat colors.
     std::string tileset_path;
 
-    // Pixel size of one tile in the atlas. Independent of TileMap::TILE_SIZE
+    // Pixel size of one tile in the atlas. Independent of TileMap::tile_size
     // (world-space tile size); the atlas can use any sub-tile resolution.
-    // Default matches prison-escape-game's 32x32 atlas.
+    // Default matches a 32x32 atlas.
     int atlas_tile_size = 32;
 
     // Per-tile-id visual: atlas position + fallback RGB color.
@@ -44,13 +44,18 @@ struct TileConfig
 // Stored as a flat vector (row-major) for cache-friendly traversal.
 //
 // Coordinate convention:
-//   World position (wx, wy) -> tile cell (wx / TILE_SIZE, wy / TILE_SIZE).
-//   Tile top-left corner in world space = (col * TILE_SIZE, row * TILE_SIZE).
-//   TileMapRenderer uses top-left; all ECS systems use CENTER (col*32+16, row*32+16).
+//   World position (wx, wy) -> tile cell (wx / tile_size, wy / tile_size).
+//   Tile top-left corner in world space = (col * tile_size, row * tile_size).
+//   TileMapRenderer uses top-left; all ECS systems use CENTER
+//   (col*tile_size + tile_size/2, ...).
 // ---------------------------------------------------------------------------
 struct TileMap
 {
-    static constexpr int TILE_SIZE = 32;
+    // World-space pixel size of one tile. Per-game: an action game wants a
+    // coarse grid (32), an overworld exploration game wants the 8-16-bit
+    // register (16). The game sets this before building the map; every system
+    // that maps world<->cell reads it from the live TileMap instance.
+    int tile_size = 32;
 
     // Tile IDs are game-defined integers; engine only uses SOLID_ID/WALKABLE_ID
     // for procedural generation (corridor carving, initial fill).
@@ -88,8 +93,8 @@ struct TileMap
     // (wx, wy), or -1 if the position is in a corridor or outside any room.
     int findRoomAt(float wx, float wy) const
     {
-        const int tc = static_cast<int>(wx) / TILE_SIZE;
-        const int tr = static_cast<int>(wy) / TILE_SIZE;
+        const int tc = static_cast<int>(wx) / tile_size;
+        const int tr = static_cast<int>(wy) / tile_size;
         for (int i = 0; i < static_cast<int>(placed_rooms.size()); ++i)
         {
             const auto& rm = placed_rooms[static_cast<std::size_t>(i)];
@@ -132,16 +137,16 @@ struct TileMap
         float t_max = 1e30f;
     };
 
-    static DdaAxis ddaInit(float origin, float delta)
+    static DdaAxis ddaInit(float origin, float delta, int tile_size)
     {
         DdaAxis a;
-        a.cell = static_cast<int>(std::floor(origin / TILE_SIZE));
+        a.cell = static_cast<int>(std::floor(origin / tile_size));
         a.step = (delta >= 0.0f) ? 1 : -1;
         if (delta != 0.0f)
         {
-            a.t_delta = std::abs(static_cast<float>(TILE_SIZE) / delta);
+            a.t_delta = std::abs(static_cast<float>(tile_size) / delta);
             const float boundary =
-                static_cast<float>((delta >= 0.0f ? a.cell + 1 : a.cell) * TILE_SIZE);
+                static_cast<float>((delta >= 0.0f ? a.cell + 1 : a.cell) * tile_size);
             a.t_max = std::abs((boundary - origin) / delta);
         }
         return a;
@@ -158,10 +163,10 @@ struct TileMap
         if (dx == 0.0f && dy == 0.0f)
             return true;
 
-        DdaAxis colAxis = ddaInit(x1, dx);
-        DdaAxis rowAxis = ddaInit(y1, dy);
-        const int endCol = static_cast<int>(std::floor(x2 / TILE_SIZE));
-        const int endRow = static_cast<int>(std::floor(y2 / TILE_SIZE));
+        DdaAxis colAxis = ddaInit(x1, dx, tile_size);
+        DdaAxis rowAxis = ddaInit(y1, dy, tile_size);
+        const int endCol = static_cast<int>(std::floor(x2 / tile_size));
+        const int endRow = static_cast<int>(std::floor(y2 / tile_size));
 
         while (true)
         {

@@ -35,7 +35,7 @@ static void collectCandidates(const TileMap& tm, int startCol, int startRow, int
                               std::vector<std::pair<int, int>>& candidates,
                               float maxDistSq = std::numeric_limits<float>::max())
 {
-    const float ts = static_cast<float>(TileMap::TILE_SIZE);
+    const float ts = static_cast<float>(tm.tile_size);
     for (int r = startRow; r < startRow + rows; ++r)
     {
         for (int c = startCol; c < startCol + cols; ++c)
@@ -56,7 +56,7 @@ static void collectCandidates(const TileMap& tm, int startCol, int startRow, int
 // Find nearest room to a point by squared center distance.
 static int findNearestRoom(const TileMap& tm, float px, float py)
 {
-    const float ts = static_cast<float>(TileMap::TILE_SIZE);
+    const float ts = static_cast<float>(tm.tile_size);
     float bestDist = std::numeric_limits<float>::max();
     int roomIdx = -1;
     for (int i = 0; i < static_cast<int>(tm.placed_rooms.size()); ++i)
@@ -82,7 +82,7 @@ bool findSpawnPosition(const TileMap& tm, float px, float py, float nearDist, fl
     if (!tm.valid())
         return false;
 
-    const float ts = static_cast<float>(TileMap::TILE_SIZE);
+    const float ts = static_cast<float>(tm.tile_size);
 
     // Try room-scoped spawning first.
     int roomIdx = tm.findRoomAt(px, py);
@@ -127,7 +127,7 @@ bool findSpawnInRoom(const TileMap& tm, int roomIdx, float px, float py, float n
     if (!tm.valid() || roomIdx < 0 || roomIdx >= static_cast<int>(tm.placed_rooms.size()))
         return false;
 
-    const float ts = static_cast<float>(TileMap::TILE_SIZE);
+    const float ts = static_cast<float>(tm.tile_size);
     const auto& rm = tm.placed_rooms[static_cast<std::size_t>(roomIdx)];
 
     // Check if the player is in this room -- if so, enforce nearDist exclusion.

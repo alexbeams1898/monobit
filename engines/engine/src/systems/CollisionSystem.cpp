@@ -54,8 +54,8 @@ static void depenetrateVsTileMap(const TileMap& tile_map, Transform& ta, const C
     if (!ca.is_solid)
         return;
 
-    const float ts = static_cast<float>(TileMap::TILE_SIZE);
-    const float tile_half = static_cast<float>(TileMap::TILE_SIZE) * 0.5f;
+    const float ts = static_cast<float>(tile_map.tile_size);
+    const float tile_half = ts * 0.5f;
     const float hw = ca.width * 0.5f;
     const float hh = ca.height * 0.5f;
     const int col_min = static_cast<int>(std::floor((ta.x - hw) / ts));
@@ -70,8 +70,8 @@ static void depenetrateVsTileMap(const TileMap& tile_map, Transform& ta, const C
             if (!tile_map.in_bounds(c, r) || tile_map.at(c, r).walkable)
                 continue;
 
-            const float tile_cx = static_cast<float>(c * TileMap::TILE_SIZE) + tile_half;
-            const float tile_cy = static_cast<float>(r * TileMap::TILE_SIZE) + tile_half;
+            const float tile_cx = static_cast<float>(c) * ts + tile_half;
+            const float tile_cy = static_cast<float>(r) * ts + tile_half;
             const float dx = ta.x - tile_cx;
             const float dy = ta.y - tile_cy;
             const float overlapX = hw + tile_half - std::abs(dx);
@@ -312,8 +312,8 @@ void CollisionSystem::update(EntityManager& em)
         float world_h = 0.0f;
         if (em.tile_map.valid())
         {
-            world_w = static_cast<float>(em.tile_map.width * TileMap::TILE_SIZE);
-            world_h = static_cast<float>(em.tile_map.height * TileMap::TILE_SIZE);
+            world_w = static_cast<float>(em.tile_map.width * em.tile_map.tile_size);
+            world_h = static_cast<float>(em.tile_map.height * em.tile_map.tile_size);
         }
         else
         {

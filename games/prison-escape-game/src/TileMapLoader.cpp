@@ -343,12 +343,10 @@ void TileMapLoader::placeRooms(TileMap& map, const std::vector<Room>& rooms, std
                 // Collect spawn points as world-space positions.
                 for (const auto& sp : room.spawn_points)
                 {
+                    const float ts = static_cast<float>(map.tile_size);
                     map.spawn_points.push_back(
-                        {static_cast<float>((placedCol + sp.col) * TileMap::TILE_SIZE) +
-                             TileMap::TILE_SIZE * 0.5f,
-                         static_cast<float>((placedRow + sp.row) * TileMap::TILE_SIZE) +
-                             TileMap::TILE_SIZE * 0.5f,
-                         sp.type});
+                        {static_cast<float>(placedCol + sp.col) * ts + ts * 0.5f,
+                         static_cast<float>(placedRow + sp.row) * ts + ts * 0.5f, sp.type});
                 }
 
                 placed = true;
@@ -496,6 +494,7 @@ std::pair<float, float> TileMapLoader::generate(EntityManager& em,
 
     // --- Build TileMap (all Solid initially) -----------------------------
     TileMap map;
+    map.tile_size = 32; // this game's world grid: coarse, action-scale tiles
     map.width = map_width;
     map.height = map_height;
     map.seed = seed;
@@ -512,17 +511,15 @@ std::pair<float, float> TileMapLoader::generate(EntityManager& em,
     em.tile_config = std::move(config);
 
     // --- Player spawn = center of first placed room ---------------------
+    const float ts = static_cast<float>(em.tile_map.tile_size);
     if (!centers.empty())
     {
-        const float px =
-            static_cast<float>(centers[0].first * TileMap::TILE_SIZE) + TileMap::TILE_SIZE * 0.5f;
-        const float py =
-            static_cast<float>(centers[0].second * TileMap::TILE_SIZE) + TileMap::TILE_SIZE * 0.5f;
+        const float px = static_cast<float>(centers[0].first) * ts + ts * 0.5f;
+        const float py = static_cast<float>(centers[0].second) * ts + ts * 0.5f;
         std::cout << "[TileMap] Player spawn: (" << px << ", " << py << ")\n";
         return {px, py};
     }
 
     // Fallback: map centre.
-    return {static_cast<float>(map_width * TileMap::TILE_SIZE) * 0.5f,
-            static_cast<float>(map_height * TileMap::TILE_SIZE) * 0.5f};
+    return {static_cast<float>(map_width) * ts * 0.5f, static_cast<float>(map_height) * ts * 0.5f};
 }
