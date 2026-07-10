@@ -336,7 +336,7 @@ static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::en
            flip_y,
            tint.is_solid,
            scale,
-           tint.ta,
+           tint.ta * sprite.alpha,
            glowScale,
            glowAlpha,
            sprite.rotation,

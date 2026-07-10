@@ -79,6 +79,10 @@ struct Sprite
     // Geometry-level horizontal mirror. Unlike flip_x (UV-only), this composes
     // correctly with rotation — the mirror happens before the rotation.
     bool geo_mirror_x = false;
+    // Game-writable opacity multiplier (0 = invisible, 1 = opaque). Multiplied
+    // into the final draw alpha so games can animate sprite fades directly.
+    // Default 1.0 leaves existing sprites unchanged.
+    float alpha = 1.0f;
 };
 
 struct Collider

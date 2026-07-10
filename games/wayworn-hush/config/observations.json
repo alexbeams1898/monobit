@@ -1,0 +1,54 @@
+{
+    "_comment": "Observables (test). Placed at the placeholder rocks. World coords: 32px tiles, region 48x48, player spawns at (768,768). Rocks at cells (14,12)=(464,400), (30,20)=(976,656), (20,32)=(656,1040). Tiers gate on other observables; the conclusion auto-forms once stone + water are observed. Real content comes with authored regions + the LDtk object layer.",
+    "observables": [
+        {
+            "id": "stone",
+            "x": 976,
+            "y": 656,
+            "radius": 96,
+            "tiers": [
+                {
+                    "text": "A stone, half-sunk in the grass.",
+                    "currency": 5
+                },
+                {
+                    "text": "Worn smooth. Water shaped it, once, where none runs now.",
+                    "requires": ["water"],
+                    "currency": 10
+                }
+            ]
+        },
+        {
+            "id": "water",
+            "x": 464,
+            "y": 400,
+            "radius": 96,
+            "tiers": [
+                {
+                    "text": "A dry channel in the earth. A stream ran here.",
+                    "currency": 5
+                }
+            ]
+        },
+        {
+            "id": "clearing",
+            "x": 656,
+            "y": 1040,
+            "radius": 96,
+            "tiers": [
+                {
+                    "text": "How quiet it is, out here.",
+                    "currency": 5
+                }
+            ]
+        }
+    ],
+    "conclusions": [
+        {
+            "id": "people_lived_here",
+            "requires": ["stone", "water"],
+            "text": "People lived here once. The water drew them; the water left.",
+            "currency": 25
+        }
+    ]
+}

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Observations.h"
 #include "PlayerConfig.h"
 
 #include <entt/entt.hpp>
@@ -13,6 +14,7 @@ struct GameState
 {
     entt::entity player = entt::null;
     PlayerConfig player_config;
+    observations::State observations;
 };
 
 // Internal pixel-art resolution. The world renders here, then integer-upscales

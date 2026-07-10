@@ -224,6 +224,62 @@ Each part is independently testable (interact-trigger; tier resolve + conclusion
 formation + currency grant as pure logic with Catch2; textbox/queue/sound by
 running). That separability is the "clean machine in its parts" requirement.
 
+## 8. The observation HUD (interact signal + the page) — the RPG's face
+
+Guiding tension: **minimal as possible, affective as possible.** Strip
+everything; what remains must land emotionally. AESTHETIC.md is the constraint —
+"no exposed HUD stats during exploration, no objective markers, minimal." So the
+observation UI splits into two very different things:
+
+### 8a. The interact signal (always-on, whisper-quiet)
+
+The one thing on the exploration screen. It tells you *there is something here to
+notice* — because without it the mechanic is invisible (the playtest gap: "there's
+nothing interactable"). But it is **not a blinking gamer-LED.** It's a **mood**:
+
+- Soft, brief, easy to miss if you aren't paying attention — which is
+  thematically perfect (the game rewards attention; the signal itself asks for
+  it).
+- Candidate form: a gentle **glimmer / fade-in mark** when you're near+facing an
+  observable — either a faint world-space shimmer on the thing, or a small,
+  quiet mark low on the screen. Not persistent chrome; it appears when relevant
+  and fades otherwise.
+- Distinguishes **new** (something here you haven't fully noticed — worth a
+  press) from **already-known** subtly, so the player isn't lured to re-observe
+  exhausted things. (A dimmer/absent signal for exhausted observables.)
+
+Minimal, but affective: the world quietly *offering* something, not a UI element
+demanding a button.
+
+### 8b. The observation page (on-demand — the RPG core)
+
+Where the RPG becomes legible. **Opened on demand** (a menu key), never on the
+exploration screen — so the walk stays clean. This is the surface worth
+investing in; it IS the RPG's face:
+
+- **What you've noticed** — the record: observations made, their thoughts,
+  where. A quiet ledger of understanding, not a quest list. (This is the game's
+  "journal," but it's *attention*, not tasks.)
+- **Conclusions** — the higher-order thoughts you've formed by connecting
+  observations. The most affective entries — the moments the pilgrim *understood*
+  something.
+- **Currency + (eventually) the skill tree** — the spend surface. Post-MVP for
+  the tree; the page shows the currency now.
+- **Register:** calm, spare, readable — a page you *sit with*, matching the
+  contemplative tone. Not a stat screen; a record of a person coming to
+  understand things.
+
+### Build order (minimal-first)
+
+1. **The interact signal first** — it's what makes the mechanic *usable* (the
+   current gap). Minimal affective form: a soft signal when facing a new
+   observable. This unblocks feel-testing the whole loop.
+2. **The observation page next** — the on-demand record (noticed-log +
+   conclusions + currency). The RPG's face; where depth lives.
+
+Both build on data that already exists (`State.observed`, `.formed`, `.currency`,
+the observables/conclusions) + the `facingObservable()` query already written.
+
 ## Cross-references
 
 - [MAP-ARCHITECTURE.md](MAP-ARCHITECTURE.md) §6 — quests = monologue; observables

@@ -1,5 +1,8 @@
 #include "Engine.h"
+#include "FontManager.h"
 #include "GameLoop.h"
+#include "Glimmer.h"
+#include "ThoughtBox.h"
 #include "Version.h"
 #include "WorldInit.h"
 #include "ecs/EntityManager.h"
@@ -114,6 +117,13 @@ int main(int argc, char* argv[])
     GameState& gs = em.registry().ctx().emplace<GameState>();
     gs.player_config = loadPlayerConfig("config/player.json");
     gs.player = world_init::spawnPlayer(em, gs.player_config);
+    observations::load(gs.observations, "config/observations.json");
+    glimmer::spawn(em, gs.observations);
+
+    // Placeholder UI font (a serif stand-in -- the real pixel font is a later
+    // aesthetic-pass choice; see docs/design/AESTHETIC.md UI style).
+    const FontHandle uiFont = FontManager::loadFont("assets/fonts/placeholder.ttf", 48.0f);
+    thought_box::init(uiFont);
 
     // The region's ambient bed. Loops with a slow fade-in so the world eases in
     // rather than snapping on. Low volume -- the score is sparse and unhurried
