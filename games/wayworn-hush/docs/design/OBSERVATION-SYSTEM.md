@@ -1,190 +1,236 @@
 # Wayworn Hush — Observation System
 
-> **Owns:** the inner-monologue / observation mechanic and its role as the
-> game's RPG progression spine. This is the system that makes "quests = the
-> protagonist's thoughts" (MAP-ARCHITECTURE §6) concrete, and it is the game's
-> primary progression currency.
+> **Owns:** the observation mechanic — the game's core interactive verb and its
+> RPG progression spine. Makes "quests = the protagonist's thoughts"
+> (MAP-ARCHITECTURE §6) concrete.
 >
-> **Status:** design proposal for review. Nothing built until locked (this is
-> core architecture — design before implementing).
+> **Status:** design proposal (revised after playtest). Nothing built to this
+> spec yet — the earlier *ambient* prototype is being reworked to *interact*.
+> Design before implementing (this is the core of the game).
 
 ## tldr
 
-Walking into the vicinity of a place surfaces a thought — the protagonist
-*notices* something. First encounters auto-surface in a soft textbox (thoughts
-flow one into the next; new zones entered mid-thought queue cleanly), get
-**recorded** in an observation log, and grant **progression** (observations are
-the game's XP). Already-seen thoughts don't auto-interrupt again, but the player
-can return to a place and re-read the thought deliberately. The system is a
-recut of Selva Oscura's `lang` (tiered text) + `insight` (observation graph) +
-cognition-stat model, curated for this game's gentler register — no combat, no
-sangue, no offerings. **Attention is the progression.** Fitting, for a game
-whose whole thesis is attention as the subject.
+**Observing is the game's combat** — structurally, not tonally. You face
+something noticeable and press a key to *observe* it. That deliberate act is the
+core loop: it surfaces a thought, grants a soul-like currency, and is how you
+progress. It stays **relaxed** — no timing, no juice, no floating numbers; the
+satisfaction is quiet and carried largely by **sound**. Thoughts are **stateful**
+(Dark Souls dialogue): what you notice in a thing depends on what you've *already*
+noticed — re-observing after learning more yields deeper text, and connecting the
+right observations forms a **conclusion** (a higher-order thought worth more).
+Currency spends at a **skill tree**. This is a simplified cousin of Selva
+Oscura's shipped `lang` + `insight` system.
 
-## Why this is core, not a side feature
+## Why this shape (the playtest correction)
 
-The protagonist's thoughts are the narrative (ORIGINAL_NOTES: "mostly inner
-thoughts of the character... helps him learn more about himself"). Tying
-progression to *noticing* rather than fighting makes the mechanics say the same
-thing the story says. This is the "leveling = attention, not combat-XP" idea
-(cf. Selva's offerings-not-XP doctrine) taken further: here the noticing itself
-is the currency, not a token you spend later.
+The first prototype made observations **ambient** — walk into a zone, a thought
+auto-pops. Playtested wrong: it *happens to* you, passive. The fix is to make
+noticing a **verb you perform** — face + press to observe. This flips it from set
+dressing to a mechanic, and it fits the game's thesis exactly: for a game about
+*attention*, attention should be the thing you actively do. The pilgrim doesn't
+fight; he notices, and noticing is the skill that grows him.
+
+"That's your combat" means: it's the interactive verb, it's the XP source, it
+must feel good moment-to-moment — **but the register stays contemplative.** The
+"combat" analogy is about the *slot in the design* (active verb → progression),
+not the *feel* (which is calm).
 
 ---
 
-## 1. The observation trigger (world → thought)
+## 1. The observe action (the core verb)
 
-An **observation zone** is authored in the world (LDtk object layer, per
-MAP-ARCHITECTURE): `{ id, x, y, w, h, thought }`, where `thought` is one or more
-lines of the protagonist's inner voice.
+- **Face a noticeable thing + press the observe key (Space) → observe it.**
+  Deliberate, player-initiated. Relaxed pace, not a reaction test.
+- **What's observable:** authored points/objects in the world (a stone, a
+  carved tree, a bend in the river, a cairn). Some may be subtle enough that
+  *spotting* them is part of the skill (perception as the mechanic), but the act
+  is always the deliberate press — never automatic.
+- **On observe:** surface the appropriate thought (§3), grant currency (§5),
+  record it, play the observe sound (§6).
+- **Re-observable freely.** Unlike the ambient prototype, you can observe the
+  same thing again any time — and because thoughts are stateful (§3), it may say
+  something *new* now. Currency is granted only for genuinely-new content (a new
+  tier reached, a new conclusion formed), never for re-reading the same tier.
 
-- **Fires when the player enters the zone's vicinity** (AABB overlap, or
-  facing-toward within range — see open question Q1). Ambient: no button press.
-- **First encounter only auto-surfaces.** On first entry: surface the thought,
-  record the observation, grant progression, mark fired. Re-entering later does
-  **not** auto-interrupt (see §4).
-- **Fires once per observation for the auto-pop + progression.** The record and
-  XP are one-time; the *text* remains replayable (§4).
-
-This is the `insight`-observation primitive from Selva, curated: an
-event-driven flag that fires from world state. Wayworn's trigger kind is
-"entered zone" (Selva had `examined`/`flag_set`/`kill_count`/etc. — we need far
-fewer).
+**Interaction affordance:** the player must know a thing is observable. A minimal,
+quiet prompt when facing an observable (a small glyph, or the object subtly
+catching the light — *not* a loud "[E] EXAMINE" banner, per AESTHETIC.md's "no
+objective markers"). Exact affordance is Q1.
 
 ## 2. The textbox + queue (thought → screen)
 
-A **minimal auto-textbox**, Mother-3 register (AESTHETIC.md): understated frame,
-soft or instant text (no per-syllable clatter), low in the frame, quiet. Built
-on the engine's `UIRenderer` primitives (no widget exists; small game-side box).
+A minimal textbox, Mother-3 register (AESTHETIC.md): understated, low in the
+frame, soft text (no per-syllable clatter). Built on `UIRenderer` primitives.
+**This part survives from the prototype largely intact.**
 
-- **Auto-surface, auto-pass.** The thought fades in, holds briefly, passes — no
-  keypress required. The player never stops walking.
-- **Multi-line flow.** A thought with several lines/descriptions plays them in
-  sequence, each holding then flowing into the next.
-- **Clean queue.** Entering one or more new zones while a thought is playing
-  **stacks** the new thoughts in a FIFO queue; they play out in order after the
-  current one. Never overlapping, never dropped. The queue is the whole
-  scaling story — "should be a simple system," and it is: a `std::deque` of
-  pending thought-lines drained at a fixed cadence.
+- **Multi-line flow.** A thought's several lines play in sequence, each holding
+  then flowing into the next.
+- **Clean FIFO queue.** Observing again (or triggering multiple thoughts) stacks
+  cleanly — a `std::deque` of pending lines drained at a fixed cadence. Never
+  overlapping, never dropped.
+- **Dismiss:** auto-fade while walking. Because observing is now deliberate, the
+  player chose to summon the thought — so it can hold a touch longer than the
+  ambient version did.
 
-**Dismiss model:** auto-fade (moving). *(Open question Q2: whether standing
-still holds the thought — the "dwell" variant. Deferred; auto-fade is the v1.)*
+## 3. Stateful thoughts + conclusions (the Dark Souls model)
 
-## 3. The observation record (the "you noticed this" log)
+The heart of the design, and where it lifts from Selva. **What a thing says when
+you observe it depends on what else you've observed.**
 
-Every fired observation is **recorded persistently** (save data) — Selva's
-observation-log, curated. The record holds: which observation, its text, where
-(zone id / region), when first noticed. This is:
+### Tiered text (Selva's `lang`, curated)
 
-- **A safety net** — if the player misses the auto-pop (walked through fast),
-  the observation is still logged; nothing is lost.
-- **Reviewable** — a quiet menu page listing what the protagonist has noticed
-  (the game's closest thing to a "journal," but it's observations, not quests).
-  Reinforces attention as the game's substance. *(UI is a later step; the record
-  data model is what §5 needs now.)*
-- **The progression ledger** — the record IS the XP source (§5).
+Each observable authors **tiered thoughts**, gated by which *other* observations
+you've made:
 
-## 4. First-encounter vs. replay (the detail you flagged)
+```
+stone:
+  tier_0: "A stone, half-sunk in the grass."
+  tier_1 (after observing the river):
+          "Worn smooth by water that no longer runs here."
+  tier_2 (after observing the ruins):
+          "Someone set it here. A marker. For what?"
+```
 
-- **First encounter:** auto-surface + record + progression. (New = the thought
-  intrudes gently, once.)
-- **Subsequent visits:** the observation is already recorded, so it does **not**
-  auto-pop (no interruption, no double-XP). But the player **can return to the
-  place and have the thought again** — deliberately, on their terms. Mechanism:
-  re-entering an already-fired zone offers the thought as a *replayable* beat
-  (open question Q3: does it replay on re-entry automatically-but-silently-
-  logged-as-not-new, or only on an explicit "look again" input?). Either way:
-  **no XP, no record-change** on replay — replay is for the player's sake, not
-  progression.
+`resolve()` walks tiers high→low and returns the deepest tier whose gate is
+satisfied — **exactly Selva's `lang::resolve`** (audited: `{tier_0, tier_1,
+tier_2, unlock_node_tier_1/2}`, one `isUnlocked` seam). Re-observing after
+learning more surfaces the deeper tier. This IS the Dark Souls stateful-dialogue
+behavior: same object, different line based on accumulated world-state.
 
-This mirrors Selva's locked rule exactly: *"Re-examining a tree you already
-noted gives nothing. Firing a new observation gives [growth]."* Wayworn keeps
-that rule and adds the replay-in-place affordance.
+### Conclusions (Selva's `inference`, curated)
 
-## 5. Observations as progression (the RPG spine)
+Observing the right **combination** of things forms a **conclusion** — a new,
+higher-order thought:
 
-**Observations are the primary progression currency.** This adapts Selva's
-cognition-system-v1 (Perception/Cognition/Intelligence stats grown by cognitive
-acts) — but cut down for this game. Selva's full three-node cognition model
-(observation → inference → reading, warrant-evidence, reconsider-cascades) is
-**richer than Wayworn needs**; Wayworn is gentler and has no combat-parry or
-cosmological-reveal gating to hang three stats on.
+```
+conclusion "people_lived_here":
+  requires: [observed_stone, observed_river, observed_ruins]
+  thought:  "People lived here once. The water drew them; the water left."
+```
 
-**MVP model — [LOCKED]: observations grant XP; XP accumulates; level grows.**
+A conclusion is a distinct, weightier reward (more currency, §5; a resonant
+sound, §6). Selva's model: an inference node with a `requires` list, formed by an
+explicit deduce action, **subset-matched** (having *more* than the required
+observations still forms it). Wayworn's cut: **conclusions may form
+automatically** the moment their required observations are all made (simpler than
+Selva's manual Mind-page deduce), *or* via a light "reflect" action — Q2.
 
-A concrete, legible loop:
+**What we take from Selva (audited against the shipped code, not its docs):**
+- `lang` tier struct + high→low resolve + single `isUnlocked` seam. ✅
+- Observation nodes fired from flags; the fired-set on the profile. ✅
+- Conclusions = node with `requires` (subset match). ✅
+- **Cut** (Selva's docs describe these but its *code never shipped them*):
+  per-reading `warrant_evidence`, reconsider-cascades, the certainty mechanic,
+  the Mind-pool resource, the three-stat trio. Don't port aspirational machinery.
 
-- Each **new** observation grants XP (amount authorable per-observation; a
-  sensible default for the common case, larger for weightier ones — config,
-  not hardcoded).
-- XP accumulates toward a level threshold; crossing it **levels up** the
-  protagonist's awareness/level.
-- Re-entering a fired observation grants **no XP** (fire-once, per §4).
+## 4. The observation record
 
-This is deliberately the simplest working RPG loop — a real number that goes
-up — chosen to prove the progression before adding nuance. What a level *does*
-(gates deeper monologue tiers, skill acquisition, world-reading) is **deferred**:
-the MVP just needs the observe → XP → level loop turning. The richer
-possibilities (register-deepening via `lang` tiers, per DESIGN.md's arc of
-self-knowledge; skill gates per "skills learned not leveled") layer on top of
-this loop later without reworking it — XP/level is the substrate, and those
-become things a level threshold unlocks.
+Every observation + conclusion made is **recorded persistently** (save data):
+which, its text, where, when first made. Serves as:
+- **A quiet reviewable page** — the game's "journal," but it's *what you've
+  noticed*, not a quest list. Reinforces attention as the substance.
+- **The progression ledger** — the record is the source of currency earned (§5).
 
-**Explicitly NOT in the MVP** (avoid importing Selva's weight): no
-Perception/Cognition/Intelligence trio, no inference/reading machinery, no
-Mind-pool resource. One XP counter, one level. Curate up from there only when
-the game asks for it.
+(The review UI is a later step; the record *data* is what §5 needs.)
 
-## 6. Reuse from Selva — what lifts, what's cut
+## 5. Progression — souls-esque currency + skill tree
 
-Per AUDIT.md §3:
+**Observing grants a soul-like currency; you spend it at a skill tree.** This
+replaces the earlier "XP → level" MVP and is *simpler* than Selva's three-counter
+cognition model (one currency, not three stats).
 
-- **`lang` (tiered string map) — lift, near-free.** Perfect for the
-  register-deepening model (§5c): a thought has tier_0/1/2 text, deeper tiers
-  unlock as awareness grows. Rename namespace, rewire one predicate.
-- **`insight` (observation graph) — lift the spine, cut hard.** Wayworn needs:
-  the observation-node concept, fire-once, the persistent fired-set, the
-  "new firing grants growth" hook. Wayworn does NOT need: inferences, readings,
-  warrant-evidence, reconsider-cascades, the `sangue`/`kill_count` triggers,
-  the Mind-pool-as-brain-fatigue resource. Cut all of that. What remains is a
-  small "observations fired + a growth counter" — much simpler than Selva's.
-- **cognition-system-v1's full model — do NOT import wholesale.** Take the
-  *principle* (cognitive acts drive growth; re-examining gives nothing) and the
-  *stat-hook idea*; leave the three-node inference machinery in Selva.
+- **New observations grant currency.** A first-tier notice grants a small
+  amount; reaching a **deeper tier** grants more; forming a **conclusion** grants
+  the most (connecting dots is the higher-order act). Amounts are authored per
+  observation/conclusion (config, not hardcoded). Re-reading an already-earned
+  tier grants nothing — currency tracks *new understanding*, not repetition
+  (Selva's rule: "re-examining gives nothing").
+- **Currency spends at a skill tree.** Skills are acquired, not leveled
+  (DESIGN.md: "skills learned, not grown") — the tree is a set of unlockable
+  nodes bought with observation-currency. What skills *are* (cold-crossing,
+  plant-lore, wildlife-calming per DESIGN.md) is separate design; this system
+  provides the **currency and the spend surface**.
+- **Souls-esque, curated:** like Dark Souls souls — a single fungible currency
+  earned by the core verb, spent deliberately. Unlike souls: not lost on death
+  (no death register here), and earned by *noticing*, not killing.
 
-## 7. Minimal build (what step 6 becomes, once this doc is locked)
+Selva's stat-derivation math (`stat = 1 + floor(log2(growth+1))`, diminishing
+returns) is a good reference if a skill-tree cost curve needs one, but the
+currency itself is a plain accumulating count.
 
-The smallest thing that proves the feel, structured so §3/§5 slot in:
+## 6. Sound design — the primary feedback channel
 
-1. Observation zones (authored data; for the first test, anchor one to a rock —
-   a trigger volume *beside* the rock, since the rock is collision not a
-   standable tile).
-2. Enter-vicinity detection → fire-once.
-3. Auto-textbox + multi-line flow + clean FIFO queue.
-4. The fired-set (in-memory first; persist to save next).
+**With visual juice ruled out, sound carries the satisfaction.** This is a
+first-class design element, not polish:
 
-Progression (§5) and the reviewable record UI (§3) come after, as their own
-steps — but the fire-once + fired-set built here is exactly the hook they need.
+- **The observe moment** — a soft tone when a thought surfaces. A gentle bell /
+  held note / breath, not a "ding." The sound *is* the reward.
+- **Depth cues** — a deeper tier or a conclusion gets a distinct, richer sound
+  than a first glance. Audio signals "this mattered more" without a number.
+- **Conclusion unlock** — the "you connected the dots" moment gets the most
+  resonant sound — the game's hushed equivalent of a level-up chime.
+- **Currency gain** — a subtle audible accrual, felt not counted.
 
-## Open questions (resolve before/while building)
+**Source intent: the Kira Stream OST.** Pull the observation tones from the
+albums (a plucked note, a held tone, a soft swell) so the feedback is *of the
+same musical world* as the ambient beds — the sound of noticing and the score
+are the same voice. **Placeholder now** (a soft synthesized chime) so the loop
+is feel-testable when built; replaced with Kira-sourced audio in an audio pass.
 
-- **Q1 — trigger shape:** MVP = **AABB-enter** (simplest). Facing-aware
-  ("noticing what you look at") is a later refinement.
-- **Q2 — dwell:** deferred; **auto-fade** v1.
-- **Q3 — replay trigger:** MVP = re-entry **auto-replays silently** (thought
-  pops again, no XP, no record change). Explicit "look again" input is a later
-  refinement if replay-on-every-pass feels naggy.
-- **Q4 — progression axis:** **RESOLVED** — observations → XP → level (MVP).
-  See §5. What a level unlocks is the deferred richness.
-- **Q5 — skills:** DESIGN.md's "skills acquired not leveled" — likely a level
-  threshold unlocks them, but that's post-MVP. Not in scope now.
+## 7. Build plan (reworking the prototype)
+
+The prototype (ambient AABB-trigger + textbox + queue + fired-set + counter) is
+**mostly reusable** — the textbox, queue, record, and currency counter all stay.
+The rework is contained:
+
+1. **Trigger: replace auto-AABB-enter with face-+-Space interact.** Find the
+   observable the player faces within range; fire on keypress. (Contained change
+   to one function — the earlier `observations::update(state, x, y)` auto-check
+   becomes an on-press "what am I facing?" query.)
+2. **Tiered thoughts** — extend the observable data from a flat line list to
+   `{tier_0/1/2, unlock gates}` (lift `lang`'s Entry + resolve).
+3. **Conclusions** — add `requires`-list nodes that form when their observations
+   are all made; grant more currency + a distinct sound.
+4. **Currency** — the counter becomes the spendable currency (skill-tree spend
+   surface is a later step).
+5. **Placeholder observe sound** wired to the interact.
+6. **Interaction affordance** — a minimal facing-an-observable prompt.
+
+Keep: textbox, queue, record/fired-set, persistence hooks, the Catch2 tests
+(reworked for interact-trigger + tier resolve + conclusion formation).
+
+## MVP scope — [LOCKED]
+
+Guiding rule: **minimalist in spirit, a clean functioning machine in its parts.**
+The MVP is three testable parts and nothing more:
+
+1. **Observe** — face + Space fires the observable you're facing (in range).
+2. **Resolve** — tiered thought chosen by what you've already observed;
+   conclusions auto-form when their required observations are all made; currency
+   granted for *new* content only.
+3. **Show** — textbox + queue + a placeholder observe sound.
+
+The earlier open questions, resolved for MVP:
+
+- **Affordance:** none. Face + press; observable things respond. No glyph/glint
+  in MVP (add later only if playtest demands it).
+- **Conclusions:** form **automatically** the moment their required observations
+  are all made. No explicit "reflect"/deduce action, no Mind-page.
+- **Skill tree:** **out of MVP.** Currency accumulates; *spending* it (the tree)
+  is a separate later machine. MVP proves earning, not spending.
+- **Perception-as-skill / hidden observables:** out of MVP.
+
+Each part is independently testable (interact-trigger; tier resolve + conclusion
+formation + currency grant as pure logic with Catch2; textbox/queue/sound by
+running). That separability is the "clean machine in its parts" requirement.
 
 ## Cross-references
 
-- [MAP-ARCHITECTURE.md](MAP-ARCHITECTURE.md) §6 — quests = monologue; observation
-  zones authored in the LDtk object layer.
+- [MAP-ARCHITECTURE.md](MAP-ARCHITECTURE.md) §6 — quests = monologue; observables
+  authored in the LDtk object layer.
 - [AUDIT.md](AUDIT.md) §3 — selva `lang`/`insight` lift assessment.
-- [DESIGN.md](DESIGN.md) / [AESTHETIC.md](AESTHETIC.md) — the register + the
-  "thoughts get deeper" arc this system serves.
-- Selva canon (for what we're adapting *from*, not copying):
-  `games/selva-oscura/docs/design/cognition-system.md`.
+- [DESIGN.md](DESIGN.md) / [AESTHETIC.md](AESTHETIC.md) — register; "skills
+  learned not leveled"; "thoughts get deeper"; no objective markers.
+- Selva shipped implementation (what we curate *from*): `insight/Insight.{h,cpp}`,
+  `lang/Language.{h,cpp}`. **Build to the code, not `cognition-system.md`** —
+  the docs describe warrant/cascade machinery the code never shipped.
