@@ -1,0 +1,10 @@
+{
+    "_comment": "Global color grade applied to the whole frame at blit time. Pulls the scene toward the muted, low-saturation Mushishi/Mother-3 register (see docs/design/AESTHETIC.md). Tune live: edit + rebuild, no recompile. saturation<1 mutes, brightness<1 dims, tint shifts warm/cool per channel.",
+    "grade": {
+        "saturation": 0.78,
+        "brightness": 0.9,
+        "tint_r": 0.96,
+        "tint_g": 0.98,
+        "tint_b": 1.02
+    }
+}

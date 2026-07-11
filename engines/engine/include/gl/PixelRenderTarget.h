@@ -42,6 +42,21 @@ struct BlitRect
 // (cropped by the viewport) rather than vanishing. Pure function -- no GL.
 BlitRect computeBlitRect(int internalW, int internalH, int windowW, int windowH);
 
+// Global post-process color grade applied to the whole frame at blit time.
+// Defaults are identity (no change) so games that don't set it are unaffected.
+// The game owns these values (typically from config) to set the scene's mood.
+struct Grade
+{
+    float saturation = 1.0f; // 1 = unchanged, <1 = muted, 0 = greyscale
+    float brightness = 1.0f; // 1 = unchanged, <1 = dimmer
+    float tint_r = 1.0f;     // per-channel multiply (cool/warm shift)
+    float tint_g = 1.0f;
+    float tint_b = 1.0f;
+};
+
+// Set the active grade. Applied on every subsequent pixelTargetEnd.
+void pixelTargetSetGrade(const Grade& grade);
+
 // Create the FBO + color texture at the internal resolution. Call once after
 // the GL context exists.
 void pixelTargetInit(int internalW, int internalH);

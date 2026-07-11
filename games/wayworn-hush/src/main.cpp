@@ -11,10 +11,13 @@
 #include "systems/RenderSystem.h"
 #include "systems/TileMapRenderer.h"
 
+#include <nlohmann/json.hpp>
+
 #include <csignal>
 #include <cstdio>
 #include <ctime>
 #include <exception>
+#include <fstream>
 
 // ---------------------------------------------------------------------------
 // Crash reporter -- writes crash.log next to the exe on fatal signals /
@@ -104,6 +107,25 @@ int main(int argc, char* argv[])
     engine::gl::pixelTargetInit(kInternalWidth, kInternalHeight);
     engine::gl::pixelTargetResize(engine.windowWidth(), engine.windowHeight());
     engine.setOnResize([](Engine&, int w, int h) { engine::gl::pixelTargetResize(w, h); });
+
+    // Global color grade -- pulls the scene toward the muted aesthetic. Loaded
+    // from config so the mood is tunable live (edit config/atmosphere.json +
+    // rebuild, no recompile).
+    if (std::ifstream af{"config/atmosphere.json"})
+    {
+        const auto aj = nlohmann::json::parse(af, nullptr, false);
+        if (!aj.is_discarded())
+        {
+            const auto& g = aj.value("grade", nlohmann::json::object());
+            engine::gl::Grade grade;
+            grade.saturation = g.value("saturation", 1.0f);
+            grade.brightness = g.value("brightness", 1.0f);
+            grade.tint_r = g.value("tint_r", 1.0f);
+            grade.tint_g = g.value("tint_g", 1.0f);
+            grade.tint_b = g.value("tint_b", 1.0f);
+            engine::gl::pixelTargetSetGrade(grade);
+        }
+    }
 
     // World-render subsystems (game-owned; mirror the renderWorld callback).
     // RenderSystem draws sprites into the internal-res pixel target, so it is
