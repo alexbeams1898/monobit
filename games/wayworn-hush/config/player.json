@@ -3,14 +3,14 @@
     "run_speed_mult": 1.7,
     "animation": {
         "texture": "assets/sprites/player_walk.png",
-        "frame_width": 32,
+        "frame_width": 64,
         "frame_height": 64,
         "direction_count": 4,
-        "max_frames_per_state": 4,
+        "max_frames_per_state": 9,
         "states": {
             "idle": { "row": 1, "frames": 1, "duration": 0.0 },
-            "walk": { "row": 0, "frames": 4, "duration": 0.14 },
-            "fast_walk": { "row": 0, "frames": 4, "duration": 0.09 }
+            "walk": { "row": 0, "frames": 9, "duration": 0.11 },
+            "fast_walk": { "row": 2, "frames": 8, "duration": 0.08 }
         }
     }
 }

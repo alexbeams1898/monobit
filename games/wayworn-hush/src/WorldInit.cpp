@@ -15,8 +15,9 @@ constexpr int kRegionW = 48;
 constexpr int kRegionH = 48;
 
 // Foot collider: a small box at the sprite's base so the character tucks behind
-// objects and Y-sorts by where it stands. Fixed geometry, not animation data.
-constexpr float kPlayerFootW = 24.0f;
+// objects and Y-sorts by where it stands. Sized to the humanoid's feet (much
+// narrower than the 64px art frame). Fixed geometry.
+constexpr float kPlayerFootW = 22.0f;
 constexpr float kPlayerFootH = 12.0f;
 } // namespace
 
