@@ -4,6 +4,7 @@
 
 using observations::Conclusion;
 using observations::Observable;
+using observations::ObserveResult;
 using observations::Outcome;
 using observations::State;
 using observations::Tier;
@@ -39,14 +40,14 @@ State makeState()
 }
 } // namespace
 
-TEST_CASE("Observing a faced observable surfaces its tier-0 thought and grants currency",
+TEST_CASE("Observing a faced observable surfaces its tier-0 thought and earns Spirit EXP",
           "[observations]")
 {
     State s = makeState();
     // At origin facing +x (east) -> faces the stone at (100,0).
-    const Outcome oc = observations::observe(s, 0, 0, 1, 0);
-    REQUIRE(oc == Outcome::NewTier);
-    REQUIRE(s.currency == 5);
+    const ObserveResult r = observations::observe(s, 0, 0, 1, 0);
+    REQUIRE(r.outcome == Outcome::NewTier);
+    REQUIRE(r.earned == 5);
     REQUIRE(s.pending.size() == 1);
     REQUIRE(s.pending.front() == "a stone");
     REQUIRE(s.observed.at("stone") == 0);
@@ -55,21 +56,21 @@ TEST_CASE("Observing a faced observable surfaces its tier-0 thought and grants c
 TEST_CASE("Facing away from everything observes nothing", "[observations]")
 {
     State s = makeState();
-    const Outcome oc = observations::observe(s, 0, 0, -1, 0); // facing west, stone is east
-    REQUIRE(oc == Outcome::None);
-    REQUIRE(s.currency == 0);
+    const ObserveResult r = observations::observe(s, 0, 0, -1, 0); // facing west, stone is east
+    REQUIRE(r.outcome == Outcome::None);
+    REQUIRE(r.earned == 0);
     REQUIRE(s.pending.empty());
 }
 
-TEST_CASE("Re-observing the same tier surfaces the thought but grants no currency",
+TEST_CASE("Re-observing the same tier surfaces the thought but earns no Spirit EXP",
           "[observations]")
 {
     State s = makeState();
     observations::observe(s, 0, 0, 1, 0); // stone tier 0
     s.pending.clear();
-    const Outcome oc = observations::observe(s, 0, 0, 1, 0); // again, still tier 0
-    REQUIRE(oc == Outcome::Reobserved);
-    REQUIRE(s.currency == 5);       // unchanged
+    const ObserveResult r = observations::observe(s, 0, 0, 1, 0); // again, still tier 0
+    REQUIRE(r.outcome == Outcome::Reobserved);
+    REQUIRE(r.earned == 0);         // nothing new
     REQUIRE(s.pending.size() == 1); // thought still shows
 }
 
@@ -81,13 +82,14 @@ TEST_CASE("A deeper tier unlocks once its required observation is made", "[obser
     REQUIRE(s.observed.at("stone") == 0);
 
     // Observe water (at (0,100), face south from origin).
-    const Outcome w = observations::observe(s, 0, 0, 0, 1);
-    REQUIRE(w == Outcome::Conclusion); // stone+water now both observed -> conclusion forms
+    const ObserveResult w = observations::observe(s, 0, 0, 0, 1);
+    REQUIRE(w.outcome == Outcome::Conclusion); // stone+water both observed -> conclusion forms
     s.pending.clear();
 
     // Re-observe stone: water is known, so tier 1 is now available -> new tier.
-    const Outcome oc = observations::observe(s, 0, 0, 1, 0);
-    REQUIRE(oc == Outcome::NewTier);
+    const ObserveResult r = observations::observe(s, 0, 0, 1, 0);
+    REQUIRE(r.outcome == Outcome::NewTier);
+    REQUIRE(r.earned == 10); // tier-1 reward
     REQUIRE(s.observed.at("stone") == 1);
     REQUIRE(s.pending.front() == "a stone, water-worn");
 }
@@ -96,17 +98,23 @@ TEST_CASE("A conclusion auto-forms once all its requirements are observed, once 
           "[observations]")
 {
     State s = makeState();
-    observations::observe(s, 0, 0, 1, 0); // stone (currency 5)
-    REQUIRE(s.formed.empty());            // water not yet -> no conclusion
-    const Outcome oc =
-        observations::observe(s, 0, 0, 0, 1); // water (currency 5) -> conclusion (25)
-    REQUIRE(oc == Outcome::Conclusion);
-    REQUIRE(s.formed.count("lived_here") == 1);
-    REQUIRE(s.currency == 35); // 5 + 5 + 25
+    const ObserveResult stone = observations::observe(s, 0, 0, 1, 0); // stone (5)
+    REQUIRE(stone.earned == 5);
+    REQUIRE(s.formed.empty()); // water not yet -> no conclusion
 
-    // Observing again forms nothing new.
+    // water (5) + conclusion (25) both land this call -> earned reports the sum.
+    const ObserveResult water = observations::observe(s, 0, 0, 0, 1);
+    REQUIRE(water.outcome == Outcome::Conclusion);
+    REQUIRE(water.earned == 30); // 5 (water tier) + 25 (conclusion)
+    REQUIRE(s.formed.count("lived_here") == 1);
+
+    // Re-observing the stone forms no NEW conclusion, but water is now known, so
+    // the stone's water-worn tier 1 legitimately unlocks (+10) -- deeper reading
+    // on revisit is the point. The conclusion count stays at one.
     s.pending.clear();
-    observations::observe(s, 0, 0, 1, 0);
+    const ObserveResult again = observations::observe(s, 0, 0, 1, 0);
+    REQUIRE(again.outcome == Outcome::NewTier);
+    REQUIRE(again.earned == 10);
     REQUIRE(s.formed.size() == 1);
 }
 

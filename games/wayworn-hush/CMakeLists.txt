@@ -9,8 +9,10 @@ add_library(wayworn-systems STATIC
     src/PlayerMovement.cpp
     src/PlayerConfig.cpp
     src/Observations.cpp
+    src/Growth.cpp
     src/ThoughtBox.cpp
     src/Glimmer.cpp
+    src/PausePage.cpp
 )
 
 target_include_directories(wayworn-systems PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -57,6 +59,8 @@ add_custom_target(wayworn-sync-assets-and-config ALL
 add_executable(wayworn-tests
     tests/scaffold_test.cpp
     tests/observations_test.cpp
+    tests/growth_test.cpp
+    tests/pause_page_test.cpp
 )
 target_link_libraries(wayworn-tests PRIVATE wayworn-systems Catch2::Catch2WithMain)
 set_target_properties(wayworn-tests PROPERTIES

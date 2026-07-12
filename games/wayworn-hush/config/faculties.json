@@ -1,0 +1,5 @@
+{
+    "_comment": "The self: three reading-faculties, and the buffs bought with Spirit EXP. Buffs are intentionally empty -- their effects are content-driven and defined alongside the quests/progression that make them wanted, not invented in the abstract (see docs/design/GAME-SYSTEMS.md). Structure only for now. A buff entry, when added: {\"id\": \"...\", \"faculty\": \"wonder|reason|perception\", \"max_level\": 3}.",
+    "faculties": ["wonder", "reason", "perception"],
+    "buffs": []
+}

@@ -71,12 +71,12 @@ std::vector<std::string> parseIds(const nlohmann::json& e, const char* key)
     return out;
 }
 
-// Form any conclusions whose requirements are now met (queue text + grant
-// currency). Returns true if at least one formed. Loops so a conclusion that
-// completes another's requirements also forms this call.
-bool formConclusions(State& state)
+// Form any conclusions whose requirements are now met (queue text). Returns the
+// total Spirit EXP earned from conclusions formed this call (0 if none). Loops
+// so a conclusion that completes another's requirements also forms this call.
+int formConclusions(State& state)
 {
-    bool any = false;
+    int earned = 0;
     bool changed = true;
     while (changed)
     {
@@ -89,12 +89,11 @@ bool formConclusions(State& state)
                 continue;
             state.formed.insert(c.id);
             state.pending.push_back(c.text);
-            state.currency += c.currency;
-            any = true;
+            earned += c.spirit_exp;
             changed = true;
         }
     }
-    return any;
+    return earned;
 }
 } // namespace
 
@@ -122,7 +121,7 @@ void load(State& state, const std::string& path)
             {
                 Tier tier;
                 tier.text = t.value("text", std::string{});
-                tier.currency = t.value("currency", 0);
+                tier.spirit_exp = t.value("spirit_exp", 0);
                 tier.requires_ids = parseIds(t, "requires");
                 o.tiers.push_back(std::move(tier));
             }
@@ -136,7 +135,7 @@ void load(State& state, const std::string& path)
         Conclusion c;
         c.id = e.value("id", std::string{});
         c.text = e.value("text", std::string{});
-        c.currency = e.value("currency", 0);
+        c.spirit_exp = e.value("spirit_exp", 0);
         c.requires_ids = parseIds(e, "requires");
         if (!c.id.empty())
             state.conclusions.push_back(std::move(c));
@@ -168,11 +167,11 @@ bool exhausted(const State& state, const std::string& observable_id)
     return false;
 }
 
-Outcome observe(State& state, float px, float py, float dir_x, float dir_y)
+ObserveResult observe(State& state, float px, float py, float dir_x, float dir_y)
 {
     const Observable* o = facedObservable(state, px, py, dir_x, dir_y);
     if (!o)
-        return Outcome::None;
+        return {Outcome::None, 0};
 
     const int tier = deepestAvailableTier(state, *o);
     const auto prev = state.observed.find(o->id);
@@ -182,14 +181,15 @@ Outcome observe(State& state, float px, float py, float dir_x, float dir_y)
     state.pending.push_back(o->tiers[static_cast<std::size_t>(tier)].text);
 
     if (tier <= prevTier)
-        return Outcome::Reobserved; // no new understanding, no currency
+        return {Outcome::Reobserved, 0}; // no new understanding, no Spirit EXP
 
-    // Newly-reached (deeper) tier: record + grant its currency.
+    // Newly-reached (deeper) tier: record + earn its Spirit EXP.
     state.observed[o->id] = tier;
-    state.currency += o->tiers[static_cast<std::size_t>(tier)].currency;
+    int earned = o->tiers[static_cast<std::size_t>(tier)].spirit_exp;
 
-    const bool formed = formConclusions(state);
-    return formed ? Outcome::Conclusion : Outcome::NewTier;
+    const int fromConclusions = formConclusions(state);
+    earned += fromConclusions;
+    return {fromConclusions > 0 ? Outcome::Conclusion : Outcome::NewTier, earned};
 }
 
 } // namespace observations

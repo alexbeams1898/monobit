@@ -2,7 +2,9 @@
 
 #include "Engine.h"
 #include "Glimmer.h"
+#include "PausePage.h"
 #include "PlayerMovement.h"
+#include "ScreenInput.h"
 #include "ThoughtBox.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
@@ -17,6 +19,7 @@
 #include <SDL.h>
 
 #include <algorithm>
+#include <cstdint>
 
 namespace
 {
@@ -51,13 +54,50 @@ bool pressedThisFrame(const EntityManager& em, int scancode)
     const auto& kd = em.key_down_events;
     return std::find(kd.begin(), kd.end(), scancode) != kd.end();
 }
+
+// Edge-triggered mouse-button press, same first-tick guard as pressedThisFrame
+// so a multi-tick frame can't fire it twice. Consumes the click (via the engine
+// consume flag) so gameplay doesn't also act on it.
+bool clickedThisFrame(EntityManager& em, uint8_t button)
+{
+    if (em.ticks_this_frame != 0)
+        return false;
+    return engine::ui::mouseClicked(em, button);
+}
 } // namespace
 
 void gameUpdate(Engine& engine, EntityManager& em, double dt)
 {
-    (void)engine;
     auto& reg = em.registry();
     GameState& gs = reg.ctx().get<GameState>();
+
+    // Pause page. Controls stay in the left-hand WASD cluster (no Esc): F is the
+    // universal back/no button and toggles the page; A/D page the tabs; W/S move
+    // the selected item; Space is the universal yes/confirm. RMB is the mouse
+    // equivalent of the back/no button (studio standard). Edge-triggered; the
+    // pure step() owns state.
+    // RMB is back-only (it closes/pops within the GUI, never opens it -- so it
+    // stays free as a world verb); F opens and closes.
+    const bool rmbBack = gs.pause.open && clickedThisFrame(em, SDL_BUTTON_RIGHT);
+    const bool toggle = pressedThisFrame(em, SDL_SCANCODE_F) || rmbBack;
+    const bool left = pressedThisFrame(em, SDL_SCANCODE_A);
+    const bool right = pressedThisFrame(em, SDL_SCANCODE_D);
+    const bool up = pressedThisFrame(em, SDL_SCANCODE_W);
+    const bool down = pressedThisFrame(em, SDL_SCANCODE_S);
+    const bool confirm = pressedThisFrame(em, SDL_SCANCODE_SPACE);
+    const pause_page::Action action =
+        pause_page::step(gs.pause, toggle, left, right, up, down, confirm);
+    if (action == pause_page::Action::Quit)
+        engine.requestQuit();
+
+    // Muffle the soundtrack while the page is open (the world is frozen behind a
+    // held breath); clean when closed. Cheap no-op when unchanged.
+    AudioSystem::setMusicLowPass(gs.pause.open ? 800.0f : 0.0f);
+
+    // Freeze the world while the page is open: skip movement, observing, camera.
+    // Animation is halted in gamePreRender (it runs at wall-clock rate there).
+    if (gs.pause.open)
+        return;
 
     // Snapshot positions for render interpolation before integrating.
     for (auto [e, t, pt] : reg.view<Transform, PreviousTransform>().each())
@@ -105,12 +145,15 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     glimmer::update(em, gs.observations, pt.x, pt.y, fx, fy, static_cast<float>(dt));
 
     // Observe (Space): notice the observable the player faces. Deeper tiers +
-    // formed conclusions surface a thought and grant currency; a soft sound
-    // marks the act (placeholder -- final audio from the OST, see design doc).
+    // formed conclusions surface a thought and earn Spirit EXP (added to the
+    // growth economy, the sole owner of the total); a soft sound marks the act
+    // (placeholder -- final audio from the OST, see design doc).
     if (pressedThisFrame(em, SDL_SCANCODE_SPACE))
     {
-        const observations::Outcome oc = observations::observe(gs.observations, pt.x, pt.y, fx, fy);
-        if (oc != observations::Outcome::None)
+        const observations::ObserveResult r =
+            observations::observe(gs.observations, pt.x, pt.y, fx, fy);
+        gs.growth.spirit_exp += r.earned;
+        if (r.outcome != observations::Outcome::None)
             AudioSystem::playSfx("assets/audio/observe.ogg", 0.7f);
     }
 
@@ -120,11 +163,17 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
 
 void gamePreRender(Engine& engine, EntityManager& em)
 {
+    auto& gs = em.registry().ctx().get<GameState>();
+
+    // The page freezes the world: hold the sprite pose and stop draining
+    // monologue lines (both advance at wall-clock rate, so they must be gated
+    // here rather than in the fixed-step update).
+    if (gs.pause.open)
+        return;
+
     // Sprite-sheet animation advances at wall-clock frame rate, not the fixed
     // tick (see engines/engine/docs/ENGINE.md "Animation system").
     AnimationSystem::update(em, static_cast<float>(engine.frameDt()));
-
-    auto& gs = em.registry().ctx().get<GameState>();
     thought_box::update(gs.observations, static_cast<float>(engine.frameDt()));
 }
 
@@ -142,9 +191,24 @@ void gameRenderWorld(Engine& engine, EntityManager& em, float camX, float camY, 
 
 void gameRenderUI(Engine& engine, EntityManager& em)
 {
+    auto& gs = em.registry().ctx().get<GameState>();
+
     // Inner-monologue textbox, drawn in native window space (the engine's UI
     // pass runs after the world blit, at window resolution).
     thought_box::render(engine.windowWidth(), engine.windowHeight());
+
+    // Pause page over everything (no-op when closed). Mouse is interchangeable
+    // with the keyboard controls: hover a tab to highlight, click to switch,
+    // click Quit on the System tab to exit. Mouse handling lives here because it
+    // hit-tests the geometry render() draws.
+    int mx = 0;
+    int my = 0;
+    SDL_GetMouseState(&mx, &my);
+    const pause_page::Mouse mouse{static_cast<float>(mx), static_cast<float>(my),
+                                  engine::ui::mouseClicked(em, SDL_BUTTON_LEFT)};
+    if (pause_page::render(gs.pause, gs.growth, gs.observations, mouse, engine.windowWidth(),
+                           engine.windowHeight()) == pause_page::Action::Quit)
+        engine.requestQuit();
 
     // Clear one-shot input buffers after all consumers have seen them (the
     // engine fills them but leaves clearing to the game). Guard on a tick having

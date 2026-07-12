@@ -275,10 +275,12 @@ investing in; it IS the RPG's face:
    current gap). Minimal affective form: a soft signal when facing a new
    observable. This unblocks feel-testing the whole loop.
 2. **The observation page next** — the on-demand record (noticed-log +
-   conclusions + currency). The RPG's face; where depth lives.
+   conclusions + Spirit EXP). The RPG's face; where depth lives.
 
-Both build on data that already exists (`State.observed`, `.formed`, `.currency`,
-the observables/conclusions) + the `facingObservable()` query already written.
+Both build on data that already exists (`State.observed`, `.formed`, the
+observables/conclusions; Spirit EXP is owned by `GrowthState`, see
+[GAME-SYSTEMS.md](GAME-SYSTEMS.md) §1) + the `facingObservable()` query already
+written.
 
 ## Cross-references
 
