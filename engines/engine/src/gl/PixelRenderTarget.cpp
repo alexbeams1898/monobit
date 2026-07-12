@@ -101,6 +101,11 @@ void pixelTargetSetGrade(const Grade& grade)
     sGrade = grade;
 }
 
+Grade pixelTargetGetGrade()
+{
+    return sGrade;
+}
+
 void pixelTargetInit(int internalW, int internalH)
 {
     sInternalW = internalW;

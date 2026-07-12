@@ -57,6 +57,10 @@ struct Grade
 // Set the active grade. Applied on every subsequent pixelTargetEnd.
 void pixelTargetSetGrade(const Grade& grade);
 
+// The active grade. Lets a tuning UI read the current values to seed its
+// controls before writing edits back via pixelTargetSetGrade.
+Grade pixelTargetGetGrade();
+
 // Create the FBO + color texture at the internal resolution. Call once after
 // the GL context exists.
 void pixelTargetInit(int internalW, int internalH);

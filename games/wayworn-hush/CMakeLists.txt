@@ -13,6 +13,7 @@ add_library(wayworn-systems STATIC
     src/ThoughtBox.cpp
     src/Glimmer.cpp
     src/PausePage.cpp
+    src/TunePanel.cpp
 )
 
 target_include_directories(wayworn-systems PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)

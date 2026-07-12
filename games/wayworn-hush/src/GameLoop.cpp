@@ -6,6 +6,7 @@
 #include "PlayerMovement.h"
 #include "ScreenInput.h"
 #include "ThoughtBox.h"
+#include "TunePanel.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "gl/PixelRenderTarget.h"
@@ -71,6 +72,10 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     auto& reg = em.registry();
     GameState& gs = reg.ctx().get<GameState>();
 
+    // F1 toggles the dev tunables panel (drawn in the ImGui pass).
+    if (pressedThisFrame(em, SDL_SCANCODE_F1))
+        tune_panel::toggle();
+
     // Pause page. Controls stay in the left-hand WASD cluster (no Esc): F is the
     // universal back/no button and toggles the page; A/D page the tabs; W/S move
     // the selected item; Space is the universal yes/confirm. RMB is the mouse
@@ -122,6 +127,9 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     if (vel.dx != 0.0f || vel.dy != 0.0f)
     {
         anim.dir = engine::direction::snapMovement(vel.dx, vel.dy, anim.direction_count);
+        // Animation cadence is decoupled from movement speed -- each state plays
+        // at its own authored per-frame duration (tune the feel via the duration
+        // values; speed and cadence are independent knobs).
         const PlayerConfig::AnimState& st = fast ? pc.fast_walk : pc.walk;
         anim.current_row = st.row;
         anim.current_frames = st.frames;
@@ -221,4 +229,11 @@ void gameRenderUI(Engine& engine, EntityManager& em)
         em.mouse_wheel_y = 0;
         em.text_input_buffer.clear();
     }
+}
+
+void gameRenderImGui(Engine& /*engine*/, EntityManager& em)
+{
+    // Dev tunables panel (F1). No-op when hidden. Edits player_config live.
+    auto& gs = em.registry().ctx().get<GameState>();
+    tune_panel::render(gs.player_config);
 }

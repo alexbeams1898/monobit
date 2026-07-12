@@ -162,6 +162,7 @@ int main(int argc, char* argv[])
     engine.setPreRender(&gamePreRender);
     engine.setRenderWorld(&gameRenderWorld);
     engine.setRenderUI(&gameRenderUI);
+    engine.setRenderImGui(&gameRenderImGui);
     engine.run();
 
     RenderSystem::shutdown();

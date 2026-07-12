@@ -6,8 +6,8 @@
 // constants: speed and animation "feel" values live in data, not C++ literals).
 struct PlayerConfig
 {
-    float speed = 130.0f;        // world px/sec (normal walk)
-    float run_speed_mult = 1.7f; // held-Shift fast-walk multiplier
+    float speed = 130.0f;         // world px/sec (normal walk)
+    float run_speed_mult = 1.30f; // held-Shift fast-walk multiplier
 
     struct AnimState
     {
