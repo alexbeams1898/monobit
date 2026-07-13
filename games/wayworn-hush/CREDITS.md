@@ -41,6 +41,20 @@ attribution and honor the share-alike terms of those licenses. Keep
 `assets/sprites/lpc/CREDITS.txt` shipped with any build that includes the
 character sprite.
 
+## World tilesets
+
+Overworld terrain + object tilesets are derived from **ArMM1998's "Zelda-like
+tilesets and sprites,"** released under **CC0** (public domain — no attribution
+required; credited here as good practice). The source sheets are kept unmodified
+in [`assets/tilesets/source/`](assets/tilesets/source/); the shipped tilesets are
+those sheets scaled ×2 to 32px and color-snapped by
+[`tools/tileset/slice.py`](tools/tileset/slice.py) (see
+[docs/design/MAP-PIPELINE.md](docs/design/MAP-PIPELINE.md)).
+
+- Source: https://opengameart.org/content/zelda-like-tilesets-and-sprites
+- Author: ArMM1998 (Armando Montero)
+- License: CC0 1.0 Universal (public domain dedication)
+
 ## Music
 
 Ambient score composed by Kira Stream (see `assets/audio/`).
