@@ -127,7 +127,7 @@ Selva's manual Mind-page deduce), *or* via a light "reflect" action — Q2.
 
 Every observation + conclusion made is **recorded persistently** (save data):
 which, its text, where, when first made. Serves as:
-- **A quiet reviewable page** — the game's "journal," but it's *what you've
+- **A quiet reviewable page** — the game's "notebook," but it's *what you've
   noticed*, not a quest list. Reinforces attention as the substance.
 - **The progression ledger** — the record is the source of currency earned (§5).
 
@@ -259,7 +259,7 @@ investing in; it IS the RPG's face:
 
 - **What you've noticed** — the record: observations made, their thoughts,
   where. A quiet ledger of understanding, not a quest list. (This is the game's
-  "journal," but it's *attention*, not tasks.)
+  "notebook," but it's *attention*, not tasks.)
 - **Conclusions** — the higher-order thoughts you've formed by connecting
   observations. The most affective entries — the moments the pilgrim *understood*
   something.

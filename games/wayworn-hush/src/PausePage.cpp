@@ -114,7 +114,7 @@ void renderNoticed(const growth::GrowthState& g, const observations::State& o, f
 {
     // What's been noticed: the objective observations you've reached (the deepest
     // tier text per spot, plain), then the thoughts you've had (colored by
-    // faculty + rarity). The full thought-journal split is a later slice; for now
+    // faculty + rarity). The full thought-notebook split is a later slice; for now
     // both share this list. Empty stays quiet.
     bool any = false;
     for (const auto& ob : o.observables)

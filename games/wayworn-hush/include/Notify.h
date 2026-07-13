@@ -1,5 +1,6 @@
 #pragma once
 
+#include "HudCanvas.h"
 #include "UIRenderer.h"
 
 #include <string>
@@ -15,8 +16,9 @@ using FontHandle = int;
 namespace notify
 {
 
-// Set the display font once after fonts are loaded.
-void init(FontHandle font);
+// Set the display font + the NOTIFICATION region (canvas-fraction rect toasts
+// anchor to) once after fonts + HUD regions are loaded.
+void init(FontHandle font, const hud::Rect& region);
 
 // Push a message; it rises and fades over ~2s. Newest at the bottom.
 void push(const std::string& text, const Color& color);

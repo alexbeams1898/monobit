@@ -1,0 +1,11 @@
+{
+    "_comment": "The white thought bubble that pops over the player's head while a thought is on screen (see HeadMarker / docs/design/HUD.md). A cloud on a short stem whose base sits at the head; holds while the reading is up, fades on dismiss. size = sprite cell px; head_offset = world px above the feet-anchored player origin where the stem meets the head; peak_alpha = shown opacity; fade_speed = alpha lerp rate; pulse_amp/pulse_hz = idle breathing. Tune by feel.",
+    "sprite": "assets/sprites/thought_bubble.png",
+    "size": 40,
+    "head_offset": 44.0,
+    "side_offset": 18.0,
+    "peak_alpha": 0.9,
+    "fade_speed": 8.0,
+    "pulse_amp": 0.10,
+    "pulse_hz": 0.8
+}

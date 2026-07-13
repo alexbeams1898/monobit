@@ -15,6 +15,9 @@ add_library(wayworn-systems STATIC
     src/Glimmer.cpp
     src/Notify.cpp
     src/Footsteps.cpp
+    src/HudCanvas.cpp
+    src/HeadMarker.cpp
+    src/WorldClock.cpp
     src/PausePage.cpp
     src/TunePanel.cpp
 )
@@ -67,6 +70,9 @@ add_executable(wayworn-tests
     tests/pause_page_test.cpp
     tests/unlock_condition_test.cpp
     tests/footsteps_test.cpp
+    tests/hud_canvas_test.cpp
+    tests/head_marker_test.cpp
+    tests/world_clock_test.cpp
 )
 target_link_libraries(wayworn-tests PRIVATE wayworn-systems Catch2::Catch2WithMain)
 set_target_properties(wayworn-tests PROPERTIES

@@ -1,7 +1,9 @@
 #pragma once
 
 #include "Growth.h"
+#include "HudCanvas.h"
 #include "Observations.h"
+#include "UIRenderer.h" // Color
 
 #include <string>
 
@@ -26,22 +28,29 @@ struct Config
 {
     std::string blip_sound = "assets/audio/observe.ogg";   // per-character typing tick
     std::string appear_sound = "assets/audio/observe.ogg"; // box drop-in
-    float drop_in_secs = 0.22f;                            // slide/fade-in duration
-    float chars_per_sec = 42.0f;                           // typewriter reveal rate
-    float fade_out_secs = 0.7f;                            // fade-out on dismiss
-    int blip_every = 2;           // play a blip every N revealed characters
-    float max_width_frac = 0.62f; // body wraps within this fraction of the window
+    // Pen-on-paper sound for a NEW notebook entry (a new thought being written
+    // down); plays in place of appear_sound when a fresh thought surfaces.
+    std::string notebook_sound = "assets/audio/notebook_entry.ogg";
+    float drop_in_secs = 0.22f;  // slide/fade-in duration
+    float chars_per_sec = 42.0f; // typewriter reveal rate
+    float fade_out_secs = 0.7f;  // fade-out on dismiss
+    int blip_every = 2;          // play a blip every N revealed characters
 };
 
-// Set the fonts (larger body + smaller heading) and feel config once after they
-// are loaded.
-void init(FontHandle body_font, FontHandle heading_font, const Config& config);
+// Set the fonts (larger body + smaller heading), feel config, and the HUD region
+// rects (canvas fractions -- content renders into these fixed screen bands) once
+// after they are loaded.
+void init(FontHandle body_font, FontHandle heading_font, const Config& config,
+          const hud::Regions& regions);
 
 // Advance the box animation + typewriter at wall-clock rate; pulls the next Line
 // from state.pending when idle (and re-surfaces an action menu when its result
 // line has been read). Plays SFX at the right beats. Takes growth so a Menu can
-// recompute its offered actions and act on them. The box never auto-dismisses.
-void update(observations::State& state, const growth::GrowthState& growth, float dt);
+// recompute its offered actions and act on them. Window dims size the fixed HUD
+// region a loading line wraps to. `stamp` is the world-clock dateline latched onto
+// a reading as it appears (the notebook entry's "when"). The box never auto-dismisses.
+void update(observations::State& state, const growth::GrowthState& growth, float dt, int windowW,
+            int windowH, const std::string& stamp);
 
 // True while the box shows anything (a Line dropping in / typing / held, or a
 // Menu). The game gates world input on this: no box -> Space observes; box up ->
@@ -50,6 +59,11 @@ bool active();
 
 // True while an action Menu is the current item (so the game routes W/S to it).
 bool menuActive();
+
+// True while a THOUGHT reading (not a plain observation / deed-result) is on
+// screen; if so, out_color is its faculty hue. Drives the over-head thought bubble
+// (head_marker) -- the bubble shows exactly while the thought is up, in its color.
+bool activeThought(const growth::GrowthState& growth, Color& out_color);
 
 // Enqueue the action menu for a spot (its offered deeds, shown after the reading
 // lines are read). No-op if the spot has no offered actions.
@@ -83,12 +97,8 @@ void back();
 int menuMouse(observations::State& state, const growth::GrowthState& growth,
               const observations::RollRng& rng, float mx, float my, bool clicked);
 
-// Draw the box (if active), tinted via `growth`. Window-space, native resolution.
+// Draw the box (if active), tinted via `growth`. Content renders into its fixed
+// HUD region (thought vs observation, by the item's kind). Window-space.
 void render(const growth::GrowthState& growth, int windowW, int windowH);
-
-// The box's top edge as a fraction of window height -- the single source of truth
-// for where the HUD box sits, so other surfaces (e.g. notification toasts) anchor
-// to it without a hand-synced copy of the constant.
-float boxTopFrac();
 
 } // namespace thought_box

@@ -37,6 +37,9 @@ class FontManager
     static void shutdown();
 
     // Load a font at a specific pixel size. Returns a handle for drawText().
+    // Cached by (path, rounded size_px): a repeat call for the same face+size
+    // returns the existing handle instead of re-baking an atlas -- so callers can
+    // safely reload on window resize without leaking textures.
     static FontHandle loadFont(const std::string& path, float size_px);
 
     // Load multiple sizes from one .ttf into a shared atlas texture.

@@ -221,6 +221,10 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     if (gs.pause.open)
         return;
 
+    // World time advances only while unfrozen (drives notebook datelines; later the
+    // day/night cycle). Placed after the pause guard so a paused world holds time.
+    worldclock::tick(gs.clock, dt);
+
     // Snapshot positions for render interpolation before integrating.
     for (auto [e, t, pt] : reg.view<Transform, PreviousTransform>().each())
     {
@@ -277,6 +281,13 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     // observed it quiets. Thoughts are not signposted.
     glimmer::update(em, gs.observations, gs.growth, pt.x, pt.y, fx, fy, static_cast<float>(dt));
 
+    // Over-head thought bubble: shown exactly while a thought reading is on screen,
+    // then fades. It tracks the player's head each frame.
+    Color thoughtHue{};
+    const bool thoughtUp = thought_box::activeThought(gs.growth, thoughtHue);
+    head_marker::set(em, thoughtUp);
+    head_marker::update(em, gs.head_marker_config, pt.x, pt.y, static_cast<float>(dt));
+
     // Observe / read / act input. Readings are non-modal (walk while up, Space to
     // advance); only the action menu is modal.
     handleObserveInput(em, gs, pt.x, pt.y, fx, fy);
@@ -298,7 +309,8 @@ void gamePreRender(Engine& engine, EntityManager& em)
     // Sprite-sheet animation advances at wall-clock frame rate, not the fixed
     // tick (see engines/engine/docs/ENGINE.md "Animation system").
     AnimationSystem::update(em, static_cast<float>(engine.frameDt()));
-    thought_box::update(gs.observations, gs.growth, static_cast<float>(engine.frameDt()));
+    thought_box::update(gs.observations, gs.growth, static_cast<float>(engine.frameDt()),
+                        engine.windowWidth(), engine.windowHeight(), worldclock::stamp(gs.clock));
 }
 
 void gameRenderWorld(Engine& engine, EntityManager& em, float camX, float camY, float alpha)
@@ -316,16 +328,28 @@ void gameRenderWorld(Engine& engine, EntityManager& em, float camX, float camY, 
 void gameRenderUI(Engine& engine, EntityManager& em)
 {
     auto& gs = em.registry().ctx().get<GameState>();
+    const int ww = engine.windowWidth();
+    const int wh = engine.windowHeight();
 
-    // Inner-monologue textbox, drawn in native window space (the engine's UI
-    // pass runs after the world blit, at window resolution). Tinted by faculty +
-    // rarity via the growth state.
-    thought_box::render(gs.growth, engine.windowWidth(), engine.windowHeight());
+    // HUD visibility mode (see hud::Visibility): Off suppresses all HUD region
+    // drawing; On adds always-on region frames under the content; Auto (default)
+    // draws only regions that hold content. The pause page is separate (F-gated),
+    // so Off still lets the player open it.
+    const bool hudOff = gs.hud.visibility == hud::Visibility::Off;
+    if (gs.hud.visibility == hud::Visibility::On)
+        hud::drawIdleFrames(gs.hud, ww, wh);
 
-    // Ambient notification toasts (EXP, "new observation/action available") --
-    // above the box, non-blocking, self-fading.
-    notify::render(static_cast<float>(engine.frameDt()), engine.windowWidth(),
-                   engine.windowHeight());
+    if (!hudOff)
+    {
+        // Inner-monologue textbox, drawn in native window space (the engine's UI
+        // pass runs after the world blit, at window resolution). Tinted by faculty
+        // + rarity via the growth state.
+        thought_box::render(gs.growth, ww, wh);
+
+        // Ambient notification toasts (EXP, "new observation/action available") --
+        // in the notification band, non-blocking, self-fading.
+        notify::render(static_cast<float>(engine.frameDt()), ww, wh);
+    }
 
     int mx = 0;
     int my = 0;
@@ -333,12 +357,14 @@ void gameRenderUI(Engine& engine, EntityManager& em)
     const bool lClick = engine::ui::mouseClicked(em, SDL_BUTTON_LEFT);
 
     // Mouse on the action menu (interchangeable with W/S + Space): hover an option
-    // to highlight, click to confirm. Runs after render() stashes menu geometry.
+    // to highlight, click to confirm. Runs after render() stashes menu geometry, so
+    // it's skipped when the HUD is Off (no menu drawn, geometry stale).
     // The pause page can't be open while the menu is up, so the click is theirs to
     // share without conflict.
-    gs.growth.spirit_exp +=
-        thought_box::menuMouse(gs.observations, gs.growth, observeNudge, static_cast<float>(mx),
-                               static_cast<float>(my), lClick);
+    if (!hudOff)
+        gs.growth.spirit_exp +=
+            thought_box::menuMouse(gs.observations, gs.growth, observeNudge, static_cast<float>(mx),
+                                   static_cast<float>(my), lClick);
 
     // Pause page over everything (no-op when closed). Mouse is interchangeable
     // with the keyboard controls: hover a tab to highlight, click to switch,

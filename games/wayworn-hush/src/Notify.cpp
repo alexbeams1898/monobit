@@ -1,6 +1,6 @@
 #include "Notify.h"
 
-#include "ThoughtBox.h" // for boxTopFrac() -- toasts anchor above the HUD box
+#include "HudCanvas.h"
 
 #include <algorithm>
 #include <vector>
@@ -9,38 +9,40 @@ namespace notify
 {
 namespace
 {
-constexpr float kDuration = 2.4f;   // seconds on screen before it's gone
-constexpr float kFadeSecs = 0.6f;   // fade-out window at the end
-constexpr float kRiseSpeed = 26.0f; // px/sec the toast drifts up
-constexpr int kMaxVisible = 6;      // cap stacked toasts (oldest dropped)
+// Souls-style item notifications: pinned to the NOTIFICATION region (the right
+// side of the lower HUD band -- see config/hud.json), fading in/out in place with
+// no movement. Peripheral and calm; multiple stack upward from the region top.
+// (Dark Souls / Elden Ring surface the "acquired X" toast + item log on the right.)
+constexpr float kDuration = 2.6f; // total seconds on screen
+constexpr float kFadeIn = 0.25f;  // fade-in window at the start
+constexpr float kFadeOut = 0.6f;  // fade-out window at the end
+constexpr int kMaxVisible = 6;    // cap stacked toasts (oldest dropped)
 constexpr float kPadX = 10.0f;
 constexpr float kPadY = 6.0f;
-// Toasts anchor just above the HUD box and stack upward, centered like it -- so
-// notifications read as coming from the same place the readings/menu appear. The
-// box-top is the single source of truth (thought_box::boxTopFrac()).
-constexpr float kGapAboveBox = 14.0f;
+constexpr float kRowGap = 6.0f; // vertical gap between stacked toasts
 
 struct Toast
 {
     std::string text;
     Color color{};
-    float timer = 0.0f;
-    float rise = 0.0f;
+    float timer = 0.0f; // counts DOWN from kDuration
 };
 
 std::vector<Toast> sToasts;
 FontHandle sFont = -1;
+hud::Rect sRegion; // canvas-fraction notification region (resolved per frame)
 } // namespace
 
-void init(FontHandle font)
+void init(FontHandle font, const hud::Rect& region)
 {
     sFont = font;
+    sRegion = region;
     sToasts.reserve(kMaxVisible);
 }
 
 void push(const std::string& text, const Color& color)
 {
-    sToasts.push_back(Toast{text, color, kDuration, 0.0f});
+    sToasts.push_back(Toast{text, color, kDuration});
     while (static_cast<int>(sToasts.size()) > kMaxVisible)
         sToasts.erase(sToasts.begin());
 }
@@ -50,31 +52,32 @@ void render(float dt, int window_w, int window_h)
     if (sToasts.empty() || sFont < 0)
         return;
 
-    const float ww = static_cast<float>(window_w);
-    const float wh = static_cast<float>(window_h);
-    // Bottom-most toast sits just above the box top; each older one stacks upward.
-    float baselineY = wh * thought_box::boxTopFrac() - kGapAboveBox;
+    const hud::Rect r = hud::resolve(sRegion, window_w, window_h);
+    const float centerX = r.x + r.w * 0.5f;
+    // Newest toast at the region top; older ones stack downward from it.
+    float rowTop = r.y;
 
     for (int i = static_cast<int>(sToasts.size()) - 1; i >= 0; --i)
     {
         Toast& t = sToasts[static_cast<std::size_t>(i)];
         t.timer -= dt;
-        t.rise += kRiseSpeed * dt;
         if (t.timer <= 0.0f)
             continue;
 
-        const float alpha = std::min(1.0f, t.timer / kFadeSecs);
+        // Fade in at the start, hold, fade out at the end -- no movement.
+        const float age = kDuration - t.timer;
+        const float alpha = std::min({1.0f, age / kFadeIn, t.timer / kFadeOut});
         Color c = t.color;
         c.a *= alpha;
 
         const TextSize sz = UIRenderer::measureText(sFont, t.text);
-        const float x = (ww - sz.width) * 0.5f;         // centered, like the box
-        const float y = baselineY - t.rise - sz.height; // stacks up above the anchor
+        const float x = centerX - sz.width * 0.5f; // centered in the region
+        const float y = rowTop + kPadY;
 
         UIRenderer::drawRect(x - kPadX, y - kPadY, sz.width + kPadX * 2.0f,
                              sz.height + kPadY * 2.0f, {0.04f, 0.05f, 0.06f, 0.6f * alpha});
         UIRenderer::drawText(sFont, t.text, x, y, c);
-        baselineY -= sz.height + kPadY * 2.0f + 6.0f;
+        rowTop += sz.height + kPadY * 2.0f + kRowGap;
     }
 
     sToasts.erase(std::remove_if(sToasts.begin(), sToasts.end(),

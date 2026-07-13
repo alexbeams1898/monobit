@@ -16,7 +16,7 @@
 > carry authored `value`; hidden observables use `visible_when`. Authored
 > `difficulty`/`spirit_exp` are gone.
 >
-> Not yet built: the separate thought-journal surface, the `!` visual mark, the
+> Not yet built: the separate thought-notebook surface, the `!` visual mark, the
 > action menu, the thought cabinet, the world map (see §Not yet built).
 
 ## The premise
@@ -358,13 +358,13 @@ backend plumbing; it surfaces nowhere.)
 
 - **Observations** — the objective record (per spot). Eventually pinned on a
   **world map** with `!` markers.
-- **Thought journal** — the subjective record (fired realizations). **Separate**
+- **Thought notebook** — the subjective record (fired realizations). **Separate**
   from observations. *(Currently both share the pause page's Noticed tab; the
   split is a pending slice.)*
 
 ## Not yet built (implementation order from here)
 
-1. **Separate thought-journal surface** — split fired realizations out of the
+1. **Separate thought-notebook surface** — split fired realizations out of the
    Noticed tab into their own view; style objective (plain) vs realization
    (colored) distinctly in the box via `PendingLine.kind`.
 2. **The `!` visual** — the exclamation mark + pop-in + soft pulse for

@@ -2,8 +2,11 @@
 
 #include "Footsteps.h"
 #include "Growth.h"
+#include "HeadMarker.h"
+#include "HudCanvas.h"
 #include "Observations.h"
 #include "PlayerConfig.h"
+#include "WorldClock.h"
 
 #include <string>
 #include <unordered_set>
@@ -59,19 +62,24 @@ struct GameState
     observations::State observations;
     growth::GrowthState growth;
     PauseState pause;
-    footsteps::Config footstep_config; // authored pool + cadence
-    footsteps::State footstep_state;   // runtime cadence timer
+    footsteps::Config footstep_config;   // authored pool + cadence
+    footsteps::State footstep_state;     // runtime cadence timer
+    hud::Regions hud;                    // fixed HUD region rects + visibility mode
+    HeadMarkerConfig head_marker_config; // over-head thought-bubble feel/placement
+    worldclock::WorldClock clock;        // in-world time (notebook datelines, day/night later)
     // Unlock ids (see observations::availableUnlocks) already announced via a
     // notification, so "1 new observation / action available" toasts fire exactly
     // once per new unlock, not every frame.
     std::unordered_set<std::string> announced_unlocks;
 };
 
-// Internal pixel-art resolution. The world renders here, then integer-upscales
-// to the window (see gl/PixelRenderTarget). 768x432 = 16:9, 24x13.5 tiles at
-// 32px; x2.5 = 1920x1080 exactly. See docs/design/SCALE.md.
-inline constexpr int kInternalWidth = 768;
-inline constexpr int kInternalHeight = 432;
+// Internal pixel-art resolution. The world renders here, then INTEGER-upscales to
+// the window (see gl/PixelRenderTarget). 1280x720 = 16:9; integer-fills 1440p (x2)
+// and 4K (x3) exactly -- crisp, no letterbox on those. (1080p is a non-integer x1.5
+// -> it letterboxes at 720p x1; acceptable, 1080p isn't the target here.) Shows 2x
+// the world of the 640x360 base = a wider FOV. See docs/design/SCALE.md.
+inline constexpr int kInternalWidth = 1280;
+inline constexpr int kInternalHeight = 720;
 
 // Ambient background / letterbox color. Shared by the engine clear and the
 // pixel-target clear so the internal image and the letterbox bars agree.

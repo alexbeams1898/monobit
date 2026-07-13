@@ -1,6 +1,7 @@
 #include "ThoughtBox.h"
 
 #include "FontManager.h"
+#include "HudCanvas.h"
 #include "Notify.h"
 #include "ReadingColor.h"
 #include "UIRenderer.h"
@@ -18,8 +19,19 @@ namespace
 FontHandle sFont = -1;        // body (reading text)
 FontHandle sHeadingFont = -1; // smaller label line (faculty + rarity)
 Config sCfg;
+hud::Regions sRegions; // fixed HUD bands (canvas fractions); content renders into them
 
-constexpr float kBoxTopFrac = 0.70f; // box top edge as a fraction of window height
+// Gap under the header divider (faculty . rarity . New), between it and the body.
+// Shared by loadLine (page-capacity math) and renderLine (layout) so they agree.
+constexpr float kHeadingGap = 12.0f;
+
+// Notebook palette -- a thought reading reads as a notebook entry: aged paper
+// backing, ink-brown border + body text, with the faculty hue kept as a small
+// accent (the dateline/tag + a thin margin rule) rather than the whole chrome.
+constexpr Color kPaper{0.87f, 0.83f, 0.73f, 1.0f};     // aged parchment backing
+constexpr Color kInkBorder{0.36f, 0.29f, 0.21f, 1.0f}; // worn ink-brown edge
+constexpr Color kInkBody{0.17f, 0.14f, 0.11f, 1.0f};   // handwriting ink
+constexpr Color kInkFaint{0.42f, 0.36f, 0.29f, 1.0f};  // faded ink (dateline, rules)
 
 // What the box is currently showing.
 enum class ItemKind
@@ -45,9 +57,17 @@ enum class Phase
 observations::PendingLine sLine; // reading on screen (empty text = none)
 Phase sPhase = Phase::None;
 float sPhaseT = 0.0f;              // seconds elapsed in the current phase
-int sRevealed = 0;                 // characters of the body revealed so far
+int sRevealed = 0;                 // characters of the CURRENT PAGE revealed so far
 int sLastBlip = 0;                 // revealed-count at the last blip (rate-limits the tick)
 std::vector<std::string> sWrapped; // body wrapped into lines (built when a line loads)
+std::string sStamp;                // world-clock dateline latched when the line loads
+// Pagination: a Line that overflows its fixed region is shown one page (a run of
+// wrapped lines that fit the region height) at a time. Space reveals the page,
+// then turns to the next; the last page's Space dismisses. sPageStart is the first
+// wrapped-line index of the page on screen; sLinesPerPage is set when the line loads
+// (region height is fixed once window dims are known).
+std::size_t sPageStart = 0;
+int sLinesPerPage = 0; // 0 until a line loads; >=1 thereafter
 
 // --- Menu state ---
 struct Option
@@ -101,37 +121,81 @@ std::vector<std::string> wrapText(const std::string& text, float max_width)
     return lines;
 }
 
+// The wrapped-line range [begin, end) of the page currently on screen.
+std::size_t pageEnd()
+{
+    return std::min(sWrapped.size(),
+                    sPageStart + static_cast<std::size_t>(std::max(1, sLinesPerPage)));
+}
+
+// Characters in the current page (typewriter reveals within the page, not the
+// whole body -- each page types out fresh).
 int totalChars()
 {
     int n = 0;
-    for (const auto& l : sWrapped)
-        n += static_cast<int>(l.size());
+    for (std::size_t i = sPageStart; i < pageEnd(); ++i)
+        n += static_cast<int>(sWrapped[i].size());
     return n;
 }
 
-// Play the drop-in sound, pitch/volume scaled by rarity, with a shimmer layer
-// for rare+ readings (mirrors the studio pickup-SFX pattern).
-void playAppearSfx(int difficulty)
+// True while pages remain after the one on screen (Space turns rather than dismisses).
+bool hasMorePages()
 {
-    const float tier = static_cast<float>(std::max(0, difficulty - 1)); // 0..4
+    return pageEnd() < sWrapped.size();
+}
+
+// Advance to the next page: restart the typewriter for its lines.
+void turnPage()
+{
+    sPageStart = pageEnd();
+    sRevealed = 0;
+    sLastBlip = 0;
+    sPhase = Phase::Typing;
+    sPhaseT = 0.0f;
+}
+
+// Play the drop-in sound for the line now in sLine. A NEW thought (a fresh notebook
+// entry) gets the pen-on-paper writing sound; everything else gets the generic
+// appear tone, pitch/volume scaled by rarity + a shimmer layer for rare+ readings.
+void playAppearSfx()
+{
+    if (sLine.kind == observations::LineKind::Thought && sLine.is_new)
+    {
+        AudioSystem::playSfx(sCfg.notebook_sound, 0.8f, 1.0f);
+        return;
+    }
+    const float tier = static_cast<float>(std::max(0, sLine.difficulty - 1)); // 0..4
     const float pitch = 1.0f + tier * 0.06f;
     const float vol = 0.7f * (1.0f + tier * 0.12f);
     AudioSystem::playSfx(sCfg.appear_sound, vol, pitch);
-    if (difficulty >= 4) // Rare / Legendary get a brighter shimmer layer
+    if (sLine.difficulty >= 4) // Rare / Legendary get a brighter shimmer layer
         AudioSystem::playSfx(sCfg.appear_sound, vol * 0.5f, pitch * 1.6f);
 }
 
-void loadLine(observations::PendingLine line, int windowW)
+void loadLine(observations::PendingLine line, int windowW, int windowH, const std::string& stamp)
 {
     sItem = ItemKind::Line;
     sLine = std::move(line);
+    sStamp = stamp; // the notebook dateline for this entry (latched at appearance)
     sPhase = Phase::DropIn;
     sPhaseT = 0.0f;
     sRevealed = 0;
     sLastBlip = 0;
-    const float maxW = static_cast<float>(windowW) * sCfg.max_width_frac;
-    sWrapped = wrapText(sLine.text, maxW);
-    playAppearSfx(sLine.difficulty);
+    sPageStart = 0;
+    // Wrap + paginate to the LOWER band's inner content width (all readings share
+    // that one box for now -- see renderLine).
+    const hud::Rect region = hud::resolve(sRegions.observation, windowW, windowH);
+    const float padX = sRegions.pad_x * hud::scale(windowW, windowH);
+    const float padY = sRegions.pad_y * hud::scale(windowW, windowH);
+    sWrapped = wrapText(sLine.text, region.w - 2.0f * padX);
+    // Page capacity: how many body lines fit the region's inner height. Every entry
+    // reserves the header (dateline + tags) block so the header-bearing first page
+    // fits without clipping.
+    const float bodyLineH = static_cast<float>(FontManager::lineHeight(sFont));
+    const float headingH = static_cast<float>(FontManager::lineHeight(sHeadingFont));
+    const float innerH = region.h - 2.0f * padY - (headingH + kHeadingGap);
+    sLinesPerPage = std::max(1, static_cast<int>(innerH / bodyLineH));
+    playAppearSfx();
     // The reward toast lands WITH the line on screen (not when the engine queued
     // it seconds earlier), so "+N Spirit" reads alongside the thought that earned it.
     if (sLine.spirit_exp > 0)
@@ -199,45 +263,57 @@ void drawBorder(float x, float y, float w, float h, const Color& c)
     UIRenderer::drawRect(x + w - t, y, t, h, c);
 }
 
-// Shared box geometry + chrome for both the Line and Menu panels: centered,
-// anchored at the box-top, sized to its content (min width), padded. Draws the
-// dark backing + colored border, and returns the top-left of the padded content.
-constexpr float kPadX = 28.0f;
-constexpr float kPadY = 16.0f;
-struct PanelOrigin
+// The padded content area of a region, in window pixels. Two registers:
+//   notebook=true  -> a THOUGHT: aged-paper page + ink border + faculty-hued margin
+//                     rule (subjective -- he is reflecting / writing it down).
+//   notebook=false -> an OBSERVATION / menu: an EarthBound-style dark dialogue window
+//                     with a faculty-neutral (or lightly accented) frame (objective --
+//                     he is perceiving the world, not writing it down).
+// Content renders within {x,y,w,h}; the region is a FIXED band (no content-sizing).
+struct ContentArea
 {
-    float x, y, w;
+    float x, y, w, h;
 };
-PanelOrigin drawPanel(float ww, float wh, float contentW, float contentH, float alpha,
-                      float dropOffset, float bgAlpha, const Color& border)
+ContentArea drawPanel(const hud::Rect& region, int windowW, int windowH, float alpha,
+                      float dropOffset, bool notebook, const Color& accent)
 {
-    const float boxW = std::max(contentW, 240.0f) + kPadX * 2.0f;
-    const float boxH = contentH + kPadY * 2.0f;
-    const float boxX = (ww - boxW) * 0.5f;
-    const float boxY = wh * kBoxTopFrac + dropOffset;
-    UIRenderer::drawRect(boxX, boxY, boxW, boxH, {0.05f, 0.06f, 0.07f, bgAlpha * alpha});
-    drawBorder(boxX, boxY, boxW, boxH, {border.r, border.g, border.b, 0.55f * alpha});
-    return {boxX + kPadX, boxY + kPadY, boxW};
+    const float padX = sRegions.pad_x * hud::scale(windowW, windowH);
+    const float padY = sRegions.pad_y * hud::scale(windowW, windowH);
+    const float x = region.x;
+    const float y = region.y + dropOffset;
+
+    if (notebook)
+    {
+        UIRenderer::drawRect(x, y, region.w, region.h,
+                             {kPaper.r, kPaper.g, kPaper.b, kPaper.a * alpha});
+        drawBorder(x, y, region.w, region.h,
+                   {kInkBorder.r, kInkBorder.g, kInkBorder.b, 0.85f * alpha});
+        // Faculty-hued margin rule: a thin colored bar inside the left edge, like a
+        // ruled notebook margin -- the entry's accent without tinting the whole page.
+        const float margin = padX * 0.45f;
+        UIRenderer::drawRect(x + margin, y + padY, 2.0f, region.h - padY * 2.0f,
+                             {accent.r, accent.g, accent.b, 0.65f * alpha});
+    }
+    else
+    {
+        // Dark dialogue window: cool backing + a soft accent-tinted frame.
+        UIRenderer::drawRect(x, y, region.w, region.h, {0.05f, 0.06f, 0.07f, 0.85f * alpha});
+        drawBorder(x, y, region.w, region.h, {accent.r, accent.g, accent.b, 0.55f * alpha});
+    }
+
+    return {x + padX, y + padY, region.w - padX * 2.0f, region.h - padY * 2.0f};
 }
 
-void outlinedText(FontHandle font, const std::string& s, float x, float y, const Color& fill,
-                  float alpha)
-{
-    const Color outline{0.0f, 0.0f, 0.0f, 0.7f * alpha};
-    for (const float dx : {-1.0f, 1.0f})
-        for (const float dy : {-1.0f, 1.0f})
-            UIRenderer::drawText(font, s, x + dx, y + dy, outline);
-    UIRenderer::drawText(font, s, x, y, {fill.r, fill.g, fill.b, alpha});
-}
-
+// The current page's lines, truncated to the typewriter reveal so far.
 std::vector<std::string> revealedLines()
 {
     std::vector<std::string> out;
     int budget = sRevealed;
-    for (const auto& full : sWrapped)
+    for (std::size_t i = sPageStart; i < pageEnd(); ++i)
     {
         if (budget <= 0)
             break;
+        const std::string& full = sWrapped[i];
         const int take = std::min(budget, static_cast<int>(full.size()));
         out.push_back(full.substr(0, static_cast<std::size_t>(take)));
         budget -= static_cast<int>(full.size());
@@ -263,19 +339,17 @@ void entranceAnim(float& alpha, float& dropOffset)
 }
 } // namespace
 
-void init(FontHandle body_font, FontHandle heading_font, const Config& config)
+void init(FontHandle body_font, FontHandle heading_font, const Config& config,
+          const hud::Regions& regions)
 {
     sFont = body_font;
     sHeadingFont = heading_font;
     sCfg = config;
+    sRegions = regions;
 }
 
-float boxTopFrac()
-{
-    return kBoxTopFrac;
-}
-
-void update(observations::State& state, const growth::GrowthState& growth, float dt)
+void update(observations::State& state, const growth::GrowthState& growth, float dt, int windowW,
+            int windowH, const std::string& stamp)
 {
     if (sItem == ItemKind::None)
     {
@@ -286,7 +360,7 @@ void update(observations::State& state, const growth::GrowthState& growth, float
         {
             observations::PendingLine next = state.pending.front();
             state.pending.pop_front();
-            loadLine(std::move(next), 1536);
+            loadLine(std::move(next), windowW, windowH, stamp);
             return;
         }
         // Pending is empty: if a menu is queued (fresh or re-show after a deed),
@@ -338,6 +412,15 @@ bool menuActive()
     return sItem == ItemKind::Menu && sPhase != Phase::FadeOut;
 }
 
+bool activeThought(const growth::GrowthState& growth, Color& out_color)
+{
+    if (sItem != ItemKind::Line || sLine.kind != observations::LineKind::Thought ||
+        sPhase == Phase::FadeOut)
+        return false;
+    out_color = reading_color::forReading(growth, sLine.faculty, sLine.difficulty, 1.0f);
+    return true;
+}
+
 void pushActionMenu(observations::State& state, const growth::GrowthState& growth,
                     const std::string& spot)
 {
@@ -365,14 +448,19 @@ int confirm(observations::State& state, const growth::GrowthState& growth,
     {
         if (sPhase == Phase::Typing)
         {
-            sRevealed = totalChars(); // reveal all
+            sRevealed = totalChars(); // reveal the rest of this page
             sPhase = Phase::Done;
             sPhaseT = 0.0f;
         }
         else if (sPhase == Phase::Done)
         {
-            sPhase = Phase::FadeOut; // dismiss
-            sPhaseT = 0.0f;
+            if (hasMorePages())
+                turnPage(); // more to read -> next page, not dismiss
+            else
+            {
+                sPhase = Phase::FadeOut; // last page -> dismiss
+                sPhaseT = 0.0f;
+            }
         }
         return 0;
     }
@@ -440,96 +528,98 @@ void back()
 // --- render ----------------------------------------------------------------
 namespace
 {
-void renderLine(const growth::GrowthState& growth, float ww, float wh, float alpha,
+void renderLine(const growth::GrowthState& growth, int windowW, int windowH, float alpha,
                 float dropOffset)
 {
     const Color hue = reading_color::forReading(growth, sLine.faculty, sLine.difficulty, 1.0f);
-    // A subjective thought is faculty-hued + rarity-styled; a plain observation is
-    // neutral. The header (faculty . rarity . New) is shown only for a new thought.
+    // Both kinds render in the single LOWER band, distinguished by REGISTER, not
+    // position: a THOUGHT is a notebook entry (paper + ink, dated, headered with its
+    // faculty/rarity identity); an OBSERVATION is just perceived -- a bare line in a
+    // dark window, no header (the register itself signals the kind).
     const bool isThought = sLine.kind == observations::LineKind::Thought;
-    const bool showHeader = sLine.is_new && isThought;
+    const bool showHeader = isThought && sPageStart == 0;
+    const hud::Rect region = hud::resolve(sRegions.observation, windowW, windowH);
+
+    const ContentArea c = drawPanel(region, windowW, windowH, alpha, dropOffset, isThought, hue);
+
+    // Ink on paper for a notebook thought; light text in the perception window.
+    const Color faint = isThought ? kInkFaint : Color{0.72f, 0.74f, 0.72f, 1.0f};
+    const Color body = isThought ? Color{kInkBody.r, kInkBody.g, kInkBody.b, alpha}
+                                 : Color{0.95f, 0.95f, 0.92f, alpha};
 
     const float headingH = static_cast<float>(FontManager::lineHeight(sHeadingFont));
     const float bodyLineH = static_cast<float>(FontManager::lineHeight(sFont));
-    const float headingGap = 12.0f;
-    const float labelBlock = showHeader ? headingH + headingGap : 0.0f;
 
-    float bodyW = 0.0f;
-    for (const auto& l : sWrapped)
-        bodyW = std::max(bodyW, UIRenderer::measureText(sFont, l).width);
-    const float bodyH = static_cast<float>(sWrapped.size()) * bodyLineH;
-
-    const PanelOrigin p =
-        drawPanel(ww, wh, bodyW, bodyH + labelBlock, alpha, dropOffset, 0.85f, hue);
-    const float contentX = p.x;
-    const float boxX = p.x - kPadX;
-
-    float cursorY = p.y;
+    float cursorY = c.y;
     if (showHeader)
     {
-        const std::string faculty = reading_color::facultyLabel(sLine.faculty);
-        UIRenderer::drawText(sHeadingFont, faculty, contentX, cursorY,
+        // Faculty (the stat) pinned LEFT, in its hue -- the thought's identity.
+        UIRenderer::drawText(sHeadingFont, reading_color::facultyLabel(sLine.faculty), c.x, cursorY,
                              {hue.r, hue.g, hue.b, alpha});
-        const float rx = contentX + UIRenderer::measureText(sHeadingFont, faculty).width + 20.0f;
-        outlinedText(sHeadingFont, reading_color::rarityWord(sLine.difficulty), rx, cursorY,
-                     reading_color::rarityColor(sLine.difficulty, alpha), alpha);
-        if (sLine.is_new)
-        {
-            const float tagW = UIRenderer::measureText(sHeadingFont, "New").width;
-            outlinedText(sHeadingFont, "New", boxX + p.w - kPadX - tagW, cursorY,
-                         {0.98f, 0.86f, 0.45f, alpha}, alpha);
-        }
-        const float dividerY = cursorY + headingH + headingGap * 0.5f;
-        UIRenderer::drawRect(boxX, dividerY, p.w, 1.0f, {hue.r, hue.g, hue.b, 0.35f * alpha});
-        cursorY += labelBlock;
+
+        // Rarity emphasized TOP-RIGHT as a badge: a DARK solid pill outlined in the
+        // rarity color, with LIGHT text -- reads crisp, not faded.
+        const std::string rarity = reading_color::rarityWord(sLine.difficulty);
+        const Color rc = reading_color::rarityColor(sLine.difficulty, 1.0f);
+        const float rw = UIRenderer::measureText(sHeadingFont, rarity).width;
+        const float padH = 10.0f;
+        const float padV = 4.0f;
+        const float pillX = c.x + c.w - rw - padH * 2.0f;
+        UIRenderer::drawRect(pillX, cursorY - padV, rw + padH * 2.0f, headingH + padV,
+                             {0.10f, 0.09f, 0.08f, 0.92f * alpha});
+        drawBorder(pillX, cursorY - padV, rw + padH * 2.0f, headingH + padV,
+                   {rc.r, rc.g, rc.b, alpha});
+        UIRenderer::drawText(sHeadingFont, rarity, pillX + padH, cursorY,
+                             {0.97f, 0.96f, 0.93f, alpha});
+
+        const float dividerY = cursorY + headingH + kHeadingGap * 0.5f;
+        UIRenderer::drawRect(c.x, dividerY, c.w, 1.0f, {faint.r, faint.g, faint.b, 0.45f * alpha});
+        cursorY += headingH + kHeadingGap;
     }
 
-    const Color body =
-        isThought ? Color{hue.r, hue.g, hue.b, 0.92f * alpha} : Color{0.95f, 0.95f, 0.92f, alpha};
-    float lineY = cursorY;
     for (const auto& line : revealedLines())
     {
-        UIRenderer::drawText(sFont, line, contentX + 2.0f, lineY + 2.0f,
-                             {0.0f, 0.0f, 0.0f, 0.5f * alpha});
-        UIRenderer::drawText(sFont, line, contentX, lineY, body);
-        lineY += bodyLineH;
+        UIRenderer::drawText(sFont, line, c.x, cursorY, body);
+        cursorY += bodyLineH;
+    }
+
+    // A "more pages" cue, bottom-right of the region once the page finishes typing
+    // (Space then turns the page rather than dismissing).
+    if (sPhase == Phase::Done && hasMorePages())
+    {
+        const float tagW = UIRenderer::measureText(sHeadingFont, "v").width;
+        UIRenderer::drawText(sHeadingFont, "v", c.x + c.w - tagW, c.y + c.h - headingH,
+                             {faint.r, faint.g, faint.b, alpha});
     }
 }
 
-void renderMenu(float ww, float wh, float alpha, float dropOffset)
+void renderMenu(int windowW, int windowH, float alpha, float dropOffset)
 {
-    // Neutral off-white chrome -- a menu is "what you could do here," not a
-    // faculty-tinted realization. Same panel/border register as a Line.
+    // A menu is a deed on the object you perceive, not a notebook entry -- so it's
+    // the OBSERVATION register (dark dialogue window), selection in warm gold.
     const Color chrome{0.85f, 0.85f, 0.82f, 1.0f};
     const float bodyLineH = static_cast<float>(FontManager::lineHeight(sFont));
-
-    float optW = 0.0f;
-    for (const auto& o : sMenuOpts)
-        optW = std::max(optW, UIRenderer::measureText(sFont, o.label).width);
-
-    const float contentH = static_cast<float>(sMenuOpts.size()) * bodyLineH;
-    const PanelOrigin p = drawPanel(ww, wh, optW, contentH, alpha, dropOffset, 0.88f, chrome);
+    const hud::Rect region = hud::resolve(sRegions.observation, windowW, windowH);
+    const ContentArea c =
+        drawPanel(region, windowW, windowH, alpha, dropOffset, /*notebook=*/false, chrome);
 
     // Stash geometry for mouse hit-testing (menuMouse reads these).
-    sMenuX = p.x - kPadX;
-    sMenuY = p.y;
-    sMenuW = p.w;
+    sMenuX = c.x;
+    sMenuY = c.y;
+    sMenuW = c.w;
     sMenuRowH = bodyLineH;
 
-    float lineY = p.y;
+    float lineY = c.y;
     for (std::size_t i = 0; i < sMenuOpts.size(); ++i)
     {
         const bool sel = static_cast<int>(i) == sMenuSel;
-        // Selection is shown by color alone (warm gold), no caret prefix.
-        // The trailing "Leave" reads dimmer than the deeds -- an exit, not a deed.
+        // Selection is warm gold; the trailing "Leave" reads dimmer than the deeds.
         const bool isLeave = sMenuOpts[i].id == kLeaveId;
-        const Color c = sel       ? Color{0.98f, 0.90f, 0.55f, alpha} // highlighted: warm gold
-                        : isLeave ? Color{0.60f, 0.60f, 0.58f, 0.75f * alpha}
-                                  : Color{0.80f, 0.80f, 0.78f, 0.85f * alpha};
+        const Color col = sel       ? Color{0.98f, 0.90f, 0.55f, alpha}
+                          : isLeave ? Color{0.60f, 0.60f, 0.58f, 0.75f * alpha}
+                                    : Color{0.85f, 0.85f, 0.82f, alpha};
         const std::string& text = sMenuOpts[i].label;
-        UIRenderer::drawText(sFont, text, p.x + 2.0f, lineY + 2.0f,
-                             {0.0f, 0.0f, 0.0f, 0.5f * alpha});
-        UIRenderer::drawText(sFont, text, p.x, lineY, c);
+        UIRenderer::drawText(sFont, text, c.x, lineY, col);
         lineY += bodyLineH;
     }
 }
@@ -539,15 +629,13 @@ void render(const growth::GrowthState& growth, int windowW, int windowH)
 {
     if (sItem == ItemKind::None || sFont < 0)
         return;
-    const float ww = static_cast<float>(windowW);
-    const float wh = static_cast<float>(windowH);
     float alpha = 1.0f;
     float dropOffset = 0.0f;
     entranceAnim(alpha, dropOffset);
 
     if (sItem == ItemKind::Line)
-        renderLine(growth, ww, wh, alpha, dropOffset);
+        renderLine(growth, windowW, windowH, alpha, dropOffset);
     else if (sItem == ItemKind::Menu)
-        renderMenu(ww, wh, alpha, dropOffset);
+        renderMenu(windowW, windowH, alpha, dropOffset);
 }
 } // namespace thought_box

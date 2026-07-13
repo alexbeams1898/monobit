@@ -1,8 +1,10 @@
 #include "FontManager.h"
 
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <iostream>
+#include <string>
 #include <vector>
 
 #include <glad/glad.h>
@@ -29,6 +31,19 @@ struct FontData
 
 static std::vector<FontData> sFonts;
 static bool sInitialized = false;
+
+// Cache keyed by (path, integer pixel size) so repeated loadFont() calls for the
+// same face+size return the existing handle instead of re-baking a new atlas +
+// texture. Without this, resize-driven font reloads leak a GL texture per call
+// (SDL fires many resize events per drag). Index-aligned with sFonts by handle;
+// only single loadFont() entries are cached (font groups share atlases and aren't
+// keyed here).
+struct FontKey
+{
+    std::string path;
+    int size_px = 0;
+};
+static std::vector<FontKey> sFontKeys;
 
 void FontManager::init()
 {
@@ -61,6 +76,7 @@ void FontManager::shutdown()
         }
     }
     sFonts.clear();
+    sFontKeys.clear();
     sInitialized = false;
 }
 
@@ -68,6 +84,13 @@ FontHandle FontManager::loadFont(const std::string& path, float size_px)
 {
     if (!sInitialized)
         return INVALID_FONT;
+
+    // Return the cached handle if this exact face+size was already baked (pixel
+    // size rounded to the nearest int -- sub-pixel differences share an atlas).
+    const int key_px = static_cast<int>(std::lround(size_px));
+    for (size_t i = 0; i < sFontKeys.size(); ++i)
+        if (sFontKeys[i].size_px == key_px && sFontKeys[i].path == path)
+            return static_cast<FontHandle>(i);
 
     // Read .ttf file into memory.
     FILE* f = fopen(path.c_str(), "rb");
@@ -135,6 +158,7 @@ FontHandle FontManager::loadFont(const std::string& path, float size_px)
 
     auto handle = static_cast<FontHandle>(sFonts.size());
     sFonts.push_back(fd);
+    sFontKeys.push_back(FontKey{path, key_px}); // index-aligned with sFonts
     std::cout << "[FontManager] Loaded " << path << " at " << size_px << "px (handle " << handle
               << ")\n";
     return handle;
@@ -242,6 +266,7 @@ std::vector<FontHandle> FontManager::loadFontGroup(const std::string& path,
 
         auto handle = static_cast<FontHandle>(sFonts.size());
         sFonts.push_back(fd);
+        sFontKeys.push_back(FontKey{}); // placeholder: group fonts aren't cache-keyed
         handles.push_back(handle);
         std::cout << "[FontManager] Loaded " << path << " at " << sz << "px (handle " << handle
                   << ", shared atlas)\n";

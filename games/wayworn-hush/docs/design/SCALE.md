@@ -80,29 +80,39 @@ movement + AABB-vs-solid-tile collision (`CollisionSystem` + prison-escape's
   it's a game asset — hand cleanup follows the resample. The 32×64 target was
   chosen by eye as the size at which the character's detail survives.
 
-### Render target — **768×432 internal, integer-scaled [LOCKED]**
+### Render target — **1280×720 internal, integer-scaled [LOCKED]**
 
-- Widescreen 16:9 internal target at the 32px density, integer-upscaled to the
+- Widescreen 16:9 internal target at the 32px density, INTEGER-upscaled to the
   window (nearest-neighbor). The register is modern-retro, not strict 8-bit.
-- **Internal resolution: 768×432** = exactly 16:9, = **24×13.5 tiles** at 32px.
-  Same on-screen *tile count* as the earlier 16px/384×216 plan (24 wide) — the
-  world shows the same amount of space; each tile is just denser.
-  - 768×432 integer-scales cleanly: ×2 = 1536×864, ×2.5 = 1920×1080 **exactly**.
-  - At 1080p, ×2.5 hits native perfectly (no letterbox on 16:9).
-- **Built and verified** (SLICE.md step 2 / commit `04a6ac9`): the engine
-  `PixelRenderTarget` renders the world into an offscreen FBO at `GL_NEAREST` and
-  blits it up at the largest integer scale, letterboxing the remainder.
-  **The internal resolution constant in code must change from 384×216 → 768×432**
-  (`kInternalWidth`/`kInternalHeight` in `games/wayworn-hush/include/GameLoop.h`).
-- **Alternative considered & rejected:** downscaling the protagonist art to fit a
-  16px grid. Rejected — it throws away the detail that made the sprite right.
-  Scaling the whole budget up (tiles + internal res together) preserves both the
-  detail and the on-screen scale.
+- **Internal resolution: 1280×720** = exactly 16:9, = **40×22.5 tiles** at 32px.
+  Chosen because the blit is **integer-only** (crispness), so the base must divide
+  the display on a *whole* multiple or fullscreen shows big letterbox bars — AND
+  because a wider FOV (more world on screen, less zoomed onto the player) reads
+  better:
+  - **1280×720 × 2 = 2560×1440** (1440p) and **× 3 = 3840×2160** (4K) — exact,
+    bar-free, crisp. (1080p is a non-integer ×1.5 → it renders ×1 at 720p with a
+    letterbox; 1080p isn't the primary target.)
+  - Shows 2× the world of a 640×360 base — the FOV that felt right (the placeholder
+    art no longer fills the view up close).
+  - (The earlier **768×432** left thick grey bars in fullscreen: ×2 = 1536×864
+    under-fills 1440p and "×2.5 = 1080p" is fractional, which the integer blit
+    can't do.)
+- **Built:** the engine `PixelRenderTarget` renders the world into an offscreen FBO
+  at `GL_NEAREST` and blits it up at the largest integer scale. `kInternalWidth`/
+  `kInternalHeight` in `games/wayworn-hush/include/GameLoop.h`.
+- **Alternative considered & rejected:** fractional-scale blit to fill non-integer
+  resolutions. Rejected — softens the pixel art; a base that integer-fills the
+  display (1280×720) keeps it crisp *and* full-screen.
 
-### Camera field — **~24×13.5 tiles, follow with dead-zone**
+### Camera field — **~40×22.5 tiles, follow with dead-zone**
 
-Falls out of the render target: 768÷32 = 24 wide, 432÷32 = 13.5 tall. Camera
-follows the player (engine `CameraSystem` + interpolation already do this).
+Falls out of the render target: 1280÷32 = 40 wide, 720÷32 = 22.5 tall — a wide,
+unhurried view (deliberately zoomed out from the old 768×432 = 24 wide so the
+world breathes and placeholders don't dominate up close). Camera follows the
+player (engine `CameraSystem` + interpolation already do this). Camera zoom stays
+1.0 — the internal target *is* the pixel resolution; the integer upscale does all
+scaling. If a tunable FOV is ever wanted, it belongs in Settings (a camera zoom),
+noting a non-1.0 zoom reintroduces fractional sampling.
 
 - **Camera zoom stays 1.0** — the internal target *is* the pixel-art resolution;
   the integer upscale to the window is the only scaling. (Prison-escape uses
@@ -119,7 +129,7 @@ follows the player (engine `CameraSystem` + interpolation already do this).
   streamed sub-chunks). The world is finite and authored (DESIGN.md: "not
   infinite / procgen"). One region = one authored tilemap loaded whole on entry.
 - **Region size guidance:** a region that takes ~30–90 seconds to cross on foot
-  feels like a Pokémon route / Mother-3 area. The viewport is 24 tiles wide; a
+  feels like a Pokémon route / Mother-3 area. The viewport is 40 tiles wide; a
   **~48×48 to ~96×96 tile** region (1536×1536 to 3072×3072 px at 32px tiles) is a
   comfortable authored unit — a few screens each direction, walkable in a minute
   or two, memorable as a place.
@@ -140,7 +150,7 @@ follows the player (engine `CameraSystem` + interpolation already do this).
 | Tile size | 32×32 px | **LOCKED** |
 | Movement | Free pixel (sub-tile AABB), Chrono-Trigger fluid | **LOCKED** |
 | Character sprite | 32×64 px (1×2 tiles), foot-anchored collider | **LOCKED** |
-| Internal render res | 768×432 (16:9, 24×13.5 tiles) | **LOCKED** |
+| Internal render res | 1280×720 (16:9, 40×22.5 tiles) — integer-fills 1440p (×2) / 4K (×3) | **LOCKED** |
 | Upscale | Integer nearest-neighbor, largest fit, letterbox remainder | **LOCKED** (shipped) |
 | Camera zoom | 1.0 (upscale does all scaling) | recommended |
 | Camera field | ~24×13.5 tiles, follow + dead-zone | recommended |

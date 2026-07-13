@@ -77,6 +77,47 @@ static void terminateHandler()
     _exit(1);
 }
 
+// ---------------------------------------------------------------------------
+// HUD fonts scale with the window: sizes are canvas fractions (config/fonts.json),
+// resolved to pixels via hud::scale(window) each time the window resizes. The
+// atlas reload is cheap (FontManager caches by face+size), and re-init just swaps
+// handles into the HUD systems. This keeps text proportional to the HUD regions
+// at any resolution instead of a fixed pixel size that overflows small windows.
+// ---------------------------------------------------------------------------
+namespace
+{
+struct HudFontConfig
+{
+    std::string face = "assets/fonts/placeholder.ttf";
+    float body_frac = 0.01875f;  // reading text
+    float label_frac = 0.01211f; // headings / notifications / captions
+};
+HudFontConfig sFontCfg;
+thought_box::Config sBoxCfg; // feel + SFX, loaded once; re-passed on every resize
+
+// (Re)load the role fonts at the current window size and point the HUD systems at
+// the fresh handles. Called once at startup and from the resize callback.
+void reloadHudFonts(GameState& gs, int windowW, int windowH)
+{
+    const float s = hud::scale(windowW, windowH);
+    const FontHandle body = FontManager::loadFont(sFontCfg.face, sFontCfg.body_frac * s);
+    const FontHandle label = FontManager::loadFont(sFontCfg.face, sFontCfg.label_frac * s);
+    thought_box::init(body, label, sBoxCfg, gs.hud);
+    pause_page::init(body);
+    notify::init(label, gs.hud.notification);
+}
+
+// Engine resize callback: keep the pixel target + HUD fonts in step with the new
+// window size. GameState (with the loaded HUD regions + font config already set)
+// is reached via the registry context.
+void gameOnResize(Engine& engine, int w, int h)
+{
+    engine::gl::pixelTargetResize(w, h);
+    auto& gs = engine.entityManager().registry().ctx().get<GameState>();
+    reloadHudFonts(gs, w, h);
+}
+} // namespace
+
 int main(int argc, char* argv[])
 {
     (void)argc;
@@ -90,8 +131,12 @@ int main(int argc, char* argv[])
 
     Engine engine;
 
-    // 1536x864 = exactly 2x the 768x432 internal target: clean fullscreen blit,
-    // no letterbox at the default window size.
+    // Launch borderless-fullscreen at the desktop's native resolution (the common
+    // default). The world renders 16:9 + integer-upscales; the HUD is authored on a
+    // 16:9 reference canvas (HudCanvas) so it's correct at any resolution. The
+    // 1536x864 passed here is the windowed restore size (2x the 768x432 internal).
+    // (Windowed / fullscreen becomes a player Setting in a later slice.)
+    engine.setWindowMode(Engine::WindowMode::BorderlessFullscreen);
     if (!engine.init("Wayworn Hush v" GAME_VERSION, 1536, 864))
         return 1;
 
@@ -109,7 +154,9 @@ int main(int argc, char* argv[])
     // Pixel-perfect upscaling target: world renders at internal res, blits up.
     engine::gl::pixelTargetInit(kInternalWidth, kInternalHeight);
     engine::gl::pixelTargetResize(engine.windowWidth(), engine.windowHeight());
-    engine.setOnResize([](Engine&, int w, int h) { engine::gl::pixelTargetResize(w, h); });
+    // gameOnResize keeps the pixel target AND the HUD fonts in step with the window
+    // (registered after GameState exists so the callback can reach gs.hud).
+    engine.setOnResize(&gameOnResize);
 
     // Global color grade -- pulls the scene toward the muted aesthetic. Loaded
     // from config so the mood is tunable live (edit config/atmosphere.json +
@@ -151,30 +198,47 @@ int main(int argc, char* argv[])
     gs.player = world_init::spawnPlayer(em, gs.player_config);
     glimmer::spawn(em, gs.observations);
 
-    // Placeholder UI fonts (a serif stand-in -- the real pixel font is a later
-    // aesthetic-pass choice; see docs/design/AESTHETIC.md UI style). A smaller
-    // size serves as the observation heading (faculty + rarity label) above the
-    // larger reading text.
-    const FontHandle uiFont = FontManager::loadFont("assets/fonts/placeholder.ttf", 48.0f);
-    const FontHandle labelFont = FontManager::loadFont("assets/fonts/placeholder.ttf", 18.0f);
-    thought_box::Config boxCfg;
+    // The over-head thought bubble: one player-attached sprite that pops (faculty-
+    // hued) while a thought reading is on screen. See HeadMarker / docs/design/HUD.md.
+    head_marker::load(gs.head_marker_config, "config/head_marker.json");
+    head_marker::spawn(em, gs.head_marker_config);
+
+    // UI fonts by ROLE on a 1.25 (Major-Third) scale, authored as canvas FRACTIONS
+    // (config/fonts.json): body = reading text; label = headings / notifications /
+    // captions. Fractions * hud::scale(window) give the pixel size, so text scales
+    // with the window (reloadHudFonts / gameOnResize). The placeholder face is a
+    // serif stand-in until the pixel-font aesthetic pass (docs/design/AESTHETIC.md).
+    if (std::ifstream ff{"config/fonts.json"})
+    {
+        const auto fj = nlohmann::json::parse(ff, nullptr, false);
+        if (!fj.is_discarded())
+        {
+            sFontCfg.face = fj.value("face", sFontCfg.face);
+            sFontCfg.body_frac = fj.value("body", sFontCfg.body_frac);
+            sFontCfg.label_frac = fj.value("label", sFontCfg.label_frac);
+        }
+    }
     if (std::ifstream bf{"config/observation_box.json"})
     {
         const auto bj = nlohmann::json::parse(bf, nullptr, false);
         if (!bj.is_discarded())
         {
-            boxCfg.blip_sound = bj.value("blip_sound", boxCfg.blip_sound);
-            boxCfg.appear_sound = bj.value("appear_sound", boxCfg.appear_sound);
-            boxCfg.drop_in_secs = bj.value("drop_in_secs", boxCfg.drop_in_secs);
-            boxCfg.chars_per_sec = bj.value("chars_per_sec", boxCfg.chars_per_sec);
-            boxCfg.fade_out_secs = bj.value("fade_out_secs", boxCfg.fade_out_secs);
-            boxCfg.blip_every = bj.value("blip_every", boxCfg.blip_every);
-            boxCfg.max_width_frac = bj.value("max_width_frac", boxCfg.max_width_frac);
+            sBoxCfg.blip_sound = bj.value("blip_sound", sBoxCfg.blip_sound);
+            sBoxCfg.appear_sound = bj.value("appear_sound", sBoxCfg.appear_sound);
+            sBoxCfg.notebook_sound = bj.value("notebook_sound", sBoxCfg.notebook_sound);
+            sBoxCfg.drop_in_secs = bj.value("drop_in_secs", sBoxCfg.drop_in_secs);
+            sBoxCfg.chars_per_sec = bj.value("chars_per_sec", sBoxCfg.chars_per_sec);
+            sBoxCfg.fade_out_secs = bj.value("fade_out_secs", sBoxCfg.fade_out_secs);
+            sBoxCfg.blip_every = bj.value("blip_every", sBoxCfg.blip_every);
         }
     }
-    thought_box::init(uiFont, labelFont, boxCfg);
-    pause_page::init(uiFont);
-    notify::init(labelFont); // toasts use the smaller label font
+    // The fixed HUD region rects + visibility mode (canvas fractions -- see
+    // HudCanvas / config/hud.json). GameState owns them (one source of truth); the
+    // thought box and notification channel render into these bands, and the render
+    // loop reads gs.hud.visibility to gate HUD drawing. reloadHudFonts loads the
+    // role fonts at the current size and points the HUD systems at them.
+    hud::loadRegions(gs.hud, "config/hud.json");
+    reloadHudFonts(gs, engine.windowWidth(), engine.windowHeight());
 
     // The region's ambient bed. Loops with a slow fade-in so the world eases in
     // rather than snapping on. Low volume -- the score is sparse and unhurried
