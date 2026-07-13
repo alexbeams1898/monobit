@@ -20,6 +20,7 @@ add_library(wayworn-systems STATIC
     src/WorldClock.cpp
     src/Inventory.cpp
     src/Notebook.cpp
+    src/LdtkImport.cpp
     src/PausePage.cpp
     src/TunePanel.cpp
 )
@@ -77,6 +78,7 @@ add_executable(wayworn-tests
     tests/world_clock_test.cpp
     tests/inventory_test.cpp
     tests/notebook_test.cpp
+    tests/ldtk_import_test.cpp
 )
 target_link_libraries(wayworn-tests PRIVATE wayworn-systems Catch2::Catch2WithMain)
 set_target_properties(wayworn-tests PROPERTIES

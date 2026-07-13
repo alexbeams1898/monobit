@@ -51,17 +51,33 @@ cell-by-cell in a slicer pick list (the earlier plan, revised once the sheet's
 structure was understood). This keeps us from reimplementing autotiling the engine
 would otherwise have to own.
 
+## Where the ×2 scale happens: at IMPORT, not in LDtk
+
+You **author in LDtk against the native 16px source** (`source/Overworld.png`, 16px
+grid). Reasons: you paint against the crisp original art (no reliance on a
+pre-scaled copy staying in sync), and the ×2 to the game's locked 32px world grid
+lives in **one place** — the importer. So:
+
+- **LDtk tileset source** = the 16px `Overworld.png`; LDtk grid = 16.
+- **Importer** doubles LDtk's tile/grid coordinates → the 32px world grid
+  (`TileMap.tile_size = 32`); a cell LDtk places at grid `(gx,gy)` from tileset
+  pixel `(sx,sy)` becomes world cell `(gx,gy)` drawing atlas cell
+  `(sx/16, sy/16)` — same cell index either way, since ×2 cancels.
+- **Engine render atlas** = the 32px `overworld.png` (below); the importer points
+  `TileConfig.tileset_path` at it and `atlas_tile_size = 32`, so on screen the art
+  is the crisp 32px version even though authoring was at 16px.
+
 ## Piece 1 — the tileset scaler (a build tool)
 
-`tools/tileset/slice.py` (Pillow) — deliberately minimal now that LDtk owns the
-tiling. It scales the **whole** source sheet, no per-cell curation:
+`tools/tileset/slice.py` (Pillow) produces the engine's **render** atlas (the
+authoring tileset is the native 16px source; this is what draws at runtime):
 
 - **Input:** a source sheet (clean 16px grid), e.g. `source/Overworld.png`.
 - **Transform:** **×2 nearest → 32px** (integer/crisp; leans EarthBound + matches
   the 32px-density protagonist) → `rgb555_snap` (SPRITE-PIPELINE's hardware-color
   grid, for register consistency).
-- **Output:** `assets/tilesets/overworld.png` (+ `objects.png`) — the 32px tileset
-  on the same clean grid the source had, ready to drop into LDtk as a tileset def.
+- **Output:** `assets/tilesets/overworld.png` (+ `objects.png`) — the 32px render
+  atlas, same cell grid as the source (so a source cell index maps 1:1).
 
 No pick list, no per-tile manifest here. **Behavior** (walkable / behavior /
 footstep) is authored where it belongs: an LDtk **IntGrid** collision/behavior
@@ -91,6 +107,12 @@ cross-references (MAP-ARCHITECTURE §5).
   - LDtk entity layer → an **object list** `{type, x, y, fields}`; each spawns an
     ECS entity at load (player-spawn first; NPC/warp/trigger/pickup/monologue as
     those systems land — §4/§7).
+  - LDtk **level custom field `fill_tile`** (a tileset-tile reference) → the
+    region's **border-fill** tile. Any world cell OUTSIDE the authored region draws
+    this (grass), so the world never shows void past the edges — MAP-ARCHITECTURE
+    §3's LOCKED Pokémon border-fill. Where a neighbor region exists, its edge tiles
+    stitch in (later); the fill tile is the fallback beyond all authored bounds.
+    Data-driven per region (a desert region fills with sand), never hardcoded.
 - **Replaces** `buildPlaceholderRegion` as the region source once a real region
   exists; the placeholder stays as the fallback/test region.
 

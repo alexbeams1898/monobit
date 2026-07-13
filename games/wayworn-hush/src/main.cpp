@@ -3,11 +3,13 @@
 #include "Footsteps.h"
 #include "GameLoop.h"
 #include "Glimmer.h"
+#include "LdtkImport.h"
 #include "Notify.h"
 #include "PausePage.h"
 #include "ThoughtBox.h"
 #include "Version.h"
 #include "WorldInit.h"
+#include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "gl/PixelRenderTarget.h"
 #include "systems/AudioSystem.h"
@@ -209,13 +211,45 @@ int main(int argc, char* argv[])
     inventory::load(gs.items, "config/items");
     inventory::add(gs.satchel, gs.items, inventory::ItemInstance{"notebook"});
 
-    // Build base terrain, then stamp observable tiles FROM the loaded config (one
-    // source of truth), then upload -- so every authored observable is visible.
-    world_init::buildPlaceholderRegion(em);
-    world_init::placeObservableTiles(em, gs.observations);
+    // Terrain: load the authored LDtk region (real tileset art) if present; else
+    // fall back to the flat-color placeholder region. Observable tiles are stamped
+    // on top FROM the observation config (one source of truth) either way, so every
+    // authored observable is visible. Then upload.
+    const ldtk::Region region =
+        ldtk::load("assets/regions/overworld.ldtk", "assets/tilesets/overworld.png");
+    std::fprintf(stderr, "[region] ldtk load %s: %dx%d tiles, %zu objects\n",
+                 region.ok ? "OK" : "FAILED (using placeholder)", region.map.width,
+                 region.map.height, region.objects.size());
+    if (region.ok)
+    {
+        em.tile_map = region.map;
+        em.tile_config = region.config;
+        // A real region owns its terrain; observables are NOT stamped into it (their
+        // tile ids would clash with the atlas-cell ids). Observables still surface
+        // via their glimmer glow + observe interaction, driven by the observation
+        // config coords -- the kind->tile stamping was a placeholder-only crutch.
+    }
+    else
+    {
+        world_init::buildPlaceholderRegion(em);
+        world_init::placeObservableTiles(em, gs.observations);
+    }
     TileMapRenderer::upload(em.tile_map, em.tile_config, engine.textureManager());
 
     gs.player = world_init::spawnPlayer(em, gs.player_config);
+    // Start the player at the region's PlayerSpawn object if one was authored.
+    for (const auto& o : region.objects)
+        if (o.type == "PlayerSpawn")
+        {
+            auto& t = em.registry().get<Transform>(gs.player);
+            t.x = o.wx;
+            t.y = o.wy;
+            if (auto* pt = em.registry().try_get<PreviousTransform>(gs.player))
+            {
+                pt->x = o.wx;
+                pt->y = o.wy;
+            }
+        }
     glimmer::spawn(em, gs.observations);
 
     // The over-head thought bubble: one player-attached sprite that pops (faculty-
