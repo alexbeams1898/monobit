@@ -81,6 +81,7 @@ add_executable(engine-tests
     tests/crafting_ops_test.cpp
     tests/evolution_ops_test.cpp
     tests/discovery_test.cpp
+    tests/blit_rect_test.cpp
 )
 target_link_libraries(engine-tests PRIVATE engine Catch2::Catch2WithMain)
 
