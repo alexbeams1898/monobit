@@ -1,0 +1,16 @@
+{
+    "_comment": "Footstep SFX (see include/Footsteps.h). A speed-scaled timer plays a random grass variation as the pilgrim walks; walk_cadence/run_cadence are the seconds between steps at each pace. One surface (grass) for now -- add pools per surface later. Grass audio chopped from a field recording, peak-normalized to -1 dBFS.",
+    "volume": 0.4,
+    "walk_cadence": 0.42,
+    "run_cadence": 0.28,
+    "grass": [
+        "assets/audio/footstep_grass_1.ogg",
+        "assets/audio/footstep_grass_2.ogg",
+        "assets/audio/footstep_grass_3.ogg",
+        "assets/audio/footstep_grass_4.ogg",
+        "assets/audio/footstep_grass_5.ogg",
+        "assets/audio/footstep_grass_6.ogg",
+        "assets/audio/footstep_grass_7.ogg",
+        "assets/audio/footstep_grass_8.ogg"
+    ]
+}

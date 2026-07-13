@@ -1,5 +1,6 @@
 #include "Engine.h"
 #include "FontManager.h"
+#include "Footsteps.h"
 #include "GameLoop.h"
 #include "Glimmer.h"
 #include "Notify.h"
@@ -139,6 +140,7 @@ int main(int argc, char* argv[])
     gs.player_config = loadPlayerConfig("config/player.json");
     observations::load(gs.observations, "config/observations.json", "config/actions.json");
     growth::load(gs.growth, "config/faculties.json");
+    footsteps::load(gs.footstep_config, "config/footsteps.json");
 
     // Build base terrain, then stamp observable tiles FROM the loaded config (one
     // source of truth), then upload -- so every authored observable is visible.

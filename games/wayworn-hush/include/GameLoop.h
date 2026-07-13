@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Footsteps.h"
 #include "Growth.h"
 #include "Observations.h"
 #include "PlayerConfig.h"
@@ -58,6 +59,8 @@ struct GameState
     observations::State observations;
     growth::GrowthState growth;
     PauseState pause;
+    footsteps::Config footstep_config; // authored pool + cadence
+    footsteps::State footstep_state;   // runtime cadence timer
     // Unlock ids (see observations::availableUnlocks) already announced via a
     // notification, so "1 new observation / action available" toasts fire exactly
     // once per new unlock, not every frame.

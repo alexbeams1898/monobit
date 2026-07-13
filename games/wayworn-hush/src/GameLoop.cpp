@@ -1,6 +1,7 @@
 #include "GameLoop.h"
 
 #include "Engine.h"
+#include "Footsteps.h"
 #include "Glimmer.h"
 #include "Notify.h"
 #include "PausePage.h"
@@ -261,6 +262,10 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
         anim.current_frames = pc.idle.frames;
         anim.current_duration = pc.idle.duration;
     }
+
+    // Footstep SFX: a grass footfall on a speed-scaled cadence while moving.
+    const bool moving = vel.dx != 0.0f || vel.dy != 0.0f;
+    footsteps::update(gs.footstep_state, gs.footstep_config, moving, fast, static_cast<float>(dt));
 
     // Player position + facing, used by both the glimmer signal and observing.
     const auto& pt = reg.get<Transform>(gs.player);
