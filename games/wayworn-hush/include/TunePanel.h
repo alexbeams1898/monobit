@@ -1,11 +1,13 @@
 #pragma once
 
+#include "Growth.h"
+#include "Observations.h"
 #include "PlayerConfig.h"
 
 // The F1 tunables panel -- a dev overlay for live-tweaking feel values without a
-// rebuild. Edits apply to the in-memory config immediately (the sole live
-// truth); a Save button patches the value back into its JSON so the change
-// persists. Built on the engine's ImGui hook (Engine::setRenderImGui). Dev-only;
+// rebuild. Config feel-values (movement, grade) edit in place with Save-to-JSON;
+// stat values edit live only (they are progression/save-game state, not authored
+// config). Built on the engine's ImGui hook (Engine::setRenderImGui). Dev-only;
 // gated behind F1 and never shown by default.
 namespace tune_panel
 {
@@ -13,12 +15,12 @@ namespace tune_panel
 // Toggle visibility (bound to F1 by the caller).
 void toggle();
 
-// True while the panel is showing (the caller can gate other input on this).
-bool visible();
-
-// Draw the panel (no-op when hidden). Edits `player_config` in place (movement
-// reads it live). The grade is read from / written to the pixel target directly.
-// Save buttons patch player.json / atmosphere.json. Call from the ImGui hook.
-void render(PlayerConfig& player_config);
+// Draw the panel (no-op when hidden). Edits `player_config` (movement/cadence)
+// and `growth` stat values in place; the grade is read from / written to the
+// pixel target. `obs` is shown read-only in the Cognition tab (the live tree:
+// observables, thoughts, inputs/yields, runtime status). Save buttons patch
+// player.json / atmosphere.json; stat edits are live-only. Call from the ImGui hook.
+void render(PlayerConfig& player_config, growth::GrowthState& growth,
+            const observations::State& obs);
 
 } // namespace tune_panel

@@ -1,5 +1,12 @@
 {
-    "_comment": "The self: three reading-faculties, and the buffs bought with Spirit EXP. Buffs are intentionally empty -- their effects are content-driven and defined alongside the quests/progression that make them wanted, not invented in the abstract (see docs/design/GAME-SYSTEMS.md). Structure only for now. A buff entry, when added: {\"id\": \"...\", \"faculty\": \"wonder|reason|perception\", \"max_level\": 3}.",
+    "_comment": "Stat structure (names + tiers only; the VALUES are runtime/save-game progression, not authored here). 'faculties' are the reading-self (tier 1); 'secondary' is the doing layer -- survival/craft that feeds the self (tier 2). 'buffs' stay empty: their effects are content-driven and defined alongside the quests that make them wanted (see docs/design/GAME-SYSTEMS.md). A buff entry, when added: {\"id\": \"...\", \"faculty\": \"wonder|reason|perception\", \"max_level\": 3}.",
     "faculties": ["wonder", "reason", "perception"],
+    "secondary": ["survival", "craftsmanship"],
+    "faculty_colors": {
+        "_comment": "Hue per faculty for the observation display (a reading is tinted by which faculty saw it; its difficulty sets the brightness). RGB 0..1.",
+        "wonder": [0.92, 0.76, 0.42],
+        "reason": [0.70, 0.74, 0.94],
+        "perception": [0.52, 0.84, 0.80]
+    },
     "buffs": []
 }

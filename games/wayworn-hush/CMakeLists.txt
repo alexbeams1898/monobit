@@ -9,9 +9,11 @@ add_library(wayworn-systems STATIC
     src/PlayerMovement.cpp
     src/PlayerConfig.cpp
     src/Observations.cpp
+    src/UnlockCondition.cpp
     src/Growth.cpp
     src/ThoughtBox.cpp
     src/Glimmer.cpp
+    src/Notify.cpp
     src/PausePage.cpp
     src/TunePanel.cpp
 )
@@ -62,6 +64,7 @@ add_executable(wayworn-tests
     tests/observations_test.cpp
     tests/growth_test.cpp
     tests/pause_page_test.cpp
+    tests/unlock_condition_test.cpp
 )
 target_link_libraries(wayworn-tests PRIVATE wayworn-systems Catch2::Catch2WithMain)
 set_target_properties(wayworn-tests PROPERTIES

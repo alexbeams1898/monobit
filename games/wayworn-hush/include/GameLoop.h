@@ -4,6 +4,8 @@
 #include "Observations.h"
 #include "PlayerConfig.h"
 
+#include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <entt/entt.hpp>
@@ -56,6 +58,10 @@ struct GameState
     observations::State observations;
     growth::GrowthState growth;
     PauseState pause;
+    // Unlock ids (see observations::availableUnlocks) already announced via a
+    // notification, so "1 new observation / action available" toasts fire exactly
+    // once per new unlock, not every frame.
+    std::unordered_set<std::string> announced_unlocks;
 };
 
 // Internal pixel-art resolution. The world renders here, then integer-upscales

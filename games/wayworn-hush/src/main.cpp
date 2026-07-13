@@ -2,6 +2,7 @@
 #include "FontManager.h"
 #include "GameLoop.h"
 #include "Glimmer.h"
+#include "Notify.h"
 #include "PausePage.h"
 #include "ThoughtBox.h"
 #include "Version.h"
@@ -134,21 +135,44 @@ int main(int argc, char* argv[])
     TileMapRenderer::init();
     RenderSystem::init(kInternalWidth, kInternalHeight);
 
-    world_init::buildPlaceholderRegion(em);
-    TileMapRenderer::upload(em.tile_map, em.tile_config, engine.textureManager());
-
     GameState& gs = em.registry().ctx().emplace<GameState>();
     gs.player_config = loadPlayerConfig("config/player.json");
-    gs.player = world_init::spawnPlayer(em, gs.player_config);
-    observations::load(gs.observations, "config/observations.json");
+    observations::load(gs.observations, "config/observations.json", "config/actions.json");
     growth::load(gs.growth, "config/faculties.json");
+
+    // Build base terrain, then stamp observable tiles FROM the loaded config (one
+    // source of truth), then upload -- so every authored observable is visible.
+    world_init::buildPlaceholderRegion(em);
+    world_init::placeObservableTiles(em, gs.observations);
+    TileMapRenderer::upload(em.tile_map, em.tile_config, engine.textureManager());
+
+    gs.player = world_init::spawnPlayer(em, gs.player_config);
     glimmer::spawn(em, gs.observations);
 
-    // Placeholder UI font (a serif stand-in -- the real pixel font is a later
-    // aesthetic-pass choice; see docs/design/AESTHETIC.md UI style).
+    // Placeholder UI fonts (a serif stand-in -- the real pixel font is a later
+    // aesthetic-pass choice; see docs/design/AESTHETIC.md UI style). A smaller
+    // size serves as the observation heading (faculty + rarity label) above the
+    // larger reading text.
     const FontHandle uiFont = FontManager::loadFont("assets/fonts/placeholder.ttf", 48.0f);
-    thought_box::init(uiFont);
+    const FontHandle labelFont = FontManager::loadFont("assets/fonts/placeholder.ttf", 18.0f);
+    thought_box::Config boxCfg;
+    if (std::ifstream bf{"config/observation_box.json"})
+    {
+        const auto bj = nlohmann::json::parse(bf, nullptr, false);
+        if (!bj.is_discarded())
+        {
+            boxCfg.blip_sound = bj.value("blip_sound", boxCfg.blip_sound);
+            boxCfg.appear_sound = bj.value("appear_sound", boxCfg.appear_sound);
+            boxCfg.drop_in_secs = bj.value("drop_in_secs", boxCfg.drop_in_secs);
+            boxCfg.chars_per_sec = bj.value("chars_per_sec", boxCfg.chars_per_sec);
+            boxCfg.fade_out_secs = bj.value("fade_out_secs", boxCfg.fade_out_secs);
+            boxCfg.blip_every = bj.value("blip_every", boxCfg.blip_every);
+            boxCfg.max_width_frac = bj.value("max_width_frac", boxCfg.max_width_frac);
+        }
+    }
+    thought_box::init(uiFont, labelFont, boxCfg);
     pause_page::init(uiFont);
+    notify::init(labelFont); // toasts use the smaller label font
 
     // The region's ambient bed. Loops with a slow fade-in so the world eases in
     // rather than snapping on. Low volume -- the score is sparse and unhurried

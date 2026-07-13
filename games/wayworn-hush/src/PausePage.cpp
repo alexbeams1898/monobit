@@ -1,6 +1,7 @@
 #include "PausePage.h"
 
 #include "FontManager.h"
+#include "ReadingColor.h"
 #include "ScreenInput.h"
 #include "UIRenderer.h"
 
@@ -88,41 +89,67 @@ void renderSelf(const growth::GrowthState& g, float cx, float y)
 {
     softTextCentered("Spirit  " + std::to_string(growth::spirit(g)), cx, y, kText);
     y += lineH() * 1.6f;
-    // Faculties in authored order; levels are 0 until buffs are authored, which
-    // is honest -- the structure of the self is visible even when empty.
+    // The reading-self (tier 1): faculty level = base + buffs.
     for (const auto& faculty : g.faculties)
     {
-        const int lvl = growth::facultyLevel(g, faculty);
-        softTextCentered(faculty + "   " + std::to_string(lvl), cx, y, kText);
+        softTextCentered(faculty + "   " + std::to_string(growth::facultyLevel(g, faculty)), cx, y,
+                         kText);
         y += lineH();
+    }
+    // The doing layer (tier 2): survival / craftsmanship base values, dimmer to
+    // read as secondary.
+    if (!g.secondary.empty())
+    {
+        y += lineH() * 0.6f;
+        for (const auto& stat : g.secondary)
+        {
+            softTextCentered(stat + "   " + std::to_string(growth::statLevel(g, stat)), cx, y,
+                             kTextDim);
+            y += lineH();
+        }
     }
 }
 
-void renderNoticed(const observations::State& o, float cx, float y)
+void renderNoticed(const growth::GrowthState& g, const observations::State& o, float cx, float y)
 {
-    // What's been noticed: each observed observable's current-tier line, then
-    // the conclusions that have formed. Empty-state stays quiet.
+    // What's been noticed: the objective observations you've reached (the deepest
+    // tier text per spot, plain), then the thoughts you've had (colored by
+    // faculty + rarity). The full thought-journal split is a later slice; for now
+    // both share this list. Empty stays quiet.
     bool any = false;
     for (const auto& ob : o.observables)
     {
-        const auto it = o.observed.find(ob.id);
-        if (it == o.observed.end())
+        const auto it = o.observed_tier.find(ob.id);
+        if (it == o.observed_tier.end())
             continue;
-        const int tier = it->second;
-        if (tier >= 0 && tier < static_cast<int>(ob.tiers.size()))
+        const int tier = it->second; // 1-based deepest tier reached
+        if (tier >= 1 && tier <= static_cast<int>(ob.tiers.size()))
         {
-            softTextCentered(ob.tiers[static_cast<std::size_t>(tier)].text, cx, y, kText);
-            y += lineH();
+            softTextCentered(ob.tiers[static_cast<std::size_t>(tier - 1)].text, cx, y, kText);
+            y += lineH() * 1.2f;
             any = true;
         }
     }
-    for (const auto& c : o.conclusions)
+    for (const auto& r : o.thoughts)
     {
-        if (o.formed.count(c.id) == 0)
+        if (o.fired.count(r.id) == 0)
             continue;
-        y += lineH() * 0.3f;
-        softTextCentered(c.text, cx, y, kText);
-        y += lineH();
+        const Color hue = reading_color::forReading(g, r.faculty, r.difficulty);
+        // Label: faculty (its hue) + rarity word (its own loot color).
+        if (r.difficulty > 0 && !r.faculty.empty())
+        {
+            const std::string faculty = reading_color::facultyLabel(r.faculty);
+            const std::string rarity = reading_color::rarityWord(r.difficulty);
+            const float gap = 24.0f;
+            const float fw = UIRenderer::measureText(sFont, faculty).width;
+            const float startX =
+                cx - (fw + gap + UIRenderer::measureText(sFont, rarity).width) * 0.5f;
+            softText(faculty, startX, y, hue);
+            softText(rarity, startX + fw + gap, y, reading_color::rarityColor(r.difficulty));
+            y += lineH() * 0.85f;
+        }
+        softTextCentered(r.text, cx, y, hue);
+        y += lineH() * 1.3f;
         any = true;
     }
     if (!any)
@@ -312,7 +339,7 @@ Action renderTabContent(PauseState& pause, const growth::GrowthState& growth,
         renderSelf(growth, cx, contentY);
         break;
     case PauseState::Tab::Noticed:
-        renderNoticed(observations, cx, contentY);
+        renderNoticed(growth, observations, cx, contentY);
         break;
     case PauseState::Tab::System:
     {

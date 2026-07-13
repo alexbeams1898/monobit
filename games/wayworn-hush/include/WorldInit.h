@@ -5,6 +5,10 @@
 #include <entt/entt.hpp>
 
 class EntityManager;
+namespace observations
+{
+struct State;
+}
 
 // Populates the world for a region. Scaffold stage: builds a small code-generated
 // placeholder region (walkable interior, solid border) directly into the
@@ -14,6 +18,11 @@ class EntityManager;
 namespace world_init
 {
 void buildPlaceholderRegion(EntityManager& em);
+
+// Stamp a tile per authored observable at its config coords, chosen by the
+// observable's `kind`. Call after observations::load so config is the single
+// source of truth for where the observable tiles are (no hand-synced entries).
+void placeObservableTiles(EntityManager& em, const observations::State& obs);
 
 // Spawns the player at the region center: Transform + Velocity + foot-anchored
 // Collider + animated Sprite + active follow Camera. Sprite/animation layout

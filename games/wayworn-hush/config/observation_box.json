@@ -1,0 +1,10 @@
+{
+    "_comment": "Feel + SFX for the animated observation box (drop-in, typewriter reveal, manual dismiss). Sound paths are placeholders (observe.ogg) until the OST pass supplies real SFX; swap them here, no code change. drop_in_secs = entrance slide/fade; chars_per_sec = typewriter speed; fade_out_secs = fade on dismiss; blip_every = play a tick every N characters; max_width_frac = body wraps within this fraction of the window.",
+    "blip_sound": "assets/audio/observe.ogg",
+    "appear_sound": "assets/audio/observe.ogg",
+    "drop_in_secs": 0.22,
+    "chars_per_sec": 42.0,
+    "fade_out_secs": 0.7,
+    "blip_every": 2,
+    "max_width_frac": 0.62
+}
