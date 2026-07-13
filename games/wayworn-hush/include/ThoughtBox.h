@@ -2,6 +2,7 @@
 
 #include "Growth.h"
 #include "HudCanvas.h"
+#include "Notebook.h"
 #include "Observations.h"
 #include "UIRenderer.h" // Color
 
@@ -43,14 +44,26 @@ struct Config
 void init(FontHandle body_font, FontHandle heading_font, const Config& config,
           const hud::Regions& regions);
 
+// Where a first-occurrence reading gets written down as it surfaces. The box is
+// the one place that sees every line as it appears, so it is the recording
+// chokepoint -- but it stays ignorant of satchel/clock: the GAME decides whether
+// recording is enabled (notebook carried) and what day to stamp (watch carried, or
+// 0 for undated) and hands both in.
+struct RecordSink
+{
+    notebook::Record* record = nullptr; // where to append (null = don't record)
+    bool enabled = false;               // notebook carried?
+    int day = 0;                        // in-world day, or 0 if undated (no watch)
+};
+
 // Advance the box animation + typewriter at wall-clock rate; pulls the next Line
 // from state.pending when idle (and re-surfaces an action menu when its result
 // line has been read). Plays SFX at the right beats. Takes growth so a Menu can
 // recompute its offered actions and act on them. Window dims size the fixed HUD
-// region a loading line wraps to. `stamp` is the world-clock dateline latched onto
-// a reading as it appears (the notebook entry's "when"). The box never auto-dismisses.
+// region a loading line wraps to. `sink` records each NEW line as it surfaces (if
+// enabled). The box never auto-dismisses.
 void update(observations::State& state, const growth::GrowthState& growth, float dt, int windowW,
-            int windowH, const std::string& stamp);
+            int windowH, const RecordSink& sink);
 
 // True while the box shows anything (a Line dropping in / typing / held, or a
 // Menu). The game gates world input on this: no box -> Space observes; box up ->

@@ -18,6 +18,8 @@ add_library(wayworn-systems STATIC
     src/HudCanvas.cpp
     src/HeadMarker.cpp
     src/WorldClock.cpp
+    src/Inventory.cpp
+    src/Notebook.cpp
     src/PausePage.cpp
     src/TunePanel.cpp
 )
@@ -73,6 +75,8 @@ add_executable(wayworn-tests
     tests/hud_canvas_test.cpp
     tests/head_marker_test.cpp
     tests/world_clock_test.cpp
+    tests/inventory_test.cpp
+    tests/notebook_test.cpp
 )
 target_link_libraries(wayworn-tests PRIVATE wayworn-systems Catch2::Catch2WithMain)
 set_target_properties(wayworn-tests PROPERTIES

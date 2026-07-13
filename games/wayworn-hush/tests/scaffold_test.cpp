@@ -22,41 +22,28 @@ TEST_CASE("Wayworn Hush uses a 16px world grid", "[scaffold]")
     REQUIRE(tm.findRoomAt(200.0f, 200.0f) == -1);
 }
 
-TEST_CASE("Pixel target scales 384x216 to the window by the largest integer fit", "[scaffold]")
+TEST_CASE("Pixel target aspect-fits 1280x720 to fill the window", "[scaffold]")
 {
     using engine::gl::computeBlitRect;
 
-    // 1080p: 1920/384 = 5, 1080/216 = 5 -> exact x5, no letterbox.
+    // The blit fills the screen at a fractional scale (sharp-bilinear keeps it
+    // crisp); only the aspect remainder letterboxes. Exhaustive cases live in the
+    // engine's blit_rect_test -- this is the game-side smoke check on its own res.
+
+    // 2048x1152 (16:9 laptop, a non-integer multiple) fills fully -- the case that
+    // used to fall to x1 and render tiny.
     {
-        const auto r = computeBlitRect(384, 216, 1920, 1080);
-        REQUIRE(r.scale == 5);
-        REQUIRE(r.width == 1920);
-        REQUIRE(r.height == 1080);
+        const auto r = computeBlitRect(1280, 720, 2048, 1152);
+        REQUIRE(r.width == 2048);
+        REQUIRE(r.height == 1152);
         REQUIRE(r.x == 0);
         REQUIRE(r.y == 0);
     }
 
-    // 1280x720: 1280/384 = 3, 720/216 = 3 -> x3 = 1152x648, centered with
-    // horizontal + vertical letterbox.
+    // 1440p is an exact x2 -- fills edge to edge.
     {
-        const auto r = computeBlitRect(384, 216, 1280, 720);
-        REQUIRE(r.scale == 3);
-        REQUIRE(r.width == 1152);
-        REQUIRE(r.height == 648);
-        REQUIRE(r.x == 64); // (1280 - 1152) / 2
-        REQUIRE(r.y == 36); // (720 - 648) / 2
-    }
-
-    // The limiting axis wins: a wide-but-short window scales by height.
-    {
-        const auto r = computeBlitRect(384, 216, 4000, 300);
-        REQUIRE(r.scale == 1); // 300/216 = 1 limits; 4000/384 = 10 does not
-        REQUIRE(r.height == 216);
-    }
-
-    // Window smaller than internal res clamps to scale 1 (never 0 -> vanish).
-    {
-        const auto r = computeBlitRect(384, 216, 200, 100);
-        REQUIRE(r.scale == 1);
+        const auto r = computeBlitRect(1280, 720, 2560, 1440);
+        REQUIRE(r.width == 2560);
+        REQUIRE(r.height == 1440);
     }
 }

@@ -98,11 +98,25 @@ movement + AABB-vs-solid-tile collision (`CollisionSystem` + prison-escape's
     under-fills 1440p and "×2.5 = 1080p" is fractional, which the integer blit
     can't do.)
 - **Built:** the engine `PixelRenderTarget` renders the world into an offscreen FBO
-  at `GL_NEAREST` and blits it up at the largest integer scale. `kInternalWidth`/
-  `kInternalHeight` in `games/wayworn-hush/include/GameLoop.h`.
-- **Alternative considered & rejected:** fractional-scale blit to fill non-integer
-  resolutions. Rejected — softens the pixel art; a base that integer-fills the
-  display (1280×720) keeps it crisp *and* full-screen.
+  and blits it to fill the window. `kInternalWidth`/`kInternalHeight` in
+  `games/wayworn-hush/include/GameLoop.h`.
+- **Scaling — sharp-bilinear fill [SUPERSEDES integer-only]:** the blit now
+  **aspect-fits at a fractional scale to fill the screen**, using a *sharp-bilinear*
+  shader (nearest across each texel's interior, a sub-pixel bilinear ramp only at
+  texel seams). This keeps pixels crisp at ANY ratio — including resolutions that
+  aren't a whole multiple of 1280×720 (e.g. a **2048×1152 laptop**, where the old
+  integer-only blit fell to ×1 and rendered a tiny image in a huge letterbox).
+  - **Why the earlier "integer-only, reject fractional" lock was revised:** that
+    decision weighed integer-floor-letterbox against *pure* bilinear (which softens
+    the whole image) and picked integer. It never considered the **hybrid**
+    sharp-bilinear used by modern pixel-art games (Celeste et al.): the blur is
+    confined to a one-screen-pixel seam, imperceptible, so you get crisp pixels AND
+    a full screen on every display. See the blit shader in `PixelRenderTarget.cpp`.
+  - Only the **aspect** remainder letterboxes now (16:9 image on a 16:10 / ultrawide
+    panel), never an integer remainder.
+- **Camera pixel-snap:** with fractional scaling, a fractional camera position can
+  shimmer; snap the camera to whole internal pixels each frame (follow-up if any
+  scroll shimmer shows).
 
 ### Camera field — **~40×22.5 tiles, follow with dead-zone**
 

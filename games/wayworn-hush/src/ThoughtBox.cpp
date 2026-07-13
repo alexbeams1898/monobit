@@ -60,7 +60,6 @@ float sPhaseT = 0.0f;              // seconds elapsed in the current phase
 int sRevealed = 0;                 // characters of the CURRENT PAGE revealed so far
 int sLastBlip = 0;                 // revealed-count at the last blip (rate-limits the tick)
 std::vector<std::string> sWrapped; // body wrapped into lines (built when a line loads)
-std::string sStamp;                // world-clock dateline latched when the line loads
 // Pagination: a Line that overflows its fixed region is shown one page (a run of
 // wrapped lines that fit the region height) at a time. Space reveals the page,
 // then turns to the next; the last page's Space dismisses. sPageStart is the first
@@ -172,11 +171,16 @@ void playAppearSfx()
         AudioSystem::playSfx(sCfg.appear_sound, vol * 0.5f, pitch * 1.6f);
 }
 
-void loadLine(observations::PendingLine line, int windowW, int windowH, const std::string& stamp)
+void loadLine(observations::PendingLine line, int windowW, int windowH, const RecordSink& sink)
 {
     sItem = ItemKind::Line;
     sLine = std::move(line);
-    sStamp = stamp; // the notebook dateline for this entry (latched at appearance)
+    // Write a FIRST-occurrence reading into the notebook as it surfaces (is_new is
+    // true only the first time an observation tier is reached / a thought fires).
+    // Gated on carrying the notebook; the day is 0 unless a watch is carried.
+    if (sink.enabled && sink.record != nullptr && sLine.is_new)
+        notebook::record(*sink.record, sLine.kind, sLine.text, sLine.faculty, sLine.difficulty,
+                         sink.day);
     sPhase = Phase::DropIn;
     sPhaseT = 0.0f;
     sRevealed = 0;
@@ -188,9 +192,9 @@ void loadLine(observations::PendingLine line, int windowW, int windowH, const st
     const float padX = sRegions.pad_x * hud::scale(windowW, windowH);
     const float padY = sRegions.pad_y * hud::scale(windowW, windowH);
     sWrapped = wrapText(sLine.text, region.w - 2.0f * padX);
-    // Page capacity: how many body lines fit the region's inner height. Every entry
-    // reserves the header (dateline + tags) block so the header-bearing first page
-    // fits without clipping.
+    // Page capacity: how many body lines fit the region's inner height, reserving
+    // the header block so a thought's header-bearing first page fits without
+    // clipping (harmless slight over-reserve for a headerless observation).
     const float bodyLineH = static_cast<float>(FontManager::lineHeight(sFont));
     const float headingH = static_cast<float>(FontManager::lineHeight(sHeadingFont));
     const float innerH = region.h - 2.0f * padY - (headingH + kHeadingGap);
@@ -349,7 +353,7 @@ void init(FontHandle body_font, FontHandle heading_font, const Config& config,
 }
 
 void update(observations::State& state, const growth::GrowthState& growth, float dt, int windowW,
-            int windowH, const std::string& stamp)
+            int windowH, const RecordSink& sink)
 {
     if (sItem == ItemKind::None)
     {
@@ -360,7 +364,7 @@ void update(observations::State& state, const growth::GrowthState& growth, float
         {
             observations::PendingLine next = state.pending.front();
             state.pending.pop_front();
-            loadLine(std::move(next), windowW, windowH, stamp);
+            loadLine(std::move(next), windowW, windowH, sink);
             return;
         }
         // Pending is empty: if a menu is queued (fresh or re-show after a deed),

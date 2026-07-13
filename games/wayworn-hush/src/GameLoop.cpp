@@ -309,8 +309,16 @@ void gamePreRender(Engine& engine, EntityManager& em)
     // Sprite-sheet animation advances at wall-clock frame rate, not the fixed
     // tick (see engines/engine/docs/ENGINE.md "Animation system").
     AnimationSystem::update(em, static_cast<float>(engine.frameDt()));
+
+    // The notebook records a reading as it surfaces IFF the pilgrim carries the
+    // notebook (key-item gate); the entry is dated only if he also carries a watch
+    // (else undated). GameLoop owns the item/clock knowledge; the box just records.
+    thought_box::RecordSink sink;
+    sink.record = &gs.notebook;
+    sink.enabled = inventory::has(gs.satchel, "notebook");
+    sink.day = inventory::has(gs.satchel, "watch") ? worldclock::day(gs.clock) : 0;
     thought_box::update(gs.observations, gs.growth, static_cast<float>(engine.frameDt()),
-                        engine.windowWidth(), engine.windowHeight(), worldclock::stamp(gs.clock));
+                        engine.windowWidth(), engine.windowHeight(), sink);
 }
 
 void gameRenderWorld(Engine& engine, EntityManager& em, float camX, float camY, float alpha)
@@ -371,7 +379,8 @@ void gameRenderUI(Engine& engine, EntityManager& em)
     // click Quit on the System tab to exit. Mouse handling lives here because it
     // hit-tests the geometry render() draws.
     const pause_page::Mouse mouse{static_cast<float>(mx), static_cast<float>(my), lClick};
-    if (pause_page::render(gs.pause, gs.growth, gs.observations, mouse, engine.windowWidth(),
+    const pause_page::Content content{gs.observations, gs.satchel, gs.items, gs.notebook};
+    if (pause_page::render(gs.pause, gs.growth, content, mouse, engine.windowWidth(),
                            engine.windowHeight()) == pause_page::Action::Quit)
         engine.requestQuit();
 

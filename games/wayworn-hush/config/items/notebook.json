@@ -1,0 +1,10 @@
+{
+    "_comment": "The pilgrim's notebook -- a KEY ITEM. Carrying it is what lets his thoughts be written down (has(satchel,'notebook') gates the notebook record; see docs/design/INVENTORY.md). He starts the journey with it.",
+    "id": "notebook",
+    "name": "Worn Notebook",
+    "description": "A soft-cornered notebook, its pages half-filled. Where the things you come to understand get written down.",
+    "icon": "assets/sprites/items/notebook.png",
+    "category": "key_item",
+    "rarity": 3,
+    "stackable": false
+}

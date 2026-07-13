@@ -1,6 +1,8 @@
 #include "PausePage.h"
 
 #include "FontManager.h"
+#include "Inventory.h"
+#include "Notebook.h"
 #include "ReadingColor.h"
 #include "ScreenInput.h"
 #include "UIRenderer.h"
@@ -13,7 +15,7 @@ namespace
 {
 FontHandle sFont = -1;
 
-constexpr int kTabCount = 3; // Self, Noticed, System
+constexpr int kTabCount = 5; // Self, Noticed, Satchel, Notebook, System
 
 // System-tab menu items.
 constexpr int kSysControls = 0;
@@ -156,6 +158,78 @@ void renderNoticed(const growth::GrowthState& g, const observations::State& o, f
         softTextCentered("None", cx, y, kTextDim);
 }
 
+// The Satchel tab: what the pilgrim carries, grouped by category (key items first
+// -- notebook, watch -- then keepsakes, then practical). Each line is the item
+// name (rarity-colored), with a "x N" suffix for a stack.
+void renderSatchel(const inventory::Satchel& sat, const inventory::Registry& reg, float cx, float y)
+{
+    // Category order + heading; key items lead (they're the meaningful ones).
+    const struct
+    {
+        inventory::Category cat;
+        const char* heading;
+    } sections[] = {{inventory::Category::KeyItem, "Carried"},
+                    {inventory::Category::Keepsake, "Kept"},
+                    {inventory::Category::Practical, "Gathered"}};
+
+    bool any = false;
+    for (const auto& sec : sections)
+    {
+        bool headingDrawn = false;
+        for (const auto& e : sat.items)
+        {
+            const inventory::ItemDef* def = reg.find(e.id);
+            const inventory::Category cat = def ? def->category : inventory::Category::Keepsake;
+            if (cat != sec.cat)
+                continue;
+            if (!headingDrawn)
+            {
+                softTextCentered(sec.heading, cx, y, kTextDim);
+                y += lineH() * 1.1f;
+                headingDrawn = true;
+            }
+            std::string label = def ? def->name : e.id;
+            if (e.quantity > 1)
+                label += "  x" + std::to_string(e.quantity);
+            const Color c = def ? reading_color::rarityColor(def->rarity) : kText;
+            softTextCentered(label, cx, y, c);
+            y += lineH();
+            any = true;
+        }
+        if (headingDrawn)
+            y += lineH() * 0.5f;
+    }
+    if (!any)
+        softTextCentered("Nothing yet", cx, y, kTextDim);
+}
+
+// The Notebook tab: the dated record of readings, grouped by day (undated last).
+// Each day gets a "~ Day N ~" header; observations read plain, thoughts in their
+// faculty hue -- the same register split as the reading box.
+void renderNotebook(const growth::GrowthState& g, const notebook::Record& rec, float cx, float y)
+{
+    const auto groups = notebook::groupByDay(rec);
+    if (groups.empty())
+    {
+        softTextCentered("Empty", cx, y, kTextDim);
+        return;
+    }
+    for (const auto& grp : groups)
+    {
+        const std::string header = grp.day > 0 ? "~ Day " + std::to_string(grp.day) + " ~" : "~ ~";
+        softTextCentered(header, cx, y, kTextDim);
+        y += lineH() * 1.2f;
+        for (const auto& e : grp.entries)
+        {
+            const bool thought = e.kind == observations::LineKind::Thought;
+            const Color c = thought ? reading_color::forReading(g, e.faculty, e.difficulty) : kText;
+            softTextCentered(e.text, cx, y, c);
+            y += lineH();
+        }
+        y += lineH() * 0.6f;
+    }
+}
+
 // One "Label   Keys" control line, label right-aligned to a shared column so the
 // key column lines up. Centered as a pair around cx.
 void controlLine(const std::string& label, const std::string& keys, float cx, float y)
@@ -284,8 +358,8 @@ Action step(PauseState& pause, bool toggle, bool left, bool right, bool up, bool
 // gives each tab's x/width so the mouse hit-tests the same rects that are drawn.
 void renderTabStrip(PauseState& pause, float cx, float tabY, const Mouse& mouse)
 {
-    // Order must match PauseState::Tab: Self, Noticed, System.
-    const char* labels[kTabCount] = {"Self", "Noticed", "System"};
+    // Order must match PauseState::Tab: Self, Noticed, Satchel, Notebook, System.
+    const char* labels[kTabCount] = {"Self", "Noticed", "Satchel", "Notebook", "System"};
     const float tabH = lineH() + 10.0f;
     const float tabGap = 6.0f;
     float widths[kTabCount];
@@ -319,8 +393,7 @@ void renderTabStrip(PauseState& pause, float cx, float tabY, const Mouse& mouse)
 // the tabs, and resolve clicks on the System tab's items. Returns Quit if Quit
 // was clicked, else None (a Controls click pushes its sub-view).
 Action renderTabContent(PauseState& pause, const growth::GrowthState& growth,
-                        const observations::State& observations, float cx, float contentY,
-                        const Mouse& mouse)
+                        const Content& content, float cx, float contentY, const Mouse& mouse)
 {
     if (!pause.view_stack.empty())
     {
@@ -339,7 +412,13 @@ Action renderTabContent(PauseState& pause, const growth::GrowthState& growth,
         renderSelf(growth, cx, contentY);
         break;
     case PauseState::Tab::Noticed:
-        renderNoticed(growth, observations, cx, contentY);
+        renderNoticed(growth, content.observations, cx, contentY);
+        break;
+    case PauseState::Tab::Satchel:
+        renderSatchel(content.satchel, content.items, cx, contentY);
+        break;
+    case PauseState::Tab::Notebook:
+        renderNotebook(growth, content.notebook, cx, contentY);
         break;
     case PauseState::Tab::System:
     {
@@ -356,8 +435,8 @@ Action renderTabContent(PauseState& pause, const growth::GrowthState& growth,
     return Action::None;
 }
 
-Action render(PauseState& pause, const growth::GrowthState& growth,
-              const observations::State& observations, const Mouse& mouse, int windowW, int windowH)
+Action render(PauseState& pause, const growth::GrowthState& growth, const Content& content,
+              const Mouse& mouse, int windowW, int windowH)
 {
     if (!pause.open || sFont < 0)
         return Action::None;
@@ -372,7 +451,7 @@ Action render(PauseState& pause, const growth::GrowthState& growth,
     // The tab strip always stays visible; sub-views render in the content area
     // below it, never replacing the tabs.
     renderTabStrip(pause, cx, wh * 0.15f, mouse);
-    return renderTabContent(pause, growth, observations, cx, wh * 0.30f, mouse);
+    return renderTabContent(pause, growth, content, cx, wh * 0.30f, mouse);
 }
 
 } // namespace pause_page

@@ -49,6 +49,17 @@ struct Mouse
     bool clicked = false;
 };
 
+// The data the page's read-only tabs display, bundled so the render signature
+// stays small as tabs are added: what's noticed (observations), what's carried
+// (satchel + item defs for names/rarity), and the dated readings record (notebook).
+struct Content
+{
+    const observations::State& observations;
+    const inventory::Satchel& satchel;
+    const inventory::Registry& items;
+    const notebook::Record& notebook;
+};
+
 // Draw the page (overlay + tab strip + content) and handle the mouse against the
 // geometry it draws: hovering a tab brightens it, clicking a tab switches to it,
 // clicking Quit on the System tab quits. Mutates `pause` (a tab click switches
@@ -56,8 +67,7 @@ struct Mouse
 // separately by step(); the two are interchangeable. No-op if the page is
 // closed. Window-space, native resolution. GL/font -- integration-tested by
 // running the game.
-Action render(PauseState& pause, const growth::GrowthState& growth,
-              const observations::State& observations, const Mouse& mouse, int windowW,
-              int windowH);
+Action render(PauseState& pause, const growth::GrowthState& growth, const Content& content,
+              const Mouse& mouse, int windowW, int windowH);
 
 } // namespace pause_page

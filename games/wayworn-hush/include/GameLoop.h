@@ -4,6 +4,8 @@
 #include "Growth.h"
 #include "HeadMarker.h"
 #include "HudCanvas.h"
+#include "Inventory.h"
+#include "Notebook.h"
 #include "Observations.h"
 #include "PlayerConfig.h"
 #include "WorldClock.h"
@@ -20,17 +22,20 @@ class EntityManager;
 // The pause page: the game's one on-demand screen, opened with F. It IS the
 // growth/observation record -- there is no persistent HUD (see
 // docs/design/GAME-SYSTEMS.md). While open the world update freezes and the
-// soundtrack is muffled. Three tabs: self (Spirit + faculties), noticed
-// (observations + conclusions), and system (a Controls sub-view + Quit; later
-// settings/save). Closing is F -- there is no "Resume" item.
+// soundtrack is muffled. Tabs: Self (Spirit + faculties), Noticed (observations +
+// conclusions), Satchel (carried items), Notebook (dated record of readings), and
+// System (a Controls sub-view + Quit; later settings/save). Closing is F -- there
+// is no "Resume" item.
 struct PauseState
 {
     // System is the last tab (its items open sub-views / exit); the page opens
-    // on Self.
+    // on Self. Satchel = what you carry; Notebook = the dated record of readings.
     enum class Tab
     {
         Self,
         Noticed,
+        Satchel,
+        Notebook,
         System
     };
 
@@ -67,6 +72,9 @@ struct GameState
     hud::Regions hud;                    // fixed HUD region rects + visibility mode
     HeadMarkerConfig head_marker_config; // over-head thought-bubble feel/placement
     worldclock::WorldClock clock;        // in-world time (notebook datelines, day/night later)
+    inventory::Registry items;           // loaded item blueprints (config/items/*.json)
+    inventory::Satchel satchel;          // what the pilgrim carries
+    notebook::Record notebook; // dated record of readings (gated on carrying the notebook)
     // Unlock ids (see observations::availableUnlocks) already announced via a
     // notification, so "1 new observation / action available" toasts fire exactly
     // once per new unlock, not every frame.

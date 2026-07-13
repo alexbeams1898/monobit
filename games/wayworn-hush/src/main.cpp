@@ -118,10 +118,24 @@ void gameOnResize(Engine& engine, int w, int h)
 }
 } // namespace
 
+// Reopen stdio onto wayworn-hush.log (next to the exe, truncated per run) so
+// fprintf/cerr diagnostics always land somewhere readable regardless of how the
+// game was launched (F7 debugger, double-click, headless). Line-buffered so
+// progress appears as it happens. Mirrors selva-oscura's redirect.
+static void redirectStdioToLog()
+{
+    (void)std::freopen("wayworn-hush.log", "w", stdout);
+    (void)std::freopen("wayworn-hush.log", "a", stderr);
+    std::setvbuf(stderr, nullptr, _IOLBF, 4096);
+    std::setvbuf(stdout, nullptr, _IOLBF, 4096);
+}
+
 int main(int argc, char* argv[])
 {
     (void)argc;
     (void)argv;
+
+    redirectStdioToLog();
 
     signal(SIGSEGV, signalHandler);
     signal(SIGABRT, signalHandler);
@@ -188,6 +202,12 @@ int main(int argc, char* argv[])
     observations::load(gs.observations, "config/observations.json", "config/actions.json");
     growth::load(gs.growth, "config/faculties.json");
     footsteps::load(gs.footstep_config, "config/footsteps.json");
+
+    // Item blueprints, then the pilgrim's starting satchel: he sets out carrying his
+    // notebook (a key item -- carrying it is what lets thoughts be written down; see
+    // docs/design/INVENTORY.md). The watch is found later, not started with.
+    inventory::load(gs.items, "config/items");
+    inventory::add(gs.satchel, gs.items, inventory::ItemInstance{"notebook"});
 
     // Build base terrain, then stamp observable tiles FROM the loaded config (one
     // source of truth), then upload -- so every authored observable is visible.

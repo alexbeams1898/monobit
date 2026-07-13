@@ -18,12 +18,13 @@ PauseState opened()
     return p;
 }
 
-// Open and page to the System tab (Self -> Noticed -> System).
+// Open and page to the System tab (Self -> Noticed -> Satchel -> Notebook ->
+// System). System is the last tab; a single left from Self reaches it faster, but
+// the tests exercise the forward path explicitly.
 PauseState onSystem()
 {
     PauseState p = opened();
-    pause_page::step(p, false, false, /*right=*/true, false, false, false); // Noticed
-    pause_page::step(p, false, false, /*right=*/true, false, false, false); // System
+    pause_page::step(p, false, /*left=*/true, false, false, false, false); // wrap back to System
     return p;
 }
 } // namespace
@@ -47,11 +48,15 @@ TEST_CASE("F while on the tabs closes the page", "[pause]")
     REQUIRE_FALSE(p.open);
 }
 
-TEST_CASE("A/D page through the three tabs, wrapping", "[pause]")
+TEST_CASE("A/D page through the tabs, wrapping", "[pause]")
 {
     PauseState p = opened(); // Self
     pause_page::step(p, false, false, /*right=*/true, false, false, false);
     REQUIRE(p.tab == PauseState::Tab::Noticed);
+    pause_page::step(p, false, false, /*right=*/true, false, false, false);
+    REQUIRE(p.tab == PauseState::Tab::Satchel);
+    pause_page::step(p, false, false, /*right=*/true, false, false, false);
+    REQUIRE(p.tab == PauseState::Tab::Notebook);
     pause_page::step(p, false, false, /*right=*/true, false, false, false);
     REQUIRE(p.tab == PauseState::Tab::System);
     pause_page::step(p, false, false, /*right=*/true, false, false, false);
