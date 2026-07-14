@@ -19,14 +19,16 @@ int cellId(int uv_col, int uv_row, int atlas_cols)
     return uv_row * atlas_cols + uv_col;
 }
 
-// Find a layer instance by its __type ("Tiles" / "Entities") in a level.
-const json* findLayer(const json& level, const char* type)
+// Find a layer instance by its __IDENTIFIER (the layer's name: "Ground",
+// "Overhang", "Entities"). NOT __type -- Ground and Overhang are both __type
+// "Tiles", so only the identifier distinguishes them.
+const json* findLayer(const json& level, const char* identifier)
 {
     const auto li = level.find("layerInstances");
     if (li == level.end() || !li->is_array())
         return nullptr;
     for (const auto& layer : *li)
-        if (layer.value("__type", std::string{}) == type)
+        if (layer.value("__identifier", std::string{}) == identifier)
             return &layer;
     return nullptr;
 }
@@ -58,18 +60,18 @@ Region load(const std::string& ldtk_path, const std::string& tileset_path)
                 if (t.value("relPath", std::string{}).find("Overworld") != std::string::npos)
                     atlas_cols = t.value("__cWid", atlas_cols);
 
-    const json* tiles = findLayer(level, "Tiles");
-    if (!tiles)
+    // Ground = the terrain layer ("Ground", or the legacy single "Tiles" layer).
+    const json* ground = findLayer(level, "Ground");
+    if (!ground)
+        ground = findLayer(level, "Tiles");
+    if (!ground)
         return r;
-    const int gridSize = tiles->value("__gridSize", 16);
-    const int cw = tiles->value("__cWid", 0);
-    const int ch = tiles->value("__cHei", 0);
+    const int gridSize = ground->value("__gridSize", 16);
+    const int cw = ground->value("__cWid", 0);
+    const int ch = ground->value("__cHei", 0);
     if (cw <= 0 || ch <= 0)
         return r;
 
-    // Build the flat 32px world grid. Top tile per cell wins (later gridTiles
-    // entries overwrite earlier -- LDtk paints back-to-front). Unpainted cells
-    // fall back to the border-fill tile (grass) so there is no void.
     r.map.tile_size = gridSize * 2; // 16 -> 32 world grid
     r.map.width = cw;
     r.map.height = ch;
@@ -85,31 +87,69 @@ Region load(const std::string& ldtk_path, const std::string& tileset_path)
                 }
     const int fillId = cellId(r.fill_uv_col, r.fill_uv_row, atlas_cols);
 
-    // Seed every cell with the fill tile; painted cells overwrite it.
-    r.map.tiles.assign(static_cast<std::size_t>(cw) * static_cast<std::size_t>(ch),
-                       TileMap::Tile{fillId, true});
-
     std::unordered_map<int, std::pair<int, int>> uvById; // id -> (uv_col,uv_row)
     uvById[fillId] = {r.fill_uv_col, r.fill_uv_row};
 
-    if (const auto gt = tiles->find("gridTiles"); gt != tiles->end() && gt->is_array())
-        for (const auto& t : *gt)
-        {
-            const auto px = t.find("px");
-            const auto src = t.find("src");
-            if (px == t.end() || src == t.end() || !px->is_array() || !src->is_array())
-                continue;
-            const int col = (*px)[0].get<int>() / gridSize;
-            const int row = (*px)[1].get<int>() / gridSize;
-            if (col < 0 || row < 0 || col >= cw || row >= ch)
-                continue;
-            const int uv_col = (*src)[0].get<int>() / gridSize;
-            const int uv_row = (*src)[1].get<int>() / gridSize;
-            const int id = cellId(uv_col, uv_row, atlas_cols);
-            uvById[id] = {uv_col, uv_row};
-            // Top tile wins: overwrite (gridTiles are ordered back-to-front).
-            r.map.at(col, row) = TileMap::Tile{id, true};
-        }
+    const auto cellIndex = [&](int col, int row)
+    {
+        return static_cast<std::size_t>(row) * static_cast<std::size_t>(cw) +
+               static_cast<std::size_t>(col);
+    };
+
+    // Walk a layer's gridTiles, calling `place(cellIndex, id, isFirstAtCell)` for
+    // each. LDtk stacks multiple tiles per cell (grass then a flower on top) as
+    // separate gridTiles entries in paint order; the FIRST at a cell is the base,
+    // later ones are stacked decoration. Records each tile's uv in uvById.
+    const auto forEachTile = [&](const json* layer, auto&& place)
+    {
+        if (!layer)
+            return;
+        std::unordered_map<std::size_t, bool> seen; // cell -> already placed a base?
+        if (const auto gt = layer->find("gridTiles"); gt != layer->end() && gt->is_array())
+            for (const auto& t : *gt)
+            {
+                const auto px = t.find("px");
+                const auto src = t.find("src");
+                if (px == t.end() || src == t.end() || !px->is_array() || !src->is_array())
+                    continue;
+                const int col = (*px)[0].get<int>() / gridSize;
+                const int row = (*px)[1].get<int>() / gridSize;
+                if (col < 0 || row < 0 || col >= cw || row >= ch)
+                    continue;
+                const int uv_col = (*src)[0].get<int>() / gridSize;
+                const int uv_row = (*src)[1].get<int>() / gridSize;
+                const int id = cellId(uv_col, uv_row, atlas_cols);
+                uvById[id] = {uv_col, uv_row};
+                const std::size_t idx = cellIndex(col, row);
+                const bool first = !seen[idx];
+                seen[idx] = true;
+                place(idx, id, first);
+            }
+    };
+
+    const std::size_t total = static_cast<std::size_t>(cw) * static_cast<std::size_t>(ch);
+
+    // GROUND: base tile per cell -> r.map.tiles (fill grass elsewhere). Any EXTRA
+    // stacked tile on a ground cell (a flower over grass) -> decoration, drawn under
+    // the player so he walks on top of it (grass still shows below).
+    r.map.tiles.assign(total, TileMap::Tile{fillId, true});
+    r.map.decoration.assign(total, TileMap::Tile{0, true});
+    forEachTile(ground,
+                [&](std::size_t idx, int id, bool first)
+                {
+                    if (first)
+                        r.map.tiles[idx] = TileMap::Tile{id, true};
+                    else
+                        r.map.decoration[idx] = TileMap::Tile{id, true}; // topmost stacked wins
+                });
+
+    // OVERHANG (optional): sparse props drawn ABOVE characters (canopy tops).
+    if (const json* over = findLayer(level, "Overhang"))
+    {
+        r.map.overhang.assign(total, TileMap::Tile{0, true});
+        forEachTile(over, [&](std::size_t idx, int id, bool)
+                    { r.map.overhang[idx] = TileMap::Tile{id, true}; });
+    }
 
     // Fill the tile config: atlas + per-id uv. Walkable defaults true here; the
     // IntGrid behavior layer (later) is the real source of walkable per §1.2/§4.

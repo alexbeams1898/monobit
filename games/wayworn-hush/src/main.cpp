@@ -215,11 +215,23 @@ int main(int argc, char* argv[])
     // fall back to the flat-color placeholder region. Observable tiles are stamped
     // on top FROM the observation config (one source of truth) either way, so every
     // authored observable is visible. Then upload.
+    // The .ldtk lives beside its source tileset (LDtk resolves the tileset by a
+    // sibling relative path); the game renders the x2 atlas (assets/tilesets/
+    // overworld.png). See docs/design/MAP-PIPELINE.md.
     const ldtk::Region region =
-        ldtk::load("assets/regions/overworld.ldtk", "assets/tilesets/overworld.png");
-    std::fprintf(stderr, "[region] ldtk load %s: %dx%d tiles, %zu objects\n",
-                 region.ok ? "OK" : "FAILED (using placeholder)", region.map.width,
-                 region.map.height, region.objects.size());
+        ldtk::load("assets/tilesets/source/overworld.ldtk", "assets/tilesets/overworld.png");
+    const auto nonzero = [](const std::vector<TileMap::Tile>& v)
+    {
+        std::size_t n = 0;
+        for (const auto& t : v)
+            if (t.tile_id != 0)
+                ++n;
+        return n;
+    };
+    std::fprintf(
+        stderr, "[region] ldtk load %s: %dx%d tiles, %zu objects, %zu decoration, %zu overhang\n",
+        region.ok ? "OK" : "FAILED (using placeholder)", region.map.width, region.map.height,
+        region.objects.size(), nonzero(region.map.decoration), nonzero(region.map.overhang));
     if (region.ok)
     {
         em.tile_map = region.map;

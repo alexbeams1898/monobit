@@ -327,9 +327,13 @@ void gameRenderWorld(Engine& engine, EntityManager& em, float camX, float camY, 
 
     engine::gl::pixelTargetBegin(kAmbientR, kAmbientG, kAmbientB);
     // Render at the internal resolution (the pixel target's viewport), zoom 1.
-    // camX/camY are the engine-interpolated active-camera position.
+    // camX/camY are the engine-interpolated active-camera position. Draw order:
+    // GROUND -> DECORATION (flowers, under player) -> character sprites -> OVERHANG
+    // (canopy tops, over player = walk-behind). The sparse passes no-op if absent.
     TileMapRenderer::render(camX, camY, kInternalWidth, kInternalHeight, 1.0f);
+    TileMapRenderer::renderDecoration(camX, camY, kInternalWidth, kInternalHeight, 1.0f);
     RenderSystem::render(em, engine.textureManager(), camX, camY, 1.0f);
+    TileMapRenderer::renderOverhang(camX, camY, kInternalWidth, kInternalHeight, 1.0f);
     engine::gl::pixelTargetEnd(engine.windowWidth(), engine.windowHeight());
 }
 
