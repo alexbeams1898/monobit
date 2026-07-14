@@ -65,6 +65,12 @@ std::string surfaceUnder(const EntityManager& em, const GameState& gs, float wx,
     const int row = static_cast<int>(wy) / tm.tile_size;
     if (!tm.in_bounds(col, row))
         return {};
+    // Per-cell override first (a bridge deck sounds like wood even over water); then the
+    // tile-type surface (grass/water/sand) keyed by the tile id under the player.
+    const std::size_t idx = static_cast<std::size_t>(row) * static_cast<std::size_t>(tm.width) +
+                            static_cast<std::size_t>(col);
+    if (const auto cit = gs.cell_surface.find(idx); cit != gs.cell_surface.end())
+        return cit->second;
     const auto it = gs.tile_surface.find(tm.at(col, row).tile_id);
     return it == gs.tile_surface.end() ? std::string{} : it->second;
 }

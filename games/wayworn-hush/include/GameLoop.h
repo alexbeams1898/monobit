@@ -8,6 +8,7 @@
 #include "Notebook.h"
 #include "Observations.h"
 #include "PlayerConfig.h"
+#include "Structures.h"
 #include "Surfaces.h"
 #include "WorldClock.h"
 
@@ -69,16 +70,18 @@ struct GameState
     observations::State observations;
     growth::GrowthState growth;
     PauseState pause;
-    footsteps::Config footstep_config; // authored pool + cadence
-    footsteps::State footstep_state;   // runtime cadence timer
-    surfaces::Config surface_config;   // per-surface walkability (terrain collision)
-    std::unordered_map<int, std::string> tile_surface; // tile id -> surface (footsteps)
-    hud::Regions hud;                                  // fixed HUD region rects + visibility mode
-    HeadMarkerConfig head_marker_config;               // over-head thought-bubble feel/placement
-    worldclock::WorldClock clock; // in-world time (notebook datelines, day/night later)
-    inventory::Registry items;    // loaded item blueprints (config/items/*.json)
-    inventory::Satchel satchel;   // what the pilgrim carries
-    notebook::Record notebook;    // dated record of readings (gated on carrying the notebook)
+    footsteps::Config footstep_config;   // authored pool + cadence
+    footsteps::State footstep_state;     // runtime cadence timer
+    surfaces::Config surface_config;     // per-surface walkability (terrain collision)
+    structures::Config structure_config; // resizable walk-on structures (9-slice)
+    std::unordered_map<int, std::string> tile_surface;         // tile id -> surface (footsteps)
+    std::unordered_map<std::size_t, std::string> cell_surface; // per-cell override (structures)
+    hud::Regions hud;                    // fixed HUD region rects + visibility mode
+    HeadMarkerConfig head_marker_config; // over-head thought-bubble feel/placement
+    worldclock::WorldClock clock;        // in-world time (notebook datelines, day/night later)
+    inventory::Registry items;           // loaded item blueprints (config/items/*.json)
+    inventory::Satchel satchel;          // what the pilgrim carries
+    notebook::Record notebook; // dated record of readings (gated on carrying the notebook)
     // Unlock ids (see observations::availableUnlocks) already announced via a
     // notification, so "1 new observation / action available" toasts fire exactly
     // once per new unlock, not every frame.

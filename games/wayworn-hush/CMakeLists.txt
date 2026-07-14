@@ -16,6 +16,7 @@ add_library(wayworn-systems STATIC
     src/Notify.cpp
     src/Footsteps.cpp
     src/Surfaces.cpp
+    src/Structures.cpp
     src/HudCanvas.cpp
     src/HeadMarker.cpp
     src/WorldClock.cpp
@@ -71,6 +72,7 @@ add_executable(wayworn-tests
     tests/unlock_condition_test.cpp
     tests/footsteps_test.cpp
     tests/surfaces_test.cpp
+    tests/structures_test.cpp
     tests/hud_canvas_test.cpp
     tests/head_marker_test.cpp
     tests/world_clock_test.cpp

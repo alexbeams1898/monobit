@@ -128,8 +128,9 @@ void gameOnResize(Engine& engine, int w, int h)
 // cells); they surface via glimmer + observe instead. See docs/design/MAP-PIPELINE.md.
 void setupRegion(Engine& engine, EntityManager& em, GameState& gs)
 {
-    const ldtk::Region region = ldtk::load("assets/tilesets/source/overworld.ldtk",
-                                           "assets/tilesets/overworld.png", gs.surface_config);
+    const ldtk::Region region =
+        ldtk::load("assets/tilesets/source/overworld.ldtk", "assets/tilesets/overworld.png",
+                   gs.surface_config, gs.structure_config);
     std::fprintf(stderr, "[region] ldtk load %s: %dx%d, %zu objects, %zu props\n",
                  region.ok ? "OK" : "FAILED (using placeholder)", region.map.width,
                  region.map.height, region.objects.size(), region.props.size());
@@ -138,6 +139,7 @@ void setupRegion(Engine& engine, EntityManager& em, GameState& gs)
         em.tile_map = region.map;
         em.tile_config = region.config;
         gs.tile_surface = region.tile_surface; // tile id -> surface, for footsteps
+        gs.cell_surface = region.cell_surface; // per-cell override (bridge decks, etc.)
     }
     else
     {
@@ -261,6 +263,7 @@ int main(int argc, char* argv[])
     growth::load(gs.growth, "config/faculties.json");
     footsteps::load(gs.footstep_config, "config/footsteps.json");
     surfaces::load(gs.surface_config, "config/surfaces.json");
+    structures::load(gs.structure_config, "config/structures.json");
 
     // Item blueprints, then the pilgrim's starting satchel: he sets out carrying his
     // notebook (a key item -- carrying it is what lets thoughts be written down; see

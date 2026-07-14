@@ -7,6 +7,7 @@
 #include <stb_image.h> // declarations only; implementation lives in TextureManager.cpp
 
 #include <algorithm>
+#include <array>
 #include <fstream>
 #include <unordered_map>
 #include <unordered_set>
@@ -240,7 +241,10 @@ int atlasCols(const json& j, int fallback)
 
 // Entities layer -> props (tile-carrying) + objects (typed, e.g. PlayerSpawn). LDtk px
 // is authoring-grid px, x2 to the 32px world. `atlas` decodes prop footprint colliders.
-void parseEntities(const Atlas& atlas, const json& level, Region& r)
+// Structure-type entities (bridges, docks) are handled by parseStructures (stamped into
+// the map), so they're skipped here rather than becoming stray objects.
+void parseEntities(const Atlas& atlas, const json& level, const structures::Config& structureCfg,
+                   Region& r)
 {
     const json* ents = findLayer(level, "Entities");
     if (!ents)
@@ -250,6 +254,9 @@ void parseEntities(const Atlas& atlas, const json& level, Region& r)
         return;
     for (const auto& e : *ei)
     {
+        const std::string id = e.value("__identifier", std::string{});
+        if (structureCfg.layouts.count(id))
+            continue; // a structure -> stamped by parseStructures, not a prop/object
         const auto px = e.find("px");
         if (px == e.end() || !px->is_array())
             continue;
@@ -263,7 +270,7 @@ void parseEntities(const Atlas& atlas, const json& level, Region& r)
         else
         {
             Object o;
-            o.type = e.value("__identifier", std::string{});
+            o.type = id;
             o.wx = wx;
             o.wy = wy;
             r.objects.push_back(o);
@@ -277,8 +284,69 @@ struct GridInfo
     int grid_size = 16; // authoring cell px (16)
     int atlas_cols = 40;
     int cw = 0, ch = 0; // grid columns/rows
-    int fill_id = 0;     // border-fill cell id
+    int fill_id = 0;    // border-fill cell id
 };
+
+// Stamp resizable structure entities (bridges, docks) into the map: for each entity
+// whose identifier is a known structure type, tile the 9-slice art across its rect, mark
+// those cells walkable, and tag them with the structure's surface (so collision +
+// footsteps come from the one placed box). Runs AFTER ground so a structure draws over
+// whatever terrain it spans. Registers each stamped tile's uv into `uvById` and its
+// surface into r.tile_surface.
+void parseStructures(const json& level, const structures::Config& structureCfg, const GridInfo& g,
+                     std::unordered_map<int, std::pair<int, int>>& uvById, Region& r)
+{
+    const json* ents = findLayer(level, "Entities");
+    if (!ents)
+        return;
+    const auto ei = ents->find("entityInstances");
+    if (ei == ents->end() || !ei->is_array())
+        return;
+    for (const auto& e : *ei)
+    {
+        const auto lay = structureCfg.layouts.find(e.value("__identifier", std::string{}));
+        if (lay == structureCfg.layouts.end())
+            continue; // not a structure type
+        const auto px = e.find("px");
+        if (px == e.end() || !px->is_array())
+            continue;
+        // Entity rect in CELLS (px + width/height are authoring px; pivot is top-left).
+        const int col0 = (*px)[0].get<int>() / g.grid_size;
+        const int row0 = (*px)[1].get<int>() / g.grid_size;
+        const int w = std::max(1, e.value("width", g.grid_size) / g.grid_size);
+        const int h = std::max(1, e.value("height", g.grid_size) / g.grid_size);
+        for (int lr = 0; lr < h; ++lr)
+            for (int lc = 0; lc < w; ++lc)
+            {
+                const int col = col0 + lc;
+                const int row = row0 + lr;
+                if (col < 0 || row < 0 || col >= g.cw || row >= g.ch)
+                    continue;
+                const std::array<int, 2> uv = lay->second.at(lc, lr, w, h);
+                const int id = cellId(uv[0], uv[1], g.atlas_cols);
+                uvById[id] = {uv[0], uv[1]};
+                const std::size_t idx =
+                    static_cast<std::size_t>(row) * static_cast<std::size_t>(g.cw) +
+                    static_cast<std::size_t>(col);
+                // The structure art ALWAYS goes on the DECORATION layer, drawn over the
+                // terrain but under the player -- so the ground base underneath still
+                // renders where the structure tile is transparent (a bridge-end cap and
+                // the side rails taper to terrain; only the middle deck is fully opaque).
+                // Never replace the base tile, or that transparency shows the clear color
+                // instead of the ground.
+                r.map.decoration[idx] = TileMap::Tile{id, true};
+                // Walkable slices are footing: mark the cell walkable and give it a
+                // per-CELL surface override (the base tile stays terrain for rendering,
+                // but you sound like wood walking the deck). Overhang slices (rails)
+                // leave the terrain's own walkability -- you don't walk or step there.
+                if (lay->second.walkableAt(lc, lr, w, h))
+                {
+                    r.map.tiles[idx].walkable = true;
+                    r.cell_surface[idx] = lay->second.surface;
+                }
+            }
+    }
+}
 
 // Resolve the region's grid header: find the Ground layer, read its dimensions into
 // r.map, parse the level's fill_tile into r.fill_uv_*, and fill the GridInfo. Returns
@@ -391,7 +459,7 @@ void fillTileConfig(const std::unordered_map<int, std::pair<int, int>>& uvById,
 }
 
 Region load(const std::string& ldtk_path, const std::string& tileset_path,
-            const surfaces::Config& surfaceCfg)
+            const surfaces::Config& surfaceCfg, const structures::Config& structureCfg)
 {
     Region r;
     std::ifstream f(ldtk_path);
@@ -427,9 +495,12 @@ Region load(const std::string& ldtk_path, const std::string& tileset_path,
     const std::unordered_map<int, std::string> cellSurface = surfaceByCell(j);
     r.tile_surface = cellSurface;
 
-    const auto uvById = parseGround(*ground, atlas, surfaceCfg, g, cellSurface, r);
+    auto uvById = parseGround(*ground, atlas, surfaceCfg, g, cellSurface, r);
+    // Structures stamp over the ground (a deck spans whatever terrain), adding their
+    // tiles to the config + surface map, so do them before fillTileConfig.
+    parseStructures(level, structureCfg, g, uvById, r);
     fillTileConfig(uvById, tileset_path, r);
-    parseEntities(atlas, level, r);
+    parseEntities(atlas, level, structureCfg, r);
 
     r.ok = true;
     return r;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Structures.h"
 #include "Surfaces.h"
 #include "TileMap.h"
 
@@ -68,6 +69,10 @@ struct Region
     // tile under the player to its surface for footsteps; a tile absent here is
     // untagged (the default surface). Same tag that drives walkability at load.
     std::unordered_map<int, std::string> tile_surface;
+    // Per-CELL surface override (cell index -> surface), for structures whose deck sits
+    // on a different terrain tile than it sounds like (a bridge over water sounds like
+    // wood). Checked before tile_surface. Sparse: only structure footing cells.
+    std::unordered_map<std::size_t, std::string> cell_surface;
     bool ok = false; // false if the file was missing / unparseable
 };
 
@@ -75,9 +80,11 @@ struct Region
 // atlas (e.g. "assets/tilesets/overworld.png") -- the authoring source in the
 // .ldtk is 16px, but the atlas cell indices match, so the importer just points at
 // the render atlas. `surfaces` resolves each ground tile's surface tag to walkability
-// (terrain collision -- no hand-painted layer). Returns Region{ok=false} on failure.
+// (terrain collision -- no hand-painted layer). `structures` tiles resizable structure
+// entities (bridges, docks) across their rect (9-slice deck + walkable + surface).
+// Region{ok=false} on failure.
 Region load(const std::string& ldtk_path, const std::string& tileset_path,
-            const surfaces::Config& surfaces);
+            const surfaces::Config& surfaces, const structures::Config& structures);
 
 // Spawn the region's props (tile-carrying LDtk entities -- trees, rocks) as ONE
 // Y-sorted sprite each, sorted by its base world-Y, so the engine's depth-sort draws

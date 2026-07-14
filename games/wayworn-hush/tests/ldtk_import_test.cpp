@@ -16,14 +16,18 @@ ldtk::Region loadRegion()
 {
     surfaces::Config sc;
     surfaces::load(sc, "config/surfaces.json");
-    return ldtk::load("assets/tilesets/source/overworld.ldtk", "assets/tilesets/overworld.png", sc);
+    structures::Config st;
+    structures::load(st, "config/structures.json");
+    return ldtk::load("assets/tilesets/source/overworld.ldtk", "assets/tilesets/overworld.png", sc,
+                      st);
 }
 } // namespace
 
 TEST_CASE("A missing file returns ok=false, not a crash", "[ldtk]")
 {
     const surfaces::Config sc;
-    const ldtk::Region r = ldtk::load("assets/nope/does_not_exist.ldtk", "x.png", sc);
+    const structures::Config st;
+    const ldtk::Region r = ldtk::load("assets/nope/does_not_exist.ldtk", "x.png", sc, st);
     REQUIRE_FALSE(r.ok);
 }
 
