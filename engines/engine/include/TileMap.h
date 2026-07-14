@@ -70,7 +70,18 @@ struct TileMap
         int tile_id = SOLID_ID;
         bool walkable = false; // pre-computed at generation time
     };
-    std::vector<Tile> tiles; // row-major: tiles[row * width + col]
+    std::vector<Tile> tiles; // row-major: tiles[row * width + col] -- the GROUND layer
+
+    // Optional DECORATION layer: sparse props drawn ABOVE the ground but BELOW
+    // characters -- flowers, grass tufts, pebbles the character walks ON TOP of.
+    // Same layout/size as `tiles`; EMPTY by default. tile_id 0 = "none" here.
+    std::vector<Tile> decoration;
+
+    // Optional OVERHANG layer: sparse props drawn ABOVE characters so a character
+    // can walk BEHIND them (tree canopies, tall tops). Same layout/size as `tiles`;
+    // EMPTY by default (the renderer's overhang pass is then a no-op). Collision
+    // lives on `tiles`; decoration/overhang are purely visual. tile_id 0 = "none".
+    std::vector<Tile> overhang;
 
     // Spawn points collected from room template markers.
     struct SpawnPoint

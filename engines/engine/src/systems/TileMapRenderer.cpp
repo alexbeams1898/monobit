@@ -67,6 +67,16 @@ static int sTMVertexCount = 0;
 static uint32_t sTilesetTexId = 0;
 static bool sHasTileset = false;
 
+// Two SEPARATE sparse meshes (only cells with a prop), each its own VAO/VBO, empty
+// by default (zero verts -> no-op). DECORATION draws BEFORE characters (flowers the
+// player walks on); OVERHANG draws AFTER (canopy tops the player walks behind).
+static GLuint sDecVao = 0;
+static GLuint sDecVbo = 0;
+static int sDecVertexCount = 0;
+static GLuint sOverVao = 0;
+static GLuint sOverVbo = 0;
+static int sOverVertexCount = 0;
+
 // Cached uniform locations — avoids glGetUniformLocation per frame.
 static GLint sLocProjection = -1;
 static GLint sLocUseTexture = -1;
@@ -76,6 +86,49 @@ static GLint sLocTileset = -1;
 static int sMapWidth = 0;
 static int sMapHeight = 0;
 static float sTileSize = 0.0f;
+
+// Emit one tile's quad (6 verts x 8 floats) into `verts`. Shared by the ground
+// and overhang bakes so both layers rasterize identically.
+static void emitTileQuad(std::vector<float>& verts, const TileConfig& config, int tileId, int col,
+                         int row, float ts, bool hasTileset, int atlasW, int atlasH)
+{
+    float tr = 1.0f, tg = 1.0f, tb = 1.0f;
+    float u0 = 0.0f, v0 = 0.0f, u1 = 1.0f, v1 = 1.0f;
+    if (const auto vit = config.tile_visuals.find(tileId); vit != config.tile_visuals.end())
+    {
+        const auto& vis = vit->second;
+        if (hasTileset)
+        {
+            const float tw = static_cast<float>(atlasW);
+            const float th = static_cast<float>(atlasH);
+            const float tileF = static_cast<float>(config.atlas_tile_size);
+            const float c = static_cast<float>(vis.uv_col);
+            const float r = static_cast<float>(vis.uv_row);
+            u0 = c * tileF / tw;
+            v0 = r * tileF / th;
+            u1 = (c + 1.0f) * tileF / tw;
+            v1 = (r + 1.0f) * tileF / th;
+        }
+        else
+        {
+            tr = vis.r;
+            tg = vis.g;
+            tb = vis.b;
+        }
+    }
+    const float x0 = static_cast<float>(col) * ts;
+    const float y0 = static_cast<float>(row) * ts;
+    const float x1 = x0 + ts;
+    const float y1 = y0 + ts;
+    const auto push = [&](float x, float y, float u, float v)
+    { verts.insert(verts.end(), {x, y, u, v, tr, tg, tb, 1.0f}); };
+    push(x0, y0, u0, v0);
+    push(x1, y0, u1, v0);
+    push(x1, y1, u1, v1); // tri 1
+    push(x0, y0, u0, v0);
+    push(x1, y1, u1, v1);
+    push(x0, y1, u0, v1); // tri 2
+}
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -108,26 +161,27 @@ void TileMapRenderer::init()
     sLocTileset = glGetUniformLocation(sTMProgram, "uTileset");
 
     // Vertex layout: vec2 pos + vec2 uv + vec4 color = 8 floats per vertex.
-    glGenVertexArrays(1, &sTMVao);
-    glGenBuffers(1, &sTMVbo);
-
-    glBindVertexArray(sTMVao);
-    glBindBuffer(GL_ARRAY_BUFFER, sTMVbo);
-
-    const int stride = 8 * static_cast<int>(sizeof(float));
-    // aPos -- location 0
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void*>(0));
-    glEnableVertexAttribArray(0);
-    // aUV -- location 1
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride,
-                          reinterpret_cast<void*>(2 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-    // aColor -- location 2
-    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, stride,
-                          reinterpret_cast<void*>(4 * sizeof(float)));
-    glEnableVertexAttribArray(2);
-
-    glBindVertexArray(0);
+    // Ground + overhang layers share the same layout; set up both VAO/VBO pairs.
+    const auto setupVao = [](GLuint& vao, GLuint& vbo)
+    {
+        glGenVertexArrays(1, &vao);
+        glGenBuffers(1, &vbo);
+        glBindVertexArray(vao);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        const int stride = 8 * static_cast<int>(sizeof(float));
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void*>(0)); // aPos
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride,
+                              reinterpret_cast<void*>(2 * sizeof(float))); // aUV
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, stride,
+                              reinterpret_cast<void*>(4 * sizeof(float))); // aColor
+        glEnableVertexAttribArray(2);
+        glBindVertexArray(0);
+    };
+    setupVao(sTMVao, sTMVbo);
+    setupVao(sDecVao, sDecVbo);
+    setupVao(sOverVao, sOverVbo);
 }
 
 void TileMapRenderer::upload(const TileMap& map, const TileConfig& config, TextureManager& tm)
@@ -151,70 +205,16 @@ void TileMapRenderer::upload(const TileMap& map, const TileConfig& config, Textu
     // Each tile = 2 triangles = 6 vertices x 8 floats.
     const auto tile_count =
         static_cast<std::size_t>(map.width) * static_cast<std::size_t>(map.height);
-    std::vector<float> verts;
-    verts.reserve(tile_count * 48); // 6 verts * 8 floats
-
     const float ts = static_cast<float>(map.tile_size);
 
+    // GROUND layer: a DENSE mesh (every cell), so render() can frustum-cull by
+    // row/column span (index = row*width+col).
+    std::vector<float> verts;
+    verts.reserve(tile_count * 48); // 6 verts * 8 floats
     for (int row = 0; row < map.height; ++row)
-    {
         for (int col = 0; col < map.width; ++col)
-        {
-            const auto& tile = map.at(col, row);
-
-            // Look up visual (UV + fallback color) from config.
-            float tr = 1.0f, tg = 1.0f, tb = 1.0f;
-            float u0 = 0.0f, v0 = 0.0f, u1 = 1.0f, v1 = 1.0f;
-
-            auto vit = config.tile_visuals.find(tile.tile_id);
-            if (vit != config.tile_visuals.end())
-            {
-                const auto& vis = vit->second;
-                if (sHasTileset)
-                {
-                    const float tw = static_cast<float>(atlasW);
-                    const float th = static_cast<float>(atlasH);
-                    const float tileF = static_cast<float>(config.atlas_tile_size);
-                    const float c = static_cast<float>(vis.uv_col);
-                    const float r = static_cast<float>(vis.uv_row);
-                    u0 = c * tileF / tw;
-                    v0 = r * tileF / th;
-                    u1 = (c + 1.0f) * tileF / tw;
-                    v1 = (r + 1.0f) * tileF / th;
-                }
-                else
-                {
-                    tr = vis.r;
-                    tg = vis.g;
-                    tb = vis.b;
-                }
-            }
-
-            const float x0 = static_cast<float>(col) * ts;
-            const float y0 = static_cast<float>(row) * ts;
-            const float x1 = x0 + ts;
-            const float y1 = y0 + ts;
-
-            auto push = [&](float x, float y, float u, float v)
-            {
-                verts.push_back(x);
-                verts.push_back(y);
-                verts.push_back(u);
-                verts.push_back(v);
-                verts.push_back(tr);
-                verts.push_back(tg);
-                verts.push_back(tb);
-                verts.push_back(1.0f);
-            };
-
-            push(x0, y0, u0, v0);
-            push(x1, y0, u1, v0);
-            push(x1, y1, u1, v1); // tri 1
-            push(x0, y0, u0, v0);
-            push(x1, y1, u1, v1);
-            push(x0, y1, u0, v1); // tri 2
-        }
-    }
+            emitTileQuad(verts, config, map.at(col, row).tile_id, col, row, ts, sHasTileset, atlasW,
+                         atlasH);
 
     sMapWidth = map.width;
     sMapHeight = map.height;
@@ -225,16 +225,75 @@ void TileMapRenderer::upload(const TileMap& map, const TileConfig& config, Textu
     glBindBuffer(GL_ARRAY_BUFFER, sTMVbo);
     glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(verts.size() * sizeof(float)),
                  verts.data(), GL_STATIC_DRAW);
+
+    // Bake a SPARSE layer (decoration / overhang): only cells with a prop
+    // (tile_id != 0) get a quad; drawn whole (prop count is small, no cull). Returns
+    // the vertex count and uploads into `vbo`.
+    const auto bakeSparse = [&](const std::vector<TileMap::Tile>& layer, GLuint vbo) -> int
+    {
+        std::vector<float> sv;
+        if (layer.size() == map.tiles.size())
+            for (int row = 0; row < map.height; ++row)
+                for (int col = 0; col < map.width; ++col)
+                {
+                    const int id =
+                        layer[static_cast<std::size_t>(row) * static_cast<std::size_t>(map.width) +
+                              static_cast<std::size_t>(col)]
+                            .tile_id;
+                    if (id != 0)
+                        emitTileQuad(sv, config, id, col, row, ts, sHasTileset, atlasW, atlasH);
+                }
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(sv.size() * sizeof(float)), sv.data(),
+                     GL_STATIC_DRAW);
+        return static_cast<int>(sv.size() / 8);
+    };
+    sDecVertexCount = bakeSparse(map.decoration, sDecVbo);
+    sOverVertexCount = bakeSparse(map.overhang, sOverVbo);
     glBindVertexArray(0);
 }
 
 void TileMapRenderer::clear()
 {
     sTMVertexCount = 0;
+    sDecVertexCount = 0;
+    sOverVertexCount = 0;
     sMapWidth = 0;
     sMapHeight = 0;
     sTileSize = 0.0f;
 }
+
+namespace
+{
+// Set the projection + shader + tileset for a tilemap draw. Shared by the ground
+// and overhang passes (same camera, program, atlas). Returns the snapped camera +
+// half-extents so the caller can frustum-cull.
+struct DrawView
+{
+    float snap_x, snap_y, half_w, half_h;
+};
+DrawView beginTileDraw(float camX, float camY, int windowW, int windowH, float zoom)
+{
+    DrawView v;
+    v.half_w = static_cast<float>(windowW) * 0.5f / zoom;
+    v.half_h = static_cast<float>(windowH) * 0.5f / zoom;
+    v.snap_x = std::round(camX);
+    v.snap_y = std::round(camY);
+    float proj[16];
+    engine::gl::buildOrtho(proj, v.snap_x - v.half_w, v.snap_x + v.half_w, v.snap_y + v.half_h,
+                           v.snap_y - v.half_h);
+    glUseProgram(sTMProgram);
+    glUniformMatrix4fv(sLocProjection, 1, GL_FALSE, proj);
+    glUniform1i(sLocUseTexture, sHasTileset ? 1 : 0);
+    if (sHasTileset)
+    {
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(sTilesetTexId));
+        glUniform1i(sLocTileset, 0);
+    }
+    return v;
+}
+} // namespace
 
 void TileMapRenderer::render(float camX, float camY, int windowW, int windowH, float zoom)
 {
@@ -242,38 +301,18 @@ void TileMapRenderer::render(float camX, float camY, int windowW, int windowH, f
     if (sTMVertexCount == 0)
         return;
 
-    const float half_w = static_cast<float>(windowW) * 0.5f / zoom;
-    const float half_h = static_cast<float>(windowH) * 0.5f / zoom;
-
-    const float snap_x = std::round(camX);
-    const float snap_y = std::round(camY);
-
-    float proj[16];
-    engine::gl::buildOrtho(proj, snap_x - half_w, snap_x + half_w, snap_y + half_h,
-                           snap_y - half_h);
-
-    glUseProgram(sTMProgram);
-    glUniformMatrix4fv(sLocProjection, 1, GL_FALSE, proj);
-    glUniform1i(sLocUseTexture, sHasTileset ? 1 : 0);
-
-    if (sHasTileset)
-    {
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(sTilesetTexId));
-        glUniform1i(sLocTileset, 0);
-    }
-
+    const DrawView v = beginTileDraw(camX, camY, windowW, windowH, zoom);
     glBindVertexArray(sTMVao);
 
-    // Frustum cull: draw only tiles visible on screen (row + column).
-    // One draw call per visible row, each spanning only visible columns.
+    // Frustum cull the DENSE ground mesh: one draw call per visible row, each
+    // spanning only visible columns (index = row*width+col).
     if (sMapWidth > 0 && sMapHeight > 0 && sTileSize > 0.0f)
     {
         static constexpr int VERTS_PER_TILE = 6;
-        int row0 = static_cast<int>((snap_y - half_h) / sTileSize) - 1;
-        int row1 = static_cast<int>((snap_y + half_h) / sTileSize) + 1;
-        int col0 = static_cast<int>((snap_x - half_w) / sTileSize) - 1;
-        int col1 = static_cast<int>((snap_x + half_w) / sTileSize) + 1;
+        int row0 = static_cast<int>((v.snap_y - v.half_h) / sTileSize) - 1;
+        int row1 = static_cast<int>((v.snap_y + v.half_h) / sTileSize) + 1;
+        int col0 = static_cast<int>((v.snap_x - v.half_w) / sTileSize) - 1;
+        int col1 = static_cast<int>((v.snap_x + v.half_w) / sTileSize) + 1;
         row0 = std::max(row0, 0);
         row1 = std::min(row1, sMapHeight - 1);
         col0 = std::max(col0, 0);
@@ -295,6 +334,34 @@ void TileMapRenderer::render(float camX, float camY, int windowW, int windowH, f
     glUseProgram(0);
 }
 
+namespace
+{
+// Draw one sparse layer mesh whole (prop count is small; no per-row cull).
+void drawSparse(GLuint vao, int vertexCount, float camX, float camY, int windowW, int windowH,
+                float zoom)
+{
+    if (vertexCount == 0)
+        return; // empty layer -> no-op (games without it are unaffected)
+    beginTileDraw(camX, camY, windowW, windowH, zoom);
+    glBindVertexArray(vao);
+    glDrawArrays(GL_TRIANGLES, 0, vertexCount);
+    glBindVertexArray(0);
+    glUseProgram(0);
+}
+} // namespace
+
+void TileMapRenderer::renderDecoration(float camX, float camY, int windowW, int windowH, float zoom)
+{
+    ZoneScopedN("TileMapRenderer::decoration");
+    drawSparse(sDecVao, sDecVertexCount, camX, camY, windowW, windowH, zoom);
+}
+
+void TileMapRenderer::renderOverhang(float camX, float camY, int windowW, int windowH, float zoom)
+{
+    ZoneScopedN("TileMapRenderer::overhang");
+    drawSparse(sOverVao, sOverVertexCount, camX, camY, windowW, windowH, zoom);
+}
+
 void TileMapRenderer::shutdown()
 {
     if (sTMVbo)
@@ -307,12 +374,34 @@ void TileMapRenderer::shutdown()
         glDeleteVertexArrays(1, &sTMVao);
         sTMVao = 0;
     }
+    if (sDecVbo)
+    {
+        glDeleteBuffers(1, &sDecVbo);
+        sDecVbo = 0;
+    }
+    if (sDecVao)
+    {
+        glDeleteVertexArrays(1, &sDecVao);
+        sDecVao = 0;
+    }
+    if (sOverVbo)
+    {
+        glDeleteBuffers(1, &sOverVbo);
+        sOverVbo = 0;
+    }
+    if (sOverVao)
+    {
+        glDeleteVertexArrays(1, &sOverVao);
+        sOverVao = 0;
+    }
     if (sTMProgram)
     {
         glDeleteProgram(sTMProgram);
         sTMProgram = 0;
     }
     sTMVertexCount = 0;
+    sDecVertexCount = 0;
+    sOverVertexCount = 0;
     sTilesetTexId = 0;
     sHasTileset = false;
     sMapWidth = 0;
