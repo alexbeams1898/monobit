@@ -36,8 +36,7 @@ configure_file(
 )
 target_include_directories(wayworn-systems PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/generated)
 
-# Game executable. Each game's exe + assets live in their own subdirectory
-# under build/bin/ so two games' config/ trees can never collide.
+# Game executable.
 add_executable(wayworn-hush src/main.cpp)
 target_link_libraries(wayworn-hush PRIVATE wayworn-systems)
 set_target_properties(wayworn-hush PROPERTIES
@@ -48,20 +47,14 @@ if(MINGW)
     target_link_options(wayworn-hush PRIVATE -static-libgcc -static-libstdc++)
 endif()
 
-# Sync assets and config to the build output on every build (ALL target, not
-# POST_BUILD, so JSON/PNG edits sync even when no .cpp changes -- see
-# prison-escape-game/CMakeLists.txt for the full rationale). The dirs are
-# empty at scaffold stage; the target is harmless and ready for content.
-add_custom_target(wayworn-sync-assets-and-config ALL
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_CURRENT_SOURCE_DIR}/assets
-        $<TARGET_FILE_DIR:wayworn-hush>/assets
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_CURRENT_SOURCE_DIR}/config
-        $<TARGET_FILE_DIR:wayworn-hush>/config
-    COMMENT "Syncing wayworn-hush assets and config to build output..."
-    VERBATIM
-)
+# Dev builds read assets/config DIRECTLY from the source tree (main.cpp chdir's
+# here at startup): one source of truth, so an LDtk/JSON/PNG edit is live on the
+# next F7 -- no copy step that can lag or lock behind a running game. Release
+# builds (WAYWORN_RELEASE=ON) omit this and ship assets beside the exe.
+if(NOT WAYWORN_RELEASE)
+    target_compile_definitions(wayworn-hush PRIVATE
+        WAYWORN_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+endif()
 
 # ---------------------------------------------------------------------------
 # Game tests -- test game systems (links wayworn-systems which PUBLIC-links engine).

@@ -22,6 +22,7 @@
 #include <cstdio>
 #include <ctime>
 #include <exception>
+#include <filesystem>
 #include <fstream>
 
 // ---------------------------------------------------------------------------
@@ -136,6 +137,17 @@ int main(int argc, char* argv[])
 {
     (void)argc;
     (void)argv;
+
+    // Dev builds: run from the SOURCE tree so assets/config are read directly (one
+    // source of truth -- an LDtk/JSON/PNG edit is live next launch, no copy step to
+    // lag or lock). WAYWORN_SOURCE_DIR is defined by CMake for non-release builds
+    // only; release builds skip this and read assets shipped beside the exe.
+#ifdef WAYWORN_SOURCE_DIR
+    {
+        std::error_code ec;
+        std::filesystem::current_path(WAYWORN_SOURCE_DIR, ec); // no-op on failure
+    }
+#endif
 
     redirectStdioToLog();
 
