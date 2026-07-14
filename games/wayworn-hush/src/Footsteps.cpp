@@ -21,8 +21,26 @@ void load(Config& cfg, const std::string& path)
     cfg.volume = j.value("volume", cfg.volume);
     cfg.walk_cadence = j.value("walk_cadence", cfg.walk_cadence);
     cfg.run_cadence = j.value("run_cadence", cfg.run_cadence);
-    if (const auto it = j.find("grass"); it != j.end() && it->is_array())
-        cfg.grass = it->get<std::vector<std::string>>();
+    cfg.default_surface = j.value("default_surface", cfg.default_surface);
+    // pools: { "Grass": [...], "Sand": [...], "Bridge": [...] } -- keyed by the surface
+    // tag. A surface with no entry is silent (water).
+    if (const auto it = j.find("pools"); it != j.end() && it->is_object())
+        for (const auto& [surface, files] : it->items())
+            if (files.is_array())
+                cfg.pools[surface] = files.get<std::vector<std::string>>();
+}
+
+// An EMPTY surface name means "untagged tile" -> the default pool (bare ground sounds
+// like grass). A NAMED surface resolves only to its own pool: if it has none, the step
+// is silent BY INTENT (water is tagged but has no pool, so it stays silent instead of
+// borrowing grass). Returns nullptr when silent.
+const std::vector<std::string>* poolFor(const Config& cfg, const std::string& surface)
+{
+    const std::string& key = surface.empty() ? cfg.default_surface : surface;
+    const auto it = cfg.pools.find(key);
+    if (it != cfg.pools.end() && !it->second.empty())
+        return &it->second;
+    return nullptr;
 }
 
 bool tick(State& state, const Config& cfg, bool moving, bool run, float dt)
@@ -39,13 +57,17 @@ bool tick(State& state, const Config& cfg, bool moving, bool run, float dt)
     return true;
 }
 
-void update(State& state, const Config& cfg, bool moving, bool run, float dt)
+void update(State& state, const Config& cfg, const std::string& surface, bool moving, bool run,
+            float dt)
 {
-    if (!tick(state, cfg, moving, run, dt) || cfg.grass.empty())
+    if (!tick(state, cfg, moving, run, dt))
         return;
+    const std::vector<std::string>* pool = poolFor(cfg, surface);
+    if (!pool)
+        return; // silent surface (water) -- no footfall
     static std::mt19937 rng{std::random_device{}()};
-    const auto idx = std::uniform_int_distribution<std::size_t>{0, cfg.grass.size() - 1}(rng);
-    AudioSystem::playSfx(cfg.grass[idx], cfg.volume);
+    const auto idx = std::uniform_int_distribution<std::size_t>{0, pool->size() - 1}(rng);
+    AudioSystem::playSfx((*pool)[idx], cfg.volume);
 }
 
 } // namespace footsteps

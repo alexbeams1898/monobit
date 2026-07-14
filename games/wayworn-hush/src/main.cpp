@@ -119,6 +119,50 @@ void gameOnResize(Engine& engine, int w, int h)
     auto& gs = engine.entityManager().registry().ctx().get<GameState>();
     reloadHudFonts(gs, w, h);
 }
+
+// Load the authored LDtk region (real tileset art) into the world, or fall back to the
+// flat-color placeholder. Applies terrain + surface map, uploads it, spawns the player
+// at the region's PlayerSpawn (if any), and spawns glimmer signals + tile-carrying prop
+// entities (trees/rocks -- Y-sorted, front/behind the player by base). One source of
+// truth: observables aren't stamped into a real region (their ids would clash with atlas
+// cells); they surface via glimmer + observe instead. See docs/design/MAP-PIPELINE.md.
+void setupRegion(Engine& engine, EntityManager& em, GameState& gs)
+{
+    const ldtk::Region region = ldtk::load("assets/tilesets/source/overworld.ldtk",
+                                           "assets/tilesets/overworld.png", gs.surface_config);
+    std::fprintf(stderr, "[region] ldtk load %s: %dx%d, %zu objects, %zu props\n",
+                 region.ok ? "OK" : "FAILED (using placeholder)", region.map.width,
+                 region.map.height, region.objects.size(), region.props.size());
+    if (region.ok)
+    {
+        em.tile_map = region.map;
+        em.tile_config = region.config;
+        gs.tile_surface = region.tile_surface; // tile id -> surface, for footsteps
+    }
+    else
+    {
+        world_init::buildPlaceholderRegion(em);
+        world_init::placeObservableTiles(em, gs.observations);
+    }
+    TileMapRenderer::upload(em.tile_map, em.tile_config, engine.textureManager());
+
+    gs.player = world_init::spawnPlayer(em, gs.player_config);
+    for (const auto& o : region.objects)
+        if (o.type == "PlayerSpawn")
+        {
+            auto& t = em.registry().get<Transform>(gs.player);
+            t.x = o.wx;
+            t.y = o.wy;
+            if (auto* pt = em.registry().try_get<PreviousTransform>(gs.player))
+            {
+                pt->x = o.wx;
+                pt->y = o.wy;
+            }
+        }
+    glimmer::spawn(em, gs.observations);
+    if (region.ok)
+        ldtk::spawnProps(em, region, "assets/tilesets/overworld.png");
+}
 } // namespace
 
 // Reopen stdio onto wayworn-hush.log (next to the exe, truncated per run) so
@@ -216,6 +260,7 @@ int main(int argc, char* argv[])
     observations::load(gs.observations, "config/observations.json", "config/actions.json");
     growth::load(gs.growth, "config/faculties.json");
     footsteps::load(gs.footstep_config, "config/footsteps.json");
+    surfaces::load(gs.surface_config, "config/surfaces.json");
 
     // Item blueprints, then the pilgrim's starting satchel: he sets out carrying his
     // notebook (a key item -- carrying it is what lets thoughts be written down; see
@@ -223,58 +268,9 @@ int main(int argc, char* argv[])
     inventory::load(gs.items, "config/items");
     inventory::add(gs.satchel, gs.items, inventory::ItemInstance{"notebook"});
 
-    // Terrain: load the authored LDtk region (real tileset art) if present; else
-    // fall back to the flat-color placeholder region. Observable tiles are stamped
-    // on top FROM the observation config (one source of truth) either way, so every
-    // authored observable is visible. Then upload.
-    // The .ldtk lives beside its source tileset (LDtk resolves the tileset by a
-    // sibling relative path); the game renders the x2 atlas (assets/tilesets/
-    // overworld.png). See docs/design/MAP-PIPELINE.md.
-    const ldtk::Region region =
-        ldtk::load("assets/tilesets/source/overworld.ldtk", "assets/tilesets/overworld.png");
-    const auto nonzero = [](const std::vector<TileMap::Tile>& v)
-    {
-        std::size_t n = 0;
-        for (const auto& t : v)
-            if (t.tile_id != 0)
-                ++n;
-        return n;
-    };
-    std::fprintf(
-        stderr, "[region] ldtk load %s: %dx%d tiles, %zu objects, %zu decoration, %zu overhang\n",
-        region.ok ? "OK" : "FAILED (using placeholder)", region.map.width, region.map.height,
-        region.objects.size(), nonzero(region.map.decoration), nonzero(region.map.overhang));
-    if (region.ok)
-    {
-        em.tile_map = region.map;
-        em.tile_config = region.config;
-        // A real region owns its terrain; observables are NOT stamped into it (their
-        // tile ids would clash with the atlas-cell ids). Observables still surface
-        // via their glimmer glow + observe interaction, driven by the observation
-        // config coords -- the kind->tile stamping was a placeholder-only crutch.
-    }
-    else
-    {
-        world_init::buildPlaceholderRegion(em);
-        world_init::placeObservableTiles(em, gs.observations);
-    }
-    TileMapRenderer::upload(em.tile_map, em.tile_config, engine.textureManager());
-
-    gs.player = world_init::spawnPlayer(em, gs.player_config);
-    // Start the player at the region's PlayerSpawn object if one was authored.
-    for (const auto& o : region.objects)
-        if (o.type == "PlayerSpawn")
-        {
-            auto& t = em.registry().get<Transform>(gs.player);
-            t.x = o.wx;
-            t.y = o.wy;
-            if (auto* pt = em.registry().try_get<PreviousTransform>(gs.player))
-            {
-                pt->x = o.wx;
-                pt->y = o.wy;
-            }
-        }
-    glimmer::spawn(em, gs.observations);
+    // Terrain + player + props: load the authored LDtk region (or placeholder), apply
+    // it, and spawn the player at its PlayerSpawn. See setupRegion.
+    setupRegion(engine, em, gs);
 
     // The over-head thought bubble: one player-attached sprite that pops (faculty-
     // hued) while a thought reading is on screen. See HeadMarker / docs/design/HUD.md.

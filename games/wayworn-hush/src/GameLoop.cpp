@@ -27,6 +27,10 @@
 
 namespace
 {
+// Forward decls -- helpers below reference these before their definitions appear.
+bool pressedThisFrame(const EntityManager& em, int scancode);
+bool clickedThisFrame(EntityManager& em, uint8_t button);
+
 // Unit facing vector for a cardinal sprite direction (S=0/W=1/E=2/N=3).
 void facingVector(CardinalDir dir, float& out_x, float& out_y)
 {
@@ -46,6 +50,64 @@ void facingVector(CardinalDir dir, float& out_x, float& out_y)
     case CardinalDir::North:
         out_y = -1.0f;
         break;
+    }
+}
+
+// The surface name of the tile at world (wx,wy): the tile's id looked up in the
+// region's tile->surface map. Empty if off-map or the tile is untagged (footsteps then
+// use the default pool). Drives per-surface footfalls.
+std::string surfaceUnder(const EntityManager& em, const GameState& gs, float wx, float wy)
+{
+    const TileMap& tm = em.tile_map;
+    if (!tm.valid())
+        return {};
+    const int col = static_cast<int>(wx) / tm.tile_size;
+    const int row = static_cast<int>(wy) / tm.tile_size;
+    if (!tm.in_bounds(col, row))
+        return {};
+    const auto it = gs.tile_surface.find(tm.at(col, row).tile_id);
+    return it == gs.tile_surface.end() ? std::string{} : it->second;
+}
+
+// Step the pause page from this frame's input, returning its action. F=back/toggle,
+// A/D=tabs, W/S=move, Space=confirm; RMB is back-only (keeps it free as a world verb).
+// The action menu (menuUp) is modal and captures those keys, so the page ignores input
+// while a menu is up. Also muffles the soundtrack while the page is open.
+pause_page::Action stepPausePage(EntityManager& em, GameState& gs, bool menuUp)
+{
+    const bool rmbBack = gs.pause.open && clickedThisFrame(em, SDL_BUTTON_RIGHT);
+    const bool toggle = !menuUp && (pressedThisFrame(em, SDL_SCANCODE_F) || rmbBack);
+    const bool left = !menuUp && pressedThisFrame(em, SDL_SCANCODE_A);
+    const bool right = !menuUp && pressedThisFrame(em, SDL_SCANCODE_D);
+    const bool up = !menuUp && pressedThisFrame(em, SDL_SCANCODE_W);
+    const bool down = !menuUp && pressedThisFrame(em, SDL_SCANCODE_S);
+    const bool confirm = !menuUp && pressedThisFrame(em, SDL_SCANCODE_SPACE);
+    const pause_page::Action action =
+        pause_page::step(gs.pause, toggle, left, right, up, down, confirm);
+    // Muffle the soundtrack while the page is open (world frozen behind a held breath).
+    AudioSystem::setMusicLowPass(gs.pause.open ? 800.0f : 0.0f);
+    return action;
+}
+
+// Drive the player's animation state from its velocity: moving -> face the movement
+// direction (diagonals snap to the dominant cardinal) + walk/fast-walk clip; still ->
+// hold the idle pose for the last-faced direction. Cadence is per-clip, decoupled from
+// speed.
+void updatePlayerAnim(Animation& anim, const Velocity& vel, const PlayerConfig& pc, bool fast)
+{
+    if (vel.dx != 0.0f || vel.dy != 0.0f)
+    {
+        anim.dir = engine::direction::snapMovement(vel.dx, vel.dy, anim.direction_count);
+        const PlayerConfig::AnimState& st = fast ? pc.fast_walk : pc.walk;
+        anim.current_row = st.row;
+        anim.current_frames = st.frames;
+        anim.current_duration = st.duration;
+    }
+    else
+    {
+        anim.current_row = pc.idle.row;
+        anim.current_frames = pc.idle.frames;
+        anim.current_duration = pc.idle.duration;
     }
 }
 
@@ -198,23 +260,8 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     // menu is up.
     const bool menuUp = thought_box::menuActive();
 
-    // Pause page controls (F=back/toggle, A/D=tabs, W/S=move, Space=confirm; RMB is
-    // back-only so it stays free as a world verb). step() owns the state.
-    const bool rmbBack = gs.pause.open && clickedThisFrame(em, SDL_BUTTON_RIGHT);
-    const bool toggle = !menuUp && (pressedThisFrame(em, SDL_SCANCODE_F) || rmbBack);
-    const bool left = !menuUp && pressedThisFrame(em, SDL_SCANCODE_A);
-    const bool right = !menuUp && pressedThisFrame(em, SDL_SCANCODE_D);
-    const bool up = !menuUp && pressedThisFrame(em, SDL_SCANCODE_W);
-    const bool down = !menuUp && pressedThisFrame(em, SDL_SCANCODE_S);
-    const bool confirm = !menuUp && pressedThisFrame(em, SDL_SCANCODE_SPACE);
-    const pause_page::Action action =
-        pause_page::step(gs.pause, toggle, left, right, up, down, confirm);
-    if (action == pause_page::Action::Quit)
+    if (stepPausePage(em, gs, menuUp) == pause_page::Action::Quit)
         engine.requestQuit();
-
-    // Muffle the soundtrack while the page is open (the world is frozen behind a
-    // held breath); clean when closed. Cheap no-op when unchanged.
-    AudioSystem::setMusicLowPass(gs.pause.open ? 800.0f : 0.0f);
 
     // Freeze the world while the page is open: skip movement, observing, camera.
     // Animation is halted in gamePreRender (it runs at wall-clock rate there).
@@ -249,27 +296,16 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     // fast-walk; still -> hold the standing pose for the last direction.
     auto& anim = reg.get<Animation>(gs.player);
     const auto& vel = reg.get<Velocity>(gs.player);
-    if (vel.dx != 0.0f || vel.dy != 0.0f)
-    {
-        anim.dir = engine::direction::snapMovement(vel.dx, vel.dy, anim.direction_count);
-        // Animation cadence is decoupled from movement speed -- each state plays
-        // at its own authored per-frame duration (tune the feel via the duration
-        // values; speed and cadence are independent knobs).
-        const PlayerConfig::AnimState& st = fast ? pc.fast_walk : pc.walk;
-        anim.current_row = st.row;
-        anim.current_frames = st.frames;
-        anim.current_duration = st.duration;
-    }
-    else
-    {
-        anim.current_row = pc.idle.row;
-        anim.current_frames = pc.idle.frames;
-        anim.current_duration = pc.idle.duration;
-    }
+    updatePlayerAnim(anim, vel, pc, fast);
 
-    // Footstep SFX: a grass footfall on a speed-scaled cadence while moving.
+    // Footstep SFX: a footfall matching the surface under the player, on a speed-scaled
+    // cadence while moving. The surface is the tile at the player's position (empty if
+    // untagged -> the default pool; water has no pool -> silent).
     const bool moving = vel.dx != 0.0f || vel.dy != 0.0f;
-    footsteps::update(gs.footstep_state, gs.footstep_config, moving, fast, static_cast<float>(dt));
+    const auto& ptf = reg.get<Transform>(gs.player);
+    const std::string surface = surfaceUnder(em, gs, ptf.x, ptf.y);
+    footsteps::update(gs.footstep_state, gs.footstep_config, surface, moving, fast,
+                      static_cast<float>(dt));
 
     // Player position + facing, used by both the glimmer signal and observing.
     const auto& pt = reg.get<Transform>(gs.player);

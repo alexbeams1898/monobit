@@ -12,7 +12,7 @@ Config cfg()
     Config c;
     c.walk_cadence = 0.42f;
     c.run_cadence = 0.28f;
-    c.grass = {"a.ogg"}; // pool content is irrelevant to the pure cadence logic
+    c.pools["Grass"] = {"a.ogg"}; // pool content is irrelevant to the pure cadence logic
     return c;
 }
 } // namespace
@@ -71,4 +71,41 @@ TEST_CASE("Standing still fires no steps and resets the timer", "[footsteps]")
     REQUIRE_FALSE(footsteps::tick(s, c, /*moving=*/false, false, 0.016f));
     REQUIRE(s.step_timer == 0.0f);
     REQUIRE(footsteps::tick(s, c, /*moving=*/true, false, 0.016f)); // steps immediately
+}
+
+TEST_CASE("A surface picks its own pool; untagged falls back to default", "[footsteps]")
+{
+    Config c;
+    c.default_surface = "Grass";
+    c.pools["Grass"] = {"grass.ogg"};
+    c.pools["Sand"] = {"sand.ogg"};
+    // A named surface resolves to its own pool.
+    REQUIRE(footsteps::poolFor(c, "Sand") == &c.pools["Sand"]);
+    REQUIRE(footsteps::poolFor(c, "Grass") == &c.pools["Grass"]);
+    // An untagged tile (empty surface) uses the default pool.
+    REQUIRE(footsteps::poolFor(c, "") == &c.pools["Grass"]);
+}
+
+TEST_CASE("A tagged surface with no pool is silent (does NOT borrow the default)", "[footsteps]")
+{
+    Config c;
+    c.default_surface = "Grass";
+    c.pools["Grass"] = {"grass.ogg"};
+    // Water is a real tag with no pool -> silent by intent, not a grass step. This is
+    // the load-bearing rule for "can't hear footsteps while swimming".
+    REQUIRE(footsteps::poolFor(c, "Water") == nullptr);
+    // An unknown/misspelled surface is likewise silent rather than falling back.
+    REQUIRE(footsteps::poolFor(c, "Nonexistent") == nullptr);
+}
+
+TEST_CASE("The authored footsteps config loads pools per surface", "[footsteps]")
+{
+    // Real config/surfaces alignment: the shipped config has Grass/Sand/Bridge pools
+    // and no Water pool. Test working dir is the game source root (CMake WORKING_DIR).
+    Config c;
+    footsteps::load(c, "config/footsteps.json");
+    REQUIRE(footsteps::poolFor(c, "Grass") != nullptr);
+    REQUIRE(footsteps::poolFor(c, "Sand") != nullptr);
+    REQUIRE(footsteps::poolFor(c, "Bridge") != nullptr);
+    REQUIRE(footsteps::poolFor(c, "Water") == nullptr); // silent until swim exists
 }

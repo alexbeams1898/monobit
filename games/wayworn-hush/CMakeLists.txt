@@ -15,6 +15,7 @@ add_library(wayworn-systems STATIC
     src/Glimmer.cpp
     src/Notify.cpp
     src/Footsteps.cpp
+    src/Surfaces.cpp
     src/HudCanvas.cpp
     src/HeadMarker.cpp
     src/WorldClock.cpp
@@ -26,6 +27,9 @@ add_library(wayworn-systems STATIC
 )
 
 target_include_directories(wayworn-systems PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+# vendored stb (the engine defines STB_IMAGE_IMPLEMENTATION once in TextureManager);
+# the LDtk importer includes stb_image.h for declarations to read atlas alpha.
+target_include_directories(wayworn-systems SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/vendor/stb)
 target_link_libraries(wayworn-systems PUBLIC engine)
 
 # Generate Version.h from CMake project version.
@@ -66,6 +70,7 @@ add_executable(wayworn-tests
     tests/pause_page_test.cpp
     tests/unlock_condition_test.cpp
     tests/footsteps_test.cpp
+    tests/surfaces_test.cpp
     tests/hud_canvas_test.cpp
     tests/head_marker_test.cpp
     tests/world_clock_test.cpp

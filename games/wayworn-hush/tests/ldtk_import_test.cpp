@@ -1,6 +1,9 @@
 #include "LdtkImport.h"
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+using Catch::Approx;
 
 // Tests the LDtk importer against the REAL authored region
 // (assets/tilesets/source/overworld.ldtk) -- the actual export, not a hand-guessed
@@ -11,13 +14,16 @@ namespace
 {
 ldtk::Region loadRegion()
 {
-    return ldtk::load("assets/tilesets/source/overworld.ldtk", "assets/tilesets/overworld.png");
+    surfaces::Config sc;
+    surfaces::load(sc, "config/surfaces.json");
+    return ldtk::load("assets/tilesets/source/overworld.ldtk", "assets/tilesets/overworld.png", sc);
 }
 } // namespace
 
 TEST_CASE("A missing file returns ok=false, not a crash", "[ldtk]")
 {
-    const ldtk::Region r = ldtk::load("assets/nope/does_not_exist.ldtk", "x.png");
+    const surfaces::Config sc;
+    const ldtk::Region r = ldtk::load("assets/nope/does_not_exist.ldtk", "x.png", sc);
     REQUIRE_FALSE(r.ok);
 }
 
@@ -88,18 +94,46 @@ TEST_CASE("The PlayerSpawn entity is imported at doubled world pixels", "[ldtk]"
     REQUIRE(found);
 }
 
-TEST_CASE("The Overhang layer imports as a sparse prop layer", "[ldtk]")
+TEST_CASE("Tile-carrying entities import as Y-sorted props", "[ldtk]")
 {
+    // Props come from LDtk ENTITIES that carry a tileset region (trees/rocks placed,
+    // not painted) -- each a single Y-sorted sprite. May be empty until authored;
+    // when present, each has a non-empty atlas src rect and a base sort key.
     const ldtk::Region r = loadRegion();
-    // The region has an Overhang layer (trees/rock/log). It's the same size as the
-    // ground grid, mostly empty (tile_id 0 = no prop), with SOME prop cells set.
-    REQUIRE(r.map.overhang.size() == r.map.tiles.size());
-    int props = 0;
-    for (const auto& t : r.map.overhang)
-        if (t.tile_id != 0)
-            ++props;
-    REQUIRE(props > 0);                                       // props were authored on it
-    REQUIRE(props < static_cast<int>(r.map.overhang.size())); // sparse, not full
+    for (const auto& p : r.props)
+    {
+        REQUIRE(p.sw > 0);
+        REQUIRE(p.sh > 0);
+        REQUIRE(p.sort_wy >= 0.0f); // base world-Y for depth sort
+    }
+}
+
+TEST_CASE("Prop colliders are derived from the sprite footprint (trunk), not the box", "[ldtk]")
+{
+    // The collider must hug the drawn footprint: for a tree, the narrow trunk at the
+    // base -- NOT the full sprite box (which would collide with the transparent margin)
+    // and NOT the whole opaque bounds (which would collide with the walk-through
+    // canopy). Robust to which props are authored: only asserts on solid ones.
+    const ldtk::Region r = loadRegion();
+    for (const auto& p : r.props)
+    {
+        if (!p.col_solid)
+            continue;
+        // Tighter than the sprite in BOTH axes (the footprint is a sub-box).
+        REQUIRE(p.col_w > 0.0f);
+        REQUIRE(p.col_h > 0.0f);
+        REQUIRE(p.col_w < static_cast<float>(p.sw));
+        REQUIRE(p.col_h < static_cast<float>(p.sh));
+        // The footprint sits at the BASE: its bottom edge is at the sprite's bottom.
+        const float spriteBottom = p.wy + static_cast<float>(p.sh) * 0.5f;
+        const float colBottom = p.col_cy + p.col_h * 0.5f;
+        REQUIRE(colBottom == Catch::Approx(spriteBottom).margin(1.0f));
+        // The footprint is fully inside the sprite box horizontally.
+        const float spriteLeft = p.wx - static_cast<float>(p.sw) * 0.5f;
+        const float spriteRight = p.wx + static_cast<float>(p.sw) * 0.5f;
+        REQUIRE(p.col_cx - p.col_w * 0.5f >= spriteLeft - 0.5f);
+        REQUIRE(p.col_cx + p.col_w * 0.5f <= spriteRight + 0.5f);
+    }
 }
 
 TEST_CASE("Tiles stacked on the Ground layer split into decoration", "[ldtk]")

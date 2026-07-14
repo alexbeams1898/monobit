@@ -1,0 +1,10 @@
+{
+    "_comment": "Terrain surfaces (see include/Surfaces.h). Each ground tile is tagged with a surface in the LDtk tileset editor (the 'Surface' enum); the importer reads that tag and looks the surface up here. Names MUST match the LDtk enum values exactly (LDtk capitalizes them). 'walkable' drives terrain collision -- water blocks like Pokemon shore edges, no separate collision layer. The surface name is also the join key for per-surface footsteps (config/footsteps.json). 'default' applies to any tile with no surface tag (bare grass fill).",
+    "default": "Grass",
+    "surfaces": {
+        "Grass": { "walkable": true },
+        "Sand": { "walkable": true },
+        "Stone": { "walkable": true },
+        "Water": { "walkable": false }
+    }
+}

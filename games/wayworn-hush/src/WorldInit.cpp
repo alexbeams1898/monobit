@@ -118,15 +118,17 @@ entt::entity spawnPlayer(EntityManager& em, const PlayerConfig& cfg)
     reg.emplace<Collider>(player, Collider{kPlayerFootW, kPlayerFootH, true});
 
     // Animated sprite sheet. RenderSystem draws the cell the Animation selects
-    // (dir + frame); src_w/h are the cell size. sort_anchor at the feet so
-    // Y-sort orders the sprite by where it stands, not its top.
+    // (dir + frame); src_w/h are the cell size. NO sort_anchor override: with a
+    // Collider present, RenderSystem sorts by the FEET's world Y (drawY +
+    // collider.height/2), so the player orders correctly against other layer-2
+    // sprites (tree-canopy props, NPCs) by where it stands. (The old override set a
+    // CONSTANT 6 -- a latent bug that only surfaced once other layer-2 props existed:
+    // sort_anchor is an ABSOLUTE world-Y key, not the feet offset the value implied.)
     Sprite spr{};
     spr.texture_path = cfg.texture;
     spr.src_w = cfg.frame_width;
     spr.src_h = cfg.frame_height;
     spr.layer = 2; // characters layer (above ground tiles)
-    spr.use_sort_anchor = true;
-    spr.sort_anchor = kPlayerFootH * 0.5f;
     reg.emplace<Sprite>(player, spr);
 
     // Column = dir_index * max_frames_per_state + frame_index, so every state

@@ -1,16 +1,38 @@
 {
-    "_comment": "Footstep SFX (see include/Footsteps.h). A speed-scaled timer plays a random grass variation as the pilgrim walks; walk_cadence/run_cadence are the seconds between steps at each pace. One surface (grass) for now -- add pools per surface later. Grass audio chopped from a field recording, peak-normalized to -1 dBFS.",
+    "_comment": "Footstep SFX (see include/Footsteps.h). A speed-scaled timer plays a random variation from the pool for the SURFACE under the pilgrim (the LDtk surface tag that also drives terrain collision -- see config/surfaces.json). walk_cadence/run_cadence are the seconds between steps at each pace. Pool keys MUST match the surface names exactly (LDtk capitalizes them). A surface with no pool is silent -- Water has none until a swim/wade sound exists. default_surface is used for untagged tiles (bare ground). Audio chopped from field recordings via scripts/chop_footsteps.py, peak-normalized to -1 dBFS.",
     "volume": 0.4,
     "walk_cadence": 0.42,
     "run_cadence": 0.28,
-    "grass": [
-        "assets/audio/footstep_grass_1.ogg",
-        "assets/audio/footstep_grass_2.ogg",
-        "assets/audio/footstep_grass_3.ogg",
-        "assets/audio/footstep_grass_4.ogg",
-        "assets/audio/footstep_grass_5.ogg",
-        "assets/audio/footstep_grass_6.ogg",
-        "assets/audio/footstep_grass_7.ogg",
-        "assets/audio/footstep_grass_8.ogg"
-    ]
+    "default_surface": "Grass",
+    "pools": {
+        "Grass": [
+            "assets/audio/footstep_grass_1.ogg",
+            "assets/audio/footstep_grass_2.ogg",
+            "assets/audio/footstep_grass_3.ogg",
+            "assets/audio/footstep_grass_4.ogg",
+            "assets/audio/footstep_grass_5.ogg",
+            "assets/audio/footstep_grass_6.ogg",
+            "assets/audio/footstep_grass_7.ogg",
+            "assets/audio/footstep_grass_8.ogg"
+        ],
+        "Sand": [
+            "assets/audio/footstep_sand_1.ogg",
+            "assets/audio/footstep_sand_2.ogg",
+            "assets/audio/footstep_sand_3.ogg",
+            "assets/audio/footstep_sand_4.ogg",
+            "assets/audio/footstep_sand_5.ogg",
+            "assets/audio/footstep_sand_6.ogg",
+            "assets/audio/footstep_sand_7.ogg",
+            "assets/audio/footstep_sand_8.ogg"
+        ],
+        "Bridge": [
+            "assets/audio/footstep_bridge_1.ogg",
+            "assets/audio/footstep_bridge_2.ogg",
+            "assets/audio/footstep_bridge_3.ogg",
+            "assets/audio/footstep_bridge_4.ogg",
+            "assets/audio/footstep_bridge_5.ogg",
+            "assets/audio/footstep_bridge_6.ogg",
+            "assets/audio/footstep_bridge_7.ogg"
+        ]
+    }
 }
