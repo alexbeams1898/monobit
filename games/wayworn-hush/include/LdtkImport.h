@@ -27,6 +27,22 @@ struct Object
     float wy = 0.0f;
 };
 
+// Where an observation lives in the world, read from an Observable box on the
+// Observables layer (observability is its own concern -- physical entities carry no such
+// field). The box AABB (center + size) IS the interaction zone; `trigger` is its trigger
+// field. Kept as a neutral struct (a trigger STRING, not the observations enum) so the
+// importer takes no dependency on the observation system -- the game maps it to
+// observations::Placement at load. See docs/design/OBSERVATION-SYSTEM.md.
+struct ObservablePlacement
+{
+    std::string id; // the observation id this placement locates
+    float x = 0.0f; // box center, world px
+    float y = 0.0f;
+    float w = 32.0f; // box size, world px
+    float h = 32.0f;
+    std::string trigger; // "Observe" | "Enter" (empty = Observe)
+};
+
 // A prop: an LDtk ENTITY that carries a tileset region (a tree, a rock -- placed,
 // not painted). Spawned as ONE sprite covering the whole region, Y-sorted by its
 // BASE (the pivot's world-Y), so the player draws in front when below the prop's
@@ -62,8 +78,9 @@ struct Region
     TileMap map;       // flat 32px tile grid (top tile per cell wins for v1)
     TileConfig config; // tileset atlas path + per-id uv/walkable
     std::vector<Object> objects;
-    std::vector<Prop> props; // tile-carrying entities -> Y-sorted sprite + collider
-    int fill_uv_col = 0;     // border-fill tile (beyond the authored bounds)
+    std::vector<Prop> props;                      // tile-carrying entities -> Y-sorted sprite
+    std::vector<ObservablePlacement> observables; // entities carrying an `observable` field
+    int fill_uv_col = 0;                          // border-fill tile (beyond the bounds)
     int fill_uv_row = 0;
     // Tile id -> surface name (from the tileset's surface tags). The runtime maps the
     // tile under the player to its surface for footsteps; a tile absent here is

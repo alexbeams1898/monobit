@@ -24,36 +24,26 @@ bool observableVisible(const Observable& o, const unlock::Knowledge& k)
     return o.visible_when.any.empty() || unlock::satisfied(o.visible_when, k);
 }
 
-// --- facing geometry -------------------------------------------------------
-// Faced = visible, within radius, and inside the forward cone (facing_cos wide).
-const Observable* facedObservable(const State& s, const growth::GrowthState& g, float px, float py,
-                                  float dx, float dy)
+// --- spatial resolution ----------------------------------------------------
+// The observable the player can interact with: the NEAREST visible one whose box is
+// within interact_reach of the player (Souls-style: walk up, it lights, press). Nullptr
+// if none in reach.
+const Observable* nearestInReach(const State& s, const growth::GrowthState& g, float px, float py)
 {
-    const float dlen = std::sqrt(dx * dx + dy * dy);
-    if (dlen <= 0.0f)
-        return nullptr;
     std::unordered_set<std::string> observedIds;
     std::unordered_map<std::string, int> statLevels;
     const unlock::Knowledge k = makeKnowledge(s, g, observedIds, statLevels);
-    const float ndx = dx / dlen;
-    const float ndy = dy / dlen;
     const Observable* best = nullptr;
-    float bestDist = 0.0f;
+    float bestDist = s.interact_reach;
     for (const auto& o : s.observables)
     {
         if (!observableVisible(o, k))
             continue;
-        const float ox = o.x - px;
-        const float oy = o.y - py;
-        const float dist = std::sqrt(ox * ox + oy * oy);
-        if (dist > o.radius || dist <= 0.0f)
-            continue;
-        if ((ox / dist) * ndx + (oy / dist) * ndy < s.facing_cos)
-            continue;
-        if (!best || dist < bestDist)
+        const float d = o.distanceTo(px, py);
+        if (d <= bestDist)
         {
             best = &o;
-            bestDist = dist;
+            bestDist = d;
         }
     }
     return best;
@@ -446,13 +436,25 @@ Action parseAction(const nlohmann::json& a)
     return act;
 }
 
+Trigger parseTrigger(const std::string& s)
+{
+    // Values match the LDtk Trigger enum exactly (LDtk capitalizes enum ids).
+    if (s == "Enter")
+        return Trigger::Enter;
+    return Trigger::Observe; // default + explicit "Observe"
+}
+
 Observable parseObservable(const nlohmann::json& e)
 {
     Observable o;
     o.id = e.value("id", std::string{});
+    // Placement (the box: x/y/w/h + trigger) is authored in LDtk and applied later. Any
+    // JSON values are only a fallback for content not yet placed in the map.
     o.x = e.value("x", 0.0f);
     o.y = e.value("y", 0.0f);
-    o.radius = e.value("radius", 48.0f);
+    o.w = e.value("w", 32.0f);
+    o.h = e.value("h", 32.0f);
+    o.trigger = parseTrigger(e.value("trigger", std::string{}));
     o.value = e.value("value", 1);
     o.kind = e.value("kind", std::string{});
     if (const auto it = e.find("visible_when"); it != e.end())
@@ -564,7 +566,7 @@ void load(State& state, const std::string& path, const std::string& actions_path
         return;
 
     parseRollConfig(j, state.roll);
-    state.facing_cos = j.value("facing_cos", state.facing_cos);
+    state.interact_reach = j.value("interact_reach", state.interact_reach);
 
     const ActionKinds kinds = loadActionKinds(actions_path);
     for (const auto& e : j.value("observables", nlohmann::json::array()))
@@ -601,6 +603,33 @@ void load(State& state, const std::string& path, const std::string& actions_path
     }
 
     deriveValues(state);
+}
+
+PlacementReport applyPlacements(State& state, const std::vector<Placement>& placements)
+{
+    PlacementReport report;
+    std::unordered_set<std::string> placed;
+    for (const auto& p : placements)
+    {
+        placed.insert(p.id);
+        bool matched = false;
+        for (auto& o : state.observables)
+            if (o.id == p.id)
+            {
+                o.x = p.x;
+                o.y = p.y;
+                o.w = p.w;
+                o.h = p.h;
+                o.trigger = p.trigger;
+                matched = true;
+            }
+        if (!matched)
+            report.placements_without_observable.push_back(p.id);
+    }
+    for (const auto& o : state.observables)
+        if (!placed.count(o.id))
+            report.observables_without_placement.push_back(o.id);
+    return report;
 }
 
 bool isSynthesis(const Thought& r)
@@ -678,25 +707,25 @@ int runEngine(State& state, const growth::GrowthState& growth, std::vector<std::
 }
 } // namespace
 
-ObserveResult observe(State& state, const growth::GrowthState& growth, float px, float py,
-                      float dir_x, float dir_y, const RollRng& rng)
+namespace
 {
-    const Observable* o = facedObservable(state, growth, px, py, dir_x, dir_y);
-    if (!o)
-        return {Outcome::None, 0};
-
-    // Deepest objective tier whose unlock_when is satisfied (deterministic).
+// Reveal a specific observable's deepest satisfied tier and run the ambient engine over
+// what changed -- the shared core of both the deliberate observe verb and the ambient
+// enter/approach triggers. `o` is the resolved observable (already located + eligible).
+ObserveResult fireObservable(State& state, const growth::GrowthState& growth, const Observable& o,
+                             const RollRng& rng)
+{
     std::unordered_set<std::string> observedIds;
     std::unordered_map<std::string, int> statLevels;
-    const int prevTier = state.observed_tier.count(o->id) ? state.observed_tier.at(o->id) : 0;
+    const int prevTier = state.observed_tier.count(o.id) ? state.observed_tier.at(o.id) : 0;
     int best = 0;
     const ObservationTier* bestTier = nullptr;
     const unlock::Knowledge k = makeKnowledge(state, growth, observedIds, statLevels);
-    for (std::size_t i = 0; i < o->tiers.size(); ++i)
-        if (unlock::satisfied(o->tiers[i].unlock_when, k))
+    for (std::size_t i = 0; i < o.tiers.size(); ++i)
+        if (unlock::satisfied(o.tiers[i].unlock_when, k))
         {
             best = static_cast<int>(i) + 1;
-            bestTier = &o->tiers[i];
+            bestTier = &o.tiers[i];
         }
     if (best == 0)
         return {Outcome::None, 0};
@@ -704,8 +733,8 @@ ObserveResult observe(State& state, const growth::GrowthState& growth, float px,
     int earned = 0;
     Outcome outcome = Outcome::Surfaced; // a reading surfaced; upgraded if a thought fires
 
-    // Surface the objective reading; EXP is earned (and carried on the line, so
-    // its toast lands on display) only when a newly-reached tier.
+    // Surface the objective reading; EXP is earned (and carried on the line, so its toast
+    // lands on display) only when a newly-reached tier.
     const bool newTier = best > prevTier;
     state.pending.push_back(PendingLine{LineKind::Observation,
                                         bestTier->text,
@@ -716,17 +745,54 @@ ObserveResult observe(State& state, const growth::GrowthState& growth, float px,
     std::vector<std::string> changedKeys;
     if (newTier)
     {
-        state.observed_tier[o->id] = best;
+        state.observed_tier[o.id] = best;
         earned += bestTier->spirit_exp;
-        changedKeys.push_back(keyObserved(o->id)); // now a held memory
+        changedKeys.push_back(keyObserved(o.id)); // now a held memory
     }
 
-    // Run the ambient engine over what changed.
     bool anyFired = false;
     earned += runEngine(state, growth, std::move(changedKeys), rng, anyFired);
     if (anyFired)
         outcome = Outcome::Thought;
+    return {outcome, earned};
+}
+} // namespace
 
+ObserveResult observe(State& state, const growth::GrowthState& growth, float px, float py,
+                      const RollRng& rng)
+{
+    const Observable* o = nearestInReach(state, growth, px, py);
+    if (!o)
+        return {Outcome::None, 0};
+    return fireObservable(state, growth, *o, rng);
+}
+
+ObserveResult triggerProximity(State& state, const growth::GrowthState& growth, float px, float py,
+                               const RollRng& rng)
+{
+    // Ambient triggers: an ENTER observable fires when the player reaches its box.
+    // Fires ONCE (edge-triggered on `fired`), then reveals + runs the engine like a
+    // deliberate observe. Visibility gating and the per-tier EXP-once rules are shared via
+    // fireObservable. Called every frame.
+    int earned = 0;
+    Outcome outcome = Outcome::None;
+    std::unordered_set<std::string> observedIds;
+    std::unordered_map<std::string, int> statLevels;
+    const unlock::Knowledge k = makeKnowledge(state, growth, observedIds, statLevels);
+    for (auto& o : state.observables)
+    {
+        if (o.trigger != Trigger::Enter || o.fired)
+            continue;
+        if (!unlock::satisfied(o.visible_when, k))
+            continue; // not yet present in the world
+        if (o.distanceTo(px, py) > state.interact_reach)
+            continue; // not within reach yet
+        o.fired = true;
+        const ObserveResult res = fireObservable(state, growth, o, rng);
+        earned += res.earned;
+        if (res.outcome != Outcome::None)
+            outcome = res.outcome;
+    }
     return {outcome, earned};
 }
 
@@ -860,17 +926,15 @@ std::unordered_set<std::string> availableUnlocks(const State& state,
     return out;
 }
 
-std::string facedId(const State& state, const growth::GrowthState& growth, float px, float py,
-                    float dir_x, float dir_y)
+std::string facedId(const State& state, const growth::GrowthState& growth, float px, float py)
 {
-    const Observable* o = facedObservable(state, growth, px, py, dir_x, dir_y);
+    const Observable* o = nearestInReach(state, growth, px, py);
     return o ? o->id : std::string{};
 }
 
-bool facingObservable(const State& state, const growth::GrowthState& growth, float px, float py,
-                      float dir_x, float dir_y)
+bool facingObservable(const State& state, const growth::GrowthState& growth, float px, float py)
 {
-    return facedObservable(state, growth, px, py, dir_x, dir_y) != nullptr;
+    return nearestInReach(state, growth, px, py) != nullptr;
 }
 
 ThoughtStatus statusOf(const State& state, const growth::GrowthState& growth, const Thought& r)
@@ -1002,6 +1066,26 @@ Signal signalFor(const State& state, const growth::GrowthState& /*growth*/, cons
     // The glimmer marks only "there is something here to look at." Once observed,
     // it quiets -- thoughts are the emergent layer and are not signposted.
     return state.observed_tier.count(spot) > 0 ? Signal::Observed : Signal::Unobserved;
+}
+
+float glowStrength(const State& state, const growth::GrowthState& growth, const std::string& spot,
+                   float px, float py)
+{
+    // Glow is ON (full) when the player is within interact_reach of the box, OFF otherwise
+    // -- the same test that gates interaction, so a lit glow always means "observable now".
+    // Binary, not a fade: the object lights up when you're in range, like a Souls prompt.
+    std::unordered_set<std::string> observedIds;
+    std::unordered_map<std::string, int> statLevels;
+    const unlock::Knowledge k = makeKnowledge(state, growth, observedIds, statLevels);
+    for (const auto& o : state.observables)
+    {
+        if (o.id != spot)
+            continue;
+        if (!observableVisible(o, k))
+            return 0.0f; // hidden -> no glow
+        return o.distanceTo(px, py) <= state.interact_reach ? 1.0f : 0.0f;
+    }
+    return 0.0f;
 }
 
 } // namespace observations

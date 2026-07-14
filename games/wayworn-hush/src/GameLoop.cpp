@@ -31,28 +31,6 @@ namespace
 bool pressedThisFrame(const EntityManager& em, int scancode);
 bool clickedThisFrame(EntityManager& em, uint8_t button);
 
-// Unit facing vector for a cardinal sprite direction (S=0/W=1/E=2/N=3).
-void facingVector(CardinalDir dir, float& out_x, float& out_y)
-{
-    out_x = 0.0f;
-    out_y = 0.0f;
-    switch (dir)
-    {
-    case CardinalDir::South:
-        out_y = 1.0f;
-        break;
-    case CardinalDir::West:
-        out_x = -1.0f;
-        break;
-    case CardinalDir::East:
-        out_x = 1.0f;
-        break;
-    case CardinalDir::North:
-        out_y = -1.0f;
-        break;
-    }
-}
-
 // The surface name of the tile at world (wx,wy): the tile's id looked up in the
 // region's tile->surface map. Empty if off-map or the tile is untagged (footsteps then
 // use the default pool). Drives per-surface footfalls.
@@ -198,12 +176,11 @@ void pumpUnlockNotifications(GameState& gs)
 // but only Space advances it, so a queued thought is never skipped. Only the
 // action MENU is modal (freezes movement + captures F/W/S/Space). With no box,
 // Space observes the faced spot, then queues that spot's action menu.
-void handleObserveInput(EntityManager& em, GameState& gs, float px, float py, float fx, float fy)
+void handleObserveInput(EntityManager& em, GameState& gs, float px, float py)
 {
     // A queued (not-yet-open) action menu is bound to still facing its spot; if
     // you've walked off before it opened, drop it so it doesn't chase you.
-    thought_box::dropQueuedMenuIfLeft(
-        observations::facedId(gs.observations, gs.growth, px, py, fx, fy));
+    thought_box::dropQueuedMenuIfLeft(observations::facedId(gs.observations, gs.growth, px, py));
 
     if (thought_box::menuActive())
     {
@@ -227,9 +204,9 @@ void handleObserveInput(EntityManager& em, GameState& gs, float px, float py, fl
     if (!pressedThisFrame(em, SDL_SCANCODE_SPACE))
         return;
     const observations::ObserveResult r =
-        observations::observe(gs.observations, gs.growth, px, py, fx, fy, observeNudge);
+        observations::observe(gs.observations, gs.growth, px, py, observeNudge);
     gs.growth.spirit_exp += r.earned;
-    const std::string spot = observations::facedId(gs.observations, gs.growth, px, py, fx, fy);
+    const std::string spot = observations::facedId(gs.observations, gs.growth, px, py);
     if (!spot.empty())
     {
         // The spot's baseline actions are shown in the menu now -- don't also toast
@@ -313,15 +290,18 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     footsteps::update(gs.footstep_state, gs.footstep_config, surface, moving, fast,
                       static_cast<float>(dt));
 
-    // Player position + facing, used by both the glimmer signal and observing.
+    // Player position -- observation glow + interaction are proximity-based (no facing).
     const auto& pt = reg.get<Transform>(gs.player);
-    float fx = 0.0f;
-    float fy = 0.0f;
-    facingVector(anim.dir, fx, fy);
+
+    // Ambient triggers: Enter observables (areas, moods) fire on their own when the player
+    // is within range -- no observe verb. Deliberate object observing stays in
+    // handleObserveInput. Fires once each; earns Spirit EXP like a deliberate reading.
+    gs.growth.spirit_exp +=
+        observations::triggerProximity(gs.observations, gs.growth, pt.x, pt.y, observeNudge).earned;
 
     // World glimmer: an unobserved spot glows warm when faced ("come look"); once
     // observed it quiets. Thoughts are not signposted.
-    glimmer::update(em, gs.observations, gs.growth, pt.x, pt.y, fx, fy, static_cast<float>(dt));
+    glimmer::update(em, gs.observations, gs.growth, pt.x, pt.y, static_cast<float>(dt));
 
     // Over-head thought bubble: shown exactly while a thought reading is on screen,
     // then fades. It tracks the player's head each frame.
@@ -332,7 +312,7 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
 
     // Observe / read / act input. Readings are non-modal (walk while up, Space to
     // advance); only the action menu is modal.
-    handleObserveInput(em, gs, pt.x, pt.y, fx, fy);
+    handleObserveInput(em, gs, pt.x, pt.y);
 
     // Snap the active camera to its entity (the player).
     CameraSystem::update(em);

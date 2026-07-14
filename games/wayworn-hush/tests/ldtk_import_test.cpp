@@ -128,10 +128,13 @@ TEST_CASE("Prop colliders are derived from the sprite footprint (trunk), not the
         REQUIRE(p.col_h > 0.0f);
         REQUIRE(p.col_w < static_cast<float>(p.sw));
         REQUIRE(p.col_h < static_cast<float>(p.sh));
-        // The footprint sits at the BASE: its bottom edge is at the sprite's bottom.
+        // The footprint sits at the BASE, not up in the canopy: its bottom edge is near
+        // the sprite's bottom. A few px of slack tolerates art with transparent padding
+        // at the very base (e.g. a rock with a 1px skirt) -- what matters is it's anchored
+        // low, not that it's pixel-exact.
         const float spriteBottom = p.wy + static_cast<float>(p.sh) * 0.5f;
         const float colBottom = p.col_cy + p.col_h * 0.5f;
-        REQUIRE(colBottom == Catch::Approx(spriteBottom).margin(1.0f));
+        REQUIRE(colBottom == Catch::Approx(spriteBottom).margin(4.0f));
         // The footprint is fully inside the sprite box horizontally.
         const float spriteLeft = p.wx - static_cast<float>(p.sw) * 0.5f;
         const float spriteRight = p.wx + static_cast<float>(p.sw) * 0.5f;

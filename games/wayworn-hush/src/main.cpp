@@ -120,32 +120,40 @@ void gameOnResize(Engine& engine, int w, int h)
     reloadHudFonts(gs, w, h);
 }
 
+// LDtk trigger-field string -> the observation Trigger enum (empty/unknown = Observe).
+// Values match the LDtk Trigger enum exactly (LDtk capitalizes enum ids).
+observations::Trigger toTrigger(const std::string& s)
+{
+    if (s == "Enter")
+        return observations::Trigger::Enter;
+    return observations::Trigger::Observe;
+}
+
 // Load the authored LDtk region (real tileset art) into the world, or fall back to the
 // flat-color placeholder. Applies terrain + surface map, uploads it, spawns the player
 // at the region's PlayerSpawn (if any), and spawns glimmer signals + tile-carrying prop
-// entities (trees/rocks -- Y-sorted, front/behind the player by base). One source of
-// truth: observables aren't stamped into a real region (their ids would clash with atlas
-// cells); they surface via glimmer + observe instead. See docs/design/MAP-PIPELINE.md.
-void setupRegion(Engine& engine, EntityManager& em, GameState& gs)
+// entities (trees/rocks -- Y-sorted, front/behind the player by base). Observation
+// placements (where each observable lives) are bound from the map here. See
+// docs/design/MAP-PIPELINE.md.
+bool setupRegion(Engine& engine, EntityManager& em, GameState& gs)
 {
     const ldtk::Region region =
         ldtk::load("assets/tilesets/source/overworld.ldtk", "assets/tilesets/overworld.png",
                    gs.surface_config, gs.structure_config);
-    std::fprintf(stderr, "[region] ldtk load %s: %dx%d, %zu objects, %zu props\n",
-                 region.ok ? "OK" : "FAILED (using placeholder)", region.map.width,
-                 region.map.height, region.objects.size(), region.props.size());
-    if (region.ok)
+    std::fprintf(stderr, "[region] ldtk load %s: %dx%d, %zu objects, %zu props, %zu observables\n",
+                 region.ok ? "OK" : "FAILED", region.map.width, region.map.height,
+                 region.objects.size(), region.props.size(), region.observables.size());
+    if (!region.ok)
     {
-        em.tile_map = region.map;
-        em.tile_config = region.config;
-        gs.tile_surface = region.tile_surface; // tile id -> surface, for footsteps
-        gs.cell_surface = region.cell_surface; // per-cell override (bridge decks, etc.)
+        // The LDtk region IS the map -- no fallback. A failed load (missing/corrupt file)
+        // is fatal: the caller aborts rather than launch into an empty world.
+        std::fprintf(stderr, "[region] FATAL: could not load the region; aborting.\n");
+        return false;
     }
-    else
-    {
-        world_init::buildPlaceholderRegion(em);
-        world_init::placeObservableTiles(em, gs.observations);
-    }
+    em.tile_map = region.map;
+    em.tile_config = region.config;
+    gs.tile_surface = region.tile_surface; // tile id -> surface, for footsteps
+    gs.cell_surface = region.cell_surface; // per-cell override (bridge decks, etc.)
     TileMapRenderer::upload(em.tile_map, em.tile_config, engine.textureManager());
 
     gs.player = world_init::spawnPlayer(em, gs.player_config);
@@ -161,9 +169,28 @@ void setupRegion(Engine& engine, EntityManager& em, GameState& gs)
                 pt->y = o.wy;
             }
         }
+
+    // Bind observation PLACEMENTS from the map onto the loaded observation content: an
+    // entity carrying an `observable` field supplies its position/size/trigger. Content
+    // (observations.json) and placement (LDtk) meet by id here -- before glimmer spawns
+    // (it reads each observable's world position). Authoring gaps are logged, not fatal.
+    {
+        std::vector<observations::Placement> placements;
+        placements.reserve(region.observables.size());
+        for (const auto& p : region.observables)
+            placements.push_back({p.id, p.x, p.y, p.w, p.h, toTrigger(p.trigger)});
+        const auto rep = observations::applyPlacements(gs.observations, placements);
+        for (const auto& id : rep.placements_without_observable)
+            std::fprintf(stderr, "[observe] placement '%s' has no observation content\n",
+                         id.c_str());
+        for (const auto& id : rep.observables_without_placement)
+            std::fprintf(stderr, "[observe] observation '%s' has no placement in the map\n",
+                         id.c_str());
+    }
+
     glimmer::spawn(em, gs.observations);
-    if (region.ok)
-        ldtk::spawnProps(em, region, "assets/tilesets/overworld.png");
+    ldtk::spawnProps(em, region, "assets/tilesets/overworld.png");
+    return true;
 }
 } // namespace
 
@@ -271,9 +298,10 @@ int main(int argc, char* argv[])
     inventory::load(gs.items, "config/items");
     inventory::add(gs.satchel, gs.items, inventory::ItemInstance{"notebook"});
 
-    // Terrain + player + props: load the authored LDtk region (or placeholder), apply
-    // it, and spawn the player at its PlayerSpawn. See setupRegion.
-    setupRegion(engine, em, gs);
+    // Terrain + player + props: load the authored LDtk region, apply it, and spawn the
+    // player at its PlayerSpawn. The region IS the map -- a failed load is fatal.
+    if (!setupRegion(engine, em, gs))
+        return 1;
 
     // The over-head thought bubble: one player-attached sprite that pops (faculty-
     // hued) while a thought reading is on screen. See HeadMarker / docs/design/HUD.md.

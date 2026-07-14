@@ -29,8 +29,8 @@ namespace glimmer
 void spawn(EntityManager& em, const observations::State& obs);
 
 // Per-frame: fade each glimmer's alpha toward its state target (unobserved vs
-// observed), with breathing on top. dt = frame seconds; px/py = player pos;
-// dir_x/dir_y = facing (`growth` is used only to resolve which spots are faced).
+// observed), with breathing on top. dt = frame seconds; px/py = player pos (the glow
+// lights within interact_reach of an observable's box).
 void update(EntityManager& em, const observations::State& obs, const growth::GrowthState& growth,
-            float px, float py, float dir_x, float dir_y, float dt);
+            float px, float py, float dt);
 } // namespace glimmer

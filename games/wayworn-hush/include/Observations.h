@@ -3,6 +3,8 @@
 #include "Growth.h"
 #include "UnlockCondition.h"
 
+#include <algorithm>
+#include <cmath>
 #include <deque>
 #include <functional>
 #include <string>
@@ -109,20 +111,47 @@ struct Thought
     // unlock_when, not ownership.
 };
 
-// An authored observable point in the world. `value` is the one authored worth
-// knob -- "how much noticing this matters" -- and feeds tier EXP + every
-// thought VALUE downstream (see docs/design/PROCESSING-MODEL.md).
+// How a trigger fires. OBSERVE: deliberate -- get within interact_reach and press the
+// observe verb (discrete objects you choose to study). ENTER: ambient -- fires on its own
+// when you reach the box (areas / moods that wash over you), no button. The mode is
+// authored per placement in LDtk, not baked into the object type, so any shape can use
+// either mode. See docs/design/OBSERVATION-SYSTEM.md.
+enum class Trigger
+{
+    Observe,
+    Enter
+};
+
+// An authored observable in the world. `value` is the one authored worth knob -- "how
+// much noticing this matters" -- feeding tier EXP + every thought VALUE downstream (see
+// docs/design/PROCESSING-MODEL.md).
 struct Observable
 {
     std::string id;
+    // Placement is an AABB authored in LDtk (the Observable box) and applied at load. The
+    // box marks WHERE the thing is; you interact when within `interact_reach` of it (glow +
+    // observe). (x, y) is the box CENTER, (w, h) its size, all world px. observations.json
+    // holds the CONTENT (tiers/thoughts/actions), not the location.
     float x = 0.0f;
     float y = 0.0f;
-    float radius = 48.0f;
+    float w = 32.0f;
+    float h = 32.0f;
+    Trigger trigger = Trigger::Observe;
+    bool fired = false;                 // ENTER: fired once already (edge-trigger)
     int value = 1;                      // authored worth (the shared currency)
     std::string kind;                   // action-kind name (defaults source; empty = none)
-    unlock::Condition visible_when;     // hidden/unfaceable until satisfied (empty = always)
+    unlock::Condition visible_when;     // hidden until satisfied (empty = always visible)
     std::vector<ObservationTier> tiers; // objective (base first, then deeper)
     std::vector<Action> actions;        // RESOLVED at load (kind defaults + overrides)
+
+    // Distance from (px,py) to the nearest edge of the box (0 inside). The single spatial
+    // measure: within `reach` of this drives both the glow and the observe interaction.
+    float distanceTo(float px, float py) const
+    {
+        const float ddx = std::max({0.0f, x - w * 0.5f - px, px - (x + w * 0.5f)});
+        const float ddy = std::max({0.0f, y - h * 0.5f - py, py - (y + h * 0.5f)});
+        return std::sqrt(ddx * ddx + ddy * ddy);
+    }
 };
 
 // Tuning for the thought roll + value model (config over constants).
@@ -190,9 +219,11 @@ struct State
     std::vector<Observable> observables; // authored
     std::vector<Thought> thoughts;       // authored (thoughts + conclusions, one type)
     RollConfig roll;                     // authored tuning
-    // Forward cone half-width for "faced", as a cosine (0.5 = ~120 deg total).
-    // Authored so the observe reach is a tuning knob, not a fixed constant.
-    float facing_cos = 0.5f;
+    // Interaction reach (world px from an observable's box edge). Dead simple: get within
+    // this of a box and it GLOWS + can be observed (Space); step away and it's dark. One
+    // number drives both -- the object marks the spot, you walk up, it lights, you press.
+    // (Souls-style: a trigger volume = box + reach.) One tuning knob for the whole game.
+    float interact_reach = 40.0f;
 
     // Trigger index (built once at load): a "changed key" (see makeKey helpers) ->
     // indices into `thoughts` whose unlock_when references that key. A state
@@ -213,6 +244,31 @@ struct State
 // from config/actions.json and resolves each observable's action list
 // (kind defaults + per-spot overrides); omit/empty for no actions.
 void load(State& state, const std::string& path, const std::string& actions_path = {});
+
+// Where an observation lives in the world -- authored in LDtk (an entity carrying the
+// observable id), applied to the loaded content by applyPlacements. Separates the
+// CONTENT (observations.json) from the PLACEMENT (the map): move the entity, the
+// observation follows, with no coordinate to hand-sync.
+struct Placement
+{
+    std::string id;
+    float x = 0.0f; // box center
+    float y = 0.0f;
+    float w = 32.0f; // box size
+    float h = 32.0f;
+    Trigger trigger = Trigger::Observe;
+};
+
+// Bind each placement onto the matching loaded Observable (its x/y/w/h/trigger).
+// Returns the ids that had NO loaded observable AND the observables that got NO
+// placement (both are authoring gaps worth surfacing: content with nowhere to be, or a
+// placement pointing at nothing). Idempotent.
+struct PlacementReport
+{
+    std::vector<std::string> placements_without_observable; // placed id has no content
+    std::vector<std::string> observables_without_placement; // content has no location
+};
+PlacementReport applyPlacements(State& state, const std::vector<Placement>& placements);
 
 // A thought reads as a "conclusion" (synthesis) rather than a "thought" when
 // it is gated on a SERIES of memories -- any clause requiring 2+ observed inputs.
@@ -238,13 +294,20 @@ struct ObserveResult
     int earned = 0;
 };
 
-// Observe whatever observable is faced from (px,py) looking toward (dir_x,dir_y):
-// reveal the deepest objective tier your stats meet (deterministic; EXP once per
-// tier), then run the ambient engine over the keys that changed (this spot
-// observed + its tier), which rolls any newly-available thoughts. Queues the
-// surfaced lines and reports the outcome + total EXP earned.
+// Observe the observable within interact_reach of (px,py) -- reveal the deepest objective
+// tier your stats meet (deterministic; EXP once per tier), then run the ambient engine
+// over the keys that changed (this spot observed + its tier), which rolls any newly-
+// available thoughts. Queues the surfaced lines and reports the outcome + total EXP.
 ObserveResult observe(State& state, const growth::GrowthState& growth, float px, float py,
-                      float dir_x, float dir_y, const RollRng& rng);
+                      const RollRng& rng);
+
+// Ambient triggers, checked every frame from the player's position: an ENTER observable
+// fires when the player is within interact_reach of its box. Each fires ONCE (edge-
+// surfaces like a deliberate observe. OBSERVE-mode observables are ignored here (they
+// need the verb). This is what makes areas/moods wash over you without a button press.
+// Returns EXP earned.
+ObserveResult triggerProximity(State& state, const growth::GrowthState& growth, float px, float py,
+                               const RollRng& rng);
 
 // External event sets a quest/event flag, then runs the ambient engine (a flag
 // change can satisfy a thought's unlock_when, DE-passive style). Returns EXP
@@ -281,13 +344,11 @@ ObserveResult takeAction(State& state, const growth::GrowthState& growth, const 
 std::unordered_set<std::string> availableUnlocks(const State& state,
                                                  const growth::GrowthState& growth);
 
-// True if an observable is faced (affordance query). Pure.
-bool facingObservable(const State& state, const growth::GrowthState& growth, float px, float py,
-                      float dir_x, float dir_y);
+// True if an observable is within interact_reach (affordance query). Pure.
+bool facingObservable(const State& state, const growth::GrowthState& growth, float px, float py);
 
-// Id of the faced observable (nearest in-range within the facing cone), or "".
-std::string facedId(const State& state, const growth::GrowthState& growth, float px, float py,
-                    float dir_x, float dir_y);
+// Id of the nearest observable within interact_reach of (px,py), or "".
+std::string facedId(const State& state, const growth::GrowthState& growth, float px, float py);
 
 // The world-legibility signal for an observable (drives the glimmer). Deliberately
 // minimal: the glimmer marks only "there is something HERE TO LOOK AT." Thoughts
@@ -304,6 +365,12 @@ enum class Signal
 // Derive an observable's signal: Unobserved until it has been observed to any
 // tier, then Observed. Pure; reads only the record.
 Signal signalFor(const State& state, const growth::GrowthState& growth, const std::string& spot);
+
+// Glow strength for an observable at player (px,py): 1 within interact_reach of its box
+// (the same test that gates interaction, so a lit glow means "observable now"), 0 beyond
+// or if hidden. Binary, not a fade. 0 for an unknown id.
+float glowStrength(const State& state, const growth::GrowthState& growth, const std::string& spot,
+                   float px, float py);
 
 // Live status of a thought, for the dev cognition view. A miss is not a
 // distinct state -- a satisfied+unfired thought simply re-rolls whenever a

@@ -38,7 +38,8 @@ void spawn(EntityManager& em, const observations::State& obs)
         spr.texture_path = "assets/sprites/glimmer.png";
         spr.src_w = kGlowSize;
         spr.src_h = kGlowSize;
-        spr.layer = 1;    // above ground tiles, below characters (layer 2)
+        spr.layer = 3;    // above characters/props (layer 2) so the "come look" shimmer is
+                          // never hidden by the very object it marks (a tree over its own glow)
         spr.alpha = 0.0f; // starts invisible; driven by update()
         reg.emplace<Sprite>(e, spr);
         // Warm tint MULTIPLIED into the glow texture (TintOverride keeps the
@@ -48,13 +49,13 @@ void spawn(EntityManager& em, const observations::State& obs)
 }
 
 void update(EntityManager& em, const observations::State& obs, const growth::GrowthState& growth,
-            float px, float py, float dir_x, float dir_y, float dt)
+            float px, float py, float dt)
 {
     sPhase += dt * kPulseHz * 6.2831853f;
     const float breath = std::sin(sPhase);                // -1..1 breathing modulation
     const float lerp = 1.0f - std::exp(-kFadeSpeed * dt); // framerate-independent
 
-    const std::string faced = observations::facedId(obs, growth, px, py, dir_x, dir_y);
+    const std::string faced = observations::facedId(obs, growth, px, py);
 
     for (auto [e, glim, spr, tint] : em.registry().view<Glimmer, Sprite, TintOverride>().each())
     {
@@ -62,13 +63,14 @@ void update(EntityManager& em, const observations::State& obs, const growth::Gro
         const bool isFaced = id == faced;
         const observations::Signal sig = observations::signalFor(obs, growth, id);
 
-        // The STEADY target for this state -- an UNOBSERVED spot glows warm when
-        // faced ("come look"); once OBSERVED it keeps a muted glow (stale/used), a
-        // touch brighter when faced. Thoughts are NOT signposted.
+        // The STEADY target for this state. An UNOBSERVED spot glows warm when you're within
+        // interact_reach of its box (lights up as you walk up, like a Souls prompt); OFF
+        // beyond. Once OBSERVED it keeps a muted glow (stale/used), a touch brighter while
+        // you're near it. Thoughts are NOT signposted.
         const bool unobserved = sig == observations::Signal::Unobserved;
         float target = kObservedDim; // observed: muted persistent glow
         if (unobserved)
-            target = isFaced ? kBrightMax : 0.0f;
+            target = kBrightMax * observations::glowStrength(obs, growth, id, px, py);
         else if (isFaced)
             target = kObservedDim * kFacedBoost;
 

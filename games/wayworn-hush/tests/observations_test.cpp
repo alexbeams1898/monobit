@@ -54,11 +54,12 @@ GrowthState self(std::vector<std::pair<std::string, int>> stats)
 State makeWorld()
 {
     State s;
+    // You observe an observable within interact_reach of its box. These tests observe each
+    // at its own center (obsAt helper), and the coords are distinct so each is unambiguous.
     Observable stone;
     stone.id = "stone";
     stone.x = 100;
     stone.y = 0;
-    stone.radius = 150;
     stone.tiers = {
         ObservationTier{{}, "a stone", 5},
         ObservationTier{unlock::Condition{{statClause("perception", 3)}}, "a stone, mossy", 5},
@@ -67,7 +68,6 @@ State makeWorld()
     water.id = "water";
     water.x = 0;
     water.y = 100;
-    water.radius = 150;
     water.tiers = {ObservationTier{{}, "a dry channel", 5}};
     s.observables = {stone, water};
 
@@ -119,13 +119,23 @@ State makeWorld()
     }
     return s;
 }
+
+// Observe the named observable by standing at its box center (within interact_reach).
+ObserveResult obsAt(State& s, const GrowthState& g, const std::string& id,
+                    const observations::RollRng& rng)
+{
+    for (const auto& o : s.observables)
+        if (o.id == id)
+            return observations::observe(s, g, o.x, o.y, rng);
+    return {Outcome::None, 0};
+}
 } // namespace
 
 TEST_CASE("Objective tiers are deterministic: deepest met tier surfaces, no roll", "[observations]")
 {
     State s = makeWorld();
     // Low perception: only the base tier.
-    ObserveResult r = observations::observe(s, self({}), 0, 0, 1, 0, kNoNudge);
+    ObserveResult r = obsAt(s, self({}), "stone", kNoNudge);
     REQUIRE(r.outcome != Outcome::None);
     REQUIRE(s.pending.front().kind == LineKind::Observation);
     REQUIRE(s.pending.front().text == "a stone");
@@ -133,7 +143,7 @@ TEST_CASE("Objective tiers are deterministic: deepest met tier surfaces, no roll
     s.pending.clear();
 
     // Grow perception to 3: the moss tier now surfaces (deterministic threshold).
-    r = observations::observe(s, self({{"perception", 3}}), 0, 0, 1, 0, kNoNudge);
+    r = obsAt(s, self({{"perception", 3}}), "stone", kNoNudge);
     REQUIRE(s.pending.front().text == "a stone, mossy");
     REQUIRE(s.observed_tier.at("stone") == 2);
 }
@@ -146,7 +156,7 @@ TEST_CASE("A thought rolls: misses at low faculty, lands once grown", "[observat
     // Observe the stone at perception 2: eligible (needs stone), rolls, but the
     // roll (2 + 0 nudge) < threshold 4 -> misses (nothing fires) BUT surfaces the
     // miss_text (failure is content -- the faint "something here you can't place").
-    observations::observe(s, self({{"perception", 2}}), 0, 0, 1, 0, kNoNudge);
+    obsAt(s, self({{"perception", 2}}), "stone", kNoNudge);
     REQUIRE(s.fired.count("moss_thought") == 0);
     bool sawMiss = false;
     for (const auto& line : s.pending)
@@ -158,7 +168,7 @@ TEST_CASE("A thought rolls: misses at low faculty, lands once grown", "[observat
     // Re-observe the SAME (already-observed) spot at the SAME level: no obs: key
     // is pushed (best not > prevTier), so the engine doesn't even re-visit it --
     // no re-roll. Anti-abuse is structural (the trigger index), not a stored miss.
-    observations::observe(s, self({{"perception", 2}}), 0, 0, 1, 0, kNoNudge);
+    obsAt(s, self({{"perception", 2}}), "stone", kNoNudge);
     REQUIRE(s.fired.count("moss_thought") == 0);
 
     // Grow perception to 4 and pump the stat change (what GameLoop does): the
@@ -175,11 +185,11 @@ TEST_CASE("A synthesis needs a SERIES of observations and reads as synthesis", "
 {
     State s = makeWorld();
     // Observe stone only: settlement needs stone AND water -> not yet available.
-    observations::observe(s, self({{"reason", 20}}), 0, 0, 1, 0, kMaxNudge);
+    obsAt(s, self({{"reason", 20}}), "stone", kMaxNudge);
     REQUIRE(s.fired.count("settlement") == 0);
 
     // Observe water too -> now stone+water held; high reason lands the synthesis.
-    observations::observe(s, self({{"reason", 20}}), 0, 0, 0, 1, kMaxNudge);
+    obsAt(s, self({{"reason", 20}}), "water", kMaxNudge);
     REQUIRE(s.fired.count("settlement") == 1);
     REQUIRE(s.flags.count("knows_settlement") == 1); // yield applied
     // The settlement thought reads as a synthesis (gated on a SERIES: stone+water).
@@ -199,9 +209,8 @@ TEST_CASE("Feeders add to the roll AND a feeder rise re-opens a missed synthesis
     State s = makeWorld();
     // Observe both spots at reason 18, survival 0: eligible, but the roll
     // (18 + 0 feeders) < threshold 19 -> misses.
-    observations::observe(s, self({{"reason", 18}}), 0, 0, 0, 1, kNoNudge); // water
-    observations::observe(s, self({{"reason", 18}}), 0, 0, 1, 0,
-                          kNoNudge); // stone -> rolls, misses
+    obsAt(s, self({{"reason", 18}}), "water", kNoNudge); // water
+    obsAt(s, self({{"reason", 18}}), "stone", kNoNudge); // stone -> rolls, misses
     REQUIRE(s.fired.count("settlement") == 0);
 
     // Raise ONLY the feeder (survival to 2 = +1 via survival:2). Reason is
@@ -235,21 +244,26 @@ TEST_CASE("setFlag fires a flag-gated thought ambiently", "[observations]")
     REQUIRE(observations::setFlag(s, self({}), "bell_rang", kNoNudge).outcome == Outcome::None);
 }
 
-TEST_CASE("Facing away observes nothing", "[observations]")
+TEST_CASE("Standing outside every observable box observes nothing", "[observations]")
 {
+    // Box-is-zone: you must be INSIDE an observable's box to observe it. A point in no
+    // box yields nothing (stone is at (100,0), water at (0,100); (500,500) is in neither).
     State s = makeWorld();
-    const ObserveResult r = observations::observe(s, self({}), 0, 0, -1, 0, kNoNudge);
+    const ObserveResult r = observations::observe(s, self({}), 500, 500, kNoNudge);
     REQUIRE(r.outcome == Outcome::None);
     REQUIRE(s.pending.empty());
 }
 
-TEST_CASE("facingObservable reports whether something is faced", "[observations]")
+TEST_CASE("facingObservable reports whether an observable is within interact_reach",
+          "[observations]")
 {
+    // Proximity, not facing: "faced" = a visible observable within interact_reach. makeWorld
+    // puts stone at (100,0), water at (0,100).
     const State s = makeWorld();
     const GrowthState g = self({});
-    REQUIRE(observations::facingObservable(s, g, 0, 0, 1, 0));        // stone east
-    REQUIRE(observations::facingObservable(s, g, 0, 0, 0, 1));        // water south
-    REQUIRE_FALSE(observations::facingObservable(s, g, 0, 0, -1, 0)); // nothing west
+    REQUIRE(observations::facingObservable(s, g, 100, 0));         // at stone
+    REQUIRE(observations::facingObservable(s, g, 0, 100));         // at water
+    REQUIRE_FALSE(observations::facingObservable(s, g, 500, 500)); // near neither
 }
 
 // --- VALUE derivation (load() runs deriveValues over the forward value graph) ---
@@ -432,19 +446,20 @@ TEST_CASE("A hidden observable is unfaceable until its visible_when holds", "[ob
 {
     State s = loadFromJson(R"({
       "observables": [
-        { "id": "stone", "value": 1, "x": 0, "y": 0, "tiers": [{ "text": "a stone" }] },
-        { "id": "ruin",  "value": 8, "x": 0, "y": 50, "radius": 96,
+        { "id": "stone", "value": 1, "x": 0, "y": 500, "tiers": [{ "text": "a stone" }] },
+        { "id": "ruin",  "value": 8, "x": 0, "y": 50,
           "visible_when": [{ "flag": "knows_settlement" }], "tiers": [{ "text": "a ruin" }] }
       ],
       "thoughts": []
     })");
 
     const GrowthState g = self({});
-    // ruin is at (0,50) within radius, faced looking south (0,1) -- but hidden.
-    REQUIRE_FALSE(observations::facingObservable(s, g, 0, 0, 0, 1));
+    // At the ruin's spot (0,50) -- but it's hidden, so it's unfaceable. (Stone is far at
+    // (0,500), outside interact_reach here, so it can't confound.)
+    REQUIRE_FALSE(observations::facingObservable(s, g, 0, 50));
     // Reveal it by setting the flag, then it becomes faceable.
     s.flags.insert("knows_settlement");
-    REQUIRE(observations::facingObservable(s, g, 0, 0, 0, 1));
+    REQUIRE(observations::facingObservable(s, g, 0, 50));
 }
 
 // --- Actions (kind defaults + per-spot overrides; takeAction -> ambient) ------
@@ -561,7 +576,7 @@ TEST_CASE("takeAction recovers a thought that observing alone couldn't reach", "
     // engine fires it. This is the fail/locked-thought recovery path.
     State s = loadWithActions(R"({
       "observables": [
-        { "id": "stone", "kind": "inanimate", "x": 100, "y": 0, "radius": 150,
+        { "id": "stone", "kind": "inanimate", "x": 0, "y": 0,
           "tiers": [{ "text": "a stone" }],
           "actions": { "add": [
             { "id": "clear_moss", "label": "Clear the moss",
@@ -579,7 +594,7 @@ TEST_CASE("takeAction recovers a thought that observing alone couldn't reach", "
 
     const GrowthState g = self({{"perception", 20}});
     // Observe the stone (east, at x=100): chisel_marks needs the flag too -> no fire.
-    observations::observe(s, g, 0, 0, 1, 0, kMaxNudge);
+    observations::observe(s, g, 0, 0, kMaxNudge);
     REQUIRE(s.fired.count("chisel_marks") == 0);
     // clear_moss is offered (stone observed); taking it sets moss_cleared and the
     // ambient engine now lands chisel_marks.
@@ -603,7 +618,7 @@ TEST_CASE("availableUnlocks: a deeper tier becomes reachable after growth (the p
     // moss tier reachable-but-unobserved -> it shows up as "stone@2".
     State s = loadFromJson(R"({
       "observables": [
-        { "id": "stone", "value": 1, "x": 100, "y": 0, "radius": 150,
+        { "id": "stone", "value": 1, "x": 0, "y": 0,
           "tiers": [
             { "text": "a stone" },
             { "unlock_when": [{ "stat": { "perception": 3 } }], "text": "mossy" }
@@ -613,12 +628,12 @@ TEST_CASE("availableUnlocks: a deeper tier becomes reachable after growth (the p
     })");
 
     // Observe at perception 1: only the base tier reached; no deeper tier yet.
-    observations::observe(s, self({{"perception", 1}}), 0, 0, 1, 0, kNoNudge);
+    observations::observe(s, self({{"perception", 1}}), 0, 0, kNoNudge);
     REQUIRE(observations::availableUnlocks(s, self({{"perception", 1}})).count("stone@2") == 0);
     // Grow perception to 3: the moss tier's gate is now met but unobserved -> pull.
     REQUIRE(observations::availableUnlocks(s, self({{"perception", 3}})).count("stone@2") == 1);
     // Observing it (going back) consumes it -> no longer in the set.
-    observations::observe(s, self({{"perception", 3}}), 0, 0, 1, 0, kNoNudge);
+    observations::observe(s, self({{"perception", 3}}), 0, 0, kNoNudge);
     REQUIRE(observations::availableUnlocks(s, self({{"perception", 3}})).count("stone@2") == 0);
 }
 
@@ -627,7 +642,7 @@ TEST_CASE("availableUnlocks: actions announce only for OBSERVED spots; hidden sp
 {
     State s = loadWithActions(R"({
       "observables": [
-        { "id": "stone", "kind": "inanimate", "x": 100, "y": 0, "radius": 150,
+        { "id": "stone", "kind": "inanimate", "x": 0, "y": 0,
           "tiers": [{ "text": "s" }] },
         { "id": "ruin",  "kind": "inanimate", "x": 200, "y": 0,
           "visible_when": [{ "flag": "found" }], "tiers": [{ "text": "r" }] }
@@ -641,10 +656,147 @@ TEST_CASE("availableUnlocks: actions announce only for OBSERVED spots; hidden sp
     // a notification).
     REQUIRE(observations::availableUnlocks(s, g).count("stone:search") == 0);
     // Observe the stone -> now its offered actions announce as pull-backs.
-    observations::observe(s, g, 0, 0, 1, 0, kNoNudge);
+    observations::observe(s, g, 0, 0, kNoNudge);
     const auto unlocks = observations::availableUnlocks(s, g);
     REQUIRE(unlocks.count("stone:search") == 1);
     REQUIRE(unlocks.count("stone:rest_hand") == 1);
     // ruin is hidden (visible_when unmet) -> never announced.
     REQUIRE(unlocks.count("ruin:search") == 0);
+}
+
+// --- placement binding (location comes from the map, content from JSON) ------
+
+namespace
+{
+State loadForPlacement()
+{
+    // Content only -- no x/y/radius/trigger here; those are the map's job now.
+    return loadFromJson(R"({
+      "observables": [
+        { "id": "stone", "kind": "inanimate", "tiers": [{ "text": "a boulder" }] },
+        { "id": "river", "kind": "water",     "tiers": [{ "text": "the water" }] }
+      ],
+      "thoughts": []
+    })");
+}
+} // namespace
+
+TEST_CASE("applyPlacements binds map location + trigger onto loaded observation content",
+          "[observations][placement]")
+{
+    State s = loadForPlacement();
+    const std::vector<observations::Placement> places = {
+        {"stone", 976.0f, 656.0f, 64.0f, 64.0f, observations::Trigger::Observe},
+        {"river", 464.0f, 400.0f, 128.0f, 128.0f, observations::Trigger::Enter},
+    };
+    const auto rep = observations::applyPlacements(s, places);
+    REQUIRE(rep.placements_without_observable.empty());
+    REQUIRE(rep.observables_without_placement.empty());
+
+    const Observable* stone = nullptr;
+    const Observable* river = nullptr;
+    for (const auto& o : s.observables)
+    {
+        if (o.id == "stone")
+            stone = &o;
+        if (o.id == "river")
+            river = &o;
+    }
+    REQUIRE(stone != nullptr);
+    REQUIRE(river != nullptr);
+    REQUIRE(stone->x == 976.0f);
+    REQUIRE(stone->y == 656.0f);
+    REQUIRE(stone->w == 64.0f);
+    REQUIRE(stone->trigger == observations::Trigger::Observe);
+    REQUIRE(river->trigger == observations::Trigger::Enter); // area, ambient
+    REQUIRE(river->w == 128.0f);
+}
+
+TEST_CASE("applyPlacements reports authoring gaps both ways", "[observations][placement]")
+{
+    State s = loadForPlacement(); // has stone + river
+    // A placement for content that doesn't exist, and river left unplaced.
+    const std::vector<observations::Placement> places = {
+        {"stone", 10.0f, 20.0f, 48.0f, 48.0f, observations::Trigger::Observe},
+        {"ghost", 0.0f, 0.0f, 48.0f, 48.0f, observations::Trigger::Observe}, // no such observable
+    };
+    const auto rep = observations::applyPlacements(s, places);
+    REQUIRE(rep.placements_without_observable.size() == 1);
+    REQUIRE(rep.placements_without_observable[0] == "ghost");
+    REQUIRE(rep.observables_without_placement.size() == 1);
+    REQUIRE(rep.observables_without_placement[0] == "river"); // content with no location
+}
+
+// --- ambient proximity triggers (enter/approach) -----------------------------
+
+TEST_CASE("An ENTER observable fires once when the player reaches its box, not before",
+          "[observations][trigger]")
+{
+    State s = loadForPlacement();
+    // A big river box (100x100 at (400,0)) -> its left edge is x=350.
+    observations::applyPlacements(
+        s, {{"river", 400.0f, 0.0f, 100.0f, 100.0f, observations::Trigger::Enter}});
+    const GrowthState g = self({});
+
+    // Far away -> nothing fires.
+    auto r = observations::triggerProximity(s, g, 0.0f, 0.0f, kNoNudge);
+    REQUIRE(r.outcome == Outcome::None);
+
+    // Within reach of the box -> it fires (a reading surfaces).
+    r = observations::triggerProximity(s, g, 350.0f, 0.0f, kNoNudge);
+    REQUIRE(r.outcome != Outcome::None);
+
+    // Still near next frame -> does NOT fire again (edge-triggered on `fired`).
+    r = observations::triggerProximity(s, g, 360.0f, 0.0f, kNoNudge);
+    REQUIRE(r.outcome == Outcome::None);
+}
+
+TEST_CASE("Proximity triggering ignores OBSERVE-mode observables (they need the verb)",
+          "[observations][trigger]")
+{
+    State s = loadForPlacement();
+    // stone is Observe-mode: standing on it must NOT auto-fire.
+    observations::applyPlacements(
+        s, {{"stone", 0.0f, 0.0f, 100.0f, 100.0f, observations::Trigger::Observe}});
+    const GrowthState g = self({});
+    const auto r = observations::triggerProximity(s, g, 0.0f, 0.0f, kNoNudge);
+    REQUIRE(r.outcome == Outcome::None); // observe-mode is silent to proximity
+}
+
+// --- glow (on within interact_reach of the box, off otherwise) ----------------
+
+TEST_CASE("glowStrength is on within interact_reach of the box, off beyond, and hidden stays dark",
+          "[observations][glow]")
+{
+    State s = loadForPlacement(); // stone + river, content only
+    s.interact_reach = 40.0f;
+    observations::applyPlacements(
+        s, {{"stone", 0.0f, 0.0f, 32.0f, 32.0f, observations::Trigger::Observe}});
+    const GrowthState g = self({});
+
+    // Inside the box -> on.
+    REQUIRE(observations::glowStrength(s, g, "stone", 0.0f, 0.0f) == 1.0f);
+    // Within reach of the edge (box half-width 16 + 30 < 16+40) -> on.
+    REQUIRE(observations::glowStrength(s, g, "stone", 46.0f, 0.0f) == 1.0f);
+    // Beyond reach (edge 16 + 40 = 56; 100 is past) -> off.
+    REQUIRE(observations::glowStrength(s, g, "stone", 100.0f, 0.0f) == 0.0f);
+}
+
+TEST_CASE("A hidden observable does not glow until revealed", "[observations][glow]")
+{
+    State s = loadFromJson(R"({
+      "observables": [
+        { "id": "ruin", "value": 8, "visible_when": [{ "flag": "seen" }],
+          "tiers": [{ "text": "a ruin" }] }
+      ],
+      "thoughts": []
+    })");
+    s.interact_reach = 40.0f;
+    observations::applyPlacements(
+        s, {{"ruin", 0.0f, 0.0f, 32.0f, 32.0f, observations::Trigger::Observe}});
+    const GrowthState g = self({});
+    // Standing right on it, but hidden -> no glow.
+    REQUIRE(observations::glowStrength(s, g, "ruin", 0.0f, 0.0f) == 0.0f);
+    s.flags.insert("seen");
+    REQUIRE(observations::glowStrength(s, g, "ruin", 0.0f, 0.0f) == 1.0f);
 }

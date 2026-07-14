@@ -239,6 +239,59 @@ int atlasCols(const json& j, int fallback)
     return fallback;
 }
 
+// A string-valued entity field instance by identifier ("observable", "trigger"), or
+// empty if absent/not a string. LDtk stores custom fields in fieldInstances as
+// {__identifier, __value}.
+std::string entityField(const json& e, const char* identifier)
+{
+    if (const auto fis = e.find("fieldInstances"); fis != e.end() && fis->is_array())
+        for (const auto& fi : *fis)
+            if (fi.value("__identifier", std::string{}) == identifier)
+            {
+                const auto v = fi.find("__value");
+                if (v != fi.end() && v->is_string())
+                    return v->get<std::string>();
+            }
+    return {};
+}
+
+// If entity `e` carries a non-empty `observable` field, append its placement: the box
+// AABB (center + size, x2 to world px) IS the interaction zone -- draw it as big as the
+// spot should be. Also reads the optional `trigger` mode. Only the Observable box carries
+// this field; physical entities stay field-free. px is the box top-left (authoring px).
+void collectObservable(const json& e, Region& r)
+{
+    const std::string id = entityField(e, "observable");
+    if (id.empty())
+        return;
+    const auto px = e.find("px");
+    if (px == e.end() || !px->is_array())
+        return;
+    const float wx = static_cast<float>((*px)[0].get<int>() * 2);
+    const float wy = static_cast<float>((*px)[1].get<int>() * 2);
+    ObservablePlacement p;
+    p.id = id;
+    p.w = static_cast<float>(e.value("width", 16) * 2);
+    p.h = static_cast<float>(e.value("height", 16) * 2);
+    p.x = wx + p.w * 0.5f; // px is top-left for a resizable box -> center it
+    p.y = wy + p.h * 0.5f;
+    p.trigger = entityField(e, "trigger");
+    r.observables.push_back(std::move(p));
+}
+
+// Scan an entity-carrying layer for observable placements (entities with an `observable`
+// field). Used for both the Entities layer (props that opt in) and the dedicated
+// Observables layer (standalone area/point triggers).
+void collectObservablesInLayer(const json& level, const char* layerName, Region& r)
+{
+    const json* lay = findLayer(level, layerName);
+    if (!lay)
+        return;
+    if (const auto ei = lay->find("entityInstances"); ei != lay->end() && ei->is_array())
+        for (const auto& e : *ei)
+            collectObservable(e, r);
+}
+
 // Entities layer -> props (tile-carrying) + objects (typed, e.g. PlayerSpawn). LDtk px
 // is authoring-grid px, x2 to the 32px world. `atlas` decodes prop footprint colliders.
 // Structure-type entities (bridges, docks) are handled by parseStructures (stamped into
@@ -501,6 +554,12 @@ Region load(const std::string& ldtk_path, const std::string& tileset_path,
     parseStructures(level, structureCfg, g, uvById, r);
     fillTileConfig(uvById, tileset_path, r);
     parseEntities(atlas, level, structureCfg, r);
+    // Observation PLACEMENTS come ONLY from the dedicated Observables layer. Observability
+    // is its own concern -- a resizable Observable box placed anywhere (over a bridge
+    // piece, an area, an object). Physical entities (Rock, Tree, Bridge) stay purely
+    // physical; they carry no observation fields. The content lives in observations.json;
+    // the box is just where + how it fires. See docs/design/OBSERVATION-SYSTEM.md.
+    collectObservablesInLayer(level, "Observables", r);
 
     r.ok = true;
     return r;
