@@ -15,7 +15,7 @@ namespace
 {
 FontHandle sFont = -1;
 
-constexpr int kTabCount = 5; // Self, Noticed, Satchel, Notebook, System
+constexpr int kTabCount = 6; // Self, Noticed, Satchel, Craft, Notebook, System
 
 // System-tab menu items.
 constexpr int kSysControls = 0;
@@ -205,6 +205,73 @@ void renderSatchel(const inventory::Satchel& sat, const inventory::Registry& reg
         softTextCentered("Nothing yet", cx, y, kTextDim);
 }
 
+} // namespace
+
+// The Craft-tab material rows: the distinct PRACTICAL item ids the pilgrim carries (the things
+// that can go in the pot), in a stable order. Row order is shared by render + step so the
+// selection cursor lines up. Non-Practical items (key items, keepsakes) aren't craftable.
+std::vector<std::string> craftMaterials(const inventory::Satchel& sat,
+                                        const inventory::Registry& reg)
+{
+    std::vector<std::string> out;
+    std::unordered_set<std::string> seen;
+    for (const auto& e : sat.items)
+    {
+        const inventory::ItemDef* def = reg.find(e.id);
+        if (!def || def->category != inventory::Category::Practical)
+            continue;
+        if (seen.insert(e.id).second)
+            out.push_back(e.id);
+    }
+    return out;
+}
+
+namespace
+{
+// The Craft tab: pick materials to combine, then Combine to attempt it. Little-Alchemy --
+// realizing a recipe is by trying. Rows = each carried material (a check when selected) + a
+// trailing "Combine". `sel` is the highlighted row; `selected` the toggled material ids;
+// `result` the last attempt's feedback. The actual craft runs in the game layer (needs the
+// recipe registry) -- this only shows + gathers the selection.
+void renderCraft(const inventory::Satchel& sat, const inventory::Registry& reg,
+                 const std::vector<std::string>& materials,
+                 const std::unordered_set<std::string>& selected, int sel,
+                 const std::string& result, float cx, float y)
+{
+    softTextCentered("Combine what you carry.", cx, y, kTextDim);
+    y += lineH() * 1.4f;
+
+    if (materials.empty())
+    {
+        softTextCentered("Nothing to work with yet.", cx, y, kTextDim);
+        return;
+    }
+
+    for (int i = 0; i < static_cast<int>(materials.size()); ++i)
+    {
+        const std::string& id = materials[static_cast<std::size_t>(i)];
+        const inventory::ItemDef* def = reg.find(id);
+        const bool on = selected.count(id) > 0;
+        const int have = inventory::count(sat, id);
+        std::string row = std::string(on ? "\xE2\x97\x89 " : "\xE2\x97\x8B ") // ◉ selected / ○ not
+                          + (def ? def->name : id) + "  x" + std::to_string(have);
+        const bool hi = (i == sel);
+        const Color c = def ? reading_color::rarityColor(def->rarity) : kText;
+        softTextCentered(row, cx, y, c, hi ? 1.0f : 0.6f);
+        y += lineH();
+    }
+
+    y += lineH() * 0.4f;
+    const bool combineHi = (sel == static_cast<int>(materials.size()));
+    softTextCentered("Combine", cx, y, {0.92f, 0.86f, 0.55f, 1.0f}, combineHi ? 1.0f : 0.55f);
+
+    if (!result.empty())
+    {
+        y += lineH() * 1.4f;
+        softTextCentered(result, cx, y, kTextDim);
+    }
+}
+
 // The Notebook tab: the dated record of readings, grouped by day (undated last).
 // Each day gets a "~ Day N ~" header; observations read plain, thoughts in their
 // faculty hue -- the same register split as the reading box.
@@ -291,6 +358,32 @@ void init(FontHandle font)
 // selection (from "none" (-1): down picks the first item, up the last; then it
 // wraps); confirm acts only once something is selected. Returns Quit if Quit was
 // confirmed, else None (Controls confirm pushes its sub-view as a side effect).
+// The Craft tab's item menu: W/S move over the material rows + a trailing Combine row; Space
+// toggles a material into the attempt, or (on Combine) commits the attempt (returns Craft --
+// the caller runs the actual craft, which needs the recipe registry). `materials` is the row
+// list, in the same order render draws. Selecting a material clears the last result.
+Action stepCraft(PauseState& pause, const std::vector<std::string>& materials, bool up, bool down,
+                 bool confirm)
+{
+    const int rows = static_cast<int>(materials.size()) + 1; // materials + Combine
+    if (down)
+        pause.craft_sel = (pause.craft_sel + 1) % rows;
+    else if (up)
+        pause.craft_sel = (pause.craft_sel - 1 + rows) % rows;
+
+    if (confirm)
+    {
+        if (pause.craft_sel == static_cast<int>(materials.size()))
+            return Action::Craft; // Combine row -> attempt (caller enacts)
+        // A material row: toggle it in/out of the attempt.
+        const std::string& id = materials[static_cast<std::size_t>(pause.craft_sel)];
+        if (!pause.craft_selected.erase(id))
+            pause.craft_selected.insert(id);
+        pause.craft_result.clear(); // a new selection supersedes the old feedback
+    }
+    return Action::None;
+}
+
 Action stepSystemMenu(PauseState& pause, bool up, bool down, bool confirm)
 {
     if (down)
@@ -311,7 +404,8 @@ Action stepSystemMenu(PauseState& pause, bool up, bool down, bool confirm)
     return Action::None;
 }
 
-Action step(PauseState& pause, bool toggle, bool left, bool right, bool up, bool down, bool confirm)
+Action step(PauseState& pause, bool toggle, bool left, bool right, bool up, bool down, bool confirm,
+            const std::vector<std::string>& craftMats)
 {
     if (!pause.open)
     {
@@ -348,9 +442,11 @@ Action step(PauseState& pause, bool toggle, bool left, bool right, bool up, bool
         pause.tab = static_cast<PauseState::Tab>(next);
     }
 
-    // Only the System tab is interactive; the other tabs are read-only.
+    // Interactive tabs. System = its item menu; Craft = material select + Combine.
     if (pause.tab == PauseState::Tab::System)
         return stepSystemMenu(pause, up, down, confirm);
+    if (pause.tab == PauseState::Tab::Craft)
+        return stepCraft(pause, craftMats, up, down, confirm);
 
     return Action::None;
 }
@@ -361,7 +457,7 @@ Action step(PauseState& pause, bool toggle, bool left, bool right, bool up, bool
 void renderTabStrip(PauseState& pause, float cx, float tabY, const Mouse& mouse)
 {
     // Order must match PauseState::Tab: Self, Noticed, Satchel, Notebook, System.
-    const char* labels[kTabCount] = {"Self", "Noticed", "Satchel", "Notebook", "System"};
+    const char* labels[kTabCount] = {"Self", "Noticed", "Satchel", "Craft", "Notebook", "System"};
     const float tabH = lineH() + 10.0f;
     const float tabGap = 6.0f;
     float widths[kTabCount];
@@ -418,6 +514,10 @@ Action renderTabContent(PauseState& pause, const growth::GrowthState& growth,
         break;
     case PauseState::Tab::Satchel:
         renderSatchel(content.satchel, content.items, cx, contentY);
+        break;
+    case PauseState::Tab::Craft:
+        renderCraft(content.satchel, content.items, craftMaterials(content.satchel, content.items),
+                    pause.craft_selected, pause.craft_sel, pause.craft_result, cx, contentY);
         break;
     case PauseState::Tab::Notebook:
         renderNotebook(growth, content.notebook, cx, contentY);

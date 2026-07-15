@@ -322,6 +322,15 @@ struct ObserveResult
 // tier your stats meet (deterministic; EXP once per tier), then run the ambient engine
 // over the keys that changed (this spot observed + its tier), which rolls any newly-
 // available thoughts. Queues the surfaced lines and reports the outcome + total EXP.
+// Build the unlock::Knowledge view over the current observation record + growth (observed
+// memories + fired thoughts, flags, stat levels) -- the same snapshot the ambient engine uses.
+// The caller owns the backing containers (the returned Knowledge holds pointers into them and
+// into `state`). Exposed so OTHER gated systems (crafting) check a recipe's unlock_when against
+// the same knowledge, not a divergent copy.
+unlock::Knowledge buildKnowledge(const State& state, const growth::GrowthState& growth,
+                                 std::unordered_set<std::string>& observedOut,
+                                 std::unordered_map<std::string, int>& statsOut);
+
 ObserveResult observe(State& state, const growth::GrowthState& growth, float px, float py,
                       const RollRng& rng);
 

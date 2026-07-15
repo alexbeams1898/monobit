@@ -1,8 +1,12 @@
 #pragma once
 
+#include "Crafting.h"
 #include "GameLoop.h"
 #include "Growth.h"
 #include "Observations.h"
+
+#include <string>
+#include <vector>
 
 using FontHandle = int;
 
@@ -18,11 +22,18 @@ enum class Action
 {
     None,   // nothing this frame
     Resume, // close the page, unfreeze the world
-    Quit    // exit to desktop (no save system yet -- a clean exit)
+    Quit,   // exit to desktop (no save system yet -- a clean exit)
+    Craft   // the player confirmed a craft attempt (pause.craft_selected); the caller runs it
 };
 
 // Set the font once after FontManager loads it.
 void init(FontHandle font);
+
+// The Craft tab's material rows: the distinct Practical item ids the pilgrim carries, in the
+// order the Craft tab draws + navigates them. The caller passes this to step() so the craft
+// cursor lines up with the rendered rows.
+std::vector<std::string> craftMaterials(const inventory::Satchel& satchel,
+                                        const inventory::Registry& items);
 
 // One frame of input while the page may be open. Controls stay in the left-hand
 // WASD cluster (no Esc); edge-triggered inputs decoded by the caller.
@@ -33,11 +44,13 @@ void init(FontHandle font);
 //   confirm   = Space   -- universal yes/interact: commits the selected item
 //                          (System -> Controls opens its view; Quit quits)
 // Space and F are the game's global yes/no; the world is frozen while the page
-// is open, so they mean confirm/back here without conflict. Mutates the
-// PauseState and returns the action committed this frame (Quit is returned for
-// the caller to act on). Pure -- testable without SDL or GL.
-Action step(PauseState& pause, bool toggle, bool left, bool right, bool up, bool down,
-            bool confirm);
+// is open, so they mean confirm/back here without conflict. `craftMats` is the Craft tab's
+// material-row list (the caller builds it from the satchel; empty for other tabs) so the
+// craft cursor + toggle line up with what's drawn. Mutates the PauseState and returns the
+// action committed this frame (Quit / Craft are returned for the caller to act on). Pure --
+// testable without SDL or GL.
+Action step(PauseState& pause, bool toggle, bool left, bool right, bool up, bool down, bool confirm,
+            const std::vector<std::string>& craftMats = {});
 
 // Mouse state for one frame, decoded by the caller (position from SDL,
 // `clicked` = a left-button press this frame). Passed in so the page module
@@ -58,6 +71,8 @@ struct Content
     const inventory::Satchel& satchel;
     const inventory::Registry& items;
     const notebook::Record& notebook;
+    const crafting::Registry& recipes;     // for the Craft tab (which recipes are realized)
+    const crafting::State& crafting_state; // discovery state (known recipes)
 };
 
 // Draw the page (overlay + tab strip + content) and handle the mouse against the

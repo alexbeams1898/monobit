@@ -739,6 +739,13 @@ ObserveResult fireObservable(State& state, const growth::GrowthState& growth, co
 }
 } // namespace
 
+unlock::Knowledge buildKnowledge(const State& state, const growth::GrowthState& growth,
+                                 std::unordered_set<std::string>& observedOut,
+                                 std::unordered_map<std::string, int>& statsOut)
+{
+    return makeKnowledge(state, growth, observedOut, statsOut); // the ONE snapshot builder
+}
+
 ObserveResult observe(State& state, const growth::GrowthState& growth, float px, float py,
                       const RollRng& rng)
 {

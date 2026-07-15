@@ -44,6 +44,7 @@ struct PauseState
         Self,
         Noticed,
         Satchel,
+        Craft,
         Notebook,
         System
     };
@@ -65,6 +66,14 @@ struct PauseState
     // Selected System-tab item: -1 = none (nothing highlighted until the player
     // hovers or presses W/S), 0 = Controls, 1 = Quit.
     int system_sel = -1;
+
+    // Craft tab: the material rows are the carried Practical items plus a trailing "Combine"
+    // row. `craft_sel` is the highlighted row (0..n materials, then Combine); `craft_selected`
+    // is the set of material ids toggled into the current attempt. `craft_result` holds the
+    // last attempt's feedback line (a made item or a closeness hint), shown until the next act.
+    int craft_sel = 0;
+    std::unordered_set<std::string> craft_selected;
+    std::string craft_result;
 };
 
 // Game-wide runtime state, stored as a singleton in the entt registry context

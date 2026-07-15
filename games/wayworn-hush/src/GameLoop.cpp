@@ -34,6 +34,7 @@ namespace
 bool pressedThisFrame(const EntityManager& em, int scancode);
 bool clickedThisFrame(EntityManager& em, uint8_t button);
 void enactConfirm(EntityManager& em, GameState& gs, const thought_box::ConfirmResult& r);
+void attemptCraft(GameState& gs);
 
 // The surface name of the tile at world (wx,wy): the tile's id looked up in the
 // region's tile->surface map. Empty if off-map or the tile is untagged (footsteps then
@@ -69,8 +70,11 @@ pause_page::Action stepPausePage(EntityManager& em, GameState& gs, bool menuUp)
     const bool up = !menuUp && pressedThisFrame(em, SDL_SCANCODE_W);
     const bool down = !menuUp && pressedThisFrame(em, SDL_SCANCODE_S);
     const bool confirm = !menuUp && pressedThisFrame(em, SDL_SCANCODE_SPACE);
+    const std::vector<std::string> craftMats = pause_page::craftMaterials(gs.satchel, gs.items);
     const pause_page::Action action =
-        pause_page::step(gs.pause, toggle, left, right, up, down, confirm);
+        pause_page::step(gs.pause, toggle, left, right, up, down, confirm, craftMats);
+    if (action == pause_page::Action::Craft)
+        attemptCraft(gs);
 
     // "New" item badges clear when the player LEAVES the satchel view (switched tab or closed
     // the page while on it) -- they saw the fresh finds, so they're no longer new.
@@ -278,6 +282,59 @@ void grantAndToast(GameState& gs, const std::vector<std::string>& items,
                 deposited.push_back(inst);
             }
     toastFinds(gs, deposited);
+}
+
+// Run a craft attempt from the Craft tab's selected materials: match them against the recipe
+// table (gated by the same knowledge observations use), and on an exact match make it -- the
+// craft consumes inputs + grants the output, and here we bank its XP, set any first-craft
+// reveal flag, and toast the find. No match -> a near-miss / nothing feedback line. Either way
+// the outcome shows in `craft_result` and the selection clears.
+void attemptCraft(GameState& gs)
+{
+    std::unordered_set<std::string> observedOut;
+    std::unordered_map<std::string, int> statsOut;
+    const unlock::Knowledge k =
+        observations::buildKnowledge(gs.observations, gs.growth, observedOut, statsOut);
+
+    const std::vector<std::string> selected(gs.pause.craft_selected.begin(),
+                                            gs.pause.craft_selected.end());
+    const crafting::Match m = crafting::match(selected, gs.recipes, k);
+
+    if (m.recipe == nullptr)
+    {
+        // No recipe. A near-miss (some ingredients of a real, realized recipe) nudges; nothing
+        // in common stays silent about what's missing (you're on your own -- see CRAFTING.md).
+        gs.pause.craft_result = (m.nearest != nullptr && m.closeness >= 0.5f)
+                                    ? "Something almost forms..."
+                                    : "These don't belong together.";
+        gs.pause.craft_selected.clear();
+        return;
+    }
+
+    const int craftStat = growth::statLevel(gs.growth, m.recipe->scaling.stat);
+    const crafting::Outcome out =
+        crafting::craft(*m.recipe, gs.satchel, gs.items, craftStat, observeNudge,
+                        gs.crafting_config, gs.crafting_state);
+    if (!out.made)
+    {
+        gs.pause.craft_result = "Not enough to work with.";
+        gs.pause.craft_selected.clear();
+        return;
+    }
+    // Bank the craft XP + fire any first-craft reveal, toast the made item. NOTE: there is no
+    // per-secondary-stat XP pool yet (issue #142), so the doing-layer XP is banked into Spirit
+    // EXP for now -- the crafting model already ATTRIBUTES it to xp_stat, ready to route once
+    // the progression system lands.
+    gs.growth.spirit_exp += out.xp;
+    if (!out.revealed_flag.empty())
+        gs.observations.flags.insert(out.revealed_flag);
+    if (const inventory::ItemDef* def = gs.items.find(out.output_item))
+    {
+        gs.pause.craft_result = "Made: " + def->name;
+        notify::push(std::to_string(out.output_qty) + "x " + def->name,
+                     reading_color::rarityColor(def->rarity));
+    }
+    gs.pause.craft_selected.clear();
 }
 
 // Despawn the world entity for an observable id (its glimmer + interactable), e.g. when a
@@ -568,7 +625,8 @@ void gameRenderUI(Engine& engine, EntityManager& em)
     // click Quit on the System tab to exit. Mouse handling lives here because it
     // hit-tests the geometry render() draws.
     const pause_page::Mouse mouse{static_cast<float>(mx), static_cast<float>(my), lClick};
-    const pause_page::Content content{gs.observations, gs.satchel, gs.items, gs.notebook};
+    const pause_page::Content content{gs.observations, gs.satchel, gs.items,
+                                      gs.notebook,     gs.recipes, gs.crafting_state};
     if (pause_page::render(gs.pause, gs.growth, content, mouse, engine.windowWidth(),
                            engine.windowHeight()) == pause_page::Action::Quit)
         engine.requestQuit();

@@ -56,6 +56,8 @@ TEST_CASE("A/D page through the tabs, wrapping", "[pause]")
     pause_page::step(p, false, false, /*right=*/true, false, false, false);
     REQUIRE(p.tab == PauseState::Tab::Satchel);
     pause_page::step(p, false, false, /*right=*/true, false, false, false);
+    REQUIRE(p.tab == PauseState::Tab::Craft);
+    pause_page::step(p, false, false, /*right=*/true, false, false, false);
     REQUIRE(p.tab == PauseState::Tab::Notebook);
     pause_page::step(p, false, false, /*right=*/true, false, false, false);
     REQUIRE(p.tab == PauseState::Tab::System);
@@ -147,4 +149,35 @@ TEST_CASE("Input while closed (no toggle) does nothing", "[pause]")
         pause_page::step(p, false, /*left=*/true, false, false, false, /*confirm=*/true);
     REQUIRE(a == Action::None);
     REQUIRE_FALSE(p.open);
+}
+
+TEST_CASE("Craft tab: Space toggles a material; Combine returns Craft", "[pause]")
+{
+    // Navigate to the Craft tab (Self -> Noticed -> Satchel -> Craft).
+    PauseState p = opened();
+    for (int i = 0; i < 3; ++i)
+        pause_page::step(p, false, false, /*right=*/true, false, false, false);
+    REQUIRE(p.tab == PauseState::Tab::Craft);
+
+    // Two materials + a trailing Combine row. Cursor starts on row 0.
+    const std::vector<std::string> mats = {"thyme", "water"};
+
+    // Space on row 0 toggles "thyme" into the attempt (not a Craft action yet).
+    Action a = pause_page::step(p, false, false, false, false, false, /*confirm=*/true, mats);
+    REQUIRE(a == Action::None);
+    REQUIRE(p.craft_selected.count("thyme") == 1);
+
+    // Space again toggles it back off.
+    pause_page::step(p, false, false, false, false, false, /*confirm=*/true, mats);
+    REQUIRE(p.craft_selected.count("thyme") == 0);
+
+    // W/S move over the rows; step down to the Combine row (index == mats.size()).
+    pause_page::step(p, false, false, false, false, false, /*confirm=*/true, mats); // re-add thyme
+    pause_page::step(p, false, false, false, false, /*down=*/true, false, mats);    // -> water
+    pause_page::step(p, false, false, false, false, /*down=*/true, false, mats);    // -> Combine
+    REQUIRE(p.craft_sel == static_cast<int>(mats.size()));
+
+    // Space on Combine returns Craft for the caller to enact.
+    a = pause_page::step(p, false, false, false, false, false, /*confirm=*/true, mats);
+    REQUIRE(a == Action::Craft);
 }
