@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Crafting.h"
 #include "Footsteps.h"
 #include "Formulas.h"
 #include "Glimmer.h"
@@ -92,6 +93,9 @@ struct GameState
     worldclock::WorldClock clock;             // in-world time (notebook datelines, day/night later)
     inventory::Registry items;                // loaded item blueprints (config/items/*.json)
     loot::Registry loot_tables;               // gather loot tables (config/loot/*.json)
+    crafting::Registry recipes;               // loaded recipes (config/recipes/*.json)
+    crafting::Config crafting_config;         // crafting outcome/XP tuning (config/crafting.json)
+    crafting::State crafting_state;           // realized-recipe discovery state
     inventory::Satchel satchel;               // what the pilgrim carries
     notebook::Record notebook; // dated record of readings (gated on carrying the notebook)
     // Unlock ids (see observations::availableUnlocks) already announced via a

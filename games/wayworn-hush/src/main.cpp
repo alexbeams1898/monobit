@@ -293,6 +293,8 @@ int main(int argc, char* argv[])
     // docs/design/INVENTORY.md). The watch is found later, not started with.
     inventory::load(gs.items, "config/items");
     loot::load(gs.loot_tables, "config/loot"); // gather tables (rolled by ActionKind::Gather)
+    crafting::load(gs.recipes, "config/recipes");                 // recipes (combine -> made thing)
+    crafting::loadConfig(gs.crafting_config, "config/crafting.json"); // outcome/XP tuning
     inventory::add(gs.satchel, gs.items, inventory::ItemInstance{"notebook"});
 
     // Terrain + player + props: load the authored LDtk region, apply it, and spawn the
