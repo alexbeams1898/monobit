@@ -511,8 +511,8 @@ void fillTileConfig(const std::unordered_map<int, std::pair<int, int>>& uvById,
     }
 }
 
-Region load(const std::string& ldtk_path, const std::string& tileset_path,
-            const surfaces::Config& surfaceCfg, const structures::Config& structureCfg)
+Region loadImpl(const std::string& ldtk_path, const std::string& tileset_path,
+                const surfaces::Config& surfaceCfg, const structures::Config& structureCfg)
 {
     Region r;
     std::ifstream f(ldtk_path);
@@ -539,8 +539,32 @@ Region load(const std::string& ldtk_path, const std::string& tileset_path,
         return r; // no usable ground layer
 
     // Decode the render atlas ONCE: drives both the transparent-cell skip and each
-    // prop's derived collider (opaque bounds). Permissive if the file is missing.
+    // prop's derived collider (opaque bounds).
     const Atlas atlas(tileset_path);
+
+    // The atlas column count is derived TWO ways -- from the PNG width (atlas.w /
+    // tile_size, used by transparentCells) and from the LDtk tileset def (__cWid, used by
+    // cellId). They MUST agree, or tile ids computed one way index the skip-set the other
+    // way and the wrong tiles silently render/vanish. Validate at load; a mismatch means
+    // the PNG and the .ldtk disagree about the tileset -- fatal, not silently wrong.
+    if (atlas.ok())
+    {
+        if (atlas.w % r.map.tile_size != 0 || atlas.h % r.map.tile_size != 0)
+        {
+            std::fprintf(stderr,
+                         "[ldtk] FATAL: atlas %s is %dx%d, not a multiple of tile size %d.\n",
+                         tileset_path.c_str(), atlas.w, atlas.h, r.map.tile_size);
+            return r; // ok stays false
+        }
+        if (atlas.w / r.map.tile_size != atlas_cols)
+        {
+            std::fprintf(stderr,
+                         "[ldtk] FATAL: atlas %s has %d columns but the .ldtk tileset def says "
+                         "%d -- the PNG and .ldtk disagree.\n",
+                         tileset_path.c_str(), atlas.w / r.map.tile_size, atlas_cols);
+            return r; // ok stays false
+        }
+    }
 
     // Per-cell surface tags (from the tileset's enumTags). Terrain walkability comes
     // from a tile's surface (water blocks, grass walks) -- no hand-painted collision.
@@ -563,6 +587,26 @@ Region load(const std::string& ldtk_path, const std::string& tileset_path,
 
     r.ok = true;
     return r;
+}
+
+Region load(const std::string& ldtk_path, const std::string& tileset_path,
+            const surfaces::Config& surfaceCfg, const structures::Config& structureCfg)
+{
+    // The many .get<int/float/string>() calls in loadImpl throw json::type_error if a
+    // hand-authored .ldtk has a field of the wrong type (allow_exceptions=false covers
+    // only parse(), not the typed getters). Catch here so a bad field names the FILE
+    // instead of surfacing as an opaque std::terminate. A throw -> Region{ok=false},
+    // which the caller treats as a fatal load failure.
+    try
+    {
+        return loadImpl(ldtk_path, tileset_path, surfaceCfg, structureCfg);
+    }
+    catch (const std::exception& e)
+    {
+        std::fprintf(stderr, "[ldtk] FATAL: malformed field in %s: %s\n", ldtk_path.c_str(),
+                     e.what());
+        return Region{};
+    }
 }
 
 void spawnProps(EntityManager& em, const Region& region, const std::string& tileset_path)

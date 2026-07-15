@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <fstream>
 
 namespace observations
@@ -528,6 +529,11 @@ void resolveActions(Observable& o, const nlohmann::json& e, const ActionKinds& k
 {
     if (const auto it = kinds.find(o.kind); it != kinds.end())
         o.actions = it->second; // start from kind defaults
+    else if (!o.kind.empty())
+        // A non-empty kind that matches no action-kind = a typo or a missing actions.json
+        // entry: the observable silently gets NO default actions. Log the gap.
+        std::fprintf(stderr, "[observe] observable '%s' has kind '%s' with no action-kind\n",
+                     o.id.c_str(), o.kind.c_str());
 
     const auto ov = e.find("actions");
     if (ov == e.end() || !ov->is_object())

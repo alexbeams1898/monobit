@@ -4,6 +4,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <fstream>
 #include <random>
 
@@ -19,8 +20,10 @@ void load(Config& cfg, const std::string& path)
     if (j.is_discarded())
         return;
     cfg.volume = j.value("volume", cfg.volume);
-    cfg.walk_cadence = j.value("walk_cadence", cfg.walk_cadence);
-    cfg.run_cadence = j.value("run_cadence", cfg.run_cadence);
+    // Cadences gate the step timer; a 0 (or negative) value would fire a footstep every
+    // frame (audio spam). Clamp to a small floor so a config typo can't spam SFX.
+    cfg.walk_cadence = std::max(0.05f, j.value("walk_cadence", cfg.walk_cadence));
+    cfg.run_cadence = std::max(0.05f, j.value("run_cadence", cfg.run_cadence));
     cfg.default_surface = j.value("default_surface", cfg.default_surface);
     // pools: { "Grass": [...], "Sand": [...], "Bridge": [...] } -- keyed by the surface
     // tag. A surface with no entry is silent (water).

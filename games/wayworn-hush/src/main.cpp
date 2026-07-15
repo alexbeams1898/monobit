@@ -332,9 +332,13 @@ int main(int argc, char* argv[])
             sBoxCfg.appear_sound = bj.value("appear_sound", sBoxCfg.appear_sound);
             sBoxCfg.notebook_sound = bj.value("notebook_sound", sBoxCfg.notebook_sound);
             sBoxCfg.drop_in_secs = bj.value("drop_in_secs", sBoxCfg.drop_in_secs);
-            sBoxCfg.chars_per_sec = bj.value("chars_per_sec", sBoxCfg.chars_per_sec);
+            // chars_per_sec=0 would freeze the typewriter -> the reading never completes
+            // and the box can't be dismissed (soft-lock). Floor it. blip_every=0 would
+            // blip every character (SFX spam); floor to 1.
+            sBoxCfg.chars_per_sec =
+                std::max(1.0f, bj.value("chars_per_sec", sBoxCfg.chars_per_sec));
             sBoxCfg.fade_out_secs = bj.value("fade_out_secs", sBoxCfg.fade_out_secs);
-            sBoxCfg.blip_every = bj.value("blip_every", sBoxCfg.blip_every);
+            sBoxCfg.blip_every = std::max(1, bj.value("blip_every", sBoxCfg.blip_every));
         }
     }
     // The fixed HUD region rects + visibility mode (canvas fractions -- see

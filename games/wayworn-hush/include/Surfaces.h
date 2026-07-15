@@ -24,7 +24,9 @@ struct Surface
 struct Config
 {
     std::unordered_map<std::string, Surface> surfaces;
-    std::string default_surface = "grass";
+    // Matches the LDtk Surface enum namespace (capitalized) -- the tag the importer writes.
+    // A lowercase default would never match a real tag, silently breaking the fallback.
+    std::string default_surface = "Grass";
 
     // Walkability of a named surface: the surface's flag, or the default surface's,
     // or true (never trap the player on an unknown tile). Empty name -> default.
