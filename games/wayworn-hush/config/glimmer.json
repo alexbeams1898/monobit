@@ -1,0 +1,14 @@
+{
+    "_comment": "Observable glow feel (see include/Glimmer.h). An unobserved observable glows warm + breathes when the player is within interact_reach of its box (a 'come look' Souls-style prompt); once observed it keeps a muted persistent glow, a touch brighter while in reach. All values are tunable -- edit + relaunch (dev reads assets from the source tree). Mirrors config/head_marker.json.",
+    "sprite": "assets/sprites/glimmer.png",
+    "size": 64,
+    "fade_speed": 6.0,
+    "bright_max": 0.55,
+    "pulse_amp": 0.12,
+    "pulse_hz": 0.7,
+    "observed_dim": 0.18,
+    "faced_boost": 1.6,
+    "warm_r": 1.0,
+    "warm_g": 0.94,
+    "warm_b": 0.78
+}

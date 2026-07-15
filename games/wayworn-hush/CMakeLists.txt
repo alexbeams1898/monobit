@@ -17,6 +17,7 @@ add_library(wayworn-systems STATIC
     src/Footsteps.cpp
     src/Surfaces.cpp
     src/Structures.cpp
+    src/JsonConfig.cpp
     src/HudCanvas.cpp
     src/HeadMarker.cpp
     src/WorldClock.cpp

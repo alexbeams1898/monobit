@@ -3,6 +3,7 @@
 #include "Footsteps.h"
 #include "GameLoop.h"
 #include "Glimmer.h"
+#include "JsonConfig.h"
 #include "LdtkImport.h"
 #include "Notify.h"
 #include "PausePage.h"
@@ -23,7 +24,6 @@
 #include <ctime>
 #include <exception>
 #include <filesystem>
-#include <fstream>
 
 // ---------------------------------------------------------------------------
 // Crash reporter -- writes crash.log next to the exe on fatal signals /
@@ -120,21 +120,10 @@ void gameOnResize(Engine& engine, int w, int h)
     reloadHudFonts(gs, w, h);
 }
 
-// LDtk trigger-field string -> the observation Trigger enum (empty/unknown = Observe).
-// Values match the LDtk Trigger enum exactly (LDtk capitalizes enum ids).
-observations::Trigger toTrigger(const std::string& s)
-{
-    if (s == "Enter")
-        return observations::Trigger::Enter;
-    return observations::Trigger::Observe;
-}
-
-// Load the authored LDtk region (real tileset art) into the world, or fall back to the
-// flat-color placeholder. Applies terrain + surface map, uploads it, spawns the player
-// at the region's PlayerSpawn (if any), and spawns glimmer signals + tile-carrying prop
-// entities (trees/rocks -- Y-sorted, front/behind the player by base). Observation
-// placements (where each observable lives) are bound from the map here. See
-// docs/design/MAP-PIPELINE.md.
+// Load the authored LDtk region into the world (fatal if it fails -- the region IS the
+// map). Applies terrain + surface map, uploads it, spawns the player at the region's
+// PlayerSpawn, binds observation placements, and spawns glimmer signals + tile-carrying
+// prop entities (trees/rocks). See docs/design/MAP-PIPELINE.md.
 bool setupRegion(Engine& engine, EntityManager& em, GameState& gs)
 {
     const ldtk::Region region =
@@ -178,7 +167,8 @@ bool setupRegion(Engine& engine, EntityManager& em, GameState& gs)
         std::vector<observations::Placement> placements;
         placements.reserve(region.observables.size());
         for (const auto& p : region.observables)
-            placements.push_back({p.id, p.x, p.y, p.w, p.h, toTrigger(p.trigger)});
+            placements.push_back(
+                {p.id, p.x, p.y, p.w, p.h, observations::triggerFromString(p.trigger)});
         const auto rep = observations::applyPlacements(gs.observations, placements);
         for (const auto& id : rep.placements_without_observable)
             std::fprintf(stderr, "[observe] placement '%s' has no observation content\n",
@@ -188,7 +178,7 @@ bool setupRegion(Engine& engine, EntityManager& em, GameState& gs)
                          id.c_str());
     }
 
-    glimmer::spawn(em, gs.observations);
+    glimmer::spawn(em, gs.observations, gs.glimmer_config);
     ldtk::spawnProps(em, region, "assets/tilesets/overworld.png");
     return true;
 }
@@ -262,20 +252,16 @@ int main(int argc, char* argv[])
     // Global color grade -- pulls the scene toward the muted aesthetic. Loaded
     // from config so the mood is tunable live (edit config/atmosphere.json +
     // rebuild, no recompile).
-    if (std::ifstream af{"config/atmosphere.json"})
+    if (const auto aj = config::load("config/atmosphere.json"))
     {
-        const auto aj = nlohmann::json::parse(af, nullptr, false);
-        if (!aj.is_discarded())
-        {
-            const auto& g = aj.value("grade", nlohmann::json::object());
-            engine::gl::Grade grade;
-            grade.saturation = g.value("saturation", 1.0f);
-            grade.brightness = g.value("brightness", 1.0f);
-            grade.tint_r = g.value("tint_r", 1.0f);
-            grade.tint_g = g.value("tint_g", 1.0f);
-            grade.tint_b = g.value("tint_b", 1.0f);
-            engine::gl::pixelTargetSetGrade(grade);
-        }
+        const auto& g = aj->value("grade", nlohmann::json::object());
+        engine::gl::Grade grade;
+        grade.saturation = g.value("saturation", 1.0f);
+        grade.brightness = g.value("brightness", 1.0f);
+        grade.tint_r = g.value("tint_r", 1.0f);
+        grade.tint_g = g.value("tint_g", 1.0f);
+        grade.tint_b = g.value("tint_b", 1.0f);
+        engine::gl::pixelTargetSetGrade(grade);
     }
 
     // World-render subsystems (game-owned; mirror the renderWorld callback).
@@ -291,6 +277,7 @@ int main(int argc, char* argv[])
     footsteps::load(gs.footstep_config, "config/footsteps.json");
     surfaces::load(gs.surface_config, "config/surfaces.json");
     structures::load(gs.structure_config, "config/structures.json");
+    glimmer::load(gs.glimmer_config, "config/glimmer.json"); // before setupRegion (spawns glimmers)
 
     // Item blueprints, then the pilgrim's starting satchel: he sets out carrying his
     // notebook (a key item -- carrying it is what lets thoughts be written down; see
@@ -313,33 +300,24 @@ int main(int argc, char* argv[])
     // captions. Fractions * hud::scale(window) give the pixel size, so text scales
     // with the window (reloadHudFonts / gameOnResize). The placeholder face is a
     // serif stand-in until the pixel-font aesthetic pass (docs/design/AESTHETIC.md).
-    if (std::ifstream ff{"config/fonts.json"})
+    if (const auto fj = config::load("config/fonts.json"))
     {
-        const auto fj = nlohmann::json::parse(ff, nullptr, false);
-        if (!fj.is_discarded())
-        {
-            sFontCfg.face = fj.value("face", sFontCfg.face);
-            sFontCfg.body_frac = fj.value("body", sFontCfg.body_frac);
-            sFontCfg.label_frac = fj.value("label", sFontCfg.label_frac);
-        }
+        sFontCfg.face = fj->value("face", sFontCfg.face);
+        sFontCfg.body_frac = fj->value("body", sFontCfg.body_frac);
+        sFontCfg.label_frac = fj->value("label", sFontCfg.label_frac);
     }
-    if (std::ifstream bf{"config/observation_box.json"})
+    if (const auto bj = config::load("config/observation_box.json"))
     {
-        const auto bj = nlohmann::json::parse(bf, nullptr, false);
-        if (!bj.is_discarded())
-        {
-            sBoxCfg.blip_sound = bj.value("blip_sound", sBoxCfg.blip_sound);
-            sBoxCfg.appear_sound = bj.value("appear_sound", sBoxCfg.appear_sound);
-            sBoxCfg.notebook_sound = bj.value("notebook_sound", sBoxCfg.notebook_sound);
-            sBoxCfg.drop_in_secs = bj.value("drop_in_secs", sBoxCfg.drop_in_secs);
-            // chars_per_sec=0 would freeze the typewriter -> the reading never completes
-            // and the box can't be dismissed (soft-lock). Floor it. blip_every=0 would
-            // blip every character (SFX spam); floor to 1.
-            sBoxCfg.chars_per_sec =
-                std::max(1.0f, bj.value("chars_per_sec", sBoxCfg.chars_per_sec));
-            sBoxCfg.fade_out_secs = bj.value("fade_out_secs", sBoxCfg.fade_out_secs);
-            sBoxCfg.blip_every = std::max(1, bj.value("blip_every", sBoxCfg.blip_every));
-        }
+        sBoxCfg.blip_sound = bj->value("blip_sound", sBoxCfg.blip_sound);
+        sBoxCfg.appear_sound = bj->value("appear_sound", sBoxCfg.appear_sound);
+        sBoxCfg.notebook_sound = bj->value("notebook_sound", sBoxCfg.notebook_sound);
+        sBoxCfg.drop_in_secs = bj->value("drop_in_secs", sBoxCfg.drop_in_secs);
+        // chars_per_sec=0 would freeze the typewriter -> the reading never completes and the
+        // box can't be dismissed (soft-lock). Floor it. blip_every=0 would blip every
+        // character (SFX spam); floor to 1.
+        sBoxCfg.chars_per_sec = std::max(1.0f, bj->value("chars_per_sec", sBoxCfg.chars_per_sec));
+        sBoxCfg.fade_out_secs = bj->value("fade_out_secs", sBoxCfg.fade_out_secs);
+        sBoxCfg.blip_every = std::max(1, bj->value("blip_every", sBoxCfg.blip_every));
     }
     // The fixed HUD region rects + visibility mode (canvas fractions -- see
     // HudCanvas / config/hud.json). GameState owns them (one source of truth); the

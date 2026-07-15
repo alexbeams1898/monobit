@@ -1,11 +1,11 @@
 #include "Footsteps.h"
 
+#include "JsonConfig.h"
 #include "systems/AudioSystem.h"
 
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
-#include <fstream>
 #include <random>
 
 namespace footsteps
@@ -13,12 +13,10 @@ namespace footsteps
 
 void load(Config& cfg, const std::string& path)
 {
-    std::ifstream f(path);
-    if (!f)
+    const auto loaded = config::load(path);
+    if (!loaded)
         return;
-    const nlohmann::json j = nlohmann::json::parse(f, nullptr, /*allow_exceptions=*/false);
-    if (j.is_discarded())
-        return;
+    const nlohmann::json& j = *loaded;
     cfg.volume = j.value("volume", cfg.volume);
     // Cadences gate the step timer; a 0 (or negative) value would fire a footstep every
     // frame (audio spam). Clamp to a small floor so a config typo can't spam SFX.

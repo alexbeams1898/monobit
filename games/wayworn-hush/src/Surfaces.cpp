@@ -1,8 +1,8 @@
 #include "Surfaces.h"
 
-#include <nlohmann/json.hpp>
+#include "JsonConfig.h"
 
-#include <fstream>
+#include <nlohmann/json.hpp>
 
 namespace surfaces
 {
@@ -19,12 +19,10 @@ bool Config::walkable(const std::string& name) const
 
 void load(Config& cfg, const std::string& path)
 {
-    std::ifstream f(path);
-    if (!f)
-        return; // defaults
-    const nlohmann::json j = nlohmann::json::parse(f, nullptr, /*allow_exceptions=*/false);
-    if (j.is_discarded())
+    const auto loaded = config::load(path);
+    if (!loaded)
         return;
+    const nlohmann::json& j = *loaded;
 
     cfg.default_surface = j.value("default", cfg.default_surface);
     if (const auto it = j.find("surfaces"); it != j.end() && it->is_object())

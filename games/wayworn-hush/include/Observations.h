@@ -122,6 +122,11 @@ enum class Trigger
     Enter
 };
 
+// Parse a trigger mode from its LDtk enum string ("Enter" -> Enter, everything else incl.
+// "" / "Observe" -> Observe). The ONE place the string<->enum mapping lives, so a new mode
+// can't be handled differently on the JSON-fallback path vs. the LDtk-placement path.
+Trigger triggerFromString(const std::string& s);
+
 // An authored observable in the world. `value` is the one authored worth knob -- "how
 // much noticing this matters" -- feeding tier EXP + every thought VALUE downstream (see
 // docs/design/PROCESSING-MODEL.md).

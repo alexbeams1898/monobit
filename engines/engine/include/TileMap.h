@@ -136,6 +136,15 @@ struct TileMap
         return col >= 0 && col < width && row >= 0 && row < height;
     }
 
+    // Flat row-major index of (col,row) -- the single source for the tiles/decoration/
+    // overhang layout. Use this instead of open-coding `row * width + col` so producers
+    // and consumers share one width and can't drift.
+    std::size_t cellIndex(int col, int row) const
+    {
+        return static_cast<std::size_t>(row) * static_cast<std::size_t>(width) +
+               static_cast<std::size_t>(col);
+    }
+
     // DDA traversal state along one axis: which cell we're in, the
     // direction step (+1/-1), the t-parameter advance per cell-cross,
     // and the t-parameter at the next boundary crossing. Initialized

@@ -1,11 +1,12 @@
 #include "Observations.h"
 
+#include "JsonConfig.h"
+
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
-#include <fstream>
 
 namespace observations
 {
@@ -437,14 +438,6 @@ Action parseAction(const nlohmann::json& a)
     return act;
 }
 
-Trigger parseTrigger(const std::string& s)
-{
-    // Values match the LDtk Trigger enum exactly (LDtk capitalizes enum ids).
-    if (s == "Enter")
-        return Trigger::Enter;
-    return Trigger::Observe; // default + explicit "Observe"
-}
-
 Observable parseObservable(const nlohmann::json& e)
 {
     Observable o;
@@ -455,7 +448,7 @@ Observable parseObservable(const nlohmann::json& e)
     o.y = e.value("y", 0.0f);
     o.w = e.value("w", 32.0f);
     o.h = e.value("h", 32.0f);
-    o.trigger = parseTrigger(e.value("trigger", std::string{}));
+    o.trigger = triggerFromString(e.value("trigger", std::string{}));
     o.value = e.value("value", 1);
     o.kind = e.value("kind", std::string{});
     if (const auto it = e.find("visible_when"); it != e.end())
@@ -494,12 +487,10 @@ ActionKinds loadActionKinds(const std::string& actions_path)
     ActionKinds kinds;
     if (actions_path.empty())
         return kinds;
-    std::ifstream f(actions_path);
-    if (!f)
+    const auto loaded = config::load(actions_path);
+    if (!loaded)
         return kinds;
-    const nlohmann::json j = nlohmann::json::parse(f, nullptr, /*allow_exceptions=*/false);
-    if (j.is_discarded())
-        return kinds;
+    const nlohmann::json& j = *loaded;
     const auto ak = j.find("action_kinds");
     if (ak == j.end() || !ak->is_object())
         return kinds;
@@ -561,15 +552,21 @@ void resolveActions(Observable& o, const nlohmann::json& e, const ActionKinds& k
 }
 } // namespace
 
+Trigger triggerFromString(const std::string& s)
+{
+    // Values match the LDtk Trigger enum exactly (LDtk capitalizes enum ids).
+    if (s == "Enter")
+        return Trigger::Enter;
+    return Trigger::Observe; // default + explicit "Observe"
+}
+
 void load(State& state, const std::string& path, const std::string& actions_path)
 {
     state = State{};
-    std::ifstream f(path);
-    if (!f)
+    const auto loaded = config::load(path);
+    if (!loaded)
         return;
-    const nlohmann::json j = nlohmann::json::parse(f, nullptr, /*allow_exceptions=*/false);
-    if (j.is_discarded())
-        return;
+    const nlohmann::json& j = *loaded;
 
     parseRollConfig(j, state.roll);
     state.interact_reach = j.value("interact_reach", state.interact_reach);

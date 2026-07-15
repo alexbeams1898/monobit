@@ -1,9 +1,10 @@
 #include "Structures.h"
 
+#include "JsonConfig.h"
+
 #include <nlohmann/json.hpp>
 
 #include <cstdio>
-#include <fstream>
 
 namespace structures
 {
@@ -35,12 +36,10 @@ bool readWalk(const nlohmann::json* walk, const char* key)
 
 void load(Config& cfg, const std::string& path)
 {
-    std::ifstream f(path);
-    if (!f)
+    const auto loaded = config::load(path);
+    if (!loaded)
         return;
-    const nlohmann::json j = nlohmann::json::parse(f, nullptr, /*allow_exceptions=*/false);
-    if (j.is_discarded())
-        return;
+    const nlohmann::json& j = *loaded;
 
     const auto structs = j.find("structures");
     if (structs == j.end() || !structs->is_object())

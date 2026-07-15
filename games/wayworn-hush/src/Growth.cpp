@@ -1,8 +1,8 @@
 #include "Growth.h"
 
-#include <nlohmann/json.hpp>
+#include "JsonConfig.h"
 
-#include <fstream>
+#include <nlohmann/json.hpp>
 
 namespace growth
 {
@@ -23,12 +23,10 @@ void load(GrowthState& state, const std::string& path)
     state.secondary.clear();
     state.buff_defs.clear();
     state.faculty_colors.clear();
-    std::ifstream f(path);
-    if (!f)
+    const auto loaded = config::load(path);
+    if (!loaded)
         return;
-    const nlohmann::json j = nlohmann::json::parse(f, nullptr, /*allow_exceptions=*/false);
-    if (j.is_discarded())
-        return;
+    const nlohmann::json& j = *loaded;
 
     loadNames(j, "faculties", state.faculties);
     loadNames(j, "secondary", state.secondary);

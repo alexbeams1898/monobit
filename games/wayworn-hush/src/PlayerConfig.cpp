@@ -1,8 +1,8 @@
 #include "PlayerConfig.h"
 
-#include <nlohmann/json.hpp>
+#include "JsonConfig.h"
 
-#include <fstream>
+#include <nlohmann/json.hpp>
 
 namespace
 {
@@ -19,13 +19,10 @@ PlayerConfig::AnimState parseState(const nlohmann::json& j, const PlayerConfig::
 PlayerConfig loadPlayerConfig(const std::string& path)
 {
     PlayerConfig cfg;
-    std::ifstream f(path);
-    if (!f)
-        return cfg; // defaults
-
-    const nlohmann::json j = nlohmann::json::parse(f, nullptr, /*allow_exceptions=*/false);
-    if (j.is_discarded())
+    const auto loaded = config::load(path);
+    if (!loaded)
         return cfg;
+    const nlohmann::json& j = *loaded;
 
     cfg.speed = j.value("speed", cfg.speed);
     cfg.run_speed_mult = j.value("run_speed_mult", cfg.run_speed_mult);

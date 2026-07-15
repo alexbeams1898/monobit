@@ -378,9 +378,7 @@ void parseStructures(const json& level, const structures::Config& structureCfg, 
                 const std::array<int, 2> uv = lay->second.at(lc, lr, w, h);
                 const int id = cellId(uv[0], uv[1], g.atlas_cols);
                 uvById[id] = {uv[0], uv[1]};
-                const std::size_t idx =
-                    static_cast<std::size_t>(row) * static_cast<std::size_t>(g.cw) +
-                    static_cast<std::size_t>(col);
+                const std::size_t idx = r.map.cellIndex(col, row);
                 // The structure art ALWAYS goes on the DECORATION layer, drawn over the
                 // terrain but under the player -- so the ground base underneath still
                 // renders where the structure tile is transparent (a bridge-end cap and
@@ -478,8 +476,7 @@ parseGround(const json& ground, const Atlas& atlas, const surfaces::Config& surf
         if (transparent.count(id))
             continue; // blank atlas cell (e.g. a stray fill) -> no visual, skip
         uvById[id] = {uv_col, uv_row};
-        const std::size_t idx = static_cast<std::size_t>(row) * static_cast<std::size_t>(g.cw) +
-                                static_cast<std::size_t>(col);
+        const std::size_t idx = r.map.cellIndex(col, row);
         if (!seen[idx])
         {
             seen[idx] = true;

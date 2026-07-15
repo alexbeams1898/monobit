@@ -45,8 +45,7 @@ std::string surfaceUnder(const EntityManager& em, const GameState& gs, float wx,
         return {};
     // Per-cell override first (a bridge deck sounds like wood even over water); then the
     // tile-type surface (grass/water/sand) keyed by the tile id under the player.
-    const std::size_t idx = static_cast<std::size_t>(row) * static_cast<std::size_t>(tm.width) +
-                            static_cast<std::size_t>(col);
+    const std::size_t idx = tm.cellIndex(col, row);
     if (const auto cit = gs.cell_surface.find(idx); cit != gs.cell_surface.end())
         return cit->second;
     const auto it = gs.tile_surface.find(tm.at(col, row).tile_id);
@@ -301,7 +300,8 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
 
     // World glimmer: an unobserved spot glows warm when faced ("come look"); once
     // observed it quiets. Thoughts are not signposted.
-    glimmer::update(em, gs.observations, gs.growth, pt.x, pt.y, static_cast<float>(dt));
+    glimmer::update(em, gs.observations, gs.growth, gs.glimmer_config, pt.x, pt.y,
+                    static_cast<float>(dt));
 
     // Over-head thought bubble: shown exactly while a thought reading is on screen,
     // then fades. It tracks the player's head each frame.

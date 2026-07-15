@@ -1,12 +1,12 @@
 #include "HeadMarker.h"
 
+#include "JsonConfig.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 
 #include <nlohmann/json.hpp>
 
 #include <cmath>
-#include <fstream>
 
 namespace head_marker
 {
@@ -17,12 +17,10 @@ float sPhase = 0.0f; // shared breathing phase (advanced in update)
 
 void load(HeadMarkerConfig& out, const std::string& path)
 {
-    std::ifstream f(path);
-    if (!f)
+    const auto loaded = config::load(path);
+    if (!loaded)
         return;
-    const nlohmann::json j = nlohmann::json::parse(f, nullptr, /*allow_exceptions=*/false);
-    if (j.is_discarded())
-        return;
+    const nlohmann::json& j = *loaded;
     out.sprite = j.value("sprite", out.sprite);
     out.size = j.value("size", out.size);
     out.head_offset = j.value("head_offset", out.head_offset);
