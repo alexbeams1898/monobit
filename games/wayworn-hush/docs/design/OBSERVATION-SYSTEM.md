@@ -240,13 +240,15 @@ nothing interactable"). But it is **not a blinking gamer-LED.** It's a **mood**:
 - Soft, brief, easy to miss if you aren't paying attention — which is
   thematically perfect (the game rewards attention; the signal itself asks for
   it).
-- Candidate form: a gentle **glimmer / fade-in mark** when you're near+facing an
-  observable — either a faint world-space shimmer on the thing, or a small,
-  quiet mark low on the screen. Not persistent chrome; it appears when relevant
-  and fades otherwise.
-- Distinguishes **new** (something here you haven't fully noticed — worth a
-  press) from **already-known** subtly, so the player isn't lured to re-observe
-  exhausted things. (A dimmer/absent signal for exhausted observables.)
+- A gentle **glimmer** on the thing when it's the active target (you're near it) —
+  a soft world-space shimmer, not persistent chrome; it appears when relevant and
+  fades otherwise.
+- Its **brightness scales with the relevant faculty** — a stat renders the world
+  through the character's eyes: a quiet world when the faculty is low, the world's
+  subtler offerings surfacing more strongly as it grows. The same for every spot;
+  the stat is the dial. So the signal is itself a reward for growing attention.
+- Items are not glimmered this way — a thing lying in the world carries its own
+  cue (see [INTERACTION-MODEL.md](INTERACTION-MODEL.md)).
 
 Minimal, but affective: the world quietly *offering* something, not a UI element
 demanding a button.

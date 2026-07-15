@@ -148,7 +148,10 @@ a spot's glimmer to its faculty hue — so the signal and the menu are one syste
   the `Observable` (kind defaults + `add`/`remove`/`replace`), the same
   compute-once pattern as tiers. The menu just reads the resolved list.
 - **Taken-state** = which one-shot actions have fired lives in the record
-  (`State`), like `fired` thoughts and `flags` — the taken set survives save.
+  (`State`), like `fired` thoughts and `flags` — the taken set survives save. It
+  is keyed **per spot** (a spot-scoped key), so a deed id shared across spots via
+  kind defaults is tracked independently — taking it at one spot never marks it
+  taken at another.
 
 ### Config shape
 
@@ -183,10 +186,16 @@ a spot's glimmer to its faculty hue — so the signal and the menu are one syste
 
 `takeAction(state, growth, spotId, actionId, rng)`:
 1. surface the action's `result_text` as a plain `PendingLine` (the deed's voice);
-2. if `one_shot`, record it in the taken set (so it drops off the menu);
+2. if `one_shot`, record it (per-spot) in the taken set (so it drops off the menu);
 3. `set_flag` (if any) into `state.flags`;
 4. run the **existing** ambient engine over that flag key → tiers/thoughts
    re-check → a **missed thought can fire now**. Reuses `runEngine` wholesale.
+
+A deed may also declare **item effects** — granting an item or rolling a gather
+result into the satchel, and optionally consuming its spot (removing it from the
+world). The observation layer stays inventory-ignorant: it reports these as ids
+for the game layer to enact. This is what makes a "cache" or a "yield" just a deed
+on an observation spot — the drop and the deed are one system.
 
 An action's `unlock_when` decides whether it's *offered*; a resolved action list
 filters to offered-and-not-taken(one_shot) when the menu opens.
