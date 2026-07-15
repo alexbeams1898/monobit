@@ -24,6 +24,12 @@ struct PlayerConfig
     AnimState idle;
     AnimState walk;
     AnimState fast_walk;
+
+    // Foot collider (world px): a small box at the sprite's base, much narrower than the
+    // art frame. Pairs with the sprite (frame_*), so it's config -- swap the protagonist
+    // art and retune here, not in code.
+    float collider_w = 22.0f;
+    float collider_h = 12.0f;
 };
 
 // Loads config/player.json. Missing fields fall back to the struct defaults, so

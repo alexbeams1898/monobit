@@ -1,0 +1,9 @@
+{
+    "_comment": "The region's identity: where its map, art, and ambient bed live. One place for the asset paths that were otherwise repeated across main.cpp + the importer. `tileset_name` is the substring the importer matches against the .ldtk tileset defs to find the render atlas's column count.",
+    "ldtk": "assets/tilesets/source/overworld.ldtk",
+    "tileset_png": "assets/tilesets/overworld.png",
+    "tileset_name": "Overworld",
+    "ambient_track": "assets/audio/ambient_meadow.ogg",
+    "ambient_volume": 0.55,
+    "ambient_fade_in_ms": 3000
+}

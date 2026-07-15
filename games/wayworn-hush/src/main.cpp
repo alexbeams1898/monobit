@@ -126,9 +126,9 @@ void gameOnResize(Engine& engine, int w, int h)
 // prop entities (trees/rocks). See docs/design/MAP-PIPELINE.md.
 bool setupRegion(Engine& engine, EntityManager& em, GameState& gs)
 {
+    const world_config::Config& wc = gs.world_config;
     const ldtk::Region region =
-        ldtk::load("assets/tilesets/source/overworld.ldtk", "assets/tilesets/overworld.png",
-                   gs.surface_config, gs.structure_config);
+        ldtk::load(wc.ldtk, wc.tileset_png, gs.surface_config, gs.structure_config);
     std::fprintf(stderr, "[region] ldtk load %s: %dx%d, %zu objects, %zu props, %zu observables\n",
                  region.ok ? "OK" : "FAILED", region.map.width, region.map.height,
                  region.objects.size(), region.props.size(), region.observables.size());
@@ -179,7 +179,7 @@ bool setupRegion(Engine& engine, EntityManager& em, GameState& gs)
     }
 
     glimmer::spawn(em, gs.observations, gs.glimmer_config);
-    ldtk::spawnProps(em, region, "assets/tilesets/overworld.png");
+    ldtk::spawnProps(em, region, wc.tileset_png);
     return true;
 }
 } // namespace
@@ -278,6 +278,7 @@ int main(int argc, char* argv[])
     surfaces::load(gs.surface_config, "config/surfaces.json");
     structures::load(gs.structure_config, "config/structures.json");
     glimmer::load(gs.glimmer_config, "config/glimmer.json"); // before setupRegion (spawns glimmers)
+    world_config::load(gs.world_config, "config/world.json"); // region asset paths
 
     // Item blueprints, then the pilgrim's starting satchel: he sets out carrying his
     // notebook (a key item -- carrying it is what lets thoughts be written down; see
@@ -332,8 +333,8 @@ int main(int argc, char* argv[])
     // (see docs/design/AESTHETIC.md). Runs silent if no audio device.
     // (AudioSystem's init/shutdown are owned by the engine; the game only
     // decides what to play.)
-    AudioSystem::playMusic("assets/audio/ambient_meadow.ogg", 0.55f, /*loop=*/true,
-                           /*fade_in_ms=*/3000);
+    AudioSystem::playMusic(gs.world_config.ambient_track, gs.world_config.ambient_volume,
+                           /*loop=*/true, gs.world_config.ambient_fade_in_ms);
 
     engine.setGameUpdate(&gameUpdate);
     engine.setPreRender(&gamePreRender);

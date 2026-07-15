@@ -12,6 +12,7 @@
 #include "Structures.h"
 #include "Surfaces.h"
 #include "WorldClock.h"
+#include "WorldConfig.h"
 
 #include <string>
 #include <unordered_map>
@@ -80,6 +81,7 @@ struct GameState
     hud::Regions hud;                    // fixed HUD region rects + visibility mode
     HeadMarkerConfig head_marker_config; // over-head thought-bubble feel/placement
     glimmer::Config glimmer_config;      // observable glow feel
+    world_config::Config world_config;   // region asset paths (map, atlas, ambient)
     worldclock::WorldClock clock;        // in-world time (notebook datelines, day/night later)
     inventory::Registry items;           // loaded item blueprints (config/items/*.json)
     inventory::Satchel satchel;          // what the pilgrim carries

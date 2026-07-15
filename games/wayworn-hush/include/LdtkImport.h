@@ -29,10 +29,10 @@ struct Object
 
 // Where an observation lives in the world, read from an Observable box on the
 // Observables layer (observability is its own concern -- physical entities carry no such
-// field). The box AABB (center + size) IS the interaction zone; `trigger` is its trigger
-// field. Kept as a neutral struct (a trigger STRING, not the observations enum) so the
-// importer takes no dependency on the observation system -- the game maps it to
-// observations::Placement at load. See docs/design/OBSERVATION-SYSTEM.md.
+// field). The box AABB (center + size) marks the spot; you interact when within
+// interact_reach of it. `trigger` is its trigger field. Kept as a neutral struct (a
+// trigger STRING, not the observations enum) so the importer takes no dependency on the
+// observation system -- the game maps it to observations::Placement at load.
 struct ObservablePlacement
 {
     std::string id; // the observation id this placement locates

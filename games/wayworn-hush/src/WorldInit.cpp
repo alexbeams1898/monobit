@@ -5,15 +5,6 @@
 
 namespace world_init
 {
-namespace
-{
-// Foot collider: a small box at the sprite's base so the character tucks behind
-// objects and Y-sorts by where it stands. Sized to the humanoid's feet (much
-// narrower than the 64px art frame). Fixed geometry.
-constexpr float kPlayerFootW = 22.0f;
-constexpr float kPlayerFootH = 12.0f;
-} // namespace
-
 entt::entity spawnPlayer(EntityManager& em, const PlayerConfig& cfg)
 {
     auto& reg = em.registry();
@@ -25,7 +16,9 @@ entt::entity spawnPlayer(EntityManager& em, const PlayerConfig& cfg)
     reg.emplace<Transform>(player, Transform{cx, cy});
     reg.emplace<PreviousTransform>(player, PreviousTransform{cx, cy});
     reg.emplace<Velocity>(player);
-    reg.emplace<Collider>(player, Collider{kPlayerFootW, kPlayerFootH, true});
+    // Foot collider: a small box at the sprite's base (narrower than the art frame) so the
+    // character tucks behind objects and Y-sorts by where it stands. Sized in player.json.
+    reg.emplace<Collider>(player, Collider{cfg.collider_w, cfg.collider_h, true});
 
     // Animated sprite sheet. RenderSystem draws the cell the Animation selects
     // (dir + frame); src_w/h are the cell size. NO sort_anchor override: with a

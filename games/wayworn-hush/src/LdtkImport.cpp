@@ -256,9 +256,9 @@ std::string entityField(const json& e, const char* identifier)
 }
 
 // If entity `e` carries a non-empty `observable` field, append its placement: the box
-// AABB (center + size, x2 to world px) IS the interaction zone -- draw it as big as the
-// spot should be. Also reads the optional `trigger` mode. Only the Observable box carries
-// this field; physical entities stay field-free. px is the box top-left (authoring px).
+// AABB (center + size, x2 to world px) marks WHERE the observable is -- you interact when
+// within interact_reach of it. Also reads the optional `trigger` mode. Only the Observable
+// box carries this field; physical entities stay field-free. px is top-left (authoring px).
 void collectObservable(const json& e, Region& r)
 {
     const std::string id = entityField(e, "observable");

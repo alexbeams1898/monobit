@@ -26,6 +26,11 @@ PlayerConfig loadPlayerConfig(const std::string& path)
 
     cfg.speed = j.value("speed", cfg.speed);
     cfg.run_speed_mult = j.value("run_speed_mult", cfg.run_speed_mult);
+    if (const auto c = j.find("collider"); c != j.end() && c->is_object())
+    {
+        cfg.collider_w = c->value("w", cfg.collider_w);
+        cfg.collider_h = c->value("h", cfg.collider_h);
+    }
     if (const auto it = j.find("animation"); it != j.end())
     {
         const auto& a = *it;

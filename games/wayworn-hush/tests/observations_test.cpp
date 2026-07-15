@@ -244,10 +244,10 @@ TEST_CASE("setFlag fires a flag-gated thought ambiently", "[observations]")
     REQUIRE(observations::setFlag(s, self({}), "bell_rang", kNoNudge).outcome == Outcome::None);
 }
 
-TEST_CASE("Standing outside every observable box observes nothing", "[observations]")
+TEST_CASE("Standing beyond interact_reach of every observable observes nothing", "[observations]")
 {
-    // Box-is-zone: you must be INSIDE an observable's box to observe it. A point in no
-    // box yields nothing (stone is at (100,0), water at (0,100); (500,500) is in neither).
+    // Proximity: you must be within interact_reach of an observable's box. (500,500) is far
+    // from both (stone at (100,0), water at (0,100)), so nothing resolves.
     State s = makeWorld();
     const ObserveResult r = observations::observe(s, self({}), 500, 500, kNoNudge);
     REQUIRE(r.outcome == Outcome::None);
@@ -670,7 +670,7 @@ namespace
 {
 State loadForPlacement()
 {
-    // Content only -- no x/y/radius/trigger here; those are the map's job now.
+    // Content only -- no x/y/w/h/trigger here; placement is the map's job now.
     return loadFromJson(R"({
       "observables": [
         { "id": "stone", "kind": "inanimate", "tiers": [{ "text": "a boulder" }] },
