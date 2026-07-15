@@ -54,7 +54,14 @@ struct Action
     unlock::Condition unlock_when; // when it is OFFERED (empty = always)
     std::string result_text;       // what doing it feels like (surfaced on take)
     std::string set_flag;          // world-state it sets (empty = none)
-    bool one_shot = false;         // true = leaves the menu once taken
+    // Item effects, declared as OPAQUE ids (like set_flag): the observation system carries
+    // them but never interprets them -- the GAME enacts the grant (it owns the satchel/loot).
+    // grant_item -> deposit that item; grant_table -> roll that loot table. So a "Pick up" /
+    // "Gather" deed on an observable-and-takeable thing lives in the same deed list as its
+    // readings-deeds, with no inventory dependency here.
+    std::string grant_item;  // item id to deposit on take (empty = none)
+    std::string grant_table; // loot table id to roll on take (empty = none)
+    bool one_shot = false;   // true = leaves the menu once taken
 };
 
 // A subjective thought -- ONE struct for both "thoughts" (fed by one
@@ -297,6 +304,11 @@ struct ObserveResult
 {
     Outcome outcome = Outcome::None;
     int earned = 0;
+    // Item effects a taken deed declared (ids only -- the game does the actual grant, since
+    // observations is inventory-ignorant). grant_item ids in `granted`; grant_table ids in
+    // `gathered`. Empty for a plain reading/deed.
+    std::vector<std::string> granted;  // item ids to deposit
+    std::vector<std::string> gathered; // loot table ids to roll
 };
 
 // Observe the observable within interact_reach of (px,py) -- reveal the deepest objective

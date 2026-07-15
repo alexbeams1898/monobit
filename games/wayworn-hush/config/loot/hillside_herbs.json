@@ -1,0 +1,9 @@
+{
+    "_comment": "A gather table (see include/Loot.h). A Gather node naming this table rolls rolls.min..rolls.max weighted picks when harvested -- the 'lottery' feel. weight is RELATIVE (not a percent): thyme is common, a river stone is the rarer pull. qty ranges the amount per pick. Placeholder for the gather system.",
+    "id": "hillside_herbs",
+    "rolls": { "min": 1, "max": 3 },
+    "entries": [
+        { "item": "wild_thyme", "weight": 80, "qty": { "min": 1, "max": 2 } },
+        { "item": "river_stone", "weight": 20, "qty": { "min": 1, "max": 1 } }
+    ]
+}

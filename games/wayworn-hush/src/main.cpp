@@ -129,9 +129,12 @@ bool setupRegion(Engine& engine, EntityManager& em, GameState& gs)
     const world_config::Config& wc = gs.world_config;
     const ldtk::Region region =
         ldtk::load(wc.ldtk, wc.tileset_png, gs.surface_config, gs.structure_config);
-    std::fprintf(stderr, "[region] ldtk load %s: %dx%d, %zu objects, %zu props, %zu observables\n",
+    std::fprintf(stderr,
+                 "[region] ldtk load %s: %dx%d, %zu objects, %zu props, %zu observables, %zu "
+                 "pickups\n",
                  region.ok ? "OK" : "FAILED", region.map.width, region.map.height,
-                 region.objects.size(), region.props.size(), region.observables.size());
+                 region.objects.size(), region.props.size(), region.observables.size(),
+                 region.pickups.size());
     if (!region.ok)
     {
         // The LDtk region IS the map -- no fallback. A failed load (missing/corrupt file)
@@ -179,6 +182,7 @@ bool setupRegion(Engine& engine, EntityManager& em, GameState& gs)
     }
 
     glimmer::spawn(em, gs.observations, gs.glimmer_config);
+    world_items::spawn(em, region.pickups, gs.items, gs.loot_tables, gs.world_items_config);
     ldtk::spawnProps(em, region, wc.tileset_png);
     return true;
 }
@@ -278,12 +282,14 @@ int main(int argc, char* argv[])
     surfaces::load(gs.surface_config, "config/surfaces.json");
     structures::load(gs.structure_config, "config/structures.json");
     glimmer::load(gs.glimmer_config, "config/glimmer.json"); // before setupRegion (spawns glimmers)
-    world_config::load(gs.world_config, "config/world.json"); // region asset paths
+    world_items::load(gs.world_items_config, "config/world_items.json"); // floor item feel
+    world_config::load(gs.world_config, "config/world.json");            // region asset paths
 
     // Item blueprints, then the pilgrim's starting satchel: he sets out carrying his
     // notebook (a key item -- carrying it is what lets thoughts be written down; see
     // docs/design/INVENTORY.md). The watch is found later, not started with.
     inventory::load(gs.items, "config/items");
+    loot::load(gs.loot_tables, "config/loot"); // gather tables (rolled by Kind::Gather nodes)
     inventory::add(gs.satchel, gs.items, inventory::ItemInstance{"notebook"});
 
     // Terrain + player + props: load the authored LDtk region, apply it, and spawn the

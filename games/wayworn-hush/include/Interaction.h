@@ -1,6 +1,8 @@
 #pragma once
 
 #include "Growth.h"
+#include "Inventory.h"
+#include "Loot.h"
 #include "Observations.h"
 
 #include <string>
@@ -11,35 +13,42 @@
 class EntityManager;
 
 // The unified interaction layer: ONE concept for everything the player can act on in the
-// world -- observe a spot now; pick up an item, use a crafting station, open a door later.
-// An Interactable is plain data (a kind + an AABB + a label + the id its action needs); a
-// single InteractionSystem each frame resolves the ACTIVE one (nearest in reach, or under
-// the cursor), and Space OR a click fires it. Adding a kind is a new enum value + one
-// dispatch case -- not a new system. See docs/design/GAME-SYSTEMS.md.
+// world. Every interactable is OBSERVABLE (examining it surfaces a reading -- the warm
+// glimmer marks it) and/or ACTIONABLE (interacting DOES something concrete -- pick up an
+// item, gather a node; the item's floor icon is the cue, no glow). A spot can be both: an
+// observable-and-takeable thing is an observation whose deed list includes a "pick up" deed
+// (so the action lives in the observation menu, no mixed-menu here). A pure material is
+// actionable-only: interacting fires it DIRECTLY (fast looting), never a menu. A single
+// InteractionSystem resolves the ACTIVE spot each frame; Space OR a click fires it. See
+// docs/design/GAME-SYSTEMS.md.
 namespace interaction
 {
 
-// What firing an interactable does. Observe is the first + only kind today; the others
-// name where this generalizes so the shape is obviously right (they are NOT built yet).
-enum class Kind
+// A concrete, direct action an actionable-only spot performs on interact (no reading). A
+// spot that is ALSO observable carries no direct action -- its "pick up" lives as a deed in
+// the observation menu instead. Plain data (save-friendly); the system dispatches on `kind`.
+enum class ActionKind
 {
-    Observe, // reveal the observation at target_id (observations::observe)
-    // Pickup,  // collect an item into the satchel
-    // Craft,   // open a crafting station
-    // Open,    // a door / container
+    None,   // not directly actionable (observe-only, or nothing)
+    Pickup, // deposit the item at `target` into the satchel, then despawn
+    Gather, // roll the loot table at `target` into the satchel, then despawn
+    // Craft, Open ... later
 };
 
-// A world thing the player can act on. Component on an entity that also has a Transform
-// (its position). The box (w,h) around the Transform is the interaction zone; the player
-// interacts when within interact_reach of it, or when the cursor is over it. Plain data
-// (save-friendly): no behavior lives here -- the InteractionSystem dispatches on `kind`.
+// A world thing the player can act on. Component on an entity that also has a Transform (its
+// position). The box (w,h) around the Transform is the interaction zone; the player acts
+// when within interact_reach, or when the cursor is over it. Two optional capabilities:
+//   observe_id -- non-empty => examining surfaces this observation (glimmer marks it).
+//   action     -- non-None  => interacting performs it directly (only when observe_id is
+//                  empty; an observable spot's "take" is a deed, not a direct action).
+// Plain data (save-friendly): no behavior here -- the InteractionSystem routes.
 struct Interactable
 {
-    Kind kind = Kind::Observe;
     float w = 32.0f; // box size around the Transform (world px)
     float h = 32.0f;
-    std::string prompt;  // player-facing verb for the highlight UI ("Observe", "Pick up")
-    std::string target;  // the id the action needs (for Observe: the observable id)
+    std::string observe_id;               // observation id (empty = not observable)
+    ActionKind action = ActionKind::None; // direct action (None = not directly actionable)
+    std::string target;                   // the action's id (item id / loot table id)
     bool active = false; // set by the system each frame: is this the highlighted target?
 };
 
@@ -87,18 +96,24 @@ struct Context
     observations::State& obs;
     const growth::GrowthState& growth;
     const observations::RollRng& rng;
+    inventory::Satchel& satchel;      // Pickup/Gather deposit here
+    const inventory::Registry& items; // item blueprints (stackability, rarity, name)
+    const loot::Registry& loot;       // loot tables (Gather rolls one)
     float reach = 0.0f;
 };
 
-// What the system did this frame: which interactable (if any) FIRED, so the caller can do
-// the kind-specific UI follow-up (an Observe fire opens the spot's action menu). Also the
-// Spirit EXP the action earned. `fired` is false when nothing fired (only targeting ran).
+// What the system did this frame, so the caller can do the follow-up. Exactly one path
+// fires: OBSERVE (observe_target set -> the caller opens that spot's reading/action menu) or
+// a DIRECT ACTION (observe_target empty, items set -> the caller toasts the already-deposited
+// find). `fired` is false when nothing fired (only targeting ran).
 struct Outcome
 {
     bool fired = false;
-    Kind kind = Kind::Observe;
-    std::string target; // the fired interactable's target id (e.g. the observable id)
-    int earned = 0;     // Spirit EXP from the action
+    std::string observe_target; // the observed spot's id (empty if a direct action fired)
+    int earned = 0;             // Spirit EXP from an observe
+    // Items a DIRECT action deposited, for the toast (Pickup -> one; Gather -> the handful).
+    // Empty for an observe (a "take" deed's grant flows through the menu, not here).
+    std::vector<inventory::ItemInstance> items;
 };
 
 // The per-frame ECS system: build candidates from view<Transform, Interactable>, resolve

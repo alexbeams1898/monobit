@@ -46,10 +46,9 @@ struct ItemDef
 // A concrete copy in the satchel.
 struct ItemInstance
 {
-    std::string id;       // -> ItemDef
-    int quantity = 1;     // for stackables
-    float quality = 1.0f; // per-COPY roll (gather/craft fills this later; 1.0 default)
-    bool is_new = true;   // "newly found" badge for the UI (mirrors reading is_new)
+    std::string id;     // -> ItemDef
+    int quantity = 1;   // for stackables
+    bool is_new = true; // "newly found" badge for the UI (mirrors reading is_new)
 };
 
 // The player's bag: a plain vector, no cap.

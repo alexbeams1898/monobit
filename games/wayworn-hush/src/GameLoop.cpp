@@ -7,6 +7,7 @@
 #include "Notify.h"
 #include "PausePage.h"
 #include "PlayerMovement.h"
+#include "ReadingColor.h"
 #include "ScreenInput.h"
 #include "ScreenToWorld.h"
 #include "ThoughtBox.h"
@@ -32,6 +33,7 @@ namespace
 // Forward decls -- helpers below reference these before their definitions appear.
 bool pressedThisFrame(const EntityManager& em, int scancode);
 bool clickedThisFrame(EntityManager& em, uint8_t button);
+void enactConfirm(GameState& gs, const thought_box::ConfirmResult& r);
 
 // The surface name of the tile at world (wx,wy): the tile's id looked up in the
 // region's tile->surface map. Empty if off-map or the tile is untagged (footsteps then
@@ -211,8 +213,8 @@ bool handleReadingInput(const EntityManager& em, GameState& gs, bool clicked)
     if (thought_box::menuActive())
     {
         if (pressedThisFrame(em, SDL_SCANCODE_SPACE))
-            // A deed can fire a thought -> bank its EXP (the box no longer owns growth).
-            gs.growth.spirit_exp += thought_box::confirm(gs.observations, gs.growth, observeNudge);
+            // A deed can fire a thought (EXP) and/or grant an item -- enact both.
+            enactConfirm(gs, thought_box::confirm(gs.observations, gs.growth, observeNudge));
         if (pressedThisFrame(em, SDL_SCANCODE_W))
             thought_box::moveUp();
         if (pressedThisFrame(em, SDL_SCANCODE_S))
@@ -224,22 +226,73 @@ bool handleReadingInput(const EntityManager& em, GameState& gs, bool clicked)
     if (thought_box::active()) // a reading Line: Space OR a click anywhere advances it
     {
         if (pressedThisFrame(em, SDL_SCANCODE_SPACE) || clicked)
-            thought_box::confirm(gs.observations, gs.growth, observeNudge);
+            enactConfirm(gs, thought_box::confirm(gs.observations, gs.growth, observeNudge));
         return true;
     }
     return false;
 }
 
-// Follow-up after the InteractionSystem fired an Observe: open the spot's action menu.
-// (Kind-specific UI; other kinds get their own follow-up here as they land.)
+// Toast each deposited item in its rarity color (one line per item so a rare find pops in
+// its own color). Stacked quantities show a count.
+void toastFinds(const GameState& gs, const std::vector<inventory::ItemInstance>& items)
+{
+    for (const auto& inst : items)
+    {
+        const inventory::ItemDef* def = gs.items.find(inst.id);
+        if (!def)
+            continue;
+        const std::string line =
+            inst.quantity > 1 ? std::to_string(inst.quantity) + "x " + def->name : def->name;
+        notify::push(line, reading_color::rarityColor(def->rarity));
+    }
+}
+
+// Deposit item ids + rolled loot tables into the satchel, toasting each find. The ONE place
+// an item enters the bag -- shared by the direct-pickup path (interactable action) and the
+// deed path (a "pick up"/"gather" deed). `items` are item ids (one each); `tables` are loot
+// table ids to roll.
+void grantAndToast(GameState& gs, const std::vector<std::string>& items,
+                   const std::vector<std::string>& tables)
+{
+    std::vector<inventory::ItemInstance> deposited;
+    for (const auto& id : items)
+    {
+        inventory::add(gs.satchel, gs.items, inventory::ItemInstance{id});
+        deposited.push_back(inventory::ItemInstance{id});
+    }
+    for (const auto& tableId : tables)
+        if (const loot::Table* table = gs.loot_tables.find(tableId))
+            for (auto& inst : loot::roll(*table, observeNudge))
+            {
+                inventory::add(gs.satchel, gs.items, inst);
+                deposited.push_back(inst);
+            }
+    toastFinds(gs, deposited);
+}
+
+// Bank the EXP a deed earned + grant any items/tables it declared. The chokepoint for a
+// menu confirm's effects (Space or click), so both input paths enact grants identically.
+void enactConfirm(GameState& gs, const thought_box::ConfirmResult& r)
+{
+    gs.growth.spirit_exp += r.earned;
+    if (!r.granted.empty() || !r.gathered.empty())
+        grantAndToast(gs, r.granted, r.gathered);
+}
+
+// Follow-up after the InteractionSystem fired: kind-specific UI. An Observe opens the spot's
+// action menu; a direct Action (a material with no reading) already deposited its find --
+// toast it.
 void onInteractionFired(GameState& gs, const interaction::Outcome& out)
 {
-    if (out.kind != interaction::Kind::Observe || out.target.empty())
+    if (out.observe_target.empty())
+    {
+        toastFinds(gs, out.items); // direct pickup/gather -- items already in the satchel
         return;
+    }
     // The spot's baseline actions show in the menu now -- don't also toast them; only
     // later-unlocked ones announce as a pull-back.
-    seedObservedActionsAsKnown(gs, out.target);
-    thought_box::pushActionMenu(gs.observations, gs.growth, out.target);
+    seedObservedActionsAsKnown(gs, out.observe_target);
+    thought_box::pushActionMenu(gs.observations, gs.growth, out.observe_target);
 }
 } // namespace
 
@@ -341,7 +394,12 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
         intent.mouse_valid = mouseWorld(engine, em, intent.mouse_x, intent.mouse_y);
         intent.pressed = pressedThisFrame(em, SDL_SCANCODE_SPACE);
         intent.clicked = clicked;
-        const interaction::Context ctx{gs.observations, gs.growth, observeNudge,
+        const interaction::Context ctx{gs.observations,
+                                       gs.growth,
+                                       observeNudge,
+                                       gs.satchel,
+                                       gs.items,
+                                       gs.loot_tables,
                                        gs.observations.interact_reach};
         const interaction::Outcome fired = interaction::update(em, intent, ctx);
         gs.growth.spirit_exp += fired.earned;
@@ -349,9 +407,11 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
             onInteractionFired(gs, fired);
     }
 
-    // World glimmer: the active interactable glows warm (come look); observed spots keep a
-    // muted glow. Runs after the InteractionSystem set the `active` flag.
-    glimmer::update(em, gs.observations, gs.growth, gs.glimmer_config, static_cast<float>(dt));
+    // World glimmer: refresh observation glimmers' dim state (observed spots keep a muted
+    // glow), then fade every glimmer toward its target -- the active interactable glows
+    // (come look). Both run after the InteractionSystem set the `active` flag.
+    glimmer::setObservationTargets(em, gs.observations, gs.growth, gs.glimmer_config);
+    glimmer::update(em, gs.glimmer_config, static_cast<float>(dt));
 
     // Over-head thought bubble: shown exactly while a thought reading is on screen,
     // then fades. It tracks the player's head each frame.
@@ -442,9 +502,9 @@ void gameRenderUI(Engine& engine, EntityManager& em)
     // The pause page can't be open while the menu is up, so the click is theirs to
     // share without conflict.
     if (!hudOff)
-        gs.growth.spirit_exp +=
-            thought_box::menuMouse(gs.observations, gs.growth, observeNudge, static_cast<float>(mx),
-                                   static_cast<float>(my), lClick);
+        enactConfirm(gs, thought_box::menuMouse(gs.observations, gs.growth, observeNudge,
+                                                static_cast<float>(mx), static_cast<float>(my),
+                                                lClick));
 
     // Pause page over everything (no-op when closed). Mouse is interchangeable
     // with the keyboard controls: hover a tab to highlight, click to switch,

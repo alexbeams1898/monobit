@@ -1,5 +1,7 @@
 #include "Interaction.h"
 
+#include "Inventory.h"
+#include "Loot.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 
@@ -85,21 +87,45 @@ Outcome update(EntityManager& em, const Intent& intent, const Context& ctx)
     if (r.index < 0)
         return {};
 
-    Interactable& target = reg.get<Interactable>(ents[static_cast<std::size_t>(r.index)]);
+    const entt::entity targetEnt = ents[static_cast<std::size_t>(r.index)];
+    Interactable& target = reg.get<Interactable>(targetEnt);
     target.active = true; // drives the highlight
     if (!r.fire)
         return {};
 
     Outcome out;
     out.fired = true;
-    out.kind = target.kind;
-    out.target = target.target;
-    switch (target.kind)
+
+    // Observable wins: examining opens the reading (+ its action menu, where a "take" deed
+    // lives). The spot persists -- an observation is re-readable; its "take" deed despawns
+    // the item, not this path.
+    if (!target.observe_id.empty())
     {
-    case Kind::Observe:
-        out.earned = observations::observeById(ctx.obs, ctx.growth, target.target, ctx.rng).earned;
-        break;
+        out.observe_target = target.observe_id;
+        out.earned =
+            observations::observeById(ctx.obs, ctx.growth, target.observe_id, ctx.rng).earned;
+        return out;
     }
+
+    // Actionable-only: fire the direct action (fast looting -- no menu), deposit, then remove
+    // the world item. Destroying the entity drops its Interactable + floor sprite with it, so
+    // the highlight can't linger on empty space.
+    switch (target.action)
+    {
+    case ActionKind::Pickup:
+        out.items.push_back(inventory::ItemInstance{target.target});
+        break;
+    case ActionKind::Gather:
+        if (const loot::Table* table = ctx.loot.find(target.target))
+            out.items = loot::roll(*table, ctx.rng);
+        break;
+    case ActionKind::None:
+        break; // a spot with neither observe nor action shouldn't be a candidate; no-op
+    }
+    for (const auto& item : out.items)
+        inventory::add(ctx.satchel, ctx.items, item);
+    if (target.action != ActionKind::None)
+        reg.destroy(targetEnt);
     return out;
 }
 

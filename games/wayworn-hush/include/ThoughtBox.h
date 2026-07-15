@@ -89,16 +89,24 @@ void pushActionMenu(observations::State& state, const growth::GrowthState& growt
 // away. The observation's reading + fired thoughts still play out.
 void dropQueuedMenuIfLeft(const std::string& facedSpot);
 
+// What a confirm did that the game must enact: EXP to bank, plus any item effects a
+// taken deed declared (ids only -- the box, like observations, is inventory-ignorant; the
+// GAME owns the satchel/loot and does the grant). Empty grants for a plain reading confirm.
+struct ConfirmResult
+{
+    int earned = 0;                    // Spirit EXP from a thought the deed fired
+    std::vector<std::string> granted;  // item ids a "pick up" deed granted
+    std::vector<std::string> gathered; // loot table ids a "gather" deed rolled
+};
+
 // Input while the box is up:
 //   confirm (Space) -- Line: reveal-all then dismiss; Menu: take the selected deed
 //   moveUp/moveDown (W/S) -- Menu: move the selection
 //   back (F / RMB) -- Menu: close it
 // The RNG is threaded so taking a deed can run the ambient engine (deed -> flag
-// -> a missed thought may fire).
-// Returns Spirit EXP earned by this confirm (an action that fires a thought);
-// 0 for a plain reading confirm. The caller banks it into growth.
-int confirm(observations::State& state, const growth::GrowthState& growth,
-            const observations::RollRng& rng);
+// -> a missed thought may fire). Returns what the caller must enact (see ConfirmResult).
+ConfirmResult confirm(observations::State& state, const growth::GrowthState& growth,
+                      const observations::RollRng& rng);
 void moveUp();
 void moveDown();
 void back();
@@ -106,9 +114,9 @@ void back();
 // Mouse over the action menu: hovering an option highlights it; `clicked` (a
 // left press this frame) confirms the hovered option. No-op unless a menu is up.
 // Mirrors the pause page's mouse handling; interchangeable with W/S + Space.
-// Returns EXP earned (like confirm) so the caller banks it.
-int menuMouse(observations::State& state, const growth::GrowthState& growth,
-              const observations::RollRng& rng, float mx, float my, bool clicked);
+// Returns what the caller must enact (like confirm).
+ConfirmResult menuMouse(observations::State& state, const growth::GrowthState& growth,
+                        const observations::RollRng& rng, float mx, float my, bool clicked);
 
 // Draw the box (if active), tinted via `growth`. Content renders into its fixed
 // HUD region (thought vs observation, by the item's kind). Window-space.

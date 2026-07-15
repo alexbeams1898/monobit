@@ -24,6 +24,8 @@ add_library(wayworn-systems STATIC
     src/HeadMarker.cpp
     src/WorldClock.cpp
     src/Inventory.cpp
+    src/Loot.cpp
+    src/WorldItems.cpp
     src/Notebook.cpp
     src/LdtkImport.cpp
     src/PausePage.cpp
@@ -82,6 +84,7 @@ add_executable(wayworn-tests
     tests/head_marker_test.cpp
     tests/world_clock_test.cpp
     tests/inventory_test.cpp
+    tests/loot_test.cpp
     tests/notebook_test.cpp
     tests/ldtk_import_test.cpp
 )

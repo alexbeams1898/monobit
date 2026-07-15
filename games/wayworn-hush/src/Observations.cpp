@@ -432,6 +432,8 @@ Action parseAction(const nlohmann::json& a)
     act.label = a.value("label", std::string{});
     act.result_text = a.value("result_text", std::string{});
     act.set_flag = a.value("set_flag", std::string{});
+    act.grant_item = a.value("grant_item", std::string{});
+    act.grant_table = a.value("grant_table", std::string{});
     act.one_shot = a.value("one_shot", false);
     if (const auto it = a.find("unlock_when"); it != a.end())
         act.unlock_when = parseCondition(*it);
@@ -902,11 +904,20 @@ ObserveResult takeAction(State& state, const growth::GrowthState& growth, const 
     if (!act->set_flag.empty() && state.flags.insert(act->set_flag).second)
         changedKeys.push_back(keyFlag(act->set_flag));
 
+    // Item effects are passed up as ids (the game does the grant -- observations is
+    // inventory-ignorant). Captured before runEngine so the return carries them.
+    ObserveResult result;
+    if (!act->grant_item.empty())
+        result.granted.push_back(act->grant_item);
+    if (!act->grant_table.empty())
+        result.gathered.push_back(act->grant_table);
+
     // Run the ambient engine over the new flag -- this is what recovers a missed
     // thought or opens a deeper tier gated on the deed.
     bool anyFired = false;
-    const int earned = runEngine(state, growth, std::move(changedKeys), rng, anyFired);
-    return {anyFired ? Outcome::Thought : Outcome::Surfaced, earned};
+    result.earned = runEngine(state, growth, std::move(changedKeys), rng, anyFired);
+    result.outcome = anyFired ? Outcome::Thought : Outcome::Surfaced;
+    return result;
 }
 
 std::unordered_set<std::string> availableUnlocks(const State& state,

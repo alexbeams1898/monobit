@@ -28,8 +28,7 @@ TEST_CASE("Offsetting the cursor moves the world point by the same internal px (
     REQUIRE(r.y == Approx(-40.0f));
 }
 
-TEST_CASE("A 2x upscaled blit halves the window-px offset into internal px",
-          "[screen_to_world]")
+TEST_CASE("A 2x upscaled blit halves the window-px offset into internal px", "[screen_to_world]")
 {
     // Window is 2560x1440, internal 1280x720 -> blit fills at 2x (no letterbox). A cursor
     // 200 window-px right of center is 100 internal-px = 100 world units right of camera.

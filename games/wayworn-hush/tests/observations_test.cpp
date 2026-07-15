@@ -597,6 +597,34 @@ TEST_CASE("takeAction recovers a thought that observing alone couldn't reach", "
     REQUIRE(sawResult);
 }
 
+TEST_CASE("A deed with grant_item / grant_table returns those ids for the game to grant",
+          "[actions]")
+{
+    // A "pick up" deed on an observable-and-takeable stone. observations is
+    // inventory-ignorant: takeAction returns the ids; the GAME does the deposit.
+    State s = loadWithActions(R"({
+      "observables": [
+        { "id": "stone", "kind": "inanimate", "x": 0, "y": 0,
+          "tiers": [{ "text": "a smooth stone" }],
+          "actions": { "add": [
+            { "id": "take", "label": "Pick it up", "grant_item": "river_stone",
+              "one_shot": true },
+            { "id": "forage", "label": "Forage nearby", "grant_table": "herbs" } ] } }
+      ],
+      "thoughts": []
+    })",
+                              kKinds);
+
+    const GrowthState g = self({{"perception", 5}});
+    const ObserveResult take = observations::takeAction(s, g, "stone", "take", kNoNudge);
+    REQUIRE(take.granted == std::vector<std::string>{"river_stone"});
+    REQUIRE(take.gathered.empty());
+
+    const ObserveResult forage = observations::takeAction(s, g, "stone", "forage", kNoNudge);
+    REQUIRE(forage.gathered == std::vector<std::string>{"herbs"});
+    REQUIRE(forage.granted.empty());
+}
+
 TEST_CASE("availableUnlocks: a deeper tier becomes reachable after growth (the pull-back)",
           "[actions][notify]")
 {

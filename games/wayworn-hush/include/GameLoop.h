@@ -13,6 +13,7 @@
 #include "Surfaces.h"
 #include "WorldClock.h"
 #include "WorldConfig.h"
+#include "WorldItems.h"
 
 #include <string>
 #include <unordered_map>
@@ -78,13 +79,15 @@ struct GameState
     structures::Config structure_config; // resizable walk-on structures (9-slice)
     std::unordered_map<int, std::string> tile_surface;         // tile id -> surface (footsteps)
     std::unordered_map<std::size_t, std::string> cell_surface; // per-cell override (structures)
-    hud::Regions hud;                    // fixed HUD region rects + visibility mode
-    HeadMarkerConfig head_marker_config; // over-head thought-bubble feel/placement
-    glimmer::Config glimmer_config;      // observable glow feel
-    world_config::Config world_config;   // region asset paths (map, atlas, ambient)
-    worldclock::WorldClock clock;        // in-world time (notebook datelines, day/night later)
-    inventory::Registry items;           // loaded item blueprints (config/items/*.json)
-    inventory::Satchel satchel;          // what the pilgrim carries
+    hud::Regions hud;                       // fixed HUD region rects + visibility mode
+    HeadMarkerConfig head_marker_config;    // over-head thought-bubble feel/placement
+    glimmer::Config glimmer_config;         // observable glow feel
+    world_items::Config world_items_config; // world item floor-sprite feel
+    world_config::Config world_config;      // region asset paths (map, atlas, ambient)
+    worldclock::WorldClock clock;           // in-world time (notebook datelines, day/night later)
+    inventory::Registry items;              // loaded item blueprints (config/items/*.json)
+    loot::Registry loot_tables;             // gather loot tables (config/loot/*.json)
+    inventory::Satchel satchel;             // what the pilgrim carries
     notebook::Record notebook; // dated record of readings (gated on carrying the notebook)
     // Unlock ids (see observations::availableUnlocks) already announced via a
     // notification, so "1 new observation / action available" toasts fire exactly

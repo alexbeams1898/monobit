@@ -292,6 +292,46 @@ void collectObservablesInLayer(const json& level, const char* layerName, Region&
             collectObservable(e, r);
 }
 
+// Append a world pickup for entity `e`: a static drop if it carries an `item` field, a
+// gather node if it carries a `loot` field (a table id). px is the entity's top-left
+// (authoring px); a point entity, so its center is px + half its authored cell (x2 to world
+// px). `target` binds to the item or loot registry at load.
+void collectPickup(const json& e, Region& r)
+{
+    PickupPlacement p;
+    if (const std::string item = entityField(e, "item"); !item.empty())
+    {
+        p.kind = PickupPlacement::Kind::Item;
+        p.target = item;
+    }
+    else if (const std::string table = entityField(e, "loot"); !table.empty())
+    {
+        p.kind = PickupPlacement::Kind::Loot;
+        p.target = table;
+    }
+    else
+        return; // neither field -> not a pickup/gather entity
+    const auto px = e.find("px");
+    if (px == e.end() || !px->is_array())
+        return;
+    const float halfW = static_cast<float>(e.value("width", 16));  // authoring px, pre-x2
+    const float halfH = static_cast<float>(e.value("height", 16)); // (center offset = half)
+    p.cx = static_cast<float>((*px)[0].get<int>() * 2) + halfW; // px*2 + (cell*2)/2 = px*2 + cell
+    p.cy = static_cast<float>((*px)[1].get<int>() * 2) + halfH;
+    r.pickups.push_back(std::move(p));
+}
+
+// Scan the Pickups layer for pickups + gather nodes (entities carrying `item` or `loot`).
+void collectPickupsInLayer(const json& level, const char* layerName, Region& r)
+{
+    const json* lay = findLayer(level, layerName);
+    if (!lay)
+        return;
+    if (const auto ei = lay->find("entityInstances"); ei != lay->end() && ei->is_array())
+        for (const auto& e : *ei)
+            collectPickup(e, r);
+}
+
 // Entities layer -> props (tile-carrying) + objects (typed, e.g. PlayerSpawn). LDtk px
 // is authoring-grid px, x2 to the 32px world. `atlas` decodes prop footprint colliders.
 // Structure-type entities (bridges, docks) are handled by parseStructures (stamped into
@@ -581,6 +621,10 @@ Region loadImpl(const std::string& ldtk_path, const std::string& tileset_path,
     // physical; they carry no observation fields. The content lives in observations.json;
     // the box is just where + how it fires. See docs/design/OBSERVATION-SYSTEM.md.
     collectObservablesInLayer(level, "Observables", r);
+    // Pickups: items lying in the world, authored on their own Pickups layer (each a Pickup
+    // entity carrying an `item` id). Bound to inventory at load, spawned as glimmer +
+    // Kind::Pickup interactable. See docs/design/GAME-SYSTEMS.md.
+    collectPickupsInLayer(level, "Pickups", r);
 
     r.ok = true;
     return r;

@@ -43,6 +43,25 @@ struct ObservablePlacement
     std::string trigger; // "Observe" | "Enter" (empty = Observe)
 };
 
+// Something collectible lying in the world, read from an entity on the Pickups layer.
+// Either a static drop (a Pickup entity with an `item` field -> one item id) or a gather
+// node (a Gather entity with a `loot` field -> a loot table id). (cx,cy) is its center in
+// world px -- a point, not a resizable area (an item/node sits at one spot). Neutral struct
+// (a target STRING + which kind) so the importer takes no dependency on inventory/loot; the
+// game binds `target` to the item or loot registry at load.
+struct PickupPlacement
+{
+    enum class Kind
+    {
+        Item, // `target` is an item id (a static drop)
+        Loot  // `target` is a loot table id (a gather node)
+    };
+    Kind kind = Kind::Item;
+    std::string target; // item id (Item) or loot table id (Loot)
+    float cx = 0.0f;    // center, world px
+    float cy = 0.0f;
+};
+
 // A prop: an LDtk ENTITY that carries a tileset region (a tree, a rock -- placed,
 // not painted). Spawned as ONE sprite covering the whole region, Y-sorted by its
 // BASE (the pivot's world-Y), so the player draws in front when below the prop's
@@ -80,6 +99,7 @@ struct Region
     std::vector<Object> objects;
     std::vector<Prop> props;                      // tile-carrying entities -> Y-sorted sprite
     std::vector<ObservablePlacement> observables; // entities carrying an `observable` field
+    std::vector<PickupPlacement> pickups;         // Pickup/Gather entities on the Pickups layer
     int fill_uv_col = 0;                          // border-fill tile (beyond the bounds)
     int fill_uv_row = 0;
     // Tile id -> surface name (from the tileset's surface tags). The runtime maps the

@@ -445,8 +445,8 @@ void dropQueuedMenuIfLeft(const std::string& facedSpot)
         sMenuQueued = false;
 }
 
-int confirm(observations::State& state, const growth::GrowthState& growth,
-            const observations::RollRng& rng)
+ConfirmResult confirm(observations::State& state, const growth::GrowthState& growth,
+                      const observations::RollRng& rng)
 {
     if (sItem == ItemKind::Line)
     {
@@ -466,29 +466,29 @@ int confirm(observations::State& state, const growth::GrowthState& growth,
                 sPhaseT = 0.0f;
             }
         }
-        return 0;
+        return {};
     }
     if (sItem == ItemKind::Menu && sPhase == Phase::Done)
     {
         if (sMenuSel < 0 || sMenuSel >= static_cast<int>(sMenuOpts.size()))
-            return 0;
+            return {};
         const std::string actionId = sMenuOpts[static_cast<std::size_t>(sMenuSel)].id;
         if (actionId == kLeaveId)
         {
             back(); // the trailing "Leave" option closes the menu
-            return 0;
+            return {};
         }
         // Close the menu; the deed's result_text enqueues as a Line. After it is
-        // read, update() re-opens the menu with the remaining offered deeds. Return
-        // the EXP the deed earned (a thought it fires) so the caller banks it.
+        // read, update() re-opens the menu with the remaining offered deeds. Hand back
+        // the EXP + any item grants the deed declared so the caller banks + deposits them.
         sItem = ItemKind::None;
         sPhase = Phase::None;
         const observations::ObserveResult r =
             observations::takeAction(state, growth, sMenuSpot, actionId, rng);
         sMenuQueued = true; // re-open after the result line (+ any fired thought) is read
-        return r.earned;
+        return {r.earned, r.granted, r.gathered};
     }
-    return 0;
+    return {};
 }
 
 void moveUp()
@@ -504,19 +504,19 @@ void moveDown()
         sMenuSel = (sMenuSel + 1) % static_cast<int>(sMenuOpts.size());
 }
 
-int menuMouse(observations::State& state, const growth::GrowthState& growth,
-              const observations::RollRng& rng, float mx, float my, bool clicked)
+ConfirmResult menuMouse(observations::State& state, const growth::GrowthState& growth,
+                        const observations::RollRng& rng, float mx, float my, bool clicked)
 {
     if (!menuActive() || sPhase != Phase::Done || sMenuOpts.empty())
-        return 0;
+        return {};
     // Which option row is the cursor over? (Rows are stacked from sMenuY.)
     if (mx < sMenuX || mx > sMenuX + sMenuW)
-        return 0;
+        return {};
     const int row = static_cast<int>((my - sMenuY) / sMenuRowH);
     if (row < 0 || row >= static_cast<int>(sMenuOpts.size()))
-        return 0;
-    sMenuSel = row;                                   // hover highlights
-    return clicked ? confirm(state, growth, rng) : 0; // click confirms + banks EXP
+        return {};
+    sMenuSel = row;                                                 // hover highlights
+    return clicked ? confirm(state, growth, rng) : ConfirmResult{}; // click confirms
 }
 
 void back()
