@@ -306,6 +306,12 @@ struct ObserveResult
 ObserveResult observe(State& state, const growth::GrowthState& growth, float px, float py,
                       const RollRng& rng);
 
+// Observe a SPECIFIC observable by id (what the interaction system calls once it has
+// resolved the active target). Same reveal + ambient-engine as observe(); no-op if the id
+// is unknown or the observable is currently hidden (visible_when unmet).
+ObserveResult observeById(State& state, const growth::GrowthState& growth, const std::string& id,
+                          const RollRng& rng);
+
 // Ambient triggers, checked every frame from the player's position: an ENTER observable
 // fires when the player is within interact_reach of its box. Each fires ONCE (edge-
 // surfaces like a deliberate observe. OBSERVE-mode observables are ignored here (they
@@ -349,12 +355,6 @@ ObserveResult takeAction(State& state, const growth::GrowthState& growth, const 
 std::unordered_set<std::string> availableUnlocks(const State& state,
                                                  const growth::GrowthState& growth);
 
-// True if an observable is within interact_reach (affordance query). Pure.
-bool facingObservable(const State& state, const growth::GrowthState& growth, float px, float py);
-
-// Id of the nearest observable within interact_reach of (px,py), or "".
-std::string facedId(const State& state, const growth::GrowthState& growth, float px, float py);
-
 // The world-legibility signal for an observable (drives the glimmer). Deliberately
 // minimal: the glimmer marks only "there is something HERE TO LOOK AT." Thoughts
 // are the emergent, subjective layer -- they fire ambiently as you observe / act /
@@ -370,12 +370,6 @@ enum class Signal
 // Derive an observable's signal: Unobserved until it has been observed to any
 // tier, then Observed. Pure; reads only the record.
 Signal signalFor(const State& state, const growth::GrowthState& growth, const std::string& spot);
-
-// Glow strength for an observable at player (px,py): 1 within interact_reach of its box
-// (the same test that gates interaction, so a lit glow means "observable now"), 0 beyond
-// or if hidden. Binary, not a fade. 0 for an unknown id.
-float glowStrength(const State& state, const growth::GrowthState& growth, const std::string& spot,
-                   float px, float py);
 
 // Live status of a thought, for the dev cognition view. A miss is not a
 // distinct state -- a satisfied+unfired thought simply re-rolls whenever a

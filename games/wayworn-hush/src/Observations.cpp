@@ -770,6 +770,19 @@ ObserveResult observe(State& state, const growth::GrowthState& growth, float px,
     return fireObservable(state, growth, *o, rng);
 }
 
+ObserveResult observeById(State& state, const growth::GrowthState& growth, const std::string& id,
+                          const RollRng& rng)
+{
+    std::unordered_set<std::string> observedIds;
+    std::unordered_map<std::string, int> statLevels;
+    const unlock::Knowledge k = makeKnowledge(state, growth, observedIds, statLevels);
+    for (const auto& o : state.observables)
+        if (o.id == id)
+            return observableVisible(o, k) ? fireObservable(state, growth, o, rng)
+                                           : ObserveResult{Outcome::None, 0};
+    return {Outcome::None, 0};
+}
+
 ObserveResult triggerProximity(State& state, const growth::GrowthState& growth, float px, float py,
                                const RollRng& rng)
 {
@@ -929,17 +942,6 @@ std::unordered_set<std::string> availableUnlocks(const State& state,
     return out;
 }
 
-std::string facedId(const State& state, const growth::GrowthState& growth, float px, float py)
-{
-    const Observable* o = nearestInReach(state, growth, px, py);
-    return o ? o->id : std::string{};
-}
-
-bool facingObservable(const State& state, const growth::GrowthState& growth, float px, float py)
-{
-    return nearestInReach(state, growth, px, py) != nullptr;
-}
-
 ThoughtStatus statusOf(const State& state, const growth::GrowthState& growth, const Thought& r)
 {
     if (state.fired.count(r.id))
@@ -1069,26 +1071,6 @@ Signal signalFor(const State& state, const growth::GrowthState& /*growth*/, cons
     // The glimmer marks only "there is something here to look at." Once observed,
     // it quiets -- thoughts are the emergent layer and are not signposted.
     return state.observed_tier.count(spot) > 0 ? Signal::Observed : Signal::Unobserved;
-}
-
-float glowStrength(const State& state, const growth::GrowthState& growth, const std::string& spot,
-                   float px, float py)
-{
-    // Glow is ON (full) when the player is within interact_reach of the box, OFF otherwise
-    // -- the same test that gates interaction, so a lit glow always means "observable now".
-    // Binary, not a fade: the object lights up when you're in range, like a Souls prompt.
-    std::unordered_set<std::string> observedIds;
-    std::unordered_map<std::string, int> statLevels;
-    const unlock::Knowledge k = makeKnowledge(state, growth, observedIds, statLevels);
-    for (const auto& o : state.observables)
-    {
-        if (o.id != spot)
-            continue;
-        if (!observableVisible(o, k))
-            return 0.0f; // hidden -> no glow
-        return o.distanceTo(px, py) <= state.interact_reach ? 1.0f : 0.0f;
-    }
-    return 0.0f;
 }
 
 } // namespace observations

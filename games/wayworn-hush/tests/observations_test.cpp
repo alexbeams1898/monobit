@@ -254,18 +254,6 @@ TEST_CASE("Standing beyond interact_reach of every observable observes nothing",
     REQUIRE(s.pending.empty());
 }
 
-TEST_CASE("facingObservable reports whether an observable is within interact_reach",
-          "[observations]")
-{
-    // Proximity, not facing: "faced" = a visible observable within interact_reach. makeWorld
-    // puts stone at (100,0), water at (0,100).
-    const State s = makeWorld();
-    const GrowthState g = self({});
-    REQUIRE(observations::facingObservable(s, g, 100, 0));         // at stone
-    REQUIRE(observations::facingObservable(s, g, 0, 100));         // at water
-    REQUIRE_FALSE(observations::facingObservable(s, g, 500, 500)); // near neither
-}
-
 // --- VALUE derivation (load() runs deriveValues over the forward value graph) ---
 namespace
 {
@@ -442,24 +430,23 @@ TEST_CASE("Centrality: a terminal payoff (opens nothing) is valuable via UPSTREA
     REQUIRE(payoff->value > middle->value); // the culmination outweighs the hub here
 }
 
-TEST_CASE("A hidden observable is unfaceable until its visible_when holds", "[observations][value]")
+TEST_CASE("A hidden observable can't be observed until its visible_when holds",
+          "[observations][value]")
 {
     State s = loadFromJson(R"({
       "observables": [
-        { "id": "stone", "value": 1, "x": 0, "y": 500, "tiers": [{ "text": "a stone" }] },
-        { "id": "ruin",  "value": 8, "x": 0, "y": 50,
+        { "id": "ruin", "value": 8,
           "visible_when": [{ "flag": "knows_settlement" }], "tiers": [{ "text": "a ruin" }] }
       ],
       "thoughts": []
     })");
 
     const GrowthState g = self({});
-    // At the ruin's spot (0,50) -- but it's hidden, so it's unfaceable. (Stone is far at
-    // (0,500), outside interact_reach here, so it can't confound.)
-    REQUIRE_FALSE(observations::facingObservable(s, g, 0, 50));
-    // Reveal it by setting the flag, then it becomes faceable.
+    // Hidden -> observeById is a no-op (nothing surfaces).
+    REQUIRE(observations::observeById(s, g, "ruin", kNoNudge).outcome == Outcome::None);
+    // Reveal it via the flag, then observing it surfaces the reading.
     s.flags.insert("knows_settlement");
-    REQUIRE(observations::facingObservable(s, g, 0, 50));
+    REQUIRE(observations::observeById(s, g, "ruin", kNoNudge).outcome != Outcome::None);
 }
 
 // --- Actions (kind defaults + per-spot overrides; takeAction -> ambient) ------
@@ -761,42 +748,4 @@ TEST_CASE("Proximity triggering ignores OBSERVE-mode observables (they need the 
     const GrowthState g = self({});
     const auto r = observations::triggerProximity(s, g, 0.0f, 0.0f, kNoNudge);
     REQUIRE(r.outcome == Outcome::None); // observe-mode is silent to proximity
-}
-
-// --- glow (on within interact_reach of the box, off otherwise) ----------------
-
-TEST_CASE("glowStrength is on within interact_reach of the box, off beyond, and hidden stays dark",
-          "[observations][glow]")
-{
-    State s = loadForPlacement(); // stone + river, content only
-    s.interact_reach = 40.0f;
-    observations::applyPlacements(
-        s, {{"stone", 0.0f, 0.0f, 32.0f, 32.0f, observations::Trigger::Observe}});
-    const GrowthState g = self({});
-
-    // Inside the box -> on.
-    REQUIRE(observations::glowStrength(s, g, "stone", 0.0f, 0.0f) == 1.0f);
-    // Within reach of the edge (box half-width 16 + 30 < 16+40) -> on.
-    REQUIRE(observations::glowStrength(s, g, "stone", 46.0f, 0.0f) == 1.0f);
-    // Beyond reach (edge 16 + 40 = 56; 100 is past) -> off.
-    REQUIRE(observations::glowStrength(s, g, "stone", 100.0f, 0.0f) == 0.0f);
-}
-
-TEST_CASE("A hidden observable does not glow until revealed", "[observations][glow]")
-{
-    State s = loadFromJson(R"({
-      "observables": [
-        { "id": "ruin", "value": 8, "visible_when": [{ "flag": "seen" }],
-          "tiers": [{ "text": "a ruin" }] }
-      ],
-      "thoughts": []
-    })");
-    s.interact_reach = 40.0f;
-    observations::applyPlacements(
-        s, {{"ruin", 0.0f, 0.0f, 32.0f, 32.0f, observations::Trigger::Observe}});
-    const GrowthState g = self({});
-    // Standing right on it, but hidden -> no glow.
-    REQUIRE(observations::glowStrength(s, g, "ruin", 0.0f, 0.0f) == 0.0f);
-    s.flags.insert("seen");
-    REQUIRE(observations::glowStrength(s, g, "ruin", 0.0f, 0.0f) == 1.0f);
 }

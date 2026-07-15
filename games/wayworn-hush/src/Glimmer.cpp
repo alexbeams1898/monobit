@@ -1,5 +1,6 @@
 #include "Glimmer.h"
 
+#include "Interaction.h"
 #include "JsonConfig.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
@@ -37,9 +38,17 @@ void spawn(EntityManager& em, const observations::State& obs, const Config& cfg)
     auto& reg = em.registry();
     for (const auto& o : obs.observables)
     {
+        // One entity per observable: it IS both the interactable (input) and its glimmer
+        // (the highlight). The InteractionSystem sets Interactable.active; the glimmer glows
+        // the active one. Observe-mode only -- an Enter (ambient) observable fires on
+        // proximity, not the interact verb, so it carries no Interactable.
         const entt::entity e = reg.create();
         reg.emplace<Transform>(e, Transform{o.x, o.y});
         reg.emplace<Glimmer>(e, Glimmer{o.id});
+        if (o.trigger == observations::Trigger::Observe)
+            reg.emplace<interaction::Interactable>(
+                e,
+                interaction::Interactable{interaction::Kind::Observe, o.w, o.h, "Observe", o.id});
 
         Sprite spr{};
         spr.texture_path = cfg.sprite;
@@ -56,29 +65,32 @@ void spawn(EntityManager& em, const observations::State& obs, const Config& cfg)
 }
 
 void update(EntityManager& em, const observations::State& obs, const growth::GrowthState& growth,
-            const Config& cfg, float px, float py, float dt)
+            const Config& cfg, float dt)
 {
     sPhase += dt * cfg.pulse_hz * 6.2831853f;
     const float breath = std::sin(sPhase);                    // -1..1 breathing modulation
     const float lerp = 1.0f - std::exp(-cfg.fade_speed * dt); // framerate-independent
 
-    const std::string faced = observations::facedId(obs, growth, px, py);
-
-    for (auto [e, glim, spr, tint] : em.registry().view<Glimmer, Sprite, TintOverride>().each())
+    auto& reg = em.registry();
+    for (auto [e, glim, spr, tint] : reg.view<Glimmer, Sprite, TintOverride>().each())
     {
         const std::string& id = glim.observable_id;
-        const bool isFaced = id == faced;
+        // "active" = the InteractionSystem picked this observable as the current target
+        // (in reach or hovered). Enter-mode observables have no Interactable -> never
+        // active (they fire ambiently, aren't highlighted).
+        const auto* inter = reg.try_get<interaction::Interactable>(e);
+        const bool active = inter && inter->active;
         const observations::Signal sig = observations::signalFor(obs, growth, id);
 
-        // The STEADY target for this state. An UNOBSERVED spot glows warm when you're within
-        // interact_reach of its box (lights up as you walk up, like a Souls prompt); OFF
-        // beyond. Once OBSERVED it keeps a muted glow (stale/used), a touch brighter while
-        // you're near it. Thoughts are NOT signposted.
+        // The STEADY target for this state. An UNOBSERVED spot glows warm when it's the
+        // active target (the player is in reach / hovering -- a Souls-style prompt); OFF
+        // otherwise. Once OBSERVED it keeps a muted glow (stale/used), a touch brighter
+        // while active. Thoughts are NOT signposted.
         const bool unobserved = sig == observations::Signal::Unobserved;
         float target = cfg.observed_dim; // observed: muted persistent glow
         if (unobserved)
-            target = cfg.bright_max * observations::glowStrength(obs, growth, id, px, py);
-        else if (isFaced)
+            target = active ? cfg.bright_max : 0.0f;
+        else if (active)
             target = cfg.observed_dim * cfg.faced_boost;
 
         // Lerp the SMOOTHED BASE toward the steady target (a clean fade in/out),

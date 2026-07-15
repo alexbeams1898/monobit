@@ -48,9 +48,10 @@ void load(Config& cfg, const std::string& path);
 // Spawn one glow entity per observable (alpha starts at 0, below the character).
 void spawn(EntityManager& em, const observations::State& obs, const Config& cfg);
 
-// Per-frame: fade each glimmer's alpha toward its state target (unobserved vs
-// observed), with breathing on top. dt = frame seconds; px/py = player pos (the glow
-// lights within interact_reach of an observable's box).
+// Per-frame: fade each glimmer's alpha toward its state target. An observable glows when
+// its Interactable is `active` (the InteractionSystem's resolved target) -- so the glow
+// and the interaction share one notion of "the thing you're about to act on". dt = frame
+// seconds.
 void update(EntityManager& em, const observations::State& obs, const growth::GrowthState& growth,
-            const Config& cfg, float px, float py, float dt);
+            const Config& cfg, float dt);
 } // namespace glimmer

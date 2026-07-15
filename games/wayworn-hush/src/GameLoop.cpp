@@ -3,10 +3,12 @@
 #include "Engine.h"
 #include "Footsteps.h"
 #include "Glimmer.h"
+#include "Interaction.h"
 #include "Notify.h"
 #include "PausePage.h"
 #include "PlayerMovement.h"
 #include "ScreenInput.h"
+#include "ScreenToWorld.h"
 #include "ThoughtBox.h"
 #include "TunePanel.h"
 #include "ecs/Components.h"
@@ -173,14 +175,39 @@ void pumpUnlockNotifications(GameState& gs)
 
 // Observe / read / act input. A reading Line is non-modal (you can keep walking)
 // but only Space advances it, so a queued thought is never skipped. Only the
-// action MENU is modal (freezes movement + captures F/W/S/Space). With no box,
-// Space observes the faced spot, then queues that spot's action menu.
-void handleObserveInput(EntityManager& em, GameState& gs, float px, float py)
+// The cursor's world position: window pixel -> internal-res pixel (undo the pixel-target's
+// aspect-fit blit) -> world (camera-centered, zoom 1). Returns false if there's no active
+// camera yet (nothing to anchor to). See ScreenToWorld.
+bool mouseWorld(const Engine& engine, const EntityManager& em, float& out_x, float& out_y)
 {
-    // A queued (not-yet-open) action menu is bound to still facing its spot; if
-    // you've walked off before it opened, drop it so it doesn't chase you.
-    thought_box::dropQueuedMenuIfLeft(observations::facedId(gs.observations, gs.growth, px, py));
+    entt::entity cam = entt::null;
+    for (auto [e, c] : em.registry().view<Camera>().each())
+        if (c.active)
+            cam = e;
+    if (cam == entt::null)
+        return false;
+    const auto& c = em.registry().get<Camera>(cam);
+    int mx = 0;
+    int my = 0;
+    SDL_GetMouseState(&mx, &my);
+    const engine::gl::BlitRect b = engine::gl::computeBlitRect(
+        kInternalWidth, kInternalHeight, engine.windowWidth(), engine.windowHeight());
+    const auto r =
+        screen_to_world::map(static_cast<float>(mx), static_cast<float>(my), b.x, b.y, b.width,
+                             b.height, kInternalWidth, kInternalHeight, c.x, c.y);
+    out_x = r.x;
+    out_y = r.y;
+    return true;
+}
 
+// Handle the MODAL reading/menu states, which capture input when up. Returns true if a
+// modal consumed this frame's input (so the world interaction below is skipped). Click =
+// Space everywhere: a click anywhere advances a reading; the action menu is confirmed by
+// clicking a hovered option (menuMouse, at the render layer) OR Space. The deliberate
+// observe verb itself lives in the InteractionSystem. `clicked` is a consumed left-press
+// this frame (so it won't also fire an interactable / leak into the pause page).
+bool handleReadingInput(const EntityManager& em, GameState& gs, bool clicked)
+{
     if (thought_box::menuActive())
     {
         if (pressedThisFrame(em, SDL_SCANCODE_SPACE))
@@ -192,27 +219,27 @@ void handleObserveInput(EntityManager& em, GameState& gs, float px, float py)
             thought_box::moveDown();
         if (pressedThisFrame(em, SDL_SCANCODE_F))
             thought_box::back();
-        return;
+        return true;
     }
-    if (thought_box::active()) // a reading Line: Space advances (non-modal, keep walking)
+    if (thought_box::active()) // a reading Line: Space OR a click anywhere advances it
     {
-        if (pressedThisFrame(em, SDL_SCANCODE_SPACE))
+        if (pressedThisFrame(em, SDL_SCANCODE_SPACE) || clicked)
             thought_box::confirm(gs.observations, gs.growth, observeNudge);
-        return;
+        return true;
     }
-    if (!pressedThisFrame(em, SDL_SCANCODE_SPACE))
+    return false;
+}
+
+// Follow-up after the InteractionSystem fired an Observe: open the spot's action menu.
+// (Kind-specific UI; other kinds get their own follow-up here as they land.)
+void onInteractionFired(GameState& gs, const interaction::Outcome& out)
+{
+    if (out.kind != interaction::Kind::Observe || out.target.empty())
         return;
-    const observations::ObserveResult r =
-        observations::observe(gs.observations, gs.growth, px, py, observeNudge);
-    gs.growth.spirit_exp += r.earned;
-    const std::string spot = observations::facedId(gs.observations, gs.growth, px, py);
-    if (!spot.empty())
-    {
-        // The spot's baseline actions are shown in the menu now -- don't also toast
-        // them; only later-unlocked ones announce as a pull-back.
-        seedObservedActionsAsKnown(gs, spot);
-        thought_box::pushActionMenu(gs.observations, gs.growth, spot);
-    }
+    // The spot's baseline actions show in the menu now -- don't also toast them; only
+    // later-unlocked ones announce as a pull-back.
+    seedObservedActionsAsKnown(gs, out.target);
+    thought_box::pushActionMenu(gs.observations, gs.growth, out.target);
 }
 } // namespace
 
@@ -298,10 +325,33 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     gs.growth.spirit_exp +=
         observations::triggerProximity(gs.observations, gs.growth, pt.x, pt.y, observeNudge).earned;
 
-    // World glimmer: an unobserved spot glows warm when faced ("come look"); once
-    // observed it quiets. Thoughts are not signposted.
-    glimmer::update(em, gs.observations, gs.growth, gs.glimmer_config, pt.x, pt.y,
-                    static_cast<float>(dt));
+    // Read the left-click ONCE (mouseClicked consumes it) so the same click can't both
+    // advance a reading AND fire an interactable / leak to the pause page.
+    const bool clicked = clickedThisFrame(em, SDL_BUTTON_LEFT);
+
+    // World interaction: a reading/menu, if up, consumes input (modal -- click = Space,
+    // advancing it). Otherwise resolve the active interactable (nearest in reach or under
+    // the cursor), and Space OR a click ON it fires -- observe now, pick-up/craft/open
+    // later. The InteractionSystem also sets the `active` flag that drives the glow.
+    if (!handleReadingInput(em, gs, clicked))
+    {
+        interaction::Intent intent;
+        intent.px = pt.x;
+        intent.py = pt.y;
+        intent.mouse_valid = mouseWorld(engine, em, intent.mouse_x, intent.mouse_y);
+        intent.pressed = pressedThisFrame(em, SDL_SCANCODE_SPACE);
+        intent.clicked = clicked;
+        const interaction::Context ctx{gs.observations, gs.growth, observeNudge,
+                                       gs.observations.interact_reach};
+        const interaction::Outcome fired = interaction::update(em, intent, ctx);
+        gs.growth.spirit_exp += fired.earned;
+        if (fired.fired)
+            onInteractionFired(gs, fired);
+    }
+
+    // World glimmer: the active interactable glows warm (come look); observed spots keep a
+    // muted glow. Runs after the InteractionSystem set the `active` flag.
+    glimmer::update(em, gs.observations, gs.growth, gs.glimmer_config, static_cast<float>(dt));
 
     // Over-head thought bubble: shown exactly while a thought reading is on screen,
     // then fades. It tracks the player's head each frame.
@@ -309,10 +359,6 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     const bool thoughtUp = thought_box::activeThought(gs.growth, thoughtHue);
     head_marker::set(em, thoughtUp);
     head_marker::update(em, gs.head_marker_config, pt.x, pt.y, static_cast<float>(dt));
-
-    // Observe / read / act input. Readings are non-modal (walk while up, Space to
-    // advance); only the action menu is modal.
-    handleObserveInput(em, gs, pt.x, pt.y);
 
     // Snap the active camera to its entity (the player).
     CameraSystem::update(em);
