@@ -68,9 +68,4 @@ void load(Registry& out, const std::string& dir);
 // the table is empty / all-zero weight.
 std::vector<inventory::ItemInstance> roll(const Table& table, const observations::RollRng& rng);
 
-// The rarest rarity any entry in the table can drop, looked up via the item registry (an
-// unknown item contributes nothing). Drives the gather node's glow -- a node that can yield
-// a legendary glows gold. 0 if the table is empty / all items unknown.
-int topRarity(const Table& table, const inventory::Registry& items);
-
 } // namespace loot

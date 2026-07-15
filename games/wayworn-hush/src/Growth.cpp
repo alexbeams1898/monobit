@@ -31,6 +31,13 @@ void load(GrowthState& state, const std::string& path)
     loadNames(j, "faculties", state.faculties);
     loadNames(j, "secondary", state.secondary);
 
+    // Starting stat levels (everything else begins at 0). Placeholder until the EXP->faculty
+    // progression is built -- see faculties.json.
+    if (const auto it = j.find("starting_levels"); it != j.end() && it->is_object())
+        for (const auto& [name, lvl] : it->items())
+            if (lvl.is_number_integer())
+                state.stat_levels[name] = lvl.get<int>();
+
     if (const auto it = j.find("faculty_colors"); it != j.end() && it->is_object())
         for (const auto& [name, arr] : it->items())
             if (arr.is_array() && arr.size() == 3)

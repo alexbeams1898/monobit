@@ -435,6 +435,7 @@ Action parseAction(const nlohmann::json& a)
     act.grant_item = a.value("grant_item", std::string{});
     act.grant_table = a.value("grant_table", std::string{});
     act.one_shot = a.value("one_shot", false);
+    act.consumes_spot = a.value("consumes_spot", false);
     if (const auto it = a.find("unlock_when"); it != a.end())
         act.unlock_when = parseCondition(*it);
     return act;
@@ -911,6 +912,8 @@ ObserveResult takeAction(State& state, const growth::GrowthState& growth, const 
         result.granted.push_back(act->grant_item);
     if (!act->grant_table.empty())
         result.gathered.push_back(act->grant_table);
+    if (act->consumes_spot)
+        result.consumed_spot = spot; // the game despawns this observable's world entity
 
     // Run the ambient engine over the new flag -- this is what recovers a missed
     // thought or opens a deeper tier gated on the deed.

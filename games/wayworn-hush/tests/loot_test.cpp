@@ -113,22 +113,3 @@ TEST_CASE("A weighted pick lands on the entry whose cumulative band contains the
     REQUIRE(pickAt(80).at(0).id == "river_stone"); // start of stone's band
     REQUIRE(pickAt(99).at(0).id == "river_stone"); // last of stone's band
 }
-
-TEST_CASE("topRarity reports the rarest item the table can drop", "[loot]")
-{
-    inventory::Registry items;
-    items.defs["wild_thyme"] = inventory::ItemDef{"wild_thyme", "Wild Thyme"};
-    items.defs["wild_thyme"].rarity = 1;
-    items.defs["river_stone"] = inventory::ItemDef{"river_stone", "Worn River Stone"};
-    items.defs["river_stone"].rarity = 2;
-
-    REQUIRE(loot::topRarity(herbTable(), items) == 2); // stone is the ceiling
-
-    Table onlyThyme;
-    onlyThyme.entries = {Entry{"wild_thyme", 1, 1, 1}};
-    REQUIRE(loot::topRarity(onlyThyme, items) == 1);
-
-    Table unknown;
-    unknown.entries = {Entry{"mystery", 1, 1, 1}}; // no def -> contributes 0
-    REQUIRE(loot::topRarity(unknown, items) == 0);
-}

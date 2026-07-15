@@ -282,6 +282,7 @@ int main(int argc, char* argv[])
     surfaces::load(gs.surface_config, "config/surfaces.json");
     structures::load(gs.structure_config, "config/structures.json");
     glimmer::load(gs.glimmer_config, "config/glimmer.json"); // before setupRegion (spawns glimmers)
+    formulas::load(gs.formulas, "config/formulas.json");     // stat-driven formulas (glow, ...)
     world_items::load(gs.world_items_config, "config/world_items.json"); // floor item feel
     world_config::load(gs.world_config, "config/world.json");            // region asset paths
 
@@ -289,7 +290,7 @@ int main(int argc, char* argv[])
     // notebook (a key item -- carrying it is what lets thoughts be written down; see
     // docs/design/INVENTORY.md). The watch is found later, not started with.
     inventory::load(gs.items, "config/items");
-    loot::load(gs.loot_tables, "config/loot"); // gather tables (rolled by Kind::Gather nodes)
+    loot::load(gs.loot_tables, "config/loot"); // gather tables (rolled by ActionKind::Gather)
     inventory::add(gs.satchel, gs.items, inventory::ItemInstance{"notebook"});
 
     // Terrain + player + props: load the authored LDtk region, apply it, and spawn the

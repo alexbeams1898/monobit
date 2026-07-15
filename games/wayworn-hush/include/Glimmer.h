@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Formulas.h"
 #include "Growth.h"
 #include "Observations.h"
 
@@ -9,24 +10,19 @@
 
 class EntityManager;
 
-// The world-space glow that highlights an interactable: it glows when it is the
-// InteractionSystem's resolved target ("the thing you're about to act on") and holds a
-// steady idle level otherwise. Generic over WHAT it marks -- an observation dims once
-// observed and tints warm; a pickup tints by item rarity and has no observed state. The
-// per-kind behavior lives in each system's target-setting step (setObservationTargets, or
-// pickups set once at spawn); this component + update() are kind-agnostic. See
-// docs/design/OBSERVATION-SYSTEM.md + GAME-SYSTEMS.md.
+// The warm world-space glow that hints at an OBSERVABLE spot. One rule: a spot glows while it
+// is the InteractionSystem's resolved target (you're in reach / hovering it), and its PEAK
+// brightness = formulas::glowBrightness(Perception) -- the SAME for every spot. The stat
+// renders the world through the character's eyes: low Perception -> a faint (or no) glow;
+// higher Perception -> the hint reads stronger. Nothing lingers: step away and it fades.
+// Items are NOT glimmered -- they render their floor icon + a rim Outline. See
+// docs/design/OBSERVATION-SYSTEM.md.
 
-// A glow entity's plain-data targets, set by its owning system and lerped toward each
-// frame by glimmer::update. `active_alpha` is the glow while this is the resolved
-// interaction target; `idle_alpha` the steady glow otherwise (0 = off; a muted value for
-// an already-observed spot). `tint_*` is the glow color (warm for observations, rarity
-// color for pickups). `base_alpha` is the smoothed displayed level -- the Sprite.alpha =
-// base_alpha + breathing, so the pulse rides ON TOP of a clean fade and never flashes.
+// A glow entity's smoothed display level + tint. `base_alpha` lerps toward the target each
+// frame (glow when active+visible, else 0); Sprite.alpha = base_alpha + breathing, so the
+// pulse rides on a clean fade and never flashes on first appearance.
 struct Glimmer
 {
-    float active_alpha = 0.55f;
-    float idle_alpha = 0.0f;
     float tint_r = 1.0f;
     float tint_g = 1.0f;
     float tint_b = 1.0f;
@@ -40,14 +36,13 @@ namespace glimmer
 struct Config
 {
     std::string sprite = "assets/sprites/glimmer.png";
-    int size = 64;              // sprite cell size (px, square) -- matches the PNG
-    float fade_speed = 6.0f;    // alpha lerp rate toward the target (per second)
-    float bright_max = 0.55f;   // peak glow alpha when an unobserved spot is in reach
-    float pulse_amp = 0.12f;    // breathing depth (fraction of base alpha)
-    float pulse_hz = 0.7f;      // breathing rate
-    float observed_dim = 0.18f; // muted persistent glow once observed
-    float faced_boost = 1.6f;   // observed glow multiplier while the player is in reach
-    float warm_r = 1.0f;        // observation "notice me" warm tint (into the glow texture)
+    int size = 64;           // sprite cell size (px, square) -- matches the PNG
+    float fade_speed = 6.0f; // alpha lerp rate toward the target (per second)
+    // Peak brightness is NOT here -- it's formulas::glowBrightness(Perception) (config/
+    // formulas.json), so the stat drives the glow. This block is pure feel (fade + breathe).
+    float pulse_amp = 0.12f; // breathing depth (fraction of base alpha)
+    float pulse_hz = 0.7f;   // breathing rate
+    float warm_r = 1.0f;     // "notice me" warm tint (multiplied into the glow texture)
     float warm_g = 0.94f;
     float warm_b = 0.78f;
 };
@@ -55,22 +50,13 @@ struct Config
 // Load the glow feel from config/glimmer.json (silent no-op -> defaults if missing).
 void load(Config& cfg, const std::string& path);
 
-// Spawn one glow entity per Observe-mode observable (warm tint; idle/active targets are
-// refreshed each frame by setObservationTargets). Enter-mode observables fire ambiently
-// and carry no glimmer. Alpha starts at 0, layer 3 (above the prop it marks). Items are NOT
-// glimmered -- they render their floor icon (world_items::spawn), the item is its own cue.
+// Spawn one glow entity per Observe-mode observable (warm tint, alpha 0, layer 3 above the
+// prop it marks). Enter-mode observables fire ambiently and carry no glimmer.
 void spawn(EntityManager& em, const observations::State& obs, const Config& cfg);
 
-// Refresh each observation glimmer's idle/active targets from its observed/unobserved
-// signal (unobserved: off until active, then bright; observed: a muted persistent glow,
-// brighter while active). The observation-specific dimming; pickups skip this (their
-// targets are fixed at spawn). Call before update() each frame.
-void setObservationTargets(EntityManager& em, const observations::State& obs,
-                           const growth::GrowthState& growth, const Config& cfg);
-
-// Per-frame: lerp each glimmer's alpha toward active_alpha (when its Interactable is the
-// resolved target) or idle_alpha (otherwise), ride the breathing pulse on top, and lerp
-// the tint. Kind-agnostic -- reads only the Glimmer component + Interactable.active. dt =
-// frame seconds.
-void update(EntityManager& em, const Config& cfg, float dt);
+// Per-frame: each observable glimmer glows (lerps toward its peak) only while its Interactable
+// is the active target; the peak = formulas::glowBrightness(Perception), the same for every
+// spot. Otherwise it fades to 0. Breathing rides on top. dt = frame seconds.
+void update(EntityManager& em, const growth::GrowthState& growth, const formulas::Config& formulas,
+            const Config& cfg, float dt);
 } // namespace glimmer

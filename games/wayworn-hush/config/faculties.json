@@ -2,6 +2,10 @@
     "_comment": "Stat structure (names + tiers only; the VALUES are runtime/save-game progression, not authored here). 'faculties' are the reading-self (tier 1); 'secondary' is the doing layer -- survival/craft that feeds the self (tier 2). 'buffs' stay empty: their effects are content-driven and defined alongside the quests that make them wanted (see docs/design/GAME-SYSTEMS.md). A buff entry, when added: {\"id\": \"...\", \"faculty\": \"wonder|reason|perception\", \"max_level\": 3}.",
     "faculties": ["wonder", "reason", "perception"],
     "secondary": ["survival", "craftsmanship"],
+    "starting_levels": {
+        "_comment": "The levels the pilgrim BEGINS with (stat name -> level). Everything else starts at 0. Placeholder while the EXP->faculty progression is unbuilt: perception 2 gives a visible starting glow (glowBrightness scales with Perception -- see config/formulas.json; at 0 the world is dark). Remove/retune once progression lands.",
+        "perception": 2
+    },
     "faculty_colors": {
         "_comment": "Hue per faculty for the observation display (a reading is tinted by which faculty saw it; its difficulty sets the brightness). RGB 0..1.",
         "wonder": [0.92, 0.76, 0.42],

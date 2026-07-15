@@ -62,6 +62,10 @@ struct Action
     std::string grant_item;  // item id to deposit on take (empty = none)
     std::string grant_table; // loot table id to roll on take (empty = none)
     bool one_shot = false;   // true = leaves the menu once taken
+    // true = taking this deed REMOVES the observable from the world (you took THE thing --
+    // a lone pebble). false (default) = the spot persists (you took FROM it -- a sprig off
+    // the bush, still there to examine). The game does the despawn (it owns the world entity).
+    bool consumes_spot = false;
 };
 
 // A subjective thought -- ONE struct for both "thoughts" (fed by one
@@ -309,6 +313,9 @@ struct ObserveResult
     // `gathered`. Empty for a plain reading/deed.
     std::vector<std::string> granted;  // item ids to deposit
     std::vector<std::string> gathered; // loot table ids to roll
+    // Set to the observable's id when a taken deed's consumes_spot fires -- the game removes
+    // that spot's world entity (glimmer + interactable). Empty otherwise.
+    std::string consumed_spot;
 };
 
 // Observe the observable within interact_reach of (px,py) -- reveal the deepest objective

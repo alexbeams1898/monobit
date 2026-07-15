@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Footsteps.h"
+#include "Formulas.h"
 #include "Glimmer.h"
 #include "Growth.h"
 #include "HeadMarker.h"
@@ -81,7 +82,8 @@ struct GameState
     std::unordered_map<std::size_t, std::string> cell_surface; // per-cell override (structures)
     hud::Regions hud;                       // fixed HUD region rects + visibility mode
     HeadMarkerConfig head_marker_config;    // over-head thought-bubble feel/placement
-    glimmer::Config glimmer_config;         // observable glow feel
+    glimmer::Config glimmer_config;         // observable glow feel (fade + breathe)
+    formulas::Config formulas;              // stat-driven formulas (Perception -> glow, etc.)
     world_items::Config world_items_config; // world item floor-sprite feel
     world_config::Config world_config;      // region asset paths (map, atlas, ambient)
     worldclock::WorldClock clock;           // in-world time (notebook datelines, day/night later)

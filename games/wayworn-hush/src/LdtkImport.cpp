@@ -621,9 +621,10 @@ Region loadImpl(const std::string& ldtk_path, const std::string& tileset_path,
     // physical; they carry no observation fields. The content lives in observations.json;
     // the box is just where + how it fires. See docs/design/OBSERVATION-SYSTEM.md.
     collectObservablesInLayer(level, "Observables", r);
-    // Pickups: items lying in the world, authored on their own Pickups layer (each a Pickup
-    // entity carrying an `item` id). Bound to inventory at load, spawned as glimmer +
-    // Kind::Pickup interactable. See docs/design/GAME-SYSTEMS.md.
+    // Pickups: items lying in the world, authored on their own Pickups layer (a Pickup entity
+    // carrying an `item` id, or a Gather entity carrying a `loot` table id). Bound to
+    // inventory/loot at load, spawned as floor sprites (world_items::spawn). See
+    // docs/design/GAME-SYSTEMS.md.
     collectPickupsInLayer(level, "Pickups", r);
 
     r.ok = true;

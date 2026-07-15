@@ -485,8 +485,10 @@ ConfirmResult confirm(observations::State& state, const growth::GrowthState& gro
         sPhase = Phase::None;
         const observations::ObserveResult r =
             observations::takeAction(state, growth, sMenuSpot, actionId, rng);
-        sMenuQueued = true; // re-open after the result line (+ any fired thought) is read
-        return {r.earned, r.granted, r.gathered};
+        // A deed that CONSUMES the spot leaves nothing to return to -- don't re-queue (the
+        // spot's about to despawn). Otherwise re-queue the menu with the remaining deeds.
+        sMenuQueued = r.consumed_spot.empty();
+        return {r.earned, r.granted, r.gathered, r.consumed_spot};
     }
     return {};
 }

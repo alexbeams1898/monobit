@@ -104,13 +104,4 @@ std::vector<inventory::ItemInstance> roll(const Table& table, const observations
     return out;
 }
 
-int topRarity(const Table& table, const inventory::Registry& items)
-{
-    int best = 0;
-    for (const auto& e : table.entries)
-        if (const inventory::ItemDef* def = items.find(e.item))
-            best = std::max(best, def->rarity);
-    return best;
-}
-
 } // namespace loot

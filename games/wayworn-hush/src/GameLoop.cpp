@@ -33,7 +33,7 @@ namespace
 // Forward decls -- helpers below reference these before their definitions appear.
 bool pressedThisFrame(const EntityManager& em, int scancode);
 bool clickedThisFrame(EntityManager& em, uint8_t button);
-void enactConfirm(GameState& gs, const thought_box::ConfirmResult& r);
+void enactConfirm(EntityManager& em, GameState& gs, const thought_box::ConfirmResult& r);
 
 // The surface name of the tile at world (wx,wy): the tile's id looked up in the
 // region's tile->surface map. Empty if off-map or the tile is untagged (footsteps then
@@ -208,13 +208,13 @@ bool mouseWorld(const Engine& engine, const EntityManager& em, float& out_x, flo
 // clicking a hovered option (menuMouse, at the render layer) OR Space. The deliberate
 // observe verb itself lives in the InteractionSystem. `clicked` is a consumed left-press
 // this frame (so it won't also fire an interactable / leak into the pause page).
-bool handleReadingInput(const EntityManager& em, GameState& gs, bool clicked)
+bool handleReadingInput(EntityManager& em, GameState& gs, bool clicked)
 {
     if (thought_box::menuActive())
     {
         if (pressedThisFrame(em, SDL_SCANCODE_SPACE))
             // A deed can fire a thought (EXP) and/or grant an item -- enact both.
-            enactConfirm(gs, thought_box::confirm(gs.observations, gs.growth, observeNudge));
+            enactConfirm(em, gs, thought_box::confirm(gs.observations, gs.growth, observeNudge));
         if (pressedThisFrame(em, SDL_SCANCODE_W))
             thought_box::moveUp();
         if (pressedThisFrame(em, SDL_SCANCODE_S))
@@ -226,7 +226,7 @@ bool handleReadingInput(const EntityManager& em, GameState& gs, bool clicked)
     if (thought_box::active()) // a reading Line: Space OR a click anywhere advances it
     {
         if (pressedThisFrame(em, SDL_SCANCODE_SPACE) || clicked)
-            enactConfirm(gs, thought_box::confirm(gs.observations, gs.growth, observeNudge));
+            enactConfirm(em, gs, thought_box::confirm(gs.observations, gs.growth, observeNudge));
         return true;
     }
     return false;
@@ -270,13 +270,29 @@ void grantAndToast(GameState& gs, const std::vector<std::string>& items,
     toastFinds(gs, deposited);
 }
 
-// Bank the EXP a deed earned + grant any items/tables it declared. The chokepoint for a
-// menu confirm's effects (Space or click), so both input paths enact grants identically.
-void enactConfirm(GameState& gs, const thought_box::ConfirmResult& r)
+// Despawn the world entity for an observable id (its glimmer + interactable), e.g. when a
+// consumes_spot take removes the whole thing. No-op if the spot has no world entity.
+void despawnObservableEntity(EntityManager& em, const std::string& observableId)
+{
+    auto& reg = em.registry();
+    for (auto [e, inter] : reg.view<interaction::Interactable>().each())
+        if (inter.observe_id == observableId)
+        {
+            reg.destroy(e);
+            return;
+        }
+}
+
+// Bank the EXP a deed earned + grant any items/tables it declared, and despawn the spot if
+// the take consumed it. The chokepoint for a menu confirm's effects (Space or click), so
+// both input paths enact them identically.
+void enactConfirm(EntityManager& em, GameState& gs, const thought_box::ConfirmResult& r)
 {
     gs.growth.spirit_exp += r.earned;
     if (!r.granted.empty() || !r.gathered.empty())
         grantAndToast(gs, r.granted, r.gathered);
+    if (!r.consumed_spot.empty())
+        despawnObservableEntity(em, r.consumed_spot);
 }
 
 // Follow-up after the InteractionSystem fired: kind-specific UI. An Observe opens the spot's
@@ -407,11 +423,14 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
             onInteractionFired(gs, fired);
     }
 
-    // World glimmer: refresh observation glimmers' dim state (observed spots keep a muted
-    // glow), then fade every glimmer toward its target -- the active interactable glows
-    // (come look). Both run after the InteractionSystem set the `active` flag.
-    glimmer::setObservationTargets(em, gs.observations, gs.growth, gs.glimmer_config);
-    glimmer::update(em, gs.glimmer_config, static_cast<float>(dt));
+    // World glimmer: an observable glows only while it's the active target; its brightness is
+    // the Perception formula (same for every spot). Fades to 0 otherwise -- nothing lingers.
+    // Runs after the InteractionSystem set `active`.
+    glimmer::update(em, gs.growth, gs.formulas, gs.glimmer_config, static_cast<float>(dt));
+
+    // World items: the active one gets a lit rim outline (its own edge lights -- the pickup
+    // cue, distinct from the observation glimmer). Also runs after `active` is set.
+    world_items::updateOutlines(em, gs.world_items_config);
 
     // Over-head thought bubble: shown exactly while a thought reading is on screen,
     // then fades. It tracks the player's head each frame.
@@ -502,9 +521,10 @@ void gameRenderUI(Engine& engine, EntityManager& em)
     // The pause page can't be open while the menu is up, so the click is theirs to
     // share without conflict.
     if (!hudOff)
-        enactConfirm(gs, thought_box::menuMouse(gs.observations, gs.growth, observeNudge,
-                                                static_cast<float>(mx), static_cast<float>(my),
-                                                lClick));
+        enactConfirm(em, gs,
+                     thought_box::menuMouse(gs.observations, gs.growth, observeNudge,
+                                            static_cast<float>(mx), static_cast<float>(my),
+                                            lClick));
 
     // Pause page over everything (no-op when closed). Mouse is interchangeable
     // with the keyboard controls: hover a tab to highlight, click to switch,

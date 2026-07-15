@@ -40,11 +40,8 @@ void load(Config& cfg, const std::string& path)
     cfg.sprite = j.value("sprite", cfg.sprite);
     cfg.size = j.value("size", cfg.size);
     cfg.fade_speed = j.value("fade_speed", cfg.fade_speed);
-    cfg.bright_max = j.value("bright_max", cfg.bright_max);
     cfg.pulse_amp = j.value("pulse_amp", cfg.pulse_amp);
     cfg.pulse_hz = j.value("pulse_hz", cfg.pulse_hz);
-    cfg.observed_dim = j.value("observed_dim", cfg.observed_dim);
-    cfg.faced_boost = j.value("faced_boost", cfg.faced_boost);
     cfg.warm_r = j.value("warm_r", cfg.warm_r);
     cfg.warm_g = j.value("warm_g", cfg.warm_g);
     cfg.warm_b = j.value("warm_b", cfg.warm_b);
@@ -57,13 +54,12 @@ void spawn(EntityManager& em, const observations::State& obs, const Config& cfg)
     {
         // Observe-mode only: one entity that IS both the interactable (input) and its
         // glimmer (highlight). An Enter (ambient) observable fires on proximity, not the
-        // interact verb, so it carries no glimmer. Warm tint; the observed/unobserved
-        // dimming is refreshed each frame by setObservationTargets.
+        // interact verb, so it carries no glimmer.
         if (o.trigger != observations::Trigger::Observe)
             continue;
         const entt::entity e = reg.create();
         reg.emplace<Transform>(e, Transform{o.x, o.y});
-        reg.emplace<Glimmer>(e, Glimmer{cfg.bright_max, 0.0f, cfg.warm_r, cfg.warm_g, cfg.warm_b});
+        reg.emplace<Glimmer>(e, Glimmer{cfg.warm_r, cfg.warm_g, cfg.warm_b, 0.0f});
         // Observable-only interactable: no direct action (a "take" deed, if any, lives in
         // the observation menu). The glimmer marks it; examining opens its reading.
         interaction::Interactable inter{};
@@ -75,51 +71,26 @@ void spawn(EntityManager& em, const observations::State& obs, const Config& cfg)
     }
 }
 
-void setObservationTargets(EntityManager& em, const observations::State& obs,
-                           const growth::GrowthState& growth, const Config& cfg)
-{
-    auto& reg = em.registry();
-    // Only observable interactables carry an observation signal; the id lives in the
-    // Interactable, so the glimmer stays id-free (kind-agnostic component).
-    for (auto [e, glim, inter] : reg.view<Glimmer, interaction::Interactable>().each())
-    {
-        if (inter.observe_id.empty())
-            continue;
-        const observations::Signal sig = observations::signalFor(obs, growth, inter.observe_id);
-        // Unobserved: dark until it's the active target (a Souls-style "notice me" prompt).
-        // Observed: a muted persistent glow (stale/used), a touch brighter while active.
-        if (sig == observations::Signal::Unobserved)
-        {
-            glim.idle_alpha = 0.0f;
-            glim.active_alpha = cfg.bright_max;
-        }
-        else
-        {
-            glim.idle_alpha = cfg.observed_dim;
-            glim.active_alpha = cfg.observed_dim * cfg.faced_boost;
-        }
-    }
-}
-
-void update(EntityManager& em, const Config& cfg, float dt)
+void update(EntityManager& em, const growth::GrowthState& growth, const formulas::Config& formulas,
+            const Config& cfg, float dt)
 {
     sPhase += dt * cfg.pulse_hz * 6.2831853f;
     const float breath = std::sin(sPhase);                    // -1..1 breathing modulation
     const float lerp = 1.0f - std::exp(-cfg.fade_speed * dt); // framerate-independent
+    // Peak glow = the Perception formula, the same for every spot (the stat is the dial).
+    const float peak = formulas::glowBrightness(formulas, growth::statLevel(growth, "perception"));
 
     auto& reg = em.registry();
-    for (auto [e, glim, spr, tint] : reg.view<Glimmer, Sprite, TintOverride>().each())
+    for (auto [e, glim, spr, tint, inter] :
+         reg.view<Glimmer, Sprite, TintOverride, interaction::Interactable>().each())
     {
-        // "active" = the InteractionSystem picked this interactable as the current target
-        // (in reach or hovered). Its steady target is active_alpha when active, idle_alpha
-        // otherwise -- both set by setObservationTargets.
-        const auto* inter = reg.try_get<interaction::Interactable>(e);
-        const bool active = inter && inter->active;
-        const float target = active ? glim.active_alpha : glim.idle_alpha;
+        // One rule: glow only while this is the active target (in reach / hovered); its peak
+        // brightness is the Perception formula. Otherwise fade to 0 -- nothing lingers.
+        const float target = inter.active ? peak : 0.0f;
 
-        // Lerp the SMOOTHED BASE toward the steady target (a clean fade in/out), then
-        // display base + breathing on top -- scaled by how faded-in the glow is, so a
-        // first appearance ramps 0->base cleanly and never flashes.
+        // Lerp the SMOOTHED BASE toward the target (a clean fade in/out), then display base +
+        // breathing on top -- scaled by how faded-in the glow is, so a first appearance ramps
+        // 0->base cleanly and never flashes.
         glim.base_alpha += (target - glim.base_alpha) * lerp;
         spr.alpha = glim.base_alpha + cfg.pulse_amp * breath * glim.base_alpha;
 

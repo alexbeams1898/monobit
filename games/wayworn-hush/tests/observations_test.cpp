@@ -619,10 +619,37 @@ TEST_CASE("A deed with grant_item / grant_table returns those ids for the game t
     const ObserveResult take = observations::takeAction(s, g, "stone", "take", kNoNudge);
     REQUIRE(take.granted == std::vector<std::string>{"river_stone"});
     REQUIRE(take.gathered.empty());
+    REQUIRE(take.consumed_spot.empty()); // "forage nearby" doesn't consume; default false
 
     const ObserveResult forage = observations::takeAction(s, g, "stone", "forage", kNoNudge);
     REQUIRE(forage.gathered == std::vector<std::string>{"herbs"});
     REQUIRE(forage.granted.empty());
+}
+
+TEST_CASE("A consumes_spot take reports the spot id for the game to despawn", "[actions]")
+{
+    // "Pick up the whole pebble" removes the observable; "take a sample" leaves it. Only the
+    // consuming deed reports consumed_spot -- the game removes that world entity.
+    State s = loadWithActions(R"({
+      "observables": [
+        { "id": "pebble", "kind": "inanimate", "x": 0, "y": 0,
+          "tiers": [{ "text": "a small pebble" }],
+          "actions": { "add": [
+            { "id": "pocket", "label": "Pocket the pebble", "grant_item": "river_stone",
+              "consumes_spot": true, "one_shot": true },
+            { "id": "brush", "label": "Brush it off" } ] } }
+      ],
+      "thoughts": []
+    })",
+                              kKinds);
+
+    const GrowthState g = self({{"perception", 5}});
+    const ObserveResult brush = observations::takeAction(s, g, "pebble", "brush", kNoNudge);
+    REQUIRE(brush.consumed_spot.empty()); // a non-consuming deed leaves the spot
+
+    const ObserveResult pocket = observations::takeAction(s, g, "pebble", "pocket", kNoNudge);
+    REQUIRE(pocket.granted == std::vector<std::string>{"river_stone"});
+    REQUIRE(pocket.consumed_spot == "pebble"); // the game despawns this observable's entity
 }
 
 TEST_CASE("availableUnlocks: a deeper tier becomes reachable after growth (the pull-back)",

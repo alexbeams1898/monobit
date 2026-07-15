@@ -1,13 +1,10 @@
 {
-    "_comment": "Observation glow feel (see include/Glimmer.h). The warm glow marks an OBSERVABLE spot the player can examine: unobserved -> glows warm + breathes when in reach (a 'come look' prompt); observed -> dims to a muted persistent glow, brighter while in reach. Items are NOT glowed (they show their floor icon). All values tunable -- edit + relaunch (dev reads assets from source). Mirrors config/head_marker.json.",
+    "_comment": "Observation glow FEEL (see include/Glimmer.h): fade + breathe only. The glow hints at an OBSERVABLE spot while it's the active target (you're in reach / hovering); nothing lingers once you step away. Peak BRIGHTNESS is NOT here -- it's the Perception formula in config/formulas.json (the stat drives the glow, same for every spot). Items are NOT glowed (floor icon + rim outline). Tunable -- edit + relaunch (dev reads assets from source). Mirrors config/head_marker.json.",
     "sprite": "assets/sprites/glimmer.png",
     "size": 64,
     "fade_speed": 6.0,
-    "bright_max": 0.55,
     "pulse_amp": 0.12,
     "pulse_hz": 0.7,
-    "observed_dim": 0.18,
-    "faced_boost": 1.6,
     "warm_r": 1.0,
     "warm_g": 0.94,
     "warm_b": 0.78

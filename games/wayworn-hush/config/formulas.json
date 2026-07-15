@@ -1,0 +1,7 @@
+{
+    "_comment": "Stat-driven formulas (see include/Formulas.h). Coefficients only -- the math lives in C++. 'Your stats change how you see the world': Perception scales the observable-hint glow, the SAME for every spot. glowBrightness SOFT-caps: max * Perception / (Perception + half_at) -- approaches max, never slams into it. half_at = the Perception that reaches HALF of max; below it the hint is faint (search-for-answers). Perception 0 = dark. Tunable -- edit + relaunch (dev reads assets from source).",
+    "glow": {
+        "max": 0.55,
+        "half_at": 6.0
+    }
+}

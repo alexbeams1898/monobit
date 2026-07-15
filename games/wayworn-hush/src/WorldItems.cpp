@@ -54,6 +54,28 @@ void load(Config& cfg, const std::string& path)
     cfg.box = j.value("box", cfg.box);
     cfg.gather_sprite = j.value("gather_sprite", cfg.gather_sprite);
     cfg.gather_size = j.value("gather_size", cfg.gather_size);
+    cfg.outline_r = j.value("outline_r", cfg.outline_r);
+    cfg.outline_g = j.value("outline_g", cfg.outline_g);
+    cfg.outline_b = j.value("outline_b", cfg.outline_b);
+    cfg.outline_width = j.value("outline_width", cfg.outline_width);
+    cfg.outline_alpha = j.value("outline_alpha", cfg.outline_alpha);
+}
+
+void updateOutlines(EntityManager& em, const Config& cfg)
+{
+    auto& reg = em.registry();
+    for (auto [e, inter] : reg.view<interaction::Interactable>().each())
+    {
+        // Only actionable items get the rim cue (observables use the glimmer). Active ->
+        // outline on; not active -> off.
+        if (inter.action == interaction::ActionKind::None)
+            continue;
+        if (inter.active)
+            reg.emplace_or_replace<Outline>(e, Outline{cfg.outline_r, cfg.outline_g, cfg.outline_b,
+                                                       cfg.outline_width, cfg.outline_alpha});
+        else if (reg.all_of<Outline>(e))
+            reg.remove<Outline>(e);
+    }
 }
 
 void spawn(EntityManager& em, const std::vector<ldtk::PickupPlacement>& pickups,

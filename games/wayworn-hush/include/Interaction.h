@@ -89,8 +89,8 @@ struct Candidate
 Resolution resolve(const std::vector<Candidate>& items, const Intent& intent, float reach);
 
 // The game-state an interactable's action needs to fire, bundled so update() stays small
-// and a new Kind adds a field here, not a parameter. `reach` is interact_reach (proximity
-// range). References -- valid for the call only.
+// and a new capability adds a field here, not a parameter. `reach` is interact_reach
+// (proximity range). References -- valid for the call only.
 struct Context
 {
     observations::State& obs;
@@ -117,8 +117,8 @@ struct Outcome
 };
 
 // The per-frame ECS system: build candidates from view<Transform, Interactable>, resolve
-// the active target, mark it `active` (for the highlight), and if firing, dispatch on its
-// Kind (Observe -> observations::observe by id). Returns what fired (see Outcome).
+// the active target, mark it `active` (for the highlight), and if firing, route by capability
+// (observe_id -> observeById; else action -> deposit + despawn). Returns what fired (Outcome).
 Outcome update(EntityManager& em, const Intent& intent, const Context& ctx);
 
 } // namespace interaction

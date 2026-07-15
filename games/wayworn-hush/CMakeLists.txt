@@ -25,6 +25,7 @@ add_library(wayworn-systems STATIC
     src/WorldClock.cpp
     src/Inventory.cpp
     src/Loot.cpp
+    src/Formulas.cpp
     src/WorldItems.cpp
     src/Notebook.cpp
     src/LdtkImport.cpp
@@ -85,6 +86,7 @@ add_executable(wayworn-tests
     tests/world_clock_test.cpp
     tests/inventory_test.cpp
     tests/loot_test.cpp
+    tests/formulas_test.cpp
     tests/notebook_test.cpp
     tests/ldtk_import_test.cpp
 )

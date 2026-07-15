@@ -30,6 +30,14 @@ struct Config
     // is authored per spot.
     std::string gather_sprite = "assets/sprites/items/wild_thyme.png";
     int gather_size = 32; // gather stand-in cell size (px)
+    // The in-reach cue: a lit rim outline on the ACTIVE item (the InteractionSystem's
+    // resolved target). Distinct from the observation glimmer -- the item's own edge lights,
+    // no floating glow. Driven by Interactable.active in updateOutlines.
+    float outline_r = 1.0f;
+    float outline_g = 0.95f;
+    float outline_b = 0.6f;
+    float outline_width = 1.5f; // rim thickness in source texels
+    float outline_alpha = 1.0f;
 };
 
 // Load the feel from config/world_items.json (silent no-op -> defaults if missing).
@@ -41,5 +49,11 @@ void load(Config& cfg, const std::string& path);
 // position. An unknown item/table id logs + is skipped.
 void spawn(EntityManager& em, const std::vector<ldtk::PickupPlacement>& pickups,
            const inventory::Registry& items, const loot::Registry& loot, const Config& cfg);
+
+// Per-frame: put a rim Outline on each actionable item whose Interactable is the active
+// target (the InteractionSystem resolved it -- in reach or hovered), and remove it from
+// those no longer active. The item's own edge lights as the "you can take this" cue. Run
+// after the InteractionSystem sets `active`.
+void updateOutlines(EntityManager& em, const Config& cfg);
 
 } // namespace world_items
