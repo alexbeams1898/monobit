@@ -1,6 +1,7 @@
 #include "Growth.h"
 #include "Observations.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <fstream>
 #include <string>
@@ -547,13 +548,52 @@ TEST_CASE("availableActions filters by unlock_when and one_shot-taken", "[action
     // At perception 3: gated is now offered too -> 3.
     const GrowthState g3 = self({{"perception", 3}});
     REQUIRE(observations::availableActions(s, g3, "stone").size() == 3);
-    // Take the one_shot search -> it drops off the menu.
+    // Take the one_shot search -> it drops off the menu. `taken` is keyed by SPOT:id, so the
+    // deed is tracked per-spot (a deed id shared across spots isn't marked taken everywhere).
     observations::takeAction(s, g3, "stone", "search", kNoNudge);
-    REQUIRE(s.taken.count("search") == 1);
+    REQUIRE(s.taken.count("stone:search") == 1);
     const auto after = observations::availableActions(s, g3, "stone");
     REQUIRE(after.size() == 2); // search gone; rest_hand (repeatable) + gated remain
     for (const auto* a : after)
         REQUIRE(a->id != "search");
+}
+
+TEST_CASE("A one-shot deed taken at one spot stays available at another spot", "[actions]")
+{
+    // Two spots share the same kind-default deed id ("search"). Taking it at one must NOT mark
+    // it taken at the other -- caches/yields depend on this per-spot scoping.
+    State s = loadWithActions(R"({
+      "observables": [
+        { "id": "cairn_a", "kind": "inanimate", "x": 0, "y": 0, "tiers": [{ "text": "a" }] },
+        { "id": "cairn_b", "kind": "inanimate", "x": 99, "y": 0, "tiers": [{ "text": "b" }] }
+      ],
+      "thoughts": []
+    })",
+                              kKinds);
+
+    const GrowthState g = self({{"perception", 1}});
+    // search is a one_shot inanimate default; both spots offer it up front.
+    const auto beforeA = observations::availableActions(s, g, "cairn_a");
+    const auto beforeB = observations::availableActions(s, g, "cairn_b");
+    const bool aHasSearch = std::any_of(beforeA.begin(), beforeA.end(),
+                                        [](const auto* x) { return x->id == "search"; });
+    const bool bHasSearch = std::any_of(beforeB.begin(), beforeB.end(),
+                                        [](const auto* x) { return x->id == "search"; });
+    REQUIRE(aHasSearch);
+    REQUIRE(bHasSearch);
+
+    // Take search at A only.
+    observations::takeAction(s, g, "cairn_a", "search", kNoNudge);
+    REQUIRE(s.taken.count("cairn_a:search") == 1);
+    REQUIRE(s.taken.count("cairn_b:search") == 0);
+
+    // A no longer offers search; B still does (untouched).
+    const auto afterA = observations::availableActions(s, g, "cairn_a");
+    const auto afterB = observations::availableActions(s, g, "cairn_b");
+    REQUIRE(std::none_of(afterA.begin(), afterA.end(),
+                         [](const auto* x) { return x->id == "search"; }));
+    REQUIRE(
+        std::any_of(afterB.begin(), afterB.end(), [](const auto* x) { return x->id == "search"; }));
 }
 
 TEST_CASE("takeAction recovers a thought that observing alone couldn't reach", "[actions]")

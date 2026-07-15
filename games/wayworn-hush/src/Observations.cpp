@@ -850,10 +850,19 @@ const Observable* observableById(const State& s, const std::string& id)
 }
 
 // Is this action currently offered? Its unlock_when must hold (against the given
-// knowledge snapshot), and a one_shot already taken is no longer offered.
-bool actionOffered(const State& s, const Action& a, const unlock::Knowledge& k)
+// The `taken` key for a one-shot deed -- scoped by SPOT so a deed id shared across spots
+// (kind defaults like "search") is tracked per-spot, not globally. The one place the format
+// lives (availableUnlocks builds the same "spot:id" shape for its pull-back notify).
+std::string takenKey(const std::string& spot, const std::string& actionId)
 {
-    if (a.one_shot && s.taken.count(a.id))
+    return spot + ":" + actionId;
+}
+
+// knowledge snapshot), and a one_shot already taken AT THIS SPOT is no longer offered.
+bool actionOffered(const State& s, const std::string& spot, const Action& a,
+                   const unlock::Knowledge& k)
+{
+    if (a.one_shot && s.taken.count(takenKey(spot, a.id)))
         return false;
     return unlock::satisfied(a.unlock_when, k);
 }
@@ -870,7 +879,7 @@ std::vector<const Action*> availableActions(const State& state, const growth::Gr
     std::unordered_map<std::string, int> statLevels;
     const unlock::Knowledge k = makeKnowledge(state, growth, observedIds, statLevels);
     for (const auto& a : o->actions)
-        if (actionOffered(state, a, k))
+        if (actionOffered(state, spot, a, k))
             out.push_back(&a);
     return out;
 }
@@ -886,7 +895,7 @@ ObserveResult takeAction(State& state, const growth::GrowthState& growth, const 
     const unlock::Knowledge k = makeKnowledge(state, growth, observedIds, statLevels);
     const Action* act = nullptr;
     for (const auto& a : o->actions)
-        if (a.id == action_id && actionOffered(state, a, k))
+        if (a.id == action_id && actionOffered(state, spot, a, k))
         {
             act = &a;
             break;
@@ -899,7 +908,7 @@ ObserveResult takeAction(State& state, const growth::GrowthState& growth, const 
         state.pending.push_back(
             PendingLine{LineKind::Observation, act->result_text, {}, 0, /*is_new=*/false, false});
     if (act->one_shot)
-        state.taken.insert(act->id);
+        state.taken.insert(takenKey(spot, act->id));
 
     std::vector<std::string> changedKeys;
     if (!act->set_flag.empty() && state.flags.insert(act->set_flag).second)
@@ -950,8 +959,8 @@ std::unordered_set<std::string> availableUnlocks(const State& state,
 
         // An action now offered that hasn't been taken.
         for (const auto& a : o.actions)
-            if (actionOffered(state, a, k))
-                out.insert(o.id + ":" + a.id);
+            if (actionOffered(state, o.id, a, k))
+                out.insert(takenKey(o.id, a.id));
     }
     return out;
 }
