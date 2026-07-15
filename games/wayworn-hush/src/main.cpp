@@ -108,6 +108,7 @@ void reloadHudFonts(GameState& gs, int windowW, int windowH)
     thought_box::init(body, label, sBoxCfg, gs.hud);
     pause_page::init(body);
     notify::init(label, gs.hud.notification);
+    interaction_mode::init(label); // the stance badge uses the small label font
 }
 
 // Engine resize callback: keep the pixel target + HUD fonts in step with the new
@@ -283,8 +284,9 @@ int main(int argc, char* argv[])
     structures::load(gs.structure_config, "config/structures.json");
     glimmer::load(gs.glimmer_config, "config/glimmer.json"); // before setupRegion (spawns glimmers)
     formulas::load(gs.formulas, "config/formulas.json");     // stat-driven formulas (glow, ...)
-    world_items::load(gs.world_items_config, "config/world_items.json"); // floor item feel
-    world_config::load(gs.world_config, "config/world.json");            // region asset paths
+    world_items::load(gs.world_items_config, "config/world_items.json");        // floor item feel
+    interaction_mode::load(gs.int_mode_config, "config/interaction_mode.json"); // stance badge
+    world_config::load(gs.world_config, "config/world.json"); // region asset paths
 
     // Item blueprints, then the pilgrim's starting satchel: he sets out carrying his
     // notebook (a key item -- carrying it is what lets thoughts be written down; see

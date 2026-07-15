@@ -18,7 +18,7 @@ using FontHandle = int;
 //   Menu -- a list of options (e.g. the deeds you can do at a spot after
 //           observing): W/S move the selection, Space confirms, F/RMB backs out.
 // Systems stay pure -- they enqueue text Lines via observations::State.pending
-// and Menus via pushActionMenu(); the box owns look, animation, and input.
+// and Menus via openDeedMenu(); the box owns look, animation, and input.
 // See docs/design/OBSERVATION-SYSTEM.md + ACTIONS.md + AESTHETIC.md.
 namespace thought_box
 {
@@ -78,16 +78,15 @@ bool menuActive();
 // (head_marker) -- the bubble shows exactly while the thought is up, in its color.
 bool activeThought(const growth::GrowthState& growth, Color& out_color);
 
-// Enqueue the action menu for a spot (its offered deeds, shown after the reading
-// lines are read). No-op if the spot has no offered actions.
-void pushActionMenu(observations::State& state, const growth::GrowthState& growth,
-                    const std::string& spot);
+// Run a spot's OBSERVE reading (the EarthBound "Check"): queues the reading lines; update()
+// drains them. Returns the Spirit EXP earned (the caller banks it).
+int pushObserve(observations::State& state, const growth::GrowthState& growth,
+                const std::string& spot, const observations::RollRng& rng);
 
-// The action menu is bound to being at the spot: call each frame with the
-// currently-faced spot id (empty if none). If a menu is QUEUED (not yet open) for
-// a different spot, it is dropped -- the menu never chases you after you walk
-// away. The observation's reading + fired thoughts still play out.
-void dropQueuedMenuIfLeft(const std::string& facedSpot);
+// Open a spot's deed menu (the RUNNING/Act stance). Always shows, even with no deeds (a
+// "Leave"-only menu), so a run-interact is never a dead press.
+void openDeedMenu(observations::State& state, const growth::GrowthState& growth,
+                  const std::string& spot);
 
 // What a confirm did that the game must enact: EXP to bank, plus any item effects a
 // taken deed declared (ids only -- the box, like observations, is inventory-ignorant; the

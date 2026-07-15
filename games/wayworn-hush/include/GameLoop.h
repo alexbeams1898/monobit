@@ -6,6 +6,7 @@
 #include "Growth.h"
 #include "HeadMarker.h"
 #include "HudCanvas.h"
+#include "InteractionMode.h"
 #include "Inventory.h"
 #include "Notebook.h"
 #include "Observations.h"
@@ -80,16 +81,18 @@ struct GameState
     structures::Config structure_config; // resizable walk-on structures (9-slice)
     std::unordered_map<int, std::string> tile_surface;         // tile id -> surface (footsteps)
     std::unordered_map<std::size_t, std::string> cell_surface; // per-cell override (structures)
-    hud::Regions hud;                       // fixed HUD region rects + visibility mode
-    HeadMarkerConfig head_marker_config;    // over-head thought-bubble feel/placement
-    glimmer::Config glimmer_config;         // observable glow feel (fade + breathe)
-    formulas::Config formulas;              // stat-driven formulas (Perception -> glow, etc.)
-    world_items::Config world_items_config; // world item floor-sprite feel
-    world_config::Config world_config;      // region asset paths (map, atlas, ambient)
-    worldclock::WorldClock clock;           // in-world time (notebook datelines, day/night later)
-    inventory::Registry items;              // loaded item blueprints (config/items/*.json)
-    loot::Registry loot_tables;             // gather loot tables (config/loot/*.json)
-    inventory::Satchel satchel;             // what the pilgrim carries
+    hud::Regions hud;                         // fixed HUD region rects + visibility mode
+    HeadMarkerConfig head_marker_config;      // over-head thought-bubble feel/placement
+    glimmer::Config glimmer_config;           // observable glow feel (fade + breathe)
+    formulas::Config formulas;                // stat-driven formulas (Perception -> glow, etc.)
+    world_items::Config world_items_config;   // world item floor-sprite feel
+    interaction_mode::Config int_mode_config; // Observe/Act stance badge + SFX feel
+    interaction_mode::State int_mode_state;   // stance edge-detect for the transition SFX
+    world_config::Config world_config;        // region asset paths (map, atlas, ambient)
+    worldclock::WorldClock clock;             // in-world time (notebook datelines, day/night later)
+    inventory::Registry items;                // loaded item blueprints (config/items/*.json)
+    loot::Registry loot_tables;               // gather loot tables (config/loot/*.json)
+    inventory::Satchel satchel;               // what the pilgrim carries
     notebook::Record notebook; // dated record of readings (gated on carrying the notebook)
     // Unlock ids (see observations::availableUnlocks) already announced via a
     // notification, so "1 new observation / action available" toasts fire exactly

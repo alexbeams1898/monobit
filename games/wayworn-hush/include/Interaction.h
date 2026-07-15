@@ -64,6 +64,11 @@ struct Intent
     bool mouse_valid = false; // false if the cursor is off-window / no mouse this frame
     bool pressed = false;     // the interact key (Space) fired this frame
     bool clicked = false;     // the left mouse button fired this frame
+    // The "act" modifier: interacting while RUNNING (Shift held) means ACT (skip straight to
+    // the deed menu) rather than OBSERVE. Walking = observe (slow down to notice); running =
+    // act (you're in motion, you know this spot). Only affects observable spots; items loot
+    // the same either way.
+    bool act = false;
 };
 
 // Which interactable (if any) is the active target for `intent`, and whether it should
@@ -109,10 +114,11 @@ struct Context
 struct Outcome
 {
     bool fired = false;
-    std::string observe_target; // the observed spot's id (empty if a direct action fired)
+    std::string observe_target; // the fired observable spot's id (empty if a direct item fired)
+    bool act = false;           // the fire was an ACT (running): skip the reading -> deed menu
     int earned = 0;             // Spirit EXP from an observe
     // Items a DIRECT action deposited, for the toast (Pickup -> one; Gather -> the handful).
-    // Empty for an observe (a "take" deed's grant flows through the menu, not here).
+    // Empty for an observable (a "take" deed's grant flows through the menu, not here).
     std::vector<inventory::ItemInstance> items;
 };
 

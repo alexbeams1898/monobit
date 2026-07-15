@@ -69,6 +69,9 @@ std::size_t sPageStart = 0;
 int sLinesPerPage = 0; // 0 until a line loads; >=1 thereafter
 
 // --- Menu state ---
+// The deed menu: the spot's offered actions, shown after its observation reading is read
+// (the EarthBound "Check it, then choose what to do"). W/S select, Space/click confirm,
+// F/RMB closes.
 struct Option
 {
     std::string id;    // action id (for takeAction)
@@ -77,8 +80,8 @@ struct Option
 std::string sMenuSpot;         // observable id the menu belongs to
 std::vector<Option> sMenuOpts; // current offered deeds
 int sMenuSel = 0;              // highlighted option
-bool sMenuQueued = false;      // a menu wants to open once state.pending is empty
-                               // (fresh after observe, or re-show after a deed's result)
+bool sMenuQueued = false;      // the deed menu wants to re-open once state.pending is empty
+                               // (after a deed's result line has been read)
 // Last-rendered menu geometry, stashed so mouse hit-testing matches exactly what
 // was drawn (no recompute drift).
 float sMenuX = 0.0f;
@@ -210,16 +213,17 @@ void loadLine(observations::PendingLine line, int windowW, int windowH, const Re
 // Sentinel option id: always the last entry, closes the menu (equivalent to F).
 const char* const kLeaveId = "__leave__";
 
-// Fill the menu with the spot's currently-offered deeds plus a trailing "Leave".
-// Returns false (no menu) if the spot has no real deeds -- Leave alone is not a
-// menu worth opening.
+// Fill the DEED menu with the spot's currently-offered deeds plus a trailing "Leave".
+// Returns false when there are no real deeds AND `alwaysShow` is false -- so the reading's
+// AUTO-follow menu doesn't open a Leave-only box, but the RUNNING/Act path (alwaysShow) does
+// (a spot with nothing to do still shows "Leave").
 bool buildMenu(const observations::State& state, const growth::GrowthState& growth,
-               const std::string& spot)
+               const std::string& spot, bool alwaysShow = false)
 {
     sMenuOpts.clear();
     for (const auto* a : observations::availableActions(state, growth, spot))
         sMenuOpts.push_back(Option{a->id, a->label});
-    if (sMenuOpts.empty())
+    if (sMenuOpts.empty() && !alwaysShow)
         return false;
     sMenuOpts.push_back(Option{kLeaveId, "Leave"});
     return true;
@@ -367,14 +371,14 @@ void update(observations::State& state, const growth::GrowthState& growth, float
             loadLine(std::move(next), windowW, windowH, sink);
             return;
         }
-        // Pending is empty: if a menu is queued (fresh or re-show after a deed),
-        // open it with the spot's currently-offered actions.
-        if (sMenuQueued && buildMenu(state, growth, sMenuSpot))
+        // Pending is empty: re-open the deed menu after a deed's result line was read (Act
+        // stance). Always shows -- a spot whose last deed was taken still offers "Leave".
+        if (sMenuQueued)
         {
+            buildMenu(state, growth, sMenuSpot, /*alwaysShow=*/true);
             openMenu();
             return;
         }
-        sMenuQueued = false;
         return;
     }
 
@@ -425,24 +429,23 @@ bool activeThought(const growth::GrowthState& growth, Color& out_color)
     return true;
 }
 
-void pushActionMenu(observations::State& state, const growth::GrowthState& growth,
-                    const std::string& spot)
+int pushObserve(observations::State& state, const growth::GrowthState& growth,
+                const std::string& spot, const observations::RollRng& rng)
 {
-    // Queue the menu: update() opens it once all pending reading lines are read.
-    // buildMenu here is just a has-any check; update() rebuilds at open time.
+    // Run the spot's reading (the WALKING/Observe stance: queues lines; update() drains them).
+    // Returns the Spirit EXP earned so the caller banks it (mirrors confirm()).
     sMenuSpot = spot;
-    sMenuQueued = buildMenu(state, growth, spot);
+    return observations::observeById(state, growth, spot, rng).earned;
 }
 
-void dropQueuedMenuIfLeft(const std::string& facedSpot)
+void openDeedMenu(observations::State& state, const growth::GrowthState& growth,
+                  const std::string& spot)
 {
-    // The action menu is bound to being AT the spot: if it's queued (waiting for
-    // the reading/thoughts to be read) but the player has walked off / faces a
-    // different spot, drop it -- the menu shouldn't chase you. An OPEN menu is
-    // modal (movement frozen) so this only fires in the pre-open window; the
-    // observation's own reading + thoughts are unaffected and play out.
-    if (sMenuQueued && sItem != ItemKind::Menu && facedSpot != sMenuSpot)
-        sMenuQueued = false;
+    // The RUNNING/Act stance: open the deed menu immediately. Always shows, even if the spot
+    // has no deeds right now -- you get a "Leave"-only menu, not a dead press.
+    sMenuSpot = spot;
+    buildMenu(state, growth, spot, /*alwaysShow=*/true);
+    openMenu();
 }
 
 ConfirmResult confirm(observations::State& state, const growth::GrowthState& growth,
@@ -478,15 +481,14 @@ ConfirmResult confirm(observations::State& state, const growth::GrowthState& gro
             back(); // the trailing "Leave" option closes the menu
             return {};
         }
-        // Close the menu; the deed's result_text enqueues as a Line. After it is
-        // read, update() re-opens the menu with the remaining offered deeds. Hand back
-        // the EXP + any item grants the deed declared so the caller banks + deposits them.
+        // Take the chosen deed. Its result_text enqueues as a Line; after it's read, update()
+        // re-opens the deed menu with the remaining deeds. Hand back the EXP + any grants so
+        // the caller banks + deposits them.
         sItem = ItemKind::None;
         sPhase = Phase::None;
         const observations::ObserveResult r =
             observations::takeAction(state, growth, sMenuSpot, actionId, rng);
-        // A deed that CONSUMES the spot leaves nothing to return to -- don't re-queue (the
-        // spot's about to despawn). Otherwise re-queue the menu with the remaining deeds.
+        // A deed that CONSUMES the spot leaves nothing to return to -- don't re-queue.
         sMenuQueued = r.consumed_spot.empty();
         return {r.earned, r.granted, r.gathered, r.consumed_spot};
     }

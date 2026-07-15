@@ -27,6 +27,7 @@ add_library(wayworn-systems STATIC
     src/Loot.cpp
     src/Formulas.cpp
     src/WorldItems.cpp
+    src/InteractionMode.cpp
     src/Notebook.cpp
     src/LdtkImport.cpp
     src/PausePage.cpp

@@ -295,9 +295,10 @@ void enactConfirm(EntityManager& em, GameState& gs, const thought_box::ConfirmRe
         despawnObservableEntity(em, r.consumed_spot);
 }
 
-// Follow-up after the InteractionSystem fired: kind-specific UI. An Observe opens the spot's
-// action menu; a direct Action (a material with no reading) already deposited its find --
-// toast it.
+// Follow-up after the InteractionSystem fired. A direct actionable-only item already deposited
+// its find -> toast it. For an observable spot, the STANCE is the verb: WALKING observes (the
+// reading only), RUNNING acts (the deed menu only). The stance badge teaches this; there is no
+// per-spot prompt and no reading->menu handoff.
 void onInteractionFired(GameState& gs, const interaction::Outcome& out)
 {
     if (out.observe_target.empty())
@@ -305,10 +306,18 @@ void onInteractionFired(GameState& gs, const interaction::Outcome& out)
         toastFinds(gs, out.items); // direct pickup/gather -- items already in the satchel
         return;
     }
-    // The spot's baseline actions show in the menu now -- don't also toast them; only
-    // later-unlocked ones announce as a pull-back.
-    seedObservedActionsAsKnown(gs, out.observe_target);
-    thought_box::pushActionMenu(gs.observations, gs.growth, out.observe_target);
+    const std::string& spot = out.observe_target;
+    if (out.act)
+    {
+        // Running (Act stance) -> the deed menu. Seed baseline deeds as announced so the menu
+        // doesn't toast them as "new"; only later-unlocked deeds announce as a pull-back.
+        seedObservedActionsAsKnown(gs, spot);
+        thought_box::openDeedMenu(gs.observations, gs.growth, spot);
+        return;
+    }
+    // Walking (Observe stance) -> the reading only. Bank its EXP.
+    gs.growth.spirit_exp +=
+        thought_box::pushObserve(gs.observations, gs.growth, spot, observeNudge);
 }
 } // namespace
 
@@ -367,6 +376,13 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     // Hold Shift to fast-walk: faster movement + brisker leg cadence.
     const bool fast = keys[SDL_SCANCODE_LSHIFT] != 0 || keys[SDL_SCANCODE_RSHIFT] != 0;
     const float speed = fast ? pc.speed * pc.run_speed_mult : pc.speed;
+
+    // Interaction stance = running vs walking (raw Shift, so it tracks the true stance even
+    // with a menu up, where movement is frozen). Plays the enter-Act / enter-Observe SFX on a
+    // transition; the badge (rendered in the UI pass) shows the current stance.
+    const Uint8* rawKeys = SDL_GetKeyboardState(nullptr);
+    const bool running = rawKeys[SDL_SCANCODE_LSHIFT] != 0 || rawKeys[SDL_SCANCODE_RSHIFT] != 0;
+    interaction_mode::update(gs.int_mode_state, gs.int_mode_config, running);
     player_movement::update(em, gs.player, keys, speed, static_cast<float>(dt));
 
     // Facing + state from the resulting velocity. Moving -> face movement
@@ -410,6 +426,10 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
         intent.mouse_valid = mouseWorld(engine, em, intent.mouse_x, intent.mouse_y);
         intent.pressed = pressedThisFrame(em, SDL_SCANCODE_SPACE);
         intent.clicked = clicked;
+        // Running (Shift held) makes interacting an ACT (skip to the deed menu); walking
+        // observes. Slow down to notice; move with intent to do.
+        const Uint8* keyState = SDL_GetKeyboardState(nullptr);
+        intent.act = keyState[SDL_SCANCODE_LSHIFT] != 0 || keyState[SDL_SCANCODE_RSHIFT] != 0;
         const interaction::Context ctx{gs.observations,
                                        gs.growth,
                                        observeNudge,
@@ -508,6 +528,10 @@ void gameRenderUI(Engine& engine, EntityManager& em)
         // Ambient notification toasts (EXP, "new observation/action available") --
         // in the notification band, non-blocking, self-fading.
         notify::render(static_cast<float>(engine.frameDt()), ww, wh);
+
+        // Interaction-stance badge (Observe / Act) so the player always knows which verb an
+        // interact will do.
+        interaction_mode::render(gs.int_mode_state, gs.int_mode_config, ww, wh);
     }
 
     int mx = 0;

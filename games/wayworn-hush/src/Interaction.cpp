@@ -96,14 +96,13 @@ Outcome update(EntityManager& em, const Intent& intent, const Context& ctx)
     Outcome out;
     out.fired = true;
 
-    // Observable wins: examining opens the reading (+ its action menu, where a "take" deed
-    // lives). The spot persists -- an observation is re-readable; its "take" deed despawns
-    // the item, not this path.
+    // Observable spot: report which spot fired, but do NOT observe here -- the caller routes
+    // it (a spot offering both observe + deeds shows a verb picker; one verb fires directly).
+    // Keeps this layer generic: it resolves the target, the game decides the verb.
     if (!target.observe_id.empty())
     {
         out.observe_target = target.observe_id;
-        out.earned =
-            observations::observeById(ctx.obs, ctx.growth, target.observe_id, ctx.rng).earned;
+        out.act = intent.act; // running -> the caller skips the reading to the deed menu
         return out;
     }
 
