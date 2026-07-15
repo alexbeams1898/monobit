@@ -146,3 +146,18 @@ TEST_CASE("load reads one-JSON-per-item from a directory", "[inventory]")
 
     fs::remove_all(dir);
 }
+
+TEST_CASE("markAllSeen clears the newly-found flag on every item", "[inventory]")
+{
+    const Registry r;
+    Satchel s;
+    add(s, r, ItemInstance{"river_stone"});
+    add(s, r, ItemInstance{"wild_thyme", 2});
+    // Freshly added items are new by default.
+    for (const auto& e : s.items)
+        REQUIRE(e.is_new);
+
+    markAllSeen(s);
+    for (const auto& e : s.items)
+        REQUIRE_FALSE(e.is_new);
+}

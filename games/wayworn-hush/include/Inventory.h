@@ -86,6 +86,10 @@ bool remove(Satchel& satchel, const std::string& id, int qty = 1);
 // Total quantity of an item across all its stacks.
 int count(const Satchel& satchel, const std::string& id);
 
+// Clear the "newly found" flag on every carried item (they've been seen). Called when the
+// player leaves the satchel view.
+void markAllSeen(Satchel& satchel);
+
 // Whether the pilgrim carries at least one. The gating query -- item-gating and
 // key-item carried-effects read this everywhere (has(satchel, "notebook")).
 bool has(const Satchel& satchel, const std::string& id);

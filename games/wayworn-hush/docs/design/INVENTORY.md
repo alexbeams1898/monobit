@@ -1,13 +1,17 @@
-# Wayworn Hush — Inventory (design proposal)
+# Wayworn Hush — Inventory
 
-> **Status:** design proposal, not built. Owns the data model for "things the
-> pilgrim carries" and the operations over them. Written before code so the
-> shape is right first (design-before-implementing).
+> **Status:** BUILT. `Inventory.h/.cpp` (data model + ops + loader), a Satchel
+> pause-page tab, notebook/watch key-items with carried effects, item-gating,
+> and the "New" find badge all ship. `tests/inventory_test.cpp` covers the ops.
 >
-> **Locked in session (2026-07-13):** three categories (Practical / Keepsake /
-> KeyItem); the notebook's recording capability **gates on carrying it**
-> (`has(satchel,"notebook")` is a real gate, not flavor); the dated record is a
-> **separate structure keyed by ownership**, not stored inside the ItemInstance.
+> **Locked:** three categories (Practical / Keepsake / KeyItem); the notebook's
+> recording capability **gates on carrying it** (`has(satchel,"notebook")` is a
+> real gate, not flavor); the dated record is a **separate structure keyed by
+> ownership**, not stored inside the ItemInstance.
+>
+> **Since the proposal:** the per-copy `quality` field was DROPPED — this game
+> has no quality axis (unneeded complexity for a secondary system). Rarity is
+> per-TYPE only. A `Practical` item is defined solely by its id + quantity.
 
 ## What it has to serve (from DESIGN.md / GAME-SYSTEMS.md)
 
@@ -25,9 +29,9 @@
     often *do something by being carried*.
 - **Item-gating is load-bearing.** "Certain items are required to progress." So
   `has(item)` is a first-class query other systems ask.
-- **Materials carry two axes later** (GAME-SYSTEMS §5): *Rarity* (per-type) +
-  *Quality* (per-copy roll). The instance layer must have somewhere to put a
-  per-copy quality number even though gather/craft isn't built yet.
+- **Materials carry ONE axis:** *Rarity* (per-type, 1..5). There is no per-copy
+  quality — that idea was dropped as unneeded complexity. A material is its id +
+  a quantity; two copies of `wild_thyme` are identical.
 
 ## The model — two layers (borrowed skeleton, trimmed hard)
 
@@ -71,14 +75,12 @@ two.
 struct ItemInstance {
     std::string id;         // -> ItemDef
     int   quantity = 1;     // for stackables
-    float quality = 1.0f;   // per-COPY roll (gather/craft fills this later; 1.0 default)
     bool  is_new = true;    // "newly found" marker for the UI (mirrors reading is_new)
 }
 ```
 
-`quality` is present now (default 1.0) so the gather/craft quality-lottery has a
-home when it lands — no instance-schema change later. `is_new` mirrors the
-observation system's "New" so the satchel can badge fresh finds the same way.
+`is_new` mirrors the observation system's "New": the satchel badges a fresh find
+until the player views the Satchel tab, then `markAllSeen()` clears it on leave.
 
 ### Player state — one component, a plain vector
 
@@ -150,8 +152,6 @@ GameState:
 
 - **Crafting / recipes / mastery chains** (GAME-SYSTEMS §5) — future; `Practical`
   items + `remove()`/`count()` are the substrate it'll build on.
-- **The quality lottery** — `ItemInstance.quality` is the reserved slot; the roll
-  comes with gather.
 - **Equip slots** — none in this game (no weapons/armor). Omitted entirely.
 - **A pickup/gather world-interaction** — how an item physically enters the
   satchel (walk-over? an observe→gather action?) is a small follow-on; the
@@ -173,4 +173,4 @@ GameState:
 3. Wire `has(satchel,"notebook")` as the gate on recording notebook entries, and
    `has(satchel,"watch")` as the gate on the dateline.
 4. A satchel view in the pause page.
-5. (Later) the dated notebook-record sub-design; gather/craft; the quality roll.
+5. (Later) the dated notebook-record sub-design; gather/craft.

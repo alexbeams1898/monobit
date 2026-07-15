@@ -135,4 +135,10 @@ bool has(const Satchel& satchel, const std::string& id)
     return count(satchel, id) > 0;
 }
 
+void markAllSeen(Satchel& satchel)
+{
+    for (auto& e : satchel.items)
+        e.is_new = false;
+}
+
 } // namespace inventory

@@ -191,6 +191,8 @@ void renderSatchel(const inventory::Satchel& sat, const inventory::Registry& reg
             std::string label = def ? def->name : e.id;
             if (e.quantity > 1)
                 label += "  x" + std::to_string(e.quantity);
+            if (e.is_new)
+                label += "  \xE2\x80\xA2 New"; // a freshly-found item, until the tab is viewed
             const Color c = def ? reading_color::rarityColor(def->rarity) : kText;
             softTextCentered(label, cx, y, c);
             y += lineH();

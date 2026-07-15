@@ -71,6 +71,15 @@ pause_page::Action stepPausePage(EntityManager& em, GameState& gs, bool menuUp)
     const bool confirm = !menuUp && pressedThisFrame(em, SDL_SCANCODE_SPACE);
     const pause_page::Action action =
         pause_page::step(gs.pause, toggle, left, right, up, down, confirm);
+
+    // "New" item badges clear when the player LEAVES the satchel view (switched tab or closed
+    // the page while on it) -- they saw the fresh finds, so they're no longer new.
+    const bool viewingSatchel = gs.pause.open && gs.pause.tab == PauseState::Tab::Satchel;
+    static bool sWasViewingSatchel = false;
+    if (sWasViewingSatchel && !viewingSatchel)
+        inventory::markAllSeen(gs.satchel);
+    sWasViewingSatchel = viewingSatchel;
+
     // Muffle the soundtrack while the page is open (world frozen behind a held breath).
     AudioSystem::setMusicLowPass(gs.pause.open ? 800.0f : 0.0f);
     return action;
