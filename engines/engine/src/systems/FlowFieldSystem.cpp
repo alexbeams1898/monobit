@@ -31,10 +31,8 @@ struct BfsItem
 // field size their tiles to that convention.
 void markWallTile(WallGrid walls, int col, int row, int tile_size)
 {
-    const int c0 =
-        static_cast<int>(static_cast<float>(col * tile_size) / FlowField::CELL_SIZE);
-    const int r0 =
-        static_cast<int>(static_cast<float>(row * tile_size) / FlowField::CELL_SIZE);
+    const int c0 = static_cast<int>(static_cast<float>(col * tile_size) / FlowField::CELL_SIZE);
+    const int r0 = static_cast<int>(static_cast<float>(row * tile_size) / FlowField::CELL_SIZE);
     const int c1 = c0 + 1;
     const int r1 = r0 + 1;
     if (r0 < FlowField::ROWS && c0 < FlowField::COLS)

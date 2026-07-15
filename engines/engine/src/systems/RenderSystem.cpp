@@ -470,7 +470,8 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
                 const float sgnU = uv.w < 0.0f ? -1.0f : 1.0f;
                 const float sgnV = uv.h < 0.0f ? -1.0f : 1.0f;
                 glUniform4f(sLocSrcRect, uv.x - sgnU * uStep * e.outline_w,
-                            uv.y - sgnV * vStep * e.outline_w, uv.w + sgnU * 2.0f * uStep * e.outline_w,
+                            uv.y - sgnV * vStep * e.outline_w,
+                            uv.w + sgnU * 2.0f * uStep * e.outline_w,
                             uv.h + sgnV * 2.0f * vStep * e.outline_w);
                 glUniform2f(sLocTexelStep, uStep, vStep);
                 glUniform1f(sLocOutlineW, e.outline_w);
