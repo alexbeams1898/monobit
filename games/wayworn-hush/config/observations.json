@@ -28,6 +28,19 @@
                         "result_text": "The moss comes away in a wet green sheet, and the stone shows its grain.",
                         "set_flag": "rock_moss_cleared",
                         "one_shot": true
+                    },
+                    {
+                        "_comment": "CACHE drop: clearing the moss reveals a smooth stone wedged against its base. A grant_item deed, one_shot -> taken once, then the spot stays empty (per-spot 'taken' scoping). Demonstrates the drops pattern -- a cache is just an observation spot with a grant deed.",
+                        "id": "pocket_stone",
+                        "label": "Work the loose stone free",
+                        "unlock_when": [
+                            {
+                                "flag": "rock_moss_cleared"
+                            }
+                        ],
+                        "result_text": "A river stone, smooth and grey, sits wedged at the base. You work it loose and pocket it.",
+                        "grant_item": "river_stone",
+                        "one_shot": true
                     }
                 ]
             },

@@ -250,8 +250,9 @@ void toastFinds(const GameState& gs, const std::vector<inventory::ItemInstance>&
         const inventory::ItemDef* def = gs.items.find(inst.id);
         if (!def)
             continue;
-        const std::string line =
-            inst.quantity > 1 ? std::to_string(inst.quantity) + "x " + def->name : def->name;
+        // Always show the amount (even 1x) so the format is consistent -- "2x Wild Thyme",
+        // "1x Worn River Stone".
+        const std::string line = std::to_string(inst.quantity) + "x " + def->name;
         notify::push(line, reading_color::rarityColor(def->rarity));
     }
 }
@@ -318,15 +319,18 @@ void onInteractionFired(GameState& gs, const interaction::Outcome& out)
     const std::string& spot = out.observe_target;
     if (out.act)
     {
-        // Running (Act stance) -> the deed menu. Seed baseline deeds as announced so the menu
-        // doesn't toast them as "new"; only later-unlocked deeds announce as a pull-back.
+        // Running (Act stance) -> the deed menu. Seed baseline deeds as announced (the spot
+        // was observed on a prior visit, so they're available) so they don't toast as "new".
         seedObservedActionsAsKnown(gs, spot);
         thought_box::openDeedMenu(gs.observations, gs.growth, spot);
         return;
     }
-    // Walking (Observe stance) -> the reading only. Bank its EXP.
+    // Walking (Observe stance) -> the reading only. Bank its EXP. Seed the baseline deeds AFTER
+    // observing (observing is what makes them available -- observed_tier is set by pushObserve)
+    // so they don't toast "1 new action available"; only later-unlocked deeds announce.
     gs.growth.spirit_exp +=
         thought_box::pushObserve(gs.observations, gs.growth, spot, observeNudge);
+    seedObservedActionsAsKnown(gs, spot);
 }
 } // namespace
 
