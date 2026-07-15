@@ -1,5 +1,7 @@
 #pragma once
 
+#include <nlohmann/json_fwd.hpp>
+
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -59,5 +61,11 @@ bool clauseHolds(const Clause& c, const Knowledge& k);
 
 // Is the condition satisfied (any clause holds, or it is unconditional)?
 bool satisfied(const Condition& cond, const Knowledge& k);
+
+// Parse a Condition from a JSON array of clauses (each: optional `flag`, `observed` (string or
+// array of all-required ids), `stat` (name -> min level)). A non-array or missing -> an empty
+// (unconditional) Condition. The ONE parser -- observations, crafting, and any future gated
+// system share it so a clause is read identically everywhere.
+Condition parseCondition(const nlohmann::json& j);
 
 } // namespace unlock

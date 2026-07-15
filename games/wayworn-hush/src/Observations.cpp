@@ -161,31 +161,6 @@ bool rollLands(const State& s, const growth::GrowthState& g, const Thought& r, c
 // --- loading ---------------------------------------------------------------
 namespace
 {
-unlock::Condition parseCondition(const nlohmann::json& j)
-{
-    unlock::Condition cond;
-    if (!j.is_array())
-        return cond;
-    for (const auto& cj : j)
-    {
-        unlock::Clause c;
-        c.flag = cj.value("flag", std::string{});
-        // `observed` accepts a single string or an array (all required).
-        if (const auto it = cj.find("observed"); it != cj.end())
-        {
-            if (it->is_string())
-                c.observed.push_back(it->get<std::string>());
-            else if (it->is_array())
-                for (const auto& v : *it)
-                    c.observed.push_back(v.get<std::string>());
-        }
-        if (const auto it = cj.find("stat"); it != cj.end() && it->is_object())
-            for (const auto& [name, lvl] : it->items())
-                c.stat[name] = lvl.get<int>();
-        cond.any.push_back(std::move(c));
-    }
-    return cond;
-}
 
 std::unordered_map<std::string, int> parseFeeders(const nlohmann::json& j)
 {
@@ -437,7 +412,7 @@ Action parseAction(const nlohmann::json& a)
     act.one_shot = a.value("one_shot", false);
     act.consumes_spot = a.value("consumes_spot", false);
     if (const auto it = a.find("unlock_when"); it != a.end())
-        act.unlock_when = parseCondition(*it);
+        act.unlock_when = unlock::parseCondition(*it);
     return act;
 }
 
@@ -455,13 +430,13 @@ Observable parseObservable(const nlohmann::json& e)
     o.value = e.value("value", 1);
     o.kind = e.value("kind", std::string{});
     if (const auto it = e.find("visible_when"); it != e.end())
-        o.visible_when = parseCondition(*it);
+        o.visible_when = unlock::parseCondition(*it);
     for (const auto& t : e.value("tiers", nlohmann::json::array()))
     {
         ObservationTier tier;
         tier.text = t.value("text", std::string{});
         if (const auto it = t.find("unlock_when"); it != t.end())
-            tier.unlock_when = parseCondition(*it);
+            tier.unlock_when = unlock::parseCondition(*it);
         o.tiers.push_back(std::move(tier));
     }
     return o;
@@ -478,7 +453,7 @@ Thought parseThought(const nlohmann::json& e)
     r.emotional_weight = e.value("emotional_weight", 0);
     r.feeders = parseFeeders(e);
     if (const auto it = e.find("unlock_when"); it != e.end())
-        r.unlock_when = parseCondition(*it);
+        r.unlock_when = unlock::parseCondition(*it);
     return r;
 }
 

@@ -26,6 +26,7 @@ add_library(wayworn-systems STATIC
     src/Inventory.cpp
     src/Loot.cpp
     src/Formulas.cpp
+    src/Crafting.cpp
     src/WorldItems.cpp
     src/InteractionMode.cpp
     src/Notebook.cpp
@@ -88,6 +89,7 @@ add_executable(wayworn-tests
     tests/inventory_test.cpp
     tests/loot_test.cpp
     tests/formulas_test.cpp
+    tests/crafting_test.cpp
     tests/notebook_test.cpp
     tests/ldtk_import_test.cpp
 )

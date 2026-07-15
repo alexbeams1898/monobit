@@ -1,5 +1,7 @@
 #include "UnlockCondition.h"
 
+#include <nlohmann/json.hpp>
+
 namespace unlock
 {
 
@@ -37,6 +39,32 @@ bool satisfied(const Condition& cond, const Knowledge& k)
         if (clauseHolds(c, k))
             return true;
     return false;
+}
+
+Condition parseCondition(const nlohmann::json& j)
+{
+    Condition cond;
+    if (!j.is_array())
+        return cond;
+    for (const auto& cj : j)
+    {
+        Clause c;
+        c.flag = cj.value("flag", std::string{});
+        // `observed` accepts a single string or an array (all required).
+        if (const auto it = cj.find("observed"); it != cj.end())
+        {
+            if (it->is_string())
+                c.observed.push_back(it->get<std::string>());
+            else if (it->is_array())
+                for (const auto& v : *it)
+                    c.observed.push_back(v.get<std::string>());
+        }
+        if (const auto it = cj.find("stat"); it != cj.end() && it->is_object())
+            for (const auto& [name, lvl] : it->items())
+                c.stat[name] = lvl.get<int>();
+        cond.any.push_back(std::move(c));
+    }
+    return cond;
 }
 
 } // namespace unlock
