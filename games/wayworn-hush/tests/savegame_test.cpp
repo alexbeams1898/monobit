@@ -50,8 +50,7 @@ GameState livedInState()
     gs.satchel.items.push_back(inventory::ItemInstance{"wild_thyme", 3, false});
     gs.satchel.items.push_back(inventory::ItemInstance{"river_stone", 1, true});
 
-    gs.notebook.entries.push_back(
-        notebook::Entry{observations::LineKind::Thought, "a thought", "wonder", 3, 2});
+    gs.notebook.at["rock_water_worn"] = 240.0; // a thought reached at this moment
 
     gs.crafting_state.known.insert("herbal_draught");
     gs.announced_unlocks.insert("rock:clear_moss");
@@ -160,7 +159,7 @@ TEST_CASE("capture writes the walk without touching identity", "[savegame]")
     REQUIRE(p.record.fired.count("rock_water_worn") == 1);
     REQUIRE(p.self.spirit_exp == 42);
     REQUIRE(p.satchel.size() == 2);
-    REQUIRE(p.notebook.size() == 1);
+    REQUIRE(p.notebook_at.at("rock_water_worn") == 240.0);
     REQUIRE(p.known_recipes.count("herbal_draught") == 1);
     REQUIRE(p.clock_seconds == 1234.5);
     REQUIRE(p.place.x == 100.0f);
@@ -186,6 +185,46 @@ TEST_CASE("what the pilgrim removed from the world survives a save", "[savegame]
     GameState restored;
     savegame::apply(*savegame::find(read, id), restored);
     REQUIRE(restored.gone.count("p_stone_on_the_path") == 1);
+}
+
+TEST_CASE("capturing the same walk twice REPLACES it, it doesn't stack another copy", "[savegame]")
+{
+    // capture() writes into an existing pilgrim so their identity survives -- which means
+    // every field has to replace what's there. The list-shaped ones appended instead, so
+    // a walk that autosaved three times read back with three copies of everything.
+    savegame::File f;
+    const std::string id = savegame::add(f, "Ash");
+    savegame::Data& p = *savegame::find(f, id);
+
+    const GameState gs = livedInState(); // 2 items carried, 1 thought written down
+
+    savegame::capture(gs, 0.0f, 0.0f, p);
+    REQUIRE(p.satchel.size() == 2);
+    REQUIRE(p.notebook_at.size() == 1);
+
+    // Saving again (the autosave does this constantly) must not grow them.
+    savegame::capture(gs, 0.0f, 0.0f, p);
+    savegame::capture(gs, 0.0f, 0.0f, p);
+    REQUIRE(p.satchel.size() == 2);
+    REQUIRE(p.notebook_at.size() == 1);
+}
+
+TEST_CASE("a re-capture reflects what the walk DROPPED, not just what it gained", "[savegame]")
+{
+    // The other half of replace-don't-append: losing something has to show up too.
+    savegame::File f;
+    const std::string id = savegame::add(f, "Ash");
+    savegame::Data& p = *savegame::find(f, id);
+
+    savegame::capture(livedInState(), 0.0f, 0.0f, p);
+    REQUIRE(p.satchel.size() == 2);
+
+    GameState lighter = livedInState();
+    lighter.satchel.items.clear(); // he used everything up
+    lighter.notebook.at.clear();
+    savegame::capture(lighter, 0.0f, 0.0f, p);
+    REQUIRE(p.satchel.empty()); // gone, not lingering from the earlier write
+    REQUIRE(p.notebook_at.empty());
 }
 
 TEST_CASE("apply gives up the walk's world-record BEFORE a world could be built from it",
@@ -234,7 +273,7 @@ TEST_CASE("apply puts a pilgrim's walk back onto a GameState", "[savegame]")
     REQUIRE(fresh.growth.spirit_exp == 42);
     REQUIRE(fresh.growth.stat_levels.at("perception") == 5);
     REQUIRE(fresh.satchel.items.size() == 2);
-    REQUIRE(fresh.notebook.entries.size() == 1);
+    REQUIRE(fresh.notebook.at.at("rock_water_worn") == 240.0);
     REQUIRE(fresh.crafting_state.known.count("herbal_draught") == 1);
     REQUIRE(fresh.clock.seconds == 1234.5);
 }
@@ -307,12 +346,10 @@ TEST_CASE("save then load round-trips a roster", "[savegame]")
     REQUIRE_FALSE(a->satchel[0].is_new);
     REQUIRE(a->satchel[1].is_new);
 
-    // The notebook keeps every field of an entry.
-    REQUIRE(a->notebook.size() == 1);
-    REQUIRE(a->notebook[0].text == "a thought");
-    REQUIRE(a->notebook[0].faculty == "wonder");
-    REQUIRE(a->notebook[0].difficulty == 3);
-    REQUIRE(a->notebook[0].day == 2);
+    // The notebook keeps WHEN each thought landed. What it SAYS is authored, so it is
+    // read back from config rather than stored here.
+    REQUIRE(a->notebook_at.size() == 1);
+    REQUIRE(a->notebook_at.at("rock_water_worn") == 240.0);
 
     // The pilgrim who never set out survives as themselves, un-walked.
     const savegame::Data* b = savegame::find(read, bram);
@@ -369,7 +406,7 @@ TEST_CASE("a pilgrim missing fields reads as defaults (additive change is free)"
     REQUIRE(p.self.stat_levels.empty());
     REQUIRE(p.record.fired.empty());
     REQUIRE(p.satchel.empty());
-    REQUIRE(p.notebook.empty());
+    REQUIRE(p.notebook_at.empty());
     REQUIRE(p.known_recipes.empty());
     REQUIRE(p.clock_seconds == 0.0);
     REQUIRE_FALSE(p.place.walked);
@@ -386,4 +423,68 @@ TEST_CASE("migrate stamps the version and gives an id-less pilgrim an identity",
     REQUIRE(read.pilgrims.size() == 1);
     REQUIRE_FALSE(read.pilgrims.front().id.empty()); // minted on the way in
     REQUIRE(read.pilgrims.front().self.spirit_exp == 3);
+}
+
+TEST_CASE("settings round-trip beside the roster", "[savegame][settings]")
+{
+    const TempSave tmp("prefs.json");
+    savegame::File f;
+    savegame::add(f, "Ash");
+    f.prefs.hud.visibility = hud::Visibility::Off;
+    f.prefs.hud.show_time = false;
+    f.prefs.hud.show_stance = false;
+    REQUIRE(savegame::save(f, tmp.str()));
+
+    const savegame::File read = savegame::load(tmp.str());
+    REQUIRE(read.prefs.hud.visibility == hud::Visibility::Off);
+    REQUIRE_FALSE(read.prefs.hud.show_time);
+    REQUIRE_FALSE(read.prefs.hud.show_stance);
+}
+
+TEST_CASE("settings are the INSTALLATION's -- forgetting every pilgrim keeps them",
+          "[savegame][settings]")
+{
+    // A preference isn't a walk. Deleting the last pilgrim empties the roster; how the
+    // player likes their HUD has nothing to do with that and must survive it.
+    const TempSave tmp("prefs_outlive.json");
+    savegame::File f;
+    const std::string id = savegame::add(f, "Ash");
+    f.prefs.hud.show_time = true; // not the default -- a choice the player made
+    REQUIRE(savegame::save(f, tmp.str()));
+
+    savegame::File live = savegame::load(tmp.str());
+    savegame::remove(live, id);
+    REQUIRE(savegame::save(live, tmp.str()));
+
+    const savegame::File read = savegame::load(tmp.str());
+    REQUIRE(read.pilgrims.empty());
+    REQUIRE(read.prefs.hud.show_time); // the roster is gone; the preference is not
+}
+
+TEST_CASE("a save with no settings block keeps the booted defaults", "[savegame][settings]")
+{
+    // Additive field, no migration: every save written before settings existed simply has
+    // no such key, and must read back as whatever the game's own defaults are.
+    const TempSave tmp("prefs_absent.json");
+    std::ofstream(tmp.str()) << R"({"schema_version":2,"pilgrims":[{"id":"p1","name":"Ash"}]})";
+
+    const savegame::File read = savegame::load(tmp.str());
+    const settings::Settings fresh;
+    REQUIRE(read.prefs.hud.visibility == fresh.hud.visibility);
+    REQUIRE(read.prefs.hud.show_time == fresh.hud.show_time);
+}
+
+TEST_CASE("an unknown visibility word doesn't silently become Auto", "[settings]")
+{
+    // A hand-edited or future-written file: keep what we had rather than guessing, so a
+    // typo can't quietly reset a player's choice.
+    REQUIRE(settings::visibilityFromName("sideways", hud::Visibility::Off) == hud::Visibility::Off);
+    REQUIRE(settings::visibilityFromName(nullptr, hud::Visibility::On) == hud::Visibility::On);
+}
+
+TEST_CASE("every visibility survives its name round-trip", "[settings]")
+{
+    for (const auto v : {hud::Visibility::Auto, hud::Visibility::On, hud::Visibility::Off})
+        REQUIRE(settings::visibilityFromName(settings::visibilityName(v), hud::Visibility::Auto) ==
+                v);
 }

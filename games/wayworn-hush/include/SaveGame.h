@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Settings.h"
+
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -28,7 +30,7 @@ namespace savegame
 // Bump when the shape changes in a way older saves can't satisfy by defaults
 // alone; teach migrate() how to carry the old shape forward. Additive fields
 // need no bump -- an absent key reads as its default.
-inline constexpr int kSchemaVersion = 1;
+inline constexpr int kSchemaVersion = 2;
 
 // What the pilgrim has come to know: the observation record. Mirrors the
 // "record" half of observations::State (the authored observables/thoughts are
@@ -72,16 +74,6 @@ struct Item
     bool is_new = false;
 };
 
-// One written notebook entry (mirrors notebook::Entry).
-struct NotebookEntry
-{
-    int kind = 0; // observations::LineKind as an int (stable across the file)
-    std::string text;
-    std::string faculty;
-    int difficulty = 0;
-    int day = 0;
-};
-
 // Where the pilgrim stands. Region id is reserved for when the world is more
 // than one place; empty means "the only region there is". `walked` distinguishes
 // "never set out" from "set out and happens to be at the origin" -- without it a
@@ -107,7 +99,11 @@ struct Data
     World world;
     Self self;
     std::vector<Item> satchel;
-    std::vector<NotebookEntry> notebook;
+    // What the notebook keeps: the world-clock moment each thought was written down
+    // (notebook::kUntimed = written with no watch). The thought itself -- its text,
+    // faculty, rarity -- is authored, so it is reloaded from config rather than copied
+    // here; only when a thought landed is the pilgrim's.
+    std::unordered_map<std::string, double> notebook_at;
     std::unordered_set<std::string> known_recipes; // realized/taught recipe ids
     std::unordered_set<std::string> announced;     // unlock ids already toasted
     double clock_seconds = 0.0;                    // in-world time elapsed
@@ -125,6 +121,10 @@ struct File
     // and a reused id would let a new pilgrim inherit a dead one's identity. Only
     // ever counts up.
     int minted = 0;
+    // How the player likes the game. Beside the roster, not inside a record: a
+    // preference is the installation's, and nobody wants to re-answer it per pilgrim
+    // (docs/design/SHELL.md). Forgetting every pilgrim doesn't forget these.
+    settings::Settings prefs;
 };
 
 // Where the save lives: %APPDATA%/<kOrgName>/<kAppName>/ (engine::save::dir). The studio
@@ -139,6 +139,11 @@ File load(const std::string& path = {});
 
 // Write the file. Returns false (and logs) if it couldn't be written.
 bool save(const File& file, const std::string& path = {});
+
+// Just the preferences, read over `defaults` -- a setting the file doesn't mention keeps
+// what it was handed. Lets boot seed from authored config and then let a save override
+// only what the player actually chose, without loading a roster to ask.
+settings::Settings loadSettings(const settings::Settings& defaults, const std::string& path = {});
 
 // Carry an older shape forward to kSchemaVersion. Runs AFTER read, never during
 // it -- a read is a plain deserialize; this is where shape history lives.

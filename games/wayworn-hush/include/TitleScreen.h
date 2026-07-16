@@ -19,6 +19,7 @@ enum class Action
     None,
     NewGame,  // name a new pilgrim and set out
     LoadGame, // pick from the pilgrims already walked
+    Settings, // how you like the game
     Quit
 };
 
@@ -34,9 +35,9 @@ struct Mouse
 // Reset the cursor. Call when entering the phase so it doesn't reopen mid-list.
 void reset();
 
-// One frame of keyboard input. up/down move the cursor; confirm commits.
-// `has_save` hides Load Game when nobody has walked -- the entry does not exist
-// rather than sitting there greyed.
+// One frame of keyboard input. up/down move the cursor (skipping anything disabled);
+// confirm commits. `has_save` false DISABLES Load Game -- the entry stays where it is,
+// visibly not for you, so the menu never changes shape under the hand.
 Action step(bool up, bool down, bool confirm, bool has_save);
 
 // Draw the title + entries and resolve the mouse against what was drawn

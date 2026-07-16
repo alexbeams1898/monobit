@@ -44,6 +44,16 @@ void toIntMap(const json& j, const char* key, std::unordered_map<std::string, in
             out[k] = v.get<int>();
 }
 
+void toNumMap(const json& j, const char* key, std::unordered_map<std::string, double>& out)
+{
+    const auto it = j.find(key);
+    if (it == j.end() || !it->is_object())
+        return;
+    for (const auto& [k, v] : it->items())
+        if (v.is_number())
+            out[k] = v.get<double>();
+}
+
 json encodeRecord(const Record& r)
 {
     return json{{"observed_tier", r.observed_tier},
@@ -106,39 +116,6 @@ std::vector<Item> decodeSatchel(const json& j)
     return out;
 }
 
-json encodeNotebook(const std::vector<NotebookEntry>& entries)
-{
-    json a = json::array();
-    for (const auto& e : entries)
-        a.push_back(json{{"kind", e.kind},
-                         {"text", e.text},
-                         {"faculty", e.faculty},
-                         {"difficulty", e.difficulty},
-                         {"day", e.day}});
-    return a;
-}
-
-std::vector<NotebookEntry> decodeNotebook(const json& j)
-{
-    std::vector<NotebookEntry> out;
-    const auto it = j.find("notebook");
-    if (it == j.end() || !it->is_array())
-        return out;
-    for (const auto& e : *it)
-    {
-        if (!e.is_object())
-            continue;
-        NotebookEntry n;
-        n.kind = e.value("kind", 0);
-        n.text = e.value("text", std::string{});
-        n.faculty = e.value("faculty", std::string{});
-        n.difficulty = e.value("difficulty", 0);
-        n.day = e.value("day", 0);
-        out.push_back(std::move(n));
-    }
-    return out;
-}
-
 // An identity no pilgrim has ever had in this file. Draws from the file's own
 // ever-minted counter rather than the roster, because the roster forgets: deleting the
 // only pilgrim would otherwise reset the count and hand their id to the next one.
@@ -162,7 +139,7 @@ json encodePilgrim(const Data& d)
                 {"world", json{{"gone", fromSet(d.world.gone)}}},
                 {"self", encodeSelf(d.self)},
                 {"satchel", encodeSatchel(d.satchel)},
-                {"notebook", encodeNotebook(d.notebook)},
+                {"notebook", json{{"at", d.notebook_at}}},
                 {"known_recipes", fromSet(d.known_recipes)},
                 {"announced", fromSet(d.announced)},
                 {"clock_seconds", d.clock_seconds},
@@ -184,7 +161,8 @@ Data decodePilgrim(const json& j)
     if (const auto it = j.find("self"); it != j.end() && it->is_object())
         d.self = decodeSelf(*it);
     d.satchel = decodeSatchel(j);
-    d.notebook = decodeNotebook(j);
+    if (const auto it = j.find("notebook"); it != j.end() && it->is_object())
+        toNumMap(*it, "at", d.notebook_at);
     toSet(j, "known_recipes", d.known_recipes);
     toSet(j, "announced", d.announced);
     d.clock_seconds = j.value("clock_seconds", 0.0);
@@ -198,6 +176,29 @@ Data decodePilgrim(const json& j)
     return d;
 }
 
+json encodeSettings(const settings::Settings& s)
+{
+    return json{{"hud", json{{"visibility", settings::visibilityName(s.hud.visibility)},
+                             {"show_time", s.hud.show_time},
+                             {"show_stance", s.hud.show_stance}}}};
+}
+
+settings::Settings decodeSettings(const json& j, const settings::Settings& fallback)
+{
+    settings::Settings s = fallback; // an absent key keeps whatever the game booted with
+    const auto it = j.find("settings");
+    if (it == j.end() || !it->is_object())
+        return s;
+    const auto h = it->find("hud");
+    if (h == it->end() || !h->is_object())
+        return s;
+    const std::string vis = h->value("visibility", std::string{});
+    s.hud.visibility = settings::visibilityFromName(vis.c_str(), s.hud.visibility);
+    s.hud.show_time = h->value("show_time", s.hud.show_time);
+    s.hud.show_stance = h->value("show_stance", s.hud.show_stance);
+    return s;
+}
+
 json encode(const File& f)
 {
     json pilgrims = json::array();
@@ -205,6 +206,7 @@ json encode(const File& f)
         pilgrims.push_back(encodePilgrim(p));
     return json{{"schema_version", f.schema_version},
                 {"minted", f.minted},
+                {"settings", encodeSettings(f.prefs)},
                 {"pilgrims", std::move(pilgrims)}};
 }
 
@@ -213,6 +215,7 @@ File decode(const json& j)
     File f;
     f.schema_version = j.value("schema_version", 0); // 0 = pre-versioning; migrate decides
     f.minted = j.value("minted", 0);                 // a file without one gets floored in mintId
+    f.prefs = decodeSettings(j, f.prefs);            // absent -> the defaults the game booted with
     if (const auto it = j.find("pilgrims"); it != j.end() && it->is_array())
         for (const auto& e : *it)
             if (e.is_object())
@@ -224,9 +227,12 @@ File decode(const json& j)
 
 void migrate(File& file)
 {
-    // No older shapes exist yet -- v1 is the first. When one does, step it forward
-    // here (v1 -> v2 -> ...), then stamp the version. Additive fields never land
-    // here; they read as their defaults.
+    // v1 -> v2: the notebook stopped storing copies of each thought and started storing
+    // only WHEN each one landed, keyed by thought id. A v1 entry carries text but no id,
+    // so there is nothing to key it by and no way to recover one -- the old notebooks are
+    // dropped rather than guessed at. The record's `fired` set survives, so a v1 pilgrim
+    // keeps what they know; only the times are lost, and a note with no time is a shape
+    // the notebook already handles.
     //
     // A pilgrim read from a file that predates stable ids has none; mint one so the
     // rest of the game can rely on every pilgrim having an identity.
@@ -234,6 +240,15 @@ void migrate(File& file)
         if (p.id.empty())
             p.id = mintId(file);
     file.schema_version = kSchemaVersion;
+}
+
+settings::Settings loadSettings(const settings::Settings& defaults, const std::string& path)
+{
+    const std::string resolved = path.empty() ? engine::save::path(kOrgName, kAppName) : path;
+    const auto doc = engine::save::readJson(resolved);
+    if (!doc)
+        return defaults; // no save yet -- the game's authored defaults stand
+    return decodeSettings(*doc, defaults);
 }
 
 File load(const std::string& path)
@@ -307,15 +322,17 @@ void capture(const GameState& gs, float player_x, float player_y, Data& d)
     d.self.stat_levels = gs.growth.stat_levels;
     d.self.buff_levels = gs.growth.buff_levels;
 
+    // This CLEARS first. capture() writes into an existing pilgrim (so their identity
+    // survives -- see the note above), which means `d` still holds the last save's
+    // contents: appending would stack another whole copy of the satchel on every write,
+    // and a walk that saved three times would read back in triplicate. Every other field
+    // here assigns, which replaces; this is the one that has to be told to.
+    d.satchel.clear();
     d.satchel.reserve(gs.satchel.items.size());
     for (const auto& e : gs.satchel.items)
         d.satchel.push_back(Item{e.id, e.quantity, e.is_new});
 
-    d.notebook.reserve(gs.notebook.entries.size());
-    for (const auto& e : gs.notebook.entries)
-        d.notebook.push_back(
-            NotebookEntry{static_cast<int>(e.kind), e.text, e.faculty, e.difficulty, e.day});
-
+    d.notebook_at = gs.notebook.at;
     d.known_recipes = gs.crafting_state.known;
     d.announced = gs.announced_unlocks;
     d.clock_seconds = gs.clock.seconds;
@@ -344,12 +361,7 @@ void apply(const Data& data, GameState& gs)
     for (const auto& i : data.satchel)
         gs.satchel.items.push_back(inventory::ItemInstance{i.id, i.quantity, i.is_new});
 
-    gs.notebook.entries.clear();
-    gs.notebook.entries.reserve(data.notebook.size());
-    for (const auto& e : data.notebook)
-        gs.notebook.entries.push_back(notebook::Entry{static_cast<observations::LineKind>(e.kind),
-                                                      e.text, e.faculty, e.difficulty, e.day});
-
+    gs.notebook.at = data.notebook_at;
     gs.crafting_state.known = data.known_recipes;
     gs.announced_unlocks = data.announced;
     gs.clock.seconds = data.clock_seconds;

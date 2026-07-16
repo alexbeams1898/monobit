@@ -14,24 +14,26 @@ namespace
 {
 using namespace screen_style;
 
-// The entries, in order. Continue is dropped when there's no save (see entries()),
-// so the list the cursor walks is exactly the list that's drawn -- there is no
-// hidden/disabled row to reason about.
+// The entries, in order. The list never changes shape: Load Game is DISABLED when nobody
+// has walked, not removed. A menu whose rows move under the hand -- because a delete
+// elsewhere changed how many there are -- is how you press the wrong thing; the row stays
+// put and stops being pressable.
 struct Entry
 {
     const char* label;
     Action action;
 };
 
-constexpr Entry kWithSave[] = {
-    {"New Game", Action::NewGame}, {"Load Game", Action::LoadGame}, {"Leave", Action::Quit}};
-constexpr Entry kNoSave[] = {{"New Game", Action::NewGame}, {"Leave", Action::Quit}};
+constexpr Entry kEntries[] = {{"New Game", Action::NewGame},
+                              {"Load Game", Action::LoadGame},
+                              {"Settings", Action::Settings},
+                              {"Leave", Action::Quit}};
+constexpr int kEntryCount = 4;
 
-// The live entry list + its length for this frame's save state.
-const Entry* entries(bool has_save, int& count)
+// Whether an entry can be chosen right now. Load Game needs someone to load.
+bool enabled(const Entry& e, bool has_save)
 {
-    count = has_save ? 3 : 2;
-    return has_save ? kWithSave : kNoSave;
+    return e.action != Action::LoadGame || has_save;
 }
 
 int sSel = 0;
@@ -92,25 +94,32 @@ void reset()
 
 Action step(bool up, bool down, bool confirm, bool has_save)
 {
-    int count = 0;
-    const Entry* items = entries(has_save, count);
+    if (down || up)
+    {
+        // Step OVER a disabled row rather than landing on it: W/S should never park the
+        // cursor somewhere Space does nothing. Bounded by the entry count, so a list that
+        // was somehow all-disabled leaves the cursor where it was instead of spinning.
+        const int dir = down ? 1 : -1;
+        for (int n = 0; n < kEntryCount; ++n)
+        {
+            sSel = (sSel + dir + kEntryCount) % kEntryCount;
+            if (enabled(kEntries[sSel], has_save))
+                break;
+        }
+    }
 
-    if (down)
-        sSel = (sSel + 1) % count;
-    else if (up)
-        sSel = (sSel - 1 + count) % count;
-    sSel = std::min(sSel, count - 1); // the list shrinks when a save is wiped
-
-    if (confirm)
-        return items[sSel].action;
+    if (confirm && enabled(kEntries[sSel], has_save))
+        return kEntries[sSel].action;
     return Action::None;
 }
 
 Action render(const Mouse& mouse, bool has_save, int windowW, int windowH)
 {
-    int count = 0;
-    const Entry* items = entries(has_save, count);
-    sSel = std::min(sSel, count - 1);
+    // The cursor can be left on Load Game by a walk that was then forgotten (the last
+    // pilgrim deleted, sending us back here). Move it off rather than leave it resting on a
+    // row that no longer does anything.
+    if (!enabled(kEntries[sSel], has_save))
+        sSel = 0;
 
     const float ww = static_cast<float>(windowW);
     const float wh = static_cast<float>(windowH);
@@ -122,17 +131,19 @@ Action render(const Mouse& mouse, bool has_save, int windowW, int windowH)
 
     softTextCentered("Wayworn Hush", lo.cx, lo.title_y, kText);
 
-    // Hovering a row moves the cursor, so the keys and the mouse share one
-    // selection rather than fighting over two.
-    const int hover = rowAt(mouse, lo, count);
-    if (hover >= 0)
+    // Hovering a row moves the cursor, so the keys and the mouse share one selection rather
+    // than fighting over two. A disabled row doesn't take the cursor and doesn't press.
+    const int hover = rowAt(mouse, lo, kEntryCount);
+    const bool hotRow = hover >= 0 && enabled(kEntries[hover], has_save);
+    if (hotRow)
         sSel = hover;
 
-    for (int i = 0; i < count; ++i)
-        button(items[i].label, btnX(lo), btnY(lo, i), lo.row_w, btnH(lo), i == sSel);
+    for (int i = 0; i < kEntryCount; ++i)
+        button(kEntries[i].label, btnX(lo), btnY(lo, i), lo.row_w, btnH(lo), i == sSel,
+               enabled(kEntries[i], has_save));
 
-    if (mouse.clicked && hover >= 0)
-        return items[hover].action;
+    if (mouse.clicked && hotRow)
+        return kEntries[hover].action;
     return Action::None;
 }
 

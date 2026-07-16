@@ -10,15 +10,6 @@ namespace interaction_mode
 namespace
 {
 FontHandle sFont = -1;
-
-Color readColor(const nlohmann::json& j, const char* key, const Color& fallback)
-{
-    const auto it = j.find(key);
-    if (it == j.end() || !it->is_array() || it->size() != 4)
-        return fallback;
-    return {(*it)[0].get<float>(), (*it)[1].get<float>(), (*it)[2].get<float>(),
-            (*it)[3].get<float>()};
-}
 } // namespace
 
 void load(Config& cfg, const std::string& path)
@@ -32,9 +23,9 @@ void load(Config& cfg, const std::string& path)
     cfg.pad = j.value("pad", cfg.pad);
     cfg.observe_label = j.value("observe_label", cfg.observe_label);
     cfg.act_label = j.value("act_label", cfg.act_label);
-    cfg.observe_color = readColor(j, "observe_color", cfg.observe_color);
-    cfg.act_color = readColor(j, "act_color", cfg.act_color);
-    cfg.panel = readColor(j, "panel", cfg.panel);
+    cfg.observe_color = config::readColor(j, "observe_color", cfg.observe_color);
+    cfg.act_color = config::readColor(j, "act_color", cfg.act_color);
+    cfg.panel = config::readColor(j, "panel", cfg.panel);
     cfg.enter_act_sound = j.value("enter_act_sound", cfg.enter_act_sound);
     cfg.enter_observe_sound = j.value("enter_observe_sound", cfg.enter_observe_sound);
     cfg.sfx_volume = j.value("sfx_volume", cfg.sfx_volume);

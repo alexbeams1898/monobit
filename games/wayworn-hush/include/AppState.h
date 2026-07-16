@@ -22,12 +22,18 @@ enum class Phase
     Greeting, // the title: set out anew, return to someone, or leave
     Naming,   // who sets out (a new pilgrim's name)
     Loading,  // who you have been (the roster)
+    Settings, // how you like the game (reached from the title or from a walk)
     Playing   // in the world
 };
 
 struct State
 {
     Phase phase = Phase::Greeting;
+    // Where leaving Settings goes back to. Settings is the one phase with two ways in --
+    // the title and the pause page -- so it is the one phase that has to remember. A
+    // return-to field rather than a stack: the shell is a menu, not a browser, and one
+    // honest field beats a general history nothing else needs.
+    Phase settings_return_to = Phase::Greeting;
     // The world exists (region loaded, player spawned). False during Greeting
     // until a commit builds it; systems that touch the world check this rather
     // than assuming an entity is there.
