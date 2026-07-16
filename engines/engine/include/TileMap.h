@@ -160,7 +160,7 @@ struct TileMap
     static DdaAxis ddaInit(float origin, float delta, int tile_size)
     {
         DdaAxis a;
-        a.cell = static_cast<int>(std::floor(origin / tile_size));
+        a.cell = static_cast<int>(std::floor(origin / static_cast<float>(tile_size)));
         a.step = (delta >= 0.0f) ? 1 : -1;
         if (delta != 0.0f)
         {
@@ -185,8 +185,8 @@ struct TileMap
 
         DdaAxis colAxis = ddaInit(x1, dx, tile_size);
         DdaAxis rowAxis = ddaInit(y1, dy, tile_size);
-        const int endCol = static_cast<int>(std::floor(x2 / tile_size));
-        const int endRow = static_cast<int>(std::floor(y2 / tile_size));
+        const int endCol = static_cast<int>(std::floor(x2 / static_cast<float>(tile_size)));
+        const int endRow = static_cast<int>(std::floor(y2 / static_cast<float>(tile_size)));
 
         while (true)
         {
