@@ -4,6 +4,8 @@
 #include "Footsteps.h"
 #include "Glimmer.h"
 #include "Interaction.h"
+#include "LoadScreen.h"
+#include "NameScreen.h"
 #include "Notify.h"
 #include "PausePage.h"
 #include "PlayerMovement.h"
@@ -187,49 +189,61 @@ void clearOneShotInput(EntityManager& em)
     }
 }
 
+// Walk as the pilgrim `id`: build their world and step into it. The one path from any
+// menu into play. Leaving is the only honest response to a world that won't build.
+void walkAs(Engine& engine, EntityManager& em, GameState& gs, const std::string& id)
+{
+    if (sWorldEnter == nullptr)
+        return;
+    if (sWorldEnter(engine, em, gs, id))
+    {
+        gs.app.world_built = true;
+        gs.app.phase = app::Phase::Playing;
+
+        // Building the world is a heavy synchronous stretch in the middle of a tick. Left
+        // alone, the accumulator has banked all of it and fires a burst of catch-up ticks
+        // the moment the world appears -- the map lurches instead of simply being there.
+        engine.requestTimingReset();
+    }
+    else
+    {
+        // The region IS the map -- if it won't load there is no world to enter, and
+        // sitting on the title forever is a lie. Leave rather than pretend.
+        std::fprintf(stderr, "[app] could not build the world; leaving\n");
+        engine.requestQuit();
+    }
+}
+
+// The roster as the load screen wants it: who they are, and how far they got.
+std::vector<load_screen::Entry> rosterEntries(const savegame::File& file, const GameState& gs)
+{
+    std::vector<load_screen::Entry> out;
+    out.reserve(file.pilgrims.size());
+    for (const auto& p : file.pilgrims)
+        out.push_back(load_screen::Entry{p.id, p.name, worldclock::dayAt(gs.clock, p.clock_seconds),
+                                         p.place.walked});
+    return out;
+}
+
 // Enact what the title committed. The ONE place a title action turns into something --
 // both its input paths (keys via step, mouse via render) funnel here, so a new entry is
 // wired in one spot and neither path can drop it (the same rule enactPageAction follows).
 void enactTitleAction(Engine& engine, EntityManager& em, GameState& gs, title_screen::Action action)
 {
+    (void)em;
     switch (action)
     {
-    case title_screen::Action::Continue:
-    case title_screen::Action::Begin:
-    {
-        if (sWorldEnter == nullptr)
-            break;
-        // Which pilgrim to walk as. Picking one from a roster and naming a new one are the
-        // Load/New screens' job (next slice); for now Continue takes the most recent and
-        // Begin mints an unnamed pilgrim, so the world path can be exercised end to end.
-        savegame::File file = savegame::load();
-        std::string id;
-        if (action == title_screen::Action::Continue && !file.pilgrims.empty())
-        {
-            id = file.pilgrims.back().id;
-        }
-        else
-        {
-            id = savegame::add(file, "");
-            if (!savegame::save(file))
-                break; // the pilgrim must exist on disk before we walk as them
-            gs.app.pilgrim_count = static_cast<int>(file.pilgrims.size());
-        }
-
-        if (sWorldEnter(engine, em, gs, id))
-        {
-            gs.app.world_built = true;
-            gs.app.phase = app::Phase::Playing;
-        }
-        else
-        {
-            // The region IS the map -- if it won't load there is no world to enter, and
-            // sitting on the title forever is a lie. Leave rather than pretend.
-            std::fprintf(stderr, "[app] could not build the world; leaving\n");
-            engine.requestQuit();
-        }
+    case title_screen::Action::NewGame:
+        name_screen::reset();
+        // Without this the platform sends no text events and the field stays empty no
+        // matter what is typed. Stopped again on every way out of the phase.
+        SDL_StartTextInput();
+        gs.app.phase = app::Phase::Naming;
         break;
-    }
+    case title_screen::Action::LoadGame:
+        load_screen::reset();
+        gs.app.phase = app::Phase::Loading;
+        break;
     case title_screen::Action::Quit:
         engine.requestQuit();
         break;
@@ -238,16 +252,140 @@ void enactTitleAction(Engine& engine, EntityManager& em, GameState& gs, title_sc
     }
 }
 
-// The greeting: read the keys, let the title report what was chosen, enact it. Returns
-// true if the app is still greeting (so the caller skips the world tick).
-bool updateGreeting(Engine& engine, EntityManager& em, GameState& gs)
+// The greeting: read the keys, let the title report what was chosen, enact it.
+void updateGreeting(Engine& engine, EntityManager& em, GameState& gs)
 {
     const bool up = pressedThisFrame(em, SDL_SCANCODE_W);
     const bool down = pressedThisFrame(em, SDL_SCANCODE_S);
     const bool confirm = pressedThisFrame(em, SDL_SCANCODE_SPACE);
     enactTitleAction(engine, em, gs,
                      title_screen::step(up, down, confirm, (gs.app.pilgrim_count > 0)));
-    return gs.app.phase == app::Phase::Greeting;
+}
+
+// Enact what the name screen committed. The ONE place a naming action turns into
+// something -- both its input paths (keys via step, buttons via render) funnel here.
+void enactNameAction(Engine& engine, EntityManager& em, GameState& gs, name_screen::Action action)
+{
+    if (action == name_screen::Action::None)
+        return;
+
+    // Every way out of the field stops text input -- leaving it on would keep the platform
+    // sending text events into a phase that has no field to put them in.
+    SDL_StopTextInput();
+
+    if (action == name_screen::Action::Back)
+    {
+        title_screen::reset();
+        gs.app.phase = app::Phase::Greeting;
+        return;
+    }
+
+    // The pilgrim is created on disk BEFORE the world is built: one the game is walking as
+    // must exist to be saved into.
+    savegame::File file = savegame::load();
+    const std::string id = savegame::add(file, name_screen::name());
+    if (!savegame::save(file))
+    {
+        // A pilgrim the game can't save into is a walk that evaporates. Stay on the field
+        // rather than pretend.
+        SDL_StartTextInput();
+        return;
+    }
+    gs.app.pilgrim_count = static_cast<int>(file.pilgrims.size());
+    walkAs(engine, em, gs, id);
+}
+
+// Naming a new pilgrim: gather this frame's keys and let the screen decide.
+void updateNaming(Engine& engine, EntityManager& em, GameState& gs, double dt)
+{
+    name_screen::Keys keys;
+    keys.typed = em.text_input_buffer;
+    // The edit keys are HELD states (the field's key-repeat needs the hold); the commit
+    // keys are edges (one press, one action).
+    const Uint8* held = SDL_GetKeyboardState(nullptr);
+    keys.backspace = held[SDL_SCANCODE_BACKSPACE] != 0;
+    keys.del = held[SDL_SCANCODE_DELETE] != 0;
+    keys.left = pressedThisFrame(em, SDL_SCANCODE_LEFT);
+    keys.right = pressedThisFrame(em, SDL_SCANCODE_RIGHT);
+    keys.home = pressedThisFrame(em, SDL_SCANCODE_HOME);
+    keys.end = pressedThisFrame(em, SDL_SCANCODE_END);
+    keys.confirm = pressedThisFrame(em, SDL_SCANCODE_RETURN);
+    keys.back = pressedThisFrame(em, SDL_SCANCODE_ESCAPE);
+
+    enactNameAction(engine, em, gs, name_screen::step(keys, dt));
+}
+
+// Enact what the roster committed. The ONE place a load action turns into something --
+// both its input paths (keys via step, buttons via render) funnel here, so neither can
+// silently drop one (the rule enactPageAction / enactTitleAction follow).
+void enactLoadAction(Engine& engine, EntityManager& em, GameState& gs, load_screen::Action action)
+{
+    switch (action)
+    {
+    case load_screen::Action::Walk:
+        walkAs(engine, em, gs, load_screen::id());
+        break;
+    case load_screen::Action::Forget:
+    {
+        // Re-read rather than trust a roster gathered earlier this frame: forgetting must
+        // act on what is actually on disk.
+        savegame::File file = savegame::load();
+        savegame::remove(file, load_screen::id());
+        if (savegame::save(file))
+            gs.app.pilgrim_count = static_cast<int>(file.pilgrims.size());
+        // Forgetting the last pilgrim leaves nothing to choose from; the roster stays up
+        // (it says so) rather than yanking the player somewhere they didn't ask to go.
+        break;
+    }
+    case load_screen::Action::Back:
+        title_screen::reset();
+        gs.app.phase = app::Phase::Greeting;
+        break;
+    case load_screen::Action::None:
+        break;
+    }
+}
+
+// The roster: walk as someone, forget someone, or go back.
+void updateLoading(Engine& engine, EntityManager& em, GameState& gs)
+{
+    const savegame::File file = savegame::load();
+    const std::vector<load_screen::Entry> entries = rosterEntries(file, gs);
+
+    const bool up = pressedThisFrame(em, SDL_SCANCODE_W);
+    const bool down = pressedThisFrame(em, SDL_SCANCODE_S);
+    const bool confirm = pressedThisFrame(em, SDL_SCANCODE_RETURN);
+    const bool forget = pressedThisFrame(em, SDL_SCANCODE_DELETE);
+    const bool back = pressedThisFrame(em, SDL_SCANCODE_ESCAPE);
+
+    enactLoadAction(engine, em, gs, load_screen::step(entries, up, down, confirm, forget, back));
+}
+
+// Is the app in a menu rather than the world? The menus don't tick a world (there isn't
+// one yet) and each owns the whole screen.
+bool inMenu(const GameState& gs)
+{
+    return gs.app.phase != app::Phase::Playing;
+}
+
+// Step whichever menu is up. Split out of gameUpdate so the world tick isn't carrying the
+// menus' branches around with it.
+void updateMenu(Engine& engine, EntityManager& em, GameState& gs, double dt)
+{
+    switch (gs.app.phase)
+    {
+    case app::Phase::Greeting:
+        updateGreeting(engine, em, gs);
+        break;
+    case app::Phase::Naming:
+        updateNaming(engine, em, gs, dt);
+        break;
+    case app::Phase::Loading:
+        updateLoading(engine, em, gs);
+        break;
+    case app::Phase::Playing:
+        break; // not a menu
+    }
 }
 
 // Write the active pilgrim's walk now. Reads the roster, updates only that pilgrim, and
@@ -599,11 +737,11 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     auto& reg = em.registry();
     GameState& gs = reg.ctx().get<GameState>();
 
-    // The greeting is not the world: no world exists yet to tick (the region is built when
-    // the player commits -- see enactTitleAction). Everything below assumes a built world.
-    if (gs.app.phase == app::Phase::Greeting)
+    // A menu is not the world: no world exists yet to tick (the region is built when the
+    // player commits -- see walkAs). Everything below assumes a built world.
+    if (inMenu(gs))
     {
-        updateGreeting(engine, em, gs);
+        updateMenu(engine, em, gs, dt);
         return;
     }
 
@@ -809,15 +947,37 @@ void gameRenderUI(Engine& engine, EntityManager& em)
     // to the title. Its action funnels through the same sink the keys use. Note the shared
     // exit through clearOneShotInput below: an early return here would leave this frame's
     // key presses in the buffer to be re-read forever.
-    if (gs.app.phase == app::Phase::Greeting)
+    if (inMenu(gs))
     {
         int mx = 0;
         int my = 0;
         SDL_GetMouseState(&mx, &my);
-        const title_screen::Mouse mouse{static_cast<float>(mx), static_cast<float>(my),
-                                        engine::ui::mouseClicked(em, SDL_BUTTON_LEFT)};
-        enactTitleAction(engine, em, gs,
-                         title_screen::render(mouse, (gs.app.pilgrim_count > 0), ww, wh));
+        const float fx = static_cast<float>(mx);
+        const float fy = static_cast<float>(my);
+        const bool clicked = engine::ui::mouseClicked(em, SDL_BUTTON_LEFT);
+
+        switch (gs.app.phase)
+        {
+        case app::Phase::Greeting:
+            enactTitleAction(engine, em, gs,
+                             title_screen::render(title_screen::Mouse{fx, fy, clicked},
+                                                  (gs.app.pilgrim_count > 0), ww, wh));
+            break;
+        case app::Phase::Naming:
+            enactNameAction(engine, em, gs,
+                            name_screen::render(name_screen::Mouse{fx, fy, clicked}, ww, wh));
+            break;
+        case app::Phase::Loading:
+        {
+            const savegame::File file = savegame::load();
+            enactLoadAction(engine, em, gs,
+                            load_screen::render(rosterEntries(file, gs),
+                                                load_screen::Mouse{fx, fy, clicked}, ww, wh));
+            break;
+        }
+        case app::Phase::Playing:
+            break; // not a menu
+        }
         clearOneShotInput(em);
         return;
     }

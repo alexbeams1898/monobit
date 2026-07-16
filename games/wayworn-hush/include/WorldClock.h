@@ -31,6 +31,11 @@ void tick(WorldClock& clock, double dt);
 // Whole in-world days elapsed (0-based -> day 1 is the first day).
 int day(const WorldClock& clock);
 
+// The same, for an elapsed span that isn't the live clock -- e.g. how far a saved
+// pilgrim got. Takes the cadence from `clock` so both answers agree about how long a
+// day is; a second copy of that division is how the two would drift apart.
+int dayAt(const WorldClock& clock, double seconds);
+
 // The display stamp for a notebook entry / HUD. Placeholder form "Day N" until the
 // calendar arc supplies real dates + times; the notebook renders whatever this
 // returns, so that arc is a change here, not in the box.

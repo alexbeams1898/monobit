@@ -24,8 +24,8 @@ struct Entry
 };
 
 constexpr Entry kWithSave[] = {
-    {"Continue", Action::Continue}, {"Begin again", Action::Begin}, {"Leave", Action::Quit}};
-constexpr Entry kNoSave[] = {{"Begin", Action::Begin}, {"Leave", Action::Quit}};
+    {"New Game", Action::NewGame}, {"Load Game", Action::LoadGame}, {"Leave", Action::Quit}};
+constexpr Entry kNoSave[] = {{"New Game", Action::NewGame}, {"Leave", Action::Quit}};
 
 // The live entry list + its length for this frame's save state.
 const Entry* entries(bool has_save, int& count)
@@ -54,23 +54,33 @@ Layout layout(int windowW, int windowH)
     const float wh = static_cast<float>(windowH);
     Layout lo;
     lo.cx = static_cast<float>(windowW) * 0.5f;
-    lo.title_y = wh * 0.30f;
-    lo.first_y = wh * 0.52f;
-    lo.row_h = lineH(bodyFont()) * 1.6f;
-    lo.row_w = s * 0.26f; // a generous, centered hover band
+    lo.title_y = wh * 0.28f;
+    lo.first_y = wh * 0.48f;
+    lo.row_h = lineH(bodyFont()) * 1.9f; // button height + the gap under it
+    lo.row_w = s * 0.20f;
     return lo;
 }
 
-// The row index the mouse is over, or -1.
+// A button's rect. One definition, so the drawn rect and the pressed rect are the same.
+float btnX(const Layout& lo)
+{
+    return lo.cx - lo.row_w * 0.5f;
+}
+float btnY(const Layout& lo, int i)
+{
+    return lo.first_y + static_cast<float>(i) * lo.row_h;
+}
+float btnH(const Layout& lo)
+{
+    return lo.row_h * 0.72f;
+}
+
+// The button index the mouse is over, or -1.
 int rowAt(const Mouse& mouse, const Layout& lo, int count)
 {
     for (int i = 0; i < count; ++i)
-    {
-        const float y = lo.first_y + static_cast<float>(i) * lo.row_h;
-        if (engine::ui::pointInRect(mouse.x, mouse.y, lo.cx - lo.row_w * 0.5f, y - lo.row_h * 0.3f,
-                                    lo.row_w, lo.row_h))
+        if (buttonHit(mouse.x, mouse.y, btnX(lo), btnY(lo, i), lo.row_w, btnH(lo)))
             return i;
-    }
     return -1;
 }
 } // namespace
@@ -119,13 +129,7 @@ Action render(const Mouse& mouse, bool has_save, int windowW, int windowH)
         sSel = hover;
 
     for (int i = 0; i < count; ++i)
-    {
-        const float y = lo.first_y + static_cast<float>(i) * lo.row_h;
-        if (i == sSel)
-            UIRenderer::drawRect(lo.cx - lo.row_w * 0.5f, y - lo.row_h * 0.3f, lo.row_w, lo.row_h,
-                                 kRowActive);
-        softTextCentered(items[i].label, lo.cx, y, kText, i == sSel ? 1.0f : kIdleAlpha);
-    }
+        button(items[i].label, btnX(lo), btnY(lo, i), lo.row_w, btnH(lo), i == sSel);
 
     if (mouse.clicked && hover >= 0)
         return items[hover].action;

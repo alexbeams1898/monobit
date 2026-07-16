@@ -126,18 +126,53 @@ void gameOnResize(Engine& engine, int w, int h)
     reloadHudFonts(gs, w, h);
 }
 
-// Put the player at (wx,wy). Sets the interpolation snapshot too -- without it the first
-// frame after a move renders a smear from wherever he was. The one place a placement
+// Put the player at (wx,wy) -- and the view of them with it. The one place a placement
 // happens, so the map's spawn and a save's resume can't disagree about what that means.
+//
+// Every "previous" value moves too. The renderer interpolates between previous and current
+// (both for the sprite and for the camera the player carries), so leaving them behind makes
+// the first frames after a placement lerp from somewhere the player never was -- the world
+// visibly slides into position instead of simply being there.
 void placePlayer(EntityManager& em, const GameState& gs, float wx, float wy)
 {
-    auto& t = em.registry().get<Transform>(gs.player);
+    auto& reg = em.registry();
+    auto& t = reg.get<Transform>(gs.player);
     t.x = wx;
     t.y = wy;
-    if (auto* pt = em.registry().try_get<PreviousTransform>(gs.player))
+    if (auto* pt = reg.try_get<PreviousTransform>(gs.player))
     {
         pt->x = wx;
         pt->y = wy;
+    }
+    if (auto* cam = reg.try_get<Camera>(gs.player))
+    {
+        cam->x = wx;
+        cam->y = wy;
+        cam->prev_x = wx;
+        cam->prev_y = wy;
+    }
+}
+
+// Anchor every entity's interpolation snapshot to where it actually is. The engine takes
+// that snapshot at the TOP of a tick, so anything spawned during one (a whole world, built
+// mid-update) is missed: its "previous" stays default-constructed at the origin and the
+// renderer lerps it in from there -- the world assembles itself out of the corner for a
+// frame instead of simply being there. Call once, after a world is built.
+void anchorInterpolation(EntityManager& em)
+{
+    auto& reg = em.registry();
+    for (auto [e, t] : reg.view<Transform>().each())
+    {
+        auto& prev = reg.get_or_emplace<PreviousTransform>(e);
+        prev.x = t.x;
+        prev.y = t.y;
+    }
+    for (auto [e, cam] : reg.view<Camera>().each())
+    {
+        cam.prev_x = cam.x;
+        cam.prev_y = cam.y;
+        cam.prev_offset_x = cam.offset_x;
+        cam.prev_offset_y = cam.offset_y;
     }
 }
 
@@ -262,6 +297,9 @@ bool enterWorld(Engine& engine, EntityManager& em, GameState& gs, const std::str
     // docs/design/AESTHETIC.md). Runs silent if no audio device.
     AudioSystem::playMusic(gs.world_config.ambient_track, gs.world_config.ambient_volume,
                            /*loop=*/true, gs.world_config.ambient_fade_in_ms);
+
+    // Everything above was spawned mid-tick; anchor it before a frame renders it.
+    anchorInterpolation(em);
     return true;
 }
 } // namespace

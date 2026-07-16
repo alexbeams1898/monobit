@@ -16,29 +16,33 @@ void fresh()
 }
 } // namespace
 
-TEST_CASE("with no walk to continue, the first entry begins one", "[title]")
+TEST_CASE("with nobody walked, the first entry is New Game", "[title]")
 {
     fresh();
     REQUIRE(title_screen::step(false, false, /*confirm=*/true, /*has_save=*/false) ==
-            Action::Begin);
+            Action::NewGame);
 }
 
-TEST_CASE("with a walk to continue, the first entry continues it", "[title]")
+TEST_CASE("with a walk to return to, Load Game sits under New Game", "[title]")
 {
     fresh();
     REQUIRE(title_screen::step(false, false, /*confirm=*/true, /*has_save=*/true) ==
-            Action::Continue);
+            Action::NewGame); // still first
+
+    title_screen::step(false, /*down=*/true, false, /*has_save=*/true);
+    REQUIRE(title_screen::step(false, false, /*confirm=*/true, /*has_save=*/true) ==
+            Action::LoadGame);
 }
 
-TEST_CASE("Continue simply does not exist when there is nothing to continue", "[title]")
+TEST_CASE("Load Game simply does not exist when nobody has walked", "[title]")
 {
     // The entry is absent rather than present-and-refused: stepping through every row
-    // with no save must never yield Continue.
+    // with no save must never yield Load Game.
     fresh();
     for (int i = 0; i < 6; ++i)
     {
         const Action a = title_screen::step(false, false, /*confirm=*/true, /*has_save=*/false);
-        REQUIRE(a != Action::Continue);
+        REQUIRE(a != Action::LoadGame);
         title_screen::step(false, /*down=*/true, false, /*has_save=*/false);
     }
 }
@@ -46,13 +50,13 @@ TEST_CASE("Continue simply does not exist when there is nothing to continue", "[
 TEST_CASE("down moves through the entries and wraps", "[title]")
 {
     fresh(); // no save: [Begin, Leave]
-    REQUIRE(title_screen::step(false, false, true, false) == Action::Begin);
+    REQUIRE(title_screen::step(false, false, true, false) == Action::NewGame);
 
     title_screen::step(false, /*down=*/true, false, false);
     REQUIRE(title_screen::step(false, false, true, false) == Action::Quit);
 
     title_screen::step(false, /*down=*/true, false, false); // wraps to the top
-    REQUIRE(title_screen::step(false, false, true, false) == Action::Begin);
+    REQUIRE(title_screen::step(false, false, true, false) == Action::NewGame);
 }
 
 TEST_CASE("up from the top wraps to the last entry", "[title]")

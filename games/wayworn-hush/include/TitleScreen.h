@@ -17,8 +17,8 @@ namespace title_screen
 enum class Action
 {
     None,
-    Continue, // resume the saved pilgrimage
-    Begin,    // start over (replaces any save -- the caller warns first)
+    NewGame,  // name a new pilgrim and set out
+    LoadGame, // pick from the pilgrims already walked
     Quit
 };
 
@@ -35,8 +35,8 @@ struct Mouse
 void reset();
 
 // One frame of keyboard input. up/down move the cursor; confirm commits.
-// `has_save` hides Continue when there is nothing to continue -- the entry does
-// not exist rather than sitting there greyed.
+// `has_save` hides Load Game when nobody has walked -- the entry does not exist
+// rather than sitting there greyed.
 Action step(bool up, bool down, bool confirm, bool has_save);
 
 // Draw the title + entries and resolve the mouse against what was drawn

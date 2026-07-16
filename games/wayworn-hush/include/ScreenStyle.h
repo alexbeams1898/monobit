@@ -30,6 +30,14 @@ inline constexpr Color kShadow{0.0f, 0.0f, 0.0f, 0.55f};
 // A selected/hovered row's warm lift.
 inline constexpr Color kRowActive{0.30f, 0.29f, 0.24f, 0.85f};
 
+// A button at rest: present enough to read as pressable, quiet enough not to
+// shout. It lifts to kRowActive under the hand.
+inline constexpr Color kButtonRest{0.16f, 0.16f, 0.15f, 0.75f};
+
+// A button that isn't pressable yet: still there, visibly not for you.
+inline constexpr Color kButtonOff{0.11f, 0.11f, 0.11f, 0.5f};
+inline constexpr float kOffAlpha = 0.3f;
+
 // The alpha an unselected item reads at -- brightness alone marks a selection
 // (no boxes, no carets).
 inline constexpr float kIdleAlpha = 0.55f;
@@ -50,5 +58,20 @@ void softTextCentered(const std::string& s, float cx, float y, const Color& c, f
 // A line's full height for the given font (its line height plus the register's
 // breathing room). The unit vertical rhythm every screen lays out on.
 float lineH(FontHandle font);
+
+// A thing you can press. `hot` = the mouse is over it (or the keyboard cursor is
+// on it): it lifts and brightens. `enabled` false draws it dim and inert -- it
+// stays where it is rather than vanishing, so a button never moves out from under
+// the hand when it becomes pressable. Draws a soft trough + centered label -- the
+// register has no hard chrome, so a button is a warm patch, not a box.
+//
+// Pure draw: hit-testing belongs to the screen (it knows its own layout), which
+// keeps one rect from being drawn here and hit-tested slightly differently there.
+void button(const std::string& label, float x, float y, float w, float h, bool hot,
+            bool enabled = true);
+
+// Whether (mx,my) falls on that same rect. Pairs with button() so the drawn and
+// the pressed rect are the same rect.
+bool buttonHit(float mx, float my, float x, float y, float w, float h);
 
 } // namespace screen_style

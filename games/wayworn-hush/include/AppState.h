@@ -19,7 +19,9 @@ namespace app
 
 enum class Phase
 {
-    Greeting, // the title: continue the walk, begin again, or leave
+    Greeting, // the title: set out anew, return to someone, or leave
+    Naming,   // who sets out (a new pilgrim's name)
+    Loading,  // who you have been (the roster)
     Playing   // in the world
 };
 

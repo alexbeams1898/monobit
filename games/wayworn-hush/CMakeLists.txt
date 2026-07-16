@@ -34,6 +34,9 @@ add_library(wayworn-systems STATIC
     src/PausePage.cpp
     src/SaveGame.cpp
     src/ScreenStyle.cpp
+    src/LoadScreen.cpp
+    src/NameScreen.cpp
+    src/TextField.cpp
     src/TitleScreen.cpp
     src/TunePanel.cpp
 )
@@ -95,6 +98,7 @@ add_executable(wayworn-tests
     tests/savegame_test.cpp
     tests/player_movement_test.cpp
     tests/title_screen_test.cpp
+    tests/text_field_test.cpp
     tests/crafting_test.cpp
     tests/notebook_test.cpp
     tests/ldtk_import_test.cpp
