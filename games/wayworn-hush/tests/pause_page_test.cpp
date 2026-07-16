@@ -69,16 +69,19 @@ TEST_CASE("A/D page through the tabs, wrapping", "[pause]")
 
 TEST_CASE("System tab: nothing selected until W/S; then move/wrap", "[pause]")
 {
+    // The menu is Controls / Leave to title / Quit to desktop.
     PauseState p = onSystem();
     REQUIRE(p.system_sel == -1); // nothing highlighted on arrival
     pause_page::step(p, false, false, false, false, /*down=*/true, false);
     REQUIRE(p.system_sel == 0); // down from none -> first item (Controls)
     pause_page::step(p, false, false, false, false, /*down=*/true, false);
-    REQUIRE(p.system_sel == 1); // Quit
+    REQUIRE(p.system_sel == 1); // Leave to title
+    pause_page::step(p, false, false, false, false, /*down=*/true, false);
+    REQUIRE(p.system_sel == 2); // Quit to desktop
+    pause_page::step(p, false, false, false, false, /*down=*/true, false);
+    REQUIRE(p.system_sel == 0); // wraps to first
     pause_page::step(p, false, false, false, /*up=*/true, false, false);
-    REQUIRE(p.system_sel == 0); // Controls
-    pause_page::step(p, false, false, false, /*up=*/true, false, false);
-    REQUIRE(p.system_sel == 1); // wraps to last
+    REQUIRE(p.system_sel == 2); // wraps to last
 }
 
 TEST_CASE("System tab: up from none picks the last item", "[pause]")
@@ -86,7 +89,7 @@ TEST_CASE("System tab: up from none picks the last item", "[pause]")
     PauseState p = onSystem();
     REQUIRE(p.system_sel == -1);
     pause_page::step(p, false, false, false, /*up=*/true, false, false);
-    REQUIRE(p.system_sel == 1); // up from none -> last item (Quit)
+    REQUIRE(p.system_sel == 2); // up from none -> last item (Quit to desktop)
 }
 
 TEST_CASE("System tab: confirm with nothing selected does nothing", "[pause]")
@@ -121,11 +124,24 @@ TEST_CASE("F in the Controls sub-view pops to the tabs, not closing the page", "
     REQUIRE(p.open);               // page still open
 }
 
-TEST_CASE("System tab: confirm on Quit returns Quit", "[pause]")
+TEST_CASE("System tab: confirm on Leave to title returns Leave", "[pause]")
+{
+    // Leaving to the title and leaving the game are different acts -- an earlier version
+    // routed every non-Controls item to Quit, which would have quit the game here.
+    PauseState p = onSystem();
+    pause_page::step(p, false, false, false, false, /*down=*/true, false); // Controls
+    pause_page::step(p, false, false, false, false, /*down=*/true, false); // Leave to title
+    REQUIRE(p.system_sel == 1);
+    const Action a = pause_page::step(p, false, false, false, false, false, /*confirm=*/true);
+    REQUIRE(a == Action::Leave);
+    REQUIRE(p.open); // the caller acts on it
+}
+
+TEST_CASE("System tab: confirm on Quit to desktop returns Quit", "[pause]")
 {
     PauseState p = onSystem();
-    pause_page::step(p, false, false, false, /*up=*/true, false, false); // up from none -> Quit
-    REQUIRE(p.system_sel == 1);
+    pause_page::step(p, false, false, false, /*up=*/true, false, false); // up from none -> last
+    REQUIRE(p.system_sel == 2);
     const Action a = pause_page::step(p, false, false, false, false, false, /*confirm=*/true);
     REQUIRE(a == Action::Quit);
     REQUIRE(p.open); // caller acts on Quit

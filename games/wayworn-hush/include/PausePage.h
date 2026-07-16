@@ -24,7 +24,8 @@ enum class Action
 {
     None,   // nothing this frame
     Resume, // close the page, unfreeze the world
-    Quit,   // exit to desktop (no save system yet -- a clean exit)
+    Leave,  // back to the title (the walk is saved on the way out)
+    Quit,   // exit to desktop (the walk is saved on the way out)
     Craft   // the player confirmed a craft attempt (pause.craft_selected); the caller runs it
 };
 

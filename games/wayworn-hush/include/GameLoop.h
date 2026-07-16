@@ -117,6 +117,13 @@ struct GameState
     // once per new unlock, not every frame.
     std::unordered_set<std::string> announced_unlocks;
 
+    // Placed things this pilgrim has removed from the world for good -- a pickup taken,
+    // a spot consumed -- keyed by placement id (the stable identity the map gives every
+    // placement). The map is authored the same every run; this is what makes a walk's
+    // changes to it stick. Spawners filter against it; anything that permanently removes
+    // a placed thing records it here. See savegame::World.
+    std::unordered_set<std::string> gone;
+
     // Autosave bookkeeping (ephemeral -- never saved). `progress_events` counts the
     // things worth keeping (a deed enacted, a craft made, a find granted, a reading
     // landed) -- NOT the clock, which moves every frame and would make any

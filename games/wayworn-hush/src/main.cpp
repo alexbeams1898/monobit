@@ -176,6 +176,21 @@ void anchorInterpolation(EntityManager& em)
     }
 }
 
+// Rebuild the state that a WALK mutates back to how it's authored -- the starting point a
+// pilgrim's saved walk is then applied onto.
+//
+// This is the reset. Reloading from config is what makes it structural: the fields config
+// owns are rebuilt from the one source of truth, so nothing can be left dirty because
+// someone forgot to add it to a clear-list. Only the two loaders whose output a walk
+// changes are here -- observations (which holds the record of what's been seen/done) and
+// growth (whose stat_levels a walk raises from their authored starting values). The rest
+// (tables, feel, art paths) is read-only at runtime and loaded once at boot.
+void resetAuthoredState(GameState& gs)
+{
+    observations::load(gs.observations, "config/observations.json", "config/actions.json");
+    growth::load(gs.growth, "config/faculties.json");
+}
+
 // Bring a world into being and step into it -- the ONE path from the title into play,
 // whether continuing a saved walk (`saved`) or starting one (nullopt). Builds the region,
 // spawns the player + props, overlays any save, and starts the ambient bed. Returns false
@@ -227,8 +242,8 @@ bool setupRegion(Engine& engine, EntityManager& em, GameState& gs)
         std::vector<observations::Placement> placements;
         placements.reserve(region.observables.size());
         for (const auto& p : region.observables)
-            placements.push_back(
-                {p.id, p.x, p.y, p.w, p.h, observations::triggerFromString(p.trigger)});
+            placements.push_back({p.id, p.placement_id, p.x, p.y, p.w, p.h,
+                                  observations::triggerFromString(p.trigger)});
         const auto rep = observations::applyPlacements(gs.observations, placements);
         for (const auto& id : rep.placements_without_observable)
             std::fprintf(stderr, "[observe] placement '%s' has no observation content\n",
@@ -238,8 +253,9 @@ bool setupRegion(Engine& engine, EntityManager& em, GameState& gs)
                          id.c_str());
     }
 
-    glimmer::spawn(em, gs.observations, gs.glimmer_config);
-    world_items::spawn(em, region.pickups, gs.items, gs.loot_tables, gs.world_items_config);
+    glimmer::spawn(em, gs.observations, gs.glimmer_config, gs.gone);
+    world_items::spawn(em, region.pickups, gs.items, gs.loot_tables, gs.world_items_config,
+                       gs.gone);
     ldtk::spawnProps(em, region, wc.tileset_png);
     return true;
 }
@@ -254,15 +270,23 @@ bool enterWorld(Engine& engine, EntityManager& em, GameState& gs, const std::str
         return false;
     }
 
-    // Terrain + player + props. The region IS the map -- a failed load is fatal.
-    if (!setupRegion(engine, em, gs))
-        return false;
+    // Back to how the world is authored FIRST, so nothing of the last walk (a previous
+    // pilgrim's stats, their record) survives into this one. apply() then overwrites the
+    // rest with whatever this pilgrim has done. Between them, every field is accounted for
+    // without a clear-list to keep in step.
+    resetAuthoredState(gs);
 
-    // The pilgrim's walk overlays the fresh world: their record/self/things, then where
-    // they stood. AFTER setupRegion, which spawns them at the map's PlayerSpawn -- a walk
-    // in progress then overrides that.
+    // The pilgrim's walk is applied BEFORE the world is built, because building it READS
+    // that walk: the spawners skip whatever this pilgrim already took (gs.gone), and the
+    // observation record decides what's visible. Build first and the world is made from an
+    // empty record -- every taken thing back on the ground, to be taken again.
     savegame::apply(*pilgrim, gs);
     gs.app.active_id = pilgrim->id;
+
+    // Terrain + player + props, filtered by the walk above. The region IS the map -- a
+    // failed load is fatal.
+    if (!setupRegion(engine, em, gs))
+        return false;
 
     if (!pilgrim->place.walked)
     {

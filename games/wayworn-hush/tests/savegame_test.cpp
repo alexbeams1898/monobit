@@ -56,6 +56,7 @@ GameState livedInState()
     gs.crafting_state.known.insert("herbal_draught");
     gs.announced_unlocks.insert("rock:clear_moss");
     gs.clock.seconds = 1234.5;
+    gs.gone.insert("p_stone_on_the_path"); // a pickup taken -- the world is changed
     return gs;
 }
 
@@ -165,6 +166,49 @@ TEST_CASE("capture writes the walk without touching identity", "[savegame]")
     REQUIRE(p.place.x == 100.0f);
     REQUIRE(p.place.y == 200.0f);
     REQUIRE(p.place.walked); // capturing means they've been somewhere
+}
+
+TEST_CASE("what the pilgrim removed from the world survives a save", "[savegame]")
+{
+    // Without this, a picked-up item is rebuilt from the authored map on the next visit --
+    // and taken again, and again. The satchel remembering it is not enough; the WORLD has
+    // to remember it's gone.
+    const TempSave tmp("world.json");
+    savegame::File f;
+    const std::string id = savegame::add(f, "Ash");
+    savegame::capture(livedInState(), 0.0f, 0.0f, *savegame::find(f, id));
+    REQUIRE(savegame::save(f, tmp.str()));
+
+    const savegame::File read = savegame::load(tmp.str());
+    REQUIRE(savegame::find(read, id)->world.gone.count("p_stone_on_the_path") == 1);
+
+    // And it comes back onto a fresh world, so the spawners can skip it.
+    GameState restored;
+    savegame::apply(*savegame::find(read, id), restored);
+    REQUIRE(restored.gone.count("p_stone_on_the_path") == 1);
+}
+
+TEST_CASE("apply gives up the walk's world-record BEFORE a world could be built from it",
+          "[savegame]")
+{
+    // The order enterWorld relies on: applying a walk must populate `gone` immediately, so
+    // the spawners that read it are filtering against this pilgrim's history. (Building the
+    // world first and applying after left `gone` empty at spawn time -- every taken thing
+    // came back, and could be taken again.)
+    savegame::Data p;
+    p.world.gone.insert("p_stone");
+
+    GameState gs;
+    REQUIRE(gs.gone.empty()); // nothing known yet
+    savegame::apply(p, gs);
+    REQUIRE(gs.gone.count("p_stone") == 1); // known the instant the walk is applied
+}
+
+TEST_CASE("a fresh pilgrim has nothing gone -- the world is as authored", "[savegame]")
+{
+    savegame::File f;
+    const std::string id = savegame::add(f, "Ash");
+    REQUIRE(savegame::find(f, id)->world.gone.empty());
 }
 
 TEST_CASE("a fresh pilgrim has not walked -- distinct from standing at the origin", "[savegame]")

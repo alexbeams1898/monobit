@@ -46,6 +46,10 @@ struct Interactable
 {
     float w = 32.0f; // box size around the Transform (world px)
     float h = 32.0f;
+    // WHICH placed thing this is (see ldtk::PickupPlacement::placement_id). Carried so
+    // that removing it for good can be recorded against the map -- without it, a thing
+    // taken is forgotten the moment the entity dies, and comes back next visit.
+    std::string placement_id;
     std::string observe_id;               // observation id (empty = not observable)
     ActionKind action = ActionKind::None; // direct action (None = not directly actionable)
     std::string target;                   // the action's id (item id / loot table id)
@@ -120,6 +124,10 @@ struct Outcome
     // Items a DIRECT action deposited, for the toast (Pickup -> one; Gather -> the handful).
     // Empty for an observable (a "take" deed's grant flows through the menu, not here).
     std::vector<inventory::ItemInstance> items;
+    // The placement id of a thing this fire removed from the world for good, if any. Passed
+    // up as an opaque id (like the observation system's grants): interaction destroys the
+    // entity, but only the GAME knows that a removal is something a save must remember.
+    std::string removed_placement;
 };
 
 // The per-frame ECS system: build candidates from view<Transform, Interactable>, resolve

@@ -5,6 +5,7 @@
 #include "Observations.h"
 
 #include <string>
+#include <unordered_set>
 
 #include <entt/entt.hpp>
 
@@ -52,7 +53,12 @@ void load(Config& cfg, const std::string& path);
 
 // Spawn one glow entity per Observe-mode observable (warm tint, alpha 0, layer 3 above the
 // prop it marks). Enter-mode observables fire ambiently and carry no glimmer.
-void spawn(EntityManager& em, const observations::State& obs, const Config& cfg);
+//
+// `gone` is the set of placement ids this pilgrim has removed for good
+// (savegame::World::gone): a spot consumed on a previous visit is skipped, so it doesn't
+// come back when the world is rebuilt from the authored map.
+void spawn(EntityManager& em, const observations::State& obs, const Config& cfg,
+           const std::unordered_set<std::string>& gone = {});
 
 // Per-frame: each observable glimmer glows (lerps toward its peak) only while its Interactable
 // is the active target; the peak = formulas::glowBrightness(Perception), the same for every

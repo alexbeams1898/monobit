@@ -776,8 +776,8 @@ TEST_CASE("applyPlacements binds map location + trigger onto loaded observation 
 {
     State s = loadForPlacement();
     const std::vector<observations::Placement> places = {
-        {"stone", 976.0f, 656.0f, 64.0f, 64.0f, observations::Trigger::Observe},
-        {"river", 464.0f, 400.0f, 128.0f, 128.0f, observations::Trigger::Enter},
+        {"stone", "p_stone", 976.0f, 656.0f, 64.0f, 64.0f, observations::Trigger::Observe},
+        {"river", "p_river", 464.0f, 400.0f, 128.0f, 128.0f, observations::Trigger::Enter},
     };
     const auto rep = observations::applyPlacements(s, places);
     REQUIRE(rep.placements_without_observable.empty());
@@ -794,6 +794,11 @@ TEST_CASE("applyPlacements binds map location + trigger onto loaded observation 
     }
     REQUIRE(stone != nullptr);
     REQUIRE(river != nullptr);
+
+    // The placement's IDENTITY binds too, not just its box: it's what the game records a
+    // consumed spot against, so a spot removed for good doesn't come back from the map.
+    REQUIRE(stone->placement_id == "p_stone");
+    REQUIRE(river->placement_id == "p_river");
     REQUIRE(stone->x == 976.0f);
     REQUIRE(stone->y == 656.0f);
     REQUIRE(stone->w == 64.0f);
@@ -807,8 +812,9 @@ TEST_CASE("applyPlacements reports authoring gaps both ways", "[observations][pl
     State s = loadForPlacement(); // has stone + river
     // A placement for content that doesn't exist, and river left unplaced.
     const std::vector<observations::Placement> places = {
-        {"stone", 10.0f, 20.0f, 48.0f, 48.0f, observations::Trigger::Observe},
-        {"ghost", 0.0f, 0.0f, 48.0f, 48.0f, observations::Trigger::Observe}, // no such observable
+        {"stone", "p_stone", 10.0f, 20.0f, 48.0f, 48.0f, observations::Trigger::Observe},
+        {"ghost", "p_ghost", 0.0f, 0.0f, 48.0f, 48.0f,
+         observations::Trigger::Observe}, // no such observable
     };
     const auto rep = observations::applyPlacements(s, places);
     REQUIRE(rep.placements_without_observable.size() == 1);
@@ -825,7 +831,7 @@ TEST_CASE("An ENTER observable fires once when the player reaches its box, not b
     State s = loadForPlacement();
     // A big river box (100x100 at (400,0)) -> its left edge is x=350.
     observations::applyPlacements(
-        s, {{"river", 400.0f, 0.0f, 100.0f, 100.0f, observations::Trigger::Enter}});
+        s, {{"river", "p_river", 400.0f, 0.0f, 100.0f, 100.0f, observations::Trigger::Enter}});
     const GrowthState g = self({});
 
     // Far away -> nothing fires.
@@ -847,7 +853,7 @@ TEST_CASE("Proximity triggering ignores OBSERVE-mode observables (they need the 
     State s = loadForPlacement();
     // stone is Observe-mode: standing on it must NOT auto-fire.
     observations::applyPlacements(
-        s, {{"stone", 0.0f, 0.0f, 100.0f, 100.0f, observations::Trigger::Observe}});
+        s, {{"stone", "p_stone", 0.0f, 0.0f, 100.0f, 100.0f, observations::Trigger::Observe}});
     const GrowthState g = self({});
     const auto r = observations::triggerProximity(s, g, 0.0f, 0.0f, kNoNudge);
     REQUIRE(r.outcome == Outcome::None); // observe-mode is silent to proximity

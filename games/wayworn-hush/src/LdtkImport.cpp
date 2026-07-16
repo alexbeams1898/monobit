@@ -239,6 +239,19 @@ int atlasCols(const json& j, int fallback)
     return fallback;
 }
 
+// The stable identity of a placed entity, as the map file records it. `iid` is the
+// authoring format's own persistent per-entity UUID: it survives moving, resizing, and
+// re-authoring, which is exactly what an identity the SAVE refers to has to do (a
+// position or an index would not).
+//
+// This is the only place that name appears. Everything downstream calls it a
+// placement_id and never learns where it came from -- so the identity outlives the tool
+// that mints it.
+std::string placementIdOf(const json& e)
+{
+    return e.value("iid", std::string{});
+}
+
 // A string-valued entity field instance by identifier ("observable", "trigger"), or
 // empty if absent/not a string. LDtk stores custom fields in fieldInstances as
 // {__identifier, __value}.
@@ -264,12 +277,16 @@ void collectObservable(const json& e, Region& r)
     const std::string id = entityField(e, "observable");
     if (id.empty())
         return;
+    const std::string placementId = placementIdOf(e);
+    if (placementId.empty())
+        return; // no identity -> the game could never record what happened to it
     const auto px = e.find("px");
     if (px == e.end() || !px->is_array())
         return;
     const float wx = static_cast<float>((*px)[0].get<int>() * 2);
     const float wy = static_cast<float>((*px)[1].get<int>() * 2);
     ObservablePlacement p;
+    p.placement_id = placementId;
     p.id = id;
     p.w = static_cast<float>(e.value("width", 16) * 2);
     p.h = static_cast<float>(e.value("height", 16) * 2);
@@ -299,6 +316,9 @@ void collectObservablesInLayer(const json& level, const char* layerName, Region&
 void collectPickup(const json& e, Region& r)
 {
     PickupPlacement p;
+    p.placement_id = placementIdOf(e);
+    if (p.placement_id.empty())
+        return; // no identity -> taking it could never be remembered
     if (const std::string item = entityField(e, "item"); !item.empty())
     {
         p.kind = PickupPlacement::Kind::Item;

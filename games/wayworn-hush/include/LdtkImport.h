@@ -35,6 +35,10 @@ struct Object
 // observation system -- the game maps it to observations::Placement at load.
 struct ObservablePlacement
 {
+    // WHICH placed thing this is -- stable across edits, unique among placements, and the
+    // handle the game records permanent world changes against (a spot consumed, a thing
+    // taken). Distinct from `id`: that says WHAT is here, and two placements may share it.
+    std::string placement_id;
     std::string id; // the observation id this placement locates
     float x = 0.0f; // box center, world px
     float y = 0.0f;
@@ -56,6 +60,9 @@ struct PickupPlacement
         Item, // `target` is an item id (a static drop)
         Loot  // `target` is a loot table id (a gather node)
     };
+    // WHICH placed thing this is -- see ObservablePlacement::placement_id. A pickup that's
+    // been taken is remembered by this, so it doesn't come back on the next visit.
+    std::string placement_id;
     Kind kind = Kind::Item;
     std::string target; // item id (Item) or loot table id (Loot)
     float cx = 0.0f;    // center, world px

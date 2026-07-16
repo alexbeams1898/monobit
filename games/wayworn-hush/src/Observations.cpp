@@ -598,6 +598,7 @@ PlacementReport applyPlacements(State& state, const std::vector<Placement>& plac
         for (auto& o : state.observables)
             if (o.id == p.id)
             {
+                o.placement_id = p.placement_id;
                 o.x = p.x;
                 o.y = p.y;
                 o.w = p.w;

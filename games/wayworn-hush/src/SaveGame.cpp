@@ -159,6 +159,7 @@ json encodePilgrim(const Data& d)
     return json{{"id", d.id},
                 {"name", d.name},
                 {"record", encodeRecord(d.record)},
+                {"world", json{{"gone", fromSet(d.world.gone)}}},
                 {"self", encodeSelf(d.self)},
                 {"satchel", encodeSatchel(d.satchel)},
                 {"notebook", encodeNotebook(d.notebook)},
@@ -178,6 +179,8 @@ Data decodePilgrim(const json& j)
     d.name = j.value("name", std::string{});
     if (const auto it = j.find("record"); it != j.end() && it->is_object())
         d.record = decodeRecord(*it);
+    if (const auto it = j.find("world"); it != j.end() && it->is_object())
+        toSet(*it, "gone", d.world.gone);
     if (const auto it = j.find("self"); it != j.end() && it->is_object())
         d.self = decodeSelf(*it);
     d.satchel = decodeSatchel(j);
@@ -298,6 +301,7 @@ void capture(const GameState& gs, float player_x, float player_y, Data& d)
     d.record.fired = gs.observations.fired;
     d.record.flags = gs.observations.flags;
     d.record.taken = gs.observations.taken;
+    d.world.gone = gs.gone;
 
     d.self.spirit_exp = gs.growth.spirit_exp;
     d.self.stat_levels = gs.growth.stat_levels;
@@ -326,6 +330,7 @@ void apply(const Data& data, GameState& gs)
     gs.observations.fired = data.record.fired;
     gs.observations.flags = data.record.flags;
     gs.observations.taken = data.record.taken;
+    gs.gone = data.world.gone;
 
     gs.growth.spirit_exp = data.self.spirit_exp;
     // Saved levels REPLACE the authored starting levels (config seeds a new

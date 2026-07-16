@@ -5,6 +5,7 @@
 #include "Loot.h"
 
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <entt/entt.hpp>
@@ -47,8 +48,12 @@ void load(Config& cfg, const std::string& path);
 // shows its item's `icon` and picks up that item; a gather node shows the stand-in sprite
 // and rolls its loot table. Y-sorted by its base so the player draws in front/behind by
 // position. An unknown item/table id logs + is skipped.
+// `gone` is the set of placement ids this pilgrim has already taken (savegame::World::gone):
+// those are skipped, so a thing picked up stays picked up across visits instead of being
+// re-created from the map every time the world is built.
 void spawn(EntityManager& em, const std::vector<ldtk::PickupPlacement>& pickups,
-           const inventory::Registry& items, const loot::Registry& loot, const Config& cfg);
+           const inventory::Registry& items, const loot::Registry& loot, const Config& cfg,
+           const std::unordered_set<std::string>& gone = {});
 
 // Per-frame: put a rim Outline on each actionable item whose Interactable is the active
 // target (the InteractionSystem resolved it -- in reach or hovered), and remove it from

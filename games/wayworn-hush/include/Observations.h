@@ -146,6 +146,9 @@ Trigger triggerFromString(const std::string& s);
 struct Observable
 {
     std::string id;
+    // WHICH placed thing locates this observable -- set by applyPlacements, carried so the
+    // game can record a spot being consumed against the map. Empty until placed.
+    std::string placement_id;
     // Placement is an AABB authored in LDtk (the Observable box) and applied at load. The
     // box marks WHERE the thing is; you interact when within `interact_reach` of it (glow +
     // observe). (x, y) is the box CENTER, (w, h) its size, all world px. observations.json
@@ -270,6 +273,10 @@ void load(State& state, const std::string& path, const std::string& actions_path
 struct Placement
 {
     std::string id;
+    // WHICH placed thing this is -- stable across map edits, and the handle the game
+    // records permanent world changes against (a spot consumed). Distinct from `id`:
+    // that says WHAT observation is here. Carried through, never interpreted here.
+    std::string placement_id;
     float x = 0.0f; // box center
     float y = 0.0f;
     float w = 32.0f; // box size

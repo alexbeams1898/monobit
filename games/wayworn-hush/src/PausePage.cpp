@@ -20,8 +20,9 @@ constexpr int kTabCount = 6; // Self, Noticed, Satchel, Craft, Notebook, System
 
 // System-tab menu items.
 constexpr int kSysControls = 0;
-constexpr int kSysQuit = 1;
-constexpr int kSysItemCount = 2;
+constexpr int kSysLeave = 1; // back to the title -- the walk is kept
+constexpr int kSysQuit = 2;  // out of the game entirely -- also kept
+constexpr int kSysItemCount = 3;
 
 // Wayworn's minimal register: muted shadow-text over a soft darkening of the
 // frozen world. Colors mirror the thought box (AESTHETIC.md).
@@ -563,14 +564,24 @@ bool menuItem(const std::string& label, float cx, float y, bool selected, const 
     return hovered;
 }
 
-// The System tab: a small menu (Controls / Quit). Draws both items; sets
-// `quit_hovered`/`controls_hovered` for the caller to resolve clicks.
-void renderSystem(float cx, float y, int sel, const Mouse& mouse, bool& controls_hovered,
-                  bool& quit_hovered)
+// The System tab: a small menu. Draws every item and returns the one the mouse is over
+// (-1 = none), so the caller resolves a click by index rather than by a bool per item --
+// which is what stops a new entry from needing a new out-param.
+//
+// Leaving sits above Quit: they're the same act at different distances (leave the walk /
+// leave the game), and both keep the walk.
+int renderSystem(float cx, float y, int sel, const Mouse& mouse)
 {
-    controls_hovered = menuItem("Controls", cx, y, sel == kSysControls, mouse);
-    y += lineH() * 1.4f;
-    quit_hovered = menuItem("Quit", cx, y, sel == kSysQuit, mouse);
+    constexpr const char* kLabels[kSysItemCount] = {"Controls", "Leave to title",
+                                                    "Quit to desktop"};
+    int hovered = -1;
+    for (int i = 0; i < kSysItemCount; ++i)
+    {
+        if (menuItem(kLabels[i], cx, y, sel == i, mouse))
+            hovered = i;
+        y += lineH() * 1.4f;
+    }
+    return hovered;
 }
 
 // The Controls sub-view: the bindings reference, shown in the content area below
@@ -624,6 +635,25 @@ Action stepCraft(PauseState& pause, const std::vector<CraftMaterial>& materials,
     return Action::None;
 }
 
+// Commit one System item by index. The ONE place an item's meaning lives, so the keys and
+// the mouse can't disagree -- and so adding an entry can't accidentally inherit another's
+// behaviour (an `else -> Quit` would hand every new item the quit action).
+Action commitSystemItem(PauseState& pause, int item)
+{
+    switch (item)
+    {
+    case kSysControls:
+        pause.view_stack.push_back(PauseState::View::Controls);
+        return Action::None;
+    case kSysLeave:
+        return Action::Leave;
+    case kSysQuit:
+        return Action::Quit;
+    default:
+        return Action::None;
+    }
+}
+
 Action stepSystemMenu(PauseState& pause, bool up, bool down, bool confirm)
 {
     if (down)
@@ -635,12 +665,7 @@ Action stepSystemMenu(PauseState& pause, bool up, bool down, bool confirm)
                                : (pause.system_sel - 1 + kSysItemCount) % kSysItemCount;
 
     if (confirm && pause.system_sel >= 0)
-    {
-        if (pause.system_sel == kSysControls)
-            pause.view_stack.push_back(PauseState::View::Controls);
-        else
-            return Action::Quit;
-    }
+        return commitSystemItem(pause, pause.system_sel);
     return Action::None;
 }
 
@@ -771,13 +796,11 @@ Action renderTabContent(PauseState& pause, const growth::GrowthState& growth,
         break;
     case PauseState::Tab::System:
     {
-        bool controlsHovered = false;
-        bool quitHovered = false;
-        renderSystem(cx, contentY, pause.system_sel, mouse, controlsHovered, quitHovered);
-        if (mouse.clicked && controlsHovered)
-            pause.view_stack.push_back(PauseState::View::Controls);
-        else if (mouse.clicked && quitHovered)
-            return Action::Quit;
+        const int hovered = renderSystem(cx, contentY, pause.system_sel, mouse);
+        if (hovered >= 0)
+            pause.system_sel = hovered; // the hand moves the cursor, as everywhere else
+        if (mouse.clicked && hovered >= 0)
+            return commitSystemItem(pause, hovered); // the same meaning the keys commit
         break;
     }
     }

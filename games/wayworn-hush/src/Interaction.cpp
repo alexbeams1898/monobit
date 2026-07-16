@@ -124,7 +124,12 @@ Outcome update(EntityManager& em, const Intent& intent, const Context& ctx)
     for (const auto& item : out.items)
         inventory::add(ctx.satchel, ctx.items, item);
     if (target.action != ActionKind::None)
+    {
+        // Report what left the world before destroying it -- afterwards the entity (and
+        // its identity) is gone, and the caller would have nothing to remember.
+        out.removed_placement = target.placement_id;
         reg.destroy(targetEnt);
+    }
     return out;
 }
 

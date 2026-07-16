@@ -533,6 +533,28 @@ void back()
     }
 }
 
+void reset()
+{
+    // Everything the box carries between frames. Unlike back(), this doesn't fade out --
+    // the world it belonged to is gone, so there is nothing to fade from.
+    sItem = ItemKind::None;
+    sPhase = Phase::None;
+    sPhaseT = 0.0f;
+    sRevealed = 0;
+    sLastBlip = 0;
+    sWrapped.clear();
+    sPageStart = 0;
+    sLinesPerPage = 0;
+    sMenuSpot.clear();
+    sMenuOpts.clear();
+    sMenuSel = 0;
+    sMenuQueued = false;
+    sMenuX = 0.0f;
+    sMenuY = 0.0f;
+    sMenuW = 0.0f;
+    sMenuRowH = 0.0f;
+}
+
 // --- render ----------------------------------------------------------------
 namespace
 {

@@ -47,7 +47,8 @@ void load(Config& cfg, const std::string& path)
     cfg.warm_b = j.value("warm_b", cfg.warm_b);
 }
 
-void spawn(EntityManager& em, const observations::State& obs, const Config& cfg)
+void spawn(EntityManager& em, const observations::State& obs, const Config& cfg,
+           const std::unordered_set<std::string>& gone)
 {
     auto& reg = em.registry();
     for (const auto& o : obs.observables)
@@ -57,6 +58,9 @@ void spawn(EntityManager& em, const observations::State& obs, const Config& cfg)
         // interact verb, so it carries no glimmer.
         if (o.trigger != observations::Trigger::Observe)
             continue;
+        // A spot this pilgrim consumed is not here any more, whatever the map says.
+        if (!o.placement_id.empty() && gone.count(o.placement_id) > 0)
+            continue;
         const entt::entity e = reg.create();
         reg.emplace<Transform>(e, Transform{o.x, o.y});
         reg.emplace<Glimmer>(e, Glimmer{cfg.warm_r, cfg.warm_g, cfg.warm_b, 0.0f});
@@ -65,6 +69,7 @@ void spawn(EntityManager& em, const observations::State& obs, const Config& cfg)
         interaction::Interactable inter{};
         inter.w = o.w;
         inter.h = o.h;
+        inter.placement_id = o.placement_id; // so consuming the spot can be remembered
         inter.observe_id = o.id;
         reg.emplace<interaction::Interactable>(e, inter);
         attachGlowSprite(em, e, cfg);

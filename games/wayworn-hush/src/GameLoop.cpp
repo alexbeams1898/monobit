@@ -225,6 +225,35 @@ std::vector<load_screen::Entry> rosterEntries(const savegame::File& file, const 
     return out;
 }
 
+// Put the world away and go back to the title. The walk is already saved by the caller.
+//
+// Everything the world put in the registry is destroyed rather than reset: the next walk
+// builds a fresh one from the map (see enterWorld), so a leftover entity would be a ghost
+// from someone else's pilgrimage.
+//
+// The per-walk STATE is not cleared field-by-field here -- entering a world rebuilds it
+// from the authored config and then applies that pilgrim's walk onto it (see enterWorld).
+// A hand-written clear list would be one more thing to remember every time GameState grows
+// a field, and forgetting one leaks a stranger's progress into the next walk.
+void leaveToTitle(EntityManager& em, GameState& gs)
+{
+    em.registry().clear(); // every world entity: player, props, glimmers, items, markers
+    gs.player = entt::null;
+
+    // Ephemeral surfaces that outlive the world they belonged to.
+    gs.pause = PauseState{};
+    gs.progress_events = 0;
+    gs.saved_at_events = 0;
+    gs.since_save_secs = 0.0;
+    gs.app.active_id.clear();
+    gs.app.world_built = false;
+
+    AudioSystem::stopMusic();
+    thought_box::reset();
+    title_screen::reset();
+    gs.app.phase = app::Phase::Greeting;
+}
+
 // Enact what the title committed. The ONE place a title action turns into something --
 // both its input paths (keys via step, mouse via render) funnel here, so a new entry is
 // wired in one spot and neither path can drop it (the same rule enactPageAction follows).
@@ -648,8 +677,15 @@ void enactPageAction(Engine& engine, EntityManager& em, GameState& gs, pause_pag
     switch (action)
     {
     case pause_page::Action::Quit:
-        writeSave(em, gs); // leaving -- keep the pilgrimage
+        // No save here: leaving the game is ONE act with ONE write, and it happens on the
+        // way out (see main). Saving here too would mean quitting-by-menu and
+        // quitting-by-window-close take different paths to the same thing -- two writes to
+        // keep in agreement, which is one more than can be kept.
         engine.requestQuit();
+        break;
+    case pause_page::Action::Leave:
+        writeSave(em, gs); // the walk is kept before the world it happened in goes away
+        leaveToTitle(em, gs);
         break;
     case pause_page::Action::Craft:
         attemptCraft(gs);
@@ -663,13 +699,17 @@ void enactPageAction(Engine& engine, EntityManager& em, GameState& gs, pause_pag
 }
 
 // Despawn the world entity for an observable id (its glimmer + interactable), e.g. when a
-// consumes_spot take removes the whole thing. No-op if the spot has no world entity.
-void despawnObservableEntity(EntityManager& em, const std::string& observableId)
+// consumes_spot take removes the whole thing, and remember that it's gone -- otherwise the
+// next visit rebuilds the spot from the authored placements and it's back. No-op if the
+// spot has no world entity.
+void despawnObservableEntity(EntityManager& em, GameState& gs, const std::string& observableId)
 {
     auto& reg = em.registry();
     for (auto [e, inter] : reg.view<interaction::Interactable>().each())
         if (inter.observe_id == observableId)
         {
+            if (!inter.placement_id.empty())
+                gs.gone.insert(inter.placement_id);
             reg.destroy(e);
             return;
         }
@@ -686,7 +726,7 @@ void enactConfirm(EntityManager& em, GameState& gs, const thought_box::ConfirmRe
     for (const auto& recipeId : r.taught) // a deed handed over a recipe -> learn it (+ reward)
         learnRecipe(gs, recipeId);
     if (!r.consumed_spot.empty())
-        despawnObservableEntity(em, r.consumed_spot);
+        despawnObservableEntity(em, gs, r.consumed_spot);
     markProgress(gs); // a deed was taken -- worth keeping
 }
 
@@ -699,6 +739,10 @@ void onInteractionFired(GameState& gs, const interaction::Outcome& out)
     if (out.observe_target.empty())
     {
         toastFinds(gs, out.items); // direct pickup/gather -- items already in the satchel
+        // A thing taken is gone for good: remember it against the map, or the next visit
+        // rebuilds it from the authored placements and it can be taken again.
+        if (!out.removed_placement.empty())
+            gs.gone.insert(out.removed_placement);
         if (!out.items.empty())
             markProgress(gs); // a find -- worth keeping
         return;

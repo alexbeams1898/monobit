@@ -41,6 +41,20 @@ struct Record
     std::unordered_set<std::string> taken;              // one-shot deed ids performed (spot:action)
 };
 
+// What the world looks like now, as opposed to how it was authored. The map is the
+// same every run; this is the record of what this pilgrim did to it.
+//
+// One set, keyed by PLACEMENT ID (the stable identity every placed thing carries --
+// see ldtk::ObservablePlacement::placement_id), holding the things that are GONE: a
+// pickup taken, a spot consumed. Every placed system reads it the same way, so a new
+// one needs no new field here -- the alternative, a taken-list per system, grows a
+// field every time something new can be removed, and each one is another thing to
+// forget to save.
+struct World
+{
+    std::unordered_set<std::string> gone;
+};
+
 // What the pilgrim has become: the progression half of growth::GrowthState (the
 // authored stat NAMES + colors come from config).
 struct Self
@@ -90,6 +104,7 @@ struct Data
     std::string id;
     std::string name;
     Record record;
+    World world;
     Self self;
     std::vector<Item> satchel;
     std::vector<NotebookEntry> notebook;

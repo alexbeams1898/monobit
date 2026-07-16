@@ -108,6 +108,11 @@ struct ConfirmResult
 // -> a missed thought may fire). Returns what the caller must enact (see ConfirmResult).
 ConfirmResult confirm(observations::State& state, const growth::GrowthState& growth,
                       const observations::RollRng& rng);
+// Forget whatever is on screen: a line mid-typewriter, an open deed menu, a queued
+// re-open. The box holds this between frames, so a walk that ends with a reading up would
+// otherwise carry it into the next one. Call when a world goes away.
+void reset();
+
 void moveUp();
 void moveDown();
 void back();

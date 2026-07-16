@@ -99,6 +99,7 @@ add_executable(wayworn-tests
     tests/player_movement_test.cpp
     tests/title_screen_test.cpp
     tests/text_field_test.cpp
+    tests/world_items_test.cpp
     tests/crafting_test.cpp
     tests/notebook_test.cpp
     tests/ldtk_import_test.cpp
