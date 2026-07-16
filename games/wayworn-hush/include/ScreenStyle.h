@@ -74,4 +74,32 @@ void button(const std::string& label, float x, float y, float w, float h, bool h
 // the pressed rect are the same rect.
 bool buttonHit(float mx, float my, float x, float y, float w, float h);
 
+// --- the page a thought is written on --------------------------------------
+//
+// A thought is a notebook entry wherever it appears -- typed out as it lands, or
+// read back later in the notebook. It gets one surface, defined here, so those two
+// can't drift into two different notebooks: aged paper, ink border, and a
+// faculty-hued margin rule down the inside edge (the entry's accent, without
+// tinting the whole page).
+
+inline constexpr Color kPaper{0.87f, 0.83f, 0.73f, 1.0f};     // aged parchment backing
+inline constexpr Color kInkBorder{0.36f, 0.29f, 0.21f, 1.0f}; // worn ink-brown edge
+inline constexpr Color kInkBody{0.17f, 0.14f, 0.11f, 1.0f};   // handwriting ink
+inline constexpr Color kInkFaint{0.42f, 0.36f, 0.29f, 1.0f};  // faded ink (datelines, rules)
+
+// A rect's inside, past the padding -- where a panel's content goes.
+struct Inset
+{
+    float x, y, w, h;
+};
+
+// Draw the page at (x,y,w,h) and return its content area. `accent` is the faculty
+// hue for the margin rule; `alpha` fades the whole panel (the box uses it to drop
+// in, screens pass 1).
+Inset paperPanel(float x, float y, float w, float h, const Color& accent, float pad_x, float pad_y,
+                 float alpha = 1.0f);
+
+// A rectangle's outline, `t` px thick, drawn inside the rect.
+void border(float x, float y, float w, float h, const Color& c, float t = 2.0f);
+
 } // namespace screen_style

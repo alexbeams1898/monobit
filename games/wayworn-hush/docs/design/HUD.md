@@ -43,6 +43,29 @@ a thought appears in the upper band and a reading in the lower band. Content
 longer than a region **paginates** (Space turns the page, then dismisses) — the
 region never resizes.
 
+## Content is not HUD (the boundary)
+
+This doc is named for the HUD but mostly describes **content**. The two are
+different things and must not share a switch:
+
+- **Content** — on screen *because something happened*, and gone when it's done:
+  the reading/thought box, the action menu, notification toasts, the over-head
+  marker. This is the game **speaking**. It has no idle state: there is no such
+  thing as a dialogue box with nothing to say, so it is never framed when empty
+  and never "turned off" — turning it off would mute the game.
+- **HUD** — on screen *because it is always true*, and glanced at: the stance
+  badge, the watch's readout. Status, not speech. This is what a player means by
+  "the HUD," what the visibility mode governs, and the only thing HUD settings
+  may touch.
+
+The test: *does this exist because something happened, or is it always true?*
+Speech is content; status is HUD. A player who hides the HUD expects the world to
+go quiet of **widgets**, not of **words**.
+
+This distinction was learned the hard way: the reading band was originally framed
+by the idle chrome, which put an empty box on screen waiting for a dialogue —
+a category error visible from across the room.
+
 ## Why fixed regions
 
 The current box is **content-sized** — its height/position derive from how many
@@ -198,19 +221,22 @@ only when relevant. Three modes (global, later per-element), like Elden Ring:
   future home of always-on elements like a clock). Content fills it when present.
 - **Off** — no HUD regions draw at all.
 
-The mode is a real value now: `hud::Visibility {Auto, On, Off}`, authored in
-`config/hud.json` (`"visibility"`, default `auto`) and carried on
-`GameState::hud`. The render loop reads it — Off suppresses HUD drawing, On adds
-idle region frames under the content, Auto draws only regions that hold content.
-Building the enum first means the future Settings toggle only has to flip the
-value, not introduce the concept.
+The mode is a real value: `hud::Visibility {Auto, On, Off}`. `config/hud.json`
+(`"visibility"`, default `auto`) authors the **default**; the player's actual
+choice lives in `settings::Settings` and is carried by the save. The render loop
+reads the preference — Off suppresses HUD drawing, On adds idle region frames
+under the content, Auto draws only regions that hold content.
 
-The mode toggle's **UI** lives in a **Settings sub-view under the pause System
-tab** (alongside Controls, before Quit) — the future home for HUD mode, and later
-resolution/fullscreen, audio volumes, etc. That Settings surface **doesn't exist
-yet** (System has only Controls + Quit), so the toggle is set from config until
-Settings is built. Fixed regions + Auto compose cleanly: a region simply isn't
-drawn when it has nothing to show (see empty-region chrome below).
+The mode is **not** stored on the HUD layout. Layout is authored; visibility is a
+preference. Two homes for it would be two answers to "is the HUD on."
+
+**Settings is one screen, reached two ways** — from the title and from the pause
+System tab (alongside Controls, before Leave). Both open the same surface: HUD
+mode, per-piece toggles, and later resolution/fullscreen and audio. One screen
+because two would drift; two entry points because HUD options want changing while
+you can see the HUD, and display options want changing before you enter a world.
+Fixed regions + Auto compose cleanly: a region simply isn't drawn when it has
+nothing to show (see empty-region chrome below).
 
 ## What this changes vs. today
 
@@ -248,8 +274,8 @@ drawn when it has nothing to show (see empty-region chrome below).
    (kind-routed), pagination, empty-only chrome. Sits on #1.
 3. **Auto visibility** — hardcoded behavior in the first build (essentially what
    the box + toasts already do).
-4. *(Later)* **Settings sub-view under System** → the **On/Off** visibility toggle
-   (+ future resolution/audio settings). Prerequisite: the Settings surface, which
+4. **Settings screen** (title + System) → the visibility mode and the per-piece
+   toggles (+ future resolution/audio settings). Prerequisite: the Settings surface, which
    doesn't exist yet.
 
 ## Cross-references

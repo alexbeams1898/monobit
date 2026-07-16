@@ -5,6 +5,7 @@
 #include "Notebook.h"
 #include "ReadingColor.h"
 #include "ScreenInput.h"
+#include "ScreenStyle.h"
 #include "UIRenderer.h"
 
 #include <algorithm>
@@ -16,13 +17,14 @@ namespace
 {
 FontHandle sFont = -1;
 
-constexpr int kTabCount = 6; // Self, Noticed, Satchel, Craft, Notebook, System
+constexpr int kTabCount = 5; // Self, Satchel, Craft, Notebook, System
 
 // System-tab menu items.
 constexpr int kSysControls = 0;
-constexpr int kSysLeave = 1; // back to the title -- the walk is kept
-constexpr int kSysQuit = 2;  // out of the game entirely -- also kept
-constexpr int kSysItemCount = 3;
+constexpr int kSysSettings = 1; // how you like the game -- the same screen the title opens
+constexpr int kSysLeave = 2;    // back to the title -- the walk is kept
+constexpr int kSysQuit = 3;     // out of the game entirely -- also kept
+constexpr int kSysItemCount = 4;
 
 // Wayworn's minimal register: muted shadow-text over a soft darkening of the
 // frozen world. Colors mirror the thought box (AESTHETIC.md).
@@ -114,52 +116,6 @@ void renderSelf(const growth::GrowthState& g, float cx, float y)
     }
 }
 
-void renderNoticed(const growth::GrowthState& g, const observations::State& o, float cx, float y)
-{
-    // What's been noticed: the objective observations you've reached (the deepest
-    // tier text per spot, plain), then the thoughts you've had (colored by
-    // faculty + rarity). The full thought-notebook split is a later slice; for now
-    // both share this list. Empty stays quiet.
-    bool any = false;
-    for (const auto& ob : o.observables)
-    {
-        const auto it = o.observed_tier.find(ob.id);
-        if (it == o.observed_tier.end())
-            continue;
-        const int tier = it->second; // 1-based deepest tier reached
-        if (tier >= 1 && tier <= static_cast<int>(ob.tiers.size()))
-        {
-            softTextCentered(ob.tiers[static_cast<std::size_t>(tier - 1)].text, cx, y, kText);
-            y += lineH() * 1.2f;
-            any = true;
-        }
-    }
-    for (const auto& r : o.thoughts)
-    {
-        if (o.fired.count(r.id) == 0)
-            continue;
-        const Color hue = reading_color::forReading(g, r.faculty, r.difficulty);
-        // Label: faculty (its hue) + rarity word (its own loot color).
-        if (r.difficulty > 0 && !r.faculty.empty())
-        {
-            const std::string faculty = reading_color::facultyLabel(r.faculty);
-            const std::string rarity = reading_color::rarityWord(r.difficulty);
-            const float gap = 24.0f;
-            const float fw = UIRenderer::measureText(sFont, faculty).width;
-            const float startX =
-                cx - (fw + gap + UIRenderer::measureText(sFont, rarity).width) * 0.5f;
-            softText(faculty, startX, y, hue);
-            softText(rarity, startX + fw + gap, y, reading_color::rarityColor(r.difficulty));
-            y += lineH() * 0.85f;
-        }
-        softTextCentered(r.text, cx, y, hue);
-        y += lineH() * 1.3f;
-        any = true;
-    }
-    if (!any)
-        softTextCentered("None", cx, y, kTextDim);
-}
-
 // --- the shared item grid (Souls STRUCTURE -- icons in a grid + a detail panel -- in
 // wayworn's MINIMAL/CUTE register: soft cells, a gentle cursor, no ornate chrome) ----------
 
@@ -180,11 +136,13 @@ struct GridItem
 constexpr Color kCellCursor{0.30f, 0.29f, 0.24f, 0.85f}; // the cursored row (warm lift)
 constexpr Color kCellMarked{0.22f, 0.28f, 0.22f, 0.8f};  // a toggle-selected row (soft green)
 
-// Word-wrap `text` to `maxW` px, drawing each line left-aligned from (x,y) downward. Returns the
-// y past the last line. Long words that don't fit alone are left overflowing (rare for item
-// copy) rather than hard-split mid-word.
-float softTextWrapped(const std::string& text, float x, float y, float maxW, const Color& c,
-                      float alpha = 1.0f)
+// Word-wrap `text` to `maxW` px, handing each line to `draw` at its left-aligned (x,y) and
+// returning the y past the last one. Long words that don't fit alone are left overflowing
+// (rare for this copy) rather than hard-split mid-word. Taking the draw as a parameter is
+// what lets shadow-text over the world and plain ink on paper share ONE line-breaking rule
+// -- two copies of this would eventually wrap the same sentence differently.
+template <typename DrawLine>
+float wrapLines(const std::string& text, float x, float y, float maxW, const DrawLine& draw)
 {
     std::string line;
     std::size_t i = 0;
@@ -199,7 +157,7 @@ float softTextWrapped(const std::string& text, float x, float y, float maxW, con
         trial += word;
         if (!line.empty() && UIRenderer::measureText(sFont, trial).width > maxW)
         {
-            softText(line, x, y, c, alpha);
+            draw(line, x, y);
             y += lineH();
             line = word;
         }
@@ -209,10 +167,25 @@ float softTextWrapped(const std::string& text, float x, float y, float maxW, con
     }
     if (!line.empty())
     {
-        softText(line, x, y, c, alpha);
+        draw(line, x, y);
         y += lineH();
     }
     return y;
+}
+
+// Wrapped shadow-text -- the register for anything drawn over the world.
+float softTextWrapped(const std::string& text, float x, float y, float maxW, const Color& c,
+                      float alpha = 1.0f)
+{
+    return wrapLines(text, x, y, maxW, [&](const std::string& s, float lx, float ly)
+                     { softText(s, lx, ly, c, alpha); });
+}
+
+// Wrapped plain text -- the register for ink on a paper panel.
+float inkTextWrapped(const std::string& text, float x, float y, float maxW, const Color& c)
+{
+    return wrapLines(text, x, y, maxW, [&](const std::string& s, float lx, float ly)
+                     { UIRenderer::drawText(sFont, s, lx, ly, c); });
 }
 
 // A list row's full height (icon chip + name). Shared by every list so hit-testing and drawing
@@ -333,10 +306,20 @@ void drawItemDetail(const std::vector<GridItem>& items, const inventory::Registr
 // The Satchel view: a single item list on the LEFT + a detail panel on the RIGHT for the row
 // under the keyboard cursor or the mouse. Hovering a row moves the cursor (so the detail follows
 // the mouse), matching the page's other mouse-driven surfaces. Read-only -- no click action.
-void renderSatchel(PauseState& pause, const std::vector<GridItem>& items,
-                   const inventory::Registry& reg, const IconResolver& icon, const Mouse& mouse,
-                   float cx, float y, Canvas canvas)
+// What the Satchel view needs to draw itself, bundled like CraftView so the signature
+// stays readable as the tab grows.
+struct SatchelView
 {
+    const std::vector<GridItem>& items;
+    const inventory::Registry& reg;
+    const IconResolver& icon;
+    const Mouse& mouse;
+};
+
+void renderSatchel(PauseState& pause, const SatchelView& v, float cx, float y, Canvas canvas)
+{
+    const std::vector<GridItem>& items = v.items;
+    const Mouse& mouse = v.mouse;
     const float contentW = contentBandW(canvas);
     const float leftX = cx - contentW * 0.5f;
     const float colGap = contentW * 0.08f;
@@ -350,9 +333,9 @@ void renderSatchel(PauseState& pause, const std::vector<GridItem>& items,
     if (hover >= 0)
         pause.satchel_sel = hover; // hovering a row selects it (detail follows the mouse)
 
-    drawList(items, reg, icon, items.empty() ? -1 : pause.satchel_sel, leftX, y, listW,
-             "Nothing yet");
-    drawItemDetail(items, reg, items.empty() ? -1 : pause.satchel_sel, rightX, y, rightW);
+    const int sel = items.empty() ? -1 : pause.satchel_sel;
+    drawList(items, v.reg, v.icon, sel, leftX, y, listW, "Nothing yet");
+    drawItemDetail(items, v.reg, sel, rightX, y, rightW);
 }
 
 // The Satchel grid items: everything carried, key items first (they're the meaningful ones),
@@ -512,31 +495,177 @@ Action renderCraft(PauseState& pause, const CraftView& v, float cx, float y, Can
     return (v.mouse.clicked && combineHover) ? Action::Craft : Action::None;
 }
 
-// The Notebook tab: the dated record of readings, grouped by day (undated last).
-// Each day gets a "~ Day N ~" header; observations read plain, thoughts in their
-// faculty hue -- the same register split as the reading box.
-void renderNotebook(const growth::GrowthState& g, const notebook::Record& rec, float cx, float y)
+// `text` cut to fit `maxW`, with an ellipsis when it doesn't. Cuts at a word where it can,
+// so a truncated note trails off mid-thought rather than mid-word.
+std::string elide(const std::string& text, float maxW)
 {
-    const auto groups = notebook::groupByDay(rec);
-    if (groups.empty())
+    if (UIRenderer::measureText(sFont, text).width <= maxW)
+        return text;
+    std::string out;
+    std::size_t i = 0;
+    while (i < text.size())
     {
-        softTextCentered("Empty", cx, y, kTextDim);
+        const std::size_t sp = text.find(' ', i);
+        const std::string word = text.substr(i, sp == std::string::npos ? sp : sp - i);
+        std::string trial = out;
+        if (!trial.empty())
+            trial += ' ';
+        trial += word;
+        if (UIRenderer::measureText(sFont, trial + "...").width > maxW)
+            break;
+        out = trial;
+        i = (sp == std::string::npos) ? text.size() : sp + 1;
+    }
+    return out.empty() ? "..." : out + "...";
+}
+
+// A notebook row: the note in his own words, indented under its dateline. The NOTE is the
+// label -- a rarity word names what a thought is worth, not which one it is, and a column
+// of "Uncommon / Uncommon / Rare" is unreadable. Rarity is carried by the ink the note is
+// written in, not by a mark beside it: a mark with no legend is just a bullet, and at the
+// commonest band its color is near-white, which is exactly what a bullet looks like. The
+// cursored row gets the same warm lift as any list.
+void drawNotebookRow(const growth::GrowthState& g, const notebook::Entry& e, float x, float y,
+                     float rowW, float rowH, bool active)
+{
+    if (active)
+        UIRenderer::drawRect(x, y, rowW, rowH, kCellCursor);
+
+    const observations::Thought& t = *e.thought;
+    const float textX = x + rowH * 0.5f; // indented under the dateline, as a written page is
+    const std::string label = elide(t.text, rowW - (textX - x) - rowH * 0.2f);
+    softText(label, textX, y + (rowH - UIRenderer::measureText(sFont, label).height) * 0.5f,
+             reading_color::forReading(g, t.faculty, t.difficulty), active ? 1.0f : 0.75f);
+}
+
+// A day's heading -- the dateline a written page opens with. `day` 0 is the notebook's
+// "this moment was never recorded" bucket, never a real day (the clock counts from 1).
+void drawDayHeading(int day, float x, float y, float w)
+{
+    const std::string label = day > 0 ? "Day " + std::to_string(day) : "Day unknown";
+    softText(label, x, y, kTextDim);
+    const float lw = UIRenderer::measureText(sFont, label).width;
+    const float ruleX = x + lw + 12.0f;
+    UIRenderer::drawRect(ruleX, y + lineH() * 0.45f, std::max(0.0f, w - (ruleX - x)), 1.0f,
+                         {kTextDim.r, kTextDim.g, kTextDim.b, 0.25f});
+}
+
+// The selected note, read back on the SAME page it was written on: the reading box's paper
+// panel, so a thought looks like one thing whether it's landing or being looked up. Ink on
+// paper here, not the screen's light-on-dark text -- the panel brings its own palette.
+void drawNotebookDetail(const growth::GrowthState& g, const notebook::Entry& e,
+                        const worldclock::WorldClock& clock, bool can_tell_time, float x, float y,
+                        float w, float h)
+{
+    const observations::Thought& t = *e.thought;
+    const Color hue = reading_color::forReading(g, t.faculty, t.difficulty);
+    const float pad = lineH() * 0.7f;
+    const screen_style::Inset in = screen_style::paperPanel(x, y, w, h, hue, pad, pad);
+
+    // Plain text, not the screen's shadow-text: the drop shadow buys legibility over the
+    // moving world, and on paper it just reads as smudged ink.
+    const auto ink = [](const std::string& s, float tx, float ty, const Color& c)
+    { UIRenderer::drawText(sFont, s, tx, ty, c); };
+
+    // Faculty pinned left in its hue, rarity right -- the header the box uses, so the two
+    // surfaces read as one notebook.
+    ink(reading_color::facultyLabel(t.faculty), in.x, in.y, hue);
+    const std::string rarity = reading_color::rarityWord(t.difficulty);
+    ink(rarity, in.x + in.w - UIRenderer::measureText(sFont, rarity).width, in.y,
+        reading_color::rarityColor(t.difficulty));
+    float cy = in.y + lineH() * 1.1f;
+    UIRenderer::drawRect(
+        in.x, cy, in.w, 1.0f,
+        {screen_style::kInkFaint.r, screen_style::kInkFaint.g, screen_style::kInkFaint.b, 0.45f});
+    cy += lineH() * 0.5f;
+
+    // The dateline, in faded ink. The moment is on record either way; the WATCH is what
+    // lets him put an hour to it. Without one he still knows which day of the walk he was
+    // on -- you can count days by sleeping -- just not what time it was.
+    if (notebook::timed(e))
+    {
+        const std::string when = can_tell_time
+                                     ? worldclock::stampAt(clock, e.at)
+                                     : "Day " + std::to_string(worldclock::dayAt(clock, e.at));
+        ink(when, in.x, cy, screen_style::kInkFaint);
+        cy += lineH() * 1.2f;
+    }
+
+    cy = inkTextWrapped(t.text, in.x, cy, in.w, screen_style::kInkBody);
+    cy += lineH() * 0.6f;
+    ink("Spirit  +" + std::to_string(t.spirit_exp), in.x, cy, screen_style::kInkFaint);
+}
+
+// The Notebook tab, drawn as pages: each day gets a dateline, then the notes he wrote under
+// it. Only his own -- what he hasn't thought has no line here. List on the LEFT, the full
+// note on the RIGHT, the same shape as the Satchel; hovering a note selects it.
+void renderNotebook(PauseState& pause, const growth::GrowthState& g, const Content& content,
+                    const Mouse& mouse, float cx, float y, Canvas canvas)
+{
+    const notebook::Record& rec = content.notebook;
+    const observations::State& obs = content.observations;
+    const std::vector<notebook::Day> days = notebook::byDay(rec, obs, content.clock);
+    const float contentW = contentBandW(canvas);
+    const float leftX = cx - contentW * 0.5f;
+    const float colGap = contentW * 0.08f;
+    const float listW = (contentW - colGap) * 0.5f;
+
+    int noteCount = 0;
+    for (const auto& d : days)
+        noteCount += static_cast<int>(d.entries.size());
+    if (noteCount == 0)
+    {
+        softText("Nothing yet", leftX, y, kTextDim);
         return;
     }
-    for (const auto& grp : groups)
+    pause.notebook_sel = std::clamp(pause.notebook_sel, 0, noteCount - 1);
+
+    // Where each note's row sits, walked once. Datelines are chrome -- never selectable -- so
+    // they don't consume a cursor index, which makes the note index and the drawn geometry
+    // disagree unless one walk produces both. This is that walk: the hit-test, the draw, and
+    // the detail panel all read it.
+    struct Row
     {
-        const std::string header = grp.day > 0 ? "~ Day " + std::to_string(grp.day) + " ~" : "~ ~";
-        softTextCentered(header, cx, y, kTextDim);
-        y += lineH() * 1.2f;
-        for (const auto& e : grp.entries)
+        const notebook::Entry* entry;
+        float y;
+    };
+    std::vector<Row> rows;
+    std::vector<std::pair<int, float>> headings; // day -> its y
+    const float rowH = listRowH();
+    float rowY = y;
+    for (const auto& day : days)
+    {
+        headings.emplace_back(day.day, rowY);
+        rowY += lineH() * 1.3f;
+        for (const auto& e : day.entries)
         {
-            const bool thought = e.kind == observations::LineKind::Thought;
-            const Color c = thought ? reading_color::forReading(g, e.faculty, e.difficulty) : kText;
-            softTextCentered(e.text, cx, y, c);
-            y += lineH();
+            rows.push_back(Row{&e, rowY});
+            rowY += rowH;
         }
-        y += lineH() * 0.6f;
+        rowY += lineH() * 0.5f; // breathing room before the next dateline
     }
+
+    // Hover BEFORE drawing, so the highlight and the detail agree with the mouse this frame.
+    for (int i = 0; i < static_cast<int>(rows.size()); ++i)
+        if (engine::ui::pointInRect(mouse.x, mouse.y, leftX, rows[static_cast<std::size_t>(i)].y,
+                                    listW, rowH))
+            pause.notebook_sel = i;
+
+    for (const auto& [day, hy] : headings)
+        drawDayHeading(day, leftX, hy, listW);
+    for (int i = 0; i < static_cast<int>(rows.size()); ++i)
+    {
+        const Row& r = rows[static_cast<std::size_t>(i)];
+        drawNotebookRow(g, *r.entry, leftX, r.y, listW, rowH, i == pause.notebook_sel);
+    }
+    // The page fills the list's fixed region, so it stays one steady sheet rather than
+    // resizing to whatever note is selected.
+    // Whether he can read an hour off a note is the WATCH's business -- the moment itself is
+    // always on record (see noteLanded).
+    const bool canTellTime = inventory::has(content.satchel, "watch");
+    drawNotebookDetail(g, *rows[static_cast<std::size_t>(pause.notebook_sel)].entry, content.clock,
+                       canTellTime, leftX + listW + colGap, y, contentW - listW - colGap,
+                       listRegionH());
 }
 
 // One "Label   Keys" control line, label right-aligned to a shared column so the
@@ -572,7 +701,7 @@ bool menuItem(const std::string& label, float cx, float y, bool selected, const 
 // leave the game), and both keep the walk.
 int renderSystem(float cx, float y, int sel, const Mouse& mouse)
 {
-    constexpr const char* kLabels[kSysItemCount] = {"Controls", "Leave to title",
+    constexpr const char* kLabels[kSysItemCount] = {"Controls", "Settings", "Leave to title",
                                                     "Quit to desktop"};
     int hovered = -1;
     for (int i = 0; i < kSysItemCount; ++i)
@@ -645,6 +774,10 @@ Action commitSystemItem(PauseState& pause, int item)
     case kSysControls:
         pause.view_stack.push_back(PauseState::View::Controls);
         return Action::None;
+    case kSysSettings:
+        // Not a view_stack push: settings is a PHASE (the title opens the same screen), and
+        // the page doesn't own phases. The caller takes it from here.
+        return Action::Settings;
     case kSysLeave:
         return Action::Leave;
     case kSysQuit:
@@ -666,6 +799,38 @@ Action stepSystemMenu(PauseState& pause, bool up, bool down, bool confirm)
 
     if (confirm && pause.system_sel >= 0)
         return commitSystemItem(pause, pause.system_sel);
+    return Action::None;
+}
+
+// How far W/S move a list cursor this frame (0 when neither is down).
+int listStep(bool up, bool down)
+{
+    if (down)
+        return 1;
+    return up ? -1 : 0;
+}
+
+// Hand the keys to whatever tab is showing. System = its item menu; Craft = material select +
+// Combine; Satchel and Notebook = read-only list cursors (W/S walk the rows for the detail
+// panel, clamped at render time against the live list). Self is a plain readout -- no cursor.
+Action stepTab(PauseState& pause, const std::vector<CraftMaterial>& craftMats, bool up, bool down,
+               bool confirm)
+{
+    switch (pause.tab)
+    {
+    case PauseState::Tab::System:
+        return stepSystemMenu(pause, up, down, confirm);
+    case PauseState::Tab::Craft:
+        return stepCraft(pause, craftMats, up, down, confirm);
+    case PauseState::Tab::Satchel:
+        pause.satchel_sel += listStep(up, down);
+        break;
+    case PauseState::Tab::Notebook:
+        pause.notebook_sel += listStep(up, down);
+        break;
+    case PauseState::Tab::Self:
+        break;
+    }
     return Action::None;
 }
 
@@ -707,16 +872,7 @@ Action step(PauseState& pause, bool toggle, bool left, bool right, bool up, bool
         pause.tab = static_cast<PauseState::Tab>(next);
     }
 
-    // Interactive tabs. System = its item menu; Craft = material select + Combine; Satchel =
-    // a read-only grid cursor (W/S walk the cells for the detail panel).
-    if (pause.tab == PauseState::Tab::System)
-        return stepSystemMenu(pause, up, down, confirm);
-    if (pause.tab == PauseState::Tab::Craft)
-        return stepCraft(pause, craftMats, up, down, confirm);
-    if (pause.tab == PauseState::Tab::Satchel && (up || down))
-        pause.satchel_sel += down ? 1 : -1; // clamped at render time to the item count
-
-    return Action::None;
+    return stepTab(pause, craftMats, up, down, confirm);
 }
 
 // Draw the always-visible tab strip (centered near the top) and handle clicks:
@@ -724,8 +880,8 @@ Action step(PauseState& pause, bool toggle, bool left, bool right, bool up, bool
 // gives each tab's x/width so the mouse hit-tests the same rects that are drawn.
 void renderTabStrip(PauseState& pause, float cx, float tabY, const Mouse& mouse)
 {
-    // Order must match PauseState::Tab: Self, Noticed, Satchel, Notebook, System.
-    const char* labels[kTabCount] = {"Self", "Noticed", "Satchel", "Craft", "Notebook", "System"};
+    // Order must match PauseState::Tab: Self, Satchel, Craft, Notebook, System.
+    const char* labels[kTabCount] = {"Self", "Satchel", "Craft", "Notebook", "System"};
     const float tabH = lineH() + 10.0f;
     const float tabGap = 6.0f;
     float widths[kTabCount];
@@ -778,13 +934,13 @@ Action renderTabContent(PauseState& pause, const growth::GrowthState& growth,
     case PauseState::Tab::Self:
         renderSelf(growth, cx, contentY);
         break;
-    case PauseState::Tab::Noticed:
-        renderNoticed(growth, content.observations, cx, contentY);
-        break;
     case PauseState::Tab::Satchel:
-        renderSatchel(pause, satchelGrid(content.satchel, content.items), content.items, icon,
-                      mouse, cx, contentY, canvas);
+    {
+        const std::vector<GridItem> items = satchelGrid(content.satchel, content.items);
+        const SatchelView view{items, content.items, icon, mouse};
+        renderSatchel(pause, view, cx, contentY, canvas);
         break;
+    }
     case PauseState::Tab::Craft:
     {
         const std::vector<CraftMaterial> mats = craftMaterials(content.satchel, content.items);
@@ -792,7 +948,7 @@ Action renderTabContent(PauseState& pause, const growth::GrowthState& growth,
         return renderCraft(pause, view, cx, contentY, canvas);
     }
     case PauseState::Tab::Notebook:
-        renderNotebook(growth, content.notebook, cx, contentY);
+        renderNotebook(pause, growth, content, mouse, cx, contentY, canvas);
         break;
     case PauseState::Tab::System:
     {

@@ -69,4 +69,23 @@ bool buttonHit(float mx, float my, float x, float y, float w, float h)
     return engine::ui::pointInRect(mx, my, x, y, w, h);
 }
 
+void border(float x, float y, float w, float h, const Color& c, float t)
+{
+    UIRenderer::drawRect(x, y, w, t, c);
+    UIRenderer::drawRect(x, y + h - t, w, t, c);
+    UIRenderer::drawRect(x, y, t, h, c);
+    UIRenderer::drawRect(x + w - t, y, t, h, c);
+}
+
+Inset paperPanel(float x, float y, float w, float h, const Color& accent, float pad_x, float pad_y,
+                 float alpha)
+{
+    UIRenderer::drawRect(x, y, w, h, {kPaper.r, kPaper.g, kPaper.b, kPaper.a * alpha});
+    border(x, y, w, h, {kInkBorder.r, kInkBorder.g, kInkBorder.b, 0.85f * alpha});
+    const float margin = pad_x * 0.45f;
+    UIRenderer::drawRect(x + margin, y + pad_y, 2.0f, h - pad_y * 2.0f,
+                         {accent.r, accent.g, accent.b, 0.65f * alpha});
+    return {x + pad_x, y + pad_y, w - pad_x * 2.0f, h - pad_y * 2.0f};
+}
+
 } // namespace screen_style

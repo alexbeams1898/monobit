@@ -29,6 +29,9 @@ add_library(wayworn-systems STATIC
     src/Crafting.cpp
     src/WorldItems.cpp
     src/InteractionMode.cpp
+    src/Settings.cpp
+    src/SettingsScreen.cpp
+    src/WatchHud.cpp
     src/Notebook.cpp
     src/LdtkImport.cpp
     src/PausePage.cpp
@@ -102,6 +105,7 @@ add_executable(wayworn-tests
     tests/formulas_test.cpp
     tests/savegame_test.cpp
     tests/player_movement_test.cpp
+    tests/settings_screen_test.cpp
     tests/title_screen_test.cpp
     tests/text_field_test.cpp
     tests/world_items_test.cpp

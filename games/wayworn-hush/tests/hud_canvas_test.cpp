@@ -26,6 +26,21 @@ hud::Regions loadFrom(const std::string& json)
     std::remove(path.c_str());
     return r;
 }
+
+// The same, for the authored default visibility (which is a preference's seed, not part of
+// the layout -- see hud::loadVisibility).
+hud::Visibility visibilityFrom(const std::string& json,
+                               hud::Visibility fallback = hud::Visibility::Auto)
+{
+    const std::string path = "hud_canvas_vis_test.tmp.json";
+    {
+        std::ofstream f(path);
+        f << json;
+    }
+    const hud::Visibility v = hud::loadVisibility(path, fallback);
+    std::remove(path.c_str());
+    return v;
+}
 } // namespace
 
 TEST_CASE("safeArea fits a 16:9 rect centered in the window", "[hud]")
@@ -73,23 +88,32 @@ TEST_CASE("scale is the safe-area width (uniform HUD scale)", "[hud]")
     REQUIRE(hud::scale(3440, 1440) == Approx(1440.0f * 16.0f / 9.0f)); // pillarboxed width
 }
 
-TEST_CASE("loadRegions defaults to Auto visibility when no file / no key", "[hud]")
+TEST_CASE("loadVisibility keeps the fallback when there's no file / no key", "[hud]")
 {
-    hud::Regions r;
-    hud::loadRegions(r, "does_not_exist.json"); // silent no-op, keeps defaults
-    REQUIRE(r.visibility == hud::Visibility::Auto);
-
-    const hud::Regions noKey = loadFrom(R"({"pad_x": 0.02})");
-    REQUIRE(noKey.visibility == hud::Visibility::Auto);
+    // Missing config must not overwrite what the caller already had -- it is seeding a
+    // preference, not asserting one.
+    REQUIRE(hud::loadVisibility("does_not_exist.json", hud::Visibility::On) == hud::Visibility::On);
+    REQUIRE(visibilityFrom(R"({"pad_x": 0.02})", hud::Visibility::Off) == hud::Visibility::Off);
 }
 
-TEST_CASE("loadRegions parses the visibility mode", "[hud]")
+TEST_CASE("loadVisibility parses the authored default", "[hud]")
 {
-    REQUIRE(loadFrom(R"({"visibility":"auto"})").visibility == hud::Visibility::Auto);
-    REQUIRE(loadFrom(R"({"visibility":"on"})").visibility == hud::Visibility::On);
-    REQUIRE(loadFrom(R"({"visibility":"off"})").visibility == hud::Visibility::Off);
-    // An unrecognized value falls back to Auto (the safe default).
-    REQUIRE(loadFrom(R"({"visibility":"nonsense"})").visibility == hud::Visibility::Auto);
+    REQUIRE(visibilityFrom(R"({"visibility":"auto"})") == hud::Visibility::Auto);
+    REQUIRE(visibilityFrom(R"({"visibility":"on"})") == hud::Visibility::On);
+    REQUIRE(visibilityFrom(R"({"visibility":"off"})") == hud::Visibility::Off);
+    // An unrecognized value keeps the fallback rather than guessing.
+    REQUIRE(visibilityFrom(R"({"visibility":"nonsense"})", hud::Visibility::On) ==
+            hud::Visibility::On);
+}
+
+TEST_CASE("the HUD layout does not carry a visibility of its own", "[hud]")
+{
+    // Regions is authored LAYOUT; visibility is a player PREFERENCE (settings::Settings).
+    // Two homes for it would be two answers to "is the HUD on" -- this pins that the config
+    // read for one doesn't quietly populate the other.
+    static_assert(sizeof(hud::Regions) > 0, "Regions exists");
+    const hud::Regions r = loadFrom(R"({"visibility":"off","pad_x":0.05})");
+    REQUIRE(r.pad_x == Approx(0.05f)); // the layout still loads; the mode simply isn't here
 }
 
 TEST_CASE("loadRegions reads region rects, keeping defaults for missing fields", "[hud]")

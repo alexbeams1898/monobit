@@ -40,8 +40,9 @@ Rect rect(float fx, float fy, float fw, float fh, int windowW, int windowH);
 // pixel sizes (font sizes, paddings) by this to scale them with the window.
 float scale(int windowW, int windowH);
 
-// HUD visibility mode (Elden-Ring style). Settings flips this later; for now the
-// default is authored in config/hud.json.
+// HUD visibility mode (Elden-Ring style). The player's choice lives in
+// settings::Settings (the settings screen writes it, the save carries it); config/hud.json
+// authors only the DEFAULT it starts at.
 //   Auto -- a region draws only when it holds content (calm, anti-crowd default).
 //   On   -- region chrome is always drawn (persistent frame); content fills it.
 //   Off  -- HUD regions never draw.
@@ -64,20 +65,19 @@ struct Regions
     Rect notification{0.80f, 0.68f, 0.18f, 0.24f};
     float pad_x = 0.018f;
     float pad_y = 0.022f;
-    Visibility visibility = Visibility::Auto;
 };
 
-// Load region fractions + visibility from config/hud.json (silent no-op keeping
-// defaults if missing). Call once at startup.
+// Load region fractions from config/hud.json (silent no-op keeping defaults if missing).
+// Call once at startup. Visibility is NOT here: it is a player preference, and a copy on
+// the layout would be a second place for it to be true. loadVisibility reads the authored
+// default separately, for whoever seeds the preferences.
 void loadRegions(Regions& out, const std::string& path);
+
+// The authored DEFAULT visibility from config/hud.json ("visibility"), or `fallback` if
+// absent. Seeds settings::Settings at boot; a save's stored choice then overrides it.
+Visibility loadVisibility(const std::string& path, Visibility fallback);
 
 // Resolve a canvas-fraction rect (e.g. Regions::thought) to a window-pixel Rect.
 Rect resolve(const Rect& canvasRect, int windowW, int windowH);
-
-// Draw the empty region frames (faint panel + border) for the "On" visibility
-// mode -- the persistent chrome shown even when a region holds no content. No-op
-// for Auto/Off (the render loop only calls this when the mode is On). Content
-// systems still draw their own filled panels on top when they have something.
-void drawIdleFrames(const Regions& r, int windowW, int windowH);
 
 } // namespace hud

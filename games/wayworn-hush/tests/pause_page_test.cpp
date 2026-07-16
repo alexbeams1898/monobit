@@ -52,8 +52,6 @@ TEST_CASE("A/D page through the tabs, wrapping", "[pause]")
 {
     PauseState p = opened(); // Self
     pause_page::step(p, false, false, /*right=*/true, false, false, false);
-    REQUIRE(p.tab == PauseState::Tab::Noticed);
-    pause_page::step(p, false, false, /*right=*/true, false, false, false);
     REQUIRE(p.tab == PauseState::Tab::Satchel);
     pause_page::step(p, false, false, /*right=*/true, false, false, false);
     REQUIRE(p.tab == PauseState::Tab::Craft);
@@ -75,13 +73,15 @@ TEST_CASE("System tab: nothing selected until W/S; then move/wrap", "[pause]")
     pause_page::step(p, false, false, false, false, /*down=*/true, false);
     REQUIRE(p.system_sel == 0); // down from none -> first item (Controls)
     pause_page::step(p, false, false, false, false, /*down=*/true, false);
-    REQUIRE(p.system_sel == 1); // Leave to title
+    REQUIRE(p.system_sel == 1); // Settings
     pause_page::step(p, false, false, false, false, /*down=*/true, false);
-    REQUIRE(p.system_sel == 2); // Quit to desktop
+    REQUIRE(p.system_sel == 2); // Leave to title
+    pause_page::step(p, false, false, false, false, /*down=*/true, false);
+    REQUIRE(p.system_sel == 3); // Quit to desktop
     pause_page::step(p, false, false, false, false, /*down=*/true, false);
     REQUIRE(p.system_sel == 0); // wraps to first
     pause_page::step(p, false, false, false, /*up=*/true, false, false);
-    REQUIRE(p.system_sel == 2); // wraps to last
+    REQUIRE(p.system_sel == 3); // wraps to last
 }
 
 TEST_CASE("System tab: up from none picks the last item", "[pause]")
@@ -89,7 +89,7 @@ TEST_CASE("System tab: up from none picks the last item", "[pause]")
     PauseState p = onSystem();
     REQUIRE(p.system_sel == -1);
     pause_page::step(p, false, false, false, /*up=*/true, false, false);
-    REQUIRE(p.system_sel == 2); // up from none -> last item (Quit to desktop)
+    REQUIRE(p.system_sel == 3); // up from none -> last item (Quit to desktop)
 }
 
 TEST_CASE("System tab: confirm with nothing selected does nothing", "[pause]")
@@ -130,18 +130,34 @@ TEST_CASE("System tab: confirm on Leave to title returns Leave", "[pause]")
     // routed every non-Controls item to Quit, which would have quit the game here.
     PauseState p = onSystem();
     pause_page::step(p, false, false, false, false, /*down=*/true, false); // Controls
+    pause_page::step(p, false, false, false, false, /*down=*/true, false); // Settings
     pause_page::step(p, false, false, false, false, /*down=*/true, false); // Leave to title
-    REQUIRE(p.system_sel == 1);
+    REQUIRE(p.system_sel == 2);
     const Action a = pause_page::step(p, false, false, false, false, false, /*confirm=*/true);
     REQUIRE(a == Action::Leave);
     REQUIRE(p.open); // the caller acts on it
+}
+
+TEST_CASE("System tab: confirm on Settings returns Settings, leaving the page open", "[pause]")
+{
+    // Settings is a PHASE, not a sub-view: the page reports it and the caller owns the
+    // move. The page stays open so backing out of settings returns here, not to a world
+    // that quietly unpaused.
+    PauseState p = onSystem();
+    pause_page::step(p, false, false, false, false, /*down=*/true, false); // Controls
+    pause_page::step(p, false, false, false, false, /*down=*/true, false); // Settings
+    REQUIRE(p.system_sel == 1);
+    const Action a = pause_page::step(p, false, false, false, false, false, /*confirm=*/true);
+    REQUIRE(a == Action::Settings);
+    REQUIRE(p.open);
+    REQUIRE(p.view_stack.empty()); // NOT pushed as a sub-view
 }
 
 TEST_CASE("System tab: confirm on Quit to desktop returns Quit", "[pause]")
 {
     PauseState p = onSystem();
     pause_page::step(p, false, false, false, /*up=*/true, false, false); // up from none -> last
-    REQUIRE(p.system_sel == 2);
+    REQUIRE(p.system_sel == 3);
     const Action a = pause_page::step(p, false, false, false, false, false, /*confirm=*/true);
     REQUIRE(a == Action::Quit);
     REQUIRE(p.open); // caller acts on Quit
@@ -170,11 +186,10 @@ TEST_CASE("Input while closed (no toggle) does nothing", "[pause]")
 TEST_CASE("Craft tab: Space stacks a material into the pot; Combine returns Craft", "[pause]")
 {
     using pause_page::CraftMaterial;
-    // Navigate to the Craft tab (Self -> Noticed -> Satchel -> Craft).
+    // Straight to the Craft tab -- how it's REACHED is the tab-paging test's business
+    // (above); counting D presses here would break this test whenever a tab is added.
     PauseState p = opened();
-    for (int i = 0; i < 3; ++i)
-        pause_page::step(p, false, false, /*right=*/true, false, false, false);
-    REQUIRE(p.tab == PauseState::Tab::Craft);
+    p.tab = PauseState::Tab::Craft;
 
     // Carry 3 thyme + 1 water; a trailing Combine row. Cursor starts on row 0 (thyme).
     const std::vector<CraftMaterial> mats = {{"thyme", 3}, {"water", 1}};
@@ -203,11 +218,8 @@ TEST_CASE("Craft tab: Space stacks a material into the pot; Combine returns Craf
 
 TEST_CASE("Satchel tab: W/S move the detail cursor", "[pause]")
 {
-    // Navigate to the Satchel tab (Self -> Noticed -> Satchel).
     PauseState p = opened();
-    for (int i = 0; i < 2; ++i)
-        pause_page::step(p, false, false, /*right=*/true, false, false, false);
-    REQUIRE(p.tab == PauseState::Tab::Satchel);
+    p.tab = PauseState::Tab::Satchel;
 
     // S advances the cursor, W steps it back. (Clamping to the item count happens at render
     // time against the live satchel; step only nudges. Mouse hover selection lives in render(),
@@ -217,4 +229,26 @@ TEST_CASE("Satchel tab: W/S move the detail cursor", "[pause]")
     REQUIRE(p.satchel_sel == 1);
     pause_page::step(p, false, false, false, /*up=*/true, false, false);
     REQUIRE(p.satchel_sel == 0);
+}
+
+TEST_CASE("Notebook tab: W/S move the detail cursor", "[pause]")
+{
+    PauseState p = opened();
+    p.tab = PauseState::Tab::Notebook;
+
+    // Same read-only cursor the Satchel has: step nudges, render clamps to the row count.
+    REQUIRE(p.notebook_sel == 0);
+    pause_page::step(p, false, false, false, false, /*down=*/true, false);
+    REQUIRE(p.notebook_sel == 1);
+    pause_page::step(p, false, false, false, /*up=*/true, false, false);
+    REQUIRE(p.notebook_sel == 0);
+}
+
+TEST_CASE("W/S on a tab with no cursor does nothing", "[pause]")
+{
+    // Self is a plain readout -- W/S must not quietly drive another tab's cursor.
+    PauseState p = opened();
+    pause_page::step(p, false, false, false, false, /*down=*/true, false);
+    REQUIRE(p.satchel_sel == 0);
+    REQUIRE(p.notebook_sel == 0);
 }

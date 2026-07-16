@@ -7,11 +7,11 @@
 #include <cctype>
 #include <string>
 
-// Shared tint for an observation reading, used by both the thought box (as a
-// reading surfaces) and the Noticed record: the HUE comes from the faculty that
-// pulled it, and the BRIGHTNESS from its difficulty (rarity) -- so color says
-// "which part of you saw it" and brightness says "how rare". Baseline readings
-// (no faculty / difficulty 0) stay the neutral off-white text color.
+// Shared tint for an observation reading, used by the thought box (as a reading
+// surfaces) and the notebook: the HUE comes from the faculty that pulled it, and
+// the BRIGHTNESS from its difficulty (rarity) -- so color says "which part of you
+// saw it" and brightness says "how rare". Baseline readings (no faculty /
+// difficulty 0) stay the neutral off-white text color.
 namespace reading_color
 {
 

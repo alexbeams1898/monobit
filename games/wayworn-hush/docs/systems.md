@@ -33,16 +33,19 @@
 - **loot** — gather loot tables + a pure weighted roll (the lottery) — [include/Loot.h](../include/Loot.h)
 - **crafting** — Little-Alchemy making: ingredients are the only requirement (no unlock gate); match by type-set + a closeness near-miss signal; stat+roll outcome quality; inverse-mastery XP; first-make RECORDS a recipe (learning is book-keeping, not a prerequisite); deeds can teach recipes early via `grant_recipe` — [include/Crafting.h](../include/Crafting.h) / [design/CRAFTING.md](design/CRAFTING.md)
 - **world_items** — items lying in the world: floor sprites + actionable-only interactables (pickups / gather nodes), with a rim-outline cue — [include/WorldItems.h](../include/WorldItems.h)
-- **notebook** — the dated record of readings (gated on carrying the notebook; time gated on the watch) — [include/Notebook.h](../include/Notebook.h)
+- **notebook** — the thought collection: the thoughts he has reached, as dated pages; stores only the world-clock moment each landed, always (writing gated on carrying the notebook; the watch buys reading the HOUR off a note, not the moment being recorded) — [include/Notebook.h](../include/Notebook.h)
 
 ## UI + feedback
 
 - **thought_box** — the HUD reading/menu surface: typed readings + the deed menu — [include/ThoughtBox.h](../include/ThoughtBox.h)
 - **glimmer** — the warm observation glow (brightness from the faculty formula; active-target only) — [include/Glimmer.h](../include/Glimmer.h)
 - **interaction_mode** — the movement-stance cue: an Observe/Act badge + a transition sound (see [design/INTERACTION-MODEL.md](design/INTERACTION-MODEL.md)) — [include/InteractionMode.h](../include/InteractionMode.h)
+- **watch_hud** — the carried pocket watch's corner readout; drawn only while the watch is in the satchel, and holds with the world's clock while paused — [include/WatchHud.h](../include/WatchHud.h)
 - **head_marker** — the over-head thought bubble that tracks the player — [include/HeadMarker.h](../include/HeadMarker.h)
 - **notify** — ambient self-fading toasts (finds, unlocks, EXP) — [include/Notify.h](../include/Notify.h)
-- **pause_page** — the on-demand screen (Self / Noticed / Satchel / Craft / Notebook / System tabs); Satchel + Craft share a list+detail layout with mouse & keyboard nav — [include/PausePage.h](../include/PausePage.h)
+- **settings** — how the player likes the game: HUD mode + per-piece toggles. The installation's, not any pilgrim's -- it sits beside the roster in the save — [include/Settings.h](../include/Settings.h)
+- **settings_screen** — the one settings surface, opened from the title AND the pause System tab — [include/SettingsScreen.h](../include/SettingsScreen.h)
+- **pause_page** — the on-demand screen (Self / Satchel / Craft / Notebook / System tabs); Satchel, Craft + Notebook share a list+detail layout with mouse & keyboard nav — [include/PausePage.h](../include/PausePage.h)
 - **hud::canvas / regions** — fixed HUD region rects + scale — [include/HudCanvas.h](../include/HudCanvas.h)
 - **screen_to_world** — cursor → world transform (undoes the pixel-target blit + camera) — [include/ScreenToWorld.h](../include/ScreenToWorld.h)
 - **tune_panel** — the dev tuning/inspection panel — [include/TunePanel.h](../include/TunePanel.h)

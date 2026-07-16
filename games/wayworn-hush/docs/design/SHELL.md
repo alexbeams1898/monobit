@@ -86,8 +86,9 @@ keys) — the greeting is not a new visual language.
 ## Open threads (decided when built)
 
 - What "natural moments" means for autosave, and how (or whether) it's surfaced.
-- Whether settings (audio, display) become real and persisted — nothing in the
-  studio's prior art does this today; it would be greenfield.
+- Which settings beyond the HUD become real (audio, display/fullscreen). The
+  surface exists now: one Settings screen, opened from the title and from the
+  pause System tab, persisted beside the roster. Adding one is a row, not a system.
 - Whether the greeting carries anything beyond the minimum (title, continue,
   begin, leave).
 - Where the crash reporter's output belongs once a save directory exists.

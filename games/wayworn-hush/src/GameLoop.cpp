@@ -13,6 +13,7 @@
 #include "SaveGame.h"
 #include "ScreenInput.h"
 #include "ScreenToWorld.h"
+#include "SettingsScreen.h"
 #include "ThoughtBox.h"
 #include "TitleScreen.h"
 #include "TunePanel.h"
@@ -62,14 +63,26 @@ std::string surfaceUnder(const EntityManager& em, const GameState& gs, float wx,
     return it == gs.tile_surface.end() ? std::string{} : it->second;
 }
 
-// Step the pause page from this frame's input, returning its action. F=back/toggle,
-// A/D=tabs, W/S=move, Space=confirm; RMB is back-only (keeps it free as a world verb).
-// The action menu (menuUp) is modal and captures those keys, so the page ignores input
-// while a menu is up. Also muffles the soundtrack while the page is open.
+// "Back" this frame, however the player said it: F, Escape, or a right-click. ONE
+// definition, because a back that works on one surface and not the next is worse than no
+// back at all -- the player learns the gesture on the pause page and then finds it dead in
+// settings. Every screen asks here rather than deciding for itself.
+bool backPressed(EntityManager& em)
+{
+    return pressedThisFrame(em, SDL_SCANCODE_F) || pressedThisFrame(em, SDL_SCANCODE_ESCAPE) ||
+           clickedThisFrame(em, SDL_BUTTON_RIGHT);
+}
+
+// Step the pause page from this frame's input, returning its action. F/Esc/RMB=back-toggle,
+// A/D=tabs, W/S=move, Space=confirm. The action menu (menuUp) is modal and captures those
+// keys, so the page ignores input while a menu is up. Also muffles the soundtrack while the
+// page is open.
 pause_page::Action stepPausePage(EntityManager& em, GameState& gs, bool menuUp)
 {
-    const bool rmbBack = gs.pause.open && clickedThisFrame(em, SDL_BUTTON_RIGHT);
-    const bool toggle = !menuUp && (pressedThisFrame(em, SDL_SCANCODE_F) || rmbBack);
+    // RMB only BACKS OUT of an open page -- it must not open one, staying free as a world
+    // verb (right-clicking the world is not a request for a menu).
+    const bool back = gs.pause.open ? backPressed(em) : pressedThisFrame(em, SDL_SCANCODE_F);
+    const bool toggle = !menuUp && back;
     const bool left = !menuUp && pressedThisFrame(em, SDL_SCANCODE_A);
     const bool right = !menuUp && pressedThisFrame(em, SDL_SCANCODE_D);
     const bool up = !menuUp && pressedThisFrame(em, SDL_SCANCODE_W);
@@ -170,6 +183,23 @@ WorldEnterFn sWorldEnter = nullptr;
 void markProgress(GameState& gs)
 {
     ++gs.progress_events;
+}
+
+// Write down thoughts that just landed. The notebook keeps only WHEN each one came --
+// which thoughts he's had is already the observation record's job, and what they're
+// worth is the thought's own. Writing at all needs the notebook in hand; GameLoop owns
+// that item knowledge, which is why the note happens here rather than where the thought
+// fired.
+//
+// The moment is ALWAYS recorded. The world's time runs whether or not he can read it --
+// the watch is an instrument, not the clock -- so whether a note's time can be TOLD is a
+// question for whoever displays it, never a reason to lose it here.
+void noteLanded(GameState& gs, const std::vector<std::string>& landed)
+{
+    if (landed.empty() || !inventory::has(gs.satchel, "notebook"))
+        return;
+    for (const auto& id : landed)
+        notebook::note(gs.notebook, id, gs.clock.seconds);
 }
 
 // Drop this frame's one-shot input after every consumer has seen it (the engine fills the
@@ -273,6 +303,11 @@ void enactTitleAction(Engine& engine, EntityManager& em, GameState& gs, title_sc
         load_screen::reset();
         gs.app.phase = app::Phase::Loading;
         break;
+    case title_screen::Action::Settings:
+        settings_screen::reset();
+        gs.app.settings_return_to = app::Phase::Greeting;
+        gs.app.phase = app::Phase::Settings;
+        break;
     case title_screen::Action::Quit:
         engine.requestQuit();
         break;
@@ -339,7 +374,9 @@ void updateNaming(Engine& engine, EntityManager& em, GameState& gs, double dt)
     keys.home = pressedThisFrame(em, SDL_SCANCODE_HOME);
     keys.end = pressedThisFrame(em, SDL_SCANCODE_END);
     keys.confirm = pressedThisFrame(em, SDL_SCANCODE_RETURN);
-    keys.back = pressedThisFrame(em, SDL_SCANCODE_ESCAPE);
+    // NOT backPressed(): this screen is typing a name, and F is a letter -- the shared
+    // back-gesture would abort the moment the player typed one. Escape and RMB only.
+    keys.back = pressedThisFrame(em, SDL_SCANCODE_ESCAPE) || clickedThisFrame(em, SDL_BUTTON_RIGHT);
 
     enactNameAction(engine, em, gs, name_screen::step(keys, dt));
 }
@@ -362,8 +399,14 @@ void enactLoadAction(Engine& engine, EntityManager& em, GameState& gs, load_scre
         savegame::remove(file, load_screen::id());
         if (savegame::save(file))
             gs.app.pilgrim_count = static_cast<int>(file.pilgrims.size());
-        // Forgetting the last pilgrim leaves nothing to choose from; the roster stays up
-        // (it says so) rather than yanking the player somewhere they didn't ask to go.
+        // Forgetting the LAST pilgrim empties the roster, and a roster of nobody is not a
+        // screen -- there is nothing there to choose. Leave for the title, which shows Load
+        // Game disabled for the same reason.
+        if (gs.app.pilgrim_count == 0)
+        {
+            title_screen::reset();
+            gs.app.phase = app::Phase::Greeting;
+        }
         break;
     }
     case load_screen::Action::Back:
@@ -373,6 +416,40 @@ void enactLoadAction(Engine& engine, EntityManager& em, GameState& gs, load_scre
     case load_screen::Action::None:
         break;
     }
+}
+
+// Leaving settings: keep the preferences and go back where they were opened from.
+//
+// Its own write, not writeSave's: a preference belongs to the INSTALLATION, so it has to
+// persist from the title too -- where writeSave does nothing, there being no walk to keep.
+// Reads the file fresh and puts back only `prefs`, so this can't clobber a roster.
+void enactSettingsAction(GameState& gs, settings_screen::Action action)
+{
+    if (action != settings_screen::Action::Back)
+        return;
+    savegame::File file = savegame::load();
+    file.prefs = gs.prefs;
+    savegame::save(file);
+    gs.app.phase = gs.app.settings_return_to;
+    if (gs.app.phase == app::Phase::Greeting)
+        title_screen::reset();
+}
+
+// Settings: W/S move, Space opens a category, A/D change the highlighted setting, and back
+// (F / Esc / RMB) steps out a level -- out of a category, then out of the screen entirely,
+// to wherever it was opened from. Changes land in gs.prefs as they're made; the write
+// happens on the way out.
+// Takes em by non-const ref: reading the back gesture CONSUMES a right-click (so the
+// world underneath never also sees it).
+void updateSettings(EntityManager& em, GameState& gs)
+{
+    const bool up = pressedThisFrame(em, SDL_SCANCODE_W);
+    const bool down = pressedThisFrame(em, SDL_SCANCODE_S);
+    const bool left = pressedThisFrame(em, SDL_SCANCODE_A);
+    const bool right = pressedThisFrame(em, SDL_SCANCODE_D);
+    const bool confirm = pressedThisFrame(em, SDL_SCANCODE_SPACE);
+    enactSettingsAction(
+        gs, settings_screen::step(gs.prefs, up, down, left, right, confirm, backPressed(em)));
 }
 
 // The roster: walk as someone, forget someone, or go back.
@@ -385,13 +462,15 @@ void updateLoading(Engine& engine, EntityManager& em, GameState& gs)
     const bool down = pressedThisFrame(em, SDL_SCANCODE_S);
     const bool confirm = pressedThisFrame(em, SDL_SCANCODE_RETURN);
     const bool forget = pressedThisFrame(em, SDL_SCANCODE_DELETE);
-    const bool back = pressedThisFrame(em, SDL_SCANCODE_ESCAPE);
+    const bool back = backPressed(em);
 
     enactLoadAction(engine, em, gs, load_screen::step(entries, up, down, confirm, forget, back));
 }
 
-// Is the app in a menu rather than the world? The menus don't tick a world (there isn't
-// one yet) and each owns the whole screen.
+// Is the app in a menu rather than the world? A menu owns the whole screen and no world
+// ticks under it. For the title/naming/roster there is no world to tick; for Settings --
+// which can be opened from a walk -- there is one, and it holds exactly as it does behind
+// the pause page. Either way the world doesn't move while a menu is up.
 bool inMenu(const GameState& gs)
 {
     return gs.app.phase != app::Phase::Playing;
@@ -411,6 +490,9 @@ void updateMenu(Engine& engine, EntityManager& em, GameState& gs, double dt)
         break;
     case app::Phase::Loading:
         updateLoading(engine, em, gs);
+        break;
+    case app::Phase::Settings:
+        updateSettings(em, gs);
         break;
     case app::Phase::Playing:
         break; // not a menu
@@ -478,8 +560,10 @@ void pumpStatChangeThoughts(GameState& gs)
     if (statSum == sLastStatSum)
         return;
     sLastStatSum = statSum;
-    gs.growth.spirit_exp +=
-        observations::evaluateStats(gs.observations, gs.growth, observeNudge).earned;
+    const observations::ObserveResult r =
+        observations::evaluateStats(gs.observations, gs.growth, observeNudge);
+    gs.growth.spirit_exp += r.earned;
+    noteLanded(gs, r.landed); // a stat rising can land a thought -- it gets written down too
 }
 
 // Conclusions are just deeper observations -- they surface the same way.
@@ -687,6 +771,14 @@ void enactPageAction(Engine& engine, EntityManager& em, GameState& gs, pause_pag
         writeSave(em, gs); // the walk is kept before the world it happened in goes away
         leaveToTitle(em, gs);
         break;
+    case pause_page::Action::Settings:
+        // The page stays OPEN behind it: settings was reached from the pause page, so
+        // backing out of settings returns to the page it was opened from, not to a world
+        // that silently unpaused underneath.
+        settings_screen::reset();
+        gs.app.settings_return_to = app::Phase::Playing;
+        gs.app.phase = app::Phase::Settings;
+        break;
     case pause_page::Action::Craft:
         attemptCraft(gs);
         break;
@@ -721,6 +813,7 @@ void despawnObservableEntity(EntityManager& em, GameState& gs, const std::string
 void enactConfirm(EntityManager& em, GameState& gs, const thought_box::ConfirmResult& r)
 {
     gs.growth.spirit_exp += r.earned;
+    noteLanded(gs, r.landed);
     if (!r.granted.empty() || !r.gathered.empty())
         grantAndToast(gs, r.granted, r.gathered);
     for (const auto& recipeId : r.taught) // a deed handed over a recipe -> learn it (+ reward)
@@ -759,8 +852,10 @@ void onInteractionFired(GameState& gs, const interaction::Outcome& out)
     // Walking (Observe stance) -> the reading only. Bank its EXP. Seed the baseline deeds AFTER
     // observing (observing is what makes them available -- observed_tier is set by pushObserve)
     // so they don't toast "1 new action available"; only later-unlocked deeds announce.
-    gs.growth.spirit_exp +=
+    const observations::ObserveResult observed =
         thought_box::pushObserve(gs.observations, gs.growth, spot, observeNudge);
+    gs.growth.spirit_exp += observed.earned;
+    noteLanded(gs, observed.landed);
     seedObservedActionsAsKnown(gs, spot);
     markProgress(gs); // a reading landed -- worth keeping
 }
@@ -873,9 +968,12 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
 
     // Ambient triggers: Enter observables (areas, moods) fire on their own when the player
     // is within range -- no observe verb. Deliberate object observing stays in
-    // handleObserveInput. Fires once each; earns Spirit EXP like a deliberate reading.
-    gs.growth.spirit_exp +=
-        observations::triggerProximity(gs.observations, gs.growth, pt.x, pt.y, observeNudge).earned;
+    // handleObserveInput. Fires once each; earns Spirit EXP like a deliberate reading, and
+    // its thoughts are written down like one.
+    const observations::ObserveResult ambient =
+        observations::triggerProximity(gs.observations, gs.growth, pt.x, pt.y, observeNudge);
+    gs.growth.spirit_exp += ambient.earned;
+    noteLanded(gs, ambient.landed);
 
     // Read the left-click ONCE (mouseClicked consumes it) so the same click can't both
     // advance a reading AND fire an interactable / leak to the pause page.
@@ -948,15 +1046,8 @@ void gamePreRender(Engine& engine, EntityManager& em)
     // tick (see engines/engine/docs/ENGINE.md "Animation system").
     AnimationSystem::update(em, static_cast<float>(engine.frameDt()));
 
-    // The notebook records a reading as it surfaces IFF the pilgrim carries the
-    // notebook (key-item gate); the entry is dated only if he also carries a watch
-    // (else undated). GameLoop owns the item/clock knowledge; the box just records.
-    thought_box::RecordSink sink;
-    sink.record = &gs.notebook;
-    sink.enabled = inventory::has(gs.satchel, "notebook");
-    sink.day = inventory::has(gs.satchel, "watch") ? worldclock::day(gs.clock) : 0;
     thought_box::update(gs.observations, gs.growth, static_cast<float>(engine.frameDt()),
-                        engine.windowWidth(), engine.windowHeight(), sink);
+                        engine.windowWidth(), engine.windowHeight());
 }
 
 void gameRenderWorld(Engine& engine, EntityManager& em, float camX, float camY, float alpha)
@@ -1019,6 +1110,10 @@ void gameRenderUI(Engine& engine, EntityManager& em)
                                                 load_screen::Mouse{fx, fy, clicked}, ww, wh));
             break;
         }
+        case app::Phase::Settings:
+            enactSettingsAction(gs, settings_screen::render(
+                                        gs.prefs, settings_screen::Mouse{fx, fy, clicked}, ww, wh));
+            break;
         case app::Phase::Playing:
             break; // not a menu
         }
@@ -1026,24 +1121,27 @@ void gameRenderUI(Engine& engine, EntityManager& em)
         return;
     }
 
-    // HUD visibility mode (see hud::Visibility): Off suppresses all HUD region
-    // drawing; On adds always-on region frames under the content; Auto (default)
-    // draws only regions that hold content. The pause page is separate (F-gated),
-    // so Off still lets the player open it.
-    const bool hudOff = gs.hud.visibility == hud::Visibility::Off;
-    if (gs.hud.visibility == hud::Visibility::On)
-        hud::drawIdleFrames(gs.hud, ww, wh);
+    // CONTENT -- the game speaking. Not the HUD's business and not settable: the reading
+    // box shows because something is being said, and hiding it would mute the game rather
+    // than tidy the screen (see "Content is not HUD" in docs/design/HUD.md). Drawn in
+    // native window space (the engine's UI pass runs after the world blit, at window
+    // resolution); tinted by faculty + rarity via the growth state.
+    thought_box::render(gs.growth, ww, wh);
 
-    if (!hudOff)
+    // HUD -- status, on screen because it is always true. The visibility mode governs the
+    // lot of it, and each piece answers to its own setting besides: a piece switched off is
+    // gone at any mode. The pause page is separate (F-gated), so Off still opens it.
+    if (gs.prefs.hud.visibility != hud::Visibility::Off)
     {
-        // Inner-monologue textbox, drawn in native window space (the engine's UI
-        // pass runs after the world blit, at window resolution). Tinted by faculty
-        // + rarity via the growth state.
-        thought_box::render(gs.growth, ww, wh);
-
-        // Interaction-stance badge (Observe / Act) so the player always knows which verb an
+        // The stance badge (Observe / Act), so the player always knows which verb an
         // interact will do.
-        interaction_mode::render(gs.int_mode_state, gs.int_mode_config, ww, wh);
+        if (gs.prefs.hud.show_stance)
+            interaction_mode::render(gs.int_mode_state, gs.int_mode_config, ww, wh);
+
+        // What the watch says, while one is carried. The world's clock is frozen behind the
+        // pause page, so this reads as a held hand there rather than a stale number.
+        watch_hud::render(gs.watch_hud_config, gs.clock,
+                          gs.prefs.hud.show_time && inventory::has(gs.satchel, "watch"), ww, wh);
     }
 
     int mx = 0;
@@ -1052,23 +1150,22 @@ void gameRenderUI(Engine& engine, EntityManager& em)
     const bool lClick = engine::ui::mouseClicked(em, SDL_BUTTON_LEFT);
 
     // Mouse on the action menu (interchangeable with W/S + Space): hover an option
-    // to highlight, click to confirm. Runs after render() stashes menu geometry, so
-    // it's skipped when the HUD is Off (no menu drawn, geometry stale).
+    // to highlight, click to confirm. Runs after render() stashes the menu's geometry.
     // The pause page can't be open while the menu is up, so the click is theirs to
-    // share without conflict.
-    if (!hudOff)
-        enactConfirm(em, gs,
-                     thought_box::menuMouse(gs.observations, gs.growth, observeNudge,
-                                            static_cast<float>(mx), static_cast<float>(my),
-                                            lClick));
+    // share without conflict. Not gated on the HUD mode: a deed menu is CONTENT -- the
+    // player opened it and it is asking them something -- so hiding the HUD must never
+    // leave it on screen with dead clicks.
+    enactConfirm(em, gs,
+                 thought_box::menuMouse(gs.observations, gs.growth, observeNudge,
+                                        static_cast<float>(mx), static_cast<float>(my), lClick));
 
     // Pause page over everything (no-op when closed). Mouse is interchangeable
     // with the keyboard controls: hover a tab to highlight, click to switch,
     // click Quit on the System tab to exit. Mouse handling lives here because it
     // hit-tests the geometry render() draws.
     const pause_page::Mouse mouse{static_cast<float>(mx), static_cast<float>(my), lClick};
-    const pause_page::Content content{gs.observations, gs.satchel, gs.items,
-                                      gs.notebook,     gs.recipes, gs.crafting_state};
+    const pause_page::Content content{gs.observations, gs.satchel, gs.items,         gs.notebook,
+                                      gs.clock,        gs.recipes, gs.crafting_state};
     // Resolve item-icon paths to textures through the engine's cache (the page stays engine-
     // type-free). Empty path -> 0 (a swatch fallback in the grid).
     const pause_page::IconResolver icon = [&engine](const std::string& path) -> std::uint32_t
@@ -1081,9 +1178,9 @@ void gameRenderUI(Engine& engine, EntityManager& em)
 
     // Notification toasts render LAST -- above the pause page's dark overlay -- so a craft/find
     // toast stays visible while the Craft tab is open. Non-blocking, self-fading, always on top.
-    // (Suppressed only when the whole HUD is Off.)
-    if (!hudOff)
-        notify::render(static_cast<float>(engine.frameDt()), ww, wh);
+    // CONTENT, not HUD: a toast exists because something just happened, and says so once. The
+    // HUD mode doesn't silence it any more than it silences a reading.
+    notify::render(static_cast<float>(engine.frameDt()), ww, wh);
 
     clearOneShotInput(em);
 }

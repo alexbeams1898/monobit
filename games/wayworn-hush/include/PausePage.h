@@ -12,8 +12,8 @@
 
 using FontHandle = int;
 
-// The pause page -- the game's on-demand record (the self + what's been
-// noticed) plus a system tab, opened with F. No persistent HUD; this screen is
+// The pause page -- the game's on-demand record (the self + what he's come to
+// understand) plus a system tab, opened with F. No persistent HUD; this screen is
 // where standing information lives (see docs/design/GAME-SYSTEMS.md). Drawn in
 // wayworn's minimal register: a soft overlay, shadow-text, muted tab chrome.
 namespace pause_page
@@ -22,11 +22,12 @@ namespace pause_page
 // An action a frame of input committed.
 enum class Action
 {
-    None,   // nothing this frame
-    Resume, // close the page, unfreeze the world
-    Leave,  // back to the title (the walk is saved on the way out)
-    Quit,   // exit to desktop (the walk is saved on the way out)
-    Craft   // the player confirmed a craft attempt (pause.craft_selected); the caller runs it
+    None,     // nothing this frame
+    Resume,   // close the page, unfreeze the world
+    Settings, // open the settings screen (the caller owns the phase; it returns here)
+    Leave,    // back to the title (the walk is saved on the way out)
+    Quit,     // exit to desktop (the walk is saved on the way out)
+    Craft     // the player confirmed a craft attempt (pause.craft_selected); the caller runs it
 };
 
 // Set the font once after FontManager loads it.
@@ -74,14 +75,16 @@ struct Mouse
 };
 
 // The data the page's read-only tabs display, bundled so the render signature
-// stays small as tabs are added: what's noticed (observations), what's carried
-// (satchel + item defs for names/rarity), and the dated readings record (notebook).
+// stays small as tabs are added: what's been observed and thought (observations),
+// what's carried (satchel + item defs for names/rarity), and when each thought was
+// written down (notebook -- the thoughts themselves come from observations).
 struct Content
 {
     const observations::State& observations;
     const inventory::Satchel& satchel;
     const inventory::Registry& items;
     const notebook::Record& notebook;
+    const worldclock::WorldClock& clock;   // resolves a note's moment to its day + dateline
     const crafting::Registry& recipes;     // for the Craft tab (which recipes are realized)
     const crafting::State& crafting_state; // discovery state (known recipes)
 };

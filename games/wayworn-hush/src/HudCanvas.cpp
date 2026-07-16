@@ -1,5 +1,7 @@
 #include "HudCanvas.h"
 
+#include "JsonConfig.h"
+#include "Settings.h"
 #include "UIRenderer.h"
 
 #include <nlohmann/json.hpp>
@@ -81,41 +83,24 @@ void loadRegions(Regions& out, const std::string& path)
     out.notification = readRect(j, "notification", out.notification);
     out.pad_x = j.value("pad_x", out.pad_x);
     out.pad_y = j.value("pad_y", out.pad_y);
-    const std::string vis = j.value("visibility", std::string{"auto"});
-    if (vis == "on")
-        out.visibility = Visibility::On;
-    else if (vis == "off")
-        out.visibility = Visibility::Off;
-    else
-        out.visibility = Visibility::Auto;
+}
+
+Visibility loadVisibility(const std::string& path, Visibility fallback)
+{
+    // The authored DEFAULT. A player's saved preference overrides this at load (see
+    // settings::Settings) -- config is where the game ships, not where the player's choice
+    // lives. The name<->value mapping is settings' so config and the save can't disagree
+    // about what "auto" means.
+    const auto loaded = config::load(path);
+    if (!loaded)
+        return fallback;
+    const std::string vis = loaded->value("visibility", std::string{});
+    return settings::visibilityFromName(vis.c_str(), fallback);
 }
 
 Rect resolve(const Rect& canvasRect, int windowW, int windowH)
 {
     return rect(canvasRect.x, canvasRect.y, canvasRect.w, canvasRect.h, windowW, windowH);
-}
-
-namespace
-{
-void frame(const Rect& region)
-{
-    // Faint backing + a 2px border, dimmer than a content panel (this is idle
-    // chrome, not something asking to be read).
-    UIRenderer::drawRect(region.x, region.y, region.w, region.h, {0.05f, 0.06f, 0.07f, 0.35f});
-    const Color b{0.55f, 0.57f, 0.60f, 0.22f};
-    constexpr float t = 2.0f;
-    UIRenderer::drawRect(region.x, region.y, region.w, t, b);
-    UIRenderer::drawRect(region.x, region.y + region.h - t, region.w, t, b);
-    UIRenderer::drawRect(region.x, region.y, t, region.h, b);
-    UIRenderer::drawRect(region.x + region.w - t, region.y, t, region.h, b);
-}
-} // namespace
-
-void drawIdleFrames(const Regions& r, int windowW, int windowH)
-{
-    // Only the lower band is in use right now (readings are consolidated there --
-    // see ThoughtBox). The upper thought region stays defined for a future re-split.
-    frame(resolve(r.observation, windowW, windowH));
 }
 
 } // namespace hud

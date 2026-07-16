@@ -13,6 +13,7 @@
 #include "ThoughtBox.h"
 #include "TitleScreen.h"
 #include "Version.h"
+#include "WatchHud.h"
 #include "WorldInit.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
@@ -114,6 +115,7 @@ void reloadHudFonts(GameState& gs, int windowW, int windowH)
     pause_page::init(body);
     notify::init(label, gs.hud.notification);
     interaction_mode::init(label); // the stance badge uses the small label font
+    watch_hud::init(label);        // the watch readout sits beside it, same font
 }
 
 // Engine resize callback: keep the pixel target + HUD fonts in step with the new
@@ -189,6 +191,9 @@ void resetAuthoredState(GameState& gs)
 {
     observations::load(gs.observations, "config/observations.json", "config/actions.json");
     growth::load(gs.growth, "config/faculties.json");
+    // Only the CADENCE is authored -- the loader leaves `seconds` alone, which is the walk's
+    // own elapsed time and comes from the save (applied after this).
+    worldclock::load(gs.clock, "config/world_clock.json");
 }
 
 // Bring a world into being and step into it -- the ONE path from the title into play,
@@ -293,8 +298,12 @@ bool enterWorld(Engine& engine, EntityManager& em, GameState& gs, const std::str
         // They have never set out: leave them at the map's spawn (NOT the saved place,
         // which is meaningless before a first step) and give them the notebook -- a key
         // item; carrying it is what lets thoughts be written down (docs/design/INVENTORY.md).
-        // The watch is found later, not started with.
         inventory::add(gs.satchel, gs.items, inventory::ItemInstance{"notebook"});
+        // BANDAID(approved): the watch is meant to be FOUND, not started with -- telling the
+        // time is an earned capability (docs/design/INVENTORY.md, NOTEBOOK.md). Granted here
+        // so the time-reading surfaces can be exercised before its world placement is
+        // authored; remove the moment it exists as a pickup on the map.
+        inventory::add(gs.satchel, gs.items, inventory::ItemInstance{"watch"});
     }
     else if (player_movement::canStand(em, gs.player, pilgrim->place.x, pilgrim->place.y))
     {
@@ -425,6 +434,7 @@ int main(int argc, char* argv[])
     formulas::load(gs.formulas, "config/formulas.json");     // stat-driven formulas (glow, ...)
     world_items::load(gs.world_items_config, "config/world_items.json");        // floor item feel
     interaction_mode::load(gs.int_mode_config, "config/interaction_mode.json"); // stance badge
+    watch_hud::load(gs.watch_hud_config, "config/watch_hud.json");              // watch readout
     world_config::load(gs.world_config, "config/world.json"); // region asset paths
 
     inventory::load(gs.items, "config/items");
@@ -458,12 +468,17 @@ int main(int argc, char* argv[])
         sBoxCfg.fade_out_secs = bj->value("fade_out_secs", sBoxCfg.fade_out_secs);
         sBoxCfg.blip_every = std::max(1, bj->value("blip_every", sBoxCfg.blip_every));
     }
-    // The fixed HUD region rects + visibility mode (canvas fractions -- see
-    // HudCanvas / config/hud.json). GameState owns them (one source of truth); the
-    // thought box and notification channel render into these bands, and the render
-    // loop reads gs.hud.visibility to gate HUD drawing. reloadHudFonts loads the
-    // role fonts at the current size and points the HUD systems at them.
+    // The fixed HUD region rects (canvas fractions -- see HudCanvas / config/hud.json).
+    // GameState owns them (one source of truth); the thought box and notification channel
+    // render into these bands. reloadHudFonts loads the role fonts at the current size and
+    // points the HUD systems at them.
     hud::loadRegions(gs.hud, "config/hud.json");
+    // How the player likes the HUD. Config authors the DEFAULT; a save then carries what
+    // they actually chose. Read in that order and merged field-by-field (decodeSettings
+    // falls back to what it is handed), so a setting the player has never touched keeps the
+    // authored default rather than a struct's zero. The render loop reads gs.prefs.
+    gs.prefs.hud.visibility = hud::loadVisibility("config/hud.json", gs.prefs.hud.visibility);
+    gs.prefs = savegame::loadSettings(gs.prefs);
     reloadHudFonts(gs, engine.windowWidth(), engine.windowHeight());
 
     // The world (and its ambient bed) is built when the player commits from the title --

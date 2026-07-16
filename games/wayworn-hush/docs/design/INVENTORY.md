@@ -126,12 +126,14 @@ job (owning the dated observation+thought record) is a **carried effect**.
   `has(satchel, "notebook")`. The notebook's effect: *the pilgrim writes things
   down* — it's what turns fired thoughts into dated notebook entries. Without it,
   thoughts still happen (the head bubble, the box) but aren't recorded.
-- **The watch's effect:** `has(satchel, "watch")` → the notebook shows the
-  **dateline** (the `worldclock::stamp()` seam we already built). No watch = the
-  entry has no time. This is exactly the "display is a caller decision" hook
-  WorldClock.h already anticipates.
+- **The watch's effect:** `has(satchel, "watch")` → an entry's dateline shows the
+  **hour**, not just the day. The watch is an *instrument*: the world's clock runs
+  and every entry records its moment regardless, exactly as a day passes whether or
+  not anyone reads a dial. What the watch buys is being able to *tell* the time —
+  it never reaches back and decides whether a moment happened. This is the "display
+  is a caller decision" hook WorldClock.h anticipates.
 - So the dated-record model becomes: **the Notebook is a key item that owns the
-  record; the Watch is a key item that unlocks the *time* on each entry.** The
+  record; the Watch is a key item that makes the record's time legible.** The
   inventory is the substrate; the notebook UI is a *view onto the notebook item's
   data*.
 
@@ -139,7 +141,7 @@ job (owning the dated observation+thought record) is a **carried effect**.
 NOT inside the notebook `ItemInstance`. The item is a small handle/gate; the
 record grows without bloating the item schema, and it serializes cleanly on its
 own. `has(satchel,"notebook")` gates writes into the record; `has(satchel,
-"watch")` gates the dateline on each entry.
+"watch")` gates only how much of a recorded moment the dateline can say.
 
 ```
 GameState:

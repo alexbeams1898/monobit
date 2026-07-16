@@ -13,8 +13,10 @@
 #include "Notebook.h"
 #include "Observations.h"
 #include "PlayerConfig.h"
+#include "Settings.h"
 #include "Structures.h"
 #include "Surfaces.h"
+#include "WatchHud.h"
 #include "WorldClock.h"
 #include "WorldConfig.h"
 #include "WorldItems.h"
@@ -32,18 +34,17 @@ class EntityManager;
 // The pause page: the game's one on-demand screen, opened with F. It IS the
 // growth/observation record -- there is no persistent HUD (see
 // docs/design/GAME-SYSTEMS.md). While open the world update freezes and the
-// soundtrack is muffled. Tabs: Self (Spirit + faculties), Noticed (observations +
-// conclusions), Satchel (carried items), Notebook (dated record of readings), and
-// System (a Controls sub-view + Quit; later settings/save). Closing is F -- there
-// is no "Resume" item.
+// soundtrack is muffled. Tabs: Self (Spirit + faculties), Satchel (carried items),
+// Craft, Notebook (the thoughts he's had), and System (a Controls sub-view + Quit;
+// later settings/save). Closing is F -- there is no "Resume" item.
 struct PauseState
 {
     // System is the last tab (its items open sub-views / exit); the page opens
-    // on Self. Satchel = what you carry; Notebook = the dated record of readings.
+    // on Self. Satchel = what you carry; Notebook = every thought there is to have,
+    // the found ones legible and the rest still blank.
     enum class Tab
     {
         Self,
-        Noticed,
         Satchel,
         Craft,
         Notebook,
@@ -71,6 +72,11 @@ struct PauseState
     // Satchel grid cursor (read-only; drives the detail panel).
     int satchel_sel = 0;
 
+    // Notebook list cursor (read-only; drives the detail panel). Indexes the tab's
+    // rows -- every authored thought, found or not -- so a blank slot can be selected
+    // and read as blank.
+    int notebook_sel = 0;
+
     // Craft tab: the Satchel material list + a trailing "Combine" control. `craft_sel` is the
     // highlighted row (0..n-1 materials, then n = Combine). `craft_selected` is what's in the pot
     // -- item id -> how many of it the player has thrown in (each click adds one, up to how many
@@ -96,13 +102,18 @@ struct GameState
     structures::Config structure_config; // resizable walk-on structures (9-slice)
     std::unordered_map<int, std::string> tile_surface;         // tile id -> surface (footsteps)
     std::unordered_map<std::size_t, std::string> cell_surface; // per-cell override (structures)
-    hud::Regions hud;                         // fixed HUD region rects + visibility mode
+    hud::Regions hud; // fixed HUD region rects (authored layout)
+    // How the player likes the game. The LIVE copy the settings screen edits; the save
+    // carries it between runs (savegame::File::prefs -- it is the installation's, not any
+    // pilgrim's). Authored config seeds it at boot; a save overrides that.
+    settings::Settings prefs;
     HeadMarkerConfig head_marker_config;      // over-head thought-bubble feel/placement
     glimmer::Config glimmer_config;           // observable glow feel (fade + breathe)
     formulas::Config formulas;                // stat-driven formulas (Perception -> glow, etc.)
     world_items::Config world_items_config;   // world item floor-sprite feel
     interaction_mode::Config int_mode_config; // Observe/Act stance badge + SFX feel
     interaction_mode::State int_mode_state;   // stance edge-detect for the transition SFX
+    watch_hud::Config watch_hud_config;       // the carried watch's readout: placement + colors
     world_config::Config world_config;        // region asset paths (map, atlas, ambient)
     worldclock::WorldClock clock;             // in-world time (notebook datelines, day/night later)
     inventory::Registry items;                // loaded item blueprints (config/items/*.json)
