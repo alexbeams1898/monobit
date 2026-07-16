@@ -1,0 +1,4 @@
+{
+    "_comment": "The in-world clock's cadence (see include/WorldClock.h). seconds_per_day = how much real play-time makes one in-world day; a day is mapped onto a 24-hour face however long that is, so this changes how fast the hours pass, never what the clock reads. 4320 = one in-world minute per 3 real seconds (a day is 72 real minutes). Raise it to slow time down: 7200 is a minute per 5 seconds (a 2-hour day). Time only runs while the world does -- it holds while the pause page is open. Tunable -- edit + relaunch (dev reads assets from source).",
+    "seconds_per_day": 4320.0
+}

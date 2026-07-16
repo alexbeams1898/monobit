@@ -8,21 +8,26 @@
 // changing its interface, so callers (the notebook dateline, save data, later a
 // day/night shader) read `stamp()` / the fields and never a hardcoded date.
 //
-// Diegetic note: the world always knows the time, but whether the NOTEBOOK shows a
-// dateline is intended to gate on the player carrying a watch (a planned key item)
-// -- so the display of `stamp()` is a caller decision, not something this module
-// withholds. Time also feeds quests / time-gated drops / thoughts later.
+// Diegetic note: the world always knows the time and always runs; a watch is an
+// instrument that lets the PLAYER read it, never the thing that makes time pass. So
+// this module hands out the reading and callers decide how much of it a pilgrim can
+// tell. Time also feeds quests / time-gated drops / thoughts later.
 namespace worldclock
 {
 
 // Accumulated world time. `seconds` advances only while the world runs (frozen
 // while the pause page is open). `seconds_per_day` sets the compression -- how
-// much real play-time is one in-world day.
+// much real play-time is one in-world day; authored in config/world_clock.json.
 struct WorldClock
 {
     double seconds = 0.0;
-    double seconds_per_day = 1200.0; // 20 min of play = one day (placeholder cadence)
+    double seconds_per_day = 4320.0; // the default cadence; config is the dial
 };
+
+// Load the cadence from config/world_clock.json (silent no-op -> defaults if missing).
+// Only `seconds_per_day` is authored -- `seconds` is a walk's elapsed time, which belongs
+// to the save, not to config.
+void load(WorldClock& clock, const std::string& path);
 
 // Advance the clock by dt seconds of world time. Call once per fixed tick, only
 // when the world is unfrozen.
@@ -40,5 +45,13 @@ int dayAt(const WorldClock& clock, double seconds);
 // calendar arc supplies real dates + times; the notebook renders whatever this
 // returns, so that arc is a change here, not in the box.
 std::string stamp(const WorldClock& clock);
+
+// The time of day at an elapsed moment ("6:20"). A day maps onto a 24-hour face
+// however long `seconds_per_day` makes it, so retuning the cadence changes how long
+// an hour takes to pass, never what the clock says.
+std::string timeAt(const WorldClock& clock, double seconds);
+
+// Day + time ("Day 2, 6:20") -- what a written entry is stamped with.
+std::string stampAt(const WorldClock& clock, double seconds);
 
 } // namespace worldclock

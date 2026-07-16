@@ -1,5 +1,5 @@
 {
-    "_comment": "A pocket watch -- a KEY ITEM. Carrying it lets the notebook record the TIME of each entry (has(satchel,'watch') gates the dateline; see docs/design/INVENTORY.md + WorldClock.h). Found, not started with -- until then, entries carry no time.",
+    "_comment": "A pocket watch -- a KEY ITEM. Carrying it lets the pilgrim READ the hour off a notebook entry; the moment itself is always recorded, because the world's time runs whether or not he can tell it (has(satchel,'watch') gates the hour on the dateline, never the record; see docs/design/NOTEBOOK.md + WorldClock.h). Found, not started with -- until then a note shows only which day of the walk it came on.",
     "id": "watch",
     "name": "Pocket Watch",
     "description": "A small brass watch, still ticking. It tells you when.",
